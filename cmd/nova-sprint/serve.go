@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
@@ -145,6 +146,94 @@ func flagWord(words []string, name string) (value string, ok bool) {
 // serves a page until it is interrupted and reads through the server.
 var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sync", "friend clean", "dashboard", "answer"}
 
+// ServeWait is how long a batch waits for the line of control before it is answered
+// without it. Measured 2026-10-04 12:54 PM ET: with the machine STOPPED, a verb sent to
+// the loopback listener went unanswered until the client's own timeout (8 s), so every
+// friend's beat and every worker's verb failed, and the tables read every friend silent.
+// A batch that waits longer than this is answered at once, each verb exit 2 with what
+// holds the line and nothing changed, and its sender sends it again: a verb is answered
+// within a second of being read, whatever holds the line and for however long.
+const ServeWait = time.Second
+
+// line is the server's one line of control (a.serial): a lock that a batch can wait for
+// for a bounded time, and that says what holds it. Its zero value is free.
+type line struct {
+	once sync.Once
+	ch   chan struct{} // holds one token while the line is held
+	mu   sync.Mutex    // guards who
+	who  string        // what holds the line, "" for a step that did not say
+}
+
+func (l *line) token() chan struct{} {
+	l.once.Do(func() { l.ch = make(chan struct{}, 1) })
+	return l.ch
+}
+
+// Lock takes the line, waiting for as long as it is held.
+func (l *line) Lock() { l.LockAs("") }
+
+// LockAs takes the line as who: what a batch that cannot take it is told holds it.
+func (l *line) LockAs(who string) {
+	l.token() <- struct{}{}
+	l.hold(who)
+}
+
+// LockWithin takes the line as who unless wait fires first; then it takes nothing and
+// says what held the line.
+func (l *line) LockWithin(who string, wait func() <-chan time.Time) (held string, ok bool) {
+	if !l.TryLock() { // a free line is taken at once, on no clock
+		select {
+		case l.token() <- struct{}{}:
+		case <-wait():
+			l.mu.Lock()
+			defer l.mu.Unlock()
+			return l.who, false
+		}
+	}
+	l.hold(who)
+	return "", true
+}
+
+// TryLock takes the line when it is free, at once, and says whether it did.
+func (l *line) TryLock() bool {
+	select {
+	case l.token() <- struct{}{}:
+		l.hold("")
+		return true
+	default:
+		return false
+	}
+}
+
+// Unlock frees the line.
+func (l *line) Unlock() {
+	l.hold("")
+	select {
+	case <-l.token():
+	default:
+		panic("nova-sprint: the line of control was freed while free")
+	}
+}
+
+func (l *line) hold(who string) {
+	l.mu.Lock()
+	l.who = who
+	l.mu.Unlock()
+}
+
+// busyAnswer is the answer of every verb of a batch that could not take the line within
+// ServeWait: exit 2, what held the line, nothing changed, send it again.
+func busyAnswer(argv []string, held string) sprintwire.Result {
+	verb := ""
+	if len(argv) > 0 {
+		verb = argv[0]
+	}
+	if held == "" {
+		held = "another step of the server (a landing's read or report, the decide lane, the balance poll)"
+	}
+	return sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s: busy: %s held the line of control past %s; nothing was run or changed; send it again\n", prog, oneline.Escape(verb), oneline.Escape(held), ServeWait)}
+}
+
 // serveFrom is the server's one step: the batch's verbs run in order, each through
 // the verb's own code with its worker as the actor, and each answered. The
 // server's own words (the store, the actor) go between the verb and what the
@@ -154,12 +243,22 @@ var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sy
 // batches run a worker's verbs only.
 // One batch, and one tick, at a time (a.serial): the lock is taken here, after
 // the request is read whole, and released before any answer is written, so a
-// slow worker never holds the tick.
+// slow worker never holds the tick. A batch waits for the line at most ServeWait
+// (on a.after, the app's clock): past it every verb is answered busy, having run
+// nothing, so a tick, a landing's step or another batch that holds the line never
+// holds a verb past its bound. The reads and the beats need nothing of the tick, so
+// a STOPPED machine answers them as a RUNNING one does.
 func (a *app) serveFrom(req sprintwire.Request, local bool) sprintwire.Response {
-	a.serial.Lock()
+	out := sprintwire.Response{Results: make([]sprintwire.Result, len(req.Verbs))}
+	held, ok := a.serial.LockWithin(fmt.Sprintf("a batch of %d verbs", len(req.Verbs)), func() <-chan time.Time { return a.after(ServeWait) })
+	if !ok {
+		for i, argv := range req.Verbs {
+			out.Results[i] = busyAnswer(argv, held)
+		}
+		return out
+	}
 	defer a.serial.Unlock()
 	defer func() { a.serving = false }()
-	out := sprintwire.Response{Results: make([]sprintwire.Result, len(req.Verbs))}
 	for i, argv := range req.Verbs {
 		var args []string
 		as, words, why := workerVerb(argv)

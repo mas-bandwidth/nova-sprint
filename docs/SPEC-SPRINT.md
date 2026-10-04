@@ -2872,6 +2872,22 @@ its own process, and answers with each verb's exit code and what it printed, one
 in order. One batch, and one tick, at a time: neither runs during the other. The server keeps
 nothing between requests.
 
+A verb is answered within a second of being read (`ServeWait`), whatever holds the line of
+control and for however long: a batch waits for the line at most `ServeWait`, on the server's
+own clock, and past it every verb of the batch is answered exit 2, `busy`, naming what holds the
+line (the tick begun at a time, another batch, a landing's step), having run nothing and
+changed nothing; its sender sends it again. A free line is taken at once. STOPPED means the
+tick moves nothing; it does not mean the server stops answering. A STOPPED machine answers
+the reads (`where`, `card`, `queue`, `inbox --read`, `needs`, `log`) and the beats (`friend
+beat`, `fleet beat`) as a RUNNING one does, and a worker's write as the verb answers on a
+STOPPED machine (a `take` moves its card; the tick deals nothing new). Measured 2026-10-04
+12:54 PM ET: with the machine STOPPED, a verb sent to the loopback listener went unanswered until
+the client's own timeout (8 s), so every friend's beat failed and the tables read every friend
+silent. A busy answer is no step, and no modelled state changes: a batch and a tick still never
+run together, and a batch that does not take the line runs nothing (the tla/ modules model the
+tick and the landing, not the server's line).
+`TestAStoppedMachineStillAnswersReadsAndBeats`, `TestATickInProgressNeverHoldsAVerbPastItsBound`.
+
 The server runs the workers' verbs only: `take`, `finish`, `read` and `queue`, each beginning
 `<verb> --as <worker>` with one worker's name, `fleet beat <member> --load <percent>` and
 nothing more, and `friend beat <friend>` with its report's flags (`--running`, `--working`, `--queue`, `--width`, `--load`), each once with its value, and nothing more. No later word of a verb, wherever it stands, is a flag named `as`, `redis` or
