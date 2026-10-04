@@ -1,0 +1,788 @@
+{
+  "destinationSeed": "15f13249e1474b2c943e88e75025b4bbe515d93b",
+  "sourceSeed": "a3c6359d42b8a81f8414958c684bbd94aa16948a",
+  "notes": "Exact scopes are reproducible from each pinned Git diff and movedPathRules. Remaining paths are the complement; copied shared packages and generic ledgers still require owner review. No split branches are claimed.",
+  "movedPathRules": {
+    "prefixes": [
+      "cmd/nova-sprint/",
+      "cmd/nova-card/",
+      "cmd/nova-work/",
+      "internal/sprint/",
+      "internal/sprintdash/",
+      "internal/cardgen/",
+      "internal/provbalance/",
+      "internal/workfile/",
+      "internal/workgh/",
+      "internal/worklang/",
+      "tools/sprintsize/",
+      "tla/sprintevents-bench/",
+      "tla/dirtytick-bench/"
+    ],
+    "files": [
+      "docs/SPEC-SPRINT.md",
+      "docs/SPEC-SPRINT-DASHBOARD.md",
+      "docs/SPRINT-COORDINATOR.md",
+      "docs/SPRINT-COORDINATOR-SEAT.md",
+      "docs/SPEC-WORK-V1.md",
+      "docs/SPEC-WORKLANG.md",
+      "internal/ci/sprint_tables_lock_class_test.go"
+    ],
+    "regex": [
+      "^tla/(MC)?(SprintEvents|DirtyTick|DirtyTickRead|RouteIndex|Level|Land|WorkImport)",
+      "^docs/ratings/.*/(sprint|work)-(read|use)\\.md$"
+    ]
+  },
+  "candidates": [
+    {
+      "number": 5325,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5325",
+      "head": "d11eeef8fe1bc2c93dda45c02f48eb6dfc5c403d",
+      "base": "c9009421be0d54f36b639a45ee5aa30ca6a73dfb",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "c9009421be0d54f36b639a45ee5aa30ca6a73dfb",
+        "d11eeef8fe1bc2c93dda45c02f48eb6dfc5c403d"
+      ],
+      "movedCount": 29,
+      "remainingCount": 14,
+      "observedGap": {
+        "path": "cmd/nova-sprint/friends.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func friendBeatOn(ctx context.Context, st *store.Store, friend string, asJSON bool, stdout, stderr io.Writer) int {"
+      }
+    },
+    {
+      "number": 5323,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5323",
+      "head": "0064cdb0aeccc8f8c1710159d7d8b8c8771afb7a",
+      "base": "c9009421be0d54f36b639a45ee5aa30ca6a73dfb",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "c9009421be0d54f36b639a45ee5aa30ca6a73dfb",
+        "0064cdb0aeccc8f8c1710159d7d8b8c8771afb7a"
+      ],
+      "movedCount": 44,
+      "remainingCount": 6,
+      "observedGap": {
+        "path": "cmd/nova-sprint/reads.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func withTierCosts(v *whereView, tiers map[string]int, streams map[string]sprint.TierCosts) {"
+      }
+    },
+    {
+      "number": 5322,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5322",
+      "head": "d8659e2466b60522c84d87702faf2f5c06b7727b",
+      "base": "a4c08b9b0e637a1fd836d9845b720e0a8ff27343",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "a4c08b9b0e637a1fd836d9845b720e0a8ff27343",
+        "d8659e2466b60522c84d87702faf2f5c06b7727b"
+      ],
+      "movedCount": 254,
+      "remainingCount": 442,
+      "observedGap": {
+        "path": "cmd/nova-sprint/base_gate_rule_test.go",
+        "reason": "file added or modified by PR is absent from seed"
+      }
+    },
+    {
+      "number": 5321,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5321",
+      "head": "7e652dae832cb84a3d697569b004b2d3add98ae5",
+      "base": "3a28fe6268637e1729b3c42d37ca631348071ca8",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "3a28fe6268637e1729b3c42d37ca631348071ca8",
+        "7e652dae832cb84a3d697569b004b2d3add98ae5"
+      ],
+      "movedCount": 35,
+      "remainingCount": 285,
+      "observedGap": {
+        "path": "cmd/nova-sprint/answer_cover_test.go",
+        "reason": "file added or modified by PR is absent from seed"
+      }
+    },
+    {
+      "number": 5320,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5320",
+      "head": "b22bbbefe5465a0f7b4848ec7af31bee08d6e083",
+      "base": "a4c08b9b0e637a1fd836d9845b720e0a8ff27343",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "a4c08b9b0e637a1fd836d9845b720e0a8ff27343",
+        "b22bbbefe5465a0f7b4848ec7af31bee08d6e083"
+      ],
+      "movedCount": 238,
+      "remainingCount": 409,
+      "observedGap": {
+        "path": "cmd/nova-sprint/view.go",
+        "reason": "file added or modified by PR is absent from seed"
+      }
+    },
+    {
+      "number": 5318,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5318",
+      "head": "df506a4722dca73fbc7e610e3ab2377d05896013",
+      "base": "a4c08b9b0e637a1fd836d9845b720e0a8ff27343",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "a4c08b9b0e637a1fd836d9845b720e0a8ff27343",
+        "df506a4722dca73fbc7e610e3ab2377d05896013"
+      ],
+      "movedCount": 235,
+      "remainingCount": 417,
+      "observedGap": {
+        "path": "internal/sprint/friend_health.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func NotHealth(holder string, generation uint64, now time.Time, r HealthReq) string {"
+      }
+    },
+    {
+      "number": 5317,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5317",
+      "head": "0e0212ad8377753085962deb09c6e1b8931ac4d0",
+      "base": "a4c08b9b0e637a1fd836d9845b720e0a8ff27343",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "a4c08b9b0e637a1fd836d9845b720e0a8ff27343",
+        "0e0212ad8377753085962deb09c6e1b8931ac4d0"
+      ],
+      "movedCount": 236,
+      "remainingCount": 419,
+      "observedGap": {
+        "path": "cmd/nova-sprint/friends_test.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func TestAFriendsBeatAnswersHerRowsModeAndWidth(t *testing.T) {"
+      }
+    },
+    {
+      "number": 5316,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5316",
+      "head": "37f4363c62567c17c386782e3d2759281b34027b",
+      "base": "a4c08b9b0e637a1fd836d9845b720e0a8ff27343",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "a4c08b9b0e637a1fd836d9845b720e0a8ff27343",
+        "37f4363c62567c17c386782e3d2759281b34027b"
+      ],
+      "movedCount": 235,
+      "remainingCount": 407,
+      "observedGap": {
+        "path": "internal/sprint/friend_health.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func NotHealth(holder string, generation uint64, now time.Time, r HealthReq) string {"
+      }
+    },
+    {
+      "number": 5313,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5313",
+      "head": "6e6d02e33d504cd1ff6d6d67d44fae34125580e6",
+      "base": "bb00103f3783313249a62a4e802803b7e0721327",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "bb00103f3783313249a62a4e802803b7e0721327",
+        "6e6d02e33d504cd1ff6d6d67d44fae34125580e6"
+      ],
+      "movedCount": 123,
+      "remainingCount": 554,
+      "observedGap": {
+        "path": "internal/sprint/decisions_test.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func ptr(f float64) *float64 { return new(f) }"
+      }
+    },
+    {
+      "number": 5311,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5311",
+      "head": "bcc709d4d608b10e4421caa18725159358d1c71d",
+      "base": "a4c08b9b0e637a1fd836d9845b720e0a8ff27343",
+      "status": "NOT_CONFIRMED_CONTEXT_DIVERGED",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "a4c08b9b0e637a1fd836d9845b720e0a8ff27343",
+        "bcc709d4d608b10e4421caa18725159358d1c71d"
+      ],
+      "movedCount": 232,
+      "remainingCount": 406,
+      "observedGap": null
+    },
+    {
+      "number": 5309,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5309",
+      "head": "b081bb0b84e917061916a7165b10c53d0528be4c",
+      "base": "783210bcb7b8b57c7671ea9a83983bec3f6b72fb",
+      "status": "REMOVAL_ORDER_ONLY",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "783210bcb7b8b57c7671ea9a83983bec3f6b72fb",
+        "b081bb0b84e917061916a7165b10c53d0528be4c"
+      ],
+      "movedCount": 815,
+      "remainingCount": 46,
+      "observedGap": null
+    },
+    {
+      "number": 5308,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5308",
+      "head": "0b38f7582758f9b6d90eca2d4be972b2728abedc",
+      "base": "240c0f3d02196b5cfd7dcd68af47e0d9c0f3c308",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "240c0f3d02196b5cfd7dcd68af47e0d9c0f3c308",
+        "0b38f7582758f9b6d90eca2d4be972b2728abedc"
+      ],
+      "movedCount": 33,
+      "remainingCount": 3,
+      "observedGap": {
+        "path": "cmd/nova-sprint/auto_sentinel_test.go",
+        "reason": "file added or modified by PR is absent from seed"
+      }
+    },
+    {
+      "number": 5307,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5307",
+      "head": "f322683d4d4e5e914c64d1ff5efa3ed516e1a11e",
+      "base": "be35da18a72d540103d6787a9dbd78ecfebc5546",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "be35da18a72d540103d6787a9dbd78ecfebc5546",
+        "f322683d4d4e5e914c64d1ff5efa3ed516e1a11e"
+      ],
+      "movedCount": 8,
+      "remainingCount": 45,
+      "observedGap": {
+        "path": "cmd/nova-sprint/local_route_test.go",
+        "reason": "file added or modified by PR is absent from seed"
+      }
+    },
+    {
+      "number": 5305,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5305",
+      "head": "a2aff60e99d3b286b2667dff6ee4e9d8bddd5088",
+      "base": "2d720d219ff507e613417233eef72ae1b853e13b",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2d720d219ff507e613417233eef72ae1b853e13b",
+        "a2aff60e99d3b286b2667dff6ee4e9d8bddd5088"
+      ],
+      "movedCount": 45,
+      "remainingCount": 74,
+      "observedGap": {
+        "path": "cmd/nova-sprint/friendcards.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func writeQueueFile(dir string, states map[string]string) error {"
+      }
+    },
+    {
+      "number": 5303,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5303",
+      "head": "4c681e0415f8fa01a15107592d736db6ebcf9d31",
+      "base": "2d720d219ff507e613417233eef72ae1b853e13b",
+      "status": "PRESENT_SOURCE_COMMIT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2d720d219ff507e613417233eef72ae1b853e13b",
+        "4c681e0415f8fa01a15107592d736db6ebcf9d31"
+      ],
+      "movedCount": 1,
+      "remainingCount": 310,
+      "observedGap": null
+    },
+    {
+      "number": 5300,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5300",
+      "head": "ab105fd9bb8c33c138dec4e256cf85d8ccf06e88",
+      "base": "e7b2160bc7263dabbd5ff5f05471414de256e01f",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "e7b2160bc7263dabbd5ff5f05471414de256e01f",
+        "ab105fd9bb8c33c138dec4e256cf85d8ccf06e88"
+      ],
+      "movedCount": 188,
+      "remainingCount": 28,
+      "observedGap": {
+        "path": "cmd/nova-sprint/reads.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func perLandedColumn(t ntable.Table, streams map[string]sprint.TierCosts) ntable.Table {"
+      }
+    },
+    {
+      "number": 5299,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5299",
+      "head": "31da27a008a331547afd6da7b124238df0282004",
+      "base": "bc60d1f260eab4930f7af053c75b0c8a730feff1",
+      "status": "PRESENT_SOURCE_COMMIT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "bc60d1f260eab4930f7af053c75b0c8a730feff1",
+        "31da27a008a331547afd6da7b124238df0282004"
+      ],
+      "movedCount": 44,
+      "remainingCount": 289,
+      "observedGap": null
+    },
+    {
+      "number": 5297,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5297",
+      "head": "d680c98fb2748aa1c7fba11b0513f45f5440c25c",
+      "base": "2d720d219ff507e613417233eef72ae1b853e13b",
+      "status": "PRESENT_SOURCE_COMMIT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2d720d219ff507e613417233eef72ae1b853e13b",
+        "d680c98fb2748aa1c7fba11b0513f45f5440c25c"
+      ],
+      "movedCount": 31,
+      "remainingCount": 280,
+      "observedGap": null
+    },
+    {
+      "number": 5293,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5293",
+      "head": "321d8999da2d40fa17cd17eda62ee91dbfc94e3f",
+      "base": "2d720d219ff507e613417233eef72ae1b853e13b",
+      "status": "PRESENT_SOURCE_COMMIT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2d720d219ff507e613417233eef72ae1b853e13b",
+        "321d8999da2d40fa17cd17eda62ee91dbfc94e3f"
+      ],
+      "movedCount": 42,
+      "remainingCount": 274,
+      "observedGap": null
+    },
+    {
+      "number": 5291,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5291",
+      "head": "60c5bc07636878381b4fc06756ff05f7701617f5",
+      "base": "2d720d219ff507e613417233eef72ae1b853e13b",
+      "status": "PRESENT_SOURCE_COMMIT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2d720d219ff507e613417233eef72ae1b853e13b",
+        "60c5bc07636878381b4fc06756ff05f7701617f5"
+      ],
+      "movedCount": 31,
+      "remainingCount": 272,
+      "observedGap": null
+    },
+    {
+      "number": 5288,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5288",
+      "head": "8ef49210eeabc0ee399c54ad11b3c848d2d8736c",
+      "base": "2d720d219ff507e613417233eef72ae1b853e13b",
+      "status": "PRESENT_SOURCE_COMMIT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2d720d219ff507e613417233eef72ae1b853e13b",
+        "8ef49210eeabc0ee399c54ad11b3c848d2d8736c"
+      ],
+      "movedCount": 31,
+      "remainingCount": 265,
+      "observedGap": null
+    },
+    {
+      "number": 5283,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5283",
+      "head": "af251a1d3b88e7bcec3e200c9e7f605a25289d98",
+      "base": "2d720d219ff507e613417233eef72ae1b853e13b",
+      "status": "PRESENT_SOURCE_COMMIT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2d720d219ff507e613417233eef72ae1b853e13b",
+        "af251a1d3b88e7bcec3e200c9e7f605a25289d98"
+      ],
+      "movedCount": 147,
+      "remainingCount": 262,
+      "observedGap": null
+    },
+    {
+      "number": 5282,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5282",
+      "head": "8d3fb02c2b6fcbd1fb6d587fdbeeb49c53ba68fc",
+      "base": "2d720d219ff507e613417233eef72ae1b853e13b",
+      "status": "PRESENT_SOURCE_COMMIT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2d720d219ff507e613417233eef72ae1b853e13b",
+        "8d3fb02c2b6fcbd1fb6d587fdbeeb49c53ba68fc"
+      ],
+      "movedCount": 39,
+      "remainingCount": 269,
+      "observedGap": null
+    },
+    {
+      "number": 5281,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5281",
+      "head": "b3085b4359b492ddc235606f6adee7386888df02",
+      "base": "91e9d81002edbc845be5fbe60e41279a63a2fcf9",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "91e9d81002edbc845be5fbe60e41279a63a2fcf9",
+        "b3085b4359b492ddc235606f6adee7386888df02"
+      ],
+      "movedCount": 13,
+      "remainingCount": 7,
+      "observedGap": {
+        "path": "cmd/nova-sprint/machinery.go",
+        "reason": "file added or modified by PR is absent from seed"
+      }
+    },
+    {
+      "number": 5278,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5278",
+      "head": "bf86443e9a7c81957b834e2c61403458645e37d4",
+      "base": "7fd81e51eb825d9e702dbae152a8bc25c4d6108d",
+      "status": "NOT_CONFIRMED_CONTEXT_DIVERGED",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "7fd81e51eb825d9e702dbae152a8bc25c4d6108d",
+        "bf86443e9a7c81957b834e2c61403458645e37d4"
+      ],
+      "movedCount": 3,
+      "remainingCount": 0,
+      "observedGap": null
+    },
+    {
+      "number": 5275,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5275",
+      "head": "0e438acfbdbef502738deba0178b3fbd9e7184f5",
+      "base": "2c2e4d40128671ea2c16409a2668779f261a5c08",
+      "status": "NOT_CONFIRMED_CONTEXT_DIVERGED",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2c2e4d40128671ea2c16409a2668779f261a5c08",
+        "0e438acfbdbef502738deba0178b3fbd9e7184f5"
+      ],
+      "movedCount": 2,
+      "remainingCount": 1,
+      "observedGap": null
+    },
+    {
+      "number": 5268,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5268",
+      "head": "5f90c1ddddc0f8468b4d89df608729a12011b024",
+      "base": "5dd9c3a3669bc05595aca5e7521b5ba87b9d120b",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "5dd9c3a3669bc05595aca5e7521b5ba87b9d120b",
+        "5f90c1ddddc0f8468b4d89df608729a12011b024"
+      ],
+      "movedCount": 25,
+      "remainingCount": 1,
+      "observedGap": {
+        "path": "cmd/nova-sprint/friend_cards_test.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func TestBoundGenerationPreventsStaleReportAndFreshReportSucceeds(t *testing.T) {"
+      }
+    },
+    {
+      "number": 5266,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5266",
+      "head": "c369270d6c0204c0ac5f84fbb9badbb9eecb936e",
+      "base": "2c2e4d40128671ea2c16409a2668779f261a5c08",
+      "status": "NOT_CONFIRMED_CONTEXT_DIVERGED",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2c2e4d40128671ea2c16409a2668779f261a5c08",
+        "c369270d6c0204c0ac5f84fbb9badbb9eecb936e"
+      ],
+      "movedCount": 4,
+      "remainingCount": 5,
+      "observedGap": null
+    },
+    {
+      "number": 5258,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5258",
+      "head": "3a28fe6268637e1729b3c42d37ca631348071ca8",
+      "base": "52046bd9a0ebf726b40617a81e678d2855047a60",
+      "status": "PROMOTION_ORDER_ONLY",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "52046bd9a0ebf726b40617a81e678d2855047a60",
+        "3a28fe6268637e1729b3c42d37ca631348071ca8"
+      ],
+      "movedCount": 860,
+      "remainingCount": 5354,
+      "observedGap": {
+        "path": "cmd/nova-sprint/friendcards.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func friendJobOf(p sprint.Packet) string { return sprint.StoredID(p.Card, p.Epoch) }"
+      }
+    },
+    {
+      "number": 5247,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5247",
+      "head": "a3df8e2aa144c561c822c70f330e5e4308336722",
+      "base": "4296165394dad2d092aa0423f3ba9017a48514f0",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "4296165394dad2d092aa0423f3ba9017a48514f0",
+        "a3df8e2aa144c561c822c70f330e5e4308336722"
+      ],
+      "movedCount": 4,
+      "remainingCount": 9,
+      "observedGap": {
+        "path": "cmd/nova-sprint/admission_test.go",
+        "reason": "file added or modified by PR is absent from seed"
+      }
+    },
+    {
+      "number": 5246,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5246",
+      "head": "8c0b0c504c75b9ba2471d43ea7fd1dbbd9e3a30d",
+      "base": "1b8db5d7024105845577041e6294e68c9f56ac7b",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "1b8db5d7024105845577041e6294e68c9f56ac7b",
+        "8c0b0c504c75b9ba2471d43ea7fd1dbbd9e3a30d"
+      ],
+      "movedCount": 2,
+      "remainingCount": 0,
+      "observedGap": {
+        "path": "cmd/nova-sprint/friend_card_lifecycle_e2e_test.go",
+        "reason": "file added or modified by PR is absent from seed"
+      }
+    },
+    {
+      "number": 5243,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5243",
+      "head": "e76d6fccc6925cabd0d05f562501f63ecb8dee0e",
+      "base": "c6d3d2857d5c4a34a652767de44012d4eb74c16b",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "c6d3d2857d5c4a34a652767de44012d4eb74c16b",
+        "e76d6fccc6925cabd0d05f562501f63ecb8dee0e"
+      ],
+      "movedCount": 5,
+      "remainingCount": 0,
+      "observedGap": {
+        "path": "internal/sprint/decide_test.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func TestCardTiersIsTheCeilingBeforeADealAndWhenNothingPinsARoute(t *testing.T) {"
+      }
+    },
+    {
+      "number": 5239,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5239",
+      "head": "7b3ba6f3b33b2e28cba0b66b4355944034bae1e7",
+      "base": "2ced4eeae1b5fe760074b32d4dcc3b66a39a755d",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2ced4eeae1b5fe760074b32d4dcc3b66a39a755d",
+        "7b3ba6f3b33b2e28cba0b66b4355944034bae1e7"
+      ],
+      "movedCount": 7,
+      "remainingCount": 2,
+      "observedGap": {
+        "path": "tla/MCDirtyTickFriend.cfg",
+        "reason": "file added or modified by PR is absent from seed"
+      }
+    },
+    {
+      "number": 5235,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5235",
+      "head": "44631600c60ffc8fa6466ff6127d0d5a35018781",
+      "base": "4296165394dad2d092aa0423f3ba9017a48514f0",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "4296165394dad2d092aa0423f3ba9017a48514f0",
+        "44631600c60ffc8fa6466ff6127d0d5a35018781"
+      ],
+      "movedCount": 8,
+      "remainingCount": 0,
+      "observedGap": {
+        "path": "cmd/nova-sprint/finishhead.go",
+        "reason": "file added or modified by PR is absent from seed"
+      }
+    },
+    {
+      "number": 5233,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5233",
+      "head": "ddd7672f541641b8591f367514e1a3001185e436",
+      "base": "2ced4eeae1b5fe760074b32d4dcc3b66a39a755d",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2ced4eeae1b5fe760074b32d4dcc3b66a39a755d",
+        "ddd7672f541641b8591f367514e1a3001185e436"
+      ],
+      "movedCount": 2,
+      "remainingCount": 0,
+      "observedGap": {
+        "path": "internal/sprint/store/redis_sprint_functional_test.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func TestRedisTwinCatchesUpFromARowOrderWithoutAWholeRead(t *testing.T) {"
+      }
+    },
+    {
+      "number": 5230,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5230",
+      "head": "8ac0c403ec901dc961ff87ffd8c2af11f4dd0212",
+      "base": "2ced4eeae1b5fe760074b32d4dcc3b66a39a755d",
+      "status": "NOT_CONFIRMED_CONTEXT_DIVERGED",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2ced4eeae1b5fe760074b32d4dcc3b66a39a755d",
+        "8ac0c403ec901dc961ff87ffd8c2af11f4dd0212"
+      ],
+      "movedCount": 1,
+      "remainingCount": 0,
+      "observedGap": null
+    },
+    {
+      "number": 5228,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5228",
+      "head": "085c44211b1fd618bb5901ca7098d9abfb6a35bc",
+      "base": "2ced4eeae1b5fe760074b32d4dcc3b66a39a755d",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "2ced4eeae1b5fe760074b32d4dcc3b66a39a755d",
+        "085c44211b1fd618bb5901ca7098d9abfb6a35bc"
+      ],
+      "movedCount": 22,
+      "remainingCount": 0,
+      "observedGap": {
+        "path": "internal/sprint/balance.go",
+        "reason": "added function declaration absent or changed",
+        "line": "func paid(rest RouteRest, was, b ProviderBalance, start time.Time) bool {"
+      }
+    },
+    {
+      "number": 5015,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5015",
+      "head": "495e32563353a11dbb92677066667204c8972c47",
+      "base": "9c6381b53c697f0a6cd3b46952bbe7c3dc627e68",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "9c6381b53c697f0a6cd3b46952bbe7c3dc627e68",
+        "495e32563353a11dbb92677066667204c8972c47"
+      ],
+      "movedCount": 4,
+      "remainingCount": 0,
+      "observedGap": {
+        "path": "internal/sprint/store/presence_long_tick_test.go",
+        "reason": "file added or modified by PR is absent from seed"
+      }
+    },
+    {
+      "number": 5014,
+      "url": "https://github.com/mas-bandwidth/nova-tools/pull/5014",
+      "head": "3d0c7a9ec9e71abd7e899afe0086ec6cf1fda92d",
+      "base": "bea40bd5b16ca6c9eec1405c63be5e225a044902",
+      "status": "NOT_CONFIRMED_MISSING_CONTENT",
+      "pathCommand": [
+        "git",
+        "diff",
+        "--name-only",
+        "bea40bd5b16ca6c9eec1405c63be5e225a044902",
+        "3d0c7a9ec9e71abd7e899afe0086ec6cf1fda92d"
+      ],
+      "movedCount": 2,
+      "remainingCount": 3,
+      "observedGap": {
+        "path": "cmd/nova-sprint/view_lock_test.go",
+        "reason": "file added or modified by PR is absent from seed"
+      }
+    }
+  ]
+}
