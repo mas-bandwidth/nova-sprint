@@ -219,3 +219,15 @@ MCLevelBrokenNoGap.cfg	MCLevel.tla	temporal	Terminates	ignore-terminal	level	req
 MCLevelBrokenRequeue.cfg	MCLevel.tla	invariant	MovesBounded	ignore-terminal	level	required	-
 MCLevelBrokenNaive.cfg	MCLevel.tla	invariant	SelectionComplete	ignore-terminal	level	required	-
 MCLevelBrokenNoSkip.cfg	MCLevel.tla	invariant	NeverOnARefuser	ignore-terminal	level	required	-
+MCSprintRulesTwins.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
+MCSprintRulesTwinsBrokenNoRepoint.cfg	MCSprintRules.tla	invariant	TwinsInherit	ignore-terminal	sprintrules	required	-
+MCSprintRulesTwinsBrokenSilent.cfg	MCSprintRules.tla	invariant	NoDanglingNeed	ignore-terminal	sprintrules	required	-
+MCSprintRulesRules.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
+MCSprintRulesRulesBrokenNoCap.cfg	MCSprintRules.tla	invariant	RuleAttemptsBounded	ignore-terminal	sprintrules	required	-
+MCSprintRulesRulesBrokenDown.cfg	MCSprintRules.tla	action	LadderClimbs	ignore-terminal	sprintrules	required	-
+MCSprintRulesLate.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
+MCSprintRulesLateBrokenWaitAlways.cfg	MCSprintRules.tla	invariant	WaitOnce	ignore-terminal	sprintrules	required	-
+MCSprintRulesGate.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
+MCSprintRulesGateBrokenStopFirst.cfg	MCSprintRules.tla	invariant	BaseStopsOnThird	ignore-terminal	sprintrules	required	-
+MCSprintRulesIdle.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
+MCSprintRulesIdleBrokenEveryTick.cfg	MCSprintRules.tla	invariant	AlarmOncePerEpisode	ignore-terminal	sprintrules	required	-
