@@ -200,7 +200,10 @@ ANSWER OK rows=2 applied=2 would_apply=0 listed=0 refused=0 failed=0 left=0 outc
 
 Fixture: `cmd/nova-card/testdata/findings.tsv`, a reader's findings on two
 files, typed as `./cmd/nova-card/testdata/findings.tsv` from the root of a
-checkout; `./cards` is a directory the first line creates.
+checkout; `./cards` is a directory the first line creates. The same verbs on
+the one binary are `nova-sprint card generate` and `nova-sprint card lint`
+(`cmd/nova-sprint/cardverbs_test.go`). The transcript below is what the
+`nova-card` binary prints; `cmd/nova-card/firstrun_test.go` runs it.
 
 ### First run
 

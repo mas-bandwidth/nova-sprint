@@ -101,6 +101,9 @@ nova-sprint ack <note>... --reason <text>
 nova-sprint answer [--dry-run] [--bar <p>] [--every <duration>] [--timeout <duration>] [--backend jev|fixed] [--answers <file>] [--record <file>]
 nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>]] [--deadline <duration>] [--stale <duration>]
 nova-sprint card <id>
+nova-sprint card generate --from ledger|findings|help --out <dir> [--repo-dir <dir>] [--repo <owner/name>] [--base <branch>] [--sha <40hex>] [--ledger <name>] [--file <tsv>] [--tool <name>] [--bin-dir <dir>] [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
+nova-sprint card template
+nova-sprint card lint --card <file> [--card <file>...]
 nova-sprint log [--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]
 nova-sprint check
 nova-sprint repair
@@ -221,20 +224,18 @@ none was — so a total is a ledger of recorded spend, not a proof of it.
 
 ## nova-card
 
-nova-card is pre-alpha: not ready for production use.
+`generate`, `template` and `lint` are verbs of the one binary: `nova-sprint card generate`, `nova-sprint card template`, `nova-sprint card lint`. `nova-sprint generate`, `nova-sprint template` and `nova-sprint lint` refuse and name that verb. The generator is pre-alpha: not ready for production use. The `nova-card` binary still answers the old spelling; retiring its main is outside the paths of the change that folded the verbs in.
 
 ```
-nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--dry-run]
-nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
-nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
-nova-card lint --card <file> [--card <file>...]
-nova-card template
-nova-card version
-nova-card help [<verb>]
+nova-sprint card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--dry-run]
+nova-sprint card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
+nova-sprint card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
+nova-sprint card lint --card <file> [--card <file>...]
+nova-sprint card template
 ```
 
 A card a model writes by hand takes it half an hour and comes back with guessed
-PATHS; one wrong PATHS line was rejected 262 times in one night. nova-card
+PATHS; one wrong PATHS line was rejected 262 times in one night. `nova-sprint card generate`
 writes the cards from the source the work comes from, with the PATHS computed,
 the lint already green, and the waves already laid out, so the one thing left
 to do is `nova-sprint add --stream <s> --brief-dir <dir>`.
@@ -242,7 +243,7 @@ to do is `nova-sprint add --stream <s> --brief-dir <dir>`.
 The flow is three lines:
 
 ```sh
-nova-card generate --from ledger --ledger serial-tests --repo-dir ./repo --out ./cards
+nova-sprint card generate --from ledger --ledger serial-tests --repo-dir ./repo --out ./cards
 nova-sprint add --stream debt --brief-dir ./cards --allow-shared-paths
 nova-sprint where
 ```
@@ -255,9 +256,9 @@ checkout is needed when `--repo`, `--base` and `--sha` are given; with
 checked to exist in it:
 
 ```sh
-nova-card generate --from findings --file ./cmd/nova-card/testdata/findings.tsv --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567 --out ./cards
-nova-card lint --card ./cards/finding-internal-bus-send.md
-nova-card lint --card ./cards/finding-cmd-nova-bus-main.md
+nova-sprint card generate --from findings --file ./cmd/nova-card/testdata/findings.tsv --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567 --out ./cards
+nova-sprint card lint --card ./cards/finding-internal-bus-send.md
+nova-sprint card lint --card ./cards/finding-cmd-nova-bus-main.md
 ```
 
 `./cards` then holds one `.md` per card, its name the card's id, and a
