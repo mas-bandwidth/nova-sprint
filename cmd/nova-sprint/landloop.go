@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -46,6 +47,8 @@ func (a *app) landLoop(ctx context.Context, addr string, stdout io.Writer) {
 // when it is due: a round with nothing queued to merge, or PruneEvery branches waiting,
 // and no failed cleanup waiting out PruneRetry. Its PRUNE lines are printed as land's.
 // A stop of the loop flushes nothing: what is still queued then stays on origin.
+// Then, still outside the landing, it runs the promote step when one is armed
+// (promote.go). Nil arms nothing, so run --land does not open a pull request.
 func (a *app) landRound(ctx context.Context, addr string, more []string, stdout io.Writer) int {
 	code, idle := a.landOnce(ctx, addr, more, stdout)
 	if a.prune.due(idle, a.now()) {
@@ -54,6 +57,7 @@ func (a *app) landRound(ctx context.Context, addr string, more []string, stdout 
 			fmt.Fprintf(stdout, "%s %s\n", at, oneline.Escape(r.line(false)))
 		}
 	}
+	a.promoteOnTick(ctx, stdout)
 	return code
 }
 
@@ -90,6 +94,19 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 	}
 	said := ""
 	if code != 0 {
+		exe := a.executable
+		if exe == nil {
+			exe = os.Executable
+		}
+		if target, err := exe(); err == nil {
+			if rolled, rerr := sprint.CheckRollbackOnLandFailure(target, fmt.Errorf("land failed: %d", code), a.now()); rolled {
+				at := oneline.Field(a.now().Format("15:04:05"))
+				fmt.Fprintf(stdout, "%s SERVER ROLLBACK land failed within switch window; rolled back to previous binary %s.prev\n", at, target)
+			} else if rerr != nil {
+				at := oneline.Field(a.now().Format("15:04:05"))
+				fmt.Fprintf(stdout, "%s SERVER ROLLBACK ERROR: %s\n", at, oneline.Escape(rerr.Error()))
+			}
+		}
 		said = strings.Join(lines, "\n")
 		if said == a.landFailed {
 			return code, idle // said when it began

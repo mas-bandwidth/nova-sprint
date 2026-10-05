@@ -25,14 +25,16 @@ It holds:
 - `internal/sprint`, `internal/sprintdash`, `internal/cardgen`, `internal/provbalance`,
   `internal/workfile`, `internal/workgh`, `internal/worklang`: the sprint's own packages.
 - `internal/...` (everything else): **copies** of the nova-tools packages nova-sprint
-  uses, taken at the nova-tools commit named in the first commit. They are replaced,
-  one at a time, by imports of a public nova-tools API; until then a fix to one of
-  them is made in nova-tools first.
+  uses, taken at the nova-tools commit the last re-seed names (`tools/seed`, by the rules in
+  `tools/seed/RECIPE`). They are replaced, one at a time, by imports of a public nova-tools
+  API; until then a fix to one of them is made in nova-tools first.
 - `docs/`: the sprint's specs (`SPEC-SPRINT.md`, `SPEC-SPRINT-DASHBOARD.md`), the
   coordinator's runbooks, the nova-work specs, and the command and test references.
 - `tla/`: the TLA+ models of the sprint (`SprintEvents`, `DirtyTick`, `DirtyTickRead`,
-  `RouteIndex`, `Level`, `Land`) and of nova-work (`WorkImport`), with their
-  `CASES.tsv` and `RUNS.tsv` rows. The TLC runner is still nova-tools' `tools/tlacheck`.
+  `RouteIndex`, `Level`, `Land`, `CardISA`, `CardMachine`, `CoordinatorPass`,
+  `CoordinatorWake`, `ReadsByRoom`, `ServerLanes`, `SprintRules`, `StallLadder`,
+  `SeatHealth`) and of nova-work (`WorkImport`), with their `CASES.tsv` and `RUNS.tsv` rows.
+  The TLC runner is still nova-tools' `tools/tlacheck`.
 
 ## Building
 

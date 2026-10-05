@@ -45,10 +45,15 @@ type friendEntry struct {
 	// Class is her class: the tiers her nova-config row says she can do, sorted and
 	// comma joined (friend level evens the friends of one class).
 	Class string `json:"class,omitempty"`
-	// Reason and Until are the hold's (friend down --reason --until): why,
-	// and when the coordinator expects her back.
+	// Mode is her delivery mode, her nova-config row's (batch or one-shot),
+	// which her daemon reads back from her beat; empty is batch.
+	Mode string `json:"mode,omitempty"`
+	// Reason and Until are the hold's (friend down --reason --until, hold <friend>
+	// --reason): why, and when the coordinator expects her back. Return is whether
+	// the hold took her cards back (hold.go).
 	Reason string    `json:"reason,omitempty"`
 	Until  time.Time `json:"until,omitzero"`
+	Return bool      `json:"return,omitempty"`
 }
 
 // FriendSpec is what friend sync knows of one friend: her name (a friend row
@@ -57,6 +62,7 @@ type FriendSpec struct {
 	Name  string
 	Width int
 	Class string
+	Mode  string // her delivery mode, config.FriendMode of her row
 }
 
 // FriendRow is one row of the friends table as where draws it: the counts of
@@ -71,10 +77,18 @@ type FriendRow struct {
 	Failed  int    `json:"failed"`
 	Status  string `json:"status"`
 	Class   string `json:"class,omitempty"`
+	Mode    string `json:"mode,omitempty"`
 	// Load and Report are what her last beat reported (friend beat --load, and
 	// sprint.FriendReport), absent when it reported none.
 	Load   float64              `json:"load,omitempty"`
 	Report *sprint.FriendReport `json:"report,omitempty"`
+	// Active is the newest write her daemon found under her working directory and
+	// outbox (sprint.FriendReport.Active), zero when it reported none: the last
+	// session activity column.
+	Active time.Time `json:"active,omitzero"`
+	// Beat is when her last beat came, zero when she has never beaten: how stale her
+	// report is (view coordinator).
+	Beat time.Time `json:"beat,omitzero"`
 	// Health is the coordinator's last accepted observation of her (friend
 	// health), absent until the first.
 	Health *sprint.FriendHealth `json:"health,omitempty"`
@@ -138,11 +152,11 @@ func (st *Store) SyncFriends(ctx context.Context, specs []FriendSpec) (added, re
 		case !had:
 			added = append(added, s.Name)
 			rosterChanged = true
-		case e.Width != s.Width || e.Class != s.Class:
+		case e.Width != s.Width || e.Class != s.Class || e.Mode != s.Mode:
 			updated = append(updated, s.Name)
 			rosterChanged = true
 		}
-		e.Width, e.Class = s.Width, s.Class
+		e.Width, e.Class, e.Mode = s.Width, s.Class, s.Mode
 		r[s.Name] = e
 	}
 	for n := range r {
@@ -185,6 +199,21 @@ func (st *Store) FriendBeat(ctx context.Context, friend string) (sprint.Beat, er
 // down keep with her, and her own counts) and her load (nil: none), kept on the
 // beat until the next replaces it.
 func (st *Store) FriendBeatReport(ctx context.Context, friend string, rep sprint.FriendReport, load *float64) (sprint.Beat, error) {
+	return st.FriendBeatPong(ctx, friend, rep, load, time.Time{})
+}
+
+// friendBeatRecord is a friend's beat as kept: the beat, and her session's last pong as
+// her daemon reports it (friend beat --pong; zero: none reported), which the coordinator's
+// pass reads (sprint.TickCoordinatorPass). A reader of the beat alone reads the record as
+// a sprint.Beat and never sees the pong.
+type friendBeatRecord struct {
+	sprint.Beat
+	Pong time.Time `json:"pong,omitzero"`
+}
+
+// FriendBeatPong is FriendBeatReport with her session's last pong kept on the beat (zero:
+// none), until the next beat replaces it.
+func (st *Store) FriendBeatPong(ctx context.Context, friend string, rep sprint.FriendReport, load *float64, pong time.Time) (sprint.Beat, error) {
 	r, kv, err := st.roster(ctx)
 	if err != nil {
 		return sprint.Beat{}, err
@@ -193,13 +222,17 @@ func (st *Store) FriendBeatReport(ctx context.Context, friend string, rep sprint
 		return sprint.Beat{}, noFriend(r, friend)
 	}
 	b := sprint.Beat{At: st.now().UTC().Truncate(time.Second)}
-	if len(rep.Running) > 0 || rep.Working != nil || rep.Queue != nil || rep.Width != nil {
+	if len(rep.Running) > 0 || rep.Working != nil || rep.Queue != nil || rep.Width != nil || !rep.Active.IsZero() {
 		b.Friend = &rep // a beat that reports nothing carries no report
 	}
 	if load != nil {
 		b.Load, b.How = *load, sprint.HowGiven
 	}
-	out, err := json.Marshal(b)
+	rec := friendBeatRecord{Beat: b}
+	if !pong.IsZero() {
+		rec.Pong = pong.UTC().Truncate(time.Second)
+	}
+	out, err := json.Marshal(rec)
 	if err != nil {
 		return b, err
 	}
@@ -275,7 +308,10 @@ func (st *Store) FriendRows(ctx context.Context, now time.Time) ([]FriendRow, er
 				_ = json.Unmarshal([]byte(vals[2*i+1]), &h)
 			}
 		}
-		row := FriendRow{Name: n, Width: r[n].Width, Status: sprint.FriendStatus(sprint.FriendPresence{Held: r[n].Held, Beat: b, Health: h, Generation: generation}, now), Class: r[n].Class, Load: b.Load, Report: b.Friend}
+		row := FriendRow{Name: n, Width: r[n].Width, Status: sprint.FriendStatus(sprint.FriendPresence{Held: r[n].Held, Beat: b, Health: h, Generation: generation}, now), Class: r[n].Class, Mode: r[n].Mode, Load: b.Load, Report: b.Friend, Beat: b.At}
+		if b.Friend != nil {
+			row.Active = b.Friend.Active
+		}
 		if h.Observed() {
 			row.Health = &h
 		}
@@ -307,29 +343,31 @@ func (st *Store) friendNames(ctx context.Context) []string {
 	return slices.Sorted(maps.Keys(r))
 }
 
-// friendSeats is every friend of the roster as the tick's deal gives her a friend's card
-// (sprint.FriendDeal): her name, width and status at now, read only when the snapshot
-// holds a friend's card ready; nil, and no read, when it holds none.
-func (st *Store) friendSeats(ctx context.Context, s *sprint.Snapshot, now time.Time) ([]sprint.FriendSeat, error) {
-	ready := false
-	for _, c := range s.Work.Column(sprint.Ready) {
-		if _, ok := sprint.FriendCard(c); ok {
-			ready = true
-			break
-		}
-	}
-	if !ready {
-		return nil, nil
-	}
+// FriendSeats returns every friend of the roster as a FriendSeat (with Name, Width, Status,
+// Class, Mode, and Running: the cards her last beat names running).
+func (st *Store) FriendSeats(ctx context.Context, now time.Time) ([]sprint.FriendSeat, error) {
 	rows, err := st.FriendRows(ctx, now)
 	if err != nil {
 		return nil, err
 	}
 	seats := make([]sprint.FriendSeat, len(rows))
 	for i, r := range rows {
-		seats[i] = sprint.FriendSeat{Name: r.Name, Width: r.Width, Status: r.Status, Class: r.Class}
+		seats[i] = sprint.FriendSeat{Name: r.Name, Width: r.Width, Status: r.Status, Class: r.Class, Mode: r.Mode}
+		if r.Report != nil {
+			seats[i].Running = r.Report.Running
+		}
 	}
 	return seats, nil
+}
+
+// friendSeats is every friend of the roster as the tick's deal and level see her
+// (sprint.TickDeal, sprint.FriendLevel, and the attempt cap's deal, sprint.AttemptCapDeal): her name, width and status at now and what her
+// beat names running, read every tick while the roster has a friend, whether or not a
+// friend's card is ready, so a friend coming up is levelled on the same tick
+// (docs/SPEC-SPRINT.md section 1, friend-deal-idle-lanes-first.w1); nil when it has none.
+// The snapshot no longer gates the read; it stays in the signature for its callers.
+func (st *Store) friendSeats(ctx context.Context, _ *sprint.Snapshot, now time.Time) ([]sprint.FriendSeat, error) {
+	return st.FriendSeats(ctx, now)
 }
 
 // FriendNames is every friend of the roster in name order (the friends table's rows), for
@@ -409,4 +447,76 @@ func (st *Store) FriendHealth(ctx context.Context, friend, who string, obs sprin
 		return sprint.FriendHealth{}, "", false, errors.New(res.Refused[0].Why)
 	}
 	return obs, sprint.FriendStatus(sprint.FriendPresence{Held: e.Held, Health: obs, Generation: obs.Generation}, st.now()), false, nil
+}
+
+// FriendSpecOf is what friend sync last wrote of the friend: her width and
+// her delivery mode as her nova-config row has them, which her beat answers
+// so her daemon reads her row without reaching the config store; a friend the
+// roster lacks is refused.
+func (st *Store) FriendSpecOf(ctx context.Context, friend string) (FriendSpec, error) {
+	r, _, err := st.roster(ctx)
+	if err != nil {
+		return FriendSpec{}, err
+	}
+	e, ok := r[friend]
+	if !ok {
+		return FriendSpec{}, noFriend(r, friend)
+	}
+	return FriendSpec{Name: friend, Width: e.Width, Class: e.Class, Mode: e.Mode}, nil
+}
+
+// FriendSessions is every friend of the roster with her session's last pong as her last
+// beat carries it (zero: none) and whether the coordinator holds her, for the coordinator's
+// pass (sprint.TickReq.Sessions); none when the store keeps no records.
+func (st *Store) FriendSessions(ctx context.Context) (map[string]sprint.FriendSession, error) {
+	r, kv, err := st.roster(ctx)
+	if kv == nil || err != nil || len(r) == 0 {
+		return nil, err
+	}
+	names := slices.Sorted(maps.Keys(r))
+	keys := make([]string, 0, len(names))
+	for _, n := range names {
+		keys = append(keys, friendBeatKey(n))
+	}
+	vals, oks, err := getKeys(ctx, kv, keys)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]sprint.FriendSession, len(names))
+	for i, n := range names {
+		var rec friendBeatRecord
+		if i < len(oks) && oks[i] {
+			_ = json.Unmarshal([]byte(vals[i]), &rec) // ignored: an unreadable record is no beat
+		}
+		out[n] = sprint.FriendSession{Pong: rec.Pong, Held: r[n].Held}
+	}
+	return out, nil
+}
+
+// FriendBeats is every friend of the roster with her last beat (a zero beat
+// for one who never beat), for the seat check (nova-sprint seat check): the
+// ages the friends table derives its status from, read as beats.
+func (st *Store) FriendBeats(ctx context.Context) (map[string]sprint.Beat, error) {
+	r, kv, err := st.roster(ctx)
+	if kv == nil || err != nil || len(r) == 0 {
+		return map[string]sprint.Beat{}, err
+	}
+	names := slices.Sorted(maps.Keys(r))
+	keys := make([]string, 0, len(names))
+	for _, n := range names {
+		keys = append(keys, friendBeatKey(n))
+	}
+	vals, oks, err := getKeys(ctx, kv, keys)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]sprint.Beat, len(names))
+	for i, n := range names {
+		var b sprint.Beat
+		if i < len(oks) && oks[i] {
+			_ = json.Unmarshal([]byte(vals[i]), &b) // ignored: an unreadable record is no beat
+		}
+		out[n] = b
+	}
+	return out, nil
 }

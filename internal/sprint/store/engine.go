@@ -75,6 +75,17 @@ type Store struct {
 	// Updates is the tick's table updates, in order; nil is the tick's own
 	// (sprint.TickTables). A test gives its own.
 	Updates []sprint.TableUpdate
+	// AnswerRules says the tick answers the mechanical judgments by rule (run and tick
+	// --answer-rules, on by default there; docs/SPEC-SPRINT.md section 8, answered by rule):
+	// false, every judgment is the coordinator's, as before the rules.
+	AnswerRules bool
+	// IdleAlarm says the tick watches for an idle fleet and pushes the coordinator one note
+	// of why an episode (run --idle-alarm, on by default there; sprint.TickIdle).
+	IdleAlarm bool
+	// WakeFriend, when set (run and tick), sends a stalled friend her wake turn as the
+	// friend stall part of the tick climbs her ladder to rung 1 or 2 (sprint.TickFriendStall,
+	// a bus message pushed to her daemon); nil sends nothing and the rung climbs the same.
+	WakeFriend func(friend string, rung int, d time.Duration) error
 	// Stats is what the store's reads cost (stats.go); nil is made on the
 	// first tick. Its pinned copies share it.
 	Stats *Stats
@@ -141,6 +152,11 @@ type Step struct {
 	// tables plans on it while the fence is at its generation, instead of
 	// reading them, and applies its receipts to it when it commits.
 	Twin *Twin
+	// heldTwin is a twin the step's caller holds for it: the drain a step
+	// runs before itself on a STOPPED machine's queue reads and writes through
+	// the twin the step took (stepTwin), which it cannot take again, and does
+	// not read the four tables whole for want of it.
+	heldTwin *Twin
 	// Routes says the step deals (or asks what the next deal does): it plans
 	// with the model tiers' routes (routes.go, sprint.Snapshot.Routes), read
 	// before its first read of the tables, never between that read and its
@@ -164,6 +180,9 @@ type Step struct {
 	// within a tick).
 	Readers      bool
 	ReaderStates map[string]string
+	// Friends says the step consults the friends roster (finish, for friendNext
+	// delivery mode): it plans with the friend seats (sprint.Snapshot.Friends).
+	Friends bool
 	// DrainMax, above zero, is the most entries of the queue's head a drain
 	// takes: the pump's second drain takes only what its first requeued.
 	DrainMax int
@@ -501,7 +520,9 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			// MaxDrains (a world that keeps queueing) the step plans on the
 			// queued view and queues on top, as while RUNNING.
 			drains++
-			dr, err := st.Run(ctx, DrainStep())
+			drain := DrainStep()
+			drain.heldTwin = tw
+			dr, err := st.Run(ctx, drain)
 			if err != nil {
 				return res, fmt.Errorf("draining the work table's queue: %w", err)
 			}
@@ -530,6 +551,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				// change still finds the card where it expects it
 				held = sprint.QueuedCards(q)
 				snap.Held = held
+				snap = withQueuedPromotion(snap, q)
 			default:
 				// A step other than the pump plans on the work table as the
 				// pump will leave it: its changes queue after the ones before
@@ -550,6 +572,13 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			if err := st.readerStatesInto(ctx, snap); err != nil {
 				return res, err
 			}
+		}
+		if step.Friends {
+			seats, err := st.FriendSeats(ctx, snap.Now)
+			if err != nil {
+				return res, err
+			}
+			snap.Friends = seats
 		}
 		// Every plan is held to the lifecycle here, whatever step built it.
 		plan := sprint.Applied(snap, step.Plan(snap))
@@ -732,6 +761,32 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		res.Refused = append(res.Refused, sprint.Refusal{Key: k, Why: fmt.Sprintf("the sprint kept changing under this step (%d attempts); run it again", res.Attempts)})
 	}
 	return res, nil
+}
+
+// withQueuedPromotion is a pump part's snapshot with the promotion queued
+// after the pump's drain shown on its work table: promoted, while the machine
+// runs, queues its properties for the next tick's pump and closes "dev is
+// behind" at once, so a part between the two judges dev against the queued
+// promotion (sprint.Promotion) and does not raise "dev is behind" again on the
+// landings it covered. Only the promotion's properties are shown, which no
+// pump part writes; the table is a copy, and the twin's is left as read.
+func withQueuedPromotion(s *sprint.Snapshot, q []sprint.QueuedChange) *sprint.Snapshot {
+	props := map[string]string{}
+	for _, x := range q {
+		if x.Prop != nil && x.Prop.Table == sprint.Work && (x.Prop.Name == sprint.PropPromotedAt || x.Prop.Name == sprint.PropPromotedSha) {
+			props[x.Prop.Name] = x.Prop.Value
+		}
+	}
+	if len(props) == 0 || s.Work == nil {
+		return s
+	}
+	all := s.Work.Props()
+	maps.Copy(all, props)
+	w := *s.Work
+	w.SetProps(all)
+	n := *s
+	n.Work = &w
+	return &n
 }
 
 // MaxDrains bounds the drains a step makes of a STOPPED machine's queue
@@ -1324,7 +1379,7 @@ func (st *Store) operation(verb, actor, id string, plan sprint.Plan, snap *sprin
 			return m
 		}
 		flush := func() {
-			if len(cur) == 0 && !(first && props[t] != nil) {
+			if len(cur) == 0 && (!first || props[t] == nil) {
 				return
 			}
 			if cur == nil {
