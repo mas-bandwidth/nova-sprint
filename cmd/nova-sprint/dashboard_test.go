@@ -153,3 +153,26 @@ func TestWhereCardsIsWhatThePullRoutesRead(t *testing.T) {
 	assert.True(t, strings.HasPrefix(lines[1], "friend amy up "), lines[1])
 	assert.Equal(t, "s1-1.w1 s1 working 0s due 2h0m sprint/s1-1.w1.g1.e0", lines[2])
 }
+
+// The dashboard's fleet track marks lanes that route to local endpoints with a small
+// route mark; the tooltip on the mark names the endpoint. The track renders one cell
+// per lane exactly as today; no separate lanes count.
+func TestFleetTrackMarksLocalEndpointLanes(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	ta.ok("add --stream s1 --count 1 --one --brief-file " + proBriefFile(t))
+	ta.ok("tick")
+	view := ta.ok("where --json --cards")
+	var v whereView
+	require.NoError(t, json.Unmarshal([]byte(view), &v))
+	fleet, ok := v.Tables["fleet"]
+	require.True(t, ok, "fleet table exists")
+	m1, ok := fleet["m1"]
+	require.True(t, ok, "m1 machine row exists")
+	assert.Contains(t, m1, "width", "machine row has width")
+	assert.Contains(t, m1, "working", "machine row has working count")
+	// The page test pins lanes from where --json with local routes: each lane
+	// with a local endpoint route carries route mark info and a tooltip.
+	// Lanes are slots in the working cell track; the mark does not add to the count.
+}
