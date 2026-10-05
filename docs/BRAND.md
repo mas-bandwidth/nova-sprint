@@ -52,8 +52,7 @@ the funny failures of LLM-only coordination, introduce the machine, then
 explain the dashboard's vocabulary with an example workflow. Cards, streams,
 dependencies, sentinel gates, friends, the fleet, review, and merge should all
 make sense before readers open the live demo. Keep operational detail in the
-guides. Link both the dashboard screenshot and the invitation below it to
-the live sprint.
+guides. End the tour with a clear link to the live sprint.
 
 Screenshots are snapshots. Preserve their actual values and record where and
 when they were captured; do not manufacture a healthier or busier sprint.

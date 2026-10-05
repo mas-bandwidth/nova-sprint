@@ -13,7 +13,7 @@ work and scale out across friends, swarms, or both.
 
 | Your next question | Where to go |
 |---|---|
-| Can I watch a sprint doing real work? | [Live dashboard](http://69.67.149.151) and [the README tour](../README.md#watch-your-team-get-work-done) |
+| Can I watch a sprint doing real work? | [Live dashboard](http://69.67.149.151) and [the README tour](../README.md#give-the-team-a-plan-go-have-a-life) |
 | How do I get started? | [Getting started](GETTING-STARTED.md) |
 | Can I try the workflow before setting up a team? | [Local first lap](FIRST-LAP.md) |
 | Why do AI teams need a coordination machine? | [The illustrated README](../README.md#the-problem) |
