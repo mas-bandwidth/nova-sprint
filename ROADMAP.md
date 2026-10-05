@@ -5,34 +5,32 @@ A mechanical render of the work record's roadmap data, by release. The planned c
 | release | status | cards |
 |---|---|---:|
 | v1.0.0 | current |  |
-| v1.1.0 | planned | 128 |
+| v1.1.0 | planned | 103 |
 
 ## v1.1.0
 
-128 cards in 25 streams, planned on 2026-10-04 for the release after v1.0.0.
+103 cards in 23 streams, planned on 2026-10-04 for the release after v1.0.0.
 
 | stream | cards |
 |---|---:|
-| sprint-v1-verbs | 16 |
 | sprint-v1-1-0 | 15 |
+| sprint-v1-verbs | 11 |
 | sprint-next | 8 |
-| sprint-v1-processor | 8 |
-| sprint-v1-docs | 7 |
 | sprint-v1-models | 7 |
-| sprint-v1-comfort | 6 |
-| sprint-v1-install | 6 |
-| sprint-v1-integrity | 6 |
-| sprint-v1-release | 6 |
-| sprint-v1-simplicity | 6 |
+| sprint-v1-processor | 7 |
+| sprint-v1-docs | 6 |
 | friend-reserve | 5 |
-| sprint-v1-sre | 5 |
-| sprint-v1-wallclock | 5 |
-| sprint-v1-friends | 4 |
+| sprint-v1-integrity | 5 |
+| sprint-v1-release | 5 |
+| sprint-v1-simplicity | 5 |
+| sprint-v1-comfort | 4 |
+| sprint-v1-install | 4 |
 | sprint-v1-jev | 4 |
+| sprint-v1-wallclock | 3 |
 | sprint-v1-yes | 3 |
 | dead | 2 |
-| sprint-v1-safety | 2 |
-| sprint-v1-setup | 2 |
+| sprint-v1-friends | 2 |
+| sprint-v1-sre | 2 |
 | frictions2 | 1 |
 | friends-sprint-v1-0-0 | 1 |
 | friends-v1-2-0-reliability | 1 |
