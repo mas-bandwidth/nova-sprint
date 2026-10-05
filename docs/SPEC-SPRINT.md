@@ -4347,10 +4347,24 @@ fleet update pass, after presence (`TickTables`, `TickParts`), with no step need
 coordinator; the reference model decides it as the duty `friend-stall`
 (`internal/sprint/refmodel`).
 
-A friend holding dealt cards (`Ready` or `Working` on her row) is stalled when neither
-session activity (`FriendReport.Active`, her daemon's report of the newest write under
-her working directory and outbox) nor any card progress stamp (`FieldProgress`) is newer
-than `friend_stall_after` (default 20 minutes, configurable via `nova-sprint set --friend-stall-after`).
+A friend holding dealt cards (`Ready` or `Working` on her row) is stalled when no evidence
+of her work is newer than `friend_stall_after` (default 20 minutes, configurable via
+`nova-sprint set --friend-stall-after`). **Evidence of work** is everything the store already
+has (`friendEvidence`, `friendCardEvidence`): session activity (`FriendReport.Active`, her
+daemon's report of the newest write under her working directory and outbox, her control
+card's `active`, her row's `Active` text); a beat whose running list is non-empty
+(`friend beat --running`), at the beat's time; a finish or a report collected for her (a
+card of her row, placed or kept, stamped `finished` or `reported`, as friend sync and the
+run loop's reconcile stamp what they collect from her outbox); a read she recorded (a read
+card naming her its `reader`, stamped `read`, which `FriendReadClose` retires off her row);
+and a progress stamp (`FieldProgress`) on a card of her row. Awake is not working: a beat
+that names nothing running (its counts alone, `--working`) is no
+evidence, and the deal's own stamps (`dealt`, `taken`) start the ladder's clock but never
+release her. On 2026-10-05 the ladder counting session writes alone marked three working
+friends down within the hour (a one-shot lane runner whose beat named running jobs and sent
+no session activity, and the coordinator's own row, whose cards child agents ran), and 59
+cards sat ready while they idled (`TestAFriendRunningCardsInLanesIsNeverStalled`,
+`TestTwinStoreFriendBeatingRunningJobsIsNeverStalled`).
 
 While stalled, the ladder climbs one rung per `friend_stall_step` (default 5 minutes,
 configurable via `nova-sprint set --friend-stall-step`):
@@ -4366,14 +4380,25 @@ configurable via `nova-sprint set --friend-stall-step`):
    with her and finishes.
 5. **Friend marked down**: she is marked down with reason `"stalled"` (`p.Health` with
    `State: Down`, `Reason: "stalled"`, and status `down` on her fleet row). She is released to
-   `up` by the tick itself at her first session activity after it.
+   `up` by the tick itself at her first evidence of work after it (any of the kinds above,
+   newer than the down), and the release note names the kind (`friend <f> released to up:
+   a running beat at <time>`).
 
-Every rung emits a happened note (`Kind: Happened`, `Type: "friend stall"`). Any session
-activity or card progress resets her to rung 0.
+Every rung emits a happened note (`Kind: Happened`, `Type: "friend stall"`). Any evidence of
+work resets her to rung 0.
 
 The TLA+ specification `tla/StallLadder.tla` verifies three core invariants:
 - `NoCardHeldPastBound`: no unstarted card is held by a stalled friend for more than the bound
   (`friend_stall_after + 4 * friend_stall_step`).
 - `NoStartedRedealt`: no started card is taken back or redealt; started cards stay and finish.
-- `ReleasedOnlyByActivity`: a friend marked down for stall is released to `up` only by session
-  activity, never by card progress alone.
+- `ReleasedOnlyByActivity`, the name the configurations check, is two:
+  `ReleasedOnlyByEvidence`, a friend marked down for stall is released to `up` only by evidence
+  of her own work; and `NeverDownWhileWorking`, a friend down for stall has no evidence of work
+  within the bound, so any evidence after the down releases her.
+
+Its broken values are reversed witnesses: `notaken`, `takestarted` and `releaseother` each
+break their invariant in a declared case of `tla/CASES.tsv`, and `sessiononly`, the build of
+2026-10-05 (only session activity and progress counted, only session activity releasing),
+breaks `NeverDownWhileWorking` under `tla/StallLadder.cfg` in eight steps (a running beat at
+6, down at 8). That configuration is run by TLC by hand (`-config StallLadder.cfg
+MCStallLadder.tla`): the case plan declares the `MC*.cfg` configurations only.
