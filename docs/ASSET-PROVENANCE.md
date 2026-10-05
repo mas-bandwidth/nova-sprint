@@ -20,11 +20,12 @@ swarm, flat wordmark, and stadium as separate original PNGs, generated with
 OpenAI image generation on 2026-10-05 at Glenn's request. Its pink friend rides
 a bike. The compositing script creates separate shadow and perspective finish
 grid overlays without regenerating the assembled scene. Prompts, placement,
-native dimensions, and hashes are saved with those assets. The README now uses the starting-blocks banner and panels made from this set.
+native dimensions, and hashes are saved with those assets. The README now uses
+the starting-blocks banner and panels made from this set.
 
-The illustrated [README](../README.md) uses six lossless
-PNG panels in `brand/explainer/`, composed on 2026-10-05 from those individual
-assets and the later starting-blocks render. Their labels and workflow
+The illustrated [README](../README.md) uses five panels from the six-panel
+lossless PNG set in `brand/explainer/`, composed on 2026-10-05 from those
+individual assets and the later starting-blocks render. Their labels and workflow
 diagrams are drawn by `brand/compose_explainer.py`; no source character was
 regenerated. Arial is rasterised from the locally installed font, not bundled.
 The starting-blocks source, prompt, and composition live in
