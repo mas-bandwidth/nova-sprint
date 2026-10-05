@@ -470,6 +470,16 @@ func noSprintYet(err error) error {
 		Next: "nova-sprint init --coordinator <name>"}
 }
 
+// laneRowWithRoute adds a Route field to sprint.LaneRow for JSON output.
+type laneRowWithRoute struct {
+	Kind    string   `json:"kind"`
+	Machine string   `json:"machine"`
+	Width   int      `json:"width"`
+	Held    []string `json:"held"`
+	Waiting []string `json:"waiting"`
+	Route   string   `json:"route,omitempty"`
+}
+
 // whereView is the view, for a program.
 type whereView struct {
 	At      time.Time `json:"at"`
@@ -513,7 +523,7 @@ type whereView struct {
 	// Lanes is where --json --cards's, read for the dashboard: every machine's lanes with a
 	// holder or a queue (lane list; docs/SPEC-SPRINT.md section 18); absent when none is, and
 	// without --cards. The text frame does not draw it.
-	Lanes []sprint.LaneRow `json:"lanes,omitempty"`
+	Lanes []laneRowWithRoute `json:"lanes,omitempty"`
 	// Cards and Judgments are where --json --cards's, read for the dashboard's pull routes
 	// (store.Dealt): every work card dealt to a fleet row and not finished, and the open
 	// judgments naming one of their primaries; absent without --cards.
@@ -773,8 +783,29 @@ func (a *app) whereLoop(ctx context.Context, r whereRun, stdout, stderr io.Write
 			if v.Holds, err = st.Holds(ctx); err != nil {
 				return "", a.readFailed("where", err, stderr), false
 			}
-			if v.Lanes, err = st.LaneRows(ctx); err != nil {
+			rawLanes, err := st.LaneRows(ctx)
+			if err != nil {
 				return "", a.readFailed("where", err, stderr), false
+			}
+			// Build a map of machine -> route from dealt cards on local-endpoint routes
+			machineRoutes := make(map[string]string)
+			for _, card := range d.Cards {
+				route := card.F(sprint.FieldRoute)
+				if route != "" && route != sprint.RoutePin {
+					machineRoutes[card.Row] = route
+				}
+			}
+			// Convert sprint.LaneRow to laneRowWithRoute, populating routes
+			v.Lanes = make([]laneRowWithRoute, len(rawLanes))
+			for i, lane := range rawLanes {
+				v.Lanes[i] = laneRowWithRoute{
+					Kind:    lane.Kind,
+					Machine: lane.Machine,
+					Width:   lane.Width,
+					Held:    lane.Held,
+					Waiting: lane.Waiting,
+					Route:   machineRoutes[lane.Machine],
+				}
 			}
 		}
 		if r.c.json && r.rows {
