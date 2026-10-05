@@ -40,7 +40,7 @@ Literally.
 The **little friend with the checklist** is the AI coordinator. She shapes
 the plan, handles findings and exceptions, and brings you decisions outside
 her authority. Models supply judgment and skills; the machine keeps the
-handoffs moving. “Please remember to keep going” is no longer the scheduler.
+handoffs moving.
 
 ## How it works: write the workflow, let the machine run it
 
