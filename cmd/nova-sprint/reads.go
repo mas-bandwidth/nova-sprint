@@ -795,6 +795,12 @@ func (a *app) where(ctx context.Context, st *store.Store, stale time.Duration, a
 			for j, col := range t.Columns {
 				cells[col.Name] = ntable.CellText(t.Columns, r, j)
 			}
+			// Add lanes information for fleet machines
+			if logical == sprint.Fleet {
+				if lanesJSON := linesOfLanes(cells["width"]); lanesJSON != "" {
+					cells["lanes"] = lanesJSON
+				}
+			}
 			rows[r.Key] = cells
 		}
 		v.Tables[logical] = rows
@@ -1798,6 +1804,27 @@ func rowsView(s *sprint.Snapshot) []primaryRow {
 		return cmp.Or(cmp.Compare(a.Stream, b.Stream), cmp.Compare(a.Score, b.Score), cmp.Compare(a.ID, b.ID))
 	})
 	return rows
+}
+
+// linesOfLanes returns the lanes information for a fleet machine: a JSON array of objects,
+// each with a route field that names the endpoint for a local route, or empty for remote.
+// The number of lanes matches the machine's width.
+func linesOfLanes(widthStr string) string {
+	width := 0
+	for _, c := range widthStr {
+		if c >= '0' && c <= '9' {
+			width = width*10 + int(c-'0')
+		}
+	}
+	if width <= 0 {
+		return ""
+	}
+	var lanes []map[string]string
+	for i := 0; i < width; i++ {
+		lanes = append(lanes, map[string]string{"route": ""})
+	}
+	lanesJSON, _ := json.Marshal(lanes)
+	return string(lanesJSON)
 }
 
 // statusCell is a friend's status as the table shows it: the word (up, held or
