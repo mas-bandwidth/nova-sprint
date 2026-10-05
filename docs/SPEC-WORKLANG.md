@@ -1,18 +1,22 @@
-# The work language (SPEC-WORKLANG)
+# Reading work-tree files
 
-`internal/worklang` is the bounded reader for a restricted s-expression file. It reads data and
-never evaluates it. This page specifies the reader: the five kinds of form, the tokens it
-refuses, the three bounds it enforces and the shape of a refusal.
+Work-tree files look a little like Lisp, but they are data. The reader never
+runs them as a program. `internal/worklang` accepts five kinds of value and
+enforces size, nesting, and node limits while reading.
 
-The living caller is nova-work's tree file. `internal/workfile` reads it with
-`worklang.Read(file, data, limits)` and checks the shape of the records itself
-([SPEC-WORK-V1.md](SPEC-WORK-V1.md) section 1); the reader knows nothing of the records and
-returns a `Form`. No other tool calls the package.
+You only need this reference if you are writing a parser integration or
+working on the file format. For everyday import and verification, use
+[the command guide](CLI.md#nova-work).
+
+`internal/workfile` calls `worklang.Read(file, data, limits)` and then checks
+that the returned `Form` has the record shape defined in
+[SPEC-WORK-V1.md](SPEC-WORK-V1.md). The parser handles the grammar; the caller
+handles what each record means.
 
 ## 1. The reader
 
-`worklang.Read(file, data, limits)` reads exactly one form from `data`. The grammar is five
-kinds of form and nothing else:
+`worklang.Read(file, data, limits)` reads exactly one form from `data`. It
+accepts exactly these five kinds of form:
 
 | form | written | held as |
 | --- | --- | --- |
@@ -29,8 +33,9 @@ it must be an integer: a sign with no digits after it (`-x`, a bare `+`) or digi
 directly by a non-boundary byte (`12abc`) is refused as a forbidden token at its byte, never read
 as a symbol.
 
-**Nothing is evaluated.** Before parsing, a lexical pass refuses every token that would
-evaluate or escape, each at its own byte offset: `#` (a dispatch macro such as `#.`), `|`,
+**Nothing is evaluated.** Before parsing, a lexical pass rejects syntax that
+could be confused with evaluation or escape mechanisms, at its byte offset:
+`#` (a dispatch macro such as `#.`), `|`,
 `'`, `` ` ``, `,` and `\`. Inside a string or a comment the same bytes are text.
 
 **Three bounds, all enforced while reading.** `Limits` carries `MaxBytes`, `MaxDepth` and

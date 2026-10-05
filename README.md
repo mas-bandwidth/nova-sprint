@@ -1,56 +1,56 @@
+![Nova Sprint: robot friends sprinting, snoozing, tumbling, listening to music, and running from a swarm of bees.](assets/nova-sprint-banner.png)
+
 # nova-sprint
 
-**The opinionated work processor for teams of AIs, built on
-[nova-tools](https://github.com/mas-bandwidth/nova-tools).**
+**Scale out AI work. Give your team a goal, and let them work together.**
 
-nova-tools are unopinionated building blocks for any AI workflow: run an AI
-task in a sandbox with a budget (nova-swarm), cheap typed decisions
-(nova-decide), a bus between AIs (nova-bus), tables in Redis (nova-table),
-secrets, configuration, the sandbox, updates. If you want to build your own
-workflow, build it from those.
+Scale out across **friends running different models and harnesses**, across
+**a fleet running swarms of AIs**, or **any combination you want**. nova-sprint
+brings them into one team with an AI coordinator: keeping track of the work,
+managing dependencies, distributing tasks, arranging independent reviews,
+and merging the results.
 
-nova-sprint is one workflow built from them, with its opinions written in:
-work is cut into **cards**, cards run in **streams** behind **sentinels**, each
-card is dealt by **tier** to a fleet of machines and friends, finished work is
-**read** by independent readers before the **lander** merges it, and the feed
-rules keep every machine at its width. The sprint dashboard shows all of it.
+Your AI friends work in their own harnesses while the swarm goes wide on
+parallel tasks. A shared work queue and history let the team coordinate
+without you carrying messages between models or handing out every next job.
 
-This repository moved out of nova-tools on 2026-10-04 (mas-bandwidth/ideas#850).
-It holds:
+You set the direction and the boundaries. Work alongside the team, or leave
+it with a plan and come back in the morning.
 
-- `cmd/nova-sprint`: the one binary: the server (`nova-sprint run --listen`), the
-  coordinator's verbs, the dashboard (`nova-sprint dashboard`).
-- `cmd/nova-card` and `cmd/nova-work`: the card generator and the work tree, being
-  folded into `nova-sprint` as verbs (until then they build as separate binaries).
-- `internal/sprint`, `internal/sprintdash`, `internal/cardgen`, `internal/provbalance`,
-  `internal/workfile`, `internal/workgh`, `internal/worklang`: the sprint's own packages.
-- `internal/...` (everything else): **copies** of the nova-tools packages nova-sprint
-  uses, taken at the nova-tools commit the last re-seed names (`tools/seed`, by the rules in
-  `tools/seed/RECIPE`). They are replaced, one at a time, by imports of a public nova-tools
-  API; until then a fix to one of them is made in nova-tools first.
-- `docs/`: the sprint's specs (`SPEC-SPRINT.md`, `SPEC-SPRINT-DASHBOARD.md`), the
-  coordinator's runbooks, the nova-work specs, and the command and test references.
-- `tla/`: the TLA+ models of the sprint (`SprintEvents`, `DirtyTick`, `DirtyTickRead`,
-  `RouteIndex`, `Level`, `Land`, `CardISA`, `CardMachine`, `CoordinatorPass`,
-  `CoordinatorWake`, `ReadsByRoom`, `ServerLanes`, `SprintRules`, `StallLadder`,
-  `SeatHealth`) and of nova-work (`WorkImport`), with their `CASES.tsv` and `RUNS.tsv` rows.
-  The TLC runner is still nova-tools' `tools/tlacheck`.
+## Watch your team get work done
 
-## Building
+See what is moving, what has landed, where the time and money are going,
+and what needs attention.
 
-Go 1.26.6 or newer.
+**[Open the live sprint dashboard →](http://69.67.149.151/)**
 
-```sh
-make build   # go build ./...
-make test    # go vet ./... and go test -p 4 ./...
-go install ./cmd/nova-sprint
-```
+[![Sprint dashboard showing landed work, ETA, cost, throughput, and cards by state.](assets/nova-sprint-dashboard.jpg)](http://69.67.149.151/)
 
-Running a sprint needs the rest of nova-tools on the machine: nova-swarm (the
-members), nova-sandbox (the wall), nova-table and nova-redis (the store),
-nova-config (the fleet), nova-secrets (the seat's credentials). Start with
-`nova-sprint help` and [the sprint contract](docs/SPEC-SPRINT.md).
+- **Follow the work.** Watch streams progress through waiting, ready, working,
+  review, merging, and landed. The team follows dependencies, works in parallel,
+  and resolves conflicts as changes land—all done automatically by AI.
+- **See the team.** Friends and Fleet show who is working, available capacity,
+  and who is up, held, or down. Scale across either, or both.
+- **Stay on top of spend.** Track cost per stream and total sprint cost,
+  with a breakdown by model tier and an average cost per card.
+- **Know how it is going.** See work in flight, throughput, and continually
+  updated estimates of time to completion.
 
-## License
+## Start here
 
-MIT; see [LICENSE](LICENSE).
+**Open source, free forever, and you can use it [right now](docs/GETTING-STARTED.md).**
+
+- **[Take a first lap](docs/GETTING-STARTED.md)** — try one card locally, then
+  give your AI coordinator a small real task.
+- **[Meet the friends and the machine](docs/WORKING-WITH-AI-TEAMS.md)** — an
+  illustrated guide to why nova-sprint exists and how the team works together.
+- **[Explore the docs](docs/README.md)** — commands, coordination, and the details.
+
+---
+
+Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
+New to AI friends? Start with [Nova Seed](https://github.com/mas-bandwidth/nova).
+
+If you like this, [please support our work](https://www.patreon.com/MasBandwidth/membership).
+
+[Contributing](CONTRIBUTING.md) · [MIT license](LICENSE) · [Asset credits](docs/ASSET-PROVENANCE.md)

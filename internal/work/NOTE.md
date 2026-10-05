@@ -1,17 +1,25 @@
-# The work tree, nova-sprint's durable store
+# Designing a durable sprint program
 
-Written 2026-10-05. This note says what the durable tree holds, what stays
-only in Redis, and when the tree is written. The round-trip is not built.
-`work repos`, `work issues`, `work roadmap`, `work export` and `work import`
-are verbs of nova-sprint. Each run exits 1. The refusal is: the work-tree round-trip is not built; nothing was read and nothing was written.
+This is an implementation note, dated 2026-10-05, about keeping a sprint's
+plan in a file: repositories, issues, streams, cards, needs, and sentinels.
+It separates that durable plan from live assignments, leases, and presence.
 
-This note is the package `internal/work`. It does not change
-`docs/SPEC-WORK-V1.md` or `docs/SPEC-SPRINT.md`. Those pages stay as they are.
+**The round-trip is not built in this checkout.** The five `nova-sprint work`
+verbs parse their flags and exit 1 without opening a tree or Redis. Their
+refusal is `the work-tree round-trip is not built; nothing was read and nothing was written`.
+The rest of this note describes the intended contract, not working commands
+for an unattended run.
 
-Nova-sprint main this note was written against:
-`2763dbb12e72230245d97e7dd024b4696c889f40`.
+This is separate from the existing GitHub issue mirror in
+[the work-tree specification](../../docs/SPEC-WORK-V1.md). For an introduction
+to the product, use [the README](../../README.md); for the implemented command
+surface, use [the command reference](../../docs/CLI.md).
 
-## Where the plan, nova-work, and the record disagree
+The note was written against nova-sprint main at
+`2763dbb12e72230245d97e7dd024b4696c889f40`. It describes the `internal/work`
+package and does not replace the sprint or GitHub-mirror contracts.
+
+## Three records with different jobs
 
 The split plan (2026-10-04) says folding nova-work is `nova-sprint work
 import` and `nova-sprint work verify`. What is built agrees.
@@ -104,9 +112,9 @@ refused with the brief, not stored. This note holds no secret.
 
 ## When it is written
 
-Not on the tick. Not on each verb. Not at process start. Not by the server:
-the five work verbs are not served, because the tree is a file on the machine
-where the verb is typed.
+The proposed export is explicit. A tick, an ordinary verb, or a server restart
+would not write the file. The five work verbs execute on the caller's machine
+because that is where the tree file lives.
 
 `work export` is the only writer of a sprint program. It reads one pinned
 epoch and writes the file `--tree` names. It does not commit and does not

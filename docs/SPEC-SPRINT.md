@@ -1,13 +1,43 @@
-# nova-sprint: the sprint table
+# How the sprint works
 
-Four tables on nova-table, the mechanical moves between them, the machine that
-makes them as soon as a line comes on the log, the notifications that bring
-the coordinator its decisions, and the verbs. The coordinator decides; the
-system moves cards without mistakes and tells the coordinator what needs it.
-The coordinator's day, as a runbook for whoever holds the seat, is
-[SPRINT-COORDINATOR.md](SPRINT-COORDINATOR.md).
+This is the contract behind nova-sprint: how a shared plan becomes assigned
+work, independent reviews, and landed changes. An AI coordinator uses this
+state to keep the team working across sessions and while the human is away.
+The server performs routine transitions and brings decisions to the
+coordinator's inbox.
+
+If you are new to the product, start with [Working with AI teams](WORKING-WITH-AI-TEAMS.md).
+Use this page when you need an exact rule, are debugging a handoff, or are
+changing the implementation. The [coordinator's guide](SPRINT-COORDINATOR.md)
+puts the rules into a working routine.
+
+## Find the rule you need
+
+| Question | Section |
+|---|---|
+| What does the sprint remember and show? | [Tables](#1-the-tables), [log](#17-the-log) |
+| What belongs in a task and how does it progress? | [Cards](#2-the-cards), [lifecycle](#3-the-lifecycle-of-a-primary) |
+| What can run next, and on which worker? | [Order](#4-order), [fleet](#5-the-fleet), [sentinels](#16-sentinel-cards) |
+| Who checks the result and how does it land? | [Readers](#6-the-readers), [merging](#7-merging) |
+| What needs the coordinator's attention? | [Notifications](#8-notifications), [reminders](#15-reminders) |
+| How do commands keep state consistent? | [Invariants](#9-what-is-always-true), [multi-table steps](#10-steps-that-touch-more-than-one-table), [verbs](#11-verbs) |
+| How does the service run and recover? | [Driver](#12-the-driver), [epochs](#13-epochs-and-clear), [machine](#14-the-machine) |
+
+A **primary** is the task you follow from beginning to end. A **work card**
+is one assigned attempt at it; a **read card** is an assignment to review a
+result. A **tick** is one pass of the coordination machinery. A **judgment**
+is a decision in the coordinator's inbox. These names stay precise below
+because commands, logs, and tests use them.
+
+Dated owner quotations and exact output are retained as part of the contract.
+They explain why a rule exists; they are not instructions to the reader to
+change a live sprint.
 
 ## 1. The tables
+
+The tables give the team a shared view of its work. Start with the work row
+to see progress, then use readers, merge, friends, and fleet to understand
+where a handoff is waiting. The display below is an output contract.
 
 ```
 SPRINT TABLE
@@ -877,6 +907,10 @@ not level the friends":
 
 ## 2. The cards
 
+A card carries enough context for another AI to take a task without needing
+the original conversation. This section defines that context, its attempts,
+its evidence, and the rules that travel with it.
+
 Layer 1 of the processor, the instruction set, is [SPEC-ISA.md](SPEC-ISA.md): a
 card is one instruction, the coordinator is the front end that issues it, and
 one `wait` kind whose operand names what it waits for replaces the hold, the
@@ -1378,6 +1412,9 @@ and as `recut` is refused otherwise (`TestRecutWidenAppliesPathsProposed`).
 
 ## 3. The lifecycle of a primary
 
+Follow the primary to answer “is this task actually done?” A worker finishing
+is one transition; review and integration still come after it.
+
 Six states, fixed, in one Go file (`internal/sprint/lifecycle.go`) mirrored by
 the TLA+ model (`tla/SprintTables.tla`): waiting, ready, working, review,
 merging, landed. Landed is final and means the code is on the development
@@ -1414,10 +1451,15 @@ the units the lifecycle kept only, so a landing the lifecycle refuses
 satisfies no need. A work-table move whose expectation names no place is
 judged from where the plan's pre-state places the card, and is refused when
 the pre-state does not hold it. A primary is working if and only if
-it has a live work card. Nothing retries by itself. Nothing leaves review
-except by the coordinator.
+it has a live work card. Retry and acceptance follow the rules above: the
+tick can accept a passing review, while held results and rework need the
+coordinator's decision.
 
 ## 4. Order
+
+Order makes the plan predictable across attempts. Use explicit dependencies
+for work that must wait; the score below controls ordering, not hidden
+knowledge of which changes depend on each other.
 
 A score is given once, at admission. Work cards, read cards and the merge place
 copy it. No move changes it. A reworked primary therefore sits ahead of the
@@ -1425,6 +1467,10 @@ primaries admitted after it. Only `rank` changes a score, every copy with it,
 and it is the coordinator's decision, receipted.
 
 ## 5. The fleet
+
+The fleet supplies execution capacity. These rules decide where ready work
+goes, how much can run, and what happens when a machine, model route, or
+provider cannot complete an assignment.
 
 - A member is a fleet machine with a width: the most work cards it runs at
   once (its child cap; `init --members m1:64` or `fleet up m1 --width 64`;
@@ -2040,6 +2086,10 @@ id (`--op`) returns the original result, with no second counter or notification.
 
 ## 6. The readers
 
+Readers give the team an independent check before a result lands. Eligibility,
+capacity, and the reviewed commit all matter: a passing result from the wrong
+attempt must not approve new code.
+
 - A reader row has a state, as a fleet member has: up, away or down. The rows
   are the coordinator's: `init --readers` and `reader add` declare them, and no
   beat, no queue and no loop record makes one. A reader with its row says it is
@@ -2390,6 +2440,10 @@ id (`--op`) returns the original result, with no second counter or notification.
   leases survive a server restart while lapsed reads are retired and re-asked.
 
 ## 7. Merging
+
+Merging turns reviewed results into integrated changes. These rules keep the
+reviewed head, target branch, checks, and recovery from interrupted landings
+together, so a completion report cannot stand in for a Git landing.
 
 1. In work order, never random: the head of the stream's queued cell first.
 2. In batches onto the sprint branch, the branch every stream lands on; the
@@ -2747,6 +2801,10 @@ caller's: it is never cleaned, and a dirty one is refused as before
 (`TestLanderRestoresItsOwnDirtyCacheClone`, cmd/nova-sprint/land_clean_clone_test.go).
 
 ## 8. Notifications
+
+The inbox is how the machinery hands judgment back to the coordinator. An AI
+coordinator can answer within its authority, leave a question for the human,
+and continue work that does not depend on that answer.
 
 One stream of notifications, written by the same step as the move that caused
 it and visible at that step's logical commit (section 10), never before; read
@@ -3212,6 +3270,10 @@ then moves the stream and clears the count, as do a pass that merges and every o
 
 ## 9. What is always true
 
+These are invariants: conditions every accepted state change must preserve.
+They are useful both when reviewing an implementation change and when
+explaining why a command refused to move a card.
+
 Checked by `nova-sprint check`, and by the model. Sets of primaries are compared
 exactly, member by member, never by their counts.
 
@@ -3277,6 +3339,9 @@ the grace, cut after it.
 
 ## 10. Steps that touch more than one table
 
+A handoff can affect several tables. This section explains how those changes
+are recorded and retried without losing or duplicating the work.
+
 The table layer applies one table per batch. Every mutating verb is one
 operation, whatever it touches, under one durable sprint-wide fence: a
 pending-operation record naming every participant table and its manifests, in
@@ -3335,6 +3400,10 @@ includes the cut between every two phases. A multi-table batch in the table
 layer retires this section.
 
 ## 11. Verbs
+
+Commands are the supported way to inspect and change the sprint. The rules
+below define who can call them, how retries are identified, and what a refusal
+means. For a compact usage list, see the [command reference](CLI.md).
 
 Each takes a set and is one step. A set is ids, a stream, a column, `--max n`,
 or an inbox group (`--group <id>`; a group number is refused, naming the ids).
@@ -3716,6 +3785,9 @@ it on the in-memory store with a fake secrets reader.
 
 ## 12. The driver
 
+The driver keeps the coordination loop running. It makes queued work move
+without waiting for a person to type the next tick.
+
 `nova-sprint play` plays the outside world on a tick (`--every`), seeded
 (`--seed`) so a run repeats: workers taking and finishing work cards (`--fail`),
 readers reporting read cards (`--broken`), each stream's merge step with its
@@ -3764,6 +3836,9 @@ machine up.
 
 ## 13. Epochs and clear
 
+An epoch separates one generation of the sprint from another. Old workers
+and delayed reports must not accidentally change a freshly cleared sprint.
+
 The four tables are bound to one epoch of the sprint (the table layer's epoch
 key, one hash of the sprint). Every step reads, writes and names
 its keys at the epoch it started at: the notification stream, the open
@@ -3801,6 +3876,10 @@ before and after, what the epoch before the advance held as counts, the machine'
 before, and the sprint line.
 
 ## 14. The machine
+
+The machine applies the state-transition rules and serves commands. Use this
+section to understand RUNNING versus STOPPED, the tick loop, and why a live
+store has one writer.
 
 The machine has two states, RUNNING and STOPPED, held in one record in the
 store; a new sprint is STOPPED. `start` sets RUNNING, `stop` sets STOPPED;
@@ -4219,6 +4298,10 @@ clock, never the wall clock (`TestWhereReportsTheStoreRoundTrip`).
 
 ## 15. Reminders
 
+Reminders bring a coordinator back to something that needs another look.
+They complement the recorded plan rather than replacing task state with
+messages in a conversation.
+
 The people who work on a sprint each have a goal: a text of what to keep doing,
 and a route that reaches them (`goal set <name> --file <path> --to
 file:<absolute path>`, `goal show [<name>]`, `goal drop <name>`). While the machine is
@@ -4233,6 +4316,9 @@ person's last push (`where --json` carries it). The people and their goals are t
 epoch's: a clear keeps them and resets their pushes.
 
 ## 16. Sentinel cards
+
+Sentinels are checkpoints in a stream. They let the team prepare later work
+while holding its release until the agreed condition is satisfied.
 
 A sentinel is a primary of kind sentinel, a stop in its stream, admitted by
 `add --stream <s> --sentinel <id>`, at the end of the stream or
@@ -4331,6 +4417,10 @@ after `held=N` (`where --json`: `auto`), and `handover` names each sentinel's ki
 tla/SprintEvents.tla (`autorel`).
 
 ## 17. The log
+
+The log is the history behind the current view. Use it to reconstruct a
+handoff, investigate a retry, or give the next coordinator evidence about
+what happened.
 
 Each epoch has one log: an append-only record of every change of every card
 and every notification, in the order written. A step's lines are written in
