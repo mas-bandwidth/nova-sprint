@@ -3,5 +3,8 @@
 \* most four outside events (accepts, returns, reworks, another lander, a clear, the
 \* base moving, a crash) in any order; the order of the cards matters (the
 \* queue), so there is no symmetry.
+\* Spec is MCLand.cfg (Dependent = Needed, so Needs is empty, and the eject
+\* variables stay idle). The eject is FairEject, checked by MCLandEject.cfg,
+\* where c2 needs c1 and c3 does not.
 EXTENDS Land, TLC
 =============================================================================

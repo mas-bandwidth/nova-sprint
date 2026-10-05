@@ -105,20 +105,38 @@
 \* (conflict, red, rejected) and resume: a refusal is the lander going idle
 \* with the store unchanged. A card's attempts are counted across a clear, so
 \* a head is never reused by another card. One stream, one base.
+\*
+\* THE EJECT is a separate specification (EjectSpec, below), not a change to
+\* Build. A batch is one ordering of the cards in which every needs-edge
+\* points backward. A non-empty set of cards cannot be merged. One step
+\* ejects that set and every card whose needs reach it, and lands every
+\* other card of the batch. Under Spec the eject variables stay at idle, so
+\* this module's land state space is unchanged. MCLandEject.cfg checks it.
+\* land.go and merge_eject.go cite NoLandedNeedsUnlanded,
+\* EjectedDependentsUnlanded and LandsTheRest.
 EXTENDS Integers, Sequences, FiniteSets, TLC
 
-CONSTANTS Cards, MaxAttempts, MaxEpoch, MaxEvents, Broken
+CONSTANTS Cards, MaxAttempts, MaxEpoch, MaxEvents, Broken, Dependent, Needed
+
+\* Needs is one <<dependent, needed>> edge, or none when the two are the same
+\* card. The config language cannot write a tuple; the operator still closes
+\* over a set of edges, and one edge is the instance MCLandEject.cfg checks
+\* (c2 needs c1, c3 needs nobody).
+Needs == IF Dependent = Needed THEN {} ELSE {<<Dependent, Needed>>}
 
 VARIABLES queue, att, landed, epoch, base, tip,
           lphase, lq, lbatch, lep, lrep, ltip, tries,
-          events, badcaller, stalepush, stalerec, lpushed
+          events, badcaller, stalepush, stalerec, lpushed,
+          ebatch, ebad, eejected, elanded, ephase
 
 store == <<queue, att, landed, epoch>>
 remote == <<base, tip>>
 lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries>>
 ghosts == <<badcaller, stalepush, stalerec, lpushed>>
+evars == <<ebatch, ebad, eejected, elanded, ephase>>
 vars == <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
-          events, badcaller, stalepush, stalerec, lpushed>>
+          events, badcaller, stalepush, stalerec, lpushed,
+          ebatch, ebad, eejected, elanded, ephase>>
 
 Heads == Cards \X (1..MaxAttempts)
 
@@ -166,12 +184,20 @@ TypeOK ==
   /\ stalepush \in BOOLEAN
   /\ stalerec \in BOOLEAN
   /\ lpushed \subseteq Heads
+  /\ Dependent \in Cards /\ Needed \in Cards
+  /\ Needs \subseteq (Cards \X Cards)
+  /\ ebatch \in Seq(Cards)
+  /\ ebad \subseteq Cards
+  /\ eejected \subseteq Cards
+  /\ elanded \subseteq Cards
+  /\ ephase \in {"idle", "open", "done"}
 
 Init ==
   /\ queue = <<>> /\ att = [c \in Cards |-> 1] /\ landed = {} /\ epoch = 0
   /\ base = {} /\ tip = 0
   /\ lphase = "idle" /\ lq = <<>> /\ lbatch = <<>> /\ lep = 0 /\ lrep = 0 /\ ltip = 0 /\ tries = 0
   /\ events = 0 /\ badcaller = FALSE /\ stalepush = FALSE /\ stalerec = FALSE /\ lpushed = {}
+  /\ ebatch = <<>> /\ ebad = {} /\ eejected = {} /\ elanded = {} /\ ephase = "idle"
 
 \* ---- the lander (land.go) ----
 
@@ -247,7 +273,7 @@ Report ==
   /\ UNCHANGED <<att, epoch>> /\ UNCHANGED remote /\ UNCHANGED <<lq, lbatch, lep, lrep, ltip, tries>>
   /\ UNCHANGED events /\ UNCHANGED <<badcaller, stalepush, lpushed>>
 
-Land == Read \/ Build \/ Check \/ Push \/ Report
+Land == (Read \/ Build \/ Check \/ Push \/ Report) /\ UNCHANGED evars
 
 \* ---- the outside, each event counted ----
 
@@ -294,6 +320,7 @@ Outside ==
   /\ UNCHANGED <<badcaller, stalepush, stalerec>>
   /\ (Accept \/ Return \/ Rework \/ OtherLand \/ Clear \/ MoveBase \/ Crash)
   /\ lpushed' = IF epoch' # epoch THEN {} ELSE lpushed
+  /\ UNCHANGED evars
 
 Next == Land \/ Outside
 
@@ -328,4 +355,65 @@ ReachStranded == ~(lphase = "idle" /\ \E c \in Range(queue) : Current(c) \in lpu
 \* A push made after the store left the epoch the lander holds: a clear between
 \* the check and the push. Shortest: Accept, Read, Build, Check, Clear, Push.
 ReachStalePush == ~stalepush
+
+\* ---- the eject (separate from Spec; land.go) ----
+\*
+\* Needs is a set of <<dependent, needed>> pairs. A legal batch lists every
+\* card once, and the needed card is earlier than the card that needs it, so
+\* the closure of a bad set taken over the whole batch is the same closure a
+\* walk in batch order would eject. Three steps cover a chain of three cards.
+
+NeedsEarlier(s) ==
+  \A edge \in Needs :
+    \E i, j \in 1..Len(s) : s[i] = edge[2] /\ s[j] = edge[1] /\ i < j
+
+Depend(batch, S) == {c \in Range(batch) : \E n \in S : <<c, n>> \in Needs}
+
+EjectClosure(batch, bad) ==
+  LET s1 == (bad \cap Range(batch)) \cup Depend(batch, bad)
+      s2 == s1 \cup Depend(batch, s1)
+      s3 == s2 \cup Depend(batch, s2)
+  IN s3
+
+EjectInit ==
+  /\ queue = <<>> /\ att = [c \in Cards |-> 1] /\ landed = {} /\ epoch = 0
+  /\ base = {} /\ tip = 0
+  /\ lphase = "idle" /\ lq = <<>> /\ lbatch = <<>> /\ lep = 0 /\ lrep = 0 /\ ltip = 0 /\ tries = 0
+  /\ events = 0 /\ badcaller = FALSE /\ stalepush = FALSE /\ stalerec = FALSE /\ lpushed = {}
+  /\ ephase = "open"
+  /\ ebad \in (SUBSET Cards) \ {{}}
+  /\ ebatch \in {s \in [1..Cardinality(Cards) -> Cards] : Range(s) = Cards /\ NeedsEarlier(s)}
+  /\ eejected = {}
+  /\ elanded = {}
+
+\* One step. The cards that cannot merge, and every card whose needs reach
+\* one of them, are ejected. Every other card of the batch lands.
+EjectNext ==
+  /\ ephase = "open"
+  /\ eejected' = EjectClosure(ebatch, ebad)
+  /\ elanded' = Range(ebatch) \ eejected'
+  /\ ephase' = "done"
+  /\ UNCHANGED <<ebatch, ebad>>
+  /\ UNCHANGED store /\ UNCHANGED remote /\ UNCHANGED lander
+  /\ UNCHANGED events /\ UNCHANGED ghosts
+
+EjectSpec == EjectInit /\ [][EjectNext]_vars
+
+FairEject == EjectSpec /\ WF_vars(EjectNext)
+
+\* No landed card needs a card that this batch did not land.
+NoLandedNeedsUnlanded ==
+  \A c \in elanded : \A n \in Cards : <<c, n>> \in Needs => n \in elanded
+
+\* A dependent of an ejected card is not landed in this batch.
+EjectedDependentsUnlanded ==
+  \A c \in eejected :
+    \A d \in Range(ebatch) : <<d, c>> \in Needs => d \notin elanded
+
+\* A batch that has a card it cannot merge still lands every card that does
+\* not depend on one, directly or through another ejected card.
+LandsTheRest ==
+  <>[] (/\ ephase = "done"
+        /\ eejected = EjectClosure(ebatch, ebad)
+        /\ elanded = Range(ebatch) \ eejected)
 =============================================================================
