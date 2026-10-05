@@ -3996,7 +3996,8 @@ a read do not take the line (the owner, 2026-10-04: "a verb is answered within 1
 tick or the lander is doing"; "a beat is a small write"). A friend's beat (`friend beat <friend>` and its report)
 writes one record outside every table, the friend's beat, and runs on the beat lane, beside the
 line and beside every other beat. A read (`where`, `card`, `log`, `check`, `routes`, `stats`,
-`needs`, `goal show`, `handover`, and `inbox` without `--read`) writes nothing and runs on the
+`needs`, `goal show`, `handover`, `inbox` without `--read`, and a role view: `view coordinator`
+and `view worker`, `--needs` included) writes nothing and runs on the
 read lane: one read at a time on the lane's own process state, beside the line, as a client
 reading the store directly always has. `queue` records a reader's beat, `fleet beat` can write
 the fleet table and `inbox --read` moves the coordinator's cursor: each takes the line. A batch
@@ -4093,12 +4094,20 @@ So one process reads and writes the sprint: the server.
 
 The server serves the role views (section 11, "Role views") on both listeners, read-only, with
 no batch: `GET /api/view/coordinator` (`all=1` for every row) and `GET
-/api/view/worker?as=<name>`, each with `since=<cursor>`. Each runs `view <role> --json` on the
-line of control as any verb the server runs (never during a tick) and answers its JSON, gzipped
+/api/view/worker?as=<name>`, each with `since=<cursor>`. A role view only reads, so each runs
+`view <role> --json` on the read lane, beside the line, and a tick holds it behind nothing.
+The lane is one read at a time; a caller that has gone before its turn is answered not run,
+nothing changed. On a twin file the lanes are off and every verb takes the line, so a view
+waits for the line at most `ServeWait`, on the server's clock, and past it is answered busy
+as a batch is (exit 2, what holds the line, nothing run or changed); a caller that leaves
+while it waits is not run. A view that ran answers the verb's JSON, gzipped
 for a client that takes it, `Cache-Control: no-store`. A name, a cursor or an `all` of the
 wrong shape is a 400 and nothing is run; a name that is no fleet member and no friend is a 404;
-a store that did not answer is a 503; any other method is a 405; each with the verb's line. The
-access control is the fleet's private network, as for the workers' queue.
+a store that did not answer, or a view answered busy or not run, is a 503; any other method is
+a 405; each with the verb's line. The access control is the fleet's private network, as for
+the workers' queue.
+`TestARoleViewNeverWaitsBehindATick`, `TestServeViewWaitsLikeABatch`,
+`TestARoleViewGivesUpWhenItsCallerLeaves`.
 
 With `run --land` the server lands what the readers passed, itself: every two seconds, when a
 stream has cards queued to merge, it runs `land` for them as the sprint's coordinator, one

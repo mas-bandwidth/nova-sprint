@@ -169,8 +169,8 @@ var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sy
 // line exit 2 with what holds the line and nothing changed, and its sender sends it again
 // (its reads and beats still run on their lanes): a verb is
 // answered within a second of being read, whatever holds the line and for however long.
-// The reads and the beats run on their lanes and never wait for the line (servelanes.go);
-// this bounds the verbs that take it, and every verb on a twin file.
+// The reads, the role views and the beats run on their lanes and never wait for the line
+// (servelanes.go); this bounds the verbs that take it, and every verb on a twin file.
 const ServeWait = time.Second
 
 // busyAnswer is the answer of each verb of a batch that needs the line, from the first,
@@ -507,11 +507,15 @@ func runningIDs(v string) bool {
 // private network is the whole of the access control (listen).
 const viewPath = "/api/view/"
 
-// serveView runs view <role> --json for a GET, on the line of control as any verb the server
-// runs (a.serial: never during a tick), and answers its JSON, gzipped for a client that takes
-// it. A role, a name or a cursor of the wrong shape is a 400 and nothing is run; a name that
-// is no worker of the sprint is a 404; a store that did not answer is a 503; each with the
-// verb's line.
+// serveView runs view <role> --json for a GET. A role view only reads, so it runs on the
+// read lane and does not wait for the line of control: a tick never holds the coordinator's
+// view. The lane is one read at a time, and a caller that has gone before its turn is not
+// run. On a twin file the lanes are off and every verb takes the line, so a view waits at
+// most ServeWait and past it is answered busy, the same answer as a batch, and a caller
+// that leaves while it waits is not run. It answers the verb's JSON, gzipped for a client
+// that takes it. A role, a name or a cursor of the wrong shape is a 400 and nothing is run;
+// a name that is no worker of the sprint is a 404; a store that did not answer, or a view
+// answered busy or not run, is a 503; each with the verb's line.
 func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "the views are read with GET "+viewPath+"coordinator or "+viewPath+"worker?as=<name>", http.StatusMethodNotAllowed)
@@ -546,17 +550,14 @@ func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
 		}
 		argv = append(argv, "--since", since)
 	}
-	var stdout, stderr bytes.Buffer
-	a.serial.Lock()
-	code := a.run(argv, &stdout, &stderr)
-	a.serial.Unlock()
-	switch code {
+	res := a.runServedView(r.Context(), argv)
+	switch res.Code {
 	case 0:
 	case 1:
-		http.Error(w, strings.TrimSpace(stderr.String()), http.StatusNotFound)
+		http.Error(w, strings.TrimSpace(res.Stderr), http.StatusNotFound)
 		return
 	default:
-		http.Error(w, strings.TrimSpace(stderr.String()), http.StatusServiceUnavailable)
+		http.Error(w, strings.TrimSpace(res.Stderr), http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -568,5 +569,27 @@ func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
 		defer func() { _ = gz.Close() }() // ignored: a reader that has gone reads no answer
 		out = gz
 	}
-	_, _ = out.Write(stdout.Bytes()) // ignored: a reader that has gone reads no answer
+	_, _ = out.Write([]byte(res.Stdout)) // ignored: a reader that has gone reads no answer
+}
+
+// runServedView runs one role view. A view that only reads runs on the read lane when the
+// lanes are on, and never takes the line. Otherwise it takes the line as a batch does:
+// within ServeWait, else busy, and not at all when its caller has gone.
+func (a *app) runServedView(ctx context.Context, argv []string) sprintwire.Result {
+	if viewReadsOnly(argv) {
+		if lanes := a.lanesFor(ctx); lanes != nil {
+			return lanes.readVerbRun(ctx, argv)
+		}
+	}
+	holder, late, err := a.serial.LockWithin(ctx, "a role view", func() <-chan time.Time { return a.after(ServeWait) })
+	if late {
+		return busyAnswer(argv, holder)
+	}
+	if err != nil {
+		return goneResult(argv)
+	}
+	defer a.serial.Unlock()
+	var stdout, stderr bytes.Buffer
+	code := a.run(argv, &stdout, &stderr)
+	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String()}
 }

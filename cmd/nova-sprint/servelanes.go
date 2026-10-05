@@ -29,8 +29,9 @@ import (
 //     every table (the friend's beat record; store.FriendBeat: the roster read, the record
 //     written): it runs on the beat lane, beside the line and beside every other beat,
 //     never waiting for a tick, a batch or another beat;
-//   - a read (where, card, log, check, routes, stats, needs, goal show, handover, and
-//     inbox without --read) writes nothing: it runs on the read lane, one read at a time
+//   - a read (where, card, log, check, routes, stats, needs, goal show, handover,
+//     inbox without --read, and a role view: view coordinator and view worker, --needs
+//     included) writes nothing: it runs on the read lane, one read at a time
 //     on its own process state (its own read twin), beside the line, as a client reading
 //     the store directly always has;
 //   - every other verb (take, finish, read, queue, which records a reader's beat, fleet
@@ -48,6 +49,15 @@ import (
 var readLaneVerbs = map[string]bool{
 	"where": true, "card": true, "log": true, "check": true, "routes": true, "stats": true,
 	"needs": true, "goal show": true, "handover": true, "inbox": true,
+	"view coordinator": true, "view worker": true,
+}
+
+// viewReadsOnly says the role view writes nothing, so the server runs it on the read
+// lane (view coordinator and view worker, --needs included). A view that is not a read
+// takes the line.
+func viewReadsOnly(argv []string) bool {
+	v := readVerb(argv)
+	return strings.HasPrefix(v.name, "view ") && v.err == nil && !v.help && verbClasses[v.name] == classRead
 }
 
 // onReadLane says the verb, as its flags read it, writes nothing and runs on the read lane.
