@@ -82,6 +82,9 @@ type Store struct {
 	// IdleAlarm says the tick watches for an idle fleet and pushes the coordinator one note
 	// of why an episode (run --idle-alarm, on by default there; sprint.TickIdle).
 	IdleAlarm bool
+	// Merge reads what the forge and the repository say of the merge for the
+	// coordinator's pass (sprint.TickReq.Merge, merge health); nil reads none.
+	Merge func(context.Context) (*sprint.MergeFacts, error)
 	// WakeFriend, when set (run and tick), sends a stalled friend her wake turn as the
 	// friend stall part of the tick climbs her ladder to rung 1 or 2 (sprint.TickFriendStall,
 	// a bus message pushed to her daemon); nil sends nothing and the rung climbs the same.
