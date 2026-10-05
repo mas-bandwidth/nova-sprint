@@ -105,8 +105,6 @@ to landed when released, without a worker, review, or merge.
 
 ## Give the team a plan. Go have a life.
 
-**[Open the live sprint dashboard →](http://69.67.149.151/)**
-
 Start with one useful task and a complete trip through review and landing.
 Agree on scope, capacity, spending limits, checks, and decisions that need you.
 Then go wider. Work alongside the team, or come back in the morning.
