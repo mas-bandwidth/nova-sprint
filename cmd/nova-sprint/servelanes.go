@@ -29,8 +29,8 @@ import (
 //     every table (the friend's beat record; store.FriendBeat: the roster read, the record
 //     written): it runs on the beat lane, beside the line and beside every other beat,
 //     never waiting for a tick, a batch or another beat;
-//   - a read (where, card, log, check, routes, stats, needs, goal show, handover, inbox
-//     without --read, and the role views the server serves on GET, serve.go) writes nothing: it runs on the read lane, one read at a time
+//   - a read (where, card, log, check, routes, stats, needs, goal show, handover, and
+//     inbox without --read) writes nothing: it runs on the read lane, one read at a time
 //     on its own process state (its own read twin), beside the line, as a client reading
 //     the store directly always has;
 //   - every other verb (take, finish, read, queue, which records a reader's beat, fleet
@@ -76,10 +76,9 @@ type serveLanes struct {
 	read *app
 }
 
-// lanesFor is the server's lanes, made on the first call that finds the line free; nil
+// lanesFor is the server's lanes, made on the first call that can take the line; nil
 // when the store is a twin file or the lanes could not be made yet (every verb then takes
-// the line, and the next batch tries again). It never waits for the line: a batch that
-// came while a tick held it would wait past ServeWait before its first verb (serve.go).
+// the line, and the next batch tries again).
 func (a *app) lanesFor(ctx context.Context) *serveLanes {
 	a.lanesMu.Lock()
 	defer a.lanesMu.Unlock()
@@ -92,7 +91,7 @@ func (a *app) lanesFor(ctx context.Context) *serveLanes {
 	if a.serveAddr == "" {
 		return nil
 	}
-	if ctx.Err() != nil || !a.serial.TryLock() {
+	if err := a.serial.LockCtx(ctx); err != nil {
 		return nil
 	}
 	b, err := a.backend(ctx, a.serveAddr, sprint.Names{})

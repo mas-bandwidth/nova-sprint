@@ -43,7 +43,7 @@ func TestAFriendWithAnIdleLaneIsDealtAndLevelledBeforeAFullOne(t *testing.T) {
 
 	t.Run("five new cards go to the two idle friends, none to the full one", func(t *testing.T) {
 		t.Parallel()
-		w := fullWorld(t, "friend amy", "c: a friend's card", 5)
+		w := fullWorld(t, "only friend amy", "c: a friend's card", 5) // hard pins: the level never moves them
 		dealWith(w, full, FriendSeat{Name: "bob", Width: 2, Status: Up, Class: "flash,pro"}, FriendSeat{Name: "cat", Width: 2, Status: Up, Class: "flash,pro"})
 		// idle lanes first (bob 2, cat 2: bob by name), then the most idle lanes, then by
 		// room when neither has a lane (bob 2, cat 2: bob by name)
@@ -63,12 +63,12 @@ func TestAFriendWithAnIdleLaneIsDealtAndLevelledBeforeAFullOne(t *testing.T) {
 		// 2026-10-05 9:40 AM: rowan-mas at working 8 of 8, ready 3 (room 16 - 11 = 5),
 		// stella up at width 2 with both lanes idle (room 4) and of another class: a flash
 		// card goes to stella; a pro card, a tier her row does not name, never does
-		w := fullWorld(t, "friend amy", "c: a friend's card", 0)
+		w := fullWorld(t, "only friend amy", "c: a friend's card", 0) // hard pins: the level never moves them
 		mas := FriendSeat{Name: "mas", Width: 8, Status: Up, Class: "flash,heavy,pro"}
 		stella := FriendSeat{Name: "stella", Width: 2, Status: Up, Class: "flash"}
 		var hers []CardAdd
 		for i := range 11 {
-			hers = append(hers, CardAdd{ID: "s3-" + itoa(i+1), Brief: friendBrief("friend mas")})
+			hers = append(hers, CardAdd{ID: "s3-" + itoa(i+1), Brief: friendBrief("only friend mas")})
 		}
 		w.must(Add(w.s, AddReq{Stream: "s3", Cards: hers}))
 		dealWith(w, full, mas)
@@ -189,7 +189,9 @@ func TestACardOffAHeldFriendGoesBackToAFriendTheLevelMovedItOff(t *testing.T) {
 	t.Run("never back to the friend it was taken back from", func(t *testing.T) {
 		t.Parallel()
 		// the coordinator takes bob's cards back (taken_from=bob) while amy is held: bob,
-		// up, is the friend each was taken from and amy the one each left, so none moves
+		// up, is the friend each was taken from and amy the one each left, so no friend
+		// is dealt one; WHO is a preference, so each is the fleet's (docs/SPEC-SPRINT.md,
+		// WHO preference)
 		w := fullWorld(t, "friend", "", 0)
 		dealWith(w, running, bobUp)
 		taken := w.must(FriendTake(w.s, FriendTakeReq{Friend: "bob", All: true, Reason: "slow", Who: "coordinator"}))
@@ -201,7 +203,8 @@ func TestACardOffAHeldFriendGoesBackToAFriendTheLevelMovedItOff(t *testing.T) {
 		require.NotEmpty(t, his)
 		dealWith(w, bobUp, FriendSeat{Name: "amy", Width: 16, Status: Held, Class: "flash,pro"})
 		for _, id := range his {
-			assert.Equal(t, Withdrawn, w.s.Fleet.Card(id).Col, "%s waits: taken back from bob, and amy is held", id)
+			wc := w.s.Fleet.Card(id)
+			assert.False(t, IsFriendRow(wc.Row), "%s: taken back from bob, and amy is held: no friend, the fleet's (on %s)", id, wc.Row)
 		}
 	})
 }

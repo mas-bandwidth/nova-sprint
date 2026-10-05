@@ -41,8 +41,8 @@ func TestTwinStoreDealingRespectsFriendDeliveryMode(t *testing.T) {
 	h := newHarness(t)
 	// amy is batch mode (width 2), bob is one-shot mode (width 2, mode: one-shot)
 	_, _, _, err := h.st.SyncFriends(h.ctx, []FriendSpec{
-		{Name: "amy", Width: 2, Mode: "batch"},
-		{Name: "bob", Width: 2, Mode: "one-shot"},
+		{Name: "amy", Width: 2, Mode: "batch", Class: "flash"},
+		{Name: "bob", Width: 2, Mode: "one-shot", Class: "flash"},
 	})
 	require.NoError(t, err)
 	_, err = h.st.FriendBeat(h.ctx, "amy")
@@ -54,13 +54,13 @@ func TestTwinStoreDealingRespectsFriendDeliveryMode(t *testing.T) {
 		return "c: a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: " + who + "\n\nThe task."
 	}
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Cards: []sprint.CardAdd{
-		{ID: "s1-1", Brief: brief("friend amy")},
-		{ID: "s1-2", Brief: brief("friend amy")},
-		{ID: "s1-3", Brief: brief("friend amy")},
-		{ID: "s1-4", Brief: brief("friend amy")},
-		{ID: "s1-5", Brief: brief("friend bob")},
-		{ID: "s1-6", Brief: brief("friend bob")},
-		{ID: "s1-7", Brief: brief("friend bob")},
+		{ID: "s1-1", Brief: brief("only friend amy")},
+		{ID: "s1-2", Brief: brief("only friend amy")},
+		{ID: "s1-3", Brief: brief("only friend amy")},
+		{ID: "s1-4", Brief: brief("only friend amy")},
+		{ID: "s1-5", Brief: brief("only friend bob")},
+		{ID: "s1-6", Brief: brief("only friend bob")},
+		{ID: "s1-7", Brief: brief("only friend bob")},
 	}}))
 
 	h.startMachine()
@@ -114,7 +114,7 @@ func TestTwinStoreConfigSyncToOneShotGatesQueuedPromotionUntilOccupancyReachesZe
 	h := newHarness(t)
 	// Amy begins in batch mode with width 2
 	_, _, _, err := h.st.SyncFriends(h.ctx, []FriendSpec{
-		{Name: "amy", Width: 2, Mode: "batch"},
+		{Name: "amy", Width: 2, Mode: "batch", Class: "flash"},
 	})
 	require.NoError(t, err)
 	_, err = h.st.FriendBeat(h.ctx, "amy")
@@ -124,10 +124,10 @@ func TestTwinStoreConfigSyncToOneShotGatesQueuedPromotionUntilOccupancyReachesZe
 		return "c: a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: " + who + "\n\nThe task."
 	}
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Cards: []sprint.CardAdd{
-		{ID: "s1-1", Brief: brief("friend amy")},
-		{ID: "s1-2", Brief: brief("friend amy")},
-		{ID: "s1-3", Brief: brief("friend amy")},
-		{ID: "s1-4", Brief: brief("friend amy")},
+		{ID: "s1-1", Brief: brief("only friend amy")},
+		{ID: "s1-2", Brief: brief("only friend amy")},
+		{ID: "s1-3", Brief: brief("only friend amy")},
+		{ID: "s1-4", Brief: brief("only friend amy")},
 	}}))
 
 	h.startMachine()
@@ -144,7 +144,7 @@ func TestTwinStoreConfigSyncToOneShotGatesQueuedPromotionUntilOccupancyReachesZe
 
 	// Switch amy to one-shot mode through config sync
 	_, _, updated, err := h.st.SyncFriends(h.ctx, []FriendSpec{
-		{Name: "amy", Width: 2, Mode: "one-shot"},
+		{Name: "amy", Width: 2, Mode: "one-shot", Class: "flash"},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"amy"}, updated)

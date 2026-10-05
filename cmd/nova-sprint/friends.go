@@ -71,13 +71,17 @@ friends between work and fleet in its default frame, which draws no merge
 table; the friends table is drawn after merge only under where --all, up
 first, then held, then down, each by name, with no load column.
 
-A friend's card: a card whose brief says WHO: friend (any friend) or
-WHO: friend <name> (a row of the friends table; add and brief refuse any other)
-is dealt by the tick to a friend up below her width, the one it names or the
-one with the most free width, on her own fleet row friend.<name>, straight into
-working (in batch mode, up to her width and ready behind; in one-shot mode,
-one card at a time and the next only after the last one finished); no machine is dealt it, and no presence or rebalance takes it back: friend take
-takes back the cards she has not started, and friend down every one.
+WHO: friend <name> prefers a known friend while she is up with room.
+WHO: only friend <name> waits for that friend alone. Other work, including
+cards with no WHO line, goes first to subscription friends whose tiers cover
+it, then to the fleet. Among eligible friends, most free room wins and name
+breaks ties. In batch mode her room is twice her width: she works at width and
+queues the rest. In one-shot mode she holds one card, and the next only after
+the last one finished. nova-sprint unpin <id>... --reason <text> removes an
+unstarted card's stored WHO choice without editing its brief; --stream <s>
+selects a stream, and --dry-run only previews it. Work assigned to a friend
+uses her fleet row friend.<name>; presence never takes it back. friend take
+takes back what she has not started, and friend down takes back every card.
 friend sync writes it as <friend>-working/inbox/<job>/BRIEF.md, the job
 directory <card> at epoch 0 and <card>~<epoch> after a clear (its STATUS line
 names the card, the branch to push and the report), and finishes it from
@@ -119,7 +123,7 @@ func friendVerbWords(name string) string {
 	case "friend up":
 		return "friend up releases a hold that friend down set. --width sets her width, the jobs she works at once (the deal holds her at twice that), as fleet up --width sets a machine's, until friend sync sets her nova-config row's again. It is not a beat: a friend released with no beat in the last " + down + " is down until the friend beats. friend up is unhold <friend> in the old words, kept for one release. " + sync + "\n"
 	case "friend health":
-		return "friend health is the coordinator's observation of the friend, written by the coordinator's daemon from its keepalive with hers: --state up (her session answered), asleep (her daemon answered, her session did not) or down; --seen, when the proof was seen; --generation, the seat's generation the daemon read with nova-sprint seat. The seat's holder alone writes it, at the seat's generation now: an observation from a seat that moved is refused, as is a proof not newer than the row holds, and nothing is written; the same observation again is answered as recorded (replayed=true). Once observed, the friend is up while the observation says up, under the seat's generation now, with its proof under " + sprint.FriendObservedDownAfter.String() + " old, and down otherwise (asleep is the daemon's word, kept on her row and shown as down; the table's words are up, held and down), with --reason and --until shown on her row; her own beat never makes her up again, and no observation holds her: held is the coordinator's friend down alone. " + sync + "\n"
+		return "friend health is the coordinator's observation of the friend, written by the coordinator's daemon from its keepalive with hers: --state up (her session answered), asleep (her daemon answered, her session did not) or down; --seen, when the proof was seen; --generation, the seat's generation the daemon read with nova-sprint seat. The seat's holder alone writes it, at the seat's generation now: an observation from a seat that moved is refused, as is a proof not newer than the row holds, and nothing is written; the same observation again is answered as recorded (replayed=true). Once observed, the friend is up while the observation says up, under the seat's generation now, with its proof under " + sprint.FriendObservedDownAfter.String() + " old, and down otherwise (asleep is the daemon's word, kept on her row and shown as down; the table's words are up, held and down), with --reason and --until shown on her row; her own beat never makes her up again, and no observation holds her: held is the coordinator's friend down alone. --clear removes her observation (the seat's holder alone; --dry-run says what stood and writes nothing): her status falls back to her beat rule, up while her last beat is under " + sprint.FriendDownAfter.String() + " old, and FRIEND-HEALTH OK <friend> cleared=true was=<word|none> status=<up|held|down> says so; the stall ladder's release removes it the same way. " + sync + "\n"
 	default:
 		return ""
 	}
@@ -437,6 +441,33 @@ func (a *app) cmdFriendHold(held bool, args []string, stdout, stderr io.Writer) 
 	return 0
 }
 
+// friendHealthClear is friend health --clear: the coordinator's observation of the friend
+// removed (store.FriendHealthClear), so her status falls back to her beat rule; with dry
+// the removal is checked and nothing is written.
+func (a *app) friendHealthClear(c common, friend string, dry bool, stdout, stderr io.Writer) int {
+	const name = "friend health"
+	st, err := a.store(c)
+	if err != nil {
+		return refuse(stderr, name, err.Error())
+	}
+	prev, had, status, err := st.FriendHealthClear(context.Background(), friend, c.actor, dry, c.op)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s %s: %s; nothing was changed\n", prog, name, oneline.Escape(err.Error()))
+		return 1
+	}
+	was := "none"
+	if had {
+		was = orDashStr(prev.State, "unreadable")
+	}
+	if dry {
+		fmt.Fprintf(stdout, "FRIEND-HEALTH DRY-RUN %s clear was=%s; nothing was changed\n", friend, was)
+		return 0
+	}
+	sayOK(stdout, c.json, name, fmt.Sprintf("FRIEND-HEALTH OK %s cleared=true was=%s status=%s", friend, was, status),
+		map[string]any{"friend": friend, "cleared": true, "was": was, "status": status})
+	return 0
+}
+
 // oneFriend is the one friend a verb names, or its refusal.
 func oneFriend(verbName string, fs flagSet, args []string, stderr io.Writer) (string, int) {
 	pos, err := parse(fs, args)
@@ -485,9 +516,16 @@ func (a *app) cmdFriendHealth(args []string, stdout, stderr io.Writer) int {
 	reason := fs.String("reason", "", "why she is not up, shown on her row while the observation stands (her model allowance ran out)")
 	until := fs.String("until", "", "when the daemon expects her back, RFC3339, shown on her row")
 	dry := fs.Bool("dry-run", false, "check the observation and say what would be recorded; record nothing")
+	clearObs := fs.Bool("clear", false, "remove her observation instead of recording one, so her status falls back to her beat rule (up while her last beat is under "+sprint.FriendDownAfter.String()+" old); takes no other flag but --dry-run")
 	friend, code := oneFriend(name, fs, args, stderr)
 	if code != 0 {
 		return code
+	}
+	if *clearObs {
+		if *state != "" || *seen != "" || *generation != 0 || *queue != 0 || *working != 0 || *width != 0 || *reason != "" || *until != "" {
+			return refuse(stderr, name, "--clear removes her observation and takes no observation's flag (--state, --seen, --generation, --queue, --working, --width, --reason, --until)")
+		}
+		return a.friendHealthClear(*c, friend, *dry, stdout, stderr)
 	}
 	if !slices.Contains(sprint.HealthStates, *state) {
 		return refuse(stderr, name, "--state wants one of "+strings.Join(sprint.HealthStates, ", ")+", found "+orDashStr(*state, "none"))

@@ -363,8 +363,10 @@ func (st *Store) FriendSeats(ctx context.Context, now time.Time) ([]sprint.Frien
 // friendSeats is every friend of the roster as the tick's deal and level see her
 // (sprint.TickDeal, sprint.FriendLevel, and the attempt cap's deal, sprint.AttemptCapDeal): her name, width and status at now and what her
 // beat names running, read every tick while the roster has a friend, whether or not a
-// friend's card is ready, so a friend coming up is levelled on the same tick
-// (docs/SPEC-SPRINT.md section 1, friend-deal-idle-lanes-first.w1); nil when it has none.
+// card is ready: the deal offers every ready card to the friends first, a queued change or
+// a dependency resolution can make work ready later in the same tick, and a friend coming
+// up is levelled on the same tick (docs/SPEC-SPRINT.md, WHO preference, and section 1,
+// friend-deal-idle-lanes-first.w1); nil when it has none.
 // The snapshot no longer gates the read; it stays in the signature for its callers.
 func (st *Store) friendSeats(ctx context.Context, _ *sprint.Snapshot, now time.Time) ([]sprint.FriendSeat, error) {
 	return st.FriendSeats(ctx, now)
@@ -447,6 +449,63 @@ func (st *Store) FriendHealth(ctx context.Context, friend, who string, obs sprin
 		return sprint.FriendHealth{}, "", false, errors.New(res.Refused[0].Why)
 	}
 	return obs, sprint.FriendStatus(sprint.FriendPresence{Held: e.Held, Health: obs, Generation: obs.Generation}, st.now()), false, nil
+}
+
+// HealthClearStep is the coordinator's removal of a friend's observation
+// (sprint.ClearFriendHealth): the step reads the seat in its own snapshot, and its
+// commit removes her friend-health record.
+func HealthClearStep(r sprint.HealthClearReq) Step {
+	return Step{Named: true, Args: ArgsOf(r), Verb: "friend health",
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.ClearFriendHealth(s, r) }}
+}
+
+// FriendHealthClear removes the coordinator's observation of a friend (friend health
+// --clear), so her status falls back to her beat rule (sprint.FriendStatus): her roster
+// entry and her record are read, and with dry the removal is checked against the roster
+// and the seat and nothing is written. The result is the record that stood (had says
+// there was one) and her status by the friends' rule at the store's clock after it.
+func (st *Store) FriendHealthClear(ctx context.Context, friend, who string, dry bool, callerOp string) (prev sprint.FriendHealth, had bool, status string, err error) {
+	r, kv, err := st.roster(ctx)
+	if err != nil {
+		return prev, false, "", err
+	}
+	e, known := r[friend]
+	if known {
+		raw, ok, err := kv.GetKey(ctx, friendHealthKey(friend))
+		if err != nil {
+			return prev, false, "", err
+		}
+		if ok {
+			// ignored: an unreadable record is no observation, and is removed all the same
+			_ = json.Unmarshal([]byte(raw), &prev)
+			had = true
+		}
+	}
+	req := sprint.HealthClearReq{Friend: friend, Who: who, Known: known}
+	if dry {
+		holder, err := st.B.Coordinator(ctx)
+		if err != nil {
+			return prev, had, "", err
+		}
+		if p := sprint.ClearFriendHealth(&sprint.Snapshot{Coordinator: holder}, req); len(p.Refused) > 0 {
+			return prev, had, "", errors.New(p.Refused[0].Why)
+		}
+	} else {
+		step := HealthClearStep(req)
+		step.CallerOp = callerOp
+		res, err := st.Run(ctx, step)
+		if err != nil {
+			return prev, had, "", err
+		}
+		if len(res.Refused) > 0 {
+			return prev, had, "", errors.New(res.Refused[0].Why)
+		}
+	}
+	b, err := st.FriendBeatOf(ctx, friend)
+	if err != nil {
+		return prev, had, "", err
+	}
+	return prev, had, sprint.FriendStatus(sprint.FriendPresence{Held: e.Held, Beat: b}, st.now()), nil
 }
 
 // FriendSpecOf is what friend sync last wrote of the friend: her width and

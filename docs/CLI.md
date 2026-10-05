@@ -1,36 +1,19 @@
-# Find the command you need
+# Command reference: nova-sprint, and the tools folding into it
 
-Use this page when you know what you want to do and need the exact command.
-For the story of how the team works together, start with the
-[project introduction](../README.md) or [team guide](WORKING-WITH-AI-TEAMS.md).
-
-| You want to… | Start with |
-|---|---|
-| Follow the team or answer a decision | `nova-sprint where`, `card`, `inbox` |
-| Load and organise tasks | `nova-sprint add`, `brief`, `rank`, `move` |
-| Review and integrate results | `nova-sprint read`, `accept`, `land` |
-| Generate or check task briefs | [Card generation](#nova-sprint-card-generate-template-and-lint) |
-| Import and compare GitHub issue content | [nova-work](#nova-work) |
-
-This reference follows the current checkout: card generation is under
-`nova-sprint card`; the GitHub issue mirror still uses `nova-work`. The README describes the integrated v1.0.0 product;
-use your installed build's help for its command surface. The original
-reference moved from Nova Tools on 2026-10-04.
+Moved from nova-tools docs/CLI.md on 2026-10-04.
 
 ## nova-sprint
 
-Coordinate tasks across your AI team, from the queue through review and landing.
+nova-sprint: a sprint of work cards, dealt to a fleet of workers and read before they land
 
-The store remembers cards, assignments, reviews, and merge state. Each tick
-assigns ready work to members with capacity, sends finished work to readers,
-and queues approved results for merging. An AI coordinator can handle the
-inbox and keep work moving while the human is away. The exact rules are in
+One store (Redis or a twin file) holds the work, readers, merge and fleet
+tables and the `sprint` view. A card is one unit of work in a stream. Each tick
+deals ready cards to members (machines with a width), sends finished work to
+readers and queues passed work for merging by stream. Decisions it cannot
+make go to the coordinator's inbox. The contract is
 [SPEC-SPRINT.md](SPEC-SPRINT.md).
 
 ### First run
-
-For a guided version with an isolated scratch directory and every step through
-landing, use [the local first lap](FIRST-LAP.md).
 
 Try one card's whole flow with no Redis or git. `--redis mem:<file>` (or
 `NOVA_SPRINT_REDIS=mem:<file>`) loads an in-memory twin from a file and saves it
@@ -112,8 +95,9 @@ nova-sprint friend down <friend> [--reason <text>] [--until <RFC3339>]
 nova-sprint friend up <friend> [--width <n>]
 nova-sprint friend take <friend> (<id>... | --all-unstarted) [--reason <text>]
 nova-sprint friend level
-nova-sprint friend health <friend> --state up|asleep|down --seen <RFC3339> --generation <n> [--queue <n>] [--working <n>] [--width <n>] [--reason <text>] [--until <RFC3339>]
-nova-sprint reader add <reader>...
+nova-sprint friend health <friend> (--state up|asleep|down --seen <RFC3339> --generation <n> [--queue <n>] [--working <n>] [--width <n>] [--reason <text>] [--until <RFC3339>] | --clear)
+nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]
+nova-sprint reader set <reader>... --tiers <flash[,pro,heavy,frontier]|all|default>
 nova-sprint reader away <reader>...
 nova-sprint reader up <reader>...
 nova-sprint reader remove <reader>...
@@ -144,6 +128,12 @@ nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>]
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
+
+`friend sync` wakes a friend through the bus store at `NOVA_BUS_REDIS` after
+delivering her card. Its bus login reads `NOVA_BUS_REDIS_USER` and the password
+variable named by `NOVA_BUS_REDIS_PASSWORD_ENV`, separately from the sprint
+store's login. With no bus user it uses the default user; a failed bus send
+leaves the delivered card in her inbox and records that she was not woken.
 
 Every store verb takes `--redis <addr>` (else `NOVA_SPRINT_REDIS`, then
 `NOVA_REDIS_ADDR`, then the address `seat login` recorded), `--actor <name>` (else `NOVA_SPRINT_ACTOR`; no default — a
@@ -283,7 +273,7 @@ nothing is applied for it, and the pass exits 1. `--dry-run` applies and records
 nothing; `--every 60s` runs it as the seat's loop until the machine is STOPPED. Jev's key comes from `JEV_API_KEY`:
 `nova-secrets exec --only JEV_API_KEY -- nova-sprint answer`. The
 contract is [SPEC-SPRINT.md section 8](SPEC-SPRINT.md#answered-by-nova-decide)
-and [SPEC-NOVA-DECIDE.md section 13](https://github.com/mas-bandwidth/nova-tools/blob/dev/docs/SPEC-NOVA-DECIDE.md#13-the-judgment-decision).
+and [SPEC-NOVA-DECIDE.md section 13](SPEC-NOVA-DECIDE.md#13-the-judgment-decision).
 
 `add` under `JEV_API_KEY` (`nova-secrets exec --only JEV_API_KEY -- nova-sprint add
 ...`) asks nova-decide's brief decision of every card it names with a brief after its
@@ -293,7 +283,7 @@ per card, recorded in `~/nova-sprint/decide/brief.jsonl` (or `--decide-record <f
 the op stored on the card for land and drop to attach its end. The decision is
 uncalibrated: nova-config's `sprint` row `decide_brief_bar` stays empty, which reports
 only, until the brief record's own outcomes support a bar
-([SPEC-NOVA-DECIDE.md](https://github.com/mas-bandwidth/nova-tools/blob/dev/docs/SPEC-NOVA-DECIDE.md) section 14).
+([SPEC-NOVA-DECIDE.md](SPEC-NOVA-DECIDE.md) section 14).
 
 ### install-canary-shadow-tick-r.w1: the shadow tick before a server swap
 
@@ -318,10 +308,10 @@ at `<target>.shadow.json`, beside the switch record. The contract is
 
 ### What it does not prove
 
-A landed card records a completed flow: the worker reports done, the required
-readers pass that head (one for flash, two distinct readers for pro), the tick
-(or the coordinator's `accept`) queues it for merging, and the landing is
-reported. These are recorded judgments, not a proof that the work is correct. A twin exercises that flow one command at a
+A landed card records a completed flow: the worker reports done, two different
+readers pass that head, the tick (or the coordinator's `accept`) queues it for
+merging, and the landing is reported. These are recorded judgments, not a
+proof that the work is correct. A twin exercises that flow one command at a
 time. It has no beats or ticks between commands, so it does not test fleet
 timing, the `run` loop, `inbox --wait` or liveness. `finish` without `--head`,
 then `merge`, records a landing without a push. The work table's cost column
@@ -330,32 +320,30 @@ card's actual cost where one was priced, else its predicted one, `-` when
 none was — so a total is a ledger of recorded spend, not a proof of it.
 
 
-## nova-sprint card generate, template and lint
+## nova-card
 
-These were the nova-card binary, which is retired: `nova-card generate`,
-`template` and `lint` now refuse with `nova-card <verb> moved to nova-sprint card
-<verb>; run: nova-sprint card <verb> -h`, and so do `nova-sprint generate`,
-`template` and `lint` typed bare. `nova-sprint card <id>` is still the read of one
-card. The verbs write briefs on disk or read them and never the sprint store, so
-they take no actor and a server named by `NOVA_SPRINT_SERVER` does not run them.
-They are pre-alpha: not ready for production use.
+nova-card is pre-alpha: not ready for production use.
 
 ```
-nova-sprint card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--dry-run]
-nova-sprint card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
-nova-sprint card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
-nova-sprint card lint --card <file> [--card <file>...]
-nova-sprint card template
+nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--dry-run]
+nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
+nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
+nova-card lint --card <file> [--card <file>...]
+nova-card template
+nova-card version
+nova-card help [<verb>]
 ```
 
-Writing many similar briefs by hand is easy to get wrong. `nova-sprint card generate` computes
-paths from the source material, checks the generated cards, and lays out waves
-and dependencies. You can then review the result and load it into the sprint.
+A card a model writes by hand takes it half an hour and comes back with guessed
+PATHS; one wrong PATHS line was rejected 262 times in one night. nova-card
+writes the cards from the source the work comes from, with the PATHS computed,
+the lint already green, and the waves already laid out, so the one thing left
+to do is `nova-sprint add --stream <s> --brief-dir <dir>`.
 
 The flow is three lines:
 
 ```sh
-nova-sprint card generate --from ledger --ledger serial-tests --repo-dir ./repo --out ./cards
+nova-card generate --from ledger --ledger serial-tests --repo-dir ./repo --out ./cards
 nova-sprint add --stream debt --brief-dir ./cards --allow-shared-paths
 nova-sprint where
 ```
@@ -368,15 +356,14 @@ checkout is needed when `--repo`, `--base` and `--sha` are given; with
 checked to exist in it:
 
 ```sh
-nova-sprint card generate --from findings --file ./cmd/nova-sprint/testdata/findings.tsv --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567 --out ./cards
-nova-sprint card lint --card ./cards/finding-internal-bus-send.md
-nova-sprint card lint --card ./cards/finding-cmd-nova-bus-main.md
+nova-card generate --from findings --file ./cmd/nova-card/testdata/findings.tsv --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567 --out ./cards
+nova-card lint --card ./cards/finding-internal-bus-send.md
+nova-card lint --card ./cards/finding-cmd-nova-bus-main.md
 ```
 
 `./cards` then holds one `.md` per card, its name the card's id, and a
-`manifest.tsv` (id, file, test, wave, deps). [TESTS.md](TESTS.md#briefs-from-a-findings-file)
-carries the transcript; `TestTheCardTranscriptRuns` in
-`cmd/nova-sprint/cardverbs_test.go` runs it.
+`manifest.tsv` (id, file, test, wave, deps). [TESTS.md](TESTS.md#nova-card)
+carries the transcript; `cmd/nova-card/firstrun_test.go` runs it.
 
 ### Sources
 
@@ -423,9 +410,7 @@ plans and lints, prints the manifest and the `CARDS OK` line with
 
 ## nova-work
 
-Bring issue content into a local file so you and your AIs can inspect it
-together. This checkout labels the separate `nova-work` command pre-alpha;
-the v1.0.0 product includes the work tree.
+nova-work is pre-alpha: not ready for production use.
 
 Every issue of every repository of a GitHub organization in one tree file, with
 each issue's full contents, and a check that the file holds exactly what GitHub
@@ -468,12 +453,3 @@ Reads the tree and GitHub again and writes nothing: zero differences is
 holds. `--against <tree>` puts a second tree file where GitHub stands and reads
 no network at all.
 
-## Sprint-program design commands
-
-This checkout also exposes `nova-sprint work repos`, `work issues`,
-`work roadmap`, `work export`, and `work import`. Their durable
-sprint-program implementation is not built: they exit with a refusal and
-read or write neither a tree nor Redis. They are distinct from the working
-GitHub-mirror `nova-work import` and `verify` commands above. See the
-[design and implementation status](../internal/work/NOTE.md) before using
-those names in an integration.

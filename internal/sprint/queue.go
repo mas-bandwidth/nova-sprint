@@ -105,7 +105,7 @@ func Drain(s *Snapshot, q []QueuedChange, who string) Plan {
 	var propOrder []string
 	for _, x := range q {
 		switch x.Verb {
-		case "release", "sentinel set":
+		case "release":
 			p.releasing = true
 		case "add":
 			p.inserting = true

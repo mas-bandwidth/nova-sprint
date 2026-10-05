@@ -37,17 +37,12 @@ import (
 // eta is the minutes left (etaMinutes, or the view's held value), 0 when there
 // is no estimate. held is the cards no tick moves on its own (sprint.HeldBack:
 // behind a sentinel not released, or admitted held), shown apart as held=N
-// when there are any, and counted in the ETA. auto is the auto sentinels
-// waiting for their needs (sprint.AutoWaiting), which the tick releases and
-// held=N does not count, shown as auto=N when there are any.
-func summary(t ntable.Table, held, auto, eta int64) string {
+// when there are any, and counted in the ETA.
+func summary(t ntable.Table, held, eta int64) string {
 	landed, all := counts(t)
 	line := progress(t)
 	if held > 0 {
 		line += fmt.Sprintf(" held=%d", held)
-	}
-	if auto > 0 {
-		line += fmt.Sprintf(" auto=%d", auto)
 	}
 	switch {
 	case all > 0 && landed == all:
@@ -476,7 +471,6 @@ type whereView struct {
 	Landed  int64     `json:"landed"`
 	All     int64     `json:"all"`
 	Held    int64     `json:"held,omitempty"` // behind a sentinel not released, or admitted held: in the ETA
-	Auto    int64     `json:"auto,omitempty"` // auto sentinels waiting for their needs: the tick releases them
 	Summary string    `json:"summary"`
 	// Tables is table -> row -> column -> cell as printed (a string, every cell of every
 	// row, the shape the dashboard's pull reads); a work row carries besides its cells
@@ -491,14 +485,20 @@ type whereView struct {
 	// the tick's where record (sprint.TierCosts); absent before the first tick of an epoch.
 	StreamCosts map[string]sprint.TierCosts `json:"stream_costs,omitempty"`
 	Streams     []sprint.StreamClock        `json:"streams"`
-	Stalled     []string                    `json:"stalled,omitempty"`
-	Critical    []sprint.CriticalCard       `json:"critical,omitempty"` // the five heaviest (weight.go)
-	Coordinator string                      `json:"coordinator,omitempty"`
-	Pending     string                      `json:"pending,omitempty"`
-	Epoch       uint64                      `json:"epoch"`
-	Cleared     time.Time                   `json:"cleared,omitempty"` // when the epoch began
-	Machine     string                      `json:"machine,omitempty"`
-	Goals       []goalView                  `json:"goals,omitempty"`
+	// StageTimes is where a card's wall time goes: the median and p90 in seconds of each
+	// stage (needs, deal, take, work, rework, read_wait, read, accept, merge) over the
+	// cards landed in the last 24 h, overall and per stream, from the tick's where record
+	// (sprint.CycleTimes, docs/SPEC-SPRINT.md, cycle-time-breakdownb.w1); absent before
+	// the first tick of an epoch or with no landing in the window.
+	StageTimes  *sprint.StageTimes    `json:"stage_times,omitempty"`
+	Stalled     []string              `json:"stalled,omitempty"`
+	Critical    []sprint.CriticalCard `json:"critical,omitempty"` // the five heaviest (weight.go)
+	Coordinator string                `json:"coordinator,omitempty"`
+	Pending     string                `json:"pending,omitempty"`
+	Epoch       uint64                `json:"epoch"`
+	Cleared     time.Time             `json:"cleared,omitempty"` // when the epoch began
+	Machine     string                `json:"machine,omitempty"`
+	Goals       []goalView            `json:"goals,omitempty"`
 	// Seat is the seat's last change (coordinator <name>): who gave or took
 	// it, when and why; absent while the seat has not moved since init.
 	Seat *sprint.SeatChange `json:"seat,omitempty"`
@@ -880,14 +880,17 @@ func (a *app) where(ctx context.Context, st *store.Store, stale time.Duration, a
 		p50, p99 := facts.StoreRTTP50MS, facts.StoreRTTP99MS
 		v.StoreRTTP50MS, v.StoreRTTP99MS = &p50, &p99
 	}
-	v.Held, v.Auto = int64(facts.Held), int64(facts.Auto)
+	v.Held = int64(facts.Held)
 	v.Ready = readyPrimaries(shapes[0])
 	v.Width = upWidth(shapes[3])
 	v.Buffer = fmt.Sprintf("%d/%d", v.Ready, 2*v.Width)
 	v.Low = v.Ready < int64(v.Width)
 	v.Tiers = facts.Tiers
+	if len(facts.StageTimes.All) > 0 {
+		v.StageTimes = &facts.StageTimes
+	}
 	rate := sprint.LandingRate(facts.Landed, v.Landed, facts.Machine.Spans, facts.Machine.FirstStart(es.Cleared), now)
-	v.Summary = summary(shapes[0], v.Held, v.Auto, a.heldETA(now, etaKey{v.All, v.Held}, etaMinutes(shapes[0], rate)))
+	v.Summary = summary(shapes[0], v.Held, a.heldETA(now, etaKey{v.All, v.Held}, etaMinutes(shapes[0], rate)))
 
 	if f.Pending != nil {
 		v.Pending = f.Pending.ID
@@ -1153,7 +1156,31 @@ func readersAll(t ntable.Table) ntable.Table {
 	if any {
 		width = strconv.Itoa(total)
 	}
-	return allOf(t, map[string]string{sprint.FieldWidth: width})
+	texts := map[string]string{sprint.FieldWidth: width}
+	if slices.Contains(columnNames(t.Columns), sprint.ReaderTiers) {
+		word := readerTiersSummary(t)
+		if word == "" {
+			word = sprint.ReaderTiersAll
+		}
+		texts[sprint.ReaderTiers] = word
+	}
+	return allOf(t, texts)
+}
+
+// readerTiersSummary is the tiers word of the one readers row: the word the
+// rows share, or the distinct words in row order. An empty cell prints all.
+func readerTiersSummary(t ntable.Table) string {
+	var words []string
+	seen := map[string]bool{}
+	for _, r := range t.Rows {
+		w := sprint.ReaderTiersShown(r.Texts[sprint.ReaderTiers])
+		if seen[w] {
+			continue
+		}
+		seen[w] = true
+		words = append(words, w)
+	}
+	return strings.Join(words, ",")
 }
 
 // readersWidths is the readers table with a width column beside reading, each
@@ -1182,6 +1209,9 @@ func readersWidths(t ntable.Table, fleet ntable.Table) ntable.Table {
 			width = widths[m]
 		}
 		row.Texts[sprint.FieldWidth] = width
+		if slices.Contains(columnNames(cols), sprint.ReaderTiers) {
+			row.Texts[sprint.ReaderTiers] = sprint.ReaderTiersShown(row.Texts[sprint.ReaderTiers])
+		}
 		rows[i] = row
 	}
 	t.Columns, t.Rows = cols, rows

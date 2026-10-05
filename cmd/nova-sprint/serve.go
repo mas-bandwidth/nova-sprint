@@ -157,34 +157,8 @@ func flagWord(words []string, name string) (value string, ok bool) {
 // clean and friend reconcile, which work on the directories of the machine they run on, and dashboard, which
 // serves a page until it is interrupted and reads through the server, and seat install
 // and seat uninstall, which install the push loop as a service of the machine they are
-// typed on, and the work verbs, which name a file on the machine where they are typed
-// (internal/work); their round-trip is not built, so a run reads nothing and writes nothing.
-var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sync", "friend reconcile", "friend clean", "dashboard", "answer", "seat install", "seat uninstall", "selftest land", "server switch", "work repos", "work issues", "work roadmap", "work export", "work import", "card generate", "card lint", "card template"}
-
-// ServeWait is how long a batch waits for the line of control before it is answered
-// without it. Measured 2026-10-04 12:54 PM ET: with the machine STOPPED, a verb sent to
-// the loopback listener went unanswered until the client's own timeout (8 s), so every
-// friend's beat and every worker's verb failed, and the tables read every friend silent.
-// A batch that waits longer than this is answered at once, each verb of it that needs the
-// line exit 2 with what holds the line and nothing changed, and its sender sends it again
-// (its reads and beats still run on their lanes): a verb is
-// answered within a second of being read, whatever holds the line and for however long.
-// The reads and the beats run on their lanes and never wait for the line (servelanes.go);
-// this bounds the verbs that take it, and every verb on a twin file.
-const ServeWait = time.Second
-
-// busyAnswer is the answer of each verb of a batch that needs the line, from the first,
-// when the line could not be taken within ServeWait: exit 2, what held the line, nothing changed, send it again.
-func busyAnswer(argv []string, held string) sprintwire.Result {
-	verb := ""
-	if len(argv) > 0 {
-		verb = argv[0]
-	}
-	if held == "" {
-		held = "another step of the server (a landing's read or report, the decide lane, the balance poll)"
-	}
-	return sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s: busy: %s held the line of control past %s; nothing was run or changed; send it again\n", prog, oneline.Escape(verb), oneline.Escape(held), ServeWait)}
-}
+// typed on.
+var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sync", "friend reconcile", "friend clean", "dashboard", "answer", "seat install", "seat uninstall", "selftest land", "server switch"}
 
 // serveCtx is the server's one step: the batch's verbs run in order, each through
 // the verb's own code with its worker as the actor, and each answered. The
@@ -200,18 +174,12 @@ func busyAnswer(argv []string, held string) sprintwire.Result {
 // written, so a slow worker never holds the tick. A batch waits for the line only while
 // its caller waits for the answer: a caller gone (ctx done) before the line is taken has
 // its verbs from there on not run, each answered exit 2 saying so, and nothing changed.
-// Nor does it wait past ServeWait (on a.after, the app's clock): then each of its verbs
-// from there on that needs the line is answered busy at once, naming what holds the
-// line, having run nothing, while its reads and beats still run on their lanes; so a
-// tick, a landing's step or another batch never holds a verb past its bound.
 func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) sprintwire.Response {
 	out := sprintwire.Response{Results: make([]sprintwire.Result, len(req.Verbs))}
 	lanes := a.lanesFor(ctx)
 	begun := a.now()
 	var took time.Time
 	held, beats, reads, onLine, gone := false, 0, 0, 0, 0
-	// busy: the line was not taken within ServeWait; busyBy is what held it
-	busy, busyBy := false, ""
 	var first []string
 	defer func() {
 		var wait, hold time.Duration
@@ -266,19 +234,8 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			out.Results[i] = lanes.readVerbRun(ctx, args)
 			continue
 		}
-		if busy {
-			// the line was not taken within ServeWait: no later verb that needs it waits again
-			out.Results[i] = busyAnswer(argv, busyBy)
-			continue
-		}
 		if !held {
-			holder, late, err := a.serial.LockWithin(ctx, fmt.Sprintf("a batch of %d verbs", len(req.Verbs)), func() <-chan time.Time { return a.after(ServeWait) })
-			if late {
-				busy, busyBy = true, holder
-				out.Results[i] = busyAnswer(argv, holder)
-				continue
-			}
-			if err != nil {
+			if err := a.serial.LockCtx(ctx); err != nil {
 				for j := i; j < len(req.Verbs); j++ {
 					out.Results[j] = goneResult(req.Verbs[j])
 					gone++
@@ -507,14 +464,11 @@ func runningIDs(v string) bool {
 // private network is the whole of the access control (listen).
 const viewPath = "/api/view/"
 
-// serveView runs view <role> --json for a GET and answers its JSON, gzipped for a client that
-// takes it. A view writes nothing, so it runs on the read lane, as where and card do, and
-// never waits behind a tick, a batch or a landing's step (servelanes.go). On a twin file,
-// where every verb takes the line, it takes the line as a batch does (serveCtx): bounded by
-// ServeWait and answered busy past it, and not run when its caller (the request) has gone
-// before the line was taken. A role, a name or a cursor of the wrong shape is a 400 and
-// nothing is run; a name that is no worker of the sprint is a 404; a store that did not
-// answer, a busy line or a caller gone is a 503; each with the verb's line.
+// serveView runs view <role> --json for a GET, on the line of control as any verb the server
+// runs (a.serial: never during a tick), and answers its JSON, gzipped for a client that takes
+// it. A role, a name or a cursor of the wrong shape is a 400 and nothing is run; a name that
+// is no worker of the sprint is a 404; a store that did not answer is a 503; each with the
+// verb's line.
 func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "the views are read with GET "+viewPath+"coordinator or "+viewPath+"worker?as=<name>", http.StatusMethodNotAllowed)
@@ -549,14 +503,17 @@ func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
 		}
 		argv = append(argv, "--since", since)
 	}
-	code, stdout, stderr := a.viewRun(r.Context(), argv)
+	var stdout, stderr bytes.Buffer
+	a.serial.Lock()
+	code := a.run(argv, &stdout, &stderr)
+	a.serial.Unlock()
 	switch code {
 	case 0:
 	case 1:
-		http.Error(w, strings.TrimSpace(stderr), http.StatusNotFound)
+		http.Error(w, strings.TrimSpace(stderr.String()), http.StatusNotFound)
 		return
 	default:
-		http.Error(w, strings.TrimSpace(stderr), http.StatusServiceUnavailable)
+		http.Error(w, strings.TrimSpace(stderr.String()), http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -568,33 +525,5 @@ func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
 		defer func() { _ = gz.Close() }() // ignored: a reader that has gone reads no answer
 		out = gz
 	}
-	_, _ = out.Write([]byte(stdout)) // ignored: a reader that has gone reads no answer
-}
-
-// viewRun is a view's verb run for serveView: on the read lane when the lanes run, else on
-// the line within ServeWait, as a batch takes it; tallied as a batch of one verb.
-func (a *app) viewRun(ctx context.Context, argv []string) (code int, stdout, stderr string) {
-	if lanes := a.lanesFor(ctx); lanes != nil {
-		res := lanes.readVerbRun(ctx, argv)
-		a.tally(0, 1, 0, 0, 0, 0, nil)
-		return res.Code, res.Stdout, res.Stderr
-	}
-	begun := a.now()
-	holder, late, err := a.serial.LockWithin(ctx, "a view", func() <-chan time.Time { return a.after(ServeWait) })
-	if late {
-		res := busyAnswer(argv, holder)
-		a.tally(0, 0, 0, 0, a.now().Sub(begun), 0, nil)
-		return res.Code, res.Stdout, res.Stderr
-	}
-	if err != nil {
-		res := goneResult(argv)
-		a.tally(0, 0, 0, 1, a.now().Sub(begun), 0, nil)
-		return res.Code, res.Stdout, res.Stderr
-	}
-	took := a.now()
-	var out, errs bytes.Buffer
-	code = a.run(argv, &out, &errs)
-	a.serial.Unlock()
-	a.tally(0, 0, 1, 0, took.Sub(begun), a.now().Sub(took), argv[:2])
-	return code, out.String(), errs.String()
+	_, _ = out.Write(stdout.Bytes()) // ignored: a reader that has gone reads no answer
 }

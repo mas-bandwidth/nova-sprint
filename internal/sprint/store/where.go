@@ -35,7 +35,6 @@ type WhereRecord struct {
 	Epoch    uint64                `json:"epoch"`
 	Rev      uint64                `json:"rev"`
 	Held     int                   `json:"held"`
-	Auto     int                   `json:"auto,omitempty"` // the auto sentinels waiting (sprint.AutoWaiting)
 	Landings []int64               `json:"landings,omitempty"`
 	Critical []sprint.CriticalCard `json:"critical,omitempty"` // the five heaviest (weight.go)
 	// Tiers counts every card by its brief's tier, and Streams carries each stream's
@@ -43,6 +42,9 @@ type WhereRecord struct {
 	// counted here from the cards the tick reads, never by where from per-card reads.
 	Tiers   map[string]int              `json:"tiers,omitempty"`
 	Streams map[string]sprint.TierCosts `json:"streams,omitempty"`
+	// StageTimes is the median and p90 of each stage over the cards landed in the last day
+	// (sprint.CycleTimes, docs/SPEC-SPRINT.md, cycle-time-breakdownb.w1), as of the count.
+	StageTimes sprint.StageTimes `json:"stage_times,omitzero"`
 }
 
 // whereOf is the where record of a snapshot holding every card of the work
@@ -54,8 +56,8 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 			landed = append(landed, at)
 		}
 	}
-	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), Auto: sprint.AutoWaiting(s), Critical: sprint.Critical(s, 5),
-		Tiers: sprint.TierCounts(s), Streams: sprint.StreamTierCosts(s)}
+	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), Critical: sprint.Critical(s, 5),
+		Tiers: sprint.TierCounts(s), Streams: sprint.StreamTierCosts(s), StageTimes: sprint.CycleTimes(s, now)}
 	for _, at := range sprint.RecentLandings(landed, m.Spans, m.FirstStart(s.Cleared), now) {
 		r.Landings = append(r.Landings, at.Unix())
 	}
@@ -225,13 +227,14 @@ type WhereFacts struct {
 	Machine   Machine
 	Heartbeat Heartbeat
 	Held      int
-	Auto      int // the auto sentinels waiting (sprint.AutoWaiting)
 	Landed    []time.Time
 	Critical  []sprint.CriticalCard // the five heaviest, from the record (weight.go)
 	// Tiers and Streams are the record's counts and costs by tier (cost_view.go); nil
 	// without the record.
 	Tiers   map[string]int
 	Streams map[string]sprint.TierCosts
+	// StageTimes is the record's stage times (sprint.CycleTimes); empty without the record.
+	StageTimes sprint.StageTimes
 	// HasStoreRTT is set when the server's store round trip record has a sample
 	// within StoreRTTWindow; StoreRTTP50MS and StoreRTTP99MS are its p50 and p99.
 	HasStoreRTT   bool
@@ -280,7 +283,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			f.HasStoreRTT, f.StoreRTTP50MS, f.StoreRTTP99MS = true, r.P50MS, r.P99MS
 		}
 		if r, ok := readWhere(vals[2], oks[2]); ok && r.Epoch == st.epoch && (r.Rev == workRev || st.keptBy(r, f.Machine, f.Heartbeat)) {
-			f.Held, f.Auto, f.Critical, f.Tiers, f.Streams = r.Held, r.Auto, r.Critical, r.Tiers, r.Streams
+			f.Held, f.Critical, f.Tiers, f.Streams, f.StageTimes = r.Held, r.Critical, r.Tiers, r.Streams, r.StageTimes
 			for _, s := range r.Landings {
 				f.Landed = append(f.Landed, time.Unix(s, 0).UTC())
 			}
@@ -288,7 +291,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 		}
 	}
 	var err error
-	if f.Held, f.Auto, err = st.waitingCounts(ctx); err != nil {
+	if f.Held, err = st.HeldBack(ctx); err != nil {
 		return f, err
 	}
 	if f.Landed, err = st.LandedAt(ctx); err != nil {

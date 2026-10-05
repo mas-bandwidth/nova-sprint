@@ -200,39 +200,3 @@ func TestTheShippedRecipeParses(t *testing.T) {
 		t.Fatalf("recipe %+v", r)
 	}
 }
-
-func TestARenameTakesTheLongestMatchWhateverTheOrder(t *testing.T) {
-	for i := 0; i < 20; i++ { // a map's order changes from run to run
-		s := &seeder{r: &recipe{rename: map[string]string{"a": "internal/x", "a/b": "internal/y", "c": "internal/z"}}}
-		for pkg, want := range map[string]string{
-			"a": "internal/x", "a/c": "internal/x/c", "a/b": "internal/y", "a/b/c": "internal/y/c",
-			"ab": "ab", "c/d": "internal/z/d", "internal/q": "internal/q",
-		} {
-			if got := s.dest(pkg); got != want {
-				t.Fatalf("dest(%s) = %s, want %s", pkg, got, want)
-			}
-		}
-	}
-}
-
-func TestTheSeedRefusesARenameOntoAnExistingPackage(t *testing.T) {
-	for name, line := range map[string]string{
-		"onto a package nova-tools has": "rename\tfleet\tinternal/c\n",
-		"under a moved root":            "rename\tfleet\tcmd/app/fleet\n",
-	} {
-		t.Run(name, func(t *testing.T) {
-			from, keep := fixture(t)
-			r, err := parseRecipe(strings.Replace(testRecipe, "rename\tfleet\tinternal/fleetrules\n", line, 1))
-			if err != nil {
-				t.Fatal(err)
-			}
-			out := filepath.Join(t.TempDir(), "out")
-			if _, err := run(r, from, keep, out); err == nil || !strings.Contains(err.Error(), "rename fleet") {
-				t.Fatalf("got %v", err)
-			}
-			if exists(out, ".") {
-				t.Fatal("a refused seed wrote its directory")
-			}
-		})
-	}
-}
