@@ -11,6 +11,7 @@ original font record moved from Nova Tools on 2026-10-04.
 | `brand/starting-blocks/composite.png` | **Earlier README hero**, composed on 2026-10-05 from a fresh transparent starting-blocks friend, the separate flat wordmark, and a track plate with the grass removed. OpenAI image generation supplied the source renders; deterministic compositing places them without regenerating the assembled image. Original PNGs, prompt, and placement record remain in `brand/starting-blocks/`. PNG, 2170 × 725. |
 | `brand/jogging/banner-centered.png` | **Earlier jogging hero**, generated with the built-in OpenAI image tool on 2026-10-05. At Glenn's request, the complete banner was rendered together: a happy jogging, waving mascot and flat wordmark. The final layout centres them as one group. Approved by Glenn; original 2168 × 725 lossless PNG copied unchanged. Final prompt and earlier layout variants are in `brand/jogging/`. |
 | `brand/jogging/banner-cute-wave-left.png` | **Current README hero**, approved by Glenn on 2026-10-05. Built-in OpenAI image generation matched the preferred runner's cuter rounded proportions while retaining the jogging-and-waving pose, then refined the spacing between mascot and wordmark. Original 2171 × 724 lossless PNG copied without conversion or resampling. Prompt: `brand/jogging/prompt-cute-wave-left.txt`; source and intermediate variants are preserved alongside it. |
+| `brand/yellow-v2.png` | **Corrected sleeping friend**, freshly rendered with the built-in OpenAI image tool on 2026-10-05 at Glenn's request and approved for the explainer. Corrects the malformed lower legs to two knees, two shins, and two feet while retaining the sleepy pose. Transparent 1774 × 887 lossless PNG; original bytes preserved. Prompt: `brand/yellow-v2-prompt.txt`. The original `brand/yellow.png` is retained. |
 | `assets/nova-sprint-dashboard.jpg` | **Dashboard preview** captured with the Codex browser on 2026-10-05 from the public demo at `http://69.67.149.151/`. Its rendered markup and displayed values were saved locally, then the LANDED tile was simplified to one line at Glenn's request, matching the accompanying source change. The Cost breakdown and Work tables are folded. The numbers are the captured values, not a fixed performance claim. This previews the requested layout; it does not claim that the live demo has been deployed with that change. |
 
 The artwork extends the Nova Tools workshop and Nova Seed garden's friendly
@@ -28,8 +29,8 @@ the jogging banner and panels made from this set.
 The illustrated [README](../README.md) uses five panels from the six-panel
 lossless PNG set in `brand/explainer/`, composed on 2026-10-05 from those
 individual assets and the later starting-blocks render. Their labels and workflow
-diagrams are drawn by `brand/compose_explainer.py`; no source character was
-regenerated. All six panels are drawn at 4× logical resolution and exported as 2× PNGs
+diagrams are drawn by `brand/compose_explainer.py`. Yellow was subsequently
+re-rendered with corrected leg anatomy; the other source characters are unchanged. All six panels are drawn at 4× logical resolution and exported as 2× PNGs
 with antialiased type, boxes, dividers, checkmarks, and rounded connectors.
 Arial is rasterised from the locally installed font, not bundled.
 The starting-blocks source, prompt, and composition live in

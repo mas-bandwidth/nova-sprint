@@ -16,7 +16,7 @@ when using the individual assets in illustrations and documentation.
 | Character | Meaning |
 |---|---|
 | [Little robot with the checklist](stella.png) | The coordinator. |
-| [Sleeping yellow friend](yellow.png) | Friends falling asleep when they should be working together. |
+| [Sleeping yellow friend](yellow-v2.png) | Friends falling asleep when they should be working together. |
 | [Green friend with headphones](green.png) | Friends who cannot hear their teammates: messages and coordination do not reach them. |
 | [Tripping purple friend](purple.png) | A friend failing at their task because a dependency is blocked on another friend who has fallen asleep. |
 | [Pink friend on a bike](pink-cyclist.png) | A friend having fun and moving forward at her own pace. |
@@ -37,7 +37,10 @@ The six panels in `explainer/` are deterministic compositions of the original
 PNG assets, with drawn diagrams and text. Rebuild with
 `python3 brand/compose_explainer.py` (Pillow); set `NOVA_BRAND_FONT` to a local
 Arial-compatible TrueType font when the default macOS Arial path is unavailable.
-No character was regenerated for the explainer.
+Yellow was re-rendered separately to correct the leg anatomy; the approved
+replacement is [yellow-v2.png](yellow-v2.png), with its
+[prompt](yellow-v2-prompt.txt). The original remains in the archive.
+The other characters use their original renders.
 
 ## Approved jogging banner
 
@@ -100,7 +103,7 @@ with the wordmark on a separate white panel. These earlier options are retained 
 | Stella, the roller coordinator | [stella.png](stella.png) |
 | Green friend with headphones | [green.png](green.png) |
 | Orange friend fleeing the swarm | [orange.png](orange.png) |
-| Sleeping yellow friend | [yellow.png](yellow.png) |
+| Sleeping yellow friend | [yellow-v2.png](yellow-v2.png) |
 | Purple friend stumbling | [purple.png](purple.png) |
 | Pink friend riding a bike | [pink-cyclist.png](pink-cyclist.png) |
 | White-and-blue sprinter | [white.png](white.png) |
