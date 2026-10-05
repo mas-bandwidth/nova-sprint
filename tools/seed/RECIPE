@@ -1,0 +1,80 @@
+# The seed recipe: what tools/seed takes from a nova-tools checkout to make
+# nova-sprint's tree. One rule per line, fields separated by TABS; a line that
+# starts with # is a comment. The rules, in the order they are applied:
+#
+#   module   <from module path> <to module path>
+#   move     <dir>           every file under dir, tests and testdata included
+#   rename   <pkg> <to>      a copied nova-tools package that lands at another path
+#   literal  <from> <to>     a string replaced in every moved .go file
+#   doc      <file>          a whole file
+#   section  <file> <name>.. the "## <name>" sections of file, under the header
+#                            the nova-sprint copy of file already has
+#   ratings  <tool>..        docs/ratings/**/<tool>-read.md and <tool>-use.md
+#   model    <M>             tla/M.tla, tla/MCM.tla, the MCM.tla rows of
+#                            tla/CASES.tsv and tla/RUNS.tsv and their .cfg
+#                            files, tla/README-M.md and tla/<m>-bench/
+#   keep     <path>          nova-sprint's own file or dir, taken from -keep
+#   gomod                    go.mod from nova-tools with the module renamed and
+#                            nova-sprint's tool lines; go.sum from nova-tools
+#
+# Copied: every nova-tools package the moved code imports (tests included),
+# closed over the imports of the copied packages' non-test files. A copied
+# package brings its non-test files and the files its //go:embed lines name; a
+# renamed package brings only its Go files and their embedded files.
+
+module	github.com/mas-bandwidth/nova-tools	github.com/mas-bandwidth/nova-sprint
+
+move	cmd/nova-sprint
+move	cmd/nova-card
+move	cmd/nova-work
+move	internal/sprint
+move	internal/sprintdash
+move	internal/cardgen
+move	internal/provbalance
+move	internal/workfile
+move	internal/workgh
+move	internal/worklang
+move	tools/sprintsize
+
+rename	fleet	internal/fleetrules
+rename	profiles	internal/profiles
+literal	"../../fleet/child-rules.txt"	"../../internal/fleetrules/child-rules.txt"
+literal	filepath.Join("..", "..", "fleet", "child-rules.txt")	filepath.Join("..", "..", "internal", "fleetrules", "child-rules.txt")
+
+doc	docs/SPEC-SPRINT.md
+doc	docs/SPEC-SPRINT-DASHBOARD.md
+doc	docs/SPEC-ISA.md
+doc	docs/PROCESSOR.md
+doc	docs/SPEC-WORK-V1.md
+doc	docs/SPEC-WORKLANG.md
+doc	docs/SPRINT-COORDINATOR.md
+doc	docs/SPRINT-COORDINATOR-SEAT.md
+section	docs/CLI.md	nova-sprint	nova-card	nova-work
+section	docs/TESTS.md	nova-sprint	nova-card	nova-work
+ratings	sprint	work
+
+model	SprintEvents
+model	DirtyTick
+model	DirtyTickRead
+model	RouteIndex
+model	Level
+model	Land
+model	WorkImport
+model	CardISA
+model	CardMachine
+model	CoordinatorPass
+model	CoordinatorWake
+model	ReadsByRoom
+model	ServerLanes
+model	SprintRules
+model	StallLadder
+model	SeatHealth
+
+keep	LICENSE
+keep	README.md
+keep	Makefile
+keep	.github
+keep	docs/ASSET-PROVENANCE.md
+keep	internal/sprint/tables_lock_test.go
+keep	tools/seed
+gomod

@@ -76,9 +76,11 @@ func TestTheDecideLaneGradesRecordsAndAttachesOutcomes(t *testing.T) {
 	assert.Contains(t, errs, "finish REFUSED: --decision: ", "a decision that does not fit is refused, nothing finished")
 	ta.ok("finish --as m1 s1-2.w1@" + gens["s1-2.w1"] + " s1-3.w1@" + gens["s1-3.w1"])
 	assert.Contains(t, ta.ok("card s1-1"), "decided=done:0.90", "the ATTEMPT line shows the decision")
-	ta.ok("ask --limit 100")
-	ta.ok("read --as reader-a --ok --limit 100")
-	ta.ok("read --as reader-b --ok --limit 100")
+	for range 2 { // reads are asked one at a time: the first, then the second once ok
+		ta.ok("ask --limit 100")
+		ta.ok("read --as reader-a --ok --limit 100")
+		ta.ok("read --as reader-b --ok --limit 100")
+	}
 	ta.ok("drop s1-3 --one --reason 'out of scope'")
 	assert.Contains(t, round(), "DECIDE recorded=1 graded=0 written=0 attached=1", "the decision recorded; s1-3's grade labelled dropped, read unplaced")
 	ta.ok("accept --read-ok")
@@ -171,7 +173,7 @@ func TestTheDecideLaneSaysAFailureOnceAndGradesNothingWithNoKey(t *testing.T) {
 	}
 	assert.Equal(t, 1, strings.Count(out.String(), "DECIDE FAILED the work table could not be read"), out.String())
 	out.Reset()
-	stopped, stop := context.WithCancel(context.Background())
+	stopped, stop := context.WithCancel(t.Context())
 	stop()
 	ta.a.decideLoop(stopped, "mem:0", &out)
 	assert.Contains(t, out.String(), "no grading: JEV_API_KEY is absent from this environment", "the loop says it grades nothing")

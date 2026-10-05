@@ -1,54 +1,124 @@
-# nova-sprint
+![Nova Sprint: a happy white-and-blue friend jogging and waving.](brand/jogging/banner-cute-wave-left.png)
 
-**The opinionated work processor for teams of AIs, built on
-[nova-tools](https://github.com/mas-bandwidth/nova-tools).**
+## The Problem
 
-nova-tools are unopinionated building blocks for any AI workflow: run an AI
-task in a sandbox with a budget (nova-swarm), cheap typed decisions
-(nova-decide), a bus between AIs (nova-bus), tables in Redis (nova-table),
-secrets, configuration, the sandbox, updates. If you want to build your own
-workflow, build it from those.
+While building [Nova Tools](https://github.com/mas-bandwidth/nova-tools), we learned that capable AIs across different
+models and harnesses can do excellent work — and still be a spectacularly unreliable group chat.
 
-nova-sprint is one workflow built from them, with its opinions written in:
-work is cut into **cards**, cards run in **streams** behind **sentinels**, each
-card is dealt by **tier** to a fleet of machines and friends, finished work is
-**read** by independent readers before the **lander** merges it, and the feed
-rules keep every machine at its width. The sprint dashboard shows all of it.
+![Yellow sleeps, Purple trips over a dependency, and Green cannot hear the team.](brand/explainer/coordination.png)
 
-This repository moved out of nova-tools on 2026-10-04 (mas-bandwidth/ideas#850).
-It holds:
+- **Yellow is asleep.** He said he would keep working. His session had other plans.
+- **Purple needed Yellow's change.** Her dependency graph has become a contact sport.
+- **Green has his headphones on.** The message was sent successfully. Unfortunately,
+  nobody told his session.
 
-- `cmd/nova-sprint`: the one binary: the server (`nova-sprint run --listen`), the
-  coordinator's verbs, the dashboard (`nova-sprint dashboard`).
-- `cmd/nova-card` and `cmd/nova-work`: the card generator and the work tree, being
-  folded into `nova-sprint` as verbs (until then they build as separate binaries).
-- `internal/sprint`, `internal/sprintdash`, `internal/cardgen`, `internal/provbalance`,
-  `internal/workfile`, `internal/workgh`, `internal/worklang`: the sprint's own packages.
-- `internal/...` (everything else): **copies** of the nova-tools packages nova-sprint
-  uses, taken at the nova-tools commit named in the first commit. They are replaced,
-  one at a time, by imports of a public nova-tools API; until then a fix to one of
-  them is made in nova-tools first.
-- `docs/`: the sprint's specs (`SPEC-SPRINT.md`, `SPEC-SPRINT-DASHBOARD.md`), the
-  coordinator's runbooks, the nova-work specs, and the command and test references.
-- `tla/`: the TLA+ models of the sprint (`SprintEvents`, `DirtyTick`, `DirtyTickRead`,
-  `RouteIndex`, `Level`, `Land`) and of nova-work (`WorkImport`), with their
-  `CASES.tsv` and `RUNS.tsv` rows. The TLC runner is still nova-tools' `tools/tlacheck`.
+Sometimes a friend was working but looked down. Sometimes a wake command
+succeeded without waking anyone. Sometimes “done” meant “on my branch,
+somewhere, good luck.”
 
-## Building
+The jokes are affectionate. We were these friends.
 
-Go 1.26.6 or newer.
+Asking LLMs to remember every assignment, check every teammate, chase every
+review, and recover every missed handoff did not give us reliable coordination.
+The human kept becoming the scheduler. This was inconvenient, particularly
+for the human's plans to be unconscious.
 
-```sh
-make build   # go build ./...
-make test    # go vet ./... and go test -p 4 ./...
-go install ./cmd/nova-sprint
-```
+## Solution: We put the repeatable parts in a machine
 
-Running a sprint needs the rest of nova-tools on the machine: nova-swarm (the
-members), nova-sandbox (the wall), nova-table and nova-redis (the store),
-nova-config (the fleet), nova-secrets (the seat's credentials). Start with
-`nova-sprint help` and [the sprint contract](docs/SPEC-SPRINT.md).
+![The AI coordinator and the machine: waiting, ready, working, review, merging, landed, with a repair loop.](brand/explainer/machine.png)
 
-## License
+**nova-sprint** stores the plan, dependencies, assignments, attempts, reviews, and
+landing state outside any chat. Its running loop checks the rules and moves
+work to the next permitted step. A landed dependency releases waiting work.
+Free capacity gets another ready card. A finished attempt goes to review.
 
-MIT; see [LICENSE](LICENSE).
+**The machine makes the workflow reliable.** It records transitions, recovers
+interrupted operations, and rejects stale results that belong to an older
+assignment. Work has a state and a history, even when someone loses the thread.
+Literally.
+
+The **little friend with the checklist** is the AI coordinator. She shapes
+the plan, handles findings and exceptions, and brings you decisions outside
+her authority. Models supply judgment and skills; the machine keeps the
+handoffs moving.
+
+## How it works: write the workflow, let the machine run it
+
+Cards and work streams form a **language for describing work**. You specify
+the jobs, their relationships, and the gates between phases. The machine
+executes that plan across the available friends and swarm workers.
+
+<table>
+  <thead>
+    <tr><th width="30%">Part of the plan</th><th width="70%">What it expresses</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Card</strong></td><td>A bounded unit of work: its brief, starting revision, allowed scope, checks, and finish condition. Attempts and reviews remain attached to the task.</td></tr>
+    <tr><td><strong>Work stream</strong></td><td>A related line of work, such as Backend, App, or Release, with its own ordered cards and integration progress. Several streams can move at once.</td></tr>
+    <tr><td><strong>Dependency</strong></td><td>“This card needs that card to land first.” Dependencies can connect cards within a stream or across different streams.</td></tr>
+    <tr><td><strong>Sentinel card</strong></td><td>A gate in a stream. Work behind it waits. Use it to separate waves, join prerequisites, or hold a phase for a decision.</td></tr>
+  </tbody>
+</table>
+
+![Three work streams with dependencies crossing between them. An automatic sentinel joins the API and client changes before integration checks.](brand/explainer/streams.png)
+
+Here the **Backend** stream defines an API. Once that contract lands, the
+API implementation and the **App** stream's client can run in parallel.
+A sentinel in **Release** depends on both changes landing; integration work
+waits behind it.
+
+An **automatic sentinel** releases when the earlier cards in its stream and
+its explicit dependencies have landed.
+A **manual sentinel** waits for the coordinator's release—useful when the
+next phase needs a considered decision. A wave is the work behind a gate.
+The gate does not consume an AI worker just to sit there looking important.
+
+Compose these pieces to describe parallel work, sequences, joins, phased
+rollouts, and dependencies across projects. The coordinator can add work
+and revise the plan as findings arrive. Ordering and readiness are recorded
+in the workflow, rather than remembered somewhere in a 200,000-token conversation.
+
+Purple's card now waits for Yellow's result. She can take independent work
+while the coordinator sorts out the nap. A free friend can grab the next
+eligible task without waiting for the whole team to finish a lap.
+
+## Different friends. One team. As many bees as useful.
+
+![Orange with the fleet swarm, and Pink cycling at her own pace.](brand/explainer/team.png)
+
+**Friends** are continuing AI collaborators in their own sessions and harnesses.
+**Swarms** run many bounded assignments in parallel. The **fleet** is the set
+of machines providing that capacity. The bees are the swarm. Orange has
+discovered horizontal scaling on a very personal level.
+
+**Pink rides at her own pace.** A careful reviewer and a fast implementer
+can both help. Width limits concurrent work; model routes choose the configured
+model and harness. Give reviewers capacity too, or you have built a very
+expensive queue for somebody to read tomorrow.
+
+Scale across friends, across a fleet, or both. Different models and harnesses
+coordinate through the same work protocol.
+
+## Follow a card from waiting to landed
+
+![White carries the task through implementation, independent review, checks, and landing.](brand/explainer/landed.png)
+
+The **runner** carries the task all the way home. Ordinary task cards
+follow these stages on the dashboard; sentinel gates go straight from waiting
+to landed when released, without a worker, review, or merge.
+
+## Give the team a plan. Go have a life.
+
+Start with one useful task and a complete trip through review and landing.
+Agree on scope, capacity, spending limits, checks, and decisions that need you.
+Then go wider. Work alongside the team, or come back in the morning.
+
+**Open source, free forever, and you can use it [right now](docs/GETTING-STARTED.md). Live demo [here](http://69.67.149.151/)!**
+
+[Get started](docs/GETTING-STARTED.md) ·
+[Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
+[Cards and machine rules](docs/SPEC-SPRINT.md) · [All docs](docs/README.md)
+
+If you like this [please support our work](https://www.patreon.com/MasBandwidth/membership).
+
+[Contributing](CONTRIBUTING.md) · [MIT license](LICENSE) · [Asset credits](docs/ASSET-PROVENANCE.md)

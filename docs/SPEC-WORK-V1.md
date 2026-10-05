@@ -73,11 +73,16 @@ the tree.
   the writer refuses any other value rather than write it lossily.
 - GitHub's null is `()` for an enumeration or a milestone and `""` for a string (a deleted
   author, an open issue's closed time). A boolean is the symbol `true` or `false`.
+- A number field (issue, milestone, reference, linked PR) is a positive integer at most
+  2147483648 (2^31): the writer refuses anything larger and the reader refuses it too.
 - The reader (`workfile.Decode`) refuses a missing, repeated or unknown key, a value of the wrong
   kind, records out of order, a comment id repeated within an issue, and an issue whose `:url`
   is not the one its path gives. A refused file is refused whole.
 - `workfile.Limits(maxBytes)` bounds a read: the byte bound binds (depth 16, at most one atom per
-  byte). `verify --max-bytes` sets it.
+  byte). `verify --max-bytes` sets it. The default is 128 MiB (134217728 bytes), about five times
+  the current 24.9 MB tree. A hostile tree of short atoms can use roughly 100 times its file size
+  in parse memory, so the byte limit is chosen from the available memory divided by that
+  approximate multiplier; raise `--max-bytes` only with that memory cost in mind.
 
 ## 1.3 What an issue carries
 

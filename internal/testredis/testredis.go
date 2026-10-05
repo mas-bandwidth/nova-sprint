@@ -319,7 +319,8 @@ func ping(addr string, until time.Time) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	// ignored: the probe's answer is the read below; a close error on a one-shot connection has nothing left to say
+	defer func() { _ = conn.Close() }()
 	bound := conn.SetDeadline(until)
 	_, sent := io.WriteString(conn, "PING\r\n")
 	line, read := bufio.NewReader(conn).ReadString('\n')
@@ -411,7 +412,7 @@ func redact(args []string) []string {
 }
 
 // commandLine is the arguments on one line, every word quoted, so an empty
-// argument (--save "") and one with a space in it read as what they are.
+// argument (--save "") and one with a blank in it read as what they are.
 func commandLine(args []string) string {
 	words := make([]string, len(args))
 	for i, arg := range args {

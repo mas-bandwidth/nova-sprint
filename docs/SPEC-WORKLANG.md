@@ -19,13 +19,13 @@ kinds of form and nothing else:
 | list | `( ... )`, possibly empty | `List`, its members in order |
 | keyword | `:name` | `Keyword`, the name without the colon |
 | string | `"..."` | `String`, decoded; a backslash takes the next byte literally |
-| integer | decimal digits, optionally signed with `+` or `-` | `Integer` |
+| integer | decimal digits fitting in int64, optionally signed with `+` or `-` | `Integer` |
 | symbol | any other bare token, such as `go-fix` or `false` | `Symbol`, verbatim |
 
 A `;` starts a comment that runs to the end of its line. Comments and whitespace are text,
 never syntax. A keyword that is empty or holds a second `:` is refused as a forbidden token
 at its byte. **Every token that starts with a digit, `+` or `-` goes to the integer reader**, so
-it must be an integer: a sign with no digits after it (`-x`, a bare `+`) or digits followed
+it must be an integer: an integer must fit in int64 (a value that overflows int64 bounds is refused as a forbidden token at its byte); a sign with no digits after it (`-x`, a bare `+`) or digits followed
 directly by a non-boundary byte (`12abc`) is refused as a forbidden token at its byte, never read
 as a symbol.
 
@@ -40,6 +40,11 @@ evaluate or escape, each at its own byte offset: `#` (a dispatch macro such as `
 at its opening byte. Every atom (keyword, string, integer, symbol) counts as one node, and the
 atom past `MaxNodes` is refused at its byte. A limits value with any bound at zero or below is
 refused rather than guessed. Past a bound, the input is refused whole and never truncated.
+
+The byte limit also controls the parser's memory exposure, but it is not an RSS limit: a hostile
+tree with very short atoms can require roughly 100 times its file size in memory. The tree file
+reader permits up to one node per byte, so its node limit does not give a tighter memory bound.
+Callers choose `MaxBytes` for the memory they can afford divided by that approximate multiplier.
 
 **One form per file.** Bytes after the first form, an unbalanced list and an unterminated
 string are each refused naming the byte.

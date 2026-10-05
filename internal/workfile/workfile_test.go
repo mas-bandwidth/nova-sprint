@@ -134,6 +134,48 @@ func TestTheReaderRefusesWhatTheWriterWouldNotWrite(t *testing.T) {
 	})
 }
 
+// TestTheReaderRefusesANonCanonicalNumberSpelling (SPEC-WORK-V1 section
+// 1.2): the file is canonical, so a number's spelling is the one
+// strconv.Itoa writes; a leading '+' or leading zeros is refused, naming the
+// key, and the untouched file still round-trips byte for byte.
+func TestTheReaderRefusesANonCanonicalNumberSpelling(t *testing.T) {
+	t.Parallel()
+	tr := hard()
+	is := &tr.Repos[1].Issues[1] // issue 4 becomes 7, so +7 and 007 spell the same value
+	is.Number = 7
+	is.URL = workfile.Web + "o/b/issues/7"
+	tr.Repos[1].Issues[0].References[0].Number = 1 // the reference's number to spell 01
+	data, err := workfile.Encode(tr)
+	require.NoError(t, err)
+	s := string(data)
+	cases := []struct {
+		name, from, to string
+	}{
+		{"plus", "(issue 7\n", "(issue +7\n"},
+		{"leading zeros", "(issue 7\n", "(issue 007\n"},
+		{"reference 01", `:number 1 :url`, `:number 01 :url`},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Contains(t, s, tc.from, "%s: the fixture lacks %q", tc.name, tc.from)
+			bad := strings.Replace(s, tc.from, tc.to, 1)
+			_, err := workfile.Decode("t.lisp", []byte(bad), workfile.Limits(len(bad)))
+			assert.ErrorContains(t, err, ":number wants a positive integer", "%s: err=%v, want it to name the key", tc.name, err)
+		})
+	}
+
+	t.Run("canonical file still round-trips", func(t *testing.T) {
+		t.Parallel()
+		back, err := workfile.Decode("t.lisp", data, workfile.Limits(len(data)))
+		require.NoError(t, err, "the untouched file was refused: %v", err)
+		again, err := workfile.Encode(back)
+		require.NoError(t, err)
+		assert.True(t, bytes.Equal(again, data), "the round trip changed the bytes")
+	})
+}
+
 // TestEncodeRefusesALossyValue: a value the file could not give back
 // unchanged is refused, never written.
 func TestEncodeRefusesALossyValue(t *testing.T) {
@@ -292,4 +334,79 @@ func TestOriginOf(t *testing.T) {
 	require.Equal(t, "internal", workfile.OriginOf("COLLABORATOR"), "origin")
 	require.Equal(t, "external", workfile.OriginOf("CONTRIBUTOR"), "origin")
 	require.Equal(t, "external", workfile.OriginOf(""), "origin")
+}
+
+// TestDecodeRefusesANullSourceReferenceCarryingARepoOrURL pins security#82
+// finding 4: a null-source reference is canonical only with empty repo and url.
+func TestDecodeRefusesANullSourceReferenceCarryingARepoOrURL(t *testing.T) {
+	t.Parallel()
+	canonical, err := workfile.Encode(hard())
+	require.NoError(t, err)
+	t.Run("repo on a null source", func(t *testing.T) {
+		t.Parallel()
+		s := strings.Replace(string(canonical), `:kind "" :repo ""`, `:kind "" :repo "o/a"`, 1)
+		_, err := workfile.Decode("repo", []byte(s), workfile.Limits(len(s)))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "repo")
+	})
+	t.Run("url on a null source", func(t *testing.T) {
+		t.Parallel()
+		s := strings.Replace(string(canonical), `:kind "" :repo ""`, `:kind "" :repo ""`, 1)
+		s = strings.Replace(s, `:number 0 :url ""`, `:number 0 :url "https://example.invalid/o/a"`, 1)
+		_, err := workfile.Decode("url", []byte(s), workfile.Limits(len(s)))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "url")
+	})
+	t.Run("untouched round-trips", func(t *testing.T) {
+		t.Parallel()
+		back, err := workfile.Decode("same", canonical, workfile.Limits(len(canonical)))
+		require.NoError(t, err)
+		again, err := workfile.Encode(back)
+		require.NoError(t, err)
+		assert.True(t, bytes.Equal(canonical, again))
+	})
+}
+
+// TestEncodeRefusesANumberDecodeWouldRefuse pins security#82 finding 3:
+// Encode accepts the same positive-integer bound decoder.num enforces, so a
+// tree with an issue, reference or linked-PR number above 2^31 is refused
+// instead of encoding bytes that cannot read back.
+func TestEncodeRefusesANumberDecodeWouldRefuse(t *testing.T) {
+	t.Parallel()
+	base := func(issue int) *workfile.Tree {
+		return &workfile.Tree{Source: "github", Org: "o", Fetched: "2026-01-01T00:00:00Z", Repos: []workfile.Repo{{
+			Name: "o/a", URL: workfile.Web + "o/a",
+			Issues: []workfile.Issue{{Number: issue, URL: workfile.IssueURL("o/a", issue), NodeID: "I_1", Title: "", State: "OPEN", Origin: "internal", AuthorAssociation: "OWNER"}},
+		}}}
+	}
+	for _, n := range []int{2147483648, 2147483649} {
+		data, err := workfile.Encode(base(n))
+		if n == 2147483648 {
+			require.NoError(t, err)
+			back, err := workfile.Decode("x", data, workfile.Limits(len(data)))
+			require.NoError(t, err)
+			require.Len(t, back.Repos, 1)
+			require.Len(t, back.Repos[0].Issues, 1)
+			assert.Equal(t, n, back.Repos[0].Issues[0].Number)
+			continue
+		}
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "2147483649")
+		assert.Contains(t, err.Error(), "above")
+	}
+
+	linked := base(1)
+	linked.Repos[0].Issues[0].LinkedPRs = []workfile.LinkedPR{{Repo: "o/a", Number: 2147483648, URL: "u", State: "MERGED"}}
+	data, err := workfile.Encode(linked)
+	require.NoError(t, err)
+	back, err := workfile.Decode("x", data, workfile.Limits(len(data)))
+	require.NoError(t, err)
+	require.Len(t, back.Repos[0].Issues[0].LinkedPRs, 1)
+	assert.Equal(t, 2147483648, back.Repos[0].Issues[0].LinkedPRs[0].Number)
+
+	linked.Repos[0].Issues[0].LinkedPRs[0].Number = 2147483649
+	_, err = workfile.Encode(linked)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "2147483649")
+	assert.Contains(t, err.Error(), "above")
 }

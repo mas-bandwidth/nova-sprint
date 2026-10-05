@@ -1,0 +1,24 @@
+{
+  "canvas": [
+    1872,
+    624
+  ],
+  "background_crop": [
+    0,
+    0,
+    1872,
+    624
+  ],
+  "runner_position": [
+    95,
+    34
+  ],
+  "runner_height": 548,
+  "logo_position": [
+    740,
+    125
+  ],
+  "logo_width": 1020,
+  "source_character": "../white.png",
+  "source_wordmark": "../wordmark.png"
+}

@@ -76,9 +76,10 @@ func (r HealthReq) Replays() bool {
 
 // NotHealth is why the observation is refused, "" is accepted: the sender is
 // the seat's holder, at the seat's generation, of a friend on the table, with
-// a proof newer than the row's. It reads nothing but its arguments, so the
-// step refuses on its own read of the seat.
-func NotHealth(holder string, generation uint64, r HealthReq) string {
+// a proof dated no later than now, the server's clock, and newer than the row's.
+// It reads nothing but its arguments, so the step refuses on its own read of
+// the seat and its own clock.
+func NotHealth(holder string, generation uint64, now time.Time, r HealthReq) string {
 	switch {
 	case !r.Known:
 		return "no friend " + r.Friend + " on the friends table; run: nova-sprint friend sync"
@@ -88,6 +89,8 @@ func NotHealth(holder string, generation uint64, r HealthReq) string {
 		return "friend health is the seat's: " + holder + ", not " + orDash(r.Who)
 	case r.Obs.Generation != generation:
 		return fmt.Sprintf("the seat is %s's at generation %d, and this observation names generation %d: read the seat again (nova-sprint seat)", holder, generation, r.Obs.Generation)
+	case r.Obs.Seen.After(now):
+		return fmt.Sprintf("the proof is dated %s, after the server's clock, %s: a proof from the future renews nothing", r.Obs.Seen.UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339))
 	case r.Prev.Observed() && !r.Obs.Seen.After(r.Prev.Seen):
 		return fmt.Sprintf("the row holds a proof seen at %s, and this one's is not newer, %s: an older or repeated proof renews nothing", r.Prev.Seen.UTC().Format(time.RFC3339), r.Obs.Seen.UTC().Format(time.RFC3339))
 	}
@@ -98,12 +101,38 @@ func NotHealth(holder string, generation uint64, r HealthReq) string {
 // step's commit writes as the friend's record, or its refusal.
 func ObserveFriend(s *Snapshot, r HealthReq) Plan {
 	var p Plan
-	if why := NotHealth(s.Coordinator, s.SeatGeneration, r); why != "" {
+	if why := NotHealth(s.Coordinator, s.SeatGeneration, s.Now, r); why != "" {
 		p.refuse(r.Friend, why)
 		return p
 	}
 	h := r.Obs
 	p.Health = &FriendHealthWrite{Friend: r.Friend, Health: h}
+	return p
+}
+
+// HealthClearReq is the removal of a friend's observation (friend health --clear): who
+// sends it (the seat's holder) and the friend (Known says the roster has her).
+type HealthClearReq struct {
+	Friend, Who string
+	Known       bool
+}
+
+// ClearFriendHealth is the observation removed: the plan's HealthClear, which the step's
+// commit applies by removing her record, so her status falls back to her beat rule
+// (FriendStatus), or its refusal: the sender is the seat's holder, of a friend on the
+// table. A friend with no observation is cleared all the same (nothing to remove).
+func ClearFriendHealth(s *Snapshot, r HealthClearReq) Plan {
+	var p Plan
+	switch {
+	case !r.Known:
+		p.refuse(r.Friend, "no friend "+r.Friend+" on the friends table; run: nova-sprint friend sync")
+	case s.Coordinator == "":
+		p.refuse(r.Friend, "the sprint has no coordinator; run: nova-sprint init --coordinator <name>")
+	case r.Who != s.Coordinator:
+		p.refuse(r.Friend, "friend health is the seat's: "+s.Coordinator+", not "+orDash(r.Who))
+	default:
+		p.HealthClear = []string{r.Friend}
+	}
 	return p
 }
 
@@ -117,9 +146,10 @@ type FriendHealthWrite struct {
 // now, for a friend observed at least once: up only when the observation's
 // word is up, under the current seat generation (an old seat's proof never
 // looks up under a new seat), with its proof under FriendObservedDownAfter
-// old; down otherwise, whatever finer word the row keeps.
+// old and not dated after now (a negative age is no proof); down otherwise,
+// whatever finer word the row keeps.
 func ObservedStatus(h FriendHealth, generation uint64, now time.Time) string {
-	if h.State == Up && h.Generation == generation && now.Sub(h.Seen) < FriendObservedDownAfter {
+	if age := now.Sub(h.Seen); h.State == Up && h.Generation == generation && age >= 0 && age < FriendObservedDownAfter {
 		return Up
 	}
 	return Down

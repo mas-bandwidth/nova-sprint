@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,11 +15,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
 )
 
@@ -76,8 +78,18 @@ func workerVerb(argv []string) (as string, words int, why string) {
 		}
 		return argv[2], 2, ""
 	}
-	if len(argv) == 0 || !slices.Contains([]string{"take", "finish", "read", "queue"}, argv[0]) {
-		return "", 0, "the server runs the workers' verbs only: take, finish, read, queue, fleet beat, friend beat"
+	if len(argv) >= 2 && argv[0] == "lane" && (argv[1] == "take" || argv[1] == "give") {
+		// a lane's take or give (lane.go; docs/SPEC-SPRINT.md section 18): its kind, the
+		// machine and the worker, and nothing more; the server never waits (--wait asks again
+		// from the worker's side)
+		rest := argv[2:]
+		if len(rest) != 5 || !slices.Contains(sprint.LaneKinds, rest[0]) || rest[1] != "--machine" || !sprint.ValidID(rest[2]) || rest[3] != "--as" || !sprint.ValidID(rest[4]) {
+			return "", 0, "a lane's verb sent to the server is `lane " + argv[1] + " <kind> --machine <m> --as <worker>` and nothing more, the kind one of " + strings.Join(sprint.LaneKinds, ", ")
+		}
+		return rest[4], 2, ""
+	}
+	if len(argv) == 0 || !slices.Contains([]string{"take", "finish", "progress", "read", "queue"}, argv[0]) {
+		return "", 0, "the server runs the workers' verbs only: take, finish, progress, read, queue, fleet beat, friend beat, lane take, lane give"
 	}
 	verb, rest := argv[0], argv[1:]
 	if len(rest) < 2 || rest[0] != "--as" {
@@ -142,132 +154,54 @@ func flagWord(words []string, name string) (value string, ok bool) {
 // notServed are the verbs the server runs for nobody: itself (run, tick), the ones that
 // work for seconds or minutes outside the store (land's git, the driver), fleet sync and
 // friend sync, which read the config store with their caller's own credentials, friend
-// clean, which works on the directories of the machine it runs on, dashboard, which
-// serves a page until it is interrupted and reads through the server, and the work
-// verbs, which name a file on the machine where they are typed (internal/work). The
-// round-trip is not built, so a run reads nothing and writes nothing.
-var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sync", "friend clean", "dashboard", "answer", "work repos", "work issues", "work roadmap", "work export", "work import"}
+// clean and friend reconcile, which work on the directories of the machine they run on, and dashboard, which
+// serves a page until it is interrupted and reads through the server, and seat install
+// and seat uninstall, which install the push loop as a service of the machine they are
+// typed on.
+var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sync", "friend reconcile", "friend clean", "dashboard", "answer", "seat install", "seat uninstall", "selftest land", "server switch"}
 
-// ServeWait is how long a batch waits for the line of control before it is answered
-// without it. Measured 2026-10-04 12:54 PM ET: with the machine STOPPED, a verb sent to
-// the loopback listener went unanswered until the client's own timeout (8 s), so every
-// friend's beat and every worker's verb failed, and the tables read every friend silent.
-// A batch that waits longer than this is answered at once, each verb exit 2 with what
-// holds the line and nothing changed, and its sender sends it again: a verb is answered
-// within a second of being read, whatever holds the line and for however long.
-const ServeWait = time.Second
-
-// line is the server's one line of control (a.serial): a lock that a batch can wait for
-// for a bounded time, and that says what holds it. Its zero value is free.
-type line struct {
-	once sync.Once
-	ch   chan struct{} // holds one token while the line is held
-	mu   sync.Mutex    // guards who
-	who  string        // what holds the line, "" for a step that did not say
-}
-
-func (l *line) token() chan struct{} {
-	l.once.Do(func() { l.ch = make(chan struct{}, 1) })
-	return l.ch
-}
-
-// Lock takes the line, waiting for as long as it is held.
-func (l *line) Lock() { l.LockAs("") }
-
-// LockAs takes the line as who: what a batch that cannot take it is told holds it.
-func (l *line) LockAs(who string) {
-	l.token() <- struct{}{}
-	l.hold(who)
-}
-
-// LockWithin takes the line as who unless wait fires first; then it takes nothing and
-// says what held the line.
-func (l *line) LockWithin(who string, wait func() <-chan time.Time) (held string, ok bool) {
-	if !l.TryLock() { // a free line is taken at once, on no clock
-		select {
-		case l.token() <- struct{}{}:
-		case <-wait():
-			l.mu.Lock()
-			defer l.mu.Unlock()
-			return l.who, false
-		}
-	}
-	l.hold(who)
-	return "", true
-}
-
-// TryLock takes the line when it is free, at once, and says whether it did.
-func (l *line) TryLock() bool {
-	select {
-	case l.token() <- struct{}{}:
-		l.hold("")
-		return true
-	default:
-		return false
-	}
-}
-
-// Unlock frees the line.
-func (l *line) Unlock() {
-	l.hold("")
-	select {
-	case <-l.token():
-	default:
-		panic("nova-sprint: the line of control was freed while free")
-	}
-}
-
-func (l *line) hold(who string) {
-	l.mu.Lock()
-	l.who = who
-	l.mu.Unlock()
-}
-
-// busyAnswer is the answer of every verb of a batch that could not take the line within
-// ServeWait: exit 2, what held the line, nothing changed, send it again.
-func busyAnswer(argv []string, held string) sprintwire.Result {
-	verb := ""
-	if len(argv) > 0 {
-		verb = argv[0]
-	}
-	if held == "" {
-		held = "another step of the server (a landing's read or report, the decide lane, the balance poll)"
-	}
-	return sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s: busy: %s held the line of control past %s; nothing was run or changed; send it again\n", prog, oneline.Escape(verb), oneline.Escape(held), ServeWait)}
-}
-
-// serveFrom is the server's one step: the batch's verbs run in order, each through
+// serveCtx is the server's one step: the batch's verbs run in order, each through
 // the verb's own code with its worker as the actor, and each answered. The
 // server's own words (the store, the actor) go between the verb and what the
 // worker sent. A verb the server does not run (workerVerb) is answered as a
 // usage refusal, exit 2, and the batch goes on: every verb has its own answer.
 // Local batches run any verb the server runs (verbArgs.unserved), while fleet
-// batches run a worker's verbs only.
-// One batch, and one tick, at a time (a.serial): the lock is taken here, after
-// the request is read whole, and released before any answer is written, so a
-// slow worker never holds the tick. A batch waits for the line at most ServeWait
-// (on a.after, the app's clock): past it every verb is answered busy, having run
-// nothing, so a tick, a landing's step or another batch that holds the line never
-// holds a verb past its bound. The reads and the beats need nothing of the tick, so
-// a STOPPED machine answers them as a RUNNING one does.
-func (a *app) serveFrom(req sprintwire.Request, local bool) sprintwire.Response {
+// batches run a worker's verbs only. It is for a caller that can go away (ctx, the request's). A friend's
+// beat runs on the beat lane and a read on the read lane, neither on the line
+// (servelanes.go); every other verb runs on the line (a.serial), one batch's verbs and
+// one tick at a time: the line is taken at the batch's first such verb, after the
+// request is read whole, held to the batch's end, and released before any answer is
+// written, so a slow worker never holds the tick. A batch waits for the line only while
+// its caller waits for the answer: a caller gone (ctx done) before the line is taken has
+// its verbs from there on not run, each answered exit 2 saying so, and nothing changed.
+func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) sprintwire.Response {
 	out := sprintwire.Response{Results: make([]sprintwire.Result, len(req.Verbs))}
-	held, ok := a.serial.LockWithin(fmt.Sprintf("a batch of %d verbs", len(req.Verbs)), func() <-chan time.Time { return a.after(ServeWait) })
-	if !ok {
-		for i, argv := range req.Verbs {
-			out.Results[i] = busyAnswer(argv, held)
+	lanes := a.lanesFor(ctx)
+	begun := a.now()
+	var took time.Time
+	held, beats, reads, onLine, gone := false, 0, 0, 0, 0
+	var first []string
+	defer func() {
+		var wait, hold time.Duration
+		if held {
+			a.serving = false
+			hold = a.now().Sub(took)
+			wait = took.Sub(begun)
+			a.serial.Unlock()
 		}
-		return out
-	}
-	defer a.serial.Unlock()
-	defer func() { a.serving = false }()
+		a.tally(beats, reads, onLine, gone, wait, hold, first)
+	}()
 	for i, argv := range req.Verbs {
 		var args []string
+		serving, lane := false, ""
 		as, words, why := workerVerb(argv)
 		switch {
 		case why == "":
 			// a worker's write names the epoch its worker holds, whoever sent it (runStep)
-			a.serving = true
+			serving = true
+			if lanes != nil && isFriendBeat(argv) {
+				lane = "beat"
+			}
 			args = slices.Concat(argv[:words], []string{"--redis", a.serveAddr, "--actor", as}, argv[words:])
 		case local:
 			v := readVerb(argv)
@@ -275,7 +209,10 @@ func (a *app) serveFrom(req sprintwire.Request, local bool) sprintwire.Response 
 				// a worker's verb is held to the epoch its worker holds whatever its words
 				// (runStep); who acts is the caller's --actor, and no one when it gave none,
 				// never whoever the server's own environment names
-				a.serving = verbClasses[v.name] == classWorker
+				serving = verbClasses[v.name] == classWorker
+				if lanes != nil && v.err == nil && !v.help && onReadLane(v) {
+					lane = "read"
+				}
 				args = slices.Concat(argv[:v.words], []string{"--redis", a.serveAddr, "--actor", ""}, argv[v.words:])
 			}
 		}
@@ -287,9 +224,43 @@ func (a *app) serveFrom(req sprintwire.Request, local bool) sprintwire.Response 
 			out.Results[i] = sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s: %s; nothing was changed\n", prog, oneline.Escape(verb), oneline.Escape(why))}
 			continue
 		}
+		switch lane {
+		case "beat":
+			beats++
+			out.Results[i] = lanes.friendBeat(ctx, a, argv, args[words:])
+			continue
+		case "read":
+			reads++
+			out.Results[i] = lanes.readVerbRun(ctx, args)
+			continue
+		}
+		if !held {
+			if err := a.serial.LockCtx(ctx); err != nil {
+				for j := i; j < len(req.Verbs); j++ {
+					out.Results[j] = goneResult(req.Verbs[j])
+					gone++
+				}
+				return out
+			}
+			held, took, first = true, a.now(), argv
+		}
+		onLine++
+		a.serving = serving
 		var stdout, stderr bytes.Buffer
 		code := a.run(args, &stdout, &stderr)
 		out.Results[i] = sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String()}
+		if code == 0 && len(argv) > 0 && argv[0] == "queue" && as != "" {
+			if st, err := a.store(common{redis: a.serveAddr, actor: as}); err == nil && st != nil {
+				// ignored: a best-effort lease renewal on reader beat; next beat will renew
+				_, _ = st.Run(ctx, store.Step{
+					Verb: "lease",
+					Load: []string{sprint.Readers},
+					Plan: func(s *sprint.Snapshot) sprint.Plan {
+						return sprint.RenewReaderLeases(s, as)
+					},
+				})
+			}
+		}
 	}
 	return out
 }
@@ -304,6 +275,10 @@ type localHandler struct{ a *app }
 func (h localHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) { h.a.serveHTTP(w, r, true) }
 
 func (a *app) serveHTTP(w http.ResponseWriter, r *http.Request, local bool) {
+	if strings.HasPrefix(r.URL.Path, viewPath) {
+		a.serveView(w, r)
+		return
+	}
 	if r.URL.Path != sprintwire.Path || r.Method != http.MethodPost {
 		http.Error(w, "the sprint server takes POST "+sprintwire.Path, http.StatusNotFound)
 		return
@@ -336,7 +311,7 @@ func (a *app) serveHTTP(w http.ResponseWriter, r *http.Request, local bool) {
 		out = gz
 	}
 	// ignored: a worker that has gone reads no answer; what ran is in the sprint's log
-	_ = json.NewEncoder(out).Encode(a.serveFrom(req, local))
+	_ = json.NewEncoder(out).Encode(a.serveCtx(r.Context(), req, local))
 }
 
 // takesGzip says a request's Accept-Encoding names gzip and does not refuse it (q=0).
@@ -376,7 +351,7 @@ func listenRefused(host string) string {
 // (docs/SPEC-SPRINT.md section 14, The server). The refusal is returned before
 // a socket is opened. The coordinator's verbs stay on loopback; a private or
 // tailnet address is the workers' listener beside that loopback listener.
-func (a *app) listen(addr, store string, stdout io.Writer) error {
+func (a *app) listen(addr, redis string, stdout io.Writer) error {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return fmt.Errorf("--listen wants host:port, found %s", addr)
@@ -393,7 +368,14 @@ func (a *app) listen(addr, store string, stdout io.Writer) error {
 	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
 		lns[addr] = a
 	}
-	a.serveAddr = store
+	a.serveAddr, a.serveLog = redis, stdout
+	// the lanes are made before the first batch, while the line is free: a batch never
+	// waits for the line to make them (servelanes.go)
+	a.lanesFor(context.Background())
+	if st, err := a.store(common{redis: redis}); err == nil && st != nil {
+		// ignored: a best-effort read cleanup on server listen; tick takes care of any subsequent lapses
+		_ = a.serverStart(context.Background(), st)
+	}
 	for at, h := range lns {
 		ln, err := net.Listen("tcp", at)
 		if err != nil {
@@ -424,6 +406,14 @@ var friendBeatFlags = map[string]func(string) bool{
 		f, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64)
 		return err == nil && f >= 0
 	},
+	"--active": rfc3339,
+	"--pong":   rfc3339,
+}
+
+// rfc3339 is the shape of a time.
+func rfc3339(v string) bool {
+	_, err := time.Parse(time.RFC3339, v)
+	return err == nil
 }
 
 // wholeAtLeast is the shape of a count of at least min.
@@ -461,9 +451,79 @@ func runningIDs(v string) bool {
 		return false
 	}
 	for _, r := range v {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._-~,", r)) {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && !strings.ContainsRune("._-~,", r) {
 			return false
 		}
 	}
 	return true
+}
+
+// viewPath is where the server serves the role views (view.go): GET /api/view/coordinator
+// and GET /api/view/worker?as=<name>, each with since=<cursor>, and the coordinator's with
+// all=1. They are reads, served on both listeners as the workers' queue is: the fleet's
+// private network is the whole of the access control (listen).
+const viewPath = "/api/view/"
+
+// serveView runs view <role> --json for a GET, on the line of control as any verb the server
+// runs (a.serial: never during a tick), and answers its JSON, gzipped for a client that takes
+// it. A role, a name or a cursor of the wrong shape is a 400 and nothing is run; a name that
+// is no worker of the sprint is a 404; a store that did not answer is a 503; each with the
+// verb's line.
+func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "the views are read with GET "+viewPath+"coordinator or "+viewPath+"worker?as=<name>", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	role := strings.TrimPrefix(r.URL.Path, viewPath)
+	argv := []string{"view", role, "--redis", a.serveAddr, "--actor", "", "--json"}
+	switch role {
+	case "coordinator":
+		if on, err := strconv.ParseBool(cmp.Or(q.Get("all"), "false")); err != nil {
+			http.Error(w, "all is 1 or 0: "+oneline.Err(err), http.StatusBadRequest)
+			return
+		} else if on {
+			argv = append(argv, "--all")
+		}
+	case "worker":
+		as := q.Get("as")
+		if !sprint.ValidID(as) {
+			http.Error(w, "as=<name> names one fleet member or friend (letters, digits, _ and -)", http.StatusBadRequest)
+			return
+		}
+		argv = append(argv, "--as", as)
+	default:
+		http.Error(w, "the views are "+viewPath+"coordinator and "+viewPath+"worker?as=<name>", http.StatusNotFound)
+		return
+	}
+	if since := q.Get("since"); since != "" {
+		if _, err := parseCursor(since); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		argv = append(argv, "--since", since)
+	}
+	var stdout, stderr bytes.Buffer
+	a.serial.Lock()
+	code := a.run(argv, &stdout, &stderr)
+	a.serial.Unlock()
+	switch code {
+	case 0:
+	case 1:
+		http.Error(w, strings.TrimSpace(stderr.String()), http.StatusNotFound)
+		return
+	default:
+		http.Error(w, strings.TrimSpace(stderr.String()), http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	var out io.Writer = w
+	if takesGzip(r.Header.Get("Accept-Encoding")) {
+		w.Header().Set("Content-Encoding", "gzip")
+		gz := gzip.NewWriter(w)
+		defer func() { _ = gz.Close() }() // ignored: a reader that has gone reads no answer
+		out = gz
+	}
+	_, _ = out.Write(stdout.Bytes()) // ignored: a reader that has gone reads no answer
 }

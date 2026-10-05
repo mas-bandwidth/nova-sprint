@@ -199,6 +199,30 @@ func FriendWidth(r Row) int {
 	return r.Int("width")
 }
 
+// FriendModes are how a friend's daemon (nova-friend run) hands her work:
+// batch, every waiting message as one turn of her one session; one-shot,
+// width lanes, each its own session of her, handed one card per turn and
+// waiting for that card's RESULT.md before the next (docs/SPEC-FRIEND.md,
+// one-shot lanes; the owner, 2026-10-04: "so [she] can still be wide, it's
+// just 8 [of her]").
+var FriendModes = []string{FriendModeBatch, FriendModeOneShot}
+
+// The delivery modes, and the default a row without one has.
+const (
+	FriendModeBatch   = "batch"
+	FriendModeOneShot = "one-shot"
+	DefaultFriendMode = FriendModeBatch
+)
+
+// FriendMode is a friend row's delivery mode: its mode field,
+// DefaultFriendMode when the row has none.
+func FriendMode(r Row) string {
+	if m := r.Fields["mode"]; m != "" {
+		return m
+	}
+	return DefaultFriendMode
+}
+
 // checkFriend is the friend kind's Check: her width is at least 1, a friend
 // working no job at once being no friend of the sprint's (remove the row
 // instead). A width that failed its own validation is absent and skipped.
@@ -209,8 +233,9 @@ func checkFriend(r Row) error {
 	return nil
 }
 
-// Tiers are the model tiers a friend can do, capacity.lua's filter_ok
-// spelling (frontier, pro, flash).
+// Tiers are the model tiers a friend can do, capacity.lua's filter_ok list
+// (docs/SPEC-CONFIG.md, "friend"); TestTiersMatchCapacityFilter holds the Go
+// and Lua lists equal.
 var Tiers = []string{"flash", "frontier", "heavy", "pro"}
 
 // RouteTiers are the tiers a route serves: Tiers less frontier, whose cards
@@ -260,6 +285,18 @@ const (
 // nova-sprint answer applies the verb it chose at or above it. Apply writes
 // it to SprintKey(FieldDecideJudgment), which the sprint's routes read takes.
 const FieldDecideJudgment = "decide_judgment_bar"
+
+// FieldAnswerRulesOff is the sprint row's off switch of the tick's rule answers (docs/SPEC-SPRINT.md
+// section 8, answered by rule): a list of AnswerRules, each a rule the machine does not
+// answer a judgment by while it is listed. Apply writes it to SprintKey(FieldAnswerRulesOff),
+// which the sprint's routes read takes.
+const FieldAnswerRulesOff = "answer_rules_off"
+
+// AnswerRules is every rule the sprint answers a mechanical judgment by (internal/sprint,
+// RuleNames, which a test holds equal): work came back failed, a card at its bound, a work
+// card past its deadline, a stream stopped on a conflict in a file no ledger owns, the same
+// finding twice (a brief defect), and the lander's base tree gate retried.
+var AnswerRules = []string{"base-gate", "bound", "brief-defect", "conflict", "failed", "late"}
 
 // FieldDecideBriefBar is the sprint row's bar on a brief decision's p(converges)
 // (internal/decide, BriefBar; docs/SPEC-NOVA-DECIDE.md section 14): nova-sprint add
@@ -348,13 +385,14 @@ var Kinds = []*Kind{
 		Name:      KindFleet,
 		Table:     "fleet",
 		Singleton: true,
-		Doc:       "the one row of fleet-wide facts: the store and coordinator machines, Redis port, explicit password-free Postgres URI and the bus store's address",
+		Doc:       "the one row of fleet-wide facts: the store and coordinator machines, Redis port, explicit password-free Postgres URI, the bus store's address and the loops log directory",
 		Fields: []Field{
 			{Name: "store", Type: TypeRef, Ref: KindMachine, Help: "the machine that runs Redis (a machine row), or empty"},
 			{Name: "coordinator", Type: TypeRef, Ref: KindMachine, Help: "the machine the coordinator's loops run on (a machine row), or empty"},
 			{Name: "redis_port", Type: TypeInt, Nullable: true, Help: "the explicit TCP port Redis listens on, from 1 through 65535; unset until declared"},
 			{Name: "pg_dsn", Type: TypeText, Help: "the explicit password-free postgres:// URI the configuration store uses; empty until set"},
 			{Name: "bus", Type: TypeText, Help: "the bus store's Redis address, host:port, what nova-bus reads from the applied fleet:bus when NOVA_BUS_REDIS is unset; empty until set"},
+			{Name: "loops_dir", Type: TypeText, Help: "the directory where loop logs are written; non-empty, seeded to ~/nova-bench/loops"},
 		},
 		Check: checkFleet,
 	},
@@ -365,12 +403,13 @@ var Kinds = []*Kind{
 		// rather than stored in configuration.
 		Name:  KindFriend,
 		Table: "friends",
-		Doc:   "an AI friend: her slots, which tiers she can do, her roles, and her width, the jobs she works at once",
+		Doc:   "an AI friend: her slots, which tiers she can do, her roles, and her width, the jobs she works at once, and her delivery mode",
 		Fields: []Field{
 			{Name: "slots", Type: TypeInt, Required: true, Help: "her desired slots, under the ceiling of the machine her beat reports; no machine's width"},
 			{Name: "tiers", Type: TypeList, Enum: Tiers, Required: true, Help: "which tiers she can do: comma list of " + strings.Join(Tiers, ", ")},
 			{Name: "roles", Type: TypeList, Enum: FriendRoles, Help: "comma list of " + strings.Join(FriendRoles, ", ") + " (who coordinates is the sprint row's)"},
 			{Name: "width", Type: TypeInt, Default: strconv.Itoa(DefaultFriendWidth), Help: "the jobs she works at once, the width nova-sprint friend sync sets on her friends row; at least 1, " + strconv.Itoa(DefaultFriendWidth) + " by default"},
+			{Name: "mode", Type: TypeEnum, Enum: FriendModes, Default: DefaultFriendMode, Help: "how her daemon hands her work: batch (the default: every waiting message in one turn) or one-shot (width lanes, each its own session, handed one card per turn)"},
 		},
 		Check: checkFriend,
 		ApplyOrder: func(r Row) int {
@@ -398,6 +437,7 @@ var Kinds = []*Kind{
 			{Name: FieldDecideGatePreexisting, Type: TypeDecimal, Default: "", Help: "the gate decision's pre-existing bar: a work card's failing test whose p(pre-existing) is at or above it is reported `pre-existing: <test>`, the base's or the member's and never the card's; a probability; empty (the default) reclassifies nothing; 0.8 is the starting point, though at 0.8 24 of the calibration's 39 flaky failures would have been reported pre-existing"},
 			{Name: FieldDecideJudgment, Type: TypeDecimal, Help: "the judgment bar: nova-sprint answer applies the verb the judgment decision chose when its probability is at or above it, and lists it for the coordinator below it; a probability; empty (the default) applies nothing: every decision is recorded and what a bar would apply is listed; 0.8 is a starting point measured on 100 of the coordinator's own judgments (docs/SPEC-NOVA-DECIDE.md section 13), not an independent calibration"},
 			{Name: FieldDecideBriefBar, Type: TypeDecimal, Help: "the brief bar: nova-sprint add asks the brief decision of each card and refuses a card whose p(converges) is under it, naming the questions it failed; a probability; empty (the default) asks and reports only. The decision is uncalibrated (AUC 0.600 on 234 review labels, docs/SPEC-NOVA-DECIDE.md section 14): leave it empty until calibrate on the brief record's own outcomes supports a bar"},
+			{Name: FieldAnswerRulesOff, Type: TypeList, Enum: AnswerRules, Help: "the rules the machine does not answer judgments by: comma list of " + strings.Join(AnswerRules, ", ") + "; empty (the default) answers by every rule: failed and no-result work redealt then raised a tier, a card at its bound raised a tier (heavy to a friend), a late card waited once or returned and redealt, a conflict in a file no ledger owns returned, redone on the tip and resumed, the same finding twice marked a brief defect, and the base tree gate retried before a stream stops (docs/SPEC-SPRINT.md section 8, answered by rule)"},
 		},
 		Check: checkSprint,
 	},
@@ -408,7 +448,7 @@ var Kinds = []*Kind{
 		// value is data in the row; the code names no machine, seat or
 		// secret (docs/SPEC-CONFIG.md, "loop"). The plays render one unit
 		// per row from the Redis view apply writes; the log path is derived
-		// from the name (LoopLog), never typed.
+		// from the fleet's loops_dir and the name (LoopLog), never typed.
 		Name:  KindLoop,
 		Table: "loops",
 		Doc:   "a supervised loop on one machine: its command, the seat and secret names it opens, and how it runs (every n seconds or kept alive); a nova-swarm member's width, a reader's too, is its machine row's, never the argv's",
@@ -421,7 +461,8 @@ var Kinds = []*Kind{
 			{Name: "keepalive", Type: TypeBool, Help: "true for a long-running unit restarted when it exits; false (the default) when it runs --every n"},
 			{Name: "enabled", Type: TypeBool, Default: "true", Help: "false writes the unit and does not start it; true (the default) runs it"},
 		},
-		Check: checkLoop,
+		Check:  checkLoop,
+		Derive: deriveLoopLog,
 	},
 	{
 		// A route is one way to run a model tier: the provider and model a
@@ -440,6 +481,7 @@ var Kinds = []*Kind{
 			{Name: "usd", Type: TypeDecimal, Help: "the dollar budget per card, a decimal like 0.50: the harness's reported cost at which the card is stopped, beside the token budget; empty (the default) is none"},
 			{Name: "deadline", Type: TypeInt, Required: true, Help: "the seconds a card on this route may run, above 0"},
 			{Name: "enabled", Type: TypeBool, Default: "true", Help: "false takes it out of the deal and needs --note, the measured reason (a disabled route carries its reason); true (the default) keeps it in and needs none"},
+			{Name: "first", Type: TypeBool, Default: "false", Help: "true deals this route before the others of its tier (the walk from the tier's index prefers it); false (the default) leaves the walk as it is"},
 			// The price sheet: optional, so a card's predicted cost can be worked
 			// out from its tokens using the pricing configuration saved per route tuple.
 			// Prices are USD per million tokens.
@@ -490,7 +532,11 @@ func noteField(what string) Field {
 
 // checkFleet keeps both store endpoints explicit and safe to print. The
 // endpoints may be unset so an older fleet can migrate before an operator
-// declares them; apply and inventory refuse incomplete endpoints.
+// declares them; apply and inventory refuse incomplete endpoints. loops_dir
+// must be non-empty: it is the directory every loop's log path is derived
+// from, so a row that carries it blank is refused. A row that does not carry
+// it is a partial one, the fields a set names alone; the store checks the row
+// its write would leave, which carries the stored value.
 func checkFleet(r Row) error {
 	if raw := r.Fields["bus"]; raw != "" {
 		host, port, err := net.SplitHostPort(raw)
@@ -503,6 +549,9 @@ func checkFleet(r Row) error {
 		if err != nil || port < 1 || port > 65535 {
 			return fmt.Errorf("--redis_port wants an integer from 1 through 65535")
 		}
+	}
+	if loopsDir, ok := r.Fields["loops_dir"]; ok && strings.TrimSpace(loopsDir) == "" {
+		return fmt.Errorf("--loops_dir wants a non-empty directory path; run: nova-config fleet set --loops_dir <path>")
 	}
 	dsn, ok := r.Fields["pg_dsn"]
 	if !ok || dsn == "" {
@@ -526,7 +575,7 @@ func checkFleet(r Row) error {
 		return fmt.Errorf("--pg_dsn wants a valid URI query with percent-encoded values and & between parameters; leave passwords out and deliver them through NOVA_PG_PASSWORD_ENV")
 	}
 	for key := range query {
-		if strings.EqualFold(key, "password") {
+		if strings.EqualFold(strings.TrimSpace(key), "password") {
 			return fmt.Errorf("--pg_dsn carries a password; leave it out and deliver the password through NOVA_PG_PASSWORD_ENV")
 		}
 	}
@@ -609,9 +658,10 @@ func checkRouteChanges(changes map[string]string) error {
 }
 
 // LoopLog is where a loop's unit writes its output on its machine, derived
-// from the name and never typed: ~/nova-bench/loops/<name>.log. apply writes
-// it into the loop's Redis hash beside the row's fields.
-func LoopLog(name string) string { return "~/nova-bench/loops/" + name + ".log" }
+// from the fleet's loops_dir and the loop's name, and never typed:
+// <loops_dir>/<name>.log. apply writes it into the loop's Redis hash beside
+// the row's fields.
+func LoopLog(loopsDir, name string) string { return loopsDir + "/" + name + ".log" }
 
 // checkLoop is the loop kind's Check: exactly one of every and keepalive
 // says how it runs, secret names need a seat to open them from, and a
@@ -707,6 +757,30 @@ func deriveCoordinator(ctx context.Context, st Store, rows []Row) ([]Row, error)
 			words, _ := splitList(r.Fields["roles"] + "," + CoordinatorRole)
 			r.Fields["roles"] = strings.Join(words, ",")
 		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// deriveLoopLog is the loop kind's Derive: each row apply writes carries its
+// log, LoopLog of the store's fleet row's loops_dir and the loop's name, so
+// the path is the stored row's even when Redis holds no applied fleet row (a
+// store that applies the loop kind first). A fleet row that carries no
+// directory is refused with the set that declares one (docs/SPEC-CONFIG.md,
+// "fleet").
+func deriveLoopLog(ctx context.Context, st Store, rows []Row) ([]Row, error) {
+	fleet, _, err := st.Get(ctx, KindFleet, KindFleet)
+	if err != nil {
+		return nil, err
+	}
+	dir := fleet.Fields["loops_dir"]
+	if len(rows) > 0 && strings.TrimSpace(dir) == "" {
+		return nil, &RefusedError{Err: ErrInvalid, Detail: "the fleet row carries no loops_dir, the directory every loop's log path is derived from; run: nova-config fleet set --loops_dir <path>, then apply --kind loop"}
+	}
+	out := make([]Row, 0, len(rows))
+	for _, r := range rows {
+		r = r.Clone()
+		r.Fields["log"] = LoopLog(dir, r.Name)
 		out = append(out, r)
 	}
 	return out, nil

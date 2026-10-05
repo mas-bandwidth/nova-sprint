@@ -79,25 +79,72 @@ type Message struct {
 	CC      []string
 	Subject string
 	Re      string
+	Kind    string // one of Kinds; "" is status
 	At      time.Time
 	Body    string
+}
+
+// The kinds of a message (SPEC-BUS.md, the kind of a message): the bus's own
+// vocabulary, which a reader filters on; the bus gives none of them a meaning.
+const (
+	KindReport  = "report"
+	KindAck     = "ack"
+	KindStatus  = "status"
+	KindRequest = "request"
+	KindBlocker = "blocker"
+)
+
+// Kinds is every kind, in the order the help lists them.
+var Kinds = []string{KindReport, KindAck, KindStatus, KindRequest, KindBlocker}
+
+// CheckKinds says why ks are no kinds, "" when each is one.
+func CheckKinds(ks ...string) string {
+	for _, k := range ks {
+		if !slices.Contains(Kinds, k) {
+			return fmt.Sprintf("the kind %q is not one of %s", k, strings.Join(Kinds, ", "))
+		}
+	}
+	return ""
+}
+
+// KindName is the message's kind, status when it has none (a message sent
+// before kinds).
+func (m Message) KindName() string {
+	if m.Kind == "" {
+		return KindStatus
+	}
+	return m.Kind
+}
+
+// FilterKinds is the entries whose message is one of kinds; with no kinds, all of them.
+func FilterKinds(es []Entry, kinds []string) []Entry {
+	if len(kinds) == 0 {
+		return es
+	}
+	var out []Entry
+	for _, e := range es {
+		if slices.Contains(kinds, e.Message().KindName()) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // Fields is the message as the stream entry holds it.
 func (m Message) Fields() map[string]string {
 	return map[string]string{
 		"id": m.ID, "from": m.From, "to": strings.Join(m.To, ","), "cc": strings.Join(m.CC, ","),
-		"subject": m.Subject, "re": m.Re, "at": m.At.UTC().Format(time.RFC3339), "body": m.Body,
+		"subject": m.Subject, "re": m.Re, "kind": m.Kind, "at": m.At.UTC().Format(time.RFC3339), "body": m.Body,
 	}
 }
 
 // Parse is the message an entry's fields hold. A field that is not there is
-// empty; an `at` that is no instant is the zero time, never a refusal, so a
+// empty (a kind that is not there is read as status by KindName); an `at` that is no instant is the zero time, never a refusal, so a
 // log with one odd entry still reads.
 func Parse(fields map[string]string) Message {
 	at, _ := time.Parse(time.RFC3339, fields["at"]) // ignored: a bad stamp reads as the zero time, said above
 	return Message{
-		ID: fields["id"], From: fields["from"], To: list(fields["to"]), CC: list(fields["cc"]),
+		Kind: fields["kind"], ID: fields["id"], From: fields["from"], To: list(fields["to"]), CC: list(fields["cc"]),
 		Subject: fields["subject"], Re: fields["re"], At: at, Body: fields["body"],
 	}
 }
@@ -130,9 +177,19 @@ type Store interface {
 	// Roster is the known names (nova-config's friend and machine rows, the
 	// sets `friends` and `machines`) and the server's time (TIME), in one trip.
 	Roster(ctx context.Context) (names []string, now time.Time, err error)
-	// AddAll appends one entry with fields to every stream in one MULTI/EXEC:
-	// it is on all of them or on none.
-	AddAll(ctx context.Context, streams []string, fields map[string]string) error
+	// Members is the friends and the machines apart (the sets `friends` and
+	// `machines`) and the server's time (TIME), in one trip: Roster split, so
+	// a send knows which recipients are friends, owed a receipt.
+	Members(ctx context.Context) (friends, machines []string, now time.Time, err error)
+	// AddAll appends one entry with fields to every stream, and makes every
+	// mark (HSET, or HDEL when it clears), in one MULTI/EXEC: the entry and its
+	// marks are on all of them or on none.
+	AddAll(ctx context.Context, streams []string, fields map[string]string, marks ...Mark) error
+	// Unmark clears fields of the hash at key (HDEL) and says how many were there.
+	Unmark(ctx context.Context, key string, fields ...string) (int64, error)
+	// Marks is the whole hash at each key, in one trip (a pipeline of HGETALL);
+	// a key that is not there is an empty map.
+	Marks(ctx context.Context, keys ...string) ([]map[string]string, error)
 	// EnsureGroup makes the group on the stream from its start, making the
 	// stream when it is not there (XGROUP CREATE ... 0 MKSTREAM); a group
 	// already there is fine.
@@ -145,6 +202,10 @@ type Store interface {
 	// (XREADGROUP ... >), waiting up to block for one when block is above
 	// zero, else answering at once.
 	Read(ctx context.Context, stream, group, consumer string, block time.Duration, count int) ([]Entry, error)
+	// Release makes the entries pending for the group claimable at once
+	// (XCLAIM ... IDLE <ClaimAfter> JUSTID): what a reader that skipped them
+	// hands back, in one trip.
+	Release(ctx context.Context, stream, group string, entries ...string) error
 	// Ack acks entries for the group (XACK) and says how many were pending.
 	Ack(ctx context.Context, stream, group string, entries ...string) (int64, error)
 	// Pending is the entry ids pending for the group, up to count (XPENDING).
@@ -178,7 +239,41 @@ func (r *Refusal) Error() string { return strings.Join(r.Problems, "; ") }
 // message is named at once in one Refusal: a name that is no name, a
 // recipient the roster does not know (with how to add one), an empty body, a
 // body over MaxBody, a from that is unknown.
+//
+// A message to a friend is owed her session's receipt (receipt.go): the
+// transaction marks it on bus2:owed:<friend> for each friend it names but the
+// sender, and a message from a friend naming another (re) is her receipt of
+// that one, cleared in the same transaction.
 func (b *Bus) Send(ctx context.Context, m Message) (Message, error) {
+	m, now, friends, err := b.check(ctx, m)
+	if err != nil {
+		return Message{}, err
+	}
+	if m.ID, err = b.ulid(now); err != nil {
+		return Message{}, err
+	}
+	var streams []string
+	for _, n := range slices.Compact(slices.Sorted(slices.Values(slices.Concat(m.To, m.CC)))) {
+		streams = append(streams, StreamOf(n))
+	}
+	streams = append(streams, LogKey)
+	if err := b.Store.AddAll(ctx, streams, m.Fields(), owe(m, friends)...); err != nil {
+		return Message{}, err
+	}
+	return m, nil
+}
+
+// Check is Send that writes nothing (a send's --dry-run): every problem of the message
+// named at once, as Send names them, and the message as it would be sent, at the store's
+// time with its recipients sorted, and no id: an id is made for a message sent.
+func (b *Bus) Check(ctx context.Context, m Message) (Message, error) {
+	m, _, _, err := b.check(ctx, m)
+	return m, err
+}
+
+// check is the message as Send would send it, the store's time it is stamped
+// with, and the friends of the roster.
+func (b *Bus) check(ctx context.Context, m Message) (Message, time.Time, []string, error) {
 	var problems []string
 	for _, n := range append(append([]string{m.From}, m.To...), m.CC...) {
 		if p := CheckName(n); p != "" {
@@ -194,39 +289,34 @@ func (b *Bus) Send(ctx context.Context, m Message) (Message, error) {
 	case len(m.Body) > MaxBody:
 		problems = append(problems, fmt.Sprintf("the body is %d bytes, at most %d", len(m.Body), MaxBody))
 	}
+	if m.Kind == "" {
+		m.Kind = KindStatus
+	}
+	if p := CheckKinds(m.Kind); p != "" {
+		problems = append(problems, p)
+	}
 	if strings.TrimSpace(m.Subject) == "" {
 		problems = append(problems, "the subject is empty; it wants one line saying what the message is")
 	}
 	if len(problems) > 0 {
-		return Message{}, &Refusal{problems}
+		return Message{}, time.Time{}, nil, &Refusal{problems}
 	}
-	names, now, err := b.Store.Roster(ctx)
+	friends, machines, now, err := b.Store.Members(ctx)
 	if err != nil {
-		return Message{}, err
+		return Message{}, time.Time{}, nil, err
 	}
+	names := slices.Concat(friends, machines)
 	for _, n := range append(append([]string{m.From}, m.To...), m.CC...) {
 		if !slices.Contains(names, n) {
 			problems = append(problems, unknown(n))
 		}
 	}
 	if len(problems) > 0 {
-		return Message{}, &Refusal{slices.Compact(problems)}
-	}
-	m.ID, err = b.ulid(now)
-	if err != nil {
-		return Message{}, err
+		return Message{}, time.Time{}, nil, &Refusal{slices.Compact(problems)}
 	}
 	m.At = now.UTC().Truncate(time.Second) // the entry's at is RFC3339, to the second
 	m.To, m.CC = slices.Compact(slices.Sorted(slices.Values(m.To))), slices.Compact(slices.Sorted(slices.Values(m.CC)))
-	var streams []string
-	for _, n := range slices.Compact(slices.Sorted(slices.Values(slices.Concat(m.To, m.CC)))) {
-		streams = append(streams, StreamOf(n))
-	}
-	streams = append(streams, LogKey)
-	if err := b.Store.AddAll(ctx, streams, m.Fields()); err != nil {
-		return Message{}, err
-	}
-	return m, nil
+	return m, now, friends, nil
 }
 
 // Recv is one message for the recipient: the oldest one delivered and not
@@ -236,7 +326,19 @@ func (b *Bus) Send(ctx context.Context, m Message) (Message, error) {
 // refused, never given a stream to wait on. The group is made on first use.
 // (tla/Bus2.tla: Recv, PendingBeforeNew, HeldStaysHeld)
 func (b *Bus) Recv(ctx context.Context, as string, block time.Duration) (e Entry, ok bool, err error) {
+	return b.RecvKinds(ctx, as, block, nil)
+}
+
+// RecvKinds is Recv for the messages whose kind is one of kinds (none: any).
+// A message the filter skips is handed back to the group at once (Store.Release),
+// neither acked nor held, so a reader that asks for all gets it next; the skip
+// costs one round trip per message skipped, and one more to release a run of
+// them. (tla/Bus2.tla: Recv; a skipped message is back as a lost one)
+func (b *Bus) RecvKinds(ctx context.Context, as string, block time.Duration, kinds []string) (e Entry, ok bool, err error) {
 	if p := CheckName(as); p != "" {
+		return Entry{}, false, &Refusal{[]string{p}}
+	}
+	if p := CheckKinds(kinds...); p != "" {
 		return Entry{}, false, &Refusal{[]string{p}}
 	}
 	names, _, err := b.Store.Roster(ctx)
@@ -250,19 +352,45 @@ func (b *Bus) Recv(ctx context.Context, as string, block time.Duration) (e Entry
 	if err := b.Store.EnsureGroup(ctx, stream, as); err != nil {
 		return Entry{}, false, err
 	}
-	got, err := b.Store.Claim(ctx, stream, as, Consumer, ClaimAfter, 1)
-	if err != nil {
+	var skipped []string
+	release := func() error {
+		if len(skipped) == 0 {
+			return nil
+		}
+		err := b.Store.Release(ctx, stream, as, skipped...)
+		skipped = nil
+		return err
+	}
+	// the claimed ones first, as without a filter; a skipped one is fresh
+	// until released, so the claim runs out
+	for {
+		got, err := b.Store.Claim(ctx, stream, as, Consumer, ClaimAfter, 1)
+		if err != nil {
+			return Entry{}, false, err
+		}
+		if len(got) == 0 {
+			break
+		}
+		if len(FilterKinds(got, kinds)) > 0 {
+			return got[0], true, release()
+		}
+		skipped = append(skipped, got[0].Entry)
+	}
+	if err := release(); err != nil {
 		return Entry{}, false, err
 	}
-	if len(got) == 0 {
-		if got, err = b.Store.Read(ctx, stream, as, Consumer, block, 1); err != nil {
+	for {
+		got, err := b.Store.Read(ctx, stream, as, Consumer, block, 1)
+		if err != nil || len(got) == 0 {
+			return Entry{}, false, err
+		}
+		if len(FilterKinds(got, kinds)) > 0 {
+			return got[0], true, nil
+		}
+		if err := b.Store.Release(ctx, stream, as, got[0].Entry); err != nil {
 			return Entry{}, false, err
 		}
 	}
-	if len(got) == 0 {
-		return Entry{}, false, nil
-	}
-	return got[0], true, nil
 }
 
 // AckEntry acks one entry the recipient was handed (XACK); acking it again
@@ -275,14 +403,41 @@ func (b *Bus) AckEntry(ctx context.Context, as, entry string) (acked bool, err e
 // Ack acks messages by their ids: each is looked up among the recipient's
 // pending entries, so an id that is not pending (acked already, never
 // delivered, or not this recipient's) is answered acked=false, never a
-// failure: ack is idempotent.
+// failure: ack is idempotent. Ack by id is the session's verb (nova-bus ack),
+// so it is also the session's receipt of every id it names, pending or not
+// (Receipt): a daemon that acked the stream first takes nothing from it.
 func (b *Bus) Ack(ctx context.Context, as string, ids []string) (map[string]bool, error) {
+	acked, entries, err := b.pendingOf(ctx, as, ids)
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) > 0 {
+		if _, err := b.Store.Ack(ctx, StreamOf(as), as, entries...); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := b.Receipt(ctx, as, ids); err != nil {
+		return nil, err
+	}
+	return acked, nil
+}
+
+// WouldAck is Ack that writes nothing (an ack's --dry-run): each id true when it is
+// pending for the recipient, so Ack would ack it.
+func (b *Bus) WouldAck(ctx context.Context, as string, ids []string) (map[string]bool, error) {
+	acked, _, err := b.pendingOf(ctx, as, ids)
+	return acked, err
+}
+
+// pendingOf is each id true when it is among the recipient's pending entries, and those
+// entries.
+func (b *Bus) pendingOf(ctx context.Context, as string, ids []string) (map[string]bool, []string, error) {
 	if p := CheckName(as); p != "" {
-		return nil, &Refusal{[]string{p}}
+		return nil, nil, &Refusal{[]string{p}}
 	}
 	pending, err := b.pendingEntries(ctx, as)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	acked := map[string]bool{}
 	var entries []string
@@ -291,21 +446,11 @@ func (b *Bus) Ack(ctx context.Context, as string, ids []string) (map[string]bool
 		for _, e := range pending {
 			if e.Fields["id"] == id {
 				entries = append(entries, e.Entry)
+				acked[id] = true
 			}
 		}
 	}
-	if len(entries) == 0 {
-		return acked, nil
-	}
-	if _, err := b.Store.Ack(ctx, StreamOf(as), as, entries...); err != nil {
-		return nil, err
-	}
-	for _, e := range pending {
-		if _, asked := acked[e.Fields["id"]]; asked {
-			acked[e.Fields["id"]] = true
-		}
-	}
-	return acked, nil
+	return acked, entries, nil
 }
 
 // pendingLimit bounds one look at a recipient's pending entries.
