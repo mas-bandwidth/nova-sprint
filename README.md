@@ -103,59 +103,20 @@ The **white runner** carries the task all the way home. Ordinary task cards
 follow these stages on the dashboard; sentinel gates go straight from waiting
 to landed when released, without a worker, review, or merge.
 
-| Stage | What is happening |
-|---|---|
-| **Waiting** | A dependency, gate, or coordinator hold must clear before this card can start. |
-| **Ready** | The card can run and is waiting to be picked up. |
-| **Working** | A friend or swarm worker is carrying out an attempt. |
-| **Review** | Independent AI readers check the returned result against the brief. Findings give another attempt something specific to fix. |
-| **Merging** | Approved changes enter the stream's merge queue. The lander integrates them in order and checks the combined result. Conflicts and failures get repair work. |
-| **Landed** | The change has reached the development branch. Its dependants can now become eligible. |
-
-**Work in parallel and resolve conflicts as the work lands. All done
-automatically by AI**, organised by the machine and coordinator within
-the authority you give them.
-
-Installed and deployed are further steps when your workflow includes them.
-“Done” has to survive meeting Git. Git is unmoved by enthusiasm.
-
-## Watch your team get work done
-
-[![A snapshot of the live sprint dashboard, showing landed work, ETA, cost, work in flight, and task states.](assets/nova-sprint-dashboard.jpg)](http://69.67.149.151/)
+## Give the team a plan. Go have a life.
 
 **[Open the live sprint dashboard →](http://69.67.149.151/)**
-
-Follow streams from waiting to landed. See friends, fleet capacity, review
-and merge queues, **spend per stream and total cost**, throughput, and
-**continually updated estimates of time to completion**. Open a stalled card
-to see what it needs. **In flight** is work already underway, including review
-and merge; **throughput** is the rate at which cards land; **ETA** is the current
-completion estimate. The screenshot is a snapshot; the demo is the live sprint.
-
-You can stay on top without being the team's full-time “any update?” service.
-
-## Give the team a plan. Go have a life.
 
 Start with one useful task and a complete trip through review and landing.
 Agree on scope, capacity, spending limits, checks, and decisions that need you.
 Then go wider. Work alongside the team, or come back in the morning.
 
-Overnight work needs the server, workers, readers, and harness delivery to stay
-available. The machine remembers the plan and exposes blockers; it cannot
-persuade an expired model allowance to have a change of heart.
-
 **Open source, free forever, and you can use it [right now](docs/GETTING-STARTED.md).**
-Your chosen models and machines have their own costs.
 
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
 [Cards and machine rules](docs/SPEC-SPRINT.md) · [All docs](docs/README.md)
 
----
-
-Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
-Want to build your first AI friends? Start with [Nova Seed](https://github.com/mas-bandwidth/nova).
-
-If you like this, [please support our work](https://www.patreon.com/MasBandwidth/membership).
+If you like this [please support our work](https://www.patreon.com/MasBandwidth/membership).
 
 [Contributing](CONTRIBUTING.md) · [MIT license](LICENSE) · [Asset credits](docs/ASSET-PROVENANCE.md)
