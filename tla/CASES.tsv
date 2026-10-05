@@ -270,3 +270,7 @@ MCCoordinatorPassBrokenReopen.cfg	MCCoordinatorPass.tla	invariant	OneJudgmentAnE
 MCCoordinatorPassBrokenNoClose.cfg	MCCoordinatorPass.tla	invariant	ClosedWhenCleared	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBehind.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenDoublePush.cfg	MCCoordinatorPass.tla	invariant	OnePushATick	ignore-terminal	coordinatorpass	required	-
+MCCapDeal.cfg	MCCapDeal.tla	pass	-	ignore-terminal	capdeal	required	-
+MCCapDealBrokenBetween.cfg	MCCapDeal.tla	action	CapDealtToFriendFirst	ignore-terminal	capdeal	required	-
+MCCapDealBrokenNewAttempt.cfg	MCCapDeal.tla	action	NoMachineAttemptPastCap	ignore-terminal	capdeal	required	-
+MCCapDealBrokenPinned.cfg	MCCapDeal.tla	action	NoCardLost	ignore-terminal	capdeal	required	-

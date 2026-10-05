@@ -1035,7 +1035,19 @@ on it closes. With no such friend up with room the card is the deal's as before:
 redeal bound it is not dealt again and the tick raises the cap's judgment above (brief
 and drop), which closes once a friend takes it; below its bound its attempt is dealt
 again to a machine. The tick reads the friends' seats when a friend's card or a card
-past its cap is ready. Then `rework` is refused, nothing written, one line: `<id> has failed the
+past its cap is ready. The model is `tla/CapDeal.tla`, beside the tick's shape
+(`tla/DirtyTick.tla`, which holds none of the part's state): a card past its cap is never
+dealt to a machine while a frontier or heavy friend the tick read up has room, the
+machine never starts an attempt past the cap, a capped card at its redeal bound with no
+such friend leaves the deal with exactly one judgment open, and no ready card is left
+neither placeable nor judged; `MCCapDeal.cfg` checks the design on three cards, two
+friends and one machine. The code keeps three gaps, each a recorded counterexample whose
+fix is owed in the deal, not the cap deal: a stream released or its cap lowered between
+the two parts lets the deal give a capped card to a machine while such a friend has room
+(`MCCapDealBrokenBetween`); a capped card that is not withdrawn (its cap lowered under a
+reworked card) is dealt as its next attempt, past the cap (`MCCapDealBrokenNewAttempt`);
+and a capped card taken back from the friend its brief names is dealt by nothing and
+judged by nothing (`MCCapDealBrokenPinned`). Then `rework` is refused, nothing written, one line: `<id> has failed the
 same way twice (attempts <n> and <m>: <the finding's first sentence>); the brief is
 wrong, not the worker; run: nova-sprint brief <id> --brief-file <path> (a waiting card)
 or drop <id> and add it again with the brief corrected` (or the cap's line, then the
