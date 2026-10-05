@@ -24,13 +24,16 @@ const exitLine = "exit codes: 0 done, 1 failed or incomplete (including refused)
 
 // verbExit is a verb's own exit codes where they are not the common three.
 var verbExit = map[string]string{
-	"run":         "exit codes: 0 stopped (an interrupt), 2 usage or a store that did not answer, 3 its binary was replaced on disk (its supervisor starts the new one)",
-	"fleet sync":  "exit codes: 0 done (--check: no drift), 1 refused, 2 usage, a store that did not answer, or (--check) there is drift, 3 the config could not be read",
-	"friend sync": "exit codes: 0 done, 1 refused (a friend row's name, or a working directory that cannot be read), 2 usage or a store that did not answer, 3 the config could not be read or holds no friend row",
-	"land":        "exit codes: 0 every batch landed (--dry-run: would land), 1 a batch was refused (its line names the next step), 2 usage, a store that did not answer, or a push that landed and was not reported (run land again)",
-	"check":       "exit codes: 0 no violation, 1 a violation (each on its line), 2 usage or a store that did not answer",
-	"answer":      "exit codes: 0 done (each routine judgment's card applied or listed; --every: the machine is STOPPED), 1 a line applied was refused or a decision's backend failed, 2 usage, an actor not the coordinator, or a sprint that did not answer",
-	"dashboard":   "exit codes: 0 stopped (an interrupt), 2 usage or an address it cannot listen on, 3 its binary was replaced on disk (its supervisor starts the new one)",
+	"run":           "exit codes: 0 stopped (an interrupt), 2 usage or a store that did not answer, 3 its binary was replaced on disk (its supervisor starts the new one)",
+	"fleet sync":    "exit codes: 0 done (--check: no drift), 1 refused, 2 usage, a store that did not answer, or (--check) there is drift, 3 the config could not be read",
+	"friend sync":   "exit codes: 0 done, 1 refused (a friend row's name, or a working directory that cannot be read), 2 usage or a store that did not answer, 3 the config could not be read or holds no friend row",
+	"land":          "exit codes: 0 every batch landed (--dry-run: would land), 1 a batch was refused (its line names the next step), 2 usage, a store that did not answer, or a push that landed and was not reported (run land again)",
+	"check":         "exit codes: 0 no violation, 1 a violation (each on its line), 2 usage or a store that did not answer",
+	"answer":        "exit codes: 0 done (each routine judgment's card applied or listed; --every: the machine is STOPPED), 1 a line applied was refused or a decision's backend failed, 2 usage, an actor not the coordinator, or a sprint that did not answer",
+	"dashboard":     "exit codes: 0 stopped (an interrupt), 2 usage or an address it cannot listen on, 3 its binary was replaced on disk (its supervisor starts the new one)",
+	"card generate": "exit codes: 0 done, 1 a brief is red and nothing was written, 2 usage or a source that cannot be read",
+	"card lint":     "exit codes: 0 every brief is clean, 1 a brief is red (LINT DRIFT), 2 usage or a brief that cannot be read",
+	"card template": "exit codes: 0 the template is printed, 2 usage",
 }
 
 // verbEffect is a verb's effect line, the last line of its -h, where the verb
@@ -46,6 +49,9 @@ var verbEffect = map[string]string{
 	"dashboard":     "inspection: serves the page and the pull routes, reads the sprint as where --json --cards does, writes nothing",
 	"coordinator":   "delivery: moves the seat in the sprint's store, a note to the old holder on a take; --dry-run writes nothing",
 	"answer":        "delivery: sends the routine judgments' state to the decision's backend (Jev), applies the verbs chosen through the sprint's verbs, and appends to --record; --dry-run asks and writes nothing",
+	"card generate": "local write: creates --out and writes one .md per card and manifest.tsv into it; nothing when a brief is red; --dry-run plans, lints and prints the manifest, and writes nothing",
+	"card lint":     "inspection: reads the briefs, writes nothing",
+	"card template": "inspection: prints the card template, writes nothing",
 }
 
 // commonExit is the codes of every other verb.
@@ -143,7 +149,36 @@ func verbProse(name string) string {
 		return friendLevelWords
 	case "work repos", "work issues", "work roadmap", "work export", "work import":
 		return workVerbWords
+	case "card":
+		return cardReadWords
+	case "card generate":
+		return cardGenerateWords
+	case "card lint":
+		return cardLintWords
+	case "card template":
+		return cardTemplateWords
 	default:
 		return ""
 	}
 }
+
+// cardReadWords points the read verb at the brief writer, which shares its first word.
+const cardReadWords = `card generate, card template and card lint are the brief writer that was nova-card.
+This verb reads one card of the sprint. nova-sprint generate, template and lint refuse and name the verb they moved to.
+`
+
+const cardGenerateWords = `card generate writes a directory of pre-linted briefs from a ledger, a findings file or a tool's help, ready for one nova-sprint add --brief-dir. It is pre-alpha: not ready for production use.
+
+A source is read from a checkout (--repo-dir), or from --repo, --base and --sha with no checkout. The planner cuts one card per file, lays ordinary ledger cards in alternating waves, and holds every brief to the lint add runs before anything is written. One red brief prints LINT DRIFT and nothing is written. --dry-run prints the manifest and writes nothing.
+
+Wave 1 cards of one ledger share its path. The CARDS OK line says shared-paths=yes when they do, and the add wants --allow-shared-paths.
+
+  nova-sprint card generate --from ledger --ledger serial-tests --repo-dir ./repo --out ./cards
+  nova-sprint add --stream debt --brief-dir ./cards --allow-shared-paths
+`
+
+const cardLintWords = `card lint holds a brief to the lint nova-sprint add runs (the model lines, the child rules under the default rule set, a tree card's steps), and past the add to the typed header and the template's unfilled <...> lines. One LINT DRIFT line per miss. LINT OK when the brief is clean.
+`
+
+const cardTemplateWords = `card template prints nova-swarm's card template, the shape every generated brief has. It takes no flags and no arguments.
+`

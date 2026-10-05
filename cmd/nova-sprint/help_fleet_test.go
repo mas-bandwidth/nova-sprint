@@ -52,8 +52,8 @@ func TestVerbHelpNamesItsUsageAndTheColdWords(t *testing.T) {
 		assert.NotContains(t, first, "[flags]", "%s -h usage line is the placeholder: %s", v.name, first)
 		if syn := strings.TrimSpace(v.syntax); syn != "" {
 			assert.Equal(t, "usage: nova-sprint "+strings.TrimSpace(v.name+" "+syn), first, v.name)
-		} else {
-			assert.Contains(t, first, "[--", "%s -h names no flag: %s", v.name, first)
+		} else if !strings.Contains(first, "[--") {
+			assert.Equal(t, "usage: nova-sprint "+v.name, first, "%s -h names no flag and no synopsis: %s", v.name, first)
 		}
 	}
 	helpOf := func(args ...string) string {
