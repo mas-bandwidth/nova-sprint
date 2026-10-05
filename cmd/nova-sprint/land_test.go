@@ -195,11 +195,11 @@ func TestLandFetchesTheBaseAndTheBatchsHeadsAndNoOtherBranch(t *testing.T) {
 	r.clean()
 }
 
-// A head that does not merge ends its batch: the cards before it land, it is
-// reported with the merge step's conflict fact carrying git's words, and the
-// card behind it stays queued.
+// A head that does not merge is ejected from its batch (eject; tla/Land.tla,
+// EjectLands): the cards before and behind it land, it goes back to review with
+// git's words as its reason, and the stream is not stopped.
 
-func TestLandStopsAtAHeadThatDoesNotMerge(t *testing.T) {
+func TestLandEjectsAHeadThatDoesNotMerge(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name, why string
@@ -215,14 +215,15 @@ func TestLandStopsAtAHeadThatDoesNotMerge(t *testing.T) {
 			heads := map[string]string{"s1-1": r.head("s1-1", "main", "s1-1.txt", "one\n"), "s1-2": tc.second(r), "s1-3": r.head("s1-3", "main", "s1-3.txt", "three\n")}
 			r.queued(heads, "s1-1", "s1-2", "s1-3")
 			code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
-			assert.Equal(t, 1, code)
-			assert.Contains(t, out, "LAND OK stream=s1 cards=1 base=main")
-			assert.Contains(t, errs, "LAND REFUSED stream=s1 cards=1 base=- tip=- ids=s1-2 fact=conflict reason=the head "+heads["s1-2"]+" of s1-2 "+tc.why)
-			assert.Contains(t, errs, "LAND DONE batches=1 cards=1 refused=1")
-			assert.Equal(t, []string{"land s1-1 (sprint stream s1)", "base"}, r.mainLog())
-			assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "merging/stuck", "s1-3": "merging/queued"}, r.places("s1-1", "s1-2", "s1-3"))
-			assert.Equal(t, "stopped conflict", r.streamState("s1"))
-			assert.Contains(t, r.ok("inbox"), "stream stopped: conflict on a card")
+			assert.Equal(t, 0, code, out+errs)
+			assert.Contains(t, out, "LAND OK stream=s1 cards=2 base=main")
+			assert.Contains(t, out, "ejected=s1-2")
+			assert.Contains(t, out, "NOTE land ejected s1-2: the head "+heads["s1-2"]+" of s1-2 "+tc.why)
+			assert.Contains(t, out, "LAND DONE batches=1 cards=2 refused=0")
+			assert.Equal(t, []string{"land s1-3 (sprint stream s1)", "land s1-1 (sprint stream s1)", "base"}, r.mainLog())
+			assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "review/returned", "s1-3": "landed/merged"}, r.places("s1-1", "s1-2", "s1-3"))
+			assert.NotContains(t, r.streamState("s1"), "stopped")
+			assert.Contains(t, r.ok("inbox"), "land ejected s1-2: the head "+heads["s1-2"]+" of s1-2 "+tc.why)
 			r.clean()
 		})
 	}
@@ -668,9 +669,11 @@ func TestLandChecksNewFilesAgainstTheTypedHeader(t *testing.T) {
 				assert.Equal(t, map[string]string{"a": "landed/merged"}, r.places("a"))
 				assert.Equal(t, "added", r.git(r.remote, "show", "main:"+tc.file))
 			} else {
-				assert.Equal(t, 1, code, out+errs)
+				// ejected to review, the stream going on (eject)
+				assert.Equal(t, 0, code, out+errs)
+				assert.Contains(t, errs, "LAND EJECTED stream=s1 cards=1")
 				assert.Contains(t, errs, "it changes files outside its PATHS (E12): "+tc.file)
-				assert.Equal(t, map[string]string{"a": "merging/stuck"}, r.places("a"))
+				assert.Equal(t, map[string]string{"a": "review/returned"}, r.places("a"))
 				assert.Equal(t, before, r.git(r.remote, "rev-parse", "main"))
 			}
 			r.clean()
@@ -678,12 +681,11 @@ func TestLandChecksNewFilesAgainstTheTypedHeader(t *testing.T) {
 	}
 }
 
-// The lander's mechanical checks (internal/diffcheck; docs/SPEC-SPRINT.md section 7) end
-// the batch at a card whose merged diff changes a file outside its PATHS (E12) or leaves
-// a stranded sentence fragment (E4), as a head that does not merge ends it: the cards
-// before it land, it is reported with the conflict fact naming what failed, it is off the
-// batch branch, and the card behind it stays queued.
-func TestLandEndsTheBatchAtACardThatFailsTheMechanicalChecks(t *testing.T) {
+// The lander's mechanical checks (internal/diffcheck; docs/SPEC-SPRINT.md section 7) eject
+// a card whose merged diff changes a file outside its PATHS (E12) or leaves a stranded
+// sentence fragment (E4), as a head that does not merge is ejected: it is off the batch
+// branch and back in review naming what failed, and the cards before and behind it land.
+func TestLandEjectsACardThatFailsTheMechanicalChecks(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name, file, text, why string
@@ -711,11 +713,11 @@ func TestLandEndsTheBatchAtACardThatFailsTheMechanicalChecks(t *testing.T) {
 			heads := map[string]string{"c1": r.head("c1", "main", "c1.txt", "one\n"), "c2": r.head("c2", "main", tc.file, tc.text), "c3": r.head("c3", "main", "c3.txt", "three\n")}
 			r.queued(heads, "c1", "c2", "c3")
 			code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
-			assert.Equal(t, 1, code, out+errs)
-			assert.Contains(t, out, "LAND OK stream=s1 cards=1 base=main")
-			assert.Contains(t, errs, "LAND REFUSED stream=s1 cards=1 base=- tip=- ids=c2 fact=conflict reason=the head "+heads["c2"]+" of c2 "+tc.why)
-			assert.Equal(t, []string{"land c1 (sprint stream s1)", "the doc", "base"}, r.mainLog())
-			assert.Equal(t, map[string]string{"c1": "landed/merged", "c2": "merging/stuck", "c3": "merging/queued"}, r.places("c1", "c2", "c3"))
+			assert.Equal(t, 0, code, out+errs)
+			assert.Contains(t, out, "LAND OK stream=s1 cards=2 base=main")
+			assert.Contains(t, out, "NOTE land ejected c2: the head "+heads["c2"]+" of c2 "+tc.why)
+			assert.Equal(t, []string{"land c3 (sprint stream s1)", "land c1 (sprint stream s1)", "the doc", "base"}, r.mainLog())
+			assert.Equal(t, map[string]string{"c1": "landed/merged", "c2": "review/returned", "c3": "landed/merged"}, r.places("c1", "c2", "c3"))
 			r.clean()
 		})
 	}

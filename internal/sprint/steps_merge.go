@@ -50,6 +50,18 @@ type MergeReq struct {
 	Base        string `json:",omitempty"`
 	Note        string
 	Who         string
+	// Ejects is the cards of the batch the lander returns to review instead of landing them
+	// (merge_eject.go): its head could not be merged, or it needs one that could not. With
+	// Cards they leave the queue in the same step as the batch lands; alone, the step lands
+	// nothing and the stream goes on.
+	Ejects []Eject `json:",omitempty"`
+	// BriefWrong, with Conflict, is the lander's words when the card would be ejected a third
+	// time the same way (BriefWrongNext): the conflict stop carries the judgment NBriefWrong too.
+	BriefWrong string `json:",omitempty"`
+	// Idle is why a landing of the stream landed nothing while it held cards: counted on the
+	// stream's control card, and MergeStuckAfter later raised as NMergeStuck (idleStep). No card
+	// moves.
+	Idle string `json:",omitempty"`
 	// Resolved is, by card, what its landing did beyond merging its head (docs/SPEC-SPRINT.md
 	// section 7: the generated ledgers regenerated at the merge); written on its merge card
 	// as it lands, its note on the card's timeline.
@@ -212,6 +224,12 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 	if r.BaseRed != "" || r.BaseRefused != "" {
 		return baseGateStep(p, s, ctl, r)
 	}
+	if r.Idle != "" {
+		return idleStep(p, s, ctl, r)
+	}
+	if len(r.Ejects) > 0 && len(r.Cards) == 0 && len(r.Landed) == 0 && r.Conflict == "" && r.Cross == "" && !r.Red && !r.Rejected {
+		return ejectOnly(p, s, ctl, r)
+	}
 	// A stuck card is a barrier: the step never passes an earlier stuck card.
 	queued := s.Merge.Cell(r.Stream, Queued)
 	if stuck := s.Merge.Cell(r.Stream, Stuck); len(stuck) > 0 {
@@ -311,6 +329,9 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		}
 		u := stop("conflict", NConflict, []string{r.Conflict}, pr.Int("stuck"), "other")
 		u.Notes[len(u.Notes)-1].Card = r.Conflict
+		if r.BriefWrong != "" {
+			u.Notes = append(u.Notes, briefWrongNote(s, r, pr))
+		}
 		// a conflict stop has no cross need: whatever the card once needed
 		u.Changes = append(u.Changes, change(Merge, moveEntry(m, r.Stream, Stuck, nil, "need_card", "need_stream")))
 		if pr != nil {
@@ -388,11 +409,15 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		if len(landing) == 0 {
 			return p
 		}
+		if why := ejectRefusals(s, r.Stream, r.Ejects); len(why) > 0 {
+			p.Refused = append(p.Refused, why...)
+			return p
+		}
 		ctlSet["ci"], ctlSet["moved"] = "green", now
 		switch {
 		case streamDone(s, r.Stream, len(landing)):
 			ctlSet["state"], ctlSet["since"] = StreamLanded, now
-		case s.Merge.Count(r.Stream, Queued)+s.Merge.Count(r.Stream, Stuck) == len(landing):
+		case s.Merge.Count(r.Stream, Queued)+s.Merge.Count(r.Stream, Stuck) == len(landing)+len(r.Ejects):
 			// The last queued card lands and the stream is not done: nothing
 			// is queued or stuck, so the stream is waiting.
 			if state == StreamWaiting {
@@ -427,9 +452,11 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		for i, c := range landing {
 			u := Unit{Key: c.ID, Stream: r.Stream}
 			if i == 0 {
-				// a pass that merges: the base passed its gate, and its count starts again
-				u.Changes = append(u.Changes, change(Merge, setEntry(ctl, ctlSet, baseGateCount...)))
+				// a pass that merges: the base passed its gate, and its count starts again; the
+				// landings' idle clock too, and a merge-stuck judgment is answered by the landing
+				u.Changes = append(u.Changes, change(Merge, setEntry(ctl, ctlSet, append([]string{FieldLandIdle, FieldLandIdleW}, baseGateCount...)...)))
 				u.Notes = notes
+				u.Closes = mergeStuckCloses(s, r.Stream)
 			}
 			merged := map[string]string{"merged": now}
 			if v := r.Resolved[c.ID]; v != "" {
@@ -457,6 +484,8 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		for _, id := range landed {
 			lands[id] = true
 		}
+		// the cards the lander ejected leave the queue in the same step (merge_eject.go)
+		p.Units = append(p.Units, ejectUnits(s, r, landed)...)
 		// A sprint this merge finishes is found done by the tick's done part
 		// (TickDone), which says so and stops the machine.
 		p.Units = append(p.Units, resolveAfter(s, lands, r.Who)...)

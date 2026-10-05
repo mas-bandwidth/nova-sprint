@@ -37,9 +37,9 @@ func TestLandAllowsAScopeAmendmentOfTheSameChangeAndRecordsIt(t *testing.T) {
 				assert.Contains(t, out, "scope=a:"+tc.file)
 				assert.Equal(t, map[string]string{"a": "landed/merged"}, r.places("a"))
 			} else {
-				assert.Equal(t, 1, code, out+errs)
+				assert.Equal(t, 0, code, out+errs) // ejected to review, the stream going on
 				assert.Contains(t, errs, "it changes files outside its PATHS (E12): "+tc.file)
-				assert.Equal(t, map[string]string{"a": "merging/stuck"}, r.places("a"))
+				assert.Equal(t, map[string]string{"a": "review/returned"}, r.places("a"))
 			}
 			r.clean()
 		})

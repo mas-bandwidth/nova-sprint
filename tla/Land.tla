@@ -21,8 +21,10 @@
 \*   lphase    the lander's step: idle, read, built, checked, pushed
 \*             (reportfirst: idle, read, built, reported)
 \*   lq        the queue as the lander read it, as heads (pinned)
-\*   lbatch    the batch it built: a prefix of lq (a card that stops the batch,
-\*             a conflict or a missing head, ends it, so any non-empty prefix)
+\*   lbatch    the batch it built: lq without the cards it ejects, up to the
+\*             first card left that needs a card neither landed nor ahead of it
+\*             in the batch (that card stops the stream; THE EJECT below)
+\*   lej       the heads the lander ejects from this batch (THE EJECT)
 \*   lep       the epoch the lander holds (the caller's --epoch, else the one read)
 \*   lrep      the store's epoch when the lander read it
 \*   ltip      the base's tip the batch was built on
@@ -34,6 +36,10 @@
 \*             lander holds (a clear between the check and the push)
 \*   stalerec  a ghost: a report recorded a landing at an epoch other than
 \*             the one the lander holds
+\*   deplanded a ghost: a report landed a card that needs a card the same
+\*             report ejected
+\*   ejland    a ghost: a report ejected a card and landed another (the
+\*             reversed witness ReachEjectAndLand: the eject is not vacuous)
 \*   lpushed   a ghost: the heads this lander itself pushed for the store's
 \*             epoch (a clear empties it, and a push made for an epoch the
 \*             store has left adds nothing), so the stranded witness names the
@@ -55,10 +61,30 @@
 \* correctly), Clear (the epoch moves, the store's tables empty), MoveBase
 \* (another commit on the base), Crash (the lander stops at any step).
 \*
+\* THE EJECT (cmd/nova-sprint/land.go, build and eject; the owner, 2026-10-05: "true,
+\* unless the cards after DEPEND on the card that is in front of the merge"). Bad is
+\* the heads that cannot be merged (a git failure of that head, a conflict, the
+\* lander's checks, the tree gate); Needs is each card's needs. Build ejects every
+\* bad head of the batch and, in queue order, every later card whose needs reach an
+\* ejected card (EjectOf: directly, or through another ejected card), and the batch
+\* is the rest, cut at the first card left that needs a card neither landed nor
+\* ahead of it in the batch (Blocked: the stream stops there, as a conflict stopped
+\* it before). Report is one store step: it lands the batch and returns the ejected
+\* cards to review, guarded as before with the ejected cards looked through (the
+\* queue without them starts with the batch) and every ejected card still queued at
+\* the head pinned.
+\*
 \* THE RULES.
 \*   LandedInBase: the store records a card landed only at a head the base
 \*     holds.
-\*   LandsInOrder: a card lands only with every card ahead of it in the queue.
+\*   LandsInOrder: a card lands only with every card ahead of it in the queue
+\*     that the same report does not eject.
+\*   NeedsLanded: no landed card needs a card that has not landed.
+\*   DependentsNotLanded: no report lands a card that needs a card it ejects.
+\*   EjectLands: under fairness, once the outside is quiet, the queue is empty
+\*     or its first card needs a card that has not landed (a stopped stream):
+\*     a bad card at the front never holds the cards behind it that do not
+\*     need it.
 \*   CallerEpochCheckedBeforePush: no push is made for a caller whose epoch
 \*     the store was not at when the lander read it.
 \*   ReportHoldsTheEpoch: no report records a landing at an epoch the lander
@@ -75,7 +101,8 @@
 \* lets a rework replace a card's head after the check: the report's guard,
 \* which compares heads and not ids, refuses it.
 \* Reversed witnesses: ReachStranded (the lander's own push left unreported,
-\* so Recovers is not vacuous) and ReachStalePush.
+\* so Recovers is not vacuous), ReachStalePush, and ReachEjectAndLand (one
+\* report ejects a card and lands another, so the eject's rules are not vacuous).
 \*
 \* WHAT RECOVERS DOES NOT COVER. It is proved once the outside goes quiet
 \* (the instance caps outside events at MaxEvents), so it says nothing of an
@@ -100,25 +127,37 @@
 \*   "noepoch" reports with the heads guarded and no fence on the epoch
 \*     (ReportHoldsTheEpoch fails: a push, a clear, the same head accepted
 \*     again in the new epoch, and the old run's report records it there).
+\*   "noclosure" ejects the bad heads alone and reads no needs, the naive fix
+\*     (NeedsLanded and DependentsNotLanded fail: a card that needs the ejected
+\*     one lands without it).
+\*   "stall" is land before the eject: the batch ends before the first bad
+\*     head and nothing is ejected (EjectLands fails: the cards behind it that
+\*     do not need it wait for ever; the 2026-10-05 stall of 16 cards).
 \*
 \* WHAT IS NOT MODELLED. The check (--check), the facts that stop a stream
 \* (conflict, red, rejected) and resume: a refusal is the lander going idle
-\* with the store unchanged. A card's attempts are counted across a clear, so
+\* with the store unchanged. A stream stopped on a blocked card is the queue
+\* left with that card at its front. Which git failure is a head's and which
+\* the environment's (land.go, headFault), the eject's count of the same
+\* reason (a third raises "the brief is wrong" instead) and the merge-stuck
+\* clock are the code's and its tests'; here a head is bad or it is not. A card's attempts are counted across a clear, so
 \* a head is never reused by another card. One stream, one base.
 EXTENDS Integers, Sequences, FiniteSets, TLC
 
-CONSTANTS Cards, MaxAttempts, MaxEpoch, MaxEvents, Broken
+CONSTANTS Cards, MaxAttempts, MaxEpoch, MaxEvents, Broken,
+          Needs, \* [Cards -> SUBSET Cards]: each card's needs
+          Bad    \* SUBSET Heads: the heads that cannot be merged
 
 VARIABLES queue, att, landed, epoch, base, tip,
-          lphase, lq, lbatch, lep, lrep, ltip, tries,
-          events, badcaller, stalepush, stalerec, lpushed
+          lphase, lq, lbatch, lep, lrep, ltip, tries, lej,
+          events, badcaller, stalepush, stalerec, lpushed, deplanded, ejland
 
 store == <<queue, att, landed, epoch>>
 remote == <<base, tip>>
-lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries>>
-ghosts == <<badcaller, stalepush, stalerec, lpushed>>
-vars == <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
-          events, badcaller, stalepush, stalerec, lpushed>>
+lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries, lej>>
+ghosts == <<badcaller, stalepush, stalerec, lpushed, deplanded, ejland>>
+vars == <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries, lej,
+          events, badcaller, stalepush, stalerec, lpushed, deplanded, ejland>>
 
 Heads == Cards \X (1..MaxAttempts)
 
@@ -131,17 +170,54 @@ Current(c) == <<c, att[c]>>
 QHeads == [i \in 1..Len(queue) |-> Current(queue[i])]
 Ids(b) == [i \in 1..Len(b) |-> b[i][1]]
 
-\* The queue still starts with exactly these heads, at the epoch the lander
-\* holds (headWhy: ids, heads and attempts).
-Fresh(b) == epoch = lep /\ Len(queue) >= Len(b) /\ SubSeq(QHeads, 1, Len(b)) = b
+\* A card has landed (at any attempt).
+LandedCard(c) == \E a \in 1..MaxAttempts : <<c, a>> \in landed
+
+\* THE EJECT. EjectOf(s) is the heads of s the lander ejects: each bad head, and
+\* in order each later head whose card needs a card already ejected (the closure:
+\* through another ejected card too). noclosure ejects the bad heads alone.
+RECURSIVE EjectUpTo(_, _)
+EjectUpTo(s, i) ==
+  IF i = 0 THEN {}
+  ELSE LET prev == EjectUpTo(s, i - 1)
+       IN IF s[i] \in Bad \/ (Broken # "noclosure" /\ Needs[s[i][1]] \cap {h[1] : h \in prev} # {})
+          THEN prev \cup {s[i]} ELSE prev
+EjectOf(s) == EjectUpTo(s, Len(s))
+
+\* Blocked: the i-th head of s needs a card neither landed nor ahead of it in s.
+Blocked(s, i) == \E n \in Needs[s[i][1]] : ~LandedCard(n) /\ n \notin {s[j][1] : j \in 1..(i - 1)}
+
+\* The longest prefix of s with no blocked head (noclosure reads no needs).
+RECURSIVE Unblocked(_, _)
+Unblocked(s, i) ==
+  IF i > Len(s) \/ (Broken # "noclosure" /\ Blocked(s, i)) THEN SubSeq(s, 1, i - 1)
+  ELSE Unblocked(s, i + 1)
+
+\* stall (land before the eject): the batch ends before the first bad head.
+RECURSIVE BeforeBad(_, _)
+BeforeBad(s, i) == IF i > Len(s) \/ s[i] \in Bad THEN SubSeq(s, 1, i - 1) ELSE BeforeBad(s, i + 1)
+
+\* The ids of the heads the lander ejects, and the queue without them, as heads
+\* and as ids.
+EjIds == {h[1] : h \in lej}
+Kept == SelectSeq(QHeads, LAMBDA h : h[1] \notin EjIds)
+KeptIds == SelectSeq(queue, LAMBDA c : c \notin EjIds)
+
+\* Every ejected card is still queued at the head the lander pinned.
+EjFresh == lej \subseteq Range(QHeads)
+
+\* The queue, the ejected cards looked through, still starts with exactly
+\* these heads, at the epoch the lander holds (headWhy: ids, heads and
+\* attempts, by name).
+Fresh(b) == epoch = lep /\ EjFresh /\ Len(Kept) >= Len(b) /\ SubSeq(Kept, 1, Len(b)) = b
 
 \* idguard's check: the ids only.
-FreshIds(b) == epoch = lep /\ Len(queue) >= Len(b) /\ SubSeq(queue, 1, Len(b)) = Ids(b)
+FreshIds(b) == epoch = lep /\ EjFresh /\ Len(KeptIds) >= Len(b) /\ SubSeq(KeptIds, 1, Len(b)) = Ids(b)
 
 Guard(b) == IF Broken = "idguard" THEN FreshIds(b) ELSE Fresh(b)
 
 \* noepoch's report guard: the heads, no epoch fence.
-FreshAnyEpoch(b) == Len(queue) >= Len(b) /\ SubSeq(QHeads, 1, Len(b)) = b
+FreshAnyEpoch(b) == EjFresh /\ Len(Kept) >= Len(b) /\ SubSeq(Kept, 1, Len(b)) = b
 
 \* The lander's steps in the order the variant takes them.
 PushFrom == IF Broken = "reportfirst" THEN "reported" ELSE "checked"
@@ -161,6 +237,9 @@ TypeOK ==
   /\ lep \in 0..MaxEpoch
   /\ lrep \in 0..MaxEpoch
   /\ tries \in 0..1
+  /\ lej \subseteq Heads
+  /\ deplanded \in BOOLEAN
+  /\ ejland \in BOOLEAN
   /\ events \in 0..MaxEvents
   /\ badcaller \in BOOLEAN
   /\ stalepush \in BOOLEAN
@@ -170,8 +249,9 @@ TypeOK ==
 Init ==
   /\ queue = <<>> /\ att = [c \in Cards |-> 1] /\ landed = {} /\ epoch = 0
   /\ base = {} /\ tip = 0
-  /\ lphase = "idle" /\ lq = <<>> /\ lbatch = <<>> /\ lep = 0 /\ lrep = 0 /\ ltip = 0 /\ tries = 0
+  /\ lphase = "idle" /\ lq = <<>> /\ lbatch = <<>> /\ lep = 0 /\ lrep = 0 /\ ltip = 0 /\ tries = 0 /\ lej = {}
   /\ events = 0 /\ badcaller = FALSE /\ stalepush = FALSE /\ stalerec = FALSE /\ lpushed = {}
+  /\ deplanded = FALSE /\ ejland = FALSE
 
 \* ---- the lander (land.go) ----
 
@@ -183,14 +263,20 @@ Read ==
     /\ lphase = "idle" /\ Len(queue) > 0
     /\ Broken = "latepoch" \/ cep = epoch
     /\ lphase' = "read" /\ lq' = QHeads /\ lep' = cep /\ lrep' = epoch /\ ltip' = tip /\ tries' = 0
-    /\ UNCHANGED store /\ UNCHANGED remote /\ UNCHANGED lbatch
+    /\ UNCHANGED store /\ UNCHANGED remote /\ UNCHANGED <<lbatch, lej>>
     /\ UNCHANGED events /\ UNCHANGED ghosts
 
-\* Build: the pinned heads merged in queue order, ended by the first card
-\* that stops it.
+\* Build: the pinned heads merged in queue order; the bad heads and the cards
+\* that need them ejected (EjectOf), the rest cut at the first blocked card
+\* (build, eject). stall ends the batch before the first bad head and ejects
+\* nothing.
 Build ==
   /\ lphase = "read"
-  /\ \E n \in 1..Len(lq) : lbatch' = SubSeq(lq, 1, n)
+  /\ IF Broken = "stall"
+     THEN /\ lej' = {} /\ lbatch' = BeforeBad(lq, 1)
+     ELSE LET ej == EjectOf(lq)
+          IN /\ lej' = ej
+             /\ lbatch' = Unblocked(SelectSeq(lq, LAMBDA h : h \notin ej), 1)
   /\ lphase' = "built"
   /\ UNCHANGED store /\ UNCHANGED remote /\ UNCHANGED <<lq, lep, lrep, ltip, tries>>
   /\ UNCHANGED events /\ UNCHANGED ghosts
@@ -201,7 +287,7 @@ Build ==
 Check ==
   /\ lphase = "built" /\ Broken # "reportfirst"
   /\ lphase' = IF Broken = "latepoch" \/ Guard(lbatch) THEN "checked" ELSE "idle"
-  /\ UNCHANGED store /\ UNCHANGED remote /\ UNCHANGED <<lq, lbatch, lep, lrep, ltip, tries>>
+  /\ UNCHANGED store /\ UNCHANGED remote /\ UNCHANGED <<lq, lbatch, lep, lrep, ltip, tries, lej>>
   /\ UNCHANGED events /\ UNCHANGED ghosts
 
 \* Push: git push, which the store cannot fence. A moved tip is rejected and
@@ -210,7 +296,8 @@ Check ==
 \* the base holds already is a push of nothing).
 Push ==
   /\ lphase = PushFrom
-  /\ UNCHANGED store /\ UNCHANGED <<lq, lep, lrep, lbatch>> /\ UNCHANGED events /\ UNCHANGED stalerec
+  /\ UNCHANGED store /\ UNCHANGED <<lq, lep, lrep, lbatch, lej>> /\ UNCHANGED events
+  /\ UNCHANGED <<stalerec, deplanded, ejland>>
   /\ IF ltip # tip
      THEN IF tries < 1
           THEN /\ ltip' = tip /\ tries' = tries + 1 /\ lphase' = RebuildTo
@@ -231,20 +318,23 @@ Push ==
 \* store records each card at its current head. Refused, it writes nothing and
 \* the lander says LAND FAILED. noguard lands the first Len(lbatch) queued,
 \* whatever they are (merge --batch n alone); idguard compares ids; noepoch
-\* compares heads with no epoch fence.
+\* compares heads with no epoch fence. The same step returns the ejected cards
+\* to review: off the queue (MergeReq.Ejects, sprint.ejectUnits).
 Report ==
   /\ lphase = ReportFrom
   /\ LET n == Len(lbatch)
-         ok == CASE Broken = "noguard" -> epoch = lep /\ Len(queue) >= n
+         ok == CASE Broken = "noguard" -> epoch = lep /\ EjFresh /\ Len(KeptIds) >= n
                  [] Broken = "noepoch" -> FreshAnyEpoch(lbatch)
                  [] OTHER -> Guard(lbatch)
      IN /\ IF ok
-           THEN /\ landed' = landed \cup {Current(queue[i]) : i \in 1..n}
-                /\ queue' = SubSeq(queue, n + 1, Len(queue))
+           THEN /\ landed' = landed \cup {Current(KeptIds[i]) : i \in 1..n}
+                /\ queue' = SubSeq(KeptIds, n + 1, Len(KeptIds))
                 /\ stalerec' = (stalerec \/ epoch # lep)
-           ELSE UNCHANGED <<queue, landed, stalerec>>
+                /\ deplanded' = (deplanded \/ \E i \in 1..n : Needs[KeptIds[i]] \cap EjIds # {})
+                /\ ejland' = (ejland \/ (lej # {} /\ n > 0))
+           ELSE UNCHANGED <<queue, landed, stalerec, deplanded, ejland>>
   /\ lphase' = ReportTo
-  /\ UNCHANGED <<att, epoch>> /\ UNCHANGED remote /\ UNCHANGED <<lq, lbatch, lep, lrep, ltip, tries>>
+  /\ UNCHANGED <<att, epoch>> /\ UNCHANGED remote /\ UNCHANGED <<lq, lbatch, lep, lrep, ltip, tries, lej>>
   /\ UNCHANGED events /\ UNCHANGED <<badcaller, stalepush, lpushed>>
 
 Land == Read \/ Build \/ Check \/ Push \/ Report
@@ -270,6 +360,7 @@ Rework ==
 
 OtherLand ==
   /\ Len(queue) > 0
+  /\ Current(Head(queue)) \notin Bad /\ \A n \in Needs[Head(queue)] : LandedCard(n)
   /\ base' = base \cup {Current(Head(queue))} /\ tip' = tip + 1
   /\ landed' = landed \cup {Current(Head(queue))} /\ queue' = Tail(queue)
   /\ UNCHANGED <<att, epoch>> /\ UNCHANGED lander
@@ -286,12 +377,12 @@ MoveBase ==
 Crash ==
   /\ lphase # "idle"
   /\ lphase' = "idle" /\ tries' = 0
-  /\ UNCHANGED store /\ UNCHANGED remote /\ UNCHANGED <<lq, lbatch, lep, lrep, ltip>>
+  /\ UNCHANGED store /\ UNCHANGED remote /\ UNCHANGED <<lq, lbatch, lep, lrep, ltip, lej>>
 
 Outside ==
   /\ events < MaxEvents
   /\ events' = events + 1
-  /\ UNCHANGED <<badcaller, stalepush, stalerec>>
+  /\ UNCHANGED <<badcaller, stalepush, stalerec, deplanded, ejland>>
   /\ (Accept \/ Return \/ Rework \/ OtherLand \/ Clear \/ MoveBase \/ Crash)
   /\ lpushed' = IF epoch' # epoch THEN {} ELSE lpushed
 
@@ -309,8 +400,15 @@ LandedInBase == landed \subseteq base
 LandsInOrder ==
   [][LET new == {h[1] : h \in landed' \ landed} IN
        /\ new \subseteq Range(queue)
-       /\ \A i \in 1..Len(queue) : queue[i] \in new => \A j \in 1..(i - 1) : queue[j] \in new
+       /\ \A i \in 1..Len(queue) : queue[i] \in new =>
+            \A j \in 1..(i - 1) : queue[j] \in new \/ (queue[j] \in EjIds /\ queue[j] \notin Range(queue'))
     ]_vars
+
+NeedsLanded == \A h \in landed : \A n \in Needs[h[1]] : LandedCard(n)
+
+DependentsNotLanded == ~deplanded
+
+EjectLands == <>[](Len(queue) = 0 \/ Blocked(QHeads, 1))
 
 CallerEpochCheckedBeforePush == ~badcaller
 
@@ -328,4 +426,8 @@ ReachStranded == ~(lphase = "idle" /\ \E c \in Range(queue) : Current(c) \in lpu
 \* A push made after the store left the epoch the lander holds: a clear between
 \* the check and the push. Shortest: Accept, Read, Build, Check, Clear, Push.
 ReachStalePush == ~stalepush
+
+\* One report ejects a card and lands another: the eject is not vacuous.
+\* Shortest: Accept c1 (bad), Accept c3, Read, Build, Check, Push, Report.
+ReachEjectAndLand == ~ejland
 =============================================================================

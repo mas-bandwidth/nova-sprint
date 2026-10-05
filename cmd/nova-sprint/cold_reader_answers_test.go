@@ -175,12 +175,12 @@ func TestOneLintFindingIsSaidInTheSingular(t *testing.T) {
 	assert.Equal(t, "2 findings", findingsCount(2))
 }
 
-// land's refusal of a head that is not a commit ends with the resume a land
-// that met it owes: the conflict fact stopped the stream.
-func TestTheHeadRefusalSaysTheStreamThenWantsResume(t *testing.T) {
+// land's refusal of a head that is not a commit names the rework a land that met it
+// owes: the card was ejected to review and the stream went on (eject).
+func TestTheHeadRefusalSaysTheEjectThenWantsRework(t *testing.T) {
 	t.Parallel()
 	why := headNotCommit("s1", landCard{id: "s1-2", head: "s1-2.w1"})
-	assert.Contains(t, why, "run: nova-sprint return s1-2 --reason 'its head is not a commit', then nova-sprint rework s1-2 --fix 'finish with --head <commit>', then (a land that met it stopped the stream) nova-sprint resume --stream s1 --did 'returned s1-2 for rework'")
+	assert.Contains(t, why, "land ejects it to review (stream s1 goes on): run nova-sprint rework s1-2 --fix 'finish with --head <commit>'")
 	assert.Empty(t, headNotCommit("s1", landCard{id: "s1-2", head: "9f3c2e1"}))
 }
 

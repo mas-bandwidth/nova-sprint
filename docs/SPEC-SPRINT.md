@@ -2470,6 +2470,40 @@ not marked for promotion, its remedy the sprint branch (re-cut the card with
 `BASE: <the sprint branch>`, or `--base <the sprint branch>` for a card naming no
 `BASE:`) or, for the promotion stream, the mark (the protected branches, below).
 
+**The eject** (land-ejects-a-bad-card-and-its-dependents; `tla/Land.tla`, THE EJECT; the
+owner, 2026-10-05: "true, unless the cards after DEPEND on the card that is in front of the
+merge..."). One card that cannot be merged no longer stalls its stream's batch (on
+2026-10-05 one head with history unrelated to the base held 16 cards for minutes, the
+failure counted as the environment's). A head is blamed when the failure is its own: git
+refusing that head alone (unrelated histories, an object or ref of that head missing or
+unreadable: `headFault`), a conflict, the lander's checks or the tree gate; a failure of the
+base, the remote or the machine stays the environment's, refuses the batch, nothing pushed
+or reported and no card blamed. A blamed card is ejected: it goes back to review with the
+reason as its finding, its merge card returned and marked to be redone on the tip as a
+conflict card is; every later card of the batch whose needs (not waived) reach it, directly
+or through another ejected card, or whose head is built on its head (git's ancestry), is
+ejected with it, each saying which card it waited on; and the rest of the batch lands in
+order in the same run, the ejects leaving the queue in the same merge step as the landing
+(`MergeReq.Ejects`, internal/sprint/merge_eject.go; the report's guard pins the ejected
+cards' heads too). The batch line says `ejected=<id,...>` and a `NOTE land ejected <id>:
+<why>` line each. The stream stops (the conflict fact, as before) only when a card that is
+not ejected cannot land: one whose needs have not landed and are not ahead of it in the
+batch. Every eject raises one judgment to the coordinator, the ejected card's returned
+judgment, naming the card, its reason, the dependents ejected with it and what landed. A
+card already ejected twice the same way (`eject_way`, `ejects` on its primary) is not ejected
+a third time: the lander stops the stream on it with the conflict fact and the judgment
+"the brief is wrong" (`sprint.BriefWrongNext`). A landing that lands nothing while the
+stream holds cards is counted on the stream's control card (`land_idle_since`,
+`land_idle_why`); after 15 minutes of it (`sprint.MergeStuckAfter`) the judgment "merge
+stuck" is raised once with the reason, and the next landing clears the count and closes it.
+The model checks no landed card needs an unlanded one (`NeedsLanded`), no report lands a
+card that needs one it ejects (`DependentsNotLanded`), and under fairness a bad card at the
+front never holds the cards that do not need it (`EjectLands`); the naive fix that ejects
+the bad card alone (`MCLandBrokenNoClosure*.cfg`) and the lander before the eject
+(`MCLandBrokenStall.cfg`) are its witnesses
+(`TestALandBatchEjectsTheCardThatCannotMergeAndItsDependentsAndLandsTheRest`,
+`TestALandStopsOnACardEjectedTwiceTheSameWay`, cmd/nova-sprint/land_eject_test.go).
+
 **The protected branches.** The lander never lands on a protected branch of a
 repository, dev or main, unless the card's stream is marked for that repository: a
 stream lands on its sprint branch, and promotion to dev is the marked stream's work
@@ -2539,8 +2573,8 @@ them it finds those four and one more, diaryr-37, a lead-in left without its end
 the review passed. On those land merges the PATHS rule flags negd-42 and three
 cards of its shape (negd-17, -32, -41: a file the card edited after a name card
 renamed it from the name its PATHS gives), which the review passed. A head that fails is taken off
-the batch branch and ends the batch as a head in conflict does: the conflict fact
-on it names every failure, `<file>:<line>` and the rule.
+the batch branch and ejected as a head in conflict is (the eject, above): its finding
+names every failure, `<file>:<line>` and the rule.
 
 **The tree gate.** Every tip of the batch branch passes the tree gate before the
 next head is merged onto it, in a clone that holds a `go.mod`: the module builds
@@ -2550,9 +2584,9 @@ itself pass (`go test ./internal/docs/ ./internal/ci/`, those the clone has). Th
 base's tip is gated once a batch, the tree tests included, before any head is
 merged: a base that is red refuses the batch, nothing pushed or reported and no
 card blamed, the reason naming the base and the run, and the remedy is to fix
-the base. A head whose merged tree is red is taken off the batch branch and ends
-the batch as a head that does not merge does, the conflict fact's note the run,
-how it ended and its output on one line (the finding; the heads before it land).
+the base. A head whose merged tree is red is taken off the batch branch and ejected
+as a head that does not merge is (the eject, above), its finding the run,
+how it ended and its output on one line (the rest of the batch lands).
 A merge that made no commit is not gated. Every go run the lander makes in the
 clone, the gate's and the update runs below, is under `GOFLAGS=-mod=readonly`:
 no run writes `go.mod` or `go.sum` (under a caller's `-mod=mod` the update runs
@@ -3410,7 +3444,7 @@ command that loads it.
 first on the `LAND REFUSED` line, each other on a `NOTE` line and in the `--json` item's
 `also`: each head of the batch that is not a commit id, with its return), and on a twin,
 which has no git, a `NOTE` that `merge --stream <s> --batch <n>` records the landing in
-land's place; a head that is not a commit id stops the dry run where land stops, the cards before it a batch, that card refused with the conflict fact land would record and nothing recorded; `--json`. A batch landed and reported tags the branches its cards' work cards of every attempt record (`branches_queued=<n>` on its line, `prune` on its item; never the base, an empty name, an option-like name or one not under `sprint/`, each said on a NOTE and counted as `branches_kept=<n>`), and the cleanup deletes only canonical successful-attempt branches from origin later, many in one push, each with an explicit lease against its recorded head; advanced or recreated tips, unowned branches and all recorded stream bases stay on origin, and a retry keeps the original lease; then removes the clone's remote-tracking refs of branches origin no longer holds, never while a landing builds or pushes: the one-shot land once after every stream, the land loop (`run --land`) between rounds when a round finds nothing queued or 256 branches wait, a line per clone `PRUNE OK|FAILED branches= refs= dir= took=` (`--json` `prune`); a failed cleanup fails no landing, and the loop keeps its branches and tries again after a minute; the queue is the process's memory, so a crash or a stop loses it and those branches stay on origin; a dry run queues and deletes nothing and says how many it would queue |
+land's place; a head that is not a commit id is ejected in the dry run as land ejects it, with every later card whose needs reach it, named on the batch's `ejected=` line, the rest a batch, and nothing recorded; `--json`. A batch landed and reported tags the branches its cards' work cards of every attempt record (`branches_queued=<n>` on its line, `prune` on its item; never the base, an empty name, an option-like name or one not under `sprint/`, each said on a NOTE and counted as `branches_kept=<n>`), and the cleanup deletes only canonical successful-attempt branches from origin later, many in one push, each with an explicit lease against its recorded head; advanced or recreated tips, unowned branches and all recorded stream bases stay on origin, and a retry keeps the original lease; then removes the clone's remote-tracking refs of branches origin no longer holds, never while a landing builds or pushes: the one-shot land once after every stream, the land loop (`run --land`) between rounds when a round finds nothing queued or 256 branches wait, a line per clone `PRUNE OK|FAILED branches= refs= dir= took=` (`--json` `prune`); a failed cleanup fails no landing, and the loop keeps its branches and tries again after a minute; the queue is the process's memory, so a crash or a stop loses it and those branches stay on origin; a dry run queues and deletes nothing and says how many it would queue |
 | promote | the machine's promotion, on a schedule, of a frozen branch cut from the sprint tip (`promo/<YYYY-MM-DD>-<n>`, `git branch --no-track` at that commit), never the live sprint branch: a queued pull request whose head is the live branch blocks the lander's pushes (GH006, found 2026-10-04). `--every <duration>` (default 1h) is the clock; `--landings <n>` also promotes once that many `land <id> (sprint stream <s>)` commits have landed since the last cut, looked for once a minute until the clock elapses; `--branch` (default the checkout's branch), `--repo-dir`, `--base` (default dev), `--check <command>` the tree gate run on the frozen commit before anything is pushed. The pull request body is the landed card ids since `refs/promoted/last`, else since the base, oldest first. Admission is the `enqueuePullRequest` mutation, which carries no merge strategy (the queue refuses one; `gh pr merge` and a flag named auto are the spelling the class test refuses), then a query confirms `mergeQueueEntry`. A merge prints `promoted --sha <sha>` and moves `refs/promoted/last`. A failed merge-group run raises one judgment, the failing check's log tail, decisions `fix-and-recut` and `skip`, and does not record the sha; a later pass of the same branch does not raise a second one. `--dry-run` prints the branch and the cards and cuts nothing. The land loop calls the same step only when promotion is armed; `run --land` does not arm it. The step is `(*promoter).step` (cmd/nova-sprint/promote.go), which cites this section |
 | resume | a stopped stream moves again, with what was done; refused while a cause is unresolved |
 | fleet | `up|down <member>`, `level` (down is `hold <member> --return` in the old words, for one release); `up <member> --deadline <duration|default>` pins the deadline every card dealt to the member gets, or takes the pin off (section 5, the deadline by machine); down and up say on the member's MOVED line where its cards went (nova-tools#5096 item 21): down `moved=N to m2(n),m3(n); stayed=K withdrawn: <primaries>` (a card no member up has room for, or at its redeal bound, is withdrawn), up `moved=N to <member>(n) from m2(n),...` when the level moves cards onto it; a member going down in the tick's presence part says the same |

@@ -158,11 +158,11 @@ func TestLandResolvesAConflictOnlyInGeneratedLedgers(t *testing.T) {
 				assert.Equal(t, tc.runs, strings.Count(string(runs), "run"), "the update runs")
 			}
 			if tc.why != "" {
-				assert.Equal(t, 1, code, out+errs)
-				assert.Contains(t, errs, "LAND REFUSED stream=s1 cards=1 base=- tip=- ids=s1-2 fact=conflict reason=the head "+heads["s1-2"]+" of s1-2 does not merge")
-				assert.Contains(t, errs, tc.why)
+				assert.Equal(t, 0, code, out+errs)
+				assert.Contains(t, out, "NOTE land ejected s1-2: the head "+heads["s1-2"]+" of s1-2 does not merge")
+				assert.Contains(t, out, tc.why)
 				assert.Equal(t, []string{"land s1-1 (sprint stream s1)", "the debt", "base"}, r.mainLog())
-				assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "merging/stuck"}, r.places("s1-1", "s1-2"))
+				assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "review/returned"}, r.places("s1-1", "s1-2"))
 				assert.Empty(t, r.git(r.clone, "status", "--porcelain", "--untracked-files=all"), "the refused merge is aborted and what the update wrote is gone")
 				r.clean()
 				return
@@ -224,11 +224,11 @@ func TestLandRefusesAResolutionThroughASymlink(t *testing.T) {
 				require.NoError(t, os.Symlink(outside, filepath.Join(r.clone, linked)))
 			}
 			code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
-			assert.Equal(t, 1, code, out+errs)
-			assert.Contains(t, errs, "ids=s1-2 fact=conflict reason=the head "+heads["s1-2"]+" of s1-2 does not merge")
-			assert.Contains(t, errs, "its generated ledgers conflict and "+linked+" is a symlink, which an update would write through")
+			assert.Equal(t, 0, code, out+errs)
+			assert.Contains(t, out, "NOTE land ejected s1-2: the head "+heads["s1-2"]+" of s1-2 does not merge")
+			assert.Contains(t, out, "its generated ledgers conflict and "+linked+" is a symlink, which an update would write through")
 			assert.NoFileExists(t, filepath.Join(outside, "leak.txt"), "no update ran through the link")
-			assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "merging/stuck"}, r.places("s1-1", "s1-2"))
+			assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "review/returned"}, r.places("s1-1", "s1-2"))
 			r.clean()
 		})
 	}
