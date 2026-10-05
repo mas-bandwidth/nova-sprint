@@ -1,26 +1,17 @@
-# The work tree: keep issue content together
+# nova-work v1, layer 1: the tree (SPEC-WORK-V1)
 
-The work tree gives you and your AIs a local record of GitHub issues across
-repositories. Import fills that file; verify compares its recorded fields
-with a fresh read of GitHub, or with another tree file. This can help you
-inspect a backlog before choosing the tasks your team should work on.
+nova-work is pre-alpha: not ready for production use.
 
-This page is the file-format and import/verify contract for `nova-work`.
-For commands you can try, use [the command guide](CLI.md#nova-work). The
-separate command in this checkout is pre-alpha. The [v1.0.0 README](../README.md)
-presents the work tree as part of nova-sprint.
+`nova-work` holds every issue of every repository of an organization in **one tree file**: a
+restricted s-expression that `internal/worklang` reads and never evaluates
+([SPEC-WORKLANG.md](SPEC-WORKLANG.md) section 1). The tree is the working store the verbs above
+query and change; GitHub is the source it is imported from and, while it exists, a mirror. This
+page is section 1, the lowest layer: the tree's shape, the import that fills it, and the verify
+that proves it holds exactly what the source holds. The verbs that query and change the tree, and
+its index, are specified on their own page and stand on this one.
 
-The file uses a restricted s-expression: nested lists of data, never code to
-execute. [The work language](SPEC-WORKLANG.md) defines its parser. This GitHub
-mirror is distinct from the proposed [durable sprint program](../internal/work/NOTE.md),
-which would hold cards, streams, needs, and sentinels. Importing a mirror does
-not, by itself, create or schedule sprint cards.
-
-Use sections 1.2–1.6 for the format and working verbs. Section 1.7 describes
-modes that are specified but not built; sections 1.8–1.10 record the model,
-measurements, and tests. Historical results refer to their named runs, not
-to a fresh check of your own organization. The previous nova-work implementation
-is kept in `nova-work-old` for reference.
+The old nova-work and its modules live in the repository `nova-work-old`, beside this one in the
+same organization, for reference only.
 
 ## 1.1 The layer
 
@@ -36,9 +27,6 @@ the model's cases hold on a bench (the design passes, each reversed witness fail
 invariant), and the unit tests below are green.
 
 ## 1.2 The tree's shape
-
-Here is the complete record shape. The ordering rules below make a tree
-repeatable to encode and straightforward to compare.
 
 ```lisp
 (work-tree "v1"
@@ -85,6 +73,8 @@ the tree.
   the writer refuses any other value rather than write it lossily.
 - GitHub's null is `()` for an enumeration or a milestone and `""` for a string (a deleted
   author, an open issue's closed time). A boolean is the symbol `true` or `false`.
+- A number field (issue, milestone, reference, linked PR) is a positive integer at most
+  2147483648 (2^31): the writer refuses anything larger and the reader refuses it too.
 - The reader (`workfile.Decode`) refuses a missing, repeated or unknown key, a value of the wrong
   kind, records out of order, a comment id repeated within an issue, and an issue whose `:url`
   is not the one its path gives. A refused file is refused whole.
@@ -95,9 +85,6 @@ the tree.
   approximate multiplier; raise `--max-bytes` only with that memory cost in mind.
 
 ## 1.3 What an issue carries
-
-This is the boundary of the mirror: the listed fields are captured and
-compared. Other GitHub events and metadata are outside this contract.
 
 | key | GitHub field | note |
 | --- | --- | --- |
@@ -127,18 +114,12 @@ the sources of references and as linked pull requests.
 
 ## 1.4 Origin
 
-Origin records where an issue came from. It is a classification derived
-from GitHub metadata, not a judgment about the author.
-
 An issue filed by the organization's owner, a member or a collaborator (`authorAssociation`
 `OWNER`, `MEMBER`, `COLLABORATOR`) is **internal**; every other issue is **external**
 (`workfile.OriginOf`). The destructive mode closes internal issues only; an external issue stays
 open on GitHub, where its filer sees it, until its fix closes it (decision 4).
 
 ## 1.5 Paths and URLs, both directions
-
-A record must keep pointing to the same repository and issue when it is
-encoded or read. These rules make that identity check explicit.
 
 An issue's path is `repos/<owner>/<repo>/issues/<n>` and its URL
 `https://github.com/<owner>/<repo>/issues/<n>`. Each derives from the other
@@ -148,9 +129,6 @@ its parts in verify's lines. Walking up is the path's prefix: an issue's reposit
 `repos/<owner>/<repo>`, its root the tree.
 
 ## 1.6 The verbs of layer 1
-
-Import creates the local record; verify tells you where it differs from
-its comparison source. Neither working verb changes GitHub.
 
 ```text
 nova-work import --org <org> (--out <tree.lisp> | --dry-run) [--repo <owner/name>]... [--max-calls <n>] [--page-size <n>] [--gh <path>] [--timeout <d>]
@@ -229,9 +207,6 @@ first 100 comments, references and linked pull requests; the REST quota is not t
 
 ## 1.8 The model
 
-The model explores issue and repository states under the specified modes.
-Its results apply to those assumptions, not to unimplemented runtime behaviour.
-
 `tla/WorkImport.tla` holds an issue's import states (absent, fetched, in the tree, mirrored,
 closed by the destructive mode, re-opened by export) and a repository's sync (idle, importing,
 imported, verified, closing, exporting), with an outside edit possible at any time. Contents are a
@@ -243,9 +218,6 @@ liveness `ImportEnds`. Five reversed witnesses, one guard removed each, fail wit
 their case names in `tla/CASES.tsv` (group `workimport`).
 
 ## 1.9 Measured
-
-The following measurements are a record of the run described here. Use
-them to understand the test scope, not as a current service benchmark.
 
 The whole of an organization of 96 repositories, one run each way from a working machine:
 
@@ -259,9 +231,6 @@ The whole of an organization of 96 repositories, one run each way from a working
 | result | written after its round trip | zero differences |
 
 ## 1.10 Tests
-
-These checks protect the file contract and the GitHub comparison. Keep
-them in mind when changing the parser, encoder, or import boundary.
 
 1. `TestEncodeDecodeIsTheIdentity` (`internal/workfile`): the recorded fixture's tree, encoded and
    read back, equals itself field for field, and encoding it again gives the same bytes.

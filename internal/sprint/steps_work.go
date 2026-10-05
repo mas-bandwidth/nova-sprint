@@ -69,9 +69,6 @@ type AddReq struct {
 	// Held admits every card held (IsHeld): waiting, a sentinel never
 	// reached, nothing dealt, until the coordinator's release.
 	Held bool
-	// Auto admits every sentinel of the add auto (IsAuto): held only until its
-	// needs land, then landed by the tick, never reached and never a judgment.
-	Auto bool
 	// BriefOps is each card's brief decision op id (FieldBriefOp), by card id, and
 	// BriefRecord the record that holds them (FieldBriefRecord): empty when add asked
 	// none.
@@ -166,12 +163,6 @@ func Add(s *Snapshot, r AddReq) Plan {
 	}
 	if r.Every > 0 && (r.Count <= 0 || r.Sentinel || r.Before != "" || r.After != "" || len(r.IDs) > 0) {
 		return refuseAll("--sentinel-every goes with --count, at the end of the stream")
-	}
-	if r.Auto && r.Held {
-		return refuseAll("--auto or --held, not both: an auto sentinel is held only until its needs land, a held one until the coordinator's release")
-	}
-	if r.Auto && !r.Sentinel && r.Every == 0 && !slices.ContainsFunc(r.Cards, func(c CardAdd) bool { return c.Sentinel }) {
-		return refuseAll("--auto goes with --sentinel or --sentinel-every: it makes a sentinel auto")
 	}
 	scores, why := addScores(s, r, len(ids))
 	if why != "" {
@@ -407,13 +398,13 @@ func Add(s *Snapshot, r AddReq) Plan {
 			col = Waiting
 		}
 		fields := map[string]string{"kind": kind, "stream": r.Stream, "attempt": "0", "admitted": stamp(s.Now)}
+		if kind == "primary" && col == Ready {
+			fields[FieldReadyAt] = stamp(s.Now)
+		}
 		if r.Held {
 			fields[FieldHeld] = stamp(s.Now)
 		}
 		gateSaid := ""
-		if r.Auto && kind == "sentinel" {
-			fields[FieldAuto] = stamp(s.Now)
-		}
 		if a.brief != "" && !a.gate {
 			fields["brief"] = a.brief
 			if a.rules != "" {
@@ -450,9 +441,6 @@ func Add(s *Snapshot, r AddReq) Plan {
 		if r.Held {
 			u.Moved += "; held until release"
 		}
-		if fields[FieldAuto] != "" {
-			u.Moved += "; auto: the tick releases it when its needs land"
-		}
 		if gateSaid != "" {
 			u.Moved += "; " + gateSaid
 		}
@@ -470,7 +458,7 @@ func Add(s *Snapshot, r AddReq) Plan {
 				}
 			}
 			// reached only after something: a stop with nothing before it is simply next
-			if len(open) == 0 && !r.Held && !r.Auto && (len(a.needs) > 0 || anyBefore(s, r.Stream, a.id, a.score) || workInFlight(s, nil) == "") {
+			if len(open) == 0 && !r.Held && (len(a.needs) > 0 || anyBefore(s, r.Stream, a.id, a.score) || workInFlight(s, nil) == "") {
 				fields["reached"] = stamp(s.Now)
 				u.Notes = append(u.Notes, reachedNote(s, &Card{ID: a.id, Row: r.Stream}, nil, len(pulled), r.Who))
 				u.Moved += "; reached"
@@ -695,10 +683,8 @@ func ResolveExtras(s *Snapshot) []string {
 	return out
 }
 
-// Resolve moves waiting -> ready where every need has landed, and lands each
-// auto sentinel whose needs have all landed (waiting -> landed, as release
-// does, "released: its needs landed"). A need that was dropped or missing is a
-// judgment for the coordinator, once, and never a landing.
+// Resolve moves waiting -> ready where every need has landed. A need that was
+// dropped or missing is a judgment for the coordinator, once.
 func Resolve(s *Snapshot, r ResolveReq) Plan { return Lawful(resolvePlan(s, r)) }
 
 func resolvePlan(s *Snapshot, r ResolveReq) Plan {
@@ -712,19 +698,7 @@ func resolvePlan(s *Snapshot, r ResolveReq) Plan {
 	for _, o := range s.Open {
 		bySubject[o.Subject()] = append(bySubject[o.Subject()], o)
 	}
-	// the auto sentinels whose waits have all landed land in this plan, as
-	// release lands one, and what waited only for them moves with them
-	var autos []*Card
 	for _, c := range chosen {
-		if IsAuto(c) && !IsHeld(c) {
-			autos = append(autos, c)
-		}
-	}
-	landing := autoLanding(s, autos)
-	for _, c := range chosen {
-		if landing[c.ID] {
-			continue
-		}
 		// A missing prerequisite that now exists is no longer a missing-need
 		// judgment; it still has to land before the primary can move.
 		for _, o := range bySubject[c.ID] {
@@ -733,7 +707,7 @@ func resolvePlan(s *Snapshot, r ResolveReq) Plan {
 			}
 		}
 		var waits, dropped, missing []string
-		for _, n := range WaitsFor(s, c, landing) {
+		for _, n := range WaitsFor(s, c, nil) {
 			if s.Work.Card(n) == nil {
 				missing = append(missing, n)
 			} else if len(droppedNeeds(s, []string{n})) > 0 {
@@ -784,45 +758,10 @@ func resolvePlan(s *Snapshot, r ResolveReq) Plan {
 			}
 			continue
 		}
-		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Ready, nil))},
+		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Ready, readyStamp(c, s.Now)))},
 			Moved: c.ID + " waiting -> ready"})
 	}
-	if len(landing) == 0 {
-		return p
-	}
-	moving := map[string]bool{}
-	for _, u := range p.Units {
-		moving[u.Key] = true
-	}
-	var lands []Unit
-	for _, c := range chosen {
-		if landing[c.ID] {
-			set := map[string]string{"landed": stamp(s.Now), "released": stamp(s.Now), "released_by": r.Who, "release_reason": AutoReason}
-			lands = append(lands, sentinelLands(s, c, moving, set, "released: "+AutoReason, "", r.Who))
-		}
-	}
-	// the landings first: a bound that cuts the plan (the tick's) keeps a
-	// sentinel's landing before the cards it lets go
-	p.Units = append(lands, p.Units...)
-	settle(&p, s, r.Who, nil, nil, landing)
 	return p
-}
-
-// autoLanding is the sentinels among cards, each auto, whose waits have all
-// landed or were waived, with the ones landing before them: one behind another
-// lands with it. A dropped or missing need is a wait, so a sentinel that names
-// one never lands here; resolve raises its judgment.
-func autoLanding(s *Snapshot, cards []*Card) map[string]bool {
-	landing := map[string]bool{}
-	for more := true; more; {
-		more = false
-		for _, c := range cards {
-			if !landing[c.ID] && len(WaitsFor(s, c, landing)) == 0 {
-				landing[c.ID], more = true, true
-			}
-		}
-	}
-	return landing
 }
 
 // resolveAfter is resolve as a trigger of a step that lands primaries
@@ -836,13 +775,12 @@ func resolveAfter(s *Snapshot, landing map[string]bool, who string) []Unit {
 			continue
 		}
 		if IsSentinel(c) {
-			// an auto sentinel is never reached: the tick's resolve lands it
-			if !IsAuto(c) && c.F("reached") == "" && Reachable(s, c, landing) {
+			if c.F("reached") == "" && Reachable(s, c, landing) {
 				out = append(out, reachUnit(s, c, landing, who))
 			}
 			continue
 		}
-		out = append(out, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Ready, nil))},
+		out = append(out, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Ready, readyStamp(c, s.Now)))},
 			Moved: c.ID + " waiting -> ready (its needs landed)"})
 	}
 	return out
@@ -890,7 +828,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		if StreamHeld(s, c.Row) {
 			return "its stream " + c.Row + " is held by the coordinator (hold.go): nova-sprint unhold " + c.Row + " deals it again"
 		}
-		if _, ok := FriendCard(c); ok {
+		if OnlyFriend(c) {
 			return friendCardWhy
 		}
 		return inState(c, Ready)
@@ -1406,6 +1344,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			cardSet[FieldUsage] = rec
 		}
 		set := map[string]string{"head": head, "result": result}
+		maps.Copy(set, finishStamps(pr, c, s.Now))
 		decidedSets(r, used, pr, cardSet, set)
 		identical := false
 		if r.Failed && !passed {

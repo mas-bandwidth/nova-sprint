@@ -1,15 +1,6 @@
 # DirtyTick: the sprint machine's tick
 
-This model asks whether the sprint can move work between its tables without
-losing a handoff, overfilling a worker, or forgetting a review. It is a
-contributor reference for the tick loop, not a setup guide for running a team.
-Start with [the model overview](README.md) for terminology and runner setup.
-
-The tables and findings below are the model's technical record. Read the
-assumptions and bounds alongside each result; the reported runs are evidence
-about that model revision, not a fresh check of the current deployment.
-
-`DirtyTick.tla` is the tick of the sprint machine, originally written before the tick implementation. `MCDirtyTick.tla` holds the small instances, each `MCDirtyTick*.cfg` is one case of `CASES.tsv`, and `dirtytick-bench/MCDirtyTickFull.cfg` is the larger run outside the plan. Rule names are those of `design/EVENT-DRIVEN-TICK-v2.1.md` sections 2 and 3 (R2, R6, R8, R9, R10).
+`DirtyTick.tla` is the tick of the sprint machine, written before the tick is built. `MCDirtyTick.tla` holds the small instances, each `MCDirtyTick*.cfg` is one case of `CASES.tsv`, and `dirtytick-bench/MCDirtyTickFull.cfg` is the larger run outside the plan. Rule names are those of `design/EVENT-DRIVEN-TICK-v2.1.md` sections 2 and 3 (R2, R6, R8, R9, R10).
 
 ## The shape
 

@@ -48,10 +48,9 @@ func AddEachStep(rs []sprint.AddReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.AddEach(s, rs) }}
 }
 
-// ResolveStep moves waiting primaries whose needs landed, and lands the auto
-// sentinels whose needs landed: it reads the merge table for their streams.
+// ResolveStep moves waiting primaries whose needs landed.
 func ResolveStep(r sprint.ResolveReq) Step {
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "resolve", Load: tables(sprint.Work, sprint.Merge),
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "resolve", Load: tables(sprint.Work),
 		Extras: func(s *sprint.Snapshot) map[string][]string {
 			return map[string][]string{sprint.Work: sprint.ResolveExtras(s)}
 		},
@@ -252,17 +251,6 @@ func ReleaseStep(r sprint.ReleaseReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Release(s, r) }}
 }
 
-// SentinelSetStep is the coordinator making sentinels auto (sentinel set
-// --auto); one whose needs have landed lands in the step, so it reads what
-// release reads.
-func SentinelSetStep(r sprint.SentinelSetReq) Step {
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "sentinel set", Load: tables(sprint.Work, sprint.Merge), Mirrors: true,
-		Extras: func(s *sprint.Snapshot) map[string][]string {
-			return map[string][]string{sprint.Work: sprint.ResolveExtras(s)}
-		},
-		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.SentinelSet(s, r) }}
-}
-
 // AckStep is the coordinator closing judgments it looked at.
 func AckStep(r sprint.AckReq) Step {
 	// every table: ack is judged by the no-stall rule on the state after it
@@ -316,6 +304,13 @@ func NoteStep(verb string, n sprint.Note) Step {
 		n.At = s.Now
 		return sprint.Plan{Notes: []sprint.Note{n}}
 	}}
+}
+
+// UnpinStep drops stored WHO pins atomically with their audit notes. The fleet
+// table is loaded so a first attempt returned by friend take can be recognised.
+func UnpinStep(r sprint.UnpinReq) Step {
+	return Step{Args: ArgsOf(r), Verb: "unpin", Load: tables(sprint.Work, sprint.Fleet),
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Unpin(s, r) }}
 }
 
 // RelinkStep re-points the needs of an old card to its twin (sprint.Relink): it reads the

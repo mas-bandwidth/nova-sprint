@@ -333,7 +333,7 @@ func (a *app) friendCardsOf(ctx context.Context, st *store.Store, name, dir stri
 		if _, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(queueFile))); err != nil {
 			return 0, 0, nil
 		}
-		return 0, 0, writeQueueFile(dir, states, left)
+		return 0, 0, writeQueueFile(dir, states, left, nil)
 	}
 	var cards []*sprint.Card
 	for _, c := range all {
@@ -348,7 +348,7 @@ func (a *app) friendCardsOf(ctx context.Context, st *store.Store, name, dir stri
 	}
 	defer func() {
 		if err == nil {
-			err = writeQueueFile(dir, states, left)
+			err = writeQueueFile(dir, states, left, packets)
 		}
 	}()
 	for i, p := range packets {
@@ -447,15 +447,24 @@ func (a *app) busWatch(addr, user string) *bus.Watch {
 	return w
 }
 
-// openBus is the real busOpen: the bus store dialed as nova-bus dials it
-// (internal/redisconn, the fleet's login from the environment).
-func (a *app) openBus(ctx context.Context, addr, user string) (*bus.Bus, func(), error) {
-	// the bus has its own login (NOVA_BUS_REDIS_USER, NOVA_BUS_REDIS_PASSWORD_ENV), never the
-	// sprint store's: a coordinator's store login sent to a bus with no users is refused
-	// (WRONGPASS), and every note to a friend failed that way on 2026-10-04
+// busOptions selects the login for the bus connection used by friend sync
+// (SPEC-SPRINT section 1). It holds variable names, never a password value.
+func busOptions(getenv func(string) string) redisconn.Options {
+	addr := getenv(busRedisEnv)
+	user := getenv(busUserEnv)
 	o := redisconn.Options{Addr: addr, Env: redisconn.Env{User: busUserEnv}}
 	if user != "" {
 		o.Env.PasswordEnv = busPasswordEnvEnv
+	}
+	return o
+}
+
+// openBus is the real busOpen: the bus store dialed as nova-bus dials it
+// (internal/redisconn, the fleet's login from the environment).
+func (a *app) openBus(ctx context.Context, addr, user string) (*bus.Bus, func(), error) {
+	o := busOptions(a.getenv)
+	if addr != "" {
+		o.Addr = addr
 	}
 	conn, err := redisconn.Open(ctx, o, a.getenv)
 	if err != nil {
@@ -636,6 +645,9 @@ type friendQueue struct {
 }
 
 type friendTask struct {
+	Gen int    `json:"gen,omitempty"`
+	Job string `json:"job,omitempty"`
+
 	ID          string `json:"id"`
 	State       string `json:"state"`
 	Deliverable string `json:"deliverable,omitempty"`
@@ -646,8 +658,13 @@ type friendTask struct {
 // while it is working, and taken once the coordinator has taken it back or a queued one
 // has been dealt to another (friend level, leftOf); a record the sprint does not name, or one her session marked
 // done, is kept as it is. The file is written whole (atomicfile), and not at all when
-// nothing changes.
-func writeQueueFile(dir string, states map[string]string, leftOf func(ids []string) (map[string]bool, error)) error {
+// nothing changes. docs/FRIENDS.md: a new generation or epoch resets a done record;
+// an unchanged job preserves the session's completion.
+func writeQueueFile(dir string, states map[string]string, leftOf func(ids []string) (map[string]bool, error), packets []sprint.Packet) error {
+	jobs := map[string]friendTask{}
+	for _, p := range packets {
+		jobs[p.Card] = friendTask{ID: p.Card, Gen: max(1, p.Gen), Job: friendJobOf(p)}
+	}
 	path := filepath.Join(dir, filepath.FromSlash(queueFile))
 	var q friendQueue
 	before, err := os.ReadFile(path)
@@ -675,8 +692,16 @@ func writeQueueFile(dir string, states map[string]string, leftOf func(ids []stri
 	for i, t := range q.Tasks {
 		if state, ok := states[t.ID]; ok {
 			seen[t.ID] = true
-			if t.State != "done" {
+			job, assigned := jobs[t.ID]
+			newJob := assigned && (max(1, t.Gen) != job.Gen || (t.Job != "" && t.Job != job.Job))
+			if t.State != "done" || newJob {
 				q.Tasks[i].State = state
+			}
+			if assigned {
+				q.Tasks[i].Gen, q.Tasks[i].Job = job.Gen, job.Job
+				if newJob {
+					q.Tasks[i].Deliverable = ""
+				}
 			}
 		} else if left[t.ID] {
 			// queued, and dealt to another now: it left without her starting it (friend
@@ -686,7 +711,9 @@ func writeQueueFile(dir string, states map[string]string, leftOf func(ids []stri
 	}
 	for _, id := range slices.Sorted(maps.Keys(states)) {
 		if !seen[id] {
-			q.Tasks = append(q.Tasks, friendTask{ID: id, State: states[id]})
+			task := jobs[id]
+			task.ID, task.State = id, states[id]
+			q.Tasks = append(q.Tasks, task)
 		}
 	}
 	after, err := json.MarshalIndent(q, "", "  ")

@@ -10,25 +10,28 @@ import (
 
 // The friend stall ladder (docs/SPEC-SPRINT.md section friend-stall-ladder-r.w1).
 // The model is tla/StallLadder.tla (with invariants NoCardHeldPastBound, NoStartedRedealt,
-// ReleasedOnlyByActivity, which is ReleasedOnlyByEvidence and NeverDownWhileWorking).
+// ReleasedOnlyByActivity).
 //
-// A friend holding dealt cards is stalled when no evidence of her work is newer than
-// friend_stall_after (default 20m). Evidence is everything the store already has
-// (friendEvidence): session activity (FriendReport.Active), a beat whose running list is
-// non-empty, a finish or a report collected for her (a card of her row stamped finished or
-// reported), a read she recorded, and a progress stamp (FieldProgress). Awake is not
-// working: a beat that names nothing running is no evidence.
+// A friend holding dealt cards is stalled when no activity of hers and no card progress stamp
+// (FieldProgress) is newer than friend_stall_after (default 20m). Her activity is any of: her
+// session activity (FriendReport.Active); a beat whose running list is not empty (friend beat
+// --running: a one-shot lane, or cards worked in child agents, move no session), at the beat's
+// time; and a finish of a card on her row (its "finished" stamp).
 // While stalled, the ladder climbs one rung per friend_stall_step (default 5m):
 //   (1) Wake turn 1: bus message to her pushed into daemon as a turn.
 //   (2) Wake turn 2: second wake bus message.
 //   (3) Coordinator note: pushed judgment ("friend <f> stalled <d>: two wakes unanswered").
 //   (4) Unstarted cards taken back: FriendTake with All: true (started cards stay and finish).
 //   (5) Friend marked down with reason "stalled", released to up by the tick itself at her
-//       first evidence of work after it.
+//       first activity after it. The release clears the stall props and removes the
+//       coordinator's observation of her (Plan.HealthClear), writing none: an observation
+//       written by the tick would stand for FriendObservedDownAfter alone and then hold her
+//       down for good (ObservedStatus), her own beat never bringing her up again; with it
+//       removed her status is her beat rule again (FriendStatus).
 //
 // Every rung emits a happened note (Kind: Happened), which says what the rung did: the
-// part's units are only the cards and rows it changes. Any evidence of work resets her to
-// rung 0.
+// part's units are only the cards and rows it changes. Any activity or progress resets her
+// to rung 0.
 
 // NFriendStall is the happened notification type for stall ladder climbing and clearing.
 const NFriendStall = "friend stall"
@@ -44,7 +47,7 @@ func PropFriendStallDown(friend string) string { return "friend_stall_down." + f
 // TickFriendStall is the friend stall part of the tick (PartFriendStall): it runs in the
 // fleet update pass, checks each friend holding cards against the stall bounds, climbs
 // the ladder when stalled, takes back unstarted cards at rung 4, marks her down at rung 5,
-// and releases her to up at her first evidence of work after going down.
+// and releases her to up at her first activity after going down.
 func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	if s.Fleet == nil || s.Work == nil {
@@ -80,17 +83,47 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 
 	stallAfter := s.FriendStallAfter()
 	stallStep := s.FriendStallStep()
-	var cardEvidence map[string]evidence
-	if len(friends) > 0 {
-		cardEvidence = friendCardEvidence(s)
-	}
 
 	for _, f := range friends {
 		row := FriendRow(f)
 		mine := append(append([]*Card(nil), s.Fleet.Cell(row, Ready)...), s.Fleet.Cell(row, Working)...)
 
-		// 1. Evidence of work: session activity, a running beat, a finish, a read, progress
-		last := friendEvidence(s, r, f, row, cardEvidence[f])
+		// 1. Activity signal: her session's, her beat naming running cards (at the beat's
+		// time), and the newest finish on her row
+		var activity time.Time
+		if r.Beats != nil {
+			b, ok := r.Beats[f]
+			if !ok || b.Friend == nil {
+				b, ok = r.Beats[row]
+			}
+			if ok && b.Friend != nil {
+				activity = b.Friend.Active
+				if len(b.Friend.Running) > 0 && b.At.After(activity) {
+					activity = b.At
+				}
+			}
+		}
+		for _, c := range append(append([]*Card(nil), s.Fleet.Cell(row, DoneOK)...), s.Fleet.Cell(row, DoneFailed)...) {
+			if t := stampAt(c, "finished"); t.After(activity) {
+				activity = t
+			}
+		}
+		if ctl := s.MemberCtl(row); ctl != nil {
+			if actStr := ctl.F("active"); actStr != "" {
+				if t, err := time.Parse(time.RFC3339, actStr); err == nil && t.After(activity) {
+					activity = t
+				}
+			}
+		}
+		if s.Fleet.Texts != nil {
+			if texts, ok := s.Fleet.Texts[row]; ok {
+				if actStr, ok := texts[Active]; ok && actStr != "" {
+					if t, err := time.Parse(time.RFC3339, actStr); err == nil && t.After(activity) {
+						activity = t
+					}
+				}
+			}
+		}
 
 		// Check if she is marked stall down
 		downStamp, _ := s.Fleet.Prop(PropFriendStallDown(f))
@@ -103,23 +136,15 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 		curRungStr, _ := s.Fleet.Prop(PropFriendStallRung(f))
 		curRung, _ := strconv.Atoi(curRungStr)
 
-		// ReleasedOnlyByActivity (tla/StallLadder.tla, ReleasedOnlyByEvidence): release from
-		// stall down occurs when evidence of work newer than the down is observed, and only then.
-		if isStallDown && !last.at.IsZero() && (downTime.IsZero() || !last.at.Before(downTime)) {
+		// ReleasedOnlyByActivity (tla/StallLadder.tla): release from stall down occurs
+		// only when fresh activity of hers is observed (never card progress alone). The
+		// release writes no observation: it removes the one rung 5 wrote, so her status
+		// falls back to her beat rule (FriendStatus).
+		if isStallDown && !activity.IsZero() && (downTime.IsZero() || !activity.Before(downTime)) {
 			write(PropFriendStallDown(f), "")
 			write(PropFriendStallRung(f), "")
 			curRung = 0
-			gen := max(s.SeatGeneration, FirstSeatGeneration)
-			if p.Health == nil {
-				p.Health = &FriendHealthWrite{
-					Friend: f,
-					Health: FriendHealth{
-						State:      Up,
-						Seen:       s.Now,
-						Generation: gen,
-					},
-				}
-			}
+			p.HealthClear = append(p.HealthClear, f)
 			if ctl := s.MemberCtl(row); ctl != nil {
 				p.Units = append(p.Units, Unit{
 					Key: ctl.ID,
@@ -129,12 +154,12 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 							"since":  stamp(s.Now),
 						})),
 					},
-					Moved: fmt.Sprintf("friend %s up: released by %s", f, last.by),
+					Moved: fmt.Sprintf("friend %s up: released by her activity", f),
 				})
 			}
 			hn := happened(NFriendStall, "", s.Now)
 			hn.Who, hn.To = r.who(), s.Coordinator
-			hn.What = fmt.Sprintf("friend %s released to up: %s at %s", f, last.by, last.at.UTC().Format(time.RFC3339))
+			hn.What = fmt.Sprintf("friend %s released to up: activity at %s", f, activity.UTC().Format(time.RFC3339))
 			p.Notes = append(p.Notes, hn)
 			isStallDown = false
 		}
@@ -147,7 +172,17 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 			continue
 		}
 
-		// 2. Card dealt / taken timestamp: the ladder's start, never a release
+		// 2. Card progress stamp signal
+		var cardProgress time.Time
+		for _, c := range mine {
+			if pStr := c.F(FieldProgress); pStr != "" {
+				if t, err := time.Parse(time.RFC3339, pStr); err == nil && t.After(cardProgress) {
+					cardProgress = t
+				}
+			}
+		}
+
+		// 3. Card dealt / taken timestamp
 		var cardDealt time.Time
 		for _, c := range mine {
 			for _, k := range []string{"dealt", "first_dealt", "taken", "first_taken"} {
@@ -159,7 +194,10 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 			}
 		}
 
-		lastSignOfLife := last.at
+		lastSignOfLife := activity
+		if cardProgress.After(lastSignOfLife) {
+			lastSignOfLife = cardProgress
+		}
 		if cardDealt.After(lastSignOfLife) {
 			lastSignOfLife = cardDealt
 		}
@@ -299,72 +337,5 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 
-	// cards pinned to a friend who is not up: one judgment per friend (friend_pin.go)
-	friendPins(s, r, &p, write)
 	return p, 0
-}
-
-// evidence is the newest evidence of a friend's work and what it was ("" and zero: none).
-type evidence struct {
-	at time.Time
-	by string
-}
-
-// newer keeps the later of e and (at, by).
-func (e *evidence) newer(at time.Time, by string) {
-	if !at.IsZero() && at.After(e.at) {
-		e.at, e.by = at, by
-	}
-}
-
-// friendCardEvidence is each friend's newest evidence of work on the fleet's cards, placed
-// or kept, in one pass: a finish or a report collected for her (a card of her row stamped
-// finished or reported), a progress stamp on a card of her row, and a read she recorded (a
-// read card naming her its reader, stamped read; FriendReadClose retires it off her row).
-func friendCardEvidence(s *Snapshot) map[string]evidence {
-	out := map[string]evidence{}
-	for _, c := range s.Fleet.Cards() {
-		if f, ok := FriendOfRow(c.Row); ok {
-			e := out[f]
-			e.newer(stampAt(c, "finished"), "a finish")
-			e.newer(stampAt(c, FieldReported), "a finish")
-			e.newer(stampAt(c, FieldProgress), "a progress stamp")
-			out[f] = e
-		}
-		if f := c.F("reader"); f != "" && c.F("kind") == "read" {
-			e := out[f]
-			e.newer(stampAt(c, "read"), "a read")
-			out[f] = e
-		}
-	}
-	return out
-}
-
-// friendEvidence is the friend's newest evidence of work: the evidence on the cards
-// (friendCardEvidence), her session activity (her beat's Active, her control card's
-// active, her row's Active text), and her beat when its running list is non-empty, at
-// the beat's time. A beat that names nothing running is no evidence: awake is not working.
-func friendEvidence(s *Snapshot, r TickReq, f, row string, cards evidence) evidence {
-	e := cards
-	if r.Beats != nil {
-		b, ok := r.Beats[f]
-		if !ok || b.Friend == nil {
-			b, ok = r.Beats[row]
-		}
-		if ok && b.Friend != nil {
-			e.newer(b.Friend.Active, "session activity")
-			if len(b.Friend.Running) > 0 {
-				e.newer(b.At, "a running beat")
-			}
-		}
-	}
-	if ctl := s.MemberCtl(row); ctl != nil {
-		e.newer(stampAt(ctl, "active"), "session activity")
-	}
-	if s.Fleet.Texts != nil {
-		if t, err := time.Parse(time.RFC3339, s.Fleet.Texts[row][Active]); err == nil {
-			e.newer(t, "session activity")
-		}
-	}
-	return e
 }

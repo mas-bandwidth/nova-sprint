@@ -139,8 +139,7 @@ type app struct {
 	mergeQueue sprint.MergeQueue
 	// serial is the server's one line of control (serve.go): a worker's batch
 	// and a tick of the run loop each hold it, so neither runs during the other;
-	// the tick takes it at its turn, not behind every batch waiting (sprint.ControlLine);
-	// a batch waits for it at most ServeWait (serve.go).
+	// the tick takes it at its turn, not behind every batch waiting (sprint.ControlLine).
 	// serveAddr is the store the server runs the workers' verbs on.
 	serial    controlLine
 	serveAddr string
@@ -238,77 +237,6 @@ type controlLine struct {
 	// waiting, when set (a test), is called by a LockCtx that finds the line taken,
 	// before it waits: how a test sees, with no clock, that a verb would wait.
 	waiting func()
-	mu      sync.Mutex // guards who
-	who     string     // what holds the line, "" for a holder that did not say (a lane's step)
-}
-
-// LockAs takes the line for a batch as who: what a batch that cannot take it within
-// ServeWait is told holds it.
-func (l *controlLine) LockAs(who string) {
-	l.ControlLine.Lock()
-	l.hold(who)
-}
-
-// TickLockAs is TickLock, the tick naming itself to the batches it keeps waiting.
-func (l *controlLine) TickLockAs(who string) time.Duration {
-	waited := l.ControlLine.TickLock()
-	l.hold(who)
-	return waited
-}
-
-// Unlock frees the line and forgets who held it.
-func (l *controlLine) Unlock() {
-	l.hold("")
-	l.ControlLine.Unlock()
-}
-
-func (l *controlLine) hold(who string) {
-	l.mu.Lock()
-	l.who = who
-	l.mu.Unlock()
-}
-
-func (l *controlLine) holder() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.who
-}
-
-// LockWithin is LockCtx as who, bounded by wait as well as by ctx (serve.go, ServeWait):
-// a free line is taken at once, on no clock; when wait fires before the line is taken it
-// takes nothing, and says busy and what held the line. A caller gone first is err, as
-// LockCtx says it.
-func (l *controlLine) LockWithin(ctx context.Context, who string, wait func() <-chan time.Time) (held string, busy bool, err error) {
-	if err := ctx.Err(); err != nil {
-		return "", false, err
-	}
-	if l.TryLock() {
-		l.hold(who)
-		return "", false, nil
-	}
-	bounded, cancel := context.WithCancel(ctx)
-	defer cancel()
-	fired := make(chan struct{})
-	go func() {
-		select {
-		case <-wait():
-			close(fired)
-			cancel()
-		case <-bounded.Done():
-		}
-	}()
-	if err := l.LockCtx(bounded); err != nil {
-		select {
-		case <-fired:
-			if ctx.Err() == nil {
-				return l.holder(), true, nil
-			}
-		default:
-		}
-		return "", false, err
-	}
-	l.hold(who)
-	return "", false, nil
 }
 
 // LockCtx waits for the line until ctx is done; it holds the line only when it
@@ -617,9 +545,6 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 		if len(args) >= len(words) && strings.Join(args[:len(words)], " ") == v.name {
 			return v.run(a, args[len(words):], stdout, stderr)
 		}
-	}
-	if to := movedCardVerb(args[0]); to != "" {
-		return refuse(stderr, "", args[0]+" moved to nova-sprint "+to+"; run: nova-sprint "+to+" -h")
 	}
 	if members := groupVerbs(args[0]); len(members) > 0 {
 		// a verb group: its -h is its help at exit 0 (help is never a refusal); a bare

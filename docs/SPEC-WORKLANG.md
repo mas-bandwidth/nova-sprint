@@ -1,41 +1,36 @@
-# Reading work-tree files
+# The work language (SPEC-WORKLANG)
 
-Work-tree files look a little like Lisp, but they are data. The reader never
-runs them as a program. `internal/worklang` accepts five kinds of value and
-enforces size, nesting, and node limits while reading.
+`internal/worklang` is the bounded reader for a restricted s-expression file. It reads data and
+never evaluates it. This page specifies the reader: the five kinds of form, the tokens it
+refuses, the three bounds it enforces and the shape of a refusal.
 
-You only need this reference if you are writing a parser integration or
-working on the file format. For everyday import and verification, use
-[the command guide](CLI.md#nova-work).
-
-`internal/workfile` calls `worklang.Read(file, data, limits)` and then checks
-that the returned `Form` has the record shape defined in
-[SPEC-WORK-V1.md](SPEC-WORK-V1.md). The parser handles the grammar; the caller
-handles what each record means.
+The living caller is nova-work's tree file. `internal/workfile` reads it with
+`worklang.Read(file, data, limits)` and checks the shape of the records itself
+([SPEC-WORK-V1.md](SPEC-WORK-V1.md) section 1); the reader knows nothing of the records and
+returns a `Form`. No other tool calls the package.
 
 ## 1. The reader
 
-`worklang.Read(file, data, limits)` reads exactly one form from `data`. It
-accepts exactly these five kinds of form:
+`worklang.Read(file, data, limits)` reads exactly one form from `data`. The grammar is five
+kinds of form and nothing else:
 
 | form | written | held as |
 | --- | --- | --- |
 | list | `( ... )`, possibly empty | `List`, its members in order |
 | keyword | `:name` | `Keyword`, the name without the colon |
 | string | `"..."` | `String`, decoded; a backslash takes the next byte literally |
-| integer | decimal digits, optionally signed with `+` or `-` | `Integer` |
+| integer | decimal digits fitting in int64, optionally signed with `+` or `-` | `Integer` |
 | symbol | any other bare token, such as `go-fix` or `false` | `Symbol`, verbatim |
 
 A `;` starts a comment that runs to the end of its line. Comments and whitespace are text,
 never syntax. A keyword that is empty or holds a second `:` is refused as a forbidden token
 at its byte. **Every token that starts with a digit, `+` or `-` goes to the integer reader**, so
-it must be an integer: a sign with no digits after it (`-x`, a bare `+`) or digits followed
+it must be an integer: an integer must fit in int64 (a value that overflows int64 bounds is refused as a forbidden token at its byte); a sign with no digits after it (`-x`, a bare `+`) or digits followed
 directly by a non-boundary byte (`12abc`) is refused as a forbidden token at its byte, never read
 as a symbol.
 
-**Nothing is evaluated.** Before parsing, a lexical pass rejects syntax that
-could be confused with evaluation or escape mechanisms, at its byte offset:
-`#` (a dispatch macro such as `#.`), `|`,
+**Nothing is evaluated.** Before parsing, a lexical pass refuses every token that would
+evaluate or escape, each at its own byte offset: `#` (a dispatch macro such as `#.`), `|`,
 `'`, `` ` ``, `,` and `\`. Inside a string or a comment the same bytes are text.
 
 **Three bounds, all enforced while reading.** `Limits` carries `MaxBytes`, `MaxDepth` and

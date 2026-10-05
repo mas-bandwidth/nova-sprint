@@ -353,6 +353,9 @@ func TestAddHoldsTheWhoLineToTheFriendsTable(t *testing.T) {
 	code, errs := add("friend nobody")
 	assert.Equal(t, 2, code)
 	assert.Contains(t, errs, "WHO: friend nobody, and nobody is no row of the friends table (friends: amy)")
+	code, errs = add("only friend nobody")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errs, "nobody is no row")
 	code, errs = add("machine")
 	assert.Equal(t, 2, code)
 	assert.Contains(t, errs, "WHO: machine is not `friend` or `friend <name>`")
@@ -404,7 +407,7 @@ func TestTheFriendBriefSaysWhatSyncChecks(t *testing.T) {
 func TestFriendSyncDeliversHerReadyCardsAndKeepsHerQueueFile(t *testing.T) {
 	t.Parallel()
 	ta, cfg := friendApp(t)
-	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: "amy", Fields: map[string]string{"width": "1"}}, "t")
+	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: "amy", Fields: map[string]string{"width": "1", "tiers": "flash"}}, "t")
 	require.NoError(t, err)
 	ta.a.tip = tipIs(t, landHead)
 	root := t.TempDir()
@@ -412,7 +415,7 @@ func TestFriendSyncDeliversHerReadyCardsAndKeepsHerQueueFile(t *testing.T) {
 	ta.ok("friend beat amy")
 	dir := t.TempDir()
 	for _, id := range []string{"s1-1", "s1-2", "s1-3"} {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, id+".md"), []byte(passingBrief(id+": a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: friend amy")), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, id+".md"), []byte(passingBrief(id+": a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: only friend amy")), 0o644))
 	}
 	ta.ok("add --stream s1 --brief-dir " + dir)
 	ta.ok("start")
@@ -433,7 +436,7 @@ func TestFriendSyncDeliversHerReadyCardsAndKeepsHerQueueFile(t *testing.T) {
 	text, err := os.ReadFile(queue)
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(text, &q))
-	assert.Equal(t, []friendTask{{ID: "s1-1.w1", State: "working"}, {ID: "s1-2.w1", State: "queued"}}, q.Tasks)
+	assert.Equal(t, []friendTask{{ID: "s1-1.w1", State: "working", Gen: 1, Job: "s1-1.w1"}, {ID: "s1-2.w1", State: "queued", Gen: 1, Job: "s1-2.w1"}}, q.Tasks)
 
 	// she finishes the first: the second is working at once, the third is dealt ready by
 	// the next tick, and the queue file follows
@@ -453,6 +456,41 @@ func TestFriendSyncDeliversHerReadyCardsAndKeepsHerQueueFile(t *testing.T) {
 	require.NoError(t, err)
 	q = friendQueue{}
 	require.NoError(t, json.Unmarshal(text, &q))
-	assert.Equal(t, []friendTask{{ID: "s1-1.w1", State: "working"}, {ID: "s1-2.w1", State: "working"}, {ID: "s1-3.w1", State: "queued"}}, q.Tasks, "a finished card's record is left as it was (her session marks it done)")
+	assert.Equal(t, []friendTask{{ID: "s1-1.w1", State: "working", Gen: 1, Job: "s1-1.w1"}, {ID: "s1-2.w1", State: "working", Gen: 1, Job: "s1-2.w1"}, {ID: "s1-3.w1", State: "queued", Gen: 1, Job: "s1-3.w1"}}, q.Tasks, "a finished card's record is left as it was (her session marks it done)")
 	ta.clean()
+}
+
+// docs/FRIENDS.md: the queue records the delivered job and resets completion only for a new assignment.
+func TestFriendQueueCarriesTheAssignmentGenerationAndJob(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "inbox"), 0o755))
+	path := filepath.Join(dir, "inbox", "QUEUE.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"tasks":[{"id":"c.w1","state":"done","deliverable":"old result"}]}`), 0o600))
+	left := func([]string) (map[string]bool, error) { return nil, nil }
+	packets := []sprint.Packet{{Card: "c.w1", Gen: 2, Epoch: 15}}
+	require.NoError(t, writeQueueFile(dir, map[string]string{"c.w1": "queued"}, left, packets))
+	var q friendQueue
+	text, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(text, &q))
+	assert.Equal(t, []friendTask{{ID: "c.w1", State: "queued", Gen: 2, Job: "c.w1~15.g2"}}, q.Tasks)
+
+	q.Tasks[0].State = "done"
+	text, err = json.Marshal(q)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, text, 0o600))
+	require.NoError(t, writeQueueFile(dir, map[string]string{"c.w1": "working"}, left, packets))
+	text, err = os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(text, &q))
+	assert.Equal(t, "done", q.Tasks[0].State, "the same generation preserves completion")
+
+	packets[0].Epoch = 16
+	require.NoError(t, writeQueueFile(dir, map[string]string{"c.w1": "queued"}, left, packets))
+	text, err = os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(text, &q))
+	assert.Equal(t, "queued", q.Tasks[0].State, "a new epoch is a new job too")
+	assert.Equal(t, "c.w1~16.g2", q.Tasks[0].Job)
 }
