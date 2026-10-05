@@ -37,12 +37,17 @@ import (
 // eta is the minutes left (etaMinutes, or the view's held value), 0 when there
 // is no estimate. held is the cards no tick moves on its own (sprint.HeldBack:
 // behind a sentinel not released, or admitted held), shown apart as held=N
-// when there are any, and counted in the ETA.
-func summary(t ntable.Table, held, eta int64) string {
+// when there are any, and counted in the ETA. auto is the auto sentinels
+// waiting for their needs (sprint.AutoWaiting), which the tick releases and
+// held=N does not count, shown as auto=N when there are any.
+func summary(t ntable.Table, held, auto, eta int64) string {
 	landed, all := counts(t)
 	line := progress(t)
 	if held > 0 {
 		line += fmt.Sprintf(" held=%d", held)
+	}
+	if auto > 0 {
+		line += fmt.Sprintf(" auto=%d", auto)
 	}
 	switch {
 	case all > 0 && landed == all:
@@ -471,6 +476,7 @@ type whereView struct {
 	Landed  int64     `json:"landed"`
 	All     int64     `json:"all"`
 	Held    int64     `json:"held,omitempty"` // behind a sentinel not released, or admitted held: in the ETA
+	Auto    int64     `json:"auto,omitempty"` // auto sentinels waiting for their needs: the tick releases them
 	Summary string    `json:"summary"`
 	// Tables is table -> row -> column -> cell as printed (a string, every cell of every
 	// row, the shape the dashboard's pull reads); a work row carries besides its cells
@@ -874,14 +880,14 @@ func (a *app) where(ctx context.Context, st *store.Store, stale time.Duration, a
 		p50, p99 := facts.StoreRTTP50MS, facts.StoreRTTP99MS
 		v.StoreRTTP50MS, v.StoreRTTP99MS = &p50, &p99
 	}
-	v.Held = int64(facts.Held)
+	v.Held, v.Auto = int64(facts.Held), int64(facts.Auto)
 	v.Ready = readyPrimaries(shapes[0])
 	v.Width = upWidth(shapes[3])
 	v.Buffer = fmt.Sprintf("%d/%d", v.Ready, 2*v.Width)
 	v.Low = v.Ready < int64(v.Width)
 	v.Tiers = facts.Tiers
 	rate := sprint.LandingRate(facts.Landed, v.Landed, facts.Machine.Spans, facts.Machine.FirstStart(es.Cleared), now)
-	v.Summary = summary(shapes[0], v.Held, a.heldETA(now, etaKey{v.All, v.Held}, etaMinutes(shapes[0], rate)))
+	v.Summary = summary(shapes[0], v.Held, v.Auto, a.heldETA(now, etaKey{v.All, v.Held}, etaMinutes(shapes[0], rate)))
 
 	if f.Pending != nil {
 		v.Pending = f.Pending.ID
