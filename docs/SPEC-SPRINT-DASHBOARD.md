@@ -105,7 +105,7 @@ from the owner edits one line here and nothing else moves.
   The clock never flashes.
 
 ## Hero row: five tiles, one row at 2000 px, three and two below, two per row below 1100 px, large figure (72 px)
-1. LANDED: n of all; sub-line "<pct>% complete". Narrow: the number alone, sub-line "of <all> · <pct>%".
+1. LANDED: "n of all" on one line at every width, with no percentage or sub-line. The owner, 2026-10-05: "1544 of xxx is enough, cut the rest so it doesn't wrap line pls."
 2. ETA: "2h 9m"; sub-line "around 9:06 PM".
 3. COST: total to the cent; sub-line "$0.24 per card" (never "per landed card").
 4. IN FLIGHT: n; sub-line "14 working · 9 review" on one line.

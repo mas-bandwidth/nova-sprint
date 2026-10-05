@@ -30,7 +30,7 @@ inbox and keep work moving while the human is away. The exact rules are in
 ### First run
 
 For a guided version with an isolated scratch directory and every step through
-landing, use [Getting started](GETTING-STARTED.md).
+landing, use [the local first lap](FIRST-LAP.md).
 
 Try one card's whole flow with no Redis or git. `--redis mem:<file>` (or
 `NOVA_SPRINT_REDIS=mem:<file>`) loads an in-memory twin from a file and saves it

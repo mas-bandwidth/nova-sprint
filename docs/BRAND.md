@@ -12,7 +12,7 @@ the team approachable; the documentation explains the work clearly.
 ## Name
 
 Write **nova-sprint** in prose and command names. The illustrated banner uses
-**Nova sprint**, with a star in the rounded wordmark. Preserve that artwork
+**Nova Sprint**, with a star in the rounded wordmark. Preserve that artwork
 when embedding it; do not redraw the text with an unrelated typeface.
 
 Link to [Nova Tools](https://github.com/mas-bandwidth/nova-tools) when
@@ -26,9 +26,10 @@ README. It is a 2172 × 724 PNG with a 3:1 aspect ratio. Let it scale as a whole
 so the title, coordinator, sleeping friend, and runners all remain visible.
 
 The little roller bot at the back is the coordinator, with a clipboard and
-Stella star. The other friends have distinct colours and poses: green walks,
-orange skips, yellow sleeps with Zzzzz, purple stumbles, pink cheers, and the
-white-and-blue friend sprints. The group expresses collaboration with room
+Stella star. The other friends have distinct colours and poses: green listens
+to music through headphones, orange runs from a swarm of bees, yellow sleeps
+with Zzzzz, purple stumbles, pink cartwheels, and the white-and-blue friend
+sprints. The group expresses collaboration with room
 for different paces, rather than a ranking of models or people.
 
 For future art, keep recognisable robot bodies, readable expressions, and
@@ -36,6 +37,10 @@ varied movement. Align a runner's movement with the perspective of its lane.
 Keep orange clearly separate from yellow. Humour should feel affectionate.
 Record the source and generation details of any new asset in
 [Asset provenance](ASSET-PROVENANCE.md).
+
+Keep the track, friends, and shadows as separate layers when composing future
+banners. Preserve the straight lane geometry; composite onto the track rather
+than repeatedly regenerating the whole image.
 
 ## Show the product working
 
@@ -67,7 +72,8 @@ state and status colours rather than assigning them to character identities:
 | Landed | `#199e70` | `#1baf7a` |
 
 The [dashboard contract](SPEC-SPRINT-DASHBOARD.md) owns the UI palette and
-layout. This branding pass does not change that interface.
+layout. The LANDED tile has a separately recorded owner-requested simplification;
+other interface rules stay with that contract.
 
 ## Type
 

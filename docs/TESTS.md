@@ -4,7 +4,7 @@ These are exact command transcripts, not illustrative output. The command
 tests run their steps and compare the results, so the fenced transcripts stay
 precise even when the surrounding explanation changes.
 
-Start with [Getting started](GETTING-STARTED.md) for a guided first lap. Come
+Start with [the local first lap](FIRST-LAP.md) for a guided walkthrough. Come
 back here to compare what each command prints or to understand a test failure.
 The transcripts cover [sprint handoffs](#nova-sprint), [card generation](#nova-card),
 and [work-tree import and verification](#nova-work). They moved from Nova Tools
