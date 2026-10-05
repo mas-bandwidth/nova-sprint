@@ -48,6 +48,8 @@ func newServerRig(t *testing.T, lines ...string) *serverRig {
 	a := newApp(func(k string) string { return env[k] })
 	t.Cleanup(a.close)
 	a.serveAddr = "mem:" + file
+	// a batch waits on the test's clock, which never runs out: no wall time (ServeWait)
+	a.after = func(time.Duration) <-chan time.Time { return nil }
 	r := &serverRig{t: t, a: a}
 	for _, l := range lines {
 		r.boss(l)

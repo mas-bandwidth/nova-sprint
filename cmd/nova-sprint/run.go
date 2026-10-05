@@ -435,7 +435,8 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 		}
 		began := a.now()
 		// one tick, or one worker's batch, at a time (serve.go)
-		a.serial.Lock()
+		// (a batch waits for it at most ServeWait, and is told the tick holds it)
+		a.serial.LockAs("the tick begun at " + began.Format("15:04:05"))
 		res, err, over := a.tickWithin(func() (store.TickResult, error) { return st.Tick(ctx) }, a.tickDeadline, began, stdout, stderr)
 		if over {
 			// serial stays held: the tick's goroutine is still in its plan

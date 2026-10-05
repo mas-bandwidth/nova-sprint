@@ -122,9 +122,10 @@ type app struct {
 	// wall clock.
 	gateBackend func() (decide.Backend, func() time.Time)
 	// serial is the server's one line of control (serve.go): a worker's batch
-	// and a tick of the run loop each hold it, so neither runs during the other.
+	// and a tick of the run loop each hold it, so neither runs during the other; a
+	// batch waits for it at most ServeWait (serve.go).
 	// serveAddr is the store the server runs the workers' verbs on.
-	serial    sync.Mutex
+	serial    line
 	serveAddr string
 	// serving says the verb running is one a worker sent to the server (set and
 	// cleared under serial): its step names the epoch its worker holds, or is
