@@ -135,17 +135,17 @@ func (st *Store) LaneRows(ctx context.Context) ([]sprint.LaneRow, error) {
 // machineRoutes returns the route for each machine's lanes.
 func (st *Store) machineRoutes(ctx context.Context) map[string]string {
 	routes, _, err := st.Routes(ctx)
-	if err != nil || len(routes.Routes) == 0 {
+	if err != nil || len(routes) == 0 {
 		return map[string]string{}
 	}
 	dealt, err := st.Dealt(ctx)
-	if err != nil || dealt == nil {
+	if err != nil {
 		return map[string]string{}
 	}
 	out := make(map[string]string)
-	for _, c := range dealt.Work {
+	for _, c := range dealt.Cards {
 		route := c.F(sprint.FieldRoute)
-		if route != "" {
+		if route != "" && route != sprint.RoutePin {
 			out[c.Row] = route
 		}
 	}

@@ -38,6 +38,7 @@ type LaneRow struct {
 	Width   int      `json:"width"`
 	Held    []string `json:"held"`
 	Waiting []string `json:"waiting"`
+	Route   string   `json:"route,omitempty"`
 }
 
 // PullCard is a work card dealt to a row and not finished, as where --json --cards prints it.
