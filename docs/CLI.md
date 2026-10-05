@@ -105,7 +105,7 @@ nova-sprint log [--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC333
 nova-sprint check
 nova-sprint repair
 nova-sprint where [--watch] [--every <duration>] [--all] [--json [--cards]]
-nova-sprint dashboard [--listen <address:port>[,...] | none] [--pull <address:port>[,...] | none] [--logo <file>] [--every <duration>]
+nova-sprint dashboard [--listen <address:port>[,...] | none] [--pull <address:port>[,...] | none] [--logo <file> | --logo-dir <dir>] [--upstream <url>] [--every <duration>]
 nova-sprint seat
 nova-sprint routes
 nova-sprint funded <provider> --reason <text>
@@ -144,6 +144,15 @@ the cards she holds; `/api/team`, `/api/friend/<name>`,
 no-store, carries the copy's time in `Sprint-At`, and comes from one copy of `where --json
 --cards` read at most once a second however many pull. An unknown name is a 404 of one
 line. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md), the dashboard.
+
+The page is the live page the owner watches, byte for byte in what it renders, and the
+verb serves every path the Python server.py that ran it served, with the same JSON:
+`/api/sprint` is `where --json` with server.py's keys, `--logo-dir <dir>` serves the logo
+files beside the page as server.py did (`/favicon.svg`, `/logo-tile-192.png`,
+`/logo-tile-384.png`, `/logo-icon.png`, `/favicon.png`, `/logo.webp`, `/logo.png`), and
+`--upstream http://<address:port>/api/sprint` takes another dashboard's copy instead of
+reading the sprint. The units' command lines and the table of paths are in
+[SPEC-SPRINT-DASHBOARD.md](SPEC-SPRINT-DASHBOARD.md), Serving and publishing.
 
 ### A provider out of funds
 

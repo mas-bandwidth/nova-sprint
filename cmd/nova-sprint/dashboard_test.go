@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,28 +16,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The dashboard reads the sprint in this process exactly as where --json --cards prints it, and
-// serves that object as /api/sprint's data.
+// The dashboard reads the sprint in this process exactly as where --json --cards prints it;
+// the page's /api/sprint serves it as where --json prints it, the data the Python server.py
+// served (it ran where --json), and the pull routes' /api/sprint serves it whole. A twin
+// store with a card dealt, so --cards has cards to add.
 func TestDashboardReadsTheSprintAsWhereJSONDoes(t *testing.T) {
 	t.Parallel()
-	ta := newTestApp(t)
-	ta.ok("init --readers reader-a --members m1,m2")
-	ta.ok("add --stream s1 --count 3")
-	want := ta.ok("where --json --cards")
+	ta, _ := friendCardApp(t, "friend amy", "amy")
+	ta.ok("tick")
+	cards := ta.ok("where --json --cards")
+	require.Contains(t, cards, `"cards"`)
 	got, err := ta.a.whereJSON("", false)
 	require.NoError(t, err)
-	assert.JSONEq(t, want, string(got))
+	assert.JSONEq(t, cards, string(got))
 
 	srv := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSON("", false) }, Now: ta.a.now, Every: time.Second}
-	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sprint", nil))
-	var v struct {
-		OK   bool            `json:"ok"`
-		Data json.RawMessage `json:"data"`
+	data := func(h http.Handler) json.RawMessage {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sprint", nil))
+		var v struct {
+			OK   bool            `json:"ok"`
+			Data json.RawMessage `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &v))
+		assert.True(t, v.OK)
+		return v.Data
 	}
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &v))
-	assert.True(t, v.OK)
-	assert.JSONEq(t, want, string(v.Data))
+	assert.JSONEq(t, ta.ok("where --json"), string(data(srv)), "the page's data is where --json's")
+	assert.JSONEq(t, cards, string(data(srv.Pull())), "the pull routes' data is where --json --cards's")
 }
 
 // A read where refuses is the dashboard's failed read, with where's own line.
@@ -94,16 +102,22 @@ func TestDashboardListensOnPrivateAddressesOnly(t *testing.T) {
 func TestDashboardRefusesBadUse(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	logoFile := filepath.Join(t.TempDir(), "logo.png")
+	require.NoError(t, os.WriteFile(logoFile, []byte("\x89PNG"), 0o600))
 	for line, why := range map[string]string{
-		"dashboard now":                       "takes no words",
-		"dashboard --every 0s":                "--every wants a duration above 0",
-		"dashboard --listen 0.0.0.0:7390":     "does not listen on every network",
-		"dashboard --listen 1.1.1.1:7390":     "a public address",
-		"dashboard --pull 0.0.0.0:7395":       "--pull 0.0.0.0:7395: the page shows the sprint",
-		"dashboard --pull 127.0.0.1":          "--pull wants address:port (or none)",
-		"dashboard --listen none --pull none": "serve nothing",
-		"dashboard --logo " + t.TempDir():     "is not a file",
-		"dashboard --logo /no/such/logo.webp": "is not a file",
+		"dashboard now":                                               "takes no words",
+		"dashboard --every 0s":                                        "--every wants a duration above 0",
+		"dashboard --listen 0.0.0.0:7390":                             "does not listen on every network",
+		"dashboard --listen 1.1.1.1:7390":                             "a public address",
+		"dashboard --pull 0.0.0.0:7395":                               "--pull 0.0.0.0:7395: the page shows the sprint",
+		"dashboard --pull 127.0.0.1":                                  "--pull wants address:port (or none)",
+		"dashboard --listen none --pull none":                         "serve nothing",
+		"dashboard --logo " + t.TempDir():                             "is not a file",
+		"dashboard --logo /no/such/logo.webp":                         "is not a file",
+		"dashboard --logo-dir /no/such/dir":                           "is not a directory",
+		"dashboard --logo-dir " + t.TempDir() + " --logo " + logoFile: "name the logo twice",
+		"dashboard --upstream ftp://x/api/sprint":                     "--upstream wants another dashboard's",
+		"dashboard --upstream /api/sprint":                            "--upstream wants another dashboard's",
 	} {
 		code, out, errs := ta.do(line)
 		assert.Equal(t, 2, code, "%s: %s%s", line, out, errs)

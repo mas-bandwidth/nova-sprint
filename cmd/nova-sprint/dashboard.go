@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -34,14 +35,18 @@ var tailnetRange = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10
 
 // cmdDashboard serves the sprint dashboard (docs/SPEC-SPRINT-DASHBOARD.md) until it is
 // interrupted: the page from the files embedded in the binary, and /api/sprint, the
-// sprint as where --json --cards prints it, read in this process at most once per --every
-// and only while a page or a puller asks; on the --pull listeners, the pull routes a
-// worker reads its own view from (docs/SPEC-SPRINT.md, the dashboard).
+// sprint as where --json prints it, read in this process (as where --json --cards) at most
+// once per --every and only while a page or a puller asks, or taken from another
+// dashboard's /api/sprint (--upstream); on the --pull listeners, the pull routes a worker
+// reads its own view from (docs/SPEC-SPRINT.md, the dashboard). It serves every path the
+// Python server.py served, so its units run this verb in its place.
 func (a *app) cmdDashboard(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("dashboard")
 	listen := fs.String("listen", DashboardListen, "serve the page on each `address:port` of a comma-separated list, one listener each and one cached copy of the sprint: loopback, or this machine's address on the fleet's private network (the tailnet); 0.0.0.0, :: and public addresses are refused; default "+DashboardListen+"; none: no page")
 	pull := fs.String("pull", DashboardPull, "serve the pull routes (/friend/<name>, /machine/<name>, their /api/ JSON and /events/ stream forms, /team and /api/team, /api/sprint, /events) on each `address:port` of a comma-separated list, the same addresses --listen takes, from the same cached copy, read-only; default "+DashboardPull+"; none: no pull routes")
 	logo := fs.String("logo", "", "an image `file` served as the page's logo and favicon; none: the logo slot renders nothing")
+	logoDir := fs.String("logo-dir", "", "a `directory` of logo files read as the Python server.py read the files beside the page: logo.svg, else logo-robot.webp or logo-stella.png with its -192.png and -384.png copies (made with sips when missing), else logo.webp or logo.png keyed into logo-icon.png and favicon.png (with ffmpeg); served at /favicon.svg, /logo-tile-192.png, /logo-tile-384.png, /logo-icon.png, /favicon.png, /logo.webp and /logo.png; not with --logo")
+	upstream := fs.String("upstream", "", "read the sprint from another dashboard's /api/sprint at this `url` (its data) instead of from the sprint, so a second dashboard adds no read of the sprint")
 	every := fs.Duration("every", time.Second, "read the sprint at most once per this `duration`, above 0")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
@@ -66,13 +71,29 @@ func (a *app) cmdDashboard(args []string, stdout, stderr io.Writer) int {
 			return refuse(stderr, "dashboard", "--logo "+*logo+" is not a file this process can read")
 		}
 	}
+	if *logoDir != "" {
+		if *logo != "" {
+			return refuse(stderr, "dashboard", "--logo and --logo-dir name the logo twice: give one")
+		}
+		if fi, err := os.Stat(*logoDir); err != nil || !fi.IsDir() {
+			return refuse(stderr, "dashboard", "--logo-dir "+*logoDir+" is not a directory this process can read")
+		}
+	}
 	redis := (verbArgs{fs: fs}).given("redis")
+	read := func() ([]byte, error) { return a.whereJSON(c.redis, redis) }
+	if *upstream != "" {
+		if u, err := url.Parse(*upstream); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return refuse(stderr, "dashboard", "--upstream wants another dashboard's http://<address:port>/api/sprint, got "+*upstream)
+		}
+		read = sprintdash.Upstream(*upstream, &http.Client{Timeout: 10 * time.Second})
+	}
 	stdout = &lockedWriter{w: stdout} // the listeners and the reads write lines from their own goroutines
 	srv := &sprintdash.Server{
-		Read:    func() ([]byte, error) { return a.whereJSON(c.redis, redis) },
+		Read:    read,
 		Now:     a.now,
 		Every:   *every,
 		Logo:    *logo,
+		LogoDir: *logoDir,
 		Version: version,
 		Log:     stdout,
 	}
