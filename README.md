@@ -1,15 +1,16 @@
 # nova-sprint
 
-**The opinionated work processor for teams of AIs, built on
-[nova-tools](https://github.com/mas-bandwidth/nova-tools).**
+**nova-sprint is the opinionated system: a work processor for teams of AIs.
+nova-tools are the general tools that support it**
+([nova-tools](https://github.com/mas-bandwidth/nova-tools)).
 
-nova-tools are unopinionated building blocks for any AI workflow: run an AI
-task in a sandbox with a budget (nova-swarm), cheap typed decisions
+nova-tools are the general tools, each usable on its own in any AI workflow: run
+an AI task in a sandbox with a budget (nova-swarm), cheap typed decisions
 (nova-decide), a bus between AIs (nova-bus), tables in Redis (nova-table),
 secrets, configuration, the sandbox, updates. If you want to build your own
 workflow, build it from those.
 
-nova-sprint is one workflow built from them, with its opinions written in:
+nova-sprint is one system built on them, with its opinions written in:
 work is cut into **cards**, cards run in **streams** behind **sentinels**, each
 card is dealt by **tier** to a fleet of machines and friends, finished work is
 **read** by independent readers before the **lander** merges it, and the feed
