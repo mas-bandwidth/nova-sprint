@@ -150,6 +150,7 @@ var TickDecisions = map[string][]string{
 	NFriendDeaf:        {"ack", "wait"},
 	NFriendIdle:        {"ack", "wait"},
 	NCoordinatorBehind: {"act", "wait"},
+	NMergeHealth:       {"ack", "wait"},
 }
 
 // TickReq is what a tick is given beside the snapshot.
@@ -1237,7 +1238,7 @@ type cond struct {
 func condKey(typ, subject, card, what string) string {
 	switch typ {
 	case NNoMember, NCannotAsk, NNoRoute, NFewReaders, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NStarving, NOverloaded, NReadersBehind, NDevBehind, NRaiseReadTier,
-		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFriendDeaf, NFriendIdle, NCoordinatorBehind:
+		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFriendDeaf, NFriendIdle, NCoordinatorBehind, NMergeHealth:
 		what = ""
 	case NWorkLate, NReadLate:
 		// a lateness is one per attempt's card and kind (not taken, not
@@ -1368,7 +1369,7 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 			if !open[k] {
 				fresh = append(fresh, sub)
 			}
-			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NReadersBehind || c.typ == NDevBehind) {
+			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NMergeHealth) {
 				update(n, c.what, c.decisions) // the latest facts, in place
 			}
 		}
