@@ -2,8 +2,8 @@
 
 ## The Problem
 
-While building [Nova Tools](https://github.com/mas-bandwidth/nova-tools), we learned that capable AIs can
-do excellent work—and still be a spectacularly unreliable group chat.
+While building [Nova Tools](https://github.com/mas-bandwidth/nova-tools), we learned that capable AIs across different
+models and harnesses can do excellent work — and still be a spectacularly unreliable group chat.
 
 ![Yellow sleeps, Purple trips over a dependency, and Green cannot hear the team.](brand/explainer/coordination.png)
 
