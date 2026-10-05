@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/mas-bandwidth/nova-sprint/internal/subproc"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/filelock"
+	"github.com/mas-bandwidth/nova-sprint/internal/subproc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

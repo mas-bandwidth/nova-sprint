@@ -340,6 +340,20 @@ func (a *app) cmdLand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s land: the sprint is at epoch %d, not %d (cleared since): nothing was fetched, pushed or reported; run: nova-sprint where\n", prog, st.PinnedEpoch(), c.epoch)
 		return 1
 	}
+	// one lander at a time: a land beside the server's land loop is refused
+	// before any clone is touched (docs/SPEC-SPRINT.md, land-one-lander-now-nsb.w1)
+	if !*dry {
+		a.serial.Lock()
+		why, err := a.serverLanding(context.Background(), st)
+		a.serial.Unlock()
+		if err != nil {
+			return a.readFailed("land", err, stderr)
+		}
+		if why != "" {
+			fmt.Fprintf(stderr, "%s land REFUSED: %s\n", prog, oneline.Escape(why))
+			return 1
+		}
+	}
 	if a.baseGateCache == nil {
 		a.baseGateCache = map[string]string{}
 	}

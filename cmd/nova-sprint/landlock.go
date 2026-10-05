@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,8 +10,36 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/filelock"
 	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
 )
+
+// serverRecord is the server's record as this process writes it on its
+// heartbeat: its actor, whether it lands, and its pid on its host
+// (SPEC-SPRINT.md, land-one-lander-now-nsb.w1).
+func (a *app) serverRecord(actor string) store.ServerRecord {
+	host, _ := os.Hostname()
+	return store.ServerRecord{Actor: actor, Land: a.serverLands, PID: os.Getpid(), Host: host}
+}
+
+// serverLanding is why a land must not run beside the server, "" when it may:
+// the server's land loop's own pass always may; any other pass is refused
+// while a fresh server's record says --land, unless the record names a pid on
+// this host that is gone (SPEC-SPRINT.md, land-one-lander-now-nsb.w1).
+func (a *app) serverLanding(ctx context.Context, st *store.Store) (string, error) {
+	if a.landLazy {
+		return "", nil
+	}
+	r, ok, err := st.Server(ctx)
+	if err != nil || !ok || !r.Land {
+		return "", err
+	}
+	if host, _ := os.Hostname(); r.Host == host && r.PID > 0 && !swarm.Alive(r.PID, "") {
+		return "", nil
+	}
+	return fmt.Sprintf("the server is running with --land (actor=%s pid=%d host=%s, its record written %s) and lands every %s itself: nothing was fetched, pushed or reported (let the server land, or restart it without --land); run: nova-sprint where",
+		oneline.Field(r.Actor), r.PID, oneline.Field(r.Host), r.At.UTC().Format("15:04:05Z"), LandEvery), nil
+}
 
 // landClonePath resolves existing ancestors too, so an absent cached clone and
 // a symlinked land root share one lock (SPEC-SPRINT.md, land-one-lander-now-ns.w1).

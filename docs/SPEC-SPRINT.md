@@ -2587,6 +2587,21 @@ and logs `LAND LOCK RECOVERED` with the old PID. An orderly release clears the
 stamp and keeps the lock file in place. `land --dry-run` neither acquires nor
 writes a lock. The lock uses the existing `tla/FileLock.tla` ownership rules.
 
+### land-one-lander-now-nsb.w1
+
+The server's record (`keyServer`, `store.ServerRecord`) carries, beside its
+actor and time, whether the server lands (`run --land`) and its process: its
+pid and host. The run loop writes it before its first tick and every
+`ServerEvery`, as before. A land that is not the server's own land loop reads
+it before any clone is locked or touched, and while a fresh record says
+`--land` it is refused with exit 1, naming the server's actor, pid and host;
+nothing is fetched, pushed or reported. A record naming a pid on this host that
+is gone fences nothing; one on another host fences until it is older than
+`ServerTTL`. A record written before it carried the landing mode reads as not
+landing. `land --dry-run` reads no record and is never refused by it
+(`TestLandRefusesWhileAnotherLanderHoldsTheCloneBesideTheServer`,
+`TestServerRecordCarriesLandingAndProcess`).
+
 **The lander's checks.** Each head `land` merges is checked by script, no model,
 before the batch's check runs (`internal/diffcheck`), the two checks the decide
 read's calibration of 2026-10-02 found a model read does not make: the merge's

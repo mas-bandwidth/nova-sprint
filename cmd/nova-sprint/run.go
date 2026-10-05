@@ -340,6 +340,7 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if land {
+		a.serverLands = true
 		go a.landLoop(context.Background(), c.redis, stdout)
 	}
 	// the providers' balances, read outside every tick (balance.go)
@@ -556,7 +557,8 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 	return false
 }
 
-// sayServer writes the server's record, the actor the loop runs as, when
+// sayServer writes the server's record, the actor the loop runs as, whether
+// it lands and its process (store.ServerRecord, land-one-lander-now-nsb.w1), when
 // store.ServerEvery has passed since said, its last write, and returns the
 // time of the last write; a failed write is said and tried again on the next
 // tick. It writes nothing else: never the coordinator key, which init and the
@@ -566,7 +568,7 @@ func (a *app) sayServer(ctx context.Context, st *store.Store, said time.Time, st
 	if !said.IsZero() && now.Sub(said) < store.ServerEvery {
 		return said
 	}
-	if err := st.SetServerActor(ctx, st.Actor); err != nil {
+	if err := st.SetServer(ctx, a.serverRecord(st.Actor)); err != nil {
 		fmt.Fprintf(stderr, "%s run: the server's record was not written: %s\n", prog, oneline.Escape(err.Error()))
 		return said
 	}
