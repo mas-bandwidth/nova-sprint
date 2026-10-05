@@ -47,6 +47,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/decide"
 	"github.com/mas-bandwidth/nova-sprint/internal/diffcheck"
+	"github.com/mas-bandwidth/nova-sprint/internal/filelock"
 	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -257,6 +258,8 @@ func (c landCard) pin() string { return c.id + "@" + c.attempt + ":" + c.head }
 
 // lander is one run of land.
 type lander struct {
+	locks                      map[string]*filelock.FileLock
+	lockLog                    io.Writer
 	a                          *app
 	c                          common
 	st                         *store.Store
@@ -343,7 +346,12 @@ func (a *app) cmdLand(args []string, stdout, stderr io.Writer) int {
 	if a.baseGateFails == nil {
 		a.baseGateFails = map[string]*baseGateFail{}
 	}
-	l := &lander{a: a, c: *c, st: st, repoDir: *repoDir, base: *base, check: *check, dry: *dry, twin: a.twinOpen(c.redis), epoch: st.PinnedEpoch(), diffs: map[string]string{}, scope: map[string][]string{}, baseGateCache: a.baseGateCache, baseGateFails: a.baseGateFails}
+	l := &lander{a: a, c: *c, st: st, repoDir: *repoDir, base: *base, check: *check, dry: *dry, twin: a.twinOpen(c.redis), epoch: st.PinnedEpoch(), diffs: map[string]string{}, scope: map[string][]string{}, baseGateCache: a.baseGateCache, baseGateFails: a.baseGateFails, lockLog: stderr}
+	defer func() {
+		if err := l.releaseClones(); err != nil {
+			fmt.Fprintf(stderr, "LAND LOCK RELEASE FAILED: %s\n", oneline.Err(err))
+		}
+	}()
 	if *check != "" && !*dry {
 		a.serial.Lock()
 		l.gate, l.gateNote = a.landGate(context.Background(), st)
@@ -1277,7 +1285,11 @@ func (l *lander) clone(ctx context.Context, repo string) (dir, why string) {
 		if l.dry {
 			return l.repoDir, ""
 		}
-		return l.repoDir, l.originIs(ctx, l.repoDir, repo)
+		dir, why := l.holdClone(l.repoDir)
+		if why != "" {
+			return dir, why
+		}
+		return dir, l.originIs(ctx, dir, repo)
 	}
 	if l.root == "" {
 		root, err := l.a.landRoot()
@@ -1289,6 +1301,10 @@ func (l *lander) clone(ctx context.Context, repo string) (dir, why string) {
 	dir = filepath.Join(l.root, repoDirName(repo))
 	if l.dry {
 		return dir, ""
+	}
+	dir, why = l.holdClone(dir)
+	if why != "" {
+		return dir, why
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 		return dir, l.originIs(ctx, dir, repo)
