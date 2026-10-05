@@ -1,20 +1,8 @@
 ![Nova Sprint: a fast friend on the starting blocks, ready for the next task.](brand/starting-blocks/composite.png)
 
-# nova-sprint
+## The Problem
 
-**Scale out AI work. Keep the work moving. _Let the human sleep :)_**
-
-nova-sprint is a machine that tracks work in flight and drives it to completion
-across **AI friends and swarms running on a fleet**. An AI coordinator helps
-plan the work and handle decisions. You set the direction and boundaries.
-
-Use **any model or harness**: different friends, different swarm workers,
-one shared sprint. Connect their harnesses through adapters and configure
-their model routes. Your team does not have to move into one vendor's ecosystem.
-
-## Everybody said “on it.”
-
-While building Nova Tools and Nova Sprint, we learned that capable AIs can
+While building [Nova Tools](https://github.com/mas-bandwidth/nova-tools), we learned that capable AIs can
 do excellent work—and still be a spectacularly unreliable group chat.
 
 ![Yellow sleeps, Purple trips over a dependency, and Green cannot hear the team.](brand/explainer/coordination.png)
@@ -35,7 +23,7 @@ review, and recover every missed handoff did not give us reliable coordination.
 The human kept becoming the scheduler. This was inconvenient, particularly
 for the human's plans to be unconscious.
 
-## We put the repeatable parts in the machine
+## Solution: We put the repeatable parts in a machine
 
 ![The AI coordinator and the machine: waiting, ready, working, review, merging, landed, with a repair loop.](brand/explainer/machine.png)
 
