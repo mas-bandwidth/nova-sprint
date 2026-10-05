@@ -321,6 +321,8 @@ nova-card is pre-alpha: not ready for production use.
 nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--dry-run]
 nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
 nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
+nova-card new <id> --repo <owner/name> --base <branch> --task-file <file> --paths <paths> [--shared <paths>] --test <test> --gate <pkgs> --tier <tier> [--needs <id>] [--out <file>]
+nova-card new --batch <tsv> --out <dir> [--repo <owner/name>] [--base <branch>] [--tier <tier>]
 nova-card lint --card <file> [--card <file>...]
 nova-card template
 nova-card version
@@ -382,6 +384,25 @@ card depending on its wave 1 neighbours (`DEPENDS-ON`). A generated ledger
 its cards are one wave with no dependency. Wave 1 cards of one ledger share its
 path and neither needs the other, so the add wants `--allow-shared-paths`; the
 `CARDS OK` line says `shared-paths=yes` when it does.
+
+### Skeleton generation (`nova-card new`)
+
+`nova-card new` writes a lint-clean brief skeleton from its parts. It fills in the standard child header,
+the 6 `RULES.` sentences, attribution declaration, `THE TASK.`, `Libraries considered:`, `STEP 1` to `STEP 6`,
+and gate line built from `--gate <pkgs>` with `swarm.GateNamesWhoseFile`.
+
+Single brief:
+```sh
+nova-card new card-my-task --repo owner/repo --base main --task-file ./task.txt \
+  --paths "cmd/my-tool/**" --test "./cmd/my-tool TestA" --gate "./cmd/my-tool/" --tier pro
+```
+Outputs the brief to `stdout`, or to `--out <file>` when given.
+
+Batch mode:
+```sh
+nova-card new --batch cards.tsv --out ./cards --repo owner/repo --base main
+```
+Reads a TSV table of cards and writes one lint-clean brief per row into `--out <dir>`.
 
 ### What it refuses
 

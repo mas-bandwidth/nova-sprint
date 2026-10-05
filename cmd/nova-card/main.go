@@ -9,6 +9,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
+	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
@@ -45,6 +47,8 @@ usage:
   nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--dry-run]
   nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
   nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
+  nova-card new <id> --repo <owner/name> --base <branch> --task-file <file> --paths <paths> [--shared <paths>] --test <test> --gate <pkgs> --tier <tier> [--needs <needs>] [--out <file>]
+  nova-card new --batch <tsv> --out <dir> [--repo <owner/name>] [--base <branch>] [--tier <tier>]
   nova-card lint --card <file> [--card <file>...]
   nova-card lint --card ./cards/finding-cmd-nova-bus-main.md
   nova-card template
@@ -60,6 +64,9 @@ Cards of one ordinary ledger alternate waves (odd rows wave 1, even rows wave 2 
 their neighbours) because adjacent deletions conflict at land; a generated ledger
 (docs/SPEC-SPRINT.md section 7) gets one wave and no dependency. Wave 1 cards of one ledger
 share its path, so the add wants --allow-shared-paths; the CARDS line says so.
+new writes a lint-clean brief skeleton from a task, repo, base, PATHS and TEST: the standard child
+header, RULES, STEP 1 to STEP 6 and the attribution sentence filled in. With --batch <tsv> it
+writes one brief per row into a directory for nova-sprint add --brief-dir.
 lint holds a brief to the lint nova-sprint add runs (the model lines, the child rules under the
 default rule set, a tree card's steps), and past the add to the typed header and the template's
 unfilled <...> lines, which the add does not read, one LINT DRIFT line each; generate holds every
@@ -81,12 +88,13 @@ example:
   nova-card lint --card ./cards/finding-cmd-nova-bus-main.md
 `
 
-var verbs = []string{"generate", "lint", "template", "version", "help"}
+var verbs = []string{"generate", "lint", "new", "template", "version", "help"}
 
 // effects is each verb's effect line for its -h (docs/CLI-STYLE.md rule (b)).
 var effects = map[string]string{
 	"generate": "local write: creates --out and writes one .md per card and manifest.tsv into it; nothing when a brief is red; --dry-run plans, lints and prints the manifest, and writes nothing",
 	"lint":     "inspection: reads, writes nothing",
+	"new":      "local write: writes one lint-clean brief to stdout or --out, or a directory of briefs with --batch",
 	"template": "inspection: prints the card template, writes nothing",
 	"version":  "inspection: prints the build identity",
 }
@@ -137,6 +145,8 @@ func run(args []string, stdout, stderr io.Writer) (code int) {
 		return cmdLint(args[1:], stdout, stderr)
 	case "generate":
 		return cmdGenerate(args[1:], stdout, stderr)
+	case "new":
+		return cmdNew(args[1:], stdout, stderr)
 	}
 	return refuse(stderr, "", fmt.Sprintf("unknown verb %q; one of %s", args[0], strings.Join(verbs, ", ")))
 }
@@ -342,6 +352,222 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintln(stdout, line)
 	return 0
+}
+
+func cmdNew(args []string, stdout, stderr io.Writer) int {
+	fs := verbflag.New("new")
+	batch := fs.String("batch", "", "a TSV `file` of card fields to generate multiple skeletons; writes into --out <dir>")
+	repoDir := fs.String("repo-dir", "", "a checkout `dir` of the target repository at the base (optional)")
+	repo := fs.String("repo", "", "the `owner/name` the REPO: line carries")
+	base := fs.String("base", "", "the `branch` the BASE: line carries")
+	taskFile := fs.String("task-file", "", "a `file` whose content is THE TASK.")
+	task := fs.String("task", "", "the inline `text` for THE TASK.")
+	paths := fs.String("paths", "", "the comma-separated `paths` the PATHS: line carries")
+	shared := fs.String("shared", "", "the `paths` the SHARED: line carries")
+	test := fs.String("test", "", "the `test` the TEST: line carries (e.g. ./pkg TestName)")
+	gate := fs.String("gate", "", "the `packages` to run in STEP 4 gate (e.g. ./cmd/nova-card/ ./internal/card/)")
+	tier := fs.String("tier", "", "the model tier: frontier, heavy, pro or flash")
+	needs := fs.String("needs", "", "the card id this card DEPENDS-ON, or '-'")
+	out := fs.String("out", "", "the `file` (single) or `dir` (batch) to write to (default: stdout for single)")
+	start := fs.String("start", "", "custom text for START: line")
+	stop := fs.String("stop", "", "custom text for STOP: line")
+	minutes := fs.Int("minutes", 0, "the Deadline line's `minutes` (default: 45 flash, 60 pro)")
+	kind := fs.String("kind", "", "the KIND: line (default: fix-red)")
+
+	pos, err := parseFlags(fs, args)
+	if err != nil {
+		return refuse(stderr, "new", verbflag.Explain(fs, err))
+	}
+
+	if *repoDir != "" {
+		h := &cardgen.Header{Repo: *repo, Base: *base}
+		if err := readCheckout(*repoDir, h); err == nil {
+			if *repo == "" {
+				*repo = h.Repo
+			}
+			if *base == "" {
+				*base = h.Base
+			}
+		}
+	}
+
+	defaults := cardgen.SkeletonOptions{
+		Repo:    *repo,
+		Base:    *base,
+		Task:    *task,
+		Paths:   *paths,
+		Shared:  *shared,
+		Test:    *test,
+		Gate:    *gate,
+		Tier:    *tier,
+		Needs:   *needs,
+		Start:   *start,
+		Stop:    *stop,
+		Minutes: *minutes,
+		Kind:    *kind,
+	}
+
+	if *batch != "" {
+		if len(pos) > 0 {
+			return refuse(stderr, "new", fmt.Sprintf("unexpected argument %q; with --batch every input is a flag", pos[0]))
+		}
+		if *out == "" {
+			return refuse(stderr, "new", "wants --out <dir>")
+		}
+		raw, err := os.ReadFile(*batch)
+		if err != nil {
+			return refuse(stderr, "new", "cannot read --batch "+*batch+": "+err.Error())
+		}
+		cards, err := cardgen.ParseBatchTSV(string(raw), defaults)
+		if err != nil {
+			return refuse(stderr, "new", "cannot parse --batch "+*batch+": "+err.Error())
+		}
+		if len(cards) == 0 {
+			return refuse(stderr, "new", "--batch "+*batch+" contains no cards")
+		}
+		briefs := make([]string, len(cards))
+		red := 0
+		for i, c := range cards {
+			if c.Repo == "" {
+				return refuse(stderr, "new", fmt.Sprintf("card %s missing repo: wants --repo <owner/name>", c.ID))
+			}
+			if c.Base == "" {
+				return refuse(stderr, "new", fmt.Sprintf("card %s missing base: wants --base <branch>", c.ID))
+			}
+			if c.Task == "" {
+				return refuse(stderr, "new", fmt.Sprintf("card %s missing task: wants task_file or task", c.ID))
+			}
+			if c.Paths == "" {
+				return refuse(stderr, "new", fmt.Sprintf("card %s missing paths: wants paths", c.ID))
+			}
+			if c.Test == "" {
+				return refuse(stderr, "new", fmt.Sprintf("card %s missing test: wants test", c.ID))
+			}
+			if c.Gate == "" {
+				return refuse(stderr, "new", fmt.Sprintf("card %s missing gate: wants gate", c.ID))
+			}
+			if c.Tier == "" {
+				return refuse(stderr, "new", fmt.Sprintf("card %s missing tier: wants tier", c.ID))
+			}
+			if !cardhdr.IsRoute(c.Tier) {
+				return refuse(stderr, "new", fmt.Sprintf("card %s: --tier %q; want %s", c.ID, c.Tier, cardhdr.RouteList))
+			}
+			briefs[i] = cardgen.RenderSkeleton(c)
+			findings := cardgen.Lint(c.ID, briefs[i])
+			for _, f := range findings {
+				fmt.Fprintln(stdout, oneline.Escape(f.String()))
+				red++
+			}
+		}
+		if red > 0 {
+			fmt.Fprintf(stderr, "nova-card new FAILED: %d red line(s) above; nothing written to %s\n", red, oneline.Field(*out))
+			return 1
+		}
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			return refuse(stderr, "new", "cannot create --out "+*out+": "+err.Error())
+		}
+		for i, c := range cards {
+			p := filepath.Join(*out, c.ID+".md")
+			if err := os.WriteFile(p, []byte(briefs[i]), 0o644); err != nil {
+				return refuse(stderr, "new", "cannot write "+p+": "+err.Error())
+			}
+		}
+		fmt.Fprintf(stdout, "CARDS OK dir=%s cards=%d\n", oneline.Field(*out), len(cards))
+		return 0
+	}
+
+	if len(pos) == 0 {
+		return refuse(stderr, "new", "wants card <id> as first argument, or --batch <tsv>")
+	}
+	id := pos[0]
+	if len(pos) > 1 {
+		return refuse(stderr, "new", fmt.Sprintf("unexpected argument %q", pos[1]))
+	}
+	if *repo == "" {
+		return refuse(stderr, "new", "wants --repo <owner/name>")
+	}
+	if *base == "" {
+		return refuse(stderr, "new", "wants --base <branch>")
+	}
+	if *taskFile != "" && *task != "" {
+		return refuse(stderr, "new", "cannot specify both --task-file and --task")
+	}
+	if *taskFile == "" && *task == "" {
+		return refuse(stderr, "new", "wants --task-file <file> or --task <text>")
+	}
+	if *taskFile != "" {
+		rawTask, err := os.ReadFile(*taskFile)
+		if err != nil {
+			return refuse(stderr, "new", "cannot read --task-file "+*taskFile+": "+err.Error())
+		}
+		defaults.Task = string(rawTask)
+	}
+	if *paths == "" {
+		return refuse(stderr, "new", "wants --paths <paths>")
+	}
+	if *test == "" {
+		return refuse(stderr, "new", "wants --test <test>")
+	}
+	if *gate == "" {
+		return refuse(stderr, "new", "wants --gate <gate>")
+	}
+	if *tier == "" {
+		return refuse(stderr, "new", "wants --tier <tier>")
+	}
+	if !cardhdr.IsRoute(*tier) {
+		return refuse(stderr, "new", fmt.Sprintf("--tier %q; want %s", *tier, cardhdr.RouteList))
+	}
+
+	defaults.ID = id
+	brief := cardgen.RenderSkeleton(defaults)
+	findings := cardgen.Lint(id, brief)
+	if len(findings) > 0 {
+		for _, f := range findings {
+			fmt.Fprintln(stdout, oneline.Escape(f.String()))
+		}
+		fmt.Fprintf(stderr, "nova-card new FAILED: %d red line(s) above\n", len(findings))
+		return 1
+	}
+
+	if *out == "" {
+		fmt.Fprint(stdout, brief)
+		return 0
+	}
+	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
+		return refuse(stderr, "new", "cannot create dir for "+*out+": "+err.Error())
+	}
+	if err := os.WriteFile(*out, []byte(brief), 0o644); err != nil {
+		return refuse(stderr, "new", "cannot write "+*out+": "+err.Error())
+	}
+	return 0
+}
+
+// parseFlags parses flags that may appear before, after, or among positional arguments.
+func parseFlags(fs *flag.FlagSet, args []string) ([]string, error) {
+	var pos []string
+	for i := 0; i < len(args); {
+		w := args[i]
+		switch {
+		case w == "--":
+			return append(pos, args[i+1:]...), nil
+		case len(w) < 2 || w[0] != '-':
+			pos = append(pos, w)
+			i++
+			continue
+		}
+		n := 1
+		name, _, inline := strings.Cut(strings.TrimPrefix(w[1:], "-"), "=")
+		if f := fs.Lookup(name); f != nil && !inline && i+1 < len(args) {
+			if b, ok := f.Value.(interface{ IsBoolFlag() bool }); !ok || !b.IsBoolFlag() {
+				n = 2
+			}
+		}
+		if err := verbflag.Parse(fs, args[i:i+n]); err != nil {
+			return nil, err
+		}
+		i += n
+	}
+	return pos, nil
 }
 
 var shaRE = regexp.MustCompile(`^[0-9a-f]{40}$`)
