@@ -51,7 +51,7 @@ The humour is affectionate. We were the friends doing the stumbling. Better
 prompts helped individual tasks; they could not make LLM-only coordination
 into a dependable system.
 
-## Put the repeatable parts in the machine
+## We put the repeatable parts in the machine
 
 nova-sprint keeps the plan, assignments, dependencies, attempts, reviews, and
 landing state outside any one conversation. Its running loop checks that
