@@ -5,8 +5,21 @@ at Glenn's request. Every image here is a **lossless PNG**. The character and
 wordmark sources retain their original transparency and resolution. The original
 renders are copied byte for byte; there is no JPEG conversion in this pipeline.
 
-[View the revised solo-runner banner](solo-runner-v2/composite.png), or the earlier
+[View the starting-blocks banner](starting-blocks/composite.png), or the earlier
 [group composition](composite.png).
+
+## Starting blocks
+
+The latest direction returns to the original mascot, freshly rendered on the
+starting blocks at the left, with the flat wordmark ahead of him. The grass
+strip is removed by continuing the pale background to the track edge; lane
+pixels are preserved. All source and placed layers are lossless PNGs in
+[starting-blocks](starting-blocks/), with the generation
+[prompt](starting-blocks/prompt.txt) and placement record alongside them.
+
+Rebuild with `python3 brand/compose_starting_blocks.py` (Pillow and NumPy).
+The script also saves the previous [running version without grass](starting-blocks/running-no-grass.png).
+The README hero remains unchanged until this candidate is selected for it.
 
 ## Solo runner
 

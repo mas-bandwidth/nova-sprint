@@ -1,0 +1,18 @@
+{
+  "canvas": [
+    2170,
+    725
+  ],
+  "character_width": 890,
+  "character_position": [
+    60,
+    125
+  ],
+  "wordmark_width": 1080,
+  "wordmark_position": [
+    1020,
+    202
+  ],
+  "grass_removed_by": "local sky color continuation above track edge",
+  "lane_pixels_preserved_below_row": 499
+}
