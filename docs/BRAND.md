@@ -21,8 +21,8 @@ explaining the foundation. Send people who want to create AI friends to
 
 ## Mark and banner
 
-Use [the approved jogging banner](../brand/jogging/banner-centered.png) at the
-top of the README. It is a 2168 × 725 lossless PNG: a happy white-and-blue
+Use [the approved jogging banner](../brand/jogging/banner-cute-wave-left.png) at the
+top of the README. It is a 2171 × 724 lossless PNG: a happy white-and-blue
 friend jogging and waving, grouped with the flat Nova Sprint wordmark and
 centred as one element. Scale it as a whole. Earlier starting-blocks and
 group banners remain in the artwork archive.

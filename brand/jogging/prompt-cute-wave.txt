@@ -1,0 +1,11 @@
+Generated with built-in image_gen on 2026-10-05.
+Candidate: banner-cute-wave.png. Original PNG preserved without resampling.
+References: approved centered jogging banner and Glenn's preferred rounder runner.
+
+Use case: precise-object-edit.
+Create a polished Nova Sprint README banner, 3:1 ultrawide.
+Reference 1 is the current banner: preserve its simple composition, pale blue-to-ivory quiet background, flat Nova Sprint wordmark at right, and straight blue running track. Reference 2 is the preferred mascot identity and cuteness: use THIS robot's rounder, larger head, big luminous cyan ear discs, compact rounded thorax, friendly curved glowing eyes, short sturdy limbs and large orange running shoes. This is the primary character design reference, not merely a color reference.
+Change the banner's waving robot to a distinctly cuter version matching reference 2. He is happily jogging right and waving an open hand toward the viewer. Keep full recognizable thorax, two arms and two legs; correct cute articulated hands; avoid lanky adult-human proportions. Large rounded head, soft chubby proportions, warm cheerful personality, relaxed effortless playful stride. Head turned warmly toward viewer while legs follow the horizontal lane. Glossy white armor, cobalt accents, black face screen, glowing cheerful curved cyan eyes, round blue antenna ball, orange shoes. No eyebrows conveying effort or anger. Cute like the second reference, not an athletic tall humanoid.
+Treat robot plus wordmark as ONE group and center that group in the banner: comfortable equal outer margins, robot on left, modest clear gap before wordmark, full antenna, hands and shoes visible. Keep exact text "Nova Sprint" in the existing flat bold rounded navy and bright blue lettering, gold four-point star inside o, gold rays above. Capital N and S, careful spacing, straight baseline, high-quality sharp typography. No 3D lettering. No extra text.
+Keep the blue track's perfectly straight, continuous horizontal white lane lines and a natural soft shadow. No grass, stadium clutter, blocks, other characters or props. High-quality fresh character rendering with smooth pristine surfaces and crisp details.
+
