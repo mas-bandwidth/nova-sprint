@@ -36,6 +36,9 @@ type machineOut struct {
 	Refused []sprint.Refusal   `json:"refused,omitempty"`
 	Moved   []string           `json:"moved,omitempty"`
 	Parts   []store.PartResult `json:"parts,omitempty"`
+	// Reason and Until are a stop by hand's (docs/SPEC-SPRINT.md section 14).
+	Reason string `json:"reason,omitempty"`
+	Until  string `json:"until,omitempty"`
 }
 
 func (a *app) cmdMachineStart(args []string, stdout, stderr io.Writer) int {
@@ -48,15 +51,29 @@ func (a *app) cmdMachineStop(args []string, stdout, stderr io.Writer) int {
 
 // setMachine is start and stop: the state before and after, whether it
 // changed, and the sprint line. Setting the state the machine has changes
-// nothing and says so.
+// nothing and says so. A stop wants --reason and --until (docs/SPEC-SPRINT.md
+// section 14): the machine line says who stopped it, why and when it is back,
+// and at --until the tick starts it; a stop of a STOPPED machine replaces the
+// two.
 func (a *app) setMachine(name string, running bool, args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup(name)
+	var reason, untilArg string
+	if !running {
+		fs.StringVar(&reason, "reason", "", "why the machine stops, shown with it: the machine line of where, inbox and the dashboard says \"STOPPED by <actor>: <reason>, back by <time>\" (required)")
+		fs.StringVar(&untilArg, "until", "", "when the machine starts itself again: a `time or duration`, a duration from now (90m), a clock time (2:04 PM or 14:04, today's or tomorrow's) or an RFC 3339 time; the tick starts it then unless it is stopped again (required)")
+	}
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
 	if len(pos) > 0 {
 		return refuse(stderr, name, "takes no words, found "+pos[0])
+	}
+	var until time.Time
+	if !running {
+		if until, err = sprint.StopArgs(reason, untilArg, a.now()); err != nil {
+			return refuse(stderr, name, err.Error())
+		}
 	}
 	st, err := a.store(*c)
 	if err != nil {
@@ -76,11 +93,20 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 			return 1
 		}
 	}
-	before, after, res, err := st.SetMachine(ctx, running)
+	var before, after store.Machine
+	var res store.Result
+	if running {
+		before, after, res, err = st.SetMachine(ctx, true)
+	} else {
+		before, after, res, err = st.StopUntil(ctx, reason, until)
+	}
 	changed := before.Running() != after.Running()
 	line := sprintLine(ctx, st)
 	if c.json {
-		o := machineOut{Before: before.StateWord(), After: after.StateWord(), Changed: changed, Notes: res.Notes, Sprint: line}
+		o := machineOut{Before: before.StateWord(), After: after.StateWord(), Changed: changed, Notes: res.Notes, Sprint: line, Reason: after.Reason}
+		if !after.Until.IsZero() {
+			o.Until = after.Until.UTC().Format(time.RFC3339)
+		}
 		if err != nil {
 			o.Error = err.Error()
 		}
@@ -96,7 +122,10 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 		return 2
 	}
 	what := "changed"
-	if !changed {
+	switch {
+	case !changed && !running:
+		what = "unchanged: the machine is STOPPED already; its reason and back-by time are this stop's"
+	case !changed:
 		what = "unchanged: the machine is " + after.StateWord() + " already"
 	}
 	fmt.Fprintf(stdout, "%s OK before=%s after=%s %s\n", token(name), before.StateWord(), after.StateWord(), what)
@@ -118,19 +147,9 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 // machineVerb is the store of tick and run, acting as the machine unless
 // --actor names another.
 func (a *app) machineVerb(name string, args []string, stderr io.Writer, extra ...func(flagSet)) (*store.Store, *common, int) {
-	fs, c := a.verbSetup(name)
-	for _, x := range extra {
-		x(fs)
-	}
-	pos, err := parse(fs, args)
-	if err != nil {
-		return nil, nil, refuse(stderr, name, err.Error())
-	}
-	if len(pos) > 0 {
-		return nil, nil, refuse(stderr, name, "takes no words, found "+pos[0])
-	}
-	if c.actor == "" {
-		c.actor = sprint.MachineActor
+	c, code := a.machineFlags(name, args, stderr, extra...)
+	if c == nil {
+		return nil, nil, code
 	}
 	st, err := a.store(*c)
 	if err != nil {
@@ -139,11 +158,41 @@ func (a *app) machineVerb(name string, args []string, stderr io.Writer, extra ..
 	return st, c, 0
 }
 
+// machineFlags is machineVerb's words alone, the store not yet opened: a shadow
+// tick opens its own, read-only (shadow.go).
+func (a *app) machineFlags(name string, args []string, stderr io.Writer, extra ...func(flagSet)) (*common, int) {
+	fs, c := a.verbSetup(name)
+	for _, x := range extra {
+		x(fs)
+	}
+	pos, err := parse(fs, args)
+	if err != nil {
+		return nil, refuse(stderr, name, err.Error())
+	}
+	if len(pos) > 0 {
+		return nil, refuse(stderr, name, "takes no words, found "+pos[0])
+	}
+	if c.actor == "" {
+		c.actor = sprint.MachineActor
+	}
+	return c, 0
+}
+
 func (a *app) cmdTick(args []string, stdout, stderr io.Writer) int {
-	st, c, code := a.machineVerb("tick", args, stderr)
-	if st == nil {
+	var rules, idle, shadow bool
+	c, code := a.machineFlags("tick", args, stderr, answerRulesFlag(&rules, false), idleAlarmFlag(&idle, false), shadowFlag(&shadow))
+	if c == nil {
 		return code
 	}
+	if shadow {
+		return a.shadowTick(*c, rules, idle, stdout, stderr)
+	}
+	st, err := a.store(*c)
+	if err != nil {
+		return refuse(stderr, "tick", err.Error())
+	}
+	st.AnswerRules, st.IdleAlarm = rules, idle
+	st.WakeFriend = a.stallWaker(st, stderr)
 	ctx := context.Background()
 	res, err := st.Tick(ctx)
 	err = noSprintYet(err)
@@ -238,7 +287,8 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	var profile, listen, decideDir string
 	var profileTicks int
 	var land bool
-	st, c, code := a.machineVerb("run", args, stderr, func(fs flagSet) {
+	var rules, idle bool
+	st, c, code := a.machineVerb("run", args, stderr, answerRulesFlag(&rules, true), idleAlarmFlag(&idle, true), func(fs flagSet) {
 		fs.StringVar(&listen, "listen", "", "also be the sprint's server: the workers' verbs on this `address:port` (this machine's address on the fleet's private network; a name, a public address, a link-local address, and an every-network address are refused), where nova-swarm member --server <address>:<port> sends them, and the coordinator's verbs on 127.0.0.1 at the same port, where NOVA_SPRINT_SERVER=127.0.0.1:<port> sends them")
 		fs.StringVar(&decideDir, "decide", "", "also keep the record of the sprint's attempt and grade decisions in this `dir` (nova-decide's layer 2: attempt.jsonl, grade.jsonl): the finishes' attempt decisions recorded, every card graded before its first deal with JEV_API_KEY from this environment, and each decision's outcome attached when its card lands or is dropped, every "+DecideEvery.String())
 		fs.BoolVar(&land, "land", false, "also land what the readers passed, every "+LandEvery.String()+", one landing at a time, as the coordinator (land's defaults: each card's REPO: and BASE: lines); land is then not run by hand")
@@ -249,6 +299,8 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	if st == nil {
 		return code
 	}
+	st.AnswerRules, st.IdleAlarm = rules, idle
+	st.WakeFriend = a.stallWaker(st, stderr)
 	if a.twinOpen(c.redis) {
 		return refuse(stderr, "run", twinMachine)
 	}
@@ -292,6 +344,8 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	}
 	// the providers' balances, read outside every tick (balance.go)
 	go a.balanceLoop(context.Background(), st, stdout)
+	// the store round trip, timed every 10 s for where (store-latency-row-r.w2)
+	go a.storeRTTLoop(context.Background(), st)
 	if decideDir != "" {
 		var b decide.Backend
 		if key := a.getenv(decide.JevSecret); key != "" {
@@ -302,6 +356,11 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 		}
 		go a.decideLoop(context.Background(), c.redis, stdout)
 	}
+	// on server start, keep every in-flight read whose lease is live and only
+	// take back reads whose lease has lapsed (tla/ServerLanes.tla, Restart)
+	// ignored: a best-effort read cleanup on startup; tick takes care of any subsequent lapses
+	_ = a.serverStart(context.Background(), st)
+
 	fmt.Fprintf(stdout, "RUN ticking on every line of the log (at most every %s) and every %s while it is quiet; %s\n", store.TickFloor, store.TickEvery, st.MachineLine(context.Background()))
 	if a.runLoop(context.Background(), st, c.max, 0, stdout, stderr) {
 		return exitReplaced
@@ -413,7 +472,8 @@ const (
 // read alone. Every tick of a RUNNING machine is printed, naming every table
 // and the rows it changed in each, and every tick that
 // failed; an error is printed always and the loop goes on, waiting longer
-// after each failure in a row, up to TickBackoffCap.
+// after each failure in a row, up to TickBackoffCap. After each tick of a
+// RUNNING machine every friend is reconciled (reconcileFriendsTick).
 //
 // A loop runs the code it was started with for as long as it runs: a binary
 // installed under it (a release, a fix) would leave the store ticked by the
@@ -428,15 +488,24 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 	// every line before the loop is seen: the first tick reads the state whole
 	cursor, _ := st.LogTail(ctx)
 	why := tickStart
+	friends := newFriendTick()
+	// the server's record, the actor this loop runs as, which seat and handover
+	// show beside the seat's holder: written before the first tick and every
+	// store.ServerEvery (seat-key-follows-record.w2)
+	var said time.Time
 	for i := 0; (n == 0 || i < n) && ctx.Err() == nil; i++ {
 		if now := a.binaryStamp(); began0 != "" && now != began0 {
 			fmt.Fprintf(stdout, "RUN STOP the binary this loop runs was replaced on disk since it began (%s, now %s): exiting so its supervisor starts the new one; a loop that is not supervised: run nova-sprint run again\n", began0, orDashStr(now, "unreadable"))
 			return true
 		}
 		began := a.now()
-		// one tick, or one worker's batch, at a time (serve.go)
-		// (a batch waits for it at most ServeWait, and is told the tick holds it)
-		a.serial.LockAs("the tick begun at " + began.Format("15:04:05"))
+		said = a.sayServer(ctx, st, said, stderr)
+		// one tick, or one worker's batch, at a time (serve.go); the tick takes the line at
+		// its turn, after the batch in flight, not behind every batch waiting
+		// (sprint.ControlLine; docs/SPEC-SPRINT.md section 14, The server, "The tick's turn")
+		if waited := a.serial.TickLockAs("the tick begun at " + began.Format("15:04:05")); waited > store.TickEvery {
+			fmt.Fprintf(stdout, "%s LINE the tick waited %s for the server's line of control (a batch or a lane held it)\n", a.now().Format("15:04:05"), waited.Round(time.Millisecond))
+		}
 		res, err, over := a.tickWithin(func() (store.TickResult, error) { return st.Tick(ctx) }, a.tickDeadline, began, stdout, stderr)
 		if over {
 			// serial stays held: the tick's goroutine is still in its plan
@@ -466,6 +535,12 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 				fmt.Fprintln(stdout, line)
 			}
 		}
+		if err == nil && res.State == store.Running {
+			// every friend reconciled after the tick's deal, with friend reconcile's plan
+			// (friendreconcile_tick.go; docs/SPEC-SPRINT.md section 1,
+			// friend-reconcile-every-tick-r.w1)
+			a.reconcileFriendsTick(ctx, st, friends, stdout)
+		}
 		if n != 0 && i == n-1 {
 			return false
 		}
@@ -479,6 +554,41 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 		cursor, why = a.pace(ctx, st, res.Epoch, cursor, began)
 	}
 	return false
+}
+
+// sayServer writes the server's record, the actor the loop runs as, when
+// store.ServerEvery has passed since said, its last write, and returns the
+// time of the last write; a failed write is said and tried again on the next
+// tick. It writes nothing else: never the coordinator key, which init and the
+// seat's steps write from the seat's record.
+func (a *app) sayServer(ctx context.Context, st *store.Store, said time.Time, stderr io.Writer) time.Time {
+	now := a.now()
+	if !said.IsZero() && now.Sub(said) < store.ServerEvery {
+		return said
+	}
+	if err := st.SetServerActor(ctx, st.Actor); err != nil {
+		fmt.Fprintf(stderr, "%s run: the server's record was not written: %s\n", prog, oneline.Escape(err.Error()))
+		return said
+	}
+	return now
+
+}
+
+// storeRTTLoop times one store round trip every store.StoreRTTEvery, waiting on
+// a.after between them, until ctx is done; where shows the p50 and p99 of the last
+// minute (store.MeasureStoreRTT, docs/SPEC-SPRINT.md section 14,
+// store-latency-row-r.w2). A failed round trip is not a sample, and the next is
+// timed as usual.
+func (a *app) storeRTTLoop(ctx context.Context, st *store.Store) {
+	for ctx.Err() == nil {
+		select {
+		case <-ctx.Done():
+			return
+		case <-a.after(store.StoreRTTEvery):
+			// ignored: a failed round trip records nothing; the next one is timed in 10 s
+			_, _ = st.MeasureStoreRTT(ctx)
+		}
+	}
 }
 
 // pace is the wait between two ticks of run: it blocks on the log of the
@@ -506,8 +616,11 @@ func (a *app) pace(ctx context.Context, st *store.Store, epoch uint64, cursor st
 // machineWords is the machine's part of the help.
 func machineWords() string {
 	return strings.TrimSpace(`
-The machine: nova-sprint start sets it RUNNING, nova-sprint stop sets it
-STOPPED; nova-sprint run ticks as soon as a line comes on the log (a verb's
+The machine: nova-sprint start sets it RUNNING, nova-sprint stop --reason
+<text> --until <time or duration> sets it STOPPED: where, inbox and the
+dashboard say "STOPPED by <actor>: <reason>, back by 2:04 PM", and at --until
+the tick starts it again unless it was stopped again since (a clear takes the
+time off); nova-sprint run ticks as soon as a line comes on the log (a verb's
 step: a finish, a merge, a start), at most every 100ms, and once a second
 while the log is quiet; nova-sprint tick is one tick by hand. Each tick deals
 ready primaries, asks readers, resolves waiting primaries whose needs landed,
@@ -527,4 +640,32 @@ machine (STOPPED, every provider is out of credit) and start is refused
 until one is paid. Low on funds never stops it. Every
 verb works in both states. run stops (exit 3) when its own binary is replaced
 on disk, so its supervisor starts the new build.`) + "\n"
+}
+
+// answerRulesFlag is run's and tick's --answer-rules: the tick answers the mechanical
+// judgments by rule (docs/SPEC-SPRINT.md section 8, answered by rule). The run loop answers
+// by default; a tick by hand only when asked, so a twin's or a test's tick is the machine's
+// moves alone unless it says so.
+func answerRulesFlag(on *bool, byDefault bool) func(flagSet) {
+	return func(fs flagSet) {
+		fs.BoolVar(on, "answer-rules", byDefault, "answer the mechanical judgments by rule, recorded \"answered by rule <name>\" (work came back failed: redealt, then a tier up; a card at its bound: a tier up, heavy to a friend; a late card: a wait once with progress, else returned and redealt; a conflict in a file no ledger owns: returned, redone on the tip, resumed; the same finding twice: marked a brief defect); nova-config's sprint row answer_rules_off turns single rules off; --answer-rules=false leaves every judgment to the coordinator (run answers by default, a tick by hand only with --answer-rules); nova-sprint rules prints what they would answer now")
+	}
+}
+
+// idleAlarmFlag is run's and tick's --idle-alarm: the tick watches for an idle fleet
+// (docs/SPEC-SPRINT.md section 14, the fleet is idle); on in the run loop, off in a tick by
+// hand unless asked.
+func idleAlarmFlag(on *bool, byDefault bool) func(flagSet) {
+	return func(fs flagSet) {
+		fs.BoolVar(on, "idle-alarm", byDefault, "when the fleet works under half its width for "+sprint.IdleWindow.String()+" while cards wait, push the coordinator one note (the inbox, and inbox --push) naming the roots the waiting cards are behind, the most cards first, once an episode, and one more when it recovers (run: on by default; a tick by hand only with --idle-alarm)")
+	}
+}
+
+// serverStart runs the server startup steps before the first tick:
+// on server start, keep every in-flight read whose lease is live and only
+// take back reads whose lease has lapsed (tla/ServerLanes.tla, Restart;
+// docs/SPEC-SPRINT.md section 6).
+func (a *app) serverStart(ctx context.Context, st *store.Store) error {
+	_, err := st.Run(ctx, store.ServerRestartStep())
+	return err
 }

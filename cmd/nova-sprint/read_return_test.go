@@ -22,6 +22,7 @@ func TestReadReturnIsAskedOfAnotherReaderByTheNextTick(t *testing.T) {
 	ta.ok("reader away reader-c")
 	ta.inReview(1)
 	ta.ok("ask")
+	ta.ok("ask s1-1 --another") // the pair: reads are asked one at a time
 	ta.ok("reader up reader-c")
 	ta.ok("read --as reader-a --begin s1-1.r1.reader-a")
 	code, _, errs := ta.do("read --as reader-a --return s1-1.r1.reader-a")
@@ -42,7 +43,7 @@ func TestReadReturnIsAskedOfAnotherReaderByTheNextTick(t *testing.T) {
 	assert.Equal(t, []string{"s1-1.r1.reader-b"}, ta.askedOf("reader-b"))
 	var returned []sprint.Group
 	for _, g := range ta.inboxGroups() {
-		assert.False(t, g.Kind == sprint.Judgment, "no judgment is owed: %+v", g)
+		assert.NotEqual(t, sprint.Judgment, g.Kind, "no judgment is owed: %+v", g)
 		if g.Type == sprint.NReadReturned {
 			returned = append(returned, g)
 		}

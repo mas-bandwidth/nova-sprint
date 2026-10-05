@@ -51,7 +51,7 @@ func Ack(s *Snapshot, r AckReq) Plan {
 			continue
 		}
 		n := entries[0].Note
-		if !contains(n.Decisions, "ack") {
+		if !contains(n.Decisions, "ack") && !contains(n.Decisions, "keep") { // keep (readtier.go) is an ack by another name
 			p.refuse(id, notAckable(n, entries))
 			continue
 		}
@@ -184,7 +184,7 @@ func waive(s *Snapshot, id, who string, judgments []Note) (Change, []Note) {
 	fields["waived"] = set["waived"]
 	after := &Card{ID: c.ID, Row: c.Row, Col: c.Col, Score: c.Score, Fields: fields}
 	switch {
-	case len(WaitsFor(s, after, nil)) > 0, IsHeld(c):
+	case len(WaitsFor(s, after, nil)) > 0, IsHeld(c), IsAuto(c): // an auto sentinel: the tick lands it
 	case IsSentinel(c):
 		set["reached"] = stamp(s.Now)
 		return change(Work, setEntry(c, set)), []Note{reachedNote(s, c, nil, 0, who)}

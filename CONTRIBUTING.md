@@ -10,7 +10,7 @@ helps.
 | Path | What lives there |
 |---|---|
 | `cmd/nova-sprint` | The sprint commands, server, and dashboard entry point. |
-| `cmd/nova-card` | Card generation and linting. |
+| `internal/card`, `internal/cardgen` | Card generation and linting behind `nova-sprint card`. |
 | `cmd/nova-work` | GitHub issue import and verification. |
 | `internal/sprint`, `internal/sprintdash` | Coordination and the browser view. |
 | `internal/cardgen`, `internal/workfile`, `internal/workgh`, `internal/worklang` | Card and work-tree implementation. |

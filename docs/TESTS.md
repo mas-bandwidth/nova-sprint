@@ -6,7 +6,7 @@ precise even when the surrounding explanation changes.
 
 Start with [the local first lap](FIRST-LAP.md) for a guided walkthrough. Come
 back here to compare what each command prints or to understand a test failure.
-The transcripts cover [sprint handoffs](#nova-sprint), [card generation](#nova-card),
+The transcripts cover [sprint handoffs](#nova-sprint), [card generation](#briefs-from-a-findings-file),
 and [work-tree import and verification](#nova-work). They moved from Nova Tools
 on 2026-10-04 and retain the command names of that implementation.
 
@@ -70,12 +70,12 @@ PACKET s1-1.w1 attempt=1 gen=1 epoch=0
   base: the stream's base
   notes: none
   report it: nova-sprint finish --as m1 s1-1.w1@1 --epoch 0 --branch sprint/s1-1.w1.g1.e0 --head <commit> --report '<what you did>' [--failed]
-TAKE OK moved=1 refused=0 notes=0 op=take-t23-1
+TAKE OK moved=1 refused=0 notes=0 op=take-t25-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint finish --as m1 s1-1.w1@1 --epoch 0 --report done
 MOVED s1-1.w1 working -> done ok; s1-1 working -> review
-FINISH OK moved=1 refused=0 notes=1 op=finish-t24-1
+FINISH OK moved=1 refused=0 notes=1 op=finish-t26-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint tick
@@ -87,12 +87,12 @@ TICK OK state=RUNNING idle=no moved=2 notes=0
 
 $ nova-sprint read --as reader-a --begin --epoch 0
 MOVED s1-1.r1.reader-a asked -> reading
-READ OK moved=1 refused=0 notes=0 op=read-t27-1
+READ OK moved=1 refused=0 notes=0 op=read-t29-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint read --as reader-a --ok --epoch 0
 MOVED s1-1.r1.reader-a reading -> ok
-READ OK moved=1 refused=0 notes=0 op=read-t28-1
+READ OK moved=1 refused=0 notes=0 op=read-t30-1
 0/1 0.0% -> ETA -  machine: running
 
 $ nova-sprint tick
@@ -104,7 +104,7 @@ TICK OK state=RUNNING idle=no moved=2 notes=2
 
 $ nova-sprint merge --stream s1 --batch 1
 MOVED s1-1 merging -> landed
-MERGE OK moved=1 refused=0 notes=2 op=merge-t32-1
+MERGE OK moved=1 refused=0 notes=2 op=merge-t34-1
 0/1 0.0% -> ETA -  machine: running
 ```
 
@@ -174,13 +174,13 @@ PACKET s1-2.w1 attempt=1 gen=1 epoch=0
   base: the stream's base
   notes: none
   report it: nova-sprint finish --as m1 s1-2.w1@1 --epoch 0 --branch sprint/s1-2.w1.g1.e0 --head <commit> --report '<what you did>' [--failed]
-TAKE OK moved=2 refused=0 notes=0 op=take-t23-1
+TAKE OK moved=2 refused=0 notes=0 op=take-t25-1
 0/2 0.0% -> ETA -  machine: running
 
 $ nova-sprint finish --as m1 s1-1.w1@1 s1-2.w1@1 --epoch 0 --failed --report 'the tests went red'
 MOVED s1-1.w1 working -> done failed; s1-1 working -> review
 MOVED s1-2.w1 working -> done failed; s1-2 working -> review
-FINISH OK moved=2 refused=0 notes=1 op=finish-t24-1
+FINISH OK moved=2 refused=0 notes=1 op=finish-t26-1
 0/2 0.0% -> ETA -  machine: running
 
 $ nova-sprint tick
@@ -192,34 +192,33 @@ TICK OK state=RUNNING idle=no moved=2 notes=0
 
 $ nova-sprint answer --backend fixed --answers ./cmd/nova-sprint/testdata/judgment-answers.json --record ./judgment.jsonl
 judgment        card  kind    verb    p     act     why
-finish-t24-1.1  s1-1  failed  rework  0.91  listed  no decide_judgment_bar is set, so nothing is applied; at a bar at or under 0.91 it would apply: nova-sprint rework s1-1 --one
-finish-t24-1.1  s1-2  failed  rework  0.91  listed  no decide_judgment_bar is set, so nothing is applied; at a bar at or under 0.91 it would apply: nova-sprint rework s1-2 --one
+finish-t26-1.1  s1-1  failed  rework  0.91  listed  no decide_judgment_bar is set, so nothing is applied; at a bar at or under 0.91 it would apply: nova-sprint rework s1-1 --one
+finish-t26-1.1  s1-2  failed  rework  0.91  listed  no decide_judgment_bar is set, so nothing is applied; at a bar at or under 0.91 it would apply: nova-sprint rework s1-2 --one
 ANSWER OK rows=2 applied=0 would_apply=0 listed=2 refused=0 failed=0 left=0 outcomes=0 bar=- record=./judgment.jsonl; run: nova-sprint inbox
 
 $ nova-sprint answer --bar 0.8 --backend fixed --answers ./cmd/nova-sprint/testdata/judgment-answers.json --record ./judgment.jsonl
 judgment        card  kind    verb    p     act      why
-finish-t24-1.1  s1-1  failed  rework  0.91  applied  nova-sprint rework s1-1 --one --op decide.finish-t24-1.1_s1-1
-finish-t24-1.1  s1-2  failed  rework  0.91  applied  nova-sprint rework s1-2 --one --op decide.finish-t24-1.1_s1-2
+finish-t26-1.1  s1-1  failed  rework  0.91  applied  nova-sprint rework s1-1 --one --op decide.finish-t26-1.1_s1-1
+finish-t26-1.1  s1-2  failed  rework  0.91  applied  nova-sprint rework s1-2 --one --op decide.finish-t26-1.1_s1-2
 ANSWER OK rows=2 applied=2 would_apply=0 listed=0 refused=0 failed=0 left=0 outcomes=0 bar=0.80 record=./judgment.jsonl; run: nova-sprint inbox
 ```
 
+### Briefs from a findings file
 
-## nova-card
-
-Fixture: `cmd/nova-card/testdata/findings.tsv`, a reader's findings on two
-files, typed as `./cmd/nova-card/testdata/findings.tsv` from the root of a
-checkout; `./cards` is a directory the first line creates.
-
-### First run
+Fixture: `cmd/nova-sprint/testdata/findings.tsv`, a reader's findings on two
+files, typed as `./cmd/nova-sprint/testdata/findings.tsv` from the root of a
+checkout; `./cards` is a directory the first line creates. Run by
+`TestTheCardTranscriptRuns` in `cmd/nova-sprint/cardverbs_test.go`. These verbs
+were the retired nova-card binary's.
 
 ```
-$ nova-card generate --from findings --file ./cmd/nova-card/testdata/findings.tsv --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567 --out ./cards
+$ nova-sprint card generate --from findings --file ./cmd/nova-sprint/testdata/findings.tsv --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567 --out ./cards
 CARDS OK dir=./cards cards=2 waves=1 tier=pro
 
-$ nova-card lint --card ./cards/finding-internal-bus-send.md
+$ nova-sprint card lint --card ./cards/finding-internal-bus-send.md
 LINT OK file=./cards/finding-internal-bus-send.md
 
-$ nova-card lint --card ./cards/finding-cmd-nova-bus-main.md
+$ nova-sprint card lint --card ./cards/finding-cmd-nova-bus-main.md
 LINT OK file=./cards/finding-cmd-nova-bus-main.md
 ```
 

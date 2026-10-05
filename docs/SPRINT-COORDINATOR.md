@@ -46,6 +46,14 @@ an explicit `--redis`; they are not ways to repair an unresponsive server.
 Investigate the service first. Make state changes through sprint commands,
 not by editing Redis keys.
 
+### coordinator-needs-no-seat-only-tools
+
+The seat runs on nova verbs alone. [COORDINATOR-TOOLS.md](https://github.com/mas-bandwidth/nova-tools/blob/dev/docs/COORDINATOR-TOOLS.md) lists every wrapper, script
+and loop a coordinator ran beside them (the seat wrapper, the wake, the dashboard, the friends' beat, ping and
+sync loops, the disk guard, the mirror loop and the hand-written units), each mapped to the verb lines that do
+the same or to the card that adds the verb; a verb or flag on that page that the tool does not carry fails
+`TestEveryCoordinatorToolMapsToARealNovaVerb`. A coordinator who reaches for a tool not on it adds its row first.
+
 ## 2. The day's loop
 
 Read the current state, decide what needs attention, then check the result:
@@ -116,8 +124,8 @@ checks, and finish condition. Use the card generator and lint before loading
 a batch. A card's filename becomes its ID:
 
 ```sh
-nova-card template
-nova-card lint --card <file>
+nova-sprint card template
+nova-sprint card lint --card <file>
 nova-sprint add --stream <s> --brief-dir <dir>
 ```
 

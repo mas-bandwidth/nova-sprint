@@ -23,13 +23,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/bus"
 	"github.com/mas-bandwidth/nova-sprint/internal/decide"
 	"github.com/mas-bandwidth/nova-sprint/internal/hostload"
 	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/redisauth"
 	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/redisconn"
+	"github.com/mas-bandwidth/nova-sprint/internal/secrets"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
@@ -45,6 +46,7 @@ var version string
 func main() {
 	a := newApp(os.Getenv)
 	a.briefRecord = a.defaultBriefRecord // a test's app has none: no brief record, no brief decision
+	a.seatLoginOn()                      // a test's app has none: no recorded store login (storelogin.go)
 	defer a.close()
 	os.Exit(a.run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -101,7 +103,17 @@ type app struct {
 	// readTwins is the process's read twin of each store, by address: what
 	// its verbs last read, so a verb after the first reads only what changed
 	// (store/twin.go). It is not the mem twin above, which is a store.
-	readTwins map[string]*store.Twin
+	readTwinsMu sync.Mutex
+	readTwins   map[string]*store.Twin
+	// busWatches is the Watch of each bus store and user sendBus has sent on
+	// (busWatch), and busAlarms the lines its alarms queued for the send that
+	// saw them to say; busOpen dials the store for each send (a test gives a
+	// fake store and opens no socket).
+	busWatchesMu sync.Mutex
+	busWatches   map[string]*bus.Watch
+	busAlarmsMu  sync.Mutex
+	busAlarms    []string
+	busOpen      func(ctx context.Context, addr, user string) (*bus.Bus, func(), error)
 	// landRoot is the directory land keeps its clones under when it is given
 	// no --repo-dir (land.go): os.UserCacheDir's nova-sprint/land.
 	landRoot func() (string, error)
@@ -121,20 +133,35 @@ type app struct {
 	// red batch gate (landgate.go); nil asks Jev with the key JEV_API_KEY holds, on the
 	// wall clock.
 	gateBackend func() (decide.Backend, func() time.Time)
+	// mergeQueue is the forge's merge queue of a branch land asks before it lands onto it
+	// (mergewindow.go): gh's for a GitHub repository, each answer kept a while; a test gives
+	// a fake and asks no forge.
+	mergeQueue sprint.MergeQueue
 	// serial is the server's one line of control (serve.go): a worker's batch
-	// and a tick of the run loop each hold it, so neither runs during the other; a
-	// batch waits for it at most ServeWait (serve.go).
+	// and a tick of the run loop each hold it, so neither runs during the other;
+	// the tick takes it at its turn, not behind every batch waiting (sprint.ControlLine);
+	// a batch waits for it at most ServeWait (serve.go).
 	// serveAddr is the store the server runs the workers' verbs on.
-	serial    line
+	serial    controlLine
 	serveAddr string
 	// serving says the verb running is one a worker sent to the server (set and
 	// cleared under serial): its step names the epoch its worker holds, or is
 	// refused (runStep).
 	serving bool
+	// lanes is the server's lanes beside the line (servelanes.go), made at the first
+	// batch under lanesMu; served is what its batches cost since its last SERVE line, said
+	// on serveLog (run's stdout once it listens; nil, a test's, says nothing).
+	lanesMu  sync.Mutex
+	lanes    *serveLanes
+	served   serveTally
+	serveLog io.Writer
 	// forward sends verbs to the sprint's server named by NOVA_SPRINT_SERVER (the
 	// coordinator's verbs, forward.go): nil is sprintwire.Client's Do, a test gives the
 	// server's own step.
 	forward func(ctx context.Context, addr string, verbs ...[]string) ([]sprintwire.Result, error)
+	// outside is the seat check's reaches past the store (machinery.go): zero
+	// is the machine's own; a test gives fakes.
+	outside outside
 	// landFailed is what the land loop's last round printed when it failed, "" after a
 	// round that did not (landloop.go): the same failure again prints nothing.
 	landFailed string
@@ -149,6 +176,9 @@ type app struct {
 	// baseGateCache is the tree gate's findings for base commit tips, by commit SHA:
 	// "" when green, cached across streams and rounds so a base is gated once.
 	baseGateCache map[string]string
+	// baseGateFails is the base-gate rule's record of base commits that failed their tree
+	// gate (landgo.go, treeGateBase), kept across rounds as the cache is.
+	baseGateFails map[string]*baseGateFail
 	// tickDeadline is how long the run loop waits for one tick (run
 	// --tick-deadline; 0, a test's loop, waits for ever); after is the clock
 	// it waits on (time.After unless a test sets it), and exit how the loop
@@ -165,6 +195,11 @@ type app struct {
 	// home is the directory a seat's inbox is under (inbox --wait --push seat:
 	// ~/<holder>-working/inbox): os.UserHomeDir unless a test sets it.
 	home func() (string, error)
+	// goos is the OS seat install writes its unit for (seatinstall.go): runtime.GOOS unless a
+	// test sets it; seatLoad, when set (a test), loads and unloads the unit in place of
+	// launchctl or systemctl --user, so a test loads nothing on its machine.
+	goos     string
+	seatLoad func(goos, op, path string) error
 	// transport carries the balance poll's requests to the providers (balance.go):
 	// nil is http.DefaultTransport, a test gives a fake.
 	transport http.RoundTripper
@@ -178,6 +213,148 @@ type app struct {
 	briefRecord   func() (string, error)
 	briefBar      func(ctx context.Context) (string, error)
 	gateOnly      *briefAsked
+	// The seat's store login (storelogin.go): loginFile is where seat login records it
+	// (nil, as in a test's app until its test turns it on: none is recorded or read),
+	// loginSecret, when set (a test), reads its password in place of nova-secrets, and
+	// dialStore, when set (a test), is the store opened with the login's options and the
+	// getenv its password is read through, in place of a Redis dialed.
+	loginFile   func() (string, error)
+	loginSecret func(secrets.Login) (secrets.Secret, error)
+	dialStore   func(ctx context.Context, addr string, o redisconn.Options, getenv func(string) string, names sprint.Names) (store.Backend, error)
+}
+
+// controlLine is the server's one line of control (app.serial): a tick of the run
+// loop, a worker's batch and the short store steps of the land, decide and balance
+// lanes each hold it, so none runs during another. sprint.ControlLine keeps its
+// rule: the batches take the line in the order they asked and the tick takes it at
+// its turn, after the holder in flight and before every batch still waiting
+// (docs/SPEC-SPRINT.md section 14, The server, "The tick's turn"). LockCtx gives a
+// wait up when its caller has gone: on 2026-10-04 a sync.Mutex here kept every
+// timed-out friend beat in the line, each run long after its caller had gone, and
+// the line never drained (tla/ServerLanes.tla, AbandonedNeverRuns). The zero value
+// is a free line.
+type controlLine struct {
+	sprint.ControlLine
+	// waiting, when set (a test), is called by a LockCtx that finds the line taken,
+	// before it waits: how a test sees, with no clock, that a verb would wait.
+	waiting func()
+	mu      sync.Mutex // guards who
+	who     string     // what holds the line, "" for a holder that did not say (a lane's step)
+}
+
+// LockAs takes the line for a batch as who: what a batch that cannot take it within
+// ServeWait is told holds it.
+func (l *controlLine) LockAs(who string) {
+	l.ControlLine.Lock()
+	l.hold(who)
+}
+
+// TickLockAs is TickLock, the tick naming itself to the batches it keeps waiting.
+func (l *controlLine) TickLockAs(who string) time.Duration {
+	waited := l.ControlLine.TickLock()
+	l.hold(who)
+	return waited
+}
+
+// Unlock frees the line and forgets who held it.
+func (l *controlLine) Unlock() {
+	l.hold("")
+	l.ControlLine.Unlock()
+}
+
+func (l *controlLine) hold(who string) {
+	l.mu.Lock()
+	l.who = who
+	l.mu.Unlock()
+}
+
+func (l *controlLine) holder() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.who
+}
+
+// LockWithin is LockCtx as who, bounded by wait as well as by ctx (serve.go, ServeWait):
+// a free line is taken at once, on no clock; when wait fires before the line is taken it
+// takes nothing, and says busy and what held the line. A caller gone first is err, as
+// LockCtx says it.
+func (l *controlLine) LockWithin(ctx context.Context, who string, wait func() <-chan time.Time) (held string, busy bool, err error) {
+	if err := ctx.Err(); err != nil {
+		return "", false, err
+	}
+	if l.TryLock() {
+		l.hold(who)
+		return "", false, nil
+	}
+	bounded, cancel := context.WithCancel(ctx)
+	defer cancel()
+	fired := make(chan struct{})
+	go func() {
+		select {
+		case <-wait():
+			close(fired)
+			cancel()
+		case <-bounded.Done():
+		}
+	}()
+	if err := l.LockCtx(bounded); err != nil {
+		select {
+		case <-fired:
+			if ctx.Err() == nil {
+				return l.holder(), true, nil
+			}
+		default:
+		}
+		return "", false, err
+	}
+	l.hold(who)
+	return "", false, nil
+}
+
+// LockCtx waits for the line until ctx is done; it holds the line only when it
+// returns nil. A line taken at the moment ctx ends is given straight back: a caller
+// that has gone never runs its verbs.
+func (l *controlLine) LockCtx(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if l.TryLock() {
+		return nil
+	}
+	if l.waiting != nil {
+		l.waiting()
+	}
+	var mu sync.Mutex
+	gone := false
+	taken := make(chan struct{})
+	go func() {
+		l.Lock()
+		mu.Lock()
+		defer mu.Unlock()
+		if gone {
+			l.Unlock() // its caller went: the line is handed straight back, its verbs never run
+			return
+		}
+		close(taken) // the line is the caller's from here
+	}()
+	select {
+	case <-taken:
+		if err := ctx.Err(); err != nil {
+			l.Unlock()
+			return err
+		}
+		return nil
+	case <-ctx.Done():
+		mu.Lock()
+		defer mu.Unlock()
+		gone = true
+		select {
+		case <-taken: // taken as ctx ended, its taker kept it: give it straight back
+			l.Unlock()
+		default:
+		}
+		return ctx.Err()
+	}
 }
 
 func newApp(getenv func(string) string) *app {
@@ -187,10 +364,13 @@ func newApp(getenv func(string) string) *app {
 	a.friends = a.readFriends
 	a.tip = a.branchTip
 	a.bus = a.sendBus
+	a.busOpen = a.openBus
 	a.landRoot = defaultLandRoot
 	a.home = os.UserHomeDir
 	a.decideBackend = func(key string) decide.Backend { return decide.JevHTTP(key, decide.JevTimeout) }
 	a.briefBar = a.readBriefBar
+	a.mergeQueue = &keptQueue{ask: ghMergeQueue{host: githubHost}, now: func() time.Time { return a.now() }, kept: map[string]keptAnswer{}}
+	a.busWatches = map[string]*bus.Watch{}
 	return a
 }
 
@@ -203,7 +383,8 @@ func (a *app) close() {
 
 // redisBackend opens the store once per address, as nova-table dials it: the
 // address, then NOVA_SPRINT_REDIS_USER and the variable
-// NOVA_SPRINT_REDIS_PASSWORD_ENV names.
+// NOVA_SPRINT_REDIS_PASSWORD_ENV names, else the recorded seat login
+// (storeOptions, storelogin.go).
 func (a *app) redisBackend(ctx context.Context, addr string, names sprint.Names) (store.Backend, error) {
 	if isTwin(addr) {
 		return a.twinBackend(addr)
@@ -212,10 +393,29 @@ func (a *app) redisBackend(ctx context.Context, addr string, names sprint.Names)
 	if b, ok := a.cached[key]; ok {
 		return b, nil
 	}
+	o, getenv, err := a.storeOptions(addr)
+	if err != nil {
+		return nil, err
+	}
+	dial := a.dialStore
+	if dial == nil {
+		dial = a.dialRedis
+	}
+	b, err := dial(ctx, addr, o, getenv, names)
+	if err != nil {
+		return nil, err
+	}
+	a.cached[key] = b
+	return b, nil
+}
+
+// dialRedis is the store at addr over Redis, logged in with o (its password read
+// through getenv), its function library checked once per process and address.
+func (a *app) dialRedis(ctx context.Context, addr string, o redisconn.Options, getenv func(string) string, names sprint.Names) (store.Backend, error) {
 	conn, ok := a.conns[addr]
 	if !ok {
 		var err error
-		conn, err = a.openConn(ctx, addr)
+		conn, err = openWith(ctx, o, getenv)
 		if err != nil {
 			return nil, err
 		}
@@ -228,24 +428,25 @@ func (a *app) redisBackend(ctx context.Context, addr string, names sprint.Names)
 	}
 	b := &store.Redis{C: conn.Client(), Names: names, Now: a.now}
 	b.CountTrips() // a tick's cost says its round trips (store/stats.go)
-	a.cached[key] = b
 	return b, nil
 }
 
 // openConn dials the address as nova-table does: the address, then
 // NOVA_SPRINT_REDIS_USER and the variable NOVA_SPRINT_REDIS_PASSWORD_ENV
-// names, bounded to 10 s.
+// names, else the recorded seat login (storeOptions), bounded to 10 s.
 func (a *app) openConn(ctx context.Context, addr string) (*redisconn.Conn, error) {
-	o := redisconn.Options{Addr: addr, Env: redisconn.Env{User: redisauth.UserEnv}}
-	if a.getenv(redisauth.UserEnv) != "" {
-		o.Env.PasswordEnv = redisauth.PasswordEnvEnv
-		if a.getenv(redisauth.PasswordEnvEnv) == "" {
-			o.PasswordEnv = redisauth.DefaultPasswordEnv
-		}
+	o, getenv, err := a.storeOptions(addr)
+	if err != nil {
+		return nil, err
 	}
+	return openWith(ctx, o, getenv)
+}
+
+// openWith dials with the options, the password read through getenv, bounded to 10 s.
+func openWith(ctx context.Context, o redisconn.Options, getenv func(string) string) (*redisconn.Conn, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	return redisconn.Open(ctx, o, a.getenv)
+	return redisconn.Open(ctx, o, getenv)
 }
 
 // libraryMatches refuses a store whose loaded table function library is not
@@ -309,7 +510,7 @@ func (c *common) register(fs flagSet, getenv func(string) string) {
 // and --json.
 func (c *common) registerStore(fs flagSet, getenv func(string) string) {
 	c.epoch = -1
-	fs.StringVar(&c.redis, "redis", firstEnv(getenv, "NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR"), "the Redis address, host:port (else NOVA_SPRINT_REDIS, then NOVA_REDIS_ADDR); mem:<file> is the in-memory twin kept in that file, for learning and tests, not for a fleet (nova-sprint help, trying it without Redis)")
+	fs.StringVar(&c.redis, "redis", firstEnv(getenv, "NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR", seatLoginAddr), "the Redis address, host:port (else NOVA_SPRINT_REDIS, then NOVA_REDIS_ADDR, then the address nova-sprint seat login recorded, whose user and secret it logs in with); mem:<file> is the in-memory twin kept in that file, for learning and tests, not for a fleet (nova-sprint help, trying it without Redis)")
 	fs.StringVar(&c.actor, "actor", getenv("NOVA_SPRINT_ACTOR"), "who is acting, recorded with every change (else NOVA_SPRINT_ACTOR; no default: a verb that writes wants one; a worker's verb is its --as name's)")
 	fs.BoolVar(&c.json, "json", false, "print one JSON object for a program instead of the lines")
 }
@@ -337,8 +538,11 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 		return nil, errors.New("NOVA_SPRINT_PREFIX is set: " + noPrefix + "; unset it")
 	}
 	if strings.TrimSpace(c.redis) == "" {
+		if _, _, err := a.recordedLogin(); err != nil {
+			return nil, err // a seat login that cannot be read is refused as it is, never passed over
+		}
 		// the twin is named here too, so a first run with no Redis is one turn away (tool ledger P9)
-		return nil, fmt.Errorf("--redis <addr> is required (or NOVA_SPRINT_REDIS, NOVA_REDIS_ADDR); with no Redis, --redis mem:<file> runs it on the in-memory twin kept in that file (nova-sprint help, trying it without a Redis)")
+		return nil, fmt.Errorf("--redis <addr> is required (or NOVA_SPRINT_REDIS, NOVA_REDIS_ADDR, or a login recorded by nova-sprint seat login); with no Redis, --redis mem:<file> runs it on the in-memory twin kept in that file (nova-sprint help, trying it without a Redis)")
 	}
 	if why := needsActor(c); why != "" {
 		return nil, errors.New(why)
@@ -352,13 +556,16 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	st := &store.Store{B: b, Names: names, Actor: c.actor, Now: a.now, NewID: store.NewID, Sleep: a.sleep, CheckTwin: a.checkTwin, ByHand: a.twinOpen(c.redis)}
 	// every verb this process runs on the store reads through one twin: a
 	// verb after the first reads only what changed (store/twin.go)
+	a.readTwinsMu.Lock()
 	if a.readTwins == nil {
 		a.readTwins = map[string]*store.Twin{}
 	}
 	if a.readTwins[c.redis] == nil {
 		a.readTwins[c.redis] = store.NewTwin()
 	}
-	st.ShareTwin(a.readTwins[c.redis])
+	tw := a.readTwins[c.redis]
+	a.readTwinsMu.Unlock()
+	st.ShareTwin(tw)
 	st.LockAfterLoss = true // a part that lost a try locks (store/lock.go)
 	if t := a.twins[c.redis]; t != nil {
 		st.NewID = t.newID
@@ -410,6 +617,9 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 		if len(args) >= len(words) && strings.Join(args[:len(words)], " ") == v.name {
 			return v.run(a, args[len(words):], stdout, stderr)
 		}
+	}
+	if to := movedCardVerb(args[0]); to != "" {
+		return refuse(stderr, "", args[0]+" moved to nova-sprint "+to+"; run: nova-sprint "+to+" -h")
 	}
 	if members := groupVerbs(args[0]); len(members) > 0 {
 		// a verb group: its -h is its help at exit 0 (help is never a refusal); a bare

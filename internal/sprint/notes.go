@@ -44,6 +44,11 @@ const (
 	NUnknownMachine = "an unknown machine is beating"
 	NStagingRefused = "a member refused a card at staging"    // dealt to another member
 	NRestWithdrawn  = "a card withdrawn from a resting route" // dealt again on one that serves
+	NFriendReturned = "a friend's card returned to ready"     // by friend reconcile: no report, and her queue says done or does not hold it
+	// The coordinator held a fleet member, a reader, a friend or a stream, or released
+	// its hold (hold, unhold: hold.go), the reason in the note.
+	NHeld   = "held by the coordinator"
+	NUnheld = "released from a hold"
 
 	// The tick's own failure, noted once for each distinct error text it
 	// keeps failing with, and its recovery, noted once with the count of
@@ -79,6 +84,7 @@ const (
 	NRed             = "stream stopped: stream branch red"
 	NCross           = "stream stopped: needs a card of another stream first"
 	NRejected        = "stream stopped: the merge queue rejected"
+	NBaseRed         = "stream stopped: the base fails its tree gate" // the base-gate rule's third failure (rules.go)
 	NBlocked         = "a primary is blocked on something dropped"
 	NMissingNeed     = "a primary is blocked on something missing"
 	NCIRed           = "ci red"
@@ -104,6 +110,7 @@ var Decisions = map[string][]string{
 	NRed:             {"take the suspect off and resume", "rework the suspect"},
 	NCross:           {"rank that card first", "wait", "look at both", "return", "drop"},
 	NRejected:        {"resume", "return", "drop"},
+	NBaseRed:         {"resume", "wait"},
 	NBlocked:         {"drop", "ack"},
 	NMissingNeed:     {"drop", "ack"},
 	NCIRed:           {"rework with a fix", "return", "drop", "look", "ack"},
@@ -170,6 +177,7 @@ type Note struct {
 	// card from its position there.
 	Card        string `json:"card,omitempty"`
 	Other       string `json:"other,omitempty"`
+	Tier        string `json:"tier,omitempty"` // the tier a judgment proposes (NRaiseReadTier)
 	OtherStream string `json:"other_stream,omitempty"`
 	// StreamLevel says the judgment is about its stream as a whole (a stopped
 	// stream): it stays open until the stream resumes.
