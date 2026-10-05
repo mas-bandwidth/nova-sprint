@@ -21,25 +21,19 @@ explaining the foundation. Send people who want to create AI friends to
 
 ## Mark and banner
 
-Use [the approved banner](../assets/nova-sprint-banner.png) at the top of the
-README. It is a 2172 × 724 PNG with a 3:1 aspect ratio. Let it scale as a whole
-so the title, coordinator, sleeping friend, and runners all remain visible.
+Use [the starting-blocks banner](../brand/starting-blocks/composite.png) at the
+top of the README. It is a 2170 × 725 lossless PNG: the fast friend ready for
+his next task, with the flat Nova Sprint wordmark ahead of him. Scale it as a
+whole. The earlier [group banner](../assets/nova-sprint-banner.png) is retained
+as part of the artwork's history.
 
-The little roller bot at the back is the coordinator, with a clipboard and
-Stella star. The other friends have distinct colours and poses: green listens
-to music through headphones, orange runs from a swarm of bees, yellow sleeps
-with Zzzzz, purple stumbles, pink cartwheels, and the white-and-blue friend
-sprints. The group expresses collaboration with room
-for different paces, rather than a ranking of models or people.
-
-The newer individual set uses a pink cyclist. Glenn's character meanings,
-including the starting-blocks friend ready for the next task, are recorded in
-[the artwork guide](../brand/README.md#what-the-friends-represent). Use those
-meanings consistently: the sleeping friend and blocked dependency come from
-real coordination difficulties, while the bees represent fleet swarms.
-The [illustrated explainer](WORKING-WITH-AI-TEAMS.md) uses them to show why
-nova-sprint's machine tracks and drives the team's work beyond any one chat,
-model, or harness.
+The individual friends illustrate the [README explainer](../README.md).
+Green cannot hear the team, Yellow sleeps, and Purple trips over the blocked
+dependency. The checklist bot coordinates, Orange meets the fleet swarm,
+Pink cycles at her own pace, and White carries work through to landing.
+Keep [Glenn's character meanings](../brand/README.md#what-the-friends-represent)
+consistent. Humour comes from real coordination difficulties, not a ranking
+of models or people.
 
 For future art, keep recognisable robot bodies, readable expressions, and
 varied movement. Align a runner's movement with the perspective of its lane.
@@ -53,10 +47,13 @@ than repeatedly regenerating the whole image.
 
 ## Show the product working
 
-After the short introduction, lead with the dashboard. Use a real screenshot
-linked to the live demo, then explain what a reader can watch: streams,
-friends and fleet capacity, spend, throughput, and the estimated finish time.
-Keep the longer workflow explanations in the guides.
+The README follows problem → solution → how it works. Let the friends show
+the funny failures of LLM-only coordination, introduce the machine, then
+explain the dashboard's vocabulary with an example workflow. Cards, streams,
+dependencies, sentinel gates, friends, the fleet, review, and merge should all
+make sense before readers open the live demo. Keep operational detail in the
+guides. Link both the dashboard screenshot and the invitation below it to
+the live sprint.
 
 Screenshots are snapshots. Preserve their actual values and record where and
 when they were captured; do not manufacture a healthier or busier sprint.

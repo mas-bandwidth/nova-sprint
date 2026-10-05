@@ -29,9 +29,10 @@ the bees associated with Orange when illustrating fleet swarms.
 
 ## Illustrated explainer
 
-[Meet the friends and the machine](../docs/WORKING-WITH-AI-TEAMS.md) uses every
+[The illustrated README](../README.md) uses every
 character to explain why coordination needs machinery, then introduces
-friends, swarms, fleet capacity, streams, cards, reviews, and landing.
+friends, swarms, fleet capacity, streams, cards, cross-stream dependencies,
+sentinel gates, reviews, and landing.
 The six panels in `explainer/` are deterministic compositions of the original
 PNG assets, with drawn diagrams and text. Rebuild with
 `python3 brand/compose_explainer.py` (Pillow); set `NOVA_BRAND_FONT` to a local
@@ -49,7 +50,7 @@ pixels are preserved. All source and placed layers are lossless PNGs in
 
 Rebuild with `python3 brand/compose_starting_blocks.py` (Pillow and NumPy).
 The script also saves the previous [running version without grass](starting-blocks/running-no-grass.png).
-The README hero remains unchanged until this candidate is selected for it.
+This is the selected README hero.
 
 ## Solo runner
 
@@ -59,7 +60,7 @@ wordmark. The original character and logo are composited without regeneration.
 Its lossless layers and [background prompt](solo-runner-v2/prompt.txt) are saved
 in `solo-runner-v2/`. Rebuild with `python3 brand/compose_solo_v2.py` (Pillow
 required). The script checks that background pixels outside the overlays remain
-unchanged. The README hero remains unchanged while these options are reviewed.
+unchanged. These earlier options are retained alongside the selected starting-blocks hero.
 
 The simpler banner pairs the white-and-blue sprinter with the flat wordmark
 ahead of him. It uses the original character and logo, separate shadows, and
@@ -74,8 +75,7 @@ python3 brand/compose_solo.py
 ```
 
 There is also a [race-banner variation](solo-runner/ribbon-composite.png)
-with the wordmark on a separate white panel. These are review options; the
-README hero remains unchanged.
+with the wordmark on a separate white panel. These earlier options are retained for reference.
 
 | Layer | Source |
 |---|---|
@@ -115,6 +115,6 @@ retain the individual sizes returned by generation rather than being upscaled.
 
 [prompts.txt](prompts.txt) preserves the generation prompts. Update placement or
 shadows independently when arranging the scene; do not repeatedly regenerate
-the assembled banner. The README's published asset remains at
-[assets/nova-sprint-banner.png](../assets/nova-sprint-banner.png), so a new
-composite can be reviewed before replacing it.
+the assembled banner. The README uses [the starting-blocks banner](starting-blocks/composite.png).
+The earlier [group banner](../assets/nova-sprint-banner.png) remains available
+as a historical asset.
