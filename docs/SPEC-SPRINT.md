@@ -3783,6 +3783,34 @@ when the environment names one (`wins=env:NOVA_SPRINT_REDIS_USER`, `redis-wins=e
 `cmd/nova-sprint/storelogin.go`; `TestABareVerbOpensTheStoreWithTheSeatLoginFromSecrets` measures
 it on the in-memory store with a fake secrets reader.
 
+### release-check-cold-audit-r-ns.w1
+
+`release check [--json] [--check <name>]...` is a read: it runs the release checks
+(`sprint.ReleaseChecks`, internal/sprint/releasecheck.go), each a pure function over
+`sprint.ReleaseFacts` (the clock and the snapshot's tables), prints `RELEASE CHECK <name> ok|fail
+<evidence>` per check, the evidence of a fail naming what to look at, then `RELEASE OK checks=<n>`
+or `RELEASE NOT READY failed=<n>`; exit 0 ready, 1 not, 2 usage or a store that did not answer.
+`add` refuses a card whose id is `check`. Its check is `cold-audit`. `release check --audit
+[--since <tag|commit|RFC 3339 time>] [--base <ref>] [--seed <n>] [--repo-dir <dir>]` is the
+coordinator's alone and is a write: it samples 20 primaries (sentinels aside) landed after the last
+release tag reachable from `--base` (its commit time), or after `--since`, drawn uniformly by the
+seed (printed, `--seed` to redraw) from them in id order, and refuses when fewer than 20 landed or
+when no point is named or found; it never samples every card for want of one. Each sampled card is
+asked as one read placed as the ask places a read (`Ask`'s room, round and route: `readerRooms`,
+`round.pickByRoom`, `readRouteOf`, the indexes written with the step), of a reader up that never
+saw the card: no read card of it at any attempt, placed or retired, not named in its `asked`, and
+not the member, or the friend, whose work card did any attempt. A card no such reader has room for
+refuses the whole audit, naming it, and nothing is asked. The read card is the reader's read of
+the primary at its last attempt, its packet that attempt's work against its base, marked
+`cold_audit=<the audit's asked stamp>`; the readers report it with `read` as any read. The audit
+(seed, since, asked, each card with its read card) is the work table's property `cold_audit`. A
+plain `release check` reads that record and the read cards it names: ok only when the audit was
+asked under 48 hours ago and each named read card, marked for this audit, came back ok; a broken
+read is named with its reader and finding, and a read missing, retired, of another audit, asked or
+reading is unanswered. The card's review reads, and an earlier audit's, never count. Tests:
+`TestReleaseCheckColdAuditSamplesTwentyLandedCardsAndNeedsEveryReadOk`,
+`TestReleaseCheckColdAuditOnTheStore`.
+
 ## 12. The driver
 
 The driver keeps the coordination loop running. It makes queued work move
