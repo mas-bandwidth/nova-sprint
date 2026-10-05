@@ -221,10 +221,10 @@ none was — so a total is a ledger of recorded spend, not a proof of it.
 
 ## nova-sprint card generate, template and lint
 
-These were the nova-card binary, which is retired: `nova-sprint card generate`,
+These were the nova-card binary, which is retired: `nova-card generate`,
 `template` and `lint` now refuse with `nova-card <verb> moved to nova-sprint card
-<verb>; run: nova-sprint card <verb> -h`, and so does `nova-sprint generate`,
-`template` or `lint` typed bare. `nova-sprint card <id>` is still the read of one
+<verb>; run: nova-sprint card <verb> -h`, and so do `nova-sprint generate`,
+`template` and `lint` typed bare. `nova-sprint card <id>` is still the read of one
 card. The verbs write briefs on disk or read them and never the sprint store, so
 they take no actor and a server named by `NOVA_SPRINT_SERVER` does not run them.
 They are pre-alpha: not ready for production use.
@@ -238,7 +238,7 @@ nova-sprint card template
 ```
 
 A card a model writes by hand takes it half an hour and comes back with guessed
-PATHS; one wrong PATHS line was rejected 262 times in one night. nova-card
+PATHS; one wrong PATHS line was rejected 262 times in one night. `card generate`
 writes the cards from the source the work comes from, with the PATHS computed,
 the lint already green, and the waves already laid out, so the one thing left
 to do is `nova-sprint add --stream <s> --brief-dir <dir>`.
