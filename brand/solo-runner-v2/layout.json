@@ -1,0 +1,22 @@
+{
+  "canvas": [
+    2170,
+    725
+  ],
+  "runner_position": [
+    150,
+    60
+  ],
+  "runner_width": 545,
+  "logo_position": [
+    850,
+    180
+  ],
+  "logo_width": 1160,
+  "sources": [
+    "../white.png",
+    "../wordmark.png",
+    "track.png"
+  ],
+  "background_pixels_unchanged_outside_layers": true
+}

@@ -1,0 +1,8 @@
+Generated with built-in image_gen. Original runner and wordmark composited separately with Pillow.
+
+Use case: stylized-concept
+Asset type: background plate only for a premium 3:1 Nova Sprint repository banner.
+Generate a fresh high quality wide 2172 x 724 running track background, without characters or text. This is a carefully art-directed MINIMAL backdrop for a separate white robot runner at the left and a large flat navy/blue logo centered in the right two thirds.
+Composition: upper 65% is an almost uniform warm ivory / extremely pale blue sky, subtle smooth illumination, generous truly empty negative space especially x=750 through right edge and y=90..430. No clouds, no buildings, no light towers, no crowds behind this area.
+Lower 35% is a beautiful cobalt-blue rubber sprint track, fine realistic material texture. Camera is side-on, slightly elevated, long-lens near-orthographic view looking ACROSS the straight, not down its length. ALL lane boundary lines run LEFT TO RIGHT across the image, parallel with only a subtle 6-degree downward slope toward the right, the direction a runner travels. No vanishing point within the picture; no lines radiating toward camera. Long uninterrupted perfectly straight white painted lane boundaries. Broad visible foreground lane for a runner to travel rightward within, not across. No checkerboard, no transverse finish line. Tiny soft distant green strip at the sky/track boundary at most, no detailed stadium architecture. Track stays low enough to keep entire logo zone clear.
+Polished stylized 3D materials with warm light from upper right to match a glossy friendly white robot and orange sneakers, but quiet restrained environment. No robot, no mascot, no text, no logo, no watermark.

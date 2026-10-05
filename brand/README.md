@@ -5,10 +5,18 @@ at Glenn's request. Every image here is a **lossless PNG**. The character and
 wordmark sources retain their original transparency and resolution. The original
 renders are copied byte for byte; there is no JPEG conversion in this pipeline.
 
-[View the solo-runner banner](solo-runner/composite.png), or the earlier
+[View the revised solo-runner banner](solo-runner-v2/composite.png), or the earlier
 [group composition](composite.png).
 
 ## Solo runner
+
+The revised [side-on version](solo-runner-v2/composite.png) uses a freshly
+generated quiet track plate, with left-to-right lanes and open sky behind the
+wordmark. The original character and logo are composited without regeneration.
+Its lossless layers and [background prompt](solo-runner-v2/prompt.txt) are saved
+in `solo-runner-v2/`. Rebuild with `python3 brand/compose_solo_v2.py` (Pillow
+required). The script checks that background pixels outside the overlays remain
+unchanged. The README hero remains unchanged while these options are reviewed.
 
 The simpler banner pairs the white-and-blue sprinter with the flat wordmark
 ahead of him. It uses the original character and logo, separate shadows, and
