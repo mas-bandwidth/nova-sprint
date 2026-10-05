@@ -33,6 +33,7 @@ type WhereRecord struct {
 	Epoch    uint64                `json:"epoch"`
 	Rev      uint64                `json:"rev"`
 	Held     int                   `json:"held"`
+	Auto     int                   `json:"auto,omitempty"` // the auto sentinels waiting (sprint.AutoWaiting)
 	Landings []int64               `json:"landings,omitempty"`
 	Critical []sprint.CriticalCard `json:"critical,omitempty"` // the five heaviest (weight.go)
 }
@@ -46,7 +47,7 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 			landed = append(landed, at)
 		}
 	}
-	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), Critical: sprint.Critical(s, 5)}
+	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), Auto: sprint.AutoWaiting(s), Critical: sprint.Critical(s, 5)}
 	for _, at := range sprint.RecentLandings(landed, m.Spans, m.FirstStart(s.Cleared), now) {
 		r.Landings = append(r.Landings, at.Unix())
 	}
@@ -111,6 +112,7 @@ type WhereFacts struct {
 	Machine   Machine
 	Heartbeat Heartbeat
 	Held      int
+	Auto      int // the auto sentinels waiting (sprint.AutoWaiting)
 	Landed    []time.Time
 	Critical  []sprint.CriticalCard // the five heaviest, from the record (weight.go)
 }
@@ -144,7 +146,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			}
 		}
 		if r, ok := readWhere(vals[2], oks[2]); ok && r.Epoch == st.epoch && (r.Rev == workRev || st.keptBy(r, f.Machine, f.Heartbeat)) {
-			f.Held, f.Critical = r.Held, r.Critical
+			f.Held, f.Auto, f.Critical = r.Held, r.Auto, r.Critical
 			for _, s := range r.Landings {
 				f.Landed = append(f.Landed, time.Unix(s, 0).UTC())
 			}
@@ -152,7 +154,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 		}
 	}
 	var err error
-	if f.Held, err = st.HeldBack(ctx); err != nil {
+	if f.Held, f.Auto, err = st.waitingCounts(ctx); err != nil {
 		return f, err
 	}
 	if f.Landed, err = st.LandedAt(ctx); err != nil {
