@@ -446,3 +446,43 @@ Reads the tree and GitHub again and writes nothing: zero differences is
 holds. `--against <tree>` puts a second tree file where GitHub stands and reads
 no network at all.
 
+### roadmap add
+
+```
+nova-work roadmap add <file> --stream <s> --brief-dir <dir>
+```
+
+Reads brief files (`*.md`) in `--brief-dir`, adds them as cards to stream `--stream` under the active release, and increments the release card count.
+
+### roadmap remove
+
+```
+nova-work roadmap remove <file> <id>...
+```
+
+Removes cards by ID, decrements the release card count, and drops any stream whose cards list becomes empty.
+
+### roadmap pull
+
+```
+nova-work roadmap pull <file> <id>... --out <dir>
+```
+
+Writes `<id>.md` for each matched card into `--out` directory, and removes the cards from the roadmap (decrementing count and dropping empty streams).
+
+### roadmap check
+
+```
+nova-work roadmap check <file>
+```
+
+Validates string-aware paren balance, verifies release `:cards` matches the actual count of cards across its streams, checks for duplicate card IDs, and checks for empty streams. Exits 0 on success, 1 on differences/problems.
+
+### roadmap note
+
+```
+nova-work roadmap note <file> <id>... --text <t>
+```
+
+Appends text to the `:brief` of the specified cards.
+

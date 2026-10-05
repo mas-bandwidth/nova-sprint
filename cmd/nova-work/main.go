@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,7 +28,14 @@ import (
 
 var version string
 
-func main() { os.Exit(workTool(realGitHub()).Main()) }
+func main() { os.Exit(run(realGitHub(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
+
+func run(gh github, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "roadmap" {
+		return runRoadmap(args[1:], stdout, stderr)
+	}
+	return workTool(gh).Run(args, stdin, stdout, stderr)
+}
 
 // github is how the verbs reach GitHub and the clock: where gh is found, the
 // query that runs it, and the time. main's runs the real gh; a test's answers

@@ -291,3 +291,14 @@ The whole of an organization of 96 repositories, one run each way from a working
    that repository, committed by the caller, until a save verb exists.
 7. **Private repositories.** The tree holds private repositories' issues. Recommendation: the data
    repository is private, and a tree is never attached to anything public.
+
+## 1.12 Roadmap s-expressions and verbs
+
+Roadmaps are stored in restricted s-expressions (`roadmaps/*.sexp`) with top-level `:roadmap`, `:releases`, `:streams`, and cards carrying `:id`, `:tier`, `:needs`, `:title`, `:brief`. `nova-work roadmap` verbs provide safe, string-aware manipulation preserving byte-for-byte formatting and comments:
+
+- `nova-work roadmap add <file> --stream <s> --brief-dir <dir>`: reads brief files (`*.md`) in `--brief-dir`, adds them to stream `<s>` under the active release, and increments the release card count.
+- `nova-work roadmap remove <file> <id>...`: removes cards by ID, decrements the release card count, and drops any stream whose cards list becomes empty.
+- `nova-work roadmap pull <file> <id>... --out <dir>`: writes `<id>.md` for each matched card into `--out`, and removes them from the roadmap (decrementing count and dropping empty streams).
+- `nova-work roadmap check <file>`: validates string-aware paren balance, verifies release `:cards` count matches actual card count, checks for duplicate card IDs, and checks for empty streams.
+- `nova-work roadmap note <file> <id>... --text <t>`: appends text to the `:brief` of the specified cards.
+

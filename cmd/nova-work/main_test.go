@@ -74,7 +74,7 @@ func answering(ghAt string, err error) github {
 
 func workMain(g github) testkit.Main {
 	return func(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-		return workTool(g).Run(args, stdin, stdout, stderr)
+		return run(g, args, stdin, stdout, stderr)
 	}
 }
 
