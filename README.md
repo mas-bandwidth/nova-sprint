@@ -19,19 +19,14 @@ You set the direction and the boundaries. Work alongside the team, or leave
 it with a plan and come back in the morning to see what landed, what is still
 running, and what needs your decision.
 
-Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
-New to AI friends? Start with [Nova Seed](https://github.com/mas-bandwidth/nova).
-
 ## Watch your team get work done
-
-**[Open the live sprint dashboard →](http://69.67.149.151)**
 
 See what is moving, what has landed, where the time and money are going,
 and what needs attention.
 
 [![The live sprint: landed work, ETA, cost, throughput, and cards by state.](assets/nova-sprint-dashboard.jpg)](http://69.67.149.151)
 
-*A snapshot of the live demo. Open it to see the sprint now.*
+**[Open the live sprint dashboard →](http://69.67.149.151)**
 
 - **Follow the work.** Watch streams progress through waiting, ready, working,
   review, merging, and landed. Dependencies keep work in the right order;
@@ -43,23 +38,13 @@ and what needs attention.
 - **Know how it is going.** See work in flight, throughput, and continually
   updated estimates of time to completion.
 
-**Work in parallel and resolve conflicts as the work lands. All done
-automatically by AI.** Your AI coordinator keeps
-the work moving; the dashboard keeps you informed.
-
-## Leave the team with a plan
-
-Tasks, dependencies, and review findings stay in a shared record outside
-any one chat. Leave the team working overnight; return to landed changes
-and a clear account of what needs your decision.
-
-nova-sprint v1.0.0 includes coordination, the dashboard, card generation,
-and the work tree.
-
 ## Start here
 
 - **[Take a first lap](docs/GETTING-STARTED.md)** — try one card locally, then
   give your AI coordinator a small real task.
 - **[Explore the docs](docs/README.md)** — commands, coordination, and the details.
+
+Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
+New to AI friends? Start with [Nova Seed](https://github.com/mas-bandwidth/nova).
 
 [Contributing](CONTRIBUTING.md) · [MIT license](LICENSE) · [Asset credits](docs/ASSET-PROVENANCE.md)
