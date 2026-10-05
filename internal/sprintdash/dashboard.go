@@ -1,8 +1,11 @@
 // Package sprintdash is the sprint dashboard's server (docs/SPEC-SPRINT-DASHBOARD.md):
-// one page, embedded in the binary, /api/sprint, a cached copy of the sprint as
-// `nova-sprint where --json --cards` prints it, /events, each new copy pushed as it is
-// read, and the pull routes (pull.go), a worker's own view of the same copy. The terminal
-// table stays the canonical view; this is a second view of the same JSON.
+// one page, embedded in the binary (the live page the owner watches, byte for byte in
+// what it renders: live_test.go), /api/sprint, a cached copy of the sprint as
+// `nova-sprint where --json` prints it, /events, each new copy pushed as it is read, the
+// logo files (logos.go), and the pull routes (pull.go), a worker's own view of the same
+// copy, read as `where --json --cards`. Every path the Python server.py served answers
+// here with the same JSON. The terminal table stays the canonical view; this is a second
+// view of the same JSON.
 //
 // The server is a function of its requests and its clock: Read is how it reads the
 // sprint and Now is its clock, so a test drives it with no socket and no real time.
@@ -59,6 +62,15 @@ type Server struct {
 	// Logo is the image file served as the logo and the favicon; "" is none, and
 	// the page's logo slot renders nothing.
 	Logo string
+	// LogoDir is a directory of logo files read as server.py read the files beside the
+	// page (logos.go): logo.svg, else a tile with its 192 and 384 px copies, else a
+	// photo keyed into an icon. "" is none. Logo, when given, wins.
+	LogoDir string
+	// Convert runs an image tool (sips or ffmpeg) to make a logo copy; nil runs it as
+	// a process bounded by 30 s.
+	Convert func(argv []string) error
+	// FFmpeg is the ffmpeg a photo logo is keyed with; "" is the one on PATH.
+	FFmpeg string
 	// Version is the binary's version, part of the build number.
 	Version string
 	// Log takes a line per new read failure and a read-time summary a minute.
@@ -85,19 +97,49 @@ type Server struct {
 	samples []sample
 	stats   readStats
 	fresh   freshness
+	full    json.RawMessage // the last good read whole, cards and judgments included: the pull routes' /api/sprint
+	derive  sync.Mutex      // one logo copy made at a time
 }
 
-// snapshot is /api/sprint's body: the page reads data, throughput,
-// throughputMinutes and build; the rest says how the reads are going.
+// snapshot is /api/sprint's body, server.py's keys in server.py's order: the page reads
+// data, throughput, throughputMinutes and build; the rest says how the reads are going
+// (ok and error the last attempt's, fetchedAt the last good read's end, attemptAt the last
+// attempt's, readSeconds its wall time, minInterval the least seconds between two reads).
 type snapshot struct {
 	OK                bool            `json:"ok"`
 	Data              json.RawMessage `json:"data"`
-	FetchedAt         *time.Time      `json:"fetchedAt"`
+	FetchedAt         *isoTime        `json:"fetchedAt"`
+	AttemptAt         *isoTime        `json:"attemptAt"`
 	Error             *string         `json:"error"`
+	ReadSeconds       *float64        `json:"readSeconds"`
+	MinInterval       float64         `json:"minInterval"`
 	Throughput        *float64        `json:"throughput"`
 	ThroughputMinutes float64         `json:"throughputMinutes"`
 	Build             string          `json:"build"`
 	Stale             bool            `json:"stale"`
+}
+
+// isoTime is a time as server.py wrote one (Python's isoformat in UTC):
+// 2026-10-05T16:51:19.989410+00:00, the microseconds left out when they are zero.
+type isoTime time.Time
+
+func (t isoTime) MarshalJSON() ([]byte, error) {
+	u := time.Time(t).UTC().Truncate(time.Microsecond)
+	layout := "2006-01-02T15:04:05.000000-07:00"
+	if u.Nanosecond() == 0 {
+		layout = "2006-01-02T15:04:05-07:00"
+	}
+	return []byte(`"` + u.Format(layout) + `"`), nil
+}
+
+func (t *isoTime) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	v, err := time.Parse(time.RFC3339Nano, s)
+	*t = isoTime(v)
+	return err
 }
 
 // sample is one good read's landed count and when it began.
@@ -126,6 +168,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.send(w, "text/javascript; charset=utf-8", file("app.js"))
 	case "/nunito-800.woff2":
 		s.send(w, "font/woff2", file("nunito-800.woff2"))
+	case "/OFL.txt":
+		s.send(w, "text/plain; charset=utf-8", file("OFL.txt"))
+	case "/logo-tile-192.png", "/logo-tile-384.png", "/logo-icon.png", "/favicon.png", "/logo.webp", "/logo.png", "/favicon.svg":
+		s.serveLogoFile(w, r.URL.Path)
 	case "/logo":
 		if body, err := s.logo(); err == nil {
 			s.send(w, logoType(s.Logo, body), body)
@@ -145,8 +191,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) send(w http.ResponseWriter, ctype string, body []byte) {
+	s.sendCode(w, http.StatusOK, ctype, body)
+}
+
+// sendCode answers with code, the body whole (a refusal's own words, as server.py's).
+func (s *Server) sendCode(w http.ResponseWriter, code int, ctype string, body []byte) {
 	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+	w.WriteHeader(code)
 	_, _ = w.Write(body) // ignored: a page gone away asks again in a second
 }
 
@@ -214,6 +266,8 @@ func sprintJSON(body []byte) error {
 // one keeps the copy, and a new failure is logged once.
 func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err error) {
 	took := end.Sub(start)
+	secs := float64(took.Round(time.Millisecond)) / float64(time.Second)
+	s.snap.AttemptAt, s.snap.ReadSeconds = (*isoTime)(&end), &secs
 	if err != nil {
 		why := oneline.Escape(err.Error())
 		if s.snap.OK || s.snap.Error == nil || *s.snap.Error != why {
@@ -228,7 +282,7 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		_ = json.Unmarshal(body, &v)
 		at, rate, minutes := end, (*float64)(nil), 0.0
 		if up != nil {
-			at, rate, minutes = *up.FetchedAt, up.Throughput, up.ThroughputMinutes
+			at, rate, minutes = time.Time(*up.FetchedAt), up.Throughput, up.ThroughputMinutes
 		} else {
 			rate, minutes = s.sampleLanded(start, v.Landed)
 		}
@@ -243,8 +297,9 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		}
 		s.changed = make(chan struct{})
 		s.snap.OK, s.snap.Error = true, nil
-		s.snap.Data = append(json.RawMessage(nil), bytes.TrimSpace(body)...)
-		s.snap.FetchedAt, s.snap.Throughput, s.snap.ThroughputMinutes = &at, rate, minutes
+		s.full = append(json.RawMessage(nil), bytes.TrimSpace(body)...)
+		s.snap.Data = pageData(s.full)
+		s.snap.FetchedAt, s.snap.Throughput, s.snap.ThroughputMinutes = (*isoTime)(&at), rate, minutes
 	}
 	s.summarize(end, took, err != nil)
 }
@@ -304,13 +359,49 @@ func (s *Server) logf(at time.Time, format string, args ...any) {
 	}
 }
 
-// Snapshot is /api/sprint's body now, with the build number.
-func (s *Server) Snapshot() []byte {
+// cardsOnly are the keys `where --json --cards` adds to `where --json`: the pull routes'
+// alone, so the page's /api/sprint is server.py's.
+var cardsOnly = []string{"cards", "merging", "judgments", "holds", "lanes"}
+
+// pageData is a read as `where --json` prints it: the keys --cards adds (cardsOnly) are
+// taken out.
+func pageData(full json.RawMessage) json.RawMessage {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(full, &m) != nil {
+		return full
+	}
+	n := len(m)
+	for _, k := range cardsOnly {
+		delete(m, k)
+	}
+	if len(m) == n {
+		return full
+	}
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if enc.Encode(m) != nil {
+		return full
+	}
+	return bytes.TrimSpace(b.Bytes())
+}
+
+// Snapshot is the page's /api/sprint body now, with the build number: data as
+// `where --json` prints it.
+func (s *Server) Snapshot() []byte { return s.snapshotJSON(false) }
+
+// snapshotJSON is /api/sprint's body; full: data whole, as `where --json --cards` prints
+// it (the pull routes').
+func (s *Server) snapshotJSON(full bool) []byte {
 	build := s.Build()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snap := s.snap
 	snap.Build, snap.Stale = build, s.fresh.alarmed
+	snap.MinInterval = s.Every.Seconds()
+	if full && s.full != nil {
+		snap.Data = s.full
+	}
 	b, err := json.Marshal(snap)
 	if err != nil {
 		panic("dashboard: the snapshot does not marshal: " + err.Error())
@@ -336,6 +427,7 @@ func (s *Server) Build() string {
 			sig += fmt.Sprintf("|%s:%d:%d", s.Logo, fi.Size(), fi.ModTime().UnixNano())
 		}
 	}
+	sig += s.logoDirSig()
 	return fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(sig)))
 }
 
@@ -355,16 +447,19 @@ func logoType(name string, body []byte) string {
 }
 
 // index is the page with its script versioned by the build and the logo slot and
-// favicon filled when a logo is given and readable now.
+// favicon filled when a logo is given and readable now: --logo's file, else the logo
+// directory's (logos.go), else nothing.
 func (s *Server) index() []byte {
 	build := s.Build()
-	html := strings.Replace(string(file("index.html")), `src="app.js"`, `src="app.js?v=`+build+`"`, 1)
+	html := strings.ReplaceAll(string(file("index.html")), `src="app.js"`, `src="app.js?v=`+build+`"`)
 	slot, icon := "", ""
 	if _, err := s.logo(); err == nil {
 		slot = `<img id="logo" class="logo-tile" src="/logo?v=` + build + `" alt="">`
 		icon = `<link rel="icon" href="/logo?v=` + build + `"><link rel="apple-touch-icon" href="/logo?v=` + build + `">`
+	} else if s.LogoDir != "" {
+		slot, icon = s.logoDirSlot(build)
 	}
-	html = strings.Replace(html, "<!--LOGO-->", slot, 1)
-	html = strings.Replace(html, "<!--FAVICON-->", icon, 1)
+	html = strings.ReplaceAll(html, "<!--LOGO-->", slot)
+	html = strings.ReplaceAll(html, "<!--FAVICON-->", icon)
 	return []byte(html)
 }

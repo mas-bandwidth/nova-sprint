@@ -23,7 +23,8 @@ import (
 // nova-tools and nova-sprint verbs only" (docs/SPEC-SPRINT-DASHBOARD.md, Serving and
 // publishing). The dashboard reads the live server (NOVA_SPRINT_SERVER), in this process,
 // once a second whether or not a page is open; a page between two ticks is answered from
-// the copy, which is the server's own where --json --cards; and when the server stops
+// the copy, the server's own where --json --cards, whose page data is where --json's
+// (server.py's); and when the server stops
 // answering, the page holds its copy and the freshness check raises one alarm once the
 // data is older than 2 s for 30 s, and clears it at the first fresh read. A fake server
 // (the rig) and a fake clock: no socket and no real time.
@@ -48,7 +49,7 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 		return ask(ctx, addr, verbs...)
 	}
 	var log bytes.Buffer
-	srv := c.dashboardServer("", false, "", time.Second, "", &log)
+	srv := c.dashboardServer("", false, "", time.Second, "", "", &log)
 	second := func() {
 		mu.Lock()
 		now = now.Add(time.Second)
@@ -81,7 +82,7 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 	assert.Equal(t, 5, reads(), "one read a second, whoever is looking")
 	assert.Equal(t, []string{"where", "--actor", "boss", "--json", "--cards"}, sent[0])
 	data, stale := api()
-	assert.JSONEq(t, r.boss("nova-sprint where --json --cards"), data, "the page's data is the live server's own")
+	assert.JSONEq(t, r.boss("nova-sprint where --json"), data, "the page's data is the live server's own")
 	assert.False(t, stale)
 	for range 3 {
 		api()
@@ -92,7 +93,7 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 	r.boss("nova-sprint add --stream s2 --count 2")
 	second()
 	data, _ = api()
-	assert.JSONEq(t, r.boss("nova-sprint where --json --cards"), data)
+	assert.JSONEq(t, r.boss("nova-sprint where --json"), data)
 	assert.Contains(t, data, `"all":5`)
 	good := data
 
@@ -124,7 +125,7 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 	second()
 	assert.Equal(t, 1, strings.Count(log.String(), "FRESH again"), log.String())
 	data, stale = api()
-	assert.JSONEq(t, r.boss("nova-sprint where --json --cards"), data)
+	assert.JSONEq(t, r.boss("nova-sprint where --json"), data)
 	assert.False(t, stale)
 	code, _ = get("/healthz")
 	assert.Equal(t, http.StatusOK, code)

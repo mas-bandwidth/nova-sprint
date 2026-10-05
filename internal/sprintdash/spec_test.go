@@ -171,26 +171,20 @@ func splitList(s, sep string) []string {
 	return out
 }
 
-// counted is the numeric rule of Work, Fleet and Friends (docs/SPEC-SPRINT-DASHBOARD.md,
-// Page: "All numbers: monospace (ui-monospace, Menlo), right-aligned"): the row's name, a
-// status pill and a fraction column ("n / total", "n / width") are no number, and every
-// other column is one.
-func counted(cols []string, fractions map[string]bool) func(string) bool {
-	return func(name string) bool { return name != cols[0] && name != "status" && !fractions[name] }
-}
-
 // ruleSections are the spec's sections that are rules over the page or notes on serving
 // it; every other section is a part of the page, in order from the top. A new section is
 // one of the two, or the test below is red until it is classified here.
-var ruleSections = []string{"Serving and publishing", "The specification", "Page", "Responsive", "LOCKED", "Column alignment across the three tables", "LOCK 2"}
+var ruleSections = []string{"Serving and publishing", "The live page", "The specification", "Page", "Responsive", "LOCKED", "Column alignment across the three tables", "LOCK 2"}
 
 // TestDashboardPageIsTheSpec is the drift check (docs/SPEC-SPRINT-DASHBOARD.md): the
-// page's markup says what the specification says, string for string. A change to the
-// page without the spec, or to the spec without the page, is red here.
+// page's markup (comments stripped) says what the specification says, string for string,
+// for the panels shown at load, their titles, the hero tiles, the progress bar, the header
+// and the footer. A change to the page without the spec, or to the spec without the page,
+// is red here.
 func TestDashboardPageIsTheSpec(t *testing.T) {
 	t.Parallel()
 	sp := readSpec(t)
-	doc := parsePage(t, file("index.html"))
+	doc := parsePage(t, stripHTML(file("index.html"))) // comments out: the markup is what renders
 	body := doc.one(t, "a body", func(n *node) bool { return n.name == "body" })
 
 	// The panels, top to bottom: the spec's view sections in order are the page's.
@@ -232,57 +226,8 @@ func TestDashboardPageIsTheSpec(t *testing.T) {
 	_, hidden := body.one(t, "a readers panel", byID("readers-panel")).attr["hidden"]
 	assert.True(t, hidden, "the readers and merge panel shows by default; the spec has it at ?all=1 only")
 
-	work := splitList(match(t, `(?m)^- Columns: ([^(\n]+)\(headers exactly so`, sp.section(t, "Work"), "Work's columns"), "|")
-	fleet := splitList(match(t, `(?m)^- Columns: ([^(\n]+)\(headers exactly so`, sp.section(t, "Fleet"), "Fleet's columns"), "|")
-	// Friends: "same shape as Fleet without load": its row names a friend, not a machine.
-	friendsSec := sp.section(t, "Friends")
-	assert.Contains(t, friendsSec, "same shape as Fleet without load")
-	friends := append([]string{"friend"}, slices.DeleteFunc(slices.Clone(fleet[1:]), func(c string) bool { return c == "load" })...)
-	for _, c := range splitList(match(t, `same shape as Fleet without load \(([^;)]+)`, friendsSec, "Friends' columns"), ",") {
-		assert.Contains(t, friends, c, "Friends names column %q, which the shape of Fleet without load has not", c)
-	}
-	// A fraction column ("n / total", "n / width") and the status pill are not numbers;
-	// the first column is the row's name; every other column is a number, right-aligned.
-	fractionsOf := func(section string) map[string]bool {
-		out := map[string]bool{}
-		for _, m := range regexp.MustCompile(`(?m)^- (\w+)(?: as "n / total"|: a cell track[^"]*"n / width")`).FindAllStringSubmatch(sp.section(t, section), -1) {
-			out[strings.ToLower(m[1])] = true
-		}
-		return out
-	}
-	workFractions, fleetFractions := fractionsOf("Work"), fractionsOf("Fleet")
-	assert.Equal(t, map[string]bool{"landed": true}, workFractions, "Work's fraction columns in the spec")
-	assert.Equal(t, map[string]bool{"working": true}, fleetFractions, "Fleet's fraction columns in the spec")
-	lanesSec := sp.section(t, "Lanes")
-	lanes := splitList(match(t, `(?m)^- Columns: ([^(\n]+)\(headers exactly so`, lanesSec, "Lanes' columns"), "|")
-	lanesNumber := match(t, `\(headers exactly so, all lowercase\); (\w+) alone\s+is a number`, lanesSec, "Lanes' numeric column")
-	for _, tc := range []struct {
-		id      string
-		cols    []string
-		numeric func(name string) bool
-	}{
-		{"streams", work, counted(work, workFractions)},
-		{"fleet", fleet, counted(fleet, fleetFractions)},
-		{"friends", friends, counted(friends, fleetFractions)},
-		// Lanes names its one number instead: its other columns are names, not counts, so
-		// "every column but the first is a number" does not fit it.
-		{"lanes", lanes, func(name string) bool { return name == lanesNumber }},
-	} {
-		head := body.one(t, "#"+tc.id, byID(tc.id)).one(t, "a header row in #"+tc.id, byClass("head"))
-		var names []string
-		for _, cell := range head.children {
-			name := textOf(cell)
-			if name == "" {
-				continue // the fleet's figure column: its header is the narrow layout's alone
-			}
-			names = append(names, name)
-			assert.Equal(t, tc.numeric(name), cell.has("num"), "#%s column %q: numeric (right-aligned) is %v in the spec", tc.id, name, tc.numeric(name))
-			if name == "landed" {
-				assert.True(t, cell.has("frac"), "#%s column landed is the n / total figure, class frac", tc.id)
-			}
-		}
-		assert.Equal(t, tc.cols, names, "#%s's column headers, in order, are not the spec's", tc.id)
-	}
+	// The tables' column headers are app.js's (it draws them on the first copy): the byte
+	// pin (live_test.go) holds them with the rest of the page.
 
 	// The hero row: its tiles and their labels, in order, and the one fixed sub-line.
 	hero := sp.section(t, "Hero row")
@@ -325,15 +270,11 @@ func TestDashboardPageIsTheSpec(t *testing.T) {
 	}
 	assert.Equal(t, pills, chips, "the header's pills, in order")
 
-	// The footer: one line, the name in bold, then "from <link>".
-	foot := sp.section(t, "Footer")
-	name := match(t, `^## Footer: one line, "([^"]+)" bold`, foot, "the footer's name")
-	from := match(t, `then "(from [^"]+)" \(link\)`, foot, "the footer's link")
+	// The footer: one line, the link, its text the address.
+	link := match(t, `^## Footer: one line, the link "([^"]+)"`, sp.section(t, "Footer"), "the footer's link")
 	footer := body.one(t, "a footer", func(n *node) bool { return n.name == "footer" })
-	assert.Equal(t, name, textOf(footer.one(t, "the footer's name", byClass("fname"))))
-	assert.Equal(t, name+" "+from, textOf(footer), "the footer's line")
-	link := footer.one(t, "the footer's link", func(n *node) bool { return n.name == "a" })
-	assert.Equal(t, strings.TrimPrefix(from, "from "), link.attr["href"])
+	assert.Equal(t, link, textOf(footer), "the footer's line")
+	assert.Equal(t, link, footer.one(t, "the footer's link", func(n *node) bool { return n.name == "a" }).attr["href"])
 }
 
 // The page loads nothing from anywhere else: its face is the embedded one.
@@ -342,7 +283,7 @@ func TestDashboardPageLoadsNothingFromElsewhere(t *testing.T) {
 	for _, name := range []string{"index.html", "app.js"} {
 		assert.NotRegexp(t, `https?://(?:[^"\s]*)\.(?:css|js|woff2?|png|webp|svg)|fonts\.googleapis|fonts\.gstatic`, string(file(name)), "%s loads an asset from elsewhere", name)
 	}
-	assert.Contains(t, string(file("index.html")), `src: url("nunito-800.woff2")`)
+	assert.Contains(t, string(file("index.html")), `src: url("/nunito-800.woff2")`)
 	assert.Equal(t, []byte("wOF2"), file("nunito-800.woff2")[:4], "the face is a woff2")
 	assert.Contains(t, string(file("OFL.txt")), "SIL Open Font License", "the face's licence is embedded beside it")
 }

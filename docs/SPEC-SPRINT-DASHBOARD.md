@@ -5,15 +5,38 @@ The dashboard gives you a browser view of the same sprint state as
 queue growing, and check how your friends and fleet are doing. It is a
 read-only view; decisions still go through the coordinator and sprint commands.
 
+The page is the live page the owner watches (the owner, 2026-10-05: "The live dashboard is
+what I am watching and expect not to change (visually) ... the one I'm watching is the one
+I want."): its files are the live files, copied unchanged but for the owner's name in
+their comments, which reads "the owner" here. The bytes are the specification.
+`TestThePageIsTheLivePageByteForByte` (internal/sprintdash) holds each file's sha256 and
+the sha256 of what it renders (comments stripped), the latter equal to the live file's
+after the same stripping; with `NOVA_LIVE_PAGE` naming a directory of the live files it
+checks those too: each is the file its `SHA256SUMS` lists, and the repository's file is
+that file byte for byte once the one word of the owner's name in its comments reads "the
+owner" (the test finds the word in the live file; the name is never written here). A change to any byte of the page is a change to that test's sums, named
+in the same commit with the owner's words. Where a line of this file and the page differ
+in what is shown, the page wins.
+
 For a quick feature tour, [watch the live demo](http://69.67.149.151) and
 [read the README](../README.md#watch-your-team-get-work-done). Follow streams,
 check friends and fleet capacity, track per-stream and total spend, and watch
-the estimated finish time change as work lands. This page describes the
-embedded dashboard contract in this checkout; a deployed demo can run a
-newer build with additional panels.
+the estimated finish time change as work lands.
 
 The page is embedded in the binary, including its Nunito 800 font. It loads
 no external fonts or scripts. The terminal table remains the canonical view.
+
+A user tunes the page by editing the page and this specification together.
+`TestDashboardPageIsTheSpec` (internal/sprintdash) holds part of the two equal: it reads
+the quoted rules of this file and the page's markup (comments stripped, and app.js's
+legend states) and compares the panels shown at load and their order, the panel titles,
+the hero tiles and their labels, the progress bar's label and legend, the header's
+wordmark and pills, and the footer's link. The table headers are app.js's (it draws
+them) and are held by the byte pin. The rest (sizes, colours, motion, layout) is checked
+by eye against this file, at the widths its Responsive section names. In this
+repository the specification is locked (its lock sections): a line changes only with
+the owner's words, quoted with the date. A copy of nova-tools is its owner's to tune the
+same way.
 
 ## Serving and publishing
 
@@ -28,7 +51,7 @@ nova-sprint dashboard
 Open `http://127.0.0.1:7390/` in your browser. The full command is:
 
 ```text
-nova-sprint dashboard [--listen <address:port>[,<address:port>...] | none] [--pull <address:port>[,<address:port>...] | none | <url>] [--logo <file>] [--every 1s]
+nova-sprint dashboard [--listen <address:port>[,<address:port>...] | none] [--pull <address:port>[,<address:port>...] | none | <url>] [--logo <file> | --logo-dir <dir>] [--every 1s]
 ```
 
 | Setting | What it does |
@@ -37,6 +60,7 @@ nova-sprint dashboard [--listen <address:port>[,<address:port>...] | none] [--pu
 | `--pull` | Serves workers' views on private listeners (default `127.0.0.1:7395`), or pulls a public-page snapshot from an upstream URL. |
 | `none` | Disables the corresponding listener. |
 | `--logo` | Uses a supplied image as the page logo and favicon. Without it, the slot is empty. |
+| `--logo-dir` | Reads a directory of logo files as server.py read the files beside the page (below); not with `--logo`. |
 | `--every` | Limits how often the shared snapshot is refreshed; defaults to one second. |
 
 With `NOVA_SPRINT_SERVER`, the dashboard reads through the sprint server.
@@ -75,6 +99,41 @@ To serve a public copy from another dashboard, use
 read time, and throughput; stale upstream data raises the same freshness
 alarm on the public copy.
 
+The live page ran under a Python server (server.py, beside the live files, run by the
+units `com.nova.dashboard.local` and `com.nova.dashboard.public`). The verb serves every
+path it served, with the same JSON, so the units run the verb in its place with no
+visible change:
+
+| path | server.py | the verb |
+|---|---|---|
+| `/`, `/index.html` | the page, `app.js` versioned by the build, the logo slot and favicon filled | the same, from the embedded page |
+| `/api/sprint` | `{ok, data, fetchedAt, attemptAt, error, readSeconds, minInterval, throughput, throughputMinutes, build}`, data `where --json`'s, times Python's isoformat in UTC | the same keys in the same order, the same forms, then `stale` (the freshness alarm, below) |
+| `/app.js`, `/nunito-800.woff2`, `/OFL.txt` | the files beside the page | the embedded files, the same bytes |
+| `/healthz` | `ok` | `ok`; 503 with why while the freshness alarm stands |
+| `/favicon.svg` | `logo.svg` as the favicon; else 404 `no logo.svg` | the same, from `--logo-dir` |
+| `/logo-tile-192.png`, `/logo-tile-384.png` | the tile's copies (sips); else 404 `no tile logo` | the same, from `--logo-dir` |
+| `/logo-icon.png`, `/favicon.png` | the photo keyed (ffmpeg); else 404 `no raster logo` | the same, from `--logo-dir` |
+| `/logo.webp`, `/logo.png` | the file when it exists; else 404 `not found` | the same, from `--logo-dir` |
+| any other path | 404 `not found` | 404 `not found`, but `/events` and `/logo` (`--logo`), the verb's own |
+
+The logo directory is read in this order: `logo.svg` (inlined in the title, 32 px,
+currentColor, and served as `/favicon.svg`); else a tile, `logo-robot.webp` then
+`logo-stella.png`, shown through its 192 and 384 px copies (`<stem>-192.png`,
+`<stem>-384.png`, made with `/usr/bin/sips` when missing or when their time is not the
+tile's); else a photo on white, `logo.webp` then `logo.png`, keyed with ffmpeg (on PATH)
+into `logo-icon.png` (144 px tall) and `favicon.png` (64 px square), cropped first to
+`1420:660:90:120`. Each copy takes its source's time. The files are read on each request
+and are part of the build number, so a new logo shows on the next load. The page polls
+`/landings.json` for its Landings panel; server.py never served it, so neither does the
+verb, and the panel stays hidden on the page the verb serves, as it did.
+
+The units' two lines, in place of `python3 server.py`: the tailnet listener reads the
+sprint, `nova-sprint dashboard --listen <tailnet-address>:7390 --pull none --every 1s
+--logo-dir <live dir>` (with `NOVA_SPRINT_SERVER` set as server.py had it), and the
+loopback listener takes the first's copy, `nova-sprint dashboard --listen 127.0.0.1:7390
+--every 1s --logo-dir <live dir> --pull http://<tailnet-address>:7390/api/sprint`
+(server.py's `DASHBOARD_UPSTREAM`). `--every 1s` is server.py's `DASHBOARD_MIN_INTERVAL=1`.
+
 A Television channel can display the page as a URL artifact. Its publishing
 token belongs to the owner, stays out of the repository and dashboard command
 line, and is not read by the dashboard itself.
@@ -83,10 +142,32 @@ line, and is not read by the dashboard itself.
 
 The section below is the owner's locked visual contract. Keep its dated
 requirements and the implementation together when an authorised design change
-is made. `TestDashboardPageIsTheSpec` compares titles, column order, numeric
-alignment, tiles, labels, legend states, wordmark, pills, and footer with the
-page. Layout, colour, and motion also need visual checks at the stated widths.
+is made. `TestDashboardPageIsTheSpec` compares titles, tiles, labels, legend
+states, wordmark, pills, and footer with the page; the byte pin holds the rest. Layout, colour, and motion also need visual checks at the stated widths.
 A documentation tone pass does not change that design contract.
+
+## The live page (the owner, 2026-10-05)
+
+The owner, 2026-10-05 ~11:30 AM ET: "The live dashboard is what I am watching and expect not
+to change (visually) ... the one I'm watching is the one I want." The live page's own lines
+(its SPEC.md beside the live files, which this section carries), over the locked text below:
+
+The page's specification is nova-sprint's docs/SPEC-SPRINT-DASHBOARD.md (locked there). This
+file holds the lines of this local copy (live/, served by ../server.py on 127.0.0.1:7390)
+that the canonical spec does not carry yet; each moves into it with the card that does the
+same in nova-sprint.
+
+- Landings chart (the owner 2026-10-04 4:20 PM ET: "Can I get a cool graph showing cards landed for 'friends' and 'fleet' over time, like # of cards landed per-10 minutes as the sample." / "Put this graph underneath all tables" / "full width."): one panel titled "Landings", the last panel on the page, below every table, full width; stacked bars, one per 10-minute bucket over the last 24 hours, fleet at the base and friends on top, colours --series-fleet and --series-friends from :root; header legend: a swatch and total per series over the 24 hours, then the last hour's counts; y gridlines with counts, x labels every 2 hours in 12-hour time; no tooltips, no title attributes; dark; folds like the other panels; read from /landings.json (written every 60 s by ../bin/landings.sh, a stopgap) and redrawn when its "generated" changes; the panel stays hidden while that file cannot be fetched.
+
+### Freshness: once per second, end to end (hard requirement)
+the owner, 2026-10-04 ~6:03 PM ET: "once per-second updates are a hard requirement." / "lock that in."
+- The public page (served from space) shows data at most 2 s old: the Studio's poller makes a fresh snapshot every second, space's puller fetches once per second, Caddy serves the JSON with max-age=1, and the page polls every 1000 ms.
+- It holds under any viewer count: the Studio sees one request per second from space, never one per viewer.
+- A freshness check measures the served snapshot's age, and an age over 2 s for 30 s is an alarm to the coordinator.
+- The machine pill says RUNNING, STALE or STOPPED and nothing more; a stop's reason is the coordinator's view only (the owner 2026-10-04 ~10:15 PM: "STOPPED is plenty").
+- The cost tile shows the recorded total and, under it, the cost per landed card (the owner 2026-10-04 ~10:50 PM: "Please bring that back"). No other text is added to the page unless the owner asks for it.
+- A status pill shows the status word only (up, held, down); a reason the server carries after it is the coordinator's view (the owner 2026-10-04 ~10:40 PM).
+- The Work name column fits the longest stream name with its tag (cap 27.75rem); the shared status edge --E is clamp(18.5rem, 45vw, 42rem), so the pills of Work, Fleet and Friends still end on one line (the owner 2026-10-04 ~11:58 PM).
 
 ## The specification
 
@@ -97,8 +178,10 @@ builder checks each line below against a screenshot at 1440 and 375 and fixes an
 from the owner edits one line here and nothing else moves.
 
 ## Page
-- Dark only: no theme toggle (the card dash-lanes-panel.w2, 2026-10-04; the owner's line is owed). Panels full width, stacked: header, progress bar, Work, Fleet,
-  Friends, Lanes, footer. No readers or merge panel (available at ?all=1 only). No two-column layout at any width.
+- Dark always: no light theme and no toggle (the owner, 2026-10-04 2:21 PM). Panels full width, stacked: header,
+  hero row, Cost breakdown, progress bar, Work, Fleet, Friends, then Providers (when the JSON carries
+  tables.providers) and Landings (above), footer. No readers or merge panel (available at ?all=1 only). No
+  two-column layout at any width.
 - Base type 28 px (doubled). Labels and headers: system proportional face. All numbers: monospace (ui-monospace,
   Menlo), right-aligned. Headers over numeric columns right-aligned too.
 - Refresh: the page keeps `/events` open and patches in place as each copy arrives; while the stream is not open it
@@ -111,8 +194,7 @@ from the owner edits one line here and nothing else moves.
   tile's own rounded corners; also the favicon. With no `--logo` the slot and the favicon render nothing.
 - The word "nova-sprint" in Nunito 800 (lowercase), the page's primary white (never cream), cap height about two
   thirds of the tile, optically centered with the pills.
-- Pills: coordinator <name>, epoch <n>, machine <state>; then the Updated clock with its live dot; no theme toggle (dark
-  only, the card dash-lanes-panel.w2, 2026-10-04; the owner's line is owed).
+- Pills: coordinator <name>, epoch <n>, machine <state>; then the Updated clock with its live dot (no theme toggle).
   The clock never flashes.
 
 ## Hero row: five tiles, one row at 2000 px, three and two below, two per row below 1100 px, large figure (72 px)
@@ -123,6 +205,15 @@ from the owner edits one line here and nothing else moves.
 5. THROUGHPUT: cards landed per hour over the last 60 min; "—" until ten minutes of samples; sub-line "cards / hour".
    A lone tile on its row spans the width with its figure centered.
 - No FLEET tile. Flash on change: LANDED only; the others never.
+
+## Cost breakdown (the owner, 2026-10-04 10:15 AM to 3:10 PM): one panel under the hero row, folding like the others
+- Title "Cost breakdown"; its header line is the pie's legend (the tiers with spend, by spend, most first, the amount
+  white), open and folded.
+- A square pie of the spend by tier (flash, pro, heavy, frontier; a record with no tier is left out, a tier at $0 is
+  left out), and beside it the most expensive work streams, as many as fit the pie's height: stream, then the tiers
+  with spend and the total, at equal widths, plain headers. The tiers are nudged to add up to the total shown.
+- One money format for the whole panel: cents (rounded up) when every tier shown is under $10, else whole dollars
+  rounded up.
 
 ## Progress bar: "ALL CARDS BY STATE" with the legend (landed, merging, review, working, ready, waiting) and counts;
   one cell per card (per N cards when they would be under 4 px; no "1 cell = N" label); working cells pulse steadily
@@ -152,16 +243,7 @@ from the owner edits one line here and nothing else moves.
 ## Friends (title "Friends"): same shape as Fleet without load (ready, working, done, ok%, status; headers lowercase); honest empty
   state until the JSON carries tables.friends.
 
-## Lanes (the card dash-lanes-panel.w2, 2026-10-04; the owner's line is owed)
-- The page shows a lanes panel: one row per machine's lane of a kind, the friends or machines
-  that hold it, and those that wait, read from `nova-sprint where --json --cards` (the `lanes`
-  array, verb-lane-take-give). Names are in the order the sprint records them; an empty `lanes`
-  shows an honest empty state, as Friends does.
-- Columns: machine | kind | width | held | waiting (headers exactly so, all lowercase); width alone
-  is a number (right-aligned), the others names. The row's five columns sit beside each other at
-  every width, never stacked and never scrolled.
-
-## Footer: one line, "nova-sprint" bold white, then "from https://github.com/mas-bandwidth/nova-tools" (link).
+## Footer: one line, the link "https://github.com/mas-bandwidth/nova-sprint", its text the address.
 
 ## Responsive (change what is shown, never squeeze; no horizontal scroll at any width; 16 px gutters on a phone)
 - Below the breakpoint (where the full layout no longer fits): Fleet shows Machine | Status (dot only) | Working as
@@ -183,3 +265,6 @@ This specification is locked. No line changes without his words, quoted here wit
 - 2026-10-03 11:30 AM, the owner, a quoted change after the lock: "nova sprint website is not updating once
   per-second. something is chug." The page's refresh is the event stream, the timer's poll its fallback (the
   Refresh line above); nothing else moves.
+- 2026-10-05, the owner, a quoted change after the lock: "the one I'm watching is the one I want." The page is the
+  live page, byte for byte in what it renders (the top of this file); the lines above that it changed (dark always,
+  the Cost breakdown panel, the footer's link) say what it shows.
