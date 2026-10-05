@@ -195,6 +195,8 @@ finish-t24-1.1  s1-2  failed  rework  0.91  applied  nova-sprint rework s1-2 --o
 ANSWER OK rows=2 applied=2 would_apply=0 listed=0 refused=0 failed=0 left=0 outcomes=0 bar=0.80 record=./judgment.jsonl; run: nova-sprint inbox
 ```
 
+`TestWorkVerbsAreNovaSprintVerbs` pins `work repos`, `work issues`, `work roadmap`, `work export` and `work import` on `nova-sprint help`. Each run exits 1 and writes nothing: the round-trip in [SPEC-WORK-STORE.md](SPEC-WORK-STORE.md) is not built. `work verify` is not a verb of this binary.
+
 
 ## nova-card
 

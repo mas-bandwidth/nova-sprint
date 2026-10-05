@@ -112,6 +112,11 @@ func init() {
 		{"play", "[--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]", "play --seed 7 --every 1s", (*app).cmdPlay},
 		{"clear", "--confirm sprint", "clear --confirm sprint", (*app).cmdClear},
 		{"teardown", "--confirm sprint", "teardown --confirm sprint", (*app).cmdTeardown},
+		{"work repos", "[--tree <file>]", "work repos", (*app).cmdWorkRepos},
+		{"work issues", "[--tree <file>]", "work issues", (*app).cmdWorkIssues},
+		{"work roadmap", "[--tree <file>]", "work roadmap", (*app).cmdWorkRoadmap},
+		{"work export", "[--tree <file>]", "work export", (*app).cmdWorkExport},
+		{"work import", "[--tree <file>]", "work import", (*app).cmdWorkImport},
 		// last: its example moves the seat, and every coordinator verb's example before it is the holder's
 		{"coordinator", "<name> --reason <text> | <name> --take --approved-by <owner> --reason <text>", "coordinator friend-b --reason 'friend-a is out of credits; friend-b holds the seat'", (*app).cmdCoordinator},
 	}
@@ -130,7 +135,7 @@ func verbNames() []string {
 	return append(out, "help", "version")
 }
 
-// groupVerbs is the verbs of the group word names (fleet, friend, reader, goal, stream):
+// groupVerbs is the verbs of the group word names (fleet, friend, reader, goal, stream, work):
 // every verb whose name is that word and more; nil for a word that is no group.
 func groupVerbs(word string) []string {
 	var out []string
@@ -160,7 +165,7 @@ block shows the coordinator's day on that store.
 For one verb's usage, examples, flags and exit codes:
   nova-sprint help <verb> (or <verb> -h)
 For one group's help: nova-sprint help <group> (fleet, friend, reader, goal,
-stream).`
+stream, work).`
 
 func banner() string {
 	var b strings.Builder
@@ -375,6 +380,9 @@ func helpCommand(path []string, stdout, stderr io.Writer) int {
 		}
 		if name == "stream" {
 			fmt.Fprint(stdout, "\n"+streamWords())
+		}
+		if name == "work" {
+			fmt.Fprint(stdout, "\n"+workVerbWords)
 		}
 		fmt.Fprintf(stdout, "\nnova-sprint help %s <verb> (or nova-sprint %s <verb> -h) prints a verb's flags, examples and exit codes.\n", name, name)
 		return 0

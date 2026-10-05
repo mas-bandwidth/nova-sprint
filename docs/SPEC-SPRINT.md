@@ -2501,7 +2501,7 @@ read, fleet beat, friend beat) are anyone's who names the member, reader or frie
 actor is that name, whatever `--actor` or NOVA_SPRINT_ACTOR say: the record
 names the worker the verb was run as, as the server's does. The reports (merge, ci) want an
 actor; the machine's verbs (tick, run, friend clean) are recorded as the machine; the reads
-(queue, inbox, card, needs, held, sentinels, check, where, dashboard, goal show, seat) need no actor, except `inbox
+(queue, inbox, card, needs, held, sentinels, check, where, dashboard, goal show, seat, work repos, work issues, work roadmap, work export, work import) need no actor, except `inbox
 --read`, which moves the coordinator's cursor and is the coordinator's alone:
 anyone reads the inbox, and nothing another actor does hides anything from
 the coordinator. A card's and a
@@ -3090,4 +3090,14 @@ no line of its own; `log --card <id>` and `log --json` keep each record whole. A
 removes every epoch's log. The log is stored beside the notifications (a
 stream of its own in the same transaction), so the inbox's reads never page
 through it.
+
+## 18. The work tree
+
+The durable record of a sprint's program is an s-expression file in
+mas-bandwidth/work, not Redis. What that file holds, what stays only in
+Redis, and when it is written are [SPEC-WORK-STORE.md](SPEC-WORK-STORE.md).
+`work repos`, `work issues`, `work roadmap`, `work export` and `work import`
+name it. They are reads, and they are not built: each exits 1 and writes
+nothing. `nova-work import` and `nova-work verify` stay the GitHub issue
+mirror of [SPEC-WORK-V1.md](SPEC-WORK-V1.md). They are not these verbs.
 

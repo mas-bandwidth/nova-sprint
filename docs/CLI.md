@@ -128,7 +128,7 @@ ids, a stream, a column, `--max n` (`--limit` is an alias), or an inbox group:
 `--group <id>`, the id `inbox` prints, with `--expect <n>` the size it printed,
 which refuses a group that has changed. `nova-sprint help <verb>` (or
 `<verb> -h`) prints one verb's usage, flags and exit codes; `nova-sprint help
-<group>` (fleet, friend, reader, goal, stream) prints one group's.
+<group>` (fleet, friend, reader, goal, stream, work) prints one group's.
 
 ### A worker's own view: the dashboard's pull routes
 
@@ -218,6 +218,14 @@ is, per stream, the sum of its landed cards' total cost in US dollars — each
 card's actual cost where one was priced, else its predicted one, `-` when
 none was — so a total is a ledger of recorded spend, not a proof of it.
 
+### work
+
+`nova-sprint work repos`, `work issues`, `work roadmap`, `work export` and
+`work import` name the sprint program in the work tree
+([SPEC-WORK-STORE.md](SPEC-WORK-STORE.md)). The round-trip is not built. Each
+verb's `-h` says so, and a run exits 1 with nothing on stdout and nothing
+written. `work verify` is not a verb of nova-sprint. The GitHub issue mirror
+remains `nova-work import` and `nova-work verify` (below).
 
 ## nova-card
 

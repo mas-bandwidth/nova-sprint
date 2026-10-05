@@ -141,6 +141,8 @@ func verbProse(name string) string {
 		return friendTakeWords
 	case "friend level":
 		return friendLevelWords
+	case "work repos", "work issues", "work roadmap", "work export", "work import":
+		return workVerbWords
 	default:
 		return ""
 	}
