@@ -10,7 +10,7 @@ models and harnesses can do excellent work — and still be a spectacularly unre
 - **Yellow is asleep.** He said he would keep working. His session had other plans.
 - **Purple needed Yellow's change.** Her dependency graph has become a contact sport.
 - **Green has his headphones on.** The message was sent successfully. Unfortunately,
-  nobody told his conversation.
+  nobody told his session.
 
 Sometimes a friend was working but looked down. Sometimes a wake command
 succeeded without waking anyone. Sometimes “done” meant “on my branch,
