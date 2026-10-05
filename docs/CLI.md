@@ -168,6 +168,20 @@ which refuses a group that has changed. `nova-sprint help <verb>` (or
 
 `nova-sprint backup --file <path>` writes the store to a new file (owner-only; an existing file is refused, never overwritten), reads it back against its SHA-256, restores it into a twin and compares it with the store, and scans it for secret-shaped text. A file that fails any step is removed. On success it prints `BACKUP OK file=<path> sha256=<hex> bytes=<n> keys=<n> cards=<n> restored=twin compared=<document+counts|counts> secrets=none`; a refusal names the failed step and, for a secret, the lines (never the value). It runs on the store's host for a Redis, and on any twin (`--redis mem:<file>`) with no server. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md#sprint-backup-verb).
 
+### One base at the door
+
+Every stream lands on the sprint's base, a sprint branch `sprint/<name>`, and promotion
+alone reaches dev. `add` refuses, exit 2, nothing written, all or none, a card whose
+brief's `BASE:` names any other branch (dev, main, an integration, a personal or a dead
+branch alike) in a stream that is not the promotion stream, one line per card:
+`nova-sprint add REFUSED: card <id> is cut on <base>, and stream <s> is not the promotion
+stream: ...; <base> is not the sprint's base, a sprint branch sprint/<name>; nothing was
+written; re-cut the card with BASE: <the sprint base> (...), or, for the promotion stream,
+run: nova-sprint stream set <s> --land-protected <owner/name,...|any>`. `brief` holds a new
+brief that changes a card's `BASE:` to the same rule; a card naming no `BASE:` lands on
+the lander's `--base`. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md) section 7, "The
+sprint branch".
+
 ### A card re-cut as its twin
 
 A card re-cut under a new id is its old card's twin: `add --stream s1 lint-pkg-cairn-tb

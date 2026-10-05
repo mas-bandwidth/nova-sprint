@@ -59,9 +59,9 @@ func TestEveryStreamLandsOnTheSprintBranchAndOnlyPromotionReachesDev(t *testing.
 		t.Run(c.name, func(t *testing.T) {
 			before := ta.applies()
 			code, out, errs := ta.do(c.line)
-			assert.NotEqual(t, 0, code, "%s: %s%s", c.line, out, errs)
+			assert.Equal(t, 2, code, "%s: %s%s", c.line, out, errs)
 			assert.Contains(t, out+errs, "card "+c.card+" is cut on dev, and stream s1 is not the promotion stream: every stream lands on the sprint branch, and promotion alone reaches dev")
-			assert.Contains(t, out+errs, "re-cut the card with BASE: <the sprint branch> (sprint/<name>, the branch its stream lands on)")
+			assert.Contains(t, out+errs, "re-cut the card with BASE: <the sprint base> (sprint/<name>, the branch its stream lands on)")
 			assert.NotContains(t, out, "MOVED", "nothing written")
 			assert.False(t, ta.placed(c.card), "nothing written")
 			assert.Equal(t, before, ta.applies(), "no store write")
@@ -72,7 +72,7 @@ func TestEveryStreamLandsOnTheSprintBranchAndOnlyPromotionReachesDev(t *testing.
 	writeBaseBrief(t, many, "m1", "sprint/mechanical-2026-10-02")
 	writeBaseBrief(t, many, "m2", "dev")
 	code, out, errs := ta.do("add --stream s2 --brief-dir " + many)
-	assert.NotEqual(t, 0, code, "many-brief add with a dev card: %s%s", out, errs)
+	assert.Equal(t, 2, code, "many-brief add with a dev card: %s%s", out, errs)
 	assert.Contains(t, out+errs, "card m2 is cut on dev, and stream s2 is not the promotion stream")
 	assert.False(t, ta.placed("m1") || ta.placed("m2"), "nothing written, all or none")
 
@@ -119,4 +119,64 @@ func (ta *testApp) placed(id string) bool {
 	s, err := st.Load(context.Background(), []string{sprint.Work}, nil)
 	require.NoError(ta.t, err)
 	return s.Work.Placed(id) != nil
+}
+
+// One base at the door (docs/SPEC-SPRINT.md section 7, the sprint branch). Found
+// 2026-10-04: cards were admitted with BASE lines naming a temporary branch
+// (rowan/integration-2026-10-04) and personal or dead ones (rowan/friend-health), landed
+// there, and were folded back onto the base by hand through 17 conflicts. add refuses,
+// exit 2, nothing written, a card whose BASE is not the sprint's base, a sprint branch
+// sprint/<name>, in a stream that is not the promotion stream, one line per card naming
+// the card, its BASE, the sprint's base and the remedy; the many-brief form all or none.
+// A card on the sprint's base is admitted, and the promotion stream keeps its mark: a card
+// on dev is admitted there. brief, the edit that changes a card's BASE, is held to the same
+// rule; an edit that keeps the BASE is not.
+func TestAddRefusesACardCutOnAnyBranchButTheSprintBase(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	dir := t.TempDir()
+	side := writeBaseBrief(t, dir, "side", "rowan/integration-2026-10-04")
+	onSprint := writeBaseBrief(t, dir, "k1", "sprint/mechanical-2026-10-02")
+
+	refused := func(line, card, base string) {
+		t.Helper()
+		before := ta.applies()
+		code, out, errs := ta.do(line)
+		assert.Equal(t, 2, code, "%s: %s%s", line, out, errs)
+		assert.Contains(t, errs, "card "+card+" is cut on "+base+", and stream s1 is not the promotion stream", line)
+		assert.Contains(t, errs, base+" is not the sprint's base, a sprint branch sprint/<name>", line)
+		assert.Contains(t, errs, "re-cut the card with BASE: <the sprint base> (sprint/<name>, the branch its stream lands on)", line)
+		assert.Contains(t, errs, "run: nova-sprint stream set s1 --land-protected <owner/name,...|any>", line)
+		assert.NotContains(t, out, "MOVED", "nothing written")
+		assert.Equal(t, before, ta.applies(), "no store write")
+	}
+	refused("add --stream s1 side --one --brief-file "+side, "side", "rowan/integration-2026-10-04")
+	refused("add --stream s1 --count 2 --brief-file "+writeBaseBrief(t, t.TempDir(), "x", "rowan/friend-health"), "s1-1", "rowan/friend-health")
+	refused("add --stream s1 m0 --one --brief-file "+writeBaseBrief(t, t.TempDir(), "m0", "main"), "m0", "main")
+	assert.False(t, ta.placed("side") || ta.placed("s1-1") || ta.placed("m0"), "nothing written")
+
+	many := t.TempDir()
+	writeBaseBrief(t, many, "a1", "sprint/mechanical-2026-10-02")
+	writeBaseBrief(t, many, "a2", "stella/friend-activity-followup")
+	refused("add --stream s1 --brief-dir "+many, "a2", "stella/friend-activity-followup")
+	assert.False(t, ta.placed("a1") || ta.placed("a2"), "all or none")
+
+	assert.Contains(t, ta.ok("add --stream s1 k1 --one --brief-file "+onSprint), "MOVED k1 -> ready", "a card on the sprint's base is admitted")
+
+	// the promotion stream keeps its mark
+	ta.ok("add --stream p p0 --one --brief-file " + writeBaseBrief(t, t.TempDir(), "p0", "sprint/mechanical-2026-10-02"))
+	ta.ok("stream set p --land-protected any")
+	assert.Contains(t, ta.ok("add --stream p d1 --one --brief-file "+writeBaseBrief(t, t.TempDir(), "d1", "dev")), "MOVED d1 -> ready", "a card on dev in the promotion stream")
+
+	// brief: an edit that moves the card off the sprint's base is refused, one that keeps it is not
+	was := ta.primary("k1").F("brief")
+	before := ta.applies()
+	code, out, errs := ta.do("brief k1 --brief-file " + side)
+	assert.Equal(t, 2, code, "%s%s", out, errs)
+	assert.Contains(t, errs, "card k1 is cut on rowan/integration-2026-10-04, and stream s1 is not the promotion stream")
+	assert.Contains(t, errs, "re-cut the card with BASE: <the sprint base>")
+	assert.Equal(t, before, ta.applies(), "no store write")
+	assert.Equal(t, was, ta.primary("k1").F("brief"), "the brief is kept")
+	assert.Contains(t, ta.ok("brief k1 --brief-file "+writeBaseBrief(t, t.TempDir(), "k1", "sprint/mechanical-2026-10-02")), "k1 brief replaced")
 }

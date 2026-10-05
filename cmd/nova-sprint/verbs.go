@@ -1253,6 +1253,9 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	if *brief == "" && *sentinel == "" {
 		c.says = append(c.says, "the cards have no brief, so a worker is handed no task with them; give each one before it is dealt, on a STOPPED machine: nova-sprint brief <id> --brief-file <path>")
 	}
+	if code := a.baseRefused("add", st, rs, stderr); code != 0 {
+		return code
+	}
 	if code := a.holdWho("add", st, stderr, *brief); code != 0 {
 		return code
 	}
@@ -1349,10 +1352,13 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	for i, cd := range cards {
 		texts[i] = cd.Brief
 	}
+	r := sprint.AddReq{Stream: stream, Cards: cards, Who: c.actor, Before: before, After: after, Held: held, Auto: auto, Score: at, BriefOps: asked.ops, BriefRecord: asked.record, Replaces: replaces}
+	if code := a.baseRefused("add", st, []sprint.AddReq{r}, stderr); code != 0 {
+		return code
+	}
 	if code := a.holdWho("add", st, stderr, texts...); code != 0 {
 		return code
 	}
-	r := sprint.AddReq{Stream: stream, Cards: cards, Who: c.actor, Before: before, After: after, Held: held, Auto: auto, Score: at, BriefOps: asked.ops, BriefRecord: asked.record, Replaces: replaces}
 	c.says = append(c.says, fmt.Sprintf("each card's id is its brief file's name without .md (%s is %s)", files[0], cards[0].ID))
 	for _, cd := range cards {
 		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
@@ -1360,6 +1366,68 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	c.addStream = stream
 	c.addBefore = before
 	return a.runStep("add", *c, st, store.AddStep(r), stdout, stderr)
+}
+
+// baseRefused is add's door to the sprint's base (docs/SPEC-SPRINT.md section 7, the
+// sprint branch): every card of the add whose BASE is not the sprint's base, in a stream
+// that is not the promotion stream (sprint.SprintBranchWhy), refused on a line of its own,
+// exit 2, before anything is written; the add is all or none. 0 when every card may.
+func (a *app) baseRefused(verbName string, st *store.Store, rs []sprint.AddReq, stderr io.Writer) int {
+	s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil)
+	if err != nil {
+		return a.readFailed(verbName, err, stderr)
+	}
+	var whys []string
+	for _, r := range rs {
+		for i, id := range sprint.AddIDs(s, r) {
+			base := r.Base
+			if len(r.Cards) > 0 {
+				base = r.Cards[i].Base
+			}
+			if why := sprint.SprintBranchWhy(s, r.Stream, base, id); why != "" {
+				whys = append(whys, why)
+			}
+		}
+	}
+	return refuseEach(verbName, whys, stderr)
+}
+
+// briefBaseRefused is brief's door to the sprint's base: a new brief that changes a
+// primary's BASE is held to add's rule (sprint.SprintBranchWhy) in the card's stream,
+// every such card refused on a line of its own, exit 2, nothing written; a brief that
+// keeps the BASE, or names a card not on the table (the step refuses it), passes.
+func (a *app) briefBaseRefused(st *store.Store, cards []sprint.CardAdd, stderr io.Writer) int {
+	s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil)
+	if err != nil {
+		return a.readFailed("brief", err, stderr)
+	}
+	var whys []string
+	for _, cd := range cards {
+		c := s.Work.Placed(cd.ID)
+		if c == nil {
+			continue
+		}
+		base := swarm.ReadCardBase([]byte(cd.Brief)).Ref
+		if base == swarm.ReadCardBase([]byte(c.F("brief"))).Ref {
+			continue
+		}
+		if why := sprint.SprintBranchWhy(s, c.F("stream"), base, cd.ID); why != "" {
+			whys = append(whys, why)
+		}
+	}
+	return refuseEach("brief", whys, stderr)
+}
+
+// refuseEach refuses each of whys on a line of its own, exit 2, as refuse does, each
+// naming its own remedy; 0 when there are none.
+func refuseEach(verbName string, whys []string, stderr io.Writer) int {
+	for _, why := range whys {
+		fmt.Fprintf(stderr, "%s %s REFUSED: %s\n", prog, verbName, oneline.Escape(why))
+	}
+	if len(whys) > 0 {
+		return 2
+	}
+	return 0
 }
 
 // briefFiles is the brief files of a many-brief add, in order: the *.md files
@@ -2458,6 +2526,9 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, rs ruleSet, c *common, st *s
 		texts[i] = cd.Brief
 		req.Cards = append(req.Cards, sprint.BriefCard{ID: cd.ID, Brief: cd.Brief, Rules: cardRules(cd.Brief, rs).held, Needs: uniquify(briefNeeds(cd.Brief))})
 		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
+	}
+	if code := a.briefBaseRefused(st, cards, stderr); code != 0 {
+		return code
 	}
 	if code := a.holdWho("brief", st, stderr, texts...); code != 0 {
 		return code

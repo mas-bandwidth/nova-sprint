@@ -7,12 +7,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// add admits a card based on dev only into the promotion stream, the stream the
-// coordinator's `stream set --land-protected` marked (docs/SPEC-SPRINT.md section 7, the
-// sprint branch): in any other stream, a new one included, the card is refused naming
-// the sprint branch, every card of the add alike; a card on the sprint branch, or naming
-// no BASE, is admitted anywhere; `--land-protected default` makes the stream ordinary again.
-func TestAddAdmitsADevCardOnlyIntoThePromotionStream(t *testing.T) {
+// add admits a card whose BASE is not the sprint's base (dev, main, a temporary
+// integration branch, a personal or a dead one) only into the promotion stream, the
+// stream the coordinator's `stream set --land-protected` marked (docs/SPEC-SPRINT.md
+// section 7, the sprint branch): in any other stream, a new one included, the card is
+// refused naming its BASE and the sprint's base, every card of the add alike; a card on
+// the sprint branch, or naming no BASE, is admitted anywhere; `--land-protected default`
+// makes the stream ordinary again.
+func TestAddAdmitsACardOffTheSprintBaseOnlyIntoThePromotionStream(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
 		name, stream, base string
@@ -24,6 +26,11 @@ func TestAddAdmitsADevCardOnlyIntoThePromotionStream(t *testing.T) {
 		{"dev in the promotion stream", "s1", DevBranch, []string{LandProtectedAny}, false},
 		{"dev in a stream marked for a repository", "s1", DevBranch, []string{"mas-bandwidth/nova-tools"}, false},
 		{"dev in a stream whose mark was taken off", "s1", DevBranch, []string{LandProtectedAny, ReadTierDefault}, true},
+		{"main in a stream", "s1", "main", nil, true},
+		{"a temporary integration branch", "s1", "rowan/integration-2026-10-04", nil, true},
+		{"a personal branch", "s1", "rowan/friend-health", nil, true},
+		{"a bare sprint/ prefix", "s1", "sprint/", nil, true},
+		{"a side branch in the promotion stream", "s1", "stella/friend-activity-followup", []string{LandProtectedAny}, false},
 		{"the sprint branch", "s1", "sprint/mechanical-2026-10-02", nil, false},
 		{"no BASE line", "s1", "", nil, false},
 	} {
@@ -44,8 +51,9 @@ func TestAddAdmitsADevCardOnlyIntoThePromotionStream(t *testing.T) {
 					continue
 				}
 				require.Len(t, p.Refused, 2, "every card of the add: %v", p.Refused)
-				assert.Contains(t, p.Refused[0].Why, "card x1 is cut on dev, and stream "+c.stream+" is not the promotion stream")
-				assert.Contains(t, p.Refused[0].Why, "BASE: <the sprint branch>")
+				assert.Contains(t, p.Refused[0].Why, "card x1 is cut on "+c.base+", and stream "+c.stream+" is not the promotion stream")
+				assert.Contains(t, p.Refused[0].Why, c.base+" is not the sprint's base, a sprint branch sprint/<name>")
+				assert.Contains(t, p.Refused[0].Why, "BASE: <the sprint base>")
 				assert.Contains(t, p.Refused[0].Why, "run: nova-sprint stream set "+c.stream+" --land-protected <owner/name,...|any>")
 			}
 		})
