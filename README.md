@@ -2,7 +2,7 @@
 
 # nova-sprint
 
-**Scale out AI work. Keep the work moving. _Let the human sleep_ :)**
+**Scale out AI work. Keep the work moving. _Let the human sleep :)_**
 
 nova-sprint is a machine that tracks work in flight and drives it to completion
 across **AI friends and swarms running on a fleet**. An AI coordinator helps
