@@ -507,11 +507,14 @@ func runningIDs(v string) bool {
 // private network is the whole of the access control (listen).
 const viewPath = "/api/view/"
 
-// serveView runs view <role> --json for a GET, on the line of control as any verb the server
-// runs (a.serial: never during a tick), and answers its JSON, gzipped for a client that takes
-// it. A role, a name or a cursor of the wrong shape is a 400 and nothing is run; a name that
-// is no worker of the sprint is a 404; a store that did not answer is a 503; each with the
-// verb's line.
+// serveView runs view <role> --json for a GET and answers its JSON, gzipped for a client that
+// takes it. A view writes nothing, so it runs on the read lane, as where and card do, and
+// never waits behind a tick, a batch or a landing's step (servelanes.go). On a twin file,
+// where every verb takes the line, it takes the line as a batch does (serveCtx): bounded by
+// ServeWait and answered busy past it, and not run when its caller (the request) has gone
+// before the line was taken. A role, a name or a cursor of the wrong shape is a 400 and
+// nothing is run; a name that is no worker of the sprint is a 404; a store that did not
+// answer, a busy line or a caller gone is a 503; each with the verb's line.
 func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "the views are read with GET "+viewPath+"coordinator or "+viewPath+"worker?as=<name>", http.StatusMethodNotAllowed)
@@ -546,17 +549,14 @@ func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
 		}
 		argv = append(argv, "--since", since)
 	}
-	var stdout, stderr bytes.Buffer
-	a.serial.Lock()
-	code := a.run(argv, &stdout, &stderr)
-	a.serial.Unlock()
+	code, stdout, stderr := a.viewRun(r.Context(), argv)
 	switch code {
 	case 0:
 	case 1:
-		http.Error(w, strings.TrimSpace(stderr.String()), http.StatusNotFound)
+		http.Error(w, strings.TrimSpace(stderr), http.StatusNotFound)
 		return
 	default:
-		http.Error(w, strings.TrimSpace(stderr.String()), http.StatusServiceUnavailable)
+		http.Error(w, strings.TrimSpace(stderr), http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -568,5 +568,33 @@ func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
 		defer func() { _ = gz.Close() }() // ignored: a reader that has gone reads no answer
 		out = gz
 	}
-	_, _ = out.Write(stdout.Bytes()) // ignored: a reader that has gone reads no answer
+	_, _ = out.Write([]byte(stdout)) // ignored: a reader that has gone reads no answer
+}
+
+// viewRun is a view's verb run for serveView: on the read lane when the lanes run, else on
+// the line within ServeWait, as a batch takes it; tallied as a batch of one verb.
+func (a *app) viewRun(ctx context.Context, argv []string) (code int, stdout, stderr string) {
+	if lanes := a.lanesFor(ctx); lanes != nil {
+		res := lanes.readVerbRun(ctx, argv)
+		a.tally(0, 1, 0, 0, 0, 0, nil)
+		return res.Code, res.Stdout, res.Stderr
+	}
+	begun := a.now()
+	holder, late, err := a.serial.LockWithin(ctx, "a view", func() <-chan time.Time { return a.after(ServeWait) })
+	if late {
+		res := busyAnswer(argv, holder)
+		a.tally(0, 0, 0, 0, a.now().Sub(begun), 0, nil)
+		return res.Code, res.Stdout, res.Stderr
+	}
+	if err != nil {
+		res := goneResult(argv)
+		a.tally(0, 0, 0, 1, a.now().Sub(begun), 0, nil)
+		return res.Code, res.Stdout, res.Stderr
+	}
+	took := a.now()
+	var out, errs bytes.Buffer
+	code = a.run(argv, &out, &errs)
+	a.serial.Unlock()
+	a.tally(0, 0, 1, 0, took.Sub(begun), a.now().Sub(took), argv[:2])
+	return code, out.String(), errs.String()
 }

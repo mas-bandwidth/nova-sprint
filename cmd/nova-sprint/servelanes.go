@@ -29,8 +29,8 @@ import (
 //     every table (the friend's beat record; store.FriendBeat: the roster read, the record
 //     written): it runs on the beat lane, beside the line and beside every other beat,
 //     never waiting for a tick, a batch or another beat;
-//   - a read (where, card, log, check, routes, stats, needs, goal show, handover, and
-//     inbox without --read) writes nothing: it runs on the read lane, one read at a time
+//   - a read (where, card, log, check, routes, stats, needs, goal show, handover, inbox
+//     without --read, and the role views the server serves on GET, serve.go) writes nothing: it runs on the read lane, one read at a time
 //     on its own process state (its own read twin), beside the line, as a client reading
 //     the store directly always has;
 //   - every other verb (take, finish, read, queue, which records a reader's beat, fleet

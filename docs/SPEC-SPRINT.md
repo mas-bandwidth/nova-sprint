@@ -4093,12 +4093,19 @@ So one process reads and writes the sprint: the server.
 
 The server serves the role views (section 11, "Role views") on both listeners, read-only, with
 no batch: `GET /api/view/coordinator` (`all=1` for every row) and `GET
-/api/view/worker?as=<name>`, each with `since=<cursor>`. Each runs `view <role> --json` on the
-line of control as any verb the server runs (never during a tick) and answers its JSON, gzipped
-for a client that takes it, `Cache-Control: no-store`. A name, a cursor or an `all` of the
-wrong shape is a 400 and nothing is run; a name that is no fleet member and no friend is a 404;
-a store that did not answer is a 503; any other method is a 405; each with the verb's line. The
-access control is the fleet's private network, as for the workers' queue.
+/api/view/worker?as=<name>`, each with `since=<cursor>`. Each runs `view <role> --json` and
+answers its JSON, gzipped for a client that takes it, `Cache-Control: no-store`. A view writes
+nothing, so it runs on the read lane, as `where` and `card` do, and never waits behind a tick, a
+batch or a landing's step: the coordinator's main read of the sprint is answered while a tick
+holds the line. On a twin file, where every verb takes the line, a view takes it as a batch
+does: it waits at most `ServeWait` and is then answered busy, naming what holds the line, having
+run nothing; and a view whose caller has gone before the line was taken is not run. (Found by a
+cold read of the re-seed, PR 7, 2026-10-05: the views took the line with a plain lock, with no
+bound and no give-up when the caller left; `TestARoleViewNeverWaitsBehindATick`.) A name, a
+cursor or an `all` of the wrong shape is a 400 and nothing is run; a name that is no fleet
+member and no friend is a 404; a store that did not answer, a busy line or a caller gone is a
+503; any other method is a 405; each with the verb's line. The access control is the fleet's
+private network, as for the workers' queue.
 
 With `run --land` the server lands what the readers passed, itself: every two seconds, when a
 stream has cards queued to merge, it runs `land` for them as the sprint's coordinator, one
