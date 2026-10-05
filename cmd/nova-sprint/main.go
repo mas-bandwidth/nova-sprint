@@ -618,6 +618,9 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 			return v.run(a, args[len(words):], stdout, stderr)
 		}
 	}
+	if to := movedCardVerb(args[0]); to != "" {
+		return refuse(stderr, "", args[0]+" moved to nova-sprint "+to+"; run: nova-sprint "+to+" -h")
+	}
 	if members := groupVerbs(args[0]); len(members) > 0 {
 		// a verb group: its -h is its help at exit 0 (help is never a refusal); a bare
 		// group, or a word that is none of its verbs, is refused naming its verbs

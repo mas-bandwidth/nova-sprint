@@ -159,7 +159,7 @@ func flagWord(words []string, name string) (value string, ok bool) {
 // and seat uninstall, which install the push loop as a service of the machine they are
 // typed on, and the work verbs, which name a file on the machine where they are typed
 // (internal/work); their round-trip is not built, so a run reads nothing and writes nothing.
-var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sync", "friend reconcile", "friend clean", "dashboard", "answer", "seat install", "seat uninstall", "selftest land", "server switch", "work repos", "work issues", "work roadmap", "work export", "work import"}
+var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sync", "friend reconcile", "friend clean", "dashboard", "answer", "seat install", "seat uninstall", "selftest land", "server switch", "work repos", "work issues", "work roadmap", "work export", "work import", "card generate", "card lint", "card template"}
 
 // ServeWait is how long a batch waits for the line of control before it is answered
 // without it. Measured 2026-10-04 12:54 PM ET: with the machine STOPPED, a verb sent to
