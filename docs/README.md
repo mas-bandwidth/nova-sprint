@@ -16,7 +16,7 @@ work and scale out across friends, swarms, or both.
 | Can I watch a sprint doing real work? | [Live dashboard](http://69.67.149.151) and [the README tour](../README.md#watch-your-team-get-work-done) |
 | How do I get started? | [Getting started](GETTING-STARTED.md) |
 | Can I try the workflow before setting up a team? | [Local first lap](FIRST-LAP.md) |
-| Why do AI teams need a coordination machine? | [The illustrated README](../README.md#everybody-said-on-it) |
+| Why do AI teams need a coordination machine? | [The illustrated README](../README.md#the-problem) |
 | What are cards, streams, dependencies, and sentinels? | [How the workflow runs](../README.md#how-it-works-write-the-workflow-let-the-machine-run-it) |
 | What do I do as the coordinator? | [Coordinator's guide](SPRINT-COORDINATOR.md) |
 | What is the exact command? | [Command reference](CLI.md) |

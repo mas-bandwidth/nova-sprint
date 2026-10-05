@@ -21,11 +21,11 @@ explaining the foundation. Send people who want to create AI friends to
 
 ## Mark and banner
 
-Use [the starting-blocks banner](../brand/starting-blocks/composite.png) at the
-top of the README. It is a 2170 × 725 lossless PNG: the fast friend ready for
-his next task, with the flat Nova Sprint wordmark ahead of him. Scale it as a
-whole. The earlier [group banner](../assets/nova-sprint-banner.png) is retained
-as part of the artwork's history.
+Use [the approved jogging banner](../brand/jogging/banner-centered.png) at the
+top of the README. It is a 2168 × 725 lossless PNG: a happy white-and-blue
+friend jogging and waving, grouped with the flat Nova Sprint wordmark and
+centred as one element. Scale it as a whole. Earlier starting-blocks and
+group banners remain in the artwork archive.
 
 The individual friends illustrate the [README explainer](../README.md).
 Green cannot hear the team, Yellow sleeps, and Purple trips over the blocked

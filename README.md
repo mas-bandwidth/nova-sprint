@@ -1,4 +1,4 @@
-![Nova Sprint: a fast friend on the starting blocks, ready for the next task.](brand/starting-blocks/composite.png)
+![Nova Sprint: a happy white-and-blue friend jogging and waving.](brand/jogging/banner-centered.png)
 
 ## The Problem
 
@@ -74,9 +74,8 @@ and revise the plan as findings arrive. Ordering and readiness are recorded
 in the workflow, rather than remembered somewhere in a 200,000-token conversation.
 
 Purple's card now waits for Yellow's result. She can take independent work
-while the coordinator sorts out the nap. The robot on the starting blocks
-is ready to grab the next eligible task, without waiting for the whole
-team to finish a lap.
+while the coordinator sorts out the nap. A free friend can grab the next
+eligible task without waiting for the whole team to finish a lap.
 
 ## Different friends. One team. As many bees as useful.
 
