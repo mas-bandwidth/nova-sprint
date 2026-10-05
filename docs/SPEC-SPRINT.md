@@ -917,6 +917,19 @@ one `wait` kind whose operand names what it waits for replaces the hold, the
 sentinel and the wave. The kinds there are the vocabulary the layer's model
 checks.
 
+Layer 2 of the processor is performance counters (`processor-counters-r-ns.w1~15.g7`),
+built on cycle-time stage stamps (`internal/sprint/cycletime.go`) without duplicating them.
+From those stamps, `where --json` carries `counters` (`CountersRecord`) per stream and overall:
+- **IPC** as landed cards per slot-hour (slots computed from fleet member widths over the window,
+  defaulting to `DefaultWidth` when none).
+- **Stall reason breakdown**: for each card, the time stalled across seven canonical reasons:
+  `waiting on a need`, `waiting on a release`, `waiting on an external operand`, `waiting for a slot`,
+  `in read`, `in merge`, `in rework`, whose parts partition and sum to its wall time.
+- **Top stall**: the reason with the greatest total stall duration across the window.
+The sprint dashboard (`internal/sprintdash/dashboard.go`) displays one summary row: IPC and the top stall reason.
+The formal model `tla/CardISA.tla` defines the stall-reason variable and verifies `StallsPartitionWallTime`
+(one reason at a time), with reversed witness `TwoStalls` (`"twostalls"` in `Broken`) verified by TLC.
+
 **Primary.** One unit of work, between an issue and a pull request. One stream
 for life. Fields: stream, score, brief, rules (the held rules file the member injects, section 2's rules by reference), who (the friend its brief's WHO line names, section 1, a friend's card), needs, head, attempt, fix, finding and why (a rework's, kept
 for the attempt a rework with no member up deals later), work (its live
@@ -3523,7 +3536,7 @@ land's place; a head that is not a commit id stops the dry run where land stops,
 | log | the epoch's log, every line in order: --card (a primary with its work, read and merge cards; a set move the card is in is printed as the card's own line with the set's size, `(in a set of n)`, never the first card's words with the rest listed; `--json` keeps the set line whole), --stream, --member, --since, --at-epoch, --json (section 17); a line's words are printed under it, a brief by its size and the card that shows it (`card <id>`), never whole (`--json` carries it) |
 | check, repair | section 9 and section 10 |
 | seat check | the machinery under the sprint: server, store, loop, beats, readers, dashboard, installed versions, merge queue; prints one line per check and an exit code (0 if all OK, 1 if any check is DOWN); `machinery` is an alias (The seat check, below) |
-| where | the view, once or `--watch` (redrawn in place, section 1): work, friends and fleet; `--json --cards` also carries `merging`, every merging primary with its stream, head and attempt, the queue with heads in one call; `--json --rows` carries every primary's row of the work table in one call (`rows`: id, stream, state, score and its fields but the brief, in work order; `card <id> --brief` prints the brief), so a child reads every card at once and never loops `card` calls (the comfort list of 2026-10-03, item 8; `--cards`, the dashboard's, stays bounded by the fleet's width); `--all` draws the readers and merge tables too (hidden from the default frame; the owner, 2026-10-02: "please hide the reader and merge tables"); `--release [<name>]` prints count of cards left per release from stream rows (`RELEASE <name> cards=<n>`, `cards=0` when no streams match); its title line names the seat's holder (`SPRINT TABLE  coordinator friend-b`, with `(taken 5:21 PM)` after a take until the next handover is given); `--json` carries every table and the pending operation, the stalled streams, `streams` (each stream row with its `release`), `releases` (cards left per release), the people, the coordinator and `seat`, its last change |
+| where | the view, once or `--watch` (redrawn in place, section 1): work, friends and fleet; `--json --cards` also carries `merging`, every merging primary with its stream, head and attempt, the queue with heads in one call; `--json --rows` carries every primary's row of the work table in one call (`rows`: id, stream, state, score and its fields but the brief, in work order; `card <id> --brief` prints the brief), so a child reads every card at once and never loops `card` calls (the comfort list of 2026-10-03, item 8; `--cards`, the dashboard's, stays bounded by the fleet's width); `--all` draws the readers and merge tables too (hidden from the default frame; the owner, 2026-10-02: "please hide the reader and merge tables"); `--release [<name>]` prints count of cards left per release from stream rows (`RELEASE <name> cards=<n>`, `cards=0` when no streams match); its title line names the seat's holder (`SPRINT TABLE  coordinator friend-b`, with `(taken 5:21 PM)` after a take until the next handover is given); `--json` carries every table and the pending operation, the stalled streams, `streams` (each stream row with its `release`), `releases` (cards left per release), the people, the coordinator and `seat`, its last change, and `counters` (Layer 2 processor performance counters: IPC, top stall, and stall breakdown overall and per stream) |
 | coordinator | moves the seat: `coordinator <name> --reason <text>`, given by its holder or the owner; `--take --approved-by <owner>`, taken by `<name>` itself; prints the handover after (below) |
 | handover | what the next seat needs, from the store, in one screen (below); `--json` |
 | seat install, seat uninstall | the seat's push loop as a service of this machine ("Handing over the seat"): `seat install` writes it and loads it, `seat uninstall` unloads it and removes its file; `--dir`, `--dry-run`, `--json`; run where they are typed, never by the server |

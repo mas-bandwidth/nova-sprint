@@ -79,16 +79,38 @@ VARIABLES
   external,  \* BOOLEAN: the outside's condition, the operand "external"
   lands,     \* [Cards -> Nat]: how many times a card has landed (0 or 1, or 2 broken)
   base,      \* [Cards -> Nat]: the base branch the card's head must be an ancestor of
-  verdict    \* [Cards -> {"-", "ok", "broken"}]: the result the kind owes
+  verdict,   \* [Cards -> {"-", "ok", "broken"}]: the result the kind owes
+  stall      \* [Cards -> SUBSET StallReasons]: the active stall reasons
+
+StallReasons == {
+  "waiting on a need",
+  "waiting on a release",
+  "waiting on an external operand",
+  "waiting for a slot",
+  "in read",
+  "in merge",
+  "in rework"
+}
 
 \* the new variables as one tuple; ivars is the base's vars and these
-ivars == <<released, external, lands, base, verdict>>
+ivars == <<released, external, lands, base, verdict, stall>>
 avars == <<vars, ivars>>
+
+NextStallOf(w, cp, l) == [c \in Cards |->
+  IF w[c] = "waiting" THEN
+    IF WaitFor[c] = "release" THEN {"waiting on a release"}
+    ELSE IF WaitFor[c] = "external" THEN {"waiting on an external operand"}
+    ELSE {"waiting on a need"}
+  ELSE IF w[c] = "ready" THEN {"waiting for a slot"}
+  ELSE IF w[c] = "review" THEN {"in read"}
+  ELSE IF w[c] = "merging" THEN {"in merge"}
+  ELSE IF cp[c] /= NoCopy /\ l[cp[c]] = "fix" THEN {"in rework"}
+  ELSE {}]
 
 \* Frame(A): a reused CardMachine action, with the ISA's own variables still.
 \* An action that does not name a variable leaves it free; this is the one
 \* place that keeps the reuse honest.
-Frame(A) == A /\ UNCHANGED ivars
+Frame(A) == A /\ UNCHANGED <<released, external, lands, base, verdict>> /\ stall' = NextStallOf(where', copy', cl')
 
 IsaTypeOK ==
   /\ TypeOK
@@ -97,6 +119,7 @@ IsaTypeOK ==
   /\ lands \in [Cards -> Nat]
   /\ base \in [Cards -> Nat]
   /\ verdict \in [Cards -> {"-", "ok", "broken"}]
+  /\ stall \in [Cards -> SUBSET StallReasons]
 
 IsaInit ==
   /\ Init
@@ -105,6 +128,7 @@ IsaInit ==
   /\ lands = [c \in Cards |-> 0]
   /\ base = [c \in Cards |-> MaxBase]
   /\ verdict = [c \in Cards |-> "-"]
+  /\ stall = NextStallOf(where, copy, cl)
 
 ----------------------------------------------------------------------------
 (* The one wait kind *)
@@ -127,20 +151,21 @@ Wait(c) ==
   /\ where[c] = "waiting"
   /\ (OperandHolds(c) \/ "waitfirst" \in Broken)
   /\ where' = [where EXCEPT ![c] = "ready"]
-  /\ UNCHANGED <<ok, copy, reads, pending, low, ncut, author, head, prHead, ci, cvars, up, ivars>>
+  /\ stall' = NextStallOf(where', copy, cl)
+  /\ UNCHANGED <<ok, copy, reads, pending, low, ncut, author, head, prHead, ci, cvars, up, released, external, lands, base, verdict>>
 
 \* Release(): the coordinator releases. It makes the "release" operand hold.
 \* This is the verb, not a card's wait: the operand's value, not a path.
 CoordRelease ==
   /\ ~released
   /\ released' = TRUE
-  /\ UNCHANGED <<pvars, cvars, up, external, lands, base, verdict>>
+  /\ UNCHANGED <<pvars, cvars, up, external, lands, base, verdict, stall>>
 
 \* External(): the outside's condition comes to hold.
 Extern ==
   /\ ~external
   /\ external' = TRUE
-  /\ UNCHANGED <<pvars, cvars, up, released, lands, base, verdict>>
+  /\ UNCHANGED <<pvars, cvars, up, released, lands, base, verdict, stall>>
 
 ----------------------------------------------------------------------------
 (* The per-kind results *)
@@ -154,7 +179,7 @@ RecordResult(c) ==
   /\ head' = IF ProducesHead(Kind[c])
               THEN [head EXCEPT ![c] = base[c]]
               ELSE head
-  /\ UNCHANGED <<where, ok, copy, reads, pending, low, ncut, author, prHead, ci, cvars, up, released, external, lands, base>>
+  /\ UNCHANGED <<where, ok, copy, reads, pending, low, ncut, author, prHead, ci, cvars, up, released, external, lands, base, stall>>
 
 ----------------------------------------------------------------------------
 (* Replaced life actions that touch the new variables *)
@@ -170,7 +195,8 @@ Deal(c, k) ==
   /\ copy' = [copy EXCEPT ![c] = NextCopy(c)]
   /\ ncut' = [ncut EXCEPT ![c] = @ + 1]
   /\ cw' = CutCW(c, k) /\ ck' = CutCK(c, k) /\ cl' = CutCL(c, "work")
-  /\ UNCHANGED <<ok, reads, pending, low, author, head, prHead, ci, leased, up, ivars>>
+  /\ stall' = NextStallOf(where', copy', CutCL(c, "work"))
+  /\ UNCHANGED <<ok, reads, pending, low, author, head, prHead, ci, leased, up, released, external, lands, base, verdict>>
 
 \* IsaLand(c): CardMachine.Land (merging -> landed), plus the retire record:
 \* the head is set to the base it lands on (an ancestor, the same commit),
@@ -181,6 +207,7 @@ IsaLand(c) ==
   /\ where' = [where EXCEPT ![c] = "landed"]
   /\ head' = [head EXCEPT ![c] = IF "wrongbase" \in Broken THEN base[c] + 1 ELSE base[c]]
   /\ lands' = [lands EXCEPT ![c] = @ + 1]
+  /\ stall' = NextStallOf(where', copy, cl)
   /\ UNCHANGED <<ok, copy, reads, pending, low, ncut, author, prHead, ci, cw, ck, cl, leased, up, released, external, base, verdict>>
 
 \* IsaLandEvent(c): CardMachine.LandEvent (a landing event for a card that is
@@ -194,6 +221,7 @@ IsaLandEvent(c) ==
            IF copy[c] /= NoCopy /\ cw[copy[c]] \in Live THEN [r EXCEPT ![copy[c]] = "fail"] ELSE r
   /\ reads' = [reads EXCEPT ![c] = {}]
   /\ copy' = [copy EXCEPT ![c] = NoCopy]
+  /\ stall' = NextStallOf(where', [copy EXCEPT ![c] = NoCopy], cl)
   /\ UNCHANGED <<ok, pending, low, ncut, author, prHead, ci, ck, cl, leased, up, released, external, base, verdict>>
 
 \* DoubleLand(c): the reversed witness only. A landed card is counted landed
@@ -202,7 +230,15 @@ DoubleLand(c) ==
   /\ "doubleland" \in Broken
   /\ where[c] = "landed"
   /\ lands' = [lands EXCEPT ![c] = @ + 1]
-  /\ UNCHANGED <<pvars, cvars, up, released, external, base, verdict>>
+  /\ UNCHANGED <<pvars, cvars, up, released, external, base, verdict, stall>>
+
+\* TwoStalls(c): reversed witness only. A card is placed in two stalls at once,
+\* breaking StallsPartitionWallTime. "twostalls" turns it on.
+TwoStalls(c) ==
+  /\ "twostalls" \in Broken
+  /\ where[c] = "ready"
+  /\ stall' = [stall EXCEPT ![c] = {"waiting for a slot", "in rework"}]
+  /\ UNCHANGED <<where, ok, copy, reads, pending, low, ncut, author, head, prHead, ci, cvars, up, released, external, lands, base, verdict>>
 
 ----------------------------------------------------------------------------
 
@@ -210,7 +246,7 @@ IsaNext ==
   \/ \E c \in Cards :
        Frame(Push(c)) \/ Wait(c) \/ Frame(CIWord(c)) \/ Frame(PRHeadMoves(c))
        \/ Frame(Verdict(c)) \/ Frame(CancelPrimary(c))
-       \/ IsaLand(c) \/ IsaLandEvent(c) \/ RecordResult(c) \/ DoubleLand(c)
+       \/ IsaLand(c) \/ IsaLandEvent(c) \/ RecordResult(c) \/ DoubleLand(c) \/ TwoStalls(c)
   \/ \E c \in Cards, k \in Consumers : Deal(c, k) \/ Frame(DealRead(c, k))
   \/ \E i \in CopyId :
        Frame(Work(i)) \/ Frame(Beat(i)) \/ Frame(Lapse(i)) \/ Frame(Expire(i))
@@ -248,8 +284,11 @@ RetiredHeadOnBase == \A c \in Cards : where[c] = "landed" => head[c] <= base[c]
 WaitDispatchesOnlyWhenOperandHolds ==
   \A c \in WaitCards : where[c] \in {"ready", "working"} => OperandHolds(c)
 
+\* stalls partition wall time: at any instant, a card experiences at most one stall reason
+StallsPartitionWallTime == \A c \in Cards : Cardinality(stall[c]) <= 1
+
 IsaSafety == /\ IsaTypeOK /\ Safety /\ NoCardRetiresTwice /\ RetiredHeadOnBase
-              /\ WaitDispatchesOnlyWhenOperandHolds
+              /\ WaitDispatchesOnlyWhenOperandHolds /\ StallsPartitionWallTime
 
 ----------------------------------------------------------------------------
 (* What must eventually happen: a wait whose operand comes to hold is dealt *)

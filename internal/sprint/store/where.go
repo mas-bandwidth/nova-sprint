@@ -43,6 +43,10 @@ type WhereRecord struct {
 	// counted here from the cards the tick reads, never by where from per-card reads.
 	Tiers   map[string]int              `json:"tiers,omitempty"`
 	Streams map[string]sprint.TierCosts `json:"streams,omitempty"`
+	// Counters is the performance counters over the landed cards in the last day
+	// (sprint.Counters, docs/SPEC-SPRINT.md section 1, processor-counters-r-ns.w1):
+	// IPC and stall breakdowns per card, per stream and overall.
+	Counters sprint.CountersRecord `json:"counters,omitzero"`
 }
 
 // whereOf is the where record of a snapshot holding every card of the work
@@ -55,7 +59,7 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 		}
 	}
 	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), Auto: sprint.AutoWaiting(s), Critical: sprint.Critical(s, 5),
-		Tiers: sprint.TierCounts(s), Streams: sprint.StreamTierCosts(s)}
+		Tiers: sprint.TierCounts(s), Streams: sprint.StreamTierCosts(s), Counters: sprint.Counters(s, now)}
 	for _, at := range sprint.RecentLandings(landed, m.Spans, m.FirstStart(s.Cleared), now) {
 		r.Landings = append(r.Landings, at.Unix())
 	}
@@ -232,6 +236,8 @@ type WhereFacts struct {
 	// without the record.
 	Tiers   map[string]int
 	Streams map[string]sprint.TierCosts
+	// Counters is the performance counters from the where record (sprint.Counters).
+	Counters sprint.CountersRecord
 	// HasStoreRTT is set when the server's store round trip record has a sample
 	// within StoreRTTWindow; StoreRTTP50MS and StoreRTTP99MS are its p50 and p99.
 	HasStoreRTT   bool
@@ -280,7 +286,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			f.HasStoreRTT, f.StoreRTTP50MS, f.StoreRTTP99MS = true, r.P50MS, r.P99MS
 		}
 		if r, ok := readWhere(vals[2], oks[2]); ok && r.Epoch == st.epoch && (r.Rev == workRev || st.keptBy(r, f.Machine, f.Heartbeat)) {
-			f.Held, f.Auto, f.Critical, f.Tiers, f.Streams = r.Held, r.Auto, r.Critical, r.Tiers, r.Streams
+			f.Held, f.Auto, f.Critical, f.Tiers, f.Streams, f.Counters = r.Held, r.Auto, r.Critical, r.Tiers, r.Streams, r.Counters
 			for _, s := range r.Landings {
 				f.Landed = append(f.Landed, time.Unix(s, 0).UTC())
 			}

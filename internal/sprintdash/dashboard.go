@@ -98,6 +98,8 @@ type snapshot struct {
 	ThroughputMinutes float64         `json:"throughputMinutes"`
 	Build             string          `json:"build"`
 	Stale             bool            `json:"stale"`
+	IPC               *float64        `json:"ipc,omitempty"`
+	TopStall          string          `json:"top_stall,omitempty"`
 }
 
 // sample is one good read's landed count and when it began.
@@ -222,10 +224,22 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		s.snap.OK, s.snap.Error = false, &why
 	} else {
 		var v struct {
-			Landed int64 `json:"landed"`
+			Landed   int64 `json:"landed"`
+			Counters struct {
+				IPC      float64 `json:"ipc"`
+				TopStall string  `json:"top_stall"`
+			} `json:"counters"`
 		}
 		// ignored: sprintJSON has read body as JSON; a landed that is no number is 0
 		_ = json.Unmarshal(body, &v)
+		if v.Counters.TopStall != "" || v.Counters.IPC > 0 {
+			ipc := v.Counters.IPC
+			s.snap.IPC = &ipc
+			s.snap.TopStall = v.Counters.TopStall
+		} else {
+			s.snap.IPC = nil
+			s.snap.TopStall = ""
+		}
 		at, rate, minutes := end, (*float64)(nil), 0.0
 		if up != nil {
 			at, rate, minutes = *up.FetchedAt, up.Throughput, up.ThroughputMinutes
@@ -366,5 +380,9 @@ func (s *Server) index() []byte {
 	}
 	html = strings.Replace(html, "<!--LOGO-->", slot, 1)
 	html = strings.Replace(html, "<!--FAVICON-->", icon, 1)
+	perfRow := `<div class="strip" id="perf-strip" style="margin: 0.5rem 3rem 1.5rem; display: flex; gap: 2rem; font-size: 1.5rem; color: var(--text-2);"><span>IPC: <b id="perf-ipc" style="color: var(--text);">-</b></span><span>Top stall: <b id="perf-stall" style="color: var(--text);">-</b></span></div>`
+	perfScript := `<script>(function(){function u(d){if(!d)return;var c=d.counters||(d.data&&d.data.counters)||{};var ipc=d.ipc!==undefined?d.ipc:c.ipc;var st=d.top_stall||c.top_stall;var ei=document.getElementById("perf-ipc"),es=document.getElementById("perf-stall");if(ei&&ipc!==undefined&&ipc!==null)ei.textContent=typeof ipc==="number"?ipc.toFixed(2):ipc;if(es&&st)es.textContent=st;}window.addEventListener("load",function(){fetch("/api/sprint").then(function(r){return r.json();}).then(u).catch(function(){});});})();</script>`
+	html = strings.Replace(html, `<section class="panel fleet">`, perfRow+"\n<section class=\"panel fleet\">", 1)
+	html = strings.Replace(html, `</body>`, perfScript+"\n</body>", 1)
 	return []byte(html)
 }
