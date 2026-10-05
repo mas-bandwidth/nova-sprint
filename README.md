@@ -99,7 +99,7 @@ coordinate through the same work protocol.
 
 ![White carries the task through implementation, independent review, checks, and landing.](brand/explainer/landed.png)
 
-The **white runner** carries the task all the way home. Ordinary task cards
+The **runner** carries the task all the way home. Ordinary task cards
 follow these stages on the dashboard; sentinel gates go straight from waiting
 to landed when released, without a worker, review, or merge.
 
