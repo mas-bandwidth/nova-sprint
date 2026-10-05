@@ -1,5 +1,17 @@
 # SprintEvents: the upper layers of nova-sprint as a TLA+ model
 
+This model explores the awkward moments in coordination: a worker disappears,
+a deadline fires, two operations race, or a loop restarts between steps. It
+helps contributors check whether the design still preserves assignments and
+makes progress under its stated assumptions.
+
+Start with [the model overview](README.md) if TLA+ is new to you. For a quick
+route through this longer record, read the scope, properties, and findings;
+use the action tables when following a specific counterexample. Recorded
+measurements and findings are preserved as evidence of their named revisions.
+The `design/` paths below name historical source documents from the model's
+development; those documents are not shipped in this repository.
+
 `SprintEvents.tla` is the state machine of layers 3 to 8 of nova-sprint, written from section 5 of `design/EVENT-DRIVEN-TICK-v2.1.md` ("the design" below, cited by section), with sections 1.1 to 1.6 and 2 as the text it models. `MCSprintEvents.tla` holds the small instances (the scenarios), and each `MCSprintEvents*.cfg` is one configuration. The larger runs are in `tla/sprintevents-bench/`. The repairs are the decisions of the design's errata (`design/EVENT-DRIVEN-TICK-v2.1-ERRATA-3.md`), each behind the `Fixes` constant.
 
 The model stands on the guarantees of the layers below it: one call at a time, a step all or nothing, guards checked at apply, one place per card and table, a revision that moves with every change of a record, a receipt that makes a part identity apply once, one line per change in the step's own commit, and a function that errors keeping the writes it made before the error. So a step here is one atomic action, a revision guard is "the record is as read", and a refusal writes nothing.
@@ -186,13 +198,15 @@ H9 is wording (the model's `Progress` is its decided form). H17 is a hole in the
 
 ## Running it
 
-TLC runs only on a bench. **The gated cases** are declared in `CASES.tsv` in fourteen groups named `sprintevents*`, recorded in `RUNS.tsv` by `tlacheck` (two workers for a case expected to pass, one for a counterexample, 110 s a group):
+Run TLC on a Linux bench. Build Nova Tools' `tlacheck` runner and put it on
+`PATH` first, then run these commands from the nova-sprint repository root
+([runner setup](README.md#run-checks-on-a-linux-bench)). **The gated cases** are declared in `CASES.tsv` in fourteen groups named `sprintevents*`, recorded in `RUNS.tsv` by `tlacheck` (two workers for a case expected to pass, one for a counterexample, 110 s a group):
 
 ```sh
 for g in sprintevents sprintevents-land sprintevents-drop sprintevents-faults sprintevents-fleet sprintevents-lease \
          sprintevents-loops sprintevents-controls-a sprintevents-controls-b sprintevents-witnesses-a \
          sprintevents-witnesses-b sprintevents-goals sprintevents-goals-b sprintevents-repairs; do
-  go run ./tools/tlacheck run --root . --jar /path/to/tla2tools.jar --dir /tmp/tlc-$g --group $g
+  tlacheck run --root . --jar /path/to/tla2tools.jar --dir /tmp/tlc-$g --group $g
 done
 ```
 

@@ -1,6 +1,14 @@
-# Tests: nova-sprint, and the tools folding into it
+# Examples you can check against the tests
 
-Moved from nova-tools docs/TESTS.md on 2026-10-04.
+These are exact command transcripts, not illustrative output. The command
+tests run their steps and compare the results, so the fenced transcripts stay
+precise even when the surrounding explanation changes.
+
+Start with [Getting started](GETTING-STARTED.md) for a guided first lap. Come
+back here to compare what each command prints or to understand a test failure.
+The transcripts cover [sprint handoffs](#nova-sprint), [card generation](#nova-card),
+and [work-tree import and verification](#nova-work). They moved from Nova Tools
+on 2026-10-04 and retain the command names of that implementation.
 
 ## nova-sprint
 

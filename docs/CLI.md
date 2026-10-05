@@ -1,19 +1,36 @@
-# Command reference: nova-sprint, and the tools folding into it
+# Find the command you need
 
-Moved from nova-tools docs/CLI.md on 2026-10-04.
+Use this page when you know what you want to do and need the exact command.
+For the story of how the team works together, start with the
+[project introduction](../README.md) or [team guide](WORKING-WITH-AI-TEAMS.md).
+
+| You want to… | Start with |
+|---|---|
+| Follow the team or answer a decision | `nova-sprint where`, `card`, `inbox` |
+| Load and organise tasks | `nova-sprint add`, `brief`, `rank`, `move` |
+| Review and integrate results | `nova-sprint read`, `accept`, `land` |
+| Generate or check task briefs | [nova-card](#nova-card) |
+| Import and compare GitHub issue content | [nova-work](#nova-work) |
+
+This reference follows the current checkout, including separate `nova-card`
+and `nova-work` binaries. The README describes the integrated v1.0.0 product;
+use your installed build's help for its command surface. The original
+reference moved from Nova Tools on 2026-10-04.
 
 ## nova-sprint
 
-nova-sprint: a sprint of work cards, dealt to a fleet of workers and read before they land
+Coordinate tasks across your AI team, from the queue through review and landing.
 
-One store (Redis or a twin file) holds the work, readers, merge and fleet
-tables and the `sprint` view. A card is one unit of work in a stream. Each tick
-deals ready cards to members (machines with a width), sends finished work to
-readers and queues passed work for merging by stream. Decisions it cannot
-make go to the coordinator's inbox. The contract is
+The store remembers cards, assignments, reviews, and merge state. Each tick
+assigns ready work to members with capacity, sends finished work to readers,
+and queues approved results for merging. An AI coordinator can handle the
+inbox and keep work moving while the human is away. The exact rules are in
 [SPEC-SPRINT.md](SPEC-SPRINT.md).
 
 ### First run
+
+For a guided version with an isolated scratch directory and every step through
+landing, use [Getting started](GETTING-STARTED.md).
 
 Try one card's whole flow with no Redis or git. `--redis mem:<file>` (or
 `NOVA_SPRINT_REDIS=mem:<file>`) loads an in-memory twin from a file and saves it
@@ -184,7 +201,7 @@ nothing is applied for it, and the pass exits 1. `--dry-run` applies and records
 nothing; `--every 60s` runs it as the seat's loop until the machine is STOPPED. Jev's key comes from `JEV_API_KEY`:
 `nova-secrets exec --only JEV_API_KEY -- nova-sprint answer`. The
 contract is [SPEC-SPRINT.md section 8](SPEC-SPRINT.md#answered-by-nova-decide)
-and [SPEC-NOVA-DECIDE.md section 13](SPEC-NOVA-DECIDE.md#13-the-judgment-decision).
+and [SPEC-NOVA-DECIDE.md section 13](https://github.com/mas-bandwidth/nova-tools/blob/dev/docs/SPEC-NOVA-DECIDE.md#13-the-judgment-decision).
 
 `add` under `JEV_API_KEY` (`nova-secrets exec --only JEV_API_KEY -- nova-sprint add
 ...`) asks nova-decide's brief decision of every card it names with a brief after its
@@ -194,7 +211,7 @@ per card, recorded in `~/nova-sprint/decide/brief.jsonl` (or `--decide-record <f
 the op stored on the card for land and drop to attach its end. The decision is
 uncalibrated: nova-config's `sprint` row `decide_brief_bar` stays empty, which reports
 only, until the brief record's own outcomes support a bar
-([SPEC-NOVA-DECIDE.md](SPEC-NOVA-DECIDE.md) section 14).
+([SPEC-NOVA-DECIDE.md](https://github.com/mas-bandwidth/nova-tools/blob/dev/docs/SPEC-NOVA-DECIDE.md) section 14).
 
 ### Exit codes
 
@@ -207,10 +224,10 @@ only, until the brief record's own outcomes support a bar
 
 ### What it does not prove
 
-A landed card records a completed flow: the worker reports done, two different
-readers pass that head, the tick (or the coordinator's `accept`) queues it for
-merging, and the landing is reported. These are recorded judgments, not a
-proof that the work is correct. A twin exercises that flow one command at a
+A landed card records a completed flow: the worker reports done, the required
+readers pass that head (one for flash, two distinct readers for pro), the tick
+(or the coordinator's `accept`) queues it for merging, and the landing is
+reported. These are recorded judgments, not a proof that the work is correct. A twin exercises that flow one command at a
 time. It has no beats or ticks between commands, so it does not test fleet
 timing, the `run` loop, `inbox --wait` or liveness. `finish` without `--head`,
 then `merge`, records a landing without a push. The work table's cost column
@@ -221,7 +238,9 @@ none was — so a total is a ledger of recorded spend, not a proof of it.
 
 ## nova-card
 
-nova-card is pre-alpha: not ready for production use.
+Generate task briefs from existing evidence, then check their structure before
+adding them to a sprint. This checkout labels the separate `nova-card` command
+pre-alpha; the v1.0.0 product includes card generation.
 
 ```
 nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--dry-run]
@@ -233,11 +252,9 @@ nova-card version
 nova-card help [<verb>]
 ```
 
-A card a model writes by hand takes it half an hour and comes back with guessed
-PATHS; one wrong PATHS line was rejected 262 times in one night. nova-card
-writes the cards from the source the work comes from, with the PATHS computed,
-the lint already green, and the waves already laid out, so the one thing left
-to do is `nova-sprint add --stream <s> --brief-dir <dir>`.
+Writing many similar briefs by hand is easy to get wrong. nova-card computes
+paths from the source material, checks the generated cards, and lays out waves
+and dependencies. You can then review the result and load it into the sprint.
 
 The flow is three lines:
 
@@ -309,7 +326,9 @@ plans and lints, prints the manifest and the `CARDS OK` line with
 
 ## nova-work
 
-nova-work is pre-alpha: not ready for production use.
+Bring issue content into a local file so you and your AIs can inspect it
+together. This checkout labels the separate `nova-work` command pre-alpha;
+the v1.0.0 product includes the work tree.
 
 Every issue of every repository of a GitHub organization in one tree file, with
 each issue's full contents, and a check that the file holds exactly what GitHub
@@ -352,3 +371,12 @@ Reads the tree and GitHub again and writes nothing: zero differences is
 holds. `--against <tree>` puts a second tree file where GitHub stands and reads
 no network at all.
 
+## Sprint-program design commands
+
+This checkout also exposes `nova-sprint work repos`, `work issues`,
+`work roadmap`, `work export`, and `work import`. Their durable
+sprint-program implementation is not built: they exit with a refusal and
+read or write neither a tree nor Redis. They are distinct from the working
+GitHub-mirror `nova-work import` and `verify` commands above. See the
+[design and implementation status](../internal/work/NOTE.md) before using
+those names in an integration.

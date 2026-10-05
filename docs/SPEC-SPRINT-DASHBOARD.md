@@ -1,65 +1,75 @@
-# Sprint dashboard: the specification (the owner's decisions of 2026-10-02, written at the clock below)
+# See your team at work
 
-This is the sprint dashboard: a page that is a second view of `nova-sprint where --json`,
-served by `nova-sprint dashboard`. The terminal table that `where` draws stays the
-canonical view, and its output is locked (internal/sprint/TABLES.lock); the page reads
-the same JSON and adds nothing to the sprint. The page's files live in
-`internal/sprintdash/page/` and are embedded in the binary, the wordmark's face
-(Nunito 800, SIL Open Font License, its licence beside it) included, so the page loads
-nothing from anywhere else.
+The dashboard gives you a browser view of the same sprint state as
+`nova-sprint where --json`. Use it to see the work moving, notice a review
+queue growing, and check how your friends and fleet are doing. It is a
+read-only view; decisions still go through the coordinator and sprint commands.
 
-A user tunes the page by editing this specification and the page together: a change to
-`index.html` or `app.js` is a change to the line below that says it, in the same commit.
-`TestDashboardPageIsTheSpec` (internal/sprintdash) holds part of the two equal: it reads
-the quoted rules of this file and the page's markup (and app.js's legend states) and
-compares the panel titles and their order, each table's column headers and their order,
-which columns are numeric (right-aligned), the hero tiles and their labels, the progress
-bar's label and legend, the header's wordmark and pills, and the footer line. A change to
-any of these in one without the other is red. The rest (sizes, colours, motion, layout)
-is checked by eye against this file, at the widths its Responsive section names. In
-this repository the specification is locked (its lock sections): a line changes only
-with the owner's words, quoted with the date. A copy of nova-tools is its owner's to
-tune the same way.
+The page is embedded in the binary, including its Nunito 800 font. It loads
+no external fonts or scripts. The terminal table remains the canonical view.
 
 ## Serving and publishing
 
-`nova-sprint dashboard [--listen <address:port>[,<address:port>...] | none] [--pull <address:port>[,<address:port>...] | none] [--logo <file>] [--every 1s]`
-serves the page on each `--listen` address (default `127.0.0.1:7390`), one listener
-each, sharing one cached copy of the sprint. It reads the sprint in-process the way
-`where --json --cards` does (through the sprint's server when `NOVA_SPRINT_SERVER` names
-one, else on the store `--redis` names), at most once per `--every` and only while a page
-or a puller asks or an event stream is open: `/api/sprint` is that copy, with the build
-number and the throughput, and `/events` pushes each new copy as it is read (server-sent
-events). The pull routes a worker reads its own view from (`/friend/<name>`,
-`/machine/<name>`, their `/api/` and `/events/` forms) are served on the `--pull`
-listeners (default `127.0.0.1:7395`), never on the page's, from the same copy:
-[SPEC-SPRINT.md](SPEC-SPRINT.md), the dashboard. The copy also names the ready
-buffer: `ready`, the ready primaries across streams; `width`, the total width of the
-members that are up; `buffer`, the string `"<ready>/<2*width>"`; and `low`, true while
-`ready` is under `width`. Every answer
-is no-store; the page reloads itself when the build number changes (a new binary, or a
-new `--logo` file). A read that fails holds the last good copy, the page says nothing,
-and the dashboard's output takes one line per new failure, and once a minute a line of
-the reads' count, failures and read times. `--logo` names an image file
-served as the logo and the favicon; with none, the slot renders nothing.
-`/healthz` answers `ok`.
+To view an existing sprint server from the same machine, set its address
+and start the dashboard:
 
-The verb itself listens only inside the fleet's private network: `--listen
-127.0.0.1:7390,<tailnet-address>:7390` serves this machine and the tailnet, and an
-address every network reaches (0.0.0.0, ::) or any public address is refused, because
-the page checks no credential. The page itself may be public: it carries no credential,
-and what it shows of the sprint is fine for anyone to see. To publish it, put a reverse
-proxy (Caddy, for example) on a machine of the owner's choosing in front of a loopback
-listener; the proxy holds the public address and the verb never binds one. The sprint's
-server, the verbs and the Television token stay inside the tailnet. The dashboard
-exits 3 when its binary is replaced on disk, so its supervisor starts the new build
-(docs/FLEET.md shows its loop row).
+```sh
+export NOVA_SPRINT_SERVER=127.0.0.1:<sprint-server-port>
+nova-sprint dashboard
+```
 
-In Television the dashboard is a URL artifact on a channel, pointing at the page's
-address (`http://127.0.0.1:7390/` on the machine that runs it); the Electron app shows a
-URL artifact in a webview, a browser client a placeholder. The token that publishes to
-Television is the owner's: it is never in this repository, never on the dashboard's
-command line, and the dashboard never reads it.
+Open `http://127.0.0.1:7390/` in your browser. The full command is:
+
+```text
+nova-sprint dashboard [--listen <address:port>[,<address:port>...] | none] [--pull <address:port>[,<address:port>...] | none] [--logo <file>] [--every 1s]
+```
+
+| Setting | What it does |
+|---|---|
+| `--listen` | Serves the page; defaults to `127.0.0.1:7390`. |
+| `--pull` | Serves workers' own views; defaults to `127.0.0.1:7395`. |
+| `none` | Disables the corresponding listener. |
+| `--logo` | Uses a supplied image as the page logo and favicon. Without it, the slot is empty. |
+| `--every` | Limits how often the shared snapshot is refreshed; defaults to one second. |
+
+With `NOVA_SPRINT_SERVER`, the dashboard reads through the sprint server.
+Otherwise it reads the store named by `--redis`. Page and pull listeners
+share one cached snapshot, read at most once per interval while a client is
+asking for it or an event stream is open. The page uses `/api/sprint` and
+`/events`; worker routes such as `/friend/<name>` and `/machine/<name>` and
+their API/event forms are served only by the pull listeners.
+
+The snapshot includes build information, throughput, and the ready buffer:
+`ready` counts ready primaries, `width` totals the width of members that are
+up, `buffer` is `"<ready>/<2*width>"`, and `low` is true when `ready < width`.
+See the [sprint contract](SPEC-SPRINT.md) for the underlying state.
+
+The listeners have no authentication and accept only loopback or private
+fleet addresses; wildcard and public bindings are refused. If you choose to
+publish a page through a reverse proxy, decide which sprint details you want
+to expose and put access control at that proxy as needed. Keep the sprint
+server and its credentials private. `/healthz` returns `ok` for the dashboard
+service; it is not proof that every worker or model is healthy.
+
+Responses are `no-store`. The page reloads when its build number changes,
+including a changed logo. If a sprint read fails, the last good snapshot
+stays visible and the failure is logged; the page does not announce it.
+Check the log when the display seems stale. The dashboard logs a summary of
+reads, failures, and timings once a minute and exits 3 when its binary is
+replaced so a supervisor can restart it.
+
+A Television channel can display the page as a URL artifact. Its publishing
+token belongs to the owner, stays out of the repository and dashboard command
+line, and is not read by the dashboard itself.
+
+### Changing the dashboard
+
+The section below is the owner's locked visual contract. Keep its dated
+requirements and the implementation together when an authorised design change
+is made. `TestDashboardPageIsTheSpec` compares titles, column order, numeric
+alignment, tiles, labels, legend states, wordmark, pills, and footer with the
+page. Layout, colour, and motion also need visual checks at the stated widths.
+A documentation tone pass does not change that design contract.
 
 ## The specification
 
