@@ -117,7 +117,7 @@ Then go wider. Work alongside the team, or come back in the morning.
 
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
-[Cards and machine rules](docs/SPEC-SPRINT.md) · [All docs](docs/README.md)
+[Cards and machine rules](docs/SPEC-SPRINT.md) · [Roadmap](ROADMAP.md) · [All docs](docs/README.md)
 
 If you like this [please support our work](https://www.patreon.com/MasBandwidth/membership).
 
