@@ -24,9 +24,9 @@ running, and what needs your decision.
 See what is moving, what has landed, where the time and money are going,
 and what needs attention.
 
-[![The live sprint: landed work, ETA, cost, throughput, and cards by state.](assets/nova-sprint-dashboard.jpg)](http://69.67.149.151)
-
 **[Open the live sprint dashboard →](http://69.67.149.151)**
+
+[![The live sprint: landed work, ETA, cost, throughput, and cards by state.](assets/nova-sprint-dashboard.jpg)](http://69.67.149.151)
 
 - **Follow the work.** Watch streams progress through waiting, ready, working,
   review, merging, and landed. Dependencies keep work in the right order;
