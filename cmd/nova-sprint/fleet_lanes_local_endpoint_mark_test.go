@@ -13,7 +13,7 @@ import (
 // when the machine has cards on local-endpoint routes.
 func TestFleetTrackMarksLocalEndpointLanes(t *testing.T) {
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-a --members bench-a")
+	ta.ok("init --readers reader-a --members m1")
 
 	// Set up a local-endpoint route.
 	ta.m.SetRoutes([]sprint.Route{
@@ -21,11 +21,11 @@ func TestFleetTrackMarksLocalEndpointLanes(t *testing.T) {
 	})
 	ta.ok("add --stream s1 --count 1 --one")
 
-	// Deal one card (it will be dealt to bench-a on the local-a route).
+	// Deal one card (it will be dealt to m1 on the local-a route).
 	ta.deal(1)
 
 	// Take a lane so it shows up in the lanes list.
-	ta.ok("lane take go --machine bench-a --as worker-a")
+	ta.ok("lane take go --machine m1 --as worker-a")
 
 	// Get the where --json --cards output.
 	output := ta.ok("where --json --cards")
@@ -36,7 +36,7 @@ func TestFleetTrackMarksLocalEndpointLanes(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(output), &result))
 
-	// Should have one lane for bench-a/go.
+	// Should have one lane for m1/go.
 	require.Len(t, result.Lanes, 1, "should have one lane")
 	var lane struct {
 		Kind    string `json:"kind"`
@@ -45,7 +45,7 @@ func TestFleetTrackMarksLocalEndpointLanes(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(result.Lanes[0], &lane))
 	require.Equal(t, "go", lane.Kind, "lane kind is go")
-	require.Equal(t, "bench-a", lane.Machine, "machine is bench-a")
+	require.Equal(t, "m1", lane.Machine, "machine is m1")
 	// The route field should be set to the local-endpoint route name
 	require.Equal(t, "local-a", lane.Route, "lane route should be set to the local-endpoint route")
 }
