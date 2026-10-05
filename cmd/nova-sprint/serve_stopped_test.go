@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -69,7 +70,8 @@ var readsAndBeats = []struct {
 	{[]string{"fleet", "beat", "m1", "--load", "5"}, "FLEET-BEAT OK m1"},
 }
 
-func verbsOf(list []struct {
+// argvsOf is the verbs of a list, in its order.
+func argvsOf(list []struct {
 	argv []string
 	ok   string
 }) [][]string {
@@ -78,6 +80,24 @@ func verbsOf(list []struct {
 		out = append(out, v.argv)
 	}
 	return out
+}
+
+// partOf is a list cut in two by keep, each part in its order.
+func partOf(list []struct {
+	argv []string
+	ok   string
+}, keep func([]string) bool) (in, out []struct {
+	argv []string
+	ok   string
+}) {
+	for _, v := range list {
+		if keep(v.argv) {
+			in = append(in, v)
+		} else {
+			out = append(out, v)
+		}
+	}
+	return in, out
 }
 
 // served is the server's step in its own goroutine: its answer arrives on the channel.
@@ -98,12 +118,13 @@ func logLines(t *testing.T, ta *testApp) int {
 // With the machine STOPPED the server answers every read and every beat as it does while
 // RUNNING, and a worker's write answers at once as it does on a STOPPED machine, with no
 // wait at all while the line is free. While the stopped machine's tick holds the line, the
-// same batch is answered within ServeWait on the server's clock, every verb busy, naming
-// the tick, having run nothing; once the line is free it is answered whole.
+// reads and the beats still answer at once on their lanes, and the verbs that take the line
+// are answered within ServeWait on the server's clock, each busy, naming the tick, having
+// run nothing; once the line is free the whole batch is answered.
 func TestAStoppedMachineStillAnswersReadsAndBeats(t *testing.T) {
 	t.Parallel()
 	ta := servedSprint(t)
-	ta.ok("stop")
+	ta.ok("stop --reason r --until 9999h")
 	clock := newServeClock(ta.a)
 	began := ta.a.now()
 
@@ -126,25 +147,36 @@ func TestAStoppedMachineStillAnswersReadsAndBeats(t *testing.T) {
 	assert.Empty(t, clock.asked, "a batch that found the line free waited on no clock")
 	assert.Equal(t, began, ta.a.now(), "no verb waited on the server's clock")
 
-	// the stopped machine's tick holds the line: the batch is answered at its bound
+	// the stopped machine's tick holds the line: the reads and the beats run on their lanes
+	// and answer at once, on no clock; the verbs that take the line are answered at its bound
 	before := logLines(t, ta)
 	ta.a.serial.LockAs("the tick begun at " + began.Format("15:04:05"))
-	got := served(ta.a, verbsOf(readsAndBeats), true)
+	lane, line := partOf(readsAndBeats, func(argv []string) bool {
+		return argv[0] != "queue" && argv[0] != "fleet" && (argv[0] != "inbox" || !slices.Contains(argv, "--read"))
+	})
+	res := ta.a.serveFrom(sprintwire.Request{Verbs: argvsOf(lane)}, true)
+	require.Len(t, res.Results, len(lane))
+	for i, r := range res.Results {
+		assert.Equal(t, 0, r.Code, "%v on its lane: %s", lane[i].argv, r.Stderr)
+		assert.Contains(t, r.Stdout, lane[i].ok, "%v on its lane", lane[i].argv)
+	}
+	assert.Empty(t, clock.asked, "a read or a beat waited on no clock")
+	got := served(ta.a, argvsOf(line), true)
 	require.Equal(t, ServeWait, <-clock.asked, "the batch waits at most ServeWait")
 	require.LessOrEqual(t, ServeWait, time.Second, "a verb is answered within a second of being read")
 	clock.fire <- began.Add(ServeWait)
-	res := <-got
-	require.Len(t, res.Results, len(readsAndBeats))
+	res = <-got
+	require.Len(t, res.Results, len(line))
 	for i, r := range res.Results {
-		assert.Equal(t, 2, r.Code, "%v", readsAndBeats[i].argv)
-		assert.Contains(t, r.Stderr, "busy: the tick begun at 03:04:05 held the line of control past 1s; nothing was run or changed; send it again", "%v", readsAndBeats[i].argv)
+		assert.Equal(t, 2, r.Code, "%v", line[i].argv)
+		assert.Contains(t, r.Stderr, "busy: the tick begun at 03:04:05 held the line of control past 1s; nothing was run or changed; send it again", "%v", line[i].argv)
 		assert.Empty(t, r.Stdout)
 	}
 	ta.a.serial.Unlock()
 	assert.Equal(t, before, logLines(t, ta), "a busy batch wrote nothing")
 
 	// the line free again: the same batch answered whole
-	res = ta.a.serveFrom(sprintwire.Request{Verbs: verbsOf(readsAndBeats)}, true)
+	res = ta.a.serveFrom(sprintwire.Request{Verbs: argvsOf(readsAndBeats)}, true)
 	for i, r := range res.Results {
 		assert.Equal(t, 0, r.Code, "%v: %s", readsAndBeats[i].argv, r.Stderr)
 		assert.Contains(t, r.Stdout, readsAndBeats[i].ok)

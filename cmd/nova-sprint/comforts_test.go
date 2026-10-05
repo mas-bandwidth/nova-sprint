@@ -93,11 +93,11 @@ func (ta *testApp) raw(line string) (int, string, string) {
 }
 
 // Which verbs need --epoch: the verbs that act on cards handed to an actor
-// outside the sprint (take by id, finish, read, ci, and a merge by anyone but
-// the coordinator), never the coordinator's own. A table over every verb.
+// outside the sprint (take by id, finish, progress, read, ci, and a merge by anyone
+// but the coordinator), never the coordinator's own. A table over every verb.
 func TestWhichVerbsNeedAnEpoch(t *testing.T) {
 	t.Parallel()
-	always := map[string]bool{"finish": true, "read": true, "ci": true, "take by id": true}
+	always := map[string]bool{"finish": true, "progress": true, "read": true, "ci": true, "take by id": true}
 	seen := map[string]bool{}
 	for _, v := range append(append([]verb(nil), verbs...), verb{name: "take by id"}) {
 		seen[v.name] = true
@@ -254,18 +254,6 @@ func TestInboxJSONCarriesTheJudgmentsToActOn(t *testing.T) {
 	ta.json("inbox", &in)
 	require.Len(t, in.Judgments, 1, "the judgments after the answers: %+v", in.Judgments)
 	require.NotEqual(t, sprint.NWorkFailed, in.Judgments[0].Type, "the judgments after the answers: %+v", in.Judgments)
-}
-
-// byType is the judgment of a type.
-func byType(t *testing.T, js []inboxJudgment, typ string) inboxJudgment {
-	t.Helper()
-	for _, j := range js {
-		if j.Type == typ {
-			return j
-		}
-	}
-	t.Fatalf("no judgment %q in %+v", typ, js)
-	return inboxJudgment{}
 }
 
 // byStream is the judgment of a stream.

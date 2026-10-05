@@ -97,7 +97,7 @@ func TestReaderAwayAndUp(t *testing.T) {
 	out := ta.ok("reader away reader-c")
 	assert.Contains(t, out, "READER-AWAY OK readers=reader-c")
 	ta.ok("queue --as reader-c") // it still beats
-	assert.Equal(t, "away", ta.readerState("reader-c"))
+	assert.Equal(t, "held", ta.readerState("reader-c"), "reader away is hold --return in the old words: its state reads held")
 	assert.Equal(t, "up", ta.readerState("reader-a"))
 	out = ta.ok("reader up reader-c")
 	assert.Contains(t, out, "READER-UP OK readers=reader-c")
@@ -131,8 +131,9 @@ func TestTheAskNeverAsksAnAwayReader(t *testing.T) {
 	ta.inReview(2)
 	ta.ok("ask")
 	assert.Empty(t, ta.askedOf("reader-a"), "reader-a is away: no read is asked of it")
-	assert.Len(t, ta.askedOf("reader-b"), 2)
-	assert.Len(t, ta.askedOf("reader-c"), 2)
+	// each card's first read, round the readers up
+	assert.Len(t, ta.askedOf("reader-b"), 1)
+	assert.Len(t, ta.askedOf("reader-c"), 1)
 }
 
 // With fewer than two readers up the tick asks none, raises one judgment for
@@ -156,11 +157,11 @@ func TestFewerThanTwoReadersUpIsOneJudgmentPerTick(t *testing.T) {
 		}
 	}
 	require.Len(t, judgments, 1, "one judgment for the sprint, whatever the primaries waiting: %+v", ta.inboxGroups())
-	assert.Contains(t, judgments[0].What, "fewer than two readers up: reader-a away, reader-b away, reader-c up")
+	assert.Contains(t, judgments[0].What, "fewer than two readers up: reader-a held, reader-b held, reader-c up")
 	ta.ok("reader up reader-a")
 	ta.ok("tick")
-	assert.Len(t, ta.askedOf("reader-a"), 3)
-	assert.Len(t, ta.askedOf("reader-c"), 3)
+	// each card's first read, round the two readers up (reads are asked one at a time)
+	assert.Len(t, append(ta.askedOf("reader-a"), ta.askedOf("reader-c")...), 3)
 	for _, g := range ta.inboxGroups() {
 		assert.False(t, g.Kind == sprint.Judgment && g.Type == sprint.NFewReaders, "the judgment closes when two are up")
 	}
@@ -175,6 +176,7 @@ func TestAReadAskedOfAReaderThatGoesAwayIsAskedAgain(t *testing.T) {
 	ta.ok("reader away reader-c")
 	ta.inReview(1)
 	ta.ok("ask")
+	ta.ok("ask s1-1 --another") // the pair: reads are asked one at a time
 	require.Len(t, ta.askedOf("reader-a"), 1)
 	require.Len(t, ta.askedOf("reader-b"), 1)
 	ta.ok("reader up reader-c")
@@ -183,11 +185,16 @@ func TestAReadAskedOfAReaderThatGoesAwayIsAskedAgain(t *testing.T) {
 	ta.ok("tick")
 	assert.Empty(t, ta.askedOf("reader-b"), "the read returned from the reader that went away")
 	assert.Equal(t, []string{"s1-1.r1.reader-a"}, ta.askedOf("reader-a"))
+	// reads are asked one at a time: reader-a's stands, and the read taken back is
+	// asked of the next reader up once reader-a's comes back ok
+	assert.Empty(t, ta.askedOf("reader-c"))
+	ta.ok("read --as reader-a --ok s1-1.r1.reader-a")
+	ta.ok("tick")
 	assert.Equal(t, []string{"s1-1.r1.reader-c"}, ta.askedOf("reader-c"), "asked of the next reader up at the same attempt")
 	out := ta.ok("card s1-1")
 	assert.NotContains(t, out, "attempt 2")
 	for _, g := range ta.inboxGroups() {
-		assert.False(t, g.Kind == sprint.Judgment, "no judgment is owed: %+v", g)
+		assert.NotEqual(t, sprint.Judgment, g.Kind, "no judgment is owed: %+v", g)
 	}
 }
 

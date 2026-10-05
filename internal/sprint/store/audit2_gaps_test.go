@@ -54,13 +54,6 @@ func (h *harness) a2Named(id string) []string {
 	return out
 }
 
-// a2Silent fails when the inbox names id: the gap is closed.
-func (h *harness) a2Silent(id, when string) {
-	h.t.Helper()
-	got := h.a2Named(id)
-	require.Empty(h.t, got, "%s: the inbox names %s (the gap is closed?): %v", when, id, got)
-}
-
 // a2Stale is the stream-stale lines the inbox shows: the one backstop left,
 // which names no card.
 func (h *harness) a2Stale() []string {
@@ -209,8 +202,7 @@ func TestAudit2ClosedAckedReadsExhaustedIsSilentForEver(t *testing.T) {
 	h := newHarness(t)
 	h.setup(1)
 	h.a2ToReview("s1-1", false)
-	h.must(AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}}))
-	rc := h.snap().Readers.Of("s1-1")
+	rc := h.pairAsked("s1-1")
 	h.must(ReadStep(sprint.ReadReq{As: rc[0].Row, Verdict: "ok", Sel: sprint.Sel{IDs: []string{rc[0].ID}}}))
 	h.must(ReadStep(sprint.ReadReq{As: rc[1].Row, Verdict: "broken", Finding: "x:1", Sel: sprint.Sel{IDs: []string{rc[1].ID}}}))
 	h.a2AckRefused(sprint.NReadBroken)
@@ -519,8 +511,7 @@ func TestAudit2ClosedAskAnotherHitsARetiredCard(t *testing.T) {
 	h := newHarness(t) // readers a, b, c
 	h.setup(1)
 	h.a2ToReview("s1-1", false)
-	h.must(AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}}))
-	rc := h.snap().Readers.Of("s1-1")
+	rc := h.pairAsked("s1-1")
 	h.must(ReadStep(sprint.ReadReq{As: rc[0].Row, Verdict: "ok", Sel: sprint.Sel{IDs: []string{rc[0].ID}}}))
 	h.must(AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Another: true}))
 	for _, c := range h.snap().Readers.Of("s1-1") {
@@ -622,9 +613,7 @@ func TestTheTickAsksNoReaderWhoAlreadyReadTheAttempt(t *testing.T) {
 	h.setup(1)
 	h.a2ToReview("s1-1", false)
 	h.must(AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}}))
-	for _, c := range h.snap().Readers.Of("s1-1") {
-		h.must(ReadStep(sprint.ReadReq{As: c.Row, Verdict: "ok", Sel: sprint.Sel{IDs: []string{c.ID}}}))
-	}
+	h.readAllOK("s1-1")
 	h.must(AcceptStep(sprint.AcceptReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}}))
 	h.must(ReturnStep(sprint.ReturnReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Reason: "look again"}))
 	h.startMachine()

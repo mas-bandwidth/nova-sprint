@@ -52,19 +52,21 @@ refusals with reasons (`REFUSED`, on stderr), and the sprint's summary
 
 ```
 nova-sprint init [--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--rules <file>]
-nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>]
+nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]]
 nova-sprint quack --streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]
 nova-sprint release <sentinel>... --reason <text> [--answers <note>]
 nova-sprint resolve [<id>...] [--stream <s>] [--limit <n>]
 nova-sprint start
 nova-sprint stop
-nova-sprint run
-nova-sprint tick
+nova-sprint run [--answer-rules=false] [--idle-alarm=false]
+nova-sprint tick [--answer-rules] [--idle-alarm]
+nova-sprint selftest [--dir <d>] [--keep]
 nova-sprint goal set <name> [--file <path>] [--to file:<path>]
 nova-sprint goal show [<name>]
 nova-sprint goal drop <name>
 nova-sprint take --as <member> [<card>@<gen>...] [--epoch <n>] [--limit <n>]
 nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--usage <text>]
+nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
 nova-sprint queue --as <reader|member> | --stream <s>
 nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--usage <text>]
@@ -73,17 +75,21 @@ nova-sprint rework (<id>... | --group <id> [--expect <n>]) [--fix <text>] [--ans
 nova-sprint return (<id>... | --group <id> [--expect <n>]) [--reason <text>] [--answers <note>]
 nova-sprint drop (<id>... | --stream <s> --col <state> | --group <id> [--expect <n>]) --reason <text> [--answers <note>]
 nova-sprint rank <id>... (--score <n> | --first) [--answers <note>]
+nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] | <id> --tier <flash|pro|heavy|frontier>
 nova-sprint move <id>... --stream <s> [--before <id> | --after <id> | --score <n>]
-nova-sprint merge --stream <s> [--batch <n>] [--conflict <id> | --cross <id>=<other> | --red [--suspect <id>...] | --rejected] [--note <text>]
+nova-sprint merge --stream <s> [--batch <n>] [--conflict <id> [--conflict-kind file|ledger] [--conflict-path <p>...] | --cross <id>=<other> | --red [--suspect <id>...] | --rejected | --base-red <error>] [--note <text>]
 nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]
 nova-sprint resume --stream <s> [--did <text>] [--answers <note>]
+nova-sprint backup --file <path>
 nova-sprint fleet beat <member> [--load <percent>]
 nova-sprint fleet up <member> [--width <n>]
 nova-sprint fleet down <member>
 nova-sprint fleet sync [--check] [--pg <dsn>]
 nova-sprint fleet level
-nova-sprint friend sync [--pg <dsn>]
+nova-sprint friend sync [--pg <dsn>] [--root <dir>] [--every <duration>]
+nova-sprint friend sync install --every <duration> [--redis <addr>] [--pg <dsn>] [--root <dir>] [--dir <dir>] [--log <file>] [--dry-run]
+nova-sprint friend sync uninstall [--dir <dir>] [--dry-run]
 nova-sprint friend beat <friend> [--working <n>] [--queue <n>] [--width <n>] [--running <id>,...] [--load <percent>]
 nova-sprint friend down <friend> [--reason <text>] [--until <RFC3339>]
 nova-sprint friend up <friend> [--width <n>]
@@ -105,10 +111,17 @@ nova-sprint log [--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC333
 nova-sprint check
 nova-sprint repair
 nova-sprint where [--watch] [--every <duration>] [--all] [--json [--cards]]
+nova-sprint view coordinator [--all] [--since <cursor>] [--json]
+nova-sprint view worker --as <member|friend> [--since <cursor>] [--json]
 nova-sprint dashboard [--listen <address:port>[,...] | none] [--pull <address:port>[,...] | none] [--logo <file>] [--every <duration>]
 nova-sprint seat
+nova-sprint seat login --store <secrets dir> --as <seat> --key <keyfile> --secret <NAME> --user <redis user> --redis <addr> [--sops <path>]
+nova-sprint seat login --check
+nova-sprint seat logout
 nova-sprint routes
+nova-sprint rules
 nova-sprint funded <provider> --reason <text>
+nova-sprint cost reconcile [--dry-run] [--json]
 nova-sprint stats
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
 nova-sprint clear --confirm sprint
@@ -116,7 +129,7 @@ nova-sprint teardown --confirm sprint
 ```
 
 Every store verb takes `--redis <addr>` (else `NOVA_SPRINT_REDIS`, then
-`NOVA_REDIS_ADDR`), `--actor <name>` (else `NOVA_SPRINT_ACTOR`; no default — a
+`NOVA_REDIS_ADDR`, then the address `seat login` recorded), `--actor <name>` (else `NOVA_SPRINT_ACTOR`; no default — a
 verb that writes wants one), `--op <id>` (the same id again returns the recorded
 result), `--json` and `--max <n>` (listed items; 0 is all). The coordinator's
 verbs are the coordinator's alone (the first `init` names it: `--coordinator`,
@@ -129,6 +142,50 @@ ids, a stream, a column, `--max n` (`--limit` is an alias), or an inbox group:
 which refuses a group that has changed. `nova-sprint help <verb>` (or
 `<verb> -h`) prints one verb's usage, flags and exit codes; `nova-sprint help
 <group>` (fleet, friend, reader, goal, stream) prints one group's.
+
+### The seat's store login
+
+`nova-sprint seat login --store <secrets dir> --as <seat> --key <keyfile> --secret <NAME> --user <redis user> --redis <addr>` records the store login in `~/.config/nova-sprint/login.json` (or under `$XDG_CONFIG_HOME`), mode 0600: the address, the user and where the password is in nova-secrets, never the password, and only once the secret resolves. After it, `nova-sprint <verb>` typed bare reaches that store as that user, the password read in the verb's own process through nova-secrets' checks, with no `nova-secrets exec` wrapper; `--redis`, `NOVA_SPRINT_REDIS`/`NOVA_REDIS_ADDR` and `NOVA_SPRINT_REDIS_USER` still win. `seat login --check` prints `SEAT LOGIN file=… redis=… user=… … resolves=yes|no` (exit 1 on no), the password never shown; `seat logout` removes the record. A recorded secret that does not resolve is refused naming the file and the remedy, never dialed without a password. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md#the-seats-store-login).
+
+### The sprint backup
+
+`nova-sprint backup --file <path>` writes the store to a new file (owner-only; an existing file is refused, never overwritten), reads it back against its SHA-256, restores it into a twin and compares it with the store, and scans it for secret-shaped text. A file that fails any step is removed. On success it prints `BACKUP OK file=<path> sha256=<hex> bytes=<n> keys=<n> cards=<n> restored=twin compared=<document+counts|counts> secrets=none`; a refusal names the failed step and, for a secret, the lines (never the value). It runs on the store's host for a Redis, and on any twin (`--redis mem:<file>`) with no server. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md#sprint-backup-verb).
+
+### A card re-cut as its twin
+
+A card re-cut under a new id is its old card's twin: `add --stream s1 lint-pkg-cairn-tb
+--brief-file lint-pkg-cairn-tb.md --replaces lint-pkg-cairn-t` admits the twin, makes
+every waiting card that needed the old id need the twin instead (`card <dependent>` shows
+the new need), drops the old card `replaced by lint-pkg-cairn-tb`, and raises no "blocked
+on something dropped" judgment, in one step. Where the drop and the add were made apart,
+`relink lint-pkg-cairn-t lint-pkg-cairn-tb` re-points the edges and answers the blocked
+judgments of that pair. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md) section 2, "A
+card replaced by its twin".
+
+### Role views: what a model reads instead of the dashboard
+
+The owner, 2026-10-04: "i'd rather you hit this vs. hitting my dashboard which is for human
+eyes". `nova-sprint view coordinator` is everything that needs the seat now, ranked by the
+cards behind each item: open judgments, notes addressed to the coordinator, alarms (the
+machine stopped, the fleet idle, nothing ready, a review or merge backlog, a stream stopped),
+sentinels reached, and friends and machines that need a look, each with `next`, the exact
+command that acts on it. `nova-sprint view worker --as <member|friend>` is one worker's cards
+in order (brief, BASE, PATHS, deadline, attempt), its next step and its results not landed.
+Both are reads, `--json` (schema 1), compact for the tokens a model pays: only what needs
+action (`--all` adds every machine's and friend's row), a summary line first, and a `cursor`
+that `--since <cursor>` takes to leave out what the last read showed unchanged:
+
+```sh
+nova-sprint view coordinator                 # the summary and up to 19 items, then cursor=
+nova-sprint view coordinator --json --since <the cursor the last read printed>
+nova-sprint view worker --as m1 --json
+curl -s --compressed http://<tailnet address>:<port>/api/view/coordinator
+curl -s --compressed 'http://<tailnet address>:<port>/api/view/worker?as=<name>'
+```
+
+The sprint's server (`run --listen`) serves them read-only at `/api/view/coordinator` and
+`/api/view/worker?as=<name>`. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md), section 11,
+"Role views".
 
 ### A worker's own view: the dashboard's pull routes
 
@@ -160,6 +217,31 @@ state) and `routes` each route's `balance=`. When every provider is out of credi
 stops the machine (`machine: STOPPED (every provider is out of credit)`) and `start` is refused
 until one is paid; a provider low on funds never stops it. `funded <provider> --reason <text>`
 says one was paid. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md), "A provider out of funds".
+
+### Answered by rule
+
+The run loop's tick answers the mechanical judgments itself, by rule, and records each as
+`answered by rule <name>` on the log and on the card (`rule_answer`): work came back
+failed is redealt on the next route of its tier, and the second failure on a tier goes a
+tier up (flash, pro, heavy, then a friend's card); a card at its bound goes a tier up; a
+work card past its deadline is waited 30 minutes once when it made progress in the last 10,
+else returned and dealt again; a stream stopped on a conflict in a file no ledger owns has
+the card returned, the stream resumed and the card redone on the current tip; the same
+finding twice marks the card a brief defect and leaves it to you; and land gates a red base
+again after 2 and 5 minutes before the third failure stops the stream with the error. A
+reader's finding stays yours. `nova-sprint rules` prints what the rules would answer now and
+Xoff, and nova-config's sprint row turns single ones off: `nova-config sprint set
+--answer_rules_off late,conflict`, then `nova-config apply`. The contract is
+[SPEC-SPRINT.md section 8](SPEC-SPRINT.md#answered-by-rule).
+
+### The fleet is idle
+
+When the fleet works under half its width for 5 minutes while cards wait, the run loop's
+tick pushes you one note, `the fleet is idle`: `fleet 4/68: 311 behind 21 drop-blocked
+judgments (oldest 1h50m); 89 behind md-secrets (a card reached its bound, 40m)`, every
+waiting card traced to the root of its chain and the roots named by the cards behind
+them; once an episode, and `the fleet is working again` when it recovers. `run
+--idle-alarm=false` turns it off. The contract is [SPEC-SPRINT.md section 14](SPEC-SPRINT.md#the-fleet-is-idle).
 
 ### Answering the routine judgments
 
@@ -195,6 +277,18 @@ the op stored on the card for land and drop to attach its end. The decision is
 uncalibrated: nova-config's `sprint` row `decide_brief_bar` stays empty, which reports
 only, until the brief record's own outcomes support a bar
 ([SPEC-NOVA-DECIDE.md](SPEC-NOVA-DECIDE.md) section 14).
+
+### install-canary-shadow-tick-r.w1: the shadow tick before a server swap
+
+`nova-sprint tick --shadow` plans one tick on the store and applies nothing: the store is
+opened read-only, every write a refusal, and each part's plan is printed (`SHADOW PLAN
+<table>/<part> size= due=`, then `SHADOW TICK OK epoch= state= parts= size= took= wrote=nothing`;
+`--json` prints the plan as one line). `nova-sprint server switch <binary>` runs `<binary> tick
+--shadow --json` against the store first and refuses the swap, exit 1 with nothing changed and
+the old server running, when the shadow exits non-zero, panics, misses `--tick-deadline`
+(default 10s) or prints no plan; on a pass it switches and keeps the shadow's plan size and time
+at `<target>.shadow.json`, beside the switch record. The contract is
+[SPEC-SPRINT.md](SPEC-SPRINT.md) section 14, "install-canary-shadow-tick-r.w1".
 
 ### Exit codes
 

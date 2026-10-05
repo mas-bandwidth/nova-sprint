@@ -16,14 +16,17 @@ import (
 // progress (the last change of its state or of any of its counts).
 type StreamClock struct {
 	Stream   string
+	Release  string `json:",omitempty"`
 	State    string
 	Since    time.Time
 	Progress time.Time
 	// Empty says nothing of the stream is on the table: never stale.
 	Empty bool `json:",omitempty"`
 	// Held says every card of the stream on the table and not landed waits (on a
-	// sentinel, or a need): it is held by what it waits on, never stale.
-	Held bool `json:",omitempty"`
+	// sentinel, or a need): it is held by what it waits on, never stale; or the
+	// coordinator holds it (hold <stream>, hold.go), the reason in Reason.
+	Held   bool   `json:",omitempty"`
+	Reason string `json:",omitempty"`
 	// Quiet is the time wait set on the stream's stale judgment (FieldStaleReview):
 	// not shown stale before it.
 	Quiet time.Time `json:",omitzero"`
@@ -473,6 +476,13 @@ func commands(g Group, first Note, prefix string) []Command {
 			case "drop":
 				add(d, cmd+"drop "+card+" --reason "+whyText+ans+" --one", resume("'dropped "+card+"'"))
 			}
+		case g.Type == NBaseRed:
+			switch d {
+			case "resume":
+				add(d, resume("'<the base passes its tree gate again>'"))
+			case "wait":
+				add(d, cmd+"wait "+first.ID+" --for 30m")
+			}
 		case g.Type == NRejected:
 			switch d {
 			case "resume":
@@ -538,13 +548,19 @@ func commands(g Group, first Note, prefix string) []Command {
 		case d == "wait 15m" || d == "wait 10m" || d == "wait 30m":
 			add(d, cmd+"wait "+cmp.Or(first.ID, g.ID)+" --for "+strings.TrimPrefix(d, "wait "))
 		case strings.HasPrefix(d, "restart "):
-			// a reader whose width lags its machine: its loop unit is nova-config's record of
+			// a reader reading under its width: its loop unit is nova-config's record of
 			// the reader's name; restarted, it reads its machine's width (readers_behind.go)
 			add(d, "nova-config loop show "+strings.TrimPrefix(d, "restart ")+"  # restart this loop's unit on its machine: it reads its machine row's width at start")
 		case strings.HasPrefix(d, "funded "):
 			add(d, cmd+d+" --reason '<the payment made>'")
 		case d == "ack":
 			add(d, cmd+"ack "+strings.Join(g.Notes, ",")+" --reason "+noneText)
+		case d == "raise":
+			// the stream's read tier rises to the tier the judgment proposes, the cause recorded (readtier.go)
+			_, why, _ := strings.Cut(first.What, "? ")
+			add(d, cmd+"stream set "+g.Stream+" --read-tier "+first.Tier+" --reason '"+strings.ReplaceAll(why, "'", "")+"'"+ans)
+		case d == "keep":
+			add(d, cmd+"ack "+strings.Join(g.Notes, ",")+" --reason 'keep the read tier'")
 		case d == "resume" && s != "":
 			add(d, resume(didText))
 		case d == "release":

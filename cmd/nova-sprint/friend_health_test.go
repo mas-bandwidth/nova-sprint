@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/bus"
+	"github.com/mas-bandwidth/nova-sprint/internal/bus/bustest"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
@@ -59,6 +60,7 @@ func TestFriendHealthIsTheSeatsAndFencedByItsGeneration(t *testing.T) {
 	ta, _ := friendApp(t, "amy")
 	ta.ok("friend sync --root " + t.TempDir())
 	seen := ta.now.UTC().Format(time.RFC3339)
+	assert.Contains(t, ta.dry("friend health amy --state up --seen "+seen+" --generation 1 --dry-run"), "FRIEND-HEALTH DRY-RUN amy state=up seen="+seen+" generation=1; nothing was changed")
 	out := ta.ok("friend health amy --state up --seen " + seen + " --generation 1")
 	assert.Equal(t, "FRIEND-HEALTH OK amy state=up seen="+seen+" generation=1 status=up\n", out)
 	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "amy     |     0 |       0 |     8 |    0 | 0.0% | up")
@@ -72,13 +74,17 @@ func TestFriendHealthIsTheSeatsAndFencedByItsGeneration(t *testing.T) {
 
 	ta.ok("coordinator stella --reason 'handing over'")
 	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "an old seat's proof never looks up under a new seat")
-	later := ta.now.Add(time.Second).UTC().Format(time.RFC3339)
+	ta.a.sleep(time.Second)
+	later := ta.now.UTC().Format(time.RFC3339)
 	code, _, errs = ta.do("friend health amy --state up --seen " + later + " --generation 1 --actor stella")
 	assert.Equal(t, 1, code, errs)
 	assert.Contains(t, errs, "the seat is stella's at generation 2, and this observation names generation 1: read the seat again (nova-sprint seat); nothing was changed")
 	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "a refusal writes nothing")
 	ta.ok("friend health amy --state up --seen " + later + " --generation 2 --actor stella")
 	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| up")
+	code, _, errs = ta.do("friend health amy --state up --seen " + ta.now.Add(time.Hour).UTC().Format(time.RFC3339) + " --generation 2 --actor stella")
+	assert.Equal(t, 1, code, errs)
+	assert.Contains(t, errs, "after the server's clock", "a proof dated after the server's clock is refused")
 
 	ta.a.sleep(sprint.FriendObservedDownAfter + time.Second)
 	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "ten seconds without a newer proof")
@@ -114,7 +120,8 @@ func TestTheFriendsTableShowsUpHeldOrDownWithTheReason(t *testing.T) {
 	ta.json("where", &w)
 	assert.Equal(t, sprint.Down, w.Tables[sprint.Friends]["amy"]["status"])
 
-	later := ta.now.Add(time.Second).UTC().Format(time.RFC3339)
+	ta.a.sleep(time.Second)
+	later := ta.now.UTC().Format(time.RFC3339)
 	back := ta.now.Add(2 * time.Hour)
 	ta.ok("friend health amy --state down --seen " + later + " --generation 1 --reason 'opus rate limited' --until " + back.UTC().Format(time.RFC3339))
 	frame = tableOf(ta.frame(), sprint.Friends)
@@ -124,10 +131,11 @@ func TestTheFriendsTableShowsUpHeldOrDownWithTheReason(t *testing.T) {
 	frame = tableOf(ta.frame(), sprint.Friends)
 	assert.Contains(t, frame, "held (resting her, until "+ta.a.clock12(back, ta.now)+")", frame)
 	ta.json("where", &w)
-	assert.True(t, strings.HasPrefix(w.Tables[sprint.Friends]["amy"]["status"], sprint.Held+" ("), "where --json carries the cell as printed")
+	assert.True(t, strings.HasPrefix(cellText(w.Tables[sprint.Friends]["amy"]["status"]), sprint.Held+" ("), "where --json carries the cell as printed")
 	ta.ok("friend up amy")
 	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| down", "the hold lifted, the observation (down) stands")
-	ta.ok("friend health amy --state up --seen " + ta.now.Add(2*time.Second).UTC().Format(time.RFC3339) + " --generation 1")
+	ta.a.sleep(time.Second)
+	ta.ok("friend health amy --state up --seen " + ta.now.UTC().Format(time.RFC3339) + " --generation 1")
 	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| up")
 }
 
@@ -157,7 +165,9 @@ func TestFriendSyncWakesTheFriendWithOneBusMessagePerDelivery(t *testing.T) {
 
 	// the bus is down: the delivery stands, sync says so, and the card's story has it
 	ta2, root2 := friendCardApp(t, "friend amy", "amy")
-	ta2.a.bus = func(_ context.Context, _ bus.Message) error { return errors.New("dial tcp: connection refused") }
+	ta2.a.bus = func(_ context.Context, _ bus.Message, _ func(string)) error {
+		return errors.New("dial tcp: connection refused")
+	}
 	ta2.ok("tick")
 	out := ta2.ok("friend sync --root " + root2)
 	assert.Contains(t, out, "FRIEND-CARD DELIVERED friend=amy card=s1-1.w1")
@@ -169,4 +179,49 @@ func TestFriendSyncWakesTheFriendWithOneBusMessagePerDelivery(t *testing.T) {
 	assert.True(t, strings.Contains(story, "nova-bus send --as coordinator --to amy"), story)
 	ta.clean()
 	ta2.clean()
+}
+
+// friend sync's bus message goes through friend.Courier, its result watched: a store that
+// refuses the server's login is one alarm, raised at the first failed send as one
+// FRIEND-CARD BUS-ALARM line on sync's output and named in the note on the card's story,
+// and cleared at the next send that succeeds (docs/SPEC-FRIEND.md, fr-delivery-receipts.w1).
+// The store is bus's fake behind the app's dial (busOpen): no socket.
+func TestFriendSyncSaysTheBusStoresAlarmAndTheNextSendClearsIt(t *testing.T) {
+	t.Parallel()
+	ta, root := friendCardApp(t, "friend amy", "amy")
+	env := ta.a.getenv
+	ta.a.getenv = func(k string) string {
+		return map[string]string{busRedisEnv: "bus.test:6379", busUserEnv: "sprint"}[k] + env(k)
+	}
+	fake := bustest.NewFake(time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC), "coordinator", "amy")
+	fake.Friends = []string{"amy"}
+	fake.Fail = errors.New("WRONGPASS invalid username-password pair or user is disabled.")
+	var dialed []string
+	ta.a.busOpen = func(_ context.Context, addr, user string) (*bus.Bus, func(), error) {
+		dialed = append(dialed, addr+" as "+user)
+		return &bus.Bus{Store: fake}, func() {}, nil
+	}
+	ta.a.bus = ta.a.sendBus
+	ta.ok("tick")
+	out := ta.ok("friend sync --root " + root)
+	assert.Contains(t, out, "FRIEND-CARD DELIVERED friend=amy card=s1-1.w1")
+	assert.Contains(t, out, "FRIEND-CARD BUS-ALARM bus store bus.test:6379 refuses the login of user sprint: login refused (WRONGPASS)")
+	_, alarm, _ := strings.Cut(out, "FRIEND-CARD BUS-ALARM")
+	alarm, _, _ = strings.Cut(alarm, "\n")
+	assert.NotContains(t, alarm, "invalid username-password", "the alarm carries the store's refusal word, never the rest of its text")
+	assert.Contains(t, out, "the bus store's alarm is raised: FRIEND-CARD BUS-ALARM", "the note names the alarm")
+	assert.Equal(t, 1, strings.Count(out, "BUS-ALARM bus store"), "raised once")
+
+	var said []string
+	say := func(line string) { said = append(said, line) }
+	m := bus.Message{From: "coordinator", To: []string{"amy"}, Subject: "card c2 dealt", Body: "hello"}
+	require.Error(t, ta.a.sendBus(context.Background(), m, say))
+	assert.Empty(t, said, "a second failure counts in the raised alarm and says nothing new")
+
+	fake.Fail = nil
+	require.NoError(t, ta.a.sendBus(context.Background(), m, say))
+	require.Len(t, said, 1)
+	assert.Contains(t, said[0], "FRIEND-CARD BUS-ALARM bus store bus.test:6379 answers user sprint again: 2 sends failed (auth)")
+	assert.Equal(t, 1, fake.Len(bus.StreamOf("amy")), "the message reached her stream once the store answered")
+	assert.Equal(t, []string{"bus.test:6379 as sprint", "bus.test:6379 as sprint", "bus.test:6379 as sprint"}, dialed, "one connection per send")
 }
