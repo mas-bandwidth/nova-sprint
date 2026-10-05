@@ -39,6 +39,9 @@ func run(r *recipe, from, keep, out string) (*report, error) {
 		return nil, fmt.Errorf("%s already exists; -out must be a new directory", out)
 	}
 	s := &seeder{r: r, from: from, files: map[string]file{}}
+	if err := s.checkRenames(); err != nil {
+		return nil, err
+	}
 	rep := &report{}
 
 	// Moved: every file under each root; the imports of every Go file there
@@ -162,9 +165,11 @@ func (s *seeder) moved(pkg string) bool {
 	return false
 }
 
-// dest is where a nova-tools package lands in this module.
+// dest is where a nova-tools package lands in this module: the longest rename that is the
+// package or a parent of it, else the package's own path.
 func (s *seeder) dest(pkg string) string {
-	for from, to := range s.r.rename {
+	for _, from := range s.renameOrder() {
+		to := s.r.rename[from]
 		if pkg == from {
 			return to
 		}
@@ -173,6 +178,37 @@ func (s *seeder) dest(pkg string) string {
 		}
 	}
 	return pkg
+}
+
+// renameOrder is the renames' sources, longest first (then by name), so a package under
+// two renames always takes the nearer one.
+func (s *seeder) renameOrder() []string {
+	from := make([]string, 0, len(s.r.rename))
+	for f := range s.r.rename {
+		from = append(from, f)
+	}
+	sort.Slice(from, func(i, j int) bool {
+		if len(from[i]) != len(from[j]) {
+			return len(from[i]) > len(from[j])
+		}
+		return from[i] < from[j]
+	})
+	return from
+}
+
+// checkRenames refuses a rename that lands on a package path the source already has, or
+// under a moved root: the copy would be written over another package.
+func (s *seeder) checkRenames() error {
+	for _, from := range s.renameOrder() {
+		to := s.r.rename[from]
+		if s.moved(to) {
+			return fmt.Errorf("rename %s -> %s lands under a moved root", from, to)
+		}
+		if st, err := os.Stat(filepath.Join(s.from, filepath.FromSlash(to))); err == nil && st.IsDir() {
+			return fmt.Errorf("rename %s -> %s lands on %s, which nova-tools already has", from, to, to)
+		}
+	}
+	return nil
 }
 
 func (s *seeder) renamed(pkg string) bool { return s.dest(pkg) != pkg }

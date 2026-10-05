@@ -165,15 +165,16 @@ var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sy
 // without it. Measured 2026-10-04 12:54 PM ET: with the machine STOPPED, a verb sent to
 // the loopback listener went unanswered until the client's own timeout (8 s), so every
 // friend's beat and every worker's verb failed, and the tables read every friend silent.
-// A batch that waits longer than this is answered at once, each verb not yet run exit 2
-// with what holds the line and nothing changed, and its sender sends it again: a verb is
+// A batch that waits longer than this is answered at once, each verb of it that needs the
+// line exit 2 with what holds the line and nothing changed, and its sender sends it again
+// (its reads and beats still run on their lanes): a verb is
 // answered within a second of being read, whatever holds the line and for however long.
 // The reads and the beats run on their lanes and never wait for the line (servelanes.go);
 // this bounds the verbs that take it, and every verb on a twin file.
 const ServeWait = time.Second
 
-// busyAnswer is the answer of every verb of a batch not yet run when the line could not be
-// taken within ServeWait: exit 2, what held the line, nothing changed, send it again.
+// busyAnswer is the answer of each verb of a batch that needs the line, from the first,
+// when the line could not be taken within ServeWait: exit 2, what held the line, nothing changed, send it again.
 func busyAnswer(argv []string, held string) sprintwire.Result {
 	verb := ""
 	if len(argv) > 0 {
@@ -199,8 +200,9 @@ func busyAnswer(argv []string, held string) sprintwire.Result {
 // written, so a slow worker never holds the tick. A batch waits for the line only while
 // its caller waits for the answer: a caller gone (ctx done) before the line is taken has
 // its verbs from there on not run, each answered exit 2 saying so, and nothing changed.
-// Nor does it wait past ServeWait (on a.after, the app's clock): then its verbs from
-// there on are answered busy, naming what holds the line, having run nothing, so a
+// Nor does it wait past ServeWait (on a.after, the app's clock): then each of its verbs
+// from there on that needs the line is answered busy at once, naming what holds the
+// line, having run nothing, while its reads and beats still run on their lanes; so a
 // tick, a landing's step or another batch never holds a verb past its bound.
 func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) sprintwire.Response {
 	out := sprintwire.Response{Results: make([]sprintwire.Result, len(req.Verbs))}
@@ -208,6 +210,8 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 	begun := a.now()
 	var took time.Time
 	held, beats, reads, onLine, gone := false, 0, 0, 0, 0
+	// busy: the line was not taken within ServeWait; busyBy is what held it
+	busy, busyBy := false, ""
 	var first []string
 	defer func() {
 		var wait, hold time.Duration
@@ -262,13 +266,17 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			out.Results[i] = lanes.readVerbRun(ctx, args)
 			continue
 		}
+		if busy {
+			// the line was not taken within ServeWait: no later verb that needs it waits again
+			out.Results[i] = busyAnswer(argv, busyBy)
+			continue
+		}
 		if !held {
-			holder, busy, err := a.serial.LockWithin(ctx, fmt.Sprintf("a batch of %d verbs", len(req.Verbs)), func() <-chan time.Time { return a.after(ServeWait) })
-			if busy {
-				for j := i; j < len(req.Verbs); j++ {
-					out.Results[j] = busyAnswer(req.Verbs[j], holder)
-				}
-				return out
+			holder, late, err := a.serial.LockWithin(ctx, fmt.Sprintf("a batch of %d verbs", len(req.Verbs)), func() <-chan time.Time { return a.after(ServeWait) })
+			if late {
+				busy, busyBy = true, holder
+				out.Results[i] = busyAnswer(argv, holder)
+				continue
 			}
 			if err != nil {
 				for j := i; j < len(req.Verbs); j++ {

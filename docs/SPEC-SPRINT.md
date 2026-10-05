@@ -4007,11 +4007,12 @@ holds the bound.
 
 A verb is answered within a second of being read (`ServeWait`), whatever holds the line of
 control and for however long: a batch waits for the line at most `ServeWait`, on the server's
-own clock, and past it every verb of the batch not yet run is answered exit 2, `busy`, naming
-what holds the line (the tick begun at a time, another batch, a landing's step), having run
-nothing and changed nothing; its sender sends it again. A free line is taken at once. The reads
-and the beats run on their lanes and never wait for the line; the bound holds the verbs that
-take it, and every verb on a twin file. STOPPED means the tick moves nothing; it does not mean
+own clock, and past it every verb of the batch that needs the line, from the first on, is answered exit 2,
+`busy`, naming what holds the line (the tick begun at a time, another batch, a landing's step),
+having run nothing and changed nothing; its sender sends it again. A free line is taken at
+once. The reads and the beats run on their lanes and never wait for the line, a busy batch's
+included: they are run and answered as they would be on a free line. The bound holds the verbs
+that take the line, and every verb on a twin file. STOPPED means the tick moves nothing; it does not mean
 the server stops answering. A STOPPED machine answers the reads (`where`, `card`, `queue`,
 `inbox --read`, `needs`, `log`) and the beats (`friend beat`, `fleet beat`) as a RUNNING one
 does, and a worker's write as the verb answers on a STOPPED machine (a `take` moves its card;

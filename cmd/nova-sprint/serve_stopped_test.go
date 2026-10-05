@@ -5,7 +5,7 @@ import (
 	"context"
 	"slices"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
 )
 
@@ -184,48 +185,81 @@ func TestAStoppedMachineStillAnswersReadsAndBeats(t *testing.T) {
 }
 
 // A tick of the run loop in progress, held inside its store call, never holds a worker's
-// verb past ServeWait: the batch is answered busy, naming the tick, without touching the
-// store the tick holds, and the tick finishes as it began. After it, the verb runs.
+// verb past ServeWait: the batch's verbs that need the line are answered busy, naming the
+// tick, without touching the store the tick holds, while its beat and its read answer on
+// their lanes; the tick finishes as it began. After it, every verb runs.
 func TestATickInProgressNeverHoldsAVerbPastItsBound(t *testing.T) {
 	t.Parallel()
 	ta := servedSprint(t)
 	st, err := ta.a.store(common{redis: "mem:0", actor: sprint.MachineActor})
 	require.NoError(t, err)
 	clock := newServeClock(ta.a)
+	// the lanes made as listen makes them, on the free line before the first batch
+	require.NotNil(t, ta.a.lanesFor(context.Background()), "mem:0 is served with its lanes")
 
-	// the tick blocks in its first fenced read of the store until the test lets it go
+	// the tick blocks at its first read of the store made while it holds the line, until the
+	// test lets it go: holding the line and not the store, as a tick on Redis holds no
+	// store-wide lock (the in-memory store's own fail point is called under its lock and
+	// would hold the lanes too). The run loop's store is made as the app makes one, unpinned,
+	// so the tick pins its epoch through the gate.
 	in, out := make(chan struct{}), make(chan struct{})
-	var once sync.Once
-	ta.m.Fail = func(point string) error {
-		if point == "fence" {
-			once.Do(func() {
-				close(in)
-				<-out
-			})
+	gate := &epochGate{Mem: ta.m, in: in, out: out, armed: func() bool {
+		if ta.a.serial.TryLock() {
+			ta.a.serial.Unlock()
+			return false
 		}
-		return nil
-	}
+		return true // the tick holds the line: nothing else takes it here
+	}}
+	tickStore := &store.Store{B: gate, Names: st.Names, Actor: st.Actor, Now: st.Now, NewID: st.NewID, Sleep: st.Sleep, CheckTwin: st.CheckTwin, ByHand: st.ByHand}
 	var stdout, stderr bytes.Buffer
 	looped := make(chan bool, 1)
-	go func() { looped <- ta.a.runLoop(context.Background(), st, 0, 1, &stdout, &stderr) }()
-	<-in
+	go func() { looped <- ta.a.runLoop(context.Background(), tickStore, 0, 1, &stdout, &stderr) }()
+	select {
+	case <-in:
+	case l := <-looped:
+		t.Fatalf("the run loop ended (%v) before its tick reached the store:\n%s%s", l, stdout.String(), stderr.String())
+	}
 
-	batch := [][]string{{"queue", "--as", "m1"}, {"friend", "beat", "amy"}, {"fleet", "beat", "m1", "--load", "5"}}
-	got := served(ta.a, batch, false)
+	batch := [][]string{{"queue", "--as", "m1"}, {"friend", "beat", "amy"}, {"where"}, {"fleet", "beat", "m1", "--load", "5"}}
+	got := served(ta.a, batch, true)
 	require.Equal(t, ServeWait, <-clock.asked)
 	clock.fire <- ta.a.now().Add(ServeWait)
 	res := <-got
 	require.Len(t, res.Results, len(batch))
-	for i, r := range res.Results {
-		assert.Equal(t, 2, r.Code, "%v", batch[i])
-		assert.Contains(t, r.Stderr, "busy: the tick begun at 03:04:05 held the line", "%v", batch[i])
+	for _, i := range []int{0, 3} {
+		assert.Equal(t, 2, res.Results[i].Code, "%v", batch[i])
+		assert.Contains(t, res.Results[i].Stderr, "busy: the tick begun at 03:04:05 held the line", "%v", batch[i])
 	}
+	assert.Empty(t, clock.asked, "a later verb that needs the line waited on no clock again")
+	assert.Equal(t, 0, res.Results[1].Code, "the beat answers on its lane: %s", res.Results[1].Stderr)
+	assert.Contains(t, res.Results[1].Stdout, "FRIEND-BEAT OK amy")
+	assert.Equal(t, 0, res.Results[2].Code, "the read answers on its lane: %s", res.Results[2].Stderr)
+	assert.Contains(t, res.Results[2].Stdout, "SPRINT TABLE")
 
 	close(out)
 	assert.False(t, <-looped)
 	assert.NotContains(t, stderr.String(), "FAIL")
-	res = ta.a.serveFrom(sprintwire.Request{Verbs: batch}, false)
+	res = ta.a.serveFrom(sprintwire.Request{Verbs: batch}, true)
 	for i, r := range res.Results {
 		assert.Equal(t, 0, r.Code, "%v: %s", batch[i], r.Stderr)
 	}
+}
+
+// epochGate is the in-memory store whose first epoch read made while armed says so (the
+// tick pinning its epoch while it holds the line) waits, outside the store, until out is
+// closed, having closed in: a tick held mid-step, holding the line and no lock of the
+// store. Every other read passes.
+type epochGate struct {
+	*store.Mem // every interface the in-memory store has, so the tick runs as on it
+	gated      atomic.Bool
+	in, out    chan struct{}
+	armed      func() bool
+}
+
+func (g *epochGate) Epoch(ctx context.Context) (store.EpochState, error) {
+	if g.armed() && g.gated.CompareAndSwap(false, true) {
+		close(g.in)
+		<-g.out
+	}
+	return g.Mem.Epoch(ctx)
 }
