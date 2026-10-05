@@ -48,12 +48,17 @@ Cards and work streams form a **language for describing work**. You specify
 the jobs, their relationships, and the gates between phases. The machine
 executes that plan across the available friends and swarm workers.
 
-| Part of the plan | What it expresses |
-|---|---|
-| **Card** | A bounded unit of work: its brief, starting revision, allowed scope, checks, and finish condition. Attempts and reviews remain attached to the task. |
-| **Work stream** | A related line of work, such as Backend, App, or Release, with its own ordered cards and integration progress. Several streams can move at once. |
-| **Dependency** | “This card needs that card to land first.” Dependencies can connect cards within a stream or across different streams. |
-| **Sentinel card** | A gate in a stream. Work behind it waits. Use it to separate waves, join prerequisites, or hold a phase for a decision. |
+<table>
+  <thead>
+    <tr><th width="30%">Part of the plan</th><th width="70%">What it expresses</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Card</strong></td><td>A bounded unit of work: its brief, starting revision, allowed scope, checks, and finish condition. Attempts and reviews remain attached to the task.</td></tr>
+    <tr><td><strong>Work stream</strong></td><td>A related line of work, such as Backend, App, or Release, with its own ordered cards and integration progress. Several streams can move at once.</td></tr>
+    <tr><td><strong>Dependency</strong></td><td>“This card needs that card to land first.” Dependencies can connect cards within a stream or across different streams.</td></tr>
+    <tr><td><strong>Sentinel card</strong></td><td>A gate in a stream. Work behind it waits. Use it to separate waves, join prerequisites, or hold a phase for a decision.</td></tr>
+  </tbody>
+</table>
 
 ![Three work streams with dependencies crossing between them. An automatic sentinel joins the API and client changes before integration checks.](brand/explainer/streams.png)
 
