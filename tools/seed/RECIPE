@@ -49,6 +49,8 @@ doc	docs/SPEC-WORK-V1.md
 doc	docs/SPEC-WORKLANG.md
 doc	docs/SPRINT-COORDINATOR.md
 doc	docs/SPRINT-COORDINATOR-SEAT.md
+# read by cmd/nova-sprint's loop tests (the seat push and friend sync install lines)
+doc	docs/FRIENDS.md
 section	docs/CLI.md	nova-sprint	nova-card	nova-work
 section	docs/TESTS.md	nova-sprint	nova-card	nova-work
 ratings	sprint	work
