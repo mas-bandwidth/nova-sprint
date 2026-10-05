@@ -13,7 +13,7 @@ import (
 // when the machine has cards on local-endpoint routes.
 func TestFleetTrackMarksLocalEndpointLanes(t *testing.T) {
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-a")
+	ta.ok("init --readers reader-a --members bench-a")
 
 	// Set up a local-endpoint route.
 	ta.m.SetRoutes([]sprint.Route{
@@ -21,8 +21,8 @@ func TestFleetTrackMarksLocalEndpointLanes(t *testing.T) {
 	})
 	ta.ok("add --stream s1 --count 1 --one")
 
-	// Deal a card to bench-a on the local-endpoint route.
-	ta.ok("deal --to bench-a --on local-a")
+	// Deal one card (it will be dealt to bench-a on the local-a route).
+	ta.deal(1)
 
 	// Take a lane so it shows up in the lanes list.
 	ta.ok("lane take go --machine bench-a --as worker-a")
