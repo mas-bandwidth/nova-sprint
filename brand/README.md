@@ -5,7 +5,7 @@ at Glenn's request. Every image here is a **lossless PNG**. The character and
 wordmark sources retain their original transparency and resolution. The original
 renders are copied byte for byte; there is no JPEG conversion in this pipeline.
 
-[View the approved jogging banner](jogging/banner-centered.png), or the earlier
+[View the approved jogging banner](jogging/banner-cute-wave-left.png), or the earlier
 [group composition](composite.png).
 
 ## What the friends represent
@@ -41,11 +41,13 @@ No character was regenerated for the explainer.
 
 ## Approved jogging banner
 
-The README uses [banner-centered.png](jogging/banner-centered.png): the happy
+The README uses [banner-cute-wave-left.png](jogging/banner-cute-wave-left.png): the happy
 white-and-blue friend jogging and waving, with robot and logo centred as a
-single group. Glenn approved this version on 2026-10-05. The built-in image
-generator rendered the complete banner; the native 2168 × 725 PNG is copied
-without resampling or lossy conversion. Its [final prompt](jogging/prompt-centered.txt)
+single group, with a little extra room between the waving hand and the logo.
+The mascot uses the preferred runner's rounder head and compact body.
+Glenn approved this version on 2026-10-05. The built-in image
+generator rendered the complete banner; the native 2171 × 724 PNG is copied
+without resampling or lossy conversion. Its [final prompt](jogging/prompt-cute-wave-left.txt)
 and earlier layout variants are saved alongside it.
 
 All six explainer panels are drawn at 4× logical resolution and exported
@@ -128,6 +130,6 @@ retain the individual sizes returned by generation rather than being upscaled.
 
 [prompts.txt](prompts.txt) preserves the generation prompts. Update placement or
 shadows independently when arranging the scene; do not repeatedly regenerate
-the assembled banner. The README uses [the jogging banner](jogging/banner-centered.png).
+the assembled banner. The README uses [the jogging banner](jogging/banner-cute-wave-left.png).
 The earlier [group banner](../assets/nova-sprint-banner.png) remains available
 as a historical asset.

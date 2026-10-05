@@ -1,0 +1,5 @@
+Generated with built-in image_gen on 2026-10-05.
+Reference: banner-cute-wave-balanced.png. Output: banner-cute-wave-left.png.
+Original lossless PNG preserved without resampling.
+
+Use case: precise-object-edit. Make only a small horizontal positioning change to this exact Nova Sprint banner. Move the entire robot and its corresponding ground shadow 35 pixels LEFT on this approximately 2171-pixel-wide canvas. Keep the Nova Sprint logo completely FIXED in its current position, scale, typography, spacing, baseline and colors. Do not move the logo. Preserve the exact cute robot character, rounded head, compact thorax, running-and-waving pose, expression, hands, limbs, blue antenna, orange shoes, materials and lighting. Do not scale or redesign him. Keep his entire body visible. This should slightly increase the gap between the waving hand and the N. Preserve the pale blue/ivory background and straight continuous horizontal white lines on the blue track, seamlessly filling the small revealed area. No added elements or text. Exact wordmark "Nova Sprint", unchanged. Same ultrawide banner and high-quality finish. ONLY nudge the robot and shadow a little left.

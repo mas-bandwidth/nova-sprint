@@ -1,4 +1,4 @@
-![Nova Sprint: a happy white-and-blue friend jogging and waving.](brand/jogging/banner-centered.png)
+![Nova Sprint: a happy white-and-blue friend jogging and waving.](brand/jogging/banner-cute-wave-left.png)
 
 ## The Problem
 
