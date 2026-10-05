@@ -8,6 +8,24 @@ renders are copied byte for byte; there is no JPEG conversion in this pipeline.
 [View the starting-blocks banner](starting-blocks/composite.png), or the earlier
 [group composition](composite.png).
 
+## What the friends represent
+
+These are Glenn's character meanings for Nova Sprint. Keep them consistent
+when using the individual assets in illustrations and documentation.
+
+| Character | Meaning |
+|---|---|
+| [Little robot with the checklist](stella.png) | The coordinator. |
+| [Sleeping yellow friend](yellow.png) | Friends falling asleep when they should be working together. |
+| [Green friend with headphones](green.png) | Friends who cannot hear their teammates: messages and coordination do not reach them. |
+| [Tripping purple friend](purple.png) | A friend failing at their task because a dependency is blocked on another friend who has fallen asleep. |
+| [Pink friend on a bike](pink-cyclist.png) | A friend having fun and moving forward at her own pace. |
+| [White-and-blue runner](white.png) | A friend getting the task done correctly. |
+| [Orange friend](orange.png) with the [bees](bees.png) | The bees represent swarms of AIs running across the fleet. |
+
+Purple's stumble and Yellow's sleep tell a connected dependency story. Keep
+the bees associated with Orange when illustrating fleet swarms.
+
 ## Starting blocks
 
 The latest direction returns to the original mascot, freshly rendered on the
