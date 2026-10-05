@@ -115,12 +115,39 @@ func (st *Store) LaneRows(ctx context.Context) ([]sprint.LaneRow, error) {
 		return nil, err
 	}
 	out := []sprint.LaneRow{}
+	machineRoutes := st.machineRoutes(ctx)
 	for _, kind := range sprint.LaneKinds {
 		ls, _, err := st.lanes(ctx, kind)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, ls.Rows(kind, width, st.now().UTC())...)
+		rows := ls.Rows(kind, width, st.now().UTC())
+		for i := range rows {
+			if r, ok := machineRoutes[rows[i].Machine]; ok {
+				rows[i].Route = r
+			}
+		}
+		out = append(out, rows...)
 	}
 	return out, nil
+}
+
+// machineRoutes returns the route for each machine's lanes.
+func (st *Store) machineRoutes(ctx context.Context) map[string]string {
+	routes, _, err := st.Routes(ctx)
+	if err != nil || len(routes.Routes) == 0 {
+		return map[string]string{}
+	}
+	dealt, err := st.Dealt(ctx)
+	if err != nil || dealt == nil {
+		return map[string]string{}
+	}
+	out := make(map[string]string)
+	for _, c := range dealt.Work {
+		route := c.F(sprint.FieldRoute)
+		if route != "" {
+			out[c.Row] = route
+		}
+	}
+	return out
 }

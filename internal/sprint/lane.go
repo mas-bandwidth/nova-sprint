@@ -221,6 +221,7 @@ type LaneRow struct {
 	Width   int       `json:"width"`
 	Held    []string  `json:"held"`
 	Waiting []string  `json:"waiting"`
+	Route   string    `json:"route,omitempty"`
 	Since   time.Time `json:"since,omitzero"`
 }
 

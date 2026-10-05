@@ -41,8 +41,8 @@ func TestPageShowsPerMachineLanes(t *testing.T) {
 	c := copyOf(t, fixture(t))
 	require.Len(t, c.Lanes, 1, "the fixture carries one machine's lanes")
 	row := c.Lanes[0]
-	assert.Equal(t, LaneRow{Kind: "go", Machine: "bench-a", Width: 1, Held: []string{"amy"}, Waiting: []string{"bob"}}, row,
-		"the machine's lane: its kind, width, holder and waiter")
+	assert.Equal(t, LaneRow{Kind: "go", Machine: "bench-a", Width: 1, Held: []string{"amy"}, Waiting: []string{"bob"}, Route: "flash"}, row,
+		"the machine's lane: its kind, width, holder, waiter and route")
 
 	// The page path: a Lanes panel with its title.
 	doc := parsePage(t, file("index.html"))
@@ -51,10 +51,10 @@ func TestPageShowsPerMachineLanes(t *testing.T) {
 	assert.Contains(t, string(file("index.html")), `id="lanes"`)
 
 	// The lanes rows are a table: the page's CSS gives the panel's row one track a column, so
-	// its five columns sit beside each other and never stack into one column.
+	// its six columns sit beside each other and never stack into one column.
 	m := lanesRowCSS.FindStringSubmatch(string(file("index.html")))
 	require.NotNil(t, m, "the page's CSS gives .lanes .row no grid tracks, so its columns stack")
-	assert.Equal(t, 5, gridTracks(m[1]), "the lanes row's grid tracks, one a column (machine, kind, width, held, waiting)")
+	assert.Equal(t, 6, gridTracks(m[1]), "the lanes row's grid tracks, one a column (machine, kind, width, held, waiting, route)")
 
 	// The render path: app.js draws the rows from d.lanes, holders and waiters.
 	js := string(file("app.js"))
