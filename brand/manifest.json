@@ -1,0 +1,170 @@
+{
+  "canvas": [
+    2172,
+    724
+  ],
+  "format": "lossless PNG",
+  "unexpected_background_changes": 0,
+  "layout": {
+    "wordmark": {
+      "source_crop": [
+        60,
+        182,
+        2112,
+        595
+      ],
+      "position": [
+        636,
+        22
+      ],
+      "size": [
+        900,
+        181
+      ]
+    },
+    "stella": {
+      "source_crop": [
+        330,
+        41,
+        1332,
+        945
+      ],
+      "position": [
+        85,
+        330
+      ],
+      "size": [
+        190,
+        171
+      ]
+    },
+    "green": {
+      "source_crop": [
+        285,
+        42,
+        1150,
+        1141
+      ],
+      "position": [
+        390,
+        220
+      ],
+      "size": [
+        228,
+        290
+      ]
+    },
+    "bees": {
+      "source_crop": [
+        65,
+        83,
+        1402,
+        1022
+      ],
+      "position": [
+        645,
+        235
+      ],
+      "size": [
+        215,
+        151
+      ]
+    },
+    "orange": {
+      "source_crop": [
+        195,
+        13,
+        1300,
+        1118
+      ],
+      "position": [
+        860,
+        220
+      ],
+      "size": [
+        305,
+        305
+      ]
+    },
+    "pink-cyclist": {
+      "source_crop": [
+        157,
+        36,
+        1141,
+        1243
+      ],
+      "position": [
+        1405,
+        255
+      ],
+      "size": [
+        298,
+        365
+      ]
+    },
+    "yellow": {
+      "source_crop": [
+        75,
+        185,
+        1731,
+        755
+      ],
+      "position": [
+        320,
+        480
+      ],
+      "size": [
+        600,
+        207
+      ]
+    },
+    "purple": {
+      "source_crop": [
+        64,
+        82,
+        1502,
+        940
+      ],
+      "position": [
+        885,
+        365
+      ],
+      "size": [
+        530,
+        316
+      ]
+    },
+    "white": {
+      "source_crop": [
+        189,
+        20,
+        1237,
+        1139
+      ],
+      "position": [
+        1710,
+        265
+      ],
+      "size": [
+        398,
+        425
+      ]
+    }
+  },
+  "sha256": {
+    "track.png": "35f31fa1440ab0817fb665948523b3ba4ad26f7e69d1fd60269381ef37c0e4cf",
+    "track-clean.png": "8e9561fabc93ed5faaa5c2562c758f7585c8e29ac11296a8f167ae69416bbc98",
+    "finish-line.png": "32e235e4b894368b777b9aad1e7e4781d57f143b8b3be47461df18ad026c7d21",
+    "wordmark.png": "ff489e3cd535d2ad3f188b9d15b37919169fe76bbbfafcdac38000ce18f21be3",
+    "stella.png": "1521cc446d8b58bd5fb86cca1839989a341b11c6c4471345e3fb8fdec6740f4a",
+    "green.png": "21102ee037fc0c5b39a1f90cbb1e88eacd78f0e39ae88cddf8cabfd74eceb039",
+    "orange.png": "11deb6f989b6e4f4ad936744afbce5be30ac241633f8005fe05ae93965673184",
+    "yellow.png": "77a85d529c7d355a6bcf0d48239d591c18dbef2c0ae0297757afd0368c3d6b1e",
+    "purple.png": "9deee3067e5e22b435173250d3e346c4079b0a6abcbf3f3eb5e528a6125d9eed",
+    "white.png": "a31e73f3c934915449fead2aa52d4c0289f7c3cb0098f0ac9a0aae525276fe1e",
+    "pink-cyclist.png": "c5b7e787807deced1bc774510e34678d4c6edadb75a995d947a8ae58202c7c5a",
+    "bees.png": "a46b74deff1f5afd04f88b50503acfef588ae01313176d1f40585f5e00cf64ec",
+    "shadows.png": "8d9895121a2abc0c2ccfa279b468e124cd71b08377883b309b10a44e57bf35eb",
+    "composite.png": "226c34d47fe374be1a086b1979528c578367151fcb20340111fde382dbfc5a2e"
+  }
+}

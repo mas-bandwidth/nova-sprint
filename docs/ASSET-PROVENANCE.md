@@ -14,6 +14,14 @@ The banner extends the Nova Tools workshop and Nova Seed garden's friendly
 robot direction. It is the approved final illustration, copied without
 alteration into this repository. See [Brand and voice](BRAND.md) for usage.
 
+The later [individual render set](../brand/README.md) keeps each friend, the bee
+swarm, flat wordmark, and stadium as separate original PNGs, generated with
+OpenAI image generation on 2026-10-05 at Glenn's request. Its pink friend rides
+a bike. The compositing script creates separate shadow and perspective finish
+grid overlays without regenerating the assembled scene. Prompts, placement,
+native dimensions, and hashes are saved with those assets. This working set is
+separate from the selected README banner above.
+
 Banner SHA-256: `86f3ef96309188db3239a0042f7ca7a2915001cde0ff5863109167a203e36291`.
 
 Dashboard screenshot SHA-256: `24531eb43b17cb91eea696a5a08e07ea7b8cdb17fd22b5c46ad541ec29cf8d17`.
