@@ -5,11 +5,11 @@ A mechanical render of the work record's roadmap data, by release. The planned c
 | release | status | cards |
 |---|---|---:|
 | v1.0.0 | current |  |
-| v1.1.0 | planned | 110 |
+| v1.1.0 | planned | 116 |
 
 ## v1.1.0
 
-110 cards in 24 streams, planned on 2026-10-04 for the release after v1.0.0.
+116 cards in 25 streams, planned on 2026-10-04 for the release after v1.0.0.
 
 | stream | cards |
 |---|---:|
@@ -19,6 +19,7 @@ A mechanical render of the work record's roadmap data, by release. The planned c
 | night-2026-10-04 | 7 |
 | sprint-v1-models | 7 |
 | sprint-v1-processor | 7 |
+| one-line-machinery | 6 |
 | sprint-v1-docs | 6 |
 | friend-reserve | 5 |
 | sprint-v1-integrity | 5 |
