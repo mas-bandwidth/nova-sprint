@@ -144,7 +144,7 @@ func flagWord(words []string, name string) (value string, ok bool) {
 // friend sync, which read the config store with their caller's own credentials, friend
 // clean, which works on the directories of the machine it runs on, and dashboard, which
 // serves a page until it is interrupted and reads through the server.
-var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sync", "friend clean", "dashboard", "answer"}
+var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sync", "friend clean", "dashboard", "answer", "card generate", "card lint", "card template"}
 
 // ServeWait is how long a batch waits for the line of control before it is answered
 // without it. Measured 2026-10-04 12:54 PM ET: with the machine STOPPED, a verb sent to

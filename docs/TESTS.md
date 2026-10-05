@@ -195,23 +195,22 @@ finish-t24-1.1  s1-2  failed  rework  0.91  applied  nova-sprint rework s1-2 --o
 ANSWER OK rows=2 applied=2 would_apply=0 listed=0 refused=0 failed=0 left=0 outcomes=0 bar=0.80 record=./judgment.jsonl; run: nova-sprint inbox
 ```
 
+### Briefs from a findings file
 
-## nova-card
-
-Fixture: `cmd/nova-card/testdata/findings.tsv`, a reader's findings on two
-files, typed as `./cmd/nova-card/testdata/findings.tsv` from the root of a
-checkout; `./cards` is a directory the first line creates.
-
-### First run
+Fixture: `cmd/nova-sprint/testdata/findings.tsv`, a reader's findings on two
+files, typed as `./cmd/nova-sprint/testdata/findings.tsv` from the root of a
+checkout; `./cards` is a directory the first line creates. Run by
+`TestTheCardTranscriptRuns` in `cmd/nova-sprint/cardverbs_test.go`. These verbs
+were nova-card's.
 
 ```
-$ nova-card generate --from findings --file ./cmd/nova-card/testdata/findings.tsv --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567 --out ./cards
+$ nova-sprint card generate --from findings --file ./cmd/nova-sprint/testdata/findings.tsv --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567 --out ./cards
 CARDS OK dir=./cards cards=2 waves=1 tier=pro
 
-$ nova-card lint --card ./cards/finding-internal-bus-send.md
+$ nova-sprint card lint --card ./cards/finding-internal-bus-send.md
 LINT OK file=./cards/finding-internal-bus-send.md
 
-$ nova-card lint --card ./cards/finding-cmd-nova-bus-main.md
+$ nova-sprint card lint --card ./cards/finding-cmd-nova-bus-main.md
 LINT OK file=./cards/finding-cmd-nova-bus-main.md
 ```
 
