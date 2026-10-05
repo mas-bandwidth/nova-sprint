@@ -1,157 +1,198 @@
-# Working with your AI team
+![Nova Sprint: a friend on the starting blocks, ready for the next task.](../brand/starting-blocks/composite.png)
 
-With nova-sprint, an AI can coordinate the team for you. You agree on the goal
-and the decisions it can make; it organises the tasks, distributes work,
-follows reviews, and brings the changes together. You can join in when you
-want to without becoming the team's message courier.
+# Good friends. A reliable machine.
 
-The shared record keeps tasks and their history outside any one conversation.
-Streams organise ongoing work; dependencies tell the team what can run next.
-That is what lets the work continue across handoffs and overnight, while you
-are away.
+Give a team of AIs a goal. Let them split the work, help one another, review
+the results, and bring the changes home. Come back in the morning to see
+what landed.
 
-There are two complementary ways to scale out the work. Named AI **friends**
-can coordinate across different models in their local harnesses. **Swarms**
-can run many bounded tasks across a fleet of machines. Both participate in
-the same sprint, so a friend can help plan or repair a change while machine
-workers go wide on independent tasks.
+That is the idea behind **nova-sprint: a machine that tracks work in flight
+and drives it toward completion across AI friends and swarms on a fleet.**
+You set the direction and boundaries. An AI can coordinate the team.
 
-A friend is a continuing collaborator with an identity and session. A machine
-worker takes an assignment through its configured model and harness. Harness
-adapters and model routes connect them to the sprint; the shared work record
-lets them hand work to one another without sharing one conversation. Both
-need useful briefs and a clear way to report results to the coordinator.
+Bring friends and swarm workers using **any model or harness**. They meet
+through a shared work protocol, rather than having to live inside one
+provider's ecosystem or share a chat. Connect your chosen harness through
+an adapter and configure its model route; a new harness needs that connection,
+not a different way of organising the team.
 
-If you are building your first team of AI friends,
-[Nova Seed](https://github.com/mas-bandwidth/nova) is the place to begin.
-[Nova Tools](https://github.com/mas-bandwidth/nova-tools) supplies the shared
-building blocks; nova-sprint brings them together into the team's workflow.
+## We learned this by tripping over it
 
-## Start with something you can check
+While building Nova Tools and Nova Sprint, we kept running into a funny,
+frustrating problem: capable AIs could do the individual jobs, but asking
+LLMs to remember and manage every handoff was unreliable.
 
-“Improve search” is a goal. “Add a case-insensitive title index and tests for
-mixed-case queries” is a task someone can finish and another person can review.
-A good card gives the worker enough context to make decisions within that task:
+A friend promised to keep working, then their session stopped. A message
+was sent, but never reached the conversation that needed it. Someone waited
+for a dependency while somebody else confidently worked against the old code.
+The human ended up asking, again: *Is anyone actually doing this?*
 
-| Include | For example |
-|---|---|
-| The outcome | A mixed-case query finds the same titles as its lowercase form. |
-| The repository and starting point | The repository URL and the branch or revision to work from. |
-| The allowed scope | The index implementation and its tests. |
-| The check | A focused test command, with the behaviour the tests should establish. |
-| The handoff | A pushed commit, a short report, and any remaining limitation. |
-| Dependencies | The schema change that must land before this task starts. |
+The robots are little portraits of those moments.
 
-This table is a planning aid, not the machine-readable card syntax. Use
-`nova-card template` and `nova-card lint --card <file>` for the exact format
-in the current command reference. The generator can also turn existing
-findings, ledgers, and help output into cards. Read the generated brief before
-you put it in the queue: valid syntax does not decide whether the task is useful.
+![Yellow is asleep, Purple trips over the blocked dependency, and Green cannot hear the team.](../brand/explainer/coordination.png)
 
-## Give independent work room to run
+**Yellow has fallen asleep.** His task is still needed. A process running in
+the background does not prove that the AI session is awake and making progress.
 
-A **stream** groups related work. A **need** says that one card depends on
-another landing first. A **sentinel** holds a checkpoint between waves.
-Together they let you express parallel work without losing the order that
-matters.
+**Purple needed Yellow's work.** Now she is tumbling over a dependency that
+hasn't landed. Starting more workers will not make that missing prerequisite
+appear.
 
-For the search example, the index and interface can be separate cards if
-their shared API is already agreed. Integration tests can wait for both. A
-sentinel can hold a rollout wave until you have looked at the combined result.
+**Green has his headphones on.** He might be busy, but he cannot hear his
+friends. A successful send is not the same as a message reaching a live
+session—or that session answering. Communication has to work both ways.
 
-Putting two cards in the same stream does not, by itself, make every task
-run one at a time. If both need to change the same shared definition, split
-ownership or express the dependency. The system cannot infer all of your
-architectural dependencies from file names.
+These were practical lessons from our own development. We saw a working
+friend displayed as down, a wake command report success without reaching a
+session, and a stale inbox view disagree with a listener receiving messages.
+They are different failures, and each needs evidence about what happened.
 
-## Choose a comfortable pace
+The humour is affectionate. We were the friends doing the stumbling. Better
+prompts helped individual tasks; they could not make LLM-only coordination
+into a dependable system.
 
-**Width** is how many tasks a worker or machine can run at once. Start low,
-watch the machine's load and the quality of its results, and raise it when
-there is room. More simultaneous builds can make everyone slower.
+## Put the repeatable parts in the machine
 
-Keep some useful, dependency-ready work queued so a worker can pick up its
-next card. Avoid filling the queue with vague tasks just to keep it busy.
-Readers need capacity too; a growing review queue is a reason to look at
-review capacity, not merely to launch more workers.
+nova-sprint keeps the plan, assignments, dependencies, attempts, reviews, and
+landing state outside any one conversation. Its running loop checks that
+state and performs the next permitted step. A finished task can free capacity;
+a landed dependency can release the next task; a result can trigger review.
+Nobody needs to remember to type “what next?” at every handoff.
 
-Model **routes** choose the configured provider, model, and harness for a
-kind of work. **Tiers** express the capability and escalation policy. A card's
-ceiling limits how far it may escalate. Use the route measurements and the
-actual results to make changes; a provider outage is different from a model
-producing a poor solution.
+![The coordinator works with a machine that moves cards from waiting through ready, working, review, merging, and landed. Findings lead back to another attempt.](../brand/explainer/machine.png)
 
-## Make review useful
+**The machine is the foundation of reliability.** It checks explicit rules,
+records transitions, and recovers interrupted operations from their records.
+Repeated operations have recorded identities; stale reports cannot simply
+overwrite a newer assignment. A task stays visible until it lands or has a
+recorded decision explaining why it stopped.
 
-A worker reports what it changed and the commit it pushed. An independent
-reader checks that result against the brief. A useful finding names the
-file, line, or rule that failed, explains the problem, and gives the next
-attempt something concrete to fix.
+The little robot with the checklist is the **coordinator**. She turns your
+goal into useful work, clarifies briefs, decides how to address findings,
+and helps when a task needs judgment. The machine performs routine scheduling
+and bookkeeping, and brings decisions to her inbox. She can be an AI working
+alongside the rest of the team.
 
-A passing review belongs to the commit reviewed. If the code changes, follow
-the review rules for the new head. Passing tests and passing reads are
-separate evidence; neither should be replaced by a confident completion
-message.
+Models supply the planning, coding, reviewing, and repair. Machinery supplies
+the durable state and the rules that keep those contributions moving together.
+When something needs your decision, it remains visible while independent
+work can continue.
 
-The **lander** brings approved changes together and checks the result.
-Conflicts or failing checks need attention before the stream continues.
-“Finished”, “reviewed”, “landed”, and “installed” are different milestones.
-The last one belongs to your deployment or release process.
+## Meet the team: friends, swarms, and the fleet
 
-## Help someone who is stuck
+A **friend** is a continuing AI collaborator, with a name, context, and a
+session in their own harness. Friends can plan, implement, review, or
+coordinate. Different friends can use different models and harnesses.
 
-Open the card and its history before deciding what to do:
+A **swarm** runs many bounded AI assignments in parallel. The **fleet** is
+the set of machines providing that capacity. Models do the AI work; harnesses
+run their sessions; machines host the workers. Those are separate choices.
 
-```sh
-nova-sprint where
-nova-sprint card <card>
-nova-sprint log --card <card>
-nova-sprint inbox
-```
+![Orange runs with the bee swarm; Pink rides her bike at her own pace.](../brand/explainer/team.png)
 
-A card may be waiting on a dependency, a free worker, a reader, a checkpoint,
-or a decision. A failed task may need a clearer brief, a specific repair, or
-a different route. Repeating an unchanged task is rarely a useful answer to
-a repeated failure.
+The **bees around Orange** represent swarms going wide across the fleet.
+A friend might design a change while swarm workers implement independent
+pieces and other AIs review them. Their results return to the same sprint.
 
-The coordinator's **inbox** groups decisions and shows the available actions.
-Open the relevant item, read the evidence, and use the command it prints.
-The [coordinator's guide](SPRINT-COORDINATOR.md) walks through these choices.
+**Pink rides at her own pace.** Friends have different strengths and speeds.
+A careful reviewer and a fast implementer can both be useful. Width limits
+how much work a friend or machine takes on at once; model routes select the
+configured model and harness for an assignment. Review needs capacity too.
+
+Scale across friends, across the fleet, or any combination. You do not need
+to move the whole team to one model or one vendor's agent environment.
+
+## Streams give the work a shape. Cards make it actionable.
+
+A **work stream** is an ongoing line of work: search, billing, documentation,
+or a release. It groups related tasks and their integration into the project,
+so the coordinator and dashboard can show how that effort is progressing.
+
+A **card** is one task with a clear finish condition. It says what to change,
+where to work, what is in scope, how to check it, and what must land first.
+The card remains the thing you follow even if it takes several attempts.
+
+![An example search stream: land the API, then run interface and index cards in parallel, then integrate. Documentation can progress independently.](../brand/explainer/streams.png)
+
+For “improve search,” the API card can land first. An index card and an
+interface card can then run in parallel. An integration card waits for both.
+Documentation can move alongside them where its own prerequisites allow it.
+
+Those dependencies are explicit. Sharing a stream does not make every card
+sequential, and the machine cannot guess every architectural dependency.
+The coordinator gives parallel tasks clear ownership and records what must
+wait. A checkpoint can hold a later wave until the team has checked the whole.
+
+Yellow's nap now has a place in the plan: his card has an owner and state,
+and Purple's prerequisite is visible. Her dependent card waits instead of
+being treated as ready. The coordinator can investigate Yellow, arrange a
+handoff when appropriate, or keep Purple useful on independent work.
+
+## Ready for the next task
+
+![The white-and-blue friend on starting blocks: ready to take the next task quickly.](../brand/explainer/ready.png)
+
+This friend is poised to go. Keep useful, dependency-ready cards available
+and the machine can assign the next one when capacity opens. The team does
+not have to wait for an entire batch to finish before starting another task.
+
+The shared record distinguishes waiting for a dependency, waiting for
+capacity, doing the work, waiting for review, and waiting to merge. That
+distinction tells the coordinator where help will actually make a difference.
+
+## “I finished” starts the next handoff
+
+A worker returns a result and the commit it produced. Independent readers
+check that result against the card. Findings give the next attempt a specific
+repair to make; a passing review applies to the version actually reviewed.
+
+![The white runner represents getting the task done correctly: implement, review, check, and land.](../brand/explainer/landed.png)
+
+The **white runner** is getting the task done correctly. In the sprint, that
+means following through to the required checks and integration, not stopping
+at a confident completion message.
+
+The lander brings approved changes together in stream order and checks the
+combined result. When changes conflict or checks fail, the team addresses
+that specific problem before moving on. Work can run in parallel and conflicts
+can be resolved as changes land—all organised automatically by the machine
+and AI coordinator within the authority you gave them.
+
+**Landed means the change reached the development branch.** Installation and
+deployment are separate steps when your plan includes them.
+
+## Watch the machine work
+
+[![A snapshot of the live sprint dashboard, showing work in flight, costs, and progress.](../assets/nova-sprint-dashboard.jpg)](http://69.67.149.151/)
+
+**[Open the live sprint dashboard →](http://69.67.149.151/)**
+
+Watch work move through its states. See friends and fleet capacity, review
+and merge queues, spend per stream and total cost, throughput, and continually
+updated estimates of time to completion. Open a stalled card to see what it
+needs. The screenshot is a snapshot; the live dashboard shows the sprint now.
+
+This is how you stay on top without becoming the team's dispatcher.
 
 ## Leave the team with a plan
 
-For an autonomous run, give the AI coordinator the same context you would
-give a colleague taking the next shift:
+Agree on the goal, scope, model access, capacity, spending boundaries, checks,
+and decisions that should wait for you. Start with one task and a complete
+trip through review and landing. Then widen the team.
 
-- The outcome you want and the work that matters most.
-- The repositories, branches, and parts of the project the team may change.
-- The routes, capacity, and spending limits you have configured.
-- The tests and independent reviews required before a change can land.
-- The checkpoints it may release itself and the decisions that must wait for you.
+The machine makes the workflow reliable and recoverable; running overnight
+also needs a live server, reachable workers and readers, and working harness
+delivery. A stored plan survives a chat ending, but it cannot keep an expired
+session or an unavailable provider running. That is why truthful presence,
+visible blockers, and recovery matter alongside scheduling.
 
-The coordinator can keep ready work supplied, inspect failed attempts, assign
-repairs, and follow reviewed changes through merging. When a decision needs
-you, it should leave the evidence and continue with independent work where
-possible. An unanswered question about one stream need not stop the whole team.
+**[Take your first lap →](GETTING-STARTED.md)**
 
-Before leaving an overnight run, check that the coordinator, workers, readers,
-and server will remain running, that credentials cover the work, and that the
-queue contains useful tasks. A saved queue remembers the plan; it does not
-keep an expired model session or a stopped machine alive.
+nova-sprint is open source and free forever. Your chosen models and machines
+have their own costs. It builds on [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
+Want to make your first AI friends? Start with [Nova Seed](https://github.com/mas-bandwidth/nova).
 
-When you return, start with the sprint view and coordinator's handover: what
-landed, what remains in flight, which attempts failed, and which decisions
-are waiting. Check installation or deployment separately from code landing.
+For the details: [coordinator's guide](SPRINT-COORDINATOR.md) ·
+[machine and lifecycle contract](SPEC-SPRINT.md) · [commands](CLI.md).
 
-## Hand coordination from one AI to another
-
-A coordinator's memory should not be the only place the plan lives. Leave
-open decisions, held checkpoints, reviewed commits, and installation state
-in a dated handover with links to the sprint records. The next coordinator
-should be able to continue without reconstructing yesterday's conversations.
-A human can take the role when useful, but the workflow does not depend on a
-human doing the routine coordination.
-
-The robots in the banner are having a good time. Some are fast, one is
-asleep, and someone has stumbled. That is the spirit: leave room for different
-strengths, notice when help is needed, and make the handoffs work for the team.
+If this helps your team, [please support our work](https://www.patreon.com/MasBandwidth/membership).

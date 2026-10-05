@@ -22,6 +22,14 @@ grid overlays without regenerating the assembled scene. Prompts, placement,
 native dimensions, and hashes are saved with those assets. This working set is
 separate from the selected README banner above.
 
+The illustrated [team explainer](WORKING-WITH-AI-TEAMS.md) uses six lossless
+PNG panels in `brand/explainer/`, composed on 2026-10-05 from those individual
+assets and the later starting-blocks render. Their labels and workflow
+diagrams are drawn by `brand/compose_explainer.py`; no source character was
+regenerated. Arial is rasterised from the locally installed font, not bundled.
+The starting-blocks source, prompt, and composition live in
+`brand/starting-blocks/`. Its meaning is a fast friend ready for the next task.
+
 Banner SHA-256: `86f3ef96309188db3239a0042f7ca7a2915001cde0ff5863109167a203e36291`.
 
 Dashboard screenshot SHA-256: `24531eb43b17cb91eea696a5a08e07ea7b8cdb17fd22b5c46ad541ec29cf8d17`.

@@ -42,6 +42,8 @@ and what needs attention.
 
 - **[Take a first lap](docs/GETTING-STARTED.md)** — try one card locally, then
   give your AI coordinator a small real task.
+- **[Meet the friends and the machine](docs/WORKING-WITH-AI-TEAMS.md)** — an
+  illustrated guide to why nova-sprint exists and how the team works together.
 - **[Explore the docs](docs/README.md)** — commands, coordination, and the details.
 
 ---

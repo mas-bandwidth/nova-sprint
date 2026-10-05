@@ -21,10 +21,22 @@ when using the individual assets in illustrations and documentation.
 | [Tripping purple friend](purple.png) | A friend failing at their task because a dependency is blocked on another friend who has fallen asleep. |
 | [Pink friend on a bike](pink-cyclist.png) | A friend having fun and moving forward at her own pace. |
 | [White-and-blue runner](white.png) | A friend getting the task done correctly. |
+| [White-and-blue friend on starting blocks](starting-blocks/character.png) | A fast friend ready to take the next task quickly. |
 | [Orange friend](orange.png) with the [bees](bees.png) | The bees represent swarms of AIs running across the fleet. |
 
 Purple's stumble and Yellow's sleep tell a connected dependency story. Keep
 the bees associated with Orange when illustrating fleet swarms.
+
+## Illustrated explainer
+
+[Meet the friends and the machine](../docs/WORKING-WITH-AI-TEAMS.md) uses every
+character to explain why coordination needs machinery, then introduces
+friends, swarms, fleet capacity, streams, cards, reviews, and landing.
+The six panels in `explainer/` are deterministic compositions of the original
+PNG assets, with drawn diagrams and text. Rebuild with
+`python3 brand/compose_explainer.py` (Pillow); set `NOVA_BRAND_FONT` to a local
+Arial-compatible TrueType font when the default macOS Arial path is unavailable.
+No character was regenerated for the explainer.
 
 ## Starting blocks
 

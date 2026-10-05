@@ -32,6 +32,15 @@ with Zzzzz, purple stumbles, pink cartwheels, and the white-and-blue friend
 sprints. The group expresses collaboration with room
 for different paces, rather than a ranking of models or people.
 
+The newer individual set uses a pink cyclist. Glenn's character meanings,
+including the starting-blocks friend ready for the next task, are recorded in
+[the artwork guide](../brand/README.md#what-the-friends-represent). Use those
+meanings consistently: the sleeping friend and blocked dependency come from
+real coordination difficulties, while the bees represent fleet swarms.
+The [illustrated explainer](WORKING-WITH-AI-TEAMS.md) uses them to show why
+nova-sprint's machine tracks and drives the team's work beyond any one chat,
+model, or harness.
+
 For future art, keep recognisable robot bodies, readable expressions, and
 varied movement. Align a runner's movement with the perspective of its lane.
 Keep orange clearly separate from yellow. Humour should feel affectionate.
