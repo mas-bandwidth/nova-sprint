@@ -27,7 +27,7 @@ for the human's plans to be unconscious.
 
 ![The AI coordinator and the machine: waiting, ready, working, review, merging, landed, with a repair loop.](brand/explainer/machine.png)
 
-nova-sprint stores the plan, dependencies, assignments, attempts, reviews, and
+**nova-sprint** stores the plan, dependencies, assignments, attempts, reviews, and
 landing state outside any chat. Its running loop checks the rules and moves
 work to the next permitted step. A landed dependency releases waiting work.
 Free capacity gets another ready card. A finished attempt goes to review.
