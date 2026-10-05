@@ -115,6 +115,10 @@ func init() {
 		{"ack", "<note>[,<note>]... --reason <text>", "ack ci-x-1.1 --reason 'a flaky runner; the rerun is green'", (*app).cmdAck},
 		{"answer", "[--dry-run] [--bar <p>] [--every <duration>] [--timeout <duration>] [--backend jev|fixed] [--answers <file>] [--record <file>]", "answer --dry-run", (*app).cmdAnswer},
 		{"inbox", "[--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir> | --push seat]] [--deadline <duration>] [--stale <duration>]", "inbox --wait", (*app).cmdInbox},
+		// before card: run matches the first verb, and card <id> would otherwise take "generate"
+		{"card generate", "--from ledger|findings|help --out <dir> [--repo-dir <dir>] [--repo <owner/name>] [--base <branch>] [--sha <40hex>] [--ledger <name>] [--file <tsv>] [--tool <name>] [--bin-dir <dir>] [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]", "card generate --from findings --file ./cmd/nova-sprint/testdata/findings.tsv --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567 --out ./cards --dry-run", (*app).cmdCardGenerate},
+		{"card template", "", "card template", (*app).cmdCardTemplate},
+		{"card lint", "--card <file> [--card <file>...]", "card lint --card ./cards/finding-internal-bus-send.md", (*app).cmdCardLint},
 		{"card", "<id> [--brief | --fields] [--at-epoch <n>]", "card s1-4", (*app).cmdCard},
 		{"needs", "[--stream <s>] [--roots]", "needs --stream s1", (*app).cmdNeeds},
 		{"held", "[--stream <s>]", "held", (*app).cmdHeld},
@@ -364,6 +368,13 @@ var verbExamples = map[string][]string{
 		"add --stream s1 --brief-dir briefs",
 		"add --stream s1 --brief-file a.md --brief-file b.md",
 	},
+	"card generate": {
+		"card generate --from ledger --ledger serial-tests --repo-dir ./repo --out ./cards",
+		"card generate --from help --tool nova-bus --out ./cards --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567",
+	},
+	"card lint": {
+		"card lint --card ./cards/finding-cmd-nova-bus-main.md",
+	},
 }
 
 // verbExample is the lines a verb's -h shows above its flags: its examples,
@@ -394,6 +405,9 @@ func helpCommand(path []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	name := strings.Join(path, " ")
+	// an exact verb wins over a group of the same word: card is the read, and
+	// card generate, card template and card lint are longer verbs. help card
+	// stays the read. help card generate is that verb.
 	// a verb named whole is the exact one even when the word also opens a group
 	// (seat is the seat's read, seat install and seat uninstall are its verbs)
 	for _, v := range verbs {

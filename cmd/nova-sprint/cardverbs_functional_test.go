@@ -50,7 +50,7 @@ func TestAGeneratedDirectoryIsAdmittedWholeAndItsWavesHold(t *testing.T) {
 	git("commit", "-q", "-m", "fixture")
 
 	out := filepath.Join(t.TempDir(), "cards")
-	exit, stdout, stderr := runCard("generate", "--from", "ledger", "--ledger", "serial-tests", "--repo-dir", repo, "--out", out)
+	exit, stdout, stderr := runSprint(nil, "card", "generate", "--from", "ledger", "--ledger", "serial-tests", "--repo-dir", repo, "--out", out)
 	require.Equal(t, 0, exit, "stdout: %s\nstderr: %s", stdout, stderr)
 	assert.Contains(t, stdout, "CARDS OK dir="+out+" cards=3 waves=2 tier=flash shared-paths=yes")
 	manifest, err := os.ReadFile(filepath.Join(out, "manifest.tsv"))
@@ -64,7 +64,7 @@ func TestAGeneratedDirectoryIsAdmittedWholeAndItsWavesHold(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		sprint += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", sprint, "../nova-sprint")
+	build := exec.Command("go", "build", "-o", sprint, ".")
 	build.Env = goenv.Clean(os.Environ())
 	o, err := build.CombinedOutput()
 	require.NoError(t, err, "building nova-sprint: %s", o)

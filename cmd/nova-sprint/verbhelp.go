@@ -37,6 +37,9 @@ var verbExit = map[string]string{
 	"dashboard":     "exit codes: 0 stopped (an interrupt), 2 usage or an address it cannot listen on, 3 its binary was replaced on disk (its supervisor starts the new one)",
 	"selftest land": "exit codes: 0 done, 1 failed (lander broken or card did not land), 2 usage",
 	"server switch": "exit codes: 0 done, 1 failed or refused (the candidate's shadow tick failed: nothing changed), 2 usage",
+	"card generate": "exit codes: 0 done, 1 a brief is red and nothing was written, 2 usage or a source that cannot be read",
+	"card lint":     "exit codes: 0 every brief is clean, 1 a brief is red (LINT DRIFT), 2 usage or a brief that cannot be read",
+	"card template": "exit codes: 0 the template is printed, 2 usage",
 }
 
 // verbEffect is a verb's effect line, the last line of its -h, where the verb
@@ -86,6 +89,9 @@ var verbEffect = map[string]string{
 	"lane list":        "inspection: lists every machine's lanes and holders, writes nothing",
 	"lane take":        "store write: takes one lane on the machine for the worker, or joins the queue; --dry-run checks availability and writes nothing",
 	"lane give":        "store write: gives the worker's lane or queue position back; --dry-run checks whether a lane is held and writes nothing",
+	"card generate":    "local write: creates --out and writes one .md per card and manifest.tsv into it; nothing when a brief is red; --dry-run plans, lints and prints the manifest, and writes nothing",
+	"card lint":        "inspection: reads the briefs, writes nothing",
+	"card template":    "inspection: prints the card template, writes nothing",
 }
 
 // commonExit is the codes of every other verb.
@@ -219,7 +225,36 @@ func verbProse(name string) string {
 		return oldHoldWords(name)
 	case "work repos", "work issues", "work roadmap", "work export", "work import":
 		return workVerbWords
+	case "card":
+		return cardReadWords
+	case "card generate":
+		return cardGenerateWords
+	case "card lint":
+		return cardLintWords
+	case "card template":
+		return cardTemplateWords
 	default:
 		return ""
 	}
 }
+
+// cardReadWords points the read verb at the brief writer, which shares its first word.
+const cardReadWords = `card generate, card template and card lint are the brief writer that was nova-card.
+This verb reads one card of the sprint. nova-sprint generate, template and lint refuse and name the verb they moved to.
+`
+
+const cardGenerateWords = `card generate writes a directory of pre-linted briefs from a ledger, a findings file or a tool's help, ready for one nova-sprint add --brief-dir. It is pre-alpha: not ready for production use.
+
+A source is read from a checkout (--repo-dir), or from --repo, --base and --sha with no checkout. The planner cuts one card per file, lays ordinary ledger cards in alternating waves, and holds every brief to the lint add runs before anything is written. One red brief prints LINT DRIFT and nothing is written. --dry-run prints the manifest and writes nothing.
+
+Wave 1 cards of one ledger share its path. The CARDS OK line says shared-paths=yes when they do, and the add wants --allow-shared-paths.
+
+  nova-sprint card generate --from ledger --ledger serial-tests --repo-dir ./repo --out ./cards
+  nova-sprint add --stream debt --brief-dir ./cards --allow-shared-paths
+`
+
+const cardLintWords = `card lint holds a brief to the lint nova-sprint add runs (the model lines, the child rules under the default rule set, a tree card's steps), and past the add to the typed header and the template's unfilled <...> lines. One LINT DRIFT line per miss. LINT OK when the brief is clean.
+`
+
+const cardTemplateWords = `card template prints nova-swarm's card template, the shape every generated brief has. It takes no flags and no arguments.
+`
