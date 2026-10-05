@@ -1,0 +1,14 @@
+diff --git a/README.md b/README.md
+index 4310181c3..82cf27706 100644
+--- a/README.md
++++ b/README.md
+@@ -9,6 +9,10 @@ and harnesses work together efficiently. Exchange messages, organize work,
+ find useful records, and check repeatable tasks—leaving more time and tokens
+ for the work that needs thought.
+ 
++nova-sprint is the opinionated system; nova-tools are the general tools that support it.
++You do not need [nova-sprint](https://github.com/mas-bandwidth/nova-sprint) to use any of them.
++
+ Choose the tool for the problem you have. Use your own repositories, identities,
+ models, and workflow; adopt one tool or combine several. Humans are welcome to
+ use and contribute too!
