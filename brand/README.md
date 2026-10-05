@@ -5,7 +5,7 @@ at Glenn's request. Every image here is a **lossless PNG**. The character and
 wordmark sources retain their original transparency and resolution. The original
 renders are copied byte for byte; there is no JPEG conversion in this pipeline.
 
-[View the starting-blocks banner](starting-blocks/composite.png), or the earlier
+[View the approved jogging banner](jogging/banner-centered.png), or the earlier
 [group composition](composite.png).
 
 ## What the friends represent
@@ -39,6 +39,19 @@ PNG assets, with drawn diagrams and text. Rebuild with
 Arial-compatible TrueType font when the default macOS Arial path is unavailable.
 No character was regenerated for the explainer.
 
+## Approved jogging banner
+
+The README uses [banner-centered.png](jogging/banner-centered.png): the happy
+white-and-blue friend jogging and waving, with robot and logo centred as a
+single group. Glenn approved this version on 2026-10-05. The built-in image
+generator rendered the complete banner; the native 2168 × 725 PNG is copied
+without resampling or lossy conversion. Its [final prompt](jogging/prompt-centered.txt)
+and earlier layout variants are saved alongside it.
+
+All six explainer panels are drawn at 4× logical resolution and exported
+as 2× lossless PNGs. Text, boxes, dividers, checkmarks, and curved connectors
+are antialiased; original character assets are preserved.
+
 ## Starting blocks
 
 The latest direction returns to the original mascot, freshly rendered on the
@@ -50,7 +63,7 @@ pixels are preserved. All source and placed layers are lossless PNGs in
 
 Rebuild with `python3 brand/compose_starting_blocks.py` (Pillow and NumPy).
 The script also saves the previous [running version without grass](starting-blocks/running-no-grass.png).
-This is the selected README hero.
+This earlier README hero remains available for reuse.
 
 ## Solo runner
 
@@ -60,7 +73,7 @@ wordmark. The original character and logo are composited without regeneration.
 Its lossless layers and [background prompt](solo-runner-v2/prompt.txt) are saved
 in `solo-runner-v2/`. Rebuild with `python3 brand/compose_solo_v2.py` (Pillow
 required). The script checks that background pixels outside the overlays remain
-unchanged. These earlier options are retained alongside the selected starting-blocks hero.
+unchanged. These earlier options are retained alongside the selected jogging hero.
 
 The simpler banner pairs the white-and-blue sprinter with the flat wordmark
 ahead of him. It uses the original character and logo, separate shadows, and
@@ -115,6 +128,6 @@ retain the individual sizes returned by generation rather than being upscaled.
 
 [prompts.txt](prompts.txt) preserves the generation prompts. Update placement or
 shadows independently when arranging the scene; do not repeatedly regenerate
-the assembled banner. The README uses [the starting-blocks banner](starting-blocks/composite.png).
+the assembled banner. The README uses [the jogging banner](jogging/banner-centered.png).
 The earlier [group banner](../assets/nova-sprint-banner.png) remains available
 as a historical asset.

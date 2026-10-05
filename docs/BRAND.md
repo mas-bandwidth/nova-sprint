@@ -21,11 +21,11 @@ explaining the foundation. Send people who want to create AI friends to
 
 ## Mark and banner
 
-Use [the starting-blocks banner](../brand/starting-blocks/composite.png) at the
-top of the README. It is a 2170 × 725 lossless PNG: the fast friend ready for
-his next task, with the flat Nova Sprint wordmark ahead of him. Scale it as a
-whole. The earlier [group banner](../assets/nova-sprint-banner.png) is retained
-as part of the artwork's history.
+Use [the approved jogging banner](../brand/jogging/banner-centered.png) at the
+top of the README. It is a 2168 × 725 lossless PNG: a happy white-and-blue
+friend jogging and waving, grouped with the flat Nova Sprint wordmark and
+centred as one element. Scale it as a whole. Earlier starting-blocks and
+group banners remain in the artwork archive.
 
 The individual friends illustrate the [README explainer](../README.md).
 Green cannot hear the team, Yellow sleeps, and Purple trips over the blocked
@@ -52,8 +52,7 @@ the funny failures of LLM-only coordination, introduce the machine, then
 explain the dashboard's vocabulary with an example workflow. Cards, streams,
 dependencies, sentinel gates, friends, the fleet, review, and merge should all
 make sense before readers open the live demo. Keep operational detail in the
-guides. Link both the dashboard screenshot and the invitation below it to
-the live sprint.
+guides. End the tour with a clear link to the live sprint.
 
 Screenshots are snapshots. Preserve their actual values and record where and
 when they were captured; do not manufacture a healthier or busier sprint.
