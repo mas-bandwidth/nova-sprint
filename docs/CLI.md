@@ -468,6 +468,38 @@ Reads the tree and GitHub again and writes nothing: zero differences is
 holds. `--against <tree>` puts a second tree file where GitHub stands and reads
 no network at all.
 
+### roadmap check, add, remove, pull, note
+
+```
+nova-work roadmap check  --file <roadmap.sexp>
+nova-work roadmap add    --file <roadmap.sexp> --stream <s> --brief-dir <dir>
+nova-work roadmap remove --file <roadmap.sexp> --id <id>...
+nova-work roadmap pull   --file <roadmap.sexp> --id <id>... --out <dir>
+nova-work roadmap note   --file <roadmap.sexp> --id <id>... --text <t>
+```
+
+Edit a roadmap s-expression (`roadmaps/*.sexp`, [SPEC-WORK-V1.md](SPEC-WORK-V1.md)
+section 1.12) so no one edits it by hand. `--id` repeats for more cards. Every
+byte a verb does not change (comments, spacing, order) is kept. `nova-work
+roadmap -h` lists the verbs; `nova-work roadmap <verb> -h` gives one's flags,
+effect and exit codes.
+
+- `check` finds string-aware paren balance, each release's `:cards` equal to the
+  cards in its streams, no card id twice, and no stream with no card. Exit 0
+  clean; exit 1 one `ROADMAP-CHECK FAILED` line per problem, an unbalanced or
+  unparsable file included; exit 2 could not run (a flag, an unreadable file).
+- `add` makes each `<id>.md` in `--brief-dir` a card of `--stream` in the first
+  release and raises `:cards`. A card id already in any release is refused.
+- `remove` drops the cards, lowers `:cards`, and drops a stream left empty.
+- `pull` writes each card's `:brief` to `<id>.md` in `--out` (the brief
+  `nova-sprint add` reads), then removes the cards as `remove` does. One
+  `ROADMAP-PULL CARD id= release= stream= tier=` line names where each came
+  from. A card with an empty `:brief` is refused.
+- `note` appends `--text` to each card's `:brief` after a blank line.
+
+A verb that writes refuses a file `check` rejects, and checks the bytes it would
+save the same way. On a refusal (exit 2) nothing is written.
+
 ## Sprint-program design commands
 
 This checkout also exposes `nova-sprint work repos`, `work issues`,
