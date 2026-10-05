@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"sort"
 	"strings"
@@ -346,6 +347,68 @@ func askPicks(rr *round, finder string, want int, free []string, room map[string
 		free = without(free, []string{finder})
 	}
 	return append(picked, rr.pickByRoom(want-len(picked), free, room)...)
+}
+
+// FinishAsk asks the primary's first read of a free reader with room at once on finish
+// (docs/SPEC-SPRINT.md section 6; reads-start-on-finish-r-ns.w1), drawing its route and
+// placing its read card in the readers table in Asked. When no reader is free with room,
+// it places nothing and ok is false; the tick's ask places it when room frees up.
+func (s *Snapshot) FinishAsk(c, pr *Card, head string, room map[string]readerRoom, rr *round, ri routeIndexes, moves roundMoves) (rd string, ch Change, rcID string, ok bool) {
+	if s.Readers == nil || len(s.Readers.Rows()) == 0 || room == nil || rr == nil {
+		return "", Change{}, "", false
+	}
+	if ReadsWanted(s, pr) == 0 || !enoughReadersUp(s, pr) {
+		return "", Change{}, "", false
+	}
+	attempt := pr.Int("attempt")
+	free := s.freeReaders(pr, attempt)
+	var machineReaders []string
+	for _, rd := range free {
+		if m, ok := ReaderMachine(rd); ok && s.Fleet != nil {
+			if ctl := s.MemberCtl(m); ctl != nil && ctl.F("status") == Up {
+				machineReaders = append(machineReaders, rd)
+			}
+		}
+	}
+	if len(machineReaders) < ReadsNeeded(pr) {
+		return "", Change{}, "", false
+	}
+	finder := finderFirst(pr, attempt, machineReaders, room)
+	picked := askPicks(rr, finder, 1, machineReaders, room)
+	if len(picked) == 0 {
+		return "", Change{}, "", false
+	}
+	rd = picked[0]
+	if rd == finder {
+		room[rd] = room[rd].after(1)
+	} else {
+		rr.moved(rd)
+		moves[c.ID] = joinMoves(moves[c.ID], rd)
+	}
+	rcID = ReadCardID(pr.ID, attempt, rd)
+	fields := map[string]string{
+		"kind":    "read",
+		"primary": pr.ID,
+		"stream":  pr.Row,
+		"reader":  rd,
+		"attempt": itoa(attempt),
+		"head":    head,
+		"asked":   stamp(s.Now),
+	}
+	if rd == finder {
+		fields[FieldFinderRead] = "1"
+	}
+	maps.Copy(fields, s.readRouteOf(ri, pr, nil))
+	if ri != nil {
+		tier := s.readTierOf(pr)
+		if ri[tier] != nil && ri[tier].moves[pr.ID] != "" {
+			ri[tier].moves[c.ID] = ri[tier].moves[pr.ID]
+			delete(ri[tier].moves, pr.ID)
+		}
+	}
+	maps.Copy(fields, s.decideFields(pr, true))
+	ch = change(Readers, createEntry(rcID, rd, Asked, pr.Score, fields))
+	return rd, ch, rcID, true
 }
 
 // sweepReads is the readers' rebalance safety: every read asked or reading of a

@@ -2439,6 +2439,17 @@ attempt must not approve new code.
   in `listen` (`run --listen`), both through `serverStart`, so in-flight reads with live
   leases survive a server restart while lapsed reads are retired and re-asked.
 
+### reads-start-on-finish-r-ns.w1
+
+- On finish, in the same step, a card that finishes `ok` is asked of a free reader with
+  room at once (`FinishAsk`, `TestAFinishAsksAFreeReaderInTheSameTick`). When readers have
+  room, finish-to-read-start stays under 30 seconds rather than waiting for the next tick
+  cycle: the primary card moves to review, its read card is created in the readers table
+  under `asked` with its route drawn and attempt decision fields assigned, its reader round
+  and route index updated, and the primary's `asked` field recorded in the same atomic plan.
+  If no reader is free with room, the card waits in review and is asked on the next tick
+  that finds room.
+
 ## 7. Merging
 
 Merging turns reviewed results into integrated changes. These rules keep the

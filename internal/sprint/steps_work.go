@@ -1335,6 +1335,20 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		return p
 	}
+	var (
+		room  map[string]readerRoom
+		rr    *round
+		moves roundMoves
+		ri    routeIndexes
+	)
+	if s.Readers != nil && len(s.Readers.Rows()) > 0 {
+		room = s.readerRooms(s.Readers.Rows())
+		rr = askRound(s)
+		moves = roundMoves{}
+		if s.Fleet != nil && len(s.Routes) > 0 {
+			ri = routeIndexesOf(s)
+		}
+	}
 	for _, c := range chosen {
 		// a finish is routed only by a decision of its own take (decide.go, decidedFor)
 		if why := decidedFor(c, r.Decided); why != "" {
@@ -1440,11 +1454,16 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			p.Units = append(p.Units, u)
 			continue
 		}
-		// ONE PATH ASKS: the finish asks no reader. The machine's ask does, in the tick the
-		// finish wakes, the earlier pair first (Ask, the primary's asked field), each read
-		// with the route it draws. A read the finish creates itself carries no route (a
-		// finish loads none), so no reader can start it.
 		asked := map[string]string{}
+		if !r.Failed || passed {
+			if rd, ch, rcID, ok := s.FinishAsk(c, pr, head, room, rr, ri, moves); ok {
+				u.Changes = append(u.Changes, ch)
+				set["asked"] = rd
+				asked[rcID] = Asked
+				u.Moved += fmt.Sprintf("; %s asked of %s", pr.ID, rd)
+				u.Closes = append(u.Closes, closesFor(s.Open, []string{NStranded, NStalled}, pr.ID)...)
+			}
+		}
 		if passed {
 			n := happened(NWorkOK, pr.Row, s.Now, pr.ID)
 			n.Who, n.Attempt = who, attempt
@@ -1483,11 +1502,17 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			u.Notes = append(u.Notes, n)
 		}
 		u.Changes = append(u.Changes, change(Work, moveEntry(pr, pr.Row, Review, set)))
-		if j, ok := reviewJudgment(s, inReview(pr, set), reviewStep{moved: asked, writes: u.Notes, who: who}); ok {
+		if j, ok := reviewJudgment(s, inReview(pr, set), reviewStep{moved: asked, closing: noteIDs(u.Closes), writes: u.Notes, who: who}); ok {
 			u.Notes = append(u.Notes, j)
 		}
 		friendNext(s, c, &u, p.Units)
 		p.Units = append(p.Units, u)
+	}
+	if rr != nil {
+		roundWrites(&p, rr, moves)
+	}
+	if ri != nil {
+		ri.write(&p)
 	}
 	return p
 }
