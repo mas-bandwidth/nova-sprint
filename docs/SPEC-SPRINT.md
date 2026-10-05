@@ -2498,6 +2498,18 @@ is recorded; `promoted --answers <note>` is held as every answer is (`answered`)
 naming no open judgment refuses the whole step, nothing written
 (`TestTheTickRaisesDevBehindAtTwentyFiveLandingsOrThirtyMinutes`, `TestPromotedHoldsItsAnswers`).
 
+### land-one-lander-now-ns.w1
+
+Each non-dry landing pass holds an exclusive kernel lock beside every clone it
+uses, from before any clone creation, origin check or cleanup until the pass,
+its branch cleanup and scoring finish. The sibling `<clone>.land.lock` records
+the holder PID and verb; an overlapping pass refuses and names that holder.
+Existing path aliases and missing clone paths under aliased roots share one
+canonical lock. A dead holder leaves no kernel lock: the next pass acquires it
+and logs `LAND LOCK RECOVERED` with the old PID. An orderly release clears the
+stamp and keeps the lock file in place. `land --dry-run` neither acquires nor
+writes a lock. The lock uses the existing `tla/FileLock.tla` ownership rules.
+
 **The lander's checks.** Each head `land` merges is checked by script, no model,
 before the batch's check runs (`internal/diffcheck`), the two checks the decide
 read's calibration of 2026-10-02 found a model read does not make: the merge's
