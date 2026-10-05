@@ -37,6 +37,16 @@ Keep orange clearly separate from yellow. Humour should feel affectionate.
 Record the source and generation details of any new asset in
 [Asset provenance](ASSET-PROVENANCE.md).
 
+## Show the product working
+
+After the short introduction, lead with the dashboard. Use a real screenshot
+linked to the live demo, then explain what a reader can watch: streams,
+friends and fleet capacity, spend, throughput, and the estimated finish time.
+Keep the longer workflow explanations in the guides.
+
+Screenshots are snapshots. Preserve their actual values and record where and
+when they were captured; do not manufacture a healthier or busier sprint.
+
 ## Colours
 
 The illustration uses a blue track, navy and bright-blue lettering, warm

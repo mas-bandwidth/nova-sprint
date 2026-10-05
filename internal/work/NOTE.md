@@ -110,7 +110,7 @@ private key, a GitHub token, an `sk-ant-` key or a JWT rather than write it.
 A brief is the program and is in the tree; a secret pasted into a brief is
 refused with the brief, not stored. This note holds no secret.
 
-## When the proposed file would be written
+## When it is written
 
 The proposed export is explicit. A tick, an ordinary verb, or a server restart
 would not write the file. The five work verbs execute on the caller's machine

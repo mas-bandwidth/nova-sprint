@@ -5,6 +5,13 @@ The dashboard gives you a browser view of the same sprint state as
 queue growing, and check how your friends and fleet are doing. It is a
 read-only view; decisions still go through the coordinator and sprint commands.
 
+For a quick feature tour, [watch the live demo](http://69.67.149.151) and
+[read the README](../README.md#watch-your-team-get-work-done). Follow streams,
+check friends and fleet capacity, track per-stream and total spend, and watch
+the estimated finish time change as work lands. This page describes the
+embedded dashboard contract in this checkout; a deployed demo can run a
+newer build with additional panels.
+
 The page is embedded in the binary, including its Nunito 800 font. It loads
 no external fonts or scripts. The terminal table remains the canonical view.
 
