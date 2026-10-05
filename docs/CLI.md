@@ -315,7 +315,10 @@ the clone, and refuses the swap, exit 1 with nothing changed, unless `git merge-
 --is-ancestor <commit> origin/<base>` holds; a binary with no source commit (devel, a tag, a dirty
 build) is refused the same way, and the refusal names the commit, the base and the remedy (build
 from origin/<base> at its tip, then switch). Without `--repo` and `--base` the check cannot be made and it refuses, exit 1. On
-the base it prints `BASE OK binary= commit= base=origin/<base> tip=` before the shadow tick. The
+the base it prints `BASE OK binary= commit= base=origin/<base> tip=` before the shadow tick.
+A server started with `NOVA_SPRINT_SERVER_REPO` and `NOVA_SPRINT_BASE` set checks its own build
+commit the same way every 5 minutes, in the background, and its tick keeps one judgment, `the
+server runs off the sprint base`, while it is off the base, closed when it is back on. The
 contract is [SPEC-SPRINT.md](SPEC-SPRINT.md) section 14, "server-from-base-only.w3".
 
 ### Exit codes

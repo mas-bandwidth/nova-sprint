@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/buildinfo"
@@ -148,7 +149,8 @@ func (b ServerBase) What() string {
 }
 
 // TickServerBase is the tick's server-base judgment (docs/SPEC-SPRINT.md section 14,
-// "server-from-base-only.w3"): one judgment while the running server's commit is not On the
+// "server-from-base-only.w3"), run in TickCheck on the check the store's tick passes in
+// (TickReq.ServerBase, from RunningBase): one judgment while the running server's commit is not On the
 // base, none while it stands, and closed once it is. A nil check is no fact this tick (none
 // made, or one that could not be made): nothing is raised and nothing closed.
 func TickServerBase(s *Snapshot, r TickReq, b *ServerBase) (Plan, int) {
@@ -159,10 +161,117 @@ func TickServerBase(s *Snapshot, r TickReq, b *ServerBase) (Plan, int) {
 	var conds []cond
 	if !b.On {
 		conds = append(conds, cond{typ: NServerOffBase, streamLevel: true, what: b.What(),
-			decisions: []string{"server switch <a binary built from origin/" + b.Base + ">", "wait 30m"}})
+			decisions: TickDecisions[NServerOffBase]})
 	}
 	due := notify(&p, s, conds, []string{NServerOffBase}, r)
 	return p, due
+}
+
+// BaseWatchEvery is how often the running server's commit is checked against origin's base
+// again: the commit of a running process never changes, so only the base moving decides it,
+// and a fetch every tick (one a second) would load the forge for nothing.
+const BaseWatchEvery = 5 * time.Minute
+
+// BaseWait bounds one check of the running server, the fetch and the ancestor test.
+const BaseWait = 2 * time.Minute
+
+// BaseWatch is the running server's base check, the fact the tick's judgment is raised and
+// closed on (TickReq.ServerBase; docs/SPEC-SPRINT.md section 14, "server-from-base-only.w3").
+// Line is the version line of the process that ticks, read in process and never from the file
+// on disk, which server switch may already have replaced. A tick never waits on git: Fact
+// returns the last check made and starts the next once the last is BaseWatchEvery old, in the
+// background; a check that could not be made is no fact.
+type BaseWatch struct {
+	Line, Repo, Base string
+	Every            time.Duration // 0 is BaseWatchEvery
+	Now              func() time.Time
+	// Check is the check made; nil is CheckServerBase over Line, Repo and Base.
+	Check func(ctx context.Context) (ServerBase, error)
+
+	mu    sync.Mutex
+	last  *ServerBase
+	at    time.Time
+	busy  bool
+	begun bool
+	err   error
+}
+
+// RunningBase is this process's watch, nil when none is set: the server's binary sets it from
+// NOVA_SPRINT_SERVER_REPO and NOVA_SPRINT_BASE (cmd/nova-sprint/server_switch.go), and a nil
+// watch is no fact, so a tick with neither named raises nothing.
+var RunningBase *BaseWatch
+
+// Fact is the last check made, nil before the first ends or when the last could not be made;
+// it starts the next check when none is in flight and the last is Every old.
+func (w *BaseWatch) Fact() *ServerBase {
+	if w == nil {
+		return nil
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	now := w.now()
+	every := w.Every
+	if every <= 0 {
+		every = BaseWatchEvery
+	}
+	if !w.busy && (!w.begun || now.Sub(w.at) >= every) {
+		w.busy, w.begun, w.at = true, true, now
+		go w.refresh()
+	}
+	if w.last == nil {
+		return nil
+	}
+	b := *w.last
+	return &b
+}
+
+// Wait blocks until no check is in flight, for a caller (a test) that wants the fact it began.
+func (w *BaseWatch) Wait(ctx context.Context) error {
+	for {
+		w.mu.Lock()
+		busy := w.busy
+		w.mu.Unlock()
+		if !busy {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+// Err is why the last check could not be made, nil when it was.
+func (w *BaseWatch) Err() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.err
+}
+
+func (w *BaseWatch) refresh() {
+	ctx, cancel := context.WithTimeout(context.Background(), BaseWait)
+	defer cancel()
+	check := w.Check
+	if check == nil {
+		check = func(ctx context.Context) (ServerBase, error) { return CheckServerBase(ctx, w.Line, w.Repo, w.Base) }
+	}
+	b, err := check(ctx)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.busy, w.err = false, err
+	if err != nil {
+		w.last = nil
+		return
+	}
+	w.last = &b
+}
+
+func (w *BaseWatch) now() time.Time {
+	if w.Now != nil {
+		return w.Now()
+	}
+	return time.Now()
 }
 
 func gitIn(ctx context.Context, repo string, args ...string) (string, error) {

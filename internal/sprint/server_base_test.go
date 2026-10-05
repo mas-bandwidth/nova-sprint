@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
 // baseTwin is a twin of the server's repository: a bare origin with the sprint base and a
@@ -165,4 +166,106 @@ func TestServerSwitchRefusesABinaryBuiltOffTheSprintBase(t *testing.T) {
 		require.Len(t, p.Closes, 1, "back on the base closes it")
 		assert.Equal(t, "j1", p.Closes[0].Note.ID)
 	})
+}
+
+// TestTheLiveTickRaisesTheServerOffTheBase: the tick's half of server-from-base-only
+// (docs/SPEC-SPRINT.md section 14, "server-from-base-only.w3") is wired, not a planner called by
+// hand. The store's tick reads the running server's watch (sprint.RunningBase) into its request,
+// TickCheck plans the judgment on it, and the tick writes it: on a twin repository a server
+// stamped from a side branch raises one "the server runs off the sprint base" across ticks, and a
+// server stamped from the base closes it. The watch never fetches in the tick: its first read is
+// no fact, and a check that cannot be made is none either. Not parallel: it sets the process's
+// watch, and restores it before any parallel test runs.
+func TestTheLiveTickRaisesTheServerOffTheBase(t *testing.T) {
+	ctx := context.Background()
+	tw := newBaseTwin(t)
+	was := sprint.RunningBase
+	t.Cleanup(func() { sprint.RunningBase = was })
+
+	watch := func(line, repo string) *sprint.BaseWatch {
+		w := &sprint.BaseWatch{Line: line, Repo: repo, Base: tw.base}
+		assert.Nil(t, w.Fact(), "the first read is no fact: the tick never waits on git")
+		require.NoError(t, w.Wait(ctx))
+		return w
+	}
+	off := watch(stampOf(tw.side), tw.clone)
+	require.NotNil(t, off.Fact())
+	assert.False(t, off.Fact().On)
+	assert.Equal(t, tw.side, off.Fact().Commit)
+	broken := watch(stampOf(tw.side), filepath.Join(t.TempDir(), "no-clone"))
+	assert.Nil(t, broken.Fact(), "a check that cannot be made is no fact")
+	assert.ErrorContains(t, broken.Err(), "git fetch origin "+tw.base)
+	var none *sprint.BaseWatch
+	assert.Nil(t, none.Fact(), "no watch is no fact")
+
+	r := newAlarmRig(t)
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 4}))
+	r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}}))
+	_, _, _, err := r.st.SetMachine(r.ctx, true)
+	require.NoError(t, err)
+	raised := func() (n int, open int) {
+		notes, _, err := r.m.NotesSince(r.ctx, "", 100000)
+		require.NoError(t, err)
+		for _, x := range notes {
+			if x.Kind == sprint.Judgment && x.Type == sprint.NServerOffBase {
+				n++
+				assert.Contains(t, x.What, "commit "+tw.side[:12])
+				assert.Contains(t, x.What, "remedy: build nova-sprint from origin/"+tw.base)
+			}
+		}
+		for _, o := range r.snap().Open {
+			if o.Note.Type == sprint.NServerOffBase {
+				open++
+			}
+		}
+		return n, open
+	}
+
+	sprint.RunningBase = nil
+	r.ticks(2)
+	n, open := raised()
+	assert.Equal(t, [2]int{0, 0}, [2]int{n, open}, "no watch raises nothing")
+
+	sprint.RunningBase = off
+	r.ticks(3)
+	n, open = raised()
+	assert.Equal(t, [2]int{1, 1}, [2]int{n, open}, "off the base: one judgment, open, across ticks")
+
+	sprint.RunningBase = broken
+	r.ticks(2)
+	n, open = raised()
+	assert.Equal(t, [2]int{1, 1}, [2]int{n, open}, "a check that cannot be made closes nothing")
+
+	sprint.RunningBase = watch(stampOf(tw.baseCommit), tw.clone)
+	require.True(t, sprint.RunningBase.Fact().On)
+	r.ticks(2)
+	n, open = raised()
+	assert.Equal(t, [2]int{1, 0}, [2]int{n, open}, "back on the base: closed, and not raised again")
+}
+
+// The watch checks again once its last check is Every old, never on every read, and never two
+// at once.
+func TestTheServerBaseWatchChecksOnceAnInterval(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	now := time.Date(2026, 10, 5, 9, 20, 0, 0, time.UTC)
+	checks := 0
+	w := &sprint.BaseWatch{Every: time.Minute, Now: func() time.Time { return now },
+		Check: func(context.Context) (sprint.ServerBase, error) {
+			checks++
+			return sprint.ServerBase{On: checks > 1}, nil
+		}}
+	assert.Nil(t, w.Fact())
+	require.NoError(t, w.Wait(ctx))
+	for range 5 {
+		require.NotNil(t, w.Fact())
+		require.NoError(t, w.Wait(ctx))
+	}
+	assert.Equal(t, 1, checks, "one check within the interval")
+	assert.False(t, w.Fact().On)
+	now = now.Add(time.Minute)
+	w.Fact()
+	require.NoError(t, w.Wait(ctx))
+	assert.Equal(t, 2, checks, "a second once the last is Every old")
+	assert.True(t, w.Fact().On)
 }

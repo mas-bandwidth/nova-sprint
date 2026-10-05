@@ -11,6 +11,22 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
+// The running server's base watch (sprint.RunningBase): the tick raises "the server runs off
+// the sprint base" while this process's own build commit is not an ancestor of origin's sprint
+// base, from the clone and the base server switch defaults to (docs/SPEC-SPRINT.md section 14,
+// "server-from-base-only.w3"). It reads the process's own version line, never the file on disk.
+func init() { sprint.RunningBase = serverBaseWatch(os.Getenv) }
+
+// serverBaseWatch is the watch NOVA_SPRINT_SERVER_REPO and NOVA_SPRINT_BASE name, nil when
+// either is unset: no clone or no base is no check, and the tick raises nothing.
+func serverBaseWatch(getenv func(string) string) *sprint.BaseWatch {
+	repo, base := getenv("NOVA_SPRINT_SERVER_REPO"), getenv("NOVA_SPRINT_BASE")
+	if repo == "" || base == "" {
+		return nil
+	}
+	return &sprint.BaseWatch{Line: versionLine(), Repo: repo, Base: base}
+}
+
 // cmdServerSwitch switches the server binary to <binary>, keeping the previous binary
 // and rolling back if a land fails within the window (docs/SPEC-SPRINT.md section 14).
 // Before the swap it runs the candidate's shadow tick against the store, read-only, and

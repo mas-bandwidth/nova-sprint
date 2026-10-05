@@ -4317,10 +4317,23 @@ The tick's judgment `the server runs off the sprint base` (`sprint.NServerOffBas
 `sprint.TickServerBase`) is one for the sprint while the running server's commit is not on the
 base, none while it stands, and closed when a check finds it back on. Its line names the commit
 and the base and never the tip, so the base moving on is the same episode; its decisions are
-`server switch <a binary built from origin/<base>>` and `wait 30m`. A tick with no check made
-raises nothing and closes nothing. The planner is pure over the check the caller makes; the
-server's run loop making that check each tick and passing it in is owed (the tick's request, its
-parts, and the store's tick lie outside this card's paths).
+`act` (the remedy its line names: build nova-sprint from origin/<base> at its tip, then `server
+switch` to it) and `wait 30m`, never `ack`: only the tick closes it. A tick with no check made
+raises nothing and closes nothing. It is wired into the live tick: `TickCheck` (the end's
+`check` part, what is always true held) runs `TickServerBase` on `TickReq.ServerBase`, and the
+store's tick fills that from the process's watch, `sprint.RunningBase.Fact()`
+(internal/sprint/store/tick.go). The watch (`sprint.BaseWatch`) checks the version line of the
+process that ticks, read in process and never from the file on disk (which server switch may
+already have replaced), against `NOVA_SPRINT_BASE` fetched into `NOVA_SPRINT_SERVER_REPO`, the
+same clone and base server switch defaults to; the server's binary sets it at start
+(cmd/nova-sprint/server_switch.go), and with either unset there is no watch and no judgment. A
+tick never waits on git (a tick is one a second under a 10 s deadline): `Fact` returns the last
+check made and starts the next in the background once the last is `sprint.BaseWatchEvery`
+(5 minutes) old, one at a time, each bounded by `sprint.BaseWait` (2 minutes). So the first
+tick of a server, and a one-shot `tick`, carry no fact; a check that could not be made is no
+fact (nothing raised, nothing closed; `BaseWatch.Err` says why). The shadow tick passes no
+check: server switch checked the candidate before running it, and a watch begun in a process
+that exits after one tick would leave a fetch behind it.
 
 Tested on a twin repository, a bare origin with the base and a side branch cut from it
 (`TestServerSwitchRefusesABinaryBuiltOffTheSprintBase`: a side-branch stamp refused naming its
@@ -4329,7 +4342,11 @@ read whole; devel, a tag, both dirty forms, a non-version line and an unknown co
 check that cannot be made an error; the judgment raised once, kept, not closed by a tick with no
 check, and closed back on the base), and at the verb (`TestServerSwitchVerbRefusesABinaryOffTheSprintBase`:
 refused, exit 1, with no base named; an off-base candidate refused before its shadow tick with nothing
-written beside the target; a base candidate switched).
+written beside the target; a base candidate switched), and at the store's tick
+(`TestTheLiveTickRaisesTheServerOffTheBase`: with no watch nothing is raised; a server stamped off
+the base raises one judgment kept across ticks; a check that cannot be made closes nothing; a
+server stamped from the base closes it and it is not raised again; red with the store's line
+removed), and the watch's pace (`TestTheServerBaseWatchChecksOnceAnInterval`).
 
 #### store-latency-row-r.w2: where shows the store round trip the server measures
 
