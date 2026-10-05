@@ -420,6 +420,48 @@ plans and lints, prints the manifest and the `CARDS OK` line with
 
 0 done; 1 a brief is red and nothing was written; 2 could not run.
 
+### nova-card new: one brief from its parts
+
+`nova-card new` is the one verb the nova-card binary still runs (it is not yet
+a verb of `nova-sprint card`). It writes a hand-written card's brief from its
+parts so no one types the skeleton: the header `nova-sprint add` reads, the
+child paragraph, the `RULES.` lines of the default rule set, an `ATTRIBUTION.`
+sentence, `THE TASK.` from the file, and STEP 1 to STEP 6 in the shape
+`nova-sprint card generate` writes. The STEP 4 gate is built from `--gate`:
+`go vet <pkgs>` and `go test -count=1 -timeout 600s <pkgs>`, then `gofmt -l`
+on every changed Go file.
+
+```
+nova-card new <id> --repo <owner/name> --base <branch> --task-file <file> --paths <paths> [--shared <paths>] --test <test> --gate <pkgs> --tier <tier> [--needs <ids>] [--kind <kind>] [--minutes <n>] [--out <file>]
+nova-card new --batch <tsv> --out <dir> [--repo <owner/name>] [--base <branch>] [--tier <tier>] [--gate <pkgs>] ...
+```
+
+```sh
+nova-card new fix-x --repo owner/repo --base main --task-file task.txt --paths 'cmd/x/**' --test './cmd/x TestX' --gate './cmd/x/' --tier pro --out cards/fix-x.md
+nova-sprint add --stream debt --brief-dir ./cards
+```
+
+The brief goes to stdout, or to `--out <file>` with a `CARD OK file=<file>`
+line. `--batch <tsv>` writes one brief per row into `--out <dir>` (refused when
+it already holds a brief) and prints `CARD <id> task=<how the task was read>`
+per row, then `CARDS OK dir=<dir> cards=<n>`. The table is tab separated; blank
+lines and `#` lines are skipped. A first row opening `id` is a header naming
+the columns: `id`, `repo`, `base`, `task_file`, `task`, `paths`, `shared`,
+`test`, `gate`, `tier`, `needs`; a column it does not know is refused. A
+`task_file` cell is read as the task, and one that cannot be read is refused
+naming the row and the path; a `task` cell is the task's text. With no header
+the columns are id, task, paths, test, gate, tier, shared, needs, and the task
+cell is read as a file when one is there and as the text otherwise, which the
+`CARD` line says (`column 2 file <path>` or `column 2 inline`). An empty cell
+takes the flag's value.
+
+It refuses, exit 2 and nothing written, a missing part by its flag (`missing
+--repo, --test`), a `--task-file` it cannot read, a tier that is not frontier,
+heavy, pro or flash, a TEST the add would refuse, a `--gate` that is a command
+rather than packages, and a batch id named twice. Every brief is held to the
+lint `nova-sprint add` runs before a byte is written; a red one prints its
+`LINT DRIFT` line, exit 1.
+
 
 ## nova-work
 
