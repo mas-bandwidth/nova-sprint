@@ -55,6 +55,7 @@ nova-sprint init [--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coor
 nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]]
 nova-sprint quack --streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]
 nova-sprint release <sentinel>... --reason <text> [--answers <note>]
+nova-sprint release check [--json] [--streams <glob>] [--check <name>]... [--audit] [--since <tag>] [--seed <n>] [--repo-dir <dir>]
 nova-sprint resolve [<id>...] [--stream <s>] [--limit <n>]
 nova-sprint start
 nova-sprint stop
@@ -289,6 +290,10 @@ the old server running, when the shadow exits non-zero, panics, misses `--tick-d
 (default 10s) or prints no plan; on a pass it switches and keeps the shadow's plan size and time
 at `<target>.shadow.json`, beside the switch record. The contract is
 [SPEC-SPRINT.md](SPEC-SPRINT.md) section 14, "install-canary-shadow-tick-r.w1".
+
+### release-check-cold-audit-r-ns.w1
+
+`nova-sprint release check` runs the release gate checks. With `--audit`, the coordinator asks a cold audit of 20 cards landed since the last release tag (or `--since <tag|RFC3339|duration>`), sampled uniformly with `--seed <n>` (default random). The sample is printed and recorded on the Work table (`cold_audit`, `cold_audit_seed`, `cold_audit_ids`, `cold_audit_asked`). Each sampled card is asked as a cold read on the Readers table to a reader who never saw the card. A plain `release check` is read-only and passes (`RELEASE OK`) only when the audit is under 48 hours old and all 20 reads are OK; otherwise it fails (`RELEASE NOT READY`), naming broken reads with findings and any still unanswered.
 
 ### Exit codes
 
