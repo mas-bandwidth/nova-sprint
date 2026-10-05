@@ -470,14 +470,15 @@ func noSprintYet(err error) error {
 		Next: "nova-sprint init --coordinator <name>"}
 }
 
-// laneRowWithRoute adds a Route field to sprint.LaneRow for JSON output.
+// laneRowWithRoute adds Route and Endpoint fields to sprint.LaneRow for JSON output.
 type laneRowWithRoute struct {
-	Kind    string   `json:"kind"`
-	Machine string   `json:"machine"`
-	Width   int      `json:"width"`
-	Held    []string `json:"held"`
-	Waiting []string `json:"waiting"`
-	Route   string   `json:"route,omitempty"`
+	Kind     string   `json:"kind"`
+	Machine  string   `json:"machine"`
+	Width    int      `json:"width"`
+	Held     []string `json:"held"`
+	Waiting  []string `json:"waiting"`
+	Route    string   `json:"route,omitempty"`
+	Endpoint string   `json:"endpoint,omitempty"`
 }
 
 // whereView is the view, for a program.
@@ -787,24 +788,51 @@ func (a *app) whereLoop(ctx context.Context, r whereRun, stdout, stderr io.Write
 			if err != nil {
 				return "", a.readFailed("where", err, stderr), false
 			}
-			// Build a map of machine -> route from dealt cards on local-endpoint routes
-			machineRoutes := make(map[string]string)
+			// Load routes for filtering
+			routes, _, err := st.Routes(ctx)
+			if err != nil {
+				return "", a.readFailed("where", err, stderr), false
+			}
+			// Build a map of local endpoints by route name
+			localEndpoints := make(map[string]string)
+			for _, route := range routes {
+				if route.Provider == "endpoint" {
+					localEndpoints[route.Name] = route.Model
+				}
+			}
+			// Build a map of machine -> routes from dealt cards on local-endpoint routes
+			machineLocalRoutes := make(map[string]map[string]string)
 			for _, card := range d.Cards {
 				route := card.F(sprint.FieldRoute)
 				if route != "" && route != sprint.RoutePin {
-					machineRoutes[card.Row] = route
+					if endpoint, ok := localEndpoints[route]; ok {
+						machine := card.Row
+						if machineLocalRoutes[machine] == nil {
+							machineLocalRoutes[machine] = make(map[string]string)
+						}
+						machineLocalRoutes[machine][route] = endpoint
+					}
 				}
 			}
 			// Convert sprint.LaneRow to laneRowWithRoute, populating routes
 			v.Lanes = make([]laneRowWithRoute, len(rawLanes))
 			for i, lane := range rawLanes {
+				var laneRoute, laneEndpoint string
+				if routes, ok := machineLocalRoutes[lane.Machine]; ok && len(routes) > 0 {
+					for route, endpoint := range routes {
+						laneRoute = route
+						laneEndpoint = endpoint
+						break
+					}
+				}
 				v.Lanes[i] = laneRowWithRoute{
-					Kind:    lane.Kind,
-					Machine: lane.Machine,
-					Width:   lane.Width,
-					Held:    lane.Held,
-					Waiting: lane.Waiting,
-					Route:   machineRoutes[lane.Machine],
+					Kind:     lane.Kind,
+					Machine:  lane.Machine,
+					Width:    lane.Width,
+					Held:     lane.Held,
+					Waiting:  lane.Waiting,
+					Route:    laneRoute,
+					Endpoint: laneEndpoint,
 				}
 			}
 		}
