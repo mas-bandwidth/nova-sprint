@@ -233,3 +233,41 @@ func TestTheDashboardOverAStoreOfTwoReleasesShowsOneRelease(t *testing.T) {
 	assert.Len(t, streams, 3)
 	assert.Equal(t, int64(12), all)
 }
+
+// The live page's server, server.py, is replaced by this verb (docs/SPEC-SPRINT-DASHBOARD.md,
+// "The page is the live page"): over a twin store each path it served answers, /api/sprint
+// with every key it carried, and /landings.json is where --json's landedSeries.
+func TestTheDashboardServesServerPysPathsFromATwinStore(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1,m2")
+	ta.ok("add --stream s1 --count 3")
+	srv := ta.a.dashboardServer("", false, "", time.Second, "", nil)
+	get := func(path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		return w
+	}
+	for _, path := range []string{"/", "/index.html", "/app.js", "/nunito-800.woff2", "/OFL.txt", "/api/sprint", "/healthz", "/landings.json"} {
+		assert.Equal(t, http.StatusOK, get(path).Code, path)
+	}
+	for _, path := range []string{"/favicon.svg", "/logo-tile-192.png", "/logo-tile-384.png", "/logo-icon.png", "/favicon.png", "/logo.webp", "/logo.png", "/server.py"} {
+		assert.Equal(t, http.StatusNotFound, get(path).Code, "%s: no --logo", path)
+	}
+	var snap map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(get("/api/sprint").Body.Bytes(), &snap))
+	for _, key := range []string{"ok", "data", "fetchedAt", "attemptAt", "error", "readSeconds", "minInterval", "throughput", "throughputMinutes", "build"} {
+		assert.Contains(t, snap, key)
+	}
+	var data struct {
+		LandedSeries json.RawMessage `json:"landedSeries"`
+	}
+	require.NoError(t, json.Unmarshal(snap["data"], &data))
+	var series, landings map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(data.LandedSeries, &series))
+	require.NoError(t, json.Unmarshal(get("/landings.json").Body.Bytes(), &landings))
+	for key, v := range series {
+		assert.JSONEq(t, string(v), string(landings[key]), key)
+	}
+	assert.Contains(t, landings, "generated")
+}

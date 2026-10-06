@@ -142,13 +142,6 @@ func TestTheDashboardShowsOnlyTheCurrentReleasesStreams(t *testing.T) {
 	snap, _ = apiOf(t, r.s.Pull(), "/api/sprint?release=v1.1.0")
 	assert.Equal(t, "v1.1.0", snap.Release)
 
-	// the page carries the switch and asks for the release it shows, dark as ever
-	html, js := string(file("index.html")), string(file("app.js"))
-	assert.Contains(t, html, `<nav class="release" id="release" aria-label="release" hidden></nav>`)
-	assert.Contains(t, js, `fetch("/api/sprint" + RELEASE_Q`)
-	assert.Contains(t, js, `new EventSource("/events" + RELEASE_Q)`)
-	assert.NotContains(t, html, `data-theme="light"`)
-
 	// v1.0.0 done: v1.1.0 is the current release
 	r.advance(2 * r.s.Every)
 	r.next = func() ([]byte, error) {

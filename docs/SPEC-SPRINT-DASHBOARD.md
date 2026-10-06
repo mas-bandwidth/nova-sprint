@@ -8,18 +8,14 @@ the same JSON and adds nothing to the sprint. The page's files live in
 (Nunito 800, SIL Open Font License, its licence beside it) included, so the page loads
 nothing from anywhere else.
 
-A user tunes the page by editing this specification and the page together: a change to
-`index.html` or `app.js` is a change to the line below that says it, in the same commit.
-`TestDashboardPageIsTheSpec` (internal/sprintdash) holds part of the two equal: it reads
-the quoted rules of this file and the page's markup (and app.js's legend states) and
-compares the panel titles and their order, each table's column headers and their order,
-which columns are numeric (right-aligned), the hero tiles and their labels, the progress
-bar's label and legend, the header's wordmark and pills, and the footer line. A change to
-any of these in one without the other is red. The rest (sizes, colours, motion, layout)
-is checked by eye against this file, at the widths its Responsive section names. In
-this repository the specification is locked (its lock sections): a line changes only
-with the owner's words, quoted with the date. A copy of nova-tools is its owner's to
-tune the same way.
+The page is the live page the owner watches, byte for byte but its comments (the next
+section but one, "The page is the live page"): `TestThePageIsTheLivePageByteForByte`
+(internal/sprintdash) holds the sha256 of each page file, so a change to `index.html`,
+`app.js` or `OFL.txt` is a change to that test's table in the same commit, named. A user
+tunes the page by editing this specification and the page together, and the pin with them.
+In this repository the specification is locked (its lock sections): a line changes only
+with the owner's words, quoted with the date. A copy of nova-tools is its owner's to tune
+the same way.
 
 ## Serving and publishing
 
@@ -44,9 +40,31 @@ members that are up; `buffer`, the string `"<ready>/<2*width>"`; and `low`, true
 is no-store; the page reloads itself when the build number changes (a new binary, or a
 new `--logo` file). A read that fails holds the last good copy, the page says nothing,
 and the dashboard's output takes one line per new failure, and once a minute a line of
-the reads' count, failures and read times. `--logo` names an image file
-served as the logo and the favicon; with none, the slot renders nothing.
-`/healthz` answers `ok`.
+the reads' count, failures and read times. `--logo` names the logo's file, drawn as the
+live page's server drew it: an `.svg` is drawn in the title and is the favicon
+(`/favicon.svg`); `logo.webp` or `logo.png` is a photo on white, shown as `/logo-icon.png`
+with `/favicon.png` the favicon (the keyed copies beside it when they are there, else the
+photo); any other image is a tile, shown as `/logo-tile-192.png` at 1x and
+`/logo-tile-384.png` at 2x and the favicon (its `<stem>-192.png` and `<stem>-384.png`
+beside it when they are there, else the tile); `/logo` is the file itself. With none, the
+slot and the favicon render nothing. `/healthz` answers `ok`.
+
+Every path the live page's server (server.py, mas-bandwidth/work
+dashboard/live-2026-10-05/) answered, this verb answers on the page's listeners, the same
+JSON: `/` and `/index.html` (the page, its script link versioned by the build, its logo
+slot and favicon filled), `/app.js`, `/nunito-800.woff2`, `/OFL.txt`, `/api/sprint`,
+`/healthz`, and the logo's paths above (`/favicon.svg`, `/logo-tile-192.png`,
+`/logo-tile-384.png`, `/logo-icon.png`, `/favicon.png`, `/logo.webp`, `/logo.png`); any
+other path is 404 `not found`, and HEAD answers as GET. `/api/sprint` carries every key
+server.py's did, in its order: `ok`, `data`, `fetchedAt`, `attemptAt` (when the last read
+ended, good or not), `error`, `readSeconds` (that read's time, to the millisecond),
+`minInterval` (`--every` in seconds), `throughput`, `throughputMinutes`, `build`; then
+`release`, `current`, `releases`, `releaseStreams` (the release view, next section) and `stale`.
+Two paths are this verb's alone: `/events`, which the live page opens when it is offered
+and falls back from when it is not, and `/landings.json`, the Landings chart's series:
+`where --json`'s `landedSeries` (bucketSeconds, start, buckets, friends, fleet, totals,
+lastHour) with `generated`, when the series last changed, and `generatedEpoch`; 404 until
+a copy carries one, so the panel stays hidden as the live SPEC.md says.
 
 One freshness check: the served data's age is the time since its read (before any good
 read, since the dashboard started). Older than 2 s for 30 s raises the alarm: one line
@@ -79,6 +97,51 @@ address (`http://127.0.0.1:7390/` on the machine that runs it); the Electron app
 URL artifact in a webview, a browser client a placeholder. The token that publishes to
 Television is the owner's: it is never in this repository, never on the dashboard's
 command line, and the dashboard never reads it.
+
+## The page is the live page (the owner, 2026-10-05)
+
+The owner, 2026-10-05: "The live dashboard is what I am watching and expect not to change
+(visually) ... the one I'm watching is the one I want." And: "You can learn from the work
+done in your own version of the dashboard, but if it changes how the dashboard looks, then
+it is probably not what I want."
+
+The page (`internal/sprintdash/page/`) is the live page as it was in mas-bandwidth/work at
+`dashboard/live-2026-10-05/`, whose SHA256SUMS list `app.js`, `index.html` and `OFL.txt`.
+The files are copied as they are; only their comments differ, which say "the owner" where
+the live files carry the owner's name. `TestThePageIsTheLivePageByteForByte` holds it:
+each embedded file with its comments stripped hashes to the live file stripped the same
+way, each embedded file hashes to the repo's pin, and given `NOVA_DASHBOARD_LIVE` (a copy
+of the live directory) the live files hash to their SHA256SUMS. Where a line of the locked
+text below and the live page differ, the live page is the page: it shows no Lanes panel,
+no archived-streams line and no release switch. The server keeps choosing the data: the
+release view (the owner, 2026-10-05 7:05 PM: "Please make sure the sprint dashboard shows
+only the v1.0.0 work streams."; with no `?release=` the data is the current release's
+streams, the earliest in version order with cards left, `?release=all` every stream, and a
+sprint whose streams carry no release is shown whole), and `where --json` without
+`--archived`, so archived streams are not in the data the page draws.
+
+The live page's own lines, its SPEC.md as it was, which the locked text below does not
+carry. Its preface, of the copy served by server.py on the Studio:
+
+> The page's specification is nova-sprint's docs/SPEC-SPRINT-DASHBOARD.md (locked there). This
+> file holds the lines of this local copy (live/, served by ../server.py on 127.0.0.1:7390)
+> that the canonical spec does not carry yet; each moves into it with the card that does the
+> same in nova-sprint.
+
+They move here with this section. `/landings.json` is now this verb's, from `where --json`'s
+`landedSeries`, in place of the stopgap script the first line names.
+
+- Landings chart (the owner 2026-10-04 4:20 PM ET: "Can I get a cool graph showing cards landed for 'friends' and 'fleet' over time, like # of cards landed per-10 minutes as the sample." / "Put this graph underneath all tables" / "full width."): one panel titled "Landings", the last panel on the page, below every table, full width; stacked bars, one per 10-minute bucket over the last 24 hours, fleet at the base and friends on top, colours --series-fleet and --series-friends from :root; header legend: a swatch and total per series over the 24 hours, then the last hour's counts; y gridlines with counts, x labels every 2 hours in 12-hour time; no tooltips, no title attributes; dark; folds like the other panels; read from /landings.json (written every 60 s by ../bin/landings.sh, a stopgap) and redrawn when its "generated" changes; the panel stays hidden while that file cannot be fetched.
+
+### Freshness: once per second, end to end (hard requirement)
+The owner, 2026-10-04 ~6:03 PM ET: "once per-second updates are a hard requirement." / "lock that in."
+- The public page (served from space) shows data at most 2 s old: the Studio's poller makes a fresh snapshot every second, space's puller fetches once per second, Caddy serves the JSON with max-age=1, and the page polls every 1000 ms.
+- It holds under any viewer count: the Studio sees one request per second from space, never one per viewer.
+- A freshness check measures the served snapshot's age, and an age over 2 s for 30 s is an alarm to the coordinator.
+- The machine pill says RUNNING, STALE or STOPPED and nothing more; a stop's reason is the coordinator's view only (the owner 2026-10-04 ~10:15 PM: "STOPPED is plenty").
+- The cost tile shows the recorded total and, under it, the cost per landed card (the owner 2026-10-04 ~10:50 PM: "Please bring that back"). No other text is added to the page unless the owner asks for it.
+- A status pill shows the status word only (up, held, down); a reason the server carries after it is the coordinator's view (the owner 2026-10-04 ~10:40 PM).
+- The Work name column fits the longest stream name with its tag (cap 27.75rem); the shared status edge --E is clamp(18.5rem, 45vw, 42rem), so the pills of Work, Fleet and Friends still end on one line (the owner 2026-10-04 ~11:58 PM).
 
 ## The specification
 

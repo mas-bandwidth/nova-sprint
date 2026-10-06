@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math"
 	"mime"
 	"net/http"
 	"os"
@@ -85,25 +86,32 @@ type Server struct {
 	samples []sample
 	stats   readStats
 	fresh   freshness
+	landed  json.RawMessage // the copy's landedSeries; nil when it has none
+	landAt  time.Time       // when landed last changed: /landings.json's generated
 }
 
-// snapshot is /api/sprint's body: the page reads data, throughput,
-// throughputMinutes, build and the release fields; the rest says how the reads are going.
+// snapshot is /api/sprint's body: every key server.py's carried, in its order (ok, data,
+// fetchedAt, attemptAt, error, readSeconds, minInterval, throughput, throughputMinutes,
+// build), then the release fields and stale. The page reads data, throughput,
+// throughputMinutes and build; the rest says how the reads are going.
 // Data is the copy as the release shows it (release.go): release is the one shown,
 // current the one shown when none is asked, releases every label a stream carries, and
 // releaseStreams the streams shown (absent for all).
 type snapshot struct {
 	OK                bool            `json:"ok"`
 	Data              json.RawMessage `json:"data"`
+	FetchedAt         *time.Time      `json:"fetchedAt"`
+	AttemptAt         *time.Time      `json:"attemptAt"` // when the last read ended, good or not
+	Error             *string         `json:"error"`
+	ReadSeconds       *float64        `json:"readSeconds"` // the last read's time, good or not
+	MinInterval       float64         `json:"minInterval"` // Every, in seconds
+	Throughput        *float64        `json:"throughput"`
+	ThroughputMinutes float64         `json:"throughputMinutes"`
+	Build             string          `json:"build"`
 	Release           string          `json:"release,omitempty"`
 	Current           string          `json:"current,omitempty"`
 	Releases          []string        `json:"releases,omitempty"`
 	ReleaseStreams    []string        `json:"releaseStreams,omitempty"`
-	FetchedAt         *time.Time      `json:"fetchedAt"`
-	Error             *string         `json:"error"`
-	Throughput        *float64        `json:"throughput"`
-	ThroughputMinutes float64         `json:"throughputMinutes"`
-	Build             string          `json:"build"`
 	Stale             bool            `json:"stale"`
 }
 
@@ -120,12 +128,16 @@ type readStats struct {
 	sum, max  time.Duration
 }
 
-// ServeHTTP answers every path the page uses; every answer is no-store.
+// ServeHTTP answers every path the page uses, every path server.py served (the logo's in
+// logo.go) and /landings.json; every answer is no-store.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Cache-Control", "no-store, max-age=0")
 	h.Set("Pragma", "no-cache")
 	h.Set("Expires", "0")
+	if s.serveLogo(w, r.URL.Path) {
+		return
+	}
 	switch r.URL.Path {
 	case "/", "/index.html":
 		s.send(w, "text/html; charset=utf-8", s.index())
@@ -133,6 +145,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.send(w, "text/javascript; charset=utf-8", file("app.js"))
 	case "/nunito-800.woff2":
 		s.send(w, "font/woff2", file("nunito-800.woff2"))
+	case "/OFL.txt":
+		s.send(w, "text/plain; charset=utf-8", file("OFL.txt"))
+	case "/landings.json":
+		if body := s.landings(); body != nil {
+			s.send(w, "application/json", body)
+		} else {
+			http.Error(w, "no landed series yet", http.StatusNotFound)
+		}
 	case "/logo":
 		if body, err := s.logo(); err == nil {
 			s.send(w, logoType(s.Logo, body), body)
@@ -194,6 +214,21 @@ func (s *Server) refresh(gap time.Duration) {
 	s.record(start, s.Now(), body, up, err)
 }
 
+// landings is /landings.json's body: the copy's landedSeries (where --json) with generated,
+// when it last changed, and generatedEpoch; nil when the copy has none.
+func (s *Server) landings() []byte {
+	s.mu.Lock()
+	raw, at := s.landed, s.landAt
+	s.mu.Unlock()
+	var v map[string]json.RawMessage
+	if json.Unmarshal(raw, &v) != nil || v == nil {
+		return nil
+	}
+	v["generated"] = mustJSON(at.Format("2006-01-02T15:04:05-0700"))
+	v["generatedEpoch"] = mustJSON(at.Unix())
+	return mustJSON(v)
+}
+
 // read is one read: the sprint, or a puller's upstream with the snapshot it came in.
 func (s *Server) read() ([]byte, *snapshot, error) {
 	if s.From != nil {
@@ -222,6 +257,8 @@ func sprintJSON(body []byte) error {
 // one keeps the copy, and a new failure is logged once.
 func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err error) {
 	took := end.Sub(start)
+	readSeconds := math.Round(took.Seconds()*1000) / 1000 // server.py's round(took, 3)
+	s.snap.AttemptAt, s.snap.ReadSeconds = &end, &readSeconds
 	if err != nil {
 		why := oneline.Escape(err.Error())
 		if s.snap.OK || s.snap.Error == nil || *s.snap.Error != why {
@@ -252,6 +289,17 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		s.changed = make(chan struct{})
 		s.snap.OK, s.snap.Error = true, nil
 		s.snap.Data = placed(bytes.TrimSpace(body))
+		var ls struct {
+			LandedSeries json.RawMessage `json:"landedSeries"`
+		}
+		// ignored: sprintJSON has read body as JSON; a series of another shape is none
+		_ = json.Unmarshal(body, &ls)
+		if string(ls.LandedSeries) == "null" {
+			ls.LandedSeries = nil
+		}
+		if !bytes.Equal(ls.LandedSeries, s.landed) {
+			s.landed, s.landAt = ls.LandedSeries, at
+		}
 		s.snap.FetchedAt, s.snap.Throughput, s.snap.ThroughputMinutes = &at, rate, minutes
 	}
 	s.summarize(end, took, err != nil)
@@ -322,7 +370,7 @@ func (s *Server) SnapshotOf(release string) []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snap := s.snap
-	snap.Build, snap.Stale = build, s.fresh.alarmed
+	snap.Build, snap.Stale, snap.MinInterval = build, s.fresh.alarmed, s.Every.Seconds()
 	if len(snap.Data) > 0 {
 		v := viewOf(snap.Data, release)
 		snap.Data, snap.Release, snap.Current, snap.Releases, snap.ReleaseStreams = v.Data, v.Release, v.Current, v.Releases, v.Streams
@@ -370,17 +418,14 @@ func logoType(name string, body []byte) string {
 	return http.DetectContentType(body)
 }
 
-// index is the page with its script versioned by the build and the logo slot and
-// favicon filled when a logo is given and readable now.
+// index is the page as server.py served it: its script versioned by the build, and the
+// logo slot and the favicon filled from the logo (logo.go), each placeholder replaced
+// wherever it stands.
 func (s *Server) index() []byte {
 	build := s.Build()
-	html := strings.Replace(string(file("index.html")), `src="app.js"`, `src="app.js?v=`+build+`"`, 1)
-	slot, icon := "", ""
-	if _, err := s.logo(); err == nil {
-		slot = `<img id="logo" class="logo-tile" src="/logo?v=` + build + `" alt="">`
-		icon = `<link rel="icon" href="/logo?v=` + build + `"><link rel="apple-touch-icon" href="/logo?v=` + build + `">`
-	}
-	html = strings.Replace(html, "<!--LOGO-->", slot, 1)
-	html = strings.Replace(html, "<!--FAVICON-->", icon, 1)
+	html := strings.ReplaceAll(string(file("index.html")), `src="app.js"`, `src="app.js?v=`+build+`"`)
+	slot, icon := s.logoSlot(build)
+	html = strings.ReplaceAll(html, "<!--LOGO-->", slot)
+	html = strings.ReplaceAll(html, "<!--FAVICON-->", icon)
 	return []byte(html)
 }
