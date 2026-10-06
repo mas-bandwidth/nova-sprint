@@ -42,6 +42,15 @@ $ nova-sprint start
 START OK before=STOPPED after=RUNNING changed
 nothing is ticking between commands in a twin: tick by hand: nova-sprint tick
 0/1 0.0% -> ETA -  machine: running
+BRING-UP sprint-server missing command="nova-sprint run --listen 127.0.0.1:6390"
+BRING-UP store running command="nova-sprint where"
+BRING-UP bus missing command="nova-bus peek --as boss"
+BRING-UP judgment-push missing command="nova-sprint inbox --wait --push seat"
+BRING-UP event-watch missing command="nova-sprint watch --events"
+BRING-UP coordinator-beat missing held=no command="nova-sprint friend beat boss"
+BRING-UP reader reader-a running width=unbounded tiers=all command="nova-sprint reader up reader-a"
+BRING-UP reader reader-b running width=unbounded tiers=all command="nova-sprint reader up reader-b"
+BRING-UP dashboard missing last=- command="nova-sprint dashboard --listen 127.0.0.1:7390"
 
 $ nova-sprint tick
 MOVED presence: m1 up
@@ -140,6 +149,15 @@ $ nova-sprint start
 START OK before=STOPPED after=RUNNING changed
 nothing is ticking between commands in a twin: tick by hand: nova-sprint tick
 0/2 0.0% -> ETA -  machine: running
+BRING-UP sprint-server missing command="nova-sprint run --listen 127.0.0.1:6390"
+BRING-UP store running command="nova-sprint where"
+BRING-UP bus missing command="nova-bus peek --as boss"
+BRING-UP judgment-push missing command="nova-sprint inbox --wait --push seat"
+BRING-UP event-watch missing command="nova-sprint watch --events"
+BRING-UP coordinator-beat missing held=no command="nova-sprint friend beat boss"
+BRING-UP reader reader-a running width=unbounded tiers=all command="nova-sprint reader up reader-a"
+BRING-UP reader reader-b running width=unbounded tiers=all command="nova-sprint reader up reader-b"
+BRING-UP dashboard missing last=- command="nova-sprint dashboard --listen 127.0.0.1:7390"
 
 $ nova-sprint tick
 MOVED presence: m1 up
