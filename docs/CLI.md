@@ -313,6 +313,18 @@ the old server running, when the shadow exits non-zero, panics, misses `--tick-d
 at `<target>.shadow.json`, beside the switch record. The contract is
 [SPEC-SPRINT.md](SPEC-SPRINT.md) section 14, "install-canary-shadow-tick-r.w1".
 
+### release-check-cold-audit-r-ns-b.w1
+
+`nova-sprint release check [--json] [--check <name>]...` runs the release checks and writes
+nothing: one `RELEASE CHECK <name> ok|fail <evidence>` line each, then `RELEASE OK checks=<n>` (exit
+0) or `RELEASE NOT READY failed=<n>` (exit 1). `--audit`, the coordinator's, asks the cold audit:
+20 cards landed since the last release tag reachable from `--base` (default `HEAD`, read in
+`--repo-dir`), or since `--since <tag|commit|RFC 3339 time>`, sampled by `--seed <n>` (default
+random, printed), each asked of a reader up that never saw it; it prints `COLD AUDIT READ <card>
+<read card>` per card and `COLD AUDIT seed= since= cards= asked=`, or refuses (exit 2, nothing
+asked). The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md) section 11,
+"release-check-cold-audit-r-ns-b.w1".
+
 ### Exit codes
 
 | exit | meaning |
