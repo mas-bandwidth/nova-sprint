@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 type report struct {
@@ -34,9 +36,12 @@ type seeder struct {
 
 // run builds the whole tree in memory, then writes it under out, which must
 // not exist yet: the tool never deletes or overwrites anything.
-func run(r *recipe, from, keep, out string) (*report, error) {
+func run(r *recipe, rel release, from, keep, out string) (*report, error) {
 	if _, err := os.Lstat(out); err == nil {
 		return nil, fmt.Errorf("%s already exists; -out must be a new directory", out)
+	}
+	if rel.tag == "" || rel.commit == "" {
+		return nil, fmt.Errorf("no nova-tools release tag and commit to record in %s; seed from a tagged release", sprint.NovaToolsVersionFile)
 	}
 	s := &seeder{r: r, from: from, files: map[string]file{}}
 	rep := &report{}
@@ -123,6 +128,9 @@ func run(r *recipe, from, keep, out string) (*report, error) {
 			return nil, fmt.Errorf("keep %s: %w", k, err)
 		}
 	}
+	// Last of all: the release the tree came from, which nova-sprint seat check
+	// requires at least.
+	s.files[sprint.NovaToolsVersionFile] = file{[]byte(sprint.FormatNovaToolsVersion(rel.tag, rel.commit)), 0o644}
 
 	names := make([]string, 0, len(s.files))
 	for n := range s.files {

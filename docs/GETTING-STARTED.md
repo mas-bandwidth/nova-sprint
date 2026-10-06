@@ -25,8 +25,11 @@ go install github.com/mas-bandwidth/nova-tools/cmd/nova-swarm@latest
 nova-friend help
 ```
 
-Each nova-sprint release is built against one nova-tools release and names it;
-an older nova-tools on `PATH` is refused by `nova-sprint seat check`. The
+Each nova-sprint release is built against one nova-tools release and names it
+in [`NOVA-TOOLS-VERSION`](../NOVA-TOOLS-VERSION) (today v1.1.0); that release or
+a newer one passes. `nova-sprint seat check` refuses (exit 1, one line naming the
+binary, the version it found, the version required and the install command) while
+`nova-friend`, `nova-bus` or `nova-config` is missing from `PATH` or older. The
 [nova-tools README](https://github.com/mas-bandwidth/nova-tools#readme) explains
 the dependencies a team plans for: Redis for the store, Tailscale across
 networks, Ansible for the fleet.

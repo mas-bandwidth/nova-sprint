@@ -61,6 +61,8 @@ type outside struct {
 	devMergeQueue func(ctx context.Context) (sprint.QueueM, error)
 	// machineVersions is each machine's installed version against dev (fp-mach-01).
 	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)
+	// novaTools is one nova-tools binary as PATH has it (seat_novatools.go).
+	novaTools func(bin string) sprint.NovaToolsProbe
 }
 
 // realOutside is the check as it runs on a machine.
@@ -327,6 +329,9 @@ func (a *app) runSeatCheckVerb(verb string, args []string, stdout, stderr io.Wri
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, verb, argErr("takes no words ", err, pos...))
+	}
+	if code := a.refuseNovaTools(verb, stderr); code != 0 {
+		return code
 	}
 	st, err := a.store(*c)
 	if err != nil {
