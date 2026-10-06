@@ -953,6 +953,10 @@ type ReworkCard struct {
 	Friend     bool              `json:",omitempty"`
 	Set        map[string]string `json:",omitempty"`
 	Rule, Said string            `json:",omitempty"`
+	// Finding, when set, is what this attempt was found to be in place of its broken reads'
+	// findings: the work lint's (worklint.go, TickLint), which asks no reader. The brief's
+	// bound judges it, and the next attempt's work card carries it.
+	Finding string `json:",omitempty"`
 }
 
 // ReworkResolves is the judgments a rework discharges on its primary.
@@ -1036,7 +1040,11 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// the brief's bound: the same finding twice, or too many attempts on one brief, and
 		// the brief is wrong, not the worker; a --fix changes the brief not at all, so it does
 		// not lift it (brief_bound.go)
-		if bb, ok := AtBriefBound(c, brokenFindings(s, c), s.AttemptsCap(c.Row)); ok {
+		foundNow := brokenFindings(s, c)
+		if one.Finding != "" {
+			foundNow = one.Finding
+		}
+		if bb, ok := AtBriefBound(c, foundNow, s.AttemptsCap(c.Row)); ok {
 			p.refuse(c.ID, bb.Why())
 			stays()
 			continue
@@ -1066,6 +1074,10 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// the finding and why ride on the primary too: a rework with no member up deals later
 		// (start), from the primary, and its child is told all the same
 		given := reworkGiven(s, c)
+		if one.Finding != "" {
+			given["finding"] = cutText(one.Finding, MaxCardTextBytes)
+			given["why"] = fmt.Sprintf("attempt %d finished and the work lint refused it", c.Int("attempt"))
+		}
 		set := map[string]string{"fix": fix, "finding": given["finding"], "why": given["why"], FieldFindingAttempt: c.F("attempt"),
 			"reworks": itoa(c.Int("reworks") + 1), "broken_reads": itoa(c.Int("broken_reads") + broken)}
 		// what this attempt found, kept for the cap's judgment (brief_bound.go, FieldFindings):
