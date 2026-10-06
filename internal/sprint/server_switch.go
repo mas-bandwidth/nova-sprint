@@ -7,8 +7,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/buildinfo"
 )
 
 // DefaultRollbackWindow is how long server switch watches for a failed land before
@@ -110,6 +114,29 @@ func ServerSwitch(ctx context.Context, opts ServerSwitchOptions) error {
 	// Verify candidate binary exists and is readable
 	if _, err := os.Stat(opts.Binary); err != nil {
 		return fmt.Errorf("server switch: candidate binary not accessible: %w", err)
+	}
+
+	// Check that the binary's build commit is an ancestor of origin/main.
+	// Read the build commit from the binary's buildinfo Source.
+	versionLine, err := readVersionLine(opts.Binary)
+	if err != nil {
+		return fmt.Errorf("server switch: cannot read version from %s: %w", opts.Binary, err)
+	}
+	fields, ok := buildinfo.Parse(versionLine)
+	if !ok {
+		return fmt.Errorf("server switch: cannot parse version line from %s", opts.Binary)
+	}
+	src, ok := fields.FindSource()
+	if !ok {
+		return fmt.Errorf("server switch: cannot read build source from %s; build from origin/main and switch again", opts.Binary)
+	}
+	// Check if src.Revision is an ancestor of origin/main.
+	ancestor, err := isAncestorOfMain(src.Revision)
+	if err != nil {
+		return fmt.Errorf("server switch: cannot verify build commit %s of %s: %w", src.Revision, opts.Binary, err)
+	}
+	if !ancestor {
+		return fmt.Errorf("server switch: build commit %s of %s is not an ancestor of origin/main; build from origin/main at its tip and switch again", src.Revision, opts.Binary)
 	}
 
 	prev := target + ".prev"
@@ -223,4 +250,34 @@ func CheckRollbackOnLandFailure(target string, landErr error, now time.Time) (ro
 	// ignored: clean up state file after rollback on failure
 	_ = os.Remove(stateFile)
 	return true, nil
+}
+
+// readVersionLine runs the binary with "version" and returns its output.
+func readVersionLine(binary string) (string, error) {
+	cmd := exec.Command(binary, "version")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// isAncestorOfMain checks if the given revision is an ancestor of origin/main.
+func isAncestorOfMain(revision string) (bool, error) {
+	// First, fetch origin/main to ensure we have the latest
+	cmd := exec.Command("git", "fetch", "origin", "main")
+	if err := cmd.Run(); err != nil {
+		return false, fmt.Errorf("git fetch origin main: %w", err)
+	}
+	// Check if revision is an ancestor of origin/main
+	cmd = exec.Command("git", "merge-base", "--is-ancestor", revision, "origin/main")
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+		// revision is not an ancestor
+		return false, nil
+	}
+	return false, fmt.Errorf("git merge-base --is-ancestor: %w", err)
 }
