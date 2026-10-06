@@ -75,6 +75,7 @@ func FindBaseCure(ctx context.Context, req BaseCureReq) (BaseCure, error) {
 	if req.Gate == nil {
 		return out, errors.New("base cure: no tree gate; a head cures the base only through the base's own gate")
 	}
+	req.Env = noDetachEnv(req.Env)
 	git := func(args ...string) (string, error) {
 		res, err := gitrun.Run(ctx, gitrun.Options{C: req.RepoDir, Env: req.Env, OwnRepo: true}, args...)
 		if err != nil {
