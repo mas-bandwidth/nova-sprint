@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -378,6 +379,107 @@ func askPicks(rr *round, finder string, want int, free []string, room map[string
 		free = without(free, []string{finder})
 	}
 	return append(picked, rr.pickByRoom(want-len(picked), free, room)...)
+}
+
+// finishAsker is a finish's ask (finishPlan): the read of a primary its work
+// finished ok is asked in the finish's own step, of a free reader with room,
+// so it starts at once and never waits a tick cycle for the machine's ask
+// (docs/SPEC-SPRINT.md section 6, reads-start-on-finish-r-ns-b.w2). It places
+// as the ask places (askFinders, askPicks, readRouteOf, decideFields) on the
+// rooms, rounds and route indexes the finish's plan writes, and only the
+// simple case: the primary's first read at its attempt, of machine readers.
+// Everything else (a returned read, a read taken back from a reader away, a
+// friend's frontier read, a card no reader has room for, a judgment) is the
+// tick's ask's, as before. A finish that read no reader states (ReaderStates
+// nil) asks nothing: it cannot tell who is up.
+type finishAsker struct {
+	s     *Snapshot
+	room  map[string]readerRoom
+	rr    *round
+	ri    routeIndexes
+	moves roundMoves
+}
+
+// newFinishAsker is the finish's ask over the snapshot, nil when the finish read
+// no reader states. The room is reserved first for every primary already in
+// review waiting for a read the tick's ask could place (TickAsk's rehearsal,
+// askPicks on the same rooms), so a finish never takes the lane a card that
+// waited is owed: the finish asks only from room the tick would leave free.
+func newFinishAsker(s *Snapshot) *finishAsker {
+	if s.ReaderStates == nil || s.Readers == nil || len(s.Readers.Rows()) == 0 {
+		return nil
+	}
+	a := &finishAsker{s: s, room: s.readerRooms(s.Readers.Rows()), rr: askRound(s), moves: roundMoves{}}
+	if s.Fleet != nil && len(s.Routes) > 0 {
+		a.ri = routeIndexesOf(s)
+	}
+	for _, c := range s.Work.Column(Review) {
+		if c.F("result") == "failed" || !enoughReadersUp(s, c) {
+			continue
+		}
+		if want := ReadsWanted(s, c); want > 0 {
+			askPicks(a.rr, "", want, s.freeReaders(c, c.Int("attempt")), a.room)
+		}
+	}
+	return a
+}
+
+// ask is the read card the finish asks of pr (the primary as the finish leaves
+// it in review: inReview), keyed for the round and route moves by the finish's
+// unit key: the reader, and the change creating its card; "" when the finish
+// asks none and the tick's ask does.
+func (a *finishAsker) ask(pr *Card, key string) (string, Change) {
+	if a == nil || pr.F("result") == "failed" {
+		return "", Change{}
+	}
+	s, attempt := a.s, pr.Int("attempt")
+	if len(readsAt(s, pr, attempt)) > 0 || friendReadCard(s, pr) || !enoughReadersUp(s, pr) {
+		return "", Change{}
+	}
+	free := s.freeReaders(pr, attempt)
+	if ReadsWanted(s, pr) != 1 || len(free) < ReadsNeeded(pr) {
+		return "", Change{}
+	}
+	finder := finderFirst(pr, attempt, free, a.room)
+	if finder != "" {
+		a.room[finder] = a.room[finder].after(1)
+	}
+	picked := askPicks(a.rr, finder, 1, free, a.room)
+	if len(picked) == 0 {
+		return "", Change{}
+	}
+	rd := picked[0]
+	fields := map[string]string{"kind": "read", "primary": pr.ID, "stream": pr.Row, "reader": rd, "attempt": itoa(attempt), "head": pr.F("head"), "asked": stamp(s.Now)}
+	if rd == finder {
+		fields[FieldFinderRead] = "1" // placed on purpose: the level leaves it where it is
+	} else {
+		a.rr.moved(rd)
+		a.moves[key] = joinMoves(a.moves[key], rd)
+	}
+	maps.Copy(fields, s.readRouteOf(a.ri, pr, nil))
+	if a.ri != nil {
+		// readRouteOf sums its moves under the primary; the finish's unit is keyed by its work card
+		for _, t := range tierLadder {
+			if m, ok := a.ri[t].moves[pr.ID]; ok && key != pr.ID {
+				a.ri[t].moves[key] = m
+				delete(a.ri[t].moves, pr.ID)
+			}
+		}
+	}
+	maps.Copy(fields, s.decideFields(pr, true))
+	return rd, change(Readers, createEntry(ReadCardID(pr.ID, attempt, rd), rd, Asked, pr.Score, fields))
+}
+
+// write writes where the finish's asks left the readers' ask_index and the
+// route indexes, in the finish's batch (roundWrites).
+func (a *finishAsker) write(p *Plan) {
+	if a == nil {
+		return
+	}
+	roundWrites(p, a.rr, a.moves)
+	if a.ri != nil {
+		a.ri.write(p)
+	}
 }
 
 // sweepReads is the readers' rebalance safety: every read asked or reading of a

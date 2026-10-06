@@ -2607,6 +2607,24 @@ id (`--op`) returns the original result, with no second counter or notification.
   in `listen` (`run --listen`), both through `serverStart`, so in-flight reads with live
   leases survive a server restart while lapsed reads are retired and re-asked.
 
+### reads-start-on-finish-r-ns-b.w2
+
+- A finished card is asked of a free reader with room in the finish's own step, never a
+  tick cycle later (the wall-clock lens, the owner 2026-10-04: the time from add to landed,
+  measured per stage, and the waits removed). The finish (`sprint.Finish`, `finishAsker` in
+  `internal/sprint/readers.go`) places the primary's first read at its attempt as the ask
+  places it: the finder first, else the free reader with the greatest share of room
+  (`askFinders`, `askPicks`), its route drawn (`readRouteOf`), a decide read's bars set, the
+  primary's `asked` field and the read card in the one plan with the readers' `ask_index`
+  and the route indexes. The room is first reserved for every primary already in review
+  that the tick's ask would place, so a finish never takes the lane a waiting card is owed.
+  Everything else stays the tick's ask's: no reader with room (the card waits, due, and is
+  asked on the first reader that frees), a returned read, a read taken back from a reader
+  away, a friend's frontier read, failed work, and a card no reader could ever read (its
+  judgment). A finish that read no reader states asks nothing. The target is finish to read
+  start (`read_wait`, cycle-time-breakdownb.w1) under 30 seconds while readers have room
+  (`TestAFinishAsksAFreeReaderInTheSameTick`).
+
 ## 7. Merging
 
 1. In work order, never random: the head of the stream's queued cell first.

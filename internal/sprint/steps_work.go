@@ -1308,6 +1308,8 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		return p
 	}
+	// the finish's own ask: a read a free reader has room for starts now (finishAsker)
+	asker := newFinishAsker(s)
 	for _, c := range chosen {
 		// a finish is routed only by a decision of its own take (decide.go, decidedFor)
 		if why := decidedFor(c, r.Decided); why != "" {
@@ -1414,11 +1416,24 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			p.Units = append(p.Units, u)
 			continue
 		}
-		// ONE PATH ASKS: the finish asks no reader. The machine's ask does, in the tick the
-		// finish wakes, the earlier pair first (Ask, the primary's asked field), each read
-		// with the route it draws. A read the finish creates itself carries no route (a
-		// finish loads none), so no reader can start it.
+		// ONE PLACEMENT ASKS: a read a free reader has room for is asked in the finish's own
+		// step, placed as the ask places it (finishAsker, on the ask's rooms, rounds and
+		// routes), so the read starts at once and never waits a tick cycle for its reader
+		// (docs/SPEC-SPRINT.md section 6, reads-start-on-finish-r-ns-b.w2); every other
+		// read (no reader with room, a return, a reader away, a friend's) is the machine's
+		// ask's, in the tick the finish wakes, as before.
 		asked := map[string]string{}
+		var unset []string
+		if !r.Failed || passed {
+			if rd, ch := asker.ask(inReview(pr, set), c.ID); rd != "" {
+				u.Changes = append(u.Changes, ch)
+				set["asked"] = rd
+				unset = append(unset, FieldWaitingReader)
+				asked[ch.Entry.ID] = Asked
+				u.Moved += "; " + pr.ID + " asked of " + rd
+				u.Closes = append(u.Closes, closesFor(s.Open, []string{NStranded, NStalled}, pr.ID)...)
+			}
+		}
 		if passed {
 			n := happened(NWorkOK, pr.Row, s.Now, pr.ID)
 			n.Who, n.Attempt = who, attempt
@@ -1456,13 +1471,14 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			}
 			u.Notes = append(u.Notes, n)
 		}
-		u.Changes = append(u.Changes, change(Work, moveEntry(pr, pr.Row, Review, set)))
-		if j, ok := reviewJudgment(s, inReview(pr, set), reviewStep{moved: asked, writes: u.Notes, who: who}); ok {
+		u.Changes = append(u.Changes, change(Work, moveEntry(pr, pr.Row, Review, set, unset...)))
+		if j, ok := reviewJudgment(s, inReview(pr, set), reviewStep{moved: asked, closing: noteIDs(u.Closes), writes: u.Notes, who: who}); ok {
 			u.Notes = append(u.Notes, j)
 		}
 		friendNext(s, c, &u, p.Units)
 		p.Units = append(p.Units, u)
 	}
+	asker.write(&p)
 	return p
 }
 
