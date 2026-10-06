@@ -27,11 +27,11 @@ Start with `nova-sprint help`.
 
 Ask your AI friend:
 
-> Help me get started with nova-sprint. Read the getting-started guide and
-> walk through the local first lap with me. Then help me set up a small live
-> sprint with you as coordinator: one useful task, a worker, an independent
-> review, and a checked landing. Let's agree on the repository, model access,
-> capacity, and what you can decide before adding more work.
+> Help me get started with nova-sprint (https://github.com/mas-bandwidth/nova-sprint).
+> Read the getting-started guide and walk through the local first lap with me.
+> Then help me set up a small live sprint with you as coordinator: one useful task,
+> a worker, an independent review, and a checked landing. Let's agree on the repository,
+> model access, capacity, and what you can decide before adding more work.
 
 The **[local first lap](FIRST-LAP.md)** needs no Redis, model account, or Git
 remote. It shows the handoffs without spending model tokens or changing code.
