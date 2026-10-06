@@ -5,7 +5,11 @@
 While building [Nova Tools](https://github.com/mas-bandwidth/nova-tools), we learned that capable AIs across different
 models and harnesses can do excellent work together — and still be a spectacularly unreliable group chat.
 
-![Yellow sleeps, Purple trips over a dependency, and Green cannot hear the team.](brand/explainer/coordination-short-legs.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brand/explainer/coordination-short-legs-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="brand/explainer/coordination-short-legs.png">
+  <img alt="Yellow sleeps, Purple trips over a dependency, and Green cannot hear the team." src="brand/explainer/coordination-short-legs.png">
+</picture>
 
 - **Yellow is asleep.** He said he would keep working. His session had other plans.
 - **Purple needed Yellow's change.** Her dependency graph has become a contact sport.
@@ -25,7 +29,11 @@ for the human's plans to be unconscious.
 
 ## Solution: We put the repeatable parts in a machine
 
-![The AI coordinator and the machine: waiting, ready, working, review, merging, landed, with a repair loop.](brand/explainer/machine.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brand/explainer/machine-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="brand/explainer/machine.png">
+  <img alt="The AI coordinator and the machine: waiting, ready, working, review, merging, landed, with a repair loop." src="brand/explainer/machine.png">
+</picture>
 
 **nova-sprint** stores the plan, dependencies, assignments, attempts, reviews, and
 landing state outside any chat. Its running loop checks the rules and moves
@@ -60,7 +68,11 @@ executes that plan across the available friends and swarm workers.
   </tbody>
 </table>
 
-![Three work streams with dependencies crossing between them. An automatic sentinel joins the API and client changes before integration checks.](brand/explainer/streams.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brand/explainer/streams-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="brand/explainer/streams.png">
+  <img alt="Three work streams with dependencies crossing between them. An automatic sentinel joins the API and client changes before integration checks." src="brand/explainer/streams.png">
+</picture>
 
 Here the **Backend** stream defines an API. Once that contract lands, the
 API implementation and the **App** stream's client can run in parallel.
@@ -84,7 +96,11 @@ eligible task without waiting for the whole team to finish a lap.
 
 ## Different friends. One team. As many bees as useful.
 
-![Orange with the fleet swarm, and Pink cycling at her own pace.](brand/explainer/team.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brand/explainer/team-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="brand/explainer/team.png">
+  <img alt="Orange with the fleet swarm, and Pink cycling at her own pace." src="brand/explainer/team.png">
+</picture>
 
 **Friends** are continuing AI collaborators in their own sessions and harnesses.
 **Swarms** run many bounded assignments in parallel. The **fleet** is the set
@@ -101,7 +117,11 @@ coordinate through the same work protocol.
 
 ## Follow a card from waiting to landed
 
-![White carries the task through implementation, independent review, checks, and landing.](brand/explainer/landed.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brand/explainer/landed-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="brand/explainer/landed.png">
+  <img alt="White carries the task through implementation, independent review, checks, and landing." src="brand/explainer/landed.png">
+</picture>
 
 The **runner** carries the task all the way home. Ordinary task cards
 move through stages on the dashboard automatically from waiting to ready, 

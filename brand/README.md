@@ -42,6 +42,23 @@ replacement is [yellow-v2.png](yellow-v2.png), with its
 [prompt](yellow-v2-prompt.txt). The original remains in the archive.
 The other characters use their original renders.
 
+The README selects light and dark explainer images with GitHub's `<picture>`
+support and `prefers-color-scheme`. The jogging hero stays the same in both
+themes. Dark panels use a `#0d1117` background, pale labels, and dark diagram
+surfaces with bright connectors. Existing light images remain the fallback.
+Rebuild the four drawn dark panels with:
+
+```sh
+python3 brand/compose_explainer.py --theme dark --panels machine streams team landed
+```
+
+The README's current first panel is the separately generated
+[short-leg illustration](explainer/coordination-short-legs.png), with a matching
+[dark variant](explainer/coordination-short-legs-dark.png). Its
+[dark edit prompt](explainer/coordination-short-legs-dark-prompt.txt) preserves
+the corrected Yellow proportions. The renderer's older `coordination` panel
+does not replace either of these approved images.
+
 ## Approved jogging banner
 
 The README uses [banner-cute-wave-left.png](jogging/banner-cute-wave-left.png): the happy

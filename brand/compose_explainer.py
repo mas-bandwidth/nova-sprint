@@ -3,19 +3,40 @@
 Requires Pillow. Set NOVA_BRAND_FONT to an Arial-compatible TrueType font if
 Arial is not installed at the default macOS location. No generated source is
 modified; all panels render at 4x logical resolution and export at 2x for
-crisp type and antialiased geometry on high-density displays.
+crisp type and antialiased geometry on high-density displays. Use --theme dark
+for dark variants; --panels limits which panels are written. The README's newer
+coordination-short-legs artwork is a separate generated asset, never overwritten.
 """
 from pathlib import Path
-import os, math
+import argparse, os, math
 from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / 'explainer'
 OUT.mkdir(exist_ok=True)
 FONT = os.environ.get('NOVA_BRAND_FONT', '/System/Library/Fonts/Supplemental/Arial.ttf')
-NAVY = '#102957'
-BLUE = '#087ff5'
-MUTED = '#58677d'
-PAPER = '#f8f7f2'
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--theme', choices=('light', 'dark'), default='light')
+parser.add_argument('--panels', nargs='+', choices=(
+    'coordination', 'machine', 'team', 'streams', 'ready', 'landed'))
+args = parser.parse_args()
+DARK = args.theme == 'dark'
+NAVY = '#f0f6fc' if DARK else '#102957'
+BLUE = '#58a6ff' if DARK else '#087ff5'
+MUTED = '#aeb8c4' if DARK else '#58677d'
+PAPER = '#0d1117' if DARK else '#f8f7f2'
+DIVIDER = '#30363d' if DARK else '#dedfdc'
+STATE = '#182d49' if DARK else '#e8f1fd'
+SUCCESS = '#173c2a' if DARK else '#e4f4eb'
+REPAIR = '#bc8cff' if DARK else '#9760c4'
+BACKEND = '#152235' if DARK else '#edf3fb'
+APP = '#261e35' if DARK else '#f0eafa'
+RELEASE = '#182b23' if DARK else '#e9f3ec'
+CARD = '#161b22' if DARK else 'white'
+BORDER = '#536173' if DARK else '#cbd5e3'
+SENTINEL = '#3b2e12' if DARK else '#fff1c9'
+SENTINEL_BORDER = '#b68b32' if DARK else '#d9af48'
+CHECK_BG = '#173c2a' if DARK else '#dcf1e5'
+CHECK = '#56d364' if DARK else '#20804d'
 
 def font(size): return ImageFont.truetype(FONT, size)
 class ScaledDraw:
@@ -95,13 +116,16 @@ def arrow(d,points,color=BLUE,width=2.5,head=True):
     layer=layer.resize(((right-left)*output_scale,(bottom-top)*output_scale),Image.Resampling.LANCZOS)
     d.surface.alpha_composite(layer,(left*output_scale,top*output_scale))
 def save(im,name):
+    if args.panels and name not in args.panels:
+        return
     scale=im.info['drawing_scale']
     if scale>1:
         im=im.resize((im.width*2//scale,im.height*2//scale),Image.Resampling.LANCZOS)
-    im.convert('RGB').save(OUT/(name+'.png'))
+    suffix = '-dark' if DARK else ''
+    im.convert('RGB').save(OUT/(name+suffix+'.png'))
 
 im,d=canvas()
-for x in [530,1065]: d.line([(x,55),(x,435)],fill='#dedfdc',width=2)
+for x in [530,1065]: d.line([(x,55),(x,435)],fill=DIVIDER,width=2)
 text(d,(265,42),'Still needed. Fast asleep.',32,anchor='mt')
 text(d,(797,42),'A dependency goes missing.',32,anchor='mt')
 text(d,(1330,42),'Can anybody hear me?',32,anchor='mt')
@@ -119,17 +143,17 @@ text(d,(985,49),'THE MACHINE KEEPS THE HANDOFFS MOVING',29,anchor='mt')
 states=['Waiting','Ready','Working','Review','Merging','Landed']
 for i,s in enumerate(states):
     x=430+i*189
-    fill='#e4f4eb' if s=='Landed' else '#e8f1fd'
+    fill=SUCCESS if s=='Landed' else STATE
     d.rounded_rectangle((x,170,x+150,255),18,fill=fill)
     text(d,(x+75,212),s,28,NAVY,'mm')
     if i<5: arrow(d,[(x+158,212),(x+181,212)])
-arrow(d,[(1072,266),(1072,322),(883,322),(883,266)],'#9760c4')
+arrow(d,[(1072,266),(1072,322),(883,322),(883,266)],REPAIR)
 text(d,(985,355),'Findings + a coordinator decision → another attempt',24,MUTED,'mt')
 text(d,(985,402),'Shared state • explicit rules • recorded progress • recovery',24,NAVY,'mt')
 save(im,'machine')
 
 im,d=canvas(510)
-d.line([(995,55),(995,457)],fill='#dedfdc',width=2)
+d.line([(995,55),(995,457)],fill=DIVIDER,width=2)
 text(d,(490,35),'A swarm goes wide across the fleet.',34,anchor='mt')
 asset(im,'bees.png',(75,119),395)
 asset(im,'orange.png',(520,100),350)
@@ -141,11 +165,11 @@ save(im,'team')
 
 im,d=canvas(590,scale=4)
 text(d,(65,30),'Write the workflow. Let the machine run it.',39)
-for label,y,tint in [('BACKEND',100,'#edf3fb'),('APP',245,'#f0eafa'),('RELEASE',390,'#e9f3ec')]:
+for label,y,tint in [('BACKEND',100,BACKEND),('APP',245,APP),('RELEASE',390,RELEASE)]:
     d.rounded_rectangle((220,y,1545,y+120),20,fill=tint)
     text(d,(55,y+47),label,25,NAVY)
 def card(x,y,label,note,width=255):
-    d.rounded_rectangle((x,y,x+width,y+75),12,fill='white',outline='#cbd5e3',width=2)
+    d.rounded_rectangle((x,y,x+width,y+75),12,fill=CARD,outline=BORDER,width=2)
     text(d,(x+width/2,y+13),label,26,NAVY,'mt')
     text(d,(x+width/2,y+45),note,20,MUTED,'mt')
 card(255,122,'Agree API contract','Land this first',265)
@@ -155,7 +179,7 @@ arrow(d,[(528,160),(657,160)])
 arrow(d,[(580,160),(580,305),(657,305)])
 arrow(d,[(923,160),(975,160),(975,450),(1015,450)])
 arrow(d,[(923,305),(975,305)],head=False)
-d.rounded_rectangle((1023,410,1265,490),12,fill='#fff1c9',outline='#d9af48',width=2)
+d.rounded_rectangle((1023,410,1265,490),12,fill=SENTINEL,outline=SENTINEL_BORDER,width=2)
 text(d,(1144,421),'Sentinel',29,NAVY,'mt')
 text(d,(1144,459),'Both landed → release',20,MUTED,'mt')
 arrow(d,[(1273,450),(1300,450)])
@@ -176,9 +200,9 @@ asset(im,'white.png',(100,38),385)
 text(d,(650,68),'Carry the work all the way home.',43)
 for i,(label,note) in enumerate([('Implement','A concrete result and commit'),('Review + check','Independent eyes, relevant tests'),('Land','Integrated into the development branch')]):
     y=160+i*87
-    d.ellipse((650,y,693,y+43),fill='#dcf1e5')
-    d.line([(662,y+23),(670,y+31),(683,y+14)],fill='#20804d',width=4)
+    d.ellipse((650,y,693,y+43),fill=CHECK_BG)
+    d.line([(662,y+23),(670,y+31),(683,y+14)],fill=CHECK,width=4)
     text(d,(719,y-1),label,30)
     text(d,(719,y+36),note,24,MUTED)
 save(im,'landed')
-print('Saved six lossless explainer panels to',OUT)
+print('Saved', len(args.panels or range(6)), args.theme, 'lossless explainer panels to',OUT)
