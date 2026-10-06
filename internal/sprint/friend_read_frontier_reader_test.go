@@ -89,12 +89,14 @@ func TestAFrontierReadGoesToAFrontierReaderWhenFrontierFriendsAreFull(t *testing
 		require.Empty(t, w.notesOf(NFewReaders), "three readers are up")
 		require.Empty(t, w.notesOf(NWaitingForReader), "the judgment is the card's note")
 
-		// the next tick, and the one after: the same judgment stands, not a new one
+		// the next tick, and the one after: the same judgment stands, not a new
+		// one, and not rewritten
 		for range 2 {
 			w.tick(0)
 			askReaders(t, w, []FriendSeat{oneShot("amy")})
 		}
 		require.Len(t, w.notesOf(NNoFrontierRoom), 1)
+		require.Empty(t, w.updates, "the same facts rewrite nothing")
 		require.Empty(t, w.notesOf(NFewReaders))
 		var open []Open
 		for _, o := range w.s.Open {
@@ -113,6 +115,73 @@ func TestAFrontierReadGoesToAFrontierReaderWhenFrontierFriendsAreFull(t *testing
 		w.s.Fleet.Put(&Card{ID: CtlID("johnny"), Row: "johnny", Col: Ctl, Rev: 2, Fields: map[string]string{"status": Up, FieldWidth: "2"}})
 		askReaders(t, w, []FriendSeat{oneShot("amy")})
 		require.NotNil(t, w.s.Readers.Card(ReadCardID("s1-3", 1, "reader-johnny")))
+		for _, o := range w.s.Open {
+			require.NotEqual(t, NNoFrontierRoom, o.Note.Type)
+		}
+	})
+
+	t.Run("the only frontier reader's ok read frees its room, and the second read is judged by its real cause", func(t *testing.T) {
+		t.Parallel()
+		// the reader's finding of 2026-10-05 on attempt 1: after the only reader
+		// that declares frontier read a card ok, the card waited for ever under
+		// a judgment that said "no friend or reader up reads frontier" (and named
+		// another card) while that reader and a frontier friend were both up
+		w := newWorld(t, readers...)
+		allUp(w)
+		w.s.Readers.Texts = map[string]map[string]string{"reader-johnny": {ReaderTiers: "frontier"}}
+		w.s.Fleet.SetRows([]string{"johnny"})
+		w.s.Fleet.Put(&Card{ID: CtlID("johnny"), Row: "johnny", Col: Ctl, Rev: 1, Fields: map[string]string{"status": Up, FieldWidth: "1"}})
+		frontierCards(w, "s1-1", "s1-2", "s1-3")
+		amy := []FriendSeat{oneShot("amy")}
+		w.s.Friends = amy
+		askReaders(t, w, amy)
+		require.Equal(t, "no frontier reader has room: amy full, reader-johnny full", w.notesOf(NNoFrontierRoom)[0].What)
+
+		id := ReadCardID("s1-2", 1, "reader-johnny")
+		w.must(Read(w.s, ReadReq{As: "reader-johnny", Begin: true, Sel: Sel{IDs: []string{id}}}))
+		w.must(Read(w.s, ReadReq{As: "reader-johnny", Verdict: "ok", Sel: Sel{IDs: []string{id}}}))
+		w.tick(0)
+		askReaders(t, w, amy)
+
+		// its room is free: the next frontier read is asked of it
+		rc := w.s.Readers.Placed(ReadCardID("s1-3", 1, "reader-johnny"))
+		require.NotNil(t, rc, "the reader's ok read frees its room")
+		require.Equal(t, Asked, rc.Col)
+		// the second read of s1-2 has no one who may take it, and the one
+		// judgment says so, in place: same id, its primary s1-2, why by name
+		require.Len(t, w.notesOf(NNoFrontierRoom), 1, "not a new judgment")
+		var open []Open
+		for _, o := range w.s.Open {
+			if o.Note.Type == NNoFrontierRoom {
+				open = append(open, o)
+			}
+		}
+		require.Len(t, open, 1)
+		require.Equal(t, w.notesOf(NNoFrontierRoom)[0].ID, open[0].Note.ID)
+		require.Equal(t, []string{"s1-2"}, open[0].Note.Primaries)
+		require.Equal(t, "no frontier reader has room: s1-2 (read by reader-johnny; amy read an attempt first or not at all) wants a reader that declares frontier and has not read it", open[0].Note.What)
+		require.NotContains(t, open[0].Note.What, "no friend or reader up reads frontier")
+		require.Empty(t, w.notesOf(NFewReaders), "three readers are up")
+		hd := Holder(HeldState{Snap: w.s, Running: true}, w.s.Now, "s1-2")
+		require.Equal(t, HeldByJudgment, hd.By, "s1-2: %s", hd.Why)
+		require.Contains(t, hd.Why, "s1-2 (read by reader-johnny")
+
+		// the same facts the next ticks: nothing is written
+		updates := len(w.updates)
+		for range 2 {
+			w.tick(0)
+			askReaders(t, w, amy)
+		}
+		require.Len(t, w.notesOf(NNoFrontierRoom), 1)
+		require.Len(t, w.updates, updates, "the same facts rewrite nothing")
+
+		// a second reader declares frontier: the second read is asked of it and
+		// the judgment closes
+		w.s.Readers.Texts["reader-rowan-space"] = map[string]string{ReaderTiers: "pro,frontier"}
+		askReaders(t, w, amy)
+		second := w.s.Readers.Placed(ReadCardID("s1-2", 1, "reader-rowan-space"))
+		require.NotNil(t, second)
+		require.Equal(t, cardhdr.RouteFrontier, second.F(FieldTier))
 		for _, o := range w.s.Open {
 			require.NotEqual(t, NNoFrontierRoom, o.Note.Type)
 		}

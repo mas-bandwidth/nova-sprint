@@ -201,8 +201,9 @@ func seatDir(seats []FriendSeat, name, fallback string) string {
 // one: no friend of frontier class and no reader row that declares frontier is
 // up with room and free at its attempt (the owner, 2026-10-05: "mechanical
 // alone won't solve it. It still needs judgement and notification to you").
-// Its text names who is full; it is raised once, its text kept while it stands
-// (frontierRoomWhat), and closed the tick a read of every primary it names is
+// Its text names who is full, and each read no one may take with why
+// (frontierRoomWhat); it is raised once, rewritten in place only when its
+// facts change, and closed the tick a read of every primary it names is
 // asked. It is never "fewer than two readers up", which is raised only when
 // fewer readers are up (TickAsk).
 const NNoFrontierRoom = "no frontier reader has room"
@@ -278,7 +279,7 @@ func friendReadAsk(s *Snapshot, seats []FriendSeat, dir string) (p Plan, err err
 	room := s.readerRooms(readers)
 	declared := map[string]bool{}
 	full := map[string]bool{} // who could take a read no one took, and is full
-	var judged []string
+	var judged, causes []string
 	for _, pr := range s.Work.Column(Review) {
 		if !friendReadCard(s, pr) || IsSentinel(pr) || pr.F("result") == "failed" {
 			continue
@@ -349,37 +350,96 @@ func friendReadAsk(s *Snapshot, seats []FriendSeat, dir string) (p Plan, err err
 		for _, n := range fullHere {
 			full[n] = true
 		}
+		if len(fullHere) == 0 {
+			// no one is full, and still no one may take it: say why, by name
+			if why := frontierNoTaker(s, pr, attempt, up, readers); why != "" {
+				causes = append(causes, why)
+			}
+		}
 		judged = append(judged, pr.ID)
 	}
 	var conds []cond
 	if len(judged) > 0 {
-		conds = append(conds, cond{typ: NNoFrontierRoom, streamLevel: true, primaries: judged,
-			what: frontierRoomWhat(s, full), decisions: frontierRoomDecisions})
+		what := frontierRoomWhat(full, causes)
+		c := cond{typ: NNoFrontierRoom, streamLevel: true, primaries: judged, what: what, decisions: frontierRoomDecisions}
+		if o, ok := frontierRoomHeld(s); ok {
+			// one judgment while it stands: written once, and rewritten in place
+			// (same id) only when who it names or why changes, never a new one
+			c.what = o.Note.What
+			if o.Note.What != what || !slices.Equal(o.Note.Primaries, judged) {
+				n := o.Note
+				n.What, n.Primaries, n.Count = what, slices.Clone(judged), len(judged)
+				p.Updates = append(p.Updates, n)
+			}
+		}
+		conds = append(conds, c)
 	}
-	// written once, its text kept while it stands, and closed when it no longer holds
+	// closed the tick it no longer holds
 	notify(&p, s, conds, []string{NNoFrontierRoom}, TickReq{})
 	return Lawful(p), nil
 }
 
-// frontierRoomWhat is the text of NNoFrontierRoom: who is full, in name order,
-// or that no one up reads frontier. While the judgment stands (open or
-// acknowledged) its text is kept, so it is one judgment, not one rewritten as
-// rooms come and go.
-func frontierRoomWhat(s *Snapshot, full map[string]bool) string {
+// frontierRoomHeld is the NNoFrontierRoom judgment that stands, open or
+// acknowledged.
+func frontierRoomHeld(s *Snapshot) (Open, bool) {
 	for _, o := range slices.Concat(s.Open, s.Acked) {
 		if o.Note.Type == NNoFrontierRoom {
-			return o.Note.What
+			return o, true
 		}
 	}
+	return Open{}, false
+}
+
+// frontierRoomWhat is the text of NNoFrontierRoom: who is full, in name order,
+// then each read no one is full for and no one may take, with why
+// (frontierNoTaker), or that no one up reads frontier.
+func frontierRoomWhat(full map[string]bool, causes []string) string {
 	var names []string
 	for n := range full {
 		names = append(names, n+" full")
 	}
+	slices.Sort(names)
+	names = append(names, causes...)
 	if len(names) == 0 {
 		return NNoFrontierRoom + ": no friend or reader up reads frontier"
 	}
-	slices.Sort(names)
 	return NNoFrontierRoom + ": " + strings.Join(names, ", ")
+}
+
+// frontierNoTaker is why no one may take the primary's frontier read at its
+// attempt when no one who may is full: each reader up that declares frontier
+// has a read card of it (it read it, or was asked it), and a friend of
+// frontier class up reads an attempt first or not at all, or was asked it
+// already. Empty when no friend of frontier class and no reader that declares
+// frontier is up: frontierRoomWhat says that. A frontier read wants two
+// readers (ReadsNeeded), so one reader that declares frontier reads the
+// first and the second waits here, named, for another (reader set <r>
+// --tiers frontier) rather than for room that never comes.
+func frontierNoTaker(s *Snapshot, pr *Card, attempt int, up []FriendSeat, readers []string) string {
+	if len(up) == 0 && len(readers) == 0 {
+		return ""
+	}
+	var by, why []string
+	for _, r := range readers {
+		if s.Readers.Card(ReadCardID(pr.ID, attempt, r)) != nil {
+			by = append(by, r)
+		}
+	}
+	if len(by) > 0 {
+		why = append(why, "read by "+strings.Join(by, ", "))
+	}
+	var friends []string
+	for _, f := range up {
+		friends = append(friends, f.Name)
+	}
+	if len(friends) > 0 {
+		if len(readsAt(s, pr, attempt)) > 0 {
+			why = append(why, strings.Join(friends, ", ")+" read an attempt first or not at all")
+		} else {
+			why = append(why, "asked of "+strings.Join(friends, ", ")+" already")
+		}
+	}
+	return pr.ID + " (" + strings.Join(why, "; ") + ") wants a reader that declares frontier and has not read it"
 }
 
 // askOneReader asks the primary's frontier read of the reader row rd, which
