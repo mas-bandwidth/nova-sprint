@@ -294,6 +294,20 @@ Xoff, and nova-config's sprint row turns single ones off: `nova-config sprint se
 --answer_rules_off late,conflict`, then `nova-config apply`. The contract is
 [SPEC-SPRINT.md section 8](SPEC-SPRINT.md#answered-by-rule).
 
+### The work lint
+
+Every finished attempt is held to a mechanical lint before any reader is asked of it: the
+tick reads its commit in the clone the lander keeps of the card's repository (no checkout)
+and refuses `no-head`, `empty-diff`, `outside-paths`, `ledger-grows`, `test-absent`,
+`gofmt`, `trailer-usage`, `merge-conflict`, `verb-dry-run` and `test-clock`. A refused
+attempt is reworked at once with the findings (`file:line: <token>: <what> (remedy: ...)`)
+as its fix, spends no read, and counts toward the card's bound as a broken read does
+(`card --fields <id>` shows `lint_reworks`). A repository the lander keeps no clone of is
+not linted. `nova-sprint rules` lists every check, one `LINT <token>: <what it refuses>
+(remedy: <remedy>)` line each in the order the lint runs them, before its `RULES` line
+(under `--json`, the object's `lint` field). The tokens and their remedies are in
+[SPEC-SPRINT.md section 6, the work lint](SPEC-SPRINT.md).
+
 ### The fleet is idle
 
 When the fleet works under half its width for 5 minutes while cards wait, the run loop's

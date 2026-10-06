@@ -2649,6 +2649,77 @@ id (`--op`) returns the original result, with no second counter or notification.
   in `listen` (`run --listen`), both through `serverStart`, so in-flight reads with live
   leases survive a server restart while lapsed reads are retired and re-asked.
 
+### The work lint: finish-lint-before-read-ns-b.w1
+
+- Every finished attempt is held to a mechanical work lint before any reader is asked
+  of it (the owner, 2026-10-05: "What other common failure modes can be more efficiently
+  picked up with lint?"). On epoch 15's log, 985 of the 3,734 "a reader found it broken"
+  findings were decidable from the commit alone, with no model, and each one cost a read
+  on the card's tier. The lint runs in the pump, before the accept (`sprint.TickLint`,
+  from `TickAccept`), on every primary in review whose work did not fail, that has no
+  read card at its attempt and no change queued; and every ask, the friends' and the
+  machine's, holds an attempt the lint refuses (`lintHeld`, wrapped round the tick's ask
+  part), so no read is spent on it whatever the order of the tick.
+- An attempt the lint refuses is reworked at once (`Rework`, `ReworkCard.Finding`): the
+  fix is `the work lint refused attempt <n> at <head>; work lint: <finding>; ...`, each
+  finding `file:line: <token>: <what> (remedy: <remedy>)`, and the next attempt's work card
+  carries it as its finding, with why `attempt <n> finished and the work lint refused
+  it`. It counts toward the card's bounds as a broken read does: `broken_reads` and
+  `lint_reworks` (`sprint.FieldLintReworks`) are one more, the attempt it deals counts
+  toward the attempt cap, and the same findings on two attempts of one brief are the
+  brief's bound (`SameFinding`). A rework refused at a bound is the one judgment `a card
+  has reached its bound: the brief is wrong, not the worker`, written once, with the
+  lint's findings; the attempt stays in review, asked of no reader
+  (`TestTheSameWorkLintFindingTwiceIsTheBriefsBound`). A clean attempt is asked as before.
+- The lint reads the card's repository in the clone the lander keeps of it (section 7;
+  `cmd/nova-sprint/worklint.go`), with no checkout: the head fetched by id when the clone
+  lacks it, the base (the brief's `BASE:`, else `main`) fetched, the merge-base of the base
+  tip and the head, the diff and commits from it to the head, `git merge-tree` of the head
+  onto the base tip, and the files at the head (`sprint.ReadWorkView`). Each head's read is
+  kept two minutes (`sprint.NewWorkLinter`). A card whose brief names no repository, a
+  repository the lander keeps no clone of yet, or a git that fails (a fetch, a base the
+  remote lacks) is not linted: the attempt is asked as before, and the failure is no
+  finding.
+- The checks, each a token with its remedy (`sprint.WorkLintRules`), in the order they run,
+  each listed by `nova-sprint rules` on a `LINT <token>: <what it refuses> (remedy:
+  <remedy>)` line before its `RULES` line, the remedy in the words a finding carries (under
+  `--json`, the object's `lint` field: token, refuses, remedy;
+  `TestRulesListsEveryWorkLintCheck`):
+  - `no-head`: the finish names no pushed head (a finish with none keeps its work card's
+    id), or one that is not a commit id, or one the repository does not have once fetched.
+    Remedy: commit, push the branch the brief's STATUS line names, finish with that head.
+  - `empty-diff`: the diff from the merge-base to the head is empty (an empty commit, or
+    a head already on the base). Remedy: make the change, or finish `--failed` saying so.
+  - `outside-paths`: a file the diff changes is outside the brief's PATHS, as the lander
+    holds it (`diffcheck.Outside`, with the scope amendments, `ScopeAmended`; section 7,
+    E12). Remedy: take the change out, or HOLD naming the file.
+  - `ledger-grows`: the diff adds a row to a shrink-only ledger (`shrinkonly.ShrinkOnly`:
+    the lists under `internal/ci/testdata` that only shrink). Remedy: fix the code the
+    class test names.
+  - `test-absent`: the TEST line's test is no func of that name in the package's
+    `_test.go` files at the head (`go/parser`). Remedy: write it under that name.
+  - `gofmt`: a changed `.go` file is not gofmt-clean at the head (`go/format`, in
+    process; no go binary). The finding names the first line gofmt changes.
+  - `trailer-usage`: a commit's `Co-Authored-By:` or `By:` line names a model family the
+    attempt's usage does not record (its `model=`, else the work card's model), or a
+    harness other than its route's. The record is the usage, never the brief: a reader
+    still never judges attribution (reader-ignores-attribution.w5); what the record does
+    not say is not judged.
+  - `merge-conflict`: the head does not merge onto the base tip (`git merge-tree
+    --write-tree`, exit 1); the finding names the conflicted files.
+  - `verb-dry-run`: a row the diff adds or changes in a verbs table (`{"<verb>",
+    "<syntax>", ...}` under `cmd/`) whose verb writes (its class in the same directory's
+    `coordinator.go` is not `classRead`) has no `--dry-run` in its syntax. A verb no class
+    names is not judged.
+  - `test-clock`: a line the diff adds to a `_test.go` file calls `time.Sleep` or
+    `time.Now` outside a synctest bubble (a func literal given to `synctest.Test` or
+    `synctest.Run`); `time.Now` passed as a value is an injected clock and is not a call.
+- The tick's request carries the lint (`TickReq.WorkLint`); nil is `sprint.DefaultWorkLint`,
+  which `nova-sprint` sets at its start; a store given `sprint.WorkLintTables(l)` lints
+  with `l` (`TestAnAttemptThatFailsWorkLintIsReworkedWithoutARead`: one attempt per token
+  on a twin repository and the twin store, each reworked with its finding and asked of no
+  reader, the clean one asked).
+
 ## 7. Merging
 
 1. In work order, never random: the head of the stream's queued cell first.
@@ -3647,7 +3718,8 @@ answered in its own tick, and a conflict's three moves are made in one. Each ans
 verb the judgment's decisions name, applied as the machine; it closes the judgment with
 the decided note `answered by rule <name>: <act>: <why>` (the log and the inbox's decided
 list), and writes `rule_answer` (`<name>: <act> at <time>`) on the card it moved. `nova-sprint
-rules` prints the same answers, read-only: one `RULE` line per judgment and subject, and
+rules` prints the same answers, read-only: one `RULE` line per judgment and subject, one
+`LINT` line per check of the work lint (section 6), and
 `RULES OK judgments= acting= left= off= by=<rule>_<act>=<n>,...`.
 
 | rule | judgment | answer |
