@@ -48,6 +48,10 @@ refusals with reasons (`REFUSED`, on stderr), and the sprint's summary
 [TESTS.md](TESTS.md#nova-sprint) carries the exact transcript through `merge`;
 `cmd/nova-sprint/firstrun_test.go` runs it line by line.
 
+### Landed series
+
+`where --json` carries `landedSeries`: cards landed per 10 minutes over the last 24 hours, 144 buckets, split `friends` and `fleet`. A landing is a work-table move to `<stream>:landed` from any state but waiting. A sentinel's release is not work. Each card counts once, the first landing. The worker is the last `<who>:ok` of the card's work attempt (`<card>.wN`): `friend.<name>` is a friend and anything else is a fleet machine. The lander is not the worker. `where -h` states it. The text frame does not carry the series. `dashboard` reads one `where --json` and the series is on that object, so the page does not loop the log. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md), the `where` frame.
+
 ### Verbs
 
 ```
@@ -80,6 +84,7 @@ nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] |
 nova-sprint move <id>... --stream <s> [--before <id> | --after <id> | --score <n>]
 nova-sprint merge --stream <s> [--batch <n>] [--conflict <id> [--conflict-kind file|ledger] [--conflict-path <p>...] | --cross <id>=<other> | --red [--suspect <id>...] | --rejected | --base-red <error>] [--note <text>]
 nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]
+nova-sprint stream set <stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--prose <glob,...|default>] [--attempts <n|default>] [--reason <text>] [--answers <notes>]
 nova-sprint resume --stream <s> [--did <text>] [--answers <note>]
 nova-sprint backup --file <path>
 nova-sprint fleet beat <member> [--load <percent>]
@@ -93,6 +98,7 @@ nova-sprint friend sync uninstall [--dir <dir>] [--dry-run]
 nova-sprint friend beat <friend> [--working <n>] [--queue <n>] [--width <n>] [--running <id>,...] [--load <percent>]
 nova-sprint friend down <friend> [--reason <text>] [--until <RFC3339>]
 nova-sprint friend up <friend> [--width <n>]
+nova-sprint friend cards <friend> [--json]
 nova-sprint friend take <friend> (<id>... | --all-unstarted) [--reason <text>]
 nova-sprint friend level
 nova-sprint friend health <friend> (--state up|asleep|down --seen <RFC3339> --generation <n> [--queue <n>] [--working <n>] [--width <n>] [--reason <text>] [--until <RFC3339>] | --clear)
@@ -102,6 +108,8 @@ nova-sprint reader away <reader>...
 nova-sprint reader up <reader>...
 nova-sprint reader remove <reader>...
 nova-sprint stream remove <stream>...
+nova-sprint stream archive <stream>...
+nova-sprint stream unarchive <stream>...
 nova-sprint ci <id>... (--red | --green) --epoch <n> [--head <h>] [--run <id>] [--source <s>] [--note <text>]
 nova-sprint wait <note> (--for <duration> | --until <RFC3339>)
 nova-sprint ack <note>... --reason <text>
@@ -111,14 +119,17 @@ nova-sprint card <id>
 nova-sprint log [--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]
 nova-sprint check
 nova-sprint repair
-nova-sprint where [--watch] [--every <duration>] [--all] [--json [--cards]]
+nova-sprint where [--watch] [--every <duration>] [--all] [--json [--cards] [--rows] [--archived]]
 nova-sprint view coordinator [--all] [--since <cursor>] [--json]
+nova-sprint view cards [--col <c>] [--stream <s>] [--holder <member>] [--by tier|stream|col|holder] [--json]
 nova-sprint view worker --as <member|friend> [--since <cursor>] [--json]
 nova-sprint dashboard [--listen <address:port>[,...] | none] [--pull <address:port>[,...] | none] [--logo <file>] [--every <duration>]
 nova-sprint seat
 nova-sprint seat login --store <secrets dir> --as <seat> --key <keyfile> --secret <NAME> --user <redis user> --redis <addr> [--sops <path>]
 nova-sprint seat login --check
 nova-sprint seat logout
+nova-sprint seat push [--harness <name> --target <dir> [--session <id>]] [--json]
+nova-sprint seat pong <nonce>
 nova-sprint routes
 nova-sprint rules
 nova-sprint funded <provider> --reason <text>
@@ -153,6 +164,8 @@ which refuses a group that has changed. `nova-sprint help <verb>` (or
 ### The seat's store login
 
 `nova-sprint seat login --store <secrets dir> --as <seat> --key <keyfile> --secret <NAME> --user <redis user> --redis <addr>` records the store login in `~/.config/nova-sprint/login.json` (or under `$XDG_CONFIG_HOME`), mode 0600: the address, the user and where the password is in nova-secrets, never the password, and only once the secret resolves. After it, `nova-sprint <verb>` typed bare reaches that store as that user, the password read in the verb's own process through nova-secrets' checks, with no `nova-secrets exec` wrapper; `--redis`, `NOVA_SPRINT_REDIS`/`NOVA_REDIS_ADDR` and `NOVA_SPRINT_REDIS_USER` still win. `seat login --check` prints `SEAT LOGIN file=… redis=… user=… … resolves=yes|no` (exit 1 on no), the password never shown; `seat logout` removes the record. A recorded secret that does not resolve is refused naming the file and the remedy, never dialed without a password. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md#the-seats-store-login).
+
+The seat is held only by a session the push loop reaches ([SPEC-SPRINT.md](SPEC-SPRINT.md#the-push-proof)). `nova-sprint seat install --actor <seat> --harness <harness> --target <session dir>` records the seat's push target and installs the push loop; the loop delivers `NOVA SPRINT PUSH CHECK <nonce>` into the session through the harness's nova-friend adapter, and the session answers with `nova-sprint seat pong <nonce> --actor <seat>`. Until that pong is in, and again whenever it is older than 15 minutes (the loop asks every 10), every coordinator verb is refused with one line, `PUSH DOWN: <why>; ... run: nova-sprint seat install ...`, and `coordinator <name>` refuses a name with no live proof. `seat push` prints `PUSH OK` or `PUSH DOWN` with why and the remedy (exit 1). A harness whose adapter is still the Stub (Claude Code, until fg-claude-open-chatb-r lands) is refused at install.
 
 ### The sprint backup
 
@@ -191,7 +204,10 @@ curl -s --compressed 'http://<tailnet address>:<port>/api/view/worker?as=<name>'
 ```
 
 The sprint's server (`run --listen`) serves them read-only at `/api/view/coordinator` and
-`/api/view/worker?as=<name>`. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md), section 11,
+`/api/view/worker?as=<name>`. `nova-sprint view cards --col review --by tier --json` counts the primaries by column, tier, stream or holder (also `/api/view/cards?col=review&by=tier`). `nova-sprint friend cards <friend> --json` is every card held on
+a friend's row (working, then ready) with its packet and its `BRIEF.md` as friend sync writes
+it; her nova-friend daemon reads it every loop to write her inbox, and the server serves it to
+her as a worker's verb and at `GET /api/friend/<friend>/cards`. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md), section 11,
 "Role views".
 
 ### A worker's own view: the dashboard's pull routes
@@ -325,10 +341,10 @@ none was — so a total is a ledger of recorded spend, not a proof of it.
 nova-card is pre-alpha: not ready for production use.
 
 ```
-nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--dry-run]
-nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
-nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--dry-run]
-nova-card lint --card <file> [--card <file>...]
+nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run]
+nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
+nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
+nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...]
 nova-card template
 nova-card version
 nova-card help [<verb>]
@@ -370,8 +386,12 @@ carries the transcript; `cmd/nova-card/firstrun_test.go` runs it.
 `--from ledger --ledger <name>` reads one of internal/ci's ratchet ledgers from
 the checkout: `serial-tests`, `slowwaits`, `sleeps-skips`, `fixed-waits`
 (flash), `dead-code`, `namedpaths`, `transcripts`, `generality-fixtures` (pro).
-One card per file the rows name; the card's PATHS are the file, its package's
-test files and the ledger; its TEST is the class test that holds the ledger;
+One card per file the rows name; the card's PATHS are computed from its START
+line, never typed: every directory a START file lives in, as its Go files and its
+tests (`<dir>/*.go`, `<dir>/*_test.go`), and the docs the card names (a ledger
+card: the row's file's package, its test's package and the ledger; a findings
+card: the file's package and its test's package; a help card: `cmd/<tool>` and
+`docs/CLI.md`); its TEST is the class test that holds the ledger;
 its task is the ledger's template with the rows substituted, and it says to
 write the draft early and commit before any probe. `--from findings --file
 <tsv>` reads `file:line`, finding, remedy, test columns (a header row is
@@ -396,7 +416,9 @@ Every brief is held to the lint `nova-sprint add` runs (the model lines, the
 child rules under the default rule set, a tree card's steps), and past the add
 to the typed header and the template's unfilled `<...>` lines, which the add
 does not read, before anything is written (a sprint initialised with `--rules`
-holds a brief to that file at the add); one red brief prints its
+holds a brief to that file at the add), and to the card checks the add runs
+too: a tier on line 1, a TEST whose package PATHS names, no name `--name` gives
+outside double-quoted words, no card `--dropped` gives; one red brief prints its
 `LINT DRIFT card=<id> check=<check> line=<n>: <excerpt>` line and nothing is
 written, exit 1. A PATHS entry that names nothing in `--repo-dir` is the same
 refusal. An `--out` that already holds a brief is refused, exit 2. `--dry-run`

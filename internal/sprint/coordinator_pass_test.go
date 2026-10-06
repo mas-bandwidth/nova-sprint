@@ -17,22 +17,38 @@ import (
 // friend and a judgment late on the coordinator, each raised once, raised again with a
 // push every ten minutes of running time while it holds, and closed when it stops.
 
-// passRig is the hold rig with each friend's session pong kept on her beat.
+// passRig is the hold rig with each friend's session pong kept on her beat. Each
+// friend's session last answered five minutes before the rig starts, so it is deaf
+// (FriendDeafAfter, fifteen minutes) ten minutes and more into the rig.
 type passRig struct {
 	*holdRig
 	pongs map[string]time.Time
+	// answered is each friend's last wake ping answer the rig recorded (friend health):
+	// the store renews only on a newer one.
+	answered map[string]time.Time
 }
+
+// passPongBefore is how long before the rig starts each friend's session last answered.
+const passPongBefore = 5 * time.Minute
 
 func newPassRig(t *testing.T) *passRig {
 	t.Helper()
-	r := &passRig{holdRig: newHoldRig(t, 1, 1), pongs: map[string]time.Time{"amy": holdT0, "bob": holdT0}}
+	r := &passRig{holdRig: newHoldRig(t, 1, 1), pongs: map[string]time.Time{"amy": holdT0.Add(-passPongBefore), "bob": holdT0.Add(-passPongBefore)}, answered: map[string]time.Time{}}
+	rows, err := r.st.FriendRows(r.ctx, r.clock())
+	require.NoError(t, err)
+	for _, row := range rows {
+		if row.Health != nil {
+			r.answered[row.Name] = row.Health.Seen
+		}
+	}
 	r.tick(0)
 	return r
 }
 
 // tick moves the clock by d, beats everyone (each friend with her pong, and her session
 // active, as on a long turn: the stall ladder, friend_stall.go, leaves her be, and the
-// pass alone judges her) and runs one tick.
+// pass alone judges her), records each pong as a wake ping her session answered (her
+// beat is no evidence: she is up only on that answer) and runs one tick.
 func (r *passRig) tick(d time.Duration) {
 	r.t.Helper()
 	r.mu.Lock()
@@ -47,6 +63,11 @@ func (r *passRig) tick(d time.Duration) {
 	for f, pong := range r.pongs {
 		_, err := r.st.FriendBeatPong(r.ctx, f, sprint.FriendReport{Active: r.clock()}, nil, pong)
 		require.NoError(r.t, err)
+		if pong.After(r.answered[f]) {
+			_, _, _, err = r.st.FriendHealth(r.ctx, f, "coordinator", sprint.FriendHealth{State: sprint.Up, Seen: pong, Generation: sprint.FirstSeatGeneration}, "")
+			require.NoError(r.t, err)
+			r.answered[f] = pong
+		}
 	}
 	_, err := r.st.Tick(r.ctx)
 	require.NoError(r.t, err)
@@ -109,13 +130,13 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 	r.must(store.FinishStep(sprint.FinishReq{As: "m1", Sel: sprint.Sel{IDs: []string{wc}}, Gens: map[string]int{wc: r.snap().Fleet.Card(wc).Int("gen")}, Failed: true, Who: "m1"}))
 	require.NotNil(t, r.open(sprint.NWorkFailed, "s1-1"), "failed work is a judgment")
 
-	// bob's session answers every ping from here on; amy's last answered at t0
+	// bob's session answers every ping from here on; amy's last answered 5 minutes before t0
 	fresh := func() { r.pongs["bob"] = r.clock() }
 
 	// 9 minutes: nothing yet
 	fresh()
 	r.tick(9 * time.Minute)
-	assert.Nil(t, r.open(sprint.NFriendDeaf, amy), "a pong 9 minutes old is not deaf")
+	assert.Nil(t, r.open(sprint.NFriendDeaf, amy), "a pong 14 minutes old is not deaf")
 	assert.Nil(t, r.open(sprint.NCoordinatorBehind, behind), "a judgment 9 minutes old is not late")
 
 	// 10m30s: amy deaf, raised once; the failed judgment late, named by its overdue line
@@ -123,9 +144,9 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 	fresh()
 	r.tick(90 * time.Second)
 	deaf := r.open(sprint.NFriendDeaf, amy)
-	require.NotNil(t, deaf, "amy's session has not answered for over 10 minutes: deaf")
+	require.NotNil(t, deaf, "amy's session has not answered for over 15 minutes: deaf")
 	assert.Contains(t, deaf.What, "friend amy")
-	assert.Contains(t, deaf.What, "10m3", "her pong age")
+	assert.Contains(t, deaf.What, "15m3", "her pong age")
 	assert.Contains(t, deaf.What, "--wake", "the remedy, a wake note")
 	assert.Contains(t, deaf.What, "SPEC-FRIEND.md", "then the debug steps")
 	assert.Nil(t, r.open(sprint.NFriendDeaf, bob), "bob's session answers")
@@ -166,7 +187,7 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 	deaf = r.open(sprint.NFriendDeaf, amy)
 	require.NotNil(t, deaf)
 	assert.Equal(t, 1, deaf.Before, "the judgment counts its raises again")
-	assert.Contains(t, deaf.What, "20m3", "with her latest pong age")
+	assert.Contains(t, deaf.What, "25m3", "with her latest pong age")
 
 	// 31m: the friend holding her card has finished none in 30 minutes: idle, naming the card
 	fresh()
@@ -211,7 +232,7 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 
 	// a second episode is raised again from the start: amy goes quiet once more
 	fresh()
-	r.tick(10*time.Minute + time.Second)
+	r.tick(5*time.Minute + time.Second)
 	assert.Equal(t, 2, r.count(sprint.Judgment, sprint.NFriendDeaf, "friend amy"), "a new episode, a new judgment")
 }
 
@@ -246,4 +267,187 @@ func TestThePassSparesAHeldFriendAnAcknowledgedJudgmentAndKeepsTheFinishSetting(
 
 	r.tick(15 * time.Minute)
 	assert.NotNil(t, r.open(sprint.NFriendIdle, fc.Row), "45m30s with no finish is idle")
+}
+
+// A quiet friend whose session answers is never judged deaf: her daemon asks the session
+// after ten minutes with no word and waits five for the answer, so her proof is at most
+// FriendProofLive old. Past that it has lapsed, and the coordinator is told once, as a
+// judgment naming her and the remedy, never only in her daemon's log.
+func TestAQuietFriendWhoseSessionAnswersIsNotDeafAndALapsedProofIsToldOnce(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, sprint.FriendProofLive, sprint.FriendDeafAfter, "deaf is a lapsed proof")
+	r := newPassRig(t)
+	amy := sprint.FriendRow("amy")
+	r.pongs["amy"], r.pongs["bob"] = r.clock(), r.clock()
+
+	// asked after ten quiet minutes, answered at the five-minute bound: not deaf
+	r.tick(10 * time.Minute)
+	r.pongs["bob"] = r.clock()
+	r.tick(5 * time.Minute)
+	assert.Nil(t, r.open(sprint.NFriendDeaf, amy), "a proof FriendProofLive old is live: not deaf")
+	assert.Equal(t, 0, r.count(sprint.Judgment, sprint.NFriendDeaf, ""), "a quiet friend whose session answers is never told")
+
+	// one second past the bound: her proof has lapsed, told once as a judgment
+	r.pongs["bob"] = r.clock()
+	r.tick(time.Second)
+	deaf := r.open(sprint.NFriendDeaf, amy)
+	require.NotNil(t, deaf, "a proof past FriendProofLive has lapsed: deaf")
+	assert.Equal(t, sprint.Judgment, deaf.Kind, "the coordinator is told as a judgment")
+	assert.Contains(t, deaf.What, "--wake", "with the remedy")
+	assert.Nil(t, r.open(sprint.NFriendDeaf, sprint.FriendRow("bob")), "bob's session answers")
+	r.pongs["bob"] = r.clock()
+	r.tick(time.Minute)
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NFriendDeaf, "friend amy"), "told once an episode")
+}
+
+// An up friend with an empty row, while a card she could do sits unstarted on the
+// other friend's row, is told once: not before ten minutes, one judgment at ten
+// minutes naming her, the card, where it sits and the offers, raised again in
+// place one pass later, and closed when the card is finished.
+func TestAnIdleUpFriendWhileCardsWaitElsewhereIsToldOnce(t *testing.T) {
+	t.Parallel()
+	r := newPassRig(t)
+	s := r.snap()
+	fc := s.Fleet.Card(s.Work.Card("f1-1").F("work"))
+	require.NotNil(t, fc, "the friend's card is dealt")
+	require.Equal(t, sprint.Working, fc.Col)
+	holder, ok := sprint.FriendOfRow(fc.Row)
+	require.True(t, ok)
+	idle := map[string]string{"amy": "bob", "bob": "amy"}[holder]
+	require.Zero(t, r.snap().Fleet.Count(sprint.FriendRow(idle), sprint.Ready)+r.snap().Fleet.Count(sprint.FriendRow(idle), sprint.Working), "her row is empty")
+	row := sprint.FriendRow(idle)
+	fresh := func() { r.pongs[holder], r.pongs[idle] = r.clock(), r.clock() }
+
+	assert.Nil(t, r.open(sprint.NFriendEmpty, row), "the empty row has just been seen: the ten minutes start now")
+	assert.Equal(t, 0, r.count(sprint.Judgment, sprint.NFriendEmpty, ""))
+
+	fresh()
+	r.tick(9*time.Minute + 59*time.Second)
+	assert.Nil(t, r.open(sprint.NFriendEmpty, row), "nine minutes and fifty-nine seconds is not ten")
+	assert.Equal(t, 0, r.count(sprint.Judgment, sprint.NFriendEmpty, ""))
+
+	fresh()
+	r.tick(time.Second)
+	j := r.open(sprint.NFriendEmpty, row)
+	require.NotNil(t, j, "an up friend empty for ten minutes while a card she could do waits is told")
+	assert.Equal(t, sprint.Judgment, j.Kind)
+	assert.Contains(t, j.What, "friend "+idle)
+	assert.Contains(t, j.What, sprint.EmptyRowAfter.String())
+	assert.Contains(t, j.What, fc.ID)
+	assert.Contains(t, j.What, fc.Row+":"+fc.Col)
+	assert.Contains(t, j.What, "unstarted")
+	assert.Contains(t, j.What, "deal them to her")
+	assert.Contains(t, j.What, "friend take the other row")
+	assert.Contains(t, j.What, "keep")
+	assert.Contains(t, j.Decisions, "deal them to "+idle)
+	assert.Contains(t, j.Decisions, "friend take "+holder+" --all-unstarted")
+	assert.Contains(t, j.Decisions, "keep")
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NFriendEmpty, "friend "+idle), "told once")
+
+	fresh()
+	r.tick(9*time.Minute + 59*time.Second)
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NFriendEmpty, ""), "still the one judgment")
+	assert.Equal(t, 0, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendEmpty), "not again within ten minutes")
+
+	ends := r.tickEnds()
+	fresh()
+	r.tick(time.Second)
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NFriendEmpty, "friend "+idle), "raised again in place")
+	assert.Equal(t, 1, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendEmpty))
+	again := r.open(sprint.NFriendEmpty, row)
+	require.NotNil(t, again)
+	assert.Equal(t, 1, again.Before, "the judgment counts its raises again")
+	assert.Greater(t, r.tickEnds(), ends, "the push wakes inbox --wait")
+
+	s = r.snap()
+	fc = s.Fleet.Card(fc.ID)
+	require.NotNil(t, fc)
+	r.must(store.FinishStep(sprint.FinishReq{As: fc.Row, Sel: sprint.Sel{IDs: []string{fc.ID}}, Gens: map[string]int{fc.ID: fc.Int("gen")}, Head: "abc", Who: fc.Row}))
+	fresh()
+	r.tick(time.Second)
+	assert.Nil(t, r.open(sprint.NFriendEmpty, row), "nothing she could do is waiting: the judgment closes")
+	pushes := r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendEmpty)
+	fresh()
+	r.tick(10 * time.Minute)
+	assert.Equal(t, pushes, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendEmpty), "a closed episode is not pushed")
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NFriendEmpty, ""))
+}
+
+// A named pin the deal places on another friend's row is a judgment in that
+// step: why the pinned friend did not take it, and whose row holds the card.
+// The pass keeps that one note, raises it again in place, and closes it when
+// the card is finished. A hard pin is not rotated and is not this judgment.
+func TestAPinnedCardRotatedOffItsFriendIsJudgedOnce(t *testing.T) {
+	t.Parallel()
+	r := newPassRig(t)
+	r.hold(sprint.HoldReq{Names: []string{"amy"}, Reason: "she is away"})
+	r.must(store.AddStep(sprint.AddReq{Stream: "f1", Cards: []sprint.CardAdd{{ID: "f1-2", Brief: friendsBrief("friend amy")}}}))
+	r.pongs["bob"] = r.clock()
+	r.tick(time.Second)
+	s := r.snap()
+	wc := s.Fleet.Card(s.Work.Card("f1-2").F("work"))
+	require.NotNil(t, wc, "the pin was dealt")
+	require.Equal(t, sprint.FriendRow("bob"), wc.Row, "amy is held, so the pin rotates to bob")
+	j := r.open(sprint.NPinIgnored, "f1-2")
+	require.NotNil(t, j, "a pin placed on someone else's row is a judgment")
+	assert.Contains(t, j.What, wc.ID)
+	assert.Contains(t, j.What, "pinned to amy")
+	assert.Contains(t, j.What, "she is held")
+	assert.Contains(t, j.What, wc.Row+":"+wc.Col)
+	assert.Contains(t, j.Decisions, "friend take bob "+wc.ID+" --reason pinned to amy")
+	assert.Contains(t, j.Decisions, "keep")
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NPinIgnored, "f1-2"))
+
+	r.must(store.AddStep(sprint.AddReq{Stream: "f1", Cards: []sprint.CardAdd{{ID: "f1-3", Brief: friendsBrief("only friend amy")}}}))
+	r.pongs["bob"] = r.clock()
+	r.tick(time.Second)
+	assert.Equal(t, sprint.Ready, r.snap().Work.Card("f1-3").Col, "a hard pin waits for her")
+	assert.Nil(t, r.open(sprint.NPinIgnored, "f1-3"), "a hard pin is not rotated, and is not this judgment")
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NPinIgnored, ""), "the rotated pin is still the one judgment")
+
+	// the hard-pin tick above already took one second of the ten minutes
+	r.pongs["bob"] = r.clock()
+	r.tick(9*time.Minute + 58*time.Second)
+	assert.Equal(t, 0, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NPinIgnored))
+	r.pongs["bob"] = r.clock()
+	r.tick(time.Second)
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NPinIgnored, "f1-2"), "raised again in place")
+	assert.Equal(t, 1, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NPinIgnored))
+	again := r.open(sprint.NPinIgnored, "f1-2")
+	require.NotNil(t, again)
+	assert.Equal(t, 1, again.Before)
+
+	s = r.snap()
+	wc = s.Fleet.Card(wc.ID)
+	require.NotNil(t, wc)
+	r.must(store.FinishStep(sprint.FinishReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")}, Head: "abc", Who: wc.Row}))
+	r.pongs["bob"] = r.clock()
+	r.tick(time.Second)
+	assert.Nil(t, r.open(sprint.NPinIgnored, "f1-2"), "the card is finished: the judgment closes")
+}
+
+// A named pin the friends do not take, so the fleet deals it, is still a
+// judgment. The deal writes no friend unit for it; the pass raises the one
+// note from the row the card landed on.
+func TestAPinnedCardTheFleetTookIsJudgedOnce(t *testing.T) {
+	t.Parallel()
+	r := newPassRig(t)
+	r.hold(sprint.HoldReq{Names: []string{"amy", "bob"}, Reason: "both away"})
+	r.must(store.AddStep(sprint.AddReq{Stream: "f1", Cards: []sprint.CardAdd{{ID: "f1-9", Brief: friendsBrief("friend amy")}}}))
+	r.tick(time.Second)
+	s := r.snap()
+	wc := s.Fleet.Card(s.Work.Card("f1-9").F("work"))
+	require.NotNil(t, wc, "no friend is up, so the fleet deals the pin")
+	require.False(t, sprint.IsFriendRow(wc.Row), "it sits on a machine, %s", wc.Row)
+	j := r.open(sprint.NPinIgnored, "f1-9")
+	require.NotNil(t, j, "the pass tells the coordinator the pin was dealt away")
+	assert.Contains(t, j.What, wc.ID)
+	assert.Contains(t, j.What, "pinned to amy")
+	assert.Contains(t, j.What, "she is held")
+	assert.Contains(t, j.What, wc.Row+":"+wc.Col)
+	assert.NotContains(t, j.Decisions, "friend take")
+	assert.Contains(t, j.Decisions, "keep")
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NPinIgnored, "f1-9"))
+	r.tick(time.Second)
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NPinIgnored, "f1-9"), "the pass keeps the one note")
 }

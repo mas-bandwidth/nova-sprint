@@ -458,6 +458,10 @@ type TickResult struct {
 	// found the sprint done and stopped the machine, and Hint what to do next.
 	Done string `json:"done,omitempty"`
 	Hint string `json:"hint,omitempty"`
+	// Archive is the streams the tick archived, their last card landed, and
+	// the archived ones it drew again, a card not landed in them again
+	// (archive.go).
+	Archive *ArchiveResult `json:"archive,omitempty"`
 	// Epoch is the epoch the tick ran at: the log the run loop waits on
 	// after it (waitlog.go).
 	Epoch uint64 `json:"-"`
@@ -581,7 +585,8 @@ func TickPartStep(name string, fn sprint.TickPartFn, r sprint.TickReq, epoch *ui
 			if due != nil {
 				*due = d
 			}
-			return unchangedNotWritten(s, p)
+			// no judgment for a stream the tables lack: its next step is refused
+			return unchangedNotWritten(s, sprint.ForTables(s, p))
 		}}
 }
 
@@ -698,6 +703,10 @@ func (st *Store) Tick(ctx context.Context) (res TickResult, err error) {
 		if err != nil {
 			return res, fmt.Errorf("fleet: %w", err)
 		}
+		// a card added to an archived stream draws it again, STOPPED or not
+		if err := st.archivePart(ctx, false, &res); err != nil {
+			return res, err
+		}
 		// a verb moves cards while the machine is STOPPED: where's record
 		// follows them
 		if err := st.keepWhere(ctx, m); err != nil {
@@ -728,6 +737,14 @@ func (st *Store) Tick(ctx context.Context) (res TickResult, err error) {
 		if nerr := st.tellTick(ctx, "tick recovered", sprint.NTickRecovered, fmt.Sprintf("failed=%d; the last error: %s", hb.Failures, hb.Error), ""); nerr != nil {
 			err = fmt.Errorf("tick recovered: %w", nerr)
 		}
+	}
+	if err == nil && res.Stale == "" {
+		// the streams whose last card landed leave the tables (archive.go), the
+		// last landing of a sprint the done part stopped included; a tick a stop
+		// halted only draws again a stream with work in it
+		mt := st.meter()
+		err = st.archivePart(ctx, res.Halted == "", &res)
+		res.Times = append(res.Times, mt.part("", "archive"))
 	}
 	if err == nil && res.Stale == "" {
 		// where's record counted from what the tick left (where.go)
@@ -774,6 +791,19 @@ func (st *Store) Tick(ctx context.Context) (res TickResult, err error) {
 		err = werr
 	}
 	return res, err
+}
+
+// archivePart runs the tick's archive part (keepArchive) and puts what it did
+// on the result.
+func (st *Store) archivePart(ctx context.Context, running bool, res *TickResult) error {
+	a, err := st.keepArchive(ctx, running)
+	if err != nil {
+		return fmt.Errorf("archive: %w", err)
+	}
+	if len(a.Archived)+len(a.Shown) > 0 {
+		res.Archive = &a
+	}
+	return nil
 }
 
 // tellTick writes one happened note addressed to the coordinator about the
@@ -998,6 +1028,12 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	for _, u := range updates {
 		byTable[u.Table] = u
 	}
+	// What names a stream the work and merge tables lack retires first, each with
+	// a note (sprint.TickRetireGone): a judgment open before stream remove took its
+	// stream off, whose next step would only be refused.
+	if out := t.parts("", []sprint.TickPartDef{{Name: sprint.PartRetire, Fn: sprint.TickRetireGone}}); out != tickOn {
+		return t.end(out, last, unfinished, seen)
+	}
 	// 0. The start: the fleet's and the readers' rebalance, once, before any
 	// table's update (sprint.TickStart). What it writes is in the tables
 	// the first pass updates next.
@@ -1144,6 +1180,13 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 			v.ReaderStates = t.readers
 			view = &v
 		}
+		if view != nil && view.Friends == nil && t.req.Friends != nil {
+			// the friends are the tick's, read once: the ask asks a frontier read of
+			// them, and the check asks what the ask does (sprint.enoughReadersUp)
+			v := *view
+			v.Friends = t.req.Friends
+			view = &v
+		}
 		if view != nil && view.Routes == nil && routesPart(part.Name) {
 			// a part that plans with the routes asks what it would do with them: the
 			// deal's judgment of reads whose tier no route serves (route.go,
@@ -1190,6 +1233,9 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 				return planned, 0
 			}
 			wakes = nil
+			if s.Friends == nil {
+				s.Friends = r.Friends
+			}
 			if r.WakeFriend != nil {
 				r.WakeFriend = func(friend string, rung int, d time.Duration) error {
 					wakes = append(wakes, stallWake{friend, rung, d})
@@ -1673,6 +1719,7 @@ func (r readOnly) Apply(context.Context, ntable.BatchManifest) (ntable.Receipt, 
 func (r readOnly) Create(context.Context, ntable.Table) error       { return ErrReadOnly }
 func (r readOnly) RowsAdd(context.Context, string, []string) error  { return ErrReadOnly }
 func (r readOnly) RowsHide(context.Context, string, []string) error { return ErrReadOnly }
+func (r readOnly) RowsShow(context.Context, string, []string) error { return ErrReadOnly }
 func (r readOnly) RowsDel(context.Context, string, []string) error  { return ErrReadOnly }
 func (r readOnly) RowsDelIf(context.Context, string, []RowGuard) ([]string, error) {
 	return nil, ErrReadOnly
