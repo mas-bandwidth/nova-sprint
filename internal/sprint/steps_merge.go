@@ -48,8 +48,18 @@ type MergeReq struct {
 	// naming the base, the gate and the first refusal. No card moves.
 	BaseRefused string `json:",omitempty"`
 	Base        string `json:",omitempty"`
-	Note        string
-	Who         string
+	// Eject is the cards of the batch the lander ejects (merge_eject.go; tla/Land.tla, THE
+	// EJECT): each back to review with its reason, the batch by name (Cards, their ids), and
+	// one judgment naming them, their reasons and EjectLanded, the cards that landed in the
+	// same run. The stream is not stopped.
+	Eject       []EjectPin `json:",omitempty"`
+	EjectLanded []string   `json:",omitempty"`
+	// Idle is the lander's refusal of a batch that holds cards (Cards), its reason: counted on
+	// the stream's control card, and the judgment NMergeStuck raised once when nothing has
+	// landed for MergeStuckAfter (merge_eject.go, idleStep). No card moves.
+	Idle string `json:",omitempty"`
+	Note string
+	Who  string
 	// Resolved is, by card, what its landing did beyond merging its head (docs/SPEC-SPRINT.md
 	// section 7: the generated ledgers regenerated at the merge); written on its merge card
 	// as it lands, its note on the card's timeline.
@@ -212,6 +222,14 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 	if r.BaseRed != "" || r.BaseRefused != "" {
 		return baseGateStep(p, s, ctl, r)
 	}
+	if r.Idle != "" {
+		return idleStep(p, s, ctl, r)
+	}
+	if len(r.Eject) > 0 && len(r.Cards) == 0 {
+		for _, e := range r.Eject {
+			r.Cards = append(r.Cards, e.ID)
+		}
+	}
 	// A stuck card is a barrier: the step never passes an earlier stuck card.
 	queued := s.Merge.Cell(r.Stream, Queued)
 	if stuck := s.Merge.Cell(r.Stream, Stuck); len(stuck) > 0 {
@@ -263,6 +281,9 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 	var ids []string
 	for _, c := range batch {
 		ids = append(ids, c.ID)
+	}
+	if len(r.Eject) > 0 {
+		return ejectStep(p, s, ctl, r, batch)
 	}
 	ctlSet := map[string]string{}
 	var notes []Note
@@ -427,9 +448,15 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		for i, c := range landing {
 			u := Unit{Key: c.ID, Stream: r.Stream}
 			if i == 0 {
-				// a pass that merges: the base passed its gate, and its count starts again
-				u.Changes = append(u.Changes, change(Merge, setEntry(ctl, ctlSet, baseGateCount...)))
+				// a pass that merges: the base passed its gate, and its count starts again, as
+				// does the lander's idle count (merge_eject.go), and a merge stuck is answered
+				u.Changes = append(u.Changes, change(Merge, setEntry(ctl, ctlSet, append(append([]string(nil), baseGateCount...), landIdle...)...)))
 				u.Notes = notes
+				for _, o := range s.Open {
+					if o.Note.Type == NMergeStuck && o.Note.Stream == r.Stream {
+						u.Closes = append(u.Closes, o)
+					}
+				}
 			}
 			merged := map[string]string{"merged": now}
 			if v := r.Resolved[c.ID]; v != "" {
