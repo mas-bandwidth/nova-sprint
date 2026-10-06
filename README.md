@@ -29,6 +29,10 @@ for the human's plans to be unconscious.
 
 ## Solution: We put the repeatable parts in a machine
 
+**nova-sprint is the opinionated system: the work processor for teams of AIs.
+nova-tools are the general tools that support it** — each usable on its own, in
+any AI workflow ([nova-tools](https://github.com/mas-bandwidth/nova-tools)).
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="brand/explainer/machine-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="brand/explainer/machine.png">
