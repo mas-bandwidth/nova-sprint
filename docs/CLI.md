@@ -84,6 +84,7 @@ nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] |
 nova-sprint move <id>... --stream <s> [--before <id> | --after <id> | --score <n>]
 nova-sprint merge --stream <s> [--batch <n>] [--conflict <id> [--conflict-kind file|ledger] [--conflict-path <p>...] | --cross <id>=<other> | --red [--suspect <id>...] | --rejected | --base-red <error>] [--note <text>]
 nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]
+nova-sprint set [--base <branch|default>] [--read-tier <flash|pro|heavy|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--attempts <n|default>] [--friend-idle <duration|default>] [--friend-finish <duration|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>]
 nova-sprint stream set <stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--prose <glob,...|default>] [--attempts <n|default>] [--reason <text>] [--answers <notes>]
 nova-sprint resume --stream <s> [--did <text>] [--answers <note>]
 nova-sprint backup --file <path>
@@ -160,6 +161,23 @@ ids, a stream, a column, `--max n` (`--limit` is an alias), or an inbox group:
 which refuses a group that has changed. `nova-sprint help <verb>` (or
 `<verb> -h`) prints one verb's usage, flags and exit codes; `nova-sprint help
 <group>` (fleet, friend, reader, goal, stream) prints one group's.
+
+### One base
+
+`nova-sprint set --base <branch>` records the sprint's base, the branch every stream
+lands on (`sprint/<name>`; dev and main are refused, since promotion alone reaches them;
+`--base default` takes it off). From then on `add` and `brief` (a new brief that changes
+the card's `BASE:`) refuse, exit 2, nothing written, a card whose `BASE:` names any other
+branch in a stream that is not the promotion stream, a batch all or none, on one line
+naming the card, its `BASE:`, the sprint's base and the remedy:
+
+```
+nova-sprint add REFUSED: card x1 is cut on rowan/friend-health, not the sprint's base sprint/one, and stream s1 is not the promotion stream: every stream lands on the sprint's base, and promotion alone reaches dev; nothing was written; re-cut the card with BASE: sprint/one, or, for the promotion stream, run: nova-sprint stream set s1 --land-protected <owner/name,...|any>; run: nova-sprint add -h
+```
+
+A card naming no `BASE:` lands on the lander's `--base` and is admitted; the promotion
+stream (`stream set <s> --land-protected ...`) admits any base. With no base recorded,
+`add` refuses a card cut on dev alone (docs/SPEC-SPRINT.md section 7, the sprint branch).
 
 ### The seat's store login
 

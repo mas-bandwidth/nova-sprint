@@ -1252,6 +1252,9 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	if code := a.holdBase("add", st, *allowPersonal, stderr, *brief); code != 0 {
 		return code
 	}
+	if code := a.holdSprintBase("add", st, stderr, rs...); code != 0 {
+		return code
+	}
 	if *sentinel == "" {
 		checks := make([]briefCheck, 0, len(ids))
 		for _, id := range ids {
@@ -1371,6 +1374,9 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 		return code
 	}
 	r := sprint.AddReq{Stream: stream, Cards: cards, Who: c.actor, Before: before, After: after, Held: held, Score: at, BriefOps: asked.ops, BriefRecord: asked.record, Replaces: replaces}
+	if code := a.holdSprintBase("add", st, stderr, r); code != 0 {
+		return code
+	}
 	c.says = append(c.says, fmt.Sprintf("each card's id is its brief file's name without .md (%s is %s)", files[0], cards[0].ID))
 	for _, cd := range cards {
 		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
@@ -2465,7 +2471,59 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, rs ruleSet, c *common, st *s
 	if code := a.holdWho("brief", st, stderr, texts...); code != 0 {
 		return code
 	}
-	return a.runStep("brief", *c, st, store.BriefStep(req), stdout, stderr)
+	// a new BASE is held as add holds one: the sprint's base, outside the promotion
+	// stream (docs/SPEC-SPRINT.md section 7, the sprint branch); refused here, exit 2,
+	// and again by the step against a write that races this read
+	if s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil); err == nil {
+		if p := sprint.WithBriefBases(sprint.Plan{}, s, req, cardBase); len(p.Refused) > 0 {
+			return refuse(stderr, "brief", joinWhy(p.Refused))
+		}
+	}
+	step := store.BriefStep(req)
+	step.Load = append(step.Load, sprint.Merge) // the streams' control cards: the promotion stream's mark
+	replace := step.Plan
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithBriefBases(replace(s), s, req, cardBase) }
+	return a.runStep("brief", *c, st, step, stdout, stderr)
+}
+
+// cardBase is the branch a brief's BASE: line names, its pin cut; "" for none.
+func cardBase(brief string) string { return swarm.ReadCardBase([]byte(brief)).Ref }
+
+// joinWhy is refusals as one line: each card's why, in order.
+func joinWhy(refused []sprint.Refusal) string {
+	why := make([]string, len(refused))
+	for i, r := range refused {
+		why[i] = r.Why
+	}
+	return strings.Join(why, "; ")
+}
+
+// holdSprintBase refuses, exit 2, nothing written, an add of a card cut on a branch that
+// is not the sprint's base, outside the promotion stream (sprint.SprintBranchWhy;
+// docs/SPEC-SPRINT.md section 7, the sprint branch), every such card named; the add step
+// holds the same rule against a write that races this read. A store that cannot be read
+// is left to the step to report.
+func (a *app) holdSprintBase(verbName string, st *store.Store, stderr io.Writer, rs ...sprint.AddReq) int {
+	s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil)
+	if err != nil {
+		return 0
+	}
+	var refused []sprint.Refusal
+	for _, r := range rs {
+		for i, id := range sprint.AddIDs(s, r) {
+			base := r.Base
+			if len(r.Cards) > 0 {
+				base = r.Cards[i].Base
+			}
+			if why := sprint.SprintBranchWhy(s, r.Stream, base, id); why != "" {
+				refused = append(refused, sprint.Refusal{Key: id, Why: why})
+			}
+		}
+	}
+	if len(refused) == 0 {
+		return 0
+	}
+	return refuse(stderr, verbName, joinWhy(refused))
 }
 
 // cmdMove moves unstarted primaries to another stream (changing a stopped
@@ -2959,6 +3017,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	attempts := fs.String("attempts", "", fmt.Sprintf("the attempt cap: how many attempts one brief may run before the card is the coordinator's as a brief defect (brief, drop; never dealt again); 1 to %d, or default (%d); a stream's own: nova-sprint stream set <s> --attempts <n>", sprint.AttemptsMax, sprint.AttemptsDefault))
 	idle := fs.String("friend-idle", "", fmt.Sprintf("how long a friend holding cards may show no file write under her working directory and outbox before it is an alarm: a duration, or default (%s)", sprint.FriendIdleDefault))
 	finish := fs.String("friend-finish", "", fmt.Sprintf("how long a friend holding working cards may finish none (working to done) before the coordinator's pass judges her idle: a duration, or default (%s)", sprint.FriendFinishDefault))
+	base := fs.String("base", "", "the sprint's base, the branch every stream lands on (sprint/<name>; never dev or main, which promotion alone reaches): add and brief then refuse a card whose BASE: is any other branch outside the promotion stream (docs/SPEC-SPRINT.md section 7, the sprint branch); default takes it off, and add holds dev alone")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "set", err.Error())
@@ -2975,6 +3034,10 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if *finish != "" {
 		set := step.Plan
 		step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithFriendFinish(set(s), s, *finish) }
+	}
+	if *base != "" {
+		set := step.Plan
+		step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithSprintBase(set(s), s, *base) }
 	}
 	return a.runStep("set", *c, st, step, stdout, stderr)
 }
