@@ -999,6 +999,10 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	at := snap.Epoch
 	res.Tables = newTables()
 	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend}
+	// the running server's build commit against origin's sprint base, the last check its
+	// watch made: the tick reads the fact and never fetches (sprint.TickServerBase in
+	// sprint.TickCheck; docs/SPEC-SPRINT.md section 14, "server-from-base-only.w1")
+	req.ServerBase = sprint.RunningBase.Fact()
 	// the first read as it was: the twin it came from moves on with every
 	// part's writes, and with any other writer in this process
 	first := *snap
@@ -1903,7 +1907,9 @@ func (st *Store) ShadowTick(ctx context.Context) (ShadowPlan, error) {
 	if err != nil {
 		return out, fmt.Errorf("fleet: %w", err)
 	}
-	// a shadow tick wakes no friend: it writes nothing and sends nothing
+	// a shadow tick wakes no friend: it writes nothing and sends nothing. Nor does it check
+	// the base: server switch checked the candidate's commit before it ran this, and
+	// ServerBase nil raises and closes no "the server runs off the sprint base"
 	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(first.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm}
 	if req.Friends, err = ro.friendSeats(ctx, &first, now); err != nil {
 		return out, err

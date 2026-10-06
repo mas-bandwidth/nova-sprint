@@ -21,9 +21,16 @@ type ServerSwitchOptions struct {
 	Target   string        // path to target binary (default: os.Executable() or NOVA_SPRINT_SERVER_BIN)
 	Rollback bool          // keep previous binary and roll back on land failure in window
 	Window   time.Duration // rollback window duration (default DefaultRollbackWindow)
-	Now      func() time.Time
-	Stdout   io.Writer
-	Stderr   io.Writer
+	// Repo and Base are the clone origin's sprint base is fetched into and the base, a
+	// branch on origin: SwitchFromBase refuses a candidate whose build commit is not an
+	// ancestor of its tip, or a switch with either unnamed, with nothing on disk changed
+	// (docs/SPEC-SPRINT.md section 14, "server-from-base-only.w1"). ServerSwitch, the swap
+	// alone, does not read them.
+	Repo   string
+	Base   string
+	Now    func() time.Time
+	Stdout io.Writer
+	Stderr io.Writer
 }
 
 // SwitchState is recorded at <target>.switch.json when rollback protection is enabled.
@@ -79,7 +86,9 @@ func copyBinary(src, dst string) error {
 }
 
 // ServerSwitch replaces the server binary with candidate binary, keeping previous binary
-// for rollback (docs/SPEC-SPRINT.md section 14; item 14).
+// for rollback (docs/SPEC-SPRINT.md section 14; item 14). It is the swap alone: every verb
+// that installs the server binary calls SwitchFromBase, which refuses a candidate not built
+// from the sprint base first (server_base.go; section 14, "server-from-base-only.w1").
 func ServerSwitch(ctx context.Context, opts ServerSwitchOptions) error {
 	target := opts.Target
 	if target == "" {
