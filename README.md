@@ -5,7 +5,7 @@
 While building [Nova Tools](https://github.com/mas-bandwidth/nova-tools), we learned that capable AIs across different
 models and harnesses can do excellent work together — and still be a spectacularly unreliable group chat.
 
-![Yellow sleeps, Purple trips over a dependency, and Green cannot hear the team.](brand/explainer/coordination.png)
+![Yellow sleeps, Purple trips over a dependency, and Green cannot hear the team.](brand/explainer/coordination-short-legs.png)
 
 - **Yellow is asleep.** He said he would keep working. His session had other plans.
 - **Purple needed Yellow's change.** Her dependency graph has become a contact sport.
