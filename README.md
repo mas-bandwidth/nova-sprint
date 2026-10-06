@@ -104,8 +104,8 @@ coordinate through the same work protocol.
 ![White carries the task through implementation, independent review, checks, and landing.](brand/explainer/landed.png)
 
 The **runner** carries the task all the way home. Ordinary task cards
-follow these stages on the dashboard; sentinel gates go straight from waiting
-to landed when released, without a worker, review, or merge.
+move through stages on the dashboard automatically from ready to working,
+then reviewing, merging and landed.
 
 ## Give the team a plan. Go have a life.
 
