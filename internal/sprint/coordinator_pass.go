@@ -29,6 +29,9 @@ import (
 //   - a named pin sits ready or working off its friend's row (pinConds). The deal writes
 //     that judgment on the unit that places the card on someone else (friendDeal); the
 //     pass keeps it, and writes it when the card is there without that note.
+//   - merge health: the base red at its tip, dev behind, the promotion PR's state and the
+//     branches not on the base, as one judgment about the sprint (mergeHealthConds,
+//     coordinator_pass_merge.go).
 //
 // Raising again is a push: the judgment is rewritten in place with the latest facts and
 // the count of its raises after the first (its Before), and a happened note NRaisedAgain
@@ -63,7 +66,7 @@ const (
 
 // PassTypes are the pass's judgment types. NFriendRowEmpty is the empty-row clock,
 // not a judgment, and stays off this list.
-var PassTypes = []string{NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored}
+var PassTypes = []string{NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored, NMergeHealth}
 
 // The two judgments list ack and wait on TickDecisions, same as deaf and idle, so an
 // acknowledgement is kept on the condition (steps_ack.go) and the next pass does not
@@ -159,6 +162,7 @@ func TickCoordinatorPass(s *Snapshot, r TickReq) (Plan, int) {
 	conds := append(append(deafConds(s, r), idleConds(s, r)...), behindConds(s, r)...)
 	conds = append(conds, emptyConds(&p, s, r)...)
 	conds = append(conds, pinConds(s, r)...)
+	conds = append(conds, mergeHealthConds(s)...)
 	due := notify(&p, s, conds, PassTypes, r)
 	reraise(&p, s, conds, r)
 	return p, due
@@ -341,7 +345,12 @@ func reraise(p *Plan, s *Snapshot, conds []cond, r TickReq) {
 		if len(c.decisions) > 0 {
 			n.Decisions = append([]string(nil), c.decisions...)
 		}
-		p.Updates = append(p.Updates, n)
+		// notify may have rewritten it in place this tick (its lines moved): one update
+		if i := slices.IndexFunc(p.Updates, func(u Note) bool { return u.ID == n.ID }); i >= 0 {
+			p.Updates[i] = n
+		} else {
+			p.Updates = append(p.Updates, n)
+		}
 		push := Note{Kind: Happened, Type: NRaisedAgain, Stream: n.Stream, Primaries: n.Primaries, Count: n.Count, Who: r.who(), To: to, At: s.Now,
 			What: fmt.Sprintf("%s (%s) still holds, open since %s: %s", n.ID, n.Type, stamp(n.At), c.what),
 			Hint: "run: nova-sprint inbox; ack it, or wait it, to quiet it"}

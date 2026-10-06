@@ -3333,6 +3333,28 @@ hours. The tick's overdue part runs the pass (internal/sprint coordinator_pass.g
   card on another friend; the pass writes it when the card is already there, keeps
   the one note, and closes it when the card is back on her row or leaves ready and
   working. A hard pin is not one of these.
+- **merge health** (`merge health: the base, dev and the branches are not stitched`),
+  one about the sprint while any of its lines holds (internal/sprint
+  coordinator_pass_merge.go, `MergeHealthLines`; the owner, 2026-10-05: "How can we
+  ensure that you ALWAYS do the merging properly from now on, vs. drifting and
+  forgetting?" and "Prevention is better than cure"). Its lines, in this order: the base
+  red at its tip (a whole-tree gate run with the functional class, red, at the tip the
+  base is at; the lander's narrow gate, or a run at an older tip, judges nothing), each
+  stream the base-gate rule stopped (`stream stopped: the base fails its tree gate`), dev
+  behind (`DevBehind`, the line of `dev is behind`), the promotion PR open, queued,
+  failing or conflicted with its number, and each branch named by an open card's BASE:
+  or by the running server that is not on the base, with its commits ahead and behind,
+  or not on the remote at all. The store's lines are read from the snapshot; the
+  forge's and the repository's are the drift facts, read outside the plan
+  (`sprint.ReadDrift` in the land clone for the base's tip and each branch named by
+  `sprint.BranchesNamed`, the forge's promotion PR and whole-tree gate beside them) and
+  recorded by one pure step, `sprint.DriftRead`, on the merge table's property
+  `drift_facts`, the one copy the pass reads (`RecordedDrift`). As the lines move the
+  judgment is rewritten in place, never a second one. Its decisions are act and wait,
+  not ack: it cannot be quieted while the branches stay apart. **Not yet live:** no
+  binding records the drift facts on the running machine yet (the tick's read in
+  internal/sprint/store, or the land round's, with the forge's PR and gate); until one
+  does, only the store's lines (a stopped stream, dev behind) are judged.
 
 Each is an episode, keyed by its type and subject: written once when its condition
 starts, raised again in place every 10 minutes of running time while it holds
@@ -3341,7 +3363,7 @@ judgment's `before` counts them), and closed when it stops holding. A raise agai
 rewrites the judgment with the latest facts and writes one happened note to the
 coordinator, `a judgment still holds: raised again`, so each tick that raises one ends
 with a tick-end note and `inbox --wait` wakes on it: a coordinator who missed one is
-woken again. `ack` (deaf, idle, an empty row and an ignored pin list it; behind lists act) keeps one quiet until its episode ends, and
+woken again. `ack` (deaf, idle, an empty row and an ignored pin list it; behind and merge health list act) keeps one quiet until its episode ends, and
 `wait` until its review time; a friend the coordinator holds (`friend down`, `hold`) is
 judged neither deaf, nor idle, nor empty. The model is tla/CoordinatorPass.tla: one judgment an
 episode (`OneJudgmentAnEpisode`), never a whole window unraised (`PushedEveryWindow`),
@@ -3353,7 +3375,10 @@ her on her first tick back); its pin instance (`MCCoordinatorPassPin`) has the d
 the judgment and the pass keep that one note (the reversed witness writes a second:
 `OneJudgmentAnEpisode`). Pinned by
 `TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes` and
-`TestAnIdleUpFriendWhileCardsWaitElsewhereIsToldOnce` on the twin store with a fake clock.
+`TestAnIdleUpFriendWhileCardsWaitElsewhereIsToldOnce` on the twin store with a fake clock;
+merge health by `TestTheCoordinatorPassCarriesMergeHealthEveryTenMinutes` on the twin store
+with a fake clock, a twin repository and a fake forge, and
+`TestMergeHealthCarriesDevBehindAndAStoppedStream`.
 
 ### Answered by nova-decide
 
