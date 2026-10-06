@@ -30,6 +30,7 @@ package main
 // (landprune.go).
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -424,6 +425,16 @@ func (l *lander) report(failed bool, pruned []pruneResult, stdout, stderr io.Wri
 		code = 2
 	case refused > 0:
 		code = 1
+	}
+	if !l.dry {
+		// a batch refused or failed is one occurrence of its cause in the server's
+		// repeat count (run.go, observeRepeat): the land loop says it once, the count
+		// counts every round
+		for _, b := range l.out {
+			if b.Status != "ok" {
+				l.a.observeRepeat(sprint.RepeatCause{Verb: "land " + b.Status, Subject: "stream " + b.Stream, Reason: cmp.Or(b.Reason, b.Fact, "no reason given")}, b.IDs)
+			}
+		}
 	}
 	if l.c.json {
 		status := map[int]string{0: "ok", 1: "refused", 2: "failed"}[code]
