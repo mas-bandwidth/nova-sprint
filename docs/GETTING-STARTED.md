@@ -9,19 +9,28 @@ different models and harnesses, or a fleet of swarm workers as your team grows.
 Follow the streams, friends, fleet, costs, and estimated finish time. That is
 the view you will have of your own team.
 
-## Get the command
+## Get the commands
 
-From a terminal with Git and Go 1.26.6 or newer:
+nova-sprint runs on [Nova Tools](https://github.com/mas-bandwidth/nova-tools):
+nova-friend, nova-bus and nova-config. Install those first, at the release
+named in [`NOVA-TOOLS-VERSION`](../NOVA-TOOLS-VERSION) (v1.1.0), then
+nova-sprint. From a terminal with Git and Go 1.26.6 or newer:
 
 ```sh
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-friend@v1.1.0
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-bus@v1.1.0
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-config@v1.1.0
 git clone https://github.com/mas-bandwidth/nova-sprint.git
 cd nova-sprint
 go install ./cmd/nova-sprint
 nova-sprint help
 ```
 
-Make sure your Go binary directory is on `PATH`. Already have nova-sprint?
-Start with `nova-sprint help`.
+Make sure your Go binary directory is on `PATH`. A newer Nova Tools release
+works too. `nova-sprint seat check` refuses, naming the binary, the version
+it found, the version required and the install command, while one of the
+three is missing or older. Already have nova-sprint? Start with
+`nova-sprint help`.
 
 ## Take a first lap together
 

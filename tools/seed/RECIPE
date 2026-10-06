@@ -76,6 +76,10 @@ keep	Makefile
 keep	.github
 keep	docs/ASSET-PROVENANCE.md
 keep	internal/sprint/tables_lock_test.go
+keep	internal/sprint/toolsversion.go
+keep	internal/sprint/toolsversion_test.go
+keep	cmd/nova-sprint/seat_novatools.go
+keep	cmd/nova-sprint/seat_novatools_test.go
 keep	tools/seed
 gomod
 keep	ROADMAP.md

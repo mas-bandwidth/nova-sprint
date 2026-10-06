@@ -115,6 +115,18 @@ Then go wider. Work alongside the team, or come back in the morning.
 
 **Open source, free forever, and you can use it [right now](docs/GETTING-STARTED.md). Live demo [here](http://69.67.149.151/)!**
 
+nova-sprint runs on Nova Tools. Install them first, at the release in
+[`NOVA-TOOLS-VERSION`](NOVA-TOOLS-VERSION) (v1.1.0), then nova-sprint:
+
+```sh
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-friend@v1.1.0
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-bus@v1.1.0
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-config@v1.1.0
+git clone https://github.com/mas-bandwidth/nova-sprint.git
+cd nova-sprint
+go install ./cmd/nova-sprint
+```
+
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
 [Cards and machine rules](docs/SPEC-SPRINT.md) · [Roadmap](ROADMAP.md) · [All docs](docs/README.md)
