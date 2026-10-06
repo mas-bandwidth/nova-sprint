@@ -2762,6 +2762,45 @@ repository; `TestADevSyncConflictStopsEveryStreamWithOneJudgment`). Owed, outsid
 paths: the call in the land round itself (`nova-sprint land`, before its first batch, with the
 round's tree gate as `Check`), and the drift on `where --json`.
 
+### land-one-lander-now-ns.w1
+
+Each non-dry landing pass holds an exclusive kernel lock beside every clone it
+uses, from before any clone creation, origin check or cleanup until the pass,
+its branch cleanup and scoring finish. The sibling `<clone>.land.lock` records
+the holder PID and verb; an overlapping pass refuses and names that holder.
+Existing path aliases and missing clone paths under aliased roots share one
+canonical lock. A dead holder leaves no kernel lock: the next pass acquires it
+and logs `LAND LOCK RECOVERED` with the old PID. An orderly release clears the
+stamp and keeps the lock file in place. `land --dry-run` neither acquires nor
+writes a lock. The lock uses the ownership rules of `internal/filelock`, modelled
+in nova-tools `tla/FileLock.tla`.
+
+### land-one-lander-now-nsb.w1
+
+The server's record (`keyServer`, `store.ServerRecord`) carries, beside its
+actor and time, whether the server lands (`run --land`) and its process: its
+pid and host. The run loop writes it before its first tick and every
+`ServerEvery`, as before. A land that is not the server's own land loop reads
+it before any clone is locked or touched, and while a fresh record says
+`--land` it is refused with exit 1, naming the server's actor, pid and host;
+nothing is fetched, pushed or reported. A record naming a pid on this host that
+is gone fences nothing; one on another host fences until it is older than
+`ServerTTL`. A record written before it carried the landing mode reads as not
+landing. `land --dry-run` reads no record and is never refused by it
+(`TestLandRefusesWhileAnotherLanderHoldsTheCloneBesideTheServer`,
+`TestServerRecordCarriesLandingAndProcess`).
+
+### land-one-lander-now-nsb-b.w1
+
+The clone lock (land-one-lander-now-ns.w1) and the server fence
+(land-one-lander-now-nsb.w1) hold together on one pass: the fence is read
+first, so a hand land beside `run --land` touches no clone and takes no lock;
+past it, the clone lock refuses a second pass naming the first's pid and verb,
+and takes over a dead holder's lock with a `LAND LOCK RECOVERED` line
+(`TestLandRefusesWhileAnotherLanderHoldsTheClone`,
+`TestLandTakesOverAndLogsADeadHoldersStamp`,
+`TestLandRefusesWhileAnotherLanderHoldsTheCloneBesideTheServer`).
+
 **The lander's checks.** Each head `land` merges is checked by script, no model,
 before the batch's check runs (`internal/diffcheck`), the two checks the decide
 read's calibration of 2026-10-02 found a model read does not make: the merge's
