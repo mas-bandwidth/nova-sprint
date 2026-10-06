@@ -14,10 +14,10 @@ import (
 )
 
 // Harnesses are the harness names run and install take, in the order the
-// help lists them; OpenCode, Codex, Antigravity, DSH, Gemini and Grok have a
+// help lists them; OpenCode, Codex, Antigravity, DSH, Gemini, Grok and tmux (a TUI hosted by nova-friend host) have a
 // deliver command, the rest refuse honestly (Stub), the surveyed ones with
 // their reason.
-var Harnesses = append([]string{"opencode", "codex", "claude", "antigravity", "dsh", "gemini", "grok"}, RefusedHarnesses...)
+var Harnesses = append([]string{"opencode", "codex", "claude", "antigravity", "dsh", "gemini", "grok", "tmux"}, RefusedHarnesses...)
 
 // Deliverer pushes one text into the friend's running session as a turn
 // and normally blocks until the turn ends. Codex queue instead confirms
@@ -31,8 +31,11 @@ type Deliverer interface {
 // and nothing has failed (for example, neither Codex queue nor resume can
 // accept it). The daemon keeps the message in hand, tries again
 // after RecheckEvery, counts nothing toward MaxDeliveries and acks nothing,
-// so a chat open all day loses no message.
-type Deferred struct{ Reason string }
+// so a chat open all day loses no message. Remedy is set when no retry
+// can succeed, because the adapter cannot drive the session at all (dsh: a
+// session under an agent preset): what the friend does instead, which
+// nova-friend install and run refuse with (PushProof).
+type Deferred struct{ Reason, Remedy string }
 
 func (d Deferred) Error() string { return "deferred: " + d.Reason }
 
@@ -183,6 +186,8 @@ func NewDeliverer(harness, dir, session string, run Exec, out io.Writer) (Delive
 		return &DSH{Dir: dir, Session: session, Run: run, Out: out}, nil
 	case "gemini":
 		return &Gemini{Dir: dir, Session: session, Run: run, Out: out}, nil
+	case "tmux":
+		return &Tmux{Dir: dir, Session: session, Run: run, Out: out}, nil
 	}
 	if reason, ok := Refusals[harness]; ok {
 		return Stub{Harness: harness, Reason: reason}, nil

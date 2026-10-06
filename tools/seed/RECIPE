@@ -78,3 +78,17 @@ keep	docs/ASSET-PROVENANCE.md
 keep	internal/sprint/tables_lock_test.go
 keep	tools/seed
 gomod
+keep	ROADMAP.md
+keep	CONTRIBUTING.md
+keep	assets
+keep	brand
+keep	docs/BRAND.md
+keep	docs/FIRST-LAP.md
+keep	docs/FRIENDS.md
+keep	docs/GETTING-STARTED.md
+keep	docs/README.md
+keep	docs/SPLIT-MOOT-PRS.md
+keep	docs/WORKING-WITH-AI-TEAMS.md
+keep	docs/ratings/README.md
+keep	internal/ci/moot_prs_test.go
+keep	tla/README.md

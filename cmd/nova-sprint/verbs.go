@@ -91,6 +91,7 @@ func init() {
 		{"friend beat", "<friend> [--working <n>] [--queue <n>] [--width <n>] [--running <id>,...] [--load <percent>] [--active <RFC3339>] [--pong <RFC3339>]", "friend beat friend-a --working 2 --queue 3 --load 40", (*app).cmdFriendBeat},
 		{"friend down", "<friend> [--reason <text>] [--until <RFC3339>]", "friend down friend-a --reason 'opus rate limited'", func(a *app, args []string, o, e io.Writer) int { return a.cmdFriendHold(true, args, o, e) }},
 		{"friend up", "<friend> [--width <n>]", "friend up friend-a --width 4", func(a *app, args []string, o, e io.Writer) int { return a.cmdFriendHold(false, args, o, e) }},
+		{"friend cards", "<friend> [--json]", "friend cards friend-a --json", (*app).cmdFriendCards},
 		{"friend take", "<friend> (<id>... | --all-unstarted) [--reason <text>]", "friend take friend-a s1-4 --reason 'she is on another job'", (*app).cmdFriendTake},
 		{"friend level", "", "friend level", (*app).cmdFriendLevel},
 		{"friend health", "<friend> (--state up|asleep|down --seen <RFC3339> --generation <n> [--queue <n>] [--working <n>] [--width <n>] [--reason <text>] [--until <RFC3339>] | --clear)", "friend health friend-a --state up --seen 2026-10-04T15:00:00Z --generation 1", (*app).cmdFriendHealth},
@@ -106,7 +107,9 @@ func init() {
 		{"reader remove", "<reader>...", "reader remove reader-d", (*app).cmdReaderRemove},
 		{"reader retire", "<reader>...", "reader retire reader-d", (*app).cmdReaderRetire},
 		{"stream remove", "<stream>...", "stream remove a b c", (*app).cmdStreamRemove},
-		{"stream set", "<stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--attempts <n|default>] [--reason <text>] [--answers <notes>]", "stream set skips --read-tier pro", (*app).cmdStreamSet},
+		{"stream archive", "<stream>...", "stream archive a b c", func(a *app, args []string, o, e io.Writer) int { return a.cmdStreamArchive(true, args, o, e) }},
+		{"stream unarchive", "<stream>...", "stream unarchive a", func(a *app, args []string, o, e io.Writer) int { return a.cmdStreamArchive(false, args, o, e) }},
+		{"stream set", "<stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--prose <glob,...|default>] [--attempts <n|default>] [--reason <text>] [--answers <notes>]", "stream set skips --read-tier pro", (*app).cmdStreamSet},
 		{"set", "[--read-tier <flash|pro|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--attempts <n|default>] [--friend-idle <duration|default>] [--friend-finish <duration|default>]", "set --read-tier pro", (*app).cmdSet},
 		{"promoted", "--sha <merge sha> [--answers <note>]", "promoted --sha 0123abc", (*app).cmdPromoted},
 		{"merge-window open", "--for <duration> --reason <text>", "merge-window open --for 10m --reason 'the release merges by hand'", (*app).cmdMergeWindowOpen},
@@ -132,10 +135,12 @@ func init() {
 		{"dashboard", "[--listen <address:port>[,<address:port>...] | none] [--pull <address:port>[,<address:port>...] | none] [--logo <file>] [--every <duration>]", "dashboard --listen 127.0.0.1:7390 --pull 127.0.0.1:7395", (*app).cmdDashboard},
 		{"handover", "", "handover", (*app).cmdHandover},
 		{"view coordinator", "[--all] [--since <cursor>] [--json]", "view coordinator --json", (*app).cmdViewCoordinator},
+		{"view cards", "[--col <c>] [--stream <s>] [--holder <member>] [--by tier|stream|col|holder] [--json]", "view cards --col review --by tier --json", (*app).cmdViewCards},
 		{"view worker", "--as <member|friend> [--since <cursor>] [--json]", "view worker --as m1 --json", (*app).cmdViewWorker},
-		{"seat install", "[--dir <dir>] [--log <file>] [--dry-run]", "seat install --dry-run --redis 127.0.0.1:6381", (*app).cmdSeatInstall},
+		{"seat install", "--harness <name> --target <dir> [--session <id>] [--dir <dir>] [--log <file>] [--dry-run]", "seat install --dry-run --redis 127.0.0.1:6381", (*app).cmdSeatInstall},
 		{"seat uninstall", "[--dir <dir>]", "seat uninstall --dir ./no-unit-here", (*app).cmdSeatUninstall},
-		{"seat", "[--repair --reason <text>]", "seat", (*app).cmdSeat},
+		{"seat", "[--repair --reason <text>] | push [--harness <name> --target <dir> [--session <id>]] | pong <nonce>", "seat", (*app).cmdSeat},
+		{"fsck seat", "[--pg <host:port or postgres:// URI>]", "fsck seat", (*app).cmdFsckSeat},
 		{"routes", "", "routes", (*app).cmdRoutes},
 		{"rules", "", "rules", (*app).cmdRules},
 		{"stats", "", "stats", (*app).cmdStats},
@@ -362,6 +367,7 @@ var verbExamples = map[string][]string{
 		"add --stream s1 --brief-dir briefs",
 		"add --stream s1 --brief-file a.md --brief-file b.md",
 	},
+	"fsck seat": {},
 }
 
 // verbExample is the lines a verb's -h shows above its flags: its examples,
@@ -1246,6 +1252,18 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	if code := a.holdBase("add", st, *allowPersonal, stderr, *brief); code != 0 {
 		return code
 	}
+	if *sentinel == "" {
+		checks := make([]briefCheck, 0, len(ids))
+		for _, id := range ids {
+			checks = append(checks, briefCheck{id: id, brief: *brief})
+		}
+		if len(ids) == 0 { // --count: the ids are made at the write
+			checks = append(checks, briefCheck{brief: *brief})
+		}
+		if code := a.holdCardChecks("add", st, stderr, checks...); code != 0 {
+			return code
+		}
+	}
 	c.addStream = *stream
 	c.addBefore = *before
 	step := store.AddEachStep(rs)
@@ -1343,6 +1361,13 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 		return code
 	}
 	if code := a.holdBase("add", st, allowPersonal, stderr, texts...); code != 0 {
+		return code
+	}
+	checks := make([]briefCheck, len(cards))
+	for i, cd := range cards {
+		checks[i] = briefCheck{id: cd.ID, brief: cd.Brief}
+	}
+	if code := a.holdCardChecks("add", st, stderr, checks...); code != 0 {
 		return code
 	}
 	r := sprint.AddReq{Stream: stream, Cards: cards, Who: c.actor, Before: before, After: after, Held: held, Score: at, BriefOps: asked.ops, BriefRecord: asked.record, Replaces: replaces}
@@ -2032,6 +2057,15 @@ func takeShort(ctx context.Context, st *store.Store, res store.Result, members [
 			continue
 		}
 		head := fmt.Sprintf("%s took %d of the %d asked: ", m, n, asked)
+		if sprint.IsFriendRow(m) {
+			// a friend's row has no control card: her status and her lanes are her friends row's
+			if len(s.Fleet.Cell(m, sprint.Ready)) == 0 {
+				out = append(out, head+"its ready queue is empty")
+			} else {
+				out = append(out, fmt.Sprintf("%sher lanes are full (%d working) or she is not up; she takes another as she finishes one", head, len(working)))
+			}
+			continue
+		}
 		if !s.Fleet.HasRow(m) {
 			// a name the fleet table lacks takes nothing, and says so rather than an OK alone
 			out = append(out, head+"it is no member of the fleet table (members: "+orDashStr(strings.Join(s.Members(), ","), "none")+"); run: nova-sprint fleet up "+m+" --width <n>")
@@ -2896,7 +2930,14 @@ a STOPPED machine only (nova-sprint stop first), refused while a stream holds a
 card (a primary or a sentinel in any column of its work row, a merge card in
 its merge row: nova-sprint clear --confirm sprint, or drop) and all or none
 for the streams named. A clear does not bring a removed stream back, and its
-name is added again only after the next clear. stream set <s> --read-tier pro
+name is added again only after the next clear. stream archive takes streams
+whose every card has landed off both tables, on a running machine too: their
+rows are hidden and every landed card, its cost and its landing stay, counted
+by the footers, the summary and where --json --archived; refused while a
+stream holds a card not landed, naming it, all or none. stream unarchive
+draws them again. The tick archives a stream itself when its last card lands
+and nothing waits behind it (one note names it), and draws an archived stream
+again when a card not landed is in it. stream set <s> --read-tier pro
 puts the reads of the stream's cards on pro, over the sprint's read tier (set
 --read-tier); a read tier raises a card's reads and never lowers them below the
 card's own tier, and default takes the stream's off.`) + "\n"
@@ -2987,13 +3028,15 @@ func (a *app) cmdFunded(args []string, stdout, stderr io.Writer) int {
 }
 
 // cmdStreamSet writes the read tier or release of the streams named (sprint.Set), over the
-// sprint's, and their protected-branch mark: the repositories whose protected
-// branches the lander lands their cards on (docs/SPEC-SPRINT.md section 7 and section 11).
+// sprint's, their protected-branch mark: the repositories whose protected branches the
+// lander lands their cards on, and their prose globs: the files the lander does not read
+// for a code span (docs/SPEC-SPRINT.md section 7 and section 11).
 func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("stream set")
 	tier := fs.String("read-tier", "", "the tier the stream's reads draw their route from when it is stronger than the card's own (flash, pro or heavy; default takes it off: the sprint's)")
 	mark := fs.String("land-protected", "", "the repositories (owner/name, comma separated; any for every one) on whose protected branches, dev and main, the lander lands the stream's cards; default takes the mark off, and a card based on a protected branch is then refused at land")
 	release := fs.String("release", "", "the release this stream belongs to (default or none clears it)")
+	prose := fs.String("prose", "", "the globs (PATHS globs, comma separated: security/**,ratings/**) of the files whose backquotes are their own, which the lander does not read for a code span; default takes them off")
 	attempts := fs.String("attempts", "", fmt.Sprintf("the stream's attempt cap, over the sprint's: how many attempts one brief may run before the card is the coordinator's as a brief defect; 1 to %d, or default (the sprint's)", sprint.AttemptsMax))
 	reason := fs.String("reason", "", "why the read tier is set, recorded on the stream row (the judgment 'raise the read tier of the stream?' names it)")
 	ans := fs.String("answers", "", "the judgment notifications this answers, comma separated")
@@ -3001,14 +3044,14 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "stream set", err.Error())
 	}
-	if len(names) == 0 || (*tier == "" && *mark == "" && *release == "" && *attempts == "") {
-		return refuse(stderr, "stream set", "wants at least one stream and --read-tier <flash|pro|heavy|default>, --land-protected <owner/name,...|any|default>, --release <name> or --attempts <n|default>")
+	if len(names) == 0 || (*tier == "" && *mark == "" && *release == "" && *prose == "" && *attempts == "") {
+		return refuse(stderr, "stream set", "wants at least one stream and --read-tier <flash|pro|heavy|default>, --land-protected <owner/name,...|any|default>, --release <name>, --prose <glob,...|default> or --attempts <n|default>")
 	}
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, "stream set", err.Error())
 	}
-	return a.runStep("stream set", *c, st, store.SetStep(sprint.SetReq{Streams: names, ReadTier: *tier, LandProtected: *mark, Release: *release, Attempts: *attempts, Reason: *reason, Answers: answers(*ans), Who: c.actor}), stdout, stderr)
+	return a.runStep("stream set", *c, st, store.SetStep(sprint.SetReq{Streams: names, ReadTier: *tier, LandProtected: *mark, Release: *release, Prose: *prose, Attempts: *attempts, Reason: *reason, Answers: answers(*ans), Who: c.actor}), stdout, stderr)
 }
 
 // cmdStreamRemove takes the named streams off the work and merge tables:
@@ -3017,7 +3060,8 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 // control card the merge row holds, the one card add made for it. Refused,
 // exit 1 and nothing written, on a RUNNING machine, for a stream that is no
 // row, or for one that holds a card (sprint.StreamRemove), all or none for
-// the streams named.
+// the streams named. Every open judgment and held condition that names a
+// removed stream is retired with it, a NOTE line each (sprint.RetireStreams).
 func (a *app) cmdStreamRemove(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("stream remove")
 	names, err := parse(fs, args)
@@ -3054,7 +3098,15 @@ func (a *app) cmdStreamRemove(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 	}
+	said, err := retireStreams(ctx, st, "stream remove", names, "was removed (stream remove), so nothing can act on this")
+	if err != nil {
+		fmt.Fprintf(stderr, "%s stream remove: the streams are removed, and retiring what names them failed: %s; the next tick retires them\n", prog, oneline.Escape(err.Error()))
+		return 1
+	}
 	fmt.Fprintf(stdout, "STREAM-REMOVE OK streams=%s\n", strings.Join(names, ","))
+	for _, l := range said {
+		fmt.Fprintf(stdout, "NOTE %s\n", oneline.Escape(l))
+	}
 	return 0
 }
 

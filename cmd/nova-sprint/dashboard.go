@@ -149,11 +149,14 @@ func dashboardUpstream(pull string) (string, error) {
 	return u.String(), nil
 }
 
-// whereJSON reads the sprint as `nova-sprint where --json --cards` does, in this process:
-// through the sprint's server when NOVA_SPRINT_SERVER names one, else on the store; --redis
-// is handed on when the dashboard was given it, as where would have been.
+// whereJSON reads the sprint as `nova-sprint where --json --cards --rows --archived` does, in this
+// process: through the sprint's server when NOVA_SPRINT_SERVER names one, else on the
+// store; --redis is handed on when the dashboard was given it, as where would have been.
+// The rows give each critical card its stream, so the critical path follows the page's
+// release (sprintdash.placed); the server drops them. The archived streams' rows come
+// too: the page hides them behind its one archived line (stream archive).
 func (a *app) whereJSON(addr string, given bool) ([]byte, error) {
-	argv := []string{"where", "--json", "--cards"}
+	argv := []string{"where", "--json", "--cards", "--rows", "--archived"}
 	if given {
 		argv = append(argv, "--redis", addr)
 	}
@@ -227,9 +230,13 @@ type listener struct {
 // serveDashboard starts one listener per address and says each address it listens on; a
 // listener that cannot start closes the others.
 func (a *app) serveDashboard(ls []listener, stdout io.Writer) ([]*http.Server, error) {
+	listen := net.Listen
+	if a.dashListen != nil {
+		listen = a.dashListen
+	}
 	var lns []net.Listener
 	for _, l := range ls {
-		ln, err := net.Listen("tcp", l.addr)
+		ln, err := listen("tcp", l.addr)
 		if err != nil {
 			for _, l := range lns {
 				// ignored: closing the listeners already open on the failure path; err is the one returned

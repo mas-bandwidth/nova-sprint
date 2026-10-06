@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -46,7 +47,7 @@ import (
 // workerVerb is the worker a verb of a batch acts as and how many words its
 // verb is, or why the server does not run it. A worker sends its own verbs only:
 // take, finish, read or queue, then --as and its name; or fleet beat, its name,
-// --load and a number, and nothing more; or friend beat, its name, and its report's flags each with its value (friendBeatReport). The name is one worker, never a list.
+// --load and a number, and nothing more; or friend beat, its name, and its report's flags each with its value (friendBeatReport); or friend cards, its name, and --json at most. The name is one worker, never a list.
 // No later word, wherever it stands, is a flag named as, redis or actor: the
 // server gives the store and the actor (serve puts them before the worker's
 // words, where nothing the worker sent can take them as a value or end the
@@ -78,6 +79,14 @@ func workerVerb(argv []string) (as string, words int, why string) {
 		}
 		return argv[2], 2, ""
 	}
+	if len(argv) >= 2 && argv[0] == "friend" && argv[1] == "cards" {
+		// a friend's daemon reads the cards held on her row, each with its brief, to write
+		// them into her inbox (friendcards_verb.go): her name, --json at most, nothing more
+		if len(argv) < 3 || len(argv) > 4 || !sprint.ValidID(argv[2]) || (len(argv) == 4 && argv[3] != "--json") {
+			return "", 0, "a friend's cards sent to the server are `friend cards <friend> [--json]` and nothing more"
+		}
+		return argv[2], 2, ""
+	}
 	if len(argv) >= 2 && argv[0] == "lane" && (argv[1] == "take" || argv[1] == "give") {
 		// a lane's take or give (lane.go; docs/SPEC-SPRINT.md section 18): its kind, the
 		// machine and the worker, and nothing more; the server never waits (--wait asks again
@@ -89,15 +98,16 @@ func workerVerb(argv []string) (as string, words int, why string) {
 		return rest[4], 2, ""
 	}
 	if len(argv) == 0 || !slices.Contains([]string{"take", "finish", "progress", "read", "queue"}, argv[0]) {
-		return "", 0, "the server runs the workers' verbs only: take, finish, progress, read, queue, fleet beat, friend beat, lane take, lane give"
+		return "", 0, "the server runs the workers' verbs only: take, finish, progress, read, queue, fleet beat, friend beat, friend cards, lane take, lane give"
 	}
 	verb, rest := argv[0], argv[1:]
 	if len(rest) < 2 || rest[0] != "--as" {
 		return "", 0, "it does not begin `" + verb + " --as <worker>`: a worker's verb names its worker first"
 	}
 	as, rest = rest[1], rest[2:]
-	if !sprint.ValidID(as) {
-		return "", 0, "a worker's verb names one worker (letters, digits, _ and -), found " + as
+	// a friend's row is a worker (friend.<name>: her session's take, progress and finish)
+	if name, ok := sprint.FriendOfRow(as); !sprint.ValidID(as) && (!ok || !sprint.ValidID(name)) {
+		return "", 0, "a worker's verb names one worker (letters, digits, _ and -, or friend.<name>), found " + as
 	}
 	for _, w := range rest {
 		if !strings.HasPrefix(w, "-") {
@@ -279,6 +289,10 @@ func (a *app) serveHTTP(w http.ResponseWriter, r *http.Request, local bool) {
 		a.serveView(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, friendCardsPath) {
+		a.serveFriendCards(w, r)
+		return
+	}
 	if r.URL.Path != sprintwire.Path || r.Method != http.MethodPost {
 		http.Error(w, "the sprint server takes POST "+sprintwire.Path, http.StatusNotFound)
 		return
@@ -396,7 +410,8 @@ func (a *app) listen(addr, redis string, stdout io.Writer) error {
 }
 
 // friendBeatFlags are the flags of a friend's beat the server runs, each with the shape of
-// its value: what her machinery reports of her work (friend beat).
+// its value: what her machinery reports of her work (friend beat), and her daemon's word
+// that she is down until a time and why (--until, --reason: her harness at its limit).
 var friendBeatFlags = map[string]func(string) bool{
 	"--running": runningIDs,
 	"--working": wholeAtLeast(0),
@@ -408,6 +423,21 @@ var friendBeatFlags = map[string]func(string) bool{
 	},
 	"--active": rfc3339,
 	"--pong":   rfc3339,
+	"--until":  rfc3339,
+	"--reason": oneLineText,
+}
+
+// oneLineText is the shape of a short text on one line: not empty, no control character.
+func oneLineText(v string) bool {
+	if v == "" || len(v) > 1024 {
+		return false
+	}
+	for _, r := range v {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // rfc3339 is the shape of a time.
@@ -485,6 +515,20 @@ func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
 		} else if on {
 			argv = append(argv, "--all")
 		}
+	case "cards":
+		if q.Get("since") != "" {
+			http.Error(w, "the cards view takes no since", http.StatusBadRequest)
+			return
+		}
+		for _, k := range []string{"col", "stream", "holder", "by"} {
+			if v := q.Get(k); v != "" {
+				if !sprint.ValidID(v) {
+					http.Error(w, k+" is a name (letters, digits, _ and -)", http.StatusBadRequest)
+					return
+				}
+				argv = append(argv, "--"+k, v)
+			}
+		}
 	case "worker":
 		as := q.Get("as")
 		if !sprint.ValidID(as) {
@@ -493,7 +537,7 @@ func (a *app) serveView(w http.ResponseWriter, r *http.Request) {
 		}
 		argv = append(argv, "--as", as)
 	default:
-		http.Error(w, "the views are "+viewPath+"coordinator and "+viewPath+"worker?as=<name>", http.StatusNotFound)
+		http.Error(w, "the views are "+viewPath+"coordinator, "+viewPath+"cards and "+viewPath+"worker?as=<name>", http.StatusNotFound)
 		return
 	}
 	if since := q.Get("since"); since != "" {
