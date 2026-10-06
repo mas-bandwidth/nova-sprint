@@ -37,11 +37,13 @@ var verbExit = map[string]string{
 	"dashboard":     "exit codes: 0 stopped (an interrupt), 2 usage or an address it cannot listen on, 3 its binary was replaced on disk (its supervisor starts the new one)",
 	"selftest land": "exit codes: 0 done, 1 failed (lander broken or card did not land), 2 usage",
 	"server switch": "exit codes: 0 done, 1 failed or refused (the candidate's shadow tick failed: nothing changed), 2 usage",
+	"release check": "exit codes: 0 every check passed (RELEASE OK), or --audit asked every read; 1 a check failed (RELEASE NOT READY; each RELEASE CHECK line names what to look at); 2 usage, a refused audit (nothing asked) or a store that did not answer",
 }
 
 // verbEffect is a verb's effect line, the last line of its -h, where the verb
 // states one (docs/STANDARD.md: `effect: inspection|local write|delivery`).
 var verbEffect = map[string]string{
+	"release check":     "inspection: reads the sprint's work and readers tables, writes nothing; --audit, the coordinator's: asks the cold audit's reads and records the audit on the work table",
 	"hold":              "local write: holds the named members, readers, friends or streams in the sprint's store (--return also hands back their begun work); --dry-run writes nothing",
 	"unhold":            "local write: releases the named holds in the sprint's store; --dry-run writes nothing",
 	"check":             "inspection: reads the sprint's tables and prints each violation, writes nothing",
