@@ -4447,6 +4447,33 @@ it on the in-memory store with a fake secrets reader.
 
 Cards sat on a base nobody watched (2026-10-04: a stream of cards on the coordinator's own branch, its gate red from 12:04 PM), so what the coordinator looked up by hand is a verb. `nova-sprint bases [--json]` (read) prints one row per base a card not landed or dropped names (a placed primary, not a sentinel, its brief's `BASE:` line), keyed by base and `REPO:`, in base order: `BASES <base> repo=<repo> cards=<n> waiting=<n> ready=<n> working=<n> review=<n> merging=<n> ahead=<n> behind=<n> gate=<green|red|-> gated=<RFC3339|->`, then a `NOTE` line per thing not known, then `BASES OK bases=<n> cards=<n>`; `--json` is one object (`bases`, each with its card ids by state; `cards`; `notes`). Ahead and behind are counted against `origin/dev` by `git rev-list --left-right --count` in land's kept clone of the repository (section 7, the clone land keeps under its root), after one fetch of dev and every base named per clone a call; when that fetch fails, one `ls-remote` finds the bases origin does not hold (each a `NOTE`, its counts `-`) and the rest are fetched again. bases clones nothing: a repository land keeps no clone of has its counts `-` and a `NOTE`. The gate is the lander's last record at the base's tip, read from the store: green when a card on the base landed (land gates the tip before it merges), red at the stop of a stream stopped on its base gate (section 8's base-gate rule, its third failure, `cause=base`: its `since`, for the base of each card it holds merging; a refusal before the third is the lander's memory, not the store's); the latest record wins, red on a tie, and `-` when the base was never gated. `add` refuses a card whose `BASE:` is a personal branch, `<name>/*` for the sprint's coordinator, its owner (`init --owner`) or any row of the friends table, naming every such base and `--allow-personal-base`, with nothing written; with the flag it is admitted. The names are read from the store, never written in the code. The code is `cmd/nova-sprint/bases.go` (`basesInUse`, `basesAhead`, `holdBase`, `personalNames`); the test is `TestBasesListsEveryBaseInUseAndAddRefusesAPersonalOne`.
 
+### release-check-cold-audit-r-ns-b2.w1
+
+`release check [--json] [--check <name>]...` is a read: it runs the release checks
+(`sprint.ReleaseChecks`, internal/sprint/releasecheck.go), each a pure function over
+`sprint.ReleaseFacts` (the clock and the snapshot's tables), prints `RELEASE CHECK <name> ok|fail <evidence>` per check, the evidence of a fail naming what to look at, then `RELEASE OK checks=<n>`
+or `RELEASE NOT READY failed=<n>`; exit 0 ready, 1 not, 2 usage or a store that did not answer.
+`add` refuses a card whose id is `check`. Its check is `cold-audit`. `release check --audit [--since <tag|commit|RFC 3339 time>] [--base <ref>] [--seed <n>] [--repo-dir <dir>]` is the
+coordinator's alone and is a write: it samples 20 primaries (sentinels aside) landed after the last
+release tag reachable from `--base` (its commit time), or after `--since`, drawn uniformly by the
+seed (printed, `--seed` to redraw) from them in id order, and refuses when fewer than 20 landed or
+when no point is named or found; it never samples every card for want of one. Each sampled card is
+asked as one read placed as the ask places a read (`Ask`'s room, round and route: `readerRooms`,
+`round.pickByRoom`, `readRouteOf`, the indexes written with the step), of a reader up that never
+saw the card: no read card of it at any attempt, placed or retired, not named in its `asked`, and
+not the member, or the friend, whose work card did any attempt. A card no such reader has room for
+refuses the whole audit, naming it, and nothing is asked. The read card is the reader's read of
+the primary at its last attempt, its packet that attempt's work against its base, marked
+`cold_audit=<the audit's asked stamp>` and `leveled=1`, so the tick's level never moves it to a
+reader that saw the card; the readers report it with `read` as any read. The audit
+(seed, since, asked, each card with its read card) is the work table's property `cold_audit`. A
+plain `release check` reads that record and the read cards it names: ok only when the audit was
+asked under 48 hours ago and each named read card, marked for this audit, came back ok; a broken
+read is named with its reader and finding, and a read missing, retired, of another audit, asked or
+reading is unanswered. The card's review reads, and an earlier audit's, never count. Tests:
+`TestReleaseCheckColdAuditSamplesTwentyLandedCardsAndNeedsEveryReadOk`,
+`TestReleaseCheckColdAuditOnTheStore`.
+
 ## 12. The driver
 
 `nova-sprint play` plays the outside world on a tick (`--every`), seeded
