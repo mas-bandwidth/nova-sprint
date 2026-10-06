@@ -11,41 +11,34 @@ the view you will have of your own team.
 
 ## Install Nova Tools first, then nova-sprint
 
-nova-sprint runs on top of [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
-Install the latest Nova Tools release first: **v1.1.0 for nova-sprint v1.0.0**.
-It supplies the friends (`nova-friend`), message bus (`nova-bus`), workers
-(`nova-swarm`) and configuration store commands (`nova-config`). Installing
-the nova-sprint command alone does not install those tools.
+nova-sprint runs on [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
+Install the Nova Tools release named in
+[`NOVA-TOOLS-VERSION`](../NOVA-TOOLS-VERSION) (**v1.1.0**, or newer) first,
+then **nova-sprint v1.0.0**. Nova Tools supplies the friends (`nova-friend`),
+message bus (`nova-bus`), workers (`nova-swarm`) and configuration commands
+(`nova-config`). Installing nova-sprint alone does not install these tools.
 
-With Go 1.26.6 or newer, run these commands in order. The first installs the
-Nova Tools command suite; the second installs the separate nova-sprint release:
+With Go 1.26.6 or newer, run:
 
 ```sh
-go install github.com/mas-bandwidth/nova-tools/cmd/...@v1.1.0
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-friend@v1.1.0
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-bus@v1.1.0
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-config@v1.1.0
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-swarm@v1.1.0
 go install github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint@v1.0.0
 nova-sprint help
 ```
 
-Each nova-sprint release is built against one nova-tools release and names it
-in [`NOVA-TOOLS-VERSION`](../NOVA-TOOLS-VERSION) (today v1.1.0); that release or
-a newer one passes. `nova-sprint seat check` refuses (exit 1, one line naming the
-binary, the version it found, the version required and the install command) while
-`nova-friend`, `nova-bus` or `nova-config` is missing from `PATH` or older. The
-commands above work once nova-tools v1.1.0 is published; it is being cut on
-2026-10-06, before nova-sprint v1.0.0, from the tree where `nova-friend`,
-`nova-bus`, `nova-config` and `nova-swarm` all live under `cmd/` (at v1.0.0,
-`nova-friend` is deprecated and `nova-swarm` is absent). The
-[nova-tools README](https://github.com/mas-bandwidth/nova-tools#readme) explains
-the dependencies a team plans for: Redis for the store, Tailscale across
-networks, Ansible for the fleet.
-
 Make sure your Go binary directory is on `PATH`, ahead of any older Nova
-installation. These commands download and build the named releases; they
-require the published tags. If either tag is not available yet, wait for the
-[Nova Tools](https://github.com/mas-bandwidth/nova-tools/releases) and
-[nova-sprint](https://github.com/mas-bandwidth/nova-sprint/releases) releases.
+installation. These commands download and build the named releases.
 Check an existing installation with `nova-friend version`, `nova-bus version`,
 `nova-swarm version`, `nova-config version` and `nova-sprint version`.
+
+`nova-sprint seat check` refuses while `nova-friend`, `nova-bus` or
+`nova-config` is missing from `PATH` or older than the release named in
+`NOVA-TOOLS-VERSION`. It exits with status 1 and names the binary, the version
+found, the required version and the install command. The required release or
+a newer one passes the version check.
 
 ## Take a first lap together
 

@@ -115,23 +115,6 @@ Then go wider. Work alongside the team, or come back in the morning.
 
 **Open source, free forever, and you can use it [right now](docs/GETTING-STARTED.md). Live demo [here](http://69.67.149.151/)!**
 
-nova-sprint runs on [nova-tools](https://github.com/mas-bandwidth/nova-tools).
-Install the nova-tools release named in [`NOVA-TOOLS-VERSION`](NOVA-TOOLS-VERSION)
-(v1.1.0, or newer) first, then nova-sprint:
-
-```sh
-go install github.com/mas-bandwidth/nova-tools/cmd/nova-friend@v1.1.0
-go install github.com/mas-bandwidth/nova-tools/cmd/nova-bus@v1.1.0
-go install github.com/mas-bandwidth/nova-tools/cmd/nova-config@v1.1.0
-go install github.com/mas-bandwidth/nova-tools/cmd/nova-swarm@v1.1.0
-go install github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint@v1.0.0
-```
-
-These commands work once nova-tools v1.1.0 is published; it is being cut on
-2026-10-06, before nova-sprint v1.0.0. `nova-sprint seat check` refuses while
-`nova-friend`, `nova-bus` or `nova-config` is missing from `PATH` or older than
-that release.
-
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
 [Cards and machine rules](docs/SPEC-SPRINT.md) · [Roadmap](ROADMAP.md) · [All docs](docs/README.md)
