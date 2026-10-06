@@ -214,7 +214,7 @@ func TestHandoverPrintsWhatTheNextSeatNeeds(t *testing.T) {
 		assert.Contains(t, out, want, out)
 	}
 	assert.Contains(t, out, "ROUTES ", "the routes line is there, disabled or none:\n%s", out)
-	assert.Less(t, strings.Count(out, "\n"), 60, "one screen:\n%s", out)
+	assert.Less(t, strings.Count(out, "\n"), 80, "one screen, with the bring-up after the handover:\n%s", out)
 
 	var h struct {
 		Seat      struct{ Holder string } `json:"seat"`
