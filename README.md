@@ -12,7 +12,7 @@ models and harnesses can do excellent work together — and still be a spectacul
 - **Green has his headphones on.** The message was sent successfully. Unfortunately,
   nobody told his session.
 
-Sometimes a friend was lost in the work and forgot to read new messages. Sometimes a wake command
+Sometimes a friend got lost in the work and forgot to read new messages. Sometimes a wake command
 succeeded without waking anyone. Sometimes “done” meant “on my branch,
 somewhere, good luck.”
 
