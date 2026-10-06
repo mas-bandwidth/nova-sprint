@@ -104,6 +104,7 @@ func (a *app) cmdCoordinator(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "COORDINATOR OK %s\n", said)
 	fmt.Fprint(stdout, text)
+	a.printBringUp(context.Background(), st, stdout, stderr)
 	return 0
 }
 
@@ -126,6 +127,7 @@ func (a *app) cmdHandover(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	fmt.Fprint(stdout, text)
+	a.printBringUp(context.Background(), st, stdout, stderr)
 	return 0
 }
 

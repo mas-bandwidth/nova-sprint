@@ -1950,6 +1950,7 @@ func printCard(w io.Writer, kind string, c *sprint.Card) {
 
 func (a *app) cmdCheck(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("check")
+	bring := fs.Bool("bring-up", false, "print the coordinator bring-up: each thing, the state just measured, and the nova verb that starts it")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, "check", argErr("takes no words ", err, pos...))
@@ -1957,6 +1958,10 @@ func (a *app) cmdCheck(args []string, stdout, stderr io.Writer) int {
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, "check", err.Error())
+	}
+	if *bring {
+		a.printBringUp(context.Background(), st, stdout, stderr)
+		return 0
 	}
 	rep, _, err := st.Check(context.Background(), 5)
 	if err != nil {

@@ -516,9 +516,16 @@ func (a *app) cmdWatch(args []string, stdout, stderr io.Writer) int {
 	mergeOver := fs.Int("merge-over", d.mergeOver, "merging over this many is a merge wake")
 	mergingOver := fs.Int("merging-over", d.mergingOver, "merging over this many is a backlog wake")
 	reviewOver := fs.Int("review-over", d.reviewOver, "review over this many is a backlog wake")
+	events := fs.Bool("events", false, "print one line per log kind the coordinator watches, repeats folded into a count, and exit")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, "watch", argErr("takes no words ", err, pos...))
+	}
+	if *wake && *events {
+		return refuse(stderr, "watch", "--wake and --events are two verbs: run one of them; run: nova-sprint watch --wake")
+	}
+	if *events {
+		return a.cmdWatchEvents(*c, stdout, stderr)
 	}
 	if !*wake {
 		return refuse(stderr, "watch", "--wake is the one thing watch does: it waits for what wakes the coordinator; run: nova-sprint watch --wake")

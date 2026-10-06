@@ -165,6 +165,9 @@ type app struct {
 	// outside is the seat check's reaches past the store (machinery.go): zero
 	// is the machine's own; a test gives fakes.
 	outside outside
+	// watchLines, when set (a test), is the log watch --events folds. nil
+	// reads the store's log. A field, so parallel tests do not share it.
+	watchLines func(ctx context.Context, st *store.Store) ([]sprint.Line, error)
 	// landFailed is what the land loop's last round printed when it failed, "" after a
 	// round that did not (landloop.go): the same failure again prints nothing.
 	landFailed string

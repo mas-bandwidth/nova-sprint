@@ -146,6 +146,9 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 	if line != "" {
 		fmt.Fprintln(stdout, line)
 	}
+	if running {
+		a.printBringUp(context.Background(), st, stdout, stderr)
+	}
 	return 0
 }
 
@@ -549,6 +552,9 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			// friend-reconcile-every-tick-r.w1)
 			a.reconcileFriendsTick(ctx, st, friends, stdout)
 		}
+		// the bring-up, every pass, with no extra lines: a thing that was
+		// running and is now missing is one judgment (bringup.go)
+		a.observeBringUp(ctx, st, stderr)
 		if n != 0 && i == n-1 {
 			return false
 		}
