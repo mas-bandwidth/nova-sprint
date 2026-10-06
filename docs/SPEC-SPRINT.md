@@ -3278,6 +3278,54 @@ it quiet until the episode ends (the next is raised again); `wait --for` until t
 much running time has passed, when one that still stands is raised again; `off` takes
 an alarm off, and an open one clears.
 
+### A repeated refusal is an alarm
+
+The owner, 2026-10-05: "Why then does everything back up, and then suddenly you look,
+and go WHOOSP THIS THING HAPPENED 10000 TIMES I fix it now." That day the server refused
+the work table's whole queued write 1,460 times in 3 minutes for one card's brief 16 bytes
+over its bound, and one land batch every few seconds for hours, and each was a log line
+alone. The same refusal or failure repeating is the machine saying something is stuck, and
+it is never only a log line (internal/sprint/repeat.go, the server's count in
+cmd/nova-sprint/run.go):
+
+- A cause is the verb (or the tick's part), its subject (a card, a stream, a friend; none
+  for the verb as a whole) and the reason, word for word. The server's run loop counts
+  each occurrence: every refusal a tick part makes (a part's refusals of one reason in one
+  tick are one occurrence, about the card when they name one, else about the part,
+  holding up every card they name: a step refused whole names each card it held with one
+  reason), a tick that fails, a land batch refused or failed (`land refused` or
+  `land failed`, by its stream, each round of the land loop, though the loop prints a
+  failure once), and a friend the run loop's reconcile skips (each tick, though it is said
+  once).
+- The third occurrence of one cause within 5 minutes raises one judgment, "the same
+  refusal keeps repeating", to the coordinator: it names the cause, the count, the first
+  and the last time, and what it holds up (its primaries, listed with the judgment; it is a
+  judgment of the sprint, so one cause is one judgment whatever it names). Each
+  occurrence after rewrites it in place with the count risen (a line `updated` on the
+  log); a cause that differs in any of its three parts is its own judgment.
+- An episode is occurrences none more than 5 minutes after the one before; 5 minutes
+  with none is the cause stopped: its judgment (or its acknowledgement) closes, in the
+  same step as one happened note to the coordinator, "a repeated refusal stopped", naming
+  the cause. A cause seen again after such a quiet, before the loop saw it stop, is a new
+  episode: its judgment (the old one's) closes at the next write, and the new episode
+  raises its own by its own third occurrence.
+- Its decisions are look and ack: `ack` answers it, and it is not raised again until the
+  cause has stopped and come back.
+- The count is the server's, in memory. A server started again closes an open judgment
+  of a cause it has not seen once it has run 5 minutes; one it sees again is raised by
+  its third occurrence, its count from there.
+- The loop reads and writes the store for it only when it has something to say (a cause
+  raised, a count risen, a cause stopped). Each write is a line on run's output:
+  `REPEATED <the judgment's text>` and `REPEAT STOPPED <judgment> closed`.
+- `watch --wake` wakes the coordinator on a new one at once (kind `repeat`), never held
+  by `--judgment-every`, once a judgment however its count rises.
+
+A queued change the drain cannot write (a field over its bound) is to be refused alone,
+named, with the rest of the queue applied. Not yet: `sprint.Drain` (queue.go) composes
+the queue and the store's `unwritable` (store/engine.go) refuses the drained step whole
+when one card's text is over its bound, and the queue stays for the next tick's drain to
+refuse again. Until it is, the repeat alarm above is what tells the coordinator.
+
 ### The coordinator's pass
 
 The owner, 2026-10-05: "everything I described above needs to be mechanical, so you
