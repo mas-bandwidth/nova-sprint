@@ -173,6 +173,10 @@ type app struct {
 	// rounds: land itself then leaves the queue as it is.
 	prune    pruneQueue
 	landLazy bool
+	// serverLands says this process is the server running with --land: its record
+	// says so, and a land by hand beside it is refused (landlock.go,
+	// land-one-lander-now-nsb.w1).
+	serverLands bool
 	// landCtx is the land loop's context while it runs a land (landOnce): the landed
 	// diffs' scoring runs under it, so the loop's shutdown ends the pass; nil is none.
 	landCtx context.Context
