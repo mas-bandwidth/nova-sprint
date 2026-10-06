@@ -189,7 +189,7 @@ const FieldLeveled = "leveled"
 // primary acceptable, and so how many readers the ask asks at an attempt: one
 // when the tier the card is on (cardTier) is flash, and two at any stronger tier
 // (pro, or frontier). A frontier card is not asked of a machine: friend_read.go asks
-// a friend whose tiers include frontier. Each machine read is drawn on a route of the card's
+// a friend whose tiers include frontier, or a reader row that declares frontier. Each machine read is drawn on a route of the card's
 // read tier (readTierOf) (the owner,
 // 2026-10-02, cost rule 4, nova-tools#5174: "Reads: one cold read per flash
 // card on a flash route; two per pro card; readers still equal workers per
@@ -212,17 +212,48 @@ func ReadsNeeded(pr *Card) int {
 // read not asked of a machine reader at its attempt is a friend's
 // (friendReadAsk): its reader is a friend of frontier class up with no read
 // card of the attempt (the snapshot's seats, Friends), and with none it waits,
-// judged NFewReaders.
+// judged NFewReaders. A frontier read is never the machine's: its readers are
+// the frontier takers (frontierTakers: a friend of frontier class up, and a
+// reader row up that declares frontier, with no read card of the attempt), and
+// with none it is judged NNoFrontierRoom, never NFewReaders.
 func enoughReadersUp(s *Snapshot, pr *Card) bool {
-	if attempt := pr.Int("attempt"); s.Fleet != nil && friendReadCard(s, pr) && len(readsAt(s, pr, attempt)) == 0 {
-		return slices.ContainsFunc(s.Friends, func(f FriendSeat) bool {
-			return f.Status == Up && slices.Contains(f.Tiers, cardhdr.RouteFrontier) && s.Fleet.Card(ReadCardID(pr.ID, max(attempt, 1), f.Name)) == nil
-		})
+	if s.Fleet != nil && friendReadCard(s, pr) {
+		return len(frontierTakers(s, pr, s.Friends)) > 0
 	}
 	if s.ReaderStates == nil && !s.readersCarryTiers() {
 		return true
 	}
 	return len(s.upReadersOf(pr)) >= ReadsNeeded(pr)
+}
+
+// readerDeclaresFrontier says the reader's tiers cell names frontier: its
+// runner maps frontier to a frontier model, so the friend ask may ask it a
+// frontier read (friendReadAsk). An empty cell reads every tier the machine
+// draws, and frontier is not one: it must be declared (reader add --tiers).
+func (s *Snapshot) readerDeclaresFrontier(reader string) bool {
+	return slices.Contains(Split(s.readerTiersStored(reader)), cardhdr.RouteFrontier)
+}
+
+// frontierReaders is the reader rows up that declare frontier, in row order.
+func (s *Snapshot) frontierReaders() []string {
+	var out []string
+	for _, rd := range s.UpReaders() {
+		if s.readerDeclaresFrontier(rd) {
+			out = append(out, rd)
+		}
+	}
+	return out
+}
+
+// readerTakes says the reader may hold a read of the primary: one that
+// declares frontier for a frontier read (friendReadCard), else one that reads
+// its read tier (readerReadsTier). The level and the sweep move a read only
+// to a reader that takes it.
+func (s *Snapshot) readerTakes(reader string, pr *Card) bool {
+	if friendReadCard(s, pr) {
+		return s.readerDeclaresFrontier(reader)
+	}
+	return s.readerReadsTier(reader, s.readTierOf(pr))
 }
 
 // acceptable says the primary has ok reads from ReadsNeeded different readers
@@ -400,9 +431,8 @@ func sweepReads(s *Snapshot, p *Plan) {
 		if pr == nil || !enoughReadersUp(s, pr) {
 			return false
 		}
-		tier := s.readTierOf(pr)
 		for _, rd := range up {
-			if s.readerReadsTier(rd, tier) && s.Readers.Card(ReadCardID(c.F("primary"), c.Int("attempt"), rd)) == nil {
+			if s.readerTakes(rd, pr) && s.Readers.Card(ReadCardID(c.F("primary"), c.Int("attempt"), rd)) == nil {
 				return true
 			}
 		}
@@ -560,13 +590,9 @@ func levelReads(s *Snapshot, p *Plan) {
 		for ; i >= 0 && to == ""; i-- {
 			avoid := []string{long}
 			pr := s.Work.Card(q[i].F("primary"))
-			tier := ""
-			if pr != nil {
-				tier = s.readTierOf(pr)
-			}
 			for _, rd := range up {
 				id := ReadCardID(q[i].F("primary"), q[i].Int("attempt"), rd)
-				if s.Readers.Card(id) != nil || planned[id] || (tier != "" && !s.readerReadsTier(rd, tier)) {
+				if s.Readers.Card(id) != nil || planned[id] || (pr != nil && !s.readerTakes(rd, pr)) {
 					avoid = append(avoid, rd)
 				}
 			}
