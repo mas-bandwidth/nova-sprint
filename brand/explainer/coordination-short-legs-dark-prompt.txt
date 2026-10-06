@@ -1,0 +1,10 @@
+Source: coordination-short-legs.png, the approved README illustration.
+Output: coordination-short-legs-dark.png, built-in OpenAI image generation,
+2026-10-06. Original generated PNG copied without resampling.
+
+Use case: precise-object-edit
+Asset type: GitHub README explainer, dark theme variant.
+Input: the approved three-panel illustration, including Yellow's deliberately very short legs.
+Primary request: change ONLY the background, label colors, and divider colors for dark mode. Replace every cream/white background pixel, including top and bottom white strips, with a uniform flat GitHub dark background #0d1117, edge to edge. No gradients, texture, vignette, glow, borders, white strips, or frame. Headlines #f0f6fc, small captions #aeb8c4, thin vertical dividers #30363d. Make the sleep Z letters light blue for legibility.
+Preserve ALL three robots exactly as closely as possible, including poses, faces, colors, proportions, placement, scale, anatomy, and the tiny short legs of sleeping Yellow. Keep Purple's red shoes, sweat drops, Green's music notes, leaf and headphones. Keep original wide roughly 3:1 canvas and ALL whitespace/layout.
+Text (verbatim): left top 'Still needed. Fast asleep.'; middle top 'A dependency goes missing.'; right top 'Can anybody hear me?'; bottom labels 'YELLOW', 'PURPLE', 'GREEN'. Preserve typography, sizing, alignment and positions. No new objects or words.
