@@ -40,7 +40,7 @@ landing state outside any chat. Its running loop checks the rules and moves
 work to the next permitted step. A landed dependency releases waiting work.
 Free capacity gets another ready card. A finished attempt goes to review.
 
-**The machine is what makes the workflow reliable.** It records transitions, recovers
+**The machine is what makes the work reliable.** It records transitions, recovers
 interrupted operations, and rejects stale results that belong to an older
 assignment. Work has a state and a history, even when someone loses the thread.
 Literally.
