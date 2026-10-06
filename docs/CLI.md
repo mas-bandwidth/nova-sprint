@@ -210,6 +210,25 @@ it; her nova-friend daemon reads it every loop to write her inbox, and the serve
 her as a worker's verb and at `GET /api/friend/<friend>/cards`. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md), section 11,
 "Role views".
 
+### The dashboard's page: the live page, in place of server.py
+
+`dashboard` serves the page the owner watches, byte for byte (its comments aside), and
+every path its old server, server.py, answered, with the same JSON: `/`, `/index.html`,
+`/app.js`, `/nunito-800.woff2`, `/OFL.txt`, `/api/sprint` (server.py's keys `ok`, `data`,
+`fetchedAt`, `attemptAt`, `error`, `readSeconds`, `minInterval`, `throughput`,
+`throughputMinutes`, `build`, then the release fields and `stale`), `/healthz`, and the
+logo's paths, drawn from `--logo <file>` as server.py drew them from its directory: an
+`.svg` inline and at `/favicon.svg`; `logo.webp` or `logo.png` at `/logo-icon.png` and
+`/favicon.png` (the keyed copies beside it, else the photo) and at its own name; any other
+image a tile at `/logo-tile-192.png` and `/logo-tile-384.png` (its `<stem>-192.png` and
+`<stem>-384.png` beside it, else the tile). `/landings.json` is the Landings chart's series
+from `where --json`'s `landedSeries`. A unit that ran `python3 server.py` with
+`DASHBOARD_ROOT=<dir>` runs `nova-sprint dashboard --listen <host>:<port> --logo
+<dir>/logo-robot.webp` (`DASHBOARD_HOST`/`DASHBOARD_PORT`), `--every 1s`
+(`DASHBOARD_MIN_INTERVAL`), and `--pull <url>` where it had `DASHBOARD_UPSTREAM`. The
+contract is [SPEC-SPRINT-DASHBOARD.md](SPEC-SPRINT-DASHBOARD.md), "The page is the live
+page".
+
 ### A worker's own view: the dashboard's pull routes
 
 `dashboard` serves the page on `--listen` (default `127.0.0.1:7390`) and, on listeners of

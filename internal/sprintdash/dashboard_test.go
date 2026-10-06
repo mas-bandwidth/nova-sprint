@@ -239,8 +239,8 @@ func TestDashboardServesTheLogoAndItsBuild(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	r.s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
-	assert.Contains(t, w.Body.String(), `<img id="logo" class="logo-tile" src="/logo?v=`+before+`"`)
-	assert.Contains(t, w.Body.String(), `<link rel="icon" href="/logo?v=`+before+`">`)
+	assert.Contains(t, w.Body.String(), `<img id="logo" class="raster" src="/logo-icon.png?v=`+before+`"`, "logo.webp is a photo on white, as server.py drew it (logo.go)")
+	assert.Contains(t, w.Body.String(), `<link rel="icon" type="image/png" href="/favicon.png?v=`+before+`">`)
 
 	require.NoError(t, os.WriteFile(logo, append(webp, 'x'), 0o600))
 	assert.NotEqual(t, before, r.s.Build(), "a new logo file is a new build number")
