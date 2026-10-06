@@ -344,6 +344,8 @@ nova-card is pre-alpha: not ready for production use.
 nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run]
 nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
 nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
+nova-card new <id> --repo <owner/name> --base <branch> --task-file <file> --paths <globs> --test "<package> <TestName>" --gate <pkgs> --tier flash|pro|heavy|frontier [--shared <globs>] [--needs <ids>] [--kind <k>] [--start <s>] [--stop <s>] [--libraries <s>] [--minutes <n>] [--rules <file>] [--out <file>] [--name <n>...] [--dropped <id>...]
+nova-card new --batch <tsv> --out <dir> [--rules <file>] [--name <n>...] [--dropped <id>...]
 nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...]
 nova-card template
 nova-card version
@@ -424,6 +426,49 @@ written, exit 1. A PATHS entry that names nothing in `--repo-dir` is the same
 refusal. An `--out` that already holds a brief is refused, exit 2. `--dry-run`
 plans and lints, prints the manifest and the `CARDS OK` line with
 `dry-run=yes`, and writes nothing.
+
+### new: one brief from its parts
+
+A brief that comes from no ledger, findings file or help is written by `new`
+from what only its writer knows: the id, `--repo`, `--base`, the task (the text
+of `--task-file`, which becomes THE TASK paragraph), `--paths`, `--test`
+(`"<package> <TestName>"`), `--gate` (the packages STEP 4 runs `go vet` and
+`go test -count=1 -timeout 600s` on, comma separated) and `--tier`; `--shared`
+and `--needs` are the SHARED: and DEPENDS-ON: lines when the card has them.
+Every other line the card lint wants is filled in: line 1 naming the tier, the
+typed header (REPO, BASE, KIND, DEPENDS-ON, START, STOP, PATHS, SHARED, TEST),
+the child header and Deadline line, the RULES paragraph of the default rules
+verbatim, the Libraries considered line, STEP 1 to STEP 6 with the gate line
+built from `--gate`, and the attribution sentence (the By: line names whoever
+takes the card, never a model). KIND defaults to `fix-red`, START to the TEST
+package, STOP to the test red before and green after with the gate passing,
+the Deadline to 45 minutes flash, 60 pro, 150 heavy or frontier; `--kind`,
+`--start`, `--stop`, `--libraries` and `--minutes` say otherwise. `--rules
+<file>`, a child rules file as `nova-sprint add --rules` reads it, puts that
+file's sentences in the RULES paragraph after the default rules, so the brief
+passes the add under the file and under the default rules both.
+
+```sh
+nova-card new fix-x-w1 --repo example/repo --base main --task-file ./task.md --paths "internal/x/**,docs/CLI.md" --test "internal/x TestXKeepsY" --gate internal/x,internal/ci --tier pro --out ./cards/fix-x-w1.md
+```
+
+The brief is printed on stdout, or written to `--out` with one `CARD OK
+file=<file>` line. Before it leaves it is held to everything `lint` holds a
+brief to and to the held rules file by reference (the rules a member injects at
+stage time, with their `go test -timeout` scan and Libraries considered check);
+a red brief is its `LINT DRIFT` lines and nothing is written, exit 1. A missing
+part is refused naming its flag (`nova-card new REFUSED: missing --gate`), and
+an invalid one naming what is wrong (an id or a need that is no card id, letters,
+digits, `_` and `-` as `nova-sprint add` holds a brief file's name; a tier that is no route, a kind the
+toolchain does not declare, a TEST that is not `<package> <TestName>`), exit 2.
+
+`--batch <tsv> --out <dir>` writes one brief per row, `<id>.md` each, into a
+directory for `nova-sprint add --brief-dir`. The columns are id, repo, base,
+task-file, paths, shared, test, gate, tier, needs, tab separated; a first row
+whose first cell is `id` is the header, `-` is none, lists are comma separated,
+and a relative task-file is read from the TSV's directory. One red or
+incomplete row refuses the whole batch, naming the row, and nothing is written;
+the result is one `CARDS OK dir=<dir> cards=<n>` line.
 
 ### Exit codes
 
