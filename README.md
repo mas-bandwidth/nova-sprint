@@ -42,7 +42,7 @@ the plan, handles findings and exceptions, and brings you decisions outside
 her authority. Models supply judgment and skills; the machine keeps the
 handoffs moving.
 
-## How it works: write the workflow, let the machine run it
+## How it works
 
 Cards and work streams form a **language for describing work**. You specify
 the jobs, their relationships, and the gates between phases. The machine
