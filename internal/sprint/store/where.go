@@ -43,7 +43,9 @@ type WhereRecord struct {
 	Tiers   map[string]int              `json:"tiers,omitempty"`
 	Streams map[string]sprint.TierCosts `json:"streams,omitempty"`
 	// StageTimes is the median and p90 of each stage over the cards landed in the last day
-	// (sprint.CycleTimes, docs/SPEC-SPRINT.md, cycle-time-breakdownb.w1), as of the count.
+	// (sprint.CycleTimes, docs/SPEC-SPRINT.md, cycle-time-breakdownb.w1), with the
+	// performance counters of the same cards (IPC and the stall reasons, processor-counters),
+	// as of the count.
 	StageTimes sprint.StageTimes `json:"stage_times,omitzero"`
 }
 

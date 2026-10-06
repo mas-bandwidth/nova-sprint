@@ -92,8 +92,10 @@ type Server struct {
 
 // snapshot is /api/sprint's body: every key server.py's carried, in its order (ok, data,
 // fetchedAt, attemptAt, error, readSeconds, minInterval, throughput, throughputMinutes,
-// build), then the release fields and stale. The page reads data, throughput,
-// throughputMinutes and build; the rest says how the reads are going.
+// build), then the release fields, stale and counters. The page reads data, throughput,
+// throughputMinutes and build; the rest says how the reads are going. Counters is the
+// performance counters' row (docs/SPEC-SPRINT.md, processor-counters): IPC and the top
+// stall of where --json's stage_times.counters.all, null when the copy has none.
 // Data is the copy as the release shows it (release.go): release is the one shown,
 // current the one shown when none is asked, releases every label a stream carries, and
 // releaseStreams the streams shown (absent for all).
@@ -113,6 +115,7 @@ type snapshot struct {
 	Releases          []string        `json:"releases,omitempty"`
 	ReleaseStreams    []string        `json:"releaseStreams,omitempty"`
 	Stale             bool            `json:"stale"`
+	Counters          *string         `json:"counters"`
 }
 
 // sample is one good read's landed count and when it began.
@@ -301,8 +304,36 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 			s.landed, s.landAt = ls.LandedSeries, at
 		}
 		s.snap.FetchedAt, s.snap.Throughput, s.snap.ThroughputMinutes = &at, rate, minutes
+		s.snap.Counters = countersRow(body)
 	}
 	s.summarize(end, took, err != nil)
+}
+
+// countersRow is the dashboard's counters row from the copy: "IPC <n> landed per
+// slot-hour; top stall: <reason>", nil when the copy carries no counters.
+func countersRow(body []byte) *string {
+	var v struct {
+		StageTimes struct {
+			Counters *struct {
+				All struct {
+					IPC float64 `json:"ipc"`
+					Top string  `json:"top_stall"`
+				} `json:"all"`
+			} `json:"counters"`
+		} `json:"stage_times"`
+	}
+	// ignored: sprintJSON has read body as JSON; counters of another shape are none
+	_ = json.Unmarshal(body, &v)
+	c := v.StageTimes.Counters
+	if c == nil {
+		return nil
+	}
+	top := c.All.Top
+	if top == "" {
+		top = "none"
+	}
+	row := fmt.Sprintf("IPC %.2f landed per slot-hour; top stall: %s", c.All.IPC, top)
+	return &row
 }
 
 // sampleLanded adds a sample and is the cards landed per hour over the samples of the
