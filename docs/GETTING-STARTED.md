@@ -9,9 +9,29 @@ different models and harnesses, or a fleet of swarm workers as your team grows.
 Follow the streams, friends, fleet, costs, and estimated finish time. That is
 the view you will have of your own team.
 
-## Get the command
+## Install nova-tools first
 
-From a terminal with Git and Go 1.26.6 or newer:
+nova-sprint runs on top of [nova-tools](https://github.com/mas-bandwidth/nova-tools).
+The friends, the bus between them, the fleet and the configuration store are
+nova-tools commands: `nova-friend`, `nova-bus`, `nova-swarm` and `nova-config`.
+Install the latest nova-tools release before nova-sprint, from a terminal with
+Git and Go 1.26.6 or newer:
+
+```sh
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-friend@latest
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-bus@latest
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-config@latest
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-swarm@latest
+nova-friend help
+```
+
+Each nova-sprint release is built against one nova-tools release and names it;
+an older nova-tools on `PATH` is refused by `nova-sprint seat check`. The
+[nova-tools README](https://github.com/mas-bandwidth/nova-tools#readme) explains
+the dependencies a team plans for: Redis for the store, Tailscale across
+networks, Ansible for the fleet.
+
+## Then get nova-sprint
 
 ```sh
 git clone https://github.com/mas-bandwidth/nova-sprint.git
