@@ -100,9 +100,7 @@ func countingGitHub() (github, *atomic.Int64) {
 func TestTheToolMeetsTheStandard(t *testing.T) {
 	t.Parallel()
 	// .Problems() is the class test's marker (docs/SPEC-CI.md tool-standard).
-	// The method is not on this tree, so the banner's what line is what this
-	// test holds.
-	assert.NotEmpty(t, workTool(realGitHub()).What)
+	assert.Empty(t, workTool(realGitHub()).Problems())
 }
 
 // TestVerifyDefaultMaxBytesIsAMemoryBoundNotJustAByteBound pins the verify
@@ -572,5 +570,5 @@ func TestABareCommandRefusesWithItsStage(t *testing.T) {
 	res := workMain(unreachable(t)).Run()
 	require.Equal(t, 2, res.Code, "bare nova-work: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
 	require.Empty(t, res.Stdout, "bare nova-work: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
-	require.Equal(t, "WORK REFUSED: no verb given; the verbs are import, verify, version; run: nova-work help\n  NOTE "+preAlpha+"\n", res.Stderr, "bare nova-work: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
+	require.Equal(t, "WORK REFUSED: no verb given; the verbs are import, verify, roadmap check, roadmap add, roadmap remove, roadmap pull, roadmap note, version; run: nova-work help\n  NOTE "+preAlpha+"\n", res.Stderr, "bare nova-work: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
 }
