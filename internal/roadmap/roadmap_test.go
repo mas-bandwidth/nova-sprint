@@ -256,8 +256,8 @@ func TestRoundTripByteStable(t *testing.T) {
 	assert.Equal(t, sampleRoadmap, string(printed), "unmutated round trip must be byte identical")
 }
 
-func TestRealWorldNovaSprintRoadmap(t *testing.T) {
-	path := filepath.Join("testdata", "nova-sprint-v1.1.0.sexp")
+func TestTheRoadmapShapeRoundTripsByteForByte(t *testing.T) {
+	path := filepath.Join("testdata", "synthetic-v1.1.0.sexp")
 	original, err := os.ReadFile(path)
 	require.NoError(t, err)
 
@@ -266,7 +266,7 @@ func TestRealWorldNovaSprintRoadmap(t *testing.T) {
 
 	// Check() must find 0 problems
 	problems := r.Check()
-	require.Empty(t, problems, "real-world roadmap must have 0 problems")
+	require.Empty(t, problems, "the fixture must have 0 problems")
 
 	require.Len(t, r.Releases, 1)
 	assert.Equal(t, "v1.1.0", r.Releases[0].Version)
@@ -274,11 +274,11 @@ func TestRealWorldNovaSprintRoadmap(t *testing.T) {
 	assert.Len(t, r.Releases[0].Streams, 25)
 
 	// Round-trip byte stable assertion
-	assert.Equal(t, string(original), string(r.Bytes()), "real roadmap round-trip must be byte identical")
+	assert.Equal(t, string(original), string(r.Bytes()), "the fixture round-trip must be byte identical")
 }
 
-func TestRealWorldOperations(t *testing.T) {
-	path := filepath.Join("testdata", "nova-sprint-v1.1.0.sexp")
+func TestTheRoadmapShapeSurvivesRemoveAndPull(t *testing.T) {
+	path := filepath.Join("testdata", "synthetic-v1.1.0.sexp")
 	original, err := os.ReadFile(path)
 	require.NoError(t, err)
 
@@ -310,7 +310,7 @@ func TestRealWorldOperations(t *testing.T) {
 
 	pulledBrief, err := os.ReadFile(filepath.Join(outDir, "v11-streams-by-repo.md"))
 	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(string(pulledBrief), "REPO: mas-bandwidth/nova-tools"))
+	assert.True(t, strings.HasPrefix(string(pulledBrief), "REPO: example/repo\n"))
 
 	require.NoError(t, r2.Save(tempPath))
 
