@@ -1,0 +1,7 @@
+# The nova-tools release this tree was seeded from, and the least nova-sprint runs on.
+# Written by tools/seed; read by nova-sprint seat check (docs/SPEC-SPRINT.md).
+# No commit line yet: nova-tools v1.1.0 is being cut on 2026-10-06, before nova-sprint
+# v1.0.0 (the latest published release is v1.0.0, where nova-friend is deprecated and
+# nova-swarm is absent). The first seed from the v1.1.0 tag, on a clean checkout, writes
+# the commit line.
+tag v1.1.0

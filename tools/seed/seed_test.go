@@ -2,9 +2,12 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 const testRecipe = "module\tex.com/tools\tex.com/sprint\n" +
@@ -18,6 +21,8 @@ const testRecipe = "module\tex.com/tools\tex.com/sprint\n" +
 	"keep\tREADME.md\n" +
 	"keep\ttools/seed\n" +
 	"gomod\n"
+
+var testRelease = release{tag: "v1.1.0", commit: "0123456789abcdef0123456789abcdef01234567"}
 
 func write(t *testing.T, root string, files map[string]string) {
 	t.Helper()
@@ -98,7 +103,7 @@ func TestTheSeedMovesCopiesAndRewritesByTheRecipe(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(t.TempDir(), "out")
-	rep, err := run(r, from, keep, out)
+	rep, err := run(r, testRelease, from, keep, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,6 +155,74 @@ func TestTheSeedMovesCopiesAndRewritesByTheRecipe(t *testing.T) {
 	if got := read(t, out, "go.mod"); got != "module ex.com/sprint\n\ngo 1.26\n\ntool ex.com/dead\n\nrequire ex.com/dep v1.0.0\n" {
 		t.Errorf("go.mod %q", got)
 	}
+	if got, want := read(t, out, sprint.NovaToolsVersionFile), sprint.FormatNovaToolsVersion("v1.1.0", testRelease.commit); got != want {
+		t.Errorf("%s %q, want %q", sprint.NovaToolsVersionFile, got, want)
+	}
+}
+
+func TestTheSeedRefusesWithoutAReleaseToRecord(t *testing.T) {
+	from, keep := fixture(t)
+	r, err := parseRecipe(testRecipe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "out")
+	if _, err := run(r, release{}, from, keep, out); err == nil || !strings.Contains(err.Error(), sprint.NovaToolsVersionFile) {
+		t.Fatalf("got %v", err)
+	}
+	if exists(out, ".") {
+		t.Errorf("%s written", out)
+	}
+}
+
+func TestTheSeedRecordsTheCheckoutsReleaseTag(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=seed", "-c", "user.email=seed@example.com", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	git("commit", "-q", "--allow-empty", "-m", "one")
+	if _, err := checkoutRelease(dir); err == nil || !strings.Contains(err.Error(), "no release tag") {
+		t.Fatalf("an untagged checkout: %v", err)
+	}
+	git("tag", "v1.1.0-rc.1")
+	git("tag", "nightly")
+	if _, err := checkoutRelease(dir); err == nil || !strings.Contains(err.Error(), "no release tag") {
+		t.Fatalf("a prerelease or a name is no release: %v", err)
+	}
+	git("tag", "v1.0.0")
+	git("tag", "v1.1.0")
+	rel, err := checkoutRelease(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.tag != "v1.1.0" || len(rel.commit) != 40 {
+		t.Fatalf("got %+v, want v1.1.0 at the full head", rel)
+	}
+	stray := filepath.Join(dir, "stray.txt")
+	if err := os.WriteFile(stray, []byte("not in the release\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := checkoutRelease(dir); err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
+		t.Fatalf("a dirty checkout at the tag: %v", err)
+	}
+	if err := os.Remove(stray); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := checkoutRelease(dir); err != nil {
+		t.Fatalf("clean again: %v", err)
+	}
+	git("commit", "-q", "--allow-empty", "-m", "two")
+	if _, err := checkoutRelease(dir); err == nil {
+		t.Fatal("a commit past the tag recorded the tag")
+	}
 }
 
 func TestTheSeedRefusesAnOutThatExists(t *testing.T) {
@@ -159,7 +232,7 @@ func TestTheSeedRefusesAnOutThatExists(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := t.TempDir()
-	if _, err := run(r, from, keep, out); err == nil || !strings.Contains(err.Error(), "already exists") {
+	if _, err := run(r, testRelease, from, keep, out); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -176,7 +249,7 @@ func TestTheSeedRefusesAMissingPiece(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := run(r, from, keep, filepath.Join(t.TempDir(), "out")); err == nil {
+			if _, err := run(r, testRelease, from, keep, filepath.Join(t.TempDir(), "out")); err == nil {
 				t.Fatal("no error")
 			}
 		})
