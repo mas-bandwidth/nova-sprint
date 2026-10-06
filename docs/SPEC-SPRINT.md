@@ -1016,6 +1016,48 @@ time goes, from the medians of `all`. A card whose path skips a stamping step
 go through the steps above) has no sample for the stages that need it.
 (`TestStageTimesGiveMedianAndP90PerStage`).
 
+### processor-counters: IPC and where each card stalled
+
+**Layer 2 of the processor, the performance counters** (the owner, 2026-10-04:
+the processor design, [PROCESSOR.md](PROCESSOR.md)). They are read from the
+stage stamps above, by `sprint.CycleTimes` over the same cards in the same
+24 h; no second store of times is kept. They are the instrument the later
+layers are gated on: speculation and renaming are kept only if these show
+their stall dominating.
+
+Each landed primary's wall time, `admitted` to `landed`, is split by reason,
+and the parts sum to the wall time. The stamps, in the order the time passes
+them, each end a span of one reason: `released` (a held card's release:
+`release`), `ready_at` (`need`, or `release` when the last of what it waited
+for to land before it was ready, a need it names or a sentinel of its stream
+before it in line, is a sentinel), `dealt_at` (`slot`, or `rework` for a
+reworked card: its earlier attempts, their reads and the reworks, ready to
+the final attempt's deal), `taken_at` (`slot`), `finished_at` (`work`),
+`accepted` (`read`: the wait for a read, the reads and the accept) and its
+landing (`merge`). A stamp that is missing or out of order ends no span: its
+time goes to the next stamp's reason, so the partition holds whichever path
+the card took. `external` is the ISA's external operand; no step waits on
+one yet, so it reads nothing until one does. Work is no stall but is a part,
+so the parts sum; the top stall is the largest part that is not work.
+
+**IPC** is the cards landed on a machine's lane per slot-hour: the slot-hours
+are, for each machine up now, its width times the hours since it came up
+(its `since`), from the window's start at the earliest. A machine down now
+counts none (its earlier time up is on no card), and friends' lanes are not
+the fleet's widths and are not counted, so a card a friend landed has its
+stall parts but is not in IPC. A stream's IPC is its landings over the same
+slot-hours (the slots are the fleet's, shared).
+
+`where --json` carries them as `stage_times.counters`: `all` and
+`streams.<stream>`, each `{landed, slot_hours, ipc, stalls_s, top_stall}`,
+and `cards`, each landed card's `{id, stream, wall_s, stalls_s}` in landing
+order. The dashboard's `/api/sprint` carries one row, `counters`: `IPC <n>
+landed per slot-hour; top stall: <reason>` from `all` (null without counters).
+`tla/CardISA.tla` models the stall reason (`stall`, one reason at a time, its
+place's) and checks `StallsPartitionWallTime` with a reversed witness,
+`tworeasons` (`MCCardISABrokenTwoReasons.cfg`).
+(`TestCountersGiveIPCAndStallReasonsThatSumToWallTime`).
+
 ## 2. The cards
 
 Layer 1 of the processor, the instruction set, is [SPEC-ISA.md](SPEC-ISA.md): a

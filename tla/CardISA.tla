@@ -35,11 +35,24 @@
 (* (one, Wait) against the paths it replaced (hold, sentinel, wave: three   *)
 (* in CardMachine plus the code it was read from).                         *)
 (*                                                                         *)
+(*   - the stall reason (docs/SPEC-SPRINT.md, processor-counters; layer 2, *)
+(*     the performance counters). stall[c] is the one reason a card's time *)
+(*     goes to now, read off its place by StallOf: waiting by its operand   *)
+(*     (need, release, external), ready (slot, or rework once it has been   *)
+(*     dealt before), working (work), review (read), merging (merge), and   *)
+(*     none outside the life. Every life action restamps it (S(A)); Clock(c) *)
+(*     is a second of the card's wall time, charged to that one reason.     *)
+(*     The code (internal/sprint/counters.go) splits a landed card's wall   *)
+(*     time the same way from its stage stamps; this module checks that the *)
+(*     split is a partition: every second charged once, to one reason.      *)
+(*                                                                         *)
 (* What must always hold (TLC):                                            *)
 (*   NoCardRetiresTwice       no card lands twice                          *)
 (*   RetiredHeadOnBase        a landed card's head is an ancestor of its base *)
 (*   WaitDispatchesOnlyWhenOperandHolds  a card never leaves waiting for a  *)
 (*                            consumer before its operand holds            *)
+(*   StallsPartitionWallTime  one reason at a time, its place's, and the    *)
+(*                            parts charged sum to the card's wall time     *)
 (* and on MCCardISALive, a wait whose operand comes to hold is dealt.       *)
 (*                                                                         *)
 (* Reversed witnesses (Broken, the same shape as CoordinatorWake):          *)
@@ -49,6 +62,8 @@
 (*                 (breaks RetiredHeadOnBase)                              *)
 (*   "waitfirst"   Wait releases a card whose operand does not hold        *)
 (*                 (breaks WaitDispatchesOnlyWhenOperandHolds)             *)
+(*   "tworeasons"  a second of a card not working is charged to its reason *)
+(*                 and to work as well (breaks StallsPartitionWallTime)    *)
 (*                                                                         *)
 (* LandTwoLevel (the merge-tree-proof branch, head                         *)
 (* 40e9dc34ea18f7362f3b1b914ac204fe48263ae7, tla/LandTwoLevel.tla) is the   *)
@@ -62,12 +77,14 @@ CONSTANTS
   Kind,     \* [Cards -> {"think", "verify", "script", "merge", "wait"}]
   WaitFor,  \* [Cards -> Cards \cup {"release", "external"}]: the wait operand
   MaxBase,  \* the base branch's bound; the ISA's base starts here
+  MaxWall,  \* the clock's bound: the seconds of wall time TLC counts per card
   Broken    \* the reversed witnesses to turn on
 
 ASSUME Kind \in [Cards -> {"think", "verify", "script", "merge", "wait"}]
 ASSUME WaitFor \in [Cards -> Cards \cup {"release", "external"}]
 ASSUME \A c \in Cards : WaitFor[c] /= "release" /\ WaitFor[c] /= "external" => WaitFor[c] /= c
 ASSUME MaxBase \in Nat /\ MaxBase >= 1
+ASSUME MaxWall \in Nat
 
 Kinds       == {"think", "verify", "script", "merge", "wait"}
 ProducesHead(k) == k \in {"think", "script", "merge"}
@@ -79,11 +96,21 @@ VARIABLES
   external,  \* BOOLEAN: the outside's condition, the operand "external"
   lands,     \* [Cards -> Nat]: how many times a card has landed (0 or 1, or 2 broken)
   base,      \* [Cards -> Nat]: the base branch the card's head must be an ancestor of
-  verdict    \* [Cards -> {"-", "ok", "broken"}]: the result the kind owes
+  verdict,   \* [Cards -> {"-", "ok", "broken"}]: the result the kind owes
+  stall,     \* [Cards -> Reasons]: the one reason the card's time goes to now
+  spent,     \* [Cards -> [Reasons -> Nat]]: the seconds charged to each reason
+  wall       \* [Cards -> Nat]: the card's wall time, in seconds
 
 \* the new variables as one tuple; ivars is the base's vars and these
 ivars == <<released, external, lands, base, verdict>>
-avars == <<vars, ivars>>
+\* the counters' variables, apart: every life action restamps stall (S)
+svars == <<stall, spent, wall>>
+avars == <<vars, ivars, svars>>
+
+\* the stall reasons (counters.go's StallOrder), and none: outside the life
+Reasons == {"need", "release", "external", "rework", "slot", "work", "read", "merge", "none"}
+\* the places a card's wall time runs in: from its add to its retire
+Running == {"waiting", "ready", "working", "review", "merging"}
 
 \* Frame(A): a reused CardMachine action, with the ISA's own variables still.
 \* An action that does not name a variable leaves it free; this is the one
@@ -97,6 +124,23 @@ IsaTypeOK ==
   /\ lands \in [Cards -> Nat]
   /\ base \in [Cards -> Nat]
   /\ verdict \in [Cards -> {"-", "ok", "broken"}]
+  /\ stall \in [Cards -> Reasons]
+  /\ spent \in [Cards -> [Reasons -> Nat]]
+  /\ wall \in [Cards -> Nat]
+
+\* StallOf(c): the reason the card's time goes to in its place now.
+StallOf(c) ==
+  CASE where[c] = "waiting" ->
+         IF WaitFor[c] = "release" THEN "release"
+         ELSE IF WaitFor[c] = "external" THEN "external"
+         ELSE "need"
+    [] where[c] = "ready"   -> IF ncut[c] > 0 THEN "rework" ELSE "slot"
+    [] where[c] = "working" -> "work"
+    [] where[c] = "review"  -> "read"
+    [] where[c] = "merging" -> "merge"
+    [] OTHER                -> "none"
+
+StallNow == [c \in Cards |-> StallOf(c)]
 
 IsaInit ==
   /\ Init
@@ -105,6 +149,14 @@ IsaInit ==
   /\ lands = [c \in Cards |-> 0]
   /\ base = [c \in Cards |-> MaxBase]
   /\ verdict = [c \in Cards |-> "-"]
+  /\ stall = StallNow
+  /\ spent = [c \in Cards |-> [r \in Reasons |-> 0]]
+  /\ wall = [c \in Cards |-> 0]
+
+\* S(A): a life action, with the stall restamped from the places it leaves and
+\* the clock still. The life actions name none of svars; this is the one place
+\* that keeps the stall reason in step with them.
+S(A) == A /\ stall' = StallNow' /\ UNCHANGED <<spent, wall>>
 
 ----------------------------------------------------------------------------
 (* The one wait kind *)
@@ -205,8 +257,27 @@ DoubleLand(c) ==
   /\ UNCHANGED <<pvars, cvars, up, released, external, base, verdict>>
 
 ----------------------------------------------------------------------------
+(* The clock: the counters' second *)
 
-IsaNext ==
+\* Charge(c): the card's parts with one second more on its one reason.
+\* "tworeasons" charges work as well, for a card not working.
+Charge(c) ==
+  IF "tworeasons" \in Broken /\ stall[c] /= "work"
+  THEN [spent[c] EXCEPT ![stall[c]] = @ + 1, !["work"] = @ + 1]
+  ELSE [spent[c] EXCEPT ![stall[c]] = @ + 1]
+
+\* Clock(c): a second of a card in its life passes; it is its wall time's, and
+\* its stall reason's. Bounded by MaxWall for TLC.
+Clock(c) ==
+  /\ where[c] \in Running /\ wall[c] < MaxWall
+  /\ wall' = [wall EXCEPT ![c] = @ + 1]
+  /\ spent' = [spent EXCEPT ![c] = Charge(c)]
+  /\ UNCHANGED <<vars, ivars, stall>>
+
+----------------------------------------------------------------------------
+
+\* the life actions, each restamping the stall reason through S
+IsaMove ==
   \/ \E c \in Cards :
        Frame(Push(c)) \/ Wait(c) \/ Frame(CIWord(c)) \/ Frame(PRHeadMoves(c))
        \/ Frame(Verdict(c)) \/ Frame(CancelPrimary(c))
@@ -221,12 +292,14 @@ IsaNext ==
   \/ \E k \in Consumers : Frame(Down(k)) \/ Frame(Up(k))
   \/ CoordRelease \/ Extern
 
+IsaNext == S(IsaMove) \/ \E c \in Cards : Clock(c)
+
 \* Fairness as CardMachine's, on the actions this module uses: the duties and
 \* the workers, and the coordinator's release. The wait is strongly fair too,
 \* so a card whose operand holds is not starved of its release.
 IsaFairness ==
-  /\ \A c \in Cards : WF_avars(Wait(c))
-  /\ WF_avars(CoordRelease) /\ WF_avars(Extern)
+  /\ \A c \in Cards : WF_avars(S(Wait(c)))
+  /\ WF_avars(S(CoordRelease)) /\ WF_avars(S(Extern))
 
 IsaSpec == IsaInit /\ [][IsaNext]_avars /\ IsaFairness
 
@@ -248,8 +321,17 @@ RetiredHeadOnBase == \A c \in Cards : where[c] = "landed" => head[c] <= base[c]
 WaitDispatchesOnlyWhenOperandHolds ==
   \A c \in WaitCards : where[c] \in {"ready", "working"} => OperandHolds(c)
 
+\* the stall reasons partition wall time: one reason at a time, the card's
+\* place's, and the seconds charged to the reasons sum to its wall time
+Spent(c) ==
+  LET p == spent[c] IN
+  p["need"] + p["release"] + p["external"] + p["rework"] + p["slot"]
+    + p["work"] + p["read"] + p["merge"] + p["none"]
+StallsPartitionWallTime ==
+  \A c \in Cards : stall[c] = StallOf(c) /\ Spent(c) = wall[c]
+
 IsaSafety == /\ IsaTypeOK /\ Safety /\ NoCardRetiresTwice /\ RetiredHeadOnBase
-              /\ WaitDispatchesOnlyWhenOperandHolds
+              /\ WaitDispatchesOnlyWhenOperandHolds /\ StallsPartitionWallTime
 
 ----------------------------------------------------------------------------
 (* What must eventually happen: a wait whose operand comes to hold is dealt *)
