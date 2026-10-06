@@ -101,11 +101,13 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 		require.Equal(t, Working, w.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")).Col)
 		require.Equal(t, Ready, w.s.Fleet.Card(ReadCardID("s1-2", 1, "amy")).Col)
 		require.Nil(t, w.s.Fleet.Card(ReadCardID("s1-3", 1, "amy")))
-		// she is up at her room: the third waits for it, noted, with no judgment
+		// she is up at her room and no reader declares frontier: the third is
+		// judged once, naming who is full, and never "fewer than two readers up"
 		require.Empty(t, w.notesOf(NFewReaders))
-		ns := w.notesOf(NWaitingForReader)
+		ns := w.notesOf(NNoFrontierRoom)
 		require.Len(t, ns, 1)
 		require.Equal(t, []string{"s1-3"}, ns[0].Primaries)
+		require.Equal(t, NNoFrontierRoom+": amy full", ns[0].What)
 	})
 
 	t.Run("one-shot mode", func(t *testing.T) {
@@ -139,10 +141,11 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 		putReview(w, "s1-1", "s1-1: work (s1) tier: frontier\n", 1, 1, primHead)
 		putReview(w, "s1-2", "s1-2: work (s1) tier: frontier\n", 1, 2, primHead)
 		askReaders(t, w, []FriendSeat{frontierSeat("amy", 2, Down, dir)})
-		ns := w.notesOf(NFewReaders)
+		// two readers are up: the judgment is the frontier one, not "fewer than two readers up"
+		require.Empty(t, w.notesOf(NFewReaders))
+		ns := w.notesOf(NNoFrontierRoom)
 		require.Len(t, ns, 1)
-		require.Equal(t, fewReaders(w.s), ns[0].What)
-		require.NotContains(t, ns[0].What, "no friend")
+		require.Equal(t, NNoFrontierRoom+": no friend or reader up reads frontier", ns[0].What)
 		require.NoFileExists(t, filepath.Join(dir, "inbox"))
 		require.Nil(t, w.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")))
 		for _, c := range w.s.Readers.Cards() {

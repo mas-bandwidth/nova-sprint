@@ -473,13 +473,36 @@ or a rule in `outbox/<read>/REPORT.md` retires that read on her fleet row
 placed on her fleet row `friend.<name>` in working while she has a lane,
 ready behind her working cards otherwise. The readers table gains no friend
 row. A friend is asked an attempt once: a read taken back from her with no
-verdict is not a read, and the attempt is asked of another friend. With no
-such friend up who may read the attempt the read is not asked and the ask
-raises the one judgment a read with no reader up already raises
-(`fewer than two readers up`), not one note per primary; the machine's ask,
-whose readers are up, neither closes it nor writes it twice while that holds.
-With such a friend up at her room the read waits for her room as a machine
-read waits for a reader's: due, noted `waiting for a reader`, no judgment.
+verdict is not a read, and the attempt is asked of another friend.
+
+A frontier read is asked of any reader up that reads frontier, never only from
+the friends' work room (the night of 2026-10-05: three readers up, every
+frontier friend at her room, and the tick raised `fewer than two readers up`
+229 times in five minutes). When no friend of frontier class has room, it is
+asked of a reader row up whose tiers cell declares frontier (`reader add|set
+<r> --tiers ...,frontier`; an empty cell does not: frontier is never drawn on a
+route, and the reader's runner must map it to a frontier model), the one with
+the greatest share of room (its machine's width less its reads asked and
+reading), with no read card of the attempt. Its read card is on the readers
+table, `<primary>.r<attempt>.<reader>`, asked, `tier` frontier and no route,
+and it is read, returned, taken back and counted as any reader's: a read of the
+attempt on the readers table that came back ok is followed by the rest it
+needs (`ReadsNeeded`, two), from another reader that declares frontier, and a
+read handed back or asked of a reader no longer up is retired by the ask and
+asked of another. A friend reads an attempt first or not at all. The level
+and the rebalance move a frontier read only to a reader that declares
+frontier (`readerTakes`). When no one can take it (every friend of frontier
+class and every reader that declares frontier, up and free at the attempt, is
+full, or none is up) the ask raises one judgment for the sprint, `no frontier
+reader has room: <name> full, ...` (`no frontier reader has room: no friend or
+reader up reads frontier` when none is up), its primaries every such read,
+the decisions `reader add <r> --tiers frontier`, `reader set <r> --tiers
+frontier`, `wait`. It is written once: its text is kept while it stands, open or
+acknowledged, so a room that comes and goes rewrites nothing; it holds its
+primaries for the no-stall rule, and closes the tick a read of every primary it
+names is asked. It is never `fewer than two readers up`, which only the
+machine's ask raises, for its own cards, when fewer readers are in fact up
+(`TestAFrontierReadGoesToAFrontierReaderWhenFrontierFriendsAreFull`).
 
 `friend sync`, run by the coordinator's own loop where the directories are
 (each run once, at the loop's period: 15 s in the coordinator's loop), carries
@@ -2294,7 +2317,7 @@ id (`--op`) returns the original result, with no second counter or notification.
 - A card's reads are counted by its tier (the owner, 2026-10-02, cost rule 4,
   nova-tools#5174: "Reads: one cold read per flash card on a flash route; two
   per pro card; readers still equal workers per machine"): a flash card needs
-  ONE read, a pro card (or a heavy card) TWO (a frontier card is asked of one frontier friend, not drawn on a route; a friend's card, above), from two
+  ONE read, a pro card (or a heavy card) TWO (a frontier card is asked of one frontier friend, or of readers that declare frontier, not drawn on a route; a friend's card, above), from two
   different readers (`sprint.ReadsNeeded`). The tier is the card's own, the tier
   it is on (section 5, flash first: flash at its first deal on a route, then the
   tier it escalated to, or the tier a rework recorded; its ceiling, line 1's
@@ -3093,6 +3116,7 @@ the tick would make, no other open judgment on it).
 | a reminder could not be delivered | goal set (a new route), goal drop, ack | yes |
 | cannot ask (enough readers are up, and a primary has fewer readers with no read card at its attempt, placed or retired, than its tier needs: one for a flash card, two for a pro card; one judgment per tick, `no eligible reader for <ids>`, every such primary a subject of it) | reader add, rework (a new attempt every reader may read), drop, wait | no |
 | fewer than two readers up | reader up, reader add, wait | no |
+| no frontier reader has room (a frontier read no friend of frontier class and no reader that declares frontier, up and free at its attempt, has room for: `no frontier reader has room: <name> full, ...`, one for the sprint, its text kept while it stands, closed when every read it names is asked; section 1, a friend's card) | reader add <r> --tiers frontier, reader set <r> --tiers frontier, wait | no |
 | no fleet member is up (when every member that beats is held, it says so and offers only fleet up and wait) | fleet beat (on a machine), fleet up (releases a hold), wait | no |
 | the fleet is starving (ready, sentinels aside, is under twice the up members' width while a wave is held: `the fleet is starving: ready <n> is under twice the width <2w>; release a wave: nova-sprint release <sentinel> --reason '<why>'`, raised once and updated in place every tick while it holds, naming the first held sentinel in work order; closed when no wave is held; `TestTheTickRaisesStarvingWhileReadyIsUnderTwiceTheWidth`) | release (the wave's sentinel; never a single card), wait | no |
 | a member is overloaded (the owner, 2026-10-03: "the overload is defined as -- cards are timing out. not any CPU%": within the last 15 minutes, `sprint.OverloadWindow`, a member up has had three or more cards, `sprint.OverloadTimeouts`, end on a timeout of any kind, counted from the finishes it reported: a launch refused at staging on `stage-timeout` (the work card's staging take, on whatever row the card sits now), a failed finish `deadline: ...`, or one the budget rule ended because `the usage source stopped answering`; `sprint.TimeoutKind`, `sprint.MemberTimeouts`, `sprint.Overloaded` in internal/sprint/overload.go, one pure decision the tick and the seat check both read; no load number is in it, the beat's load stays a fact for the table): `<m> is overloaded: <k> cards ended on a timeout in the last 15m0s: <card> (<kind>), ...; halve its width: nova-sprint fleet up <m> --width <half>, or wait 15m`, one per member, updated in place every tick while it holds and closed when the window has no three (`TestTheTickRaisesOverloadedOnThreeTimeoutsInTheWindow`) | fleet up <m> --width <half of its width>, wait 15m | no |
