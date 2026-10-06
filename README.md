@@ -119,6 +119,8 @@ Then go wider. Work alongside the team, or come back in the morning.
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
 [Cards and machine rules](docs/SPEC-SPRINT.md) · [Roadmap](ROADMAP.md) · [All docs](docs/README.md)
 
+New in v1.0.0: [the release notes](docs/RELEASE-NOTES-v1.0.0.md), what it guarantees and what it does not do yet.
+
 If you like this [please support our work](https://www.patreon.com/MasBandwidth/membership).
 
 [Contributing](CONTRIBUTING.md) · [MIT license](LICENSE) · [Asset credits](docs/ASSET-PROVENANCE.md)
