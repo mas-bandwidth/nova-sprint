@@ -1,5 +1,9 @@
 ![Nova Sprint: a happy white-and-blue friend jogging and waving.](brand/jogging/banner-cute-wave-left.png)
 
+**nova-sprint is the opinionated system: a work processor for teams of AIs.
+nova-tools are the general tools that support it**
+([nova-tools](https://github.com/mas-bandwidth/nova-tools)).
+
 ## The Problem
 
 While building [Nova Tools](https://github.com/mas-bandwidth/nova-tools), we learned that capable AIs across different
