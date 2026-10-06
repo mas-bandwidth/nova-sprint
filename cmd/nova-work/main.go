@@ -3,7 +3,8 @@
 // holds exactly what the source holds (docs/SPEC-WORK-V1.md section 1).
 //
 // import reads the source, read-only, and writes the tree; verify reads the
-// source again and compares it with the tree field for field. Neither verb
+// source again and compares it with the tree field for field. The roadmap
+// verbs (roadmap.go) edit a roadmap sexp safely. Neither import nor verify
 // writes to the source: the GitHub seam refuses any document that is not a
 // query. The dispatch, the banner, the help, the version verb, the refusals
 // and the output (typed lines or --json of one value) are internal/tool's.
@@ -59,9 +60,9 @@ func workTool(gh github) *tool.Tool {
 verify reads GitHub again: one MISSING, EXTRA or DRIFT line per difference; none is the proof.
 verify --against compares two tree files and reads no network (a minimal tree: verify -h).
 first run: gh logged in (gh auth status); export ORG and REPO, a repository you can read.`,
-		ExitTable: "0 done, or verify found no difference; 1 verify found differences, or an import's " +
-			"encoded tree did not read back equal; 2 could not run (a flag, the budget, gh, GitHub, a file)",
-		Verbs: []tool.Verb{
+		ExitTable: "0 done, or verify or roadmap check found no difference; 1 verify found differences, roadmap check " +
+			"found problems, or an import's encoded tree did not read back equal; 2 could not run (a flag, the budget, gh, GitHub, a file)",
+		Verbs: append([]tool.Verb{
 			{
 				Name: "import",
 				Usage: "import --org <org> (--out <tree.lisp> [--replace] | --dry-run) [--repo <owner/name>]... [--max-calls <n>] " +
@@ -113,7 +114,7 @@ import --org $ORG --repo $ORG/$REPO --page-size 15 --out ./tree.lisp`,
 				},
 				Run: gh.verifyTree,
 			},
-		},
+		}, roadmapVerbs()...),
 	}
 }
 
