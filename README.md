@@ -12,7 +12,7 @@ models and harnesses can do excellent work together — and still be a spectacul
 - **Green has his headphones on.** The message was sent successfully. Unfortunately,
   nobody told his session.
 
-Sometimes a friend was working but looked down. Sometimes a wake command
+Sometimes a friend got lost in the work and forgot to read new messages. Sometimes a wake command
 succeeded without waking anyone. Sometimes “done” meant “on my branch,
 somewhere, good luck.”
 
@@ -118,6 +118,8 @@ Then go wider. Work alongside the team, or come back in the morning.
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
 [Cards and machine rules](docs/SPEC-SPRINT.md) · [Roadmap](ROADMAP.md) · [All docs](docs/README.md)
+
+[Read the v1.0.0 release notes](docs/RELEASE-NOTES-v1.0.0.md) for what's included, current limits, and installation order.
 
 If you like this [please support our work](https://www.patreon.com/MasBandwidth/membership).
 

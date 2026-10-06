@@ -3302,6 +3302,54 @@ it quiet until the episode ends (the next is raised again); `wait --for` until t
 much running time has passed, when one that still stands is raised again; `off` takes
 an alarm off, and an open one clears.
 
+### A repeated refusal is an alarm
+
+The owner, 2026-10-05: "Why then does everything back up, and then suddenly you look,
+and go WHOOSP THIS THING HAPPENED 10000 TIMES I fix it now." That day the server refused
+the work table's whole queued write 1,460 times in 3 minutes for one card's brief 16 bytes
+over its bound, and one land batch every few seconds for hours, and each was a log line
+alone. The same refusal or failure repeating is the machine saying something is stuck, and
+it is never only a log line (internal/sprint/repeat.go, the server's count in
+cmd/nova-sprint/run.go):
+
+- A cause is the verb (or the tick's part), its subject (a card, a stream, a friend; none
+  for the verb as a whole) and the reason, word for word. The server's run loop counts
+  each occurrence: every refusal a tick part makes (a part's refusals of one reason in one
+  tick are one occurrence, about the card when they name one, else about the part,
+  holding up every card they name: a step refused whole names each card it held with one
+  reason), a tick that fails, a land batch refused or failed (`land refused` or
+  `land failed`, by its stream, each round of the land loop, though the loop prints a
+  failure once), and a friend the run loop's reconcile skips (each tick, though it is said
+  once).
+- The third occurrence of one cause within 5 minutes raises one judgment, "the same
+  refusal keeps repeating", to the coordinator: it names the cause, the count, the first
+  and the last time, and what it holds up (its primaries, listed with the judgment; it is a
+  judgment of the sprint, so one cause is one judgment whatever it names). Each
+  occurrence after rewrites it in place with the count risen (a line `updated` on the
+  log); a cause that differs in any of its three parts is its own judgment.
+- An episode is occurrences none more than 5 minutes after the one before; 5 minutes
+  with none is the cause stopped: its judgment (or its acknowledgement) closes, in the
+  same step as one happened note to the coordinator, "a repeated refusal stopped", naming
+  the cause. A cause seen again after such a quiet, before the loop saw it stop, is a new
+  episode: its judgment (the old one's) closes at the next write, and the new episode
+  raises its own by its own third occurrence.
+- Its decisions are look and ack: `ack` answers it, and it is not raised again until the
+  cause has stopped and come back.
+- The count is the server's, in memory. A server started again closes an open judgment
+  of a cause it has not seen once it has run 5 minutes; one it sees again is raised by
+  its third occurrence, its count from there.
+- The loop reads and writes the store for it only when it has something to say (a cause
+  raised, a count risen, a cause stopped). Each write is a line on run's output:
+  `REPEATED <the judgment's text>` and `REPEAT STOPPED <judgment> closed`.
+- `watch --wake` wakes the coordinator on a new one at once (kind `repeat`), never held
+  by `--judgment-every`, once a judgment however its count rises.
+
+A queued change the drain cannot write (a field over its bound) is to be refused alone,
+named, with the rest of the queue applied. Not yet: `sprint.Drain` (queue.go) composes
+the queue and the store's `unwritable` (store/engine.go) refuses the drained step whole
+when one card's text is over its bound, and the queue stays for the next tick's drain to
+refuse again. Until it is, the repeat alarm above is what tells the coordinator.
+
 ### The coordinator's pass
 
 The owner, 2026-10-05: "everything I described above needs to be mechanical, so you
@@ -3357,6 +3405,28 @@ hours. The tick's overdue part runs the pass (internal/sprint coordinator_pass.g
   card on another friend; the pass writes it when the card is already there, keeps
   the one note, and closes it when the card is back on her row or leaves ready and
   working. A hard pin is not one of these.
+- **merge health** (`merge health: the base, dev and the branches are not stitched`),
+  one about the sprint while any of its lines holds (internal/sprint
+  coordinator_pass_merge.go, `MergeHealthLines`; the owner, 2026-10-05: "How can we
+  ensure that you ALWAYS do the merging properly from now on, vs. drifting and
+  forgetting?" and "Prevention is better than cure"). Its lines, in this order: the base
+  red at its tip (a whole-tree gate run with the functional class, red, at the tip the
+  base is at; the lander's narrow gate, or a run at an older tip, judges nothing), each
+  stream the base-gate rule stopped (`stream stopped: the base fails its tree gate`), dev
+  behind (`DevBehind`, the line of `dev is behind`), the promotion PR open, queued,
+  failing or conflicted with its number, and each branch named by an open card's BASE:
+  or by the running server that is not on the base, with its commits ahead and behind,
+  or not on the remote at all. The store's lines are read from the snapshot; the
+  forge's and the repository's are the drift facts, read outside the plan
+  (`sprint.ReadDrift` in the land clone for the base's tip and each branch named by
+  `sprint.BranchesNamed`, the forge's promotion PR and whole-tree gate beside them) and
+  recorded by one pure step, `sprint.DriftRead`, on the merge table's property
+  `drift_facts`, the one copy the pass reads (`RecordedDrift`). As the lines move the
+  judgment is rewritten in place, never a second one. Its decisions are act and wait,
+  not ack: it cannot be quieted while the branches stay apart. **Not yet live:** no
+  binding records the drift facts on the running machine yet (the tick's read in
+  internal/sprint/store, or the land round's, with the forge's PR and gate); until one
+  does, only the store's lines (a stopped stream, dev behind) are judged.
 
 Each is an episode, keyed by its type and subject: written once when its condition
 starts, raised again in place every 10 minutes of running time while it holds
@@ -3365,7 +3435,7 @@ judgment's `before` counts them), and closed when it stops holding. A raise agai
 rewrites the judgment with the latest facts and writes one happened note to the
 coordinator, `a judgment still holds: raised again`, so each tick that raises one ends
 with a tick-end note and `inbox --wait` wakes on it: a coordinator who missed one is
-woken again. `ack` (deaf, idle, an empty row and an ignored pin list it; behind lists act) keeps one quiet until its episode ends, and
+woken again. `ack` (deaf, idle, an empty row and an ignored pin list it; behind and merge health list act) keeps one quiet until its episode ends, and
 `wait` until its review time; a friend the coordinator holds (`friend down`, `hold`) is
 judged neither deaf, nor idle, nor empty. The model is tla/CoordinatorPass.tla: one judgment an
 episode (`OneJudgmentAnEpisode`), never a whole window unraised (`PushedEveryWindow`),
@@ -3377,7 +3447,10 @@ her on her first tick back); its pin instance (`MCCoordinatorPassPin`) has the d
 the judgment and the pass keep that one note (the reversed witness writes a second:
 `OneJudgmentAnEpisode`). Pinned by
 `TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes` and
-`TestAnIdleUpFriendWhileCardsWaitElsewhereIsToldOnce` on the twin store with a fake clock.
+`TestAnIdleUpFriendWhileCardsWaitElsewhereIsToldOnce` on the twin store with a fake clock;
+merge health by `TestTheCoordinatorPassCarriesMergeHealthEveryTenMinutes` on the twin store
+with a fake clock, a twin repository and a fake forge, and
+`TestMergeHealthCarriesDevBehindAndAStoppedStream`.
 
 ### Answered by nova-decide
 

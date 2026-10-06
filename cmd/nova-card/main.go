@@ -1,5 +1,6 @@
 // Command nova-card generates a directory of pre-linted briefs from a structured
-// source, ready for one `nova-sprint add --brief-dir`. The planning is
+// source, ready for one `nova-sprint add --brief-dir`, and writes one brief from its
+// parts (new, internal/card New). The planning is
 // internal/cardgen (pure functions over text, docs/SPEC-CARD-CONTRACT.md,
 // "generated cards"); this file is the transport: it reads the source from a
 // checkout, resolves the base, runs the lint over every brief and writes the
@@ -29,7 +30,7 @@ import (
 
 const preAlpha = "nova-card is pre-alpha: not ready for production use."
 
-const usage = `nova-card: writes a directory of pre-linted briefs from a ledger, a findings file or a tool's help
+const usage = `nova-card: writes a directory of pre-linted briefs from a ledger, a findings file or a tool's help, or one brief from its parts
 ` + preAlpha + `
 
 how it works: a source is read from a checkout of the target repository (a ratchet ledger of
@@ -37,6 +38,10 @@ internal/ci, a findings TSV, a tool's rendered help); the planner cuts one card 
 its PATHS, TEST and tier computed from the row, puts cards that edit one ledger in alternating
 waves, and holds every brief to the lint nova-sprint add runs before the directory is written.
 State: none; the directory, its manifest.tsv and the one CARDS OK line are the whole result.
+new writes one brief from what only its writer knows (the task, the repository and base, PATHS,
+TEST, the gate's packages, the tier) and fills in every other line the card lint wants: the
+typed header, the child header, the RULES paragraph, STEP 1 to STEP 6 and the attribution
+sentence, so no brief's skeleton is typed by hand.
 
 the flow, three lines:
   nova-card generate --from ledger --ledger serial-tests --repo-dir ./repo --out ./cards
@@ -47,6 +52,8 @@ usage:
   nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run]
   nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
   nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
+  nova-card new <id> --repo <owner/name> --base <branch> --task-file <file> --paths <globs> --test "<package> <TestName>" --gate <pkgs> --tier flash|pro|heavy|frontier [--shared <globs>] [--needs <ids>] [--kind <k>] [--start <s>] [--stop <s>] [--libraries <s>] [--minutes <n>] [--rules <file>] [--out <file>] [--name <n>...] [--dropped <id>...]
+  nova-card new --batch <tsv> --out <dir> [--rules <file>] [--name <n>...] [--dropped <id>...]
   nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...]
   nova-card lint --card ./cards/finding-cmd-nova-bus-main.md
   nova-card template
@@ -70,13 +77,20 @@ unfilled <...> lines, which the add does not read, one LINT DRIFT line each; and
 checks: a tier on line 1, a TEST whose package PATHS names, no name --name gives outside
 double-quoted words, no card --dropped gives. generate holds every brief the same before it
 writes. A sprint initialised with --rules holds a brief to that file at
-the add. template prints nova-swarm's card template, the shape every generated brief has.
+the add. new holds its brief to all of that and to the held rules file by reference (the
+rules a member injects at stage time), prints it on stdout or writes --out, and refuses a
+missing part naming its flag; --rules <file> quotes that rules file's sentences after the
+default rules and holds the brief to it; --batch reads one card per TSV row (id, repo, base, task-file,
+paths, shared, test, gate, tier, needs; - for none; a task-file relative to the TSV) and
+writes <id>.md for each into --out, ready for nova-sprint add --brief-dir. template prints nova-swarm's card template, the shape every generated brief has.
 
 what it prints:
   CARDS OK dir=<dir> cards=<n> waves=<k> tier=<t> [shared-paths=yes]   then manifest.tsv in <dir> (--dry-run: the manifest on stdout, dry-run=yes)
   CARDS NOTE <what was skipped: a row the ledger did not read, a tool with no help>
   LINT DRIFT card=<id> check=<check> line=<n>: <excerpt>              and nothing is written
   LINT OK file=<file>
+  CARD OK file=<file>                                                  new --out; with no --out the brief itself
+  CARDS OK dir=<dir> cards=<n>                                         new --batch
 
 exit codes: 0 done; 1 a brief is red, named on its LINT DRIFT line, and nothing was written;
 2 could not run: a missing flag, a source that cannot be read, a checkout with no HEAD
@@ -87,11 +101,12 @@ example:
   nova-card lint --card ./cards/finding-cmd-nova-bus-main.md
 `
 
-var verbs = []string{"generate", "lint", "template", "version", "help"}
+var verbs = []string{"generate", "new", "lint", "template", "version", "help"}
 
 // effects is each verb's effect line for its -h (docs/CLI-STYLE.md rule (b)).
 var effects = map[string]string{
 	"generate": "local write: creates --out and writes one .md per card and manifest.tsv into it; nothing when a brief is red; --dry-run plans, lints and prints the manifest, and writes nothing",
+	"new":      "local write: prints one brief, or writes it to --out; with --batch creates --out and writes one .md per row into it; nothing when a brief is red or a part is missing",
 	"lint":     "inspection: reads, writes nothing",
 	"template": "inspection: prints the card template, writes nothing",
 	"version":  "inspection: prints the build identity",
@@ -143,6 +158,8 @@ func run(args []string, stdout, stderr io.Writer) (code int) {
 		return cmdLint(args[1:], stdout, stderr)
 	case "generate":
 		return cmdGenerate(args[1:], stdout, stderr)
+	case "new":
+		return cmdNew(args[1:], stdout, stderr)
 	}
 	return refuse(stderr, "", fmt.Sprintf("unknown verb %q; one of %s", args[0], strings.Join(verbs, ", ")))
 }

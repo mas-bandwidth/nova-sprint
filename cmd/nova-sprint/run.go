@@ -501,6 +501,7 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 	// show beside the seat's holder: written before the first tick and every
 	// store.ServerEvery (seat-key-follows-record.w2)
 	var said time.Time
+	reps := a.countRepeats()
 	for i := 0; (n == 0 || i < n) && ctx.Err() == nil; i++ {
 		if now := a.binaryStamp(); began0 != "" && now != began0 {
 			fmt.Fprintf(stdout, "RUN STOP the binary this loop runs was replaced on disk since it began (%s, now %s): exiting so its supervisor starts the new one; a loop that is not supervised: run nova-sprint run again\n", began0, orDashStr(now, "unreadable"))
@@ -548,7 +549,12 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			// (friendreconcile_tick.go; docs/SPEC-SPRINT.md section 1,
 			// friend-reconcile-every-tick-r.w1)
 			a.reconcileFriendsTick(ctx, st, friends, stdout)
+			for friend, why := range friends.skipped {
+				reps.Observe(sprint.RepeatCause{Verb: "friend reconcile", Subject: friend, Reason: why}, nil, a.now())
+			}
 		}
+		observeTick(reps, res, err, a.now())
+		a.flushRepeats(ctx, st, reps, stdout, stderr)
 		if n != 0 && i == n-1 {
 			return false
 		}
@@ -562,6 +568,88 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 		cursor, why = a.pace(ctx, st, res.Epoch, cursor, began)
 	}
 	return false
+}
+
+// serverRepeats is each server's repeat count (sprint.Repeats; docs/SPEC-SPRINT.md section
+// 8, "A repeated refusal is an alarm"), by its app: main.go, where the app's fields are, is
+// not this card's file, and a map by the app is how run joins it. Only run makes one; land
+// by hand, with none, counts nothing.
+var serverRepeats sync.Map // *app -> *sprint.Repeats
+
+// countRepeats is the server's repeat count, begun now if it has none.
+func (a *app) countRepeats() *sprint.Repeats {
+	v, _ := serverRepeats.LoadOrStore(a, sprint.NewRepeats(a.now()))
+	return v.(*sprint.Repeats)
+}
+
+// observeRepeat is one occurrence of c, holding up holds, in the server's count; nothing
+// outside a server.
+func (a *app) observeRepeat(c sprint.RepeatCause, holds []string) {
+	if v, ok := serverRepeats.Load(a); ok {
+		v.(*sprint.Repeats).Observe(c, holds, a.now())
+	}
+}
+
+// observeTick counts what one tick refused and its failure: a part's refusals of one
+// reason are one occurrence (a whole step refused names every card it held, with one
+// reason), about the card when it names one, else about the part, holding up the cards.
+func observeTick(reps *sprint.Repeats, res store.TickResult, err error, at time.Time) {
+	for _, p := range res.Parts {
+		var whys []string
+		keys := map[string][]string{}
+		for _, r := range p.Refused {
+			if _, ok := keys[r.Why]; !ok {
+				whys = append(whys, r.Why)
+			}
+			keys[r.Why] = append(keys[r.Why], r.Key)
+		}
+		for _, why := range whys {
+			c := sprint.RepeatCause{Verb: "tick " + p.Name, Reason: why}
+			if len(keys[why]) == 1 {
+				c.Subject = keys[why][0]
+			}
+			reps.Observe(c, keys[why], at)
+		}
+	}
+	if err != nil {
+		reps.Observe(sprint.RepeatCause{Verb: "tick", Reason: err.Error()}, nil, at)
+	}
+}
+
+// flushRepeats writes what the repeat count says when it is due (sprint.RepeatPlan): a
+// judgment pushed to the coordinator for a cause that repeats, its count risen in place,
+// its close when the cause stops; each said in one line. It holds the server's line of
+// control, as every step of the server does. A write that fails is said and tried again
+// after the next tick.
+func (a *app) flushRepeats(ctx context.Context, st *store.Store, reps *sprint.Repeats, stdout, stderr io.Writer) {
+	if !reps.Due(a.now()) {
+		return
+	}
+	var planned sprint.Plan
+	var at time.Time
+	a.serial.Lock()
+	_, err := st.Run(ctx, store.Step{Verb: sprint.RepeatVerb, Actor: sprint.MachineActor, Plan: func(s *sprint.Snapshot) sprint.Plan {
+		planned, at = sprint.RepeatPlan(s, reps, sprint.MachineActor), s.Now
+		return planned
+	}})
+	a.serial.Unlock()
+	if err != nil {
+		fmt.Fprintf(stderr, "%s run: the repeat alarm was not written: %s; the next tick tries again\n", prog, oneline.Escape(err.Error()))
+		return
+	}
+	reps.Done(at)
+	stamp := a.now().Format("15:04:05")
+	for _, n := range planned.Notes {
+		if n.Type == sprint.NRepeated {
+			fmt.Fprintf(stdout, "%s REPEATED %s; a judgment to the coordinator\n", stamp, oneline.Escape(n.What))
+		}
+	}
+	for _, n := range planned.Updates {
+		fmt.Fprintf(stdout, "%s REPEATED %s; %s updated\n", stamp, oneline.Escape(n.What), n.ID)
+	}
+	for _, o := range planned.Closes {
+		fmt.Fprintf(stdout, "%s REPEAT STOPPED %s closed\n", stamp, o.Note.ID)
+	}
 }
 
 // sayServer writes the server's record, the actor the loop runs as, when
