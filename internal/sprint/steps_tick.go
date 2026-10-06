@@ -183,6 +183,9 @@ type TickReq struct {
 	// coordinator holds her, read by the binding with every tick (coordinator_pass.go);
 	// nil is none read, and no friend is deaf.
 	Sessions map[string]FriendSession
+	// WorkLint is the work lint the tick holds each finished attempt to before its first
+	// read (worklint.go: TickLint in the pump, lintHeld in the ask); nil is DefaultWorkLint.
+	WorkLint WorkLinter
 }
 
 func (r TickReq) who() string {
@@ -337,6 +340,11 @@ const NReadyToMerge = "ready to merge"
 // dropped here, before the plan, so the stream's state change and both notes
 // are planned for the cards accepted and for no others.
 func TickAccept(s *Snapshot, r TickReq) (Plan, int) {
+	// the work lint first (worklint.go, TickLint): a finished attempt it refuses is
+	// reworked in this pump, and the accept is due for the next
+	if p, ok := TickLint(s, r); ok {
+		return p, 1
+	}
 	eligible := func(c *Card) string {
 		if c.F("result") == "failed" || !acceptable(s, c) {
 			return "not the ok reads it needs"
