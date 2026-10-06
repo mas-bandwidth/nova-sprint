@@ -56,10 +56,10 @@ func (r *landRig) queuedOneWithoutHead() {
 	r.markProtected()
 }
 
-// land --dry-run refuses a head that is not a commit id exactly as land does:
-// the cards before it a batch that lands, that card refused with the conflict
-// fact and the same words, and nothing recorded by the dry run; then land
-// itself refuses it in those words.
+// land --dry-run ejects a head that is not a commit id exactly as land does:
+// the rest a batch that lands, that card ejected in the same words, and
+// nothing recorded by the dry run; then land itself ejects it in those words
+// (tla/Land.tla, THE EJECT).
 func TestLandDryRunRefusesAHeadThatIsNotACommitAsLandDoes(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
@@ -68,32 +68,32 @@ func TestLandDryRunRefusesAHeadThatIsNotACommitAsLandDoes(t *testing.T) {
 	land := "land --repo-dir " + r.clone + " --base main"
 
 	code, dry := r.landJSON(land + " --dry-run")
-	assert.Equal(t, 1, code)
-	assert.Equal(t, "refused", dry.Status)
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "ok", dry.Status)
 	require.Len(t, dry.Items, 2)
 	assert.Equal(t, "ok", dry.Items[0].Status)
 	assert.Equal(t, []string{"s1-1"}, dry.Items[0].IDs)
-	assert.Equal(t, "refused", dry.Items[1].Status)
+	assert.Equal(t, "ejected", dry.Items[1].Status)
 	assert.Equal(t, []string{"s1-2"}, dry.Items[1].IDs)
-	assert.Equal(t, "conflict", dry.Items[1].WouldRecord)
+	assert.Equal(t, "eject", dry.Items[1].WouldRecord)
 	assert.Empty(t, dry.Items[1].Fact, "a dry run records no fact")
 	assert.Contains(t, dry.Items[1].Reason, "the head s1-2.w1 of s1-2 is not a commit id")
 	assert.Contains(t, dry.Items[1].Reason, "--head <commit>")
 
 	code, _, errs := r.do(land + " --dry-run")
-	assert.Equal(t, 1, code)
-	assert.Contains(t, errs, "LAND REFUSED stream=s1 cards=1 base=- tip=- ids=s1-2 would_record=conflict dry_run=yes reason=the head s1-2.w1 of s1-2 is not a commit id")
-	assert.Contains(t, errs, "NOTE land would report this as merge --conflict and stop stream s1; nothing was reported (dry run)")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, errs, "LAND EJECTED stream=s1 cards=1 base=main tip=- ids=s1-2 would_record=eject dry_run=yes reason=the head s1-2.w1 of s1-2 is not a commit id")
+	assert.Contains(t, errs, "NOTE land would eject this card back to review and land the rest of stream s1; nothing was reported (dry run)")
 	assert.Equal(t, applies, r.applies(), "a dry run wrote")
 	assert.Equal(t, map[string]string{"s1-1": "merging/queued", "s1-2": "merging/queued"}, r.places("s1-1", "s1-2"))
 
 	code, real := r.landJSON(land)
-	assert.Equal(t, 1, code)
+	assert.Equal(t, 0, code)
 	require.Len(t, real.Items, 2)
 	assert.Equal(t, "ok", real.Items[0].Status)
-	assert.Equal(t, "conflict", real.Items[1].Fact)
+	assert.Equal(t, "ejected", real.Items[1].Status)
 	assert.Equal(t, dry.Items[1].Reason, real.Items[1].Reason, "the dry run's words are land's")
-	assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "merging/stuck"}, r.places("s1-1", "s1-2"))
+	assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "review/returned"}, r.places("s1-1", "s1-2"))
 }
 
 // A batch land cannot place is refused naming every problem at once, the dry
