@@ -32,7 +32,7 @@ func TestTheLaneVerbsTakeGiveAndListTheMachinesGoLanes(t *testing.T) {
 		assert.Contains(t, ta.ok("lane take go --machine m2 --as c"), "LANE-TAKE OK go machine=m2", "each machine has its own lanes")
 
 		var view struct {
-			Lanes []sprint.LaneRow `json:"lanes"`
+			Lanes []LaneRow `json:"lanes"`
 		}
 		require.NoError(t, json.Unmarshal([]byte(ta.ok("where --json --cards")), &view))
 		require.Len(t, view.Lanes, 2, "where --json --cards carries the lanes")

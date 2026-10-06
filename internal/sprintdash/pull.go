@@ -31,13 +31,15 @@ type sprintCopy struct {
 
 // LaneRow is one machine's lanes of a kind as where --json --cards prints them
 // (docs/SPEC-SPRINT-DASHBOARD.md, "Lanes"; docs/SPEC-SPRINT.md section 5, The fleet):
-// the machine's width, the holders and the waiters, in the order the sprint records them.
+// the machine's width, the holders and the waiters, in the order the sprint records them,
+// and the route when the lane is on a local-endpoint route.
 type LaneRow struct {
 	Kind    string   `json:"kind"`
 	Machine string   `json:"machine"`
 	Width   int      `json:"width"`
 	Held    []string `json:"held"`
 	Waiting []string `json:"waiting"`
+	Route   string   `json:"route,omitempty"`
 }
 
 // PullCard is a work card dealt to a row and not finished, as where --json --cards prints it.
