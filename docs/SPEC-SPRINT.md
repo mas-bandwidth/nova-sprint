@@ -298,6 +298,16 @@ is any friend. `WHO: friend <name>` prefers that friend while she is up with roo
 `WHO: friend` while the table has no row (exit 2, nothing written). The primary's
 field `who` is `friend`, `friend.<name>`, or `only.friend.<name>`, written with its
 brief, and `card` prints `who=` on its `CARD OK` line (`--json` `who`).
+`add` holds a machine's card to the child rule set (section 2, the card lint):
+every sentence of that set, in its RULES paragraph. A friend's card is held to the
+friend rule set. A friend's card carries no child RULES paragraph. `add` accepts
+one that carries its own rules line, `RULES: <the friend's own rules>`, one line
+whose text is filled in; a line that is empty or still an angle-bracket placeholder
+is not that line. The step scans of the child set still read the card, and so does
+the libraries check where the set carries it: a forbidden command is a command on
+either rule set. A refusal names the rule set that applies, the friend rule set or
+the child rule set. A friend's card that carries the line names no held rules file,
+so nothing appends the child's RULES paragraph when the card is handed on.
 `nova-sprint unpin <id>... --reason <text>` (or `unpin --stream <s> --reason <text>`)
 removes that stored value from a waiting or ready primary that has never been dealt,
 or whose first attempt `friend take` returned to ready without starting or ending a
@@ -1148,7 +1158,9 @@ of the repository its `REPO:` names (`swarm.OwnRulesName`: `fleet/child-rules.tx
 naming none) by reference: it is linted as the member stages it (`swarm.LintCardChildByReference`),
 so a rule it does not carry is no finding and a line that contradicts the rules (a `step-` scan, an
 unfilled `Libraries considered:` line) still refuses it; the stored brief is the text given, and
-the card names the file. A brief whose repository has no held file carries the add's rules, as
+the card names the file. A friend's card does not (section 1): the friend rule set accepts its own
+rules line without the child's RULES paragraph, and the card names no file. A brief whose repository
+has no held file carries the add's rules, as
 before, and names none. The name is each card's, written with its brief (by `add`, `quack`, and
 `brief`, whose replacement rewrites it; `move` keeps it), so no later add changes what an earlier
 card's child reads. The bytes a card no longer carries are the RULES paragraph of
