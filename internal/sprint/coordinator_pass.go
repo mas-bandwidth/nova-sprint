@@ -211,7 +211,7 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 			continue
 		}
 		var last, oldest time.Time
-		for _, c := range append(append([]*Card(nil), s.Fleet.Cell(row, DoneOK)...), s.Fleet.Cell(row, DoneFailed)...) {
+		for _, c := range append(append(append([]*Card(nil), s.Fleet.Cell(row, Finished)...), s.Fleet.Cell(row, DoneOK)...), s.Fleet.Cell(row, DoneFailed)...) {
 			if t := stampAt(c, "finished"); t.After(last) {
 				last = t
 			}

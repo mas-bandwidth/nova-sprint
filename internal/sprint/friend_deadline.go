@@ -28,13 +28,14 @@ const (
 )
 
 // FriendMedianWall is the friend's median run wall in seconds over her last
-// FriendDeadlineSamples ok attempts (RunWall of the ok work cards on her row, newest
-// finished first), and how many samples it is over; 0 and 0 with none.
+// FriendDeadlineSamples ok attempts (RunWall of her finished-ok work cards and the ones
+// the readers read ok on her row, newest finished first), and how many samples it is
+// over; 0 and 0 with none.
 func FriendMedianWall(s *Snapshot, name string) (median float64, n int) {
 	if s.Fleet == nil {
 		return 0, 0
 	}
-	cards := append([]*Card(nil), s.Fleet.Cell(FriendRow(name), DoneOK)...)
+	cards := okAttempts(s.Fleet.Cell(FriendRow(name), Finished), s.Fleet.Cell(FriendRow(name), DoneOK))
 	sort.SliceStable(cards, func(i, j int) bool { return cards[i].F("finished") > cards[j].F("finished") })
 	var walls []float64
 	for _, c := range cards {

@@ -37,22 +37,45 @@ const (
 )
 
 // MemberMedianWall is the member's median run wall in seconds over its last
-// DeadlineSamples ok attempts (the usage walls of its ok work cards, newest finished
-// first), and how many samples it is over; 0 and 0 with none.
+// DeadlineSamples ok attempts (its finished-ok work cards and the ones the readers read
+// ok, newest finished first), and how many samples it is over; 0 and 0 with none.
 //
 // The deal asks it for every card it deals or moves, and a plan is run more than once a
 // tick (the part's probe, then each attempt), so it is measured once a member for the
-// done-ok cell the fleet table holds (medianWalls), never once a card: a deal costs the
-// cards it deals, not those times the member's history (TestTheTickGateHoldsUnderLoad).
+// finished and done-ok cells the fleet table holds (medianWalls), never once a card: a
+// deal costs the cards it deals, not those times the member's history
+// (TestTheTickGateHoldsUnderLoad).
 func MemberMedianWall(s *Snapshot, member string) (median float64, n int) {
 	if s.Fleet == nil {
 		return 0, 0
 	}
-	cell := s.Fleet.Cell(member, DoneOK)
-	if len(cell) == 0 {
+	finished, ok := s.Fleet.Cell(member, Finished), s.Fleet.Cell(member, DoneOK)
+	if len(finished) == 0 && len(ok) == 0 {
 		return 0, 0
 	}
-	return medianWalls.of(member, cell)
+	return medianWalls.of(member, finished, ok)
+}
+
+// okAttempts is a member's ok attempts: the work cards it finished ok (the worker's
+// word, in the finished cell, verdicts.go) and those the readers read ok. A failed
+// finish is no ok attempt and is never a sample.
+func okAttempts(finished, ok []*Card) []*Card {
+	out := make([]*Card, 0, len(finished)+len(ok))
+	for _, c := range finished {
+		if c.F("ok") == "yes" {
+			out = append(out, c)
+		}
+	}
+	return append(out, ok...)
+}
+
+// cellFirst is the first card of a cell, the slot the memo holds a cell by; nil when
+// the cell is empty.
+func cellFirst(cell []*Card) **Card {
+	if len(cell) == 0 {
+		return nil
+	}
+	return &cell[0]
 }
 
 // medianWalls is each member's median run wall as last measured, with the done-ok cell
@@ -68,37 +91,41 @@ func MedianWallMeasures(member string) int {
 	return medianWalls.measured[member]
 }
 
-// medianMemo is the members' median run walls, each held with the done-ok cell it was
-// measured over: the table builds a new cell when a card is put (Table.Put resets the
-// index), so the same cell, its first card's slot and its length, is the same cards,
-// and another is measured again. One entry a member, the latest cell's; safe for the
-// store's parts on their own goroutines.
+// medianMemo is the members' median run walls, each held with the finished and done-ok
+// cells it was measured over: the table builds a new cell when a card is put (Table.Put
+// resets the index), so the same cells, their first cards' slots and their lengths, are
+// the same cards, and another is measured again. One entry a member, the latest cells';
+// safe for the store's parts on their own goroutines.
 type medianMemo struct {
 	mu       sync.Mutex
 	byMember map[string]medianWall
 	measured map[string]int // the cells measured, a member
 }
 
-// medianWall is a member's median run wall over a done-ok cell, and how many samples it
-// is over.
+// medianWall is a member's median run wall over its finished and done-ok cells, and how
+// many samples it is over.
 type medianWall struct {
-	first  **Card
-	len    int
-	median float64
-	n      int
+	finishedFirst **Card
+	finishedLen   int
+	okFirst       **Card
+	okLen         int
+	median        float64
+	n             int
 }
 
-// of is the member's median run wall over the cell (not empty), measured when the
-// memo holds another cell's.
-func (m *medianMemo) of(member string, cell []*Card) (float64, int) {
+// of is the member's median run wall over the two cells (not both empty), measured when
+// the memo holds other cells'.
+func (m *medianMemo) of(member string, finished, ok []*Card) (float64, int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if w, ok := m.byMember[member]; ok && w.first == &cell[0] && w.len == len(cell) {
+	if w, held := m.byMember[member]; held && w.finishedFirst == cellFirst(finished) && w.finishedLen == len(finished) &&
+		w.okFirst == cellFirst(ok) && w.okLen == len(ok) {
 		return w.median, w.n
 	}
-	median, n := cellMedianWall(cell)
+	median, n := cellMedianWall(okAttempts(finished, ok))
 	m.measured[member]++
-	m.byMember[member] = medianWall{first: &cell[0], len: len(cell), median: median, n: n}
+	m.byMember[member] = medianWall{finishedFirst: cellFirst(finished), finishedLen: len(finished),
+		okFirst: cellFirst(ok), okLen: len(ok), median: median, n: n}
 	return median, n
 }
 

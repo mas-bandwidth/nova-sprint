@@ -239,12 +239,16 @@ func landedMoves(lines []sprint.Line, card, fromSuffix, toSuffix string) []sprin
 func okMoves(lines []sprint.Line, primary, worker string) []sprint.Line {
 	var out []sprint.Line
 	for _, l := range lines {
-		if l.Kind != sprint.LineMove || !strings.HasPrefix(l.Card, primary+".w") || !strings.HasSuffix(l.To, ":ok") {
+		if l.Kind != sprint.LineMove || !strings.HasPrefix(l.Card, primary+".w") {
 			continue
 		}
-		if strings.TrimSuffix(l.To, ":ok") == worker {
-			out = append(out, l)
+		switch {
+		case strings.HasSuffix(l.To, ":finished") && l.Set["ok"] == "yes" && strings.TrimSuffix(l.To, ":finished") == worker:
+		case strings.HasSuffix(l.To, ":ok") && strings.TrimSuffix(l.To, ":ok") == worker:
+		default:
+			continue
 		}
+		out = append(out, l)
 	}
 	return out
 }

@@ -25,7 +25,7 @@ const (
 func scenarios() []sample {
 	var out []sample
 	for seed := uint64(0); seed < scenarioSeeds; seed++ {
-		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendStalls, aCardPastItsCap} {
+		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendStalls, aCardPastItsCap, aFriendsLateCard} {
 			out = append(out, run(newWalk(scenarioBase+seed))...)
 		}
 	}
@@ -243,5 +243,26 @@ func aCardPastItsCap(k *walk) []sample {
 	if k.s.StateOf(id) != sprint.Ready {
 		return nil
 	}
+	return []sample{k.sample()}
+}
+
+// aFriendsLateCard deals a friend's card to her and lets it go unfinished past its
+// deadline: the tick has it to redeal (sprint.TickFriendRedeal).
+func aFriendsLateCard(k *walk) []sample {
+	k.friends = []sprint.FriendSeat{{Name: "amy", Width: 1, Status: sprint.Up, Class: "flash,pro"}}
+	id := fmt.Sprintf("p%d", k.next)
+	k.next++
+	if !k.try(sprint.Add(k.s, sprint.AddReq{Brief: "tier: pro\nWHO: only friend amy\n\nThe task.", Stream: k.streams[0], IDs: []string{id}, Who: coordinator})) {
+		return nil
+	}
+	plan, _ := sprint.TickDeal(k.s, sprint.TickReq{Who: sprint.MachineActor, Friends: k.friends})
+	if !k.try(plan) {
+		return nil
+	}
+	if wc := k.s.Fleet.Card(sprint.WorkCardID(id, 1)); wc == nil || !sprint.IsFriendRow(wc.Row) {
+		return nil // the card is no friend's: nothing to redeal
+	}
+	k.now = k.now.Add(sprint.DeadlineUnfinished + time.Duration(1+k.pick(20))*time.Minute)
+	k.beatAll()
 	return []sample{k.sample()}
 }

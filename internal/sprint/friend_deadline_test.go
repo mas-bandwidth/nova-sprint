@@ -59,7 +59,7 @@ func TestAFriendsCardsDeadlineIsThreeTimesHerMedianWall(t *testing.T) {
 	assert.Equal(t, "12600", wc.F(FieldFriendDeadline), "three times 70 minutes")
 	t1 := w.s.Now
 	w.s.Now = t1.Add(2*time.Hour + time.Minute)
-	assert.Empty(t, lateCards(w), "past two hours it is not late")
+	assert.False(t, friendLate(w.s, TickReq{}, wc), "past two hours it is not late")
 	w.s.Now = t1.Add(3*time.Hour + 31*time.Minute)
-	assert.Equal(t, []string{"s1-4.w1"}, lateCards(w), "past three and a half it is")
+	assert.True(t, friendLate(w.s, TickReq{}, wc), "past three and a half it is: the redeal part sees it, never a late judgment")
 }
