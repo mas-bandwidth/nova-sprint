@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -41,5 +42,35 @@ func TestSetFriendFinishIsTheIdleWindow(t *testing.T) {
 	code, _, errs := ta.do("set --friend-finish soon")
 	assert.NotEqual(t, 0, code)
 	assert.Contains(t, errs, "--friend-finish wants a duration")
-	assert.Contains(t, ta.ok("set --friend-finish default"), "friend-finish default (30m0s)")
+	assert.Contains(t, ta.ok("set --friend-finish default"), "friend-finish default (15m0s)")
+}
+
+// Verified working in the view (card sn-verified-working-b-ns-bcb.w1; docs/SPEC-SPRINT.md
+// section 1, "Verified working"): the friends table draws dealt beside working, and working
+// counts only a card a push proves or her beat names running (sprint.FriendWorkingOf), the
+// read friend take makes of her (reads.go, a.friendStarted). The reader caught the earlier
+// attempt setting the working cell from the fleet working count and never calling
+// FriendWorkingOf; this test reads the cell the view draws.
+func TestTheFriendsTableCountsDealtBesideVerifiedWorking(t *testing.T) {
+	t.Parallel()
+	ta, _ := takeApp(t, 1, nil, "amy")
+	ta.ok("tick")
+	cells := func() map[string]string {
+		var w whereView
+		ta.json("where", &w)
+		c := w.Tables[sprint.Friends]["amy"]
+		return map[string]string{"dealt": cellText(c["dealt"]), "working": cellText(c["working"])}
+	}
+
+	// a push on the card's branch proves it: dealt and working agree
+	ta.a.tip = tipIs(t, landHead)
+	assert.Equal(t, map[string]string{"dealt": "1", "working": "1"}, cells(), "a push on its branch proves the card")
+
+	// no push and her beat names nothing: dealt and working differ
+	ta.a.tip = func(_ context.Context, _, _ string) (string, error) { return "", nil }
+	assert.Equal(t, map[string]string{"dealt": "1", "working": "0"}, cells(), "no push proves it and her beat does not name it")
+
+	// her beat names it running: working counts it with no push
+	ta.ok("friend beat amy --running s1-1")
+	assert.Equal(t, map[string]string{"dealt": "1", "working": "1"}, cells(), "her beat names it running")
 }
