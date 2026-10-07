@@ -428,8 +428,9 @@ none of them. `friend down <friend>` holds her as `fleet down` holds a machine
 nothing, and every card of hers she has not started goes back to ready the
 same way, `taken_back` naming the hold and no `taken_from`, so her own named
 cards come back to her when she is released and beats; what she has started
-stays on her row and finishes (`TestTheHoldOfAFriendWithdrawsWhatSheHasNotStartedAndKeepsTheRest`,
-`TestFriendDownGivesBackWhatSheHasNotStartedAndKeepsTheRest`).
+stays on her row and finishes (`TestTheHoldOfAFriendWithdrawsEveryCardStartedOrNot`,
+`TestFriendDownGivesBackEveryCardStartedOrNot`; the coordinator's take is the gate
+`TestFriendTakeReturnsAnUnstartedCardToReadyAndRefusesAPushedOne`).
 
 **Friend level** (the owner, 2026-10-04: "What else is like this? Missing
 verbs we need for friends, that machines already have"; `sprint.FriendLevel`).
