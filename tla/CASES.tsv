@@ -210,6 +210,12 @@ MCLandReachStranded.cfg	MCLand.tla	invariant	ReachStranded	ignore-terminal	land	
 MCLandBrokenIdGuard.cfg	MCLand.tla	invariant	LandedInBase	ignore-terminal	land	required	-
 MCLandReachStalePush.cfg	MCLand.tla	invariant	ReachStalePush	ignore-terminal	land	required	-
 MCLandBrokenNoEpoch.cfg	MCLand.tla	invariant	ReportHoldsTheEpoch	ignore-terminal	land	required	-
+MCLandEject.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
+MCLandEjectChain.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
+MCLandEjectDrains.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
+MCLandBrokenNoClosure.cfg	MCLand.tla	invariant	EjectedDependentsNotLanded	ignore-terminal	land	required	-
+MCLandBrokenStopAll.cfg	MCLand.tla	temporal	Drains	ignore-terminal	land	required	-
+MCLandReachEjectAndLand.cfg	MCLand.tla	invariant	ReachEjectAndLand	ignore-terminal	land	required	-
 MCSprintEventsC30.cfg	MCSprintEvents.tla	pass	-	ignore-terminal	sprintevents-controls-b	required	-
 MCSprintEventsW30.cfg	MCSprintEvents.tla	action	NextNotReached	ignore-terminal	sprintevents-witnesses-b	required	-
 MCLevel.cfg	MCLevel.tla	pass	-	ignore-terminal	level	required	-
@@ -277,3 +283,7 @@ MCCoordinatorPassEmpty.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordina
 MCCoordinatorPassBrokenNoReset.cfg	MCCoordinatorPass.tla	invariant	EmptyAWholeWindow	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassPin.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenPinRekey.cfg	MCCoordinatorPass.tla	invariant	OneJudgmentAnEpisode	ignore-terminal	coordinatorpass	required	-
+MCCapDeal.cfg	MCCapDeal.tla	pass	-	ignore-terminal	capdeal	required	-
+MCCapDealBrokenMachineFirst.cfg	MCCapDeal.tla	invariant	FriendFirst	ignore-terminal	capdeal	required	-
+MCCapDealBrokenNoJudge.cfg	MCCapDeal.tla	invariant	NoCardLost	ignore-terminal	capdeal	required	-
+MCCapDealBrokenTwice.cfg	MCCapDeal.tla	invariant	ExactlyOneJudgment	ignore-terminal	capdeal	required	-
