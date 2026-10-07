@@ -141,7 +141,8 @@ CapPart(c) ==
      /\ since' = [since EXCEPT ![c] = 0]
      /\ judge' = [judge EXCEPT ![c] = 0]
      /\ room' = [room EXCEPT ![f] = room[f] - 1]
-     /\ UNCHANGED <<ended, rdl, lostAtBound, status, phase>>
+     /\ ended' = [ended EXCEPT ![c] = FALSE]
+     /\ UNCHANGED <<rdl, lostAtBound, status, phase>>
 
 \* No cap deal is left: the deal's phase opens. (The broken "machinefirst" runs
 \* the deal with no cap deal at all.)
