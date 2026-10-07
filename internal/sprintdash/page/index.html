@@ -151,6 +151,13 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .toprows .tiers { color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toprows .tiers i { font-style: normal; display: inline-block; width: .6em; height: .6em; border-radius: 2px; margin: 0 .35em 0 .75em; vertical-align: -.02em; }
 .toprows .tiers i:first-child { margin-left: 0; }
+/* the Cost breakdown's rows (where JSON's cost_by_tier): one line per tier, the tier on the
+   left and its tokens and dollars on the right; the friends row is token counts only, never a
+   dollar (docs/SPEC-SPRINT.md, the friends category) */
+.cost-lines { grid-column: 1 / -1; border-top: 1px solid var(--border); padding: 0.5rem 1rem 0.75rem; }
+.cost-head { color: var(--text-3); font-size: 0.875rem; margin-bottom: 0.25rem; }
+.cost-line { display: flex; justify-content: space-between; gap: 1.5rem; padding: 0.1rem 0; }
+.cost-line .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 :root, :root[data-theme="dark"] { --tier-flash: #3b82f6; --tier-pro: #a855f7; --tier-heavy: #f59e0b; --tier-frontier: #ec4899; --tier-other: #4b5563; }
 :root[data-theme="light"] { --tier-flash: #2563eb; --tier-pro: #9333ea; --tier-heavy: #d97706; --tier-frontier: #db2777; --tier-other: #9ca3af; }
 
@@ -324,6 +331,12 @@ footer a:hover { color: var(--text); }
 .streams .row.head > :nth-child(8) { text-align: center; }  /* width set by app.js to the n / total cell's */
 .streams .row > :nth-child(2) { justify-self: end; }
 .streams .row:not(.head):not(.total) { border-bottom: 0; }
+/* Cost breakdown: the where record's tiers, inside Work so the locked panels stay
+   in order. A friends row is token counts, never a dollar (docs/SPEC-SPRINT.md). */
+.cost-breakdown { padding: 0.25rem 2rem 1.25rem; }
+.cost-head { margin: 0.75rem 0 0.35rem; color: var(--text-3); font-size: 0.875rem; }
+.cost-line { display: flex; justify-content: space-between; gap: 1.5rem; padding: 0.15rem 0; }
+.cost-line .num { text-align: right; }
 .streams .row.group-start { border-top: 1px solid var(--border); }
 .fleet .row > :nth-child(2), .friends .row > :nth-child(2) { justify-self: end; }
 
@@ -426,13 +439,18 @@ footer a:hover { color: var(--text); }
 
 <!-- Spend row (the owner 2026-10-04 10:15 AM): a square pie of cards by tier under Landed and ETA, as wide as the two of them,
      and beside it, filling the same height, the ten most expensive work streams with their cost, cost per landed card,
-     counts by state and tiers. The tier counts come from `where --json` (`tiers`, `tables.work[s].tiers`) once the
-     next nova-sprint build serves them; until then the pie says so. -->
+     counts by state and tiers, and under both the cost category's rows. The pie's dollars and the rows come from
+     `where --json`'s `cost_by_tier` at the top (the friends cost category: the friends row is token counts, never
+     dollars; the owner, 2026-10-04); each stream's per-tier dollars come from `stream_costs`. -->
 <section class="panel spend">
   <div class="panel-head"><h2>Cost breakdown</h2><span class="legend" id="tier-sub"></span></div>
   <div class="scroll spend-body">
     <div class="pie-wrap"><svg class="pie" id="pie" viewBox="0 0 100 100" aria-label="spend by tier"></svg></div>
     <div class="rows toprows" id="top-streams"></div>
+    <div class="cost-lines" id="cost-breakdown">
+      <div class="cost-head">by tier</div>
+      <div id="cost-by-tier"></div>
+    </div>
   </div>
 </section>
 
