@@ -81,24 +81,25 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 	t.Run("a working binary plans, writes nothing, and is switched in", func(t *testing.T) {
 		target := filepath.Join(t.TempDir(), "nova-sprint")
 		require.NoError(t, os.WriteFile(target, []byte("the running server"), 0o755))
-		// The candidate is this test binary. Its build commit has to be an
-		// ancestor of origin/main in the clone the switch is given. That
-		// origin is a local bare whose main is this checkout's HEAD, the
-		// revision the toolchain stamped. It is not the forge.
-		repo := cloneAtStampedHead(t, exe)
+		// go test leaves a test binary unstamped (buildvcs auto skips
+		// IsTestOnly). The candidate is a real nova-sprint build, so the
+		// switch reads a build commit. The origin it is checked against is a
+		// local bare whose main is this checkout's HEAD. It is not the forge.
+		candidate := buildSprintCandidate(t)
+		repo := cloneAtStampedHead(t, candidate)
 		ta := newTestApp(t)
-		code, out, errs := ta.do("server switch " + exe + " --target " + target + " --redis mem:" + twinFile + " --rollback --dry-run --repo " + repo + " --base main")
+		code, out, errs := ta.do("server switch " + candidate + " --target " + target + " --redis mem:" + twinFile + " --rollback --dry-run --repo " + repo + " --base main")
 		require.Equal(t, 0, code, errs)
-		assert.Contains(t, out, "SHADOW TICK OK binary="+exe)
-		assert.Contains(t, out, "SERVER SWITCH DRY-RUN target="+target+" binary="+exe)
+		assert.Contains(t, out, "SHADOW TICK OK binary="+candidate)
+		assert.Contains(t, out, "SERVER SWITCH DRY-RUN target="+target+" binary="+candidate)
 		for _, side := range []string{".prev", ".switch.json", ".shadow.json", ".serverbase"} {
 			_, err := os.Stat(target + side)
 			assert.True(t, os.IsNotExist(err), "a dry run writes nothing beside the target (%s)", side)
 		}
 
-		code, out, errs = ta.do("server switch " + exe + " --target " + target + " --redis mem:" + twinFile + " --rollback --repo " + repo + " --base main")
+		code, out, errs = ta.do("server switch " + candidate + " --target " + target + " --redis mem:" + twinFile + " --rollback --repo " + repo + " --base main")
 		require.Equal(t, 0, code, errs)
-		assert.Contains(t, out, "SHADOW TICK OK binary="+exe+" epoch=0 state=RUNNING")
+		assert.Contains(t, out, "SHADOW TICK OK binary="+candidate+" epoch=0 state=RUNNING")
 		assert.Contains(t, out, "SERVER SWITCH OK")
 		twinAfter, err := os.ReadFile(twinFile)
 		require.NoError(t, err)
@@ -108,7 +109,7 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 		require.NoError(t, err)
 		var rec shadowRecord
 		require.NoError(t, json.Unmarshal(b, &rec))
-		assert.Equal(t, exe, rec.Binary)
+		assert.Equal(t, candidate, rec.Binary)
 		assert.Positive(t, rec.Plan.Size, "the plan's size is recorded: the tick would deal the ready card")
 		assert.Positive(t, rec.Wall, "the shadow's time is recorded")
 		_, err = os.Stat(target + ".switch.json")
@@ -128,14 +129,28 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 	})
 }
 
-// cloneAtStampedHead is a clone whose origin/main is the commit this test
-// binary was built from. The branch is created by name. The forge is not
-// fetched: the bare origin is filled from this checkout's HEAD.
+// buildSprintCandidate is a nova-sprint binary built from this checkout with
+// its build commit stamped. A test binary is left unstamped, so it cannot
+// stand in for a server build.
+func buildSprintCandidate(t *testing.T) string {
+	t.Helper()
+	out := filepath.Join(t.TempDir(), "nova-sprint")
+	cmd := exec.Command("go", "build", "-o", out, "./cmd/nova-sprint")
+	cmd.Dir = moduleRoot(t)
+	cmd.Env = verbBuildEnv()
+	got, err := cmd.CombinedOutput()
+	require.NoError(t, err, "go build: %s", got)
+	return out
+}
+
+// cloneAtStampedHead is a clone whose origin/main is the commit the candidate
+// was built from. The branch is created by name. The forge is not fetched:
+// the bare origin is filled from this checkout's HEAD.
 func cloneAtStampedHead(t *testing.T, exe string) string {
 	t.Helper()
 	rev, _, ok, err := buildinfo.BinaryRevision(exe)
 	require.NoError(t, err)
-	require.True(t, ok, "this test binary has no build commit; the gate runs in a git checkout")
+	require.True(t, ok, "the candidate has no build commit")
 	root := moduleRoot(t)
 	head := verbGitLine(t, root, "rev-parse", "HEAD")
 	require.Equal(t, head, strings.ToLower(rev), "the stamped commit is this checkout's HEAD")
