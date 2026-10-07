@@ -108,7 +108,7 @@ func readBaseTip(ctx context.Context, repo, base string, timeout time.Duration, 
 	if fetch {
 		out, err := gitrun.Combined(ctx, o, "fetch", "--no-tags", "-q", "origin", "+refs/heads/"+base+":"+ref)
 		if err != nil {
-			return "", fmt.Errorf("cannot fetch origin/%s in %s: %s", base, repo, firstLine(strings.TrimSpace(string(out)+" "+err.Error())))
+			return "", fmt.Errorf("cannot fetch origin/%s in %s: %s", base, repo, baseFetchLine(strings.TrimSpace(string(out)+" "+err.Error())))
 		}
 	}
 	tip, err := gitrun.Output(ctx, o, "rev-parse", "--verify", ref+"^{commit}")
@@ -131,7 +131,7 @@ func commitIsAncestor(ctx context.Context, repo, commit, tip string, timeout tim
 	return false, fmt.Errorf("git merge-base --is-ancestor %s %s in %s: %w", commit, tip, repo, err)
 }
 
-func firstLine(s string) string {
+func baseFetchLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]
 	}
