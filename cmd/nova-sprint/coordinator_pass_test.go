@@ -41,5 +41,5 @@ func TestSetFriendFinishIsTheIdleWindow(t *testing.T) {
 	code, _, errs := ta.do("set --friend-finish soon")
 	assert.NotEqual(t, 0, code)
 	assert.Contains(t, errs, "--friend-finish wants a duration")
-	assert.Contains(t, ta.ok("set --friend-finish default"), "friend-finish default (30m0s)")
+	assert.Contains(t, ta.ok("set --friend-finish default"), "friend-finish default (15m0s)")
 }
