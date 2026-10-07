@@ -72,6 +72,9 @@ type Packet struct {
 	WorkBranch string `json:"work_branch,omitempty"`
 	WorkBase   string `json:"work_base,omitempty"`
 	Report     string `json:"report,omitempty"`
+	// A read's gate lines (gaterun.go, FieldGateLines): the machine already ran the
+	// attempt's gate on a bench, so the reader judges the change and runs no Go.
+	Gate []string `json:"gate,omitempty"`
 }
 
 // FieldRules is a primary's rules by reference (nova-tools#5174 rule 6): the base name of the
@@ -191,6 +194,11 @@ func PacketOf(prefix string, epoch uint64, c, primary *Card, earlier []*Card, wo
 	}
 	if p.Head == "" {
 		p.Head = c.F("head")
+	}
+	if primary != nil {
+		// the machine gate's lines for this attempt ride with every read of it
+		// (gaterun.go): the reader judges the change and runs no Go.
+		p.Gate = GateLines(primary.F(FieldGateLines))
 	}
 	return p
 }
