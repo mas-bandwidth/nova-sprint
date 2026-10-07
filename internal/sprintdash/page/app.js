@@ -584,19 +584,61 @@ function tierCounts(obj) { // {flash: "12", pro: 3} -> [[tier, n], ...] sorted b
   out.sort(function (a, b) { var ia = TIERS.indexOf(a[0]), ib = TIERS.indexOf(b[0]); if (ia < 0) ia = 99; if (ib < 0) ib = 99; return ia - ib || b[1] - a[1]; });
   return out;
 }
+
+// tokenText is a cost row's token counts (where JSON's cost_by_tier).
+function tokenText(t) {
+  if (!t) return "0 tokens";
+  var n = t.total || 0, parts = [];
+  ["input", "cache_read", "cache_write", "output", "reasoning"].forEach(function (k) {
+    if (t[k] != null) parts.push(k.replace("_", " ") + " " + t[k]);
+  });
+  return n + " tokens" + (parts.length ? " (" + parts.join(", ") + ")" : "");
+}
+// dollarText is a machine tier's charged dollars, the exact decimal. Never a friends row.
+function dollarText(usd) { return "$" + usd; }
+// costShown is one row of the Cost breakdown (docs/SPEC-SPRINT.md, the friends
+// category). A friends row is token counts only: no dollar field is shown.
+function costShown(row) {
+  if (row.tier === "friends") {
+    return tokenText(row.tokens);
+  }
+  return tokenText(row.tokens) + (row.usd ? " \u00b7 " + dollarText(row.usd) : "");
+}
+// The Cost breakdown's rows: the same cost_by_tier the where record holds, the
+// friends row as token counts and not as dollars (the owner, 2026-10-04: "i
+// don't want dollar amounts for friends. token counts are fine.").
+function renderCostBreakdown(d) {
+  var box = $("cost-by-tier");
+  if (!box) return;
+  var rows = d.cost_by_tier || [];
+  box.textContent = "";
+  if (!rows.length) {
+    box.appendChild(el("div", "cost-line faint", "\u2014"));
+    return;
+  }
+  rows.forEach(function (row) {
+    var line = el("div", "cost-line");
+    line.appendChild(el("div", "", row.tier || ""));
+    line.appendChild(el("div", "num", costShown(row)));
+    box.appendChild(line);
+  });
+}
 // The Cost breakdown (the owner 2026-10-04 2:43 to 3:05 PM): the pie is the spend by tier and the
-// tier line in the panel's header is its legend, open or folded. The spend per tier is summed
-// over every stream (tables.work[s].cost_by_tier); a tier at $0 is left out of the pie, the
+// tier line in the panel's header is its legend, open or folded. The spend per tier is the
+// friends cost category's rows (where JSON's cost_by_tier, a machine tier's dollars; the
+// friends row is never dollars); a tier at $0 is left out of the pie, the
 // legend and the table alike. One format for the whole panel, decided once: cents (rounded up)
 // when every tier shown is under $10, else whole dollars rounded up ("so we don't get weird
 // stuff where the tiers' rounded $ values don't match the pie"). The pie is drawn from the
 // values the legend shows, in the legend's order: by spend, most first.
 function tierSpend(d) {
-  var work = (d.tables && d.tables.work) || {}, byTier = {};
-  Object.keys(work).forEach(function (k) {
-    var b = work[k].cost_by_tier; if (!b || typeof b !== "object") return;
-    // the four tiers alone: a record with no tier ("untiered") is no tier and is left out (the owner 2026-10-04 3:10 PM)
-    TIERS.forEach(function (t) { var c = cents(b[t]); if (c) byTier[t] = (byTier[t] || 0) + c; });
+  var byTier = {};
+  // the friends cost category's rows (where JSON's cost_by_tier): a machine tier's
+  // dollars alone, the friends row never dollars (docs/SPEC-SPRINT.md, the friends
+  // category; the owner, 2026-10-04: "i don't want dollar amounts for friends")
+  (d.cost_by_tier || []).forEach(function (row) {
+    if (row.tier === "friends") return;
+    var c = cents(row.usd); if (c) byTier[row.tier] = c;
   });
   var order = Object.keys(byTier).sort(function (a, b) { return byTier[b] - byTier[a] || a.localeCompare(b); });
   var inCents = order.length > 0 && order.every(function (t) { return byTier[t] < 1000; });
@@ -659,7 +701,8 @@ function renderTopStreams(d) {
   Object.keys(work).forEach(function (k) {
     var w = work[k], ct = cents(w.cost); if (!ct) return;
     var n = {}; ["waiting", "ready", "working", "review", "merging", "landed"].forEach(function (c) { n[c] = parseInt(w[c], 10) || 0; });
-    rows.push({ name: k, cost: ct, n: n, per: n.landed ? Math.ceil(ct / n.landed) : null, tiers: tierCounts(w.tiers), byTier: w.cost_by_tier || null });
+    var sc = (d.stream_costs && d.stream_costs[k] && d.stream_costs[k].cost_by_tier) || null; // where JSON's stream_costs: each stream's spend by tier
+    rows.push({ name: k, cost: ct, n: n, per: n.landed ? Math.ceil(ct / n.landed) : null, tiers: tierCounts(w.tiers), byTier: sc });
   });
   rows.sort(function (a, b) { return b.cost - a.cost; });
   box.innerHTML = "";
@@ -708,6 +751,7 @@ function render(d) {
   renderOverall(s.sum, s.all);
   renderPie(d);
   renderTopStreams(d);
+  renderCostBreakdown(d);
   var ft = renderFleet(d);
   renderFriends(d);
   renderProviders(d);
