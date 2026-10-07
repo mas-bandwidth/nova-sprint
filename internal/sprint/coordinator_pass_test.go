@@ -189,11 +189,13 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 	assert.Equal(t, 1, deaf.Before, "the judgment counts its raises again")
 	assert.Contains(t, deaf.What, "25m3", "with her latest pong age")
 
-	// 31m: the friend holding her card has finished none in 30 minutes: idle, naming the card
+	// 31m: the friend holding her card has finished none in 15 minutes (the window's
+	// default this card lowers from thirty), so idle opened at 15m30s and is raised
+	// again once here: one judgment an episode, naming the card
 	fresh()
 	r.tick(10*time.Minute + 29*time.Second)
 	idle := r.open(sprint.NFriendIdle, sprint.FriendRow(holder))
-	require.NotNil(t, idle, "a friend holding working cards with no finish in 30 minutes is idle")
+	require.NotNil(t, idle, "a friend holding working cards with no finish in 15 minutes is idle")
 	assert.Contains(t, idle.What, fc.ID)
 	assert.Contains(t, idle.What, "no finish yet")
 	assert.Equal(t, 2, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendDeaf), "deaf raised again at 30m31s")
@@ -209,11 +211,12 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 	assert.Nil(t, r.open(sprint.NCoordinatorBehind, behind), "nothing late closes behind")
 	assert.NotNil(t, r.open(sprint.NFriendIdle, sprint.FriendRow(holder)), "idle holds while her card is unfinished")
 
-	// 41m: idle raised again; then her card finishes (working to done): idle closes
+	// 41m: idle raised again, its second push (at 31m and here); then her card finishes
+	// (working to done): idle closes
 	r.pongs["amy"] = r.clock()
 	fresh()
 	r.tick(10 * time.Minute)
-	assert.Equal(t, 1, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendIdle))
+	assert.Equal(t, 2, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendIdle))
 	s = r.snap()
 	fc = s.Fleet.Card(fc.ID)
 	r.must(store.FinishStep(sprint.FinishReq{As: fc.Row, Sel: sprint.Sel{IDs: []string{fc.ID}}, Gens: map[string]int{fc.ID: fc.Int("gen")}, Head: "abc", Who: fc.Row}))
