@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -19,6 +21,8 @@ const DefaultRollbackWindow = 15 * time.Minute
 type ServerSwitchOptions struct {
 	Binary   string        // path to candidate binary
 	Target   string        // path to target binary (default: os.Executable() or NOVA_SPRINT_SERVER_BIN)
+	RepoDir  string        // path to git clone for ancestry check (optional, uses git merge-base --is-ancestor)
+	BaseRef  string        // ref to check ancestry against (e.g., refs/heads/main)
 	Rollback bool          // keep previous binary and roll back on land failure in window
 	Window   time.Duration // rollback window duration (default DefaultRollbackWindow)
 	Now      func() time.Time
@@ -110,6 +114,28 @@ func ServerSwitch(ctx context.Context, opts ServerSwitchOptions) error {
 	// Verify candidate binary exists and is readable
 	if _, err := os.Stat(opts.Binary); err != nil {
 		return fmt.Errorf("server switch: candidate binary not accessible: %w", err)
+	}
+
+	// Check if the candidate binary's build commit is an ancestor of the sprint base
+	// This requires reading the build source from the binary's version line
+	if opts.RepoDir != "" && opts.BaseRef != "" {
+		commit, err := readBinaryCommit(opts.Binary)
+		if err != nil {
+			return fmt.Errorf("server switch REFUSED: cannot read build source from candidate binary: %w", err)
+		}
+		if commit == "" {
+			return fmt.Errorf("server switch REFUSED: candidate binary has no source commit (missing repo/revision/dirty/build_host) - build from origin/%s at its tip, then switch", opts.BaseRef)
+		}
+		// Use git merge-base --is-ancestor to check ancestry
+		cmd := exec.Command("git", "-C", opts.RepoDir, "merge-base", "--is-ancestor", commit, opts.BaseRef)
+		err = cmd.Run()
+		if err != nil {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+				return fmt.Errorf("server switch REFUSED: the candidate binary was built from commit %s which is not an ancestor of %s - build from origin/%s at its tip, then switch", commit, opts.BaseRef, opts.BaseRef)
+			}
+			return fmt.Errorf("server switch REFUSED: git ancestry check failed: %w", err)
+		}
 	}
 
 	prev := target + ".prev"
@@ -223,4 +249,40 @@ func CheckRollbackOnLandFailure(target string, landErr error, now time.Time) (ro
 	// ignored: clean up state file after rollback on failure
 	_ = os.Remove(stateFile)
 	return true, nil
+}
+
+// readBinaryCommit reads the build revision from a binary's version line.
+// The binary must emit a version line with proper Source info:
+// repo=<repo> revision=<sha> dirty=<true|false> build_host=<host>
+func readBinaryCommit(binary string) (string, error) {
+	// Read the first line of the binary as its version output
+	// This typically requires running the binary with a version flag or
+	// reading a built-in version string
+	cmd := exec.Command(binary, "version")
+	var out strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	err := cmd.Run()
+	if err != nil {
+		// Try reading embedded version info
+		// Fallback: return empty string to indicate no source commit
+		return "", nil
+	}
+	
+	// Parse the version line
+	line := out.String()
+	// Expected format: tool version goos/goarch goversion repo=X revision=Y dirty=Z build_host=W
+	tokens := strings.Fields(line)
+	if len(tokens) < 4 {
+		return "", nil
+	}
+	
+	// Look for revision in the extra tokens
+	for _, token := range tokens[4:] {
+		if strings.HasPrefix(token, "revision=") {
+			return strings.TrimPrefix(token, "revision="), nil
+		}
+	}
+	
+	return "", nil
 }
