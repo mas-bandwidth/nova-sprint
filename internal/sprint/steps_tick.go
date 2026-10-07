@@ -260,10 +260,12 @@ var TickTables = []TableUpdate{
 
 // PartCapDeal is the attempt cap's default answer, the pump's part before the deal
 // (TickCapDeal, brief_bound.go): a card past its cap goes to a frontier or heavy friend
-// with room before the deal could give it to a machine.
+// with room before the deal could give it to a machine. The model is tla/CapDeal.tla
+// (FriendFirst, ExactlyOneJudgment, NoCardLost; the MCCapDeal* cases, group capdeal).
 const PartCapDeal = "cap deal"
 
-// TickCapDeal is the attempt cap's default answer as a part of the tick (AttemptCapDeal).
+// TickCapDeal is the attempt cap's default answer as a part of the tick (AttemptCapDeal;
+// tla/CapDeal.tla, beside tla/DirtyTick.tla's deal and redeal bound).
 func TickCapDeal(s *Snapshot, r TickReq) (Plan, int) { return AttemptCapDeal(s, r), 0 }
 
 // PartFriendStall is the friend stall ladder part (friend_stall.go).

@@ -1285,8 +1285,9 @@ finding, else its failed report, else its bound's class, the latest kept under t
 (`TestTheAttemptCapIsOneJudgmentWithEveryFindingAndTheSpend`,
 `TestFailedWorkReachesTheAttemptCapToo`, `TestTheAttemptCapIsASettingOfTheSprintAndTheStream`).
 **The attempt cap's default answer is a friend card** (`sprint.AttemptCapDeal`, the
-pump's part `cap deal` before the deal, `sprint.TickCapDeal`, decided in the reference
-model as the duty `cap deal`;
+pump's part `cap deal` before the deal, `sprint.TickCapDeal`, modelled in
+[tla/CapDeal.tla](../tla/CapDeal.tla) beside `tla/DirtyTick.tla`: `FriendFirst`,
+`ExactlyOneJudgment` and `NoCardLost` under TLC on the MCCapDeal* cases, group `capdeal`);
 `TestTheAttemptCapJudgmentsDefaultAnswerDealsAFriendCard`,
 `TestTwoCappedCardsDoNotExceedAFriendsWidth`): a machine's primary ready and past its cap
 (`sprint.AtBriefBound` asked with `sprint.AttemptsCap`), in a stream not held, is dealt
