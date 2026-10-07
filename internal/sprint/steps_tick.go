@@ -108,6 +108,10 @@ const (
 
 	NMachineStarted = "the machine started"
 	NMachineStopped = "the machine stopped"
+	// NServerOffBase (server_base.go): the running server's build commit is
+	// missing or not an ancestor of origin's sprint base. One judgment while
+	// it is off, closed when it is back on.
+	NServerOffBase = "the server is off the sprint base"
 )
 
 // Sentinel is the kind of a card that marks a point in a stream: the tick
@@ -150,6 +154,8 @@ var TickDecisions = map[string][]string{
 	NFriendDeaf:        {"ack", "wait"},
 	NFriendIdle:        {"ack", "wait"},
 	NCoordinatorBehind: {"act", "wait"},
+	// the running server's build commit (server_base.go)
+	NServerOffBase: {"ack", "wait"},
 }
 
 // TickReq is what a tick is given beside the snapshot.
@@ -186,6 +192,9 @@ type TickReq struct {
 	// WorkLint is the work lint the tick holds each finished attempt to before its first
 	// read (worklint.go: TickLint in the pump, lintHeld in the ask); nil is DefaultWorkLint.
 	WorkLint WorkLinter
+	// ServerBase is the running server's build commit against origin's sprint base,
+	// when the tick was given a clone (server_base.go). Zero is not checked.
+	ServerBase ServerBaseFact
 }
 
 func (r TickReq) who() string {
@@ -1140,7 +1149,29 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	// the backlog alarms, on a plan of their own: each notify closes and judges after its own closes
 	a, alarmsDue := tickAlarms(s, r)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, a.Notes...), append(p.Closes, a.Closes...), append(p.Updates, a.Updates...)
-	return p, due + alarmsDue
+	due += alarmsDue
+	// the running server, only when this tick was given a clone: one judgment
+	// while its build commit is off origin's sprint base, closed when it is back
+	if r.ServerBase.Checked {
+		b, baseDue := tickServerBase(s, r)
+		p.Notes, p.Closes, p.Updates = append(p.Notes, b.Notes...), append(p.Closes, b.Closes...), append(p.Updates, b.Updates...)
+		due += baseDue
+	}
+	return p, due
+}
+
+// tickServerBase is the one judgment while the running server's build commit is
+// off origin's sprint base (docs/SPEC-SPRINT.md section 14). The condition is
+// keyed by its type, so a commit that changes is the same episode.
+func tickServerBase(s *Snapshot, r TickReq) (Plan, int) {
+	var p Plan
+	var conds []cond
+	if r.ServerBase.Off {
+		conds = append(conds, cond{typ: NServerOffBase, streamLevel: true, what: r.ServerBase.What,
+			decisions: TickDecisions[NServerOffBase]})
+	}
+	due := notify(&p, s, conds, []string{NServerOffBase}, r)
+	return p, due
 }
 
 // TickOverdue marks each open judgment overdue once, when it passes its due
@@ -1265,7 +1296,7 @@ type cond struct {
 func condKey(typ, subject, card, what string) string {
 	switch typ {
 	case NNoMember, NCannotAsk, NNoRoute, NFewReaders, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NStarving, NOverloaded, NReadersBehind, NDevBehind, NRaiseReadTier,
-		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFriendDeaf, NFriendIdle, NCoordinatorBehind, NMergeHealth:
+		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFriendDeaf, NFriendIdle, NCoordinatorBehind, NMergeHealth, NServerOffBase:
 		what = ""
 	case NWorkLate, NReadLate:
 		// a lateness is one per attempt's card and kind (not taken, not
@@ -1396,7 +1427,7 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 			if !open[k] {
 				fresh = append(fresh, sub)
 			}
-			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NMergeHealth) {
+			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NMergeHealth || c.typ == NServerOffBase) {
 				update(n, c.what, c.decisions) // the latest facts, in place
 			}
 		}

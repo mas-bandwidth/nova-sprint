@@ -19,8 +19,11 @@ const DefaultRollbackWindow = 15 * time.Minute
 type ServerSwitchOptions struct {
 	Binary   string        // path to candidate binary
 	Target   string        // path to target binary (default: os.Executable() or NOVA_SPRINT_SERVER_BIN)
+	RepoDir  string        // clone whose origin holds the sprint base; with BaseRef, the build commit is checked
+	BaseRef  string        // sprint base branch on origin, such as main
 	Rollback bool          // keep previous binary and roll back on land failure in window
 	Window   time.Duration // rollback window duration (default DefaultRollbackWindow)
+	DryRun   bool          // check the build commit and copy nothing
 	Now      func() time.Time
 	Stdout   io.Writer
 	Stderr   io.Writer
@@ -112,6 +115,16 @@ func ServerSwitch(ctx context.Context, opts ServerSwitchOptions) error {
 		return fmt.Errorf("server switch: candidate binary not accessible: %w", err)
 	}
 
+	// The verb always sets both. A caller that sets neither (a rollback drill
+	// with a stand-in file) is unchanged. One without the other is a refusal,
+	// before anything is copied.
+	if err := opts.gateBase(ctx); err != nil {
+		return err
+	}
+	if opts.DryRun {
+		return nil
+	}
+
 	prev := target + ".prev"
 
 	// Keep existing target binary as previous binary
@@ -152,6 +165,29 @@ func ServerSwitch(ctx context.Context, opts ServerSwitchOptions) error {
 		_ = os.Remove(stateFile)
 	}
 
+	return nil
+}
+
+// gateBase refuses a candidate whose build commit is not an ancestor of origin's
+// sprint base. Both empty skips the check. The copy has not run yet.
+func (opts ServerSwitchOptions) gateBase(ctx context.Context) error {
+	if opts.RepoDir == "" && opts.BaseRef == "" {
+		return nil
+	}
+	base := opts.BaseRef
+	if base == "" {
+		base = "main"
+	}
+	if opts.RepoDir == "" || opts.BaseRef == "" {
+		return fmt.Errorf("server switch REFUSED: the clone and the sprint base are both required; %s", baseRemedy(base))
+	}
+	chk, err := CheckBinaryOnBase(ctx, opts.Binary, opts.RepoDir, opts.BaseRef, 0, true)
+	if err != nil {
+		return fmt.Errorf("server switch REFUSED: %s; %s", err.Error(), baseRemedy(opts.BaseRef))
+	}
+	if msg := chk.Refusal(); msg != "" {
+		return errors.New(msg)
+	}
 	return nil
 }
 

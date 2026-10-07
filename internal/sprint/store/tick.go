@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
@@ -998,7 +1000,7 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	}
 	at := snap.Epoch
 	res.Tables = newTables()
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend}
+	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend, ServerBase: runningServerBase(ctx)}
 	// the first read as it was: the twin it came from moves on with every
 	// part's writes, and with any other writer in this process
 	first := *snap
@@ -1904,7 +1906,7 @@ func (st *Store) ShadowTick(ctx context.Context) (ShadowPlan, error) {
 		return out, fmt.Errorf("fleet: %w", err)
 	}
 	// a shadow tick wakes no friend: it writes nothing and sends nothing
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(first.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm}
+	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(first.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, ServerBase: runningServerBase(ctx)}
 	if req.Friends, err = ro.friendSeats(ctx, &first, now); err != nil {
 		return out, err
 	}
@@ -1994,4 +1996,68 @@ func (st *Store) shadowRead(ctx context.Context) (*sprint.Snapshot, error) {
 		return snap, nil
 	}
 	return nil, fmt.Errorf("the sprint is busy: an operation was pending or the fence moved on each of %d reads in %s; a shadow tick repairs nothing; run it again", r.tries, r.slept().Round(time.Millisecond))
+}
+
+// runningServerBase is the running binary against the clone named by
+// NOVA_SPRINT_REPO (and NOVA_SPRINT_BASE, default main) or by the
+// <executable>.serverbase file server switch writes. No clone: the tick is
+// not told, and it raises nothing. The check uses the clone's already-fetched
+// origin/<base> and does not fetch. A miss is cached for a minute so a tick
+// a second does not run git every time; a failure is not a judgment.
+const runningServerBaseFor = time.Minute
+
+var runningServerBaseMu sync.Mutex
+var runningServerBaseCache struct {
+	key  string
+	at   time.Time
+	fact sprint.ServerBaseFact
+}
+
+func runningServerBase(ctx context.Context) sprint.ServerBaseFact {
+	repo, base := runningServerRepo()
+	if repo == "" {
+		return sprint.ServerBaseFact{}
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return sprint.ServerBaseFact{}
+	}
+	key := repo + "\x00" + base + "\x00" + exe
+	now := time.Now()
+	runningServerBaseMu.Lock()
+	if runningServerBaseCache.key == key && now.Sub(runningServerBaseCache.at) < runningServerBaseFor {
+		fact := runningServerBaseCache.fact
+		runningServerBaseMu.Unlock()
+		return fact
+	}
+	runningServerBaseMu.Unlock()
+	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	fact, err := sprint.ObserveServerBase(cctx, exe, repo, base)
+	if err != nil {
+		fact = sprint.ServerBaseFact{}
+	}
+	runningServerBaseMu.Lock()
+	runningServerBaseCache.key, runningServerBaseCache.at, runningServerBaseCache.fact = key, now, fact
+	runningServerBaseMu.Unlock()
+	return fact
+}
+
+func runningServerRepo() (repo, base string) {
+	if repo = strings.TrimSpace(os.Getenv("NOVA_SPRINT_REPO")); repo != "" {
+		base = strings.TrimSpace(os.Getenv("NOVA_SPRINT_BASE"))
+		if base == "" {
+			base = "main"
+		}
+		return repo, base
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", ""
+	}
+	repo, base, ok := sprint.ReadServerBaseFile(exe + sprint.ServerBaseFileSuffix)
+	if !ok {
+		return "", ""
+	}
+	return repo, base
 }

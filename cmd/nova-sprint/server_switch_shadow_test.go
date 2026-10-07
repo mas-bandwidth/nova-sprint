@@ -5,8 +5,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/buildinfo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,17 +81,22 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 	t.Run("a working binary plans, writes nothing, and is switched in", func(t *testing.T) {
 		target := filepath.Join(t.TempDir(), "nova-sprint")
 		require.NoError(t, os.WriteFile(target, []byte("the running server"), 0o755))
+		// The candidate is this test binary. Its build commit has to be an
+		// ancestor of origin/main in the clone the switch is given. That
+		// origin is a local bare whose main is this checkout's HEAD, the
+		// revision the toolchain stamped. It is not the forge.
+		repo := cloneAtStampedHead(t, exe)
 		ta := newTestApp(t)
-		code, out, errs := ta.do("server switch " + exe + " --target " + target + " --redis mem:" + twinFile + " --rollback --dry-run")
+		code, out, errs := ta.do("server switch " + exe + " --target " + target + " --redis mem:" + twinFile + " --rollback --dry-run --repo " + repo + " --base main")
 		require.Equal(t, 0, code, errs)
 		assert.Contains(t, out, "SHADOW TICK OK binary="+exe)
 		assert.Contains(t, out, "SERVER SWITCH DRY-RUN target="+target+" binary="+exe)
-		for _, side := range []string{".prev", ".switch.json", ".shadow.json"} {
+		for _, side := range []string{".prev", ".switch.json", ".shadow.json", ".serverbase"} {
 			_, err := os.Stat(target + side)
 			assert.True(t, os.IsNotExist(err), "a dry run writes nothing beside the target (%s)", side)
 		}
 
-		code, out, errs = ta.do("server switch " + exe + " --target " + target + " --redis mem:" + twinFile + " --rollback")
+		code, out, errs = ta.do("server switch " + exe + " --target " + target + " --redis mem:" + twinFile + " --rollback --repo " + repo + " --base main")
 		require.Equal(t, 0, code, errs)
 		assert.Contains(t, out, "SHADOW TICK OK binary="+exe+" epoch=0 state=RUNNING")
 		assert.Contains(t, out, "SERVER SWITCH OK")
@@ -109,6 +116,9 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 		prev, err := os.ReadFile(target + ".prev")
 		require.NoError(t, err)
 		assert.Equal(t, "the running server", string(prev))
+		baseFile, err := os.ReadFile(target + ".serverbase")
+		require.NoError(t, err)
+		assert.Equal(t, repo+"\nmain\n", string(baseFile))
 
 		// the tick by hand writes what the shadow only planned
 		cliTwin(t, exe, twinFile, []string{"tick"})
@@ -116,4 +126,40 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEqual(t, string(twinBefore), string(ticked))
 	})
+}
+
+// cloneAtStampedHead is a clone whose origin/main is the commit this test
+// binary was built from. The branch is created by name. The forge is not
+// fetched: the bare origin is filled from this checkout's HEAD.
+func cloneAtStampedHead(t *testing.T, exe string) string {
+	t.Helper()
+	rev, _, ok, err := buildinfo.BinaryRevision(exe)
+	require.NoError(t, err)
+	require.True(t, ok, "this test binary has no build commit; the gate runs in a git checkout")
+	root := moduleRoot(t)
+	head := verbGitLine(t, root, "rev-parse", "HEAD")
+	require.Equal(t, head, strings.ToLower(rev), "the stamped commit is this checkout's HEAD")
+	dir := t.TempDir()
+	bare := filepath.Join(dir, "origin.git")
+	clone := filepath.Join(dir, "clone")
+	verbGit(t, dir, "init", "-q", "--bare", "-b", "main", bare)
+	verbGit(t, bare, "fetch", "-q", root, "HEAD:refs/heads/main")
+	verbGit(t, dir, "clone", "-q", bare, clone)
+	require.Equal(t, "main", verbGitLine(t, clone, "rev-parse", "--abbrev-ref", "HEAD"))
+	require.Equal(t, head, verbGitLine(t, clone, "rev-parse", "main"))
+	return clone
+}
+
+func moduleRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	require.NoError(t, err)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		require.NotEqual(t, parent, dir, "no go.mod above the test")
+		dir = parent
+	}
 }

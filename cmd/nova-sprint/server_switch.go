@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
@@ -22,6 +23,8 @@ func (a *app) cmdServerSwitch(args []string, stdout, stderr io.Writer) int {
 	target := fs.String("target", "", "target binary to replace (default: this binary or NOVA_SPRINT_SERVER_BIN)")
 	dry := fs.Bool("dry-run", false, "run the candidate's shadow tick (read-only) and say what would be switched; switch, roll back and write nothing")
 	tickDeadline := fs.Duration("tick-deadline", TickDeadline, "the candidate's shadow tick (<binary> tick --shadow, read-only, against the store --redis names) must end in this long, or the switch is refused")
+	repoDir := fs.String("repo", "", "clone whose origin holds the sprint base; the candidate's build commit must be an ancestor of origin/<base> or the switch is refused")
+	baseRef := fs.String("base", "main", "sprint base branch on origin; the candidate is built from that tip")
 
 	pos, err := parse(fs, args)
 	if err != nil {
@@ -89,23 +92,44 @@ func (a *app) cmdServerSwitch(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "SHADOW TICK OK binary=%s epoch=%d state=%s parts=%d size=%d took=%s wall=%s\n", candidate, plan.Epoch, plan.State, len(plan.Parts), plan.Size, plan.Took.Round(time.Millisecond), wall.Round(time.Millisecond))
 
-	if *dry {
-		fmt.Fprintf(stdout, "SERVER SWITCH DRY-RUN target=%s binary=%s rollback=%t window=%s; nothing was switched or written\n", targetPath, candidate, *rollback, window)
-		return 0
+	baseName := *baseRef
+	if baseName == "" {
+		baseName = "main"
+	}
+	// The ancestry check is not optional on an install. No clone: refuse, and
+	// do not copy. Rollback with no binary never reaches here.
+	if *repoDir == "" {
+		fmt.Fprintf(stderr, "%s server switch REFUSED: no clone was given to check %s against origin/%s; %s is unchanged; remedy: build from origin/%s at its tip, then switch with --repo <clone> --base %s\n", prog, candidate, baseName, targetPath, baseName, baseName)
+		return 1
 	}
 
 	err = sprint.ServerSwitch(context.Background(), sprint.ServerSwitchOptions{
 		Binary:   candidate,
 		Target:   targetPath,
+		RepoDir:  *repoDir,
+		BaseRef:  baseName,
 		Rollback: *rollback,
 		Window:   window,
+		DryRun:   *dry,
 		Now:      a.now,
 		Stdout:   stdout,
 		Stderr:   stderr,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "%s server switch FAILED: %s\n", prog, oneline.Escape(err.Error()))
+		msg := err.Error()
+		if strings.HasPrefix(msg, "server switch REFUSED") {
+			fmt.Fprintf(stderr, "%s %s\n", prog, oneline.Escape(msg))
+		} else {
+			fmt.Fprintf(stderr, "%s server switch FAILED: %s\n", prog, oneline.Escape(msg))
+		}
 		return 1
+	}
+	if *dry {
+		fmt.Fprintf(stdout, "SERVER SWITCH DRY-RUN target=%s binary=%s rollback=%t window=%s; nothing was switched or written\n", targetPath, candidate, *rollback, window)
+		return 0
+	}
+	if err := sprint.WriteServerBaseFile(targetPath+sprint.ServerBaseFileSuffix, *repoDir, baseName); err != nil {
+		fmt.Fprintf(stderr, "%s server switch: switched, and %s%s was not written: %s\n", prog, targetPath, sprint.ServerBaseFileSuffix, oneline.Escape(err.Error()))
 	}
 	if err := writeShadowRecord(targetPath, shadowRecord{Binary: candidate, At: shadowAt, Wall: wall, Plan: plan}); err != nil {
 		fmt.Fprintf(stderr, "%s server switch: switched, and the shadow record %s.shadow.json was not written: %s\n", prog, targetPath, oneline.Escape(err.Error()))

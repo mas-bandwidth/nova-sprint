@@ -364,6 +364,16 @@ the old server running, when the shadow exits non-zero, panics, misses `--tick-d
 at `<target>.shadow.json`, beside the switch record. The contract is
 [SPEC-SPRINT.md](SPEC-SPRINT.md) section 14, "install-canary-shadow-tick-r.w1".
 
+`server switch` also refuses a candidate whose build commit is not an ancestor of
+`origin/<base>` (`--repo` the clone, `--base` default `main`). The build commit is read from
+the binary's build info; the binary is not executed to learn it. The refusal names the
+commit, the base and the remedy (build from `origin/<base>` at its tip, then switch). A
+binary with no source commit is refused the same way. The switch fetches `origin/<base>`.
+The tick does not: it reads the clone's already-fetched ref (`NOVA_SPRINT_REPO`, or
+`<target>.serverbase` written by a switch) and raises one judgment, "the server is off the
+sprint base", while the running server's commit is missing or not an ancestor, and closes
+it when the server is back on the base.
+
 ### release-check-cold-audit-r-ns-b2.w1
 
 `nova-sprint release check [--json] [--check <name>]...` runs the release checks and writes

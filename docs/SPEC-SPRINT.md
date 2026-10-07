@@ -4122,7 +4122,7 @@ land's place; a head that is not a commit id stops the dry run where land stops,
 | play | plays the world outside the table through these verbs, seeded (section 12); refused while no machine is running |
 | goal | `set`, `show`, `drop`: each person's goal and route, pushed by the tick (section 15) |
 | selftest land | lands a canned card on a scratch clone with this binary; green on a good binary, red on a broken lander |
-| server switch | `<binary> [--rollback]`: switches the server binary on disk, keeping the previous binary; with `--rollback`, rolls back if a land fails within the window; `--rollback` alone restores the previous binary |
+| server switch | `<binary> [--rollback] [--repo <clone>] [--base <branch>]`: switches the server binary on disk, keeping the previous binary; with `--rollback`, rolls back if a land fails within the window; `--rollback` alone restores the previous binary; an install names `--repo` and `--base` (default `main`) and is refused unless the candidate's build commit is an ancestor of `origin/<base>` |
 | clear | stops the sprint and clears all work in it: a new epoch (section 13); `--confirm sprint` |
 | teardown | drops the tables, the view and every key of the sprint, of every epoch; `--confirm sprint` |
 | selftest | the install gate, one verb (`selftest [--dir <d>] [--keep]`, the machine's, needing no actor): a build installed for a fleet is gated by running the binary itself before it lands anything, because a build of 2026-10-04 refused every landing for nine minutes ("the base dev fails the tree gate": go build said "package os is not in std") while its unit tests were green, and the install was gated by hand with the help's walkthrough. It makes a fresh directory (under `--dir`, else the system's temporary directory), a bare repository origin.git standing for the forge and a clone work whose base commit holds a go.mod (module selftest, the go directive of nova-sprint's go.mod, from the toolchain that built the binary) and a main.go importing fmt and os, so the lander's tree gate (section 7) really builds, then runs the walkthrough's card flow (realSteps) in process on a twin file in that directory — init with two readers and one member, one card, start, ticks, take, a commit pushed to the card's branch, finish with `--head`, a read ok, `land --repo-dir work --base main`, a tick — and checks origin's main holds the landing. It prints one line: `SELFTEST OK landed=1 land=<duration> gate=<duration> go=<go version> dir=<d>` at exit 0 (land the landing step took, gate the whole selftest, go the toolchain that built the binary), or `SELFTEST FAILED step=<name> why=<one line> dir=<d>` at exit 1, naming the step and its own reason — the lander's for a red gate, so the gate's go output is printed ("package os is not in std" would be). The directory is removed unless `--keep` or a failure (a failure keeps it and names it); a removal that cannot run is said on a NOTE line and keeps the exit. It opens no store of the caller's, no Redis and no network |
@@ -4862,6 +4862,21 @@ in `run --land` rolls back the binary on disk to the previous binary, causing th
 to stop (`RUN STOP the binary this loop runs was replaced...`, exit 3) so its supervisor restarts
 it with the previous binary. `server switch --rollback` without a binary immediately restores
 the previous binary.
+
+The server is built from the sprint base. `server switch` reads the candidate's build commit
+from the binary's build info (`vcs.revision`; the file is not executed) and fetches
+`origin/<base>` in the clone `--repo` names (`--base` defaults to `main`). The switch is
+refused, with nothing copied, unless that commit is an ancestor of the fetched tip
+(`git merge-base --is-ancestor`). The refusal names the commit, `origin/<base>` and its tip,
+and the remedy: build from `origin/<base>` at its tip, then switch. A binary with no source
+commit is refused the same way, naming that it has none. `--rollback` with no binary restores
+the previous binary and does not check a build commit. On a switch that lands, the clone and
+the base are written at `<target>.serverbase`. The tick reads that file, or `NOVA_SPRINT_REPO`
+and `NOVA_SPRINT_BASE`, and checks the running server against the clone's already-fetched
+`origin/<base>`. The tick does not fetch: a tick stays short, and a missing ref or a git
+error is left unchecked (nothing raised, nothing closed). While the check says the build
+commit is missing or is not an ancestor, the tick raises one judgment, "the server is off
+the sprint base", and closes it when the running server is back on the base.
 
 `nova-sprint selftest land` lands a canned card on a scratch clone with this binary, run by
 any install before switching: green on a good binary and red on a broken lander (item 14).

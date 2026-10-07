@@ -32,6 +32,7 @@
 package buildinfo
 
 import (
+	dbg "debug/buildinfo"
 	"fmt"
 	"runtime"
 	"runtime/debug"
@@ -316,4 +317,28 @@ func (f Fields) PartialSource() bool {
 		}
 	}
 	return false
+}
+
+// BinaryRevision reads the vcs revision stamped into a Go binary on disk, the same
+// vcs.revision Version uses for the running process. The file is not executed: a
+// text file that prints a version line is not a build commit. ok is false when the
+// binary carries no revision. An error means the file could not be read as a Go binary.
+func BinaryRevision(path string) (revision string, dirty bool, ok bool, err error) {
+	info, err := dbg.ReadFile(path)
+	if err != nil {
+		return "", false, false, err
+	}
+	var rev, modified string
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			rev = s.Value
+		case "vcs.modified":
+			modified = s.Value
+		}
+	}
+	if rev == "" {
+		return "", false, false, nil
+	}
+	return rev, modified == "true", true, nil
 }
