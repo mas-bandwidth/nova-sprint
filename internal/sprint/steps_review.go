@@ -954,9 +954,13 @@ type ReworkCard struct {
 	Set        map[string]string `json:",omitempty"`
 	Rule, Said string            `json:",omitempty"`
 	// Finding, when set, is what this attempt was found to be in place of its broken reads'
-	// findings: the work lint's (worklint.go, TickLint), which asks no reader. The brief's
-	// bound judges it, and the next attempt's work card carries it.
+	// findings: the work lint's (worklint.go, TickLint) or the machine gate's
+	// (gaterun.go, TickGate), which ask no reader. The brief's bound judges it, and the
+	// next attempt's work card carries it.
 	Finding string `json:",omitempty"`
+	// Why, when set, is what the next attempt's card is told it exists for, over the
+	// default (the work lint's words): the machine gate names itself here.
+	Why string `json:",omitempty"`
 }
 
 // ReworkResolves is the judgments a rework discharges on its primary.
@@ -1076,7 +1080,10 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		given := reworkGiven(s, c)
 		if one.Finding != "" {
 			given["finding"] = cutText(one.Finding, MaxCardTextBytes)
-			given["why"] = fmt.Sprintf("attempt %d finished and the work lint refused it", c.Int("attempt"))
+			given["why"] = one.Why
+			if given["why"] == "" {
+				given["why"] = fmt.Sprintf("attempt %d finished and the work lint refused it", c.Int("attempt"))
+			}
 		}
 		set := map[string]string{"fix": fix, "finding": given["finding"], "why": given["why"], FieldFindingAttempt: c.F("attempt"),
 			"reworks": itoa(c.Int("reworks") + 1), "broken_reads": itoa(c.Int("broken_reads") + broken)}
