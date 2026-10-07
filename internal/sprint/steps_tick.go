@@ -247,7 +247,7 @@ var TickTables = []TableUpdate{
 	{Work, []TickPartDef{{PartDrain, nil}, {"resolve", TickResolve}, {PartCapDeal, TickCapDeal}, {"deal", TickDeal}, {"accept", TickAccept}}},
 	{Readers, []TickPartDef{{"ask", TickAsk}}},
 	{Merge, []TickPartDef{{"resume", TickResume}}},
-	{Fleet, []TickPartDef{{"presence", TickPresence}, {PartFriendStall, TickFriendStall}}},
+	{Fleet, []TickPartDef{{"presence", TickPresence}, {"verdicts", TickVerdicts}, {"friend redeal", TickFriendRedeal}, {PartFriendStall, TickFriendStall}}},
 }
 
 // PartCapDeal is the attempt cap's default answer, the pump's part before the deal
@@ -1072,8 +1072,11 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	// lapses again and again cannot reset them, and the time a card spends
 	// withdrawn counts.
 	for _, c := range s.Fleet.Column(Ready, Working, Withdrawn) {
-		field, limit, word, own := WorkDeadline(s, c)
 		friend, idle := friendLaneIdle(s, r.Friends, c)
+		if IsFriendRow(c.Row) && !idle {
+			continue // a friend's card past its deadline is redealt (TickFriendRedeal), never judged late
+		}
+		field, limit, word, own := WorkDeadline(s, c)
 		if idle {
 			limit = FriendReadyMax // ready on her row while she has a lane free: no one is taking it
 		}

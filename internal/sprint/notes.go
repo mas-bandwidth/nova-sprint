@@ -42,9 +42,10 @@ const (
 	NMemberUp       = "fleet member up"
 	NMemberDown     = "fleet member down"
 	NUnknownMachine = "an unknown machine is beating"
-	NStagingRefused = "a member refused a card at staging"    // dealt to another member
-	NRestWithdrawn  = "a card withdrawn from a resting route" // dealt again on one that serves
-	NFriendReturned = "a friend's card returned to ready"     // by friend reconcile: no report, and her queue says done or does not hold it
+	NStagingRefused = "a member refused a card at staging"            // dealt to another member
+	NRestWithdrawn  = "a card withdrawn from a resting route"         // dealt again on one that serves
+	NFriendReturned = "a friend's card returned to ready"             // by friend reconcile: no report, and her queue says done or does not hold it
+	NFriendRedealt  = "a friend's card past its deadline was redealt" // TickFriendRedeal: never a failure
 	// The coordinator held a fleet member, a reader, a friend or a stream, or released
 	// its hold (hold, unhold: hold.go), the reason in the note.
 	NHeld   = "held by the coordinator"

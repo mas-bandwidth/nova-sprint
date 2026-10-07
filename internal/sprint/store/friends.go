@@ -82,6 +82,9 @@ type FriendRow struct {
 	Width   int    `json:"width"`
 	OK      int    `json:"ok"`
 	Failed  int    `json:"failed"`
+	// Redealt counts her cards taken back past their deadline unfinished, a redeal and
+	// never a failure (sprint.TickFriendRedeal).
+	Redealt int    `json:"redealt"`
 	Status  string `json:"status"`
 	Class   string `json:"class,omitempty"`
 	Mode    string `json:"mode,omitempty"`
@@ -280,7 +283,7 @@ func (st *Store) SetFriendHeld(ctx context.Context, friend string, held bool, wh
 // FriendRows is the friends table at now: every friend of the roster with her
 // width and her status (sprint.FriendStatus), in the fleet table's order
 // (FleetOrder: up, asleep, then held, then down, each by name). The counts
-// (ready, working, ok, failed) are her sprint cards', filled by where from her
+// (ready, working, ok, failed, redealt) are her sprint cards', filled by where from her
 // fleet row (friend.<name>), never read or counted here: the store holds no
 // job record. Three reads: the roster, the seat's generation, then every
 // friend's beat, health and last finish in one exchange. A store that keeps no records has

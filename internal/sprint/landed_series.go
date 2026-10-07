@@ -13,10 +13,12 @@ import (
 // A landing is a work-table move to "<stream>:landed" from any state but
 // waiting. A sentinel's release (waiting to landed) is not work. Each card
 // counts once, the first landing in log order. A set move counts every card
-// on the line. The worker is the last "<who>:ok" of the card's work attempt
-// (a card matching `.w<n>`), by the line's time, and a tie keeps the later
-// line. "friend.<name>" is a friend; anything else is a fleet machine; a
-// missing worker is unknown. The lander is not the worker: the :ok row is.
+// on the line. The worker is the last finish of the card's work attempt
+// (a card matching `.w<n>`): the move to "<who>:finished" whose worker word is ok
+// (verdicts.go), or, in a log written before the readers' verdicts counted, the
+// move to "<who>:ok". A tie keeps the later line. "friend.<name>" is a friend;
+// anything else is a fleet machine; a missing worker is unknown. The lander is
+// not the worker: the finished or ok row is.
 
 const (
 	// LandedBucketSeconds is one bucket of the series: ten minutes.
@@ -89,12 +91,22 @@ func LandedSeriesOf(lines []Line, now time.Time) LandedSeries {
 			if card == "" {
 				continue
 			}
-			if workAttempt.MatchString(card) && strings.HasSuffix(l.To, ":ok") {
-				primary := workAttempt.ReplaceAllString(card, "")
-				who := strings.TrimSuffix(l.To, ":ok")
-				prev, ok := workers[primary]
-				if !ok || !l.At.Before(prev.at) {
-					workers[primary] = landedWorker{who: who, at: l.At}
+			// the worker's own finish, where it moved to finished ok (the worker's word,
+			// verdicts.go), or the readers' verdict that moved it on to ok
+			if workAttempt.MatchString(card) {
+				who := ""
+				switch {
+				case strings.HasSuffix(l.To, ":finished") && l.Set["ok"] == "yes":
+					who = strings.TrimSuffix(l.To, ":finished")
+				case strings.HasSuffix(l.To, ":ok"):
+					who = strings.TrimSuffix(l.To, ":ok")
+				}
+				if who != "" {
+					primary := workAttempt.ReplaceAllString(card, "")
+					prev, ok := workers[primary]
+					if !ok || !l.At.Before(prev.at) {
+						workers[primary] = landedWorker{who: who, at: l.At}
+					}
 				}
 			}
 			if l.Table != Work || !strings.HasSuffix(l.To, ":landed") {

@@ -776,13 +776,17 @@ func (a *app) workerView(ctx context.Context, st *store.Store, as string) (worke
 		v.Next = workerNext(v, mine[0], ps[0])
 	}
 
-	// my results not landed: the cards finished ok whose primaries wait in review or merging
-	done, err := st.ReadCells(ctx, sprint.Fleet, row, sprint.DoneOK)
+	// my results not landed: the cards finished ok, read ok or still waiting for the
+	// readers' verdict, whose primaries wait in review or merging
+	done, err := st.ReadCells(ctx, sprint.Fleet, row, sprint.Finished, sprint.DoneOK)
 	if err != nil {
 		return v, false, err
 	}
 	byPrimary := map[string]*sprint.Card{}
 	for _, c := range done {
+		if c.Col == sprint.Finished && c.F("ok") != "yes" {
+			continue // a failed finish waits for a reader like any other, not a result of hers
+		}
 		p := c.F(sprint.PrimaryField)
 		if old := byPrimary[p]; old == nil || c.F("finished") > old.F("finished") {
 			byPrimary[p] = c
