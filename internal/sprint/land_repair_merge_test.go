@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,17 +21,32 @@ type mergeRig struct {
 	t      *testing.T
 	dir    string
 	before string
+	env    []string
+	mu     sync.Mutex
+	cmds   []*exec.Cmd
 }
 
 func (r *mergeRig) git(args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", r.dir}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1",
-		"GIT_AUTHOR_NAME=lander", "GIT_AUTHOR_EMAIL=lander@example.invalid", "GIT_COMMITTER_NAME=lander", "GIT_COMMITTER_EMAIL=lander@example.invalid")
+	cmd.Env = r.env
+	r.mu.Lock()
+	r.cmds = append(r.cmds, cmd)
+	r.mu.Unlock()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("git %s: %w: %s", args[0], err, out)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// Close waits for all started git child processes to exit before returning, so that
+// t.TempDir's cleanup never races a running git child.
+func (r *mergeRig) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	err := closeGitChildren(r.cmds)
+	r.cmds = nil
+	return err
 }
 
 func (r *mergeRig) must(args ...string) string {
@@ -52,8 +68,23 @@ func (r *mergeRig) write(file, text string) {
 // card onto main as the lander does.
 func newMergeRig(t *testing.T, base, head map[string]string) *mergeRig {
 	t.Helper()
-	r := &mergeRig{t: t, dir: t.TempDir()}
+	confDir := t.TempDir()
+	gitconfig := filepath.Join(confDir, ".gitconfig")
+	require.NoError(t, os.WriteFile(gitconfig, []byte("[gc]\n\tautoDetach = false\n\tauto = 0\n[maintenance]\n\tautoDetach = false\n"), 0o644))
+	dir := t.TempDir()
+	r := &mergeRig{
+		t:   t,
+		dir: dir,
+		env: append(os.Environ(),
+			"GIT_CONFIG_GLOBAL="+gitconfig, "GIT_CONFIG_NOSYSTEM=1",
+			"GIT_AUTHOR_NAME=lander", "GIT_AUTHOR_EMAIL=lander@example.invalid",
+			"GIT_COMMITTER_NAME=lander", "GIT_COMMITTER_EMAIL=lander@example.invalid",
+		),
+	}
+	t.Cleanup(func() { _ = r.Close() })
 	r.must("init", "-q", "-b", "main")
+	r.must("config", "gc.autoDetach", "false")
+	r.must("config", "gc.auto", "0")
 	for f, s := range base {
 		r.write(f, s)
 	}
@@ -87,6 +118,7 @@ func TestTheLanderRepairsAStrayBackquoteAndSaysSo(t *testing.T) {
 		t.Parallel()
 		r := newMergeRig(t, map[string]string{"docs/SPEC-BUS.md": "# Bus\n\nThe `push` verb.\n"},
 			map[string]string{"docs/SPEC-BUS.md": "# Bus\n\nThe `push` verb takes `--proof first.\n"})
+		defer r.Close()
 		merged := r.must("rev-parse", "HEAD")
 		note, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
 		require.NoError(t, err)
@@ -104,6 +136,7 @@ func TestTheLanderRepairsAStrayBackquoteAndSaysSo(t *testing.T) {
 	t.Run("an ambiguous span is refused naming the line", func(t *testing.T) {
 		t.Parallel()
 		r := newMergeRig(t, map[string]string{"a.md": "# T\n"}, map[string]string{"a.md": "# T\n\nSee `a` b `c` ` here.\n"})
+		defer r.Close()
 		merged := r.must("rev-parse", "HEAD")
 		note, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
 		require.NoError(t, err)
@@ -117,6 +150,7 @@ func TestTheLanderRepairsAStrayBackquoteAndSaysSo(t *testing.T) {
 		t.Parallel()
 		audit := "# Audit\n\nThe call `f(x) returns ``` and `` here `.\n"
 		r := newMergeRig(t, map[string]string{"README.md": "r\n"}, map[string]string{"security/audit.md": audit})
+		defer r.Close()
 		merged := r.must("rev-parse", "HEAD")
 		note, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, []string{"security/**", "ratings/**"})
 		require.NoError(t, err)
@@ -133,6 +167,7 @@ func TestTheLanderRepairsAStrayBackquoteAndSaysSo(t *testing.T) {
 	t.Run("the formatter's faults are repaired with the backquote", func(t *testing.T) {
 		t.Parallel()
 		r := newMergeRig(t, map[string]string{"a.md": "one\n"}, map[string]string{"a.md": "one\ntwo `x \r\nthree"})
+		defer r.Close()
 		note, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
 		require.NoError(t, err)
 		assert.Empty(t, refused)
@@ -170,6 +205,7 @@ func TestE4CatchesADeletionThatUnbalancesASpan(t *testing.T) {
 		t.Parallel()
 		r := newMergeRig(t, map[string]string{"a.md": "# T\n\nThe `stream\nset` verb is one.\n"},
 			map[string]string{"a.md": "# T\n\nThe `stream\n"})
+		defer r.Close()
 		note, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
 		require.NoError(t, err)
 		assert.Empty(t, refused)
@@ -179,6 +215,7 @@ func TestE4CatchesADeletionThatUnbalancesASpan(t *testing.T) {
 	t.Run("a closing backquote deleted from a line is caught", func(t *testing.T) {
 		t.Parallel()
 		r := newMergeRig(t, map[string]string{"a.md": "a `b` c `d\ne` f\n"}, map[string]string{"a.md": "a `b` c `d\ne f\n"})
+		defer r.Close()
 		note, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
 		require.NoError(t, err)
 		assert.Empty(t, refused)
@@ -188,6 +225,7 @@ func TestE4CatchesADeletionThatUnbalancesASpan(t *testing.T) {
 	t.Run("a deletion with no backquote beside it to drop is refused naming the line", func(t *testing.T) {
 		t.Parallel()
 		r := newMergeRig(t, map[string]string{"a.md": "See `x\nmid\ny` here\nend\n"}, map[string]string{"a.md": "See `x\nmid\nend\n"})
+		defer r.Close()
 		merged := r.must("rev-parse", "HEAD")
 		note, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
 		require.NoError(t, err)
@@ -201,6 +239,7 @@ func TestE4CatchesADeletionThatUnbalancesASpan(t *testing.T) {
 		base := "# T\n\nOne `a` here.\nA stray ` tick.\nTwo `b` there.\n\nThe `c`\nand `d` go.\n"
 		r := newMergeRig(t, map[string]string{"a.md": base},
 			map[string]string{"a.md": "# T\n\nOne `a` here.\nTwo `b` there.\n\nThe `c`\n"})
+		defer r.Close()
 		merged := r.must("rev-parse", "HEAD")
 		note, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
 		require.NoError(t, err)
