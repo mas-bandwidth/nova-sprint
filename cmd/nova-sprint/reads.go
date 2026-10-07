@@ -27,6 +27,17 @@ import (
 // The read verbs: queue, where, inbox, card, check. Each has --json, one
 // object for a program; the driver reads the sprint through them.
 
+// LaneRow is a machine's lanes with route information for local-endpoint lanes.
+type LaneRow struct {
+	Kind    string    `json:"kind"`
+	Machine string    `json:"machine"`
+	Width   int       `json:"width"`
+	Held    []string  `json:"held"`
+	Waiting []string  `json:"waiting"`
+	Since   time.Time `json:"since,omitzero"`
+	Route   string    `json:"route,omitempty"`
+}
+
 // summary is the sprint's line: landed / all primaries on the table, percent,
 // ETA. The ETA is the time until every card on the table has landed (the owner,
 // 2026-10-02: "it's the ETA to all cards being done, not the cards that are in
@@ -516,9 +527,9 @@ type whereView struct {
 	// whether its routes serve; absent with no route. The text frame does not draw it.
 	Providers []sprint.ProviderRow `json:"providers,omitempty"`
 	// Lanes is where --json --cards's, read for the dashboard: every machine's lanes with a
-	// holder or a queue (lane list; docs/SPEC-SPRINT.md section 18); absent when none is, and
-	// without --cards. The text frame does not draw it.
-	Lanes []sprint.LaneRow `json:"lanes,omitempty"`
+	// holder or a queue (lane list; docs/SPEC-SPRINT.md section 18), and the route for
+	// local-endpoint lanes; absent when none is, and without --cards. The text frame does not draw it.
+	Lanes []LaneRow `json:"lanes,omitempty"`
 	// Cards and Judgments are where --json --cards's, read for the dashboard's pull routes
 	// (store.Dealt): every work card dealt to a fleet row and not finished, and the open
 	// judgments naming one of their primaries; absent without --cards.
@@ -838,8 +849,35 @@ func (a *app) whereLoop(ctx context.Context, r whereRun, stdout, stderr io.Write
 			if v.Holds, err = st.Holds(ctx); err != nil {
 				return "", a.readFailed("where", err, stderr), false
 			}
-			if v.Lanes, err = st.LaneRows(ctx); err != nil {
+			rawLanes, err := st.LaneRows(ctx)
+			if err != nil {
 				return "", a.readFailed("where", err, stderr), false
+			}
+			// Get routes to find local-endpoint routes for lanes
+			routes, _, err := st.Routes(ctx)
+			if err != nil {
+				return "", a.readFailed("where", err, stderr), false
+			}
+			// Find local-endpoint routes; mark lanes with the route if it's available
+			var localEndpointRoute string
+			for _, route := range routes {
+				if route.Provider == "endpoint" && route.Enabled {
+					localEndpointRoute = route.Name
+					break
+				}
+			}
+			// Convert sprint.LaneRow to cmd-side LaneRow with route info
+			v.Lanes = make([]LaneRow, len(rawLanes))
+			for i, lane := range rawLanes {
+				v.Lanes[i] = LaneRow{
+					Kind:    lane.Kind,
+					Machine: lane.Machine,
+					Width:   lane.Width,
+					Held:    lane.Held,
+					Waiting: lane.Waiting,
+					Since:   lane.Since,
+					Route:   localEndpointRoute,
+				}
 			}
 		}
 		if r.c.json && r.rows {
