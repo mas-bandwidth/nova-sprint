@@ -118,7 +118,8 @@ nova-sprint answer [--dry-run] [--bar <p>] [--every <duration>] [--timeout <dura
 nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>]] [--deadline <duration>] [--stale <duration>]
 nova-sprint card <id>
 nova-sprint log [--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]
-nova-sprint check
+nova-sprint check [--bring-up]
+nova-sprint watch --events
 nova-sprint repair
 nova-sprint where [--watch] [--every <duration>] [--all] [--json [--cards] [--rows] [--archived]]
 nova-sprint view coordinator [--all] [--since <cursor>] [--json]
@@ -140,6 +141,8 @@ nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>]
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
+
+`check --bring-up` prints the coordinator bring-up: one line per thing the seat needs, its state (`running`, `missing`, or `stale`), and the nova verb that starts it. `start` (while running), `coordinator <name>`, and `handover` end with the same lines. `watch --events` prints one line per kind in the log (read asked, read verdict, work finished, merge queued, landing, blocked merge, refused drain, pushed judgment), with repeats folded into a count. The commands are in `docs/COORDINATOR-TOOLS.md`.
 
 `friend sync` wakes a friend through the bus store at `NOVA_BUS_REDIS` after
 delivering her card. Its bus login reads `NOVA_BUS_REDIS_USER` and the password
