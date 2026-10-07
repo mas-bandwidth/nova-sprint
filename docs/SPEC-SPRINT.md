@@ -75,9 +75,9 @@ and the same day: "please give friends in the friends table the same ready,
 working, width, done, ok%, status that we have for machines, but no load, since
 they don't correspond to a machine (at the moment...)"; "you can even use the
 inbox/outbox standard in friend's working dirs") has one row per friend and the
-fleet table's columns but `load`: `ready`, `working`, `width`, `done`, `ok%`,
-`status`, with `ok` and `failed` hidden under `done` and `ok%` as the fleet's
-are. Its rows are nova-config's friend rows and nothing else: `friend sync`
+fleet table's columns but `load`, with `dealt` beside `working` (below):
+`ready`, `working`, `dealt`, `width`, `done`, `ok%`, `status`, with `ok` and
+`failed` hidden under `done` and `ok%` as the fleet's are. Its rows are nova-config's friend rows and nothing else: `friend sync`
 (`--pg`, else NOVA_PG_DSN, as nova-config takes it) copies their names into the
 store's `friends` record, adding a friend the record lacks, taking off one
 nova-config no longer has with her beat, and keeping the hold of a
@@ -93,7 +93,9 @@ never ok. `ready` is never a friend's card's state: the tick deals a card
 straight into `working` (`sprint.TickDeal`). A hand-written inbox job that is
 no card (an `inbox/<job>/` directory named for no card of the sprint) is
 outside the sprint and is shown nowhere in the table; the coordinator's NOW.md
-is its pointer. `ready` and `working` count her cards in those states; `width`
+is its pointer. `ready` and `working` count her cards in those states,
+`working` only the verified of them (below); `dealt` is every card of hers in
+`working` on her row; `width`
 is her width, the jobs she works at once: her nova-config friend row's `width`
 (`nova-config friend set <friend> --width <n>`, at least 1, 8 by default; the
 owner, 2026-10-02: "6/1 seems a bit wrong -- need to setup width for friends?
@@ -102,6 +104,24 @@ whose width is below 1 is refused, exit 1, nothing written), summed in the
 footer; `ok` and `failed` count her cards done; `done` is `sum(ok+failed)` and
 `ok%` is `pct(ok/ok+failed)`, pooled over the friends in the footer, the fleet
 table's own formulas.
+
+**Verified working** (card sn-verified-working-b-ns-b.w1; the owner: "trust but
+VERIFY"; "I want to trust the ok%"; "Mechanical. You know the drill."; "Are they
+actually doing the work that is shown in the friend table? Really?"; "i don't
+want dollar amounts for friends. token counts are fine."). The friends table's
+`dealt` column beside `working` counts every card of hers in `working` on her row,
+and `working` counts only the verified of them: a card with a push on its branch
+(one git ls-remote a card, the read `friend take` makes of her: FriendTakeReq.Started)
+or named in her beat `--running` (`sprint.FriendWorkingOf`), so dealt and working
+differ exactly when she holds cards no push proves and her beat does not name. The
+verification is read outside the tables, as friend take reads it, never trusted from
+her word alone; friends carry no dollar or cost column, and token counts, when a
+friends column carries them, come with their own lock change
+(internal/sprint/TABLES.lock, the 2026-10-06 entry). A friend holding working cards
+and finishing none raises one judgment per friend after the friend-finish window
+(`set --friend-finish <duration|default>`, default fifteen minutes, down from
+thirty), its decisions `return` (take back the cards she has not started: `friend
+take <friend> --all-unstarted`) and `wait`.
 
 A friend says she is there with `friend beat <friend>` (answered `FRIEND-BEAT OK
 <friend> at=<t> ... row_mode=<batch|one-shot> row_width=<n>`, her nova-config row
@@ -3592,13 +3612,15 @@ hours. The tick's overdue part runs the pass (internal/sprint coordinator_pass.g
   pong, so on the running machine no beat carries one and this judgment stays silent
   until the daemon passes `--pong <status last_pong>` (a follow-up card, PATHS
   cmd/nova-friend/**). Until then a deaf session shows only as the idle judgment below,
-  30 minutes on, and only if she holds working cards.
+  15 minutes on, and only if she holds working cards.
 - **a friend holds working cards and finishes none** (`a friend holds working cards and
   finishes none`), one on each friend not held holding working cards on her row when
   neither her last working-to-done finish (`finished` of her done cards, ok or failed) nor
   her oldest working card's take is within the friend-finish window (`set
   --friend-finish <duration|default>`, the work table's property `friend_finish`, default
-  30m); it names her cards and the age of her last finish. Only her work cards count: a
+  15m, card sn-verified-working-b-ns-b.w1); it names her cards and the age of her last
+  finish, and its decisions are `return` (take back the cards she has not started:
+  `friend take <friend> --all-unstarted`) and `wait`. Only her work cards count: a
   read is not card work.
 - **judgments wait on the coordinator past their deadline** (`judgments wait on the
   coordinator past their deadline`), one about the sprint while any open judgment is
