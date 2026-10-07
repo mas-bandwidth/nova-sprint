@@ -14,6 +14,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 |---|---|
 | [SprintEvents](README-SprintEvents.md) | Event-driven scheduling, leases, deadlines, notifications, and interruptions. |
 | [DirtyTick](README-DirtyTick.md) | How a tick drains queues and moves work between tables. |
+| `CapDeal` | The attempt cap's cap deal: a card past its cap to a friend-tier friend up with room, and the judgment at its redeal bound with none. |
 | `DirtyTickRead` | Reader handoffs within the tick. |
 | `RouteIndex` | Route selection and its counters. |
 | `Level` | Distribution of queued work across available capacity. |
