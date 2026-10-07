@@ -7,7 +7,8 @@
 \* redeal bound; this module adds the friends the cap deal is decided against
 \* and the machine deal in its shadow, on a small instance: three cards, two
 \* friends, one machine (width one), a stream's cap of two attempts and a
-\* redeal bound of three takes (the code's MaxRedeals).
+\* redeal bound of three redeals (the code's MaxRedeals), with the bound below
+\* the count that its last two identically ended takes make (identicalEnds, rule 2).
 \*
 \* A ready primary past its attempt cap (`since`, the attempts on the brief it
 \* carries, against `Cap`; AttemptsCap and AtBriefBound with no finding) is dealt
@@ -18,11 +19,14 @@
 \* the friend's card is a new work card at the next attempt, so the ended take
 \* and the redeal count clear too (ended := FALSE, rdl := 0; friendDealUnit).
 \* With no such friend up with room the card is the deal's: at its redeal bound
-\* (`ended`, a take of the withdrawn work card ended, at MaxRedeals; AtRB,
-\* redealBound) it is not dealt again, and the tick raises the cap's judgment
-\* (NBriefWrong: brief defect after n attempts, the findings and the spend,
-\* decisions brief and drop). Below its bound its attempt is dealt to a machine
-\* again.
+\* (`ended`, a take of the withdrawn work card ended, with its redeal count at
+\* MaxRedeals, or its last two ended takes ended the same way (`same`, the code's
+\* identicalEnds, rule 2); AtRedealBound, redealBound) it is not dealt again,
+\* and the tick raises the cap's judgment (NBriefWrong: brief defect after n
+\* attempts, the findings and the spend, decisions brief and drop). So a card at
+\* its bound with no friend-tier friend up with room is judged and judged once:
+\* it is never dealt to a machine instead, and the judgment is never raised
+\* twice. Below its bound its attempt is dealt to a machine again.
 \*
 \* THE PHASES. The pump's parts run in one order inside a tick: the cap deal over
 \* the ready cards, then the deal (TickTables: resolve, cap deal, deal, accept).
@@ -37,7 +41,10 @@
 \*   FriendFirst: in the deal phase no ready card past its cap is left while a
 \*     frontier or heavy friend is up with room: the deal never gives a machine
 \*     a capped card a friend-tier friend could take.
-\*   ExactlyOneJudgment: a card's open judgments never exceed one.
+\*   ExactlyOneJudgment: a card's open judgments never exceed one. With
+\*     NoCardLost it is exactly one: a card at its bound is judged, and judged
+\*     once, whichever bound it is at (the count, or the two identical ended
+\*     takes below it).
 \*   NoCardLost: no card is lost between the cap deal and the deal. The cap deal
 \*     passes a card over only when no friend-tier friend has room; at its
 \*     redeal bound the deal then judges it, opens exactly one judgment and
@@ -53,21 +60,28 @@
 \*                   of judged (breaks NoCardLost).
 \*   "twice"         the bound's judgment is raised twice (breaks
 \*                   ExactlyOneJudgment).
+\*   "idnojudge"     a card at the bound of two identical ended takes (below the
+\*                   count) is dealt to the machine instead of judged (breaks
+\*                   NoCardLost at that bound).
+\*   "idtwice"       the identical-ends bound's judgment is raised twice (breaks
+\*                   ExactlyOneJudgment at that bound).
 \*
 \* The model reads internal/sprint/brief_bound.go's AttemptCapDeal, friendWithFree
 \* and capJudgments; internal/sprint/steps_tick.go's TickCapDeal, PartCapDeal,
-\* TickDeal, AtRedealBound and redealBound; internal/sprint/friend_deal.go's
-\* friendDeal and friendWithFree; and the tests
-\* TestTheAttemptCapJudgmentsDefaultAnswerDealsAFriendCard and
-\* TestTwoCappedCardsDoNotExceedAFriendsWidth.
+\* TickDeal, AtRedealBound and redealBound (the count at MaxRedeals or
+\* identicalEnds); internal/sprint/failure.go's identicalEnds; and the tests
+\* TestTheAttemptCapJudgmentsDefaultAnswerDealsAFriendCard,
+\* TestTwoCappedCardsDoNotExceedAFriendsWidth,
+\* TestIdenticalEndsReadsTheLastTwoTakesOfTheCard and
+\* TestASecondIdenticalFailureRaisesTheBoundAtOnce.
 
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Cards, Friends, Class, Width, MaxWidth, Cap, MaxRedeals, MaxSince, Broken
 
-VARIABLES col, who, since, ended, rdl, judge, lostAtBound, status, room, phase
+VARIABLES col, who, since, ended, rdl, same, judge, lostAtBound, status, room, phase
 
-vars == <<col, who, since, ended, rdl, judge, lostAtBound, status, room, phase>>
+vars == <<col, who, since, ended, rdl, same, judge, lostAtBound, status, room, phase>>
 
 Cols == {"ready", "friend", "machine", "judgment", "dropped"}
 Phases == {"idle", "cap", "deal"}
@@ -84,16 +98,24 @@ Best == CHOOSE f \in Candidates : \A g \in Candidates : room[f] >= room[g]
 Load(f) == Cardinality({c \in Cards : col[c] = "friend" /\ who[c] = f})
 MachineFree == ~\E c \in Cards : col[c] = "machine"
 
-\* The card's attempts on its brief, and the withdrawn work card's redeal bound.
+\* The card's attempts on its brief, and the withdrawn work card's redeal bound:
+\* a take ended and its redeal count is at MaxRedeals, or its last two ended
+\* takes ended the same way (identicalEnds, rule 2). IdBound is the bound the
+\* count alone does not give; the witnesses below isolate it.
 PastCap(c) == since[c] >= Cap
-AtBound(c) == ended[c] /\ rdl[c] >= MaxRedeals
+AtBound(c) == ended[c] /\ (rdl[c] >= MaxRedeals \/ same[c])
+IdBound(c) == ended[c] /\ same[c] /\ rdl[c] < MaxRedeals
 
 \* The cap deal a ready card past its cap is owed, and the deal the rest.
 CapWaiting(c) == col[c] = "ready" /\ PastCap(c) /\ Candidates # {}
-JudgeNow(c) == col[c] = "ready" /\ AtBound(c) /\ Broken # "nojudge"
+JudgeNow(c) ==
+  /\ col[c] = "ready"
+  /\ AtBound(c)
+  /\ Broken # "nojudge"
+  /\ ~(Broken = "idnojudge" /\ IdBound(c))
 MachineNow(c) ==
   /\ col[c] = "ready"
-  /\ (Broken = "nojudge" \/ ~AtBound(c))
+  /\ (Broken = "nojudge" \/ (Broken = "idnojudge" /\ IdBound(c)) \/ ~AtBound(c))
   /\ MachineFree
   /\ (Broken = "machinefirst" \/ ~PastCap(c) \/ ~FriendRoom)
 DealTodo == \E c \in Cards : JudgeNow(c) \/ MachineNow(c)
@@ -104,6 +126,7 @@ TypeOK ==
   /\ since \in [Cards -> 0..MaxSince]
   /\ ended \in [Cards -> BOOLEAN]
   /\ rdl \in [Cards -> 0..(MaxRedeals + 1)]
+  /\ same \in [Cards -> BOOLEAN]
   /\ judge \in [Cards -> 0..2]
   /\ lostAtBound \in [Cards -> BOOLEAN]
   /\ status \in [Friends -> {"up", "down"}]
@@ -118,6 +141,7 @@ Init ==
   /\ since = [c \in Cards |-> 0]
   /\ ended = [c \in Cards |-> FALSE]
   /\ rdl = [c \in Cards |-> 0]
+  /\ same = [c \in Cards |-> FALSE]
   /\ judge = [c \in Cards |-> 0]
   /\ lostAtBound = [c \in Cards |-> FALSE]
   /\ status = [f \in Friends |-> "up"]
@@ -128,13 +152,14 @@ Init ==
 TickStart ==
   /\ phase = "idle"
   /\ phase' = "cap"
-  /\ UNCHANGED <<col, who, since, ended, rdl, judge, lostAtBound, status, room>>
+  /\ UNCHANGED <<col, who, since, ended, rdl, same, judge, lostAtBound, status, room>>
 
 \* The cap deal: a ready card past its cap goes to the friend-tier friend up with
 \* the most room; her room is spent as she is given the card, and the card's
 \* count resets as a replaced brief does. The friend's card is a new work card at
 \* the next attempt (friendDealUnit, createEntry): its take has not ended and its
-\* redeal count starts over, so the ended take and the count both clear.
+\* redeal count starts over, so the ended take, the count and the identical ends
+\* all clear.
 CapPart(c) ==
   /\ phase = "cap"
   /\ Broken # "machinefirst"
@@ -147,6 +172,7 @@ CapPart(c) ==
      /\ room' = [room EXCEPT ![f] = room[f] - 1]
      /\ ended' = [ended EXCEPT ![c] = FALSE]
      /\ rdl' = [rdl EXCEPT ![c] = 0]
+     /\ same' = [same EXCEPT ![c] = FALSE]
      /\ UNCHANGED <<lostAtBound, status, phase>>
 
 \* No cap deal is left: the deal's phase opens. (The broken "machinefirst" runs
@@ -155,12 +181,12 @@ CapDone ==
   /\ phase = "cap"
   /\ (Broken = "machinefirst" \/ ~\E c \in Cards : CapWaiting(c))
   /\ phase' = "deal"
-  /\ UNCHANGED <<col, who, since, ended, rdl, judge, lostAtBound, status, room>>
+  /\ UNCHANGED <<col, who, since, ended, rdl, same, judge, lostAtBound, status, room>>
 
 \* The deal: a ready card at its redeal bound is the coordinator's judgment; any
-\* other is dealt to the machine, unsets the ended take and keeps its redeal
-\* count. A card past its cap is dealt to the machine only when no friend-tier
-\* friend has room for it.
+\* other is dealt to the machine, unsets the ended take and counts a redeal when
+\* a take of it ended (its count kept otherwise). A card past its cap is dealt to
+\* the machine only when no friend-tier friend has room for it.
 DealPart(c) ==
   /\ phase = "deal"
   /\ LET j == JudgeNow(c)
@@ -169,22 +195,25 @@ DealPart(c) ==
      /\ (j \/ m)
      /\ IF j
           THEN /\ col' = [col EXCEPT ![c] = "judgment"]
-               /\ judge' = [judge EXCEPT ![c] = judge[c] + (IF Broken = "twice" THEN 2 ELSE 1)]
+               /\ judge' = [judge EXCEPT ![c] = judge[c] + (IF Broken = "twice" \/ (Broken = "idtwice" /\ IdBound(c)) THEN 2 ELSE 1)]
                /\ who' = [who EXCEPT ![c] = "none"]
                /\ lostAtBound' = lostAtBound
+               /\ rdl' = rdl
           ELSE /\ col' = [col EXCEPT ![c] = "machine"]
                /\ who' = [who EXCEPT ![c] = "m1"]
                /\ judge' = judge
                /\ lostAtBound' = [lostAtBound EXCEPT ![c] = AtBound(c)]
+               \* the deal that places a withdrawn card again counts a redeal
+               /\ rdl' = IF ended[c] THEN [rdl EXCEPT ![c] = Min(rdl[c] + 1, MaxRedeals + 1)] ELSE rdl
      /\ ended' = IF j THEN ended ELSE [ended EXCEPT ![c] = FALSE]
-     /\ UNCHANGED <<since, rdl, status, room, phase>>
+     /\ UNCHANGED <<since, same, status, room, phase>>
 
 \* No card the deal owes is left: the tick closes.
 DealDone ==
   /\ phase = "deal"
   /\ ~DealTodo
   /\ phase' = "idle"
-  /\ UNCHANGED <<col, who, since, ended, rdl, judge, lostAtBound, status, room>>
+  /\ UNCHANGED <<col, who, since, ended, rdl, same, judge, lostAtBound, status, room>>
 
 \* The friends between ticks: one comes up with her free width, or goes down.
 FriendUp(f) ==
@@ -192,18 +221,22 @@ FriendUp(f) ==
   /\ status[f] = "down"
   /\ status' = [status EXCEPT ![f] = "up"]
   /\ room' = [room EXCEPT ![f] = Width[f] - Load(f)]
-  /\ UNCHANGED <<col, who, since, ended, rdl, judge, lostAtBound, phase>>
+  /\ UNCHANGED <<col, who, since, ended, rdl, same, judge, lostAtBound, phase>>
 
 FriendDown(f) ==
   /\ phase = "idle"
   /\ status[f] = "up"
   /\ status' = [status EXCEPT ![f] = "down"]
   /\ room' = [room EXCEPT ![f] = 0]
-  /\ UNCHANGED <<col, who, since, ended, rdl, judge, lostAtBound, phase>>
+  /\ UNCHANGED <<col, who, since, ended, rdl, same, judge, lostAtBound, phase>>
 
 \* A take of a card on a machine or a friend ends without a finish: the card is
-\* withdrawn to ready, its take recorded and its redeal count spent; a new
-\* attempt on the same brief spends another of the cap.
+\* withdrawn to ready and its take recorded; the deal that places it again spends
+\* one of its redeals (redeal, not here), so rdl is the card's redeals. A new
+\* attempt on the same brief spends another of the cap. The just-ended take may
+\* have ended the way the one before it did: the last two ended takes are then
+\* the same (identicalEnds, rule 2), the bound below the count. A first take has
+\* none before it to match, so the second take has rdl >= 1.
 AttemptEnds(c) ==
   /\ phase = "idle"
   /\ col[c] \in {"machine", "friend"}
@@ -214,10 +247,12 @@ AttemptEnds(c) ==
      /\ col' = [col EXCEPT ![c] = "ready"]
      /\ who' = [who EXCEPT ![c] = "none"]
      /\ ended' = [ended EXCEPT ![c] = TRUE]
-     /\ rdl' = [rdl EXCEPT ![c] = Min(rdl[c] + 1, MaxRedeals + 1)]
+     /\ \/ same' = [same EXCEPT ![c] = FALSE]
+        \/ /\ rdl[c] >= 1
+           /\ same' = [same EXCEPT ![c] = TRUE]
      /\ since' = [since EXCEPT ![c] = Min(since[c] + 1, MaxSince)]
      /\ room' = free
-     /\ UNCHANGED <<judge, lostAtBound, status, phase>>
+     /\ UNCHANGED <<rdl, judge, lostAtBound, status, phase>>
 
 \* The coordinator answers the cap's judgment: the brief replaced (the count and
 \* the bound reset) or the card dropped.
@@ -229,12 +264,14 @@ AnswerJudgment(c) ==
         /\ since' = [since EXCEPT ![c] = 0]
         /\ ended' = [ended EXCEPT ![c] = FALSE]
         /\ rdl' = [rdl EXCEPT ![c] = 0]
+        /\ same' = [same EXCEPT ![c] = FALSE]
         /\ judge' = [judge EXCEPT ![c] = 0]
      \/ /\ col' = [col EXCEPT ![c] = "dropped"]
         /\ who' = who
         /\ since' = since
         /\ ended' = ended
         /\ rdl' = rdl
+        /\ same' = same
         /\ judge' = [judge EXCEPT ![c] = 0]
   /\ UNCHANGED <<lostAtBound, status, room, phase>>
 

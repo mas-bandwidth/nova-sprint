@@ -287,3 +287,5 @@ MCCapDeal.cfg	MCCapDeal.tla	pass	-	ignore-terminal	capdeal	required	-
 MCCapDealBrokenMachineFirst.cfg	MCCapDeal.tla	invariant	FriendFirst	ignore-terminal	capdeal	required	-
 MCCapDealBrokenNoJudge.cfg	MCCapDeal.tla	invariant	NoCardLost	ignore-terminal	capdeal	required	-
 MCCapDealBrokenTwice.cfg	MCCapDeal.tla	invariant	ExactlyOneJudgment	ignore-terminal	capdeal	required	-
+MCCapDealBrokenIdNoJudge.cfg	MCCapDeal.tla	invariant	NoCardLost	ignore-terminal	capdeal	required	-
+MCCapDealBrokenIdTwice.cfg	MCCapDeal.tla	invariant	ExactlyOneJudgment	ignore-terminal	capdeal	required	-
