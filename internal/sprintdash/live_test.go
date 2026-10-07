@@ -36,18 +36,21 @@ var liveSHA256SUMS = map[string]string{
 
 // liveRendered is the sha256 of each live file with its comments stripped (rendered): what
 // the browser runs and shows. An embedded file that strips to another hash is a page that
-// looks or behaves otherwise than the live one.
+// looks or behaves otherwise than the live one. The friends cost category (the owner,
+// 2026-10-04: "i don't want dollar amounts for friends. token counts are fine.") added the
+// Cost breakdown's rows, the friends row token counts only: the live page takes the same
+// change, its lines moving with the card that does the same in nova-sprint.
 var liveRendered = map[string]string{
-	"app.js":     "94c70da2242b6b5e754bd59eb02bcf70be56b9e134cc042a1ad5777b9da9acf8",
-	"index.html": "179d0c73be74d76c5ae7a18ecc73d5bea532eebb59d00e7a1204de67464dabf1",
+	"app.js":     "30d78e345096041fd4d8a07fb2a7f3427b2d3b4cf323ad1cace7323730b03255",
+	"index.html": "acfdde63dcb872da0766219cdb32a27aff308347dc3ca645b88861d39ab4fcaf",
 	"OFL.txt":    "580df76c95a1ec5ab878ceb25bb3d85c6a076804e9c970c8c6972aea775fdf65",
 }
 
 // pageSHA256 is the sha256 of each embedded file as it is in the repo, comments and all.
 // Changing a page file is changing this table in the same commit: a named change.
 var pageSHA256 = map[string]string{
-	"app.js":           "d602eae39ada18da53635e9f2f142850a1f893a671a2c2f875b64e2a2becb18d",
-	"index.html":       "c49aa5866290f192d8669bcbaa67cf78f29eba243bb5f8f73eb950e35757a91d",
+	"app.js":           "c0764268da3c50958de97fde1d97d018b7e2179303d22205515597d17dd8aa42",
+	"index.html":       "bad92363bc5c5106f9b60ce17be2679a083088de649bc68060f38d37b4ad92c9",
 	"OFL.txt":          "580df76c95a1ec5ab878ceb25bb3d85c6a076804e9c970c8c6972aea775fdf65",
 	"nunito-800.woff2": "b42be94a8cf3d5fc7877216cdb8bbfb10d57291b06356b6f3b9e7fbf9742b8da",
 }
