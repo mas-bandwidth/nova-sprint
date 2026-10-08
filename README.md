@@ -109,8 +109,7 @@ discovered horizontal scaling on a very personal level.
 
 **Pink rides at her own pace.** A careful reviewer and a fast implementer
 can both help. Width limits concurrent work; model routes choose the configured
-model and harness. Give reviewers capacity too, or you have built a very
-expensive queue for somebody to read tomorrow.
+model and harness.
 
 Scale across friends, across a fleet, or both. Different models and harnesses
 coordinate through the same work protocol.
