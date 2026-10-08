@@ -1287,9 +1287,11 @@ finding, else its failed report, else its bound's class, the latest kept under t
 **The attempt cap's default answer is a friend card** (`sprint.AttemptCapDeal`, the
 pump's part `cap deal` before the deal, `sprint.TickCapDeal`, modelled in
 [tla/CapDeal.tla](../tla/CapDeal.tla) beside `tla/DirtyTick.tla`: `FriendFirst`,
-`ExactlyOneJudgment` and `NoCardLost` under TLC on the MCCapDeal* cases, group `capdeal`,
-the redeal bound below the count (two identical ended takes, `sprint.redealBound` and
-`identicalEnds`) as the `MCCapDealBrokenId*` witnesses);
+`ExactlyOneJudgment` and `NoCardLost` under TLC on the `MCCapDeal.cfg` control, group
+`capdeal`, the redeal bound below the count (two identical ended takes, `sprint.redealBound`
+and `identicalEnds`) as the reversed-witness fixtures under `tla/testdata/`
+(`MCCapDealBrokenId*`, `MCCapDealBrokenMachineFirst`, `MCCapDealBrokenNoJudge`,
+`MCCapDealBrokenTwice`));
 `TestTheAttemptCapJudgmentsDefaultAnswerDealsAFriendCard`,
 `TestTwoCappedCardsDoNotExceedAFriendsWidth`): a machine's primary ready and past its cap
 (`sprint.AtBriefBound` asked with `sprint.AttemptsCap`), in a stream not held, is dealt
