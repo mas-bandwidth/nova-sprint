@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -73,4 +74,30 @@ func TestTheFriendsTableCountsDealtBesideVerifiedWorking(t *testing.T) {
 	// her beat names it running: working counts it with no push
 	ta.ok("friend beat amy --running s1-1")
 	assert.Equal(t, map[string]string{"dealt": "1", "working": "1"}, cells(), "her beat names it running")
+}
+
+// Verified working counts only positive evidence (card sn-verified-working-b-ns-bcc.w1;
+// docs/SPEC-SPRINT.md section 1, "Verified working"; the reader: "pass only positive
+// evidence (a readable branch push or --running beat) into the working count"). A push
+// whose read fails is not proof: the card is dealt to her row and does not count working,
+// but friend take keeps the conservative read and leaves the card with her. The earlier
+// attempt counted the unreadable push: friendStarted marked the card started and the cell
+// took FriendWorkingOf's count of it.
+func TestTheWorkingCountTakesOnlyPositiveEvidenceAndTakeKeepsTheCard(t *testing.T) {
+	t.Parallel()
+	ta, _ := takeApp(t, 1, nil, "amy")
+	ta.ok("tick")
+	ta.a.tip = func(_ context.Context, _, _ string) (string, error) { return "", errors.New("ls-remote timed out") }
+
+	var w whereView
+	ta.json("where", &w)
+	c := w.Tables[sprint.Friends]["amy"]
+	assert.Equal(t, "1", cellText(c["dealt"]), "the card is dealt to her row in working")
+	assert.Equal(t, "0", cellText(c["working"]), "a push that cannot be read is not the positive evidence working counts")
+
+	// the conservative read stays for friend take: the card it cannot read stays with her
+	code, _, errs := ta.do("friend take amy s1-1")
+	assert.Equal(t, 1, code, "the take refuses the card whose push it cannot read")
+	assert.Contains(t, errs, "REFUSED s1-1: s1-1.w1 has started: a push on sprint/s1-1.w1.g1.e0 cannot be read (ls-remote timed out)")
+	ta.clean()
 }

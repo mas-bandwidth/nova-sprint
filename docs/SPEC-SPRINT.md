@@ -113,10 +113,17 @@ VERIFY"; "I want to trust the ok%"; "Mechanical. You know the drill."; "Are they
 actually doing the work that is shown in the friend table? Really?"; "i don't
 want dollar amounts for friends. token counts are fine."). The friends table's
 `dealt` column beside `working` counts every card of hers in `working` on her row,
-and `working` counts only the verified of them: a card with a push on its branch
-(one git ls-remote a card, the read `friend take` makes of her: FriendTakeReq.Started)
-or named in her beat `--running` (`sprint.FriendWorkingOf`), so dealt and working
-differ exactly when she holds cards no push proves and her beat does not name. The
+and `working` counts only the verified of them: a card with a readable push on its
+branch (one git ls-remote a card, the read `friend take` makes of her:
+FriendTakeReq.Started) or named in her beat `--running` (`sprint.FriendWorkingOf`),
+so dealt and working differ exactly when she holds cards no readable push proves and
+her beat does not name. Only positive evidence counts (card
+sn-verified-working-b-ns-bcc.w1: the reader found the earlier read counting a push
+that could not be read): the read `friend take` makes is conservative, a push whose
+git ls-remote fails or a card naming no `REPO:` line keeps the card with her rather
+than be taken from under her, and that conservative state is not proof — the working
+count takes `a.friendVerified`, the beat runnings and the readable pushes only, so an
+unreadable push shows `dealt` above `working` and is never counted working. The
 verification is read outside the tables, as friend take reads it, never trusted from
 her word alone; friends carry no dollar or cost column, and token counts, when a
 friends column carries them, come with their own lock change
