@@ -178,9 +178,12 @@
 # table? Really?"; "i don't want dollar amounts for friends. token counts are fine."
 # friends.dealt is that column, beside working: a count summed in the footer, every
 # card of hers in working on her row, while working counts only the verified of them,
-# a card with a push on its branch or named in her beat --running
+# a card with a readable push on its branch or named in her beat --running
 # (sprint.FriendWorkingOf), so dealt and working differ exactly when she holds cards no
-# push proves and her beat does not name. No dollar or cost column is added; token
+# readable push proves and her beat does not name. Only positive evidence counts (card
+# sn-verified-working-b-ns-bcc.w1: the read friend take makes is conservative, a push
+# whose read fails keeps the card with her, and that conservative state is not proof,
+# a.friendVerified). No dollar or cost column is added; token
 # counts, when a friends column carries them, come with their own lock change. Held
 # by TestSprintTablesAreLocked and
 # TestWorkingCountsOnlyVerifiedCardsAndAnIdleFriendRaisesOneJudgment.

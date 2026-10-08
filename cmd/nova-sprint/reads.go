@@ -1091,9 +1091,11 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	for i, f := range friends {
 		// the counts are the friend's sprint cards on her fleet row, and nothing
 		// else: ready, dealt and the verified working, done ok and failed, and
-		// redealt, all from the fleet table (splitFriendRows) and the started read
-		// friend take makes of her (a.friendStarted), with width and status from the
-		// roster (store.FriendRows). working counts only the verified of her cards
+		// redealt, all from the fleet table (splitFriendRows) and the positive
+		// started read (a.friendVerified: a readable push or her beat naming it
+		// running; a push that cannot be read is conservative for friend take but
+		// no proof here), with width and status from the roster (store.FriendRows).
+		// working counts only the verified of her cards
 		// (sprint.FriendWorkingOf; docs/SPEC-SPRINT.md section 1, "Verified working")
 		c := friendCards[f.Name]
 		friends[i].Ready = c.Ready
@@ -1104,7 +1106,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		if err != nil {
 			return whereView{}, "", err
 		}
-		started, err := a.friendStarted(ctx, st, f.Name)
+		started, err := a.friendVerified(ctx, st, f.Name)
 		if err != nil {
 			return whereView{}, "", err
 		}
