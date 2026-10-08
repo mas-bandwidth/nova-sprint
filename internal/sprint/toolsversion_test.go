@@ -21,6 +21,15 @@ func TestNovaToolsVersionIsTheFilesTag(t *testing.T) {
 	}
 }
 
+func TestNovaToolsCanaryTagRoundTrips(t *testing.T) {
+	const sha = "52046bd9a0ebf726b40617a81e678d2855047a60"
+	want := NovaToolsRecord{Tag: "v1.2.0-local.20261008.1", Commit: sha}
+	got, err := ParseNovaToolsVersion(FormatNovaToolsVersion(want.Tag, want.Commit))
+	if err != nil || got != want {
+		t.Fatalf("canary round trip: %+v %v", got, err)
+	}
+}
+
 func TestNovaToolsRefusalIsPureOverTheVersionLine(t *testing.T) {
 	line := func(v string) string { return "nova-bus " + v + " darwin/arm64 go1.26.6 build=0123456789ab\n" }
 	for _, c := range []struct {
@@ -60,7 +69,7 @@ func TestNovaToolsVersionFileRoundTripsAndRefusesWhatIsNoRecord(t *testing.T) {
 		"commit " + sha + "\n",
 		"tag 1.1.0\n",
 		"tag v1.1\n",
-		"tag v1.1.0-rc.1\n",
+		"tag v1.1.0+build.1\n",
 		"tag v1.1.0\ncommit 52046bd\n",
 		"tag v1.1.0\nversion v1.1.0\n",
 	} {

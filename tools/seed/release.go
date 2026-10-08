@@ -41,11 +41,13 @@ func checkoutRelease(from string) (release, error) {
 	return pickRelease(commit, strings.Fields(tags), from)
 }
 
-// pickRelease is the highest release tag (vX.Y.Z, no prerelease) of tags at commit.
+// pickRelease is the highest canonical SemVer tag without build metadata. A
+// prerelease is useful for a private exact-SHA canary; checkoutRelease still
+// requires a clean tree whose HEAD is exactly the tagged commit.
 func pickRelease(commit string, tags []string, from string) (release, error) {
 	var best string
 	for _, t := range tags {
-		if !semver.IsValid(t) || semver.Canonical(t) != t || semver.Prerelease(t) != "" {
+		if !semver.IsValid(t) || semver.Canonical(t) != t || semver.Build(t) != "" {
 			continue
 		}
 		if best == "" || semver.Compare(t, best) > 0 {

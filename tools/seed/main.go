@@ -65,6 +65,10 @@ func main() {
 	for _, p := range rep.copied {
 		fmt.Println("  " + p)
 	}
+	fmt.Printf("copied %d TLA+ modules by dependency closure:\n", len(rep.tlaModules))
+	for _, p := range rep.tlaModules {
+		fmt.Println("  " + p)
+	}
 	fmt.Printf("wrote %d files to %s\n", rep.files, *out)
 	fmt.Printf("recorded nova-tools %s at %s in %s\n", rel.tag, rel.commit, sprint.NovaToolsVersionFile)
 }

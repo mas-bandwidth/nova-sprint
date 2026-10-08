@@ -18,9 +18,10 @@ import (
 )
 
 type report struct {
-	movedPkgs []string // package dirs under the move roots, as written
-	copied    []string // copied packages, as written
-	files     int
+	movedPkgs  []string // package dirs under the move roots, as written
+	copied     []string // copied packages, as written
+	tlaModules []string // TLA+ modules copied by model dependency closure
+	files      int
 }
 
 type file struct {
@@ -29,9 +30,10 @@ type file struct {
 }
 
 type seeder struct {
-	r     *recipe
-	from  string
-	files map[string]file // slash path in the new tree -> content
+	r           *recipe
+	from        string
+	files       map[string]file // slash path in the new tree -> content
+	copiedModel []string
 }
 
 // run builds the whole tree in memory, then writes it under out, which must
@@ -113,6 +115,7 @@ func run(r *recipe, rel release, from, keep, out string) (*report, error) {
 	if err := s.models(); err != nil {
 		return nil, err
 	}
+	rep.tlaModules = append(rep.tlaModules, s.copiedModel...)
 	if r.gomod {
 		if err := s.goMod(keep); err != nil {
 			return nil, err
@@ -127,6 +130,11 @@ func run(r *recipe, rel release, from, keep, out string) (*report, error) {
 		if err != nil {
 			return nil, fmt.Errorf("keep %s: %w", k, err)
 		}
+	}
+	// The copied tree's version constant and provenance record describe the
+	// same exact source tag. This also permits private prerelease canaries.
+	if err := s.setToolsVersion(rel.tag); err != nil {
+		return nil, err
 	}
 	// Last of all: the release the tree came from, which nova-sprint seat check
 	// requires at least.
@@ -299,6 +307,17 @@ func (s *seeder) copyPackage(pkg string) ([]string, error) {
 					return nil
 				}
 				s.files[dest+"/"+in] = file{data, mode}
+				// Embedded Go sources are copied as resources, but can still be
+				// compiled in the destination package (for example through an
+				// embed-driven generated source workflow). Keep their imports in
+				// lockstep with the ordinary package files.
+				if strings.HasSuffix(in, ".go") {
+					out, _, err := s.rewrite(data, false)
+					if err != nil {
+						return fmt.Errorf("embedded %s: %w", r, err)
+					}
+					s.files[dest+"/"+in] = file{out, mode}
+				}
 				return nil
 			})
 			if err != nil {
@@ -421,10 +440,11 @@ func (s *seeder) models() error {
 		return nil
 	}
 	mods := map[string]bool{}
+	selected := map[string]bool{}
 	for _, m := range s.r.model {
 		mods["MC"+m+".tla"] = true
 		for _, f := range []string{m + ".tla", "MC" + m + ".tla"} {
-			if err := s.take("tla/" + f); err != nil {
+			if err := s.takeModel(f, selected); err != nil {
 				return err
 			}
 		}
@@ -466,6 +486,61 @@ func (s *seeder) models() error {
 		}
 		s.files[table] = file{[]byte(b.String()), mode}
 	}
+	s.copiedModel = s.copiedModel[:0]
+	for m := range selected {
+		s.copiedModel = append(s.copiedModel, m)
+	}
+	sort.Strings(s.copiedModel)
+	return nil
+}
+
+// takeModel copies a TLA+ module and recursively closes over local EXTENDS and
+// INSTANCE references. TLC's bundled standard modules are intentionally not
+// copied; every other reference must resolve to a file in tla/.
+func (s *seeder) takeModel(name string, seen map[string]bool) error {
+	if seen[name] {
+		return nil
+	}
+	if filepath.Base(name) != name || !strings.HasSuffix(name, ".tla") {
+		return fmt.Errorf("invalid TLA module name %q", name)
+	}
+	data, mode, err := readFile(filepath.Join(s.from, "tla", name))
+	if err != nil {
+		return fmt.Errorf("TLA module %s: %w", name, err)
+	}
+	seen[name] = true
+	s.files["tla/"+name] = file{data, mode}
+	for _, ref := range moduleReferences(data) {
+		if standardTLA[ref] {
+			continue
+		}
+		if err := s.takeModel(ref+".tla", seen); err != nil {
+			return fmt.Errorf("TLA module %s references %s: %w", name, ref, err)
+		}
+	}
+	return nil
+}
+
+func (s *seeder) setToolsVersion(tag string) error {
+	const fileName = "internal/sprint/toolsversion.go"
+	f, ok := s.files[fileName]
+	if !ok {
+		return fmt.Errorf("keep %s so the seeded runtime version matches its provenance", fileName)
+	}
+	const marker = `const NovaToolsVersion = "`
+	text := string(f.data)
+	i := strings.Index(text, marker)
+	if i < 0 || strings.Contains(text[i+len(marker):], marker) {
+		return fmt.Errorf("%s must contain exactly one NovaToolsVersion string constant", fileName)
+	}
+	start := i + len(marker)
+	end := strings.IndexByte(text[start:], '"')
+	if end < 0 {
+		return fmt.Errorf("%s has a malformed NovaToolsVersion constant", fileName)
+	}
+	text = text[:start] + tag + text[start+end:]
+	f.data = []byte(text)
+	s.files[fileName] = f
 	return nil
 }
 

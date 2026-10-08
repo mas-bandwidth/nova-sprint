@@ -10,17 +10,17 @@
 #   section  <file> <name>.. the "## <name>" sections of file, under the header
 #                            the nova-sprint copy of file already has
 #   ratings  <tool>..        docs/ratings/**/<tool>-read.md and <tool>-use.md
-#   model    <M>             tla/M.tla, tla/MCM.tla, the MCM.tla rows of
-#                            tla/CASES.tsv and tla/RUNS.tsv and their .cfg
-#                            files, tla/README-M.md and tla/<m>-bench/
+#   model    <M>             tla/M.tla, tla/MCM.tla, local modules they
+#                            EXTEND/INSTANCE, MCM.tla rows of CASES.tsv and
+#                            RUNS.tsv and their .cfg files, README and bench
 #   keep     <path>          nova-sprint's own file or dir, taken from -keep
 #   gomod                    go.mod from nova-tools with the module renamed and
 #                            nova-sprint's tool lines; go.sum from nova-tools
 #
 # Copied: every nova-tools package the moved code imports (tests included),
 # closed over the imports of the copied packages' non-test files. A copied
-# package brings its non-test files and the files its //go:embed lines name; a
-# renamed package brings only its Go files and their embedded files.
+# package brings its non-test files and //go:embed inputs; embedded Go files
+# are import-rewritten too. Renamed packages bring Go files and their embeds.
 
 module	github.com/mas-bandwidth/nova-tools	github.com/mas-bandwidth/nova-sprint
 

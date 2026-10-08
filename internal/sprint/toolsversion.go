@@ -102,7 +102,8 @@ func FormatNovaToolsVersion(tag, commit string) string {
 
 // ParseNovaToolsVersion reads NOVA-TOOLS-VERSION: lines `tag <vX.Y.Z>` and `commit
 // <40 hex>`, blank lines and # comments. The tag is required and is a release; the
-// commit, when present, is a full hash.
+// commit, when present, is a full hash. Canonical prerelease tags are accepted
+// for private canaries; build metadata is not, since SemVer does not order it.
 func ParseNovaToolsVersion(data string) (NovaToolsRecord, error) {
 	var r NovaToolsRecord
 	for i, line := range strings.Split(data, "\n") {
@@ -114,7 +115,7 @@ func ParseNovaToolsVersion(data string) (NovaToolsRecord, error) {
 		val = strings.TrimSpace(val)
 		switch key {
 		case "tag":
-			if !semver.IsValid(val) || semver.Prerelease(val) != "" || semver.Build(val) != "" || semver.Canonical(val) != val {
+			if !semver.IsValid(val) || semver.Build(val) != "" || semver.Canonical(val) != val {
 				return r, fmt.Errorf("%s line %d: tag %q is no release tag vX.Y.Z", NovaToolsVersionFile, i+1, val)
 			}
 			r.Tag = val
