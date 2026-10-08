@@ -34,6 +34,7 @@ type seeder struct {
 	from        string
 	files       map[string]file // slash path in the new tree -> content
 	copiedModel []string
+	literalSeen map[string]bool
 }
 
 // run builds the whole tree in memory, then writes it under out, which must
@@ -45,7 +46,7 @@ func run(r *recipe, rel release, from, keep, out string) (*report, error) {
 	if rel.tag == "" || rel.commit == "" {
 		return nil, fmt.Errorf("no nova-tools release tag and commit to record in %s; seed from a tagged release", sprint.NovaToolsVersionFile)
 	}
-	s := &seeder{r: r, from: from, files: map[string]file{}}
+	s := &seeder{r: r, from: from, files: map[string]file{}, literalSeen: map[string]bool{}}
 	rep := &report{}
 
 	// Moved: every file under each root; the imports of every Go file there
@@ -64,6 +65,10 @@ func run(r *recipe, rel release, from, keep, out string) (*report, error) {
 					}
 				}
 				data = out
+				data, err = s.literalFiles(rel, data)
+				if err != nil {
+					return fmt.Errorf("%s: %w", rel, err)
+				}
 				want = append(want, deps...)
 				if !lenient(rel) {
 					pkgs[path.Dir(rel)] = true
@@ -74,6 +79,11 @@ func run(r *recipe, rel release, from, keep, out string) (*report, error) {
 		})
 		if err != nil {
 			return nil, err
+		}
+	}
+	for _, l := range r.literalFile {
+		if !s.literalSeen[l.path] {
+			return nil, fmt.Errorf("literal-file %s: source path was not moved", l.path)
 		}
 	}
 	for p := range pkgs {
@@ -156,6 +166,32 @@ func run(r *recipe, rel release, from, keep, out string) (*report, error) {
 	}
 	rep.files = len(names)
 	return rep, nil
+}
+
+// literalFiles applies path-scoped recipe edits only to one moved source file.
+// Requiring a single source match prevents silent drift and broad injection.
+func (s *seeder) literalFiles(rel string, src []byte) ([]byte, error) {
+	changed := false
+	for _, l := range s.r.literalFile {
+		if rel != l.path {
+			continue
+		}
+		count := bytes.Count(src, []byte(l.from))
+		if count != 1 {
+			return nil, fmt.Errorf("literal-file source %q occurs %d times; want exactly one", l.from, count)
+		}
+		src = bytes.Replace(src, []byte(l.from), []byte(l.to), 1)
+		s.literalSeen[l.path] = true
+		changed = true
+	}
+	if changed {
+		formatted, err := format.Source(src)
+		if err != nil {
+			return nil, fmt.Errorf("literal-file result is not valid Go: %w", err)
+		}
+		return formatted, nil
+	}
+	return src, nil
 }
 
 // lenient is a file the go tool never builds as part of a package: under

@@ -14,6 +14,8 @@ const testRecipe = "module\tex.com/tools\tex.com/sprint\n" +
 	"move\tcmd/app\n" +
 	"rename\tfleet\tinternal/fleetrules\n" +
 	"literal\t\"../../fleet/rules.txt\"\t\"../../internal/fleetrules/rules.txt\"\n" +
+	"literal-file\tcmd/app/outside.go\tmachineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)\tmachineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error); novaTools func(bin string) sprint.NovaToolsProbe\n" +
+	"literal-file\tcmd/app/seat.go\tst, err := a.store(*c)\tif code := a.refuseNovaTools(verb, stderr); code != 0 { return code }; st, err := a.store(*c)\n" +
 	"doc\tdocs/SPEC.md\n" +
 	"section\tdocs/CLI.md\tapp\n" +
 	"ratings\tapp\n" +
@@ -58,6 +60,9 @@ func fixture(t *testing.T) (from, keep string) {
 		"go.mod":                         "module ex.com/tools\n\ngo 1.26\n\ntool (\n\tex.com/lint\n)\n\nrequire ex.com/dep v1.0.0\n",
 		"go.sum":                         "ex.com/dep v1.0.0 h1:x\n",
 		"cmd/app/main.go":                "package main\n\nimport (\n\t\"fmt\"\n\n\t\"ex.com/tools/internal/b\"\n\t\"ex.com/tools/fleet\"\n)\n\nfunc main() { fmt.Println(b.B, fleet.F) }\n",
+		"cmd/app/outside.go":             "package main\n\nimport sprint \"ex.com/tools/internal/b\"\n\ntype outside struct {\n\tmachineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)\n}\n",
+		"cmd/app/seat.go":                "package main\n\nimport \"ex.com/tools/internal/b\"\n\nvar _ = b.B\n\nfunc (a *app) runSeatCheckVerb(verb string, args []string, stdout, stderr io.Writer) int {\n\tst, err := a.store(*c)\n\treturn 0\n}\n",
+		"cmd/app/unrelated.go":           "package main\n\nfunc unrelated() {\n\tst, err := a.store(*c)\n\t_ = st\n\t_ = err\n}\n",
 		"cmd/app/main_test.go":           "package main\n\nimport (\n\t\"testing\"\n\n\t\"ex.com/tools/internal/t\"\n)\n\nconst rules = \"../../fleet/rules.txt\"\n\nfunc TestX(*testing.T) { _ = t.T }\n",
 		"cmd/app/testdata/golden.txt":    "ex.com/tools/internal/b stays as written\n",
 		"internal/b/b.go":                "package b\n\nimport _ \"embed\"\n\nimport \"ex.com/tools/internal/c\"\n\n//go:embed data/*.txt suite.go\nvar raw string\n\nvar B = c.C\n",
@@ -130,6 +135,15 @@ func TestTheSeedMovesCopiesAndRewritesByTheRecipe(t *testing.T) {
 	test := read(t, out, "cmd/app/main_test.go")
 	if !strings.Contains(test, "\"ex.com/sprint/internal/t\"") || !strings.Contains(test, "\"../../internal/fleetrules/rules.txt\"") {
 		t.Errorf("test file:\n%s", test)
+	}
+	if got := read(t, out, "cmd/app/outside.go"); !strings.Contains(got, "novaTools") || !strings.Contains(got, "func(bin string) sprint.NovaToolsProbe") {
+		t.Errorf("seat-check outside contract not retained:\n%s", got)
+	}
+	if got := read(t, out, "cmd/app/seat.go"); !strings.Contains(got, "a.refuseNovaTools(verb, stderr)") || !strings.Contains(got, "st, err := a.store(*c)") {
+		t.Errorf("seat-check gate is not before store access:\n%s", got)
+	}
+	if got := read(t, out, "cmd/app/unrelated.go"); strings.Contains(got, "refuseNovaTools") {
+		t.Errorf("path-scoped seat literal leaked into unrelated code:\n%s", got)
 	}
 	if got := read(t, out, "cmd/app/testdata/golden.txt"); got != "ex.com/tools/internal/b stays as written\n" {
 		t.Errorf("non-Go file rewritten: %q", got)
@@ -275,9 +289,11 @@ func TestTheSeedRefusesAnOutThatExists(t *testing.T) {
 
 func TestTheSeedRefusesAMissingPiece(t *testing.T) {
 	for name, line := range map[string]string{
-		"a doc":     "doc\tdocs/NONE.md\n",
-		"a section": "section\tdocs/CLI.md\tnone\n",
-		"a model":   "model\tNone\n",
+		"a doc":                 "doc\tdocs/NONE.md\n",
+		"a section":             "section\tdocs/CLI.md\tnone\n",
+		"a model":               "model\tNone\n",
+		"a path literal source": "literal-file\tcmd/app/missing.go\tbefore\tafter\n",
+		"a path literal anchor": "literal-file\tcmd/app/main.go\tmissing source\tinserted source\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			from, keep := fixture(t)
@@ -293,7 +309,7 @@ func TestTheSeedRefusesAMissingPiece(t *testing.T) {
 }
 
 func TestTheRecipeRefusesABadLine(t *testing.T) {
-	for _, bad := range []string{"move\n", "frobnicate\tx\n", "rename\tfleet\n", "move\tx\n"} {
+	for _, bad := range []string{"move\n", "frobnicate\tx\n", "rename\tfleet\n", "move\tx\n", "literal-file\tpath\tx\n"} {
 		if _, err := parseRecipe(bad); err == nil {
 			t.Errorf("%q accepted", bad)
 		}

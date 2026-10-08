@@ -12,6 +12,7 @@ type recipe struct {
 	move           []string
 	rename         map[string]string
 	literal        [][2]string
+	literalFile    []fileLiteral
 	doc            []string
 	section        []section
 	ratings        []string
@@ -24,6 +25,8 @@ type section struct {
 	file  string
 	names []string
 }
+
+type fileLiteral struct{ path, from, to string }
 
 func readRecipe(path string) (*recipe, error) {
 	raw, err := os.ReadFile(path)
@@ -71,6 +74,11 @@ func parseRecipe(text string) (*recipe, error) {
 				return nil, bad()
 			}
 			r.literal = append(r.literal, [2]string{f[1], f[2]})
+		case "literal-file":
+			if len(f) != 4 || f[1] == "" || f[2] == "" {
+				return nil, bad()
+			}
+			r.literalFile = append(r.literalFile, fileLiteral{path: f[1], from: f[2], to: f[3]})
 		case "section":
 			if len(f) < 3 {
 				return nil, bad()

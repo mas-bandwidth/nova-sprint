@@ -6,6 +6,7 @@
 #   move     <dir>           every file under dir, tests and testdata included
 #   rename   <pkg> <to>      a copied nova-tools package that lands at another path
 #   literal  <from> <to>     a string replaced in every moved .go file
+#   literal-file <path> <from> <to> a one-time exact edit of one moved Go file
 #   doc      <file>          a whole file
 #   section  <file> <name>.. the "## <name>" sections of file, under the header
 #                            the nova-sprint copy of file already has
@@ -40,6 +41,10 @@ rename	fleet	internal/fleetrules
 rename	profiles	internal/profiles
 literal	"../../fleet/child-rules.txt"	"../../internal/fleetrules/child-rules.txt"
 literal	filepath.Join("..", "..", "fleet", "child-rules.txt")	filepath.Join("..", "..", "internal", "fleetrules", "child-rules.txt")
+# Preserve the seat-check probe contract while taking the rest of machinery from tools.
+# These fail-closed edits are scoped to the selected tools machinery file only.
+literal-file	cmd/nova-sprint/machinery.go	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error); novaTools func(bin string) sprint.NovaToolsProbe
+literal-file	cmd/nova-sprint/machinery.go	st, err := a.store(*c)	if code := a.refuseNovaTools(verb, stderr); code != 0 { return code }; st, err := a.store(*c)
 
 doc	docs/SPEC-SPRINT.md
 doc	docs/SPEC-SPRINT-DASHBOARD.md
