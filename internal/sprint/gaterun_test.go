@@ -3,6 +3,7 @@ package sprint
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -55,6 +56,24 @@ func TestARedGateIsReworkedBeforeAnyReaderIsAsked(t *testing.T) {
 	// the ask of the same pass asks no reader of a card the gate refused
 	ask, _ := TickAsk(w.s, TickReq{Who: "machine", Gate: red})
 	assert.Empty(t, ask.Units, "the ask asks no reader while the gate holds the attempt")
+
+	// a friend reader is asked no attempt the gate refused: the gate's hold wraps the
+	// friend ask too (gaterun.go, gateHeldPart; the finding of attempt 7). The frontier
+	// card is in review with a red gate state, the state the ask sees before the gate's
+	// rework reaches the table.
+	t.Run("a friend reader is never asked of a red attempt", func(t *testing.T) {
+		w := newWorld(t, "reader-a", "reader-b")
+		putReview(w, "s1-1", "s1-1: work (s1) tier: frontier\n", 1, 1, "primary-head")
+		frontier := w.s.Work.Card("s1-1")
+		frontier.Fields[FieldGate] = GateRed
+		frontier.Fields[FieldGateAttempt] = "1"
+		dir := t.TempDir()
+		askReaders(t, w, []FriendSeat{frontierSeat("amy", 2, Up, dir)})
+		require.Nil(t, w.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")),
+			"a friend reader is never asked of an attempt the gate refused")
+		require.NoFileExists(t, filepath.Join(dir, "inbox"),
+			"the friend's inbox brief is not written for an attempt the gate refused")
+	})
 }
 
 // TestABenchThatDoesNotAnswerHoldsTheAttempt pins the waiting path: a bench that does not

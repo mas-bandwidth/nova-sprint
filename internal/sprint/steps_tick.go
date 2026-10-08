@@ -917,7 +917,8 @@ func TickLevel(s *Snapshot, r TickReq) (Plan, int) {
 func TickAsk(s *Snapshot, r TickReq) (Plan, int) {
 	// no reader is asked of an attempt the machine gate holds (gaterun.go,
 	// gateHeldPrimaries): one the gate refused, one waiting for a bench, or one whose
-	// gate for this attempt has not run yet
+	// gate for this attempt has not run yet. The installed ask part holds the friend
+	// ask too (gaterun.go, gateHeldPart), so a frontier read waits as this one does.
 	restore := hideGateHeld(s, r)
 	defer restore()
 	var ids []string

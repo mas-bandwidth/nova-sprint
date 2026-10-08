@@ -3,6 +3,7 @@ package sprint
 import (
 	"context"
 	"path"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -207,6 +208,46 @@ func hideGateHeld(s *Snapshot, r TickReq) func() {
 			c.Col = Review
 		}
 		s.Work.cells, s.Work.byPrimary = nil, nil
+	}
+}
+
+// gateHeldPart wraps the tick's ask with the machine gate's hold: every attempt the gate
+// holds (gateHeldPrimaries) is taken out of the work table for the whole ask, so no reader
+// is asked of it, the friends' frontier ask and the machine ask alike (the finding of
+// attempt 7: the hold wrapped TickAsk alone, and friendAskPart asked the frontier readers
+// before it). TickAsk holds them too, so a caller that reaches it directly is held as well.
+func gateHeldPart(ask TickPartFn) TickPartFn {
+	return func(s *Snapshot, r TickReq) (Plan, int) {
+		restore := hideGateHeld(s, r)
+		defer restore()
+		return ask(s, r)
+	}
+}
+
+// The ask the machine runs is the function TickTables holds: friend_read.go's init wraps
+// TickAsk with the friend ask before this file's, and worklint.go's wraps the result with
+// the lint's hold after it (worklint.go, whose init runs after this file's). This init
+// wraps the friend ask with the gate's hold, so every ask, the friend ask included, holds
+// an attempt whose gate has not passed.
+func init() {
+	var before uintptr
+	for i := range TickTables {
+		for j := range TickTables[i].Parts {
+			if TickTables[i].Parts[j].Name == "ask" && TickTables[i].Parts[j].Fn != nil {
+				before = reflect.ValueOf(TickTables[i].Parts[j].Fn).Pointer()
+				TickTables[i].Parts[j].Fn = gateHeldPart(TickTables[i].Parts[j].Fn)
+			}
+		}
+	}
+	for i := range TickParts {
+		if TickParts[i].Name == "ask" {
+			TickParts[i].Fn = gateHeldPart(TickParts[i].Fn)
+		}
+	}
+	for i := range heldParts {
+		if heldParts[i] != nil && reflect.ValueOf(heldParts[i]).Pointer() == before {
+			heldParts[i] = gateHeldPart(heldParts[i])
+		}
 	}
 }
 

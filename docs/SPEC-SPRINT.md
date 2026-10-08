@@ -2792,8 +2792,9 @@ id (`--op`) returns the original result, with no second counter or notification.
   (`TickAccept` calls `TickLint` then `TickGate`), on every primary in review whose work
   did not fail, that has no read card at its attempt and no change queued; and the ask,
   the friends' and the machine's, holds every attempt whose gate for this attempt has not
-  passed (`hideGateHeld`, from `TickAsk`), so no read is spent on an attempt the machine
-  has not gated whatever the order of the tick.
+  passed (`hideGateHeld`, from `TickAsk`) or refused (`gateHeldPart`, which wraps the
+  installed ask part so the friend's frontier ask is held as the machine ask is), so no
+  read is spent on an attempt the machine has not gated whatever the order of the tick.
 - A gate no bench answered leaves the attempt in review with the state `waiting`
   (`sprint.GateWaiting`) and one judgment, `no bench answered the gate`
   (`sprint.NBenchDown`, decisions wait, rework, drop), naming the reason: a bench that does
