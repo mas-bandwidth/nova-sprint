@@ -42,24 +42,27 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 		[]string{"start"})
 	twinBefore, err := os.ReadFile(twinFile)
 	require.NoError(t, err)
+	// every candidate is built from the base's tip, so the base check passes and the shadow
+	// is what is tested (server-from-base-only-w-ns-b.w2 is TestServerSwitchVerbRefusesACandidateOffTheBase)
+	b := newSwitchBase(t)
 
 	t.Run("a broken binary is refused and the old server keeps running", func(t *testing.T) {
 		cases := []struct {
 			name, script, extra, why string
 		}{
-			{"errors", "#!/bin/sh\necho 'tick: the store refused' >&2\nexit 2\n", "", "exited 2: tick: the store refused"},
-			{"panics", "#!/bin/sh\necho 'panic: runtime error: index out of range [3] with length 3' >&2\necho 'goroutine 1 [running]:' >&2\nexit 2\n", "", "panicked: panic: runtime error: index out of range [3]"},
-			{"misses the deadline", "#!/bin/sh\nexec sleep 60\n", " --tick-deadline 300ms", "missed the tick deadline 300ms"},
-			{"prints no plan", "#!/bin/sh\necho 'TICK OK'\n", "", "exited 0 and printed no plan"},
+			{"errors", "echo 'tick: the store refused' >&2\nexit 2\n", "", "exited 2: tick: the store refused"},
+			{"panics", "echo 'panic: runtime error: index out of range [3] with length 3' >&2\necho 'goroutine 1 [running]:' >&2\nexit 2\n", "", "panicked: panic: runtime error: index out of range [3]"},
+			{"misses the deadline", "exec sleep 60\n", " --tick-deadline 300ms", "missed the tick deadline 300ms"},
+			{"prints no plan", "echo 'TICK OK'\n", "", "exited 0 and printed no plan"},
 		}
 		for _, tc := range cases {
 			sub := t.TempDir()
 			target := filepath.Join(sub, "nova-sprint")
 			candidate := filepath.Join(sub, "candidate")
 			require.NoError(t, os.WriteFile(target, []byte("the running server"), 0o755))
-			require.NoError(t, os.WriteFile(candidate, []byte(tc.script), 0o755))
+			candidateAt(t, candidate, b.tip, tc.script)
 			ta := newTestApp(t)
-			code, out, errs := ta.do("server switch " + candidate + " --target " + target + " --redis mem:" + twinFile + " --rollback" + tc.extra)
+			code, out, errs := ta.do("server switch " + candidate + " --target " + target + " --redis mem:" + twinFile + " --rollback" + b.args() + tc.extra)
 			assert.Equal(t, 1, code, tc.name)
 			assert.Contains(t, errs, "server switch REFUSED: the shadow tick of "+candidate, tc.name)
 			assert.Contains(t, errs, tc.why, tc.name)
@@ -79,8 +82,10 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 	t.Run("a working binary plans, writes nothing, and is switched in", func(t *testing.T) {
 		target := filepath.Join(t.TempDir(), "nova-sprint")
 		require.NoError(t, os.WriteFile(target, []byte("the running server"), 0o755))
+		// this binary, built at the base's tip: a test binary carries no commit of its own
+		exe := candidateAt(t, filepath.Join(t.TempDir(), "candidate"), b.tip, "exec "+exe+" \"$@\"\n")
 		ta := newTestApp(t)
-		code, out, errs := ta.do("server switch " + exe + " --target " + target + " --redis mem:" + twinFile + " --rollback --dry-run")
+		code, out, errs := ta.do("server switch " + exe + " --target " + target + " --redis mem:" + twinFile + " --rollback --dry-run" + b.args())
 		require.Equal(t, 0, code, errs)
 		assert.Contains(t, out, "SHADOW TICK OK binary="+exe)
 		assert.Contains(t, out, "SERVER SWITCH DRY-RUN target="+target+" binary="+exe)
@@ -89,7 +94,7 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 			assert.True(t, os.IsNotExist(err), "a dry run writes nothing beside the target (%s)", side)
 		}
 
-		code, out, errs = ta.do("server switch " + exe + " --target " + target + " --redis mem:" + twinFile + " --rollback")
+		code, out, errs = ta.do("server switch " + exe + " --target " + target + " --redis mem:" + twinFile + " --rollback" + b.args())
 		require.Equal(t, 0, code, errs)
 		assert.Contains(t, out, "SHADOW TICK OK binary="+exe+" epoch=0 state=RUNNING")
 		assert.Contains(t, out, "SERVER SWITCH OK")

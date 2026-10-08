@@ -150,6 +150,9 @@ var TickDecisions = map[string][]string{
 	NFriendDeaf:        {"ack", "wait"},
 	NFriendIdle:        {"ack", "wait"},
 	NCoordinatorBehind: {"act", "wait"},
+	// the running server built off origin's sprint base (server_base.go): act is the remedy
+	// its line names, a build from the base's tip and server switch; the tick closes it
+	NServerOffBase: {"act", "wait"},
 }
 
 // TickReq is what a tick is given beside the snapshot.
@@ -186,6 +189,11 @@ type TickReq struct {
 	// WorkLint is the work lint the tick holds each finished attempt to before its first
 	// read (worklint.go: TickLint in the pump, lintHeld in the ask); nil is DefaultWorkLint.
 	WorkLint WorkLinter
+	// ServerBase is the running server's build commit checked against origin's sprint base,
+	// the last check the process's watch made (server_base.go, RunningBase.Fact): TickCheck
+	// raises NServerOffBase while it is not On and closes it once it is. nil is no check
+	// made, or one that could not be: nothing raised, nothing closed.
+	ServerBase *ServerBase
 }
 
 func (r TickReq) who() string {
@@ -1025,7 +1033,9 @@ func cannotAskCond(s *Snapshot, refused []Refusal) []cond {
 // tick when the rule holds again. Its duty is the no-stall rule too:
 // each stall nothing holds is one judgment "stalled", with the decisions open
 // to it, not written again while it stays and closed when it clears; a stall
-// that waits behind another is told by the other's.
+// that waits behind another is told by the other's. The running server off the
+// sprint base is held here too (TickServerBase, on r.ServerBase): the base is what is
+// always true of the binary the sprint runs on.
 func TickCheck(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	var conds []cond
@@ -1055,7 +1065,9 @@ func TickCheck(s *Snapshot, r TickReq) (Plan, int) {
 		conds = append(conds, c)
 	}
 	due := notify(&p, s, conds, []string{NInvariant, NStalled}, r)
-	return p, due
+	base, baseDue := TickServerBase(s, r)
+	p.Notes, p.Closes, p.Updates = append(p.Notes, base.Notes...), append(p.Closes, base.Closes...), append(p.Updates, base.Updates...)
+	return p, due + baseDue
 }
 
 // TickDeadlines writes one judgment for each card or stream past its

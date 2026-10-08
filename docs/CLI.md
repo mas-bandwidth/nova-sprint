@@ -378,6 +378,20 @@ random, printed), each asked of a reader up that never saw it; it prints `COLD A
 asked). The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md) section 11,
 "release-check-cold-audit-r-ns-b2.w1".
 
+### server-from-base-only-w-ns-bb.w1: the server is built from the sprint base
+
+`nova-sprint server switch <binary> --repo <clone> --base <branch>` (defaults
+`NOVA_SPRINT_SERVER_REPO` and `NOVA_SPRINT_BASE`) reads the candidate's build commit from its
+version line (`commit=<sha>`, else the 12 hex of its vcs stamp), fetches origin's `<branch>`
+into the clone and refuses the swap, exit 1, nothing changed and before the shadow tick,
+unless `git merge-base --is-ancestor <commit> origin/<branch>` holds: `server switch REFUSED: <binary> was built from commit <sha>, not from the sprint base origin/<branch> (tip <sha>): <why>; ... remedy: build nova-sprint from origin/<branch> at its tip, then run: nova-sprint server switch <that binary>`. A binary with no source commit (devel, a tag alone, an edited
+tree) is refused the same way, and a switch with no base or clone named is refused naming the
+flags. A pass prints `BASE OK binary= commit= base=origin/<branch> tip=` and records the clone
+and base at `<target>.base.json`, which the server that binary runs watches: the tick raises
+one judgment, `the server runs off the sprint base`, while its own commit is not on origin's
+base, and closes it when it is. The contract is [SPEC-SPRINT.md](SPEC-SPRINT.md) section 14,
+"server-from-base-only-w-ns-bb.w1".
+
 ### Exit codes
 
 | exit | meaning |

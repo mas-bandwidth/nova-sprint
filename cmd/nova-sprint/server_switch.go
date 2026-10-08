@@ -2,25 +2,62 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/buildinfo"
 	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
+
+// The running server's base watch (sprint.RunningBase): the tick raises "the server runs off
+// the sprint base" while this process's own build commit is not an ancestor of origin's
+// sprint base (docs/SPEC-SPRINT.md section 14, "server-from-base-only-w-ns-bb.w1"). The clone and
+// the base are NOVA_SPRINT_SERVER_REPO and NOVA_SPRINT_BASE, else the record server switch
+// left beside this binary (<binary>.base.json); with neither there is no watch.
+func init() { sprint.RunningBase = serverBaseWatch(os.Getenv, os.Executable) }
+
+// serverBaseWatch is the watch of this process, nil when no clone and base are named. Its
+// line is this process's own, with its full commit, read in process and never from the
+// file on disk.
+func serverBaseWatch(getenv func(string) string, executable func() (string, error)) *sprint.BaseWatch {
+	repo, base := getenv("NOVA_SPRINT_SERVER_REPO"), getenv("NOVA_SPRINT_BASE")
+	if repo == "" || base == "" {
+		bin := getenv("NOVA_SPRINT_SERVER_BIN")
+		if bin == "" {
+			exe, err := executable()
+			if err != nil {
+				return nil
+			}
+			bin = exe
+		}
+		rec, ok, err := sprint.ReadBaseRecord(bin)
+		if err != nil || !ok {
+			return nil
+		}
+		repo, base = rec.Repo, rec.Base
+	}
+	return &sprint.BaseWatch{Line: buildinfo.Line(prog, version), Repo: repo, Base: base}
+}
 
 // cmdServerSwitch switches the server binary to <binary>, keeping the previous binary
 // and rolling back if a land fails within the window (docs/SPEC-SPRINT.md section 14).
 // Before the swap it runs the candidate's shadow tick against the store, read-only, and
 // refuses the swap when the shadow fails (shadow.go; install-canary-shadow-tick-r.w1).
+// Before either, it refuses a candidate whose build commit is not an ancestor of origin's
+// sprint base, fetched into --repo (sprint.CheckServerBinary; docs/SPEC-SPRINT.md section
+// 14, "server-from-base-only-w-ns-bb.w1"): the server is built from the base and nothing else.
 func (a *app) cmdServerSwitch(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("server switch")
 	rollback := fs.Bool("rollback", false, "roll back to previous binary, or enable automatic rollback on failed land in window")
 	windowStr := fs.String("window", "15m", "rollback window duration: if a land fails within this window, roll back")
 	target := fs.String("target", "", "target binary to replace (default: this binary or NOVA_SPRINT_SERVER_BIN)")
 	dry := fs.Bool("dry-run", false, "run the candidate's shadow tick (read-only) and say what would be switched; switch, roll back and write nothing")
+	repo := fs.String("repo", "", "the clone origin's sprint base is fetched into, where the candidate's build commit is checked (default NOVA_SPRINT_SERVER_REPO)")
+	base := fs.String("base", "", "the sprint base, a branch on origin: the candidate's build commit must be an ancestor of its tip (default NOVA_SPRINT_BASE)")
 	tickDeadline := fs.Duration("tick-deadline", TickDeadline, "the candidate's shadow tick (<binary> tick --shadow, read-only, against the store --redis names) must end in this long, or the switch is refused")
 
 	pos, err := parse(fs, args)
@@ -79,6 +116,24 @@ func (a *app) cmdServerSwitch(args []string, stdout, stderr io.Writer) int {
 	if *tickDeadline <= 0 {
 		return refuse(stderr, "server switch", "invalid --tick-deadline: the candidate's shadow tick is given a deadline")
 	}
+	if *repo == "" {
+		*repo = a.getenv("NOVA_SPRINT_SERVER_REPO")
+	}
+	if *base == "" {
+		*base = a.getenv("NOVA_SPRINT_BASE")
+	}
+	// the base: the candidate's build commit is an ancestor of origin's sprint base, or the
+	// candidate is refused before it runs anything against the store
+	on, err := sprint.CheckServerBinary(context.Background(), candidate, *repo, *base)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s server switch REFUSED: the base check of %s could not be made: %s; %s is unchanged and the old server keeps running; remedy: name the sprint base with --base <branch> and a clone whose origin holds it with --repo <clone> (or NOVA_SPRINT_BASE and NOVA_SPRINT_SERVER_REPO), then run again; run: nova-sprint server switch -h\n", prog, candidate, oneline.Escape(err.Error()), targetPath)
+		return 1
+	}
+	if !on.On {
+		fmt.Fprintf(stderr, "%s server switch REFUSED: %s; %s is unchanged and the old server keeps running; run: nova-sprint server switch -h\n", prog, oneline.Escape(on.Refusal(candidate)), targetPath)
+		return 1
+	}
+	fmt.Fprintf(stdout, "BASE OK binary=%s commit=%s base=origin/%s tip=%s\n", candidate, on.Commit, *base, on.Tip)
 	// the canary: the candidate plans a tick on the store, applying nothing, before
 	// anything on disk changes; a refusal leaves the old server as it was
 	shadowAt := a.now()
@@ -94,15 +149,23 @@ func (a *app) cmdServerSwitch(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	err = sprint.ServerSwitch(context.Background(), sprint.ServerSwitchOptions{
+	err = sprint.SwitchFromBase(context.Background(), sprint.ServerSwitchOptions{
 		Binary:   candidate,
 		Target:   targetPath,
 		Rollback: *rollback,
 		Window:   window,
+		Repo:     *repo,
+		Base:     *base,
 		Now:      a.now,
 		Stdout:   stdout,
 		Stderr:   stderr,
 	})
+	var off *sprint.OffBaseError
+	if errors.As(err, &off) {
+		// the switch makes the base check again itself; a refusal there is the same refusal
+		fmt.Fprintf(stderr, "%s server switch REFUSED: %s; %s is unchanged and the old server keeps running; run: nova-sprint server switch -h\n", prog, oneline.Escape(err.Error()), targetPath)
+		return 1
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "%s server switch FAILED: %s\n", prog, oneline.Escape(err.Error()))
 		return 1

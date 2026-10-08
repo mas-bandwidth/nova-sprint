@@ -130,6 +130,23 @@ func Resolve(stamped string, info *debug.BuildInfo, ok bool) string {
 // them back, and REFUSES one that is not key=value: a writer looser than its reader is a
 // refusal deferred to whoever runs the snapshot.
 func Line(tool, stamped string, extras ...string) string {
+	// The sprint server's version verb uses Line directly. Keep its full source
+	// commit in that line even when a release stamp replaces the VCS identity in
+	// field two, so server switch can check the binary against the sprint base.
+	if tool == "nova-sprint" {
+		found := false
+		for _, e := range extras {
+			if strings.HasPrefix(e, CommitKey+"=") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			if commit := CommitExtra(); commit != "" {
+				extras = append(extras, commit)
+			}
+		}
+	}
 	line := fmt.Sprintf("%s %s %s/%s %s",
 		oneline.Field(tool),
 		oneline.Field(Version(stamped)),
@@ -316,4 +333,103 @@ func (f Fields) PartialSource() bool {
 		}
 	}
 	return false
+}
+
+// CommitKey is the extra a version line names its full source commit by: `commit=<40 hex>`,
+// or `commit=<40 hex>-dirty` for a build from an edited tree. Field two shortens the commit
+// to 12 hex, or replaces it with a release tag; the extra keeps the whole commit whatever
+// field two says, so a reader that must ask git about the commit never guesses at a prefix
+// (the server's base check, docs/SPEC-SPRINT.md section 14, "server-from-base-only-w-ns-bb.w1").
+const CommitKey = "commit"
+
+// CommitExtra is the calling binary's `commit=` extra, "" when the toolchain recorded no
+// revision (a build outside a checkout, a test binary): a caller passes it to Line only
+// when it is not empty, since an extra is never a key with no value.
+func CommitExtra() string {
+	info, ok := debug.ReadBuildInfo()
+	return CommitExtraOf(info, ok)
+}
+
+// CommitExtraOf is CommitExtra over build information given as arguments, as Resolve is.
+func CommitExtraOf(info *debug.BuildInfo, ok bool) string {
+	if !ok || info == nil {
+		return ""
+	}
+	var revision string
+	var modified bool
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			revision = s.Value
+		case "vcs.modified":
+			modified = s.Value == "true"
+		}
+	}
+	if revision == "" {
+		return ""
+	}
+	if modified {
+		revision += "-dirty"
+	}
+	return CommitKey + "=" + revision
+}
+
+// Commit is the source commit the line names, read from the line alone, in this order:
+// its `commit=` extra; the revision of a whole Source; the 12 hex of the vcs stamp in
+// field two (<utc revision time>-<12 hex>, the shape Resolve writes). commit is "" for a
+// line that names none -- devel, a release tag or a module version with no extra -- and
+// for a build from an edited tree, because a dirty build is not the commit it names; why
+// then says which, for a refusal to quote. Nothing here asks git: what the commit is to
+// the caller is the caller's question (docs/SPEC-SPRINT.md section 14,
+// "server-from-base-only-w-ns-bb.w1").
+func (f Fields) Commit() (commit, why string) {
+	if c, ok := f.Extra(CommitKey); ok {
+		if rev, dirty := strings.CutSuffix(c, "-dirty"); dirty {
+			return "", "built from an edited tree at " + rev + " (" + CommitKey + "=" + c + ")"
+		}
+		if !isHex(c) {
+			return "", "its " + CommitKey + "=" + c + " is not a commit"
+		}
+		return c, ""
+	}
+	if src, ok := f.FindSource(); ok {
+		switch {
+		case src.Dirty:
+			return "", "built from an edited tree at " + src.Revision + " (dirty=true)"
+		case !isHex(src.Revision):
+			return "", "its revision=" + src.Revision + " is not a commit"
+		}
+		return src.Revision, ""
+	}
+	v := f.Version
+	if strings.HasSuffix(v, "-dirty") {
+		return "", "built from an edited tree (" + v + ")"
+	}
+	stamp, rev, found := strings.Cut(v, "-")
+	if found && len(stamp) == len("20060102150405") && isDigits(stamp) && len(rev) == shortRevisionLen && isHex(rev) {
+		return rev, ""
+	}
+	return "", "its build identity " + v + " names no source commit"
+}
+
+// isHex says s is a commit's lowercase hex, 7 to 64 digits (sha1 or sha256).
+func isHex(s string) bool {
+	if len(s) < 7 || len(s) > 64 {
+		return false
+	}
+	for _, r := range s {
+		if !('0' <= r && r <= '9' || 'a' <= r && r <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func isDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
 }
