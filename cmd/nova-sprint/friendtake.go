@@ -28,15 +28,48 @@ const friendTakeWords = "friend take takes back cards dealt to the friend that s
 // friendStarted is the friend's cards she has started, each with its why: every work card
 // ready or working on her row that her last beat names running (by its id, its job or its
 // primary), or whose branch origin holds (a push on it), or whose push cannot be read (the
-// card stays with her rather than be taken from under her).
+// card stays with her rather than be taken from under her). This is the conservative read
+// friend take, friend down and friend level refuse on; the working count takes only the
+// positive of it (friendVerified).
 func (a *app) friendStarted(ctx context.Context, st *store.Store, friend string) (map[string]string, error) {
+	r, err := a.readFriendStarted(ctx, st, friend)
+	if err != nil {
+		return nil, err
+	}
+	return r.started, nil
+}
+
+// friendVerified is the friend's cards a positive read proves she has started, each with
+// its why: her last beat names it running, or origin holds a readable push on its branch.
+// A card whose push cannot be read (the read fails, or the card names no REPO: line) is
+// started for friend take but not verified here, so the working count counts only what
+// someone can see (sprint.FriendWorkingOf; docs/SPEC-SPRINT.md section 1, "Verified
+// working"; the reader of card sn-verified-working-b-ns-bcc.w1: "pass only positive
+// evidence (a readable branch push or --running beat) into the working count").
+func (a *app) friendVerified(ctx context.Context, st *store.Store, friend string) (map[string]string, error) {
+	r, err := a.readFriendStarted(ctx, st, friend)
+	if err != nil {
+		return nil, err
+	}
+	return r.verified, nil
+}
+
+// friendRead is one read of a friend's work cards: started every card she has started,
+// each with its why, conservative (what friend take refuses on), and verified only the
+// cards a positive read proves, the subset the working count may take.
+type friendRead struct {
+	started  map[string]string
+	verified map[string]string
+}
+
+func (a *app) readFriendStarted(ctx context.Context, st *store.Store, friend string) (friendRead, error) {
 	cards, err := st.ReadCells(ctx, sprint.Fleet, sprint.FriendRow(friend), sprint.Working, sprint.Ready)
 	if err != nil || len(cards) == 0 {
-		return nil, err
+		return friendRead{}, err
 	}
 	b, err := st.FriendBeatOf(ctx, friend)
 	if err != nil {
-		return nil, err
+		return friendRead{}, err
 	}
 	var running []string
 	if b.Friend != nil {
@@ -44,12 +77,14 @@ func (a *app) friendStarted(ctx context.Context, st *store.Store, friend string)
 	}
 	packets, err := st.Packets(ctx, cards)
 	if err != nil {
-		return nil, err
+		return friendRead{}, err
 	}
 	out := map[string]string{}
+	ok := map[string]string{}
 	for _, p := range packets {
 		if slices.Contains(running, p.Card) || slices.Contains(running, friendJobOf(p)) || slices.Contains(running, p.Primary) {
 			out[p.Card] = "her beat names it running"
+			ok[p.Card] = out[p.Card]
 			continue
 		}
 		repo := swarm.ReadCardBase([]byte(p.Brief)).Repo
@@ -62,9 +97,10 @@ func (a *app) friendStarted(ctx context.Context, st *store.Store, friend string)
 			out[p.Card] = "a push on " + p.Branch + " cannot be read (" + oneline.Escape(err.Error()) + ")"
 		case tip != "":
 			out[p.Card] = "a push on its branch " + p.Branch + " at " + tip
+			ok[p.Card] = out[p.Card]
 		}
 	}
-	return out, nil
+	return friendRead{started: out, verified: ok}, nil
 }
 
 // keptSays is the NOTE lines of the cards a take of all leaves with her: each one she has

@@ -76,12 +76,17 @@ type FriendSpec struct {
 // her sprint cards (filled by where from her fleet row), her width and her
 // status (filled by FriendRows from the roster and her beat).
 type FriendRow struct {
-	Name    string `json:"name"`
-	Ready   int    `json:"ready"`
-	Working int    `json:"working"`
-	Width   int    `json:"width"`
-	OK      int    `json:"ok"`
-	Failed  int    `json:"failed"`
+	Name  string `json:"name"`
+	Ready int    `json:"ready"`
+	// Dealt is every card of hers in working on her row; Working is the verified of
+	// them, a card a push proves or her beat names running (sprint.FriendWorkingOf),
+	// so the two differ exactly when she holds cards no push proves and her beat does
+	// not name (docs/SPEC-SPRINT.md section 1, "Verified working").
+	Dealt   int `json:"dealt"`
+	Working int `json:"working"`
+	Width   int `json:"width"`
+	OK      int `json:"ok"`
+	Failed  int `json:"failed"`
 	// Redealt counts her cards taken back past their deadline unfinished, a redeal and
 	// never a failure (sprint.TickFriendRedeal).
 	Redealt int    `json:"redealt"`
