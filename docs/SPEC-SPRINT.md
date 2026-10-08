@@ -2781,7 +2781,7 @@ id (`--op`) returns the original result, with no second counter or notification.
   on a twin repository and the twin store, each reworked with its finding and asked of no
   reader, the clean one asked).
 
-### reads-start-on-finish-r-ns-bb.w1
+### reads-start-on-finish-r-ns-bb.w4
 
 A successful finish puts its primary in review and wakes the run loop through the log. The readers' ask part of the next tick reads that review state and asks its first read while an eligible reader has room. It does not wait for a periodic clock sweep. If every eligible reader is full, the primary is due and is asked in the first tick after one frees. `finished_at` and `read_asked_at` in the cycle-time breakdown measure that wait; where shows the stage row. The target with room is under 30 seconds. `TestAFinishAsksAFreeReaderInTheSameTick` holds the finish and ask to one injected clock instant and exercises the first free-reader retry.
 
