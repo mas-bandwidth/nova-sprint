@@ -38,6 +38,18 @@ that run. It does not prove that a live deployment has no bugs, that a model
 provider is available, or that all possible fleet sizes were checked. Keep
 counterexamples and measured results intact when improving their explanation.
 
+## CapDeal's reversed witnesses
+
+`CapDeal.tla` takes a `Broken` constant naming the rule the instance leaves out
+(`"none"` is the design). The gated control is `MCCapDeal.cfg`; the five
+reversed-witness instances that turn one defect on at a time are fixtures under
+[testdata/](testdata/) (`MCCapDealBroken{ MachineFirst,NoJudge,Twice,IdNoJudge,
+IdTwice }.cfg`). They are fixtures rather than gated cases because the case plan
+reads only the top-level `tla/MC*.cfg` files. Each was run by hand on the Linux
+bench and each reaches its declared property: `FriendFirst` for `machinefirst`,
+`NoCardLost` for `nojudge` and `idnojudge`, and `ExactlyOneJudgment` for `twice`
+and `idtwice`.
+
 ## Run checks on a Linux bench
 
 The TLC runner remains in

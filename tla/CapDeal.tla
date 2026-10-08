@@ -66,6 +66,10 @@
 \*   "idtwice"       the identical-ends bound's judgment is raised twice (breaks
 \*                   ExactlyOneJudgment at that bound).
 \*
+\* The gated case is the control MCCapDeal.cfg ("none"). The per-value configs
+\* that turn one witness on at a time are fixtures under tla/testdata/, because
+\* the case plan reads only the top-level tla/MC*.cfg files.
+\*
 \* The model reads internal/sprint/brief_bound.go's AttemptCapDeal, friendWithFree
 \* and capJudgments; internal/sprint/steps_tick.go's TickCapDeal, PartCapDeal,
 \* TickDeal, AtRedealBound and redealBound (the count at MaxRedeals or

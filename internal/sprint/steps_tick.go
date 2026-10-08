@@ -253,7 +253,8 @@ var TickTables = []TableUpdate{
 // PartCapDeal is the attempt cap's default answer, the pump's part before the deal
 // (TickCapDeal, brief_bound.go): a card past its cap goes to a frontier or heavy friend
 // with room before the deal could give it to a machine. The model is tla/CapDeal.tla
-// (FriendFirst, ExactlyOneJudgment, NoCardLost; the MCCapDeal* cases, group capdeal).
+// (FriendFirst, ExactlyOneJudgment, NoCardLost; the MCCapDeal instance, group capdeal,
+// and the reversed-witness fixtures under tla/testdata/).
 const PartCapDeal = "cap deal"
 
 // TickCapDeal is the attempt cap's default answer as a part of the tick (AttemptCapDeal;
