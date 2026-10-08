@@ -163,9 +163,11 @@ func TestFriendLevelRespectsOneShotDeliveryMode(t *testing.T) {
 	assert.Contains(t, ta.ok("friend level"), "FRIEND-LEVEL OK moved=0")
 
 	f := whereFriends(ta)
-	assert.Equal(t, 2, f["amy"].Working)
+	assert.Equal(t, 2, f["amy"].Dealt, "two cards dealt to amy")
+	assert.Equal(t, 0, f["amy"].Working, "nothing pushed or running: none of them verified")
 	assert.Equal(t, 1, f["amy"].Ready)
-	assert.Equal(t, 1, f["bob"].Working)
+	assert.Equal(t, 1, f["bob"].Dealt, "one card dealt to bob")
+	assert.Equal(t, 0, f["bob"].Working, "nothing pushed or running: not verified")
 	assert.Equal(t, 0, f["bob"].Ready)
 	ta.clean()
 }

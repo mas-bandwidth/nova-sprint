@@ -172,6 +172,18 @@
 # nova-table set fleet --hide finished). Held by TestSprintTablesAreLocked,
 # TestOkPercentCountsReaderVerdictsOnlyAndADeadlineIsARedeal and
 # TestTheMigrationGivesTheFleetTableItsLockedShape.
+# Change, 2026-10-06, asked by the card sn-verified-working-b-ns-b.w1. Glenn's words
+# are the amendment: "trust but VERIFY"; "I want to trust the ok%"; "Mechanical. You
+# know the drill."; "Are they actually doing the work that is shown in the friend
+# table? Really?"; "i don't want dollar amounts for friends. token counts are fine."
+# friends.dealt is that column, beside working: a count summed in the footer, every
+# card of hers in working on her row, while working counts only the verified of them,
+# a card with a push on its branch or named in her beat --running
+# (sprint.FriendWorkingOf), so dealt and working differ exactly when she holds cards no
+# push proves and her beat does not name. No dollar or cost column is added; token
+# counts, when a friends column carries them, come with their own lock change. Held
+# by TestSprintTablesAreLocked and
+# TestWorkingCountsOnlyVerifiedCardsAndAnIdleFriendRaisesOneJudgment.
 work.waiting count sum shown
 work.ready count sum shown
 work.working count sum shown
@@ -207,6 +219,7 @@ fleet.failed count sum hidden
 fleet.ctl first none hidden
 friends.ready count sum shown
 friends.working count sum shown
+friends.dealt count sum shown
 friends.width text sum shown
 friends.done sum(ok+failed) sum shown
 friends.okpct pct(ok/ok+failed) pooled shown label=ok%
