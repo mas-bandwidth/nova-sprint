@@ -2781,6 +2781,55 @@ id (`--op`) returns the original result, with no second counter or notification.
   on a twin repository and the twin store, each reworked with its finding and asked of no
   reader, the clean one asked).
 
+### The machine gate: machine-gate-before-read-ns-b.w3
+
+- What the work lint does from the commit alone, the gate does by running it: the machine
+  runs each finished attempt's gate once, after the lint passes and before any reader is
+  asked (the owner, 2026-10-05: "OK what else is like this, saving LLM work by replacing
+  it with checks at the right time?"). On epoch 15's log, 7,552 reads ran and every read
+  ran Go on a bench itself (clone, sync, vet, test), and 323 broken reads were a red gate
+  the machine could have seen without a model. The gate runs in the pump, after the lint
+  (`TickAccept` calls `TickLint` then `TickGate`), on every primary in review whose work
+  did not fail, that has no read card at its attempt and no change queued; and the ask,
+  the friends' and the machine's, holds every attempt whose gate for this attempt has not
+  passed (`hideGateHeld`, from `TickAsk`) or refused (`gateHeldPart`, which wraps the
+  installed ask part so the friend's frontier ask is held as the machine ask is), so no
+  read is spent on an attempt the machine has not gated whatever the order of the tick.
+- A gate no bench answered leaves the attempt in review with the state `waiting`
+  (`sprint.GateWaiting`) and one judgment, `no bench answered the gate`
+  (`sprint.NBenchDown`, decisions wait, rework, drop), naming the reason: a bench that does
+  not answer is not a pass, the attempt waits, and no reader is asked of it.
+- The gate runs the attempt's head on a bench through the bench-run verb (card
+  bench-run-verb: `nova-ci bench run --host <h> [--fallback <h>] --dir <tree> --
+  <command>`), the verb that makes the run directory, copies the tree, runs the command
+  under `nice -n 19` with the bench's `GOCACHE` and `GOFLAGS=-mod=readonly`, and removes
+  the directory. The commands (`sprint.GateCommands`) are the packages the change touches
+  (their directories, and the TEST line's package), each `go vet` and
+  `go test -count=1 -timeout 600s`, then the TEST line's own test alone (`-run
+  '^<Name>$'`, with its tags). The tree is a `git worktree` at the head of the lander's
+  clone, so the bench copies exactly the attempt's commit; the runner is a seam
+  (`sprint.GateRunner`, `sprint.BenchRun`), faked in the tests, so the tick's rule is
+  testable with no bench.
+- A red gate is reworked at once with the gate's lines as its fix
+  (`sprint.GateFix`: `the machine gate refused attempt <n> at <head>; machine gate:
+  <line>; ...`, each line the file and line the output names, where it names one) and its
+  finding, its `gate_reworks` (`sprint.FieldGateReworks`) and `broken_reads` counted one
+  more, so it counts toward the card's bounds as a broken read does. A green gate records
+  its lines on the attempt (`gate_lines`, the command and the last line it printed, with
+  `gate` `green`, `gate_attempt` and `gate_bench`), and the read packet carries them
+  (`sprint.Packet.Gate`): the reader judges whether the change does the brief and runs no
+  Go of its own (the friend read prompt, `friend.ReadGate`; the member's read frame in
+  nova-tools, which needs the same field there). The state names the attempt it was made
+  at (`gate_attempt`), so a gate decided at one attempt is no decision about the next
+  (`TestARedGateIsReworkedBeforeAnyReaderIsAsked`,
+  `TestABenchThatDoesNotAnswerHoldsTheAttempt`,
+  `TestAGreenGateRecordsItsLinesForTheReadPacket`).
+- The tick's request carries the gate (`TickReq.Gate`); nil is `sprint.DefaultGate`, which
+  `nova-sprint` sets at its start from `NOVA_SPRINT_GATE_BENCH` (a comma list, the first
+  bench tried and the second the fallback). A sprint that names no bench runs no gate and
+  asks every attempt as before: the field is additive, and a store given
+  `sprint.GateTables(g)` gates with `g`.
+
 ## 7. Merging
 
 1. In work order, never random: the head of the stream's queued cell first.
