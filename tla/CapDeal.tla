@@ -14,8 +14,9 @@
 \* carries, against `Cap`; AttemptsCap and AtBriefBound with no finding) is dealt
 \* as a friend card to a frontier or heavy-class friend up with room (her free
 \* width), the most free first, the first by name among equals (AttemptCapDeal,
-\* friendWithFree). Dealing it resets its count as a replaced brief does
-\* (since := 0) and closes a brief-defect judgment open on it (capJudgments);
+\* friendWithFree). Dealing it sets brief_attempt to the attempt it was dealt from
+\* and advances attempt by one in the same unit (since := 1, brief_bound.go and
+\* friendDealUnit) and closes a brief-defect judgment open on it (capJudgments);
 \* the friend's card is a new work card at the next attempt, so the ended take
 \* and the redeal count clear too (ended := FALSE, rdl := 0; friendDealUnit).
 \* With no such friend up with room the card is the deal's: at its redeal bound
@@ -159,10 +160,12 @@ TickStart ==
   /\ UNCHANGED <<col, who, since, ended, rdl, same, judge, lostAtBound, status, room>>
 
 \* The cap deal: a ready card past its cap goes to the friend-tier friend up with
-\* the most room; her room is spent as she is given the card, and the card's
-\* count resets as a replaced brief does. The friend's card is a new work card at
-\* the next attempt (friendDealUnit, createEntry): its take has not ended and its
-\* redeal count starts over, so the ended take, the count and the identical ends
+\* the most room; her room is spent as she is given the card. The cap deal sets
+\* brief_attempt to the attempt it was dealt from and friendDealUnit advances
+\* attempt by one in the same unit, so since is 1 after the cap deal and a later
+\* redeal does not spend it. The friend's card is a new work card at the next
+\* attempt (friendDealUnit, createEntry): its take has not ended and its redeal
+\* count starts over, so the ended take, the redeal count and the identical ends
 \* all clear.
 CapPart(c) ==
   /\ phase = "cap"
@@ -171,7 +174,7 @@ CapPart(c) ==
   /\ LET f == Best IN
      /\ col' = [col EXCEPT ![c] = "friend"]
      /\ who' = [who EXCEPT ![c] = f]
-     /\ since' = [since EXCEPT ![c] = 0]
+     /\ since' = [since EXCEPT ![c] = 1]
      /\ judge' = [judge EXCEPT ![c] = 0]
      /\ room' = [room EXCEPT ![f] = room[f] - 1]
      /\ ended' = [ended EXCEPT ![c] = FALSE]
@@ -234,13 +237,14 @@ FriendDown(f) ==
   /\ room' = [room EXCEPT ![f] = 0]
   /\ UNCHANGED <<col, who, since, ended, rdl, same, judge, lostAtBound, phase>>
 
-\* A take of a card on a machine or a friend ends without a finish: the card is
-\* withdrawn to ready and its take recorded; the deal that places it again spends
-\* one of its redeals (redeal, not here), so rdl is the card's redeals. A new
-\* attempt on the same brief spends another of the cap. The just-ended take may
-\* have ended the way the one before it did: the last two ended takes are then
-\* the same (identicalEnds, rule 2), the bound below the count. A first take has
-\* none before it to match, so the second take has rdl >= 1.
+\* A take of a card on a machine or a friend ends: either the take ended
+\* without a finish (redeal, leaving the attempt unchanged: since is unchanged,
+\* ended is TRUE, and rdl is the card's redeals spent when the deal places it
+\* again), or a new attempt on the same brief starts (since advances, rdl starts
+\* over at 0, and ended clears). The just-ended take may have ended the way the
+\* one before it did: the last two ended takes are then the same (identicalEnds,
+\* rule 2), the bound below the count. A first take has none before it to match,
+\* so the second take has rdl >= 1.
 AttemptEnds(c) ==
   /\ phase = "idle"
   /\ col[c] \in {"machine", "friend"}
@@ -250,13 +254,18 @@ AttemptEnds(c) ==
      IN
      /\ col' = [col EXCEPT ![c] = "ready"]
      /\ who' = [who EXCEPT ![c] = "none"]
-     /\ ended' = [ended EXCEPT ![c] = TRUE]
-     /\ \/ same' = [same EXCEPT ![c] = FALSE]
-        \/ /\ rdl[c] >= 1
-           /\ same' = [same EXCEPT ![c] = TRUE]
-     /\ since' = [since EXCEPT ![c] = Min(since[c] + 1, MaxSince)]
      /\ room' = free
-     /\ UNCHANGED <<rdl, judge, lostAtBound, status, phase>>
+     /\ \/ /\ ended' = [ended EXCEPT ![c] = TRUE]
+           /\ \/ same' = [same EXCEPT ![c] = FALSE]
+              \/ /\ rdl[c] >= 1
+                 /\ same' = [same EXCEPT ![c] = TRUE]
+           /\ since' = since
+           /\ rdl' = rdl
+        \/ /\ ended' = [ended EXCEPT ![c] = FALSE]
+           /\ same' = [same EXCEPT ![c] = FALSE]
+           /\ rdl' = [rdl EXCEPT ![c] = 0]
+           /\ since' = [since EXCEPT ![c] = Min(since[c] + 1, MaxSince)]
+     /\ UNCHANGED <<judge, lostAtBound, status, phase>>
 
 \* The coordinator answers the cap's judgment: the brief replaced (the count and
 \* the bound reset) or the card dropped.
