@@ -13,7 +13,7 @@ func tables(ts ...string) []string { return ts }
 
 // AddStep admits primaries; it reads the named needs as well, placed or not,
 // and the stream's control card, kept unplaced when the stream was removed in
-// this epoch (sprint.RemovedStream). With Replaces (add --replaces) it is the
+// this epoch (sprint.RemovedStream), which the add places again (sprint.ComeBack). With Replaces (add --replaces) it is the
 // twin's step (sprint.Replace): it reads every table, as the drop of the old
 // cards does, and the old cards' records, placed or not.
 func AddStep(r sprint.AddReq) Step {
@@ -66,7 +66,7 @@ func TakeStep(r sprint.TakeReq) Step {
 	// a take for a friend's row reads the friends' seats: her status is FriendStatus, never
 	// a control card's (sprint's takeSeat)
 	friends := slices.ContainsFunc(sprint.Split(r.As), sprint.IsFriendRow)
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "take", Load: tables(sprint.Fleet), Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Friends: friends,
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "take", Load: tables(sprint.Fleet), Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Friends: friends, StartsWork: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Take(s, r) }}
 }
 
@@ -76,7 +76,7 @@ func FinishStep(r sprint.FinishReq) Step {
 	// a member may read (sprint's cost.go; Step.Prices); a failed finish reads them too,
 	// with or without its usage: the second identical failure below its ceiling escalates
 	// the card in the finish, by the tiers its routes serve (sprint.NextTier)
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "finish", Load: tables(sprint.Fleet, sprint.Readers, sprint.Work), Mirrors: true, Prices: r.Usage != "" || r.Failed,
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "finish", Load: tables(sprint.Fleet, sprint.Readers, sprint.Work), Mirrors: true, Prices: r.Usage != "" || r.Failed, ReportsWork: true,
 		Friends: true,
 		Extras:  sprint.NamedExtras(sprint.Fleet, r.IDs),
 		Plan:    func(s *sprint.Snapshot) sprint.Plan { return sprint.Finish(s, r) }}
@@ -97,7 +97,7 @@ func AskStep(r sprint.AskReq) Step {
 			var ids []string
 			for _, c := range s.Work.Column(sprint.Review) {
 				for _, rd := range s.Readers.Rows() {
-					ids = append(ids, sprint.ReadCardID(c.ID, c.Int("attempt"), rd))
+					ids = append(ids, ReadCardIDs(c.ID, c.Int("attempt"), rd)...)
 				}
 			}
 			return map[string][]string{sprint.Readers: ids}
@@ -107,21 +107,48 @@ func AskStep(r sprint.AskReq) Step {
 
 // ReadStep is a reader recording its reads.
 func ReadStep(r sprint.ReadReq) Step {
+	// a read asked of a friend is a card on her fleet row (the sprint's friendReadAsk): the
+	// verb reads the fleet table and closes it as her outbox report does, and brings
+	// her row's display cells up to date
+	for _, rd := range sprint.Split(r.As) {
+		// a read card on a member's row (sprint read_cards.go) is read as hers is: a name
+		// that is no reader-<m> is a fleet row
+		if _, isReader := sprint.ReaderMachine(rd); sprint.IsFriendRow(rd) || !isReader {
+			return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Fleet, sprint.Work, sprint.Readers), Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Mirrors: true, Prices: r.Usage != "", StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return,
+				Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Read(s, r) }}
+		}
+	}
 	// a read that reports what it spent prices it with the routes alone, the keys a
 	// reader may read (sprint's cost.go; Step.Prices)
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Readers, sprint.Work), Extras: sprint.NamedExtras(sprint.Readers, r.IDs), Prices: r.Usage != "",
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Readers, sprint.Work), Extras: sprint.NamedExtras(sprint.Readers, r.IDs), Prices: r.Usage != "", StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Read(s, r) }}
+}
+
+// StopReturnStep is an owner's acknowledgement after its process was cancelled.
+// It preserves the card's placement and attempt, returning it to that owner.
+func StopReturnStep(r sprint.StopReturnReq) Step {
+	return Step{Named: true, Args: ArgsOf(r), Verb: "stop-return", Load: tables(sprint.Fleet, sprint.Readers),
+		Extras: func(s *sprint.Snapshot) map[string][]string {
+			return map[string][]string{sprint.Fleet: r.IDs, sprint.Readers: r.IDs}
+		}, RequiresStopped: true, Mirrors: true,
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.StopReturn(s, r) }}
 }
 
 // AcceptStep is the coordinator accepting.
 func AcceptStep(r sprint.AcceptReq) Step {
-	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "accept", Load: tables(sprint.Work, sprint.Readers, sprint.Merge),
+	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "accept", Load: tables(sprint.Work, sprint.Readers, sprint.Merge, sprint.Fleet),
+		Extras: func(s *sprint.Snapshot) map[string][]string {
+			return map[string][]string{sprint.Fleet: sprint.ReadCardExtras(s)}
+		},
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Accept(s, r) }}
 }
 
 // ReworkStep is the coordinator sending work back with a fix.
 func ReworkStep(r sprint.ReworkReq) Step {
-	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "rework", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge), Mirrors: true, Routes: true,
+	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "rework", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge), Mirrors: true, Routes: true, Friends: true,
+		Extras: func(s *sprint.Snapshot) map[string][]string {
+			return map[string][]string{sprint.Fleet: sprint.ReadCardExtras(s)}
+		},
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Rework(s, r) }}
 }
 
@@ -133,7 +160,7 @@ func ReturnStep(r sprint.ReturnReq) Step {
 
 // RedoStep is the coordinator atomically returning, reworking and resuming conflicted cards.
 func RedoStep(r sprint.RedoReq) Step {
-	return Step{Named: len(r.Sel.IDs) > 0, Args: ArgsOf(r), Verb: "redo", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge), Mirrors: true, Routes: true,
+	return Step{Named: len(r.Sel.IDs) > 0, Args: ArgsOf(r), Verb: "redo", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge), Mirrors: true, Routes: true, Friends: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Redo(s, r) }}
 }
 
@@ -143,10 +170,11 @@ func DropStep(r sprint.DropReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Drop(s, r) }}
 }
 
-// BriefStep is the coordinator replacing the briefs of primaries that have not
-// started, on a running machine as on a stopped one (sprint.Brief); all or none.
+// BriefStep is the coordinator replacing the briefs of primaries in place, on a
+// running machine as on a stopped one (sprint.Brief); all or none. It reads what a
+// rework reads: a card in review edited in place opens its next attempt.
 func BriefStep(r sprint.BriefReq) Step {
-	return Step{Named: true, Args: ArgsOf(r), Verb: "brief", Load: tables(sprint.Work),
+	return Step{Answers: r.Answers, Named: true, Args: ArgsOf(r), Verb: "brief", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge), Mirrors: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Brief(s, r) }}
 }
 
@@ -174,7 +202,12 @@ func RankStep(r sprint.RankReq) Step {
 // MergeStep is one mechanical merge step of a stream.
 func MergeStep(r sprint.MergeReq) Step {
 	// a landing takes each card's total from the card itself (sprint's cost.go)
-	return Step{Args: ArgsOf(r), Verb: "merge", Load: tables(sprint.Merge, sprint.Work), Mirrors: true,
+	load := tables(sprint.Merge, sprint.Work)
+	if r.Conflict != "" {
+		// a conflict reworks the card at the tip: its read cards retire (sprint's landRefused)
+		load = tables(sprint.Merge, sprint.Work, sprint.Readers)
+	}
+	return Step{Args: ArgsOf(r), Verb: "merge", Load: load, Mirrors: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.MergeStep(s, r) }}
 }
 
@@ -189,6 +222,19 @@ func SetStep(r sprint.SetReq) Step {
 func PromotedStep(r sprint.PromotedReq) Step {
 	return Step{Args: ArgsOf(r), Verb: "promoted", Load: tables(sprint.Work),
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Promoted(s, r) }}
+}
+
+// LandedStep is the coordinator recording work found on the base landed, at a commit git
+// put there (sprint.RecordLanded); it reads the named cards' records, placed or not, so a
+// dropped one is refused by name.
+func LandedStep(r sprint.LandedReq) Step {
+	ids := make([]string, len(r.Pins))
+	for i, pin := range r.Pins {
+		ids[i] = pin.ID
+	}
+	return Step{Named: true, Args: ArgsOf(r), Verb: "landed", Load: tables(sprint.Merge, sprint.Work), Mirrors: true,
+		Extras: func(*sprint.Snapshot) map[string][]string { return map[string][]string{sprint.Work: ids} },
+		Plan:   func(s *sprint.Snapshot) sprint.Plan { return sprint.RecordLanded(s, r) }}
 }
 
 // MergeWindowStep opens the merge window: landing pauses for its duration, its reason
@@ -298,6 +344,12 @@ func FriendTakeStep(r sprint.FriendTakeReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.FriendTake(s, r) }}
 }
 
+// FriendGiveStep clears the take-back mark of a friend on the cards named (friend give).
+func FriendGiveStep(r sprint.FriendGiveReq) Step {
+	return Step{Args: ArgsOf(r), Verb: "friend give", Load: tables(sprint.Fleet, sprint.Work), Mirrors: true,
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.FriendGive(s, r) }}
+}
+
 // FriendLevelStep evens the friends' ready queues within each class (friend level).
 func FriendLevelStep(r sprint.FriendLevelReq) Step {
 	return Step{Args: ArgsOf(r), Verb: "friend level", Load: tables(sprint.Fleet, sprint.Work), Mirrors: true,
@@ -313,11 +365,26 @@ func NoteStep(verb string, n sprint.Note) Step {
 	}}
 }
 
+// FriendSyncStateStep records the friend sync loop's standing failure, or its
+// clearing, on the fleet table (sprint.FriendSyncStateStep): what the tick's
+// one judgment of it is raised on and closed by.
+func FriendSyncStateStep(r sprint.FriendSyncStateReq) Step {
+	return Step{Args: ArgsOf(r), Verb: "friend sync", Load: tables(sprint.Fleet),
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.FriendSyncStateStep(s, r) }}
+}
+
 // UnpinStep drops stored WHO pins atomically with their audit notes. The fleet
 // table is loaded so a first attempt returned by friend take can be recognised.
 func UnpinStep(r sprint.UnpinReq) Step {
 	return Step{Args: ArgsOf(r), Verb: "unpin", Load: tables(sprint.Work, sprint.Fleet),
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Unpin(s, r) }}
+}
+
+// PriorityStep sets a card's priority, or every card of a stream's and the stream's default
+// (sprint.SetPriority): it reads the work table and the streams' control cards.
+func PriorityStep(r sprint.PriorityReq) Step {
+	return Step{Args: ArgsOf(r), Verb: "priority", Load: tables(sprint.Work, sprint.Merge),
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.SetPriority(s, r) }}
 }
 
 // RelinkStep re-points the needs of an old card to its twin (sprint.Relink): it reads the

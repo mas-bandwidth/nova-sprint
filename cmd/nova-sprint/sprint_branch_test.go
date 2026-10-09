@@ -16,13 +16,13 @@ import (
 // writeBaseBrief writes a passing brief whose header block names its repository and,
 // unless base is "", its BASE: line, as a card the coordinator cuts does, and returns
 // its path.
-func writeBaseBrief(t *testing.T, dir, id, base string) string {
+func writeBaseBrief(t *testing.T, dir, repo, id, base string) string {
 	t.Helper()
-	lead := "RESULT: " + id + " sha=000000000000 tier: flash\nKIND: fix\nREPO: mas-bandwidth/nova-tools\n"
+	lead := "RESULT: " + id + " sha=000000000000 tier: flash\nKIND: fix\nREPO: " + repo + "\n"
 	if base != "" {
 		lead += "BASE: " + base + "\n"
 	}
-	lead += "PATHS: internal/" + id + ".go\n\nFix " + id + "."
+	lead += "PATHS: internal/" + id + ".go\nTEST: none a fixture of the sprint branch rule\n\nFix " + id + "."
 	path := filepath.Join(dir, id+".md")
 	require.NoError(t, os.WriteFile(path, []byte(passingBrief(lead)), 0o600))
 	return path
@@ -46,10 +46,17 @@ func TestEveryStreamLandsOnTheSprintBranchAndOnlyPromotionReachesDev(t *testing.
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	dir := t.TempDir()
-	onDev := writeBaseBrief(t, dir, "d1", "dev")
-	pinned := writeBaseBrief(t, dir, "d2", "dev@0123456789012345678901234567890123456789")
-	onSprint := writeBaseBrief(t, dir, "k1", "sprint/mechanical-2026-10-02")
-	noBase := writeBaseBrief(t, dir, "n1", "")
+	// add reads each brief at its base (the brief checks): a twin of the repository holds
+	// every card's file on dev and on the sprint branch, and the pin is its commit
+	files := map[string]string{}
+	for _, id := range []string{"d1", "d2", "k1", "n1", "m1", "m2"} {
+		files["internal/"+id+".go"] = "package internal\n"
+	}
+	repo, sha := twinRemote(t, ta, files, "dev", "sprint/mechanical-2026-10-02")
+	onDev := writeBaseBrief(t, dir, repo, "d1", "dev")
+	pinned := writeBaseBrief(t, dir, repo, "d2", "dev@"+sha)
+	onSprint := writeBaseBrief(t, dir, repo, "k1", "sprint/mechanical-2026-10-02")
+	noBase := writeBaseBrief(t, dir, repo, "n1", "")
 
 	for _, c := range []struct{ name, line, card string }{
 		{"one brief", "add --stream s1 d1 --one --brief-file " + onDev, "d1"},
@@ -69,8 +76,8 @@ func TestEveryStreamLandsOnTheSprintBranchAndOnlyPromotionReachesDev(t *testing.
 	}
 
 	many := t.TempDir()
-	writeBaseBrief(t, many, "m1", "sprint/mechanical-2026-10-02")
-	writeBaseBrief(t, many, "m2", "dev")
+	writeBaseBrief(t, many, repo, "m1", "sprint/mechanical-2026-10-02")
+	writeBaseBrief(t, many, repo, "m2", "dev")
 	code, out, errs := ta.do("add --stream s2 --brief-dir " + many)
 	assert.NotEqual(t, 0, code, "many-brief add with a dev card: %s%s", out, errs)
 	assert.Contains(t, out+errs, "card m2 is cut on dev, and stream s2 is not the promotion stream")
@@ -84,65 +91,32 @@ func TestEveryStreamLandsOnTheSprintBranchAndOnlyPromotionReachesDev(t *testing.
 	assert.Contains(t, out+errs, "is cut on dev, and stream q is not the promotion stream", "quack is held to the rule as add is")
 	assert.Contains(t, ta.ok("quack --streams q --count 1 --repo https://example.com/quack.git"), "MOVED", "quack's default base is the sprint branch")
 
-}
+	t.Run("the lander", func(t *testing.T) {
+		t.Parallel()
+		r := newLandRig(t)
+		for _, b := range []string{"dev", "sprint/s1"} {
+			r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/"+b)
+		}
+		r.git(r.worker, "fetch", "-q", "origin") // r.head starts the card from refs/remotes/origin/sprint/s1
+		r.ok("add --stream s1 --count 1 --one")
+		r.queued(map[string]string{"s1-1": r.head("s1-1", "sprint/s1", "a.txt", "a\n")}, "s1-1")
+		r.ok("stream set s1 --land-protected default") // queued marks every stream; s1 is an ordinary stream again
+		dev := r.git(r.remote, "rev-parse", "dev")
+		for _, land := range []string{"land --repo-dir " + r.clone + " --base dev --dry-run", "land --repo-dir " + r.clone + " --base dev"} {
+			code, out, errs := r.do(land)
+			assert.Equal(t, 1, code, land)
+			assert.Contains(t, out+errs, "LAND REFUSED stream=s1 cards=1 base=dev tip=- ids=s1-1 ", land)
+			assert.Contains(t, out+errs, "card s1-1 lands on dev, a protected branch of its repository (it names no REPO: line), and stream s1 is not marked to land on it", land)
+			assert.Contains(t, out+errs, "every stream lands on the sprint branch, and promotion alone reaches dev; re-cut the card with BASE: <the sprint branch>", land)
+			assert.Contains(t, out+errs, "; run: nova-sprint stream set s1 --land-protected any; or mark it the promotion stream, for every repository: nova-sprint stream set s1 --promotion\n", land)
+		}
+		assert.Equal(t, dev, r.git(r.remote, "rev-parse", "dev"), "nothing was pushed to dev")
+		assert.Equal(t, map[string]string{"s1-1": "merging/queued"}, r.places("s1-1"), "nothing was recorded")
 
-// One base (docs/SPEC-SPRINT.md section 7, the sprint branch). Found 2026-10-04: cards cut
-// on a temporary branch and on personal ones were admitted, landed there, and were folded
-// back onto the base by hand through 17 conflicts; the owner, 2026-10-05: "Prevention is
-// better than cure". Once set --base records the sprint's base, add refuses, exit 2,
-// nothing written, a card cut on any other branch outside the promotion stream, naming
-// the card, its BASE, the sprint's base and the remedy, a batch all or none; a card on the
-// sprint's base is admitted, and the promotion stream admits a card on dev. brief holds a
-// new BASE to the same rule.
-func TestAddRefusesACardCutOnAnyBranchButTheSprintBase(t *testing.T) {
-	t.Parallel()
-	ta := newTestApp(t)
-	ta.ok("init --readers reader-a,reader-b --members m1")
-	for _, bad := range []string{"dev", "main"} {
-		code, out, errs := ta.do("set --base " + bad)
-		assert.Equal(t, 1, code, "set --base %s is refused as set refuses any setting: %s%s", bad, out, errs)
-		assert.Contains(t, out+errs, "--base wants the sprint's base branch")
-	}
-	ta.ok("set --base sprint/one")
-	dir := t.TempDir()
-	side := writeBaseBrief(t, dir, "x1", "rowan/friend-health")
-	onBase := writeBaseBrief(t, dir, "k1", "sprint/one")
-	pinned := writeBaseBrief(t, dir, "k2", "sprint/one@0123456789012345678901234567890123456789")
-	onDev := writeBaseBrief(t, dir, "p1", "dev")
-
-	before := ta.applies()
-	code, out, errs := ta.do("add --stream s1 x1 --one --brief-file " + side)
-	assert.Equal(t, 2, code, "a card cut on a side branch: %s%s", out, errs)
-	assert.Contains(t, out+errs, "card x1 is cut on rowan/friend-health, not the sprint's base sprint/one, and stream s1 is not the promotion stream")
-	assert.Contains(t, out+errs, "nothing was written; re-cut the card with BASE: sprint/one, or, for the promotion stream, run: nova-sprint stream set s1 --land-protected <owner/name,...|any>")
-	assert.NotContains(t, out, "MOVED", "nothing written")
-	assert.False(t, ta.placed("x1"), "nothing written")
-	assert.Equal(t, before, ta.applies(), "no store write")
-
-	many := t.TempDir()
-	writeBaseBrief(t, many, "m1", "sprint/one")
-	writeBaseBrief(t, many, "m2", "sprint/mechanical-2026-10-02")
-	code, out, errs = ta.do("add --stream s2 --brief-dir " + many)
-	assert.Equal(t, 2, code, "a batch with one card off the base: %s%s", out, errs)
-	assert.Contains(t, out+errs, "card m2 is cut on sprint/mechanical-2026-10-02, not the sprint's base sprint/one, and stream s2 is not the promotion stream")
-	assert.False(t, ta.placed("m1") || ta.placed("m2"), "nothing written, all or none")
-
-	assert.Contains(t, ta.ok("add --stream s1 k1 --one --brief-file "+onBase), "MOVED k1 -> ready", "a card cut on the sprint's base is admitted")
-	assert.Contains(t, ta.ok("add --stream s1 k2 --one --brief-file "+pinned), "MOVED k2 -> ready", "a pinned sprint base is the sprint's base")
-
-	// the promotion stream: marked by the coordinator, it admits a card cut on dev
-	ta.ok("add --stream p --count 2")
-	ta.ok("stream set p --land-protected any")
-	assert.Contains(t, ta.ok("add --stream p p1 --one --brief-file "+onDev), "MOVED p1 -> ready", "the promotion stream keeps its mark")
-
-	// brief: a new BASE off the sprint's base is refused, the brief kept; one on it is taken
-	before = ta.applies()
-	code, out, errs = ta.do("brief k1 --brief-file " + side)
-	assert.Equal(t, 2, code, "brief moving k1 off the base: %s%s", out, errs)
-	assert.Contains(t, out+errs, "card k1 is cut on rowan/friend-health, not the sprint's base sprint/one, and stream s1 is not the promotion stream")
-	assert.Equal(t, before, ta.applies(), "no store write")
-	assert.Contains(t, ta.ok("brief k1 --brief-file "+pinned), "k1 brief replaced", "a brief on the sprint's base is taken")
-	assert.Contains(t, ta.ok("brief p1 --brief-file "+side), "p1 brief replaced", "the promotion stream takes any base")
+		assert.Contains(t, r.ok("land --repo-dir "+r.clone+" --base sprint/s1"), "LAND OK stream=s1 cards=1 base=sprint/s1", "the sprint branch is where a stream lands")
+		assert.Contains(t, r.git(r.remote, "log", "--first-parent", "--format=%s", "sprint/s1"), "land s1-1 (sprint stream s1)")
+		assert.Equal(t, dev, r.git(r.remote, "rev-parse", "dev"), "dev moved only by promotion")
+	})
 }
 
 // placed says the work table holds a primary of this id.

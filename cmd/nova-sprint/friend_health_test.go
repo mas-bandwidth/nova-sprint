@@ -14,6 +14,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/bus"
 	"github.com/mas-bandwidth/nova-sprint/internal/bus/bustest"
+	"github.com/mas-bandwidth/nova-sprint/internal/config"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
@@ -63,7 +64,7 @@ func TestFriendHealthIsTheSeatsAndFencedByItsGeneration(t *testing.T) {
 	assert.Contains(t, ta.dry("friend health amy --state up --seen "+seen+" --generation 1 --dry-run"), "FRIEND-HEALTH DRY-RUN amy state=up seen="+seen+" generation=1; nothing was changed")
 	out := ta.ok("friend health amy --state up --seen " + seen + " --generation 1")
 	assert.Equal(t, "FRIEND-HEALTH OK amy state=up seen="+seen+" generation=1 status=up\n", out)
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "amy     |     0 |       0 |     8 |    0 | 0.0% |       0 | up")
+	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "amy     |     0 |       0 |     8 |    0 | 0.0% | up")
 
 	out = ta.ok("friend health amy --state up --seen " + seen + " --generation 1")
 	assert.Contains(t, out, "replayed=true", "the same proof again is answered as recorded")
@@ -139,12 +140,27 @@ func TestTheFriendsTableShowsUpHeldOrDownWithTheReason(t *testing.T) {
 	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "| up")
 }
 
-// A friend-card delivery wakes the friend: one bus message from the coordinator to her
-// per card delivered, naming the card and its inbox path; a send that fails never fails
-// the delivery, is said on sync's line and written on the card's story.
-func TestFriendSyncWakesTheFriendWithOneBusMessagePerDelivery(t *testing.T) {
+// A one-shot friend's delivery wakes her once per card: one bus message from the
+// coordinator, naming the card and its inbox path. A send that fails never fails
+// the delivery, is said on sync's line and written on the card's story. Batch mode
+// is TestFriendSyncWakesOncePerPassInBatchMode.
+func TestFriendSyncWakesOneShotFriendWithOneBusMessagePerDelivery(t *testing.T) {
 	t.Parallel()
+	oneShot := func(ta *testApp) {
+		read := ta.a.friends
+		ta.a.friends = func(ctx context.Context, pg string) ([]config.Row, error) {
+			rows, err := read(ctx, pg)
+			for i := range rows {
+				if rows[i].Fields == nil {
+					rows[i].Fields = map[string]string{}
+				}
+				rows[i].Fields["mode"] = config.FriendModeOneShot
+			}
+			return rows, err
+		}
+	}
 	ta, root := friendCardApp(t, "friend amy", "amy")
+	oneShot(ta)
 	ta.ok("tick")
 	ta.ok("friend sync --root " + root)
 	ta.mu.Lock()
@@ -165,6 +181,7 @@ func TestFriendSyncWakesTheFriendWithOneBusMessagePerDelivery(t *testing.T) {
 
 	// the bus is down: the delivery stands, sync says so, and the card's story has it
 	ta2, root2 := friendCardApp(t, "friend amy", "amy")
+	oneShot(ta2)
 	ta2.a.bus = func(_ context.Context, _ bus.Message, _ func(string)) error {
 		return errors.New("dial tcp: connection refused")
 	}
@@ -223,7 +240,7 @@ func TestFriendSyncSaysTheBusStoresAlarmAndTheNextSendClearsIt(t *testing.T) {
 	require.Len(t, said, 1)
 	assert.Contains(t, said[0], "FRIEND-CARD BUS-ALARM bus store bus.test:6379 answers user sprint again: 2 sends failed (auth)")
 	assert.Equal(t, 1, fake.Len(bus.StreamOf("amy")), "the message reached her stream once the store answered")
-	assert.Equal(t, []string{"bus.test:6379 as sprint", "bus.test:6379 as sprint", "bus.test:6379 as sprint"}, dialed, "one connection per send")
+	assert.Equal(t, []string{"bus.test:6379 as sprint", "bus.test:6379 as sprint", "bus.test:6379 as sprint", "bus.test:6379 as sprint"}, dialed, "one connection per send, and one before the deal's to name her (enrollBus)")
 }
 
 // friend health --clear removes the coordinator's observation of a friend, so her status is

@@ -37,10 +37,6 @@ import (
 //	          blocker or a report; a message with no kind is told by its
 //	          subject: no ping, pong, dealt, finished, landed, width, RESULT or
 //	          HOLD notice), never the coordinator's own
-//	repeat    a judgment that one refusal or failure keeps repeating
-//	          (docs/SPEC-SPRINT.md section 8, "A repeated refusal is an alarm"),
-//	          new since the last look: at once, never held by --judgment-every;
-//	          once a judgment, however its count rises
 //	judgment  a judgment new since the last judgment wake, at most one wake in
 //	          --judgment-every
 //	stop      the machine STOPPED by anyone but the coordinator's stop verb,
@@ -70,7 +66,6 @@ func init() { notServed = append(notServed, "watch") }
 // wakeKinds are the kinds, so the help and the evidence name the same words.
 const (
 	wakeBus      = "bus"
-	wakeRepeat   = "repeat"
 	wakeJudgment = "judgment"
 	wakeStop     = "stop"
 	wakeFriend   = "friend"
@@ -110,8 +105,6 @@ type wakeLook struct {
 	Coordinator string
 	Msgs        []wakeMsg // the stream's entries after the cursor, oldest first
 	Judgments   []string  // the open judgments' notes
-	Repeats     []string  // the open repeat judgments' notes (sprint.NRepeated), among Judgments
-	RepeatWhat  string    // what the first of them says
 	Stopped     bool      // the machine reads STOPPED (not DONE)
 	StopAsked   bool      // and the coordinator's stop verb stopped it
 	StopKey     string    // tells one stop from another
@@ -134,7 +127,6 @@ type wakeState struct {
 	Seeded    bool                 `json:"seeded"`
 	Bus       string               `json:"bus"`
 	Judgments []string             `json:"judgments"`
-	Repeats   []string             `json:"repeats,omitempty"` // the repeat judgments woken, while open
 	Stop      string               `json:"stop"`
 	Down      map[string]int       `json:"down"`
 	Told      []string             `json:"told"` // friends woken for the time they have been down
@@ -259,15 +251,6 @@ func (s *wakeState) step(cfg wakeCfg, l wakeLook, now time.Time) (wakeLine, bool
 		s.Stop = ""
 	}
 
-	// the repeats: each woken once, while it stays open
-	var repeats []string
-	for _, j := range l.Repeats {
-		if !slices.Contains(s.Repeats, j) {
-			repeats = append(repeats, j)
-		}
-	}
-	s.Repeats = slices.DeleteFunc(s.Repeats, func(j string) bool { return !slices.Contains(l.Repeats, j) })
-
 	if len(asks) > 0 {
 		s.Bus = asks[len(asks)-1].ID
 		var ev []string
@@ -278,19 +261,6 @@ func (s *wakeState) step(cfg wakeCfg, l wakeLook, now time.Time) (wakeLine, bool
 			ev = append(ev, fmt.Sprintf("and %d more", len(asks)-3))
 		}
 		return woke(wakeBus, strings.Join(ev, "; "))
-	}
-	if len(repeats) > 0 {
-		s.Repeats = append(s.Repeats, repeats...)
-		for _, j := range repeats {
-			if !slices.Contains(s.Judgments, j) {
-				s.Judgments = append(s.Judgments, j) // woken here: not a judgment wake again
-			}
-		}
-		ev := fmt.Sprintf("%d new: %s", len(repeats), strings.Join(repeats, ", "))
-		if l.RepeatWhat != "" {
-			ev += ": " + l.RepeatWhat
-		}
-		return woke(wakeRepeat, ev)
 	}
 	if len(fresh) > 0 && due(wakeJudgment, cfg.judgmentEvery) {
 		s.Judgments = slices.Clone(l.Judgments)
@@ -389,7 +359,7 @@ func runWake(ctx context.Context, cfg wakeCfg, src wakeSource, path string, now 
 		at := now()
 		if !st.Seeded {
 			// what is open now is not new, and the check counts from now
-			st.Seeded, st.Judgments, st.Repeats = true, slices.Clone(l.Judgments), slices.Clone(l.Repeats)
+			st.Seeded, st.Judgments = true, slices.Clone(l.Judgments)
 			st.Last = map[string]time.Time{wakeCheck: at}
 		}
 		w, ok := st.step(cfg, l, at)
@@ -461,12 +431,6 @@ func (w *storeWake) look(ctx context.Context, after string) (wakeLook, error) {
 	for _, g := range in.Groups {
 		if g.Kind == sprint.Judgment {
 			l.Judgments = append(l.Judgments, noteKeys(g)...)
-		}
-		if g.Kind == sprint.Judgment && g.Type == sprint.NRepeated {
-			l.Repeats = append(l.Repeats, noteKeys(g)...)
-			if l.RepeatWhat == "" {
-				l.RepeatWhat = g.What
-			}
 		}
 	}
 	facts, err := w.st.WhereFacts(ctx, 0)
@@ -541,7 +505,7 @@ func (a *app) openWakeBus(ctx context.Context) (*bus.Bus, io.Closer, error) {
 func (a *app) cmdWatch(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("watch")
 	d := defaultWakeCfg()
-	wake := fs.Bool("wake", false, "block until the first thing that wakes the coordinator, print WAKE <kind> <time> <evidence> and exit 0 (kinds: bus, repeat, judgment, stop, friend, merge, backlog, check)")
+	wake := fs.Bool("wake", false, "block until the first thing that wakes the coordinator, print WAKE <kind> <time> <evidence> and exit 0 (kinds: bus, judgment, stop, friend, merge, backlog, check)")
 	state := fs.String("state", "", "the file that keeps the cursors between runs, so no event is missed or woken twice (default: one a store under the user cache directory); the first run starts from now")
 	every := fs.Duration("every", d.every, "how often the sprint and the bus are looked at, above 0")
 	check := fs.Duration("check", d.check, "wake with a check this long after the last wake")

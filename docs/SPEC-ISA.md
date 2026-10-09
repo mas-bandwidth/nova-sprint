@@ -21,7 +21,7 @@ Candidates: script, think, verify, merge, wait, fence, vector.
 
 | kind | operands | results | today's card line | KIND: line | current card |
 |---|---|---|---|---|---|
-| `think` | `BASE`, `PATHS`, `DEPENDS-ON`, `TEST`, `tier` | `head`, `verdict` | a primary's `tier`, its work card, and the finish's `head` and verdict | the model work kinds: `fix-red`, `transcript-test`, `rebase`, `sweep`, `mutation-kill`, `guard` | a work card (`kind=work`) |
+| `think` | `BASE`, `PATHS`, `DEPENDS-ON`, `TEST`, `tier` | `head`, `verdict` | a primary's `tier`, its work card, and the finish's `head` and verdict | the model work kinds: `fix-red`, `transcript-test`, `rebase`, `sweep`, `mutation-kill`, `guard`, `ledger` | a work card (`kind=work`) |
 | `verify` | `BASE`, `PATHS`, `TEST`, `DEPENDS-ON` | `verdict` (`ok`, `broken`) | a primary's `readers`, its read card, and the read's verdict | the read kinds: `read`, `probe`, `text`, `tone`, `report` | a read card (`kind=read`) |
 | `script` | `BASE`, `PATHS`, `DEPENDS-ON`, `TEST`, `SCRIPT` | `head`, `verdict` | a work card's `SCRIPT:` steps and their `POST:` lines | none of its own: the step's `SCRIPT:` line, the brief still carries one work kind | a work card whose every work step is a script step (`internal/cardtree`) |
 | `merge` | `BASE`, `REPO` | `head`, `verdict` | the merge table's place and the stream's `state` | none: a merge card carries no brief and no child | a merge card (`kind=merge`) |
@@ -47,11 +47,10 @@ The operands and results, field by field, are today's card lines:
 
 ## The one wait kind
 
-Today a card waits for one of several unrelated reasons, each its own mechanism:
-admitted held (`add --held`, `internal/sprint/held.go`), a sentinel (`add
---sentinel`, `internal/sprint/steps_sentinel.go`), a wave loading behind a held
-sentinel, `DEPENDS-ON` between cards, and a proposed external wait. The spec
-defines one `wait` kind whose operand says what it waits for. The operand is the
+The one `wait` kind is one path in the code, `WaitOf`
+(`internal/sprint/held.go`): admitted held (`add --held`), a sentinel (`add
+--sentinel`), the wave behind a held sentinel and `DEPENDS-ON` between cards
+are one wait, read once. The operand is the
 `DEPENDS-ON` line the brief already carries, read in four forms:
 
 - `DEPENDS-ON: <card id>` waits for that card to land. Today's `needs`.
@@ -67,10 +66,11 @@ defines one `wait` kind whose operand says what it waits for. The operand is the
 | `DEPENDS-ON` / `needs` | `wait`, operand `<card id>` |
 | external wait (proposed) | `wait`, operand `external:<condition>` |
 
-A wave is not a fourth mechanism: it is many `wait` cards behind one `release`
-operand, which `heldWave` already reads as the first held sentinel. `release`
-lands every wait whose operand is met, so one verb serves the hold, the sentinel
-and the wave.
+A wave is not a fourth mechanism: it is many `wait` cards behind one sentinel
+operand, whose own `wait` operand is `release`. `sprint.WaitOf` is the one code
+path that reports these operands and why they apply; `release` keeps its spelling
+and serves both the hold and the sentinel. The wave is ready when that same
+operand is satisfied.
 
 ## Folded and reserved
 
@@ -106,8 +106,11 @@ concepts after: 1
 
 ## Sources
 
-- `internal/sprint/held.go`: `FieldHeld`, `IsHeld`, `heldWave`, `HeldBack`, and the no-stall rule's hold.
-- `internal/sprint/steps_sentinel.go`: `IsSentinel`, `WaitsFor`, `Reachable`, `Release`.
+- `internal/sprint/held.go`: `WaitOf`, `CardWait`, the one wait hold, sentinel
+  and wave read through; `FieldHeld`, `IsHeld`, `heldWave`, `HeldBack`, and the
+  no-stall rule's hold.
+- `internal/sprint/steps_sentinel.go`: `IsSentinel`, `WaitsFor`, `Reachable`,
+  `Release`, the sentinel's release, which is the same wait.
 - `internal/hygiene/kinds.txt`: the one list of work kinds.
 - `internal/cardtree/tree.go`: the script step, which runs with no model.
 - `docs/SPEC-SPRINT.md` section 2 (the cards), section 5 (the fleet, for the wave) and section 16 (sentinel cards).

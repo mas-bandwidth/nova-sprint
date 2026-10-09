@@ -145,9 +145,18 @@ type Step struct {
 	// Halts, when set (a part of the tick), makes the step begin nothing when
 	// (tla/DirtyTickRead.tla, Begin and BeganRunning)
 	// the machine's state, read with its first fence, is STOPPED: its result
-	// says Halted, and it writes nothing (the stop's rule: the part in flight
-	// finishes, and no part begins after the flag says STOPPED).
+	// says Halted, and it writes nothing. TickRunSeq also refuses a retry in
+	// a later explicit START generation.
 	Halts bool
+	// TickRunSeq is the explicit START generation a tick saw before it built
+	// this part's request. A retry after STOP and START must not commit it in
+	// the new run, even though the machine is RUNNING again.
+	TickRunSeq *uint64
+	// StartsWork refuses a new worker lease after STOP, including an explicit
+	// take, a friend's start receipt, and a reader's begin. ReportsWork refuses
+	// a late finish or verdict once STOP has committed. RequiresStopped is the
+	// complementary fence on an acknowledged stop-return.
+	StartsWork, ReportsWork, RequiresStopped bool
 	// Twin, when set, is the tick's twin (twin.go): a step that loads the four
 	// tables plans on it while the fence is at its generation, instead of
 	// reading them, and applies its receipts to it when it commits.
@@ -186,6 +195,14 @@ type Step struct {
 	// DrainMax, above zero, is the most entries of the queue's head a drain
 	// takes: the pump's second drain takes only what its first requeued.
 	DrainMax int
+	// Tries, above zero and below the store's Attempts, is the plans this step
+	// makes before it gives up on a fence other writers keep moving: the tick's
+	// ask writes in small steps of AskTries each (tick_ask.go).
+	Tries int
+	// Until, when set, is the time past which the step plans no further try:
+	// a try begun before it finishes, and a step past it gives up as a step
+	// whose tries are spent does (the tick's ask's budget, tick_ask.go).
+	Until time.Time
 }
 
 // ArgsOf is a request's arguments in one canonical form: a digest of its JSON
@@ -263,6 +280,8 @@ type Result struct {
 	// Halted says a step that Halts found the machine STOPPED as it read the
 	// sprint, and began nothing.
 	Halted bool `json:"-"`
+	// StaleRun says a tick part read a different explicit START generation.
+	StaleRun bool `json:"-"`
 }
 
 // ErrUnknown is a write the store did not confirm: changed=unknown.
@@ -376,7 +395,25 @@ func (st *Store) fencedRead(ctx context.Context, tables []string, extras func(*s
 		}
 		return snap, f.Gen, f2, nil
 	}
-	return nil, 0, Fence{}, fmt.Errorf("the sprint is busy: other operations kept the fence moving, %d reads in %s; nothing was changed; run the verb again", r.tries, r.slept().Round(time.Millisecond))
+	return nil, 0, Fence{}, &FenceBusyError{Reads: r.tries, Slept: r.slept()}
+}
+
+// FenceBusyError is a fenced read given up because other operations kept the
+// fence moving through every one of its tries: nothing was changed, and the
+// same read again may pass. A tick tries itself again on it (TickBusyRetries).
+type FenceBusyError struct {
+	Reads int           // the fence's reads
+	Slept time.Duration // the time slept between them
+}
+
+func (e *FenceBusyError) Error() string {
+	return fmt.Sprintf("the sprint is busy: other operations kept the fence moving, %d reads in %s; nothing was changed; run the verb again", e.Reads, e.Slept.Round(time.Millisecond))
+}
+
+// IsFenceBusy says err is, or wraps, a FenceBusyError.
+func IsFenceBusy(err error) bool {
+	var b *FenceBusyError
+	return errors.As(err, &b)
 }
 
 // callerOpWord holds a caller's --op to one word: letters, digits, '_' and
@@ -425,6 +462,10 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		family = strings.ReplaceAll(step.Verb, " ", "-") + "-" + st.newID()
 	}
 	rowsAdded := false
+	// placed says the step's places (sprint.Plan.Places) were made, and came is
+	// their NOTE lines: the plan after them places nothing, and says them still
+	placed, placeErr := false, error(nil)
+	var came []string
 	drains := 0
 	plans := st.retry(ctx)
 	// a twin the step does not leave as the state it committed is dropped:
@@ -467,7 +508,14 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			return res, err
 		}
 	}
-	for res.Attempts < st.attempts() {
+	tries := st.attempts()
+	if step.Tries > 0 && step.Tries < tries {
+		tries = step.Tries
+	}
+	for res.Attempts < tries {
+		if res.Attempts > 0 && !step.Until.IsZero() && !st.now().Before(step.Until) {
+			break
+		}
 		res.Attempts++
 		if wantLock && lock == nil && !locked {
 			if lock, err = st.takeLock(ctx, step, family); err != nil {
@@ -508,10 +556,29 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				return r, err
 			}
 		}
+		if step.Halts && step.TickRunSeq != nil && fence.RunSeq != *step.TickRunSeq {
+			res.Moved, res.Op, res.Notes = nil, "", 0
+			res.Tables = nil
+			res.StaleRun = true
+			res.Halted = !fence.Running
+			return res, nil
+		}
 		if step.Halts && !fence.Running && res.Attempts == 1 {
 			// a part that began (its first read found the machine RUNNING)
 			// finishes: only its first read halts it
 			res.Halted = true
+			return res, nil
+		}
+		if step.StartsWork && fence.StopRevoked {
+			res.Refused = []sprint.Refusal{{Key: step.Verb, Why: "the machine is STOPPED: no new work or read may start"}}
+			return res, nil
+		}
+		if step.ReportsWork && fence.StopRevoked {
+			res.Refused = []sprint.Refusal{{Key: step.Verb, Why: "the machine is STOPPED: a late work or read report cannot finish"}}
+			return res, nil
+		}
+		if step.RequiresStopped && !fence.StopRevoked {
+			res.Refused = []sprint.Refusal{{Key: step.Verb, Why: "the machine has no halted run: stop-return follows cancellation during STOP"}}
 			return res, nil
 		}
 		if fence.Queued > 0 && !step.Pump && !fence.Running && drains < MaxDrains {
@@ -585,6 +652,18 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		if len(held) > 0 {
 			plan = sprint.LeaveQueued(plan, held)
 		}
+		if step.Verb != "stop-return" {
+			debt := fence.StopDebt
+			if fence.StopRevoked && !fence.StopIssued {
+				// A pre-upgrade STOP has no durable debt list. Its live leases
+				// remain protected until their owners return them.
+				debt = append(append([]StopLease(nil), debt...), activeStopLeases(snap)...)
+			}
+			if owed := stopDebtMutation(plan, debt); owed != nil {
+				why := fmt.Sprintf("STOP owns %s:%s@%d: cancel its child and run nova-sprint stop-return --as %s %s@%d --reason '<observed child exit>' before %s", owed.Row, owed.ID, owed.Gen, owed.Row, owed.ID, owed.Gen, step.Verb)
+				return refuseWhole(res, plan, why)
+			}
+		}
 		if step.Named && len(plan.Refused) > 0 && len(plan.Units)+len(plan.Notes)+len(plan.Closes)+len(plan.Rows) > 0 {
 			return allOrNone(res, plan), nil
 		}
@@ -611,6 +690,9 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		res.Refused = plan.Refused
 		res.Moved = nil
 		res.Said = plan.Said
+		if len(came) > 0 {
+			res.Said = append(slices.Clone(came), plan.Said...)
+		}
 		for _, u := range plan.Units {
 			if u.Moved != "" {
 				res.Moved = append(res.Moved, u.Moved)
@@ -646,7 +728,34 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			res.Attempts--
 			continue
 		}
-		if len(op.Manifests) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && op.Health == nil && len(op.HealthClear) == 0 {
+		// A record on no cell is put back by the table layer's cell add, after
+		// the rows and before the manifests (a batch never places a removed
+		// member), and the step is planned again on the table it left. A place
+		// still owed after that is refused whole: the record is on no cell.
+		if len(plan.Places) > 0 && len(plan.Units) > 0 {
+			if placed {
+				why := "placing " + plan.Places[0].ID + " on its cell again did not hold"
+				if placeErr != nil {
+					why += ": " + placeErr.Error()
+				}
+				// the rows (and any place that held) are on the table by now; the
+				// step's own record is not written
+				return refuseWhole(res, plan, why+"; the stream's rows are on the table and its control card is not; no card was added; run it again")
+			}
+			placed = true
+			for _, pl := range plan.Places {
+				// a place another writer made first is refused here and found
+				// made by the plan after it
+				if err := st.B.Place(ctx, st.Names.Table(pl.Table), pl.Row, pl.Col, st.sid(pl.ID), pl.Score); err != nil {
+					placeErr = err
+					continue
+				}
+				came = append(came, pl.Said)
+			}
+			res.Attempts--
+			continue
+		}
+		if len(op.Manifests) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && op.Health == nil && len(op.HealthClear) == 0 && len(op.CloseTimers) == 0 && op.Timers == nil {
 			res.Moved = nil
 			return st.after(ctx, step, res)
 		}
@@ -761,6 +870,38 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		res.Refused = append(res.Refused, sprint.Refusal{Key: k, Why: fmt.Sprintf("the sprint kept changing under this step (%d attempts); run it again", res.Attempts)})
 	}
 	return res, nil
+}
+
+// stopDebtMutation holds every captured owner lease in place until its
+// stop-return receipt (tla/StopReturn.tla Return; SPEC-SPRINT section 14).
+// The fence carries the machine's debt from the same read as its generation,
+// so STOP and this check serialize with the final operation commit.
+func stopDebtMutation(plan sprint.Plan, debt []StopLease) *StopLease {
+	if len(debt) == 0 {
+		return nil
+	}
+	byCard := make(map[string]StopLease, len(debt))
+	for _, d := range debt {
+		byCard[d.Table+":"+d.ID] = d
+	}
+	for _, u := range plan.Units {
+		for _, c := range u.Changes {
+			if d, ok := byCard[c.Table+":"+c.Entry.ID]; ok {
+				return &d
+			}
+		}
+		for _, b := range u.Bumps {
+			if d, ok := byCard[b.Table+":"+b.ID]; ok {
+				return &d
+			}
+		}
+	}
+	for _, pl := range plan.Places {
+		if d, ok := byCard[pl.Table+":"+pl.ID]; ok {
+			return &d
+		}
+	}
+	return nil
 }
 
 // withQueuedPromotion is a pump part's snapshot with the promotion queued
@@ -1276,7 +1417,7 @@ func hasChanges(e ntable.BatchMemberEntry) bool {
 // entries, each expecting the revision the one before it leaves; then the
 // notifications and the answers.
 func (st *Store) operation(verb, actor, id string, plan sprint.Plan, snap *sprint.Snapshot) (OpRecord, error) {
-	op := OpRecord{ID: id, Verb: verb, At: snap.Now, Seat: plan.Seat, Health: plan.Health, HealthClear: plan.HealthClear}
+	op := OpRecord{ID: id, Verb: verb, At: snap.Now, Seat: plan.Seat, Health: plan.Health, HealthClear: plan.HealthClear, Timers: plan.Timers, CloseTimers: plan.CloseTimers}
 	entries := map[string][]ntable.BatchMemberEntry{}
 	seen := map[entryKey]int{} // index+1 in entries[table]
 	cause := map[entryKey]string{}

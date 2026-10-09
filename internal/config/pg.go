@@ -262,6 +262,36 @@ func (p *PG) Ownership(ctx context.Context) (Ownership, error) {
 	return o, nil
 }
 
+// Sessions is every other backend of this database connected as a nova role
+// (usename nova_*), as pg_stat_activity shows it to any role: the role,
+// application_name and pid are visible to every connected role; the query and
+// client columns are not, so they are not read. The connection's own backend
+// is left out.
+func (p *PG) Sessions(ctx context.Context) ([]Session, error) {
+	rows, err := p.db.QueryContext(ctx, `SELECT usename::text, coalesce(application_name, ''), pid
+  FROM pg_stat_activity
+ WHERE datname = current_database() AND pid <> pg_backend_pid()
+   AND usename LIKE 'nova\_%'
+ ORDER BY pid`)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: read the sessions holding the database: %w", err)
+	}
+	// ignored: rows.Err reports a read failure; closing a finished read cannot add one
+	defer func() { _ = rows.Close() }()
+	var out []Session
+	for rows.Next() {
+		var s Session
+		if err := rows.Scan(&s.Role, &s.Application, &s.PID); err != nil {
+			return nil, fmt.Errorf("postgres: read the sessions holding the database: %w", err)
+		}
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: read the sessions holding the database: %w", err)
+	}
+	return out, nil
+}
+
 // grantRead lets the read role read the schema when the role exists.
 func (p *PG) grantRead(ctx context.Context) error {
 	_, err := p.db.ExecContext(ctx, `DO $$ BEGIN
@@ -421,8 +451,29 @@ func listRows(ctx context.Context, q queryer, kind string) ([]Row, error) {
 	return out, nil
 }
 
-// record appends the history row inside the write's transaction.
+// historyReasonKey is where a history row's own JSON carries the write's
+// reason: the after map (before, for a remove) holds it under this key and
+// History moves it back to Change.Reason and out of the map, so a reader never
+// sees it as a row field. The history columns are a migration's, and a new one
+// would move the schema count a first run's transcript pins, so the reason
+// rides in the schemaless JSON (internal/config/store.go, Change.Reason).
+const historyReasonKey = "reason"
+
+// record appends the history row inside the write's transaction. The reason
+// of the write is read from the context the verb put it on (WithReason), so
+// every existing caller keeps its signature.
 func record(ctx context.Context, tx *sql.Tx, kind, name, op string, before, after map[string]string, actor string) (int64, error) {
+	if reason := ReasonFrom(ctx); reason != "" {
+		// a copy, so the caller's row is not changed: the reason is the
+		// write's, not a field of the row
+		if after != nil {
+			after = maps.Clone(after)
+			after[historyReasonKey] = reason
+		} else if before != nil {
+			before = maps.Clone(before)
+			before[historyReasonKey] = reason
+		}
+	}
 	var b, a []byte
 	var err error
 	if before != nil {
@@ -617,6 +668,18 @@ func (p *PG) History(ctx context.Context, kind, name string) ([]Change, error) {
 			if err := json.Unmarshal([]byte(after.String), &c.After); err != nil {
 				return nil, fmt.Errorf("postgres: history %d after: %w", c.ID, err)
 			}
+		}
+		// the reason rides in the row JSON (record): hand it back as the
+		// write's, never as a row field
+		if v, ok := c.After[historyReasonKey]; ok {
+			c.Reason = v
+			delete(c.After, historyReasonKey)
+		}
+		if v, ok := c.Before[historyReasonKey]; ok {
+			if c.Reason == "" {
+				c.Reason = v
+			}
+			delete(c.Before, historyReasonKey)
 		}
 		c.At = at.UTC().Format(time.RFC3339)
 		out = append(out, c)

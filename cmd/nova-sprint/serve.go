@@ -47,7 +47,8 @@ import (
 // workerVerb is the worker a verb of a batch acts as and how many words its
 // verb is, or why the server does not run it. A worker sends its own verbs only:
 // take, finish, read or queue, then --as and its name; or fleet beat, its name,
-// --load and a number, and nothing more; or friend beat, its name, and its report's flags each with its value (friendBeatReport); or friend cards, its name, and --json at most. The name is one worker, never a list.
+// an optional --stop-returns and a whole number of at least 0, --load and a
+// number, and nothing more; or friend beat, its name, and its report's flags each with its value (friendBeatReport); or friend cards, its name, and --json at most. The name is one worker, never a list.
 // No later word, wherever it stands, is a flag named as, redis or actor: the
 // server gives the store and the actor (serve puts them before the worker's
 // words, where nothing the worker sent can take them as a value or end the
@@ -59,16 +60,37 @@ import (
 // another machine, and would record its own. A queue's --packets and --have (the packets
 // the worker wants) are held to their shapes here, before the verb runs: a count, and card
 // ids (packetsWanted).
+
+// fleetBeatWords reads `fleet beat <member> [--stop-returns <n>] --load <percent>`.
+// The member's beat always names the stop-returns it still owes, including zero,
+// and the wire puts --load last. Anything else is refused.
+func fleetBeatWords(rest []string) (as, load, stop string, ok bool) {
+	switch {
+	case len(rest) == 3 && rest[1] == "--load":
+		return rest[0], rest[2], "", true
+	case len(rest) == 5 && rest[1] == "--stop-returns" && rest[3] == "--load":
+		return rest[0], rest[4], rest[2], true
+	default:
+		return "", "", "", false
+	}
+}
+
 func workerVerb(argv []string) (as string, words int, why string) {
 	if len(argv) >= 2 && argv[0] == "fleet" && argv[1] == "beat" {
-		rest := argv[2:]
-		if len(rest) != 3 || rest[1] != "--load" || !sprint.ValidID(rest[0]) {
-			return "", 0, "a beat sent to the server is `fleet beat <member> --load <percent>` and nothing more: the server cannot measure the worker's machine"
+		as, load, stop, ok := fleetBeatWords(argv[2:])
+		if !ok || !sprint.ValidID(as) {
+			return "", 0, "a beat sent to the server is `fleet beat <member> [--stop-returns <n>] --load <percent>` and nothing more: the server cannot measure the worker's machine"
 		}
-		if _, err := strconv.ParseFloat(rest[2], 64); err != nil {
-			return "", 0, "a beat's --load is a number, found " + rest[2]
+		if _, err := strconv.ParseFloat(load, 64); err != nil {
+			return "", 0, "a beat's --load is a number, found " + load
 		}
-		return rest[0], 2, ""
+		if stop != "" {
+			n, err := strconv.Atoi(stop)
+			if err != nil || n < 0 {
+				return "", 0, "a beat's --stop-returns is a whole number of at least 0, found " + stop
+			}
+		}
+		return as, 2, ""
 	}
 	if len(argv) >= 2 && argv[0] == "friend" && argv[1] == "beat" {
 		if len(argv) < 3 || !sprint.ValidID(argv[2]) {
@@ -92,7 +114,7 @@ func workerVerb(argv []string) (as string, words int, why string) {
 		// machine and the worker, and nothing more; the server never waits (--wait asks again
 		// from the worker's side)
 		rest := argv[2:]
-		if len(rest) != 5 || !slices.Contains(sprint.LaneKinds, rest[0]) || rest[1] != "--machine" || !sprint.ValidID(rest[2]) || rest[3] != "--as" || !sprint.ValidID(rest[4]) {
+		if len(rest) != 5 || !slices.Contains(sprint.LaneKinds, rest[0]) || rest[1] != "--machine" || !sprint.ValidID(rest[2]) || rest[3] != "--as" || !sprint.ValidLaneWho(rest[4]) {
 			return "", 0, "a lane's verb sent to the server is `lane " + argv[1] + " <kind> --machine <m> --as <worker>` and nothing more, the kind one of " + strings.Join(sprint.LaneKinds, ", ")
 		}
 		return rest[4], 2, ""
@@ -382,7 +404,7 @@ func (a *app) listen(addr, redis string, stdout io.Writer) error {
 	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
 		lns[addr] = a
 	}
-	a.serveAddr, a.serveLog = redis, stdout
+	a.serveAddr, a.serveLog, a.serveStarted = redis, stdout, a.now()
 	// the lanes are made before the first batch, while the line is free: a batch never
 	// waits for the line to make them (servelanes.go)
 	a.lanesFor(context.Background())
@@ -422,7 +444,9 @@ var friendBeatFlags = map[string]func(string) bool{
 		return err == nil && f >= 0
 	},
 	"--active": rfc3339,
-	"--pong":   rfc3339,
+	"--pong":   oneLineText, // any word: the server's proof step says a beat with no proof
+	"--check":  sprint.ValidID,
+	"--run":    sprint.ValidID,
 	"--until":  rfc3339,
 	"--reason": oneLineText,
 }

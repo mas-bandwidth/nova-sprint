@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -72,11 +74,16 @@ func (s *Snapshot) decideFields(pr *Card, first bool) map[string]string {
 
 // readsAt is the primary's placed read cards at an attempt, in reader row order.
 func readsAt(s *Snapshot, pr *Card, attempt int) []*Card {
+	if !anyReadCardAt(s, pr, attempt) {
+		return nil
+	}
 	var out []*Card
 	for _, r := range s.Readers.Rows() {
-		c := s.Readers.Placed(ReadCardID(pr.ID, attempt, r))
-		if c != nil {
-			out = append(out, c)
+		for _, id := range ReadCardIDs(pr.ID, attempt, r) {
+			if c := s.Readers.Placed(id); c != nil {
+				out = append(out, c)
+				break
+			}
 		}
 	}
 	return out
@@ -84,10 +91,9 @@ func readsAt(s *Snapshot, pr *Card, attempt int) []*Card {
 
 // Ask deals every primary in review that wants a read (ReadsWanted) to as many
 // different readers up as it wants now, in work order. A card's reads are
-// asked one at a time: the first read alone, and the rest it needs
-// (ReadsNeeded: one for a flash card, two for a pro card; readers.go) once the
-// first came back ok, so a first read that finds it broken costs no second
-// read. Each read goes to a reader with room (askPicks): the finder first on a
+// asked together (the interim rule of 2026-10-06, ReadsWanted): the rest it needs
+// (ReadsNeeded: one for a flash card, two for a pro card; readers.go), none once
+// a read found it broken. Each read goes to a reader with room (askPicks): the finder first on a
 // rework's next attempt (finderFirst: the reader whose finding the fix answers,
 // when it is free and has room), and every other read to the reader with the
 // greatest share of room, its free room as a part of its width (readerRooms,
@@ -130,8 +136,8 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			return "not asked yet at attempt " + itoa(c.Int("attempt")) + ": the machine's tick asks it, or run: nova-sprint ask " + c.ID + "; --another adds a reader to one already asked"
 		}
 		if !another && ReadsWanted(s, c) == 0 {
-			if len(liveReadsAt(s, c, c.Int("attempt"))) < ReadsNeeded(c) {
-				return "asked already: its reads are asked one at a time, and the next is asked when the one outstanding comes back ok"
+			if len(liveReadsAt(s, c, c.Int("attempt"))) < ReadsNeededIn(s, c) {
+				return "asked already: its reads are out, or one found it broken"
 			}
 			return "asked already"
 		}
@@ -183,18 +189,33 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			all = append(all, rc.F("reader"))
 			kept = append(kept, rc)
 		}
+		// a friend's ok read of the attempt, or her read outstanding (reads are asked
+		// together, the interim rule: ReadsWanted counts it), stands with the machine's,
+		// so the next read is one, not the whole pair again (friendReadLive;
+		// docs/SPEC-SPRINT.md, a read asked of any unit with room at or above
+		// the read tier). It is not taken back: it is not on the readers table.
+		if placed, oks, _ := friendReadLive(s, c); len(placed)+len(oks) > 0 {
+			for _, rc := range append(placed, oks...) {
+				rd := rc.F("reader")
+				if rd == "" || contains(all, rd) {
+					continue
+				}
+				all = append(all, rd)
+				kept = append(kept, rc)
+			}
+		}
 		free := s.freeReaders(c, attempt)
 		// the reads that stand, kept, say how many are asked now (readsWantedOf): the
-		// first alone, then the rest once it came back ok; a read handed back, or taken
+		// rest of those it needs, together, none once one found it broken; a read handed back, or taken
 		// back from a reader away, is not a read and is asked again whatever stands: it
 		// was wanted when it was placed (ReadsWanted)
-		want := max(readsWantedOf(c, kept), len(returned)+len(away))
+		want := max(readsWantedOf(s, c, kept), len(returned)+len(away))
 		if another {
 			want = 1
 		}
-		if !another && len(all)+len(free)+len(returned) < ReadsNeeded(c) {
+		if !another && len(all)+len(free)+len(returned) < ReadsNeededIn(s, c) {
 			// not even its first read is asked when no reader could ever read the rest
-			want = ReadsNeeded(c) - len(all)
+			want = ReadsNeededIn(s, c) - len(all)
 		}
 		// each read to a free reader with room, the finder's first (askPicks)
 		finder := finders[c.ID]
@@ -216,7 +237,7 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			// in place only on a reader of the card's tier. A reader outside it
 			// is not asked the read again; the card is taken back (retired_by
 			// returned) and the read goes to a reader who reads the tier.
-			if len(chosenReaders)+len(again) < want && s.readerReadsTier(rc.F("reader"), s.readTierOf(c)) {
+			if len(chosenReaders)+len(again) < want && s.readerServesTier(rc.F("reader"), s.readTierOf(c)) {
 				inPlace = append(inPlace, rc)
 				again = append(again, rc.F("reader"))
 				continue
@@ -258,12 +279,14 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		}
 		for i, rd := range chosenReaders {
 			fields := map[string]string{"kind": "read", "primary": c.ID, "stream": c.Row, "reader": rd, "attempt": itoa(attempt), "head": c.F("head"), "asked": stamp(s.Now)}
+			priorityOnRead(fields, c) // its primary's level when above reader (priority.go)
 			if rd == finder {
 				fields[FieldFinderRead] = "1" // placed on purpose: the level leaves it where it is
 			}
 			maps.Copy(fields, s.readRouteOf(ri, c, failed))
 			maps.Copy(fields, s.decideFields(c, !another && !decided && i == 0))
-			u.Changes = append(u.Changes, change(Readers, createEntry(ReadCardID(c.ID, attempt, rd), rd, Asked, c.Score, fields)))
+			cardID, _ := ReadCardForAsk(s, c.ID, attempt, rd)
+			u.Changes = append(u.Changes, change(Readers, createEntry(cardID, rd, Asked, c.Score, fields)))
 		}
 		all = append(append(all, chosenReaders...), again...)
 		if pair := strings.Join(all, ","); !another && pair != c.F("asked") {
@@ -294,8 +317,12 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			u.Closes = closesFor(s.Open, []string{NStranded, NStalled}, c.ID)
 		}
 		asked := map[string]string{}
-		for _, rd := range append(append([]string{}, chosenReaders...), again...) {
-			asked[ReadCardID(c.ID, attempt, rd)] = Asked
+		for _, rd := range chosenReaders {
+			cardID, _ := ReadCardForAsk(s, c.ID, attempt, rd)
+			asked[cardID] = Asked
+		}
+		for _, rc := range inPlace {
+			asked[rc.ID] = Asked
 		}
 		if j, ok := reviewJudgment(s, c, reviewStep{moved: asked, closing: noteIDs(u.Closes), who: r.Who}); ok {
 			u.Notes = append(u.Notes, j)
@@ -321,15 +348,27 @@ func Ask(s *Snapshot, r AskReq) Plan {
 // taken back by ask --instead ("" when it is live: asked or reading).
 func insteadHeld(s *Snapshot, pr *Card, rd string) string {
 	attempt := pr.Int("attempt")
-	rc := s.Readers.Card(ReadCardID(pr.ID, attempt, rd))
+	ids := ReadCardIDs(pr.ID, attempt, rd)
+	for _, id := range ids {
+		if rc := s.Readers.Card(id); rc != nil && rc.Placed() && (rc.Col == Asked || rc.Col == Reading) {
+			return ""
+		}
+	}
+	var lastCard *Card
+	for i := len(ids) - 1; i >= 0; i-- {
+		if c := s.Readers.Card(ids[i]); c != nil {
+			lastCard = c
+			break
+		}
+	}
 	at := " of " + pr.ID + " at attempt " + itoa(attempt)
 	switch {
-	case rc == nil:
+	case lastCard == nil:
 		return rd + " holds no read" + at + "; run: nova-sprint card " + pr.ID + " for its readers, or nova-sprint ask " + pr.ID + " --another to add one"
-	case !rc.Placed():
-		return rd + "'s read" + at + " was retired at " + rc.F("retired") + " by " + orDash(rc.F("retired_by")) + ": nothing to take back; run: nova-sprint ask " + pr.ID + " --another to add a reader"
-	case rc.Col != Asked && rc.Col != Reading:
-		return rd + "'s read" + at + " is finished (" + rc.Col + "), not asked or reading: nothing to take back; run: nova-sprint ask " + pr.ID + " --another to add a reader"
+	case !lastCard.Placed():
+		return rd + "'s read" + at + " was retired at " + lastCard.F("retired") + " by " + orDash(lastCard.F("retired_by")) + ": nothing to take back; run: nova-sprint ask " + pr.ID + " --another to add a reader"
+	case lastCard.Col != Asked && lastCard.Col != Reading:
+		return rd + "'s read" + at + " is finished (" + lastCard.Col + "), not asked or reading: nothing to take back; run: nova-sprint ask " + pr.ID + " --another to add a reader"
 	}
 	return ""
 }
@@ -355,10 +394,15 @@ func NamedExtras(table string, ids []string) func(*Snapshot) map[string][]string
 type ReadReq struct {
 	Sel
 	As      string
-	Begin   bool   // asked -> reading
-	Verdict string // ok or broken
+	Gens    map[string]int // named begin and post-STOP verdicts guard the live read lease
+	Begin   bool           // asked -> reading
+	Verdict string         // ok or broken
 	Finding string
 	Who     string
+	// Missing is the server's check at the close of a broken read, by read card: the
+	// branch the read named is not on origin (read_missing.go). Such a verdict is no
+	// verdict: the read is retired and asked again, the card not reworked.
+	Missing map[string]MissingBranch `json:",omitempty"`
 	// Return hands the named read back, with the reason: no verdict, no
 	// finding against the work, not a read; the tick asks it again.
 	Return bool   `json:",omitempty"`
@@ -374,9 +418,9 @@ type ReadReq struct {
 // back: back in asked on its row, stamped returned, the reason in one happened
 // note, and the next tick's ask asks it of another reader up at the same
 // attempt, or of the same reader when none is free (tla/DirtyTick.tla,
-// ReadReturn, JudgedOnlyAfterTheBound). A broken read is a judgment; the second different reader's
-// ok at the primary's head is the judgment ready to accept, which accept,
-// rework and drop close. As may name several readers, comma separated: every
+// ReadReturn, JudgedOnlyAfterTheBound). A broken read is a judgment; the last ok read a primary
+// needs at its head leaves it to the tick, which accepts it (TickAccept): no
+// judgment, no hand step. As may name several readers, comma separated: every
 // card named is one of theirs, each read as its own reader's, in the one plan;
 // a read by selection names one reader.
 func Read(s *Snapshot, r ReadReq) Plan {
@@ -403,6 +447,23 @@ func Read(s *Snapshot, r ReadReq) Plan {
 		p.refuse("read", "a broken read names its defect: a finding line naming the file (file:line), the line, or the card's STEP or RULE the work breaks, and what to change: read --as <reader> --broken <card> --finding <text>; a read with no verdict is handed back: read --as <reader> --return <card> --reason <text>")
 		return p
 	}
+	// a read asked of a friend is on her fleet row, not the readers table
+	// (friendReadAsk): the verb her packet prints closes it there
+	for _, rd := range readers {
+		name, friend := FriendOfRow(rd)
+		member := !friend && s.Fleet != nil && s.Fleet.HasRow(rd) && (s.Readers == nil || !s.Readers.HasRow(rd))
+		if !friend && !member {
+			continue
+		}
+		if len(readers) > 1 {
+			p.refuse("read", "a read card is reported on its own: read --as "+rd+" (--ok | --broken) <read>")
+			return p
+		}
+		if member {
+			name = rd
+		}
+		return readCardVerb(s, r, rd, name)
+	}
 	from := []string{Asked, Reading}
 	if r.Begin {
 		from = []string{Asked}
@@ -415,6 +476,20 @@ func Read(s *Snapshot, r ReadReq) Plan {
 	}
 	SortCards(all)
 	chosen := pick(&p, sel, all, fieldStream, func(c *Card) string {
+		// A cached queue packet names its read and generation. Once STOP
+		// returns it to Asked at a new generation, that old packet cannot
+		// begin the new lease. An unnamed selection reads the fresh table
+		// state here and may still begin the live card without a packet.
+		if r.Begin && (len(r.Gens) > 0 || len(sel.IDs) > 0 && c.F("stopped_from_gen") != "") {
+			if why := liveGen("read --begin", c, r.Gens); why != "" {
+				return why
+			}
+		}
+		if !r.Begin && (len(r.Gens) > 0 || c.F("stopped_from_gen") != "") {
+			if why := liveGen("read", c, r.Gens); why != "" {
+				return why
+			}
+		}
 		if !c.Placed() && c.F("retired") != "" {
 			if c.F("retired_by") == "away" {
 				return "retired at " + c.F("retired") + ": the reader was away; the read was asked of another reader"
@@ -424,6 +499,9 @@ func Read(s *Snapshot, r ReadReq) Plan {
 			}
 			if c.F("retired_by") == RetiredByCoordinator {
 				return "retired at " + c.F("retired") + ": the coordinator took the read back and asked another reader instead"
+			}
+			if c.F("retired_by") == RetiredByRefused {
+				return "retired at " + c.F("retired") + ": its reader refused to launch it (" + c.F(FieldRefused) + "); it is asked of another reader"
 			}
 			if c.F("retired_by") == "returned" {
 				return "retired at " + c.F("retired") + ": the read was returned; it was asked of another reader, or judged"
@@ -463,6 +541,7 @@ func Read(s *Snapshot, r ReadReq) Plan {
 	// primary in the plan
 	costs := map[string]map[string]string{}
 	costUnit := map[string]int{}
+	var verdicts []ReadVerdict // the ledger's (reads_window.go)
 	record := func(pr *Card, con Consumer) {
 		if !pr.Placed() {
 			return
@@ -503,6 +582,18 @@ func Read(s *Snapshot, r ReadReq) Plan {
 			returns := c.Int(FieldReasked) + 1
 			run := nextTake(c, FieldReadTake)
 			rec := readCostRecord(s, c, r.Usage, c.F("asked"), cmp.Or(c.F("begun"), stamp(s.Now)))
+			if RefusedReturn(r.Reason) {
+				// a read refused is not a read (RetiredByRefused): it never ran, so it counts
+				// toward no bound and marks nothing against its reader; it is retired off the
+				// reader and the ask asks it of another reader of its tier
+				set := map[string]string{FieldReadTake + itoa(run): rec, "retired": stamp(s.Now), "retired_by": RetiredByRefused, FieldRefused: cutText(r.Reason, MaxCardTextBytes)}
+				record(pr, readConsumer(s, c, run, "returned", rec))
+				n.What += "; refused, not a read: asked of another reader of its tier"
+				p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"),
+					Changes: []Change{change(Readers, removeEntry(c, set))},
+					Moved:   c.ID + " " + c.Col + " -> refused (retired: not a read, asked again elsewhere)", Notes: []Note{n}})
+				continue
+			}
 			set := map[string]string{FieldReadTake + itoa(run): rec, FieldReasked: itoa(returns)}
 			record(pr, readConsumer(s, c, run, "returned", rec))
 			if returns > MaxReadReasks {
@@ -519,6 +610,11 @@ func Read(s *Snapshot, r ReadReq) Plan {
 				Moved:   c.ID + " " + c.Col + " -> asked (returned)", Notes: []Note{n}})
 			continue
 		}
+		if m, ok := r.missingBranch(c); ok {
+			// the machine's fault, not the card's: no verdict, asked again (read_missing.go)
+			p.Units = append(p.Units, missingBranchUnit(s, Readers, c, pr, m, r.Finding, r.Usage, r.Who))
+			continue
+		}
 		set := map[string]string{"verdict": r.Verdict, "read": stamp(s.Now)}
 		if c.Col == Asked { // a report on a card never begun is the begin and the report in one step
 			set["begun"] = stamp(s.Now)
@@ -532,9 +628,13 @@ func Read(s *Snapshot, r ReadReq) Plan {
 		if r.Usage != "" {
 			set[FieldUsage] = rec
 		}
+		// a read drawn no route ran on its reader's own model: its usage line names it
+		// (read_route.go)
+		maps.Copy(set, readUsageFields(c, r.Usage))
 		if pr != nil {
 			record(pr, readConsumer(s, c, 0, r.Verdict, rec))
 		}
+		verdicts = append(verdicts, verdictOf(s, c, pr, c.Row, r.Verdict, r.Finding))
 		u := Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Readers, moveEntry(c, c.Row, col, set, FieldReturned))},
 			Moved: fmt.Sprintf("%s %s -> %s", c.ID, c.Col, col)}
 		if pr != nil {
@@ -553,8 +653,9 @@ func Read(s *Snapshot, r ReadReq) Plan {
 				if v := costs[pr.ID][FieldCostTotal]; v != "" {
 					at = withField(pr, FieldCostTotal, v)
 				}
-				if bb, ok := AtBriefBound(at, r.Finding, s.AttemptsCap(pr.Row)); ok {
-					// the same finding as the attempt before, or too many attempts on one brief:
+				if bb, ok := briefStopAt(s, at, c.Row, r.Finding); ok {
+					// the same finding as the attempts before (briefStopAt: the same reader class,
+					// file and line, two in a row by default), or too many attempts on one brief:
 					// the brief is wrong, not the worker, and the judgment offers brief and drop
 					// (brief_bound.go)
 					n = judgment(NBriefWrong, pr.Row, s.Now, 0, pr.ID) // its decisions alone: it is the repeat
@@ -576,6 +677,9 @@ func Read(s *Snapshot, r ReadReq) Plan {
 		if j, ok := reviewJudgment(s, pr, reviewStep{moved: moved[id], writes: written[id], who: lastReader[id]}); ok {
 			p.Units[i].Notes = append(p.Units[i].Notes, j)
 		}
+	}
+	if pw, ok := windowWrite(s.Readers, Readers, verdicts); ok {
+		p.Props = append(p.Props, pw)
 	}
 	// each primary's records ride on the unit of its last read in the plan: a running
 	// machine queues the work-table change for the pump, under that read's words
@@ -641,12 +745,16 @@ func inReview(pr *Card, set map[string]string) *Card {
 
 // reviewJudgment is the judgment a primary the step leaves in review (pr, as
 // the step leaves it) needs now, so that no primary in review is silent:
-//   - ready to accept, when ok reads from two different readers stand at its
-//     head, no judgment open on it after the step offers accept (ready to
-//     accept, or returned to review with its reads standing), and the
-//     machine is STOPPED or its pump holds it (AcceptHeld: its CI red at its
-//     head, or returned at its attempt): a RUNNING machine's pump accepts the
-//     rest (TickAccept);
+//   - nothing when the ok reads it needs stand at its head and the tick's
+//     pump takes it (AcceptHeld says nothing holds it): the tick accepts it,
+//     RUNNING at its next pump, STOPPED at the first pump after start, and
+//     the seat is told what was accepted ("ready to merge", a notice); a
+//     primary whose reads are all ok is never a judgment and never a hand
+//     step (TickAccept);
+//   - ready to accept, only when those reads stand and the pump holds it
+//     (AcceptHeld: its CI red at its head, or returned at its attempt) and no
+//     judgment open on it after the step offers accept (returned to review
+//     with its reads standing does): the hold is a mind's;
 //   - else, when nothing is open on it after the step and no read is
 //     outstanding: stranded in review when its work came back failed, or when
 //     it was never asked at its attempt and the step closes the last judgment
@@ -666,25 +774,45 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 	oks := map[string]bool{}
 	outstanding, broken, reads := false, false, 0
 	for _, r := range s.Readers.Rows() {
-		id := ReadCardID(pr.ID, attempt, r)
-		c := s.Readers.Placed(id)
-		col, moved := st.moved[id]
-		switch {
-		case c == nil && !moved:
-			continue
-		case c == nil:
-			col = Asked
-		case !moved:
-			col = c.Col
+		for _, id := range ReadCardIDs(pr.ID, attempt, r) {
+			c := s.Readers.Placed(id)
+			col, moved := st.moved[id]
+			switch {
+			case c == nil && !moved:
+				continue
+			case c == nil:
+				col = Asked
+			case !moved:
+				col = c.Col
+			}
+			reads++
+			switch {
+			case col == Asked || col == Reading:
+				outstanding = true
+			case col == Broken:
+				broken = true
+			case col == OK && c.F("head") == pr.F("head") && ReadCardAgrees(c):
+				oks[r] = true
+			}
+			break
+		}
+	}
+	// a friend's read stands the same way (friendReadLive). The step's moved
+	// column wins, so a close sees LAND or HOLD before the card leaves her row.
+	fp, fok, fbr := friendReadLive(s, pr)
+	for _, c := range append(append(append([]*Card{}, fp...), fok...), fbr...) {
+		col := c.Col
+		if movedCol, ok := st.moved[c.ID]; ok {
+			col = movedCol
 		}
 		reads++
 		switch {
-		case col == Asked || col == Reading:
+		case col == Asked || col == Reading || col == Working || col == Ready:
 			outstanding = true
 		case col == Broken:
 			broken = true
-		case col == OK && c.F("head") == pr.F("head") && ReadCardAgrees(c):
-			oks[r] = true
+		case col == OK && friendReadAgrees(c) && readHeadMatches(s, pr, c):
+			oks[c.F("reader")] = true
 		}
 	}
 	open := map[string]bool{} // the judgment types open on it after the step
@@ -704,26 +832,35 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 	}
 	var typ, why string
 	switch {
-	case len(oks) >= ReadsNeeded(pr):
-		if offers || s.Running && AcceptHeld(pr) == "" {
-			// a RUNNING machine's pump accepts it: "accept is mechanical"
+	case len(oks) >= ReadsNeededIn(s, pr):
+		if offers || AcceptHeld(pr) == "" {
+			// the tick's pump accepts it, RUNNING or STOPPED (at the first pump after
+			// start): "accept is mechanical", and a hand step is a missing instruction
 			return Note{}, false
 		}
 		typ = NReadyToAccept
 	case len(open) > 0 || outstanding:
 		return Note{}, false
+	case pr.F(FieldBriefDefect) != "":
+		// a brief defect asks again to re-cut the brief, never a stranded rework (docs/SPEC-SPRINT.md
+		// section 1, a brief defect)
+		typ, why = NBriefDefect, "a brief defect, "+pr.F(FieldBriefDefect)+": re-cut the brief; nothing is open on it"
 	case pr.F("result") == "failed":
 		typ, why = NStranded, "its work came back failed and nothing is open on it"
 	case reads == 0 && len(before) == 0:
 		return Note{}, false
+	case reads == 0 && s.ReadCardsOn() && readCardsWanted(s, pr, nil) > 0:
+		// its read cards are the read-card ask's: dealt, marked waiting for a reader, or
+		// cannot ask (readCardsAskPart), never stranded as never asked
+		return Note{}, false
 	case reads == 0:
 		typ, why = NStranded, "never asked at attempt "+itoa(attempt)+" and nothing is open on it"
-	case !broken && reads < ReadsNeeded(pr):
-		// its reads are asked one at a time: the ones that stand came back ok and the
-		// next is the ask's (ReadsWanted), nothing to judge
+	case !broken && reads < ReadsNeededIn(s, pr):
+		// the ones that stand came back ok and the rest are the ask's (ReadsWanted),
+		// nothing to judge
 		return Note{}, false
 	default:
-		typ, why = NReadsExhausted, fmt.Sprintf("no read is outstanding and %s not said ok at %s", readersWord(ReadsNeeded(pr)), orDash(pr.F("head")))
+		typ, why = NReadsExhausted, fmt.Sprintf("no read is outstanding and %s not said ok at %s", readersWord(ReadsNeededIn(s, pr)), orDash(pr.F("head")))
 	}
 	if contains(st.acked, typ) {
 		return Note{}, false
@@ -741,7 +878,21 @@ type AcceptReq struct {
 	Sel
 	Answers []string
 	Who     string
+	// Heavy records the coordinator's own heavy read (heavyRead): one ok read
+	// toward the read rule, resting on the file at Evidence, whose sha256 is
+	// EvidenceSHA, for Reason.
+	Heavy                 bool
+	Evidence, EvidenceSHA string
+	Reason                string
+	// ReadOK is accept --read-ok: every primary in review with the ok reads it
+	// needs. The tick accepts those itself (TickAccept); the verb is for a stuck
+	// case, and says so when nothing waits.
+	ReadOK bool `json:",omitempty"`
 }
+
+// NothingWaits is what accept --read-ok says when no primary in review has the
+// ok reads it needs: the tick accepts them, so nothing waits on the verb.
+const NothingWaits = "nothing waits: the tick accepts every primary in review whose reads are all ok and tells the seat (ready to merge)"
 
 // okReaders is the primary's ok read cards from different readers at its
 // current attempt and head, in reader row order, as many as it needs
@@ -749,7 +900,7 @@ type AcceptReq struct {
 func okReaders(s *Snapshot, pr *Card) []*Card {
 	var out []*Card
 	seen := map[string]bool{}
-	need := ReadsNeeded(pr)
+	need := ReadsNeededIn(s, pr)
 	for _, c := range readsAt(s, pr, pr.Int("attempt")) {
 		r := c.F("reader")
 		if c.Col == OK && c.F("head") == pr.F("head") && ReadCardAgrees(c) && !seen[r] && len(out) < need {
@@ -757,12 +908,32 @@ func okReaders(s *Snapshot, pr *Card) []*Card {
 			out = append(out, c)
 		}
 	}
+	// a friend's LAND stands as an ok read (docs/SPEC-SPRINT.md, a read asked of
+	// any unit with room at or above the read tier). The card returned is the
+	// fleet record, so accept guards it where it is.
+	if s.Fleet != nil && len(out) < need {
+		_, oks, _ := friendReadLive(s, pr)
+		for _, syn := range oks {
+			real := s.Fleet.Card(syn.ID)
+			if real == nil {
+				continue
+			}
+			r := real.F("reader")
+			if friendReadAgrees(real) && readHeadMatches(s, pr, real) && !seen[r] && len(out) < need {
+				seen[r] = true
+				out = append(out, real)
+			}
+		}
+	}
 	return out
 }
 
-// readersWord names the readers a primary needs (ReadsNeeded, one or two):
+// readersWord names the readers a primary needs (ReadsNeededIn, none, one or two):
 // "one reader" for a flash card, "two different readers" for a pro card.
 func readersWord(n int) string {
+	if n == 0 {
+		return "no reader"
+	}
 	if n == 1 {
 		return "one reader"
 	}
@@ -779,8 +950,10 @@ func ReadCardAgrees(c *Card) bool {
 
 // Accept moves review -> merging and places the primary in merge queued with
 // its score. It is refused without ok reads from as many different readers at
-// the primary's head as it needs (ReadsNeeded: one for a flash card, two for a
-// pro card), whoever the readers. The primary's read cards still asked
+// the primary's head as it needs (ReadsNeededIn: one for a flash card, two for a
+// pro card, or the sprint's count, set --reads, recorded on it), whoever the readers; with Heavy, the coordinator's heavy read
+// counts as one of them, recorded on the primary and never as a reader's
+// (heavyRead; docs/SPEC-SPRINT.md section 6, accept-heavy-verdict-b.w1). The primary's read cards still asked
 // or reading are retired in the same step, marked retired by accept, so no
 // read is outstanding on a primary that is not in review. Named ids are all or nothing under one
 // pre-state; a selection (a stream, the primaries with the ok reads they need, an inbox
@@ -792,16 +965,25 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 	// and the merge queues fill together; the index moves past the stream of
 	// the last accepted
 	srr := streamRound(s, PropAcceptStreamIndex)
+	heavyReads := 0
+	if r.Heavy {
+		heavyReads = 1
+	}
 	eligible := func(c *Card) string {
 		if why := inState(c, Review); why != "" {
 			return why
 		}
-		if oks := okReaders(s, c); len(oks) < ReadsNeeded(c) {
+		if r.Heavy {
+			if why := heavyWhy(r); why != "" {
+				return why
+			}
+		}
+		if oks := okReaders(s, c); len(oks)+heavyReads < ReadsNeededIn(s, c) {
 			var names []string
 			for _, o := range oks {
 				names = append(names, o.F("reader"))
 			}
-			return fmt.Sprintf("needs ok from %s at head %s; has ok from %d (%s)", readersWord(ReadsNeeded(c)), orDash(c.F("head")), len(oks), orDash(strings.Join(names, ",")))
+			return fmt.Sprintf("needs ok from %s at head %s; has ok from %d (%s)", readersWord(ReadsNeededIn(s, c)), orDash(c.F("head")), len(oks)+heavyReads, orDash(strings.Join(names, ",")))
 		}
 		if m := s.Merge.Card(c.ID); m != nil && (!m.Placed() || m.Col != Returned) {
 			return "its merge record is " + placeWord(m)
@@ -822,7 +1004,18 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 		oks := okReaders(s, c)
 		u := Unit{Key: c.ID, Stream: c.Row}
 		for _, o := range oks {
-			u.Changes = append(u.Changes, change(Readers, guardEntry(o)))
+			// a friend's ok read is on her fleet row, not the readers table
+			table := Readers
+			if s.Fleet != nil && s.Fleet.Card(o.ID) != nil && (s.Readers == nil || s.Readers.Card(o.ID) == nil) {
+				table = Fleet
+			}
+			e := guardEntry(o)
+			if !o.Placed() {
+				// a friend's read retired with her verdict is on no row: a place is a placed
+				// member's, so it is guarded at its revision alone, or the guard never holds
+				e.Expect.Place = nil
+			}
+			u.Changes = append(u.Changes, change(table, e))
 		}
 		retired := 0
 		for _, rc := range s.Readers.Of(c.ID) {
@@ -845,10 +1038,30 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 			names = append(names, o.F("reader"))
 		}
 		readers := strings.Join(names, ",")
-		accept := map[string]string{"readers": readers, "accepted": stamp(s.Now)}
-		maps.Copy(accept, readStamps(oks))
-		u.Changes = append(u.Changes, change(Work, moveEntry(c, c.Row, Merging, accept)))
-		u.Moved = fmt.Sprintf("%s review -> merging queued (ok from %s)", c.ID, strings.ReplaceAll(readers, ",", ", "))
+		set := map[string]string{"readers": readers, "accepted": stamp(s.Now)}
+		maps.Copy(set, readStamps(oks))
+		heavyText := ""
+		if r.Heavy {
+			fields, overruled := heavyRead(s, c, r)
+			maps.Copy(set, fields)
+			for _, o := range overruled {
+				u.Changes = append(u.Changes, change(Readers, guardEntry(o)))
+			}
+			heavyText = fmt.Sprintf("; heavy read ok from %s, evidence %s sha256 %s", fields[FieldHeavyReader], r.Evidence, r.EvidenceSHA)
+			if len(overruled) > 0 {
+				heavyText += "; overrules " + strings.ReplaceAll(fields[FieldHeavyOverrules], ",", ", ")
+			}
+		}
+		// accepted on the sprint's count, not its tier's rule: the count it was accepted on
+		// stays with it past review (ReadsNeededIn)
+		var unset []string
+		if n := ReadsNeededIn(s, c); n != ReadsNeeded(c) {
+			set[FieldReadsNeeded] = strconv.Itoa(n)
+		} else if c.F(FieldReadsNeeded) != "" {
+			unset = append(unset, FieldReadsNeeded)
+		}
+		u.Changes = append(u.Changes, change(Work, moveEntry(c, c.Row, Merging, set, unset...)))
+		u.Moved = fmt.Sprintf("%s review -> merging queued (ok from %s%s)", c.ID, strings.ReplaceAll(orDash(readers), ",", ", "), heavyText)
 		if retired > 0 {
 			u.Moved += fmt.Sprintf("; %d outstanding read cards retired", retired)
 		}
@@ -862,6 +1075,9 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 			n.Who = r.Who
 			setStream(&p, s, st, map[string]string{"state": StreamMerging, "since": stamp(s.Now)}, n)
 		}
+	}
+	if r.ReadOK && len(chosen) == 0 {
+		p.Said = append(p.Said, NothingWaits)
 	}
 	answered(&p, s, r.Answers, r.Who)
 	p = Lawful(p)
@@ -953,10 +1169,6 @@ type ReworkCard struct {
 	Friend     bool              `json:",omitempty"`
 	Set        map[string]string `json:",omitempty"`
 	Rule, Said string            `json:",omitempty"`
-	// Finding, when set, is what this attempt was found to be in place of its broken reads'
-	// findings: the work lint's (worklint.go, TickLint), which asks no reader. The brief's
-	// bound judges it, and the next attempt's work card carries it.
-	Finding string `json:",omitempty"`
 }
 
 // ReworkResolves is the judgments a rework discharges on its primary.
@@ -1037,14 +1249,10 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 				continue
 			}
 		}
-		// the brief's bound: the same finding twice, or too many attempts on one brief, and
-		// the brief is wrong, not the worker; a --fix changes the brief not at all, so it does
-		// not lift it (brief_bound.go)
-		foundNow := brokenFindings(s, c)
-		if one.Finding != "" {
-			foundNow = one.Finding
-		}
-		if bb, ok := AtBriefBound(c, foundNow, s.AttemptsCap(c.Row)); ok {
+		// the brief's bound: the same finding twice (briefStopAt), or too many attempts on one
+		// brief, and the brief is wrong, not the worker; a --fix changes the brief not at all,
+		// so it does not lift it (brief_bound.go)
+		if bb, ok := briefStopAt(s, c, finderOf(s, c), brokenFindings(s, c)); ok {
 			p.refuse(c.ID, bb.Why())
 			stays()
 			continue
@@ -1062,9 +1270,6 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		}
 		broken := 0
 		var retire []Change
-		// the readers' verdict on the attempt is counted before its read cards are retired
-		// (verdicts.go): the tick would find them gone
-		verdict, _, counted := verdictChange(c, s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))), readsAt(s, c, c.Int("attempt")))
 		if bound != nil {
 			retire = append(retire, change(Fleet, removeEntry(bound, map[string]string{"retired": stamp(s.Now), "retired_by": "rework"})))
 		}
@@ -1074,13 +1279,19 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 			}
 			retire = append(retire, change(Readers, removeEntry(rc, map[string]string{"retired": stamp(s.Now), "retired_by": "rework"})))
 		}
+		// its open read cards on the fleet table, a friend's or a member's (read_cards.go):
+		// left, one keeps its reader's room and closes against the attempt this rework
+		// replaced; its broken read cards counted
+		if s.Fleet != nil {
+			_, _, fbr := friendReadLive(s, c)
+			broken += len(fbr)
+		}
+		for _, rc := range openFriendReads(s, c.ID) {
+			retire = append(retire, change(Fleet, removeEntry(rc, map[string]string{"retired": stamp(s.Now), "retired_by": "rework"})))
+		}
 		// the finding and why ride on the primary too: a rework with no member up deals later
 		// (start), from the primary, and its child is told all the same
 		given := reworkGiven(s, c)
-		if one.Finding != "" {
-			given["finding"] = cutText(one.Finding, MaxCardTextBytes)
-			given["why"] = fmt.Sprintf("attempt %d finished and the work lint refused it", c.Int("attempt"))
-		}
 		set := map[string]string{"fix": fix, "finding": given["finding"], "why": given["why"], FieldFindingAttempt: c.F("attempt"),
 			"reworks": itoa(c.Int("reworks") + 1), "broken_reads": itoa(c.Int("broken_reads") + broken)}
 		// what this attempt found, kept for the cap's judgment (brief_bound.go, FieldFindings):
@@ -1094,6 +1305,12 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		}
 		if lines := findingsOf(c, c.Int("attempt"), found); len(lines) > 0 {
 			set[FieldFindings] = findingsLine(lines)
+		}
+		// and its key, which the identical-finding bound compares (FindingKey): the reader
+		// who found it, none for failed work
+		if k := FindingKey(finderOf(s, c), found); k != "" {
+			keys := slices.DeleteFunc(strings.Split(c.F(FieldFindingKeys), "\n"), func(l string) bool { return l == "" })
+			set[FieldFindingKeys] = findingsLine(append(keys, "attempt "+c.F("attempt")+": "+k))
 		}
 		// the reader who found it broken checks the fix: the next attempt's first read is
 		// asked of them (Ask, finderFirst); a rework of failed work names none
@@ -1121,6 +1338,7 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 			set[FieldWho] = WhoFriend
 		}
 		maps.Copy(set, one.Set)
+		c = reworkPriority(s, c, set)
 		// the head a reader passed: a next attempt that finds nothing to do at it goes back to
 		// review there, not to the coordinator as failed work (FieldPassedHead, Finish)
 		if len(okReaders(s, c)) > 0 && c.F("result") != "failed" {
@@ -1134,7 +1352,9 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		m := ""
 		_, friend := FriendCard(c)
 		bench := Bench(c)
-		if len(up) > 0 && !friend {
+		// no route serves its tier and a friend up does: the friends' deal's, never a machine's
+		_, _, toFriend, byFriend := s.routeOf(c, nil, nil)
+		if len(up) > 0 && !friend && !byFriend {
 			// a bench card's next attempt goes to a member of its bench alone (bench_deal.go)
 			m = rr.next(onlyBench(up, bench), q, room, reworkAvoid(s, c))
 		}
@@ -1155,6 +1375,8 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 			switch {
 			case friend:
 				later = "a friend's card: the tick deals it to a friend up with room"
+			case byFriend:
+				later = toFriend
 			case len(bench) > 0 && len(onlyBench(up, bench)) == 0:
 				later = benchWaits(bench) // no member of its bench is up (bench_deal.go)
 			case len(up) > 0:
@@ -1170,9 +1392,6 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 			u.Moved += "; a friend's card"
 		}
 		u.Moved += fmt.Sprintf("; %d read cards retired", len(retire))
-		if counted {
-			u.Changes = append([]Change{verdict}, u.Changes...)
-		}
 		if m := orphanMerge(s, c); m != nil {
 			u.Changes = append(u.Changes, change(Merge, moveEntry(m, c.Row, Returned, nil, "need_card", "need_stream")))
 			u.Moved += "; its orphan merge card off " + m.Col
@@ -1265,7 +1484,193 @@ func brokenFindings(s *Snapshot, c *Card) string {
 			found = append(found, rc.F("finding"))
 		}
 	}
+	// a read card's broken verdict on the fleet table (read_cards.go)
+	if s.Fleet != nil {
+		_, _, fbr := friendReadLive(s, c)
+		for _, rc := range fbr {
+			if rc.F("finding") != "" && !contains(found, rc.F("finding")) {
+				found = append(found, rc.F("finding"))
+			}
+		}
+	}
 	return strings.Join(found, "; ")
+}
+
+// The bound is two identical findings (docs/SPEC-SPRINT.md, "The brief is wrong, not
+// the worker"; the card the-bound-is-two-identical-findings, after the night of
+// 2026-10-05 in which cards with the fix first in their brief still ran three and four
+// lanes on one finding, reworded each time, before the attempt cap stopped them). Two
+// findings are identical when the same class of reader names the same file and line
+// (FindingKey); a finding that names no file and line keeps the whole-text class
+// (FindingClass). The second attempt on one brief that comes back with the finding the
+// attempt before it came back with stops the card at once, the brief defect raised
+// carrying both findings; the attempt cap (AttemptsCap) stays only for findings that
+// differ. How many identical findings in a row stop a card is a setting
+// (IdenticalBound), 2 by default.
+
+// PropIdentical is the work table's property holding the sprint's identical-finding
+// bound, FieldIdentical a stream's control card field holding the stream's, over the
+// sprint's; IdenticalDefault is the bound when neither is set. A value under 2 is no
+// setting: one finding is never a repeat.
+const (
+	PropIdentical    = "identical"
+	FieldIdentical   = "identical"
+	IdenticalDefault = 2
+)
+
+// FieldFindingKeys is the primary's list of each attempt's finding key (FindingKey),
+// one line an attempt ("attempt <n>: <key>"), appended by Rework beside FieldFindings and
+// cut the same way: what the identical-finding bound reads back past the attempt before.
+const FieldFindingKeys = "finding_keys"
+
+// IdenticalBound is how many identical findings in a row on one brief stop a card in
+// the stream: the stream's setting, else the sprint's, else IdenticalDefault.
+func (s *Snapshot) IdenticalBound(stream string) int {
+	if s.Merge != nil {
+		if n := s.StreamCtl(stream).Int(FieldIdentical); n >= 2 && n <= AttemptsMax {
+			return n
+		}
+	}
+	if s.Work != nil {
+		if v, ok := s.Work.Prop(PropIdentical); ok {
+			if n, err := ParseAttempts(v); err == nil && n >= 2 {
+				return n
+			}
+		}
+	}
+	return IdenticalDefault
+}
+
+// findingAt matches the first file and line a finding names (internal/sprint/state.go:31), a
+// leading ./ not part of it.
+var findingAt = regexp.MustCompile(`(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*\.[A-Za-z0-9]+:[0-9]+`)
+
+// FindingKey is what makes two findings identical: the reader's class and the first
+// file and line the finding names, "<reader> at <file>:<line>"; a finding that names
+// no file and line is its whole-text class (FindingClass), whoever found it. The
+// reader's class is its row of the readers table, case folded: one reader is one
+// class of reader, and a friend's row (friend.<name>) is hers; a finding with no
+// reader (the report of failed work) is the class "work". "" for an empty finding.
+func FindingKey(reader, finding string) string {
+	at := findingAt.FindString(finding)
+	for strings.HasPrefix(at, "./") {
+		at = at[len("./"):]
+	}
+	if at == "" {
+		return FindingClass(finding)
+	}
+	class := strings.ToLower(strings.TrimSpace(reader))
+	if class == "" {
+		class = "work"
+	}
+	return class + " at " + at
+}
+
+// IdenticalFindings is a primary stopped by the identical-finding bound: the attempts
+// that came back with the one finding (Attempts, in order, Bound of them) and what
+// each of them found (Findings, one an attempt, as said).
+type IdenticalFindings struct {
+	ID       string
+	Key      string
+	Attempts []int
+	Findings []string
+	Bound    int
+}
+
+// String is the bound said in one line: the attempts, the key and every finding, then
+// the verdict. A key of whole text at the default bound is said as the brief's bound
+// has always said it (BriefBound): the first finding, the second the same class.
+func (b IdenticalFindings) String() string {
+	first, last := b.Attempts[0], b.Attempts[len(b.Attempts)-1]
+	if findingAt.FindString(b.Key) == "" && len(b.Attempts) == 2 {
+		return BriefBound{ID: b.ID, Attempts: [2]int{first, last}, Finding: firstSentence(b.Findings[0])}.String()
+	}
+	times := "twice"
+	if len(b.Attempts) > 2 {
+		times = itoa(len(b.Attempts)) + " times"
+	}
+	var each []string
+	for i, f := range b.Findings {
+		each = append(each, "attempt "+itoa(b.Attempts[i])+": "+firstSentence(f))
+	}
+	return fmt.Sprintf("%s has failed the same way %s (attempts %d to %d, the same finding: %s); the brief is wrong, not the worker; findings: %s",
+		b.ID, times, first, last, b.Key, strings.Join(each, "; "))
+}
+
+// Why is the rework's refusal of a card at the bound: the line, and the remedy.
+func (b IdenticalFindings) Why() string {
+	return b.String() + "; " + BriefBound{ID: b.ID}.Remedy()
+}
+
+// briefStop is why a primary's brief is wrong: BriefBound (the attempt cap) or
+// IdenticalFindings.
+type briefStop interface {
+	String() string
+	Why() string
+}
+
+// AtIdenticalFindings is whether the primary c, whose readers (reader, the first that
+// found it broken; "" for failed work) found finding at its current attempt, has come
+// back with that finding at bound attempts in a row since its brief last changed. The
+// attempts before are read from the primary: its FieldFindingKeys, and for the attempt
+// its `finding` carries (FieldFindingAttempt) with no key kept, the key of that finding
+// and its reader (FieldFindingReader).
+func AtIdenticalFindings(c *Card, reader, finding string, bound int) (IdenticalFindings, bool) {
+	attempt, briefAt := c.Int("attempt"), c.Int(FieldBriefAttempt)
+	key := FindingKey(reader, finding)
+	if attempt == 0 || key == "" {
+		return IdenticalFindings{}, false
+	}
+	if bound < 2 {
+		bound = IdenticalDefault
+	}
+	keys, said := map[int]string{}, map[int]string{}
+	for _, l := range strings.Split(c.F(FieldFindingKeys), "\n") {
+		var n int
+		if head, k, ok := strings.Cut(l, ": "); ok {
+			if _, err := fmt.Sscanf(head, "attempt %d", &n); err == nil && n > 0 {
+				keys[n] = k
+			}
+		}
+	}
+	for _, l := range strings.Split(c.F(FieldFindings), "\n") {
+		var n int
+		if head, f, ok := strings.Cut(l, ": "); ok {
+			if _, err := fmt.Sscanf(head, "attempt %d", &n); err == nil && n > 0 {
+				said[n] = f
+			}
+		}
+	}
+	if prev, prevAt := c.F("finding"), c.Int(FieldFindingAttempt); prev != "" {
+		if prevAt == 0 {
+			prevAt = attempt - 1
+		}
+		if _, ok := keys[prevAt]; !ok {
+			keys[prevAt] = FindingKey(c.F(FieldFindingReader), prev)
+		}
+		said[prevAt] = prev
+	}
+	b := IdenticalFindings{ID: c.ID, Key: key, Bound: bound, Attempts: []int{attempt}, Findings: []string{finding}}
+	for a := attempt - 1; a > briefAt && len(b.Attempts) < bound && keys[a] == key; a-- {
+		b.Attempts = append([]int{a}, b.Attempts...)
+		b.Findings = append([]string{said[a]}, b.Findings...)
+	}
+	return b, len(b.Attempts) >= bound
+}
+
+// briefStopAt is the primary's brief's bound, the identical-finding bound first: its
+// readers' finding at its current attempt (reader the first that found it broken) the
+// same as the attempts before it, as many as the stream's IdenticalBound, else the
+// attempt cap's attempts on one brief (AtBriefBound, its own whole-text repeat taken
+// over by the bound here, so a setting above 2 holds for it too).
+func briefStopAt(s *Snapshot, c *Card, reader, finding string) (briefStop, bool) {
+	if b, ok := AtIdenticalFindings(c, reader, finding, s.IdenticalBound(c.Row)); ok {
+		return b, true
+	}
+	if bb, ok := AtBriefBound(withField(c, "finding", ""), finding, s.AttemptsCap(c.Row)); ok {
+		return bb, true
+	}
+	return nil, false
 }
 
 // MaxCardTextBytes bounds each text field a card carries, the brief excepted (the store
@@ -1428,18 +1833,41 @@ func orEmpty(c *Card, id string) *Card {
 	return c
 }
 
+// waitingNeeding is the waiting primaries that name id and are not dropping:
+// the dependants a drop without cascade refuses, read from every waiting
+// card's needs field (docs/SPEC-SPRINT.md section 11).
+func waitingNeeding(s *Snapshot, id string, dropping map[string]bool) []string {
+	var out []string
+	for _, w := range s.Work.Column(Waiting) {
+		if dropping[w.ID] {
+			continue
+		}
+		if contains(Split(w.F("needs")), id) {
+			out = append(out, w.ID)
+		}
+	}
+	return out
+}
+
 // DropReq is the coordinator taking primaries off the table.
 type DropReq struct {
 	Sel
 	Reason  string
 	Answers []string
+	// Cascade drops, with the cards the selection names, every waiting
+	// primary that needs one of them, and their dependants too. Without it a
+	// card a waiting primary still needs is refused, naming the dependants
+	// (docs/SPEC-SPRINT.md section 11).
+	Cascade bool
 	Who     string
 }
 
 // Drop takes open primaries off the table with the reason: their record,
 // outcome and reason are kept; their live work card, unread read cards and
-// merge place go with them. Waiting primaries that need one are blocked, and
-// the coordinator is told.
+// merge place go with them. A waiting primary that needs one is a dependant:
+// without Cascade the drop is refused for that card, naming the dependants;
+// with it the dependants and their dependants go too (docs/SPEC-SPRINT.md
+// section 11).
 func Drop(s *Snapshot, r DropReq) Plan {
 	var p Plan
 	var all []*Card
@@ -1455,9 +1883,50 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		}
 		return ""
 	}, s.primaryCard)
-	dropping, blocked := map[string]bool{}, map[string]bool{}
+	dropping := map[string]bool{}
 	for _, c := range chosen {
 		dropping[c.ID] = true
+	}
+	if r.Cascade {
+		// Grow the set of dropping cards: every waiting primary that needs
+		// one of them goes too, and their dependants in turn (a cascade), so
+		// no waiting primary is left blocked on a dropped card
+		// (docs/SPEC-SPRINT.md section 11).
+		for grew := true; grew; {
+			grew = false
+			for _, w := range s.Work.Column(Waiting) {
+				if dropping[w.ID] {
+					continue
+				}
+				for _, n := range Split(w.F("needs")) {
+					if dropping[n] {
+						dropping[w.ID] = true
+						grew = true
+						break
+					}
+				}
+			}
+		}
+		var kept []*Card
+		for _, c := range all {
+			if dropping[c.ID] {
+				kept = append(kept, c)
+			}
+		}
+		chosen = kept
+	} else {
+		// Without Cascade a card another waiting primary still needs is
+		// refused for that card, naming the dependants, and nothing moves.
+		var kept []*Card
+		for _, c := range chosen {
+			if deps := waitingNeeding(s, c.ID, dropping); len(deps) > 0 {
+				p.refuse(c.ID, fmt.Sprintf("%s is needed by %s; drop them too with --cascade", c.ID, strings.Join(deps, ", ")))
+				dropping[c.ID] = false
+				continue
+			}
+			kept = append(kept, c)
+		}
+		chosen = kept
 	}
 	for _, c := range chosen {
 		u := Unit{Key: c.ID, Stream: c.Row}
@@ -1476,23 +1945,6 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		}
 		u.Changes = append(u.Changes, change(Work, removeEntry(c, map[string]string{
 			"outcome": "dropped", "reason": r.Reason, "dropped_from": c.Col, "dropped_at": stamp(s.Now)})))
-		for _, w := range s.Work.Column(Waiting) {
-			if dropping[w.ID] || blocked[w.ID] || !contains(Split(w.F("needs")), c.ID) {
-				continue
-			}
-			// One note per waiting primary, naming every need this step drops
-			// that no blocked judgment open on it names yet.
-			blocked[w.ID] = true
-			var gone []string
-			for _, need := range Split(w.F("needs")) {
-				if dropping[need] {
-					gone = append(gone, need)
-				}
-			}
-			if gone = unblocked(s.Open, w.ID, gone, NBlocked); len(gone) > 0 {
-				u.Notes = append(u.Notes, blockedNote(s, w.Row, w.ID, r.Who, gone))
-			}
-		}
 		u.Closes = closesFor(s.Open, nil, c.ID)
 		answerListed(&u, s.Open, r.Answers, "drop", c.Row, "dropped "+c.ID+"; "+r.Reason, r.Who, s.Now, c.ID)
 		u.Moved = fmt.Sprintf("%s %s -> off the table (%s)", c.ID, c.Col, r.Reason)
@@ -1723,4 +2175,67 @@ func RecordCI(s *Snapshot, r CIReq) Plan {
 		p.Units = append(p.Units, u)
 	}
 	return p
+}
+
+// LandedReq is the coordinator's record of work found on the branch but not recorded
+// landed (docs/SPEC-SPRINT.md section 7, land-record-unreported-push-bc.w2): a push that
+// happened and was never reported, or work landed outside the deal by a pull request. Pins
+// are the cards at the heads the caller read, InBase the caller's git facts (never a
+// model's): each head is an ancestor of Sha, and Sha is on origin/<base> at its tip.
+type LandedReq struct {
+	Pins   []LandedPin
+	Sha    string
+	Reason string
+	Who    string
+}
+
+// RecordLanded lands exactly the pinned cards as merge's record by name lands them (merge
+// --landed, section 8), all or none, each merge card's note naming the commit and the
+// reason. Only a merging card is recorded: the lifecycle has no move review -> landed and no
+// move from off the table, so a card in review is refused naming accept, and a dropped one
+// naming that it stays dropped. The cards are of one stream, the record's one batch.
+func RecordLanded(s *Snapshot, r LandedReq) Plan {
+	var p Plan
+	p.on(s)
+	if strings.TrimSpace(r.Reason) == "" {
+		p.refuse("landed", "a record of work found on the branch says how it got there: --reason <text>")
+		return p
+	}
+	stream := ""
+	for _, pin := range r.Pins {
+		c := s.Work.Card(pin.ID)
+		why := ""
+		switch {
+		case c == nil:
+			why = "no such card"
+		case !c.Placed() && c.F("outcome") == "dropped":
+			why = "dropped (" + orDash(c.F("reason")) + "); the lifecycle has no move off the table -> landed, so it stays dropped"
+		case !c.Placed():
+			why = "not on the table (" + orDash(c.F("outcome")) + ")"
+		case c.Col == Landed:
+			why = "landed already; landed is final"
+		case c.Col == Review:
+			why = "in review; the lifecycle has no move review -> landed: accept it, then record it landed"
+		case c.Col != Merging:
+			why = "it is " + c.Col + "; only a merging card is recorded landed"
+		case stream != "" && c.Row != stream:
+			why = "of stream " + c.Row + ", and the record's other cards are of stream " + stream + "; record each stream on its own"
+		}
+		if why != "" {
+			p.refuse(pin.ID, why)
+			continue
+		}
+		stream = c.Row
+	}
+	if len(p.Refused) > 0 || stream == "" {
+		if stream == "" && len(p.Refused) == 0 {
+			p.refuse("landed", "no card named")
+		}
+		return p
+	}
+	notes := map[string]string{}
+	for _, pin := range r.Pins {
+		notes[pin.ID] = "recorded landed at " + r.Sha + ": " + r.Reason
+	}
+	return MergeStep(s, MergeReq{Stream: stream, Landed: r.Pins, Resolved: notes, Note: r.Reason, Who: r.Who})
 }

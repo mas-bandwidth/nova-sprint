@@ -1,5 +1,3 @@
-//go:build functional
-
 package main
 
 import (
@@ -47,10 +45,10 @@ func TestLandRepairsAStrayBackquoteOnItsMergeAndSaysSo(t *testing.T) {
 			}
 			code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
 			if tc.why != "" {
-				assert.Equal(t, 0, code, out+errs)
-				assert.Contains(t, errs, "LAND EJECTED stream=s1 cards=1 base=main tip=- ids=c1 reason=the head "+heads["c1"]+" of c1 "+tc.why)
+				assert.Equal(t, 1, code, out+errs)
+				assert.Contains(t, errs, "LAND REFUSED stream=s1 cards=1 base=- tip=- ids=c1 fact=conflict reason=the head "+heads["c1"]+" of c1 "+tc.why)
 				assert.Equal(t, []string{"the doc", "base"}, r.mainLog())
-				assert.Equal(t, map[string]string{"c1": "review/returned"}, r.places("c1"))
+				assert.Equal(t, map[string]string{"c1": "ready/returned"}, r.places("c1"))
 				r.clean()
 				return
 			}

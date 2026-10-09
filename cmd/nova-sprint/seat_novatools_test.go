@@ -35,7 +35,7 @@ func TestSeatCheckRefusesWithoutTheRequiredNovaTools(t *testing.T) {
 	t.Parallel()
 	req := sprint.NovaToolsVersion
 	older := "v1.0.0"
-	newer := "v1.2.0"
+	newer := "v1.3.0"
 	require.Equal(t, -1, semver.Compare(older, req), "the fixture's older version is older than %s", req)
 
 	seat := func(t *testing.T, versions map[string]string) (int, string, string) {

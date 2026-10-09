@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,10 +21,9 @@ func TestReaderRetireKeepsTheHistoryAndTakesTheRowOff(t *testing.T) {
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1")
 	ta.inReview(1)
 	ta.ok("ask s1-1")
-	require.Equal(t, []string{"s1-1.r1.reader-a"}, ta.askedOf("reader-a"), "a pro card's first read is asked alone")
+	require.Equal(t, []string{"s1-1.r1.reader-a"}, ta.askedOf("reader-a"), "a pro card's reads are asked together")
+	require.Equal(t, []string{"s1-1.r1.reader-b"}, ta.askedOf("reader-b"), "the second read, of another reader, in the same ask")
 	ta.ok("read --as reader-a --ok s1-1.r1.reader-a --finding 'fine'")
-	ta.ok("ask s1-1") // its second read, once the first came back ok
-	require.Equal(t, []string{"s1-1.r1.reader-b"}, ta.askedOf("reader-b"), "the second read, of another reader")
 
 	code, _, errs := ta.do("reader remove reader-a")
 	assert.Equal(t, 1, code)
@@ -94,18 +94,32 @@ func TestReaderRetireHelpSaysWhatHappensToAReadInReading(t *testing.T) {
 			break
 		}
 	}
-	require.NotEmpty(t, reading, "a pro card is asked of a reader")
+	require.NotEmpty(t, reading, "a pro card is asked of two readers together")
+	var q struct{ Cards []queueCard }
+	ta.json("queue --as "+reading, &q)
+	require.Len(t, q.Cards, 1)
+	word := q.Cards[0].ID + "@" + strconv.Itoa(max(q.Cards[0].Gen, 1))
 	ta.ok("read --as " + reading + " --begin --limit 5")
+	ta.ok("stop --reason 'fixture cancellation' --until 1h")
 	ta.ok("reader retire " + reading)
 	for _, r := range []string{"reader-a", "reader-b", "reader-c"} {
 		if r != reading {
 			_ = ta.askedOf(r)
 		}
 	}
+	code, _, errs = ta.do("start")
+	require.NotEqual(t, 0, code, "an active read needs its owner's cancellation receipt before restart")
+	require.Contains(t, errs, reading+":"+word)
+	ta.ok("stop-return --as " + reading + " --epoch 0 " + word + " --reason 'reader child exited'")
 	ta.ok("start")
 	ta.ok("tick")
 	assert.Empty(t, ta.askedOf(reading), "the read in reading was taken back")
-	again := append(ta.askedOf("reader-b"), ta.askedOf("reader-c")...)
-	require.Len(t, again, 1, "asked of one reader up with no card at that attempt")
-	assert.NotContains(t, again[0], reading)
+	// its two reads were asked together of reader-a and reader-b: the one taken back goes to
+	// reader-c, the one reader up with no card at that attempt, and the other read stays
+	require.Equal(t, []string{"s1-1.r1.reader-c"}, ta.askedOf("reader-c"), "asked of one reader up with no card at that attempt")
+	for _, r := range []string{"reader-a", "reader-b"} {
+		if r != reading {
+			assert.Equal(t, []string{"s1-1.r1." + r}, ta.askedOf(r), "the other read stays with its reader")
+		}
+	}
 }

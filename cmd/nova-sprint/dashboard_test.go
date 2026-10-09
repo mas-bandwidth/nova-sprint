@@ -39,13 +39,27 @@ func TestDashboardReadsTheSprintAsWhereJSONDoes(t *testing.T) {
 	assert.JSONEq(t, want, string(v.Data))
 }
 
-// A read where refuses is the dashboard's failed read, with where's own line.
+// A read where refuses is the dashboard's failed read: the page is shown the exit alone,
+// and where's own line goes to the log, never to the page.
 func TestDashboardReadFailureIsWheresRefusal(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	_, err := ta.a.whereJSON("", false) // no init: no sprint here yet
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "where exited 1: nova-sprint where: this store: no sprint here yet")
+
+	var log strings.Builder
+	srv := ta.a.dashboardServer("", false, "", time.Second, "", &log)
+	srv.Tick()
+	var v struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(srv.Snapshot(), &v))
+	assert.False(t, v.OK)
+	assert.Equal(t, "where exited 1", v.Error)
+	assert.NotContains(t, string(srv.Snapshot()), "no sprint here yet")
+	assert.Contains(t, log.String(), "read failed: where exited 1: nova-sprint where: this store: no sprint here yet")
 }
 
 // The page listens on loopback and the fleet's private network only, each address once.
@@ -130,6 +144,7 @@ func TestWhereCardsIsWhatThePullRoutesRead(t *testing.T) {
 	t.Parallel()
 	ta, _ := friendCardApp(t, "friend amy", "amy")
 	ta.ok("tick")
+	ta.startFriend("amy", 1)
 	assert.NotContains(t, ta.ok("where --json"), `"cards"`)
 	code, _, errs := ta.do("where --cards")
 	assert.Equal(t, 2, code)
@@ -142,7 +157,7 @@ func TestWhereCardsIsWhatThePullRoutesRead(t *testing.T) {
 	require.Len(t, v.Cards, 1, out)
 	c := v.Cards[0]
 	assert.Equal(t, dealtCard{ID: "s1-1.w1", Primary: "s1-1", Stream: "s1", Member: "friend.amy", State: "working",
-		Since: c.Since, Deadline: c.Since.Add(2 * time.Hour), Branch: "sprint/s1-1.w1.g1.e0"}, c)
+		Since: c.Since, Deadline: c.Since.Add(2 * time.Hour), Branch: "sprint/s1-1.w1.g1.e0", Priority: "normal"}, c)
 	assert.False(t, c.Since.IsZero())
 
 	srv := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSON("", false) }, Now: ta.a.now, Every: time.Second}
@@ -232,42 +247,4 @@ func TestTheDashboardOverAStoreOfTwoReleasesShowsOneRelease(t *testing.T) {
 	assert.Equal(t, "all", rel)
 	assert.Len(t, streams, 3)
 	assert.Equal(t, int64(12), all)
-}
-
-// The live page's server, server.py, is replaced by this verb (docs/SPEC-SPRINT-DASHBOARD.md,
-// "The page is the live page"): over a twin store each path it served answers, /api/sprint
-// with every key it carried, and /landings.json is where --json's landedSeries.
-func TestTheDashboardServesServerPysPathsFromATwinStore(t *testing.T) {
-	t.Parallel()
-	ta := newTestApp(t)
-	ta.ok("init --readers reader-a --members m1,m2")
-	ta.ok("add --stream s1 --count 3")
-	srv := ta.a.dashboardServer("", false, "", time.Second, "", nil)
-	get := func(path string) *httptest.ResponseRecorder {
-		w := httptest.NewRecorder()
-		srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
-		return w
-	}
-	for _, path := range []string{"/", "/index.html", "/app.js", "/nunito-800.woff2", "/OFL.txt", "/api/sprint", "/healthz", "/landings.json"} {
-		assert.Equal(t, http.StatusOK, get(path).Code, path)
-	}
-	for _, path := range []string{"/favicon.svg", "/logo-tile-192.png", "/logo-tile-384.png", "/logo-icon.png", "/favicon.png", "/logo.webp", "/logo.png", "/server.py"} {
-		assert.Equal(t, http.StatusNotFound, get(path).Code, "%s: no --logo", path)
-	}
-	var snap map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(get("/api/sprint").Body.Bytes(), &snap))
-	for _, key := range []string{"ok", "data", "fetchedAt", "attemptAt", "error", "readSeconds", "minInterval", "throughput", "throughputMinutes", "build"} {
-		assert.Contains(t, snap, key)
-	}
-	var data struct {
-		LandedSeries json.RawMessage `json:"landedSeries"`
-	}
-	require.NoError(t, json.Unmarshal(snap["data"], &data))
-	var series, landings map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(data.LandedSeries, &series))
-	require.NoError(t, json.Unmarshal(get("/landings.json").Body.Bytes(), &landings))
-	for key, v := range series {
-		assert.JSONEq(t, string(v), string(landings[key]), key)
-	}
-	assert.Contains(t, landings, "generated")
 }

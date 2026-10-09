@@ -74,7 +74,7 @@ func TestADealToANamedFriendWritesTheBriefIntoHerInbox(t *testing.T) {
 	ta.json("card s1-1", &c)
 	require.Len(t, c.Work, 1)
 	assert.Equal(t, sprint.FriendRow("amy"), c.Work[0].Row, "the card is dealt to amy's row")
-	assert.Equal(t, sprint.Working, c.Work[0].Col)
+	assert.Equal(t, sprint.Ready, c.Work[0].Col, "ready until she starts it")
 	assert.Equal(t, "friend.amy", c.Who)
 	assert.Contains(t, ta.ok("card s1-1"), "who=friend.amy", "card shows who")
 
@@ -84,7 +84,7 @@ func TestADealToANamedFriendWritesTheBriefIntoHerInbox(t *testing.T) {
 	text, err := os.ReadFile(filepath.Join(root, "amy-working", "inbox", "s1-1.w1", "BRIEF.md"))
 	require.NoError(t, err)
 	lines := strings.Split(string(text), "\n")
-	assert.Equal(t, "STATUS: nova-sprint card s1-1.w1, epoch 0, attempt 1; push your work to the branch sprint/s1-1.w1.g1.e0; when done, write outbox/s1-1.w1/REPORT.md with Verdict: LAND|HOLD|FAIL and Head: <sha>", lines[0])
+	assert.Equal(t, "STATUS: nova-sprint card s1-1.w1, epoch 0, attempt 1; push your work to the branch sprint/s1-1.w1.g1.e0; when done, write outbox/s1-1.w1/REPORT.md with first line exactly Verdict: LAND|HOLD|FAIL, second line exactly Head: <40-hex> (blank for HOLD and FAIL)", lines[0])
 	assert.Contains(t, lines[1], "Work in ~/amy-working/jobs/s1-1.w1/")
 	assert.Contains(t, string(text), "\n\ns1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: friend amy\n", "the brief follows")
 	_, err = os.Stat(filepath.Join(root, "bob-working", "inbox", "s1-1.w1"))
@@ -92,9 +92,10 @@ func TestADealToANamedFriendWritesTheBriefIntoHerInbox(t *testing.T) {
 
 	// a sync after a sync delivers nothing again, and the card is no job of hers
 	assert.Contains(t, ta.ok("friend sync --root "+root), "nothing to do")
-	// the friends table counts it under working; the fleet table names no friend
+	// once she starts it the friends table counts it under working; the fleet table names no friend
+	ta.startFriend("amy", 1)
 	frame := ta.frame()
-	assert.Contains(t, tableOf(frame, sprint.Friends), "amy     |     0 |       1 |     8 |    0 | 0.0% |       0 | up")
+	assert.Contains(t, tableOf(frame, sprint.Friends), "amy     |     0 |       1 |     8 |    0 | 0.0% | up")
 	assert.NotContains(t, tableOf(frame, sprint.Fleet), "friend")
 	var w whereView
 	ta.json("where", &w)
@@ -105,23 +106,38 @@ func TestADealToANamedFriendWritesTheBriefIntoHerInbox(t *testing.T) {
 
 func TestFriendSyncFinishesALandReportAndTheCardReachesReview(t *testing.T) {
 	t.Parallel()
-	ta, root := friendCardApp(t, "friend", "amy")
-	ta.ok("tick")
-	ta.ok("friend sync --root " + root)
-	outboxReport(t, root, "amy", "s1-1.w1", "# s1-1\n\n**Verdict:** LAND\nHead: "+landHead+"\n\nThe change is pushed and the gate is green.\nTwo files.\n\nMore detail.\n")
-	out := ta.ok("friend sync --root " + root)
-	assert.Contains(t, out, "FRIEND-CARD FINISHED friend=amy card=s1-1.w1 result=ok head="+landHead+": friend amy LAND: The change is pushed and the gate is green. Two files.")
-	assert.Contains(t, out, "delivered=0 finished=1")
-	ta.ok("tick")
-	var c cardView
-	ta.json("card s1-1", &c)
-	assert.Equal(t, sprint.Review, c.Primary.Col, "LAND is a worker's ok: the card is in review, for its reads")
-	assert.Equal(t, landHead, c.Primary.F("head"))
-	assert.Equal(t, "ok", c.Primary.F("result"))
-	assert.Equal(t, "sprint/s1-1.w1.g1.e0", c.Work[0].F("branch"))
-	// collected once: the card is finished, and the sync after finishes nothing
-	assert.Contains(t, ta.ok("friend sync --root "+root), "nothing to do")
-	assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "amy     |     0 |       0 |     8 |    0 | 0.0% |       0 | up", "her LAND is her own word: finished, in no ok% until the readers read it")
+	for _, tc := range []struct {
+		name, prefix string
+		note         bool
+	}{
+		{name: "pinned"},
+		{name: "later", prefix: "# s1-1\n\n", note: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ta, root := friendCardApp(t, "friend", "amy")
+			ta.ok("tick")
+			ta.ok("friend sync --root " + root)
+			outboxReport(t, root, "amy", "s1-1.w1", tc.prefix+"Verdict: LAND\nHead: "+landHead+"\n\nThe change is pushed and the gate is green.\nTwo files.\n\nMore detail.\n")
+			out := ta.ok("friend sync --root " + root)
+			assert.Contains(t, out, "FRIEND-CARD FINISHED friend=amy card=s1-1.w1 result=ok head="+landHead+": friend amy LAND: The change is pushed and the gate is green. Two files.")
+			assert.Contains(t, out, "delivered=0 finished=1")
+			ta.ok("tick")
+			var c cardView
+			ta.json("card s1-1", &c)
+			assert.Equal(t, sprint.Review, c.Primary.Col, "LAND is a worker's ok: the card is in review, for its reads")
+			assert.Equal(t, landHead, c.Primary.F("head"))
+			assert.Equal(t, "ok", c.Primary.F("result"))
+			assert.Equal(t, "sprint/s1-1.w1.g1.e0", c.Work[0].F("branch"))
+			if tc.note {
+				assert.Contains(t, c.Work[0].F("report"), "NOTE: friend report's Verdict: is on line 3 and Head: is on line 4")
+			} else {
+				assert.NotContains(t, c.Work[0].F("report"), "NOTE:")
+			}
+			// collected once: the card is finished, and the sync after finishes nothing
+			assert.Contains(t, ta.ok("friend sync --root "+root), "nothing to do")
+			assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "amy     |     0 |       0 |     8 |    1 | 100.0% | up")
+		})
+	}
 }
 
 func TestAHoldReportRaisesTheWorkCameBackFailedJudgment(t *testing.T) {
@@ -336,70 +352,8 @@ func TestFleetSyncLeavesAFriendsRowAndCard(t *testing.T) {
 	ta.json("card s1-1", &c)
 	require.Len(t, c.Work, 1)
 	assert.Equal(t, sprint.FriendRow("amy"), c.Work[0].Row, "her card stays on her row")
-	assert.Equal(t, sprint.Working, c.Work[0].Col)
+	assert.Equal(t, sprint.Ready, c.Work[0].Col, "ready until she starts it")
 	assert.Contains(t, ta.ok("friend sync --root "+root), "FRIEND-CARD DELIVERED friend=amy card=s1-1.w1")
-}
-
-// A friend's card is held to the friend rule set, not the child's RULES paragraph
-// (docs/SPEC-SPRINT.md section 1). One that carries its own rules line is admitted
-// with no child paragraph and names no held file. One that carries neither is
-// refused, and the refusal names the friend rule set. A machine's card is refused
-// naming the child rule set. A forbidden command is still a command.
-func TestAddAcceptsAFriendCardWithItsOwnRules(t *testing.T) {
-	t.Parallel()
-	ta, _ := friendApp(t, "amy")
-	ta.ok("friend sync --root " + t.TempDir())
-	dir := t.TempDir()
-	own := "s1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: friend amy\n\nThe task.\n\n" + swarm.FriendOwnRulesLineText + "\n"
-	require.NotContains(t, own, "Work only in the job directory this card names.", "the card carries no child RULES paragraph")
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "s1-1.md"), []byte(own), 0o644))
-	out := ta.ok("add --stream s1 --brief-dir " + dir)
-	assert.Contains(t, out, "MOVED")
-	_, _, _, f, ok := ta.m.Record(sprint.Work, "s1-1")
-	require.True(t, ok)
-	assert.Contains(t, f["brief"], swarm.FriendOwnRulesLineText)
-	assert.NotContains(t, f["brief"], "RULES.\n")
-	assert.Empty(t, f[sprint.FieldRules], "the default set names no held file")
-
-	bare := filepath.Join(t.TempDir(), "s1-2.md")
-	require.NoError(t, os.WriteFile(bare, []byte("s1-2: a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: friend amy\n\nThe task.\n"), 0o644))
-	code, _, errs := ta.do("add --stream s1 --one --brief-file " + bare)
-	require.Equal(t, 2, code, "a friend card with no rules line: exit %d\n%s", code, errs)
-	assert.Contains(t, errs, "the rule set that applies is the friend rule set")
-	assert.NotContains(t, errs, "the rule set that applies is the child rule set")
-	assert.Contains(t, errs, "rule-own-rules")
-	assert.NotContains(t, errs, "rule-worktree", "the child sentences are not what a friend's card lacks")
-
-	code, _, errs = ta.do("add --stream s2 --one --count 1 --brief 'handle the empty case'")
-	require.Equal(t, 2, code, "a machine card with no RULES paragraph: exit %d\n%s", code, errs)
-	assert.Contains(t, errs, "the rule set that applies is the child rule set")
-	assert.NotContains(t, errs, "the friend rule set")
-	assert.Contains(t, errs, "rule-worktree")
-
-	bad := filepath.Join(t.TempDir(), "s1-3.md")
-	require.NoError(t, os.WriteFile(bad, []byte(own+"\nSTEP 2. redis-server --port 7000\n"), 0o644))
-	code, _, errs = ta.do("add --stream s1 --one --brief-file " + bad)
-	require.Equal(t, 2, code, "a forbidden command on a friend's card: exit %d\n%s", code, errs)
-	assert.Contains(t, errs, "step-redis-server")
-	assert.Contains(t, errs, "the rule set that applies is the friend rule set")
-
-	// under the held file the same line admits the card and it names no child file
-	tb := newTestApp(t)
-	cfg := config.NewMem()
-	tb.a.friends = func(ctx context.Context, _ string) ([]config.Row, error) {
-		return cfg.List(ctx, config.KindFriend)
-	}
-	addFriendRow(t, cfg, "amy")
-	tb.ok("init --readers reader-a --members m1 --rules " + ourRulesFile)
-	tb.ok("friend sync --root " + t.TempDir())
-	held := t.TempDir()
-	text := "h1: a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: friend amy\n\nThe task.\n\n" + swarm.FriendOwnRulesLineText + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(held, "h1.md"), []byte(text), 0o644))
-	tb.ok("add --stream s1 --brief-dir " + held)
-	assert.Empty(t, tb.cardRulesOf("h1"), "a friend's card carries its own rules and names no child file")
-	_, _, _, hf, ok := tb.m.Record(sprint.Work, "h1")
-	require.True(t, ok)
-	assert.NotContains(t, hf["brief"], "RULES.\n")
 }
 
 func TestAddHoldsTheWhoLineToTheFriendsTable(t *testing.T) {
@@ -435,7 +389,9 @@ func TestAFriendsReworkStartsFromTheTipOfItsBase(t *testing.T) {
 	text := friendBrief("amy", p)
 	assert.Contains(t, text, "This attempt starts from the current tip of sprint/s1 on origin, never from an older base: fetch it and start your branch there. "+
 		"Carry the work of attempt 2 onto it yourself: its head, "+landHead+", is the last pushed by any attempt before this one (`git diff origin/sprint/s1..."+landHead+"` shows that work); where it does not apply cleanly, redo it. "+
-		"The Head you report must be origin's tip of your branch when sync reads it; the attempt is expected to start from the tip named above.\nThe coordinator asks: assert the bound\n")
+		"The Head you report must be origin's tip of your branch when sync reads it; the attempt is expected to start from the tip named above.\n")
+	assert.Equal(t, "THE ONE THING LEFT: assert the bound", strings.Split(text, "\n")[1], "a reworked attempt's fix is its first line after STATUS")
+	assert.Contains(t, text, "\nThe carried work: attempt 2's head "+landHead+", carried onto sprint/s1-1.w3.g1.e0 from the tip of its base;")
 	assert.NotContains(t, text, "start from it.", "never the old head")
 
 	p.BaseHead, p.BaseAttempt = "", 0
@@ -482,6 +438,7 @@ func TestFriendSyncDeliversHerReadyCardsAndKeepsHerQueueFile(t *testing.T) {
 	ta.ok("add --stream s1 --brief-dir " + dir)
 	ta.ok("start")
 	ta.ok("tick")
+	ta.startFriend("amy", 1) // dealt ready; she starts what her width holds
 	var w whereView
 	ta.json("where", &w)
 	assert.Equal(t, "1", w.Tables[sprint.Friends]["amy"]["working"], "her width working")
@@ -510,6 +467,9 @@ func TestFriendSyncDeliversHerReadyCardsAndKeepsHerQueueFile(t *testing.T) {
 	require.Len(t, c.Work, 1)
 	assert.Equal(t, sprint.Working, c.Work[0].Col, "her finish took her next ready card, no tick between")
 	ta.ok("tick")
+	ta.json("card s1-2", &c)
+	assert.Equal(t, sprint.Ready, c.Work[0].Col, "no start of hers: the tick puts it back ready until she starts it")
+	ta.startFriend("amy", 1)
 	ta.json("card s1-3", &c)
 	require.Len(t, c.Work, 1)
 	assert.Equal(t, sprint.Ready, c.Work[0].Col, "the tick fills her room again")
@@ -555,4 +515,31 @@ func TestFriendQueueCarriesTheAssignmentGenerationAndJob(t *testing.T) {
 	require.NoError(t, json.Unmarshal(text, &q))
 	assert.Equal(t, "queued", q.Tasks[0].State, "a new epoch is a new job too")
 	assert.Equal(t, "c.w1~16.g2", q.Tasks[0].Job)
+}
+
+// A named friend's configured work restriction is held at admission (docs/SPEC-SPRINT.md
+// section 1, a friend's card): a card whose stream or KIND is outside her streams and
+// kinds is refused at add and at brief, with the restriction named, so it never sits
+// undealable.
+func TestAddAndBriefRefuseNamedFriendOutsideRestrictions(t *testing.T) {
+	t.Parallel()
+	ta, cfg := friendApp(t, "amy")
+	_, _, err := cfg.Update(context.Background(), config.KindFriend, "amy", map[string]string{"streams": " security* ", "kinds": " fix-red, review "}, "test")
+	require.NoError(t, err)
+	ta.ok("friend sync")
+	brief := passingBrief("s1-1: restricted friend card\nREPO: mas-bandwidth/nova-tools\nWHO: friend amy\nKIND: fix-red")
+	briefPath := filepath.Join(t.TempDir(), "brief.md")
+	require.NoError(t, os.WriteFile(briefPath, []byte(brief), 0o644))
+	code, _, errs := ta.do("add --stream s1 --one --brief-file " + briefPath)
+	assert.NotZero(t, code)
+	assert.Contains(t, errs, "streams restriction")
+
+	ta, cfg = friendApp(t, "amy")
+	_, _, err = cfg.Update(context.Background(), config.KindFriend, "amy", map[string]string{"streams": "security*"}, "test")
+	require.NoError(t, err)
+	ta.ok("friend sync")
+	ta.ok("add --stream s1 --count 1 --one")
+	code, _, errs = ta.do("brief s1-1 --brief-file " + briefPath)
+	assert.NotZero(t, code)
+	assert.Contains(t, errs, "streams restriction")
 }

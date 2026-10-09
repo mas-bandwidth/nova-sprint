@@ -77,6 +77,11 @@ type app struct {
 	// tip reads origin's tip of a branch (friend sync, a friend's LAND): tests give
 	// it a table of tips and open no socket.
 	tip tipFn
+	// readTip and readHeads are the server's check of a broken read's branch at its close
+	// (readMissing): origin's tip of the branch the read named, and origin's branches of the
+	// work card by pattern. nil checks nothing: tests open no socket unless they give one.
+	readTip   tipFn
+	readHeads headsFn
 	// bus sends one message on the friends' bus (internal/bus; friend sync wakes a
 	// friend's daemon with it when it delivers her a card): tests give a recorder
 	// and open no socket.
@@ -130,6 +135,14 @@ type app struct {
 	// beforePush, when set (a test), runs before each push land makes, with
 	// the attempt (1, then 2 after the base moved).
 	beforePush func(attempt int)
+	// gateRan, when set (a test), runs before each tree gate land runs, with the directory
+	// gated and whether the tree tests run: the count of gates a pass makes (landpass.go).
+	gateRan func(dir string, tests bool)
+	// beforeWait, when set (a test), runs in a stream's phase-1 goroutine just before it
+	// waits for the chain, a width slot or another stream's gate of its base commit, with
+	// the stream and the wait (chain, slot, gate): a test orders who waits behind whom
+	// (landpass.go, land.go gateBase).
+	beforeWait func(stream, what string)
 	// ledgers, when set (a test), is the generated ledgers land regenerates at a merge
 	// (landledger.go); nil is landLedgers.
 	ledgers []landLedger
@@ -147,6 +160,9 @@ type app struct {
 	// serveAddr is the store the server runs the workers' verbs on.
 	serial    controlLine
 	serveAddr string
+	// serveStarted is when this server started serving (serve.go), zero for a verb run
+	// alone: a beat's old --pong <time> counts for sprint.LegacyPongGrace after it.
+	serveStarted time.Time
 	// serving says the verb running is one a worker sent to the server (set and
 	// cleared under serial): its step names the epoch its worker holds, or is
 	// refused (runStep).
@@ -173,10 +189,6 @@ type app struct {
 	// rounds: land itself then leaves the queue as it is.
 	prune    pruneQueue
 	landLazy bool
-	// serverLands says this process is the server running with --land: its record
-	// says so, and a land by hand beside it is refused (landlock.go,
-	// land-one-lander-now-nsb.w1).
-	serverLands bool
 	// landCtx is the land loop's context while it runs a land (landOnce): the landed
 	// diffs' scoring runs under it, so the loop's shutdown ends the pass; nil is none.
 	landCtx context.Context
@@ -186,13 +198,21 @@ type app struct {
 	// baseGateFails is the base-gate rule's record of base commits that failed their tree
 	// gate (landgo.go, treeGateBase), kept across rounds as the cache is.
 	baseGateFails map[string]*baseGateFail
-	// tickDeadline is how long the run loop waits for one tick (run
-	// --tick-deadline; 0, a test's loop, waits for ever); after is the clock
-	// it waits on (time.After unless a test sets it), and exit how the loop
-	// ends the process when a tick runs past it (os.Exit unless a test sets it).
+	// goCachePath is the build cache the lander's go runs share (landgo.go, goCache),
+	// resolved once a process under goCacheOnce.
+	goCacheOnce sync.Once
+	goCachePath string
+	// tickDeadline is the least time the run loop waits for one tick (run
+	// --tick-deadline, stretched by the walls of the last ticks; 0, a test's
+	// loop, waits for ever); after is the clock it waits on (time.After unless a
+	// test sets it), and exit how the loop ends the process when ticks in a row
+	// run past it (os.Exit unless a test sets it).
 	tickDeadline time.Duration
 	after        func(time.Duration) <-chan time.Time
 	exit         func(code int)
+	// tickFn, when set (a test), is the run loop's tick of its store: nil is
+	// store.Store.Tick.
+	tickFn func(ctx context.Context, st *store.Store) (store.TickResult, error)
 	// decide is the server's decide lane (run --decide, decidelane.go): nil records no
 	// attempt or grade decision and grades nothing.
 	decide *decideLane
@@ -299,6 +319,7 @@ func newApp(getenv func(string) string) *app {
 	a.inventory = a.readInventory
 	a.friends = a.readFriends
 	a.tip = a.branchTip
+	a.readTip, a.readHeads = a.branchTip, a.branchHeads
 	a.bus = a.sendBus
 	a.busOpen = a.openBus
 	a.landRoot = defaultLandRoot
@@ -414,6 +435,7 @@ type common struct {
 	json             bool
 	max              int
 	epoch            int64       // the epoch the caller holds; -1 is none
+	dry              bool        // --dry-run on a verb of stepDryRun: runStep plans its step and writes nothing (stepdry.go)
 	group            groupReport // set by --group, for the verb's report
 	// packets, when set, is what the step hands its actor (take: each
 	// card's packet), read after the step and printed with its report.

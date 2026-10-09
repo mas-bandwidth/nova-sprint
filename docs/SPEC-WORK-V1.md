@@ -293,27 +293,3 @@ The whole of an organization of 96 repositories, one run each way from a working
    that repository, committed by the caller, until a save verb exists.
 7. **Private repositories.** The tree holds private repositories' issues. Recommendation: the data
    repository is private, and a tree is never attached to anything public.
-
-## 1.12 Roadmap s-expressions and verbs
-
-Roadmaps are stored in restricted s-expressions (`roadmaps/*.sexp`) with top-level `:roadmap`,
-`:releases`, `:streams`, and cards carrying `:id`, `:tier`, `:needs`, `:title`, `:brief`.
-`internal/roadmap` parses and prints the format byte for byte (comments and spacing kept), and the
-`nova-work roadmap` verbs, declared in the tool's verb table like import and verify, edit it:
-
-- `nova-work roadmap check --file <f>`: string-aware paren balance, each release's `:cards` equal to
-  the cards in its streams, every card with an `:id`, no duplicate card id, no empty stream. Exit 1 names each problem, an
-  unbalanced or unparsable file included.
-- `nova-work roadmap add --file <f> --stream <s> --brief-dir <dir>`: each `<id>.md` in `--brief-dir`
-  becomes a card of stream `<s>` in the first release, and `:cards` goes up. An id already in any
-  release is refused.
-- `nova-work roadmap remove --file <f> --id <id>...`: removes the cards, lowers `:cards`, and drops a
-  stream whose cards list becomes empty.
-- `nova-work roadmap pull --file <f> --id <id>... --out <dir>`: writes each card's `:brief` to
-  `<id>.md` in `--out`, then removes the cards as remove does; one CARD line per card names its
-  release and stream. A card with an empty `:brief` is refused.
-- `nova-work roadmap note --file <f> --id <id>... --text <t>`: appends `<t>` to each card's `:brief`
-  after a blank line.
-
-Every verb that writes refuses a file check rejects, makes its edit in memory, checks the bytes it
-would save the same way, and writes nothing on a refusal (exit 2): no verb leaves a file check fails.

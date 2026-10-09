@@ -44,7 +44,7 @@ func (a *app) cmdDashboard(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("dashboard")
 	listen := fs.String("listen", DashboardListen, "serve the page on each `address:port` of a comma-separated list, one listener each and one cached copy of the sprint: loopback, or this machine's address on the fleet's private network (the tailnet); 0.0.0.0, :: and public addresses are refused; default "+DashboardListen+"; none: no page")
 	pull := fs.String("pull", DashboardPull, "serve the pull routes (/friend/<name>, /machine/<name>, their /api/ JSON and /events/ stream forms, /team and /api/team, /api/sprint, /events) on each `address:port` of a comma-separated list, the same addresses --listen takes, from the same cached copy, read-only; default "+DashboardPull+"; none: no pull routes; an http:// or https:// URL of another dashboard: be its puller, reading its /api/sprint once per --every in place of the sprint and serving the page alone (the public copy)")
-	logo := fs.String("logo", "", "the logo's `file`, drawn as the live page's server drew it: an .svg inline and as /favicon.svg; logo.webp or logo.png a photo on white at /logo-icon.png and /favicon.png (the keyed copies beside it, else the photo); any other image a tile at /logo-tile-192.png and /logo-tile-384.png (its <stem>-192.png and <stem>-384.png beside it, else the tile); none: the logo slot renders nothing")
+	logo := fs.String("logo", "", "an image `file` served as the page's logo and favicon; none: the logo slot renders nothing")
 	every := fs.Duration("every", time.Second, "read the sprint at most once per this `duration`, above 0")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
@@ -80,8 +80,10 @@ func (a *app) cmdDashboard(args []string, stdout, stderr io.Writer) int {
 	srv := a.dashboardServer(c.redis, redis, from, *every, *logo, stdout)
 	ctx, stop := a.notify(context.Background())
 	defer stop()
-	// the sprint is read each --every whoever is looking, each new copy pushed to the
-	// /events clients as it is read, and its freshness checked
+	// one poller: the first read before any listener opens, then one each --every whoever
+	// is looking (back to back when a read takes longer), each new copy pushed to the
+	// /events clients as it is read and its freshness checked; a page reads the copy only
+	srv.Tick()
 	tick := time.NewTicker(*every)
 	defer tick.Stop()
 	runCtx, endRun := context.WithCancel(ctx)
@@ -149,25 +151,22 @@ func dashboardUpstream(pull string) (string, error) {
 	return u.String(), nil
 }
 
-// whereJSON reads the sprint as `nova-sprint where --json --cards --rows` does, in this
+// whereJSON reads the sprint as `nova-sprint where --json --cards --rows --archived` does, in this
 // process: through the sprint's server when NOVA_SPRINT_SERVER names one, else on the
 // store; --redis is handed on when the dashboard was given it, as where would have been.
 // The rows give each critical card its stream, so the critical path follows the page's
-// release (sprintdash.placed); the server drops them. The archived streams' rows do not
-// come: the live page (docs/SPEC-SPRINT-DASHBOARD.md) has no archived line to hide them
-// behind, and draws every row the data carries.
+// release (sprintdash.placed); the server drops them. The archived streams' rows come
+// too: the page hides them behind its one archived line (stream archive).
 func (a *app) whereJSON(addr string, given bool) ([]byte, error) {
-	argv := []string{"where", "--json", "--cards", "--rows"}
+	argv := []string{"where", "--json", "--cards", "--rows", "--archived"}
 	if given {
 		argv = append(argv, "--redis", addr)
 	}
 	var out, errb bytes.Buffer
 	if code := a.run(argv, &out, &errb); code != 0 {
-		why := fmt.Sprintf("where exited %d", code)
-		if line, _, _ := strings.Cut(strings.TrimSpace(errb.String()), "\n"); line != "" {
-			why += ": " + line
-		}
-		return nil, errors.New(why)
+		// the page is shown the exit alone; where's own line goes to the log
+		line, _, _ := strings.Cut(strings.TrimSpace(errb.String()), "\n")
+		return nil, &sprintdash.ReadError{Why: fmt.Sprintf("where exited %d", code), Detail: line}
 	}
 	return out.Bytes(), nil
 }

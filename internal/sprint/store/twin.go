@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -275,7 +274,7 @@ func (st *Store) twinRead(ctx context.Context, tw *Twin, load []string, extras f
 		}
 		return snap, f2, nil
 	}
-	return nil, Fence{}, fmt.Errorf("the sprint is busy: other operations kept the fence moving, %d reads in %s; nothing was changed; run the verb again", r.tries, r.slept().Round(time.Millisecond))
+	return nil, Fence{}, &FenceBusyError{Reads: r.tries, Slept: r.slept()}
 }
 
 // checkTwin gives CheckTwin the twin's snapshot with a fresh read of the
@@ -311,7 +310,7 @@ func (st *Store) checkTwin(ctx context.Context, snap *sprint.Snapshot, gen uint6
 // snapshot. A table that moved while it was read is a movedError.
 func (st *Store) twinView(ctx context.Context, tw *Twin, load []string, v View, extras func(*sprint.Snapshot) map[string][]string) (*sprint.Snapshot, error) {
 	shapes := v.Shapes
-	s := &sprint.Snapshot{Now: st.now(), Epoch: st.epoch, Cleared: st.cleared, Actor: st.Actor}
+	s := &sprint.Snapshot{Now: st.now(), Epoch: st.epoch, Cleared: st.cleared, Actor: st.Actor, Prefix: st.Names.Prefix}
 	for _, shape := range shapes {
 		if shape.Epoch != st.epoch {
 			return nil, errCleared

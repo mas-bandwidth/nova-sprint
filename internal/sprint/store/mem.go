@@ -940,7 +940,13 @@ func (m *Mem) ReadFence(context.Context) (Fence, error) {
 	f := Fence{Gen: l.gen, Queued: len(l.queue)}
 	if raw, ok := m.kv[keyMachine]; ok {
 		var mc Machine
-		f.Running = json.Unmarshal([]byte(raw), &mc) == nil && mc.Running()
+		if json.Unmarshal([]byte(raw), &mc) == nil {
+			f.Running = mc.Running()
+			f.RunSeq = mc.RunSeq
+			f.StopRevoked = mc.stopRevoked()
+			f.StopIssued = mc.StopIssued
+			f.StopDebt = mc.StopDebt
+		}
 	}
 	f.Stuck = m.kv[keyStuck]
 	if l.fence != nil {
@@ -1068,6 +1074,41 @@ func (m *Mem) Release(_ context.Context, op OpRecord, commit bool) error {
 				m.kv = map[string]string{}
 			}
 			m.kv[friendHealthKey(op.Health.Friend)] = string(rec)
+		}
+		if len(op.CloseTimers) > 0 {
+			if m.kv == nil {
+				m.kv = map[string]string{}
+			}
+			if raw := m.kv[keyTimers]; raw != "" {
+				var ts sprint.Timers
+				if err := json.Unmarshal([]byte(raw), &ts); err == nil {
+					closing := map[string]bool{}
+					for _, id := range op.CloseTimers {
+						closing[id] = true
+					}
+					var rem []sprint.Timer
+					for _, tm := range ts.Open {
+						if !closing[tm.ID] {
+							rem = append(rem, tm)
+						}
+					}
+					ts.Open = rem
+					rec, err := json.Marshal(ts)
+					if err != nil {
+						return err
+					}
+					m.kv[keyTimers] = string(rec)
+				}
+			}
+		} else if op.Timers != nil {
+			rec, err := json.Marshal(op.Timers)
+			if err != nil {
+				return err
+			}
+			if m.kv == nil {
+				m.kv = map[string]string{}
+			}
+			m.kv[keyTimers] = string(rec)
 		}
 	}
 	l.fence = nil

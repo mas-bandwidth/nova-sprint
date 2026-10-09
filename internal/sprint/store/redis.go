@@ -447,7 +447,13 @@ func fenceOf(mget *redis.SliceCmd, llen *redis.IntCmd) (Fence, error) {
 	f.Queued = int(llen.Val())
 	if s, ok := vals[2].(string); ok {
 		var m Machine
-		f.Running = json.Unmarshal([]byte(s), &m) == nil && m.Running()
+		if json.Unmarshal([]byte(s), &m) == nil {
+			f.Running = m.Running()
+			f.RunSeq = m.RunSeq
+			f.StopRevoked = m.stopRevoked()
+			f.StopIssued = m.StopIssued
+			f.StopDebt = m.StopDebt
+		}
 	}
 	if s, ok := vals[1].(string); ok {
 		f.Gen, _ = strconv.ParseUint(s, 10, 64)
@@ -702,6 +708,40 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 			return err
 		}
 		p.Set(ctx, r.Names.Key(friendHealthKey(op.Health.Friend)), string(rec), 0)
+	}
+	if len(op.CloseTimers) > 0 {
+		raw, err := r.C.Get(ctx, r.Names.Key(keyTimers)).Result()
+		if err != nil && !errors.Is(err, redis.Nil) {
+			return err
+		}
+		if raw != "" {
+			var ts sprint.Timers
+			if err := json.Unmarshal([]byte(raw), &ts); err != nil {
+				return err
+			}
+			closing := map[string]bool{}
+			for _, id := range op.CloseTimers {
+				closing[id] = true
+			}
+			var rem []sprint.Timer
+			for _, tm := range ts.Open {
+				if !closing[tm.ID] {
+					rem = append(rem, tm)
+				}
+			}
+			ts.Open = rem
+			rec, err := json.Marshal(ts)
+			if err != nil {
+				return err
+			}
+			p.Set(ctx, r.Names.Key(keyTimers), string(rec), 0)
+		}
+	} else if op.Timers != nil {
+		rec, err := json.Marshal(op.Timers)
+		if err != nil {
+			return err
+		}
+		p.Set(ctx, r.Names.Key(keyTimers), string(rec), 0)
 	}
 	return nil
 }
@@ -969,6 +1009,11 @@ const changePage = 64
 // none): any other write in the span makes the twin read the table whole.
 var twinVerbs = map[string]bool{"apply": true, "row_set": true, "rows_add": true, "row_add": true}
 
+// rowFlagVerbs are the table writes that change rows' flags and no record: a row
+// hide or show (stream archive) names none because it changed none, and the shape
+// read beside the catch-up carries the rows (as the Mem store's stream answers it).
+var rowFlagVerbs = map[string]bool{"rows_hide": true}
+
 // TableChanges reads the table's change stream from its newest event back to
 // the one that left revision from, and says the records the writes between
 // from and to named (twin.go). ok is false when the events do not chain from
@@ -1012,9 +1057,9 @@ func (r *Redis) TableChanges(ctx context.Context, table string, from, to uint64)
 			if ev.after != need {
 				return gap(fmt.Sprintf("the event before revision %d leaves revision %d", need, ev.after))
 			}
-			if ev.verb == "set" && orderOnly(ev.args) {
-				// the rows' order alone: no record changed, and the shape read beside the
-				// catch-up carries the order
+			if (ev.verb == "set" && orderOnly(ev.args)) || rowFlagVerbs[ev.verb] {
+				// the rows' order or their hidden flags alone: no record changed, and the
+				// shape read beside the catch-up carries the rows
 				if need = ev.before; need == from {
 					return ids, true, nil
 				}

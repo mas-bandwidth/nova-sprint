@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/typedrec"
 )
@@ -72,6 +73,10 @@ type Packet struct {
 	WorkBranch string `json:"work_branch,omitempty"`
 	WorkBase   string `json:"work_base,omitempty"`
 	Report     string `json:"report,omitempty"`
+	// ReadJob is the inbox job of a friend's read asked before read cards (a read card with
+	// no read_deadline, read_cards.go): its card id at every epoch, the path it was delivered
+	// at and is closed from; "" for a read card, whose job is a card's.
+	ReadJob string `json:"read_job,omitempty"`
 }
 
 // FieldRules is a primary's rules by reference (nova-tools#5174 rule 6): the base name of the
@@ -98,6 +103,41 @@ const (
 // push would collide with the first launch's on a branch named by the epoch alone.
 func BranchOf(prefix string, epoch uint64, workCard string, gen int) string {
 	return "sprint/" + prefix + workCard + ".g" + strconv.Itoa(gen) + ".e" + strconv.FormatUint(epoch, 10)
+}
+
+// PushedBranch is the branch that holds a work card's pushed head, the branch a read of the
+// attempt is handed (docs/SPEC-SPRINT.md section 6, a read names the branch the work pushed):
+// when its head is the head a hold carried (FieldCarryHead: a later generation finished at the
+// work an earlier one pushed, with no push of its own), the carried generation's branch; else
+// the branch its finish recorded; else its own generation's, for a finish that named none. A
+// generation bumped by a take-back or a hold after the push never renames the work's branch.
+func PushedBranch(prefix string, epoch uint64, work *Card) string {
+	if h := work.F(FieldCarryHead); h != "" && strings.EqualFold(h, work.F("head")) {
+		if g := work.Int(FieldCarryGen); g > 0 {
+			return BranchOf(prefix, epoch, work.ID, g)
+		}
+	}
+	if b := work.F("branch"); b != "" {
+		return b
+	}
+	return BranchOf(prefix, epoch, work.ID, work.Int("gen"))
+}
+
+// FieldReadBranch and FieldReadBranchHead are a primary's record of the branch origin holds its
+// attempt's head on, when a read named one origin does not hold (ReadReq.Missing): the server
+// found the work's branch with that head, and every read of that head names it from then on.
+const (
+	FieldReadBranch     = "read_branch"
+	FieldReadBranchHead = "read_branch_head"
+)
+
+// ReadBranch is the branch a read of the work card is handed: the primary's corrected branch
+// when it was recorded for the work's head (FieldReadBranch), else PushedBranch.
+func ReadBranch(prefix string, epoch uint64, primary, work *Card) string {
+	if primary != nil && primary.F(FieldReadBranch) != "" && strings.EqualFold(primary.F(FieldReadBranchHead), work.F("head")) {
+		return primary.F(FieldReadBranch)
+	}
+	return PushedBranch(prefix, epoch, work)
 }
 
 // Base is where a later attempt of a card starts: the attempt whose pushed head it is, and
@@ -179,13 +219,13 @@ func PacketOf(prefix string, epoch uint64, c, primary *Card, earlier []*Card, wo
 		return p
 	}
 	p.DecideBounce, p.DecideReview = c.F(FieldDecideBounce), c.F(FieldDecideReview)
+	if c.F(FieldReadCard) == "" {
+		p.ReadJob = c.ID // asked the old way: delivered at inbox/<card id>, never again elsewhere
+	}
 	if work != nil {
 		p.Worker = work.F("member")
 		p.Head = work.F("head")
-		p.WorkBranch = work.F("branch")
-		if p.WorkBranch == "" {
-			p.WorkBranch = BranchOf(prefix, epoch, work.ID, work.Int("gen"))
-		}
+		p.WorkBranch = ReadBranch(prefix, epoch, primary, work)
 		p.WorkBase = work.F("base")
 		p.Report = work.F("report")
 	}
