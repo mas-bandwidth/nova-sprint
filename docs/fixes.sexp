@@ -98,6 +98,15 @@
     no longer exits 128 on a fleet host with nothing saying why."
    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
 
+  (fix "down-member-is-down-not-fault" :release "v1.2.6" :status "planned"
+   :title "A member whose host is offline is shown down, not as a fault"
+   :text "The seat check reports a member that does not beat on an offline host as down (offline=name, the
+    fleet line stays OK); DOWN when the host answers, or gives no clear no-answer (a name that does not resolve
+    is named on the line). The seat probes the ssh port of each such member's machine row at once under one
+    3 s bound, with a beating member other than the seat's own machine as the control of its network: no
+    control answer, no member excused."
+   :origin "v1.2.5 candidate list")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
