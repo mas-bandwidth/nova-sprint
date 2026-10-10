@@ -36,3 +36,4 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 Inbox push writes each judgment once without concurrent writers sharing a temporary path.
 
 - **Inbox push cannot overwrite a published judgment** (planned). Two overlapping clients share one temporary path, so a second write can change the published file. Use a unique temporary path per writer. From: issue #5160.
+- **Rested routes must not overflow the fleet table property cap** (planned). Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the tick writes nothing. Use one property for all. From: issue #5210.

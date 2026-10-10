@@ -102,4 +102,10 @@
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
      file. Use a unique temporary path per writer."
-    :origin "issue #5160")))
+    :origin "issue #5160")
+
+   (fix "rest-properties-cap" :release "v1.2.9" :status "planned"
+    :title "Rested routes must not overflow the fleet table property cap"
+    :text "Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the
+     tick writes nothing. Use one property for all."
+    :origin "issue #5210")))
