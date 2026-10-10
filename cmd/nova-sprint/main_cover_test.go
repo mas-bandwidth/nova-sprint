@@ -176,7 +176,7 @@ func TestMainCoverLibraryMatchesAcceptsTheEmbeddedLibraryAndRefusesTheRest(t *te
 			name:    "the store holds another build's: refused, naming both sums",
 			reply:   functionListReply(fn.Library, other),
 			refused: true,
-			holds:   []string{"holds " + fn.Library + " library " + librarySum(other), "this build is " + librarySum(source)},
+			holds:   []string{"holds " + fn.Library + " library " + fn.Sum(other), "this build is " + fn.Sum(source)},
 		},
 	}
 	for _, tc := range cases {

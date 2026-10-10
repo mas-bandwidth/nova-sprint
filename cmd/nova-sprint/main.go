@@ -429,10 +429,13 @@ func openWith(ctx context.Context, o redisconn.Options, getenv func(string) stri
 
 // libraryMatches refuses a store whose loaded table function library is not
 // this build's (one FUNCTION LIST, once per process and address): every write
-// through a library of another build would be refused or unreadable. The
-// digest it compares covers code bytes, not comment bytes, so a build that
-// only changed a comment still matches (v1.2.3's adopt refused on six comment
-// lines, whose change of fn.Sum was not a change of code).
+// through a library of another build would be refused or unreadable. It judges
+// the library by its code (librarySum), not its bytes: a library that differs
+// from this build's only in comments or blank space runs the same functions,
+// so it matches (v1.2.3's adopt refused the store over six comment lines, PR
+// #33). A change of code is refused, by every verb and by a shadow tick alike;
+// the refusal names both sums as nova-redis fn load and fn check print them,
+// then the code sums it compared.
 func libraryMatches(ctx context.Context, c *redis.Client, addr string) error {
 	source, err := fn.Source()
 	if err != nil {
@@ -446,55 +449,99 @@ func libraryMatches(ctx context.Context, c *redis.Client, addr string) error {
 	case !found:
 		return fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --addr %s", addr, fn.Library, addr)
 	case librarySum(code) != librarySum(source):
-		return fmt.Errorf("the store at %s holds %s library %s, and this build is %s; run: nova-redis fn load --addr %s", addr, fn.Library, librarySum(code), librarySum(source), addr)
+		return fmt.Errorf("the store at %s holds %s library %s, and this build is %s (their code: %s and %s); run: nova-redis fn load --addr %s", addr, fn.Library, fn.Sum(code), fn.Sum(source), librarySum(code), librarySum(source), addr)
 	}
 	return nil
 }
 
-// librarySum is the digest libraryMatches judges a library by: fn.Sum of the
-// source with its comments stripped, so a comment-only change is not a change
-// of the library.
+// librarySum is the digest libraryMatches judges a library by: fn.Sum of its
+// code (luaCode), so two sources that differ only in comments or blank space
+// have one sum, and a change of any token or of any string's bytes is a new one.
 func librarySum(source string) string { return fn.Sum(luaCode(source)) }
 
-// luaCode is the Lua source with its comments removed, for the library's
-// digest. A comment is "--" to the end of its line, or "--[[...]]" to its
-// close; a "--" inside a quoted string is text, so the string is copied whole.
+// luaCode is the Lua source as its tokens, for the library's digest: each
+// comment ("--" to the end of its line, or a long comment "--[==[ ... ]==]" of
+// any level) and each run of blank space outside a string is one space between
+// tokens, none at either end; a string, quoted ('...' or "...", its escapes
+// included) or long ("[==[ ... ]==]" of any level), is copied byte for byte, so
+// a "--" inside one is its text. A string or long comment never closed runs to
+// the end of the source: Lua refuses to load such a source, and the digest of
+// any source is defined.
 func luaCode(src string) string {
 	var b strings.Builder
+	gap := false // blank space or a comment since the last byte written
+	put := func(s string) {
+		if gap && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		gap = false
+		b.WriteString(s)
+	}
 	for i := 0; i < len(src); {
 		switch c := src[i]; {
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f':
+			gap = true
+			i++
+		case strings.HasPrefix(src[i:], "--"):
+			gap = true
+			if n := longBracket(src[i+2:]); n > 0 {
+				i = longClose(src, i+2+n, n-2)
+				continue
+			}
+			if at := strings.IndexByte(src[i:], '\n'); at >= 0 {
+				i += at
+			} else {
+				i = len(src)
+			}
 		case c == '"' || c == '\'':
 			end := i + 1
-			for end < len(src) {
+			for end < len(src) && src[end] != c {
 				if src[end] == '\\' {
-					end += 2
-					continue
-				}
-				if src[end] == c {
-					end++
-					break
+					end++ // the escaped byte is the string's, whatever it is
 				}
 				end++
 			}
-			b.WriteString(src[i:end])
+			end = min(end+1, len(src))
+			put(src[i:end])
 			i = end
-		case c == '-' && strings.HasPrefix(src[i:], "--"):
-			i += 2
-			if strings.HasPrefix(src[i:], "[[") {
-				if at := strings.Index(src[i+2:], "]]"); at >= 0 {
-					i += 2 + at + 2
-					continue
-				}
-			}
-			for i < len(src) && src[i] != '\n' {
-				i++
-			}
+		case c == '[' && longBracket(src[i:]) > 0:
+			n := longBracket(src[i:])
+			end := longClose(src, i+n, n-2)
+			put(src[i:end])
+			i = end
 		default:
-			b.WriteByte(c)
+			put(src[i : i+1])
 			i++
 		}
 	}
 	return b.String()
+}
+
+// longBracket is the length of the long bracket s opens ("[[", "[=[", "[==[",
+// and so on), or 0 when s opens none.
+func longBracket(s string) int {
+	if s == "" || s[0] != '[' {
+		return 0
+	}
+	n := 1
+	for n < len(s) && s[n] == '=' {
+		n++
+	}
+	if n < len(s) && s[n] == '[' {
+		return n + 1
+	}
+	return 0
+}
+
+// longClose is the index just past the close of a long bracket of the level
+// (its count of '='), searched from i: "]", level times "=", "]"; len(src) when
+// it never closes.
+func longClose(src string, i, level int) int {
+	closing := "]" + strings.Repeat("=", level) + "]"
+	if at := strings.Index(src[i:], closing); at >= 0 {
+		return i + at + len(closing)
+	}
+	return len(src)
 }
 
 // common is the flags every store verb takes.

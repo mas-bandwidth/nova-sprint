@@ -38,9 +38,9 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 
 ## v1.2.7 (planned, 2026-10-10)
 
-The adopt carries a change of the store's function library: its shadow tick judges the library by code, not comments.
+The store's function library is judged by its code, not its comments: a comment-only change of the library no longer refuses the adopt's shadow tick or any verb.
 
-- **The adopt's shadow tick digests the library's code, not its comments** (shipped). The shadow tick (libraryMatches) judges the store's function library by its code bytes, not its comment bytes, so a build that only changed a comment no longer changes the digest and the shadow tick accepts it (v1.2.3's adopt refused on six comment lines). TLA+ model Adopt, property TickAfterLoad, with a reversed witness. From: the seat ledger v1.2.4-held-2026-10-10.md (a v1.3 card moved to v1.2.7); this pull request.
+- **The store's function library is judged by its code, not its comments** (shipped). libraryMatches, the check every verb and the adopt's shadow tick run when they open the store, compares the library's code: its tokens, with every comment and run of blank space outside a string one space, and every string (quoted or long) byte for byte. A library that differs from the build's only in comments, comment lines added or removed, or blank space matches (v1.2.3's adopt refused the store over six comment lines); a change of code is still refused, naming both fn load sums and both code sums. Carrying a change of code through the adopt (the shadow tick skipped before the window and run inside it after fn load) is the tools play's ordering, nova-tools fleet/tools.yml, not this repository's. From: the seat ledger v1.2.4-held-2026-10-10.md (a v1.3 card moved to v1.2.7); this pull request.
 
 ## v1.2.9 (planned, 2026-10-10)
 

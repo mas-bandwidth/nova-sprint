@@ -20,8 +20,8 @@
     this repository, then cut as one release."
    :date "2026-10-10")
   (release "v1.2.7" :status "planned" :date "2026-10-10"
-   :text "The adopt carries a change of the store's function library: its shadow tick judges the library
-    by code, not comments.")
+   :text "The store's function library is judged by its code, not its comments: a comment-only change of the
+    library no longer refuses the adopt's shadow tick or any verb.")
   (release "v1.2.9" :status "planned" :date "2026-10-10"
    :text "Inbox push writes each judgment once without concurrent writers sharing a temporary path."))
  :items
@@ -34,11 +34,14 @@
    :text "The function library's digest is its v1.2.2 value again, so the adopt's shadow tick accepts it."
    :origin "PR #33, head 1f403558d")
   (fix "adopt-carries-a-lua-change" :release "v1.2.7" :status "shipped"
-   :title "The adopt's shadow tick digests the library's code, not its comments"
-   :text "The shadow tick (libraryMatches) judges the store's function library by its code bytes, not its
-    comment bytes, so a build that only changed a comment no longer changes the digest and the shadow
-    tick accepts it (v1.2.3's adopt refused on six comment lines). TLA+ model Adopt, property
-    TickAfterLoad, with a reversed witness."
+   :title "The store's function library is judged by its code, not its comments"
+   :text "libraryMatches, the check every verb and the adopt's shadow tick run when they open the store,
+    compares the library's code: its tokens, with every comment and run of blank space outside a string one
+    space, and every string (quoted or long) byte for byte. A library that differs from the build's only in
+    comments, comment lines added or removed, or blank space matches (v1.2.3's adopt refused the store over
+    six comment lines); a change of code is still refused, naming both fn load sums and both code sums.
+    Carrying a change of code through the adopt (the shadow tick skipped before the window and run inside it
+    after fn load) is the tools play's ordering, nova-tools fleet/tools.yml, not this repository's."
    :origin "the seat ledger v1.2.4-held-2026-10-10.md (a v1.3 card moved to v1.2.7); this pull request")
   (fix "roadmap-and-fixes-as-data" :release "v1.2.6" :status "shipped"
    :title "ROADMAP.md and FIXES.md generated from s-expression data"
