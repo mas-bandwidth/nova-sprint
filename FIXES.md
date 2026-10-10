@@ -43,3 +43,4 @@ Inbox push writes each judgment once without concurrent writers sharing a tempor
 
 - **Inbox push cannot overwrite a published judgment** (planned). Two overlapping clients share one temporary path, so a second write can change the published file. Use a unique temporary path per writer. From: issue #5160.
 - **Rested routes must not overflow the fleet table property cap** (planned). Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the tick writes nothing. Use one property for all. From: issue #5210.
+- **A hold pinned to an older head is not a hold at the current head** (shipped). The lander ignores a hold whose sha is not the PR head when a later line at the head clears it. From: issue #2710.

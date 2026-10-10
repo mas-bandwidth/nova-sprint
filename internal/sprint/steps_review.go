@@ -801,6 +801,16 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 			case !moved:
 				col = c.Col
 			}
+			// A hold pinned to an older head is not a hold at the current head
+			// (docs/SPEC-SPRINT.md section 6; tla/CardMachine.tla, ReadAtOldHead:
+			// a verdict the PR moved past does not count, either way): a broken
+			// read whose sha is not the primary's head is about work the
+			// card moved past, and a later read at the head stands in its place:
+			// it is no read of this head, and the ask asks the reads it needs. A
+			// read that pins no head is not one pinned to an older one.
+			if col == Broken && c != nil && c.F("head") != "" && c.F("head") != pr.F("head") {
+				continue
+			}
 			reads++
 			switch {
 			case col == Asked || col == Reading:
@@ -820,6 +830,12 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 		col := c.Col
 		if movedCol, ok := st.moved[c.ID]; ok {
 			col = movedCol
+		}
+		// The same head pin as the ok case below (a hold pinned to an older
+		// head is not a hold at the current head; readHeadMatches): a broken
+		// read of another head is no read of this head.
+		if col == Broken && c.F("head") != "" && !readHeadMatches(s, pr, c) {
+			continue
 		}
 		reads++
 		switch {
@@ -1479,7 +1495,11 @@ func ownFix(s *Snapshot, c *Card) string {
 // (TestTheFinderIsTheFirstBrokenReadInReaderRowOrder).
 func finderOf(s *Snapshot, c *Card) string {
 	for _, rc := range readsAt(s, c, c.Int("attempt")) {
-		if rc.Col == Broken {
+		// A hold pinned to an older head is not a hold at the current head
+		// (docs/SPEC-SPRINT.md section 6): the finder is a reader of the
+		// primary's head, never of one it moved past. A read that pins no head
+		// is not one pinned to an older one.
+		if rc.Col == Broken && (rc.F("head") == "" || rc.F("head") == c.F("head")) {
 			return rc.Row
 		}
 	}
@@ -1491,7 +1511,12 @@ func finderOf(s *Snapshot, c *Card) string {
 func brokenFindings(s *Snapshot, c *Card) string {
 	var found []string
 	for _, rc := range s.Readers.Of(c.ID) {
-		if rc.Col == Broken && rc.Int("attempt") == c.Int("attempt") && rc.F("finding") != "" && !contains(found, rc.F("finding")) {
+		// A hold pinned to an older head is not a hold at the current head
+		// (docs/SPEC-SPRINT.md section 6): a broken read whose sha is not the
+		// primary's head is about work the card moved past, and a later read
+		// at the head stands in its place. A read that pins no head is not one
+		// pinned to an older one, and holds as it did.
+		if rc.Col == Broken && rc.Int("attempt") == c.Int("attempt") && (rc.F("head") == "" || rc.F("head") == c.F("head")) && rc.F("finding") != "" && !contains(found, rc.F("finding")) {
 			found = append(found, rc.F("finding"))
 		}
 	}
