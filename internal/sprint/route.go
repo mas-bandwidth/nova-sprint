@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
@@ -86,6 +88,56 @@ const (
 	// gate's measured wall is over the flash bound (gate_wall.go).
 	FieldTierNow = "tier_now"
 )
+
+// modelRead is the memo of one brief's model lines (cardhdr.ReadModel): the model
+// m it read and its why ("" when the lines read). ReadModel is a pure read of the
+// brief, and the deal walks every ready primary each tick, resolving the route of
+// each more than once (routeOf, then the friends' dealTierOf), so a brief is parsed
+// many times a tick; its parse is a regexp over line 1 with an allocation each call,
+// and it is the deal's dominant cost at load, what keeps the tick past its one-second
+// gate. The brief a card carries is immutable on the table (a re-cut writes a new
+// brief), so one read a brief is every read.
+type modelRead struct {
+	m   cardhdr.Model
+	why string
+}
+
+// modelCache is ReadModel memoized by brief: each parsed brief's model, kept for the
+// process (a brief never names a different model once written), bounded by the number
+// of distinct briefs the sprint has ever held, never by the number of ticks that read
+// them.
+var modelCache sync.Map // brief string -> modelRead
+
+// modelReads counts the briefs ReadModel was actually parsed for (a memo miss), a
+// diagnostic for the tick's cost gate: TestTheTickDealReadsEachBriefOnceAtScale holds
+// it to the number of distinct briefs the deal walked, whatever the number of parts
+// that resolved one card's tier in the tick (routeOf, then the friends' dealTierOf).
+// The machine's own path never reads it.
+var modelReads atomic.Int64
+
+// resetModelMemo empties the brief memo and its parse counter, so a test that asserts
+// on the count starts from a clean process whatever a prior test or run cached (a memo
+// is a process global; a snapshot of the memo's age would read the count of its
+// neighbours). The machine's own run never resets it.
+func resetModelMemo() {
+	modelCache.Clear()
+	modelReads.Store(0)
+}
+
+// modelOf is a card's model lines, read once per brief: every later read of the same
+// brief is the memo, so the deal, the ask and the cap deal that all resolve one card's
+// tier in a tick parse it once, not once each.
+func modelOf(c *Card) (cardhdr.Model, string) {
+	brief := c.F("brief")
+	if v, ok := modelCache.Load(brief); ok {
+		r := v.(modelRead)
+		return r.m, r.why
+	}
+	m, why := cardhdr.ReadModel(brief)
+	modelCache.Store(brief, modelRead{m: m, why: why})
+	modelReads.Add(1)
+	return m, why
+}
 
 // PropRouteIndex is the fleet table's property that holds the tier's route index
 // (route_index_flash, route_index_pro), beside deal_index: a uint64 counter read
@@ -236,7 +288,7 @@ func preferFirst(arr []string, served map[string]Route, skip []string, hold bool
 // An entry that names no enabled route of the tier (a route disabled or removed since
 // the array was set) is skipped as an excluded one is.
 func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes) (set map[string]string, tier, why string, byFriend bool) {
-	m, bad := cardhdr.ReadModel(c.F("brief"))
+	m, bad := modelOf(c)
 	tier = drawTier(c, m)
 	if tier == "" {
 		tier = s.startTier(c, m) // its first deal on a route: flash first, or its grade's pro (decide.go)
@@ -371,7 +423,7 @@ func ceilingTier(c *Card, m cardhdr.Model) string {
 // CardTiers is the tier the primary is on (cardTier) and its ceiling, as `card` prints
 // them.
 func CardTiers(c *Card) (now, ceiling string) {
-	m, _ := cardhdr.ReadModel(c.F("brief"))
+	m, _ := modelOf(c)
 	return cardTier(c, m), ceilingTier(c, m)
 }
 
@@ -404,7 +456,7 @@ func (s *Snapshot) DealTier(c *Card) string {
 // friend of tier flash sat empty for an hour while every brief whose line 1 said
 // tier: heavy was read as heavy for her and dealt on flash to the machines).
 func (s *Snapshot) dealTierOf(c *Card) string {
-	m, bad := cardhdr.ReadModel(c.F("brief"))
+	m, bad := modelOf(c)
 	if bad != "" {
 		return ceilingTier(c, m)
 	}
@@ -421,7 +473,7 @@ func (s *Snapshot) dealTierOf(c *Card) string {
 // function decides it for every bound that escalates: the redeal bound (Deal) and the
 // failure bounds.
 func (s *Snapshot) NextTier(c *Card) string {
-	m, bad := cardhdr.ReadModel(c.F("brief"))
+	m, bad := modelOf(c)
 	if bad != "" || len(s.Routes) == 0 {
 		return ""
 	}
@@ -448,7 +500,7 @@ func (s *Snapshot) NextTier(c *Card) string {
 // readTierDistance), so a member whose read is drawn lower ranks by how far below it
 // really reads (docs/SPEC-SPRINT.md section 6, who reads).
 func (s *Snapshot) readTierOf(pr *Card) string {
-	m, _ := cardhdr.ReadModel(pr.F("brief"))
+	m, _ := modelOf(pr)
 	t := cardTier(pr, m)
 	if t == cardhdr.RouteFrontier {
 		t = cardhdr.RouteHeavy
