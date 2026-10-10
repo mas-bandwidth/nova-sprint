@@ -296,7 +296,7 @@ func MergeNotes(notes []Note) []Note {
 	for _, n := range notes {
 		k := strings.Join([]string{n.Kind, n.Type, n.Stream, n.What, n.Who, n.Answers, boolWord(n.Marked), boolWord(n.StreamLevel)}, "\x00")
 		i, ok := at[k]
-		if !ok || n.StreamLevel {
+		if !ok {
 			at[k] = len(out)
 			n.Primaries = append([]string(nil), n.Primaries...)
 			out = append(out, n)

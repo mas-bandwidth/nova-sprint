@@ -179,4 +179,8 @@
    (fix "hold-pinned-to-head-sha" :release "v1.2.9" :status "shipped"
     :title "A hold pinned to an older head is not a hold at the current head"
     :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
-    :origin "issue #2710")))
+    :origin "issue #2710")
+  (fix "readers-behind-judgment-stable" :release "v1.2.9" :status "planned"
+    :title "The readers are behind judgment text is stable when the condition is unchanged"
+    :text "The judgment text for the readers are behind condition is identical when the condition holds unchanged across ticks, so the judgment is not pushed again. The fix is in MergeNotes which now merges duplicate judgments of the same type and subject."
+    :origin "dogfood 2026-10-10 evening: fleet-only restart")))
