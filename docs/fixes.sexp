@@ -125,7 +125,7 @@
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
     lane ran it empty, with a TLA+ model and witness."
    :origin "nova-tools PR #5583, head e8fdaecc")
-  (fix "done-at-base-is-brief-duplicate" :release "v1.2.6" :status "planned"
+  (fix "done-at-base-is-brief-duplicate" :release "v1.2.6" :status "in-progress"
    :title "A card already done at its base is a duplicate brief, not a worker failure"
    :text "Nothing to do because the base already contains the change is a brief defect, a duplicate of
     landed work, outside ok%, and raises a re-cut judgment."
