@@ -2856,6 +2856,15 @@ id (`--op`) returns the original result, with no second counter or notification.
   asks every attempt as before: the field is additive, and a store given
   `sprint.GateTables(g)` gates with `g`.
 
+- The gate lint tokens (`sprint.GateLintPinAbsent`, `sprint.GateLintPinBroken`,
+  `sprint.GateLintReach`):
+  - `gate-pin-absent`: the TEST line's test does not exist or fails at the merge-base.
+    Remedy: write the test under the name the TEST line gives.
+  - `gate-pin-broken`: the TEST line's test passes when the change's non-test hunks are
+    reverted. Remedy: ensure the test actually depends on the change.
+  - `gate-reach-unreached`: an exported function or verb added by the change has no
+    reference from any non-test file. Remedy: wire the symbol into a non-test caller.
+
 ## 7. Merging
 
 1. In work order, never random: the head of the stream's queued cell first.
