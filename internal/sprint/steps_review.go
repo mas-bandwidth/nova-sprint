@@ -1321,6 +1321,16 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		given := reworkGiven(s, c)
 		set := map[string]string{"fix": fix, "finding": given["finding"], "why": given["why"], FieldFindingAttempt: c.F("attempt"),
 			"reworks": itoa(c.Int("reworks") + 1), "broken_reads": itoa(c.Int("broken_reads") + broken)}
+		// Budget exhaustion at second attempt escalates to next tier.
+		if c.F(FieldFailure) == "budget" && c.Int("attempt") == 2 {
+			tier, friend := escalation(s, c)
+			if friend {
+				set[FieldRuleTier] = WhoFriend
+			} else {
+				set[FieldRuleTier] = tier
+			}
+			set[FieldRuleFails] = "0"
+		}
 		// what this attempt found, kept for the cap's judgment (brief_bound.go, FieldFindings):
 		// its readers' finding, else the report of its failed work, else its bound's class
 		found := given["finding"]

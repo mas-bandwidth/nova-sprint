@@ -36,6 +36,8 @@ func FailureClass(line string) string {
 		return ""
 	case IsNoResult(line):
 		return cardhdr.EndNoResult
+	case strings.Contains(line, "PROMPT-DEFECT") && strings.Contains(line, "reason=budget"):
+		return "budget"
 	}
 	line, _, _ = strings.Cut(line, "\n")
 	reason, child, _ := strings.Cut(line, "; ")
@@ -118,12 +120,14 @@ const (
 // not at a bound) and whether it is the second identical failure: the attempt before failed
 // the same way on the same tier. The class is the report's (FailureClass), or decided, the
 // take's attempt decision as `decided <class>`, when that decision routed the finish.
+// Budget exhaustion follows tier escalation, not identical failure binding.
 func failureSet(pr *Card, attempt int, report, decided, tier string, set map[string]string) (identical bool) {
 	class := FailureClass(report)
 	if decided != "" {
 		class = decided // the attempt decision's class, when it routed the finish (decide.go)
 	}
-	identical = class != "" && attempt > 1 && pr.Int(FieldFailureAt) == attempt-1 && pr.F(FieldFailure) == class && pr.F(FieldFailureTier) == tier
+	// Budget exhaustion follows tier escalation, not identical failure binding.
+	identical = class != "" && class != "budget" && attempt > 1 && pr.Int(FieldFailureAt) == attempt-1 && pr.F(FieldFailure) == class && pr.F(FieldFailureTier) == tier
 	set[FieldFailure], set[FieldFailureAt], set[FieldFailureTier], set[FieldFailureBound] = class, itoa(attempt), tier, ""
 	if identical {
 		set[FieldIdenticalAt] = itoa(attempt)
