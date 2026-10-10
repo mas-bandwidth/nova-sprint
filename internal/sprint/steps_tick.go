@@ -864,6 +864,13 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	}
 	p.Units = append(reads.Units, p.Units...)
 	if len(r.Friends) > 0 {
+		// a card dealt to a friend and not taken within the dealt bound returns to the pool
+		// and is dealt to the next capable member, and a friend that has not taken a dealt
+		// card is dealt no more until it takes one (friendDealtReturn; tla/DealFill.tla)
+		rt, returned := friendDealtReturn(s, seats, func(at string) (time.Duration, bool) { return r.running(s.Now, at) })
+		p.Rows = append(p.Rows, rt.Rows...)
+		p.Units = append(p.Units, rt.Units...)
+		p.Props = append(p.Props, rt.Props...)
 		// the friends level after the deal, every tick and on the tick a friend comes up, so
 		// an idle lane is filled and a backlog evens itself without the coordinator, at most
 		// FriendLevelPerTick cards a tick (docs/SPEC-SPRINT.md section 1,
@@ -873,8 +880,11 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		// her (friendUnstartedLevel; docs/SPEC-SPRINT.md section 1, a friend's card is
 		// working once she starts it); the level then neither moves it again nor counts it
 		// on her row
-		up := friendUnstartedLevel(s, seats, func(at string) (time.Duration, bool) { return r.running(s.Now, at) }, nil, dealt, FriendLevelPerTick)
+		up := friendUnstartedLevel(s, seats, func(at string) (time.Duration, bool) { return r.running(s.Now, at) }, returned, dealt, FriendLevelPerTick)
 		moved := map[string]bool{}
+		for id := range returned {
+			moved[id] = true
+		}
 		for _, u := range up.Units {
 			c := s.Fleet.Card(u.Key)
 			moved[c.ID] = true
