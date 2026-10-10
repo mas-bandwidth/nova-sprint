@@ -156,7 +156,20 @@ func TestAHoldNamingABriefDefectCountsAgainstTheStreamNotTheWorker(t *testing.T)
 func TestNothingToDoAlreadyInTheBaseIsADuplicateOnly(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, BriefDefectDuplicate, BriefDefectOf("friend freddy HOLD: nothing to do: the base already has this change (commit 1a2b3c4)"))
+	assert.Equal(t, BriefDefectDuplicate, BriefDefectOf("friend amy HOLD: the staged base already has this card's change, landed by PR 5300"))
+	assert.Equal(t, BriefDefectDuplicate, BriefDefectOf("HOLD: the base already contains the change"))
+	// a sentence about something else the base holds is the worker's failure, not a duplicate
+	// (the cold read of nova-sprint #46): the earliest real reason, else none
+	assert.Equal(t, BriefDefectBase, BriefDefectOf("friend amy HOLD: the base already has foo.go but the base lacks bar.go named in PATHS"))
 	for _, report := range []string{
+		"friend amy FAIL: go test ./... fails: the base already has a failing TestFoo in pkg/x, unrelated",
+		"friend amy HOLD: the base already includes a different version; conflict",
+		"friend amy HOLD: the base already contains a conflicting edit to steps_work.go",
+		"TestMerge fails: the base already has a conflicting definition of Foo",
+		"FAIL: go test: the base already contains a stale row; assertion failed",
+		"the build breaks because the base already includes an older Bar",
+		"friend amy HOLD: it is not true that the base already has this change",
+		"friend amy HOLD: no, the base already contains this card's change; the test fails",
 		"nothing to do: the brief asks for nothing that can change",
 		"friend amy FAIL: nothing to do; the lane wrote no report",
 		"friend amy HOLD: not the staged base already contains it; the test fails on the base",
