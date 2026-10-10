@@ -301,12 +301,6 @@
    :date "2026-10-10"
    :release "v1.3"
    :origin "cards moved out of the sprint (work record, 2026-10-04)")
-  (item "log-since-wide-window" :group "sprint"
-   :title "Fix log --since for windows wider than 22 hours"
-   :text "A wide --since window returns nothing; pin the window and return every event in it."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)")
   (item "store-backup-and-demo-load-verbs" :group "ops"
    :title "Backup, restore and demo-load verbs for the sprint store"
    :text "Replace the hand backup procedure with verbs that dump, split, checksum, scan for secrets and

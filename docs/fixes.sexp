@@ -14,11 +14,13 @@
    :text "The first release from this repository: nova-sprint, nova-card and nova-work, re-seeded from nova-tools.")
   (release "v1.2.4" :status "shipped" :date "2026-10-10"
    :text "One fix: the sprint store's function library is back at its v1.2.2 digest, so an adopt can load it.")
-  (release "v1.2.6" :status "planned"
+   (release "v1.2.6" :status "planned"
    :text "The fixes held during the split, the point-release candidates found on 2026-10-10, the owed
     tests, and the sprint store cards that are point-release work. Each is re-applied or written in
     this repository, then cut as one release."
-   :date "2026-10-10"))
+     :date "2026-10-10")
+    (release "v1.2.9" :status "planned" :date "2026-10-10"
+     :text "The log window fix pulled forward from the roadmap."))
  :items
  ((fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
@@ -88,10 +90,15 @@
     word; the deal and read disk floor fix also gets its TLA+ reversed witness."
    :origin "v1.2.5 candidate list; nova-tools PR #5569 follow-up")
 
-  (fix "bench-tree-standalone" :release "v1.2.6" :status "shipped"
+   (fix "bench-tree-standalone" :release "v1.2.6" :status "shipped"
    :title "A bench tree is a standalone clone, and one that is not is refused with its reason"
    :text "The mirror stage ends by checking that the staged tree's .git is a directory in the tree, and a
     .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
-   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")))
+    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+
+   (fix "log-since-wide-window" :release "v1.2.9" :status "planned"
+    :title "Fix log --since for windows wider than 22 hours"
+    :text "A wide --since window returns nothing; pin the window and return every event in it."
+    :origin "card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)")))
