@@ -82,6 +82,16 @@ type MemberM struct {
 	// not beat on a host that is offline is down, not a fault. false is unknown or
 	// reachable, so an unprobed member is never excused.
 	HostOffline bool `json:"host_offline,omitempty"`
+	// HostErr is why a member that does not beat was not excused when its host was probed
+	// and gave no clear no-answer (a name that does not resolve, the seat's own network
+	// unproved, no machine row): said on the DOWN line beside it. "" is none.
+	HostErr string `json:"host_err,omitempty"`
+}
+
+// NeedsHostProbe says the member's host is worth probing: not held, and it does not beat
+// (never, or not within MemberDownAfter). A member that beats is up whatever its host says.
+func NeedsHostProbe(m MemberM) bool {
+	return m.Status != "held" && (!m.Beaten || m.Age > MemberDownAfter)
 }
 
 // FriendM is one friend: her status as the friends table shows it and her last
@@ -263,7 +273,7 @@ const (
 // probed here.
 func MemberVerdict(m MemberM) string {
 	switch {
-	case memberIsDown(m) && m.HostOffline:
+	case memberIsDown(m) && m.HostOffline && NeedsHostProbe(m):
 		return MemberDown
 	case memberIsDown(m):
 		return MemberFault
@@ -386,12 +396,15 @@ func JudgeSeatCheck(m SeatCheckMeasures, now time.Time) SeatCheckReport {
 	// 4. the fleet (beats)
 	if !failed(SeatCheckFleet) {
 		var up, held int
-		var down, offline, remedies []string
+		var down, offline, whys, remedies []string
 		for _, mm := range m.Fleet {
 			switch MemberVerdict(mm) {
 			case MemberFault:
 				down = append(down, mm.Name+":"+formatBeatAge(mm.Beaten, mm.Age))
 				remedies = append(remedies, "nova-config loop show "+MemberLoopRecord(mm.Name))
+				if mm.HostErr != "" {
+					whys = append(whys, mm.Name+": "+mm.HostErr)
+				}
 			case MemberDown:
 				offline = append(offline, mm.Name)
 			case MemberHeld:
@@ -406,7 +419,11 @@ func JudgeSeatCheck(m SeatCheckMeasures, now time.Time) SeatCheckReport {
 			f = append(f, "offline="+strings.Join(offline, ","))
 		}
 		if len(down) > 0 {
-			add(SeatCheckLine{Thing: SeatCheckFleet, Facts: append(f, "down="+strings.Join(down, ",")), Remedy: strings.Join(remedies, "; ")})
+			f = append(f, "down="+strings.Join(down, ","))
+			if len(whys) > 0 {
+				f = append(f, "host="+quoteSeatCheck(strings.Join(whys, "; ")))
+			}
+			add(SeatCheckLine{Thing: SeatCheckFleet, Facts: f, Remedy: strings.Join(remedies, "; ")})
 		} else {
 			add(SeatCheckLine{Thing: SeatCheckFleet, Up: true, Facts: append(f, "down=0")})
 		}
