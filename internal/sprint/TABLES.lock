@@ -163,6 +163,18 @@
 # field is set, every friend is a subscription. Held by TestSprintTablesAreLocked
 # and TestFriendTokensSumPerFriendFromTheResultUsage.
 #
+# Change, 2026-10-06, asked by the owner's card ok-percent-counts-reader-verdicts: the
+# friends' and the fleet's ok% is the readers' (docs/SPEC-SPRINT.md section 1).
+# fleet.finished (hidden, after withdrawn) holds a member's finished work cards, where
+# a worker's finish goes before its readers' verdicts move it to ok or failed.
+# fleet.redealt (shown, after okpct) holds a friend's card past its deadline unfinished,
+# never a failure and never judged. friends.redealt (shown, after okpct) holds the
+# same for friends. The table lock already lists both; the live store takes them before
+# the build that writes it is installed: nova-table col add fleet finished --after withdrawn,
+# nova-table col add fleet redealt --after okpct, nova-table col add friends redealt --after
+# okpct, then nova-table set fleet --hide finished. Held by TestSprintTablesAreLocked and
+# TestOkPercentCountsReaderVerdictsOnlyAndADeadlineIsARedeal.
+#
 # Change, 2026-10-05, a hidden fleet column, asked by Glenn in words: "trust but VERIFY"; "I
 # want to trust the ok%"; "Mechanical. You know the drill."; "Are they actually doing the
 # work that is shown in the friend table? Really?"; "i don't want dollar amounts for friends.
@@ -206,9 +218,11 @@ fleet.working count sum shown
 fleet.width text sum shown
 fleet.done sum(ok+failed) sum shown
 fleet.okpct pct(ok/ok+failed) pooled shown label=ok%
+fleet.redealt count sum shown
 fleet.status text none shown
 fleet.load text none shown
 fleet.withdrawn count sum hidden
+fleet.finished count sum hidden
 fleet.ok count sum hidden
 fleet.failed count sum hidden
 fleet.defect count sum hidden
@@ -218,6 +232,7 @@ friends.working count sum shown
 friends.width text sum shown
 friends.done sum(ok+failed) sum shown
 friends.okpct pct(ok/ok+failed) pooled shown label=ok%
+friends.redealt count sum shown
 friends.status text none shown
 friends.active text none shown
 friends.tokens text sum shown

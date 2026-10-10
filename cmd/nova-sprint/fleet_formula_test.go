@@ -9,10 +9,10 @@ import (
 )
 
 // The fleet table's done and ok% are the table's own formulas over the hidden
-// ok and failed cells: finish places a work card in one of them, and nothing
-// writes done or ok%. Three ok and one failed on m1 is 4 done and 75.0%; m2
-// with none is 0 and the known-empty 0.0%; the footer pools over the members
-// (3 of 4, 75.0%, not the mean 37.5%).
+// ok and failed cells: finish places a work card in finished, reader verdicts move it
+// to ok or failed. Three ok and one failed on m1 is 4 done and 75.0%; m2 with
+// none is 0 and the known-empty 0.0%; the footer pools over the members (3 of 4,
+// 75.0%, not the mean 37.5%).
 func TestFleetDoneAndOkPctAreTableFormulas(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -23,6 +23,14 @@ func TestFleetDoneAndOkPctAreTableFormulas(t *testing.T) {
 	ta.ok("finish --as m1 s1-1.w1@1 s1-3.w1@1 s1-4.w1@1")
 	ta.ok("finish --as m1 s1-2.w1@1 --failed --report 'the tests went red'")
 	ta.ok("fleet up m2")
+	// Reader verdicts move the finished cards to ok/failed.
+	ta.ok("ask")
+	ta.ok("read s1-1.w1@1 reader-a ok")
+	ta.ok("read s1-2.w1@1 reader-a broken")
+	ta.ok("read s1-3.w1@1 reader-a ok")
+	ta.ok("read s1-4.w1@1 reader-a ok")
+	ta.ok("read s1-1.w1@1 reader-b ok")
+	ta.ok("read s1-4.w1@1 reader-b ok")
 	out := ta.ok("where")
 	i := strings.Index(out, "fleet |")
 	require.GreaterOrEqual(t, i, 0, "where has no fleet table:\n%s", out)

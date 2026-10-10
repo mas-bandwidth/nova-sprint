@@ -87,3 +87,9 @@ func ReadDrift(ctx context.Context, run GitRunner, dir, base, dev, server string
 // Stats is the pass's numbers over the snapshot's work, fleet and readers tables
 // (loaded with StatsRecords).
 func Stats(s *Snapshot) PassStats { return StatsSince(s, time.Time{}) }
+
+// Exported tick parts for testing.
+var (
+	TickVerdictsFn    = TickVerdicts
+	TickFriendRedealFn = TickFriendRedeal
+)
