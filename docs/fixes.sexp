@@ -98,8 +98,15 @@
     no longer exits 128 on a fleet host with nothing saying why."
    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
 
-   (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
-    :title "Inbox push cannot overwrite a published judgment"
-    :text "Two overlapping clients share one temporary path, so a second write can change the published
-     file. Use a unique temporary path per writer."
-    :origin "issue #5160")))
+  (fix "stream-remove-removes-what-exists" :release "v1.2.6" :status "in-progress"
+   :title "stream remove takes every stream that exists and names each that does not"
+   :text "One name that is no row of the work or merge table no longer refuses the whole batch: stream
+    remove takes off every named stream that may leave, reports each name that may not, and exits 1
+    only when nothing was removed or a removal failed."
+   :origin "the seat ledger v1.2.4-held-2026-10-10, bug 12; card stream-remove-removes-what-exists.w2")
+
+  (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
+   :title "Inbox push cannot overwrite a published judgment"
+   :text "Two overlapping clients share one temporary path, so a second write can change the published
+    file. Use a unique temporary path per writer."
+   :origin "issue #5160")))
