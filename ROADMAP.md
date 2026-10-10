@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (213)
+- [The sprint machine](#the-sprint-machine) (212)
 - [Setup, release and operations](#setup-release-and-operations) (28)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (20)
@@ -1573,14 +1573,6 @@ A sha256 test pins the page the dashboard serves to the live page, so the two ca
 Target: after v1.4
 
 From: nova-sprint commit 7a4988d (not carried by the re-seed, nova-sprint PR #28), remainder; card moved out of the sprint (work record, 2026-10-04)
-
-### nova-work roadmap check, add, remove, pull and note
-
-Verbs over the roadmap s-expression files with byte-stable round trips; each writing verb refuses a file that check rejects.
-
-Target: after v1.4
-
-From: nova-sprint commit 8c87a4b (not carried by the re-seed, nova-sprint PR #28)
 
 ### Work lint, then a machine gate before a read, then gate lint
 

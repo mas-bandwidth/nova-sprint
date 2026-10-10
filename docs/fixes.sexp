@@ -162,4 +162,8 @@
    :title "A verb defers waiting cards to the roadmap with their whole briefs"
    :text "nova-sprint defer writes the named waiting cards, or a stream or repository of them, into the
     roadmap data with each whole brief, and drops them from the store; --expect checks the count."
-   :origin "card from the sprint store (2026-10-10); the roadmap item roadmap-defer-verb, folded in")))
+   :origin "card from the sprint store (2026-10-10); the roadmap item roadmap-defer-verb, folded in")
+  (fix "nova-work-roadmap-verbs" :release "v1.2.6" :status "planned"
+   :title "nova-work roadmap check, add, remove, pull and note"
+   :text "Verbs over the roadmap s-expression files with byte-stable round trips; each writing verb refuses a file that check rejects. Pulled into v1.2.6 by its own verb: check, list, add, remove, pull, done, note and render now edit docs/roadmap.sexp and docs/fixes.sexp and write both pages, locally, with no GitHub call per entry."
+   :origin "nova-sprint commit 8c87a4b (not carried by the re-seed, nova-sprint PR #28)")))
