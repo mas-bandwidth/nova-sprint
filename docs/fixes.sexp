@@ -79,9 +79,11 @@
    :origin "nova-sprint re-seed carry review (dropped file group)")
   (fix "provider-key-refusal-rests-until-woken" :release "v1.2.6" :status "planned"
    :title "A provider that refuses its key rests until woken, never for a time"
-   :text "A route whose provider refuses the key rests until routes wake, and the rest reason reads until
-    woken rather than until paid."
-   :origin "nova-tools PR #5574, head 0c6706f2d")
+   :text "A route whose provider refuses the key rests until routes wake, never for a time, and the rest
+    reason reads until woken rather than until paid: the providers table, the stop and the judgment all
+    say woken. TLA+ model RouteRest, property AuthEndsOnlyWoken, with a reversed witness. Tests cover
+    routes wake on a key rest."
+   :origin "nova-tools PR #5574, head 0c6706f2d; the providers table's until-paid wording is v1.2.5 candidate 6")
   (fix "bare-merge-stream-refused" :release "v1.2.6" :status "planned"
    :title "A bare merge --stream is refused on a real store"
    :text "Landings are recorded by name or by land; a bare merge --stream on a real store is refused."
