@@ -197,6 +197,11 @@ const FieldLeveled = "leveled"
 // then the tier it escalated to, or the tier a rework recorded), never a setting, so
 // a card in merging or landed is held to the count it was accepted on.
 func ReadsNeeded(pr *Card) int {
+	if MechanicalProved(pr) {
+		// a mechanical card whose machine proof passed at its attempt needs no
+		// read: it goes to merge (proof.go, the mechanical proof)
+		return 0
+	}
 	m, _ := cardhdr.ReadModel(pr.F("brief"))
 	if cardTier(pr, m) == cardhdr.RouteFlash {
 		return 1
@@ -325,6 +330,10 @@ func ReadsWanted(s *Snapshot, pr *Card) int {
 
 // readsWantedOf is ReadsWanted over the reads that stand, live.
 func readsWantedOf(pr *Card, live []*Card) int {
+	if ReadsNeeded(pr) == 0 {
+		// a proved mechanical card wants no read at all (proof.go)
+		return 0
+	}
 	for _, rc := range live {
 		if rc.Col != OK {
 			return 0

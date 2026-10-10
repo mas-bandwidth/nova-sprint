@@ -2827,6 +2827,53 @@ id (`--op`) returns the original result, with no second counter or notification.
   asks every attempt as before: the field is additive, and a store given
   `sprint.GateTables(g)` gates with `g`.
 
+### The mechanical proof: mechanical-cards-proved-not-read-ns-b.w1
+
+- The sprint began with waves of mechanical cards (dead-code deletions, renames, assertion
+  rewrites; the owner, 2026-10-02: mechanical replacements by script, not by a model), and
+  each still took a model's read. A mechanical card now carries a machine proof instead
+  (the owner, 2026-10-05: "OK what else is like this, saving LLM work by replacing it with
+  checks at the right time?"). The proof runs in the pump after the work lint and the
+  machine gate have passed and before any reader is asked: `proofPart` wraps the installed
+  accept part, runs `TickAccept` first (which runs `TickLint` then `TickGate`), and only
+  when those moved nothing does `TickProof` prove each mechanical attempt once; the ask,
+  the friends' and the machine's, holds every mechanical attempt whose proof for this
+  attempt has not been decided (`proofHeldPart`, wrapped round the installed ask part), so
+  no read is spent on a card the machine can prove itself.
+- The kind is the card's `KIND:` line and the operands its `PROOF:` line, both read by
+  `internal/cardhdr` (`cardhdr.ReadKind`, `cardhdr.ReadProof`), one vocabulary for every
+  reader of a card header:
+  - `KIND: deletion` and `PROOF: <name>[,<name>...]`: the proof holds when no Go file at
+    the head names any of the symbols, by `go/parser` over every tracked `.go` file
+    (`sprint.WorkProof`, `deletionFindings`); a declaration or a reference left is a
+    finding naming the file and line.
+  - `KIND: rename` and `PROOF: <old> <new>`: the proof holds when no occurrence of the old
+    name is left anywhere in the tree and the new name exists (`renameFindings`).
+  - `KIND: assertion-rewrite` (no operands): the proof holds when every changed block of
+    the diff holds an assertion line (`assertionFindings`; `assert\.[A-Z]`,
+    `require\.[A-Z]` or a `t.Fatal`/`t.Error`/`t.Fail` call). A block is a run of changed
+    lines in a hunk, so a multi-line assertion is one block and passes.
+- A proof that passes records `proof` `green` and `proof_attempt` on the attempt
+  (`sprint.ProofGreen`, `sprint.FieldProof`, `sprint.FieldProofAttempt`); `sprint.ReadsNeeded`
+  reads a mechanical card whose proof passed at its attempt (`sprint.MechanicalProved`) and
+  returns zero, so `ReadsWanted` is zero, no reader is asked, and the accept moves the card
+  to merging with no read
+  (`TestAMechanicalCardWithAPassingProofNeedsNoRead`). A proof that refuses is reworked at
+  once with its finding as the fix (`sprint.ProofFix`: `the machine proof refused attempt
+  <n> at <head>; machine proof: <finding>; ...`), its `proof_reworks` (`sprint.FieldProofReworks`)
+  and `broken_reads` counted one more, so it counts toward the card's bounds as a broken
+  read does, and the next attempt's work card carries the finding
+  (`TestAFailingProofReworksTheAttemptWithItsFinding`).
+- The proof reads the attempt's tree through the lander's clone of the card's repository
+  (`sprint.ReadProofView`: the diff of `ReadWorkView` and every tracked `.go` file at the
+  head), and the runner is a seam (`sprint.ProofRunner`, `sprint.NewTreeProof`), faked in
+  the tests. A tree the proof cannot read is a proof that refuses with the reason: the
+  machine could not prove the change, so the attempt is reworked and no reader is asked.
+  A card of a non-mechanical kind is read exactly as today
+  (`TestANonMechanicalCardIsReadAsToday`). The proof's runner is `sprint.DefaultProof`,
+  which the binding sets at its start (`cmd/nova-sprint`); a sprint with none asks every
+  attempt as before, so the change is additive.
+
 ## 7. Merging
 
 1. In work order, never random: the head of the stream's queued cell first.
