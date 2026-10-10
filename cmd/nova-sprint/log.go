@@ -28,15 +28,10 @@ func (a *app) cmdLog(args []string, stdout, stderr io.Writer) int {
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, "log", argErr("takes no words ", err, pos...))
 	}
-	var from, until time.Time
+	var from time.Time
 	if *since != "" {
 		if d, err := time.ParseDuration(*since); err == nil {
-			// a duration names the window of the last d, pinned to one now: its
-			// end is the same now its start is measured back from, never a
-			// second read of the clock, so the window cannot slide under the
-			// lines it is filtering (docs/SPEC-SPRINT.md section 17, the log).
-			until = a.now()
-			from = until.Add(-d)
+			from = a.now().Add(-d)
 		} else if t, err := time.Parse(time.RFC3339, *since); err == nil {
 			from = t
 		} else {
@@ -53,7 +48,7 @@ func (a *app) cmdLog(args []string, stdout, stderr io.Writer) int {
 	}
 	var out []sprint.Line
 	for _, l := range lines {
-		if keepLine(l, *card, *stream, *member, from, until) {
+		if keepLine(l, *card, *stream, *member, from) {
 			out = append(out, l)
 		}
 	}
@@ -122,14 +117,8 @@ func (a *app) zone() *time.Location {
 	return time.Local
 }
 
-// keepLine says the line is in the view: at or after from and at or before
-// until (either zero when the view names no window), about the card, of the
-// stream or the member (docs/SPEC-SPRINT.md section 17, the log).
-func keepLine(l sprint.Line, card, stream, member string, from, until time.Time) bool {
+func keepLine(l sprint.Line, card, stream, member string, from time.Time) bool {
 	if !from.IsZero() && l.At.Before(from) {
-		return false
-	}
-	if !until.IsZero() && l.At.After(until) {
 		return false
 	}
 	if card != "" && !l.About(card) {
