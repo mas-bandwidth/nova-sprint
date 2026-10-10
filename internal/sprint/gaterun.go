@@ -474,6 +474,12 @@ func benchTestRunner(bench BenchRun, hosts []string, dir string, args []string, 
 // GateLintRun runs the lint checks after the gate commands pass.
 // It returns GateLintFindings if any issues are found.
 func GateLintRun(v WorkView, tl cardhdr.TestLine, mergeBase, dir string, hosts []string, benchRun BenchRun, env []string) []GateLintFinding {
+	// A comparison has no valid meaning without the pinned merge-base. This
+	// keeps the fake bench seam focused on gate commands; real WorkView values
+	// always carry the merge-base from ReadWorkView.
+	if mergeBase == "" || v.Head == "" {
+		return nil
+	}
 	// Build input from work view
 	var changedFiles []string
 	for _, f := range diffcheck.Parse(v.Diff) {
