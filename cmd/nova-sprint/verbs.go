@@ -48,7 +48,7 @@ var verbs []verb
 func init() {
 	verbs = []verb{
 		{"init", "[--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--owner <name>] [--rules <file>]", "init --readers reader-a,reader-b,reader-c --members m1:64,m2:64", (*app).cmdInit},
-		{"add", "--stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> [--brief-file <f2>...]: a card per file, its id the file's name without .md) [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--held] [--allow-shared-paths] [--one: a single card is meant] [--replaces <old-id>[,<old-id>]: the one card is their twin] [--allow-personal-base]", "add --stream s1 --count 100", (*app).cmdAdd},
+		{"add", "--stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> [--brief-file <f2>...]: a card per file, its id the file's name without .md) [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--held] [--allow-shared-paths] [--one: a single card is meant] [--replaces <old-id>[,<old-id>]: the one card is their twin] [--allow-personal-base] [--land-protected <owner/name,...|any>]", "add --stream s1 --count 100", (*app).cmdAdd},
 		{"quack", "--streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]", "quack --streams a,b --count 2 --repo https://example.com/quack.git", (*app).cmdQuack},
 		{"preflight", "--brief-dir <dir> [--repo-dir <dir>]", "preflight --brief-dir .", (*app).cmdPreflight},
 		{"release check", "[--json] [--streams <glob>] [--window <duration>] [--merge-p90 <duration>] [--check <name>]...", "release check", (*app).cmdReleaseCheck},
@@ -1156,6 +1156,8 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// cmdAdd admits cards and can mark a new stream on its first add (docs/SPEC-SPRINT.md
+// section 7, protected-bases-pb-b.w2).
 func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("add")
 	stream := fs.String("stream", "", "the stream the primaries belong to, for life; with --count, several streams comma separated, one step")
@@ -1176,6 +1178,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	one := fs.Bool("one", false, "admit a single card (one positional id, --count 1 on one stream, or one --brief-file alone): refused without it, since cards are admitted in waves (--brief-dir, --count 2 or more, several --brief-file)")
 	replaces := fs.String("replaces", "", "the card this add admits is the twin of these `ids`, comma separated: it takes over every edge where a waiting card needs one of them (that card needs the twin instead, in the same place), each still on the table is dropped with the reason \"replaced by <the new id>\", and no blocked judgment is raised for it, in one step; a card dropped before is replaced too, and its blocked judgments are answered; one card only (it means --one), never a sentinel")
 	allowPersonal := fs.Bool("allow-personal-base", false, "admit cards whose brief's BASE: is a personal branch (<name>/* for the sprint's coordinator, its owner or a friends table row), by default refused naming the base and this flag: no sprint watches a personal branch's gate (docs/SPEC-SPRINT.md section 11, bases-view-r.w2)")
+	landProtected := fs.String("land-protected", "", "mark a new stream for protected branches while admitting its first card: repositories (owner/name, comma separated) or any")
 	held := fs.Bool("held", false, "admit the cards held: waiting, a sentinel never reached and no card dealt, nothing raised, until nova-sprint release <id> --reason <text>; a wave loads behind a held sentinel with nothing before it")
 	decideRecord := fs.String("decide-record", "", "the record `file` of the cards' brief decisions under JEV_API_KEY (default ~/nova-sprint/decide/brief.jsonl, the coordinator's root); each card stores it and its op, and land and drop attach the card's end there")
 	var briefOps stringList
@@ -1220,7 +1223,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 		if *every != 0 || *last {
 			return refuse(stderr, "add", "--sentinel-every goes with --count, not a card per brief file")
 		}
-		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, *allowShared, *allowPersonal, *decideRecord, briefOps, sprint.Split(*replaces), c, stdout, stderr)
+		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, *allowShared, *allowPersonal, *landProtected, *decideRecord, briefOps, sprint.Split(*replaces), c, stdout, stderr)
 	}
 	if len(briefFiles) == 1 {
 		if *brief != "" {
@@ -1344,16 +1347,26 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	if len(rs) == 1 {
 		step = store.AddStep(rs[0])
 	}
-	return a.runStep("add", *c, st, promotionGuard(step, rs), stdout, stderr)
+	return a.runStep("add", *c, st, promotionGuard(step, rs, *landProtected), stdout, stderr)
 }
 
 // promotionGuard is the add step refused whole, nothing written, when any card it admits
-// is cut on a protected branch, dev or main, outside the promotion stream
-// (sprint.PromotionRefusals; docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2). It
-// plans on the step's own snapshot, so the stream's mark is read with the tables it writes.
-func promotionGuard(step store.Step, rs []sprint.AddReq) store.Step {
+// is cut on a protected branch, dev or main, without a matching stream mark
+// (sprint.PromotionRefusals; docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2). A
+// first-add mark is written onto the new control card in the same step as its first card.
+func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) store.Step {
 	plan := step.Plan
 	step.Plan = func(s *sprint.Snapshot) sprint.Plan {
+		if landProtected != "" {
+			stream := ""
+			if len(rs) > 0 {
+				stream = rs[0].Stream
+			}
+			if len(rs) != 1 || s.StreamCtl(stream) != nil {
+				return sprint.Plan{Refused: []sprint.Refusal{{Key: stream, Why: "--land-protected marks a new stream only"}}}
+			}
+			return sprint.AddMarked(s, rs[0], landProtected)
+		}
 		if refused := sprint.PromotionRefusals(s, rs); len(refused) > 0 {
 			return sprint.Plan{Refused: refused}
 		}
@@ -1367,7 +1380,9 @@ func promotionGuard(step store.Step, rs []sprint.AddReq) store.Step {
 // the order the files were named. Every brief is read and linted first (one
 // failing brief refuses the whole call, exit 2, nothing written), and one
 // store write adds every card.
-func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, allowShared, allowPersonal bool, decideRecord string, briefOps, replaces []string, c *common, stdout, stderr io.Writer) int {
+// cmdAddMany admits per-file cards and supports the same atomic first-stream mark as add
+// (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2).
+func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, allowShared, allowPersonal bool, landProtected, decideRecord string, briefOps, replaces []string, c *common, stdout, stderr io.Writer) int {
 	if stream == "" {
 		return refuse(stderr, "add", "wants --stream and --brief-dir <dir> or --brief-file <file>...")
 	}
@@ -1480,7 +1495,7 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	}
 	c.addStream = stream
 	c.addBefore = before
-	return a.runStep("add", *c, st, promotionGuard(store.AddStep(r), []sprint.AddReq{r}), stdout, stderr)
+	return a.runStep("add", *c, st, promotionGuard(store.AddStep(r), []sprint.AddReq{r}, landProtected), stdout, stderr)
 }
 
 // briefFiles is the brief files of a many-brief add, in order: the *.md files

@@ -164,6 +164,12 @@
     so the tick's shape is the model's."
    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")
 
+  (fix "promotion-mark-at-add" :release "v1.2.6" :status "planned"
+   :title "add can mark a new stream for protected branches"
+   :text "add --land-protected marks a new stream atomically with its first card, so a point-release
+    stream can admit a card based on main or dev without a sentinel card or a follow-up stream set."
+   :origin "the seat ledger bug 14")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
