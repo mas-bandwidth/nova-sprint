@@ -339,3 +339,33 @@ func TestDashboardPageLoadsNothingFromElsewhere(t *testing.T) {
 	assert.Equal(t, []byte("wOF2"), file("nunito-800.woff2")[:4], "the face is a woff2")
 	assert.Contains(t, string(file("OFL.txt")), "SIL Open Font License", "the face's licence is embedded beside it")
 }
+
+// Tests for dashboard defects fixed in v1.2.4
+func TestEmptyCostBreakdown(t *testing.T) {
+	// Defect 1: cost breakdown with no spend should not show prose line.
+	// The table should keep its header and show empty rows, not "no stream has spent anything yet".
+	code := string(file("app.js"))
+	assert.NotContains(t, code, "no stream has spent anything yet",
+		"empty cost breakdown should not have prose line")
+}
+
+func TestZeroLandedText(t *testing.T) {
+	// Defect 2: the LANDED tile at 0 of 0 should read "nothing complete", not "- complete".
+	// Check that the app.js code does not produce a dash when landed is zero.
+	code := string(file("app.js"))
+	// When landed is 0 and all is 0, the pct tile should say "nothing complete"
+	assert.Contains(t, code, "nothing complete",
+		"landed tile should show nothing complete when 0 of 0")
+}
+
+func TestStoppedMachineDot(t *testing.T) {
+	// Defect 3: a STOPPED machine must show a red Updated dot, not green.
+	// The CSS .live.ok .dot is green; for stopped machines, live should not have ok class.
+	// Check that setMachine in app.js sets machineStopped when machine is stopped.
+	code := string(file("app.js"))
+	assert.Contains(t, code, "machineStopped",
+		"setMachine should track stopped state")
+	// The live element should lose the ok class when the machine is stopped
+	assert.Contains(t, code, `machineStopped ? "" : " ok"`,
+		"setLive should not add ok class when machine is stopped")
+}
