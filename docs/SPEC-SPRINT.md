@@ -2871,8 +2871,8 @@ id (`--op`) returns the original result, with no second counter or notification.
   `NOVA_SPRINT_PROOF_BENCH` (a comma list, the host or hosts the proof runs
   against). A sprint that names no host runs no proof and reads every mechanical
   card as before: the field is additive.
-- The card's PATHS (`mechanical-cards-proved-not-read-ns-bb.w1`):
-  `internal/sprint/proof*.go,internal/sprint/proof*_test.go,internal/sprint/readers.go,internal/cardhdr/*.go,docs/SPEC-SPRINT.md,internal/sprint/gaterun.go`.
+ - The card's PATHS (`mechanical-cards-proved-not-read-ns-bb.w1`):
+   `internal/sprint/proof*.go,internal/sprint/proof*_test.go,internal/sprint/readers.go,internal/sprint/steps_tick.go,internal/cardhdr/*.go,docs/SPEC-SPRINT.md,internal/sprint/gaterun.go`.
 
 ## 7. Merging
 
