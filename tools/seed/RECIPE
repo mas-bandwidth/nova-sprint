@@ -49,35 +49,25 @@ literal	filepath.Join("..", "..", "fleet", "child-rules.txt")	filepath.Join(".."
 # These fail-closed edits are scoped to the selected tools machinery file only.
 literal-file	cmd/nova-sprint/machinery.go	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error); novaTools func(bin string) sprint.NovaToolsProbe
 literal-file	cmd/nova-sprint/machinery.go	st, err := a.store(*c)	if code := a.refuseNovaTools(verb, stderr); code != 0 { return code }; st, err := a.store(*c)
+literal-file	internal/sprint/secrets_in_errors_test.go	const sprintSecretLeakAllowlist = `	const sprintSecretLeakAllowlist = sprintNovaToolsLeak + `
 
-doc	docs/SPEC-SPRINT.md
-doc	docs/SPEC-SPRINT-DASHBOARD.md
 doc	docs/SPEC-ISA.md
 doc	docs/PROCESSOR.md
-doc	docs/SPEC-WORK-V1.md
-doc	docs/SPEC-WORKLANG.md
-doc	docs/SPRINT-COORDINATOR.md
-doc	docs/SPRINT-COORDINATOR-SEAT.md
+doc	docs/COORDINATOR-TOOLS.md
 section	docs/CLI.md	nova-sprint	nova-card	nova-work
 section	docs/TESTS.md	nova-sprint	nova-card	nova-work
-ratings	sprint	work
+# The sprint and work ratings, the sprint docs and every TLA+ model here are nova-sprint's own from
+# v1.2.3 (split layer L5): nova-tools no longer has them, so they are kept, not taken.
+keep	docs/SPEC-SPRINT-DASHBOARD.md
+keep	docs/SPEC-SPRINT.md
+keep	docs/SPEC-WORK-V1.md
+keep	docs/SPEC-WORKLANG.md
+keep	docs/SPRINT-COORDINATOR-SEAT.md
+keep	docs/SPRINT-COORDINATOR.md
+keep	docs/ratings/1.1.0
+keep	docs/ratings/snapshots
 
-model	SprintEvents
-model	DirtyTick
-model	DirtyTickRead
-model	RouteIndex
-model	Level
-model	Land
-model	WorkImport
-model	CardISA
-model	CardMachine
-model	CoordinatorPass
-model	CoordinatorWake
-model	ReadsByRoom
-model	ServerLanes
-model	SprintRules
-model	StallLadder
-model	SeatHealth
+keep	tla
 
 keep	LICENSE
 keep	README.md
@@ -101,8 +91,9 @@ keep	docs/FRIENDS.md
 keep	docs/GETTING-STARTED.md
 keep	docs/README.md
 keep	docs/SPLIT-MOOT-PRS.md
+keep	docs/RELEASE-NOTES-v1.0.0.md
+keep	internal/sprint/secrets_novatools_test.go
 keep	docs/WORKING-WITH-AI-TEAMS.md
 keep	docs/ratings/README.md
 keep	internal/ci/moot_prs_test.go
-keep	tla/README.md
 keep	CHANGELOG.md
