@@ -72,6 +72,37 @@ type outside struct {
 	// parallel; 0 is hostProbeBound.
 	hostProbe  func(ctx context.Context, host string) hostAnswer
 	probeBound time.Duration
+	// isSelf says a member's name is this machine (its own short hostname, or a name that
+	// resolves to one of its own addresses): the seat reaching itself proves nothing of
+	// its network, so such a member is never the control. nil is the hostname alone.
+	isSelf func(ctx context.Context, name string) bool
+}
+
+// selfByAddress is the real isSelf: the name is this machine's short hostname, or it
+// resolves (within the context) to a loopback address or one of this machine's own
+// interface addresses. A name that does not resolve is not this machine.
+func selfByAddress(hostname func() string) func(ctx context.Context, name string) bool {
+	return func(ctx context.Context, name string) bool {
+		if hostname != nil && strings.EqualFold(name, hostname()) {
+			return true
+		}
+		addrs, err := net.DefaultResolver.LookupIPAddr(ctx, name)
+		if err != nil {
+			return false
+		}
+		own, _ := net.InterfaceAddrs() // ignored: no interface list leaves the loopback check
+		for _, a := range addrs {
+			if a.IP.IsLoopback() {
+				return true
+			}
+			for _, o := range own {
+				if n, ok := o.(*net.IPNet); ok && n.IP.Equal(a.IP) {
+					return true
+				}
+			}
+		}
+		return false
+	}
 }
 
 // hostProbeBound is the overall bound of a check's host probes, all run at once.
@@ -118,17 +149,17 @@ func classifyDial(err error) hostAnswer {
 // excuseOffline marks each member that does not beat (sprint.NeedsHostProbe) and whose
 // host gives a clear no-answer as HostOffline, so the check says it down, not DOWN. A
 // member is probed only when its machine row is in the inventory (machines). The seat's
-// own network is proved by a control: a beating member of the inventory, probed in the
-// same batch; when there is none, or it does not answer, no member is excused, since N
-// offline hosts and the seat's own network down look the same from here. Every probe
-// runs at once, under one bound.
-func excuseOffline(ctx context.Context, probe func(context.Context, string) hostAnswer, bound time.Duration, fleet []sprint.MemberM, machines map[string]bool, inventoryErr error) {
+// own network is proved by a control: a beating member of the inventory that is not this
+// machine (isSelf), probed in the same batch; when there is none, or it does not answer,
+// no member is excused, since N offline hosts and the seat's own network down look the
+// same from here. Every probe runs at once, under one bound.
+func excuseOffline(ctx context.Context, probe func(context.Context, string) hostAnswer, isSelf func(string) bool, bound time.Duration, fleet []sprint.MemberM, machines map[string]bool, inventoryErr error) {
 	var targets []int
 	control := ""
 	for i, mm := range fleet {
 		switch {
 		case !sprint.NeedsHostProbe(mm):
-			if control == "" && mm.Status != "held" && machines[mm.Name] {
+			if control == "" && mm.Status != "held" && machines[mm.Name] && (isSelf == nil || !isSelf(mm.Name)) {
 				control = mm.Name
 			}
 		case inventoryErr != nil:
@@ -167,7 +198,7 @@ func excuseOffline(ctx context.Context, probe func(context.Context, string) host
 	seatNet := ""
 	switch {
 	case control == "":
-		seatNet = "not excused: no beating member to prove the seat's own network"
+		seatNet = "not excused: no beating member other than this machine to prove the seat's own network"
 	case !answers[len(hosts)-1].Answered:
 		seatNet = "not excused: control " + control + " did not answer either (the seat's own network?)"
 	}
@@ -250,6 +281,10 @@ func (a *app) realOutside() outside {
 			return conn.Close()
 		},
 		hostProbe: dialHost,
+		isSelf: selfByAddress(func() string {
+			h, _ := os.Hostname()
+			return strings.SplitN(h, ".", 2)[0]
+		}),
 		hostname: func() string {
 			h, _ := os.Hostname()
 			return strings.SplitN(h, ".", 2)[0]
@@ -347,7 +382,16 @@ func (a *app) seatCheck(ctx context.Context, st *store.Store, redisAddr string) 
 			for _, w := range inv {
 				machines[w.Machine] = true
 			}
-			excuseOffline(ctx, o.hostProbe, o.probeBound, m.Fleet, machines, err)
+			// this machine is never the control: the seat reaching itself proves nothing
+			isSelf := func(name string) bool { return strings.EqualFold(name, host) }
+			if o.isSelf != nil {
+				isSelf = func(name string) bool {
+					sctx, cancel := context.WithTimeout(ctx, time.Second)
+					defer cancel()
+					return o.isSelf(sctx, name)
+				}
+			}
+			excuseOffline(ctx, o.hostProbe, isSelf, o.probeBound, m.Fleet, machines, err)
 		}
 		readers := sortedKeys(v.Tables[sprint.Readers])
 		states, err := st.ReaderStates(ctx, readers, now)

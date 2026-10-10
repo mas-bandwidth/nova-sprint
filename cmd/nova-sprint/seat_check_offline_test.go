@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"reflect"
 	"sort"
 	"sync"
 	"syscall"
@@ -25,8 +26,14 @@ import (
 // probes made are recorded.
 func offlineApp(t *testing.T, machines []string, answers map[string]hostAnswer) (*testApp, *[]string) {
 	t.Helper()
+	return offlineAppOf(t, "m1,captain,hulk", machines, answers)
+}
+
+// offlineAppOf is offlineApp with the members named (m1 and m2 beat, the others never).
+func offlineAppOf(t *testing.T, members string, machines []string, answers map[string]hostAnswer) (*testApp, *[]string) {
+	t.Helper()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-a --members m1,captain,hulk")
+	ta.ok("init --readers reader-a --members " + members)
 	ta.ok("start")
 	ta.ok("tick")
 	var mu sync.Mutex
@@ -124,6 +131,57 @@ func TestSeatCheckRunsEveryProbeAtOnceUnderOneBound(t *testing.T) {
 	assert.Less(t, time.Since(t0), 4*time.Second, "one bound over all the probes, not one per probe")
 	assert.Equal(t, 0, code, out)
 	assert.Contains(t, out, "offline=captain,hulk")
+}
+
+// The seat is itself a fleet member ("studio"): reaching itself proves nothing of its
+// network, so it is never the control, whether known by its hostname or by isSelf.
+func TestSeatCheckNeverUsesThisMachineAsTheControl(t *testing.T) {
+	t.Parallel()
+	answers := map[string]hostAnswer{"m1": {Answered: true}, "m2": {Answered: true}, "captain": {Offline: true}, "hulk": {Offline: true}}
+
+	t.Run("by hostname, the only beating member", func(t *testing.T) {
+		t.Parallel()
+		ta, probed := offlineApp(t, everyMachine, answers)
+		o := ta.a.outside
+		o.hostname = func() string { return "m1" }
+		ta.a.outside = o
+		code, out, _ := ta.do("seat check")
+		assert.Equal(t, 1, code, out)
+		assert.Contains(t, out, "down=captain:never,hulk:never")
+		assert.Contains(t, out, "no beating member other than this machine")
+		assert.NotContains(t, out, "offline=")
+		assert.Equal(t, []string{"captain", "hulk"}, *probed, "this machine is not probed as the control")
+	})
+	t.Run("by isSelf, another beating member is the control", func(t *testing.T) {
+		t.Parallel()
+		ta, probed := offlineAppOf(t, "m1,m2,captain,hulk", []string{"m1", "m2", "captain", "hulk"}, answers)
+		o := ta.a.outside
+		o.isSelf = func(_ context.Context, name string) bool { return name == "m1" }
+		ta.a.outside = o
+		code, out, _ := ta.do("seat check")
+		assert.Equal(t, 0, code, out)
+		assert.Contains(t, out, "offline=captain,hulk")
+		assert.Equal(t, []string{"captain", "hulk", "m2"}, *probed, "m2, not this machine m1, is the control")
+	})
+}
+
+func TestSelfByAddressKnowsThisMachine(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	self := selfByAddress(func() string { return "studio" })
+	assert.True(t, self(ctx, "Studio"), "its own hostname, any case")
+	assert.True(t, self(ctx, "localhost"), "a name that resolves to loopback")
+	assert.False(t, self(ctx, "no-such-member.invalid"), "a name that does not resolve is not this machine")
+}
+
+// The real check probes: removing the probe or the self test from realOutside fails here.
+func TestRealOutsideProbesHostsAndKnowsItself(t *testing.T) {
+	t.Parallel()
+	o := newTestApp(t).a.realOutside()
+	require.NotNil(t, o.hostProbe, "realOutside must probe hosts")
+	assert.Equal(t, reflect.ValueOf(dialHost).Pointer(), reflect.ValueOf(o.hostProbe).Pointer(), "realOutside's probe is dialHost")
+	require.NotNil(t, o.isSelf, "realOutside must know this machine, so it is never the control")
 }
 
 func TestClassifyDialCountsOnlyAClearNoAnswerOffline(t *testing.T) {

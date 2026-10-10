@@ -138,7 +138,8 @@
    :text "The seat check reports a member that does not beat on an offline host as down (offline=name, the
     fleet line stays OK); DOWN when the host answers, or gives no clear no-answer (a name that does not resolve
     is named on the line). The seat probes the ssh port of each such member's machine row at once under one
-    3 s bound, with a beating member as the control of its own network: no control answer, no member excused."
+    3 s bound, with a beating member other than the seat's own machine as the control of its network: no
+    control answer, no member excused."
    :origin "v1.2.5 candidate list")
   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
    :title "The worker brief says never amend, rebase or reset onto origin"
