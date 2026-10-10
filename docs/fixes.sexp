@@ -82,10 +82,17 @@
     landed work, outside ok%, and raises a re-cut judgment."
    :origin "nova-tools PR #5585, head 0beb0508")
 
+  (fix "fleet-verbs-skip-member-under-disk-floor" :release "v1.2.6" :status "shipped"
+   :title "Fleet verbs give a member under its disk floor nothing"
+   :text "fleet up, down, hold and level, outside the tick, read the members' no-room words themselves,
+    so a manual level, an up's level or a down's redeal gives a member under its disk floor nothing;
+    the deal and read fix they follow already merged."
+   :origin "nova-tools PR #5578, head fcdbaa441, re-applied in nova-sprint")
   (fix "draining-member-clears-no-room" :release "v1.2.6" :status "shipped"
    :title "A draining member does not keep a stale no-room word"
-   :text "The room check runs after the drain return, so a draining member does not keep a stale no-room
-    word; the deal and read disk floor fix also gets its TLA+ reversed witness."
+   :text "The room check runs before the drain return, so a draining member's beat carries this tick's
+    no-room word, not a stale one (the member code in nova-tools, with its test, and the same lines in
+    this repository's copy); the deal and read disk floor fix also gets its TLA+ reversed witness."
    :origin "v1.2.5 candidate list; nova-tools PR #5569 follow-up")
 
   (fix "bench-tree-standalone" :release "v1.2.6" :status "shipped"
