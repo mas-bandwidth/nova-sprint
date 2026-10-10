@@ -139,6 +139,16 @@
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
 
+  (fix "working-is-a-live-run" :release "v1.2.6" :status "shipped"
+   :title "Working means a live run, RUNNING or STOPPED; a returned card no longer holds the STOP"
+   :text "A worker's beat carries its live set (fleet beat and friend beat --live), and the tick returns a
+    working card its row's live set has not named for 60 s to ready, while running and while stopped; the
+    dashboard's working cell counts live runs. A STOPPED reconcile's return writes the STOP receipt and
+    settles its debt as a stop-return does, so a hold of the row and a clear are not refused before
+    start; a report refused for the stop is kept, held, and taken after start at its generation.
+    Modelled in tla/LiveRuns.tla (Settle, ReturnedFreesItsRow, AllReturnedEmptiesDebt)."
+   :origin "the STOPPED sprint of 2026-10-10: 59 stale takes, and the hold of friend.zhi refused; nova-sprint PR #54")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published

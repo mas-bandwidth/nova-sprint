@@ -664,7 +664,13 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		if len(held) > 0 {
 			plan = sprint.LeaveQueued(plan, held)
 		}
-		if step.Verb != "stop-return" {
+		// stop-return and the reconcile are the owner's receipts (the second read off its
+		// beats, live.go): a debt does not refuse them
+		if step.Verb != "stop-return" && step.Verb != sprint.LiveReturnVerb {
+			// the debt pins each captured card by id until its return settles it off the
+			// machine record (settleStopDebt, after the stop-return or the STOPPED
+			// reconcile's return; tla/StopReturn.tla and tla/LiveRuns.tla Settle): a
+			// returned card then moves freely (hold, give, fleet down) before start
 			debt := fence.StopDebt
 			if fence.StopRevoked && !fence.StopIssued {
 				// A pre-upgrade STOP has no durable debt list. Its live leases
@@ -1081,9 +1087,12 @@ func (st *Store) after(ctx context.Context, step Step, res Result) (Result, erro
 			return res, err
 		}
 	}
-	if step.Verb == "stop-return" && len(res.Refused) == 0 {
+	if step.Verb == "stop-return" && len(res.Refused) == 0 || step.Verb == sprint.LiveReturnVerb && len(res.Moved) > 0 {
 		// the owner's return settles its STOP debt on the machine record
-		// (tla/StopReturn.tla Settle), a replay's too
+		// (tla/StopReturn.tla Settle), a replay's too; so does the STOPPED
+		// reconcile's return, which writes the same receipt (sprint.LiveReturns;
+		// tla/LiveRuns.tla Settle): else its debt stayed until START, and clear,
+		// hold and fleet down were refused on a card no child runs
 		if err := st.settleStopDebt(ctx); err != nil {
 			return res, err
 		}

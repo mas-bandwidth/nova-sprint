@@ -724,6 +724,13 @@ func (st *Store) Tick(ctx context.Context) (res TickResult, err error) {
 		if err != nil {
 			return res, fmt.Errorf("fleet: %w", err)
 		}
+		// A STOPPED machine takes and lands nothing new, and still makes working what
+		// runs: each take its row's live set has not named for the grace goes back ready
+		// (live.go; tla/LiveRuns.tla Tick, WorkingIsLive). 2026-10-10: the STOPPED machine
+		// showed 59 working with no run anywhere, as no tick ran to notice.
+		if err := st.liveStopped(ctx, beats, &res); err != nil {
+			return res, err
+		}
 		// a card added to an archived stream draws it again, STOPPED or not
 		if err := st.archivePart(ctx, false, &res); err != nil {
 			return res, err

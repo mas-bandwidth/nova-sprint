@@ -81,7 +81,13 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 		return before, false, err
 	}
 	if running {
-		if err := unsettledStopDebt(before, s); err != nil {
+		// a debt card whose child finished, its report held (its row's live set says so),
+		// does not hold the start back: the report is taken once the machine runs
+		_, beats, err := st.fleetBeats(ctx, nil)
+		if err != nil {
+			return before, false, err
+		}
+		if err := unsettledStopDebt(before, s, beats, st.now()); err != nil {
 			return before, false, err
 		}
 	}
@@ -135,11 +141,21 @@ func activeStopLeases(s *sprint.Snapshot) []StopLease {
 }
 
 // unsettledStopDebt enforces StopReturn.tla ExplicitStart against each exact
-// same-owner return receipt (docs/SPEC-SPRINT.md section 14).
-func unsettledStopDebt(m Machine, s *sprint.Snapshot) error {
+// same-owner return receipt (docs/SPEC-SPRINT.md section 14), as tla/LiveRuns.tla Start
+// reads it (v1.2.6): an entry still on the debt is open unless its same-row receipt is in
+// place (stopDebtReturned; a returned entry is normally settled off the debt already, by
+// settleStopDebt after the stop-return or the STOPPED reconcile's return), or its row's
+// fresh live set names the card held at that generation (its child finished and its report
+// waits: it is taken once the machine runs, at the same generation, so nothing is lost;
+// tla/LiveRuns.tla BlocksStart, NoReportLost).
+func unsettledStopDebt(m Machine, s *sprint.Snapshot, beats map[string]sprint.Beat, now time.Time) error {
 	var open []string
 	for _, d := range m.StopDebt {
-		if !stopDebtReturned(d, s) {
+		if d.Gen < 1 || d.Table != sprint.Fleet && d.Table != sprint.Readers {
+			open = append(open, d.Row+":"+d.ID+"@"+fmt.Sprint(d.Gen))
+			continue
+		}
+		if !stopDebtReturned(d, s) && !sprint.LiveHeldAt(sprint.RowBeat(beats, d.Row), d.ID, d.Gen, now) {
 			open = append(open, d.Row+":"+d.ID+"@"+fmt.Sprint(d.Gen))
 		}
 	}
@@ -181,7 +197,9 @@ func stopDebtReturned(d StopLease, s *sprint.Snapshot) bool {
 
 // settleStopDebt takes each returned lease off a STOPPED machine's debt, under
 // the same operation fence as STOP, START and every step (tla/StopReturn.tla
-// Settle). It runs after each stop-return, a replay included: the receipt is
+// Settle; tla/LiveRuns.tla Settle). It runs after each stop-return, a replay
+// included, and after each STOPPED reconcile that returned a card (the live
+// return writes the same receipt, sprint.LiveReturns): the receipt is
 // read in place before any later step can move the card (the debt still pins
 // it until this write), so the owner's acknowledgement is recorded durably and
 // a coordinator step (hold, fleet down) may move the returned card before
