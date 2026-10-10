@@ -111,7 +111,8 @@ const (
 )
 
 // Sentinel is the kind of a card that marks a point in a stream: the tick
-// never moves it from waiting or ready.
+// moves one from waiting only as the cut sentinel's self-release, inside the
+// resolve (sentinel.go, SentinelReleases), and never from ready.
 const Sentinel = "sentinel"
 
 // ReworkOnAHigherTier is the bound's rework when the attempt before also ended at its bound on
@@ -250,7 +251,8 @@ const PartDrain = "drain"
 // TickTables is the tick's shape: each table gets one update in turn per tick,
 // work streams, then readers, merge and fleet. The work table's update is the
 // pump, run once a tick: its queue drained, then its cards advanced (a
-// waiting card to ready, a ready card to working by the deal, a card queued behind
+// waiting card to ready, and the cut sentinel whose every need has landed
+// released by itself in the resolve (sentinel.go, SentinelReleases), a ready card to working by the deal, a card queued behind
 // lanes that all work to an idle lane of either side by the rebalance (Rebalance), a card in
 // review with the ok reads it needs to merging); "no new work moves from waiting ->
 // ready -> working except on the FIRST PASS on the work stream table, once
@@ -544,7 +546,16 @@ func bound(p Plan) (Plan, int) {
 // has landed moves to ready; a dropped or missing need is a blocked judgment,
 // once. A sentinel is never moved: when everything it needs has landed,
 // resolve marks it reached and opens its judgment, and what waits
-// behind it stays waiting until the coordinator releases it. No flag says a
+// behind it stays waiting until the coordinator releases it -- every sentinel
+// but a cut (sentinel.go, isCut): the cut sentinel a step before this tick has
+// marked reached, whose every wait now stands met, releases itself in this
+// part, the release as the coordinator's lands it, with the seat pushed that
+// the release is ready to cut (SentinelReleases; docs/roadmap.sexp,
+// auto-sentinels-released-by-tick; the publish itself stays a gated step with
+// a cold read). The part is bounded as one (bound): a bound that cuts leaves
+// whole releases and drops the wave they would have let through, never a
+// landing cut from a wave kept, and the needs rule holds every move kept to
+// the landings kept. No flag says a
 // scan is due: what is due is read from the state, so a tick that did not
 // finish leaves it due for the next.
 //
@@ -552,15 +563,41 @@ func bound(p Plan) (Plan, int) {
 // in turn, within a stream by work order), so a bound that cuts the plan
 // cuts every stream alike.
 func TickResolve(s *Snapshot, r TickReq) (Plan, int) {
+	// the cut sentinels' self-release is read first (sentinel.go), and the
+	// resolve names none of them: a reached sentinel is no longer refused the
+	// coordinator's release for the release this part makes its own
+	units, after, notes, landing := SentinelReleases(s, r.who())
 	var ids []string
 	for _, c := range dealTurns(s.Work.Column(Waiting), nil) {
-		ids = append(ids, c.ID)
+		if !landing[c.ID] {
+			ids = append(ids, c.ID)
+		}
 	}
 	var p Plan
+	p.on(s)
 	if len(ids) > 0 {
 		p = Resolve(s, ResolveReq{Sel: Sel{Only: ids}, Who: r.who()})
 	}
-	return bound(p)
+	if len(units) > 0 {
+		moved := map[string]bool{}
+		for _, u := range p.Units {
+			moved[u.Key] = true
+		}
+		for _, u := range after {
+			if !moved[u.Key] { // the resolve before it moved it already: one move, not two
+				units = append(units, u)
+			}
+		}
+		p.releasing = true // the lifecycle lands a waiting sentinel only by release (lifecycle.go)
+		p.Units = append(p.Units, units...)
+		p.Notes = append(p.Notes, notes...)
+		settle(&p, s, r.who(), nil, nil, landing)
+	}
+	// the bound first, the lifecycle second: a bound that cuts leaves whole
+	// releases and drops the wave they would have let through, never a landing
+	// cut from a wave kept
+	p, due := bound(p)
+	return Lawful(p), due
 }
 
 // dealTurns is the order the tick resolves in (front(s) per stream): one

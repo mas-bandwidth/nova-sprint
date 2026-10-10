@@ -130,6 +130,18 @@
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
 
+  (fix "cut-sentinel-releases-itself" :release "v1.2.6" :status "shipped"
+   :title "A cut sentinel releases itself on the tick, and pushes the seat that the release is ready to cut"
+   :text "A sentinel that names its needs (a cut: a stream's reopen stop, a release sentinel) is released by
+    the next tick's resolve when every card it needs has landed: released as the coordinator's release
+    lands it, released_by the machine, what waited behind it to ready in the same step, its reached
+    judgment closed, and one notice addressed to the seat that the release is ready to cut -- the publish
+    itself stays a gated step with a cold read. A plain gate (a stop by position alone, no needs named)
+    and a held sentinel keep the coordinator's release; the machine releases through no stream's hold and
+    waives nothing in flight. The release lives in the resolve part, the duty the reference model names,
+    so the tick's shape is the model's."
+   :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
