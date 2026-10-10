@@ -139,6 +139,19 @@
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
 
+  (fix "per-landed-cost-is-landed-spend" :release "v1.2.6" :status "shipped"
+   :title "Per landed is the landed cards' spend over the landed count"
+   :text "The cost readout's per-landed figure is the landed cards' spend per landed card, every take, read
+    and rework of each landed card, failed ones included (stream_costs' landed_cost, sprint.TierCosts),
+    never all spend so far over the landed count; the spend on cards not yet landed shows beside it as
+    its own in-flight figure on the dashboard's cost tile, so the total is still the whole spend and
+    nothing is hidden, and the two figures agree once every card lands. A stats reset counts the landed
+    spend from its mark (sprint.TierCostsSince, the mark's exact landed cost). The dashboard's stream
+    table's total column is each stream's whole spend, its tiers' own sum, so the stream and total
+    columns agree with the sprint total: spend is recorded on its card by every take, read and rework,
+    and the table reads it where it is."
+   :origin "this pull request; dogfood 2026-10-10: $7.74 per landed at 6 of 82, and the stream table $0.03 against the sprint total $46.39")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published

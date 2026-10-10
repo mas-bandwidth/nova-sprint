@@ -39,6 +39,15 @@ type TierCosts struct {
 	// cost, else its tokens at the route's prices), dollars and cents rounded up; "" when
 	// nothing of it was priced.
 	TotalCost string `json:"total_cost,omitempty"`
+	// LandedCost is the landed cards' part of TotalCost: every take, read and rework of
+	// each landed card, its failed attempts included (each card's total's charged figure,
+	// written on it as it lands, FieldCost), dollars and cents rounded up; "" when nothing
+	// of it was priced. Per landed is this over the landed count, and the spend on cards
+	// not yet landed is TotalCost less it, so the readout's total is still the whole spend
+	// and nothing is hidden (the owner, 2026-10-10: per landed read $7.74, the whole
+	// epoch's spend over the 6 landed, while 26 cards sat in merging with their spend
+	// counted and not their landing); the two figures agree once every card has landed.
+	LandedCost string `json:"landed_cost,omitempty"`
 	// WorkCost and ReadCost split TotalCost by kind: every take's charged figure and every
 	// read's, dollars and cents rounded up; "" when nothing of that kind was priced. The
 	// dashboard shows the reads as their own number beside the work.
@@ -174,6 +183,7 @@ func streamTierCosts(s *Snapshot, stream string) TierCosts {
 	}
 	if sum, ok := cardcost.Sum(landedCost...); ok && landed > 0 && len(landedCost) > 0 {
 		if total, err := amountOf(sum); err == nil && total != nil {
+			t.LandedCost = cardcost.Cents(total)
 			t.PerLanded = cardcost.Cents(total.Quo(total, big.NewRat(int64(landed), 1)))
 		}
 	}

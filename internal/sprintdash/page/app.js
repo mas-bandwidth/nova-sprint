@@ -290,13 +290,17 @@ function renderStreams(d) {
   });
   var rank = function (k) { return RANK[statusOf[k]] == null ? 3.5 : RANK[statusOf[k]]; };
   var keys = streamOrder(d).filter(function (k) { return !arch[k]; }).sort(function (a, b) { return rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0); });
-  var sum = { cost: 0, totalCost: 0, workCost: 0, readCost: 0, unreconciled: 0, unpriced: 0 }, held = 0, landedStreams = 0, prevRank = null;
+  // sum.landedCost is the streams' landed cards' spend (stream_costs' landed_cost, sprint.TierCosts),
+  // in the same scope as totalCost, until a copy carries none of it (null: the cost tile reads as before);
+  // the spend on cards not yet landed is totalCost less it, shown beside per card (renderHero)
+  var sum = { cost: 0, totalCost: 0, landedCost: null, workCost: 0, readCost: 0, unreconciled: 0, unpriced: 0 }, held = 0, landedStreams = 0, prevRank = null;
   // the epoch's spend, every stream's, the archived ones' too: the cost tile's scope once the
   // sprint is done (where --json's done), when the table's streams are all archived
-  var epoch = { totalCost: 0, workCost: 0, readCost: 0, unpriced: 0 };
+  var epoch = { totalCost: 0, landedCost: null, workCost: 0, readCost: 0, unpriced: 0 };
   streamOrder(d).forEach(function (k) {
     var sc = (d.stream_costs || {})[k] || {};
     var tc = cents(sc.total_cost); if (tc) epoch.totalCost += tc;
+    var lc = cents(sc.landed_cost); if (lc != null) epoch.landedCost = (epoch.landedCost || 0) + lc;
     var wc = cents(sc.work_cost); if (wc) epoch.workCost += wc;
     var rc = cents(sc.read_cost); if (rc) epoch.readCost += rc;
     epoch.unpriced += int(sc.unpriced_runs);
@@ -323,6 +327,7 @@ function renderStreams(d) {
       if (ct) sum.cost += ct;
       var sc = (d.stream_costs || {})[k] || {};
       var tc = cents(sc.total_cost); if (tc) sum.totalCost += tc;
+      var lc = cents(sc.landed_cost); if (lc != null) sum.landedCost = (sum.landedCost || 0) + lc;
       // the reads beside the work: the same total split by kind (sprint.TierCosts)
       var wc = cents(sc.work_cost); if (wc) sum.workCost += wc;
       var rc = cents(sc.read_cost); if (rc) sum.readCost += rc;
@@ -595,15 +600,29 @@ function renderHero(d, s, ft) {
   else { setText($("eta"), "-"); setText($("eta-at"), "not in the summary"); }
   // the cost tile and its tooltip cover one scope (docs/SPEC-SPRINT.md, the summary line): the
   // streams on the table, or, the sprint done, the epoch's every stream, as the hero's count
-  // is. The cost is every recorded take and read of their cards in any column; the cost per
-  // card is that over the cards that landed
+  // is. The cost is every recorded take and read of their cards in any column; per card is
+  // the landed cards' spend over the cards that landed (the owner, dogfood 2026-10-10: per
+  // card read $7.74, the whole epoch's spend over the 6 landed, while 26 cards sat in
+  // merging with their spend counted and not their landing), and the spend on cards not
+  // yet landed shows beside it as its own in-flight figure, so the total is still the
+  // whole spend and nothing is hidden; the two figures agree once every card has landed.
+  // The landed spend is the total's own landed part (sum.landedCost, stream_costs'
+  // landed_cost); a copy that carries none of it reads as before, the whole spend over
+  // the cards landed (stats_reset.landed, when a mark is in force).
   var c = d.done ? s.sum.epoch : s.sum, recorded = c.totalCost;
   setText($("cost"), money(recorded));
   // after a stats reset the cost counts from its mark, and so do the cards it is over
   // (where --json's stats_reset.landed, the same scope)
   var perN = d.stats_reset ? int(d.stats_reset.landed) : landed;
-  var per = perN ? money(Math.ceil(recorded / perN)) + " per card" : "";
-  setText($("cost-per"), per || " ");
+  var landedCost = c.landedCost;
+  if (landedCost == null) {
+    setText($("cost-per"), perN ? money(Math.ceil(recorded / perN)) + " per card" : " ");
+  } else {
+    var inFlight = recorded - landedCost;
+    var per = perN ? money(Math.ceil(landedCost / perN)) + " per card" : "";
+    if (inFlight > 0) per = (per ? per + " \u00b7 " : "") + money(inFlight) + " in flight";
+    setText($("cost-per"), per || " ");
+  }
   setText($("inflight"), s.sum.working + (s.sum.fix || 0) + s.sum.review + s.sum.merging);
   inflightLast = s.sum; renderInflight(s.sum);
   // throughput: cards landed per hour over the last hour, from the server's samples
@@ -786,13 +805,19 @@ function renderTopStreams(d) {
   var work = (d.tables && d.tables.work) || {}, rows = [];
   var sp = tierSpend(d), byTier = sp.byTier, order = sp.order, fmt = sp.fmt;
   Object.keys(work).forEach(function (k) {
-    var w = work[k], ct = cents(w.cost); if (!ct) return;
+    var w = work[k], ct = cents(w.cost);
     var n = {}; FLOW.forEach(function (c) { n[c] = parseInt(w[c], 10) || 0; });
     // per card is the row's per_landed (where's, counted from a stats reset's or a tidy's
     // base, as its cost is), else its cost over its landed; tiers from stream_costs as the pie's
     var sc = (d.stream_costs || {})[k] || {}, pl = w.per_landed;
+    // the row's total is the stream's whole spend (every card of it, landed or not: the
+    // sprint total the cost tile reads, its tiers' own sum, sc.total_cost), the landed
+    // cost cell only where a copy carries no stream_costs (the owner, dogfood 2026-10-10:
+    // the table read $0.03 while the sprint total read $46.39, spend its cards carried)
+    var tot = cents(sc.total_cost); if (tot == null) tot = ct;
+    if (!tot) return;
     var per = pl != null ? (pl === "-" ? null : cents(pl)) : (n.landed ? Math.ceil(ct / n.landed) : null);
-    rows.push({ name: k, cost: ct, n: n, per: per, tiers: tierCounts(sc.tiers || w.tiers), byTier: sc.cost_by_tier || w.cost_by_tier || null });
+    rows.push({ name: k, cost: tot, n: n, per: per, tiers: tierCounts(sc.tiers || w.tiers), byTier: sc.cost_by_tier || w.cost_by_tier || null });
   });
   rows.sort(function (a, b) { return b.cost - a.cost; });
   var cols = String(order.length + 1); // the tiers with spend, then total
