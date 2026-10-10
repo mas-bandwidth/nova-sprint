@@ -174,6 +174,14 @@ func DropStep(r sprint.DropReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Drop(s, r) }}
 }
 
+// DeferStep is the coordinator deferring waiting primaries to the roadmap:
+// the verb writes their whole briefs into the roadmap data and this step drops
+// them from the store (sprint.Defer). Only a waiting primary defers.
+func DeferStep(r sprint.DeferReq) Step {
+	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "defer", Load: All, Mirrors: true,
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Defer(s, r) }}
+}
+
 // BriefStep is the coordinator replacing the briefs of primaries in place, on a
 // running machine as on a stopped one (sprint.Brief); all or none. It reads what a
 // rework reads: a card in review edited in place opens its next attempt.

@@ -139,6 +139,12 @@
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
 
+   (fix "defer-cards-to-the-roadmap" :release "v1.2.6" :status "in-progress"
+    :title "A verb defers waiting cards to the roadmap with their whole briefs"
+    :text "nova-sprint defer writes the named waiting cards, or a stream or repository of them, into the
+     roadmap data with each whole brief, and drops them from the store; --expect checks the count."
+    :origin "this pull request")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
