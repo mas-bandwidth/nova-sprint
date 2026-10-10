@@ -745,17 +745,23 @@ function renderPie(d) {
     return;
   }
   var a0 = -Math.PI / 2;
+  var endPts = [];
   vals.forEach(function (v) {
-    var frac = v[1] / total, a1 = a0 + frac * 2 * Math.PI, p = document.createElementNS(ns, "path");
-    if (frac >= 0.9999) { p.setAttribute("d", "M50,2 A48,48 0 1 1 49.99,2 Z"); }
-    else {
-      var x0 = 50 + 48 * Math.cos(a0), y0 = 50 + 48 * Math.sin(a0), x1 = 50 + 48 * Math.cos(a1), y1 = 50 + 48 * Math.sin(a1);
-      p.setAttribute("d", "M50,50 L" + x0.toFixed(2) + "," + y0.toFixed(2) + " A48,48 0 " + (frac > 0.5 ? 1 : 0) + " 1 " + x1.toFixed(2) + "," + y1.toFixed(2) + " Z");
-    }
-    p.setAttribute("fill", tierColor(v[0]));
-    var tt = document.createElementNS(ns, "title"); tt.textContent = v[0] + " " + sp.fmt(v[1]) + " (" + Math.round(100 * frac) + "%)"; p.appendChild(tt);
-    svg.appendChild(p);
+    var frac = v[1] / total, a1 = a0 + frac * 2 * Math.PI;
+    var x0 = 50 + 48 * Math.cos(a0), y0 = 50 + 48 * Math.sin(a0);
+    var x1 = 50 + 48 * Math.cos(a1), y1 = 50 + 48 * Math.sin(a1);
+    endPts.push({ x0: x0.toFixed(2), y0: y0.toFixed(2), x1: x1.toFixed(2), y1: y1.toFixed(2), frac: frac, a1: a1 });
     a0 = a1;
+  });
+  endPts.forEach(function (pt, i) {
+    var p = document.createElementNS(ns, "path");
+    if (pt.frac >= 0.9999) { p.setAttribute("d", "M50,2 A48,48 0 1 1 49.99,2 Z"); }
+    else {
+      p.setAttribute("d", "M50,50 L" + pt.x0 + "," + pt.y0 + " A48,48 0 " + (pt.frac > 0.5 ? 1 : 0) + " 1 " + pt.x1 + "," + pt.y1 + " Z");
+    }
+    p.setAttribute("fill", tierColor(vals[i][0]));
+    var tt = document.createElementNS(ns, "title"); tt.textContent = vals[i][0] + " " + sp.fmt(vals[i][1]) + " (" + Math.round(100 * pt.frac) + "%)"; p.appendChild(tt);
+    svg.appendChild(p);
   });
 }
 // the In flight tile's subline (the owner 2026-10-04 3:20 and 3:25 PM): one line, two parts,
