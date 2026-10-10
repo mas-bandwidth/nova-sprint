@@ -88,23 +88,44 @@ func (s *Snapshot) launchersOf(c, wc *Card, ms []string) (out []string, why stri
 	return out, why
 }
 
-// noLauncher is why no member of up can launch a route of the primary c's tier, a route
-// serving that tier: "" when one can, when none is up (no member up is its own judgment),
-// or when no route serves the tier (routeOf's own judgment). The tick raises it as the
-// tier's one judgment (TickDeal, NNoRoute) and the no-stall rule names it (held.go), so a
-// card whose routes all run under a harness no member up names waits under a judgment,
-// never quietly (the second cold read of nova-sprint#51).
-func (s *Snapshot) noLauncher(c *Card, up []string) string {
-	if len(up) == 0 {
+// dealPool is the members of up the deal may give the primary c, narrowed as dealPlan
+// narrows them: its bench's alone (onlyBench, bench_deal.go), and, for a withdrawn attempt
+// dealt again below its redeal bound, less the members that refused it at staging
+// (StagingRefusers). wc is that withdrawn attempt (nil for a new attempt or an escalation,
+// whose route is drawn afresh), refused the members taken out for it.
+func (s *Snapshot) dealPool(c *Card, up []string) (pool []string, wc *Card, refused []string) {
+	pool = onlyBench(up, Bench(c))
+	if w := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); w != nil && w.Col == Withdrawn && !redealBound(w) {
+		wc, refused = w, StagingRefusers(w)
+		pool = without(pool, refused)
+	}
+	return pool, wc, refused
+}
+
+// noLauncher is why no member the deal may give the primary c (dealPool over up: its
+// bench, less the members that refused it at staging) can launch a route of its tier,
+// tier being routeOf's for ec, c as its next deal draws it (escalating), with routeOf's
+// why "" and no friend serving it (the callers' checks): "" when one of them can, or when
+// the pool is empty (no member up, its bench down, every member refused it: each its own
+// hold or judgment). The tick raises it as the tier's one judgment (TickDeal, NNoRoute)
+// and the no-stall rule names it (held.go), so a card whose routes all run under a harness
+// no member of its pool names waits under a judgment, never quietly (the cold reads of
+// nova-sprint#51; tla/RouteIndex.tla, StrandedIsJudged).
+func (s *Snapshot) noLauncher(c, ec *Card, tier string, up []string) string {
+	pool, wc, refused := s.dealPool(c, up)
+	if len(pool) == 0 {
 		return ""
 	}
-	_, tier, why, byFriend := s.routeOf(c, nil, nil, "")
-	if why != "" || byFriend {
+	if ms, _ := s.launchersOf(ec, wc, pool); len(ms) > 0 {
 		return ""
 	}
-	if ms, _ := s.launchersOf(c, nil, up); len(ms) > 0 {
-		return ""
-	}
+	return s.unlaunchableWhy(c, tier, pool, refused)
+}
+
+// unlaunchableWhy is the sentence for a primary c no member of pool can launch a route of
+// tier for: the routes and their harnesses, the members, and what the coordinator can do,
+// said for a bench card as its bench allows (it runs on no other member).
+func (s *Snapshot) unlaunchableWhy(c *Card, tier string, pool, refused []string) string {
 	var routes []string
 	for _, r := range s.Routes {
 		if r.Tier == tier && r.Enabled && harness.IsHeadless(r.Harness) {
@@ -112,8 +133,18 @@ func (s *Snapshot) noLauncher(c *Card, up []string) string {
 		}
 	}
 	slices.Sort(routes)
-	return "no member up (" + strings.Join(up, ", ") + ") can launch a route of tier " + tier + ": " + strings.Join(routes, ", ") +
-		", and no member's control card names that harness: run nova-sprint fleet up <member> --harnesses <h,...> for each member with it on its PATH, or enable an opencode route of the tier"
+	who := "no member up (" + strings.Join(pool, ", ") + ")"
+	if len(Bench(c)) > 0 {
+		who = "no member of its bench up (" + strings.Join(pool, ", ") + "; its BENCH line names " + strings.Join(Bench(c), ", ") + ", and it runs on no other member)"
+	}
+	if len(refused) > 0 {
+		who += " that did not refuse it at staging (refused: " + strings.Join(refused, ", ") + ")"
+	}
+	do := "run nova-sprint fleet up <member> --harnesses <h,...> for each member with it on its PATH, or enable an opencode route of the tier"
+	if len(Bench(c)) > 0 {
+		do = "run nova-sprint fleet up <member> --harnesses <h,...> for a member of its bench with it on its PATH, brief it with a BENCH line naming a member that can, or enable an opencode route of the tier"
+	}
+	return who + " can launch a route of tier " + tier + ": " + strings.Join(routes, ", ") + ", and no such member's control card names that harness: " + do
 }
 
 // notLaunching is the members of up that cannot launch the work card c on the route it

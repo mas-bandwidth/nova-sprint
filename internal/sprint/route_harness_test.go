@@ -145,3 +145,76 @@ func TestATierNoMemberUpCanLaunchIsJudged(t *testing.T) {
 	require.NotNil(t, wc, "m1 names claude: the tick deals it")
 	assert.Equal(t, "m1", wc.Row)
 }
+
+// tierJudgment is the open no-route judgment of tier t the tick wrote, nil when none.
+func tierJudgment(w *world, t string) *Note {
+	var out *Note
+	for _, n := range w.notesOf(NNoRoute) {
+		if n.Stream == TierSubject(t) {
+			out = &n
+		}
+	}
+	return out
+}
+
+// The check is over the members the deal may give the card, not every member up (the first
+// cold read of nova-sprint#51 at 7fbcad8): a card whose bench is m1, which cannot launch the
+// tier's one route, is judged although m2, off its bench, can; the deal's refusal and the
+// hold say its bench, never that another member will take it, and never the room. A card
+// with no bench on the same tier is dealt to m2 as before.
+func TestABenchCardItsBenchCannotLaunchIsJudged(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 2}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 2, Harnesses: "claude"}))
+	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: int(10 * time.Minute / time.Second)}}
+	addBenched(t, w, "s1", map[string]string{"s1-1": "m1", "s1-2": ""})
+	p, _ := TickDeal(w.s, TickReq{})
+	w.must(p)
+	assert.Nil(t, w.s.Fleet.Card(WorkCardID("s1-1", 1)), "its bench cannot launch it: dealt nowhere, never off its bench")
+	if wc := w.s.Fleet.Card(WorkCardID("s1-2", 1)); assert.NotNil(t, wc, "a card with no bench goes to the member that can") {
+		assert.Equal(t, "m2", wc.Row)
+	}
+	j := tierJudgment(w, cardhdr.RouteFlash)
+	require.NotNil(t, j, "the tier's one judgment is raised for the bench card")
+	assert.Equal(t, []string{"s1-1"}, j.Primaries)
+	assert.Contains(t, j.What, "no member of its bench up (m1; its BENCH line names m1, and it runs on no other member) can launch a route of tier flash: flash-claude (runs under claude)")
+	assert.Contains(t, j.What, "for a member of its bench")
+	hd := Holder(running(w), w.s.Now, "s1-1")
+	assert.Contains(t, hd.Why, "can launch a route of tier flash")
+	assert.NotContains(t, hd.Why, "below its room")
+
+	refusals := Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}).Refused
+	require.NotEmpty(t, refusals)
+	assert.Contains(t, refusals[0].Why, "no member of its bench up", "the deal's refusal says its bench")
+	assert.NotContains(t, refusals[0].Why, "deals it to a member that can", "a bench card goes to no other member")
+}
+
+// The same for a card dealt again after a staging refusal: m1 alone can launch the tier's
+// route and refused the card at staging, so the members it may go to (m2) can launch
+// nothing, and it is judged, naming the refusal, though m1 up can launch the route.
+func TestACardItsLaunchersRefusedAtStagingIsJudged(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 2, Harnesses: "claude"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 2}))
+	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: int(10 * time.Minute / time.Second)}}
+	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
+	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+	require.Equal(t, "m1", w.s.Fleet.Card("s1-1.w1").Row)
+	takeCard(w, "s1-1.w1")
+	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Failed: true,
+		Report: cardhdr.EndStaging + ": no bench mirror; no child ran"}))
+	require.Equal(t, Ready, w.state("s1-1"))
+	require.Equal(t, []string{"m1"}, StagingRefusers(w.s.Fleet.Card("s1-1.w1")))
+	p, _ := TickDeal(w.s, TickReq{})
+	w.must(p)
+	assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-1.w1").Col, "dealt to no member")
+	j := tierJudgment(w, cardhdr.RouteFlash)
+	require.NotNil(t, j, "the tier's one judgment is raised")
+	assert.Equal(t, []string{"s1-1"}, j.Primaries)
+	assert.Contains(t, j.What, "no member up (m2) that did not refuse it at staging (refused: m1) can launch a route of tier flash")
+	hd := Holder(running(w), w.s.Now, "s1-1")
+	assert.Contains(t, hd.Why, "can launch a route of tier flash")
+	assert.NotContains(t, hd.Why, "below its room")
+}

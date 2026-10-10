@@ -1008,11 +1008,13 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			roomWhy += "; " + quiet
 		}
 		// the next member round the fleet that can launch a route of the card's tier
-		// (launchersOf): with none, why says which route and harness it wants
-		next := func(card, wc *Card, of []string) (string, string) {
+		// (launchersOf): with none, why says which routes and harnesses it wants, and what
+		// its pool allows (unlaunchableWhy: a bench card runs on no other member)
+		next := func(card, wc *Card, of, refused []string) (string, string) {
 			ms, why := s.launchersOf(card, wc, of)
 			if len(ms) == 0 && len(of) > 0 && why != "" {
-				return "", why
+				_, tier, _, _ := s.routeOf(card, nil, nil, "")
+				return "", s.unlaunchableWhy(c, tier, of, refused)
 			}
 			return rr.next(ms, q, widths, ""), roomWhy
 		}
@@ -1031,7 +1033,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 					continue
 				}
 				// below its ceiling: the machine escalates it, a new attempt on the next tier
-				m, none := next(withField(c, FieldTierNow, tier), nil, members)
+				m, none := next(withField(c, FieldTierNow, tier), nil, members, nil)
 				if m == "" {
 					p.refuse(c.ID, none)
 					continue
@@ -1058,14 +1060,15 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			}
 			// a member that refused it at staging is not dealt it again (StagingRefusers)
 			of := members
-			if refused := StagingRefusers(wc); len(refused) > 0 {
+			refused := StagingRefusers(wc)
+			if len(refused) > 0 {
 				of = without(members, refused)
 				if len(of) == 0 {
 					p.refuse(c.ID, fmt.Sprintf("%s was refused at staging by every member up (%s): rework it with a fix, or drop it", wc.ID, strings.Join(refused, ", ")))
 					continue
 				}
 			}
-			m, why := next(c, wc, of)
+			m, why := next(c, wc, of, refused)
 			if m == "" {
 				p.refuse(c.ID, why)
 				continue
@@ -1084,7 +1087,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			p.refuse(c.ID, why) // a machine draws a route: a tier friends alone serve is theirs
 			continue
 		}
-		m, why := next(c, nil, members)
+		m, why := next(c, nil, members, nil)
 		if m == "" {
 			p.refuse(c.ID, why)
 			continue
