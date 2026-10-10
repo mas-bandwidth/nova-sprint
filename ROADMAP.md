@@ -8,9 +8,9 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
 - [The sprint machine](#the-sprint-machine) (206)
-- [Setup, release and operations](#setup-release-and-operations) (24)
+- [Setup, release and operations](#setup-release-and-operations) (26)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
-- [Friend AIs](#friend-ais) (18)
+- [Friend AIs](#friend-ais) (19)
 
 ## Lessons from Prime Agent's rewrite
 
@@ -1890,6 +1890,22 @@ Target: after v1.4
 
 From: cards from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)
 
+### Serve the public sprint dashboard as files from one puller
+
+A fleet role serves the page and data as static files refreshed by one puller, with no reverse proxy to the coordinator machine.
+
+Target: after v1.4
+
+From: PR #5329
+
+### One monitoring dashboard for the sprint, load, network and store
+
+Redis metrics are scraped and one ready-made dashboard shows per-bench cards, load, memory, network and store latency.
+
+Target: after v1.4
+
+From: issue #2556
+
 ## Docs, models and the repository
 
 Documentation suites, the TLA+ ledger, and the models.
@@ -2225,3 +2241,11 @@ A friend AI working count includes only cards with a push or named by beat --run
 Target: after v1.4
 
 From: nova-sprint commit 2c831fa (not carried by the re-seed, nova-sprint PR #28); card moved out of the sprint (work record, 2026-10-04)
+
+### Each friend's model per tier is decided and recorded
+
+Friend rows record which model serves each tier, so the deal and the friend agree on it. Friends set up with missing tiers are found and corrected.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04); PR #5387

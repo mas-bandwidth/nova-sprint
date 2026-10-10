@@ -2031,4 +2031,25 @@
     scope laundering, semantic dilution and scope bloat."
    :date "2026-10-10"
    :release "after v1.4"
-   :origin "a Gemini dialog the owner shared, 2026-10-10")))
+   :origin "a Gemini dialog the owner shared, 2026-10-10")
+  (item "public-dashboard-served-from-files" :group "ops"
+   :title "Serve the public sprint dashboard as files from one puller"
+   :text "A fleet role serves the page and data as static files refreshed by one puller, with no reverse
+    proxy to the coordinator machine."
+   :date "2026-10-10"
+   :release "after v1.4"
+   :origin "PR #5329")
+  (item "fleet-monitoring-dashboard" :group "ops"
+   :title "One monitoring dashboard for the sprint, load, network and store"
+   :text "Redis metrics are scraped and one ready-made dashboard shows per-bench cards, load, memory,
+    network and store latency."
+   :date "2026-10-10"
+   :release "after v1.4"
+   :origin "issue #2556")
+  (item "friend-per-tier-model-choice" :group "friends"
+   :title "Each friend's model per tier is decided and recorded"
+   :text "Friend rows record which model serves each tier, so the deal and the friend agree on it. Friends
+    set up with missing tiers are found and corrected."
+   :date "2026-10-10"
+   :release "after v1.4"
+   :origin "card moved out of the sprint (work record, 2026-10-04); PR #5387")))
