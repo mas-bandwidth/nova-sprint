@@ -191,7 +191,7 @@ func ProviderRows(routes []Route, fleet *Table, now time.Time) []ProviderRow {
 		if b.Known {
 			row.Balance, row.Note = Dollars(b.Balance), ""
 		}
-		var until time.Time
+		var last RouteRest // the rest that ends latest: its end and its cause say the line
 		var resting []string
 		why := ""
 		for _, r := range byProvider[name] {
@@ -200,8 +200,8 @@ func ProviderRows(routes []Route, fleet *Table, now time.Time) []ProviderRow {
 				continue
 			}
 			resting = append(resting, r.Name)
-			if rest.Until.After(until) {
-				until = rest.Until
+			if rest.Until.After(last.Until) {
+				last = rest
 			}
 			if why == "" {
 				why = rest.Cause + ": " + rest.Said()
@@ -209,14 +209,11 @@ func ProviderRows(routes []Route, fleet *Table, now time.Time) []ProviderRow {
 		}
 		switch {
 		case len(resting) == len(byProvider[name]):
-			row.State = "resting until " + untilSaid(until) + " (" + why + ")"
+			row.State = "resting until " + last.UntilSaid() + " (" + why + ")"
 		case len(resting) > 0:
-			row.State = "serving; resting " + strings.Join(resting, ", ") + " until " + untilSaid(until) + " (" + why + ")"
+			row.State = "serving; resting " + strings.Join(resting, ", ") + " until " + last.UntilSaid() + " (" + why + ")"
 		}
 		out = append(out, row)
 	}
 	return out
 }
-
-// untilSaid is a rest's end as a line says it (RouteRest.UntilSaid).
-func untilSaid(t time.Time) string { return RouteRest{Until: t}.UntilSaid() }
