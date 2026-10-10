@@ -2755,8 +2755,11 @@ and it is the coordinator's decision, receipted.
     `TestAReadHigherThanTheReadBeforeItEndsARefusedTakesRest`). A rest a balance poll wrote
     before (cause `balance`, or `out-of-credit` naming no card) is retired and holds no route
     (`TestTheNightsBalanceRestLiftsOnTheNextPoll`).
-    A take refused for the provider's key (`class=auth`) rests it for RouteRestFor, ends at
-    that time, and stops nothing.
+    A take refused for the provider's key (`class=auth`) rests it until the coordinator wakes
+    it (`routes wake <provider>`, once the owner has replaced the key), never for a time (a
+    timed rest only failed every take dealt after it ended: a pro route, 46 of 46
+    refused with a 401, 2026-10-09/10; `tla/RouteRest.tla`, AuthEndsOnlyWoken), and stops
+    nothing.
   - A refused take rests the provider in the tick that sees it, over rule 3's rest of its
     routes; the rest's note and the tier's `no route serves the tier` name the cause and the
     provider's words. A refusal is attributed to the rest window its child launched in (the
@@ -3871,6 +3874,10 @@ are never recorded in its place. It lands exactly the named cards. The position 
 `--rejected`) is about; land's own report names its cards by id, head and attempt
 (tla/Land.tla, idguard), and `merge --landed` is the same record for a caller without
 land (tests TestMergeRecordsLandOnlyTheCardWhoseHeadWasPushed).
+On a real store a bare `merge --stream <s> [--batch n]`, with no fact and no `--landed`,
+is refused before the store is read, naming `--landed` and land: it would record the
+queue's head landed on nobody's push. Only the twin, which has no git, records a bare
+merge (tests TestBareMergeIsRefusedOnARealStore, TestMergeLandedRefusesAHeadNotOnTheBase).
 
 | stream state | means |
 |---|---|

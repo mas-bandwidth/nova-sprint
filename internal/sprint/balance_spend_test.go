@@ -302,3 +302,67 @@ func TestTheCoordinatorRestsAndWakesRoutes(t *testing.T) {
 		assert.Empty(t, tc.plan.Props, tc.name)
 	}
 }
+
+// A provider that refused its key rests until woken (RestAuth, open): routes wake ends it with
+// no payment and says so, a route under it cannot be woken alone, the providers table and the
+// stop name "woken" and never "paid", and the rest never ends by the clock.
+func TestTheCoordinatorWakesAProviderRestForItsKey(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 10, 4, 0, 0, 0, time.UTC)
+	refused := "2026-10-10T03:00:00Z open c9 auth provider openrouter refused its key: card c9 on route pro-grok47-openrouter: class=auth status=401 msg=bad key"
+	snap := func() *Snapshot {
+		f := NewTable(Fleet)
+		f.SetProps(map[string]string{PropProviderRest("openrouter"): refused})
+		return &Snapshot{Now: now, Fleet: f, Routes: nightRoutes, Coordinator: Coordinator}
+	}
+	resting := func(s *Snapshot) int {
+		n := 0
+		for _, r := range RouteRests(s.Routes, s.Fleet) {
+			if r.Resting(s.Now) {
+				n++
+			}
+		}
+		return n
+	}
+
+	s := snap()
+	rest := ProviderRests(s.Fleet)["openrouter"]
+	require.Equal(t, RestAuth, rest.Cause)
+	assert.True(t, rest.Open())
+	assert.Equal(t, "woken", rest.UntilSaid(), "an open key rest ends when woken, not when paid")
+	assert.True(t, rest.Resting(now.Add(1000*RouteRestFor)), "the clock never ends it")
+	assert.Positive(t, resting(s))
+
+	for _, row := range ProviderRows(s.Routes, s.Fleet, s.Now) {
+		if row.Name == "openrouter" {
+			assert.Contains(t, row.State, "resting until woken (")
+			assert.NotContains(t, row.State, "paid")
+		}
+	}
+
+	// a route under the provider's key rest cannot be woken alone
+	p := WakeRoutes(s, RouteWakeReq{Target: "pro-grok47-openrouter", Reason: "try", Who: "rowan"})
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "rests with its provider openrouter")
+
+	// no reason, no wake
+	p = WakeRoutes(s, RouteWakeReq{Target: "openrouter", Who: "rowan"})
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "wants --reason")
+
+	// the owner replaced the key: the wake ends the rest, writes it back ended, and says who
+	p = WakeRoutes(s, RouteWakeReq{Target: "openrouter", Reason: "the key was replaced", Who: "rowan"})
+	require.Empty(t, p.Refused)
+	require.Len(t, p.Props, 1)
+	assert.Equal(t, PropProviderRest("openrouter"), p.Props[0].Name)
+	require.Len(t, p.Notes, 1)
+	assert.Equal(t, NRouteWoken, p.Notes[0].Type)
+	for _, w := range p.Props {
+		s.Fleet.SetProp(w.Name, w.Value)
+	}
+	s.Now = now.Add(time.Minute)
+	assert.Zero(t, resting(s), "every route of the provider serves again")
+	woken := ProviderRests(s.Fleet)["openrouter"]
+	assert.False(t, woken.Open())
+	assert.Contains(t, woken.Why, "; ended: woken by rowan: the key was replaced")
+}
