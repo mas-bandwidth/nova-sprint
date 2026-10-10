@@ -166,10 +166,10 @@ func TestLandFallbackGateDeadlineDoesNotBlameCard(t *testing.T) {
 // waits for while its own gate never answers. s1's goroutine is held at the beforeWait
 // seam until s2's gate has begun, so s2 is the holder whatever order the goroutines start
 // in. Since 2026-10-10 a job waiting for a slot runs no clock; one waiting for another
-// stream's gate of its base commit (sameCommit) already holds its slot, so its own clock runs
-// (here s1's never fires). Either way the holder's own bound (its LandDeadline, from when it
-// took its slot) cancels its gate, which frees the wait, and s1 lands in the same pass; s2's batch stays queued, nothing blamed, no base
-// counted red. parallel is the pass's width; sameCommit puts the two bases at one commit
+// stream's gate of its base commit (sameCommit) already holds its slot, so its own clock
+// runs (here s1's never fires). Either way the holder's own bound (its LandDeadline, from
+// when it took its slot) cancels its gate, which frees the wait, and s1 lands in the same
+// pass; s2's batch stays queued, nothing blamed, no base counted red. parallel is the pass's width; sameCommit puts the two bases at one commit
 // (the per-commit gate is the wait, width 2), else the bases differ and the width slot is
 // the wait (width 1).
 func stuckBehind(t *testing.T, parallel int, sameCommit bool) {
@@ -326,6 +326,13 @@ func TestBenchFaultIsNotARedTree(t *testing.T) {
 	} {
 		assert.NotEmpty(t, benchFault(1, out), name)
 	}
+	// a test that printed a header-shaped line, then the words, then failed (#48 reader B's
+	// probes at 1fd202d): with -v the header is inside the test's output; without it the
+	// block is followed by the test's --- FAIL and its package's result, and never answered
+	assert.Empty(t, benchFault(1, "GATE RUN: go test ./...\n=== RUN   TestDisk\n# setup\nwrite /tmp/x: no space left on device\n--- FAIL: TestDisk (0.00s)\nFAIL\nFAIL\texample.com/m/disk\t0.012s\nFAIL"))
+	assert.Empty(t, benchFault(1, "GATE RUN: go test ./...\n# setup\nwrite /tmp/x: no space left on device\n--- FAIL: TestDisk (0.00s)\nFAIL\nFAIL\texample.com/m/disk\t0.012s\nFAIL"))
+	// a build that fails and go stops: no result follows its block, the bench's
+	assert.NotEmpty(t, benchFault(1, "GATE RUN: go build ./...\n# example.com/m/p\nwrite $WORK/b001/_pkg_.a: no space left on device"))
 	// a test that printed a header-shaped line of its own package, then the words, then
 	// failed with no --- FAIL (os.Exit): its package's result says the binary ran
 	assert.Empty(t, benchFault(1, "GATE RUN: go test ./...\n# example.com/m/disk\nwrite /tmp/x: no space left on device\nFAIL\texample.com/m/disk\t0.004s\nFAIL"))

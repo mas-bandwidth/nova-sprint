@@ -594,24 +594,29 @@ var benchFaults = []string{"disk quota exceeded", "no space left on device"}
 // block's lines wait under its package (pending) and no other package's result clears them:
 // that package's own result decides, [build failed] or [setup failed] making them the
 // bench's (found), a result saying its test binary ran making them that test's print (a
-// header-shaped line it wrote). A block whose package never answers (go stopped) is the
-// bench's. A block ends at the next header, result line or test marker; a test's raw print
-// that lands in an open block of another package whose build failed is read with it (two
-// failures at once; the rarer misread, and never a red tree blamed on a full disk).
+// header-shaped line it wrote). A block whose package never answers is the bench's only
+// when nothing followed it (go stopped there); a block followed by other output and never
+// answered was a test's print (nova-sprint #48 reader B: a test that printed `# setup`
+// and the disk words, then failed). A header inside a test's output, or indented, is that
+// test's line. A block ends at the next header, result line or test marker; a test's raw
+// print that lands in an open block of another package whose build failed is read with it
+// (two failures at once; the rarer misread, and never a red tree blamed on a full disk).
 func benchFault(code int, out string) string {
 	var (
 		found   []string            // the bench's own lines, kept whatever follows
 		held    []string            // this segment's fault lines: the bench's own unless a test binary ran in it
 		pending map[string][]string // each build block's fault lines, by package, until its result
 		order   []string            // pending's packages, in the order their blocks began
+		later   map[string]bool     // a pending block some result line or test marker followed
 		block   string              // the open build block's package, "" when none is open
 		inTest  bool
 	)
 	for _, line := range strings.Split(out, "\n") {
 		t := strings.TrimSpace(line)
-		if pkg, ok := goBuildHeader(t); ok {
+		indented := t != "" && t != strings.TrimLeft(line, " \t")
+		if pkg, ok := goBuildHeader(t); ok && !inTest && !indented {
 			if pending == nil {
-				pending = map[string][]string{}
+				pending, later = map[string][]string{}, map[string]bool{}
 			}
 			if _, seen := pending[pkg]; !seen {
 				pending[pkg], order = []string{}, append(order, pkg)
@@ -620,6 +625,9 @@ func benchFault(code int, out string) string {
 			continue
 		}
 		if pkg, ran, ok := goPackageResult(t); ok {
+			for p := range pending {
+				later[p] = true
+			}
 			if lines, waits := pending[pkg]; waits {
 				if !ran {
 					found = append(found, lines...)
@@ -638,12 +646,15 @@ func benchFault(code int, out string) string {
 		case strings.HasPrefix(t, gateMark):
 			// a run's first line: the run before it ended green (set -e), so only the lines
 			// of the run the gate ended on can say the bench failed
-			found, held, pending, order, block, inTest = nil, nil, nil, nil, "", false
+			found, held, pending, order, later, block, inTest = nil, nil, nil, nil, nil, "", false
 			continue
 		case strings.HasPrefix(t, "--- FAIL") || strings.HasPrefix(t, "=== RUN") || strings.HasPrefix(t, "panic:"):
+			for p := range pending {
+				later[p] = true
+			}
 			held, block, inTest = held[:0:0], "", true // a test's output, and the lines before it in its binary
 			continue
-		case inTest || t == "" || t != strings.TrimLeft(line, " \t"):
+		case inTest || t == "" || indented:
 			continue // a test's line, or an indented one (a test's log)
 		}
 		low := strings.ToLower(t)
@@ -660,7 +671,9 @@ func benchFault(code int, out string) string {
 		}
 	}
 	for _, pkg := range order {
-		found = append(found, pending[pkg]...) // no result for it: go stopped, the bench's
+		if !later[pkg] {
+			found = append(found, pending[pkg]...) // nothing followed it: go stopped there, the bench's
+		}
 	}
 	if len(found) > 0 {
 		return found[0]
