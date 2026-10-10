@@ -911,11 +911,10 @@ func (a *app) report(ctx context.Context, verbName string, c common, st *store.S
 	if c.group.ID != "" {
 		fmt.Fprintln(stdout, c.group.line())
 	}
-	var why []string
-	for _, r := range res.Refused {
-		why = append(why, r.Key+": "+r.Why)
-	}
-	listed(stderr, "REFUSED", why, c.max, verbName)
+	// every refused id says why, and what to run instead (output.go; docs/STANDARD.md
+	// section 3, point 1): the reason and the remedy in the default text output, as
+	// --json's refused array has carried them all along
+	listed(stderr, "REFUSED", refusalLines(ctx, st, res.Refused), c.max, verbName)
 	status := "OK"
 	if code != 0 {
 		status = "FAILED"
