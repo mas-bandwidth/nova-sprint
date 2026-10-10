@@ -1,6 +1,7 @@
 package sprint_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -167,6 +168,53 @@ func TestACardHeldOnlyForAdjacentPathsIsWidenedInPlace(t *testing.T) {
 		assert.Empty(t, r.openOnCard(sprint.NReturned, "w-1"))
 		require.Len(t, r.widenNotes(), 1)
 		r.clean("an E12 refusal widened in place")
+	})
+	// The ejection-bound audit of 2026-10-10: the E12 branch of landRefused skipped the brief's
+	// bound, and the widen rule's brief edit resets the attempts it counts, so nothing capped
+	// the widen loop (tla/Land.tla Refuse, WidenCapped).
+	t.Run("an E12 refusal at the brief's bound: the brief is wrong, never widened", func(t *testing.T) {
+		t.Parallel()
+		r := newConflictRig(t)
+		r.widenCard()
+		r.must(store.SetStep(sprint.SetReq{Attempts: "1", Who: "coordinator"}))
+		r.refusedE12("w-1", "w", "docs/NOTE.md")
+		bound := r.openOnCard(sprint.NBriefWrong, "w-1")
+		require.Len(t, bound, 1, "attempt 1 of a brief whose cap is 1: the bound's judgment")
+		assert.Contains(t, bound[0].Note.What, "outside its PATHS (E12)")
+		assert.Empty(t, r.openOnCard(sprint.NReturned, "w-1"), "not returned for the widen rule")
+		r.tick()
+		r.tick()
+
+		pr := r.snap().Work.Card("w-1")
+		assert.Equal(t, sprint.Review, pr.Col, "a mind's")
+		assert.Equal(t, 1, pr.Int("attempt"))
+		assert.NotContains(t, pr.F("brief"), "docs/NOTE.md", "never widened at the bound")
+		assert.Empty(t, r.widenNotes())
+	})
+	t.Run("E12 widenings stop at MaxWidens: the next is the brief's bound", func(t *testing.T) {
+		t.Parallel()
+		r := newConflictRig(t)
+		r.widenCard()
+		for i := 1; i <= sprint.MaxWidens; i++ {
+			file := "docs/NOTE" + strconv.Itoa(i) + ".md"
+			r.refusedE12("w-1", "w", file)
+			r.tick()
+			pr := r.snap().Work.Card("w-1")
+			require.Contains(t, pr.F("brief"), file, "widening %d", i)
+			require.Equal(t, strconv.Itoa(i), pr.F(sprint.FieldWidens), "widening %d is counted, and no brief edit resets the count", i)
+		}
+		r.refusedE12("w-1", "w", "docs/NOTE9.md")
+		r.tick()
+		r.tick()
+
+		pr := r.snap().Work.Card("w-1")
+		assert.Equal(t, sprint.Review, pr.Col, "not widened again")
+		assert.Equal(t, sprint.MaxWidens+1, pr.Int("attempt"), "one attempt a widen, and the one refused at the cap")
+		assert.NotContains(t, pr.F("brief"), "docs/NOTE9.md")
+		bound := r.openOnCard(sprint.NBriefWrong, "w-1")
+		require.Len(t, bound, 1, "the brief is wrong: a mind's")
+		assert.Contains(t, bound[0].Note.What, "widened 3 times")
+		assert.Len(t, r.widenNotes(), sprint.MaxWidens)
 	})
 	t.Run("an E12 refusal naming only a test is redone inside its PATHS", func(t *testing.T) {
 		t.Parallel()
