@@ -321,7 +321,13 @@ MCLandPassBrokenStopCollide.cfg	MCLandPass.tla	invariant	RefusedStaysMerging	ign
 MCLandPassBrokenRevert.cfg	MCLandPass.tla	action	RefusalTouchesNoOtherStream	ignore-terminal	landpass	required	-
 MCLandPassBrokenCacheDisjoint.cfg	MCLandPass.tla	invariant	CachedIsGreen	ignore-terminal	landpass	required	-
 MCLandPassBrokenPushEmpty.cfg	MCLandPass.tla	invariant	BaseKeepsLandings	ignore-terminal	landpass	required	-
-MCLandPassBrokenPlainWait.cfg	MCLandPass.tla	temporal	Leaves	ignore-terminal	landpass	required	-
+MCLandPassSlow.cfg	MCLandPass.tla	pass	-	ignore-terminal	landpass	required	-
+MCLandPassBrokenInOrder.cfg	MCLandPass.tla	temporal	NoHeadOfLine	ignore-terminal	landpass	required	-
+MCLandBisect.cfg	MCLandBisect.tla	pass	-	ignore-terminal	landbisect	required	-
+MCLandBisectBrokenEach.cfg	MCLandBisect.tla	invariant	ProbesBounded	ignore-terminal	landbisect	required	-
+MCLandBisectBrokenFaultBlames.cfg	MCLandBisect.tla	invariant	BlameSound	ignore-terminal	landbisect	required	-
+MCLandBisectBrokenLast.cfg	MCLandBisect.tla	invariant	BlameSound	ignore-terminal	landbisect	required	-
+MCLandBisectBrokenAnyLine.cfg	MCLandBisect.tla	invariant	RefusedOnlyByBench	ignore-terminal	landbisect	required	-
 MCLatePush.cfg	MCLatePush.tla	pass	-	ignore-terminal	latepush	required	-
 MCLatePushBrokenWipe.cfg	MCLatePush.tla	invariant	OnePushAWindow	ignore-terminal	latepush	required	-
 MCLatePushBrokenForget.cfg	MCLatePush.tla	invariant	OnePushAWindow	ignore-terminal	latepush	required	-
