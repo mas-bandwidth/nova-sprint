@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -179,10 +180,29 @@ func moveEntry(c *Card, row, col string, set map[string]string, unset ...string)
 	e := ntable.BatchMemberEntry{ID: c.ID, Expect: at(c)}
 	if row != c.Row || col != c.Col {
 		e.Move = &ntable.MemberMoveOp{Row: row, Col: col}
+		if _, held := set[FieldLane]; !held {
+			// a card that moves is no lane's unless the move gives it one (a lane's take,
+			// lane_hold.go): a lane's hold never survives a move by another path
+			unset = append(slices.Clone(unset), FieldLane, FieldLaneAt)
+		}
 	}
 	e.Set = nonEmpty(set)
-	e.Unset = unsetPresent(c, unset)
+	e.Unset = unsetPresent(c, uniqNames(unset))
 	return e
+}
+
+// uniqNames is names with each kept once, in its first place: the store refuses a field
+// unset twice in one entry.
+func uniqNames(names []string) []string {
+	seen := make(map[string]bool, len(names))
+	out := names[:0:0]
+	for _, n := range names {
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // setEntry changes fields of a card in place.

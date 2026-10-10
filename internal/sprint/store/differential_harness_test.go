@@ -241,8 +241,8 @@ type dHarness struct {
 	// keeps the model's captured owner leases separately so a generated trace
 	// can exercise refusal, cancellation receipt, and safe START in order.
 	stopIssued bool
-	stopHeld   map[string]dStopLease      // immutable STOP ledger until START
-	stopDebt   map[string]dStopLease      // leases still lacking an owner receipt
+	stopHeld   map[string]dStopLease      // the STOP's captured ledger until START
+	stopDebt   map[string]dStopLease      // leases still lacking an owner receipt; these alone are pinned
 	readGen    map[string]int             // the older table model omits read generations
 	seen       map[string]map[string]bool // logical table -> card ids to read, placed or not
 	epoch      uint64
@@ -801,7 +801,7 @@ func (h *dHarness) modelStep(a dAction, pre, post refmodel.State) (refmodel.Stat
 		next, err = refmodel.Resume(s, a.Stream, a.Did)
 	case "fleet":
 		if h.stopIssued && a.Op == "down" {
-			for _, debt := range h.stopHeld {
+			for _, debt := range h.stopDebt {
 				if debt.table == sprint.Fleet && debt.row == a.Member {
 					return s, fmt.Errorf("fleet down cannot redeal STOP-owned work before %s returns it", a.Member)
 				}
@@ -859,11 +859,12 @@ func (h *dHarness) modelStep(a dAction, pre, post refmodel.State) (refmodel.Stat
 	if err != nil {
 		return s, err
 	}
-	// STOP owns captured cards until START after their owners return them. The older
-	// table model can still apply a fleet or reader transition here; the engine
-	// must refuse that whole transition rather than erase its receipt path.
+	// STOP owns captured cards until their owners return them: a return settles
+	// its lease off the debt (tla/StopReturn.tla Settle). The older table model
+	// can still apply a fleet or reader transition here; the engine must refuse
+	// that whole transition rather than erase an unreturned lease's receipt path.
 	if h.stopIssued && a.Kind != "stop-return" {
-		for id, debt := range h.stopHeld {
+		for id, debt := range h.stopDebt {
 			if debt.table == sprint.Fleet && !reflect.DeepEqual(s.Work[id], next.Work[id]) ||
 				debt.table == sprint.Readers && !reflect.DeepEqual(s.Reads[id], next.Reads[id]) {
 				return s, fmt.Errorf("STOP owns captured lease %s@%d until its owner returns it", id, debt.gen)
