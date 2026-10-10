@@ -179,4 +179,11 @@
    (fix "hold-pinned-to-head-sha" :release "v1.2.9" :status "shipped"
     :title "A hold pinned to an older head is not a hold at the current head"
     :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
-    :origin "issue #2710")))
+    :origin "issue #2710")
+
+   (fix "restore-tests-owed-from-split" :release "v1.2.6" :status "shipped"
+    :title "Restore the tests the repository split moved out of nova-tools"
+    :text "Five tests (coordinator rules, processor doc, coordinator tools, tool class, seat play), the
+     member and contract functional tests and eight contract cases that build nova-sprint, and the
+     tick wall-clock gate job, restored in nova-sprint."
+    :origin "repository split cold reads (nova-tools PR #5571 and PR #5591)")))
