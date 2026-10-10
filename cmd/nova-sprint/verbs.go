@@ -64,9 +64,9 @@ func init() {
 		{"goal set", "<name> [--file <path>] [--to file:<path>]", "goal set friend-a --file goal-a.txt --to file:/tmp/reminder-a.txt", (*app).cmdGoalSet},
 		{"goal show", "[<name>]", "goal show friend-a", (*app).cmdGoalShow},
 		{"goal drop", "<name>", "goal drop friend-a", (*app).cmdGoalDrop},
-		{"take", "--as <member> [<card>@<gen>...] [--epoch <n>] [--max <n>]", "take --as m1 s1-1.w1@1 --epoch 0", (*app).cmdTake},
-		{"finish", "--as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--usage <text>]", "finish --as m1 s1-1.w1@1 --epoch 0 --head 9f3c2e1 --report 'tests green'", (*app).cmdFinish},
-		{"progress", "--as <worker> <card>[@<gen>]... --epoch <n>", "progress --as m1 s1-1.w1@1 --epoch 0", (*app).cmdProgress},
+		{"take", "--as <member> [<card>@<gen>...] [--epoch <n>] [--max <n>] | --as <member> --lane <n>", "take --as m1 s1-1.w1@1 --epoch 0", (*app).cmdTake},
+		{"finish", "--as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--usage <text>] [--lane <n>]", "finish --as m1 s1-1.w1@1 --epoch 0 --head 9f3c2e1 --report 'tests green'", (*app).cmdFinish},
+		{"progress", "--as <worker> <card>[@<gen>]... --epoch <n> [--lane <n>]", "progress --as m1 s1-1.w1@1 --epoch 0", (*app).cmdProgress},
 		{"ask", "[<id>... | --group <id> [--expect <n>]] [--stream <s>] [--max <n>] [--another] [--answers <note>]", "ask", (*app).cmdAsk},
 		{"queue", "--as <reader|member> | --stream <s>", "queue --as reader-a", (*app).cmdQueue},
 		{"read", "--as <reader> (--begin | --ok | --broken) [<card>[@<gen>]...] --epoch <n> [--max <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--usage <text>]", "read --as reader-a --ok --max 5 --epoch 0", (*app).cmdRead},
@@ -2247,6 +2247,7 @@ func cardGens(words []string) ([]string, map[string]int, error) {
 func (a *app) cmdTake(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("take")
 	as := fs.String("as", "", "the fleet member taking its cards; several, comma separated, each take from their own ready queue in one step")
+	lane := fs.Int("lane", 0, "a lane's take: the card lane n of the member's row holds on the server, else one given it now (a working card no lane holds, else its next ready card); names no card, no --max and no --epoch: the server picks the epoch and says it on the LANE line")
 	var limit int
 	bindCapAlias(fs, "listed items of each kind (0 is all); when given, the first n of its ready queue (omitted, 1); with several members, n of each")
 	words, err := parse(fs, args)
@@ -2258,6 +2259,9 @@ func (a *app) cmdTake(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "take", err.Error())
 	}
+	if *lane != 0 && (*lane < 0 || *as == "" || len(ids) > 0 || strings.Contains(*as, ",")) {
+		return refuse(stderr, "take", "a lane's take names its member and its lane and nothing else: take --as <member> --lane <n>, n from 1")
+	}
 	if *as == "" || len(gens) != len(ids) {
 		return refuse(stderr, "take", "wants --as <member>, and every card named as <card>@<gen>, the generation from queue --as <member>")
 	}
@@ -2265,6 +2269,9 @@ func (a *app) cmdTake(args []string, stdout, stderr io.Writer) int {
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, "take", err.Error())
+	}
+	if *lane > 0 {
+		return a.laneTake(*c, st, *as, *lane, stdout, stderr)
 	}
 	name := "take"
 	if len(ids) > 0 {
@@ -2364,6 +2371,7 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 	branch := fs.String("branch", "", "the branch the work is on (its packet names the one to use)")
 	baseBranch := fs.String("base", "", "the branch the work started from")
 	usage := fs.String("usage", "", "what the run spent, one line (the member passes its child's budget, wall, tokens by class and cost): kept on the attempt's record, timed and priced")
+	lane := fs.Int("lane", 0, "the lane of the member finishing (take --lane gave it the card): a card another lane of its row holds is refused")
 	decision := fs.String("decision", "", "the take's attempt decision, one JSON record line as nova-decide makes it (a work member with JEV_API_KEY asks it for every take): its op naming this take's card and attempt, else the finish is refused; kept on the card, recorded by the server's decide lane, and a failed finish whose class is no-result or nothing-to-do at or above that class's bar on the card is routed by it (docs/SPEC-SPRINT.md section 2)")
 	words, err := parse(fs, args)
 	if err != nil {
@@ -2404,7 +2412,7 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	return a.runStep("finish", *c, st, store.FinishStep(sprint.FinishReq{Sel: sprint.Sel{IDs: ids}, As: *as, Gens: gens, Failed: *failed,
-		Head: *head, Report: *report, Branch: *branch, Base: *baseBranch, Usage: *usage, Decided: decided, Who: *as}), stdout, stderr)
+		Head: *head, Report: *report, Branch: *branch, Base: *baseBranch, Usage: *usage, Decided: decided, Lane: *lane, Who: *as}), stdout, stderr)
 }
 
 // cmdProgress stamps progress on the work cards a worker holds: the late rule's sign that a
@@ -2414,6 +2422,7 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 func (a *app) cmdProgress(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("progress")
 	as := fs.String("as", "", "the fleet member or friend that holds the cards: only the holder stamps a card's progress")
+	lane := fs.Int("lane", 0, "the lane of the holder stamping (take --lane gave it the card): a card another lane of its row holds is refused, and the stamp is its lane heard from")
 	words, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "progress", err.Error())
@@ -2430,7 +2439,7 @@ func (a *app) cmdProgress(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "progress", err.Error())
 	}
-	return a.runStep("progress", *c, st, store.ProgressStep(sprint.ProgressReq{Sel: sprint.Sel{IDs: ids}, As: *as, Gens: gens, Who: *as}), stdout, stderr)
+	return a.runStep("progress", *c, st, store.ProgressStep(sprint.ProgressReq{Sel: sprint.Sel{IDs: ids}, As: *as, Gens: gens, Lane: *lane, Who: *as}), stdout, stderr)
 }
 
 func (a *app) cmdAsk(args []string, stdout, stderr io.Writer) int {
@@ -2462,6 +2471,7 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 	ret := fs.String("return", "", "hand back a read the reader holds and has no verdict on: not a read; the next tick asks it of another reader free at the attempt, or of this reader again; no finding against the work")
 	reason := fs.String("reason", "", "with --return: why the read has no verdict (it reaches the inbox)")
 	usage := fs.String("usage", "", "with --ok, --broken or --return: what the read spent, one line (the reader passes its child's tokens, wall and cost): kept on the read card, timed and priced")
+	lane := fs.Int("lane", 0, "with --ok, --broken or --return: the reader's lane reporting (take --as <reader> --lane <n> began the read): a read another lane of the reader holds is refused")
 	ids, err := parse(fs, args)
 	applyCapAlias(fs, stderr, &limit, c.max)
 	if err != nil {
@@ -2518,7 +2528,7 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 		missing = a.readMissingOf(context.Background(), st, ids)
 	}
 	return a.runStep("read", *c, st, store.ReadStep(sprint.ReadReq{Sel: sprint.Sel{IDs: ids, Limit: limit}, As: *as, Gens: gens, Begin: *begin,
-		Verdict: verdict, Finding: *finding, Missing: missing, Return: *ret != "", Reason: *reason, Usage: *usage, Who: *as}), stdout, stderr)
+		Verdict: verdict, Finding: *finding, Missing: missing, Return: *ret != "", Reason: *reason, Usage: *usage, Lane: *lane, Who: *as}), stdout, stderr)
 }
 
 // readShort is why a read by queue moved nothing, one line per reader named: the

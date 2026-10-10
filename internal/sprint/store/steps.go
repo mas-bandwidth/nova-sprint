@@ -66,7 +66,11 @@ func TakeStep(r sprint.TakeReq) Step {
 	// a take for a friend's row reads the friends' seats: her status is FriendStatus, never
 	// a control card's (sprint's takeSeat)
 	friends := slices.ContainsFunc(sprint.Split(r.As), sprint.IsFriendRow)
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "take", Load: tables(sprint.Fleet), Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Friends: friends, StartsWork: true,
+	load := tables(sprint.Fleet)
+	if r.Lane != 0 {
+		load = tables(sprint.Fleet, sprint.Readers) // a reader's lanes hold its reads (lane_hold.go)
+	}
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "take", Load: load, Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Friends: friends, StartsWork: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Take(s, r) }}
 }
 

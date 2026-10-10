@@ -109,6 +109,15 @@
     landed work, outside ok%, and raises a re-cut judgment."
    :origin "nova-tools PR #5585, head 0beb0508")
 
+  (fix "lanes-ask-the-server-what-they-hold" :release "v1.2.6" :status "in-progress"
+   :title "A worker's lane asks the server what it holds, and the server keeps it"
+   :text "take --as <member> --lane <n> names the lane and nothing else: the server picks the epoch,
+    answers the card the lane holds or gives it one (a friend's take is her start, so the tick no
+    longer puts it back ready), and says it on a LANE line. Progress, finish and read verdicts name
+    the lane, a lane unheard for ten minutes is gone and its card bounces back ready, a reader's
+    lanes begin its reads, and stop-return is served as a worker's verb."
+   :origin "a one-shot friend host, 2026-10-10: took logged while the server showed the card ready, progress sent at epoch 0, every stop-return refused by the server")
+
   (fix "draining-member-clears-no-room" :release "v1.2.6" :status "shipped"
    :title "A draining member does not keep a stale no-room word"
    :text "The room check runs after the drain return, so a draining member does not keep a stale no-room

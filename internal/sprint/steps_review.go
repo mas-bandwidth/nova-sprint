@@ -410,6 +410,9 @@ type ReadReq struct {
 	// Usage is what the read spent, as the reader read it from its child
 	// (cardcost.Usage): kept on the read card, timed and priced (cost.go).
 	Usage string `json:",omitempty"`
+	// Lane is the reader's lane reporting (--lane; take --lane began the read): a read
+	// another lane of the reader holds is refused (lane_hold.go laneRefusal); 0 names none.
+	Lane int `json:",omitempty"`
 }
 
 // Read moves a reader's read cards: asked -> reading, or asked|reading -> ok|broken
@@ -513,6 +516,9 @@ func Read(s *Snapshot, r ReadReq) Plan {
 		}
 		if !contains(from, c.Col) {
 			return "not " + strings.Join(from, " or ") + " (it is " + c.Col + ")"
+		}
+		if why := laneRefusal(c, c.Row, r.Lane); why != "" {
+			return why
 		}
 		if r.Return && returnedRead(c) {
 			// a return is counted once: the card is back in asked since it, not begun
