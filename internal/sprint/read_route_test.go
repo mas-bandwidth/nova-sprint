@@ -160,7 +160,7 @@ func TestAHeldFriendReaderDoesNotServe(t *testing.T) {
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
 	// amy is a friend: the tick hands the snapshot her seat with status=held
 	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Held}}
-	
+
 	// amy's reader should not serve any tier
 	assert.False(t, w.s.ownModelReader("reader-amy"), "held friend's reader does not bring its own model")
 	assert.False(t, w.s.readerServesTier("reader-amy", cardhdr.RouteFlash), "held friend's reader serves nothing")
