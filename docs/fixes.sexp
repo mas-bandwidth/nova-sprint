@@ -79,6 +79,14 @@
     TLA+ model StopReturn, properties NoLiveChildAcrossStart and ReturnedFreesItsRow, with two
     reversed witnesses."
    :origin "the seat, 2026-10-10: hold alex and hold emma refused after their stop-returns")
+  (fix "stop-debt-settles-from-the-members-beat" :release "v1.2.6" :status "shipped"
+   :title "STOP debt settles from the owner's beat, so START never waits on its receipt"
+   :text "After a STOP the server settles each owed fleet lease whose owner has beaten since the STOP and
+    whose beat no longer names the job, returning the card with a recorded reason, so START never waits
+    on a member's own stop-return receipt. A lease whose job the beat still names stays owed, and an
+    owner that has not beaten since the STOP is reported to the seat. TLA+ model StopReturn, property
+    AbsentJobSettles, with the reversed witness nosettlebybeat."
+   :origin "the seat, 2026-10-10: START refused on 33 fleet jobs whose members never sent stop-return receipts")
 
   (fix "lander-bench-fault-and-bisect" :release "v1.2.6" :status "in-progress"
    :title "The lander blames no head for a bench fault and bisects a red batch"
