@@ -102,12 +102,12 @@
    :text "The deal draws only routes whose harness the member can launch; the adopt must set each member
     harnesses or the deal draws nothing for it."
    :origin "nova-tools PR #5576, head 065bf6b73")
-  (fix "lander-bench-fault-and-bisect" :release "v1.2.6" :status "planned"
+  (fix "lander-bench-fault-and-bisect" :release "v1.2.6" :status "in-progress"
    :title "The lander blames no head for a bench fault and bisects a red batch"
    :text "A bench fault blames no head, a red batch is bisected, and landings go as batches are built. The
-    bench fault match reads only the bench error line, so a real failure that prints a disk string
-    is still blamed."
-   :origin "nova-tools PR #5579, head 5bb7de4f2")
+    bench fault match reads only the bench's own lines, never a test's output, so a real failure that
+    prints a disk string is still blamed."
+   :origin "nova-sprint PR #48, re-applying nova-tools PR #5579 (head 5bb7de4f2) with v1.2.5 candidate 4")
   (fix "check-waived-read-and-where-tiers" :release "v1.2.6" :status "planned"
    :title "check honours a waived second read; where shows tiers once"
    :text "check judges an accept made before the second-read count by the count then; where shows a tier
