@@ -142,6 +142,39 @@ func TestServerSwitchVerbRefusesACandidateOffTheBase(t *testing.T) {
 	assert.Equal(t, sprint.BaseRecord{Repo: b.repo, Base: "main"}, rec)
 }
 
+// TestServerSwitchReadsTheCommitARealBinaryNames: the field two a really built
+// nova-sprint prints is the module pseudo-version a source build records
+// (`vX.Y.Z-0.<utc stamp>-<12 hex>`), and server switch reads the commit out of it and passes
+// the binary whose commit is the base tip (docs/SPEC-SPRINT.md section 14,
+// "server-from-base-only-w-ns-bb.w1"). The candidate here is the binary `go build` makes, not
+// a script with a hand-written line, because the defect was that the reader accepted only the
+// shape the script wrote and refused every real binary.
+func TestServerSwitchReadsTheCommitARealBinaryNames(t *testing.T) {
+	t.Parallel()
+	b := newSwitchBase(t)
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "nova-sprint")
+	// field two is the shape a source build prints for a checkout at the base tip.
+	// -buildvcs=false because this test's checkout is not the twin: the commit must travel
+	// in field two, which is what a real binary prints.
+	stamp := "v9.9.9-0.20261010234041-" + b.tip[:12]
+	build := exec.Command("go", "build", "-buildvcs=false", "-o", bin, "-ldflags", "-X main.version="+stamp, "github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint")
+	build.Env = append(os.Environ(), "GOFLAGS=-mod=readonly")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+	out, err := exec.Command(bin, "version").Output()
+	require.NoError(t, err)
+	line, _, _ := strings.Cut(string(out), "\n")
+	line = strings.TrimSpace(line)
+	require.Contains(t, line, stamp, "the built binary prints the stamp: %q", line)
+
+	got, err := sprint.CheckServerBase(t.Context(), line, b.repo, "main")
+	require.NoError(t, err)
+	assert.Equal(t, b.tip, got.Commit, "the commit is read off the real binary's line: %q", line)
+	assert.True(t, got.On, "%+v", got)
+}
+
 func TestServerSwitchVerbSwitchesAndRollsBack(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)

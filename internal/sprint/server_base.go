@@ -114,7 +114,8 @@ func CheckServerBase(ctx context.Context, line, repo, base string) (ServerBase, 
 }
 
 // commitOf is the source commit the line names, read from the line alone, in this order: its
-// `commit=` extra; the revision of a whole Source; the 12 hex of the vcs stamp in field two.
+// `commit=` extra; the revision of a whole Source; the 12 hex of the revision in field two --
+// the vcs stamp, or the module pseudo-version a real `go build` prints (vcsRevision).
 // commit is "" for a line that names none -- devel, a release tag or a module version with no
 // extra -- and for a build from an edited tree, because a dirty build is not the commit it
 // names; why then says which, for a refusal to quote. This is buildinfo's own reading, kept
@@ -143,11 +144,42 @@ func commitOf(f buildinfo.Fields) (commit, why string) {
 	if strings.HasSuffix(v, "-dirty") {
 		return "", "built from an edited tree (" + v + ")"
 	}
-	stamp, rev, found := strings.Cut(v, "-")
-	if found && len(stamp) == len("20060102150405") && isDigits(stamp) && len(rev) == vcsStampRevisionLen && isHex(rev) {
+	if rev, ok := vcsRevision(v); ok {
 		return rev, ""
 	}
 	return "", "its build identity " + v + " names no source commit"
+}
+
+// vcsRevision is the 12 hex of the revision a Go build names in field two: the vcs stamp
+// `<utc revision time>-<12 hex>` a hand-rolled build printed, and the module pseudo-version
+// `vX.Y.Z-0.<utc revision time>-<12 hex>` (or its `vX.0.0-`, `<pre>.0.` and `+incompatible`
+// spellings) a `go build` of a checkout records when no release tag replaces it -- the shape
+// a real nova-sprint binary prints, which this reader refused before it read anything
+// (docs/SPEC-SPRINT.md section 14, "server-from-base-only-w-ns-bb.w1").
+func vcsRevision(v string) (string, bool) {
+	v, _ = strings.CutSuffix(v, "+incompatible")
+	i := strings.LastIndexByte(v, '-')
+	if i < 0 {
+		return "", false
+	}
+	rev := v[i+1:]
+	if len(rev) != vcsStampRevisionLen || !isHex(rev) {
+		return "", false
+	}
+	// the segment before the revision ends in the 14-digit UTC revision time, alone (the
+	// vcs stamp) or after a `-` or `.` (a module pseudo-version).
+	stamp := v[:i]
+	if len(stamp) < len("20060102150405") || !isDigits(stamp[len(stamp)-len("20060102150405"):]) {
+		return "", false
+	}
+	if len(stamp) == len("20060102150405") {
+		return rev, true
+	}
+	switch stamp[len(stamp)-len("20060102150405")-1] {
+	case '-', '.':
+		return rev, true
+	}
+	return "", false
 }
 
 // isHex says s is a commit's lowercase hex, 7 to 64 digits (sha1 or sha256).

@@ -20,6 +20,14 @@ func TestCommitOfReadsTheCommitOffTheVersionLine(t *testing.T) {
 	cases := []struct{ line, commit, why string }{
 		{"nova-sprint v1.0.0 linux/amd64 go1.26 commit=" + full, full, ""},
 		{"nova-sprint 20261005000000-0123456789ab linux/amd64 go1.26", "0123456789ab", ""},
+		// the module pseudo-version a real `go build` of a checkout prints in field two,
+		// the shape this reader refused (a bare tag names none; the trailing 12 hex is the
+		// commit)
+		{"nova-sprint v1.2.6-0.20261010232646-2dc87ce31e03 linux/amd64 go1.27.1", "2dc87ce31e03", ""},
+		{"nova-sprint v0.0.0-20261010232646-2dc87ce31e03 linux/amd64 go1.27.1", "2dc87ce31e03", ""},
+		{"nova-sprint v1.2.3-pre.0.20261010232646-2dc87ce31e03 linux/amd64 go1.27.1", "2dc87ce31e03", ""},
+		{"nova-sprint v1.2.6-0.20261010232646-2dc87ce31e03+incompatible linux/amd64 go1.27.1", "2dc87ce31e03", ""},
+		{"nova-sprint v1.2.6 linux/amd64 go1.27.1", "", "names no source commit"},
 		{"nova-sprint v1.0.0 linux/amd64 go1.26 repo=x revision=" + full + " dirty=false build_host=h", full, ""},
 		{"nova-sprint v1.0.0 linux/amd64 go1.26 repo=x revision=" + full + " dirty=true build_host=h", "", "dirty=true"},
 		{"nova-sprint v1.0.0 linux/amd64 go1.26 commit=" + full + "-dirty", "", "edited tree"},
