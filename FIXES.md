@@ -52,3 +52,9 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 - **A draining member does not keep a stale no-room word** (planned). The room check runs after the drain return, so a draining member does not keep a stale no-room word; the deal and read disk floor fix also gets its TLA+ reversed witness. From: v1.2.5 candidate list; nova-tools PR #5569 follow-up.
 - **The dashboard pie slices meet at the centre** (planned). Check the live pie after the next adopt; if the slice borders still miss the centre, fix it. From: v1.2.5 candidate list.
 - **Restore the tests the repository split moved out of nova-tools** (planned). Five tests (coordinator rules, processor doc, coordinator tools, tool class, seat play), the member and contract functional tests and eight contract cases that build nova-sprint, and the tick wall-clock gate job, restored in nova-sprint. From: repository split cold reads (nova-tools PR #5571 and PR #5591).
+
+## v1.2.7 (planned)
+
+Fixes found while the final dogfood lands through the lander.
+
+- **A bench tree is a standalone clone, and one that is not is refused with its reason** (planned). The mirror stage ends by checking that the staged tree's .git is a directory in the tree, and a .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git no longer exits 128 on a fleet host with nothing saying why. From: lander fault 5579, space git exit 128 (held-PR ledger row 5579).
