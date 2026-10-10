@@ -263,6 +263,16 @@ func fleetReadLiveOf(s *Snapshot, pr *Card, cards []*Card) (placed, okCards, bro
 			syn.Col = OK
 			okCards = append(okCards, &syn)
 		case "broken":
+			// A hold pinned to an older head is not a hold at the current head
+			// (docs/SPEC-SPRINT.md section 6; tla/CardMachine.tla, ReadAtOldHead:
+			// a verdict the PR moved past does not count, either way): a broken
+			// read whose head is not the primary's head, and not the attempt's
+			// work head (readHeadMatches), is about work the card moved past, and
+			// a later read at the head stands in its place. A read that pins no
+			// head is not one pinned to an older one, and stands.
+			if h := c.F("head"); h != "" && !readHeadMatches(s, pr, c) {
+				continue
+			}
 			syn := *c
 			syn.Col = Broken
 			broken = append(broken, &syn)

@@ -80,6 +80,19 @@
     reversed witnesses."
    :origin "the seat, 2026-10-10: hold alex and hold emma refused after their stop-returns")
 
+  (fix "a-refusal-always-says-why" :release "v1.2.6" :status "shipped"
+   :title "Every refusal says why, and what to run instead, in the text output"
+   :text "A step's refused card prints its reason and its remedy in the default text output, as --json's
+    refused array has carried them all along: the verb result printer appends what changes the card, by
+    the lifecycle's moves (docs/SPEC-SPRINT.md section 3), when the step's reason names no remedy of its
+    own and is about the card's state, so return on a working card no longer reads RETURN FAILED
+    moved=0 refused=1 alone. A refusal that is not about the card's state stands on its reason: a read
+    of a primary is refused no such card, its why naming the read card to call
+    (<primary>.r<attempt>.<reader>), and takes no work-table remedy. A test walks every verb's refusals
+    and fails on any refusal printed without a reason, or a card's without a remedy."
+   :origin "dogfood 2026-10-10: BRIEF FAILED and RETURN FAILED with no reason in text; the seat cold
+    read of 2026-10-10 found that remedy appended to a read's no-such-card refusal")
+
   (fix "lander-bench-fault-and-bisect" :release "v1.2.6" :status "in-progress"
    :title "The lander blames no head for a bench fault and bisects a red batch"
    :text "A bench fault blames no head, a red batch is bisected, and landings go as batches are built. The
@@ -139,6 +152,18 @@
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
 
+  (fix "cut-sentinel-releases-itself" :release "v1.2.6" :status "shipped"
+   :title "A cut sentinel releases itself on the tick, and pushes the seat that the release is ready to cut"
+   :text "A sentinel that names its needs (a cut: a stream's reopen stop, a release sentinel) is released by
+    the next tick's resolve when every card it needs has landed: released as the coordinator's release
+    lands it, released_by the machine, what waited behind it to ready in the same step, its reached
+    judgment closed, and one notice addressed to the seat that the release is ready to cut -- the publish
+    itself stays a gated step with a cold read. A plain gate (a stop by position alone, no needs named)
+    and a held sentinel keep the coordinator's release; the machine releases through no stream's hold and
+    waives nothing in flight. The release lives in the resolve part, the duty the reference model names,
+    so the tick's shape is the model's."
+   :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")
+
   (fix "land-merges-the-roadmap-data" :release "v1.2.6" :status "shipped"
    :title "Land merges the roadmap data, not returns the card"
    :text "A head whose conflict is in docs/fixes.sexp or docs/roadmap.sexp, with or without FIXES.md and
@@ -160,4 +185,9 @@
     :title "Rested routes must not overflow the fleet table property cap"
     :text "Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the
      tick writes nothing. Use one property for all."
-    :origin "issue #5210")))
+    :origin "issue #5210")
+
+   (fix "hold-pinned-to-head-sha" :release "v1.2.9" :status "shipped"
+    :title "A hold pinned to an older head is not a hold at the current head"
+    :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
+    :origin "issue #2710")))

@@ -59,7 +59,16 @@ func (s *Snapshot) readerServesTier(reader, tier string) bool {
 	if tier != cardhdr.RouteFlash && s.fleetReadsFlashOnly(reader) {
 		return false
 	}
-	return s.readerReadsTier(reader, tier) && (s.ownModelReader(reader) || s.tierRouted(tier))
+	if s.ownModelReader(reader) {
+		return s.readerReadsTier(reader, tier)
+	}
+	stored := strings.TrimSpace(s.readerTiersStored(reader))
+	if stored != "" {
+		// Fleet reader with explicit tier configuration serves only those tiers.
+		return slices.Contains(Split(stored), tier)
+	}
+	// Fleet reader without explicit tier configuration serves tiers with enabled routes.
+	return s.tierRouted(tier)
 }
 
 // fleetReadsFlashOnly says the reader is the fleet's (it brings no model of its own and
