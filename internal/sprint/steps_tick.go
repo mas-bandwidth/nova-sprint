@@ -147,6 +147,7 @@ var TickDecisions = map[string][]string{
 	NReadLate:       {"ask --another", "wait", "drop"},
 	NMergeLate:      {"merge --stream <s>", "look", "wait"},
 	NStalled:        {"look at the card", "wait"},
+	NNoFrontierRoom: {"reader add", "wait"},
 	// the backlog alarms (alarms.go): seen, or quiet for a while
 	NAlarmReview:  {"ack", "wait"},
 	NAlarmMerging: {"ack", "wait"},
@@ -1518,7 +1519,8 @@ func condKey(typ, subject, card, what string) string {
 		NBrokenReadsOutrun, NReaderBreaks,
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
-		NStopMemberDown, NStopPinWaits, NFriendStalled:
+		NStopMemberDown, NStopPinWaits, NFriendStalled,
+		NNoFrontierRoom:
 		what = ""
 	case NCoordinatorBehind:
 		// one condition a level (stops.go, BehindLevel): its count and its ages change
@@ -1677,7 +1679,7 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 			if !open[k] {
 				fresh = append(fresh, sub)
 			}
-			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || slices.Contains(StopTypes, c.typ)) {
+			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || slices.Contains(StopTypes, c.typ)) {
 				update(n, c.what, c.decisions) // the latest facts, in place
 			}
 		}

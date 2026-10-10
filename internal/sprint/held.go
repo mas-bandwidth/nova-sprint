@@ -288,6 +288,12 @@ func (c *held) notes(ns []Note) {
 			for _, p := range n.Primaries {
 				c.tick[p] = "writes " + n.Type
 			}
+		case n.Type == NNoFrontierRoom:
+			// a stream-level judgment the friend ask writes for every frontier
+			// read no one may take: its primaries each get the "writes ..." line
+			for _, p := range n.Primaries {
+				c.tick[p] = "writes " + n.Type
+			}
 		case n.StreamLevel:
 			c.tickStream[n.Stream] = "writes " + n.Type
 		default:
@@ -501,6 +507,15 @@ func (c *held) judgment(pr *Card) string {
 		for _, j := range c.judged[StreamSubject("")] {
 			if strings.HasPrefix(j, NFewReaders) {
 				return "fewer than two readers are up; open: " + j
+			}
+		}
+	}
+	// a frontier read the ask left waiting for room: the one judgment that names it, open or
+	// acknowledged, and its cause (frontierRoomJudgment writes its text with "<id> waits: <cause>")
+	if c.waitsToBeAsked(pr) {
+		for _, o := range slices.Concat(c.s.Open, c.s.Acked) {
+			if o.Note.Type == NNoFrontierRoom && strings.Contains(o.Note.What, pr.ID+" waits: ") {
+				return "open: " + o.Note.What
 			}
 		}
 	}

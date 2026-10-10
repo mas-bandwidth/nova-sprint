@@ -103,6 +103,13 @@ const (
 	NSprintDone      = "the sprint is done"
 	NSentinelReached = "sentinel reached" // a stop: the coordinator decides before going on
 	NRepeatSuffix    = "; a second time for the same cause"
+	// NNoFrontierRoom is the tick's judgment that a frontier read is asked of
+	// no one: no friend of frontier class and no reader row that declares
+	// frontier is up with room and free at its attempt. Its text names who is
+	// full, and each read no one may take with why. It is one judgment while
+	// it stands: rewritten in place only when its facts change, never raised
+	// anew (friend_read.go, read_cards.go).
+	NNoFrontierRoom = "no frontier reader has room"
 )
 
 // Decisions open to each judgment type.
@@ -134,6 +141,7 @@ var Decisions = map[string][]string{
 	NScoredLow:         {"add a repair card", "ack"}, // landed: a rework is a new card; ack accepts the landing
 	NTimer:             {"ack"},                      // a timer the actor set woke it: nothing to decide
 	NStalled:           {"look at the card", "wait"}, // each stall names its own
+	NNoFrontierRoom:    {"reader add", "wait"},
 }
 
 // RepeatDecision is added to a judgment for a primary that came back a second
