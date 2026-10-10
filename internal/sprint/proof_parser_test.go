@@ -222,6 +222,28 @@ func TestTheParserProofChecksAnAssertionRewriteOverTheDiff(t *testing.T) {
 		require.Len(t, run.Failed, 1)
 		assert.Contains(t, run.Failed[0].What, "not an assertion line")
 	})
+
+	t.Run("assert.State() is not an assertion line", func(t *testing.T) {
+		t.Parallel()
+		v := proofView(
+			proofDiffLines("a/a_test.go", "@@ -1,1 +1,2 @@", " \tassert.Equal(t, 1, 2)", "+\tassert.State(t, \"foo\")"),
+			map[string]string{"a/a_test.go": "package a\n"},
+		)
+		run := ParserProof(cardhdr.KindRewrite, v)
+		require.Len(t, run.Failed, 1)
+		assert.Contains(t, run.Failed[0].What, "not an assertion line")
+	})
+
+	t.Run("require.State() is not an assertion line", func(t *testing.T) {
+		t.Parallel()
+		v := proofView(
+			proofDiffLines("a/a_test.go", "@@ -1,1 +1,2 @@", " \trequire.Equal(t, 1, 2)", "+\trequire.State(t, \"foo\")"),
+			map[string]string{"a/a_test.go": "package a\n"},
+		)
+		run := ParserProof(cardhdr.KindRewrite, v)
+		require.Len(t, run.Failed, 1)
+		assert.Contains(t, run.Failed[0].What, "not an assertion line")
+	})
 }
 
 // TestNewParserProofReadsTheHeadAndRunsTheCheck drives the runner the tick

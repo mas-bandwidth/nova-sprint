@@ -460,8 +460,41 @@ func assertionLine(body string) bool {
 	case t == "", strings.HasPrefix(t, "//"), strings.HasPrefix(t, "import "), strings.HasPrefix(t, `"`), t == ")" || t == "(":
 		return true
 	}
-	for _, needle := range []string{"assert.", "require.", "t.Error", "t.Fatal", "t.Fail", "t.Log", ".Errorf(", ".Fatalf(", ".Error(", ".Fatal(", ".FailNow("} {
-		if strings.HasPrefix(t, needle) {
+	// assert. or require. must be followed by an actual call ending with ) (assert.X(...))
+	if strings.HasPrefix(t, "assert.") || strings.HasPrefix(t, "require.") {
+		// must end with ) and have a comma (t, ...) to be a real assertion
+		if !strings.HasSuffix(t, ")") || !strings.Contains(t, ",") {
+			return false
+		}
+		// check it's an actual assertion call (has pattern assert.X(t, ...) not assert.X(t))
+		// find the method name between prefix and (
+		methodStart := strings.Index(t, ".") + 1
+		if methodStart <= 0 {
+			return false
+		}
+		// extract method name (before any parens or spaces)
+		methodEnd := strings.Index(t[methodStart:], "(")
+		if methodEnd < 0 {
+			return false
+		}
+		method := t[methodStart : methodStart+methodEnd]
+		// check it's a valid assertion-like method name (not State, Setup, etc.)
+		// test methods don't start with common non-assertion prefixes
+		switch strings.ToLower(method) {
+		case "state", "setup", "suite":
+			return false
+		}
+		return true
+	}
+	// t.Error, t.Fatal, t.Fail, t.Log must be followed by a call
+	for _, prefix := range []string{"t.Error", "t.Fatal", "t.Fail", "t.Log"} {
+		if strings.HasPrefix(t, prefix) {
+			return strings.Contains(t, "(") && strings.Contains(t, ")")
+		}
+	}
+	// .Errorf, .Fatalf, .Error, .Fatal, .FailNow at end of line must be calls
+	for _, suffix := range []string{".Errorf(", ".Fatalf(", ".Error(", ".Fatal(", ".FailNow("} {
+		if strings.Contains(t, suffix) {
 			return true
 		}
 	}
