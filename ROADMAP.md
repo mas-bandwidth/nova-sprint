@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (213)
+- [The sprint machine](#the-sprint-machine) (212)
 - [Setup, release and operations](#setup-release-and-operations) (28)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (20)
@@ -1021,14 +1021,6 @@ A fresh coordinator seat gets a durable, supervised recipe that turns new judgme
 Target: after v1.4
 
 From: issue #5131
-
-### Inbox push cannot overwrite a published judgment
-
-Two overlapping clients share one temporary path, so a second write can change the published file. Use a unique temporary path per writer.
-
-Target: v1.3
-
-From: issue #5160
 
 ### The tick watchdog bounds diagnostics and refuses negative deadlines
 

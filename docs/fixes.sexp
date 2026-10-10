@@ -18,7 +18,9 @@
    :text "The fixes held during the split, the point-release candidates found on 2026-10-10, the owed
     tests, and the sprint store cards that are point-release work. Each is re-applied or written in
     this repository, then cut as one release."
-   :date "2026-10-10"))
+   :date "2026-10-10")
+  (release "v1.2.9" :status "planned" :date "2026-10-10"
+   :text "Inbox push writes each judgment once without concurrent writers sharing a temporary path."))
  :items
  ((fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
@@ -94,4 +96,10 @@
     .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
-   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")))
+   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+
+   (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
+    :title "Inbox push cannot overwrite a published judgment"
+    :text "Two overlapping clients share one temporary path, so a second write can change the published
+     file. Use a unique temporary path per writer."
+    :origin "issue #5160")))

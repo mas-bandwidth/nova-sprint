@@ -30,3 +30,9 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 - **A card already done at its base is a duplicate brief, not a worker failure** (shipped). Nothing to do because the base already contains the change is a brief defect, a duplicate of landed work, outside ok%, and raises a re-cut judgment. From: nova-tools PR #5585, head 0beb0508.
 - **A draining member does not keep a stale no-room word** (shipped). The room check runs after the drain return, so a draining member does not keep a stale no-room word; the deal and read disk floor fix also gets its TLA+ reversed witness. From: v1.2.5 candidate list; nova-tools PR #5569 follow-up.
 - **A bench tree is a standalone clone, and one that is not is refused with its reason** (shipped). The mirror stage ends by checking that the staged tree's .git is a directory in the tree, and a .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git no longer exits 128 on a fleet host with nothing saying why. From: lander fault 5579, space git exit 128 (held-PR ledger row 5579).
+
+## v1.2.9 (planned, 2026-10-10)
+
+Inbox push writes each judgment once without concurrent writers sharing a temporary path.
+
+- **Inbox push cannot overwrite a published judgment** (planned). Two overlapping clients share one temporary path, so a second write can change the published file. Use a unique temporary path per writer. From: issue #5160.

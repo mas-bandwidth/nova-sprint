@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -269,4 +270,54 @@ func TestInboxPushThroughTheServerWritesTheGroupWhole(t *testing.T) {
 	assert.Contains(t, string(file), "JUDGMENT "+id+" ! fewer than two readers up", string(file))
 	assert.Contains(t, string(file), "\n  wait:\n    nova-sprint wait "+id+" --for 30m\n  notes: "+id+"\nclock: ", string(file))
 	assert.Contains(t, sent, []string{"inbox", "--actor", "boss", "--json", "--open", id}, "the group was read whole through the server: %v", sent)
+}
+
+// Concurrent inbox writers share a destination but must not share their
+// unpublished files: the published judgment is the cursor and record (the
+// inbox row, docs/SPEC-SPRINT.md).
+func TestWriteOnceConcurrentWritersKeepThePublishedJudgment(t *testing.T) {
+	t.Parallel()
+	const writers = 16
+	dir := t.TempDir()
+	path := filepath.Join(dir, "judgment.md")
+	texts := make([]string, writers)
+	for i := range texts {
+		texts[i] = strings.Repeat(string(rune('a'+i)), 1<<20)
+	}
+	type result struct {
+		written bool
+		err     error
+	}
+	start := make(chan struct{})
+	results := make(chan result, writers)
+	var wg sync.WaitGroup
+	for _, text := range texts {
+		wg.Add(1)
+		go func(text string) {
+			defer wg.Done()
+			<-start
+			written, err := writeOnce(path, text)
+			results <- result{written: written, err: err}
+		}(text)
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	writes := 0
+	for result := range results {
+		require.NoError(t, result.err)
+		if result.written {
+			writes++
+		}
+	}
+	require.Equal(t, 1, writes, "one writer publishes the judgment")
+
+	published, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, texts, string(published), "the published bytes must be one complete writer's judgment")
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "judgment.md", entries[0].Name(), "all per-writer temporary files are removed")
 }

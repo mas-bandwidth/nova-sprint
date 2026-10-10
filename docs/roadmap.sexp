@@ -1247,13 +1247,6 @@
    :date "2026-10-10"
    :release "v1.3"
    :origin "issue #5172")
-  (item "inbox-push-write-once-race" :group "sprint"
-   :title "Inbox push cannot overwrite a published judgment"
-   :text "Two overlapping clients share one temporary path, so a second write can change the published
-    file. Use a unique temporary path per writer."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "issue #5160")
   (item "tick-watchdog-bounded-diagnostics" :group "sprint"
    :title "The tick watchdog bounds diagnostics and refuses negative deadlines"
    :text "Watchdog exit must not wait on diagnostics that can block. A negative deadline is refused."
