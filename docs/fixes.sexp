@@ -102,4 +102,13 @@
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
      file. Use a unique temporary path per writer."
-    :origin "issue #5160")))
+    :origin "issue #5160")
+
+  (fix "dashboard-pie-slices-meet-centre" :release "v1.2.6" :status "shipped"
+   :title "The dashboard pie's slice borders meet at the centre"
+   :text "The pie drew its borders on the slices' own outlines, so a border ate every tip half a unit
+    short of the centre and the borders faded into a pale star there instead of crossing at the point
+    (the round join the owner's notch got on 2026-10-10 still stopped short). The fills are drawn bare
+    now and the borders are drawn over them, one spoke a border, from the centre to the rim at each
+    slice's end edge, with the rim ring over those. A test renders the pie and reads the borders back."
+   :origin "this pull request; the dashboard page, internal/sprintdash/page")))

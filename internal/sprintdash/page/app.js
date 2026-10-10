@@ -753,6 +753,12 @@ function renderPie(d) {
     endPts.push({ x0: x0.toFixed(2), y0: y0.toFixed(2), x1: x1.toFixed(2), y1: y1.toFixed(2), frac: frac, a1: a1 });
     a0 = a1;
   });
+  // the slices meet at the centre (docs/fixes.sexp, dashboard-pie-slices-meet-centre): the
+  // fills are drawn bare and the borders go on top of them, one spoke a border, from the
+  // centre to the rim at each slice's end edge (the next slice's start, the same rounded
+  // point). A border on a slice's own outline ate every tip half a unit short of the centre
+  // and the borders faded into a pale star there instead of crossing at the point (the
+  // owner 2026-10-10: the round join that replaced the miter notch still stopped short).
   endPts.forEach(function (pt, i) {
     var p = document.createElementNS(ns, "path");
     if (pt.frac >= 0.9999) { p.setAttribute("d", "M50,2 A48,48 0 1 1 49.99,2 Z"); }
@@ -763,6 +769,17 @@ function renderPie(d) {
     var tt = document.createElementNS(ns, "title"); tt.textContent = vals[i][0] + " " + sp.fmt(vals[i][1]) + " (" + Math.round(100 * pt.frac) + "%)"; p.appendChild(tt);
     svg.appendChild(p);
   });
+  endPts.forEach(function (pt) {
+    if (pt.frac >= 0.9999) return; // a whole pie has no border to draw
+    var sep = document.createElementNS(ns, "line"); // the border after this slice
+    sep.setAttribute("class", "sep");
+    sep.setAttribute("x1", 50); sep.setAttribute("y1", 50);
+    sep.setAttribute("x2", pt.x1); sep.setAttribute("y2", pt.y1);
+    svg.appendChild(sep);
+  });
+  var rim = document.createElementNS(ns, "circle"); // the ring the outlines' stroke used to leave at the rim
+  rim.setAttribute("class", "rim"); rim.setAttribute("cx", 50); rim.setAttribute("cy", 50); rim.setAttribute("r", 48); rim.setAttribute("fill", "none");
+  svg.appendChild(rim);
 }
 // the In flight tile's subline (the owner 2026-10-04 3:20 and 3:25 PM): one line, two parts,
 // "<working> working · <review+fix+merging> verify" (the owner 2026-10-10: review, fix and merge are one global state, verify), each number white and its words grey;
