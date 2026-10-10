@@ -34,6 +34,7 @@ var harnessFaultClasses = []struct {
 	{"cost line", regexp.MustCompile(`(^|: |; )Cost: `)},
 	{"provider 5xx", regexp.MustCompile(`(?i)^provider failure|\b5[0-9][0-9] (bad gateway|internal server error|service unavailable|gateway timeout)\b|\b(status|http|code)[ :=]*5[0-9][0-9]\b|internal server error|bad gateway|service unavailable|gateway timeout`)},
 	{"deadline", regexp.MustCompile(`(?i)deadline[^.;]*no (result|report)|\bcapped at [0-9]`)},
+	{"budget", regexp.MustCompile(`\bPROMPT-DEFECT\b.*\breason=budget\b`)},
 	{"no result", regexp.MustCompile(`(?i)^no result:|no RESULT\.md`)},
 }
 
@@ -66,8 +67,8 @@ func HarnessFix(attempt, class, report string) string {
 // ruleHarness: the primary's work came back failed on a harness fault, or on a HOLD with
 // findings: reworked at once on its tier with the failure as its fix, whoever worked it and
 // however many cards failed the same way, up to its brief's bound (then the brief's
-// judgment stands). It says whether it answered a; a failure of neither kind is the failed
-// rule's as before.
+// judgment stands). Budget exhaustion follows the normal tier escalation path instead.
+// It says whether it answered a; a failure of neither kind is the failed rule's as before.
 func ruleHarness(s *Snapshot, a *RuleAnswer, pr *Card) bool {
 	report := workReport(s, pr)
 	if report == "" {
@@ -75,6 +76,11 @@ func ruleHarness(s *Snapshot, a *RuleAnswer, pr *Card) bool {
 	}
 	class := HarnessFault(report)
 	if class == "" && !HoldFindings(report) {
+		return false
+	}
+	// Budget exhaustion follows the normal tier escalation path, not immediate rework.
+	// It should not be treated as an identical failure that blocks tier escalation.
+	if class == "budget" {
 		return false
 	}
 	a.Rule = RuleFailed

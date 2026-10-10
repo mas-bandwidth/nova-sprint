@@ -306,9 +306,12 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 		left(a, bb.String())
 		return
 	}
-	if why := sameFailure(s, pr.F(FieldFailure)); why != "" {
-		left(a, why)
-		return
+	// Budget exhaustion follows tier escalation, not identical failure binding.
+	if pr.F(FieldFailure) != "budget" {
+		if why := sameFailure(s, pr.F(FieldFailure)); why != "" {
+			left(a, why)
+			return
+		}
 	}
 	a.Card = pr.ID
 	tier := cardTierOf(pr)
@@ -344,6 +347,11 @@ func ruleBound(s *Snapshot, a *RuleAnswer) {
 	}
 	if bb, ok := AtBriefBound(pr, "", s.AttemptsCap(pr.Row)); ok {
 		left(a, bb.String())
+		return
+	}
+	// Budget exhaustion at second attempt escalates to next tier.
+	if pr.F(FieldFailure) == "budget" && pr.Int("attempt") == 2 {
+		up(s, a, pr, fmt.Sprintf("attempt %s failed on budget; a new attempt on the next tier", pr.F("attempt")))
 		return
 	}
 	wc := AtRedealBound(s, pr)
