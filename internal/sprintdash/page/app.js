@@ -497,7 +497,12 @@ function setMachine(line) {
   else if (/^running\b/i.test(text)) text = "running";
   var stopped = /STOPPED/.test(text);
   // the human page says STOPPED and nothing more; the reason is the coordinator's view (the owner 2026-10-04 10:15 PM: "STOPPED is plenty")
-  if (stopped) text = "STOPPED";
+  if (stopped) {
+    text = "STOPPED";
+    $("live").classList.add("stopped");
+  } else {
+    $("live").classList.remove("stopped");
+  }
   setText($("machine"), text);
   setClass($("machine-chip"), "chip" + (stopped ? " alert" : ""));
   // the bar pulses only while the machine runs (the owner 2026-10-04 9:14 AM)
@@ -583,7 +588,7 @@ function renderReaders(d) {
 function renderHero(d, s, ft) {
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
-  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "-");
+  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "nothing");
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
   if (m) {
     setHTML($("eta"), etaText(m[1]));
@@ -823,9 +828,7 @@ function renderTopStreams(d) {
     });
     putKid(r.node, cellCount - 1, "num", fmt(row.cost));
   });
-  if (!box._none) box._none = el("div", "row faint", "no stream has spent anything yet");
-  if (!rows.length && box._none.parentNode !== box) box.appendChild(box._none);
-  if (rows.length && box._none.parentNode === box) box._none.remove();
+// no rows; total row
   // the pie's legend in the header: each tier as the state legend draws an item, its square in
   // the tier's color, the name grey and the amount white, in the pie's order, no separators
   var ts = $("tier-sub");
