@@ -50,7 +50,7 @@ func readersBehind(h *harness, open func(string) []sprint.Open, written func(str
 	h.machine()
 	behind := open(sprint.NReadersBehind)
 	require.Len(t, behind, 1)
-	assert.Equal(t, "the readers are behind: review 6, reads asked and not begun past 10m0s; the readers read 2 of width 6 (reader-m1 reads 2 of width 6, 4 waiting past the window: it reads under its width, restart its loop (nova-config loop show reader-m1))", behind[0].Note.What)
+	assert.Equal(t, "the readers are behind: reads asked and not begun past 10m0s; the readers read 2 of width 6 (reader-m1 reads 2 of width 6, 4 waiting past the window: it reads under its width, restart its loop (nova-config loop show reader-m1))", behind[0].Note.What)
 	assert.Equal(t, []string{"restart reader-m1", "wait 10m"}, behind[0].Note.Decisions)
 	cmds := h.commandsOf(sprint.NReadersBehind)
 	require.Len(t, cmds, 2)
