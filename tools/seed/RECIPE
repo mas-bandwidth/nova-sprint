@@ -83,6 +83,11 @@ keep	cmd/nova-sprint/seat_novatools_test.go
 keep	tools/seed
 gomod
 keep	ROADMAP.md
+keep	docs/roadmap.sexp
+keep	docs/fixes.sexp
+keep	FIXES.md
+keep	internal/roadmapdoc
+keep	tools/roadmap
 keep	CONTRIBUTING.md
 keep	assets
 keep	brand
