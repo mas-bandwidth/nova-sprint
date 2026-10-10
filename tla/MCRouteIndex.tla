@@ -5,10 +5,16 @@
 \* the work cards of a tier are interchangeable (the symmetry).
 EXTENDS RouteIndex, TLC
 
-CONSTANTS ProCards
+CONSTANTS ProCards, BenchedCards, RefusedCards
+
+\* m1 can launch no flash entry, m2 every entry; a benched card's bench is m1 alone,
+\* and a refused card was refused at staging by m2, so dealt again its pool is m1.
+MCMemberUnlaunch == [m \in Members |-> IF m = "m1" THEN {"a", "b", "c"} ELSE {}]
+MCBenchOf == [c \in Cards |-> IF c \in BenchedCards THEN {"m1"} ELSE Members]
+MCRefused == [c \in Cards |-> IF c \in RefusedCards THEN {"m2"} ELSE {}]
 
 MCArr == [t \in {"flash", "pro"} |-> IF t = "flash" THEN <<"a", "b", "c">> ELSE <<"d", "e", "e">>]
 MCTierOf == [c \in Cards |-> IF c \in ProCards THEN "pro" ELSE "flash"]
 \* a read card is no work card's twin: the reads are left out of the symmetry
-MCSym == Permutations(Cards \ (ProCards \cup Pinned \cup Reads)) \cup Permutations(ProCards \ Reads)
+MCSym == Permutations(Cards \ (ProCards \cup Pinned \cup Reads \cup BenchedCards \cup RefusedCards)) \cup Permutations(ProCards \ Reads)
 =============================================================================
