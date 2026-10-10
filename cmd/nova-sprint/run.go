@@ -233,7 +233,8 @@ func (a *app) cmdTick(args []string, stdout, stderr io.Writer) int {
 // halt by a stop, the moves left due past its bounds, and a summary line; a
 // tick of a STOPPED machine says the machine is STOPPED.
 func (a *app) printTick(res store.TickResult, err error, max int, stdout, stderr io.Writer) {
-	if res.State == store.Stopped && err == nil && res.Halted == "" && res.Done == "" {
+	if res.State == store.Stopped && err == nil && res.Halted == "" && res.Done == "" && !slices.ContainsFunc(res.Parts, func(p store.PartResult) bool { return p.Name == sprint.PartLive }) {
+		// a STOPPED tick that returned no take (its reconcile, sprint.LiveReturns) did nothing
 		fmt.Fprintf(stdout, "TICK OK state=STOPPED nothing done; run: nova-sprint start\n")
 		return
 	}

@@ -328,3 +328,8 @@ MCStatsResetBrokenNoRebase.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignor
 MCStatsResetBrokenByCount.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoLock.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoStamp.cfg	MCStatsReset.tla	invariant	RecordShowsShown	ignore-terminal	statsreset	required	-
+MCLiveRuns.cfg	MCLiveRuns.tla	pass	-	ignore-terminal	liveruns	required	-
+MCLiveRunsReachStoppedReturn.cfg	MCLiveRuns.tla	invariant	NeverStoppedReturn	ignore-terminal	liveruns	required	-
+MCLiveRunsBrokenStoppedNoReconcile.cfg	MCLiveRuns.tla	invariant	WorkingIsLive	ignore-terminal	liveruns	required	-
+MCLiveRunsBrokenDebtById.cfg	MCLiveRuns.tla	invariant	StopMarkerIsWorking	ignore-terminal	liveruns	required	-
+MCLiveRunsBrokenHeldNotLive.cfg	MCLiveRuns.tla	invariant	NoReportLost	ignore-terminal	liveruns	required	-

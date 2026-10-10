@@ -65,6 +65,10 @@ type WhereRecord struct {
 	RowCards  map[string]map[string]int `json:"row_cards,omitempty"`
 	ReadCards sprint.ReadCardCounts     `json:"read_cards"`
 	FixStates map[string]map[string]int `json:"fix_states,omitempty"`
+	// RowWorking is each fleet row's working cards as <card>@<gen> (sprint.RowWorkingKeys):
+	// where counts them against the rows' beats at each read (sprint.LiveCountKeys), so the
+	// dashboard's working cell is the live runs, never a take whose run is gone (v1.2.6).
+	RowWorking map[string][]string `json:"row_working,omitempty"`
 	// Stats is the stats record the spend and per landed were counted from (statsStamp: the
 	// last tidy of the streams and the reset's mark); a record whose stamp is not the stats
 	// record's is counted again and never taken, though no table moved.
@@ -89,6 +93,7 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 	}
 	r.RowCards, r.ReadCards = sprint.RowCardCounts(s)
 	r.FixStates = sprint.FixStateCounts(s)
+	r.RowWorking = sprint.RowWorkingKeys(s)
 	for _, at := range sprint.RecentLandings(landed, m.Spans, m.FirstStart(s.Cleared), now) {
 		r.Landings = append(r.Landings, at.Unix())
 	}
@@ -309,6 +314,11 @@ type WhereFacts struct {
 	RowCards  map[string]map[string]int
 	ReadCards sprint.ReadCardCounts
 	FixStates map[string]map[string]int
+	// RowWorking is the record's working cards by fleet row (sprint.RowWorkingKeys), counted
+	// at the fleet table's revision FleetRev; nil without the record, when where shows the
+	// table's counts (as it does when the fleet moved since the count).
+	RowWorking map[string][]string
+	FleetRev   uint64
 	// ReadsWaiting, Priorities and StreamPriorities are the record's (WhereRecord); zero
 	// without the record.
 	ReadsWaiting     int
@@ -388,6 +398,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			f.ReadsWindow = r.ReadsWindow
 			f.RowCards, f.ReadCards = r.RowCards, r.ReadCards
 			f.FixStates = r.FixStates
+			f.RowWorking, f.FleetRev = r.RowWorking, r.FleetRev
 			for _, s := range r.Landings {
 				f.Landed = append(f.Landed, time.Unix(s, 0).UTC())
 			}

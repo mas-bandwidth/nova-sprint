@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -438,27 +437,10 @@ func TestDoneStopWithoutActiveChildrenHasNoDebt(t *testing.T) {
 	assert.True(t, running.Running())
 }
 
-func TestMovedReturnedCardDoesNotSettleStopDebt(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
-	h.setup(1)
-	h.startMachine()
-	h.machine()
-	s := h.snap()
-	wc := s.Fleet.Card(s.Work.Card("s1-1").F("work"))
-	require.NotNil(t, wc)
-	gen := max(wc.Int("gen"), 1)
-	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
-	_, _, _, err := h.st.StopUntil(h.ctx, "owner stopped child", h.now.Add(time.Hour))
-	require.NoError(t, err)
-	h.must(StopReturnStep(sprint.StopReturnReq{As: wc.Row, IDs: []string{wc.ID}, Gens: map[string]int{wc.ID: gen}, Reason: "child exited"}))
-	require.NoError(t, h.m.RowsAdd(h.ctx, "t-fleet", []string{"other-owner"}))
-	h.poke(sprint.Fleet, ntable.BatchMemberEntry{ID: wc.ID,
-		Move: &ntable.MemberMoveOp{Row: "other-owner", Col: sprint.Ready},
-		Set:  map[string]string{"gen": fmt.Sprint(gen + 1)}})
-	_, _, _, err = h.st.SetMachine(h.ctx, true)
-	require.ErrorContains(t, err, wc.Row+":"+wc.ID+"@1", "a moved return receipt belongs to the original owner")
-}
+// TestMovedReturnedCardDoesNotSettleStopDebt is replaced in v1.2.6 by live_test.go's
+// TestStartReadsTheReceiptNotTheRow: start reads the return receipt the card carries, not
+// the row it is on, so a returned card a hold moved since is settled (the hold of
+// 2026-10-10 that froze friend.zhi's row), and a card moved with no receipt is not.
 
 func TestClearCannotEraseUnreturnedStopDebt(t *testing.T) {
 	t.Parallel()
