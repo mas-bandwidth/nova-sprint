@@ -60,6 +60,15 @@
     fixed before merge: the finding reader is unset only when the card holds it, the bound subtest
     reaches the attempt cap, and the friend card claim says a widen does not pin her next attempt."
    :origin "nova-tools PR #5570, head 22d72154d, re-applied here")
+  (fix "deal-draws-launchable-route" :release "v1.2.6" :status "in-progress"
+   :title "A deal draws only a route its member can launch"
+   :text "The deal, the redeal, the escalation and the rebalance onto a machine draw only routes whose
+    harness the member can launch, and a move that keeps a card's route never goes to a member that
+    cannot launch it (tla/RouteIndex.tla, NeverUnlaunchable). DEPLOY STEP for the final adopt: a member
+    names no headless harness (claude, codex, grok) until `nova-sprint fleet up <member> --harnesses
+    <h,...>` runs, so it is dealt opencode routes only; after the adopt, run it for each member with
+    the headless harnesses on its PATH, or the deal draws no headless route for it."
+   :origin "nova-tools PR #5576, head 065bf6b73, re-applied in nova-sprint")
 
   (fix "check-waived-read-and-where-tiers" :release "v1.2.6" :status "shipped"
    :title "check honours a waived second read; where shows tiers once"
