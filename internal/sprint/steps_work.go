@@ -1220,6 +1220,9 @@ type TakeReq struct {
 	As   string
 	Gens map[string]int
 	Who  string
+	// Lane is a lane's take (take --as <member> --lane <n>, lane_hold.go LaneTake): the card
+	// lane n of the member's row holds, else one it is given now; 0 is no lane.
+	Lane int
 }
 
 // named says the selection names its cards by id.
@@ -1245,6 +1248,9 @@ func liveGen(verb string, c *Card, gens map[string]int) string {
 // tick, every member's row at once); a take by id
 // names one member.
 func Take(s *Snapshot, r TakeReq) Plan {
+	if r.Lane != 0 {
+		return LaneTake(s, r)
+	}
 	members := Split(r.As)
 	if len(members) <= 1 {
 		return takeOne(s, r)
@@ -1401,6 +1407,9 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		if friend, ok := FriendOfRow(r.As); ok {
 			set, unset = friendTaken(s, c, friend) // her deadline, as her deal and her next set it
 		}
+		if r.Lane == 0 {
+			unset = append(unset, FieldLane, FieldLaneAt) // no lane holds a card a take by count moves (lane_hold.go)
+		}
 		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, moveEntry(c, c.Row, Working, set, unset...))},
 			Moved: fmt.Sprintf("%s fleet ready -> working member=%s gen=%s", c.ID, r.As, c.F("gen"))})
 	}
@@ -1421,6 +1430,9 @@ type FinishReq struct {
 	// Branch and Base are the branch the work is on and the one it started
 	// from, as the worker reports them.
 	Branch, Base string
+	// Lane is the lane of As finishing (--lane): a card another lane of the row holds is
+	// refused (lane_hold.go laneRefusal); 0 names none.
+	Lane int
 	// Usage is what the run spent, as the member read it from its child (its
 	// budget word and wall, the tokens by class, the harness's cost: cardcost.Usage):
 	// kept on the work card, the attempt's record, timed and priced (cost.go).
@@ -1485,6 +1497,9 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		if len(members) > 0 && !contains(members, c.Row) {
 			return "dealt to " + c.Row + ", not " + r.As
+		}
+		if why := laneRefusal(c, r.As, r.Lane); why != "" {
+			return why
 		}
 		if late {
 			return lateFinishWhy(c, r)

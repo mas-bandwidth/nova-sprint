@@ -66,7 +66,11 @@ func TakeStep(r sprint.TakeReq) Step {
 	// a take for a friend's row reads the friends' seats: her status is FriendStatus, never
 	// a control card's (sprint's takeSeat)
 	friends := slices.ContainsFunc(sprint.Split(r.As), sprint.IsFriendRow)
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "take", Load: tables(sprint.Fleet), Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Friends: friends, StartsWork: true,
+	load := tables(sprint.Fleet)
+	if r.Lane != 0 {
+		load = tables(sprint.Fleet, sprint.Readers) // a reader's lanes hold its reads (lane_hold.go)
+	}
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "take", Load: load, Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Friends: friends, StartsWork: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Take(s, r) }}
 }
 
@@ -201,7 +205,9 @@ func RankStep(r sprint.RankReq) Step {
 
 // MergeStep is one mechanical merge step of a stream.
 func MergeStep(r sprint.MergeReq) Step {
-	// a landing takes each card's total from the card itself (sprint's cost.go)
+	// a landing takes each card's total from the card itself (sprint's cost.go); it counts no
+	// reads: the lander checks them when it marks the landing before the push
+	// (sprint.MarkLanding), and a landing records what git holds
 	load := tables(sprint.Merge, sprint.Work)
 	if r.Conflict != "" {
 		// a conflict reworks the card at the tip: its read cards retire (sprint's landRefused)

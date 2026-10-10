@@ -9,12 +9,12 @@ import (
 
 // The sprint's read count (nova-sprint set --reads; the owner, 2026-10-06: "I'd like to
 // waive the second read for the moment"): while it is set, every card in review needs that
-// many ok reads whatever its tier (ReadsNeededIn); a card past review is held to the count
-// it was accepted on.
+// many ok reads whatever its tier (ReadsNeededIn), in review and in merging; a landed card
+// is held to the count it landed on.
 
 // A heavy card with one ok read of its two waits in review on the tier's rule, and is
-// accepted on the next tick once the sprint needs one read; past review it keeps the count
-// it was accepted on when the setting goes back to default.
+// accepted on the next tick once the sprint needs one read; when the setting goes back to
+// default before it lands, it goes back to review for its second read.
 func TestAHeavyCardWithOneOkReadIsAcceptedWhenReadsIsOne(t *testing.T) {
 	t.Parallel()
 	w := tierWorld(t)
@@ -38,9 +38,16 @@ func TestAHeavyCardWithOneOkReadIsAcceptedWhenReadsIsOne(t *testing.T) {
 	assert.Equal(t, "1", pr.F(FieldReadsNeeded), "the count it was accepted on")
 	w.clean("accepted on the sprint's one read")
 
+	// the setting back to default before it lands: a merging card needs what a card in
+	// review needs (v1.2.6, tla/Land.tla NoLandWithoutReads), so the heavy card is short of
+	// its second read and the tick sends it back to review for it
 	w.s.Work.SetProp(PropReadsNeeded, ReadTierDefault)
-	assert.Equal(t, 1, ReadsNeededIn(w.s, pr), "past review: never judged again")
-	w.clean("the setting back to default does not re-judge a card in merging")
+	assert.Equal(t, 2, ReadsNeededIn(w.s, pr), "merging: the heavy card's rule again")
+	p, _ = TickAccept(w.s, TickReq{})
+	require.Len(t, p.Units, 1)
+	w.must(p)
+	assert.Equal(t, Review, w.s.Work.Card("s1-2").Col)
+	w.clean("the setting back to default sends a merging card short of it back to review")
 }
 
 // reads 0: a primary whose work finished LAND is accepted on the next tick with no read
