@@ -653,3 +653,20 @@ func TestAHangingBackendEndsAtTheDeadline(t *testing.T) {
 		})
 	}
 }
+
+// The printed command of a late-merge judgment is one nova-sprint line that fill can run as
+// the answer path runs it: no comment, no second line (nova-sprint#63).
+func TestTheLateMergeCommandFillsAsOneRunnableLine(t *testing.T) {
+	t.Parallel()
+	n := sprint.Note{ID: "n-1.1", Kind: sprint.Judgment, Type: sprint.NMergeLate, Stream: "s1", StreamLevel: true,
+		Decisions: []string{"merge --stream s1", "look", "wait"}}
+	var lines []string
+	for _, c := range sprint.NoteCommands(n, []string{"s1-1"}) {
+		if c.Decision == "merge --stream s1" {
+			lines = c.Lines
+		}
+	}
+	run, why := fill(lines, decide.Chosen{})
+	assert.Empty(t, why)
+	assert.Equal(t, [][]string{{"land", "--stream", "s1"}}, run)
+}

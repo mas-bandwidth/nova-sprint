@@ -93,7 +93,8 @@ func (r RouteRest) Retired() bool {
 
 // OpenUntil is the end of a rest that has no time: a provider resting for its funds rests
 // until it is paid, a payment the balance poll sees (balance.go) or the coordinator's word
-// that it was paid (funded), never until a clock (the owner, 2026-10-03: "exclude that
+// that it was paid (funded); one resting for its key rests until woken (routes wake), which
+// no payment ends; neither ends by a clock (the owner, 2026-10-03: "exclude that
 // provider moving forward"). The property holds it as `open`.
 var OpenUntil = time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
 

@@ -468,7 +468,7 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 	landing := map[string]bool{}
 	for _, c := range batch {
 		if needs := WaitsFor(s, s.Work.Card(c.ID), landing); len(needs) > 0 {
-			p.refuse(c.ID, "the batch omits prerequisites "+strings.Join(needs, ", ")+"; nothing was changed; run: nova-sprint merge --stream "+r.Stream)
+			p.refuse(c.ID, "the batch omits prerequisites "+strings.Join(needs, ", ")+"; nothing was changed; run: nova-sprint land --stream "+r.Stream)
 			return p
 		}
 		ids = append(ids, c.ID)

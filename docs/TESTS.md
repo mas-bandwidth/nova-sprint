@@ -102,6 +102,9 @@ MERGE OK moved=1 refused=0 notes=2 op=merge-t36-1
 0/1 0.0% -> ETA -  machine: running
 ```
 
+The bare `merge` is the twin's. A real store refuses it (it would record a landing with no push); there, `land` pushes the batch and records the merge.
+
+
 ### Answered by nova-decide
 
 The routine judgments answered by the judgment decision
