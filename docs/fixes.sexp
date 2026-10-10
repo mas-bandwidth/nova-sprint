@@ -119,8 +119,14 @@
    :origin "nova-tools PR #5584, head 881df6ff")
   (fix "where-json-landed-series-fast" :release "v1.2.6" :status "planned"
    :title "where --json reads no log line for its landed series"
-   :text "The tick counts landings into the where record, so where --json answers in well under a second;
-    released sentinels are not counted as landings."
+   :text "The tick counts landings into the where record, so where --json answers in well under a second
+    (8.9 to 12.8 s before, 0.4 to 0.7 s after, measured on a copy of the live store); released sentinels
+    are not counted as landings. The public dashboard mirror's server.py (internal/sprintdash/stopgap)
+    is now versioned here: it stamps fetchedAt with the snapshot's own time and adds dataAgeSeconds.
+    AFTER THE DEPLOY, in the final adopt: rebuild the dashboard's nova-sprint-int2
+    (~/nova-bench/dashboard/bin/nova-sprint-int2) from this release, copy
+    internal/sprintdash/stopgap/server.py over ~/nova-bench/dashboard/server.py, and restart the
+    public mirror unit."
    :origin "nova-tools PR #5588, head 08f6af5a8")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "planned"
    :title "An empty run is its own harness fault"
