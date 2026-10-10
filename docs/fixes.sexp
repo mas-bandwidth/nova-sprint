@@ -95,8 +95,9 @@
   (fix "paths-widening-edits-card-in-place" :release "v1.2.6" :status "planned"
    :title "A PATHS widening on a reader finding edits the card in place"
    :text "A reader finding that widens PATHS edits the card in place, never a twin. Three review notes are
-    fixed before merge: the finding reader unset, the bound subtest, and the friend card claim."
-   :origin "nova-tools PR #5570, head 22d72154d")
+    fixed before merge: the finding reader is unset only when the card holds it, the bound subtest
+    reaches the attempt cap, and the friend card claim says a widen does not pin her next attempt."
+   :origin "nova-tools PR #5570, head 22d72154d, re-applied here")
   (fix "deal-draws-launchable-route" :release "v1.2.6" :status "planned"
    :title "A deal draws only a route its member can launch"
    :text "The deal draws only routes whose harness the member can launch; the adopt must set each member

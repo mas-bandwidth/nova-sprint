@@ -693,10 +693,13 @@ R45. **The same finding twice is a brief defect: fix the brief or drop the card,
     Done by: `nova-sprint brief <id> --brief-file <path>`; `nova-sprint recut <id> --brief-file <path>`;
     `nova-sprint set --attempts <n>`.
 
-R46. **Work a card needs outside its PATHS means a twin card with PATHS widened, never a diff outside them.**
-    Why: the lander refuses files outside PATHS, and the attempt was spent.
-    Done by: `nova-sprint recut <id> --brief-file <path> --new <id>`; `nova-sprint relink <old-id> <new-id>
-    --reason <text>`.
+R46. **Work a reader's finding says a card needs outside its PATHS means the card's PATHS widened in place (nova-sprint brief <id> --widen), the same card and never a twin, never a diff outside them.**
+    Why: the lander refuses files outside PATHS, and the attempt was spent; a twin wastes the card's
+    history and its reads.
+    Done by: the `read-broken` and `widen` rules (readers' findings widen one card at most three
+    times, then the brief is wrong and the card a mind's); `nova-sprint brief <id> --widen`;
+    `nova-sprint brief <id> --brief-file <path>`. The `paths` rule (a HOLD's PATHS-PROPOSED line,
+    paths_proposed.go) still replaces the card by a `-t` twin until its follow-up lands.
 
 R47. **A uniform failure shape across one model's cards is our contract failing (prompt or wrapper), fixed per
 model family; a model is dropped only on a measured quality floor with varied failures.**
