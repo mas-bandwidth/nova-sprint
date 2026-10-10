@@ -1256,6 +1256,11 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 		if c.Col == Withdrawn && c.F("kind") == "read" {
 			continue // a read withdrawn is history: its primary is asked again (friendReadLive)
 		}
+		if IsFriendRow(c.Row) {
+			// a friend's card past its deadline is redealt (TickFriendRedeal), never a late
+			// judgment: her card's deadline is no failure (docs/SPEC-SPRINT.md section 1)
+			continue
+		}
 		field, limit, word, own := WorkDeadline(s, c)
 		friend, idle := friendLaneIdle(s, r.Friends, c)
 		if idle {

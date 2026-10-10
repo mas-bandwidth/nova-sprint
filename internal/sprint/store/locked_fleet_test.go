@@ -13,14 +13,15 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
-// storeFleet is the fleet table's definition as the live store holds it: the columns
+// storeFleet is the fleet table's definition as the live store holds it after the
+// readers'-verdicts migration (migrations/0001_fleet_finished_redealt.sh): the columns
 // in schema.go: ready, working, width, done, ok%, redealt, status, load, withdrawn,
-// finished, ok, failed, ctl.
-const storeFleet = "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,redealt,status:text,load:text,withdrawn,finished,ok,failed,ctl:first:none"
+// finished, ok, failed, defect, ctl.
+const storeFleet = "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,redealt,status:text,load:text,withdrawn,finished,ok,failed,defect,ctl:first:none"
 
 // lockedFleet is the fleet table's definition as internal/sprint/TABLES.lock holds it: the
 // columns in storeFleet.
-const lockedFleet = "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,redealt,status:text,load:text,withdrawn,finished,ok,failed,ctl:first:none"
+const lockedFleet = "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,redealt,status:text,load:text,withdrawn,finished,ok,failed,defect,ctl:first:none"
 
 // colChecked is the mem twin refusing a display cell of a column its table does
 // not define, as the real store does (ntable: "no such column").
@@ -54,7 +55,7 @@ func TestATickOnAStoreWithTheLockedFleetTableWritesNoColumnItLacks(t *testing.T)
 	t.Parallel()
 	cols, err := ntable.ParseColumns(storeFleet)
 	require.NoError(t, err)
-	require.Len(t, cols, 13)
+	require.Len(t, cols, 14)
 	lockedCols, err := ntable.ParseColumns(lockedFleet)
 	require.NoError(t, err)
 	h := routeHarness(t, route("flash-a", "flash"))
