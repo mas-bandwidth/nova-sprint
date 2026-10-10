@@ -1,7 +1,9 @@
 package sprint
 
 import (
+	"errors"
 	"go/token"
+	"os"
 	"testing"
 )
 
@@ -51,22 +53,33 @@ func TestATestThatDoesNotPinTheChangeIsReworkedBeforeARead(t *testing.T) {
 			expected: []GateLintFinding{{What: GateLintPinAbsent + ": test passes at merge-base"}},
 		},
 		{
-			name: "test passes at head (pin broken check)",
+			name: "absent at base, green at head, red in reverted tree is accepted",
 			input: GateLintInput{
 				MergeBase: "abc123",
 				Head:      "def456",
+				RevertedHead: "reverted789",
 				TestPkg:   "internal/sprint",
 				TestName:  "TestSomething",
 			},
 			run: func(commit, pkg, testname string) (bool, error) {
-				// Test fails at merge-base, passes at head (reverted) - triggers pin broken
+				// Absence at base is permitted; the probe must use the materialized
+				// reverted tree rather than head before it accepts the pin.
 				if commit == "abc123" {
+					return false, errors.New("test absent at base")
+				}
+				if commit == "reverted789" {
 					return false, nil
 				}
-				if commit == "def456" {
-					return true, nil
-				}
-				return false, nil
+				return true, nil // head is green, but must not be used for this probe
+			},
+			expected: nil,
+		},
+		{
+			name: "reverted tree green is a broken pin",
+			input: GateLintInput{MergeBase: "abc123", Head: "def456", RevertedHead: "reverted789", TestPkg: "internal/sprint", TestName: "TestSomething"},
+			run: func(commit, pkg, testname string) (bool, error) {
+				if commit == "abc123" { return false, errors.New("test absent at base") }
+				return commit == "reverted789", nil
 			},
 			expected: []GateLintFinding{{What: GateLintPinBroken + ": test passes with non-test hunks reverted"}},
 		},
@@ -89,6 +102,17 @@ func TestATestThatDoesNotPinTheChangeIsReworkedBeforeARead(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFindNonTestReferencesDoesNotCountDeclaration(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/api.go"
+	if err := os.WriteFile(path, []byte("package api\nfunc Exported() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reached, err := FindNonTestReferences(dir, []string{path}, map[string]bool{"Exported": true})
+	if err != nil { t.Fatal(err) }
+	if reached["Exported"] { t.Fatal("declaration must not count as a non-test reference") }
 }
 
 // TestFindNonTestReferences tests that we can find references to symbols.

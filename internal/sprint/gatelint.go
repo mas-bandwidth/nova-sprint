@@ -55,6 +55,9 @@ func GateLintFindings(input GateLintInput, run BenchRunner) []GateLintFinding {
 		out = append(out, GateLintFinding{What: GateLintPinAbsent + ": test passes at merge-base"})
 		return out
 	}
+	if input.RevertedHead == "" {
+		return append(out, GateLintFinding{What: GateLintPinBroken + ": no reverted non-test tree"})
+	}
 
 	// Check 2: Test should fail when non-test hunks are reverted (pin broken)
 	// If the test passes on the reverted variant, that's a finding
@@ -148,9 +151,10 @@ func findNonTestReferences(pkgDir string, symbols map[string]bool) (map[string]b
 		if err != nil {
 			return nil
 		}
+		declarations := declaredNames(file)
 		ast.Inspect(file, func(n ast.Node) bool {
 			if ident, ok := n.(*ast.Ident); ok {
-				if symbols[ident.Name] {
+				if symbols[ident.Name] && !declarations[ident.Pos()] {
 					reached[ident.Name] = true
 				}
 			}
@@ -239,9 +243,10 @@ func FindNonTestReferences(pkgDir string, changedFiles []string, symbols map[str
 		if err != nil {
 			continue
 		}
+		declarations := declaredNames(file)
 		ast.Inspect(file, func(n ast.Node) bool {
 			if ident, ok := n.(*ast.Ident); ok {
-				if symbols[ident.Name] {
+				if symbols[ident.Name] && !declarations[ident.Pos()] {
 					reached[ident.Name] = true
 				}
 			}
@@ -250,4 +255,29 @@ func FindNonTestReferences(pkgDir string, changedFiles []string, symbols map[str
 	}
 
 	return reached, nil
+}
+
+// declaredNames returns the identifier positions that introduce declarations.
+// A declaration is not a non-test use: counting it makes an exported API look
+// reached even when no production code refers to it.
+func declaredNames(file *ast.File) map[token.Pos]bool {
+	out := make(map[token.Pos]bool)
+	for _, decl := range file.Decls {
+		switch d := decl.(type) {
+		case *ast.FuncDecl:
+			out[d.Name.Pos()] = true
+		case *ast.GenDecl:
+			for _, spec := range d.Specs {
+				switch s := spec.(type) {
+				case *ast.TypeSpec:
+					out[s.Name.Pos()] = true
+				case *ast.ValueSpec:
+					for _, name := range s.Names {
+						out[name.Pos()] = true
+					}
+				}
+			}
+		}
+	}
+	return out
 }
