@@ -6780,6 +6780,28 @@ StopReturnsSurviveRestart, NoNudgeWhileStopped), its witnesses the findings of
 stop arrived, a restart that turned a cancelled card into a FAIL, a wake
 nudge sent while STOPPED, and a cancelled lane finishing its card.
 
+Working means a live run (v1.2.6; tla/LiveRuns.tla). A worker's beat carries
+its live set, `fleet beat --live` and `friend beat --live`: `<card>@<gen>` for
+each child it runs and `<card>@<gen>:held` for each finished report it holds
+(a finish the machine refused for its STOP is kept, held, and sent again at the
+same generation once it runs), or `-` for none. The beat is the evidence for
+working: a card working on a row whose live set has not named it at its
+generation for `LiveGrace` (60 s) since its take or its last sighting goes back
+ready on its row at its next generation with `lost_from_gen` and `lost_reason`,
+its progress kept as a stop-return keeps it. The tick does it RUNNING (its first
+part, `live`) and STOPPED alike (the STOPPED tick's one step, `live return`): a
+STOPPED machine takes and lands nothing new, and still makes working what runs.
+A STOPPED return also writes the STOP's receipt (`stopped_from_gen`). A STOP
+debt entry owns its card only until that receipt: a returned card moves freely
+before start (a hold, a give, a fleet down), and start reads the receipt the
+card carries, not the row it is on; a card its row's live set names held does
+not hold the start back. Before v1.2.6 the debt owned a card by its id until
+start, so a hold after the stop-returns refused the whole row (2026-10-10,
+friend.zhi). The working cells of `where` (the dashboard) and of the view count
+the live runs against the rows' beats at each read, with `held` and `stale`
+beside them; a row whose worker's beat carries no live set (a worker from
+before v1.2.6) shows and keeps its table's count, and is not reconciled.
+
 The machine stops itself when the sprint is done (section 8): the tick's last
 part, done, says so to the coordinator and, in the same step, sets the record
 STOPPED with the cause done; no part runs after it and the next ticks look.

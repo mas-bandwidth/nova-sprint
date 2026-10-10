@@ -123,6 +123,11 @@ type FriendRow struct {
 	Name    string `json:"name"`
 	Ready   int    `json:"ready"`
 	Working int    `json:"working"`
+	// Held and Stale are her row's working cards her live set names finished, the report
+	// waiting, and those it names neither way (sprint.LiveCountKeys; v1.2.6): Working is
+	// then her live runs alone.
+	Held  int `json:"held,omitempty"`
+	Stale int `json:"stale,omitempty"`
 	// DealtFleet is the fleet's cards among them: work cards whose primary carries no
 	// WHO line (sprint.FriendsDealtFleet, from the tick's where record, up to a tick behind).
 	DealtFleet int    `json:"dealt_fleet"`
@@ -307,6 +312,13 @@ type BeatProof struct {
 // checks and proof are carried from the last beat and stepped by sprint.ProveBeat at the
 // store's clock, so only an answer to a check asked proves, once.
 func (st *Store) FriendBeatProof(ctx context.Context, friend string, rep sprint.FriendReport, load *float64, w sprint.BeatWords) (sprint.Beat, BeatProof, error) {
+	return st.FriendBeatLive(ctx, friend, rep, load, w, nil)
+}
+
+// FriendBeatLive is FriendBeatProof with her daemon's live set (friend beat --live;
+// sprint.ParseLive): nil when the beat carries none, which leaves her row unreconciled
+// (sprint.LiveReturns); its entries' sightings carried from the record before.
+func (st *Store) FriendBeatLive(ctx context.Context, friend string, rep sprint.FriendReport, load *float64, w sprint.BeatWords, live []string) (sprint.Beat, BeatProof, error) {
 	r, kv, err := st.roster(ctx)
 	if err != nil {
 		return sprint.Beat{}, BeatProof{}, err
@@ -331,6 +343,7 @@ func (st *Store) FriendBeatProof(ctx context.Context, friend string, rep sprint.
 	if load != nil {
 		b.Load, b.How = *load, sprint.HowGiven
 	}
+	b.Live, b.LiveKnown, b.LiveSince, b.LiveSeen = sprint.NextLive(prev.Beat, now, live)
 	rec := friendBeatRecord{Beat: b, Pong: prev.Pong, NoProof: prev.NoProof}
 	asked, proved, why := sprint.ProveBeat(prev.Asked, w, now)
 	rec.Asked = asked

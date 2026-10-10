@@ -1297,6 +1297,20 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	b.WriteString("\n")
 	parts := map[string]string{}
 	var friendCards map[string]store.FriendRow
+	// the rows' beats, read now: the working cells are the live runs their live sets name
+	// (sprint.LiveCountKeys over the where record's working cards), never a take whose run
+	// is gone (v1.2.6); without the record they are the table's counts
+	var beats map[string]sprint.Beat
+	if i := slices.Index(sprint.ViewOrder, sprint.Fleet); i >= 0 && i < len(shapes) && shapes[i].Revision != facts.FleetRev {
+		// the fleet moved since the tick's count: its working cards are the table's, and the
+		// next tick's count follows (a moment)
+		facts.RowWorking = nil
+	}
+	if facts.RowWorking != nil {
+		if beats, err = st.FleetBeats(ctx); err != nil {
+			return whereView{}, "", err
+		}
+	}
 	for i, t := range shapes {
 		logical := sprint.ViewOrder[i]
 		if logical == sprint.Fleet {
@@ -1320,6 +1334,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 			}
 			if logical == sprint.Fleet {
 				rowCardFields(cells, facts.RowCards[r.Key])
+				liveCells(cells, facts.RowWorking, beats, r.Key, now)
 			}
 			rows[r.Key] = cells
 		}
@@ -1381,6 +1396,11 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		c := friendCards[f.Name]
 		friends[i].Ready = c.Ready
 		friends[i].Working = c.Working
+		if facts.RowWorking != nil {
+			// her live runs, never her takes (sprint.LiveCountKeys)
+			row := sprint.FriendRow(f.Name)
+			friends[i].Working, friends[i].Held, friends[i].Stale = sprint.LiveCountKeys(facts.RowWorking[row], sprint.RowBeat(beats, row), now)
+		}
 		friends[i].DealtFleet = facts.DealtFleet[f.Name]
 		friends[i].OK = c.OK
 		friends[i].Failed = c.Failed
@@ -1526,6 +1546,21 @@ func rowCardFields(cells map[string]any, n map[string]int) {
 	for _, k := range sprint.RowCardFields {
 		cells[k] = strconv.Itoa(n[k])
 	}
+}
+
+// liveCells writes on a fleet row of tables its working cell as its live runs (v1.2.6;
+// sprint.LiveCountKeys): working the cards its fresh live set names running, held those it
+// names finished with the report waiting, stale the takes it names neither way (the tick
+// returns them within sprint.LiveGrace). Nothing changes without the where record's working
+// cards (rowWorking nil): the table's count stands.
+func liveCells(cells map[string]any, rowWorking map[string][]string, beats map[string]sprint.Beat, row string, now time.Time) {
+	if rowWorking == nil {
+		return
+	}
+	run, held, stale := sprint.LiveCountKeys(rowWorking[row], sprint.RowBeat(beats, row), now)
+	cells[string(sprint.Working)] = strconv.Itoa(run)
+	cells["held"] = strconv.Itoa(held)
+	cells["stale"] = strconv.Itoa(stale)
 }
 
 // splitFriendRows is the fleet table without the friends' rows (sprint.FriendRow), and

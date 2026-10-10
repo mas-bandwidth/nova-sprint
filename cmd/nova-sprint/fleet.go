@@ -133,6 +133,8 @@ type beatReport struct {
 	StopReturns int `json:"stop_returns,omitempty"`
 	// NoRoom is the member's word that it starts no card (--no-room), "" for none.
 	NoRoom string `json:"no_room,omitempty"`
+	// Live is the live set the beat carried (--live), absent when it carried none.
+	Live []string `json:"live,omitempty"`
 }
 
 // fdBound is one of fleet beat's open-files bounds: the flag's count when given, else the
@@ -160,6 +162,7 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 	load := fs.String("load", "", "the load as a percent of all the machine's cores, instead of measuring it (a test's, or another meter's)")
 	cores := fs.Int("cores", 0, "the machine's logical cores the beat reports, instead of this machine's own (a test's, or another meter's); a member with the default width takes half")
 	stopReturns := fs.Int("stop-returns", 0, "how many stop-returns the member's lanes still owe after the machine's stop (section 14): start waits for zero")
+	live := fs.String("live", "", "the member's live set: <card>@<gen> for each child it runs and <card>@<gen>:held for each finished report it holds, comma separated, or "+sprint.LiveNone+" for none; the evidence for working: a card working on its row that its live set has not named for "+sprint.LiveGrace.String()+" goes back ready, RUNNING or STOPPED; a beat without it leaves its row unreconciled")
 	noRoom := fs.String("no-room", "", "the member's word that it starts no card, and why (its free disk under its floor): while its beat is fresh the deal gives it none; a beat without it clears it")
 	fdWarn := fs.Int("fd-warn", 0, fmt.Sprintf("the machine's open file descriptors above which the beat says warn and lists the top holders (else NOVA_FD_WARN, else %d)", hostload.FilesWarnDefault))
 	fdAlarm := fs.Int("fd-alarm", 0, fmt.Sprintf("the machine's open file descriptors above which the beat says alarm and the tick writes one judgment of the member (else NOVA_FD_ALARM, else %d)", hostload.FilesAlarmDefault))
@@ -225,7 +228,13 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 		v := *stopReturns
 		owing = &v
 	}
-	b, err := st.BeatOwing(context.Background(), pos[0], nil, src, owing, oneline.Field(*noRoom))
+	var liveSet []string
+	if set["live"] {
+		if liveSet, err = sprint.ParseLive(*live); err != nil {
+			return refuse(stderr, "fleet beat", err.Error())
+		}
+	}
+	b, err := st.BeatLive(context.Background(), pos[0], nil, src, owing, oneline.Field(*noRoom), liveSet)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s fleet beat: %s\n", prog, oneline.Escape(err.Error()))
 		return 1
@@ -236,7 +245,7 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 	}
 	files := b.Meter.Files
 	if c.json {
-		out, _ := json.Marshal(beatReport{Member: pos[0], At: b.At, Load: b.Load, Last: last, How: b.How, Cores: b.Cores, Files: files, StopReturns: b.StopReturns, NoRoom: b.NoRoom})
+		out, _ := json.Marshal(beatReport{Member: pos[0], At: b.At, Load: b.Load, Last: last, How: b.How, Cores: b.Cores, Files: files, StopReturns: b.StopReturns, NoRoom: b.NoRoom, Live: b.Live})
 		fmt.Fprintln(stdout, string(out))
 		return 0
 	}
@@ -249,6 +258,9 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 	}
 	if b.NoRoom != "" {
 		fmt.Fprintf(stdout, " no_room=%q", b.NoRoom)
+	}
+	if b.LiveKnown {
+		fmt.Fprintf(stdout, " live=%d", len(b.Live))
 	}
 	fmt.Fprintln(stdout)
 	if files != nil && files.Level() != hostload.LevelOK {
