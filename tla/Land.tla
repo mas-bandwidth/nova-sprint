@@ -479,9 +479,12 @@ Rework ==
     /\ att' = [att EXCEPT ![c] = @ + 1]
     /\ UNCHANGED <<queue, landed, epoch, ready, review, stop>> /\ UNCHANGED remote /\ UNCHANGED lander
 
-\* Another lander lands the queue's head, correctly: never on a stopped stream.
+\* Another lander lands the queue's head, correctly: never on a stopped stream,
+\* and, with the bound on, only a head that does not fail (it runs the same
+\* checks this lander does).
 OtherLand ==
   /\ Len(queue) > 0 /\ stop = "none"
+  /\ WaysOn => cleared[Head(queue)]
   /\ base' = base \cup {Current(Head(queue))} /\ tip' = tip + 1
   /\ landed' = landed \cup {Current(Head(queue))} /\ queue' = Tail(queue)
   /\ UNCHANGED <<att, epoch, ready, review, stop>> /\ UNCHANGED lander
