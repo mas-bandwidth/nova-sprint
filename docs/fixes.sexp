@@ -130,6 +130,13 @@
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
 
+  (fix "backup-file-needs-no-lastsave" :release "v1.2.6" :status "planned"
+   :title "backup --file and snapshot do not need LASTSAVE"
+   :text "The Redis snapshot source detects a completed BGSAVE from rdb_saves (or rdb_last_save_time) in
+    INFO persistence, so the coordinator ACL user, which may not run LASTSAVE, can take the backup. The
+    BGSAVE-failure and timeout refusals are unchanged."
+   :origin "pre-clear backup, 2026-10-10 (NOPERM on LASTSAVE)")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
