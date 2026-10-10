@@ -2781,6 +2781,22 @@ id (`--op`) returns the original result, with no second counter or notification.
   on a twin repository and the twin store, each reworked with its finding and asked of no
   reader, the clean one asked).
 
+### reads-start-on-finish-r-ns-bb.w5
+
+A finish asks the read of the primary it leaves in review in its own step, in the
+same tick, of a free reader up that reads the card's tier and has room at its
+width, the finder first on a rework's next attempt, the reader drawn round as the
+machine's ask draws it (`finishAsker`, internal/sprint/readers.go, on the ask's
+rooms, `ask_index` and route indexes). The read starts at once with no tick in
+between: the finish's `finished_at` and the read's `asked` are the same instant,
+so the read-wait stage of cycle-time-breakdown (`where`) is zero when a reader has
+room, the sub-30-second target, and measured against it. A finish with no reader
+up, no reader of the tier, or no room at width, a failed finish, a returned or
+taken-back read, and a friend's frontier read are left to the machine's ask, which
+asks them in the tick after a reader frees, as before.
+`TestAFinishAsksAFreeReaderInTheSameTick` holds the finish and its read to one
+injected clock instant and exercises the first-free-reader retry.
+
 ## 7. Merging
 
 1. In work order, never random: the head of the stream's queued cell first.
