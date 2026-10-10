@@ -1267,13 +1267,6 @@
    :date "2026-10-10"
    :release "v1.3"
    :origin "issue #5215")
-  (item "rest-properties-cap" :group "sprint"
-   :title "Rested routes must not overflow the fleet table property cap"
-   :text "Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the
-    tick writes nothing. Use one property for all."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "issue #5210")
   (item "second-tick-leveling-after-deal" :group "sprint"
    :title "A second tick must not move a card the first deal placed"
    :text "Leveling runs at tick start, but the deal places cards later in the tick without regard to it.

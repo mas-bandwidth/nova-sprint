@@ -24,6 +24,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `SprintRules`, `StallLadder` | The rules that answer failures, and a stalled friend's ladder. |
 | `SeatHealth`, `ServerLanes` | The seat's generation and a friend's health; the server's lanes. |
 | `Timer`, `LoadCache`, `StatsReset` | Timers, the load cache, and a stats reset. |
+| `StopReturn` | STOP's captured owner leases, the owner's stop-return, its settle off the debt, and START. |
 | `WorkImport` | Issue import and the specified work-tree modes. |
 
 The `.tla` files define the models. `MC*.tla` and `.cfg` files provide bounded
