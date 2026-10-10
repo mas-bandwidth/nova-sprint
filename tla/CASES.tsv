@@ -339,3 +339,12 @@ MCStatsResetBrokenNoRebase.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignor
 MCStatsResetBrokenByCount.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoLock.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoStamp.cfg	MCStatsReset.tla	invariant	RecordShowsShown	ignore-terminal	statsreset	required	-
+MCFriendEmptyRun.cfg	MCFriendEmptyRun.tla	pass	-	ignore-terminal	friendemptyrun	required	-
+MCFriendEmptyRunNamed.cfg	MCFriendEmptyRun.tla	pass	-	ignore-terminal	friendemptyrun	required	-
+MCFriendEmptyRunBrokenNoLeft.cfg	MCFriendEmptyRun.tla	invariant	NeverBackToTheEmptyLane	ignore-terminal	friendemptyrun	required	-
+MCFriendEmptyRunBrokenMachineLeft.cfg	MCFriendEmptyRun.tla	invariant	NeverBackToTheEmptyLane	ignore-terminal	friendemptyrun	required	-
+MCFriendEmptyRunNamedReach.cfg	MCFriendEmptyRun.tla	invariant	NeverReDealtNamed	ignore-terminal	friendemptyrun	required	-
+MCFriendEmptyRunBrokenCapLeft.cfg	MCFriendEmptyRun.tla	invariant	NeverBackToTheEmptyLane	ignore-terminal	friendemptyrun	required	-
+MCFriendEmptyRunCapReach.cfg	MCFriendEmptyRun.tla	invariant	NeverPinned	ignore-terminal	friendemptyrun	required	-
+MCFriendEmptyRunBrokenRuleLeft.cfg	MCFriendEmptyRun.tla	invariant	NeverBackToTheEmptyLane	ignore-terminal	friendemptyrun	required	-
+MCFriendEmptyRunAnyFriend.cfg	MCFriendEmptyRun.tla	pass	-	ignore-terminal	friendemptyrun	required	-

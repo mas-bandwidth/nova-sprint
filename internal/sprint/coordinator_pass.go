@@ -506,7 +506,7 @@ func friendCouldTake(s *Snapshot, f FriendSeat, pr, wc *Card) bool {
 	if name, ok := FriendCard(pr); ok && name != "" && name != f.Name && OnlyFriend(pr) {
 		return false
 	}
-	return wc == nil || !slices.Contains(friendsLeft(wc), f.Name)
+	return !slices.Contains(cardLeft(pr, wc), f.Name)
 }
 
 // emptyRowWhat names the friend, the cards and where they sit. EmptyRowAfter is
@@ -587,7 +587,7 @@ func pinConds(s *Snapshot, r TickReq) []cond {
 				seen[prID] = true
 				what := openWhat[prID]
 				if what == "" {
-					what = pinIgnoredWhat(wc.ID, pinned, pinSkipWhy(s, r.Friends, pinned, friendsLeft(wc), cardTierOf(pr), free), row, col)
+					what = pinIgnoredWhat(wc.ID, pinned, pinSkipWhy(s, r.Friends, pinned, cardLeft(pr, wc), cardTierOf(pr), free), row, col)
 				}
 				holder, _ := FriendOfRow(row)
 				out = append(out, cond{typ: NPinIgnored, stream: pr.Row, card: wc.ID, primaries: []string{prID},

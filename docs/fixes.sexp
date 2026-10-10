@@ -129,7 +129,7 @@
     internal/sprintdash/stopgap/server.py over ~/nova-bench/dashboard/server.py, and restart the
     public mirror unit."
    :origin "nova-tools PR #5588, head 08f6af5a8")
-  (fix "empty-run-harness-fault" :release "v1.2.6" :status "planned"
+  (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
     lane ran it empty, with a TLA+ model and witness."
