@@ -165,6 +165,31 @@ func (p Plan) Tables() []string {
 
 func (p *Plan) refuse(key, why string) { p.Refused = append(p.Refused, Refusal{key, why}) }
 
+// StreamRemoveExisting splits the streams stream remove names into the ones
+// that may leave and a refusal for each name that may not, in the order
+// named, each on its own (the seat ledger v1.2.4-held-2026-10-10.md bug 12,
+// stream-remove-removes-what-exists; docs/SPEC-SPRINT.md section 11, the
+// stream remove row): one name that is no row of the work or merge table no
+// longer refuses the batch, as the all-or-none rule StreamRemove refused 223
+// streams over one stale name. The rule of one name is streamRemoveWhy, the
+// one StreamRemove applies whole: a RUNNING machine and a stream that holds a
+// card are refused there, with its remedy. A name named twice is taken once.
+func StreamRemoveExisting(s *Snapshot, running bool, streams []string) (remove []string, refused []Refusal) {
+	seen := map[string]bool{}
+	for _, st := range streams {
+		if seen[st] {
+			continue
+		}
+		seen[st] = true
+		if why := streamRemoveWhy(s, running, st); why != "" {
+			refused = append(refused, Refusal{Key: st, Why: why})
+			continue
+		}
+		remove = append(remove, st)
+	}
+	return remove, refused
+}
+
 // Entry builders.
 
 func u64(n uint64) string { return strconv.FormatUint(n, 10) }

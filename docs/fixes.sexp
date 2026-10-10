@@ -94,4 +94,11 @@
     .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
-   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")))
+   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+
+  (fix "stream-remove-removes-what-exists" :release "v1.2.6" :status "in-progress"
+   :title "stream remove takes every stream that exists and names each that does not"
+   :text "One name that is no row of the work or merge table no longer refuses the whole batch: stream
+    remove takes off every named stream that may leave, reports each name that may not, and exits 1
+    only when nothing was removed or a removal failed."
+   :origin "the seat ledger v1.2.4-held-2026-10-10, bug 12; card stream-remove-removes-what-exists.w2")))
