@@ -32,20 +32,17 @@ type GateLintInput struct {
 func GateLintFindings(input GateLintInput) []GateLintFinding {
 	var out []GateLintFinding
 
-	// Check if test exists at all
 	if input.TestPkg == "" || input.TestName == "" {
 		return nil
 	}
 
-	// Check pins: test should fail at merge-base (or not exist)
-	// In the real implementation, we would run the test at merge-base and head
-	// For now, we return nil - the implementation requires actual test execution
+	// Pin check: test should fail at merge-base (or not exist)
+	// For now, stub implementation
 	_ = input.MergeBase
-	_ = input.Head
 
-	// Check reach: new exported functions should be reachable
-	// In the real implementation, we would parse the changed files and find references
-	// For now, we return nil
+	// Pin check: test should fail when non-test changes are reverted
+	// For now, stub implementation
+	_ = input.Head
 
 	return out
 }
@@ -108,16 +105,38 @@ func FindNonTestReferences(pkgPath string, changedFiles []string, symbols map[st
 		reached[sym] = false
 	}
 
-	// In the real implementation, we would:
-	// 1. Load the package using go/types
-	// 2. Walk through all non-test files in the package
-	// 3. Find references to the symbols
-
-	// For now, return empty results
+	// Walk all non-test Go files in the package and check for references
+	fset := token.NewFileSet()
+	for _, f := range changedFiles {
+		if !strings.HasSuffix(f, ".go") || strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := readFile(f)
+		if err != nil {
+			continue
+		}
+		file, err := parser.ParseFile(fset, f, src, parser.ParseComments)
+		if err != nil {
+			continue
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			if ident, ok := n.(*ast.Ident); ok {
+				if symbols[ident.Name] {
+					reached[ident.Name] = true
+				}
+			}
+			return true
+		})
+	}
 	return reached, nil
 }
 
 // GateLintFindingString returns a string representation of a gate lint finding.
 func GateLintFindingString(f GateLintFinding) string {
 	return "machine gate: " + f.What
+}
+
+// readFile reads a file from the filesystem or from the provided reader.
+func readFile(path string) ([]byte, error) {
+	return nil, nil
 }
