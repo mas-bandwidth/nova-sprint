@@ -2,10 +2,12 @@ package sprintdash
 
 import (
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"regexp"
 	"slices"
 	"strings"
@@ -340,24 +342,88 @@ func TestDashboardPageLoadsNothingFromElsewhere(t *testing.T) {
 	assert.Contains(t, string(file("OFL.txt")), "SIL Open Font License", "the face's licence is embedded beside it")
 }
 
+// defectsDriver draws a stopped, empty store with app.js on the scroll test's DOM shim
+// and reads the three fixed defects: the cost breakdown's empty rows, the landed tile's
+// "nothing complete", and the live dot's stopped class.
+const defectsDriver = `
+context.render(input.data);
+const byID = id => doc.getElementById(id);
+const cells = row => Array.from(row.children).map(c => c.textContent);
+const topStreams = byID('top-streams');
+const head = topStreams.children[0];
+const dataRows = Array.from(topStreams.children).slice(1);
+process.stdout.write(JSON.stringify({
+  prose: topStreams.textContent.includes('no stream has spent anything yet'),
+  headerCells: cells(head),
+  rows: dataRows.map(cells),
+  pct: byID('pct').textContent,
+  pctSfx: byID('pct-sfx').textContent,
+  eta: byID('eta').textContent,
+  etaAt: byID('eta-at').textContent,
+  liveClass: byID('live').className,
+}));
+`
+
+type defectsResult struct {
+	Prose       bool       `json:"prose"`
+	HeaderCells []string   `json:"headerCells"`
+	Rows        [][]string `json:"rows"`
+	Pct         string     `json:"pct"`
+	PctSfx      string     `json:"pctSfx"`
+	Eta         string     `json:"eta"`
+	EtaAt       string     `json:"etaAt"`
+	LiveClass   string     `json:"liveClass"`
+}
+
+// Three dashboard defects the owner saw on the empty epoch.
 func TestDashboardDefects(t *testing.T) {
 	t.Parallel()
-	r := newRig(t)
-	// Mock a stopped and empty store
-	r.next = func() ([]byte, error) {
-		return []byte(`{"at":"2026-10-02T19:00:00Z","landed":0,"all":0,"summary":"x","machine":"machine: STOPPED","tables":{"work":{}}}`), nil
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		if os.Getenv("NOVA_CI") == "1" {
+			require.NoError(t, err, "node is required for the dashboard JS behavioural test")
+		}
+		t.Skip("node is not installed on this machine; the dashboard JS behavioural test needs it")
 	}
-	
-	// Get snapshot
-	v := r.api()
-	data := v["data"].(map[string]any)
-	
-	// Test 1: Cost breakdown with no spend.
-	
-	// Test 2: LANDED tile at 0 of 0 reads "nothing complete".
-	assert.Equal(t, float64(0), data["landed"], "landed should be 0")
-	
-	// Test 3: STOPPED machine shows a red dot.
-	assert.Contains(t, data["machine"], "STOPPED", "machine should be STOPPED")
+	// A stopped, empty store: no spend, landed at 0 of 0, machine STOPPED.
+	data := map[string]any{
+		"at":      "2026-10-02T19:00:00Z",
+		"landed":  0, "all": 0,
+		"summary": "x",
+		"machine": "machine: STOPPED",
+		"tables":  map[string]any{"work": map[string]any{}},
+	}
+	shim, _, ok := strings.Cut(scrollShim, "// the viewer:")
+	require.True(t, ok, "the scroll test's shim has its viewer")
+	in, err := json.Marshal(map[string]any{"appJS": string(file("app.js")), "data": data})
+	require.NoError(t, err)
+	cmd := exec.Command(nodePath, "-e", shim+defectsDriver)
+	cmd.Stdin = bytes.NewReader(in)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &outBuf, &errBuf
+	require.NoError(t, cmd.Run(), "node runner failed: %s", errBuf.String())
+	require.Empty(t, errBuf.String(), "app.js threw while drawing")
+	var res defectsResult
+	require.NoError(t, json.Unmarshal(outBuf.Bytes(), &res), outBuf.String())
+
+	// (1) Cost breakdown with no spend: the header (stream, total) is kept, three blank
+	//     rows show "-" in every cell, and the stray prose line is gone.
+	assert.False(t, res.Prose, "the no-spend prose line must be removed")
+	assert.Equal(t, []string{"stream", "total"}, res.HeaderCells, "the cost table keeps its header")
+	assert.Len(t, res.Rows, 3, "the cost table has three blank rows")
+	for i, row := range res.Rows {
+		assert.Len(t, row, len(res.HeaderCells), "row %d: same cell count as the header", i)
+		for j, cell := range row {
+			assert.Equal(t, "-", cell, "row %d cell %d: '-' expected", i, j)
+		}
+	}
+
+	// (2) The LANDED tile at 0 of 0 reads "nothing complete" in both layouts: pct is
+	//     "nothing complete" and the wide-only " complete" suffix is emptied.
+	assert.Equal(t, "nothing complete", res.Pct, "the landed tile reads 'nothing complete' at 0 of 0")
+	assert.Equal(t, "", res.PctSfx, "the wide-only ' complete' suffix is emptied at 0 of 0")
+
+	// (3) A STOPPED machine shows a red dot: the live element carries the stopped class.
+	assert.Contains(t, res.LiveClass, "stopped", "the status dot is red when the machine is stopped")
 }
 

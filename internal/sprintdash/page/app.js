@@ -84,7 +84,7 @@ function el(tag, cls, text) {
 // cell flashes only when it goes lit <-> unlit. The clock never flashes
 // (setLiveHTML does not use these helpers).
 var flashCount = 0;
-["all", "all2", "pct", "eta", "eta-at", "cost", "cost-per", "inflight", "inflight-sub", "tput", "coord", "epoch", "machine",
+["all", "all2", "pct", "pct-sfx", "eta", "eta-at", "cost", "cost-per", "inflight", "inflight-sub", "tput", "coord", "epoch", "machine",
  "streams-sub", "fleet-head", "friends-sub", "readers-sub"].forEach(function (id) { var e = document.getElementById(id); if (e) quiet(e); });
 function valEl(e) {
   if (!e._fv) {
@@ -588,7 +588,11 @@ function renderReaders(d) {
 function renderHero(d, s, ft) {
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
-  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "nothing");
+  // the landed tile: "n%" when there is work, "nothing complete" at 0 of 0. The wide-only " complete"
+  // suffix (pct-sfx) is kept in normal use and emptied at 0 of 0 so the tile reads "nothing complete"
+  // in both the narrow and wide layouts (the owner 2026-10-10: "it just says 'nothing complete'")
+  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "nothing complete");
+  setText($("pct-sfx"), all ? " complete" : "");
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
   if (m) {
     setHTML($("eta"), etaText(m[1]));
@@ -597,6 +601,7 @@ function renderHero(d, s, ft) {
     var etaAt = new Date(at.getTime() + ms);
     if (ms != null && !isNaN(at)) { etaAtLast = [etaAt, ms]; fitEtaAt(); } else { etaAtLast = null; setText($("eta-at"), "\u00a0"); }
   } else if (all && landed >= all) { setText($("eta"), "done"); setText($("eta-at"), " "); }
+  else if (!all) { setText($("eta"), "none"); setText($("eta-at"), "nothing to land"); }
   else { setText($("eta"), "-"); setText($("eta-at"), "not in the summary"); }
   // the cost tile and its tooltip cover one scope (docs/SPEC-SPRINT.md, the summary line): the
   // streams on the table, or, the sprint done, the epoch's every stream, as the hero's count
@@ -785,6 +790,8 @@ function renderInflight(sum) {
   for (var i = 0; i < forms.length; i++) { draw(forms[i]); if (fits(box)) break; }
 }
 window.addEventListener("resize", function () { if (inflightLast) renderInflight(inflightLast); fitEtaAt(); });
+// the cost table's blank rows when no stream has spent anything (the owner 2026-10-09)
+var EMPTY_ROWS = 3;
 function renderTopStreams(d) {
   var box = $("top-streams"); if (!box) return;
   lastSpendData = d;
@@ -816,19 +823,24 @@ function renderTopStreams(d) {
   putKid(head, cellCount - 1, "num", "total");
   var shown = rows.slice(0, n);
   var byName = {}; shown.forEach(function (r) { byName[r.name] = r; });
-  syncRows(box, head, shown.map(function (r) { return r.name; }), function () {
+  var keys = shown.map(function (r) { return r.name; });
+  if (!keys.length) for (var i = 0; i < EMPTY_ROWS; i++) keys.push("\u0000" + i); // no spend: keep the header and lay three blank rows
+  syncRows(box, head, keys, function () {
     return { node: el("div", "row") };
   }, function (r, k) {
     var row = byName[k];
     setCount(r.node, cellCount, function () { return quiet(el("div")); });
-    putKid(r.node, 0, "name", k);
-    order.forEach(function (t, i) { // the stream's spend on the tier, in the panel's format
-      var c = row.byTier && cents(row.byTier[t]);
-      putKid(r.node, 1 + i, "num" + (c ? "" : " faint"), c ? fmt(c) : "-");
-    });
-    putKid(r.node, cellCount - 1, "num", fmt(row.cost));
+    if (row) {
+      putKid(r.node, 0, "name", k);
+      order.forEach(function (t, i) { // the stream's spend on the tier, in the panel's format
+        var c = row.byTier && cents(row.byTier[t]);
+        putKid(r.node, 1 + i, "num" + (c ? "" : " faint"), c ? fmt(c) : "-");
+      });
+      putKid(r.node, cellCount - 1, "num", fmt(row.cost));
+    } else {
+      for (var i = 0; i < cellCount; i++) putKid(r.node, i, "num faint", "-");
+    }
   });
-// no rows; total row
   // the pie's legend in the header: each tier as the state legend draws an item, its square in
   // the tier's color, the name grey and the amount white, in the pie's order, no separators
   var ts = $("tier-sub");

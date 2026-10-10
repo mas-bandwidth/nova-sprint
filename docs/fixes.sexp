@@ -130,7 +130,16 @@
     .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
-   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+
+  (fix "dashboard-empty-and-stopped-states" :release "v1.2.6" :status "shipped"
+   :title "The dashboard's empty and stopped states are shown, not blanked"
+   :text "Three defects on the empty epoch, all in internal/sprintdash/page/app.js: the cost breakdown
+    with no spend keeps its header (stream, total) and draws three blank rows with '-' in every
+    cell instead of the 'no stream has spent anything yet' prose; the LANDED tile at 0 of 0 reads
+    'nothing complete' in both the narrow and wide layouts (the wide-only ' complete' suffix is
+    emptied at 0 of 0); and a STOPPED machine shows a red Updated dot rather than green."
+   :origin "the seat ledger v1.2.4-held-2026-10-10.md items 8, 9, 10")
 
   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
    :title "The worker brief says never amend, rebase or reset onto origin"
