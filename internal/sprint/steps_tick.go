@@ -146,9 +146,11 @@ var TickDecisions = map[string][]string{
 	NAlarmMerging: {"ack", "wait"},
 	NAlarmReady:   {"ack", "wait"},
 	NAlarmFleet:   {"ack", "wait"},
-	// the coordinator's pass (coordinator_pass.go): each names its own
+	// the coordinator's pass (coordinator_pass.go): idle's return takes her
+	// unstarted cards back (inbox.go, docs/SPEC-SPRINT.md, Verified working);
+	// the others name their own
 	NFriendDeaf:        {"ack", "wait"},
-	NFriendIdle:        {"ack", "wait"},
+	NFriendIdle:        {"return", "wait"},
 	NCoordinatorBehind: {"act", "wait"},
 	// the running server built off origin's sprint base (server_base.go): act is the remedy
 	// its line names, a build from the base's tip and server switch; the tick closes it

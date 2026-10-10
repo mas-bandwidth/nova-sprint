@@ -368,6 +368,24 @@ func NoteCommands(n Note, members []string) []Command {
 	return commands(g, n, "")
 }
 
+// idleFriend is the friend an idle judgment's return names (docs/SPEC-SPRINT.md
+// section 1, "Verified working"): the note's primary is her fleet row, and
+// FriendOfRow of that primary is the friend. "<friend>" when none of the
+// group's members or the note's primaries is a friend's row.
+func idleFriend(members, primaries []string) string {
+	for _, p := range members {
+		if f, ok := FriendOfRow(p); ok {
+			return f
+		}
+	}
+	for _, p := range primaries {
+		if f, ok := FriendOfRow(p); ok {
+			return f
+		}
+	}
+	return "<friend>"
+}
+
 // commands is the group's decisions as commands, from its oldest note (a
 // stopped stream's card and the card it needs, by their named fields). A
 // decision about cards takes the group with its size and the notifications it
@@ -510,6 +528,10 @@ func commands(g Group, first Note, prefix string) []Command {
 			add(d, cmd+"brief"+subj+" --brief-file '<the corrected brief>'"+subjAns)
 		case d == "drop":
 			add(d, cmd+"drop"+subj+" --reason "+whyText+subjAns)
+		case g.Type == NFriendIdle && d == "return":
+			// her row, not her cards: the generic return sends cards back to review
+			// (docs/SPEC-SPRINT.md section 1, "Verified working")
+			add(d, cmd+"friend take "+idleFriend(g.Members, first.Primaries)+" --all-unstarted --reason "+whyText)
 		case d == "return":
 			add(d, cmd+"return"+grp+" --reason "+whyText+ans)
 		case d == "look":

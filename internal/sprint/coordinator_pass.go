@@ -68,10 +68,12 @@ const (
 // not a judgment, and stays off this list.
 var PassTypes = []string{NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored, NMergeHealth}
 
-// The two judgments list ack and wait on TickDecisions, same as deaf and idle, so an
-// acknowledgement is kept on the condition (steps_ack.go) and the next pass does not
-// write a second note. steps_tick.go is not this card's file; the map is the tick's
-// and init is how this file joins it.
+// NFriendEmpty and NPinIgnored list ack and wait on TickDecisions, same as deaf,
+// so an acknowledgement is kept on the condition (steps_ack.go) and the next pass
+// does not write a second note. Idle does not: TickDecisions[NFriendIdle] is
+// return and wait (steps_tick.go; docs/SPEC-SPRINT.md section 1, "Verified working"),
+// and return takes back the cards she has not started. The map is the tick's;
+// init is how this file joins the two that list ack.
 func init() {
 	TickDecisions[NFriendEmpty] = []string{"ack", "wait"}
 	TickDecisions[NPinIgnored] = []string{"ack", "wait"}
@@ -89,8 +91,11 @@ const (
 	// session that answers is never proved longer ago than that. Shorter, and a quiet
 	// friend whose session answers is judged deaf every ten minutes and cleared again.
 	FriendDeafAfter = FriendProofLive
-	// FriendFinishDefault is the friend-finish window when the coordinator set none.
-	FriendFinishDefault = 30 * time.Minute
+	// FriendFinishDefault is the friend-finish window when the coordinator set none:
+	// fifteen minutes (card sn-verified-working-b-ns-b.w1; the owner: "trust but VERIFY",
+	// "Are they actually doing the work that is shown in the friend table? Really?"),
+	// down from thirty, the same bound the deaf judgment takes (FriendDeafAfter).
+	FriendFinishDefault = 15 * time.Minute
 	// PropFriendFinish is the work table's property: the friend-finish window, a
 	// duration (nova-sprint set --friend-finish).
 	PropFriendFinish = "friend_finish"
@@ -245,9 +250,9 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 			finish = fmt.Sprintf("her last finish %s ago (at %s)", lastAge.Round(time.Second), stamp(last))
 		}
 		out = append(out, cond{typ: NFriendIdle, primaries: []string{row},
-			what: fmt.Sprintf("friend %s holds %d working (%s) and finished none in %s: %s; check in on her: nova-friend ping --as <coordinator> --to %s --wake",
+			what: fmt.Sprintf("friend %s holds %d working (%s) and finished none in %s: %s; return her unstarted cards (friend take %s --all-unstarted) or wait",
 				f, len(ids), Preview(ids, ", "), window, finish, f),
-			decisions: []string{"nova-friend ping --as <coordinator> --to " + f + " --wake", "friend take " + f + " --all-unstarted", "friend down " + f + " --reason idle", "ack", "wait"}})
+			decisions: []string{"return", "wait"}})
 	}
 	return out
 }

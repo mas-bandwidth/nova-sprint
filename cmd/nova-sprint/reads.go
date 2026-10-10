@@ -1090,14 +1090,28 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	}
 	for i, f := range friends {
 		// the counts are the friend's sprint cards on her fleet row, and nothing
-		// else: ready, working, done ok and failed, and redealt, all from the fleet table
-		// (splitFriendRows), with width and status from the roster (store.FriendRows)
+		// else: ready, dealt and the verified working, done ok and failed, and
+		// redealt, all from the fleet table (splitFriendRows) and the positive
+		// started read (a.friendVerified: a readable push or her beat naming it
+		// running; a push that cannot be read is conservative for friend take but
+		// no proof here), with width and status from the roster (store.FriendRows).
+		// working counts only the verified of her cards
+		// (sprint.FriendWorkingOf; docs/SPEC-SPRINT.md section 1, "Verified working")
 		c := friendCards[f.Name]
 		friends[i].Ready = c.Ready
-		friends[i].Working = c.Working
 		friends[i].OK = c.OK
 		friends[i].Failed = c.Failed
 		friends[i].Redealt = c.Redealt
+		cards, err := st.ReadCells(ctx, sprint.Fleet, sprint.FriendRow(f.Name), sprint.Working)
+		if err != nil {
+			return whereView{}, "", err
+		}
+		started, err := a.friendVerified(ctx, st, f.Name)
+		if err != nil {
+			return whereView{}, "", err
+		}
+		w := sprint.FriendWorkingOf(cards, started)
+		friends[i].Working, friends[i].Dealt = w.Working, w.Dealt
 		if f.Status == sprint.Down {
 			friends[i].Working = 0 // down, she works nothing
 		}
@@ -1226,7 +1240,8 @@ func providersView(ctx context.Context, st *store.Store, shapes []ntable.Table, 
 }
 
 // friendsTable is the friends table (sprint.FriendsDef) with a row per friend
-// in the order given: her sprint cards' counts in ready, working and the
+// in the order given: her sprint cards' counts in ready, the verified working and
+// the dealt beside it (every card of hers in working on her row) and the
 // hidden ok and failed (the readers' verdicts, docs/SPEC-SPRINT.md section 1), her
 // redealt cards, her width and her status as text; done and ok% are the
 // table's own formulas over the counts (ntable.CellText), as the fleet
@@ -1241,6 +1256,7 @@ func (a *app) friendsTable(friends []store.FriendRow, now time.Time) ntable.Tabl
 		cells := make([]ntable.Cell, len(t.Columns))
 		cells[at[string(sprint.Ready)]].Count = int64(f.Ready)
 		cells[at[string(sprint.Working)]].Count = int64(f.Working)
+		cells[at[sprint.Dealt]].Count = int64(f.Dealt)
 		cells[at[sprint.DoneOK]].Count = int64(f.OK)
 		cells[at[sprint.DoneFailed]].Count = int64(f.Failed)
 		cells[at[sprint.Redealt]].Count = int64(f.Redealt)
