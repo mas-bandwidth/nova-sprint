@@ -139,6 +139,17 @@
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
 
+  (fix "land-merges-the-roadmap-data" :release "v1.2.6" :status "shipped"
+   :title "Land merges the roadmap data, not returns the card"
+   :text "A head whose conflict is in docs/fixes.sexp or docs/roadmap.sexp, with or without FIXES.md and
+    ROADMAP.md, lands: the data is merged entry by entry (each side only adding or only removing whole
+    lines in each conflicted stretch, the tip's additions first), checked by decoding all three sides
+    and the result, and each page is taken from the tip and regenerated from the merged data as `make
+    roadmap` does. Both sides changing one entry is refused as before. Also: main was red on its class
+    gofmt from PR #67 on, so the lander merged no head onto it (PR #74)."
+   :origin "the Studio sprint, epoch 16, 2026-10-10: merging stood at 15 to 21 cards with none landed in 30
+    minutes, every second card refused on FIXES.md and docs/fixes.sexp and reworked at the tip")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
