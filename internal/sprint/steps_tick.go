@@ -829,10 +829,14 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	if sentinel := heldWave(s); sentinel != nil && len(up) > 0 && !s.FleetOff() {
 		// ready is kept at twice the fleet's width (the owner, 2026-10-02: "Ready always
 		// full"; 2026-10-03: "BATCH EVERYTHING"): under it while a wave is held, the tick
-		// says so every tick and offers the wave, never a single card
-		width, n := 0, 0
+		// says so every tick and offers the wave, never a single card, with the numbers
+		// it is judged on — ready beside twice the width, working beside width
+		// (docs/SPEC-SPRINT.md section 5: a member holds up to DealAhead times its width,
+		// ready and working together) — so "release a wave" is said only with the numbers
+		width, working, n := 0, 0, 0
 		for _, m := range up {
 			width += s.Width(m)
+			working += s.Fleet.Count(m, Working)
 		}
 		for _, c := range s.Work.Column(Ready) {
 			if !IsSentinel(c) {
@@ -841,7 +845,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		}
 		if n < 2*width {
 			conds = append(conds, cond{typ: NStarving, streamLevel: true, primaries: []string{sentinel.ID},
-				what: fmt.Sprintf("the fleet is starving: ready %d is under twice the width %d; release a wave: nova-sprint release %s --reason '<why>'", n, 2*width, sentinel.ID)})
+				what: fmt.Sprintf("the fleet is starving: ready %d is under twice the width %d, working %d of width %d; release a wave: nova-sprint release %s --reason '<why>'", n, 2*width, working, width, sentinel.ID)})
 		}
 	}
 	if len(up) > 0 {
