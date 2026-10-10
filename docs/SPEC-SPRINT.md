@@ -2646,7 +2646,7 @@ and it is the coordinator's decision, receipted.
     never by a take finishing ok, so that test would lift the bound at once. Nor is
     `funded`: a take refused for credit or for its key rests its provider first
     (nova-tools#5199, below), the card waits ready under the rest, a rework onto a
-    tier whose every route rests is refused, and after `funded` (a key refusal's rest, which only `routes wake` ends) the
+    tier whose every route rests is refused, and after `funded` (which ends the provider's credit rest; a key refusal's rest only `routes wake` ends) the
     attempt is dealt again; so an out-of-credit attempt reaches its bound across `funded`, the rule
     is unchanged, and the lift still needs a take on the provider finishing ok
     (`TestAnOutOfCreditBoundRestsThenLiftsOnce`).
