@@ -160,8 +160,14 @@ type FriendRow struct {
 	// report is (view coordinator).
 	Beat time.Time `json:"beat,omitzero"`
 	// Health is the coordinator's last accepted observation of her (friend
-	// health), absent until the first.
-	Health *sprint.FriendHealth `json:"health,omitempty"`
+	// health), absent until the first. It feeds the seat's reads (her last answer, a down
+	// on her daemon's pong alone) and is never printed as it is: ShownHealth is.
+	Health *sprint.FriendHealth `json:"-"`
+	// ShownHealth is Health as her row prints it (`health` in the JSON). An observation
+	// whose seen time is not what her status rests on, an up she holds on her beat's proof
+	// or a card she finished while the last session pong has gone stale, is left off: its
+	// old seen beside a live status says she was last seen long ago when she is up now.
+	ShownHealth *sprint.FriendHealth `json:"health,omitempty"`
 	// Evidence is what her status rests on (sprint.FriendEvidence): for up, the
 	// session's evidence and its age; for down, what is missing, and her beat's
 	// age, which is never evidence. Finished is when a card of hers last
@@ -378,6 +384,16 @@ func (st *Store) SetFriendHeld(ctx context.Context, friend string, held bool, wh
 	return putRoster(ctx, kv, r)
 }
 
+// shownHealth is the observation as the row prints it: left off while her status is up on
+// evidence other than the observation itself (her beat's proof, a card she finished), where
+// its seen time is only the last session pong, gone stale beside a live status.
+func shownHealth(h *sprint.FriendHealth, status, evidence string) *sprint.FriendHealth {
+	if status == sprint.Up && !strings.HasPrefix(evidence, "session pong") {
+		return nil
+	}
+	return h
+}
+
 // FriendRows is the friends table at now: every friend of the roster with her
 // width and her status (sprint.FriendStatus), in the fleet table's order
 // (FleetOrder: up, asleep, then held, then down, each by name). The counts
@@ -479,6 +495,7 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 		}
 		if h.Observed() {
 			row.Health = &h
+			row.ShownHealth = shownHealth(&h, row.Status, evidence)
 		}
 		switch row.Status {
 		case sprint.Held:

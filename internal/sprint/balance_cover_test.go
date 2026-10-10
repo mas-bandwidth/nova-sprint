@@ -100,14 +100,15 @@ func TestBalanceCoverLow(t *testing.T) {
 	}
 }
 
-// TestBalanceCoverUntilSaid pins untilSaid: a rest's end as a line says it
-// (balance.go).
+// TestBalanceCoverUntilSaid pins RouteRest.UntilSaid as the providers table says it
+// (balance.go): a rest's end as a line says it, by its end and its cause.
 func TestBalanceCoverUntilSaid(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name string
-		at   time.Time
-		want string
+		name  string
+		at    time.Time
+		cause string
+		want  string
 	}{
 		{
 			name: "main: a rest's end as a time",
@@ -115,14 +116,27 @@ func TestBalanceCoverUntilSaid(t *testing.T) {
 			want: "2030-01-02T03:00:00Z",
 		},
 		{
-			name: "refusal: an open rest ends when paid",
-			at:   OpenUntil,
-			want: "paid",
+			name:  "refusal: an open credit rest ends when paid",
+			at:    OpenUntil,
+			cause: RestCredit,
+			want:  "paid",
+		},
+		{
+			name:  "refusal: an open key rest ends when woken, never when paid",
+			at:    OpenUntil,
+			cause: RestAuth,
+			want:  "woken",
+		},
+		{
+			name:  "refusal: an open coordinator rest ends when woken",
+			at:    OpenUntil,
+			cause: RestCoordinator,
+			want:  "woken",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.want, untilSaid(tc.at))
+			assert.Equal(t, tc.want, RouteRest{Until: tc.at, Cause: tc.cause}.UntilSaid())
 		})
 	}
 }

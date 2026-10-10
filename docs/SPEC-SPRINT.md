@@ -918,7 +918,7 @@ failed finish (a friend's `Verdict: HOLD` or `FAIL`, by its first paragraph, or 
 failed report) whose reason names a brief defect is the brief's, never the worker's: no
 worker could do the card as cut (`sprint.BriefDefectOf`). Each of the four reasons alone
 names one, with no label needed, the earliest in the report being the one recorded: the
-base lacks a PATHS file (`the base lacks`, `not on the base`, `missing from the base`, `does not exist on the base`), a duplicate of landed work (`duplicate of landed work`), a
+base lacks a PATHS file (`the base lacks`, `not on the base`, `missing from the base`, `does not exist on the base`), a duplicate of landed work (`duplicate of landed work`, or the worker finding this card's work already at its base, in two forms only: `nothing to do: the (staged) base already contains|has`, or `the (staged) base already contains|has` followed by `this card's change`, `this card's implementation` or `the change`; a sentence about anything else the base holds, a failing test, a file, a conflicting version, names none, and `no, ...` negates it across the comma), a
 decision delivered (`decision delivered`, `decision already delivered`), and PATHS do not
 hold what the brief names (`PATHS do not hold`). That last reason is raised on the first
 such failed finish, not at the attempt cap and not at the second identical failure: the
@@ -2764,8 +2764,11 @@ and it is the coordinator's decision, receipted.
     `TestAReadHigherThanTheReadBeforeItEndsARefusedTakesRest`). A rest a balance poll wrote
     before (cause `balance`, or `out-of-credit` naming no card) is retired and holds no route
     (`TestTheNightsBalanceRestLiftsOnTheNextPoll`).
-    A take refused for the provider's key (`class=auth`) rests it for RouteRestFor, ends at
-    that time, and stops nothing.
+    A take refused for the provider's key (`class=auth`) rests it until the coordinator wakes
+    it (`routes wake <provider>`, once the owner has replaced the key), never for a time (a
+    timed rest only failed every take dealt after it ended: a pro route, 46 of 46
+    refused with a 401, 2026-10-09/10; `tla/RouteRest.tla`, AuthEndsOnlyWoken), and stops
+    nothing.
   - A refused take rests the provider in the tick that sees it, over rule 3's rest of its
     routes; the rest's note and the tier's `no route serves the tier` name the cause and the
     provider's words. A refusal is attributed to the rest window its child launched in (the
@@ -3880,6 +3883,10 @@ are never recorded in its place. It lands exactly the named cards. The position 
 `--rejected`) is about; land's own report names its cards by id, head and attempt
 (tla/Land.tla, idguard), and `merge --landed` is the same record for a caller without
 land (tests TestMergeRecordsLandOnlyTheCardWhoseHeadWasPushed).
+On a real store a bare `merge --stream <s> [--batch n]`, with no fact and no `--landed`,
+is refused before the store is read, naming `--landed` and land: it would record the
+queue's head landed on nobody's push. Only the twin, which has no git, records a bare
+merge (tests TestBareMergeIsRefusedOnARealStore, TestMergeLandedRefusesAHeadNotOnTheBase).
 
 | stream state | means |
 |---|---|
