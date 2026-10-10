@@ -105,6 +105,12 @@
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
 
+   (fix "route-share-falls-with-cost-per-landed" :release "v1.2.9" :status "planned"
+    :title "Route share falls as cost per landed card rises or ok rate falls"
+    :text "Route share is weighted by cost per landed card and ok rate: higher cost or lower ok rate
+     gives lower share, with a floor so the route is still sampled."
+    :origin "internal/sprint/route_pick.go, internal/sprint/route_pick_test.go")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
