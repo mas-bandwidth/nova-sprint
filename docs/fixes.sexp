@@ -102,4 +102,9 @@
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
      file. Use a unique temporary path per writer."
-    :origin "issue #5160")))
+    :origin "issue #5160")
+
+   (fix "log-since-wide-window" :release "v1.2.9" :status "planned"
+    :title "Fix log --since for windows wider than 22 hours"
+    :text "A wide --since window returns nothing; pin the window and return every event in it."
+    :origin "card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)")))

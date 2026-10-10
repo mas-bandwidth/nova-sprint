@@ -36,3 +36,4 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 Inbox push writes each judgment once without concurrent writers sharing a temporary path.
 
 - **Inbox push cannot overwrite a published judgment** (planned). Two overlapping clients share one temporary path, so a second write can change the published file. Use a unique temporary path per writer. From: issue #5160.
+- **Fix log --since for windows wider than 22 hours** (planned). A wide --since window returns nothing; pin the window and return every event in it. From: card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10).
