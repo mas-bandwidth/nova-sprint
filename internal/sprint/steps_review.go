@@ -864,7 +864,7 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 	}
 	var typ, why string
 	switch {
-	case len(oks) >= ReadsNeededIn(s, pr):
+	case len(oks) >= ReadsNeededIn(s, pr) && !broken:
 		if offers || AcceptHeld(pr) == "" {
 			// the tick's pump accepts it, RUNNING or STOPPED (at the first pump after
 			// start): "accept is mechanical", and a hand step is a missing instruction
@@ -890,6 +890,10 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 	case !broken && reads < ReadsNeededIn(s, pr):
 		// the ones that stand came back ok and the rest are the ask's (ReadsWanted),
 		// nothing to judge
+		return Note{}, false
+	case broken:
+		// a broken verdict at the same head outweighs any number of oks; the card
+		// returns to work with the finding, the tick will not accept
 		return Note{}, false
 	default:
 		typ, why = NReadsExhausted, fmt.Sprintf("no read is outstanding and %s not said ok at %s", readersWord(ReadsNeededIn(s, pr)), orDash(pr.F("head")))
