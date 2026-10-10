@@ -8,7 +8,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
 - [The sprint machine](#the-sprint-machine) (214)
-- [Setup, release and operations](#setup-release-and-operations) (31)
+- [Setup, release and operations](#setup-release-and-operations) (28)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (20)
 
@@ -340,7 +340,7 @@ One verb gates and promotes the base, one moves unlanded cards between base bran
 
 Target: after v1.4
 
-From: cards moved out of the sprint (work record, 2026-10-04)
+From: cards moved out of the sprint (work record, 2026-10-04); card moved out of the sprint (work record, 2026-10-04)
 
 ### Cards that edit TLA+ models get the frontier tier
 
@@ -796,7 +796,7 @@ The batch test step keeps the raw go test JSON stream, paginated review captures
 
 Target: v1.3
 
-From: issue #2626; issue #2654; issue #2693
+From: issue #2626; issue #2654; issue #2693; issue #3183
 
 ### A hold pinned to an older head is not a hold at the current head
 
@@ -1532,7 +1532,7 @@ Readers must not bounce cards for harness failures or trailer-only misreads. A d
 
 Target: v1.3
 
-From: card from the sprint store (2026-10-10)
+From: card from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)
 
 ### The stage carries a prior attempt's head onto a moved base
 
@@ -1726,14 +1726,6 @@ Target: after v1.4
 
 From: card moved out of the sprint (work record, 2026-10-04)
 
-### Classifiers for false bounces and hold reports
-
-Two decision kinds classify reader findings as harness failure, trailer-only or real, and classify hold reports by cause, with a probability and the proposed paths. Both are seeded from labelled past cases.
-
-Target: after v1.4
-
-From: cards moved out of the sprint (work record, 2026-10-04)
-
 ### nova-swarm lint card validation closes its escapes
 
 Drive letter paths, more than eight globs, comma only paths, unknown kinds, and no test on gated kinds pass lint. The card header shape and the worker card practice agree so a spec shaped card is admitted.
@@ -1741,6 +1733,14 @@ Drive letter paths, more than eight globs, comma only paths, unknown kinds, and 
 Target: v1.3
 
 From: issue #1853; issue #1728; issue #2584; issue #2605; issue #2728
+
+### Card lint refuses valid cards: make gates and text inside fenced blocks
+
+Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside fenced blocks. It should accept both.
+
+Target: v1.3
+
+From: issue #1994; issue #2302; issue #3470
 
 ### A mechanical guard check as a review verb
 
@@ -1978,22 +1978,6 @@ Target: after v1.4
 
 From: issue #2555
 
-### A promote verb that takes the sprint base to dev end to end
-
-Promoting the sprint base to dev is done by hand: cut a branch, bring dev in, resolve conflicts, open the pull request. A verb does the whole path and records each step.
-
-Target: after v1.4
-
-From: card moved out of the sprint (work record, 2026-10-04)
-
-### Card lint refuses valid cards: make gates and text inside fenced blocks
-
-Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside fenced blocks. It should accept both.
-
-Target: v1.3
-
-From: issue #1994; issue #2302; issue #3470
-
 ### Approval at head is read from the disposition line
 
 The review API commit id can differ from the head the reviewer read. Merge checks parse the head named in the disposition and treat commit id as untrusted.
@@ -2001,14 +1985,6 @@ The review API commit id can differ from the head the reviewer read. Merge check
 Target: v1.3
 
 From: issue #2037
-
-### nova-merge stores the gate receipt and fetches it from another machine
-
-The gate's receipt is stored as evidence bound to the gate run, and any machine can fetch it. The pull request body line is only a quote.
-
-Target: after v1.4
-
-From: issue #3183
 
 ## Docs, models and the repository
 

@@ -475,7 +475,7 @@
     merges go in batches in work order instead of by hand."
    :date "2026-10-10"
    :release "after v1.4"
-   :origin "cards moved out of the sprint (work record, 2026-10-04)")
+   :origin "cards moved out of the sprint (work record, 2026-10-04); card moved out of the sprint (work record, 2026-10-04)")
   (item "tests-leave-source-tree-clean" :group "ops"
    :title "Tests leave the source tree clean"
    :text "A sprint test that wrote into the source tree uses a temp directory, and a CI class test checks
@@ -1015,7 +1015,7 @@
     truncated at the output cap, and the gate's receipt is stored where a reader can fetch it."
    :date "2026-10-10"
    :release "v1.3"
-   :origin "issue #2626; issue #2654; issue #2693")
+   :origin "issue #2626; issue #2654; issue #2693; issue #3183")
   (item "hold-pinned-to-head-sha" :group "sprint"
    :title "A hold pinned to an older head is not a hold at the current head"
    :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
@@ -1818,7 +1818,7 @@
     separates these from real defects."
    :date "2026-10-10"
    :release "v1.3"
-   :origin "card from the sprint store (2026-10-10)")
+   :origin "card from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)")
   (item "sprint-store-test-environment" :group "ops"
    :title "Shared test environment for the sprint store packages"
    :text "The sprint store and its test utility packages get the same test environment scaffold as the
@@ -2075,13 +2075,6 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "issue #2555")
-  (item "promote-verb-end-to-end" :group "ops"
-   :title "A promote verb that takes the sprint base to dev end to end"
-   :text "Promoting the sprint base to dev is done by hand: cut a branch, bring dev in, resolve conflicts,
-    open the pull request. A verb does the whole path and records each step."
-   :date "2026-10-10"
-   :release "after v1.4"
-   :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "coordinator-leased-shared-resources" :group "sprint"
    :title "Shared resources are leased by the coordinator"
    :text "Benches, branches, ports and accounts are claimed and released only through coordinator verbs
@@ -2096,14 +2089,6 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
-  (item "decide-bounce-and-hold-classifiers" :group "sprint"
-   :title "Classifiers for false bounces and hold reports"
-   :text "Two decision kinds classify reader findings as harness failure, trailer-only or real, and
-    classify hold reports by cause, with a probability and the proposed paths. Both are seeded from
-    labelled past cases."
-   :date "2026-10-10"
-   :release "after v1.4"
-   :origin "cards moved out of the sprint (work record, 2026-10-04)")
   (item "friend-status-counts-current-assignments" :group "friends"
    :title "Scope friend status and pong counts to current assignments"
    :text "Queue sync writes a versioned snapshot of the friend's current Ready and Working row so counts
@@ -2119,7 +2104,7 @@
    :date "2026-10-10"
    :release "v1.3"
    :origin "issue #1853; issue #1728; issue #2584; issue #2605; issue #2728")
-  (item "swarm-lint-card-false-refusals" :group "ops"
+  (item "swarm-lint-card-false-refusals" :group "sprint"
    :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
    :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
     fenced blocks. It should accept both."
@@ -2140,13 +2125,6 @@
    :date "2026-10-10"
    :release "v1.3"
    :origin "issue #2037")
-  (item "merge-receipt-store-and-fetch" :group "ops"
-   :title "nova-merge stores the gate receipt and fetches it from another machine"
-   :text "The gate's receipt is stored as evidence bound to the gate run, and any machine can fetch it.
-    The pull request body line is only a quote."
-   :date "2026-10-10"
-   :release "after v1.4"
-   :origin "issue #3183")
   (item "decide-review-uses-confidence" :group "sprint"
    :title "nova-decide review uses the provider confidence in its verdict"
    :text "The review verdict passes any rounded score of eight or more whatever the confidence. Low
