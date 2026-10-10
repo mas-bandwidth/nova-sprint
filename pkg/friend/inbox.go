@@ -50,7 +50,9 @@ type HeldCard struct {
 	Repo    string `json:"repo,omitempty"`
 	Base    string `json:"base,omitempty"`
 	Brief   string `json:"brief"`
-	Why     string `json:"-"`
+	// Lane is the lane of her row that holds the card on the server (take --lane), 0 for none.
+	Lane int    `json:"lane,omitempty"`
+	Why  string `json:"-"`
 }
 
 // Row is one answer of what is on her row: the cards, whether her reads are among them (a
