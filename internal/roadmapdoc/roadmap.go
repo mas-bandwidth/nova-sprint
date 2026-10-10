@@ -16,11 +16,18 @@ The shape:
 	 :title "<page title>"
 	 :text "<the page's opening paragraph>"
 	 :scheduled ((scheduled "<id>" :release "<vX.Y>" :title "..." :text "..." :date "YYYY-MM-DD") ...)
-	 :done ((done "<id>" :title "..." :text "..." :date "YYYY-MM-DD") ...)
+	 :done ((done "<id>" :title "..." :text "..." :date "YYYY-MM-DD" [:kept (...)]) ...)
 	 :groups ((group "<id>" :title "..." :text "...") ...)
 	 :items ((item "<id>" :group "<group id>" :title "..." :text "..." :date "YYYY-MM-DD"
 	          [:why "..."] [:area "..."] [:exists "..."] [:cards <n>]
-	          [:origin "<where it came from: issue #n, PR #n, a card>"] [:release "<target release>"]) ...))
+	          [:origin "<where it came from: issue #n, PR #n, a card>"] [:release "<target release>"]
+	          [:kept (:<key> "<value>" ...)]) ...))
+
+:kept holds the fields a move between docs/roadmap.sexp and docs/fixes.sexp
+carried that have no meaning where the record now is (an item's :why on a fix,
+a fix's :status on an item), each under a key naming where it came from
+(item-why, fix-status), so a move never drops one and a move back restores it.
+It is data for nova-work roadmap (internal/roadmap) and is not rendered.
 
 Text values may be wrapped across lines in the file; Render joins every run of
 whitespace into one blank, so the page reads the same however the file is wrapped.
@@ -57,6 +64,13 @@ type Doc struct {
 // release, or already done. Release is empty for a done note.
 type Note struct {
 	ID, Release, Title, Text, Date string
+	Kept                           []Pair
+}
+
+// Pair is one field a move carried under :kept: its key and its value, which
+// may be empty (an empty value records that the field was absent).
+type Pair struct {
+	Key, Value string
 }
 
 // Group is one heading of the roadmap; every item names the group it sits under.
@@ -76,6 +90,7 @@ type Item struct {
 	// Origin names where the item came from (an issue, a pull request, a card
 	// moved out of the sprint); Release is the release it is aimed at, when one is.
 	Origin, Release string
+	Kept            []Pair
 }
 
 var datePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
@@ -201,6 +216,25 @@ func (d *decoder) count(at string, vals map[string]worklang.Form, k string) int 
 	return int(f.Int)
 }
 
+// kept reads :kept, a list of :key "value" pairs, each key once; nil when absent.
+func (d *decoder) kept(at string, vals map[string]worklang.Form) []Pair {
+	l := d.list(at, vals, "kept")
+	var out []Pair
+	seen := map[string]bool{}
+	for i := 0; i < len(l); i += 2 {
+		if l[i].Kind != worklang.Keyword || i+1 >= len(l) || l[i+1].Kind != worklang.String {
+			d.fail(at, ":kept wants :key \"value\" pairs")
+			return nil
+		}
+		if seen[l[i].Value] {
+			d.fail(at, ":kept key :%s stands twice", l[i].Value)
+		}
+		seen[l[i].Value] = true
+		out = append(out, Pair{Key: l[i].Value, Value: l[i+1].Value})
+	}
+	return out
+}
+
 // list returns the members of the list value of key k, nil when the key is absent.
 func (d *decoder) list(at string, vals map[string]worklang.Form, k string) []worklang.Form {
 	f, ok := vals[k]
@@ -245,12 +279,12 @@ func (d *decoder) doc(top worklang.Form) *Doc {
 	}
 	for i, f := range d.list("top", vals, "done") {
 		at := fmt.Sprintf(":done[%d]", i)
-		id, v, ok := d.record(at, f, "done", true, []string{"title", "text", "date"}, nil)
+		id, v, ok := d.record(at, f, "done", true, []string{"title", "text", "date"}, []string{"kept"})
 		if !ok {
 			continue
 		}
 		seen(at, "done", id)
-		doc.Done = append(doc.Done, Note{ID: id, Title: d.str(at, v, "title"), Text: d.str(at, v, "text"), Date: d.date(at, v)})
+		doc.Done = append(doc.Done, Note{ID: id, Title: d.str(at, v, "title"), Text: d.str(at, v, "text"), Date: d.date(at, v), Kept: d.kept(at, v)})
 	}
 	groups := map[string]bool{}
 	for i, f := range d.list("top", vals, "groups") {
@@ -268,14 +302,14 @@ func (d *decoder) doc(top worklang.Form) *Doc {
 		at := fmt.Sprintf(":items[%d]", i)
 		id, v, ok := d.record(at, f, "item", true,
 			[]string{"group", "title", "text", "date"},
-			[]string{"why", "area", "exists", "cards", "origin", "release"})
+			[]string{"why", "area", "exists", "cards", "origin", "release", "kept"})
 		if !ok {
 			continue
 		}
 		seen(at, "item", id)
 		it := Item{ID: id, Group: d.str(at, v, "group"), Title: d.str(at, v, "title"), Text: d.str(at, v, "text"),
 			Why: d.str(at, v, "why"), Date: d.date(at, v), Area: d.str(at, v, "area"), Exists: d.str(at, v, "exists"),
-			Cards: d.count(at, v, "cards"), Origin: d.str(at, v, "origin"), Release: d.str(at, v, "release")}
+			Cards: d.count(at, v, "cards"), Origin: d.str(at, v, "origin"), Release: d.str(at, v, "release"), Kept: d.kept(at, v)}
 		if it.Group != "" && !groups[it.Group] {
 			d.fail(at, ":group %q names no (group ...) record", it.Group)
 		}
