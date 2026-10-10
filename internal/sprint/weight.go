@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // A card's weight (docs/SPEC-SPRINT.md, the deal, the ask, merging and the inbox; the

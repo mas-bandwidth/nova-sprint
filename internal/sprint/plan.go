@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // Change is one batch manifest entry for one table.

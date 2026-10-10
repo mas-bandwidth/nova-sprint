@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // A verified snapshot of the store (docs/SPEC-SPRINT.md, store-snapshot-verb):

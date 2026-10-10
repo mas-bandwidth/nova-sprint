@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/friend"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // friendCardsAnswer is friend cards <friend> --json, read as her daemon reads it.

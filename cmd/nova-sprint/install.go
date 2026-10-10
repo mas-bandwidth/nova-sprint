@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/redisauth"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/redisauth"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // install, uninstall and units (card every-unit-installed-by-a-verb; the owner,

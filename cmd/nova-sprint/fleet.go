@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/hostload"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // fleetWords is how a fleet member's status comes about, in nova-sprint help

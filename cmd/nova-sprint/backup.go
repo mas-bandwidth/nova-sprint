@@ -12,9 +12,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/log"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/log"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 func init() {

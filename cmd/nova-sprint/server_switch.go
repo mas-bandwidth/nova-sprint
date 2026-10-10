@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // cmdServerSwitch switches the server binary to <binary>, keeping the previous binary

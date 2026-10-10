@@ -18,13 +18,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/binstamp"
-	"github.com/mas-bandwidth/nova-sprint/internal/decide"
-	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/binstamp"
+	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // The machine: start and stop set its state; run is the process that ticks

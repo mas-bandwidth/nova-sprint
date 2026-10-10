@@ -6,10 +6,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/internal/decide"
-	"github.com/mas-bandwidth/nova-sprint/internal/hygiene"
-	"github.com/mas-bandwidth/nova-sprint/internal/typedrec"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
+	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
 )
 
 // Widened in place by rule (docs/SPEC-SPRINT.md section 8, the rules table's row widen). On

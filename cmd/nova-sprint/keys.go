@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/secrets"
+	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
 )
 
 // unitKeysFile is the list of secret names run reads in process, beside the seat login.

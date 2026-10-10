@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/internal/diffcheck"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
 )
 
 // landScope is E12 on the rig's merge as checkCard reads it (cmd/nova-sprint/land.go):

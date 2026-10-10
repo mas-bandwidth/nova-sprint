@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // RecutReq re-cuts a card as its twin (nova-sprint recut): the same card for another tier

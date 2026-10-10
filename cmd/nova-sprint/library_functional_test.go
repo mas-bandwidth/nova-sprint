@@ -7,8 +7,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )

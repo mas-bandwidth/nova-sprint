@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardcost"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 )
 
 // A card's deadline by machine (docs/SPEC-SPRINT.md section 5, the deadline; the owner,

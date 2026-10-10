@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/gocache"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
-	"github.com/mas-bandwidth/nova-sprint/internal/safepath"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gocache"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
 )
 
 // GC is nova-sprint gc's pass over the machine it runs on (docs/SPEC-SPRINT.md section 1,

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

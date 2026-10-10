@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/tty"
+	"github.com/mas-bandwidth/nova-sprint/pkg/tty"
 )
 
 // where --watch: the view drawn in place, once every --every. The cursor is

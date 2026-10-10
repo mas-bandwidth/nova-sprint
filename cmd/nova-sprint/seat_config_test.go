@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/seatcred"
-	"github.com/mas-bandwidth/nova-sprint/internal/secrets"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/seatcred"
+	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // coordinator-config-through-the-seat: seat install writes the nova-config seat

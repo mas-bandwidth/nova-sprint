@@ -7,8 +7,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // ReadCells reads one row's cards in the named columns of a table: the

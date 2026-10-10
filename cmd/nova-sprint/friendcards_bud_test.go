@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/bus"
-	"github.com/mas-bandwidth/nova-sprint/internal/bus/bustest"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
 )
 
 // staleRoster is the bus store as the fleet had it on 2026-10-05: a Redis

@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardlimits"
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardlimits"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // What is atomic, and what is not.
@@ -184,7 +184,7 @@ type Step struct {
 	// internal/sprint/cost.go): it plans with the routes alone, the routes set and
 	// each route's record (routes.go, PriceRoutes), read before its tables. It reads
 	// no tier array: a worker's ACL reads routes and route:*
-	// only (internal/redisacl, the member role), and pricing needs no more.
+	// only (pkg/redisacl, the member role), and pricing needs no more.
 	Prices bool
 	// Readers says the step asks, or reads what the ask would do: it plans
 	// with the readers' states (sprint.Snapshot.ReaderStates), read after its

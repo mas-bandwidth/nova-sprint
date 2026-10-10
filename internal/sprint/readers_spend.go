@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardcost"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 )
 
 // What each reader spent (docs/SPEC-SPRINT.md, "What a card cost", a reader's spend; the

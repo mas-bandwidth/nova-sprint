@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // sprintKeys are the deployment's keys outside its tables, under its prefix

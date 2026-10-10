@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/internal/testgit"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testgit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

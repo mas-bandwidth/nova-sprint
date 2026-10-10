@@ -9,8 +9,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/diffcheck"
-	"github.com/mas-bandwidth/nova-sprint/internal/hygiene"
+	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
 )
 
 // The lander's document repairs (docs/SPEC-SPRINT.md section 7, the lander's checks): a

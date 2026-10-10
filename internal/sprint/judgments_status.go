@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // Status transitions (docs/SPEC-SPRINT.md section 8, "Status transitions"; the owner,

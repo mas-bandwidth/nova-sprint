@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/redisconn"
-	"github.com/mas-bandwidth/nova-sprint/internal/secrets"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
 )
 
 // loginApp is a test app with the seat login on, as main has it: no --redis and no

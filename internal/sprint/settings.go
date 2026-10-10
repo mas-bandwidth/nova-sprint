@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // The sprint's settings, the coordinator's (`set`, `stream set`; nova-tools#5096

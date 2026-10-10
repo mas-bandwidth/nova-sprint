@@ -20,13 +20,13 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/card"
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/verbflag"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/subproc"
-	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 const preAlpha = "nova-card is pre-alpha: not ready for production use."
@@ -424,7 +424,7 @@ func readCheckout(dir string, h *cardgen.Header) error {
 	}
 	if h.Base == "" {
 		// a detached HEAD names no branch: symbolic-ref exits 1 and Base stays "",
-		// refused by the caller (internal/bus/git.go CurrentBranch reads it the same way)
+		// refused by the caller (pkg/bus/git.go CurrentBranch reads it the same way)
 		if branch, err := git("symbolic-ref", "--quiet", "--short", "HEAD"); err == nil {
 			h.Base = branch
 		}

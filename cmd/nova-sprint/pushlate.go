@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // The late tick, pushed (the owner, 2026-10-10: no silent stops; the night of 2026-10-09 the

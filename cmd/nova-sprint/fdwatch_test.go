@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/hostload"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 )
 
 // TestFleetBeatMeasuresOpenFilesBesideTheLoad: fleet beat measures the machine's open

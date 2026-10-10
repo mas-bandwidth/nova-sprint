@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // cmdStats is the epoch's numbers since the last stats tidy or stats reset, the later

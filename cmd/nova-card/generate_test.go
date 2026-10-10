@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/internal/goenv"
-	"github.com/mas-bandwidth/nova-sprint/internal/testbin"
+	"github.com/mas-bandwidth/nova-sprint/pkg/goenv"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
 )
 
 // fixtureCheckout is a one-commit repository on branch dev with an origin, the

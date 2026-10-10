@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprintdash"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // DashboardListen is the page's address when --listen names none, and DashboardPull the

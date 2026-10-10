@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // One selector, one step (docs/SPEC-SPRINT.md, "One selector, one step"; the owner,

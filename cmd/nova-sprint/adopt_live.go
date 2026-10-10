@@ -19,9 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/buildinfo"
-	"github.com/mas-bandwidth/nova-sprint/internal/friend"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
+	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // adoptRunner runs a live-manifest probe: exec in production, a fake in tests.
