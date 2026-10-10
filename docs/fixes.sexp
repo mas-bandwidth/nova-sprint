@@ -89,9 +89,9 @@
   (fix "pin-release-and-rule-answers" :release "v1.2.6" :status "planned"
    :title "A hard pin past its bound is offered on; a rule answer is consumed by its attempt"
    :text "A hard pin past its bound is offered to others, a card cannot ask once it waits, and a rule
-    answer is consumed by its attempt. The pin release clock comment is corrected or the clock keyed
-    on the pin."
-   :origin "nova-tools PR #5573, head daab75763")
+    answer is consumed by its attempt. The pin release clock comment is corrected: the hour runs from
+    the stop's latest note, so a coordinator's ack or wait starts it again, and a test says so."
+   :origin "nova-tools PR #5573, head daab75763, re-applied here")
   (fix "paths-widening-edits-card-in-place" :release "v1.2.6" :status "planned"
    :title "A PATHS widening on a reader finding edits the card in place"
    :text "A reader finding that widens PATHS edits the card in place, never a twin. Three review notes are
