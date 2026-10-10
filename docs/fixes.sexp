@@ -115,8 +115,10 @@
     answers the card the lane holds or gives it one (a friend's take is her start, so the tick no
     longer puts it back ready), and says it on a LANE line. Progress, finish and read verdicts name
     the lane, a lane unheard for ten minutes is gone and its card bounces back ready, a reader's
-    lanes begin its reads, and stop-return is served as a worker's verb."
-   :origin "a one-shot friend host, 2026-10-10: took logged while the server showed the card ready, progress sent at epoch 0, every stop-return refused by the server")
+    lanes begin its reads, stop-return is served as a worker's verb, and the worker verb lists in
+    serve.go and coordinator.go are unified (take, finish, progress, read, queue, stop-return,
+    remind, fleet beat, friend beat, friend cards, lane take, lane give)."
+   :origin "a one-shot friend host, 2026-10-10: took logged while the server showed the card ready, progress sent at epoch 0, every stop-return refused by the server; verbs misaligned in serve and coordinator")
 
   (fix "draining-member-clears-no-room" :release "v1.2.6" :status "shipped"
    :title "A draining member does not keep a stale no-room word"
