@@ -2856,6 +2856,29 @@ id (`--op`) returns the original result, with no second counter or notification.
   asks every attempt as before: the field is additive, and a store given
   `sprint.GateTables(g)` gates with `g`.
 
+- The gate lint tokens (`sprint.GateLintPinAbsent`, `sprint.GateLintPinBroken`,
+  `sprint.GateLintReach`):
+  - `gate-pin-absent`: the TEST line's test passes at the merge-base. A test that does
+    not exist there is absent, not passing: a package whose test files name no such test
+    (`[no tests to run]`) and a package with no test files at all (`[no test files]`) both
+    read as absent, so a change that adds the TEST line's test to a package that had none
+    at the merge-base is not reworked.
+    Remedy: write the test so it fails without the change.
+  - `gate-pin-broken`: the TEST line's test passes when the change's non-test hunks are
+    reverted. Remedy: ensure the test actually depends on the change.
+  - `gate-reach-unreached`: an exported function, method or verb added by the change has
+    no semantic reference from any non-test file. Remedy: wire the symbol into a non-test
+    caller, or do not export one only a test reads (an unexported helper is outside the
+    check). Reach is resolved with Go object identity, so a shadowed local spelling is not
+    a caller. The reach scan uses the exact pinned attempt tree, not the lander checkout.
+  - If either pin probe or source analysis cannot run, the machine gate waits. A bench
+    error is not evidence that the test failed or the symbol was reached.
+
+#### work-lint-proves-the-test-pins-ns-bcccb.w1: standard-library reach imports
+
+- The reach scanner resolves external package export data with one go list -deps -export invocation using the bench's resolved go executable (swarm.BenchGoBin), then imports every package through one go/importer.ForCompiler instance. The shared importer preserves types.Package object identity when callers pass standard-library types across package boundaries; its GOROOT comes from the resolved toolchain, not runtime.GOROOT or build.Default.GOROOT in the trimmed wall process. The legacy package scanner uses the same importer.
+- If this source analysis cannot complete, the machine gate emits an explicit gate-reach-unreached finding naming the incomplete analysis instead of treating an importer error as a waiting gate. It does not claim a symbol is reached when type-checking failed.
+
 ## 7. Merging
 
 1. In work order, never random: the head of the stream's queued cell first.
@@ -5344,3 +5367,14 @@ The TLA+ specification `tla/StallLadder.tla` verifies five invariants:
 - `NoWakeWithoutRung`: a wake is sent only at a rung the ladder climbed, and once
   (`PlanUncommitted`, a plan the tick makes and does not commit; reversed witness
   `wakeinplan`: the planner sends the wake as it plans).
+
+
+#### work-lint-proves-the-test-pins-ns-bcccc.w1: interface reach and analysis errors
+
+- A newly added method counts as reached when a concrete value is type-checked as an implementation of an interface used by a non-test assignment, initializer, channel send, or call argument. This captures interface dispatch without accepting same-spelled methods or methods on a type never used through that interface.
+- Source analysis failures return an error to the machine gate, which waits; they are not reclassified as a work-lint finding. This clarifies and supersedes the prior standard-library-import subsection's explicit-finding behavior for analysis errors.
+
+#### work-lint-proves-the-test-pins-ns-bcccc.w2: pin-probe absence and a build-path-independent reach test
+
+- The pin probe reads a test as absent, not passing, for both shapes of a package that names no such test: a package with test files and none matching (`[no tests to run]`) and a package with no test files at all (`[no test files]`). The second is exactly a change that adds the TEST line's test to a package that had none at the merge-base, so the card's rule (red at the merge-base, or not exist) is honored and no sound attempt is reworked with gate-pin-absent.
+- The reach test for interface dispatch locates the module root from the test's working directory (walking up to the directory that holds go.mod), not `runtime.Caller`. The wall builds with a forced `-trimpath`, so a compiled file name is module-relative and a path built from it does not exist on disk; the test must be build-path independent (the analysis itself is unchanged and correct with an untrimmed toolchain).

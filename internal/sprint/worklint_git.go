@@ -56,6 +56,7 @@ func ReadWorkView(ctx context.Context, dir, base, head string, env []string) (Wo
 	if err != nil {
 		return v, fmt.Errorf("work lint: no merge-base of %s and %s in %s: %w", base, head, dir, err)
 	}
+	v.MergeBase = strings.TrimSpace(mb)
 	res, err := gitrun.Run(ctx, o, "diff", "--no-color", "--no-ext-diff", "-M", mb, head)
 	if err != nil {
 		return v, fmt.Errorf("work lint: diff %s..%s in %s: %w", mb, head, dir, err)
