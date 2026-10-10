@@ -33,6 +33,10 @@ const FieldBriefDefects = "brief_defects"
 // ("not a duplicate of landed work", "no brief defect"); the reason's own article is in it.
 const negated = `(\b(?:not|no)\s+(?:an?\s+|the\s+)?)?`
 
+// negatedComma is negated read across a comma too ("no, the base already has the change"),
+// for the duplicate reason alone: "no, the base lacks x" still names the base lacking it.
+const negatedComma = `(\b(?:not|no),?\s+(?:an?\s+|the\s+)?)?`
+
 // briefDefectReasons are the four reasons, each a detector on its own (docs/SPEC-SPRINT.md
 // section 1, a brief defect): the words a worker states the reason in, matched as words, so
 // a card id that holds them joined by hyphens is not one. PATHS do not hold is the first
@@ -42,7 +46,13 @@ var briefDefectReasons = []struct {
 	reason string
 }{
 	{regexp.MustCompile(`(?i)` + negated + `\b(?:the\s+)?base\s+lacks\b|\b(?:not|missing)\s+(?:on|from)\s+the\s+base\b|\b(?:does|do)\s+not\s+exist\s+on\s+the\s+base\b`), BriefDefectBase},
-	{regexp.MustCompile(`(?i)` + negated + `\bduplicates?\s+(?:of\s+)?landed\s+work\b`), BriefDefectDuplicate},
+	// the duplicate in the worker's words, or a worker saying it found this card's work already
+	// at its base (fault 17 of 2026-10-10: ~15 a day counted as the worker's failure), in one
+	// of two forms only: "nothing to do: the (staged) base already contains|has ...", or "the
+	// (staged) base already contains|has this card's change|implementation" / "the change".
+	// A sentence about what else the base holds (a failing test, a file, a conflicting version)
+	// is no duplicate. Its negation reads across a comma: "no, the base already has the change".
+	{regexp.MustCompile(`(?i)` + negatedComma + `(?:\bduplicates?\s+(?:of\s+)?landed\s+work\b|\bnothing\s+to\s+do\s*[:;,.—-]?\s*(?:the\s+)?(?:staged\s+)?base\s+already\s+(?:contains|has)\b|\b(?:the\s+)?(?:staged\s+)?base\s+already\s+(?:contains|has)\s+(?:this\s+card[’']s\s+(?:change|implementation)|the\s+change)\b)`), BriefDefectDuplicate},
 	{regexp.MustCompile(`(?i)` + negated + `\bdecision\s+(?:(?:is|was|has\s+been|already)\s+)*delivered\b`), BriefDefectDecision},
 	{regexp.MustCompile(`(?i)` + negated + `\bPATHS\s+do\s+not\s+hold\b`), BriefDefectPaths},
 }
@@ -54,12 +64,15 @@ var briefDefectLabel = regexp.MustCompile(`(?i)` + negated + `\bbrief\s+defect\b
 // BriefDefectOf is the brief defect a failed finish's report names: "" when it names none,
 // else its reason (docs/SPEC-SPRINT.md section 1, a brief defect). Each of the four reasons
 // alone names one, the earliest in the report winning: the base lacks a PATHS file ("the
-// base lacks", "not on the base", "does not exist on the base"), a duplicate of landed work,
+// base lacks", "not on the base", "does not exist on the base"), a duplicate of landed work
+// ("duplicate of landed work"; "nothing to do: the (staged) base already contains|has"; "the
+// (staged) base already contains|has this card's change|implementation" or "the change"),
 // a decision delivered, and PATHS do not hold what the brief names. That last one carries
 // the worker's proposed PATHS when the report has them (PATHS-PROPOSED, else a PATHS:
 // line), the one-line fix. The label "brief defect" with none of them names one in the
 // worker's own words. A negated reason or label ("not a duplicate of landed work", "no
-// brief defect", "not PATHS do not hold") names none, and a hyphenated token (a card id
+// brief defect", "not PATHS do not hold", and for the duplicate "no, the base already has
+// the change") names none, and a hyphenated token (a card id
 // such as hold-is-a-brief-defect, or paths-do-not-hold) is no label. A report that only
 // proposes PATHS, without those words, names none, so the paths rule can still widen it.
 func BriefDefectOf(report string) string {

@@ -730,6 +730,11 @@ type whereView struct {
 	// last minute, as the server measured it (store.StoreRTTRecord, store-latency-row-r.w2).
 	StoreRTTP50MS *float64 `json:"store_rtt_p50_ms,omitempty"`
 	StoreRTTP99MS *float64 `json:"store_rtt_p99_ms,omitempty"`
+	// LandedSeries is the cards landed per 10-minute bucket over the last 24 hours, friends
+	// and fleet, bucketed at At from the landings the tick counted into the where record
+	// (store.WhereFacts.Series); absent when no record of the epoch counted them, and then
+	// where --json's writer reads the log for it (where_landed_series.go).
+	LandedSeries *sprint.LandedSeries `json:"landedSeries,omitempty"`
 }
 
 // archivedView is where --json's archived streams (stream archive).
@@ -1224,6 +1229,11 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		v.SeatWaits, v.Stops = seatWaitsOf(facts.Stops, now), facts.Stops.Stops
 	}
 	v.Held = int64(facts.Held)
+	if facts.SeriesCounted {
+		// from the record's landings, no log line read (sprint.LandedSeriesOfLandings)
+		series := sprint.LandedSeriesOfLandings(facts.Series, now)
+		v.LandedSeries = &series
+	}
 	v.Ready = readyPrimaries(shapes[0])
 	working, review, merging := pipelineCounts(shapes[0])
 	v.Backup = sprint.BackupOf(int(working), int(review), int(merging))
@@ -1646,12 +1656,14 @@ func readerTiersSummary(t ntable.Table) string {
 	var words []string
 	seen := map[string]bool{}
 	for _, r := range t.Rows {
-		w := sprint.ReaderTiersShown(r.Texts[sprint.ReaderTiers])
-		if seen[w] {
-			continue
+		// a row's word is itself a comma list: each tier is named once across rows
+		for w := range strings.SplitSeq(sprint.ReaderTiersShown(r.Texts[sprint.ReaderTiers]), ",") {
+			if seen[w] {
+				continue
+			}
+			seen[w] = true
+			words = append(words, w)
 		}
-		seen[w] = true
-		words = append(words, w)
 	}
 	return strings.Join(words, ",")
 }
@@ -2632,12 +2644,17 @@ func rowsView(s *sprint.Snapshot, gone *archivedView) []primaryRow {
 // down), and for a friend held or down with a reason, the reason and when she
 // is expected back: `down (opus rate limited, until 6:00 PM)`.
 func (a *app) statusCell(f store.FriendRow, now time.Time) string {
-	if f.Reason == "" && f.Until.IsZero() {
+	// a hold's until that has passed is history, not an expectation: it is not shown
+	until := f.Until
+	if !until.IsZero() && !until.After(now) {
+		until = time.Time{}
+	}
+	if f.Reason == "" && until.IsZero() {
 		return f.Status
 	}
 	why := f.Reason
-	if !f.Until.IsZero() {
-		why = strings.TrimPrefix(why+", until "+a.clock12(f.Until, now), ", ")
+	if !until.IsZero() {
+		why = strings.TrimPrefix(why+", until "+a.clock12(until, now), ", ")
 	}
 	return f.Status + " (" + why + ")"
 }
