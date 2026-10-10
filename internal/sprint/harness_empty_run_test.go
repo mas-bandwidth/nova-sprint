@@ -73,13 +73,20 @@ func TestAnEmptyRunIsNeverReworkedOntoTheFriendWhoseLaneRanItEmpty(t *testing.T)
 		// and the coordinator's pass (each reading friendsLeft of the work card) keep it off her
 		assert.Contains(t, friendsLeft(wc), "amy", "the work card has left amy too")
 	})
-	t.Run("amy alone up: it waits, never back to her", func(t *testing.T) {
+	t.Run("amy alone up: a machine takes it, never back to her", func(t *testing.T) {
 		t.Parallel()
 		w, amy, _ := emptyRunOnAmy(t, "friend", emptyRunReport("amy"))
 		rules(w, on(amy))
 		dealWith(w, amy)
-		assert.Nil(t, w.s.Fleet.Card(WorkCardID("s1-1", 2)), "no attempt 2 is dealt: never back to amy")
-		assert.Equal(t, Ready, w.state("s1-1"), "it waits ready")
+		// the world has machines up: attempt 2 goes to one of them, never to amy, and carries
+		// her as left so no rebalance gives it back
+		wc := w.s.Fleet.Card(WorkCardID("s1-1", 2))
+		require.NotNil(t, wc, "attempt 2 is dealt")
+		assert.NotEqual(t, FriendRow("amy"), wc.Row, "never back to amy")
+		_, onFriend := FriendOfRow(wc.Row)
+		assert.False(t, onFriend, "a machine's row: amy is the only friend up")
+		assert.Equal(t, "amy", wc.F(FieldFriendsLeft), "it carries her as left")
+		assert.Empty(t, rebalanced(Rebalance(w.s, []FriendSeat{amy}, "machine")), "and no rebalance gives it back to her")
 	})
 	t.Run("reversed: a cost-line fault leaves no friend", func(t *testing.T) {
 		t.Parallel()

@@ -85,16 +85,22 @@ FinishEmpty == /\ state = "working" /\ place \in Friends
                                    ELSE emptyUnpinned \cup {place}
                /\ UNCHANGED <<place, attempt, left, wleft, pinned>>
 
+\* a machine's attempt fails (any failure; the machine is not left, its rework
+\* avoids the member: reworkAvoid)
+MachineFail == /\ state = "working" /\ place = Machine
+               /\ state' = "review"
+               /\ UNCHANGED <<place, attempt, left, wleft, pinned, emptyOn, emptyUnpinned>>
+
 \* the failed rule's rework: an empty run leaves the friend unless the card
 \* names her or the cap pinned it (BadNoLeft: no one is left)
 Rework == /\ state = "review"
           /\ state' = "ready" /\ place' = None
-          /\ left' = IF Named \/ pinned /= None \/ BadNoLeft THEN left ELSE left \cup {place}
+          /\ left' = IF Named \/ pinned /= None \/ BadNoLeft \/ place = Machine THEN left ELSE left \cup {place}
           /\ UNCHANGED <<attempt, wleft, pinned, emptyOn, emptyUnpinned>>
 
 Next == \/ \E f \in Friends : Deal(f) \/ Rebalance(f) \/ CapDeal(f)
         \/ MachineDeal \/ Start
-        \/ FinishOk \/ FinishEmpty \/ Rework
+        \/ FinishOk \/ FinishEmpty \/ MachineFail \/ Rework
 Spec == Init /\ [][Next]_vars
 
 TypeOK == /\ place \in Friends \cup {Machine, None}
