@@ -180,4 +180,11 @@
     .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
-   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")))
+   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+  (fix "tick-gate-rests-once" :release "v1.2.7" :status "planned"
+   :title "The tick settles resting routes once, not once per card"
+   :text "The tick's check part settles resting routes once (one scan of the fleet table); the deal part
+    reads them from the map. Before the fix, check scanned once per ready primary (1969 scans, 3.82 s);
+    after, both parts scan once (about 10 ms). The fix ensures rests are cached and reused within a tick."
+   :origin "PR #5577 tick gate"))
+)

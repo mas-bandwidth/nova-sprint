@@ -603,9 +603,6 @@ func TickResume(s *Snapshot, r TickReq) (Plan, int) {
 // a withdrawn card is dealt again at a new generation. With no member up and primaries waiting to be dealt, the
 // coordinator is told once (N3), and the judgment closes when a member is up.
 func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
-	// the routes resting now, and those the no-result rule rests in this tick (rule 3,
-	// route_rest.go): no card of this tick is drawn on one, and the new rests are written
-	// in its plan
 	s, rests := s.withRests()
 	if s.Friends == nil && len(r.Friends) > 0 {
 		n := *s
@@ -1144,6 +1141,7 @@ func cannotAskCond(s *Snapshot, refused []Refusal) []cond {
 // card has left the table retires here, answered by the machine with the card's
 // event (judgments_retire.go): the tick that sees the card gone closes it.
 func TickCheck(s *Snapshot, r TickReq) (Plan, int) {
+	s, _ = s.withRests()
 	var p Plan
 	var conds []cond
 	for _, v := range Check(s, nil) {

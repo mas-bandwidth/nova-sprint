@@ -51,7 +51,7 @@ func TestTheTicksCheckSettlesTheRestsOnceAtScale(t *testing.T) {
 }
 
 // BenchmarkTickCheckWithRests is the check part's wall at that scale: go test -bench
-// TickCheckWithRests ./internal/sprint (about 10 ms settled once; seconds with a scan per card).
+// TickCheckWithRests ./internal/sprint (about 10 ms settled once).
 func BenchmarkTickCheckWithRests(b *testing.B) {
 	s := restWorld(b)
 	b.ResetTimer()

@@ -431,7 +431,7 @@ func cmpEnd(a, b routeEnd) int {
 // fleet table records and those the rule rests now (RestsDue, returned as due), so a step
 // that deals reads them once. A snapshot that has them already is returned as it is.
 func (s *Snapshot) withRests() (*Snapshot, []RouteRest) {
-	if s.rests != nil {
+	if s.rests != nil && s.restScans == nil {
 		return s, nil
 	}
 	if s.restScans != nil {
