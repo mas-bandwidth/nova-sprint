@@ -489,6 +489,10 @@ function sideWord(work, tiers) {
 function setSideOff(sec, work) { if (sec) sec.classList.toggle("off", String(work || "on") === "off"); }
 
 // the machine pill: red when the machine line says every provider is out of credit (SPEC.md)
+// machineStopped is setMachine's word to setLive: the Updated dot is red while the machine is
+// stopped, green while it runs (SPEC.md, Header: "the Updated clock with its live dot"; the
+// owner asked for the red stopped dot in v1.2.1 and it never shipped — the page's seed
+// hard-coded the dot green, and every re-seed carried that).
 var machineStopped = false;
 function setMachine(line) {
   var text = String(line || "-").replace(/^machine:\s*/, "");
@@ -585,7 +589,9 @@ function renderReaders(d) {
 function renderHero(d, s, ft) {
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
-  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : (landed === 0 ? "nothing complete" : "-"));
+  // the sub-line composes the pct slot with " complete" (index.html): at 0 of 0 the slot reads
+  // "nothing", so the tile reads nothing complete, never "- complete" (the owner, the empty epoch)
+  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : (landed === 0 ? "nothing" : "-"));
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
   if (m) {
     setHTML($("eta"), etaText(m[1]));
@@ -663,7 +669,9 @@ function renderRelease(j) {
   });
 }
 function setLive(since) {
-  setClass($("live"), "live" + (machineStopped ? "" : " ok"));
+  // the dot beside "Updated": green while the machine runs, red while it is stopped
+  // (.live.stopped in index.html; the owner's v1.2.1 ask, never shipped until now)
+  setClass($("live"), "live" + (machineStopped ? " stopped" : " ok"));
   // the viewer's zone after the time, from the browser (SPEC.md, the owner 9:59 PM): EDT now, EST after the change
   // "10:00:02 PM EDT": the digits right-aligned in a fixed 8ch box (no jump from 9 to 10 o'clock),
   // then one ordinary (proportional) blank before PM and one before the zone. The browser's own time string

@@ -94,4 +94,12 @@
     .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
-   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")))
+   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+
+  (fix "dashboard-empty-and-stopped-states" :release "v1.2.6" :status "shipped"
+   :title "The empty dashboard keeps its layout, and a stopped machine's Updated dot is red"
+   :text "The Cost breakdown with nothing spent keeps its stream and total header and its table, where a
+    line of prose stood. The LANDED tile at 0 of 0 reads nothing complete, not - complete. A stopped
+    machine's Updated dot is red, the owner's v1.2.1 ask: it never shipped, the page's seed hard-coded
+    the dot green, and a test pins it now."
+   :origin "the seat ledger v1.2.4-held-2026-10-10 items 8, 9 and 10; this pull request")))
