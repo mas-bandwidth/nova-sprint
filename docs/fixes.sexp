@@ -19,7 +19,9 @@
   (release "v1.2.6" :status "planned"
    :text "The fixes held during the split, the point-release candidates found on 2026-10-10, the owed
     tests, and the sprint store cards that are point-release work. Each is re-applied or written in
-    this repository, then cut as one release."))
+    this repository, then cut as one release.")
+  (release "v1.2.7" :status "planned"
+   :text "Fixes found while the final dogfood lands through the lander."))
  :items
  ((fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
@@ -79,9 +81,11 @@
    :origin "nova-sprint re-seed carry review (dropped file group)")
   (fix "provider-key-refusal-rests-until-woken" :release "v1.2.6" :status "planned"
    :title "A provider that refuses its key rests until woken, never for a time"
-   :text "A route whose provider refuses the key rests until routes wake, and the rest reason reads until
-    woken rather than until paid."
-   :origin "nova-tools PR #5574, head 0c6706f2d")
+   :text "A route whose provider refuses the key rests until routes wake, never for a time, and the rest
+    reason reads until woken rather than until paid: the providers table, the stop and the judgment all
+    say woken. TLA+ model RouteRest, property AuthEndsOnlyWoken, with a reversed witness. Tests cover
+    routes wake on a key rest."
+   :origin "nova-tools PR #5574, head 0c6706f2d; the providers table's until-paid wording is v1.2.5 candidate 6")
   (fix "bare-merge-stream-refused" :release "v1.2.6" :status "planned"
    :title "A bare merge --stream is refused on a real store"
    :text "Landings are recorded by name or by land; a bare merge --stream on a real store is refused."
@@ -123,7 +127,7 @@
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
     lane ran it empty, with a TLA+ model and witness."
    :origin "nova-tools PR #5583, head e8fdaecc")
-  (fix "done-at-base-is-brief-duplicate" :release "v1.2.6" :status "planned"
+  (fix "done-at-base-is-brief-duplicate" :release "v1.2.6" :status "in-progress"
    :title "A card already done at its base is a duplicate brief, not a worker failure"
    :text "Nothing to do because the base already contains the change is a brief defect, a duplicate of
     landed work, outside ok%, and raises a re-cut judgment."
@@ -162,4 +166,11 @@
    :title "A verb defers waiting cards to the roadmap with their whole briefs"
    :text "nova-sprint defer writes the named waiting cards, or a stream or repository of them, into the
     roadmap data with each whole brief, and drops them from the store; --expect checks the count."
-   :origin "card from the sprint store (2026-10-10); the roadmap item roadmap-defer-verb, folded in")))
+   :origin "card from the sprint store (2026-10-10); the roadmap item roadmap-defer-verb, folded in")
+  (fix "bench-tree-standalone" :release "v1.2.7" :status "planned"
+   :title "A bench tree is a standalone clone, and one that is not is refused with its reason"
+   :text "The mirror stage ends by checking that the staged tree's .git is a directory in the tree, and a
+    .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
+    it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
+    no longer exits 128 on a fleet host with nothing saying why."
+   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")))
