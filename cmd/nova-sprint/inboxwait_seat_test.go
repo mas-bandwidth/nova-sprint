@@ -29,8 +29,8 @@ func TestPushTargetSeatRepush(t *testing.T) {
 	// Test 1: Fixed directory caches seen and doesn't re-push
 	t.Run("fixed directory caches seen", func(t *testing.T) {
 		pFixed := &pushTarget{
-			fixed:  tmpDir,
-			seen:   map[string]map[string]bool{},
+			fixed: tmpDir,
+			seen:  map[string]map[string]bool{},
 		}
 
 		// First key lookup should cache
@@ -47,8 +47,8 @@ func TestPushTargetSeatRepush(t *testing.T) {
 	// Test 2: Seat does not cache seen and enables re-push
 	t.Run("seat does not cache seen", func(t *testing.T) {
 		pSeat := &pushTarget{
-			fixed:  "",
-			seen:   map[string]map[string]bool{},
+			fixed: "",
+			seen:  map[string]map[string]bool{},
 		}
 
 		// First key lookup should NOT cache
