@@ -108,7 +108,7 @@ const (
 
 	NMachineStarted = "the machine started"
 	NMachineStopped = "the machine stopped"
-	// NStopDebtBeat names the seat's note that a STOP debt owner has not
+	// NStopDebtBeat names the seat's judgment that a STOP debt owner has not
 	// beaten since the STOP, so its lease cannot be settled from the beat.
 	NStopDebtBeat = "STOP debt: an owner has not beaten since the stop"
 )

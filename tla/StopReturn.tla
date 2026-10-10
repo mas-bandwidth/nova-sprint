@@ -123,8 +123,12 @@ Cancel(c) ==
     /\ UNCHANGED <<mach, row, col, gen, sfg, debt, beat, beaten>>
 
 \* the owner's beat: it names the jobs it runs, and a beat while STOPPED marks
-\* the owner beaten since the STOP (sprint.FriendBeatNamesJob, Report)
+\* the owner beaten since the STOP (sprint.FriendBeatNamesJob, Report). While
+\* STOPPED the beat is drop-only: a member starts no new job during a STOP, so
+\* its beat may drop names but never re-add one (a job the beat shows gone stays
+\* gone, SettleByBeat's guard d.id \notin beat[d.row] stays enabled).
 Beat(o, S) ==
+    /\ mach = "stop" => S \subseteq beat[o]
     /\ beat' = [beat EXCEPT ![o] = S]
     /\ beaten' = IF mach = "stop" THEN beaten \cup {o} ELSE beaten
     /\ UNCHANGED <<mach, row, col, gen, sfg, child, debt, old>>

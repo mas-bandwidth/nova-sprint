@@ -113,7 +113,7 @@ func TestStopDebtStillNamedInBeatStaysOwed(t *testing.T) {
 
 // TestStopDebtOwnerNotBeatenSinceStopIsReported pins the report rule: an owner
 // that has not beaten since the STOP keeps its lease owed and is named in a
-// note to the seat (tla/StopReturn.tla Report).
+// judgment pushed to the seat (tla/StopReturn.tla Report).
 func TestStopDebtOwnerNotBeatenSinceStopIsReported(t *testing.T) {
 	t.Parallel()
 	h, friends, _ := threeFriendsHoldingJobs(t)
@@ -128,14 +128,56 @@ func TestStopDebtOwnerNotBeatenSinceStopIsReported(t *testing.T) {
 	notes, _, _ := h.m.NotesSince(h.ctx, "", 1000)
 	var found bool
 	for _, n := range notes {
-		if n.Type == sprint.NStopDebtBeat {
-			found = true
-			for _, f := range friends {
-				require.Contains(t, n.What, f, "the report names %s", f)
-			}
+		if n.Type != sprint.NStopDebtBeat {
+			continue
+		}
+		found = true
+		require.Equal(t, sprint.Judgment, n.Kind, "the not-beaten owner is reported in a judgment, not a happened note")
+		require.NotEmpty(t, n.Decisions, "the judgment carries the coordinator's decisions")
+		for _, f := range friends {
+			require.Contains(t, n.What, f, "the report names %s", f)
+			require.Contains(t, n.Primaries, sprint.FriendRow(f), "the judgment is on the owner's row %s", f)
 		}
 	}
 	require.True(t, found, "an owner that has not beaten since the STOP is reported")
 	h.clean("reported stop debt")
 }
 
+// TestStopDebtMachineLeaseStaysOwedDespiteItsBeat pins the fleet-friend-only
+// boundary of the beat-settle (Finding 2): a machine's beat names no job, so a
+// machine lease whose owner has beaten after the STOP still stays owed until
+// its owner's own stop-return (tla/StopReturn.tla: beat[o] for a machine names
+// no job, so SettleByBeat never frees it).
+func TestStopDebtMachineLeaseStaysOwedDespiteItsBeat(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.setup(1)
+	h.startMachine()
+	h.machine()
+	s := h.snap()
+	wc := s.Fleet.Card(s.Work.Card("s1-1").F("work"))
+	require.NotNil(t, wc)
+	gen := max(wc.Int("gen"), 1)
+	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
+	_, stopped, _, err := h.st.StopUntil(h.ctx, "operator stopped children", h.now.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, stopped.StopDebt, 1)
+	// the machine beats after the STOP, but its beat names no job: the beat-settle
+	// leaves its lease owed, so START still waits on the machine's own receipt.
+	h.mu.Lock()
+	h.now = h.now.Add(time.Second)
+	h.mu.Unlock()
+	h.beat()
+	_, _, _, err = h.st.SetMachine(h.ctx, true)
+	require.ErrorContains(t, err, "stop-return", "a machine's beat names no job: START still waits on its own receipt")
+	require.ErrorContains(t, err, wc.ID, "START names the still-owed machine job")
+	m, _, err := h.st.Machine(h.ctx)
+	require.NoError(t, err)
+	require.Len(t, m.StopDebt, 1, "the machine lease stays owed until its own stop-return")
+	require.Equal(t, wc.ID, m.StopDebt[0].ID)
+	h.must(StopReturnStep(sprint.StopReturnReq{As: wc.Row, IDs: []string{wc.ID}, Gens: map[string]int{wc.ID: gen}, Reason: "child exited"}))
+	_, running, _, err := h.st.SetMachine(h.ctx, true)
+	require.NoError(t, err)
+	require.True(t, running.Running(), "START passes once the machine stop-returns")
+	h.clean("machine lease stays owed")
+}

@@ -81,11 +81,14 @@
    :origin "the seat, 2026-10-10: hold alex and hold emma refused after their stop-returns")
   (fix "stop-debt-settles-from-the-members-beat" :release "v1.2.6" :status "shipped"
    :title "STOP debt settles from the owner's beat, so START never waits on its receipt"
-   :text "After a STOP the server settles each owed fleet lease whose owner has beaten since the STOP and
-    whose beat no longer names the job, returning the card with a recorded reason, so START never waits
-    on a member's own stop-return receipt. A lease whose job the beat still names stays owed, and an
-    owner that has not beaten since the STOP is reported to the seat. TLA+ model StopReturn, property
-    AbsentJobSettles, with the reversed witness nosettlebybeat."
+   :text "After a STOP the server settles each owed fleet-friend lease whose owner has beaten since the
+    STOP and whose beat no longer names the job, returning the card with a recorded reason, so START
+    never waits on a friend's own stop-return receipt. A lease whose job the beat still names stays
+    owed, and an owner that has not beaten since the STOP is reported to the seat in a judgment. The
+    beat-settle is fleet-friend-only: a machine's beat (and a reader-machine's) names no job, so a
+    machine lease stays owed until its owner stop-returns it. TLA+ model StopReturn, property
+    AbsentJobSettles, with the reversed witness nosettlebybeat; the model's Beat is drop-only while
+    STOPPED, so a job a stopped owner's beat shows gone stays gone."
    :origin "the seat, 2026-10-10: START refused on 33 fleet jobs whose members never sent stop-return receipts")
 
   (fix "lander-bench-fault-and-bisect" :release "v1.2.6" :status "in-progress"
