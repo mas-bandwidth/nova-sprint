@@ -140,4 +140,11 @@
     :title "Rested routes must not overflow the fleet table property cap"
     :text "Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the
      tick writes nothing. Use one property for all."
-    :origin "issue #5210")))
+    :origin "issue #5210")
+
+  (fix "restore-tests-owed-from-split" :release "v1.2.6" :status "shipped"
+   :title "Restore the tests the repository split moved out of nova-tools"
+   :text "Five tests (coordinator rules, processor doc, coordinator tools, tool class, seat play), the
+    member and contract functional tests and eight contract cases that build nova-sprint, and the
+    tick wall-clock gate job, restored in nova-sprint."
+   :origin "repository split cold reads (nova-tools PR #5571 and PR #5591)")))
