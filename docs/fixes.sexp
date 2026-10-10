@@ -143,6 +143,12 @@
     lanes begin its reads, and stop-return is served as a worker's verb."
    :origin "a one-shot friend host, 2026-10-10: took logged while the server showed the card ready, progress sent at epoch 0, every stop-return refused by the server")
 
+  (fix "held-friend-reader-serves-nothing" :release "v1.2.6" :status "planned"
+   :title "A held friend's reader serves nothing"
+   :text "docs/SPEC-SPRINT.md section 11 (hold): a held friend and her reader row both serve nothing.
+    ownModelReader and readerServesTier both return false for a held friend's reader."
+   :origin "dogfood 2026-10-10 evening: fleet-only restart")
+
   (fix "draining-member-clears-no-room" :release "v1.2.6" :status "shipped"
    :title "A draining member does not keep a stale no-room word"
    :text "The room check runs after the drain return, so a draining member does not keep a stale no-room
