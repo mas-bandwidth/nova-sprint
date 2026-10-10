@@ -3798,44 +3798,6 @@ func (a *app) cmdAck(args []string, stdout, stderr io.Writer) int {
 	return a.runStep("ack", *c, st, store.AckStep(sprint.AckReq{Notes: notes, Reason: *reason, Who: c.actor}), stdout, stderr)
 }
 
-func (a *app) cmdRepair(args []string, stdout, stderr io.Writer) int {
-	fs, c := a.verbSetup("repair")
-	pos, err := parse(fs, args)
-	if err != nil || len(pos) > 0 {
-		return refuse(stderr, "repair", argErr("takes no words ", err, pos...))
-	}
-	st, err := a.store(*c)
-	if err != nil {
-		return refuse(stderr, "repair", err.Error())
-	}
-	rr, err := st.Repair(context.Background())
-	if err != nil {
-		fmt.Fprintf(stderr, "%s repair: %s\n", prog, oneline.WithRemedy(err.Error(), prog+" repair -h"))
-		return 2
-	}
-	if c.json {
-		if rr == nil {
-			rr = []store.RepairResult{}
-		}
-		b, _ := json.Marshal(map[string]any{"repaired": rr})
-		fmt.Fprintln(stdout, string(b))
-		return 0
-	}
-	code := 0
-	for _, r := range rr {
-		fmt.Fprintf(stdout, "OPERATION %s verb=%s done=%s detail=%s\n", oneline.Escape(r.Op), oneline.Escape(r.Verb), r.Done, oneline.Escape(r.Detail))
-		if r.Done == "open" {
-			code = 1
-		}
-	}
-	status := "OK"
-	if code != 0 {
-		status = "FAILED"
-	}
-	fmt.Fprintf(stdout, "REPAIR %s operations=%d\n", status, len(rr))
-	return code
-}
-
 // confirmName is what clear and teardown want after --confirm: the name of the
 // sprint's view, sprint.
 func confirmName() string { return sprint.Names{}.View() }

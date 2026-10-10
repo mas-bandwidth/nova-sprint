@@ -168,6 +168,14 @@
     its epoch: a tick at a clear stops there."
    :origin "the seat ledger v1.2.4-held-2026-10-10.md, bug 6")
 
+  (fix "repair-says-what-it-changes" :release "v1.2.6" :status "shipped"
+   :title "repair says what it changes, takes --dry-run, and returns a rule-6 merging card to review"
+   :text "repair's help names its effect, it takes --dry-run that prints each move it would make (and leaves a
+    pending operation open), and it refuses naming the remedy when it can do nothing. It learns check rule
+    6: a card merging with ok reads from fewer different readers at its head than it needs goes back to
+    review for its missing read, with the reason recorded."
+   :origin "this pull request")
+
   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
    :title "The worker brief says never amend, rebase or reset onto origin"
    :text "One line in the worker brief (the child rule no-rewrite-history, internal/fleetrules/child-rules.txt,

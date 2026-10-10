@@ -61,7 +61,9 @@
 \*             tier's rule; a tier pinned after the accept raises it as the
 \*             setting does), 1 or 2
 \*   reread    the cards the tick sent back to review short of their reads
-\*             (sprint.ShortReadsBack), waiting for the read they lack
+\*             (sprint.ShortReadsBack), waiting for the read they lack; the
+\*             repair verb returns one too (Repair)
+\*   repairback a ghost: repair returned a short merging card to review
 \*   lcheckneed the reads a card needed at the lander's last check
 \*   markneed  per head, 0 or the reads it needed when a lander's check marked
 \*             it landing (sprint.MarkLanding writes FieldLandingHead in the
@@ -149,7 +151,9 @@
 \* (NoLandWithoutReads is of the mark).
 \* Reversed witnesses: ReachStranded (the lander's own push left unreported,
 \* so Recovers is not vacuous), ReachStalePush, ReachLandsOn (a card behind
-\* a reworked one landed) and ReachReview (a card at its bound in review).
+\* a reworked one landed), ReachReview (a card at its bound in review) and
+\* ReachRepair (the repair verb's return of a short merging card to review;
+\* "norepair" removes it).
 \*
 \* WHAT RECOVERS DOES NOT COVER. It is proved once the outside goes quiet
 \* (the instance caps outside events at MaxEvents), so it says nothing of an
@@ -184,6 +188,8 @@
 \*     fails).
 \*   "bouncemarked" sends back a card marked landing (PushedNeverSentBack
 \*     fails: Accept, Read, Build, Check, Push, SetReads, ShortBack).
+\*   "norepair" removes the repair verb's return of a short merging card to
+\*     review (ReachRepair, the reversed witness, holds: nothing repairs).
 \*
 \* WHAT IS NOT MODELLED. The check (--check), the red and rejected facts:
 \* those refusals are the lander going idle with the store unchanged. The
@@ -201,17 +207,18 @@ VARIABLES queue, att, landed, epoch, base, tip,
           lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
-          oks, need, reread, shortland, lcheckneed, markneed
+          oks, need, reread, shortland, lcheckneed, markneed,
+          repairback
 
 reads == <<oks, need, reread, markneed>>
 store == <<queue, att, landed, epoch, ready, review, stop, oks, need, reread, markneed>>
 remote == <<base, tip>>
 lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries, lref, lkind, lcheckneed>>
-ghosts == <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland>>
+ghosts == <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland, repairback>>
 vars == <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
-          oks, need, reread, shortland, lcheckneed, markneed>>
+          oks, need, reread, shortland, lcheckneed, markneed, repairback>>
 
 Heads == Cards \X (1..MaxAttempts)
 
@@ -278,6 +285,7 @@ TypeOK ==
   /\ ownstop \in BOOLEAN
   /\ oks \in [Cards -> 1..2] /\ need \in 1..2 /\ reread \subseteq Cards
   /\ shortland \in BOOLEAN /\ lcheckneed \in 1..2 /\ markneed \in [Heads -> 0..2]
+  /\ repairback \in BOOLEAN
 
 Init ==
   /\ queue = <<>> /\ att = [c \in Cards |-> 1] /\ landed = {} /\ epoch = 0
@@ -288,6 +296,7 @@ Init ==
   /\ carried = {} /\ ownstop = FALSE
   /\ oks = [c \in Cards |-> 1] /\ need = 1 /\ reread = {} /\ shortland = FALSE /\ lcheckneed = 1
   /\ markneed = [h \in Heads |-> 0]
+  /\ repairback = FALSE
 
 \* ---- the lander (land.go) ----
 
@@ -351,7 +360,7 @@ Check ==
 Push ==
   /\ lphase = PushFrom
   /\ UNCHANGED store /\ UNCHANGED <<lcheckneed, lq, lep, lrep, lbatch, lref, lkind>> /\ UNCHANGED events
-  /\ UNCHANGED <<stalerec, carried, ownstop>>
+  /\ UNCHANGED <<stalerec, carried, ownstop, repairback>>
   /\ IF ltip # tip
      THEN IF tries < 1
           THEN /\ ltip' = tip /\ tries' = tries + 1 /\ lphase' = RebuildTo
@@ -395,7 +404,7 @@ Report ==
         /\ lphase' = IF ok /\ lref # <<>> THEN "refusing" ELSE ReportTo
   /\ UNCHANGED <<att, epoch, ready, review, stop>> /\ UNCHANGED reads /\ UNCHANGED remote
   /\ UNCHANGED <<lcheckneed, lq, lbatch, lep, lrep, ltip, tries, lref, lkind>>
-  /\ UNCHANGED events /\ UNCHANGED <<badcaller, stalepush, lpushed, carried, ownstop, shortland>>
+  /\ UNCHANGED events /\ UNCHANGED <<badcaller, stalepush, lpushed, carried, ownstop, shortland, repairback>>
 
 \* Refuse: the conflict fact of the refused card, one store step fenced to the
 \* epoch held and guarded to plan only while the queue starts with that card
@@ -430,7 +439,7 @@ Refuse ==
   /\ lphase' = "idle" /\ lref' = <<>>
   /\ UNCHANGED <<landed, epoch, need, reread, shortland, markneed>> /\ UNCHANGED remote
   /\ UNCHANGED <<lcheckneed, lq, lbatch, lep, lrep, ltip, tries, lkind>>
-  /\ UNCHANGED events /\ UNCHANGED <<badcaller, stalepush, stalerec, lpushed>>
+  /\ UNCHANGED events /\ UNCHANGED <<badcaller, stalepush, stalerec, lpushed, repairback>>
 
 Land == Read \/ Build \/ Check \/ Push \/ Report \/ Refuse
 
@@ -514,7 +523,7 @@ Crash ==
 Outside ==
   /\ events < MaxEvents
   /\ events' = events + 1
-  /\ UNCHANGED <<badcaller, stalepush, stalerec, carried, ownstop>>
+  /\ UNCHANGED <<badcaller, stalepush, stalerec, carried, ownstop, repairback>>
   /\ (Accept \/ Return \/ Rework \/ OtherLand \/ Clear \/ MoveBase \/ Crash \/ Resume \/ SetReads \/ ReadOk)
   /\ lpushed' = IF epoch' # epoch THEN {} ELSE lpushed
 
@@ -534,7 +543,26 @@ ShortBack ==
   /\ UNCHANGED <<att, landed, epoch, ready, review, stop, oks, need, markneed>>
   /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED events /\ UNCHANGED ghosts
 
-Next == Land \/ ShortBack \/ Outside
+\* Repair: the repair verb returns a queued card short of its reads to review
+\* (cmd/nova-sprint/repair.go cmdRepair -> sprint.Rule6Merging ->
+\* store.ReturnStep, Merging -> Review), the transition the tick's ShortBack
+\* takes, but on demand rather than on the tick's pump. repairback records the
+\* return so the witness names repair's, not the tick's; Broken "norepair"
+\* removes it. Repair is not in FairSpec: it runs when a mind calls it, never
+\* on its own.
+Repair ==
+  /\ Broken # "norepair"
+  /\ \E c \in Range(queue) :
+       /\ oks[c] < need
+       /\ ~Marked(Current(c))
+       /\ queue' = SelectSeq(queue, LAMBDA x : x # c)
+       /\ reread' = reread \cup {c}
+  /\ repairback' = TRUE
+  /\ UNCHANGED <<att, landed, epoch, ready, review, stop, oks, need, markneed>>
+  /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED events
+  /\ UNCHANGED <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland>>
+
+Next == Land \/ ShortBack \/ Repair \/ Outside
 
 Spec == Init /\ [][Next]_vars
 
@@ -578,6 +606,12 @@ NoLandWithoutReads == ~shortland
 \* A card sent back to review short of its reads is reached (ShortBack is not
 \* vacuous). Shortest: Accept, SetReads, ShortBack.
 ReachShortBack == reread = {}
+
+\* Repair's return of a short merging card to review is reached (Repair is not
+\* vacuous, and its trigger is the verb, not the tick). Shortest: Accept,
+\* SetReads, Repair. Broken "norepair" removes Repair, so this holds there:
+\* the witness is repair's, not ShortBack's.
+ReachRepair == ~repairback
 
 \* The tick never sends back to review a card whose head this lander pushed in
 \* the store's epoch (lpushed: a clear is a new store, which knows nothing of an
