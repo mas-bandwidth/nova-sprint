@@ -98,6 +98,13 @@
     no longer exits 128 on a fleet host with nothing saying why."
    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
 
+  (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
+   :title "The worker brief says never amend, rebase or reset onto origin"
+   :text "One line in the worker brief (the child rule no-rewrite-history, internal/fleetrules/child-rules.txt,
+    byte for byte nova-tools' fleet/child-rules.txt, with a test pinning the digest in both repositories)
+    stops children rewriting history, which caused the does-not-descend refusals."
+   :origin "v1.2.5 candidate list")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
