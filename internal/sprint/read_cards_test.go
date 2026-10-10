@@ -246,9 +246,10 @@ func TestTurningReadCardsOnNeverReadsAPrimaryTwice(t *testing.T) {
 
 // TestAReadCardsDeadlineRunsFromItsStart pins PR 5392's cold read, finding 2: a read card's
 // deadline runs from its take, never from the deal, so a read that waits in a member's ready
-// queue behind long work is not late and spends no one; one that waits past the deal bound
-// (DealtMax) untouched is taken back spending nothing (unstarted), and its reader may be dealt
-// it again; one taken and not closed within ReadCardDeadline is late and spends its reader.
+// queue behind long work is not late and spends no one; one not begun within the take bound
+// (TakeBound) while its reader had a lane free and took nothing is taken back spending nothing
+// (unstarted; bounce.go), and its reader may be dealt it again; one taken and not closed within
+// ReadCardDeadline is late and spends its reader.
 func TestAReadCardsDeadlineRunsFromItsStart(t *testing.T) {
 	t.Parallel()
 	w := readCardsWorld(t, 4, "m1", "m2")
@@ -256,13 +257,14 @@ func TestAReadCardsDeadlineRunsFromItsStart(t *testing.T) {
 	dealReads(t, w, nil)
 	rc := readCardsOf(w, "s1-1")[0]
 	require.Equal(t, "m2", rc.Row)
-	w.tick(ReadCardDeadline + time.Minute)
+	w.tick(w.s.TakeBound() - time.Minute)
 	dealReads(t, w, nil)
-	require.True(t, w.s.Fleet.Card(rc.ID).Placed(), "never taken: not late")
+	require.True(t, w.s.Fleet.Card(rc.ID).Placed(), "within the take bound: its reader's")
 
-	w.tick(w.s.DealtMax())
+	w.tick(2 * time.Minute)
+	w.part(TickBounce, TickReq{}) // the bounce-back retires it, pushed (bounce.go); the deal asks again
 	dealReads(t, w, nil)
-	require.Equal(t, RetiredByUnstarted, w.s.Fleet.Card(rc.ID).F("retired_by"), "untouched past the deal bound: taken back")
+	require.Equal(t, RetiredByUnstarted, w.s.Fleet.Card(rc.ID).F("retired_by"), "not begun within the take bound, its reader idle: taken back")
 	again := readCardsOf(w, "s1-1")
 	require.Len(t, again, 1, "dealt again, to the reader it spent nothing of")
 	require.Equal(t, rc.ID+".g1", again[0].ID)

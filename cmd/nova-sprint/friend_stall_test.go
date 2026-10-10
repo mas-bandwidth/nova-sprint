@@ -41,6 +41,7 @@ func (ta *testApp) later(d time.Duration) {
 func TestATickWakesAStalledFriendOnceAtEachWakeRung(t *testing.T) {
 	t.Parallel()
 	ta, _ := friendCardApp(t, "friend amy", "amy")
+	ta.ok("set --take-bound 24h") // her card waits unstarted past the stall bound on purpose: the ladder is the subject, not the bounce-back
 	ta.ok("tick")
 	var c cardView
 	ta.json("card s1-1", &c)

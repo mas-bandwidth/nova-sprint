@@ -115,6 +115,7 @@ func (r *readsRig) total(v string) int {
 func TestBrokenReadsOutrunningOkRaiseOneNotice(t *testing.T) {
 	t.Parallel()
 	r := newReadsRig(t, 60, map[string]string{"reader-a": "broken", "reader-b": "ok", "reader-c": "broken"})
+	r.must(store.SetStep(sprint.SetReq{TakeBound: "24h", Who: "coordinator"})) // the rig jumps half an hour with cards dealt: the window is the subject, not the bounce-back
 	r.until(func() bool { return r.total("ok")+r.total("broken") >= sprint.ReadsWindowMin })
 	r.tick()
 	written, open := r.judged(sprint.NBrokenReadsOutrun)

@@ -19,6 +19,10 @@ import (
 const (
 	// PropDealtMax is the work table's property: the dealt bound, a duration.
 	PropDealtMax = "dealt_max"
+	// PropTakeBound is the work table's property: the take bound, how long a card dealt to
+	// a row, or a read asked of one, may go untaken and unbegun before the tick returns it
+	// to the pool (bounce.go), a duration.
+	PropTakeBound = "take_bound"
 	// PropFriendIdle is the work table's property: how long a friend holding cards may
 	// show no session activity before it is an alarm, a duration.
 	PropFriendIdle = "friend_idle"
@@ -184,6 +188,22 @@ func (s *Snapshot) DealtMax() time.Duration {
 	return DealtMaxDefault
 }
 
+// TakeBoundDefault is the take bound when the coordinator set none (the owner,
+// 2026-10-10: "Cards need to bounce back"; a few minutes).
+const TakeBoundDefault = 5 * time.Minute
+
+// TakeBound is the take bound (PropTakeBound): the sprint's setting, else TakeBoundDefault.
+func (s *Snapshot) TakeBound() time.Duration {
+	if s != nil && s.Work != nil {
+		if v, ok := s.Work.Prop(PropTakeBound); ok {
+			if d, err := time.ParseDuration(v); err == nil && d > 0 {
+				return d
+			}
+		}
+	}
+	return TakeBoundDefault
+}
+
 // FriendIdleDefault is how long a friend holding cards may show no file write under her
 // working directory and outbox before it is an alarm (nova-sprint set --friend-idle).
 const FriendIdleDefault = 20 * time.Minute
@@ -269,6 +289,7 @@ type SetReq struct {
 	Streams          []string `json:",omitempty"`
 	ReadTier         string   `json:",omitempty"`
 	DealtMax         string   `json:",omitempty"`
+	TakeBound        string   `json:",omitempty"`
 	Attempts         string   `json:",omitempty"`
 	FriendIdle       string   `json:",omitempty"`
 	FriendStallAfter string   `json:",omitempty"`
@@ -338,6 +359,14 @@ func Set(s *Snapshot, r SetReq) Plan {
 		if d, err := time.ParseDuration(r.DealtMax); err != nil || d <= 0 {
 			why = append(why, "--dealt-max wants a duration above zero (6h, 90m), or "+ReadTierDefault+" for 3 times the take deadline; found "+r.DealtMax)
 		}
+	}
+	if r.TakeBound != "" && r.TakeBound != ReadTierDefault {
+		if d, err := time.ParseDuration(r.TakeBound); err != nil || d <= 0 {
+			why = append(why, "--take-bound wants a duration above zero (5m, 10m), or "+ReadTierDefault+" for "+TakeBoundDefault.String()+"; found "+r.TakeBound)
+		}
+	}
+	if r.TakeBound != "" && len(r.Streams) > 0 {
+		why = append(why, "--take-bound is the sprint's, not a stream's: nova-sprint set --take-bound "+r.TakeBound)
 	}
 	if r.LandProtected != "" {
 		if w := landProtectedWhy(r.LandProtected); w != "" {
@@ -455,8 +484,8 @@ func Set(s *Snapshot, r SetReq) Plan {
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
 	}
-	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Prose == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
-		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --friend-stall-after, --friend-stall-step, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
+	if r.ReadTier == "" && r.DealtMax == "" && r.TakeBound == "" && r.LandProtected == "" && r.Release == "" && r.Prose == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
+		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --take-bound, --go-lanes, --attempts, --friend-idle, --friend-stall-after, --friend-stall-step, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
 	}
 	if len(r.Streams) > 0 && r.GoLanes != "" {
 		why = append(why, "--go-lanes is the sprint's, not a stream's: nova-sprint set --go-lanes "+r.GoLanes)
@@ -578,6 +607,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 	kvs := [][2]string{
 		{PropReadTier, r.ReadTier},
 		{PropDealtMax, r.DealtMax},
+		{PropTakeBound, r.TakeBound},
 		{PropGoLanes, r.GoLanes},
 		{PropAttempts, r.Attempts},
 		{PropFriendIdle, r.FriendIdle},
@@ -615,6 +645,8 @@ func orDefault(v, name string) string {
 		return v
 	case name == PropDealtMax:
 		return fmt.Sprintf("default (%s, 3 times the take deadline)", DealtMaxDefault)
+	case name == PropTakeBound:
+		return fmt.Sprintf("default (%s)", TakeBoundDefault)
 	case name == PropGoLanes:
 		return fmt.Sprintf("default (%d a machine)", LaneWidthDefault)
 	case name == PropAttempts:

@@ -612,7 +612,7 @@ func TickPartStep(name string, fn sprint.TickPartFn, r sprint.TickReq, epoch *ui
 
 // mirrors says the part's step brings the display cells up to date after it.
 func mirrors(name string) bool {
-	return name == "presence" || name == "deal" || name == "level" || name == "resume" || name == sprint.PartCapDeal || name == sprint.PartFriendStall
+	return name == "presence" || name == "deal" || name == "level" || name == "resume" || name == sprint.PartCapDeal || name == sprint.PartFriendStall || name == sprint.PartBounce
 }
 
 // unchangedNotWritten is the plan of a part with the writes that change no

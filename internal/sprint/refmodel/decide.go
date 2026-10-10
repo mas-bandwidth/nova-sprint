@@ -9,7 +9,7 @@ import (
 
 // The duties of today's tick, by name, in the order the machine runs them: the
 // parts of sprint.TickParts in their order (the start's level and level reads,
-// then the four tables' updates: the work pump's resolve, cap deal, deal, rebalance and accept, the
+// then the four tables' updates: the work pump's resolve, bounce, cap deal, deal, rebalance and accept, the
 // readers' ask, the merge's resume, the fleet's presence and friend stall; then the end), the unknown machines it tells of
 // (with the fleet's update), and the reminders. The machine's repair of an operation the fence holds is not one:
 // it decides nothing from the tables (Decide's doc says what is left out).
@@ -18,6 +18,7 @@ const (
 	DutyPresence    = "presence"     // a member's status follows its beats
 	DutyFriendStall = "friend-stall" // a friend holding cards with no sign of life climbs the stall ladder
 	DutyResolve     = "resolve"      // waiting primaries whose needs landed go ready; sentinels are reached
+	DutyBounce      = "bounce"       // a card dealt or a read asked and not taken within the take bound returns, pushed
 	DutyResume      = "resume"       // a stream stopped on another's card goes on when it landed
 	DutyCapDeal     = "cap deal"     // a ready card past its attempt cap is dealt to a frontier or heavy friend with room
 	DutyDeal        = "deal"         // ready primaries are dealt to the members up
@@ -35,7 +36,7 @@ const (
 
 // dutyNames is the duties' names in the tick's order, which the canonical order
 // of moves follows. Duties lists the same names, and a test holds them equal.
-var dutyNames = []string{DutyLevel, DutyLevelReads, DutyResolve, DutyCapDeal, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
+var dutyNames = []string{DutyLevel, DutyLevelReads, DutyResolve, DutyBounce, DutyCapDeal, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
 
 // Duty is one duty of the tick: its name and the function that decides it.
 type Duty struct {
@@ -51,6 +52,7 @@ var Duties = []Duty{
 	{DutyLevel, LevelMoves},
 	{DutyLevelReads, LevelReadsMoves},
 	{DutyResolve, ResolveMoves},
+	{DutyBounce, BounceMoves},
 	{DutyCapDeal, CapDealMoves},
 	{DutyDeal, DealMoves},
 	{DutyRebalance, RebalanceMoves},
@@ -109,6 +111,12 @@ func PresenceMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, Du
 // ready, the sentinels whose needs have landed reached, and the judgments for
 // a need dropped or missing (T1).
 func ResolveMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyResolve) }
+
+// BounceMoves is the bounce-back (sprint.TickBounce, tla/DealFill.tla): each work card dealt
+// and each read card asked and not taken or begun within the take bound, while its row had a
+// lane free and took nothing, returned to the pool with a note pushed to the coordinator, and
+// each row set aside a judgment.
+func BounceMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyBounce) }
 
 // ResumeMoves is the streams stopped only on another stream's card, resumed
 // once that card has landed (T7).
@@ -201,6 +209,7 @@ func decisions() []dutyOn {
 		{DutyLevel, partOn(DutyLevel)},
 		{DutyLevelReads, partOn(DutyLevelReads)},
 		{DutyResolve, partOn(DutyResolve)},
+		{DutyBounce, partOn(DutyBounce)},
 		{DutyCapDeal, partOn(DutyCapDeal)},
 		{DutyDeal, partOn(DutyDeal)},
 		{DutyRebalance, partOn(DutyRebalance)},

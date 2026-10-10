@@ -351,3 +351,9 @@ MCStatsResetBrokenNoStamp.cfg	MCStatsReset.tla	invariant	RecordShowsShown	ignore
 MCStopReturn.cfg	MCStopReturn.tla	pass	-	ignore-terminal	stopreturn	required	-
 MCStopReturnBrokenNoSettle.cfg	MCStopReturn.tla	temporal	ReturnedFreesItsRow	ignore-terminal	stopreturn	required	-
 MCStopReturnBrokenNoReceipt.cfg	MCStopReturn.tla	invariant	NoLiveChildAcrossStart	ignore-terminal	stopreturn	required	-
+MCDealFill.cfg	MCDealFill.tla	pass	-	ignore-terminal	dealfill	required	-
+MCDealFillBrokenNoBounce.cfg	MCDealFill.tla	invariant	NoHeldPastBound	ignore-terminal	dealfill	required	-
+MCDealFillBrokenSilentWork.cfg	MCDealFill.tla	invariant	EveryReturnPushed	ignore-terminal	dealfill	required	-
+MCDealFillBrokenSilentRead.cfg	MCDealFill.tla	invariant	EveryReturnPushed	ignore-terminal	dealfill	required	-
+MCDealFillBrokenNoExclude.cfg	MCDealFill.tla	temporal	WorkAdvances	ignore-terminal	dealfill	required	-
+MCDealFillBrokenOnceRead.cfg	MCDealFill.tla	temporal	ReadAdvances	ignore-terminal	dealfill	required	-

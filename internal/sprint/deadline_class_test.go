@@ -27,6 +27,7 @@ func TestTheWorkStampsAreReadOnlyByWorkDeadline(t *testing.T) {
 		"AttemptLine":  true, // prints an attempt's stamps, judges nothing
 		"RouteStats":   true, // a route's mean wall, shown, judges nothing
 		"takeStamps":   true, // a take's waiting and running time, recorded and shown, judges nothing (cost.go)
+		"readBegun":    true, // whether a card has a take at all, measures no time (bounce.go)
 	}
 	var dirs []string
 	err := filepath.WalkDir(".", func(p string, d os.DirEntry, err error) error {
