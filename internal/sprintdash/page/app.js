@@ -84,7 +84,7 @@ function el(tag, cls, text) {
 // cell flashes only when it goes lit <-> unlit. The clock never flashes
 // (setLiveHTML does not use these helpers).
 var flashCount = 0;
-["all", "all2", "pct", "eta", "eta-at", "cost", "cost-per", "inflight", "inflight-sub", "tput", "coord", "epoch", "machine",
+["all", "all2", "pct", "pct-sfx", "eta", "eta-at", "cost", "cost-per", "inflight", "inflight-sub", "tput", "coord", "epoch", "machine",
  "streams-sub", "fleet-head", "friends-sub", "readers-sub"].forEach(function (id) { var e = document.getElementById(id); if (e) quiet(e); });
 function valEl(e) {
   if (!e._fv) {
@@ -497,12 +497,8 @@ function setMachine(line) {
   else if (/^running\b/i.test(text)) text = "running";
   var stopped = /STOPPED/.test(text);
   // the human page says STOPPED and nothing more; the reason is the coordinator's view (the owner 2026-10-04 10:15 PM: "STOPPED is plenty")
-  if (stopped) {
-    text = "STOPPED";
-    $("live").classList.add("stopped");
-  } else {
-    $("live").classList.remove("stopped");
-  }
+  if (stopped) text = "STOPPED";
+  machineStopped = stopped; paintLive();
   setText($("machine"), text);
   setClass($("machine-chip"), "chip" + (stopped ? " alert" : ""));
   // the bar pulses only while the machine runs (the owner 2026-10-04 9:14 AM)
@@ -588,7 +584,9 @@ function renderReaders(d) {
 function renderHero(d, s, ft) {
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
-  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "nothing");
+  // nothing to land reads "nothing complete" in both layouts, never "- complete" (the owner, 2026-10-10)
+  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "nothing complete");
+  setText($("pct-sfx"), all ? " complete" : "");
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
   if (m) {
     setHTML($("eta"), etaText(m[1]));
@@ -597,6 +595,7 @@ function renderHero(d, s, ft) {
     var etaAt = new Date(at.getTime() + ms);
     if (ms != null && !isNaN(at)) { etaAtLast = [etaAt, ms]; fitEtaAt(); } else { etaAtLast = null; setText($("eta-at"), "\u00a0"); }
   } else if (all && landed >= all) { setText($("eta"), "done"); setText($("eta-at"), " "); }
+  else if (!all) { setText($("eta"), "none"); setText($("eta-at"), "nothing to land"); }
   else { setText($("eta"), "-"); setText($("eta-at"), "not in the summary"); }
   // the cost tile and its tooltip cover one scope (docs/SPEC-SPRINT.md, the summary line): the
   // streams on the table, or, the sprint done, the epoch's every stream, as the hero's count
@@ -665,8 +664,13 @@ function renderRelease(j) {
     box.appendChild(a);
   });
 }
+// The Updated dot (docs/SPEC-SPRINT-DASHBOARD.md, the owner's v1.2.1 ask): green while the machine
+// runs, red while it is STOPPED, grey before the first poll. One function owns the whole class, so
+// neither the clock's draw nor the machine's can wipe the other's state: setClass sets className.
+var machineStopped = false, liveDrawn = false;
+function paintLive() { setClass($("live"), "live" + (machineStopped ? " stopped" : liveDrawn ? " ok" : "")); }
 function setLive(since) {
-  setClass($("live"), "live ok");
+  liveDrawn = true; paintLive();
   // the viewer's zone after the time, from the browser (SPEC.md, the owner 9:59 PM): EDT now, EST after the change
   // "10:00:02 PM EDT": the digits right-aligned in a fixed 8ch box (no jump from 9 to 10 o'clock),
   // then one ordinary (proportional) blank before PM and one before the zone. The browser's own time string
@@ -702,6 +706,7 @@ function fitTables() {
 window.addEventListener("resize", fitTables);
 // Spend row (the owner 2026-10-04 10:15 AM): the pie of cards by tier and the ten most expensive streams.
 var TIERS = ["flash", "pro", "heavy", "frontier"], topN = 10, lastSpendData = null;
+var EMPTY_ROWS = 3; // the blank rows of a cost breakdown with nothing spent
 window.addEventListener("resize", function () { if (lastSpendData) renderTopStreams(lastSpendData); });
 function tierColor(t) { return "var(--tier-" + (TIERS.indexOf(t) >= 0 ? t : "other") + ")"; }
 function tierCounts(obj) { // {flash: "12", pro: 3} -> [[tier, n], ...] sorted by the ladder, others last
@@ -816,19 +821,22 @@ function renderTopStreams(d) {
   putKid(head, cellCount - 1, "num", "total");
   var shown = rows.slice(0, n);
   var byName = {}; shown.forEach(function (r) { byName[r.name] = r; });
-  syncRows(box, head, shown.map(function (r) { return r.name; }), function () {
+  // nothing spent: the table keeps its header (stream, total) and shows EMPTY_ROWS blank rows, "-"
+  // in each cell, in the layout of a filled one, where a line of prose stood (the owner, 2026-10-10)
+  var keys = shown.map(function (r) { return r.name; });
+  if (!keys.length) for (var z = 0; z < EMPTY_ROWS; z++) keys.push("\u0000empty" + z);
+  syncRows(box, head, keys, function () {
     return { node: el("div", "row") };
   }, function (r, k) {
     var row = byName[k];
     setCount(r.node, cellCount, function () { return quiet(el("div")); });
-    putKid(r.node, 0, "name", k);
+    putKid(r.node, 0, row ? "name" : "name faint", row ? k : "-");
     order.forEach(function (t, i) { // the stream's spend on the tier, in the panel's format
-      var c = row.byTier && cents(row.byTier[t]);
+      var c = row && row.byTier && cents(row.byTier[t]);
       putKid(r.node, 1 + i, "num" + (c ? "" : " faint"), c ? fmt(c) : "-");
     });
-    putKid(r.node, cellCount - 1, "num", fmt(row.cost));
+    putKid(r.node, cellCount - 1, row ? "num" : "num faint", row ? fmt(row.cost) : "-");
   });
-// no rows; total row
   // the pie's legend in the header: each tier as the state legend draws an item, its square in
   // the tier's color, the name grey and the amount white, in the pie's order, no separators
   var ts = $("tier-sub");

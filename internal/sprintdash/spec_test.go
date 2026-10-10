@@ -2,10 +2,12 @@ package sprintdash
 
 import (
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"regexp"
 	"slices"
 	"strings"
@@ -340,24 +342,123 @@ func TestDashboardPageLoadsNothingFromElsewhere(t *testing.T) {
 	assert.Contains(t, string(file("OFL.txt")), "SIL Open Font License", "the face's licence is embedded beside it")
 }
 
-func TestDashboardDefects(t *testing.T) {
-	t.Parallel()
-	r := newRig(t)
-	// Mock a stopped and empty store
-	r.next = func() ([]byte, error) {
-		return []byte(`{"at":"2026-10-02T19:00:00Z","landed":0,"all":0,"summary":"x","machine":"machine: STOPPED","tables":{"work":{}}}`), nil
-	}
-	
-	// Get snapshot
-	v := r.api()
-	data := v["data"].(map[string]any)
-	
-	// Test 1: Cost breakdown with no spend.
-	
-	// Test 2: LANDED tile at 0 of 0 reads "nothing complete".
-	assert.Equal(t, float64(0), data["landed"], "landed should be 0")
-	
-	// Test 3: STOPPED machine shows a red dot.
-	assert.Contains(t, data["machine"], "STOPPED", "machine should be STOPPED")
+// emptyStateDriver draws each snapshot in turn with app.js on the scroll test's DOM shim, through
+// accept (the poll's own path: render, then the Updated dot), and reads back the three places the
+// owner saw wrong on the empty epoch: the cost breakdown, the Landed and ETA tiles, the dot.
+const emptyStateDriver = `
+const txt = id => doc.getElementById(id).textContent;
+const out = input.snaps.map(d => {
+  context.accept({ build: 'b1', data: d });
+  const top = doc.getElementById('top-streams');
+  return {
+    topText: top.textContent,
+    rows: top.children.map(r => ({ cls: r.className, cells: r.children.map(c => c.textContent) })),
+    pct: txt('pct'), pctSfx: txt('pct-sfx'), eta: txt('eta'), etaAt: txt('eta-at'),
+    live: doc.getElementById('live').className, machine: txt('machine'),
+  };
+});
+process.stdout.write(JSON.stringify(out));
+`
+
+type emptyStateDraw struct {
+	TopText string `json:"topText"`
+	Rows    []struct {
+		Cls   string   `json:"cls"`
+		Cells []string `json:"cells"`
+	} `json:"rows"`
+	Pct, PctSfx, Eta, EtaAt, Live, Machine string
 }
 
+// TestEmptyAndStoppedStatesOfTheDashboard pins the owner's three sightings on the empty epoch
+// (the seat ledger v1.2.4-held-2026-10-10 items 8, 9 and 10), by running the shipped app.js and
+// reading the page it draws: with nothing spent the Cost breakdown keeps its stream and total
+// header and shows blank rows where a line of prose stood; with nothing to land the Landed tile
+// reads "nothing complete", never "- complete"; and the Updated dot is red while the machine is
+// STOPPED, from the first paint and again after a run, green only while it runs.
+func TestEmptyAndStoppedStatesOfTheDashboard(t *testing.T) {
+	t.Parallel()
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		if os.Getenv("NOVA_CI") == "1" {
+			require.NoError(t, err, "node is required for the dashboard JS behavioural test")
+		}
+		t.Skip("node is not installed on this machine; the dashboard JS behavioural test needs it")
+	}
+	var base map[string]any
+	require.NoError(t, json.Unmarshal(fixture(t), &base))
+	snap := func(sec int, machine string, empty bool) map[string]any {
+		b, err := json.Marshal(base)
+		require.NoError(t, err)
+		var d map[string]any
+		require.NoError(t, json.Unmarshal(b, &d))
+		d["at"] = "2026-10-10T12:00:0" + string(rune('0'+sec)) + "Z"
+		d["machine"] = machine
+		if empty {
+			d["landed"], d["all"], d["summary"] = 0, 0, "0/0 0.0% done"
+			delete(d, "cost_by_tier")
+			delete(d, "stream_costs")
+			d["tables"].(map[string]any)["work"] = map[string]any{}
+		}
+		return d
+	}
+	in, err := json.Marshal(map[string]any{"appJS": string(file("app.js")), "snaps": []any{
+		snap(1, "machine: STOPPED (by hand)", true), // the first paint of a stopped machine
+		snap(2, "machine: running", true),
+		snap(3, "machine: STOPPED (by hand)", true), // stopped again after a run
+		snap(4, "machine: running", false),          // the filled layout, for comparison
+	}})
+	require.NoError(t, err)
+	shim, _, ok := strings.Cut(scrollShim, "// the viewer:")
+	require.True(t, ok, "the scroll test's shim has its viewer")
+	cmd := exec.Command(nodePath, "-e", shim+emptyStateDriver)
+	cmd.Stdin = bytes.NewReader(in)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &outBuf, &errBuf
+	require.NoError(t, cmd.Run(), "node runner failed: %s", errBuf.String())
+	require.Empty(t, errBuf.String(), "app.js threw while drawing")
+	var draws []emptyStateDraw
+	require.NoError(t, json.Unmarshal(outBuf.Bytes(), &draws), outBuf.String())
+	require.Len(t, draws, 4)
+
+	for i, d := range draws[:3] { // the empty epoch, stopped or running
+		require.NotEmpty(t, d.Rows, "draw %d: the cost breakdown keeps its table", i)
+		assert.NotContains(t, d.TopText, "no stream has spent", "draw %d: no line of prose stands where the table is", i)
+		head := d.Rows[0]
+		assert.Equal(t, "row head", head.Cls, "draw %d: the header row stays", i)
+		require.GreaterOrEqual(t, len(head.Cells), 2)
+		assert.Equal(t, "stream", head.Cells[0], "draw %d: the stream header", i)
+		assert.Equal(t, "total", head.Cells[len(head.Cells)-1], "draw %d: the total header", i)
+		require.Greater(t, len(d.Rows), 1, "draw %d: blank rows stand where the streams would", i)
+		for _, r := range d.Rows[1:] {
+			assert.Len(t, r.Cells, len(head.Cells), "draw %d: a blank row has the header's cells", i)
+			for _, c := range r.Cells {
+				assert.Equal(t, "-", c, "draw %d: a blank row's cell", i)
+			}
+		}
+		assert.Equal(t, "nothing complete", d.Pct+d.PctSfx, "draw %d: the Landed tile at 0 of 0", i)
+		assert.Equal(t, "none", d.Eta, "draw %d: the ETA tile with nothing to land", i)
+		assert.Equal(t, "nothing to land", d.EtaAt, "draw %d", i)
+	}
+	// the dot: red from the first paint of a stopped machine, and again after a run
+	assert.Equal(t, "STOPPED", draws[0].Machine)
+	assert.Contains(t, strings.Fields(draws[0].Live), "stopped", "the first paint of a stopped machine is red")
+	assert.NotContains(t, strings.Fields(draws[0].Live), "ok", "a stopped machine's dot is never green")
+	assert.Equal(t, "live ok", draws[1].Live, "a running machine's dot is green")
+	assert.Contains(t, strings.Fields(draws[2].Live), "stopped", "stopped again after a run: red")
+	assert.NotContains(t, strings.Fields(draws[2].Live), "ok")
+	assert.Equal(t, "live ok", draws[3].Live)
+
+	// the filled layout is unchanged: the same header, the stream's row, its percentage and " complete"
+	f := draws[3]
+	require.Greater(t, len(f.Rows), 1)
+	assert.Equal(t, "row head", f.Rows[0].Cls)
+	assert.Equal(t, "stream", f.Rows[0].Cells[0])
+	assert.True(t, strings.HasSuffix(f.Pct, "%"), "the Landed tile reads a percentage: %q", f.Pct)
+	assert.Equal(t, " complete", f.PctSfx)
+	assert.NotContains(t, f.TopText, "no stream has spent")
+
+	// the CSS the dot needs, and the suffix the tile's script owns
+	html := string(file("index.html"))
+	assert.Regexp(t, `\.live\.stopped \.dot \{ background: var\(--critical\)`, html, "the stopped dot is the critical color")
+	assert.Contains(t, html, `id="pct-sfx"`)
+}

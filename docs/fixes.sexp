@@ -139,6 +139,17 @@
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
 
+  (fix "dashboard-empty-and-stopped-states" :release "v1.2.6" :status "shipped"
+   :title "The empty dashboard keeps its layout, and a stopped machine's Updated dot is red"
+   :text "The Cost breakdown with nothing spent keeps its stream and total header and shows blank rows in
+    the filled layout, where a line of prose stood. The LANDED tile at 0 of 0 reads nothing complete in
+    both layouts, not - complete, and the ETA tile reads none, nothing to land. A stopped machine's
+    Updated dot is red, the owner's v1.2.1 ask: it never shipped (the page's seed painted the dot green
+    on every draw, and no commit before this one has the rule), and the first version of this fix lost
+    it on first paint because the clock's draw set the whole class. One function now owns the dot's
+    class. A test runs the shipped app.js and reads the page it draws."
+   :origin "the seat ledger v1.2.4-held-2026-10-10 items 8, 9 and 10; this pull request")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
