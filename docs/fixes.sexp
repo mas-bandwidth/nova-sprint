@@ -180,4 +180,13 @@
     .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
-   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")))
+   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+  (fix "nova-work-roadmap-verbs" :release "v1.2.6" :status "planned"
+   :title "nova-work roadmap check, list, add, remove, pull, done, note and render"
+   :text "Verbs over the roadmap s-expression files with byte-stable round trips; each writing verb
+    refuses a file that check rejects. Pulled into v1.2.6 by its own verb: the verbs edit docs/roadmap.sexp and docs/fixes.sexp and write both pages, locally, with no GitHub call per entry."
+   :origin "nova-sprint commit 8c87a4b (not carried by the re-seed, nova-sprint PR #28)"
+   :kept (:item-group "sprint"
+          :item-date "2026-10-10"
+          :item-release "after v1.4"
+          :earlier-title "nova-work roadmap check, add, remove, pull and note"))))

@@ -339,3 +339,8 @@ MCStatsResetBrokenNoRebase.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignor
 MCStatsResetBrokenByCount.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoLock.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoStamp.cfg	MCStatsReset.tla	invariant	RecordShowsShown	ignore-terminal	statsreset	required	-
+MCRoadmapEntry.cfg	MCRoadmapEntry.tla	pass	-	ignore-terminal	roadmapentry	required	-
+MCRoadmapEntryBrokenLastChild.cfg	MCRoadmapEntry.tla	invariant	ParentsHold	ignore-terminal	roadmapentry	required	-
+MCRoadmapEntryBrokenSourceFirst.cfg	MCRoadmapEntry.tla	invariant	NoLoss	ignore-terminal	roadmapentry	required	-
+MCRoadmapEntryBrokenMoveDone.cfg	MCRoadmapEntry.tla	action	DoneFinal	ignore-terminal	roadmapentry	required	-
+MCRoadmapEntryBrokenShippedMove.cfg	MCRoadmapEntry.tla	action	ShippedFrozen	ignore-terminal	roadmapentry	required	-

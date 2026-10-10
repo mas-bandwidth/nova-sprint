@@ -52,6 +52,7 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 - **A draining member does not keep a stale no-room word** (planned). The room check runs after the drain return, so a draining member does not keep a stale no-room word; the deal and read disk floor fix also gets its TLA+ reversed witness. From: v1.2.5 candidate list; nova-tools PR #5569 follow-up.
 - **The dashboard pie slices meet at the centre** (planned). Check the live pie after the next adopt; if the slice borders still miss the centre, fix it. From: v1.2.5 candidate list.
 - **Restore the tests the repository split moved out of nova-tools** (planned). Five tests (coordinator rules, processor doc, coordinator tools, tool class, seat play), the member and contract functional tests and eight contract cases that build nova-sprint, and the tick wall-clock gate job, restored in nova-sprint. From: repository split cold reads (nova-tools PR #5571 and PR #5591).
+- **nova-work roadmap check, list, add, remove, pull, done, note and render** (planned). Verbs over the roadmap s-expression files with byte-stable round trips; each writing verb refuses a file that check rejects. Pulled into v1.2.6 by its own verb: the verbs edit docs/roadmap.sexp and docs/fixes.sexp and write both pages, locally, with no GitHub call per entry. From: nova-sprint commit 8c87a4b (not carried by the re-seed, nova-sprint PR #28).
 
 ## v1.2.7 (planned)
 
