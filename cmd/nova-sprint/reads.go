@@ -2540,7 +2540,7 @@ func (a *app) cmdRoutes(args []string, stdout, stderr io.Writer) int {
 		if r, ok := rests[stats[i].Route.Name]; ok && r.Resting(s.Now) {
 			stats[i].RestedUntil = r.Until.UTC().Format(time.RFC3339)
 			if r.Open() {
-				stats[i].RestedUntil = "open" // until paid
+				stats[i].RestedUntil = "open" // until paid (credit) or woken (a key, the coordinator's)
 			}
 			stats[i].RestedFor = r.Cause + ": " + r.Said()
 		}
