@@ -187,6 +187,12 @@
     so the tick's shape is the model's."
    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")
 
+  (fix "server-build-descends-from-base" :release "v1.2.6" :status "in-progress"
+   :title "A sprint server build must descend from the origin base"
+   :text "server switch refuses a build that does not descend from the origin base, so an off-base build
+    cannot become the server."
+   :origin "nova-sprint commit 9338f08 (not carried by the re-seed, nova-sprint PR #28)")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
