@@ -277,9 +277,13 @@ func TestGateLintReachChecksOnlyDeclarationsAddedByChange(t *testing.T) {
 
 func TestGateLintReachStillRunsWithoutTestLine(t *testing.T) {
 	base, head := t.TempDir(), t.TempDir()
-	if err := os.WriteFile(filepath.Join(head, "api.go"), []byte("package api\nfunc Unwired() {}\n"), 0o600); err != nil { t.Fatal(err) }
-	got := findingsForTest(t, GateLintInput{BaseDir:base, ChangedDir:head, ChangedFiles:[]string{"api.go"}}, nil)
-	if len(got)!=1 || !strings.Contains(got[0].What,"Unwired") { t.Fatalf("reach analysis without a TEST line = %#v",got) }
+	if err := os.WriteFile(filepath.Join(head, "api.go"), []byte("package api\nfunc Unwired() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := findingsForTest(t, GateLintInput{BaseDir: base, ChangedDir: head, ChangedFiles: []string{"api.go"}}, nil)
+	if len(got) != 1 || !strings.Contains(got[0].What, "Unwired") {
+		t.Fatalf("reach analysis without a TEST line = %#v", got)
+	}
 }
 
 func TestGateLintVerbTableReachesNewRunMethod(t *testing.T) {

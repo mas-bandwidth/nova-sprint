@@ -51,13 +51,24 @@ func GateLintFindingsChecked(input GateLintInput, run BenchRunner) ([]GateLintFi
 	if input.TestPkg != "" && input.TestName != "" && run != nil {
 		// Check 1: the test should fail at merge-base (or not exist).
 		passedAtMergeBase, err := run(input.MergeBase, input.TestPkg, input.TestName)
-		if err != nil { return nil, err }
-		if passedAtMergeBase { out = append(out, GateLintFinding{What: GateLintPinAbsent + ": test passes at merge-base"}); return out, nil }
-		if input.RevertedHead == "" { return append(out, GateLintFinding{What: GateLintPinBroken + ": no reverted non-test tree"}), nil }
+		if err != nil {
+			return nil, err
+		}
+		if passedAtMergeBase {
+			out = append(out, GateLintFinding{What: GateLintPinAbsent + ": test passes at merge-base"})
+			return out, nil
+		}
+		if input.RevertedHead == "" {
+			return append(out, GateLintFinding{What: GateLintPinBroken + ": no reverted non-test tree"}), nil
+		}
 		// Check 2: the test should fail when non-test hunks are reverted.
 		passedAtReverted, err := run(input.RevertedHead, input.TestPkg, input.TestName)
-		if err != nil { return nil, err }
-		if passedAtReverted { out = append(out, GateLintFinding{What: GateLintPinBroken + ": test passes with non-test hunks reverted"}) }
+		if err != nil {
+			return nil, err
+		}
+		if passedAtReverted {
+			out = append(out, GateLintFinding{What: GateLintPinBroken + ": test passes with non-test hunks reverted"})
+		}
 	}
 
 	// Check 3: Reach check - every exported symbol in changed non-test files
@@ -414,7 +425,9 @@ func (i *treeImporter) checkDir(dir string) (*types.Package, *types.Info, error)
 	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}}
 	conf := types.Config{Importer: i, Error: func(error) {}}
 	p, err := conf.Check(filepath.ToSlash(dir), i.fset, files, info)
-	if err != nil { return nil, nil, fmt.Errorf("type-check %s: %w", dir, err) }
+	if err != nil {
+		return nil, nil, fmt.Errorf("type-check %s: %w", dir, err)
+	}
 	return p, info, nil
 }
 
