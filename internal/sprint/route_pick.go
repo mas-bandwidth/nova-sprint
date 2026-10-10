@@ -133,11 +133,11 @@ func statsValues(stats map[string]*RoutePickStats) []RoutePickStats {
 	out := make([]RoutePickStats, 0, len(stats))
 	for _, s := range stats {
 		out = append(out, RoutePickStats{
-			RouteName:  s.RouteName,
-			USD:        s.USD,
-			OK:         s.OK,
-			Failed:     s.Failed,
-			Landings:   s.Landings,
+			RouteName: s.RouteName,
+			USD:       s.USD,
+			OK:        s.OK,
+			Failed:    s.Failed,
+			Landings:  s.Landings,
 		})
 	}
 	return out
@@ -149,11 +149,11 @@ func RoutePickStatsFromRouteStats(rs []RouteStat) map[string]*RoutePickStats {
 	out := make(map[string]*RoutePickStats, len(rs))
 	for _, r := range rs {
 		out[r.Route.Name] = &RoutePickStats{
-			RouteName:  r.Route.Name,
-			USD:        r.Route.USD,
-			OK:         r.OK,
-			Failed:     r.Failed,
-			Landings:   r.OK, // Approximate: ok cards that have landed
+			RouteName: r.Route.Name,
+			USD:       r.Route.USD,
+			OK:        r.OK,
+			Failed:    r.Failed,
+			Landings:  r.OK, // Approximate: ok cards that have landed
 		}
 	}
 	return out

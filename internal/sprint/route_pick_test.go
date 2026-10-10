@@ -120,4 +120,3 @@ func TestPickRouteWeighted(t *testing.T) {
 	assert.True(t, ok)
 	assert.NotEmpty(t, name)
 }
-
