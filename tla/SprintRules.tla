@@ -89,7 +89,7 @@ Cols == {"absent", "waiting", "open", "landed", "dropped"}
 RdFiles == {"f1", "f2", "f3"}
 
 \* -- reads: the most times readers' findings widen one card's PATHS in place (the code's
-\* MaxReadWidens; 2 here, so a third file outside PATHS reaches the cap)
+\* MaxWidens; 2 here, so a third file outside PATHS reaches the cap)
 MaxWidens == 2
 RdFindings == RdFiles \cup {"in1", "in2"}
 

@@ -41,21 +41,24 @@ const RuleReadBroken = "read-broken"
 // widened in place by the files the finding names, the same id and never a twin.
 const ActWidenRead = "widen PATHS in place by the finding"
 
-// FieldReadWidens counts the times readers' findings widened the primary's PATHS in place
-// (TickRuleWidenRead). Brief never resets it: a widened brief resets the brief's bound, so
-// this count is what bounds widening; at MaxReadWidens a finding outside PATHS is the brief's
-// bound (ReadWidensSpent), a mind's, never widened again.
-const FieldReadWidens = "read_widens"
+// FieldWidens counts the times a rule widened the primary's PATHS in place: a reader's finding
+// (TickRuleWidenRead) or the widen rule on a HOLD or the lander's E12 refusal (TickRuleWiden,
+// widen.go). Brief never resets it: a widened brief resets the brief's bound (FieldBriefAttempt),
+// so this count is what bounds the widen loop, and every widen counts toward the brief's bound
+// through it: at MaxWidens a card whose work names files outside PATHS again is at the brief's
+// bound (WidensSpent), a mind's, never widened again (the ejection-bound audit of 2026-10-10:
+// the E12 branch of landRefused had no cap).
+const FieldWidens = "widens"
 
-// MaxReadWidens is the most times readers' findings widen one card's PATHS.
-const MaxReadWidens = 3
+// MaxWidens is the most times rules widen one card's PATHS in place, all rules together.
+const MaxWidens = 3
 
-// ReadWidensSpent is the brief's bound a finding naming files outside the PATHS of a card
-// widened MaxReadWidens times already is: the brief is wrong, not the worker; "" while the
-// card may be widened again.
-func ReadWidensSpent(c *Card) string {
-	if n := c.Int(FieldReadWidens); n >= MaxReadWidens {
-		return fmt.Sprintf("%s has had its PATHS widened %d times by readers' findings and a reader names files outside them again; the brief is wrong, not the worker", c.ID, n)
+// WidensSpent is the brief's bound a card widened MaxWidens times already is when its work
+// names files outside its PATHS again: the brief is wrong, not the worker; "" while the card
+// may be widened again.
+func WidensSpent(c *Card) string {
+	if n := c.Int(FieldWidens); n >= MaxWidens {
+		return fmt.Sprintf("%s has had its PATHS widened %d times by rule and its work names files outside them again; the brief is wrong, not the worker", c.ID, n)
 	}
 	return ""
 }
@@ -69,7 +72,7 @@ const FieldNote = "note"
 
 // ruleReadBroken: a reader found the primary's attempt broken. When the findings name files
 // outside its PATHS its brief is widened in place by them, at its brief's bound or below it,
-// under MaxReadWidens (past it, the bound's, a mind's);
+// under MaxWidens (past it, the bound's, a mind's);
 // otherwise, below the bound, it is reworked with the findings as the fix, on its tier; a
 // friend's card as a machine's.
 func ruleReadBroken(s *Snapshot, a *RuleAnswer) {
@@ -89,7 +92,7 @@ func ruleReadBroken(s *Snapshot, a *RuleAnswer) {
 		return
 	}
 	out := FilesOutsidePaths(pr.F("brief"), finding)
-	if spent := ReadWidensSpent(pr); len(out) > 0 && spent != "" {
+	if spent := WidensSpent(pr); len(out) > 0 && spent != "" {
 		left(a, spent)
 		return
 	}
@@ -215,7 +218,7 @@ func TickRuleWidenRead(s *Snapshot, r TickReq) (Plan, int) {
 				}
 				e.Set["fix"], e.Set["finding"] = a.fix, a.fix
 				e.Set[FieldNote], e.Set[FieldRuleAnswer] = said, a.Rule+": "+a.Act+" at "+stamp(s.Now)
-				e.Set[FieldReadWidens] = itoa(pr.Int(FieldReadWidens) + 1) // Brief never resets it
+				e.Set[FieldWidens] = itoa(pr.Int(FieldWidens) + 1) // Brief never resets it
 				// the finding is the broken attempt's: Brief unsets finding_attempt, and with it
 				// finder-first (its finder checks the fix) would be lost on a widen
 				e.Set[FieldFindingAttempt] = pr.F("attempt")
