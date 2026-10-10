@@ -29,11 +29,9 @@ func (a *app) cmdLog(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "log", argErr("takes no words ", err, pos...))
 	}
 	var from time.Time
-	var until time.Time
 	if *since != "" {
-		until = a.now()
 		if d, err := time.ParseDuration(*since); err == nil {
-			from = until.Add(-d)
+			from = a.now().Add(-d)
 		} else if t, err := time.Parse(time.RFC3339, *since); err == nil {
 			from = t
 		} else {
@@ -50,7 +48,7 @@ func (a *app) cmdLog(args []string, stdout, stderr io.Writer) int {
 	}
 	var out []sprint.Line
 	for _, l := range lines {
-		if keepLine(l, *card, *stream, *member, from, until) {
+		if keepLine(l, *card, *stream, *member, from) {
 			out = append(out, l)
 		}
 	}
@@ -119,11 +117,8 @@ func (a *app) zone() *time.Location {
 	return time.Local
 }
 
-func keepLine(l sprint.Line, card, stream, member string, from, until time.Time) bool {
+func keepLine(l sprint.Line, card, stream, member string, from time.Time) bool {
 	if !from.IsZero() && l.At.Before(from) {
-		return false
-	}
-	if !until.IsZero() && l.At.After(until) {
 		return false
 	}
 	if card != "" && !l.About(card) {

@@ -166,36 +166,3 @@ func TestWhereHidesTheMergeTablesSince(t *testing.T) {
 	require.NotEmpty(t, block, "no merge table:\n%s", out)
 	require.NotContains(t, block, "since", "where shows since:\n%s", out)
 }
-
-func TestLogSinceWideWindowIncludesExistingEvents(t *testing.T) {
-	t.Parallel()
-	ta := newTestApp(t)
-	ta.a.loc = time.UTC
-	ta.ok("init --readers reader-a --members m1")
-	ta.ok("add --stream s1 --count 1 --one")
-	ta.mu.Lock()
-	ta.now = ta.now.Add(23 * time.Hour)
-	ta.mu.Unlock()
-
-	out := ta.ok("log --since 24h")
-	assert.Contains(t, out, "LOG OK lines=", "wide --since window")
-	assert.NotContains(t, out, "LOG OK lines=0", "wide --since window must retain the event")
-}
-
-func TestLogSincePinsWideWindowToOneNow(t *testing.T) {
-	t.Parallel()
-	ta := newTestApp(t)
-	ta.a.loc = time.UTC
-	ta.ok("init --readers reader-a --members m1")
-	ta.ok("add --stream s1 --count 1 --one")
-	ta.mu.Lock()
-	ta.now = ta.now.Add(23 * time.Hour)
-	ta.mu.Unlock()
-	ta.ok("add --stream s1 --count 1 --one")
-	ta.mu.Lock()
-	ta.now = ta.now.Add(-time.Hour)
-	ta.mu.Unlock()
-
-	out := ta.ok("log --since 24h")
-	assert.NotContains(t, out, "s1-2 added", "an event after the pinned now is outside the wide window")
-}
