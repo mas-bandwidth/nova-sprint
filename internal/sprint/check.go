@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Violation is one broken rule of docs/SPEC-SPRINT.md section 9, or a step
@@ -187,7 +188,14 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 				readers[name] = true
 			}
 		}
-		if len(readers) < ReadsNeededIn(s, c) {
+		need := ReadsNeededIn(s, c)
+		if c.F(FieldReadsNeeded) == "" && acceptedBeforeReadsField(c) {
+			// accepted before the accept recorded the count it ran on: the sprint's
+			// count then (set --reads) is not on the card, so the tier's rule is not
+			// the bar; one ok read stands
+			need = min(need, 1)
+		}
+		if len(readers) < need {
 			out = append(out, Violation{6, fmt.Sprintf("%s is %s with ok reads at head %s from %d reader(s)", c.ID, c.Col, orDash(c.F("head")), len(readers))})
 		}
 	}
@@ -260,4 +268,16 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 
 func sortedCards(t *Table) []*Card {
 	return t.Cards()
+}
+
+// readsFieldCut is when the accept began to record FieldReadsNeeded (f8731a2db,
+// 2026-10-06 22:00 ET). A card accepted earlier under a lowered count (the owner,
+// 2026-10-06: "waive the second read") carries no count, and check must not hold
+// it to the tier's rule.
+var readsFieldCut = time.Date(2026, 10, 7, 2, 0, 40, 0, time.UTC)
+
+// acceptedBeforeReadsField says the card's accepted stamp predates readsFieldCut.
+func acceptedBeforeReadsField(c *Card) bool {
+	t, err := time.Parse(time.RFC3339, c.F("accepted"))
+	return err == nil && t.Before(readsFieldCut)
 }
