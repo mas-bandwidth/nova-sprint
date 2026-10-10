@@ -192,5 +192,53 @@ func TestABenchThatDoesNotAnswerLeavesTheGateWaiting(t *testing.T) {
 	assert.Contains(t, run.Waiting, "no bench")
 }
 
+// TestBenchTestRunnerTreatsAnAbsentTestAsNotPassed pins the pin probe's absence rule: a
+// package that names no such test is not a pass. go test exits zero both when the package
+// has test files and none match ("[no tests to run]") and when the package has no test
+// files at all ("[no test files]"); a change that adds the TEST line's test to a package
+// that had no test files at the merge-base must not be mistaken for a test that passes at
+// the merge-base (gate-pin-absent), because the card permits a test that does not exist
+// there.
+func TestBenchTestRunnerTreatsAnAbsentTestAsNotPassed(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		res  BenchResult
+		want bool
+	}{
+		{
+			name: "a named test that ran and passed is a pass",
+			res:  BenchResult{Code: 0, Out: "ok  \tgithub.com/mas-bandwidth/nova-sprint/internal/cardhdr\t0.002s\n"},
+			want: true,
+		},
+		{
+			name: "a package with no test files is not a pass",
+			res:  BenchResult{Code: 0, Out: "?   \tgithub.com/mas-bandwidth/nova-sprint/internal/cardhdr\t[no test files]\n"},
+			want: false,
+		},
+		{
+			name: "a package whose test files name no such test is not a pass",
+			res:  BenchResult{Code: 0, Out: "ok  \tgithub.com/mas-bandwidth/nova-sprint/internal/sprint\t0.006s [no tests to run]\n"},
+			want: false,
+		},
+		{
+			name: "a failing test is not a pass",
+			res:  BenchResult{Code: 1, Out: "--- FAIL: TestNamed (0.00s)\nFAIL\n"},
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runner := benchTestRunner(func(context.Context, []string, string, string, []string) (BenchResult, error) {
+				return tc.res, nil
+			}, []string{"bench1"}, "/clone", nil, nil)
+			got, err := runner("head", "./internal/cardhdr", "TestNamed")
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
 // errNoBench is the seam's no-answer error.
 var errNoBench = errors.New("no bench answered")

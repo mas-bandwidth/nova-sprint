@@ -470,8 +470,12 @@ func benchTestRunner(bench BenchRun, hosts []string, dir string, args []string, 
 		}
 		// go test exits zero when the named test does not exist.  A new test is
 		// allowed to be absent at the merge-base, so do not mistake that for a
-		// passing pin probe.
-		if res.Code == 0 && strings.Contains(res.Out, "[no tests to run]") {
+		// passing pin probe.  Both shapes count as absent: a package with test
+		// files and none matching ("[no tests to run]") and a package with no
+		// test files at all ("[no test files]").  The second is exactly a change
+		// that adds the TEST line's test to a package that had none at the
+		// merge-base.
+		if res.Code == 0 && (strings.Contains(res.Out, "[no tests to run]") || strings.Contains(res.Out, "[no test files]")) {
 			return false, nil
 		}
 		return res.Code == 0, nil

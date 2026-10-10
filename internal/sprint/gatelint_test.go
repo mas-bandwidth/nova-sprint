@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -274,12 +273,32 @@ func use() {
 	}
 }
 
-func TestFindTreeReferencesRecognizesTreeImporterInterfaceDispatch(t *testing.T) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not locate current source tree")
+// repoRootFromWorkingDir finds the module root above the test's working directory. The
+// tests run with the package directory as their working directory, so walking up to the
+// directory that holds go.mod finds the tree the test wants. The test must not use
+// runtime.Caller: under the wall's forced -trimpath the compiled file name is
+// module-relative ("github.com/mas-bandwidth/nova-sprint/internal/sprint/gatelint_test.go"),
+// so a path built from it does not exist on disk.
+func repoRootFromWorkingDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("could not read the test's working directory: %v", err)
 	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "../.."))
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("no go.mod found above the test's working directory")
+		}
+		dir = parent
+	}
+}
+
+func TestFindTreeReferencesRecognizesTreeImporterInterfaceDispatch(t *testing.T) {
+	root := repoRootFromWorkingDir(t)
 	id := "internal/sprint#treeImporter#Import"
 	reached, err := findTreeReferences(root, map[string]string{id: "Import"})
 	if err != nil {

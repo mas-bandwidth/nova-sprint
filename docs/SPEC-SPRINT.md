@@ -2858,7 +2858,11 @@ id (`--op`) returns the original result, with no second counter or notification.
 
 - The gate lint tokens (`sprint.GateLintPinAbsent`, `sprint.GateLintPinBroken`,
   `sprint.GateLintReach`):
-  - `gate-pin-absent`: the TEST line's test passes at the merge-base.
+  - `gate-pin-absent`: the TEST line's test passes at the merge-base. A test that does
+    not exist there is absent, not passing: a package whose test files name no such test
+    (`[no tests to run]`) and a package with no test files at all (`[no test files]`) both
+    read as absent, so a change that adds the TEST line's test to a package that had none
+    at the merge-base is not reworked.
     Remedy: write the test so it fails without the change.
   - `gate-pin-broken`: the TEST line's test passes when the change's non-test hunks are
     reverted. Remedy: ensure the test actually depends on the change.
@@ -5369,3 +5373,8 @@ The TLA+ specification `tla/StallLadder.tla` verifies five invariants:
 
 - A newly added method counts as reached when a concrete value is type-checked as an implementation of an interface used by a non-test assignment, initializer, channel send, or call argument. This captures interface dispatch without accepting same-spelled methods or methods on a type never used through that interface.
 - Source analysis failures return an error to the machine gate, which waits; they are not reclassified as a work-lint finding. This clarifies and supersedes the prior standard-library-import subsection's explicit-finding behavior for analysis errors.
+
+#### work-lint-proves-the-test-pins-ns-bcccc.w2: pin-probe absence and a build-path-independent reach test
+
+- The pin probe reads a test as absent, not passing, for both shapes of a package that names no such test: a package with test files and none matching (`[no tests to run]`) and a package with no test files at all (`[no test files]`). The second is exactly a change that adds the TEST line's test to a package that had none at the merge-base, so the card's rule (red at the merge-base, or not exist) is honored and no sound attempt is reworked with gate-pin-absent.
+- The reach test for interface dispatch locates the module root from the test's working directory (walking up to the directory that holds go.mod), not `runtime.Caller`. The wall builds with a forced `-trimpath`, so a compiled file name is module-relative and a path built from it does not exist on disk; the test must be build-path independent (the analysis itself is unchanged and correct with an untrimmed toolchain).
