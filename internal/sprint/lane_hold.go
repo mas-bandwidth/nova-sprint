@@ -173,7 +173,8 @@ func LaneTake(s *Snapshot, r TakeReq) Plan {
 			maps.Copy(merged, set)
 			e.Set = nonEmpty(merged)
 			// each field unset once: the store refuses a name twice (the take's own and the lane's)
-			all := append(slices.Clone(e.Unset), unset...)
+			// each field unset once, and never the lane's own: the take sets them
+			all := slices.DeleteFunc(append(slices.Clone(e.Unset), unset...), func(n string) bool { return n == FieldLane || n == FieldLaneAt })
 			slices.Sort(all)
 			e.Unset = unsetPresent(c, slices.Compact(all))
 		}
