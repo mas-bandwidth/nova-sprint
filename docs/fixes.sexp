@@ -21,7 +21,9 @@
     tests, and the sprint store cards that are point-release work. Each is re-applied or written in
     this repository, then cut as one release.")
   (release "v1.2.7" :status "planned"
-   :text "Fixes found while the final dogfood lands through the lander."))
+   :text "Fixes found while the final dogfood lands through the lander.")
+  (release "v1.2.9" :status "planned"
+   :text "Stats tidy over a fleet of more than 64 rows."))
  :items
  ((fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
@@ -180,4 +182,10 @@
     .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
-   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")))
+   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+  (fix "stats-tidy-large-fleet" :release "v1.2.9" :status "planned"
+   :title "A stats tidy succeeds over a fleet of more than 64 rows"
+   :text "Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a
+    property bound."
+   :origin "card from the sprint store (2026-10-10)")
+))

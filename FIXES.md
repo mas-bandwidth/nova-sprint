@@ -58,3 +58,9 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 Fixes found while the final dogfood lands through the lander.
 
 - **A bench tree is a standalone clone, and one that is not is refused with its reason** (planned). The mirror stage ends by checking that the staged tree's .git is a directory in the tree, and a .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git no longer exits 128 on a fleet host with nothing saying why. From: lander fault 5579, space git exit 128 (held-PR ledger row 5579).
+
+## v1.2.9 (planned)
+
+Stats tidy over a fleet of more than 64 rows.
+
+- **A stats tidy succeeds over a fleet of more than 64 rows** (planned). Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a property bound. From: card from the sprint store (2026-10-10).
