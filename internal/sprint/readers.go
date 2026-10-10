@@ -356,10 +356,32 @@ func scriptVerified(s *Snapshot, pr *Card) bool {
 // at its current attempt and head (okReaders), or one script read of a script card
 // (scriptVerified). With no read needed (set --reads 0) its work's finish is the
 // evidence: the work came back LAND at a head.
+// hasBrokenAtHead says a primary has a broken read at its head (from a reader
+// or the fleet): such a read blocks acceptance even if there are enough oks.
+func hasBrokenAtHead(s *Snapshot, pr *Card) bool {
+	for _, rc := range readsAt(s, pr, pr.Int("attempt")) {
+		if rc.Col == Broken && (rc.F("head") == "" || rc.F("head") == pr.F("head")) {
+			return true
+		}
+	}
+	if s.Fleet != nil {
+		_, _, fbr := friendReadLive(s, pr)
+		for _, rc := range fbr {
+			if h := rc.F("head"); h == "" || h == pr.F("head") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func acceptable(s *Snapshot, pr *Card) bool {
 	need := ReadsNeededIn(s, pr)
 	if need == 0 {
 		return pr.F("result") != "failed" && pr.F("head") != ""
+	}
+	if hasBrokenAtHead(s, pr) {
+		return false
 	}
 	return len(okReaders(s, pr)) >= need || scriptVerified(s, pr)
 }
