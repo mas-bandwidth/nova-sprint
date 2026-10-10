@@ -166,4 +166,10 @@
    (fix "hold-pinned-to-head-sha" :release "v1.2.9" :status "shipped"
     :title "A hold pinned to an older head is not a hold at the current head"
     :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
-    :origin "issue #2710")))
+    :origin "issue #2710")
+
+   (fix "merge-approval-head-from-disposition" :release "v1.2.9" :status "planned"
+    :title "Approval at head is read from the disposition line"
+    :text "The review API commit id can differ from the head the reviewer read. Merge checks parse the head
+     named in the disposition and treat commit id as untrusted."
+    :origin "issue #2037")))
