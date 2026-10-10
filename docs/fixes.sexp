@@ -111,6 +111,13 @@
      file. Use a unique temporary path per writer."
     :origin "issue #5160")
 
+   (fix "budget-exhaustion-escalates-not-brief-defect" :release "v1.2.6" :status "planned"
+    :title "Budget exhaustion escalates, does not trigger brief-defect"
+    :text "A card whose attempt ends on the token budget (no RESULT.md) is a harness fault, not a brief
+     defect. Two budget-exhausted attempts do not trigger the brief-defect judgment; the next attempt
+     escalates on the next tier. A harness-fault finding is empty for brief-bound purposes."
+    :origin "internal/sprint/steps_work.go; fix in brief_bound_test.go")
+
    (fix "rest-properties-cap" :release "v1.2.9" :status "planned"
     :title "Rested routes must not overflow the fleet table property cap"
     :text "Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the

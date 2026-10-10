@@ -202,3 +202,23 @@ func TestTwoCappedCardsDoNotExceedAFriendsWidth(t *testing.T) {
 	assert.NotEmpty(t, waiting, "the other stays ready")
 	assert.Empty(t, Check(w.s, nil), "what is always true holds with one card left ready")
 }
+
+// Two budget-exhausted attempts (no RESULT.md) don't trigger the brief-defect
+// judgment: they're harness faults that should escalate, not brief defects.
+func TestBudgetExhaustionDoesNotTriggerBriefDefect(t *testing.T) {
+	t.Parallel()
+	w := friendWorld(t,
+		"c: a machine's card\nREPO: mas-bandwidth/nova-tools\n\nThe task.",
+		"c: another machine's card\nREPO: mas-bandwidth/nova-tools\n\nAnother task.",
+	)
+	pr := w.s.Primary("s1-1")
+	pr.Fields["attempt"] = "2"
+	pr.Fields["findings"] = "attempt 1: no RESULT.md\nattempt 2: no RESULT.md"
+	pr.Fields[FieldFailure] = "no result"
+	pr.Fields[FieldFailureAt] = "2"
+	pr.Fields[FieldFailureTier] = "flash"
+
+	// AtBriefBound with harness fault report should return false (no brief bound)
+	_, atBound := AtBriefBound(pr, "no RESULT.md", w.s.AttemptsCap("s1"))
+	assert.False(t, atBound, "budget exhaustion (harness fault) should not trigger brief-defect")
+}

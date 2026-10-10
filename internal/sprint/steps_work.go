@@ -1642,8 +1642,14 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		attempt := pr.Int("attempt")
 		// the brief's bound as this finish leaves the card (brief_bound.go): the same failure
-		// escalates below the ceiling only under the attempt cap
-		bb, atBound := AtBriefBound(withField(pr, FieldCostTotal, set[FieldCostTotal]), r.Report, s.AttemptsCap(pr.Row))
+		// escalates below the ceiling only under the attempt cap. A harness fault (like
+		// "no RESULT.md" from budget exhaustion) is the harness's, not a finding about the
+		// work: pass an empty string so it doesn't trigger the brief-defect judgment.
+		finding := r.Report
+		if HarnessFault(finding) != "" {
+			finding = ""
+		}
+		bb, atBound := AtBriefBound(withField(pr, FieldCostTotal, set[FieldCostTotal]), finding, s.AttemptsCap(pr.Row))
 		if next := s.NextTier(pr); identical && next != "" && !atBound {
 			// the second identical failure below its ceiling (rules 1 and 2, nova-tools#5174:
 			// "Flash first on every card; pro only on escalation"): no judgment; the primary
