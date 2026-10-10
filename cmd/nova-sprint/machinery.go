@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -62,6 +64,24 @@ type outside struct {
 	// machineVersions is each machine's installed version against dev (fp-mach-01).
 	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)
 	novaTools       func(bin string) sprint.NovaToolsProbe
+	// hostUp says whether a member's host answers on the network; nil is not probed, and
+	// a member is then never excused as offline.
+	hostUp func(ctx context.Context, host string) bool
+}
+
+// hostAnswers is the real hostUp: a TCP dial of the host's ssh port. A connection, or a
+// refusal (the host's own stack answered), is up; an unresolvable name or a timeout is
+// offline.
+func hostAnswers(ctx context.Context, host string) bool {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	var d net.Dialer
+	c, err := d.DialContext(ctx, "tcp", net.JoinHostPort(host, "22"))
+	if err == nil {
+		c.Close() // ignored: a probe connection
+		return true
+	}
+	return errors.Is(err, syscall.ECONNREFUSED)
 }
 
 // realOutside is the check as it runs on a machine.
@@ -127,6 +147,7 @@ func (a *app) realOutside() outside {
 			}
 			return conn.Close()
 		},
+		hostUp: hostAnswers,
 		hostname: func() string {
 			h, _ := os.Hostname()
 			return strings.SplitN(h, ".", 2)[0]

@@ -135,8 +135,9 @@
    :origin "nova-tools PR #5578, head fcdbaa441")
   (fix "down-member-is-down-not-fault" :release "v1.2.6" :status "planned"
    :title "A member whose host is offline is shown down, not as a fault"
-   :text "Doctor and machinery report a member whose host is offline as down; FAULT only when the host is
-    reachable and the member does not beat."
+   :text "The seat check reports a member that does not beat on an offline host as down (offline=name, the
+    fleet line stays OK); DOWN only when the host answers and the member does not beat. The binding probes the
+    host's ssh port, only for a member that does not beat; the decision is a pure function of that evidence."
    :origin "v1.2.5 candidate list")
   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
    :title "The worker brief says never amend, rebase or reset onto origin"
