@@ -578,7 +578,7 @@ func FriendsDealtFleet(s *Snapshot) map[string]int {
 // deal drew (dealTierOf), as a machine's deal writes it, so its reads and its escalation
 // go by the tier she ran it on; none for a pinned tier, whose ceiling is its tier.
 func tierNowSet(c *Card, tier string) map[string]string {
-	m, _ := cardhdr.ReadModel(c.F("brief"))
+	m, _ := modelOf(c)
 	if tier == "" || pinnedTier(c, m) || c.F(FieldTierNow) != "" {
 		return nil
 	}

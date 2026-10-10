@@ -151,13 +151,13 @@
      tick writes nothing. Use one property for all."
     :origin "issue #5210")
 
-   (fix "tick-gate-rest-scan-walks-cells" :release "v1.2.9" :status "planned"
-    :title "The deal's rest scan walks the fleet's cells, never the sorted column"
+   (fix "tick-gate-model-read-once" :release "v1.2.9" :status "planned"
+    :title "The deal reads each brief's model once, so the tick stays under its gate"
     :text "Drain and deal take 0.4 to 0.7 seconds at load, so the tick is over its one-second gate. The
-     dominant cost is routeEnds, the deal's scan of the ended takes the rest rule counts: it read the
-     fleet table through Column, which sorts the whole column every call for an order the rule does not
-     need (each route's ends are sorted later by cmpEnd), and it parsed a take's finish before knowing
-     the take named a route. It now walks the fleet's cells directly and parses only a take that names
-     a route: the scan drops from about 6.9 ms to 4.6 ms over 20,000 done cards, and the deal part from
-     about 16 ms to 14 ms on the same store, keeping the tick under its gate."
+     dominant cost is the deal's model read: cardhdr.ReadModel parses every ready card's brief (line 1
+     and the header) with a regexp, and the deal resolves the same card's tier again in the friends'
+     dealTierOf, so each ready primary's brief is parsed twice a tick. It now memoizes the read by
+     brief (route.go, modelOf), once a brief: the deal parses 20,000 ready briefs once instead of
+     twice, drops the regexp out of the hot path, and stays under the gate at load
+     (TestTheTickDealReadsEachBriefOnceAtScale holds it to one parse a brief)."
     :origin "seat ledger v1.2.4-held-2026-10-10.md 5577 tick gate")))
