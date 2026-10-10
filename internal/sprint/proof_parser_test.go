@@ -200,6 +200,28 @@ func TestTheParserProofChecksAnAssertionRewriteOverTheDiff(t *testing.T) {
 		require.Len(t, run.Failed, 1)
 		assert.Contains(t, run.Failed[0].What, "not a test file")
 	})
+
+	t.Run("removed non-assertion lines in a test file is a finding", func(t *testing.T) {
+		t.Parallel()
+		v := proofView(
+			proofDiffLines("a/a_test.go", "@@ -1,2 +1,1 @@", "\tassert.Equal(t, 1, 2)", "-\tx := 1", "+\tassert.Equal(t, 2, 2)"),
+			map[string]string{"a/a_test.go": "package a\n"},
+		)
+		run := ParserProof(cardhdr.KindRewrite, v)
+		require.Len(t, run.Failed, 1)
+		assert.Contains(t, run.Failed[0].What, "not an assertion line")
+	})
+
+	t.Run("added line merely containing assertion substring is a finding", func(t *testing.T) {
+		t.Parallel()
+		v := proofView(
+			proofDiffLines("a/a_test.go", "@@ -1,1 +1,2 @@", " \tassert.Equal(t, 1, 2)", "+\tx := 1 // assert this is a comment"),
+			map[string]string{"a/a_test.go": "package a\n"},
+		)
+		run := ParserProof(cardhdr.KindRewrite, v)
+		require.Len(t, run.Failed, 1)
+		assert.Contains(t, run.Failed[0].What, "not an assertion line")
+	})
 }
 
 // TestNewParserProofReadsTheHeadAndRunsTheCheck drives the runner the tick

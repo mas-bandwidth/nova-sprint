@@ -2894,7 +2894,11 @@ id (`--op`) returns the original result, with no second counter or notification.
   - `delete`: `go/parser` over the tree at the head finds the named symbols are
     gone and nothing in any package references them.
   - `rename`: no occurrence of the old name is left and the new name exists.
-  - `assertion-rewrite`: the diff touches only assertion lines of test files.
+   - `assertion-rewrite`: the diff touches only test files, and every line it removes
+     or adds is an assertion line (a blank, a comment, an import, a paren, or a call
+     to `assert.`, `require.`, `t.Error`, `t.Fatal`, `t.Fail`, `t.Log`, `.Errorf`,
+     `.Fatalf`, `.Error`, `.Fatal`, or `.FailNow`), so that the test's logic is
+     unchanged.
 - The tick's request carries the proof (`TickReq.Proof`); nil is
   `sprint.DefaultProof`, which `nova-sprint` sets at its start from
   `NOVA_SPRINT_PROOF_BENCH` (a comma list, the host or hosts the proof runs

@@ -257,7 +257,13 @@ func assertionRewriteProof(v WorkView) ProofRun {
 					continue
 				}
 				switch l[0] {
-				case ' ', '-':
+				case ' ':
+					line++
+				case '-':
+					body := strings.TrimSpace(l[1:])
+					if body != "" && !assertionLine(body) {
+						fs = append(fs, ProofFinding{File: f.New, Line: line, What: "the change is not an assertion line: " + body})
+					}
 					line++
 				case '+':
 					body := strings.TrimSpace(l[1:])
@@ -455,7 +461,7 @@ func assertionLine(body string) bool {
 		return true
 	}
 	for _, needle := range []string{"assert.", "require.", "t.Error", "t.Fatal", "t.Fail", "t.Log", ".Errorf(", ".Fatalf(", ".Error(", ".Fatal(", ".FailNow("} {
-		if strings.Contains(t, needle) {
+		if strings.HasPrefix(t, needle) {
 			return true
 		}
 	}
