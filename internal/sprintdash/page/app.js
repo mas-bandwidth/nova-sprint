@@ -489,6 +489,7 @@ function sideWord(work, tiers) {
 function setSideOff(sec, work) { if (sec) sec.classList.toggle("off", String(work || "on") === "off"); }
 
 // the machine pill: red when the machine line says every provider is out of credit (SPEC.md)
+var machineStopped = false;
 function setMachine(line) {
   var text = String(line || "-").replace(/^machine:\s*/, "");
   // the human page shows RUNNING, STOPPED or STALE; tick lateness is the coordinator's view only (the owner 2026-10-04 2:55 PM)
@@ -503,6 +504,7 @@ function setMachine(line) {
   // the bar pulses only while the machine runs (the owner 2026-10-04 9:14 AM)
   var running = /^(running|STALE)\b/.test(text);
   var box = $("overall"); if (box) box.classList.toggle("stopped", !running);
+  machineStopped = stopped;
 }
 
 // Providers (SPEC.md, the owner 8:03 and 8:18 AM): shown only when the store carries tables.providers
@@ -583,7 +585,7 @@ function renderReaders(d) {
 function renderHero(d, s, ft) {
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
-  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "-");
+  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : (landed === 0 ? "nothing complete" : "-"));
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
   if (m) {
     setHTML($("eta"), etaText(m[1]));
@@ -661,7 +663,7 @@ function renderRelease(j) {
   });
 }
 function setLive(since) {
-  setClass($("live"), "live ok");
+  setClass($("live"), "live" + (machineStopped ? "" : " ok"));
   // the viewer's zone after the time, from the browser (SPEC.md, the owner 9:59 PM): EDT now, EST after the change
   // "10:00:02 PM EDT": the digits right-aligned in a fixed 8ch box (no jump from 9 to 10 o'clock),
   // then one ordinary (proportional) blank before PM and one before the zone. The browser's own time string
@@ -823,9 +825,6 @@ function renderTopStreams(d) {
     });
     putKid(r.node, cellCount - 1, "num", fmt(row.cost));
   });
-  if (!box._none) box._none = el("div", "row faint", "no stream has spent anything yet");
-  if (!rows.length && box._none.parentNode !== box) box.appendChild(box._none);
-  if (rows.length && box._none.parentNode === box) box._none.remove();
   // the pie's legend in the header: each tier as the state legend draws an item, its square in
   // the tier's color, the name grey and the amount white, in the pie's order, no separators
   var ts = $("tier-sub");
