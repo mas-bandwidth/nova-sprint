@@ -267,8 +267,41 @@ type OpenCode struct {
 	// the project config before a turn (AllowDirs), so a headless run never
 	// auto-rejects a tool call there. Nil: the config is left alone.
 	Allow []string
+	// Standalone passes --standalone to every run: opencode 2.0.25 (the
+	// background service, 2026-10-09) makes `opencode run` attach to a shared
+	// background service (`opencode serve --service`, started once, detached)
+	// instead of a private server, so a sealed provider key (nova-secrets exec)
+	// reaches no provider ("Incorrect API key provided"); --standalone keeps the
+	// run in this process, with this environment. CheckRun sets it when the
+	// installed run lists the flag, so an older opencode is never handed it.
+	Standalone bool
 
 	turns SessionTurns // the session's last turns, its liveness (alive.go)
+}
+
+// runVerb is the run verb as this opencode takes it: `run`, and --standalone
+// when CheckRun found it (Standalone).
+func (o *OpenCode) runVerb(args ...string) []string {
+	verb := []string{"run"}
+	if o.Standalone {
+		verb = append(verb, "--standalone")
+	}
+	return append(verb, args...)
+}
+
+// listVerb is `session list --format json`, and --standalone after it when
+// CheckRun found the flag: without it opencode 2.0.25 starts its managed service
+// on a fixed port, and a listing under a lane's wall (its own HOME) exits 1
+// against the instance the daemon's HOME already holds ("Managed service port
+// ... is already in use"). The flag is `session list`'s, not `session`'s: placed
+// between them opencode answers "Unrecognized flag: --standalone in command
+// opencode session" (measured on 2.0.20 and 2.0.25), so it goes last.
+func (o *OpenCode) listVerb() []string {
+	verb := []string{"session", "list", "--format", "json"}
+	if o.Standalone {
+		verb = append(verb, "--standalone")
+	}
+	return verb
 }
 
 func (o *OpenCode) program() string {
@@ -335,7 +368,7 @@ func (o *OpenCode) Deliver(ctx context.Context, text string) (int, error) {
 	}
 	id := o.Session
 	if id == "" {
-		listing, exit, err := o.Run(ctx, o.Dir, o.program(), []string{"session", "list", "--format", "json"}, "")
+		listing, exit, err := o.Run(ctx, o.Dir, o.program(), o.listVerb(), "")
 		if err != nil {
 			return 0, fmt.Errorf("opencode session list: %w", err)
 		}
@@ -351,7 +384,7 @@ func (o *OpenCode) Deliver(ctx context.Context, text string) (int, error) {
 			return 0, err
 		}
 	}
-	out, exit, err := o.Run(ctx, o.Dir, o.program(), []string{"run", "--session", id, text}, "")
+	out, exit, err := o.Run(ctx, o.Dir, o.program(), o.runVerb("--session", id, text), "")
 	if o.Out != nil && out != "" {
 		fmt.Fprintln(o.Out, strings.TrimRight(Head(out, OutputKept), "\n"))
 	}
@@ -396,6 +429,7 @@ func (o *OpenCode) CheckRun(ctx context.Context) error {
 	if len(listed) == 0 {
 		return nil
 	}
+	o.Standalone = listed["--standalone"]
 	var missing []string
 	for _, f := range OpenCodeRunFlags {
 		if !listed[f] {

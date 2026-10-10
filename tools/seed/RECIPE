@@ -25,18 +25,17 @@
 
 module	github.com/mas-bandwidth/nova-tools	github.com/mas-bandwidth/nova-sprint
 
-# The move is the three commands and the packages only they import (go list -deps
-# over every cmd at nova-tools v1.2.1). A package another nova-tools command also
-# imports (internal/sprint, internal/cardgen, internal/provbalance, ...) stays in
-# nova-tools and is copied here, not moved. internal/ci/shrinkonly is imported only
-# by nova-card but is nova-tools' CI (its test reads nova-tools' internal/ci/testdata),
-# so it is copied too.
+# The move is the sprint-only set of nova-sprint v1.2.3 (split layer L2, nova-tools
+# PR 5558): the three commands and the packages no kept nova-tools command imports
+# once L2 lands. internal/provbalance is a nova-tools building block: copied here
+# until layer L4 imports it from nova-tools.
 move	cmd/nova-sprint
 move	cmd/nova-card
 move	cmd/nova-work
-move	internal/card
-move	internal/sprint/driver
+move	internal/sprint
 move	internal/sprintdash
+move	internal/card
+move	internal/cardgen
 move	internal/workfile
 move	internal/workgh
 move	internal/worklang
@@ -106,3 +105,4 @@ keep	docs/WORKING-WITH-AI-TEAMS.md
 keep	docs/ratings/README.md
 keep	internal/ci/moot_prs_test.go
 keep	tla/README.md
+keep	CHANGELOG.md

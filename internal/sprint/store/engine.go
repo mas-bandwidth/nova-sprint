@@ -94,6 +94,10 @@ type Store struct {
 	// fails the step (twin.go).
 	CheckTwin func(twin, fresh *sprint.Snapshot) error
 	tw        *Twin // the store's twin (twin.go): kept from one tick to the next
+	// lc is the process's load cache of the store (loadcache.go): the records each
+	// table's last whole read found, which a later load catches up instead of
+	// reading the table whole. nil: every load reads its tables whole.
+	lc *LoadCache
 	// LockAfterLoss has a part of the tick that lost a try take the fence
 	// before its next read (lock.go). The program's stores set it; a test
 	// harness whose other writers write from inside a part's plan (a writer
@@ -189,6 +193,11 @@ type Step struct {
 	// within a tick).
 	Readers      bool
 	ReaderStates map[string]string
+	// NoRoom is every member and reader whose fresh beat says it starts no card
+	// (sprint.Snapshot.NoRoom), as the tick read it once with the readers' states:
+	// the deal, the level and the ask pass them by. nil: read with the readers'
+	// states when the step reads those, else none.
+	NoRoom map[string]string
 	// Friends says the step consults the friends roster (finish, for friendNext
 	// delivery mode): it plans with the friend seats (sprint.Snapshot.Friends).
 	Friends bool
@@ -633,6 +642,9 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			snap.Routes = priced
 		}
 		snap.Answered = answered
+		if step.NoRoom != nil {
+			snap.NoRoom = step.NoRoom
+		}
 		if step.Readers && step.ReaderStates != nil {
 			snap.ReaderStates = step.ReaderStates
 		} else if step.Readers {
@@ -923,10 +935,11 @@ func withQueuedPromotion(s *sprint.Snapshot, q []sprint.QueuedChange) *sprint.Sn
 	}
 	all := s.Work.Props()
 	maps.Copy(all, props)
-	w := *s.Work
+	// a frozen copy, never *s.Work: the copy has its own indexes and their lock
+	w := s.Work.Frozen()
 	w.SetProps(all)
 	n := *s
-	n.Work = &w
+	n.Work = w
 	return &n
 }
 

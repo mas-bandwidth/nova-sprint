@@ -26,9 +26,10 @@ machine's load. A beat window is `+sprint.BeatDeadline.String()+`; a member is u
 in a row (one missed beat marks nothing; a beat resets the count) and down past
 that or when it has never beaten; the tick applies each change
 (a member down has its unfinished work cards dealt to the members up; a
-member up levels the ready queues). hold <member> holds a member whatever it
-beats (status held), and fleet down <member> is hold --return in the old
-words; unhold or fleet up releases the hold, fleet up adding a member the
+member up levels the ready queues). fleet hold <member> --reason <text> (hold
+<member>) holds a member whatever it beats (status held), and fleet down
+<member> is hold --return in the old words; fleet unhold <member> (unhold), or
+fleet up, releases the hold, fleet up adding a member the
 sprint does not know; fleet up <m> --width 0 drains a member instead: no new
 deal reaches it, its untaken ready cards are levelled away and its working
 cards finish where they are (fleet down deals them again elsewhere); --width
@@ -130,6 +131,8 @@ type beatReport struct {
 	Files  *hostload.Files `json:"files,omitempty"`
 	// StopReturns is how many stop-returns the member's lanes still owe (section 14).
 	StopReturns int `json:"stop_returns,omitempty"`
+	// NoRoom is the member's word that it starts no card (--no-room), "" for none.
+	NoRoom string `json:"no_room,omitempty"`
 }
 
 // fdBound is one of fleet beat's open-files bounds: the flag's count when given, else the
@@ -157,6 +160,7 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 	load := fs.String("load", "", "the load as a percent of all the machine's cores, instead of measuring it (a test's, or another meter's)")
 	cores := fs.Int("cores", 0, "the machine's logical cores the beat reports, instead of this machine's own (a test's, or another meter's); a member with the default width takes half")
 	stopReturns := fs.Int("stop-returns", 0, "how many stop-returns the member's lanes still owe after the machine's stop (section 14): start waits for zero")
+	noRoom := fs.String("no-room", "", "the member's word that it starts no card, and why (its free disk under its floor): while its beat is fresh the deal gives it none; a beat without it clears it")
 	fdWarn := fs.Int("fd-warn", 0, fmt.Sprintf("the machine's open file descriptors above which the beat says warn and lists the top holders (else NOVA_FD_WARN, else %d)", hostload.FilesWarnDefault))
 	fdAlarm := fs.Int("fd-alarm", 0, fmt.Sprintf("the machine's open file descriptors above which the beat says alarm and the tick writes one judgment of the member (else NOVA_FD_ALARM, else %d)", hostload.FilesAlarmDefault))
 	pos, err := parse(fs, args)
@@ -221,7 +225,7 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 		v := *stopReturns
 		owing = &v
 	}
-	b, err := st.BeatOwing(context.Background(), pos[0], nil, src, owing)
+	b, err := st.BeatOwing(context.Background(), pos[0], nil, src, owing, oneline.Field(*noRoom))
 	if err != nil {
 		fmt.Fprintf(stderr, "%s fleet beat: %s\n", prog, oneline.Escape(err.Error()))
 		return 1
@@ -232,7 +236,7 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 	}
 	files := b.Meter.Files
 	if c.json {
-		out, _ := json.Marshal(beatReport{Member: pos[0], At: b.At, Load: b.Load, Last: last, How: b.How, Cores: b.Cores, Files: files, StopReturns: b.StopReturns})
+		out, _ := json.Marshal(beatReport{Member: pos[0], At: b.At, Load: b.Load, Last: last, How: b.How, Cores: b.Cores, Files: files, StopReturns: b.StopReturns, NoRoom: b.NoRoom})
 		fmt.Fprintln(stdout, string(out))
 		return 0
 	}
@@ -242,6 +246,9 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 	}
 	if b.StopReturns > 0 {
 		fmt.Fprintf(stdout, " stop_returns=%d", b.StopReturns)
+	}
+	if b.NoRoom != "" {
+		fmt.Fprintf(stdout, " no_room=%q", b.NoRoom)
 	}
 	fmt.Fprintln(stdout)
 	if files != nil && files.Level() != hostload.LevelOK {

@@ -66,8 +66,10 @@ beats for her. The beat is recorded and shown, and it never makes her up: her
 status is up only on evidence from her own session, a wake ping her session
 answered (friend health --state up) within `+sprint.FriendPongWindow.String()+` or a card of hers
 finished within `+sprint.FriendFinishWindow.String()+`, down otherwise with the missing evidence
-named on her row, and held while friend down holds her whatever she does.
-friend up releases the hold and is no evidence: a friend released with none
+named on her row, and held while friend hold <friend> --reason <text> (hold
+<friend>; friend down in the old words) holds her whatever she does. friend
+unhold <friend> (unhold; friend up) releases the hold and is no evidence: a
+friend released with none
 in its window is down until her session gives some. A friend down shows
 working 0: her cards stay on her row and count again when she is up; ready
 and done are as they were. where draws the
@@ -79,9 +81,9 @@ WHO: friend <name> prefers a known friend while she is up with room.
 WHO: only friend <name> waits for that friend alone. Other work, including
 cards with no WHO line, goes first to subscription friends whose tiers cover
 it, then to the fleet. Among eligible friends, most free room wins and name
-breaks ties. In batch mode her room is twice her width: she works at width and
-queues the rest. In one-shot mode she holds one card, and the next only after
-the last one finished. nova-sprint unpin <id>... --reason <text> removes an
+breaks ties. In batch and one-shot mode alike her room is twice her width: she
+works at width and queues the rest, and a lane her finish frees takes her next
+at once. nova-sprint unpin <id>... --reason <text> removes an
 unstarted card's stored WHO choice without editing its brief; --stream <s>
 selects a stream, and --dry-run only previews it. Work assigned to a friend
 uses her fleet row friend.<name>; presence never takes it back. friend take

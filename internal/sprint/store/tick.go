@@ -481,6 +481,10 @@ type TickResult struct {
 	// Said is what the tick's reads met that it says once: a grant the
 	// store's user lacks (its read then reads the table whole).
 	Said []string `json:"said,omitempty"`
+	// began is when the tick began, on the store's clock (Store.now): the ask
+	// begins no step past AskBy from it (tick_ask.go). Zero is a tick run with
+	// no beginning recorded, whose ask keeps its own budget alone.
+	began time.Time
 }
 
 // PartTime is one part of a tick and the time its step took.
@@ -693,6 +697,7 @@ func (st *Store) Tick(ctx context.Context) (res TickResult, err error) {
 	st.stats()
 	st.twin() // made on the store the run loop keeps: its ticks share it
 	defer func() { res.Took = time.Since(began) }()
+	start := st.now()
 	st, err = st.repin(ctx)
 	if err != nil {
 		return TickResult{}, err
@@ -701,7 +706,7 @@ func (st *Store) Tick(ctx context.Context) (res TickResult, err error) {
 	if err != nil {
 		return TickResult{}, err
 	}
-	res = TickResult{Epoch: st.epoch}
+	res = TickResult{Epoch: st.epoch, began: start}
 	// a stop by hand whose --until has come: the machine starts itself
 	// (section 14) and this tick runs it
 	if m, err = st.backAt(ctx, m, &res); err != nil {
@@ -1066,7 +1071,7 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	if req.Sessions, err = pinned.FriendSessions(ctx); err != nil {
 		return last, err
 	}
-	t := &tickRun{st: st, ctx: ctx, res: res, req: req, at: at, runSeq: m.RunSeq, snap: &first, queues: map[string]int{}, twin: twin, readers: first.ReaderStates}
+	t := &tickRun{st: st, ctx: ctx, res: res, req: req, at: at, runSeq: m.RunSeq, snap: &first, queues: map[string]int{}, twin: twin, readers: first.ReaderStates, noRoom: first.NoRoom}
 	defer func() { res.RouteTrips = t.routes.Trips }()
 	updates := st.Updates
 	if updates == nil {
@@ -1127,6 +1132,12 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 			}
 			return last, err
 		}
+	}
+	// The stops record: every automatic stop that holds and what waits on the seat, from
+	// the tick's first read (stops.go). A record not written is said on the stats, never a
+	// failed tick: the judgments the pass raised are the push, the record is their list.
+	if err := st.keepStops(ctx, twin, stopsOf(&first, t.req, now)); err != nil && ctx.Err() == nil {
+		st.stats().note("the stops record was not written: " + err.Error())
 	}
 	// 5. The tick-end note, the coordinator's one wake, is Tick's last step
 	// (tickend.go).
@@ -1202,6 +1213,9 @@ type tickRun struct {
 	// readers is each reader's state as the tick's first read found it (nil: a
 	// store that keeps no beats).
 	readers map[string]string
+	// noRoom is every member and reader whose fresh beat said it starts no card, as the
+	// tick's first read found it (sprint.Snapshot.NoRoom)
+	noRoom map[string]string
 }
 
 // update is one table's update: its queue drained (the entries other updates
@@ -1230,6 +1244,11 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 		if view != nil && view.ReaderStates == nil && t.readers != nil {
 			v := *view
 			v.ReaderStates = t.readers
+			view = &v
+		}
+		if view != nil && view.NoRoom == nil && t.noRoom != nil {
+			v := *view
+			v.NoRoom = t.noRoom
 			view = &v
 		}
 		if view != nil && view.Friends == nil && t.req.Friends != nil {
@@ -1319,6 +1338,9 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 		// the ask, and the parts that ask what the ask does, plan with the readers' states
 		step.Readers = part.Name == "ask" || part.Name == "check" || part.Name == sprint.PartLevelReads
 		step.ReaderStates = t.readers
+		// every part plans with who starts no card as the tick read it (the deal, the
+		// level, the ask: sprint.Snapshot.NoRoom)
+		step.NoRoom = t.noRoom
 		// the machine's state is read with the step's fence: STOPPED halts the
 		// tick before the part begins
 		step.Halts = true

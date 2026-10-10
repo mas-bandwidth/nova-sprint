@@ -67,9 +67,9 @@ func PushedTip(why string) string {
 // not started (All), why, and Started, the work cards she has started as the caller read
 // them (a push on the card's branch, her beat naming it running), each with its why.
 // AllOrNothing takes none of the cards named when any one is refused. Begun, with Hold and
-// All, is a friend's hold with no --return: only the cards she has begun (working, or read
-// as started) are taken, and her ready cards not begun wait on her row, none taken into a
-// lane the take frees.
+// All, takes only the cards she has begun (working, or read as started), leaving her ready
+// cards not begun on her row; a friend's hold no longer asks for it, since a held friend
+// keeps no card at all (the owner, 2026-10-09).
 type FriendTakeReq struct {
 	Friend       string
 	IDs          []string
@@ -198,8 +198,8 @@ func FriendTake(s *Snapshot, r FriendTakeReq) Plan {
 
 // FriendReadyMax is how long a work card may sit ready on a friend's row while she has a
 // lane free before it is a judgment (a work card past its deadline, dealt and never
-// taken): in batch mode the deal takes it into the lane, in one-shot mode her daemon or
-// her session takes it (take --as friend.<name>), and a card neither took is no one's
+// taken): the deal takes it into the lane (in batch and one-shot mode alike), or her
+// daemon or her session takes it (take --as friend.<name>), and a card none took is no one's
 // (tla/FriendReadyTake.tla, NeverStrandedSilently).
 const FriendReadyMax = 10 * time.Minute
 
