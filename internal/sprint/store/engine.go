@@ -885,7 +885,8 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 }
 
 // stopDebtMutation holds every captured owner lease in place until its
-// stop-return receipt (tla/StopReturn.tla Return; SPEC-SPRINT section 14).
+// stop-return receipt settles it off the debt (tla/StopReturn.tla Return and
+// Settle; SPEC-SPRINT section 14).
 // The fence carries the machine's debt from the same read as its generation,
 // so STOP and this check serialize with the final operation commit.
 func stopDebtMutation(plan sprint.Plan, debt []StopLease) *StopLease {
@@ -1077,6 +1078,13 @@ func (st *Store) after(ctx context.Context, step Step, res Result) (Result, erro
 		// work added to a done sprint: the machine stays STOPPED, no longer
 		// done (errata 3 amendment 6)
 		if err := st.undone(ctx); err != nil {
+			return res, err
+		}
+	}
+	if step.Verb == "stop-return" && len(res.Refused) == 0 {
+		// the owner's return settles its STOP debt on the machine record
+		// (tla/StopReturn.tla Settle), a replay's too
+		if err := st.settleStopDebt(ctx); err != nil {
 			return res, err
 		}
 	}

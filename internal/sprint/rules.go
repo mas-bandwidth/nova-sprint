@@ -809,6 +809,9 @@ type ProgressReq struct {
 	As   string
 	Gens map[string]int
 	Who  string
+	// Lane is the lane of As stamping (--lane): a card another lane of the row holds is
+	// refused, and the stamp is the lane heard from (lane_hold.go); 0 names none.
+	Lane int
 }
 
 // Progress stamps FieldProgress, at the server's time, on each named work card its holder
@@ -834,12 +837,19 @@ func Progress(s *Snapshot, r ProgressReq) Plan {
 		case atGen:
 			why = liveGen("progress", c, r.Gens)
 		}
+		if why == "" {
+			why = laneRefusal(c, r.As, r.Lane)
+		}
 		if why != "" {
 			p.refuse(id, why)
 			continue
 		}
+		set := map[string]string{FieldProgress: stamp(s.Now)}
+		if r.Lane > 0 && c.F(FieldLane) != "" {
+			set[FieldLaneAt] = stamp(s.Now) // the lane heard from (laneGoneUnits)
+		}
 		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"),
-			Changes: []Change{change(Fleet, setEntry(c, map[string]string{FieldProgress: stamp(s.Now)}))},
+			Changes: []Change{change(Fleet, setEntry(c, set))},
 			Moved:   c.ID + " progress at " + stamp(s.Now) + " by " + r.As})
 	}
 	return p

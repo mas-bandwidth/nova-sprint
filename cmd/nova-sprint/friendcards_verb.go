@@ -46,7 +46,7 @@ func friendCardsOf(ctx context.Context, st *store.Store, name string) ([]friend.
 	}
 	out := make([]friend.HeldCard, 0, len(packets))
 	for i, p := range packets {
-		h := friend.HeldCard{Card: p.Card, Col: string(cards[i].Col), Kind: cmp.Or(p.Kind, "work"), Branch: p.Branch, Attempt: p.Attempt, Gen: p.Gen, Epoch: p.Epoch}
+		h := friend.HeldCard{Card: p.Card, Col: string(cards[i].Col), Kind: cmp.Or(p.Kind, "work"), Branch: p.Branch, Attempt: p.Attempt, Gen: p.Gen, Epoch: p.Epoch, Lane: cards[i].Int(sprint.FieldLane)}
 		m, _ := cardhdr.ReadModel(p.Brief) // ignored: a line 1 that does not read is the default tier
 		h.Tier = cmp.Or(p.Tier, m.Tier, cardhdr.RouteFlash)
 		if p.Kind == "read" {
