@@ -351,3 +351,12 @@ MCStatsResetBrokenNoStamp.cfg	MCStatsReset.tla	invariant	RecordShowsShown	ignore
 MCStopReturn.cfg	MCStopReturn.tla	pass	-	ignore-terminal	stopreturn	required	-
 MCStopReturnBrokenNoSettle.cfg	MCStopReturn.tla	temporal	ReturnedFreesItsRow	ignore-terminal	stopreturn	required	-
 MCStopReturnBrokenNoReceipt.cfg	MCStopReturn.tla	invariant	NoLiveChildAcrossStart	ignore-terminal	stopreturn	required	-
+MCSeatHook.cfg	MCSeatHook.tla	pass	-	ignore-terminal	seathook	required	-
+MCSeatHookLive.cfg	MCSeatHook.tla	pass	-	ignore-terminal	seathook	required	-
+MCSeatHookBrokenNoStream.cfg	MCSeatHook.tla	invariant	ProofMeansRead	ignore-terminal	seathook	required	-
+MCSeatHookBrokenNoSub.cfg	MCSeatHook.tla	invariant	ProvenIsSubscribed	ignore-terminal	seathook	required	-
+MCSeatHookBrokenNoProof.cfg	MCSeatHook.tla	invariant	CommandSafe	ignore-terminal	seathook	required	-
+MCSeatHookBrokenNoAck.cfg	MCSeatHook.tla	invariant	AckedOrBlocking	ignore-terminal	seathook	required	-
+MCSeatHookBrokenNoMiss.cfg	MCSeatHook.tla	invariant	CommandSafe	ignore-terminal	seathook	required	-
+MCSeatHookBrokenSilentDrop.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-terminal	seathook	required	-
+MCSeatHookBrokenStrictCadence.cfg	MCSeatHook.tla	temporal	HookStays	ignore-terminal	seathook	required	-

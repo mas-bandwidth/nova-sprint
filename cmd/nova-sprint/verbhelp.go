@@ -124,9 +124,12 @@ var verbEffect = map[string]string{
 	// stop-return (the base's #5499) writes through one store step too; its --dry-run is stepdry.go's
 	"stop-return": "local write: returns the named stopped cards to the owner row that acknowledges the cancellation, keeping their placement and attempt, in the sprint's store; --dry-run writes nothing",
 
-	// seat push and seat pong (the base's #5477) write the seat's push record; each --dry-run is its own
-	"seat push": "store write: with --harness and --target, records the seat's push target (harness, target, session, adapter) in the sprint's store; with --sent, records the push loop's delivery of a check or its failure; with neither, prints the record and whether the seat is live and writes nothing; --dry-run checks the same and writes nothing",
-	"seat pong": "store write: proves the seat live by the nonce of the last check delivered, recording the proof in the sprint's store; --dry-run checks the nonce against the record and writes nothing",
+	// seat push (the base's #5477) writes the seat's push target; its --dry-run is its own
+	"seat push": "store write: with --harness and --target, records the seat's push target (harness, target, session, adapter) in the sprint's store; with neither, prints the record and writes nothing; --dry-run checks the same and writes nothing",
+
+	// the hook (hook.go): the server records it; this process writes nothing
+	"hook":   "server subscription: holds the seat's hook on the sprint's server, which records it in the sprint's store and streams every judgment and push until the hook ends; --prove and --ack carry the session's answer over the running hook's connection; this process writes nothing",
+	"unhook": "server subscription: ends the running hook over its connection; the server records the seat away in the sprint's store and tells the owner; this process writes nothing",
 
 	// verbs that read and write nothing
 	"goal show": "inspection: reads the goals in the sprint's store, writes nothing",

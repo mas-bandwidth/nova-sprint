@@ -23,12 +23,17 @@ var sprintKeys = []string{keyFence, keyGen, keyInbox, keyLog, keyNotes, keyOpen,
 
 // machineKeys are the machine's records, the people's goals and the timers: one for the
 // whole sprint, under its prefix, never per epoch, so a clear keeps them.
-var machineKeys = []string{keyMachine, keyHeartbeat, keyStuck, keyCoordinator, keyGoals, keyTimers, keyStrangers, keyTickEnd, keyRules, keyFriends, keyDropDebt, keySeat, keyOwner, keyWhere, KeySeatPushers, keyStats, keyStops}
+var machineKeys = []string{keyMachine, keyHeartbeat, keyStuck, keyCoordinator, keyGoals, keyTimers, keyStrangers, keyTickEnd, keyRules, keyFriends, keyDropDebt, keySeat, keyOwner, keyWhere, KeySeatPushers, KeySeatHook, keyStats, keyStops}
 
 // KeySeatPushers is the names whose seat has a push record (SeatPushKey), a
 // JSON list the writer of a record adds its name to (cmd/nova-sprint
 // pushproof.go), so teardown deletes each record by name.
 const KeySeatPushers = "seat-pushers"
+
+// KeySeatHook is the seat's hook record (sprint.HookRecord), one for the sprint: the
+// server's word on the coordinator's subscription, which every coordinator command
+// reads (cmd/nova-sprint hook.go; tla/SeatHook.tla).
+const KeySeatHook = "seat-hook"
 
 // SeatPushKey is name's push record (sprint.PushRecord), a key of the sprint's.
 func SeatPushKey(name string) string { return "seat-push:" + name }

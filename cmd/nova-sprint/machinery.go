@@ -312,15 +312,15 @@ func (a *app) seatCheck(ctx context.Context, st *store.Store, redisAddr string) 
 		}
 	}
 
-	// 12. the push proof: the holder's push record (pushproof.go)
+	// 12. the hook: the holder's hook record, the server's word (hook.go)
 	if holder, err := st.B.Coordinator(ctx); err != nil {
-		m.Errs[sprint.SeatCheckPush] = err.Error()
-	} else if holder != "" && pushArmed(holder) {
-		rec, ok, err := readPush(ctx, st, holder)
+		m.Errs[sprint.SeatCheckHook] = err.Error()
+	} else if holder != "" && hookArmed(holder) {
+		rec, ok, err := readHook(ctx, st)
 		if err != nil {
-			m.Errs[sprint.SeatCheckPush] = err.Error()
+			m.Errs[sprint.SeatCheckHook] = err.Error()
 		}
-		m.Push = sprint.PushM{Measured: true, Holder: holder, Record: rec, Recorded: ok}
+		m.Hook = sprint.HookM{Measured: true, Holder: holder, Record: rec, Recorded: ok}
 	}
 
 	return sprint.JudgeSeatCheck(m, now)
