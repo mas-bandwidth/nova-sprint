@@ -6696,7 +6696,17 @@ and deletion of its fleet row, is refused until its owner returns it. Each
 stop-return (a replay too) then settles its lease off the debt under the same
 fence, reading the receipt in place on the debt's own row; a settled card may
 be held or redealt while STOPPED, and START is not refused for it
-(tla/StopReturn.tla Settle, ReturnedFreesItsRow). A stopped
+(tla/StopReturn.tla Settle, ReturnedFreesItsRow). A debt whose owner has
+beaten since the STOP is settled from the owner's beat, without waiting for the
+owner's own receipt (tla/StopReturn.tla SettleByBeat, AbsentJobSettles): a
+friend's beat names the jobs she runs, so a lease whose job the beat no longer
+names is returned with a recorded reason, and one whose job it still names
+stays owed; a machine's beat names no job, and its stop-returns count is its
+word how many its lanes still owe, so a machine lease (a reader machine's too)
+is settled at zero and stays owed above zero. The settle runs on START, before
+the debt check, so a beat-cleared lease frees its row before START refuses.
+An owner that has not beaten since the STOP keeps its lease owed and is
+reported to the seat in a judgment naming it. A stopped
 record from before durable debt was introduced still protects its live leases
 until their owners return them. DONE normally has no active jobs;
 when it does, the same debt rule applies. Inbox, queue, and coordinator control
