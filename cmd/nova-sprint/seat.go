@@ -510,8 +510,10 @@ func (p *pushTarget) dirOf(holder string, g sprint.Group) string {
 
 // keys is the directory's keys, made and read the first time it is named.
 func (p *pushTarget) keys(dir string) (map[string]bool, error) {
-	if k, ok := p.seen[dir]; ok {
-		return k, nil
+	if p.fixed != "" {
+		if k, ok := p.seen[dir]; ok {
+			return k, nil
+		}
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -520,12 +522,16 @@ func (p *pushTarget) keys(dir string) (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	p.seen[dir] = k
+	if p.fixed != "" {
+		p.seen[dir] = k
+	}
 	return k, nil
 }
 
 // unseen is the groups that wake the coordinator and hold a key their
 // directory does not, in the inbox's order; a group with no directory now waits.
+// When following the seat, all coordinator groups are returned to enable
+// repeated pushes while judgments remain unanswered.
 func (p *pushTarget) unseen(l inboxLook) ([]sprint.Group, error) {
 	var out []sprint.Group
 	for _, g := range l.groups {
@@ -534,6 +540,10 @@ func (p *pushTarget) unseen(l inboxLook) ([]sprint.Group, error) {
 		}
 		dir := p.dirOf(l.holder, g)
 		if dir == "" {
+			continue
+		}
+		if p.fixed == "" {
+			out = append(out, g)
 			continue
 		}
 		k, err := p.keys(dir)
