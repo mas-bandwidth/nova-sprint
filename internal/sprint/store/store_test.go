@@ -12,8 +12,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/storetest"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

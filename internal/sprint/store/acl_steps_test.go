@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/redisacl"
+	"github.com/mas-bandwidth/nova-tools/pkg/redisacl"
 )
 
 // Every key a store step's own Go reads touch is in the rendered patterns of the

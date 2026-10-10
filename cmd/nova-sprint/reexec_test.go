@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +18,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
+	"github.com/mas-bandwidth/nova-tools/fleet"
+	"github.com/mas-bandwidth/nova-tools/pkg/testbin"
 )
 
 // THE HURT (2026-10-04, 3:21 to 3:37 PM ET, the Studio): a verb under test that
@@ -57,7 +59,29 @@ func TestMain(m *testing.M) {
 	}
 	// ignored: os.Setenv fails only on a name with '=' or NUL, and this is a constant
 	_ = os.Setenv(reexecCLIEnv, "1")
-	os.Exit(m.Run())
+	dir, err := writeOurRules()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "nova-sprint tests: the held rules file:", err)
+		os.Exit(exitReexecRefuse)
+	}
+	code := m.Run()
+	_ = os.RemoveAll(dir) // a temporary directory of this run's own; nothing to report
+	os.Exit(code)
+}
+
+// writeOurRules writes fleet/child-rules.txt of this build (fleet.Rules) into a new
+// temporary directory under its held name and sets ourRulesFile to it.
+func writeOurRules() (string, error) {
+	raw, err := fleet.Rules.ReadFile("child-rules.txt")
+	if err != nil {
+		return "", err
+	}
+	dir, err := os.MkdirTemp("", "nova-sprint-rules-")
+	if err != nil {
+		return "", err
+	}
+	ourRulesFile = filepath.Join(dir, "child-rules.txt")
+	return dir, os.WriteFile(ourRulesFile, raw, 0o600)
 }
 
 // runTestCLI is main, as a test binary's child runs it: on a twin only.

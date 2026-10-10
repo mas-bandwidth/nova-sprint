@@ -9,9 +9,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // The coordinator's verbs go to the sprint's server too: a single client/server

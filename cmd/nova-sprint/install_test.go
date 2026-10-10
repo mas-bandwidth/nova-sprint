@@ -14,7 +14,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/units"
+	"github.com/mas-bandwidth/nova-tools/pkg/units"
 )
 
 // install writes each of nova-sprint's units for macOS and Linux into a fake home,

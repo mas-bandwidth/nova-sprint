@@ -10,8 +10,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/provbalance"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/provbalance"
 )
 
 // cmdCostReconcile is `cost reconcile`: the cost reconciliation run once (docs/SPEC-SPRINT.md,

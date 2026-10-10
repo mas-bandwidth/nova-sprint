@@ -7,9 +7,9 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
-	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // headsFn is origin's branches of a repository matching a pattern (git ls-remote --heads),

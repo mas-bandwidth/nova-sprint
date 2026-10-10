@@ -13,7 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-tools/pkg/config"
 )
 
 // The verbs friends lacked that machines have (the owner, 2026-10-04: "What else is like

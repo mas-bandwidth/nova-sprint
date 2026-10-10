@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/release"
+	"github.com/mas-bandwidth/nova-tools/pkg/release"
 )
 
 // adoptFlagsEnv names adopt's flags for a fleet member back from down

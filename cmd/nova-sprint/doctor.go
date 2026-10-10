@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // The doctor (the owner, 2026-10-10 ~04:18Z: "sprint doctor can check this, but i still

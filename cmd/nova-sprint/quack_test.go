@@ -1,7 +1,6 @@
 package main
 
 import (
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -11,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcontract"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcontract"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 )
 
 var quackID = regexp.MustCompile(`quack-[0-9a-f]{12}-[A-Za-z0-9_-]+?-[0-9]{3}`)
@@ -47,7 +46,7 @@ func (ta *testApp) quackCards(line string) ([]string, map[string]string) {
 func TestQuackCutsStampedCardsThatAlternateTiersAndPassTheLint(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	rules := filepath.Join("..", "..", "internal", "fleetrules", "child-rules.txt")
+	rules := ourRulesFile
 	ta.ok("init --readers reader-a,reader-b --members m1 --rules " + rules)
 	const repo = "https://example.com/quack.git"
 	first, briefs := ta.quackCards("quack --streams a,b --count 3 --repo " + repo)

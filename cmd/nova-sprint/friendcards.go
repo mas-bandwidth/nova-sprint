@@ -19,16 +19,16 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/pkg/member"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
-	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/config"
+	"github.com/mas-bandwidth/nova-tools/pkg/friend"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // A friend's sprint cards (the owner, 2026-10-03: "Could we try expressing the work left

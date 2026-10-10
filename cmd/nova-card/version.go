@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
+	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
 )
 
 // version is empty in every ordinary build and is the one override: a release stamps it

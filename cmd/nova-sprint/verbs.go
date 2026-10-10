@@ -21,19 +21,19 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardlimits"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
-	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardlimits"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardtree"
+	"github.com/mas-bandwidth/nova-tools/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 )
 
 type flagSet = *flag.FlagSet
