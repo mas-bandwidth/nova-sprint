@@ -55,11 +55,11 @@ func TestATestThatDoesNotPinTheChangeIsReworkedBeforeARead(t *testing.T) {
 		{
 			name: "absent at base, green at head, red in reverted tree is accepted",
 			input: GateLintInput{
-				MergeBase: "abc123",
-				Head:      "def456",
+				MergeBase:    "abc123",
+				Head:         "def456",
 				RevertedHead: "reverted789",
-				TestPkg:   "internal/sprint",
-				TestName:  "TestSomething",
+				TestPkg:      "internal/sprint",
+				TestName:     "TestSomething",
 			},
 			run: func(commit, pkg, testname string) (bool, error) {
 				// Absence at base is permitted; the probe must use the materialized
@@ -75,10 +75,12 @@ func TestATestThatDoesNotPinTheChangeIsReworkedBeforeARead(t *testing.T) {
 			expected: nil,
 		},
 		{
-			name: "reverted tree green is a broken pin",
+			name:  "reverted tree green is a broken pin",
 			input: GateLintInput{MergeBase: "abc123", Head: "def456", RevertedHead: "reverted789", TestPkg: "internal/sprint", TestName: "TestSomething"},
 			run: func(commit, pkg, testname string) (bool, error) {
-				if commit == "abc123" { return false, errors.New("test absent at base") }
+				if commit == "abc123" {
+					return false, errors.New("test absent at base")
+				}
 				return commit == "reverted789", nil
 			},
 			expected: []GateLintFinding{{What: GateLintPinBroken + ": test passes with non-test hunks reverted"}},
@@ -111,8 +113,12 @@ func TestFindNonTestReferencesDoesNotCountDeclaration(t *testing.T) {
 		t.Fatal(err)
 	}
 	reached, err := FindNonTestReferences(dir, []string{path}, map[string]bool{"Exported": true})
-	if err != nil { t.Fatal(err) }
-	if reached["Exported"] { t.Fatal("declaration must not count as a non-test reference") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reached["Exported"] {
+		t.Fatal("declaration must not count as a non-test reference")
+	}
 }
 
 // TestFindNonTestReferences tests that we can find references to symbols.
@@ -174,33 +180,33 @@ func TestGateLintFindingString(t *testing.T) {
 // TestParseTestLine tests parsing of TEST lines from briefs.
 func TestParseTestLine(t *testing.T) {
 	tests := []struct {
-		name string
-		brief string
-		wantPkg string
+		name     string
+		brief    string
+		wantPkg  string
 		wantName string
 	}{
 		{
-			name: "simple test line",
-			brief: "TEST: internal/sprint TestSomething",
-			wantPkg: "internal/sprint",
+			name:     "simple test line",
+			brief:    "TEST: internal/sprint TestSomething",
+			wantPkg:  "internal/sprint",
 			wantName: "TestSomething",
 		},
 		{
-			name: "test line with package only",
-			brief: "TEST: internal/sprint",
-			wantPkg: "internal/sprint",
+			name:     "test line with package only",
+			brief:    "TEST: internal/sprint",
+			wantPkg:  "internal/sprint",
 			wantName: "",
 		},
 		{
-			name: "test line none",
-			brief: "TEST: none",
-			wantPkg: "",
+			name:     "test line none",
+			brief:    "TEST: none",
+			wantPkg:  "",
 			wantName: "",
 		},
 		{
-			name: "multiline brief with TEST",
-			brief: "CARD: test\nTEST: internal/sprint TestFoo\nPATHS: internal/sprint",
-			wantPkg: "internal/sprint",
+			name:     "multiline brief with TEST",
+			brief:    "CARD: test\nTEST: internal/sprint TestFoo\nPATHS: internal/sprint",
+			wantPkg:  "internal/sprint",
 			wantName: "TestFoo",
 		},
 	}
