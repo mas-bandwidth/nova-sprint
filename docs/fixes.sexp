@@ -123,11 +123,15 @@
     say a key rest ends only by routes wake, never by funded or a payment, and a test shows a balance poll
     cannot end one."
    :origin "readers' notes on nova-sprint PR #49 and PR #50")
-  (fix "empty-run-harness-fault" :release "v1.2.6" :status "planned"
+  (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
-    lane ran it empty, with a TLA+ model and witness."
-   :origin "nova-tools PR #5583, head e8fdaecc")
+    lane ran it empty, with a TLA+ model and witness. The failed rule writes her on both its early
+    returns too (the brief's bound and a brief defect), so the attempt that hits the cap after her
+    empty run names her even when it is left to a mind; the attempt cap's deal acts only on a
+    machine's card. Test: TestTheFailedRuleCarriesTheEmptyRunFriendOnItsEarlyReturns (reversed: a
+    cost-line fault leaves no one)."
+   :origin "nova-sprint #45; reader G BLOCK (the rule's early returns); nova-tools PR #5583, head e8fdaecc")
   (fix "done-at-base-is-brief-duplicate" :release "v1.2.6" :status "shipped"
    :title "A card already done at its base is a duplicate brief, not a worker failure"
    :text "Nothing to do because the base already contains the change is a brief defect, a duplicate of

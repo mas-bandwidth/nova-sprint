@@ -1115,6 +1115,11 @@ func deal(s *Snapshot, c *Card, fix, m string, q map[string]int, ri routeIndexes
 		fields["fix"] = fix
 	}
 	priorityOnWork(fields, c)
+	// the friends the primary has left for good (an empty run, ruleHarness) ride on a machine's
+	// attempt too, so a rebalance off the machine never gives it back to one of them
+	if left := Split(c.F(FieldFriendsLeft)); len(left) > 0 {
+		fields[FieldFriendsLeft] = strings.Join(left, ",")
+	}
 	// the attempt decision's bars, which its failed finish is routed by (decide.go)
 	bars, _ := s.attemptBars()
 	maps.Copy(fields, bars)
@@ -1625,6 +1630,14 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		set := map[string]string{"head": head, "result": result}
 		maps.Copy(set, finishStamps(pr, c, s.Now))
 		decidedSets(r, used, pr, cardSet, set)
+		// an empty run on a friend's lane leaves her for good, recorded by the finish itself so
+		// every answer after it (the failed rule's rework, the brief's bound left to a mind, the
+		// attempt cap's deal) reads it (harness_fault.go, emptyRunFriend; cardLeft)
+		if r.Failed && !passed {
+			if f := emptyRunFriend(pr, c, r.Report); f != "" {
+				set[FieldFriendsLeft] = strings.Join(withFriend(cardLeft(pr, nil), f), ",")
+			}
+		}
 		identical := false
 		if r.Failed && !passed && defect == "" {
 			set["failed"] = itoa(pr.Int("failed") + 1)

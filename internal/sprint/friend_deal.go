@@ -230,8 +230,25 @@ func friendTakes(s *Snapshot, f FriendSeat, tier string) bool {
 	return slices.Contains(friendTiers(f), tier) && s.FriendsTake(tier)
 }
 
-// friendsLeft is the friends the work card has left (FieldFriendsLeft), with the one it
-// was taken back from while it is withdrawn.
+// cardLeft is friendsLeft of the work card wc with the friends its primary c has left: the
+// primary carries FieldFriendsLeft when the failed rule reworked it off a friend whose lane
+// ran it empty (ruleHarness, ClassEmptyRun), and no later attempt is dealt to her.
+func cardLeft(c, wc *Card) []string {
+	left := friendsLeft(wc)
+	if c == nil {
+		return left
+	}
+	for _, f := range Split(c.F(FieldFriendsLeft)) {
+		if !slices.Contains(left, f) {
+			left = append(left, f)
+		}
+	}
+	return left
+}
+
+// friendsLeft is the friends the work card itself has left (FieldFriendsLeft), with the one
+// it was taken back from while it is withdrawn. A reader that decides where an attempt may
+// go reads cardLeft, which adds the friends its primary has left for good.
 func friendsLeft(wc *Card) []string {
 	if wc == nil {
 		return nil
@@ -244,14 +261,15 @@ func friendsLeft(wc *Card) []string {
 }
 
 // friendsFor is the friends up (friendDealable) whose tiers hold the tier who may still be
-// dealt the primary c: never one its withdrawn attempt was withdrawn or taken back from
-// (withdrawnFrom), as the friends' deal places it (friendDealPass). None, while friends
+// dealt the primary c: never one the card has left for good (cardLeft: an empty run), nor
+// one its withdrawn attempt was withdrawn or taken back from (withdrawnFrom), as the
+// friends' deal places it (friendDealPass). None, while friends
 // alone serve the tier (tierServed), is a card no worker is left for: the tick's judgment
 // of the tier names it (TickDeal).
 func (s *Snapshot) friendsFor(c *Card, tier string) []FriendSeat {
-	var gone []string
+	gone := cardLeft(c, nil) // the friends a rework moved it off for good
 	if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil && wc.Col == Withdrawn {
-		gone = withdrawnFrom(wc)
+		gone = append(gone, withdrawnFrom(wc)...)
 	}
 	var out []FriendSeat
 	for _, f := range s.Friends {
@@ -469,7 +487,7 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		}
 		escalated := wc != nil && redealBound(wc)
 		tier := s.DealTier(escalating(s, c))
-		left := friendsLeft(wc)
+		left := cardLeft(c, wc)
 		pinned, pinnedCard := FriendCard(c)
 		leftAtPin := slices.Clone(left)
 		name := pinned
@@ -493,8 +511,9 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 				// it has not left may take: the friends the level moved it off may have it
 				// back, so it is not stranded ready while one is up with room (the owner's
 				// rule: a held or down friend's cards go to the up friends' ready queues);
-				// never the friend it was withdrawn from or taken back from
-				gone := withdrawnFrom(wc)
+				// never the friend it was withdrawn from or taken back from, nor one
+				// it has left for good (cardLeft: an empty run)
+				gone := append(withdrawnFrom(wc), cardLeft(c, nil)...)
 				for _, f := range up {
 					if free[f] > 0 && !slices.Contains(gone, f) && friendTakes(s, seat[f], tier) && friendRestrictionAllows(seat[f], c) {
 						may = append(may, f)
@@ -667,7 +686,7 @@ func friendReclaim(s *Snapshot, seats []FriendSeat, up []string, seat map[string
 // it (friendReclaim), her room, lanes and count taken; false when no friend up may take it.
 func reclaimUnit(s *Snapshot, wc *Card, up []string, seat map[string]FriendSeat, free, lanes, dealt map[string]int, declared map[string]bool, p *Plan) (Unit, bool) {
 	pr := s.Work.Placed(wc.F("primary"))
-	tier, left := s.DealTier(pr), friendsLeft(wc)
+	tier, left := s.DealTier(pr), cardLeft(pr, wc)
 	var may []string
 	for _, f := range up {
 		if lanes[f] > 0 && free[f] > 0 && !slices.Contains(left, f) && friendTakes(s, seat[f], tier) && friendRestrictionAllows(seat[f], pr) {
@@ -714,11 +733,14 @@ func friendEscalateUnit(s *Snapshot, c, prev *Card, card, row, tier string) Unit
 // friendWithFree is the up friend of one of the classes with the most free width in
 // free, the first by name among equals, whose work restriction the card c is within;
 // "" when none has room. AttemptCapDeal passes the free width it has left in this plan,
-// decremented after each deal.
+// decremented after each deal. Never a friend the card has left for good (cardLeft: an
+// empty run, ruleHarness): its brief would gain WHO: friend <her> and pin every later
+// rework to the lane that ran it empty.
 func friendWithFree(seats []FriendSeat, free map[string]int, c *Card, classes ...string) string {
+	gone := cardLeft(c, nil)
 	var up []string
 	for _, f := range seats {
-		if f.Status == Up && slices.Contains(classes, f.Class) && friendRestrictionAllows(f, c) {
+		if f.Status == Up && slices.Contains(classes, f.Class) && friendRestrictionAllows(f, c) && !slices.Contains(gone, f.Name) {
 			up = append(up, f.Name)
 		}
 	}
@@ -748,6 +770,13 @@ func friendDealUnit(s *Snapshot, c *Card, card, row, _ string, set map[string]st
 		if v := c.F(k); v != "" {
 			fields[k] = v
 		}
+	}
+	// the friends the primary has left for good (ClassEmptyRun, ruleHarness) ride on the new
+	// work card, as on a machine's (deal), and every reader of a work card's friends left (the
+	// rebalance, a lane's start, the level, the coordinator's pass) reads cardLeft, the work
+	// card's and its primary's, so the attempt is kept off them wherever it was dealt
+	if left := Split(c.F(FieldFriendsLeft)); len(left) > 0 {
+		fields[FieldFriendsLeft] = strings.Join(left, ",")
 	}
 	priorityOnWork(fields, c)
 	prim := map[string]string{"attempt": itoa(attempt), "work": card}
