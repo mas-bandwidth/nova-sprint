@@ -3883,6 +3883,11 @@ func (a *app) cmdClear(args []string, stdout, stderr io.Writer) int {
 	ctx := context.Background()
 	res, err := st.Clear(ctx)
 	if err != nil {
+		if c.json && len(res.Refused) > 0 {
+			b, _ := json.Marshal(map[string]any{"error": err.Error(), "refused": res.Refused})
+			fmt.Fprintln(stdout, string(b))
+			return 2
+		}
 		fmt.Fprintf(stderr, "%s clear: %s\n", prog, oneline.WithRemedy(err.Error(), prog+" clear -h"))
 		return 2
 	}

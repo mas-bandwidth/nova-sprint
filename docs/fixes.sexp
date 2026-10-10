@@ -80,6 +80,14 @@
     reversed witnesses."
    :origin "the seat, 2026-10-10: hold alex and hold emma refused after their stop-returns")
 
+  (fix "clear-is-a-blank-slate" :release "v1.2.6" :status "in-progress"
+   :title "Clear starts a blank epoch and reports only live leases"
+   :text "Clear lists every live card generation and owner row it refuses on; a returned or nonworking
+    lease does not block. A successful clear advances to an empty epoch instead of restoring old
+    streams, work and merge rows, and no stream, member or reader row carries into the new epoch.
+    TLA+ model StopReturn, with the clear and a reversed witness."
+   :origin "seat ledger v1.2.4-held-2026-10-10, bugs 2, 4 and 11")
+
   (fix "lander-bench-fault-and-bisect" :release "v1.2.6" :status "in-progress"
    :title "The lander blames no head for a bench fault and bisects a red batch"
    :text "A bench fault blames no head, a red batch is bisected, and landings go as batches are built. The
