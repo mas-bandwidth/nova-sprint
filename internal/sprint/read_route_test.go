@@ -151,3 +151,18 @@ func TestAReaderRefusedForNoRouteIsNotSweptAway(t *testing.T) {
 	assert.Equal(t, map[string]string{"reader-m1": ReaderUp, "reader-m2": ReaderUp}, w.s.ReaderStates, "the readers stay up")
 	assert.ElementsMatch(t, []string{"reader-m1", "reader-m2"}, w.s.UpReaders())
 }
+
+// A held friend's reader serves nothing: when a friend is held, she and her reader
+// row both serve nothing (docs/SPEC-SPRINT.md section 11, hold).
+func TestAHeldFriendReaderDoesNotServe(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-m1", "reader-amy")
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+	// amy is a friend: the tick hands the snapshot her seat with status=held
+	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Held}}
+	
+	// amy's reader should not serve any tier
+	assert.False(t, w.s.ownModelReader("reader-amy"), "held friend's reader does not bring its own model")
+	assert.False(t, w.s.readerServesTier("reader-amy", cardhdr.RouteFlash), "held friend's reader serves nothing")
+	assert.False(t, w.s.readerServesTier("reader-amy", cardhdr.RoutePro), "held friend's reader serves nothing")
+}
