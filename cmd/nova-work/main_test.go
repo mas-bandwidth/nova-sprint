@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
-	"github.com/mas-bandwidth/nova-sprint/internal/testkit"
-	"github.com/mas-bandwidth/nova-sprint/internal/tool"
 	"github.com/mas-bandwidth/nova-sprint/internal/workfile"
 	"github.com/mas-bandwidth/nova-sprint/internal/workgh"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testkit"
+	"github.com/mas-bandwidth/nova-sprint/pkg/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

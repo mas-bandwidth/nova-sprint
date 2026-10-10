@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // A card whose PATHS name TLA+ model work (a .tla module or an MC config under tla/) is

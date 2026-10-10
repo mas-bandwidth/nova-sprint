@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardcost"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 )
 
 // A run with no recorded tier is counted under its route's tier: the route row's, else the

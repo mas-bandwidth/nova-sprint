@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/bus"
-	"github.com/mas-bandwidth/nova-sprint/internal/bus/bustest"
-	"github.com/mas-bandwidth/nova-sprint/internal/config"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 )
 
 // The seat's generation and a friend's health through the command (docs/SPEC-SPRINT.md

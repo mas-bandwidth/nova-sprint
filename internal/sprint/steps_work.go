@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/internal/decide"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
 )
 
 // The steps that move primaries through the work table and the fleet: add,

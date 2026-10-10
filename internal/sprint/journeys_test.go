@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/release"
+	"github.com/mas-bandwidth/nova-sprint/pkg/release"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

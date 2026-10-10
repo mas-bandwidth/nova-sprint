@@ -17,11 +17,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/testutil"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/storetest"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
 )
 
 // lockedBuffer is a buffer the loop writes to while the test runs.

@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/redisacl"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/redisacl"
 )
 
 // The sprint's own keys are the redisacl family "sprint": the store's ACL roles reach

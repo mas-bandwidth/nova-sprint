@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/testredis"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testredis"
 	"github.com/stretchr/testify/require"
 )
 

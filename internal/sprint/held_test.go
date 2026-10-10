@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // The no-stall rule, one state per holder: each holder holding, and each

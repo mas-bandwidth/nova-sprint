@@ -9,9 +9,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // cmdCostReprice is `cost reprice`: every priced consumer record of the sprint computed

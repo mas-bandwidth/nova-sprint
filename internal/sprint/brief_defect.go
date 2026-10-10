@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/member"
+	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 )
 
 // A brief defect (docs/SPEC-SPRINT.md section 1, a brief defect): a worker's HOLD whose

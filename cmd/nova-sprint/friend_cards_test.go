@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/config"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // A friend's sprint card (docs/SPEC-SPRINT.md section 1; the owner, 2026-10-03: "Could we

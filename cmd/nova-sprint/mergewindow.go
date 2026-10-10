@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/internal/subproc"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 )
 
 // THE LANDER'S PAUSE (docs/SPEC-SPRINT.md section 7, the lander's pause): merge-window open

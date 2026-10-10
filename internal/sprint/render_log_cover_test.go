@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardcost"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 )
 
 // render_log.go turns a line into plain words (Render, RenderText, Timeline,

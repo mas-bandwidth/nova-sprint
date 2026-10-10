@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/internal/secretcheck"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
 	sprintstore "github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/secretcheck"
 )
 
 // THE CLASS RULE: NO SECRET REACHES AN ERROR (docs/SPEC-CI.md, `secrets-never-in-errors`),

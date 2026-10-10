@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // The tick's twin: the sprint read once and kept, so every tick stays

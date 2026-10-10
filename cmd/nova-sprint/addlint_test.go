@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/internal/testgit"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testgit"
 )
 
 // twinRemote is a bare repository standing in for a card's REPO:, every branch named at one

@@ -20,9 +20,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // where --watch and the frame it draws: docs/SPEC-SPRINT.md section 1 (the

@@ -14,9 +14,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // briefOfSize writes a brief of exactly n bytes that passes the card lint (the rules

@@ -15,11 +15,11 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/bus"
-	"github.com/mas-bandwidth/nova-sprint/internal/bus/bustest"
-	"github.com/mas-bandwidth/nova-sprint/internal/friend"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
+	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

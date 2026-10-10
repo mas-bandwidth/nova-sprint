@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardcost"
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // The gate's measured wall (gate_wall.go; docs/SPEC-SPRINT.md section 5, the gate's wall):

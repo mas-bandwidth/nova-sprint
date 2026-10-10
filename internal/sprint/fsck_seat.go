@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // The fsck check seat-agreement (docs/SPEC-SPRINT.md, "Handing over the seat",

@@ -47,10 +47,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
-	"github.com/mas-bandwidth/nova-sprint/internal/safepath"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // landParallelDefault is how many streams merge at once (--land-parallel).

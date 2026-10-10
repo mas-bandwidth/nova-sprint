@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardcost"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 )
 
 // The friends table's tokens column (friends.tokens): each friend card's usage is

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // The final primary can land after a returned read is reasked in place and

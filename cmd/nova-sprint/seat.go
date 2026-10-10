@@ -15,12 +15,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/config"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
-	"github.com/mas-bandwidth/nova-sprint/internal/seatcred"
-	"github.com/mas-bandwidth/nova-sprint/internal/secrets"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/seatcred"
+	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
 )
 
 // The coordinator's seat (docs/SPEC-SPRINT.md, "Handing over the seat"; the owner,

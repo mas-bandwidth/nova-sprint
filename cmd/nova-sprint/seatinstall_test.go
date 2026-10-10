@@ -14,7 +14,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // seat install and seat uninstall through the command: the unit goes into the home

@@ -20,11 +20,11 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/internal/safepath"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/internal/subproc"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
+	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 )
 
 // The sprint backup into a directory (docs/SPEC-SPRINT.md, sprint-backup-out):

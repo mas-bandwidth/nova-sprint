@@ -27,10 +27,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // PruneEvery is how many queued branches make the land loop clean up between two busy rounds.

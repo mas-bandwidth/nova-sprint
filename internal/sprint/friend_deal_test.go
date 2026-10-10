@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/config"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

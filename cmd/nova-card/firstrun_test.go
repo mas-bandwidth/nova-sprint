@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/onboarding"
+	"github.com/mas-bandwidth/nova-sprint/pkg/onboarding"
 )
 
 // The onboarding standard (docs/ONBOARDING.md), pinned for this binary: the

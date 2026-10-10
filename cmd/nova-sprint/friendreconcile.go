@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // friend reconcile <friend> (docs/SPEC-SPRINT.md section 1, friend reconcile; the owner,

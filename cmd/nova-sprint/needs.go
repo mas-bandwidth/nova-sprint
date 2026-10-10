@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/bench"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // The needs verb is a read (docs/SPEC-SPRINT.md section 11): it changes

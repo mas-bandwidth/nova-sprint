@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/config"
-	"github.com/mas-bandwidth/nova-sprint/internal/friend"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // A friend takes her own ready cards (docs/SPEC-SPRINT.md section 1; 2026-10-05 11:20 PM: a

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/buildinfo"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
 )
 
 // The friends (sprint.Friends; docs/SPEC-SPRINT.md section 1, the friends

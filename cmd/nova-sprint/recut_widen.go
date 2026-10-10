@@ -11,13 +11,13 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/internal/member"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
-	"github.com/mas-bandwidth/nova-sprint/internal/typedrec"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-sprint/pkg/member"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
 )
 
 // widened is what brief --widen edits a held card's brief to, in place: the brief, and
