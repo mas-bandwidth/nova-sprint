@@ -50,14 +50,15 @@ var AllOrder = []string{Work, Readers, Merge, Friends, Fleet}
 // ready and working count her job cards in those states; width is her width
 // as text, summed; ok and failed (hidden) count her jobs done ok and done
 // failed, and done and ok% are the table's formulas over them, the footer
-// pooling ok% over the friends; status is text with no fold, and so is active, how long ago
-// her session last wrote a file (her beat's Active; "-" when none was reported);
-// tokens is her cards' usage summed (sprint.FriendTokensFromCards): a text cell
-// with a subscription friend's compact count (1.2M), or an api-billed friend's
-// charged dollars rounded up to the cent. The rows are the
+// pooling ok% over the friends; redealt (shown) counts her cards past their
+// deadline unfinished, never a failure; status is text with no fold, and so
+// is active, how long ago her session last wrote a file (her beat's Active;
+// "-" when none was reported); tokens is her cards' usage summed (sprint.FriendTokensFromCards):
+// a text cell with a subscription friend's compact count (1.2M), or an api-billed
+// friend's charged dollars rounded up to the cent. The rows are the
 // friends'; where draws them from store.FriendRows.
 func FriendsDef() ntable.Table {
-	cols, err := ntable.ParseColumns("ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,status:text,active:text,tokens:text:sum,ok,failed")
+	cols, err := ntable.ParseColumns("ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,redealt,status:text,active:text,tokens:text:sum,ok,failed")
 	if err != nil {
 		panic(fmt.Sprintf("sprint table %s: %v", Friends, err))
 	}
@@ -95,8 +96,11 @@ const (
 // Fleet table columns (ready and working are named as in the work table).
 // withdrawn (hidden) holds a work card withdrawn because no member was up, so
 // that the tick deals the same card again rather than cutting another: the table
-// layer never places a removed member again. ok and failed (hidden) hold the
-// member's finished work cards, finished ok and finished failed, and defect (hidden)
+// layer never places a removed member again. finished (hidden) holds a member's
+// finished work cards, where a worker's finish goes before its readers' verdicts
+// move it to ok or failed. redealt (shown) holds a friend's card past its deadline
+// unfinished, never a failure and never judged. ok and failed (hidden) hold the
+// members' work cards whose readers' verdicts were ok and broken, and defect (hidden)
 // those that ended on a brief defect, counted in neither. done and ok%
 // are the table's own formulas over the ok and failed cells, computed at render and
 // never written: done is sum(ok+failed), ok% (the column okpct) is
@@ -106,6 +110,8 @@ const (
 const (
 	Done       = "done"
 	OkPct      = "okpct"
+	Finished   = "finished"
+	Redealt    = "redealt"
 	DoneOK     = "ok"
 	DoneFailed = "failed"
 	// DoneDefect (hidden) holds a member's work cards that ended on a brief defect
@@ -257,8 +263,8 @@ func (n Names) Definitions() []ntable.Table {
 		mk(Work, "waiting,ready,working,review,merging,landed,cost:text:sum"),
 		mk(Readers, "asked,reading,ok,broken,tiers:text"),
 		mk(Merge, "queued,merged,stuck,ci:text,state:text,since:text,returned,ctl:first:none", Since, Returned, Ctl),
-		mk(Fleet, "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,status:text,load:text,withdrawn,ok,failed,defect,ctl:first:none",
-			Withdrawn, DoneOK, DoneFailed, DoneDefect, Ctl),
+		mk(Fleet, "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,redealt,status:text,load:text,withdrawn,finished,ok,failed,ctl:first:none",
+			Withdrawn, Finished, DoneOK, DoneFailed, Ctl),
 	}
 }
 
