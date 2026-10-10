@@ -493,8 +493,9 @@ generation 1 until she starts it, member
 `friend.<name>`, with the primary's fix, finding and why as a machine's deal
 carries them; its primary moves ready -> working. The fleet's members are its
 rows but the friends' (`Snapshot.Members`): presence, the rebalance, the
-level, `fleet sync`, the machines' deal and the shape a clear keeps never
-touch a friend's row, so a friend who goes quiet keeps her card (no
+level, `fleet sync` and the machines' deal never touch a friend's row within
+an epoch; clear starts with no friend row in its new epoch, so a friend who
+goes quiet keeps her card only until that epoch is cleared (no
 take-back by presence; the coordinator takes back what she has not started,
 below), the no-stall rule holds it as hers whatever her status, and
 the deadline rule judges it as it judges any work card, its working deadline
@@ -6630,35 +6631,40 @@ an epoch by a stored id of that epoch, and a card id is used again in a later
 epoch.
 
 `nova-sprint clear` stops the sprint (the machine is set STOPPED first and left
-STOPPED). If STOP captures an active owner work or read lease, `clear` refuses
-to advance the epoch until the child is cancelled, stop-returned to its owner,
-and the machine is explicitly started. With no captured leases, it clears all
-work: it finishes a
-pending operation, or abandons it at the epoch it started at, then advances the epoch
-once, atomically, recording when and the shape to restore. It deletes nothing.
-At the new epoch every table is empty with the same rows (streams, readers,
-members), every stream waiting, every member with its status and no work
-counted; these are written at the new epoch in the same verb, and a clear cut
-before they are is finished by the next clear. The old epoch stays where it is
-and readable (`where`, `card` and `inbox --at-epoch <n>`), and every writer
-still holding it is refused as stale: nothing of that epoch lands in the
-new one. Operation ids and notification ids carry their epoch (`~<n>` after
+STOPPED). Clear refuses only leases still live in
+Fleet Working or Readers Reading after STOP; it lists each `card@gen` and its
+owner row. A stop-returned lease, or a captured lease whose card is no longer
+working, does not block. Otherwise clear finishes a pending operation, or
+abandons it at the epoch it started at, then advances the epoch once. It does
+not restore or delete the old shape. Every table and sprint record is keyed by
+epoch, so the new epoch starts with no stream, reader, member, work, merge,
+lease, stop receipt, hold, alarm, inbox or session state by construction. The
+old epoch stays where it is and readable (`where`, `card` and `inbox --at-epoch
+<n>`), and every writer still holding it is refused as stale: nothing of that
+epoch lands in the new one. Operation ids and notification ids carry their epoch (`~<n>` after
 the first): a caller's operation id recorded at an earlier epoch is refused,
 naming the epoch, and never run again as new work; `ack` and `wait` of a
 judgment of another epoch are refused, naming it; and a step given
 `--answers` naming a judgment of another epoch is refused whole: nothing
 moves, and the refusal names the id's epoch and when the sprint was cleared.
 Every command builds its store pinned to the sprint's epoch, so no verb after
-a clear touches the epoch before the advance; a writer caught mid-step by a clear is told the
-sprint was cleared. clear reads the shape it restores after the advance, and a
-restore the last clear owes is performed first by the next step that reads
-the sprint. The machine's records (its state, its STOPPED spans, the heartbeat)
-and the coordinator are the sprint's, not the epoch's: a clear keeps them. A
-tick in flight at a clear holds the epoch of its read: its next part is refused
-as stale, writes nothing, and the tick stops there; `run` goes on at the new
-epoch, where the machine is STOPPED until `start`. clear prints the epoch
-before and after, what the epoch before the advance held as counts, the machine's state
-before, and the sprint line.
+a clear touches the epoch before the advance; a writer caught mid-step by a
+clear is told the sprint was cleared. Epoch-scoped machine records and the
+heartbeat start fresh as well. The new epoch records that its machine is
+STOPPED and announces the new epoch; friend daemons retire that epoch's inbox
+and outbox under `retired/epoch-N` before beginning a fresh session. A tick in
+flight at a clear holds the epoch of its read: its next part is refused as
+stale, writes nothing, and the tick stops there; `run` goes on at the new
+epoch, where the machine is STOPPED until `start`. Clear prints the epoch
+before and after, what the epoch before the advance held as counts, the
+machine's state before, and the sprint line.
+
+Clear does not carry stream rows or their archived/hidden status, member or
+reader rows, goals, holds, leases, stop debt, alarms or notification cursors
+into the next epoch. Adding a stream after clear creates it fresh, whether its
+name was previously active, removed or archived. This blank-slate rule
+supersedes earlier table-entry descriptions that said a clear kept streams or
+kept an archived stream archived.
 
 ## 14. The machine
 
@@ -6697,9 +6703,14 @@ record from before durable debt was introduced still protects its live leases
 until their owners return them. DONE normally has no active jobs;
 when it does, the same debt rule applies. Inbox, queue, and coordinator control
 verbs remain available while the machine is stopped.
-`clear` records STOP but refuses to advance the epoch while it holds captured
-owner leases. Their runners must cancel and return them; an explicit `start`
-then clears the settled debt, after which `clear` can reset the epoch.
+`clear` records STOP and refuses to advance while a captured owner lease is
+still in Fleet Working or Readers Reading. Its refusal names every
+`card@gen` and owner row; cancel and `stop-return` those children, then clear
+again without restarting the old epoch. A lease already returned, or no longer
+working, does not block. On success, the epoch advance itself resets the
+machine's stop debt, leases and all other epoch-scoped sprint state; the old
+epoch remains readable, and the new one has no table rows until fresh work and
+rosters are added.
 Native readers begin a named queued read with `<read-card>@<gen>` from its packet;
 an old Asked packet cannot begin a returned read at a newer generation. A bare
 named begin of a returned read is refused; `read --begin --max` can select a

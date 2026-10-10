@@ -169,12 +169,18 @@
     member and contract functional tests and eight contract cases that build nova-sprint, and the
     tick wall-clock gate job, restored in nova-sprint."
    :origin "repository split cold reads (nova-tools PR #5571 and PR #5591)")
-  (fix "defer-cards-to-the-roadmap" :release "v1.2.5" :status "planned"
-   :title "A verb defers waiting cards to the roadmap with their whole briefs"
-   :text "nova-sprint defer writes the named waiting cards, or a stream or repository of them, into the
-    roadmap data with each whole brief, and drops them from the store; --expect checks the count."
-   :origin "card from the sprint store (2026-10-10); the roadmap item roadmap-defer-verb, folded in")
-  (fix "bench-tree-standalone" :release "v1.2.7" :status "planned"
+   (fix "defer-cards-to-the-roadmap" :release "v1.2.5" :status "planned"
+    :title "A verb defers waiting cards to the roadmap with their whole briefs"
+    :text "nova-sprint defer writes the named waiting cards, or a stream or repository of them, into the
+     roadmap data with each whole brief, and drops them from the store; --expect checks the count."
+    :origin "card from the sprint store (2026-10-10); the roadmap item roadmap-defer-verb, folded in")
+   (fix "clear-is-a-blank-slate" :release "v1.2.6" :status "in-progress"
+    :title "Clear starts a blank epoch and reports only live leases"
+    :text "Clear lists every live card generation and owner row it refuses on; a returned or nonworking
+     lease does not block. A successful clear advances to an empty epoch instead of restoring old
+     streams, work and merge rows."
+    :origin "seat ledger v1.2.4-held-2026-10-10, bugs 2, 4 and 11")
+   (fix "bench-tree-standalone" :release "v1.2.7" :status "planned"
    :title "A bench tree is a standalone clone, and one that is not is refused with its reason"
    :text "The mirror stage ends by checking that the staged tree's .git is a directory in the tree, and a
     .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether

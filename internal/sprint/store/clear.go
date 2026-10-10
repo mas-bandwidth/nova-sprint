@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -20,21 +21,16 @@ type ClearResult struct {
 	Abandoned string // one it could not finish, abandoned with the old epoch
 	Restored  bool   // a clear cut before it restored its shape, finished first
 	Machine   string // the machine's state before clear set it STOPPED
+	Refused   []StopLease `json:"refused,omitempty"`
 }
 
 // Clear stops the sprint and clears all work in it: it sets the machine
-// STOPPED, as its first act, and leaves it STOPPED; then advances the
-// sprint's epoch, once, atomically, recording only that the new epoch owes the
-// restore of the old one's shape. Nothing is deleted: the old epoch stays
-// where it is and readable (At), and every writer still holding it is refused
-// by the table layer as stale, so from the advance on the old epoch is frozen.
-// The shape (streams, readers, members and their status) is read after the
-// advance, from the frozen old epoch, and restored at the new one: its rows
-// and control cards; the notifications, judgments, cursor and fence of the
-// new epoch are its own, empty. A pending operation of the old epoch is
-// finished first, or abandoned with the old epoch. A restore still owed (a
-// clear cut between its advance and its restore) is performed first, by the
-// next verb, tick or clear.
+// STOPPED, then refuses only live work/read leases (SPEC-SPRINT section 14).
+// It finishes or abandons the old epoch's pending operation, then advances
+// the epoch once. All sprint state is keyed by epoch, so the new epoch starts
+// empty without restoring any of the old shape (the blank-slate clear design).
+// Nothing is deleted; the old epoch stays readable (At), and its writers are
+// refused as stale. The new epoch gets only its own STOPPED announcement.
 func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 	var res ClearResult
 	es, err := st.EpochNow(ctx)
@@ -44,20 +40,24 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 	// The machine first: no tick begins after it is STOPPED, and a tick in
 	// flight is refused as stale at its next part. Clear leaves it STOPPED.
 	if _, ok := st.B.(KV); ok {
-		before, stopped, _, err := st.SetMachine(ctx, false)
+		before, _, _, err := st.SetMachine(ctx, false)
 		if err != nil {
 			return res, fmt.Errorf("stopping the machine: %w", err)
 		}
 		res.Machine = before.StateWord()
-		// Keep StopReturn.tla's owner debt in this epoch until the runner's
-		// cancellation receipt is durable (SPEC-SPRINT section 14).
-		if len(stopped.StopDebt) > 0 {
-			return res, fmt.Errorf("clear stopped the machine with %d captured owner work/read leases; cancel and stop-return each child, then start and clear again", len(stopped.StopDebt))
+		// A receipt may already have moved a captured card out of Working or
+		// Reading; only leases still live after STOP block this epoch advance.
+		live, err := st.Load(ctx, []string{sprint.Fleet, sprint.Readers}, nil)
+		if err != nil {
+			return res, err
 		}
-		// The people and their goals are the sprint's and are kept; their
-		// push times start again with the new sprint.
-		if err := st.ResetGoalPushes(ctx); err != nil {
-			return res, fmt.Errorf("resetting the goals' pushes: %w", err)
+		res.Refused = activeStopLeases(live)
+		if len(res.Refused) > 0 {
+			leases := make([]string, 0, len(res.Refused))
+			for _, lease := range res.Refused {
+				leases = append(leases, fmt.Sprintf("%s@%d (%s row %s)", lease.ID, lease.Gen, lease.Table, lease.Row))
+			}
+			return res, fmt.Errorf("clear stopped the machine with %d captured owner work/read leases: %s; cancel and stop-return each child on its owner row, then run clear again", len(res.Refused), strings.Join(leases, ", "))
 		}
 	}
 	st, err = st.repin(ctx)
@@ -83,6 +83,10 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 			res.Finished = f.Pending.ID
 		}
 	}
+	old, err := st.Load(ctx, All, nil)
+	if err != nil {
+		return res, err
+	}
 	res.From, res.To, res.At = st.epoch, st.epoch+1, st.now()
 	ok, err := st.root.AdvanceEpoch(ctx, st.epoch, res.At)
 	if err != nil {
@@ -100,12 +104,13 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 		// restore this one owed first.
 		return res, fmt.Errorf("the sprint left epoch %d as it was restored (another clear); run: nova-sprint where", res.To)
 	}
-	snap, err := next.restore(ctx, res.From)
-	if err != nil {
+	// AdvanceEpoch leaves a restore marker for older clear implementations;
+	// settle it directly so pin never copies the frozen epoch into this one.
+	if err := next.root.SettleEpoch(ctx, next.epoch); err != nil {
 		return res, err
 	}
-	res.Held = map[string]int{"primaries": placed(snap.Work, ""), "work cards": placed(snap.Fleet, sprint.Ctl),
-		"read cards": placed(snap.Readers, ""), "merge cards": placed(snap.Merge, sprint.Ctl), "open judgments": len(snap.Open)}
+	res.Held = map[string]int{"primaries": placed(old.Work, ""), "work cards": placed(old.Fleet, sprint.Ctl),
+		"read cards": placed(old.Readers, ""), "merge cards": placed(old.Merge, sprint.Ctl), "open judgments": len(old.Open)}
 	// The new epoch's own record that the machine is STOPPED, and why.
 	if _, ok := st.B.(KV); ok {
 		at := res.To
