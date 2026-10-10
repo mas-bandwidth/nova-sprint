@@ -214,10 +214,16 @@ ReturnedFreesItsRow ==
 
 (* Liveness: a debt whose owner has beaten since the STOP and whose beat  *)
 (* shows the job gone is settled without the owner's own receipt, so      *)
-(* START never waits on it (the 2026-10-10 seat's finding).              *)
+(* START never waits on it (the 2026-10-10 seat's finding). The           *)
+(* antecedent carries SettleByBeat's generation bound (d.gen < MaxGen),   *)
+(* so the property only promises what the action can deliver: a debt at   *)
+(* the top generation is settled by its own receipt (Return/Settle), not  *)
+(* by the beat (mirrors CardMachine's ncut[c] = MaxCopies convention).    *)
+(* A debt whose owner beats the job gone but sits at MaxGen is owed       *)
+(* until its own receipt; SettleByBeat cannot reach it (d.gen < MaxGen).  *)
 AbsentJobSettles ==
     \A d \in Debt :
         (mach = "stop" /\ d \in debt /\ d.row \in beaten /\ d.id \notin beat[d.row]
-         /\ col[d.id] = "working" /\ gen[d.id] = d.gen /\ d.id \notin old)
+         /\ col[d.id] = "working" /\ gen[d.id] = d.gen /\ d.id \notin old /\ d.gen < MaxGen)
             ~> (d \notin debt)
 =============================================================================
