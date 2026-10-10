@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-tools/internal/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
