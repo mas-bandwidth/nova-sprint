@@ -188,6 +188,22 @@
 \*   verb on (Scn.rework, ScnReworkBound). The rework and TierOK spend no
 \*   MaxActs: the attempts bound the one, the bounds the other.
 \*
+\* THE CAP DEAL (2026-10-05, Promotion 3/PR 5348: the attempt cap's default
+\*   answer, internal/sprint/brief_bound.go AttemptCapDeal, run as the pump's
+\*   part before the deal, internal/sprint/steps_tick.go PartCapDeal and
+\*   TickCapDeal). A ready primary past its stream's attempt cap is dealt as a
+\*   friend card to a frontier or heavy friend up with room before this pump's
+\*   deal could give it a machine; the card's count resets as a replaced brief
+\*   does. With no such friend the card is this pump's deal: at its redeal
+\*   bound (AtRB, RedealBoundHolds) it is not dealt again but raised to the
+\*   coordinator (the brief defect; brief and drop), below it its attempt is
+\*   dealt to a machine again. The friends and that ordering are modelled
+\*   beside this module in tla/CapDeal.tla (the MCCapDeal* cases, group
+\*   capdeal): FriendFirst, ExactlyOneJudgment and NoCardLost there hold under
+\*   TLC on its small instance, with the reversed witnesses "machinefirst",
+\*   "nojudge" and "twice". This module's deal and redeal bound are the
+\*   machine half of the same duty.
+\*
 \* WHAT IS NOT MODELLED. Clear and epochs (the counters' reset); two reads
 \* per attempt (one read each); rework but by a broken read and at the
 \* redeal bound; take is

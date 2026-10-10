@@ -1314,8 +1314,13 @@ finding, else its failed report, else its bound's class, the latest kept under t
 (`TestTheAttemptCapIsOneJudgmentWithEveryFindingAndTheSpend`,
 `TestFailedWorkReachesTheAttemptCapToo`, `TestTheAttemptCapIsASettingOfTheSprintAndTheStream`).
 **The attempt cap's default answer is a friend card** (`sprint.AttemptCapDeal`, the
-pump's part `cap deal` before the deal, `sprint.TickCapDeal`, decided in the reference
-model as the duty `cap deal`;
+pump's part `cap deal` before the deal, `sprint.TickCapDeal`, modelled in
+[tla/CapDeal.tla](../tla/CapDeal.tla) beside `tla/DirtyTick.tla`: `FriendFirst`,
+`ExactlyOneJudgment` and `NoCardLost` under TLC on the `MCCapDeal.cfg` control, group
+`capdeal`, the redeal bound below the count (two identical ended takes, `sprint.redealBound`
+and `identicalEnds`) as the reversed-witness fixtures under `tla/testdata/`
+(`MCCapDealBrokenId*`, `MCCapDealBrokenMachineFirst`, `MCCapDealBrokenNoJudge`,
+`MCCapDealBrokenTwice`, `MCCapDealBrokenNoJudgeCount`));
 `TestTheAttemptCapJudgmentsDefaultAnswerDealsAFriendCard`,
 `TestTwoCappedCardsDoNotExceedAFriendsWidth`): a machine's primary ready and past its cap
 (`sprint.AtBriefBound` asked with `sprint.AttemptsCap`), in a stream not held, is dealt
@@ -1328,9 +1333,10 @@ findings, its brief gains `WHO: friend <name>` for the friend chosen (the fields
 brief edit writes, so the cap count resets as a replaced brief does), its next
 attempt's work card is created on her row in working, and a brief-defect judgment open
 on it closes. With no such friend up with room the card is the deal's as before: at its
-redeal bound it is not dealt again and the tick raises the cap's judgment above (brief
-and drop), which closes once a friend takes it; below its bound its attempt is dealt
-again to a machine. The tick reads the friends' seats when a friend's card or a card
+redeal bound (its count at `MaxRedeals`, or its last two takes ended the same way,
+`sprint.redealBound`) it is not dealt again and the tick raises the cap's judgment above
+(brief and drop), which closes once a friend takes it; below its bound its attempt is
+dealt again to a machine. The tick reads the friends' seats when a friend's card or a card
 past its cap is ready. Then `rework` is refused, nothing written, one line: `<id> has failed the
 same way twice (attempts <n> and <m>: <the finding's first sentence>); the brief is
 wrong, not the worker; run: nova-sprint brief <id> --brief-file <path> (a waiting card)
