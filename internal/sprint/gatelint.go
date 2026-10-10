@@ -445,13 +445,18 @@ func markInterfaceImplementation(root string, value, want types.Type, reached ma
 		if selection == nil {
 			continue
 		}
-		if fn, ok := selection.Obj().(*types.Func); ok {
-			reached[objectReachID(root, fn)] = true
+		if fn, ok := selection.Obj().(*types.Func); ok && fn.Pkg() != nil {
+			if id := objectReachID(root, fn); id != "" {
+				reached[id] = true
+			}
 		}
 	}
 }
 
 func objectReachID(root string, fn *types.Func) string {
+	if fn == nil || fn.Pkg() == nil {
+		return ""
+	}
 	rel, err := filepath.Rel(root, filepath.FromSlash(fn.Pkg().Path()))
 	if err != nil {
 		return ""
