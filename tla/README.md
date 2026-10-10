@@ -17,6 +17,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `DirtyTickRead` | Reader handoffs within the tick. |
 | `ReadsByRoom`, `ReaderTiers`, `ReadCards` | Where a read is asked, on which tier, and how a read card is loaded. |
 | `RouteIndex`, `RouteRest` | Route selection, its counters, and resting a route. |
+| `NoRoom` | A member's no-room word (the disk floor), a draining member's included, and the deal and fleet verbs that give such a member nothing. |
 | `Level`, `WhoPreference` | Distribution of queued work across available capacity, and the rebalance. |
 | `Land`, `LandPass`, `LatePush` | The landing protocol, the land pass over streams, and a late push. |
 | `CardISA` (over `CardMachine`) | The card instruction set; `CardMachine` is a copy of nova-tools' model of the card's Lua. |

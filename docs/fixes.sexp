@@ -128,11 +128,12 @@
    :text "Nothing to do because the base already contains the change is a brief defect, a duplicate of
     landed work, outside ok%, and raises a re-cut judgment."
    :origin "nova-tools PR #5585, head 0beb0508")
-  (fix "fleet-verbs-skip-member-under-disk-floor" :release "v1.2.6" :status "planned"
+  (fix "fleet-verbs-skip-member-under-disk-floor" :release "v1.2.6" :status "in-progress"
    :title "Fleet verbs give a member under its disk floor nothing"
-   :text "The coordinator fleet verbs give nothing to a member under its disk floor, stacked on the deal
-    and read fix that already merged."
-   :origin "nova-tools PR #5578, head fcdbaa441")
+   :text "fleet up, down, hold and level, outside the tick, read the members' no-room words themselves,
+    so a manual level, an up's level or a down's redeal gives a member under its disk floor nothing;
+    the deal and read fix they follow already merged."
+   :origin "nova-tools PR #5578, head fcdbaa441, re-applied in nova-sprint")
   (fix "down-member-is-down-not-fault" :release "v1.2.6" :status "planned"
    :title "A member whose host is offline is shown down, not as a fault"
    :text "Doctor and machinery report a member whose host is offline as down; FAULT only when the host is
@@ -143,10 +144,11 @@
    :text "One line in the worker brief stops children rewriting history, which caused the does-not-descend
     refusals."
    :origin "v1.2.5 candidate list")
-  (fix "draining-member-clears-no-room" :release "v1.2.6" :status "planned"
+  (fix "draining-member-clears-no-room" :release "v1.2.6" :status "in-progress"
    :title "A draining member does not keep a stale no-room word"
-   :text "The room check runs after the drain return, so a draining member does not keep a stale no-room
-    word; the deal and read disk floor fix also gets its TLA+ reversed witness."
+   :text "The room check runs before the drain return, so a draining member's beat carries this tick's
+    no-room word, not a stale one (the member code in nova-tools, with its test, and the same lines in
+    this repository's copy); the deal and read disk floor fix also gets its TLA+ reversed witness."
    :origin "v1.2.5 candidate list; nova-tools PR #5569 follow-up")
   (fix "dashboard-pie-slices-meet-centre" :release "v1.2.6" :status "planned"
    :title "The dashboard pie slices meet at the centre"
