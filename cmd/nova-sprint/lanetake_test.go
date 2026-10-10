@@ -12,7 +12,7 @@ import (
 
 // A friend's lane asks the server what it holds and takes its next card in one verb, through
 // the server as her daemon sends it, naming her row and its lane and nothing else (lanetake.go;
-// nova-tools tla/FriendLane.tla). The faults of 2026-10-10 on mini-m5: "took" logged while the
+// nova-tools tla/FriendLane.tla). The faults of 2026-10-10 on a one-shot friend host: "took" logged while the
 // server still showed the card ready (the take stamped no start of hers and the tick put it
 // back), and progress sent at epoch 0 for a job whose directory named none.
 
@@ -86,7 +86,7 @@ func TestAFriendsLaneTakesThroughTheServerAndTheServerSaysWhatItHolds(t *testing
 	ta.clean()
 }
 
-// A worker's stop-return goes through the server (2026-10-10 21:55Z on mini-m5: every one was
+// A worker's stop-return goes through the server (2026-10-10 21:55Z on a one-shot friend host: every one was
 // refused "the server runs the workers' verbs only"): it is served as a worker's verb.
 func TestAStopReturnIsAWorkersVerbTheServerServes(t *testing.T) {
 	t.Parallel()

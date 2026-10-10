@@ -26,7 +26,7 @@ func laneTake(w *world, lane int) Plan {
 	return Take(w.s, TakeReq{As: FriendRow("amy"), Lane: lane, Who: FriendRow("amy")})
 }
 
-// The fault of 2026-10-10 21:42Z on mini-m5: her daemon logged "took" and the server still
+// The fault of 2026-10-10 21:42Z on a one-shot friend host: her daemon logged "took" and the server still
 // showed the card ready. A take that stamps no start of hers is put back ready by the very next
 // tick (friendUnstartedWorking), so every progress after it was refused "not working (it is
 // friend.freddy:ready)". A lane's take is her start: the tick keeps it working, on the lane.
