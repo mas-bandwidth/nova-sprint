@@ -210,10 +210,11 @@ func TestTierCostsSinceAMark(t *testing.T) {
 	assert.Equal(t, "", sprint.MoneyLess("$1.00", "$1.25"), "never below zero")
 	assert.Equal(t, "$1.25", sprint.MoneyLess("$1.25", ""), "a figure the mark does not name reads as before")
 	assert.Equal(t, "", sprint.MoneyLess("", "$1.25"))
-	tc := sprint.TierCosts{TotalCost: "$3.00", WorkCost: "$2.00", ReadCost: "$1.00", PerLanded: "$1.00",
+	tc := sprint.TierCosts{TotalCost: "$3.00", LandedCost: "$2.50", WorkCost: "$2.00", ReadCost: "$1.00", PerLanded: "$1.00",
 		CostByTier: map[string]string{"flash": "$1.00", "pro": "$2.00"}, Tiers: map[string]int{"flash": 1, "pro": 2}}
-	got := sprint.TierCostsSince(tc, sprint.ResetStream{TotalCost: "$1.00", WorkCost: "$0.50", ReadCost: "$0.50", CostByTier: map[string]string{"flash": "$1.00"}})
+	got := sprint.TierCostsSince(tc, sprint.ResetStream{TotalCost: "$1.00", Cost: "$1.50", WorkCost: "$0.50", ReadCost: "$0.50", CostByTier: map[string]string{"flash": "$1.00"}})
 	assert.Equal(t, "$2.00", got.TotalCost)
+	assert.Equal(t, "$1.00", got.LandedCost, "the landed cards' spend counts from the mark: its exact landed cost (ResetStream.Cost) less")
 	assert.Equal(t, "$1.50", got.WorkCost)
 	assert.Equal(t, "$0.50", got.ReadCost)
 	assert.Equal(t, map[string]string{"pro": "$2.00"}, got.CostByTier, "flash spent nothing since: left out")

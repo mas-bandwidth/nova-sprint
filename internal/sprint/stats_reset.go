@@ -121,13 +121,15 @@ func MoneyLess(now, was string) string {
 	return cardcost.Cents(d)
 }
 
-// TierCostsSince is the stream's spend since the mark: its total, work and read costs and
-// each tier's less the mark's, never below zero, a tier with nothing since left out (the pie
-// leaves a tier at $0 out). Every other figure (the cards by tier, per landed, the reads of
-// the day, the readers' spend, the unpriced runs, the reconciliation) is as it was: per
-// landed is counted from the mark's base by the caller (PerLandedSince).
+// TierCostsSince is the stream's spend since the mark: its total, its landed cards',
+// work and read costs and each tier's less the mark's, never below zero, a tier with
+// nothing since left out (the pie leaves a tier at $0 out). Every other figure (the cards
+// by tier, per landed, the reads of the day, the readers' spend, the unpriced runs, the
+// reconciliation) is as it was: per landed is counted from the mark's base by the caller
+// (PerLandedSince).
 func TierCostsSince(tc TierCosts, m ResetStream) TierCosts {
 	tc.TotalCost = MoneyLess(tc.TotalCost, m.TotalCost)
+	tc.LandedCost = MoneyLess(tc.LandedCost, m.Cost)
 	tc.WorkCost = MoneyLess(tc.WorkCost, m.WorkCost)
 	tc.ReadCost = MoneyLess(tc.ReadCost, m.ReadCost)
 	if len(tc.CostByTier) > 0 {
