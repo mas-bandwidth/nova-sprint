@@ -194,6 +194,10 @@ type TickReq struct {
 	// raises NServerOffBase while it is not On and closes it once it is. nil is no check
 	// made, or one that could not be: nothing raised, nothing closed.
 	ServerBase *ServerBase
+	// Gate is the machine gate the tick runs on each finished attempt the lint passes,
+	// before its first read (gaterun.go: TickGate in the pump, hideGateHeld in the ask);
+	// nil is DefaultGate.
+	Gate GateRunner
 }
 
 func (r TickReq) who() string {
@@ -351,6 +355,12 @@ func TickAccept(s *Snapshot, r TickReq) (Plan, int) {
 	// the work lint first (worklint.go, TickLint): a finished attempt it refuses is
 	// reworked in this pump, and the accept is due for the next
 	if p, ok := TickLint(s, r); ok {
+		return p, 1
+	}
+	// then the machine gate (gaterun.go, TickGate): the finished attempt the lint passes
+	// is run on a bench once; a red gate is reworked here and a bench that did not answer
+	// leaves the attempt waiting, so the accept is due for the next
+	if p, ok := TickGate(s, r); ok {
 		return p, 1
 	}
 	eligible := func(c *Card) string {
@@ -913,6 +923,12 @@ func TickLevel(s *Snapshot, r TickReq) (Plan, int) {
 // (streamTurns, as the deal's; Ask moves the index), so the readers
 // serve every stream alike and no stream's backlog waits behind another's.
 func TickAsk(s *Snapshot, r TickReq) (Plan, int) {
+	// no reader is asked of an attempt the machine gate holds (gaterun.go,
+	// gateHeldPrimaries): one the gate refused, one waiting for a bench, or one whose
+	// gate for this attempt has not run yet. The installed ask part holds the friend
+	// ask too (gaterun.go, gateHeldPart), so a frontier read waits as this one does.
+	restore := hideGateHeld(s, r)
+	defer restore()
 	var ids []string
 	due := 0
 	askable := func(c *Card) string {
