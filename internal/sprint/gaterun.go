@@ -455,9 +455,23 @@ func GateCommands(tl cardhdr.TestLine, pkgs []string) [][]string {
 	return cmds
 }
 
+// benchTestRunner adapts BenchRun to BenchRunner for lint checks.
+func benchTestRunner(bench BenchRun, dir string, args []string, env []string) BenchRunner {
+	return func(commit, pkg, testname string) (bool, error) {
+		ctx := context.Background()
+		// Build test command: go test -run <testname> <pkg>
+		argv := append([]string{"go", "test", "-count=1", "-timeout", "600s", "-run", "^" + testname + "$"}, pkg)
+		res, err := bench(ctx, []string{"local"}, dir, commit, argv)
+		if err != nil {
+			return false, err
+		}
+		return res.Code == 0, nil
+	}
+}
+
 // GateLintRun runs the lint checks after the gate commands pass.
 // It returns GateLintFindings if any issues are found.
-func GateLintRun(v WorkView, tl TestLine) []GateLintFinding {
+func GateLintRun(v WorkView, tl cardhdr.TestLine, mergeBase, dir string, benchRun BenchRun, env []string) []GateLintFinding {
 	// Build input from work view
 	var changedFiles []string
 	for _, f := range diffcheck.Parse(v.Diff) {
@@ -467,20 +481,20 @@ func GateLintRun(v WorkView, tl TestLine) []GateLintFinding {
 	}
 
 	input := GateLintInput{
-		MergeBase:  v.Base,
-		Head:       v.Head,
-		TestPkg:    tl.Package,
-		TestName:   tl.Name,
+		MergeBase:    mergeBase,
+		Head:         v.Head,
+		TestPkg:      tl.Package,
+		TestName:     tl.Name,
 		ChangedFiles: changedFiles,
-		ChangedDir: "",
+		ChangedDir:   dir,
 	}
 
-	// BenchRunner that runs at the given commit
-	benchRun := func(commit, pkg, testname string) (bool, error) {
-		return true, nil
+	if benchRun == nil {
+		return GateLintFindings(input, nil)
 	}
 
-	return GateLintFindings(input, benchRun)
+	adapted := benchTestRunner(benchRun, dir, nil, env)
+	return GateLintFindings(input, adapted)
 }
 
 // NewBenchGate is the machine gate over g: each attempt's brief names its repository, its
@@ -568,7 +582,7 @@ func NewBenchGate(g BenchGateGit) GateRunner {
 				}
 			}
 			// Run lint checks after gate commands pass
-			lintFindings := GateLintRun(v, tl)
+			lintFindings := GateLintRun(v, tl, base, dir, g.Bench, g.Env)
 			if len(lintFindings) > 0 {
 				for _, lf := range lintFindings {
 					out.Failed = append(out.Failed, GateFinding{What: GateLintFindingString(lf)})

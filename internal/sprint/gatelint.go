@@ -9,7 +9,6 @@ import (
 	"strings"
 )
 
-
 // The machine gate checks: pins and reach.
 
 const (
@@ -25,12 +24,12 @@ type GateLintFinding struct {
 
 // GateLintInput is the input for the extended gate checks.
 type GateLintInput struct {
-	MergeBase string
-	Head      string
-	TestPkg   string
-	TestName  string
+	MergeBase    string
+	Head         string
+	TestPkg      string
+	TestName     string
 	ChangedFiles []string // non-test files changed by the commit
-	ChangedDir string    // directory of the changed files
+	ChangedDir   string   // directory of the changed files
 }
 
 // BenchRunner runs a test at a given commit and returns whether it passed.
