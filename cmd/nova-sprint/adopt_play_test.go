@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 )
 
 // fakePlay is a play runner that answers with one output and error, and
@@ -187,4 +189,39 @@ fatal: [seat-a]: FAILED! => {"changed": false, "msg": "ADOPT REFUSED step=dashbo
 		assert.Equal(t, 2, code, "%v: %s", bad, errs)
 		assert.Contains(t, errs, "nova-sprint adopt REFUSED")
 	}
+}
+
+// TestLibraryShadowPassesWhenOnlyTheLibraryDiffers pins the adopt's pre-window
+// check (libraryShadow, cmd/nova-sprint/main.go; tla/Adopt.tla PreCheck): the
+// shadow tick, run before the window's fn load, tolerates a store whose
+// library's code differs from this build's and says so in one line (the
+// window's fn load will put this build's library on the store); a store that
+// holds no library still refuses, and a comment-only change is no difference.
+func TestLibraryShadowPassesWhenOnlyTheLibraryDiffers(t *testing.T) {
+	t.Parallel()
+	source, err := fn.Source()
+	require.NoError(t, err)
+
+	store := newFakeStore(map[string]string{"HELLO": helloAccepted, "FUNCTION": functionListReply(fn.Library, source)})
+	note, err := libraryShadow(context.Background(), fakeClient(t, store), "127.0.0.1:6379")
+	require.NoError(t, err, "a matching library passes with no note")
+	require.Empty(t, note)
+
+	codeChanged := source + "\nredis.register_function('ns_probe', function() return 'x' end)\n"
+	store = newFakeStore(map[string]string{"HELLO": helloAccepted, "FUNCTION": functionListReply(fn.Library, codeChanged)})
+	note, err = libraryShadow(context.Background(), fakeClient(t, store), "127.0.0.1:6379")
+	require.NoError(t, err, "the pre-window dry run passes when only the library differs")
+	require.Equal(t, "library differs: loaded in the window", note, "it says so in one line")
+
+	commentOnly := strings.Replace(source, "-- lua/00_ping.lua", "-- lua/00_ping.lua (a comment)", 1)
+	store = newFakeStore(map[string]string{"HELLO": helloAccepted, "FUNCTION": functionListReply(fn.Library, commentOnly)})
+	note, err = libraryShadow(context.Background(), fakeClient(t, store), "127.0.0.1:6379")
+	require.NoError(t, err, "a comment-only change is no difference")
+	require.Empty(t, note)
+
+	store = newFakeStore(map[string]string{"HELLO": helloAccepted, "FUNCTION": "*0\r\n"})
+	note, err = libraryShadow(context.Background(), fakeClient(t, store), "127.0.0.1:6379")
+	require.Error(t, err, "a store that holds no library still refuses")
+	require.Empty(t, note)
+	require.Contains(t, err.Error(), "holds no "+fn.Library+" function library")
 }
