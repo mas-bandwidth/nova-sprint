@@ -169,6 +169,12 @@
     member and contract functional tests and eight contract cases that build nova-sprint, and the
     tick wall-clock gate job, restored in nova-sprint."
    :origin "repository split cold reads (nova-tools PR #5571 and PR #5591)")
+  (fix "backup-file-needs-no-lastsave" :release "v1.2.6" :status "planned"
+   :title "backup --file and snapshot do not need LASTSAVE"
+   :text "The Redis snapshot source detects a completed BGSAVE from rdb_saves (or rdb_last_save_time) in
+    INFO persistence, so the coordinator ACL user, which may not run LASTSAVE, can take the backup. The
+    BGSAVE-failure and timeout refusals are unchanged."
+   :origin "pre-clear backup, 2026-10-10 (NOPERM on LASTSAVE)")
   (fix "defer-cards-to-the-roadmap" :release "v1.2.5" :status "planned"
    :title "A verb defers waiting cards to the roadmap with their whole briefs"
    :text "nova-sprint defer writes the named waiting cards, or a stream or repository of them, into the

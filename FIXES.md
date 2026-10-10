@@ -52,6 +52,7 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 - **A draining member does not keep a stale no-room word** (planned). The room check runs after the drain return, so a draining member does not keep a stale no-room word; the deal and read disk floor fix also gets its TLA+ reversed witness. From: v1.2.5 candidate list; nova-tools PR #5569 follow-up.
 - **The dashboard pie slices meet at the centre** (planned). Check the live pie after the next adopt; if the slice borders still miss the centre, fix it. From: v1.2.5 candidate list.
 - **Restore the tests the repository split moved out of nova-tools** (planned). Five tests (coordinator rules, processor doc, coordinator tools, tool class, seat play), the member and contract functional tests and eight contract cases that build nova-sprint, and the tick wall-clock gate job, restored in nova-sprint. From: repository split cold reads (nova-tools PR #5571 and PR #5591).
+- **backup --file and snapshot do not need LASTSAVE** (planned). The Redis snapshot source detects a completed BGSAVE from rdb_saves (or rdb_last_save_time) in INFO persistence, so the coordinator ACL user, which may not run LASTSAVE, can take the backup. The BGSAVE-failure and timeout refusals are unchanged. From: pre-clear backup, 2026-10-10 (NOPERM on LASTSAVE).
 
 ## v1.2.7 (planned)
 
