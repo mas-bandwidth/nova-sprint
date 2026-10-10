@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,6 +18,14 @@ import (
 // cannot commit afterward using its old read. A repeated STOP and a START also
 // re-read the machine under this lock, never overwriting a newer stop reason.
 func (st *Store) machineTransition(ctx context.Context, running bool, who, reason string, until time.Time) (before, after Machine, changed bool, err error) {
+	if running {
+		// Settle owed leases whose owner's beat after the STOP no longer names
+		// the job, before the START fence re-reads the debt (tla/StopReturn.tla
+		// SettleByBeat), so START never waits on a member's own receipt.
+		if err := st.settleStopDebtByBeat(ctx); err != nil {
+			return before, after, false, err
+		}
+	}
 	pinned, err := st.pin(ctx)
 	if err != nil {
 		return before, after, false, err
@@ -225,6 +234,89 @@ func (st *Store) settleStopDebt(ctx context.Context) error {
 		return errors.Join(err, pinned.B.Release(context.WithoutCancel(ctx), lock, false))
 	}
 	return fmt.Errorf("stop-return settle: the sprint kept changing under it (%d tries); the return is recorded on its card and START still accepts it; run the stop-return again to settle it", r.tries)
+}
+
+// settleStopDebtByBeat returns every owed fleet lease whose owner has beaten
+// since the STOP and whose beat no longer names the job, without waiting for
+// the owner's own stop-return receipt (tla/StopReturn.tla SettleByBeat). The
+// card is returned with a recorded reason (a stop-return whose after hook
+// settles the lease off the machine record, settleStopDebt). A lease whose job
+// the beat still names stays owed (SettleByBeat's named guard), and an owner
+// that has not beaten since the STOP is reported to the seat. It runs on
+// START, before the machine record's debt check, so START never waits on a
+// member's own receipt; a machine owner's beat names no job, so its lease
+// stays owed until it returns it.
+func (st *Store) settleStopDebtByBeat(ctx context.Context) error {
+	m, _, err := st.Machine(ctx)
+	if err != nil {
+		return err
+	}
+	if m.Running() || !m.StopIssued || len(m.StopDebt) == 0 {
+		return nil
+	}
+	s, err := st.Load(ctx, tables(sprint.Fleet, sprint.Readers), nil)
+	if err != nil {
+		return err
+	}
+	var settle []StopLease
+	var reported []string
+	for _, d := range m.StopDebt {
+		if d.Table != sprint.Fleet {
+			continue
+		}
+		name, friend := sprint.FriendOfRow(d.Row)
+		var b sprint.Beat
+		if friend {
+			if b, err = st.FriendBeatOf(ctx, name); err != nil {
+				return err
+			}
+		} else {
+			var mbs map[string]sprint.Beat
+			if mbs, err = st.Beats(ctx, []string{d.Row}); err != nil {
+				return err
+			}
+			b = mbs[d.Row]
+		}
+		if !b.Beaten() || !b.At.After(m.Since) {
+			reported = append(reported, d.Row)
+			continue
+		}
+		if !friend {
+			continue // a machine's beat names no job: its lease stays owed until it returns it
+		}
+		if c := s.Fleet.Card(d.ID); c != nil && sprint.FriendBeatNamesJob(b, c, s.Epoch) {
+			continue
+		}
+		settle = append(settle, d)
+	}
+	for _, d := range settle {
+		if _, err := st.Run(ctx, StopReturnStep(sprint.StopReturnReq{
+			As:     d.Row,
+			IDs:    []string{d.ID},
+			Gens:   map[string]int{d.ID: d.Gen},
+			Reason: "the owner's beat after the STOP no longer names it",
+		})); err != nil {
+			return err
+		}
+	}
+	if len(reported) > 0 {
+		slices.Sort(reported)
+		to, err := st.B.Coordinator(ctx)
+		if err != nil {
+			return err
+		}
+		_, err = st.Run(ctx, Step{Verb: "tick stop debt beat", Actor: sprint.MachineActor,
+			Plan: func(s *sprint.Snapshot) sprint.Plan {
+				n := sprint.Note{Kind: sprint.Happened, Type: sprint.NStopDebtBeat, Who: sprint.MachineActor, At: s.Now, To: to,
+					What: fmt.Sprintf("STOP debt: %s have not beaten since the STOP, so their leases stay owed until they stop-return them", strings.Join(reported, ", ")),
+					Hint: "run: nova-sprint stop-return --as <owner> <card>@<gen> --reason '<observed child exit>'"}
+				return sprint.Plan{Notes: []sprint.Note{n}}
+			}})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // stopWithCause serializes the tick's DONE and funds stops with a manual STOP.
