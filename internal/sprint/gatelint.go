@@ -98,7 +98,7 @@ func GateLintFindingsChecked(input GateLintInput, run BenchRunner) ([]GateLintFi
 		if len(symbols) > 0 {
 			reached, err := findTreeReferences(input.ChangedDir, symbols)
 			if err != nil {
-				return append(out, GateLintFinding{What: GateLintReach + ": reference analysis could not complete: " + err.Error()}), nil
+				return nil, fmt.Errorf("reach reference analysis: %w", err)
 			}
 			for id, ok := range reached {
 				if !ok {
@@ -328,7 +328,7 @@ func findTreeReferences(root string, targets map[string]string) (map[string]bool
 		return nil, err
 	}
 	uniq := map[string]bool{}
-	imp := &treeImporter{root: root, module: module, fset: fset, cache: map[string]*types.Package{}, loading: map[string]bool{}, std: std}
+	imp := &treeImporter{root: root, module: module, fset: fset, cache: map[string]*types.Package{}, loading: map[string]bool{}, interfaceMethods: map[string]bool{}, std: std}
 	for _, dir := range dirs {
 		if uniq[dir] {
 			continue
@@ -357,7 +357,98 @@ func findTreeReferences(root string, targets map[string]string) (map[string]bool
 			}
 		}
 	}
+	for id := range imp.interfaceMethods {
+		if _, ok := targets[id]; ok {
+			reached[id] = true
+		}
+	}
 	return reached, nil
+}
+
+// markInterfaceAssignments records methods that are semantically reached by
+// assigning a concrete value to a referenced interface. Interface dispatch has
+// no in-tree call expression for the implementation method itself.
+func markInterfaceAssignments(root string, file *ast.File, info *types.Info, reached map[string]bool) {
+	mark := func(value ast.Expr, want types.Type) {
+		if value != nil && want != nil {
+			markInterfaceImplementation(root, info.TypeOf(value), want, reached)
+		}
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		switch n := node.(type) {
+		case *ast.KeyValueExpr:
+			if key, ok := n.Key.(*ast.Ident); ok {
+				obj := info.Uses[key]
+				if obj == nil {
+					obj = info.Defs[key]
+				}
+				if obj != nil {
+					mark(n.Value, obj.Type())
+				}
+			}
+		case *ast.AssignStmt:
+			if len(n.Lhs) == len(n.Rhs) {
+				for j, value := range n.Rhs {
+					mark(value, info.TypeOf(n.Lhs[j]))
+				}
+			}
+		case *ast.ValueSpec:
+			if n.Type != nil {
+				want := info.TypeOf(n.Type)
+				for _, value := range n.Values {
+					mark(value, want)
+				}
+			}
+		case *ast.CallExpr:
+			if fn := info.TypeOf(n.Fun); fn != nil {
+				if sig, ok := fn.Underlying().(*types.Signature); ok {
+					for j, arg := range n.Args {
+						if j < sig.Params().Len() {
+							param := sig.Params().At(j).Type()
+							if sig.Variadic() && j >= sig.Params().Len()-1 {
+								if slice, ok := param.(*types.Slice); ok {
+									param = slice.Elem()
+								}
+							}
+							mark(arg, param)
+						}
+					}
+				}
+			}
+		case *ast.SendStmt:
+			if ch := info.TypeOf(n.Chan); ch != nil {
+				if channel, ok := ch.Underlying().(*types.Chan); ok {
+					mark(n.Value, channel.Elem())
+				}
+			}
+		}
+		return true
+	})
+}
+
+func markInterfaceImplementation(root string, value, want types.Type, reached map[string]bool) {
+	if value == nil || want == nil {
+		return
+	}
+	iface, ok := want.Underlying().(*types.Interface)
+	if !ok {
+		return
+	}
+	iface.Complete()
+	if !types.Implements(value, iface) {
+		return
+	}
+	methods := types.NewMethodSet(value)
+	for j := 0; j < iface.NumMethods(); j++ {
+		method := iface.Method(j)
+		selection := methods.Lookup(method.Pkg(), method.Name())
+		if selection == nil {
+			continue
+		}
+		if fn, ok := selection.Obj().(*types.Func); ok {
+			reached[objectReachID(root, fn)] = true
+		}
+	}
 }
 
 func objectReachID(root string, fn *types.Func) string {
@@ -379,11 +470,12 @@ func objectReachID(root string, fn *types.Func) string {
 }
 
 type treeImporter struct {
-	root, module string
-	fset         *token.FileSet
-	cache        map[string]*types.Package
-	loading      map[string]bool
-	std          types.Importer
+	root, module     string
+	fset             *token.FileSet
+	cache            map[string]*types.Package
+	loading          map[string]bool
+	std              types.Importer
+	interfaceMethods map[string]bool
 }
 
 func (i *treeImporter) Import(path string) (*types.Package, error) {
@@ -545,11 +637,14 @@ func (i *treeImporter) checkDir(dir string) (*types.Package, *types.Info, error)
 	if len(files) == 0 {
 		return nil, nil, fmt.Errorf("no buildable Go files in %s", dir)
 	}
-	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}}
+	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}, Types: map[ast.Expr]types.TypeAndValue{}}
 	conf := types.Config{Importer: i, Error: func(error) {}}
 	p, err := conf.Check(filepath.ToSlash(dir), i.fset, files, info)
 	if err != nil {
 		return nil, nil, fmt.Errorf("type-check %s: %w", dir, err)
+	}
+	for _, file := range files {
+		markInterfaceAssignments(i.root, file, info, i.interfaceMethods)
 	}
 	return p, info, nil
 }

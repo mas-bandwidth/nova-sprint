@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -235,7 +236,13 @@ func TestGateLintRunTypeChecksStdlibCrossingReferences(t *testing.T) {
 	git("add", "go.mod", "one/base.go")
 	git("commit", "-q", "-m", "base")
 	base := git("rev-parse", "HEAD")
-	write("one/api.go", "package one\nfunc Exported() {}\n")
+	write("one/api.go", `package one
+import "go/types"
+type localImporter struct{}
+func (*localImporter) Import(string) (*types.Package, error) { return nil, nil }
+var _ types.Importer = (*localImporter)(nil)
+func Exported() {}
+`)
 	write("two/use.go", `package two
 import (
     "context"
@@ -267,7 +274,23 @@ func use() {
 	}
 }
 
-func TestGateLintTypeCheckFailureIsAnExplicitFinding(t *testing.T) {
+func TestFindTreeReferencesRecognizesTreeImporterInterfaceDispatch(t *testing.T) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("could not locate current source tree")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(file), "../.."))
+	id := "internal/sprint#treeImporter#Import"
+	reached, err := findTreeReferences(root, map[string]string{id: "Import"})
+	if err != nil {
+		t.Fatalf("scan current candidate source: %v", err)
+	}
+	if !reached[id] {
+		t.Fatalf("current candidate's interface-dispatched treeImporter.Import was not reached: %v", reached)
+	}
+}
+
+func TestGateLintTypeCheckFailureWaits(t *testing.T) {
 	t.Parallel()
 	base, head := t.TempDir(), t.TempDir()
 	for _, root := range []string{base, head} {
@@ -281,12 +304,9 @@ func TestGateLintTypeCheckFailureIsAnExplicitFinding(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(head, "api.go"), []byte("package api\nfunc Unwired() { missing() }\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := GateLintFindingsChecked(GateLintInput{BaseDir: base, ChangedDir: head, ChangedFiles: []string{"api.go"}}, nil)
-	if err != nil {
-		t.Fatalf("source analysis failure must not become a waiting error: %v", err)
-	}
-	if len(got) != 1 || !strings.Contains(got[0].What, "reference analysis could not complete") {
-		t.Fatalf("source analysis failure was not named as a gate finding: %#v", got)
+	_, err := GateLintFindingsChecked(GateLintInput{BaseDir: base, ChangedDir: head, ChangedFiles: []string{"api.go"}}, nil)
+	if err == nil || !strings.Contains(err.Error(), "reference") {
+		t.Fatalf("source analysis failure must wait with an error, got err=%v", err)
 	}
 }
 

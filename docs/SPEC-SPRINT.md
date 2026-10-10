@@ -5363,3 +5363,9 @@ The TLA+ specification `tla/StallLadder.tla` verifies five invariants:
 - `NoWakeWithoutRung`: a wake is sent only at a rung the ladder climbed, and once
   (`PlanUncommitted`, a plan the tick makes and does not commit; reversed witness
   `wakeinplan`: the planner sends the wake as it plans).
+
+
+#### work-lint-proves-the-test-pins-ns-bcccc.w1: interface reach and analysis errors
+
+- A newly added method counts as reached when a concrete value is type-checked as an implementation of an interface used by a non-test assignment, initializer, channel send, or call argument. This captures interface dispatch without accepting same-spelled methods or methods on a type never used through that interface.
+- Source analysis failures return an error to the machine gate, which waits; they are not reclassified as a work-lint finding. This clarifies and supersedes the prior standard-library-import subsection's explicit-finding behavior for analysis errors.
