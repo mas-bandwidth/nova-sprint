@@ -19,6 +19,8 @@ const DefaultRollbackWindow = 15 * time.Minute
 type ServerSwitchOptions struct {
 	Binary   string        // path to candidate binary
 	Target   string        // path to target binary (default: os.Executable() or NOVA_SPRINT_SERVER_BIN)
+	Repo     string        // clone whose origin contains the base (SwitchFromBase)
+	Base     string        // origin branch the candidate must descend from (SwitchFromBase)
 	Rollback bool          // keep previous binary and roll back on land failure in window
 	Window   time.Duration // rollback window duration (default DefaultRollbackWindow)
 	Now      func() time.Time
