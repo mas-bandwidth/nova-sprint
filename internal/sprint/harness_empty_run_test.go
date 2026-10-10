@@ -126,7 +126,7 @@ func TestAMachinesAttemptNeverGoesBackToTheFriendItLeft(t *testing.T) {
 	t.Run("reversed: a primary that left no one moves to her idle lane", func(t *testing.T) {
 		t.Parallel()
 		w := setup()
-		require.Len(t, rebalanced(Rebalance(w.s, []FriendSeat{amy}, "machine")), 1, "the rebalance gives a machine's queued card to an idle friend")
+		require.Len(t, rebalanced(w.must(Rebalance(w.s, []FriendSeat{amy}, "machine"))), 1, "the rebalance gives a machine's queued card to an idle friend")
 		assert.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-2.w1").Row)
 		assert.True(t, friendCouldTake(w.s, amy, w.s.Work.Card("s1-2"), nil))
 	})
