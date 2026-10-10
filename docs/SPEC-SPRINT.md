@@ -406,10 +406,12 @@ as a machine's lane that frees takes its next, and the next tick puts it back
 the next tick fills her room
 again (`TestAFriendAtWidthEightWithThirtyCardsHasSixteenDealt`: width 8 with 30
 waiting is 8 working and 8 ready, and a 17th on a landing). In one-shot mode
-(`mode: one-shot`), the machine deals one card at a time (room 1, lane 1), and
-the next only after the last one finished
-(item 22 of tmp/manual-to-verbs-2026-10-04.md;
-`TestDealingRespectsAFriendDeliveryMode`). For either mode, the deal (friends
+(`mode: one-shot`) the machine deals to her width as in batch mode: her daemon runs
+one lane per unit of width, each card a fresh run (docs/SPEC-FRIEND.md, one-shot
+lanes), and the lane a finish frees takes her next at once (the owner, 2026-10-10:
+one card at a time left a one-shot reader at width 32 idle beside 110 cards in review;
+`TestAOneShotFriendIsDealtToHerWidthAsABatchFriendIs`,
+`TestAOneShotFriendsFreedLaneTakesHerNextWhileOtherLanesRun`). For either mode, the deal (friends
 first, before the machines' deal) offers every ready card to its named friend
 whose tiers hold its tier first, then to the friends up whose tiers hold its
 tier, an idle lane first,
@@ -428,9 +430,8 @@ nothing ready for over an hour while the machines were dealt flash cards):
   room (DealAhead times her width) and her lanes (her width) count every card on her
   row, ready and working, work card or read (`sprint.friendLoad`), in the deal, the
   level, her start and the friends' read ask alike; there is no read room beside it.
-  A friend at width 16 holding 10 work cards and 9 reads has no idle lane, and a
-  one-shot friend holds one card at a time, read or work
-  (`TestOneWidthHoldsHerWorkAndReads`).
+  A friend at width 16 holding 10 work cards and 9 reads has no idle lane, in
+  either mode (`TestOneWidthHoldsHerWorkAndReads`).
 - The deal order is one for friends and machines (`sprint.dealOrder`): the stream
   turns from the deal's stream index, each stream's cards in work order, the order
   `tla/SprintTables.tla` and the reference model check; each card then goes to the
@@ -574,8 +575,7 @@ row into working, by id (`<card>@<gen>`) or by count, as a member takes
 (`sprint.Take`, `takeSeat`; her presence as the section below reads it), and `progress` and `finish` then take it as
 they take a member's working card. Her status and her lanes are her friends
 row's, never a control card's: she takes while she is up (held or down, her
-cards wait ready, and the refusal names why), within her lanes (her width in batch mode,
-1 in one-shot mode; hard, as a member's width: a take past them is refused,
+cards wait ready, and the refusal names why), within her lanes (her width, in either mode; hard, as a member's width: a take past them is refused,
 `friend friend.<name> is at its width`), and a card she takes is taken now and
 carries her deadline (`friendTaken`). A card on another row is refused (`not in
 friend.<name> ready`), a friend not on the roster is refused (`no friend
@@ -1293,7 +1293,7 @@ her own session (a wake ping her session answered within `FriendPongWindow`,
 her session's answer to a check her daemon asked within `FriendProofLive` while her beats go on, or
 a card of hers finished within `FriendFinishWindow`; docs/SPEC-FRIEND.md,
 "Presence is her session's evidence"), never on her beat itself. `TakeStep` reads the friends' seats when it names a friend's row.
-Her take is held to her width (1 in one-shot mode), as a machine's is to its
+Her take is held to her width, in either mode, as a machine's is to its
 own. It is refused only when she is not up, and the refusal names why: "friend
 <f> is held: held by the coordinator (friend down)[: <reason>]", "friend <f>
 is down: her beat says down until <t>: <reason>", or "friend <f> is down: no
@@ -3785,7 +3785,11 @@ three tries is refused alone, `its ask lost <n> tries this tick in a step of its
 writer moved the fence, or the store refused the write as planned); nothing was written for it;
 the next tick asks it again`, and the steps go on with the rest. The steps begin no try past the
 ask's budget (`store.AskBudget`, 2 s, or half of the time the tick's context has left when that
-is less, read on the store's clock): the ask stops there with what it asked, the primaries it did
+is less, read on the store's clock), and no step after the first begins past half of the tick's
+second from the tick's beginning (`store.AskBy`): a tick is held to one second (the owner's law of
+2026-09-30), and a two-second ask inside it made every tick with a backlog of reads a two-second
+tick (the certification drive of 2026-10-10, `readers/ask` 2.006 to 2.063 s). The first step
+always begins, so every tick asks some reads. The ask stops there with what it asked, the primaries it did
 not reach are due, and the next tick reads them. A batch that lost its tries and that the budget
 cut before it was tried again one primary at a time is due too, and leaves the ask unfinished.
 The tick's `TIMES` line prints the ask as `readers/ask=<ms>ms/<trips>t/
