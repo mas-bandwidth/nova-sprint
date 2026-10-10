@@ -143,11 +143,17 @@ func TestGateLintReachDoesNotUseAnotherPackage(t *testing.T) {
 		{"one/api.go", "package one\nfunc Unwired() {}\n"},
 		{"two/use.go", "package two\nfunc use() { Unwired() }\n"},
 	} {
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, file.name)), 0o700); err != nil { t.Fatal(err) }
-		if err := os.WriteFile(filepath.Join(dir, file.name), []byte(file.src), 0o600); err != nil { t.Fatal(err) }
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, file.name)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, file.name), []byte(file.src), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	got := GateLintFindings(GateLintInput{MergeBase: "base", RevertedHead: "reverted", TestPkg: "./one", TestName: "TestPin", ChangedDir: dir, ChangedFiles: []string{"one/api.go"}}, func(commit, pkg, test string) (bool, error) { return false, nil })
-	if len(got) != 1 || !strings.Contains(got[0].What, "Unwired") { t.Fatalf("got %#v, want unreached Unwired", got) }
+	if len(got) != 1 || !strings.Contains(got[0].What, "Unwired") {
+		t.Fatalf("got %#v, want unreached Unwired", got)
+	}
 }
 
 // TestFindNonTestReferences tests that we can find references to symbols.

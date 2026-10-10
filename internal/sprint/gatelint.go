@@ -101,6 +101,7 @@ func getChangedExportedSymbols(dir string, changedFiles []string) map[string]boo
 		if !strings.HasSuffix(f, ".go") || strings.HasSuffix(f, "_test.go") {
 			continue
 		}
+		isVerbTable := strings.HasSuffix(f, "cmd/nova-sprint/verbs.go")
 		f = filepath.Join(dir, f)
 		src, err := os.ReadFile(f)
 		if err != nil {
@@ -113,7 +114,7 @@ func getChangedExportedSymbols(dir string, changedFiles []string) map[string]boo
 		for _, decl := range file.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
-				if d.Name.IsExported() {
+				if d.Name.IsExported() || isVerbTable {
 					symbols[d.Name.Name] = true
 				}
 			case *ast.GenDecl:
