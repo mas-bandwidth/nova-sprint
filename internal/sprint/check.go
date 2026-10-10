@@ -172,31 +172,8 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 		if IsSentinel(c) {
 			continue // never read
 		}
-		readers := map[string]bool{}
-		for _, rc := range okReaders(s, c) {
-			readers[rc.F("reader")] = true
-		}
-		// a read on the fleet table (a friend's on her row, a read card on a member's,
-		// read_cards.go) is retired off its row with its verdict: a sparse read loads
-		// it by id only for a primary in review (tickExtras), so past review the reader
-		// the accept recorded on the primary stands for the card this read did not
-		// load; a card that is loaded is judged as it is
-		for _, name := range Split(c.F("readers")) {
-			id := ReadCardID(c.ID, max(c.Int("attempt"), 1), name)
-			onFleet := s.Fleet != nil && (s.Fleet.HasRow(FriendRow(name)) || s.Fleet.HasRow(name))
-			if onFleet && s.Fleet.Card(id) == nil && (s.Readers == nil || s.Readers.Card(id) == nil) {
-				readers[name] = true
-			}
-		}
-		need := ReadsNeededIn(s, c)
-		if c.F(FieldReadsNeeded) == "" && acceptedBeforeReadsField(c) {
-			// accepted before the accept recorded the count it ran on: the sprint's
-			// count then (set --reads) is not on the card, so the tier's rule is not
-			// the bar; one ok read stands
-			need = min(need, 1)
-		}
-		if len(readers) < need {
-			out = append(out, Violation{6, fmt.Sprintf("%s is %s with ok reads at head %s from %d reader(s)", c.ID, c.Col, orDash(c.F("head")), len(readers))})
+		if len(rule6Readers(s, c)) < rule6Need(s, c) {
+			out = append(out, Violation{6, fmt.Sprintf("%s is %s with ok reads at head %s from %d reader(s)", c.ID, c.Col, orDash(c.F("head")), len(rule6Readers(s, c)))})
 		}
 	}
 	// 7. A score never changes except by rank: every copy has its primary's score.
@@ -280,4 +257,57 @@ var readsFieldCut = time.Date(2026, 10, 7, 2, 0, 40, 0, time.UTC)
 func acceptedBeforeReadsField(c *Card) bool {
 	t, err := time.Parse(time.RFC3339, c.F("accepted"))
 	return err == nil && t.Before(readsFieldCut)
+}
+
+// rule6Readers is the set of different readers whose ok reads stand at the
+// primary's head: its ok read cards off the readers table, and a read on the
+// fleet table (a friend's on her row, a read card on a member's,
+// read_cards.go) that is retired off its row with its verdict -- a sparse read
+// loads it by id only for a primary in review (tickExtras), so past review the
+// reader the accept recorded on the primary stands for the card this read did
+// not load; a card that is loaded is judged as it is. It is the reader count
+// rule 6 judges the primary by.
+func rule6Readers(s *Snapshot, c *Card) map[string]bool {
+	readers := map[string]bool{}
+	for _, rc := range okReaders(s, c) {
+		readers[rc.F("reader")] = true
+	}
+	for _, name := range Split(c.F("readers")) {
+		id := ReadCardID(c.ID, max(c.Int("attempt"), 1), name)
+		onFleet := s.Fleet != nil && (s.Fleet.HasRow(FriendRow(name)) || s.Fleet.HasRow(name))
+		if onFleet && s.Fleet.Card(id) == nil && (s.Readers == nil || s.Readers.Card(id) == nil) {
+			readers[name] = true
+		}
+	}
+	return readers
+}
+
+// rule6Need is how many different readers' ok reads at its head the primary
+// must have before it enters merging: the count it was accepted on
+// (ReadsNeededIn), lowered to one when it was accepted before the accept
+// recorded that count (the sprint's count then is not on the card, so the
+// tier's rule is not the bar; one ok read stands).
+func rule6Need(s *Snapshot, c *Card) int {
+	need := ReadsNeededIn(s, c)
+	if c.F(FieldReadsNeeded) == "" && acceptedBeforeReadsField(c) {
+		need = min(need, 1)
+	}
+	return need
+}
+
+// Rule6Merging is every merging primary that entered merging with ok reads
+// from fewer different readers at its head than it needs (rule6Need): the rule
+// 6 violations repair returns to review for their missing read. A landed
+// primary is not returned, so it is not listed.
+func Rule6Merging(s *Snapshot) []*Card {
+	var out []*Card
+	for _, c := range s.Work.Column(Merging) {
+		if IsSentinel(c) {
+			continue
+		}
+		if len(rule6Readers(s, c)) < rule6Need(s, c) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
