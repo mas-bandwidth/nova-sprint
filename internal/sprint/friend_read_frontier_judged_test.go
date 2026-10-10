@@ -64,6 +64,8 @@ func TestAFrontierReadNoOneMayTakeIsJudgedOnceByItsRealCause(t *testing.T) {
 		require.Equal(t, ns[0].ID, open[0].Note.ID, "the same judgment")
 		require.Contains(t, open[0].Note.What, "s1-3 waits: amy full")
 		require.Contains(t, open[0].Note.What, "s1-4 waits: amy full")
+		require.Equal(t, []string{"s1-3", "s1-4"}, open[0].Note.Primaries, "the join is named in the primaries")
+		require.Equal(t, 2, open[0].Note.Count, "and in its count")
 		require.Equal(t, []string{"reader add", "wait"}, open[0].Note.Decisions)
 
 		// she has room for both: they are asked, and the judgment closes

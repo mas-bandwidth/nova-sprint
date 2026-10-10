@@ -1655,8 +1655,10 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 	}
 	holds := map[string]bool{}
 	updated := map[string]bool{}
-	update := func(n Note, what string, decisions []string) {
-		same := n.What == what && (len(decisions) == 0 || slices.Equal(n.Decisions, decisions))
+	update := func(n Note, what string, decisions, primaries []string) {
+		same := n.What == what &&
+			(len(decisions) == 0 || slices.Equal(n.Decisions, decisions)) &&
+			(len(primaries) == 0 || slices.Equal(n.Primaries, primaries))
 		if same || updated[n.ID] {
 			return
 		}
@@ -1664,6 +1666,10 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 		n.What = what
 		if len(decisions) > 0 {
 			n.Decisions = append([]string(nil), decisions...) // the latest facts name the latest remedies
+		}
+		if len(primaries) > 0 {
+			n.Primaries = append([]string(nil), primaries...)
+			n.Count = len(n.Primaries)
 		}
 		p.Updates = append(p.Updates, n)
 	}
@@ -1680,7 +1686,11 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 				fresh = append(fresh, sub)
 			}
 			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || slices.Contains(StopTypes, c.typ)) {
-				update(n, c.what, c.decisions) // the latest facts, in place
+				var primaries []string
+				if c.typ == NNoFrontierRoom {
+					primaries = c.primaries // the reads it names, rewritten in place as they join or leave
+				}
+				update(n, c.what, c.decisions, primaries) // the latest facts, in place
 			}
 		}
 		if len(fresh) == 0 {
@@ -1712,7 +1722,7 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 					c = s.Readers.Placed(o.Note.Card)
 				}
 				what, _, _ := strings.Cut(o.Note.What, "; at ")
-				update(o.Note, what+"; at "+placeOf(c), nil)
+				update(o.Note, what+"; at "+placeOf(c), nil, nil)
 			}
 			continue
 		}
