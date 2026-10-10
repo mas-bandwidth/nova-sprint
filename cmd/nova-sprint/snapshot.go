@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -209,7 +210,7 @@ func (r *redisSource) Save(ctx context.Context) ([]byte, store.SnapshotCounts, e
 			if strings.Contains(info, "rdb_last_bgsave_status:err") {
 				return nil, none, errors.New("the store's BGSAVE failed (rdb_last_bgsave_status:err)")
 			}
-			if now, err := c.LastSave(ctx).Result(); err == nil && now > before {
+			if parseSaveMark(info).movedSince(before) {
 				break
 			}
 		}
