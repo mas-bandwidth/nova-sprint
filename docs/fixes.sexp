@@ -109,6 +109,17 @@
     landed work, outside ok%, and raises a re-cut judgment."
    :origin "nova-tools PR #5585, head 0beb0508")
 
+  (fix "ok-percent-counts-reader-verdicts" :release "v1.2.6" :status "in-progress"
+   :title "ok% counts the readers' verdicts; a friend's card past its deadline is a redeal"
+   :text "A worker's finish, ok or failed, moves its work card to the fleet's hidden finished cell, where
+    it counts in no ok%; the readers' verdict on the attempt moves it on, to ok when as many different
+    readers as the primary needs read it ok, to failed when a reader read it broken, and work no reader
+    reads stays finished. A friend's card past its deadline unfinished is redealt, counted in the shown
+    redealt column on her row, never a failure and never a late judgment. The fleet table gains the
+    finished and redealt columns, the friends table the redealt column, and a migration on a stopped
+    machine takes the live store to the locked shape (migrations/0001_fleet_finished_redealt.sh)."
+   :origin "the owner, 2026-10-04: trust but VERIFY; I want to trust the ok%")
+
   (fix "lanes-ask-the-server-what-they-hold" :release "v1.2.6" :status "in-progress"
    :title "A worker's lane asks the server what it holds, and the server keeps it"
    :text "take --as <member> --lane <n> names the lane and nothing else: the server picks the epoch,

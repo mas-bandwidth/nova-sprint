@@ -265,7 +265,7 @@ var TickTables = []TableUpdate{
 	{Work, []TickPartDef{{PartDrain, nil}, {"resolve", TickResolve}, {PartCapDeal, TickCapDeal}, {"deal", TickDeal}, {PartRebalance, TickRebalance}, {"accept", TickAccept}}},
 	{Readers, []TickPartDef{{"ask", TickAsk}}},
 	{Merge, []TickPartDef{{"resume", TickResume}}},
-	{Fleet, []TickPartDef{{"presence", TickPresence}, {PartFriendStall, TickFriendStall}}},
+	{Fleet, []TickPartDef{{"presence", TickPresence}, {PartFriendStall, TickFriendStall}, {"verdicts", TickVerdicts}, {PartFriendRedeal, TickFriendRedeal}}},
 }
 
 // PartCapDeal is the attempt cap's default answer, the pump's part before the deal
@@ -278,6 +278,9 @@ func TickCapDeal(s *Snapshot, r TickReq) (Plan, int) { return AttemptCapDeal(s, 
 
 // PartFriendStall is the friend stall ladder part (friend_stall.go).
 const PartFriendStall = "friend-stall"
+
+// PartFriendRedeal is the friend redeal part (verdicts.go).
+const PartFriendRedeal = "friend-redeal"
 
 // PartLevel and PartLevelReads are the tick start's parts: the fleet's and the
 // readers' rebalance.
@@ -1289,6 +1292,11 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	for _, c := range s.Fleet.Column(Ready, Working, Withdrawn) {
 		if c.Col == Withdrawn && c.F("kind") == "read" {
 			continue // a read withdrawn is history: its primary is asked again (friendReadLive)
+		}
+		if IsFriendRow(c.Row) {
+			// a friend's card past its deadline is redealt (TickFriendRedeal), never a late
+			// judgment: her card's deadline is no failure (docs/SPEC-SPRINT.md section 1)
+			continue
 		}
 		field, limit, word, own := WorkDeadline(s, c)
 		friend, idle := friendLaneIdle(s, r.Friends, c)

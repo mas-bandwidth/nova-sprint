@@ -1569,9 +1569,12 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		if head == "" {
 			head = c.ID
 		}
-		result, okWord, into := "ok", "yes", DoneOK
+		// ok% is the readers' (docs/SPEC-SPRINT.md section 1; verdicts.go): a worker's
+		// finish, ok or failed, moves its work card to the hidden finished cell, where it
+		// counts in no ok%; the readers' verdict moves it on to ok or failed (TickVerdicts).
+		result, okWord, into := "ok", "yes", Finished
 		if r.Failed {
-			result, okWord, into = "failed", "no", DoneFailed
+			result, okWord, into = "failed", "no", Finished
 		}
 		// A rework whose child found nothing to do, or committed nothing, at the head an
 		// earlier attempt pushed and a reader passed is no failed work: the card was right.
@@ -1579,7 +1582,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		// (docs/SPEC-SPRINT.md section 6; Rework sets FieldPassedHead).
 		passed := r.Failed && r.Head == "" && IsNothingNew(r.Report) && pr.F(FieldPassedHead) != ""
 		if passed {
-			head, result, okWord, into = pr.F(FieldPassedHead), "ok", "yes", DoneOK
+			head, result, okWord, into = pr.F(FieldPassedHead), "ok", "yes", Finished
 		}
 		// A HOLD naming a brief defect is the brief's, never the worker's (brief_defect.go;
 		// docs/SPEC-SPRINT.md section 1, a brief defect): its work card ends in the member's
@@ -1591,6 +1594,11 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		if defect != "" {
 			into = DoneDefect
+		}
+		if late {
+			// a late report finishes the attempt the deadline already failed (DoneFailed): it
+			// stays failed, never a fresh finish waiting on a reader's verdict
+			into = DoneFailed
 		}
 		cardSet := map[string]string{"ok": okWord, "head": head, "finished": stamp(s.Now)}
 		if !r.Reported.IsZero() {
