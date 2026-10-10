@@ -165,9 +165,10 @@ func TestLandFallbackGateDeadlineDoesNotBlameCard(t *testing.T) {
 // streams on different bases, the lower-priority one holding what the higher-priority one
 // waits for while its own gate never answers. s1's goroutine is held at the beforeWait
 // seam until s2's gate has begun, so s2 is the holder whatever order the goroutines start
-// in. Since 2026-10-10 a waiter runs no clock and is never cancelled: the holder's own
-// bound (its LandDeadline, from when it took its slot) cancels its gate, which frees the
-// wait, and s1 lands in the same pass; s2's batch stays queued, nothing blamed, no base
+// in. Since 2026-10-10 a job waiting for a slot runs no clock; one waiting for another
+// stream's gate of its base commit (sameCommit) already holds its slot, so its own clock runs
+// (here s1's never fires). Either way the holder's own bound (its LandDeadline, from when it
+// took its slot) cancels its gate, which frees the wait, and s1 lands in the same pass; s2's batch stays queued, nothing blamed, no base
 // counted red. parallel is the pass's width; sameCommit puts the two bases at one commit
 // (the per-commit gate is the wait, width 2), else the bases differ and the width slot is
 // the wait (width 1).
@@ -315,6 +316,19 @@ func TestBenchFaultIsNotARedTree(t *testing.T) {
 	assert.Empty(t, benchFault(1, "--- FAIL: TestX\n    x_test.go:9: file not found in the fixture"), "a test's own words are its finding")
 	// a build that ran out of disk in go test is still the bench's: its package never ran
 	assert.Contains(t, benchFault(1, "GATE RUN: go test ./...\n# example.com/m/p\ncompile: writing output: write $WORK/b001/_pkg_.a: no space left on device\nFAIL\texample.com/m/p [build failed]\nFAIL"), "no space left")
+	// the tree gate tests two packages: go prints a failed build's errors at once, and
+	// another package's result may come before the build's own [build failed] line (the
+	// order go printed on space, 2026-10-10; #48 reader A): the block stays the bench's
+	for name, out := range map[string]string{
+		"ok before the build's line": "GATE RUN: go test ...\n# example.com/m/internal/ci [example.com/m/internal/ci.test]\ncompile: writing output: write $WORK/b002/_pkg_.a: no space left on device\nok  \texample.com/m/internal/docs\t2.005s\nFAIL\texample.com/m/internal/ci [build failed]\nFAIL",
+		"a package run after it":     "GATE RUN: go test ./...\n# example.com/m/b\nwrite $WORK/b003/_pkg_.a: disk quota exceeded\nok  \texample.com/m/a\t0.010s\nFAIL\texample.com/m/b [build failed]\nok  \texample.com/m/c\t0.020s\nFAIL",
+		"a red test after it":        "GATE RUN: go test ./...\n# example.com/m/b\nwrite $WORK/b003/_pkg_.a: no space left on device\n--- FAIL: TestA (0.00s)\n    a_test.go:3: boom\nFAIL\nFAIL\texample.com/m/a\t0.010s\nFAIL\texample.com/m/b [build failed]\nFAIL",
+	} {
+		assert.NotEmpty(t, benchFault(1, out), name)
+	}
+	// a test that printed a header-shaped line of its own package, then the words, then
+	// failed with no --- FAIL (os.Exit): its package's result says the binary ran
+	assert.Empty(t, benchFault(1, "GATE RUN: go test ./...\n# example.com/m/disk\nwrite /tmp/x: no space left on device\nFAIL\texample.com/m/disk\t0.004s\nFAIL"))
 	// v1.2.5 candidate 4: a test binary's own words, raw or logged, before or after its
 	// --- FAIL line, are never the bench's, whatever they say
 	for name, out := range map[string]string{

@@ -58,8 +58,8 @@
 \* TLC, 2026-10-10, hetzner2, tla2tools.jar as tla/tla2tools.sha256 pins it: MCLandBisect
 \* (N = 6, faults on) passes TypeOK, BlameSound, ProbesBounded and Ends; the three reversed
 \* witnesses each fail the property their configuration names. The records are tla/RUNS.tsv.
-\* Extended 2026-10-10 (v1.2.6) with Words, faulted, RefusedOnlyByBench and the "anyline"
-\* witness; rerun on a bench, records in tla/RUNS.tsv.
+\* Extended 2026-10-10 (v1.2.6, nova-sprint #48) with Words, faulted, RefusedOnlyByBench and
+\* the "anyline" witness; all five cases rerun on the bench space, records in tla/RUNS.tsv.
 EXTENDS Integers, FiniteSets
 
 CONSTANTS N, Faults, Broken

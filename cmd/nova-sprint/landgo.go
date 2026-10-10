@@ -586,56 +586,119 @@ var benchFaults = []string{"disk quota exceeded", "no space left on device"}
 // indented line is a test's log. Before (v1.2.5 candidate 4, 2026-10-10) any line matched,
 // so a real test failure that printed "no space left on device" was refused as a bench
 // fault on every slot of the ring, forever, and no head was blamed.
+//
+// A package's build errors are the toolchain's: go test prints them under a `# <pkg>` (or
+// `# <pkg> [<pkg>.test]`) header as soon as that build fails, and other packages' results
+// may come before its own `FAIL\t<pkg> [build failed]` line (the tree gate tests two
+// packages; the order go printed on space, 2026-10-10, nova-sprint #48 reader A). Such a
+// block's lines wait under its package (pending) and no other package's result clears them:
+// that package's own result decides, [build failed] or [setup failed] making them the
+// bench's (found), a result saying its test binary ran making them that test's print (a
+// header-shaped line it wrote). A block whose package never answers (go stopped) is the
+// bench's. A block ends at the next header, result line or test marker; a test's raw print
+// that lands in an open block of another package whose build failed is read with it (two
+// failures at once; the rarer misread, and never a red tree blamed on a full disk).
 func benchFault(code int, out string) string {
-	var held []string // this segment's fault lines: the bench's own unless a test binary ran in it
-	inTest := false
+	var (
+		found   []string            // the bench's own lines, kept whatever follows
+		held    []string            // this segment's fault lines: the bench's own unless a test binary ran in it
+		pending map[string][]string // each build block's fault lines, by package, until its result
+		order   []string            // pending's packages, in the order their blocks began
+		block   string              // the open build block's package, "" when none is open
+		inTest  bool
+	)
 	for _, line := range strings.Split(out, "\n") {
 		t := strings.TrimSpace(line)
+		if pkg, ok := goBuildHeader(t); ok {
+			if pending == nil {
+				pending = map[string][]string{}
+			}
+			if _, seen := pending[pkg]; !seen {
+				pending[pkg], order = []string{}, append(order, pkg)
+			}
+			block, inTest = pkg, false
+			continue
+		}
+		if pkg, ran, ok := goPackageResult(t); ok {
+			if lines, waits := pending[pkg]; waits {
+				if !ran {
+					found = append(found, lines...)
+				}
+				delete(pending, pkg)
+			}
+			if ran {
+				held = held[:0:0] // the test binary ran: the segment's lines were its own
+			} else {
+				found, held = append(found, held...), held[:0:0]
+			}
+			block, inTest = "", false
+			continue
+		}
 		switch {
 		case strings.HasPrefix(t, gateMark):
 			// a run's first line: the run before it ended green (set -e), so only the lines
 			// of the run the gate ended on can say the bench failed
-			held, inTest = held[:0:0], false
-			continue
-		case goPackageResult(t):
-			if !strings.Contains(t, "[build failed]") && !strings.Contains(t, "[setup failed]") {
-				held = held[:0:0] // the test binary ran: the segment's lines were its own
-			}
-			inTest = false
+			found, held, pending, order, block, inTest = nil, nil, nil, nil, "", false
 			continue
 		case strings.HasPrefix(t, "--- FAIL") || strings.HasPrefix(t, "=== RUN") || strings.HasPrefix(t, "panic:"):
-			held, inTest = held[:0:0], true // a test's output, and the lines before it in its binary
+			held, block, inTest = held[:0:0], "", true // a test's output, and the lines before it in its binary
 			continue
 		case inTest || t == "" || t != strings.TrimLeft(line, " \t"):
 			continue // a test's line, or an indented one (a test's log)
 		}
 		low := strings.ToLower(t)
-		if code == 127 && strings.Contains(low, "not found") {
-			held = append(held, t)
-			continue
-		}
+		fault := code == 127 && strings.Contains(low, "not found")
 		for _, f := range benchFaults {
-			if strings.Contains(low, f) {
-				held = append(held, t)
-				break
-			}
+			fault = fault || strings.Contains(low, f)
+		}
+		switch {
+		case !fault:
+		case block != "":
+			pending[block] = append(pending[block], t)
+		default:
+			held = append(held, t)
 		}
 	}
-	if len(held) == 0 {
-		return ""
+	for _, pkg := range order {
+		found = append(found, pending[pkg]...) // no result for it: go stopped, the bench's
 	}
-	return held[0]
+	if len(found) > 0 {
+		return found[0]
+	}
+	if len(held) > 0 {
+		return held[0]
+	}
+	return ""
+}
+
+// goBuildHeader says t is the header go prints above one package's build errors:
+// `# <pkg>` or `# <pkg> [<pkg>.test]`, and names the package.
+func goBuildHeader(t string) (string, bool) {
+	rest, ok := strings.CutPrefix(t, "# ")
+	if !ok {
+		return "", false
+	}
+	f := strings.Fields(rest)
+	switch {
+	case len(f) == 1:
+		return f[0], true
+	case len(f) == 2 && strings.HasPrefix(f[1], "[") && strings.HasSuffix(f[1], "]"):
+		return f[0], true
+	}
+	return "", false
 }
 
 // goPackageResult says t is go test's result line for one package: `ok  \t<pkg>...`,
-// `FAIL\t<pkg>...` or `?   \t<pkg>...` (a lone `FAIL`, a test binary's own last line, is not).
-func goPackageResult(t string) bool {
+// `FAIL\t<pkg>...` or `?   \t<pkg>...` (a lone `FAIL`, a test binary's own last line, is
+// not), with the package and ran: false when its build or setup failed, so no test binary ran.
+func goPackageResult(t string) (pkg string, ran bool, ok bool) {
 	for _, p := range []string{"ok", "FAIL", "?"} {
-		if rest, ok := strings.CutPrefix(t, p); ok && rest != "" && (rest[0] == ' ' || rest[0] == '\t') && strings.TrimSpace(rest) != "" {
-			return true
+		if rest, found := strings.CutPrefix(t, p); found && rest != "" && (rest[0] == ' ' || rest[0] == '\t') && strings.TrimSpace(rest) != "" {
+			ran = !strings.Contains(rest, "[build failed]") && !strings.Contains(rest, "[setup failed]")
+			return strings.Fields(rest)[0], ran, true
 		}
 	}
-	return false
+	return "", false, false
 }
 
 // gateMark starts the line a bench gate prints before each of its runs.

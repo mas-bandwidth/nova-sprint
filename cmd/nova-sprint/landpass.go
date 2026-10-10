@@ -172,7 +172,7 @@ type landJob struct {
 // fork is the lander one stream's batch runs in: the pass's settings, store, caches and
 // locks, with its own scratch (the merges' notes, the conflict's paths, the gates' bench,
 // the stream as its key on the gate bench's hash ring and in its name on a bench's Go lane,
-// lander/<stream>) and its own output, merged into the pass's in stream order (pass).
+// lander/<stream>) and its own output, merged into the pass's in landing order (pass).
 func (l *lander) fork(stream string) *lander {
 	f := *l
 	f.out, f.toScore = nil, nil
@@ -776,8 +776,8 @@ func (l *lander) launch(pass context.Context, m *mergeRun, j *landJob) {
 
 // merge is one job's phase 1, in the stream's lander and worktree, beside the other
 // streams': the heads merged and checked onto the branch prepare cut (mergeCards), the
-// batch's tree gated once as a whole, its heads gated one by one only when that gate is
-// red (build with gateEach, to blame the head), then --check run. It ends the job on a
+// batch's tree gated once as a whole and, only when that gate is red, the head that turned
+// it red found by bisection over the merges' tips (bisect), then --check run. It ends the job on a
 // refusal or a fact; a built batch waits for phase 2 (land).
 func (l *lander) merge(ctx context.Context, j *landJob) {
 	b, stream, dir := &j.b, j.stream, j.dir
