@@ -918,7 +918,7 @@ failed finish (a friend's `Verdict: HOLD` or `FAIL`, by its first paragraph, or 
 failed report) whose reason names a brief defect is the brief's, never the worker's: no
 worker could do the card as cut (`sprint.BriefDefectOf`). Each of the four reasons alone
 names one, with no label needed, the earliest in the report being the one recorded: the
-base lacks a PATHS file (`the base lacks`, `not on the base`, `missing from the base`, `does not exist on the base`), a duplicate of landed work (`duplicate of landed work`), a
+base lacks a PATHS file (`the base lacks`, `not on the base`, `missing from the base`, `does not exist on the base`), a duplicate of landed work (`duplicate of landed work`, or the worker finding this card's work already at its base, in two forms only: `nothing to do: the (staged) base already contains|has`, or `the (staged) base already contains|has` followed by `this card's change`, `this card's implementation` or `the change`; a sentence about anything else the base holds, a failing test, a file, a conflicting version, names none, and `no, ...` negates it across the comma), a
 decision delivered (`decision delivered`, `decision already delivered`), and PATHS do not
 hold what the brief names (`PATHS do not hold`). That last reason is raised on the first
 such failed finish, not at the attempt cap and not at the second identical failure: the

@@ -29,6 +29,8 @@ func TestAHoldNamingABriefDefectCountsAgainstTheStreamNotTheWorker(t *testing.T)
 		{"the base lacks a PATHS file", "friend amy HOLD: the base lacks a PATHS file: internal/seatcheck/seatcheck.go is on sprint/y only", BriefDefectBase},
 		{"a PATHS file that does not exist on the base", "friend amy HOLD: internal/seatcheck/seatcheck.go does not exist on the base sprint/x", BriefDefectBase},
 		{"a duplicate of landed work", "friend amy HOLD: a duplicate of landed work; PR 5300 landed the same change", BriefDefectDuplicate},
+		{"a friend's nothing to do, already in the base", "friend amy FAIL: nothing to do: the staged base already contains this card's implementation", BriefDefectDuplicate},
+		{"a member's nothing to do, already in the base", "nothing to do: the staged base already contains this card's implementation", BriefDefectDuplicate},
 		{"a decision delivered", "friend amy HOLD: a decision delivered; the owner decided it and the card asks for it again", BriefDefectDecision},
 		{"a labelled decision delivered", "friend amy HOLD: brief defect: a decision delivered", BriefDefectDecision},
 		{"a label with none of the three", "friend amy HOLD: brief defect: the TEST line names a test the PATHS cannot reach", BriefDefectOther},
@@ -146,4 +148,33 @@ func TestAHoldNamingABriefDefectCountsAgainstTheStreamNotTheWorker(t *testing.T)
 		assert.Equal(t, "1", w.s.StreamCtl("s1").F(FieldBriefDefects))
 		assert.Len(t, w.notesOf(NBriefDefect), 1)
 	})
+}
+
+// Fault 17 (2026-10-10): a worker that finds its card already done at the staged base says
+// so, and that is the brief's duplicate, never the worker's failure. Reversed: a nothing to
+// do that names no base already holding the work, or a negated one, is no brief defect.
+func TestNothingToDoAlreadyInTheBaseIsADuplicateOnly(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, BriefDefectDuplicate, BriefDefectOf("friend freddy HOLD: nothing to do: the base already has this change (commit 1a2b3c4)"))
+	assert.Equal(t, BriefDefectDuplicate, BriefDefectOf("friend amy HOLD: the staged base already has this card's change, landed by PR 5300"))
+	assert.Equal(t, BriefDefectDuplicate, BriefDefectOf("HOLD: the base already contains the change"))
+	// a sentence about something else the base holds is the worker's failure, not a duplicate
+	// (the cold read of nova-sprint #46): the earliest real reason, else none
+	assert.Equal(t, BriefDefectBase, BriefDefectOf("friend amy HOLD: the base already has foo.go but the base lacks bar.go named in PATHS"))
+	for _, report := range []string{
+		"friend amy FAIL: go test ./... fails: the base already has a failing TestFoo in pkg/x, unrelated",
+		"friend amy HOLD: the base already includes a different version; conflict",
+		"friend amy HOLD: the base already contains a conflicting edit to steps_work.go",
+		"TestMerge fails: the base already has a conflicting definition of Foo",
+		"FAIL: go test: the base already contains a stale row; assertion failed",
+		"the build breaks because the base already includes an older Bar",
+		"friend amy HOLD: it is not true that the base already has this change",
+		"friend amy HOLD: no, the base already contains this card's change; the test fails",
+		"nothing to do: the brief asks for nothing that can change",
+		"friend amy FAIL: nothing to do; the lane wrote no report",
+		"friend amy HOLD: not the staged base already contains it; the test fails on the base",
+		"friend amy HOLD: the database already contains a row for this key",
+	} {
+		assert.Empty(t, BriefDefectOf(report), report)
+	}
 }
