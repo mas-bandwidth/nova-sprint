@@ -123,6 +123,10 @@
     no longer exits 128 on a fleet host with nothing saying why."
    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
 
+  (fix "backup-file-needs-no-lastsave" :release "v1.2.6" :status "shipped"
+   :title "backup --file and snapshot use INFO persistence rdb_saves / rdb_last_save_time instead of LASTSAVE under coordinator ACL"
+   :origin "PR #55")
+
   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
    :title "The worker brief says never amend, rebase or reset onto origin"
    :text "One line in the worker brief (the child rule no-rewrite-history, internal/fleetrules/child-rules.txt,
