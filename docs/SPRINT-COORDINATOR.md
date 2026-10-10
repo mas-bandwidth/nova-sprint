@@ -392,7 +392,7 @@ at the landed sha, with `NOVA_SPRINT_REDIS` naming the store for the inventory, 
 
 ### Adopting the seat build
 
-`nova-sprint adopt <version|path> --source <checkout> --inventory <file> --reason <text>` runs the seat's
+`nova-sprint adopt <version|path> --source <checkout> --sprint-release <dir> --inventory <file> --reason <text>` runs the seat's
 `fleet/tools.yml` play. Use `--dry-run` to check the play without writing. The new build's live manifest,
 shadow tick and friend install checks run before the old server and member stop. The play then migrates the
 configuration store as its owning role, loads the function library, installs the tools and restarts the

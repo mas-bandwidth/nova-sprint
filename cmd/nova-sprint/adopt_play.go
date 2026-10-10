@@ -135,6 +135,7 @@ func (a *app) cmdAdoptPlay(args []string, stdout, stderr io.Writer) int {
 	const name = "adopt"
 	fs, _ := a.verbSetup(name)
 	source := fs.String("source", "", "the nova-tools checkout the build is made from; its fleet/tools.yml is the play")
+	sprintRelease := fs.String("sprint-release", "", "a directory holding the one nova-sprint release adopted with the build, as `gh release download <tag> -R mas-bandwidth/nova-sprint -D <dir>` writes it (the play's nova_sprint_release)")
 	inventory := fs.String("inventory", a.getenv("NOVA_INVENTORY"), "the inventory the play reads, the nova-inventory script (else NOVA_INVENTORY)")
 	limit := fs.String("limit", "", "the one machine to adopt on, as the inventory names it (default: the coordinator group, the seat)")
 	receipts := fs.String("receipts", "", "the dogfood receipts directory (default ~/"+release.DefaultReceiptsDir+")")
@@ -161,6 +162,8 @@ func (a *app) cmdAdoptPlay(args []string, stdout, stderr io.Writer) int {
 	switch {
 	case *source == "":
 		return refuse(stderr, name, "--source names the nova-tools checkout whose fleet/tools.yml is the play")
+	case *sprintRelease == "":
+		return refuse(stderr, name, "--sprint-release names the directory holding the nova-sprint release the play installs (gh release download <tag> -R mas-bandwidth/nova-sprint -D <dir>)")
 	case *inventory == "":
 		return refuse(stderr, name, "--inventory (or NOVA_INVENTORY) names the inventory the play reads")
 	case strings.TrimSpace(*reason) == "":
@@ -171,6 +174,15 @@ func (a *app) cmdAdoptPlay(args []string, stdout, stderr io.Writer) int {
 	if _, err := os.Stat(play); err != nil {
 		// an input that does not read, not a usage: exit 1, nothing run
 		fmt.Fprintf(stderr, "%s adopt REFUSED step=play: --source %s holds no fleet/tools.yml (%s); nothing was run; run: nova-sprint adopt -h\n", prog, *source, oneline.Err(err))
+		return 1
+	}
+	if fi, err := os.Stat(*sprintRelease); err != nil || !fi.IsDir() {
+		// an input that does not read, not a usage: exit 1, nothing run
+		why := "not a directory"
+		if err != nil {
+			why = oneline.Err(err)
+		}
+		fmt.Fprintf(stderr, "%s adopt REFUSED step=play: --sprint-release %s is no nova-sprint release directory (%s); nothing was run; run: gh release download <tag> -R mas-bandwidth/nova-sprint -D <dir>\n", prog, *sprintRelease, why)
 		return 1
 	}
 	if *receipts == "" {
@@ -185,7 +197,7 @@ func (a *app) cmdAdoptPlay(args []string, stdout, stderr io.Writer) int {
 		seat = *limit
 	}
 	argv := []string{"-i", *inventory, play, "-e", "nova_version=" + version, "-e", "nova_source=" + *source,
-		"-e", "nova_dogfood_receipts=" + *receipts, "-e", string(buildArgs), "--limit", seat + ",localhost,store_deployer"}
+		"-e", "nova_sprint_release=" + *sprintRelease, "-e", "nova_dogfood_receipts=" + *receipts, "-e", string(buildArgs), "--limit", seat + ",localhost,store_deployer"}
 	if out != "" {
 		argv = append(argv, "-e", "nova_release_out="+out)
 	}
