@@ -155,13 +155,6 @@
    :why "New capability."
    :cards 1
    :date "2026-10-09")
-  (item "roadmap-defer-verb" :group "sprint" :area "nova-sprint"
-   :title "A verb to defer a card to the roadmap"
-   :text "A nova-sprint verb that moves a card to the roadmap. This file may make it unneeded: a record
-    here plus a drop does the same."
-   :why "A new verb, which the roadmap file may make unneeded."
-   :cards 1
-   :date "2026-10-09")
   (item "lander-bench-fault-classifier" :group "sprint" :area "lander"
    :title "The tree gate tells a bench fault from a red test"
    :text "When a gate fails because of the bench rather than the code, the lander says so and does not

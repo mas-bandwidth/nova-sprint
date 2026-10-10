@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (214)
+- [The sprint machine](#the-sprint-machine) (213)
 - [Setup, release and operations](#setup-release-and-operations) (28)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (20)
@@ -131,14 +131,6 @@ Friend work counted in tokens as its own cost category beside the tiers, so subs
 Why it waits: New capability.
 
 Replaces 1 open sprint card, each mapped to `friends-token-cost-category`.
-
-### A verb to defer a card to the roadmap
-
-A nova-sprint verb that moves a card to the roadmap. This file may make it unneeded: a record here plus a drop does the same.
-
-Why it waits: A new verb, which the roadmap file may make unneeded.
-
-Replaces 1 open sprint card, each mapped to `roadmap-defer-verb`.
 
 ### The tree gate tells a bench fault from a red test
 

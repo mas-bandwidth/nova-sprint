@@ -5,7 +5,9 @@
 (fixes "v1"
  :title "nova-sprint fixes"
  :text "The point releases from v1.2.3, the first release from this repository: what each one shipped, is
-  shipping or will ship. A point release carries fixes only; new work is in ROADMAP.md. nova-tools' point
+  shipping or will ship. A point release carries fixes; new work is in ROADMAP.md. The one
+  exception is v1.2.5, which also carries the roadmap machinery (the owner's scope for it), including the
+  verb that defers cards to the roadmap. nova-tools' point
   releases are in that repository's FIXES.md."
  :releases
  ((release "v1.2.3" :status "shipped" :date "2026-10-10"
@@ -160,4 +162,4 @@
    :title "A verb defers waiting cards to the roadmap with their whole briefs"
    :text "nova-sprint defer writes the named waiting cards, or a stream or repository of them, into the
     roadmap data with each whole brief, and drops them from the store; --expect checks the count."
-   :origin "card from the sprint store (2026-10-10)")))
+   :origin "card from the sprint store (2026-10-10); the roadmap item roadmap-defer-verb, folded in")))
