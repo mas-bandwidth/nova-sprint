@@ -176,8 +176,10 @@ func findNonTestReferences(pkgDir string, symbols map[string]bool) (map[string]b
 	return reached, nil
 }
 
-// ParseTestLine extracts the test line from a brief.
-func ParseTestLine(brief string) (pkg, name string) {
+// parseTestLine extracts the test line from a brief. It is unexported: the production
+// path parses the TEST line with cardhdr (TestLineOfBrief), so no non-test file calls it,
+// and the reach check would name an exported one as dead.
+func parseTestLine(brief string) (pkg, name string) {
 	lines := strings.Split(brief, "\n")
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -205,8 +207,10 @@ func GateLintFindingString(f GateLintFinding) string {
 	return "machine gate: " + f.What
 }
 
-// GetExportedDecls returns all exported declarations from a file.
-func GetExportedDecls(src []byte, fset *token.FileSet) map[string]token.Pos {
+// getExportedDecls returns all exported declarations from a file. It is unexported for
+// the same reason as parseTestLine: only tests read it, so an exported one would read as
+// a change with no non-test caller.
+func getExportedDecls(src []byte, fset *token.FileSet) map[string]token.Pos {
 	out := map[string]token.Pos{}
 	f, err := parser.ParseFile(fset, "", src, 0)
 	if err != nil {
@@ -231,8 +235,10 @@ func GetExportedDecls(src []byte, fset *token.FileSet) map[string]token.Pos {
 	return out
 }
 
-// FindNonTestReferences finds references to symbols from non-test files.
-func FindNonTestReferences(pkgDir string, changedFiles []string, symbols map[string]bool) (map[string]bool, error) {
+// findNonTestReferencesInFiles finds references to symbols from the given non-test files.
+// It is unexported: the production reach check scans a package directory itself
+// (findNonTestReferences), so only tests need the explicit-files form.
+func findNonTestReferencesInFiles(pkgDir string, changedFiles []string, symbols map[string]bool) (map[string]bool, error) {
 	reached := make(map[string]bool)
 	for sym := range symbols {
 		reached[sym] = false

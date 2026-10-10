@@ -2863,7 +2863,8 @@ id (`--op`) returns the original result, with no second counter or notification.
   - `gate-pin-broken`: the TEST line's test passes when the change's non-test hunks are
     reverted. Remedy: ensure the test actually depends on the change.
   - `gate-reach-unreached`: an exported function or verb added by the change has no
-    reference from any non-test file. Remedy: wire the symbol into a non-test caller.
+    reference from any non-test file. Remedy: wire the symbol into a non-test caller, or
+    do not export one only a test reads (an unexported helper is outside the check).
 
 ## 7. Merging
 

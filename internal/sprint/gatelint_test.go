@@ -114,7 +114,7 @@ func TestFindNonTestReferencesDoesNotCountDeclaration(t *testing.T) {
 	if err := os.WriteFile(path, []byte("package api\nfunc Exported() {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	reached, err := FindNonTestReferences(dir, []string{path}, map[string]bool{"Exported": true})
+	reached, err := findNonTestReferencesInFiles(dir, []string{path}, map[string]bool{"Exported": true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +156,25 @@ func TestGateLintReachDoesNotUseAnotherPackage(t *testing.T) {
 	}
 }
 
+// TestGateLintReachAcceptsAWiredSymbol is the sound attempt: an exported function the
+// change adds with a caller in a non-test file of its own package is not a finding, so
+// the reach check refuses dead code without refusing wired code.
+func TestGateLintReachAcceptsAWiredSymbol(t *testing.T) {
+	dir := t.TempDir()
+	for _, file := range []struct{ name, src string }{
+		{"api.go", "package api\nfunc Wired() {}\n"},
+		{"use.go", "package api\nfunc use() { Wired() }\n"},
+	} {
+		if err := os.WriteFile(filepath.Join(dir, file.name), []byte(file.src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := GateLintFindings(GateLintInput{MergeBase: "base", RevertedHead: "reverted", TestPkg: "./api", TestName: "TestPin", ChangedDir: dir, ChangedFiles: []string{"api.go"}}, func(commit, pkg, test string) (bool, error) { return false, nil })
+	if len(got) != 0 {
+		t.Fatalf("a wired symbol was flagged: %#v", got)
+	}
+}
+
 // TestFindNonTestReferences tests that we can find references to symbols.
 func TestFindNonTestReferences(t *testing.T) {
 	symbols := map[string]bool{
@@ -164,12 +183,12 @@ func TestFindNonTestReferences(t *testing.T) {
 	}
 
 	// Test with empty input - initially all symbols are unreached
-	reached, err := FindNonTestReferences("", nil, symbols)
+	reached, err := findNonTestReferencesInFiles("", nil, symbols)
 	if err != nil {
-		t.Errorf("FindNonTestReferences() error = %v", err)
+		t.Errorf("findNonTestReferencesInFiles() error = %v", err)
 	}
 	if reached["GateLintFindings"] || reached["ParseTestLine"] {
-		t.Errorf("FindNonTestReferences() with empty input returned true, want false")
+		t.Errorf("findNonTestReferencesInFiles() with empty input returned true, want false")
 	}
 }
 
@@ -186,19 +205,19 @@ func (e ExportedType) Method() {}
 func (u unexported) unexportedMethod() {}
 `)
 	fset := token.NewFileSet()
-	decls := GetExportedDecls(src, fset)
+	decls := getExportedDecls(src, fset)
 	// Should find: ExportedFunc, ExportedType, Method
 	if len(decls) != 3 {
-		t.Errorf("GetExportedDecls() returned %d decls, want 3", len(decls))
+		t.Errorf("getExportedDecls() returned %d decls, want 3", len(decls))
 	}
 	if _, ok := decls["ExportedFunc"]; !ok {
-		t.Error("GetExportedDecls() missing ExportedFunc")
+		t.Error("getExportedDecls() missing ExportedFunc")
 	}
 	if _, ok := decls["ExportedType"]; !ok {
-		t.Error("GetExportedDecls() missing ExportedType")
+		t.Error("getExportedDecls() missing ExportedType")
 	}
 	if _, ok := decls["Method"]; !ok {
-		t.Error("GetExportedDecls() missing Method")
+		t.Error("getExportedDecls() missing Method")
 	}
 }
 
@@ -248,9 +267,9 @@ func TestParseTestLine(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pkg, name := ParseTestLine(tt.brief)
+			pkg, name := parseTestLine(tt.brief)
 			if pkg != tt.wantPkg || name != tt.wantName {
-				t.Errorf("ParseTestLine() = (%q, %q), want (%q, %q)", pkg, name, tt.wantPkg, tt.wantName)
+				t.Errorf("parseTestLine() = (%q, %q), want (%q, %q)", pkg, name, tt.wantPkg, tt.wantName)
 			}
 		})
 	}
