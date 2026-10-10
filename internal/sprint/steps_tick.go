@@ -259,8 +259,14 @@ const PartDrain = "drain"
 // tick's pump; a table another update wrote is updated again, at once, until
 // none is ("the tick doesn't end until all dirty bits are cleared"). The
 // model is tla/DirtyTick.tla.
+//
+// The bounce-back (PartBounce, bounce.go, tla/DealFill.tla) runs before the deal: cards
+// dealt or asked and not taken or begun within the take bound return to the pool, and the
+// deal of the same update deals them again. Every part that places a card (the attempt
+// cap's deal, the deal, the rebalance, and the tick start's levels) plans over a view
+// with every member set aside held out (passAside).
 var TickTables = []TableUpdate{
-	{Work, []TickPartDef{{PartDrain, nil}, {"resolve", TickResolve}, {PartCapDeal, TickCapDeal}, {"deal", TickDeal}, {PartRebalance, TickRebalance}, {"accept", TickAccept}}},
+	{Work, []TickPartDef{{PartDrain, nil}, {"resolve", TickResolve}, {PartBounce, TickBounce}, {PartCapDeal, passAside(TickCapDeal)}, {"deal", passAside(TickDeal)}, {PartRebalance, passAside(TickRebalance)}, {"accept", TickAccept}}},
 	{Readers, []TickPartDef{{"ask", TickAsk}}},
 	{Merge, []TickPartDef{{"resume", TickResume}}},
 	{Fleet, []TickPartDef{{"presence", TickPresence}, {PartFriendStall, TickFriendStall}}},
@@ -290,7 +296,17 @@ const (
 // width) and the readers' (asked reads from a reader with a backlog to one
 // idle), each one batch. It runs once a tick: a table written again later in
 // the tick is updated by its update, never levelled again.
-var TickStart = []TickPartDef{{PartLevel, TickLevel}, {PartLevelReads, TickLevelReads}}
+var TickStart = []TickPartDef{{PartLevel, passAside(TickLevel)}, {PartLevelReads, passAside(TickLevelReads)}}
+
+// passAside is a part that places cards, planned over the view with every member and
+// friend set aside held out (withoutAside, bounce.go; tla/DealFill.tla Deal, B3 and B4).
+func passAside(fn TickPartFn) TickPartFn {
+	return func(s *Snapshot, r TickReq) (Plan, int) {
+		v, seats := withoutAside(s, r.Friends)
+		r.Friends = seats
+		return fn(v, r)
+	}
+}
 
 // TickEnd is the tick's end, once the tables are settled: what is always
 // true held, the deadlines (with the backlog alarms, alarms.go), the overdue

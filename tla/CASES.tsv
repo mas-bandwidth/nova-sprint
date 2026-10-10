@@ -348,3 +348,10 @@ MCStatsResetBrokenNoRebase.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignor
 MCStatsResetBrokenByCount.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoLock.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoStamp.cfg	MCStatsReset.tla	invariant	RecordShowsShown	ignore-terminal	statsreset	required	-
+MCDealFill.cfg	MCDealFill.tla	pass	-	ignore-terminal	dealfill	required	-
+MCDealFillBrokenNoBounce.cfg	MCDealFill.tla	invariant	NoHeldPastBound	ignore-terminal	dealfill	required	-
+MCDealFillBrokenNoWall.cfg	MCDealFill.tla	invariant	NoHeldPastBound	ignore-terminal	dealfill	required	-
+MCDealFillBrokenSilent.cfg	MCDealFill.tla	invariant	EveryBouncePushed	ignore-terminal	dealfill	required	-
+MCDealFillBrokenDealBlocked.cfg	MCDealFill.tla	invariant	NoDealToBlocked	ignore-terminal	dealfill	required	-
+MCDealFillBrokenNoFlag.cfg	MCDealFill.tla	temporal	WorkAdvances	ignore-terminal	dealfill	required	-
+MCDealFillBrokenOnceRead.cfg	MCDealFill.tla	temporal	ReadAdvances	ignore-terminal	dealfill	required	-

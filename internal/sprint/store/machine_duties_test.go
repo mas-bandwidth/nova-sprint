@@ -98,6 +98,7 @@ func TestCRDeadlinesThatNeverFire(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.setup(2)
+	h.takeBound(24 * time.Hour) // the members stand still on purpose: the late judgments are the subject
 	h.startMachine()
 	h.machine() // dealt: s1-1 to m1, s1-2 to m2
 	h.tick(sprint.DealtMaxDefault + time.Hour)

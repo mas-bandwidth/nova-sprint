@@ -3,6 +3,7 @@ package refmodel
 import (
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -96,10 +97,21 @@ func cloneTable(t *sprint.Table) *sprint.Table {
 	c := sprint.NewTable(t.Name)
 	c.Epoch, c.Revision = t.Epoch, t.Revision
 	c.SetRows(slices.Clone(t.Rows()))
+	props := map[string]string{}
 	if v, ok := t.Prop(sprint.PropStatusSeen); ok {
-		// the one property the model carries: the status transitions' record, which the
-		// presence duty reads to decide a transition and its judgment as the tick does
-		c.SetProps(map[string]string{sprint.PropStatusSeen: v})
+		// the status transitions' record, which the presence duty reads to decide a
+		// transition and its judgment as the tick does
+		props[sprint.PropStatusSeen] = v
+	}
+	for name, v := range t.Props() {
+		// the bounce-back's take bound and each row's last bounce, which the bounce duty
+		// and the deals read to set a row aside as the tick does (sprint bounce.go)
+		if name == sprint.PropTakeBound || strings.HasPrefix(name, sprint.PropBounced("")) {
+			props[name] = v
+		}
+	}
+	if len(props) > 0 {
+		c.SetProps(props)
 	}
 	for row, texts := range t.Texts {
 		c.Texts[row] = maps.Clone(texts)

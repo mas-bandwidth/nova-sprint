@@ -22,6 +22,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `CardISA` (over `CardMachine`) | The card instruction set; `CardMachine` is a copy of nova-tools' model of the card's Lua. |
 | `CoordinatorPass`, `CoordinatorWake` | The coordinator's pass and its wake. |
 | `SprintRules`, `StallLadder` | The rules that answer failures, and a stalled friend's ladder. |
+| `DealFill` | The bounce-back: a card dealt or a read asked and not taken within the take bound returns to the pool with a push, the member is set aside, and the deal gives it to the next capable live member. |
 | `SeatHealth`, `ServerLanes` | The seat's generation and a friend's health; the server's lanes. |
 | `Timer`, `LoadCache`, `StatsReset` | Timers, the load cache, and a stats reset. |
 | `WorkImport` | Issue import and the specified work-tree modes. |

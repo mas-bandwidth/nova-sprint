@@ -3398,6 +3398,8 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("set")
 	tier := fs.String("read-tier", "", "the tier every card's reads draw their route from when it is stronger than the card's own (flash, pro or heavy; default takes it off: each card's own tier)")
 	dealt := fs.String("dealt-max", "", fmt.Sprintf("how long a work card may wait dealt and never taken (in its member's ready queue, or withdrawn) before it is a judgment: a duration, or default (%s, 3 times the take deadline); a taken card's own deadline starts at its take", sprint.DealtMaxDefault))
+	takeBound := fs.String("take-bound", "", fmt.Sprintf("the take bound: how long a card dealt to a member, or a read asked of a reader, may go untaken and unbegun before the tick returns it to the pool for the next capable member, with a push to the seat: a duration, or default (%s)", sprint.TakeBoundDefault))
+	takeFaults := fs.String("take-faults", "", fmt.Sprintf("how many takes in a row a member or reader may fail as harness faults before the deal sets it aside until it takes again: a whole number from 1, or default (%d)", sprint.TakeFaultsDefault))
 	lanes := fs.String("go-lanes", "", fmt.Sprintf("the Go lanes of every machine, the Go build and test runs one machine grants at once (nova-sprint lane take go): a whole number from 1, or default (%d, one test stream per machine)", sprint.LaneWidthDefault))
 	review := fs.String("alarm-review", "", "the backlog alarm on review: a judgment, once an episode, while more primaries than this whole number are in review; off takes it off (the default)")
 	merging := fs.String("alarm-merging", "", "the backlog alarm on merging: a judgment, once an episode, while more primaries than this whole number are merging; off takes it off (the default)")
@@ -3424,7 +3426,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "set", err.Error())
 	}
-	step := store.SetStep(sprint.SetReq{ReadTier: *tier, DealtMax: *dealt, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle,
+	step := store.SetStep(sprint.SetReq{ReadTier: *tier, DealtMax: *dealt, TakeBound: *takeBound, TakeFaults: *takeFaults, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle,
 		AlarmReview: *review, AlarmMerging: *merging, AlarmFleet: *fleet, AlarmReady: *readyAlarm,
 		Fleet: *fleetWork, Friends: *friendsWork, FleetTiers: *fleetTiers, FriendsTiers: *friendsTiers, ReadCards: *readCards, Reads: *reads, ReworkPriority: *reworkPriority, Who: c.actor})
 	if *finish != "" {

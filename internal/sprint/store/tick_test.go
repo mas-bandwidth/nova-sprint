@@ -22,6 +22,14 @@ func (h *harness) machine() TickResult {
 }
 
 // dealtMax sets the sprint's dealt bound, as the coordinator's set --dealt-max does.
+// takeBound sets the sprint's take bound, as the coordinator's set --take-bound does: a test
+// whose members stand still on purpose longer than the default (to see a late judgment, an
+// ack's hold, a balance) holds the bounce-back off for its span (sprint bounce.go).
+func (h *harness) takeBound(d time.Duration) {
+	h.t.Helper()
+	h.must(SetStep(sprint.SetReq{TakeBound: d.String(), Who: h.st.Actor}))
+}
+
 func (h *harness) dealtMax(d time.Duration) {
 	h.t.Helper()
 	h.must(SetStep(sprint.SetReq{DealtMax: d.String(), Who: h.st.Actor}))

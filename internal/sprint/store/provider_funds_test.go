@@ -78,6 +78,7 @@ func TestAnOutOfCreditTakeRestsEveryRouteOfItsProvider(t *testing.T) {
 	routes := []sprint.Route{providerRoute("or-a", "flash", "openrouter"), providerRoute("or-b", "flash", "openrouter"), providerRoute("oc-a", "flash", "opencode")}
 	h := routeHarness(t, routes...)
 	h.addReady("s1", 6, briefOf("flash", ""))
+	h.takeBound(24 * time.Hour) // the members hold their cards untaken for hours on purpose: the provider's rest is the subject
 	h.startMachine()
 	h.machine()
 	onOR := h.onProvider(routes, "openrouter")

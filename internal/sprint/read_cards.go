@@ -44,8 +44,10 @@ const FieldReadCard = "read_card"
 
 // ReadCardDeadline is how long a read card is given from its start (its take; a friend's
 // read dealt working, from its deal) before the deal retires it late, spending its reader,
-// and deals the read to another. A read never started is never late: one left untouched in
-// ready past the deal bound (DealtMax) is taken back spending no one (RetiredByUnstarted).
+// and deals the read to another. A read never started is never late: one asked and not
+// begun within the take bound (TakeBound; in ready, or dealt straight to working on a
+// friend's row and never begun there) is taken back spending no one (RetiredByUnstarted),
+// and asked again of the next reader (bounce.go, tla/DealFill.tla).
 const ReadCardDeadline = 60 * time.Minute
 
 // The retired_by of a read card the read-card ask takes back: past its deadline, or its
@@ -62,8 +64,8 @@ const (
 	// RetiredByCards is a readers-table read asked and not begun, taken back when read cards
 	// came on: dealt again as a read card.
 	RetiredByCards = "read cards"
-	// RetiredByUnstarted is a read card left in ready past the deal bound: the machine's
-	// take-back, spending nothing.
+	// RetiredByUnstarted is a read card asked and not begun within the take bound
+	// (readUnbegunPast): the machine's take-back, spending nothing.
 	RetiredByUnstarted = "unstarted"
 )
 
@@ -497,7 +499,15 @@ func readCardsTakeBack(s *Snapshot) map[string][]Change {
 			by = RetiredByPrimary
 		case c.F(FieldReadCard) != "" && c.Col == Working && !readStart(c).IsZero() && !s.Now.Before(readStart(c).Add(ReadCardDeadline)):
 			by = RetiredByLate
-		case c.F(FieldReadCard) != "" && c.Col == Ready && !s.Now.Before(stampAt(c, "asked").Add(s.DealtMax())):
+		case func() bool {
+			// the bounce-back's own rule (TickBounce, which runs before the deal in every
+			// tick and pushes each return); here on the clock alone, for the deal's dry run
+			_, past := notTakenPast(s, TickReq{}, c, friendRunning(s, TickReq{}, c.Row), func(at string) (time.Duration, bool) {
+				t, err := time.Parse(time.RFC3339, at)
+				return s.Now.Sub(t), err == nil
+			})
+			return past
+		}():
 			by = RetiredByUnstarted
 		case c.Col == Ready && func() bool { _, ok := cardRest(s, c); return ok }():
 			by = RetiredByRest

@@ -340,10 +340,11 @@ func (k *walk) tick() bool {
 	// the done part is drawn by the whole tick only: it writes a note and
 	// no card, and the draw of one part keeps the walks the parts before it
 	// gave; so is the rebalance, which moves only a friend's queue in a walk
-	// with none (its scenario gives one: aQueuedCardOnAFullFriend)
+	// with none (its scenario gives one: aQueuedCardOnAFullFriend); and so is
+	// the bounce-back, which the whole tick runs and the walks' hours exercise
 	var parts []sprint.TickPartFn
 	for _, p := range sprint.TickParts {
-		if p.Name != sprint.PartDone && p.Name != sprint.PartRebalance {
+		if p.Name != sprint.PartDone && p.Name != sprint.PartRebalance && p.Name != sprint.PartBounce {
 			parts = append(parts, p.Fn)
 		}
 	}

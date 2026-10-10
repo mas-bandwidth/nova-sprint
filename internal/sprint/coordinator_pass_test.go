@@ -426,6 +426,7 @@ func TestAnIdleUpFriendWhileCardsWaitElsewhereIsToldOnce(t *testing.T) {
 func TestAPinnedCardRotatedOffItsFriendIsJudgedOnce(t *testing.T) {
 	t.Parallel()
 	r := newPassRig(t)
+	r.must(store.SetStep(sprint.SetReq{TakeBound: "24h", Who: "coordinator"})) // bob holds the rotated pin unstarted for ten minutes on purpose: the judgment is the subject
 	r.hold(sprint.HoldReq{Names: []string{"amy"}, Reason: "she is away"})
 	r.must(store.AddStep(sprint.AddReq{Stream: "f1", Cards: []sprint.CardAdd{{ID: "f1-2", Brief: friendsBrief("friend amy")}}}))
 	r.pongs["bob"] = r.clock()

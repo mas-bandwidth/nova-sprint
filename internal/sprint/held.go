@@ -226,8 +226,9 @@ func (c *held) dealTurn(id string) int {
 }
 
 // heldParts is the tick's parts the rule asks what the next tick does: every
-// part but the check, whose duty the rule is.
-var heldParts = []TickPartFn{TickLevel, TickLevelReads, TickResolve, TickResume, TickDeal, TickAccept, TickAsk, TickDeadlines, TickOverdue}
+// part but the check, whose duty the rule is; the parts that place cards over the view
+// with every member set aside held out, as the tick runs them (passAside, bounce.go).
+var heldParts = []TickPartFn{passAside(TickLevel), passAside(TickLevelReads), TickResolve, TickResume, TickBounce, passAside(TickDeal), TickAccept, TickAsk, TickDeadlines, TickOverdue}
 
 func newHeld(h HeldState, now time.Time) *held {
 	s := *h.Snap
@@ -597,6 +598,19 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 		if len(up) == 0 {
 			return "no fleet member is up, and no judgment says so", "", false
 		}
+		// a member set aside by the bounce-back has no free place for it until it takes
+		// again or its cooldown passes (bounce.go, AsideRows); its judgment stands for it
+		aside := AsideRows(s)
+		var dealable []string
+		for _, m := range up {
+			if _, ok := aside[m]; !ok {
+				dealable = append(dealable, m)
+			}
+		}
+		if len(dealable) == 0 {
+			return "waits for a member that is not set aside: every member up is set aside (bounce-back; its judgment stands), and the deal tries each again at its cooldown", "", true
+		}
+		up = dealable
 		// The members' free places (each one's room, DealAhead times its width,
 		// less its ready and working cards, width.go) go to the ready primaries in the
 		// deal's order: one with as many ahead of it as there are places waits
