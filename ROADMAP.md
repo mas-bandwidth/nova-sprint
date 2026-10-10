@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (212)
+- [The sprint machine](#the-sprint-machine) (211)
 - [Setup, release and operations](#setup-release-and-operations) (28)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (20)
@@ -1337,14 +1337,6 @@ From: card from the sprint store (2026-10-10)
 ### A route carries a request budget and a jittered rest end
 
 A route can carry a requests-per-minute budget that the deal keeps. The end of a route rest is jittered so routes do not return together.
-
-Target: v1.3
-
-From: card from the sprint store (2026-10-10)
-
-### A stats tidy succeeds over a fleet of more than 64 rows
-
-Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a property bound.
 
 Target: v1.3
 

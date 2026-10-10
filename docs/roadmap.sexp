@@ -1594,13 +1594,6 @@
    :date "2026-10-10"
    :release "v1.3"
    :origin "card from the sprint store (2026-10-10)")
-  (item "stats-tidy-large-fleet" :group "sprint"
-   :title "A stats tidy succeeds over a fleet of more than 64 rows"
-   :text "Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a
-    property bound."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "card from the sprint store (2026-10-10)")
   (item "complete-cost-headlines" :group "ops"
    :title "Cost headlines are complete and carry their coverage"
    :text "Cost per landed and total cost include work, reads, landing and no-result runs, each in its own

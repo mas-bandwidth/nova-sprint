@@ -36,3 +36,4 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 Inbox push writes each judgment once without concurrent writers sharing a temporary path.
 
 - **Inbox push cannot overwrite a published judgment** (planned). Two overlapping clients share one temporary path, so a second write can change the published file. Use a unique temporary path per writer. From: issue #5160.
+- **A stats tidy succeeds over a fleet of more than 64 rows** (planned). Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a property bound. From: card from the sprint store (2026-10-10).

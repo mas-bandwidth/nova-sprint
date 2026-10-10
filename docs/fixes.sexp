@@ -102,4 +102,11 @@
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
      file. Use a unique temporary path per writer."
-    :origin "issue #5160")))
+    :origin "issue #5160")
+
+  (fix "stats-tidy-large-fleet" :release "v1.2.9" :status "planned"
+   :title "A stats tidy succeeds over a fleet of more than 64 rows"
+   :text "Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a
+    property bound."
+   :origin "card from the sprint store (2026-10-10)")))
+
