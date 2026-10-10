@@ -66,6 +66,7 @@ keep	docs/SPRINT-COORDINATOR-SEAT.md
 keep	docs/SPRINT-COORDINATOR.md
 keep	docs/ratings/1.1.0
 keep	docs/ratings/snapshots
+keep	docs/sprint
 
 keep	tla
 
