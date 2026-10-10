@@ -887,13 +887,9 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 		return Note{}, false
 	case reads == 0:
 		typ, why = NStranded, "never asked at attempt "+itoa(attempt)+" and nothing is open on it"
-	case !broken && reads < ReadsNeededIn(s, pr):
+	case reads < ReadsNeededIn(s, pr):
 		// the ones that stand came back ok and the rest are the ask's (ReadsWanted),
 		// nothing to judge
-		return Note{}, false
-	case broken:
-		// a broken verdict at the same head outweighs any number of oks; the card
-		// returns to work with the finding, the tick will not accept
 		return Note{}, false
 	default:
 		typ, why = NReadsExhausted, fmt.Sprintf("no read is outstanding and %s not said ok at %s", readersWord(ReadsNeededIn(s, pr)), orDash(pr.F("head")))
