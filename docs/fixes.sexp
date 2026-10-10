@@ -102,4 +102,13 @@
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
      file. Use a unique temporary path per writer."
-    :origin "issue #5160")))
+    :origin "issue #5160")
+
+  (fix "doctor-checks-the-definition-of-done" :release "v1.2.6" :status "shipped"
+   :title "The doctor names every definition-of-done fault with its evidence"
+   :text "The read-only doctor joins the seat check's centralized machinery verdicts (the friends and
+    the fleet up, the loop ticking, the dashboard answering) with the coordinator's automatic-stop
+    ledger, section 9's always-true rules, the deal dry with cards waiting and the seat's overdue
+    waits, and prints one evidence-bearing line per fault. It exits 0 when clean and 1 when red, and
+    --json carries the fault lines and the machinery evidence with the push proof redacted."
+   :origin "this pull request")))
