@@ -4,7 +4,9 @@ EXTENDS Integers, FiniteSets
 \* friend's lane ran empty (it wrote no report: ClassEmptyRun,
 \* internal/sprint/harness_fault.go) is reworked by the failed rule (ruleHarness)
 \* and never placed again on the friend whose lane ran it empty: the rule writes
-\* her on the primary's friends_left (emptyRunLeft). Every way a ready attempt
+\* her on the primary's friends_left; the failed finish itself records it
+\* (steps_work.go, emptyRunFriend), so the rule's answer at the brief's bound,
+\* left to a mind, records it as a rework does. Every way a ready attempt
 \* reaches a friend reads it: the friends' deal (friend_deal.go cardLeft), the
 \* rebalance of an attempt a machine was dealt (steps_work.go deal copies the
 \* primary's friends_left onto the machine's work card; rebalance.go rebalanceTo
@@ -21,13 +23,17 @@ EXTENDS Integers, FiniteSets
 \* leaves her, but the machine's attempt and the rebalance read only the work
 \* card's own friends_left (the cold reads of nova-sprint #45 at b5b2d8a).
 \* BadCapLeft: the cap's answer picks a friend without reading friends_left
-\* (the cold read of nova-sprint #45 at f41a84d).
-CONSTANTS MaxAttempts, Cap, Named, BadNoLeft, BadMachineLeft, BadCapLeft
+\* (the cold read of nova-sprint #45 at f41a84d). BadRuleLeft: only the failed
+\* rule's rework records her, and the rule returns at the brief's bound before
+\* it writes (the cold reads of nova-sprint #45 at f8a45086).
+\* FleetCard: the card has no WHO line, so the cap's answer may deal it
+\* (AttemptCapDeal skips a friend's card); FALSE is a WHO: friend card.
+CONSTANTS MaxAttempts, Cap, Named, FleetCard, BadNoLeft, BadMachineLeft, BadCapLeft, BadRuleLeft
 Friends == {"amy", "bob"}
 Machine == "m1"
 None == "none"
-VARIABLES place, state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned
-vars == <<place, state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned>>
+VARIABLES place, state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty
+vars == <<place, state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
 
 \* left: the primary's friends_left; wleft: the current work card's; pinned:
 \* the friend the cap's answer wrote into the brief; emptyOn: every friend whose
@@ -35,7 +41,7 @@ vars == <<place, state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned>>
 \* pin), which the invariant is about
 Init == /\ place = None /\ state = "ready" /\ attempt = 0
         /\ left = {} /\ wleft = {} /\ pinned = None
-        /\ emptyOn = {} /\ emptyUnpinned = {}
+        /\ emptyOn = {} /\ emptyUnpinned = {} /\ lastEmpty = FALSE
 
 \* the friends' deal: a ready card to a friend it has not left (cardLeft reads
 \* the primary's); a named card to its friend alone; the work card carries left
@@ -44,59 +50,66 @@ Deal(f) == /\ state = "ready" /\ attempt < Cap
            /\ (Named => f = "amy")
            /\ place' = f /\ state' = "queued" /\ attempt' = attempt + 1
            /\ wleft' = left
-           /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned>>
+           /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned, lastEmpty>>
 
 \* the machines' deal of an unnamed card: the work card carries the primary's
 \* friends_left (BadMachineLeft: it does not)
-MachineDeal == /\ state = "ready" /\ attempt < Cap /\ ~Named
+MachineDeal == /\ state = "ready" /\ attempt < Cap /\ ~Named /\ FleetCard
                /\ place' = Machine /\ state' = "queued" /\ attempt' = attempt + 1
                /\ wleft' = IF BadMachineLeft THEN {} ELSE left
-               /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned>>
+               /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned, lastEmpty>>
 
 \* the attempt cap's default answer: a card at its brief's bound (not a friend's
 \* card: AttemptCapDeal skips those) to a friend it has not left (BadCapLeft:
 \* any), pinned to her from then on
-CapDeal(f) == /\ state = "ready" /\ Cap <= attempt /\ attempt < MaxAttempts /\ ~Named
+CapDeal(f) == /\ state = "ready" /\ Cap <= attempt /\ attempt < MaxAttempts /\ ~Named /\ FleetCard
               /\ (pinned = None \/ f = pinned)
               /\ (BadCapLeft \/ f \notin left)
               /\ place' = f /\ state' = "queued" /\ attempt' = attempt + 1
               /\ pinned' = f /\ wleft' = left
-              /\ UNCHANGED <<left, emptyOn, emptyUnpinned>>
+              /\ UNCHANGED <<left, emptyOn, emptyUnpinned, lastEmpty>>
 
 \* the rebalance moves a queued attempt off the machine to a friend's idle lane,
 \* never to one the card has left (BadMachineLeft: the work card's list alone)
 Rebalance(f) == /\ state = "queued" /\ place = Machine
                 /\ f \notin (IF BadMachineLeft THEN wleft ELSE wleft \cup left)
                 /\ place' = f
-                /\ UNCHANGED <<state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned>>
+                /\ UNCHANGED <<state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
 
 \* a lane takes the queued attempt
 Start == /\ state = "queued" /\ state' = "working"
-         /\ UNCHANGED <<place, attempt, left, wleft, pinned, emptyOn, emptyUnpinned>>
+         /\ UNCHANGED <<place, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
 
 \* the lane ends the attempt: ok, or empty (no report; only a friend's lane in
 \* this model, a machine's rework avoids its member already: reworkAvoid)
 FinishOk == /\ state = "working"
             /\ state' = "done" /\ place' = None
-            /\ UNCHANGED <<attempt, left, wleft, pinned, emptyOn, emptyUnpinned>>
+            /\ UNCHANGED <<attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
 FinishEmpty == /\ state = "working" /\ place \in Friends
                /\ state' = "review" /\ emptyOn' = emptyOn \cup {place}
                /\ emptyUnpinned' = IF Named \/ pinned /= None THEN emptyUnpinned
                                    ELSE emptyUnpinned \cup {place}
-               /\ UNCHANGED <<place, attempt, left, wleft, pinned>>
+               \* the finish records her (emptyRunFriend) unless the card is hers
+               /\ left' = IF Named \/ pinned /= None \/ BadNoLeft \/ BadRuleLeft THEN left
+                          ELSE left \cup {place}
+               /\ lastEmpty' = TRUE
+               /\ UNCHANGED <<place, attempt, wleft, pinned>>
 
 \* a machine's attempt fails (any failure; the machine is not left, its rework
 \* avoids the member: reworkAvoid)
 MachineFail == /\ state = "working" /\ place = Machine
-               /\ state' = "review"
+               /\ state' = "review" /\ lastEmpty' = FALSE
                /\ UNCHANGED <<place, attempt, left, wleft, pinned, emptyOn, emptyUnpinned>>
 
-\* the failed rule's rework: an empty run leaves the friend unless the card
-\* names her or the cap pinned it (BadNoLeft: no one is left)
+\* the failed rule's answer: below the brief's bound a rework, at it the
+\* brief's judgment left to a mind (ruleHarness returns early; the card waits
+\* ready for the cap's answer). It writes no friend: the finish did. With
+\* BadRuleLeft, the rework alone records her, and not at the bound.
 Rework == /\ state = "review"
           /\ state' = "ready" /\ place' = None
-          /\ left' = IF Named \/ pinned /= None \/ BadNoLeft \/ place = Machine THEN left ELSE left \cup {place}
-          /\ UNCHANGED <<attempt, wleft, pinned, emptyOn, emptyUnpinned>>
+          /\ left' = IF BadRuleLeft /\ lastEmpty /\ attempt < Cap /\ ~Named /\ pinned = None
+                     THEN left \cup {place} ELSE left
+          /\ UNCHANGED <<attempt, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
 
 Next == \/ \E f \in Friends : Deal(f) \/ Rebalance(f) \/ CapDeal(f)
         \/ MachineDeal \/ Start

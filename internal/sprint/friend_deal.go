@@ -509,7 +509,8 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 				// it has not left may take: the friends the level moved it off may have it
 				// back, so it is not stranded ready while one is up with room (the owner's
 				// rule: a held or down friend's cards go to the up friends' ready queues);
-				// never the friend it was withdrawn from or taken back from
+				// never the friend it was withdrawn from or taken back from, nor one
+				// it has left for good (cardLeft: an empty run)
 				gone := append(withdrawnFrom(wc), cardLeft(c, nil)...)
 				for _, f := range up {
 					if free[f] > 0 && !slices.Contains(gone, f) && friendTakes(s, seat[f], tier) && friendRestrictionAllows(seat[f], c) {

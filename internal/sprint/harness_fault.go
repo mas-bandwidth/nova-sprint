@@ -110,16 +110,41 @@ func ruleHarness(s *Snapshot, a *RuleAnswer, pr *Card) bool {
 		// already (Rework, reworkAvoid); a friend's is left for good (FieldFriendsLeft on the
 		// primary, read by the friends' deal, cardLeft)
 		if f := emptyRunLeft(s, pr); f != "" {
-			gone := cardLeft(pr, nil)
-			if !slices.Contains(gone, f) {
-				gone = append(gone, f)
-			}
-			a.set[FieldFriendsLeft] = strings.Join(gone, ",")
+			// the failed finish recorded her already (emptyRunFriend); written again here, the
+			// same set, so a rework's answer names it
+			a.set[FieldFriendsLeft] = strings.Join(withFriend(cardLeft(pr, nil), f), ",")
 			a.Why += ", never again on friend " + f
 		}
 	}
 	a.set[FieldNote] = cutText(RuleSaid(RuleFailed, a.Act+": "+a.Why), MaxCardTextBytes)
 	return true
+}
+
+// emptyRunFriend is the friend whose lane ran the work card wc empty, which the primary pr
+// leaves for good from its failed finish on: "" when the report is no empty run, when a
+// machine ran it (its rework avoids the member: reworkAvoid), or when the card names its
+// friend (WHO: friend <name>, or only, or the attempt cap's pin): a named friend's rework is
+// hers alone (ReworkPinned), and leaving her would strand it ready.
+func emptyRunFriend(pr, wc *Card, report string) string {
+	if pr == nil || wc == nil || HarnessFault(report) != ClassEmptyRun {
+		return ""
+	}
+	if _, named := FriendOfRow(strings.TrimPrefix(pr.F(FieldWho), "only.")); named {
+		return ""
+	}
+	f, ok := FriendOfRow(wc.Row)
+	if !ok {
+		return ""
+	}
+	return f
+}
+
+// withFriend is left with f added once.
+func withFriend(left []string, f string) []string {
+	if slices.Contains(left, f) {
+		return left
+	}
+	return append(slices.Clone(left), f)
 }
 
 // emptyRunLeft is the friend whose lane ran the primary's attempt empty, which its rework

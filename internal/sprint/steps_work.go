@@ -1615,6 +1615,14 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		set := map[string]string{"head": head, "result": result}
 		maps.Copy(set, finishStamps(pr, c, s.Now))
 		decidedSets(r, used, pr, cardSet, set)
+		// an empty run on a friend's lane leaves her for good, recorded by the finish itself so
+		// every answer after it (the failed rule's rework, the brief's bound left to a mind, the
+		// attempt cap's deal) reads it (harness_fault.go, emptyRunFriend; cardLeft)
+		if r.Failed && !passed {
+			if f := emptyRunFriend(pr, c, r.Report); f != "" {
+				set[FieldFriendsLeft] = strings.Join(withFriend(cardLeft(pr, nil), f), ",")
+			}
+		}
 		identical := false
 		if r.Failed && !passed && defect == "" {
 			set["failed"] = itoa(pr.Int("failed") + 1)

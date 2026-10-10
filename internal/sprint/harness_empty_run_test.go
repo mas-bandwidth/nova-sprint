@@ -59,6 +59,7 @@ func TestAnEmptyRunIsNeverReworkedOntoTheFriendWhoseLaneRanItEmpty(t *testing.T)
 	t.Run("any friend's card: the rework goes to another friend", func(t *testing.T) {
 		t.Parallel()
 		w, amy, bob := emptyRunOnAmy(t, "friend", emptyRunReport("amy"))
+		assert.Equal(t, "amy", w.s.Work.Card("s1-1").F(FieldFriendsLeft), "the failed finish itself records her, before any rule answers")
 		a := answerOn(t, w, on(amy, bob), NWorkFailed, "s1-1")
 		rules(w, on(amy, bob))
 		pr := w.s.Work.Card("s1-1")
@@ -70,7 +71,7 @@ func TestAnEmptyRunIsNeverReworkedOntoTheFriendWhoseLaneRanItEmpty(t *testing.T)
 		require.NotNil(t, wc, "the next attempt is dealt")
 		assert.Equal(t, FriendRow("bob"), wc.Row, "never back to amy")
 		// the new work card carries her as left, so the rebalance, a lane's start, the level
-		// and the coordinator's pass (each reading friendsLeft of the work card) keep it off her
+		// and the coordinator's pass (each reading cardLeft, the work card's and the primary's) keep it off her
 		assert.Contains(t, friendsLeft(wc), "amy", "the work card has left amy too")
 	})
 	t.Run("amy alone up: a machine takes it, never back to her", func(t *testing.T) {
@@ -168,4 +169,23 @@ func TestTheAttemptCapsFriendIsNeverOneTheCardLeft(t *testing.T) {
 	// reversed: a card that left no one goes to the friend with the most room
 	delete(c.Fields, FieldFriendsLeft)
 	assert.Equal(t, "amy", friendWithFree(seats, free, c, classes...))
+}
+
+// The failed finish records the friend an empty run leaves, so an answer that never reworks
+// (the brief's bound left to a mind, then the attempt cap's deal) still keeps the card off
+// her (the cold read of nova-sprint #45 at f8a45086: ruleHarness returned at the bound before
+// it wrote friends_left).
+func TestTheFailedFinishRecordsTheFriendAnEmptyRunLeaves(t *testing.T) {
+	t.Parallel()
+	w, _, _ := emptyRunOnAmy(t, "friend", emptyRunReport("amy"))
+	assert.Equal(t, "amy", w.s.Work.Card("s1-1").F(FieldFriendsLeft))
+	// reversed: another failure, or a card that names its friend, leaves no one at the finish
+	w, _, _ = emptyRunOnAmy(t, "friend", harnessFaults["cost line"])
+	assert.Empty(t, w.s.Work.Card("s1-1").F(FieldFriendsLeft), "a cost-line fault")
+	w, _, _ = emptyRunOnAmy(t, "friend amy", emptyRunReport("amy"))
+	assert.Empty(t, w.s.Work.Card("s1-1").F(FieldFriendsLeft), "a named friend's card")
+	// unit: a machine's empty run leaves no friend
+	pr := &Card{ID: "s1-1", Fields: map[string]string{"kind": "primary"}}
+	assert.Equal(t, "amy", emptyRunFriend(pr, &Card{ID: "s1-1.w1", Row: FriendRow("amy")}, emptyRunReport("amy")))
+	assert.Empty(t, emptyRunFriend(pr, &Card{ID: "s1-1.w1", Row: "m1"}, emptyRunReport("amy")))
 }
