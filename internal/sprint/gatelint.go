@@ -31,6 +31,7 @@ type GateLintInput struct {
 	TestName     string
 	ChangedFiles []string // non-test files changed by the commit
 	ChangedDir   string   // directory of the changed files
+	SkipReach    bool     // deletion cards remove code and have no new API to reach
 }
 
 // BenchRunner runs a test at a given commit and returns whether it passed.
@@ -69,7 +70,7 @@ func GateLintFindings(input GateLintInput, run BenchRunner) []GateLintFinding {
 
 	// Check 3: Reach check - every exported symbol in changed non-test files
 	// should have a reference from a non-test file
-	if len(input.ChangedFiles) > 0 && input.ChangedDir != "" {
+	if !input.SkipReach && len(input.ChangedFiles) > 0 && input.ChangedDir != "" {
 		symbols := getChangedExportedSymbols(input.ChangedDir, input.ChangedFiles)
 		if len(symbols) > 0 {
 			reached, err := findNonTestReferences(input.ChangedDir, symbols)

@@ -479,7 +479,7 @@ func benchTestRunner(bench BenchRun, hosts []string, dir string, args []string, 
 
 // GateLintRun runs the lint checks after the gate commands pass.
 // It returns GateLintFindings if any issues are found.
-func GateLintRun(v WorkView, tl cardhdr.TestLine, mergeBase, dir string, hosts []string, benchRun BenchRun, env []string) []GateLintFinding {
+func GateLintRun(v WorkView, tl cardhdr.TestLine, mergeBase, dir string, hosts []string, benchRun BenchRun, env []string, deletion bool) []GateLintFinding {
 	// A comparison has no valid meaning without the pinned merge-base. This
 	// keeps the fake bench seam focused on gate commands; real WorkView values
 	// always carry the merge-base from ReadWorkView.
@@ -506,6 +506,7 @@ func GateLintRun(v WorkView, tl cardhdr.TestLine, mergeBase, dir string, hosts [
 		TestName:     tl.Name,
 		ChangedFiles: changedFiles,
 		ChangedDir:   dir,
+		SkipReach:    deletion,
 	}
 
 	if benchRun == nil {
@@ -639,7 +640,8 @@ func NewBenchGate(g BenchGateGit) GateRunner {
 				}
 			}
 			// Run lint checks after gate commands pass
-			lintFindings := GateLintRun(v, tl, v.MergeBase, dir, g.Hosts, g.Bench, g.Env)
+			kind, _ := cardhdr.Value(brief, "KIND")
+			lintFindings := GateLintRun(v, tl, v.MergeBase, dir, g.Hosts, g.Bench, g.Env, strings.EqualFold(kind, "deletion"))
 			if len(lintFindings) > 0 {
 				for _, lf := range lintFindings {
 					out.Failed = append(out.Failed, GateFinding{What: GateLintFindingString(lf)})
