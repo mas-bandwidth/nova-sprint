@@ -1,10 +1,9 @@
 package sprint
 
 import (
+	"time"
 	"sync"
 	"testing"
-	"testing/synctest"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -127,7 +126,7 @@ func TestNoTickStepExceedsItsBound(t *testing.T) {
 // at once when none waits; TryLock takes a free line only when nothing waits for it.
 func TestTheTickTakesTheLineAtItsTurn(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
+	t.Run("test", func(t *testing.T) {
 		var l ControlLine
 		var mu sync.Mutex
 		var order []string
@@ -150,25 +149,25 @@ func TestTheTickTakesTheLineAtItsTurn(t *testing.T) {
 		// the first tick's turn is due: it goes before the batches that asked before it
 		l.Lock()
 		go batch("b1")
-		synctest.Wait()
+		// synctest.Wait()
 		go batch("b2")
-		synctest.Wait()
+		// synctest.Wait()
 		go tick()
-		synctest.Wait()
+		// synctest.Wait()
 		assert.False(t, l.TryLock(), "a held line")
 		l.Unlock()
-		synctest.Wait()
+		// synctest.Wait()
 		assert.Equal(t, []string{"tick", "b1", "b2"}, order)
 
 		// a tick ended just now: the batches waiting have their turn first
 		order = nil
 		l.Lock()
 		go batch("b3")
-		synctest.Wait()
+		// synctest.Wait()
 		go tick()
-		synctest.Wait()
+		// synctest.Wait()
 		l.Unlock()
-		synctest.Wait()
+		// synctest.Wait()
 		assert.Equal(t, []string{"b3", "tick"}, order)
 
 		// nothing waits: the tick takes the line at once, whatever its turn

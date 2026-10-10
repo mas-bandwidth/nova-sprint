@@ -287,53 +287,6 @@ func startJobLeaseTicking(jobDir, label string, ticks <-chan time.Time, stopTick
 	}
 
 	done := make(chan struct{})
-	var beating sync.WaitGroup
-	beating.Go(func() {
-		defer stopTicks()
-		// THE PROVIDER-BYTE RULE (feature 87). The lease renews only when the
-		// supervisor has observed provider bytes, signalled by a .provider-beat
-		// file the supervisor touches on each usage sample that shows new output.
-		// A hung socket sends no bytes, the beat file never moves, and the lease
-		// expires rather than being kept alive by a blind timer.
-		lastBeat := time.Time{}
-		beatPath := filepath.Join(jobDir, ProviderBeatName)
-		for {
-			select {
-			case <-done:
-				return
-			case now, ok := <-ticks:
-				if !ok {
-					return
-				}
-				if hooks.atBeat != nil {
-					hooks.atBeat <- struct{}{}
-				}
-				// Renew the mtime only when provider bytes have arrived. Before
-				// the first provider-beat file appears, renew on every tick (the
-				// card may still be connecting). Once the beat file exists, renew
-				// only when its mtime advances -- a hung socket means no advance.
-				// THE REPAIR ALWAYS RUNS: if Chtimes fails (file missing), the
-				// lease is re-published regardless of the beat, because a live job
-				// that lost its file must be protected again.
-				var renew bool
-				renew, lastBeat = providerBeatRenews(beatPath, lastBeat)
-				if renew {
-					if err := os.Chtimes(path, now, now); err == nil {
-						continue
-					}
-				} else if _, err := os.Stat(path); err == nil {
-					continue // file is there, just not time to renew
-				}
-				// THE REPAIR. Chtimes on a path that is not there does nothing and says
-				// nothing, which is how a live job lost its protection. Publish
-				// the same lease again: if somebody else now holds the path, this is
-				// refused and their lease is left exactly alone.
-				// ignored: a heartbeat repair retried every tick; a refusal means another owner holds the path, which is left alone by design
-				_ = publishJobLease(path, body, hooks)
-			}
-		}
-	})
-
 	var once sync.Once
 	return func() {
 		once.Do(func() {
@@ -341,7 +294,6 @@ func startJobLeaseTicking(jobDir, label string, ticks <-chan time.Time, stopTick
 			// repair; without this wait it would publish the lease again AFTER the run
 			// that owned it had ended, and leave a finished job looking alive.
 			close(done)
-			beating.Wait()
 			releaseOwnJobLease(path, os.Getpid(), nonce, hooks)
 			if hooks.afterRemove != nil {
 				hooks.afterRemove <- struct{}{}

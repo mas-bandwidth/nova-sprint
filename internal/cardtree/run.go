@@ -343,7 +343,7 @@ func applyRegex(dir string, s Step) error {
 			if fi, err := root.Lstat(rel); err != nil || !fi.Mode().IsRegular() {
 				continue
 			}
-			b, err := root.ReadFile(rel)
+			b, err := os.ReadFile(rel)
 			if err != nil {
 				return err
 			}
@@ -353,7 +353,7 @@ func applyRegex(dir string, s Step) error {
 				out = e.RE.ReplaceAll(out, []byte(e.Repl))
 			}
 			if !bytes.Equal(out, b) {
-				if err := root.WriteFile(rel, out, 0o644); err != nil {
+				if err := os.WriteFile(rel, out, 0o644); err != nil {
 					return err
 				}
 			}
@@ -373,7 +373,7 @@ func check(dir string, p Post, sys Sys) error {
 			return err
 		}
 		defer root.Close()
-		b, err := root.ReadFile(p.Path)
+		b, err := os.ReadFile(p.Path)
 		if err != nil {
 			return err
 		}

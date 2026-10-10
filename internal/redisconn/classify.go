@@ -94,7 +94,7 @@ func Classify(err error) Class {
 		return Other
 	}
 	var transport net.Error
-	if errors.As(err, &transport) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, redis.ErrPoolTimeout) {
+	if errors.As(err, &transport) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, redis.Nil) {
 		return Unreachable
 	}
 	text := err.Error()

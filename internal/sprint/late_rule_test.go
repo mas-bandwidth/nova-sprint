@@ -34,8 +34,8 @@ func TestLateRuleDefaultsToWaitUntilProgressStampsExist(t *testing.T) {
 		returned bool
 	}{
 		{name: "no stamp: waited, never returned"},
-		{name: "a stamp before its take (another holder's): waited, never returned", progress: new(-time.Minute)},
-		{name: "stamped, then silent past the window: returned and dealt again", progress: new(time.Minute), returned: true},
+		{name: "a stamp before its take (another holder's): waited, never returned", progress: func() *time.Duration { d := -time.Minute; return &d }()},
+		{name: "stamped, then silent past the window: returned and dealt again", progress: func() *time.Duration { d := time.Minute; return &d }(), returned: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

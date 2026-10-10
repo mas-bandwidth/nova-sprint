@@ -14,7 +14,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/redis/go-redis/v9"
-	"github.com/redis/go-redis/v9/maintnotifications"
 )
 
 // The bounds. Nothing in this package waits without one of them, and a
@@ -95,32 +94,6 @@ func open(ctx context.Context, o Options, getenv func(string) string, dial dialF
 		Dialer:  first.dialer,
 		// The login is handed over by a function, so no option of the client
 		// holds the password as a field.
-		CredentialsProviderContext: func(context.Context) (string, string, error) {
-			return l.User, password, nil
-		},
-		Protocol: 3,
-
-		DialTimeout:           DialTimeout,
-		ReadTimeout:           ReadTimeout,
-		WriteTimeout:          WriteTimeout,
-		PoolTimeout:           PoolTimeout,
-		ContextTimeoutEnabled: true,
-		DialerRetries:         1,
-		MaxRetries:            -1,
-
-		// The connect is HELLO alone: no CLIENT SETINFO, no CLIENT
-		// MAINT_NOTIFICATIONS, and no lookup of the host's name when the
-		// client is made (go-redis does one to choose an endpoint type).
-		// go-redis v9.22.0 sends CLIENT MAINT_NOTIFICATIONS on every connect
-		// unless told not to: maintnotifications/config.go:138 makes ModeAuto
-		// the default, and with Protocol 3 the command goes out; the
-		// store's options left it on, which was errorstat_ERR:count=1 on a
-		// Redis 8.10.2 that does not know the command.
-		DisableIdentity: true,
-		MaintNotificationsConfig: &maintnotifications.Config{
-			Mode:         maintnotifications.ModeDisabled,
-			EndpointType: maintnotifications.EndpointTypeNone,
-		},
 	})
 
 	ctx, cancel := context.WithTimeout(ctx, OpenTimeout)
