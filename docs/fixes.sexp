@@ -187,6 +187,17 @@
     so the tick's shape is the model's."
    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")
 
+  (fix "friend-dealt-cards-return" :release "v1.2.6" :status "planned"
+   :title "A friend's dealt card not taken returns to the pool; a friend that has not taken is dealt no more"
+   :text "A card dealt to a friend and not taken within the dealt bound (dealt-max) is returned to the
+    pool and dealt to the next capable member, and a friend that has not taken a dealt card is dealt
+    no more until she takes one (a fleet property marks her, her start clears it). The tick's friend
+    deal returns the untaken cards (friendDealtReturn, no redeal of its bound spent) before the level,
+    so the idle fleet machines take the cards the friends' daemons could not, instead of the friends
+    first deal stranding every card on friends that never start. tla/DealFill.tla DealtNoMoreHolds,
+    with the reversed witness MCDealFillBrokenGate."
+   :origin "dogfood 2026-10-10: the deal starved the fleet behind friends that could not take")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published

@@ -194,9 +194,27 @@ func friendTiers(f FriendSeat) []string {
 // marked her down (PropFriendStallDown: released only by her activity). On 2026-10-06 a
 // friend whose row read down, her lanes paused and her daemon beating, was dealt 18 cards
 // twice; a row that cannot work is filled by no deal. While the friends' work is off
-// (FriendsOff, nova-sprint set --friends off) no friend's row is.
+// (FriendsOff, nova-sprint set --friends off) no friend's row is. A friend whose dealt
+// cards were returned to the pool for not taking (PropFriendDealtNoMore) is dealt no more
+// until she takes one (friendDealtReturn; tla/DealFill.tla DealtNoMoreHolds).
 func friendDealable(s *Snapshot, f FriendSeat) bool {
-	return !s.FriendsOff() && friendCanRead(s, f)
+	return !s.FriendsOff() && friendCanRead(s, f) && !friendDealtNoMore(s, f.Name)
+}
+
+// PropFriendDealtNoMore is the fleet property marking a friend whose dealt cards were not
+// taken within the dealt bound and were returned to the pool (friendDealtReturn): the deal
+// hands her no more work until she takes one, and her start clears the mark
+// (friendDealPass). The value is when she was marked.
+func PropFriendDealtNoMore(friend string) string { return "friend_dealt_no_more." + friend }
+
+// friendDealtNoMore says the friend has been dealt cards she did not take within the bound:
+// she is dealt no more until she takes one.
+func friendDealtNoMore(s *Snapshot, name string) bool {
+	if s == nil || s.Fleet == nil {
+		return false
+	}
+	v, _ := s.Fleet.Prop(PropFriendDealtNoMore(name))
+	return v != ""
 }
 
 // friendCanRead says the friend's row may be dealt a read card: friendDealable but for the
@@ -444,6 +462,16 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 	starts, started := friendStartUnits(s, seats)
 	p.Units = append(p.Units, starts...)
 	maps.Copy(dealtWorking, started)
+	// a friend who takes a card is dealt again: her start clears the dealt-no-more mark
+	// (friendDealtReturn, PropFriendDealtNoMore)
+	for name, n := range started {
+		if n == 0 {
+			continue
+		}
+		if was, had := s.Fleet.Prop(PropFriendDealtNoMore(name)); had {
+			p.Props = append(p.Props, PropWrite{Table: Fleet, Name: PropFriendDealtNoMore(name), Value: "", Was: was, WasAbsent: false})
+		}
+	}
 	members := s.UpMembers()
 	declared := map[string]bool{}
 	for _, c := range cards {
@@ -572,6 +600,60 @@ func FriendsDealtFleet(s *Snapshot) map[string]int {
 		}
 	}
 	return out
+}
+
+// friendDealtReturn is the tick's return of a friend's dealt cards she has not taken within
+// the dealt bound (s.DealtMax, docs/SPEC-SPRINT.md section 1, a friend's card; tla/DealFill.tla
+// Return and DealtNoMoreHolds): each work card ready on her row past the bound, that she has
+// not started (friendStarted) and that is not her hard pin (pinnedTo), is withdrawn — its
+// primary back to ready, no redeal of its bound spent (a return is no failure, so
+// FieldTakeEnded is not set) — so the machines' deal places it on the next capable member.
+// A friend running a job (her beat names one, or a card she started is working on her row) is
+// left alone: her daemon is at work. Each friend returned is marked dealt no more
+// (PropFriendDealtNoMore) until she takes one, which her start clears (friendDealPass). The
+// returned work-card ids are answered (skip) so the start-bound level and the level do not
+// move them a second time in the same tick.
+func friendDealtReturn(s *Snapshot, seats []FriendSeat, since func(string) (time.Duration, bool)) (p Plan, skip map[string]bool) {
+	skip = map[string]bool{}
+	bound := s.DealtMax()
+	marked := map[string]bool{}
+	for _, f := range seats {
+		if f.Status != Up {
+			continue
+		}
+		row := FriendRow(f.Name)
+		if len(f.Running) > 0 || slices.ContainsFunc(s.Fleet.Cell(row, Working), startedNow) {
+			continue // she is running a job: her beat names one, or a card she started is working
+		}
+		for _, c := range s.Fleet.Cell(row, Ready) {
+			if c.F("kind") != "work" {
+				continue
+			}
+			pr := s.Work.Placed(c.F("primary"))
+			if pr == nil || pinnedTo(pr, f.Name) || friendStarted(s, f, c) {
+				continue
+			}
+			field, _, _, own := WorkDeadline(s, c)
+			if own == "" {
+				continue
+			}
+			if d, ok := since(max(c.F(own), c.F(field))); !ok || d <= bound {
+				continue
+			}
+			set := map[string]string{FieldTakenBack: "returned to the pool: dealt to friend " + f.Name + " and not taken within the dealt bound", "untaken_since": stamp(s.Now)}
+			u := withdrawUnit(s, c, set, []string{"first_taken"}, NTakenBack, MachineActor,
+				fmt.Sprintf("%s %s:ready -> withdrawn (dealt and not taken within the dealt bound %s)", c.ID, row, bound))
+			p.Units = append(p.Units, u)
+			skip[c.ID] = true
+			marked[f.Name] = true
+		}
+	}
+	for name := range marked {
+		if was, had := s.Fleet.Prop(PropFriendDealtNoMore(name)); !had {
+			p.Props = append(p.Props, PropWrite{Table: Fleet, Name: PropFriendDealtNoMore(name), Value: stamp(s.Now), Was: was, WasAbsent: true})
+		}
+	}
+	return p, skip
 }
 
 // tierNowSet is the primary's tier field a friend's first deal of it writes: the tier the
