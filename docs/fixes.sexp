@@ -61,6 +61,12 @@
     reaches the attempt cap, and the friend card claim says a widen does not pin her next attempt."
    :origin "nova-tools PR #5570, head 22d72154d, re-applied here")
 
+  (fix "lander-bench-fault-and-bisect" :release "v1.2.6" :status "in-progress"
+   :title "The lander blames no head for a bench fault and bisects a red batch"
+   :text "A bench fault blames no head, a red batch is bisected, and landings go as batches are built. The
+    bench fault match reads only the bench's own lines, never a test's output, so a real failure that
+    prints a disk string is still blamed."
+   :origin "nova-sprint PR #48, re-applying nova-tools PR #5579 (head 5bb7de4f2) with v1.2.5 candidate 4")
   (fix "check-waived-read-and-where-tiers" :release "v1.2.6" :status "shipped"
    :title "check honours a waived second read; where shows tiers once"
    :text "check judges an accept made before the second-read count by the count then; where shows a tier
