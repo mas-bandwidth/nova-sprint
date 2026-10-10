@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
@@ -38,6 +39,26 @@ var stopLayer = map[string]string{
 // doctorLayers is the layers the stops are said under, in the doctor's order, then the seat.
 var doctorLayers = []string{"routes", "machines", "friends", "cards"}
 
+// doctorFaults is the doctor's definition of red: the seat check owns the
+// machinery verdicts, while StopsNow owns the coordinator's live-stop model.
+// Keeping this join here prevents doctor from inventing a second member or
+// friend classification (docs/SPEC-SPRINT.md, "The seat check").
+func doctorFaults(r sprint.SeatCheckReport, rec store.StopsRecord, now time.Time) []string {
+	faults := []string{}
+	for _, line := range r.Lines {
+		if !line.Up {
+			faults = append(faults, line.String())
+		}
+	}
+	for _, stop := range rec.Stops {
+		faults = append(faults, "STOP "+oneline.Escape(stop.Line(now)))
+	}
+	if rec.Seat.Overdue > 0 {
+		faults = append(faults, "MACHINERY seat DOWN "+oneline.Escape(rec.Seat.Line(now)))
+	}
+	return faults
+}
+
 // cmdDoctor is `nova-sprint doctor`: each layer GREEN, or RED with every automatic stop that
 // holds in it, one line each with its age, effect and undo verb; then the seat's waits. It
 // counts them now from a fresh read, whether or not the machine ticks. Exit 0 when nothing is
@@ -63,6 +84,8 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	now := a.now()
+	machinery := a.withConfigSeat(a.seatCheck(context.Background(), st, c.redis))
+	faults := doctorFaults(machinery, rec, now)
 	byLayer := map[string][]sprint.Stop{}
 	for _, x := range rec.Stops {
 		layer := stopLayer[x.Kind]
@@ -71,7 +94,7 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 		}
 		byLayer[layer] = append(byLayer[layer], x)
 	}
-	red := len(rec.Stops) > 0 || rec.Seat.Overdue > 0
+	red := len(faults) > 0
 	code := 0
 	if red {
 		code = 1
@@ -92,7 +115,7 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 		if red {
 			status = "red"
 		}
-		b, err := json.Marshal(map[string]any{"verb": name, "status": status, "exit": code, "at": now.UTC(), "stops": stops, "seat": rec.Seat})
+		b, err := json.Marshal(map[string]any{"verb": name, "status": status, "exit": code, "at": now.UTC(), "faults": faults, "machinery": machinery, "stops": stops, "seat": rec.Seat})
 		if err != nil {
 			fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint doctor\n", prog, name, oneline.Escape(err.Error()))
 			return 2
@@ -111,6 +134,9 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stdout, "  STOP "+oneline.Escape(x.Line(now)))
 		}
 	}
+	for _, fault := range faults {
+		fmt.Fprintln(stdout, "DOCTOR fault "+fault)
+	}
 	seat := "GREEN"
 	if rec.Seat.Overdue > 0 {
 		seat = "RED"
@@ -120,6 +146,6 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	if red {
 		word = "RED"
 	}
-	fmt.Fprintf(stdout, "DOCTOR %s stops=%d judgments=%d overdue=%d\n", word, len(rec.Stops), rec.Seat.Judgments, rec.Seat.Overdue)
+	fmt.Fprintf(stdout, "DOCTOR %s stops=%d judgments=%d overdue=%d faults=%d\n", word, len(rec.Stops), rec.Seat.Judgments, rec.Seat.Overdue, len(faults))
 	return code
 }

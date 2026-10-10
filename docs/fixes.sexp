@@ -94,4 +94,11 @@
     .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
-   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")))
+    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+
+   (fix "doctor-definition-of-done" :release "v1.2.6" :status "shipped"
+    :title "Doctor names every definition-of-done fault with evidence"
+    :text "The read-only doctor combines the live stop ledger with the seat check's centralized
+     machinery verdicts, emits one evidence-bearing line per fault, returns 0 when clean and 1 when
+     red, and carries the same evidence in --json."
+    :origin "this pull request")))
