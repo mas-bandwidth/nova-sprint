@@ -3,6 +3,7 @@ package sandbox
 import (
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -88,6 +89,16 @@ func DarwinProfile(p *Policy) (text string, params []string, err error) {
 		// denied — which (allow network*) would not have been.
 		writes = append(writes, fmt.Sprintf("(allow network-outbound (subpath (param %q)))", name))
 		params = append(params, name+"="+w)
+	}
+	// The caller's own spelling of a granted path, and each symlink component of it, is
+	// granted as a literal on the LINK, as the template does for /etc /tmp /var
+	// (docs/SPEC-SANDBOX.md rule 5; security#67 finding 1). A literal reads the link and
+	// lists nothing: the contents stay behind the READn/WRITEn grants.
+	for _, l := range linkLiterals(p.LinkSpellings) {
+		if bad := badPathText(l); bad != "" {
+			return "", nil, fmt.Errorf("link spelling %s %s", l, bad)
+		}
+		reads = append(reads, fmt.Sprintf("(allow file-read* (literal %q))", l))
 	}
 	// The template names (param "HOME") unconditionally, so HOME is always passed. Build
 	// has already refused a HOME outside every --write, so this grants nothing
@@ -187,31 +198,8 @@ func DarwinProfile(p *Policy) (text string, params []string, err error) {
 	// device grant here: the minimum Metal mechanisms are still unmeasured, so
 	// the profile stays closed and the GPU probe classifies the outcome.
 	text = out.String()
-	// Deletes only in the job dir, its tmp and the working directory: a --write outside
-	// them may be written and never deleted from. SBPL's last matching rule wins, so the
-	// denies come after every write grant in the template (HOME's included) and the job
-	// dir, the tmp and the cwd are given their unlink back after the denies, for one
-	// nested inside a denied write.
-	var nodelete []string
-	for i, w := range p.Writes {
-		if !p.DeletesIn(w) {
-			nodelete = append(nodelete, fmt.Sprintf("(deny file-write-unlink (subpath (param %q)))", fmt.Sprintf("WRITE%d", i)))
-		}
-	}
-	if len(nodelete) > 0 {
-		text += ";; deletes only in the job dir, its tmp and the cwd (docs/SPEC-SANDBOX.md, deletes-only-in-the-job-dir-p.w1)\n"
-		text += strings.Join(nodelete, "\n") + "\n"
-		text += `(allow file-write-unlink (subpath (param "WRITE0")))` + "\n"
-		if p.Tmp != "" && !Inside(p.Tmp, p.Writes[0]) {
-			text += `(allow file-write-unlink (subpath (param "JOBTMP")))` + "\n"
-			params = append(params, "JOBTMP="+p.Tmp)
-		}
-		if p.Cwd != "" && !Inside(p.Cwd, p.Writes[0]) && (p.Tmp == "" || !Inside(p.Cwd, p.Tmp)) {
-			// the working directory a step was given to write (its checkout): its own
-			text += `(allow file-write-unlink (subpath (param "JOBCWD")))` + "\n"
-			params = append(params, "JOBCWD="+p.Cwd)
-		}
-	}
+	// Deletes in every --write root ("deletes-in-every-write-root"): the template's
+	// file-write* grant on each --write includes unlink, and no later rule takes it back.
 	if p.GPUMode == GPUMetal {
 		text += ";; gpu=metal requested: no mach-lookup or device grant added; Metal stays denied until measured\n"
 	}
@@ -316,4 +304,25 @@ func resolved(path string) string {
 		return got
 	}
 	return path
+}
+
+// linkLiterals is each spelling and every symlink among its proper ancestors, once and in
+// order (docs/SPEC-SANDBOX.md rule 5). A spelling that differs from its resolved path is a
+// link or goes through one, so the spelling itself is always granted.
+func linkLiterals(spellings []string) []string {
+	var out []string
+	add := func(l string) {
+		if !slices.Contains(out, l) {
+			out = append(out, l)
+		}
+	}
+	for _, s := range spellings {
+		for d := filepath.Dir(s); d != s && filepath.Dir(d) != d; d = filepath.Dir(d) {
+			if fi, err := os.Lstat(d); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+				add(d)
+			}
+		}
+		add(s)
+	}
+	return out
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,9 +36,9 @@ func friendReadyApp(t *testing.T) (*testApp, *config.Mem, string) {
 	ta.ok("friend down bob")
 	ta.ok("friend beat amy")
 	ta.ok("tick")
+	ta.startFriend("amy", 2) // she starts what her lanes hold
 	f := whereFriends(ta)
-	require.Equal(t, 2, f["amy"].Dealt, "two cards dealt to amy; nothing pushed or running proves them, so working is 0")
-	require.Equal(t, 0, f["amy"].Working)
+	require.Equal(t, 2, f["amy"].Working)
 	require.Equal(t, 2, f["amy"].Ready)
 	_, _, err := cfg.Update(context.Background(), config.KindFriend, "amy", map[string]string{"width": "3"}, "t")
 	require.NoError(t, err)
@@ -131,7 +130,7 @@ func TestAFriendTakesAndFinishesItsOwnReadyCard(t *testing.T) {
 	require.Equal(t, 0, code, out)
 	assert.Contains(t, out, "s1-4.w1 ready -> working (her next, taken now)", "her finish takes her next, as before")
 	c = freshCard(ta, "s1-3")
-	assert.Equal(t, sprint.Finished, c.Work[0].Col, "her finish waits for the readers' verdict (verdicts.go)")
+	assert.Equal(t, sprint.DoneOK, c.Work[0].Col)
 	code, out = ta.served("take", "--as", "friend.amy", "--epoch", "0")
 	assert.Equal(t, 0, code, out)
 	assert.Contains(t, out, "friend.amy took 0 of the 1 asked: its ready queue is empty")
@@ -141,24 +140,24 @@ func TestAFriendTakesAndFinishesItsOwnReadyCard(t *testing.T) {
 	ta.clean()
 }
 
-// In batch mode the deal takes a ready card into a free lane of hers before it deals her
-// anything new; a card ready on her row while she has a lane free for ten minutes, which no
-// one took, is a judgment that names the take-back.
+// The deal never takes a ready card into a free lane of hers: it is working once she starts
+// it (docs/SPEC-SPRINT.md section 1, a friend's card is working once she starts it); a card
+// ready on her row while she has a lane free past the start bound and ten minutes more,
+// which no one took, is a judgment that names the take-back.
 func TestADealTakesAFriendsReadyCardAndOneLeftReadyIsAJudgment(t *testing.T) {
 	t.Parallel()
 	ta, _, _ := friendReadyApp(t)
 	ta.ok("tick")
 	c := freshCard(ta, "s1-3")
-	assert.Equal(t, sprint.Working, c.Work[0].Col, "the deal took it into her free lane")
-	assert.NotEmpty(t, c.Work[0].F("taken"))
+	assert.Equal(t, sprint.Ready, c.Work[0].Col, "the deal takes nothing into her free lane: she has not started it")
+	assert.Empty(t, c.Work[0].F("taken"))
 	f := whereFriends(ta)
-	assert.Equal(t, 3, f["amy"].Dealt, "three cards dealt to amy")
-	assert.Equal(t, 0, f["amy"].Working, "nothing pushed or running proves them")
-	assert.Equal(t, 1, f["amy"].Ready)
+	assert.Equal(t, 2, f["amy"].Working)
+	assert.Equal(t, 2, f["amy"].Ready)
 	ta.clean()
 
-	// held, her cards wait ready: the deal does not take them, and ten minutes on a card in
-	// front of a free lane is a judgment
+	// held, every card of hers is handed back, begun or not: a held friend keeps no card (the
+	// owner, 2026-10-09); the ready judgment is for a friend up whose card nobody takes
 	ta, cfg, root := friendReadyApp(t)
 	ta.ok("hold amy --reason 'away'")
 	_, _, err := cfg.Update(context.Background(), config.KindFriend, "amy", map[string]string{"width": "4"}, "t")
@@ -166,13 +165,6 @@ func TestADealTakesAFriendsReadyCardAndOneLeftReadyIsAJudgment(t *testing.T) {
 	ta.ok("friend sync --root " + root)
 	ta.ok("tick")
 	c = freshCard(ta, "s1-3")
-	require.Equal(t, sprint.Ready, c.Work[0].Col)
-	assert.NotContains(t, ta.ok("inbox"), "has a lane free", "not yet ten minutes")
-	ta.later(sprint.FriendReadyMax + time.Minute)
-	ta.ok("tick")
-	in := ta.ok("inbox")
-	assert.Contains(t, in, "s1-3.w1 dealt, never taken, at friend.amy:ready")
-	assert.Contains(t, in, "while friend amy has a lane free")
-	assert.Contains(t, in, "friend take amy s1-3.w1")
+	require.Equal(t, sprint.Withdrawn, c.Work[0].Col, "the hold hands her ready card back")
 	ta.clean()
 }

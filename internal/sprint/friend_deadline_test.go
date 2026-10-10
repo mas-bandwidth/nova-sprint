@@ -27,7 +27,7 @@ func lateCards(w *world) []string {
 func TestAFriendsCardsDeadlineIsThreeTimesHerMedianWall(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"), friendBrief("friend amy"), friendBrief("friend amy"))
-	dealWith(w, FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash,pro"})
+	dealStarted(w, FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash,pro"})
 	amy := FriendRow("amy")
 	_, n := FriendMedianWall(w.s, "amy")
 	require.Zero(t, n)
@@ -53,13 +53,13 @@ func TestAFriendsCardsDeadlineIsThreeTimesHerMedianWall(t *testing.T) {
 	require.Equal(t, Working, wc.Col)
 	assert.Equal(t, DeadlineUnfinished, unfinishedLimit(wc))
 	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{"s1-4"}, Hold: true}))
-	dealWith(w, FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash,pro"})
+	dealStarted(w, FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash,pro"})
 	wc = w.s.Fleet.Card("s1-4.w1")
 	require.Equal(t, Working, wc.Col)
 	assert.Equal(t, "12600", wc.F(FieldFriendDeadline), "three times 70 minutes")
 	t1 := w.s.Now
 	w.s.Now = t1.Add(2*time.Hour + time.Minute)
-	assert.False(t, friendLate(w.s, TickReq{}, wc), "past two hours it is not late")
+	assert.Empty(t, lateCards(w), "past two hours it is not late")
 	w.s.Now = t1.Add(3*time.Hour + 31*time.Minute)
-	assert.True(t, friendLate(w.s, TickReq{}, wc), "past three and a half it is: the redeal part sees it, never a late judgment")
+	assert.Equal(t, []string{"s1-4.w1"}, lateCards(w), "past three and a half it is")
 }

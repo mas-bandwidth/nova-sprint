@@ -1,9 +1,8 @@
 package sprint
 
 import (
-	"encoding/json"
 	"fmt"
-	"strings"
+	"strconv"
 	"testing"
 	"time"
 
@@ -11,243 +10,380 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeRelease is the release check's facts as a test builds them.
+// fakeRelease is the release check's snapshot as a test builds it: a clock, a log
+// and the acceptance sentinel's facts.
 type fakeRelease struct {
-	now  time.Time
-	snap *Snapshot
+	now         time.Time
+	lines       []Line
+	dealtMax    time.Duration
+	accept      Acceptance
+	mergeWindow time.Duration
+	mergeP90    time.Duration
 }
 
-func (f fakeRelease) Now() time.Time      { return f.now }
-func (f fakeRelease) Snapshot() *Snapshot { return f.snap }
+func (f fakeRelease) Now() time.Time          { return f.now }
+func (f fakeRelease) Log() []Line             { return f.lines }
+func (f fakeRelease) DealtMax() time.Duration { return f.dealtMax }
+func (f fakeRelease) Acceptance() Acceptance  { return f.accept }
 
-// auditWorld is readers r1..r4, up, and n primaries landed after since, each
-// read at attempt 1 by r1 (its review), its work done by member m1, and five
-// more landed before since.
-func auditWorld(t *testing.T, since time.Time, n int) *world {
-	t.Helper()
-	w := newWorld(t, "r1", "r2", "r3", "r4")
-	w.s.ReaderStates = map[string]string{"r1": ReaderUp, "r2": ReaderUp, "r3": ReaderUp, "r4": ReaderUp}
-	w.s.Work.SetRows([]string{"s1"})
-	w.s.Fleet.SetRows([]string{"m1", FriendRow("r3")})
-	land := func(id string, at time.Time, score float64) {
-		w.s.Work.Put(&Card{ID: id, Row: "s1", Col: Landed, Score: score, Rev: 1, Fields: map[string]string{
-			"kind": "primary", "stream": "s1", "attempt": "1", "head": "h-" + id, "base": "main", "landed": stamp(at), "asked": "r1"}})
-		w.s.Readers.Put(&Card{ID: ReadCardID(id, 1, "r1"), Row: "r1", Col: OK, Score: score, Rev: 1, Fields: map[string]string{
-			"kind": "read", "primary": id, "attempt": "1", "reader": "r1", "head": "h-" + id}})
-		w.s.Fleet.Put(&Card{ID: WorkCardID(id, 1), Rev: 1, Fields: map[string]string{"kind": "work", "primary": id, "attempt": "1", "member": "m1"}})
+// MergeWindow and MergeP90 fall back to the defaults so a twin built for
+// another check still answers the merge queue's check.
+func (f fakeRelease) MergeWindow() time.Duration {
+	if f.mergeWindow == 0 {
+		return MergeQueueWindowDefault
 	}
-	for i := 1; i <= 5; i++ {
-		land(fmt.Sprintf("old-%d", i), since.Add(-time.Duration(i)*time.Hour), float64(i))
-	}
-	for i := 1; i <= n; i++ {
-		land(fmt.Sprintf("c%02d", i), since.Add(time.Duration(i)*time.Minute), float64(10+i))
-	}
-	return w
+	return f.mergeWindow
 }
 
-// The cold audit: --audit samples 20 cards landed since the last release with a
-// seed it records, so the sample redraws; asks each, through the ask's room,
-// round and route, of a reader up that never saw it (not its reviewer, not its
-// author), refusing when there is none; and the plain check is ok only while
-// the audit is under 48 hours old and each of its own reads came back ok,
-// naming each broken read with its finding and each unanswered. The card's
-// review reads, and an earlier audit's, are never counted.
-func TestReleaseCheckColdAuditSamplesTwentyLandedCardsAndNeedsEveryReadOk(t *testing.T) {
+func (f fakeRelease) MergeP90() time.Duration {
+	if f.mergeP90 == 0 {
+		return MergeQueueP90Default
+	}
+	return f.mergeP90
+}
+
+func fleetMove(at time.Time, card, from, to string, set map[string]string) Line {
+	return Line{Kind: LineMove, At: at, Table: Fleet, Card: card, Stream: "s1", From: from, To: to, Set: set}
+}
+
+// hr is the clock t0 plus h hours.
+func hr(h float64) time.Time { return t0.Add(time.Duration(h * float64(time.Hour))) }
+
+func relFacts(now time.Time, lines ...Line) fakeRelease {
+	return fakeRelease{now: now, lines: lines, dealtMax: DealtMaxDefault}
+}
+
+func TestReleaseCheckFailsWhileAFriendWasStuckInTheLastFourHours(t *testing.T) {
 	t.Parallel()
-	since := t0.Add(-24 * time.Hour)
-	req := ColdAuditReq{Seed: 42, Since: "v0.9.0", SinceTime: since, Who: "coordinator"}
-	check := func(w *world) ReleaseResult { return ColdAudit(fakeRelease{now: w.s.Now, snap: w.s}) }
+	amy := FriendRow("amy")
 
-	t.Run("no audit fails", func(t *testing.T) {
-		w := auditWorld(t, since, 30)
-		r := check(w)
+	t.Run("a friend's working card past its deadline fails, naming her and the time", func(t *testing.T) {
+		t.Parallel()
+		// taken at hour 0, deadline 2h, now hour 3: late since hour 2, inside the last four hours
+		f := relFacts(hr(3), fleetMove(hr(0), "s1-1.w1", "", amy+":working", map[string]string{"first_taken": stamp(hr(0))}))
+		r := NoStuckFriend(f)
 		assert.False(t, r.OK)
-		assert.Contains(t, r.Evidence, "no cold audit has been asked; run: nova-sprint release check --audit")
+		assert.Equal(t, CheckNoStuckFriend, r.Name)
+		assert.Contains(t, r.Evidence, "friend amy")
+		assert.Contains(t, r.Evidence, "s1-1.w1")
+		assert.Contains(t, r.Evidence, stamp(hr(2)), "the moment she became stuck")
+		assert.Contains(t, r.Evidence, "nova-sprint card s1-1", "what to look at")
+		assert.Equal(t, "RELEASE CHECK no-stuck-friend fail "+r.Evidence, r.Line())
 	})
 
-	t.Run("fewer than 20 landed since refuses", func(t *testing.T) {
-		w := auditWorld(t, since, 19)
-		p, _ := PlanColdAudit(w.s, req)
-		require.Len(t, p.Refused, 1)
-		assert.Contains(t, p.Refused[0].Why, "19 cards landed since v0.9.0")
-		assert.Empty(t, p.Units)
-		assert.Empty(t, p.Props)
+	t.Run("a stuck spell that ended before the window is not a failure", func(t *testing.T) {
+		t.Parallel()
+		// late from hour 2 to hour 3 (finished), now hour 9: the window opens at hour 5
+		f := relFacts(hr(9),
+			fleetMove(hr(0), "s1-1.w1", "", amy+":working", nil),
+			fleetMove(hr(3), "s1-1.w1", amy+":working", amy+":done_ok", nil))
+		r := NoStuckFriend(f)
+		assert.True(t, r.OK, r.Evidence)
+		assert.Equal(t, "RELEASE CHECK no-stuck-friend ok "+r.Evidence, r.Line())
 	})
 
-	t.Run("the review reads alone are not the audit", func(t *testing.T) {
-		// the reader's probe: an audit recorded, no cold read placed, each card's
-		// review read ok: not ok, every card unanswered
-		w := auditWorld(t, since, 30)
-		p, rec := PlanColdAudit(w.s, req)
-		require.Empty(t, p.Refused)
-		b, _ := json.Marshal(rec)
-		w.s.Work.SetProp(PropColdAudit, string(b))
-		r := check(w)
-		assert.False(t, r.OK, r.Evidence)
-		assert.Contains(t, r.Evidence, "20 unanswered")
+	t.Run("a spell that ended inside the window fails: stuck at any moment", func(t *testing.T) {
+		t.Parallel()
+		f := relFacts(hr(6),
+			fleetMove(hr(0), "s1-1.w1", "", amy+":working", nil),
+			fleetMove(hr(3), "s1-1.w1", amy+":working", amy+":done_ok", nil))
+		r := NoStuckFriend(f)
+		assert.False(t, r.OK)
+		assert.Contains(t, r.Evidence, stamp(hr(2)), "the spell began at hour 2, inside the window opened at hour 2")
 	})
 
-	t.Run("no reader up that never saw it refuses the audit", func(t *testing.T) {
-		// the reader's probe: every reader up saw every card: nothing asked
-		w := auditWorld(t, since, 30)
-		w.s.ReaderStates = map[string]string{"r1": ReaderUp, "r2": ReaderAway, "r3": ReaderDown, "r4": ReaderAway}
-		p, _ := PlanColdAudit(w.s, req)
-		require.Len(t, p.Refused, 20)
-		assert.Empty(t, p.Units, "all or nothing")
-		assert.Empty(t, p.Props, "no audit recorded")
-		assert.Contains(t, p.Refused[0].Why, "no reader up that never saw it has room")
-		assert.Contains(t, p.Refused[0].Why, "saw it: m1,r1")
+	t.Run("a card finished inside its deadline is never stuck", func(t *testing.T) {
+		t.Parallel()
+		f := relFacts(hr(3),
+			fleetMove(hr(0), "s1-1.w1", "", amy+":working", nil),
+			fleetMove(hr(1), "s1-1.w1", amy+":working", amy+":done_ok", nil))
+		assert.True(t, NoStuckFriend(f).OK)
 	})
 
-	t.Run("the author is not a cold reader", func(t *testing.T) {
-		// r3 is the friend whose row did the work of every card: up, it is never asked
-		w := auditWorld(t, since, 30)
-		for _, c := range w.s.Fleet.cards {
-			c.Fields["member"] = FriendRow("r3")
-		}
-		w.s.ReaderStates = map[string]string{"r1": ReaderUp, "r2": ReaderDown, "r3": ReaderUp, "r4": ReaderDown}
-		p, _ := PlanColdAudit(w.s, req)
-		require.Len(t, p.Refused, 20)
-		assert.Contains(t, p.Refused[0].Why, "saw it: friend.r3,r1,r3")
+	t.Run("her own longer deadline holds", func(t *testing.T) {
+		t.Parallel()
+		set := map[string]string{"friend_deadline": strconv.Itoa(5 * 3600)}
+		f := relFacts(hr(4), fleetMove(hr(0), "s1-1.w1", "", amy+":working", set))
+		assert.True(t, NoStuckFriend(f).OK, "late only from hour 5")
+		f.now = hr(6)
+		assert.False(t, NoStuckFriend(f).OK)
 	})
 
-	t.Run("a reader at width is given nothing", func(t *testing.T) {
-		w := auditWorld(t, since, 30)
-		w.s.Readers.SetRows([]string{"r1", "reader-m2", "reader-m3"})
-		w.s.ReaderStates = map[string]string{"r1": ReaderUp, "reader-m2": ReaderUp, "reader-m3": ReaderUp}
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 2}))
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m3", Width: 18}))
-		p, _ := PlanColdAudit(w.s, req)
-		require.Empty(t, p.Refused)
-		w.must(p)
-		assert.Equal(t, 2, w.s.readerLoad("reader-m2"))
-		assert.Equal(t, 18, w.s.readerLoad("reader-m3"))
+	t.Run("a card dealt and never taken past the dealt bound fails", func(t *testing.T) {
+		t.Parallel()
+		f := relFacts(hr(7), fleetMove(hr(0), "s1-2.w1", "", amy+":ready", nil))
+		r := NoStuckFriend(f)
+		assert.False(t, r.OK)
+		assert.Contains(t, r.Evidence, "dealt, never taken")
+		assert.Contains(t, r.Evidence, stamp(hr(6)), "dealt at 0 and the dealt bound is 6h")
 	})
 
-	t.Run("the level leaves an audit read with its cold reader", func(t *testing.T) {
-		// r2 cold-reads every card; r3 and r4 are up with room: the level moves nothing
-		w := auditWorld(t, since, 30)
-		w.s.ReaderStates = map[string]string{"r1": ReaderUp, "r2": ReaderUp, "r3": ReaderDown, "r4": ReaderDown}
-		p, rec := PlanColdAudit(w.s, req)
-		require.Empty(t, p.Refused)
-		w.must(p)
-		w.s.ReaderStates = map[string]string{"r1": ReaderUp, "r2": ReaderUp, "r3": ReaderUp, "r4": ReaderUp}
-		lp, _ := TickLevelReads(w.s, TickReq{})
-		assert.Empty(t, lp.Units)
-		for _, rd := range rec.Reads {
-			rc := w.s.Readers.Card(rd.Read)
-			require.NotNil(t, rc)
-			assert.Equal(t, "r2", rc.Row)
-			assert.Equal(t, "1", rc.F(FieldLeveled))
-		}
+	t.Run("a card taken back from her stops the clock", func(t *testing.T) {
+		t.Parallel()
+		f := relFacts(hr(9),
+			fleetMove(hr(0), "s1-2.w1", "", amy+":ready", nil),
+			fleetMove(hr(1), "s1-2.w1", amy+":ready", "m1:ready", nil))
+		assert.True(t, NoStuckFriend(f).OK, "it left her row")
 	})
 
-	w := auditWorld(t, since, 30)
-	p, rec := PlanColdAudit(w.s, req)
-	require.Empty(t, p.Refused)
-	ids := rec.IDs()
-	require.Len(t, ids, ColdAuditCards)
-	assert.Equal(t, int64(42), rec.Seed)
-	assert.Equal(t, "v0.9.0", rec.Since)
-	for _, id := range ids {
-		assert.False(t, strings.HasPrefix(id, "old-"), "%s landed before the release", id)
-	}
-	_, again := PlanColdAudit(w.s, req)
-	assert.Equal(t, ids, again.IDs(), "one seed over one table is one sample")
-	other := req
-	other.Seed = 7
-	_, drawn := PlanColdAudit(w.s, other)
-	assert.NotEqual(t, ids, drawn.IDs(), "another seed draws another sample")
+	t.Run("a card taken back inside its deadline resets to untaken bound and does not fail", func(t *testing.T) {
+		t.Parallel()
+		// taken at hour 0, withdrawn at hour 1 (untaken bound is 6h from hour 1 = hour 7), now hour 3
+		f := relFacts(hr(3),
+			fleetMove(hr(0), "s1-1.w1", "", amy+":working", map[string]string{"first_taken": stamp(hr(0))}),
+			fleetMove(hr(1), "s1-1.w1", amy+":working", amy+":withdrawn", map[string]string{FieldTakenBack: "taken back", "untaken_since": stamp(hr(1))}),
+		)
+		r := NoStuckFriend(f)
+		assert.True(t, r.OK, r.Evidence)
+		assert.Equal(t, "RELEASE CHECK no-stuck-friend ok "+r.Evidence, r.Line())
 
-	asked := map[string]int{}
-	for _, u := range p.Units {
-		require.Len(t, u.Changes, 1)
-		e := u.Changes[0].Entry
-		rd := e.Create.Row
-		assert.NotEqual(t, "r1", rd, "r1 read the card in its review")
-		assert.Equal(t, Asked, e.Create.Col)
-		assert.Equal(t, ReadCardID(u.Key, 1, rd), e.ID)
-		assert.Equal(t, stamp(t0), e.Set[FieldColdAudit])
-		assert.Equal(t, "h-"+u.Key, e.Set["head"])
-		assert.Equal(t, "main", e.Set["base"])
-		assert.NotEmpty(t, e.Set[FieldTier], "the read carries its tier as the ask's does")
-		asked[rd]++
-	}
-	assert.Equal(t, map[string]int{"r2": 7, "r3": 7, "r4": 6}, asked, "spread by room, ties round the readers")
-	w.must(p)
-	_, idx := w.s.Readers.Prop(PropAskIndex)
-	assert.True(t, idx, "the ask's index is written with the audit")
+		// but at hour 8, it is late past the untaken bound (hour 7)
+		f.now = hr(8)
+		r8 := NoStuckFriend(f)
+		assert.False(t, r8.OK)
+		assert.Contains(t, r8.Evidence, "dealt, never taken")
+		assert.Contains(t, r8.Evidence, stamp(hr(7)))
+	})
 
-	r := check(w)
-	assert.False(t, r.OK)
-	assert.Contains(t, r.Evidence, "20 unanswered")
+	t.Run("a card taken back after its deadline was stuck and fails inside the window", func(t *testing.T) {
+		t.Parallel()
+		// taken at hour 0, deadline 2h, withdrawn at hour 3 (stuck from hour 2 to hour 3), now hour 4
+		f := relFacts(hr(4),
+			fleetMove(hr(0), "s1-1.w1", "", amy+":working", map[string]string{"first_taken": stamp(hr(0))}),
+			fleetMove(hr(3), "s1-1.w1", amy+":working", amy+":withdrawn", map[string]string{FieldTakenBack: "taken back", "untaken_since": stamp(hr(3))}),
+		)
+		r := NoStuckFriend(f)
+		assert.False(t, r.OK)
+		assert.Contains(t, r.Evidence, "friend amy")
+		assert.Contains(t, r.Evidence, stamp(hr(2)))
+	})
 
-	// the readers report through the read verb; the first finds it broken
-	readOf := map[string]ColdAuditRead{}
-	for _, rd := range rec.Reads {
-		readOf[rd.Card] = rd
-	}
-	for i, id := range ids {
-		rc := w.s.Readers.Card(readOf[id].Read)
-		rr := ReadReq{Sel: Sel{IDs: []string{rc.ID}}, As: rc.Row, Verdict: "ok", Who: rc.Row}
-		if i == 0 {
-			rr.Verdict, rr.Finding = "broken", "internal/sprint/x.go:12: the guard is inverted; flip it"
-		}
-		if i == 1 {
-			continue // still asked
-		}
-		w.must(Read(w.s, rr))
-	}
-	r = check(w)
-	assert.False(t, r.OK)
-	assert.Contains(t, r.Evidence, "1 broken: "+ids[0])
-	assert.Contains(t, r.Evidence, "internal/sprint/x.go:12: the guard is inverted")
-	assert.Contains(t, r.Evidence, "1 unanswered: "+ids[1])
-	assert.Contains(t, r.Evidence, "look at: nova-sprint card")
+	t.Run("a card whose friend deadline is increased historically does not fail", func(t *testing.T) {
+		t.Parallel()
+		// taken at hour 0 with default 2h deadline; at hour 1 friend_deadline updated to 5h; checked at hour 4
+		f := relFacts(hr(4),
+			fleetMove(hr(0), "s1-1.w1", "", amy+":working", map[string]string{"first_taken": stamp(hr(0))}),
+			fleetMove(hr(1), "s1-1.w1", amy+":working", amy+":working", map[string]string{FieldFriendDeadline: strconv.Itoa(5 * 3600)}),
+		)
+		r := NoStuckFriend(f)
+		assert.True(t, r.OK, r.Evidence)
 
-	w.s.Readers.Card(readOf[ids[0]].Read).Col = OK
-	w.must(Read(w.s, ReadReq{Sel: Sel{IDs: []string{readOf[ids[1]].Read}}, As: w.s.Readers.Card(readOf[ids[1]].Read).Row, Verdict: "ok"}))
-	r = check(w)
-	assert.True(t, r.OK, r.Evidence)
-	assert.Equal(t, "RELEASE CHECK cold-audit ok all 20 cold reads ok (seed 42, since v0.9.0, asked "+stamp(t0)+", 0s ago)", r.Line())
+		// checked at hour 6: late from hour 5
+		f.now = hr(6)
+		r6 := NoStuckFriend(f)
+		assert.False(t, r6.OK)
+		assert.Contains(t, r6.Evidence, stamp(hr(5)))
+	})
 
-	// 48 hours on, the audit has expired
-	w.tick(ColdAuditMaxAge)
-	r = check(w)
-	assert.False(t, r.OK)
-	assert.Contains(t, r.Evidence, "48h0m0s old, limit 48h0m0s; run: nova-sprint release check --audit")
+	t.Run("a card stuck before a clear inside the window fails", func(t *testing.T) {
+		t.Parallel()
+		// taken at hour 0, deadline 2h; clear runs at hour 2.5; checked at hour 3
+		clearLine := Line{Kind: LineMove, At: hr(2.5), Verb: "clear"}
+		f := relFacts(hr(3),
+			fleetMove(hr(0), "s1-1.w1", "", amy+":working", map[string]string{"first_taken": stamp(hr(0))}),
+			clearLine,
+		)
+		r := NoStuckFriend(f)
+		assert.False(t, r.OK)
+		assert.Contains(t, r.Evidence, "friend amy")
+		assert.Contains(t, r.Evidence, stamp(hr(2)))
+	})
 
-	// a new audit's check reads only its own reads: the last audit's, all ok, count for nothing
-	p2, rec2 := PlanColdAudit(w.s, ColdAuditReq{Seed: 42, Since: "v0.9.0", SinceTime: since})
-	require.Empty(t, p2.Refused)
-	for _, u := range p2.Units {
-		rd := u.Changes[0].Entry.Create.Row
-		if _, ok := readOf[u.Key]; !ok {
-			continue // not in the last audit's sample
-		}
-		assert.NotEqual(t, "r1", rd)
-		assert.NotEqual(t, w.s.Readers.Card(readOf[u.Key].Read).Row, rd, "the last audit's reader saw it")
-	}
-	w.must(p2)
-	r = check(w)
-	assert.False(t, r.OK, r.Evidence)
-	assert.Contains(t, r.Evidence, "20 unanswered")
-	// a read card of the last audit named by this record is not this audit's
-	b, _ := json.Marshal(ColdAuditRecord{Seed: rec2.Seed, Since: rec2.Since, Asked: rec2.Asked, Reads: rec.Reads})
-	w.s.Work.SetProp(PropColdAudit, string(b))
-	r = check(w)
-	assert.False(t, r.OK, r.Evidence)
-	assert.Contains(t, r.Evidence, "20 unanswered")
-	assert.Contains(t, r.Evidence, "of this audit")
+	t.Run("a card not yet stuck before a clear does not fail", func(t *testing.T) {
+		t.Parallel()
+		// taken at hour 2.2, deadline 2h; clear runs at hour 2.5; checked at hour 3
+		clearLine := Line{Kind: LineMove, At: hr(2.5), Verb: "clear"}
+		f := relFacts(hr(3),
+			fleetMove(hr(2.2), "s1-1.w1", "", amy+":working", map[string]string{"first_taken": stamp(hr(2.2))}),
+			clearLine,
+		)
+		r := NoStuckFriend(f)
+		assert.True(t, r.OK, r.Evidence)
+	})
+
+	t.Run("a machine's late card is not a friend's", func(t *testing.T) {
+		t.Parallel()
+		f := relFacts(hr(9), fleetMove(hr(0), "s1-1.w1", "", "m1:working", nil))
+		assert.True(t, NoStuckFriend(f).OK)
+	})
+
+	t.Run("no log is no stuck friend", func(t *testing.T) {
+		t.Parallel()
+		assert.True(t, NoStuckFriend(relFacts(hr(9))).OK)
+	})
+
+	t.Run("consecutive late periods for a card merge across intervening moves of other cards", func(t *testing.T) {
+		t.Parallel()
+		bob := FriendRow("bob")
+		f := relFacts(hr(4),
+			fleetMove(hr(0), "s1-1.w1", "", amy+":working", map[string]string{"first_taken": stamp(hr(0))}),
+			fleetMove(hr(1), "s1-2.w1", "", bob+":working", map[string]string{"first_taken": stamp(hr(1))}),
+			fleetMove(hr(2.5), "s1-1.w1", amy+":working", amy+":working", map[string]string{"first_taken": stamp(hr(0)), "note": "update"}),
+			fleetMove(hr(3.5), "s1-2.w1", bob+":working", bob+":working", map[string]string{"first_taken": stamp(hr(1)), "note": "update"}),
+		)
+		r := NoStuckFriend(f)
+		assert.False(t, r.OK)
+		spans, _ := friendLateSpans(f.Log(), f.Now(), f.DealtMax())
+		assert.Len(t, spans, 2, "one merged span per card, not fragmented")
+	})
 }
 
 func TestTheReleaseReportSaysOKOrNotReadyByTheChecksRun(t *testing.T) {
 	t.Parallel()
-	w := newWorld(t)
-	rep, err := RunReleaseChecks(fakeRelease{now: t0, snap: w.s}, nil)
+	good := relFacts(hr(1))
+	rep, err := RunReleaseChecks(good, nil)
 	require.NoError(t, err)
-	assert.False(t, rep.Ready)
+	assert.Equal(t, fmt.Sprintf("RELEASE OK checks=%d", len(ReleaseChecks)), rep.Summary)
+	assert.Equal(t, 0, rep.ExitCode())
+	assert.Equal(t, len(ReleaseChecks), len(rep.Results))
+
+	bad := relFacts(hr(3), fleetMove(hr(0), "s1-1.w1", "", FriendRow("amy")+":working", nil))
+	rep, err = RunReleaseChecks(bad, []string{CheckNoStuckFriend})
+	require.NoError(t, err)
 	assert.Equal(t, "RELEASE NOT READY failed=1", rep.Summary)
-	_, err = RunReleaseChecks(fakeRelease{now: t0, snap: w.s}, []string{"nope"})
-	assert.EqualError(t, err, `no release check named "nope"; the checks are cold-audit`)
+	assert.Equal(t, 1, rep.ExitCode())
+	assert.False(t, rep.Ready)
+
+	_, err = RunReleaseChecks(good, []string{"no-such-check"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no-such-check")
+	assert.Contains(t, err.Error(), CheckNoStuckFriend, "the refusal names the checks there are")
+}
+
+func TestEveryReleaseCheckStatesItsBar(t *testing.T) {
+	t.Parallel()
+	seen := map[string]bool{}
+	for _, c := range ReleaseChecks {
+		assert.NotEmpty(t, c.Name)
+		assert.NotEmpty(t, c.Bar, c.Name)
+		assert.False(t, seen[c.Name], "%s twice", c.Name)
+		seen[c.Name] = true
+	}
+}
+
+func TestReleaseStreamsFilterKeepsTheStreamsTheGlobNames(t *testing.T) {
+	t.Parallel()
+	a := fleetMove(hr(0), "a-1.w1", "", FriendRow("amy")+":working", nil)
+	a.Stream = "alpha"
+	b := fleetMove(hr(0), "b-1.w1", "", FriendRow("bob")+":working", nil)
+	b.Stream = "beta"
+	got, err := ReleaseStreamLines([]Line{a, b}, "al*")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "a-1.w1", got[0].Card)
+	all, err := ReleaseStreamLines([]Line{a, b}, "")
+	require.NoError(t, err)
+	assert.Len(t, all, 2)
+	_, err = ReleaseStreamLines(nil, "[")
+	require.Error(t, err)
+}
+
+// TestReleaseCheckRunsTheAcceptanceSentinelsSixChecks is the card's test
+// (docs/SPEC-RELEASE.md, "the acceptance sentinel's six checks", source: the
+// coordinator's answer, Rowan 2026-10-06 12:50 ET): each of the six is green
+// on a twin of the facts that keeps it and red on a twin that breaks exactly
+// it, naming what to look at; no socket, no clock of its own.
+func TestReleaseCheckRunsTheAcceptanceSentinelsSixChecks(t *testing.T) {
+	t.Parallel()
+
+	green := func() Acceptance {
+		return Acceptance{
+			Streams: []string{"s1"},
+			Cards: []AcceptCard{
+				{ID: "s1-1.w1", Stream: "s1", Col: Landed, Tier: "pro", Head: "aaa1"},
+				{ID: "s1-2.w1", Stream: "s1", Col: Landed, Tier: "flash", Head: "bbb2"},
+			},
+			Reads: []AcceptRead{
+				{Primary: "s1-1.w1", Stream: "s1", Head: "aaa1", Reader: "r1", Verdict: "ok"},
+				{Primary: "s1-1.w1", Stream: "s1", Head: "aaa1", Reader: "r2", Verdict: "ok"},
+				{Primary: "s1-1.w1", Stream: "s1", Head: "aaa1", Reader: "r3", Verdict: "broken"},
+				{Primary: "s1-2.w1", Stream: "s1", Head: "bbb2", Reader: "r1", Verdict: "ok"},
+			},
+			Gates: []AcceptGate{
+				{Base: "base1", Class: "unit", OK: true},
+				{Base: "base1", Class: "functional", OK: true},
+				{Base: "base1", Class: "docs", OK: true},
+				{Base: "base1", Class: "ci", OK: true},
+			},
+			Prose: []AcceptProse{
+				{Path: "docs/SPEC-RELEASE.md", Check: "links", OK: true},
+				{Path: "cmd/nova-sprint", Check: "nocode", OK: true},
+			},
+			Promote: AcceptPromotion{Sha: "abc1234", Queued: true, AfterLastLanding: true},
+		}
+	}
+
+	six := []string{
+		CheckCardsSettled, CheckBaseGateGreen, CheckTwoOKReads,
+		CheckProseTrue, CheckLandingsPromoted, CheckNoOpenJudgment,
+	}
+
+	// every check is green on the facts that keep it.
+	t.Run("all six are green on a stream that keeps every bar", func(t *testing.T) {
+		t.Parallel()
+		f := fakeRelease{now: hr(1), dealtMax: DealtMaxDefault, accept: green()}
+		rep, err := RunReleaseChecks(f, six)
+		require.NoError(t, err)
+		require.Len(t, rep.Results, len(six))
+		assert.True(t, rep.Ready)
+		assert.Equal(t, fmt.Sprintf("RELEASE OK checks=%d", len(six)), rep.Summary)
+		for _, r := range rep.Results {
+			assert.True(t, r.OK, r.Line())
+			assert.NotEmpty(t, r.Evidence, r.Name)
+			assert.Equal(t, "RELEASE CHECK "+r.Name+" ok ", r.Line()[:len("RELEASE CHECK "+r.Name+" ok ")])
+		}
+	})
+
+	// each check's red twin breaks exactly that check, and its evidence names
+	// what to look at.
+	twins := []struct {
+		name    string
+		want    string
+		breakIt func(*Acceptance)
+	}{
+		{CheckCardsSettled, "s1-1.w1", func(a *Acceptance) { a.Cards[0].Col = Working }},
+		{CheckCardsSettled, "no reason", func(a *Acceptance) {
+			a.Cards = []AcceptCard{{ID: "s1-3.w1", Stream: "s1", Col: Landed, Tier: "flash", Head: "ccc3"}}
+			a.Dropped = []AcceptDrop{{ID: "s1-4.w1", Stream: "s1"}}
+		}},
+		{CheckBaseGateGreen, "functional", func(a *Acceptance) { a.Gates[1].OK = false }},
+		{CheckBaseGateGreen, "no ci gate result", func(a *Acceptance) { a.Gates = a.Gates[:3] }},
+		{CheckTwoOKReads, "s1-1.w1", func(a *Acceptance) { a.Reads = a.Reads[:1] }},
+		{CheckTwoOKReads, "s1-2.w1", func(a *Acceptance) { a.Reads = a.Reads[:2] }},
+		{CheckProseTrue, "nocode", func(a *Acceptance) { a.Prose[1].OK = false }},
+		{CheckProseTrue, "no nova-check links result", func(a *Acceptance) { a.Prose = a.Prose[1:] }},
+		{CheckLandingsPromoted, "not in dev", func(a *Acceptance) { a.Promote = AcceptPromotion{} }},
+		{CheckLandingsPromoted, "older than", func(a *Acceptance) { a.Promote.AfterLastLanding = false }},
+		{CheckNoOpenJudgment, "j1", func(a *Acceptance) {
+			a.Judgments = []AcceptJudgment{{ID: "j1", Stream: "s1", Kind: "stale"}}
+		}},
+	}
+	for _, tc := range twins {
+		t.Run(tc.name+" is red on a broken twin naming "+tc.want, func(t *testing.T) {
+			t.Parallel()
+			a := green()
+			tc.breakIt(&a)
+			f := fakeRelease{now: hr(1), dealtMax: DealtMaxDefault, accept: a}
+			rep, err := RunReleaseChecks(f, []string{tc.name})
+			require.NoError(t, err)
+			require.Len(t, rep.Results, 1)
+			r := rep.Results[0]
+			assert.False(t, r.OK, r.Line())
+			assert.Contains(t, r.Evidence, tc.want, r.Line())
+			assert.Equal(t, "RELEASE CHECK "+tc.name+" fail "+r.Evidence, r.Line())
+		})
+	}
+
+	// no stream named is no acceptance to check: every check passes and says so.
+	t.Run("no stream named leaves every acceptance check vacuous", func(t *testing.T) {
+		t.Parallel()
+		f := fakeRelease{now: hr(1), dealtMax: DealtMaxDefault}
+		rep, err := RunReleaseChecks(f, six)
+		require.NoError(t, err)
+		assert.True(t, rep.Ready)
+		for _, r := range rep.Results {
+			assert.True(t, r.OK, r.Line())
+			assert.Contains(t, r.Evidence, "no stream is being accepted", r.Line())
+		}
+	})
 }

@@ -146,6 +146,46 @@ const (
 	JBound     = "bound"            // a card reached its bound (the tick's)
 )
 
+// JBriefWrong is a card at its brief's bound: the brief is wrong, not the worker (sprint's
+// AtBriefBound). AttemptsDefault is the attempts one brief may run when neither its stream nor
+// the sprint sets a cap (sprint.AttemptsDefault).
+const (
+	JBriefWrong     = "briefwrong"
+	AttemptsDefault = 4
+)
+
+// The ways the lander refuses a card's own head (sprint.RefusalWay): "" is a refusal it could
+// not place, which stops the stream.
+const (
+	RefusedConflict = "conflict"
+	RefusedPaths    = "paths"
+	RefusedChecks   = "checks"
+	RefusedGate     = "gate"
+)
+
+// AttemptsCap is how many attempts one brief may run in the stream (sprint's AttemptsCap): the
+// stream's cap, else the sprint's, else AttemptsDefault.
+func (s State) AttemptsCap(stream string) int {
+	switch {
+	case s.Streams[stream].Cap > 0:
+		return s.Streams[stream].Cap
+	case s.Cap > 0:
+		return s.Cap
+	}
+	return AttemptsDefault
+}
+
+// AtBriefBound says the landing's refusal of the primary's head the way way is at its brief's
+// bound (sprint.AtBriefBound): the same refusal as the one its last rework answered, at an
+// attempt since its brief was replaced, or its stream's attempt cap counted from that brief.
+func (s State) AtBriefBound(p, way string) bool {
+	pr := s.Primaries[p]
+	if pr.Refused != "" && pr.Refused == way && pr.FindingAttempt > pr.BriefAt && pr.FindingAttempt < pr.Attempt {
+		return true
+	}
+	return pr.Attempt-pr.BriefAt >= s.AttemptsCap(pr.Stream)
+}
+
 // Subjects that are not a primary.
 const SprintSubject = "sprint:done"
 
@@ -176,6 +216,11 @@ type Primary struct {
 	// the next attempt's first read is asked of the finder, out of turn (Ask).
 	Finder         string
 	FindingAttempt int
+	// BriefAt is its attempt when its brief was last replaced, 0 for the brief add gave it
+	// (sprint.FieldBriefAttempt); Refused is the way the landing last refused its head when its
+	// finding is that refusal (sprint.LandRefusedFinding), "" otherwise.
+	BriefAt int
+	Refused string
 }
 
 // WorkCard is one work card: <primary>.w<attempt>.
@@ -219,6 +264,7 @@ type MergeCard struct {
 type Stream struct {
 	State string
 	Cause string
+	Cap   int // its attempt cap, 0 for none (sprint.FieldAttempts)
 }
 
 // Judgment is one open judgment on one subject: a primary, a stream
@@ -247,6 +293,8 @@ type State struct {
 	Pending   string // the verb of the pending operation (D1), "" when none
 	// Coordinator is the one actor who releases sentinels.
 	Coordinator string
+	// Cap is the sprint's attempt cap, 0 for none (sprint.PropAttempts).
+	Cap int
 	// DealLast and AskLast are the rolling indexes of the deal and the ask
 	// (tla/SprintEvents.tla dcur and acur): each a
 	// counter, as the table's property holds it (a decimal uint64 from 0 this
@@ -346,6 +394,24 @@ func WC(p string, a int) string { return fmt.Sprintf("%s.w%d", p, a) }
 
 // RC is a read card's id.
 func RC(p string, a int, r string) string { return fmt.Sprintf("%s.r%d.%s", p, a, r) }
+
+// AskID is the read card the ask cuts for reader r of p at attempt a, and whether r may be
+// asked (sprint.ReadCardForAsk, the interim rule of 2026-10-06): the plain id while none is
+// made; the second identity (.g1) once the plain card is retired without a verdict and no
+// second is made; else r has read it.
+func (s State) AskID(p string, a int, r string) (string, bool) {
+	plain := RC(p, a, r)
+	c, made := s.Reads[plain]
+	if !made {
+		return plain, true
+	}
+	if second := plain + ".g1"; c.Place == Retired && c.Verdict == "" {
+		if _, made := s.Reads[second]; !made {
+			return second, true
+		}
+	}
+	return plain, false
+}
 
 // ------------------------------------------------------------------ views
 
@@ -597,7 +663,10 @@ func without(xs []string, x string) []string {
 // past it, and so on. The model's readers have no width (none is named for a
 // fleet row), so the room is unbounded and ordered by the load alone, reads
 // asked and reading (Load), the engine's readerRooms and round.pickByRoom.
-func (s State) NextReaders(p string, k int) []string {
+func (s State) NextReaders(p string, k int) []string { return s.nextReaders(p, k, "") }
+
+// nextReaders is NextReaders leaving out the reader but (the finder, asked out of turn).
+func (s State) nextReaders(p string, k int, but string) []string {
 	order := sorted(s.Readers)
 	attempt := s.Primaries[p].Attempt
 	at := roundFrom(order, s.AskLast)
@@ -610,7 +679,7 @@ func (s State) NextReaders(p string, k int) []string {
 		pick := -1
 		for i := range order {
 			j := (at + i) % len(order)
-			if _, made := s.Reads[RC(p, attempt, order[j])]; made || slices.Contains(out, order[j]) {
+			if _, ok := s.AskID(p, attempt, order[j]); !ok || slices.Contains(out, order[j]) || order[j] == but {
 				continue
 			}
 			if pick < 0 || load[order[j]] < load[order[pick]] {
@@ -701,26 +770,25 @@ func (s State) Acceptable(p string) bool { return len(s.OkReaders(p)) >= 2 }
 func (s State) AskChoice(p string) (readers []string, finder bool) {
 	want := s.ReadsWanted(p)
 	pr := s.Primaries[p]
-	if want == 1 && len(s.LiveReadsOf(p)) == 0 && pr.Finder != "" && pr.FindingAttempt == pr.Attempt-1 {
-		if _, made := s.Reads[RC(p, pr.Attempt, pr.Finder)]; !made {
-			return []string{pr.Finder}, true
+	if want >= 1 && len(s.LiveReadsOf(p)) == 0 && pr.Finder != "" && pr.FindingAttempt == pr.Attempt-1 {
+		if _, ok := s.AskID(p, pr.Attempt, pr.Finder); ok {
+			// the finder first, out of turn, then the rest round the readers without her
+			return append([]string{pr.Finder}, s.nextReaders(p, want-1, pr.Finder)...), true
 		}
 	}
 	return s.NextReaders(p, want), false
 }
 
 // ReadsWanted is how many reads the ask places on p now (sprint.ReadsWanted,
-// sequential reads): one while no read of its attempt stands, none while one
-// is outstanding or found it broken, else the rest of the two it needs.
+// reads together, the interim rule of 2026-10-06: "send out multiple consumer
+// cards in ||"): the rest of the two it needs, an outstanding read counted
+// among them, none while one found it broken.
 func (s State) ReadsWanted(p string) int {
 	live := s.LiveReadsOf(p)
 	for _, id := range live {
-		if s.Reads[id].Place != OK {
+		if s.Reads[id].Place == Broken {
 			return 0
 		}
-	}
-	if len(live) == 0 {
-		return 1
 	}
 	return max(0, 2-len(live))
 }
@@ -905,14 +973,16 @@ func (s State) AcceptHeld(p string) string {
 }
 
 // acceptNote is the ready to accept judgment a step that leaves an
-// acceptable primary in review writes (sprint's reviewJudgment): when no
-// judgment open on it offers accept (ready to accept, returned to review), and
-// the machine is STOPPED or holds it (AcceptHeld).
+// acceptable primary in review writes (sprint's reviewJudgment): only when the
+// pump holds it (AcceptHeld) and no judgment open on it offers accept (ready
+// to accept, returned to review). A primary nothing holds is the tick's to
+// accept, RUNNING or STOPPED (at the first pump after start): never a
+// judgment, never a hand step.
 func (n *State) acceptNote(p string) {
 	if !n.InWork(p, Review) || !n.Acceptable(p) || n.Open[Judgment{JAccept, p}] || n.Open[Judgment{JReturned, p}] {
 		return
 	}
-	if n.Machine != Running || n.AcceptHeld(p) != "" {
+	if n.AcceptHeld(p) != "" {
 		n.open(JAccept, p)
 	}
 }

@@ -151,32 +151,6 @@ func TestWatchWakeFiresOncePerEventAndNeverLapses(t *testing.T) {
 		assert.GreaterOrEqual(t, r.elapsed(first), 20*time.Minute, "one wake in twenty minutes")
 	})
 
-	t.Run("repeat: a refusal that keeps repeating wakes at once, once, and is no judgment wake after", func(t *testing.T) {
-		t.Parallel()
-		r := newWakeRig(t)
-		r.cfg.check = 24 * time.Hour
-		w := r.run(func(n int) {
-			if n == 2 {
-				r.f.world.Judgments = []string{"j-1"}
-			}
-		})
-		require.Equal(t, "judgment", w.Kind)
-		judged := r.now
-		w = r.run(func(n int) {
-			if n == 1 {
-				r.f.world.Judgments = []string{"j-1", "r-2"}
-				r.f.world.Repeats, r.f.world.RepeatWhat = []string{"r-2"}, "tick drain: the brief is over; it happened 3 times"
-			}
-		})
-		assert.Equal(t, "repeat", w.Kind)
-		assert.Contains(t, w.Evidence, "r-2")
-		assert.Contains(t, w.Evidence, "it happened 3 times")
-		assert.Less(t, r.elapsed(judged), 20*time.Minute, "never held by --judgment-every")
-		r.cfg.check = time.Minute
-		w = r.run(nil)
-		assert.Equal(t, "check", w.Kind, "woken once, and not again as a judgment: %s", w)
-	})
-
 	t.Run("stop: one the coordinator did not ask wakes once per stop; its own never does", func(t *testing.T) {
 		t.Parallel()
 		r := newWakeRig(t)

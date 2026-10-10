@@ -25,7 +25,7 @@ func TestReaderStatesFollowTheBeatAndTheHold(t *testing.T) {
 	// the harness beats every reader: all up
 	assert.Equal(t, map[string]string{"reader-a": "up", "reader-b": "up", "reader-c": "up"}, state())
 	// a name that is no row writes no beat
-	wrote, err := h.st.ReaderBeat(h.ctx, "reader-z")
+	wrote, err := h.st.ReaderBeat(h.ctx, "reader-z", "")
 	require.NoError(t, err)
 	assert.False(t, wrote)
 	// the hold is away whatever it beats, and up releases it
@@ -65,7 +65,7 @@ func TestTheTickAsksReadersUpAndSaysWhenFewerThanTwoAre(t *testing.T) {
 	require.NoError(t, h.st.SetReaderAway(h.ctx, "reader-a", false, "coordinator"))
 	h.machine()
 	for _, id := range []string{"s1-1", "s1-2"} {
-		assert.Len(t, h.snap().Readers.Of(id), 1, id+": its first read")
+		assert.Len(t, h.snap().Readers.Of(id), 2, id+": both its reads, together, of the two readers up")
 	}
 	assert.Empty(t, h.openOf(sprint.NFewReaders))
 }

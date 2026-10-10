@@ -17,10 +17,7 @@ type world struct {
 	t     testing.TB
 	s     *Snapshot
 	notes []Note
-	// updates is every judgment a plan rewrote in place (Plan.Updates), in
-	// order: the stores rewrite the note by its id, and so does the world
-	updates []Note
-	seq     int
+	seq   int
 }
 
 var t0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -44,6 +41,16 @@ func (w *world) do(p Plan) Plan {
 			tb.SetRows(append(tb.Rows(), ra.Row))
 		}
 	}
+	// a record put back on a cell, as the table layer's cell add does
+	for _, pl := range p.Places {
+		c := w.s.T(pl.Table).Card(pl.ID)
+		require.NotNil(w.t, c, "%s: place %s: no record", pl.Table, pl.ID)
+		require.False(w.t, c.Placed(), "%s: place %s: placed at %s:%s", pl.Table, pl.ID, c.Row, c.Col)
+		require.True(w.t, w.s.T(pl.Table).HasRow(pl.Row), "%s: place %s: no row %s", pl.Table, pl.ID, pl.Row)
+		c.Row, c.Col, c.Score = pl.Row, pl.Col, pl.Score
+		c.Rev++
+		w.s.T(pl.Table).cells, w.s.T(pl.Table).byPrimary = nil, nil
+	}
 	for _, u := range p.Units {
 		for _, c := range u.Changes {
 			w.entry(c)
@@ -58,7 +65,6 @@ func (w *world) do(p Plan) Plan {
 	}
 	w.closeAll(p.Closes)
 	w.note(p.Notes...)
-	w.update(p.Updates...)
 	// the table properties, each guarded on the value its plan read, as the
 	// table layer applies them (docs/SPEC-NOVA-TABLE.md, table properties)
 	for _, pw := range p.Props {
@@ -96,21 +102,6 @@ func (w *world) note(ns ...Note) {
 		if n.Kind == Judgment {
 			for _, sub := range n.Subjects() {
 				w.s.Open = append(w.s.Open, Open{Key: OpenKey(n.ID, sub), Note: n})
-			}
-		}
-	}
-}
-
-// update rewrites each open or acknowledged judgment in place by its id, as
-// the stores apply Plan.Updates.
-func (w *world) update(ns ...Note) {
-	for _, n := range ns {
-		w.updates = append(w.updates, n)
-		for _, os := range []*[]Open{&w.s.Open, &w.s.Acked} {
-			for i := range *os {
-				if (*os)[i].Note.ID == n.ID {
-					(*os)[i].Note = n
-				}
 			}
 		}
 	}
@@ -216,4 +207,22 @@ func (w *world) openOn(subject string) []Open {
 		}
 	}
 	return out
+}
+
+// seedDroppedNeed marks a primary's record dropped off the table without a
+// drop step: the state the verbs now refuse to make (add refuses a dropped
+// need, and drop refuses a needed card without Cascade), kept for the
+// recovery and waiver rules that must still read a stored dropped record
+// (docs/SPEC-SPRINT.md section 11). A resolve after it opens the blocked
+// judgment.
+func (w *world) seedDroppedNeed(id string) {
+	w.t.Helper()
+	c := w.s.Work.Card(id)
+	if c == nil {
+		return
+	}
+	c.Row, c.Col = "", ""
+	c.Fields["outcome"] = "dropped"
+	c.Rev++
+	w.s.Work.Put(c)
 }

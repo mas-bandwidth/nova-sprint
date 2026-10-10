@@ -25,7 +25,7 @@ const (
 func scenarios() []sample {
 	var out []sample
 	for seed := uint64(0); seed < scenarioSeeds; seed++ {
-		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendStalls, aCardPastItsCap, aFriendsLateCard} {
+		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendStalls, aCardPastItsCap, aMemberWithFreeLanes, aQueuedCardOnAFullFriend} {
 			out = append(out, run(newWalk(scenarioBase+seed))...)
 		}
 	}
@@ -152,6 +152,22 @@ func unevenReads(k *walk) []sample {
 	return []sample{k.sample()}
 }
 
+// aMemberWithFreeLanes has one member take all of its ready cards and finish
+// them, while the others hold ready backlogs: its lanes are free beside them, the
+// case the tick's level evens. The walks drop a chain whole now (a card a waiting
+// card needs is refused without the cascade, docs/SPEC-SPRINT.md section 11), so
+// they reach this case less often than the scenario does.
+func aMemberWithFreeLanes(k *walk) []sample {
+	for range 4 * len(k.members) {
+		k.addTo(k.streams[0])
+	}
+	k.wholeTick()
+	if !k.unlevel() || !k.emptyLanes() {
+		return nil
+	}
+	return []sample{k.sample()}
+}
+
 // aLateCardRedealt lets a dealt card go untaken past its deadline, has the tick
 // raise the lateness, and then takes the card's member down: the card is dealt
 // to another, and the lateness is to be rewritten with where it is now.
@@ -246,23 +262,29 @@ func aCardPastItsCap(k *walk) []sample {
 	return []sample{k.sample()}
 }
 
-// aFriendsLateCard deals a friend's card to her and lets it go unfinished past its
-// deadline: the tick has it to redeal (sprint.TickFriendRedeal).
-func aFriendsLateCard(k *walk) []sample {
-	k.friends = []sprint.FriendSeat{{Name: "amy", Width: 1, Status: sprint.Up, Class: "flash,pro"}}
-	id := fmt.Sprintf("p%d", k.next)
-	k.next++
-	if !k.try(sprint.Add(k.s, sprint.AddReq{Brief: "tier: pro\nWHO: only friend amy\n\nThe task.", Stream: k.streams[0], IDs: []string{id}, Who: coordinator})) {
+// aQueuedCardOnAFullFriend deals a friend of width one two cards and has her take one:
+// her lane works, the other card waits behind it, and the members' lanes are idle beside
+// it: the rebalance's case (sprint.Rebalance; the walks give no friend).
+func aQueuedCardOnAFullFriend(k *walk) []sample {
+	k.friends = []sprint.FriendSeat{{Name: "flo", Width: 1, Status: sprint.Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}}
+	for range 2 {
+		if k.addTo(k.streams[0]) == "" {
+			return nil
+		}
+	}
+	if !k.runPart("deal") {
 		return nil
 	}
-	plan, _ := sprint.TickDeal(k.s, sprint.TickReq{Who: sprint.MachineActor, Friends: k.friends})
-	if !k.try(plan) {
+	row := sprint.FriendRow("flo")
+	if k.s.Fleet.Count(row, sprint.Ready) < 2 {
 		return nil
 	}
-	if wc := k.s.Fleet.Card(sprint.WorkCardID(id, 1)); wc == nil || !sprint.IsFriendRow(wc.Row) {
-		return nil // the card is no friend's: nothing to redeal
+	wc := k.s.Fleet.Cell(row, sprint.Ready)[0]
+	k.s.Friends = k.friends // her take reads the roster
+	took := k.try(sprint.Take(k.s, sprint.TakeReq{As: row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")}, Who: row}))
+	k.s.Friends = nil
+	if !took {
+		return nil
 	}
-	k.now = k.now.Add(sprint.DeadlineUnfinished + time.Duration(1+k.pick(20))*time.Minute)
-	k.beatAll()
 	return []sample{k.sample()}
 }

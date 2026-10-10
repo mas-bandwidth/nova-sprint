@@ -266,6 +266,7 @@ func TestHoldTakesNoNewCardsAndUnholdResumesForMembersFriendsAndStreams(t *testi
 		t.Parallel()
 		r := newHoldRig(t, 0, 2)
 		r.tick()
+		r.startFriends()
 		s := r.snap()
 		amy := onRow(s, sprint.FriendRow("amy"), "f1", sprint.Working)
 		require.Len(t, amy, 1, "a card for any friend goes to the one with the most free width, the first by name among equals")
@@ -277,7 +278,7 @@ func TestHoldTakesNoNewCardsAndUnholdResumesForMembersFriendsAndStreams(t *testi
 		r.must(store.AddStep(sprint.AddReq{Stream: "f1", Cards: []sprint.CardAdd{{ID: "f1-9", Brief: friendsBrief("only friend amy")}}}))
 		r.tick()
 		s = r.snap()
-		assert.Equal(t, amy, onRow(s, sprint.FriendRow("amy"), "f1", sprint.Working), "a held friend keeps her cards to finish and is dealt no new one")
+		assert.Empty(t, onRow(s, sprint.FriendRow("amy"), "f1", sprint.Ready, sprint.Working), "a held friend keeps no begun card and is dealt no new one")
 		assert.Equal(t, sprint.Ready, s.StateOf("f1-9"), "her card waits ready while she is held")
 
 		r.hold(sprint.HoldReq{Names: []string{"amy"}, Release: true, Reason: "credits back"})
@@ -342,6 +343,9 @@ func TestHoldAndUnholdServeMembersReadersFriendsAndStreams(t *testing.T) {
 	s = r.snap()
 	wc := s.Fleet.Card(s.Work.Card(pr).F("work"))
 	r.must(store.FinishStep(sprint.FinishReq{As: "m2", Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")}, Who: "m2"}))
+	// Amy and bob are pro, so each is asked a flash read while she has room
+	// (docs/SPEC-SPRINT.md). Hold them so this read stays on a reader.
+	r.hold(sprint.HoldReq{Names: []string{"amy", "bob"}, Reason: "the flash read stays with a reader"})
 	r.tick()
 	reads := r.snap().Readers.Of(pr)
 	require.Len(t, reads, 1, "a flash card is read once")
