@@ -7,10 +7,10 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (206)
-- [Setup, release and operations](#setup-release-and-operations) (26)
+- [The sprint machine](#the-sprint-machine) (214)
+- [Setup, release and operations](#setup-release-and-operations) (31)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
-- [Friend AIs](#friend-ais) (19)
+- [Friend AIs](#friend-ais) (20)
 
 ## Lessons from Prime Agent's rewrite
 
@@ -1694,6 +1694,70 @@ Target: after v1.4
 
 From: a Gemini dialog the owner shared, 2026-10-10
 
+### Evaluating the decision model's decisions
+
+An evaluation harness that scores the decision model's past decisions against their outcomes, a detector for reads that bounced good work, a classifier for why a card is held, and the promotion of a decision from shadow to acting once it measures well.
+
+Why it waits: New capability.
+
+Replaces 4 open sprint cards, each mapped to `decision-evaluation`.
+
+### The swarm finish derives head and step shas from git and refuses an unformatted file
+
+The result finish is mechanical: shas come from git, not from the model, and an unformatted Go file is refused before landing.
+
+Target: v1.3
+
+From: PR #5276
+
+### Shared resources are leased by the coordinator
+
+Benches, branches, ports and accounts are claimed and released only through coordinator verbs with leases, so a down holder cannot keep one.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Brief lint refuses hiding the model or harness
+
+nova-swarm lint gains a default rule that refuses a brief telling a worker to deny, hide or misstate its model or harness.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Classifiers for false bounces and hold reports
+
+Two decision kinds classify reader findings as harness failure, trailer-only or real, and classify hold reports by cause, with a probability and the proposed paths. Both are seeded from labelled past cases.
+
+Target: after v1.4
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### nova-swarm lint card validation closes its escapes
+
+Drive letter paths, more than eight globs, comma only paths, unknown kinds, and no test on gated kinds pass lint. The card header shape and the worker card practice agree so a spec shaped card is admitted.
+
+Target: v1.3
+
+From: issue #1853; issue #1728; issue #2584; issue #2605; issue #2728
+
+### A mechanical guard check as a review verb
+
+The unguarded verdict came from a model and was wrong about a third of the time. A verb reverts non-test files, runs the named tests and reports mechanically.
+
+Target: after v1.4
+
+From: issue #2042
+
+### nova-decide review uses the provider confidence in its verdict
+
+The review verdict passes any rounded score of eight or more whatever the confidence. Low confidence lowers or flags the verdict.
+
+Target: v1.3
+
+From: issue #3393
+
 ## Setup, release and operations
 
 Setting machines up, installing and releasing safely, and the checks that keep a fleet honest.
@@ -1905,6 +1969,46 @@ Redis metrics are scraped and one ready-made dashboard shows per-bench cards, lo
 Target: after v1.4
 
 From: issue #2556
+
+### Replicate the sprint record to a second machine with a restore verb
+
+The playbook replicates the SQLite record continuously, and a restore from the replica matches the row count.
+
+Target: after v1.4
+
+From: issue #2555
+
+### A promote verb that takes the sprint base to dev end to end
+
+Promoting the sprint base to dev is done by hand: cut a branch, bring dev in, resolve conflicts, open the pull request. A verb does the whole path and records each step.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Card lint refuses valid cards: make gates and text inside fenced blocks
+
+Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside fenced blocks. It should accept both.
+
+Target: v1.3
+
+From: issue #1994; issue #2302; issue #3470
+
+### Approval at head is read from the disposition line
+
+The review API commit id can differ from the head the reviewer read. Merge checks parse the head named in the disposition and treat commit id as untrusted.
+
+Target: v1.3
+
+From: issue #2037
+
+### nova-merge stores the gate receipt and fetches it from another machine
+
+The gate's receipt is stored as evidence bound to the gate run, and any machine can fetch it. The pull request body line is only a quote.
+
+Target: after v1.4
+
+From: issue #3183
 
 ## Docs, models and the repository
 
@@ -2249,3 +2353,11 @@ Friend rows record which model serves each tier, so the deal and the friend agre
 Target: after v1.4
 
 From: card moved out of the sprint (work record, 2026-10-04); PR #5387
+
+### Scope friend status and pong counts to current assignments
+
+Queue sync writes a versioned snapshot of the friend's current Ready and Working row so counts do not include old records.
+
+Target: v1.3
+
+From: PR #5486

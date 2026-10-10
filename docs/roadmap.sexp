@@ -2052,4 +2052,105 @@
     set up with missing tiers are found and corrected."
    :date "2026-10-10"
    :release "after v1.4"
-   :origin "card moved out of the sprint (work record, 2026-10-04); PR #5387")))
+   :origin "card moved out of the sprint (work record, 2026-10-04); PR #5387")
+  (item "decision-evaluation" :group "sprint" :area "nova-decide"
+   :title "Evaluating the decision model's decisions"
+   :text "An evaluation harness that scores the decision model's past decisions against their outcomes, a detector for
+    reads that bounced good work, a classifier for why a card is held, and the promotion of a decision
+    from shadow to acting once it measures well."
+   :why "New capability."
+   :cards 4
+   :date "2026-10-09")
+  (item "swarm-finish-derives-shas-and-format" :group "sprint"
+   :title "The swarm finish derives head and step shas from git and refuses an unformatted file"
+   :text "The result finish is mechanical: shas come from git, not from the model, and an unformatted Go
+    file is refused before landing."
+   :date "2026-10-10"
+   :release "v1.3"
+   :origin "PR #5276")
+  (item "record-replication-and-restore" :group "ops"
+   :title "Replicate the sprint record to a second machine with a restore verb"
+   :text "The playbook replicates the SQLite record continuously, and a restore from the replica matches
+    the row count."
+   :date "2026-10-10"
+   :release "after v1.4"
+   :origin "issue #2555")
+  (item "promote-verb-end-to-end" :group "ops"
+   :title "A promote verb that takes the sprint base to dev end to end"
+   :text "Promoting the sprint base to dev is done by hand: cut a branch, bring dev in, resolve conflicts,
+    open the pull request. A verb does the whole path and records each step."
+   :date "2026-10-10"
+   :release "after v1.4"
+   :origin "card moved out of the sprint (work record, 2026-10-04)")
+  (item "coordinator-leased-shared-resources" :group "sprint"
+   :title "Shared resources are leased by the coordinator"
+   :text "Benches, branches, ports and accounts are claimed and released only through coordinator verbs
+    with leases, so a down holder cannot keep one."
+   :date "2026-10-10"
+   :release "after v1.4"
+   :origin "card moved out of the sprint (work record, 2026-10-04)")
+  (item "brief-lint-honest-attribution" :group "sprint"
+   :title "Brief lint refuses hiding the model or harness"
+   :text "nova-swarm lint gains a default rule that refuses a brief telling a worker to deny, hide or
+    misstate its model or harness."
+   :date "2026-10-10"
+   :release "after v1.4"
+   :origin "card moved out of the sprint (work record, 2026-10-04)")
+  (item "decide-bounce-and-hold-classifiers" :group "sprint"
+   :title "Classifiers for false bounces and hold reports"
+   :text "Two decision kinds classify reader findings as harness failure, trailer-only or real, and
+    classify hold reports by cause, with a probability and the proposed paths. Both are seeded from
+    labelled past cases."
+   :date "2026-10-10"
+   :release "after v1.4"
+   :origin "cards moved out of the sprint (work record, 2026-10-04)")
+  (item "friend-status-counts-current-assignments" :group "friends"
+   :title "Scope friend status and pong counts to current assignments"
+   :text "Queue sync writes a versioned snapshot of the friend's current Ready and Working row so counts
+    do not include old records."
+   :date "2026-10-10"
+   :release "v1.3"
+   :origin "PR #5486")
+  (item "swarm-lint-card-validation" :group "sprint"
+   :title "nova-swarm lint card validation closes its escapes"
+   :text "Drive letter paths, more than eight globs, comma only paths, unknown kinds, and no test on gated
+    kinds pass lint. The card header shape and the worker card practice agree so a spec shaped card
+    is admitted."
+   :date "2026-10-10"
+   :release "v1.3"
+   :origin "issue #1853; issue #1728; issue #2584; issue #2605; issue #2728")
+  (item "swarm-lint-card-false-refusals" :group "ops"
+   :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
+   :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
+    fenced blocks. It should accept both."
+   :date "2026-10-10"
+   :release "v1.3"
+   :origin "issue #1994; issue #2302; issue #3470")
+  (item "review-guard-check-verb" :group "sprint"
+   :title "A mechanical guard check as a review verb"
+   :text "The unguarded verdict came from a model and was wrong about a third of the time. A verb reverts
+    non-test files, runs the named tests and reports mechanically."
+   :date "2026-10-10"
+   :release "after v1.4"
+   :origin "issue #2042")
+  (item "merge-approval-head-from-disposition" :group "ops"
+   :title "Approval at head is read from the disposition line"
+   :text "The review API commit id can differ from the head the reviewer read. Merge checks parse the head
+    named in the disposition and treat commit id as untrusted."
+   :date "2026-10-10"
+   :release "v1.3"
+   :origin "issue #2037")
+  (item "merge-receipt-store-and-fetch" :group "ops"
+   :title "nova-merge stores the gate receipt and fetches it from another machine"
+   :text "The gate's receipt is stored as evidence bound to the gate run, and any machine can fetch it.
+    The pull request body line is only a quote."
+   :date "2026-10-10"
+   :release "after v1.4"
+   :origin "issue #3183")
+  (item "decide-review-uses-confidence" :group "sprint"
+   :title "nova-decide review uses the provider confidence in its verdict"
+   :text "The review verdict passes any rounded score of eight or more whatever the confidence. Low
+    confidence lowers or flags the verdict."
+   :date "2026-10-10"
+   :release "v1.3"
+   :origin "issue #3393")))
