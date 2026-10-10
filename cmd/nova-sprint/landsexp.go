@@ -41,6 +41,18 @@ var sexpData = map[string]struct{ kind, page string }{
 	"docs/roadmap.sexp": {"roadmap", "ROADMAP.md"},
 }
 
+// roadmapPage says p is a page generated from the roadmap data (FIXES.md, ROADMAP.md).
+// A conflict in one is a file conflict for its kind (land.go, mergeHeadLedgers): when its
+// regeneration fails, the card is returned to redo, as before these were ledgers.
+func roadmapPage(p string) bool {
+	for _, d := range sexpData {
+		if p == d.page {
+			return true
+		}
+	}
+	return false
+}
+
 // sexpMiddleCap bounds the line comparison of one side (the changed middle of base times
 // the changed middle of the side): a side past it is refused, not compared.
 const sexpMiddleCap = 16_000_000
@@ -87,8 +99,11 @@ func (l *lander) stageSexpUnion(ctx context.Context, dir string, paths []string)
 
 // sexpUnionNote is the card's note for data resolved at the merge, on its timeline.
 func sexpUnionNote(data []string) string {
-	return "the data " + strings.Join(data, ", ") + " conflicted and was merged entry by entry (both sides' entries kept)"
+	return "the data " + strings.Join(data, ", ") + " conflicted and was merged entry by entry (" + sexpKept + ")"
 }
+
+// sexpKept is what a merge of the data keeps, as its note and commit say.
+const sexpKept = "each side's additions and removals kept"
 
 // unionSexp is the roadmap data at a merge (the file's comment above): base, the tip's side
 // (ours) and the card's (theirs) merged, or why they do not merge.
@@ -258,21 +273,26 @@ func tidyBlanks(base, lines []string) []string {
 	return out
 }
 
-// sexpEntries is a decoded data file's entries by kind and id ("fix:<id>",
-// "release:<id>", "item:<id>"), each a comparable value; an id met twice is an error.
+// sexpEntries is a decoded data file's records by kind and id, each as its printed value:
+// the file's own title and text ("top:title", "top:text"), and for fixes "release:<id>" and
+// "fix:<id>", for the roadmap "group:<id>", "scheduled:<id>", "done:<id>" and "item:<id>".
+// An id met twice is an error.
 func sexpEntries(kind, file string, data []byte) (map[string]any, error) {
 	out := map[string]any{}
 	put := func(k string, v any) error {
 		if _, dup := out[k]; dup {
 			return fmt.Errorf("%s is named twice", k)
 		}
-		out[k] = v
+		out[k] = fmt.Sprintf("%#v", v) // a string, so any record compares
 		return nil
 	}
 	switch kind {
 	case "fixes":
 		fx, err := roadmapdoc.DecodeFixes(file, data)
 		if err != nil {
+			return nil, err
+		}
+		if err := errors.Join(put("top:title", fx.Title), put("top:text", fx.Text)); err != nil {
 			return nil, err
 		}
 		for _, r := range fx.Releases {
@@ -289,6 +309,24 @@ func sexpEntries(kind, file string, data []byte) (map[string]any, error) {
 		doc, err := roadmapdoc.Decode(file, data)
 		if err != nil {
 			return nil, err
+		}
+		if err := errors.Join(put("top:title", doc.Title), put("top:text", doc.Text)); err != nil {
+			return nil, err
+		}
+		for _, g := range doc.Groups {
+			if err := put("group:"+g.ID, g); err != nil {
+				return nil, err
+			}
+		}
+		for _, n := range doc.Scheduled {
+			if err := put("scheduled:"+n.ID, n); err != nil {
+				return nil, err
+			}
+		}
+		for _, n := range doc.Done {
+			if err := put("done:"+n.ID, n); err != nil {
+				return nil, err
+			}
 		}
 		for _, it := range doc.Items {
 			if err := put("item:"+it.ID, it); err != nil {

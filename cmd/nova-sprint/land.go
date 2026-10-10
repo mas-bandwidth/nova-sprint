@@ -1830,7 +1830,9 @@ func (l *lander) mergeHeadLedgers(ctx context.Context, dir, stream string, c lan
 		if len(paths) == 0 {
 			goto abort
 		}
-		if allLedgers(paths, l.ledgers()) {
+		// a roadmap page is regenerated from data a card wrote: a regeneration that fails
+		// (the merged data does not decode) is the card's to redo, never a stopped stream
+		if allLedgers(paths, l.ledgers()) && !slices.ContainsFunc(paths, roadmapPage) {
 			l.conflictKind = "ledger"
 		}
 		// the shrink-only ledgers first (ledgerunion.go): each resolved as the union of

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 	"testing"
@@ -46,13 +47,18 @@ func TestLandMergesTheRoadmapData(t *testing.T) {
 		name          string
 		first, second map[string]string
 		why           string
+		run           string // the page's run, when not fakeFixesRun
 	}{
 		{"two added entries land",
 			map[string]string{"docs/fixes.sexp": fixesFile(fixItem("a"), fixItem("b")), "FIXES.md": page("a", "b")},
-			map[string]string{"docs/fixes.sexp": fixesFile(fixItem("a"), fixItem("c")), "FIXES.md": page("a", "c")}, ""},
+			map[string]string{"docs/fixes.sexp": fixesFile(fixItem("a"), fixItem("c")), "FIXES.md": page("a", "c")}, "", ""},
 		{"two changes of one entry are refused",
 			map[string]string{"docs/fixes.sexp": fixesFile(strings.Replace(fixItem("a"), `:title "a"`, `:title "one"`, 1))},
-			map[string]string{"docs/fixes.sexp": fixesFile(strings.Replace(fixItem("a"), `:title "a"`, `:title "two"`, 1))}, "both sides change line"},
+			map[string]string{"docs/fixes.sexp": fixesFile(strings.Replace(fixItem("a"), `:title "a"`, `:title "two"`, 1))}, "both sides change line", ""},
+		// a page whose regeneration fails is the card's to redo, never a stopped stream
+		{"a page-only conflict whose regeneration fails is returned",
+			map[string]string{"FIXES.md": "one\n"}, map[string]string{"FIXES.md": "two\n"},
+			"TestFixesIsGeneratedFromTheSexp did not regenerate them", "echo 'roadmap REFUSED: id used twice'; exit 2"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -60,7 +66,7 @@ func TestLandMergesTheRoadmapData(t *testing.T) {
 			fams := slices.Clone(landLedgers)
 			for i := range fams {
 				if fams[i].owns("FIXES.md") {
-					fams[i].run = []string{"sh", "-c", fakeFixesRun}
+					fams[i].run = []string{"sh", "-c", cmp.Or(tc.run, fakeFixesRun)}
 				}
 			}
 			r.a.ledgers = fams
@@ -86,7 +92,7 @@ func TestLandMergesTheRoadmapData(t *testing.T) {
 			assert.Equal(t, strings.TrimSuffix(fixesFile(fixItem("a"), fixItem("b"), fixItem("c")), "\n"), r.git(r.remote, "show", "main:docs/fixes.sexp"))
 			assert.Equal(t, strings.TrimSuffix(page("a", "b", "c"), "\n"), r.git(r.remote, "show", "main:FIXES.md"), "the page is the merged data's, regenerated")
 			body := r.git(r.remote, "log", "-1", "--format=%b", "main")
-			assert.Contains(t, body, "The data docs/fixes.sexp conflicted and was merged entry by entry (both sides' entries kept).")
+			assert.Contains(t, body, "The data docs/fixes.sexp conflicted and was merged entry by entry (each side's additions and removals kept). The generated ledgers FIXES.md conflicted.")
 			assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "landed/merged"}, r.places("s1-1", "s1-2"))
 			assert.Contains(t, r.ok("card s1-2"), "the data docs/fixes.sexp conflicted and was merged entry by entry")
 			r.clean()

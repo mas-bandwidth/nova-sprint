@@ -324,20 +324,24 @@ func (l *lander) resolve(ctx context.Context, dir, stream string, c landCard, pa
 			return "", "", "the regenerated ledgers could not be staged: " + firstLine("", err)
 		}
 	}
-	named := paths
-	if len(named) == 0 {
-		named = written // the pages the merged data regenerated
-	}
-	msg := ledgerMessage(c.id, stream, named, tests)
+	msg := ledgerMessage(c.id, stream, paths, tests)
+	note = ledgerNote(paths, tests)
 	if len(data) > 0 {
-		msg[1] = "The data " + strings.Join(data, ", ") + " conflicted and was merged entry by entry (both sides' entries kept). " + msg[1]
+		// the roadmap data merged (landsexp.go); the pages conflicted (the ledger sentence)
+		// or, when they did not, were regenerated from the merged data all the same
+		var pages, pagesNote string
+		switch {
+		case len(paths) > 0:
+			pages, pagesNote = " "+msg[1], "; "+note
+		case len(written) > 0:
+			pages = " The pages " + strings.Join(written, ", ") + " were regenerated from the merged data by " + tests + "' runs."
+			pagesNote = "; the pages " + sprint.Preview(written, ", ") + " regenerated from it by " + tests + "' runs"
+		}
+		msg[1] = "The data " + strings.Join(data, ", ") + " conflicted and was merged entry by entry (" + sexpKept + ")." + pages
+		note = sexpUnionNote(data) + pagesNote
 	}
 	if _, err := l.git(ctx, dir, "commit", "-q", "-m", msg[0], "-m", msg[1]); err != nil {
 		return "", "", "the resolved merge of " + c.id + " could not be committed: " + firstLine("", err)
-	}
-	note = ledgerNote(named, tests)
-	if len(data) > 0 {
-		note = sexpUnionNote(data) + "; " + note
 	}
 	return note, "", ""
 }

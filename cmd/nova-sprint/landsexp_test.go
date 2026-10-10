@@ -31,6 +31,9 @@ func TestUnionSexp(t *testing.T) {
 		{"both add one id", fixesFile(a), fixesFile(a, b), fixesFile(a, b), "", "the merged data does not decode"},
 		{"an addition inside a removed entry", fixesFile(x, fixItemLines("a"), c), fixesFile(x, c),
 			fixesFile(x, strings.Replace(fixItemLines("a"), "\n    :origin", "\n    :text \"more\"\n    :origin", 1), c), "", "the card adds lines inside a stretch the tip removes"},
+		// the file's own text: one side rewrites its first line, the other adds a line after
+		// it; the lines merge, the text does not
+		{"both change the file's text", topText("x\n  y"), topText("z\n  y"), topText("x\n  w\n  y"), "", "both sides change top:text"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -44,6 +47,11 @@ func TestUnionSexp(t *testing.T) {
 			assert.Equal(t, tc.want, string(got))
 		})
 	}
+}
+
+// topText is fixesFile(fixItem("a")) with the file's own :text set to text.
+func topText(text string) string {
+	return strings.Replace(fixesFile(fixItem("a")), ` :text "x"`, ` :text "`+text+`"`, 1)
 }
 
 // The real docs/fixes.sexp, two cards each adding their entry at its end as the cards of
