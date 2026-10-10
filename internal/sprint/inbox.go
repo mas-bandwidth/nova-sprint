@@ -581,11 +581,11 @@ func commands(g Group, first Note, prefix string) []Command {
 			add(d, cmd+"ask"+subj+" --another"+subjAns)
 		case strings.HasPrefix(d, "merge --stream "):
 			// a bare merge records the queue's head as landed with no push, which a real store
-			// refuses (nova-sprint#50): land pushes the batch and records the merge. Only the twin,
-			// which has no git, takes the bare merge; it is a report, so it names its epoch.
-			stream := strings.TrimPrefix(d, "merge --stream ")
-			add(d, cmd+"land --stream "+stream,
-				cmd+d+" --epoch "+strconv.FormatUint(IDEpoch(g.ID), 10)+"   # the twin only (no git)")
+			// refuses (nova-sprint#50): land pushes the batch and records the merge. ONE runnable
+			// line, for the answer path runs every line and joins them with && (answer.go fill,
+			// steps_ack.go). A twin has no git: there land's own NOTE names the merge that stands
+			// in for it (nova-sprint merge --stream <s> --batch <n>).
+			add(d, cmd+"land --stream "+strings.TrimPrefix(d, "merge --stream "))
 		case strings.HasPrefix(d, "friend take "):
 			add(d, cmd+d+" --reason "+whyText)
 		case strings.HasPrefix(d, "fleet down ") || strings.HasPrefix(d, "fleet up ") || strings.HasPrefix(d, "reader up ") || strings.HasPrefix(d, "goal "):
