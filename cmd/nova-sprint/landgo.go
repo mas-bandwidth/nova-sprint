@@ -496,6 +496,11 @@ func (l *lander) gateOn(ctx context.Context, host, dir string, runs [][]string, 
 	if code == 0 {
 		return "", true, nil
 	}
+	if fault := benchFault(code, out); fault != "" {
+		// the bench could not run the gate (no go on its PATH, its disk full): the tree is
+		// not red, and no head is blamed; the ring's next slot runs it (ringGate)
+		return "", false, &bench.StageError{Host: host, Step: "the gate's toolchain", Code: code, Tail: fault}
+	}
 	return gateWhy(redRun(runs, out), fmt.Errorf("exit status %d on the bench %s", code, host), out), true, nil
 }
 
@@ -566,13 +571,165 @@ func (l *lander) stageSkips() *bench.StageSkips {
 	return v.(*bench.StageSkips)
 }
 
+// benchFaults are what a bench says when it could not run the gate at all, whatever the
+// tree: 2026-10-10, 44 of the day's go build refusals blamed a head for `sh: 1: go: not
+// found` (exit 127, a non-interactive shell with no Go on its PATH) or `disk quota exceeded`
+// / `no space left on device` (the bench's disk full); none was a compile error.
+var benchFaults = []string{"disk quota exceeded", "no space left on device"}
+
+// benchFault is the line of a red bench gate's output that says the bench, not the tree,
+// failed: "" when the gate ran and the tree is red. Only the bench's own lines count: what
+// the shell or the toolchain printed (a build's, a vet's, a missing go), never what a test
+// binary printed. A test that ran wrote its output between its package's last result line
+// and its own result line (`FAIL\t<pkg>\t<time>`, `ok \t<pkg>`), and anything after a
+// `--- FAIL` / `=== RUN` / `panic:` line until that result line is a test's too; an
+// indented line is a test's log. Before (v1.2.5 candidate 4, 2026-10-10) any line matched,
+// so a real test failure that printed "no space left on device" was refused as a bench
+// fault on every slot of the ring, forever, and no head was blamed.
+//
+// A package's build errors are the toolchain's: go test prints them under a `# <pkg>` (or
+// `# <pkg> [<pkg>.test]`) header as soon as that build fails, and other packages' results
+// may come before its own `FAIL\t<pkg> [build failed]` line (the tree gate tests two
+// packages; the order go printed on space, 2026-10-10, nova-sprint #48 reader A). Such a
+// block's lines wait under its package (pending) and no other package's result clears them:
+// that package's own result decides, [build failed] or [setup failed] making them the
+// bench's (found), a result saying its test binary ran making them that test's print (a
+// header-shaped line it wrote). A block whose package never answers is the bench's only
+// when nothing followed it (go stopped there); a block followed by other output and never
+// answered was a test's print (nova-sprint #48 reader B: a test that printed `# setup`
+// and the disk words, then failed). A header inside a test's output, or indented, is that
+// test's line. A block ends at the next header, result line or test marker; a test's raw
+// print that lands in an open block of another package whose build failed is read with it
+// (two failures at once; the rarer misread, and never a red tree blamed on a full disk).
+func benchFault(code int, out string) string {
+	var (
+		found   []string            // the bench's own lines, kept whatever follows
+		held    []string            // this segment's fault lines: the bench's own unless a test binary ran in it
+		pending map[string][]string // each build block's fault lines, by package, until its result
+		order   []string            // pending's packages, in the order their blocks began
+		later   map[string]bool     // a pending block some result line or test marker followed
+		block   string              // the open build block's package, "" when none is open
+		inTest  bool
+	)
+	for _, line := range strings.Split(out, "\n") {
+		t := strings.TrimSpace(line)
+		indented := t != "" && t != strings.TrimLeft(line, " \t")
+		if pkg, ok := goBuildHeader(t); ok && !inTest && !indented {
+			if pending == nil {
+				pending, later = map[string][]string{}, map[string]bool{}
+			}
+			if _, seen := pending[pkg]; !seen {
+				pending[pkg], order = []string{}, append(order, pkg)
+			}
+			block, inTest = pkg, false
+			continue
+		}
+		if pkg, ran, ok := goPackageResult(t); ok {
+			for p := range pending {
+				later[p] = true
+			}
+			if lines, waits := pending[pkg]; waits {
+				if !ran {
+					found = append(found, lines...)
+				}
+				delete(pending, pkg)
+			}
+			if ran {
+				held = held[:0:0] // the test binary ran: the segment's lines were its own
+			} else {
+				found, held = append(found, held...), held[:0:0]
+			}
+			block, inTest = "", false
+			continue
+		}
+		switch {
+		case strings.HasPrefix(t, gateMark):
+			// a run's first line: the run before it ended green (set -e), so only the lines
+			// of the run the gate ended on can say the bench failed
+			found, held, pending, order, later, block, inTest = nil, nil, nil, nil, nil, "", false
+			continue
+		case strings.HasPrefix(t, "--- FAIL") || strings.HasPrefix(t, "=== RUN") || strings.HasPrefix(t, "panic:"):
+			for p := range pending {
+				later[p] = true
+			}
+			held, block, inTest = held[:0:0], "", true // a test's output, and the lines before it in its binary
+			continue
+		case inTest || t == "" || indented:
+			continue // a test's line, or an indented one (a test's log)
+		}
+		low := strings.ToLower(t)
+		fault := code == 127 && strings.Contains(low, "not found")
+		for _, f := range benchFaults {
+			fault = fault || strings.Contains(low, f)
+		}
+		switch {
+		case !fault:
+		case block != "":
+			pending[block] = append(pending[block], t)
+		default:
+			held = append(held, t)
+		}
+	}
+	for _, pkg := range order {
+		if !later[pkg] {
+			found = append(found, pending[pkg]...) // nothing followed it: go stopped there, the bench's
+		}
+	}
+	if len(found) > 0 {
+		return found[0]
+	}
+	if len(held) > 0 {
+		return held[0]
+	}
+	return ""
+}
+
+// goBuildHeader says t is the header go prints above one package's build errors:
+// `# <pkg>` or `# <pkg> [<pkg>.test]`, and names the package.
+func goBuildHeader(t string) (string, bool) {
+	rest, ok := strings.CutPrefix(t, "# ")
+	if !ok {
+		return "", false
+	}
+	// the name is the package its result line will name (#48 reader B): a test binary's
+	// link is headed `# <pkg>.test`, an external test package `# <pkg>_test [<pkg>.test]`,
+	// and both answer as `FAIL\t<pkg> [build failed]`
+	f := strings.Fields(rest)
+	name := ""
+	switch {
+	case len(f) == 1:
+		name = f[0]
+	case len(f) == 2 && strings.HasPrefix(f[1], "[") && strings.HasSuffix(f[1], "]"):
+		name = strings.TrimSuffix(strings.TrimSuffix(strings.TrimPrefix(f[1], "["), "]"), ".test")
+	default:
+		return "", false
+	}
+	name = strings.TrimSuffix(strings.TrimSuffix(name, ".test"), "_test")
+	return name, name != ""
+}
+
+// goPackageResult says t is go test's result line for one package: `ok  \t<pkg>...`,
+// `FAIL\t<pkg>...` or `?   \t<pkg>...` (a lone `FAIL`, a test binary's own last line, is
+// not), with the package and ran: false when its build or setup failed, so no test binary ran.
+func goPackageResult(t string) (pkg string, ran bool, ok bool) {
+	for _, p := range []string{"ok", "FAIL", "?"} {
+		if rest, found := strings.CutPrefix(t, p); found && rest != "" && (rest[0] == ' ' || rest[0] == '\t') && strings.TrimSpace(rest) != "" {
+			ran = !strings.Contains(rest, "[build failed]") && !strings.Contains(rest, "[setup failed]")
+			return strings.Fields(rest)[0], ran, true
+		}
+	}
+	return "", false, false
+}
+
 // gateMark starts the line a bench gate prints before each of its runs.
 const gateMark = "GATE RUN: "
 
 // gateScript is the gate's runs as one shell line on the bench: each run named on its
 // own line (gateMark) and then run, the first red ending the line with its status.
 func gateScript(runs [][]string) string {
-	parts := []string{"set -e"}
+	// a non-interactive ssh shell reads no profile: when go is not on its PATH, the Go a
+	// bench keeps under ~/sdk (the fleet's install) or /usr/local/go is put there
+	parts := []string{"set -e", `command -v go >/dev/null 2>&1 || for d in "$HOME"/sdk/go*/bin /usr/local/go/bin; do if [ -x "$d/go" ]; then PATH="$d:$PATH"; fi; done; export PATH`}
 	for _, run := range runs {
 		words := make([]string, len(run))
 		for i, w := range run {

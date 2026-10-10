@@ -438,6 +438,8 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 	// is working once she starts it), in batch mode and in one-shot mode alike
 	// and working on her row means started: a card her finish's next or a take-back's next
 	// moved there with no start of hers goes back ready (friendUnstartedWorking)
+	// a lane gone unheard past its bound: its card bounces back ready (lane_hold.go)
+	p.Units = append(p.Units, laneGoneUnits(s)...)
 	p.Units = append(p.Units, friendUnstartedWorking(s, seats)...)
 	starts, started := friendStartUnits(s, seats)
 	p.Units = append(p.Units, starts...)
