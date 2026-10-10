@@ -37,6 +37,17 @@
     out comes back."
    :origin "this pull request; the machinery from commit b559389")
 
+  (fix "no-land-without-reads" :release "v1.2.6" :status "shipped"
+   :title "Nothing merges or lands short of its reads"
+   :text "A merging card needs the ok reads a card in review needs (the reads setting, else its tier's rule).
+    One short of them, the setting raised or its tier pinned after its accept, goes back to review on
+    the next tick for the read it lacks (never one a lander marked landing before its push); the lander lands none, naming
+    it and its count, checked again and marked landing in one step just before the push. The accept records
+    the count it ran on.
+    tla/Land.tla NoLandWithoutReads and PushedNeverSentBack, with the reversed witnesses
+    MCLandBrokenNoCheckReads and MCLandBrokenBounceMarked."
+   :origin "the Studio sprint, epoch 16, 2026-10-10: rule 6 raised on cards merging with one read of two, and two landed on one read")
+
   (fix "provider-key-refusal-rests-until-woken" :release "v1.2.6" :status "shipped"
    :title "A provider that refuses its key rests until woken, never for a time"
    :text "A route whose provider refuses the key rests until routes wake, never for a time, and the rest
@@ -60,7 +71,21 @@
     fixed before merge: the finding reader is unset only when the card holds it, the bound subtest
     reaches the attempt cap, and the friend card claim says a widen does not pin her next attempt."
    :origin "nova-tools PR #5570, head 22d72154d, re-applied here")
+  (fix "stop-return-settles-its-debt" :release "v1.2.6" :status "shipped"
+   :title "A stop-return settles its STOP debt, so the owner's row can be held before START"
+   :text "A same-owner stop-return takes its lease off the machine's STOP debt under the operation fence,
+    a replay too, so a returned card no longer pins its owner's row: hold and fleet down may move it
+    while STOPPED, and START is not refused. A lease without its receipt on its own row stays owed.
+    TLA+ model StopReturn, properties NoLiveChildAcrossStart and ReturnedFreesItsRow, with two
+    reversed witnesses."
+   :origin "the seat, 2026-10-10: hold alex and hold emma refused after their stop-returns")
 
+  (fix "lander-bench-fault-and-bisect" :release "v1.2.6" :status "in-progress"
+   :title "The lander blames no head for a bench fault and bisects a red batch"
+   :text "A bench fault blames no head, a red batch is bisected, and landings go as batches are built. The
+    bench fault match reads only the bench's own lines, never a test's output, so a real failure that
+    prints a disk string is still blamed."
+   :origin "nova-sprint PR #48, re-applying nova-tools PR #5579 (head 5bb7de4f2) with v1.2.5 candidate 4")
   (fix "check-waived-read-and-where-tiers" :release "v1.2.6" :status "shipped"
    :title "check honours a waived second read; where shows tiers once"
    :text "check judges an accept made before the second-read count by the count then; where shows a tier

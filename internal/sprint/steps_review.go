@@ -1068,15 +1068,10 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 				heavyText += "; overrules " + strings.ReplaceAll(fields[FieldHeavyOverrules], ",", ", ")
 			}
 		}
-		// accepted on the sprint's count, not its tier's rule: the count it was accepted on
-		// stays with it past review (ReadsNeededIn)
-		var unset []string
-		if n := ReadsNeededIn(s, c); n != ReadsNeeded(c) {
-			set[FieldReadsNeeded] = strconv.Itoa(n)
-		} else if c.F(FieldReadsNeeded) != "" {
-			unset = append(unset, FieldReadsNeeded)
-		}
-		u.Changes = append(u.Changes, change(Work, moveEntry(c, c.Row, Merging, set, unset...)))
+		// the count it was accepted on, always: never left to its tier's rule recomputed
+		// later, which a tier pinned after the accept changes (ReadsNeededIn)
+		set[FieldReadsNeeded] = strconv.Itoa(ReadsNeededIn(s, c))
+		u.Changes = append(u.Changes, change(Work, moveEntry(c, c.Row, Merging, set)))
 		u.Moved = fmt.Sprintf("%s review -> merging queued (ok from %s%s)", c.ID, strings.ReplaceAll(orDash(readers), ",", ", "), heavyText)
 		if retired > 0 {
 			u.Moved += fmt.Sprintf("; %d outstanding read cards retired", retired)

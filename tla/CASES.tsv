@@ -214,6 +214,9 @@ MCLandBrokenOwnStops.cfg	MCLand.tla	invariant	NeverStoppedByOwn	ignore-terminal	
 MCLandBrokenNoCarry.cfg	MCLand.tla	invariant	CarriedHead	ignore-terminal	land	required	-
 MCLandReachLandsOn.cfg	MCLand.tla	invariant	ReachLandsOn	ignore-terminal	land	required	-
 MCLandReachReview.cfg	MCLand.tla	invariant	ReachReview	ignore-terminal	land	required	-
+MCLandBrokenNoCheckReads.cfg	MCLand.tla	invariant	NoLandWithoutReads	ignore-terminal	land	required	-
+MCLandBrokenBounceMarked.cfg	MCLand.tla	action	PushedNeverSentBack	ignore-terminal	land	required	-
+MCLandReachShortBack.cfg	MCLand.tla	invariant	ReachShortBack	ignore-terminal	land	required	-
 MCSprintEventsC30.cfg	MCSprintEvents.tla	pass	-	ignore-terminal	sprintevents-controls-b	required	-
 MCSprintEventsW30.cfg	MCSprintEvents.tla	action	NextNotReached	ignore-terminal	sprintevents-witnesses-b	required	-
 MCLevel.cfg	MCLevel.tla	pass	-	ignore-terminal	level	required	-
@@ -321,7 +324,13 @@ MCLandPassBrokenStopCollide.cfg	MCLandPass.tla	invariant	RefusedStaysMerging	ign
 MCLandPassBrokenRevert.cfg	MCLandPass.tla	action	RefusalTouchesNoOtherStream	ignore-terminal	landpass	required	-
 MCLandPassBrokenCacheDisjoint.cfg	MCLandPass.tla	invariant	CachedIsGreen	ignore-terminal	landpass	required	-
 MCLandPassBrokenPushEmpty.cfg	MCLandPass.tla	invariant	BaseKeepsLandings	ignore-terminal	landpass	required	-
-MCLandPassBrokenPlainWait.cfg	MCLandPass.tla	temporal	Leaves	ignore-terminal	landpass	required	-
+MCLandPassSlow.cfg	MCLandPass.tla	pass	-	ignore-terminal	landpass	required	-
+MCLandPassBrokenInOrder.cfg	MCLandPass.tla	temporal	NoHeadOfLine	ignore-terminal	landpass	required	-
+MCLandBisect.cfg	MCLandBisect.tla	pass	-	ignore-terminal	landbisect	required	-
+MCLandBisectBrokenEach.cfg	MCLandBisect.tla	invariant	ProbesBounded	ignore-terminal	landbisect	required	-
+MCLandBisectBrokenFaultBlames.cfg	MCLandBisect.tla	invariant	BlameSound	ignore-terminal	landbisect	required	-
+MCLandBisectBrokenLast.cfg	MCLandBisect.tla	invariant	BlameSound	ignore-terminal	landbisect	required	-
+MCLandBisectBrokenAnyLine.cfg	MCLandBisect.tla	invariant	RefusedOnlyByBench	ignore-terminal	landbisect	required	-
 MCLatePush.cfg	MCLatePush.tla	pass	-	ignore-terminal	latepush	required	-
 MCLatePushBrokenWipe.cfg	MCLatePush.tla	invariant	OnePushAWindow	ignore-terminal	latepush	required	-
 MCLatePushBrokenForget.cfg	MCLatePush.tla	invariant	OnePushAWindow	ignore-terminal	latepush	required	-
@@ -339,3 +348,6 @@ MCStatsResetBrokenNoRebase.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignor
 MCStatsResetBrokenByCount.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoLock.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoStamp.cfg	MCStatsReset.tla	invariant	RecordShowsShown	ignore-terminal	statsreset	required	-
+MCStopReturn.cfg	MCStopReturn.tla	pass	-	ignore-terminal	stopreturn	required	-
+MCStopReturnBrokenNoSettle.cfg	MCStopReturn.tla	temporal	ReturnedFreesItsRow	ignore-terminal	stopreturn	required	-
+MCStopReturnBrokenNoReceipt.cfg	MCStopReturn.tla	invariant	NoLiveChildAcrossStart	ignore-terminal	stopreturn	required	-
