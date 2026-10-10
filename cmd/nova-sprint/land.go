@@ -455,6 +455,22 @@ func (a *app) cmdLand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s land: the sprint is at epoch %d, not %d (cleared since): nothing was fetched, pushed or reported; run: nova-sprint where\n", prog, st.PinnedEpoch(), c.epoch)
 		return 1
 	}
+	// the server-record fence: a land beside the server's run --land is refused
+	// before any clone is locked or touched, and a dry run is never refused by
+	// it (landfence.go, serverLanding; docs/fixes.sexp,
+	// land-fenced-while-server-lands; the clone lock, hold, is the other half)
+	if !*dry {
+		a.serial.Lock()
+		why, err := a.serverLanding(context.Background(), st)
+		a.serial.Unlock()
+		if err != nil {
+			return a.readFailed("land", err, stderr)
+		}
+		if why != "" {
+			fmt.Fprintf(stderr, "%s land REFUSED: %s\n", prog, oneline.Escape(why))
+			return 1
+		}
+	}
 	if a.baseGateCache == nil {
 		a.baseGateCache = map[string]string{}
 	}
