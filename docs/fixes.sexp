@@ -168,6 +168,13 @@
     its epoch: a tick at a clear stops there."
    :origin "the seat ledger v1.2.4-held-2026-10-10.md, bug 6")
 
+  (fix "clear-is-a-blank-slate" :release "v1.2.6" :status "in-progress"
+   :title "Clear starts a blank epoch and reports only live leases"
+   :text "Clear lists every live card generation and owner row it refuses on; a returned or nonworking
+    lease does not block. A successful clear advances to an empty epoch instead of restoring old
+    streams, work and merge rows."
+   :origin "seat ledger v1.2.4-held-2026-10-10, bugs 2, 4 and 11")
+
   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
    :title "The worker brief says never amend, rebase or reset onto origin"
    :text "One line in the worker brief (the child rule no-rewrite-history, internal/fleetrules/child-rules.txt,

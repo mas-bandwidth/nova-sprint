@@ -19,12 +19,23 @@
 (* ready card that no debt pins to another row at a new generation. START  *)
 (* needs every remaining debt's receipt in place, then clears the debt.    *)
 (*                                                                         *)
+(* Clear (docs/SPEC-SPRINT.md section 13, the blank-slate clear): once the *)
+(* machine is STOPPED and no card is still working (every lease returned  *)
+(* or its card no longer working), clear advances to a blank epoch: every *)
+(* card ready at generation 1, no debt, no cancelled child remembered. A  *)
+(* clear that still owes a debt never refuses while a returned card waits  *)
+(* for its settle: it reads the live state (col), not the debt record.    *)
+(*                                                                         *)
 (* Broken (reversed witnesses):                                            *)
 (*  "nosettle"   - the code before v1.2.6: the debt stays until START, so  *)
 (*                 a returned card pins its row for the whole STOP         *)
 (*                 (ReturnedFreesItsRow fails);                            *)
 (*  "noreceipt"  - Settle takes a debt off without its receipt: START      *)
-(*                 crosses a live child (NoLiveChildAcrossStart fails).    *)
+(*                 crosses a live child (NoLiveChildAcrossStart fails);    *)
+(*  "clearblocked" - clear reads the debt record, not the live state, and  *)
+(*                 refuses while any debt remains even when every lease    *)
+(*                 is returned, so a stop-returned lease blocks the epoch  *)
+(*                 (ClearEnabled fails).                                   *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -144,8 +155,24 @@ Start ==
     /\ debt' = {}
     /\ UNCHANGED <<row, col, gen, sfg, child, old>>
 
+\* clear: the blank-slate advance. The fixed guard reads the live state (no
+\* card working); the reversed witness "clearblocked" reads the debt record
+\* instead and blocks on a returned lease that has not settled yet.
+Clear ==
+    /\ mach = "stop"
+    /\ IF Broken = "clearblocked"
+         THEN debt = {}
+         ELSE \A c \in Cards : col[c] = "ready"
+    /\ col' = [c \in Cards |-> "ready"]
+    /\ gen' = [c \in Cards |-> 1]
+    /\ sfg' = [c \in Cards |-> 0]
+    /\ child' = [c \in Cards |-> 0]
+    /\ debt' = {}
+    /\ old' = {}
+    /\ UNCHANGED <<mach, row>>
+
 Next ==
-    \/ Stop \/ Start \/ Settle
+    \/ Stop \/ Start \/ Settle \/ Clear
     \/ \E c \in Cards : Take(c) \/ Finish(c) \/ Cancel(c) \/ Return(c)
     \/ \E c \in Cards, o \in Owners : Hold(c, o)
 
@@ -164,4 +191,10 @@ UnreturnedStaysPut ==
 ReturnedFreesItsRow ==
     \A c \in Cards :
         (mach = "stop" /\ col[c] = "ready" /\ Pinned(c)) ~> (~Pinned(c) \/ mach = "run")
+
+(* A stop-returned lease never blocks clear: once the machine is stopped  *)
+(* and no card is still working, clear is enabled (the epoch advances, a  *)
+(* returned card's unsettled debt notwithstanding).                       *)
+ClearEnabled ==
+    (mach = "stop" /\ \A c \in Cards : col[c] = "ready") => ENABLED Clear
 =============================================================================
