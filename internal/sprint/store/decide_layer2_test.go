@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/internal/decide"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
 )
 
 // nova-decide's layer 2 in the sprint (docs/SPEC-SPRINT.md sections 2 and 5; internal/sprint,
@@ -87,19 +87,19 @@ func TestAFailedFinishGoesByItsAttemptDecisionAtItsClassBar(t *testing.T) {
 		used   bool
 	}{
 		{"no-result over its bar ends the take", Bars{AttemptNoResult: "0.7"}, verdict, decide.ClassNoResult, 0.93, sprint.Withdrawn, "", true},
-		{"nothing-to-do over its bar is failed work of its class", Bars{AttemptNothingToDo: "0.7"}, verdict, decide.ClassNothingToDo, 0.7, sprint.Finished, "decided nothing-to-do", true},
-		{"no-result is read from its own bar alone", Bars{AttemptNothingToDo: "0.1"}, verdict, decide.ClassNoResult, 0.99, sprint.Finished, verdictClass, false},
-		{"nothing-to-do is read from its own bar alone", Bars{AttemptNoResult: "0.1"}, verdict, decide.ClassNothingToDo, 0.99, sprint.Finished, verdictClass, false},
-		{"needs-pro has no bar", both, verdict, decide.ClassNeedsPro, 0.99, sprint.Finished, verdictClass, false},
-		{"wrong-scope has no bar", both, verdict, decide.ClassWrongScope, 0.99, sprint.Finished, verdictClass, false},
-		{"provider-failure has no bar", both, verdict, decide.ClassProviderFailure, 0.99, sprint.Finished, verdictClass, false},
-		{"done never routes a failed finish", both, verdict, decide.ClassDone, 0.99, sprint.Finished, verdictClass, false},
-		{"under the bar the prefix stands", both, verdict, decide.ClassNoResult, 0.5, sprint.Finished, verdictClass, false},
-		{"with no bar the prefix stands", Bars{}, verdict, decide.ClassNoResult, 0.99, sprint.Finished, verdictClass, false},
+		{"nothing-to-do over its bar is failed work of its class", Bars{AttemptNothingToDo: "0.7"}, verdict, decide.ClassNothingToDo, 0.7, sprint.DoneFailed, "decided nothing-to-do", true},
+		{"no-result is read from its own bar alone", Bars{AttemptNothingToDo: "0.1"}, verdict, decide.ClassNoResult, 0.99, sprint.DoneFailed, verdictClass, false},
+		{"nothing-to-do is read from its own bar alone", Bars{AttemptNoResult: "0.1"}, verdict, decide.ClassNothingToDo, 0.99, sprint.DoneFailed, verdictClass, false},
+		{"needs-pro has no bar", both, verdict, decide.ClassNeedsPro, 0.99, sprint.DoneFailed, verdictClass, false},
+		{"wrong-scope has no bar", both, verdict, decide.ClassWrongScope, 0.99, sprint.DoneFailed, verdictClass, false},
+		{"provider-failure has no bar", both, verdict, decide.ClassProviderFailure, 0.99, sprint.DoneFailed, verdictClass, false},
+		{"done never routes a failed finish", both, verdict, decide.ClassDone, 0.99, sprint.DoneFailed, verdictClass, false},
+		{"under the bar the prefix stands", both, verdict, decide.ClassNoResult, 0.5, sprint.DoneFailed, verdictClass, false},
+		{"with no bar the prefix stands", Bars{}, verdict, decide.ClassNoResult, 0.99, sprint.DoneFailed, verdictClass, false},
 		{"a provider failure is never made failed work", both, providerLine, decide.ClassNothingToDo, 0.99, sprint.Withdrawn, "", false},
 		{"a provider failure is never made no result", both, providerLine, decide.ClassNoResult, 0.99, sprint.Withdrawn, "", false},
 		{"a staging refusal is the member's", both, cardhdr.EndStaging + ": no bench mirror", decide.ClassNoResult, 0.99, sprint.Withdrawn, "", false},
-		{"a launch refused is the member's", both, cardhdr.EndLaunch + ": no worktree", decide.ClassNoResult, 0.99, sprint.Finished, "", false},
+		{"a launch refused is the member's", both, cardhdr.EndLaunch + ": no worktree", decide.ClassNoResult, 0.99, sprint.DoneFailed, "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

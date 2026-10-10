@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/onboarding"
+	"github.com/mas-bandwidth/nova-sprint/pkg/onboarding"
 )
 
 // The docs/TESTS.md `### Answered by nova-decide` transcript is run, line for line, over

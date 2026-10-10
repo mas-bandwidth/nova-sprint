@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/hostload"
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/storetest"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -183,7 +183,6 @@ func TestTheLifeOfAStreamThroughTheStore(t *testing.T) {
 	h := newHarness(t)
 	h.setup(3)
 	h.through("s1-1", "s1-2", "s1-3")
-	h.must(TickPartStep("verdicts", sprint.TickVerdicts, sprint.TickReq{}, nil, nil, nil)) // the readers' verdicts are the ok%
 	h.clean("accepted")
 	h.must(MergeStep(sprint.MergeReq{Stream: "s1", Batch: 2}))
 	h.must(MergeStep(sprint.MergeReq{Stream: "s1", Batch: 2}))
@@ -458,7 +457,7 @@ func TestD3ARetriedFinishReturnsTheOriginal(t *testing.T) {
 	if !again.Replay || len(again.Moved) != len(first.Moved) || again.Op != first.Op {
 		require.Fail(t, fmt.Sprintf("retry: %+v, first %+v", again, first))
 	}
-	n := h.snap().Fleet.Count(m, sprint.Finished)
+	n := h.snap().Fleet.Count(m, sprint.DoneFailed)
 	require.Equal(t, 1, n, "failed counted %d times", n)
 	open, _ := h.m.OpenNotes(h.ctx)
 	require.Len(t, open, 1, "notified %d times", len(open))

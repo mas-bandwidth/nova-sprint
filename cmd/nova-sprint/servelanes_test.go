@@ -1,5 +1,3 @@
-//go:build functional
-
 package main
 
 import (
@@ -12,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // The server's lanes (servelanes.go; docs/SPEC-SPRINT.md section 14, The server;

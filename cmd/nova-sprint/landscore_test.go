@@ -1,5 +1,3 @@
-//go:build functional
-
 package main
 
 import (
@@ -13,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/decide"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
 )
 
 // landScorer is a score backend with no network: every class low, but stranded_fragment

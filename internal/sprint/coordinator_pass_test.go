@@ -1,13 +1,14 @@
 package sprint_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/hostload"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,6 +27,8 @@ type passRig struct {
 	// answered is each friend's last wake ping answer the rig recorded (friend health):
 	// the store renews only on a newer one.
 	answered map[string]time.Time
+	// proved is each friend's last session proof the rig put on her beat.
+	proved map[string]time.Time
 }
 
 // passPongBefore is how long before the rig starts each friend's session last answered.
@@ -33,7 +36,7 @@ const passPongBefore = 5 * time.Minute
 
 func newPassRig(t *testing.T) *passRig {
 	t.Helper()
-	r := &passRig{holdRig: newHoldRig(t, 1, 1), pongs: map[string]time.Time{"amy": holdT0.Add(-passPongBefore), "bob": holdT0.Add(-passPongBefore)}, answered: map[string]time.Time{}}
+	r := &passRig{holdRig: newHoldRig(t, 1, 1), pongs: map[string]time.Time{"amy": holdT0.Add(-passPongBefore), "bob": holdT0.Add(-passPongBefore)}, answered: map[string]time.Time{}, proved: map[string]time.Time{}}
 	rows, err := r.st.FriendRows(r.ctx, r.clock())
 	require.NoError(t, err)
 	for _, row := range rows {
@@ -42,7 +45,27 @@ func newPassRig(t *testing.T) *passRig {
 		}
 	}
 	r.tick(0)
+	r.startFriends()
 	return r
+}
+
+// startFriends is each friend's start of every card dealt ready on her row: her own take
+// (take --as friend.<name>), as her daemon starts a card, so it is working only once she
+// starts it (docs/SPEC-SPRINT.md section 1, a friend's card is working once she starts it).
+func (r *holdRig) startFriends() {
+	r.t.Helper()
+	for _, row := range r.snap().Fleet.Rows() {
+		if _, ok := sprint.FriendOfRow(row); ok {
+			name, _ := sprint.FriendOfRow(row)
+			req := sprint.FriendStartReq{Friend: name, Gens: map[string]int{}}
+			for _, c := range r.snap().Fleet.Cell(row, sprint.Ready) {
+				req.IDs, req.Gens[c.ID] = append(req.IDs, c.ID), max(c.Int("gen"), 1)
+			}
+			if len(req.IDs) > 0 {
+				r.must(store.FriendStartStep(req)) // her start receipt, as friend sync reads it
+			}
+		}
+	}
 }
 
 // tick moves the clock by d, beats everyone (each friend with her pong, and her session
@@ -61,7 +84,21 @@ func (r *passRig) tick(d time.Duration) {
 		require.NoError(r.t, err)
 	}
 	for f, pong := range r.pongs {
-		_, err := r.st.FriendBeatPong(r.ctx, f, sprint.FriendReport{Active: r.clock()}, nil, pong)
+		if pong.After(r.proved[f]) {
+			// her daemon asked a check and her session answered it at pong (sprint.ProveBeat)
+			r.mu.Lock()
+			now := r.now
+			r.now = pong
+			r.mu.Unlock()
+			nonce := fmt.Sprintf("n%d", pong.Unix())
+			_, _, err := r.st.FriendBeatProof(r.ctx, f, sprint.FriendReport{Active: pong}, nil, sprint.BeatWords{Run: "run1", Check: nonce, Pong: nonce})
+			require.NoError(r.t, err)
+			r.mu.Lock()
+			r.now = now
+			r.mu.Unlock()
+			r.proved[f] = pong
+		}
+		_, err := r.st.FriendBeatReport(r.ctx, f, sprint.FriendReport{Active: r.clock()}, nil)
 		require.NoError(r.t, err)
 		if pong.After(r.answered[f]) {
 			_, _, _, err = r.st.FriendHealth(r.ctx, f, "coordinator", sprint.FriendHealth{State: sprint.Up, Seen: pong, Generation: sprint.FirstSeatGeneration}, "")
@@ -119,7 +156,7 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 	amy, bob := sprint.FriendRow("amy"), sprint.FriendRow("bob")
 	behind := sprint.StreamSubject("")
 
-	// the friend's card is dealt to a friend (working at once), and the machine card is
+	// the friend's card is dealt to a friend (working once she starts it), and the machine card is
 	// taken by m1 and comes back failed: a judgment that waits on the coordinator
 	s := r.snap()
 	fc := s.Fleet.Card(s.Work.Card("f1-1").F("work"))
@@ -189,13 +226,11 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 	assert.Equal(t, 1, deaf.Before, "the judgment counts its raises again")
 	assert.Contains(t, deaf.What, "25m3", "with her latest pong age")
 
-	// 31m: the friend holding her card has finished none in 15 minutes (the window's
-	// default this card lowers from thirty), so idle opened at 15m30s and is raised
-	// again once here: one judgment an episode, naming the card
+	// 31m: the friend holding her card has finished none in 30 minutes: idle, naming the card
 	fresh()
 	r.tick(10*time.Minute + 29*time.Second)
 	idle := r.open(sprint.NFriendIdle, sprint.FriendRow(holder))
-	require.NotNil(t, idle, "a friend holding working cards with no finish in 15 minutes is idle")
+	require.NotNil(t, idle, "a friend holding working cards with no finish in 30 minutes is idle")
 	assert.Contains(t, idle.What, fc.ID)
 	assert.Contains(t, idle.What, "no finish yet")
 	assert.Equal(t, 2, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendDeaf), "deaf raised again at 30m31s")
@@ -211,12 +246,11 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 	assert.Nil(t, r.open(sprint.NCoordinatorBehind, behind), "nothing late closes behind")
 	assert.NotNil(t, r.open(sprint.NFriendIdle, sprint.FriendRow(holder)), "idle holds while her card is unfinished")
 
-	// 41m: idle raised again, its second push (at 31m and here); then her card finishes
-	// (working to done): idle closes
+	// 41m: idle raised again; then her card finishes (working to done): idle closes
 	r.pongs["amy"] = r.clock()
 	fresh()
 	r.tick(10 * time.Minute)
-	assert.Equal(t, 2, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendIdle))
+	assert.Equal(t, 1, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendIdle))
 	s = r.snap()
 	fc = s.Fleet.Card(fc.ID)
 	r.must(store.FinishStep(sprint.FinishReq{As: fc.Row, Sel: sprint.Sel{IDs: []string{fc.ID}}, Gens: map[string]int{fc.ID: fc.Int("gen")}, Head: "abc", Who: fc.Row}))
@@ -226,7 +260,16 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 	assert.Nil(t, r.open(sprint.NFriendDeaf, amy), "amy answers")
 	assert.Nil(t, r.open(sprint.NFriendIdle, sprint.FriendRow(holder)), "a finish closes idle")
 
-	// closed episodes stay closed: no push for a judgment that no longer holds
+	// closed episodes stay closed: no push for a judgment that no longer holds. The status
+	// judgments of the friends' comings and goings are answered first, as the coordinator
+	// answers them once their steps are run: one left waiting is the behind judgment's
+	acked := map[string]bool{}
+	for _, o := range r.snap().Open {
+		if o.Note.Type == sprint.NStatus && o.Note.Kind == sprint.Judgment && !acked[o.Note.ID] {
+			acked[o.Note.ID] = true
+			r.must(store.AckStep(sprint.AckReq{Notes: []string{o.Note.ID}, Reason: "her steps are run", Who: "coordinator"}))
+		}
+	}
 	pushes := r.count(sprint.Happened, sprint.NRaisedAgain, "")
 	r.pongs["amy"] = r.clock()
 	fresh()
@@ -420,6 +463,7 @@ func TestAPinnedCardRotatedOffItsFriendIsJudgedOnce(t *testing.T) {
 	require.NotNil(t, again)
 	assert.Equal(t, 1, again.Before)
 
+	r.startFriends()
 	s = r.snap()
 	wc = s.Fleet.Card(wc.ID)
 	require.NotNil(t, wc)

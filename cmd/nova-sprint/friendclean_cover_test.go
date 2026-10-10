@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // TestFriendcleanCoverFail covers friendClean.fail (friendclean.go:369): the

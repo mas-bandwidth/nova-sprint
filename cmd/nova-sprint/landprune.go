@@ -27,10 +27,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // PruneEvery is how many queued branches make the land loop clean up between two busy rounds.
@@ -153,6 +153,9 @@ type pruneQueue struct {
 	mu      sync.Mutex
 	dirs    map[string]*pruneDir
 	retryAt time.Time // after a failed cleanup, the loop waits until then
+	// beat is the land loop's bench seam and the landing in flight (landloop.go),
+	// this process's memory beside the cleanup queue.
+	beat *landBeat
 }
 
 // pruneBranch pins the recorded successful attempt's branch and head. Cleanup

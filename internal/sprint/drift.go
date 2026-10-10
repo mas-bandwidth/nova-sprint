@@ -1,56 +1,72 @@
 package sprint
 
 import (
-	"encoding/json"
 	"fmt"
-	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
-// The drift facts (docs/SPEC-SPRINT.md section 8, "The coordinator's pass", merge health).
-// On 2026-10-04 and 2026-10-05 the base, dev and the side branches drifted apart for hours
-// before anyone looked: cards on temporary and dead branches, the live server on a side
-// branch, the base red at its tip, the promotion PR stuck. What the forge and the
-// repository say of that is read outside the plan (ReadDrift, and the forge's promotion PR
-// and whole-tree gate beside it) and recorded by one pure step, DriftRead, on the merge
-// table: one copy, the last read, that the coordinator's pass judges (mergeHealthConds).
-// The shape is drift-alarms' (nova-tools internal/sprint/drift.go, DriftFacts and
-// DriftGate), with the promotion PR and the branches it did not carry.
-
-// PropDriftFacts is the merge table's property: the drift facts as last read (DriftRead),
-// JSON; absent or empty is none read.
-const PropDriftFacts = "drift_facts"
-
-// The promotion PR's states, each a line of merge health: every state of an open PR.
+// The drift alarms (docs/SPEC-SPRINT.md section 8, "Drift alarms"). On 2026-10-04 and
+// 2026-10-05 the branches drifted for hours before anyone looked: the live server on a side
+// branch, cards on temporary and dead branches, and the base red three times through the
+// lander's narrow gate, each blocking the promotion to dev. The owner, 2026-10-05: "How can
+// we ensure that you ALWAYS do the merging properly from now on, vs. drifting and
+// forgetting?" and "Prevention is better than cure". So every drift is a fact the machine
+// raises: four judgments, each written once when its drift starts, raised again every
+// PassEvery of running time while it holds (the judgment rewritten with the latest facts and
+// its raises counted in Before, and a push NRaisedAgain to the coordinator, as the
+// coordinator's pass does), never one a tick, and closed when it stops. The episode
+// machine is the pass's, tla/CoordinatorPass.tla.
 const (
-	PROpen       = "open"
-	PRQueued     = "queued"
-	PRFailing    = "failing"
-	PRConflicted = "conflicted"
+	NDriftAhead    = "the base is ahead of dev past its drift"
+	NDriftCardBase = "an open card is cut on another base"
+	NDriftServer   = "the live server runs off the base"
+	NDriftBaseRed  = "the base is red at its tip"
+
+	PropDriftCommits = "drift_commits" // a count: the base may be this many commits ahead of dev
+	PropDriftHours   = "drift_hours"   // hours: the oldest commit of the base not on dev may be this old
 )
 
-// PRStates are the promotion PR's states in that order.
-var PRStates = []string{PROpen, PRQueued, PRFailing, PRConflicted}
+// DriftTypes is the drift judgments' types, in the order the tick checks them.
+var DriftTypes = []string{NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed}
 
-// DriftFacts is what the binding read of the forge and the repository. Base empty is no
-// read. A nil Gate is no whole-tree run known; a nil Promotion is no promotion PR open.
+// The thresholds of the base ahead of dev when the coordinator set none: as many commits
+// as PromoteCards, and two hours.
+const (
+	DriftCommitsDefault = PromoteCards
+	DriftHoursDefault   = 2
+)
+
+// DriftFacts is what the binding read of the repository for a tick (ReadDrift; the gate's
+// record beside it). Base empty, or a fact nil, is no fact this tick: the judgments it
+// would judge are neither raised nor closed.
 type DriftFacts struct {
-	Repo    string `json:",omitempty"` // the repository, owner/name
-	Base    string `json:",omitempty"` // the sprint base, the branch every stream lands on
-	BaseTip string `json:",omitempty"` // the base's tip as fetched
-	// Gate is the last gate run at a tip of the base, with its scope.
-	Gate *DriftGate `json:",omitempty"`
-	// Promotion is the open promotion PR into dev; nil is none open.
-	Promotion *PromotionPR `json:",omitempty"`
-	// Branches are the branches named by an open card or by the running server
-	// (BranchesNamed), each against the base.
-	Branches []BranchLag `json:",omitempty"`
-	// At is when they were recorded: the step's clock, set by DriftRead.
-	At time.Time `json:",omitzero"`
+	Repo   string       // the repository, owner/name; a card naming another REPO: is not judged
+	Base   string       // the sprint base, the branch every stream lands on
+	Dev    string       // the development branch, DevBranch when ""
+	Ahead  *DriftAhead  // the base against dev
+	Server *DriftServer // the live server's build commit against the base
+	Gate   *DriftGate   // the last gate run at the base, with its scope
+}
+
+// DriftAhead is the base against dev: the commits on the base and not on dev, the oldest
+// of them by committer time (zero when none), and the base's tip.
+type DriftAhead struct {
+	Commits int
+	Oldest  time.Time
+	Tip     string
+}
+
+// DriftServer is the live server's build commit and whether it is an ancestor of the
+// base's tip; Why says why not, when it is not.
+type DriftServer struct {
+	Commit string
+	On     bool
+	Why    string
 }
 
 // DriftGate is one gate run at a tip of the base: its scope (the whole tree, and the
@@ -59,158 +75,183 @@ type DriftFacts struct {
 // never does, green or red.
 type DriftGate struct {
 	Tip        string
-	Whole      bool     `json:",omitempty"`
-	Functional bool     `json:",omitempty"`
-	Red        bool     `json:",omitempty"`
-	Failed     []string `json:",omitempty"`
+	Whole      bool
+	Functional bool
+	Red        bool
+	Failed     []string
 }
 
-// PromotionPR is the open promotion PR: its number and state (PRStates).
-type PromotionPR struct {
-	Number int
-	State  string
-}
+// DriftCommits and DriftHours are the base-ahead thresholds: the sprint's settings
+// (set --drift-commits, --drift-hours), else the defaults.
+func (s *Snapshot) DriftCommits() int { return s.driftSetting(PropDriftCommits, DriftCommitsDefault) }
 
-// BranchLag is one branch against the base: who names it (the cards, the running server),
-// its commits ahead of the base and behind it, and Missing when the remote has no such
-// branch. A branch with commits ahead, or missing, is not on the base.
-type BranchLag struct {
-	Branch  string
-	Named   string `json:",omitempty"`
-	Ahead   int    `json:",omitempty"`
-	Behind  int    `json:",omitempty"`
-	Missing bool   `json:",omitempty"`
-}
+// DriftHours is the hours threshold (DriftCommits).
+func (s *Snapshot) DriftHours() int { return s.driftSetting(PropDriftHours, DriftHoursDefault) }
 
-// BranchesNamed is each branch other than base named by an open card's BASE: (its base
-// field, else its brief's line; a placed primary not landed, not a sentinel, not of the
-// promotion stream, of the repository repo when its REPO: names one and repo is given) or
-// by the running server (server, "" when not known), by name, with who names it: the work
-// ReadDrift measures.
-func BranchesNamed(s *Snapshot, repo, base, server string) []BranchLag {
-	by := map[string][]string{}
-	if s != nil && s.Work != nil {
-		for _, c := range s.Work.Cards() {
-			if !c.Placed() || IsSentinel(c) || c.Col == Landed || IsPromotionStream(s, c.Row) {
-				continue
+func (s *Snapshot) driftSetting(prop string, def int) int {
+	if s.Work != nil {
+		if v, ok := s.Work.Prop(prop); ok {
+			if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+				return n
 			}
-			brief := c.F("brief")
-			if r, ok := cardhdr.Value(brief, "REPO"); ok && repo != "" && r != repo {
-				continue
-			}
-			ref := c.F("base") // add's record of the BASE: line (CardAdd.Base)
-			if ref == "" {
-				v, ok := cardhdr.Value(brief, "BASE")
-				if !ok {
-					continue
-				}
-				if ref, _, ok = cardhdr.ParseBase(v); !ok {
-					continue
-				}
-			}
-			if ref == base {
-				continue
-			}
-			by[ref] = append(by[ref], c.ID)
 		}
 	}
-	if server != "" && server != base {
-		by[server] = append(by[server], "the running server")
-	}
-	var out []BranchLag
-	for _, b := range slices.Sorted(maps.Keys(by)) {
-		named := by[b]
-		slices.Sort(named)
-		out = append(out, BranchLag{Branch: b, Named: Preview(named, ", ")})
-	}
-	return out
+	return def
 }
 
-// DriftRead records the drift facts as read: the merge table's PropDriftFacts, stamped
-// with the step's clock, over whatever was recorded before; nil facts remove the record.
-// A promotion PR in a state not of PRStates, or facts naming no base, are refused.
-func DriftRead(s *Snapshot, f *DriftFacts) Plan {
+// driftValid says v is a drift threshold set takes: a whole number from 1, or default.
+func driftValid(v string) bool {
+	if v == ReadTierDefault {
+		return true
+	}
+	n, err := strconv.Atoi(v)
+	return err == nil && n >= 1
+}
+
+// driftConds is each drift that holds on the facts, one condition each (an open card cut
+// off the base, one for each such card), and the types the facts say nothing of this tick.
+func driftConds(s *Snapshot, r TickReq, f *DriftFacts) (conds []cond, unknown []string) {
+	if f == nil || f.Base == "" {
+		return nil, DriftTypes
+	}
+	dev := f.Dev
+	if dev == "" {
+		dev = DevBranch
+	}
+	if a := f.Ahead; a == nil {
+		unknown = append(unknown, NDriftAhead)
+	} else if a.Commits > 0 {
+		n, h := s.DriftCommits(), s.DriftHours()
+		age, _ := r.running(s.Now, stamp(a.Oldest))
+		if a.Oldest.IsZero() {
+			age = 0
+		}
+		if a.Commits > n || age > time.Duration(h)*time.Hour {
+			conds = append(conds, cond{typ: NDriftAhead, streamLevel: true, decisions: []string{"act", "wait"},
+				what: fmt.Sprintf("origin/%s is %d commits ahead of origin/%s, the oldest %s old (at %s), past the drift of %d commits or %d hours; promote: merge origin/%s into %s, open the PR to %s, run the functional tier; then: nova-sprint promoted --sha <merge sha>",
+					f.Base, a.Commits, dev, age.Round(time.Minute), stamp(a.Oldest), n, h, dev, f.Base, dev)})
+		}
+	}
+	for _, c := range s.Work.Cards() {
+		if !c.Placed() || IsSentinel(c) || c.Col == Landed || IsPromotionStream(s, c.Row) {
+			continue
+		}
+		brief := c.F("brief")
+		if repo, ok := cardhdr.Value(brief, "REPO"); ok && f.Repo != "" && repo != f.Repo {
+			continue
+		}
+		v, ok := cardhdr.Value(brief, "BASE")
+		if !ok {
+			continue
+		}
+		base, _, ok := cardhdr.ParseBase(v)
+		if !ok || base == f.Base {
+			continue
+		}
+		conds = append(conds, cond{typ: NDriftCardBase, primaries: []string{c.ID}, decisions: []string{"act", "wait"},
+			what: fmt.Sprintf("%s (%s) is cut on %s, not the base %s: it would land off the base; re-cut it on BASE: %s (nova-sprint add --replaces %s), or drop it (nova-sprint drop %s --reason <why>)", c.ID, c.Col, base, f.Base, f.Base, c.ID, c.ID)})
+	}
+	if sv := f.Server; sv == nil {
+		unknown = append(unknown, NDriftServer)
+	} else if !sv.On {
+		why := sv.Why
+		if why == "" {
+			why = "not an ancestor of origin/" + f.Base
+		}
+		conds = append(conds, cond{typ: NDriftServer, streamLevel: true, decisions: []string{"act", "wait"},
+			what: fmt.Sprintf("the live server was built from %s, %s; remedy: build nova-sprint from origin/%s at its tip, then run: nova-sprint server switch <that binary>", shortCommit(sv.Commit), why, f.Base)})
+	}
+	if g := f.Gate; g == nil || !g.Whole || !g.Functional || f.Ahead == nil || g.Tip != f.Ahead.Tip {
+		// no whole-tree run at the tip the base is at now: the last judgment stands
+		unknown = append(unknown, NDriftBaseRed)
+	} else if g.Red {
+		conds = append(conds, cond{typ: NDriftBaseRed, streamLevel: true, decisions: []string{"act", "wait"},
+			what: fmt.Sprintf("origin/%s is red at its tip %s by the whole-tree gate with the functional class: %s; nothing lands green on it and dev cannot take it; fix it on %s first", f.Base, shortCommit(g.Tip), Preview(g.Failed, ", "), f.Base)})
+	}
+	return conds, unknown
+}
+
+// TickDrift is the tick's drift alarms, planned in the deadlines part on the facts the
+// binding read (TickReq.Drift; docs/SPEC-SPRINT.md section 8, "Drift alarms"): a judgment
+// for each drift that starts, the open one raised again every PassEvery of running time
+// while it holds, and closed when it stops. A type the facts say nothing of keeps its open
+// judgment, and the coordinator's wait on it, as they are: no fact is never a clear.
+func TickDrift(s *Snapshot, r TickReq, f *DriftFacts) (Plan, int) {
 	var p Plan
-	was, had := s.Merge.Prop(PropDriftFacts)
-	if f == nil {
-		if had && was != "" {
-			p.Props = append(p.Props, PropWrite{Table: Merge, Name: PropDriftFacts, Value: "", Was: was})
-		}
-		p.Units = append(p.Units, Unit{Key: "drift-read", Moved: "drift facts: none read"})
-		return p
+	conds, unknown := driftConds(s, r, f)
+	carry := func(o Open) {
+		// held as it stands: the same key, so notify neither writes nor closes it (a wait
+		// run out is closed by notify, and raised again on its last facts)
+		conds = append(conds, cond{typ: o.Note.Type, stream: o.Note.Stream, primaries: []string{o.Subject()}, streamLevel: o.Note.StreamLevel, what: o.Note.What})
 	}
-	if f.Base == "" {
-		p.refuse("drift-read", "the drift facts name no base")
-		return p
-	}
-	if pr := f.Promotion; pr != nil && !slices.Contains(PRStates, pr.State) {
-		p.refuse("drift-read", fmt.Sprintf("the promotion PR's state is one of %s; found %s", strings.Join(PRStates, ", "), orDash(pr.State)))
-		return p
-	}
-	g := *f
-	g.At = s.Now.UTC()
-	b, err := json.Marshal(g)
-	if err != nil {
-		p.refuse("drift-read", "the drift facts do not encode: "+err.Error())
-		return p
-	}
-	p.Props = append(p.Props, PropWrite{Table: Merge, Name: PropDriftFacts, Value: string(b), Was: was, WasAbsent: !had})
-	p.Units = append(p.Units, Unit{Key: "drift-read", Moved: fmt.Sprintf("drift facts read at %s: %d lines of the promotion PR and the branches", stamp(s.Now), len(driftForgeLines(&g)))})
-	return p
-}
-
-// RecordedDrift is the drift facts as last recorded (DriftRead); nil when none is, or the
-// record does not read.
-func RecordedDrift(s *Snapshot) *DriftFacts {
-	if s == nil || s.Merge == nil {
-		return nil
-	}
-	v, ok := s.Merge.Prop(PropDriftFacts)
-	if !ok || v == "" {
-		return nil
-	}
-	var f DriftFacts
-	if json.Unmarshal([]byte(v), &f) != nil || f.Base == "" {
-		return nil
-	}
-	return &f
-}
-
-// driftBaseRed is the facts' line of the base red at its tip: a whole-tree run with the
-// functional class, red, at the tip the base is at; "" otherwise. A narrow run, or a run at
-// an older tip, judges nothing.
-func driftBaseRed(f *DriftFacts) string {
-	g := f.Gate
-	if g == nil || !g.Red || !g.Whole || !g.Functional || g.Tip == "" || g.Tip != f.BaseTip {
-		return ""
-	}
-	return fmt.Sprintf("base %s is red at its tip %s by the whole-tree gate with the functional class: %s", f.Base, shortCommit(g.Tip), orDash(Preview(g.Failed, ", ")))
-}
-
-// driftForgeLines are the facts' lines after the base: the promotion PR, then each branch
-// not on the base, by name.
-func driftForgeLines(f *DriftFacts) []string {
-	var lines []string
-	if pr := f.Promotion; pr != nil {
-		lines = append(lines, fmt.Sprintf("promotion PR #%d is %s", pr.Number, pr.State))
-	}
-	bs := slices.Clone(f.Branches)
-	slices.SortFunc(bs, func(a, b BranchLag) int { return strings.Compare(a.Branch, b.Branch) })
-	for _, b := range bs {
-		switch {
-		case b.Missing:
-			lines = append(lines, fmt.Sprintf("branch %s (named by %s) is not on the remote", b.Branch, orDash(b.Named)))
-		case b.Ahead > 0:
-			lines = append(lines, fmt.Sprintf("branch %s (named by %s) is not on %s: %d ahead, %d behind", b.Branch, orDash(b.Named), f.Base, b.Ahead, b.Behind))
+	for _, o := range s.Open {
+		if o.Note.Kind == Judgment && slices.Contains(unknown, o.Note.Type) {
+			carry(o)
 		}
 	}
-	return lines
+	for _, o := range s.Acked {
+		if !o.Note.Review.IsZero() && slices.Contains(unknown, o.Note.Type) {
+			carry(o)
+		}
+	}
+	due := notify(&p, s, conds, DriftTypes, r)
+	reraiseDrift(&p, s, conds, r)
+	return p, due
 }
 
-// shortCommit is a commit's first nine hex digits, or the commit when shorter.
+// reraiseDrift raises again each open drift judgment whose drift holds and whose next
+// raise is due (Before+1 times PassEvery of running time after it was written): the
+// judgment rewritten with the latest facts and the raises counted in Before, and the push
+// to the coordinator. Between raises a judgment whose facts moved is rewritten in place,
+// with no push; one the facts said nothing of this tick is raised again as it was last
+// judged. The coordinator's wait closes the judgment and holds the drift (Wait, a condition
+// the tick keeps), so a waited drift is not open here and is not raised until its time.
+func reraiseDrift(p *Plan, s *Snapshot, conds []cond, r TickReq) {
+	holding := map[string]cond{}
+	for _, c := range conds {
+		for _, sub := range c.subjects() {
+			holding[condKey(c.typ, sub, c.card, c.what)] = c
+		}
+	}
+	to := s.Coordinator
+	if to == "" {
+		to = "coordinator"
+	}
+	done := map[string]bool{}
+	for _, o := range s.Open {
+		n := o.Note
+		if n.Kind != Judgment || !slices.Contains(DriftTypes, n.Type) || done[n.ID] {
+			continue
+		}
+		c, ok := holding[condKey(n.Type, o.Subject(), n.Card, n.What)]
+		if !ok {
+			continue
+		}
+		done[n.ID] = true
+		d, ok := r.running(s.Now, stamp(n.At))
+		k := int(d / PassEvery)
+		if !ok || k <= n.Before {
+			if n.What != c.what {
+				n.What = c.what
+				p.Updates = append(p.Updates, n)
+			}
+			continue
+		}
+		n.Before, n.What = k, c.what
+		p.Updates = append(p.Updates, n)
+		p.Notes = append(p.Notes, Note{Kind: Happened, Type: NRaisedAgain, Stream: n.Stream, Primaries: n.Primaries, Count: n.Count, Who: r.who(), To: to, At: s.Now,
+			What: fmt.Sprintf("%s (%s) still holds, open since %s: %s", n.ID, n.Type, stamp(n.At), c.what),
+			Hint: "run: nova-sprint inbox; wait it to quiet it"})
+	}
+}
+
+// shortCommit is a commit as a judgment names it: twelve digits, or why there is none.
 func shortCommit(sha string) string {
-	if len(sha) > 9 {
-		return sha[:9]
+	switch {
+	case sha == "":
+		return "no source commit"
+	case len(sha) > 12:
+		return "commit " + sha[:12]
 	}
-	return sha
+	return "commit " + strings.TrimSpace(sha)
 }

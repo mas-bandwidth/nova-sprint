@@ -14,8 +14,7 @@ import (
 // attempt, summed), read_asked_at and read_done_at (the first ask and the last ok of
 // the readers its accept counted), accepted and landed; the merge card carries
 // queued. CycleTimes reads them from the snapshot: the median and p90 of each stage
-// over the primaries landed in the last CycleWindow, per stream and overall, and the
-// performance counters of the same cards (counters.go).
+// over the primaries landed in the last CycleWindow, per stream and overall.
 
 // Stage names, in the order wall time passes through them.
 const (
@@ -60,9 +59,6 @@ type StageStat struct {
 type StageTimes struct {
 	All     map[string]StageStat            `json:"all"`
 	Streams map[string]map[string]StageStat `json:"streams"`
-	// Counters is IPC and the stall reasons of the same cards (counters.go); nil when none
-	// landed.
-	Counters *Counters `json:"counters,omitempty"`
 }
 
 // readyStamp is the fields of a primary's move to ready: ready_at, once, the first
@@ -97,7 +93,6 @@ func finishStamps(pr, w *Card, now time.Time) map[string]string {
 func CycleTimes(s *Snapshot, now time.Time) StageTimes {
 	all := map[string][]float64{}
 	by := map[string]map[string][]float64{}
-	var landedCards []*Card
 	for _, c := range s.Work.Column(Landed) {
 		if IsSentinel(c) {
 			continue
@@ -106,7 +101,6 @@ func CycleTimes(s *Snapshot, now time.Time) StageTimes {
 		if landed.IsZero() || landed.After(now) || now.Sub(landed) > CycleWindow {
 			continue
 		}
-		landedCards = append(landedCards, c)
 		for stage, d := range stageSpans(s, c, landed) {
 			all[stage] = append(all[stage], d)
 			if by[c.Row] == nil {
@@ -115,7 +109,7 @@ func CycleTimes(s *Snapshot, now time.Time) StageTimes {
 			by[c.Row][stage] = append(by[c.Row][stage], d)
 		}
 	}
-	out := StageTimes{All: stageStats(all), Streams: map[string]map[string]StageStat{}, Counters: countersOf(s, landedCards, now)}
+	out := StageTimes{All: stageStats(all), Streams: map[string]map[string]StageStat{}}
 	if len(out.All) == 0 {
 		out.All = nil
 	}

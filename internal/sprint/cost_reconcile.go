@@ -10,14 +10,18 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/provbalance"
 )
 
 // THE COST RECONCILIATION (docs/SPEC-SPRINT.md, "What a card cost", the reconciliation; the
 // owner, 2026-10-04: "this is a tragedy. we MUST track the complete cost of what we do on the
 // fleet and friends on API plans."). `nova-sprint cost reconcile` reads each provider's own
 // count of the dollars its key used today (openrouter's GET /api/v1/key, data.usage_daily,
-// the UTC day: internal/provbalance.ReadUsage) and runs this step once; the release's spend
-// check calls it, and the run loop's hourly call (CostReconcileEvery) is still owed. This
+// the UTC day: pkg/provbalance.ReadUsage) and runs this step once; the release's spend
+// check sets the same records beside each provider's own over the release's window
+// (pkg/release/spendcheck.go), and the run loop's hourly call (CostReconcileEvery) is
+// still owed. This
 // step sets it beside
 // the sprint's own records of that provider for the same UTC day: every consumer record on
 // every primary (a work card's take or a read's run, whatever its end) whose provider is
@@ -71,13 +75,8 @@ func PropCostReconcile(provider string) string { return PropCostReconcilePrefix 
 
 // UsageRead is one provider's own count of a UTC day's usage as the run loop read it: Known
 // false with Note saying why when there was none to read.
-type UsageRead struct {
-	Provider string
-	Known    bool
-	Day      string // the UTC day the count is of, 2006-01-02
-	Used     float64
-	Note     string
-}
+// It is provbalance's, the transport the reconciliation reads through.
+type UsageRead = provbalance.UsageRead
 
 // CostReconcileReq is the reads of one reconciliation.
 type CostReconcileReq struct {
@@ -93,16 +92,18 @@ type DayGap struct {
 
 // CostReconcileRecord is a provider's reconciliation as the fleet table keeps it.
 type CostReconcileRecord struct {
-	Provider string            `json:"provider"`
-	At       string            `json:"at"`
-	Known    bool              `json:"known"`
-	Note     string            `json:"note,omitempty"`
-	Day      string            `json:"day,omitempty"`
-	Used     float64           `json:"used"`     // the provider's count of Day
-	Internal float64           `json:"internal"` // the sprint's records of Day
-	Gap      float64           `json:"gap"`      // Used less Internal
-	Share    float64           `json:"share"`    // |Gap| over Used
-	Days     map[string]DayGap `json:"days,omitempty"`
+	Provider string  `json:"provider"`
+	At       string  `json:"at"`
+	Known    bool    `json:"known"`
+	Note     string  `json:"note,omitempty"`
+	Day      string  `json:"day,omitempty"`
+	Used     float64 `json:"used"`     // the provider's count of Day
+	Internal float64 `json:"internal"` // the sprint's records of Day
+	// InternalReads is the reads among Internal: the read share of the records.
+	InternalReads float64           `json:"internal_reads"`
+	Gap           float64           `json:"gap"`   // Used less Internal
+	Share         float64           `json:"share"` // |Gap| over Used
+	Days          map[string]DayGap `json:"days,omitempty"`
 }
 
 // CostReconcileOf reads a provider's record off the fleet table; false when there is none
@@ -129,18 +130,16 @@ func consumerProvider(routes map[string]string, c Consumer) string {
 	return p
 }
 
-// InternalSpendOn is the sprint's records of a provider on a UTC day (2006-01-02): every
-// consumer record on every primary of the work table that ended that day, at its charged
-// figure (the harness's cost, else the predicted one at the route's prices).
-func InternalSpendOn(s *Snapshot, provider, day string) float64 {
+// internalSpendSplit is InternalSpendOn's sum and the reads' part of it.
+func internalSpendSplit(s *Snapshot, provider, day string) (all, reads float64) {
 	if s.Work == nil {
-		return 0
+		return 0, 0
 	}
 	routes := map[string]string{}
 	for _, r := range s.Routes {
 		routes[r.Name] = r.Provider
 	}
-	sum := new(big.Rat)
+	sum, readSum := new(big.Rat), new(big.Rat)
 	for _, c := range s.Work.Column(States...) {
 		if IsSentinel(c) {
 			continue
@@ -152,11 +151,30 @@ func InternalSpendOn(s *Snapshot, provider, day string) float64 {
 			}
 			if usd, err := amountOf(cmp.Or(con.Usage.Actual, con.Usage.Predicted)); err == nil && usd != nil {
 				sum.Add(sum, usd)
+				if con.Kind == "read" {
+					readSum.Add(readSum, usd)
+				}
 			}
 		}
 	}
-	f, _ := sum.Float64()
-	return f
+	all, _ = sum.Float64()
+	reads, _ = readSum.Float64()
+	return all, reads
+}
+
+// readShareOfGap is the judgment's words on the reads: their part of the records and, the
+// gap spread as the records are, their part of the gap. The gap is what no record holds, so
+// which kind it is cannot be read off the records; spread by the records' own split is the
+// estimate, said as one, and a price row set under its provider's list (a read route's
+// prices too low) shows as a gap of exactly this kind (docs/SPEC-SPRINT.md, "What a card
+// cost", the price rows).
+func readShareOfGap(rec CostReconcileRecord) string {
+	if rec.Internal <= 0 {
+		return "the records hold nothing of the day, so no part of the gap is set against reads"
+	}
+	share := rec.InternalReads / rec.Internal
+	return fmt.Sprintf("reads are %s of the records (%.1f%%, work %s), so spread as the records are, about %s of the gap is reads; nova-sprint where --json readers show each reader's spend",
+		Dollars(rec.InternalReads), share*100, Dollars(rec.Internal-rec.InternalReads), Dollars(math.Abs(rec.Gap)*share))
 }
 
 // CostReconcile is the reconciliation's step: each read written to its provider's record
@@ -171,10 +189,10 @@ func CostReconcile(s *Snapshot, r CostReconcileReq) Plan {
 		was, _ := CostReconcileOf(s.Fleet, rd.Provider)
 		rec := CostReconcileRecord{Provider: rd.Provider, At: stamp(s.Now), Known: rd.Known, Note: rd.Note, Days: maps.Clone(was.Days)}
 		if !rd.Known {
-			rec.Day, rec.Used, rec.Internal, rec.Gap, rec.Share = was.Day, was.Used, was.Internal, was.Gap, was.Share
+			rec.Day, rec.Used, rec.Internal, rec.InternalReads, rec.Gap, rec.Share = was.Day, was.Used, was.Internal, was.InternalReads, was.Gap, was.Share
 		} else {
 			rec.Day, rec.Used = rd.Day, rd.Used
-			rec.Internal = InternalSpendOn(s, rd.Provider, rd.Day)
+			rec.Internal, rec.InternalReads = internalSpendSplit(s, rd.Provider, rd.Day)
 			rec.Gap = rec.Used - rec.Internal
 			switch {
 			case rec.Used > 0:
@@ -200,7 +218,7 @@ func CostReconcile(s *Snapshot, r CostReconcileReq) Plan {
 			said = append(said, rd.Provider+" unknown")
 			continue
 		}
-		said = append(said, fmt.Sprintf("%s day=%s provider=%s records=%s gap=%.1f%%", rd.Provider, rd.Day, Dollars(rec.Used), Dollars(rec.Internal), rec.Share*100))
+		said = append(said, fmt.Sprintf("%s day=%s provider=%s records=%s reads=%s gap=%.1f%%", rd.Provider, rd.Day, Dollars(rec.Used), Dollars(rec.Internal), Dollars(rec.InternalReads), rec.Share*100))
 		var open []Open
 		for _, o := range s.Open {
 			if o.Note.Type == NCostGap && o.Note.StreamLevel && o.Note.Stream == ProviderSubject(rd.Provider) {
@@ -213,8 +231,8 @@ func CostReconcile(s *Snapshot, r CostReconcileReq) Plan {
 			n := judgment(NCostGap, ProviderSubject(rd.Provider), s.Now, 0)
 			n.Decisions = append([]string(nil), CostGapDecisions...)
 			n.StreamLevel, n.To, n.Who = true, s.Coordinator, r.Who
-			n.What = fmt.Sprintf("provider %s counted %s on %s and the sprint's cost records of it hold %s: a gap of %s, %.1f%% (over %.0f%%); a paid call is going unrecorded, or the key is spent outside the sprint; nova-sprint routes and card <id> show the records",
-				rd.Provider, Dollars(rec.Used), rd.Day, Dollars(rec.Internal), Dollars(math.Abs(rec.Gap)), rec.Share*100, CostGapOver*100)
+			n.What = fmt.Sprintf("provider %s counted %s on %s and the sprint's cost records of it hold %s: a gap of %s, %.1f%% (over %.0f%%); %s; a paid call is going unrecorded, a route's prices are under its provider's list, or the key is spent outside the sprint; nova-sprint routes and card <id> show the records",
+				rd.Provider, Dollars(rec.Used), rd.Day, Dollars(rec.Internal), Dollars(math.Abs(rec.Gap)), rec.Share*100, CostGapOver*100, readShareOfGap(rec))
 			p.Notes = append(p.Notes, n)
 		case !over && len(open) > 0:
 			p.Closes = append(p.Closes, open...)
@@ -252,4 +270,25 @@ func UnreconciledSpend(s *Snapshot) float64 {
 		}
 	}
 	return total
+}
+
+// LatestReconciles is each provider's latest reconciliation off the fleet table, in provider
+// order, without its kept days: what the where view shows per provider (where --json
+// streams[<s>].reconciles, the sprint's, the same on every stream's record).
+func LatestReconciles(s *Snapshot) []CostReconcileRecord {
+	if s.Fleet == nil {
+		return nil
+	}
+	var out []CostReconcileRecord
+	for _, name := range slices.Sorted(maps.Keys(s.Fleet.Props())) {
+		provider, ok := strings.CutPrefix(name, PropCostReconcilePrefix)
+		if !ok {
+			continue
+		}
+		if rec, ok := CostReconcileOf(s.Fleet, provider); ok {
+			rec.Days = nil
+			out = append(out, rec)
+		}
+	}
+	return out
 }

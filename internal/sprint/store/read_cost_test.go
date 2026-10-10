@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardcost"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 )
 
 // Reads are priced like work (internal/sprint/cost.go, readCostRecord and
@@ -28,8 +28,7 @@ func TestOnTheTwinARoutedReadIsPricedAndATokenlessOneKeepsItsVerdict(t *testing.
 	h.machine()
 	h.work("m1")
 	h.work("m2")
-	h.machine()
-	h.must(AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Another: true}))
+	h.machine() // asks both reads together
 	reads := readsAt(h.snap(), h.snap().Work.Card("s1-1"))
 	require.Len(t, reads, 2)
 	a, b := reads[0], reads[1]

@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 )
 
 // funcGH records gh and answers a pull request that is admitted and not yet

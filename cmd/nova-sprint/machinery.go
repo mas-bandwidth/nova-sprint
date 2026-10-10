@@ -14,7 +14,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/internal/subproc"
+	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 )
 
 // The seat check (docs/SPEC-SPRINT.md, "The seat check"; the owner, 2026-10-04 1:52 PM:
@@ -34,7 +34,7 @@ const DashboardListenDefault = "127.0.0.1:7390"
 
 // BusEnv names nova-bus2's Redis; unset is "not configured", never DOWN. It
 // is dialed as the store is (openConn): the one fleet Redis seat every tool
-// dials with, internal/nsprint/redisauth, never a password variable of its own.
+// dials with, pkg/nsprint/redisauth, never a password variable of its own.
 const BusEnv = "NOVA_BUS_REDIS"
 
 // outside is every reach of the check past the store: each a function a test
@@ -61,8 +61,7 @@ type outside struct {
 	devMergeQueue func(ctx context.Context) (sprint.QueueM, error)
 	// machineVersions is each machine's installed version against dev (fp-mach-01).
 	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)
-	// novaTools is one nova-tools binary as PATH has it (seat_novatools.go).
-	novaTools func(bin string) sprint.NovaToolsProbe
+	novaTools       func(bin string) sprint.NovaToolsProbe
 }
 
 // realOutside is the check as it runs on a machine.
@@ -159,6 +158,9 @@ func (a *app) seatCheck(ctx context.Context, st *store.Store, redisAddr string) 
 	var self bool
 	if o.serverAddr != nil {
 		addr, self = o.serverAddr()
+	}
+	if addr == "" && !self {
+		addr = a.seatServer() // the server seat install recorded, when the environment names none
 	}
 	m.Server = sprint.ServerM{Addr: addr, Self: self}
 	switch {
@@ -337,7 +339,7 @@ func (a *app) runSeatCheckVerb(verb string, args []string, stdout, stderr io.Wri
 	if err != nil {
 		return refuse(stderr, verb, err.Error())
 	}
-	r := a.seatCheck(context.Background(), st, c.redis)
+	r := a.withConfigSeat(a.seatCheck(context.Background(), st, c.redis))
 	if c.json {
 		fmt.Fprintln(stdout, r.JSON())
 	} else {

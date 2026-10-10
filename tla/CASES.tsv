@@ -210,6 +210,10 @@ MCLandReachStranded.cfg	MCLand.tla	invariant	ReachStranded	ignore-terminal	land	
 MCLandBrokenIdGuard.cfg	MCLand.tla	invariant	LandedInBase	ignore-terminal	land	required	-
 MCLandReachStalePush.cfg	MCLand.tla	invariant	ReachStalePush	ignore-terminal	land	required	-
 MCLandBrokenNoEpoch.cfg	MCLand.tla	invariant	ReportHoldsTheEpoch	ignore-terminal	land	required	-
+MCLandBrokenOwnStops.cfg	MCLand.tla	invariant	NeverStoppedByOwn	ignore-terminal	land	required	-
+MCLandBrokenNoCarry.cfg	MCLand.tla	invariant	CarriedHead	ignore-terminal	land	required	-
+MCLandReachLandsOn.cfg	MCLand.tla	invariant	ReachLandsOn	ignore-terminal	land	required	-
+MCLandReachReview.cfg	MCLand.tla	invariant	ReachReview	ignore-terminal	land	required	-
 MCSprintEventsC30.cfg	MCSprintEvents.tla	pass	-	ignore-terminal	sprintevents-controls-b	required	-
 MCSprintEventsW30.cfg	MCSprintEvents.tla	action	NextNotReached	ignore-terminal	sprintevents-witnesses-b	required	-
 MCLevel.cfg	MCLevel.tla	pass	-	ignore-terminal	level	required	-
@@ -237,10 +241,19 @@ MCSprintRulesLate.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	requi
 MCSprintRulesLateBrokenWaitAlways.cfg	MCSprintRules.tla	invariant	WaitOnce	ignore-terminal	sprintrules	required	-
 MCSprintRulesLateBrokenReturnUnstamped.cfg	MCSprintRules.tla	invariant	NeverStampedNeverReturned	ignore-terminal	sprintrules	required	-
 MCSprintRulesLateReachReturn.cfg	MCSprintRules.tla	invariant	NeverReturned	ignore-terminal	sprintrules	required	-
+MCSprintRulesReads.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
+MCSprintRulesReadsBrokenNoBound.cfg	MCSprintRules.tla	invariant	ReadAnswersBounded	ignore-terminal	sprintrules	required	-
+MCSprintRulesReadsBrokenTwinAll.cfg	MCSprintRules.tla	invariant	TwinsWiden	ignore-terminal	sprintrules	required	-
 MCSprintRulesGate.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
 MCSprintRulesGateBrokenStopFirst.cfg	MCSprintRules.tla	invariant	BaseStopsOnThird	ignore-terminal	sprintrules	required	-
 MCSprintRulesIdle.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
 MCSprintRulesIdleBrokenEveryTick.cfg	MCSprintRules.tla	invariant	AlarmOncePerEpisode	ignore-terminal	sprintrules	required	-
+MCSprintRulesAnswers.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
+MCSprintRulesAnswersBrokenNoFinding.cfg	MCSprintRules.tla	invariant	ReworkHasAFix	ignore-terminal	sprintrules	required	-
+MCSprintRulesAnswersBrokenRecount.cfg	MCSprintRules.tla	invariant	ReworkKeepsCount	ignore-terminal	sprintrules	required	-
+MCSprintRulesAnswersBrokenNoCarry.cfg	MCSprintRules.tla	invariant	ReworkCarriesHead	ignore-terminal	sprintrules	required	-
+MCSprintRulesAnswersBrokenStale.cfg	MCSprintRules.tla	invariant	LateReportFinishes	ignore-terminal	sprintrules	required	-
+MCSprintRulesAnswersBrokenFaultNoBound.cfg	MCSprintRules.tla	invariant	AnswerAttemptsBounded	ignore-terminal	sprintrules	required	-
 MCServerLanes.cfg	MCServerLanes.tla	pass	-	ignore-terminal	serverlanes	required	-
 MCServerLanesLive.cfg	MCServerLanes.tla	pass	-	ignore-terminal	serverlanes	required	-
 MCServerLanesBrokenBeatOnLine.cfg	MCServerLanes.tla	invariant	BeatNeverWaitsForTheLine|LanesHoldNoLine	ignore-terminal	serverlanes	required	-
@@ -254,7 +267,6 @@ MCCardISALive.cfg	MCCardISA.tla	pass	-	ignore-terminal	cardisa	required	-
 MCCardISABrokenSecondLand.cfg	MCCardISA.tla	invariant	NoCardRetiresTwice	ignore-terminal	cardisa	required	-
 MCCardISABrokenOtherBase.cfg	MCCardISA.tla	invariant	RetiredHeadOnBase	ignore-terminal	cardisa	required	-
 MCCardISABrokenWaitFirst.cfg	MCCardISA.tla	invariant	WaitDispatchesOnlyWhenOperandHolds	ignore-terminal	cardisa	required	-
-MCCardISABrokenTwoReasons.cfg	MCCardISA.tla	invariant	StallsPartitionWallTime	ignore-terminal	cardisa	required	-
 MCReadsByRoom.cfg	MCReadsByRoom.tla	pass	-	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomBrokenPair.cfg	MCReadsByRoom.tla	invariant	OneAtATime	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomBrokenPairCost.cfg	MCReadsByRoom.tla	invariant	ReadsPerLanding	ignore-terminal	readsbyroom	required	-
@@ -277,3 +289,8 @@ MCCoordinatorPassEmpty.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordina
 MCCoordinatorPassBrokenNoReset.cfg	MCCoordinatorPass.tla	invariant	EmptyAWholeWindow	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassPin.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenPinRekey.cfg	MCCoordinatorPass.tla	invariant	OneJudgmentAnEpisode	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassStop.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassBrokenSilentStop.cfg	MCCoordinatorPass.tla	invariant	StopSignalled	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassBehindEscalate.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassBrokenAckForever.cfg	MCCoordinatorPass.tla	invariant	EscalatedPastAck	ignore-terminal	coordinatorpass	required	-
+MCDirtyTickRefused.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-

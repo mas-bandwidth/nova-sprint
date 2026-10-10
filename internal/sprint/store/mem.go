@@ -10,10 +10,11 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // Mem is a Backend in memory with the batch's refusal semantics: the
@@ -108,7 +109,14 @@ type memChange struct {
 	epoch, before, after uint64
 	verb                 string
 	ids                  []string
+	// mark is the event's own id, unique among every Mem's events (memMarks): a
+	// store that lost its last writes and wrote others since gives a revision a new
+	// event, as a Redis stream gives it a new id (TableChangesMarked)
+	mark uint64
 }
+
+// memMarks numbers every Mem's change events.
+var memMarks atomic.Uint64
 
 // memEpoch is a table's rows, text cells and properties at one epoch.
 type memEpoch struct {
@@ -319,8 +327,16 @@ func (m *Mem) CellIDs(_ context.Context, shapes []ntable.Table) (map[string][]st
 		for _, r := range s.Rows {
 			rows[r.Key] = true
 		}
+		// a column the shape projects as text has no cell ids, as the store's
+		// own cells read gives none (Redis.CellIDs)
+		text := map[string]bool{}
+		for _, c := range s.Columns {
+			if !c.HasSet() {
+				text[c.Name] = true
+			}
+		}
 		for id, mm := range t.members {
-			if mm.epoch == s.Epoch && mm.placed && rows[mm.row] {
+			if mm.epoch == s.Epoch && mm.placed && rows[mm.row] && !text[mm.col] {
 				out[s.Name] = append(out[s.Name], id)
 			}
 		}
@@ -402,7 +418,7 @@ func (m *Mem) Apply(_ context.Context, man ntable.BatchManifest) (ntable.Receipt
 	// Twin replay fidelity (security#78 finding 7): an operation already
 	// recorded under this id replays or conflicts on its recorded bytes, before
 	// any newer validator would refuse the re-sent request. This mirrors the real
-	// store's op-record lookup in internal/nsprint/fn/lua/table.lua.
+	// store's op-record lookup in pkg/nsprint/fn/lua/table.lua.
 	if rec, ok := t.ops[opKey]; ok {
 		if rec.body != body {
 			return ntable.Receipt{}, refusal("OPCONFLICT", "operation "+man.OperationID+" already holds a different request")
@@ -492,7 +508,7 @@ func (m *Mem) Apply(_ context.Context, man ntable.BatchManifest) (ntable.Receipt
 	for i, e := range man.Members {
 		ids[i] = e.ID
 	}
-	t.changes = append(t.changes, memChange{epoch: active, before: before, after: t.rev, verb: "apply", ids: ids})
+	t.changes = append(t.changes, memChange{mark: memMarks.Add(1), epoch: active, before: before, after: t.rev, verb: "apply", ids: ids})
 	outcome := "changed"
 	if delta.ChangedCount == 0 && len(changedProps) == 0 {
 		outcome = "noop"
@@ -643,7 +659,7 @@ func (m *Mem) RowsAdd(_ context.Context, table string, rows []string) error {
 	}
 	t.rev++
 	t.wrote[m.active(t)] = true
-	t.changes = append(t.changes, memChange{epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "rows_add"})
+	t.changes = append(t.changes, memChange{mark: memMarks.Add(1), epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "rows_add"})
 	return nil
 }
 
@@ -671,7 +687,7 @@ func (m *Mem) RowsHide(_ context.Context, table string, rows []string) error {
 	}
 	t.rev++
 	t.wrote[m.active(t)] = true
-	t.changes = append(t.changes, memChange{epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "rows_hide"})
+	t.changes = append(t.changes, memChange{mark: memMarks.Add(1), epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "rows_hide"})
 	return nil
 }
 
@@ -694,7 +710,7 @@ func (m *Mem) RowsShow(_ context.Context, table string, rows []string) error {
 	}
 	t.rev++
 	t.wrote[m.active(t)] = true
-	t.changes = append(t.changes, memChange{epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "rows_show"})
+	t.changes = append(t.changes, memChange{mark: memMarks.Add(1), epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "rows_show"})
 	return nil
 }
 
@@ -790,7 +806,7 @@ func (m *Mem) rowsDel(t *memTable, rows []string) {
 	slices.Sort(unplaced)
 	t.rev++
 	t.wrote[m.active(t)] = true
-	t.changes = append(t.changes, memChange{epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "row_del", ids: unplaced})
+	t.changes = append(t.changes, memChange{mark: memMarks.Add(1), epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "row_del", ids: unplaced})
 }
 
 // writeEpoch refuses a write pinned to an epoch that is not the table's
@@ -824,7 +840,7 @@ func (m *Mem) Place(_ context.Context, table, row, col, id string, score float64
 	mm.rev++
 	t.rev++
 	t.wrote[m.active(t)] = true
-	t.changes = append(t.changes, memChange{epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "cell_add", ids: []string{id}})
+	t.changes = append(t.changes, memChange{mark: memMarks.Add(1), epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "cell_add", ids: []string{id}})
 	return nil
 }
 
@@ -872,7 +888,7 @@ func (m *Mem) RowSet(_ context.Context, table, row string, texts map[string]stri
 	maps.Copy(ep.texts[row], texts)
 	t.rev++
 	t.wrote[m.active(t)] = true
-	t.changes = append(t.changes, memChange{epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "row_set"})
+	t.changes = append(t.changes, memChange{mark: memMarks.Add(1), epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "row_set"})
 	return nil
 }
 
@@ -940,7 +956,13 @@ func (m *Mem) ReadFence(context.Context) (Fence, error) {
 	f := Fence{Gen: l.gen, Queued: len(l.queue)}
 	if raw, ok := m.kv[keyMachine]; ok {
 		var mc Machine
-		f.Running = json.Unmarshal([]byte(raw), &mc) == nil && mc.Running()
+		if json.Unmarshal([]byte(raw), &mc) == nil {
+			f.Running = mc.Running()
+			f.RunSeq = mc.RunSeq
+			f.StopRevoked = mc.stopRevoked()
+			f.StopIssued = mc.StopIssued
+			f.StopDebt = mc.StopDebt
+		}
 	}
 	f.Stuck = m.kv[keyStuck]
 	if l.fence != nil {
@@ -1068,6 +1090,41 @@ func (m *Mem) Release(_ context.Context, op OpRecord, commit bool) error {
 				m.kv = map[string]string{}
 			}
 			m.kv[friendHealthKey(op.Health.Friend)] = string(rec)
+		}
+		if len(op.CloseTimers) > 0 {
+			if m.kv == nil {
+				m.kv = map[string]string{}
+			}
+			if raw := m.kv[keyTimers]; raw != "" {
+				var ts sprint.Timers
+				if err := json.Unmarshal([]byte(raw), &ts); err == nil {
+					closing := map[string]bool{}
+					for _, id := range op.CloseTimers {
+						closing[id] = true
+					}
+					var rem []sprint.Timer
+					for _, tm := range ts.Open {
+						if !closing[tm.ID] {
+							rem = append(rem, tm)
+						}
+					}
+					ts.Open = rem
+					rec, err := json.Marshal(ts)
+					if err != nil {
+						return err
+					}
+					m.kv[keyTimers] = string(rec)
+				}
+			}
+		} else if op.Timers != nil {
+			rec, err := json.Marshal(op.Timers)
+			if err != nil {
+				return err
+			}
+			if m.kv == nil {
+				m.kv = map[string]string{}
+			}
+			m.kv[keyTimers] = string(rec)
 		}
 	}
 	l.fence = nil
@@ -1328,6 +1385,50 @@ func (m *Mem) TableChanges(_ context.Context, table string, from, to uint64) ([]
 
 var _ TableChanger = (*Mem)(nil)
 
+// TableChangesMarked is TableChanges with the marks of the events that left
+// revisions from and to (loadcache.go); revision 0 is left by no event, its mark "".
+func (m *Mem) TableChangesMarked(_ context.Context, table string, from, to uint64) ([]string, string, string, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.count("changes")
+	t := m.tables[table]
+	if t == nil || to < from {
+		return nil, "", "", false, nil
+	}
+	mark := func(c memChange) string { return strconv.FormatUint(c.mark, 10) }
+	active := m.active(t)
+	need := to
+	var ids []string
+	toMark, fromMark := "", ""
+	chained := false
+	for i := len(t.changes) - 1; i >= 0; i-- {
+		c := t.changes[i]
+		if c.epoch != active || c.after > to {
+			continue
+		}
+		if c.after != need {
+			return nil, "", "", false, nil
+		}
+		if c.after == to {
+			toMark = mark(c)
+		}
+		if need == from {
+			fromMark, chained = mark(c), true
+			break
+		}
+		ids = append(ids, c.ids...)
+		need = c.before
+		if need == from && from == 0 {
+			chained = true
+			break
+		}
+	}
+	if !chained && !(from == 0 && to == 0) {
+		return nil, "", "", false, nil
+	}
+	return ids, fromMark, toMark, true, nil
+}
+
 // count counts one exchange of the kind (Calls), for a kind that did not count
 // itself before; the lock is held.
 func (m *Mem) count(kind string) {
@@ -1378,7 +1479,7 @@ func (m *Mem) RowsOrder(_ context.Context, table string, rows []string) error {
 	ep.rows = order
 	t.rev++
 	t.wrote[m.active(t)] = true
-	t.changes = append(t.changes, memChange{epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "row_order"})
+	t.changes = append(t.changes, memChange{mark: memMarks.Add(1), epoch: m.active(t), before: t.rev - 1, after: t.rev, verb: "row_order"})
 	return nil
 }
 

@@ -12,11 +12,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/internal/friend"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // A friend's held cards, as her daemon writes them (the card daemon-writes-every-taken-card3;
@@ -50,8 +50,8 @@ func friendCardsOf(ctx context.Context, st *store.Store, name string) ([]friend.
 		m, _ := cardhdr.ReadModel(p.Brief) // ignored: a line 1 that does not read is the default tier
 		h.Tier = cmp.Or(p.Tier, m.Tier, cardhdr.RouteFlash)
 		if p.Kind == "read" {
-			// a read's job is its card id, the path friend sync writes (friendReadOf)
-			h.Job, h.Branch, h.Brief = p.Card, cmp.Or(p.WorkBranch, cards[i].F("branch")), friendReadText(st, name, p, cards[i])
+			// a read card's job is a card's (friendJobOf), the path friend sync writes (friendReadOf)
+			h.Job, h.Branch, h.Brief = friendJobOf(p), cmp.Or(p.WorkBranch, cards[i].F("branch")), friendReadText(st, name, p, cards[i])
 		} else {
 			h.Job, h.Brief = friendJobOf(p), friendBrief(name, p)
 		}

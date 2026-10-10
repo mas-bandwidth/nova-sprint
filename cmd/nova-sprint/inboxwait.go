@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // inbox --wait and --push: the coordinator is woken by what is new for it, and
@@ -78,13 +78,14 @@ type inboxLook struct {
 // storeSource is inbox --wait on the store.
 type storeSource struct {
 	st              *store.Store
+	redis           string // the resolved direct endpoint, carried into proof replies
 	after           string // the notes' tail at the last tick end seen
 	deadline, stale time.Duration
 }
 
-func (a *app) storeSource(ctx context.Context, st *store.Store, deadline, stale time.Duration) (*storeSource, error) {
+func (a *app) storeSource(ctx context.Context, st *store.Store, redis string, deadline, stale time.Duration) (*storeSource, error) {
 	_, after, err := st.B.Tails(ctx)
-	return &storeSource{st: st, after: after, deadline: deadline, stale: stale}, err
+	return &storeSource{st: st, redis: redis, after: after, deadline: deadline, stale: stale}, err
 }
 
 func (s *storeSource) tickEnd(ctx context.Context, d time.Duration) error {
@@ -414,6 +415,9 @@ func (a *app) pushLoop(ctx context.Context, src inboxSource, dir string, timeout
 	if err != nil {
 		return refuse(stderr, "inbox", "--push: "+err.Error())
 	}
+	// the tick's lateness, at every look (pushlate.go): a tick that runs late cannot tell of itself
+	late := &lateWatch{}
+	a.pushLate(ctx, src, p, late, look, asJSON, stdout, stderr)
 	for {
 		var texts []string
 		for _, g := range fresh {
@@ -437,6 +441,7 @@ func (a *app) pushLoop(ctx context.Context, src inboxSource, dir string, timeout
 			if p.fixed == "" {
 				a.prove(ctx, src, l.holder, asJSON, stdout)
 			}
+			a.pushLate(ctx, src, p, late, l, asJSON, stdout, stderr)
 			return p.unseen(l)
 		}, running, timeout)
 		if err != nil {

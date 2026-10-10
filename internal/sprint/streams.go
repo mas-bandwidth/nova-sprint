@@ -5,6 +5,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // StreamRemove is the rule of stream remove: why each named stream may not
@@ -76,13 +78,30 @@ func streamRemoveWhy(s *Snapshot, running bool, st string) string {
 }
 
 // RemovedStream says the stream was removed in this epoch (stream remove):
-// its control card's record is kept unplaced, and the table layer never
-// places a removed member again, so the stream cannot open again before the
-// next clear: add refuses it then, naming the clear. The add step reads the
-// record as an extra (store.AddStep).
+// its control card's record is kept unplaced. A removal is not a tombstone:
+// a card added under the stream's name brings it back (ComeBack). The add
+// step reads the record as an extra (store.AddStep).
 func RemovedStream(s *Snapshot, stream string) bool {
 	ctl := s.Merge.Card(CtlID(stream))
 	return ctl != nil && !ctl.Placed()
+}
+
+// ComeBack is a removed stream's control card as the place that brings it
+// back leaves it (on its merge row's control cell, its revision bumped, its
+// fields as the removal left them), and that place: the add that names the
+// stream adds its rows and places the record again before its manifests
+// (Plan.Places), and says so, a NOTE line. A batch never places a removed
+// member, so the record is placed by the table layer's cell add, as a fleet
+// member's control card is when it rejoins (store.RejoinMembers). Stream
+// archive is the verb that takes landed streams off the table and keeps
+// their rows; stream remove takes off a stream that holds no card, and its
+// name is free for an add at once.
+func ComeBack(ctl *Card, stream string) (*Card, PlaceAgain) {
+	back := *ctl
+	back.Row, back.Col, back.Score = stream, Ctl, 0
+	back.Rev++
+	return &back, PlaceAgain{Table: Merge, Row: stream, Col: Ctl, ID: ctl.ID,
+		Said: "stream " + stream + " was removed in this epoch and comes back: its control card is placed again"}
 }
 
 // WhereReleasesCountCardsLeft folds cards left per release from stream clocks
@@ -105,7 +124,9 @@ const NStreamArchived = "streams archived"
 // be archived, none when every one may. Archiving hides a stream's rows of the
 // work and merge tables (the table layer's row hide) and moves no card: its
 // landed cards stay placed in its landed cell, with their costs and landings,
-// and every fold, footer and summary counts them as before. A stream is
+// and every fold counts them as before; the headline (where's summary line and
+// drawn footers) counts only the streams on the table, and where --json carries
+// the archived ones' cards beside it (archived_cards, archived_landed). A stream is
 // archived only when it is a row of the work or merge table and every card it
 // holds has landed: no primary or sentinel in any column of its work row but
 // landed, no merge card queued or stuck in its merge row. The machine may be
@@ -320,4 +341,156 @@ func ForTables(s *Snapshot, p Plan) Plan {
 		p.Units = units
 	}
 	return p
+}
+
+// briefOnBase is brief with its BASE line rewritten to base: the line replaced
+// where it stands, or a BASE line added at the end of the typed header block (the
+// unbroken run of `KEY: value` lines under line 1) when the brief carries none.
+// Every other byte is kept, as rebaseBrief keeps it.
+func briefOnBase(brief, base string) string {
+	lines := strings.Split(brief, "\n")
+	for i, l := range lines {
+		if k, _, ok := cardhdr.KeyValue(l); ok && k == "BASE" {
+			lines[i] = "BASE: " + base
+			return strings.Join(lines, "\n")
+		}
+	}
+	at := 1
+	for at < len(lines) {
+		if _, _, ok := cardhdr.KeyValue(lines[at]); !ok {
+			break
+		}
+		at++
+	}
+	out := append([]string(nil), lines[:at]...)
+	out = append(out, "BASE: "+base)
+	out = append(out, lines[at:]...)
+	return strings.Join(out, "\n")
+}
+
+// baseOfBrief is the branch a brief's BASE line names, "" when the brief names
+// none or names no branch (a value ParseBase refuses).
+func baseOfBrief(brief string) string {
+	v, ok := cardhdr.Value(brief, "BASE")
+	if !ok {
+		return ""
+	}
+	ref, _, ok := cardhdr.ParseBase(v)
+	if !ok {
+		return ""
+	}
+	return ref
+}
+
+// StreamSetBaseCheck is one card stream set --base re-points: the stream, its id,
+// the brief the card carried when the check read it (Was) and the brief the
+// rewrite would carry (Brief), which is what the check add runs held to the new
+// base. It is the candidate the write is bound to (baseChecksHeld): the plan
+// applies the rewrite only over the cards the check read, so a card added, dealt
+// or revised between the two reads refuses the step instead of being rewritten
+// with its PATHS unchecked.
+type StreamSetBaseCheck struct {
+	Stream string
+	ID     string
+	Was    string
+	Brief  string
+}
+
+// streamSetBaseCards is the cards of stream st that stream set --base re-points,
+// in work order: every primary not yet dealt (its attempt is 0) and every primary
+// whose merge card is queued to merge. A sentinel, a landed card and a dealt card
+// that is not queued keep their base; the second return is those kept cards, in
+// work order, for the verb's listing. A dealt and working card keeps its base
+// because its head is already cut on it (docs/SPEC-SPRINT.md section 11, stream
+// set --base).
+func streamSetBaseCards(s *Snapshot, st string) (repoint, keep []*Card) {
+	for _, c := range s.Work.Cards() {
+		if !c.Placed() || c.Row != st || IsSentinel(c) || c.Col == Landed {
+			continue
+		}
+		queued := false
+		if s.Merge != nil {
+			if m := s.Merge.Placed(c.ID); m != nil && m.Col == Queued {
+				queued = true
+			}
+		}
+		if c.Int("attempt") == 0 || queued {
+			repoint = append(repoint, c)
+			continue
+		}
+		keep = append(keep, c)
+	}
+	return repoint, keep
+}
+
+// StreamSetBaseChecks is the brief each card stream set --base re-points would
+// carry (streamSetBaseCards), in work order, for the check add runs: the cards not
+// yet dealt and those queued to merge. A dealt and working card is not in it: its
+// base is kept.
+func StreamSetBaseChecks(s *Snapshot, streams []string, base string) []StreamSetBaseCheck {
+	var out []StreamSetBaseCheck
+	for _, st := range streams {
+		repoint, _ := streamSetBaseCards(s, st)
+		for _, c := range repoint {
+			was := c.F("brief")
+			out = append(out, StreamSetBaseCheck{Stream: st, ID: c.ID, Was: was, Brief: briefOnBase(was, base)})
+		}
+	}
+	return out
+}
+
+// baseChecksHeld is why the cards stream set --base would re-point from snapshot s
+// are not the ones whose rewritten briefs the check read at the base, "" when they
+// are (docs/SPEC-SPRINT.md section 11, stream set --base). The check add runs
+// reads its briefs at the base over a snapshot of its own, and the step's plan
+// recomputes the cards to rewrite from the snapshot it reads: a card added to the
+// stream, dealt, or revised between the two would be rewritten without its PATHS
+// held to the base. The candidates are bound by id, stream and brief, so that
+// change refuses the step whole, nothing written, and the verb is run again.
+func baseChecksHeld(s *Snapshot, streams []string, base string, checked []StreamSetBaseCheck) string {
+	now := StreamSetBaseChecks(s, streams, base)
+	if len(now) != len(checked) {
+		return fmt.Sprintf("the stream moved while its briefs were held to %s: it now re-points %d card(s), the check held %d; nothing was written; run the verb again", base, len(now), len(checked))
+	}
+	for i := range now {
+		if now[i] != checked[i] {
+			return fmt.Sprintf("card %s of stream %s changed while its brief was held to %s; nothing was written; run the verb again", now[i].ID, now[i].Stream, base)
+		}
+	}
+	return ""
+}
+
+// PromotionBaseWhy is why add refuses card into stream, "" when it may: its BASE is a
+// protected branch (ProtectedBranches, dev and main) and the stream is not the promotion
+// stream (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2). A card cut on dev is
+// refused as SprintBranchWhy says; one cut on main the same way, naming main. The remedy
+// re-cuts the card on the sprint branch, or marks the stream: stream set <s> --promotion.
+func PromotionBaseWhy(s *Snapshot, stream, base, card string) string {
+	if !slices.Contains(ProtectedBranches, base) || IsPromotionStream(s, stream) {
+		return ""
+	}
+	if base == DevBranch {
+		return SprintBranchWhy(s, stream, base, card)
+	}
+	return "card " + card + " is cut on " + base + ", a protected branch, and stream " + stream + " is not the promotion stream: every stream lands on the sprint branch, and only the promotion stream lands on dev or main" +
+		"; nothing was written; re-cut the card with BASE: <the sprint branch> (sprint/<name>, the branch its stream lands on), or, for the promotion stream, run: nova-sprint stream set " + stream + " --promotion"
+}
+
+// PromotionRefusals is every card of the adds whose BASE is a protected branch outside
+// the promotion stream (PromotionBaseWhy), none when each may be admitted: the add
+// refuses whole, writing nothing, when any is.
+func PromotionRefusals(s *Snapshot, rs []AddReq) []Refusal {
+	var out []Refusal
+	for _, r := range rs {
+		for i, id := range AddIDs(s, r) {
+			base := r.Base
+			if len(r.Cards) > 0 && i < len(r.Cards) {
+				base = r.Cards[i].Base
+			}
+			if why := PromotionBaseWhy(s, r.Stream, base, id); why != "" {
+				out = append(out, Refusal{Key: id, Why: why})
+			}
+		}
+	}
+	return out
 }

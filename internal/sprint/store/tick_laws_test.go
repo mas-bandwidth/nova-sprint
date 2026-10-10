@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // The laws of the machine's accept and of its redeals, on the store with the
@@ -177,7 +177,7 @@ func TestTheModelAndTheEngineAgreeOnTheAcceptAndRedealLaws(t *testing.T) {
 			s := h.observe()
 			for _, id := range refmodel.Keys(s.Reads) {
 				if rc := s.Reads[id]; rc.Primary == p && (rc.Place == refmodel.Asked || rc.Place == refmodel.Reading) {
-					do(dAction{Kind: "read", Reader: rc.Reader, Card: id, OK: true})
+					do(dAction{Kind: "read", Reader: rc.Reader, Card: id, Gen: max(h.readGen[id], 1), OK: true})
 				}
 			}
 			if h.observe().Acceptable(p) {

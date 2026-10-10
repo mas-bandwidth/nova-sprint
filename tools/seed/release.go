@@ -8,7 +8,7 @@ import (
 	"golang.org/x/mod/semver"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/subproc"
+	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 )
 
 // release is the nova-tools release a checkout is at: the tag NOVA-TOOLS-VERSION

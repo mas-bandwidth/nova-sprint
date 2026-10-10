@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/config"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // fsck's check seat-agreement (docs/SPEC-SPRINT.md, "Handing over the seat",

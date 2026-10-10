@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // A provider failure is an ended take, never the card's failure (docs/SPEC-SPRINT.md,
@@ -143,7 +143,7 @@ func TestAFailedFinishWithoutTheProviderKindStaysFailedWork(t *testing.T) {
 		h.addReady("s1", 1, briefOf("flash", ""))
 		h.must(DealStep(sprint.DealReq{}))
 		h.failTake("s1-1.w1", report)
-		assert.Equal(t, sprint.Finished, h.snap().Fleet.Card("s1-1.w1").Col, report)
+		assert.Equal(t, sprint.DoneFailed, h.snap().Fleet.Card("s1-1.w1").Col, report)
 		assert.Equal(t, sprint.Review, h.snap().Work.Card("s1-1").Col, report)
 		assert.Equal(t, 1, h.notesOf(sprint.NWorkFailed), report)
 	}
@@ -266,7 +266,7 @@ func TestARunItsBudgetEndedWithNoResultStaysFailedWork(t *testing.T) {
 		h.addReady("s1", 1, briefOf("flash", ""))
 		h.must(DealStep(sprint.DealReq{}))
 		h.failTake("s1-1.w1", report)
-		assert.Equal(t, sprint.Finished, h.snap().Fleet.Card("s1-1.w1").Col, report)
+		assert.Equal(t, sprint.DoneFailed, h.snap().Fleet.Card("s1-1.w1").Col, report)
 		assert.Equal(t, 1, h.notesOf(sprint.NWorkFailed), report)
 	}
 }

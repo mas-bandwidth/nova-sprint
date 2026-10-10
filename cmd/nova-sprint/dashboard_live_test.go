@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // The owner, 2026-10-04: "I need to be able to always trust the dashboard"; "Golang
@@ -80,7 +80,7 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 		second()
 	}
 	assert.Equal(t, 5, reads(), "one read a second, whoever is looking")
-	assert.Equal(t, []string{"where", "--actor", "boss", "--json", "--cards", "--rows"}, sent[0])
+	assert.Equal(t, []string{"where", "--actor", "boss", "--json", "--cards", "--rows", "--archived"}, sent[0])
 	data, stale := api()
 	assert.JSONEq(t, r.boss("nova-sprint where --json --cards"), data, "the page's data is the live server's own")
 	assert.False(t, stale)

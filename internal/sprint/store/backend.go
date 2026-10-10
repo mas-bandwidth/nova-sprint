@@ -1,5 +1,5 @@
 // Package store binds the sprint core (internal/sprint) to the table layer
-// (internal/ntable): one set read of the tables a step needs, then batch
+// (pkg/ntable): one set read of the tables a step needs, then batch
 // applies, chunked under the table layer's bounds, with an operation record
 // for every step that touches more than one table or writes notifications,
 // and the notifications written by the same step as the move that causes
@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // Backend is what the sprint needs of a store.
@@ -173,7 +173,20 @@ type Fence struct {
 	// of the work table's queue: while either holds, a step other than the
 	// pump queues its work-table changes (queue.go).
 	Running bool
-	Queued  int
+	// RunSeq identifies the explicit START whose state was read with this
+	// fence. An older tick part must not cross a STOP and restart.
+	RunSeq uint64
+	// StopRevoked distinguishes a run's STOP (manual or automatic) from the
+	// epoch's initial stopped setup state. It revokes new starts and reports
+	// until an explicit START after owner cancellation receipts.
+	StopRevoked bool
+	// StopIssued distinguishes a current STOP record from an older stopped
+	// record whose active leases must be protected from the live snapshot.
+	StopIssued bool
+	// StopDebt is the same machine record's captured owner leases. A step may
+	// not move or rewrite one before its owner records stop-return.
+	StopDebt []StopLease
+	Queued   int
 	// Stuck is the stuck record (stuck.go) as it was read with the fence, ""
 	// for none: the step that writes next carries its judgment, and reads no
 	// record of its own for it.
@@ -218,6 +231,15 @@ type OpRecord struct {
 	// HealthClear is the friends whose friend-health record its commit removes
 	// (friend health --clear; the stall ladder's release).
 	HealthClear []string `json:"health_clear,omitempty"`
+	// CloseTimers is the ids of the timers this step closes (store/timers.go):
+	// its commit deletes only these ids from the timer record, read inside
+	// the same commit, so a timer set or cancelled while the step ran is not
+	// lost.
+	CloseTimers []string `json:"close_timers,omitempty"`
+	// Timers is the timer record the step leaves (store/timers.go): its
+	// commit writes it, so the timers it raised are closed in the same step
+	// as their judgment.
+	Timers *sprint.Timers `json:"timers,omitempty"`
 }
 
 // Tables is the stored table names of the record's manifests, in order.

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // RULES BY REFERENCE (nova-tools#5174 rule 6): under a rules file the members hold
@@ -37,7 +37,7 @@ func briefFile(t *testing.T, dir, name, text string) string {
 // hold no rules file for.
 const (
 	homeBrief   = "RESULT: h sha=0123456789ab\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/foundation\n\nhandle the empty case"
-	schemaBrief = "RESULT: x sha=0123456789ab\nREPO: mas-bandwidth/schema\nBASE: main\n\nhandle the empty case"
+	schemaBrief = "RESULT: x sha=0123456789ab\nREPO: mas-bandwidth/schema\nBASE: sprint/foundation\n\nhandle the empty case"
 )
 
 // A brief that does not carry the held rules is admitted, stored as given, and names the

@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/mod/semver"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/buildinfo"
+	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
 )
 
 // The nova-tools nova-sprint runs on (docs/SPEC-SPRINT.md, "The nova-tools it runs
@@ -20,7 +20,7 @@ import (
 
 // NovaToolsVersion is the nova-tools release nova-sprint needs at least: the tag line
 // of NOVA-TOOLS-VERSION.
-const NovaToolsVersion = "v1.1.0"
+const NovaToolsVersion = "v1.2.2"
 
 // NovaToolsVersionFile is the file at the repository root that records it.
 const NovaToolsVersionFile = "NOVA-TOOLS-VERSION"

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // The four tables, by their logical names. A deployment prefixes each (Names).
@@ -46,22 +46,18 @@ var ShownOrder = []string{Work, Friends, Fleet}
 // view, with friends after merge and before fleet.
 var AllOrder = []string{Work, Readers, Merge, Friends, Fleet}
 
-// FriendsDef is the friends table's shape: the fleet table's columns but load,
-// with dealt beside working (card sn-verified-working-b-ns-b.w1; the owner: "trust but
-// VERIFY", "Are they actually doing the work that is shown in the friend table?
-// Really?"). ready and working count her job cards in those states, working only the
-// verified of hers (a push on its branch or named in her beat --running,
-// sprint.FriendWorkingOf), and dealt every card of hers in working on her row, so
-// the two differ exactly when she holds cards no push proves and her beat does not
-// name; width is her width
-// as text, summed; redealt counts her cards taken back past their deadline
-// (TickFriendRedeal); ok and failed (hidden) count her cards the readers read ok
-// and broken (verdicts.go), and done and ok% are the table's formulas over them,
-// the footer pooling ok% over the friends; status is text with no fold, and so is active, how long ago
-// her session last wrote a file (her beat's Active; "-" when none was reported). The rows are the
+// FriendsDef is the friends table's shape: the fleet table's columns but load.
+// ready and working count her job cards in those states; width is her width
+// as text, summed; ok and failed (hidden) count her jobs done ok and done
+// failed, and done and ok% are the table's formulas over them, the footer
+// pooling ok% over the friends; status is text with no fold, and so is active, how long ago
+// her session last wrote a file (her beat's Active; "-" when none was reported);
+// tokens is her cards' usage summed (sprint.FriendTokensFromCards): a text cell
+// with a subscription friend's compact count (1.2M), or an api-billed friend's
+// charged dollars rounded up to the cent. The rows are the
 // friends'; where draws them from store.FriendRows.
 func FriendsDef() ntable.Table {
-	cols, err := ntable.ParseColumns("ready,working,dealt,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,redealt,status:text,active:text,ok,failed")
+	cols, err := ntable.ParseColumns("ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,status:text,active:text,tokens:text:sum,ok,failed")
 	if err != nil {
 		panic(fmt.Sprintf("sprint table %s: %v", Friends, err))
 	}
@@ -100,10 +96,10 @@ const (
 // withdrawn (hidden) holds a work card withdrawn because no member was up, so
 // that the tick deals the same card again rather than cutting another: the table
 // layer never places a removed member again. ok and failed (hidden) hold the
-// member's work cards the readers gave a verdict on, read ok and read broken
-// (verdicts.go; the owner, 2026-10-04: "I want to trust the ok%"). done and ok%
-// are the table's own formulas over them, computed at render and never
-// written: done is sum(ok+failed), ok% (the column okpct) is
+// member's finished work cards, finished ok and finished failed, and defect (hidden)
+// those that ended on a brief defect, counted in neither. done and ok%
+// are the table's own formulas over the ok and failed cells, computed at render and
+// never written: done is sum(ok+failed), ok% (the column okpct) is
 // pct(ok/ok+failed), and the footer pools ok% over the members. ctl (hidden)
 // holds the member's control card: its status and its width (width.go), which
 // the width column shows beside working.
@@ -112,19 +108,15 @@ const (
 	OkPct      = "okpct"
 	DoneOK     = "ok"
 	DoneFailed = "failed"
+	// DoneDefect (hidden) holds a member's work cards that ended on a brief defect
+	// (brief_defect.go): in neither done nor ok%, so a brief no worker could do is never
+	// the worker's failure.
+	DoneDefect = "defect"
 	Status     = "status"
 	Active     = "active" // friends.active: how long ago her session last wrote a file
-	// Dealt is the friends table's dealt column (card sn-verified-working-b-ns-b.w1): every card of
-	// hers in working on her row, beside working's verified count of them (FriendWorkingOf).
-	Dealt     = "dealt"
-	Load      = "load"
-	Withdrawn = "withdrawn"
-	// Finished (hidden) holds a work card its worker finished, ok or failed, that no
-	// reader has given a verdict on yet: its worker's word alone, counted in no ok%
-	// (verdicts.go). Redealt holds a friend's card taken off her row past its deadline
-	// unfinished, a redeal and never a failure (TickFriendRedeal).
-	Finished = "finished"
-	Redealt  = "redealt"
+	Tokens     = "tokens" // friends.tokens: her cards' usage summed, compact or in dollars
+	Load       = "load"
+	Withdrawn  = "withdrawn"
 )
 
 // Stream states (the merge table's state column).
@@ -265,8 +257,8 @@ func (n Names) Definitions() []ntable.Table {
 		mk(Work, "waiting,ready,working,review,merging,landed,cost:text:sum"),
 		mk(Readers, "asked,reading,ok,broken,tiers:text"),
 		mk(Merge, "queued,merged,stuck,ci:text,state:text,since:text,returned,ctl:first:none", Since, Returned, Ctl),
-		mk(Fleet, "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,redealt,status:text,load:text,withdrawn,finished,ok,failed,ctl:first:none",
-			Withdrawn, Finished, DoneOK, DoneFailed, Ctl),
+		mk(Fleet, "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,status:text,load:text,withdrawn,ok,failed,defect,ctl:first:none",
+			Withdrawn, DoneOK, DoneFailed, DoneDefect, Ctl),
 	}
 }
 
@@ -293,11 +285,16 @@ func ValidID(s string) bool { return len(s) <= MaxIDLen && idRE.MatchString(s) }
 const MaxIDLen = 128
 
 // ValidCardID says a card's id is its parts joined by dots, each a ValidID word: a
-// primary (p), a work card (p.w1), a read card (p.r1.reader).
+// primary (p), a work card (p.w1), a read card (p.r1.reader, or p.r1.reader.g1 with generation suffix).
 func ValidCardID(s string) bool {
 	parts := strings.Split(s, ".")
-	if len(parts) > 3 {
+	if len(parts) > 4 || len(parts) == 0 {
 		return false
+	}
+	if len(parts) == 4 {
+		if !strings.HasPrefix(parts[1], "r") || !isGenSuffix(parts[3]) {
+			return false
+		}
 	}
 	for _, p := range parts {
 		if !ValidID(p) {
@@ -305,6 +302,14 @@ func ValidCardID(s string) bool {
 		}
 	}
 	return true
+}
+
+func isGenSuffix(s string) bool {
+	if len(s) < 2 || s[0] != 'g' {
+		return false
+	}
+	n, err := strconv.Atoi(s[1:])
+	return err == nil && n >= 1
 }
 
 // WorkCardID is the identity of a primary's work card for one attempt.
@@ -315,6 +320,18 @@ func WorkCardID(primary string, attempt int) string {
 // ReadCardID is the identity of one reader's read of a primary at one attempt.
 func ReadCardID(primary string, attempt int, reader string) string {
 	return primary + ".r" + strconv.Itoa(attempt) + "." + reader
+}
+
+// ReadCardSecondID is the second identity of one reader's read of a primary at one attempt,
+// given to a re-asked read when a retired card with the plain identity exists (e.g. taken back by the away sweep).
+func ReadCardSecondID(primary string, attempt int, reader string) string {
+	return ReadCardID(primary, attempt, reader) + ".g1"
+}
+
+// ReadCardIDs returns both the plain identity and the second identity for a reader's read of a primary at an attempt.
+func ReadCardIDs(primary string, attempt int, reader string) []string {
+	plain := ReadCardID(primary, attempt, reader)
+	return []string{plain, plain + ".g1"}
 }
 
 // CtlID is the identity of a stream's or a member's control card.
@@ -336,7 +353,14 @@ func ParseWorkCard(id string) (primary string, attempt int, ok bool) {
 // ParseReadCard splits a read card identity into its primary, attempt and reader.
 func ParseReadCard(id string) (primary string, attempt int, reader string, ok bool) {
 	parts := strings.Split(id, ".")
-	if len(parts) != 3 || !strings.HasPrefix(parts[1], "r") {
+	if len(parts) == 4 {
+		if !isGenSuffix(parts[3]) {
+			return "", 0, "", false
+		}
+	} else if len(parts) != 3 {
+		return "", 0, "", false
+	}
+	if !strings.HasPrefix(parts[1], "r") {
 		return "", 0, "", false
 	}
 	n, err := strconv.Atoi(parts[1][1:])

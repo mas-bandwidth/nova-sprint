@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // Stream archive on the twin store (the owner, 2026-10-05 ~11:45 PM ET: "I would like you to
@@ -98,10 +98,11 @@ func (r *conflictRig) archivedNotes() []string {
 func TestArchiveKeepsEveryLandedCardAndItsCost(t *testing.T) {
 	t.Parallel()
 	r := newConflictRig(t)
-	_, _, _, err := r.st.SetMachine(r.ctx, false)
-	require.NoError(t, err)
 	r.must(store.AddStep(sprint.AddReq{Stream: "s2", Count: 1, Brief: "c: the work (s2) tier: flash\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"}))
 	r.landWithCost("s1", "s1-1", "s1-2", "s1-3")
+	// Stop after the owned work and reads settle; STOP does not admit new takes.
+	_, _, _, err := r.st.SetMachine(r.ctx, false)
+	require.NoError(t, err)
 	s := r.snap()
 	kept := ledger(s, "s1")
 	require.Len(t, kept, 4)

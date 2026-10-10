@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/friend"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // friendCardsAnswer is friend cards <friend> --json, read as her daemon reads it.
@@ -53,6 +53,7 @@ func TestFriendCardsServesEveryHeldCardWithItsPacket(t *testing.T) {
 	ta, root := takeApp(t, 20, nil, "friend-a", "friend-b")
 	ta.ok("friend down friend-b")
 	ta.ok("tick")
+	ta.startFriend("friend-a", 8) // she starts what her width holds; the rest wait ready
 
 	// every card on her row, working then the ready ones dealt behind them in batch mode
 	held := friendCardsAnswer(t, ta, "friend-a")

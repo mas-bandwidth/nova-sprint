@@ -3,7 +3,6 @@ package store
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -110,43 +109,4 @@ func TestServerStartLeavesTheSeatKeyAndSeatRepairRestoresIt(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, s.Server, "a stale server's record")
 	assert.Empty(t, sprint.SeatDrift("rowan", "rowan", sprint.MachineActor), "a server acting as the machine is no drift")
-}
-
-// The server's record carries its landing mode and its process
-// (docs/SPEC-SPRINT.md, land-one-lander-now-nsb.w1): written whole and read
-// back while fresh; the actor alone says no landing; a record written before
-// it carried them reads as not landing; past ServerTTL it is none.
-func TestServerRecordCarriesLandingAndProcess(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
-	want := ServerRecord{Actor: "stella", Land: true, PID: 4242, Host: "vision"}
-	require.NoError(t, h.st.SetServer(h.ctx, want))
-	got, ok, err := h.st.Server(h.ctx)
-	require.NoError(t, err)
-	require.True(t, ok)
-	want.At = h.st.now()
-	assert.Equal(t, want, got)
-	actor, err := h.st.ServerActor(h.ctx)
-	require.NoError(t, err)
-	assert.Equal(t, "stella", actor)
-
-	require.NoError(t, h.st.SetServerActor(h.ctx, "rowan"))
-	got, ok, err = h.st.Server(h.ctx)
-	require.NoError(t, err)
-	require.True(t, ok)
-	assert.Equal(t, ServerRecord{Actor: "rowan", At: h.st.now()}, got, "the actor alone says no landing")
-
-	legacy := `{"actor":"stella","at":"` + h.st.now().Format(time.RFC3339Nano) + `"}`
-	require.NoError(t, h.m.SetKey(h.ctx, keyServer, legacy))
-	got, ok, err = h.st.Server(h.ctx)
-	require.NoError(t, err)
-	require.True(t, ok)
-	assert.False(t, got.Land, "a record from before the landing mode")
-	assert.Equal(t, "stella", got.Actor)
-
-	h.tick(ServerTTL + ServerEvery)
-	got, ok, err = h.st.Server(h.ctx)
-	require.NoError(t, err)
-	assert.False(t, ok, "a stale record is no server")
-	assert.Equal(t, ServerRecord{}, got)
 }

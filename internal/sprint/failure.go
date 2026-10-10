@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // Rule 2 of the sprint's cost rules (nova-tools#5174; the owner, 2026-10-02): "Escalate on
@@ -189,8 +189,8 @@ func providerBack(s *Snapshot, wc *Card) bool {
 			failed[providerOf(t.Model)] = true
 		}
 	}
-	for _, c := range s.Fleet.Column(Finished, DoneOK, DoneFailed) {
-		if (c.Col == DoneOK || c.F("ok") == "yes") && failed[providerOf(c.F(FieldModel))] && stampAt(c, "finished").After(since) {
+	for _, c := range s.Fleet.Column(DoneOK) {
+		if failed[providerOf(c.F(FieldModel))] && stampAt(c, "finished").After(since) {
 			return true
 		}
 	}

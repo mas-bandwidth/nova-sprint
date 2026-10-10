@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 type probe struct {
@@ -134,8 +134,8 @@ func TestARedealThenBothFinishes(t *testing.T) {
 	if len(res.Moved) != 1 || p.card(sprint.Work, "s1-1").F("head") != "second-head" {
 		assert.Fail(t, fmt.Sprintf("the live finish: %+v head=%s", res, p.card(sprint.Work, "s1-1").F("head")))
 	}
-	if s := p.snap(); s.Fleet.Count(first, sprint.Finished) != 0 || s.Fleet.Count(second, sprint.Finished) != 1 {
-		assert.Fail(t, fmt.Sprintf("the first member was credited: first %d finished, second %d finished", s.Fleet.Count(first, sprint.Finished), s.Fleet.Count(second, sprint.Finished)))
+	if s := p.snap(); s.Fleet.Count(first, sprint.DoneOK)+s.Fleet.Count(first, sprint.DoneFailed) != 0 || s.Fleet.Count(second, sprint.DoneOK) != 1 {
+		assert.Fail(t, fmt.Sprintf("the first member was credited: first %d ok, second %d ok", s.Fleet.Count(first, sprint.DoneOK), s.Fleet.Count(second, sprint.DoneOK)))
 	}
 }
 
@@ -397,7 +397,7 @@ func TestReworkTwice(t *testing.T) {
 		assert.Equal(t, "h2", rc.F("head"), "%s not asked at h2", rc.ID)
 		who = append(who, rc.F("reader"))
 	}
-	require.Len(t, who, 1, "not asked its first read at h2")
+	require.Len(t, who, 2, "not asked both its reads together at h2")
 	// a second finding, not the first again: the same finding twice is the brief's bound (brief_bound.go)
 	p.do("read broken f:2", ReadStep(sprint.ReadReq{Usage: "input=1000 output=100", As: who[0], Verdict: "broken", Finding: "f:2", Sel: ids(sprint.ReadCardID("s1-1", 2, who[0]))}))
 	for _, o := range p.openOn("s1-1") {

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardcost"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 )
 
 // reconcileWorld is a world with an openrouter route and one primary carrying records of
@@ -162,4 +162,44 @@ func TestAStreamsTotalIsEveryRecordOfEveryCard(t *testing.T) {
 	assert.Equal(t, 1, tc.UnpricedRuns)
 	assert.Equal(t, "$5.00", tc.PerLanded)
 	assert.Empty(t, tc.Unreconciled)
+}
+
+// The judgment names the read share of the gap (the owner, 2026-10-05, before funding a
+// provider for reads: track what readers spend): the reads among the day's records, their
+// share, and the gap spread as the records are; the record keeps the reads beside the total.
+func TestTheReconcileJudgmentNamesTheReadShareOfTheGap(t *testing.T) {
+	t.Parallel()
+	w := reconcileWorld(t)
+	day := w.s.Now.UTC().Format(time.DateOnly)
+	assert.InDelta(t, 4.0, InternalReadSpendOn(w.s, "openrouter", day), 1e-9, "today's one read, never a take")
+	assert.InDelta(t, 0.0, InternalReadSpendOn(w.s, "opencode", day), 1e-9)
+
+	p := w.must(CostReconcile(w.s, openrouterRead(w, 20))) // $20 against $10: a gap of $10
+	require.Len(t, p.Notes, 1)
+	assert.Contains(t, p.Notes[0].What, "reads are $4.00 of the records (40.0%, work $6.00), so spread as the records are, about $4.00 of the gap is reads")
+	assert.Contains(t, p.Notes[0].What, "a route's prices are under its provider's list")
+	rec, ok := CostReconcileOf(w.s.Fleet, "openrouter")
+	require.True(t, ok)
+	assert.InDelta(t, 4.0, rec.InternalReads, 1e-9)
+	require.Len(t, p.Units, 1)
+	assert.Contains(t, p.Units[0].Moved, "records=$10.00 reads=$4.00 gap=50.0%")
+
+	// a day with no record names no read share
+	assert.Equal(t, "the records hold nothing of the day, so no part of the gap is set against reads",
+		readShareOfGap(CostReconcileRecord{Used: 3}))
+}
+
+// InternalSpendOn is the sprint's records of a provider on a UTC day (2006-01-02): every
+// consumer record on every primary of the work table that ended that day, at its charged
+// figure (the harness's cost, else the predicted one at the route's prices).
+func InternalSpendOn(s *Snapshot, provider, day string) float64 {
+	all, _ := internalSpendSplit(s, provider, day)
+	return all
+}
+
+// InternalReadSpendOn is the reads among InternalSpendOn's records: what the reads of that
+// provider and day cost, the read share of the records the provider's count is set beside.
+func InternalReadSpendOn(s *Snapshot, provider, day string) float64 {
+	_, reads := internalSpendSplit(s, provider, day)
+	return reads
 }

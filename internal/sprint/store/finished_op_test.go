@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 	"github.com/stretchr/testify/require"
 )
 
@@ -221,9 +221,9 @@ func TestRepairAppliesWhatHoldsOfAFirstManifestPastTheGrace(t *testing.T) {
 	require.Equal(t, RepairSkipped, rr[0].Done, "repair: %+v %v", rr, err)
 	require.NotEmpty(t, rr[0].Skipped, "repair: %+v %v", rr, err)
 	require.Contains(t, strings.Join(rr[0].Skipped, " "), c.ID, "repair: %+v %v", rr, err)
-	// The entry that held applied: the other card is in finished and its
+	// The entry that held applied: the other card is in failed and its
 	// primary in review.
-	require.Equal(t, string(sprint.Finished), h.snap().Fleet.Card(other.ID).Col, "the entry that held: %s %s", h.snap().Fleet.Card(other.ID).Col, h.state(other.F("primary")))
+	require.Equal(t, string(sprint.DoneFailed), h.snap().Fleet.Card(other.ID).Col, "the entry that held: %s %s", h.snap().Fleet.Card(other.ID).Col, h.state(other.F("primary")))
 	require.Equal(t, sprint.Review, h.state(other.F("primary")), "the entry that held: %s %s", h.snap().Fleet.Card(other.ID).Col, h.state(other.F("primary")))
 	skips := h.skipNotes()
 	if h.written(sprint.NAbandoned) != 0 || len(skips) != 1 || !strings.Contains(skips[0].What, c.ID) {

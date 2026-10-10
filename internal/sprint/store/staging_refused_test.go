@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // A launch refused at staging is the member's failure, never the card's (tla/CardContract.tla,
@@ -104,7 +104,7 @@ func TestThreeStagingRefusalsThenAnOkOnTheFourthLandsTheAttempt(t *testing.T) {
 	h.must(TakeStep(sprint.TakeReq{As: w.Row, Sel: sprint.Sel{IDs: []string{w.ID}}, Gens: gens, Who: w.Row}))
 	h.must(FinishStep(sprint.FinishReq{As: w.Row, Sel: sprint.Sel{IDs: []string{w.ID}}, Gens: gens, Head: "abc123", Branch: "work/s1-1", Report: "ok", Who: w.Row}))
 	w = h.snap().Fleet.Card("s1-1.w1")
-	assert.Equal(t, sprint.Finished, w.Col, "the attempt finishes ok")
+	assert.Equal(t, sprint.DoneOK, w.Col, "the attempt lands ok")
 	assert.Equal(t, 0, w.Int("redeals"))
 	assert.Len(t, sprint.AttemptLines(w), 4, "three refusals and the card's own")
 	assert.Len(t, h.stagingNotes(), 3)

@@ -1,12 +1,10 @@
-//go:build functional
-
 package main
 
 import (
 	"context"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 	"github.com/stretchr/testify/assert"
 )
 

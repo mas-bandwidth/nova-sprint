@@ -8,20 +8,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/hostload"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 	"github.com/stretchr/testify/require"
 )
 
 // TestTheLandedSeriesCountsEachCardOnceByItsWorker: a friend landing, a machine
 // landing, a sentinel's release and a card landed twice. The buckets count each
 // real landing once, under the worker of the landed attempt. The store's actor
-// is friend.lander, so a fold that takes the lander for the worker counts the
-// machine card as a friend. The lifecycle refuses a second move to landed, so
-// the duplicate is a second line on the log the store wrote. An earlier
+// is friend.lander, but the RUNNING tick applies its queued Work move as machine;
+// a fold that takes the landing actor for the worker loses the actual worker.
+// The lifecycle refuses a second move to landed, so the duplicate is a second
+// line on the log the store wrote. An earlier
 // friend.amy:ok for the machine card is appended after the real m1:ok, so the
-// last line is not the last time.
+// last line is not the last time. A set :ok line names every card of one
+// finish step, so each card keeps the set's worker. A set move names every card
+// and counts each one once.
 func TestTheLandedSeriesCountsEachCardOnceByItsWorker(t *testing.T) {
 	t.Parallel()
 	r := newLandedRig(t)
@@ -38,8 +41,6 @@ func TestTheLandedSeriesCountsEachCardOnceByItsWorker(t *testing.T) {
 	r.beatMachines()
 	_, err = r.st.Tick(r.ctx)
 	require.NoError(t, err)
-	_, _, _, err = r.st.SetMachine(r.ctx, false)
-	require.NoError(t, err)
 	mach := r.snap().Fleet.Card("mach-1.w1")
 	require.True(t, mach.Placed(), "mach-1.w1 dealt")
 	require.Equal(t, "m1", mach.Row, "the machine card is m1's")
@@ -49,21 +50,23 @@ func TestTheLandedSeriesCountsEachCardOnceByItsWorker(t *testing.T) {
 	r.must(store.AddStep(sprint.AddReq{Stream: "fr", Cards: []sprint.CardAdd{{
 		ID: "fr-1", Brief: "tier: flash\nWHO: only friend amy\n\nA friend's card.",
 	}}}))
-	_, _, _, err = r.st.SetMachine(r.ctx, true)
-	require.NoError(t, err)
 	r.beat()
 	_, err = r.st.Tick(r.ctx)
-	require.NoError(t, err)
-	_, _, _, err = r.st.SetMachine(r.ctx, false)
 	require.NoError(t, err)
 	fr := r.snap().Fleet.Card("fr-1.w1")
 	require.True(t, fr.Placed(), "fr-1.w1 dealt")
 	require.Equal(t, "friend.amy", fr.Row, "the friend card is amy's")
 
+	// Release the sentinel while stopped, as this fixture originally did, after
+	// both work cards were dealt and before any owner began them.
+	_, _, _, err = r.st.SetMachine(r.ctx, false)
+	require.NoError(t, err)
 	r.must(store.ReleaseStep(sprint.ReleaseReq{
 		IDs: []string{"gate-1"}, Reason: "nothing before it", Coordinator: "coordinator", Who: "coordinator",
 	}))
 	require.Equal(t, sprint.Landed, r.snap().StateOf("gate-1"), "the sentinel released")
+	_, _, _, err = r.st.SetMachine(r.ctx, true)
+	require.NoError(t, err)
 	r.land("mach-1", "mach")
 	r.land("fr-1", "fr")
 
@@ -76,7 +79,7 @@ func TestTheLandedSeriesCountsEachCardOnceByItsWorker(t *testing.T) {
 	require.NotEmpty(t, machOK, "machine :ok\n%s", dumpMoves(lines))
 	require.NotEmpty(t, okMoves(lines, "fr-1", "friend.amy"), "friend :ok\n%s", dumpMoves(lines))
 	for _, l := range landedMoves(lines, "mach-1", ":merging", ":landed") {
-		require.Equal(t, "friend.lander", l.Actor, "the landing line names the lander, not the worker")
+		require.Equal(t, "machine", l.Actor, "the RUNNING tick applies the lander's queued Work move; the line does not name the worker")
 	}
 
 	// The second landing is the same card again. A later line with an earlier
@@ -98,9 +101,24 @@ func TestTheLandedSeriesCountsEachCardOnceByItsWorker(t *testing.T) {
 		sprint.Line{Kind: sprint.LineMove, At: r.now, Table: sprint.Fleet, Card: "batch-a.w1", To: "m2:ok"},
 		sprint.Line{Kind: sprint.LineMove, At: r.now, Table: sprint.Fleet, Card: "batch-b.w1", To: "friend.bea:ok"},
 	)
+	// A set :ok line names two work cards of one finish step. Both keep the
+	// set's worker, so neither lands unknown.
+	lines = append(lines,
+		sprint.Line{
+			Kind: sprint.LineMove, At: r.now, Table: sprint.Fleet,
+			Card: "set-a.w1", Cards: []string{"set-a.w1", "set-b.w1"}, To: "m3:ok",
+		},
+		sprint.Line{Kind: sprint.LineMove, At: r.now, Table: sprint.Work, Card: "set-a", From: "s:merging", To: "s:landed"},
+		sprint.Line{Kind: sprint.LineMove, At: r.now, Table: sprint.Work, Card: "set-b", From: "s:merging", To: "s:landed"},
+	)
+	// A landing with no :ok line is unknown: it counts in totals.unknown
+	// and not in workers, so workers never carries a "-" key.
+	lines = append(lines,
+		sprint.Line{Kind: sprint.LineMove, At: r.now, Table: sprint.Work, Card: "unknown-card", From: "s:merging", To: "s:landed"},
+	)
 
 	got := sprint.LandedSeriesOf(lines, r.now)
-	require.Equal(t, int64(600), got.BucketSeconds)
+	require.Equal(t, 600, got.BucketSeconds)
 	require.Equal(t, 144, got.Buckets)
 	require.Len(t, got.Friends, 144)
 	require.Len(t, got.Fleet, 144)
@@ -111,9 +129,11 @@ func TestTheLandedSeriesCountsEachCardOnceByItsWorker(t *testing.T) {
 		require.Zero(t, got.Fleet[i], "fleet bucket %d", i)
 	}
 	require.Equal(t, 2, got.Friends[143], "amy and bea, once each")
-	require.Equal(t, 2, got.Fleet[143], "m1 and m2, once each; the second mach-1 landing does not count")
-	require.Equal(t, sprint.LandedTotals{Friends: 2, Fleet: 2, Unknown: 0}, got.Totals)
-	require.Equal(t, sprint.LandedHour{Friends: 2, Fleet: 2}, got.LastHour)
+	require.Equal(t, 4, got.Fleet[143], "m1, m2 and m3's two, once each; the second mach-1 landing does not count")
+	require.Equal(t, sprint.SeriesTotals{Friends: 2, Fleet: 4, Unknown: 1}, got.Totals)
+	require.Equal(t, sprint.SeriesLastHour{Friends: 2, Fleet: 4}, got.LastHour)
+	require.NotContains(t, got.Workers, "-", "an unknown landing is not a worker")
+	require.Equal(t, map[string]int{"friend.amy": 1, "friend.bea": 1, "m1": 1, "m2": 1, "m3": 2}, got.Workers)
 }
 
 type landedRig struct {
@@ -173,8 +193,7 @@ func (r *landedRig) snap() *sprint.Snapshot {
 	return s
 }
 
-// land finishes, reads, accepts and merges one dealt primary while the machine
-// is stopped, so the work table writes the landing itself.
+// land finishes, reads, accepts and merges one dealt primary while RUNNING.
 func (r *landedRig) land(id, stream string) {
 	r.t.Helper()
 	s := r.snap()
@@ -193,10 +212,21 @@ func (r *landedRig) land(id, stream string) {
 		As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")},
 		Head: "abc", Who: wc.Row,
 	}))
+	r.beat()
+	_, err := r.st.Tick(r.ctx)
+	require.NoError(r.t, err)
 	require.Equal(r.t, sprint.Review, r.snap().StateOf(id), "%s after finish", id)
-	r.must(store.AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{id}}}))
+	s = r.snap()
+	require.Zero(r.t, sprint.ReadsWanted(s, s.Work.Card(id)), "the RUNNING tick handled %s's initial read demand", id)
 	for {
 		s = r.snap()
+		for _, rc := range s.Fleet.Of(id) {
+			if rc.F("kind") == "read" && (rc.Col == sprint.Ready || rc.Col == sprint.Working) {
+				r.must(store.ReadStep(sprint.ReadReq{
+					As: rc.Row, Verdict: "ok", Sel: sprint.Sel{IDs: []string{rc.ID}}, Who: rc.Row,
+				}))
+			}
+		}
 		for _, rc := range s.Readers.Of(id) {
 			if rc.Col == sprint.Asked || rc.Col == sprint.Reading {
 				r.must(store.ReadStep(sprint.ReadReq{
@@ -215,8 +245,18 @@ func (r *landedRig) land(id, stream string) {
 			break
 		}
 	}
-	r.must(store.AcceptStep(sprint.AcceptReq{Sel: sprint.Sel{IDs: []string{id}}, Who: "coordinator"}))
-	r.must(store.MergeStep(sprint.MergeReq{Stream: stream, Cards: []string{id}}))
+	r.beat()
+	_, err = r.st.Tick(r.ctx)
+	require.NoError(r.t, err)
+	require.Equal(r.t, sprint.Merging, r.snap().StateOf(id), "%s accepted after its reads", id)
+	merge, err := r.st.Run(r.ctx, store.MergeStep(sprint.MergeReq{Stream: stream, Cards: []string{id}}))
+	require.NoError(r.t, err)
+	require.Empty(r.t, merge.Refused, "%s merge refused: %v", id, merge.Refused)
+	require.NotEmpty(r.t, merge.Moved, "%s merge made no move; merge queue=%v", id, r.snap().Merge.Cell(stream, sprint.Queued))
+	// A RUNNING non-pump step queues its Work move; the tick applies it.
+	r.beat()
+	_, err = r.st.Tick(r.ctx)
+	require.NoError(r.t, err)
 	require.Equal(r.t, sprint.Landed, r.snap().StateOf(id), "%s landed", id)
 }
 
@@ -239,16 +279,12 @@ func landedMoves(lines []sprint.Line, card, fromSuffix, toSuffix string) []sprin
 func okMoves(lines []sprint.Line, primary, worker string) []sprint.Line {
 	var out []sprint.Line
 	for _, l := range lines {
-		if l.Kind != sprint.LineMove || !strings.HasPrefix(l.Card, primary+".w") {
+		if l.Kind != sprint.LineMove || !strings.HasPrefix(l.Card, primary+".w") || !strings.HasSuffix(l.To, ":ok") {
 			continue
 		}
-		switch {
-		case strings.HasSuffix(l.To, ":finished") && l.Set["ok"] == "yes" && strings.TrimSuffix(l.To, ":finished") == worker:
-		case strings.HasSuffix(l.To, ":ok") && strings.TrimSuffix(l.To, ":ok") == worker:
-		default:
-			continue
+		if strings.TrimSuffix(l.To, ":ok") == worker {
+			out = append(out, l)
 		}
-		out = append(out, l)
 	}
 	return out
 }

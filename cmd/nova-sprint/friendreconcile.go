@@ -12,10 +12,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // friend reconcile <friend> (docs/SPEC-SPRINT.md section 1, friend reconcile; the owner,
@@ -148,6 +149,9 @@ type reconcileReq struct {
 	op, who     string
 	say         func(string)
 	push        bool
+	// readReport reads a card's outbox report (friendReadReport when nil): the run loop's
+	// pass gives one bounded by FriendReadDeadline (friendreconcile_tick.go)
+	readReport func(dir, job string) (report, why string, at time.Time, err error)
 }
 
 // reconcileTally is what one reconcile did: the cards working on her row it read, each
@@ -186,13 +190,24 @@ func (a *app) reconcileFriend(ctx context.Context, st *store.Store, r reconcileR
 	for _, p := range packets {
 		job := friendJobOf(p)
 		held = append(held, p.Card, job)
-		report, bad, at, err := friendReadReport(dir, job)
+		readReport := r.readReport
+		if readReport == nil {
+			readReport = friendReadReport
+		}
+		report, bad, at, err := readReport(dir, job)
 		if err != nil {
 			return t, err
 		}
 		if bad != "" {
 			kept++
 			say(fmt.Sprintf("FRIEND-RECONCILE KEPT friend=%s card=%s job=%s: %s; left working", friend, p.Card, oneline.Field(job), oneline.Escape(bad)))
+			continue
+		}
+		if p.Kind == "read" && report != "" {
+			// a read is closed by friend sync from its report (sprint.FriendReadClose), never
+			// collected as work
+			kept++
+			say(fmt.Sprintf("FRIEND-RECONCILE KEPT friend=%s card=%s job=%s: a read with its report: friend sync closes it; left working", friend, p.Card, oneline.Field(job)))
 			continue
 		}
 		wc := byID[p.Card]

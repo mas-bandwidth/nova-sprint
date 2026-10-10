@@ -10,9 +10,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/hostload"
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // A fleet member's beats (sprint/presence.go): one record per member under
@@ -145,6 +145,14 @@ func (st *Store) rootKV() (KV, error) {
 // else measured from src; the record's measuring state carries from beat to
 // beat. It works while the machine is RUNNING or STOPPED and touches no table.
 func (st *Store) Beat(ctx context.Context, member string, given *float64, src hostload.Source) (sprint.Beat, error) {
+	return st.BeatOwing(ctx, member, given, src, nil, "")
+}
+
+// BeatOwing is Beat with the stop-returns the member's lanes still owe after the machine's
+// stop (fleet beat --stop-returns; section 14): kept on the record, which start reads; and
+// the member's word that it starts no card (fleet beat --no-room; sprint.Beat.NoRoom), each
+// beat's own: a beat without it clears it.
+func (st *Store) BeatOwing(ctx context.Context, member string, given *float64, src hostload.Source, stopReturns *int, noRoom string) (sprint.Beat, error) {
 	if !sprint.ValidID(member) {
 		return sprint.Beat{}, fmt.Errorf("a member name wants letters, digits, _ and -: %s", member)
 	}
@@ -182,6 +190,12 @@ func (st *Store) Beat(ctx context.Context, member string, given *float64, src ho
 	if b.Cores = src.NCPU; b.Cores <= 0 {
 		b.Cores = runtime.NumCPU()
 	}
+	if stopReturns != nil {
+		b.StopReturns = *stopReturns
+	} else {
+		b.StopReturns = prev.StopReturns
+	}
+	b.NoRoom = noRoom
 	out, err := json.Marshal(b)
 	if err != nil {
 		return b, err
@@ -265,8 +279,9 @@ func getKeys(ctx context.Context, kv KV, names []string) ([]string, []bool, erro
 }
 
 // SyncFleet brings every display cell of the fleet up to date, reading the
-// control cards: each member's status (derived: held, up or down), width, load (the
-// highest measured load of the last LoadWindow while its beat is fresh); done
+// control cards: each member's status (adopting while the tick holds it to adopt, else held, up or down; sprint.FleetRowStatus), width, load (the
+// highest measured load of the last LoadWindow while its beat is fresh, with its open
+// file descriptors beside it over the warn bound, sprint.LoadText); done
 // and ok% are the table's own formulas. A store that keeps no beats shows the
 // control card's status and no load. It is what a step's mirrors run. It says whether it wrote.
 func (st *Store) SyncFleet(ctx context.Context) (bool, error) {
@@ -306,7 +321,7 @@ func (st *Store) SyncFleet(ctx context.Context) (bool, error) {
 		want := map[string]string{sprint.Status: dash(ctl.F("status")), sprint.Load: "", sprint.FieldWidth: sprint.WidthText(ctl)}
 		if beats != nil {
 			b := beats[row.Key]
-			want[sprint.Status], want[sprint.Load] = sprint.MemberStatus(ctl, b, now), sprint.LoadText(b, now)
+			want[sprint.Status], want[sprint.Load] = sprint.FleetRowStatus(ctl, b, now), sprint.LoadText(b, now)
 		}
 		status[row.Key] = want[sprint.Status]
 		if d := rowDiff(row, want); len(d) > 0 {
@@ -383,7 +398,7 @@ func freshOf(shape ntable.Table, beats map[string]sprint.Beat, now time.Time) []
 
 // showFleet is the tick's own pass over the fleet's display cells, from the
 // row texts and the beats alone, reading no control card: the load of each
-// member, and its status up or down by its beat. A member shown held stays
+// member (with its open files over the warn bound, sprint.LoadText), and its status up or down by its beat. A member shown held stays
 // held: a hold is set and released only by a verb, whose step brings every
 // cell up to date (SyncFleet). It says whether it wrote.
 func (st *Store) showFleet(ctx context.Context, shape ntable.Table, beats map[string]sprint.Beat, now time.Time) (bool, error) {
@@ -466,7 +481,7 @@ func statusRank(status string) int {
 	switch status {
 	case sprint.Up:
 		return 0
-	case sprint.Held:
+	case sprint.Held, sprint.Adopting:
 		return 1
 	case sprint.Down:
 		return 2
@@ -474,9 +489,9 @@ func statusRank(status string) int {
 	return 3
 }
 
-// FleetOrder is the fleet's rows by name, then stably by status: up, held,
-// down, anything else last. status is each row's status cell. The friends
-// table is ordered by it too (FriendRows): one order for both.
+// FleetOrder is the fleet's rows by name, then stably by status: up, held
+// (adopting with it), down, anything else last. status is each row's status
+// cell. The friends table is ordered by it too (FriendRows): one order for both.
 func FleetOrder(rows []string, status map[string]string) []string {
 	out := slices.Clone(rows)
 	slices.Sort(out)

@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // The tick's twin: the sprint read once and kept, so every tick stays
@@ -159,6 +159,12 @@ type Twin struct {
 	// coordinator, the machine's state): what peek answers with beside the
 	// tables.
 	last *sprint.Snapshot
+	// stopsKept is the stops record this process last wrote, its time left out, and
+	// stopsAt that time (stops.go keepStops): an unchanged record is not written again
+	// until StopsRefresh has passed.
+	stopsMu   sync.Mutex
+	stopsKept string
+	stopsAt   time.Time
 }
 
 // NewTwin is an empty twin: its first read reads the store whole.
@@ -275,7 +281,7 @@ func (st *Store) twinRead(ctx context.Context, tw *Twin, load []string, extras f
 		}
 		return snap, f2, nil
 	}
-	return nil, Fence{}, fmt.Errorf("the sprint is busy: other operations kept the fence moving, %d reads in %s; nothing was changed; run the verb again", r.tries, r.slept().Round(time.Millisecond))
+	return nil, Fence{}, &FenceBusyError{Reads: r.tries, Slept: r.slept()}
 }
 
 // checkTwin gives CheckTwin the twin's snapshot with a fresh read of the
@@ -311,7 +317,7 @@ func (st *Store) checkTwin(ctx context.Context, snap *sprint.Snapshot, gen uint6
 // snapshot. A table that moved while it was read is a movedError.
 func (st *Store) twinView(ctx context.Context, tw *Twin, load []string, v View, extras func(*sprint.Snapshot) map[string][]string) (*sprint.Snapshot, error) {
 	shapes := v.Shapes
-	s := &sprint.Snapshot{Now: st.now(), Epoch: st.epoch, Cleared: st.cleared, Actor: st.Actor}
+	s := &sprint.Snapshot{Now: st.now(), Epoch: st.epoch, Cleared: st.cleared, Actor: st.Actor, Prefix: st.Names.Prefix}
 	for _, shape := range shapes {
 		if shape.Epoch != st.epoch {
 			return nil, errCleared

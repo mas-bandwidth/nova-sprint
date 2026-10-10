@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // The readers table of the where view is one row, all, the sum over every
@@ -70,7 +70,7 @@ func TestWhereReadersTableIsOneRowTheSumOfAllReaders(t *testing.T) {
 		want = append(want, strconv.Itoa(sums[c]))
 	}
 	want = slices.Insert(want, 3, "-")
-	want = append(want, "all")
+	want = append(want, "default")
 	assert.Equal(t, want, cells(lines[2]))
 	for _, rd := range []string{"reader-a", "reader-b", "reader-c"} {
 		assert.NotContains(t, block, rd, "no per-reader row")

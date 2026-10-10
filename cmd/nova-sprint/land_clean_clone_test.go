@@ -1,5 +1,3 @@
-//go:build functional
-
 package main
 
 import (
@@ -12,7 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
+	"github.com/mas-bandwidth/nova-sprint/pkg/filelock"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 )
 
 // gitFails runs git in dir and returns its error: a git the test expects to fail.
@@ -51,6 +50,7 @@ func TestLanderRestoresItsOwnDirtyCacheClone(t *testing.T) {
 		briefs := t.TempDir()
 		path := filepath.Join(briefs, "a.md")
 		require.NoError(t, os.WriteFile(path, []byte(passingBrief("REPO: "+r.remote+"\nBASE: main\n\nWrite a.txt.")), 0o600))
+		r.promotionStream("s1") // the card is cut on main, which the promotion stream alone takes
 		r.ok("add --stream s1 a --one --brief-file " + path)
 		r.queued(map[string]string{"a": r.head("a", "main", "a.txt", "a\n")}, "a")
 
@@ -78,5 +78,60 @@ func TestLanderRestoresItsOwnDirtyCacheClone(t *testing.T) {
 		assert.Equal(t, "M README", r.git(r.clone, "status", "--porcelain"))
 		assert.Equal(t, before, r.git(r.remote, "rev-parse", "main"))
 		assert.Equal(t, map[string]string{"s1-1": "merging/queued"}, r.places("s1-1"))
+	})
+}
+
+// The lander leaves its clone clean after every outcome: a head that does not merge is
+// aborted, no MERGE_HEAD and no change left, and the next batch in that clone lands. One
+// land at a time works in a clone: a land that finds another holding the clone's land lock
+// (two landers, the server's loop and a hand land, once shared a clone, and the second's
+// merge found the first's MERGE_HEAD and failed in git, 2026-10-06 18:14 ET) refuses
+// before any git touches it, and the cards stay queued for the next land
+// (docs/SPEC-SPRINT.md section 7, the land clone).
+func TestTheLandCloneIsCleanAfterAFailedMerge(t *testing.T) {
+	t.Parallel()
+	t.Run("a conflicting merge leaves the clone clean and the next batch lands", func(t *testing.T) {
+		t.Parallel()
+		r := newLandRig(t)
+		r.ok("add --stream s1 --count 2")
+		heads := map[string]string{
+			"s1-1": r.head("s1-1", "main", "a.txt", "one\n"),
+			"s1-2": r.head("s1-2", "main", "a.txt", "two\n"),
+		}
+		r.queued(heads, "s1-1", "s1-2")
+		code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
+		assert.Equal(t, 1, code, out+errs)
+		assert.Contains(t, errs, "of s1-2 does not merge")
+		assert.Error(t, gitFails(r, r.clone, "rev-parse", "--verify", "-q", "MERGE_HEAD"), "no merge is left in progress")
+		assert.Empty(t, r.git(r.clone, "status", "--porcelain", "--untracked-files=all"), "no change is left in the clone")
+
+		// s1-2 is reworked at the tip, ready: off the table, so the deal below takes s2-1
+		r.ok("drop s1-2 --reason 'not this test'")
+		r.ok("add --stream s2 --count 1 --one")
+		r.queued(map[string]string{"s2-1": r.head("s2-1", "main", "b.txt", "b\n")}, "s2-1")
+		out = r.ok("land --repo-dir " + r.clone + " --base main --stream s2")
+		assert.Contains(t, out, "LAND OK stream=s2 cards=1 base=main")
+		assert.Equal(t, map[string]string{"s2-1": "landed/merged"}, r.places("s2-1"))
+	})
+	t.Run("a land beside another in the same clone touches nothing", func(t *testing.T) {
+		t.Parallel()
+		r := newLandRig(t)
+		r.ok("add --stream s1 --count 1 --one")
+		r.queued(map[string]string{"s1-1": r.head("s1-1", "main", "a.txt", "a\n")}, "s1-1")
+		other, err := filelock.TryLock(filepath.Join(r.clone, ".git", landLockName), "the other land")
+		require.NoError(t, err)
+		headBefore, base := r.git(r.clone, "rev-parse", "HEAD"), r.git(r.remote, "rev-parse", "main")
+		code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
+		assert.Equal(t, 1, code, out+errs)
+		assert.Contains(t, errs, "the clone "+r.clone+" is in use by another land")
+		assert.Contains(t, errs, "the other land")
+		assert.Equal(t, headBefore, r.git(r.clone, "rev-parse", "HEAD"), "the clone is not touched")
+		assert.Equal(t, "main", r.git(r.clone, "branch", "--show-current"), "no batch branch is cut")
+		assert.Equal(t, base, r.git(r.remote, "rev-parse", "main"))
+		assert.Equal(t, map[string]string{"s1-1": "merging/queued"}, r.places("s1-1"))
+
+		require.NoError(t, other.Unlock())
+		out = r.ok("land --repo-dir " + r.clone + " --base main")
+		assert.Contains(t, out, "LAND OK stream=s1 cards=1 base=main")
 	})
 }

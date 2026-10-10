@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // The brief's bound (docs/SPEC-SPRINT.md, "The brief is wrong, not the worker"; the owner,
@@ -117,10 +117,11 @@ func (b BriefBound) String() string {
 	return line
 }
 
-// Remedy is what changes the brief: replaced in place while the card waits, else dropped and
-// added again corrected. A rework's --fix changes the brief not at all, so it is never offered.
+// Remedy is what changes the brief: corrected in place, the card's next attempt staged from
+// its last pushed head, or the card dropped. A rework's --fix changes the brief not at all, so
+// it is never offered.
 func (b BriefBound) Remedy() string {
-	return "run: nova-sprint brief " + b.ID + " --brief-file <path> (a waiting card) or drop " + b.ID + " and add it again with the brief corrected"
+	return "run: nova-sprint brief " + b.ID + " --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop " + b.ID + " --reason '<why>'"
 }
 
 // Why is the rework's refusal of a card at the bound: the line, and the remedy.
@@ -217,7 +218,7 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 // finding, asked with AttemptsCap), in a stream not held, is dealt as a friend card
 // (friend_deal.go) to the frontier or heavy-class friend up with room. Room is her free
 // width, width less the cards she already holds, counted across this plan the way
-// friendDeal counts free: each deal decrements it and the next card is picked again, the
+// friendDealPass counts free: each deal decrements it and the next card is picked again, the
 // most free first and the first by name among equals, so two capped cards cannot both
 // land on one friend whose width is 1. The card keeps its work and findings; its brief
 // gains the WHO line of the friend chosen by the fields the brief edit writes (FieldWho
@@ -234,18 +235,18 @@ func AttemptCapDeal(s *Snapshot, r TickReq) Plan {
 	classes := []string{cardhdr.RouteFrontier, cardhdr.RouteHeavy}
 	free := map[string]int{}
 	for _, f := range r.Friends {
-		if f.Status == Up {
+		if friendDealable(s, f) {
 			free[f.Name] = f.Width - friendLoad(s, f.Name)
 		}
 	}
 	for _, c := range s.Work.Column(Ready) {
 		if _, friend := FriendCard(c); friend || IsSentinel(c) || StreamHeld(s, c.Row) {
-			continue // a friend's card is friendDeal's, a sentinel never moves, a held stream is dealt nothing
+			continue // a friend's card is friendDealPass's, a sentinel never moves, a held stream is dealt nothing
 		}
 		if _, ok := AtBriefBound(c, "", s.AttemptsCap(c.Row)); !ok {
 			continue
 		}
-		name := friendWithFree(r.Friends, free, classes...)
+		name := friendWithFree(r.Friends, free, c, classes...)
 		if name == "" {
 			continue // no frontier or heavy friend up with room: the deal's, and its judgment
 		}

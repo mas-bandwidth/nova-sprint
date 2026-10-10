@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/onboarding"
-	"github.com/mas-bandwidth/nova-sprint/internal/testkit"
+	"github.com/mas-bandwidth/nova-sprint/pkg/onboarding"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testkit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // The work table's queue: "nothing advances the work stream table EXCEPT on the next tick", and
@@ -370,6 +370,25 @@ func LeaveQueued(p Plan, held map[string]bool) Plan {
 	if len(keep) < len(p.Units) {
 		p.Units = keep
 		rewriteRounds(&p) // a unit dropped placed nothing: no index moves for it
+	}
+	return p
+}
+
+// KeepUnits is the plan with only the units keep holds. A unit left out is
+// not refused, only not written by this step: the tick's ask writes its plan
+// in small fenced steps, each a few of its primaries (store.askInSteps), and
+// plans the rest again on a fresh read. A unit dropped places nothing, so the
+// plan's rolling index writes are made again from the units kept.
+func KeepUnits(p Plan, keep func(Unit) bool) Plan {
+	var kept []Unit
+	for _, u := range p.Units {
+		if keep(u) {
+			kept = append(kept, u)
+		}
+	}
+	if len(kept) < len(p.Units) {
+		p.Units = kept
+		rewriteRounds(&p)
 	}
 	return p
 }

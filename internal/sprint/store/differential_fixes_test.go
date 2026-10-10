@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // 1. A cross need is gone with a return: a later conflict stop resumes by
@@ -92,7 +92,7 @@ func TestASecondCIRedOnACardWritesNoSecondJudgment(t *testing.T) {
 
 // 5. ask --another's reader is for that attempt only: it leaves the primary's
 // asked field as the two of the attempt, and after rework attempt 2 is asked
-// of two different readers, and no third.
+// of two different readers together (reads are asked together), and no third.
 func TestAskAnotherIsForItsAttemptOnly(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -116,7 +116,8 @@ func TestAskAnotherIsForItsAttemptOnly(t *testing.T) {
 			asked = append(asked, rc.F("reader"))
 		}
 	}
-	require.Len(t, asked, 1, "readers asked at attempt 2: the first read, and no other")
+	require.Len(t, asked, 2, "readers asked at attempt 2: both reads together, and no third")
+	require.NotEqual(t, asked[0], asked[1], "two different readers")
 	h.clean("asked again")
 }
 
@@ -296,10 +297,10 @@ func TestTheDealAndTheAskGoRoundAsTheModelDoes(t *testing.T) {
 		}
 	}
 	slices.Sort(readers)
-	want := []string{"r2"}
-	require.True(t, slices.Equal(readers, want), "a2 was asked of %v, want %v: past r1, round the readers", readers, want)
-	require.Equal(t, "m2", indexPast(s.Order, s.DealLast), "the store's indexes are past %q and %q, want m2 and r2", s.DealLast, s.AskLast)
-	require.Equal(t, "r2", indexPast(s.Readers, s.AskLast), "the store's indexes are past %q and %q, want m2 and r2", s.DealLast, s.AskLast)
+	want := []string{"r1", "r3"} // both reads together (reads are asked together): r3 and r1, past r2
+	require.True(t, slices.Equal(readers, want), "a2 was asked of %v, want %v: past r2, round the readers", readers, want)
+	require.Equal(t, "m2", indexPast(s.Order, s.DealLast), "the store's indexes are past %q and %q, want m2 and r1", s.DealLast, s.AskLast)
+	require.Equal(t, "r1", indexPast(s.Readers, s.AskLast), "the store's indexes are past %q and %q, want m2 and r1", s.DealLast, s.AskLast)
 }
 
 // Every placement of a card on a member goes round the fleet and moves the
@@ -377,4 +378,75 @@ func TestTheRedealsAndTheLevelGoRoundAsTheModelDoes(t *testing.T) {
 			require.Equal(t, c.want, indexPast(s.Order, s.DealLast), "the store's deal index is past %q, want %s: the placement moves it", s.DealLast, c.want)
 		})
 	}
+}
+
+// The model's brief bound is the engine's (sprint.AtBriefBound): the stream's attempt cap, else
+// the sprint's, counted from the attempt its brief was last replaced at, and the same landing
+// refusal twice. A model with the default cap of 4 counted from attempt 0 reworked the card the
+// engine stops at its second attempt under a stream cap of 2, and stopped the card the engine
+// reworks at its third attempt, one attempt after a brief replaced at its second.
+func TestTheModelsBriefBoundIsTheEngines(t *testing.T) {
+	t.Parallel()
+	h := newDHarness(t)
+	do := func(a dAction) {
+		t.Helper()
+		h.do(a)
+		require.Empty(t, h.findings, "the engine and the model differ after %+v", a)
+	}
+	run := func(step Step) {
+		t.Helper()
+		res, err := h.st.Run(h.ctx, step)
+		require.NoError(t, err)
+		require.Empty(t, res.Refused, step.Verb)
+		h.model = h.observe()
+	}
+	for _, a := range []dAction{{Kind: "fleet", Op: "up", Member: "m1"}, {Kind: "start"}, {Kind: "add", Stream: "s1", IDs: []string{"x"}}} {
+		do(a)
+	}
+	run(SetStep(sprint.SetReq{Streams: []string{"s1"}, Attempts: "2", Who: dCoordinator}))
+	require.Equal(t, 2, h.model.AttemptsCap("s1"))
+	toMerging := func() {
+		t.Helper()
+		do(dAction{Kind: "tick"})
+		w := refmodel.WC("x", h.model.Primaries["x"].Attempt)
+		do(dAction{Kind: "take", Member: "m1", Card: w, Gen: h.model.Work[w].Gen})
+		do(dAction{Kind: "finish", Member: "m1", Card: w, Gen: h.model.Work[w].Gen, OK: true})
+		for range 4 {
+			do(dAction{Kind: "tick"})
+			if h.model.Primaries["x"].State == refmodel.Merging {
+				return
+			}
+			for _, id := range refmodel.Keys(h.model.Reads) {
+				if rc := h.model.Reads[id]; rc.Primary == "x" && rc.Place == refmodel.Asked {
+					do(dAction{Kind: "read", Reader: rc.Reader, Card: id, Gen: max(h.readGen[id], 1), OK: true})
+					require.Equal(t, refmodel.OK, h.model.Reads[id].Place, "the exact-generation verdict must close %s", id)
+				}
+			}
+		}
+		require.Equal(t, refmodel.Merging, h.model.Primaries["x"].State)
+	}
+	refused := func(way string) refmodel.Primary {
+		t.Helper()
+		do(dAction{Kind: "merge", Stream: "s1", Batch: 1, Fact: "conflict", IDs: []string{"x"}, Way: way})
+		return h.model.Primaries["x"]
+	}
+
+	toMerging()
+	require.Equal(t, refmodel.Ready, refused(refmodel.RefusedGate).State, "attempt 1 of 2: reworked")
+	toMerging()
+	p := refused(refmodel.RefusedConflict)
+	require.Equal(t, refmodel.Review, p.State, "attempt 2 of 2: at the stream's cap")
+	require.True(t, h.model.Open[refmodel.Judgment{Type: refmodel.JBriefWrong, Subject: "x"}])
+	require.Less(t, p.Attempt, refmodel.AttemptsDefault, "a model with the default cap would have reworked it")
+
+	// a new brief at attempt 2: the cap counts from it
+	snap, err := h.st.Load(h.ctx, []string{sprint.Work}, nil)
+	require.NoError(t, err)
+	run(BriefStep(sprint.BriefReq{ID: "x", Brief: snap.Work.Card("x").F("brief") + "\nThe brief, replaced.\n", Who: dCoordinator}))
+	require.Equal(t, 2, h.model.Primaries["x"].BriefAt)
+	do(dAction{Kind: "rework", IDs: []string{"x"}})
+	toMerging()
+	p = refused(refmodel.RefusedGate)
+	require.Equal(t, refmodel.Ready, p.State, "attempt 3, one since its brief: reworked")
+	require.GreaterOrEqual(t, p.Attempt-1, 2, "a cap counted from attempt 0 would have stopped it")
 }

@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -79,7 +78,7 @@ func TestFriendTakeTakesBackAnUnstartedCardAndTheTickDealsItToAnother(t *testing
 	assert.Equal(t, sprint.Working, c.Primary.Col)
 	out = ta.ok("friend sync --root " + root)
 	assert.Contains(t, out, "FRIEND-CARD DELIVERED friend=bob card=s1-1.w1 job=s1-1.w1.g3 branch=sprint/s1-1.w1.g3.e0")
-	assert.Equal(t, "working", queueStates(t, root, "bob")["s1-1.w1"])
+	assert.Equal(t, "queued", queueStates(t, root, "bob")["s1-1.w1"], "ready on his row until he starts it")
 	ta.clean()
 }
 
@@ -163,60 +162,4 @@ func TestTheServerRunsAFriendsBeatWithTheCardsSheIsRunning(t *testing.T) {
 		_, _, why := workerVerb(argv)
 		assert.NotEmpty(t, why, "%q", argv)
 	}
-}
-
-// TestFriendTakeReturnsAnUnstartedCardToReadyAndRefusesAPushedOne is this card's gate
-// (docs/SPEC-SPRINT.md section 1, a friend's card taken back; the owner, 2026-10-04:
-// "sounds bad, we should fix this"): friend take <friend> <id>... sends a dealt card the
-// friend has not started back to ready for the friends' deal, and refuses by name a card
-// with a push on its branch, which stays with her and finishes; one history line per take.
-func TestFriendTakeReturnsAnUnstartedCardToReadyAndRefusesAPushedOne(t *testing.T) {
-	t.Parallel()
-	// amy and bob, s1-1 and s1-2 for any friend, origin holding only the branches
-	// pushed names: s1-1 is hers (a push), s1-2 is not.
-	ta, root := takeApp(t, 2, map[string]string{"sprint/s1-1.w1.g1.e0": landHead}, "amy", "bob")
-	ta.ok("friend down bob")
-	ta.ok("tick")
-	ta.ok("friend sync --root " + root)
-	ta.ok("friend up bob")
-	ta.beatUp("bob")
-
-	// a card with a push on its branch is refused by name, and nothing is written
-	code, _, errs := ta.do("friend take amy s1-1")
-	assert.Equal(t, 1, code)
-	assert.Contains(t, errs, "REFUSED s1-1: s1-1.w1 has started: a push on its branch sprint/s1-1.w1.g1.e0 at "+landHead+"; it stays with friend amy and finishes")
-	assert.Contains(t, errs, "FRIEND-TAKE FAILED moved=0 refused=1")
-
-	// an unstarted dealt card goes back to ready for the friends' deal
-	out := ta.ok("friend take amy s1-2 --reason 'she is on another job'")
-	assert.Contains(t, out, "s1-2.w1 withdrawn gen=2")
-	assert.Contains(t, out, "taken back by the coordinator: she is on another job from friend amy")
-	assert.Contains(t, out, "s1-2 working -> ready", "its primary is ready again")
-	assert.Contains(t, out, "FRIEND-TAKE OK moved=1 refused=0")
-	var c cardView
-	ta.json("card s1-2", &c)
-	require.Len(t, c.Work, 1)
-	assert.Equal(t, sprint.Withdrawn, c.Work[0].Col)
-	assert.Equal(t, "2", c.Work[0].F("gen"), "a take-back is no attempt: the same work card, its next generation")
-	assert.Contains(t, c.Work[0].F(sprint.FieldTakenBack), "taken back by the coordinator: she is on another job")
-	assert.Equal(t, sprint.FriendRow("amy"), c.Work[0].F(sprint.FieldTakenFrom))
-
-	// one history line per take
-	story := ta.ok("log --card s1-2")
-	assert.Equal(t, 1, strings.Count(story, "a friend's card taken back to ready"), "one history line per take:\n%s", story)
-
-	// the tick deals the same card again, to another friend up with room
-	ta.ok("tick")
-	ta.ok("tick")
-	ta.json("card s1-2", &c)
-	require.Len(t, c.Work, 1, "the same card, no second attempt")
-	assert.Equal(t, sprint.FriendRow("bob"), c.Work[0].Row, "dealt to the other friend")
-	assert.Equal(t, "3", c.Work[0].F("gen"))
-	assert.Equal(t, sprint.Working, c.Primary.Col, "dealt again")
-	// the pushed card stays with amy
-	ta.json("card s1-1", &c)
-	require.Len(t, c.Work, 1)
-	assert.Equal(t, sprint.FriendRow("amy"), c.Work[0].Row, "the pushed card stays hers")
-	assert.Equal(t, sprint.Working, c.Primary.Col)
-	ta.clean()
 }

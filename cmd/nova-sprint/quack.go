@@ -7,11 +7,11 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardcontract"
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcontract"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // quackBase is the test repository's branch quack cards start from and merge
@@ -106,7 +106,7 @@ func (a *app) cmdQuack(args []string, stdout, stderr io.Writer) int {
 				// the members hold no rules file for the repository: the card carries its own
 				brief = quackBrief(id, s, ts[(i-1)%len(ts)], *repo, *base, cs.rules)
 			}
-			card := sprint.CardAdd{ID: id, File: id, Brief: brief, Rules: cardRules(brief, rs).held, Base: swarm.ReadCardBase([]byte(brief)).Ref}
+			card := sprint.CardAdd{ID: id, File: id, Brief: brief, Rules: cardRules(brief, rs).held, Base: swarm.ReadCardBase([]byte(brief)).Ref, Repo: swarm.ReadCardBase([]byte(brief)).Named}
 			r.Cards = append(r.Cards, card)
 			all = append(all, card)
 		}

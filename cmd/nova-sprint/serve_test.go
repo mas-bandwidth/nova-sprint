@@ -22,8 +22,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/member"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/member"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // The sprint's server is tested as the state machine it is (the owner,
@@ -48,6 +48,7 @@ func newServerRig(t *testing.T, lines ...string) *serverRig {
 	a := newApp(func(k string) string { return env[k] })
 	t.Cleanup(a.close)
 	a.serveAddr = "mem:" + file
+	a.readTip, a.readHeads = nil, nil // a broken read's branch is checked only when a test gives a tip
 	r := &serverRig{t: t, a: a}
 	for _, l := range lines {
 		r.boss(l)

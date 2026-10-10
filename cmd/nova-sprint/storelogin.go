@@ -4,7 +4,7 @@ package main
 // `seat login` records which store, which ACL user and where that user's password lives
 // in nova-secrets, in the tool's per-user config file; every verb after it opens the
 // store with that user and the password read in this process through
-// internal/secrets.ReadLogin, which no environment and no output ever holds. It replaces
+// pkg/secrets.ReadLogin, which no environment and no output ever holds. It replaces
 // the hand-written wrapper that ran every verb under nova-secrets exec with the
 // NOVA_SPRINT_REDIS* variables set (docs/SPEC-SPRINT.md, "The seat's store login").
 
@@ -20,11 +20,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/redisauth"
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/verbflag"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
-	"github.com/mas-bandwidth/nova-sprint/internal/redisconn"
-	"github.com/mas-bandwidth/nova-sprint/internal/secrets"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/redisauth"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
 )
 
 // seatLoginAddr is the name the app's getenv answers with the recorded login's address
@@ -255,6 +255,11 @@ func (a *app) cmdSeatLogin(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// noSeatLogin is the sentence seat login --check prints when none is recorded.
+func noSeatLogin(path string) string {
+	return "no seat login is recorded at " + path + "; run: nova-sprint seat login --store <dir> --as <seat> --key <file> --secret <NAME> --user <name> --redis <addr>"
+}
+
 // seatLoginCheck is seat login --check: the login a bare verb would use, which login
 // wins when the environment names one, and whether the secret resolves. The password is
 // read and dropped, never shown.
@@ -264,7 +269,7 @@ func (a *app) seatLoginCheck(path string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "seat login", err.Error())
 	}
 	if !ok {
-		return refuse(stderr, "seat login", "no seat login is recorded at "+path+"; run: nova-sprint seat login --store <dir> --as <seat> --key <file> --secret <NAME> --user <name> --redis <addr>")
+		return refuse(stderr, "seat login", noSeatLogin(path))
 	}
 	line := fmt.Sprintf("SEAT LOGIN file=%s %s", oneline.Field(path), l.line())
 	if u := a.getenv(redisauth.UserEnv); u != "" {

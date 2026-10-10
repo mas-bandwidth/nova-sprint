@@ -1,9 +1,8 @@
-//go:build functional
-
 package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
 )
 
 func TestLandGitPreservesNULStatus(t *testing.T) {
@@ -157,11 +158,17 @@ func TestLandResolvesAConflictOnlyInGeneratedLedgers(t *testing.T) {
 				assert.Equal(t, tc.runs, strings.Count(string(runs), "run"), "the update runs")
 			}
 			if tc.why != "" {
-				assert.Equal(t, 0, code, out+errs)
-				assert.Contains(t, errs, "LAND EJECTED stream=s1 cards=1 base=main tip=- ids=s1-2 reason=the head "+heads["s1-2"]+" of s1-2 does not merge")
+				assert.Equal(t, 1, code, out+errs)
+				assert.Contains(t, errs, "LAND REFUSED stream=s1 cards=1 base=- tip=- ids=s1-2 fact=conflict reason=the head "+heads["s1-2"]+" of s1-2 does not merge")
 				assert.Contains(t, errs, tc.why)
 				assert.Equal(t, []string{"land s1-1 (sprint stream s1)", "the debt", "base"}, r.mainLog())
-				assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "review/returned"}, r.places("s1-1", "s1-2"))
+				// a file conflict in the card's own head is reworked at the tip; generated ledgers the
+				// lander could not resolve are its own failure, the stream stopped for a mind
+				place := "ready/returned"
+				if strings.Contains(tc.name, "update") {
+					place = "merging/stuck"
+				}
+				assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": place}, r.places("s1-1", "s1-2"))
 				assert.Empty(t, r.git(r.clone, "status", "--porcelain", "--untracked-files=all"), "the refused merge is aborted and what the update wrote is gone")
 				r.clean()
 				return
@@ -219,16 +226,90 @@ func TestLandRefusesAResolutionThroughASymlink(t *testing.T) {
 				"s1-2": r.card("s1-2", map[string]string{"debt/b": "", fakeLedger: "# ceiling: 1\na\n"})}
 			r.queued(heads, "s1-1", "s1-2")
 			if !tc.tracked {
-				require.NoError(t, os.MkdirAll(filepath.Join(r.clone, filepath.Dir(linked)), 0o755))
-				require.NoError(t, os.Symlink(outside, filepath.Join(r.clone, linked)))
+				// the lander builds the stream's batch in its worktree of the clone (landpass.go):
+				// the link lies on the disk there, where the update would run
+				tree := worktreeDir(filepath.Join(r.dir, "land"), r.clone, "s1")
+				require.NoError(t, os.MkdirAll(filepath.Dir(tree), 0o755))
+				r.git(r.clone, "worktree", "add", "--detach", tree, "HEAD")
+				require.NoError(t, os.MkdirAll(filepath.Join(tree, filepath.Dir(linked)), 0o755))
+				require.NoError(t, os.Symlink(outside, filepath.Join(tree, linked)))
 			}
 			code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
-			assert.Equal(t, 0, code, out+errs)
-			assert.Contains(t, errs, "ids=s1-2 reason=the head "+heads["s1-2"]+" of s1-2 does not merge")
+			assert.Equal(t, 1, code, out+errs)
+			assert.Contains(t, errs, "ids=s1-2 fact=conflict reason=the head "+heads["s1-2"]+" of s1-2 does not merge")
 			assert.Contains(t, errs, "its generated ledgers conflict and "+linked+" is a symlink, which an update would write through")
 			assert.NoFileExists(t, filepath.Join(outside, "leak.txt"), "no update ran through the link")
-			assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "review/returned"}, r.places("s1-1", "s1-2"))
+			assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "merging/stuck"}, r.places("s1-1", "s1-2"))
 			r.clean()
 		})
 	}
+}
+
+// The decisions behind a resolution, apart from git: which ledgers own the conflicted paths, the paths git ls-files --unmerged names and the
+// tip's side among them, a tracked symlink an update could write through and the paths
+// the disk check walks, what an update wrote,
+// and when an update run is done.
+func TestLandLedgerDecisions(t *testing.T) {
+	t.Parallel()
+	ledgers := []landLedger{{owns: diffcheck.GeneralityLedger, tests: "A"}, {owns: func(p string) bool { return strings.HasPrefix(p, "other/") }, tests: "B"}}
+	t.Run("owners", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name    string
+			paths   []string
+			owners  string
+			outside []string
+		}{
+			{"a shard", []string{"internal/ci/testdata/generality/cmd/x.txt"}, "A", nil},
+			{"two ledgers", []string{"other/y.txt", "internal/ci/testdata/generality_text_fixtures_allowlist.txt"}, "A, B", nil},
+			{"a prose file beside", []string{"other/y.txt", "README.md"}, "B", []string{"README.md"}},
+			{"a Go file in a ledger directory", []string{"internal/ci/testdata/generality/x.go"}, "", []string{"internal/ci/testdata/generality/x.go"}},
+		} {
+			owners, outside := ledgerOwners(tc.paths, ledgers)
+			assert.Equal(t, tc.owners, testsOf(owners), tc.name)
+			assert.Equal(t, tc.outside, outside, tc.name)
+		}
+	})
+	t.Run("unmerged", func(t *testing.T) {
+		t.Parallel()
+		paths, ours := unmergedPaths("100644 aaa 1\tl.txt\n100644 bbb 2\tl.txt\n100644 ccc 3\tl.txt\n100644 ddd 1\tgone.txt\n100644 eee 3\tgone.txt")
+		assert.Equal(t, []string{"l.txt", "gone.txt"}, paths)
+		assert.Equal(t, map[string]bool{"l.txt": true}, ours)
+	})
+	t.Run("links", func(t *testing.T) {
+		t.Parallel()
+		family := []landLedger{{owns: func(p string) bool { return strings.HasPrefix(p, "led/") && strings.HasSuffix(p, ".txt") }, roots: []string{"led/a", "led/b"}}}
+		for _, tc := range []struct{ name, files, want string }{
+			{"a ledger that is a link", "120000 x 0\tled/a/r.txt", "led/a/r.txt"},
+			{"a root that is a link, nothing under it conflicted", "100644 x 0\tled/a/r.txt\n120000 y 0\tled/b", "led/b"},
+			{"a directory above a root", "120000 y 0\tled", "led"},
+			{"a link under a root", "120000 y 0\tled/a/sub", "led/a/sub"},
+			{"a link elsewhere", "120000 y 0\tother\n100644 x 0\tled/a/r.txt", ""},
+		} {
+			assert.Equal(t, tc.want, familyLink(tc.files, family), tc.name)
+		}
+		assert.Equal(t, []string{"led/a", "led/b", "led/a/r.txt"}, familyPaths("100644 x 0\tled/a/r.txt\n100644 x 0\tnotes.md", family))
+	})
+	t.Run("wrote", func(t *testing.T) {
+		t.Parallel()
+		status := "M  staged-by-the-merge.go\x00 M worktree.txt\x00MM both.txt\x00?? new.txt\x00R  to.txt\x00from.txt\x00"
+		assert.Equal(t, []string{"worktree.txt", "both.txt", "new.txt"}, updateWrote(status))
+	})
+	t.Run("regen", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name        string
+			err         error
+			out         string
+			done, again bool
+		}{
+			{"passed", nil, "ok", true, false},
+			{"wrote", errors.New("exit status 1"), "x: updated, rerun (1 package shards changed)", false, true},
+			{"failed", errors.New("exit status 1"), "a row grew", false, false},
+		} {
+			done, again := regenDone(tc.err, tc.out)
+			assert.Equal(t, []bool{tc.done, tc.again}, []bool{done, again}, tc.name)
+		}
+	})
+	assert.True(t, strings.HasPrefix(ledgerNote([]string{"a", "b"}, "A"), "the generated ledgers a, b conflicted"))
 }
