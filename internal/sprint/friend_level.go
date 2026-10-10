@@ -107,7 +107,7 @@ func friendLevel(s *Snapshot, r FriendLevelReq, dealt, dealtWorking map[string]i
 	// friend it left, and an idle lane for a giver with none or an even smaller backlog
 	to := func(giver string, c *Card) string {
 		pr := s.Work.Placed(c.F("primary"))
-		tier, left := s.DealTier(pr), friendsLeft(c)
+		tier, left := s.DealTier(pr), cardLeft(pr, c)
 		free, idle := map[string]int{}, map[string]int{}
 		var may []string
 		for _, f := range seats {

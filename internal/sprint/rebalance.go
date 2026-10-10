@@ -152,7 +152,7 @@ func rebalanceTo(s *Snapshot, units []*rebalanceUnit, g *rebalanceUnit, pr, wc *
 		}
 		d := 0
 		if u.friend {
-			if !friendTakes(s, u.seat, tier) || slices.Contains(friendsLeft(wc), u.name) {
+			if !friendTakes(s, u.seat, tier) || slices.Contains(cardLeft(pr, wc), u.name) {
 				continue
 			}
 			top := -1

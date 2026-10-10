@@ -5,6 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // An empty run is a lane that wrote no report. On 2026-10-09/10 a friend's opencode lanes
@@ -99,5 +101,44 @@ func TestAnEmptyRunIsNeverReworkedOntoTheFriendWhoseLaneRanItEmpty(t *testing.T)
 		wc := w.s.Fleet.Card(WorkCardID("s1-1", 2))
 		require.NotNil(t, wc)
 		assert.Equal(t, FriendRow("amy"), wc.Row)
+	})
+}
+
+// The cold reads of nova-sprint #45: an attempt a machine is dealt carries the friends its
+// primary has left, and every reader of a work card's friends left reads the primary's too,
+// so a rebalance off a full machine never gives it back to the friend whose lane ran it empty.
+func TestAMachinesAttemptNeverGoesBackToTheFriendItLeft(t *testing.T) {
+	t.Parallel()
+	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}}
+	setup := func(fields ...string) *world {
+		w := rbWorld(t, "m1")
+		rbPlace(w, "s1-1", cardhdr.RouteFlash, "m1", Working)
+		rbPlace(w, "s1-2", cardhdr.RouteFlash, "m1", Ready, fields...)
+		return w
+	}
+	t.Run("the primary has left amy: the rebalance keeps it off her", func(t *testing.T) {
+		t.Parallel()
+		w := setup("pr."+FieldFriendsLeft, "amy")
+		assert.Empty(t, rebalanced(Rebalance(w.s, []FriendSeat{amy}, "machine")), "never back to amy")
+		assert.False(t, friendCouldTake(w.s, amy, w.s.Work.Card("s1-2"), w.s.Fleet.Card("s1-2.w1")), "the coordinator's pass never offers it to her")
+		assert.False(t, friendCouldTake(w.s, amy, w.s.Work.Card("s1-2"), nil), "nor with no work card")
+	})
+	t.Run("reversed: a primary that left no one moves to her idle lane", func(t *testing.T) {
+		t.Parallel()
+		w := setup()
+		require.Len(t, rebalanced(Rebalance(w.s, []FriendSeat{amy}, "machine")), 1, "the rebalance gives a machine's queued card to an idle friend")
+		assert.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-2.w1").Row)
+		assert.True(t, friendCouldTake(w.s, amy, w.s.Work.Card("s1-2"), nil))
+	})
+	t.Run("the machines' deal copies the primary's friends left onto the attempt", func(t *testing.T) {
+		t.Parallel()
+		w := rbWorld(t, "m1")
+		rbPlace(w, "s1-2", cardhdr.RouteFlash, "m1", Working, "pr."+FieldFriendsLeft, "amy")
+		u, why := deal(w.s, w.s.Work.Card("s1-2"), "", "m1", map[string]int{}, routeIndexesOf(w.s), nil, nil)
+		require.Empty(t, why)
+		w.must(Plan{Units: []Unit{u}})
+		wc := w.s.Fleet.Card(WorkCardID("s1-2", 2))
+		require.NotNil(t, wc)
+		assert.Equal(t, "amy", wc.F(FieldFriendsLeft))
 	})
 }

@@ -755,8 +755,9 @@ func friendDealUnit(s *Snapshot, c *Card, card, row, _ string, set map[string]st
 		}
 	}
 	// the friends the primary has left for good (ClassEmptyRun, ruleHarness) ride on the new
-	// work card, so every reader of its friends_left (the rebalance, a lane's start, the level,
-	// the coordinator's pass) keeps the attempt off them, not the deal alone
+	// work card, as on a machine's (deal), and every reader of a work card's friends left (the
+	// rebalance, a lane's start, the level, the coordinator's pass) reads cardLeft, the work
+	// card's and its primary's, so the attempt is kept off them wherever it was dealt
 	if left := Split(c.F(FieldFriendsLeft)); len(left) > 0 {
 		fields[FieldFriendsLeft] = strings.Join(left, ",")
 	}

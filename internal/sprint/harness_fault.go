@@ -110,11 +110,11 @@ func ruleHarness(s *Snapshot, a *RuleAnswer, pr *Card) bool {
 		// already (Rework, reworkAvoid); a friend's is left for good (FieldFriendsLeft on the
 		// primary, read by the friends' deal, cardLeft)
 		if f := emptyRunLeft(s, pr); f != "" {
-			left := cardLeft(pr, nil)
-			if !slices.Contains(left, f) {
-				left = append(left, f)
+			gone := cardLeft(pr, nil)
+			if !slices.Contains(gone, f) {
+				gone = append(gone, f)
 			}
-			a.set[FieldFriendsLeft] = strings.Join(left, ",")
+			a.set[FieldFriendsLeft] = strings.Join(gone, ",")
 			a.Why += ", never again on friend " + f
 		}
 	}

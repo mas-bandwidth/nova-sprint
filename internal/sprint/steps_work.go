@@ -1115,6 +1115,11 @@ func deal(s *Snapshot, c *Card, fix, m string, q map[string]int, ri routeIndexes
 		fields["fix"] = fix
 	}
 	priorityOnWork(fields, c)
+	// the friends the primary has left for good (an empty run, ruleHarness) ride on a machine's
+	// attempt too, so a rebalance off the machine never gives it back to one of them
+	if left := Split(c.F(FieldFriendsLeft)); len(left) > 0 {
+		fields[FieldFriendsLeft] = strings.Join(left, ",")
+	}
 	// the attempt decision's bars, which its failed finish is routed by (decide.go)
 	bars, _ := s.attemptBars()
 	maps.Copy(fields, bars)
