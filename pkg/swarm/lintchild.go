@@ -42,7 +42,8 @@ import (
 //     `,`, `&&`, `||` or `. `) that says `never`, `not`, `no` or `without` before the
 //     command is prose about the rule, and is not read as a command. The RULES paragraph,
 //     which is where a card quotes what it forbids, runs from its `RULES` line to the first
-//     blank line and is not scanned; every other line of the card is.
+//     blank line and is not scanned; a fenced code block, which is a program or an example
+//     the card shows, is not scanned either; every other line of the card is.
 //
 //  3. LIBRARIES CONSIDERED, where the rule set carries a rule named `libraries-considered`
 //     (a rules file's switch, as `go-test-timeout` is for the Go scan). A card that builds code carries a `Libraries considered:` line
@@ -505,14 +506,24 @@ func LintCardChildWith(raw []byte, rules []ChildRule) []CardHeaderFinding {
 }
 
 // childLines calls fn with every line of the card outside the RULES paragraph, which runs
-// from its `RULES` line to the first blank line and is where a card quotes what it forbids.
+// from its `RULES` line to the first blank line and is where a card quotes what it forbids,
+// and outside every fenced code block, which is a program or an example the card shows.
+// Neither is a command the child runs, so neither is scanned: a card that documents its
+// make-driven gate, or the text of a Makefile target, draws no step- finding from it.
 func childLines(raw []byte, fn func(n int, line string)) {
 	sc := bufio.NewScanner(bytes.NewReader(raw))
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	n, inRules := 0, false
+	n, inRules, inFence := 0, false, false
 	for sc.Scan() {
 		n++
 		line := strings.TrimRight(sc.Text(), "\r")
+		if cardFenceRE.MatchString(line) {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
 		if strings.TrimSpace(line) == "" {
 			inRules = false
 		} else if childRulesHeadRE.MatchString(line) {
