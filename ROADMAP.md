@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (212)
+- [The sprint machine](#the-sprint-machine) (211)
 - [Setup, release and operations](#setup-release-and-operations) (28)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (20)
@@ -1045,14 +1045,6 @@ Two cards that shrink the same ledger conflict by line. Regenerate the ledger at
 Target: v1.3
 
 From: issue #5215
-
-### Rested routes must not overflow the fleet table property cap
-
-Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the tick writes nothing. Use one property for all.
-
-Target: v1.3
-
-From: issue #5210
 
 ### A second tick must not move a card the first deal placed
 
