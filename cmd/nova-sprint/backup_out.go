@@ -298,7 +298,7 @@ func (b *backupOut) run(ctx context.Context) (backupResult, error) {
 // sprintStateDiff names the parts where the restored sprint is not the source,
 // or "" when they are the same. A count match is not this.
 func sprintStateDiff(want, got store.SprintState) string {
-	d := want.Diff(got)
+	d := want.DiffLive(got) // the source takes beats while it is dumped: see DiffLive
 	if len(d) == 0 {
 		return ""
 	}

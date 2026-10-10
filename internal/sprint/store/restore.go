@@ -341,6 +341,60 @@ func (s SprintState) Diff(restored SprintState) []string {
 	return out
 }
 
+// DiffLive is Diff for a source that kept running while it was dumped: the same
+// parts, except that the cells a live member's beat rewrites are not compared.
+// Those are the fleet table's revision and each fleet row's position, its load
+// text, and its status text when it reads up or down on a side (the tick's
+// showFleet and orderFleet write them from the beats alone). Everything else is
+// compared exactly: a held status, a missing or extra row, a card, a note, any
+// other cell of the fleet.
+func (s SprintState) DiffLive(restored SprintState) []string {
+	var out []string
+	for part, want := range s.Parts {
+		if got, ok := restored.Parts[part]; !ok || liveForm(part, got) != liveForm(part, want) {
+			out = append(out, part)
+		}
+	}
+	for part := range restored.Parts {
+		if _, ok := s.Parts[part]; !ok {
+			out = append(out, part)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// liveForm is a part's value without what a beat rewrites (see DiffLive); a
+// part that is not a fleet part, or whose value does not parse, is its own form.
+func liveForm(part, val string) string {
+	row := strings.HasPrefix(part, "row "+sprint.Fleet+" ")
+	if !row && part != "table "+sprint.Fleet {
+		return val
+	}
+	dec := json.NewDecoder(strings.NewReader(val))
+	dec.UseNumber() // exact numbers: only what is named below is dropped
+	var m map[string]any
+	if dec.Decode(&m) != nil {
+		return val
+	}
+	if !row {
+		delete(m, "Revision")
+	} else {
+		delete(m, "at")
+		if texts, ok := m["texts"].(map[string]any); ok {
+			delete(texts, sprint.Load)
+			if st, ok := texts[sprint.Status].(string); ok && (st == sprint.Up || st == sprint.Down) {
+				texts[sprint.Status] = sprint.Up + "|" + sprint.Down // alive or not by the beat, never held
+			}
+		}
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		return val
+	}
+	return string(raw)
+}
+
 // diffText names the parts that differ (the first 24, and how many more).
 // Values remain private: restore comparison runs before a backup's secret scan.
 func diffText(parts []string) string {

@@ -98,6 +98,14 @@
     no longer exits 128 on a fleet host with nothing saying why."
    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
 
+  (fix "backup-out-restore-check-live-fleet" :release "v1.2.6" :status "planned"
+   :title "backup --out passes on a fleet that is beating"
+   :text "The restore check sets aside what a live member's beat rewrites while the dump is taken (the
+    fleet table's revision, a fleet row's place, load text and up or down status) and compares
+    everything else exactly, so a running fleet no longer fails the check; a held status, a missing
+    row or a changed card still does."
+   :origin "pre-clear backup, 2026-10-10 (8 fleet parts differed)")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
