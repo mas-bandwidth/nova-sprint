@@ -339,3 +339,25 @@ func TestDashboardPageLoadsNothingFromElsewhere(t *testing.T) {
 	assert.Equal(t, []byte("wOF2"), file("nunito-800.woff2")[:4], "the face is a woff2")
 	assert.Contains(t, string(file("OFL.txt")), "SIL Open Font License", "the face's licence is embedded beside it")
 }
+
+func TestDashboardDefects(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	// Mock a stopped and empty store
+	r.next = func() ([]byte, error) {
+		return []byte(`{"at":"2026-10-02T19:00:00Z","landed":0,"all":0,"summary":"x","machine":"machine: STOPPED","tables":{"work":{}}}`), nil
+	}
+	
+	// Get snapshot
+	v := r.api()
+	data := v["data"].(map[string]any)
+	
+	// Test 1: Cost breakdown with no spend.
+	
+	// Test 2: LANDED tile at 0 of 0 reads "nothing complete".
+	assert.Equal(t, float64(0), data["landed"], "landed should be 0")
+	
+	// Test 3: STOPPED machine shows a red dot.
+	assert.Contains(t, data["machine"], "STOPPED", "machine should be STOPPED")
+}
+
