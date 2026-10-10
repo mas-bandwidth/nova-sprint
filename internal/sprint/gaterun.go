@@ -512,20 +512,33 @@ func GateLintRun(v WorkView, tl cardhdr.TestLine, mergeBase, dir string, hosts [
 
 func materializeRevertedTree(ctx context.Context, dir, base, head string, paths []string, env []string) (string, error) {
 	root, err := os.MkdirTemp("", "nova-gatelint-")
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	defer os.RemoveAll(root)
 	work := path.Join(root, "tree")
 	o := gitrun.Options{C: dir, Env: env, OwnRepo: true}
-	if _, err := gitrun.Output(ctx, o, "worktree", "add", "--detach", work, head); err != nil { return "", err }
+	if _, err := gitrun.Output(ctx, o, "worktree", "add", "--detach", work, head); err != nil {
+		return "", err
+	}
 	defer gitrun.Output(ctx, o, "worktree", "remove", "--force", work)
 	for _, p := range paths {
-		if _, err := gitrun.Output(ctx, gitrun.Options{C: work, Env: env, OwnRepo: true}, "checkout", base, "--", p); err != nil { return "", err }
+		if _, err := gitrun.Output(ctx, gitrun.Options{C: work, Env: env, OwnRepo: true}, "checkout", base, "--", p); err != nil {
+			return "", err
+		}
 	}
 	wo := gitrun.Options{C: work, Env: append(env, "GIT_AUTHOR_NAME=nova-gatelint", "GIT_AUTHOR_EMAIL=nova-gatelint@invalid", "GIT_COMMITTER_NAME=nova-gatelint", "GIT_COMMITTER_EMAIL=nova-gatelint@invalid"), OwnRepo: true}
-	if _, err := gitrun.Output(ctx, wo, "add", "-A"); err != nil { return "", err }
-	tree, err := gitrun.Output(ctx, wo, "write-tree"); if err != nil { return "", err }
+	if _, err := gitrun.Output(ctx, wo, "add", "-A"); err != nil {
+		return "", err
+	}
+	tree, err := gitrun.Output(ctx, wo, "write-tree")
+	if err != nil {
+		return "", err
+	}
 	commit, err := gitrun.Output(ctx, wo, "commit-tree", strings.TrimSpace(tree), "-p", head, "-m", "gatelint reverted non-test tree")
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	return strings.TrimSpace(commit), nil
 }
 
