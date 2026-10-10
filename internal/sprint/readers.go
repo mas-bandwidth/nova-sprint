@@ -196,7 +196,13 @@ const FieldLeveled = "leveled"
 // machine"). The tier is the card's own, the tier it is on (cardTier: flash first,
 // then the tier it escalated to, or the tier a rework recorded), never a setting, so
 // a card in merging or landed is held to the count it was accepted on.
+//
+// A mechanical card whose proof passed (TickProof) needs no read: the proof
+// replaces the flash read, and the card is acceptable at once (HasProof).
 func ReadsNeeded(pr *Card) int {
+	if HasProof(pr) {
+		return 0
+	}
 	m, _ := cardhdr.ReadModel(pr.F("brief"))
 	if cardTier(pr, m) == cardhdr.RouteFlash {
 		return 1
