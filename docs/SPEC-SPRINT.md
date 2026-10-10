@@ -2827,6 +2827,51 @@ id (`--op`) returns the original result, with no second counter or notification.
   asks every attempt as before: the field is additive, and a store given
   `sprint.GateTables(g)` gates with `g`.
 
+### The mechanical proof: mechanical-cards-proved-not-read-ns-b.w1
+
+- After the work lint (section 6, the work lint) and the machine gate (this
+  section) pass and before any reader is asked, a mechanical card -- one whose
+  `KIND:` line names a `delete`, `rename` or `assertion-rewrite`
+  (`cardhdr.MechanicalKind`; `internal/cardhdr/kind.go`) -- is run once through
+  its machine proof (`sprint.TickProof`, from `TickAccept`): `go/parser` over the
+  tree the gate already fetched, in process, checking what the mechanical script
+  claims to have done, so a model never reads it. Measured on the sprint log of
+  epoch 15: the first wave of mechanical cards (dead-code deletions, renames,
+  assertion rewrites; the owner, 2026-10-02: "mechanical replacements by script,
+  not by a model") each took a flash read, and the proof replaces it.
+- The proof runs in the pump, after the gate (`TickAccept` calls `TickLint`,
+  `TickGate`, then `TickProof`) and before the accept: every mechanical card in
+  review whose gate passed green for this attempt and whose proof for this attempt
+  has not been decided is proved. A proof no host answered leaves the attempt in
+  review with one judgment, `the mechanical proof could not run`
+  (`sprint.NProofDown`, decisions wait, rework, drop), naming the reason: a host
+  that does not answer is not a pass, the attempt waits, and no reader is asked of
+  it. The ask, the friends' and the machine's, holds every attempt whose proof is
+  waiting (`gateHeldPrimaries`), so no read is spent on it whatever the order of
+  the tick.
+- A passing proof records its lines on the attempt (`proof_lines`, the steps the
+  check took) with `proof` `pass`, and makes `ReadsNeeded` zero for that attempt
+  (`sprint.HasProof`): no reader is asked, the card is acceptable at once, and
+  the accept moves it to merging. A failing proof is reworked at once with the
+  proof's findings as the fix (`sprint.ProofFix`: `the mechanical proof refused
+  attempt <n> at <head>; mechanical proof: <finding>; ...`), each finding `file:line:
+  <what>` where the parser found one, its `proof_reworks` (`sprint.FieldProofReworks`)
+  and `broken_reads` counted one more so it counts toward the bounds as a broken
+  read does; the next attempt's proof runs again at its new attempt, and a card of a
+  non-mechanical kind is read as today.
+  (`TestAMechanicalCardWithAPassingProofNeedsNoRead`,
+  `TestAMechanicalCardWithAPassingProofIsHeldFromTheAsk`).
+- The proofs, by kind:
+  - `delete`: `go/parser` over the tree at the head finds the named symbols are
+    gone and nothing in any package references them.
+  - `rename`: no occurrence of the old name is left and the new name exists.
+  - `assertion-rewrite`: the diff touches only assertion lines of test files.
+- The tick's request carries the proof (`TickReq.Proof`); nil is
+  `sprint.DefaultProof`, which `nova-sprint` sets at its start from
+  `NOVA_SPRINT_PROOF_BENCH` (a comma list, the host or hosts the proof runs
+  against). A sprint that names no host runs no proof and reads every mechanical
+  card as before: the field is additive.
+
 ## 7. Merging
 
 1. In work order, never random: the head of the stream's queued cell first.

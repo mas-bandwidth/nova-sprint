@@ -170,9 +170,10 @@ func gateable(s *Snapshot, c *Card, g GateRunner) bool {
 }
 
 // gateHeldPrimaries is the primaries in review no reader may be asked of: one the gate
-// refused (red) or that waits for a bench (waiting), and, while a gate is configured, one
-// whose gate for this attempt has not been run yet. The pump's gate part (TickGate) runs
-// it before the ask; the no-stall rule's ask, which may run with no pump, holds it too.
+// refused (red) or that waits for a bench (waiting), one whose proof is waiting, and,
+// while a gate is configured, one whose gate for this attempt has not been run yet.
+// The pump's gate part (TickGate) runs it before the ask; the no-stall rule's ask,
+// which may run with no pump, holds it too.
 func gateHeldPrimaries(s *Snapshot, r TickReq) []*Card {
 	if s.Work == nil {
 		return nil
@@ -186,6 +187,10 @@ func gateHeldPrimaries(s *Snapshot, r TickReq) []*Card {
 			if r.gate() != nil && c.Int(FieldGateAttempt) != c.Int("attempt") {
 				out = append(out, c)
 			}
+		}
+		// a mechanical card whose proof is waiting is held too (proof.go, TickProof)
+		if _, ok := cardhdr.MechanicalKind(c.F("brief")); ok && c.F(FieldProof) == ProofWaiting && c.Int(FieldProofAttempt) == c.Int("attempt") {
+			out = append(out, c)
 		}
 	}
 	return out
