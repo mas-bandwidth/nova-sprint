@@ -737,166 +737,96 @@ func friendAskPart(machine TickPartFn) TickPartFn {
 		mp.Refused = append(mp.Refused, fp.Refused...)
 		mp.Notes = append(mp.Notes, fp.Notes...)
 		mp.Closes = append(mp.Closes, fp.Closes...)
-		waitingForReader(&mp, s, waits)
-		// a frontier read no one may take is judged once, by its real cause: a single
-		// judgment, open or acknowledged, named with who is full and each read's why,
-		// rewritten in place only when its facts change. The no-stall rule's hold names
-		// its text. Its tick is the friend ask's: the readers' ask never raises it.
-		frontierRoomJudgment(&mp, s)
+		waited := waitingForReader(&mp, s, waits)
+		// a frontier read no one may take is judged once, by its real cause
+		// (frontierRoomJudgment); the readers' ask never raises it
+		frontierRoomJudgment(&mp, s, seats, waited)
 		return mp, due + len(waits)
 	}
 }
 
-// frontierRoomJudgment writes one NNoFrontierRoom judgment for the frontier
-// reads no one may take: who is full and the cause of each read's wait
-// (frontierRoomWhat). It is one judgment while it stands: written once, and
-// rewritten in place (Plan.Updates) only when who it names or its primaries
-// change, never raised anew. The hold view reads its text. A frontier read
-// not the ask left waiting (already asked, failed, or refused) is not its
-// subject. notify handles the in-place update and the close when no primary
-// the judgment names waits this tick.
-func frontierRoomJudgment(p *Plan, s *Snapshot) {
+// frontierRoomJudgment is the frontier read no one may take, judged once by its
+// real cause (docs/SPEC-SPRINT.md, the no-stall rule: every primary not landed
+// is held by a judgment or by work the tick does). waits is the reads the ask
+// left waiting (waitingForReader); of those the frontier ones raise one
+// NNoFrontierRoom judgment at the frontier tier's subject, its text naming each
+// read and why it waits (frontierWhy). It is one judgment while it stands:
+// notify writes it once, rewrites its text in place when its facts change (the
+// text names the reads, so a read joining or leaving is a change) and closes it
+// when no frontier read waits. A tick whose facts are the same writes nothing.
+func frontierRoomJudgment(p *Plan, s *Snapshot, seats []FriendSeat, waits map[string]string) {
 	if s == nil || s.Work == nil || s.Readers == nil {
 		return
 	}
-	var frontiers []*Card
-	asked := map[string]bool{}
-	for _, u := range p.Units {
-		if s.Work.Placed(u.Key) != nil {
-			asked[u.Key] = true
-		}
-	}
-	for _, pr := range s.Work.Column(Review) {
-		if asked[pr.ID] || pr.F("result") == "failed" {
+	var judged, causes []string
+	for _, id := range slices.Sorted(maps.Keys(waits)) {
+		pr := s.Work.Placed(id)
+		if pr == nil || friendReadTier(s, pr) != cardhdr.RouteFrontier {
 			continue
 		}
-		if friendReadTier(s, pr) != cardhdr.RouteFrontier {
-			continue
-		}
-		frontiers = append(frontiers, pr)
+		judged = append(judged, id)
+		causes = append(causes, id+" waits: "+frontierWhy(s, seats, pr))
 	}
-	var full map[string]bool
-	var causes []string
-	var judged []string
-	for _, pr := range frontiers {
-		attempt := readAttempt(pr)
-		tier := friendReadTier(s, pr)
-		// the friend the ask left waiting: she is at her room, or not asked of her
-		// because she was asked an attempt first (friendReadAsk's "eligible && no room"
-		// path covers a friend up with room too, when a higher-priority read took
-		// her lane; a frontier read no one may take is the one with no taker at all)
-		var up []FriendSeat
-		for _, f := range s.Friends {
-			if f.Status != Up {
-				continue
-			}
-			if !friendAtOrAbove(s, f, tier) {
-				continue
-			}
-			up = append(up, f)
-		}
-		readers := s.freeReaders(pr, attempt)
-		room := s.readerRooms(readers)
-		here := map[string]bool{}
-		for _, n := range up {
-			r, _ := friendRoom(n)
-			if friendLoad(s, n.Name) >= r {
-				here[n.Name] = true
-			}
-		}
-		for _, rd := range readers {
-			if room[rd].free <= 0 {
-				here[rd] = true
-			}
-		}
-		if len(here) > 0 {
-			if full == nil {
-				full = map[string]bool{}
-			}
-			for n := range here {
-				full[n] = true
-			}
-			judged = append(judged, pr.ID)
-			continue
-		}
-		// no one is full and still no one may take: name the read with why
-		if why := frontierNoTaker(s, pr, attempt, up, readers); why != "" {
-			causes = append(causes, why)
-		}
-		judged = append(judged, pr.ID)
-	}
-	var conds []cond
-	if len(judged) > 0 {
-		c := cond{typ: NNoFrontierRoom, stream: TierSubject(cardhdr.RouteFrontier), streamLevel: true, primaries: judged,
-			what: frontierRoomWhat(full, causes), decisions: frontierRoomDecisions()}
-		// the held judgment's text and primaries are kept, so a tick whose facts
-		// are the same writes nothing (notify short-circuits); a different fact
-		// rewrites the judgment in place (notify's update callback)
-		if o, ok := frontierRoomHeld(s); ok {
-			if o.Note.What != c.what || !slices.Equal(o.Note.Primaries, judged) {
-				n := o.Note
-				n.What, n.Primaries, n.Count = c.what, slices.Clone(judged), len(judged)
-				p.Updates = append(p.Updates, n)
-			}
-			c.what = o.Note.What
-		}
-		conds = append(conds, c)
-	}
-	// notify writes the note when no judgment is open, closes the held one when
-	// no primary it names waits this tick, and rewrites in place when the facts
-	// change (NNoFrontierRoom is in the in-place update list at notify)
-	notify(p, s, conds, []string{NNoFrontierRoom}, TickReq{})
+	notify(p, s, frontierRoomConds(judged, causes), []string{NNoFrontierRoom}, TickReq{})
 }
 
-// frontierRoomHeld is the NNoFrontierRoom judgment that stands, open or
-// acknowledged.
-func frontierRoomHeld(s *Snapshot) (Open, bool) {
-	for _, o := range s.Open {
-		if o.Note.Type == NNoFrontierRoom {
-			return o, true
-		}
+// frontierRoomConds is the one condition of the frontier-room judgment: the
+// reads it names and their causes, none when no frontier read waits.
+func frontierRoomConds(judged, causes []string) []cond {
+	if len(judged) == 0 {
+		return nil
 	}
-	for _, o := range s.Acked {
-		if o.Note.Type == NNoFrontierRoom {
-			return o, true
-		}
-	}
-	return Open{}, false
-}
-
-// frontierRoomWhat is the text of NNoFrontierRoom: who is full, in name order,
-// then each read no one is full for and no one may take, with why
-// (frontierNoTaker), or that no friend of frontier class and no reader that
-// declares frontier is up.
-func frontierRoomWhat(full map[string]bool, causes []string) string {
-	var names []string
-	for n := range full {
-		names = append(names, n+" full")
-	}
-	slices.Sort(names)
-	names = append(names, causes...)
-	if len(names) == 0 {
-		return NNoFrontierRoom + ": no friend or reader up reads frontier"
-	}
-	return NNoFrontierRoom + ": " + strings.Join(names, ", ")
+	return []cond{{typ: NNoFrontierRoom, stream: TierSubject(cardhdr.RouteFrontier), streamLevel: true, primaries: judged,
+		what: NNoFrontierRoom + ": " + strings.Join(causes, "; "), decisions: frontierRoomDecisions()}}
 }
 
 // frontierRoomDecisions is the decisions a frontier-room judgment offers the
-// coordinator: name another frontier reader, raise an existing one's tiers, or
-// wait.
+// coordinator: name another reader, or wait for the lanes to free.
 func frontierRoomDecisions() []string {
-	return []string{"reader add <r> --tiers frontier", "reader set <r> --tiers frontier", "wait"}
+	return []string{"reader add", "wait"}
+}
+
+// frontierWhy is the real cause a frontier read the ask left waiting is not
+// asked: who may take it and is full (a friend at or above its tier at her
+// room, a reader that declares frontier at its room), else why no one who may
+// is free to (frontierNoTaker). seats are the tick's friends.
+func frontierWhy(s *Snapshot, seats []FriendSeat, pr *Card) string {
+	attempt := readAttempt(pr)
+	tier := friendReadTier(s, pr)
+	var up []FriendSeat
+	var full []string
+	for _, f := range seats {
+		if f.Status != Up || !friendAtOrAbove(s, f, tier) {
+			continue
+		}
+		up = append(up, f)
+		if room, _ := friendRoom(f); friendLoad(s, f.Name) >= room {
+			full = append(full, f.Name)
+		}
+	}
+	readers := s.freeReaders(pr, attempt)
+	rooms := s.readerRooms(readers)
+	for _, rd := range readers {
+		if rooms[rd].free <= 0 {
+			full = append(full, rd)
+		}
+	}
+	if len(full) > 0 {
+		slices.Sort(full)
+		return strings.Join(full, ", ") + " full"
+	}
+	return frontierNoTaker(s, pr, attempt, up, readers)
 }
 
 // frontierNoTaker is why no one may take the primary's frontier read at its
 // attempt when no one who may is full: a friend of frontier class up reads an
 // attempt first or not at all (or was asked it already), and each reader up
 // that declares frontier has a read card of it (it read it, or was asked it).
-// Empty when no friend of frontier class and no reader that declares frontier
-// is up: frontierRoomWhat says that.
+// With no friend of frontier class and no reader that declares frontier up it
+// says so.
 func frontierNoTaker(s *Snapshot, pr *Card, attempt int, up []FriendSeat, readers []string) string {
 	if len(up) == 0 && len(readers) == 0 {
-		return ""
+		return "no friend or reader up reads frontier"
 	}
 	var by, why []string
 	for _, r := range readers {
@@ -918,7 +848,10 @@ func frontierNoTaker(s *Snapshot, pr *Card, attempt int, up []FriendSeat, reader
 			why = append(why, "asked of "+strings.Join(friends, ", ")+" already")
 		}
 	}
-	return pr.ID + " (" + strings.Join(why, "; ") + ") wants a reader that declares frontier and has not read it"
+	if len(why) == 0 {
+		return "no reader up that declares frontier may read it"
+	}
+	return strings.Join(why, "; ") + ": it wants a reader that declares frontier and has not read it"
 }
 
 // withoutDirs is the seats with no working directory: a plan made on them
@@ -944,7 +877,7 @@ func withoutDirs(seats []FriendSeat) []FriendSeat {
 // reads waiting because every friend at or above the tier is at her room, and
 // no paid reader has room, are friends (friendReadAsk). The mark is a
 // work-table field the pump applies, as the ask's asked field is.
-func waitingForReader(p *Plan, s *Snapshot, friends []*Card) {
+func waitingForReader(p *Plan, s *Snapshot, friends []*Card) map[string]string {
 	asked := askedUnits(p, s)
 	judged := map[string]bool{} // the primaries the plan judges
 	for _, n := range p.Notes {
@@ -969,6 +902,7 @@ func waitingForReader(p *Plan, s *Snapshot, friends []*Card) {
 		waits[c.ID] = "no reader of its tier up has room this tick"
 	}
 	markWaiting(p, s, asked, waits)
+	return waits
 }
 
 // askedUnits is the unit of each primary the plan asks, by primary.

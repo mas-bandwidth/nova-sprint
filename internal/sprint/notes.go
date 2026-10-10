@@ -141,7 +141,7 @@ var Decisions = map[string][]string{
 	NScoredLow:         {"add a repair card", "ack"}, // landed: a rework is a new card; ack accepts the landing
 	NTimer:             {"ack"},                      // a timer the actor set woke it: nothing to decide
 	NStalled:           {"look at the card", "wait"}, // each stall names its own
-	NNoFrontierRoom:    {"reader add <r> --tiers frontier", "reader set <r> --tiers frontier", "wait"},
+	NNoFrontierRoom:    {"reader add", "wait"},
 }
 
 // RepeatDecision is added to a judgment for a primary that came back a second

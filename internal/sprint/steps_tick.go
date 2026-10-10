@@ -365,6 +365,14 @@ const NReadyToMerge = "ready to merge"
 // dropped here, before the plan, so the stream's state change and the notice
 // are planned for the cards accepted and for no others.
 func TickAccept(s *Snapshot, r TickReq) (Plan, int) {
+	// a merging card short of its reads goes back to review first, in a pump of its own:
+	// the accepts wait for the next tick, so the two never both write a stream's state. A
+	// tick that sends one back accepts nothing: a card ready to accept waits one tick, and
+	// the stall rule's replay of this part (held.go heldParts) sees no accept for it then
+	// (a judgment that clears on the next tick)
+	if back := ShortReadsBack(s, r.who()); len(back.Units) > 0 {
+		return back, 0
+	}
 	eligible := func(c *Card) string {
 		if c.F("result") == "failed" || !acceptable(s, c) {
 			return "not the ok reads it needs"
@@ -395,6 +403,51 @@ func TickAccept(s *Snapshot, r TickReq) (Plan, int) {
 		p.Notes = append(p.Notes, n)
 	}
 	return p, 0
+}
+
+// ShortReadsBack is the tick's pump sending every merging card short of its reads
+// (ReadsShort: fewer different readers' ok reads at its head than the count a card in
+// review needs, the setting raised or its tier's rule raised since its accept) back to
+// review: off its merge queue (its merge card to returned, as a return moves it), its
+// recorded count and readers cleared, never marked returned (AcceptHeld), so the ask asks
+// the read it lacks and the pump accepts it again on its reads. No judgment and no repair:
+// the read rule is mechanical. A card a change is queued for (s.Held) or whose merge card
+// is not queued or stuck waits for a later tick. tla/Land.tla, ShortBack and
+// NoLandWithoutReads.
+func ShortReadsBack(s *Snapshot, who string) Plan {
+	var p Plan
+	leaving := map[string]bool{}
+	for _, c := range s.Work.Column(Merging) {
+		if IsSentinel(c) || s.Held[c.ID] || LandingMarked(s, c.ID) || PushedUnreportedMatches(s, c.ID) {
+			// a lander committed to landing it (marked before its push, MarkLanding), or it was
+			// pushed and not reported: the lander completes it, never review (tla/Land.tla
+			// PushedNeverSentBack)
+			continue
+		}
+		why := ReadsShortWhy(s, c)
+		if why == "" {
+			continue
+		}
+		m := s.Merge.Placed(c.ID)
+		if m != nil && m.Col != Queued && m.Col != Stuck {
+			continue
+		}
+		u := Unit{Key: c.ID, Stream: c.Row}
+		off := "it had no merge card"
+		if m != nil {
+			u.Changes = append(u.Changes, change(Merge, moveEntry(m, c.Row, Returned, nil, "need_card", "need_stream")))
+			off = "off merge " + string(m.Col)
+		}
+		u.Changes = append(u.Changes, change(Work, moveEntry(c, c.Row, Review, nil, "readers", FieldReadsNeeded)))
+		u.Moved = fmt.Sprintf("%s merging -> review (%s; %s): the read rule asks the rest", c.ID, why, off)
+		leaving[c.ID] = true
+		p.Units = append(p.Units, u)
+	}
+	if len(p.Units) == 0 {
+		return p
+	}
+	settle(&p, s, who, leaving, nil)
+	return Lawful(p)
 }
 
 // acceptedNotice is the one notice of a tick's accept (TickAccept): "ready to

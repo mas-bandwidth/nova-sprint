@@ -436,7 +436,8 @@ func TestCanceledCureGateDoesNotRememberTheHeadAsRed(t *testing.T) {
 	st, err := r.a.store(common{redis: "mem:0", actor: "tester"})
 	require.NoError(t, err)
 	l := &lander{a: r.a, st: st, gateKey: "s1", base: "main", prose: map[string][]string{}, diffs: map[string]string{}, scope: map[string][]string{}}
-	s, err := st.Load(t.Context(), []string{sprint.Work, sprint.Merge, sprint.Fleet}, nil)
+	// the lander's own load: openStream counts each card's reads (readsWhy)
+	s, err := st.Load(t.Context(), []string{sprint.Work, sprint.Merge, sprint.Fleet, sprint.Readers}, nil)
 	require.NoError(t, err)
 	cards, ok := l.openStream(s, "s1")
 	require.True(t, ok)
