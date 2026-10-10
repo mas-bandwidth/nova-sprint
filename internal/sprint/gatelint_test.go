@@ -256,6 +256,31 @@ func TestGateLintReachAcceptsReferenceFromAnotherPackage(t *testing.T) {
 	}
 }
 
+func TestGateLintReachDoesNotBorrowSameNamedReferenceFromOtherPackage(t *testing.T) {
+	base, head := t.TempDir(), t.TempDir()
+	for _, root := range []string{base, head} {
+		if err := os.MkdirAll(filepath.Join(root, "one"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(root, "two"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.test/same\n\ngo 1.23\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "two/api.go"), []byte("package two\nfunc Exported() {}\nfunc use() { Exported() }\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(head, "one/api.go"), []byte("package one\nfunc Exported() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := findingsForTest(t, GateLintInput{BaseDir: base, ChangedDir: head, ChangedFiles: []string{"one/api.go"}}, nil)
+	if len(got) != 1 || !strings.Contains(got[0].What, "Exported") {
+		t.Fatalf("same-named reference from other package was borrowed: %#v", got)
+	}
+}
+
 func TestGateLintReachChecksOnlyDeclarationsAddedByChange(t *testing.T) {
 	base, head := t.TempDir(), t.TempDir()
 	for _, root := range []string{base, head} {

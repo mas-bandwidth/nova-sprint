@@ -74,7 +74,7 @@ func GateLintFindingsChecked(input GateLintInput, run BenchRunner) ([]GateLintFi
 	// Check 3: Reach check - every exported symbol in changed non-test files
 	// should have a reference from a non-test file
 	if !input.SkipReach && len(input.ChangedFiles) > 0 && input.ChangedDir != "" {
-		symbols, err := addedSymbols(input.BaseDir, input.ChangedDir, input.ChangedFiles)
+		symbols, err := addedDeclarations(input.BaseDir, input.ChangedDir, input.ChangedFiles)
 		if err != nil {
 			return nil, err
 		}
@@ -92,9 +92,9 @@ func GateLintFindingsChecked(input GateLintInput, run BenchRunner) ([]GateLintFi
 			if err != nil {
 				return nil, err
 			}
-			for sym, ok := range reached {
+			for id, ok := range reached {
 				if !ok {
-					out = append(out, GateLintFinding{What: GateLintReach + ": " + sym + " has no reference from any non-test file"})
+					out = append(out, GateLintFinding{What: GateLintReach + ": " + symbols[id] + " has no reference from any non-test file"})
 				}
 			}
 		}
@@ -103,9 +103,10 @@ func GateLintFindingsChecked(input GateLintInput, run BenchRunner) ([]GateLintFi
 	return out, nil
 }
 
-// addedSymbols compares declarations at the merge-base with the pinned head. Only
-// declarations introduced by the change are subject to reach analysis.
-func addedSymbols(baseDir, headDir string, changed []string) (map[string]bool, error) {
+// addedDeclarations compares declarations at the merge-base with the pinned head.
+// The key includes package directory and receiver so same-spelled declarations in
+// different packages cannot suppress or satisfy one another.
+func addedDeclarations(baseDir, headDir string, changed []string) (map[string]string, error) {
 	if baseDir == "" {
 		return nil, fmt.Errorf("merge-base source tree is required for reach analysis")
 	}
@@ -117,14 +118,14 @@ func addedSymbols(baseDir, headDir string, changed []string) (map[string]bool, e
 	if err != nil {
 		return nil, err
 	}
-	for name := range base {
-		delete(head, name)
+	for id := range base {
+		delete(head, id)
 	}
 	return head, nil
 }
 
-func declarationNames(root string, paths []string) (map[string]bool, error) {
-	out := map[string]bool{}
+func declarationNames(root string, paths []string) (map[string]string, error) {
+	out := map[string]string{}
 	for _, rel := range paths {
 		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
 			continue
@@ -146,11 +147,27 @@ func declarationNames(root string, paths []string) (map[string]bool, error) {
 			if !ok || !fn.Name.IsExported() {
 				continue
 			}
-			out[fn.Name.Name] = true
+			recv := ""
+			if fn.Recv != nil && len(fn.Recv.List) > 0 {
+				recv = receiverName(fn.Recv.List[0].Type)
+			}
+			pkg, _ := filepath.Rel(root, filepath.Dir(path))
+			out[reachID(filepath.ToSlash(pkg), recv, fn.Name.Name)] = fn.Name.Name
 		}
 	}
 	return out, nil
 }
+
+func receiverName(expr ast.Expr) string {
+	if p, ok := expr.(*ast.StarExpr); ok {
+		expr = p.X
+	}
+	if id, ok := expr.(*ast.Ident); ok {
+		return id.Name
+	}
+	return ""
+}
+func reachID(pkg, recv, name string) string { return pkg + "#" + recv + "#" + name }
 
 func addedVerbRows(baseDir, headDir string, paths []string) (map[string]string, error) {
 	base, err := verbRows(baseDir, paths)
@@ -248,10 +265,10 @@ func hasMethod(root, name string) bool {
 // findTreeReferences uses type-checked object identity across every Go package in
 // the pinned tree. The importer loads local module packages from source and shares
 // their types.Package objects with the root scan.
-func findTreeReferences(root string, names map[string]bool) (map[string]bool, error) {
+func findTreeReferences(root string, targets map[string]string) (map[string]bool, error) {
 	reached := map[string]bool{}
-	for n := range names {
-		reached[n] = false
+	for id := range targets {
+		reached[id] = false
 	}
 	mod, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil && !os.IsNotExist(err) {
@@ -308,30 +325,6 @@ func findTreeReferences(root string, names map[string]bool) (map[string]bool, er
 		}
 		packages = append(packages, pkg)
 	}
-	targets := map[string]string{}
-	for _, pkg := range packages {
-		for n := range names {
-			if obj, ok := pkg.Scope().Lookup(n).(*types.Func); ok {
-				targets[obj.Pkg().Path()+"/"+obj.Name()] = n
-			}
-		}
-		for _, name := range pkg.Scope().Names() {
-			tn, ok := pkg.Scope().Lookup(name).(*types.TypeName)
-			if !ok {
-				continue
-			}
-			for _, recv := range []types.Type{tn.Type(), types.NewPointer(tn.Type())} {
-				ms := types.NewMethodSet(recv)
-				for j := 0; j < ms.Len(); j++ {
-					sel := ms.At(j)
-					fn, ok := sel.Obj().(*types.Func)
-					if ok && names[fn.Name()] {
-						targets[fn.Pkg().Path()+"/"+fn.Name()] = fn.Name()
-					}
-				}
-			}
-		}
-	}
 	// Re-typecheck each package with Uses populated; cached imports preserve identity.
 	for _, dir := range dirs {
 		if uniq[dir+"#checked"] {
@@ -344,13 +337,32 @@ func findTreeReferences(root string, names map[string]bool) (map[string]bool, er
 		}
 		for _, obj := range info.Uses {
 			if fn, ok := obj.(*types.Func); ok && fn.Pkg() != nil {
-				if n, found := targets[fn.Pkg().Path()+"/"+fn.Name()]; found {
-					reached[n] = true
+				id := objectReachID(root, fn)
+				if _, found := targets[id]; found {
+					reached[id] = true
 				}
 			}
 		}
 	}
 	return reached, nil
+}
+
+func objectReachID(root string, fn *types.Func) string {
+	rel, err := filepath.Rel(root, filepath.FromSlash(fn.Pkg().Path()))
+	if err != nil {
+		return ""
+	}
+	recv := ""
+	if sig, ok := fn.Type().(*types.Signature); ok && sig.Recv() != nil {
+		t := sig.Recv().Type()
+		if p, ok := t.(*types.Pointer); ok {
+			t = p.Elem()
+		}
+		if n, ok := t.(*types.Named); ok {
+			recv = n.Obj().Name()
+		}
+	}
+	return reachID(filepath.ToSlash(rel), recv, fn.Name())
 }
 
 type treeImporter struct {
