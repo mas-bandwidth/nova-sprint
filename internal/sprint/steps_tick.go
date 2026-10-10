@@ -108,6 +108,11 @@ const (
 
 	NMachineStarted = "the machine started"
 	NMachineStopped = "the machine stopped"
+
+	// NHoldCleared is the happened note of a fault hold the machine lifted itself:
+	// the member finished a card cleanly and is healthy again. Addressed to the
+	// coordinator (the seat), it is the clear pushed to the seat.
+	NHoldCleared = "a member's fault hold cleared"
 )
 
 // Sentinel is the kind of a card that marks a point in a stream: the tick
@@ -896,6 +901,12 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	p.Units = append(p.Units, restWithdrawals(s, r.who())...)
 	restWrites(&p, s, rests, r.who())
 	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing}, r)
+	// a fault hold the machine placed clears itself here, beside the deal that
+	// gives the healthy member its (probe) card (faultClear): a person's hold
+	// is never lifted by it.
+	fc := faultClear(s, r)
+	p.Units = append(p.Units, fc.Units...)
+	p.Notes = append(p.Notes, fc.Notes...)
 	// every provider out of credit: the binding stops the machine as the plan commits
 	p.Stop = stop
 	return p, due
@@ -942,6 +953,71 @@ func beatingHeld(s *Snapshot, r TickReq) bool {
 		beats = true
 	}
 	return beats
+}
+
+// faultClear is the deal's move that lifts a fault hold the machine placed for
+// a failure (harness fault, failed take, down), on its own authority: a hold
+// the coordinator made carries no held_by mark and this never touches it
+// (docs/SPEC-SPRINT.md section 5, the fleet; hold, section 11). A fault-held
+// member that beats again is healthy, so it releases its down to deal it
+// a card (a probe card if nothing else is dealt), keeping held_by and the
+// fault stamp (FieldFaultSince); once the member has finished a work card ok
+// at or after that stamp (a clean take and finish), the tick clears the whole
+// fault hold and writes one happened note to the seat (NHoldCleared). It runs
+// as part of the deal, so the reference model's deal duty carries it and no new
+// duty is named (refmodel/decide.go). The model is tla/DealFill.tla,
+// FaultHoldClears and ProbeReleasesTheDown.
+func faultClear(s *Snapshot, r TickReq) Plan {
+	if r.Beats == nil {
+		return Plan{}
+	}
+	var p Plan
+	for _, m := range s.Members() {
+		ctl := s.MemberCtl(m)
+		if !FaultHeld(ctl) || !r.Beats[m].Alive(s.Now) {
+			continue
+		}
+		since := ctl.F(FieldFaultSince)
+		if since == "" {
+			since = ctl.F("held")
+		}
+		if since != "" && faultCleanFinish(s, m, since) {
+			// the member finished a card cleanly after the hold: the hold
+			// clears, and the clear is told to the seat.
+			n := happened(NHoldCleared, "", s.Now)
+			n.Who, n.To = r.who(), s.Coordinator
+			n.What = fmt.Sprintf("%s is healthy again: it finished a card cleanly, so the machine lifted its fault hold", m)
+			p.Units = append(p.Units, Unit{Key: CtlID(m), Changes: []Change{change(Fleet,
+				setEntry(ctl, map[string]string{"status": Up, "since": stamp(s.Now)}, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish, FieldFaultSince))},
+				Notes: []Note{n}, Moved: fmt.Sprintf("%s up: its fault hold cleared (a clean finish)", m)})
+			continue
+		}
+		if ctl.F("held") != "" {
+			// it beats but is still down: release the down so the deal gives
+			// it a card, keeping the fault mark and the stamp the clear is
+			// measured from (the probe).
+			p.Units = append(p.Units, Unit{Key: CtlID(m), Changes: []Change{change(Fleet,
+				setEntry(ctl, map[string]string{"status": Up, "since": stamp(s.Now), FieldFaultSince: since}, "held", FieldHeldReason, FieldHeldFinish))},
+				Moved: fmt.Sprintf("%s up (probe): its fault hold releases to deal it a card", m)})
+		}
+	}
+	return p
+}
+
+// faultCleanFinish says the member has a work card finished ok at or after the
+// fault stamp (since): the proof the member is healthy, which clears the fault
+// hold. A finished stamp before the hold (older work) is no proof.
+func faultCleanFinish(s *Snapshot, member, since string) bool {
+	sinceT, err := time.Parse(time.RFC3339, since)
+	if err != nil {
+		return false
+	}
+	for _, c := range s.Fleet.Cell(member, DoneOK) {
+		if ft := stampAt(c, "finished"); !ft.IsZero() && !ft.Before(sinceT) {
+			return true
+		}
+	}
+	return false
 }
 
 // AtRedealBound is the primary's withdrawn work card when it is at its
