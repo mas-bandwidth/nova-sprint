@@ -121,6 +121,20 @@ func TestFindNonTestReferencesDoesNotCountDeclaration(t *testing.T) {
 	}
 }
 
+func TestChangedExportedSymbolsReadsRelativePathUnderChangedDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir+"/sub", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/sub/api.go", []byte("package sub\nfunc Unwired() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := getChangedExportedSymbols(dir, []string{"sub/api.go"})
+	if !got["Unwired"] {
+		t.Fatal("relative changed file was not read under ChangedDir")
+	}
+}
+
 // TestFindNonTestReferences tests that we can find references to symbols.
 func TestFindNonTestReferences(t *testing.T) {
 	symbols := map[string]bool{

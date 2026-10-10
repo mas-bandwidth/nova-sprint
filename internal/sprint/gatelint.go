@@ -70,7 +70,7 @@ func GateLintFindings(input GateLintInput, run BenchRunner) []GateLintFinding {
 	// Check 3: Reach check - every exported symbol in changed non-test files
 	// should have a reference from a non-test file
 	if len(input.ChangedFiles) > 0 && input.ChangedDir != "" {
-		symbols := getChangedExportedSymbols(input.ChangedFiles)
+		symbols := getChangedExportedSymbols(input.ChangedDir, input.ChangedFiles)
 		if len(symbols) > 0 {
 			reached, err := findNonTestReferences(input.ChangedDir, symbols)
 			if err == nil {
@@ -87,7 +87,7 @@ func GateLintFindings(input GateLintInput, run BenchRunner) []GateLintFinding {
 }
 
 // getChangedExportedSymbols returns exported declarations from changed files.
-func getChangedExportedSymbols(changedFiles []string) map[string]bool {
+func getChangedExportedSymbols(dir string, changedFiles []string) map[string]bool {
 	symbols := make(map[string]bool)
 	fset := token.NewFileSet()
 
@@ -95,6 +95,7 @@ func getChangedExportedSymbols(changedFiles []string) map[string]bool {
 		if !strings.HasSuffix(f, ".go") || strings.HasSuffix(f, "_test.go") {
 			continue
 		}
+		f = filepath.Join(dir, f)
 		src, err := os.ReadFile(f)
 		if err != nil {
 			continue

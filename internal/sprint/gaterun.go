@@ -467,6 +467,12 @@ func benchTestRunner(bench BenchRun, hosts []string, dir string, args []string, 
 		if err != nil {
 			return false, err
 		}
+		// go test exits zero when the named test does not exist.  A new test is
+		// allowed to be absent at the merge-base, so do not mistake that for a
+		// passing pin probe.
+		if res.Code == 0 && strings.Contains(res.Out, "[no tests to run]") {
+			return false, nil
+		}
 		return res.Code == 0, nil
 	}
 }
@@ -523,6 +529,12 @@ func materializeRevertedTree(ctx context.Context, dir, base, head string, paths 
 	}
 	defer gitrun.Output(ctx, o, "worktree", "remove", "--force", work)
 	for _, p := range paths {
+		if _, err := gitrun.Output(ctx, o, "cat-file", "-e", base+":"+p); err != nil {
+			if _, err := gitrun.Output(ctx, gitrun.Options{C: work, Env: env, OwnRepo: true}, "rm", "-f", "--", p); err != nil {
+				return "", err
+			}
+			continue
+		}
 		if _, err := gitrun.Output(ctx, gitrun.Options{C: work, Env: env, OwnRepo: true}, "checkout", base, "--", p); err != nil {
 			return "", err
 		}
