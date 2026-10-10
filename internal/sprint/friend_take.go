@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/typedrec"
+	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
 )
 
 // A friend's card taken back (docs/SPEC-SPRINT.md section 1, a friend's card taken back;

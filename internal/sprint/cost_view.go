@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardcost"
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // Cost visibility (docs/SPEC-SPRINT.md section 1, the where view; the owner, 2026-10-04):

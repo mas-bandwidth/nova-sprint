@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

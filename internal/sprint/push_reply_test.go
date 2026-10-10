@@ -3,7 +3,7 @@ package sprint
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/onboarding"
+	"github.com/mas-bandwidth/nova-sprint/pkg/onboarding"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

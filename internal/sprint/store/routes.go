@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardcost"
-	"github.com/mas-bandwidth/nova-sprint/internal/config"
-	"github.com/mas-bandwidth/nova-sprint/internal/redisconn"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
 )
 
 // RouteReader is a store that holds the model tiers' routes and route arrays
@@ -50,7 +50,7 @@ func (st *Store) priceRoutes(ctx context.Context) ([]sprint.Route, error) {
 // PriceRoutes reads the set, then every route's record in one pipeline: two round
 // trips, the second only when the set names a route. It touches the keys
 // config.RoutesKey and config.RouteKey alone, which every role reads
-// (internal/redisacl, the routes family): never a tier's array or the sprint row.
+// (pkg/redisacl, the routes family): never a tier's array or the sprint row.
 func (r *Redis) PriceRoutes(ctx context.Context) ([]sprint.Route, int64, error) {
 	names, err := r.C.SMembers(ctx, config.RoutesKey).Result()
 	if err != nil || len(names) == 0 {

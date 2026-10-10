@@ -37,12 +37,12 @@ import (
 	"time"
 	"weak"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/bench"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/subproc"
-	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
-	"github.com/mas-bandwidth/nova-sprint/internal/testguard"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testguard"
 )
 
 // landGoBudget bounds one go run in the clone: a build of the module, a vet, a test of

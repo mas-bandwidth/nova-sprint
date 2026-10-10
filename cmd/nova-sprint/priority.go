@@ -6,9 +6,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // cmdPriority sets or prints a card's priority (docs/SPEC-SPRINT.md section 1, "Priority";

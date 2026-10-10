@@ -13,15 +13,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/bench"
-	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // gc is the verb that reclaims the machinery's scratch (sprint.GC is the rule;
 // docs/SPEC-SPRINT.md section 1, "gc"): on the machine it runs on, or, with --machine,
-// on that machine through the fleet runner (internal/bench's ssh), which runs the same
+// on that machine through the fleet runner (pkg/bench's ssh), which runs the same
 // verb there. The sprint's run loop runs it on every machine (gcLoop, sprint.GCDue).
 
 func init() {
@@ -36,7 +36,7 @@ func init() {
 // error when the runner itself did not start.
 type gcRunner func(ctx context.Context, host, line string, stdout, stderr io.Writer) (int, error)
 
-// gcRemote is the fleet runner: internal/bench's ssh.
+// gcRemote is the fleet runner: pkg/bench's ssh.
 func gcRemote(ctx context.Context, host, line string, stdout, stderr io.Writer) (int, error) {
 	return bench.Exec{}.Shell(ctx, host, line, stdout, stderr)
 }

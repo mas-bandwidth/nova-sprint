@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/diffcheck"
+	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
 )
 
 func TestLandGitPreservesNULStatus(t *testing.T) {

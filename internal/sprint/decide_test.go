@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/decide"
+	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
 )
 
 // The decide lane's work, read from the work table alone (DecideDue): every card never

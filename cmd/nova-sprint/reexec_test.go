@@ -17,7 +17,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/internal/testbin"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
 )
 
 // THE HURT (2026-10-04, 3:21 to 3:37 PM ET, the Studio): a verb under test that

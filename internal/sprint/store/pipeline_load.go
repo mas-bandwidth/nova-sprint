@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 	"github.com/redis/go-redis/v9"
 )
 

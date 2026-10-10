@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/onboarding"
+	"github.com/mas-bandwidth/nova-sprint/pkg/onboarding"
 )
 
 // firstrun_test.go pins the onboarding standard for this binary: the

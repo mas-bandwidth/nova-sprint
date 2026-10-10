@@ -23,10 +23,10 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
-	"github.com/mas-bandwidth/nova-sprint/internal/safepath"
-	"github.com/mas-bandwidth/nova-sprint/internal/subproc"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
+	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 )
 
 func init() {
@@ -62,7 +62,7 @@ type demoServer struct {
 // demoProcs is how the demo reaches processes: start starts the demo's Redis
 // (the redis-server bin) in its own directory, alive says whether a pid still
 // runs and kill stops the recorded one (demo_proc.go). A test gives its own
-// for the root it loads under (demoHooks), so the server internal/testredis
+// for the root it loads under (demoHooks), so the server pkg/testredis
 // starts stands in for one.
 type demoProcs struct {
 	start func(ctx context.Context, bin, dir string) (demoServer, error)

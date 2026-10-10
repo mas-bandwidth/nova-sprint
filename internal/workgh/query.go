@@ -17,8 +17,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/subproc"
-	"github.com/mas-bandwidth/nova-sprint/internal/testguard"
+	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testguard"
 )
 
 // Query runs one read-only GraphQL document with its variables and returns

@@ -16,13 +16,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardcost"
-	"github.com/mas-bandwidth/nova-sprint/internal/decide"
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprintdash"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // The read verbs: queue, where, inbox, card, check. Each has --json, one
@@ -400,7 +400,7 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 			out["width"] = width // the worker runs this many: the fleet row is the truth
 		}
 		if word := machineWord(ctx, st); word != "" {
-			out["machine"] = word // STOPPED: the worker cancels its lanes and takes nothing (internal/member machineStop)
+			out["machine"] = word // STOPPED: the worker cancels its lanes and takes nothing (pkg/member machineStop)
 		}
 		if *as != "" {
 			out["reader"] = isReader // --as is a row of the readers table

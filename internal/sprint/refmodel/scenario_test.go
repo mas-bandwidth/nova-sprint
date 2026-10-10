@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // A scenario is a short script of a sprint that a random walk reaches by luck

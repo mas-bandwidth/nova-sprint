@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/hostload"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/storetest"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 )
 
 // alarmRig is a sprint on the in-memory store, ticked by the machine on its twin

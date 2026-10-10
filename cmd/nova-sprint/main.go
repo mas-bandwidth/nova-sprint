@@ -24,17 +24,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/bus"
-	"github.com/mas-bandwidth/nova-sprint/internal/decide"
-	"github.com/mas-bandwidth/nova-sprint/internal/hostload"
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/verbflag"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
-	"github.com/mas-bandwidth/nova-sprint/internal/redisconn"
-	"github.com/mas-bandwidth/nova-sprint/internal/secrets"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprintwire"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -82,7 +82,7 @@ type app struct {
 	// work card by pattern. nil checks nothing: tests open no socket unless they give one.
 	readTip   tipFn
 	readHeads headsFn
-	// bus sends one message on the friends' bus (internal/bus; friend sync wakes a
+	// bus sends one message on the friends' bus (pkg/bus; friend sync wakes a
 	// friend's daemon with it when it delivers her a card): tests give a recorder
 	// and open no socket.
 	bus busSendFn

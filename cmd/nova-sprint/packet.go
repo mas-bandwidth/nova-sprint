@@ -5,8 +5,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // printPacket prints what a worker or a reader is handed with a card: where

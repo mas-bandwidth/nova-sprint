@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
-	"github.com/mas-bandwidth/nova-sprint/internal/secretcheck"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
 	sprintstore "github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/secretcheck"
 )
 
 // THE CLASS RULE: NO SECRET REACHES AN ERROR (docs/SPEC-CI.md, `secrets-never-in-errors`),
@@ -43,7 +43,6 @@ var sprintSecretOpeners = map[string]any{
 	"internal/sprint.ParseFriendReadReport": sprint.ParseFriendReadReport,
 	"internal/sprint.ParseLaneCap":          sprint.ParseLaneCap,
 	"internal/sprint.ParseMembers":          sprint.ParseMembers,
-	"internal/sprint.ParseNovaToolsVersion": sprint.ParseNovaToolsVersion,
 	"internal/sprint.ParseReadCard":         sprint.ParseReadCard,
 	"internal/sprint.ParseReaderTiers":      sprint.ParseReaderTiers,
 	"internal/sprint.ParseRoute":            sprint.ParseRoute,
@@ -55,11 +54,10 @@ var sprintSecretOpeners = map[string]any{
 
 // sprintSecretLeakAllowlist are the functions known to carry a secret-shaped string into
 // an error, one `<key> <reason>` per line. It only shrinks.
-const sprintSecretLeakAllowlist = `
+const sprintSecretLeakAllowlist = sprintNovaToolsLeak + `
 internal/sprint.ParseAttempts echoes the rejected value with %q (internal/sprint/brief_bound.go:83)
 internal/sprint.ParseDeadline echoes the rejected value with %q (internal/sprint/deadline.go:165)
 internal/sprint.ParseMembers echoes the rejected width with %q (internal/sprint/width.go:42)
-internal/sprint.ParseNovaToolsVersion echoes the rejected NOVA-TOOLS-VERSION line with %q (internal/sprint/toolsversion.go:119; nova-sprint's own file, a release tag and a commit hash)
 internal/sprint.ParseReaderTiers echoes the rejected tier names (internal/sprint/reader_tiers.go:51)
 internal/sprint.ParseRoute echoes the rejected route with %q (internal/sprint/remind.go:108)
 internal/sprint.ParseWidth echoes the rejected width with %q (internal/sprint/width.go:42)

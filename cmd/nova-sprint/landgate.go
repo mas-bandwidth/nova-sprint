@@ -7,9 +7,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/decide"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // THE LANDER'S GATE VERDICT (docs/SPEC-SPRINT.md section 7; SPEC-NOVA-DECIDE section 12). A

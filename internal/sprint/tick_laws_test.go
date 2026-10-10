@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/hostload"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 )
 
 // The laws of the tick's accept and of its redeals, each driven through the

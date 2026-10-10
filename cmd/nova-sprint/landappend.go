@@ -23,8 +23,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 )
 
 // appendOnlyRecords are the records that only gain rows; rows are a set.

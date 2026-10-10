@@ -4,10 +4,10 @@ import (
 	"context"
 	"io"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // recut <id> (--tier <t> | --brief-file <path>) [--new <id>]: a card re-cut as its twin

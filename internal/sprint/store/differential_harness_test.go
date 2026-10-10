@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/hostload"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 	"github.com/stretchr/testify/require"
 )
 

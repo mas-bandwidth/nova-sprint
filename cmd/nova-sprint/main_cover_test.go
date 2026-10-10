@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/nsprint/fn"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 )
 
 // fakeStore answers a Redis client for the unit tier: it speaks the wire

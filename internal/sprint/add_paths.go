@@ -7,9 +7,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/internal/hygiene"
-	"github.com/mas-bandwidth/nova-sprint/internal/member"
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
+	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 )
 
 // Paths admission (docs/SPEC-CARD-CONTRACT.md, what admission verifies; docs/SPEC-SPRINT.md

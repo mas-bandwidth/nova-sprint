@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/oneline"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
 // cmdSelftestLand lands a canned card on a scratch clone with this binary (docs/SPEC-SPRINT.md section 14).
