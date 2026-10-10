@@ -80,7 +80,7 @@ func (r *lintRepo) write(p, body string) {
 func (r *lintRepo) branch(name string, files map[string]string, msg string) string {
 	r.t.Helper()
 	r.git(r.dev, "fetch", "-q", "origin")
-	r.git(r.dev, "checkout", "-q", "-B", name, "origin/main")
+	r.git(r.dev, "checkout", "-q", "-B", name, "main")
 	for p, body := range files {
 		r.write(p, body)
 	}
@@ -199,7 +199,7 @@ func TestAnAttemptThatFailsWorkLintIsReworkedWithoutARead(t *testing.T) {
 		}
 	}
 	// the base moves under the merge attempt: the same file, another line
-	repo.git(repo.dev, "checkout", "-q", "-B", "main", "origin/main")
+	repo.git(repo.dev, "checkout", "-q", "-B", "main", "main")
 	repo.write("conflict.txt", "main moved\n")
 	repo.git(repo.dev, "commit", "-q", "-am", "the base moves")
 	repo.git(repo.dev, "push", "-q", "origin", "HEAD:refs/heads/main")
