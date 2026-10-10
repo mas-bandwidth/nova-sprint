@@ -20,6 +20,8 @@ func (a *app) cmdServerSwitch(args []string, stdout, stderr io.Writer) int {
 	rollback := fs.Bool("rollback", false, "roll back to previous binary, or enable automatic rollback on failed land in window")
 	windowStr := fs.String("window", "15m", "rollback window duration: if a land fails within this window, roll back")
 	target := fs.String("target", "", "target binary to replace (default: this binary or NOVA_SPRINT_SERVER_BIN)")
+	repo := fs.String("repo", "", "clone whose origin contains the sprint base")
+	base := fs.String("base", "", "sprint base branch on origin")
 	dry := fs.Bool("dry-run", false, "run the candidate's shadow tick (read-only) and say what would be switched; switch, roll back and write nothing")
 	tickDeadline := fs.Duration("tick-deadline", TickDeadline, "the candidate's shadow tick (<binary> tick --shadow, read-only, against the store --redis names) must end in this long, or the switch is refused")
 
@@ -70,6 +72,22 @@ func (a *app) cmdServerSwitch(args []string, stdout, stderr io.Writer) int {
 	}
 
 	candidate := pos[0]
+	if *repo == "" {
+		*repo = a.getenv("NOVA_SPRINT_SERVER_REPO")
+	}
+	if *base == "" {
+		*base = a.getenv("NOVA_SPRINT_BASE")
+	}
+	check, err := sprint.CheckServerBinary(context.Background(), candidate, *repo, *base)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s server switch REFUSED: the base check of %s could not be made: %s; nothing was changed; run: nova-sprint server switch -h\n", prog, candidate, oneline.Err(err))
+		return 1
+	}
+	if !check.On {
+		fmt.Fprintf(stderr, "%s server switch REFUSED: %s; the old server keeps running; run: nova-sprint server switch -h\n", prog, (&sprint.OffBaseError{Binary: candidate, Check: check}).Error())
+		return 1
+	}
+	fmt.Fprintf(stdout, "BASE OK binary=%s commit=%s base=origin/%s tip=%s\n", candidate, check.Commit, *base, check.Tip)
 
 	window, err := time.ParseDuration(*windowStr)
 	if err != nil || window <= 0 {
@@ -94,9 +112,11 @@ func (a *app) cmdServerSwitch(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	err = sprint.ServerSwitch(context.Background(), sprint.ServerSwitchOptions{
+	err = sprint.SwitchFromBase(context.Background(), sprint.ServerSwitchOptions{
 		Binary:   candidate,
 		Target:   targetPath,
+		Repo:     *repo,
+		Base:     *base,
 		Rollback: *rollback,
 		Window:   window,
 		Now:      a.now,

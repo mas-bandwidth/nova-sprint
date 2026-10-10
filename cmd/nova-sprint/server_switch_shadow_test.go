@@ -42,6 +42,9 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 		[]string{"start"})
 	twinBefore, err := os.ReadFile(twinFile)
 	require.NoError(t, err)
+	repo, err := filepath.Abs("../..")
+	require.NoError(t, err)
+	commit := string(mustOutput(t, "git", "rev-parse", "HEAD"))
 
 	t.Run("a broken binary is refused and the old server keeps running", func(t *testing.T) {
 		cases := []struct {
@@ -57,9 +60,10 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 			target := filepath.Join(sub, "nova-sprint")
 			candidate := filepath.Join(sub, "candidate")
 			require.NoError(t, os.WriteFile(target, []byte("the running server"), 0o755))
-			require.NoError(t, os.WriteFile(candidate, []byte(tc.script), 0o755))
+			script := "#!/bin/sh\nif [ \"$1\" = version ]; then echo 'nova-sprint v1 linux/amd64 go1 commit=" + commit + "'; exit 0; fi\n" + tc.script
+			require.NoError(t, os.WriteFile(candidate, []byte(script), 0o755))
 			ta := newTestApp(t)
-			code, out, errs := ta.do("server switch " + candidate + " --target " + target + " --redis mem:" + twinFile + " --rollback" + tc.extra)
+			code, out, errs := ta.do("server switch " + candidate + " --target " + target + " --redis mem:" + twinFile + " --rollback --repo " + repo + " --base main" + tc.extra)
 			assert.Equal(t, 1, code, tc.name)
 			assert.Contains(t, errs, "server switch REFUSED: the shadow tick of "+candidate, tc.name)
 			assert.Contains(t, errs, tc.why, tc.name)
@@ -79,19 +83,21 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 	t.Run("a working binary plans, writes nothing, and is switched in", func(t *testing.T) {
 		target := filepath.Join(t.TempDir(), "nova-sprint")
 		require.NoError(t, os.WriteFile(target, []byte("the running server"), 0o755))
+		candidate := filepath.Join(t.TempDir(), "candidate")
+		require.NoError(t, os.WriteFile(candidate, []byte("#!/bin/sh\nif [ \"$1\" = version ]; then echo 'nova-sprint v1 linux/amd64 go1 commit="+commit+"'; exit 0; fi\nexec "+exe+" \"$@\"\n"), 0o755))
 		ta := newTestApp(t)
-		code, out, errs := ta.do("server switch " + exe + " --target " + target + " --redis mem:" + twinFile + " --rollback --dry-run")
+		code, out, errs := ta.do("server switch " + candidate + " --target " + target + " --redis mem:" + twinFile + " --rollback --dry-run --repo " + repo + " --base main")
 		require.Equal(t, 0, code, errs)
-		assert.Contains(t, out, "SHADOW TICK OK binary="+exe)
-		assert.Contains(t, out, "SERVER SWITCH DRY-RUN target="+target+" binary="+exe)
+		assert.Contains(t, out, "SHADOW TICK OK binary="+candidate)
+		assert.Contains(t, out, "SERVER SWITCH DRY-RUN target="+target+" binary="+candidate)
 		for _, side := range []string{".prev", ".switch.json", ".shadow.json"} {
 			_, err := os.Stat(target + side)
 			assert.True(t, os.IsNotExist(err), "a dry run writes nothing beside the target (%s)", side)
 		}
 
-		code, out, errs = ta.do("server switch " + exe + " --target " + target + " --redis mem:" + twinFile + " --rollback")
+		code, out, errs = ta.do("server switch " + candidate + " --target " + target + " --redis mem:" + twinFile + " --rollback --repo " + repo + " --base main")
 		require.Equal(t, 0, code, errs)
-		assert.Contains(t, out, "SHADOW TICK OK binary="+exe+" epoch=0 state=RUNNING")
+		assert.Contains(t, out, "SHADOW TICK OK binary="+candidate+" epoch=0 state=RUNNING")
 		assert.Contains(t, out, "SERVER SWITCH OK")
 		twinAfter, err := os.ReadFile(twinFile)
 		require.NoError(t, err)
@@ -101,7 +107,7 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 		require.NoError(t, err)
 		var rec shadowRecord
 		require.NoError(t, json.Unmarshal(b, &rec))
-		assert.Equal(t, exe, rec.Binary)
+		assert.Equal(t, candidate, rec.Binary)
 		assert.Positive(t, rec.Plan.Size, "the plan's size is recorded: the tick would deal the ready card")
 		assert.Positive(t, rec.Wall, "the shadow's time is recorded")
 		_, err = os.Stat(target + ".switch.json")
@@ -116,4 +122,11 @@ func TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEqual(t, string(twinBefore), string(ticked))
 	})
+}
+
+func mustOutput(t *testing.T, name string, args ...string) []byte {
+	t.Helper()
+	b, err := exec.Command(name, args...).Output()
+	require.NoError(t, err)
+	return b
 }

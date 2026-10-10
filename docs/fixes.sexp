@@ -94,4 +94,10 @@
     .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
-   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")))
+   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+  (fix "server-build-descends-from-base" :release "v1.2.6" :status "in-progress"
+   :title "A sprint server build must descend from the origin base"
+   :text "server switch refuses a build that does not descend from the origin base, so an off-base build
+    cannot become the server."
+   :origin "nova-sprint commit 9338f08 (not carried by the re-seed, nova-sprint PR #28)")
+)

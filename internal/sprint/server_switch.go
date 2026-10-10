@@ -19,6 +19,8 @@ const DefaultRollbackWindow = 15 * time.Minute
 type ServerSwitchOptions struct {
 	Binary   string        // path to candidate binary
 	Target   string        // path to target binary (default: os.Executable() or NOVA_SPRINT_SERVER_BIN)
+	Repo     string        // clone whose origin contains the base
+	Base     string        // origin branch the candidate must descend from
 	Rollback bool          // keep previous binary and roll back on land failure in window
 	Window   time.Duration // rollback window duration (default DefaultRollbackWindow)
 	Now      func() time.Time
@@ -223,4 +225,30 @@ func CheckRollbackOnLandFailure(target string, landErr error, now time.Time) (ro
 	// ignored: clean up state file after rollback on failure
 	_ = os.Remove(stateFile)
 	return true, nil
+}
+
+// SwitchFromBase checks that the candidate binary was built from the sprint base
+// before performing the switch (docs/SPEC-SPRINT.md section 14).
+func SwitchFromBase(ctx context.Context, opts ServerSwitchOptions) error {
+	check, err := CheckServerBinary(ctx, opts.Binary, opts.Repo, opts.Base)
+	if err != nil {
+		return fmt.Errorf("server switch: the base check of %s could not be made: %w; nothing was changed", opts.Binary, err)
+	}
+	if !check.On {
+		return &OffBaseError{Binary: opts.Binary, Check: check}
+	}
+	if err := ServerSwitch(ctx, opts); err != nil {
+		return err
+	}
+	target := opts.Target
+	if target == "" {
+		target = os.Getenv("NOVA_SPRINT_SERVER_BIN")
+	}
+	if target != "" {
+		data, _ := json.Marshal(BaseRecord{Repo: opts.Repo, Base: opts.Base})
+		if err := os.WriteFile(target+".base.json", data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
