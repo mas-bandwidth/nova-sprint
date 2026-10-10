@@ -391,7 +391,7 @@ func ReadsStanding(s *Snapshot, c *Card) []string {
 // how many it needs (ReadsNeededIn), and whether it is short of them: a script card's one
 // script read (scriptVerified) and a count of 0 are never short. The tick sends a merging
 // card that is short back to review (ShortReadsBack), and the lander builds, pushes and
-// reports none (land.go readsWhy and pinsReadsWhy): tla/Land.tla NoLandWithoutReads. A
+// pushes none (land.go readsWhy, and MarkLanding just before the push): tla/Land.tla NoLandWithoutReads. A
 // record of a push git already holds (merge --landed, landed --sha) is a fact, not held.
 func ReadsShort(s *Snapshot, c *Card) (have, need int, short bool) {
 	have, need = len(ReadsStanding(s, c)), ReadsNeededIn(s, c)

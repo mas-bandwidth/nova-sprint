@@ -124,3 +124,27 @@ func TestACardWithItsReadsIsNotSentBackAndLandedKeepsItsCount(t *testing.T) {
 	assert.Equal(t, 1, ReadsNeededIn(w.s, pr), "landed on one read under one: never judged again")
 	assert.False(t, rule6(w.s))
 }
+
+// The lander's check and mark before the push (MarkLanding): a card short of its reads is
+// refused by name with its count and nothing is marked; a card with them is marked landing,
+// and from then the tick never sends it back, the setting raised or not.
+func TestMarkLandingChecksTheReadsAndTheTickHonoursTheMark(t *testing.T) {
+	t.Parallel()
+	w := oneReadMerging(t)
+	pr := w.s.Work.Card("s1-1")
+	pin := []PushedPin{{ID: "s1-1", Head: pr.F("head"), Attempt: pr.F("attempt")}}
+
+	w.s.Work.SetProp(PropReadsNeeded, "2")
+	p := MarkLanding(w.s, pr.Row, pin)
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "s1-1 has ok reads at head "+pr.F("head")+" from 1 of the 2 readers it needs")
+	assert.Empty(t, p.Units)
+
+	w.s.Work.SetProp(PropReadsNeeded, "1")
+	w.must(MarkLanding(w.s, pr.Row, pin))
+	require.True(t, LandingMarked(w.s, "s1-1"))
+	w.s.Work.SetProp(PropReadsNeeded, "2")
+	p, _ = TickAccept(w.s, TickReq{})
+	assert.Empty(t, p.Units, "marked landing: never back to review")
+	assert.Empty(t, MarkLanding(w.s, pr.Row, pin).Refused, "a landing marked is completed: not held for reads")
+}

@@ -850,6 +850,10 @@ func (l *lander) land(ctx context.Context, j *landJob, pushed []*landJob) {
 		start := time.Now()
 		why := f.queueHead(ctx, stream, j.cards[:len(j.merged)])
 		since(&b.Times.Queue, start)
+		if why == "" {
+			// the reads checked and the landing marked, in one step, just before the push
+			why = f.markLanding(stream, j.cards[:len(j.merged)])
+		}
 		if why != "" {
 			j.refuse(why)
 			return

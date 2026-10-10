@@ -43,3 +43,27 @@ func TestATickLeavesAMergingCardWithItsReadsAndLandLandsIt(t *testing.T) {
 	r.ok("tick")
 	assert.Equal(t, map[string]string{"s1-1": "landed/merged"}, r.places("s1-1"))
 }
+
+// Between the lander's check and its report the card is marked landing (sprint.MarkLanding,
+// before the push): a setting raised there and a tick do not send it back to review, the
+// push and the report complete the landing (tla/Land.tla PushedNeverSentBack). Before the
+// mark, a tick in that window took a pushed card back to review.
+func TestATickUnderThePushLeavesAMarkedLanding(t *testing.T) {
+	t.Parallel()
+	r := newLandRig(t)
+	r.ok("add --stream s1 --count 1 --one")
+	head := r.head("s1-1", "main", "s1-1.txt", "one\n")
+	r.queued(map[string]string{"s1-1": head}, "s1-1")
+	r.ok("start")
+	var under string
+	r.a.beforePush = func(int) {
+		r.ok("set --reads 2")
+		r.ok("tick")
+		under = r.places("s1-1")["s1-1"]
+	}
+	out := r.ok("land --repo-dir " + r.clone + " --base main")
+	assert.Equal(t, "merging/queued", under, "marked landing: never back to review under the push")
+	assert.Contains(t, out, "LAND OK stream=s1 cards=1 base=main")
+	r.ok("tick")
+	assert.Equal(t, map[string]string{"s1-1": "landed/merged"}, r.places("s1-1"))
+}

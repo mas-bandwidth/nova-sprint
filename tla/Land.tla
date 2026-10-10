@@ -62,10 +62,14 @@
 \*             setting does), 1 or 2
 \*   reread    the cards the tick sent back to review short of their reads
 \*             (sprint.ShortReadsBack), waiting for the read they lack
-\*   lcheckneed the reads a card needed when the lander last checked its
-\*             batch before the push (queueHead, pinsReadsWhy)
+\*   lcheckneed the reads a card needed at the lander's last check
+\*   markneed  per head, 0 or the reads it needed when a lander's check marked
+\*             it landing (sprint.MarkLanding writes FieldLandingHead in the
+\*             one store step that checks the reads, just before git push);
+\*             only a clear unmarks it (a return and a new accept of the same
+\*             head keep it: that landing may be on the base already)
 \*   shortland a ghost: a head was pushed onto the base with fewer ok reads
-\*             than it needed at the lander's check
+\*             than it needed when its landing was marked
 \*
 \* THE ACTIONS. The lander's, each a call in land.go: Read (the queue with its
 \* heads, the epoch and the tip; a caller's epoch the store is not at is
@@ -103,25 +107,30 @@
 \*     card's head.
 \*   CarriedHead: a reworked card's next attempt carries the head refused.
 \*   NoLandWithoutReads (v1.2.6): the lander pushes no head with fewer ok
-\*     reads than it needed when the lander checked it, the last step before
-\*     the push (a head the base holds already, pushed and not reported, is
-\*     a push of nothing and is recorded as it is). The accept takes a card only with its reads;
-\*     the setting may rise after (SetReads: set --reads, or a tier pinned),
-\*     so the lander's Build stops the batch before the first card short of
-\*     them (land.go readsWhy, naming it and its count) and its Check reads
-\*     them again before the push (queueHead, pinsReadsWhy). The report holds
-\*     no record for reads: a push is a fact, and Recovers records it.
+\*     reads than it needed when its landing was marked. The accept takes a
+\*     card only with its reads; the setting may rise after (SetReads: set
+\*     --reads, or a tier pinned), so the lander's Build stops the batch
+\*     before the first card short of them (land.go readsWhy, naming it and
+\*     its count), and its Check reads them again and marks the batch landing
+\*     in one store step just before the push (markLanding,
+\*     sprint.MarkLanding). A landing once marked is completed: no later
+\*     check holds it for reads, and the report records what git holds.
 \*     Broken "nocheckreads" drops the Check's read alone, keeping the
 \*     Build's, and the rule fails (Accept, Read, Build, SetReads, Check,
-\*     Push): the Check is the guard it needs. Before v1.2.6 neither
-\*     guard existed: the Studio sprint of 2026-10-10 landed
+\*     Push): the Check is the guard it needs. Before v1.2.6 neither guard
+\*     existed: the Studio sprint of 2026-10-10 landed
 \*     fx-land-fenced-while-server-lands and rm-inbox-push-write-once-race on
 \*     one read of two.
 \*   PushedNeverSentBack (v1.2.6): the tick sends a queued card short of its
 \*     reads back to review for the read it lacks (ShortBack,
-\*     sprint.ShortReadsBack), but never one whose head the base holds
-\*     (pushed and not reported, sprint.PushedUnreportedMatches): the lander
-\*     records that one (Recovers). Broken "bouncepushed" takes it too, and
+\*     sprint.ShortReadsBack), but never one whose head the lander pushed in
+\*     the store's epoch (a clear is a new store, and an older epoch's push
+\*     is not its to know). It holds because every head a lander pushes was
+\*     marked landing before the push, the mark stays on that head (only a clear removes it; a return
+\*     and an accept again keep it, which TLC found: Return, Accept,
+\*     SetReads, ShortBack took a pushed head back), and ShortBack takes no marked card
+\*     (sprint.LandingMarked): from the mark, through the push, the report
+\*     and a crash between them. Broken "bouncemarked" ignores the mark, and
 \*     the rule fails.
 \*   Recovers: a batch pushed and not reported (a crash, or a report the guard
 \*     refused) is recorded by running the lander again: under fairness, once
@@ -136,11 +145,8 @@
 \* lets a rework replace a card's head after the check: the report's guard,
 \* which compares heads and not ids, refuses it. And the same window lets the
 \* setting rise after the check: the push is made for a card now short of its
-\* reads, and recorded (NoLandWithoutReads is of the check). And the tick may
-\* send a card back to review between the check and the push, before its
-\* push is marked unreported: its head is pushed and the report, finding it
-\* off the queue, records nothing (as a return in that window does); it is
-\* landed again, a merge of nothing, after its read and accept.
+\* reads, and recorded: the landing was marked at the check, and is completed
+\* (NoLandWithoutReads is of the mark).
 \* Reversed witnesses: ReachStranded (the lander's own push left unreported,
 \* so Recovers is not vacuous), ReachStalePush, ReachLandsOn (a card behind
 \* a reworked one landed) and ReachReview (a card at its bound in review).
@@ -176,8 +182,8 @@
 \*     (CarriedHead fails).
 \*   "nocheckreads" drops the reads from the Check alone (NoLandWithoutReads
 \*     fails).
-\*   "bouncepushed" sends back a card pushed and not reported
-\*     (PushedNeverSentBack fails).
+\*   "bouncemarked" sends back a card marked landing (PushedNeverSentBack
+\*     fails: Accept, Read, Build, Check, Push, SetReads, ShortBack).
 \*
 \* WHAT IS NOT MODELLED. The check (--check), the red and rejected facts:
 \* those refusals are the lander going idle with the store unchanged. The
@@ -195,17 +201,17 @@ VARIABLES queue, att, landed, epoch, base, tip,
           lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
-          oks, need, reread, shortland, lcheckneed
+          oks, need, reread, shortland, lcheckneed, markneed
 
-reads == <<oks, need, reread>>
-store == <<queue, att, landed, epoch, ready, review, stop, oks, need, reread>>
+reads == <<oks, need, reread, markneed>>
+store == <<queue, att, landed, epoch, ready, review, stop, oks, need, reread, markneed>>
 remote == <<base, tip>>
 lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries, lref, lkind, lcheckneed>>
 ghosts == <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland>>
 vars == <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
-          oks, need, reread, shortland, lcheckneed>>
+          oks, need, reread, shortland, lcheckneed, markneed>>
 
 Heads == Cards \X (1..MaxAttempts)
 
@@ -230,9 +236,12 @@ Guard(b) == IF Broken = "idguard" THEN FreshIds(b) ELSE Fresh(b)
 \* The head is its card's current one, read by as many readers as the card
 \* needs now (sprint.ReadsShort).
 ReadsOk(h) == Current(h[1]) = h /\ oks[h[1]] >= need
-\* The lander holds no head the base already holds (pushed and not reported:
-\* land.go readsWhy and pinsReadsWhy skip sprint.PushedUnreportedMatches).
-LanderReadsOk(h) == h \in base \/ ReadsOk(h)
+\* A head a lander marked landing (sprint.MarkLanding, FieldLandingHead): its
+\* landing was committed to at that check, with the reads it needed then.
+Marked(h) == markneed[h] > 0
+\* The lander holds no head marked landing for its reads: that landing is
+\* completed (land.go readsWhy, sprint.MarkLanding skip it).
+LanderReadsOk(h) == Marked(h) \/ ReadsOk(h)
 BatchReads(b) == \A i \in 1..Len(b) : LanderReadsOk(b[i])
 
 \* noepoch's report guard: the heads, no epoch fence.
@@ -268,7 +277,7 @@ TypeOK ==
   /\ carried \subseteq Heads
   /\ ownstop \in BOOLEAN
   /\ oks \in [Cards -> 1..2] /\ need \in 1..2 /\ reread \subseteq Cards
-  /\ shortland \in BOOLEAN /\ lcheckneed \in 1..2
+  /\ shortland \in BOOLEAN /\ lcheckneed \in 1..2 /\ markneed \in [Heads -> 0..2]
 
 Init ==
   /\ queue = <<>> /\ att = [c \in Cards |-> 1] /\ landed = {} /\ epoch = 0
@@ -278,6 +287,7 @@ Init ==
   /\ lref = <<>> /\ lkind = "own" /\ ready = {} /\ review = {} /\ stop = "none"
   /\ carried = {} /\ ownstop = FALSE
   /\ oks = [c \in Cards |-> 1] /\ need = 1 /\ reread = {} /\ shortland = FALSE /\ lcheckneed = 1
+  /\ markneed = [h \in Heads |-> 0]
 
 \* ---- the lander (land.go) ----
 
@@ -323,9 +333,15 @@ Build ==
 \* before the push; reportfirst has no check.
 Check ==
   /\ lphase = "built" /\ Broken # "reportfirst"
-  /\ lphase' = IF Broken = "latepoch" \/ (Guard(lbatch) /\ (Broken = "nocheckreads" \/ BatchReads(lbatch))) THEN "checked" ELSE "idle"
+  /\ LET pass == Broken = "latepoch" \/ (Guard(lbatch) /\ (Broken = "nocheckreads" \/ BatchReads(lbatch)))
+     IN /\ lphase' = IF pass THEN "checked" ELSE "idle"
+        \* the check and the mark are one store step (sprint.MarkLanding)
+        /\ markneed' = IF pass
+                       THEN [h \in Heads |-> IF h \in Range(lbatch) /\ markneed[h] = 0 THEN need ELSE markneed[h]]
+                       ELSE markneed
   /\ lcheckneed' = need
-  /\ UNCHANGED store /\ UNCHANGED remote /\ UNCHANGED <<lq, lbatch, lep, lrep, ltip, tries, lref, lkind>>
+  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, oks, need, reread>>
+  /\ UNCHANGED remote /\ UNCHANGED <<lq, lbatch, lep, lrep, ltip, tries, lref, lkind>>
   /\ UNCHANGED events /\ UNCHANGED ghosts
 
 \* Push: git push, which the store cannot fence. A moved tip is rejected and
@@ -351,7 +367,7 @@ Push ==
           \* a head newly pushed short of what it needed at the check (a head the
           \* base holds already is a push of nothing)
           /\ shortland' = (shortland \/ \E h \in Range(lbatch) :
-                             h \notin base /\ Current(h[1]) = h /\ oks[h[1]] < lcheckneed)
+                             h \notin base /\ Current(h[1]) = h /\ oks[h[1]] < markneed[h])
           /\ lphase' = PushTo
           /\ UNCHANGED tries
 
@@ -412,7 +428,7 @@ Refuse ==
              /\ ownstop' = (ownstop \/ lkind = "own")
              /\ UNCHANGED <<queue, att, ready, review, carried, oks>>
   /\ lphase' = "idle" /\ lref' = <<>>
-  /\ UNCHANGED <<landed, epoch, need, reread, shortland>> /\ UNCHANGED remote
+  /\ UNCHANGED <<landed, epoch, need, reread, shortland, markneed>> /\ UNCHANGED remote
   /\ UNCHANGED <<lcheckneed, lq, lbatch, lep, lrep, ltip, tries, lkind>>
   /\ UNCHANGED events /\ UNCHANGED <<badcaller, stalepush, stalerec, lpushed>>
 
@@ -431,7 +447,7 @@ Accept ==
     /\ oks[c] >= need
     /\ queue' = SubSeq(queue, 1, i - 1) \o <<c>> \o SubSeq(queue, i, Len(queue))
     /\ ready' = ready \ {c} /\ review' = review \ {c} /\ reread' = reread \ {c}
-    /\ UNCHANGED <<att, landed, epoch, stop, oks, need, shortland>> /\ UNCHANGED remote /\ UNCHANGED lander
+    /\ UNCHANGED <<att, landed, epoch, stop, oks, need, shortland, markneed>> /\ UNCHANGED remote /\ UNCHANGED lander
 
 Return ==
   \E c \in Range(queue) :
@@ -444,7 +460,7 @@ Rework ==
   \E c \in Range(queue) :
     /\ att[c] < MaxAttempts
     /\ att' = [att EXCEPT ![c] = @ + 1] /\ oks' = [oks EXCEPT ![c] = 1]
-    /\ UNCHANGED <<queue, landed, epoch, ready, review, stop, need, reread, shortland>>
+    /\ UNCHANGED <<queue, landed, epoch, ready, review, stop, need, reread, shortland, markneed>>
     /\ UNCHANGED remote /\ UNCHANGED lander
 
 \* Another lander lands the queue's head, correctly: never on a stopped stream,
@@ -461,6 +477,7 @@ Clear ==
   /\ epoch < MaxEpoch
   /\ epoch' = epoch + 1 /\ queue' = <<>> /\ landed' = {}
   /\ ready' = {} /\ review' = {} /\ stop' = "none" /\ reread' = {}
+  /\ markneed' = [h \in Heads |-> 0]
   /\ UNCHANGED <<att, oks, need, shortland>> /\ UNCHANGED remote /\ UNCHANGED lander
 
 \* A mind resumes a stream the lander's own failure stopped.
@@ -473,7 +490,7 @@ Resume ==
 \* --tier): the count every card in review and merging needs changes.
 SetReads ==
   /\ need' = 3 - need
-  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, oks, reread, shortland>>
+  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, oks, reread, shortland, markneed>>
   /\ UNCHANGED remote /\ UNCHANGED lander
 
 \* A second reader's ok read at a card's head, off the queue (in review).
@@ -481,7 +498,7 @@ ReadOk ==
   \E c \in Cards :
     /\ c \notin Range(queue) /\ oks[c] < 2
     /\ oks' = [oks EXCEPT ![c] = 2]
-    /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, need, reread, shortland>>
+    /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, need, reread, shortland, markneed>>
     /\ UNCHANGED remote /\ UNCHANGED lander
 
 MoveBase ==
@@ -505,16 +522,16 @@ Outside ==
 
 \* ShortBack: the tick's pump sends a queued card short of its reads back to
 \* review (sprint.ShortReadsBack), off the queue, for the read it lacks; a
-\* read (ReadOk) and the accept bring it back. A card whose head the base
-\* holds (pushed and not reported) is never taken: the lander records it
-\* (sprint.PushedUnreportedMatches); bouncepushed takes it too.
+\* read (ReadOk) and the accept bring it back. A card marked landing (a
+\* lander checked it and committed, before its push) is never taken: the
+\* lander completes it (sprint.LandingMarked); bouncemarked takes it too.
 ShortBack ==
   /\ \E c \in Range(queue) :
        /\ oks[c] < need
-       /\ Broken = "bouncepushed" \/ Current(c) \notin base
+       /\ Broken = "bouncemarked" \/ ~Marked(Current(c))
        /\ queue' = SelectSeq(queue, LAMBDA x : x # c)
        /\ reread' = reread \cup {c}
-  /\ UNCHANGED <<att, landed, epoch, ready, review, stop, oks, need>>
+  /\ UNCHANGED <<att, landed, epoch, ready, review, stop, oks, need, markneed>>
   /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED events /\ UNCHANGED ghosts
 
 Next == Land \/ ShortBack \/ Outside
@@ -562,9 +579,11 @@ NoLandWithoutReads == ~shortland
 \* vacuous). Shortest: Accept, SetReads, ShortBack.
 ReachShortBack == reread = {}
 
-\* The tick never sends a card whose head the base holds back to review.
+\* The tick never sends back to review a card whose head this lander pushed in
+\* the store's epoch (lpushed: a clear is a new store, which knows nothing of an
+\* older epoch's push, as ReportHoldsTheEpoch says).
 PushedNeverSentBack ==
-  [][ShortBack => \A c \in Range(queue) \ Range(queue') : Current(c) \notin base]_vars
+  [][ShortBack => \A c \in Range(queue) \ Range(queue') : Current(c) \notin lpushed]_vars
 
 \* A card this lander pushed and landed while another, reworked by a refusal
 \* of its own head, waits ready: the lander went on past it. Shortest: Accept,

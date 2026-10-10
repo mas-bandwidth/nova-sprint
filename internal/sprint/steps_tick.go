@@ -366,7 +366,10 @@ const NReadyToMerge = "ready to merge"
 // are planned for the cards accepted and for no others.
 func TickAccept(s *Snapshot, r TickReq) (Plan, int) {
 	// a merging card short of its reads goes back to review first, in a pump of its own:
-	// the accepts wait for the next tick, so the two never both write a stream's state
+	// the accepts wait for the next tick, so the two never both write a stream's state. A
+	// tick that sends one back accepts nothing: a card ready to accept waits one tick, and
+	// the stall rule's replay of this part (held.go heldParts) sees no accept for it then
+	// (a judgment that clears on the next tick)
 	if back := ShortReadsBack(s, r.who()); len(back.Units) > 0 {
 		return back, 0
 	}
@@ -415,9 +418,10 @@ func ShortReadsBack(s *Snapshot, who string) Plan {
 	var p Plan
 	leaving := map[string]bool{}
 	for _, c := range s.Work.Column(Merging) {
-		if IsSentinel(c) || s.Held[c.ID] || PushedUnreportedMatches(s, c.ID) {
-			// a card pushed and not reported is on the base already: the lander records it
-			// (recordPushed), never review (tla/Land.tla PushedNeverSentBack)
+		if IsSentinel(c) || s.Held[c.ID] || LandingMarked(s, c.ID) || PushedUnreportedMatches(s, c.ID) {
+			// a lander committed to landing it (marked before its push, MarkLanding), or it was
+			// pushed and not reported: the lander completes it, never review (tla/Land.tla
+			// PushedNeverSentBack)
 			continue
 		}
 		why := ReadsShortWhy(s, c)
