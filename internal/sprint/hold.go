@@ -73,6 +73,10 @@ type HoldReq struct {
 	Kind   string `json:",omitempty"`
 	Reason string
 	Who    string
+	// HeldBy, with a member hold, marks the hold as made by that mechanism (the
+	// machine's own fault hold, HeldByFault) and not the coordinator's: the
+	// control card's held_by. The coordinator's hold carries none.
+	HeldBy string `json:",omitempty"`
 	// Friends is the friend roster's names (nova-config's friend rows): the snapshot
 	// holds no table of them.
 	Friends []string `json:",omitempty"`
@@ -206,7 +210,7 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 		case t.Kind == HoldMember && r.Release:
 			add(fleetStepPlan(s, FleetReq{Op: "release", Member: t.Name, Who: r.Who, Fresh: slices.Contains(r.Alive, t.Name), Why: r.Reason}, rr, moves))
 		case t.Kind == HoldMember:
-			add(downPlan(s, FleetReq{Op: "hold", Member: t.Name, Who: r.Who, Why: holdWhy(r), Reason: r.Reason, Finish: !r.Return, keep: keep}, up, rr, moves, q, widths))
+			add(downPlan(s, FleetReq{Op: "hold", Member: t.Name, Who: r.Who, Why: holdWhy(r), Reason: r.Reason, Finish: !r.Return, HeldBy: r.HeldBy, keep: keep}, up, rr, moves, q, widths))
 		case t.Kind == HoldStream:
 			var sp Plan
 			sp, line = holdStream(s, t.Name, r)

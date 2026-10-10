@@ -12,10 +12,14 @@
 (* person made (fleet down, no held_by mark) is never cleared by the     *)
 (* machine: only a person lifts it.                                      *)
 (*                                                                       *)
-(* held: "none", "fault" (the machine's), or "person" (a person's).      *)
-(* beat: the member's machine beating ("up") or not ("down"). ok: a      *)
-(* clean finish since the hold was placed, reset by any new hold, so a   *)
-(* clean finish before the hold is no proof of health.                   *)
+(* held: who holds the member, "none", "fault" (the machine's), or      *)
+(* "person" (a person's) -- the control card's held_by. down: the        *)
+(* member's held-down state, the control card's held, which the probe    *)
+(* clears while the mark (held) stays (faultClear releases the down to   *)
+(* deal the card, keeping held_by). beat: the member's machine beating   *)
+(* ("up") or not ("down"). ok: a clean finish since the hold was placed, *)
+(* reset by any new hold, so a clean finish before the hold is no proof  *)
+(* of health.                                                            *)
 (*                                                                       *)
 (* Broken (the reversed witness):                                        *)
 (*  "noautoclear"  - the tick never clears its own fault hold, however   *)
@@ -27,22 +31,24 @@ EXTENDS Naturals
 
 CONSTANT Broken
 
-VARIABLES held, beat, ok
+VARIABLES held, down, beat, ok
 
-vars == <<held, beat, ok>>
+vars == <<held, down, beat, ok>>
 
 TypeOK ==
     /\ held \in {"none", "fault", "person"}
+    /\ down \in {"no", "yes"}
     /\ beat \in {"down", "up"}
     /\ ok \in {"no", "yes"}
 
-Init == /\ held = "none" /\ beat = "down" /\ ok = "no"
+Init == /\ held = "none" /\ down = "no" /\ beat = "down" /\ ok = "no"
 
 \* the machine holds the member for a failure; any clean finish before it
-\* is no proof of health, so ok resets
+\* is no proof of health, so ok resets, and the member is held down
 FaultHold ==
     /\ held = "none"
     /\ held' = "fault"
+    /\ down' = "yes"
     /\ ok' = "no"
     /\ UNCHANGED <<beat>>
 
@@ -51,6 +57,7 @@ FaultHold ==
 PersonHold ==
     /\ held # "person"
     /\ held' = "person"
+    /\ down' = "yes"
     /\ ok' = "no"
     /\ UNCHANGED <<beat>>
 
@@ -58,15 +65,26 @@ PersonHold ==
 Beat ==
     /\ beat = "down"
     /\ beat' = "up"
-    /\ UNCHANGED <<held, ok>>
+    /\ UNCHANGED <<held, down, ok>>
 
-\* the member takes a card and finishes it cleanly: it must be up (the tick
-\* released its down for the probe) and this finish is after the hold
-FinishClean ==
+\* the tick releases a beating fault-held member's down so the deal gives it
+\* a card (the probe): the mark (held) is kept, the down is cleared
+Probe ==
+    /\ held = "fault"
     /\ beat = "up"
     /\ ok = "no"
+    /\ down = "yes"
+    /\ down' = "no"
+    /\ UNCHANGED <<held, beat, ok>>
+
+\* the member takes a card and finishes it cleanly: it must be up (its down
+\* released for the probe) and this finish is after the hold
+FinishClean ==
+    /\ beat = "up"
+    /\ down = "no"
+    /\ ok = "no"
     /\ ok' = "yes"
-    /\ UNCHANGED <<held, beat>>
+    /\ UNCHANGED <<held, down, beat>>
 
 \* the tick clears the machine's own fault hold once the member is healthy,
 \* and only its own: a person's hold is never lifted by this action
@@ -78,19 +96,22 @@ Clear ==
          THEN /\ held # "none"        \* the bug: it clears a person's hold too
          ELSE /\ held = "fault"
     /\ held' = "none"
+    /\ down' = "no"
     /\ ok' = "no"
     /\ UNCHANGED <<beat>>
 
-Next == \/ FaultHold \/ PersonHold \/ Beat \/ FinishClean \/ Clear
+Next == \/ FaultHold \/ PersonHold \/ Beat \/ Probe \/ FinishClean \/ Clear
 
 Spec == Init /\ [][Next]_vars /\ WF_vars(Clear)
 
 (* Liveness: a machine fault hold clears once the member beats and finishes *)
-(* a card cleanly.                                                         *)
+(* a card cleanly. A person may take the hold over first (held becomes      *)
+(* "person"), which also leaves the fault mark; the fault mark never stays  *)
+(* once the member is healthy.                                             *)
 FaultHoldClears ==
-    (held = "fault" /\ beat = "up" /\ ok = "yes") ~> (held = "none")
+    (held = "fault" /\ beat = "up" /\ ok = "yes") ~> (held = "none" \/ held = "person")
 
 (* Safety: a person's hold is never cleared by the machine.               *)
 PersonHoldStays ==
-    [](held = "person" => held' = "person")
+    [][held = "person" => held' = "person"]_vars
 =============================================================================

@@ -35,6 +35,7 @@ func TestAMachineFaultHoldClearsOnACleanFinish(t *testing.T) {
 	// the machine holds the member for an exit fault, letting its working card finish
 	w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: wc.Row, HeldBy: HeldByFault, Finish: true, Who: "machine"}))
 	require.True(t, FaultHeld(w.s.MemberCtl(wc.Row)), "held by the machine for a fault: %v", w.s.MemberCtl(wc.Row).Fields)
+	require.NotEmpty(t, w.s.MemberCtl(wc.Row).F(FieldFaultSince), "the fault hold carries its stamp: %v", w.s.MemberCtl(wc.Row).Fields)
 
 	// the member finishes the card cleanly, after the hold
 	w.tick(time.Second)
