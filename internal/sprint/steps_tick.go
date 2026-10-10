@@ -200,6 +200,10 @@ type TickReq struct {
 	// before its first read (gaterun.go: TickGate in the pump, hideGateHeld in the ask);
 	// nil is DefaultGate.
 	Gate GateRunner
+	// Proof is the mechanical proof the tick runs on each mechanical kind that the
+	// gate passes, before its first read (proof.go: TickProof in the pump, held in the
+	// ask alongside the gate); nil is DefaultProof.
+	Proof ProofRunner
 }
 
 func (r TickReq) who() string {
@@ -363,6 +367,13 @@ func TickAccept(s *Snapshot, r TickReq) (Plan, int) {
 	// is run on a bench once; a red gate is reworked here and a bench that did not answer
 	// leaves the attempt waiting, so the accept is due for the next
 	if p, ok := TickGate(s, r); ok {
+		return p, 1
+	}
+	// then the mechanical proof (proof.go, TickProof): a mechanical card that the gate
+	// passed green is proved by the machine; a failing proof is reworked here, a green
+	// one makes the card acceptable with no read, and a proof no host answered leaves the
+	// attempt waiting; ok is false when nothing moved
+	if p, ok := TickProof(s, r); ok {
 		return p, 1
 	}
 	eligible := func(c *Card) string {
