@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // The no-stall rule: every primary not landed and on the table is held by
@@ -288,6 +290,12 @@ func (c *held) notes(ns []Note) {
 			for _, p := range n.Primaries {
 				c.tick[p] = "writes " + n.Type
 			}
+		case n.Type == NNoFrontierRoom:
+			// a stream-level judgment the friend ask writes for every frontier
+			// read no one may take: its primaries each get the "writes ..." line
+			for _, p := range n.Primaries {
+				c.tick[p] = "writes " + n.Type
+			}
 		case n.StreamLevel:
 			c.tickStream[n.Stream] = "writes " + n.Type
 		default:
@@ -501,6 +509,20 @@ func (c *held) judgment(pr *Card) string {
 		for _, j := range c.judged[StreamSubject("")] {
 			if strings.HasPrefix(j, NFewReaders) {
 				return "fewer than two readers are up; open: " + j
+			}
+		}
+	}
+	// a frontier read no one has room for: its one judgment, open or
+	// acknowledged, and why it says (who is full, or who may not take it)
+	if friendReadTier(c.s, pr) == cardhdr.RouteFrontier && c.waitsToBeAsked(pr) {
+		for _, o := range c.s.Open {
+			if o.Note.Type == NNoFrontierRoom && o.Note.Kind == Judgment {
+				return "no frontier reader has room; open: " + o.Note.Type + " " + o.Note.ID + ": " + o.Note.What
+			}
+		}
+		for _, o := range c.s.Acked {
+			if o.Note.Type == NNoFrontierRoom {
+				return "no frontier reader has room; acknowledged: " + o.Note.What
 			}
 		}
 	}
