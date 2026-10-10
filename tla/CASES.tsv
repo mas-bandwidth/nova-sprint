@@ -349,10 +349,10 @@ MCStatsResetBrokenByCount.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore
 MCStatsResetBrokenNoLock.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoStamp.cfg	MCStatsReset.tla	invariant	RecordShowsShown	ignore-terminal	statsreset	required	-
 MCStopReturn.cfg	MCStopReturn.tla	pass	-	ignore-terminal	stopreturn	required	-
- MCStopReturnBrokenNoSettle.cfg	MCStopReturn.tla	temporal	ReturnedFreesItsRow	ignore-terminal	stopreturn	required	-
- MCStopReturnBrokenNoReceipt.cfg	MCStopReturn.tla	invariant	NoLiveChildAcrossStart	ignore-terminal	stopreturn	required	-
- MCRoadmapEntry.cfg	MCRoadmapEntry.tla	pass	-	ignore-terminal	roadmapentry	required	-
- MCRoadmapEntryBrokenLastChild.cfg	MCRoadmapEntry.tla	invariant	ParentsHold	ignore-terminal	roadmapentry	required	-
- MCRoadmapEntryBrokenSourceFirst.cfg	MCRoadmapEntry.tla	invariant	NoLoss	ignore-terminal	roadmapentry	required	-
- MCRoadmapEntryBrokenMoveDone.cfg	MCRoadmapEntry.tla	action	DoneFinal	ignore-terminal	roadmapentry	required	-
- MCRoadmapEntryBrokenShippedMove.cfg	MCRoadmapEntry.tla	action	ShippedFrozen	ignore-terminal	roadmapentry	required	-
+MCStopReturnBrokenNoSettle.cfg	MCStopReturn.tla	temporal	ReturnedFreesItsRow	ignore-terminal	stopreturn	required	-
+MCStopReturnBrokenNoReceipt.cfg	MCStopReturn.tla	invariant	NoLiveChildAcrossStart	ignore-terminal	stopreturn	required	-
+MCRoadmapEntry.cfg	MCRoadmapEntry.tla	pass	-	ignore-terminal	roadmapentry	required	-
+MCRoadmapEntryBrokenLastChild.cfg	MCRoadmapEntry.tla	invariant	ParentsHold	ignore-terminal	roadmapentry	required	-
+MCRoadmapEntryBrokenSourceFirst.cfg	MCRoadmapEntry.tla	invariant	NoLoss	ignore-terminal	roadmapentry	required	-
+MCRoadmapEntryBrokenMoveDone.cfg	MCRoadmapEntry.tla	action	DoneFinal	ignore-terminal	roadmapentry	required	-
+MCRoadmapEntryBrokenShippedMove.cfg	MCRoadmapEntry.tla	action	ShippedFrozen	ignore-terminal	roadmapentry	required	-
