@@ -343,24 +343,35 @@ type routeEnd struct {
 // routeEnds is every ended take the fleet table's work cards record, by route: each take
 // a provider failed or that left no result (ProviderTakes), and each card's own finish.
 // A take that ended with its member down keeps no record and is not counted.
+//
+// It walks the fleet's cells directly, never Column's sorted whole (the cards' order
+// within a route is settled later by cmpEnd in RestsDue, so the O(n log n) sort Column
+// pays is wasted here), and it parses a take's finish only after it names a route.
 func routeEnds(fleet *Table) map[string][]routeEnd {
 	out := map[string][]routeEnd{}
-	for _, c := range fleet.Column(Ready, Working, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
-		takes, numbers := ProviderTakes(c)
-		for i, t := range takes {
-			at, err := time.Parse(time.RFC3339, t.Finished)
-			if t.Route == "" || t.Route == RoutePin || err != nil {
-				continue
+	for _, row := range fleet.Rows() {
+		for _, col := range []State{Ready, Working, DoneOK, DoneFailed, DoneDefect, Withdrawn} {
+			for _, c := range fleet.Cell(row, col) {
+				takes, numbers := ProviderTakes(c)
+				for i, t := range takes {
+					if t.Route == "" || t.Route == RoutePin {
+						continue
+					}
+					at, err := time.Parse(time.RFC3339, t.Finished)
+					if err != nil {
+						continue
+					}
+					taken, _ := time.Parse(time.RFC3339, t.Taken)
+					out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t.Error), refused: refusal(t.Error)})
+				}
+				if c.Col != DoneOK && c.Col != DoneFailed {
+					continue
+				}
+				at, err := time.Parse(time.RFC3339, c.F("finished"))
+				if r := c.F(FieldRoute); r != "" && r != RoutePin && err == nil {
+					out[r] = append(out[r], routeEnd{card: c.ID, take: c.Int("redeals") + 1, at: at})
+				}
 			}
-			taken, _ := time.Parse(time.RFC3339, t.Taken)
-			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t.Error), refused: refusal(t.Error)})
-		}
-		if c.Col != DoneOK && c.Col != DoneFailed {
-			continue
-		}
-		at, err := time.Parse(time.RFC3339, c.F("finished"))
-		if r := c.F(FieldRoute); r != "" && r != RoutePin && err == nil {
-			out[r] = append(out[r], routeEnd{card: c.ID, take: c.Int("redeals") + 1, at: at})
 		}
 	}
 	return out

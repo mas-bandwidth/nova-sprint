@@ -51,11 +51,33 @@ func TestTheTicksCheckSettlesTheRestsOnceAtScale(t *testing.T) {
 }
 
 // BenchmarkTickCheckWithRests is the check part's wall at that scale: go test -bench
-// TickCheckWithRests ./internal/sprint (about 10 ms settled once; seconds with a scan per card).
+// TickCheckWithRests ./internal/sprint (about 10 ms settled once).
 func BenchmarkTickCheckWithRests(b *testing.B) {
 	s := restWorld(b)
 	b.ResetTimer()
 	for range b.N {
 		TickCheck(s, TickReq{})
+	}
+}
+
+// BenchmarkTickDealWithRests is the deal part's wall at the same scale: go test -bench
+// TickDealWithRests ./internal/sprint. The deal settles the rests once too, and the scan it
+// pays for them (routeEnds) walks the fleet's cells, never Column's sorted whole, so it stays
+// under the one-second tick gate at load (route_rest.go).
+func BenchmarkTickDealWithRests(b *testing.B) {
+	s := restWorld(b)
+	b.ResetTimer()
+	for range b.N {
+		TickDeal(s, TickReq{})
+	}
+}
+
+// BenchmarkRouteEnds is the deal's rest scan alone (route_rest.go, routeEnds): the ended
+// takes the rule counts, read from the fleet's cells without sorting the whole column.
+func BenchmarkRouteEnds(b *testing.B) {
+	s := restWorld(b)
+	b.ResetTimer()
+	for range b.N {
+		routeEnds(s.Fleet)
 	}
 }
