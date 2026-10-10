@@ -277,4 +277,4 @@ MCCoordinatorPassEmpty.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordina
 MCCoordinatorPassBrokenNoReset.cfg	MCCoordinatorPass.tla	invariant	EmptyAWholeWindow	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassPin.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenPinRekey.cfg	MCCoordinatorPass.tla	invariant	OneJudgmentAnEpisode	ignore-terminal	coordinatorpass	required	-
-MCCapDeal.cfg	MCCapDeal.tla	pass	-	ignore-terminal	capdeal	required	witnesses checked against code: machinefirst fixes phase order; nojudge fixes bound routing; twice/idtwice enforce upper count; idnojudge covers identical-end bound; nojudgecount adds judgment-state lower bound
+MCCapDeal.cfg	MCCapDeal.tla	pass	-	ignore-terminal	capdeal	required	-
