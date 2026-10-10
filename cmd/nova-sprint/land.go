@@ -317,6 +317,9 @@ type lander struct {
 	scope         map[string][]string // each card's scope amendments, as checkCard allowed them (sprint.ScopeAmended)
 	prose         map[string][]string // each stream's prose globs (sprint.StreamProse), whose backquotes checkCard does not read
 	toScore       []scoreJob          // the landed batches, scored after the whole pass (landscore.go)
+	// cardTips is the batch branch's tip before each head mergeCards merged, then after the
+	// last: what a red batch gate bisects (landpass.go, bisect)
+	cardTips []string
 	// ledgerLog is the land log's lines for the shrink-only ledgers the batch's merges
 	// resolved (ledgerunion.go), reported with the batch (NOTE) and then cleared.
 	ledgerLog []string
@@ -1531,12 +1534,32 @@ func (l *lander) mergeCards(ctx context.Context, dir, stream string, cards []lan
 	if c.first > 0 {
 		gateEach = true // the cure's tree was gated alone; each head after it is, as before
 	}
+	// cardTips is the branch's tip before each head merged, then after the last that did:
+	// what a red batch gate bisects (landpass.go, bisect)
+	l.cardTips = nil
+	defer func() {
+		m := len(merged) - c.first
+		switch {
+		case why != "" || m < 0:
+			l.cardTips = nil
+		case len(l.cardTips) > m:
+			l.cardTips = l.cardTips[:m+1] // the tip before the head that ended the batch
+		default:
+			// no tip after the last head: nothing to bisect, and a red gate blames no head (bisect)
+			if head, err := l.git(ctx, dir, "rev-parse", "--verify", "HEAD^{commit}"); err == nil {
+				l.cardTips = append(l.cardTips, head)
+			} else {
+				l.cardTips = nil
+			}
+		}
+	}()
 	for i := c.first; i < len(cards); i++ {
 		card := &cards[i]
 		before, err := l.git(ctx, dir, "rev-parse", "--verify", "HEAD^{commit}")
 		if err != nil {
 			return nil, failed, "the batch branch has no tip before the merge of " + card.id + ": " + firstLine("", err) + "; no card is blamed and nothing was pushed or reported"
 		}
+		l.cardTips = append(l.cardTips, before)
 		var refused, env string
 		l.conflictKind, l.conflictPaths = "", nil // the merge below says, when it stops on unmerged paths
 		refused, env, card.resolved = l.mergeHead(ctx, dir, stream, *card)
