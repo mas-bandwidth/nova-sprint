@@ -333,3 +333,5 @@ MCFriendEmptyRunNamed.cfg	MCFriendEmptyRun.tla	pass	-	ignore-terminal	friendempt
 MCFriendEmptyRunBrokenNoLeft.cfg	MCFriendEmptyRun.tla	invariant	NeverBackToTheEmptyLane	ignore-terminal	friendemptyrun	required	-
 MCFriendEmptyRunBrokenMachineLeft.cfg	MCFriendEmptyRun.tla	invariant	NeverBackToTheEmptyLane	ignore-terminal	friendemptyrun	required	-
 MCFriendEmptyRunNamedReach.cfg	MCFriendEmptyRun.tla	invariant	NeverReDealtNamed	ignore-terminal	friendemptyrun	required	-
+MCFriendEmptyRunBrokenCapLeft.cfg	MCFriendEmptyRun.tla	invariant	NeverBackToTheEmptyLane	ignore-terminal	friendemptyrun	required	-
+MCFriendEmptyRunCapReach.cfg	MCFriendEmptyRun.tla	invariant	NeverPinned	ignore-terminal	friendemptyrun	required	-

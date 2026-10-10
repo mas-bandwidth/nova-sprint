@@ -239,8 +239,9 @@ func cardLeft(c, wc *Card) []string {
 	return left
 }
 
-// friendsLeft is the friends the work card has left (FieldFriendsLeft), with the one it
-// was taken back from while it is withdrawn.
+// friendsLeft is the friends the work card itself has left (FieldFriendsLeft), with the one
+// it was taken back from while it is withdrawn. A reader that decides where an attempt may
+// go reads cardLeft, which adds the friends its primary has left for good.
 func friendsLeft(wc *Card) []string {
 	if wc == nil {
 		return nil
@@ -253,8 +254,9 @@ func friendsLeft(wc *Card) []string {
 }
 
 // friendsFor is the friends up (friendDealable) whose tiers hold the tier who may still be
-// dealt the primary c: never one its withdrawn attempt was withdrawn or taken back from
-// (withdrawnFrom), as the friends' deal places it (friendDealPass). None, while friends
+// dealt the primary c: never one the card has left for good (cardLeft: an empty run), nor
+// one its withdrawn attempt was withdrawn or taken back from (withdrawnFrom), as the
+// friends' deal places it (friendDealPass). None, while friends
 // alone serve the tier (tierServed), is a card no worker is left for: the tick's judgment
 // of the tier names it (TickDeal).
 func (s *Snapshot) friendsFor(c *Card, tier string) []FriendSeat {
@@ -719,11 +721,14 @@ func friendEscalateUnit(s *Snapshot, c, prev *Card, card, row, tier string) Unit
 // friendWithFree is the up friend of one of the classes with the most free width in
 // free, the first by name among equals, whose work restriction the card c is within;
 // "" when none has room. AttemptCapDeal passes the free width it has left in this plan,
-// decremented after each deal.
+// decremented after each deal. Never a friend the card has left for good (cardLeft: an
+// empty run, ruleHarness): its brief would gain WHO: friend <her> and pin every later
+// rework to the lane that ran it empty.
 func friendWithFree(seats []FriendSeat, free map[string]int, c *Card, classes ...string) string {
+	gone := cardLeft(c, nil)
 	var up []string
 	for _, f := range seats {
-		if f.Status == Up && slices.Contains(classes, f.Class) && friendRestrictionAllows(f, c) {
+		if f.Status == Up && slices.Contains(classes, f.Class) && friendRestrictionAllows(f, c) && !slices.Contains(gone, f.Name) {
 			up = append(up, f.Name)
 		}
 	}

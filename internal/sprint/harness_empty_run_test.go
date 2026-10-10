@@ -78,9 +78,8 @@ func TestAnEmptyRunIsNeverReworkedOntoTheFriendWhoseLaneRanItEmpty(t *testing.T)
 		w, amy, _ := emptyRunOnAmy(t, "friend", emptyRunReport("amy"))
 		rules(w, on(amy))
 		dealWith(w, amy)
-		if wc := w.s.Fleet.Card(WorkCardID("s1-1", 2)); wc != nil {
-			assert.NotEqual(t, FriendRow("amy"), wc.Row, "never back to amy")
-		}
+		assert.Nil(t, w.s.Fleet.Card(WorkCardID("s1-1", 2)), "no attempt 2 is dealt: never back to amy")
+		assert.Equal(t, Ready, w.state("s1-1"), "it waits ready")
 	})
 	t.Run("reversed: a cost-line fault leaves no friend", func(t *testing.T) {
 		t.Parallel()
@@ -141,4 +140,25 @@ func TestAMachinesAttemptNeverGoesBackToTheFriendItLeft(t *testing.T) {
 		require.NotNil(t, wc)
 		assert.Equal(t, "amy", wc.F(FieldFriendsLeft))
 	})
+}
+
+// The attempt cap's default answer deals a card at its brief's bound to a frontier or heavy
+// friend (AttemptCapDeal, friendWithFree): never one the card has left for good, or its
+// brief gains WHO: friend <her> and every later rework is pinned to the lane that ran it
+// empty (the cold read of nova-sprint #45 at f41a84d).
+func TestTheAttemptCapsFriendIsNeverOneTheCardLeft(t *testing.T) {
+	t.Parallel()
+	seats := []FriendSeat{
+		{Name: "amy", Width: 3, Status: Up, Class: cardhdr.RouteFrontier},
+		{Name: "bob", Width: 1, Status: Up, Class: cardhdr.RouteHeavy},
+	}
+	free := map[string]int{"amy": 3, "bob": 1}
+	classes := []string{cardhdr.RouteFrontier, cardhdr.RouteHeavy}
+	c := &Card{ID: "s1-1", Row: "s1", Col: Ready, Fields: map[string]string{"kind": "primary", FieldFriendsLeft: "amy"}}
+	assert.Equal(t, "bob", friendWithFree(seats, free, c, classes...), "amy has the most room, but the card left her")
+	c.Fields[FieldFriendsLeft] = "amy,bob"
+	assert.Empty(t, friendWithFree(seats, free, c, classes...), "every friend left: none, the deal's judgment")
+	// reversed: a card that left no one goes to the friend with the most room
+	delete(c.Fields, FieldFriendsLeft)
+	assert.Equal(t, "amy", friendWithFree(seats, free, c, classes...))
 }
