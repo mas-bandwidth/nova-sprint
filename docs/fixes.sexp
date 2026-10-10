@@ -136,6 +136,12 @@
    :text "The room check runs after the drain return, so a draining member does not keep a stale no-room
     word; the deal and read disk floor fix also gets its TLA+ reversed witness."
    :origin "v1.2.5 candidate list; nova-tools PR #5569 follow-up")
+  (fix "clear-is-a-blank-slate" :release "v1.2.6" :status "in-progress"
+   :title "Clear starts a blank epoch and reports only live leases"
+   :text "Clear lists every live card generation and owner row it refuses on; a returned or nonworking
+    lease does not block. A successful clear advances to an empty epoch instead of restoring old
+    streams, work and merge rows."
+   :origin "seat ledger v1.2.4-held-2026-10-10, bugs 2, 4 and 11")
 
   (fix "bench-tree-standalone" :release "v1.2.6" :status "shipped"
    :title "A bench tree is a standalone clone, and one that is not is refused with its reason"
