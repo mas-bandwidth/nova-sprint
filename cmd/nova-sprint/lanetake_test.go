@@ -62,7 +62,8 @@ func TestAFriendsLaneTakesThroughTheServerAndTheServerSaysWhatItHolds(t *testing
 	require.Equal(t, 0, code, out)
 	_, _, again := laneHolds(t, out)
 	assert.Equal(t, one, again)
-	assert.NotContains(t, out, "MOVED")
+	assert.NotContains(t, out, "MOVED s1-3.w1 ", "nothing moved")
+	assert.Contains(t, out, "MOVED lane 1 of friend.amy heard: it holds s1-3.w1", "the ask is the lane heard from")
 
 	// her progress names the server's epoch and her lane; another lane's is refused
 	code, out = ta.served("progress", "--as", "friend.amy", "s1-3.w1@1", "--epoch", epoch, "--lane", "1")

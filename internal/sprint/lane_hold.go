@@ -120,8 +120,16 @@ func LaneTake(s *Snapshot, r TakeReq) Plan {
 		p.refuse("take", "a lane's take names one member: take --as <member> --lane <n>")
 		return p
 	}
-	if LaneHolds(s, r.As, r.Lane) != nil {
-		return p // the lane holds its card: nothing moves, the verb answers it
+	if c := LaneHolds(s, r.As, r.Lane); c != nil {
+		// the lane holds its card: nothing moves, the verb answers it, and the ask is the lane
+		// heard from (laneGoneUnits), so a lane that asks while it waits to start is never gone
+		table := Fleet
+		if readerRow(s, r.As) {
+			table = Readers
+		}
+		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(table, setEntry(c, map[string]string{FieldLaneAt: stamp(s.Now)}))},
+			Moved: fmt.Sprintf("lane %d of %s heard: it holds %s", r.Lane, r.As, c.ID)})
+		return p
 	}
 	if readerRow(s, r.As) {
 		return readerLaneTake(s, r)
@@ -230,8 +238,12 @@ func laneGoneUnits(s *Snapshot) []Unit {
 			continue
 		}
 		unset := []string{FieldLane, FieldLaneAt, FieldProgress, "taken", FieldFriendDeadline, FieldStarted}
-		units = append(units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, moveEntry(c, c.Row, Ready, map[string]string{"untaken_since": stamp(s.Now)}, unset...))},
-			Moved: fmt.Sprintf("%s %s:working -> ready (lane %s gone: not heard from since %s, past %s)", c.ID, c.Row, lane, stamp(heard), LaneGoneAfter)})
+		// a new generation, as a stop-return gives: a report from the gone lane's run, should it
+		// come back, names the old one and is refused as stale (liveGen)
+		gen := max(c.Int("gen"), 1) + 1
+		set := map[string]string{"untaken_since": stamp(s.Now), "gen": itoa(gen)}
+		units = append(units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, moveEntry(c, c.Row, Ready, set, unset...))},
+			Moved: fmt.Sprintf("%s %s:working -> ready gen=%d (lane %s gone: not heard from since %s, past %s)", c.ID, c.Row, gen, lane, stamp(heard), LaneGoneAfter)})
 	}
 	return units
 }

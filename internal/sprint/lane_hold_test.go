@@ -63,10 +63,14 @@ func TestALanesTakeAnswersWhatItHolds(t *testing.T) {
 	w.must(laneTake(w, 1))
 	first := LaneHolds(w.s, FriendRow("amy"), 1)
 	require.NotNil(t, first)
+	w.s.Now = w.s.Now.Add(time.Minute)
 	p := w.must(laneTake(w, 1))
-	assert.Empty(t, p.Units, "the lane holds its card: nothing moves")
+	require.Len(t, p.Units, 1, "the lane holds its card: nothing moves, the ask is the lane heard from")
+	assert.Equal(t, "lane 1 of friend.amy heard: it holds "+first.ID, p.Units[0].Moved)
 	assert.Empty(t, p.Refused)
 	assert.Equal(t, first.ID, LaneHolds(w.s, FriendRow("amy"), 1).ID)
+	assert.Equal(t, Working, w.s.Fleet.Card(first.ID).Col)
+	assert.Equal(t, stamp(w.s.Now), w.s.Fleet.Card(first.ID).F(FieldLaneAt), "heard from at the ask")
 
 	w.must(laneTake(w, 2))
 	second := LaneHolds(w.s, FriendRow("amy"), 2)
@@ -151,6 +155,7 @@ func TestALaneGoneUnheardBouncesItsCardBack(t *testing.T) {
 	kept := LaneHolds(w.s, FriendRow("amy"), 2)
 	require.NotNil(t, gone)
 	require.NotNil(t, kept)
+	genBefore := max(gone.Int("gen"), 1)
 
 	w.s.Now = w.s.Now.Add(LaneGoneAfter - time.Minute)
 	w.must(Progress(w.s, ProgressReq{Sel: Sel{IDs: []string{kept.ID}}, As: FriendRow("amy"), Gens: map[string]int{kept.ID: max(kept.Int("gen"), 1)}, Lane: 2}))
@@ -163,6 +168,7 @@ func TestALaneGoneUnheardBouncesItsCardBack(t *testing.T) {
 	assert.NotEqual(t, Working, g.Col, "lane 1 gone: its card bounced back")
 	assert.Empty(t, g.F(FieldLane))
 	assert.Nil(t, LaneHolds(w.s, FriendRow("amy"), 1), "lane 1 asks again and holds nothing")
+	assert.Equal(t, genBefore+1, g.Int("gen"), "a new generation: the gone lane's late report is stale")
 	assert.Equal(t, Working, w.s.Fleet.Card(kept.ID).Col, "lane 2 was heard from: kept")
 	said := false
 	for _, u := range p.Units {
@@ -190,7 +196,9 @@ func TestAReadersLaneBeginsItsReadAndTheVerdictNamesTheLane(t *testing.T) {
 	assert.NotEmpty(t, held.F("begun"))
 
 	p = w.must(Take(w.s, TakeReq{As: a.Row, Lane: 1, Who: a.Row}))
-	assert.Empty(t, p.Units, "the lane holds its read: nothing moves")
+	require.Len(t, p.Units, 1, "the lane holds its read: nothing moves, the ask is the lane heard from")
+	assert.Contains(t, p.Units[0].Moved, "heard: it holds "+a.ID)
+	assert.Equal(t, Reading, w.s.Readers.Card(a.ID).Col)
 	p = w.must(Take(w.s, TakeReq{As: a.Row, Lane: 2, Who: a.Row}))
 	assert.Empty(t, p.Units, "nothing else asked of this reader: lane 2 holds nothing")
 	assert.Nil(t, LaneHolds(w.s, a.Row, 2))
@@ -202,4 +210,35 @@ func TestAReadersLaneBeginsItsReadAndTheVerdictNamesTheLane(t *testing.T) {
 	w.must(Read(w.s, ReadReq{As: a.Row, Verdict: "ok", Usage: usage, Lane: 1, Sel: Sel{IDs: []string{a.ID}}}))
 	assert.Equal(t, OK, w.s.Readers.Card(a.ID).Col)
 	assert.Nil(t, LaneHolds(w.s, a.Row, 1), "the verdict ends the lane's hold")
+}
+
+// A card that leaves working by any other path is no lane's: its lane goes with the move, so
+// a card that comes back to working by another path (her next, her start) is never held by a
+// lane that did not take it.
+func TestAMoveByAnotherPathClearsTheLane(t *testing.T) {
+	t.Parallel()
+	w := laneWorld(t)
+	w.must(laneTake(w, 1))
+	c := LaneHolds(w.s, FriendRow("amy"), 1)
+	require.NotNil(t, c)
+	w.must(Plan{Units: []Unit{{Key: c.ID, Changes: []Change{change(Fleet, moveEntry(c, c.Row, Ready, nil))}}}})
+	back := w.s.Fleet.Card(c.ID)
+	assert.Empty(t, back.F(FieldLane))
+	assert.Empty(t, back.F(FieldLaneAt))
+	w.must(Plan{Units: []Unit{{Key: c.ID, Changes: []Change{change(Fleet, moveEntry(back, back.Row, Working, nil))}}}})
+	assert.Nil(t, LaneHolds(w.s, FriendRow("amy"), 1), "working again by another path: no lane holds it")
+}
+
+// A stop-return names the lane: another lane's card is refused.
+func TestAStopReturnNamesTheLane(t *testing.T) {
+	t.Parallel()
+	w := laneWorld(t)
+	w.must(laneTake(w, 1))
+	c := LaneHolds(w.s, FriendRow("amy"), 1)
+	require.NotNil(t, c)
+	p := StopReturn(w.s, StopReturnReq{As: FriendRow("amy"), IDs: []string{c.ID}, Gens: map[string]int{c.ID: max(c.Int("gen"), 1)}, Reason: "stopped", Lane: 2})
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "held by lane 1 of friend.amy, not lane 2")
+	p = StopReturn(w.s, StopReturnReq{As: FriendRow("amy"), IDs: []string{c.ID}, Gens: map[string]int{c.ID: max(c.Int("gen"), 1)}, Reason: "stopped", Lane: 1})
+	require.Len(t, p.Units, 1, "%+v", p.Refused)
 }

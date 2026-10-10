@@ -13,6 +13,9 @@ type StopReturnReq struct {
 	IDs    []string
 	Gens   map[string]int
 	Reason string
+	// Lane is the lane of As whose run the stop cancelled (--lane; take --lane gave it the
+	// card): a card another lane of the row holds is refused (lane_hold.go laneRefusal).
+	Lane int
 }
 
 // StopReturn releases acknowledged work and reads to their own row. The new
@@ -36,6 +39,10 @@ func StopReturn(s *Snapshot, r StopReturnReq) Plan {
 		}
 		if c == nil || !c.Placed() || c.Row != r.As {
 			p.refuse(id, "not a live card on "+r.As)
+			continue
+		}
+		if why := laneRefusal(c, r.As, r.Lane); why != "" {
+			p.refuse(id, why)
 			continue
 		}
 		old := r.Gens[id]
