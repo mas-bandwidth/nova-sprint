@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -27,6 +28,8 @@ type GateLintInput struct {
 	Head      string
 	TestPkg   string
 	TestName  string
+	ChangedFiles []string // non-test files changed by the commit
+	ChangedDir string    // directory of the changed files
 }
 
 // BenchRunner runs a test at a given commit and returns whether it passed.
@@ -46,18 +49,115 @@ func GateLintFindings(input GateLintInput, run BenchRunner) []GateLintFinding {
 
 	// Check 1: Test should fail at merge-base (or not exist)
 	// If it passes at merge-base, that's a finding (pin absent)
-	if passed, err := run(input.MergeBase, input.TestPkg, input.TestName); err == nil && passed {
+	passedAtMergeBase, err := run(input.MergeBase, input.TestPkg, input.TestName)
+	if err == nil && passedAtMergeBase {
 		out = append(out, GateLintFinding{What: GateLintPinAbsent + ": test passes at merge-base"})
 		return out
 	}
 
 	// Check 2: Test should fail when non-test hunks are reverted (pin broken)
-	// We run the test at head - if it passes when only test files remain, that's a finding
-	if passed, err := run(input.Head, input.TestPkg, input.TestName); err == nil && passed {
+	// If the test passes at head (with non-test hunks reverted), that's a finding
+	passedAtHead, err := run(input.Head, input.TestPkg, input.TestName)
+	if err == nil && passedAtHead {
 		out = append(out, GateLintFinding{What: GateLintPinBroken + ": test passes with non-test hunks reverted"})
 	}
 
+	// Check 3: Reach check - every exported symbol in changed non-test files
+	// should have a reference from a non-test file
+	if len(input.ChangedFiles) > 0 && input.ChangedDir != "" {
+		symbols := getChangedExportedSymbols(input.ChangedFiles)
+		if len(symbols) > 0 {
+			reached, err := findNonTestReferences(input.ChangedDir, symbols)
+			if err == nil {
+				for sym, isReached := range reached {
+					if !isReached {
+						out = append(out, GateLintFinding{What: GateLintReach + ": " + sym + " has no reference from any non-test file"})
+					}
+				}
+			}
+		}
+	}
+
 	return out
+}
+
+// getChangedExportedSymbols returns exported declarations from changed files.
+func getChangedExportedSymbols(changedFiles []string) map[string]bool {
+	symbols := make(map[string]bool)
+	fset := token.NewFileSet()
+
+	for _, f := range changedFiles {
+		if !strings.HasSuffix(f, ".go") || strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		file, err := parser.ParseFile(fset, f, src, 0)
+		if err != nil {
+			continue
+		}
+		for _, decl := range file.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Name.IsExported() && d.Recv == nil {
+					symbols[d.Name.Name] = true
+				}
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					if ts, ok := spec.(*ast.TypeSpec); ok {
+						if ts.Name.IsExported() {
+							symbols[ts.Name.Name] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	return symbols
+}
+
+// findNonTestReferences finds references to symbols from non-test files in the package.
+func findNonTestReferences(pkgDir string, symbols map[string]bool) (map[string]bool, error) {
+	reached := make(map[string]bool)
+	for sym := range symbols {
+		reached[sym] = false
+	}
+
+	fset := token.NewFileSet()
+
+	// Walk all non-test Go files in the package directory
+	filepath.Walk(pkgDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		file, err := parser.ParseFile(fset, path, src, parser.ParseComments)
+		if err != nil {
+			return nil
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			if ident, ok := n.(*ast.Ident); ok {
+				if symbols[ident.Name] {
+					reached[ident.Name] = true
+				}
+			}
+			return true
+		})
+		return nil
+	})
+
+	return reached, nil
 }
 
 // ParseTestLine extracts the test line from a brief.
@@ -82,6 +182,11 @@ func ParseTestLine(brief string) (pkg, name string) {
 		}
 	}
 	return "", ""
+}
+
+// GateLintFindingString returns a string representation of a gate lint finding.
+func GateLintFindingString(f GateLintFinding) string {
+	return "machine gate: " + f.What
 }
 
 // GetExportedDecls returns all exported declarations from a file.
@@ -111,20 +216,20 @@ func GetExportedDecls(src []byte, fset *token.FileSet) map[string]token.Pos {
 }
 
 // FindNonTestReferences finds references to symbols from non-test files.
-// This uses go/parser and go/types as specified in the task.
-func FindNonTestReferences(pkgPath string, changedFiles []string, symbols map[string]bool) (map[string]bool, error) {
+func FindNonTestReferences(pkgDir string, changedFiles []string, symbols map[string]bool) (map[string]bool, error) {
 	reached := make(map[string]bool)
 	for sym := range symbols {
 		reached[sym] = false
 	}
 
-	// Walk all non-test Go files in the package and check for references
 	fset := token.NewFileSet()
+
+	// Walk all non-test Go files in the changed files and package directory
 	for _, f := range changedFiles {
 		if !strings.HasSuffix(f, ".go") || strings.HasSuffix(f, "_test.go") {
 			continue
 		}
-		src, err := readFile(f)
+		src, err := os.ReadFile(f)
 		if err != nil {
 			continue
 		}
@@ -141,15 +246,6 @@ func FindNonTestReferences(pkgPath string, changedFiles []string, symbols map[st
 			return true
 		})
 	}
+
 	return reached, nil
-}
-
-// GateLintFindingString returns a string representation of a gate lint finding.
-func GateLintFindingString(f GateLintFinding) string {
-	return "machine gate: " + f.What
-}
-
-// readFile reads a file from the filesystem.
-func readFile(path string) ([]byte, error) {
-	return os.ReadFile(path)
 }
