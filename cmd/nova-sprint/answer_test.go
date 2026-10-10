@@ -670,3 +670,34 @@ func TestTheLateMergeCommandFillsAsOneRunnableLine(t *testing.T) {
 	assert.Empty(t, why)
 	assert.Equal(t, [][]string{{"land", "--stream", "s1"}}, run)
 }
+
+// The printed command of a late-merge judgment runs as the answer path runs it: fill gives
+// one nova-sprint line, and running it on a twin (what answer.go's apply does through call)
+// reaches land, which refuses there (a twin has no git, exit 1) and whose own NOTE names in
+// prose the bare merge that stands in for it: never a second line's comment read as
+// arguments.
+func TestTheLateMergeCommandRunsAsTheAnswerPathRunsIt(t *testing.T) {
+	t.Parallel()
+	n := sprint.Note{ID: "n-1.1", Kind: sprint.Judgment, Type: sprint.NMergeLate, Stream: "s1", StreamLevel: true,
+		Decisions: []string{"merge --stream s1", "look", "wait"}}
+	var lines []string
+	for _, c := range sprint.NoteCommands(n, []string{"s1-1"}) {
+		if c.Decision == "merge --stream s1" {
+			lines = c.Lines
+		}
+	}
+	run, why := fill(lines, decide.Chosen{})
+	require.Empty(t, why)
+	require.Equal(t, [][]string{{"land", "--stream", "s1"}}, run)
+
+	file := filepath.Join(t.TempDir(), "sprint.twin")
+	for _, line := range twinSteps[:len(twinSteps)-3] { // the help's flow through the tick before its merge
+		code, out, errs := twinProcess(t, file, line)
+		require.Equal(t, 0, code, "%s: exit %d\n%s%s", line, code, out, errs)
+	}
+	code, out, errs := twinProcess(t, file, prog+" "+strings.Join(run[0], " "))
+	all := out + errs
+	assert.Equal(t, 1, code, "the printed command runs as land (a twin has no git, so it refuses): %s", all)
+	assert.Contains(t, all, "LAND REFUSED", "the printed command is the land verb, not a merge with a comment's words")
+	assert.Contains(t, all, "merge --stream s1 --batch 1", "land's own NOTE names the twin's merge, in prose")
+}
