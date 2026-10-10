@@ -1495,7 +1495,6 @@ func headWhy(s *sprint.Snapshot, stream string, pins []landCard) string {
 	return ""
 }
 
-
 // build cuts the batch branch from origin's base (cut) and merges the cards' heads
 // in order (mergeCards), stopping at the first the card itself stops (a head that is
 // not a commit on origin, or a merge that left unmerged paths): merged is the cards
