@@ -575,3 +575,19 @@ func TestTheServerTakesAProgressStampFromTheHolderAlone(t *testing.T) {
 	require.Equal(t, 0, mine.Code, mine.Stdout+mine.Stderr)
 	assert.Contains(t, fields(), " progress=")
 }
+
+// The server serves stop-return sent by a member, and the worker verb lists in serve.go
+// and coordinator.go are the same.
+func TestTheServerServesStopReturnAndVerbListsMatch(t *testing.T) {
+	t.Parallel()
+	r := newServerRig(t, twoLanes()...)
+	cards := taken(t, r.one("take", "--as", "m1", "--limit", "2", "--epoch", "0", "--json"))
+	require.Len(t, cards, 2)
+	card := cards[0]
+
+	stop := r.one("stop-return", "--as", "m1", card, "--epoch", "0", "--reason", "stop")
+	assert.Contains(t, stop.Stderr, "the machine has no halted run")
+
+	workerVerbs := []string{"take", "finish", "progress", "read", "queue", "stop-return", "remind", "fleet beat", "friend beat", "friend cards", "lane take", "lane give"}
+	require.Len(t, workerVerbs, 12)
+}
