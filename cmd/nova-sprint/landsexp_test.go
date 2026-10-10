@@ -18,10 +18,10 @@ func TestUnionSexp(t *testing.T) {
 	t.Parallel()
 	a, b, c, x := fixItem("a"), fixItem("b"), fixItem("c"), fixItem("x")
 	for _, tc := range []struct {
-		name                string
-		base, ours, theirs  string
-		want                string // "" when refused
-		why                 string
+		name               string
+		base, ours, theirs string
+		want               string // "" when refused
+		why                string
 	}{
 		{"both add after the last", fixesFile(a), fixesFile(a, b), fixesFile(a, c), fixesFile(a, b, c), ""},
 		{"one adds, the other removes", fixesFile(a, x), fixesFile(a, x, b), fixesFile(x), fixesFile(x, b), ""},
@@ -66,4 +66,3 @@ func TestUnionSexpOnTheRealFixesFile(t *testing.T) {
 	assert.Contains(t, e, "fix:card-two")
 	assert.Less(t, strings.Index(string(got), `"card-one"`), strings.Index(string(got), `"card-two"`), "the tip's entry first")
 }
-
