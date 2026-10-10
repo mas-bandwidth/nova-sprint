@@ -1,0 +1,28 @@
+package main
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+// The lander lands no card short of its reads (tla/Land.tla NoLandWithoutReads): a card
+// accepted on one read, the setting raised to two, is refused by name with its count and
+// nothing reaches origin; the next tick sends it back to review for the read it lacks. On
+// the Studio sprint of 2026-10-10 two cards landed on one read of two.
+func TestLandRefusesACardShortOfItsReads(t *testing.T) {
+	t.Parallel()
+	r := newLandRig(t)
+	r.ok("add --stream s1 --count 1 --one")
+	head := r.head("s1-1", "main", "s1-1.txt", "one\n")
+	r.queued(map[string]string{"s1-1": head}, "s1-1")
+	r.ok("set --reads 2")
+	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
+	assert.Equal(t, 1, code, "a refusal is reported")
+	assert.Contains(t, out+errs, "s1-1 has ok reads at head "+head+" from 1 of the 2 readers it needs")
+	assert.Equal(t, []string{"base"}, r.mainLog(), "nothing pushed")
+	assert.Equal(t, map[string]string{"s1-1": "merging/queued"}, r.places("s1-1"))
+	// a running machine's pump (a stopped one ticks nothing)
+	tick := r.ok("start") + r.ok("tick")
+	assert.Equal(t, map[string]string{"s1-1": "review/returned"}, r.places("s1-1"), "back to review for its second read: %s", tick)
+}

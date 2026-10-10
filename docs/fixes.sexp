@@ -37,6 +37,15 @@
     out comes back."
    :origin "this pull request; the machinery from commit b559389")
 
+  (fix "no-land-without-reads" :release "v1.2.6" :status "shipped"
+   :title "Nothing merges or lands short of its reads"
+   :text "A merging card needs the ok reads a card in review needs (the reads setting, else its tier's rule).
+    One short of them, the setting raised or its tier pinned after its accept, goes back to review on
+    the next tick for the read it lacks; the lander lands none, naming it and its count, and its record
+    refuses one. The accept and the landing record the count they ran on. tla/Land.tla
+    NoLandWithoutReads, with the reversed witness MCLandBrokenNoReads."
+   :origin "the Studio sprint, epoch 16, 2026-10-10: rule 6 raised on cards merging with one read of two, and two landed on one read")
+
   (fix "provider-key-refusal-rests-until-woken" :release "v1.2.6" :status "shipped"
    :title "A provider that refuses its key rests until woken, never for a time"
    :text "A route whose provider refuses the key rests until routes wake, never for a time, and the rest

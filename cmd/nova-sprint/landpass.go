@@ -210,6 +210,15 @@ func (l *lander) openStream(s *sprint.Snapshot, stream string) ([]landCard, bool
 	if len(queue) == 0 {
 		return refused("nothing queued to merge in stream " + stream + "; run: nova-sprint queue --stream " + stream)
 	}
+	// no card short of its reads is landed, nor any card behind it (a card lands only with
+	// every card ahead of it): the refusal names it and its count, and the tick sends it
+	// back to review for the read it lacks (tla/Land.tla NoLandWithoutReads)
+	if n, why := readsWhy(s, queue); why != "" {
+		l.keep(landBatch{Stream: stream, Status: "refused", IDs: []string{queue[n].ID}, Reason: why})
+		if queue = queue[:n]; len(queue) == 0 {
+			return nil, false
+		}
+	}
 	var cards []landCard
 	// a card held on a dead base is skipped, and a card that needs one, until its judgment
 	// is answered or its base is re-pointed (sprint.DeadBaseHeld): the refusal was said once

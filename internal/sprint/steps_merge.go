@@ -667,7 +667,8 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 				merged["note"] = v
 			}
 			u.Changes = append(u.Changes, change(Merge, moveEntry(c, r.Stream, Merged, merged)))
-			set := map[string]string{"ci": "green", "landed": now}
+			// the count of readers it landed on: a landed card is held to it (ReadsNeededIn)
+			set := map[string]string{"ci": "green", "landed": now, FieldReadsNeeded: itoa(ReadsNeededIn(s, s.Work.Placed(c.ID)))}
 			if v := costs[c.ID]; v != "" {
 				set[FieldCost] = v
 			}

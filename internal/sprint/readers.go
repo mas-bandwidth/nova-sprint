@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -265,22 +266,28 @@ func ReadsNeeded(pr *Card) int {
 	return 2
 }
 
-// FieldReadsNeeded is the primary's field the accept writes when it accepted the card on
-// the sprint's count (set --reads) rather than its tier's rule (ReadsNeeded): that count,
-// so a card past review is held to the count it was accepted on.
+// FieldReadsNeeded is the primary's field the accept and the landing write: the count of
+// readers it was accepted on, then the count it landed on, so a landed card is held to the
+// count it landed on whatever the setting or its tier becomes after.
 const FieldReadsNeeded = "reads_needed"
 
 // ReadsNeededIn is how many different readers' ok reads at its head the primary needs in
-// the snapshot, the count every live caller uses. In review: the sprint's count while one
-// is set (nova-sprint set --reads 0, 1 or 2, PropReadsNeeded; the owner, 2026-10-06: "I'd
-// like to waive the second read for the moment"), whatever the card's tier, so a card
-// with that many ok reads at its head is accepted on the next tick after the setting
-// changes; else its tier's rule (ReadsNeeded). At 0 no read is asked, and a primary whose
-// work finished LAND at its head is accepted on it (acceptable). A card in merging or
-// landed is never judged again: it is held to the count it was accepted on, the accept's
-// FieldReadsNeeded, else its tier's rule.
+// the snapshot, the count every live caller uses. In review and in merging: the sprint's
+// count while one is set (nova-sprint set --reads 0, 1 or 2, PropReadsNeeded; the owner,
+// 2026-10-06: "I'd like to waive the second read for the moment"), whatever the card's
+// tier, so a card with that many ok reads at its head is accepted on the next tick after
+// the setting changes; else its tier's rule (ReadsNeeded). At 0 no read is asked, and a
+// primary whose work finished LAND at its head is accepted on it (acceptable). A merging
+// card is held to the same count as a card in review: one short of it (the setting raised,
+// or its tier's rule raised by a pinned tier, after its accept) is not landed (the lander's
+// readsWhy) and goes back to review for the read it lacks (ShortReadsBack;
+// tla/Land.tla NoLandWithoutReads). Before v1.2.6 a merging card was held to the accept's
+// FieldReadsNeeded, which the accept wrote only when it differed from the tier's rule, so a
+// card accepted on one read under the tier's rule of a flash card was held to two once its
+// tier was pinned pro, and landed on one. A landed card is never judged again: it is held
+// to the count it landed on, FieldReadsNeeded, else its tier's rule.
 func ReadsNeededIn(s *Snapshot, pr *Card) int {
-	if pr.Col == Merging || pr.Col == Landed {
+	if pr.Col == Landed {
 		if n, err := strconv.Atoi(pr.F(FieldReadsNeeded)); err == nil && n >= 0 {
 			return n
 		}
@@ -355,6 +362,49 @@ func acceptable(s *Snapshot, pr *Card) bool {
 		return pr.F("result") != "failed" && pr.F("head") != ""
 	}
 	return len(okReaders(s, pr)) >= need || scriptVerified(s, pr)
+}
+
+// ReadsStanding is the readers whose ok reads stand at the primary's current attempt and
+// head, past review as check's rule 6 counts them: its ok read cards (okReaders), the
+// coordinator's heavy read at that attempt and head (heavyRead), and a reader the accept
+// recorded (the readers field) whose read was on the fleet table and is retired off its row
+// with its verdict, so a snapshot no longer loads it. Sorted, each reader once.
+func ReadsStanding(s *Snapshot, c *Card) []string {
+	readers := map[string]bool{}
+	for _, rc := range okReaders(s, c) {
+		readers[rc.F("reader")] = true
+	}
+	if r := c.F(FieldHeavyReader); r != "" && c.F(FieldHeavyVerdict) == "ok" && c.F(FieldHeavyAttempt) == c.F("attempt") && c.F(FieldHeavyHead) == c.F("head") {
+		readers[r] = true
+	}
+	for _, name := range Split(c.F("readers")) {
+		id := ReadCardID(c.ID, max(c.Int("attempt"), 1), name)
+		onFleet := s.Fleet != nil && (s.Fleet.HasRow(FriendRow(name)) || s.Fleet.HasRow(name))
+		if onFleet && s.Fleet.Card(id) == nil && (s.Readers == nil || s.Readers.Card(id) == nil) {
+			readers[name] = true
+		}
+	}
+	return slices.Sorted(maps.Keys(readers))
+}
+
+// ReadsShort is how many readers' ok reads stand at the primary's head (ReadsStanding),
+// how many it needs (ReadsNeededIn), and whether it is short of them: a script card's one
+// script read (scriptVerified) and a count of 0 are never short. The tick sends a merging
+// card that is short back to review (ShortReadsBack), and the lander builds, pushes and
+// reports none (land.go readsWhy and pinsReadsWhy): tla/Land.tla NoLandWithoutReads. A
+// record of a push git already holds (merge --landed, landed --sha) is a fact, not held.
+func ReadsShort(s *Snapshot, c *Card) (have, need int, short bool) {
+	have, need = len(ReadsStanding(s, c)), ReadsNeededIn(s, c)
+	return have, need, need > 0 && have < need && !scriptVerified(s, c)
+}
+
+// ReadsShortWhy names a primary short of its reads and the count, "" when it is not.
+func ReadsShortWhy(s *Snapshot, c *Card) string {
+	have, need, short := ReadsShort(s, c)
+	if !short {
+		return ""
+	}
+	return fmt.Sprintf("%s has ok reads at head %s from %d of the %d readers it needs", c.ID, orDash(c.F("head")), have, need)
 }
 
 // placedReadsAt is the primary's placed read cards at an attempt,
