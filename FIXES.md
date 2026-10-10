@@ -31,6 +31,12 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 - **A draining member does not keep a stale no-room word** (shipped). The room check runs after the drain return, so a draining member does not keep a stale no-room word; the deal and read disk floor fix also gets its TLA+ reversed witness. From: v1.2.5 candidate list; nova-tools PR #5569 follow-up.
 - **A bench tree is a standalone clone, and one that is not is refused with its reason** (shipped). The mirror stage ends by checking that the staged tree's .git is a directory in the tree, and a .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git no longer exits 128 on a fleet host with nothing saying why. From: lander fault 5579, space git exit 128 (held-PR ledger row 5579).
 
+## v1.2.7 (planned, 2026-10-10)
+
+The adopt carries a change of the store's function library: its shadow tick judges the library by code, not comments.
+
+- **The adopt's shadow tick digests the library's code, not its comments** (shipped). The shadow tick (libraryMatches) judges the store's function library by its code bytes, not its comment bytes, so a build that only changed a comment no longer changes the digest and the shadow tick accepts it (v1.2.3's adopt refused on six comment lines). TLA+ model Adopt, property TickAfterLoad, with a reversed witness. From: the seat ledger v1.2.4-held-2026-10-10.md (a v1.3 card moved to v1.2.7); this pull request.
+
 ## v1.2.9 (planned, 2026-10-10)
 
 Inbox push writes each judgment once without concurrent writers sharing a temporary path.

@@ -422,7 +422,10 @@ func openWith(ctx context.Context, o redisconn.Options, getenv func(string) stri
 
 // libraryMatches refuses a store whose loaded table function library is not
 // this build's (one FUNCTION LIST, once per process and address): every write
-// through a library of another build would be refused or unreadable.
+// through a library of another build would be refused or unreadable. The
+// digest it compares covers code bytes, not comment bytes, so a build that
+// only changed a comment still matches (v1.2.3's adopt refused on six comment
+// lines, whose change of fn.Sum was not a change of code).
 func libraryMatches(ctx context.Context, c *redis.Client, addr string) error {
 	source, err := fn.Source()
 	if err != nil {
@@ -435,10 +438,56 @@ func libraryMatches(ctx context.Context, c *redis.Client, addr string) error {
 	switch {
 	case !found:
 		return fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --addr %s", addr, fn.Library, addr)
-	case fn.Sum(code) != fn.Sum(source):
-		return fmt.Errorf("the store at %s holds %s library %s, and this build is %s; run: nova-redis fn load --addr %s", addr, fn.Library, fn.Sum(code), fn.Sum(source), addr)
+	case librarySum(code) != librarySum(source):
+		return fmt.Errorf("the store at %s holds %s library %s, and this build is %s; run: nova-redis fn load --addr %s", addr, fn.Library, librarySum(code), librarySum(source), addr)
 	}
 	return nil
+}
+
+// librarySum is the digest libraryMatches judges a library by: fn.Sum of the
+// source with its comments stripped, so a comment-only change is not a change
+// of the library.
+func librarySum(source string) string { return fn.Sum(luaCode(source)) }
+
+// luaCode is the Lua source with its comments removed, for the library's
+// digest. A comment is "--" to the end of its line, or "--[[...]]" to its
+// close; a "--" inside a quoted string is text, so the string is copied whole.
+func luaCode(src string) string {
+	var b strings.Builder
+	for i := 0; i < len(src); {
+		switch c := src[i]; {
+		case c == '"' || c == '\'':
+			end := i + 1
+			for end < len(src) {
+				if src[end] == '\\' {
+					end += 2
+					continue
+				}
+				if src[end] == c {
+					end++
+					break
+				}
+				end++
+			}
+			b.WriteString(src[i:end])
+			i = end
+		case c == '-' && strings.HasPrefix(src[i:], "--"):
+			i += 2
+			if strings.HasPrefix(src[i:], "[[") {
+				if at := strings.Index(src[i+2:], "]]"); at >= 0 {
+					i += 2 + at + 2
+					continue
+				}
+			}
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return b.String()
 }
 
 // common is the flags every store verb takes.
