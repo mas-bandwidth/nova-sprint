@@ -20,7 +20,7 @@ import (
 
 // NovaToolsVersion is the nova-tools release nova-sprint needs at least: the tag line
 // of NOVA-TOOLS-VERSION.
-const NovaToolsVersion = "v1.2.2"
+const NovaToolsVersion = "v1.2.3"
 
 // NovaToolsVersionFile is the file at the repository root that records it.
 const NovaToolsVersionFile = "NOVA-TOOLS-VERSION"
