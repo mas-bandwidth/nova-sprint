@@ -120,3 +120,24 @@ func TestPickRouteWeighted(t *testing.T) {
 	assert.True(t, ok)
 	assert.NotEmpty(t, name)
 }
+
+// TestPickShareHighOkLowLandings checks that a route with high OK takes but zero landings
+// gets smaller share.
+func TestPickShareHighOkLowLandings(t *testing.T) {
+	t.Parallel()
+	// Two routes with equal price, both high OK count, but one has zero landings.
+	// Route a: 20 takes, 20 ok, 20 landings (good)
+	// Route b: 20 takes, 20 ok, 0 landings (bad, high cost per landed)
+	// Both with same USD = 0.10
+	stats := map[string]*RoutePickStats{
+		"a": {RouteName: "a", USD: "0.10", OK: 20, Failed: 0, Landings: 20},
+		"b": {RouteName: "b", USD: "0.10", OK: 20, Failed: 0, Landings: 0},
+	}
+	all := statsValues(stats)
+	shareA := stats["a"].PickShare(all)
+	shareB := stats["b"].PickShare(all)
+
+	// Route with high OK but zero landings should have smaller share
+	assert.Greater(t, shareA, shareB, "route a with landings should have larger share than route b with zero landings")
+	assert.Greater(t, shareB, 0.0, "route b should still have non-zero share due to floor")
+}

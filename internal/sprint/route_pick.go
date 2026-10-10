@@ -43,14 +43,14 @@ func (s *RoutePickStats) PickShare(all []RoutePickStats) float64 {
 	// Compute ok rate (0 if no takes)
 	okRate := float64(s.OK) / float64(max(s.OK+s.Failed, 1))
 
-	// Compute cost per landed (0 if no landings)
-	costPerLanded := cost
+	// Compute cost per landed (cost / landings, at least 1 for floor)
+	costPerLanded := cost / float64(max(s.Landings, 1))
 
-	// Compute weight: inverse of cost * penalty
+	// Compute weight: inverse of cost + penalty
 	// Penalty is high when ok rate is low
 	epsilon := 0.01 // prevents division by zero
 	penalty := 1 - okRate
-	weight := 1 / (costPerLanded*penalty + epsilon)
+	weight := 1 / (costPerLanded + penalty + epsilon)
 
 	// Compute normalized share with floor
 	share := weight
@@ -71,10 +71,10 @@ func (s *RoutePickStats) PickShare(all []RoutePickStats) float64 {
 func (s *RoutePickStats) weight() float64 {
 	cost := parseFloatUSD(s.USD)
 	okRate := float64(s.OK) / float64(max(s.OK+s.Failed, 1))
-	costPerLanded := cost
+	costPerLanded := cost / float64(max(s.Landings, 1))
 	epsilon := 0.01
 	penalty := 1 - okRate
-	return 1 / (costPerLanded*penalty + epsilon)
+	return 1 / (costPerLanded + penalty + epsilon)
 }
 
 func parseFloatUSD(s string) float64 {
