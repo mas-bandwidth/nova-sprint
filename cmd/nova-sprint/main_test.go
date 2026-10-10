@@ -50,6 +50,8 @@ func newTestApp(t *testing.T) *testApp {
 	ta.a.now = func() time.Time { ta.mu.Lock(); defer ta.mu.Unlock(); return ta.now }
 	ta.a.sleep = func(d time.Duration) { ta.mu.Lock(); ta.now = ta.now.Add(d); ta.mu.Unlock(); ta.beat() }
 	ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return ta.m, nil }
+	// a hook's socket is the test's own, short enough for a unix socket's path
+	ta.a.hookSock = shortSock(t)
 	// a broken read's branch is checked against origin only by a test that gives a tip
 	ta.a.readTip, ta.a.readHeads = nil, nil
 	// the friends' bus: every message sent is kept, none goes anywhere

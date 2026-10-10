@@ -186,8 +186,13 @@ type app struct {
 	// lanes is the server's lanes beside the line (servelanes.go), made at the first
 	// batch under lanesMu; served is what its batches cost since its last SERVE line, said
 	// on serveLog (run's stdout once it listens; nil, a test's, says nothing).
-	lanesMu  sync.Mutex
-	lanes    *serveLanes
+	lanesMu sync.Mutex
+	lanes   *serveLanes
+	// hooks is the server's hold of the seat's hook (hook.go), made at the first, under
+	// lanesMu; hookSock, when set (a test), is where a hook process takes its session's
+	// lines, in place of the user's cache directory.
+	hooks    *hookHub
+	hookSock func(name string) (string, error)
 	served   serveTally
 	serveLog io.Writer
 	// forward sends verbs to the sprint's server named by NOVA_SPRINT_SERVER (the
@@ -597,6 +602,11 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 		return 0
 	}
 	if code, sent := a.forwarded(args, stdout, stderr); sent {
+		return code
+	}
+	// every command run as the coordinator waits for the seat's live, proven hook: one
+	// line and nothing else (hook.go)
+	if code, refused := a.hookFirst(args, stderr); refused {
 		return code
 	}
 	for _, v := range verbs {

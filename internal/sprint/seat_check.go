@@ -29,7 +29,7 @@ const (
 	SeatCheckInbox     = "inbox"
 	SeatCheckQueue     = "queue"
 	SeatCheckVersions  = "versions"
-	SeatCheckPush      = "push"
+	SeatCheckHook      = "hook"
 )
 
 // SeatCheckToken is the first word of every line.
@@ -139,13 +139,12 @@ type VersionsM struct {
 	Machines []MachineVersionM `json:"machines,omitempty"`
 }
 
-// PushM is the seat's push proof (pushproof.go): the holder and its push
-// record, as read; Measured false is a check that did not read it, which says
-// no line.
-type PushM struct {
+// HookM is the seat's hook (hook.go): the holder and the hook record, as read;
+// Measured false is a check that did not read it, which says no line.
+type HookM struct {
 	Measured bool       `json:"measured,omitempty"`
 	Holder   string     `json:"holder,omitempty"`
-	Record   PushRecord `json:"record,omitzero"`
+	Record   HookRecord `json:"record,omitzero"`
 	Recorded bool       `json:"recorded,omitempty"`
 }
 
@@ -162,7 +161,7 @@ type SeatCheckMeasures struct {
 	Inbox     InboxM            `json:"inbox"`
 	Queue     QueueM            `json:"queue,omitempty"`
 	Versions  VersionsM         `json:"versions,omitempty"`
-	Push      PushM             `json:"push,omitzero"`
+	Hook      HookM             `json:"hook,omitzero"`
 	Host      string            `json:"host"`
 	Errs      map[string]string `json:"errs,omitempty"`
 }
@@ -225,8 +224,7 @@ func (r SeatCheckReport) Summary() string {
 
 // JSON is the report as --json prints it.
 func (r SeatCheckReport) JSON() string {
-	// Measurements are public too; only the folder reveals the proof nonce.
-	r.Measures.Push.Record = PublicPushRecord(r.Measures.Push.Record)
+	// Measurements are public too: the hook record holds no challenge (the stream alone does).
 	if r.Lines == nil {
 		r.Lines = []SeatCheckLine{}
 	}
@@ -546,17 +544,18 @@ func JudgeSeatCheck(m SeatCheckMeasures, now time.Time) SeatCheckReport {
 		}
 	}
 
-	// 12. the push proof: PUSH DOWN with the setup while the seat has none live
-	if p := m.Push; p.Measured && !failed(SeatCheckPush) {
-		facts := []string{"holder=" + orDash(p.Holder), "harness=" + orDash(p.Record.Harness), "adapter=" + p.Record.AdapterName()}
-		if why := PushWhy(p.Holder, p.Record, p.Recorded, now); why != "" {
-			remedy := PushSetup(p.Holder, p.Record, p.Recorded)
-			if p.Recorded && p.Record.Adapter == AdapterFolder {
-				remedy += "; then, " + FolderSteps(p.Record)
-			}
-			add(SeatCheckLine{Thing: SeatCheckPush, Facts: append(facts, "proven=-", "why="+quoteSeatCheck(why)), Remedy: remedy})
+	// 12. the hook: DOWN with its line while the seat has no live, proven hook or a push
+	// waits past its bound unacknowledged (HookGate)
+	if h := m.Hook; h.Measured && !failed(SeatCheckHook) {
+		state := "none"
+		if h.Recorded {
+			state = h.Record.State
+		}
+		facts := []string{"holder=" + orDash(h.Holder), "state=" + state, fmt.Sprintf("unacked=%d", h.Record.Unacked)}
+		if why := HookGate(h.Record, h.Recorded, h.Holder, now); why != "" {
+			add(SeatCheckLine{Thing: SeatCheckHook, Facts: append(facts, "proven=-", "why="+quoteSeatCheck(why)), Remedy: "nova-sprint hook"})
 		} else {
-			add(SeatCheckLine{Thing: SeatCheckPush, Up: true, Facts: append(facts, "proven="+formatAge(now.Sub(p.Record.Proven))+" ago")})
+			add(SeatCheckLine{Thing: SeatCheckHook, Up: true, Facts: append(facts, "proven="+formatAge(now.Sub(h.Record.Proven))+" ago")})
 		}
 	}
 
