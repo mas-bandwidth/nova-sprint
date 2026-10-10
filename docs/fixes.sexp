@@ -207,6 +207,11 @@
      tick writes nothing. Use one property for all."
     :origin "issue #5210")
 
+   (fix "broken-verdict-same-head-prevents-acceptance" :release "v1.2.6" :status "shipped"
+    :title "A broken verdict at the same head prevents acceptance"
+    :text "A broken verdict at the same head outweighs any number of oks: the card returns to work with the finding, never accepts with oks when a broken is at the same head."
+    :origin "dogfood 2026-10-10 evening: fleet-only restart")
+
    (fix "hold-pinned-to-head-sha" :release "v1.2.9" :status "shipped"
     :title "A hold pinned to an older head is not a hold at the current head"
     :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."

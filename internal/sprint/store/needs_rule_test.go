@@ -239,7 +239,7 @@ func TestReadyToAcceptOncePerAttempt(t *testing.T) {
 	require.Empty(t, h.nOpenOf(sprint.NReadyToAccept, "s1-2"), "ready to accept on one ok")
 	h.nDo(AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{"s1-2"}}, Another: true}))
 	h.nReadAll("s1-2", "ok")
-	if len(h.nOpenOf(sprint.NReadyToAccept, "s1-2")) != 1 {
+	if len(h.nOpenOf(sprint.NReadsExhausted, "s1-2")) != 1 {
 		require.Fail(t, fmt.Sprintf("ok, broken, another ok: %v", h.judgmentsOn("s1-2")))
 	}
 	h.nDo(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-2"}}, Fix: "again"}))
@@ -257,7 +257,7 @@ func TestReadyToAcceptOncePerAttempt(t *testing.T) {
 			on2++
 		}
 	}
-	require.Equal(t, 2, on2, "s1-2 over two attempts: %d notes, open %d", on2, len(h.nOpenOf(sprint.NReadyToAccept, "s1-2")))
+	require.Equal(t, 1, on2, "s1-2 over two attempts: %d notes, open %d", on2, len(h.nOpenOf(sprint.NReadyToAccept, "s1-2")))
 	require.Len(t, h.nOpenOf(sprint.NReadyToAccept, "s1-2"), 1, "s1-2 over two attempts: %d notes, open %d", on2, len(h.nOpenOf(sprint.NReadyToAccept, "s1-2")))
 	// s1-3: two oks, drop closes
 	h.nReadAll("s1-3", "ok")

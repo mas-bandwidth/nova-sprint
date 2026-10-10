@@ -864,7 +864,7 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 	}
 	var typ, why string
 	switch {
-	case len(oks) >= ReadsNeededIn(s, pr):
+	case len(oks) >= ReadsNeededIn(s, pr) && !broken:
 		if offers || AcceptHeld(pr) == "" {
 			// the tick's pump accepts it, RUNNING or STOPPED (at the first pump after
 			// start): "accept is mechanical", and a hand step is a missing instruction
@@ -887,7 +887,7 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 		return Note{}, false
 	case reads == 0:
 		typ, why = NStranded, "never asked at attempt "+itoa(attempt)+" and nothing is open on it"
-	case !broken && reads < ReadsNeededIn(s, pr):
+	case reads < ReadsNeededIn(s, pr):
 		// the ones that stand came back ok and the rest are the ask's (ReadsWanted),
 		// nothing to judge
 		return Note{}, false
