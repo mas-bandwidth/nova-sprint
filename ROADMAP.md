@@ -7,9 +7,10 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (13)
-- [Setup, release and operations](#setup-release-and-operations) (4)
-- [Docs, models and the repository](#docs-models-and-the-repository) (1)
+- [The sprint machine](#the-sprint-machine) (206)
+- [Setup, release and operations](#setup-release-and-operations) (24)
+- [Docs, models and the repository](#docs-models-and-the-repository) (23)
+- [Friend AIs](#friend-ais) (18)
 
 ## Lessons from Prime Agent's rewrite
 
@@ -149,6 +150,1550 @@ Why it waits: Parked by the owner, 2026-10-09.
 
 Replaces 1 open sprint card, each mapped to `lander-bench-fault-classifier`.
 
+### Refuse a need that names a dropped card, and list dependants on drop
+
+Admission already refuses a need that names no record, but a dropped card is still a record. Add refuses a need on a card that can no longer land, and dropping a card lists the cards that need it.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Generated card wording matches the card contract
+
+The GOCACHE sentence and the Deadline line in generated cards are stale or misleading. Every generator and the template say that GOCACHE is the shared warm cache, and that a card past its deadline is judged by the coordinator.
+
+Target: v1.3
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Plan a ledger of cards in one wave
+
+Now that the lander unions generated ledger conflicts, nova-card no longer needs alternating waves for one ledger. It plans the cards in one wave.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### View cards in review by tier
+
+Finding what is in review by tier takes a hand-written scan of store keys and parsing of each brief. A nova-card view lists cards by state and tier directly.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Guards for fleet staging, trials and width changes
+
+Refuse staging when every member is ineligible, bound the fleet trial, and make a width change one operation, each with a model scenario and a named test.
+
+Target: v1.3
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Single inbox judgment and password-free seat connection
+
+The inbox view prints one bounded judgment, and the sprint seat reaches its store without a password in the environment.
+
+Target: v1.3
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Lander handles an empty commit
+
+The lander does not fail or mislead when a card produces an empty commit; this is pinned by unit and functional tests.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Seat check for the merge queue and versions
+
+A check verb reports the merge queue and tool versions on the seat, carried by an open pull request.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### One card read touches only that card
+
+The card verb reads the whole work table and log on each call; make a read use per-card indexes and finish under 100 ms at 2,000 cards.
+
+Target: v1.3
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Fix log --since for windows wider than 22 hours
+
+A wide --since window returns nothing; pin the window and return every event in it.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)
+
+### One column field every reader agrees on
+
+Card output carries a single column field so a card's state is not confused with the state of its need.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Automatic promotion to dev and drift alarms
+
+The machine promotes the base to dev itself and raises an alarm when the live server, a card branch or the base drifts.
+
+Target: v1.3
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Append-only and generated files merge themselves
+
+Conflicts on append-only records and generated files are resolved by a check at landing, not by a model by hand.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Dealing to friends honors tier, start and down state
+
+Cards are re-dealt when the holder does not serve the card's tier. A card counts as working only once started, cards pinned to a down friend raise one judgment, and the overload alarm covers friends.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Rework keeps the owner pin and each finding
+
+A rework of a card pinned to one friend stays with that friend. A grouped rework gives each card its own finding instead of the first card's text.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Reads reach a capable reader and keep flowing
+
+Heavy and frontier reads go to readers that can serve them, read slots are separate from work lanes and delivered like cards, and a reader row with no process behind it is flagged. A read whose child never ran is asked again without counting.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Routine judgments are answered by rule in the tick
+
+Reworks, take-backs, path blockers and red-promotion fix cards are answered by named rules in the tick and logged. Only real judgments reach the coordinator.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### One lander per clone, gates run on a bench
+
+The lander takes an exclusive lock per clone and reports a stuck pass. Its build gate runs on a bench instead of the coordinator machine, and a dead base is refused once with one judgment.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### One base branch, watched by the machine
+
+Cards name only the real base, the server runs only from the base, and a periodic reminder shows when branches drift apart.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Friend card lint says which rule set applies
+
+The add lint accepts a friend card with its own rules line and says exactly whether the friend or the child rule set applies.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Verbs default to the local sprint server
+
+With no store settings, nova-sprint verbs go to the local server address, so no wrapper script or secret is needed.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### One batch selector grammar for card verbs
+
+Brief, recut, rework, return, release, rank and drop share selectors by stream, friend, state and ids file with a dry run, and a cheap listing of cards by repo.
+
+Target: after v1.4
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Merge row on the dashboard and live land progress
+
+The dashboard shows a merge row with the backlog, rate, oldest age and base gate state, and a land pass prints and records its current phase.
+
+Target: after v1.4
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Promote, rebase and stream batch merge as verbs
+
+One verb gates and promotes the base, one moves unlanded cards between base branches, and stream merges go in batches in work order instead of by hand.
+
+Target: after v1.4
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Cards that edit TLA+ models get the frontier tier
+
+Adding or generating a card whose paths name tla sets the frontier tier and refuses a lower one, except for run records.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### External dependency operands and one wait for hold, sentinel and wave
+
+A card can depend on a merged pull request, a commit on a branch, or a time, and the tick releases it when the operand holds. Hold, sentinel and wave become one wait in the code.
+
+Target: after v1.4
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Speculative dispatch, shared-path renaming and vector cards
+
+Long-range ideas for the card machine: deal a card on a need still in review, run cards that share paths in parallel and resolve at retire, and deal one batch of sub-cards with a verdict each. Each needs a model first and a measured gain.
+
+Target: after v1.4
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Route predictor in shadow, spend circuit breaker and per-tier governor
+
+Record a predicted route and tier beside the rule's choice and score it. Add dollar caps per route and friend per hour and per-tier budgets, narrowing dealing as spend nears a cap and resting at the cap with one judgment.
+
+Target: after v1.4
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Protect dev and main bases; mark a promotion stream
+
+Refuse adding a card with base dev or main outside a promotion stream. A stream can be marked as promotion, and land refuses a batch that would reach a protected base.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Batch tick round trips and alarm on slow store
+
+Pipeline or batch each tick part's reads and writes to under twenty round trips per tick. Raise one judgment per episode when the store round trip median passes a bar.
+
+Target: v1.3
+
+From: cards moved out of the sprint (work record, 2026-10-04); card moved out of the sprint (work record, 2026-10-04)
+
+### The coordinator can record its own heavy read as a read row
+
+Add an accept option that records the coordinator's heavy read, with its evidence path and hash, as a counted read row. This ends the wait for another read after a false bounce.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Reconcile landed records with the branch in both directions
+
+A verify-landed verb checks that every card recorded landed is on its branch, and lists work that is on the branch but not recorded landed. It gives the coordinator a way to correct either mistake.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Ask again when a read ended with no verdict, and keep live reads across restart
+
+A read taken back or run without a verdict is asked again of another reader and does not count against the reads bound. A server restart keeps reads whose lease is live, modelled first in TLA+.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)
+
+### Let resume and wait take several streams or notes at once
+
+Resume takes more than one stream and wait takes several notes, each set or refused on its own line. This replaces hand loops by the coordinator.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Move a stream to a live base and show the health of every base
+
+A stream set verb moves unstarted and queued cards to a new base, and a bases view lists each base with its cards, drift and last gate result. Add refuses cards on protected bases outside a promotion stream, and a recut verb can widen paths from a proposal in a hold report.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Gate landing on the whole tree and treat base health as one fact
+
+The lander's gate runs the wider package and whole-tree checks, so a batch cannot turn the base red. A red base stops landing with one judgment and resumes streams by rule, and the base and development branch are synced every cycle.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)
+
+### Timers on the sprint machine that wake an actor at a chosen time
+
+A remind verb writes a timer with a due time and note, and the machine wakes the named actor when it falls due.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Deal to subscription executors first and skip those that are down
+
+A switch keeps paid routes unused while a subscription friend with room covers the tier. A preference for a friend who is down, held or limited is skipped at the deal.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### A beat's age is measured at the tick's read so a long tick downs no member
+
+A tick that runs long over a slow link no longer marks members down who are beating on time.
+
+Target: v1.3
+
+From: PR #5015
+
+### Readers check four things before approving a card
+
+Readers check for comments contradicting code, stranded fragments, edits outside declared paths, and broken cross-package references before approving.
+
+Target: v1.3
+
+From: PR #5113
+
+### A cold start never judges a provider out of funds from old refusals
+
+On its first tick the server must not halt the sprint because of stored refusals. An unknown balance is never treated as out of credit.
+
+Target: v1.3
+
+From: PR #5228; issue #5220
+
+### finish --head defaults to what land accepts; a land with no full sha fails
+
+The finish help and default match the head that land accepts. A land without a full sha is a failed finish, and stale reports stay fenced.
+
+Target: v1.3
+
+From: PR #5235; PR #5246; issue #5154
+
+### A card's tier is its ceiling before the first deal
+
+Before a deal, and in a store with no route, the card's own tier is its ceiling and the card verb prints it. The model calls the one tier function.
+
+Target: v1.3
+
+From: PR #5243
+
+### State the brief admission contract in lint and add
+
+Lint and add print one admission sentence about child rules, step checks and model lines. A bare lint drift on any other token prints a note and still admits the text.
+
+Target: after v1.4
+
+From: PR #5247
+
+### Fence a friend take across epoch boundaries
+
+A friend take is rejected when the brief's epoch differs from the live epoch, and the epoch is carried into the store step so a concurrent clear fences it.
+
+Target: v1.3
+
+From: PR #5268
+
+### Dashboard merging, review and working cells pulse in a left-to-right wave
+
+Each of the three card states pulses on its own, offset in time from the last, so the pulse moves as a wave from left to right.
+
+Target: after v1.4
+
+From: PR #5278
+
+### Auto sentinels, released by the tick when their needs land
+
+A third kind of sentinel is released by the tick as soon as its needs have landed, with no person's release.
+
+Target: after v1.4
+
+From: PR #5308
+
+### where --costs carries tiers and cost by tier; a late tick reads running
+
+The dashboard reads tiers and per-card cost by tier from where. A running machine with a late tick reads running, not stopped.
+
+Target: v1.3
+
+From: PR #5323; PR #5326
+
+### Server beats and reads run off the control line; a gone caller is never run
+
+Verbs that only read or beat must not queue behind the single line of control, and a verb whose caller is gone is dropped.
+
+Target: v1.3
+
+From: PR #5325
+
+### Priority is a plain set; a blocker is stored, dealt first and evicts lower work
+
+The priority verb stores every level. A blocker is dealt first and evicts the lowest level, then the shortest running card.
+
+Target: v1.3
+
+From: PR #5405; PR #5459; card from the sprint store (2026-10-10)
+
+### Read cards are the only read path; every ok primary in review gets its read
+
+Remove the old ask path. Every ok primary in review gets a read, and withdrawals and returns spend no reader.
+
+Target: v1.3
+
+From: PR #5419; PR #5428; PR #5434
+
+### Edit a card's needs in place
+
+A needs verb shows a card's needs and edits them with a reason, so cards waiting on a dropped need can be freed.
+
+Target: after v1.4
+
+From: PR #5427; PR #5461
+
+### Selective sprint reliability repairs: rework priority and staged land gates
+
+Rework cards get fix priority and land gates are staged from the tested tree.
+
+Target: v1.3
+
+From: PR #5451
+
+### Keep structured briefs intact when tiering TLA work
+
+The tier line goes before structured header fields so REPO and CARRY briefs stay parseable.
+
+Target: v1.3
+
+From: PR #5452
+
+### The deal fills free lanes by cost, honors priority, and routes frontier cards to friends
+
+Free working lanes fill first across friends and the fleet, cheapest capable first, then the ready stack grows to twice the width. Priority ladder order and tie breaks hold, and a frontier card goes to a friend whose tiers hold it.
+
+Target: v1.3
+
+From: PR #5531; PR #5545; PR #5552
+
+### Sprint pause and unpause verbs with idempotent stop return replay
+
+The sprint can be paused and unpaused, and a replayed stop return with an operation id is safe. The pause state machine has a checked TLA+ model.
+
+Target: after v1.4
+
+From: PR #5532
+
+### Dashboard live dot shows stopped, and a failed first read refuses
+
+The dashboard header dot turns red when the machine is stopped, green when running, and neutral when disconnected. A dashboard whose first read fails exits 2 with one stderr line instead of serving.
+
+Target: v1.3
+
+From: PR #5526; PR #5528
+
+### Role views for a model: view coordinator, view worker, and a view API
+
+Compact ranked views serve a model what needs it, instead of the human dashboard. Items carry the next command and a cursor for incremental reads.
+
+Target: after v1.4
+
+From: nova-sprint PR #3
+
+### The machine feeds itself: inherited twins, rule answers and an idle alarm
+
+Cards re-cut as twins inherit the state of the original, mechanical judgments are answered by rule, and an idle fleet raises an alarm. This reduces manual judgment when many cards are held.
+
+Target: after v1.4
+
+From: nova-sprint PR #4
+
+### Land retries a flaky red gate once and re-polls unknown mergeability
+
+A gate batch that is red for a known flaky reason retries once with deduplication, and a mergeable state of unknown is polled again. The retry needs only its own lock key.
+
+Target: after v1.4
+
+From: nova-sprint issue #35
+
+### The sprint client consumes the Redis ACL credential and never echoes it
+
+The card push and table verbs accept the injected ACL password from the environment. Address errors never print credentials.
+
+Target: v1.3
+
+From: nova-sprint issue #36
+
+### The sprint server does not grow without bound or stop answering
+
+The server once reached a very large resident size and stopped answering verbs while the fleet stalled behind it. Memory is bounded and a watchdog restarts a wedged server.
+
+Target: v1.3
+
+From: nova-sprint issue #38
+
+### The coordinator verb also writes the config row and the role
+
+Moving the coordinator seat also updates the config sprint row and the stored coordinator role. A later config apply then does not write the old holder back.
+
+Target: v1.3
+
+From: nova-sprint issue #42
+
+### A failed card is known in seconds and raised, not redealt
+
+A card that fails at launch returns to ready and is dealt again. It is known to have failed within seconds, is not hammered back in, and is raised to the coordinator.
+
+Target: v1.3
+
+From: issue #2040
+
+### nova-work v2 recursive coordination nodes
+
+Coordination nodes follow one uniform contract at any depth. The spec's five behaviours get tests that drive a seeded kernel with no model.
+
+Target: after v1.4
+
+From: issue #2354
+
+### Hand back launcher refusals and refuse re-dealing a dealt label
+
+A launcher refusal before any process starts returns the card to the queue instead of raising it unknown. The queue remembers dealt labels and refuses a repeat unless forced.
+
+Target: v1.3
+
+From: issue #2381; issue #2382
+
+### Machinery runs the gate and owns returned, verified and landed transitions
+
+Harvest runs the gate itself outside the wall and records the result; a card's own gate claim is data. Returned, verified and landed are recorded transitions per item, head and base, and the landing lane is plain verbs with a model only for exceptions.
+
+Target: after v1.4
+
+From: issue #2386; issue #2530; issue #2508; issue #2407
+
+### Mechanical pin-check read for test-only pull requests
+
+A reader reverts the commit each new test claims to pin, expects red, restores it and expects green, and reports per test.
+
+Target: after v1.4
+
+From: issue #2387
+
+### Each machine computes its sprint row and pushes it to a store
+
+Every machine builds its own row of queue, working, done, ok, fail and rates every ten seconds, and the viewer reads the store.
+
+Target: after v1.4
+
+From: issue #2389
+
+### Cut the per-card cost in setup, tests and parallelism
+
+Self-contained cards need no repo, cards run only the useful test command with cached tool discovery, and Go parallelism is bounded per card.
+
+Target: after v1.4
+
+From: issue #2399; issue #2400; issue #2401
+
+### Reviewer findings on the current batch jump to the front
+
+A finding on the current batch becomes a card at the front of the swarm and merge queue, keeping the fix close to the base.
+
+Target: after v1.4
+
+From: issue #2417
+
+### Make reads cheap with CI evidence and a short mechanical PR brief
+
+CI carries the machine-checkable evidence and the PR body opens with title, goal, write scope and test command. Report and read start when the PR opens, and the reader sees only the diff and statuses.
+
+Target: after v1.4
+
+From: issue #2449; issue #2531; issue #2509
+
+### Escalate a node that fails twice to the next tier
+
+A node that fails the bar twice on a cheap route moves up a tier with both attempts attached, never a third recut at the same tier.
+
+Target: after v1.4
+
+From: issue #2450
+
+### Parse typed approve verdicts and release untyped holds
+
+A typed approve line is counted, and an untyped hold can be released by a read.
+
+Target: v1.3
+
+From: issue #2454
+
+### Typed card outputs and resume by content key and deal-time base
+
+Result and read files follow a schema parsed without a model. A finished result is cached by card text and base, and the base is pinned at deal time.
+
+Target: after v1.4
+
+From: issue #2506; issue #2507; issue #2529
+
+### Sprint table counts come from a card event stream, not file times or comment scans
+
+Done, ok, fail, read, landed and calibration counts per friend and per bench are folded from card events, so the table needs no GitHub scan and shows cut to landed.
+
+Target: after v1.4
+
+From: issue #2563; issue #2678; issue #2680
+
+### Sprint x/y percent and ETA come from the work set
+
+One reader loads the roadmap and work files, a landed acceptance kind exists, and a sprint is any bounded task set answering x/y percent in under a second, with GitHub issues ingested into the file.
+
+Target: after v1.4
+
+From: issue #2595; issue #2664; issue #2679; issue #2593; issue #3141
+
+### Opening a sprint stamps its start on every machine
+
+The sprint verb records the start once, and bench counts read it, so counts never include an earlier sprint.
+
+Target: v1.3
+
+From: issue #2727
+
+### Cards carry a stable id, ruling and spec links, and a reverse walk from PR to reason
+
+Each card gets a stable id carried to job, result, event and PR body, names its ruling and spec anchor, and one query answers why a PR exists, with its siblings and attempts.
+
+Target: after v1.4
+
+From: issue #2589; issue #2596; issue #2597
+
+### A needs-you line lists what waits on a person, oldest first
+
+The sprint table and status print the items waiting on a human, such as asked cards, PRs with no typed line and held cards, with who is expected, and a supervisor owns the notifications.
+
+Target: after v1.4
+
+From: issue #2592
+
+### The merge gate keeps raw test output and full review text, and stores its receipt
+
+The batch test step keeps the raw go test JSON stream, paginated review captures are not truncated at the output cap, and the gate's receipt is stored where a reader can fetch it.
+
+Target: v1.3
+
+From: issue #2626; issue #2654; issue #2693
+
+### A hold pinned to an older head is not a hold at the current head
+
+The lander ignores a hold whose sha is not the PR head when a later line at the head clears it.
+
+Target: v1.3
+
+From: issue #2710
+
+### GitHub events arrive in a stream so loops are event-driven
+
+A webhook receiver writes GitHub events to a stream with a durable consumer and a polling fallback, so PR, CI and typed-line changes reach loops and the table within seconds.
+
+Target: after v1.4
+
+From: issue #2657; issue #2685
+
+### Owner decisions are records with options, default, deadline and ruling
+
+A decide verb opens, shows and rules decision records, and the table shows one count of open decisions.
+
+Target: after v1.4
+
+From: issue #3143
+
+### nova-work ingest from GitHub: capture, continuous poll, verify and cutover
+
+nova-work reads issues from GitHub into its own store with conditional requests, keeps in sync from deliveries and a poll, and has a verify run. The tracker becomes a mirror once the cutover is done.
+
+Target: after v1.4
+
+From: issue #3167; issue #3169; issue #3172; issue #3173; issue #2080; issue #2081; issue #2082
+
+### nova-work write-back: one writer, roadmap batch, lag and fold of landed work
+
+One writer applies roadmap batches back to the tracker, reports how far the mirror lags, and settles units when landed pull requests and verified criteria arrive.
+
+Target: after v1.4
+
+From: issue #3168; issue #3171
+
+### nova-work keeps specs in its store behind a single-writer kernel
+
+Specs, their versions and reader scores live in the nova-work store, and the ready gate is computed from them. One kernel owns the store and every mutating verb is a kernel command.
+
+Target: after v1.4
+
+From: issue #3220; issue #3340
+
+### All coordination state in Redis, batched, driven by Go tools
+
+Queues, leases and tables live in the sprint store, not in files. Every store access is a pipelined batch, every loop ticks at one second, and coordination scripts move into Go verbs.
+
+Target: after v1.4
+
+From: issue #3279; issue #3303; issue #3309
+
+### Decisions are made centrally; machines only execute what the queue says
+
+A worker machine takes the next ready item, runs it and reports. It never decides readiness from a partial view.
+
+Target: after v1.4
+
+From: issue #3251
+
+### The coordinator is a role any friend AI can hold on any machine
+
+Every coordinator action is a verb, and the loops and tables run on any Mac or Linux machine with failover, so no step depends on one person or host.
+
+Target: after v1.4
+
+From: issue #3295; issue #3543; issue #2061; issue #2062; issue #2065; issue #2066; issue #2069; issue #509; card moved out of the sprint (work record, 2026-10-04)
+
+### A pit stop and its lift are one store state every friend reads
+
+The stop and its lift are set and cleared by a verb and held in the sprint store, so a friend never relies on a bus note to know whether to work.
+
+Target: after v1.4
+
+From: issue #3371
+
+### One verb moves ready work to whoever has open slots
+
+A single atomic verb cancels stale items and moves ready work across queues to friends with open slots, honouring the named owner, instead of hand loops.
+
+Target: after v1.4
+
+From: issue #3407
+
+### One DEPENDS-ON form and one parser that refuses other spellings
+
+Cards, pull requests and issues state dependencies in one canonical form read by one parser. Unknown dependency state is never treated as satisfied.
+
+Target: v1.3
+
+From: issue #3409
+
+### Make spec approval reliable: one SPEC line form, a verdict verb, sha-keyed reads
+
+Spec reads use one machine-checked line form written by a verb. A verb computes the gate verdict from the store, reads are keyed to the body hash so stale ones never count, and a rewrite names the gaps it closes.
+
+Target: after v1.4
+
+From: issue #3564; issue #3565; issue #3566; issue #3568; issue #3569
+
+### Merge streams: the stream is the landing unit with open, take, batch, land verbs
+
+A stream is opened, taken, batched, marked and landed as a unit, holding at its boundary. Cancelled or timed-out shards count as red.
+
+Target: after v1.4
+
+From: issue #3478
+
+### Show every seat's children on the sprint table within a second
+
+The table shows each live child with task, step, age and cost, read from the store, including reads and spec reviews that hold no queue lease.
+
+Target: after v1.4
+
+From: issue #3519
+
+### Bound turns and reasoning on the live card templates
+
+Read-family cards carry a low turn limit and low reasoning, and writing-family cards a higher one, to cut tokens per card.
+
+Target: after v1.4
+
+From: issue #3534
+
+### Sprint table: disk room per host and one consumer table for friends and hosts
+
+The sprint table shows free disk per host, red under the floor, and one table shape (ready, working, done, ok, fail, ok%) for friends and hosts.
+
+Target: after v1.4
+
+From: issue #3584; issue #4071
+
+### The card record is the only record; GitHub is a remote written at the edges
+
+Cards carry their fields as structured data imported once at creation. Nothing parses prose or edits a pull request body, and GitHub is touched only to close out. A call budget guard counts remaining GitHub calls meanwhile.
+
+Target: after v1.4
+
+From: issue #3594; issue #3596; issue #3601; issue #3607; issue #3633; issue #3603; issue #3967
+
+### A read is one record written only by the verb
+
+Reads live in one record with one writer, and a read counts only when the verb writes its score line. A score posted only on the bus cannot exist.
+
+Target: after v1.4
+
+From: issue #3874; issue #3897; issue #2063
+
+### Cards carry what changed on the base, and merge notes reach live workers
+
+The card cut lists base commits touching its paths since the issue, and a note verb lets merge learnings reach a worker mid-task.
+
+Target: after v1.4
+
+From: issue #4189; issue #4186
+
+### Cards flow automatically through the tables, moved only by single-writer verbs
+
+A waiting card is complete, so a deal is one move. Verbs deal, work, end, land and cancel are the only writers of stream, host and friend sets, and everything stays in the store under one second.
+
+Target: after v1.4
+
+From: issue #3636; issue #3662; issue #3911; issue #3929
+
+### The stream table is true end to end; every refusal and failed card is raised
+
+Each column change is an event, a nightly control walks a card through all columns, every refusal and error is raised to the coordinator, and a failed card goes to a typed review verdict.
+
+Target: after v1.4
+
+From: issue #3999; issue #4155; issue #4072
+
+### Sprint store keys do not expire, and a reset to zero is a backed-up verb
+
+Beats, presence and history keys drop their TTLs and length caps in favor of recorded time and reader judgment. A reset verb deletes the sprint state families as admin after a backup.
+
+Target: after v1.4
+
+From: issue #3878; issue #4195
+
+### Remove the superseded sprint verbs and machinery in one batch
+
+Once the unused-verb check confirms it, the old friend-queue, routing, lander and sprint-file verbs are deleted together.
+
+Target: v1.4
+
+From: issue #4191
+
+### A card is a spec, refused at push without its fields
+
+A card carries evidence, paths with lines, seams, rules, receipts and keep notes. Push refuses a work card missing them, and requires a stream.
+
+Target: after v1.4
+
+From: issue #4313; issue #5494
+
+### A parent card cuts children, waits and stitches
+
+A parent fans out from a plan, depends on its children, takes corrections mid-flight, then reviews and stitches in its second phase.
+
+Target: after v1.4
+
+From: issue #4317
+
+### Dependencies come from paths, with sentinels per layer
+
+Ready means no live path overlap. Streams follow the file graph, overlap is refused at push, and a sentinel card reviews each layer and across streams.
+
+Target: after v1.4
+
+From: issue #4318; issue #4322; issue #4188; issue #4185; issue #4028
+
+### The coordinator console is one grammar and settles what it can
+
+One spelling per concept, one receipt shape, fast quiet calls and a home screen. The machine settles what it can before waking the coordinator.
+
+Target: after v1.4
+
+From: issue #4352; issue #5096
+
+### Supervised wake adapters for coordinator seats
+
+A fresh coordinator seat gets a durable, supervised recipe that turns new judgments and notes into a wake for its harness. Delivery, wake and acknowledgement are separate steps.
+
+Target: after v1.4
+
+From: issue #5131
+
+### Inbox push cannot overwrite a published judgment
+
+Two overlapping clients share one temporary path, so a second write can change the published file. Use a unique temporary path per writer.
+
+Target: v1.3
+
+From: issue #5160
+
+### The tick watchdog bounds diagnostics and refuses negative deadlines
+
+Watchdog exit must not wait on diagnostics that can block. A negative deadline is refused.
+
+Target: v1.3
+
+From: issue #5173
+
+### Cost rules: flash first, escalate repeats, rest failing routes
+
+Cheap tier first, pro only on escalation. Two identical failures escalate at once. A route that returns no result rests. Rules are kept by reference, each with a unit test.
+
+Target: after v1.4
+
+From: issue #5174; PR #5300
+
+### Generated ledgers merge without conflict and rework starts at the tip
+
+Two cards that shrink the same ledger conflict by line. Regenerate the ledger at the merged tree, and stage rework from the current head.
+
+Target: v1.3
+
+From: issue #5215
+
+### Rested routes must not overflow the fleet table property cap
+
+Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the tick writes nothing. Use one property for all.
+
+Target: v1.3
+
+From: issue #5210
+
+### A second tick must not move a card the first deal placed
+
+Leveling runs at tick start, but the deal places cards later in the tick without regard to it. Make the deal and the level agree.
+
+Target: v1.3
+
+From: issue #5408; card from the sprint store (2026-10-10)
+
+### Card kinds for fix-red work cut from triaged defects
+
+A fix-red card kind names its source and test files and its reproducing test, and is accepted only when that test goes green. One card per triaged defect.
+
+Target: after v1.4
+
+From: issue #1655
+
+### nova-work client must stop waiting after a bound
+
+A work client call without a deadline waits forever on a session that never answers. The spec fixes a default bound and the client enforces it.
+
+Target: v1.3
+
+From: issue #1643
+
+### A card goes from issue to landed with no coordinator hand step
+
+List what remains before accept, routing, reads and landing all run by machinery alone, and close each gap.
+
+Target: after v1.4
+
+From: issue #1725
+
+### Discover offered capacity and match ready work without double-counting shared pools
+
+A coordinator learns what each friend can do now and whether workers share one account limit. Stale advertisements do not count.
+
+Target: after v1.4
+
+From: issue #176
+
+### Reprioritize, correct and stop work already dealt
+
+Authenticated control events with scope, update number and priority reach every running descendant, and the sprint can prove each one applied.
+
+Target: after v1.4
+
+From: issue #179
+
+### Carry an accepted goal to its endpoint without routine human steering
+
+The sprint persists the goal, gates, priorities and budget, and recovers from a failed worker, exhausted provider or lost context while the owner is away.
+
+Target: after v1.4
+
+From: issue #187
+
+### One dealer fills each member in proportion to its free slots
+
+A single dealer with per-member queues stops fast-ping machines from winning every card while slow ones sit idle.
+
+Target: after v1.4
+
+From: issue #2008
+
+### A down machine must never hang the dealer, sampler or harvest
+
+Every remote call has a timeout and each host is isolated, so a dead machine and stale connection sockets cannot freeze the loops.
+
+Target: v1.3
+
+From: issue #2009
+
+### Per-provider and per-model concurrency ceilings with error watch and spill
+
+Provider capacity is a shared resource. Ceilings, an error-rate watch and automatic spill to the next route keep retries from holding slots.
+
+Target: after v1.4
+
+From: issue #2010
+
+### Derive a machine's width from measured per-card memory with a controlled ramp
+
+Widths are measured, not guessed, and limits are found by a controlled ramp.
+
+Target: after v1.4
+
+From: issue #2019
+
+### Cut cards by loop from enumerated sources, never duplicating open pull requests
+
+Card generators become verbs that cut from a work spec, a repair or a read, and skip work an open or merged pull request already carries.
+
+Target: after v1.4
+
+From: issue #2021; issue #2041; issue #2047
+
+### A fleet-wide run, pause and stop signal honored by every loop
+
+One signal with a generation is checked by dealing, launch, harvest and landing before each action, and bad signal states cause no side effect.
+
+Target: after v1.4
+
+From: issue #2022
+
+### Preflight every machine and canary each new card family before dealing wide
+
+The first few cards of a new family run alone, and a machine is checked at loop start, so mass failures show in minutes.
+
+Target: after v1.4
+
+From: issue #2030
+
+### A standing report and status verbs for the funnel from launch to landed
+
+Launched, returned, gate result, pull requests and landed are counted per wave and per model, with live cards and widths by machine, all from records.
+
+Target: after v1.4
+
+From: issue #2034; issue #2049
+
+### Merge simulation and planning detect stacked pull requests by ancestry
+
+Two members sharing a commit are not a conflict. The planner finds stacks by ancestry, not by base ref.
+
+Target: v1.3
+
+From: issue #2036
+
+### Harvest a wave into one gated pull request and write verdicts back
+
+One verb collects returns, applies commits, runs the suite, opens the pull request and records each verdict on its source.
+
+Target: after v1.4
+
+From: issue #2067
+
+### Globally unique node ids and a two-way issue index
+
+Give every node, card, attempt and evidence record a kernel-minted unique id, and keep O(1) lookups from node to issues and from issue to nodes, rebuilt from the journal.
+
+Target: after v1.4
+
+From: issue #2084; issue #2085; issue #3174
+
+### Link-mode dogfood ledgers and the absorb-mode decision
+
+Measure tokens and wall clock per question and log every drift with its repair cost while running in link mode. Absorb mode stays unscheduled until those numbers and its safety triggers are met.
+
+Target: after v1.4
+
+From: issue #2089; issue #2090
+
+### Visualize the sprint as linked behaviour views
+
+Show the whole behaviour at once: a card timeline with a lane per bench, the pipeline from source to landing as linked views, and measures plotted against width, route and card kind.
+
+Target: after v1.4
+
+From: issue #2110; issue #2111; issue #2112; issue #2114
+
+### nova-work tree as a live picture beside its Lisp
+
+Render the work tree with state, evidence, counts and linked issues on the nodes, filling in as work lands.
+
+Target: after v1.4
+
+From: issue #2113
+
+### A loaded bench must not be marked down by the fleet probe
+
+The fleet-state probe marks a heavily loaded but healthy bench down after a few missed probes, and the dealer then kills its loops and sweeps its queue. Define state-entry timing and tell loaded from down.
+
+Target: v1.3
+
+From: issue #2161
+
+### Emit merge-queue and expander events to the structured log
+
+Log enqueue, group start, group verdict and park events from the merge queue, and derive and cut events from the work language expander, as the logging spec requires.
+
+Target: after v1.4
+
+From: issue #2185; issue #2187
+
+### Implement derive and fold expansion in nova-work
+
+Expand a derive form to one node per matching issue and a fold form to one node over its green sibling branches, excluding non-green ones.
+
+Target: after v1.4
+
+From: issue #2246
+
+### Kernel: uncertain reservations, lease re-grant and executor seam
+
+Hold an uncertain reservation and never re-grant it on expiry, reap on lease expiry, and give the executor seam a parent grant, a version-bound result and uncertain-on-disconnect.
+
+Target: after v1.4
+
+From: issue #2239; issue #2240; issue #2247
+
+### Kernel: tool key invalidation and below-version refusal
+
+Compare a unit's declared tool versions and semantic keys at admission: invalidate outputs when a key moves, and refuse a unit whose tool is below its version.
+
+Target: after v1.4
+
+From: issue #2242; issue #2248
+
+### Kernel: collection harvest, warm state, done-when and acceptance
+
+Bind collection members at harvest, keep retained warm state out of active capacity, make the set finish line a report not a gate, and refuse a unit without acceptance at load.
+
+Target: after v1.4
+
+From: issue #2241; issue #2243; issue #2249; issue #2250
+
+### Duty tier: resident session executes policy, escalations as nodes, learned admission
+
+The resident session executes an approved finite policy and never authors it, and every judgment it cannot make becomes an escalation node with a rule, a default and an age. Admission checks can be learned from the history of abstain reasons, with preservation tests for handoff records.
+
+Target: after v1.4
+
+From: issue #500; issue #585
+
+### Typed-decision models for card routing and other routine judgments
+
+A fast schema-typed model with a calibrated confidence makes bounded routine decisions such as card type, abstain reason and note triage. It saves tokens, cost and wall clock against a general model.
+
+Target: after v1.4
+
+From: issue #589; issue #896; issue #5241
+
+### Card dependencies as edges, and verdicts and holds as state
+
+Cards carry needs and blocks edges, and a card is ready only when every dependency is merged and green. Read verdicts are state re-evaluated each tick, holds are edges, and every hand action is a verb.
+
+Target: after v1.4
+
+From: issue #785; issue #854; issue #2437; issue #3219
+
+### Any card moves anywhere with one verb
+
+One verb moves a card from where it is to where the coordinator wants it, including handing a dealt card back. A pin to a down friend never holds a card.
+
+Target: after v1.4
+
+From: card from the sprint store (2026-10-10)
+
+### Brief defects and report form are judged by the machine
+
+A card whose brief is wrong is shown as its own column, not as review. Report form is checked by lint at finish, and add applies the header fixes its lint computes.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### A hold that names its fix is applied by the machine
+
+When a hold names its own fix, the machine applies it instead of waiting for the coordinator to read it.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### Landing survives a red base, a red batch and a rejected push
+
+A red base is said as the base's and no card is blamed. A red batch ejects the failing card and lands the rest. A push rejected because the base moved is retried, never a stop.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
+
+### Verbs are safe across a switch and across client versions
+
+A verb sent during a server switch gets a restarting reply and waits. Every verb of one client version is readable by the last release.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### A route carries a request budget and a jittered rest end
+
+A route can carry a requests-per-minute budget that the deal keeps. The end of a route rest is jittered so routes do not return together.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### A stats tidy succeeds over a fleet of more than 64 rows
+
+Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a property bound.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### Delivery milestones are explicit records
+
+Each milestone is a record on the card and stream with repository, target ref, commit and gate or review evidence: staged, verified in dev, released.
+
+Target: after v1.4
+
+From: card from the sprint store (2026-10-10)
+
+### Card cutting keeps sweeps small and paths narrow
+
+A sweep over a whole tool is cut by site so each card finishes inside its deadline. A card that edits one test file gets only that file as its paths, so two cards do not collide at land.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)
+
+### Server warms its in-memory mirror before ticking
+
+A restarted server warms its in-memory copy of the store before its first tick, so early ticks do not miss the deadline and crash-loop.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
+
+### Judgments and reads start within seconds
+
+Mechanical judgments are answered in the step that raises them, and a finished card is offered to a free reader at once, with a measured target of under 30 seconds.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
+
+### The lander prints its phase as it runs
+
+A land pass prints a progress line for each phase, so the coordinator can tell a slow pass from a stuck one.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### Landing into a protected branch opens a pull request
+
+For a stream marked land-protected, land pushes a land branch, opens a pull request with the batch details and enables auto-merge where allowed.
+
+Target: after v1.4
+
+From: card from the sprint store (2026-10-10)
+
+### Failures and dealing never wait on the coordinator
+
+A failed attempt is handled by the machine, and the deal keeps friends supplied with work even when the coordinator is out, so no friend idles or polls for lack of cards.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### Redo restores a dropped card
+
+The redo verb restores a card that was dropped, covered by a test.
+
+Target: after v1.4
+
+From: card from the sprint store (2026-10-10)
+
+### Release takes a stream or every held card
+
+The release verb accepts a stream name or releases every held card, building on a verb that moves any card anywhere.
+
+Target: after v1.4
+
+From: card from the sprint store (2026-10-10)
+
+### Verbs answer fast, and stop is instant
+
+The server answers verbs in well under a second even while busy, and stop writes its state in one store step without waiting for the tick.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
+
+### One verb zeroes every figure on the sprint page
+
+A stats reset verb clears total cost, per-card and per-tier cost, stream cost cells and each row's done and ok percent from a recorded mark.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### A lane picks the least loaded bench
+
+The bench a lane gates on is chosen at lane start from the fleet rows by cores and current load, and the choice and reason are written into the brief.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### The card lint refuses known defects and reads place names right
+
+The card lint refuses the listed brief defects, and a repository or branch name is not mistaken for a personal name.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
+
+### The lander records its own landings
+
+A pushed head never waits in merging for a manual merge step. The lander writes the landing record itself when it pushes a stream's batch.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### Promote merges from a throwaway branch after a whole-tree gate
+
+Promotion never names the base branch as a PR head. It opens and merges from a throwaway branch after a whole-tree gate, or the report names what blocks it.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### The table tells the truth: one write per new stream
+
+Adding a stream records its rows and places in one write, so the table never disagrees with the facts.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### A brief's repo line is always owner/name
+
+Admission lint, recut and rework refuse a repo line that is not owner/name, and the tier writer stamps only the result line.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### Tidy leaves a tombstone for every landed card
+
+A need on a landed card that tidy removed must read as landed, not as a missing id. A tombstone lets the card listing tell landed-and-tidied from never-existed.
+
+Target: after v1.4
+
+From: card from the sprint store (2026-10-10)
+
+### A seat install verb installs the push loop
+
+The seat install verb installs the push loop as the tool's own verb and pushes judgments to the seat.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### Check at add whether a card's work is already on its base
+
+At add, by git and without a model, a card is refused when its work already sits on the base branch.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
+
+### Detect false bounces by readers
+
+Readers must not bounce cards for harness failures or trailer-only misreads. A detector separates these from real defects.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### The stage carries a prior attempt's head onto a moved base
+
+A lane never carries an earlier attempt onto a moved base by hand. The stage does it and reports the result.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### The third refusal of one cause in five minutes raises one judgment
+
+Three refusals of the same cause within five minutes raise one judgment, rewritten in place and closed after five quiet minutes; watch --wake wakes on it. Its TLA+ model is rebuilt with it.
+
+Target: after v1.4
+
+From: nova-sprint commit fbcb205 (not carried by the re-seed, nova-sprint PR #28); card moved out of the sprint (work record, 2026-10-04)
+
+### nova-card new writes a lint-clean brief from its parts
+
+A new verb builds a brief that passes the card lint from flags: task file, paths, test, gate, tier, rules and batch.
+
+Target: after v1.4
+
+From: nova-sprint commit 4dde8e4 (not carried by the re-seed, nova-sprint PR #28)
+
+### Merge health is one coordinator judgment every ten minutes
+
+The coordinator pass raises one merge-health judgment every ten minutes naming the base, the main line, stopped streams, the promotion PR and unstitched branches. The drift facts it reads already exist.
+
+Target: after v1.4
+
+From: nova-sprint commit 412f684 (not carried by the re-seed, nova-sprint PR #28)
+
+### A frontier read goes to a reader row that declares frontier
+
+When no frontier friend AI has room, a frontier read is routed to a reader row that declares the frontier class.
+
+Target: after v1.4
+
+From: nova-sprint commit 39e4253 (not carried by the re-seed, nova-sprint PR #28), routing half
+
+### The served dashboard page is pinned to the live page
+
+A sha256 test pins the page the dashboard serves to the live page, so the two cannot drift apart.
+
+Target: after v1.4
+
+From: nova-sprint commit 7a4988d (not carried by the re-seed, nova-sprint PR #28), remainder; card moved out of the sprint (work record, 2026-10-04)
+
+### nova-work roadmap check, add, remove, pull and note
+
+Verbs over the roadmap s-expression files with byte-stable round trips; each writing verb refuses a file that check rejects.
+
+Target: after v1.4
+
+From: nova-sprint commit 8c87a4b (not carried by the re-seed, nova-sprint PR #28)
+
+### Work lint, then a machine gate before a read, then gate lint
+
+One ordered stack: ten mechanical lint checks rework a finished attempt before any read; a bench gate runs the TEST line, vet and tests at the head before a read, and a red gate reworks without spending a read; reach analysis checks the TEST line can reach the change.
+
+Target: after v1.4
+
+From: nova-sprint commits 5d3742c, 6019a68, 3129e31, 16d4e33, fa3cb2c, 5faebca and b223df5 (not carried by the re-seed, nova-sprint PR #28)
+
+### Processor counters: IPC and stall reasons from the stage stamps
+
+where --json reports stage-time counters (IPC, stall reasons, the top stall) with a dashboard row, and the card model proves stalls partition wall time, with a reversed witness.
+
+Target: after v1.4
+
+From: nova-sprint commit 415d761 (not carried by the re-seed, nova-sprint PR #28); card moved out of the sprint (work record, 2026-10-04)
+
+### release check asks for a cold audit of twenty landed cards
+
+release check --audit asks for cold reads of twenty landed cards, and a plain release check passes only with an all-ok audit under 48 hours old.
+
+Target: after v1.4
+
+From: nova-sprint commit 1123e21 (not carried by the re-seed, nova-sprint PR #28); card moved out of the sprint (work record, 2026-10-04)
+
+### Land ejects a card that cannot merge and lands the rest
+
+The lander ejects one unmergeable card with its dependents and lands the rest; a third eject for one cause raises a wrong-brief judgment and a 15 minute stall raises merge stuck once. The land model gains Eject with its configs.
+
+Target: after v1.4
+
+From: nova-sprint commit d4999b3 (not carried by the re-seed, nova-sprint PR #28)
+
+### A route mark on local-endpoint lanes in the fleet track
+
+The dashboard fleet track shows a route mark and an endpoint tooltip on lanes served by a local endpoint.
+
+Target: after v1.4
+
+From: nova-sprint commit 5018ecc (not carried by the re-seed, nova-sprint PR #28); cards moved out of the sprint (work record, 2026-10-04)
+
+### Start prints the coordinator bring-up, one line per thing
+
+start, coordinator, handover and check --bring-up print one BRING-UP line per thing with its state and command; a missing line raises a bring-up judgment, and watch --events folds the epoch log.
+
+Target: after v1.4
+
+From: nova-sprint commit 639ccef (not carried by the re-seed, nova-sprint PR #28); card moved out of the sprint (work record, 2026-10-04); PR #5281
+
+### The lander bench tree carries its own git, not a pointer
+
+The bench tree git points at a worktree that exists only on the coordinator machine, so git fails on benches; give the bench tree its own repository.
+
+Target: v1.3
+
+From: v1.2.4 held ledger
+
+### The tick stays under one second at load
+
+Drain and deal take 0.4 to 0.7 seconds at load, so the tick gate is over one second; bring the whole tick under it.
+
+Target: v1.3
+
+From: v1.2.4 held ledger; PR #5557
+
+### Three-tier context for fix cards
+
+A fix card carries only what it needs, in three tiers: the error line; then the enclosing AST block (go/ast); then the exported signatures of that block's direct imports. A rework for a wrong brief widens the context one tier, capped at three, the way a reader's finding widens a card's PATHS.
+
+Target: after v1.4
+
+From: a Gemini dialog the owner shared, 2026-10-10
+
+### Read cards share one immutable snapshot
+
+N read cards of one branch share one immutable snapshot, a bundle at one ref per host, instead of each fetching its own. The dedupe happens in the scheduler, not in the card state machine. Today each read is a card, dealt cheapest-first, and nothing collapses them.
+
+Target: after v1.4
+
+From: a Gemini dialog the owner shared, 2026-10-10
+
+### A spend burn-rate sentinel
+
+Spend per hour past a threshold raises a manual sentinel for the coordinator. Today the spend gate runs only at a release cut. It complements the automatic throttles in spend-circuit-breaker and route-predictor-and-spend-governor: this one is an alarm for the coordinator, not a throttle.
+
+Target: after v1.4
+
+From: a Gemini dialog the owner shared, 2026-10-10
+
+### A TLA+ case for the false-positive fix loop
+
+A fix passes its own layer but keeps re-failing a sentinel above it. A TLA+ case couples components to domains: a fix confined to PATHS that never meet the regression's component exhausts its attempt bound and halts. When widened PATHS intersect the component, the fix clears it nondeterministically (it may still fail), and every failure counts toward MaxAttempts: intersection is necessary, not sufficient. Properties: a reachable fix can land (liveness under fairness), and a fix that is never right halts at the bound (safety). Open question: does a merge-queue ejection count toward the card's attempt bound? It extends the attempt-bound models in tla-card-lifecycle-counters-and-waits.
+
+Target: after v1.4
+
+From: a Gemini dialog the owner shared, 2026-10-10
+
+### Coordinator drift: a root brief and two metrics
+
+Every escalation carries the root brief, with a test that holds it. Every card cites a release-scope or fixes item directly, never through its parent card, which closes scope laundering. Drift is measured three ways: the share of newly written cards that cite no item in the release-scope or fixes file (cards carry their release); the Jaccard overlap of non-trivial tokens between a card's brief and its cited scope item, warning below a ratio such as 15%; and the branching ratio, consumer cards per producer card per wave. The blind spots these close are scope laundering, semantic dilution and scope bloat.
+
+Target: after v1.4
+
+From: a Gemini dialog the owner shared, 2026-10-10
+
 ## Setup, release and operations
 
 Setting machines up, installing and releasing safely, and the checks that keep a fleet honest.
@@ -185,6 +1730,166 @@ Why it waits: New test capability beyond the v1.4 quality list.
 
 Replaces 2 open sprint cards, each mapped to `chaos-suites`.
 
+### Backup, restore and demo-load verbs for the sprint store
+
+Replace the hand backup procedure with verbs that dump, split, checksum, scan for secrets and restore into a throwaway store, so a dump also works as a demo load.
+
+Target: after v1.4
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Reader spend summed on the readers table
+
+Every read is a priced record on its card. Sum them by reader on the readers table and in the where output, beside work spend.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Worker ok percent counts only work the worker could do
+
+Holds that name a brief defect are counted against the card generator, not the worker, and reader verdicts and past-deadline friend cards are counted correctly in the ok percent.
+
+Target: v1.3
+
+From: cards moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)
+
+### Container-sandboxed functional tier with a runtime column
+
+Functional tests run inside a container runtime such as podman, the machine kind names its runtime, and the dashboard fleet table shows a runtime column.
+
+Target: after v1.4
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Tests leave the source tree clean
+
+A sprint test that wrote into the source tree uses a temp directory, and a CI class test checks the tree is clean after the package tests.
+
+Target: v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Quiet a machine by verb and alarm on runaway test processes and overload
+
+A fleet quiet verb stops dealing to a member for a set time, and the beat reports the count of live test processes so the tick raises one judgment per episode. The overload alarm covers friends as well as machines.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### The dirty-tick twin catches up from set, reorder and delete events without a whole read
+
+The change-stream catch-up recognizes row order and row delete events, and the test waits on the twin state, not the clock. This removes a flaky merge-queue failure.
+
+Target: v1.3
+
+From: PR #5230; PR #5233; issue #5197; issue #5214
+
+### Choose provider routes per bench from measured failure rates
+
+Routes per bench are picked automatically from measured zero-token and nonzero-exit rates by bench and model, not from a hand-written list.
+
+Target: after v1.4
+
+From: issue #2385
+
+### Calibrate the model grader against typed scores
+
+The grader's prompt is tuned until its scores agree with friend scores on a calibration set, then it scores low-risk kinds.
+
+Target: after v1.4
+
+From: issue #2536
+
+### Sprint test Redis helper checks the pinned version
+
+The helper returns whatever Redis is first on the path. It should pin the version and fail on a mismatch, like the shared helper.
+
+Target: v1.3
+
+From: issue #5172
+
+### Queue fence, lane order and unknown-call tests
+
+Prove that a worker that lost its lease cannot write, lanes are read in priority order with a directory fallback, and an expired remote call stays unknown and keeps its seat until answered or bounded.
+
+Target: v1.4
+
+From: issue #2196; issue #2197; issue #2198
+
+### Nodes table is a rebuildable projection of the journal
+
+Add acceptance tests that drop the nodes projection and rebuild it from the journal, and that a disagreement is reported as a projection bug.
+
+Target: v1.4
+
+From: issue #2202
+
+### Job directories are removed and the volume is guarded
+
+A card's job directory is removed once its results are moved and its pull request is confirmed, bench lanes clean their own temporary files, and the working volume is guarded.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); issue #2379; issue #2566; issue #2632
+
+### Cost headlines are complete and carry their coverage
+
+Cost per landed and total cost include work, reads, landing and no-result runs, each in its own column. Headlines show their denominators and coverage, and an unpriced run cannot make a route look cheaper.
+
+Target: after v1.4
+
+From: card from the sprint store (2026-10-10)
+
+### Deal latency is measured per member and friend
+
+The time from ready to dealt to started is measured per card, shown as median and p90, and alarmed once per episode when the p90 passes its target.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
+
+### Unit tests for the idle trace and idle alarm
+
+The idle trace and idle alarm code gets unit tests for every root, raising its statement coverage from a small fraction.
+
+Target: v1.4
+
+From: card from the sprint store (2026-10-10)
+
+### Shared test environment for the sprint store packages
+
+The sprint store and its test utility packages get the same test environment scaffold as the other packages. Their tests stay under the time bound.
+
+Target: v1.4
+
+From: card from the sprint store (2026-10-10)
+
+### The lander git and go tests move to the functional tier
+
+Lander tests that run git and go move to the functional tier, and the land decisions are pinned in a memory test.
+
+Target: v1.4
+
+From: nova-sprint commit 2b74be0 (not carried by the re-seed, nova-sprint PR #28); card moved out of the sprint (work record, 2026-10-04)
+
+### The adopt can carry a change of the store library
+
+The shadow tick refuses any other library digest before the window, so an adopt cannot carry a library change; run it inside the window after the load, with TLA+, and digest code bytes only.
+
+Target: v1.3
+
+From: seat decision, 2026-10-10
+
+### A rating, review, dogfood and audit round of the current release
+
+Each friend AI rates, dogfoods and audits each tool as released and writes the reports the earlier rounds asked for. The planned rounds of past releases are kept here as one recurring practice.
+
+Target: after v1.4
+
+From: cards from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)
+
 ## Docs, models and the repository
 
 Documentation suites, the TLA+ ledger, and the models.
@@ -196,3 +1901,327 @@ A full documentation suite for nova-sprint (start, guides, reference, the coordi
 Why it waits: New documentation, not a fix.
 
 Replaces 8 open sprint cards, each mapped to `nova-sprint-docs-and-brand-suite`.
+
+### nova-card help prints each example line once
+
+The usage block of nova-card generate lists the same example line in the flow section and again as the example. The help renderer prints it once.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Bring the sprint TLA+ models up to the state machine
+
+The models still ask reads as a pair, pin round-robin, miss the taken-back reader and omit the friend ready queue; update them to match the code.
+
+Target: v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Model the branch topology
+
+Write a model of the branch rules so a side branch, a temporary landing branch or a red base is caught by rule.
+
+Target: v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Dashboard is dark only, theme toggle removed
+
+The sprint dashboard drops the light theme and its toggle and always renders dark.
+
+Target: v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### One deadline rule for friends and fleet members
+
+The friend deadline rule and the member deadline rule become one function with one spec paragraph used by both tables.
+
+Target: v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### One function for the loopback-or-tailnet address rule
+
+Gather every address check for the sprint and its stores into one function, cited from each caller, so local-only mode has one definition.
+
+Target: v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Refuse a card that edits a TLA+ model without refreshing the run records
+
+The add verb refuses a brief whose paths cover a model file but not the run records file, and names the remedy. This stops landed cards from making the records stale.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### The sprint view frame is pinned byte for byte by a lock file
+
+The where frame and the watch writes are compared against a committed lock file so the view cannot drift from its design.
+
+Target: v1.4
+
+From: PR #5014
+
+### Clarify nova-work help semantics
+
+Help gives a direct first-run path and explains what import dry-run and verify max do. The shared dry-run flag help promises only the result and no changes.
+
+Target: v1.4
+
+From: PR #5275
+
+### Staticcheck clean in the sprint reference model
+
+Remove unused variables so staticcheck is clean in the reference model package.
+
+Target: v1.4
+
+From: PR #5335
+
+### TLA+ models for friend redeal, friend rows and live friend lanes
+
+The sprint models cover a card taken back from a friend and redealt, and the live friend lane judgments, each with reversed witnesses. A CI guard keeps the model records current.
+
+Target: v1.4
+
+From: PR #5511; PR #5556; PR #5239; PR #5508; PR #5510
+
+### Enforce work bug fields and let an open bug block its ancestor
+
+nova-work refuses a bug node that lacks its found-during field or its test evidence. An open bug keeps its ancestors from reading done, and who, check and stale print bug counts.
+
+Target: after v1.4
+
+From: issue #2335; issue #2336
+
+### Derive lease expiry, extend-once and escalation in nova-work
+
+A lease past its deadline reads as expired, may be extended once, and can escalate. A lease with no end is rejected.
+
+Target: after v1.4
+
+From: issue #2338
+
+### The worklang parser keeps the done field of a unit
+
+Unit done reads a field the parser never keeps, so a done unit is never counted. The key is added and sibling skipped keys are checked, with a test.
+
+Target: v1.3
+
+From: issue #3499
+
+### The reference model learns reads needed and tiers
+
+The reference model assumes two reads per card and has no tier. Teach it reads needed and add flash cards and routed stores to its fixtures.
+
+Target: v1.4
+
+From: issue #5195
+
+### TLA+ models for the machine stop and the backup path
+
+Models for how a stop returns reads and claimed cards, and for the promise that a backup path holds only a verified file. Each is checked on a small instance and cited from the code.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### TLA+ models for reads on a missing branch and the friend card
+
+A model for a read on a missing branch that spends no reader, and for a friend card's lifecycle and the friend's liveness. Each names the evidence the code reads.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### Dead packages are removed
+
+Packages with no users are deleted together with their tests, one step each, checked by the build.
+
+Target: v1.4
+
+From: card from the sprint store (2026-10-10)
+
+### TLA+ models for gc, landing prune and the lane check
+
+Small TLA+ models for the gc rule, the landing cleanup queue and the tick's friend-lane check, each with invariants checked on a small instance and cited from the code.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### TLA+ models for dealing, presence, leases and priority
+
+Model the cap deal, deal routes and width, presence beats and leases, down windows and take-back, and the priority ladder in TLA+, checked with TLC.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04); cards moved out of the sprint (work record, 2026-10-04)
+
+### TLA+ models for briefs, needs, reads, seat push and the merge tree
+
+Model brief lint and twins, needs and sentinels, read cards, seat push, and the merge tree with promotion in TLA+, and check them with TLC.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
+
+### TLA+ models for card counters, the card lifecycle, holds and the lander
+
+Model the attempt, generation and epoch counters, the card columns, held cards and sentinels, and the lander streams. Each model is checked and cited from the code.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)
+
+## Friend AIs
+
+Friend AIs, their lanes, harnesses and the way the sprint deals to them.
+
+### Pin the first two lines of a friend report
+
+A friend report starts with an exact Verdict line and an exact Head line, and the friend card sync keeps reading older reports leniently.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Friends table reads presence owned by nova-tools
+
+The sprint consumes friend presence from the friend tool instead of owning it, so the friends table stays right while the sprint server is stopped or hung.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Any read can be served by a friend with room
+
+A read at any tier is dealt as a card to a friend of a class at or above it, and paid fleet readers are used only when no friend has room.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Friends are told of cards and push work reliably
+
+Delivery of a card to a friend uses known names, the friend is told, finished work is returned and the dashboard stays accurate.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### A held or down friend returns its cards to ready
+
+A coordinator verb takes dealt unstarted cards back for redeal, and hold, friend down and a usage limit return started cards to ready so the next attempt resumes from the pushed branch.
+
+Target: after v1.4
+
+From: cards moved out of the sprint (work record, 2026-10-04)
+
+### Restrict the work a friend is dealt by stream and card kind
+
+A friend row may list stream patterns and card kinds, and the dealer never deals that friend a card outside them. Add refuses a card that names a friend outside her restriction.
+
+Target: after v1.4
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### Reconcile friends and run the stall ladder every tick
+
+The tick reconciles each friend's store with her inbox and outbox, and a mechanical stall ladder returns cards held by a stalled friend with no step needing the coordinator.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### The friend deal fills idle friends before topping up a full one
+
+A card for any friend goes to the up friend of the class with the most room. A full friend is not refilled while another of her class is idle.
+
+Target: v1.3
+
+From: card moved out of the sprint (work record, 2026-10-04)
+
+### A batch friend's presence is her engine's beat
+
+A friend with no session but a beating engine must not read down. The engine's beat counts as presence.
+
+Target: v1.3
+
+From: PR #5455
+
+### Friend health refuses a proof dated after the server clock
+
+A health proof with a time ahead of the server clock is refused, so a friend cannot be kept up by a future date. The proof order check then stays sound.
+
+Target: v1.3
+
+From: nova-sprint PR #2
+
+### Start, brief, watch and stop a child lane through a registry tool
+
+Lanes are started with long prose briefs and hope. A tool starts, briefs, budgets, watches and stops a lane and records its handoff.
+
+Target: after v1.4
+
+From: issue #2064
+
+### Detect a friend AI that is unreachable or out of credits and route around it
+
+A friend counts as down when it cannot be reached or cannot work because credits ran out. The state is detected mechanically and its work is routed elsewhere.
+
+Target: v1.3
+
+From: issue #3185
+
+### Friend lifecycle and widths run as machinery: wake, take, refill, redistribute
+
+A free child lane refills at once, a seat under its width with ready work gets one wake note from the tick, and redistribute is one verb and duty. Bulk assignment stays accurate by counting only cards actually taken.
+
+Target: after v1.4
+
+From: issue #3635; issue #4095; issue #4096; issue #4098; issue #3915; card moved out of the sprint (work record, 2026-10-04)
+
+### The machine sends the width goal to idle or under-width friends
+
+The machine detects a friend who is idle or under width with ready cards and sends the take request itself. The deal is bounded by lanes actually started.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### Friend delivery is a visible state
+
+A delivery a friend's session refuses is shown on the friends table with the harness message. The friend daemon delivers cards in a fixed order, and a hand verb runs the same path.
+
+Target: after v1.4
+
+From: card from the sprint store (2026-10-10)
+
+### A friend card counts ok only after a reader accepts it
+
+A friend card that is only reported finished is not counted ok until a reader accepts it or it lands. This keeps the friends table honest.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)
+
+### A friend's row equals her live lanes
+
+A friend's working set on the dashboard must equal her live child lanes, and work and its report are one act.
+
+Target: v1.3
+
+From: card from the sprint store (2026-10-10)
+
+### A friend AI working count holds only verified cards
+
+A friend AI working count includes only cards with a push or named by beat --running, a dealt column is added to the friends table, and an idle friend AI gets one judgment after 15 minutes.
+
+Target: after v1.4
+
+From: nova-sprint commit 2c831fa (not carried by the re-seed, nova-sprint PR #28); card moved out of the sprint (work record, 2026-10-04)
