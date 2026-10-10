@@ -10,19 +10,28 @@ package main
 // the other streams, cuts land/<stream> from the base's tip on origin and merges its cards'
 // heads one by one as before (mergeHead, remap, resolveLedgers, checkCard), then gates the
 // batch's tree ONCE (build, vet and the tree tests) instead of once per head; only when that
-// one gate is red is each head gated alone again from the base (build with gateEach), so the
-// red head is blamed with the finding the lander always gave. A pass of eight batches of two
+// one gate is red is the head that turned it red found, by bisection over the tips the merges
+// left (bisect, since 2026-10-10; before, each head was gated alone again from the base), so
+// the red head is blamed with the finding the lander always gave. A pass of eight batches of two
 // cards ran sixteen gates one after another (20 minutes, 2026-10-07); it now runs eight, up
 // to --land-parallel at a time. One base commit's gate and cure stay serial (baseGates), the
 // fetches and every write of the clone's shared refs too (fetchMu), and each stream's lander
 // (fork) has its own scratch and output, so the log keeps its lines and their order.
 //
-// PHASE 2, THE LANDING, SERIAL. The green batches land onto the base one at a time in
-// priority order. A gate that passes LandDeadline is abandoned for this pass, so it cannot
-// hold ready lower-priority streams forever; a job abandoned while it waits for a slot, the
-// chain or another stream's gate of its base commit leaves that wait at once (merges,
-// acquireGate), so an abandonment always takes effect and a ready stream behind k stuck
-// ones waits at most k x LandDeadline. A batch cut from the tip the base still has is pushed as before,
+// PHASE 2, THE LANDING, SERIAL. The built batches land onto the base one at a time, as
+// they are built: in priority order among the built ones, a batch waiting for a
+// higher-priority stream still merging for landGrace at most (2026-10-10, fault item 4:
+// before, each landing waited for every stream before it, up to its LandDeadline, and one
+// 99-card batch held every later stream's landing). Each job's LandDeadline runs on its own
+// clock from when it holds a width slot (launch): a gate past it is abandoned for this pass,
+// nothing blamed. A job waiting for the chain or a slot runs no clock, the holder's bound
+// freeing it; a job waiting for another stream's gate of its base commit (gateBase,
+// acquireGate) already holds its slot, so its own clock runs through that wait, and whichever
+// bound fires first (the holder's, freeing the gate, or its own, refusing it for this pass,
+// nothing blamed) ends it. A stream's next batch (at most
+// landBatchMax cards) starts as soon as its last is done. A red batch gate blames its head
+// by bisection (bisect), and a bench that could not run the gate (benchFault) blames
+// nothing. A batch cut from the tip the base still has is pushed as before,
 // with no new gate. When the base moved (a batch before it in this pass landed, or a push
 // from outside), the batch is merged again onto the new tip in its worktree, the same merges
 // and checks and no gate per head: when the files it changes and the files landed since
@@ -43,6 +52,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -110,7 +120,7 @@ func (s *landShared) baseGate(sha string) chan struct{} {
 }
 
 // acquireGate takes the base commit's gate for the caller, or returns false when ctx ends
-// first (the pass abandoned the job at LandDeadline): a job waiting behind another
+// first (the job's own LandDeadline, which runs from its slot, launch): a job waiting behind another
 // stream's gate of the same commit is never held past its own bound. release puts it back.
 func (s *landShared) acquireGate(ctx context.Context, sha string) (release func(), ok bool) {
 	gate := s.baseGate(sha)
@@ -155,6 +165,8 @@ type landJob struct {
 	failed       conflictCard
 	baseSha, tip string   // the base tip the batch was cut from, and its gated tip
 	files        []string // what the tip changes against that base
+	// grace is the built batch's landGrace, started when it left phase 1 (pass)
+	grace <-chan time.Time
 }
 
 // fork is the lander one stream's batch runs in: the pass's settings, store, caches and
@@ -165,7 +177,7 @@ func (l *lander) fork(stream string) *lander {
 	f := *l
 	f.out, f.toScore = nil, nil
 	f.ledgerLog, f.recLog, f.recNote, f.baseFix = nil, nil, "", ""
-	f.conflictKind, f.conflictPaths = "", nil
+	f.conflictKind, f.conflictPaths, f.cardTips = "", nil, nil
 	f.baseStop, f.baseCount, f.baseWhy = false, false, ""
 	f.gateHost, f.gateWall = "", 0
 	f.gateKey, f.gateRing, f.gateSlot = stream, 0, 0
@@ -253,19 +265,25 @@ func (l *lander) openStream(s *sprint.Snapshot, stream string) ([]landCard, bool
 	return cards, true
 }
 
+// landBatchMax is the most cards one batch merges. v1-4's batch of 99 cards spent 708 s
+// merging and gating (2026-10-10), past LandDeadline: abandoned, then cut again the same way
+// the next pass, the stream in merging for hours. A stream's next batch starts as soon as
+// its last one lands (pass), so a long queue lands in batches that each fit the bound.
+const landBatchMax = 16
+
 // batchOf is the next batch of a stream's cards: the run of consecutive cards from the
-// first naming its repository and base.
+// first naming its repository and base, at most landBatchMax.
 func batchOf(cards []landCard) int {
 	n := 1
-	for n < len(cards) && cards[n].repo == cards[0].repo && cards[n].base == cards[0].base {
+	for n < len(cards) && n < landBatchMax && cards[n].repo == cards[0].repo && cards[n].base == cards[0].base {
 		n++
 	}
 	return n
 }
 
-// pass lands every stream of order: round after round, each stream's next batch merged
-// beside the others' (phase 1, merges), then the green ones landed one at a time in order
-// (phase 2, land), a stream going on past the cards its batch landed and past a card whose
+// pass lands every stream of order: each stream's batches merged beside the others' (phase
+// 1, launch), each built one landed one at a time as it is built (phase 2, land), a stream's
+// next batch started when its last is done, going on past the cards its batch landed and past a card whose
 // own refusal was recorded (reworked at the tip, or returned to review: the stream's other
 // cards land in the same pass), and ending at the lander's own failure, as stream did.
 // failed says a push landed and its report did not.
@@ -278,74 +296,102 @@ func (l *lander) pass(ctx context.Context, s *sprint.Snapshot, order []string) (
 		}
 	}
 	var pushed []*landJob // the batches landed in this pass, in order: what a later one may collide with
-	for {
-		var jobs []*landJob
-		for _, name := range streams {
-			cards := queues[name]
-			if len(cards) == 0 {
-				continue
-			}
-			n := batchOf(cards)
-			ids := make([]string, n)
-			for i, c := range cards[:n] {
-				ids[i] = c.id
-			}
-			jobs = append(jobs, &landJob{stream: name, cards: cards[:n], ids: ids, f: l.fork(name),
-				b: landBatch{Stream: name, Status: "refused", Cards: n, IDs: ids, Repo: cards[0].repo, Base: cards[0].base, DryRun: l.dry}})
+	next := func(name string) *landJob {
+		cards := queues[name]
+		if len(cards) == 0 {
+			return nil
 		}
-		if len(jobs) == 0 {
-			return failed
+		n := batchOf(cards)
+		ids := make([]string, n)
+		for i, c := range cards[:n] {
+			ids[i] = c.id
 		}
+		return &landJob{stream: name, cards: cards[:n], ids: ids, f: l.fork(name),
+			b: landBatch{Stream: name, Status: "refused", Cards: n, IDs: ids, Repo: cards[0].repo, Base: cards[0].base, DryRun: l.dry}}
+	}
+	prio := map[string]int{}
+	for i, name := range streams {
+		prio[name] = i
+	}
+	m := &mergeRun{finished: make(chan *landJob), sem: make(chan struct{}, max(l.parallel, 1)), prior: map[string]chan struct{}{}}
+	running := map[*landJob]bool{}
+	start := func(jobs []*landJob) {
+		// prepare (the clone, its lock, the worktree) runs here, in the pass's own goroutine,
+		// one job at a time: the first batches in priority order, each later one when its
+		// stream's last batch is done, between landings and beside other streams' merges
 		for _, j := range jobs {
 			l.prepare(ctx, s, j)
 		}
-		finished := make(chan *landJob, len(jobs))
-		contexts := make(map[*landJob]context.Context, len(jobs))
-		cancels := make(map[*landJob]context.CancelCauseFunc, len(jobs))
 		for _, j := range jobs {
-			contexts[j], cancels[j] = context.WithCancelCause(ctx)
-		}
-		go func() {
-			l.merges(jobs, contexts, finished)
-			close(finished)
-		}()
-		ready := make(map[*landJob]bool, len(jobs))
-		for _, j := range jobs {
-			clock := time.After
-			if l.a != nil && l.a.after != nil {
-				clock = l.a.after
-			}
-			deadline := clock(LandDeadline)
-			for !ready[j] {
-				select {
-				case done := <-finished:
-					ready[done] = true
-				case <-deadline:
-					cancels[j](errLandDeadline)
-					deadline = nil // one abandonment of this batch, then wait for its exit
-				}
-			}
-			cancels[j](nil)
-			if !j.done {
-				l.land(ctx, j, pushed)
-			}
-			l.take(j.f)
-			if j.b.Tip != "" && !l.dry {
-				// what this pass put on the base, a whole batch or the heads before a conflict:
-				// the files a later batch may collide with
-				pushed = append(pushed, j)
-			}
-			switch {
-			case !j.ok:
-				failed = true
-				queues[j.stream] = nil
-			case j.on:
-				queues[j.stream] = queues[j.stream][j.past:]
-			default:
-				queues[j.stream] = nil
-			}
+			running[j] = true
+			l.launch(ctx, m, j)
 		}
 	}
+	var first []*landJob
+	for _, name := range streams {
+		if j := next(name); j != nil {
+			first = append(first, j)
+		}
+	}
+	start(first)
+	// THE LANDINGS, SERIAL, AS EACH BATCH IS BUILT (2026-10-10, fault item 4): this loop
+	// alone pushes, one batch at a time. A built batch lands in priority order among the
+	// built ones, and waits for a higher-priority stream still in phase 1 for landGrace at
+	// most, never for that stream's whole gate: before, every landing waited in priority
+	// order for each stream before it, up to its LandDeadline, so v1-4's 99-card batch
+	// (708 s) held every later stream's landing. A stream's next batch starts as soon as its
+	// last one is done.
+	var ready []*landJob
+	for len(running) > 0 || len(ready) > 0 {
+		if len(ready) == 0 {
+			j := <-m.finished
+			delete(running, j)
+			j.grace = l.graceClock(j.stream)
+			ready = append(ready, j)
+			continue
+		}
+		slices.SortStableFunc(ready, func(a, b *landJob) int { return prio[a.stream] - prio[b.stream] })
+		j := ready[0]
+		ahead := false
+		for r := range running {
+			ahead = ahead || prio[r.stream] < prio[j.stream]
+		}
+		if ahead && !j.done && j.grace != nil {
+			select {
+			case f := <-m.finished:
+				delete(running, f)
+				f.grace = l.graceClock(f.stream)
+				ready = append(ready, f)
+				continue
+			case <-j.grace:
+				j.grace = nil // its grace spent: it lands now
+			}
+		}
+		ready = ready[1:]
+		if !j.done {
+			l.land(ctx, j, pushed)
+		}
+		l.take(j.f)
+		if j.b.Tip != "" && !l.dry {
+			// what this pass put on the base, a whole batch or the heads before a conflict:
+			// the files a later batch may collide with
+			pushed = append(pushed, j)
+		}
+		switch {
+		case !j.ok:
+			failed = true
+			queues[j.stream] = nil
+		case j.on:
+			queues[j.stream] = queues[j.stream][j.past:]
+		default:
+			queues[j.stream] = nil
+		}
+		if nj := next(j.stream); nj != nil {
+			start([]*landJob{nj})
+		}
+	}
+	m.wg.Wait()
+	return failed
 }
 
 // refuse ends the job in phase 1 with a refusal: nothing pushed or reported for it.
@@ -371,7 +417,8 @@ func (l *lander) ownRefusal(stream string, f conflictCard) bool {
 	return l.conflict(stream, f)
 }
 
-// prepare is the batch before any cut or merge, serial across the streams in their order: the
+// prepare is the batch before any cut or merge, run by the pass alone, one job at a time
+// (the first batches in priority order, each later one as its stream's last is done, pass): the
 // refusals before git (placeWhy, pause), the clone and its lock, the clone restored when a
 // pass cut short left it dirty (restoreClone, LAND CLEANED), and the stream's worktree made
 // or cleaned. The cut and base gate run with the stream's merge in prepareCut. A dry run
@@ -422,8 +469,8 @@ func (l *lander) prepare(ctx context.Context, s *sprint.Snapshot, j *landJob) {
 	}
 	j.dir = dir
 	b.Times = &landTimes{}
-	// The cut includes the base gate. Run it with this stream's merge so a
-	// stalled gate cannot hold the next stream's cut in serial preparation.
+	// The cut includes the base gate. It runs with this stream's merge (launch, prepareCut)
+	// so a stalled gate cannot hold the pass, which prepares and lands the other streams.
 }
 
 // prepareCut cuts the branch and gates its base in this stream's bounded worker.
@@ -625,70 +672,106 @@ func (l *lander) beforeWait(stream, what string) {
 	}
 }
 
-// merges is phase 1: every job not yet ended merged in its own worktree, up to parallel at
-// a time, each in its own lander. Every wait a job makes before its work (the chain of
-// same-repository/base cuts, the width slot, and in gateBase the per-commit gate) watches
-// the job's context: when the pass abandons the job at LandDeadline while it waits behind
-// another stream (a lower-priority holder stuck on a bench took the only slot), the job
-// gives up its place at once, refused for this pass with its cards still queued, and the
-// pass goes on to the holder, whose own bound starts when the pass reaches it. Before the
-// fix (2026-10-09) those waits were plain and the pass hung for ever on a job it had
-// cancelled to no effect. A job that leaves the chain releases the stream behind it.
-func (l *lander) merges(jobs []*landJob, contexts map[*landJob]context.Context, finished chan<- *landJob) {
-	var todo []*landJob
-	for _, j := range jobs {
-		if j.done {
-			finished <- j
-		} else {
-			todo = append(todo, j)
-		}
+// mergeRun is one pass's phase 1: the jobs' exits (finished, read by the pass alone), the
+// width slots, and each repository/base's last cut, which the next job of that pair waits
+// for (the same repository/base cuts in priority order).
+type mergeRun struct {
+	finished chan *landJob
+	sem      chan struct{}
+	prior    map[string]chan struct{}
+	wg       sync.WaitGroup
+}
+
+// landGrace is how long a built batch waits for a higher-priority stream still in phase 1
+// before it lands ahead of it: priority order kept when it costs little, and no slow gate
+// holding another stream's landing for more than this (pass).
+const landGrace = 30 * time.Second
+
+// graceClock is the built batch's landGrace: the test seam's when set.
+func (l *lander) graceClock(stream string) <-chan time.Time {
+	if l.a != nil && l.a.landGrace != nil {
+		return l.a.landGrace(stream)
 	}
-	width := max(l.parallel, 1)
-	sem := make(chan struct{}, width)
-	prior := map[string]chan struct{}{}
-	var wg sync.WaitGroup
-	for _, j := range todo {
-		key := normRepo(j.b.Repo) + "\x00" + j.b.Base
-		wait := prior[key]
-		cutDone := make(chan struct{})
-		prior[key] = cutDone
-		wg.Add(1)
-		go func(j *landJob, wait <-chan struct{}, cutDone chan<- struct{}) {
-			defer wg.Done()
-			var cutOnce sync.Once
-			cutIsDone := func() { cutOnce.Do(func() { close(cutDone) }) }
-			defer cutIsDone()
-			ctx := contexts[j]
-			abandoned := func() {
-				j.refuse(gateWaitWhy(ctx))
-				finished <- j
-			}
-			if wait != nil {
-				l.beforeWait(j.stream, "chain")
-				select {
-				case <-wait: // same repository/base cuts in priority order
-				case <-ctx.Done():
-					abandoned()
-					return
-				}
-			}
-			l.beforeWait(j.stream, "slot")
+	return time.After(landGrace)
+}
+
+// landClock is the job's LandDeadline: the test seam's when set, per stream or for all.
+func (l *lander) landClock(stream string) <-chan time.Time {
+	if l.a != nil && l.a.landDeadline != nil {
+		return l.a.landDeadline(stream)
+	}
+	if l.a != nil && l.a.after != nil {
+		return l.a.after(LandDeadline)
+	}
+	return time.After(LandDeadline)
+}
+
+// launch is one job's phase 1 in its own goroutine, worktree and lander: it waits for the
+// last cut of its repository/base, then a width slot, then cuts, merges and gates. The job's
+// LandDeadline runs on its own clock from the moment it holds a slot (2026-10-10): its gate
+// past the bound is cancelled and the batch refused for this pass with its cards still
+// queued, nothing blamed. A job waiting for the chain or a slot runs no clock: the holder's
+// own bound frees the wait, so no stream waits there on another for more than one bound at a
+// time and no clock is spent standing in that line. The wait for another stream's gate of its
+// base commit (gateBase, acquireGate, in prepareCut) comes after the slot is held, so the
+// job's own clock does run through it: the holder's bound frees the gate, or the waiter's own
+// bound refuses it first, nothing blamed. The
+// slot is given back before the job's exit is sent, so a job built while the pass lands
+// another holds nothing the others need. A job ended in prepare is sent at once.
+func (l *lander) launch(pass context.Context, m *mergeRun, j *landJob) {
+	m.wg.Add(1)
+	if j.done {
+		go func() {
+			defer m.wg.Done()
+			m.finished <- j
+		}()
+		return
+	}
+	key := normRepo(j.b.Repo) + "\x00" + j.b.Base
+	wait := m.prior[key]
+	cutDone := make(chan struct{})
+	m.prior[key] = cutDone
+	go func() {
+		defer m.wg.Done()
+		var cutOnce sync.Once
+		cutIsDone := func() { cutOnce.Do(func() { close(cutDone) }) }
+		ctx, cancel := context.WithCancelCause(pass)
+		defer func() {
+			cancel(nil)
+			cutIsDone()
+			m.finished <- j
+		}()
+		if wait != nil {
+			l.beforeWait(j.stream, "chain")
 			select {
-			case sem <- struct{}{}:
+			case <-wait: // same repository/base cuts in priority order
 			case <-ctx.Done():
-				abandoned()
+				j.refuse(gateWaitWhy(ctx))
 				return
 			}
-			defer func() { <-sem }()
-			j.f.prepareCut(ctx, j)
-			cutIsDone()
-			if !j.done {
-				j.f.merge(ctx, j)
+		}
+		l.beforeWait(j.stream, "slot")
+		select {
+		case m.sem <- struct{}{}:
+		case <-ctx.Done():
+			j.refuse(gateWaitWhy(ctx))
+			return
+		}
+		held := make(chan struct{})
+		go func() {
+			select {
+			case <-l.landClock(j.stream):
+				cancel(errLandDeadline)
+			case <-held:
 			}
-			finished <- j
-		}(j, wait, cutDone)
-	}
-	wg.Wait()
+		}()
+		defer func() { close(held); <-m.sem }()
+		j.f.prepareCut(ctx, j)
+		cutIsDone()
+		if !j.done {
+			j.f.merge(ctx, j)
+		}
+	}()
 }
 
 // merge is one job's phase 1, in the stream's lander and worktree, beside the other
@@ -724,12 +807,27 @@ func (l *lander) merge(ctx context.Context, j *landJob) {
 		if red == "" {
 			j.gated = true
 		} else {
-			l.ledgerLog = nil // the second build logs the same resolutions
-			merged, failed, baseSha, _, why = l.build(ctx, dir, stream, j.cards, b.Times, true)
+			// red: the head that turned the tree red is found by bisection over the tips the
+			// merges left (bisect, tla/LandBisect.tla), at most ceil(log2 n) gates where gating
+			// each head again from the base took n (99 heads ran past LandDeadline, 2026-10-10);
+			// it is returned with its finding, and the prefix before it, which passed a gate,
+			// goes on to land
+			start := time.Now()
+			k, finding, gated, env := l.bisect(ctx, dir, l.cardTips, len(merged), red)
+			since(&b.Times.Merge, start)
 			if why := gateWaitWhy(ctx); why != "" {
 				j.refuse(why)
 				return
 			}
+			if env != "" {
+				j.refuse(env + "; no card is blamed and nothing was pushed or reported")
+				return
+			}
+			if k < len(merged) {
+				c := j.cards[k]
+				merged, failed = merged[:k], conflictCard{landCard: c, why: "the head " + c.head + " of " + c.id + " fails the tree gate: " + finding}
+			}
+			j.gated = gated
 		}
 	}
 	if why != "" {
@@ -772,6 +870,80 @@ func (l *lander) merge(ctx context.Context, j *landJob) {
 		return
 	}
 	j.merged, j.failed, j.baseSha, j.tip, j.files = merged, failed, baseSha, tip, lines(files)
+}
+
+// bisect finds the head that turned a red batch's tree red (tla/LandBisect.tla). tips[i] is
+// the batch branch's tip before head i merged (tips[0] the base, whose tree passed its gate)
+// and tips[n] the tip after the last of the n heads merged, whose tree's gate with the tree
+// tests is red. A tip is gated with the tree tests only when the heads up to it changed a
+// file they read (treeTested), as a head was gated alone before 2026-10-10: a batch that
+// changes none of them is gated once more without them, and green there it lands whole
+// (k = n). The search keeps the tip before head lo passing and the tip after head hi red,
+// gating the middle tip: at most ceil(log2 n) gates. k is the head blamed, finding the
+// gate's finding on the tip it turned red, and the batch branch is left at the tip before
+// it (the prefix that passed); gated says that prefix passed a gate with the tree tests
+// (its tip may be recorded as gated). env is a refusal that blames no head: a bench that did
+// not run the gate, a cancelled gate, or a branch git could not move.
+func (l *lander) bisect(ctx context.Context, dir string, tips []string, n int, red string) (k int, finding string, gated bool, env string) {
+	if n < 1 || len(tips) < n+1 {
+		return 0, "", false, "the tips of the batch's merges were not recorded, so its red gate blames no head"
+	}
+	tested := func(i int) (bool, string) {
+		changed, err := l.git(ctx, dir, "diff", "--name-only", "-M", tips[0], tips[i])
+		if err != nil {
+			return false, "the files the batch changes up to head " + strconv.Itoa(i) + " could not be listed: " + firstLine("", err)
+		}
+		return slices.ContainsFunc(strings.Split(changed, "\n"), treeTested), ""
+	}
+	gate := func(i int) (string, bool, string) {
+		if _, err := l.git(ctx, dir, "reset", "-q", "--hard", tips[i]); err != nil {
+			return "", false, "the batch branch could not be moved to the tip after head " + strconv.Itoa(i) + " for the bisection of its red gate: " + firstLine("", err)
+		}
+		tests, why := tested(i)
+		if why != "" {
+			return "", false, why
+		}
+		l.stage("gate", "bisect: the tip after head "+strconv.Itoa(i)+" of "+strconv.Itoa(n))
+		red := l.treeGate(ctx, dir, tests)
+		if wait := gateWaitWhy(ctx); wait != "" {
+			return "", false, wait
+		}
+		if red == benchGateUnavailableWhy {
+			return "", false, red
+		}
+		return red, tests, ""
+	}
+	if tests, why := tested(n); why != "" {
+		return 0, "", false, why
+	} else if !tests {
+		// the batch's red came from tree tests that read none of its files
+		r, _, env := gate(n)
+		if env != "" {
+			return 0, "", false, env
+		}
+		if r == "" {
+			return n, "", false, ""
+		}
+		red = r
+	}
+	lo, hi, finding := 0, n-1, red
+	gated = true // the base passed its gate with the tree tests
+	for lo < hi {
+		mid := (lo + hi) / 2
+		why, tests, env := gate(mid + 1)
+		if env != "" {
+			return 0, "", false, env
+		}
+		if why != "" {
+			hi, finding = mid, why
+		} else {
+			lo, gated = mid+1, tests
+		}
+	}
+	if _, err := l.git(ctx, dir, "reset", "-q", "--hard", tips[lo]); err != nil {
+		return 0, "", false, "the batch branch could not be reset to the tip before " + strconv.Itoa(lo+1) + " after the bisection: " + firstLine("", err)
+	}
+	return lo, finding, gated && lo > 0, ""
 }
 
 // checkDecided is a red --check's gate decision (gateRerun), one stream at a time: the
@@ -917,7 +1089,17 @@ func (l *lander) again(ctx context.Context, j *landJob, newBase string, pushed [
 	}
 	b, dir := &j.b, j.dir
 	l.ledgerLog = nil
-	merged, failed, baseSha, _, why := l.build(ctx, dir, j.stream, j.cards, b.Times, false)
+	// a batch that ended at a blamed head (a conflict, or its red gate's bisection) merges
+	// again only the heads before it: the blamed head would turn the combined tree red and
+	// refuse the prefix that passed, every pass
+	cards := j.cards
+	if j.failed.id != "" {
+		cards = j.cards[:len(j.merged)]
+	}
+	merged, failed, baseSha, _, why := l.build(ctx, dir, j.stream, cards, b.Times, false)
+	if failed.id == "" && len(merged) == len(cards) {
+		failed = j.failed // the head blamed before keeps its finding, reported after the push
+	}
 	b.Also, l.ledgerLog = append(b.Also, l.ledgerLog...), nil
 	if wait := gateWaitWhy(ctx); wait != "" {
 		return wait
