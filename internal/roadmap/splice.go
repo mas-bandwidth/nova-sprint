@@ -77,26 +77,131 @@ func (s *Set) appendRecord(f *file, list, rec string) error {
 	return nil
 }
 
-// removeRecord takes the record id out of :list with the blank before it; the
-// list's first record takes the blank after it instead, so the list's opening
-// parenthesis meets the next record.
+// removeRecord takes the record id out of :list and keeps every comment
+// around it. A record on lines of its own goes with those lines, its own
+// trailing comment included; the comments above it and the neighbours'
+// trailing comments stay. A record sharing its first line with the list's
+// opening parenthesis goes with the blank after it when the next thing is a
+// record, so the parenthesis meets the next record, and alone when it is a
+// comment, so the comment keeps its line.
 func (s *Set) removeRecord(f *file, list, id string) error {
 	t, err := top(f)
 	if err != nil {
 		return err
 	}
-	l, r, i, err := record(t, list, id)
+	_, r, _, err := record(t, list, id)
 	if err != nil {
 		return err
 	}
-	switch {
-	case len(l.List) == 1:
-		f.splice(l.Offset, l.End, "()")
-	case i == 0:
-		f.splice(r.Offset, l.List[1].Offset, "")
-	default:
-		f.splice(l.List[i-1].End, r.End, "")
+	d := f.data
+	start, end := r.Offset, r.End
+	// the record's own trailing comment, on its last line
+	e := end
+	for e < len(d) && (d[e] == ' ' || d[e] == '\t') {
+		e++
 	}
+	if e < len(d) && d[e] == ';' {
+		for e < len(d) && d[e] != '\n' {
+			e++
+		}
+		end = e
+	}
+	// does the record start its line?
+	ls := start
+	for ls > 0 && (d[ls-1] == ' ' || d[ls-1] == '\t') {
+		ls--
+	}
+	ownLine := ls > 0 && d[ls-1] == '\n'
+	e = end
+	for e < len(d) && (d[e] == ' ' || d[e] == '\t') {
+		e++
+	}
+	switch {
+	case ownLine && e < len(d) && d[e] == '\n':
+		start, end = ls, e+1 // the whole lines
+	case ownLine:
+		start, end = ls, e // the record's lines up to what follows on the last one
+	default:
+		w := end
+		for w < len(d) && (d[w] == ' ' || d[w] == '\t' || d[w] == '\n' || d[w] == '\r') {
+			w++
+		}
+		if w < len(d) && d[w] == '(' {
+			end = w // the next record moves up to meet the parenthesis
+		}
+	}
+	f.splice(start, end, "")
+	return nil
+}
+
+// appendText appends words to record id's :text, inside its quotes, so every
+// byte of the text before them is kept; a record with no :text gains one.
+func (s *Set) appendText(f *file, list, id, words string) error {
+	t, err := top(f)
+	if err != nil {
+		return err
+	}
+	_, r, _, err := record(t, list, id)
+	if err != nil {
+		return err
+	}
+	old, at := value(r, "text")
+	if at < 0 || strings.TrimSpace(old.Value) == "" {
+		return s.setKey(f, list, id, "text", words)
+	}
+	q := quote(words)
+	f.splice(old.End-1, old.End-1, " "+q[1:len(q)-1])
+	return nil
+}
+
+// retitle gives record id a new title and keeps the one it had under :kept
+// (earlier-title, or earlier-title-2 and on when one is kept already).
+func (s *Set) retitle(f *file, list, id, title string) error {
+	t, err := top(f)
+	if err != nil {
+		return err
+	}
+	_, r, _, err := record(t, list, id)
+	if err != nil {
+		return err
+	}
+	old, _ := value(r, "title")
+	was := old.Value
+	if err := s.setKey(f, list, id, "title", title); err != nil {
+		return err
+	}
+	key := "earlier-title"
+	k, at := value(r, "kept")
+	for n := 2; at >= 0 && hasKeptKey(k, key); n++ {
+		key = fmt.Sprintf("earlier-title-%d", n)
+	}
+	return s.addKept(f, list, id, key, was)
+}
+
+func hasKeptKey(k worklang.Form, key string) bool {
+	for _, x := range k.List {
+		if x.Kind == worklang.Keyword && x.Value == key {
+			return true
+		}
+	}
+	return false
+}
+
+// addKept adds one :key "value" pair to record id's :kept, creating it.
+func (s *Set) addKept(f *file, list, id, key, v string) error {
+	t, err := top(f)
+	if err != nil {
+		return err
+	}
+	_, r, _, err := record(t, list, id)
+	if err != nil {
+		return err
+	}
+	if k, at := value(r, "kept"); at >= 0 {
+		f.splice(k.End-1, k.End-1, "\n          :"+key+" "+quote(v))
+		return nil
+	}
+	f.splice(r.End-1, r.End-1, "\n   :kept (:"+key+" "+quote(v)+")")
 	return nil
 }
 
@@ -123,28 +228,4 @@ func (s *Set) setKey(f *file, list, id, key, v string) error {
 // escaped, nothing else.
 func quote(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
-}
-
-// itemRecord is a new roadmap item, dated today.
-func itemRecord(it Item, today string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "(item %s :group %s :date %s\n   :title %s\n   :text %s", quote(it.ID), quote(it.Group), quote(today), quote(flat(it.Title)), quote(flat(it.Text)))
-	if it.Why != "" {
-		fmt.Fprintf(&b, "\n   :why %s", quote(flat(it.Why)))
-	}
-	if it.Origin != "" {
-		fmt.Fprintf(&b, "\n   :origin %s", quote(flat(it.Origin)))
-	}
-	return b.String() + ")"
-}
-
-// fixRecord is a new fix.
-func fixRecord(fx Fix) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "(fix %s :release %s :status %s\n   :title %s", quote(fx.ID), quote(fx.Release), quote(fx.Status), quote(flat(fx.Title)))
-	if t := flat(fx.Text); t != "" {
-		fmt.Fprintf(&b, "\n   :text %s", quote(t))
-	}
-	fmt.Fprintf(&b, "\n   :origin %s)", quote(flat(fx.Origin)))
-	return b.String()
 }

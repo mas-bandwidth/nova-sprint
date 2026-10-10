@@ -61,7 +61,8 @@ verify --against compares two tree files and reads no network (a minimal tree: v
 first run: gh logged in (gh auth status); export ORG and REPO, a repository you can read.`,
 		ExitTable: "0 done, or verify found no difference; 1 verify found differences, or an import's " +
 			"encoded tree did not read back equal, or roadmap check found problems; 2 could not run (a flag, the budget, gh, GitHub, a file)",
-		UsageNote: roadmapUsageNote,
+		UsageNote:  roadmapUsageNote,
+		GroupNotes: map[string]string{"roadmap": roadmapUsageNote},
 		Verbs: append(append([]tool.Verb{
 			{
 				Name: "import",

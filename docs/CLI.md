@@ -704,7 +704,7 @@ nova-work roadmap add    [--repo <dir>] --id <id> (--release <v> | --group <g>) 
 nova-work roadmap remove [--repo <dir>] --id <id>...
 nova-work roadmap pull   [--repo <dir>] --id <id>... (--release <v> | --group <g>)
 nova-work roadmap done   [--repo <dir>] --id <id>... --evidence <PR #n | commit>
-nova-work roadmap note   [--repo <dir>] --id <id>... --text <t>
+nova-work roadmap note   [--repo <dir>] --id <id>... [--text <t>] [--title <t>]
 nova-work roadmap render [--repo <dir>] | --file <data.sexp> --out <page.md> [--source <name>]
 ```
 
@@ -714,7 +714,8 @@ Edit and read a repository's own work record: `docs/roadmap.sexp` (rendered to
 writes the data and its page in the same step, so neither is edited by hand and
 the sync tests (`TestRoadmapIsGeneratedFromTheSexp`,
 `TestFixesIsGeneratedFromTheSexp`) stay green. Every byte a verb does not change
-(comments, spacing, the other records) is kept. `--id` repeats for more entries.
+(comments, spacing, the other records) is kept; a removed record takes only its
+own trailing comment with it. `--id` repeats for more entries.
 
 The verbs read and write local files only: no GitHub call per entry. A batch of
 edits lands as one commit and one pull request, so GitHub sees an occasional push
@@ -735,7 +736,13 @@ rate limit).
 - `done`: a fix's status becomes `done`; an item moves to the roadmap's `:done`
   list, dated today. `--evidence` (a pull request or a commit) is appended to the
   text.
-- `note`: `--text` is appended to each entry's text.
+- `note`: `--text` is appended to each entry's text; `--title` retitles it, and
+  the title it had is kept under `:kept` (`earlier-title`).
+
+A move across the two files, and `done` of an item, carries every field. A field
+the target shape has no key for is kept under the record's `:kept` as
+`<from>-<key>` (`item-why` on a fix, `fix-status` on an item), and a move back
+restores it, so roadmap -> fixes -> roadmap gives back the item it was.
 - `render`: writes the pages from the data; `--file` and `--out` render data kept
   outside the repository whose page it is (a roadmap held in the private work
   repository) through the same renderer.

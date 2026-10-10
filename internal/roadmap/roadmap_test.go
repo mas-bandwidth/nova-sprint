@@ -164,8 +164,8 @@ func TestRemove(t *testing.T) {
 	s = load(t, dir)
 	_, err := s.entry("item-a1")
 	require.Error(t, err)
-	// the first record went, and the list's parenthesis meets the next one
-	assert.Contains(t, read(t, dir, RoadmapFile), " ((item \"item-a2\"")
+	// the first record went, and the comment above the next one stayed
+	assert.Contains(t, read(t, dir, RoadmapFile), " (\n  ; a comment between records\n  (item \"item-a2\"")
 	assert.NotContains(t, read(t, dir, FixesPage), "Two b")
 }
 
@@ -203,7 +203,7 @@ func TestPullAcrossAndWithin(t *testing.T) {
 	clean(t, dir)
 	s = load(t, dir)
 	a2 := entry(t, s, "item-a2")
-	assert.Equal(t, Entry{ID: "item-a2", File: FixesFile, Kind: "fix", Place: "v1.0.3", State: Planned, Title: "Item a2", Text: "The second. Already in the code: half of it"}, a2)
+	assert.Equal(t, Entry{ID: "item-a2", File: FixesFile, Kind: "fix", Place: "v1.0.3", State: Planned, Title: "Item a2", Text: "The second."}, a2)
 	b := entry(t, s, "fix-2b")
 	assert.Equal(t, "item", b.Kind)
 	assert.Equal(t, "alpha", b.Place)
@@ -286,15 +286,15 @@ func TestNote(t *testing.T) {
 	t.Parallel()
 	dir := repo(t)
 	s := load(t, dir)
-	require.NoError(t, s.Note("More words.", "fix-2b", "item-a2", "sched-1"))
+	require.NoError(t, s.Note("More words.", "", "fix-2b", "item-a2", "sched-1"))
 	require.NoError(t, s.Save())
 	clean(t, dir)
 	s = load(t, dir)
 	assert.Equal(t, "More words.", entry(t, s, "fix-2b").Text)
 	assert.Equal(t, "The second. More words.", entry(t, s, "item-a2").Text)
 	assert.Equal(t, "In v1.3. More words.", entry(t, s, "sched-1").Text)
-	require.Error(t, load(t, dir).Note("x", "nope"))
-	require.Error(t, load(t, dir).Note("  ", "fix-2b"))
+	require.Error(t, load(t, dir).Note("x", "", "nope"))
+	require.Error(t, load(t, dir).Note("  ", "", "fix-2b"))
 }
 
 func TestFind(t *testing.T) {
@@ -375,4 +375,134 @@ func TestLoadRefusesARepositoryWithNoRecord(t *testing.T) {
 	_, err := Load(t.TempDir(), today)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "holds neither")
+}
+
+// TestARoundTripIsLossless: an item with every field moved to a fixes release
+// and back to its group is the item it was. What a fix has no key for travels
+// under :kept and comes back; the fix's own status and release stay kept.
+func TestARoundTripIsLossless(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	full := `(item "item-full" :group "beta" :date "2026-09-01"
+   :title "Full" :text "Every field,
+    wrapped across lines." :why "It waits." :area "sprint" :exists "half"
+   :cards 3 :release "after v1.4" :origin "issue #9")
+  `
+	raw := strings.Replace(fixtureRoadmap, `(item "item-b1"`, full+`(item "item-b1"`, 1)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, RoadmapFile), []byte(raw), 0o644))
+	_, err := Render(dir)
+	require.NoError(t, err)
+	before := load(t, dir).item("item-full")
+
+	s := load(t, dir)
+	require.NoError(t, s.Pull("v1.0.3", "", "item-full"))
+	require.NoError(t, s.Save())
+	clean(t, dir)
+	fx := load(t, dir).fix1("item-full")
+	assert.Equal(t, before.Text, fx.Text, "the text keeps its bytes")
+	assert.Equal(t, []roadmapdoc.Pair{{Key: "item-group", Value: "beta"}, {Key: "item-date", Value: "2026-09-01"},
+		{Key: "item-why", Value: "It waits."}, {Key: "item-area", Value: "sprint"}, {Key: "item-exists", Value: "half"},
+		{Key: "item-cards", Value: "3"}, {Key: "item-release", Value: "after v1.4"}}, fx.Kept)
+
+	s = load(t, dir)
+	require.NoError(t, s.Pull("", "beta", "item-full"))
+	require.NoError(t, s.Save())
+	clean(t, dir)
+	after := load(t, dir).item("item-full")
+	assert.Equal(t, []roadmapdoc.Pair{{Key: "fix-status", Value: "planned"}, {Key: "fix-release", Value: "v1.0.3"}}, after.Kept)
+	after.Kept = nil
+	assert.Equal(t, before, after, "roadmap -> fixes -> roadmap lost a field")
+}
+
+// TestAFixRoundTripKeepsItsFields: a fix with no text and no item history
+// moved to the roadmap and back has its fields again; its status there is
+// planned, and the status it had stays kept.
+func TestAFixRoundTripKeepsItsFields(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	before := load(t, dir).fix1("fix-2a")
+	s := load(t, dir)
+	require.NoError(t, s.Pull("", "alpha", "fix-2a"))
+	require.NoError(t, s.Pull("v1.0.2", "", "fix-2a"))
+	require.NoError(t, s.Save())
+	clean(t, dir)
+	after := load(t, dir).fix1("fix-2a")
+	assert.Equal(t, []roadmapdoc.Pair{{Key: "fix-status", Value: "in-progress"}, {Key: "item-group", Value: "alpha"}, {Key: "item-date", Value: today}}, after.Kept)
+	assert.Equal(t, Planned, after.Status)
+	after.Kept, after.Status = nil, before.Status
+	assert.Equal(t, before, after)
+
+	before = load(t, dir).fix1("fix-2b") // no text
+	s = load(t, dir)
+	require.NoError(t, s.Pull("", "alpha", "fix-2b"))
+	require.NoError(t, s.Pull("v1.0.2", "", "fix-2b"))
+	require.NoError(t, s.Save())
+	after = load(t, dir).fix1("fix-2b")
+	assert.Equal(t, "", after.Text, "the text an item needed is not left on the fix")
+}
+
+func TestDoneKeepsTheItemsFields(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	s := load(t, dir)
+	require.NoError(t, s.MarkDone("#7", "item-a2"))
+	require.NoError(t, s.Save())
+	clean(t, dir)
+	d := load(t, dir).decoded.road.Done
+	n := d[len(d)-1]
+	assert.Equal(t, "item-a2", n.ID)
+	assert.Equal(t, []roadmapdoc.Pair{{Key: "item-group", Value: "alpha"}, {Key: "item-date", Value: "2026-10-01"}, {Key: "item-exists", Value: "half of it"}}, n.Kept)
+}
+
+func TestNoteRetitlesAndKeepsTheOldTitle(t *testing.T) {
+	t.Parallel()
+	dir := repo(t)
+	s := load(t, dir)
+	require.NoError(t, s.Note("", "New title", "fix-2a"))
+	require.NoError(t, s.Note("", "Newer title", "fix-2a"))
+	require.NoError(t, s.Save())
+	clean(t, dir)
+	fx := load(t, dir).fix1("fix-2a")
+	assert.Equal(t, "Newer title", fx.Title)
+	assert.Equal(t, []roadmapdoc.Pair{{Key: "earlier-title", Value: "Two a"}, {Key: "earlier-title-2", Value: "New title"}}, fx.Kept)
+	assert.Equal(t, "A.", fx.Text)
+}
+
+// TestRemovalKeepsTheComments: removing a record keeps the comments above its
+// neighbours and their trailing comments; its own trailing comment goes with it.
+func TestRemovalKeepsTheComments(t *testing.T) {
+	t.Parallel()
+	const fixes = `(fixes "v1" :title "F" :text "T."
+ :releases ((release "r" :status "planned" :text "R."))
+ :items
+ ((fix "a" :release "r" :status "planned" :title "A" :origin "o") ; after a
+  ; above b
+  (fix "b" :release "r" :status "planned" :title "B" :origin "o") ; after b
+  ; above c
+  (fix "c" :release "r" :status "planned" :title "C" :origin "o") ; after c
+  ; above d
+  (fix "d" :release "r" :status "planned" :title "D" :origin "o")))
+`
+	for _, c := range []struct{ id, want string }{
+		{"a", " (\n  ; above b\n  (fix \"b\""},
+		{"b", "; after a\n  ; above b\n  ; above c\n  (fix \"c\""},
+		{"c", "; after b\n  ; above c\n  ; above d\n"},
+		{"d", "; after c\n  ; above d\n))\n"},
+	} {
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, FixesFile), []byte(fixes), 0o644))
+		s := load(t, dir)
+		require.NoError(t, s.Remove(c.id), c.id)
+		require.NoError(t, s.Save())
+		got := read(t, dir, FixesFile)
+		assert.Contains(t, got, c.want, "remove %s:\n%s", c.id, got)
+		want := 5 // six comments, less the removed record's own trailing one
+		if c.id == "d" {
+			want = 6
+		}
+		assert.Equal(t, want, strings.Count(got, "; "), "remove %s lost a comment:\n%s", c.id, got)
+		assert.NotContains(t, got, `(fix "`+c.id+`"`)
+		clean(t, dir)
+	}
 }

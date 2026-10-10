@@ -125,15 +125,21 @@ func (g github) roadmapVerbs() []tool.Verb {
 		},
 		{
 			Name:      "roadmap note",
-			Usage:     "roadmap note [--repo <dir>] --id <id>... --text <t>",
+			Usage:     "roadmap note [--repo <dir>] --id <id>... [--text <t>] [--title <t>]",
 			Example:   `roadmap note --id my-fix --text "Needs the store migration first."`,
 			Effect:    tool.LocalWrite + ": rewrites docs/roadmap.sexp or docs/fixes.sexp and its page",
 			Detail:    roadmapDetail,
-			ExitTable: "0 the text is appended and the data and pages saved; 2 could not run, nothing written (a flag, an unknown id)",
+			ExitTable: "0 the text is appended (and the title given) and the data and pages saved; 2 could not run, nothing written (a flag, an unknown id)",
 			Flags: func(f *tool.Flags) {
 				repoFlag(f)
 				idFlag(f, "note")
-				f.Required("text", "the words to append to each entry's :text")
+				f.String("text", "", "the words to append to each entry's :text")
+				f.String("title", "", "a new title for each entry; the title it had is kept under :kept (earlier-title)")
+				f.Check(func(c *tool.Call) {
+					if strings.TrimSpace(c.Str("text")) == "" && strings.TrimSpace(c.Str("title")) == "" {
+						c.Problem("--text or --title is required; note wants words to append, a new title, or both")
+					}
+				})
 			},
 			Run: g.roadmapNote,
 		},
@@ -185,7 +191,11 @@ pull:   to --release, an item becomes a fix (planned) or a fix changes release;
         to --group, a fix becomes an item or an item changes group.
 done:   a fix's status becomes done, an item moves to :done; --evidence is
         appended to the text.
-note:   --text is appended to each entry's text.
+note:   --text is appended to each entry's text; --title retitles it, the old
+        title kept under :kept.
+A pull across the files, and done of an item, carry every field: one the
+target has no key for is kept under :kept (item-why on a fix, fix-status on
+an item), and a move back restores it.
 render: writes the pages from the data; --file/--out renders data kept
         elsewhere (a roadmap held in the private work repository) to a page.
 
@@ -339,7 +349,7 @@ func (g github) roadmapDone(c *tool.Call) *tool.Out {
 }
 
 func (g github) roadmapNote(c *tool.Call) *tool.Out {
-	o := g.edit(c, "note", func(s *roadmap.Set) error { return s.Note(c.Str("text"), ids(c)...) })
+	o := g.edit(c, "note", func(s *roadmap.Set) error { return s.Note(c.Str("text"), c.Str("title"), ids(c)...) })
 	if o.Status == tool.OK {
 		o.Fact("noted", len(ids(c)))
 	}

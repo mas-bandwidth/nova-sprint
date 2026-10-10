@@ -177,6 +177,12 @@ func TestHelpNamesTheRoadmapVerbsAndWhereTheOldOnesWent(t *testing.T) {
 	group := workMain(unreachable(t)).Run("roadmap", "-h")
 	assert.Equal(t, 0, group.Code)
 	assert.Contains(t, group.Stdout, "nova-work roadmap done")
+	_, groupExamples, ok := strings.Cut(group.Stdout, "example:\n")
+	require.True(t, ok, group.Stdout)
+	for _, v := range []string{"check", "list", "add", "remove", "pull", "done", "note", "render"} {
+		assert.Contains(t, groupExamples, "  nova-work roadmap "+v, "roadmap -h has no example of %s:\n%s", v, group.Stdout)
+	}
+	assert.Contains(t, group.Stdout, "are gone (the v1.2.3 re-seed);\nthese replace them")
 	one := workMain(unreachable(t)).Run("help", "roadmap", "pull")
 	assert.Equal(t, 0, one.Code)
 	assert.Contains(t, one.Stdout, "The old nova-work roadmap verbs edited the private work record's")
