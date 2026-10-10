@@ -102,4 +102,12 @@
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
      file. Use a unique temporary path per writer."
-    :origin "issue #5160")))
+    :origin "issue #5160")
+
+  (fix "dashboard-empty-and-stopped-states" :release "v1.2.6" :status "shipped"
+   :title "The empty dashboard keeps its layout, and a stopped machine's Updated dot is red"
+   :text "The Cost breakdown with nothing spent keeps its stream and total header and its table, where a
+    line of prose stood. The LANDED tile at 0 of 0 reads nothing complete, not - complete. A stopped
+    machine's Updated dot is red, the owner's v1.2.1 ask: it never shipped, the page's seed hard-coded
+    the dot green, and a test pins it now."
+   :origin "the seat ledger v1.2.4-held-2026-10-10 items 8, 9 and 10; this pull request")))

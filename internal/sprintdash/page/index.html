@@ -136,6 +136,7 @@ img#logo.logo-tile { width: 6rem; height: 6rem; flex: none; border-radius: 22.5%
 .live { display: inline-flex; align-items: center; gap: 1rem; font-size: 1.625rem; color: var(--text-2); }
 .dot { width: 1rem; height: 1rem; border-radius: 50%; background: var(--text-3); flex: none; }
 .live.ok .dot { background: var(--good); }
+.live.stopped .dot { background: var(--critical); }  /* a stopped machine's Updated dot is red (the owner, v1.2.1; it never shipped: the seed hard-coded the dot green) */
 .live .tz { color: var(--text-3); }
 #live-text { display: inline-block; min-width: 12.3em; }  /* the loaded clock's width, so "Connecting" wraps the same way */
 .live .clk { white-space: pre; }

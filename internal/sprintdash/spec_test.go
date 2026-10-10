@@ -339,3 +339,61 @@ func TestDashboardPageLoadsNothingFromElsewhere(t *testing.T) {
 	assert.Equal(t, []byte("wOF2"), file("nunito-800.woff2")[:4], "the face is a woff2")
 	assert.Contains(t, string(file("OFL.txt")), "SIL Open Font License", "the face's licence is embedded beside it")
 }
+
+// The empty, stopped epoch the owner saw (the seat ledger v1.2.4-held-2026-10-10, items
+// 8, 9 and 10): a store with nothing spent, nothing landed and the machine stopped. The
+// page is static markup plus app.js, so these pin the served files: the layout the
+// renderer draws empty is the layout it draws filled, and the stopped dot is red.
+
+// The Cost breakdown with no spend keeps its table: the header row (stream, the tiers
+// with spend, total) is drawn whatever the rows, and no line of prose stands in for the
+// empty table (the owner, the empty epoch).
+func TestEmptyCostBreakdownKeepsItsTable(t *testing.T) {
+	t.Parallel()
+	code := string(file("app.js"))
+	assert.Contains(t, code, `putKid(head, 0, "", "stream")`, "the cost table's stream header is drawn every render, empty or not")
+	assert.Contains(t, code, `putKid(head, cellCount - 1, "num", "total")`, "the cost table's total header is drawn every render, empty or not")
+	assert.NotContains(t, code, "no stream has spent anything yet", "no prose line stands in for the empty cost table")
+}
+
+// The LANDED tile at 0 of 0 reads "nothing complete", not "- complete": the tile's
+// sub-line composes the pct slot with " complete" (index.html, the wide layout), so the
+// pct slot itself reads "nothing" there, and never "nothing complete" twice over.
+func TestLandedTileReadsNothingComplete(t *testing.T) {
+	t.Parallel()
+	code := string(file("app.js"))
+	assert.Contains(t, code, `landed === 0 ? "nothing" : "-"`, "0 of 0: the pct slot reads nothing, so the tile reads nothing complete")
+	assert.NotContains(t, code, `"nothing complete"`, "the pct slot must not carry the suffix index.html adds")
+
+	doc := parsePage(t, file("index.html"))
+	body := doc.one(t, "a body", func(n *node) bool { return n.name == "body" })
+	pct := body.one(t, "the pct slot", byID("pct"))
+	var sub *node
+	for _, s := range body.find(byClass("sub")) {
+		for _, c := range s.children {
+			if c == pct {
+				sub = s
+			}
+		}
+	}
+	require.NotNil(t, sub, "the pct slot sits in the landed tile's sub-line")
+	i := 0
+	for i < len(sub.children) && sub.children[i] != pct {
+		i++
+	}
+	require.Less(t, i+1, len(sub.children), "the pct slot is followed by the suffix")
+	assert.Equal(t, "complete", strings.TrimSpace(textOf(sub.children[i+1])), "the landed tile composes <pct> complete")
+}
+
+// A STOPPED machine's Updated dot is red (the owner, v1.2.1). It never shipped: the
+// page's seed hard-coded the dot green (setClass($("live"), "live ok"), whatever the
+// machine line said), and every re-seed carried that. setLive classes the dot from the
+// machine state setMachine read, and the page's CSS paints .live.stopped red.
+func TestStoppedMachineDotIsRed(t *testing.T) {
+	t.Parallel()
+	code := string(file("app.js"))
+	assert.Contains(t, code, "machineStopped = stopped", "setMachine reads the machine line's stopped state for the dot")
+	assert.Contains(t, code, `machineStopped ? " stopped" : " ok"`, "setLive classes the dot from the machine state")
+	assert.NotContains(t, code, `setClass($("live"), "live ok")`, "the Updated dot is never hard-coded green again")
+	assert.Contains(t, string(file("index.html")), ".live.stopped .dot { background: var(--critical); }", "the stopped machine's Updated dot is red")
+}
