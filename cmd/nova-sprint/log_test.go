@@ -166,3 +166,41 @@ func TestWhereHidesTheMergeTablesSince(t *testing.T) {
 	require.NotEmpty(t, block, "no merge table:\n%s", out)
 	require.NotContains(t, block, "since", "where shows since:\n%s", out)
 }
+
+// A wide --since window returns every event in it: an event written 23h ago
+// is still inside a 24h window (docs/SPEC-SPRINT.md section 17, the log).
+func TestLogSinceWideWindowIncludesExistingEvents(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.a.loc = time.UTC
+	ta.ok("init --readers reader-a --members m1")
+	ta.ok("add --stream s1 --count 1 --one")
+	ta.mu.Lock()
+	ta.now = ta.now.Add(23 * time.Hour)
+	ta.mu.Unlock()
+
+	out := ta.ok("log --since 24h")
+	assert.Contains(t, out, "LOG OK lines=", "wide --since window")
+	assert.NotContains(t, out, "LOG OK lines=0", "wide --since window must retain the event")
+}
+
+// The window is pinned to one now: a wide --since is the last d ending at the
+// clock the command read, so a line after that now is outside it (docs/SPEC-SPRINT.md
+// section 17, the log: "pin the window").
+func TestLogSincePinsWideWindowToOneNow(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.a.loc = time.UTC
+	ta.ok("init --readers reader-a --members m1")
+	ta.ok("add --stream s1 --count 1 --one")
+	ta.mu.Lock()
+	ta.now = ta.now.Add(23 * time.Hour)
+	ta.mu.Unlock()
+	ta.ok("add --stream s1 --count 1 --one")
+	ta.mu.Lock()
+	ta.now = ta.now.Add(-time.Hour)
+	ta.mu.Unlock()
+
+	out := ta.ok("log --since 24h")
+	assert.NotContains(t, out, "s1-2 added", "an event after the pinned now is outside the wide window")
+}

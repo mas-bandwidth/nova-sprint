@@ -42,3 +42,4 @@ Inbox push writes each judgment once without concurrent writers sharing a tempor
 
 - **Inbox push cannot overwrite a published judgment** (planned). Two overlapping clients share one temporary path, so a second write can change the published file. Use a unique temporary path per writer. From: issue #5160.
 - **Rested routes must not overflow the fleet table property cap** (planned). Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the tick writes nothing. Use one property for all. From: issue #5210.
+- **Fix log --since for windows wider than 22 hours** (planned). A wide --since window returns nothing; pin the window and return every event in it. From: card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10).
