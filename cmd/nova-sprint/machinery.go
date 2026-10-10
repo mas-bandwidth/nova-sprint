@@ -3,13 +3,17 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -62,6 +66,155 @@ type outside struct {
 	// machineVersions is each machine's installed version against dev (fp-mach-01).
 	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)
 	novaTools       func(bin string) sprint.NovaToolsProbe
+	// hostProbe dials a member's host, named by its machine row (the tailnet host:
+	// `ssh <name>` reaches it, pkg/config/kind.go); nil probes none, and no member is then
+	// excused as offline. probeBound is the one bound over every probe of a check, run in
+	// parallel; 0 is hostProbeBound.
+	hostProbe  func(ctx context.Context, host string) hostAnswer
+	probeBound time.Duration
+	// isSelf says a member's name is this machine (its own short hostname, or a name that
+	// resolves to one of its own addresses): the seat reaching itself proves nothing of
+	// its network, so such a member is never the control. nil is the hostname alone.
+	isSelf func(ctx context.Context, name string) bool
+}
+
+// selfByAddress is the real isSelf: the name is this machine's short hostname, or it
+// resolves (within the context) to a loopback address or one of this machine's own
+// interface addresses. A name that does not resolve is not this machine.
+func selfByAddress(hostname func() string) func(ctx context.Context, name string) bool {
+	return func(ctx context.Context, name string) bool {
+		if hostname != nil && strings.EqualFold(name, hostname()) {
+			return true
+		}
+		addrs, err := net.DefaultResolver.LookupIPAddr(ctx, name)
+		if err != nil {
+			return false
+		}
+		own, _ := net.InterfaceAddrs() // ignored: no interface list leaves the loopback check
+		for _, a := range addrs {
+			if a.IP.IsLoopback() {
+				return true
+			}
+			for _, o := range own {
+				if n, ok := o.(*net.IPNet); ok && n.IP.Equal(a.IP) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+}
+
+// hostProbeBound is the overall bound of a check's host probes, all run at once.
+const hostProbeBound = 3 * time.Second
+
+// hostAnswer is what a probe of a host says: it answered, it gave a clear no-answer
+// (offline), or neither (Err names why, and the member is not excused).
+type hostAnswer struct {
+	Answered bool
+	Offline  bool
+	Err      string
+}
+
+// dialHost is the real hostProbe: a TCP dial of the host's ssh port. A connection, or a
+// refusal (the host's own stack answered), is an answer. Only a clear no-answer is
+// offline: the dial timing out, or no route to the resolved address. A name that does
+// not resolve is evidence of nothing about the host, and is said as an error.
+func dialHost(ctx context.Context, host string) hostAnswer {
+	var d net.Dialer
+	c, err := d.DialContext(ctx, "tcp", net.JoinHostPort(host, "22"))
+	if err == nil {
+		c.Close() // ignored: a probe connection
+		return hostAnswer{Answered: true}
+	}
+	return classifyDial(err)
+}
+
+// classifyDial is the answer a failed dial gives.
+func classifyDial(err error) hostAnswer {
+	var dnsErr *net.DNSError
+	var netErr net.Error
+	switch {
+	case errors.As(err, &dnsErr):
+		return hostAnswer{Err: "its name does not resolve: " + dnsErr.Error()}
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return hostAnswer{Answered: true}
+	case errors.Is(err, syscall.EHOSTUNREACH), errors.Is(err, syscall.ENETUNREACH),
+		errors.Is(err, context.DeadlineExceeded), errors.As(err, &netErr) && netErr.Timeout():
+		return hostAnswer{Offline: true}
+	}
+	return hostAnswer{Err: err.Error()}
+}
+
+// excuseOffline marks each member that does not beat (sprint.NeedsHostProbe) and whose
+// host gives a clear no-answer as HostOffline, so the check says it down, not DOWN. A
+// member is probed only when its machine row is in the inventory (machines). The seat's
+// own network is proved by a control: a beating member of the inventory that is not this
+// machine (isSelf), probed in the same batch; when there is none, or it does not answer,
+// no member is excused, since N offline hosts and the seat's own network down look the
+// same from here. Every probe runs at once, under one bound.
+func excuseOffline(ctx context.Context, probe func(context.Context, string) hostAnswer, isSelf func(string) bool, bound time.Duration, fleet []sprint.MemberM, machines map[string]bool, inventoryErr error) {
+	var targets []int
+	control := ""
+	for i, mm := range fleet {
+		switch {
+		case !sprint.NeedsHostProbe(mm):
+			if control == "" && mm.Status != "held" && machines[mm.Name] && (isSelf == nil || !isSelf(mm.Name)) {
+				control = mm.Name
+			}
+		case inventoryErr != nil:
+			fleet[i].HostErr = "not probed: the inventory was not read (" + inventoryErr.Error() + ")"
+		case !machines[mm.Name]:
+			fleet[i].HostErr = "not probed: no machine row names it"
+		default:
+			targets = append(targets, i)
+		}
+	}
+	if len(targets) == 0 || probe == nil {
+		return
+	}
+	if bound <= 0 {
+		bound = hostProbeBound
+	}
+	ctx, cancel := context.WithTimeout(ctx, bound)
+	defer cancel()
+	hosts := make([]string, 0, len(targets)+1)
+	for _, i := range targets {
+		hosts = append(hosts, fleet[i].Name)
+	}
+	if control != "" {
+		hosts = append(hosts, control)
+	}
+	answers := make([]hostAnswer, len(hosts))
+	var wg sync.WaitGroup
+	for j, h := range hosts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			answers[j] = probe(ctx, h)
+		}()
+	}
+	wg.Wait()
+	seatNet := ""
+	switch {
+	case control == "":
+		seatNet = "not excused: no beating member other than this machine to prove the seat's own network"
+	case !answers[len(hosts)-1].Answered:
+		seatNet = "not excused: control " + control + " did not answer either (the seat's own network?)"
+	}
+	for j, i := range targets {
+		a := answers[j]
+		switch {
+		case a.Offline && seatNet == "":
+			fleet[i].HostOffline = true
+		case a.Offline:
+			fleet[i].HostErr = seatNet
+		case a.Answered:
+			// the host answers and the member does not beat: a fault, said as before
+		default:
+			fleet[i].HostErr = a.Err
+		}
+	}
 }
 
 // realOutside is the check as it runs on a machine.
@@ -127,6 +280,11 @@ func (a *app) realOutside() outside {
 			}
 			return conn.Close()
 		},
+		hostProbe: dialHost,
+		isSelf: selfByAddress(func() string {
+			h, _ := os.Hostname()
+			return strings.SplitN(h, ".", 2)[0]
+		}),
 		hostname: func() string {
 			h, _ := os.Hostname()
 			return strings.SplitN(h, ".", 2)[0]
@@ -213,6 +371,27 @@ func (a *app) seatCheck(ctx context.Context, st *store.Store, redisAddr string) 
 		for _, name := range members {
 			b := beats[name]
 			m.Fleet = append(m.Fleet, sprint.MemberM{Name: name, Status: cellText(v.Tables[sprint.Fleet][name][sprint.Status]), Beaten: b.Beaten(), Age: now.Sub(b.At)})
+		}
+		// a member that does not beat on a host that is offline is down, not a fault (the
+		// owner, 2026-10-10: "Down is not an error, when they are actually down")
+		if o.hostProbe != nil && a.inventory != nil && slices.ContainsFunc(m.Fleet, sprint.NeedsHostProbe) {
+			machines := map[string]bool{}
+			ictx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			inv, err := a.inventory(ictx, "")
+			cancel()
+			for _, w := range inv {
+				machines[w.Machine] = true
+			}
+			// this machine is never the control: the seat reaching itself proves nothing
+			isSelf := func(name string) bool { return strings.EqualFold(name, host) }
+			if o.isSelf != nil {
+				isSelf = func(name string) bool {
+					sctx, cancel := context.WithTimeout(ctx, time.Second)
+					defer cancel()
+					return o.isSelf(sctx, name)
+				}
+			}
+			excuseOffline(ctx, o.hostProbe, isSelf, o.probeBound, m.Fleet, machines, err)
 		}
 		readers := sortedKeys(v.Tables[sprint.Readers])
 		states, err := st.ReaderStates(ctx, readers, now)

@@ -77,6 +77,21 @@ type MemberM struct {
 	Status string        `json:"status"`
 	Beaten bool          `json:"beaten"`
 	Age    time.Duration `json:"age_ns"`
+	// HostOffline is the evidence that the member's host does not answer (the
+	// binding probes it, only for a member that does not beat): a member that does
+	// not beat on a host that is offline is down, not a fault. false is unknown or
+	// reachable, so an unprobed member is never excused.
+	HostOffline bool `json:"host_offline,omitempty"`
+	// HostErr is why a member that does not beat was not excused when its host was probed
+	// and gave no clear no-answer (a name that does not resolve, the seat's own network
+	// unproved, no machine row): said on the DOWN line beside it. "" is none.
+	HostErr string `json:"host_err,omitempty"`
+}
+
+// NeedsHostProbe says the member's host is worth probing: not held, and it does not beat
+// (never, or not within MemberDownAfter). A member that beats is up whatever its host says.
+func NeedsHostProbe(m MemberM) bool {
+	return m.Status != "held" && (!m.Beaten || m.Age > MemberDownAfter)
 }
 
 // FriendM is one friend: her status as the friends table shows it and her last
@@ -244,6 +259,30 @@ func memberIsDown(m MemberM) bool {
 	return m.Status == "down" || (m.Status != "held" && (!m.Beaten || m.Age > MemberDownAfter))
 }
 
+// The verdicts of MemberVerdict.
+const (
+	MemberOK    = "ok"    // beating
+	MemberHeld  = "held"  // held by the coordinator or the inventory
+	MemberDown  = "down"  // does not beat and its host is offline: the state wanted, not an error
+	MemberFault = "fault" // does not beat and its host is reachable: the member's loop is broken
+)
+
+// MemberVerdict is the pure decision for one member (Glenn, 2026-10-10: "Down is not an
+// error, when they are actually down"): FAULT only when the host is reachable and the
+// member does not beat. The evidence of the host is given in (MemberM.HostOffline), never
+// probed here.
+func MemberVerdict(m MemberM) string {
+	switch {
+	case memberIsDown(m) && m.HostOffline && NeedsHostProbe(m):
+		return MemberDown
+	case memberIsDown(m):
+		return MemberFault
+	case m.Status == "held":
+		return MemberHeld
+	}
+	return MemberOK
+}
+
 // NotMeasured is what the dashboard, bus and friend agents say when the check
 // ran inside the server (Server.Self).
 const NotMeasured = "not measured: the check ran in the server; run nova-sprint seat check"
@@ -357,21 +396,34 @@ func JudgeSeatCheck(m SeatCheckMeasures, now time.Time) SeatCheckReport {
 	// 4. the fleet (beats)
 	if !failed(SeatCheckFleet) {
 		var up, held int
-		var down, remedies []string
+		var down, offline, whys, remedies []string
 		for _, mm := range m.Fleet {
-			switch {
-			case memberIsDown(mm):
+			switch MemberVerdict(mm) {
+			case MemberFault:
 				down = append(down, mm.Name+":"+formatBeatAge(mm.Beaten, mm.Age))
 				remedies = append(remedies, "nova-config loop show "+MemberLoopRecord(mm.Name))
-			case mm.Status == "held":
+				if mm.HostErr != "" {
+					whys = append(whys, mm.Name+": "+mm.HostErr)
+				}
+			case MemberDown:
+				offline = append(offline, mm.Name)
+			case MemberHeld:
 				held++
 			default:
 				up++
 			}
 		}
 		f := []string{"up=" + fmt.Sprint(up), "held=" + fmt.Sprint(held)}
+		if len(offline) > 0 {
+			// down, not DOWN: the host is offline, which is no error and does not fail the check
+			f = append(f, "offline="+strings.Join(offline, ","))
+		}
 		if len(down) > 0 {
-			add(SeatCheckLine{Thing: SeatCheckFleet, Facts: append(f, "down="+strings.Join(down, ",")), Remedy: strings.Join(remedies, "; ")})
+			f = append(f, "down="+strings.Join(down, ","))
+			if len(whys) > 0 {
+				f = append(f, "host="+quoteSeatCheck(strings.Join(whys, "; ")))
+			}
+			add(SeatCheckLine{Thing: SeatCheckFleet, Facts: f, Remedy: strings.Join(remedies, "; ")})
 		} else {
 			add(SeatCheckLine{Thing: SeatCheckFleet, Up: true, Facts: append(f, "down=0")})
 		}
