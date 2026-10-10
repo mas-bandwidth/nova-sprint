@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -438,34 +437,10 @@ func TestDoneStopWithoutActiveChildrenHasNoDebt(t *testing.T) {
 	assert.True(t, running.Running())
 }
 
-func TestMovedReturnedCardDoesNotSettleStopDebt(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
-	h.setup(1)
-	h.startMachine()
-	h.machine()
-	s := h.snap()
-	wc := s.Fleet.Card(s.Work.Card("s1-1").F("work"))
-	require.NotNil(t, wc)
-	gen := max(wc.Int("gen"), 1)
-	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
-	_, _, _, err := h.st.StopUntil(h.ctx, "owner stopped child", h.now.Add(time.Hour))
-	require.NoError(t, err)
-	// A receipt-shaped card on another owner's row, never returned by its own
-	// owner (out of band), settles nothing: neither START nor another row's
-	// stop-return takes it off the debt (tla/StopReturn.tla Settle reads the
-	// receipt on the debt's own row).
-	require.NoError(t, h.m.RowsAdd(h.ctx, "t-fleet", []string{"other-owner"}))
-	h.poke(sprint.Fleet, ntable.BatchMemberEntry{ID: wc.ID,
-		Move: &ntable.MemberMoveOp{Row: "other-owner", Col: sprint.Ready},
-		Set:  map[string]string{"gen": fmt.Sprint(gen + 1), "stopped_from_gen": fmt.Sprint(gen)}})
-	h.run(StopReturnStep(sprint.StopReturnReq{As: "other-owner", IDs: []string{wc.ID}, Gens: map[string]int{wc.ID: gen}, Reason: "not its owner"}))
-	m, _, err := h.st.Machine(h.ctx)
-	require.NoError(t, err)
-	require.Len(t, m.StopDebt, 1, "another row's receipt does not settle the debt")
-	_, _, _, err = h.st.SetMachine(h.ctx, true)
-	require.ErrorContains(t, err, wc.Row+":"+wc.ID+"@1", "a moved return receipt belongs to the original owner")
-}
+// TestMovedReturnedCardDoesNotSettleStopDebt is replaced in v1.2.6 by live_test.go's
+// TestStartReadsTheReceiptNotTheRow: start reads the return receipt the card carries, not
+// the row it is on, so a returned card a hold moved since is settled (the hold of
+// 2026-10-10 that froze friend.zhi's row), and a card moved with no receipt is not.
 
 func TestClearCannotEraseUnreturnedStopDebt(t *testing.T) {
 	t.Parallel()
@@ -485,6 +460,46 @@ func TestClearCannotEraseUnreturnedStopDebt(t *testing.T) {
 	h.startMachine()
 	_, err = h.st.Clear(h.ctx)
 	require.NoError(t, err)
+	assert.Equal(t, uint64(1), h.snap().Epoch)
+}
+
+// Clear succeeds after every leased card is stop-returned, with no start in
+// between (the stale STOP of 2026-10-10: a stop-returned card stayed STOP-owned
+// until START, so clear refused the debt until the machine ran once). Each
+// stop-return settles its lease off the machine record, so the stopped machine
+// holds no debt and clear advances the epoch straight away.
+func TestClearSucceedsAfterEveryLeasedCardIsStopReturned(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.setup(2)
+	h.startMachine()
+	h.machine()
+	s := h.snap()
+	type lease struct {
+		row, id string
+		gen     int
+	}
+	var leased []lease
+	for _, p := range []string{"s1-1", "s1-2"} {
+		wc := s.Fleet.Card(s.Work.Card(p).F("work"))
+		require.NotNil(t, wc)
+		gen := max(wc.Int("gen"), 1)
+		h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
+		leased = append(leased, lease{row: wc.Row, id: wc.ID, gen: gen})
+	}
+	_, stopped, _, err := h.st.StopUntil(h.ctx, "operator stop", h.now.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, stopped.StopDebt, len(leased), "every working card is a lease")
+	_, err = h.st.Clear(h.ctx)
+	require.ErrorContains(t, err, "captured owner work/read leases", "clear refuses while a lease is unreturned")
+	for _, l := range leased {
+		h.must(StopReturnStep(sprint.StopReturnReq{As: l.row, IDs: []string{l.id}, Gens: map[string]int{l.id: l.gen}, Reason: "child exited"}))
+	}
+	m, _, err := h.st.Machine(h.ctx)
+	require.NoError(t, err)
+	assert.Empty(t, m.StopDebt, "each stop-return settles its lease off the machine record")
+	_, err = h.st.Clear(h.ctx)
+	require.NoError(t, err, "clear succeeds with no start after every lease is stop-returned")
 	assert.Equal(t, uint64(1), h.snap().Epoch)
 }
 

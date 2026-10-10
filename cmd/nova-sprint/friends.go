@@ -364,6 +364,7 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 	started := fs.String("started", "", "when her daemon started, RFC3339: its generation; a start not seen before raises a status judgment")
 	present := fs.String("present", "", "when her daemon sent her the present on its start, RFC3339: the snap-to-present step of a friend come up")
 	running := fs.String("running", "", "the cards she is running now, comma separated (work card ids, her job names or primaries): friend take and friend down leave them with her")
+	live := fs.String("live", "", "her live set: <card>@<gen> for each lane child she runs and <card>@<gen>:held for each finished report her outbox holds, comma separated, or "+sprint.LiveNone+" for none; the evidence for working: a card working on her row that her live set has not named for "+sprint.LiveGrace.String()+" goes back ready, RUNNING or STOPPED; a beat without it leaves her row unreconciled")
 	working := fs.String("working", "", "how many jobs she is working now, as her daemon counts them")
 	stopReturns := fs.String("stop-returns", "", "how many stop-returns her lanes still owe after the machine's stop (section 14): start waits for zero")
 	queue := fs.String("queue", "", "how many jobs she holds queued, as her daemon counts them")
@@ -455,7 +456,15 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	b, proof, err := st.FriendBeatProof(ctx, friend, rep, given, words)
+	var liveSet []string
+	if *live != "" { // the empty set is "-" (sprint.LiveNone)
+		v, err := sprint.ParseLive(*live)
+		if err != nil {
+			return refuse(stderr, name, err.Error())
+		}
+		liveSet = v
+	}
+	b, proof, err := st.FriendBeatLive(ctx, friend, rep, given, words, liveSet)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %s: %s\n", prog, name, oneline.Escape(err.Error()))
 		return 1

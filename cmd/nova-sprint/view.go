@@ -327,7 +327,9 @@ func (a *app) coordinatorView(ctx context.Context, st *store.Store, all bool) (c
 		return v, err
 	}
 	members := s.Members()
-	beats, err := st.Beats(ctx, members)
+	// every fleet row's beat, a friend's by her name (sprint.RowBeat): the working counts
+	// are the live runs the rows' live sets name (liveWorking; v1.2.6)
+	beats, err := st.FleetBeats(ctx)
 	if err != nil {
 		return v, err
 	}
@@ -444,7 +446,7 @@ func (a *app) coordinatorView(ctx context.Context, st *store.Store, all bool) (c
 	for _, m := range members {
 		ctl := s.MemberCtl(m)
 		status, width := cmp.Or(s.Fleet.Texts[m][sprint.Status], ctl.F("status")), s.Width(m) // as the fleet table shows it: up, down, held
-		r, w := s.Fleet.Count(m, sprint.Ready), s.Fleet.Count(m, sprint.Working)
+		r, w := s.Fleet.Count(m, sprint.Ready), liveWorking(s, beats, m, now)
 		if status == sprint.Up {
 			n.Width += width
 			n.Busy += w
@@ -465,7 +467,7 @@ func (a *app) coordinatorView(ctx context.Context, st *store.Store, all bool) (c
 	// the friends: holding cards and down, or holding cards with no report for a while
 	for _, f := range friends {
 		row := sprint.FriendRow(f.Name)
-		r, w := s.Fleet.Count(row, sprint.Ready), s.Fleet.Count(row, sprint.Working)
+		r, w := s.Fleet.Count(row, sprint.Ready), liveWorking(s, beats, row, now)
 		rep, since := "never", time.Duration(0)
 		if !f.Beat.IsZero() {
 			since = now.Sub(f.Beat)
@@ -1218,4 +1220,16 @@ func friendLastWork(s *sprint.Snapshot, f store.FriendRow) time.Time {
 		at = moved
 	}
 	return at
+}
+
+// liveWorking is a fleet row's working count as the view shows it: the cards working on the
+// row that its live set names running (sprint.LiveCountKeys), every one when its beat carries
+// no live set.
+func liveWorking(s *sprint.Snapshot, beats map[string]sprint.Beat, row string, now time.Time) int {
+	var keys []string
+	for _, c := range s.Fleet.Cell(row, sprint.Working) {
+		keys = append(keys, sprint.LiveKey(c.ID, c.Int("gen")))
+	}
+	run, _, _ := sprint.LiveCountKeys(keys, sprint.RowBeat(beats, row), now)
+	return run
 }

@@ -351,3 +351,9 @@ MCStatsResetBrokenNoStamp.cfg	MCStatsReset.tla	invariant	RecordShowsShown	ignore
 MCStopReturn.cfg	MCStopReturn.tla	pass	-	ignore-terminal	stopreturn	required	-
 MCStopReturnBrokenNoSettle.cfg	MCStopReturn.tla	temporal	ReturnedFreesItsRow	ignore-terminal	stopreturn	required	-
 MCStopReturnBrokenNoReceipt.cfg	MCStopReturn.tla	invariant	NoLiveChildAcrossStart	ignore-terminal	stopreturn	required	-
+MCLiveRuns.cfg	MCLiveRuns.tla	pass	-	ignore-terminal	liveruns	required	-
+MCLiveRunsReachStoppedReturn.cfg	MCLiveRuns.tla	invariant	NeverStoppedReturn	ignore-terminal	liveruns	required	-
+MCLiveRunsBrokenStoppedNoReconcile.cfg	MCLiveRuns.tla	invariant	WorkingIsLive	ignore-terminal	liveruns	required	-
+MCLiveRunsBrokenDebtById.cfg	MCLiveRuns.tla	invariant	StopMarkerIsWorking	ignore-terminal	liveruns	required	-
+MCLiveRunsBrokenHeldNotLive.cfg	MCLiveRuns.tla	invariant	NoReportLost	ignore-terminal	liveruns	required	-
+MCLiveRunsBrokenStaleAsAbsent.cfg	MCLiveRuns.tla	invariant	NoRunReturned	ignore-terminal	liveruns	required	-
