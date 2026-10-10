@@ -2111,13 +2111,6 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "issue #2042")
-  (item "merge-approval-head-from-disposition" :group "ops"
-   :title "Approval at head is read from the disposition line"
-   :text "The review API commit id can differ from the head the reviewer read. Merge checks parse the head
-    named in the disposition and treat commit id as untrusted."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "issue #2037")
   (item "decide-review-uses-confidence" :group "sprint"
    :title "nova-decide review uses the provider confidence in its verdict"
    :text "The review verdict passes any rounded score of eight or more whatever the confidence. Low
