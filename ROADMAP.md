@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (211)
+- [The sprint machine](#the-sprint-machine) (210)
 - [Setup, release and operations](#setup-release-and-operations) (28)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (20)
@@ -789,14 +789,6 @@ The batch test step keeps the raw go test JSON stream, paginated review captures
 Target: v1.3
 
 From: issue #2626; issue #2654; issue #2693; issue #3183
-
-### A hold pinned to an older head is not a hold at the current head
-
-The lander ignores a hold whose sha is not the PR head when a later line at the head clears it.
-
-Target: v1.3
-
-From: issue #2710
 
 ### GitHub events arrive in a stream so loops are event-driven
 
