@@ -333,3 +333,4 @@ MCLiveRunsReachStoppedReturn.cfg	MCLiveRuns.tla	invariant	NeverStoppedReturn	ign
 MCLiveRunsBrokenStoppedNoReconcile.cfg	MCLiveRuns.tla	invariant	WorkingIsLive	ignore-terminal	liveruns	required	-
 MCLiveRunsBrokenDebtById.cfg	MCLiveRuns.tla	invariant	StopMarkerIsWorking	ignore-terminal	liveruns	required	-
 MCLiveRunsBrokenHeldNotLive.cfg	MCLiveRuns.tla	invariant	NoReportLost	ignore-terminal	liveruns	required	-
+MCLiveRunsBrokenStaleAsAbsent.cfg	MCLiveRuns.tla	invariant	NoRunReturned	ignore-terminal	liveruns	required	-

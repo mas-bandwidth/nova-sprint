@@ -126,6 +126,31 @@ func TestALiveTakeAndAnUnreportingMemberAreLeftWorking(t *testing.T) {
 	assert.Equal(t, sprint.Working, h.snap().Fleet.Card(wc.ID).Col, "a beat with no live set is no evidence")
 }
 
+// A silent member is no evidence (tla/LiveRuns.tla Silence, Broken "staleasabsent"; the cold
+// read of the first cut): a member whose beats stop arriving may still run its children
+// (a partition, a hung beat, a store stall), so the STOPPED tick returns nothing on its row
+// and start still waits on its stop-return; its next fresh beat is evidence again.
+func TestASilentMemberIsNoEvidenceOfAGoneRun(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	wc, gen := h.taken()
+	h.liveBeat(wc.Row) // a fresh beat that names nothing: the clock of absence starts
+	_, _, _, err := h.st.StopUntil(h.ctx, "operator stop", h.now.Add(time.Hour))
+	require.NoError(t, err)
+	for range 5 {
+		h.clock(sprint.LiveGrace) // the member is silent: no beat arrives
+		h.machine()
+	}
+	assert.Equal(t, sprint.Working, h.snap().Fleet.Card(wc.ID).Col, "a stale beat returns nothing")
+	_, _, _, err = h.st.SetMachine(h.ctx, true)
+	require.ErrorContains(t, err, wc.Row+":"+wc.ID+"@1", "start still waits on the silent owner")
+	h.liveBeat(wc.Row) // it speaks again, and names nothing
+	h.machine()
+	back := h.snap().Fleet.Card(wc.ID)
+	assert.Equal(t, sprint.Ready, back.Col, "a fresh beat that does not name it, past the grace, returns it")
+	assert.Equal(t, gen, back.Int("stopped_from_gen"))
+}
+
 // A finished report held while STOPPED (tla/LiveRuns.tla NoReportLost, Broken "heldnotlive"):
 // the live set names it held, the reconcile leaves it, start is not held back by it, and the
 // report is taken at its own generation once the machine runs.
@@ -138,6 +163,8 @@ func TestAHeldReportCrossesTheStopAndIsTaken(t *testing.T) {
 	held := sprint.LiveKey(wc.ID, gen) + ":" + sprint.LiveHeld
 	refused := h.run(FinishStep(sprint.FinishReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
 	require.NotEmpty(t, refused.Refused, "STOPPED refuses the report: the worker keeps it")
+	// the words the member reads as a refusal for the STOP alone (pkg/member stoppedRefusal)
+	assert.Contains(t, refused.Refused[0].Why, "the machine is STOPPED")
 	for range 3 {
 		h.clock(sprint.LiveGrace)
 		h.liveBeat(wc.Row, held)

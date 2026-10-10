@@ -255,8 +255,8 @@ func LiveHeldAt(b Beat, id string, gen int, now time.Time) bool {
 const LiveReturnVerb = "live return"
 
 // LiveReturns is the reconcile (tla/LiveRuns.tla Tick): every card working on a fleet row
-// whose beat carries a live set that has not named it at its generation, running or held,
-// for LiveGrace since it was taken or last named, goes back to ready on its row at its next
+// whose fresh beat carries a live set that has not named it at its generation, running or
+// held, for LiveGrace since it was taken or last named, goes back to ready on its row at its next
 // generation, untaken, with the reason recorded on the card (lost_from_gen, lost_reason)
 // and in its line. Its progress is kept for the next run (stopped_progress), as a
 // stop-return keeps it. While the machine is STOPPED the return is also the STOP's receipt
@@ -270,7 +270,13 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 	for _, row := range s.Fleet.Rows() {
 		b := RowBeat(beats, row)
 		live := liveOf(b, s.Now)
-		if !live.known {
+		if !live.known || !b.Fresh(s.Now) {
+			// only the owner's fresh beat is its word that a run is gone: a worker gone
+			// silent (a partition, a hung beat, a store stall) may still run its children,
+			// and a return here would let start deal the card again beside them
+			// (tla/LiveRuns.tla Silence, Broken "staleasabsent"). A silent member is the
+			// presence part's while running (down after MissedBeatsDown windows), and its
+			// owner's stop-return's while STOPPED; the dashboard shows its takes stale.
 			continue
 		}
 		working := slices.Clone(s.Fleet.Cell(row, Working))
@@ -292,9 +298,6 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 				continue
 			}
 			why := fmt.Sprintf("no live run: %s's beats have not named %s for %s", row, LiveKey(c.ID, gen), s.Now.Sub(since).Truncate(time.Second))
-			if !b.Fresh(s.Now) {
-				why += " (its beat stopped " + ago(s.Now.Sub(b.At)) + ")"
-			}
 			set := map[string]string{
 				"gen": itoa(gen + 1), "lost_from_gen": itoa(gen), "lost_reason": cutText(why, MaxCardTextBytes),
 				"untaken_since": stamp(s.Now),
