@@ -697,6 +697,15 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 			unserved[tier] = append(unserved[tier], c.ID)
 			whyOf[tier] = why
 			continue
+		} else if lwhy := s.noLauncher(escalating(s, c), up); lwhy != "" {
+			// a route serves its tier and no member up can launch one (Launches: no up
+			// member's control card names its harness): the tier's one judgment, naming the
+			// routes and fleet up --harnesses, never a quiet wait (fault 10)
+			unserved[tier] = append(unserved[tier], c.ID)
+			if whyOf[tier] == "" {
+				whyOf[tier] = lwhy
+			}
+			continue
 		}
 		if b := Bench(c); len(b) > 0 && len(onlyBench(up, b)) == 0 {
 			// its bench is down or held: it waits ready for a member of it, and is dealt to

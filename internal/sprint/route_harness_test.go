@@ -108,3 +108,40 @@ func TestADownedMembersClaudeCardsGoOnlyToMembersWithClaude(t *testing.T) {
 		assert.NotEqual(t, "m1", wc.Row, "%s never moves to a member with no claude", id)
 	}
 }
+
+// A tier whose routes all run under a harness no member up names is judged, never left to
+// wait quietly (the second cold read of nova-sprint#51: the state of every member right
+// after the upgrade, before fleet up --harnesses runs): the tick raises the tier's one
+// no-route judgment naming the routes and the verb, the no-stall rule names the cause, not
+// the members' room, and once a member names the harness the tick deals there.
+func TestATierNoMemberUpCanLaunchIsJudged(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 2}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 2}))
+	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: int(10 * time.Minute / time.Second)}}
+	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	p, _ := TickDeal(w.s, TickReq{})
+	w.must(p)
+	assert.Nil(t, w.s.Fleet.Card(WorkCardID("s1-1", 1)), "no member up can launch it: dealt nowhere")
+	var judged *Note
+	for _, n := range w.notesOf(NNoRoute) {
+		if n.Stream == TierSubject(cardhdr.RouteFlash) {
+			judged = &n
+		}
+	}
+	require.NotNil(t, judged, "the tier's one judgment is raised")
+	assert.ElementsMatch(t, []string{"s1-1", "s1-2"}, judged.Primaries)
+	assert.Contains(t, judged.What, "can launch a route of tier flash: flash-claude (runs under claude)")
+	assert.Contains(t, judged.What, "fleet up <member> --harnesses")
+	hd := Holder(running(w), w.s.Now, "s1-1")
+	assert.Contains(t, hd.Why, "can launch a route of tier flash", "the hold names the harness, not the members' room")
+	assert.NotContains(t, hd.Why, "below its room")
+
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Harnesses: "claude"}))
+	p, _ = TickDeal(w.s, TickReq{})
+	w.must(p)
+	wc := w.s.Fleet.Card(WorkCardID("s1-1", 1))
+	require.NotNil(t, wc, "m1 names claude: the tick deals it")
+	assert.Equal(t, "m1", wc.Row)
+}

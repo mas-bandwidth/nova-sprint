@@ -489,6 +489,11 @@ func (c *held) judgment(pr *Card) string {
 		if _, tier, _, byFriend := c.s.routeOf(escalating(c.s, pr), nil, nil, ""); byFriend && len(c.s.friendsFor(pr, tier)) == 0 && len(c.judged[StreamSubject(TierSubject(tier))]) > 0 {
 			return "no worker is left for it on tier " + tier + "; open: " + strings.Join(c.judged[StreamSubject(TierSubject(tier))], ", ")
 		}
+		// no member up can launch a route of its tier (noLauncher): the same judgment of the
+		// tier names it (TickDeal)
+		if _, tier, _, _ := c.s.routeOf(escalating(c.s, pr), nil, nil, ""); tier != "" && len(c.judged[StreamSubject(TierSubject(tier))]) > 0 && c.s.noLauncher(escalating(c.s, pr), c.s.UpMembers()) != "" {
+			return "no member up can launch a route of tier " + tier + "; open: " + strings.Join(c.judged[StreamSubject(TierSubject(tier))], ", ")
+		}
 	}
 	if pr.Col == Ready && !IsSentinel(pr) && len(c.s.UpMembers()) == 0 {
 		for _, j := range c.judged[StreamSubject("")] {
@@ -596,6 +601,10 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 		}
 		if len(up) == 0 {
 			return "no fleet member is up, and no judgment says so", "", false
+		}
+		if lwhy := s.noLauncher(escalating(s, pr), all); lwhy != "" {
+			// a route serves its tier and no member up can launch one: not the members' room
+			return lwhy + "; and no judgment says so", "", false
 		}
 		// The members' free places (each one's room, DealAhead times its width,
 		// less its ready and working cards, width.go) go to the ready primaries in the

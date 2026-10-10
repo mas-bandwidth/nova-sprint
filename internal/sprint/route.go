@@ -88,6 +88,34 @@ func (s *Snapshot) launchersOf(c, wc *Card, ms []string) (out []string, why stri
 	return out, why
 }
 
+// noLauncher is why no member of up can launch a route of the primary c's tier, a route
+// serving that tier: "" when one can, when none is up (no member up is its own judgment),
+// or when no route serves the tier (routeOf's own judgment). The tick raises it as the
+// tier's one judgment (TickDeal, NNoRoute) and the no-stall rule names it (held.go), so a
+// card whose routes all run under a harness no member up names waits under a judgment,
+// never quietly (the second cold read of nova-sprint#51).
+func (s *Snapshot) noLauncher(c *Card, up []string) string {
+	if len(up) == 0 {
+		return ""
+	}
+	_, tier, why, byFriend := s.routeOf(c, nil, nil, "")
+	if why != "" || byFriend {
+		return ""
+	}
+	if ms, _ := s.launchersOf(c, nil, up); len(ms) > 0 {
+		return ""
+	}
+	var routes []string
+	for _, r := range s.Routes {
+		if r.Tier == tier && r.Enabled && harness.IsHeadless(r.Harness) {
+			routes = append(routes, r.Name+" (runs under "+r.Harness+")")
+		}
+	}
+	slices.Sort(routes)
+	return "no member up (" + strings.Join(up, ", ") + ") can launch a route of tier " + tier + ": " + strings.Join(routes, ", ") +
+		", and no member's control card names that harness: run nova-sprint fleet up <member> --harnesses <h,...> for each member with it on its PATH, or enable an opencode route of the tier"
+}
+
 // notLaunching is the members of up that cannot launch the work card c on the route it
 // carries (Launches): what a move of a dealt card (a member down, the level, the
 // rebalance), which keeps its route, avoids as it avoids a member that refused it.
