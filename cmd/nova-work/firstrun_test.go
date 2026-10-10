@@ -37,8 +37,17 @@ func TestTESTSFirstRunIsWhatTheToolPrints(t *testing.T) {
 		"nova-work import --org $ORG --repo $ORG/$REPO --page-size 15 --out ./tree.lisp",
 		"nova-work verify --tree ./tree.lisp --repo $ORG/$REPO --page-size 15",
 	}
-	examples, err := onboarding.ExampleLines(workTool(realGitHub()).Banner(), "nova-work")
+	all, err := onboarding.ExampleLines(workTool(realGitHub()).Banner(), "nova-work")
 	require.NoError(t, err)
+	// The roadmap verbs' examples are not this sitting's: they edit a
+	// repository's own files and need no GitHub, and
+	// TestTheRoadmapExamplesRunInOrder runs them.
+	var examples []string
+	for _, e := range all {
+		if !strings.HasPrefix(e, "nova-work roadmap ") {
+			examples = append(examples, e)
+		}
+	}
 	require.Equal(t, strings.Join(documentedExamples, "\n"), strings.Join(examples, "\n"), "the banner's examples are %q, this test names %q", examples, documentedExamples)
 
 	raw := testkit.ReadFile(t, filepath.Join("..", "..", "docs", "TESTS.md"))
