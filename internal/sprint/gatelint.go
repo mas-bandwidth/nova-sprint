@@ -71,14 +71,19 @@ func GateLintFindings(input GateLintInput, run BenchRunner) []GateLintFinding {
 	// Check 3: Reach check - every exported symbol in changed non-test files
 	// should have a reference from a non-test file
 	if !input.SkipReach && len(input.ChangedFiles) > 0 && input.ChangedDir != "" {
-		symbols := getChangedExportedSymbols(input.ChangedDir, input.ChangedFiles)
-		if len(symbols) > 0 {
-			reached, err := findNonTestReferences(input.ChangedDir, symbols)
-			if err == nil {
-				for sym, isReached := range reached {
-					if !isReached {
-						out = append(out, GateLintFinding{What: GateLintReach + ": " + sym + " has no reference from any non-test file"})
-					}
+		for _, changed := range input.ChangedFiles {
+			symbols := getChangedExportedSymbols(input.ChangedDir, []string{changed})
+			if len(symbols) == 0 {
+				continue
+			}
+			pkgDir := filepath.Dir(filepath.Join(input.ChangedDir, changed))
+			reached, err := findNonTestReferences(pkgDir, symbols)
+			if err != nil {
+				continue
+			}
+			for sym, isReached := range reached {
+				if !isReached {
+					out = append(out, GateLintFinding{What: GateLintReach + ": " + sym + " has no reference from any non-test file"})
 				}
 			}
 		}
@@ -134,24 +139,27 @@ func findNonTestReferences(pkgDir string, symbols map[string]bool) (map[string]b
 
 	fset := token.NewFileSet()
 
-	// Walk all non-test Go files in the package directory
-	filepath.Walk(pkgDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
+	// Only this package counts. A same-named local, field, or declaration in a
+	// different package must not make an exported addition look wired.
+	entries, err := os.ReadDir(pkgDir)
+	if err != nil {
+		return reached, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
 		}
-		if info.IsDir() {
-			return nil
-		}
+		path := filepath.Join(pkgDir, entry.Name())
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
+			continue
 		}
 		src, err := os.ReadFile(path)
 		if err != nil {
-			return nil
+			continue
 		}
 		file, err := parser.ParseFile(fset, path, src, parser.ParseComments)
 		if err != nil {
-			return nil
+			continue
 		}
 		declarations := declaredNames(file)
 		ast.Inspect(file, func(n ast.Node) bool {
@@ -162,8 +170,7 @@ func findNonTestReferences(pkgDir string, symbols map[string]bool) (map[string]b
 			}
 			return true
 		})
-		return nil
-	})
+	}
 
 	return reached, nil
 }
