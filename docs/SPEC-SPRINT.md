@@ -2856,6 +2856,25 @@ id (`--op`) returns the original result, with no second counter or notification.
   asks every attempt as before: the field is additive, and a store given
   `sprint.GateTables(g)` gates with `g`.
 
+- The gate lint tokens (`sprint.GateLintPinAbsent`, `sprint.GateLintPinBroken`,
+  `sprint.GateLintReach`):
+  - `gate-pin-absent`: the TEST line's test passes at the merge-base.
+    Remedy: write the test so it fails without the change.
+  - `gate-pin-broken`: the TEST line's test passes when the change's non-test hunks are
+    reverted. Remedy: ensure the test actually depends on the change.
+  - `gate-reach-unreached`: an exported function, method or verb added by the change has
+    no semantic reference from any non-test file. Remedy: wire the symbol into a non-test
+    caller, or do not export one only a test reads (an unexported helper is outside the
+    check). Reach is resolved with Go object identity, so a shadowed local spelling is not
+    a caller. The reach scan uses the exact pinned attempt tree, not the lander checkout.
+  - If either pin probe or source analysis cannot run, the machine gate waits. A bench
+    error is not evidence that the test failed or the symbol was reached.
+
+#### work-lint-proves-the-test-pins-ns-bcccb.w1: standard-library reach imports
+
+- The reach scanner resolves external package export data with one go list -deps -export invocation using the bench's resolved go executable (swarm.BenchGoBin), then imports every package through one go/importer.ForCompiler instance. The shared importer preserves types.Package object identity when callers pass standard-library types across package boundaries; its GOROOT comes from the resolved toolchain, not runtime.GOROOT or build.Default.GOROOT in the trimmed wall process. The legacy package scanner uses the same importer.
+- If this source analysis cannot complete, the machine gate emits an explicit gate-reach-unreached finding naming the incomplete analysis instead of treating an importer error as a waiting gate. It does not claim a symbol is reached when type-checking failed.
+
 ## 7. Merging
 
 1. In work order, never random: the head of the stream's queued cell first.

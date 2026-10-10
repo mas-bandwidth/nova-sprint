@@ -2,6 +2,8 @@ package sprint
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path"
 	"reflect"
 	"regexp"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/internal/diffcheck"
+	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
 )
 
@@ -455,6 +458,142 @@ func GateCommands(tl cardhdr.TestLine, pkgs []string) [][]string {
 	return cmds
 }
 
+// benchTestRunner adapts BenchRun to BenchRunner for lint checks.
+func benchTestRunner(bench BenchRun, hosts []string, dir string, args []string, env []string) BenchRunner {
+	return func(commit, pkg, testname string) (bool, error) {
+		ctx := context.Background()
+		// Build test command: go test -run <testname> <pkg>
+		argv := append([]string{"go", "test", "-count=1", "-timeout", "600s", "-run", "^" + testname + "$"}, pkg)
+		res, err := bench(ctx, hosts, dir, commit, argv)
+		if err != nil {
+			return false, err
+		}
+		// go test exits zero when the named test does not exist.  A new test is
+		// allowed to be absent at the merge-base, so do not mistake that for a
+		// passing pin probe.
+		if res.Code == 0 && strings.Contains(res.Out, "[no tests to run]") {
+			return false, nil
+		}
+		return res.Code == 0, nil
+	}
+}
+
+// GateLintRun runs the lint checks after the gate commands pass.
+// It returns GateLintFindings if any issues are found.
+func GateLintRun(v WorkView, tl cardhdr.TestLine, mergeBase, dir string, hosts []string, benchRun BenchRun, env []string, deletion bool) ([]GateLintFinding, error) {
+	// A comparison has no valid meaning without the pinned merge-base. This
+	// keeps the fake bench seam focused on gate commands; real WorkView values
+	// always carry the merge-base from ReadWorkView.
+	if mergeBase == "" || v.Head == "" {
+		return nil, nil
+	}
+	// Build input from work view
+	var changedFiles []string
+	for _, f := range diffcheck.Parse(v.Diff) {
+		if f.New != "" && strings.HasSuffix(f.New, ".go") && !strings.HasSuffix(f.New, "_test.go") {
+			changedFiles = append(changedFiles, f.New)
+		}
+	}
+
+	reverted, err := materializeRevertedTree(context.Background(), dir, mergeBase, v.Head, changedFiles, env)
+	if err != nil {
+		return nil, fmt.Errorf("could not materialize reverted tree: %w", err)
+	}
+	headDir, cleanupHead, err := materializeHeadTree(context.Background(), dir, v.Head, env)
+	if err != nil {
+		return nil, fmt.Errorf("could not materialize pinned head: %w", err)
+	}
+	defer cleanupHead()
+	baseDir, cleanupBase, err := materializeHeadTree(context.Background(), dir, mergeBase, env)
+	if err != nil {
+		return nil, fmt.Errorf("could not materialize merge-base: %w", err)
+	}
+	defer cleanupBase()
+	input := GateLintInput{
+		MergeBase:    mergeBase,
+		Head:         v.Head,
+		RevertedHead: reverted,
+		TestPkg:      tl.Package,
+		TestName:     tl.Name,
+		ChangedFiles: changedFiles,
+		ChangedDir:   headDir,
+		BaseDir:      baseDir,
+		SkipReach:    deletion,
+	}
+
+	if benchRun == nil {
+		return GateLintFindingsChecked(input, nil)
+	}
+
+	adapted := benchTestRunner(benchRun, hosts, dir, nil, env)
+	return GateLintFindingsChecked(input, adapted)
+}
+
+func materializeHeadTree(ctx context.Context, dir, head string, env []string) (string, func(), error) {
+	root, err := os.MkdirTemp("", "nova-gatelint-head-")
+	if err != nil {
+		return "", nil, err
+	}
+	work := path.Join(root, "tree")
+	o := gitrun.Options{C: dir, Env: env, OwnRepo: true}
+	if _, err := gitrun.Output(ctx, o, "worktree", "add", "--detach", work, head); err != nil {
+		_ = os.RemoveAll(root)
+		return "", nil, err
+	}
+	got, err := gitrun.Output(ctx, gitrun.Options{C: work, Env: env, OwnRepo: true}, "rev-parse", "HEAD")
+	if err != nil || !strings.HasPrefix(strings.TrimSpace(got), head) || len(head) < 7 {
+		_, _ = gitrun.Output(ctx, o, "worktree", "remove", "--force", work)
+		_ = os.RemoveAll(root)
+		if err == nil {
+			err = fmt.Errorf("checked out %s, want %s", strings.TrimSpace(got), head)
+		}
+		return "", nil, err
+	}
+	cleanup := func() {
+		_, _ = gitrun.Output(context.Background(), o, "worktree", "remove", "--force", work)
+		_ = os.RemoveAll(root)
+	}
+	return work, cleanup, nil
+}
+
+func materializeRevertedTree(ctx context.Context, dir, base, head string, paths []string, env []string) (string, error) {
+	root, err := os.MkdirTemp("", "nova-gatelint-")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(root)
+	work := path.Join(root, "tree")
+	o := gitrun.Options{C: dir, Env: env, OwnRepo: true}
+	if _, err := gitrun.Output(ctx, o, "worktree", "add", "--detach", work, head); err != nil {
+		return "", err
+	}
+	defer gitrun.Output(ctx, o, "worktree", "remove", "--force", work)
+	for _, p := range paths {
+		if _, err := gitrun.Output(ctx, o, "cat-file", "-e", base+":"+p); err != nil {
+			if _, err := gitrun.Output(ctx, gitrun.Options{C: work, Env: env, OwnRepo: true}, "rm", "-f", "--", p); err != nil {
+				return "", err
+			}
+			continue
+		}
+		if _, err := gitrun.Output(ctx, gitrun.Options{C: work, Env: env, OwnRepo: true}, "checkout", base, "--", p); err != nil {
+			return "", err
+		}
+	}
+	wo := gitrun.Options{C: work, Env: append(env, "GIT_AUTHOR_NAME=nova-gatelint", "GIT_AUTHOR_EMAIL=nova-gatelint@invalid", "GIT_COMMITTER_NAME=nova-gatelint", "GIT_COMMITTER_EMAIL=nova-gatelint@invalid"), OwnRepo: true}
+	if _, err := gitrun.Output(ctx, wo, "add", "-A"); err != nil {
+		return "", err
+	}
+	tree, err := gitrun.Output(ctx, wo, "write-tree")
+	if err != nil {
+		return "", err
+	}
+	commit, err := gitrun.Output(ctx, wo, "commit-tree", strings.TrimSpace(tree), "-p", head, "-m", "gatelint reverted non-test tree")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(commit), nil
+}
+
 // NewBenchGate is the machine gate over g: each attempt's brief names its repository, its
 // head is read (the files the change touches), and each gate command is run on a bench
 // through g.Bench. A run that does not answer is GateRun.Waiting; a command that ran and
@@ -538,6 +677,18 @@ func NewBenchGate(g BenchGateGit) GateRunner {
 					out.Failed = GateFindings(res.Out)
 					return out
 				}
+			}
+			// Run lint checks after gate commands pass
+			kind, _ := cardhdr.Value(brief, "KIND")
+			lintFindings, lintErr := GateLintRun(v, tl, v.MergeBase, dir, g.Hosts, g.Bench, g.Env, strings.EqualFold(kind, "deletion"))
+			if lintErr != nil {
+				return GateRun{Host: out.Host, Waiting: "machine gate lint did not answer: " + lintErr.Error()}
+			}
+			if len(lintFindings) > 0 {
+				for _, lf := range lintFindings {
+					out.Failed = append(out.Failed, GateFinding{What: GateLintFindingString(lf)})
+				}
+				return out
 			}
 			return out
 		}()

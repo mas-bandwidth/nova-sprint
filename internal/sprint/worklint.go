@@ -64,6 +64,9 @@ var WorkLintRules = []WorkLintRule{
 	{LintMerge, "the head does not merge onto the base tip (git merge-tree)", "merge the base tip into the branch, resolve the conflicts, and push"},
 	{LintVerbDryRun, "a new or changed verb that writes has no --dry-run in its syntax", "give the verb a --dry-run that says what it would write and writes nothing"},
 	{LintTestClock, "an added _test.go line calls time.Sleep or time.Now outside a synctest bubble", "run the test in synctest.Test, or inject the clock"},
+	{GateLintPinAbsent, "the TEST line's test does not exist or passes at the merge-base", "write the test under the name the TEST line gives"},
+	{GateLintPinBroken, "the TEST line's test passes when the change's non-test hunks are reverted", "ensure the test actually depends on the change"},
+	{GateLintReach, "an exported function, method, or verb added by the change has no reference from any non-test file", "wire the symbol into a non-test caller"},
 }
 
 // WorkLintRuleOf is the rule of a token; ok is false for a token no check has.
@@ -122,8 +125,9 @@ func LintFix(attempt int, head string, fs []LintFinding) string {
 // judgment here is a pure function of them.
 type WorkView struct {
 	// Head is the attempt's head; Pushed says the repository has it as a commit.
-	Head   string
-	Pushed bool
+	Head      string
+	MergeBase string // pinned merge-base of the base tip and Head
+	Pushed    bool
 	// Diff is the unified diff from the merge-base of the base tip and the head to the
 	// head (git diff -M), Tracked the paths the merge-base tracks (nil: unknown).
 	Diff    string
