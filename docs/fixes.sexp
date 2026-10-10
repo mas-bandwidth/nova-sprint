@@ -92,6 +92,12 @@
     answer is consumed by its attempt. The pin release clock comment is corrected: the hour runs from
     the stop's latest note, so a coordinator's ack or wait starts it again, and a test says so."
    :origin "nova-tools PR #5573, head daab75763, re-applied here")
+  (fix "widen-loop-capped" :release "v1.2.6" :status "planned"
+   :title "The widen loop is capped: every widen counts toward the brief's bound"
+   :text "A landing refusal for files outside PATHS is checked against the brief's bound first, as every
+    other refusal is, and every rule widening counts on the card's widens: after three a card is the
+    brief's bound, a mind's. tla/Land.tla models the bound, the brief reset and the widen branch."
+   :origin "the ejection-bound audit of 2026-10-10 (v1.2.4 held ledger)")
   (fix "paths-widening-edits-card-in-place" :release "v1.2.6" :status "planned"
    :title "A PATHS widening on a reader finding edits the card in place"
    :text "A reader finding that widens PATHS edits the card in place, never a twin. Three review notes are

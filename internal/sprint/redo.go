@@ -28,9 +28,11 @@ const LandRefusedFinding = "the landing refused its head: "
 // (widen.go, rules.go). Any other way is reworked at once: its next attempt waits ready with
 // the refusal as its fix, its finished head the base staging carries onto the tip (BaseOf),
 // its read cards retired, the way kept as its finding (LandRefusedFinding), and the seat told
-// once (NLandRefused, nothing to answer). A card at its brief's bound (AtBriefBound: the same
-// refusal twice, or the attempt cap) is not reworked: it goes back to review with the bound's
-// judgment (NBriefWrong). state, ctlSet and notes are the merge step's for the stream.
+// once (NLandRefused, nothing to answer). A card at its brief's bound, whatever the way
+// (AtBriefBound: the same refusal twice, or the attempt cap; for files outside PATHS also
+// WidensSpent, the widen cap), is neither reworked nor left to the widen rule: it goes back to
+// review with the bound's judgment (NBriefWrong; tla/Land.tla Refuse). state, ctlSet and notes
+// are the merge step's for the stream.
 func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet map[string]string, notes []Note, pr, m *Card) Unit {
 	id, attempt, now := pr.ID, pr.F("attempt"), stamp(s.Now)
 	refusal := "the landing refused attempt " + attempt + "'s head: " + orDash(r.Note)
@@ -59,6 +61,24 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 		}
 		return u
 	}
+	// the brief's bound first, for every way (the ejection-bound audit of 2026-10-10: the E12
+	// branch below skipped it, and the widen rule's brief edit resets the attempts it counts, so
+	// a card whose heads kept naming new adjacent files was widened and redealt without end).
+	// For files outside PATHS the bound is also the widen cap: widened MaxWidens times, it is
+	// the brief's bound and never widened again.
+	finding := LandRefusedFinding + way
+	bound := ""
+	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok {
+		bound = bb.String()
+	} else if spent := WidensSpent(pr); way == RefusedPaths && spent != "" {
+		bound = spent
+	}
+	if bound != "" {
+		j := judgment(NBriefWrong, r.Stream, s.Now, 0, id) // its decisions alone: it is the repeat
+		j.Who, j.Card, j.Attempt, j.What = r.Who, id, pr.Int("attempt"), cutText(bound+"; "+refusal, MaxCardTextBytes)
+		u.Moved = fmt.Sprintf("%s merging -> review (the landing refused its head at its brief's bound; off merge %s)", id, m.Col)
+		return review(j)
+	}
 	if way == RefusedPaths {
 		set[FieldRuleRedo], set[FieldRuleRefused], set[FieldRuleRefusal] = attempt, way, cutText(orDash(r.Note), MaxCardTextBytes)
 		j := judgment(NReturned, r.Stream, s.Now, pr.Int("returns"), id)
@@ -67,13 +87,6 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 			j.Decisions = removeDecision(j.Decisions, "accept")
 		}
 		u.Moved = fmt.Sprintf("%s merging -> review (the landing refused its head: files outside its PATHS; off merge %s)", id, m.Col)
-		return review(j)
-	}
-	finding := LandRefusedFinding + way
-	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok {
-		j := judgment(NBriefWrong, r.Stream, s.Now, 0, id) // its decisions alone: it is the repeat
-		j.Who, j.Card, j.Attempt, j.What = r.Who, id, pr.Int("attempt"), cutText(bb.String()+"; "+refusal, MaxCardTextBytes)
-		u.Moved = fmt.Sprintf("%s merging -> review (the landing refused its head at its brief's bound; off merge %s)", id, m.Col)
 		return review(j)
 	}
 	broken := 0
