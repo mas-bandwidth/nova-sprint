@@ -140,4 +140,9 @@
     :title "Rested routes must not overflow the fleet table property cap"
     :text "Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the
      tick writes nothing. Use one property for all."
-    :origin "issue #5210")))
+    :origin "issue #5210")
+
+  (fix "hold-pinned-to-head-sha" :release "v1.2.9" :status "shipped"
+   :title "A hold pinned to an older head is not a hold at the current head"
+   :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
+   :origin "issue #2710")))

@@ -1009,12 +1009,6 @@
    :date "2026-10-10"
    :release "v1.3"
    :origin "issue #2626; issue #2654; issue #2693; issue #3183")
-  (item "hold-pinned-to-head-sha" :group "sprint"
-   :title "A hold pinned to an older head is not a hold at the current head"
-   :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "issue #2710")
   (item "github-events-stream" :group "sprint"
    :title "GitHub events arrive in a stream so loops are event-driven"
    :text "A webhook receiver writes GitHub events to a stream with a durable consumer and a polling
