@@ -90,6 +90,21 @@ func TestAMergingCardShortOfItsReadsGoesBackToReview(t *testing.T) {
 	}
 }
 
+// A card pushed and not reported is on the base already: short of its reads or not, the tick
+// never sends it back to review (the lander records it), so its receipt is never cleared
+// for a card git holds (tla/Land.tla PushedNeverSentBack).
+func TestAPushedUnreportedCardIsNotSentBack(t *testing.T) {
+	t.Parallel()
+	w := oneReadMerging(t)
+	pr := w.s.Work.Card("s1-1")
+	w.must(MarkPushedUnreported(w.s, pr.Row, "abc1234", []PushedPin{{ID: "s1-1", Head: pr.F("head"), Attempt: pr.F("attempt")}}))
+	require.True(t, PushedUnreportedMatches(w.s, "s1-1"))
+	w.s.Work.SetProp(PropReadsNeeded, "2")
+	p, _ := TickAccept(w.s, TickReq{})
+	assert.Empty(t, p.Units, "pushed: never back to review")
+	assert.Equal(t, Merging, w.s.Work.Card("s1-1").Col)
+}
+
 // A merging card with its reads is left where it is, and a landed card is held to the count
 // it landed on: a setting raised after it landed does not make it short.
 func TestACardWithItsReadsIsNotSentBackAndLandedKeepsItsCount(t *testing.T) {

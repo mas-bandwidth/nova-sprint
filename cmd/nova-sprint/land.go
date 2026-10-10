@@ -669,8 +669,8 @@ func landQueue(s *sprint.Snapshot, stream string) []*sprint.Card {
 func readsWhy(s *sprint.Snapshot, queue []*sprint.Card) (int, string) {
 	for i, c := range queue {
 		pr := s.Work.Placed(c.ID)
-		if pr == nil {
-			continue
+		if pr == nil || sprint.PushedUnreportedMatches(s, c.ID) {
+			continue // a card pushed and not reported is on the base: recorded, never held
 		}
 		if why := sprint.ReadsShortWhy(s, pr); why != "" {
 			return i, why + "; not landed, nor the cards queued behind it: the tick sends it back to review for the read it lacks"
@@ -1372,10 +1372,9 @@ func (l *lander) stepWith(r sprint.MergeReq, pins []landCard, plan func(*sprint.
 		if why := headWhy(s, r.Stream, pins); why != "" {
 			return sprint.Plan{Refused: []sprint.Refusal{{Key: r.Stream, Why: why}}}
 		}
-		if why := pinsReadsWhy(s, pins); why != "" && r.Conflict == "" && r.BaseRefused == "" && r.BaseRed == "" && r.DeadBase == "" && r.MissingBase == "" && !r.Red && !r.Rejected && r.Cross == "" {
-			// a landing only: a refusal fact moves no card onto the base
-			return sprint.Plan{Refused: []sprint.Refusal{{Key: r.Stream, Why: why}}}
-		}
+		// no reads check here: this step records what git already holds (the report after
+		// the push, recordPushed's recovery), and a push is a fact; the reads are checked
+		// before the push (queueHead, pinsReadsWhy)
 		return plan(s, r)
 	}
 	named := make([]string, len(pins))
@@ -1463,12 +1462,13 @@ func headWhy(s *sprint.Snapshot, stream string, pins []landCard) string {
 
 // pinsReadsWhy is why a pinned card is short of its reads now (sprint.ReadsShortWhy: the
 // reads setting raised, or its tier pinned, since land read it), "" when none is: read again
-// just before the push (queueHead) and in the report's own step (stepWith), so no card is
-// pushed, nor recorded landed, short of them (tla/Land.tla Check and Report,
-// NoLandWithoutReads). A return (returnCard) is never held by it.
+// just before the push (queueHead), the last point the lander can fence, so no card is
+// pushed short of them (tla/Land.tla Check, NoLandWithoutReads; MCLandBrokenNoCheckReads
+// shows this check is the one the rule needs). Never after the push: the report records
+// what git holds (stepWith), and a return (returnCard) is never held by it.
 func pinsReadsWhy(s *sprint.Snapshot, pins []landCard) string {
 	for _, c := range pins {
-		if pr := s.Work.Placed(c.id); pr != nil {
+		if pr := s.Work.Placed(c.id); pr != nil && !sprint.PushedUnreportedMatches(s, c.id) {
 			if why := sprint.ReadsShortWhy(s, pr); why != "" {
 				return why + " now (the reads setting or its tier raised since land read it); the tick sends it back to review for the read it lacks"
 			}

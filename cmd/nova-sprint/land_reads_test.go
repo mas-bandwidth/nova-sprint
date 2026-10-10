@@ -26,3 +26,20 @@ func TestLandRefusesACardShortOfItsReads(t *testing.T) {
 	tick := r.ok("start") + r.ok("tick")
 	assert.Equal(t, map[string]string{"s1-1": "review/returned"}, r.places("s1-1"), "back to review for its second read: %s", tick)
 }
+
+// Through the store's own tick: a merging card with the reads it needs is never sent back,
+// and the lander lands it.
+func TestATickLeavesAMergingCardWithItsReadsAndLandLandsIt(t *testing.T) {
+	t.Parallel()
+	r := newLandRig(t)
+	r.ok("add --stream s1 --count 1 --one")
+	head := r.head("s1-1", "main", "s1-1.txt", "one\n")
+	r.queued(map[string]string{"s1-1": head}, "s1-1")
+	tick := r.ok("start") + r.ok("tick")
+	assert.Equal(t, map[string]string{"s1-1": "merging/queued"}, r.places("s1-1"), "its reads stand: %s", tick)
+	out := r.ok("land --repo-dir " + r.clone + " --base main")
+	assert.Contains(t, out, "LAND OK stream=s1 cards=1 base=main")
+	// on a running machine the landing is recorded in merge, and the tick moves the work card
+	r.ok("tick")
+	assert.Equal(t, map[string]string{"s1-1": "landed/merged"}, r.places("s1-1"))
+}

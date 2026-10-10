@@ -41,9 +41,10 @@
    :title "Nothing merges or lands short of its reads"
    :text "A merging card needs the ok reads a card in review needs (the reads setting, else its tier's rule).
     One short of them, the setting raised or its tier pinned after its accept, goes back to review on
-    the next tick for the read it lacks; the lander lands none, naming it and its count, and its record
-    refuses one. The accept and the landing record the count they ran on. tla/Land.tla
-    NoLandWithoutReads, with the reversed witness MCLandBrokenNoReads."
+    the next tick for the read it lacks (never one pushed and not reported); the lander lands none, naming
+    it and its count, checked again just before the push. The accept records the count it ran on.
+    tla/Land.tla NoLandWithoutReads and PushedNeverSentBack, with the reversed witnesses
+    MCLandBrokenNoCheckReads and MCLandBrokenBouncePushed."
    :origin "the Studio sprint, epoch 16, 2026-10-10: rule 6 raised on cards merging with one read of two, and two landed on one read")
 
   (fix "provider-key-refusal-rests-until-woken" :release "v1.2.6" :status "shipped"

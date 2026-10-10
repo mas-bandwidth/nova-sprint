@@ -415,7 +415,9 @@ func ShortReadsBack(s *Snapshot, who string) Plan {
 	var p Plan
 	leaving := map[string]bool{}
 	for _, c := range s.Work.Column(Merging) {
-		if IsSentinel(c) || s.Held[c.ID] {
+		if IsSentinel(c) || s.Held[c.ID] || PushedUnreportedMatches(s, c.ID) {
+			// a card pushed and not reported is on the base already: the lander records it
+			// (recordPushed), never review (tla/Land.tla PushedNeverSentBack)
 			continue
 		}
 		why := ReadsShortWhy(s, c)
