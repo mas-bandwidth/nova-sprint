@@ -8,16 +8,29 @@ import (
 	"time"
 )
 
-// The no-stall rule: every primary not landed and on the table is held by
-// something that will move it or tell the coordinator about it. What holds it
-// is one of: (a) an outside actor before its deadline; (b) the next tick; (c)
-// an open judgment or the coordinator's acknowledgement; (d) another wait,
-// followed through the chain (the one wait below); (e) the machine STOPPED,
-// which the next tick would move. Anything else is stalled, and so are a
-// judgment past its due time no tick marks, a stopped stream with no open
-// judgment, and an operation pending past its grace. The tick's check part
-// writes one judgment for each stall ("stalled"), so a stall the design missed
-// raises its own interrupt.
+// The no-stall rule: every primary
+// that has not landed and is on the table is held by something that will move
+// it or tell the coordinator about it. Exactly what holds it is one of:
+//
+//	(a) an outside actor, before its deadline: a live work card in an up
+//	    member's ready or working cell; a read card asked or reading; its
+//	    merge card queued in a stream that merges;
+//	(b) the next tick: a part of the tick, called on the state, moves it or
+//	    writes a judgment naming it;
+//	(c) an open judgment names it (or its stream, when the stream is stopped
+//	    or it is merging there), or the coordinator acknowledged the tick's
+//	    judgment that names it;
+//	(d) it waits on something that is itself held, followed through the chain
+//	    (a need not landed, a sentinel not released, a place in the ready
+//	    queues); a chain that ends in nothing, or in a cycle, holds nothing;
+//	(e) the machine is STOPPED and the next tick would move it: (b), and what
+//	    is visible is that the sprint is stopped.
+//
+// Anything else is stalled, and so is a judgment past its due time that no
+// tick marks overdue, a stopped stream with no open judgment, and an
+// operation pending past its grace that a tick since has not finished. The
+// tick's check part writes one judgment for each stall ("stalled"), so a stall
+// the design missed raises its own interrupt.
 
 // The holders, as Holder names them.
 const (
@@ -31,37 +44,6 @@ const (
 
 // NStalled is the judgment of a stall: something nothing holds.
 const NStalled = "stalled"
-
-// The one wait (docs/SPEC-ISA.md): a held card waits for release, a sentinel
-// for its line, and the wave behind it for the release through its card operand.
-const (
-	WaitOnCards   = "card"
-	WaitOnLine    = "line"
-	WaitOnRelease = "release"
-)
-
-// CardWait is one card's wait operand and why.
-type CardWait struct {
-	Card    string   `json:"card"`
-	Operand string   `json:"operand"`
-	On      []string `json:"on,omitempty"`
-	Why     string   `json:"why"`
-}
-
-// WaitOf is the one reading of why a card is not moving: release, its line, or
-// the cards it names and its place in line.
-func WaitOf(s *Snapshot, c *Card) CardWait {
-	switch {
-	case c == nil:
-		return CardWait{}
-	case IsHeld(c):
-		return CardWait{Card: c.ID, Operand: WaitOnRelease, On: WaitsFor(s, c, nil), Why: "the coordinator's release, and the cards it names"}
-	case IsSentinel(c):
-		return CardWait{Card: c.ID, Operand: WaitOnLine, On: WaitsFor(s, c, nil), Why: "the line before it, and the coordinator's release"}
-	default:
-		return CardWait{Card: c.ID, Operand: WaitOnCards, On: WaitsFor(s, c, nil), Why: "the cards it names and its place in line"}
-	}
-}
 
 // PendingOp is the operation the sprint's fence holds, as the no-stall rule
 // reads it.
@@ -236,9 +218,7 @@ func newHeld(h HeldState, now time.Time) *held {
 	// ready primary (judgment), each a map read (route_rest.go)
 	sp, _ := s.withRests()
 	s = *sp
-	// the friends' deal is a part of the next tick too: it deals with the friends the
-	// snapshot holds (friendDealPass), as the tick does
-	c := &held{h: h, s: &s, req: TickReq{Who: MachineActor, Stopped: h.Stopped, Friends: s.Friends},
+	c := &held{h: h, s: &s, req: TickReq{Who: MachineActor, Stopped: h.Stopped},
 		tick: map[string]string{}, tickStream: map[string]string{}, marks: map[string]bool{},
 		judged: map[string][]string{}, memo: map[string]Hold{}, on: map[string]bool{}}
 	for _, o := range s.Open {
@@ -284,6 +264,11 @@ func (c *held) notes(ns []Note) {
 			c.noMember = true
 		case n.Type == NFewReaders:
 			c.fewReaders = true
+		case n.Type == NNoFrontierRoom:
+			// stream-level, and of its primaries: each frontier read it names
+			for _, p := range n.Primaries {
+				c.tick[p] = "writes " + n.Type
+			}
 		case n.Type == NNoRoute:
 			for _, p := range n.Primaries {
 				c.tick[p] = "writes " + n.Type
@@ -386,29 +371,6 @@ func (c *held) actor(pr *Card) string {
 				return fmt.Sprintf("reader %s holds %s (%s), %s of %s running", rc.Row, rc.ID, rc.Col, d.Round(time.Second), limit)
 			}
 		}
-		// a friend holds the read she was asked, on her fleet row, the same
-		// window a reader holds one not yet begun (docs/SPEC-SPRINT.md, a read
-		// asked of any unit with room at or above the read tier)
-		if fp, _, _ := friendReadLive(s, pr); len(fp) > 0 {
-			for _, rc := range fp {
-				if !friendReadAgrees(rc) {
-					continue
-				}
-				// a read card holds it to its own deadline, as the ask takes it back
-				// (readCardsTakeBack): working, ReadCardDeadline from its start; ready, the
-				// deal bound from its ask
-				from, limit := rc.F("asked"), DeadlineUnbegun
-				if rc.F(FieldReadCard) != "" {
-					limit = s.DealtMax()
-					if rc.Col == Working {
-						from, limit = stamp(readStart(rc)), ReadCardDeadline
-					}
-				}
-				if d, ok := c.running(from); ok && d <= limit {
-					return fmt.Sprintf("%s %s holds %s (%s), %s of %s running", unitWord(rc), rc.F("reader"), rc.ID, rc.Col, d.Round(time.Second), limit)
-				}
-			}
-		}
 	case Merging:
 		m := s.Merge.Placed(pr.ID)
 		ctl := s.StreamCtl(pr.Row)
@@ -484,16 +446,25 @@ func (c *held) judgment(pr *Card) string {
 		if tier, why := c.s.noRoute(pr); why != "" && tier != "" && len(c.judged[StreamSubject(TierSubject(tier))]) > 0 {
 			return "no route serves tier " + tier + "; open: " + strings.Join(c.judged[StreamSubject(TierSubject(tier))], ", ")
 		}
-		// friends alone serve its tier and none up who serves it may be dealt it: the same
-		// judgment of the tier names it (TickDeal)
-		if _, tier, _, byFriend := c.s.routeOf(escalating(c.s, pr), nil, nil); byFriend && len(c.s.friendsFor(pr, tier)) == 0 && len(c.judged[StreamSubject(TierSubject(tier))]) > 0 {
-			return "no worker is left for it on tier " + tier + "; open: " + strings.Join(c.judged[StreamSubject(TierSubject(tier))], ", ")
-		}
 	}
 	if pr.Col == Ready && !IsSentinel(pr) && len(c.s.UpMembers()) == 0 {
 		for _, j := range c.judged[StreamSubject("")] {
 			if strings.HasPrefix(j, NNoMember) {
 				return "no fleet member is up; open: " + j
+			}
+		}
+	}
+	if friendReadCard(c.s, pr) && c.waitsToBeAsked(pr) {
+		// a frontier read no one has room for: its one judgment, open or
+		// acknowledged, and why it says (who is full, or who may not take it)
+		for _, o := range c.s.Open {
+			if o.Note.Type == NNoFrontierRoom && o.Note.Kind == Judgment {
+				return "no frontier reader has room; open: " + o.Note.Type + " " + o.Note.ID + ": " + o.Note.What
+			}
+		}
+		for _, o := range c.s.Acked {
+			if o.Note.Type == NNoFrontierRoom {
+				return "no frontier reader has room; acknowledged: " + o.Note.What
 			}
 		}
 	}
@@ -513,7 +484,7 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 	s := c.s
 	switch pr.Col {
 	case Waiting:
-		w := WaitOf(s, pr).On
+		w := WaitsFor(s, pr, nil)
 		if len(w) == 0 {
 			if IsSentinel(pr) && pr.F("reached") != "" {
 				return "reached, and no judgment is open on it", "", false
@@ -565,34 +536,24 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 		}
 		return strings.Join(held, "; "), "", true
 	case Ready:
-		if OnlyFriend(pr) && !PinReleased(s, pr, s.Friends) {
+		if OnlyFriend(pr) {
 			// the one hard pin (WHO: only friend <name>) waits for her up below her room,
-			// DealAhead times her width (friendDealPass), whose beats and widths are the friends'
+			// DealAhead times her width (friendDeal), whose beats and widths are the friends'
 			// records, not the tables'; every other card a friend may take is the fleet's
 			// when no friend takes it (WHO is a preference)
 			name, _ := FriendCard(pr)
 			if wc := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt"))); wc != nil && wc.Col == Withdrawn {
 				if from, _ := FriendOfRow(wc.F(FieldTakenFrom)); from != "" && from == name {
-					return "waits for only friend " + name + ", and it was taken back from her: give it back to her (nova-sprint friend give), unpin it (nova-sprint unpin), brief it for another friend, or drop it", "", true
+					return "waits for only friend " + name + ", and it was taken back from her: unpin it (nova-sprint unpin), brief it for another friend, or drop it", "", true
 				}
 			}
 			return "waits for only friend " + name, "", true
 		}
-		// a quiet member has no free place for it until its quiet ends (fleet_quiet.go)
-		all := s.UpMembers()
-		up := notQuiet(s, all)
-		if quiet := quietWhy(s, all); quiet != "" && len(up) == 0 {
-			return "waits for a member up that is not quiet (" + quiet + "): the deal resumes by itself at that time", "", true
-		}
+		up := s.UpMembers()
 		if b := Bench(pr); len(b) > 0 && len(onlyBench(up, b)) == 0 {
 			// a bench card waits for a member of its bench up (bench_deal.go): no placement
 			// deals it to another member, so what holds it is its bench's beat and hold
 			return benchWaits(b), "", true
-		}
-		if _, tier, _, byFriend := s.routeOf(escalating(s, pr), nil, nil); byFriend {
-			// friends alone serve its tier (tierServed): the friends' deal's, never a
-			// machine's, so what holds it is their room, not the machines'
-			return c.friendWaits(pr, tier)
 		}
 		if len(up) == 0 {
 			return "no fleet member is up, and no judgment says so", "", false
@@ -620,7 +581,7 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 	case Review:
 		switch {
 		case acceptable(s, pr):
-			return "acceptable (" + readersWord(ReadsNeededIn(s, pr)) + " said ok at its head), and no judgment is open on it", "", false
+			return "acceptable (" + readersWord(ReadsNeeded(pr)) + " said ok at its head), and no judgment is open on it", "", false
 		case pr.F("result") == "failed":
 			return "its work came back failed, and no judgment is open on it", "", false
 		}
@@ -630,37 +591,6 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 		return "its merge card is " + placeWord(orEmpty(m, pr.ID)) + " in a stream " + orDash(s.StreamCtl(pr.Row).F("state")) + ", and no judgment is open on it", "", false
 	}
 	return "nothing holds it", "", false
-}
-
-// friendWaits is (d) for a ready primary whose tier friends alone serve: the friends up
-// who may be dealt it (friendsFor) and their free places, DealAhead times each one's width
-// less her load (friendRoom, friendLoad), go to the ready primaries in the deal's order, as
-// the machines' do. With none left for it, or a lane still running it (laneRunsIt), it
-// waits on that; it is stalled only when a friend of its tier has room for it and the deal
-// still does not hand it over.
-func (c *held) friendWaits(pr *Card, tier string) (string, string, bool) {
-	s := c.s
-	fs := s.friendsFor(pr, tier)
-	if len(fs) == 0 {
-		return "its tier " + tier + " is served by friends alone, and none up who serves it may be dealt it (withdrawn or taken back from each): it waits for another friend of its tier", "", true
-	}
-	var wc *Card
-	if w := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt"))); w != nil && w.Col == Withdrawn {
-		wc = w
-	}
-	if f := laneRunsIt(s, s.Friends, pr, wc); f != "" {
-		return "a lane of friend " + f + " still runs it: placed on no row until her beat stops naming it", "", true
-	}
-	room := 0
-	for _, f := range fs {
-		r, _ := friendRoom(f)
-		room += max(0, r-friendLoad(s, f.Name))
-	}
-	ahead := c.dealTurn(pr.ID)
-	if ahead < room {
-		return "a friend serving its tier is below her room (DealAhead times her width), and nothing deals it", "", false
-	}
-	return fmt.Sprintf("waits for a friend serving tier %s below her room (DealAhead times her width): %d free, %d ready ahead of it", tier, room, ahead), "", true
 }
 
 // overdueUnmarked is every judgment past its due time that no overdue mark
@@ -681,10 +611,12 @@ func (c *held) overdueUnmarked() []Finding {
 			continue
 		}
 		past := false
-		if !n.Review.IsZero() {
-			// A wait counts running time from when it was set, by the tree's
-			// one clock comparison (stopped.go DueNow; docs/SPEC-SPRINT.md, "Timers").
-			past = DueNow(s.Now, n.Review, n.ReviewSet, c.req.Stopped)
+		if !n.Review.IsZero() && n.ReviewSet.IsZero() {
+			past = s.Now.After(n.Review)
+		} else if !n.Review.IsZero() {
+			// a wait counts running time from when it was set
+			d, ok := c.running(stamp(n.ReviewSet))
+			past = ok && d >= n.Review.Sub(n.ReviewSet)
 		} else if d, ok := c.running(stamp(n.At)); ok {
 			past = d > DeadlineJudgment
 		}
@@ -712,9 +644,6 @@ func (c *held) decisions(pr *Card) []string {
 			out = append(out, "fleet down "+wc.Row)
 		}
 		out = append(out, "drop")
-	case pr.Col == Review && pr.F(FieldBriefDefect) != "":
-		// a brief defect is re-cut, never reworked (docs/SPEC-SPRINT.md section 1, a brief defect)
-		out = []string{DecisionRecut, "drop"}
 	case pr.Col == Review && acceptable(c.s, pr):
 		out = []string{"accept", "rework", "drop"}
 	case pr.Col == Review && pr.F("result") == "failed":
@@ -729,12 +658,4 @@ func (c *held) decisions(pr *Card) []string {
 		out = []string{"look at the card", "drop"}
 	}
 	return append(out, "wait")
-}
-
-// unitWord is "friend" for a read card on a friend's row, else "member".
-func unitWord(rc *Card) string {
-	if IsFriendRow(rc.Row) {
-		return "friend"
-	}
-	return "member"
 }

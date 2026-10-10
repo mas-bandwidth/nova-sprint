@@ -94,4 +94,10 @@
     .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
-   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")))
+    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+   (fix "frontier-read-judged-by-real-cause" :release "v1.2.6" :status "shipped"
+    :title "A frontier read no one may take is judged by its real cause"
+    :text "A frontier read with no eligible taker raises one judgment naming the readers or friends that
+     prevent it, and rewrites that judgment in place when its facts change instead of leaving stale text.
+     The judgment closes when the read is asked, and the hold view carries its current cause."
+    :origin "this pull request; frontier reader judgment") ))
