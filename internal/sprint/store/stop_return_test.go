@@ -451,11 +451,18 @@ func TestMovedReturnedCardDoesNotSettleStopDebt(t *testing.T) {
 	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
 	_, _, _, err := h.st.StopUntil(h.ctx, "owner stopped child", h.now.Add(time.Hour))
 	require.NoError(t, err)
-	h.must(StopReturnStep(sprint.StopReturnReq{As: wc.Row, IDs: []string{wc.ID}, Gens: map[string]int{wc.ID: gen}, Reason: "child exited"}))
+	// A receipt-shaped card on another owner's row, never returned by its own
+	// owner (out of band), settles nothing: neither START nor another row's
+	// stop-return takes it off the debt (tla/StopReturn.tla Settle reads the
+	// receipt on the debt's own row).
 	require.NoError(t, h.m.RowsAdd(h.ctx, "t-fleet", []string{"other-owner"}))
 	h.poke(sprint.Fleet, ntable.BatchMemberEntry{ID: wc.ID,
 		Move: &ntable.MemberMoveOp{Row: "other-owner", Col: sprint.Ready},
-		Set:  map[string]string{"gen": fmt.Sprint(gen + 1)}})
+		Set:  map[string]string{"gen": fmt.Sprint(gen + 1), "stopped_from_gen": fmt.Sprint(gen)}})
+	h.run(StopReturnStep(sprint.StopReturnReq{As: "other-owner", IDs: []string{wc.ID}, Gens: map[string]int{wc.ID: gen}, Reason: "not its owner"}))
+	m, _, err := h.st.Machine(h.ctx)
+	require.NoError(t, err)
+	require.Len(t, m.StopDebt, 1, "another row's receipt does not settle the debt")
 	_, _, _, err = h.st.SetMachine(h.ctx, true)
 	require.ErrorContains(t, err, wc.Row+":"+wc.ID+"@1", "a moved return receipt belongs to the original owner")
 }
@@ -518,4 +525,36 @@ func TestExplicitStopBeforeFirstStartRevokesNewTake(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, stopped.StopIssued)
 	assert.NotEmpty(t, h.run(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: max(wc.Int("gen"), 1)}})).Refused)
+}
+
+// TestReturnedStopDebtFreesTheOwnerRowBeforeStart is the 2026-10-10 seat's
+// finding: after an owner's stop-return, a coordinator hold of that owner was
+// refused "STOP owns <row>:<card>@1" because the debt stayed on the machine
+// record until START. A same-owner return settles that debt durably (tla/StopReturn.tla
+// Settle): the row can be held while STOPPED, and START is not refused.
+func TestReturnedStopDebtFreesTheOwnerRowBeforeStart(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.setup(1)
+	h.startMachine()
+	h.machine()
+	s := h.snap()
+	wc := s.Fleet.Card(s.Work.Card("s1-1").F("work"))
+	require.NotNil(t, wc)
+	gen := max(wc.Int("gen"), 1)
+	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
+	_, stopped, _, err := h.st.StopUntil(h.ctx, "owner stopping child", h.now.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, stopped.StopDebt, 1)
+	h.must(StopReturnStep(sprint.StopReturnReq{As: wc.Row, IDs: []string{wc.ID}, Gens: map[string]int{wc.ID: gen}, Reason: "child exited"}))
+	m, _, err := h.st.Machine(h.ctx)
+	require.NoError(t, err)
+	assert.Empty(t, m.StopDebt, "a same-owner return settles its debt on the machine record")
+	assert.False(t, m.Running(), "settling debt does not start the machine")
+	held := h.run(FleetStep(sprint.FleetReq{Op: "hold", Member: wc.Row, Reason: "paid route off"}))
+	require.Empty(t, held.Refused, "the returned card no longer pins its owner's row")
+	assert.NotEqual(t, wc.Row+"/"+sprint.Ready, h.snap().Fleet.Card(wc.ID).Row+"/"+h.snap().Fleet.Card(wc.ID).Col, "the hold moved the returned card off its owner's row")
+	_, running, _, err := h.st.SetMachine(h.ctx, true)
+	require.NoError(t, err, "START is not refused by a debt its owner returned")
+	assert.True(t, running.Running())
 }
