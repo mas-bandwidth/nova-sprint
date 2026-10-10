@@ -65,13 +65,15 @@ func TestAdoptRunsThePlayAndRefusesAHalfMove(t *testing.T) {
 		code := a.run(append([]string{"adopt"}, args...), &out, &errs)
 		return code, out.String(), errs.String()
 	}
-	base := []string{"--source", src, "--inventory", "/inv/nova-inventory", "--reason", "the dashboard fix"}
+	rel := filepath.Join(t.TempDir(), "nova-sprint-v1.2.3")
+	require.NoError(t, os.MkdirAll(rel, 0o755))
+	base := []string{"--source", src, "--sprint-release", rel, "--inventory", "/inv/nova-inventory", "--reason", "the dashboard fix"}
 
 	ok := &fakePlay{out: playOK}
 	code, out, errs := run(ok, append([]string{"v1.2.0-dev.abc1234"}, base...)...)
 	require.Equal(t, 0, code, errs)
 	assert.Equal(t, []string{"-i", "/inv/nova-inventory", filepath.Join(src, "fleet", "tools.yml"), "-e", "nova_version=v1.2.0-dev.abc1234",
-		"-e", "nova_source=" + src, "-e", "nova_dogfood_receipts=/home/x/nova-working/dogfood",
+		"-e", "nova_source=" + src, "-e", "nova_sprint_release=" + rel, "-e", "nova_dogfood_receipts=/home/x/nova-working/dogfood",
 		"-e", `{"nova_release_build_args":["--incremental","--gate","report","--reason","the dashboard fix"]}`,
 		"--limit", "coordinator,localhost,store_deployer"}, ok.argv)
 	for _, step := range adoptPlaySteps {
@@ -157,16 +159,27 @@ fatal: [seat-a]: FAILED! => {"changed": false, "msg": "ADOPT REFUSED step=dashbo
 
 	// a checkout with no play is an input that does not read: exit 1, nothing run
 	none := &fakePlay{}
-	code, _, errs = run(none, "v1.2.0-dev.abc1234", "--source", t.TempDir(), "--inventory", "/i", "--reason", "r")
+	code, _, errs = run(none, "v1.2.0-dev.abc1234", "--source", t.TempDir(), "--sprint-release", rel, "--inventory", "/i", "--reason", "r")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "adopt REFUSED step=play: --source ")
 	assert.Nil(t, none.argv, "no play ran")
 
-	// usage: a word, the checkout, the reason; one machine in --limit
+	// the play (fleet/tools.yml) asserts nova_sprint_release, the nova-sprint release it installs:
+	// a --sprint-release that is no directory is an input that does not read, exit 1, nothing run
+	for _, missing := range []string{filepath.Join(t.TempDir(), "absent"), filepath.Join(src, "fleet", "tools.yml")} {
+		none = &fakePlay{}
+		code, _, errs = run(none, "v1.2.0-dev.abc1234", "--source", src, "--sprint-release", missing, "--inventory", "/i", "--reason", "r")
+		assert.Equal(t, 1, code, errs)
+		assert.Contains(t, errs, "adopt REFUSED step=play: --sprint-release "+missing)
+		assert.Nil(t, none.argv, "no play ran")
+	}
+
+	// usage: a word, the checkout, the reason, the nova-sprint release; one machine in --limit
 	for _, bad := range [][]string{
 		base,
 		{"v1.2.0-dev.abc1234", "--inventory", "/i", "--reason", "r"},
-		{"v1.2.0-dev.abc1234", "--source", src, "--inventory", "/i"},
+		{"v1.2.0-dev.abc1234", "--source", src, "--sprint-release", rel, "--inventory", "/i"},
+		{"v1.2.0-dev.abc1234", "--source", src, "--inventory", "/i", "--reason", "r"},
 		append([]string{"v1.2.0-dev.abc1234", "--limit", "all,!x"}, base...),
 		append([]string{"1.2.0"}, base...),
 	} {

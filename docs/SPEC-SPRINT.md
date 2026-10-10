@@ -7259,7 +7259,7 @@ checks and the seat play). The server's own launchd agent is its loop record's
 (`fleet/loops.yml`): every flag, `--tick-deadline` among them, is the record's argv in
 nova-config, applied by loops.yml with bootout and bootstrap.
 
-`nova-sprint adopt <version|path> --source <checkout> --inventory <file> --reason <text>
+`nova-sprint adopt <version|path> --source <checkout> --sprint-release <dir> --inventory <file> --reason <text>
 [--limit <host>] [--receipts <dir>] [--dry-run]` runs the tools play for the seat (the
 `coordinator` group, else the one `--limit` machine, with `localhost` for the build and
 `store_deployer` for the library), `<path>` being a built release directory

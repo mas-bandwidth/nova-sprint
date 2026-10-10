@@ -479,7 +479,7 @@ args_took= binary=` and the `why=` of a stale one; `--json` also lists the host'
 processes, `holds` on this bin directory's nova-sprint and nova-swarm members. Exit 0 whatever it finds, 1 when the
 installed nova-sprint or the agents directory cannot be read, 2 usage.
 
-`nova-sprint adopt <version|path> --source <checkout> --inventory <file> --reason <text>
+`nova-sprint adopt <version|path> --source <checkout> --sprint-release <dir> --inventory <file> --reason <text>
 [--limit <host>] [--receipts <dir>] [--dry-run]` runs `<checkout>/fleet/tools.yml` for the
 seat, as a window: the new build's checks first (its shadow tick on the store, its `nova-friend
 install --dry-run` against every friend daemon's flags); then, when the build replaces a tool or
