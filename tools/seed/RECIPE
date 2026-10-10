@@ -46,34 +46,23 @@ literal	filepath.Join("..", "..", "fleet", "child-rules.txt")	filepath.Join(".."
 literal-file	cmd/nova-sprint/machinery.go	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error); novaTools func(bin string) sprint.NovaToolsProbe
 literal-file	cmd/nova-sprint/machinery.go	st, err := a.store(*c)	if code := a.refuseNovaTools(verb, stderr); code != 0 { return code }; st, err := a.store(*c)
 
-doc	docs/SPEC-SPRINT.md
-doc	docs/SPEC-SPRINT-DASHBOARD.md
 doc	docs/SPEC-ISA.md
 doc	docs/PROCESSOR.md
-doc	docs/SPEC-WORK-V1.md
-doc	docs/SPEC-WORKLANG.md
-doc	docs/SPRINT-COORDINATOR.md
-doc	docs/SPRINT-COORDINATOR-SEAT.md
 section	docs/CLI.md	nova-sprint	nova-card	nova-work
 section	docs/TESTS.md	nova-sprint	nova-card	nova-work
-ratings	sprint	work
+# The sprint and work ratings, the sprint docs and every TLA+ model here are nova-sprint's own from
+# v1.2.3 (split layer L5): nova-tools no longer has them, so they are kept, not taken.
+keep	docs/SPEC-SPRINT-DASHBOARD.md
+keep	docs/SPEC-SPRINT.md
+keep	docs/SPEC-WORK-V1.md
+keep	docs/SPEC-WORKLANG.md
+keep	docs/SPRINT-COORDINATOR-SEAT.md
+keep	docs/SPRINT-COORDINATOR.md
+keep	docs/ratings/1.1.0
+keep	docs/ratings/snapshots
+keep	docs/sprint
 
-model	SprintEvents
-model	DirtyTick
-model	DirtyTickRead
-model	RouteIndex
-model	Level
-model	Land
-model	WorkImport
-model	CardISA
-model	CardMachine
-model	CoordinatorPass
-model	CoordinatorWake
-model	ReadsByRoom
-model	ServerLanes
-model	SprintRules
-model	StallLadder
-model	SeatHealth
+keep	tla
 
 keep	LICENSE
 keep	README.md
@@ -88,6 +77,9 @@ keep	cmd/nova-sprint/seat_novatools_test.go
 keep	tools/seed
 gomod
 keep	ROADMAP.md
+keep	docs/roadmap.sexp
+keep	internal/roadmapdoc
+keep	tools/roadmap
 keep	CONTRIBUTING.md
 keep	assets
 keep	brand
@@ -100,4 +92,3 @@ keep	docs/SPLIT-MOOT-PRS.md
 keep	docs/WORKING-WITH-AI-TEAMS.md
 keep	docs/ratings/README.md
 keep	internal/ci/moot_prs_test.go
-keep	tla/README.md
