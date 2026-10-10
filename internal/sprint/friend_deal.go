@@ -78,6 +78,13 @@ func FriendCard(c *Card) (name string, ok bool) {
 	return FriendOfRow(w)
 }
 
+// pinnedTo says the hard pin pr (OnlyFriend) names this friend: the card is hers to keep. A pin
+// released past its bound and dealt to another friend is that friend's ordinary card, not her pin.
+func pinnedTo(pr *Card, friend string) bool {
+	name, _ := FriendCard(pr)
+	return OnlyFriend(pr) && name == friend
+}
+
 // OnlyFriend is the hard pin (docs/SPEC-SPRINT.md, WHO preference): the explicit one,
 // WHO: only friend <name>, and a WHO: friend <name> card come back by a rework, a return
 // or a redo (ReworkPinned), whose next attempt is hers as its first was.
@@ -470,7 +477,9 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		if name != "" && (free[name] <= 0 || slices.Contains(left, name) || !friendTakes(s, seat[name], tier) || !friendRestrictionAllows(seat[name], c)) {
 			name = "" // the friend it names is not up with room, it has left her, not her tier, or outside her restriction
 		}
-		if name == "" && !OnlyFriend(c) {
+		// a hard pin whose friend has been not up past its bound is a preference (PinReleased)
+		hard := OnlyFriend(c) && !PinReleased(s, c, seats)
+		if name == "" && !hard {
 			var may []string
 			for _, f := range up {
 				if free[f] > 0 && !slices.Contains(left, f) && friendTakes(s, seat[f], tier) && friendRestrictionAllows(seat[f], c) {
@@ -518,7 +527,7 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		default:
 			u = friendDealUnit(s, c, card, row, Ready, tierNowSet(c, tier))
 		}
-		if pinnedCard && pinned != "" && !OnlyFriend(c) && name != pinned {
+		if pinnedCard && pinned != "" && !hard && name != pinned {
 			placedID := card
 			if wc != nil && !escalated {
 				placedID = wc.ID

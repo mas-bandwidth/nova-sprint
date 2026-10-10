@@ -19,7 +19,9 @@
   (release "v1.2.6" :status "planned"
    :text "The fixes held during the split, the point-release candidates found on 2026-10-10, the owed
     tests, and the sprint store cards that are point-release work. Each is re-applied or written in
-    this repository, then cut as one release."))
+    this repository, then cut as one release.")
+  (release "v1.2.7" :status "planned"
+   :text "Fixes found while the final dogfood lands through the lander."))
  :items
  ((fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
@@ -91,14 +93,15 @@
   (fix "pin-release-and-rule-answers" :release "v1.2.6" :status "planned"
    :title "A hard pin past its bound is offered on; a rule answer is consumed by its attempt"
    :text "A hard pin past its bound is offered to others, a card cannot ask once it waits, and a rule
-    answer is consumed by its attempt. The pin release clock comment is corrected or the clock keyed
-    on the pin."
-   :origin "nova-tools PR #5573, head daab75763")
+    answer is consumed by its attempt. The pin release clock comment is corrected: the hour runs from
+    the stop's latest note, so a coordinator's ack or wait starts it again, and a test says so."
+   :origin "nova-tools PR #5573, head daab75763, re-applied here")
   (fix "paths-widening-edits-card-in-place" :release "v1.2.6" :status "planned"
    :title "A PATHS widening on a reader finding edits the card in place"
    :text "A reader finding that widens PATHS edits the card in place, never a twin. Three review notes are
-    fixed before merge: the finding reader unset, the bound subtest, and the friend card claim."
-   :origin "nova-tools PR #5570, head 22d72154d")
+    fixed before merge: the finding reader is unset only when the card holds it, the bound subtest
+    reaches the attempt cap, and the friend card claim says a widen does not pin her next attempt."
+   :origin "nova-tools PR #5570, head 22d72154d, re-applied here")
   (fix "deal-draws-launchable-route" :release "v1.2.6" :status "planned"
    :title "A deal draws only a route its member can launch"
    :text "The deal draws only routes whose harness the member can launch; the adopt must set each member
@@ -117,15 +120,21 @@
    :origin "nova-tools PR #5584, head 881df6ff")
   (fix "where-json-landed-series-fast" :release "v1.2.6" :status "planned"
    :title "where --json reads no log line for its landed series"
-   :text "The tick counts landings into the where record, so where --json answers in well under a second;
-    released sentinels are not counted as landings."
+   :text "The tick counts landings into the where record, so where --json answers in well under a second
+    (8.9 to 12.8 s before, 0.4 to 0.7 s after, measured on a copy of the live store); released sentinels
+    are not counted as landings. The public dashboard mirror's server.py (internal/sprintdash/stopgap)
+    is now versioned here: it stamps fetchedAt with the snapshot's own time and adds dataAgeSeconds.
+    AFTER THE DEPLOY, in the final adopt: rebuild the dashboard's nova-sprint-int2
+    (~/nova-bench/dashboard/bin/nova-sprint-int2) from this release, copy
+    internal/sprintdash/stopgap/server.py over ~/nova-bench/dashboard/server.py, and restart the
+    public mirror unit."
    :origin "nova-tools PR #5588, head 08f6af5a8")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "planned"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
     lane ran it empty, with a TLA+ model and witness."
    :origin "nova-tools PR #5583, head e8fdaecc")
-  (fix "done-at-base-is-brief-duplicate" :release "v1.2.6" :status "planned"
+  (fix "done-at-base-is-brief-duplicate" :release "v1.2.6" :status "in-progress"
    :title "A card already done at its base is a duplicate brief, not a worker failure"
    :text "Nothing to do because the base already contains the change is a brief defect, a duplicate of
     landed work, outside ok%, and raises a re-cut judgment."
@@ -165,7 +174,19 @@
    :text "nova-sprint defer writes the named waiting cards, or a stream or repository of them, into the
     roadmap data with each whole brief, and drops them from the store; --expect checks the count."
    :origin "card from the sprint store (2026-10-10); the roadmap item roadmap-defer-verb, folded in")
+  (fix "bench-tree-standalone" :release "v1.2.7" :status "planned"
+   :title "A bench tree is a standalone clone, and one that is not is refused with its reason"
+   :text "The mirror stage ends by checking that the staged tree's .git is a directory in the tree, and a
+    .git file (a worktree pointer at a path of another machine) is refused naming the gitdir and whether
+    it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
+    no longer exits 128 on a fleet host with nothing saying why."
+   :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
   (fix "nova-work-roadmap-verbs" :release "v1.2.6" :status "planned"
-   :title "nova-work roadmap check, add, remove, pull and note"
-   :text "Verbs over the roadmap s-expression files with byte-stable round trips; each writing verb refuses a file that check rejects. Pulled into v1.2.6 by its own verb: check, list, add, remove, pull, done, note and render now edit docs/roadmap.sexp and docs/fixes.sexp and write both pages, locally, with no GitHub call per entry."
-   :origin "nova-sprint commit 8c87a4b (not carried by the re-seed, nova-sprint PR #28)")))
+   :title "nova-work roadmap check, list, add, remove, pull, done, note and render"
+   :text "Verbs over the roadmap s-expression files with byte-stable round trips; each writing verb
+    refuses a file that check rejects. Pulled into v1.2.6 by its own verb: the verbs edit docs/roadmap.sexp and docs/fixes.sexp and write both pages, locally, with no GitHub call per entry."
+   :origin "nova-sprint commit 8c87a4b (not carried by the re-seed, nova-sprint PR #28)"
+   :kept (:item-group "sprint"
+          :item-date "2026-10-10"
+          :item-release "after v1.4"
+          :earlier-title "nova-work roadmap check, add, remove, pull and note"))))
