@@ -623,3 +623,24 @@ func TestTickKeptList(t *testing.T) {
 		assert.False(t, TickKept(typ), "%q is tick kept", typ)
 	}
 }
+
+// The merge decision of a late stream prints the verb a real store accepts, land (a bare
+// merge is refused there, nova-sprint#50), and the bare merge only as the twin's form, with
+// the judgment's epoch.
+func TestTheMergeDecisionPrintsLandForARealStore(t *testing.T) {
+	t.Parallel()
+	n := Note{ID: "n-1.1", Kind: Judgment, Type: NMergeLate, Stream: "s1", Primaries: []string{"s1-1"}, StreamLevel: true}
+	g := Group{ID: n.ID, Kind: Judgment, Type: NMergeLate, Stream: "s1", Size: 1, Notes: []string{n.ID}, Members: []string{"s1-1"}, Decisions: []string{"merge --stream s1"}}
+	var lines []string
+	for _, c := range commands(g, n, "dev-") {
+		if c.Decision == "merge --stream s1" {
+			lines = c.Lines
+		}
+	}
+	if assert.Len(t, lines, 2) {
+		assert.Contains(t, lines[0], "land --stream s1")
+		assert.NotContains(t, lines[0], "merge --stream")
+		assert.Contains(t, lines[1], "merge --stream s1 --epoch ")
+		assert.Contains(t, lines[1], "twin only")
+	}
+}

@@ -128,6 +128,13 @@
     internal/sprintdash/stopgap/server.py over ~/nova-bench/dashboard/server.py, and restart the
     public mirror unit."
    :origin "nova-tools PR #5588, head 08f6af5a8")
+  (fix "operator-wording-bare-merge-and-key-rest" :release "v1.2.6" :status "planned"
+   :title "What an operator reads matches the bare-merge refusal and the key rest"
+   :text "A late-merge judgment prints land for a real store and the bare merge only as the twin's form; the
+    CLI, first-lap and test docs mark the bare merge twin-only (play is a twin tool); the spec and comments
+    say a key rest ends only by routes wake, never by funded or a payment, and a test shows a balance poll
+    cannot end one."
+   :origin "readers' notes on nova-sprint PR #49 and PR #50")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "planned"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose

@@ -88,7 +88,7 @@ change the requirement.
 ## Record the landing
 
 ```sh
-  nova-sprint merge --stream s1 --batch 1
+  nova-sprint merge --stream s1 --batch 1   # twin only, a real store refuses a bare merge, use land
   nova-sprint tick
   nova-sprint where
 )
