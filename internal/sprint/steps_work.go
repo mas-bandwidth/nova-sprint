@@ -1058,6 +1058,14 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 				}
 				m = rr.next(others, q, widths, "")
 			}
+			// a card the bounce-back returned from a machine that did not take it goes to
+			// another machine with room when there is one, never straight back (bounce.go B3,
+			// tla/DealFill.tla lastFrom)
+			if b := wc.F(FieldBouncedFrom); b != "" && m == b {
+				if o := rr.next(without(members, append(StagingRefusers(wc), b)), q, widths, ""); o != "" {
+					m = o
+				}
+			}
 			if m == "" {
 				p.refuse(c.ID, roomWhy)
 				continue

@@ -222,6 +222,7 @@ func TestAudit2ClosedAckedTickJudgmentHoldsForEver(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.setup(2)
+	h.takeBound(24 * time.Hour) // a worker dies holding a card: the ack's hold is the subject, not the bounce-back
 	h.startMachine()
 	h.machine()
 	c := h.snap().Fleet.Card("s1-1.w1")

@@ -178,6 +178,7 @@ func TestACardPinnedToAFriendWhoIsNotUpIsRaisedUntilUnpinned(t *testing.T) {
 func TestAHardPinToAFriendNotUpPastItsBoundIsOfferedOn(t *testing.T) {
 	t.Parallel()
 	r := newHoldRig(t, 0, 0)
+	r.must(store.SetStep(sprint.SetReq{TakeBound: "24h", Who: "coordinator"})) // the machine holds the pin's card untaken: the pin judgment is the subject
 	r.tickBeating(time.Second, "m1", "m2")
 	r.hold(sprint.HoldReq{Names: []string{"amy"}, Reason: "out of credits"})
 	r.must(store.AddStep(sprint.AddReq{Stream: "p1", Cards: []sprint.CardAdd{{ID: "p1-1", Brief: friendsBrief("only friend amy")}}}))

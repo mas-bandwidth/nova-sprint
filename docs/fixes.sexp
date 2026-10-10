@@ -130,6 +130,18 @@
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
 
+  (fix "bounce-back-dealt-and-asked" :release "v1.2.6" :status "shipped"
+   :title "A card dealt or a read asked and not taken within the take bound bounces back, with a push"
+   :text "A work card dealt to a member or friend, or a read card asked of a reader, that is not taken or
+    begun within the take bound (set --take-bound, default 5m, in running time) while its row has a lane
+    free and has taken nothing returns to the pool on the tick, and the deal of the same tick gives it to
+    the next capable live member; a card returned from a friend is not dealt to her again, and a read is
+    asked again every tick until the card has its reads. Each return is a note to the seat (pushed) naming
+    the card, the row, how long and what was done. The bounce-back is the one path: the deal no longer
+    retires an unstarted read on its own clock. No coordinator verb is needed for a card to move on.
+    Model: tla/DealFill.tla."
+   :origin "dogfood 2026-10-10: 43 reads asked of a failing friend reader, 47 cards dealt to friends that could not take; card dealt-cards-a-friend-cannot-take-return (v128)")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
