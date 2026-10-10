@@ -27,8 +27,29 @@ import (
 // adoptRunner runs a live-manifest probe: exec in production, a fake in tests.
 type adoptRunner func(ctx context.Context, name string, args ...string) (string, error)
 
+// adoptEnvKey carries extra environment a probe's child is run with: the store
+// login's password is read in process, so it is never in os.Environ for a child
+// to inherit (storelogin.go, "the password is read in process"). fn check is
+// handed it here instead; a test's runner reads it (adoptEnv) to see what a
+// real child would get.
+type adoptEnvKey struct{}
+
+// withAdoptEnv is ctx holding env, the extra environment of a probe's child.
+func withAdoptEnv(ctx context.Context, env []string) context.Context {
+	return context.WithValue(ctx, adoptEnvKey{}, env)
+}
+
+// adoptEnv is the extra environment on ctx, nil for none.
+func adoptEnv(ctx context.Context) []string {
+	env, _ := ctx.Value(adoptEnvKey{}).([]string)
+	return env
+}
+
 func execAdoptRunner(ctx context.Context, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	if env := adoptEnv(ctx); len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	cmd.WaitDelay = time.Second
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
@@ -179,6 +200,7 @@ type liveProbe struct {
 	uid         int
 	redis       string // the store fn check reads, "" for none
 	user, pwEnv string // its login
+	pw          string // the recorded login's password, read in process and handed to fn check's child
 	dashboards  []string
 	run         adoptRunner
 	now         func() time.Time
@@ -299,8 +321,17 @@ func (p liveProbe) library(ctx context.Context) liveLibrary {
 	if p.pwEnv != "" {
 		args = append(args, "--password-env", p.pwEnv)
 	}
+	// The recorded login's password is read in process and never in
+	// os.Environ, so the child is handed it by name here: nova-redis reads
+	// --password-env with os.Getenv and refuses when it is empty
+	// (pkg/nsprint/redisauth, "A user whose password variable is empty is
+	// refused"). An environment login already carries it, so pw is "".
+	run := ctx
+	if p.pwEnv != "" && p.pw != "" {
+		run = withAdoptEnv(ctx, []string{p.pwEnv + "=" + p.pw})
+	}
 	// fn check exits 1 on STALE or MISSING: the line is the answer
-	out, err := p.run(ctx, filepath.Join(p.binDir, "nova-redis"), args...)
+	out, err := p.run(run, filepath.Join(p.binDir, "nova-redis"), args...)
 	l := liveLibrary{State: "UNKNOWN"}
 	for _, line := range strings.Split(out, "\n") {
 		w := strings.Fields(line)
@@ -612,8 +643,29 @@ func (a *app) cmdLive(args []string, stdout, stderr io.Writer) int {
 	if *agentsDir == "" {
 		*agentsDir = filepath.Join(home, "Library", "LaunchAgents")
 	}
-	p := liveProbe{agentsDir: *agentsDir, launchctl: *launchctl, binDir: *binDir, uid: os.Getuid(), redis: c.redis, user: a.getenv("NOVA_SPRINT_REDIS_USER"),
-		pwEnv: a.getenv("NOVA_SPRINT_REDIS_PASSWORD_ENV"), dashboards: dash, run: execAdoptRunner, now: a.now}
+	// liveProbe runs fn check against the store: credentials come from the
+	// environment (NOVA_SPRINT_REDIS_USER/PASSWORD_ENV), then the recorded
+	// seat login, falling back to the default user. When an env login is set,
+	// its variables are used directly so the command-line arguments match
+	// what the verb line names; when no env login is set, storeOptions
+	// resolves the address's recorded user and password-env for fn check and
+	// reads the password in process, which library hands to the child.
+	user, pwEnv := a.getenv("NOVA_SPRINT_REDIS_USER"), a.getenv("NOVA_SPRINT_REDIS_PASSWORD_ENV")
+	pw := ""
+	if user == "" && c.redis != "" {
+		a.seatLoginOn() // turn on login resolution before storeOptions calls recordedLogin
+		if o, getenv, err := a.storeOptions(c.redis); err != nil {
+			return refuse(stderr, name, "the store at "+c.redis+": "+err.Error())
+		} else {
+			user, pwEnv = o.User, o.PasswordEnv
+			// storeOptions answers seatLoginPassword from the value read in
+			// process; getenv is a.getenv for an environment login, whose
+			// variable is already in os.Environ and so needs no delivery.
+			pw = getenv(pwEnv)
+		}
+	}
+	p := liveProbe{agentsDir: *agentsDir, launchctl: *launchctl, binDir: *binDir, uid: os.Getuid(), redis: c.redis,
+		user: user, pwEnv: pwEnv, pw: pw, dashboards: dash, run: execAdoptRunner, now: a.now}
 	if fake, ok := liveRunnerOf.Load(a); ok {
 		p.run = fake.(adoptRunner)
 	}
