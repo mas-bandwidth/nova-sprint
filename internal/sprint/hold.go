@@ -34,6 +34,29 @@ const (
 	FieldHeldFinish = "held_finish"
 )
 
+// HeldByFault is the hold mark (FieldHeldBy) of a member the machine holds for a
+// failure: a harness fault, a failed take, or the member going down. Such a hold is
+// the machine's own, and the tick clears it by itself once the member proves healthy
+// by taking a card and finishing it cleanly (faultClear); a hold the coordinator
+// made carries no mark and stays until a person lifts it (fleet up). The model is
+// tla/DealFill.tla, FaultHoldClears.
+const HeldByFault = "fault"
+
+// FieldFaultSince is a fault-held member's control card's stamp of when the machine
+// held it: kept through the probe (faultClear releases the down to deal it a card)
+// so the tick can tell a clean finish after the hold from one before it.
+const FieldFaultSince = "fault_since"
+
+// FaultHeld says the member is held by the machine for a failure (HeldByFault), the
+// one kind of hold the tick lifts by itself; the coordinator's hold (fleet down, no
+// held_by) and the sync's and the adopt's are never cleared by this rule. It is true
+// through the probe too: while the tick releases a beating fault-held member to deal
+// it a card, held is cleared but held_by stays, so the clear still knows it is the
+// machine's own hold to lift.
+func FaultHeld(ctl *Card) bool {
+	return ctl != nil && ctl.F(FieldHeldBy) == HeldByFault
+}
+
 // HoldReq is one hold or unhold of names, each a fleet member, a reader, a friend or a
 // stream (docs/SPEC-SPRINT.md section 11).
 type HoldReq struct {
