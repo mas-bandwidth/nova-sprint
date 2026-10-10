@@ -360,7 +360,15 @@ left for nova-tools-1.1.0 into cards, and doing it via the sprint, but doing
 parts on friends where we would normally do friend work."). WHO is a preference (docs/SPEC-CARD-CONTRACT.md, the WHO line; `cardhdr.ReadWho`
 is the one parser). A card with no WHO line, or `WHO: -`, is unpinned. `WHO: friend`
 is any friend. `WHO: friend <name>` prefers that friend while she is up with room.
-`WHO: only friend <name>` is the one hard pin and waits for her alone. `add` and
+`WHO: only friend <name>` is the one hard pin and waits for her alone, until its pin-waits
+stop (`a card pinned to one friend waits while she is not up`) has stood
+`sprint.PinReleaseBound` (one hour): past it, while she is still not up, the pin is a
+preference and the deals offer it on as a named pin is offered while she is not up, to a
+friend up or a machine, with the pin-ignored judgment (`sprint.PinReleased`; the fault
+inventory of 2026-10-10: 21 cards pinned to held friends waited 9 h and more;
+`TestAHardPinToAFriendNotUpPastItsBoundIsOfferedOn`; tla/SprintRules.tla, Part "episodes").
+The hour runs from the stop's latest note: the coordinator's `ack` or `wait` on it writes a
+new one, so each answer starts the hour again (`TestACoordinatorAnswerRestartsThePinHour`). `add` and
 `brief` refuse any other WHO value, a name that is no row of the friends table, and
 `WHO: friend` while the table has no row (exit 2, nothing written). A named friend's
 configured work restriction is held too: a card whose stream matches none of her
@@ -471,7 +479,8 @@ take it (held, not up, the card has left her, her tiers do not hold the tier, or
 she has no room), and whose row and column hold the card now. The pass keeps
 that one judgment, and raises it when the card is already sitting off her row,
 until it is back on her row or leaves ready and working. A hard pin is not
-rotated and is not this judgment. A
+rotated and is not this judgment, except a hard pin released past its bound
+(`sprint.PinReleased`), which is judged as a named pin is. A
 hard pin (`WHO: only friend <name>`) with no room waits ready, held by the
 no-stall rule as waiting for her (`sprint.TickDeal`, its friend deal,
 `sprint.OnlyFriend`); a card a friend takes is never held for want of a machine
@@ -909,7 +918,7 @@ failed finish (a friend's `Verdict: HOLD` or `FAIL`, by its first paragraph, or 
 failed report) whose reason names a brief defect is the brief's, never the worker's: no
 worker could do the card as cut (`sprint.BriefDefectOf`). Each of the four reasons alone
 names one, with no label needed, the earliest in the report being the one recorded: the
-base lacks a PATHS file (`the base lacks`, `not on the base`, `missing from the base`, `does not exist on the base`), a duplicate of landed work (`duplicate of landed work`), a
+base lacks a PATHS file (`the base lacks`, `not on the base`, `missing from the base`, `does not exist on the base`), a duplicate of landed work (`duplicate of landed work`, or the worker finding this card's work already at its base, in two forms only: `nothing to do: the (staged) base already contains|has`, or `the (staged) base already contains|has` followed by `this card's change`, `this card's implementation` or `the change`; a sentence about anything else the base holds, a failing test, a file, a conflicting version, names none, and `no, ...` negates it across the comma), a
 decision delivered (`decision delivered`, `decision already delivered`), and PATHS do not
 hold what the brief names (`PATHS do not hold`). That last reason is raised on the first
 such failed finish, not at the attempt cap and not at the second identical failure: the
@@ -2755,8 +2764,11 @@ and it is the coordinator's decision, receipted.
     `TestAReadHigherThanTheReadBeforeItEndsARefusedTakesRest`). A rest a balance poll wrote
     before (cause `balance`, or `out-of-credit` naming no card) is retired and holds no route
     (`TestTheNightsBalanceRestLiftsOnTheNextPoll`).
-    A take refused for the provider's key (`class=auth`) rests it for RouteRestFor, ends at
-    that time, and stops nothing.
+    A take refused for the provider's key (`class=auth`) rests it until the coordinator wakes
+    it (`routes wake <provider>`, once the owner has replaced the key), never for a time (a
+    timed rest only failed every take dealt after it ended: a pro route, 46 of 46
+    refused with a 401, 2026-10-09/10; `tla/RouteRest.tla`, AuthEndsOnlyWoken), and stops
+    nothing.
   - A refused take rests the provider in the tick that sees it, over rule 3's rest of its
     routes; the rest's note and the tier's `no route serves the tier` name the cause and the
     provider's words. A refusal is attributed to the rest window its child launched in (the
@@ -3871,6 +3883,10 @@ are never recorded in its place. It lands exactly the named cards. The position 
 `--rejected`) is about; land's own report names its cards by id, head and attempt
 (tla/Land.tla, idguard), and `merge --landed` is the same record for a caller without
 land (tests TestMergeRecordsLandOnlyTheCardWhoseHeadWasPushed).
+On a real store a bare `merge --stream <s> [--batch n]`, with no fact and no `--landed`,
+is refused before the store is read, naming `--landed` and land: it would record the
+queue's head landed on nobody's push. Only the twin, which has no git, records a bare
+merge (tests TestBareMergeIsRefusedOnARealStore, TestMergeLandedRefusesAHeadNotOnTheBase).
 
 | stream state | means |
 |---|---|
@@ -5404,14 +5420,20 @@ these kinds were open, some 3h39m old). One pure function decides
 rule that answers it and its act, or `left` (it needs a mind) or `off` (its rule is turned
 off), with why. The tick applies it in its end, after the checks and the deadlines and
 before the overdue part, as eleven parts, each a step on a fresh read (`rule paths`, `rule
-return`, `rule resume`, `rule twin`, `rule widen`, `rule rework`, `rule late`, `rule take`, `rule ask`,
+return`, `rule resume`, `rule widen read`, `rule widen`, `rule rework`, `rule late`, `rule take`, `rule ask`,
 `rule need`, `rule brief`), so a judgment the end raises is
 answered in its own tick, and a conflict's three moves are made in one. Each answer is a
 verb the judgment's decisions name, applied as the machine; it closes the judgment with
 the decided note `answered by rule <name>: <act>: <why>` (the log and the inbox's decided
 list), and writes `rule_answer` (`<name>: <act> at <time>`) on the card it moved; the
 `read-broken` rule writes its decided note on the card too, as its `note` (logged with the
-move). `nova-sprint
+move). Both belong to the attempt the answer started (a twin is created carrying them): that
+attempt's finish clears them (`sprint.ruleAnswerConsumed`), so a card back in review never
+shows an answer that is not its own (the fault inventory of 2026-10-10: 56 of 105 cards in
+review carried a `rule_answer` older than their `finished_at`, 12 of them twins read as
+answered and not moved; `TestARuleAnswerIsConsumedByTheAttemptItStarted`; tla/SprintRules.tla,
+Part "episodes", AnswerApplies), and the `rules` count below counts the answers whose attempt
+is still on its way. `nova-sprint
 rules` prints the same answers, read-only: one `RULE` line per judgment and subject, and
 `RULES OK judgments= acting= left= off= by=<rule>_<act>=<n>,...`.
 
@@ -5424,7 +5446,7 @@ rules` prints the same answers, read-only: one `RULE` line per judgment and subj
 | `read-late` | a read card is past its deadline (asked and not begun, or begun and not reported), of the primary's attempt in review | its reader's read taken back and asked of one other reader (`ask <card> --instead <reader>`, `rule ask`, one a tick: each ask writes the readers' round index), once an attempt (`rule_reread` on the primary); the second late read of the attempt, and one no other reader can take (the ask's refusal), are left. A read handed back with no verdict needs no rule: the ask places it again on a free reader itself (section 6) |
 | `hold-need` | work came back failed and its report says the word `HOLD` | a HOLD naming a card on the table that has not landed (the first by id; the stream controls aside) waits for it: `rule_need` (`<card>@<attempt>`) and `rule_answer` on the primary and the judgment's text prefixed `waiting on <card> by rule hold-need: `, once an attempt (`rule need`); the judgment stays open, since a primary in review has no move to waiting (section 3). Once that card lands the primary is reworked (`rule rework`), its fix `<card> has landed: do the brief again on the current tip` with the report. A HOLD naming no such card, or one dropped since, is left, and `failed` does not redeal it |
 | `conflict` | stream stopped: conflict on a card, where the lander refused a head one of three ways (`sprint.RefusalWay`): its paths that did not merge are files no generated ledger owns (`conflict_kind=file`, `conflict_paths` on the stream's control card, from `merge --conflict-kind --conflict-path`, which land reports), it fails the lander's checks (files outside its PATHS, E12, or another check), or its merged tree fails the tree gate | in one tick: the card returned to review (`rule_redo` its attempt, `rule_refused` the way, `rule_refusal` the lander's words, `tier_now=flash`), the stream resumed, so the rest of its batch lands on the next landing, and the card reworked at flash, staged on the base's tip, with the fix `redo the same change on the current tip` (a PATHS, checks or gate refusal adds `; the lander refused attempt <n>: <its words>`). The same card refused the same way as the refusal it was last returned on is a brief defect: the card marked (`brief_defect`), the judgment's text prefixed `brief defect: `, the stream left stopped for a mind. A conflict in a ledger the lander could not resolve, one whose files the lander did not say, and a head that is no commit or that origin does not hold are left |
-| `read-broken` | a reader found it broken, on a card in review below its brief's bound | the next attempt (rework) on the same tier, the findings of the attempt's broken reads its fix (as `rework <card> --answers <id>` with no `--fix`); when the findings name a file outside the brief's PATHS (`sprint.FilesOutsidePaths`: a relative path with a directory and an extension of letters, read through quotes and a line number, that no PATHS name, glob or directory covers, and that `cardgen.AlwaysInPaths` does not put inside every PATHS), the card is twinned instead (`rule twin`: `add --replaces`), its brief's `PATHS:` lines widened by exactly those files and a `CARRY: <id> attempt <n> head=<sha>` line at the broken attempt's head, the findings the twin's `fix`, one card a tick. A friend's card is answered as a machine's, its next attempt hers. A card at its brief's bound (the same finding twice, or its attempts cap: the read raises `the brief is wrong` instead), a broken verdict with no finding, a brief defect and a card whose twin ids are all taken are left; the coordinator sees only those and refusals (`TestABrokenReadIsReworkedByRuleWithItsFinding`; tla/SprintRules.tla Part `reads`: `ReadAnswersBounded`, `TwinsWiden`, `ReadAnswered`) |
+| `read-broken` | a reader found it broken, on a card in review below its brief's bound, or at it when the finding names a file outside PATHS | the next attempt (rework) on the same tier, the findings of the attempt's broken reads its fix (as `rework <card> --answers <id>` with no `--fix`); when the findings name a file outside the brief's PATHS (`sprint.FilesOutsidePaths`: a relative path with a directory and an extension of letters, read through quotes and a line number, that no PATHS name, glob or directory covers, and that `cardgen.AlwaysInPaths` does not put inside every PATHS), the card's brief is edited in place instead (`rule widen read`: `brief`, as `brief --widen` edits it, the same id and never a twin), its `PATHS:` lines widened by exactly those files and a `CARRY: <id> attempt <n> head=<sha>` line at the broken attempt's head, review -> ready, its brief's bound counted from the widened brief, the findings its `fix`, one card a tick; a widened brief is the bound's own remedy, so such a finding is widened at the bound too and the read raises no `the brief is wrong` for it, at most three times a card (`sprint.MaxReadWidens`, counted on the card's `read_widens`, which a brief edit never resets): past that a finding outside PATHS is the brief's bound, `the brief is wrong`, a mind's. A friend's card is answered as a machine's: a rework's next attempt is hers (`sprint.ReworkPinned`); a widen keeps her as the card's holder but counts no rework or return, so its next attempt is hers only when an earlier rework or return pinned it. A card at its brief's bound on any other finding (the same finding twice, or its attempts cap: the read raises `the brief is wrong` instead), a broken verdict with no finding and a brief defect are left; the coordinator sees only those and refusals (`TestABrokenReadIsReworkedByRuleWithItsFinding`; tla/SprintRules.tla Part `reads`: `ReadAnswersBounded`, `WidensWiden`, `OutsideNeverBound`, `WidensBounded`, `ReadAnswered`) |
 | `widen` | work came back failed, a card reached its bound, or its brief is wrong, where the worker's report is a HOLD that says PATHS and names files outside them; or returned to review by the merge step or the `conflict` rule on an E12 refusal (files outside its PATHS) at this attempt; on a card in review at a full sha head, not a friend's, a brief defect or a pinned model's | when every file named outside PATHS (`sprint.FilesOutsidePaths`, which does not count a file `cardgen.AlwaysInPaths` puts inside every PATHS) is adjacent to the change (`sprint.WidenAdjacent`: a test file of a package PATHS name, a file under that package's `testdata/`, a ledger under `internal/ci/testdata/`, a markdown file under `docs/` or an `AGENTS.md` map, or, in a HOLD, a file named with its reason, three words or more after it), the card's brief is edited in place (`rule widen`, before `rule rework`; `brief`, as `brief --widen` edits it, never a twin: the owner, 2026-10-06, "stop doing this twin shit"), its `PATHS:` and `SHARED:` lines widened by exactly those files and a `CARRY: <id> attempt <n> head=<sha>` line at the finished head: the same id, review -> ready, its next attempt staged from that head and its brief's bound counted from it, its `fix` naming the head to start from and the files, one card a tick, and the coordinator gets one happened note, `PATHS widened by rule`, naming each file and why it is adjacent. A HOLD naming a file that is not adjacent stays a judgment, its text prefixed `outside PATHS and not adjacent: <files> (its HOLD): ` once, and neither `failed` nor `bound` reworks it; an E12 refusal naming one is the `conflict` rule's redo, inside its PATHS. A HOLD with a `PATHS-PROPOSED:` line is `paths`'s, one naming a card that has not landed `hold-need`'s, and a reader's finding `read-broken`'s (`TestACardHeldOnlyForAdjacentPathsIsWidenedInPlace`, `TestAFileOutsidePathsIsAdjacentByRule`) |
 | `brief-defect` | a card has reached its bound: the brief is wrong, not the worker (the same finding twice, section 2) | the card marked (`brief_defect`), the judgment's text prefixed `brief defect: `, once; the judgment stays open (brief or drop) and no rule moves the card |
 | `base-gate` | (no judgment: the lander's) the base fails its tree gate at its tip | a queued head whose tree, merged onto that base alone, passes the same gate lands first as the base fix and the stream goes on (the base cure, below); with none, land gates that base commit again after 2 minutes and again after 5 (`sprint.BaseGateRetries`), each landing in between refused with the finding and when it is gated again; the third failure stops the stream that met it, `stream stopped: the base fails its tree gate` (`merge --base-red`), the one judgment for that base, carrying the error and naming the failing tests; every other stream that meets the base red is refused under that judgment and never stopped. Each land pass re-checks the tip of a base that stopped a stream, and a green tip (`sprint.BaseGreen`, `base_gate_passed`) resumes every stream stopped only on that base's red, the judgment answered by rule (`v11-base-red-auto-resume-now`, below); a green base is cached for its commit. With the rule off, a red base is cached for its commit as before (every landing refused until the base moves), the pass re-checks nothing and a stopped stream waits for a mind |
@@ -5448,7 +5470,7 @@ rules off (`TestEachRuleHasAnOffSwitch`, `TestAMechanicalJudgmentIsAnsweredByIts
 hour counts once). The tests are internal/sprint/store/rule_answers_test.go, internal/sprint/rules_read_test.go,
 internal/sprint/judgment_rules_test.go, internal/sprint/widen_test.go,
 internal/sprint/rules_conflict_test.go and cmd/nova-sprint/base_gate_rule_test.go; the model is tla/SprintRules.tla (`RuleAnswersBounded`,
-`LadderClimbs`, `WaitOnce`, `BaseStopsOnThird`, `ReadAnswersBounded`, `TwinsWiden`).
+`LadderClimbs`, `WaitOnce`, `BaseStopsOnThird`, `ReadAnswersBounded`, `WidensWiden`, `OutsideNeverBound`).
 
 #### A broken read with a finding reworks the card
 

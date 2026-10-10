@@ -1,6 +1,7 @@
 package sprint_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -16,7 +17,8 @@ import (
 // the coordinator answered "a reader found it broken" about forty times, every time with
 // `rework <card> --answers <id>`: the finding became the fix. Now the tick does it: the
 // finding is the fix of a rework on the same tier; a finding naming a file outside PATHS
-// twins the card with PATHS widened; a card at its brief's bound stays the coordinator's.
+// widens the card's PATHS in place, never a twin, at its brief's bound too; any other card at
+// its brief's bound stays the coordinator's.
 // On the twin store (store.Mem), every rule on.
 
 // readHead is the head each attempt pushes.
@@ -27,7 +29,11 @@ const readBrief = "c: the change (r) tier: flash\nREPO: mas-bandwidth/nova-tools
 
 // brokenRead drives the primary's dealt (or ready) attempt through its work, pushed at
 // readHead, and one read the reader finds broken with the finding.
-func (r *conflictRig) brokenRead(id, finding string) {
+func (r *conflictRig) brokenRead(id, finding string) { r.brokenReadBy(id, finding, false) }
+
+// brokenReadBy is brokenRead; instead takes the asked read back and asks another reader (ask
+// --instead), so the reader who breaks the attempt is not the one finder-first asked.
+func (r *conflictRig) brokenReadBy(id, finding string, instead bool) {
 	r.t.Helper()
 	if r.snap().Work.Card(id).Col == sprint.Ready {
 		r.must(dealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{id}}}))
@@ -54,6 +60,11 @@ func (r *conflictRig) brokenRead(id, finding string) {
 		rc = asked()
 	}
 	require.NotNil(r.t, rc, "a read of %s is asked", id)
+	if instead {
+		r.must(store.AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{id}}, Instead: rc.Row}))
+		rc = asked()
+		require.NotNil(r.t, rc, "a read of %s is asked of another reader", id)
+	}
 	r.must(store.ReadStep(sprint.ReadReq{Usage: "input=1000 output=100", As: rc.Row, Verdict: "broken", Finding: finding, Sel: sprint.Sel{IDs: []string{rc.ID}}}))
 }
 
@@ -61,6 +72,31 @@ func (r *conflictRig) brokenRead(id, finding string) {
 func (r *conflictRig) readCard() {
 	r.t.Helper()
 	r.must(store.AddStep(sprint.AddReq{Stream: "r", IDs: []string{"r-1"}, Brief: readBrief}))
+}
+
+// The fault inventory of 2026-10-10: 56 of 105 cards in review carried a rule_answer older
+// than their finished_at. A rule's answer and note belong to the attempt it started: that
+// attempt's finish consumes them.
+func TestARuleAnswerIsConsumedByTheAttemptItStarted(t *testing.T) {
+	t.Parallel()
+	r := newConflictRig(t)
+	r.readCard()
+	r.brokenRead("r-1", "internal/x/a.go:12 drops the error from Close; return it")
+	r.tick()
+	pr := r.snap().Work.Card("r-1")
+	require.Equal(t, 2, pr.Int("attempt"), "reworked by rule in the tick")
+	require.NotEmpty(t, pr.F(sprint.FieldRuleAnswer), "the answer is on the card while its attempt runs")
+	require.NotEmpty(t, pr.F("note"))
+
+	wc := r.snap().Fleet.Card(sprint.WorkCardID("r-1", 2))
+	require.NotNil(t, wc)
+	r.must(store.TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")}}))
+	wc = r.snap().Fleet.Card(wc.ID)
+	r.must(store.FinishStep(sprint.FinishReq{Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")}, Head: readHead}))
+	pr = r.snap().Work.Card("r-1")
+	require.Equal(t, sprint.Review, pr.Col)
+	assert.Empty(t, pr.F(sprint.FieldRuleAnswer), "its attempt finished: the answer is consumed")
+	assert.Empty(t, pr.F("note"), "and its note")
 }
 
 func TestABrokenReadIsReworkedByRuleWithItsFinding(t *testing.T) {
@@ -92,7 +128,7 @@ func TestABrokenReadIsReworkedByRuleWithItsFinding(t *testing.T) {
 		assert.Empty(t, r.coordinatorNotes("r-1"), "the coordinator is told nothing")
 		r.clean("reworked by rule")
 	})
-	t.Run("a finding naming a file outside PATHS: twinned with PATHS widened", func(t *testing.T) {
+	t.Run("a finding naming a file outside PATHS: PATHS widened in place, never a twin", func(t *testing.T) {
 		t.Parallel()
 		r := newConflictRig(t)
 		r.readCard()
@@ -101,25 +137,83 @@ func TestABrokenReadIsReworkedByRuleWithItsFinding(t *testing.T) {
 		r.tick()
 
 		s := r.snap()
-		old := s.Work.Card("r-1")
-		require.NotNil(t, old)
-		assert.False(t, old.Placed(), "the card is replaced")
-		assert.Contains(t, old.F("reason"), "replaced by r-1b")
-		twin := s.Work.Placed("r-1b")
-		require.NotNil(t, twin, "the twin is on the table")
-		assert.Equal(t, "r-1", twin.F(sprint.FieldReplaces))
-		brief := twin.F("brief")
+		assert.Nil(t, s.Work.Card("r-1b"), "no twin")
+		pr := s.Work.Placed("r-1")
+		require.NotNil(t, pr, "the same card, on the table")
+		assert.NotEqual(t, sprint.Review, pr.Col, "its next attempt is opened")
+		assert.Empty(t, pr.F(sprint.FieldReplaces))
+		assert.Equal(t, "1", pr.F(sprint.FieldBriefAttempt), "its brief's bound counts again from attempt 1")
+		brief := pr.F("brief")
 		assert.Contains(t, brief, "\nPATHS: internal/x/a.go,internal/y/b.go\n", "PATHS widened by exactly the file")
-		assert.Contains(t, brief, "CARRY: r-1 attempt 1 head="+readHead, "the twin starts from the broken attempt's head")
-		assert.Equal(t, finding, twin.F("fix"), "the finding is the twin's fix")
-		assert.True(t, strings.HasPrefix(twin.F("note"), "answered by rule "+sprint.RuleReadBroken+": "), "a note on the twin names the rule: %q", twin.F("note"))
+		assert.Contains(t, brief, "CARRY: r-1 attempt 1 head="+readHead, "its next attempt starts from the broken attempt's head")
+		assert.Equal(t, finding, pr.F("fix"), "the finding is the fix")
+		assert.Equal(t, "1", pr.F(sprint.FieldFindingAttempt), "the finding stays the broken attempt's: finder-first survives a widen")
+		assert.True(t, strings.HasPrefix(pr.F("note"), "answered by rule "+sprint.RuleReadBroken+": "+sprint.ActWidenRead), "a note on the card names the rule: %q", pr.F("note"))
 		assert.Empty(t, r.openOnCard(sprint.NReadBroken, "r-1"), "the judgment is answered")
 		require.Len(t, r.answeredBy(sprint.RuleReadBroken), 1)
 		assert.Empty(t, r.coordinatorNotes("r-1"), "the coordinator is told nothing")
 
 		r.tick()
-		assert.Nil(t, r.snap().Work.Card("r-1c"), "twinned once")
-		r.clean("twinned by rule")
+		assert.Nil(t, r.snap().Work.Card("r-1b"), "never twinned")
+		assert.Len(t, r.answeredBy(sprint.RuleReadBroken), 1, "widened once")
+		r.clean("widened in place by rule")
+	})
+	t.Run("a finding outside PATHS at the brief's bound: widened in place, not stopped", func(t *testing.T) {
+		t.Parallel()
+		r := newConflictRig(t)
+		r.readCard()
+		r.brokenRead("r-1", "the change breaks STEP 3: a caller outside PATHS keeps the old name; rename it too")
+		r.tick()
+		require.Equal(t, 2, r.snap().Work.Card("r-1").Int("attempt"), "a finding naming no file is reworked")
+		// the sprint's cap lowered to 2 once attempt 2 is dealt: the read of attempt 2 is at the
+		// brief's bound (the cap's attempts on one brief), so a finding outside PATHS reaches
+		// the bound check in Read and must pass it (steps_review.go, the !outside guard). The
+		// sprint's cap, not the stream's: the read step's snapshot holds the work table's
+		// property, and no stream control card (AttemptsCap)
+		r.must(store.SetStep(sprint.SetReq{Attempts: "2", Who: "coordinator"}))
+		_, atCap := sprint.AtBriefBound(r.snap().Work.Card("r-1"), "", 2)
+		require.True(t, atCap, "attempt 2 of a brief whose cap is 2 is at the brief's bound")
+		finding := "internal/y/b.go:40 still calls the old name, outside PATHS; rename the call too"
+		r.brokenRead("r-1", finding)
+		assert.Empty(t, r.openOnCard(sprint.NBriefWrong, "r-1"), "a finding naming a file outside PATHS raises no bound")
+		r.tick()
+
+		s := r.snap()
+		assert.Nil(t, s.Work.Card("r-1b"), "no twin")
+		pr := s.Work.Placed("r-1")
+		require.NotNil(t, pr)
+		assert.NotEqual(t, sprint.Review, pr.Col, "its next attempt is opened")
+		assert.Contains(t, pr.F("brief"), "\nPATHS: internal/x/a.go,internal/y/b.go\n")
+		assert.Equal(t, "2", pr.F(sprint.FieldBriefAttempt), "its brief's bound counts again from attempt 2")
+		assert.Empty(t, r.openOnCard(sprint.NReadBroken, "r-1"))
+		assert.Empty(t, r.openOnCard(sprint.NBriefWrong, "r-1"))
+	})
+	t.Run("widened MaxReadWidens times: a new file outside PATHS is the brief's bound, never widened again", func(t *testing.T) {
+		t.Parallel()
+		r := newConflictRig(t)
+		r.readCard()
+		for i := 1; i <= sprint.MaxReadWidens; i++ {
+			r.brokenRead("r-1", "internal/y/b"+strconv.Itoa(i)+".go:40 still calls the old name, outside PATHS; rename the call too")
+			r.tick()
+			pr := r.snap().Work.Placed("r-1")
+			require.NotNil(t, pr)
+			require.Equal(t, strconv.Itoa(i), pr.F(sprint.FieldReadWidens), "widening %d is counted, and no brief edit resets the count", i)
+			require.Contains(t, pr.F("brief"), "internal/y/b"+strconv.Itoa(i)+".go")
+		}
+		r.brokenRead("r-1", "internal/y/b9.go:40 still calls the old name, outside PATHS; rename the call too")
+		r.tick()
+		r.tick()
+
+		s := r.snap()
+		pr := s.Work.Placed("r-1")
+		require.NotNil(t, pr)
+		assert.Equal(t, sprint.Review, pr.Col, "not widened again")
+		assert.NotContains(t, pr.F("brief"), "internal/y/b9.go")
+		assert.Equal(t, strconv.Itoa(sprint.MaxReadWidens), pr.F(sprint.FieldReadWidens))
+		bound := r.openOnCard(sprint.NBriefWrong, "r-1")
+		require.Len(t, bound, 1, "the brief is wrong: a mind's")
+		assert.Contains(t, bound[0].Note.What, "widened 3 times")
+		assert.Nil(t, s.Work.Card("r-1b"), "never twinned")
 	})
 	t.Run("at the brief's bound: the coordinator's", func(t *testing.T) {
 		t.Parallel()
@@ -205,4 +299,35 @@ func TestRequiredValidationFilesNeverWidenAReadersScope(t *testing.T) {
 	t.Parallel()
 	finding := "internal/y/y_test.go, internal/y/testdata/case.json, testdata/deep/witness.tla, tla/RUNS.tsv, tla/CASES.tsv, internal/docs/catalog.go and internal/y/AGENTS.md are required; internal/y/y.go remains source."
 	assert.Equal(t, []string{"internal/y/y.go"}, sprint.FilesOutsidePaths("PATHS: internal/x/x.go\n", finding))
+}
+
+// A widen keeps finder-first: the next attempt's first read is asked of the reader who broke
+// the widened attempt, not of the one who broke an attempt before it.
+func TestAWidenKeepsTheFinderOfTheWidenedAttempt(t *testing.T) {
+	t.Parallel()
+	r := newConflictRig(t)
+	r.readCard()
+	r.brokenRead("r-1", "internal/x/a.go:12 drops the error from Close; return it")
+	r.tick()
+	pr := r.snap().Work.Card("r-1")
+	require.Equal(t, 2, pr.Int("attempt"), "reworked")
+	first := pr.F(sprint.FieldFindingReader)
+	require.NotEmpty(t, first, "the rework names its finder")
+
+	// attempt 2 is broken by a different reader, outside PATHS
+	r.brokenReadBy("r-1", "internal/y/b.go:40 still calls the old name, outside PATHS; rename the call too", true)
+	var second string
+	for _, rc := range r.snap().Readers.Of("r-1") {
+		if rc.Col == sprint.Broken && rc.Int("attempt") == 2 {
+			second = rc.Row
+		}
+	}
+	require.NotEmpty(t, second)
+	require.NotEqual(t, first, second, "two readers")
+	r.tick()
+
+	pr = r.snap().Work.Card("r-1")
+	assert.Contains(t, pr.F("brief"), "internal/y/b.go", "widened in place")
+	assert.Equal(t, "2", pr.F(sprint.FieldFindingAttempt), "the finding is attempt 2's")
+	assert.Equal(t, second, pr.F(sprint.FieldFindingReader), "its finder is the reader who broke attempt 2")
 }

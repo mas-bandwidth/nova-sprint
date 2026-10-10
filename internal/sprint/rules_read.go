@@ -15,36 +15,63 @@ import (
 )
 
 // Answered by rule: a reader found it broken (docs/SPEC-SPRINT.md section 8, the rules table's
-// row read-broken; tla/SprintRules.tla, Part "reads": ReadAnswersBounded, TwinsWiden,
-// ReadAnswered). The night of 2026-10-05 the coordinator answered this judgment about forty
-// times, every time with `rework <card> --answers <id>`: the finding became the fix. The tick
-// answers it the same way: the finding is the fix of a rework on the same tier; a finding
-// that names a file outside the card's PATHS twins it (add --replaces) with PATHS
-// widened by exactly those files, starting from the broken attempt's head; a card at its
-// brief's bound (the same finding twice, or its attempts cap) is left to the coordinator,
-// as is a brief defect and a broken verdict with no finding. A friend's card is answered the
-// same way, its next attempt hers (ReworkPinned): the finding rides on the card whoever
-// worked it. Every answer is a note on the card naming the rule ("note", logged with the
-// move) and the decided note of the judgment.
+// row read-broken; tla/SprintRules.tla, Part "reads": ReadAnswersBounded, WidensWiden,
+// OutsideNeverBound, ReadAnswered). The night of 2026-10-05 the coordinator answered this
+// judgment about forty times, every time with `rework <card> --answers <id>`: the finding
+// became the fix. The tick answers it the same way: the finding is the fix of a rework on the
+// same tier; a finding that names a file outside the card's PATHS widens the card's brief in
+// place (Brief, as brief --widen edits it: the same id, never a twin; the owner, 2026-10-06:
+// "We gotta stop doing this twin shit. it's waste.") by exactly those files, its next attempt
+// starting from the broken attempt's head. A widened brief is the brief's bound's own remedy,
+// so a finding outside PATHS is widened at the bound too (the read raises no bound for it,
+// steps_review.go); any other card at its brief's bound (the same finding twice, or its
+// attempts cap) is left to the coordinator, as is a brief defect and a broken verdict with no
+// finding. A friend's card is answered the same way, and the finding rides on the card whoever
+// worked it: a rework's next attempt is hers (ReworkPinned, counted by the rework); a widened
+// card keeps her as its holder (FieldWho), but a widen counts no rework or return, so its next
+// attempt is pinned to her only when an earlier rework or return already pinned it. Every answer is a note on the card naming
+// the rule ("note", logged with the move) and the decided note of the judgment.
 
 // RuleReadBroken is the read-broken rule's name. run --answer-rules=false turns it off with
 // every rule; the sprint's answer_rules_off naming it turns it off alone (RuleOff), though
 // RuleNames and nova-config's enum (config.AnswerRules) do not list it yet.
 const RuleReadBroken = "read-broken"
 
-// ActTwinWider is the read-broken rule's act on a finding outside PATHS: the card twinned with
-// its PATHS widened.
-const ActTwinWider = "twin with PATHS widened"
+// ActWidenRead is the read-broken rule's act on a finding outside PATHS: the card's brief
+// widened in place by the files the finding names, the same id and never a twin.
+const ActWidenRead = "widen PATHS in place by the finding"
 
-// PartRuleTwin is the tick part that twins the cards a rule answers ActTwinWider.
-const PartRuleTwin = "rule twin"
+// FieldReadWidens counts the times readers' findings widened the primary's PATHS in place
+// (TickRuleWidenRead). Brief never resets it: a widened brief resets the brief's bound, so
+// this count is what bounds widening; at MaxReadWidens a finding outside PATHS is the brief's
+// bound (ReadWidensSpent), a mind's, never widened again.
+const FieldReadWidens = "read_widens"
+
+// MaxReadWidens is the most times readers' findings widen one card's PATHS.
+const MaxReadWidens = 3
+
+// ReadWidensSpent is the brief's bound a finding naming files outside the PATHS of a card
+// widened MaxReadWidens times already is: the brief is wrong, not the worker; "" while the
+// card may be widened again.
+func ReadWidensSpent(c *Card) string {
+	if n := c.Int(FieldReadWidens); n >= MaxReadWidens {
+		return fmt.Sprintf("%s has had its PATHS widened %d times by readers' findings and a reader names files outside them again; the brief is wrong, not the worker", c.ID, n)
+	}
+	return ""
+}
+
+// PartRuleWidenRead is the tick part that widens in place the cards a rule answers
+// ActWidenRead.
+const PartRuleWidenRead = "rule widen read"
 
 // FieldNote is a card's note: the last rule answer that moved it, in the rule's words.
 const FieldNote = "note"
 
-// ruleReadBroken: a reader found the primary's attempt broken. Below its brief's bound it
-// is reworked with the findings as the fix, on its tier, or twinned with PATHS widened when
-// the findings name files outside them; a friend's card as a machine's.
+// ruleReadBroken: a reader found the primary's attempt broken. When the findings name files
+// outside its PATHS its brief is widened in place by them, at its brief's bound or below it,
+// under MaxReadWidens (past it, the bound's, a mind's);
+// otherwise, below the bound, it is reworked with the findings as the fix, on its tier; a
+// friend's card as a machine's.
 func ruleReadBroken(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleReadBroken
 	pr := s.Work.Placed(a.Subject)
@@ -61,20 +88,23 @@ func ruleReadBroken(s *Snapshot, a *RuleAnswer) {
 		left(a, "no broken read of attempt "+pr.F("attempt")+" with a finding stands: a mind's")
 		return
 	}
-	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok {
+	out := FilesOutsidePaths(pr.F("brief"), finding)
+	if spent := ReadWidensSpent(pr); len(out) > 0 && spent != "" {
+		left(a, spent)
+		return
+	}
+	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok && len(out) == 0 {
+		// a widened brief is the bound's remedy (the bound counts attempts from it), so only
+		// a finding inside PATHS is left at the bound
 		left(a, bb.String())
 		return
 	}
 	a.Card, a.fix = pr.ID, cutText(finding, MaxCardTextBytes)
-	if out := FilesOutsidePaths(pr.F("brief"), finding); len(out) > 0 {
-		a.files, a.twin = out, TwinID(s, pr)
-		if a.twin == "" {
-			left(a, "its finding names "+strings.Join(out, ",")+" outside its PATHS, and every twin id of "+pr.ID+" is taken")
-			return
-		}
-		a.Act = ActTwinWider
-		a.Why = fmt.Sprintf("a reader found attempt %s broken naming %s outside its PATHS: twinned as %s with PATHS widened, its finding the fix",
-			pr.F("attempt"), strings.Join(out, ","), a.twin)
+	if len(out) > 0 {
+		a.files = out
+		a.Act = ActWidenRead
+		a.Why = fmt.Sprintf("a reader found attempt %s broken naming %s outside its PATHS: PATHS widened in place, its finding the fix",
+			pr.F("attempt"), strings.Join(out, ","))
 		return
 	}
 	a.Act = ActRework
@@ -152,40 +182,60 @@ func PathsWidened(brief string, files []string, carry string) string {
 	return strings.Join(lines, "\n")
 }
 
-// TickRuleTwin twins the first card a rule answers ActTwinWider: Recut with its PATHS
-// widened by the files its finding names and a CARRY: line at the broken attempt's head when
-// it pushed one, the twin carrying the finding as its fix and the rule's note, the old card
-// dropped "replaced by <twin>" with its judgments closed by the decided note. One card a
-// tick: each twin's step re-weighs the stream, so two planned on one read would write one
-// card's weight twice; the next tick twins the next. A recut refused leaves the judgment
-// open, the coordinator's.
-func TickRuleTwin(s *Snapshot, r TickReq) (Plan, int) {
-	for _, a := range acting(s, r, ActTwinWider) {
+// TickRuleWidenRead widens in place the first card a rule answers ActWidenRead: Brief, as
+// brief --widen edits it (the same id, never a twin), its PATHS lines widened by exactly the
+// files the finding names outside them and a CARRY: line at the broken attempt's head when it
+// pushed one; review -> ready, its next attempt staged from that head and its brief's bound
+// counted from it; the finding its fix, its judgment answered by the decided note. One card a
+// tick. A brief edit refused leaves the judgment open, the coordinator's.
+func TickRuleWidenRead(s *Snapshot, r TickReq) (Plan, int) {
+	for _, a := range acting(s, r, ActWidenRead) {
 		pr := s.Work.Placed(a.Card)
 		carry := ""
 		if head := pr.F("head"); typedrec.IsFullSha(head) {
 			carry = fmt.Sprintf("CARRY: %s attempt %d head=%s", pr.ID, pr.Int("attempt"), head)
 		}
-		p := Recut(s, RecutReq{ID: pr.ID, New: a.twin, Brief: PathsWidened(pr.F("brief"), a.files, carry), Rules: pr.F(FieldRules), Who: r.who()})
+		p := Brief(s, BriefReq{ID: pr.ID, Brief: PathsWidened(pr.F("brief"), a.files, carry), Rules: pr.F(FieldRules), Who: r.who()})
 		if len(p.Refused) > 0 {
 			continue
 		}
 		said := cutText(RuleSaid(a.Rule, a.Act+": "+a.Why), MaxCardTextBytes)
 		for i := range p.Units {
 			u := &p.Units[i]
-			for j, ch := range u.Changes {
-				if ch.Table == Work && ch.Entry.ID == a.twin && ch.Entry.Create != nil {
-					set := u.Changes[j].Entry.Set
-					set["fix"], set["finding"] = a.fix, a.fix
-					set["why"] = fmt.Sprintf("%s attempt %s finished and a reader found it broken", pr.ID, pr.F("attempt"))
-					set[FieldNote], set[FieldRuleAnswer] = said, a.Rule+": "+a.Act+" at "+stamp(s.Now)
-					if w := pr.F(FieldWho); w != "" && set[FieldWho] == "" {
-						set[FieldWho] = w // whoever held the work keeps the twin
-					}
-				}
-			}
 			if u.Key != pr.ID {
 				continue
+			}
+			for j, ch := range u.Changes {
+				if ch.Table != Work || ch.Entry.ID != pr.ID {
+					continue
+				}
+				e := &u.Changes[j].Entry
+				if e.Set == nil {
+					e.Set = map[string]string{}
+				}
+				e.Set["fix"], e.Set["finding"] = a.fix, a.fix
+				e.Set[FieldNote], e.Set[FieldRuleAnswer] = said, a.Rule+": "+a.Act+" at "+stamp(s.Now)
+				e.Set[FieldReadWidens] = itoa(pr.Int(FieldReadWidens) + 1) // Brief never resets it
+				// the finding is the broken attempt's: Brief unsets finding_attempt, and with it
+				// finder-first (its finder checks the fix) would be lost on a widen
+				e.Set[FieldFindingAttempt] = pr.F("attempt")
+				keep := []string{"fix", "finding", FieldFindingAttempt}
+				if w := pr.F(FieldWho); w != "" && e.Set[FieldWho] == "" {
+					e.Set[FieldWho] = w // whoever held the work keeps the card
+					keep = append(keep, FieldWho)
+				}
+				e.Unset = slices.DeleteFunc(e.Unset, func(f string) bool { return slices.Contains(keep, f) })
+				// the finder of the widened attempt, as a rework names it (steps_review.go): the next
+				// attempt's first read is asked of them (finderFirst needs the reader and the attempt)
+				if finder := finderOf(s, pr); finder != "" {
+					e.Set[FieldFindingReader] = finder
+				} else if !slices.Contains(e.Unset, FieldFindingReader) {
+					// only a field the card holds, as every other unset of the plan is filtered
+					// (unsetPresent, plan.go): an absent field is not named in the manifest
+					e.Unset = append(e.Unset, unsetPresent(pr, []string{FieldFindingReader})...)
+				}
+				// FieldFindingKeys is not appended: a widen resets the brief's bound, which the
+				// identical-finding check counts from, so no key is owed for this attempt
 			}
 			u.Moved += "; answered by rule " + a.Rule
 			for _, o := range u.Closes {

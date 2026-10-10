@@ -270,3 +270,43 @@ func TestHealthRecordIsRemovedWithTheFriend(t *testing.T) {
 	keys := TeardownKeys(h.st.Names, nil, Epochs{Friends: []string{"bob"}})
 	assert.Contains(t, keys, h.st.Names.Key(friendHealthKey("bob")))
 }
+
+// A friend's observation prints on her row only while it is what her status rests on: up
+// on her beat's proof or a finished card, the last session pong's seen time is old news
+// beside a live status and is left off (the seat's reads keep it as Health).
+func TestShownHealthIsLeftOffAnUpThatRestsOnOtherEvidence(t *testing.T) {
+	t.Parallel()
+	seen := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	h := &sprint.FriendHealth{State: sprint.Up, Seen: seen, Generation: 1}
+	for _, tc := range []struct {
+		name, status, evidence string
+		shown                  bool
+	}{
+		{"up on a live pong", sprint.Up, "session pong 3s ago", true},
+		{"up on her beat's proof, the pong stale", sprint.Up, "session proof 20s ago", false},
+		{"up on a finished card, the pong stale", sprint.Up, "finish 4m0s ago", false},
+		{"down keeps the judgment that says why", sprint.Down, "no session evidence", true},
+		{"held keeps its observation", sprint.Held, "held", true},
+	} {
+		assert.Equal(t, tc.shown, shownHealth(h, tc.status, tc.evidence) != nil, tc.name)
+	}
+}
+
+// Through FriendRows: a live pong prints the observation (ShownHealth) and the seat's reads
+// keep it (Health) either way.
+func TestFriendRowsPrintTheObservationWhileItIsTheEvidence(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, _, _, err := h.st.SyncFriends(h.ctx, []FriendSpec{{Name: "amy", Width: 2}})
+	require.NoError(t, err)
+	_, _, _, err = h.health("amy", "tester", sprint.Up, h.now, 1)
+	require.NoError(t, err)
+	rows, err := h.st.FriendRows(h.ctx, h.now)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, sprint.Up, rows[0].Status)
+	if assert.NotNil(t, rows[0].ShownHealth, "a live pong is printed") {
+		assert.Equal(t, h.now.UTC(), rows[0].ShownHealth.Seen.UTC())
+	}
+	assert.NotNil(t, rows[0].Health)
+}
