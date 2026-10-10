@@ -149,4 +149,13 @@
     :title "Rested routes must not overflow the fleet table property cap"
     :text "Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the
      tick writes nothing. Use one property for all."
-    :origin "issue #5210")))
+    :origin "issue #5210")
+
+  (fix "defer-cards-to-the-roadmap" :release "v1.2.6" :status "planned"
+   :title "A verb defers waiting cards to the roadmap with their whole briefs"
+   :text "nova-sprint defer writes the named waiting cards, or the waiting cards of a stream or of a
+    repository's streams, into the roadmap data with each whole brief, and drops them from the store in
+    the same call; --expect checks the count and --dry-run writes nothing. The roadmap file is written
+    first and read back against the store afterwards, so it holds exactly the cards that left the
+    table; the drop is all or none."
+   :origin "card from the sprint store (2026-10-10); the roadmap item roadmap-defer-verb, folded in")))
