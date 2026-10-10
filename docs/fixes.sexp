@@ -193,6 +193,14 @@
      file. Use a unique temporary path per writer."
     :origin "issue #5160")
 
+   (fix "seat-judgment-repush" :release "v1.2.9" :status "planned"
+    :title "Judgments waiting on the seat are re-pushed each look"
+    :text "The seat push loop was only pushing judgments once because it cached the 'seen' file list
+     for all directories. When following the seat, cached seen prevents re-pushing judgments that are
+     still waiting on the seat. The fix modifies pushTarget to not cache seen for seat directories
+     (only for fixed directories), so judgments are re-pushed on every look while unanswered."
+    :origin "seat-only restart, 2026-10-10: fleet at 18 of 76, ten cards waiting on seat's judgment")
+
    (fix "rest-properties-cap" :release "v1.2.9" :status "planned"
     :title "Rested routes must not overflow the fleet table property cap"
     :text "Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the
