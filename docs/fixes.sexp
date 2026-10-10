@@ -140,4 +140,9 @@
     :title "Rested routes must not overflow the fleet table property cap"
     :text "Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the
      tick writes nothing. Use one property for all."
-    :origin "issue #5210")))
+    :origin "issue #5210")
+
+   (fix "log-since-wide-window" :release "v1.2.9" :status "planned"
+    :title "Fix log --since for windows wider than 22 hours"
+    :text "A wide --since window returns nothing; pin the window and return every event in it."
+    :origin "card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)")))
