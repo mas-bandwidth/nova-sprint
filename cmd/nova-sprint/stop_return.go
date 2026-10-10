@@ -14,6 +14,7 @@ func (a *app) cmdStopReturn(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("stop-return")
 	as := fs.String("as", "", "the fleet member, friend.<name>, or reader row that owns these cards")
 	reason := fs.String("reason", "", "the observed cancellation acknowledgement")
+	lane := fs.Int("lane", 0, "the lane whose run the stop cancelled (take --lane gave it the card): a card another lane of the row holds is refused")
 	words, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "stop-return", err.Error())
@@ -30,5 +31,5 @@ func (a *app) cmdStopReturn(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "stop-return", err.Error())
 	}
-	return a.runStep("stop-return", *c, st, store.StopReturnStep(sprint.StopReturnReq{As: *as, IDs: ids, Gens: gens, Reason: *reason}), stdout, stderr)
+	return a.runStep("stop-return", *c, st, store.StopReturnStep(sprint.StopReturnReq{As: *as, IDs: ids, Gens: gens, Reason: *reason, Lane: *lane}), stdout, stderr)
 }
