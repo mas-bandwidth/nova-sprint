@@ -405,19 +405,19 @@ func TickAccept(s *Snapshot, r TickReq) (Plan, int) {
 	return p, 0
 }
 
-// ShortReadsBack is the tick's pump sending every merging card short of its reads
-// (ReadsShort: fewer different readers' ok reads at its head than the count a card in
-// review needs, the setting raised or its tier's rule raised since its accept) back to
-// review: off its merge queue (its merge card to returned, as a return moves it), its
-// recorded count and readers cleared, never marked returned (AcceptHeld), so the ask asks
-// the read it lacks and the pump accepts it again on its reads. No judgment and no repair:
-// the read rule is mechanical. A card a change is queued for (s.Held) or whose merge card
-// is not queued or stuck waits for a later tick. tla/Land.tla, ShortBack and
-// NoLandWithoutReads.
+// ShortReadsBack is the tick's pump sending every merging or landed card short of its
+// reads (ReadsShort: fewer different readers' ok reads at its head than the count a card
+// needs, the setting raised or its tier's rule raised since its accept) back to review. A
+// merging card leaves its merge queue; a landed card leaves its merged record too. The
+// next reader part asks the missing read, and a later pump accepts the card again on its
+// reads. No judgment and no repair: the read rule is mechanical. A card a change is
+// queued for (s.Held), or whose merge card is not in a movable state, waits for a later
+// tick. This is the machine's after-the-fact repair of rule 6 (docs/SPEC-SPRINT.md
+// section 9, rule 6; tla/Land.tla, ShortBack and NoLandWithoutReads).
 func ShortReadsBack(s *Snapshot, who string) Plan {
 	var p Plan
 	leaving := map[string]bool{}
-	for _, c := range s.Work.Column(Merging) {
+	for _, c := range s.Work.Column(Merging, Landed) {
 		if IsSentinel(c) || s.Held[c.ID] || LandingMarked(s, c.ID) || PushedUnreportedMatches(s, c.ID) {
 			// a lander committed to landing it (marked before its push, MarkLanding), or it was
 			// pushed and not reported: the lander completes it, never review (tla/Land.tla
@@ -429,7 +429,10 @@ func ShortReadsBack(s *Snapshot, who string) Plan {
 			continue
 		}
 		m := s.Merge.Placed(c.ID)
-		if m != nil && m.Col != Queued && m.Col != Stuck {
+		if c.Col == Merging && m != nil && m.Col != Queued && m.Col != Stuck {
+			continue
+		}
+		if c.Col == Landed && m != nil && m.Col != Merged {
 			continue
 		}
 		u := Unit{Key: c.ID, Stream: c.Row}
