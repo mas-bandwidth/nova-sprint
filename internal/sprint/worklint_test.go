@@ -99,6 +99,9 @@ type lintRig struct {
 	repo *lintRepo
 	mu   sync.Mutex
 	now  time.Time
+	// gate is the fake bench the machine lint's pin checks run tests through; nil is a red
+	// run at every revision (the change pins).
+	gate sprint.GateTestRun
 }
 
 func newLintRig(t *testing.T) *lintRig {
@@ -107,7 +110,13 @@ func newLintRig(t *testing.T) *lintRig {
 	m := store.NewMem()
 	n := 0
 	lint := sprint.NewWorkLinter(sprint.WorkLintGit{Clone: func(string) (string, error) { return r.repo.lint, nil }, Env: r.repo.env,
-		Now: func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now }})
+		Now: func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },
+		Gate: func(ctx context.Context, ref string, argv []string) (sprint.BenchResult, error) {
+			if r.gate != nil {
+				return r.gate(ctx, ref, argv)
+			}
+			return sprint.BenchResult{Code: 1, Out: "FAIL\n"}, nil
+		}})
 	r.st = &store.Store{B: m, Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator",
 		Now:     func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },
 		NewID:   func() string { r.mu.Lock(); defer r.mu.Unlock(); n++; return fmt.Sprint(n) },

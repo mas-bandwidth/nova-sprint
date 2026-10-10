@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/diffcheck"
 	"github.com/mas-bandwidth/nova-sprint/internal/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
 )
@@ -56,6 +59,7 @@ func ReadWorkView(ctx context.Context, dir, base, head string, env []string) (Wo
 	if err != nil {
 		return v, fmt.Errorf("work lint: no merge-base of %s and %s in %s: %w", base, head, dir, err)
 	}
+	v.MergeBase = mb
 	res, err := gitrun.Run(ctx, o, "diff", "--no-color", "--no-ext-diff", "-M", mb, head)
 	if err != nil {
 		return v, fmt.Errorf("work lint: diff %s..%s in %s: %w", mb, head, dir, err)
@@ -117,6 +121,10 @@ func ReadWorkView(ctx context.Context, dir, base, head string, env []string) (Wo
 type WorkLintGit struct {
 	Clone func(repo string) (string, error)
 	Env   []string
+	// Gate runs the TEST line's test at a commit-ish of the clone, the machine lint's pin
+	// check (gatelint.go). nil runs the check in the clone itself (runGateInClone): the
+	// bench-run verb is the production seam, and a fake is the tests'.
+	Gate GateTestRun
 	// TTL is how long one head's findings are kept against the same base tip's read; zero
 	// is two minutes. Now is the clock the cache is kept by; nil is the wall clock.
 	TTL time.Duration
@@ -176,6 +184,19 @@ func NewWorkLinter(g WorkLintGit) WorkLinter {
 			if err != nil {
 				return nil, err
 			}
+			// the machine lint's pin checks run the TEST line's test at the merge-base
+			// and at the head with the change's non-test hunks reverted, through g.Gate
+			// (the bench-run verb) or, with none, in the clone itself
+			gate := g.Gate
+			if gate == nil {
+				gate = func(ctx context.Context, ref string, argv []string) (BenchResult, error) {
+					return runGateInClone(ctx, dir, ref, argv, g.Env)
+				}
+			}
+			v.GateRun = func(ref string, argv []string) (BenchResult, error) { return gate(ctx, ref, argv) }
+			v.Reverted = func() (string, error) {
+				return revertNonTestHunks(ctx, dir, v.MergeBase, head, v.Diff, g.Env)
+			}
 			return WorkLint(in, v), nil
 		}()
 		mu.Lock()
@@ -186,4 +207,95 @@ func NewWorkLinter(g WorkLintGit) WorkLinter {
 		mu.Unlock()
 		return fs, err
 	}
+}
+
+// runGateInClone runs argv at ref in a worktree of the clone dir and returns the result:
+// the machine lint's pin check when no bench seam is set. A command that never reached git
+// or go is an error (the check is skipped); a command that ran gives its exit status and
+// combined output. The worktree is removed and the clone's own checkout untouched.
+func runGateInClone(ctx context.Context, dir, ref string, argv []string, env []string) (BenchResult, error) {
+	if ref == "" || len(argv) == 0 {
+		return BenchResult{}, fmt.Errorf("machine lint: no ref or command")
+	}
+	tmp, err := os.MkdirTemp("", "nova-lint-")
+	if err != nil {
+		return BenchResult{}, err
+	}
+	defer os.RemoveAll(tmp)
+	tree := filepath.Join(tmp, "tree")
+	o := gitrun.Options{C: dir, Env: env, OwnRepo: true}
+	if _, err := gitrun.Run(ctx, o, "worktree", "add", "--detach", tree, ref); err != nil {
+		return BenchResult{}, err
+	}
+	defer gitrun.Run(context.Background(), o, "worktree", "remove", "--force", tree)
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.Dir = tree
+	if env != nil {
+		cmd.Env = env
+	}
+	out, err := cmd.CombinedOutput()
+	code := 0
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+	case errors.As(err, &exit):
+		code = exit.ExitCode()
+	default:
+		return BenchResult{}, err
+	}
+	host, _ := os.Hostname()
+	return BenchResult{Host: host, Code: code, Out: string(out)}, nil
+}
+
+// revertNonTestHunks makes a commit at head with every non-test file the diff changes
+// restored to its content at mergeBase (a file the change adds is removed), the change's
+// test files kept, and returns the commit's id. The reverted head is what the pin-back
+// check runs the TEST line's test at: it must fail there. "" is no reverted tree.
+func revertNonTestHunks(ctx context.Context, dir, mergeBase, head, diff string, env []string) (string, error) {
+	if mergeBase == "" || head == "" {
+		return "", nil
+	}
+	var revert []string
+	for _, f := range diffcheck.Parse(diff) {
+		if f.New == "" || strings.HasSuffix(f.New, "_test.go") {
+			continue
+		}
+		revert = append(revert, f.New)
+	}
+	tmp, err := os.MkdirTemp("", "nova-lint-revert-")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmp)
+	tree := filepath.Join(tmp, "tree")
+	o := gitrun.Options{C: dir, Env: env, OwnRepo: true}
+	if _, err := gitrun.Run(ctx, o, "worktree", "add", "--detach", tree, head); err != nil {
+		return "", err
+	}
+	defer gitrun.Run(context.Background(), o, "worktree", "remove", "--force", tree)
+	own := gitrun.Options{C: tree, Env: env, OwnRepo: true}
+	for _, p := range revert {
+		if _, err := gitrun.Run(ctx, own, "cat-file", "-e", mergeBase+":"+p); err != nil {
+			// the change adds the file: reverting its hunk removes it
+			if err := os.Remove(filepath.Join(tree, p)); err != nil && !os.IsNotExist(err) {
+				return "", err
+			}
+			continue
+		}
+		if _, err := gitrun.Run(ctx, own, "checkout", mergeBase, "--", p); err != nil {
+			return "", err
+		}
+	}
+	if _, err := gitrun.Run(ctx, own, "add", "-A"); err != nil {
+		return "", err
+	}
+	if _, err := gitrun.Run(ctx, own, "-c", "user.name=nova-sprint", "-c", "user.email=nova-sprint@localhost",
+		"commit", "--allow-empty", "-q", "-m", "the change's non-test hunks reverted"); err != nil {
+		return "", err
+	}
+	out, err := gitrun.Output(ctx, own, "rev-parse", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
 }

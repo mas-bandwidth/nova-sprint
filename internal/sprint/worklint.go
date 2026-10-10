@@ -64,6 +64,9 @@ var WorkLintRules = []WorkLintRule{
 	{LintMerge, "the head does not merge onto the base tip (git merge-tree)", "merge the base tip into the branch, resolve the conflicts, and push"},
 	{LintVerbDryRun, "a new or changed verb that writes has no --dry-run in its syntax", "give the verb a --dry-run that says what it would write and writes nothing"},
 	{LintTestClock, "an added _test.go line calls time.Sleep or time.Now outside a synctest bubble", "run the test in synctest.Test, or inject the clock"},
+	{LintPinAbsent, "the TEST line's test runs green at the merge-base with the base tip (it passes without the change)", "write a test that fails without the change, so it is red at the merge-base"},
+	{LintPinBroken, "the TEST line's test runs green with the change's non-test hunks reverted (it does not fail when the change is removed)", "assert the change's behavior, so removing the change turns the test red"},
+	{LintUnreached, "an exported function or method the change adds has no reference from a non-test file in the package it is added to", "call it from non-test code, or drop it"},
 }
 
 // WorkLintRuleOf is the rule of a token; ok is false for a token no check has.
@@ -136,6 +139,15 @@ type WorkView struct {
 	// Show reads a file at the head; Ls the files of a directory at the head.
 	Show func(p string) ([]byte, bool)
 	Ls   func(dir string) []string
+	// MergeBase is the merge-base of the base tip and the head, "" when the view read
+	// none: the revision the pin checks run the TEST line's test at (gatelint.go).
+	MergeBase string
+	// GateRun runs the TEST line's test at a commit-ish of the clone and returns the
+	// machine's result; nil runs no pin check (a view with no machine seam).
+	GateRun func(ref string, argv []string) (BenchResult, error)
+	// Reverted names a commit-ish of the head with the change's non-test hunks reverted,
+	// the change's test files kept; nil or an error skips the pin-back check.
+	Reverted func() (string, error)
 }
 
 // WorkLintInput is the attempt the lint judges besides its view: the brief (PATHS, TEST),
@@ -213,6 +225,10 @@ func WorkLint(in WorkLintInput, v WorkView) []LintFinding {
 	}
 	out = append(out, verbFindings(files, v)...)
 	out = append(out, clockFindings(files, v)...)
+	// the machine lint's checks (gatelint.go): the test pins the change (red at the
+	// merge-base, red again with the non-test hunks reverted) and every exported symbol
+	// the change adds is reached from a non-test file
+	out = append(out, GateLintFindings(in, v)...)
 	return out
 }
 

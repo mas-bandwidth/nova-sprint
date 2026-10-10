@@ -2856,6 +2856,41 @@ id (`--op`) returns the original result, with no second counter or notification.
   asks every attempt as before: the field is additive, and a store given
   `sprint.GateTables(g)` gates with `g`.
 
+### The machine lint: work-lint-proves-the-test-pins-ns-bb.w1
+
+- The work lint's checks read the commit alone; three more checks the machine can make run
+  beside them, before any reader is asked (the owner, 2026-10-05: "Can parts of checking
+  work from a friend or fleet machine be automated ... maybe we could catch common cases of
+  failure without spending $ on LLMs"). On epoch 15's log, readers found 43 tests that did
+  not pin the change (green before it, or unable to fail) and 44 changes whose new code
+  nothing called (dead code, unwired verbs; restart-keeps-reads-r landed `ServerRestart`
+  with no caller and turned the base red). Both are decidable by the machine. The machine
+  lint is part of `sprint.WorkLint` (`sprint.GateLintFindings`, gatelint.go), after the work
+  lint's own checks, and its tokens and remedies sit beside the work lint's
+  (`sprint.WorkLintRules`, listed by `nova-sprint rules`).
+- The pin checks (`sprint.LintPinAbsent`, `sprint.LintPinBroken`; pins.go) run the TEST
+  line's test through a seam (`sprint.GateTestRun`, `sprint.WorkLintGit.Gate`): the
+  bench-run verb in production, a fake in the tests; with no seam the clone itself is the
+  machine (`sprint.runGateInClone`). `gate-pin-absent` is the test green at the attempt's
+  merge-base with the base tip, so it passes without the change; a test that is not there
+  pins by absence ("no tests to run"), and a test the machine could not run is no finding.
+  `gate-pin-broken` is the test green again at the head with the change's non-test hunks
+  reverted and its test files kept (`sprint.revertNonTestHunks`), so it does not fail when
+  the change is removed. Their remedies: write a test that fails without the change; assert
+  the change's behavior, so removing it turns the test red.
+- The reach check (`sprint.LintUnreached`; reach.go) reads the head tree alone with
+  `go/parser` and `go/ast` (`sprint.FindNonTestReferences`): every exported function or
+  method the change adds must have a reference from a non-test file in the package it is
+  added to, and a symbol nothing references is a finding naming it. A change that only
+  rewrites a body or edits test files adds no symbol; a verb is reached when the command's
+  verb table names it. Remedy: call it from non-test code, or drop it.
+- The checks run on the twin repository and a fake bench
+  (`TestATestThatDoesNotPinTheChangeIsReworkedBeforeARead`,
+  `TestReachFindingsNamesAnUnreachedExportedSymbol`,
+  `TestFindNonTestReferencesMarksANonTestReference`): a test that passes at the merge-base
+  is refused with `gate-pin-absent`, reworked at once, counted as a broken read, and asked
+  of no reader.
+
 ## 7. Merging
 
 1. In work order, never random: the head of the stream's queued cell first.
