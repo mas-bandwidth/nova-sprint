@@ -122,6 +122,12 @@
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+  (fix "restore-tests-owed-from-split" :release "v1.2.6" :status "shipped"
+   :title "Restore the tests the repository split moved out of nova-tools"
+   :text "Five tests (coordinator rules, processor doc, coordinator tools, tool class, seat play), the
+    member and contract functional tests and eight contract cases that build nova-sprint, and the
+    tick wall-clock gate job, restored in nova-sprint."
+   :origin "repository split cold reads (nova-tools PR #5571 and PR #5591)")
 
   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
    :title "The worker brief says never amend, rebase or reset onto origin"
