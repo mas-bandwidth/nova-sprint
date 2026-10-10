@@ -13,6 +13,7 @@ func TestATestThatDoesNotPinTheChangeIsReworkedBeforeARead(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    GateLintInput
+		run      BenchRunner
 		expected []GateLintFinding
 	}{
 		{
@@ -35,13 +36,44 @@ func TestATestThatDoesNotPinTheChangeIsReworkedBeforeARead(t *testing.T) {
 			},
 			expected: nil,
 		},
+		{
+			name: "test passes at merge-base (pin absent)",
+			input: GateLintInput{
+				MergeBase: "abc123",
+				Head:      "def456",
+				TestPkg:   "internal/sprint",
+				TestName:  "TestSomething",
+			},
+			run: func(commit, pkg, testname string) (bool, error) {
+				// Test passes at merge-base - this is a finding
+				return true, nil
+			},
+			expected: []GateLintFinding{{What: GateLintPinAbsent + ": test passes at merge-base"}},
+		},
+		{
+			name: "test passes at head (pin broken check)",
+			input: GateLintInput{
+				MergeBase: "abc123",
+				Head:      "def456",
+				TestPkg:   "internal/sprint",
+				TestName:  "TestSomething",
+			},
+			run: func(commit, pkg, testname string) (bool, error) {
+				// Test passes at head - triggers pin broken check
+				return true, nil
+			},
+			expected: []GateLintFinding{{What: GateLintPinBroken + ": test passes with non-test hunks reverted"}},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := GateLintFindings(tt.input)
+			got := GateLintFindings(tt.input, tt.run)
 			if len(got) != len(tt.expected) {
 				t.Errorf("GateLintFindings() returned %d findings, want %d", len(got), len(tt.expected))
+				for i, f := range got {
+					t.Logf("  [%d] %s", i, f.What)
+				}
 			}
 		})
 	}

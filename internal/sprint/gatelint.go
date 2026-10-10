@@ -29,21 +29,33 @@ type GateLintInput struct {
 	TestName  string
 }
 
+// BenchRunner runs a test at a given commit and returns whether it passed.
+type BenchRunner func(commit, pkg, testname string) (passed bool, err error)
+
 // GateLintFindings returns findings for the extended gate checks.
-func GateLintFindings(input GateLintInput) []GateLintFinding {
+func GateLintFindings(input GateLintInput, run BenchRunner) []GateLintFinding {
 	var out []GateLintFinding
 
 	if input.TestPkg == "" || input.TestName == "" {
 		return nil
 	}
 
-	// Pin check: test should fail at merge-base (or not exist)
-	// For now, stub implementation
-	_ = input.MergeBase
+	if run == nil {
+		return nil
+	}
 
-	// Pin check: test should fail when non-test changes are reverted
-	// For now, stub implementation
-	_ = input.Head
+	// Check 1: Test should fail at merge-base (or not exist)
+	// If it passes at merge-base, that's a finding (pin absent)
+	if passed, err := run(input.MergeBase, input.TestPkg, input.TestName); err == nil && passed {
+		out = append(out, GateLintFinding{What: GateLintPinAbsent + ": test passes at merge-base"})
+		return out
+	}
+
+	// Check 2: Test should fail when non-test hunks are reverted (pin broken)
+	// We run the test at head - if it passes when only test files remain, that's a finding
+	if passed, err := run(input.Head, input.TestPkg, input.TestName); err == nil && passed {
+		out = append(out, GateLintFinding{What: GateLintPinBroken + ": test passes with non-test hunks reverted"})
+	}
 
 	return out
 }
