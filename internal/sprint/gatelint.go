@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"strings"
 )
 
@@ -81,7 +82,7 @@ func GetExportedDecls(src []byte, fset *token.FileSet) map[string]token.Pos {
 	for _, decl := range f.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
-			if d.Recv == nil && d.Name.IsExported() {
+			if d.Name.IsExported() {
 				out[d.Name.Name] = d.Pos()
 			}
 		case *ast.GenDecl:
@@ -136,7 +137,7 @@ func GateLintFindingString(f GateLintFinding) string {
 	return "machine gate: " + f.What
 }
 
-// readFile reads a file from the filesystem or from the provided reader.
+// readFile reads a file from the filesystem.
 func readFile(path string) ([]byte, error) {
-	return nil, nil
+	return os.ReadFile(path)
 }

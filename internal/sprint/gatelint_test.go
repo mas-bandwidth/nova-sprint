@@ -6,9 +6,9 @@ import (
 )
 
 // TestATestThatDoesNotPinTheChangeIsReworkedBeforeARead tests that:
-// 1. A test that passes at merge-base is reworked
-// 2. A test that stays green when the change is reverted is reworked
-// 3. An exported function with no non-test caller is reworked
+// 1. A test that passes at merge-base is reworked (pin absent)
+// 2. A test that stays green when the change is reverted is reworked (pin broken)
+// 3. An exported function with no non-test caller is reworked (reach)
 func TestATestThatDoesNotPinTheChangeIsReworkedBeforeARead(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -21,6 +21,16 @@ func TestATestThatDoesNotPinTheChangeIsReworkedBeforeARead(t *testing.T) {
 				MergeBase: "",
 				Head:      "",
 				TestPkg:   "",
+				TestName:  "",
+			},
+			expected: nil,
+		},
+		{
+			name: "test pkg without test name returns nothing",
+			input: GateLintInput{
+				MergeBase: "abc123",
+				Head:      "def456",
+				TestPkg:   "internal/sprint",
 				TestName:  "",
 			},
 			expected: nil,
@@ -62,16 +72,77 @@ func ExportedFunc() {}
 func unexported() {}
 type ExportedType struct{}
 type unexported struct{}
+// Method on struct
+func (e ExportedType) Method() {}
+func (u unexported) unexportedMethod() {}
 `)
 	fset := token.NewFileSet()
 	decls := GetExportedDecls(src, fset)
-	if len(decls) != 2 {
-		t.Errorf("GetExportedDecls() returned %d decls, want 2", len(decls))
+	// Should find: ExportedFunc, ExportedType, Method
+	if len(decls) != 3 {
+		t.Errorf("GetExportedDecls() returned %d decls, want 3", len(decls))
 	}
 	if _, ok := decls["ExportedFunc"]; !ok {
 		t.Error("GetExportedDecls() missing ExportedFunc")
 	}
 	if _, ok := decls["ExportedType"]; !ok {
 		t.Error("GetExportedDecls() missing ExportedType")
+	}
+	if _, ok := decls["Method"]; !ok {
+		t.Error("GetExportedDecls() missing Method")
+	}
+}
+
+// TestGateLintFindingString tests the string representation.
+func TestGateLintFindingString(t *testing.T) {
+	finding := GateLintFinding{What: "test finding"}
+	got := GateLintFindingString(finding)
+	want := "machine gate: test finding"
+	if got != want {
+		t.Errorf("GateLintFindingString() = %q, want %q", got, want)
+	}
+}
+
+// TestParseTestLine tests parsing of TEST lines from briefs.
+func TestParseTestLine(t *testing.T) {
+	tests := []struct {
+		name string
+		brief string
+		wantPkg string
+		wantName string
+	}{
+		{
+			name: "simple test line",
+			brief: "TEST: internal/sprint TestSomething",
+			wantPkg: "internal/sprint",
+			wantName: "TestSomething",
+		},
+		{
+			name: "test line with package only",
+			brief: "TEST: internal/sprint",
+			wantPkg: "internal/sprint",
+			wantName: "",
+		},
+		{
+			name: "test line none",
+			brief: "TEST: none",
+			wantPkg: "",
+			wantName: "",
+		},
+		{
+			name: "multiline brief with TEST",
+			brief: "CARD: test\nTEST: internal/sprint TestFoo\nPATHS: internal/sprint",
+			wantPkg: "internal/sprint",
+			wantName: "TestFoo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pkg, name := ParseTestLine(tt.brief)
+			if pkg != tt.wantPkg || name != tt.wantName {
+				t.Errorf("ParseTestLine() = (%q, %q), want (%q, %q)", pkg, name, tt.wantPkg, tt.wantName)
+			}
+		})
 	}
 }
