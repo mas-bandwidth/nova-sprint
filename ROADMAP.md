@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (212)
+- [The sprint machine](#the-sprint-machine) (211)
 - [Setup, release and operations](#setup-release-and-operations) (28)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (20)
@@ -221,14 +221,6 @@ A wide --since window returns nothing; pin the window and return every event in 
 Target: v1.3
 
 From: card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)
-
-### One column field every reader agrees on
-
-Card output carries a single column field so a card's state is not confused with the state of its need.
-
-Target: v1.3
-
-From: card moved out of the sprint (work record, 2026-10-04)
 
 ### Automatic promotion to dev and drift alarms
 

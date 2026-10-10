@@ -20,7 +20,9 @@
     this repository, then cut as one release."
    :date "2026-10-10")
   (release "v1.2.9" :status "planned" :date "2026-10-10"
-   :text "Inbox push writes each judgment once without concurrent writers sharing a temporary path."))
+   :text "Two fixes: inbox push writes each judgment once without concurrent writers sharing a temporary
+    path, and card output carries a single column field, its live table column, so a card's state is not
+    confused with the state of its need."))
  :items
  ((fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
@@ -102,4 +104,10 @@
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
      file. Use a unique temporary path per writer."
-    :origin "issue #5160")))
+    :origin "issue #5160")
+
+   (fix "card-column-single-field" :release "v1.2.9" :status "planned"
+    :title "One column field every reader agrees on"
+    :text "Card output carries a single column field so a card's state is not confused with the state of
+     its need."
+    :origin "card moved out of the sprint (work record, 2026-10-04)")))

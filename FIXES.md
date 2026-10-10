@@ -33,6 +33,7 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 
 ## v1.2.9 (planned, 2026-10-10)
 
-Inbox push writes each judgment once without concurrent writers sharing a temporary path.
+Two fixes: inbox push writes each judgment once without concurrent writers sharing a temporary path, and card output carries a single column field, its live table column, so a card's state is not confused with the state of its need.
 
 - **Inbox push cannot overwrite a published judgment** (planned). Two overlapping clients share one temporary path, so a second write can change the published file. Use a unique temporary path per writer. From: issue #5160.
+- **One column field every reader agrees on** (planned). Card output carries a single column field so a card's state is not confused with the state of its need. From: card moved out of the sprint (work record, 2026-10-04).
