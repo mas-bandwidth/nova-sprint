@@ -85,9 +85,13 @@
    :text "A step's refused card prints its reason and its remedy in the default text output, as --json's
     refused array has carried them all along: the verb result printer appends what changes the card, by
     the lifecycle's moves (docs/SPEC-SPRINT.md section 3), when the step's reason names no remedy of its
-    own, so return on a working card no longer reads RETURN FAILED moved=0 refused=1 alone. A test walks
-    every verb's refusals and fails on any refusal printed without a reason, or a card's without a remedy."
-   :origin "dogfood 2026-10-10: BRIEF FAILED and RETURN FAILED with no reason in text")
+    own and is about the card's state, so return on a working card no longer reads RETURN FAILED
+    moved=0 refused=1 alone. A refusal that is not about the card's state stands on its reason: a read
+    of a primary is refused no such card, its why naming the read card to call
+    (<primary>.r<attempt>.<reader>), and takes no work-table remedy. A test walks every verb's refusals
+    and fails on any refusal printed without a reason, or a card's without a remedy."
+   :origin "dogfood 2026-10-10: BRIEF FAILED and RETURN FAILED with no reason in text; the seat cold
+    read of 2026-10-10 found that remedy appended to a read's no-such-card refusal")
 
   (fix "lander-bench-fault-and-bisect" :release "v1.2.6" :status "in-progress"
    :title "The lander blames no head for a bench fault and bisects a red batch"
