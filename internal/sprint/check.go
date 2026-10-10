@@ -171,19 +171,13 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 	// review needs, a landed one the count it landed on). A read on the fleet table
 	// retired off its row with its verdict is counted by the reader the accept recorded
 	// (ReadsStanding). The tick sends a merging card short of it back to review
-	// (ShortReadsBack), so a merging card breaks it only until the tick's pump.
+	// (ShortReadsBack), and repair returns one too, so a merging card breaks it only
+	// until the tick's pump or repair.
 	for _, c := range s.Work.Column(Merging, Landed) {
 		if IsSentinel(c) {
 			continue // never read
 		}
-		have, need, short := ReadsShort(s, c)
-		if c.F(FieldReadsNeeded) == "" && acceptedBeforeReadsField(c) {
-			// accepted before the accept recorded the count it ran on: the sprint's
-			// count then (set --reads) is not on the card, so the tier's rule is not
-			// the bar; one ok read stands
-			short = short && have < min(need, 1)
-		}
-		if short {
+		if have, short := rule6Short(s, c); short {
 			out = append(out, Violation{6, fmt.Sprintf("%s is %s with ok reads at head %s from %d reader(s)", c.ID, c.Col, orDash(c.F("head")), have)})
 		}
 	}
@@ -268,4 +262,35 @@ var readsFieldCut = time.Date(2026, 10, 7, 2, 0, 40, 0, time.UTC)
 func acceptedBeforeReadsField(c *Card) bool {
 	t, err := time.Parse(time.RFC3339, c.F("accepted"))
 	return err == nil && t.Before(readsFieldCut)
+}
+
+// rule6Short says whether a primary violates rule 6 at its head, and how many
+// readers' ok reads stand there: ReadsShort (readers.go) counts them, and a
+// card accepted before the accept recorded the count it ran on
+// (FieldReadsNeeded) is held to one, not the tier's rule (the sprint's count
+// then is not on the card, so the tier's rule is not the bar; one ok read
+// stands).
+func rule6Short(s *Snapshot, c *Card) (have int, short bool) {
+	have, need, short := ReadsShort(s, c)
+	if c.F(FieldReadsNeeded) == "" && acceptedBeforeReadsField(c) {
+		short = short && have < min(need, 1)
+	}
+	return have, short
+}
+
+// Rule6Merging is every merging primary that violates rule 6 (rule6Short): it
+// entered merging with ok reads from fewer different readers at its head than
+// it needs, so repair returns it to review for its missing read, with the
+// reason recorded. A landed primary is never returned, so it is not listed.
+func Rule6Merging(s *Snapshot) []*Card {
+	var out []*Card
+	for _, c := range s.Work.Column(Merging) {
+		if IsSentinel(c) {
+			continue // never read
+		}
+		if _, short := rule6Short(s, c); short {
+			out = append(out, c)
+		}
+	}
+	return out
 }

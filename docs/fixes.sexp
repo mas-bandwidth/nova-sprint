@@ -132,7 +132,15 @@
     no longer exits 128 on a fleet host with nothing saying why."
    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
 
-  (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
+   (fix "repair-says-what-it-changes" :release "v1.2.6" :status "shipped"
+    :title "repair says what it changes, takes --dry-run, and returns a rule-6 merging card to review"
+    :text "repair's help names its effect, it takes --dry-run that prints each move it would make (and leaves a
+     pending operation open), and it refuses naming the remedy when it can do nothing. It learns check rule
+     6: a card merging with ok reads from fewer different readers at its head than it needs goes back to
+     review for its missing read, with the reason recorded."
+    :origin "this pull request")
+
+   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
    :title "The worker brief says never amend, rebase or reset onto origin"
    :text "One line in the worker brief (the child rule no-rewrite-history, internal/fleetrules/child-rules.txt,
     byte for byte nova-tools' fleet/child-rules.txt, with a test pinning the digest in both repositories)
