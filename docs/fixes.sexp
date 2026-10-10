@@ -101,11 +101,15 @@
    :text "A reader finding that widens PATHS edits the card in place, never a twin. Three review notes are
     fixed before merge: the finding reader unset, the bound subtest, and the friend card claim."
    :origin "nova-tools PR #5570, head 22d72154d")
-  (fix "deal-draws-launchable-route" :release "v1.2.6" :status "planned"
+  (fix "deal-draws-launchable-route" :release "v1.2.6" :status "in-progress"
    :title "A deal draws only a route its member can launch"
-   :text "The deal draws only routes whose harness the member can launch; the adopt must set each member
-    harnesses or the deal draws nothing for it."
-   :origin "nova-tools PR #5576, head 065bf6b73")
+   :text "The deal, the redeal, the escalation and the rebalance onto a machine draw only routes whose
+    harness the member can launch, and a move that keeps a card's route never goes to a member that
+    cannot launch it (tla/RouteIndex.tla, NeverUnlaunchable). DEPLOY STEP for the final adopt: a member
+    names no headless harness (claude, codex, grok) until `nova-sprint fleet up <member> --harnesses
+    <h,...>` runs, so it is dealt opencode routes only; after the adopt, run it for each member with
+    the headless harnesses on its PATH, or the deal draws no headless route for it."
+   :origin "nova-tools PR #5576, head 065bf6b73, re-applied in nova-sprint")
   (fix "lander-bench-fault-and-bisect" :release "v1.2.6" :status "planned"
    :title "The lander blames no head for a bench fault and bisects a red batch"
    :text "A bench fault blames no head, a red batch is bisected, and landings go as batches are built. The
