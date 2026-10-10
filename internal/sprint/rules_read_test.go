@@ -165,10 +165,12 @@ func TestABrokenReadIsReworkedByRuleWithItsFinding(t *testing.T) {
 		r.brokenRead("r-1", "the change breaks STEP 3: a caller outside PATHS keeps the old name; rename it too")
 		r.tick()
 		require.Equal(t, 2, r.snap().Work.Card("r-1").Int("attempt"), "a finding naming no file is reworked")
-		// the stream's cap lowered to 2 once attempt 2 is dealt: the read of attempt 2 is at the
+		// the sprint's cap lowered to 2 once attempt 2 is dealt: the read of attempt 2 is at the
 		// brief's bound (the cap's attempts on one brief), so a finding outside PATHS reaches
-		// the bound check in Read and must pass it (steps_review.go, the !outside guard)
-		r.must(store.SetStep(sprint.SetReq{Streams: []string{"r"}, Attempts: "2", Who: "coordinator"}))
+		// the bound check in Read and must pass it (steps_review.go, the !outside guard). The
+		// sprint's cap, not the stream's: the read step's snapshot holds the work table's
+		// property, and no stream control card (AttemptsCap)
+		r.must(store.SetStep(sprint.SetReq{Attempts: "2", Who: "coordinator"}))
 		_, atCap := sprint.AtBriefBound(r.snap().Work.Card("r-1"), "", 2)
 		require.True(t, atCap, "attempt 2 of a brief whose cap is 2 is at the brief's bound")
 		finding := "internal/y/b.go:40 still calls the old name, outside PATHS; rename the call too"
