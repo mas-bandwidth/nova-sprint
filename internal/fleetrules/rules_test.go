@@ -1,12 +1,33 @@
 package fleet
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 )
 
+// childRulesSHA256 is the sha256 of child-rules.txt. nova-tools holds the same file as
+// fleet/child-rules.txt and pins the same digest (fleet/rules_test.go): this add refuses a held-name
+// rules file whose bytes are not its embedded copy (cmd/nova-sprint/verbs.go heldSet), so the
+// two copies change together, in one pull request per repository, or not at all.
+const childRulesSHA256 = "28fd38b11be263e28c7fc9167f3a24c8cfc4428c676b06c913fd69450aafbdaf"
+
+// TestChildRulesMatchTheToolsCopy pins child-rules.txt to the digest nova-tools' copy pins.
+func TestChildRulesMatchTheToolsCopy(t *testing.T) {
+	t.Parallel()
+	raw, err := Rules.ReadFile("child-rules.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
+	if got := hex.EncodeToString(sum[:]); got != childRulesSHA256 {
+		t.Fatalf("child-rules.txt sha256 %s, want %s: change nova-tools' fleet/child-rules.txt byte for byte with it and update the digest in both repositories", got, childRulesSHA256)
+	}
+}
+
 // TestChildRulesNeverRewriteHistory pins the worker brief's history rule: a child that
-// amends, rebases or resets onto origin rewrites the staged commit and the finish refuses
+// amends, rebases or resets onto origin rewrites the staged commit, and the finish refuses
 // its head as one that does not descend from it (pkg/cardcontract/carry.go).
 func TestChildRulesNeverRewriteHistory(t *testing.T) {
 	t.Parallel()

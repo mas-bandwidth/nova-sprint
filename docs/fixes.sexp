@@ -142,7 +142,8 @@
    :origin "v1.2.5 candidate list")
   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
    :title "The worker brief says never amend, rebase or reset onto origin"
-   :text "One line in the worker brief (the child rule no-rewrite-history, internal/fleetrules/child-rules.txt)
+   :text "One line in the worker brief (the child rule no-rewrite-history, internal/fleetrules/child-rules.txt,
+    byte for byte nova-tools' fleet/child-rules.txt, with a test pinning the digest in both repositories)
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
   (fix "draining-member-clears-no-room" :release "v1.2.6" :status "planned"
