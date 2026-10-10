@@ -266,10 +266,13 @@ var TickTables = []TableUpdate{
 
 // PartCapDeal is the attempt cap's default answer, the pump's part before the deal
 // (TickCapDeal, brief_bound.go): a card past its cap goes to a frontier or heavy friend
-// with room before the deal could give it to a machine.
+// with room before the deal could give it to a machine. The model is tla/CapDeal.tla
+// (FriendFirst, ExactlyOneJudgment, NoCardLost; the MCCapDeal instance, group capdeal,
+// and the reversed-witness fixtures under tla/testdata/).
 const PartCapDeal = "cap deal"
 
-// TickCapDeal is the attempt cap's default answer as a part of the tick (AttemptCapDeal).
+// TickCapDeal is the attempt cap's default answer as a part of the tick (AttemptCapDeal;
+// tla/CapDeal.tla, beside tla/DirtyTick.tla's deal and redeal bound).
 func TickCapDeal(s *Snapshot, r TickReq) (Plan, int) { return AttemptCapDeal(s, r), 0 }
 
 // PartFriendStall is the friend stall ladder part (friend_stall.go).
@@ -805,8 +808,11 @@ func beatingHeld(s *Snapshot, r TickReq) bool {
 
 // AtRedealBound is the primary's withdrawn work card when it is at its
 // redeal bound at its ceiling: a take of it ended (FieldTakeEnded) with its count at
-// MaxRedeals, so the deal that would place it again would pass the bound. The
-// tick deals it no more. nil when it is not: a card withdrawn while ready
+// MaxRedeals, or with its last two takes ended the same way (identicalEnds, the
+// bound below the count), so the deal that would place it again would pass the
+// bound. The tick deals it no more, and the judgment it raises is one
+// (tla/CapDeal.tla AtBound, ExactlyOneJudgment). nil when it is not: a card
+// withdrawn while ready
 // keeps its count and is dealt again (tla/DirtyTick.tla AtRB), and a card below its
 // ceiling (NextTier) is the deal's to escalate, no judgment raised (route.go,
 // tierLadder).
@@ -891,7 +897,7 @@ func escalating(s *Snapshot, c *Card) *Card {
 
 // redealBound says the withdrawn work card's next deal would count a take
 // past MaxRedeals, or would be its third try after two takes that ended the same
-// way (rule 2, identicalEnds).
+// way (rule 2, identicalEnds; tla/CapDeal.tla AtBound and the IdBound witnesses).
 func redealBound(wc *Card) bool {
 	return wc.F(FieldTakeEnded) != "" && (wc.Int("redeals") >= MaxRedeals || identicalEnds(wc) != "")
 }

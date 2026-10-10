@@ -277,3 +277,10 @@ MCCoordinatorPassEmpty.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordina
 MCCoordinatorPassBrokenNoReset.cfg	MCCoordinatorPass.tla	invariant	EmptyAWholeWindow	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassPin.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenPinRekey.cfg	MCCoordinatorPass.tla	invariant	OneJudgmentAnEpisode	ignore-terminal	coordinatorpass	required	-
+MCCapDeal.cfg	MCCapDeal.tla	pass	-	ignore-terminal	capdeal	required	-
+MCLandEject.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
+MCLandEjectChain.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
+MCLandEjectDrains.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
+MCLandBrokenNoClosure.cfg	MCLand.tla	invariant	EjectedDependentsNotLanded	ignore-terminal	land	required	-
+MCLandBrokenStopAll.cfg	MCLand.tla	temporal	Drains	ignore-terminal	land	required	-
+MCLandReachEjectAndLand.cfg	MCLand.tla	invariant	ReachEjectAndLand	ignore-terminal	land	required	-
