@@ -12,15 +12,16 @@ import (
 )
 
 // Per-landed cost is the landed cards' spend per landed card, not all spend so far.
-// Spend on in-flight cards is tracked separately in TotalCost, so stream totals
-// agree with the sprint total and nothing is hidden.
+// Spend on cards not yet landed stays in TotalCost alone, so the stream totals agree
+// with the sprint total and nothing is hidden; no figure of it is shown beside per
+// landed (the owner, 2026-10-11: no in-flight figure).
 func TestPerLandedIsLandedCardsSpendOverLandedCount(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("pro", "pro"))
 	h.must(SetStep(sprint.SetReq{Attempts: "6", Who: h.st.Actor}))
 
 	// Two landed cards: s1-1 costs $1, s1-2 costs $1
-	// One in-flight card: s2-1 costs $10
+	// One card of another stream, not yet landed: s2-1 costs $10
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: briefOf("pro", "")}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"s1-2"}, Brief: briefOf("pro", "")}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"s2-1"}, Brief: briefOf("pro", "")}))
@@ -56,7 +57,7 @@ func TestPerLandedIsLandedCardsSpendOverLandedCount(t *testing.T) {
 	h.must(AcceptStep(sprint.AcceptReq{Sel: sprint.Sel{IDs: []string{"s1-2"}}}))
 	h.must(MergeStep(sprint.MergeReq{Stream: "s1", Batch: 2}))
 
-	// s2-1: take, finish with cost $10 (in-flight)
+	// s2-1: take, finish with cost $10 (still waiting: nothing landed in s2)
 	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"s2-1"}}}))
 	wc = h.snap().Fleet.Card(h.snap().Work.Card("s2-1").F("work"))
 	g = map[string]int{wc.ID: wc.Int("gen")}
@@ -77,17 +78,18 @@ func TestPerLandedIsLandedCardsSpendOverLandedCount(t *testing.T) {
 	s2 := costs["s2"]
 	// PerLanded should be "-" (nothing landed)
 	assert.Equal(t, "-", s2.PerLanded, "per landed is dash when nothing landed")
-	// TotalCost should be $10 (in-flight card's spend)
-	assert.Equal(t, "$10.00", s2.TotalCost, "in-flight card's spend is in stream total")
+	// TotalCost should be $10 (the card's spend, not yet landed): in the total alone,
+	// beside no per-landed figure
+	assert.Equal(t, "$10.00", s2.TotalCost, "a not-yet-landed card's spend is in the stream total")
 	assert.Empty(t, s2.LandedCost, "nothing landed: no landed part")
 
-	// the streams' landed parts sum to the landed spend, $2: the rest of the $12 total,
-	// $10, is the in-flight figure, its own and nothing hidden
+	// the streams' landed parts sum to the landed spend, $2: what per landed is over
+	// the landed count, with nothing beside it
 	landedSum, ok := cardcost.Sum(strings.TrimPrefix(s1.LandedCost, "$"), strings.TrimPrefix(s2.LandedCost, "$"))
 	require.True(t, ok)
 	assert.Equal(t, "$2.00", sprint.MoneyText(landedSum), "the streams' landed parts sum to the landed cards' spend")
 
-	// the streams' totals are the sprint's: $2 landed + $10 in flight, nothing hidden
+	// the streams' totals are the sprint's: $2 landed and $10 not yet landed, $12 whole
 	sum, ok := cardcost.Sum(strings.TrimPrefix(s1.TotalCost, "$"), strings.TrimPrefix(s2.TotalCost, "$"))
 	require.True(t, ok)
 	assert.Equal(t, "$12.00", sprint.MoneyText(sum), "the streams' totals sum to the sprint's spend")

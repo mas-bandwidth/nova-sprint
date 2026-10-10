@@ -291,8 +291,9 @@ function renderStreams(d) {
   var rank = function (k) { return RANK[statusOf[k]] == null ? 3.5 : RANK[statusOf[k]]; };
   var keys = streamOrder(d).filter(function (k) { return !arch[k]; }).sort(function (a, b) { return rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0); });
   // sum.landedCost is the streams' landed cards' spend (stream_costs' landed_cost, sprint.TierCosts),
-  // in the same scope as totalCost, until a copy carries none of it (null: the cost tile reads as before);
-  // the spend on cards not yet landed is totalCost less it, shown beside per card (renderHero)
+  // in the same scope as totalCost, until a copy carries none of it (null: the cost tile reads as before):
+  // per card divides it by the landed count (renderHero), and the cost tile's total stays totalCost,
+  // the whole spend, landed and not-yet-landed together
   var sum = { cost: 0, totalCost: 0, landedCost: null, workCost: 0, readCost: 0, unreconciled: 0, unpriced: 0 }, held = 0, landedStreams = 0, prevRank = null;
   // the epoch's spend, every stream's, the archived ones' too: the cost tile's scope once the
   // sprint is done (where --json's done), when the table's streams are all archived
@@ -603,26 +604,20 @@ function renderHero(d, s, ft) {
   // is. The cost is every recorded take and read of their cards in any column; per card is
   // the landed cards' spend over the cards that landed (the owner, dogfood 2026-10-10: per
   // card read $7.74, the whole epoch's spend over the 6 landed, while 26 cards sat in
-  // merging with their spend counted and not their landing), and the spend on cards not
-  // yet landed shows beside it as its own in-flight figure, so the total is still the
-  // whole spend and nothing is hidden; the two figures agree once every card has landed.
-  // The landed spend is the total's own landed part (sum.landedCost, stream_costs'
-  // landed_cost); a copy that carries none of it reads as before, the whole spend over
-  // the cards landed (stats_reset.landed, when a mark is in force).
+  // merging with their spend counted and not their landing), and nothing else is added
+  // beside it (the owner, 2026-10-11: no in-flight figure; per landed is the landed cards'
+  // spend over the landed count and the total stays the whole spend, the two agreeing once
+  // every card has landed). The landed spend is the total's own landed part (sum.landedCost,
+  // stream_costs' landed_cost); a copy that carries none of it reads as before, the whole
+  // spend over the cards landed (stats_reset.landed, when a mark is in force).
   var c = d.done ? s.sum.epoch : s.sum, recorded = c.totalCost;
   setText($("cost"), money(recorded));
   // after a stats reset the cost counts from its mark, and so do the cards it is over
   // (where --json's stats_reset.landed, the same scope)
   var perN = d.stats_reset ? int(d.stats_reset.landed) : landed;
   var landedCost = c.landedCost;
-  if (landedCost == null) {
-    setText($("cost-per"), perN ? money(Math.ceil(recorded / perN)) + " per card" : " ");
-  } else {
-    var inFlight = recorded - landedCost;
-    var per = perN ? money(Math.ceil(landedCost / perN)) + " per card" : "";
-    if (inFlight > 0) per = (per ? per + " \u00b7 " : "") + money(inFlight) + " in flight";
-    setText($("cost-per"), per || " ");
-  }
+  var perCost = landedCost == null ? recorded : landedCost;
+  setText($("cost-per"), perN ? money(Math.ceil(perCost / perN)) + " per card" : " ");
   setText($("inflight"), s.sum.working + (s.sum.fix || 0) + s.sum.review + s.sum.merging);
   inflightLast = s.sum; renderInflight(s.sum);
   // throughput: cards landed per hour over the last hour, from the server's samples

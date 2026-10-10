@@ -143,9 +143,9 @@
    :title "Per landed is the landed cards' spend over the landed count"
    :text "The cost readout's per-landed figure is the landed cards' spend per landed card, every take, read
     and rework of each landed card, failed ones included (stream_costs' landed_cost, sprint.TierCosts),
-    never all spend so far over the landed count; the spend on cards not yet landed shows beside it as
-    its own in-flight figure on the dashboard's cost tile, so the total is still the whole spend and
-    nothing is hidden, and the two figures agree once every card lands. A stats reset counts the landed
+    never all spend so far over the landed count, and nothing else is added beside it (the owner,
+    2026-10-11: no in-flight figure; the readout's total stays the whole spend, so nothing is hidden),
+    and the two figures agree once every card lands. A stats reset counts the landed
     spend from its mark (sprint.TierCostsSince, the mark's exact landed cost). The dashboard's stream
     table's total column is each stream's whole spend, its tiers' own sum, so the stream and total
     columns agree with the sprint total: spend is recorded on its card by every take, read and rework,

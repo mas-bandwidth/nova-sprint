@@ -15,11 +15,10 @@ import (
 // The cost readout (the owner, dogfood 2026-10-10: $7.74 per landed at 6 of 82; the
 // stream table $0.03 against the sprint total $46.39): per landed is the landed cards'
 // spend per landed card, every attempt, read and rework of each, failed ones included,
-// never all spend over the landed count; the spend on cards not yet landed shows beside
-// it as its own in-flight figure, so the total is still the whole spend and nothing is
-// hidden, and the two figures agree once every card has landed. The stream table's
-// total column is the stream's whole spend, so the tiers and the total columns agree
-// with the sprint total.
+// never all spend over the landed count, and nothing else is added beside it (the owner,
+// 2026-10-11: no in-flight figure); the total stays the whole spend and the two figures
+// agree once every card has landed. The stream table's total column is the stream's
+// whole spend, so the tiers and the total columns agree with the sprint total.
 
 // landedCostDriver draws a where --json snapshot with app.js on the scroll test's DOM
 // shim and reads the cost tile and the stream table's row.
@@ -33,8 +32,9 @@ process.stdout.write(JSON.stringify({ cost: txt('cost'), per: txt('cost-per'), l
 `
 
 // perLandedCopy is the card's readout: two landed cards costing $1 each (one with a
-// failed attempt, the two attempts' $0.30 and $0.70), one in-flight card costing $10,
-// the stream's landed spend $2 and whole spend $12.
+// failed attempt, the two attempts' $0.30 and $0.70), one card of another stream not yet
+// landed costing $10, the landed stream's landed spend $2 and the sprint's whole spend
+// $12.
 const perLandedCopy = `{"landed":2,"all":3,
 "summary":"2/3 66.7% -> ETA 1h",
 "streams":[{"Stream":"s1","Release":""}],
@@ -67,15 +67,28 @@ func drawLandedCopy(t *testing.T, copy string) map[string]any {
 	return res
 }
 
-// The cost tile: the total is the whole spend, per card is the landed spend over the
-// landed count, and the in-flight spend shows beside it as its own figure.
+// The cost tile: the total is the whole spend and per card is the landed spend over the
+// landed count, with nothing else added beside it (the owner, 2026-10-11: no in-flight
+// figure).
 func TestTheCostTileCountsPerLandedFromTheLandedSpend(t *testing.T) {
 	t.Parallel()
 	res := drawLandedCopy(t, perLandedCopy)
 	assert.Equal(t, "2", res["landed"], "the headline is the landed count")
-	assert.Equal(t, "$12.00", res["cost"], "the total is the whole spend, the landed and the in-flight together")
-	assert.Equal(t, "$1.00 per card · $10.00 in flight", res["per"],
-		"per card is the landed cards' spend ($2) over the landed count (2), never $6.00; the in-flight $10 shows beside it")
+	assert.Equal(t, "$12.00", res["cost"], "the total is the whole spend, the landed and the not-yet-landed together")
+	assert.Equal(t, "$1.00 per card", res["per"],
+		"per card is the landed cards' spend ($2) over the landed count (2), never $6.00, and nothing is added beside it")
+}
+
+// The cost tile's per-card line is the landed cards' spend over the landed count, alone:
+// app.js adds nothing beside it (the owner, 2026-10-11: no in-flight figure). A source
+// pin beside the behavioural test above, so the rule holds on a machine with no node.
+func TestTheCostTileAddsNoInFlightFigure(t *testing.T) {
+	t.Parallel()
+	js := string(file("app.js"))
+	assert.NotContains(t, js, `+ " in flight"`, "the cost tile's per card is the landed spend over the landed count: nothing is added beside it")
+	assert.Contains(t, js, `perCost = landedCost == null ? recorded : landedCost`,
+		"per card is the landed cards' spend, the whole recorded spend where a copy carries none of it")
+	assert.Contains(t, js, `Math.ceil(perCost / perN)`, "over the landed count")
 }
 
 // The stream table's total column is the stream's whole spend, so the tiers and the
