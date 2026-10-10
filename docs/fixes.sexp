@@ -98,6 +98,15 @@
     no longer exits 128 on a fleet host with nothing saying why."
    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
 
+  (fix "inbox-wait-survives-a-clear" :release "v1.2.6" :status "planned"
+   :title "The seat's push loop goes on at the epoch a clear leaves it"
+   :text "inbox --wait and --push re-read the sprint's active epoch when a clear advances it under the
+    loop: the look at the inbox is never refused MEMBEREPOCH by the epoch the clear left, the wait
+    ends at the clear as at a machine stop, the inbox reporting the clear's happened line, and the
+    seat's push loop keeps running, pushing the new epoch's judgments. A step in flight still holds
+    its epoch: a tick at a clear stops there."
+   :origin "the seat ledger v1.2.4-held-2026-10-10.md, bug 6")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published

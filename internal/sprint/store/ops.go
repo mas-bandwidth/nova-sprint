@@ -360,11 +360,34 @@ func (st *Store) OpenGroups(ctx context.Context) ([]sprint.Group, error) {
 	return sprint.Inbox(sprint.InboxReq{Now: st.now(), Open: open, Prefix: st.Names.Prefix, Epoch: st.epoch}), nil
 }
 
+// follow is the store pinned to the sprint's current epoch, re-reading the
+// active epoch when the sprint has left the one it holds: a clear advanced
+// the epoch under a long-running reader (the seat's push loop, inbox --wait)
+// and its next look must read the new epoch and carry on, never be refused by
+// it (docs/SPEC-SPRINT.md section 13: "run goes on at the new epoch"; a
+// restore the clear still owes is performed first, as pin does). A store
+// reading an earlier epoch as it was (At) is never moved, and a step in
+// flight holds its epoch (a tick at a clear stops there), so this is the
+// inbox look's pin alone.
+func (st *Store) follow(ctx context.Context) (*Store, error) {
+	if !st.pinned || st.old {
+		return st.pin(ctx)
+	}
+	es, err := st.EpochNow(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if es.N == st.epoch {
+		return st, nil
+	}
+	return st.repin(ctx)
+}
+
 // Inbox reads the open judgments, the notifications since the cursor (at
 // most max) and the streams' clocks, and groups them at the clock's reading.
 func (st *Store) Inbox(ctx context.Context, deadline, stale time.Duration, max int) (InboxView, error) {
 	var v InboxView
-	st, err := st.pin(ctx)
+	st, err := st.follow(ctx)
 	if err != nil {
 		return v, err
 	}
