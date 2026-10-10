@@ -59,8 +59,14 @@ func TestATestThatDoesNotPinTheChangeIsReworkedBeforeARead(t *testing.T) {
 				TestName:  "TestSomething",
 			},
 			run: func(commit, pkg, testname string) (bool, error) {
-				// Test passes at head - triggers pin broken check
-				return true, nil
+				// Test fails at merge-base, passes at head (reverted) - triggers pin broken
+				if commit == "abc123" {
+					return false, nil
+				}
+				if commit == "def456" {
+					return true, nil
+				}
+				return false, nil
 			},
 			expected: []GateLintFinding{{What: GateLintPinBroken + ": test passes with non-test hunks reverted"}},
 		},
@@ -73,6 +79,12 @@ func TestATestThatDoesNotPinTheChangeIsReworkedBeforeARead(t *testing.T) {
 				t.Errorf("GateLintFindings() returned %d findings, want %d", len(got), len(tt.expected))
 				for i, f := range got {
 					t.Logf("  [%d] %s", i, f.What)
+				}
+				return
+			}
+			for i, f := range got {
+				if f.What != tt.expected[i].What {
+					t.Errorf("GateLintFindings()[%d] = %q, want %q", i, f.What, tt.expected[i].What)
 				}
 			}
 		})

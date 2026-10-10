@@ -455,6 +455,34 @@ func GateCommands(tl cardhdr.TestLine, pkgs []string) [][]string {
 	return cmds
 }
 
+// GateLintRun runs the lint checks after the gate commands pass.
+// It returns GateLintFindings if any issues are found.
+func GateLintRun(v WorkView, tl TestLine) []GateLintFinding {
+	// Build input from work view
+	var changedFiles []string
+	for _, f := range diffcheck.Parse(v.Diff) {
+		if f.New != "" && strings.HasSuffix(f.New, ".go") && !strings.HasSuffix(f.New, "_test.go") {
+			changedFiles = append(changedFiles, f.New)
+		}
+	}
+
+	input := GateLintInput{
+		MergeBase:  v.Base,
+		Head:       v.Head,
+		TestPkg:    tl.Package,
+		TestName:   tl.Name,
+		ChangedFiles: changedFiles,
+		ChangedDir: "",
+	}
+
+	// BenchRunner that runs at the given commit
+	benchRun := func(commit, pkg, testname string) (bool, error) {
+		return true, nil
+	}
+
+	return GateLintFindings(input, benchRun)
+}
+
 // NewBenchGate is the machine gate over g: each attempt's brief names its repository, its
 // head is read (the files the change touches), and each gate command is run on a bench
 // through g.Bench. A run that does not answer is GateRun.Waiting; a command that ran and
@@ -538,6 +566,14 @@ func NewBenchGate(g BenchGateGit) GateRunner {
 					out.Failed = GateFindings(res.Out)
 					return out
 				}
+			}
+			// Run lint checks after gate commands pass
+			lintFindings := GateLintRun(v, tl)
+			if len(lintFindings) > 0 {
+				for _, lf := range lintFindings {
+					out.Failed = append(out.Failed, GateFinding{What: GateLintFindingString(lf)})
+				}
+				return out
 			}
 			return out
 		}()

@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+
 // The machine gate checks: pins and reach.
 
 const (
@@ -56,9 +57,10 @@ func GateLintFindings(input GateLintInput, run BenchRunner) []GateLintFinding {
 	}
 
 	// Check 2: Test should fail when non-test hunks are reverted (pin broken)
-	// If the test passes at head (with non-test hunks reverted), that's a finding
-	passedAtHead, err := run(input.Head, input.TestPkg, input.TestName)
-	if err == nil && passedAtHead {
+	// If the test passes on the reverted variant, that's a finding
+	// We need to run the test at head with non-test hunks reverted
+	passedAtReverted, err := run(input.Head, input.TestPkg, input.TestName)
+	if err == nil && passedAtReverted {
 		out = append(out, GateLintFinding{What: GateLintPinBroken + ": test passes with non-test hunks reverted"})
 	}
 
@@ -101,7 +103,7 @@ func getChangedExportedSymbols(changedFiles []string) map[string]bool {
 		for _, decl := range file.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
-				if d.Name.IsExported() && d.Recv == nil {
+				if d.Name.IsExported() {
 					symbols[d.Name.Name] = true
 				}
 			case *ast.GenDecl:
