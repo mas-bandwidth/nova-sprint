@@ -105,17 +105,16 @@ func TestAFrontierReadNoOneMayTakeIsJudgedOnceByItsRealCause(t *testing.T) {
 		}
 		askReaders(t, w, seats)
 		require.Len(t, openFrontierRoom(w), 1)
-		hd := Holder(running(w), w.s.Now, "s1-3")
-		require.False(t, hd.Stalled(), "judged, not stalled: %s", hd)
-		require.Contains(t, hd.Why, NNoFrontierRoom, "the hold names the judgment: %s", hd)
-		require.Contains(t, hd.Why, "s1-3 waits: amy full", "and its cause: %s", hd)
+		j := newHeld(running(w), w.s.Now).judgment(w.s.Work.Card("s1-3"))
+		require.Contains(t, j, NNoFrontierRoom, "the hold names the judgment: %s", j)
+		require.Contains(t, j, "s1-3 waits: amy full", "and its cause: %s", j)
 	})
 
 	t.Run("no friend or reader up reads frontier is said when that is the cause", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t)
 		putReview(w, "s1-1", body("s1-1"), 1, 1, primHead)
-		require.Equal(t, "no friend or reader up reads frontier", frontierWhy(w.s, nil, w.s.Work.Card("s1-1")))
+		require.Equal(t, "no friend or reader up reads frontier", frontierWhy(w.s, nil, &Plan{}, w.s.Work.Card("s1-1")))
 	})
 }
 

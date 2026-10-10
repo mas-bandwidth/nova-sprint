@@ -6,8 +6,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // The no-stall rule: every primary not landed and on the table is held by
@@ -512,17 +510,12 @@ func (c *held) judgment(pr *Card) string {
 			}
 		}
 	}
-	// a frontier read no one has room for: its one judgment, open or
-	// acknowledged, and why it says (who is full, or who may not take it)
-	if friendReadTier(c.s, pr) == cardhdr.RouteFrontier && c.waitsToBeAsked(pr) {
-		for _, o := range c.s.Open {
-			if o.Note.Type == NNoFrontierRoom && o.Note.Kind == Judgment {
-				return "no frontier reader has room; open: " + o.Note.Type + " " + o.Note.ID + ": " + o.Note.What
-			}
-		}
-		for _, o := range c.s.Acked {
-			if o.Note.Type == NNoFrontierRoom {
-				return "no frontier reader has room; acknowledged: " + o.Note.What
+	// a frontier read the ask left waiting for room: the one judgment that names it, open or
+	// acknowledged, and its cause (frontierRoomJudgment writes its text with "<id> waits: <cause>")
+	if c.waitsToBeAsked(pr) {
+		for _, o := range slices.Concat(c.s.Open, c.s.Acked) {
+			if o.Note.Type == NNoFrontierRoom && strings.Contains(o.Note.What, pr.ID+" waits: ") {
+				return "open: " + o.Note.What
 			}
 		}
 	}

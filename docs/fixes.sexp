@@ -134,9 +134,9 @@
 
   (fix "frontier-read-judged-by-real-cause" :release "v1.2.6" :status "shipped"
    :title "A frontier read no one may take is judged by its real cause"
-   :text "A frontier read with no eligible taker raises one judgment naming the readers or friends that
-    prevent it, and rewrites that judgment in place when its facts change instead of leaving stale text.
-    The judgment closes when the read is asked, and the hold view carries its current cause."
+   :text "A frontier read the ask leaves waiting (the friend ask and the read-card ask alike) raises one
+    judgment naming each such read and who is full, or why no one may take it. It is written once,
+    rewritten in place when its facts change, never raised anew, and closed when the reads are asked."
    :origin "this pull request; frontier reader judgment")
 
   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"

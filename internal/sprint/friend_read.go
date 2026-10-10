@@ -765,7 +765,7 @@ func frontierRoomJudgment(p *Plan, s *Snapshot, seats []FriendSeat, waits map[st
 			continue
 		}
 		judged = append(judged, id)
-		causes = append(causes, id+" waits: "+frontierWhy(s, seats, pr))
+		causes = append(causes, id+" waits: "+frontierWhy(s, seats, p, pr))
 	}
 	notify(p, s, frontierRoomConds(judged, causes), []string{NNoFrontierRoom}, TickReq{})
 }
@@ -789,8 +789,9 @@ func frontierRoomDecisions() []string {
 // frontierWhy is the real cause a frontier read the ask left waiting is not
 // asked: who may take it and is full (a friend at or above its tier at her
 // room, a reader that declares frontier at its room), else why no one who may
-// is free to (frontierNoTaker). seats are the tick's friends.
-func frontierWhy(s *Snapshot, seats []FriendSeat, pr *Card) string {
+// is free to (frontierNoTaker). seats are the tick's friends; a room counts the reads the plan
+// has dealt to its unit already (plannedPlaces), as the ask counted them.
+func frontierWhy(s *Snapshot, seats []FriendSeat, p *Plan, pr *Card) string {
 	attempt := readAttempt(pr)
 	tier := friendReadTier(s, pr)
 	var up []FriendSeat
@@ -800,14 +801,14 @@ func frontierWhy(s *Snapshot, seats []FriendSeat, pr *Card) string {
 			continue
 		}
 		up = append(up, f)
-		if room, _ := friendRoom(f); friendLoad(s, f.Name) >= room {
+		if room, _ := friendRoom(f); friendLoad(s, f.Name)+plannedPlaces(p, Fleet, FriendRow(f.Name)) >= room {
 			full = append(full, f.Name)
 		}
 	}
 	readers := s.freeReaders(pr, attempt)
 	rooms := s.readerRooms(readers)
 	for _, rd := range readers {
-		if rooms[rd].free <= 0 {
+		if rooms[rd].free-plannedPlaces(p, Readers, rd) <= 0 {
 			full = append(full, rd)
 		}
 	}
@@ -816,6 +817,20 @@ func frontierWhy(s *Snapshot, seats []FriendSeat, pr *Card) string {
 		return strings.Join(full, ", ") + " full"
 	}
 	return frontierNoTaker(s, pr, attempt, up, readers)
+}
+
+// plannedPlaces is the cards the plan creates on the table's row: the reads the ask dealt that
+// the snapshot does not hold yet.
+func plannedPlaces(p *Plan, table, row string) int {
+	n := 0
+	for _, u := range p.Units {
+		for _, ch := range u.Changes {
+			if ch.Table == table && ch.Entry.Create != nil && ch.Entry.Create.Row == row {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // frontierNoTaker is why no one may take the primary's frontier read at its
