@@ -11,8 +11,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/workfile"
 	"github.com/mas-bandwidth/nova-sprint/internal/workgh"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/tool"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/tool"
 )
 
 // checkImport is import's rules over its flags, run with every other rule so

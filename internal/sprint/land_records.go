@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
-	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
+	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
+	"github.com/mas-bandwidth/nova-tools/pkg/tlc"
 )
 
 // The lander's run-record check (docs/SPEC-SPRINT.md section 7, the lander's checks; tla/README.md,

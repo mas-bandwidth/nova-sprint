@@ -10,9 +10,9 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/redisauth"
-	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/release"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/redisauth"
+	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-tools/pkg/release"
 )
 
 func init() { release.SpendStore = spendStore }

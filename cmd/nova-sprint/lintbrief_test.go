@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 )
 
 // passingBrief is a brief that passes the card lint: what the writer says, then the RULES
@@ -132,9 +132,11 @@ func TestAddRulesRefusalNamesTheAbsolutePath(t *testing.T) {
 	require.NotContains(t, out, "MOVED", "nothing moved: %q", out)
 }
 
-// ourRulesFile is this repository's own rules file, read relative to this package: a file
-// the members hold, so a brief is held to it by reference (nova-tools#5174 rule 6).
-const ourRulesFile = "../../internal/fleetrules/child-rules.txt"
+// ourRulesFile is nova-tools' own rules file, fleet/child-rules.txt of this build: a file
+// the members hold, so a brief is held to it by reference (nova-tools#5174 rule 6). The
+// fleet package comes from the nova-tools module, so TestMain writes its embedded copy
+// (fleet.Rules) under the held name into a directory of its own (writeOurRules).
+var ourRulesFile string
 
 // copyRules is ourRulesFile's text under another name, a file the members do not hold: a
 // brief is held to carry it, as to any rules file of the coordinator's own.

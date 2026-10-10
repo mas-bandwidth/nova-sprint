@@ -1,6 +1,6 @@
 package sprint
 
-import "github.com/mas-bandwidth/nova-sprint/pkg/units"
+import "github.com/mas-bandwidth/nova-tools/pkg/units"
 
 // The unit text, the install and the check live in pkg/units, which a worker's
 // binary may import. These names are the ones nova-sprint, nova-redis and the tests
