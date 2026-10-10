@@ -166,37 +166,25 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 	if quiet {
 		out = append(out, diff(5, landed, merged, "work landed", "merge merged")...)
 	}
-	// 6. Nothing enters merging without ok reads from as many different readers
-	// at its head as it needs (ReadsNeededIn: the count it was accepted on).
+	// 6. Nothing is merging or landed without ok reads from as many different
+	// readers at its head as it needs (ReadsShort: a merging card the count a card in
+	// review needs, a landed one the count it landed on). A read on the fleet table
+	// retired off its row with its verdict is counted by the reader the accept recorded
+	// (ReadsStanding). The tick sends a merging card short of it back to review
+	// (ShortReadsBack), so a merging card breaks it only until the tick's pump.
 	for _, c := range s.Work.Column(Merging, Landed) {
 		if IsSentinel(c) {
 			continue // never read
 		}
-		readers := map[string]bool{}
-		for _, rc := range okReaders(s, c) {
-			readers[rc.F("reader")] = true
-		}
-		// a read on the fleet table (a friend's on her row, a read card on a member's,
-		// read_cards.go) is retired off its row with its verdict: a sparse read loads
-		// it by id only for a primary in review (tickExtras), so past review the reader
-		// the accept recorded on the primary stands for the card this read did not
-		// load; a card that is loaded is judged as it is
-		for _, name := range Split(c.F("readers")) {
-			id := ReadCardID(c.ID, max(c.Int("attempt"), 1), name)
-			onFleet := s.Fleet != nil && (s.Fleet.HasRow(FriendRow(name)) || s.Fleet.HasRow(name))
-			if onFleet && s.Fleet.Card(id) == nil && (s.Readers == nil || s.Readers.Card(id) == nil) {
-				readers[name] = true
-			}
-		}
-		need := ReadsNeededIn(s, c)
+		have, need, short := ReadsShort(s, c)
 		if c.F(FieldReadsNeeded) == "" && acceptedBeforeReadsField(c) {
 			// accepted before the accept recorded the count it ran on: the sprint's
 			// count then (set --reads) is not on the card, so the tier's rule is not
 			// the bar; one ok read stands
-			need = min(need, 1)
+			short = short && have < min(need, 1)
 		}
-		if len(readers) < need {
-			out = append(out, Violation{6, fmt.Sprintf("%s is %s with ok reads at head %s from %d reader(s)", c.ID, c.Col, orDash(c.F("head")), len(readers))})
+		if short {
+			out = append(out, Violation{6, fmt.Sprintf("%s is %s with ok reads at head %s from %d reader(s)", c.ID, c.Col, orDash(c.F("head")), have)})
 		}
 	}
 	// 7. A score never changes except by rank: every copy has its primary's score.

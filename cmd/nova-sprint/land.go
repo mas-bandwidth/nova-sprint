@@ -499,7 +499,7 @@ func (a *app) cmdLand(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	a.serial.Lock()
-	s, err := st.Load(ctx, []string{sprint.Work, sprint.Merge, sprint.Fleet}, nil)
+	s, err := st.Load(ctx, []string{sprint.Work, sprint.Merge, sprint.Fleet, sprint.Readers}, nil)
 	a.serial.Unlock()
 	if err != nil {
 		return a.readFailed("land", err, stderr)
@@ -663,6 +663,23 @@ func landQueue(s *sprint.Snapshot, stream string) []*sprint.Card {
 		}
 	}
 	return sprint.MergePriorityOrder(s, before)
+}
+
+// readsWhy is the place in the queue of the first card short of its reads
+// (sprint.ReadsShortWhy: fewer different readers' ok reads at its head than the count a
+// card in review needs) and why, naming it and the count; "" when none is short. The
+// lander lands no card from there on: a card lands only with every card ahead of it.
+func readsWhy(s *sprint.Snapshot, queue []*sprint.Card) (int, string) {
+	for i, c := range queue {
+		pr := s.Work.Placed(c.ID)
+		if pr == nil || sprint.LandingMarked(s, c.ID) || sprint.PushedUnreportedMatches(s, c.ID) {
+			continue // a landing a lander committed to (sprint.MarkLanding) is completed, never held
+		}
+		if why := sprint.ReadsShortWhy(s, pr); why != "" {
+			return i, why + "; not landed, nor the cards queued behind it: the tick sends it back to review for the read it lacks"
+		}
+	}
+	return 0, ""
 }
 
 // shaRE is a commit id as a head names it: hex, abbreviated or whole.
@@ -1119,7 +1136,7 @@ func (l *lander) recordPushed(ctx context.Context, s *sprint.Snapshot, order []s
 		var fresh *sprint.Snapshot
 		var loadErr error
 		if runErr == nil && len(res.Refused) == 0 {
-			fresh, loadErr = l.st.Load(ctx, []string{sprint.Work, sprint.Merge, sprint.Fleet}, nil)
+			fresh, loadErr = l.st.Load(ctx, []string{sprint.Work, sprint.Merge, sprint.Fleet, sprint.Readers}, nil)
 		}
 		l.a.serial.Unlock()
 		if runErr != nil || len(res.Refused) != 0 {
@@ -1187,7 +1204,7 @@ func (l *lander) recordPushed(ctx context.Context, s *sprint.Snapshot, order []s
 		l.keep(lb)
 	}
 	l.a.serial.Lock()
-	fresh, err := l.st.Load(ctx, []string{sprint.Work, sprint.Merge, sprint.Fleet}, nil)
+	fresh, err := l.st.Load(ctx, []string{sprint.Work, sprint.Merge, sprint.Fleet, sprint.Readers}, nil)
 	l.a.serial.Unlock()
 	if err != nil || fresh == nil {
 		l.hidePushed(s, order)
@@ -1264,6 +1281,41 @@ func (l *lander) hidePushed(s *sprint.Snapshot, order []string) {
 }
 
 // markPushed writes pushed-unreported <sha> on the batch's cards and on the timeline.
+// markLanding is the lander's last step before git push: one store step, fenced to the epoch
+// held, that checks every pinned card's reads at its head and marks it landing
+// (sprint.MarkLanding), or is refused naming the card and its count, nothing pushed. From
+// the mark on, through the push, the report and a crash between them, the tick never sends
+// the card back to review (tla/Land.tla Check, PushedNeverSentBack, NoLandWithoutReads).
+func (l *lander) markLanding(stream string, pins []landCard) string {
+	if l == nil || l.dry || l.st == nil || l.a == nil || len(pins) == 0 {
+		return ""
+	}
+	marked := make([]sprint.PushedPin, len(pins))
+	for i, c := range pins {
+		marked[i] = sprint.PushedPin{ID: c.id, Head: c.head, Attempt: c.attempt}
+	}
+	epoch := l.epoch
+	step := store.Step{
+		Verb:  "land",
+		Load:  []string{sprint.Work, sprint.Merge, sprint.Readers, sprint.Fleet},
+		Epoch: &epoch,
+		Actor: l.c.actor,
+		Plan: func(s *sprint.Snapshot) sprint.Plan {
+			return sprint.MarkLanding(s, stream, marked)
+		},
+	}
+	l.a.serial.Lock()
+	defer l.a.serial.Unlock()
+	res, err := l.st.Run(context.Background(), step)
+	if err != nil {
+		return "the landing could not be marked before the push: " + oneline.Err(err) + "; nothing pushed"
+	}
+	if len(res.Refused) > 0 {
+		return stepWhy(res, nil)
+	}
+	return ""
+}
+
 func (l *lander) markPushed(stream, sha string, pins []landCard) error {
 	if l == nil || l.dry || l.st == nil || l.a == nil || sha == "" || len(pins) == 0 {
 		return nil
@@ -1358,6 +1410,9 @@ func (l *lander) stepWith(r sprint.MergeReq, pins []landCard, plan func(*sprint.
 		if why := headWhy(s, r.Stream, pins); why != "" {
 			return sprint.Plan{Refused: []sprint.Refusal{{Key: r.Stream, Why: why}}}
 		}
+		// no reads check here: this step records what git already holds (the report after
+		// the push, recordPushed's recovery), and a push is a fact; the reads are checked
+		// before the push, in the step that marks the landing (markLanding)
 		return plan(s, r)
 	}
 	named := make([]string, len(pins))
@@ -1399,7 +1454,7 @@ func stepWhy(res store.Result, err error) string {
 // docs/SPEC-SPRINT.md section 7, the lander's pause); "" when it does not.
 func (l *lander) queueHead(ctx context.Context, stream string, pins []landCard) string {
 	l.a.serial.Lock()
-	s, err := l.st.Load(ctx, []string{sprint.Merge, sprint.Work}, nil)
+	s, err := l.st.Load(ctx, []string{sprint.Merge, sprint.Work, sprint.Fleet, sprint.Readers}, nil)
 	l.a.serial.Unlock()
 	if err != nil {
 		return "the merge queue could not be read again at epoch " + strconv.FormatUint(l.epoch, 10) + ": " + oneline.Err(err)
@@ -1439,6 +1494,7 @@ func headWhy(s *sprint.Snapshot, stream string, pins []landCard) string {
 	}
 	return ""
 }
+
 
 // build cuts the batch branch from origin's base (cut) and merges the cards' heads
 // in order (mergeCards), stopping at the first the card itself stops (a head that is
