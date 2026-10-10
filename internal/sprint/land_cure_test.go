@@ -33,10 +33,22 @@ func cureGate(seen *[]string) func(context.Context, string) string {
 	}
 }
 
+// branchHead is a developer's commit of file on a new branch cut from the base, pushed:
+// the card's head.
+func (r *syncRepo) branchHead(branch, file, content string) string {
+	r.t.Helper()
+	r.git(r.dev, "fetch", "-q", "origin")
+	r.git(r.dev, "checkout", "-q", "-B", branch, "origin/"+syncBase)
+	require.NoError(r.t, os.WriteFile(filepath.Join(r.dev, file), []byte(content), 0o644))
+	r.git(r.dev, "add", file)
+	r.git(r.dev, "commit", "-q", "-m", branch)
+	r.git(r.dev, "push", "-q", "origin", "HEAD:refs/heads/"+branch)
+	return r.tip(branch)
+}
+
 func TestALanderLandsTheHeadThatCuresARedBase(t *testing.T) {
 	t.Parallel()
 	repo := newSyncRepo(t)
-	defer repo.Close()
 	// the base turns red; two cards queue onto it: s1-1 a casualty (its work is elsewhere,
 	// the tree stays red), s1-2 the fix
 	repo.commit(syncBase, "gate.txt", "red\n", "the base turns red")
@@ -102,7 +114,6 @@ func TestALanderLandsTheHeadThatCuresARedBase(t *testing.T) {
 func TestARedBaseWithNoCuringHeadIsLeftAsItWas(t *testing.T) {
 	t.Parallel()
 	repo := newSyncRepo(t)
-	defer repo.Close()
 	repo.commit(syncBase, "gate.txt", "red\n", "the base turns red")
 	casualty := repo.branchHead("card/s1-1", "other.go", "package o\n")
 	// a head that does not merge onto the base is no cure either

@@ -10,20 +10,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/internal/swarm"
 )
 
 // passingBrief is a brief that passes the card lint: what the writer says, then the RULES
 // paragraph with every general rule (swarm.ChildRulesParagraph).
-func passingBrief(lead string) string {
-	b := lead + "\n\n" + swarm.ChildRulesParagraph()
-	// a friend's card is held to its own rules line, not only the child paragraph
-	if w, why := cardhdr.ReadWho(lead + "\n"); why == "" && w.Friend {
-		b += swarm.FriendOwnRulesLineText + "\n"
-	}
-	return b
-}
+func passingBrief(lead string) string { return lead + "\n\n" + swarm.ChildRulesParagraph() }
 
 // writeBrief writes a passing brief leading with lead under t.TempDir() and returns the
 // path, for `add --brief-file`.
@@ -165,7 +157,7 @@ func TestAddAdmitsAnyProjectsBriefUnderTheDefaultRules(t *testing.T) {
 	require.Equal(t, 0, code, "a non-Go brief with the general rules: exit %d\n%s", code, errs)
 	code, _, errs = ta.do("add --stream web2 --count 1 --one --max 0 --rules " + copyRules(t) + " --brief '" + strings.ReplaceAll(brief, "'", "") + "'")
 	require.Equal(t, 2, code, "the same brief under this repository's file: exit %d\n%s", code, errs)
-	require.Contains(t, errs, "LINT DRIFT brief rule-gocache: 1: missing: Export a private GOCACHE", "the same brief under this repository's file: exit %d\n%s", code, errs)
+	require.Contains(t, errs, "LINT DRIFT brief rule-gocache: 1: missing: "+swarm.GoCacheLine, "the same brief under this repository's file: exit %d\n%s", code, errs)
 	require.Contains(t, errs, "LINT DRIFT brief rule-commit-trailer: ", "the same brief under this repository's file: exit %d\n%s", code, errs)
 }
 

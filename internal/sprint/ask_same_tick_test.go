@@ -102,7 +102,7 @@ func TestAReviewCardIsAskedAReadTheSameTick(t *testing.T) {
 		assert.Empty(t, w.notesOf(NWaitingForReader))
 	})
 
-	t.Run("a frontier read with every frontier reader at her room is one judgment naming who is full", func(t *testing.T) {
+	t.Run("a frontier read with every friend at her room goes to a paid reader", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
@@ -110,25 +110,15 @@ func TestAReviewCardIsAskedAReadTheSameTick(t *testing.T) {
 		}
 		seats := []FriendSeat{frontierSeat("amy", 1, Up, "")}
 		w.s.Friends = seats
-		tickAsk(t, w, seats)
-		ns := w.notesOf(NNoFrontierRoom)
-		require.Len(t, ns, 1, "%+v", w.notes)
-		assert.Equal(t, []string{"s1-3"}, ns[0].Primaries)
-		assert.Equal(t, NNoFrontierRoom+": amy full", ns[0].What)
-		assert.Empty(t, w.notesOf(NFewReaders), "two readers are up: not fewer than two")
-		assert.Empty(t, stalls(w, "s1-3"), "held by the judgment, not stalled")
 		_, due := tickAsk(t, w, seats)
-		assert.Len(t, w.notesOf(NNoFrontierRoom), 1, "not written again")
-
-		// her first read comes back: the third is asked of her at once
-		w.must(FriendReadClose(w.s, "amy", "s1-1", "Verdict: LAND\n"))
-		_, due = tickAsk(t, w, seats)
-		assert.Zero(t, due)
-		require.NotNil(t, w.s.Fleet.Placed(ReadCardID("s1-3", 1, "amy")))
-		assert.Empty(t, w.s.Work.Card("s1-3").F(FieldWaitingReader))
-		for _, o := range w.s.Open {
-			assert.NotEqual(t, NNoFrontierRoom, o.Note.Type, "closed once every read it named is asked")
-		}
+		assert.Zero(t, due, "a paid reader has room, so nothing waits")
+		assert.Empty(t, w.notesOf(NWaitingForReader))
+		assert.Empty(t, w.notesOf(NFewReaders), "a friend up at her room is no judgment")
+		require.Equal(t, Working, w.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")).Col)
+		require.Equal(t, Ready, w.s.Fleet.Card(ReadCardID("s1-2", 1, "amy")).Col)
+		require.Nil(t, w.s.Fleet.Card(ReadCardID("s1-3", 1, "amy")))
+		require.NotNil(t, placedReaderRead(w, "s1-3"), "the third is a paid reader's")
+		assert.Empty(t, stalls(w, "s1-3"), "the reader holds it")
 	})
 
 	t.Run("a frontier read taken back from a friend is asked again", func(t *testing.T) {
@@ -153,22 +143,18 @@ func TestAReviewCardIsAskedAReadTheSameTick(t *testing.T) {
 		assert.NotNil(t, w.s.Fleet.Placed(ReadCardID("s1-1", 1, other)), "a read taken back is not a read: asked of the other friend")
 	})
 
-	t.Run("a frontier read with no frontier reader up is the frontier judgment, which holds it", func(t *testing.T) {
+	t.Run("a frontier read with no friend up is asked of a paid reader", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
 		putReview(w, "s1-1", "s1-1: work (s1) tier: frontier\n", 1, 1, "head")
 		seats := []FriendSeat{frontierSeat("amy", 1, Down, "")}
 		w.s.Friends = seats
 		tickAsk(t, w, seats)
-		require.Len(t, w.notesOf(NNoFrontierRoom), 1)
-		assert.Empty(t, w.notesOf(NFewReaders), "two readers are up: not fewer than two")
-		assert.Empty(t, stalls(w, "s1-1"), "held by the judgment, not stalled")
-		// the next tick keeps it open: the machine's ask does not close it
-		p, _ := tickAsk(t, w, seats)
-		for _, o := range p.Closes {
-			assert.NotEqual(t, NNoFrontierRoom, o.Note.Type, "closed while no frontier reader is up")
-		}
-		assert.Len(t, w.notesOf(NNoFrontierRoom), 1, "not written again")
+		assert.Empty(t, w.notesOf(NFewReaders), "readers are up")
+		require.NotNil(t, placedReaderRead(w, "s1-1"))
+		assert.Empty(t, stalls(w, "s1-1"), "the reader holds it")
+		tickAsk(t, w, seats)
+		assert.Empty(t, w.notesOf(NFewReaders), "not written on the next tick")
 		assert.Empty(t, stalls(w, "s1-1"))
 	})
 }

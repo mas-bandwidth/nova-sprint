@@ -127,8 +127,8 @@ func (st *Store) SeatRepairStep(ctx context.Context, r sprint.SeatRepairReq) (St
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.RepairSeat(s, rec, r) }}, "", nil
 }
 
-// keyServer is the server's record: the actor the run loop runs as, when it
-// last said so, its landing mode and its process (ServerRecord). The run loop writes it at its start and every ServerEvery, for
+// keyServer is the server's record: the actor the run loop runs as and when it
+// last said so. The run loop writes it at its start and every ServerEvery, for
 // ServerTTL on a store that expires keys, so a torn-down sprint keeps none past
 // it; it is read as the server's while it is no older than ServerTTL.
 const keyServer = "server"
@@ -140,17 +140,10 @@ const (
 	ServerTTL   = 2 * time.Minute
 )
 
-// ServerRecord is the server's record as keyServer holds it: the actor the run
-// loop runs as, when it last said so, whether it lands (run --land), and the
-// process that wrote it, its pid on its host, so a land by hand can tell the
-// server from itself (land-one-lander-now-nsb.w1). A record written before
-// the server said its landing mode reads as not landing.
-type ServerRecord struct {
+// serverRecord is the server's record as keyServer holds it.
+type serverRecord struct {
 	Actor string    `json:"actor"`
 	At    time.Time `json:"at"`
-	Land  bool      `json:"land,omitempty"`
-	PID   int       `json:"pid,omitempty"`
-	Host  string    `json:"host,omitempty"`
 }
 
 // expiringKV is a backend whose keys can expire (Redis): the server's record is
@@ -161,21 +154,14 @@ type expiringKV interface {
 }
 
 // SetServerActor records the actor the run loop runs as, at the clock's
-// reading, and nothing of its landing or its process.
+// reading: the server's report of itself, which seat and handover show. It
+// writes nothing else, and never the coordinator key.
 func (st *Store) SetServerActor(ctx context.Context, actor string) error {
-	return st.SetServer(ctx, ServerRecord{Actor: actor})
-}
-
-// SetServer writes the server's record r, its At the clock's reading: the
-// server's report of itself, which seat, handover and land read. It writes
-// nothing else, and never the coordinator key.
-func (st *Store) SetServer(ctx context.Context, r ServerRecord) error {
 	kv, ok := st.B.(KV)
 	if !ok {
 		return nil // a backend that keeps no keys has no server's record
 	}
-	r.At = st.now()
-	b, err := json.Marshal(r)
+	b, err := json.Marshal(serverRecord{Actor: actor, At: st.now()})
 	if err != nil {
 		return err
 	}
@@ -185,33 +171,23 @@ func (st *Store) SetServer(ctx context.Context, r ServerRecord) error {
 	return kv.SetKey(ctx, keyServer, string(b))
 }
 
-// Server is the server's record, ok false with no record, or one older than
-// ServerTTL.
-func (st *Store) Server(ctx context.Context) (ServerRecord, bool, error) {
-	var r ServerRecord
-	kv, ok := st.B.(KV)
-	if !ok {
-		return r, false, nil
-	}
-	raw, ok, err := kv.GetKey(ctx, keyServer)
-	if err != nil || !ok {
-		return r, false, err
-	}
-	if err := json.Unmarshal([]byte(raw), &r); err != nil {
-		return r, false, err
-	}
-	if st.now().Sub(r.At) > ServerTTL {
-		return ServerRecord{}, false, nil
-	}
-	return r, true, nil
-}
-
 // ServerActor is the actor the server runs as, by its record: "" with no
 // record, or one older than ServerTTL.
 func (st *Store) ServerActor(ctx context.Context) (string, error) {
-	r, ok, err := st.Server(ctx)
+	kv, ok := st.B.(KV)
+	if !ok {
+		return "", nil
+	}
+	raw, ok, err := kv.GetKey(ctx, keyServer)
 	if err != nil || !ok {
 		return "", err
+	}
+	var r serverRecord
+	if err := json.Unmarshal([]byte(raw), &r); err != nil {
+		return "", err
+	}
+	if st.now().Sub(r.At) > ServerTTL {
+		return "", nil
 	}
 	return r.Actor, nil
 }

@@ -37,10 +37,10 @@ const (
 	// makes her up: it proves a daemon, not a session (FriendStatus).
 	FriendBeatEvery = time.Second
 	// FriendProofLive is how old the session proof her beat carries may be while she is
-	// up (docs/SPEC-FRIEND.md, The push proof): her daemon asks the session after ten
-	// minutes with no word from it and waits five for the answer (nova-friend's
-	// SessionQuiet and SessionBound), so a session that answers is never proved longer
-	// ago than that. The owner, 2026-10-05: "nova-bus is useless if the friend using it
+	// up (docs/SPEC-FRIEND.md, The push proof): her daemon asks the session eight
+	// minutes after its last ask and waits up to five for the answer (nova-friend's
+	// ProveEvery and SessionBound), so a session that answers is never proved longer
+	// ago than thirteen minutes, inside this window. The owner, 2026-10-05: "nova-bus is useless if the friend using it
 	// is deaf and is not listening to messages sent back."
 	FriendProofLive = 15 * time.Minute
 	// FriendPongWindow is how long a wake ping her session answered keeps her
@@ -86,6 +86,24 @@ type Beat struct {
 	// --pong: her session's answer to a SESSION CHECK, or its own bus message), zero
 	// when her beat carried none; the friend beat record keeps it under "pong".
 	Proof time.Time `json:"pong,omitzero"`
+	// StopReturns is how many stop-returns a member's lanes still owe after the machine's
+	// stop (fleet beat --stop-returns; docs/SPEC-SPRINT.md section 14, stop cancels jobs):
+	// start waits for zero. A friend's count is her report's (FriendReport.StopReturns).
+	StopReturns int `json:"stop_returns,omitempty"`
+	// NoRoom is a member's or reader's word that it starts no card, and why (fleet beat or
+	// queue --no-room: its free disk under its floor, its usage source's rest); "" while it
+	// starts cards. While its beat is fresh the deal gives it no card and the ask asks it no
+	// read (NoRoomNow), so a card is not dealt to a machine that hands it straight back.
+	NoRoom string `json:"no_room,omitempty"`
+}
+
+// NoRoomNow is the word of a beat fresh at now that its member or reader starts no card,
+// "" when it says none or is not fresh.
+func NoRoomNow(b Beat, now time.Time) string {
+	if !b.Fresh(now) {
+		return ""
+	}
+	return b.NoRoom
 }
 
 // FriendReport is what a friend's machinery reports with her beat, as a machine's beat
@@ -99,6 +117,10 @@ type FriendReport struct {
 	Working *int     `json:"working,omitempty"`
 	Queue   *int     `json:"queue,omitempty"`
 	Width   *int     `json:"width,omitempty"`
+	// StopReturns is how many stop-returns her lanes still owe after the machine's stop
+	// (friend beat --stop-returns; docs/SPEC-SPRINT.md section 14, stop cancels jobs):
+	// start waits for zero. Absent when not reported.
+	StopReturns *int `json:"stop_returns,omitempty"`
 	// Active is the newest write under her working directory and outbox as her daemon
 	// last walked them (friend beat --active), zero when it reported none: the signal that
 	// her session moves, which a daemon pong does not say (docs/SPEC-FRIEND.md, last
@@ -114,6 +136,14 @@ type FriendReport struct {
 	// docs/SPEC-FRIEND.md, limits-mean-down-w-r5.w1~15); zero and empty while she is up.
 	Until  time.Time `json:"until,omitzero"`
 	Reason string    `json:"reason,omitempty"`
+	// Build, Started and Present are her daemon's own facts (friend beat --build --started
+	// --present): the build it runs (its version line's build), when it started, which is its
+	// generation, and when it sent her the present on its start (the note that snaps her to
+	// now and skips what is old); each absent when it reported none. A start the status
+	// transitions have not seen is a new generation of her daemon (StatusTransitions).
+	Build   string    `json:"build,omitempty"`
+	Started time.Time `json:"started,omitzero"`
+	Present time.Time `json:"present,omitzero"`
 }
 
 // SaysDown says the beat is her daemon's word that she is down (FriendReport.Until):
@@ -190,10 +220,14 @@ func PresenceStatus(held bool, b Beat, now time.Time) string {
 // never up); else up only on evidence from her own session within its window
 // (FriendEvidence): a wake ping her session answered
 // (the coordinator's friend health --state up, under the current seat
-// generation) under FriendPongWindow old, or a card of hers finished under
-// FriendFinishWindow old; else down. Her beat, whoever sends it, is never
-// evidence: a daemon or a loop beating for her says an app is open, not that
-// her session can work. Releasing a hold (friend up) is no evidence either.
+// generation) under FriendPongWindow old, or her session's answer to a check her
+// daemon asked, proved on her beat (friend beat --check, then --pong naming its
+// nonce; ProveBeat; Beat.Proof) under FriendProofLive old while her beat is
+// fresh, or a card of hers finished under FriendFinishWindow old;
+// else down. Her beat itself, whoever sends it, is never evidence: a daemon or a
+// loop beating for her says an app is open, not that her session can work; only
+// the session's answer it carries is. Releasing a hold (friend up) is no
+// evidence either.
 func FriendStatus(f FriendPresence, now time.Time) string {
 	status, _ := FriendEvidence(f, now)
 	return status
@@ -216,12 +250,26 @@ func FriendEvidence(f FriendPresence, now time.Time) (string, string) {
 	if age := now.Sub(f.Health.Seen); pong && age >= 0 && age < FriendPongWindow {
 		return Up, "session pong " + ago(age)
 	}
+	// the proof her beat record keeps is an answer to a check her daemon asked (ProveBeat),
+	// and it counts only while her beat is fresh: a daemon that stopped proves nothing more
+	proof := !f.Beat.Proof.IsZero()
+	if age := now.Sub(f.Beat.Proof); proof && age >= 0 && age < FriendProofLive && f.Beat.Fresh(now) {
+		return Up, "session proof " + ago(age)
+	}
 	if age := now.Sub(f.Finished); !f.Finished.IsZero() && age >= 0 && age < FriendFinishWindow {
 		return Up, "finish " + ago(age)
 	}
 	why := "no session evidence: no wake ping answered by her session within " + FriendPongWindow.String()
 	if pong {
 		why += " (last " + ago(now.Sub(f.Health.Seen)) + ")"
+	}
+	why += ", no session proof on her beat within " + FriendProofLive.String()
+	if proof {
+		why += " (last " + ago(now.Sub(f.Beat.Proof))
+		if !f.Beat.Fresh(now) {
+			why += ", her beat stopped " + ago(now.Sub(f.Beat.At))
+		}
+		why += ")"
 	}
 	why += ", no card finished within " + FriendFinishWindow.String()
 	if !f.Finished.IsZero() {
@@ -253,12 +301,19 @@ func ago(d time.Duration) string {
 }
 
 // LoadText is the load cell: the highest load of the last LoadWindow with
-// one decimal and a percent sign while the beat is fresh, else empty.
+// one decimal and a percent sign while the beat is fresh, else empty; and
+// beside it, while the machine's open file descriptors are over the member's
+// warn bound, "fds <count> warn" (or alarm, fd.go FilesText), so the fleet
+// table shows a machine running out of them before the alarm's judgment.
 func LoadText(b Beat, now time.Time) string {
 	if !b.Fresh(now) {
 		return ""
 	}
-	return fmt.Sprintf("%.1f%%", b.Load)
+	load := fmt.Sprintf("%.1f%%", b.Load)
+	if f := FilesText(b, now); f != "" {
+		load += " fds " + f
+	}
+	return load
 }
 
 // TickPresence applies the changes of the members' derived status (T0), every
@@ -275,9 +330,18 @@ func LoadText(b Beat, now time.Time) string {
 // downs, the level part of the same tick evens the queues after the deal. So
 // a fleet that beats before start is up, whole, at the first tick, and a
 // fleet that loses several machines at once redeals all their cards in that
-// tick. The binding gives it the beats; with none given it does nothing.
+// tick. The binding gives it the beats; with none given it does nothing. Each
+// status that changed, a member's or a friend's, raises its one judgment in the
+// same plan (StatusTransitions, judgments_status.go).
 func TickPresence(s *Snapshot, r TickReq) (Plan, int) {
-	return presence(s, r) // the rest are due: the next ticks apply them
+	p, due := presence(s, r) // the rest are due: the next ticks apply them
+	t := StatusTransitions(s, r)
+	p.Units = append(p.Units, t.Units...)
+	p.Notes = append(p.Notes, t.Notes...)
+	p.Closes = append(p.Closes, t.Closes...)
+	p.Updates = append(p.Updates, t.Updates...)
+	p.Props = append(p.Props, t.Props...)
+	return p, due
 }
 
 func presence(s *Snapshot, r TickReq) (Plan, int) {

@@ -9,34 +9,33 @@ import (
 
 // The duties of today's tick, by name, in the order the machine runs them: the
 // parts of sprint.TickParts in their order (the start's level and level reads,
-// then the four tables' updates: the work pump's resolve, cap deal, deal and accept, the
-// readers' ask, the merge's resume, the fleet's presence, verdicts, friend redeal and friend stall; then the end), the unknown machines it tells of
+// then the four tables' updates: the work pump's resolve, cap deal, deal, rebalance and accept, the
+// readers' ask, the merge's resume, the fleet's presence and friend stall; then the end), the unknown machines it tells of
 // (with the fleet's update), and the reminders. The machine's repair of an operation the fence holds is not one:
 // it decides nothing from the tables (Decide's doc says what is left out).
 const (
-	DutyStrangers   = "strangers"     // tell of a machine that beats and is no member
-	DutyPresence    = "presence"      // a member's status follows its beats
-	DutyVerdicts    = "verdicts"      // a finished work card the readers read moves to ok or failed
-	DutyRedeal      = "friend redeal" // a friend's card past its deadline is redealt
-	DutyFriendStall = "friend-stall"  // a friend holding cards with no sign of life climbs the stall ladder
-	DutyResolve     = "resolve"       // waiting primaries whose needs landed go ready; sentinels are reached
-	DutyResume      = "resume"        // a stream stopped on another's card goes on when it landed
-	DutyCapDeal     = "cap deal"      // a ready card past its attempt cap is dealt to a frontier or heavy friend with room
-	DutyDeal        = "deal"          // ready primaries are dealt to the members up
-	DutyLevel       = "level"         // the members' backlogs are evened, at the tick's start
-	DutyLevelReads  = "level reads"   // the readers' loads are evened, at the tick's start
-	DutyAccept      = "accept"        // primaries in review with two ok reads are accepted and queued to merge
-	DutyAsk         = "ask"           // primaries in review are asked the reads they want, one at a time
-	DutyCheck       = "check"         // a broken rule and a stall are judgments
-	DutyDeadlines   = "deadlines"     // a late card or stream is a judgment
-	DutyOverdue     = "overdue"       // a judgment past its due time is marked
-	DutyDone        = "done"          // the sprint done is said to the coordinator, and the machine stops
-	DutyRemind      = "remind"        // each person due is pushed their goal
+	DutyStrangers   = "strangers"    // tell of a machine that beats and is no member
+	DutyPresence    = "presence"     // a member's status follows its beats
+	DutyFriendStall = "friend-stall" // a friend holding cards with no sign of life climbs the stall ladder
+	DutyResolve     = "resolve"      // waiting primaries whose needs landed go ready; sentinels are reached
+	DutyResume      = "resume"       // a stream stopped on another's card goes on when it landed
+	DutyCapDeal     = "cap deal"     // a ready card past its attempt cap is dealt to a frontier or heavy friend with room
+	DutyDeal        = "deal"         // ready primaries are dealt to the members up
+	DutyRebalance   = "rebalance"    // a card queued behind lanes that all work goes to an idle lane of either side
+	DutyLevel       = "level"        // the members' backlogs are evened, at the tick's start
+	DutyLevelReads  = "level reads"  // the readers' loads are evened, at the tick's start
+	DutyAccept      = "accept"       // primaries in review with two ok reads are accepted and queued to merge
+	DutyAsk         = "ask"          // primaries in review are asked the reads they want, one at a time
+	DutyCheck       = "check"        // a broken rule and a stall are judgments
+	DutyDeadlines   = "deadlines"    // a late card or stream is a judgment
+	DutyOverdue     = "overdue"      // a judgment past its due time is marked
+	DutyDone        = "done"         // the sprint done is said to the coordinator, and the machine stops
+	DutyRemind      = "remind"       // each person due is pushed their goal
 )
 
 // dutyNames is the duties' names in the tick's order, which the canonical order
 // of moves follows. Duties lists the same names, and a test holds them equal.
-var dutyNames = []string{DutyLevel, DutyLevelReads, DutyResolve, DutyCapDeal, DutyDeal, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyVerdicts, DutyRedeal, DutyFriendStall, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
+var dutyNames = []string{DutyLevel, DutyLevelReads, DutyResolve, DutyCapDeal, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
 
 // Duty is one duty of the tick: its name and the function that decides it.
 type Duty struct {
@@ -54,13 +53,12 @@ var Duties = []Duty{
 	{DutyResolve, ResolveMoves},
 	{DutyCapDeal, CapDealMoves},
 	{DutyDeal, DealMoves},
+	{DutyRebalance, RebalanceMoves},
 	{DutyAccept, AcceptMoves},
 	{DutyAsk, AskMoves},
 	{DutyResume, ResumeMoves},
 	{DutyStrangers, StrangerMoves},
 	{DutyPresence, PresenceMoves},
-	{DutyVerdicts, VerdictsMoves},
-	{DutyRedeal, RedealMoves},
 	{DutyFriendStall, FriendStallMoves},
 	{DutyCheck, CheckMoves},
 	{DutyDeadlines, DeadlineMoves},
@@ -107,14 +105,6 @@ func StrangerMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, Du
 // or withdrawn.
 func PresenceMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyPresence) }
 
-// VerdictsMoves is the finished work cards the readers have read moved to their
-// members' ok or failed cells (sprint.TickVerdicts).
-func VerdictsMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyVerdicts) }
-
-// RedealMoves is the friends' cards past their deadline moved to their redealt cells
-// and their primaries to ready (sprint.TickFriendRedeal).
-func RedealMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyRedeal) }
-
 // ResolveMoves is the waiting primaries whose needs have all landed moved to
 // ready, the sentinels whose needs have landed reached, and the judgments for
 // a need dropped or missing (T1).
@@ -128,6 +118,11 @@ func ResumeMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, Duty
 // room, and the judgments for no member up and for a card at its redeal bound
 // (T3).
 func DealMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyDeal) }
+
+// RebalanceMoves is the rebalance after the deal: each work card dealt and not started,
+// queued on a friend or a member whose lanes all work, moved to a unit of either side with an
+// idle lane whose tiers and side's set admit it, the cheapest first (sprint.Rebalance).
+func RebalanceMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyRebalance) }
 
 // CapDealMoves is the attempt cap's default answer: each machine's primary ready and
 // past its stream's attempt cap dealt as a friend's card to the frontier or heavy friend
@@ -208,13 +203,12 @@ func decisions() []dutyOn {
 		{DutyResolve, partOn(DutyResolve)},
 		{DutyCapDeal, partOn(DutyCapDeal)},
 		{DutyDeal, partOn(DutyDeal)},
+		{DutyRebalance, partOn(DutyRebalance)},
 		{DutyAccept, partOn(DutyAccept)},
 		{DutyAsk, partOn(DutyAsk)},
 		{DutyResume, partOn(DutyResume)},
 		{DutyStrangers, strangersOn},
 		{DutyPresence, partOn(DutyPresence)},
-		{DutyVerdicts, partOn(DutyVerdicts)},
-		{DutyRedeal, partOn(DutyRedeal)},
 		{DutyFriendStall, partOn(DutyFriendStall)},
 		{DutyCheck, partOn(DutyCheck)},
 		{DutyDeadlines, partOn(DutyDeadlines)},

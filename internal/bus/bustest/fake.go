@@ -32,11 +32,28 @@ type Fake struct {
 	Friends []string
 	// Fail, when set, is the error every command answers: a store that is down.
 	Fail error
+	// Lose, when set, is the answer of the next write of a message (AddAll
+	// with streams, or AddOnce that writes): it commits, then its response is
+	// lost. It is cleared by the write it answers.
+	Lose    error
+	records map[string]fakeRecord // a token's record, by key
+	// FailForward, when set, is the answer of every receipt stamp (Forward):
+	// a store that refuses the receipts hash alone.
+	FailForward error
 	// Trips counts the commands sent.
 	Trips int
+	// Sleep, when set, is what a BlockRead that finds nothing waits its block
+	// out on: the test's clock, never real time.
+	Sleep func(d time.Duration)
 }
 
 var _ bus.Store = (*Fake)(nil)
+
+// fakeRecord is a string key with its expiry, as SET ... PX keeps one.
+type fakeRecord struct {
+	value string
+	until time.Time
+}
 
 type fakeGroup struct {
 	last    string               // last delivered entry id, "0-0" at the start
@@ -51,6 +68,30 @@ func NewFake(start time.Time, names ...string) *Fake {
 func (f *Fake) trip() error {
 	f.Trips++
 	return f.Fail
+}
+
+// Tail is the stream's last entry id, as the wait arms at it; a stream with
+// no entries answers "0-0" and not there (SPEC-BUS.md, the verbs: wait).
+func (f *Fake) Tail(ctx context.Context, stream string) (string, bool, error) {
+	es, err := f.Range(ctx, stream, "-", "+", 0)
+	if err != nil || len(es) == 0 {
+		return "0-0", false, err
+	}
+	return es[len(es)-1].Entry, true, nil
+}
+
+// BlockRead is the entries past the cursor, up to count, touching no group,
+// so what it hands out stays a later recv's; a block that finds none waits
+// its duration out on Sleep (SPEC-BUS.md, the verbs: wait).
+func (f *Fake) BlockRead(ctx context.Context, stream, after string, block time.Duration, count int) ([]bus.Entry, error) {
+	es, err := f.Range(ctx, stream, "("+after, "+", count)
+	if err != nil || len(es) > 0 {
+		return es, err
+	}
+	if f.Sleep != nil {
+		f.Sleep(block)
+	}
+	return nil, nil
 }
 
 // Advance moves the clock by d: what a reader's idle time grows by.
@@ -101,6 +142,61 @@ func (f *Fake) AddAll(_ context.Context, streams []string, fields map[string]str
 	if err := f.trip(); err != nil {
 		return err
 	}
+	f.add(streams, fields, marks)
+	return f.lost(streams)
+}
+
+// lost is the answer of a write that committed: Lose once, when it is set
+// and the write was a message's.
+func (f *Fake) lost(streams []string) error {
+	if f.Lose == nil || len(streams) == 0 {
+		return nil
+	}
+	err := f.Lose
+	f.Lose = nil
+	return err
+}
+
+// record is the live record at key: one past its expiry is gone, as Redis
+// expires the key.
+func (f *Fake) record(key string) (string, bool) {
+	r, ok := f.records[key]
+	if ok && !f.now.Before(r.until) {
+		delete(f.records, key)
+		return "", false
+	}
+	return r.value, ok
+}
+
+func (f *Fake) AddOnce(_ context.Context, key, record string, keep time.Duration, streams []string, fields map[string]string, marks ...bus.Mark) (string, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.trip(); err != nil {
+		return "", false, err
+	}
+	if prior, ok := f.record(key); ok {
+		return prior, true, nil
+	}
+	if f.records == nil {
+		f.records = map[string]fakeRecord{}
+	}
+	f.records[key] = fakeRecord{value: record, until: f.now.Add(keep)}
+	f.add(streams, fields, marks)
+	return "", false, f.lost(streams)
+}
+
+func (f *Fake) Sent(_ context.Context, key string) (string, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.trip(); err != nil {
+		return "", false, err
+	}
+	v, ok := f.record(key)
+	return v, ok, nil
+}
+
+// add is one entry on every stream and every mark, f.mu held.
+func (f *Fake) add(streams []string, fields map[string]string, marks []bus.Mark) {
 	f.seq++
 	id := strconv.FormatInt(f.now.UnixMilli(), 10) + "-" + strconv.FormatInt(f.seq, 10)
 	for _, s := range streams {
@@ -111,6 +207,13 @@ func (f *Fake) AddAll(_ context.Context, streams []string, fields map[string]str
 			delete(f.hashes[m.Key], m.Field)
 			continue
 		}
+		if m.Forward {
+			next, moved := forwardReceipt(f.hashes[m.Key][m.Field], m.Value, f.now)
+			if !moved {
+				continue
+			}
+			m.Value = next
+		}
 		if f.hashes == nil {
 			f.hashes = map[string]map[string]string{}
 		}
@@ -119,7 +222,6 @@ func (f *Fake) AddAll(_ context.Context, streams []string, fields map[string]str
 		}
 		f.hashes[m.Key][m.Field] = m.Value
 	}
-	return nil
 }
 
 func (f *Fake) Unmark(_ context.Context, key string, fields ...string) (int64, error) {
@@ -152,6 +254,32 @@ func (f *Fake) Marks(_ context.Context, keys ...string) ([]map[string]string, er
 		}
 	}
 	return out, nil
+}
+
+func (f *Fake) Forward(_ context.Context, key, state string, ids ...string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.trip(); err != nil {
+		return nil, err
+	}
+	if f.FailForward != nil {
+		return nil, f.FailForward
+	}
+	prior := make([]string, len(ids))
+	for i, id := range ids {
+		cur := f.hashes[key][id]
+		prior[i], _, _ = strings.Cut(cur, " ")
+		if next, moved := forwardReceipt(cur, state, f.now); moved {
+			if f.hashes == nil {
+				f.hashes = map[string]map[string]string{}
+			}
+			if f.hashes[key] == nil {
+				f.hashes[key] = map[string]string{}
+			}
+			f.hashes[key][id] = next
+		}
+	}
+	return prior, nil
 }
 
 func (f *Fake) EnsureGroup(_ context.Context, stream, group string) error {
@@ -346,4 +474,18 @@ func inRange(id, from, to string) bool {
 		return false
 	}
 	return true
+}
+
+// forwardReceipt is the receipt rule of the store's script (forwardLua,
+// internal/bus/redis.go): the value a receipt holding cur moves to when
+// state is asked at now, and whether it moves. It moves only forward, and only delivered starts one: a
+// message is never read or acted before it is delivered.
+// (tla/Bus2Receipts.tla: ReceiptNeverMovesBack, ActedImpliesDelivered)
+func forwardReceipt(cur, state string, now time.Time) (string, bool) {
+	prior, _, _ := strings.Cut(cur, " ")
+	have, want := slices.Index(bus.StageStates, prior)+1, slices.Index(bus.StageStates, state)+1
+	if want <= have || (have == 0 && want != 1) {
+		return cur, false
+	}
+	return state + " " + strconv.FormatInt(now.Unix(), 10), true
 }

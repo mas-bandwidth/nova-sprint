@@ -27,11 +27,8 @@ import (
 //   - an up friend has had an empty row for EmptyRowAfter while cards she could do sit
 //     ready in the pool or unstarted on another friend's row (emptyConds);
 //   - a named pin sits ready or working off its friend's row (pinConds). The deal writes
-//     that judgment on the unit that places the card on someone else (friendDeal); the
+//     that judgment on the unit that places the card on someone else (friendDealPass); the
 //     pass keeps it, and writes it when the card is there without that note.
-//   - merge health: the base red at its tip, dev behind, the promotion PR's state and the
-//     branches not on the base, as one judgment about the sprint (mergeHealthConds,
-//     coordinator_pass_merge.go).
 //
 // Raising again is a push: the judgment is rewritten in place with the latest facts and
 // the count of its raises after the first (its Before), and a happened note NRaisedAgain
@@ -64,16 +61,15 @@ const (
 	NRaisedAgain = "a judgment still holds: raised again"
 )
 
-// PassTypes are the pass's judgment types. NFriendRowEmpty is the empty-row clock,
-// not a judgment, and stays off this list.
-var PassTypes = []string{NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored, NMergeHealth}
+// PassTypes are the pass's judgment types: its own and the automatic stops it keeps
+// (StopTypes, stops.go). NFriendRowEmpty is the empty-row clock, not a judgment, and stays
+// off this list.
+var PassTypes = append([]string{NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored}, StopTypes...)
 
-// NFriendEmpty and NPinIgnored list ack and wait on TickDecisions, same as deaf,
-// so an acknowledgement is kept on the condition (steps_ack.go) and the next pass
-// does not write a second note. Idle does not: TickDecisions[NFriendIdle] is
-// return and wait (steps_tick.go; docs/SPEC-SPRINT.md section 1, "Verified working"),
-// and return takes back the cards she has not started. The map is the tick's;
-// init is how this file joins the two that list ack.
+// The two judgments list ack and wait on TickDecisions, same as deaf and idle, so an
+// acknowledgement is kept on the condition (steps_ack.go) and the next pass does not
+// write a second note. steps_tick.go is not this card's file; the map is the tick's
+// and init is how this file joins it.
 func init() {
 	TickDecisions[NFriendEmpty] = []string{"ack", "wait"}
 	TickDecisions[NPinIgnored] = []string{"ack", "wait"}
@@ -86,16 +82,14 @@ const (
 	// could do wait elsewhere, before the pass tells the coordinator once.
 	EmptyRowAfter = 10 * time.Minute
 	// FriendDeafAfter is how old a friend's last session pong may be before her
-	// session is deaf: FriendProofLive, since her daemon asks a quiet session after ten
-	// minutes and waits five for the answer (docs/SPEC-FRIEND.md, The push proof), so a
-	// session that answers is never proved longer ago than that. Shorter, and a quiet
-	// friend whose session answers is judged deaf every ten minutes and cleared again.
+	// session is deaf: FriendProofLive, since her daemon asks her session eight minutes
+	// after its last ask and waits up to five for the answer (nova-friend's ProveEvery and
+	// SessionBound; docs/SPEC-FRIEND.md, The push proof), so a session that answers is
+	// never proved longer ago than thirteen minutes. Shorter, and a friend whose session
+	// answers slowly is judged deaf and cleared again every cycle.
 	FriendDeafAfter = FriendProofLive
-	// FriendFinishDefault is the friend-finish window when the coordinator set none:
-	// fifteen minutes (card sn-verified-working-b-ns-b.w1; the owner: "trust but VERIFY",
-	// "Are they actually doing the work that is shown in the friend table? Really?"),
-	// down from thirty, the same bound the deaf judgment takes (FriendDeafAfter).
-	FriendFinishDefault = 15 * time.Minute
+	// FriendFinishDefault is the friend-finish window when the coordinator set none.
+	FriendFinishDefault = 30 * time.Minute
 	// PropFriendFinish is the work table's property: the friend-finish window, a
 	// duration (nova-sprint set --friend-finish).
 	PropFriendFinish = "friend_finish"
@@ -167,9 +161,11 @@ func TickCoordinatorPass(s *Snapshot, r TickReq) (Plan, int) {
 	conds := append(append(deafConds(s, r), idleConds(s, r)...), behindConds(s, r)...)
 	conds = append(conds, emptyConds(&p, s, r)...)
 	conds = append(conds, pinConds(s, r)...)
-	conds = append(conds, mergeHealthConds(s)...)
+	// every automatic stop the machine made, while it holds (stops.go)
+	conds = append(conds, stopConds(s, r)...)
 	due := notify(&p, s, conds, PassTypes, r)
 	reraise(&p, s, conds, r)
+	stopsDigest(&p, s, r)
 	return p, due
 }
 
@@ -216,7 +212,7 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 			continue
 		}
 		var last, oldest time.Time
-		for _, c := range append(append(append([]*Card(nil), s.Fleet.Cell(row, Finished)...), s.Fleet.Cell(row, DoneOK)...), s.Fleet.Cell(row, DoneFailed)...) {
+		for _, c := range append(append([]*Card(nil), s.Fleet.Cell(row, DoneOK)...), s.Fleet.Cell(row, DoneFailed)...) {
 			if t := stampAt(c, "finished"); t.After(last) {
 				last = t
 			}
@@ -250,9 +246,9 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 			finish = fmt.Sprintf("her last finish %s ago (at %s)", lastAge.Round(time.Second), stamp(last))
 		}
 		out = append(out, cond{typ: NFriendIdle, primaries: []string{row},
-			what: fmt.Sprintf("friend %s holds %d working (%s) and finished none in %s: %s; return her unstarted cards (friend take %s --all-unstarted) or wait",
+			what: fmt.Sprintf("friend %s holds %d working (%s) and finished none in %s: %s; check in on her: nova-friend ping --as <coordinator> --to %s --wake",
 				f, len(ids), Preview(ids, ", "), window, finish, f),
-			decisions: []string{"return", "wait"}})
+			decisions: []string{"nova-friend ping --as <coordinator> --to " + f + " --wake", "friend take " + f + " --all-unstarted", "friend down " + f + " --reason idle", "ack", "wait"}})
 	}
 	return out
 }
@@ -276,6 +272,8 @@ func behindConds(s *Snapshot, r TickReq) []cond {
 	byType := map[string][]string{}
 	seen := map[string]bool{}
 	n := 0
+	var since, oldest time.Time // the oldest counted judgment's overdue line, and its write
+	var oldestID string
 	for _, o := range s.Open {
 		j := o.Note
 		if j.Kind != Judgment || j.Type == NSprintDone || slices.Contains(PassTypes, j.Type) || seen[j.ID] {
@@ -296,6 +294,12 @@ func behindConds(s *Snapshot, r TickReq) []cond {
 		// by id, as the overdue line names it: an alias is the store's, not the decision's
 		byType[j.Type] = append(byType[j.Type], j.ID)
 		n++
+		if since.IsZero() || at.Before(since) {
+			since = at
+		}
+		if oldest.IsZero() || j.At.Before(oldest) {
+			oldest, oldestID = j.At, j.ID
+		}
 	}
 	if n == 0 {
 		return nil
@@ -306,8 +310,13 @@ func behindConds(s *Snapshot, r TickReq) []cond {
 		sort.Strings(refs)
 		parts = append(parts, fmt.Sprintf("%d %s (%s)", len(refs), typ, Preview(refs, ", ")))
 	}
+	// escalating (stops.go, BehindLevel): the level opens the text and is part of the
+	// condition, so each new level is a new judgment whatever quieted the one before
+	level := BehindLevel(s, r, since)
+	age, _ := r.running(s.Now, stamp(oldest))
 	return []cond{{typ: NCoordinatorBehind, streamLevel: true,
-		what:      fmt.Sprintf("%d judgments wait past their deadline: %s; run: nova-sprint inbox", n, strings.Join(parts, "; ")),
+		what: fmt.Sprintf("%s%d: %d judgments wait past their deadline, the oldest %s for %s: %s; run: nova-sprint inbox",
+			behindLevelPrefix, level, n, oldestID, age.Truncate(time.Second), strings.Join(parts, "; ")),
 		decisions: []string{"act", "wait"}}}
 }
 
@@ -330,8 +339,8 @@ func reraise(p *Plan, s *Snapshot, conds []cond, r TickReq) {
 	done := map[string]bool{}
 	for _, o := range s.Open {
 		n := o.Note
-		if n.Kind != Judgment || !slices.Contains(PassTypes, n.Type) || done[n.ID] {
-			continue
+		if n.Kind != Judgment || !slices.Contains(PassTypes, n.Type) || slices.Contains(StopTypes, n.Type) || done[n.ID] {
+			continue // a stop is raised again in the one digest of the tick (stopsDigest, stops.go)
 		}
 		c, ok := holding[condKey(n.Type, o.Subject(), n.Card, n.What)]
 		if !ok {
@@ -350,12 +359,7 @@ func reraise(p *Plan, s *Snapshot, conds []cond, r TickReq) {
 		if len(c.decisions) > 0 {
 			n.Decisions = append([]string(nil), c.decisions...)
 		}
-		// notify may have rewritten it in place this tick (its lines moved): one update
-		if i := slices.IndexFunc(p.Updates, func(u Note) bool { return u.ID == n.ID }); i >= 0 {
-			p.Updates[i] = n
-		} else {
-			p.Updates = append(p.Updates, n)
-		}
+		p.Updates = append(p.Updates, n)
 		push := Note{Kind: Happened, Type: NRaisedAgain, Stream: n.Stream, Primaries: n.Primaries, Count: n.Count, Who: r.who(), To: to, At: s.Now,
 			What: fmt.Sprintf("%s (%s) still holds, open since %s: %s", n.ID, n.Type, stamp(n.At), c.what),
 			Hint: "run: nova-sprint inbox; ack it, or wait it, to quiet it"}
@@ -409,7 +413,7 @@ func emptyConds(p *Plan, s *Snapshot, r TickReq) []cond {
 	for _, name := range names {
 		f := seats[name]
 		row := FriendRow(name)
-		up := f.Status == Up && !r.Sessions[name].Held && s.MemberCtl(row).F("status") != Held
+		up := f.Status == Up && !r.Sessions[name].Held && s.MemberCtl(row).F("status") != Held && !s.FriendsOff()
 		var cards []idleWait
 		if up && friendLoad(s, name) == 0 {
 			cards = cardsWaitingFor(s, f, seats)
@@ -454,7 +458,7 @@ func cardsWaitingFor(s *Snapshot, f FriendSeat, seats map[string]FriendSeat) []i
 			if pr == nil || IsSentinel(pr) || StreamHeld(s, pr.Row) || len(Bench(pr)) > 0 {
 				continue
 			}
-			if !friendCouldTake(f, pr, nil) {
+			if !friendCouldTake(s, f, pr, nil) {
 				continue
 			}
 			out = append(out, idleWait{phrase: pr.ID + " ready in the pool"})
@@ -482,7 +486,7 @@ func cardsWaitingFor(s *Snapshot, f FriendSeat, seats map[string]FriendSeat) []i
 				if pr == nil || IsSentinel(pr) || StreamHeld(s, pr.Row) {
 					continue
 				}
-				if friendStarted(s, seats[holder], wc) || !friendCouldTake(f, pr, wc) {
+				if friendStarted(s, seats[holder], wc) || !friendCouldTake(s, f, pr, wc) {
 					continue
 				}
 				out = append(out, idleWait{holder: holder, phrase: fmt.Sprintf("%s on %s:%s unstarted", wc.ID, row, col)})
@@ -495,8 +499,8 @@ func cardsWaitingFor(s *Snapshot, f FriendSeat, seats map[string]FriendSeat) []i
 
 // friendCouldTake says f may be given the primary: her tiers hold its tier, it
 // is not a hard pin to someone else, and the work card has not left her.
-func friendCouldTake(f FriendSeat, pr, wc *Card) bool {
-	if pr == nil || !friendTakes(f, cardTierOf(pr)) {
+func friendCouldTake(s *Snapshot, f FriendSeat, pr, wc *Card) bool {
+	if pr == nil || !friendTakes(s, f, cardTierOf(pr)) {
 		return false
 	}
 	if name, ok := FriendCard(pr); ok && name != "" && name != f.Name && OnlyFriend(pr) {
@@ -582,7 +586,7 @@ func pinConds(s *Snapshot, r TickReq) []cond {
 				seen[prID] = true
 				what := openWhat[prID]
 				if what == "" {
-					what = pinIgnoredWhat(wc.ID, pinned, pinSkipWhy(r.Friends, pinned, friendsLeft(wc), cardTierOf(pr), free), row, col)
+					what = pinIgnoredWhat(wc.ID, pinned, pinSkipWhy(s, r.Friends, pinned, friendsLeft(wc), cardTierOf(pr), free), row, col)
 				}
 				holder, _ := FriendOfRow(row)
 				out = append(out, cond{typ: NPinIgnored, stream: pr.Row, card: wc.ID, primaries: []string{prID},
@@ -597,7 +601,7 @@ func pinConds(s *Snapshot, r TickReq) []cond {
 // pinSkipWhy is why a named pin was not placed on her row, checked in the
 // deal's order: not up (held is its own reason), the card has left her, her
 // tiers do not hold the tier, she has no room.
-func pinSkipWhy(seats []FriendSeat, pinned string, left []string, tier string, free map[string]int) string {
+func pinSkipWhy(s *Snapshot, seats []FriendSeat, pinned string, left []string, tier string, free map[string]int) string {
 	var seat FriendSeat
 	found := false
 	for _, f := range seats {
@@ -616,7 +620,9 @@ func pinSkipWhy(seats []FriendSeat, pinned string, left []string, tier string, f
 		return "she is not up"
 	case slices.Contains(left, pinned):
 		return "it has left her"
-	case !friendTakes(seat, tier):
+	case !s.FriendsTake(tier):
+		return "the friends' tiers leave out " + tier
+	case !friendTakes(s, seat, tier):
 		return "her tiers do not hold " + tier
 	case free[pinned] <= 0:
 		return "she has no room"

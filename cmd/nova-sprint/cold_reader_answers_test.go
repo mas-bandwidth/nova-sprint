@@ -175,14 +175,12 @@ func TestOneLintFindingIsSaidInTheSingular(t *testing.T) {
 	assert.Equal(t, "2 findings", findingsCount(2))
 }
 
-// land's refusal of a head that is not a commit names the rework: a land that met it
-// ejected the card to review and stopped no stream (tla/Land.tla, THE EJECT), and a card
-// still queued (a refusal before any git) is returned first, its stream named.
-func TestTheHeadRefusalNamesTheReworkAndTheReturnWhileQueued(t *testing.T) {
+// land's refusal of a head that is not a commit ends with the resume a land
+// that met it owes: the conflict fact stopped the stream.
+func TestTheHeadRefusalSaysTheStreamThenWantsResume(t *testing.T) {
 	t.Parallel()
 	why := headNotCommit("s1", landCard{id: "s1-2", head: "s1-2.w1"})
-	assert.Contains(t, why, "run: nova-sprint rework s1-2 --fix 'finish with --head <commit>' (land ejects it to review; while it is still queued, first nova-sprint return s1-2 --reason 'its head is not a commit' in stream s1)")
-	assert.NotContains(t, why, "resume", "an eject stops no stream")
+	assert.Contains(t, why, "run: nova-sprint return s1-2 --reason 'its head is not a commit', then nova-sprint rework s1-2 --fix 'finish with --head <commit>', then (a land that met it stopped the stream) nova-sprint resume --stream s1 --did 'returned s1-2 for rework'")
 	assert.Empty(t, headNotCommit("s1", landCard{id: "s1-2", head: "9f3c2e1"}))
 }
 
@@ -229,9 +227,11 @@ func TestTheColdRunsMistakesAreAnsweredInOneTurn(t *testing.T) {
 	require.NoError(t, os.WriteFile(raw, []byte(card), 0o600))
 	out := ta.ok("add --stream s1 r1 --one --brief-file " + raw)
 	assert.Contains(t, out, "\nNOTE the brief holds 10 of the card template's lines unfilled (line 1: RESULT: <label> sha=<sha12>; line 2: REPO: <owner>/<name>; line 3: BASE: <branch>; and 7 more);")
-	filled := strings.NewReplacer("RESULT: <label> sha=<sha12>", "RESULT: r2 sha=000000000000", "REPO: <owner>/<name>", "REPO: acme/widgets", "BASE: <branch>", "BASE: main").Replace(card)
+	filled := strings.NewReplacer("RESULT: <label> sha=<sha12>", "RESULT: r2 sha=000000000000", "REPO: <owner>/<name>", "REPO: acme/widgets", "BASE: <branch>", "BASE: sprint/foundation").Replace(card)
 	require.NoError(t, os.WriteFile(raw, []byte(filled), 0o600))
-	assert.Contains(t, ta.ok("add --stream s1 r2 --one --brief-file "+raw), "NOTE the brief holds 7 of the card template's lines unfilled (line 6: Deadline: finish within <n> minutes.;")
+	out = ta.ok("add --stream s1 r2 --one --brief-file " + raw)
+	assert.Contains(t, out, "NOTE the brief holds 7 of the card template's lines unfilled (line 6: Deadline: finish within <n> minutes; the judgment of a card ...;")
+	assert.Contains(t, out, "a worker is handed them as they are: fill each <...> in, then run nova-sprint brief <id> --brief-file <path> before it is dealt (nova-swarm lint --card <file> names them all)")
 }
 
 // The help's first screen says where the rest is, and the finish it shows is
