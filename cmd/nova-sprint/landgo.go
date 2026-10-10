@@ -691,14 +691,21 @@ func goBuildHeader(t string) (string, bool) {
 	if !ok {
 		return "", false
 	}
+	// the name is the package its result line will name (#48 reader B): a test binary's
+	// link is headed `# <pkg>.test`, an external test package `# <pkg>_test [<pkg>.test]`,
+	// and both answer as `FAIL\t<pkg> [build failed]`
 	f := strings.Fields(rest)
+	name := ""
 	switch {
 	case len(f) == 1:
-		return f[0], true
+		name = f[0]
 	case len(f) == 2 && strings.HasPrefix(f[1], "[") && strings.HasSuffix(f[1], "]"):
-		return f[0], true
+		name = strings.TrimSuffix(strings.TrimSuffix(strings.TrimPrefix(f[1], "["), "]"), ".test")
+	default:
+		return "", false
 	}
-	return "", false
+	name = strings.TrimSuffix(strings.TrimSuffix(name, ".test"), "_test")
+	return name, name != ""
 }
 
 // goPackageResult says t is go test's result line for one package: `ok  \t<pkg>...`,

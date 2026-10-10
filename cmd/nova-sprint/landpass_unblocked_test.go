@@ -331,6 +331,10 @@ func TestBenchFaultIsNotARedTree(t *testing.T) {
 	// block is followed by the test's --- FAIL and its package's result, and never answered
 	assert.Empty(t, benchFault(1, "GATE RUN: go test ./...\n=== RUN   TestDisk\n# setup\nwrite /tmp/x: no space left on device\n--- FAIL: TestDisk (0.00s)\nFAIL\nFAIL\texample.com/m/disk\t0.012s\nFAIL"))
 	assert.Empty(t, benchFault(1, "GATE RUN: go test ./...\n# setup\nwrite /tmp/x: no space left on device\n--- FAIL: TestDisk (0.00s)\nFAIL\nFAIL\texample.com/m/disk\t0.012s\nFAIL"))
+	// a test binary's link and an external test package are headed by other names than the
+	// package their result names (#48 reader B's probes at 3690f52): still the bench's
+	assert.Contains(t, benchFault(1, "GATE RUN: go test ./...\n# example.com/m/p.test\nlink: write $WORK/b001/p.test: no space left on device\nok  \texample.com/m/a\t0.010s\nFAIL\texample.com/m/p [build failed]\nFAIL"), "no space left")
+	assert.Contains(t, benchFault(1, "GATE RUN: go test ./...\n# example.com/m/p_test [example.com/m/p.test]\ncompile: writing output: write $WORK/b002/_pkg_.a: no space left on device\nFAIL\texample.com/m/p [build failed]\nFAIL"), "no space left")
 	// a build that fails and go stops: no result follows its block, the bench's
 	assert.NotEmpty(t, benchFault(1, "GATE RUN: go build ./...\n# example.com/m/p\nwrite $WORK/b001/_pkg_.a: no space left on device"))
 	// a test that printed a header-shaped line of its own package, then the words, then
