@@ -36,3 +36,4 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 Inbox push writes each judgment once without concurrent writers sharing a temporary path.
 
 - **Inbox push cannot overwrite a published judgment** (planned). Two overlapping clients share one temporary path, so a second write can change the published file. Use a unique temporary path per writer. From: issue #5160.
+- **Approval at head is read from the disposition line** (planned). The review API commit id can differ from the head the reviewer read. Merge checks parse the head named in the disposition and treat commit id as untrusted. From: issue #2037.

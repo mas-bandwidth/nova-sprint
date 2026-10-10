@@ -102,4 +102,10 @@
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
      file. Use a unique temporary path per writer."
-    :origin "issue #5160")))
+    :origin "issue #5160")
+
+   (fix "merge-approval-head-from-disposition" :release "v1.2.9" :status "planned"
+    :title "Approval at head is read from the disposition line"
+    :text "The review API commit id can differ from the head the reviewer read. Merge checks parse the head
+     named in the disposition and treat commit id as untrusted."
+    :origin "issue #2037")))

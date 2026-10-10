@@ -8,7 +8,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
 - [The sprint machine](#the-sprint-machine) (212)
-- [Setup, release and operations](#setup-release-and-operations) (28)
+- [Setup, release and operations](#setup-release-and-operations) (27)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (20)
 
@@ -1961,14 +1961,6 @@ The playbook replicates the SQLite record continuously, and a restore from the r
 Target: after v1.4
 
 From: issue #2555
-
-### Approval at head is read from the disposition line
-
-The review API commit id can differ from the head the reviewer read. Merge checks parse the head named in the disposition and treat commit id as untrusted.
-
-Target: v1.3
-
-From: issue #2037
 
 ## Docs, models and the repository
 
