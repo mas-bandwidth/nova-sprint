@@ -242,6 +242,9 @@ func texts(a *app, about []sprint.Line) []storyText {
 			case sprint.Fleet:
 				who, _, _ = strings.Cut(l.From, ":")
 				verdict = col
+				if w := sprint.FinishedAs(l); w != "" {
+					verdict = w
+				}
 			case sprint.Readers:
 				who, _, _ = strings.Cut(l.To, ":")
 				verdict = col
@@ -369,7 +372,7 @@ func (a *app) printStory(w io.Writer, v store.CardInfo, events []storyLine, text
 func outcome(l sprint.Line) string {
 	a := attemptOf(l)
 	switch {
-	case l.Note == nil && l.Table == sprint.Fleet && strings.HasSuffix(l.To, ":"+sprint.DoneFailed):
+	case sprint.FinishedAs(l) == sprint.DoneFailed:
 		return "attempt " + a + " failed"
 	case l.Note == nil && l.Table == sprint.Fleet && strings.HasSuffix(l.To, ":"+sprint.DoneDefect):
 		return "attempt " + a + " held on a brief defect"

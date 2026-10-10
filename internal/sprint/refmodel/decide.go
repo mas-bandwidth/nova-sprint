@@ -17,6 +17,8 @@ const (
 	DutyStrangers   = "strangers"    // tell of a machine that beats and is no member
 	DutyPresence    = "presence"     // a member's status follows its beats
 	DutyFriendStall = "friend-stall" // a friend holding cards with no sign of life climbs the stall ladder
+	DutyVerdicts    = "verdicts"     // friend finished cards move to ok or failed on reader verdicts
+	DutyFriendRedeal = "friend-redeal" // friend cards past their deadline are redealt
 	DutyResolve     = "resolve"      // waiting primaries whose needs landed go ready; sentinels are reached
 	DutyResume      = "resume"       // a stream stopped on another's card goes on when it landed
 	DutyCapDeal     = "cap deal"     // a ready card past its attempt cap is dealt to a frontier or heavy friend with room
@@ -35,7 +37,7 @@ const (
 
 // dutyNames is the duties' names in the tick's order, which the canonical order
 // of moves follows. Duties lists the same names, and a test holds them equal.
-var dutyNames = []string{DutyLevel, DutyLevelReads, DutyResolve, DutyCapDeal, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
+var dutyNames = []string{DutyLevel, DutyLevelReads, DutyResolve, DutyCapDeal, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
 
 // Duty is one duty of the tick: its name and the function that decides it.
 type Duty struct {
@@ -60,6 +62,8 @@ var Duties = []Duty{
 	{DutyStrangers, StrangerMoves},
 	{DutyPresence, PresenceMoves},
 	{DutyFriendStall, FriendStallMoves},
+	{DutyVerdicts, VerdictsMoves},
+	{DutyFriendRedeal, FriendRedealMoves},
 	{DutyCheck, CheckMoves},
 	{DutyDeadlines, DeadlineMoves},
 	{DutyOverdue, OverdueMoves},
@@ -137,6 +141,12 @@ func CapDealMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, Dut
 // sign of life puts her back at rung 0, and session activity releases her when down.
 func FriendStallMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyFriendStall) }
 
+// VerdictsMoves is the moves of friend finished cards to ok or failed on reader verdicts (TickVerdicts).
+func VerdictsMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyVerdicts) }
+
+// FriendRedealMoves is the moves of friend cards past their deadline to redealt (TickFriendRedeal).
+func FriendRedealMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyFriendRedeal) }
+
 // AcceptMoves is the primaries in review with ok reads from two different
 // readers moved to merging and queued to merge, in stream turns, and the note
 // to the coordinator for each stream that got some: accept is mechanical, the
@@ -210,6 +220,8 @@ func decisions() []dutyOn {
 		{DutyStrangers, strangersOn},
 		{DutyPresence, partOn(DutyPresence)},
 		{DutyFriendStall, partOn(DutyFriendStall)},
+		{DutyVerdicts, partOn(DutyVerdicts)},
+		{DutyFriendRedeal, partOn(DutyFriendRedeal)},
 		{DutyCheck, partOn(DutyCheck)},
 		{DutyDeadlines, partOn(DutyDeadlines)},
 		{DutyOverdue, partOn(DutyOverdue)},

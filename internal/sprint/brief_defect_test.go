@@ -43,6 +43,11 @@ func TestAHoldNamingABriefDefectCountsAgainstTheStreamNotTheWorker(t *testing.T)
 			dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 			row := FriendRow("amy")
 			w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w.s, "s1-1.w1"), Head: "abc"}))
+			w.must(Ask(w.s, AskReq{}))
+			for _, rc := range readsAt(w.s, w.s.Work.Card("s1-1"), 1) {
+				w.must(Read(w.s, ReadReq{As: rc.Row, Verdict: "ok", Sel: Sel{IDs: []string{rc.ID}}}))
+			}
+			w.part(TickVerdicts, TickReq{})
 			require.Equal(t, 100, okPct(w.s, row))
 
 			w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-2.w1"}}, As: row, Gens: gensOf(w.s, "s1-2.w1"), Failed: true, Report: tc.report}))
@@ -123,10 +128,15 @@ func TestAHoldNamingABriefDefectCountsAgainstTheStreamNotTheWorker(t *testing.T)
 		dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 		row := FriendRow("amy")
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w.s, "s1-1.w1"), Head: "abc"}))
+		w.must(Ask(w.s, AskReq{}))
+		for _, rc := range readsAt(w.s, w.s.Work.Card("s1-1"), 1) {
+			w.must(Read(w.s, ReadReq{As: rc.Row, Verdict: "ok", Sel: Sel{IDs: []string{rc.ID}}}))
+		}
+		w.part(TickVerdicts, TickReq{})
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-2.w1"}}, As: row, Gens: gensOf(w.s, "s1-2.w1"), Failed: true,
 			Report: "friend amy HOLD: hold-is-a-brief-defect: the gate is red"}))
-		assert.Equal(t, DoneFailed, w.s.Fleet.Card("s1-2.w1").Col)
-		assert.Equal(t, 50, okPct(w.s, row))
+		assert.Equal(t, Finished, w.s.Fleet.Card("s1-2.w1").Col)
+		assert.Equal(t, 100, okPct(w.s, row))
 		assert.Len(t, w.notesOf(NWorkFailed), 1)
 		assert.Empty(t, w.notesOf(NBriefDefect))
 		assert.Empty(t, w.s.StreamCtl("s1").F(FieldBriefDefects))

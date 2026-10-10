@@ -130,7 +130,7 @@ func TestAFriendTakesAndFinishesItsOwnReadyCard(t *testing.T) {
 	require.Equal(t, 0, code, out)
 	assert.Contains(t, out, "s1-4.w1 ready -> working (her next, taken now)", "her finish takes her next, as before")
 	c = freshCard(ta, "s1-3")
-	assert.Equal(t, sprint.DoneOK, c.Work[0].Col)
+	assert.Equal(t, sprint.Finished, c.Work[0].Col, "her finish waits for the readers\x27 verdict (verdicts.go)")
 	code, out = ta.served("take", "--as", "friend.amy", "--epoch", "0")
 	assert.Equal(t, 0, code, out)
 	assert.Contains(t, out, "friend.amy took 0 of the 1 asked: its ready queue is empty")

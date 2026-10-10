@@ -10,14 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/ntable"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 // fleetBeforeVerdicts is the fleet table's columns and hidden list before the
 // readers' verdicts counted (git show a2aff60e9:internal/sprint/schema.go): the shape
 // a live store's fleet table has until the migration runs.
-const fleetBeforeVerdicts = "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,status:text,load:text,withdrawn,ok,failed,ctl:first:none"
+const fleetBeforeVerdicts = "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,status:text,load:text,withdrawn,ok,failed,defect,ctl:first:none"
 
 // The migration that ships with the readers' verdicts
 // (migrations/0001_fleet_finished_redealt.sh; internal/sprint/TABLES.lock, the change
@@ -32,7 +32,7 @@ func TestTheMigrationGivesTheFleetTableItsLockedShape(t *testing.T) {
 	require.NoError(t, err)
 	cols, err := ntable.ParseColumns(fleetBeforeVerdicts)
 	require.NoError(t, err)
-	hidden := []string{sprint.Withdrawn, sprint.DoneOK, sprint.DoneFailed, sprint.Ctl}
+	hidden := []string{sprint.Withdrawn, sprint.DoneOK, sprint.DoneFailed, sprint.DoneDefect, sprint.Ctl}
 	live := sprint.Names{}.Table(sprint.Fleet)
 	ran := 0
 	for _, line := range strings.Split(string(raw), "\n") {

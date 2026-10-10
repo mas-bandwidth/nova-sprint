@@ -26,7 +26,11 @@ const minSamplesWithMoves = 10
 // moves: since read cards, the readers table's level reads rarely moves
 // anything in the walks (7 of 1000), and the whole old read path is being
 // excised. Each step is still compared on every sample it is run on.
-var noFloor = map[string]bool{refmodel.DutyLevelReads: true}
+var noFloor = map[string]bool{
+	refmodel.DutyLevelReads:   true,
+	refmodel.DutyVerdicts:     true,
+	refmodel.DutyFriendRedeal: true,
+}
 
 // floorOf is the fewest samples with moves the step must have.
 func floorOf(step string) int {

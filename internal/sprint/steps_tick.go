@@ -263,7 +263,7 @@ var TickTables = []TableUpdate{
 	{Work, []TickPartDef{{PartDrain, nil}, {"resolve", TickResolve}, {PartCapDeal, TickCapDeal}, {"deal", TickDeal}, {PartRebalance, TickRebalance}, {"accept", TickAccept}}},
 	{Readers, []TickPartDef{{"ask", TickAsk}}},
 	{Merge, []TickPartDef{{"resume", TickResume}}},
-	{Fleet, []TickPartDef{{"presence", TickPresence}, {PartFriendStall, TickFriendStall}, {"verdicts", TickVerdicts}, {PartFriendRedeal, TickFriendRedeal}}},
+	{Fleet, []TickPartDef{{"presence", TickPresence}, {PartFriendStall, TickFriendStall}, {PartVerdicts, TickVerdicts}, {PartFriendRedeal, TickFriendRedeal}}},
 }
 
 // PartCapDeal is the attempt cap's default answer, the pump's part before the deal
@@ -276,6 +276,9 @@ func TickCapDeal(s *Snapshot, r TickReq) (Plan, int) { return AttemptCapDeal(s, 
 
 // PartFriendStall is the friend stall ladder part (friend_stall.go).
 const PartFriendStall = "friend-stall"
+
+// PartVerdicts is the verdicts part (verdicts.go).
+const PartVerdicts = "verdicts"
 
 // PartFriendRedeal is the friend redeal part (verdicts.go).
 const PartFriendRedeal = "friend-redeal"

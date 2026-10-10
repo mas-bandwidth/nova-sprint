@@ -23,14 +23,6 @@ func TestFleetDoneAndOkPctAreTableFormulas(t *testing.T) {
 	ta.ok("finish --as m1 s1-1.w1@1 s1-3.w1@1 s1-4.w1@1")
 	ta.ok("finish --as m1 s1-2.w1@1 --failed --report 'the tests went red'")
 	ta.ok("fleet up m2")
-	// Reader verdicts move the finished cards to ok/failed.
-	ta.ok("ask")
-	ta.ok("read s1-1.w1@1 reader-a ok")
-	ta.ok("read s1-2.w1@1 reader-a broken")
-	ta.ok("read s1-3.w1@1 reader-a ok")
-	ta.ok("read s1-4.w1@1 reader-a ok")
-	ta.ok("read s1-1.w1@1 reader-b ok")
-	ta.ok("read s1-4.w1@1 reader-b ok")
 	out := ta.ok("where")
 	i := strings.Index(out, "fleet |")
 	require.GreaterOrEqual(t, i, 0, "where has no fleet table:\n%s", out)
@@ -38,12 +30,12 @@ func TestFleetDoneAndOkPctAreTableFormulas(t *testing.T) {
 	if j := strings.Index(fleet, "\n\n"); j >= 0 {
 		fleet = fleet[:j+1]
 	}
-	want := "fleet | ready | working | width | done | ok%   | status | load\n" +
-		"------+-------+---------+-------+------+-------+--------+-----\n" +
-		"m1    |     0 |       0 |    64 |    4 | 75.0% | up     | 0.0%\n" +
-		"m2    |     0 |       0 |    64 |    0 | 0.0%  | up     | 0.0%\n" +
-		"------+-------+---------+-------+------+-------+--------+-----\n" +
-		"      |     0 |       0 |   128 |    4 | 75.0% |        |\n"
+	want := "fleet | ready | working | width | done | ok%   | redealt | status | load\n" +
+		"------+-------+---------+-------+------+-------+---------+--------+-----\n" +
+		"m1    |     0 |       0 |    64 |    4 | 75.0% |       0 | up     | 0.0%\n" +
+		"m2    |     0 |       0 |    64 |    0 | 0.0%  |       0 | up     | 0.0%\n" +
+		"------+-------+---------+-------+------+-------+---------+--------+-----\n" +
+		"      |     0 |       0 |   128 |    4 | 75.0% |       0 |        |\n"
 	require.Equal(t, want, fleet, "the fleet table")
 	var v whereView
 	require.NoError(t, json.Unmarshal([]byte(ta.ok("where --json")), &v))

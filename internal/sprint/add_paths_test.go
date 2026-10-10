@@ -237,7 +237,7 @@ func TestAdmissionRefusesABriefWhosePathsDoNotHoldWhatItNames(t *testing.T) {
 		dealStarted(w2, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 		w2.must(Finish(w2.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w2.s, "s1-1.w1"), Failed: true,
 			Report: "HOLD: the gate is red\nPATHS-PROPOSED: cmd/nova-sprint/verbs.go"}))
-		assert.Equal(t, DoneFailed, w2.s.Fleet.Card("s1-1.w1").Col)
+		assert.Equal(t, Finished, w2.s.Fleet.Card("s1-1.w1").Col)
 		assert.Len(t, w2.notesOf(NWorkFailed), 1)
 		assert.Empty(t, w2.notesOf(NBriefDefect))
 	})

@@ -18,7 +18,7 @@ func TestOkPercentCountsReaderVerdictsOnlyAndADeadlineIsARedeal(t *testing.T) {
 	w := friendWorld(t, friendBrief("only friend amy"), friendBrief("only friend amy"), friendBrief("only friend amy"), friendBrief("only friend amy"))
 	amy := FriendRow("amy")
 	seat := FriendSeat{Name: "amy", Width: 4, Status: Up, Class: "flash,pro,heavy,frontier"}
-	dealWith(w, seat)
+	dealStarted(w, seat)
 	require.Equal(t, 4, w.s.Fleet.Count(amy, Working))
 	counts := func() [4]int {
 		return [4]int{w.s.Fleet.Count(amy, Finished), w.s.Fleet.Count(amy, DoneOK), w.s.Fleet.Count(amy, DoneFailed), w.s.Fleet.Count(amy, Redealt)}
@@ -54,15 +54,15 @@ func TestOkPercentCountsReaderVerdictsOnlyAndADeadlineIsARedeal(t *testing.T) {
 
 	// s1-4 is never finished: past its deadline it is redealt, never failed and never judged
 	w.tick(DeadlineUnfinished + time.Minute)
+	w.part(TickFriendRedeal, TickReq{})
 	p, _ := TickDeadlines(w.s, TickReq{})
 	for _, n := range p.Notes {
 		assert.NotEqual(t, NWorkLate, n.Type, "a friend's card past its deadline is no late judgment: %s", n.What)
 	}
-	w.part(TickFriendRedeal, TickReq{})
 	assert.Equal(t, [4]int{1, 1, 1, 1}, counts(), "the card past its deadline is counted redealt on her row")
 	assert.Equal(t, Redealt, w.s.Fleet.Card("s1-4.w1").Col)
 	assert.Equal(t, Ready, w.s.StateOf("s1-4"), "its primary waits ready for the next deal")
-	dealWith(w, seat)
+	dealStarted(w, seat)
 	assert.Equal(t, Working, w.s.Fleet.Card("s1-4.w2").Col, "the next deal deals its next attempt")
 	assert.Equal(t, 1, w.s.Fleet.Count(amy, Redealt), "the redeal is counted once")
 	assert.Empty(t, Check(w.s, nil), "what is always true holds")

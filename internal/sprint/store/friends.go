@@ -416,10 +416,10 @@ func (st *Store) FriendRows(ctx context.Context, now time.Time) ([]FriendRow, er
 	for i := range rows {
 		row := sprint.FriendRow(rows[i].Name)
 		cards := make([]*sprint.Card, 0, 4)
-		for _, col := range []string{sprint.Ready, sprint.Working, sprint.DoneOK, sprint.DoneFailed} {
+		for _, col := range []string{sprint.Ready, sprint.Working, sprint.Finished, sprint.DoneOK, sprint.DoneFailed} {
 			cards = append(cards, fleet.Cell(row, col)...)
 		}
-		rows[i].Redealt = fleet.Cell(row, sprint.Redealt)
+		rows[i].Redealt = len(fleet.Cell(row, sprint.Redealt))
 		rows[i].Tokens = sprint.FriendTokensFromCards(cards)
 		rows[i].Charged = sprint.FriendChargedFromCards(cards)
 	}

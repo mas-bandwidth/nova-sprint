@@ -263,8 +263,8 @@ func (n Names) Definitions() []ntable.Table {
 		mk(Work, "waiting,ready,working,review,merging,landed,cost:text:sum"),
 		mk(Readers, "asked,reading,ok,broken,tiers:text"),
 		mk(Merge, "queued,merged,stuck,ci:text,state:text,since:text,returned,ctl:first:none", Since, Returned, Ctl),
-		mk(Fleet, "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,redealt,status:text,load:text,withdrawn,finished,ok,failed,ctl:first:none",
-			Withdrawn, Finished, DoneOK, DoneFailed, Ctl),
+		mk(Fleet, "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,redealt,status:text,load:text,withdrawn,finished,ok,failed,defect,ctl:first:none",
+			Withdrawn, Finished, DoneOK, DoneFailed, DoneDefect, Ctl),
 	}
 }
 

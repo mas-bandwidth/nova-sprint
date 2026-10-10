@@ -18,7 +18,7 @@ merge | queued | merged | stuck | ci | state
       |      1 |      0 |     0 | -  | merging
 
 friends | ready | working | width | done | ok%  | redealt | status | active | tokens
---------+-------+---------+-------+------+------+---------+--------+-------+-------
+--------+-------+---------+-------+------+------+---------+--------+--------+-------
         |     0 |       0 |     0 |    0 | 0.0% |       0 |        |        |      0
 
 fleet | ready | working | width | done | ok%    | redealt | status | load

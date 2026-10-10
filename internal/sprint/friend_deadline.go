@@ -26,6 +26,11 @@ func FriendMedianWall(s *Snapshot, name string) (median float64, n int) {
 		return 0, 0
 	}
 	cards := append([]*Card(nil), s.Fleet.Cell(FriendRow(name), DoneOK)...)
+	for _, c := range s.Fleet.Cell(FriendRow(name), Finished) {
+		if c.F("ok") == "yes" {
+			cards = append(cards, c)
+		}
+	}
 	sort.SliceStable(cards, func(i, j int) bool { return cards[i].F("finished") > cards[j].F("finished") })
 	var walls []float64
 	for _, c := range cards {

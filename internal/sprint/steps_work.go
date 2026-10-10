@@ -1577,6 +1577,9 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		if defect != "" {
 			into = DoneDefect
 		}
+		if IsFriendRow(c.Row) && defect == "" && !late && !(r.Failed && deadlineFailed(r.Report)) {
+			into = Finished
+		}
 		cardSet := map[string]string{"ok": okWord, "head": head, "finished": stamp(s.Now)}
 		if !r.Reported.IsZero() {
 			at := r.Reported

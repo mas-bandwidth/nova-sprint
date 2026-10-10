@@ -1394,6 +1394,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		friends[i].DealtFleet = facts.DealtFleet[f.Name]
 		friends[i].OK = c.OK
 		friends[i].Failed = c.Failed
+		friends[i].Redealt = c.Redealt
 		if f.Status == sprint.Down {
 			friends[i].Working = 0 // down, she works nothing
 		}
@@ -1561,7 +1562,7 @@ func splitFriendRows(t ntable.Table) (ntable.Table, map[string]store.FriendRow) 
 			continue
 		}
 		out[name] = store.FriendRow{Name: name, Ready: count(r, string(sprint.Ready)), Working: count(r, string(sprint.Working)),
-			OK: count(r, sprint.DoneOK), Failed: count(r, sprint.DoneFailed)}
+			OK: count(r, sprint.DoneOK), Failed: count(r, sprint.DoneFailed), Redealt: count(r, sprint.Redealt)}
 	}
 	return machines, out
 }
@@ -1597,6 +1598,7 @@ func (a *app) friendsTable(friends []store.FriendRow, now time.Time) ntable.Tabl
 		cells[at[string(sprint.Working)]].Count = int64(f.Working)
 		cells[at[sprint.DoneOK]].Count = int64(f.OK)
 		cells[at[sprint.DoneFailed]].Count = int64(f.Failed)
+		cells[at[sprint.Redealt]].Count = int64(f.Redealt)
 		t.Rows = append(t.Rows, ntable.Row{Key: f.Name, Cells: cells,
 			Texts: map[string]string{sprint.FieldWidth: strconv.Itoa(f.Width), sprint.Status: a.statusCell(f, now), sprint.Active: activeCell(f, now),
 				sprint.Tokens: sprint.FriendTokensCell(f.Tokens, f.Charged, f.Billing)}})
