@@ -43,6 +43,30 @@ type Refusal struct {
 	Why string `json:"why"`
 }
 
+// StreamRemoveExisting splits the streams stream remove names into the ones
+// that may leave and a refusal for each name that may not, in the order named.
+// Stream remove is not all or none (docs/SPEC-SPRINT.md section 11, the stream
+// remove row): a name that is no row of the work or merge table no longer
+// refuses the streams that are there, so the verb takes every stream that
+// exists off the tables and reports each name that does not. The rule of one
+// name is streamRemoveWhy: a RUNNING machine and a stream that holds a card
+// are refused there, with its remedy. A name named twice is taken once.
+func StreamRemoveExisting(s *Snapshot, running bool, streams []string) (remove []string, refused []Refusal) {
+	seen := map[string]bool{}
+	for _, st := range streams {
+		if seen[st] {
+			continue
+		}
+		seen[st] = true
+		if why := streamRemoveWhy(s, running, st); why != "" {
+			refused = append(refused, Refusal{Key: st, Why: why})
+			continue
+		}
+		remove = append(remove, st)
+	}
+	return remove, refused
+}
+
 // RowAdd is a row the step needs before its manifests: rows are declared by
 // the table layer's row verb, not by a batch.
 type RowAdd struct{ Table, Row string }

@@ -169,6 +169,12 @@
     member and contract functional tests and eight contract cases that build nova-sprint, and the
     tick wall-clock gate job, restored in nova-sprint."
    :origin "repository split cold reads (nova-tools PR #5571 and PR #5591)")
+  (fix "stream-remove-removes-what-exists" :release "v1.2.6" :status "in-progress"
+   :title "stream remove takes every stream that exists and names each that does not"
+   :text "One name that is no row of the work or merge table no longer refuses the whole batch: stream
+    remove takes off every named stream that may leave, reports each name that may not, and exits 1
+    only when nothing was removed or a removal failed."
+   :origin "the seat ledger v1.2.4-held-2026-10-10, bug 12; card stream-remove-removes-what-exists.w1")
   (fix "defer-cards-to-the-roadmap" :release "v1.2.5" :status "planned"
    :title "A verb defers waiting cards to the roadmap with their whole briefs"
    :text "nova-sprint defer writes the named waiting cards, or a stream or repository of them, into the

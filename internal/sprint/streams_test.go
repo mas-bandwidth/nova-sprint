@@ -121,6 +121,32 @@ func TestStreamRemoveRefusesAnUnknownStreamByName(t *testing.T) {
 	assert.Equal(t, "a", got[1].Key)
 }
 
+// StreamRemoveExisting is the split stream remove acts on (bug 12 of the seat
+// ledger v1.2.4-held-2026-10-10: one stale name refused the whole batch): the
+// streams that may leave, in the order named, and a refusal for each name that
+// may not. A name named twice is taken once.
+func TestStreamRemoveExistingKeepsTheStreamsThatAreThere(t *testing.T) {
+	t.Parallel()
+	w := streamsWorld(t, "a", "b")
+	remove, refused := StreamRemoveExisting(w.s, false, []string{"a", "b", "zz", "a"})
+	assert.Equal(t, []string{"a", "b"}, remove)
+	require.Len(t, refused, 1)
+	assert.Equal(t, "zz", refused[0].Key)
+	assert.Contains(t, refused[0].Why, "no stream zz on the work or merge table (streams: a,b)")
+}
+
+// On a RUNNING machine every name is refused, so nothing may leave.
+func TestStreamRemoveExistingRefusesEveryNameOnARunningMachine(t *testing.T) {
+	t.Parallel()
+	w := streamsWorld(t, "a", "b")
+	remove, refused := StreamRemoveExisting(w.s, true, []string{"a", "b"})
+	assert.Empty(t, remove)
+	require.Len(t, refused, 2)
+	for _, r := range refused {
+		assert.Contains(t, r.Why, "the machine is RUNNING")
+	}
+}
+
 // A removal is not a tombstone (2026-10-06: the roadmap re-add of 844 cards
 // was refused for 384 of them, each under a removed stream's name): adding a
 // card under a stream removed in this epoch places its control card again,

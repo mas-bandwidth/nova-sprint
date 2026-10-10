@@ -52,6 +52,7 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 - **A draining member does not keep a stale no-room word** (planned). The room check runs after the drain return, so a draining member does not keep a stale no-room word; the deal and read disk floor fix also gets its TLA+ reversed witness. From: v1.2.5 candidate list; nova-tools PR #5569 follow-up.
 - **The dashboard pie slices meet at the centre** (planned). Check the live pie after the next adopt; if the slice borders still miss the centre, fix it. From: v1.2.5 candidate list.
 - **Restore the tests the repository split moved out of nova-tools** (planned). Five tests (coordinator rules, processor doc, coordinator tools, tool class, seat play), the member and contract functional tests and eight contract cases that build nova-sprint, and the tick wall-clock gate job, restored in nova-sprint. From: repository split cold reads (nova-tools PR #5571 and PR #5591).
+- **stream remove takes every stream that exists and names each that does not** (in-progress). One name that is no row of the work or merge table no longer refuses the whole batch: stream remove takes off every named stream that may leave, reports each name that may not, and exits 1 only when nothing was removed or a removal failed. From: the seat ledger v1.2.4-held-2026-10-10, bug 12; card stream-remove-removes-what-exists.w1.
 
 ## v1.2.7 (planned)
 

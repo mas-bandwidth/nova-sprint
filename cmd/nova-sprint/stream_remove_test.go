@@ -30,11 +30,14 @@ func (ta *testApp) streamRows() map[string][]string {
 }
 
 // stream remove end to end on the twin (the owner, 2026-10-01: "remove work
-// streams a/b/c" / "they should only succeed on a STOPPED sprint machine"):
-// refused on a RUNNING machine and for a stream holding a card, all or none,
-// nothing changed; on a STOPPED machine the rows leave the work and merge
-// tables, a clear does not bring them back, and a card added under a removed
-// name brings the stream back, in this epoch or the next.
+// streams a/b/c" / "they should only succeed on a STOPPED sprint machine";
+// 2026-10-10, the seat ledger's bug 12: one stale name must not refuse the
+// streams that are there): refused whole on a RUNNING machine; on a STOPPED
+// machine it takes off every stream that may leave and reports each name that
+// may not, so a stream holding a card is named while the others go; the rows
+// leave the work and merge tables, a clear does not bring them back, and a
+// card added under a removed name brings the stream back, in this epoch or the
+// next.
 func TestStreamRemoveTakesStreamsOffAStoppedSprint(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -55,27 +58,53 @@ func TestStreamRemoveTakesStreamsOffAStoppedSprint(t *testing.T) {
 	ta.ok("stop --reason r --until 9999h")
 
 	ta.ok("add --stream c --count 1 --one")
-	before := ta.applies()
 	code, _, errs = ta.do("stream remove a b c")
-	assert.Equal(t, 1, code)
-	assert.Contains(t, errs, "c: stream c holds 1 primary;")
-	assert.Contains(t, errs, "a: not removed: the verb names several and removes all or none")
-	assert.Equal(t, all, ta.streamRows(), "all or none: nothing changed")
-	assert.Equal(t, before, ta.applies())
+	assert.Equal(t, 0, code, "a and b leave; c is reported, not the whole batch")
+	assert.Contains(t, errs, "not removed: c: stream c holds 1 primary;")
+	assert.NotContains(t, errs, "all or none", "one name no longer refuses the streams that are there")
+	assert.Equal(t, map[string][]string{sprint.Work: {"c"}, sprint.Merge: {"c"}}, ta.streamRows(), "a and b left; c stayed")
 
 	code, _, errs = ta.do("stream remove zz")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "no stream zz on the work or merge table")
 
-	out := ta.ok("stream remove a b")
-	assert.Contains(t, out, "STREAM-REMOVE OK streams=a,b")
+	// a and b are gone: naming them again removes none and names each
+	code, _, errs = ta.do("stream remove a b")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errs, "no stream a on the work or merge table")
+	assert.Contains(t, errs, "no stream b on the work or merge table")
 	assert.Equal(t, map[string][]string{sprint.Work: {"c"}, sprint.Merge: {"c"}}, ta.streamRows())
-	ta.clean()
 
+	code, _, errs = ta.do("stream remove c")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errs, "stream c holds 1 primary;")
+
+	ta.clean()
 	ta.ok("clear --confirm sprint")
 	assert.Equal(t, map[string][]string{sprint.Work: {"c"}, sprint.Merge: {"c"}}, ta.streamRows(), "a clear does not bring a removed stream back")
 	assert.Contains(t, ta.ok("add --stream a --count 1 --one"), "MOVED a-1 -> ready stream=a")
 	assert.Equal(t, map[string][]string{sprint.Work: {"a", "c"}, sprint.Merge: {"a", "c"}}, ta.streamRows())
+	ta.clean()
+}
+
+// The bug the seat ledger's bug 12 names (2026-10-10): 223 streams were
+// refused over one stale name, while the refusal itself listed the streams.
+// stream remove takes every stream that exists and reports each name that
+// does not: two streams leave while the missing one is named, exit 0.
+func TestStreamRemoveRemovesWhatExistsAndNamesWhatDoesNot(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	for _, st := range []string{"a", "b"} {
+		ta.ok("add --stream " + st + " --count 1 --one")
+	}
+	ta.ok("clear --confirm sprint")
+
+	code, out, errs := ta.do("stream remove a b zz")
+	assert.Equal(t, 0, code, "a and b were removed, so the verb did not fail")
+	assert.Contains(t, out, "STREAM-REMOVE OK streams=a,b")
+	assert.Contains(t, errs, "no stream zz on the work or merge table (streams: a,b)")
+	assert.Equal(t, map[string][]string{sprint.Work: {}, sprint.Merge: {}}, ta.streamRows(), "a and b left the tables")
 	ta.clean()
 }
 
