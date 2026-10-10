@@ -1,4 +1,4 @@
 # The nova-tools release this tree was seeded from, and the least nova-sprint runs on.
 # Written by tools/seed; read by nova-sprint seat check (docs/SPEC-SPRINT.md).
-tag v1.2.3
-commit b6c642e2e14bed6ecda9e342c76109883a1325de
+tag v1.2.4
+commit 0020f4b5b168a48ec566046676013d502e45dd19
