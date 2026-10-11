@@ -1301,7 +1301,7 @@
    :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
     2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
     owner: \"this should be caught by card lint.\"")
-  (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.6" :status "planned"
+  (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.14" :status "planned"
    :title "A rate limit stalls its route briefly; it never fails a card or rests it for 3-in-10"
    :text "A take a provider ends rate-limited (class=rate-limited) never fails the card, on any
     route and however many times: the card returns unspent (no FieldTakeEnded, no redeal, no
@@ -1328,5 +1328,8 @@
     MCRateBackoffBrokenNoCap. Tests TestARateLimitedTakeReturnsTheCardUnspent,
     TestARateLimitBacksTheRouteOffBriefly, TestARateLimitedRunIsAProviderFailure,
     TestARateTakeIsNumberedAfterTheLastRateTake, TestARateBackoffNeverHoldsOffTheFiveHundredsRest
-    and TestARateBackoffIsWrittenAndNotedOncePerEnd. Landed by hand after 15 sprint attempts."
-   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; the owner, 2026-10-11: \"the rate limited should just stall out delay, not fail\"; nova-sprint docs/fixes.sexp entry a-rate-limited-refusal-never-fails-the-cardc")))
+    and TestARateBackoffIsWrittenAndNotedOncePerEnd. Landed by hand after 15 sprint attempts. The
+    no-stall rule and the rebalance test drawability with the deal's own budgets and the tier's array
+    (backoffWait): tests TestABackedOffTierWithTheOtherProviderFullIsAWaitNeverAStall and
+    TestABackedOffTierWithTheOtherRouteOutOfTheArrayIsAWaitNeverAStall."
+   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; the owner, 2026-10-11: \"the rate limited should just stall out delay, not fail\"; nova-sprint docs/fixes.sexp entry a-rate-limited-refusal-never-fails-the-cardc; nova-sprint card rate-limit-never-fails-the-card-v2")))
