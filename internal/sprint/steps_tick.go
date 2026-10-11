@@ -1648,7 +1648,7 @@ func condKey(typ, subject, card, what string) string {
 	case NReadyOver:
 		// one judgment per (reason, tier): the reason is the stable cause, so
 		// distinct causes of one tier are distinct judgments, never merged
-		// (readyOverWhy; tla/ProviderBudget.tla, OnePerCause)
+		// (readyOverWhy; tla/ReadyOver.tla, OnePerCause)
 		what = readyOverWhy(what)
 	case NCoordinatorBehind:
 		// one condition a level (stops.go, BehindLevel): its count and its ages change

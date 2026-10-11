@@ -97,7 +97,7 @@ func TestTwoCausesOfOneTierRaiseTwoJudgments(t *testing.T) {
 
 // A brief whose model lines do not read is the card's own cause, never the tier's routes:
 // it and an unserved tier of the same tier are two judgments, never merged under the route
-// sentence (coordinator finding 1; tla/ProviderBudget.tla, OnePerCause).
+// sentence (coordinator finding 1; tla/ReadyOver.tla, OnePerCause).
 func TestAModelLinesCardAndAnUnservedTierRaiseTwoJudgments(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 2)
@@ -125,7 +125,7 @@ func TestAModelLinesCardAndAnUnservedTierRaiseTwoJudgments(t *testing.T) {
 }
 
 // A group that gains cards of the same cause is rewritten in place, so the judgment keeps
-// grouping every card that shares it (coordinator finding 2; tla/ProviderBudget.tla, OnePerCause).
+// grouping every card that shares it (coordinator finding 2; tla/ReadyOver.tla, OnePerCause).
 func TestAGroupRefreshesAsCardsJoin(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)

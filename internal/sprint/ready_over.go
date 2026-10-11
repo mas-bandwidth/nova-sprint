@@ -24,7 +24,7 @@ import (
 // until paid, resting until woken, out of budget), and the remedy verb (routes wake,
 // funded, fleet up, release). One judgment per (reason, tier) groups the cards that share
 // the cause, so twenty-five cards blocked by one cause are one alert, not twenty-five. It
-// clears itself the tick the card is dealt. The model is tla/ProviderBudget.tla.
+// clears itself the tick the card is dealt. The model is tla/ReadyOver.tla.
 
 // NReadyOver is the tick's judgment of a card ready past its bound.
 const NReadyOver = "a ready card is not dealt"
@@ -36,7 +36,7 @@ func init() {
 // routeWhys names each route of the tier that serves no card now, with why: disabled,
 // resting until paid, resting until woken, resting until its time, or out of budget (its
 // provider's balance at or under zero). A route that serves is not named. The model is
-// tla/ProviderBudget.tla, OutOfBudget.
+// tla/ReadyOver.tla, OutOfBudget.
 func (s *Snapshot) routeWhys(tier string) []string {
 	rests := RouteRests(s.Routes, s.Fleet)
 	balances := ProviderBalances(s.Fleet)
@@ -63,7 +63,7 @@ func (s *Snapshot) routeWhys(tier string) []string {
 // readyWhy is why a ready primary c is not dealt, the reason the ready-over part names: the
 // tier it is judged under and the sentence, "" when the deal would deal it. It reuses the
 // deal's own checks (routeOf, noLauncher) and adds the room check (noFreeWidth), so the
-// reason the seat sees is the deal's (tla/ProviderBudget.tla).
+// reason the seat sees is the deal's (tla/ReadyOver.tla).
 func (s *Snapshot) readyWhy(c *Card) (tier, why string) {
 	if IsSentinel(c) {
 		return cardTierOf(c), "a sentinel waits for the coordinator's release: nova-sprint release " + c.ID + " --reason <why>"
@@ -82,7 +82,7 @@ func (s *Snapshot) readyWhy(c *Card) (tier, why string) {
 	if rwhy != "" {
 		// A brief whose model lines do not read is the card's own cause, not the tier's
 		// routes: keep its reason, so it and an unserved tier are two judgments, never
-		// merged under the tier's route sentence (tla/ProviderBudget.tla, OnePerCause).
+		// merged under the tier's route sentence (tla/ReadyOver.tla, OnePerCause).
 		if _, bad := modelOf(ec); bad == "" {
 			if ws := s.routeWhys(tier); len(ws) > 0 {
 				return tier, "tier " + tier + " has no serving route (" + strings.Join(ws, "; ") + "): enable a route (nova-config route add <name> --tier " + tier + " ...), wake its routes (nova-sprint routes wake), fund its provider (nova-sprint funded), or bring up a friend whose row lists " + tier
@@ -104,7 +104,7 @@ func (s *Snapshot) readyWhy(c *Card) (tier, why string) {
 // can launch it has room, or when none is up or none can launch (noLauncher's reason). The
 // deal's own room check (steps_work.go, noRoomWhy) never names it to the seat, so a ready
 // card waiting only for a member's room raises nothing after the bound unless the ready-over
-// part names it: it does, the "fleet up" reason (tla/ProviderBudget.tla).
+// part names it: it does, the "fleet up" reason (tla/ReadyOver.tla).
 func (s *Snapshot) noFreeWidth(c, ec *Card, tier string, up []string) string {
 	pool, wc, _ := s.dealPool(c, up)
 	if len(pool) == 0 {
@@ -126,7 +126,7 @@ func (s *Snapshot) noFreeWidth(c, ec *Card, tier string, up []string) string {
 // readyOverWhy is the reason part of a ready-over what sentence ("<n> primaries of tier
 // <t> sit in ready past <max>: <why>"): the stable cause the judgment is keyed on, so
 // distinct causes of one tier are distinct judgments, never merged
-// (tla/ProviderBudget.tla, OnePerCause).
+// (tla/ReadyOver.tla, OnePerCause).
 func readyOverWhy(what string) string {
 	_, why, ok := strings.Cut(what, ": ")
 	if !ok {
@@ -139,7 +139,7 @@ func readyOverWhy(what string) string {
 // ready primaries of it that have sat in ready past s.ReadyMax() grouped, with the reason
 // the deal leaves them (readyWhy). The grouping key is the reason and the tier together, so
 // two ready cards of one tier with different causes are two judgments, never merged under
-// one card's text (tla/ProviderBudget.tla, OnePerCause).
+// one card's text (tla/ReadyOver.tla, OnePerCause).
 func readyOverConds(s *Snapshot, r TickReq) []cond {
 	max := s.ReadyMax()
 	type key struct{ tier, why string }

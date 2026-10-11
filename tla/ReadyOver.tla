@@ -1,4 +1,4 @@
------------------------------ MODULE ProviderBudget ----------------------------
+------------------------------- MODULE ReadyOver -------------------------------
 \* The ready-over rule (internal/sprint/ready_over.go): a card that sits in
 \* ready past the bound raises one judgment per (reason, tier), the reason
 \* computed by the deal itself (routeWhys, readyWhy, readyOverConds). A route
