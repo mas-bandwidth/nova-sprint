@@ -197,19 +197,20 @@ func takeAndRefuse(t *testing.T, w *world) (string, string) {
 	return p.Units[0].Moved, wc
 }
 
-// An UNLIMITED route's 429 ends the take as any provider failure does: a take ended, its
-// record written (it counts toward the route's 3-in-10 rest), a redeal spent. Only a
-// limited route's 429 is the limiter's to absorb.
+// An UNLIMITED route's 429 now returns the card untouched (like staging refused): no
+// redeal spent, no attempt spent, route backs off briefly (60s doubling, 15m cap). Only
+// limited route's 429 is the limiter's to absorb (returns card untouched up to MaxRateReturns).
 func TestAnUnlimitedRoutes429EndsTheTake(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
 	proMercury(w)
 	moved, wc := takeAndRefuse(t, w)
-	assert.NotContains(t, moved, "returned untouched")
+	assert.Contains(t, moved, "returned untouched")
 	c := w.s.Fleet.Card(wc)
-	assert.NotEmpty(t, c.F(FieldTakeEnded), "the take ended")
+	assert.Empty(t, c.F(FieldTakeEnded), "no take ended: no redeal spent")
 	takes, _ := ProviderTakes(c)
-	assert.Len(t, takes, 1, "the take's record counts toward the route's rest")
+	assert.Empty(t, takes, "no take record: never counted toward a route's rest")
+	assert.Empty(t, w.notesOf(NWorkFailed), "no failed-work judgment")
 }
 
 // Even a limited route cannot loop a card forever: MaxRateReturns untouched returns, then

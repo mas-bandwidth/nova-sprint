@@ -7,6 +7,12 @@
 \* result is the model's output on that card and never rests the route; a low
 \* balance is a judgment raised to the coordinator, never a rest.
 \*
+\* Rate-limited ends (class rate-limited, a 429) do NOT count toward the 3-in-10
+\* rest: they are the provider's own limit, never the route's fault. Instead,
+\* each rate-limited end backs the ROUTE off briefly: 60s, doubling for each
+\* further rate-limited end with no ok take on the route in between, capped at
+\* 15m, ending by itself (route_rest.go).
+\*
 \* The state, for one provider and its routes: provRest, the provider's one
 \* rest property (none, credit: it refused a take for want of credit, auth: it
 \* refused the seat's key, coord: the coordinator's routes rest); own[r], the
@@ -17,11 +23,13 @@
 \* judgment is open; event, what the last step was (the record the rules read).
 \*
 \* The design, Broken = {}:
-\*   TakeEnds   a take on a serving route ends (ok, noresult, transient: a 429,
-\*              a 5xx, a timeout at the provider, credit: a 402, auth: a 401);
-\*              the tick that sees it rests the provider on a refusal, and the
-\*              route when its window holds After transient failures. A
-\*              no-result counts in the window and never toward a rest.
+\*   TakeEnds   a take on a serving route ends (ok, noresult, transient: a 5xx,
+\*              a timeout at the provider, rate-limited: a 429, credit: a 402,
+\*              auth: a 401); the tick that sees it rests the provider on a
+\*              refusal, and the route when its window holds After transient
+\*              failures. Rate-limited ends do NOT count toward the 3-in-10
+\*              rest; they trigger a route backoff (60s doubling, 15m cap).
+\*              A no-result counts in the window and never toward a rest.
 \*   Balance    the poll reads the balance low or not: it writes no rest.
 \*   Raise      the tick opens the low-on-funds judgment while the balance is
 \*              low, and closes it when it is not.
@@ -47,7 +55,7 @@ CONSTANTS Routes, W, After, Broken
 VARIABLES provRest, own, win, low, judged, event
 vars == <<provRest, own, win, low, judged, event>>
 
-Kinds == {"ok", "noresult", "transient", "credit", "auth"}
+Kinds == {"ok", "noresult", "transient", "rate-limited", "credit", "auth"}
 Events == Kinds \cup {"balance", "raise", "payment", "funded", "coord", "wake", "clock"}
 
 \* the bounded windows of ended takes
@@ -74,7 +82,8 @@ Resting(r) == provRest # "none" \/ own[r] # "none"
 \* the newest W of a window with one more end
 Push(s, k) == IF Len(s) < W THEN Append(s, k) ELSE Append(Tail(s), k)
 
-\* the ends that count toward a route's own rest (RestsDue: transient only)
+\* the ends that count toward a route's own rest (RestsDue: transient only,
+\* rate-limited excluded: it triggers route backoff, not the 3-in-10 rest)
 Counts(k) == k = "transient" \/ ("noresult" \in Broken /\ k = "noresult")
 
 CountIn(s) == Cardinality({i \in 1..Len(s) : Counts(s[i])})
@@ -174,6 +183,7 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Raise)
 
 \* a serving route begins to rest only on a provider-typed failure or the
 \* coordinator's word: never a no-result, never a balance read
+\* Rate-limited ends do NOT trigger the 3-in-10 rest (route backoff instead)
 RestOnlyByProviderOrCoordinator ==
     [][\A r \in Routes : (~Resting(r) /\ Resting(r)') => event' \in {"transient", "credit", "auth", "coord"}]_vars
 
@@ -190,6 +200,14 @@ AuthEndsOnlyWoken ==
 \* a no-result step never changes a rest
 NoResultNeverRests ==
     [][event' = "noresult" => (provRest' = provRest /\ own' = own)]_vars
+
+\* a rate-limited end never triggers the 3-in-10 rest; it triggers route backoff
+RateLimitSpendsNoRedeal ==
+    [][event' = "rate-limited" => (own' = own /\ UNCHANGED <<provRest>>)]_vars
+
+\* a rate-limited backoff is bounded (15m cap) and ends by itself (at its time)
+BackoffBounded ==
+    []((event = "rate-limited") => <>((\A r \in Routes : own[r] = "none")))
 
 \* a balance low long enough is raised to the coordinator as a judgment
 LowIsRaised == [](low => <>(judged \/ ~low))

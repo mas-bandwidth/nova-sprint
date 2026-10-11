@@ -22,7 +22,6 @@ func TestRestsDueCountsTransientProviderFailuresNeverNoResults(t *testing.T) {
 	at := func(m int) string { return stamp(t0.Add(time.Duration(m) * time.Minute)) }
 	ended := func(m int, err string) string { return ProviderTake{Route: "a", Finished: at(m), Error: err}.String() }
 	noResult := func(m int) string { return ended(m, "no result: no RESULT.md shape") }
-	limited := func(m int) string { return ended(m, "provider: class=rate-limited status=429 msg=Rate limit exceeded") }
 	outage := func(m int) string {
 		return ended(m, "provider: class=provider-5xx status=503 msg=upstream unavailable")
 	}
@@ -58,18 +57,18 @@ func TestRestsDueCountsTransientProviderFailuresNeverNoResults(t *testing.T) {
 		rest  string // the property's value before
 		cards []string
 	}{
-		{"three 429s", map[string]string{"c1": limited(1), "c2": limited(2), "c3": limited(3)}, nil, "", []string{"c1", "c2", "c3"}},
-		{"a 429, a 5xx and a timeout", map[string]string{"c1": limited(1), "c2": outage(2), "c3": slow(3)}, nil, "", []string{"c1", "c2", "c3"}},
+		{"three 5xxs", map[string]string{"c1": outage(1), "c2": outage(2), "c3": outage(3)}, nil, "", []string{"c1", "c2", "c3"}},
+		{"a 5xx and two timeouts", map[string]string{"c1": slow(1), "c2": slow(2), "c3": slow(3)}, nil, "", []string{"c1", "c2", "c3"}},
 		{"three no results never rest", map[string]string{"c1": noResult(1), "c2": noResult(2), "c3": noResult(3)}, nil, "", nil},
 		{"ten no results never rest", map[string]string{"c1": noResult(1), "c2": noResult(2), "c3": noResult(3), "c4": noResult(4), "c5": noResult(5), "c6": noResult(6), "c7": noResult(7), "c8": noResult(8), "c9": noResult(9), "c10": noResult(10)}, nil, "", nil},
-		{"a no result is not the provider's", map[string]string{"c1": limited(1), "c2": noResult(2), "c3": outage(3)}, nil, "", nil},
-		{"a failure of another class does not count", map[string]string{"c1": limited(1), "c2": other(2), "c3": outage(3)}, nil, "", nil},
-		{"two", map[string]string{"c1": limited(1), "c2": limited(2)}, oks(3, 5), "", nil},
-		{"three among ok ends, within ten", map[string]string{"c1": limited(1), "c2": outage(5), "c3": slow(9)}, oks(2, 3), "", []string{"c1", "c2", "c3"}},
-		{"the first slid out of the window", map[string]string{"c1": limited(1), "c2": limited(20), "c3": limited(21)}, oks(2, 9), "", nil},
-		{"ends before the last rest do not count", map[string]string{"c1": limited(1), "c2": limited(2), "c3": limited(40)}, nil, was(10, 30), nil},
-		{"resting now", map[string]string{"c1": limited(41), "c2": limited(42), "c3": limited(43)}, nil, was(40, 70), nil},
-		{"a rest ended, three after it", map[string]string{"c1": limited(31), "c2": limited(32), "c3": limited(33)}, nil, was(0, 30), []string{"c1", "c2", "c3"}},
+		{"a no result is not the provider's", map[string]string{"c1": outage(1), "c2": noResult(2), "c3": outage(3)}, nil, "", nil},
+		{"a failure of another class does not count", map[string]string{"c1": outage(1), "c2": other(2), "c3": slow(3)}, nil, "", nil},
+		{"two", map[string]string{"c1": outage(1), "c2": outage(2)}, oks(3, 5), "", nil},
+		{"three among ok ends, within ten", map[string]string{"c1": outage(1), "c2": outage(5), "c3": slow(9)}, oks(2, 3), "", []string{"c1", "c2", "c3"}},
+		{"the first slid out of the window", map[string]string{"c1": outage(1), "c2": outage(20), "c3": outage(21)}, oks(2, 9), "", nil},
+		{"ends before the last rest do not count", map[string]string{"c1": outage(1), "c2": outage(2), "c3": outage(40)}, nil, was(10, 30), nil},
+		{"resting now", map[string]string{"c1": outage(41), "c2": outage(42), "c3": outage(43)}, nil, was(40, 70), nil},
+		{"a rest ended, three after it", map[string]string{"c1": outage(31), "c2": outage(32), "c3": outage(33)}, nil, was(0, 30), []string{"c1", "c2", "c3"}},
 		{"a retired no-result rest holds nothing", map[string]string{"c1": noResult(41)}, nil, at(40) + " " + at(70) + " x,y,z", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -249,6 +248,14 @@ func TestProviderRestsDueRestEveryRouteOfTheRefusedProvider(t *testing.T) {
 			s := &Snapshot{Now: t0.Add(10 * time.Minute), Fleet: f, Routes: routes}
 			due := RestsDue(s)
 			if tc.cause == "" {
+				// rate-limited ends now add a route rest (backoff), not a provider rest
+				if tc.name == "a rate limit" {
+					require.Len(t, due, 1, "one route rest for rate-limited backoff")
+					r := due[0]
+					assert.Equal(t, "a", r.Route)
+					assert.Equal(t, "rate-limit", r.Cause)
+					return
+				}
 				assert.Empty(t, due)
 				return
 			}
