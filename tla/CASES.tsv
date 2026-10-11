@@ -1,5 +1,7 @@
 config	module	expected	property	deadlock	group	gate	debt
-MCCardMachine.cfg	MCCardMachine.tla	pass	-	ignore-terminal	cardmachine	bench	layer-2-original-instance-over-budget
+MCCardMachineSmall.cfg	MCCardMachineSmall.tla	pass	-	ignore-terminal	cardmachine	required	-
+MCCardMachineSmallLive.cfg	MCCardMachineSmall.tla	pass	-	ignore-terminal	cardmachine	required	-
+MCCardMachineBrokenReadsInReview.cfg	MCCardMachineBrokenReadsInReview.tla	invariant	ReadsInReview	ignore-terminal	cardmachine	required	-
 MCSprintEvents.cfg	MCSprintEvents.tla	pass	-	ignore-terminal	sprintevents	required	-
 MCSprintEventsCursor.cfg	MCSprintEvents.tla	pass	-	ignore-terminal	sprintevents	required	-
 MCSprintEventsProbe.cfg	MCSprintEvents.tla	pass	-	ignore-terminal	sprintevents	required	-
