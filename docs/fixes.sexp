@@ -1404,4 +1404,21 @@
      deal). Tests TestABackoffWithdrawalWritesNoNotePerCard and
      TestAFiveHundredsRestWithdrawalStillNotesEachCard."
     :origin "follow-up 4 of tmp/next-sprint-cards/rate-limit-followups.md, the second cold read of
-     nova-sprint PR #86, 2026-10-11; checked against PR #86's head a1c51ee and main 00c54ba")))
+     nova-sprint PR #86, 2026-10-11; checked against PR #86's head a1c51ee and main 00c54ba")
+  (fix "doctor-warns-while-a-tier-backs-off" :release "v1.2.14" :status "planned"
+   :title "Doctor warns, not fails, while every route of a tier backs off from a rate limit"
+   :text "A route a rate limit backs off is not usable, so DoctorRoutesPerTier counted it resting
+    with every other cause: a tier whose every enabled route backed off, holding ready cards with
+    no friend serving it, was FAIL, and its remedy pointed at the providers lines that end a rest,
+    though a backoff ends by itself. A rest of cause RestRateBackoff is counted apart (backs) and
+    named in the evidence as backoff=<route> until <time>; a tier whose every unusable route is
+    backing off is at most WARN, and its remedy says the backoff ends by itself
+    (tla/RateBackoff.tla, BackoffEnds; docs/SPEC-SPRINT.md, the doctor's routes-per-tier check). A
+    rest of any other cause still FAILs, and a tier with one route backing off and another a
+    member up can launch is unchanged. Tests TestDoctorRoutesPerTierWarnsWhileATierBacksOff,
+    TestDoctorRoutesPerTierFailsWhileATierRestsForIts5xxs and
+    TestDoctorRoutesPerTierWithOneBackoffAndOneUsableWarns."
+   :origin "this card: doctor-warns-while-a-tier-backs-off; the third cold read of nova-sprint PR
+    #86, 2026-10-11, an open non-blocking finding: \"Doctor reports FAIL while every route of a
+    tier backs off\"; listed in the rate-limit-never-fails-the-card-v2 card; checked against
+    nova-sprint main 00c54ba and PR #86's head a1c51ee")))

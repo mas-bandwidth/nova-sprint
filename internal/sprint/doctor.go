@@ -430,7 +430,11 @@ func someIDs(ids []string, n int) string {
 // DoctorRoutesPerTier is check 2: for each tier, its enabled routes not resting and the members
 // up that can launch each (Launches). A tier with ready cards and no route a member up can
 // launch is FAIL (WARN when a friend up serves it: its cards are the friends'), one such route
-// is WARN, more OK.
+// is WARN, more OK. A rate limit's backoff is counted apart from the other rests: it is a wait
+// that ends by itself at a fixed time, never a fault, so a tier whose every unusable route is
+// backing off is at most WARN, its evidence names each backoff with its end and its remedy says
+// the wait ends by itself (tla/RateBackoff.tla, BackoffEnds; docs/SPEC-SPRINT.md, the doctor's
+// routes-per-tier check).
 func DoctorRoutesPerTier(in DoctorInput) (out []DoctorCheck) {
 	const area, check = AreaRoutes, CheckRoutesPerTier
 	s := in.Snap
@@ -454,14 +458,22 @@ func DoctorRoutesPerTier(in DoctorInput) (out []DoctorCheck) {
 	}
 	up := rs.UpMembers()
 	for _, tier := range slices.Sorted(maps.Keys(tiers)) {
-		enabled, usable := 0, 0
-		var resting, unlaunched, parts []string
+		enabled, usable, backs := 0, 0, 0
+		var resting, backoff, unlaunched, parts []string
 		for _, r := range rs.Routes {
 			if r.Tier != tier || !r.Enabled {
 				continue
 			}
 			enabled++
 			if rest, ok := rs.rests[r.Name]; ok {
+				if rest.Cause == RestRateBackoff {
+					// a rate limit backs the route off until a fixed time it reaches by
+					// itself: count it apart from the other rests, whose end is a verb's
+					// (tla/RateBackoff.tla, BackoffEnds)
+					backs++
+					backoff = append(backoff, r.Name+" until "+rest.UntilSaid())
+					continue
+				}
 				resting = append(resting, r.Name+"("+rest.Cause+")")
 				continue
 			}
@@ -486,15 +498,21 @@ func DoctorRoutesPerTier(in DoctorInput) (out []DoctorCheck) {
 		if len(resting) > 0 {
 			ev += " rest=" + strings.Join(resting, ",")
 		}
+		if len(backoff) > 0 {
+			ev += " backoff=" + strings.Join(backoff, ",")
+		}
 		if len(unlaunched) > 0 {
 			ev += " no-member-launches=" + strings.Join(unlaunched, ",")
 		}
 		if len(friends) > 0 {
 			ev += " friends=" + strings.Join(friends, ",")
 		}
+		// every unusable route of the tier is backing off: a wait, never the FAIL of a
+		// tier whose routes a member cannot draw for any other cause
+		backsOnly := usable == 0 && backs > 0 && backs == enabled
 		c := DoctorCheck{Area: area, Check: check, Subject: tier, Status: DoctorOK, Evidence: ev, Remedy: "-"}
 		switch {
-		case usable == 0 && ready[tier] > 0 && len(friends) == 0:
+		case usable == 0 && ready[tier] > 0 && len(friends) == 0 && !backsOnly:
 			c.Status = DoctorFail
 		case usable == 0 && ready[tier] > 0:
 			c.Status = DoctorWarn
@@ -507,6 +525,8 @@ func DoctorRoutesPerTier(in DoctorInput) (out []DoctorCheck) {
 				c.Remedy = "nova-sprint fleet up <member> --harnesses <harness> (a member with the harness on its PATH)"
 			case len(resting) > 0:
 				c.Remedy = "nova-sprint doctor --area routes (the providers lines say the verb that ends each rest)"
+			case backsOnly:
+				c.Remedy = "no action: the rate-limit backoff ends by itself (" + strings.Join(backoff, ", ") + ")"
 			default:
 				c.Remedy = "nova-config route add <name> --tier " + tier + " ... && nova-config tier set " + tier + " --routes <name,...> && nova-config apply"
 			}
