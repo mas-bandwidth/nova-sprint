@@ -3716,7 +3716,8 @@ The owner, 2026-10-06: "reads need to become a type of card"; "These are all goo
 read should have been going through consumer cards the whole time"; "send out multiple consumer
 cards in ||"; "Go wide with reads, 2X regular width"; "start with tier"; "Just remove the
 complexity. just deal it." While the sprint's setting says so (`set --read-cards on`, the work
-table's `read_cards` property; `off` or `default` is off), a read is a card on the fleet table,
+table's `read_cards` property; on by default, `default` is on, and `off` is the one way off),
+a read is a card on the fleet table,
 the table its work cards are dealt on, and the readers table asks nothing new
 (`sprint/read_cards.go`). The review is unchanged: a primary still goes through review, its
 reads close as `read --ok|--broken` closes them, and it leaves review only by the rules above.

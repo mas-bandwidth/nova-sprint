@@ -25,10 +25,17 @@ type world struct {
 
 var t0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
 
+// newWorld is a fresh snapshot with read cards off: the world of the tests that
+// exercise the old readers-table ask and the friends' read ask on purpose. Read cards
+// are on by default in the working machine (ReadCardsOn), but the old-table tests are
+// the many rigs built before read cards; the read-cards tests switch them on with
+// readCardsWorld, and the defaults test (defaults_test.go) clears the property to model
+// the fresh store that behaves as the working machine.
 func newWorld(t testing.TB, readers ...string) *world {
 	t.Helper()
 	s := &Snapshot{Now: t0, Work: NewTable(Work), Readers: NewTable(Readers), Merge: NewTable(Merge), Fleet: NewTable(Fleet),
 		Coordinator: "coordinator", Actor: "coordinator"}
+	s.Work.SetProp(PropReadCards, SwitchOff)
 	s.Readers.SetRows(append(s.Readers.Rows(), readers...))
 	return &world{t: t, s: s}
 }

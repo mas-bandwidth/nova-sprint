@@ -74,6 +74,15 @@
     :title "CoordinatorPass models the wait and its expiry, with a reversed witness for a wait that never expires"
     :text "Models only, no product change. tla/CoordinatorPass.tla gains the wait the code has (internal/sprint/steps_ack.go, Wait): a Wait action that closes the open judgment and holds its condition until a review time chosen within the bound, a tick that raises the condition again when the review time is reached and the condition still holds, and the reraise's skip before the review time (a held judgment is not raised again before it). OneJudgmentAnEpisode, PushedEveryWindow and ClosedWhenCleared still hold, and the new WaitedRaisedAgainOnExpiry (a wait never outlasts its review time) holds. One reversed witness, Broken = \"waitforever\", never expires the hold and breaks WaitedRaisedAgainOnExpiry; the instances and the witness are in tla/README.md and tla/CASES.tsv, and the module's COVERAGE row drops the wait from its gaps. steps_ack.go's Wait gains one comment line citing tla/CoordinatorPass.tla Wait; no other Go file changes."
     :origin "this card, tla-coordinatorpass-wait-expiry-2.w2, 2026-10-11: v1.2.12 inventory item T26, first of two; drift read at nova-sprint main 00c54ba2e")
+   (fix "defaults-are-the-working-machine" :release "v1.2.11" :status "planned"
+    :title "Smart defaults: read cards are on out of the box"
+    :text "A fresh store, and every store after a clear, asked its reads one per tick through the old
+     readers table: read cards were on only when the read_cards property said on. The default is now on
+     (an absent property, on or default; off is the one way to turn it off, and it says it degrades the
+     machine to one read per tick), so a first install asks every read a card in review needs in the one
+     tick, and the deal fills each member to its width, with no set run. The other settings' defaults are
+     the working machine and are said so."
+    :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 24")
    (fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
     :title "The SeatProof model of the deleted push proof is retired"
     :text "tla/SeatProof.tla modelled the push proof (its header names PushPong, PushLive, PushWhy,
