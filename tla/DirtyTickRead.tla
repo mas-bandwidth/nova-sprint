@@ -17,6 +17,9 @@
 \*                revision it left and the records it named (a display write
 \*                names none)
 \*   running      the machine's state, read with the fence
+\*   runseq       the machine's run: bumped by Start (the fence taken), the
+\*                generation a part records when it begins and must still hold
+\*                to commit (engine.go's StaleRun refusal)
 \*
 \* THE TICK'S TWIN.
 \*   tv           the twin holds the tables (a read cut short, or a dropped
@@ -28,7 +31,8 @@
 \*   "idle"  -> Begin: the view's exchange (the fence first: a pending
 \*              operation waits; the shapes: each table's revision). A part's
 \*              FIRST read that finds the machine STOPPED halts the part
-\*              (it begins nothing); a later read of a part in flight goes on.
+\*              (it begins nothing); a part that begins records the runseq
+\*              it began under; a later read of a part in flight goes on.
 \*   "view"  -> CatchUp(t): a table whose revision moved since the twin's is
 \*              brought to the shape's revision: the records its change stream
 \*              names between the two, read again (refused, and read again
@@ -39,9 +43,10 @@
 \*              Close: the fence again, last: the same generation and nothing
 \*              pending, or the read is taken again.
 \*   "plan"  -> Commit: the part's write, at the generation its view read
-\*              (the Acquire), its receipt applied to the twin (the record,
-\*              and the table's revision the store left); or Lost: the
-\*              generation moved, and the part reads again.
+\*              (the Acquire), the run it began under still current (else
+\*              refused StaleRun, writing nothing), its receipt applied to the
+\*              twin (the record, and the table's revision the store left); or
+\*              Lost: the generation moved, and the part reads again.
 \*   PassOver: a part with nothing to do on the twin is passed over, reading
 \*              no store (it writes nothing: nothing to check).
 \*   Drop: any path the engine does not know the end of drops the twin.
@@ -52,7 +57,8 @@
 \* THE OTHER WRITERS. W: another process's step (Acquire, its write, its
 \* Release; its write names its record in the change stream). D: a display
 \* cell, outside the fence (the table's revision moves; no record changes;
-\* no generation). Stop / Start: the machine's state.
+\* no generation). Stop / Start: the machine's state, each read and written
+\* under the fence (the generation steps), Start bumping runseq.
 \*
 \* WHAT IS CHECKED.
 \*   ViewIsSnapshot   a part that plans, at the generation the store is at
@@ -64,37 +70,42 @@
 \*   TwinNotAhead     the twin is never at a revision the table has not reached
 \*   LockedApplyNotLost  a part that plans under its lock still holds the fence
 \*                    at the generation it read: its write cannot be lost
+\*   NoStaleRunCommit no part commits under a runseq other than the one current
+\*                    at its commit (a part that began before STOP then START
+\*                    reads the new generation but is refused StaleRun)
 
 EXTENDS Naturals, Sequences, FiniteSets
 
-CONSTANTS Tables, Keys, Vals, MaxW, MaxD, MaxParts,
+CONSTANTS Tables, Keys, Vals, MaxW, MaxD, MaxParts, MaxStarts,
           Broken \* "none"; a reversed witness breaks one rule: "lock" (the
                  \* lock marks the part locked without taking the fence),
                  \* "acquire" (the
                  \* write takes the fence whatever generation its plan read,
                  \* the engine's one guard), "halt" (no halt on a first
                  \* read of a STOPPED machine), "catchup" (the catch-up misses
-                 \* the last write its change stream names)
+                 \* the last write its change stream names), "runseq" (the
+                 \* commit drops the runseq check: a part whose run moved under
+                 \* it commits anyway)
 
 ASSUME 0 \in Vals
 
-VARIABLES gen, pend, rec, rev, log, running,
-          locked, lost,
+VARIABLES gen, pend, rec, rev, log, running, runseq,
+          locked, lost, stale,
           tv, tg, trec, trev,
-          pc, vgen, vrev, first, began, parts,
+          pc, vgen, vrunseq, vrev, first, began, parts,
           wn, dn, wt, wk, wv
 
-vars == <<gen, pend, rec, rev, log, running, locked, lost, tv, tg, trec, trev, pc, vgen, vrev, first, began, parts, wn, dn, wt, wk, wv>>
+vars == <<gen, pend, rec, rev, log, running, runseq, locked, lost, stale, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv>>
 
 Zero == [t \in Tables |-> [k \in Keys |-> 0]]
 
 Init ==
   /\ gen = 0 /\ pend = "none" /\ rec = Zero /\ rev = [t \in Tables |-> 0]
-  /\ log = [t \in Tables |-> <<>>] /\ running = TRUE
+  /\ log = [t \in Tables |-> <<>>] /\ running = TRUE /\ runseq = 0
   /\ tv = FALSE /\ tg = 0 /\ trec = Zero /\ trev = [t \in Tables |-> 0]
-  /\ pc = "idle" /\ vgen = 0 /\ vrev = [t \in Tables |-> 0]
+  /\ pc = "idle" /\ vgen = 0 /\ vrunseq = 0 /\ vrev = [t \in Tables |-> 0]
   /\ first = TRUE /\ began = TRUE /\ parts = 0
-  /\ locked = FALSE /\ lost = FALSE
+  /\ locked = FALSE /\ lost = FALSE /\ stale = FALSE
   /\ wn = 0 /\ dn = 0 /\ wv = 0
   /\ wt = (CHOOSE t \in Tables : TRUE)
   /\ wk = (CHOOSE k \in Keys : TRUE)
@@ -114,12 +125,13 @@ Begin ==
   /\ IF first /\ ~running /\ Broken # "halt"
        THEN \* the part's first read finds the machine STOPPED: it begins nothing
             /\ parts' = parts + 1 /\ first' = TRUE
-            /\ UNCHANGED <<pc, vgen, vrev, began>>
+            /\ UNCHANGED <<pc, vgen, vrunseq, vrev, began>>
        ELSE /\ pc' = "view" /\ vgen' = gen /\ vrev' = rev
+            /\ vrunseq' = IF first THEN runseq ELSE vrunseq
             /\ began' = IF first THEN running ELSE began
             /\ first' = FALSE
             /\ UNCHANGED parts
-  /\ UNCHANGED <<gen, pend, rec, rev, log, running, tv, tg, trec, trev, wn, dn, wt, wk, wv, locked, lost>>
+  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, tv, tg, trec, trev, wn, dn, wt, wk, wv, locked, lost, stale>>
 
 CatchUp(t) ==
   /\ pc = "view" /\ tv /\ trev[t] # vrev[t]
@@ -130,43 +142,52 @@ CatchUp(t) ==
             /\ UNCHANGED pc
        ELSE \* the table moved after its shape: read again
             /\ pc' = "idle" /\ UNCHANGED <<trec, trev>>
-  /\ UNCHANGED <<gen, pend, rec, rev, log, running, tv, tg, vgen, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost>>
+  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, tv, tg, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale>>
 
 ReadWhole ==
   /\ pc = "view" /\ ~tv
   /\ IF \A t \in Tables : rev[t] = vrev[t]
        THEN /\ tv' = TRUE /\ trec' = rec /\ trev' = vrev /\ UNCHANGED pc
        ELSE /\ pc' = "idle" /\ UNCHANGED <<tv, trec, trev>>
-  /\ UNCHANGED <<gen, pend, rec, rev, log, running, tg, vgen, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost>>
+  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, tg, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale>>
 
 Close ==
   /\ pc = "view" /\ tv /\ \A t \in Tables : trev[t] = vrev[t]
   /\ IF gen = vgen /\ Free
        THEN pc' = "plan" /\ tg' = vgen
        ELSE pc' = "idle" /\ UNCHANGED tg
-  /\ UNCHANGED <<gen, pend, rec, rev, log, running, tv, trec, trev, vgen, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost>>
+  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, tv, trec, trev, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale>>
 
 Commit(t, k, v) ==
   /\ pc = "plan"
   /\ IF (gen = vgen /\ Free) \/ Broken = "acquire"
-       THEN \* the Acquire at the generation read (or, locked, the lock handed
-            \* to the operation: the generation is the one the lock set); the
-            \* write; the receipt on the twin; the fence released
-            /\ gen' = IF locked THEN gen ELSE gen + 1
-            /\ rec' = [rec EXCEPT ![t][k] = v]
-            /\ rev' = [rev EXCEPT ![t] = rev[t] + 1]
-            /\ log' = [log EXCEPT ![t] = Append(log[t], <<rev[t] + 1, {k}>>)]
-            /\ trec' = [trec EXCEPT ![t][k] = v]
-            /\ trev' = [trev EXCEPT ![t] = rev[t] + 1]
-            /\ tg' = IF locked THEN gen ELSE gen + 1
-            /\ pend' = IF locked THEN "none" ELSE pend
-            /\ locked' = FALSE /\ lost' = FALSE
-            /\ pc' = "idle" /\ parts' = parts + 1 /\ first' = TRUE
+       THEN /\ IF (runseq = vrunseq) \/ Broken = "runseq"
+                THEN \* the Acquire at the generation read (or, locked, the lock
+                     \* handed to the operation: the generation is the one the
+                     \* lock set); the run it began under still current; the
+                     \* write; the receipt on the twin; the fence released
+                     /\ gen' = IF locked THEN gen ELSE gen + 1
+                     /\ rec' = [rec EXCEPT ![t][k] = v]
+                     /\ rev' = [rev EXCEPT ![t] = rev[t] + 1]
+                     /\ log' = [log EXCEPT ![t] = Append(log[t], <<rev[t] + 1, {k}>>)]
+                     /\ trec' = [trec EXCEPT ![t][k] = v]
+                     /\ trev' = [trev EXCEPT ![t] = rev[t] + 1]
+                     /\ tg' = IF locked THEN gen ELSE gen + 1
+                     /\ pend' = IF locked THEN "none" ELSE pend
+                     /\ locked' = FALSE /\ lost' = FALSE
+                     /\ stale' = (stale \/ (runseq # vrunseq))
+                     /\ pc' = "idle" /\ parts' = parts + 1 /\ first' = TRUE
+                ELSE \* the run moved under the part: its commit is refused
+                     \* (StaleRun), it writes nothing, and the part is done
+                     /\ pc' = "idle" /\ parts' = parts + 1 /\ first' = TRUE
+                     /\ pend' = IF locked THEN "none" ELSE pend
+                     /\ locked' = FALSE /\ lost' = FALSE
+                     /\ UNCHANGED <<gen, rec, rev, log, tg, trec, trev, stale>>
        ELSE \* lost to another writer: the part reads again (it began: no
             \* halt), and takes the fence before that read (Lock)
             /\ pc' = "idle" /\ lost' = TRUE
-            /\ UNCHANGED <<gen, pend, rec, rev, log, tg, trec, trev, parts, first, locked>>
-  /\ UNCHANGED <<running, tv, vgen, vrev, began, wn, dn, wt, wk, wv>>
+            /\ UNCHANGED <<gen, pend, rec, rev, log, tg, trec, trev, parts, first, locked, stale>>
+  /\ UNCHANGED <<running, runseq, tv, vgen, vrunseq, vrev, began, wn, dn, wt, wk, wv>>
 
 \* A part that lost a try takes the fence before its next read: once, and
 \* only while nothing else holds it (lock.go). The broken witness marks the
@@ -177,7 +198,7 @@ Lock ==
   /\ IF Broken = "lock"
        THEN UNCHANGED <<gen, pend>>
        ELSE pend' = "t" /\ gen' = gen + 1
-  /\ UNCHANGED <<rec, rev, log, running, lost, tv, tg, trec, trev, pc, vgen, vrev, first, began, parts, wn, dn, wt, wk, wv>>
+  /\ UNCHANGED <<rec, rev, log, running, runseq, lost, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, stale>>
 
 \* A part with nothing to write ends; a lock it holds is released unwritten.
 NoWrite ==
@@ -185,17 +206,17 @@ NoWrite ==
   /\ pc' = "idle" /\ parts' = parts + 1 /\ first' = TRUE
   /\ locked' = FALSE /\ lost' = FALSE
   /\ pend' = IF locked THEN "none" ELSE pend
-  /\ UNCHANGED <<gen, rec, rev, log, running, tv, tg, trec, trev, vgen, vrev, began, wn, dn, wt, wk, wv>>
+  /\ UNCHANGED <<gen, rec, rev, log, running, runseq, tv, tg, trec, trev, vgen, vrunseq, vrev, began, wn, dn, wt, wk, wv, stale>>
 
 PassOver ==
   /\ pc = "idle" /\ first /\ ~locked /\ parts < MaxParts
   /\ parts' = parts + 1
-  /\ UNCHANGED <<gen, pend, rec, rev, log, running, tv, tg, trec, trev, pc, vgen, vrev, first, began, wn, dn, wt, wk, wv, locked, lost>>
+  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, wn, dn, wt, wk, wv, locked, lost, stale>>
 
 Drop ==
   /\ pc = "idle" /\ tv
   /\ tv' = FALSE
-  /\ UNCHANGED <<gen, pend, rec, rev, log, running, tg, trec, trev, pc, vgen, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost>>
+  /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale>>
 
 --------------------------------------------------------------------------------
 \* THE OTHER WRITERS
@@ -203,7 +224,7 @@ Drop ==
 WAcquire(t, k, v) ==
   /\ pend = "none" /\ wn < MaxW
   /\ pend' = "w" /\ gen' = gen + 1 /\ wt' = t /\ wk' = k /\ wv' = v
-  /\ UNCHANGED <<rec, rev, log, running, tv, tg, trec, trev, pc, vgen, vrev, first, began, parts, wn, dn, locked, lost>>
+  /\ UNCHANGED <<rec, rev, log, running, runseq, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, locked, lost, stale>>
 
 WApply ==
   /\ pend = "w"
@@ -211,23 +232,29 @@ WApply ==
   /\ rev' = [rev EXCEPT ![wt] = rev[wt] + 1]
   /\ log' = [log EXCEPT ![wt] = Append(log[wt], <<rev[wt] + 1, {wk}>>)]
   /\ pend' = "applied"
-  /\ UNCHANGED <<gen, running, tv, tg, trec, trev, pc, vgen, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost>>
+  /\ UNCHANGED <<gen, running, runseq, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale>>
 
 WRelease ==
   /\ pend = "applied"
   /\ pend' = "none" /\ wn' = wn + 1
-  /\ UNCHANGED <<gen, rec, rev, log, running, tv, tg, trec, trev, pc, vgen, vrev, first, began, parts, dn, wt, wk, wv, locked, lost>>
+  /\ UNCHANGED <<gen, rec, rev, log, running, runseq, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, dn, wt, wk, wv, locked, lost, stale>>
 
 Display(t) ==
   /\ dn < MaxD
   /\ rev' = [rev EXCEPT ![t] = rev[t] + 1]
   /\ log' = [log EXCEPT ![t] = Append(log[t], <<rev[t] + 1, {}>>)]
   /\ dn' = dn + 1
-  /\ UNCHANGED <<gen, pend, rec, running, tv, tg, trec, trev, pc, vgen, vrev, first, began, parts, wn, wt, wk, wv, locked, lost>>
+  /\ UNCHANGED <<gen, pend, rec, running, runseq, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, wt, wk, wv, locked, lost, stale>>
 
 Stop ==
-  /\ running /\ running' = FALSE
-  /\ UNCHANGED <<gen, pend, rec, rev, log, tv, tg, trec, trev, pc, vgen, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost>>
+  /\ running /\ pend = "none"
+  /\ running' = FALSE /\ gen' = gen + 1
+  /\ UNCHANGED <<pend, rec, rev, log, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale, runseq>>
+
+Start ==
+  /\ ~running /\ pend = "none" /\ runseq < MaxStarts
+  /\ running' = TRUE /\ gen' = gen + 1 /\ runseq' = runseq + 1
+  /\ UNCHANGED <<pend, rec, rev, log, tv, tg, trec, trev, pc, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale>>
 
 Next ==
   \/ Begin \/ ReadWhole \/ Close \/ PassOver \/ Drop \/ Lock \/ NoWrite
@@ -236,7 +263,7 @@ Next ==
   \/ \E t \in Tables, k \in Keys, v \in Vals : WAcquire(t, k, v)
   \/ WApply \/ WRelease
   \/ \E t \in Tables : Display(t)
-  \/ Stop
+  \/ Stop \/ Start
 
 Spec == Init /\ [][Next]_vars
 
@@ -246,8 +273,9 @@ Spec == Init /\ [][Next]_vars
 TypeOK ==
   /\ pc \in {"idle", "view", "plan"}
   /\ pend \in {"none", "w", "applied", "t"}
-  /\ locked \in BOOLEAN /\ lost \in BOOLEAN
+  /\ locked \in BOOLEAN /\ lost \in BOOLEAN /\ stale \in BOOLEAN
   /\ tv \in BOOLEAN /\ running \in BOOLEAN
+  /\ runseq \in 0..MaxStarts /\ vrunseq \in 0..MaxStarts
 
 \* A part that plans, at the generation the store is at with nothing pending,
 \* plans on the store's records.
@@ -269,5 +297,10 @@ BeganRunning == pc = "plan" => began
 
 \* The twin is never at a revision its table has not reached.
 TwinNotAhead == \A t \in Tables : trev[t] <= rev[t]
+
+\* No part commits under a runseq other than the one current at its commit:
+\* a part that began before STOP then START reads the new generation but is
+\* refused (StaleRun), never committed.
+NoStaleRunCommit == ~stale
 
 =============================================================================

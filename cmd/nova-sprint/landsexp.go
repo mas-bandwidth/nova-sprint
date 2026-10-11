@@ -53,6 +53,14 @@ func roadmapPage(p string) bool {
 	return false
 }
 
+// roadmapData says p is the roadmap data (docs/fixes.sexp, docs/roadmap.sexp): a ledger the
+// lander merges entry by entry, but a conflict in it the lander cannot resolve is the card's
+// to redo, so it is no ledger-kind conflict (land.go, mergeHeadLedgers).
+func roadmapData(p string) bool {
+	_, ok := sexpData[p]
+	return ok
+}
+
 // sexpMiddleCap bounds the line comparison of one side (the changed middle of base times
 // the changed middle of the side): a side past it is refused, not compared.
 const sexpMiddleCap = 16_000_000

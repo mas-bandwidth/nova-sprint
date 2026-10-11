@@ -16,7 +16,8 @@ import (
 // a case of the one engine (RuleAnswers, rules.go): it decides on the judgment's own facts,
 // its tick part applies one verb the house already has (friend take, ask --instead, rework),
 // every answer is recorded "answered by rule <name>", and its name in nova-config's
-// answer_rules_off turns it off alone (RuleOff).
+// answer_rules_off turns it off alone (RuleOff). The model is tla/SprintRules.tla,
+// Part "judgments" (ruleFriendTake, ruleReadLate, ruleHoldNeed).
 
 // The fields these rules write.
 const (
@@ -40,6 +41,7 @@ const (
 // not name it running: friendStarted) is taken back to ready and the deal places it again,
 // never on her (FieldTakenFrom). One she started stays hers: friends keep the cards they
 // started. A card pinned to her alone has nowhere else to go, and a brief defect is a mind's.
+// tla/SprintRules.tla RuleFriendTake
 func ruleFriendTake(s *Snapshot, r TickReq, a *RuleAnswer, wc *Card) {
 	a.Rule = RuleFriendTake
 	friend, _ := FriendOfRow(wc.Row)
@@ -69,6 +71,7 @@ func ruleFriendTake(s *Snapshot, r TickReq, a *RuleAnswer, wc *Card) {
 // other reader (ask --instead), once an attempt (FieldRuleReread); the second late read of
 // the attempt, and one no other reader can take, are a mind's. A read handed back with no
 // verdict needs no rule: the ask places it again itself (Ask, returnedRead).
+// tla/SprintRules.tla RuleReadLate
 func ruleReadLate(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleReadLate
 	rc := s.Readers.Placed(a.open.Note.Card)
@@ -120,6 +123,7 @@ func holdsFor(s *Snapshot, pr *Card) string {
 // has not landed (holdsFor). It waits for that card: the judgment stays open, marked
 // "waiting on <card> by rule hold-need", and once the card lands the primary is reworked on
 // the current tip. A card dropped since is a mind's.
+// tla/SprintRules.tla RuleHoldNeedRework, RuleHoldNeedMind
 func ruleHoldNeed(s *Snapshot, a *RuleAnswer, pr *Card, need string) {
 	a.Rule = RuleHoldNeed
 	switch {

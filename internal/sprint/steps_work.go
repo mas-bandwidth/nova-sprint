@@ -2246,10 +2246,20 @@ var envFaultClasses = []struct {
 }
 
 // EnvFault classifies a failed finish's reason as an environment fault: its cause (EnvPush,
-// EnvHarness, EnvTool, EnvSandbox, EnvDisk), or "" when it is none.
+// EnvHarness, EnvTool, EnvSandbox, EnvDisk), or "" when it is none. The reason is the text
+// before the first "; " (the member's own explanation); child text after it is ignored.
+// A reason that carries "[rejected]", "non-fast-forward", or "(fetch first)" is a branch
+// refusal, never an environment fault (tla/ProviderBudget.tla, ARejectedPushIsNeverAFault).
 func EnvFault(report string) string {
+	reason := report
+	if i := strings.Index(report, "; "); i >= 0 {
+		reason = report[:i]
+	}
+	if strings.Contains(reason, "[rejected]") || strings.Contains(reason, "non-fast-forward") || strings.Contains(reason, "(fetch first)") {
+		return ""
+	}
 	for _, c := range envFaultClasses {
-		if c.re.MatchString(report) {
+		if c.re.MatchString(reason) {
 			return c.cause
 		}
 	}
@@ -2618,6 +2628,7 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			// one refuses it, so a machine joining without the push credential never gets
 			// width (the owner, 2026-10-11; tla/ProviderBudget.tla, NewMemberProbed).
 			// init bootstraps a fleet by passing EnvProbePassed for each member it sets up.
+			// tla/NoRoom.tla Accept: known only on a passed probe, the deal and the ask read it.
 			why := "its own probe has not passed: " + EnvProbeLine(r.Member)
 			if r.Probe != "" {
 				why = "its own probe failed (" + r.Probe + "): " + EnvFaultRemedy(r.Member, EnvOther)

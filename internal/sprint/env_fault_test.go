@@ -21,6 +21,8 @@ func TestEnvFaultClassifiesAFinishReason(t *testing.T) {
 		{"an auth refusal", "push refused: fatal: Authentication failed for 'https://github.com/x/y'", EnvPush},
 		{"an unreachable remote", "fatal: unable to access 'https://github.com/x/y/': Could not resolve host: github.com", EnvPush},
 		{"a refused push that is the branch's is not environment", "push refused: rejected (non-fast-forward); r", ""},
+		{"branch refusal with child text should not envFault", "push refused: ! 0123abc:refs/heads/sprint/x.w1.g2.e17 [rejected] (non-fast-forward); TestALaneRunsInsideItsWall: the lane's sandbox denied a write", ""},
+		{"wall words in child part alone are not envFault", "verdict not-done; the child said it was blocked by the wall", ""},
 		{"a missing harness", "harness not found on this machine: opencode", EnvHarness},
 		{"a missing tool", "exec: \"nova-work\": executable file not found in $PATH", EnvTool},
 		{"a sandbox refusal", "the sandbox blocked the child: operation not permitted", EnvSandbox},
@@ -108,6 +110,22 @@ func TestAnEnvironmentFailureHoldsTheMemberAndReturnsTheCard(t *testing.T) {
 	assert.Equal(t, Ready, w.s.Fleet.Card(w.s.Work.Card("s1-2").F("work")).Col, "the second card stays ready")
 	_, why := takeSeat(w.s, "m1")
 	assert.Contains(t, why, "environment fault")
+}
+
+// A member's rejected push with child text does not envFault it: the child's sandbox words
+// are in the report's second half (after the "; "), and the reason (before "; ") carries
+// "[rejected] (non-fast-forward)", a branch refusal (envFault.go, EnvFault;
+// tla/ProviderBudget.tla, ARejectedPushIsNeverAFault).
+func TestARejectedPushIsNeverAnEnvironmentFault(t *testing.T) {
+	t.Parallel()
+	w := envFaultWorld(t)
+	wc := w.s.Work.Card("s1-1").F("work")
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
+		Report: "push refused: ! 0123abc:refs/heads/sprint/x.w1.g2.e17 [rejected] (non-fast-forward); TestALaneRunsInsideItsWall: the lane's sandbox denied a write"}))
+	assert.False(t, w.s.EnvHeld("m1"), "a rejected push is not an environment fault")
+	assert.Equal(t, Review, w.state("s1-1"), "the card is failed work")
+	assert.Empty(t, w.notesOf(NMemberEnvFault), "no environment judgment")
 }
 
 // A model or card failure on the same member is not an environment fault: it holds no
