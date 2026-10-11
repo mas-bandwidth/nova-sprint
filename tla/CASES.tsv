@@ -207,6 +207,9 @@ MCRouteIndexBrokenReadApart.cfg	MCRouteIndex.tla	invariant	RouteIndexAdvancesOnc
 MCRouteIndexHarness.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenHarnessBlind.cfg	MCRouteIndex.tla	invariant	NeverUnlaunchable	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenJudgeFleet.cfg	MCRouteIndex.tla	invariant	StrandedIsJudged	ignore-terminal	routeindex	required	-
+MCRouteIndexFirst.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
+MCRouteIndexBrokenNoFirst.cfg	MCRouteIndex.tla	invariant	FirstPreferred	ignore-terminal	routeindex	required	-
+MCRouteIndexRead.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
 MCLand.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
 MCLandRecovers.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
 MCLandBrokenReportFirst.cfg	MCLand.tla	invariant	LandedInBase	ignore-terminal	land	required	-
@@ -298,6 +301,7 @@ MCServerLanesBrokenTickQueues.cfg	MCServerLanes.tla	invariant	TickWaitsOneTurn	i
 MCCoordinatorWake.cfg	MCCoordinatorWake.tla	pass	-	ignore-terminal	coordinatorwake	required	-
 MCCoordinatorWakeBrokenNoCursor.cfg	MCCoordinatorWake.tla	invariant	AtMostOnce	ignore-terminal	coordinatorwake	required	-
 MCCoordinatorWakeBrokenSkip.cfg	MCCoordinatorWake.tla	temporal	NoLapse	ignore-terminal	coordinatorwake	required	-
+MCCoordinatorWakeBrokenBatchDrops.cfg	MCCoordinatorWake.tla	temporal	NoLapse	ignore-terminal	coordinatorwake	required	-
 MCCardISA.cfg	MCCardISA.tla	pass	-	ignore-terminal	cardisa	required	-
 MCCardISALive.cfg	MCCardISA.tla	pass	-	ignore-terminal	cardisa	required	-
 MCCardISABrokenSecondLand.cfg	MCCardISA.tla	invariant	NoCardRetiresTwice	ignore-terminal	cardisa	required	-

@@ -209,6 +209,10 @@
     :title "ReadyOver raises only past ReadyMax, one judgment per cause, each held card its own"
     :text "Models only, no product change. tla/ReadyOver.tla was read against internal/sprint/ready_over.go and drifted in four places, each brought to the code. ready is split from past (a card is ready-over only after it sits past ReadyMax), each held card and each bad brief is its own cause (the card's id is in the sentence), and the causes readyWhy names that the model lacked are added: a held stream, friends alone, no launcher and no free width, plus a timed rest (until its time) beside paid and woken. OnePerCause and ClearsWhenDealt still hold. A new invariant RaisedOnlyPastReadyMax (a raise writes a judgment only for a card past the bound) is checked by the reversed witness MCReadyOverBrokenNobound (Broken \"nobound\"): a raise before the bound fails it. ready_over.go gains one comment line citing the module."
     :origin "card tla-readyover-causes-and-bound, 2026-10-11: v1.2.12 inventory item T36, drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-routeindex-first-and-exclusions" :release "v1.2.12" :status "planned"
+    :title "RouteIndex models the first flag, the per-member harness draw, the FieldRoutes exclusion, a resting route and a read's avoid and tier collapse"
+    :text "Models only, no product change. tla/RouteIndex.tla gains a First constant and preferFirst: a route whose first flag is set is drawn before the others of its tier, checked by the new invariant FirstPreferred (a draw never passes over a drawable first-set entry), with the reversed witness MCRouteIndexBrokenNoFirst.cfg (Broken \"nofirst\", the walk that ignores first) and the control MCRouteIndexFirst.cfg. The deal walks past the member's own harness set, not one global set: a new memb variable records the member each card is dealt to, Deal and Redeal leave out MemberUnlaunch[m] for that member, and NeverUnlaunchable is restated per member (last.r notin MemberUnlaunch[last.m]); the harnessblind witness is kept. A new attempt leaves out the routes already in the primary's FieldRoutes: Deal's exclusion is drawn[c] together with the member's set, as Redeal's already was. A resting route (Rested) is walked past as an unserved one. A read leaves out the routes it returned on (Avoid[c]) and is drawn from its primary's collapsed tier (ReadTier: pro to flash, heavy to pro), with the control MCRouteIndexRead.cfg. routeIndexesOf's call in rebalance.go and the route read in routetable.go gain one comment line each citing the module. Still outside the module: a provider at its concurrency budget is not skipped (the deal draws one anyway), and the coordinator's fallback that deals a rework on a full provider."
+    :origin "this card; v1.2.12 inventory item T36, drift read at nova-sprint main 00c54ba2e 2026-10-11")
    (fix "tla-server-switch-rollback-window" :release "v1.2.12" :status "planned"
     :title "ServerSwitch models the server switch and its rollback window, with two reversed witnesses"
     :text "Models only, no product change. tla/ServerSwitch.tla models the server switch (internal/sprint/server_switch.go ServerSwitch, ServerRollback, CheckRollbackOnLandFailure): at most two switches, a rollback window of two, a clock to four, a land that is ok, refused or failed, and a crash between the copy and the state write. ServerSwitch backs the target up to <target>.prev (only when a target exists) and copies the candidate over the target, then writes <target>.switch.json when rollback is on; a land pass fault (exit 2) in the window rolls the previous binary back to the target and removes the state, past the deadline the state is removed and the switch is permanent, and a refusal (exit 1) never rolls back. Three invariants: TargetIsAKnownBinary (the target is always a known binary or absent), RollbackOnlyInWindow, and AtMostOneAutoRollbackPerSwitch; two reversed witnesses: nodeadline skips the deadline check and fails RollbackOnlyInWindow, keepstate keeps the state after a rollback and fails AtMostOneAutoRollbackPerSwitch. Two facts of the code are modelled and named: a second switch inside the window overwrites <target>.prev with the first candidate, and a switch with no prior target leaves a state whose Previous file is missing, so every failure inside the window errors."
@@ -1174,6 +1178,25 @@
     every row that is not current names in owed_by the v1.2.12 card that owes it. Twenty-two rows are
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
+
+  (fix "tla-coordinatorwake-batch-and-level-events" :release "v1.2.12" :status "planned"
+   :title "CoordinatorWake models the batched wake, the filtered message and the level events"
+   :text "Models only, no product change. tla/CoordinatorWake.tla now models the batched wake (one wake
+    fires every bus ask the look read, naming three and counting the rest), the filtered message that
+    moves the cursor without a line, and the level events (a judgment, a stop, a friend down) that set
+    and clear between looks, so NoLapse holds for bus events alone and the new LevelSeenWhileItHolds
+    says a level event that holds a whole window wakes a run unless it clears first. A look that sees a
+    level event cleared forgets the wake (seen is pruned), so a level event cleared and raised again,
+    the clear observed, wakes again, matching watchwake.go's pruning of the judgments, the stop and the
+    friends; a clear-and-reappearance between looks is not observed and need not wake. Spec now adds
+    WF_vars(Look): held reaches Window only through looks, so a look is fair too, and a level event
+    raised and left raised is eventually a whole window old and due, making LevelSeenWhileItHolds
+    non-vacuous (a run blocked with nothing to wake keeps looking rather than leaving a held level below
+    Window forever). The reversed witness MCCoordinatorWakeBrokenBatchDrops (Broken \"batchdrops\") fires
+    only the first ask of a batch and writes the cursor past the rest, failing NoLapse; the two existing
+    witnesses (nocursor, skip) keep their results. watchwake.go's comments now say bus events, and that a
+    judgment raised and closed inside --judgment-every may never wake. Four cases pass on a bench."
+   :origin "this card, tla-coordinatorwake-batch-and-level-events-2.w6, 2026-10-11: v1.2.12 inventory item T25; drift read at nova-sprint main 00c54ba2e, 2026-10-11")
 
   (fix "tla-serverlanes-control-line-tick-turn" :release "v1.2.12" :status "planned"
    :title "ServerLanes models the control line: batches by ticket and the tick's turn"
