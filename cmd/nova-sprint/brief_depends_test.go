@@ -9,11 +9,14 @@ import (
 
 // A brief that differs in its DEPENDS-ON: line alone is taken on a RUNNING
 // machine (applied by the next tick, as every work-table change is while it
-// runs) and for a card dealt, its needs re-pointed (the comfort list of
-// 2026-10-03, item 2: re-pointing six dependants after a drop meant stop, six
-// briefs, start); a waiting card's whole brief is replaced while the machine
-// runs, and a dealt card's whole brief is still refused; a need that is no primary
-// on the table, the card itself, or one not landed for a ready card is refused.
+// runs) and for a card dealt (the comfort list of 2026-10-03, item 2:
+// re-pointing six dependants after a drop meant stop, six briefs, start); the
+// needs follow the rule, not the line (docs/SPEC-SPRINT.md, the needs): a need
+// the text drops stays and a new name is added, so a-2 re-pointed from a-1 to
+// a-3 keeps a-1 and gains a-3; a waiting card's whole brief is replaced while
+// the machine runs, and a dealt card's whole brief is still refused; a need that
+// is no primary on the table, the card itself, or one not landed for a ready
+// card is refused.
 func TestBriefDependsOnOnlyChangeIsTakenInAnyState(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -36,12 +39,13 @@ func TestBriefDependsOnOnlyChangeIsTakenInAnyState(t *testing.T) {
 	assert.Equal(t, "a-1", ta.primary("a-2").F("needs"))
 	assert.Equal(t, "", ta.primary("a-3").F("needs"))
 
-	// the machine runs: the DEPENDS-ON change alone is taken, the needs follow it
+	// the machine runs: the DEPENDS-ON change alone is taken, and the needs rule
+	// holds on it: a-2 keeps a-1 the text dropped and adds a-3 it names
 	ta.ok("start")
 	out := ta.ok("brief a-2 --brief-file " + writeHeaderBrief(t, t.TempDir(), "a-2", "a-3", "internal/a2.go"))
-	assert.Contains(t, out, "MOVED a-2 DEPENDS-ON replaced: needs a-3 ")
+	assert.Contains(t, out, "MOVED a-2 DEPENDS-ON replaced: needs a-1,a-3 ")
 	ta.ok("tick")
-	assert.Equal(t, "a-3", ta.primary("a-2").F("needs"))
+	assert.Equal(t, "a-1,a-3", ta.primary("a-2").F("needs"))
 	assert.Contains(t, ta.primary("a-2").F("brief"), "DEPENDS-ON: a-3\n")
 	assert.Equal(t, "waiting", ta.primary("a-2").Col)
 
@@ -50,7 +54,7 @@ func TestBriefDependsOnOnlyChangeIsTakenInAnyState(t *testing.T) {
 	assert.Contains(t, out, "a-2 brief replaced")
 	ta.ok("tick")
 	assert.Contains(t, ta.primary("a-2").F("brief"), "PATHS: internal/other.go\n")
-	assert.Equal(t, "a-3", ta.primary("a-2").F("needs"))
+	assert.Equal(t, "a-1,a-3", ta.primary("a-2").F("needs"))
 	assert.Equal(t, "waiting", ta.primary("a-2").Col)
 
 	// a card dealt: the needs follow, and a dealt card whose needs have not landed goes back

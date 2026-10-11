@@ -85,7 +85,8 @@ nova-sprint priority <id>... | (<id>... | --stream <s>) (--blocker | --critical 
 nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint sentinel set <id> --needs <a,b>
 nova-sprint brief check <file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]
-nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] | --dir <dir> [--rules <file>] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]
+nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t>] [--needs-from-brief] | --dir <dir> [--rules <file>] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]
+nova-sprint tier <card> --set <flash|pro|heavy|frontier> --reason <text>
 nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who)... [--dry-run]
 nova-sprint twin <card> [--paths <extra,...>] [--needs <card,...>] [--before <card>] [--tier <t>] [--instruction <text>] [--carry]
 nova-sprint move <id>... --stream <s> [--before <id> | --after <id> | --score <n>]
@@ -174,6 +175,22 @@ nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>]
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
+
+A `brief` edit replaces the card's whole text, but the text dumped from the
+card is the admission-time one: three rules keep what a verb set, and a `brief`
+NOTE names every property it kept against the text. **Needs**: the edit's needs
+are the card's, not the text's — it starts from the card's needs, maps a name its
+relink record re-pointed to its twin (`needs kept: <twin> (relinked from <old>
+<time>)`), and adds only names the text holds that the card does not; a need the
+text drops stays, unless `--needs-from-brief` takes the text whole. **The tier**:
+the tier is a card field, so a text whose line 1 names another tier than the
+card's recorded one keeps the recorded one (`tier kept: <recorded> (the brief's
+line 1 says <t>)`), unless `--tier <t>` names one; `tier <card> --set <t>
+--reason <why>` sets it without a text edit. **The bound**: the bound hashes the
+task (the body and `PATHS:`, `NEW:`, `SHARED:`, `TEST:`, `DONE-WHEN:`), so an
+edit that changes only `DEPENDS-ON:`, `ORDER:`, `TLC-HOSTS:`, `MERGE:`,
+`TOOLCHAIN-HOSTS:` or the tier keeps the count (`bound: same task (<n> attempts
+stand)`) and a new task resets it (`bound: new task (count reset)`).
 
 `card <id> --json` reads that card: its lines of the log from the card log index the
 tick keeps (and the tail it has not indexed yet), never the whole log, and its own
