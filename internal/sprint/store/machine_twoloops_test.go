@@ -41,15 +41,34 @@ func TestCRTwoRunLoopsAtOnce(t *testing.T) {
 		go loop(a)
 		go loop(b)
 		// the outside world, serially, in this goroutine; a verb told it was
-		// cut is counted (and checked below), not fatal
+		// cut is counted (and checked below), not fatal. Under two tick loops
+		// the store may also answer a verb with its documented retryable
+		// refusal (FenceBusyError, "the sprint is busy"): the verb changed
+		// nothing and asks to be run again, so run it again, up to a bound.
+		// A verb starved past the bound is an outside verb losing to two tick
+		// loops and fails the test, never a bigger bound.
+		const busyTries = 20
 		cut := 0
+		busyRetries := 0
 		run := func(step Step) {
-			if _, err := h.st.Run(h.ctx, step); err != nil {
+			for try := 1; ; try++ {
+				_, err := h.st.Run(h.ctx, step)
+				if err == nil {
+					return
+				}
 				if strings.Contains(err.Error(), "changed under the step") {
 					cut++
 					return
 				}
-				require.NoError(t, err, "%s: %v", step.Verb, err)
+				if !IsFenceBusy(err) {
+					require.NoError(t, err, "%s: %v", step.Verb, err)
+					return
+				}
+				if try >= busyTries {
+					require.NoError(t, err, "%s: still busy after %d tries (%d busy retries this trial)", step.Verb, try, busyRetries+1)
+					return
+				}
+				busyRetries++
 			}
 		}
 		w.running = true
@@ -76,6 +95,7 @@ func TestCRTwoRunLoopsAtOnce(t *testing.T) {
 		}
 		h.clean(fmt.Sprintf("trial %d", trial))
 		assert.LessOrEqual(t, cut, 0, "trial %d: %d outside verbs were told \"cut ... changed under the step\" while two ticks ran (their operation was applied by a tick's Fenced finish)", trial, cut)
+		t.Logf("trial %d: %d busy-fence retries, %d cut", trial, busyRetries, cut)
 		if len(errs) > 0 {
 			t.Logf("trial %d: %d tick errors, e.g. %s", trial, len(errs), errs[0])
 		}
