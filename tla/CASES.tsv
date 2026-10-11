@@ -152,10 +152,10 @@ MCDirtyTickW11.cfg	MCDirtyTick.tla	action	EveryRowWithWorkMoves	ignore-terminal	
 MCDirtyTickW12.cfg	MCDirtyTick.tla	temporal	WorkNotStranded	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickW13.cfg	MCDirtyTick.tla	invariant	TickBounded	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickW14.cfg	MCDirtyTick.tla	action	NoWakeIfNothing	ignore-terminal	dirtytick-witnesses	required	-
-MCDirtyTickW15.cfg	MCDirtyTick.tla	invariant	WidthRespected	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickW15.cfg	MCDirtyTick.tla	invariant	HoldRespected	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickG1.cfg	MCDirtyTick.tla	invariant	TickBounded	ignore-terminal	dirtytick-goals	required	-
 MCDirtyTickG1Live.cfg	MCDirtyTick.tla	temporal	Terminates	ignore-terminal	dirtytick-goals	required	-
-MCDirtyTickG2.cfg	MCDirtyTick.tla	invariant	WidthRespected	ignore-terminal	dirtytick-goals	required	-
+MCDirtyTickG2.cfg	MCDirtyTick.tla	invariant	HoldRespected	ignore-terminal	dirtytick-goals	required	-
 MCDirtyTickG3.cfg	MCDirtyTick.tla	action	WorkChangesOnlyInPump	ignore-terminal	dirtytick-goals	required	-
 MCDirtyTickTake.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickMiss.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
@@ -191,6 +191,8 @@ MCDirtyTickProbeBoundAgain.cfg	MCDirtyTick.tla	invariant	ProbeNoBoundAgain	ignor
 MCDirtyTickW29.cfg	MCDirtyTick.tla	invariant	ReworksBounded	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickW30.cfg	MCDirtyTick.tla	invariant	ReworksBounded	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickW31.cfg	MCDirtyTick.tla	invariant	ReworksBounded	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickBrokenFloorreads.cfg	MCDirtyTick.tla	invariant	HoldRespected	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickBrokenNolanes.cfg	MCDirtyTick.tla	invariant	LanesRespected	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickRead.cfg	MCDirtyTickRead.tla	pass	-	ignore-terminal	dirtytickread	required	-
 MCDirtyTickReadAcquire.cfg	MCDirtyTickRead.tla	invariant	TwinIsTheStore	ignore-terminal	dirtytickread-acquire	required	-
 MCDirtyTickReadHalt.cfg	MCDirtyTickRead.tla	invariant	BeganRunning	ignore-terminal	dirtytickread-halt	required	-
