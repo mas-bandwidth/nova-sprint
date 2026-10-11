@@ -314,21 +314,24 @@
      tick writes nothing. Use one property for all."
     :origin "issue #5210")
 
-   (fix "tick-gate-model-read-once" :release "v1.2.9" :status "planned"
-    :title "The deal reads each brief's model once, so the tick stays under its gate"
+   (fix "tick-under-its-gate-at-load" :release "v1.2.9" :status "planned"
+    :title "The deal builds no per-card route map, so the tick stays under its gate"
     :text "Drain and deal take 0.4 to 0.7 seconds at load, so the tick is over its one-second gate, and the
-     dominant cost is the deal's model read: cardhdr.ReadModel parses a ready card's brief (line 1 and the
-     header) with a regexp, and the tick resolves the same card's model lines again in every part that
-     reaches it (routeOf, the friends' dealTierOf, the ask's ReadsNeeded, the friends' friendReadTier and
-     the cap's capNextTier), so each ready primary's brief is parsed several times a tick. It now memoizes
-     the read by brief (route.go, modelOf), once a brief, wired through every call site the tick reaches
-     (route.go, friend_deal.go, friend_read.go, readers.go, lane_cap.go): the deal parses 20,000 ready
-     briefs once instead of once per pass, and the benchmark warms the memo once, as the tick does, then
-     measures the drain beside the deal (the drain is the pump's few dozen moves, the deal the tick's
-     dominant cost) and holds the wall under the one-second gate at load (TestTheTickDealReadsEachBriefOnceAtScale
-     holds the parse to one a brief, TestTickDrainAndDealUnderTheGateAtLoad times the drain and the deal on
-     the loaded store of 50,000 ready beside 50,000 done against the gate, and BenchmarkTickDealAtLoad and
-     BenchmarkTickDrainAtLoad measure the two walls)."
+     dominant cost is the deal's routeOf, which built a served map (route.go, served[r.Name] = r) and a
+     set of route fields (the map literal and set[FieldTierNow]) for every ready primary each tick, and
+     again per up member in the launch check (launchersOf): 65% of the deal's alloc_space, which the GC
+     spent near half the deal on (gcDrain 44% of cpu). The model read the deal also paid (cardhdr.ReadModel's
+     regexp over line 1) is a minor share (4.7%). routeOf now builds served as an on-demand scan over the
+     store's few routes (servedRoute) instead of a map, and the tick's per-card check asks only whether a
+     route serves, never its fields (routeServed, called by the machines' pass, launchersOf and noRoute),
+     so it builds no set; only the callers that deal (deal, redeal, the rebalance) build the fields, at most
+     the width's cards a tick. The model read is also memoized once per brief (modelOf), wired through the
+     call sites the tick reaches (friend_deal.go, friend_read.go, readers.go, lane_cap.go). On the loaded
+     store of 80,000 ready beside 80,000 done and 8 friends the steady deal drops 1.17s to 689ms, under the
+     one-second gate, and TestTickDrainAndDealUnderTheGateAtLoad holds that wall (it fails on the unfixed
+     code and passes after, on the same store); BenchmarkTickDealAtLoad measures the deal and
+     BenchmarkTickDrainAtLoad the drain, and TestTheTickDealReadsEachBriefOnceAtScale holds the parse to
+     one a brief."
     :origin "seat ledger v1.2.4-held-2026-10-10.md 5577 tick gate")
 
    (fix "hold-pinned-to-head-sha" :release "v1.2.9" :status "shipped"

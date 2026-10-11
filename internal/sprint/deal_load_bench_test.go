@@ -19,10 +19,11 @@ const TickGate = time.Second
 // on the fleet beside them, and `friends` up friends of the flash and pro classes
 // the deal offers every ready primary to first. Each brief is distinct (a real
 // card's is its own), so the deal reads every one's model lines, as the loaded
-// store makes it do. With friends up the deal resolves a ready primary's model
-// lines once in the friends' pass (dealTierOf) and again in the machines'
-// (routeOf), which is the twice the tick pays for one card and the deal's dominant
-// cost at load.
+// store makes it do. With friends up the deal resolves a ready primary's tier once
+// in the friends' pass (dealTierOf) and again in the machines' (routeServed), plus
+// once per up member in the launch check (launchersOf): the several times a tick
+// resolves one card, each of which once built a served map and a set, the deal's
+// dominant cost at load.
 func loadedStore(t testing.TB, ready, done, friends int) *Snapshot {
 	w := newWorld(t, "reader-a", "reader-b")
 	for _, name := range []string{"flash-a", "flash-b", "pro-a"} {
@@ -49,16 +50,16 @@ func loadedStore(t testing.TB, ready, done, friends int) *Snapshot {
 	return w.s
 }
 
-// The tick's cost at that scale is a number in the gate (the sub-second tick): the
-// deal resolves the model lines of every ready primary twice a tick, once in the
-// friends' pass (dealTierOf, which draws the tier a friend deals it on) and once in
-// the machines' (routeOf, which draws its route); each resolution read the card's
-// brief with a regexp on every call. Reading each brief once (modelOf, route.go) means
-// the deal parses exactly as many briefs as it walks ready cards, never twice that for
-// the two passes that resolve one card. The reads are counted, with no clock (as
+// The deal resolves the model lines of every ready primary more than once a tick: once
+// in the friends' pass (dealTierOf, which draws the tier a friend deals it on) and again
+// in the machines' (routeServed, which draws its route), each of which read the card's
+// brief with a regexp on every call before the memo. Reading each brief once (modelOf,
+// route.go) means the deal parses exactly as many briefs as it walks ready cards, never
+// once per pass that resolves one card. The reads are counted, with no clock (as
 // TestTheTicksCheckSettlesTheRestsOnceAtScale counts the rests): the branch parsed a
 // brief once in each pass over the ready cards, near 40,000 over 20,000 ready; reading
-// once parses 20,000.
+// once parses 20,000. This is the model read's share of the tick, a minor cost beside
+// routeOf's allocations the gate test holds.
 func TestTickDealReadsEachBriefOnceAtScale(t *testing.T) {
 	s := loadedStore(t, 20000, 0, 8)
 	ready := len(s.Work.Column(Ready))
@@ -77,16 +78,22 @@ func TestTickDealReadsEachBriefOnceAtScale(t *testing.T) {
 // The wall the gate names, not the count alone: the drain and the deal on the loaded
 // store, timed, must stay under the one-second gate. The drain is the pump's first
 // update, applying the queue the previous tick's parts wrote; at load the queue is
-// empty (nothing has run yet), so the deal is the tick's cost, and it is the part the
-// memo holds under the gate. The first (cold) tick parses every brief once into the
-// memo; the dashboard's steady-state tick is the deal over the warm memo, and it is the
-// one measured against the gate, as the tick runs it (the memo is process-global and
-// warm after the first tick; only a test clears it). The non-flaky hold on the gate is
-// TestTickDealReadsEachBriefOnceAtScale's parse count; this is the wall, measured as the
-// least of several steady ticks so a loaded machine's noise does not fail it.
+// empty (nothing has run yet), so the deal is the tick's cost. The deal's dominant
+// cost at load is routeOf's per-card allocations: it built a served map and a set of
+// route fields for every ready primary each tick (and again per member in the launch
+// check), the allocations the GC spent near half the deal on. The fix builds served as
+// an on-demand scan over the store's few routes (servedRoute) and skips the set in the
+// check (routeServed), so the deal allocates near nothing per ready card; the store is
+// sized at 80,000 ready so the unfixed deal runs over the gate and the fixed one stays
+// under it (the base/head pair the test holds). The first (cold) tick parses every brief
+// once into the model memo; the dashboard's steady-state tick is the deal over the warm
+// memo, and it is the one measured against the gate, as the tick runs it (the memo is
+// process-global and warm after the first tick; only a test clears it). The non-flaky
+// hold is the wall itself, measured as the least of several steady ticks so a loaded
+// machine's noise does not fail it.
 func TestTickDrainAndDealUnderTheGateAtLoad(t *testing.T) {
-	s := loadedStore(t, 50000, 50000, 8)
-	require.Equal(t, 50000, len(s.Work.Column(Ready)), "50,000 ready primaries, the loaded store's scale")
+	s := loadedStore(t, 80000, 80000, 8)
+	require.Equal(t, 80000, len(s.Work.Column(Ready)), "80,000 ready primaries, the loaded store's scale")
 
 	resetModelMemo()
 	t.Cleanup(resetModelMemo)
@@ -127,19 +134,19 @@ func TestTickDrainAndDealUnderTheGateAtLoad(t *testing.T) {
 
 // BenchmarkTickDealAtLoad is the deal part's wall at the loaded store's scale: go test
 // -bench TickDealAtLoad ./internal/sprint. The deal is the dominant part of the tick's
-// drain and deal at load, and it runs 0.4 to 0.7 seconds on the loaded store (50,000
-// ready beside 50,000 done), which is where the one-second gate is over without the
-// memo: reading each brief's model lines twice a tick. It stays under the gate because
-// each brief's model lines are read once (route.go, modelOf), never once per ready card
-// per pass. The memo is warmed once before the timer, as the tick warms it on its first
-// run, so the number is the steady-state deal the dashboard pays each second, never the
-// cold first parse.
+// drain and deal at load. It stays under the gate because routeOf no longer builds a
+// served map and a set of route fields for every ready primary each tick (route.go,
+// servedRoute and routeServed), the allocations that once drove the GC; the model memo
+// (modelOf) is warmed once before the timer, as the tick warms it on its first run, so
+// the number is the steady-state deal the dashboard pays each second, never the cold
+// first parse.
 func BenchmarkTickDealAtLoad(b *testing.B) {
 	for _, n := range []struct{ ready, done, friends int }{
 		{20000, 20000, 0},
 		{20000, 20000, 8},
 		{50000, 50000, 0},
 		{50000, 50000, 8},
+		{80000, 80000, 8},
 	} {
 		b.Run(fmt.Sprintf("ready=%d_done=%d_friends=%d", n.ready, n.done, n.friends), func(b *testing.B) {
 			s := loadedStore(b, n.ready, n.done, n.friends)

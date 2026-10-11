@@ -777,7 +777,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 			continue
 		}
 		ec := escalating(s, c)
-		if _, tier, why, byFriend := s.routeOf(ec, nil, nil, ""); byFriend {
+		if tier, why, byFriend := s.routeServed(ec, nil, ""); byFriend {
 			// no route serves its tier and a friend up does: the friends' deal's, never a
 			// machine's (tierServed); withdrawn or taken back from every such friend, or left by
 			// an empty run on her lane (cardLeft), no worker
