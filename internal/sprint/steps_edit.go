@@ -540,3 +540,124 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string) Pl
 		Moved: fmt.Sprintf("%s DEPENDS-ON replaced: needs %s (%d bytes) stream=%s %s", c.ID, orDash(set["needs"]), len(brief), c.Row, c.Col)})
 	return p
 }
+
+// NeedsSetReq re-points one primary's needs (nova-sprint needs set).
+type NeedsSetReq struct {
+	ID      string
+	Needs   []string
+	Clear   bool
+	Answers []string
+	Who     string
+}
+
+// NeedsSet sets a primary's needs directly, in place of dropping the card and
+// adding it again (the owner, 2026-10-11: "I hate twins." / "Fix your tools.").
+// A card's needs are otherwise read once at add, and a brief edit beyond its
+// DEPENDS-ON: line drops them, so a card admitted with the wrong needs could be
+// corrected only by a twin. NeedsSet writes the same fields the brief edit does
+// (steps_edit.go, Brief and briefDepends): it rewrites the brief's needs line so
+// card <id> shows the truth, and moves the card by the lifecycle: a ready card
+// that gains a need not landed moves ready -> waiting, a waiting card whose new
+// needs have all landed moves waiting -> ready, and a card dealt or working
+// keeps its attempt with the new needs applying from its next deal. A landed or
+// off-table card, a sentinel, and a need that is no primary on the table (named
+// whole) are refused, nothing written. Coordinator-only (docs/SPEC-SPRINT.md,
+// needs). It is the one writer of a primary's needs, with the brief edit.
+func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
+	var p Plan
+	p.on(s)
+	if why := notCoordinator(s, r.Who, "needs set"); why != "" {
+		p.refuse(r.ID, why)
+		return p
+	}
+	c := s.Work.Placed(r.ID)
+	switch {
+	case c == nil:
+		p.refuse(r.ID, "no primary "+r.ID+" on the table; nothing was changed")
+		return p
+	case IsSentinel(c):
+		p.refuse(r.ID, r.ID+" is a sentinel, not a primary; nothing was changed")
+		return p
+	case c.Col == Merging || c.Col == Landed:
+		p.refuse(c.ID, c.ID+" is "+c.Col+": a card "+c.Col+" keeps its needs; nothing was changed")
+		return p
+	}
+	wants := r.Needs
+	if r.Clear {
+		wants = nil
+	}
+	seen := map[string]bool{}
+	var why []string
+	for _, n := range wants {
+		switch {
+		case n == c.ID:
+			why = append(why, n+" is the card itself")
+		case seen[n]:
+			why = append(why, n+" is named twice")
+		case s.Work.Placed(n) == nil:
+			why = append(why, n+" is no primary on the table")
+		}
+		seen[n] = true
+	}
+	if len(why) > 0 {
+		p.refuse(c.ID, strings.Join(why, "; ")+"; nothing was changed")
+		return p
+	}
+	brief := setBriefNeeds(c.F("brief"), wants)
+	if c.Int("attempt") > 0 {
+		// a card dealt or working keeps its attempt: the DEPENDS-ON rule the
+		// brief edit takes in any state (steps_edit.go, briefDepends)
+		q := briefDepends(s, p, c, brief, wants)
+		answered(&q, s, r.Answers, r.Who)
+		return Lawful(q)
+	}
+	to := Ready
+	for _, n := range wants {
+		if s.Work.Placed(n).Col != Landed {
+			to = Waiting
+		}
+	}
+	set := map[string]string{"brief": brief}
+	var unset []string
+	if len(wants) > 0 {
+		set["needs"] = strings.Join(wants, ",")
+	} else {
+		unset = append(unset, "needs")
+	}
+	u := Unit{Key: c.ID, Stream: c.Row}
+	if to != c.Col {
+		u.Changes = []Change{change(Work, moveEntry(c, c.Row, to, set, unset...))}
+		u.Moved = fmt.Sprintf("%s needs %s: %s -> %s stream=%s", c.ID, orDash(set["needs"]), c.Col, to, c.Row)
+	} else {
+		u.Changes = []Change{change(Work, setEntry(c, set, unset...))}
+		u.Moved = fmt.Sprintf("%s needs %s stream=%s %s", c.ID, orDash(set["needs"]), c.Row, c.Col)
+	}
+	p.Units = append(p.Units, u)
+	answered(&p, s, r.Answers, r.Who)
+	return Lawful(p)
+}
+
+// setBriefNeeds rewrites the line a brief names its needs on, to needs: the
+// first Needs: header line (cardhdr.KeyValue), else a DEPENDS-ON: line, keeping
+// that line's key; --clear (needs empty) takes the line off; a brief with no
+// such line and needs gains a DEPENDS-ON: line above it. Every other line is
+// kept byte for byte, so card <id> shows the truth and nothing else changes
+// (docs/SPEC-SPRINT.md, needs).
+func setBriefNeeds(brief string, needs []string) string {
+	lines := strings.Split(brief, "\n")
+	for i, l := range lines {
+		key, _, ok := cardhdr.KeyValue(l)
+		if !ok || (key != "Needs" && key != "DEPENDS-ON") {
+			continue
+		}
+		if len(needs) == 0 {
+			return strings.Join(append(append([]string(nil), lines[:i]...), lines[i+1:]...), "\n")
+		}
+		lines[i] = key + ": " + strings.Join(needs, ",")
+		return strings.Join(lines, "\n")
+	}
+	if len(needs) == 0 {
+		return brief
+	}
+	return "DEPENDS-ON: " + strings.Join(needs, ",") + "\n" + brief
+}

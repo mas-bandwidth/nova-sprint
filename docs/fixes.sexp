@@ -1317,6 +1317,29 @@
     17: 89 v1212 briefs carried DEPENDS-ON: below the REPO:/BASE: sentence, briefNeeds read no needs from
     any of them, add admitted every card straight to ready, and cards were dealt before their dependencies
     landed."
-   :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
-    2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
-    owner: \"this should be caught by card lint.\"")))
+    :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
+     2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
+     owner: \"this should be caught by card lint.\"")
+
+   (fix "needs-set-repoints-a-cards-needs-in-place" :release "v1.2.14" :status "planned"
+    :title "needs set re-points a card's needs in place"
+    :text "The only way to change a card's needs after admission was drop and re-add, so a card admitted
+     with the wrong needs needed a twin. A card's needs are read once at add (briefNeeds) and a brief edit
+     drops them on any change beyond the DEPENDS-ON line, and on 2026-10-11 ~100 frontier cards could not
+     be re-pointed or reworked without twins. Now nova-sprint needs set <id> (--needs <a,b> | --clear)
+     [--answers <note>] is the direct verb, the coordinator's alone: it rewrites the line the brief names
+     its needs on (Needs: or DEPENDS-ON:, keeping that line's key; --clear takes the line off; a brief
+     with no such line gains a DEPENDS-ON: line) so card <id> shows the truth, and it moves the card by
+     the one lifecycle table: a ready card that gains a need not landed moves ready -> waiting, a waiting
+     card whose new needs have all landed moves waiting -> ready, a dealt or working card keeps its
+     attempt with the new needs applying from its next deal (the brief edit's briefDepends path), and a
+     landed or off-table card, a sentinel, and a need that is no primary on the table (named whole) are
+     refused, exit 1, nothing written. unmet now judges a move waiting -> ready by the needs the unit
+     writes, not the ones the pre-state holds. help needs names it (docs/SPEC-SPRINT.md, needs). Red tests
+     in cmd/nova-sprint/needs_set_test.go pin all seven: ready -> waiting with the move printed, waiting ->
+     ready on landed needs, --clear emptying a waiting card to ready, a need not on the table refused
+     naming it with nothing written, a dealt card keeping its attempt, a landed and a dropped card refused,
+     and the brief's DEPENDS-ON line rewritten with no other line changed."
+    :origin "this card: needs-set-repoints-a-cards-needs-in-place.w2, from the owner on the live epoch 17,
+     2026-10-11 ~11:25 AM ET (\"I hate twins.\" / \"Twinning is the last refuge of the scoundrel. Fix your
+     tools.\"); code read at nova-sprint main 1405d26; seat tooling item 26")))
