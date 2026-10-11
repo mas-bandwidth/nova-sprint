@@ -908,6 +908,21 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-coverage-test-in-nova-sprint" :release "v1.2.12" :status "planned"
+   :title "The CI test holds nova-sprint's tla/COVERAGE.tsv to its models"
+   :text "internal/ci/tla_coverage_test.go adds TestEveryStateMachineHasACurrentModel, which reads
+     ../../tla/COVERAGE.tsv and refuses a machine empty or listed twice, a note empty or \"-\", a status
+     other than current/partial/stale/missing, a code file that is not a regular file, a missing row that
+     names a module or another row that names none, a module with no tla/<Module>.tla, a current row whose
+     owed_by is not \"-\", and a non-current row whose owed_by does not match ^[a-z0-9][a-z0-9._~-]*$. It
+     also refuses a non-MC tla/<X>.tla named by no row or by two rows, and for each row runs a subtest that
+     skips a non-current row naming its owed_by and passes a current row only when each module it names has
+     a reversed witness (a case whose expected is not pass) and every case of that module has a tla/RUNS.tsv
+     record with result PASS and the fingerprint of the case now. The fixtures run under t.TempDir() and pin
+     the eight bad-row shapes nova-tools' TestTLACoverageRefusesAnOwedRowWithNoCard lists. Test-side only;
+     no product change."
+   :origin "the coordinator, 2026-10-11: TestEveryStateMachineHasACurrentModel must catch a module with no COVERAGE row; this card tla-coverage-test-in-nova-sprint")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
