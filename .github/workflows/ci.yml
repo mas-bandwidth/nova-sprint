@@ -20,6 +20,15 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # git 2.46 and later end a commit or merge by starting `git maintenance run --auto
+      # --detach`, a background process that can still be writing into a test's scratch
+      # repository when t.TempDir's cleanup removes it ("TempDir RemoveAll cleanup: unlinkat
+      # .../.git: directory not empty", runs 38113099837 and 38139628561 on git 2.55). Auto
+      # maintenance is off for every git the tests start, the code's own git included.
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: maintenance.auto
+      GIT_CONFIG_VALUE_0: "false"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
