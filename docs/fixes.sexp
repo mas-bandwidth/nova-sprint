@@ -1445,6 +1445,23 @@
     are not carried: this repository has neither."
    :origin "this card")
 
+  (fix "tla-adopt-the-play-around-the-library" :release "v1.2.12" :status "planned"
+   :title "Adopt models the whole seat play, the one-way migration and PreCheck's refusals"
+   :text "Models only, no product change. tla/Adopt.tla now holds the seat play as a window, not only
+    the library swap. PreCheck (libraryShadow) gains its two refusals, both before the window and
+    changing nothing: a store that holds no function library, and a store the check cannot read. The
+    play's steps become five actions in order — Stop, Migrate, Swap, Reinstall, Restart — and the
+    migration is a one-way flag with a new invariant MigrationIsOneWay (once it has run, no refusal
+    rolls it back); RefusedLeavesOld still holds on every refusal path that checks the library. One
+    reversed witness is added, MCAdoptBrokenUndomigration (Broken = {\"undomigration\"}): the rescue
+    rolls the migration back, failing MigrationIsOneWay — the code's doc says the migration is never
+    undone, so a model where it is would be wrong. cmd/nova-sprint/adopt_play.go gains one comment
+    line on cmdAdoptPlay citing tla/Adopt.tla. tla/CASES.tsv, tla/RUNS.tsv and tla/COVERAGE.tsv are
+    made current. The three in-window refusal paths that exit 1 without checking that the old library
+    is back (adopt_play.go:236-246, :262-266, :247-249) and the rescue's failed_when: false in
+    fleet/tools.yml are left to their v1.2.14 fix cards, which bring the model."
+   :origin "this card, tla-adopt-the-play-around-the-library-2.w5, 2026-10-11: v1.2.12 inventory item T21 and section 9 (D13); drift read at nova-sprint main 00c54ba2e")
+
   (fix "tla-workimport-scoped-verify" :release "v1.2.12" :status "planned"
    :title "WorkImport models a scoped import and verify, and a wider verify never reports done"
    :text "Models only, no product change. tla/WorkImport.tla's Import and Verify each take a scope, a
