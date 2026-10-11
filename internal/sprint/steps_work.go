@@ -1627,7 +1627,18 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 				// a limited route's 429 that got through the member's budget and its retries:
 				// the card is returned untouched, at most MaxRateReturns times (rate_budget.go);
 				// an unlimited route's ends the take and counts toward its rest as before
-				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r))
+				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r, "rate limited",
+					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider rate limited the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
+				continue
+			}
+			if outOfCredit(r.Report) && rateLimitedRoute(c) && c.Int(FieldRateReturns) < MaxRateReturns {
+				// a limited route's out-of-credit refusal (class out-of-credit, a 402): the card
+				// is returned untouched (no FieldTakeEnded, no redeal, no attempt), but the
+				// refusal is recorded so the provider rests exactly as before; an auth refusal
+				// (a 401) and an unlimited route keep takeEnded's path (provider_funds.go;
+				// tla/RouteRest.tla, OutOfCreditSpendsNoRedeal)
+				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r, "out of credit",
+					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider refused out of credit (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
 				continue
 			}
 			p.Units = append(p.Units, takeEnded(s, c, pr, r, kind, used))
@@ -2023,33 +2034,50 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 	}, Notes: notes, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s refused it at staging; %s working -> ready", c.ID, c.Int("gen")+1, c.Row, pr.ID)}
 }
 
-// rateLimitedReturned is the unit of a take on a LIMITED route (rateLimitedRoute) the
-// provider rate limited (IsRateLimited) that the member's budget and its in-place retries
-// did not absorb (an older member, or retries out of the card's deadline), returned fewer
-// than MaxRateReturns times before (FieldRateReturns, counted here; past it the take ends as
-// any provider failure does). The card is returned UNTOUCHED, as a staging refusal is: the
-// work card is withdrawn WITHOUT FieldTakeEnded, so no redeal and no attempt is spent; no
-// take record is written, so it never counts toward the route's 3-in-10 rest; no judgment
-// is raised; and its primary goes back to ready, where the deal draws it again, falling
-// back past the route it was on while another of its tier serves (routeOf's exclusion) or
-// waiting for a slot (the owner, 2026-10-11: "the rate limited should just stall out
-// delay, not fail"; TestARateLimitedTakeReturnsTheCardUntouched). The provider's line stays
-// on the card for its reader; what the run cost is the producer's record, as a staging
-// refusal's is.
-func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq) Unit {
+// rateLimitedReturned is the one no-spend path of a take on a LIMITED route
+// (rateLimitedRoute): the provider rate limited it (IsRateLimited) or refused it for want of
+// credit (outOfCredit), and the member's budget and its in-place retries did not absorb it
+// (an older member, or retries out of the card's deadline). It is used for fewer than
+// MaxRateReturns returns (FieldRateReturns, counted here; past it the take ends as any
+// provider failure does). The card is returned UNTOUCHED, as a staging refusal is: the work
+// card is withdrawn WITHOUT FieldTakeEnded, so no redeal and no attempt is spent, and its
+// primary goes back to ready, where the deal draws it again, falling back past the route it
+// was on while another of its tier serves (routeOf's exclusion) or waiting for a slot (the
+// owner, 2026-10-11: "the rate limited should just stall out delay, not fail";
+// TestARateLimitedTakeReturnsTheCardUntouched). label names the cost on the producer's
+// record; moved is the unit's words. A rate limit writes NO take record, so it never counts
+// toward the route's 3-in-10 rest; an out-of-credit refusal DOES write one, so the provider
+// rests exactly as it did when the take ended (routeEnds, providerRestsDue; tla/RouteRest.tla,
+// OutOfCreditSpendsNoRedeal): only FieldTakeEnded and the redeal are omitted. The provider's
+// line stays on the card for its reader; what the run cost is the producer's record, as a
+// staging refusal's is.
+func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved string) Unit {
 	set := nextGen(c, "", s.Now)
 	set["withdrawn"] = stamp(s.Now)
 	set[FieldRateReturns] = itoa(c.Int(FieldRateReturns) + 1)
-	set[FieldProviderError] = cutText(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(r.Report, cardhdr.EndProvider), ":")), MaxProviderErrorBytes)
+	line := cutText(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(r.Report, cardhdr.EndProvider), ":")), MaxProviderErrorBytes)
+	set[FieldProviderError] = line
+	dealt, taken := takeStamps(c)
+	rec := costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)
+	if refusal(r.Report) != "" {
+		// the refusal is recorded so the provider rests as it always has (routeEnds reads
+		// ProviderTakes), with the take's own usage; only FieldTakeEnded and the redeal are
+		// left off (no redeal spent, the card returns to ready)
+		usage := ""
+		if r.Usage != "" {
+			usage = rec
+		}
+		set[FieldProviderTake+itoa(c.Int("redeals")+1)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
+			Finished: stamp(s.Now), Usage: usage, Error: line, Taken: taken}.String()
+	}
 	prSet := map[string]string{}
 	if r.Usage != "" {
-		dealt, taken := takeStamps(c)
-		addConsumer(pr, prSet, workConsumer(s, c, 0, "rate limited", costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)))
+		addConsumer(pr, prSet, workConsumer(s, c, 0, label, rec))
 	}
 	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
 		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
-	}, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, the provider rate limited the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)}
+	}, Moved: moved}
 }
 
 // AN ENVIRONMENT FAULT IS THE MEMBER'S, NEVER THE CARD'S OR THE MODEL'S (the owner,
