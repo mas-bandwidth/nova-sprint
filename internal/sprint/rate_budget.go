@@ -77,11 +77,15 @@ func PropProviderConcurrency(provider string) string { return "provider_concurre
 // properties: the member's request gate is installed when one is set. FieldRateReturns
 // counts the takes of the card a rate limit returned untouched (rateLimitedReturned): at
 // MaxRateReturns the next one ends as any provider failure does, so no card loops forever.
+// RouteRateLimitBackoffEnds records the ends of rate-limited backoffs on a route for the
+// rule that rests the route after 3 of the last 10 ended takes; rate-limited ends rest
+// the route briefly without counting toward that rest.
 const (
 	FieldRateRPM        = "rate_rpm"
 	FieldRateConcurrent = "rate_concurrent"
 	FieldRateReturns    = "rate_returns"
 	MaxRateReturns      = 5
+	RouteRateLimitBackoffEnds = "rate_limit_backoff_ends"
 )
 
 // rateLimitedRoute says the card was dealt on a limited route (routes limit): its member
