@@ -1103,6 +1103,10 @@
    :title "An acknowledged empty row is one episode while it holds"
    :text "emptyConds keys the empty-row episode by its text, and the text was rebuilt from the cards waiting once the judgment no longer sat in Open, so a second ready card she could do changed the text, wrote a second NFriendEmpty judgment and closed the acknowledgement, though the conjunction (she is up, her row empty, cards she could do wait) never cleared. The episode's text now comes from the judgment the coordinator holds (an acknowledgement, or a wait not yet due) as well as from an open one, so tla/CoordinatorPass.tla's OneJudgmentAnEpisode (Kind = \"empty\") holds in the code: the acknowledged episode stays one until the condition clears, a card dealt to her closes it, and a later episode is judged afresh past EmptyRowAfter."
    :origin "v1.2.12 inventory 2026-10-11, section 9 row D9; this card")
+  (fix "a-landing-refuses-a-tla-cfg-the-case-plan-does-not-name" :release "v1.2.14" :status "planned"
+   :title "A landing refuses a tla/*.cfg the case plan does not name"
+   :text "The lander's run-record check held the plan only to its own fields, so a head adding tla/MCFoo.cfg with no tla/CASES.tsv row, or taking a row for a configuration that stays, passed until tlacheck refused the whole plan. recordsRefusals now holds the merged tree to tlacheck's own loader, tlc.LoadCases, after ParseCases, and refuses with one line on tla/CASES.tsv; a tla/CASES.tsv edit alone holds a tree that carries models to its plan. LoadCases names, in name order, every MC*.cfg the plan does not name, every config the plan names that has no file, and every row whose module is missing, keeping its opening words."
+   :origin "the seat, 2026-10-11, epoch 16; this card")
    (fix "pagelock-stripper-hardening" :release "v1.2.14" :status "planned"
     :title "The page lock's comment-only check reads the page a browser renders"
     :text "The stripper that proves a comment-only change renders nothing no longer mistakes four visible things for comments: an HTML text comment leaves nothing rather than a space; a comment opener inside a quoted attribute value is code; an inline script with a data-src attribute is read as JS; and a slash after a control if, while or for condition opens a regex, failing closed otherwise. The lock's header and the spec's The page lock state the comment-only form and that the card lint is ask-only."
@@ -1341,4 +1345,36 @@
     landed."
    :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
     2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
-    owner: \"this should be caught by card lint.\"")))
+    owner: \"this should be caught by card lint.\"")
+  (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.14" :status "planned"
+   :title "A rate limit stalls its route briefly; it never fails a card or rests it for 3-in-10"
+   :text "A take a provider ends rate-limited (class=rate-limited) never fails the card, on any
+    route and however many times: the card returns unspent (no FieldTakeEnded, no redeal, no
+    attempt, no failed-work judgment, none of the out-of-credit bound FieldRateReturns) and leaves a
+    rate_take_<n> record numbered after the last one the card holds, with no gap and no bound, so
+    RateTakes reads every one. The route backs off briefly, then serves again by itself: RestsDue
+    computes the backoff purely from those records, k being the route's rate-limited ends since its
+    last ok end (a take the worker finished ok, in the finished cell or past it; a failed finish
+    resets nothing) and last the latest one's time, ending at last + min(60s*2^(k-1), 15m) (RateBackoff)
+    -- a fixed point in time, never relative to now. Its line is kept beside the route's own rest in
+    the provider's rule3_rest_ property (<route>+rate-backoff), never over it, so it never moves the
+    3-in-10 window's mark, never blocks the coordinator's rest and is never woken; a backoff on every route of a tier makes the card
+    wait ready, as a provider at its concurrency budget does, never a no-route judgment, and the no-stall rule holds it on the backoff whenever a route of
+    the tier backs off and none can be drawn (never NStalled); the rebalance never moves a card
+    onto a machine with no route it can draw;
+    restWrites writes
+    it and one happened note (\"rate-limit backoff of <d> on <route>, until <t>\") once per end,
+    none while the same end holds, never a judgment, and drops a backoff line once its end has passed. A rate limit no longer counts toward the 3-in-10
+    transient rest (transient excludes classRateLimited); a 5xx window still rests the route 30
+    minutes, and is written over a backoff that holds. member.Judge treats a rate-limited run with no
+    pushed head as a provider failure whatever its shape, while a shaped result that pushed a head
+    stays the card's own. TLA+ model RateBackoff, properties RateLimitSpendsNoRedeal and
+    BackoffBounded with the temporal BackoffEnds, reversed witnesses MCRateBackoffBrokenSpend and
+    MCRateBackoffBrokenNoCap. Tests TestARateLimitedTakeReturnsTheCardUnspent,
+    TestARateLimitBacksTheRouteOffBriefly, TestARateLimitedRunIsAProviderFailure,
+    TestARateTakeIsNumberedAfterTheLastRateTake, TestARateBackoffNeverHoldsOffTheFiveHundredsRest
+    and TestARateBackoffIsWrittenAndNotedOncePerEnd. Landed by hand after 15 sprint attempts. The
+    no-stall rule and the rebalance test drawability with the deal's own budgets and the tier's array
+    (backoffWait): tests TestABackedOffTierWithTheOtherProviderFullIsAWaitNeverAStall and
+    TestABackedOffTierWithTheOtherRouteOutOfTheArrayIsAWaitNeverAStall."
+   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; the owner, 2026-10-11: \"the rate limited should just stall out delay, not fail\"; nova-sprint docs/fixes.sexp entry a-rate-limited-refusal-never-fails-the-cardc; nova-sprint card rate-limit-never-fails-the-card-v2")))

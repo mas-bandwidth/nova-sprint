@@ -126,3 +126,71 @@ func TestTheLanderWantsARunRecordForAnEditedModel(t *testing.T) {
 		assert.Empty(t, refused)
 	})
 }
+
+// The lander holds the case plan to the merged tree (docs/SPEC-SPRINT.md section 7, the
+// lander's checks, "The run records"): a head that adds a configuration the plan does not
+// name, or takes a row for a configuration that stays, is refused with one line on
+// tla/CASES.tsv naming the files; the same head with its row and a current record lands.
+func TestTheLanderHoldsTheCasePlanToTheTree(t *testing.T) {
+	t.Parallel()
+	base := with(recordsModels, map[string]string{"tla/RUNS.tsv": runsFor(t, recordsModels)})
+	fooTLA := "---- MODULE MCFoo ----\nVARIABLE z\nInit == z = 0\nNext == z' = z\n====\n"
+	fooCFG := "INIT Init\nNEXT Next\n"
+
+	t.Run("a configuration with no row is refused naming it", func(t *testing.T) {
+		t.Parallel()
+		r := newMergeRig(t, base, map[string]string{"tla/MCFoo.tla": fooTLA, "tla/MCFoo.cfg": fooCFG})
+		merged := r.must("rev-parse", "HEAD")
+		_, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
+		require.NoError(t, err)
+		require.Len(t, refused, 1, "%v", refused)
+		assert.Contains(t, refused[0].String(), "tla/CASES.tsv:1")
+		assert.Contains(t, refused[0].String(), "the case plan does not match the tree")
+		assert.Contains(t, refused[0].String(), "MCFoo.cfg")
+		assert.NotContains(t, refused[0].String(), "\n", "one line")
+		assert.Equal(t, merged, r.must("rev-parse", "HEAD"), "a refusal writes nothing")
+	})
+	t.Run("a row removed under a configuration that stays is refused", func(t *testing.T) {
+		t.Parallel()
+		plan := strings.Replace(recordsModels["tla/CASES.tsv"], "MCB.cfg\tMCB.tla\tpass\t-\tcheck\tbeta\trequired\t-\n", "", 1)
+		r := newMergeRig(t, base, map[string]string{"tla/CASES.tsv": plan})
+		_, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
+		require.NoError(t, err)
+		require.Len(t, refused, 1, "%v", refused)
+		assert.Contains(t, refused[0].String(), "tla/CASES.tsv:1")
+		assert.Contains(t, refused[0].String(), "MCB.cfg")
+	})
+	t.Run("a plan naming configs with no files at all is refused", func(t *testing.T) {
+		t.Parallel()
+		root := map[string]string{
+			"tla/CASES.tsv": "config\tmodule\texpected\tproperty\tdeadlock\tgroup\tgate\tdebt\n" +
+				"MCMissing.cfg\tMCMissing.tla\tpass\t-\tcheck\talpha\trequired\t-\n",
+			"tla/MCMissing.tla": "---- MODULE MCMissing ----\n====\n",
+			"tla/MCReal.cfg":    "INIT Init\n",
+		}
+		head := map[string]string{
+			"tla/CASES.tsv":   root["tla/CASES.tsv"] + "MCGhost.cfg\tMCGhost.tla\tpass\t-\tcheck\tbeta\trequired\t-\n",
+			"tla/MCGhost.tla": "---- MODULE MCGhost ----\n====\n",
+		}
+		r := newMergeRig(t, root, head)
+		_, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
+		require.NoError(t, err)
+		require.Len(t, refused, 1, "%v", refused)
+		assert.Contains(t, refused[0].String(), "tla/CASES.tsv:1")
+		assert.Contains(t, refused[0].String(), "the plan names MCGhost.cfg, MCMissing.cfg")
+	})
+	t.Run("the same head with its row and a current record lands", func(t *testing.T) {
+		t.Parallel()
+		head := with(recordsModels, map[string]string{
+			"tla/CASES.tsv": recordsModels["tla/CASES.tsv"] + "MCFoo.cfg\tMCFoo.tla\tpass\t-\tcheck\tgamma\trequired\t-\n",
+			"tla/MCFoo.tla": fooTLA,
+			"tla/MCFoo.cfg": fooCFG,
+		})
+		head["tla/RUNS.tsv"] = runsFor(t, head)
+		r := newMergeRig(t, base, head)
+		note, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
+		require.NoError(t, err)
+		assert.Empty(t, note)
+		assert.Empty(t, refused)
+	})
+}

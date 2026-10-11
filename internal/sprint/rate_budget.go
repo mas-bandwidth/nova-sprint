@@ -75,20 +75,26 @@ func PropProviderConcurrency(provider string) string { return "provider_concurre
 
 // The work and read card fields of a limited route, stamped by the deal from the
 // properties: the member's request gate is installed when one is set. FieldRateReturns
-// counts the takes of the card a rate limit returned untouched (rateLimitedReturned): at
-// MaxRateReturns the next one ends as any provider failure does, so no card loops forever.
+// counts the takes of the card on a limited route an out-of-credit refusal returned
+// untouched (rateLimitedReturned): at MaxRateReturns the next one ends as any provider
+// failure does. A rate limit is never counted there and never bounded: it never fails a
+// card (a-rate-limited-refusal-never-fails-the-cardc; tla/RateBackoff.tla).
 const (
 	FieldRateRPM        = "rate_rpm"
 	FieldRateConcurrent = "rate_concurrent"
 	FieldRateReturns    = "rate_returns"
-	MaxRateReturns      = 5
+	// FieldRateTake is a rate-limited take's record on a returned work card, beside
+	// FieldProviderTake, numbered 1, 2, 3, ... with no gap and no bound
+	// (rateLimitedReturned; RateTakes reads every one): the route backs off briefly from
+	// these records (RestsDue, rateBackoffs).
+	FieldRateTake  = "rate_take_"
+	MaxRateReturns = 5
 )
 
 // rateLimitedRoute says the card was dealt on a limited route (routes limit): its member
-// took the budget before each request and retried a 429 in place, so a 429 that still
-// reaches the sprint is the limiter's to absorb, not the route's to rest for. A card on an
-// unlimited route has neither field, and its 429 ends the take and counts toward the
-// route's rest as before.
+// took the budget before each request and retried a 429 in place. A 429 that still reaches
+// the sprint returns the card untouched on any route (rateLimitedReturned); a limited
+// route's out-of-credit refusal does too, up to MaxRateReturns.
 func rateLimitedRoute(c *Card) bool {
 	return c.F(FieldRateRPM) != "" || c.F(FieldRateConcurrent) != ""
 }
