@@ -855,6 +855,10 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (fix "lander-empty-commit-says-no-result-is-held" :release "v1.2.14" :status "planned"
+   :title "The lander's empty-commit refusal says a result is missing when it holds none"
+   :text "The lander's empty-commit check refused an empty diff with no result to read (a nil work card: the fleet row absent or the work card tidied away) with the same finding as one whose result claimed changes, \"empty commit: the result claims changes the diff does not show\", naming a claim nothing made. It now returns emptyCommitNoResultFinding, \"empty commit: the head changes nothing from the attempt's start, and the lander holds no result to say why\", and both findings return the card to review through one helper, isEmptyCommitFinding."
+   :origin "this card: lander-empty-commit-says-no-result-is-held, from the v1.2.14 point-release plan and the roadmap item lander-empty-commit-handling")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
