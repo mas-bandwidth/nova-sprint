@@ -85,6 +85,16 @@
       held by the probe, not known) with its acceptance through a passed probe and the \"newup\"
       witness, which now also makes a SyncAdd known with no probe and breaks NewMemberProbed."
      :origin "this card; the seat's v1.2.14 audit 2026-10-11 (a sync-added member skips its probe), checked against nova-sprint main 00c54ba; the owner's rule of 2026-10-11 cited at steps_work.go near line 2526")
+    (fix "landing-never-waits-on-the-seats-hook" :release "v1.2.14" :status "planned"
+     :title "The server's internal land loop bypasses the hook gate"
+     :text "The server's own automatic landing of accepted cards is machine work, not a coordinator
+      command. It must run whether or not the seat is hooked. The land loop (cmd/nova-sprint/landloop.go)
+      sets a.landLazy when it runs land, and the new coordinatorGate method (cmd/nova-sprint/main.go)
+      checks this flag to bypass the hook gate for the server's internal land loop. Manual land from
+      the coordinator still requires the hook. Tests: TestTheServersLandLoopLandsWhileTheSeatIsUnhooked,
+      TestAHandLandIsStillRefusedUntilHooked (cmd/nova-sprint/landloop_unhooked_test.go)."
+     :origin "this card; the owner, 2026-10-11 22:45Z: LAND IDLE queued=9 was already stalled on v1.2.12
+      from about 21:56Z until re-hook; the hook gate refused the land loop before it could land.")
     (fix "a-moved-card-stops-its-old-run" :release "v1.2.14" :status "planned"
      :title "When a card moves, the old member stops the old generation within one beat"
      :text "When a card moves via rebalance/level/redeal to a new member, the old member stops old runs within one beat; server answers stop for runs not held at that generation. cmd/nova-sprint/moved_card_stops_functional_test.go tests this. docs/TESTS.md Release acceptance lists all tests."
