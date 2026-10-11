@@ -1365,8 +1365,9 @@
     internal/sprint/rate_limit_class_test.go pins the class table (true for class=rate-limited, a 429 under another
     class and a classless \"Too many requests\"; false for class=provider-5xx or class=timeout whose msg says
     \"rate limit\" or \"too many requests\", and for an out-of-credit 429) and the behaviour through Deal, Take and
-    Finish (three class=provider-5xx \"rate limit\" takes each spend their take and leave no rate return, and
-    RestsDue then rests the route for RouteRestFor with cause RestProvider). No model change."
+    Finish (three class=provider-5xx \"rate limit\" takes each spend their take, leaving FieldTakeEnded set, a
+    FieldProviderTake record and no rate_take_ record, and RestsDue then rests the route for RouteRestFor with
+    cause RestProvider). No model change."
    :origin "this card, a-5xx-mentioning-rate-limit-still-rests.w1, follow-up 2 of
     tmp/next-sprint-cards/rate-limit-followups.md (the second cold read of nova-sprint PR #86, 2026-10-11); checked
     against PR #86's head a1c51ee, the code this card's dependency rate-limit-never-fails-the-card-v2 lands on
