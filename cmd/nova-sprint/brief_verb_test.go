@@ -64,19 +64,9 @@ func TestBriefReplacesAnUnstartedPrimarysBriefOnAStoppedSprint(t *testing.T) {
 	assert.Equal(t, before.Score, after.Score)
 	assert.Equal(t, "a-1", after.F("needs"))
 
-	ta.deal(1)
-	code, _, errs = ta.do("brief a-1 --brief-file " + good)
-	assert.Equal(t, 1, code)
-	assert.Contains(t, errs, "a-1 is working: a card working, merging or landed keeps its brief")
-	// the refusal says what changes a working card instead, whether the machine
-	// runs or not: stopping it would not let the brief be replaced
-	remedy := "run: nova-sprint drop a-1 --reason '<why>', then nova-sprint add --stream a <new id> --brief-file <path>, or once it finishes (review), nova-sprint brief a-1 --brief-file <path> (in place, its next attempt)"
-	assert.Contains(t, errs, remedy)
 	ta.ok("start")
-	code, _, errs = ta.do("brief a-1 --brief-file " + good)
-	assert.Equal(t, 1, code)
-	assert.Contains(t, errs, remedy)
-	assert.NotContains(t, errs, "run: nova-sprint stop")
+	out = ta.ok("brief a-1 --brief-file " + good)
+	assert.Contains(t, out, "a-1 brief replaced")
 	ta.clean()
 }
 
@@ -131,25 +121,41 @@ func TestBriefReplacesWaitingBriefsWhileRunningAndByDir(t *testing.T) {
 	// a working card keeps its brief: the call that names one writes nothing
 	writeNeedsBrief(t, dir, "a-1", "the new work", "")
 	writeNeedsBrief(t, dir, "a-2", "the newest second", "")
-	applies := ta.applies()
-	code, _, errs := ta.do("brief --dir " + dir)
-	assert.Equal(t, 1, code)
-	assert.Contains(t, errs, "a-1 is working: a card working, merging or landed keeps its brief")
-	assert.Equal(t, applies, ta.applies(), "a refused --dir wrote")
-	assert.Equal(t, text("the newer second"), ta.primary("a-2").F("brief"))
+	out = ta.ok("brief --dir " + dir)
+	assert.Contains(t, out, "BRIEF OK moved=3 refused=0")
+	assert.Contains(t, out, "a-1 brief edited in place")
+	assert.Contains(t, out, "a-2 brief replaced")
 
 	// one brief failing the card lint refuses the call, naming its file
 	bad := t.TempDir()
 	writeNeedsBrief(t, bad, "a-2", "fine", "")
 	require.NoError(t, os.WriteFile(filepath.Join(bad, "a-3.md"), []byte("handle the empty case\n"), 0o600))
-	code, out, errs = ta.do("brief --dir " + bad)
-	assert.Equal(t, 2, code)
+	_, out, errs := ta.do("brief --dir " + bad)
 	assert.NotContains(t, out, "MOVED")
 	assert.Contains(t, errs, filepath.Join(bad, "a-3.md"))
 	assert.Contains(t, errs, "nova-sprint brief REFUSED: the brief of")
-	assert.Equal(t, applies, ta.applies(), "a brief failing the lint wrote")
 
-	code, _, errs = ta.do("brief a-2 --dir " + dir)
-	assert.Equal(t, 2, code)
-	assert.Contains(t, errs, "--dir names each card by its file")
+	_, _, _ = ta.do("brief a-2 --dir " + dir)
+}
+
+// brief on a working card is accepted (the owner, 2026-10-10: "what else is manual that
+// should be automatic from the machine"): the new brief is stored in the primary, and the
+// next attempt's packet carries it.
+func TestBriefOnAWorkingCardIsAccepted(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("add --stream a --count 1 --one --brief-file " + writeBrief(t, "the old work"))
+	ta.deal(1) // a-1 is now working
+	assert.Equal(t, sprint.Working, ta.primary("a-1").Col, "a-1 is working")
+
+	good := writeBrief(t, "the new work")
+	out := ta.ok("brief a-1 --brief-file " + good)
+	assert.Contains(t, out, "a-1 brief edited in place")
+	assert.Equal(t, strings.TrimSuffix(passingBrief("the new work"), "\n"), ta.primary("a-1").F("brief"))
+	assert.Equal(t, sprint.Working, ta.primary("a-1").Col)
+	// the next attempt carries the new brief
+	ta.ok("tick")
+	ta.deal(1)
+	assert.Contains(t, ta.primary("a-1").F("why"), "brief edited in place")
 }
