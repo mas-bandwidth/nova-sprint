@@ -616,4 +616,27 @@
     in a judgment. TLA+ model StopReturn, property AbsentJobSettles, with the reversed witness
     nosettlebybeat; the model's Beat is drop-only while STOPPED, so a job a stopped owner's beat shows gone
     stays gone."
-   :origin "the seat, 2026-10-10: START refused on 33 fleet jobs whose members never sent stop-return receipts")))
+   :origin "the seat, 2026-10-10: START refused on 33 fleet jobs whose members never sent stop-return receipts")
+  (fix "a-member-environment-fault-holds-it-and-pushes-the-seat" :release "v1.2.6" :status "planned"
+   :title "A member's environment fault holds it and pushes the seat"
+   :text "A finish failure whose cause is the member's environment -- a push refusal (no credential, auth,
+    unreachable remote), a missing tool or harness, a sandbox/wall refusal, a disk-full, or any class the
+    member reports as environment -- is the member's, never the card's or the model's. The first one
+    returns the card to ready untouched (the work card withdraws without an ended take, so no redeal is
+    spent, the attempt is unchanged, and it is never failed work), holds the member so the deal gives it
+    no new card, and raises one judgment pushed to the seat for the member, kept naming its current cause
+    and its remedy (one per member and cause: a later fault with a different cause is surfaced, never
+    left as the first cause's stale remedy; for a push refusal the remedy is the fleet push-credential
+    play with --limit <member>). One judgment per member and cause holds within a finish step too: two of
+    one member's cards finishing in one multi-card finish call (one report, so one cause) raise one
+    judgment and write the member's control card once, not once per card, since the plan the model admits
+    changes a control card once a step. An environment fault records itself beside a hold already on the
+    member (a coordinator's, the machine's fault hold, the sync's): its clear -- a push, or fleet up's
+    passed probe -- releases only the machine's own environment hold (held_by=environment), so a person's
+    hold, its reason and its finish marker stay until a person lifts it. The fault clears when the
+    member's next card pushes, or when fleet up runs the member's own probe (the push-credential probe,
+    the harness check) and it passes; fleet up refuses a member whose last environment fault is not
+    cleared, and on a new member runs its own probe before accepting width (init bootstraps by passing
+    the probe). Modeled by tla/ProviderBudget.tla."
+   :origin "sprint card a-member-environment-fault-holds-it-and-pushes-the-seat; the owner, 2026-10-11Z:
+    the failure here is not noticing this until now; attempts 3 and 5")))
