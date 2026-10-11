@@ -1030,6 +1030,19 @@
     names the new test for the machine's. Tests only; no product change."
    :origin "this card; the v1.2.12 inventory card A2 and section 6 (three drain tests red at 04:16Z on 2026-10-11, the probe gate and #84, greened by 2623ab7 with no test of the composition)")
 
+  (fix "tla-roadmapentry-note-and-four-write-save" :release "v1.2.12" :status "planned"
+   :title "RoadmapEntry models note, the four-write save and scheduled notes"
+   :text "The TLA+ model RoadmapEntry gains the Note action (a todo item or an open fix is retitled and
+    its text appended in place, its place and state unchanged), Save as four writes (the destination's
+    file first, each file's data before its page, a crash between any two, NoLoss still held), and a
+    constant set of scheduled notes whose :release decode() never checks against the fixes file, so
+    ChildLinked holds for the work records decode() checks and not the scheduled notes; the reversed
+    witness pagefirst writes each file's page before its data and fails DataBeforePage. Models only, no
+    product change. Note on a done fix or a shipped release is a v1.2.14 candidate: the code's Note
+    calls entry() with no open() or release() guard, against the package doc that a shipped release is
+    frozen."
+   :origin "this card; v1.2.12 inventory item T23; drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
