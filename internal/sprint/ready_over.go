@@ -35,10 +35,11 @@ func init() {
 
 // routeWhys names each route of the tier that serves no card now, with why: disabled,
 // resting until paid, resting until woken, resting until its time, or out of budget (its
-// provider's balance at or under zero). A route that serves is not named. The model is
-// tla/ReadyOver.tla, OutOfBudget.
+// provider's balance at or under zero). A route that serves is not named. The rest it names
+// is the one the deal settled (s.resting, withRests: TickDeal), so the route the judgment
+// calls resting is exactly one the deal does not draw, the rests due this tick included;
+// never computed here. The model is tla/ReadyOver.tla, OutOfBudget.
 func (s *Snapshot) routeWhys(tier string) []string {
-	rests := RouteRests(s.Routes, s.Fleet)
 	balances := ProviderBalances(s.Fleet)
 	var out []string
 	for _, r := range s.Routes {
@@ -49,7 +50,7 @@ func (s *Snapshot) routeWhys(tier string) []string {
 			out = append(out, r.Name+": disabled")
 			continue
 		}
-		if rest, ok := rests[r.Name]; ok && rest.Resting(s.Now) {
+		if rest, ok := s.resting(r.Name); ok && rest.Resting(s.Now) {
 			out = append(out, r.Name+": resting until "+rest.UntilSaid()+": "+rest.Said())
 			continue
 		}
@@ -171,9 +172,12 @@ func readyOverConds(s *Snapshot, r TickReq) []cond {
 
 // TickReadyOver is the ready-over part: one judgment per (reason, tier) of the cards that
 // sat in ready past the sprint's ready bound (ReadyMax), naming the tier, each route that
-// does not serve it and why, and the remedy verb. It clears itself the tick the card is
-// dealt.
+// does not serve it and why, and the remedy verb. It settles the rests once, as the deal
+// does (withRests), so the reason it reads (readyWhy: routeOf, noLauncher, noFreeWidth) and
+// the routes it names (routeWhys) are the deal's own view, the rests due this tick included.
+// It clears itself the tick the card is dealt.
 func TickReadyOver(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
+	s, _ = s.withRests()
 	return p, notify(&p, s, readyOverConds(s, r), []string{NReadyOver}, r)
 }

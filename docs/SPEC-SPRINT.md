@@ -4774,6 +4774,19 @@ the tick would make, no other open judgment on it).
 | stalled: nothing holds a card (rule 12) | the decisions its place allows and that would be accepted (ask --another for a primary asked already, never ask), else look at the card; drop; wait | no, while the stall stands |
 | review above its alarm, merging above its alarm, nothing ready while cards wait, the fleet works below its alarm (the backlog alarms, below) | ack (seen: quiet until the episode ends), wait | yes |
 
+A card that sits in ready past the ready bound (`sprint.ReadyMax`, the sprint setting,
+default one minute) raises one judgment, `a ready card is not dealt`, per cause and tier
+(`internal/sprint/ready_over.go`; the card a-ready-card-over-a-minute-pushes-the-seat): the
+reason is the deal's own (`readyWhy`: `routeOf`, `noLauncher`, `noFreeWidth`), and the
+judgment names each route of the tier that serves no card and why (disabled, resting until
+paid, resting until woken, resting until its time, out of budget) and the remedy verb
+(routes wake, funded, fleet up, release). The rests it reads are the deal's settled rests
+(`s.WithRests`, route_rest.go: the rests the fleet records at `Now` and those due this tick,
+the same the deal draws on, `TickDeal`), settled once and never computed again, so the route
+the judgment names resting is exactly one the deal does not draw. Cards that share a cause
+are one judgment, never one per card, and it clears itself the tick the card is dealt
+(tla/ReadyOver.tla, `OnePerCause`).
+
 A condition the tick keeps (cannot ask, fewer than two readers up, no member up, a deadline passed, an
 invariant broken; a failing reminder too) is answered for a while by
 `wait <note> --for <duration>`: the judgment is closed and the condition held
