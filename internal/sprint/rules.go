@@ -285,18 +285,27 @@ func mindCard(pr *Card) string {
 // findings, is reworked on its tier with the failure as its fix, a friend's card too
 // (ruleHarness). Any other failure: the first on a tier is redealt on the next route of the
 // tier (the rework's own fix, the report); the RuleAttemptCap-th goes a tier up; past
-// heavy, a friend's card.
+// heavy, a friend's card. A failure the fleet shares (sameFailure) or a brief with no ladder
+// (a pinned model, the frontier tier) is reworked on its tier with its report, never left to
+// the seat below the brief's bound (wait_refused.go).
 func ruleFailed(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleFailed
 	pr := s.Work.Placed(a.Subject)
+	friend := false
+	if pr != nil {
+		_, friend = FriendCard(pr)
+	}
 	switch {
 	case pr == nil || pr.Col != Review || pr.F("result") != "failed":
 		left(a, "not in review with failed work")
 		return
 	case holdsFor(s, pr) == "" && ruleHarness(s, a, pr):
 		return // a harness fault, or a HOLD with findings: the failure is the fix (harness_fault.go)
-	case mindCard(pr) != "":
+	case pr.F(FieldBriefDefect) != "":
 		left(a, mindCard(pr))
+		return
+	case friend:
+		left(a, mindCard(pr)) // a friend's failure outside the harness classes: her work needs a mind
 		return
 	case holdsFor(s, pr) != "":
 		ruleHoldNeed(s, a, pr, holdsFor(s, pr))
@@ -309,13 +318,6 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 		left(a, bb.String())
 		return
 	}
-	// Budget exhaustion follows tier escalation, not identical failure binding.
-	if pr.F(FieldFailure) != "budget" {
-		if why := sameFailure(s, pr.F(FieldFailure)); why != "" {
-			left(a, why)
-			return
-		}
-	}
 	a.Card = pr.ID
 	tier := cardTierOf(pr)
 	fails := 1
@@ -323,6 +325,28 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 		fails = pr.Int(FieldRuleFails) + 1
 	}
 	why := fmt.Sprintf("attempt %s failed, %d of %d on %s", pr.F("attempt"), fails, RuleAttemptCap, tier)
+	// Below its bound, failed work with a report never waits on the seat (wait_refused.go;
+	// tla/SprintRules.tla, FailedWithAFindingNeverParked): where the ladder has no rung to
+	// climb (a brief that pins its model or the frontier tier), or the failure is the fleet's
+	// and a climb would change nothing (sameFailure), it is reworked on its tier with its
+	// report as the fix, each attempt counted toward the bound. Budget exhaustion follows
+	// tier escalation, not the same-failure hold.
+	same := ""
+	if pr.F(FieldFailure) != "budget" {
+		same = sameFailure(s, pr.F(FieldFailure))
+	}
+	if stay := mindCard(pr); stay != "" || same != "" {
+		if stay == "" {
+			stay = same
+		}
+		if ownFix(s, pr) == "" {
+			left(a, stay+"; and no report to take as its fix")
+			return
+		}
+		a.Act, a.Why = ActRework, why+": reworked on "+tier+" with its report as the fix, never parked ("+stay+")"
+		a.set = map[string]string{FieldRuleTier: tier, FieldRuleFails: itoa(min(fails, RuleAttemptCap-1))}
+		return
+	}
 	if fails < RuleAttemptCap {
 		a.Act, a.Why = ActRework, why+": redealt on the next route of "+tier
 		a.set = map[string]string{FieldRuleTier: tier, FieldRuleFails: itoa(fails)}

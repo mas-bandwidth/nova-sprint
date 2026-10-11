@@ -22,8 +22,8 @@ func TestInboxAliasesNameJudgmentsAndTheVerbsTakeThem(t *testing.T) {
 	ta.ok("add --one --stream s2 --count 1")
 	ta.deal(2)
 	ta.failOnce("m1", "s1-1.w1@1", "tests red")
-	ta.failOnce("m1", "s2-1.w1@1", "tests red")
-	first, second := ta.group(sprint.NWorkFailed, "s1"), ta.group(sprint.NWorkFailed, "s2")
+	ta.ciRedOnce("s2-1", "1") // a judgment a wait may hold (wait_refused.go)
+	first, second := ta.group(sprint.NWorkFailed, "s1"), ta.group(sprint.NCIRed, "s2")
 	require.NotEmpty(t, first.Alias)
 	require.NotEmpty(t, second.Alias)
 	require.NotEqual(t, first.Alias, second.Alias)
@@ -50,8 +50,8 @@ func TestInboxAliasesNameJudgmentsAndTheVerbsTakeThem(t *testing.T) {
 	out = ta.ok("rework s1-1 --fix 'the fix' --answers " + first.Alias)
 	assert.Contains(t, out, "MOVED s1-1 work review -> working (rework)")
 	// the first judgment answered, the second keeps its alias
-	assert.Equal(t, second.Alias, ta.group(sprint.NWorkFailed, "s2").Alias, "the alias moved")
-	out = ta.ok("rework --group " + second.Alias + " --fix 'the fix'")
-	assert.Contains(t, out, "MOVED s2-1 work review -> working (rework)")
+	assert.Equal(t, second.Alias, ta.group(sprint.NCIRed, "s2").Alias, "the alias moved")
+	ta.ok("ack " + second.Alias + " --reason 'a flaky runner'")
+	assert.False(t, hasGroup(ta.inboxGroups(), sprint.NCIRed), "the alias answered the second")
 	ta.clean()
 }

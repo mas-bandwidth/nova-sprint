@@ -357,6 +357,10 @@ func Wait(s *Snapshot, r WaitReq) Plan {
 		return p
 	}
 	n := entries[0].Note
+	if why := WaitRefusal(n); why != "" {
+		p.refuse(r.Note, why) // a wait never parks a card (wait_refused.go)
+		return p
+	}
 	if !TickKept(n.Type) {
 		p.refuse(r.Note, n.Type+" is not a condition the tick keeps: its review time is set instead")
 		return p

@@ -41,6 +41,14 @@ func (ta *testApp) failOnce(member, card, report string) {
 	ta.ok("finish --as " + member + " " + card + " --failed --report '" + report + "'")
 }
 
+// ciRedOnce records the card's CI red, a judgment a wait may hold: failed work and a broken
+// read hold their card and take no wait (internal/sprint/wait_refused.go).
+func (ta *testApp) ciRedOnce(card, run string) {
+	ta.t.Helper()
+	ta.a.sleep(time.Second) // each notification at its own clock reading
+	ta.ok("ci " + card + " --red --run " + run)
+}
+
 // I1: a group is named by an id that does not move when a newer group sorts
 // ahead of it; a number is refused and nothing changes.
 func TestAGroupIsNamedByItsIDNeverItsPosition(t *testing.T) {

@@ -5797,11 +5797,59 @@ rules` prints the same answers, read-only: one `RULE` line per judgment and subj
 
 A failure many cards share is the fleet's, not the card's: when `RuleSameFailureCards` (3) or
 more cards hold the same failure class now (in review with their work failed that way, or
-ready at their redeal bound with that class), `failed` and `bound` leave each to a mind
-(`the same failure on <n> cards (<class>): the fleet's, not the card's`) rather than raise
-every card a tier for a failure no tier changes, a toolchain a machine cannot run or a
-provider down (`TestTheSameFailureOnManyCardsIsLeftToAMind`). Every other type stays a
-judgment. `run` and `tick` answer
+ready at their redeal bound with that class), `failed` does not raise every card a tier for a
+failure no tier changes, a toolchain a machine cannot run or a provider down: below the
+brief's bound it reworks each on its tier with its report as the fix (`the same failure on
+<n> cards (<class>): the fleet's, not the card's` in its why), dealt round the fleet away from
+the member that failed it, each attempt counted toward the bound; a brief that pins its model
+or the frontier tier, where the ladder has no rung, is reworked the same way
+(`TestTheSameFailureOnManyCardsIsReworkedOnItsTier`). `bound` still leaves a shared failure at
+the bound to a mind. Every other type stays a judgment.
+
+#### Judgments that hold a card
+
+Failed work and broken reads are never left waiting on the seat below the bound (the owner,
+2026-10-11, after about two hours in which the seat answered `work came back failed` and `a
+reader found it broken` with `wait <id> --for 60m`, again and again, and about 22 of 42 review
+cards froze while the fleet idled: "i would very much like it if this was not possible to
+happen again"). Two rules make it so, the tool and not the seat's discipline:
+
+- **Failed work and broken reads rework themselves.** Work that came back failed with a report,
+  and a broken read with a finding, is reworked by the next tick with the report or the
+  finding as its fix (as `rework <card>` with no `--fix`): `failed` and `read-broken` above,
+  up to the card's attempt bound (`sprint.AtBriefBound`, the sprint's `attempts`). Only past
+  the bound (`the brief is wrong`, a card that reached its bound), a brief defect, a friend's
+  failure no harness class names, failed work with no report, and a broken verdict with no
+  finding stay the seat's (`TestFailedWorkReworksItselfWithItsFinding`,
+  `TestABrokenReadReworksItself`, `TestPastTheBoundItStaysASeatJudgment`).
+- **A wait can no longer park a card.** `wait` is refused, naming the action instead, on every
+  judgment that holds a card from progressing; the one table is `sprint.WaitRefused`
+  (internal/sprint/wait_refused.go), checked by the kind's name in both of wait's paths (the
+  tick-kept hold and the review time):
+
+  | kind | instead of a wait |
+  |---|---|
+  | work came back failed | rework (the tick does it below the bound), drop, or brief |
+  | a reader found it broken | rework with the finding (the tick does it below the bound), drop, or brief |
+  | returned to review (merge stopped) | rework, accept, or drop |
+  | stream stopped: conflict on a card | resolve and resume, rework, or drop |
+  | stream stopped: stream branch red | return the suspect and resume, rework, or drop |
+  | stream stopped: needs a card of another stream first | land the card it needs and resume, or drop |
+  | stream stopped: the merge queue rejected | rework or drop, and resume |
+  | stream stopped: the base fails its tree gate | mend the base (`base-gate` resumes it), or drop |
+
+  `wait` stays the answer to the informational kinds: the alarms, the status and presence
+  conditions the tick keeps, a lateness, and the bound's judgments, where the brief is a
+  mind's (`TestWaitIsRefusedOnACardHoldingJudgment`, `TestWaitStillWorksOnAnAlarm`).
+
+The push `judgments wait on the coordinator past their deadline` also names the cards the open
+judgments hold now (`<n> cards held by open judgments`, `sprint.CardsHeldByJudgments`: the
+subjects on the work table of the open judgments above and of the bound's), so a sprint that
+crawls on the seat says so in the push. The model is tla/SprintRules.tla, Part "answers":
+`FailedWithAFindingNeverParked` (failed work, and a broken read with a finding, below the bound
+is reworked or finished, never held on the seat), with the reversed witnesses
+`MCSprintRulesAnswersBrokenParkFailed` (failed work left to the seat breaks it) and
+`MCSprintRulesAnswersReachSeatParks` (the seat may still park a card past the bound). `run` and `tick` answer
 by rule unless `--answer-rules=false` (a `tick` by hand only with `--answer-rules`); nova-config's sprint row `answer_rules_off` (a list of
 `base-gate, bound, brief-defect, conflict, failed, friend-take, hold-need, late, read-broken,
 read-late`, applied to `sprint:answer_rules_off` and read with the routes) turns single
