@@ -685,23 +685,33 @@ func TestLandHoldsEveryPushURLToTheRepository(t *testing.T) {
 	}
 }
 
-// NEW authorizes a file only in the card's typed header. The lander still
-// refuses a file named only in prose or a step, and any unrelated file (E12).
+// NEW authorizes a file only in the card's typed header. A NEW: at the start of the
+// prose is a stranded header key the adder refuses (docs/SPEC-SPRINT.md, the card
+// header); the lander still refuses a file named only in a step, and any unrelated
+// file (E12).
 func TestLandChecksNewFilesAgainstTheTypedHeader(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name, scope, file string
 		landed            bool
+		addRefused        bool
 	}{
-		{"header NEW", "NEW: added.txt", "added.txt", true},
-		{"body NEW", "The task starts here.\nNEW: added.txt", "added.txt", false},
-		{"step NEW", "STEP 1. Work.\n  NEW: added.txt", "added.txt", false},
-		{"unrelated file", "NEW: added.txt", "other.txt", false},
+		{"header NEW", "NEW: added.txt", "added.txt", true, false},
+		{"body NEW", "The task starts here.\nNEW: added.txt", "added.txt", false, true},
+		{"step NEW", "STEP 1. Work.\n  NEW: added.txt", "added.txt", false, false},
+		{"unrelated file", "NEW: added.txt", "other.txt", false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			r := newLandRig(t)
 			brief := writeNeedsBrief(t, t.TempDir(), "a", "RESULT: a tier: flash\nPATHS: a.txt\n"+tc.scope, "")
+			if tc.addRefused {
+				code, _, errs := r.do("add --stream s1 a --one --brief-file " + brief)
+				assert.Equal(t, 2, code)
+				assert.Contains(t, errs, "NEW: on line 4")
+				r.clean()
+				return
+			}
 			r.ok("add --stream s1 a --one --brief-file " + brief)
 			head := r.head("a", "main", tc.file, "added\n")
 			r.queued(map[string]string{"a": head}, "a")

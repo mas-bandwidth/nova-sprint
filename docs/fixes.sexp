@@ -1249,4 +1249,25 @@
    :origin "this card, card-lint-a-hold-owner-every-reader-accepts.w1, from the reader finding on
     a-member-environment-fault-holds-it-and-pushes-the-seatb attempt 5 (head 38c66ea7542f): the
     environment hold was written with held_by=environment but the member's status was left Up, so the
-    level dealt to it and presence wrote held_by=fault over the mark")))
+    level dealt to it and presence wrote held_by=fault over the mark")
+
+  (fix "card-lint-refuses-a-header-key-below-the-prose" :release "v1.2.14" :status "planned"
+   :title "The card lint refuses a header key below the prose"
+   :text "cardHeaderBlock ends the card header at the first prose line (\"ended = true // the prose begins
+    here\") and CardHeaderValue reads only that block, so a header key written below the prose was never
+    read and nothing said so: only the five typed keys (KIND, PATHS, TEST, LEGS, SOURCE) drew a stranded
+    finding. A new swarm.LintHeaderStranded reuses cardHeaderBlock and returns one finding per header key
+    (KIND, PATHS, TEST, LEGS, SOURCE, START, STOP, DEPENDS-ON, PRIORITY, NEW, SHARED, REPO, BASE, RESULT,
+    tier) written as a KEY: line below the block, naming the key and its line; a key in the header passes
+    and a sentence that merely mentions a key mid-line draws nothing. lintBriefReads calls it, so add,
+    brief, recut and preflight refuse a stranded key through the same path as every other lint finding,
+    exit 2 (preflight exit 1), nothing written. LintCardDepends (which nothing outside tests called) is
+    deleted; its stranded-DEPENDS-ON finding is now this one, and the package doc and lineup helpers
+    (Lineup, CardDependsRemedy, ReadLineup and their exclusive readers) that only it used are removed
+    with it. This is the bug behind the 2026-10-11 epoch
+    17: 89 v1212 briefs carried DEPENDS-ON: below the REPO:/BASE: sentence, briefNeeds read no needs from
+    any of them, add admitted every card straight to ready, and cards were dealt before their dependencies
+    landed."
+   :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
+    2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
+    owner: \"this should be caught by card lint.\"")))
