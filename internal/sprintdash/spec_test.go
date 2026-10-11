@@ -2,10 +2,12 @@ package sprintdash
 
 import (
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"regexp"
 	"slices"
 	"strings"
@@ -338,4 +340,82 @@ func TestDashboardPageLoadsNothingFromElsewhere(t *testing.T) {
 	assert.Contains(t, string(file("index.html")), `src: url("nunito-800.woff2")`)
 	assert.Equal(t, []byte("wOF2"), file("nunito-800.woff2")[:4], "the face is a woff2")
 	assert.Contains(t, string(file("OFL.txt")), "SIL Open Font License", "the face's licence is embedded beside it")
+}
+
+// TestEmptyStoppedDotTests verifies the three defects on empty/stopped epoch.
+func TestEmptyStoppedDotTests(t *testing.T) {
+	t.Parallel()
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		if os.Getenv("NOVA_CI") == "1" {
+			require.NoError(t, err, "node is required for the dashboard JS behavioural test")
+		}
+		t.Skip("node is not installed on this machine; the dashboard JS behavioural test needs it")
+	}
+	// Use the fixture and modify it for empty/stopped state
+	var snap map[string]any
+	b, err := os.ReadFile("testdata/where_cards.json")
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(b, &snap))
+
+	// Set empty epoch (0 of 0) and stopped machine
+	snap["landed"] = 0
+	snap["all"] = 0
+	snap["summary"] = "ETA -"
+	snap["machine"] = "machine: STOPPED"
+	snap["epoch"] = 0
+	snap["at"] = "2026-10-10T12:00:00Z"
+
+	// Clear work table for empty cost breakdown
+	snap["tables"] = map[string]any{
+		"work":   map[string]any{},
+		"fleet":  map[string]any{"bench-a": map[string]any{"status": "up", "width": "4", "ready": "0", "working": "0", "done": "0"}},
+		"friends": map[string]any{},
+	}
+
+	driver := `
+context.accept({data: input.data, at: input.data.at});
+process.stdout.write(JSON.stringify({
+	pct: doc.getElementById('pct').textContent,
+	liveClass: doc.getElementById('live').className,
+	topStreams: doc.getElementById('top-streams').children.length,
+	headerText: doc.getElementById('top-streams').children[0].textContent,
+	topStreamsText: doc.getElementById('top-streams').textContent,
+}));
+`
+	shim, _, ok := strings.Cut(scrollShim, "// the viewer:")
+	require.True(t, ok)
+	in, err := json.Marshal(map[string]any{"appJS": string(file("app.js")), "data": snap})
+	require.NoError(t, err)
+	cmd := exec.Command(nodePath, "-e", shim+driver)
+	cmd.Stdin = bytes.NewReader(in)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &outBuf, &errBuf
+	require.NoError(t, cmd.Run(), "node runner failed: %s", errBuf.String())
+	t.Logf("outBuf=%s errBuf=%s", outBuf.String(), errBuf.String())
+	require.Empty(t, errBuf.String(), "app.js threw while drawing")
+	var res struct {
+		Pct        string `json:"pct"`
+		LiveClass  string `json:"liveClass"`
+		TopStreams int    `json:"topStreams"`
+		HeaderText string `json:"headerText"`
+		TopStreamsText string `json:"topStreamsText"`
+	}
+	require.NoError(t, json.Unmarshal(outBuf.Bytes(), &res), outBuf.String())
+
+	// Defect (2): landed tile at 0 of 0 should read "nothing", not "-"
+	assert.Equal(t, "nothing", res.Pct, "pct should be 'nothing' at 0 of 0")
+
+	// Defect (3): STOPPED dot should be red (has "stopped", not "ok")
+	assert.Contains(t, res.LiveClass, "stopped", "live class should include 'stopped' for red dot")
+	assert.NotContains(t, res.LiveClass, "ok", "live class should not include 'ok' when stopped")
+	html := string(file("index.html"))
+	assert.Regexp(t, `\.live\.stopped\s+\.dot\s*\{[^}]*background:\s*var\(--critical\)`, html, ".live.stopped .dot rule must use var(--critical)")
+
+	// Defect (1): cost table should show header + empty rows, not prose line
+	assert.Equal(t, 4, res.TopStreams, "top-streams should have exactly 4 children: 1 header + 3 empty rows")
+	assert.Contains(t, res.HeaderText, "stream", "header should contain 'stream'")
+	assert.Contains(t, res.HeaderText, "total", "header should contain 'total'")
+	// assert the prose "no stream has spent anything yet" is not present in the rendered DOM
+	assert.NotContains(t, res.TopStreamsText, "no stream has spent anything yet", "rendered top-streams should not contain prose line")
 }
