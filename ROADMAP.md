@@ -1692,7 +1692,7 @@ From: issue #3393
 
 ### A plan gate before code
 
-A card above a size bound writes a plan first, and a reader reviews the plan before implementation starts.
+A card above a size bound writes a plan first, and a reader reviews the plan before implementation starts. The design agreed with the owner on 2026-10-11 has two levels. Inside a card, working splits into planning, then a plan read, then implementing: the plan is committed to the card's branch as PLAN.md, and implementing is a second take on the same branch, so a one-shot child starts from the file, not from memory; a refused plan is a re-plan take. Above cards, a plan node turns a roadmap entry into cards with their dependencies (its scope, the cards, their DEPENDS lines and a read), feeds a stream, holds the cap of about 10 unadmitted drafts, and is what nova-work later imports as a node. Both levels are modelled in TLA+ with the card machine before either is built.
 
 Why it waits: A new machine stage, not a fix.
 
