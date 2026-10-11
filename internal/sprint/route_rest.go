@@ -32,6 +32,18 @@ const (
 	RouteRestFor    = 30 * time.Minute
 )
 
+// RateBackoffFor is the initial backoff duration for a route whose provider rate limited.
+const RateBackoffFor = 60 * time.Second
+
+// RateBackoffMax is the maximum rate backoff duration (15 minutes).
+const RateBackoffMax = 15 * time.Minute
+
+// PropRateBackoff is the fleet table's property that holds a route's rate backoff: when
+// a provider rate limits a limited route, the route is rested briefly (60s, doubling on
+// each rate-limited end with no ok take in between, capped at RateBackoffMax). The rest
+// ends by itself at its time. A take that ended with no result resets the backoff.
+func PropRateBackoff(route string) string { return "rate_backoff_" + route }
+
 // PropRule3Rest is the fleet table's property that holds one provider's rule-3 rests:
 // one property per provider, one line per route that has rested, so the table's
 // properties (ntable.LimitTableProps) grow with the providers and never with the routes.
@@ -48,6 +60,64 @@ const (
 	NRouteRested    = "a route rested: its provider failed its takes"
 	NProviderRested = "a provider rested: its funds or its key"
 )
+
+// RateTakes is the rate-limited takes a withdrawn work card records, by the take number
+// (the counter that was incremented when each was written). Rate-limited takes never
+// count toward the 3-in-10 rest but are used for route rate backoff.
+func RateTakes(wc *Card) (takes []ProviderTake, numbers []int) {
+	// Rate returns can go up to MaxRateReturns+1, not just MaxRedeals+1
+	for n := 1; n <= MaxRateReturns+1; n++ {
+		v := wc.F(FieldRateTake + itoa(n))
+		if v == "" {
+			continue
+		}
+		takes, numbers = append(takes, parseTake(v)), append(numbers, n)
+	}
+	return takes, numbers
+}
+
+// rateBackoffDue returns the backoff rest that is due now for a route, based on the
+// rate-limited takes since the last ok take or backoff end. The backoff starts at
+// RateBackoffFor (60s), doubles on each further rate-limited end without an ok take,
+// and caps at RateBackoffMax (15min). It ends by itself.
+func rateBackoffDue(fleet *Table, route string, lastOKAt time.Time) (resting bool, until time.Time) {
+	lastRest := time.Time{}
+	// Find the last rate backoff rest for this route
+	for _, c := range fleet.Column(Ready, Working, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
+		if c.F(FieldRoute) == route {
+			if v := c.F("rest_backoff"); v != "" {
+				if at, err := time.Parse(time.RFC3339, v); err == nil && at.After(lastRest) {
+					lastRest = at
+				}
+			}
+		}
+	}
+	// Count rate-limited takes since last rest or lastOKAt (whichever is later)
+	since := lastRest
+	if lastOKAt.After(since) {
+		since = lastOKAt
+	}
+	count := 0
+	for _, c := range fleet.Column(Withdrawn) {
+		if c.F(FieldRoute) == route {
+			takes, _ := RateTakes(c)
+			for _, t := range takes {
+				if at, err := time.Parse(time.RFC3339, t.Finished); err == nil && at.After(since) {
+					count++
+				}
+			}
+		}
+	}
+	if count == 0 {
+		return false, time.Time{}
+	}
+	// Compute backoff duration: count * 60s, capped at 15min
+	duration := time.Duration(count) * RateBackoffFor
+	if duration > RateBackoffMax {
+		duration = RateBackoffMax
+	}
+	return true, time.Now().Add(duration)
+}
 
 // EnvFaultRemedy is the remedy a member's environment judgment names, by cause, in the words
 // the coordinator runs: a push refusal is the fleet push-credential play for that member, a

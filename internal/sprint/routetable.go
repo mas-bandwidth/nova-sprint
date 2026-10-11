@@ -92,6 +92,20 @@ func RouteTable(lines []Line, since time.Time) string {
 				}
 				takes[t.key] = t
 			}
+			// also read rate-limited takes for stats (never counted toward rest)
+			for k, v := range l.Set {
+				if !strings.HasPrefix(k, FieldRateTake) || v == "" {
+					continue
+				}
+				pt := parseTake(v)
+				u := rtFromUsage(pt.Usage)
+				if u.route == "" {
+					u.route = pt.Route
+				}
+				t := &rtTake{key: l.Card + "#" + k, primary: prim, attempt: att, at: l.At, u: u}
+				t.end = "rate-limited"
+				takes[t.key] = t
+			}
 		case l.Table == "readers" && l.Verb == "read":
 			if v, has := l.Set["verdict"]; has {
 				prim, att := rtReadAttempt(l.Card)
