@@ -137,8 +137,8 @@ func Lint(id, brief string, o Options) []cardgen.LintFinding {
 //     test the card lands with is one it may edit;
 //   - personal-name: no name of o.Names outside a double-quoted span (the owner's
 //     words, quoted, keep theirs), the card's own id, the WHO: line that pins a
-//     friend, or a path token (a whitespace-separated token containing a slash or
-//     ending in .md); names inside paths are fine, names in prose are not;
+//     friend, or a path token (a whitespace- or comma-separated token containing a slash
+//     or ending in .md); names inside paths are fine, names in prose are not;
 //   - dropped-card: no id of o.Dropped but the card's own;
 //   - author-name: no `By:` followed by a name of o.Names, quoted or not: a brief
 //     never names its author, the friend who does the work signs with their own name
@@ -269,11 +269,11 @@ func unquoted(line string) string {
 	return quotedRE.ReplaceAllStringFunc(line, func(q string) string { return strings.Repeat(" ", len(q)) })
 }
 
-// tokenExemptPaths returns s with path tokens blanked: any whitespace-separated token
-// containing a slash or ending in .md is a path token; names inside paths are fine.
+// tokenExemptPaths returns s with path tokens blanked: any whitespace- or comma-separated
+// token containing a slash or ending in .md is a path token; names inside paths are fine.
 func tokenExemptPaths(s string) string {
 	var out []string
-	for _, tok := range strings.Fields(s) {
+	for _, tok := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
 		if strings.Contains(tok, "/") || strings.HasSuffix(tok, ".md") {
 			out = append(out, strings.Repeat(" ", len(tok)))
 		} else {
