@@ -18,7 +18,7 @@ func rateLimitedTake(now time.Time, route string) ProviderTake {
 // backs off (tla/RateBackoff.tla).
 func backoffOnRoute(w *world, route string) {
 	w.s.Fleet.Put(&Card{ID: "bk-" + route, Row: "m1", Col: Withdrawn, Fields: map[string]string{
-		FieldRoute:        route,
+		FieldRoute:          route,
 		FieldRateTake + "1": rateLimitedTake(w.s.Now, route).String(),
 	}})
 }
