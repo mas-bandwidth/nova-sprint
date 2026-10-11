@@ -388,7 +388,7 @@
      its RULES paragraph that contradicts its carried rules is a finding under any rule set."
     :origin "this pull request")
 
-   (fix "per-landed-spend-on-landed" :release "v1.2.7" :status "planned"
+   (fix "per-landed-spend-on-landed" :release "v1.2.7" :status "shipped"
     :title "Per-landed cost uses spend on landed cards only; in-flight shown separately"
     :text "The per-landed figure now divides total spend on landed cards (including failed attempts
      and reworks) by the landed count, rather than dividing all spend so far by landed count.

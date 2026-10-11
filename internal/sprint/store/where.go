@@ -168,21 +168,7 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 			}
 		}
 	}
-	// per landed since the last tidy of the streams or the reset, the later (stats tidy, stats
-	// reset, sprint.PerLandedSince)
-	bases := stats.basesIn(st.epoch)
-	for stream, b := range bases {
-		tc, ok := r.Streams[stream]
-		if !ok {
-			continue
-		}
-		cost := ""
-		if ctl := snap.StreamCtl(stream); ctl != nil {
-			cost = ctl.F(sprint.FieldCost)
-		}
-		tc.PerLanded = sprint.PerLandedSince(cost, snap.Work.Count(stream, sprint.Landed), b)
-		r.Streams[stream] = tc
-	}
+	// per landed is total landed spend / total landed count; already set correctly in StreamTierCosts
 	b, err := json.Marshal(r)
 	if err != nil {
 		return err
