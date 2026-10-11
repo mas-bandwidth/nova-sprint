@@ -7501,6 +7501,19 @@ to stop (`RUN STOP the binary this loop runs was replaced...`, exit 3) so its su
 it with the previous binary. `server switch --rollback` without a binary immediately restores
 the previous binary.
 
+Only a landing that acted and failed counts toward the rollback. A landing the seat's hook
+gate refuses before it acts on anything is not a land fault (tla/ServerSwitch.tla,
+`LandHookRefused`, `NoRollbackOnAHookRefusal`): a restart ends the seat's hook (the record says
+`state=gone`), so the new server's first landing pass, run as the coordinator, can come before
+the seat hooks in again, and the gate refuses it (`You must hook in first: run nova-sprint
+hook`). The refusal reaches the loop as the typed `hookGateError` the store's open returns,
+found with `errors.As` and never by its words; the loop does not ask the rollback check, leaves
+the window, the binary and the switch state as they were, and tries again on its next pass, the
+interval it already keeps (`LandEvery`, two seconds, so it neither spins nor sleeps longer).
+Each such pass prints one line, `LAND WAITS for the seat's hook: <the gate's sentence>; nothing
+was landed, and the next pass tries again`, and nothing else. Once the seat has hooked in, a
+landing that is let through and fails (exit 2) in the window rolls back as before.
+
 `nova-sprint selftest land` lands a canned card on a scratch clone with this binary, run by
 any install before switching: green on a good binary and red on a broken lander (item 14).
 
