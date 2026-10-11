@@ -96,6 +96,20 @@
     :title "The TLC cases run on GitHub-hosted runners from a pinned-jar workflow"
     :text "CI only, no product change. The 434 TLC cases in tla/ ran only when someone ran them by hand on a bench; tla/tla2tools.sha256 now pins the jar every tla/RUNS.tsv record names (sha256 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88, the tlaplus v1.7.4 release), and .github/workflows/tlc.yml runs the models on GitHub-hosted ubuntu-latest runners -- nova-sprint is public, so never self-hosted -- nightly by one cron, on workflow_dispatch, and on a pull request touching tla/**, pkg/tlc/** or tools/tlacheck/**. A groups job runs make tlc-test and prints the groups to run (every required group on schedule and dispatch via tlacheck groups --root ., the stale ones on a pull request via tlacheck groups --root . --stale; an empty list ends the workflow green); a models job depends on it, runs a four-wide fail-fast-false matrix over those groups, uses the runner image's own JDK 21 (no setup-java action), downloads the jar from the tlaplus release and refuses it, exit 2 naming both digests, unless sha256sum matches tla/tla2tools.sha256, then runs make tlc TLC_BUDGET=110 and uploads the run directory as a 14-day artifact. It never writes tla/RUNS.tsv into the repository; records still land through cards. New test internal/ci/tlc_workflow_test.go pins the hosted runner, the five-minute timeout, the digest check before make tlc and the 110-second budget. The workflow is unproven until its first run on the forge."
     :origin "this card, nova-sprint-ci-runs-tlc-on-hosted-runners-after-the-wall.w1, 2026-10-11: v1.2.12 inventory item T30 and note 3; checked at nova-sprint main 00c54ba2e")
+   (fix "tla-sprint-tables-reads-and-accept" :release "v1.2.12" :status "planned"
+    :title "The SprintTables model holds the reads and the accept"
+    :text "Models only, no product change. tla/SprintTables.tla adds the read actions and the accept to the
+     sprint tables model, written from internal/sprint/refmodel/actions.go (Ask, AskAnother, ReadStart,
+     Read, Accept) with internal/sprint/readers.go ReadsNeededIn and internal/sprint/lifecycle.go Moves as
+     the reference: a card in review asks its reads of readers other than its worker, a read begins and
+     returns ok or broken, and accept moves it to merging when it has the reads its tier needs (one for a
+     flash card, two for a pro card). Invariants AcceptHeld (no primary enters merging short of its reads),
+     NeverReadByItsWorker and MovesOnlyByTable, with the reversed witness MCSprintTablesBrokenShortAccept
+     (an accept with one read fewer fails AcceptHeld). Drift kept out and named in the report: refmodel's
+     Accept demands two readers where the code allows one for flash (a v1.2.13 cleanup), and
+     docs/SPEC-SPRINT.md section 3 calls accept mechanical (the tick) where lifecycle.go:57 names it
+     Coordinator."
+    :origin "this card; v1.2.12 inventory item T4")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
