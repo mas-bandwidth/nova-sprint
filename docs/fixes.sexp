@@ -382,4 +382,20 @@
     :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
     :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
      fenced blocks. It should accept both."
-    :origin "issue #1994; issue #2302; issue #3470")))
+    :origin "issue #1994; issue #2302; issue #3470")
+
+   (fix "a-member-environment-fault-holds-it-and-pushes-the-seat" :release "v1.2.6" :status "planned"
+    :title "A member's environment fault holds it and pushes the seat"
+    :text "A finish failure whose cause is the member's environment -- a push refusal (no credential, auth,
+     unreachable remote), a missing tool or harness, a sandbox/wall refusal, a disk-full, or any class the
+     member reports as environment -- is the member's, never the card's or the model's. The first one
+     returns the card to ready untouched (the work card withdraws without an ended take, so no redeal is
+     spent, the attempt is unchanged, and it is never failed work), holds the member so the deal gives it
+     no new card, and raises one judgment pushed to the seat per member and cause naming the remedy (for a
+     push refusal, the fleet push-credential play with --limit <member>). The fault clears when the
+     member's next card pushes, or when fleet up runs the member's own probe (the push-credential probe,
+     the harness check) and it passes; fleet up refuses a member whose last environment fault is not
+     cleared, and runs the probe before accepting width for a member the sprint does not know. Modeled by
+     tla/ProviderBudget.tla."
+    :origin "sprint card a-member-environment-fault-holds-it-and-pushes-the-seat; the owner, 2026-10-11Z:
+     the failure here is not noticing this until now")))
