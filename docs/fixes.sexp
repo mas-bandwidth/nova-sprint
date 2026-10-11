@@ -212,6 +212,13 @@
     its epoch: a tick at a clear stops there."
    :origin "the seat ledger v1.2.4-held-2026-10-10.md, bug 6")
 
+  (fix "frontier-read-judged-by-real-cause" :release "v1.2.6" :status "shipped"
+   :title "A frontier read no one may take is judged by its real cause"
+   :text "A frontier read the ask leaves waiting (the friend ask and the read-card ask alike) raises one
+    judgment naming each such read and who is full, or why no one may take it. It is written once,
+    rewritten in place when its facts change, never raised anew, and closed when the reads are asked."
+   :origin "this pull request; frontier reader judgment")
+
   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
    :title "The worker brief says never amend, rebase or reset onto origin"
    :text "One line in the worker brief (the child rule no-rewrite-history, internal/fleetrules/child-rules.txt,
