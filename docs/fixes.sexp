@@ -844,6 +844,16 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "tla-coverage-test-in-nova-sprint" :release "v1.2.12" :status "planned"
+   :title "A test holds every nova-sprint module to its COVERAGE row and its TLC records"
+   :text "TestEveryStateMachineHasACurrentModel reads tla/COVERAGE.tsv and holds each row to the tree: a
+    machine, its code files, its status, its owed_by and its note must be well-formed; every non-MC
+    module under tla/ is named by exactly one row's module column; and a current row's modules each
+    have a reversed witness and a passing, current TLC record for every one of their cases. The checks
+    are split into a function of a root and the rows, with fixture tests for the bad rows and the
+    unnamed modules."
+   :origin "this card")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
