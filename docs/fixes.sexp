@@ -619,6 +619,13 @@
      added and sibling skipped keys are checked, with a test."
     :origin "issue #3499")
 
+   (fix "brief-file-over-the-bound-is-refused" :release "v1.2.11" :status "planned"
+    :title "Brief over the bound is refused with exit 2"
+    :text "brief <id> --brief-file and brief <id> --brief <text> had no size check before the lint. Add a
+     helper that checks the bound with the same message as brief --dir, used by add, brief --dir and
+     these two forms. On a RUNNING machine, queued changes are now checked at the step before logging."
+    :origin "epoch 16 stall, 2026-10-11 04:17:19Z to 04:54:23Z")
+
   (fix "add-refuses-card-off-sprint-base" :release "v1.2.6" :status "shipped"
    :title "add and brief refuse a card cut off the sprint's base"
    :text "Once the coordinator records the sprint's base (set --base, the work table's sprint_base), add and
