@@ -48,6 +48,7 @@ func isCut(c *Card) bool { return len(Split(c.F("needs"))) > 0 }
 // A sentinel of a held stream is left to the coordinator, whose hand is on the stream
 // (hold.go). The release units go first and the waves after them, so the caller's bound
 // never cuts a landing from the wave it lets through.
+// tla/Holds.tla CutRelease
 func SentinelReleases(s *Snapshot, who string) (units, after []Unit, notes []Note, landing map[string]bool) {
 	var ids []string
 	for _, c := range s.Work.Column(Waiting) {

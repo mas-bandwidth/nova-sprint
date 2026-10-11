@@ -580,6 +580,8 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			}
 		}
 		if step.Halts && step.TickRunSeq != nil && fence.RunSeq != *step.TickRunSeq {
+			// the run moved under the part: it does not commit in the new run
+			// (tla/DirtyTickRead.tla Commit, NoStaleRunCommit)
 			res.Moved, res.Op, res.Notes = nil, "", 0
 			res.Tables = nil
 			res.StaleRun = true
