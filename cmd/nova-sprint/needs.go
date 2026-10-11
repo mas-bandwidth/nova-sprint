@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
@@ -85,8 +87,17 @@ func (a *app) cmdNeeds(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("needs")
 	stream := fs.String("stream", "", "the waiting cards of one stream (default: every stream)")
 	roots := fs.Bool("roots", false, "print only the roots and the width lines")
+	needs := fs.String("needs", "", "with set: the card's needs, comma separated, in place of the ones it has; each a primary on the table")
+	clear := fs.Bool("clear", false, "with set: empty the card's needs")
+	answers := fs.String("answers", "", "with set: the judgments it answers, comma separated")
 	pos, err := parse(fs, args)
-	if err != nil || len(pos) > 0 {
+	if err != nil {
+		return refuse(stderr, "needs", err.Error())
+	}
+	if len(pos) > 0 && pos[0] == "set" {
+		return a.cmdNeedsSet(fs, c, pos[1:], *needs, *clear, *answers, stdout, stderr)
+	}
+	if len(pos) > 0 {
 		return refuse(stderr, "needs", argErr("takes no words ", err, pos...))
 	}
 	st, err := a.store(*c)
@@ -415,4 +426,45 @@ func needsMoreText(b *strings.Builder, kind, scope string, more *needsMore) {
 		fmt.Fprintf(b, "MORE kind=%s%s shown=%d total=%d omitted=%d first_hidden=%s run: %s\n",
 			kind, scope, more.Shown, more.Total, more.Omitted, oneline.Field(more.FirstHidden), more.Command)
 	}
+}
+
+// cmdNeedsSet is needs set <id> (--needs <a,b> | --clear) [--answers <note>]:
+// the direct verb that re-points a primary's needs, in place of dropping the
+// card and adding it again (the owner, 2026-10-11: "I hate twins."). It is the
+// coordinator's alone; each need is a primary on the table, and a landed or
+// off-table card is refused (docs/SPEC-SPRINT.md, needs).
+func (a *app) cmdNeedsSet(fs flagSet, c *common, rest []string, needs string, clear bool, answersNote string, stdout, stderr io.Writer) int {
+	given, cleared := false, false
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "needs":
+			given = true
+		case "clear":
+			cleared = true
+		}
+	})
+	switch {
+	case len(rest) != 1:
+		return refuse(stderr, "needs set", "wants <id> (--needs <a,b> | --clear) [--answers <note>]")
+	case given && cleared:
+		return refuse(stderr, "needs set", "wants one of --needs <a,b> or --clear, not both")
+	case !given && !cleared:
+		return refuse(stderr, "needs set", "wants one of --needs <a,b> or --clear")
+	}
+	st, err := a.store(*c)
+	if err != nil {
+		return refuse(stderr, "needs set", err.Error())
+	}
+	r := sprint.NeedsSetReq{ID: rest[0], Needs: sprint.Split(needs), Clear: clear, Answers: answers(answersNote), Who: c.actor}
+	return a.runStep("needs set", *c, st, needsSetStep(r), stdout, stderr)
+}
+
+// needsSetStep reads the work table and the records of the needs named, placed
+// or not, so a refusal says what became of a need off the table.
+func needsSetStep(r sprint.NeedsSetReq) store.Step {
+	return store.Step{Answers: r.Answers, Named: true, Args: store.ArgsOf(r), Verb: "needs set", Load: []string{sprint.Work},
+		Extras: func(*sprint.Snapshot) map[string][]string {
+			return map[string][]string{sprint.Work: append([]string{r.ID}, r.Needs...)}
+		},
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.NeedsSet(s, r) }}
 }
