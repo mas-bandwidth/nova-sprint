@@ -30,7 +30,18 @@ jobs:
       - name: vet
         run: go vet ./...
       - name: test
-        run: go test -p 4 ./...
+        # every test but the tick's wall-clock gate, which runs alone in the next step
+        run: go test -p 4 -skip '^TestTickDrainAndDealUnderTheGateAtLoad$' ./...
+      - name: tick deal under the gate, alone
+        # TestTickDrainAndDealUnderTheGateAtLoad times the deal on a loaded store against the
+        # one-second gate (internal/sprint/deal_load_bench_test.go). Beside three sibling
+        # packages on this four-core runner every one of its ticks is slowed, so its least-of-
+        # several reading measured the runner's load, not the deal: 1.19 s in run 38121929406,
+        # where the same code measures 0.27-0.28 s alone and 0.53 s beside the suite on four
+        # cores of a bench. It runs here with the runner to itself, as the tick runs on the
+        # server; nothing is skipped, and it runs whether or not the step before passed.
+        if: ${{ !cancelled() }}
+        run: go test -count=1 -run '^TestTickDrainAndDealUnderTheGateAtLoad$' ./internal/sprint/
       - name: page lock only grows
         # the dashboard page's lock (internal/sprintdash/pagelock.go): every line of the base's
         # pagelock.txt is kept, so a page change is a new line with the owner's new ask; the base

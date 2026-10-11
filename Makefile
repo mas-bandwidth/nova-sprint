@@ -16,8 +16,13 @@ build:
 vet:
 	$(GO) vet ./...
 
+# the tick's wall-clock gate runs alone, after the rest: beside sibling packages its
+# timing measures the machine's load, not the deal (.github/workflows/ci.yml)
+TICK_GATE_TEST := ^TestTickDrainAndDealUnderTheGateAtLoad$$
+
 test: vet
-	$(GO) test -p $(GOTEST_P) ./...
+	$(GO) test -p $(GOTEST_P) -skip '$(TICK_GATE_TEST)' ./...
+	$(GO) test -count=1 -run '$(TICK_GATE_TEST)' ./internal/sprint/
 
 functional:
 	$(GO) test -p $(GOTEST_P) -tags functional ./...

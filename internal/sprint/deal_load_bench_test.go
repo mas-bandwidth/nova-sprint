@@ -94,7 +94,10 @@ func TestTickDealReadsEachBriefOnceAtScale(t *testing.T) {
 // is the one measured against the gate, as the tick runs it (the memo is process-global
 // and warm after the first tick; only a test clears it). The non-flaky hold is the wall
 // itself, measured as the least of several steady ticks so a loaded machine's noise does
-// not fail it.
+// not fail it. Sustained load is not noise: beside three sibling test packages on a
+// four-core runner every tick is slowed, and the least of them measured the runner (1.19 s
+// in nova-sprint CI run 38121929406, where this code measures 0.27-0.28 s alone), so CI
+// and make test run this test alone, after the rest (.github/workflows/ci.yml, Makefile).
 func TestTickDrainAndDealUnderTheGateAtLoad(t *testing.T) {
 	s := loadedStore(t, 80000, 80000, 8)
 	require.Equal(t, 80000, len(s.Work.Column(Ready)), "80,000 ready primaries, the loaded store's scale")
