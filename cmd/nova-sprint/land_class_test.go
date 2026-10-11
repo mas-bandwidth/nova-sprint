@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,7 +80,7 @@ func TestTheClassGateReadsGofmtOutputLocallyAndOnTheBench(t *testing.T) {
 			if needsFormatting {
 				body = "#!/bin/sh\nprintf 'bad.go\\n'\n"
 			}
-			require.NoError(t, os.WriteFile(filepath.Join(bin, "gofmt"), []byte(body), 0700))
+			require.NoError(t, testbin.WriteExecutable(filepath.Join(bin, "gofmt"), []byte(body), 0700))
 			env := append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 			l := &lander{}
 			output, runErr := l.goRun(t.Context(), dir, []string{filepath.Join(bin, "gofmt"), "-l", "."})
