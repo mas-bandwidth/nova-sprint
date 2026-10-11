@@ -1032,6 +1032,10 @@
    :title "The lander's empty-commit refusal says a result is missing when it holds none"
    :text "The lander's empty-commit check refused an empty diff with no result to read (a nil work card: the fleet row absent or the work card tidied away) with the same finding as one whose result claimed changes, \"empty commit: the result claims changes the diff does not show\", naming a claim nothing made. It now returns emptyCommitNoResultFinding, \"empty commit: the head changes nothing from the attempt's start, and the lander holds no result to say why\", and both findings return the card to review through one helper, isEmptyCommitFinding."
    :origin "this card: lander-empty-commit-says-no-result-is-held, from the v1.2.14 point-release plan and the roadmap item lander-empty-commit-handling")
+  (fix "a-hook-push-is-sent-only-once-recorded" :release "v1.2.14" :status "planned"
+   :title "A hook push is sent only once its record names it"
+   :text "When the hook record write fails, a look now delivers none of that look's pushes and undoes what it added (the note keys it marked sent, the pushes it added to the open list, and the sequence), so the next look offers them again, records them, and sends them once. The SEAT HOOK line it prints is unchanged. Before, the push was delivered while the record named no unacknowledged push, so a push delivered over a failed record write never blocked the gate: past HookAckBound a coordinator command ran though the push had been delivered and was never recorded."
+   :origin "the card a-hook-push-is-sent-only-once-recorded w1; the v1.2.12 inventory 2026-10-11 section 9 row D7 (code read at nova-sprint main 00c54ba)")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"

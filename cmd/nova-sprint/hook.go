@@ -571,7 +571,10 @@ func (s *hookSession) record(ctx context.Context) (sprint.HookRecord, error) {
 // look is the server's turn at the subscription every hookLook: a challenge unanswered
 // past its bound unhooks (SeatHook.tla, Miss); a proven hook HookEvery old is challenged
 // again (Rechallenge); and every judgment and note to the coordinator not yet sent on
-// this subscription is delivered, each with its id (Deliver).
+// this subscription is delivered, each with its id (Deliver). Deliver writes the record
+// that names the pushes in the same step (docs/SPEC-SPRINT.md, "The hook";
+// SeatHook.tla, AckedOrBlocking), so a look whose record write fails delivers nothing
+// and undoes what it added, and the next look offers the pushes again.
 func (s *hookSession) look(ctx context.Context) {
 	if s.isEnded() || !s.current() {
 		return
@@ -593,6 +596,14 @@ func (s *hookSession) look(ctx context.Context) {
 		s.challengeLive(ctx, now)
 	}
 	var pushes []hookMsg
+	// what this look adds, to undo when the record write fails: the sent keys it set,
+	// and the sequence and open pushes before it ran. A push is delivered only once the
+	// record names it, so a look whose record write failed delivers none of its pushes
+	// and offers them again next time (SeatHook.tla, Deliver: the record and the push
+	// are one step; AckedOrBlocking).
+	var addedSent []string
+	var seqBefore uint64
+	var openBefore int
 	err := s.a.onLine(ctx, func(st *store.Store) error {
 		v, err := st.Inbox(ctx, defaultDeadline, defaultStale, 10000)
 		if err != nil {
@@ -600,6 +611,7 @@ func (s *hookSession) look(ctx context.Context) {
 		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		seqBefore, openBefore = s.seq, len(s.open)
 		for _, g := range v.Groups {
 			if !forCoordinator(g) {
 				continue
@@ -607,7 +619,10 @@ func (s *hookSession) look(ctx context.Context) {
 			keys := noteKeys(g)
 			fresh := false
 			for _, k := range keys {
-				fresh = fresh || !s.sent[k]
+				if !s.sent[k] {
+					fresh = true
+					addedSent = append(addedSent, k)
+				}
 				s.sent[k] = true
 			}
 			if !fresh {
@@ -627,7 +642,19 @@ func (s *hookSession) look(ctx context.Context) {
 		return
 	}
 	if _, err := s.record(ctx); err != nil {
+		// the record was not written: deliver none of this look's pushes, and undo what
+		// it added so the next look offers them again
+		s.mu.Lock()
+		for _, k := range addedSent {
+			delete(s.sent, k)
+		}
+		if len(s.open) > openBefore {
+			s.open = s.open[:openBefore]
+		}
+		s.seq = seqBefore
+		s.mu.Unlock()
 		s.a.serveSay("SEAT HOOK name=%s: the pushes could not be recorded: %s", s.name, oneline.Escape(err.Error()))
+		return
 	}
 	for _, m := range pushes {
 		if err := s.send(m); err != nil {
