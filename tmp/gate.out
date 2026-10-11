@@ -1,0 +1,4 @@
+# the card's STEP 4 gate names ./pkg/release/ ./cmd/nova-update/; this repo has no cmd/nova-update (cmds: nova-sprint, nova-card, nova-work), so that path fails [setup failed] regardless of this change. The gate actually run is the named package plus the changed package:
+$ go test -count=1 -timeout 600s ./pkg/release/ ./internal/sprintdash/
+?   	github.com/mas-bandwidth/nova-sprint/pkg/release	[no test files]
+ok  	github.com/mas-bandwidth/nova-sprint/internal/sprintdash	0.092s
