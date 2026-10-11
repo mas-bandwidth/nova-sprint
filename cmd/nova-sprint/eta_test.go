@@ -155,7 +155,6 @@ func TestWhereShowsHeldCardsApart(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1 --coordinator lead")
-	ta.ok("set --read-cards off")
 	ta.ok("add --stream w --sentinel gate --held --actor lead")
 	ta.ok("add --stream w a b --actor lead")
 	ta.ok("add --stream v c --one --actor lead")
