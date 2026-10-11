@@ -136,8 +136,9 @@ func Lint(id, brief string, o Options) []cardgen.LintFinding {
 //   - test-outside-paths: the TEST line's package is a directory PATHS names, so the
 //     test the card lands with is one it may edit;
 //   - personal-name: no name of o.Names outside a double-quoted span (the owner's
-//     words, quoted, keep theirs), the card's own id, or the WHO: line that pins a
-//     friend;
+//     words, quoted, keep theirs), the card's own id, the WHO: line that pins a
+//     friend, or a path token (a whitespace- or comma-separated token containing a slash
+//     or ending in .md); names inside paths are fine, names in prose are not;
 //   - dropped-card: no id of o.Dropped but the card's own;
 //   - author-name: no `By:` followed by a name of o.Names, quoted or not: a brief
 //     never names its author, the friend who does the work signs with their own name
@@ -162,13 +163,13 @@ func Checks(id, brief string, o Options) []cardgen.LintFinding {
 		if strings.HasPrefix(line, "WHO:") {
 			continue // the friend a card is pinned to is named here (cardhdr.ReadWho)
 		}
-		scan := strings.ToLower(unquoted(line))
+		scan := strings.ToLower(tokenExemptPaths(unquoted(line)))
 		if id != "" {
 			scan = strings.ReplaceAll(scan, strings.ToLower(id), " ")
 		}
 		for _, n := range o.Names {
 			if n = strings.ToLower(strings.TrimSpace(n)); n != "" && hasWord(scan, n) {
-				add("personal-name", i+1, "names "+n+" outside the owner's quoted words; write the role (the owner, a friend, a bench), never the name")
+				add("personal-name", i+1, "names "+n+" outside the owner's quoted words; a name inside a path is fine, but a name in prose is not")
 			}
 		}
 		if n := authorName(line, o.Names); n != "" {
@@ -266,6 +267,20 @@ var quotedRE = regexp.MustCompile(`"[^"]*"|“[^”]*”`)
 // are theirs to keep.
 func unquoted(line string) string {
 	return quotedRE.ReplaceAllStringFunc(line, func(q string) string { return strings.Repeat(" ", len(q)) })
+}
+
+// tokenExemptPaths returns s with path tokens blanked: any whitespace- or comma-separated
+// token containing a slash or ending in .md is a path token; names inside paths are fine.
+func tokenExemptPaths(s string) string {
+	var out []string
+	for _, tok := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
+		if strings.Contains(tok, "/") || strings.HasSuffix(tok, ".md") {
+			out = append(out, strings.Repeat(" ", len(tok)))
+		} else {
+			out = append(out, tok)
+		}
+	}
+	return strings.Join(out, " ")
 }
 
 // hasWord says w is in s as a word of its own: no letter, digit or underscore on

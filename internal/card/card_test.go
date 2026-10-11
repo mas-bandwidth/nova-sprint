@@ -97,6 +97,12 @@ func TestChecksRefuseWithTheFinding(t *testing.T) {
 	assert.Empty(t, checks("old-card.w1", strings.Replace(clean, "rate-ada-x.w2", "old-card.w1", 1)), "a card may name itself")
 	assert.Empty(t, checks("rate-ada-x.w2", clean+"Adapt the bench7x shim.\n"), "a name inside another word is no name")
 	assert.Empty(t, checks("rate-ada-x.w2", clean+"WHO: ada\n"), "the WHO: line pins a friend by name")
+	assert.Empty(t, checks("rate-ada-x.w2", clean+"See /home/ada/projects/\n"), "a name inside a path is fine")
+	assert.Empty(t, checks("rate-ada-x.w2", clean+"PATHS: internal/x, home/ada/bench.md\n"), "a path token is exempt")
+	assert.Equal(t, []string{"personal-name"}, checks("rate-ada-x.w2", clean+"See /home/ada/projects/ and ada wants this.\n"), "a prose name on same line as path fails")
+	assert.Empty(t, checks("rate-ada-x.w2", clean+"PATHS: ada.md, internal/x/*.go\n"), "comma-separated path token is exempt")
+	assert.Equal(t, []string{"personal-name"}, checks("rate-ada-x.w2", clean+"See /home/ada/projects/,ada wants this.\n"), "prose name after comma-separated path fails")
+	assert.Empty(t, checks("rate-ada-x.w2", clean+"See /home/ada/projects/ and adapt the bench7x shim.\n"), "path exempt and prose name in another word ok")
 	assert.Empty(t, Checks("c", "Do the thing.\n", opts), "a brief with no PATHS line is a free task: no tier or TEST check")
 
 	f := Checks("c", "RESULT: c tier: pro\nPATHS: a/*.go\nTEST: ./b TestZ\n", Options{})
