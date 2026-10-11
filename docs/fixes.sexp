@@ -1478,6 +1478,22 @@
     reversed witness, so none is added. tla/COVERAGE.tsv notes say the same, and the four groups
     (dealfill, level, retire-absent, timer) were rerun with TLC and merged into tla/RUNS.tsv."
    :origin "this card; v1.2.12 inventory item T36 (the deal/route/rules group), drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+  (fix "tla-ratebudget-renewal-is-best-effort" :release "v1.2.12" :status "planned"
+   :title "RateBudget's renewal is a best-effort step, and an aborted write releases its slot"
+   :text "tla/RateBudget.tla modelled the caller's lease renewal inside Tick, which renews every live
+    holder's lease atomically and cannot fail; the code renews best-effort every LeaseTTL/3 (budget
+    renew; the caller is nova-tools pkg/swarm/providerbudget.go, another repository, not in this card),
+    and a renewal not written lets the lease lapse while the request still runs. Renew is now a
+    separate step that may fail, and InFlightHeld and NeverOverConcurrent are stated while every renewal
+    inside its bound succeeds (a guard, not a fairness). After lost WATCH races the code answers a wait
+    and releases the slot; the model's aborted Write stayed slotted, so an aborted Write now releases its
+    slot (AbortedWriteReleasesSlot, an action property). MCRateBudgetBrokenNoRenew is the renew-failure
+    case, and MCRateBudgetBrokenKeepSlot is the pre-fix kept slot, which breaks AbortedWriteReleasesSlot.
+    pkg/ratebudget/ratebudget.go cites SlotReclaimed (not NoSlotLost); its test
+    pkg/ratebudget/ratebudget_test.go:148 still cites NoSlotLost (outside this card's PATHS, named here
+    instead), and internal/sprint/store/rate.go's BudgetTake comment names the slot first, as the code
+    does. Models only; no product change."
+   :origin "card tla-ratebudget-renewal-is-best-effort, 2026-10-11: v1.2.12 inventory item T36; drift read at nova-sprint main 00c54ba2e")
   (fix "tla-land-gate-ring" :release "v1.2.12" :status "planned"
    :title "The gate bench's hash ring modelled in tla/GateRing.tla"
    :text "tla/GateRing.tla models the land stage's gate-slot ring: two up benches, the start slot the

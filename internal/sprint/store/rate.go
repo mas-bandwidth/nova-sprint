@@ -60,9 +60,11 @@ type BudgetAnswer struct {
 	RPM, Concurrent int
 }
 
-// BudgetTake reads the budgets and takes: an rpm grant first (a request over the window
-// waits without holding a slot), then the provider's slot. With neither set it grants at
-// once and writes nothing.
+// BudgetTake reads the budgets and takes: the provider's slot first (a holder that
+// already holds its slot renews it before the window decides, so a long stall never
+// loses a held slot), then the rpm grant; a request over the window releases the slot
+// and waits. With neither set it grants at once and writes nothing.
+// tla/RateBudget.tla Slot, Read, Write
 func (st *Store) BudgetTake(ctx context.Context, model, holder string, now time.Time) (BudgetAnswer, error) {
 	props, err := st.BudgetProps(ctx)
 	if err != nil {
@@ -100,6 +102,7 @@ func (st *Store) BudgetTake(ctx context.Context, model, holder string, now time.
 // BudgetRenew renews holder's concurrency slot of the model's provider while its request
 // runs (budget renew; the lease's LeaseTTL from now): a live request never loses its slot,
 // and a dead one's runs out. It takes no rpm grant. Not held and no room: Grant.OK false.
+// tla/RateBudget.tla Renew
 func (st *Store) BudgetRenew(ctx context.Context, model, holder string, now time.Time) (ratebudget.Grant, error) {
 	props, err := st.BudgetProps(ctx)
 	if err != nil {
@@ -115,6 +118,7 @@ func (st *Store) BudgetRenew(ctx context.Context, model, holder string, now time
 
 // BudgetRelease frees holder's concurrency slot of the model's provider (budget release):
 // a request ended. A slot not held is no error.
+// tla/RateBudget.tla Release
 func (st *Store) BudgetRelease(ctx context.Context, model, holder string) error {
 	provider, _, _ := strings.Cut(model, "/")
 	return st.Budget().Release(ctx, ratebudget.LeaseKey(st.Names.Prefix, provider), holder)
