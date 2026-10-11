@@ -36,8 +36,18 @@ func (h *harness) whereOfCards() WhereRecord {
 	require.NoError(h.t, err)
 	held, err := st.HeldBack(h.ctx)
 	require.NoError(h.t, err)
-	landed, err := st.LandedAt(h.ctx)
+	// Load full snapshot to access individual cards for filtering sentinels
+	s, err := st.Load(h.ctx, []string{sprint.Work}, nil)
 	require.NoError(h.t, err)
+	var landed []time.Time
+	for _, c := range s.Work.Column(sprint.Landed) {
+		if sprint.IsSentinel(c) {
+			continue
+		}
+		if at, err := time.Parse(time.RFC3339, c.F("landed")); err == nil {
+			landed = append(landed, at)
+		}
+	}
 	m, _, err := st.Machine(h.ctx)
 	require.NoError(h.t, err)
 	es, err := st.EpochNow(h.ctx)
@@ -130,7 +140,17 @@ func TestTheWhereRecordIsTheCardsAfterEveryTick(t *testing.T) {
 	}
 	h.machine()
 	final := holds("every card landed")
-	require.Equal(t, int(landedAll(h)), len(final.Landings), "every landing is inside the hour of running time: %v", final.Landings)
+	// work landings exclude sentinels (cards whose kind is sentinel)
+	s, err := h.st.Load(h.ctx, []string{sprint.Work}, nil)
+	require.NoError(h.t, err)
+	var workLanded int64
+	for _, c := range s.Work.Column(sprint.Landed) {
+		if sprint.IsSentinel(c) {
+			continue
+		}
+		workLanded++
+	}
+	require.Equal(t, int(workLanded), len(final.Landings), "every landing is inside the hour of running time: %v", final.Landings)
 
 	// every card landed, the machine stopped itself: two hours STOPPED are no
 	// running time, and the hour still holds every landing

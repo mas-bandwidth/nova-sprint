@@ -1046,7 +1046,8 @@ func sprintLine(ctx context.Context, st *store.Store) string {
 	// reads no cards: the rate is the whole sprint's average, over the epoch's
 	// landings, an archived stream's too (archiving lands nothing)
 	gone, _ := archivedCounts(shapes[0])
-	return strings.TrimSpace(summary(shapes[0], 0, etaMinutes(shapes[0], st.LandingRate(ctx, nil, landed+gone))) + "  " + machine)
+	// counts includes sentinels for backward compatibility in this code path
+	return strings.TrimSpace(summary(shapes[0], landed, all, 0, etaMinutes(landed, all, gone, st.LandingRate(ctx, nil, landed+gone))) + "  " + machine)
 }
 
 // tookSince is " in <duration>": the wall time from the machine's first start

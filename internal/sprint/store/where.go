@@ -32,11 +32,13 @@ const keyWhere = "where" // STRING, the where record (JSON)
 // LandingRate may count from then on (sprint.RecentLandings), in Unix seconds,
 // oldest first.
 type WhereRecord struct {
-	Epoch    uint64                `json:"epoch"`
-	Rev      uint64                `json:"rev"`
-	Held     int                   `json:"held"`
-	Landings []int64               `json:"landings,omitempty"`
-	Critical []sprint.CriticalCard `json:"critical,omitempty"` // the five heaviest (weight.go)
+	Epoch      uint64                `json:"epoch"`
+	Rev        uint64                `json:"rev"`
+	Held       int                   `json:"held"`
+	WorkLanded int64                 `json:"work_landed,omitempty"`
+	WorkAll    int64                 `json:"work_all,omitempty"`
+	Landings   []int64               `json:"landings,omitempty"`
+	Critical   []sprint.CriticalCard `json:"critical,omitempty"` // the five heaviest (weight.go)
 	// Tiers counts every card by its brief's tier, and Streams carries each stream's
 	// tiers, dollars per landed card and spend by tier (sprint.TierCosts, cost_view.go):
 	// counted here from the cards the tick reads, never by where from per-card reads.
@@ -90,11 +92,25 @@ type WhereRecord struct {
 func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 	var landed []time.Time
 	for _, c := range s.Work.Column(sprint.Landed) {
+		if sprint.IsSentinel(c) {
+			continue
+		}
 		if at, err := time.Parse(time.RFC3339, c.F("landed")); err == nil {
 			landed = append(landed, at)
 		}
 	}
-	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), Critical: sprint.Critical(s, 5),
+	// work counts exclude sentinels (cards whose kind is sentinel)
+	var workLanded, workAll int64
+	for _, c := range s.Work.Column(sprint.Ready, sprint.Waiting, sprint.Merging, sprint.Review, sprint.Working, sprint.Landed) {
+		if sprint.IsSentinel(c) {
+			continue
+		}
+		workAll++
+		if c.Col == sprint.Landed {
+			workLanded++
+		}
+	}
+	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), WorkLanded: workLanded, WorkAll: workAll, Critical: sprint.Critical(s, 5),
 		Tiers: sprint.TierCounts(s), Streams: sprint.StreamTierCosts(s), StageTimes: sprint.CycleTimes(s, now), DealtFleet: sprint.FriendsDealtFleet(s),
 		ReadsWaiting: sprint.ReadsWaiting(s), Priorities: sprint.PriorityCounts(s), StreamPriorities: sprint.StreamPriorities(s),
 		ReadsWindow: sprint.ReadsWindowOf(s, m.StoppedBetween)}
@@ -342,12 +358,14 @@ func rttQuantile(samples [][2]int64, q float64) float64 {
 // records (Records: the store keeps them), the held cards, the landing
 // stamps for the rate, and the store round trip the server measured.
 type WhereFacts struct {
-	Records   bool
-	Machine   Machine
-	Heartbeat Heartbeat
-	Held      int
-	Landed    []time.Time
-	Critical  []sprint.CriticalCard // the five heaviest, from the record (weight.go)
+	Records    bool
+	Machine    Machine
+	Heartbeat  Heartbeat
+	Held       int
+	WorkLanded int64
+	WorkAll    int64
+	Landed     []time.Time
+	Critical   []sprint.CriticalCard // the five heaviest, from the record (weight.go)
 	// Tiers and Streams are the record's counts and costs by tier (cost_view.go); nil
 	// without the record.
 	Tiers   map[string]int
@@ -461,6 +479,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			f.RowCards, f.ReadCards = r.RowCards, r.ReadCards
 			f.FixStates = r.FixStates
 			f.RowWorking, f.FleetRev = r.RowWorking, r.FleetRev
+			f.WorkLanded, f.WorkAll = r.WorkLanded, r.WorkAll
 			for _, s := range r.Landings {
 				f.Landed = append(f.Landed, time.Unix(s, 0).UTC())
 			}

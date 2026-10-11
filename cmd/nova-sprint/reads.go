@@ -44,15 +44,16 @@ import (
 // eta is the minutes left (etaMinutes, or the view's held value), 0 when there
 // is no estimate. held is the cards no tick moves on its own (sprint.HeldBack:
 // behind a sentinel not released, or admitted held), shown apart as held=N
-// when there are any, and counted in the ETA.
-func summary(t ntable.Table, held, eta int64) string {
-	line := progress(t)
+// when there are any, and counted in the ETA. landed
+// workLanded and workAll exclude sentinels.
+func summary(t ntable.Table, workLanded, workAll, held, eta int64) string {
+	line := progressOf(workLanded, workAll)
 	if held > 0 {
 		line += fmt.Sprintf(" held=%d", held)
 	}
 	switch {
-	case sprintDone(t):
-		return doneLine(t)
+	case workLanded == workAll && workAll > 0:
+		return progressOf(workLanded+archivedLanded(t), workAll+archivedCards(t)) + " done"
 	case eta >= 24*60:
 		h := (eta + 59) / 60
 		return fmt.Sprintf("%s -> ETA %dd%dh", line, h/24, h%24)
@@ -68,11 +69,10 @@ func summary(t ntable.Table, held, eta int64) string {
 // landed on the table, held ones too, at rate cards an hour; 0 when there is
 // none (fewer than five landed in the epoch, an archived stream's counted, as
 // the rate counts them; nothing left; or no rate).
-func etaMinutes(t ntable.Table, rate float64) int64 {
-	landed, all := counts(t)
-	gone, _ := archivedCounts(t)
-	left := all - landed
-	if rate <= 0 || landed+gone < 5 || left <= 0 {
+// workLanded and workAll exclude sentinels.
+func etaMinutes(workLanded, workAll, workArchived int64, rate float64) int64 {
+	left := workAll - workLanded
+	if rate <= 0 || workLanded+workArchived < 5 || left <= 0 {
 		return 0
 	}
 	return int64(math.Ceil(float64(left) * 60 / rate))
@@ -164,6 +164,16 @@ func counts(t ntable.Table) (landed, all int64) {
 // archivedCounts is the landed and all primaries of the archived streams.
 func archivedCounts(t ntable.Table) (landed, all int64) {
 	return countRows(t, true)
+}
+
+func archivedLanded(t ntable.Table) int64 {
+	l, _ := archivedCounts(t)
+	return l
+}
+
+func archivedCards(t ntable.Table) int64 {
+	_, a := archivedCounts(t)
+	return a
 }
 
 // archivedRow is whether a work row is an archived stream's: hidden (stream
@@ -1231,7 +1241,6 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if v.Epoch == es.N {
 		v.Cleared = es.Cleared
 	}
-	v.Landed, v.All = counts(shapes[0])
 	v.Archived = archivedOf(shapes[0])
 	if v.Archived != nil {
 		v.ArchivedCards, v.ArchivedLanded = v.Archived.Cards, v.Archived.Landed
@@ -1255,6 +1264,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		v.SeatWaits, v.Stops = seatWaitsOf(facts.Stops, now), facts.Stops.Stops
 	}
 	v.Held = int64(facts.Held)
+	v.Landed, v.All = facts.WorkLanded, facts.WorkAll
 	if facts.SeriesCounted {
 		// from the record's landings, no log line read (sprint.LandedSeriesOfLandings)
 		series := sprint.LandedSeriesOfLandings(facts.Series, now)
@@ -1274,11 +1284,14 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		v.StageTimes = &facts.StageTimes
 	}
 	// the rate is the epoch's landings, an archived stream's too: archiving lands nothing
-	rate := sprint.LandingRate(facts.Landed, v.Landed+v.ArchivedLanded, facts.Machine.Spans, facts.Machine.FirstStart(es.Cleared), now)
-	v.Summary = summary(shapes[0], v.Held, a.heldETA(now, etaKey{v.All + v.ArchivedCards, v.Held}, etaMinutes(shapes[0], rate)))
-	if v.Done = sprintDone(shapes[0]); v.Done {
+	// facts.WorkAll excludes sentinels, so the rate is measured over work cards only
+	rate := sprint.LandingRate(facts.Landed, facts.WorkAll, facts.Machine.Spans, facts.Machine.FirstStart(es.Cleared), now)
+	// etaKey uses workAll (excludes sentinels) for correct ETA calculation
+	v.Summary = summary(shapes[0], facts.WorkLanded, facts.WorkAll, v.Held, a.heldETA(now, etaKey{facts.WorkAll + v.ArchivedCards, v.Held}, etaMinutes(facts.WorkLanded, facts.WorkAll, v.ArchivedLanded, rate)))
+	// v.Done: every work card has landed (excludes sentinels)
+	if v.Done = facts.WorkLanded == facts.WorkAll && facts.WorkAll > 0; v.Done {
 		// a sprint done: the headline is the epoch's, as the done line counts it
-		v.Landed, v.All = v.Landed+v.ArchivedLanded, v.All+v.ArchivedCards
+		v.Landed, v.All = facts.WorkLanded+v.ArchivedLanded, facts.WorkAll+v.ArchivedCards
 	}
 	if m := facts.Reset; m != nil {
 		done := v.Done
