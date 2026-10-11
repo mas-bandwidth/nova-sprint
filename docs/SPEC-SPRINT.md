@@ -7087,12 +7087,16 @@ kind that needs a person first: a need dropped (`<n> behind <k> drop-blocked jud
 <age>)`), a need missing, a card in flight held by an open judgment (`<n> behind <card>
 (<judgment type>, <age>)`), a sentinel held or reached and not released, a held card, a stream
 stopped, a tier no route serves, else work in flight; grouped and named by the cards behind
-each, the most first, at most `IdleRoots` (8). When the fleet works at half its width again,
-or no primary waits, the episode ends: both properties are cleared, and when its note was
-pushed a second note says `the fleet is working again` with how long it lasted. One note an
-episode, a clear only after a note (tla/SprintRules.tla, `AlarmOncePerEpisode`,
-`ClearFollowsAlarm`; `TestTheIdleAlarmNamesTheRootsOnceAnEpisode`,
-`TestTheIdleTraceNamesACardAtItsBound`).
+each, the most first, at most `IdleRoots` (8). The episode ends when idle no longer holds,
+and the end's note is chosen by cause (`sprint.idleEnd`). Only the fleet working at half its
+width again is a recovery: both properties are cleared and, when its note was pushed, a
+second note says `the fleet is working again` with how long it lasted. No card waiting, no
+width up (every member down, held or drained), and the fleet's work switched off (`set --fleet off`) end the episode too -- both properties cleared the same way -- and, when its
+note was pushed, one note says `the fleet's idle episode ended` naming the cause: `no card waits`, `no width up: every member is down, held or drained (fleet up <member> --width <n>)`, or `the fleet's work is switched off (set --fleet on)`. One note an episode, a clear
+only after a note (tla/SprintRules.tla, `AlarmOncePerEpisode`, `ClearFollowsAlarm`; the end's
+note chosen by cause leaves the episode machine unchanged, so the model is not edited;
+`TestTheIdleAlarmNamesTheRootsOnceAnEpisode`, `TestTheIdleTraceNamesACardAtItsBound`,
+`TestAnIdleEpisodeEndedByNoWidthNeverSaysWorkingAgain`).
 
 **STOP assignment alerts.** Each tick observes canonical fleet Working and reader
 Reading assignments under the operation fence, including legacy STOP records
