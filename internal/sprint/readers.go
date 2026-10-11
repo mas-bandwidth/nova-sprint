@@ -996,6 +996,7 @@ func ServerRestart(s *Snapshot) Plan {
 }
 
 // RenewReaderLeases renews the lease of every in-flight read on reader to now + DefaultReadLease.
+// tla/ServerLanes.tla Renew.
 func RenewReaderLeases(s *Snapshot, reader string) Plan {
 	var p Plan
 	if s.Readers == nil {
