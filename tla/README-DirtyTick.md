@@ -113,7 +113,7 @@ Each witness turns on one broken rule (`Broken`); its control is the unbroken co
 | W12 | only an outside entry starts a tick | `WorkNotStranded` | 21 |
 | W13 | readers and fleet queue an entry to each other on every run | `TickBounded` | 118 |
 | W14 | a note at every tick end | `NoWakeIfNothing` | 16 |
-| W15 | the deal ignores width | `HoldRespected` | 128 |
+| W15 | the deal ignores width | `HoldRespected` | 7 |
 | G1, G1Live | the shape without `seefleet` | `TickBounded`, `Terminates` | 115, 140 |
 | G2 | the shape without `pendingroom` | `HoldRespected` | 8 |
 | G3 | R10 as v2.1 writes it | `WorkChangesOnlyInPump` | 4 |
