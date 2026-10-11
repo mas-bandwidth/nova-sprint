@@ -66,7 +66,7 @@ func init() {
 		{"goal set", "<name> [--file <path>] [--to file:<path>]", "goal set friend-a --file goal-a.txt --to file:/tmp/reminder-a.txt", (*app).cmdGoalSet},
 		{"goal show", "[<name>]", "goal show friend-a", (*app).cmdGoalShow},
 		{"goal drop", "<name>", "goal drop friend-a", (*app).cmdGoalDrop},
-		{"take", "--as <member> [<card>@<gen>...] [--epoch <n>] [--max <n>] | --as <member> --lane <n>", "take --as m1 s1-1.w1@1 --epoch 0", (*app).cmdTake},
+		{"take", "--as <member> [<card>@<gen>...] [--epoch <n>] [--max <n>] [--lane <n>]", "take --as m1 s1-1.w1@1 --epoch 0", (*app).cmdTake},
 		{"finish", "--as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--usage <text>] [--lane <n>]", "finish --as m1 s1-1.w1@1 --epoch 0 --head 9f3c2e1 --report 'tests green'", (*app).cmdFinish},
 		{"progress", "--as <worker> <card>[@<gen>]... --epoch <n> [--lane <n>]", "progress --as m1 s1-1.w1@1 --epoch 0", (*app).cmdProgress},
 		{"ask", "[<id>... | --group <id> [--expect <n>]] [--stream <s>] [--max <n>] [--another] [--answers <note>]", "ask", (*app).cmdAsk},
@@ -303,6 +303,10 @@ name it for every card; a card named without one is refused, naming the live
 generation, and a generation that is not the live one is refused as stale.
 take with no card takes the member's oldest ready cards (--max n, default 1)
 and prints each one's generation.
+take --as friend.<name> <card>@<gen> is her lane's take with the card named
+(--lane <n> records the lane; omitted, no lane holds it): it starts the card
+as her lane's take does, so the tick never puts it back ready. A member's take
+by id is unchanged, and a member names no lane with it.
 
 ` + inboxExample + `
 ` + machineWords() + `
@@ -2377,7 +2381,7 @@ func cardGens(words []string) ([]string, map[string]int, error) {
 func (a *app) cmdTake(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("take")
 	as := fs.String("as", "", "the fleet member taking its cards; several, comma separated, each take from their own ready queue in one step")
-	lane := fs.Int("lane", 0, "a lane's take: the card lane n of the member's row holds on the server, else one given it now (a working card no lane holds, else its next ready card); names no card, no --max and no --epoch: the server picks the epoch and says it on the LANE line")
+	lane := fs.Int("lane", 0, "a lane's take: the card lane n of the member's row holds on the server, else one given it now (a working card no lane holds, else its next ready card); names no card, no --max and no --epoch unless a friend names her cards by id (take --as friend.<name> <card>@<gen> --lane <n>), when the lane is recorded and the take is her lane's own move")
 	var limit int
 	bindCapAlias(fs, "listed items of each kind (0 is all); when given, the first n of its ready queue (omitted, 1); with several members, n of each")
 	words, err := parse(fs, args)
@@ -2389,8 +2393,11 @@ func (a *app) cmdTake(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "take", err.Error())
 	}
-	if *lane != 0 && (*lane < 0 || *as == "" || len(ids) > 0 || strings.Contains(*as, ",")) {
-		return refuse(stderr, "take", "a lane's take names its member and its lane and nothing else: take --as <member> --lane <n>, n from 1")
+	if *lane != 0 && (*lane < 0 || *as == "" || strings.Contains(*as, ",")) {
+		return refuse(stderr, "take", "a lane's take names its member and its lane (and, for a friend, the cards by id): take --as <member> --lane <n> [<card>@<gen>...], n from 1")
+	}
+	if *lane != 0 && len(ids) > 0 && !sprint.IsFriendRow(*as) {
+		return refuse(stderr, "take", "a member's take by id names no lane: take --as <member> <card>@<gen>; a lane is a friend's")
 	}
 	if *as == "" || len(gens) != len(ids) {
 		return refuse(stderr, "take", "wants --as <member>, and every card named as <card>@<gen>, the generation from queue --as <member>")
@@ -2400,7 +2407,7 @@ func (a *app) cmdTake(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "take", err.Error())
 	}
-	if *lane > 0 {
+	if *lane > 0 && len(ids) == 0 {
 		return a.laneTake(*c, st, *as, *lane, stdout, stderr)
 	}
 	name := "take"
@@ -2430,12 +2437,35 @@ func (a *app) cmdTake(args []string, stdout, stderr io.Writer) int {
 		ps, _ := st.Packets(ctx, mine)
 		return ps
 	}
+	// a friend's take by id says a LANE line per card it moved, the same line a lane's take
+	// says (docs/SPEC-SPRINT.md, take): the by-id and by-lane forms of the verb report the
+	// same way. A member's take by id is unchanged and says no LANE line.
+	friendByID := len(ids) > 0 && sprint.IsFriendRow(*as)
+	if friendByID {
+		namedIDs, laneN := append([]string(nil), ids...), *lane
+		c.after = func(ctx context.Context, st *store.Store, res store.Result) []string {
+			moved := map[string]bool{}
+			for _, m := range res.Moved {
+				if f := strings.Fields(m); len(f) > 0 {
+					moved[f[0]] = true
+				}
+			}
+			var out []string
+			for _, id := range namedIDs {
+				if moved[id] {
+					out = append(out, namedLaneLine(ctx, st, *as, laneN, uint64(c.epoch), id))
+				}
+			}
+			return out
+		}
+	}
 	if len(ids) == 0 && limit >= 0 {
 		c.after = func(ctx context.Context, st *store.Store, res store.Result) []string {
 			return takeShort(ctx, st, res, members, max(limit, 1))
 		}
 	}
-	return a.runStep(name, *c, st, store.TakeStep(sprint.TakeReq{Sel: sprint.Sel{IDs: ids, Limit: limit}, As: *as, Gens: gens, Who: *as}), stdout, stderr)
+	req := sprint.TakeReq{Sel: sprint.Sel{IDs: ids, Limit: limit}, As: *as, Gens: gens, Who: *as, Lane: *lane, LaneByID: friendByID}
+	return a.runStep(name, *c, st, store.TakeStep(req), stdout, stderr)
 }
 
 // takeShort is why a take by count took fewer than asked, one line per member
