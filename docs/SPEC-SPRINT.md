@@ -612,7 +612,14 @@ cards wait ready, and the refusal names why), within her lanes (her width, in ei
 carries her deadline (`friendTaken`). A card on another row is refused (`not in
 friend.<name> ready`), a friend not on the roster is refused (`no friend
 <name> on the roster`), and a count take that took fewer than asked says
-why on a NOTE line. The server runs her verbs as `friend.<name>` (the HTTP form,
+why on a NOTE line. A lane of hers (`take --as friend.<name> --lane <n>`) takes
+in rank order: the one order the deal fills her dealt set in (`friendDealtOrder`,
+`FriendLaneOrder`: the priority ladder, then the stream turns, then work order
+within a stream), so a `rank <card> --first` card leads its stream and a
+`critical` card outranks a lower one however late it was dealt; the `LANE` line
+prints the held card's position in the deal's own order (`FriendLaneOrder`),
+not its position in the take, which reads a work card's primary for its current
+level and may move on a new level before the next deal catches the note up. The server runs her verbs as `friend.<name>` (the HTTP form,
 her bus login, no store address of hers: `workerVerb` takes `friend.<name>` as a
 worker's name beside a member's). A card on her row never sits ready with no one
 to take it: her start takes it into working (a friend's card is working once
@@ -2389,7 +2396,11 @@ except by the coordinator.
 A score is given once, at admission. Work cards, read cards and the merge place
 copy it. No move changes it. A reworked primary therefore sits ahead of the
 primaries admitted after it. Only `rank` changes a score, every copy with it,
-and it is the coordinator's decision, receipted.
+and it is the coordinator's decision, receipted. A friend's lane takes her dealt
+set in the deal's own order — the priority ladder, then the stream turns, then
+work order within a stream (`friendDealtOrder`, `FriendLaneOrder`) — never the
+order the cards were dealt in, so a card brought to the front of its stream by
+`rank --first` is the lane's next card.
 
 ## 5. The fleet
 

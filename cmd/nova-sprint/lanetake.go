@@ -18,7 +18,7 @@ import (
 // step as stale, and the lane asks again). After the step the server's own record is read
 // and said on one line, whatever the step moved:
 //
-//	LANE <member> lane=<n> epoch=<e> holds=<card>@<gen> kind=<work|read> job=<job>
+//	LANE <member> lane=<n> epoch=<e> holds=<card>@<gen> rank=<d> kind=<work|read> job=<job>
 //	LANE <member> lane=<n> epoch=<e> holds=-
 //
 // job is the card's job as a friend's daemon names it (<id>~<epoch>, .g<gen> from the second
@@ -79,7 +79,19 @@ func laneLine(ctx context.Context, st *store.Store, as string, lane int, epoch u
 	if _, ok := sprint.ReaderMachine(as); ok {
 		kind = "read"
 	}
-	return fmt.Sprintf("%s holds=%s@%d kind=%s job=%s", head, x.ID, gen, kind, job)
+	// the card's rank position: its place in the order the deal fills her dealt set
+	// (sprint.FriendLaneOrder). This is the deal's order; a lane's take follows the same
+	// function, reading a work card's primary for its current ladder level, so after a
+	// priority change the take may move on the new level while this note prints the deal's
+	// order (docs/SPEC-SPRINT.md, rank and take)
+	rank := 0
+	for i, c := range sprint.FriendLaneOrder(cs) {
+		if c.ID == x.ID {
+			rank = i + 1
+			break
+		}
+	}
+	return fmt.Sprintf("%s holds=%s@%d rank=%d kind=%s job=%s", head, x.ID, gen, rank, kind, job)
 }
 
 // laneCells is where a lane of as holds its card: a reader's reading cell on the readers

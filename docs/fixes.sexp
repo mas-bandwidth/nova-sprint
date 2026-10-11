@@ -1385,4 +1385,26 @@
   (fix "friend-give-and-take-say-what-they-mark" :release "v1.2.14" :status "planned"
    :title "friend give hands a named card, and take says the mark it writes"
    :text "friend take --all-unstarted wrote a mark it did not print (taken_from: not dealt to that friend again until friend give) and printed only FRIEND-TAKE OK moved=<n>, so a row that went quiet said nothing; and friend give was only the undo of the mark, so the seat had no verb to hand a named ready card to a friend and the deal drew the queue head instead. FriendTake now appends to each taken card's line \"<id>: back to ready, not dealt to <friend> again until friend give\" (not for the hold, which keeps no card) and plans a summary counting them (marked=<n>, a said line); FriendGive, on a ready card never taken back and never dealt, hands it to the friend named -- the deal's own unit, the work card placed on her fleet row at once with its primary working -- says \"<id>: handed to <friend>\", and clears the mark of a card taken back as it did, the deal filling the rest. A card not ready, one whose tier her row does not serve, and one whose needs have not landed are refused naming why. help friend says take is take back and mark and give is hand or unmark, and the SPEC and FRIENDS docs say the seat hands a named card and the deal fills the rest."
-   :origin "this card: friend-give-and-take-say-what-they-mark.w1; the owner, 2026-10-11 ~11:15-11:40 AM ET, driving the coordinator's own friend lane (a 32-card take-back left the row quiet for 10 minutes and five cards could not be put there); code read at nova-sprint main 1405d26")))
+   :origin "this card: friend-give-and-take-say-what-they-mark.w1; the owner, 2026-10-11 ~11:15-11:40 AM ET, driving the coordinator's own friend lane (a 32-card take-back left the row quiet for 10 minutes and five cards could not be put there); code read at nova-sprint main 1405d26")
+
+  (fix "a-lane-take-honours-the-rank" :release "v1.2.14" :status "planned"
+   :title "A lane take honours the rank"
+   :text "rank <id> --first moves a card to the front of its stream's line and the deal fills a
+    friend's dealt set in that order (the priority ladder, then the stream turns, then work order
+    within a stream), but take --as <friend> --lane <n> drew the lane's next ready card in
+    takeTurns order, which orders by stream name and inside a stream by score and ignores the
+    priority ladder, so a critical card dealt last was passed over and a card a later stream's
+    lane take never saw the deal's own order. A new friendDealtOrder is the one order a friend's
+    dealt set is filled and taken in (the ladder by a card's rank, then the stream turns over a
+    card's stream field, then SortCards within a stream), used by the friend deal pass
+    (friendDealPass) and by a friend's take (takeOne, through s.friendWorkRank, which reads the
+    primary's current level so a priority change after the deal is honoured too); FriendLaneOrder
+    is its exported face and the LANE line prints the held card's position in the deal's order.
+    The member take is unchanged. Reproduced on BASE: a critical card dealt last, a rank --first
+    card passed over by a critical one, and a critical card of a later stream all sat while an
+    earlier normal card was taken."
+   :origin "this card: a-lane-take-honours-the-rank.w4; the owner driving the coordinator's own
+    friend lane by hand from the seat on 2026-10-11 ~11:15-11:40 AM ET (\"How can we distribute
+    work to friends, if you can't even distribute it to yourself?\" / \"Make these fixes
+    critical.\"); five ranked-first cards sat while lanes started lower-ranked ones; code read at
+    nova-sprint main 1405d26")))
