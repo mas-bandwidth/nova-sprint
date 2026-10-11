@@ -976,6 +976,19 @@
    :text "The live manifest read only ~/Library/LaunchAgents, so a Linux host refused with no agents directory and a loop installed as a system LaunchDaemon was never listed. live now reads the nova-loop-*.service systemd units of the user and system unit directories on Linux, each an interval agent when a .timer sits beside it, and, on macOS, the com.nova.* launchd daemons of /Library/LaunchDaemons too; each agent records its manager (launchd or systemd)."
    :origin "this card")
 
+  (fix "hook-finds-the-server-itself" :release "v1.2.11" :status "planned"
+   :title "The hook and the coordinator's verbs find the server the seat's record names"
+   :text "app.server (cmd/nova-sprint/forward.go) read only NOVA_SPRINT_SERVER, so a seat
+    installed with `seat install --server <host:port>` still had to export the variable by
+    hand before `hook` or any coordinator verb would run; every other seat verb answered
+    'You must hook in first'. When the environment names no server, app.server now uses the
+    server the seat's record names (a.seatServer), in the same order seat check already used
+    (machinery.go). A process that is the server, or a verb given its own --redis, still
+    returns none. hook prints the server it used and where it came from
+    (server=<host:port> from=env | from=seat-record), and when neither source names one the
+    refusal names both and the commands that set one."
+   :origin "the seat, 2026-10-11 ~03:19Z: the seat hook proved only with NOVA_SPRINT_SERVER=127.0.0.1:6390 set by hand")
+
   (fix "no-deal-to-a-draining-member" :release "v1.2.10" :status "shipped"
    :title "No deal to a draining member; a held or draining machine's reader is asked nothing"
    :origin "PR #84")

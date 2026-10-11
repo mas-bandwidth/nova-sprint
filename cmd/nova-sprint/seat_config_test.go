@@ -119,6 +119,11 @@ func TestSeatInstallWritesTheConfigSeatProfile(t *testing.T) {
 	cold := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": "coordinator", "XDG_CONFIG_HOME": cfg}
 	ta.a.getenv = func(k string) string { return cold[k] }
 	ta.a.seatLoginOn()
+	// this measures the seat check machinery itself, the server's own check: with the
+	// fix a coordinator's seat check is sent to the server the seat's record names
+	// (forward.go, server), so the app under test is the server (a.serveAddr set) and
+	// the check runs here.
+	ta.a.serveAddr = "mem:0"
 	o := mockHealthyOutside()
 	envServer := "" // NOVA_SPRINT_SERVER as the check reads it; set in the environment, the verb would go to that server
 	o.serverAddr = func() (string, bool) { return envServer, false }
