@@ -210,8 +210,12 @@ func runBackup(ctx context.Context, src store.SnapshotSource, twin store.Snapsho
 
 // verifyBackup restores the bytes into the twin and compares them with the
 // store's: the counts, and at the semantic level the sprint state and the
-// document. It returns the counts and what was compared, or the step that
-// failed, worded to follow "the backup <path>".
+// document. The state check is the live one (store.SemanticRestore): the dump
+// and the state are two reads of a store a running fleet keeps writing to, so
+// a member's beat between them is not a difference, while a held status, a
+// missing row or a changed card is (docs/SPEC-SPRINT.md, sprint-backup-verb).
+// It returns the counts and what was compared, or the step that failed, worded
+// to follow "the backup <path>".
 func verifyBackup(ctx context.Context, twin store.SnapshotTwin, level string, live store.SnapshotCounts, state store.SprintState, b []byte) (store.SnapshotCounts, string, error) {
 	got, err := twin.Load(b)
 	if err != nil {
