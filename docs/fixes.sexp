@@ -1385,4 +1385,18 @@
   (fix "friend-give-and-take-say-what-they-mark" :release "v1.2.14" :status "planned"
    :title "friend give hands a named card, and take says the mark it writes"
    :text "friend take --all-unstarted wrote a mark it did not print (taken_from: not dealt to that friend again until friend give) and printed only FRIEND-TAKE OK moved=<n>, so a row that went quiet said nothing; and friend give was only the undo of the mark, so the seat had no verb to hand a named ready card to a friend and the deal drew the queue head instead. FriendTake now appends to each taken card's line \"<id>: back to ready, not dealt to <friend> again until friend give\" (not for the hold, which keeps no card) and plans a summary counting them (marked=<n>, a said line); FriendGive, on a ready card never taken back and never dealt, hands it to the friend named -- the deal's own unit, the work card placed on her fleet row at once with its primary working -- says \"<id>: handed to <friend>\", and clears the mark of a card taken back as it did, the deal filling the rest. A card not ready, one whose tier her row does not serve, and one whose needs have not landed are refused naming why. help friend says take is take back and mark and give is hand or unmark, and the SPEC and FRIENDS docs say the seat hands a named card and the deal fills the rest."
-   :origin "this card: friend-give-and-take-say-what-they-mark.w1; the owner, 2026-10-11 ~11:15-11:40 AM ET, driving the coordinator's own friend lane (a 32-card take-back left the row quiet for 10 minutes and five cards could not be put there); code read at nova-sprint main 1405d26")))
+   :origin "this card: friend-give-and-take-say-what-they-mark.w1; the owner, 2026-10-11 ~11:15-11:40 AM ET, driving the coordinator's own friend lane (a 32-card take-back left the row quiet for 10 minutes and five cards could not be put there); code read at nova-sprint main 1405d26")
+   (fix "a-backoff-withdrawal-writes-no-note-per-card" :release "v1.2.14" :status "planned"
+    :title "A rate-limit backoff withdrawal writes no note per card"
+    :text "A rate-limit backoff is a rest the deal withdraws the ready cards it holds from
+     (restWithdrawals, Cause RestRateBackoff), but the backoff already notes itself once per new
+     end (restWrites, the one happened note \"rate-limit backoff of <d> on <route>, until <t>\").
+     The withdrawal added one NRestWithdrawn note per card, so one backoff on a route with N ready
+     cards drowned its own note under N more. restWithdrawals now drops the NRestWithdrawn note
+     from the unit it builds when the rest's cause is RestRateBackoff (filtering the unit's Notes);
+     the withdrawal, its Moved words and its unspent redeal are unchanged, and a 5xx rest still
+     notes each withdrawn card as before (tla/RateBackoff.tla; docs/SPEC-SPRINT.md section 5, the
+     deal). Tests TestABackoffWithdrawalWritesNoNotePerCard and
+     TestAFiveHundredsRestWithdrawalStillNotesEachCard."
+    :origin "follow-up 4 of tmp/next-sprint-cards/rate-limit-followups.md, the second cold read of
+     nova-sprint PR #86, 2026-10-11; checked against PR #86's head a1c51ee and main 00c54ba")))
