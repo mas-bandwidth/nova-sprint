@@ -221,6 +221,10 @@ MCLandBrokenNoCheckReads.cfg	MCLand.tla	invariant	NoLandWithoutReads	ignore-term
 MCLandBrokenBounceMarked.cfg	MCLand.tla	action	PushedNeverSentBack	ignore-terminal	land	required	-
 MCLandReachShortBack.cfg	MCLand.tla	invariant	ReachShortBack	ignore-terminal	land	required	-
 MCLandBrokenOfferRefused.cfg	MCLand.tla	invariant	NoOfferAtRefusedHead	ignore-terminal	land	required	-
+MCLandBound.cfg	MCLandBound.tla	pass	-	ignore-terminal	land	required	-
+MCLandBoundBrokenNoWidenCap.cfg	MCLandBound.tla	invariant	AttemptsBounded	ignore-terminal	land	required	-
+MCLandBoundBrokenNoSameFinding.cfg	MCLandBound.tla	invariant	SameRefusalHalts	ignore-terminal	land	required	-
+MCLandBoundReachWidenLands.cfg	MCLandBound.tla	invariant	ReachWidenLands	ignore-terminal	land	required	-
 MCSprintEventsC30.cfg	MCSprintEvents.tla	pass	-	ignore-terminal	sprintevents-controls-b	required	-
 MCSprintEventsW30.cfg	MCSprintEvents.tla	action	NextNotReached	ignore-terminal	sprintevents-witnesses-b	required	-
 MCLevel.cfg	MCLevel.tla	pass	-	ignore-terminal	level	required	-
@@ -401,3 +405,4 @@ MCSeatHookBrokenNoAck.cfg	MCSeatHook.tla	invariant	AckedOrBlocking	ignore-termin
 MCSeatHookBrokenNoMiss.cfg	MCSeatHook.tla	invariant	CommandSafe	ignore-terminal	seathook	required	-
 MCSeatHookBrokenSilentDrop.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-terminal	seathook	required	-
 MCSeatHookBrokenStrictCadence.cfg	MCSeatHook.tla	temporal	HookStays	ignore-terminal	seathook	required	-
+MCStopReturnBrokenNoSettleByBeat.cfg	MCStopReturn.tla	temporal	AbsentJobSettles	ignore-terminal	stopreturn	required	-

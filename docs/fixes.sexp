@@ -291,7 +291,11 @@
    :origin "the Studio sprint, epoch 16, 2026-10-10: merging stood at 15 to 21 cards with none landed in 30
     minutes, every second card refused on FIXES.md and docs/fixes.sexp and reworked at the tip")
 
-  (fix "land-refused-head-never-reoffered" :release "v1.2.6" :status "shipped"
+   (fix "dashboard-empty-and-stopped-states" :release "v1.2.6" :status "shipped"
+    :title "Cost breakdown empty state, landed tile text, and stopped dot red"
+    :text "When the epoch has no spend, the cost breakdown table keeps its header and shows three empty rows with \"-\" in each cell, instead of showing prose. When landed is 0 of 0, the landed tile reads \"nothing complete\" instead of \"- complete\". When the machine is STOPPED, the Updated clock dot is red (the stopped class) instead of green (the ok class). The fix preserves the stopped state across the setLive call that updates the clock."
+    :origin "seat fix, 2026-10-10")
+   (fix "land-refused-head-never-reoffered" :release "v1.2.6" :status "shipped"
    :title "A head the landing refused is never offered to accept again; a ledger conflict is no brief defect"
    :text "A card whose head the landing refused keeps that head (land_refused_head), and while it is still
     its head no step raises ready to accept on it: at the brief's bound the card is in review with the
@@ -597,4 +601,44 @@
     cleared, and on a new member runs its own probe before accepting width (init bootstraps by passing
     the probe). Modeled by tla/ProviderBudget.tla."
    :origin "sprint card a-member-environment-fault-holds-it-and-pushes-the-seat; the owner, 2026-10-11Z:
-    the failure here is not noticing this until now; attempts 3, 5 and 8")))
+    the failure here is not noticing this until now; attempts 3, 5 and 8")
+
+  (fix "readers-behind-judgment-once" :release "v1.2.9" :status "planned"
+   :title "A standing judgment is one judgment, pushed once while it holds"
+   :text "A standing condition is one judgment, keyed by its type and subject, rewritten in place while
+    it holds and pushed again only when its own numbers move. The readers-are-behind judgment is keyed
+    by type and subject (condKey, NReadersBehind), but its rewrite test compared the whole line,
+    review's count included, and review moves every tick as cards flow through it: the tick rewrote and
+    pushed the one judgment every tick while the readers' numbers held (dogfood 2026-10-10: j407, j409,
+    j410 within a minute). notify now compares a material: for the readers behind, the readers' own
+    numbers, never review's count (MaterialWhat, readers_behind.go), so the judgment is pushed once when
+    it rises, again when the readers move, and not for review."
+   :origin "dogfood 2026-10-10 evening: fleet-only restart; j407, j409, j410 within a minute")
+
+  (fix "server-build-descends-from-base" :release "v1.2.6" :status "in-progress"
+   :title "A sprint server build must descend from the origin base"
+   :text "server switch refuses a build that does not descend from the origin base, so an off-base build
+    cannot become the server."
+   :origin "nova-sprint commit 9338f08 (not carried by the re-seed, nova-sprint PR #28)")
+   (fix "widen-loop-capped" :release "v1.2.6" :status "shipped"
+    :title "The widen loop is capped: every widen counts toward the brief's bound"
+    :text "A card whose heads keep naming files outside its PATHS was widened and redealt without end: the
+     E12 branch of the merge step skipped the brief's bound, and the widen rule's brief edit reset the
+     attempts the bound counts. Now one widen count (FieldWidens, shared by the read-broken and widen
+     rules) caps every widen, and the merge step checks the brief's bound before its E12 branch, so a
+     card widened MaxWidens (3) times, or refused for files outside PATHS at its brief's bound, goes back
+     to review as the brief is wrong, a mind's, never widened again. TLA+ model Land, properties
+     AttemptsBounded, SameRefusalHalts and Settles, with the reversed witness ReachWidenLands."
+    :origin "nova-sprint #64; the seat ledger v1.2.4-held-2026-10-10.md (the ejection-bound audit of 2026-10-10)")
+  (fix "stop-debt-settles-from-the-members-beat" :release "v1.2.6" :status "shipped"
+   :title "STOP debt settles from the owner's beat, so START never waits on its receipt"
+   :text "After a STOP the server settles each owed lease whose owner has beaten since the STOP and whose
+    beat no longer names the job, returning the card with a recorded reason, so START never waits on the
+    owner's own stop-return receipt. A friend's beat names the jobs she runs: a lease whose job it still
+    names stays owed, one it no longer names is settled. A machine's beat names no job; its stop-returns
+    count is its word how many its lanes still owe, so a machine lease (a reader machine's too) is settled
+    at zero and stays owed above zero. An owner that has not beaten since the STOP is reported to the seat
+    in a judgment. TLA+ model StopReturn, property AbsentJobSettles, with the reversed witness
+    nosettlebybeat; the model's Beat is drop-only while STOPPED, so a job a stopped owner's beat shows gone
+    stays gone."
+   :origin "the seat, 2026-10-10: START refused on 33 fleet jobs whose members never sent stop-return receipts")))

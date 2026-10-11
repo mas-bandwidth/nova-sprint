@@ -157,10 +157,33 @@ func (b ReadersLag) What() string {
 		}
 		parts = append(parts, p)
 	}
-	// the window, never a wait: the text changes with the facts, not the clock, so the tick
-	// rewrites it only when the facts change (notify, update)
+	// the window, never a wait: the text changes with the facts, not the clock; the review
+	// count moves every tick, so the rewrite test is MaterialWhat, not this line (notify)
 	return fmt.Sprintf("the readers are behind: review %d, reads asked and not begun past %s; the readers read %d of width %d (%s)",
 		b.Review, ReadersWindow, reading, width, strings.Join(parts, "; "))
+}
+
+// MaterialWhat is what must differ for the tick to rewrite an open judgment in place:
+// for the readers behind, the readers' own numbers, never review's count. Review moves
+// every tick as cards flow through it, so comparing the whole line would rewrite the
+// one standing judgment every tick and push it again (notify, update): the judgment is
+// written once when it rises, and again only when the readers move (docs/SPEC-SPRINT.md,
+// "the readers are behind": one for the sprint, keyed by its type and subject, rewritten
+// in place only when the readers' numbers move; the owner, 2026-10-10: j407, j409, j410
+// within a minute while the condition held unchanged). Every other type's line is its
+// material: return it as it is.
+func MaterialWhat(typ, what string) string {
+	if typ != NReadersBehind {
+		return what
+	}
+	i := strings.Index(what, "review ")
+	if i < 0 {
+		return what
+	}
+	if j := strings.Index(what[i:], ", "); j >= 0 {
+		return what[:i] + what[i+j+2:]
+	}
+	return what
 }
 
 // Decisions are the judgment's: reader up for each reader not up that holds reads, a

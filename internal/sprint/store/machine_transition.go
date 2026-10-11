@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,6 +18,15 @@ import (
 // cannot commit afterward using its old read. A repeated STOP and a START also
 // re-read the machine under this lock, never overwriting a newer stop reason.
 func (st *Store) machineTransition(ctx context.Context, running bool, who, reason string, until time.Time) (before, after Machine, changed bool, err error) {
+	if running {
+		// Settle owed leases whose owner's beat after the STOP no longer names
+		// the job (a friend) or whose owner owes no stop-returns (a machine),
+		// before the START fence re-reads the debt (tla/StopReturn.tla
+		// SettleByBeat), so START never waits on a member's own receipt.
+		if err := st.settleStopDebtByBeat(ctx); err != nil {
+			return before, after, false, err
+		}
+	}
 	pinned, err := st.pin(ctx)
 	if err != nil {
 		return before, after, false, err
@@ -225,6 +235,102 @@ func (st *Store) settleStopDebt(ctx context.Context) error {
 		return errors.Join(err, pinned.B.Release(context.WithoutCancel(ctx), lock, false))
 	}
 	return fmt.Errorf("stop-return settle: the sprint kept changing under it (%d tries); the return is recorded on its card and START still accepts it; run the stop-return again to settle it", r.tries)
+}
+
+// stopLeaseOwner is the member whose beat speaks for a STOP lease: a fleet
+// friend row's friend, a machine's own fleet row, or a readers row's reader
+// machine (reader-<m>). friend is false for the machine rows, whose beat names
+// no job and carries its stop-returns count instead.
+func stopLeaseOwner(d StopLease) (owner string, friend bool) {
+	if d.Table == sprint.Fleet {
+		if name, ok := sprint.FriendOfRow(d.Row); ok {
+			return name, true
+		}
+		return d.Row, false
+	}
+	return strings.TrimPrefix(d.Row, sprint.ReaderPrefix), false
+}
+
+// settleStopDebtByBeat returns every owed lease whose owner has beaten since
+// the STOP and whose beat shows the job gone, without waiting for the owner's
+// own stop-return receipt (tla/StopReturn.tla SettleByBeat). A friend's beat
+// names the jobs she runs (sprint.FriendBeatNamesJob): a lease whose job the
+// beat still names stays owed, and one the beat no longer names is settled. A
+// machine's beat names no job; its stop-returns count is its word how many its
+// lanes still owe (sprint.Beat.StopReturns), so a machine lease stays owed
+// while the count is above zero and is settled at zero, a reader machine's
+// readers-table lease the same. The card is returned with a recorded reason (a
+// stop-return whose after hook settles the lease off the machine record,
+// settleStopDebt). An owner that has not beaten since the STOP keeps its lease
+// owed and is reported to the seat in a judgment. It runs on START, before the
+// machine record's debt check, so START never waits on a member's own receipt.
+func (st *Store) settleStopDebtByBeat(ctx context.Context) error {
+	m, _, err := st.Machine(ctx)
+	if err != nil {
+		return err
+	}
+	if m.Running() || !m.StopIssued || len(m.StopDebt) == 0 {
+		return nil
+	}
+	s, err := st.Load(ctx, tables(sprint.Fleet, sprint.Readers), nil)
+	if err != nil {
+		return err
+	}
+	var settle []StopLease
+	var reported []string
+	for _, d := range m.StopDebt {
+		owner, friend := stopLeaseOwner(d)
+		var b sprint.Beat
+		if friend {
+			if b, err = st.FriendBeatOf(ctx, owner); err != nil {
+				return err
+			}
+		} else {
+			var mbs map[string]sprint.Beat
+			if mbs, err = st.Beats(ctx, []string{owner}); err != nil {
+				return err
+			}
+			b = mbs[owner]
+		}
+		if !b.Beaten() || !b.At.After(m.Since) {
+			reported = append(reported, d.Row)
+			continue
+		}
+		if friend {
+			if c := s.Fleet.Card(d.ID); c != nil && sprint.FriendBeatNamesJob(b, c, s.Epoch) {
+				continue // the beat still names the job: it stays owed until the owner returns it
+			}
+		} else if b.StopReturns > 0 {
+			continue // a machine's beat names no job: its count above zero stays owed until it returns them
+		}
+		settle = append(settle, d)
+	}
+	for _, d := range settle {
+		if _, err := st.Run(ctx, StopReturnStep(sprint.StopReturnReq{
+			As:     d.Row,
+			IDs:    []string{d.ID},
+			Gens:   map[string]int{d.ID: d.Gen},
+			Reason: "the owner's beat after the STOP no longer names it",
+		})); err != nil {
+			return err
+		}
+	}
+	if len(reported) > 0 {
+		slices.Sort(reported)
+		_, err := st.Run(ctx, Step{Verb: "tick stop debt beat", Actor: sprint.MachineActor,
+			Plan: func(s *sprint.Snapshot) sprint.Plan {
+				n := sprint.Note{Kind: sprint.Judgment, Type: sprint.NStopDebtBeat, Primaries: append([]string(nil), reported...), Count: len(reported),
+					Who: sprint.MachineActor, At: s.Now, Marked: true,
+					Decisions: append([]string(nil), sprint.Decisions[sprint.NStopDebtBeat]...),
+					What:      fmt.Sprintf("STOP debt: %s have not beaten since the STOP, so their leases stay owed until they stop-return them", strings.Join(reported, ", ")),
+					Hint:      "run: nova-sprint stop-return --as <owner> <card>@<gen> --reason '<observed child exit>'"}
+				return sprint.Plan{Notes: []sprint.Note{n}}
+			}})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // stopWithCause serializes the tick's DONE and funds stops with a manual STOP.
