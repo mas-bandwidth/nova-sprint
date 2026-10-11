@@ -199,6 +199,14 @@
     say a key rest ends only by routes wake, never by funded or a payment, and a test shows a balance poll
     cannot end one."
    :origin "readers' notes on nova-sprint PR #49 and PR #50")
+  (fix "hook-stays-live-while-its-rechallenge-is-in-bound" :release "v1.2.14" :status "planned"
+   :title "A hook stays live while its re-challenge is in bound"
+   :text "The record's Live was the proof's bound alone, so a seat answering in time was refused
+    HookFirst between the proof's Live and a re-challenge's own bound whenever a slow look sent the
+    challenge late. The server now moves Live to the re-challenge's own bound through the record's
+    one writer; a write that fails keeps the earlier bound (the safe side) and says so on the
+    server's line. Test: TestARechallengeKeepsTheHookLiveUntilItsOwnBound."
+   :origin "v1.2.12 inventory 2026-10-11, section 9 row D6; code read at nova-sprint main 00c54ba")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose

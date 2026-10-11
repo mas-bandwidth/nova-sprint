@@ -67,9 +67,10 @@ type HookRecord struct {
 }
 
 // HookLive says the record holds a live, proven hook for name at now: hooked, proven
-// over its subscription, and within its challenge's bound (SeatHook.tla, Gate:
-// rec.state = "hooked", rec.proven, ~lateC). A server that died leaves its record
-// hooked, and the bound lapses it.
+// over its subscription, and within the outstanding challenge's bound (SeatHook.tla,
+// Gate: rec.state = "hooked", rec.proven, ~lateC). Live is that bound: the proof's plus
+// HookEvery + HookAnswerBound, moved to a re-challenge's own bound when one is sent. A
+// server that died leaves its record hooked, and the bound lapses it.
 func HookLive(rec HookRecord, ok bool, name string, now time.Time) bool {
 	return ok && name != "" && rec.Name == name && rec.State == HookHooked && rec.Session != "" &&
 		!rec.Proven.IsZero() && !rec.Live.IsZero() && !now.After(rec.Live)
@@ -97,7 +98,9 @@ func HookUnacked(o HookItem, unacked int) string {
 }
 
 // HookProven is the record after the session answered the outstanding challenge at
-// now: proven, and live until the next challenge's bound (SeatHook.tla, Prove).
+// now: proven, and live until the outstanding challenge's bound (SeatHook.tla, Prove):
+// the proof's plus HookEvery + HookAnswerBound, moved to a re-challenge's own bound
+// when one is sent.
 func HookProven(rec HookRecord, now time.Time) HookRecord {
 	rec.Proven = now
 	rec.Live = now.Add(HookEvery + HookAnswerBound)
