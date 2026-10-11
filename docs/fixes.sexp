@@ -981,9 +981,14 @@
     named by exactly one row's module column, every row's status is what the drift reads found, and
     every row that is not current names in owed_by the v1.2.12 card that owes it. Twenty-two rows are
     added, nineteen are changed, and a row marked missing names module \"-\"."
-   :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
+    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
-  (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
+   (fix "tla-workimport-scoped-verify" :release "v1.2.12" :status "planned"
+    :title "WorkImport models --repo as a scope and proves a wider verify never reports done"
+    :text "Models only, no product change. tla/WorkImport.tla's import and verify each take a scope, a non-empty subset of the repositories (Repos partitions Issues); the tree is written fresh and whole for its scope, so TreeIsWhole is restated as TreeIsWholeForItsScope, and a new invariant VerifyNeverPassesOutsideItsScope says a verify whose scope is wider than the import's never reports done (the extra repositories read as missing, D12: it fails safe). The receipt and Close/Export are marked design-only in the header (verify only prints facts); the four destructive reversed witnesses still need them, so they stay. A new reversed witness MCWorkImportBrokenScoped drops the guard that every issue of the verify's scope is in the tree, so a wider verify passes on a scoped tree and fails VerifyNeverPassesOutsideItsScope; MCWorkImportBrokenPartial keeps its result against the renamed TreeIsWholeForItsScope. Recording the scope in the tree is a product change and a v1.2.14 candidate (D12), not this card."
+    :origin "card tla-workimport-scoped-verify, 2026-10-11: v1.2.12 inventory item T22 and section 9 (D12), drift read at nova-sprint main 00c54ba2e")
+
+   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
     failures were untested (its happy path and mid-dump cases were). gc_loop_behaviour_test.go drives
