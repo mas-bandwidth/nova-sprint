@@ -684,4 +684,8 @@
     cleared, and on a new member runs its own probe before accepting width (init bootstraps by passing
     the probe). Modeled by tla/ProviderBudget.tla."
    :origin "sprint card a-member-environment-fault-holds-it-and-pushes-the-seat; the owner, 2026-10-11Z:
-    the failure here is not noticing this until now; attempts 3 and 5")))
+    the failure here is not noticing this until now; attempts 3 and 5")
+  (fix "tlc-records-match-their-models" :release "v1.2.6" :status "planned"
+   :title "TLC records match their models"
+   :text "TLC records refreshed for 44 stale groups and plan rows added for MCProviderBudget and MCReadyOver; cardmachine still owed"
+   :origin "sprint card tlc-records-match-their-models; the seat ledger v1.2.4-held-2026-10-10.md RUNS.tsv drift")))
