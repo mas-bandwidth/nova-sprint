@@ -100,6 +100,10 @@
      :title "StatsReset reads a stale tidy marker as ended, and ShownIsSinceMark breaks"
      :text "Models only, no product change. StatsReset.tla gains a clock (0..MaxClock), a TidyStale constant and the tidy's start time tstart modelling TidyInFlight.Fresh (store/stats_tidy.go:67): a reset now waits only for a fresh tidy and reads a stale marker as ended (store/stats_reset.go:137), while a tidy that finished inside TidyStale still refuses it. The code-faithful model breaks ShownIsSinceMark: a reset that reads the sprint before a slow tidy's move writes a mark counting the cards that tidy then takes off, and the tidy's end rebases only the mark it saw (tseen = markId), so the shown figures undercount the cards since the mark. That is a v1.2.14 candidate, never fixed inside this card. Each MCStatsReset*.cfg gains TidyStale and MaxClock, and the RUNS.tsv rows are re-measured with TLC on a bench."
      :origin "this card, tla-statsreset-stale-tidy-marker.w3, 2026-10-11: v1.2.12 inventory item T36; drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+    (fix "tla-readcards-first-cases" :release "v1.2.12" :status "planned"
+     :title "tla/ReadCards.tla checked against the read cards code, first cases"
+     :text "Tests and models only, no product change. tla/ReadCards.tla, which had no cfg and no CASES row and had never been checked, now does what the code does: MaxGen 2 (MaxReadGen: the plain id and .g1 and .g2), the needed count 0, 1 or 2 (ReadsNeededIn: the setting or the tier's rule), and the merging-short-of-reads return (ShortReadsBack). MCReadCards.cfg holds TypeOK, OneOpenPerReader, AtMostNeedStanding, NeverTheWorker, NeverTwiceAfterSpent, MergingOnlyOnOks and NoOpenReadOfAnOldAttempt; the reversed witness MCReadCardsBrokenIgnoreSpent.cfg (BugIgnoreSpent = TRUE) breaks NeverTwiceAfterSpent. Both cases run on a bench and pass."
+     :origin "this card; v1.2.12 inventory item T15")
     (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
@@ -1032,6 +1036,25 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-serverlanes-control-line-tick-turn" :release "v1.2.12" :status "planned"
+   :title "ServerLanes models the control line: batches by ticket and the tick's turn"
+   :text "Model only, no product change. ServerLanes.tla held the server's one line as app.serial: a
+    write took a free line and the tick took it when free. The code is now sprint.ControlLine
+    (internal/sprint/control_line.go): a batch takes the next ticket and is served first come, first
+    served; the tick takes the line at its turn, after the holder in flight and before every batch
+    still waiting; a gone caller's ticket is served and handed back, its verbs never run. The module
+    now models the tickets (next, serving, tkt), the tick's turn (turnDue, with the ghost dueFinishes)
+    and serving a gone write's ticket in turn (ServeGone). Two invariants are added: FCFS (no batch is
+    served before an earlier ticket still waiting) and TickWaitsOneTurn (once the tick's turn is due,
+    at most the batch already holding the line finishes before TickBegin), and the reversed witness
+    MCServerLanesBrokenTickQueues (the tick takes a ticket like a batch) fails TickWaitsOneTurn. The
+    seriallock.go comment no longer claims the read lane's own line is app.serial, and the
+    AbandonedNeverRuns citations are corrected to GoneNeverRuns. GoneNeverRuns,
+    BeatNeverWaitsForTheLine, ReadWaitsOnlyForReads, the lease invariants and EveryBatchEnds still hold.
+    tla/README.md's ServerLanes row now names the four reversed witnesses and the ticket/tick-turn model."
+   :origin "this card, tla-serverlanes-control-line-tick-turn.w3, from the owner on epoch 17,
+    2026-10-11: v1.2.12 inventory item T24, first of two; drift read at nova-sprint main 00c54ba2e")
+
   (fix "tla-stallladder-signs-of-life" :release "v1.2.12" :status "planned"
    :title "StallLadder reads a card's dealt and taken stamps and progress as the code does"
    :text "tla/StallLadder.tla was read against internal/sprint/friend_stall.go and friend_take.go and drifted in four places, each brought to the code. LastActive now counts a card's dealt and taken stamps beside her activity and progress, and the idle clock subtracts stopped time (StoppedTick), so a machine stop never counts against the bound; a progress stamp marks the card started, as the code reads \"started\" (progress, a report, or her beat naming the card), so rung 4 never takes it back; and the rung climbs only when the target rung is higher and resets only at 0, never written outright each tick. The existing invariants hold, and a new invariant NoStampedTaken (no card with a progress stamp is taken back) is checked by the reversed witness MCStallLadderBrokenTakestamped (Broken \"takestamped\"): rung 4 takes back a progress-stamped card, failing NoStampedTaken. friend_take.go gains one comment line citing the module."
@@ -1447,6 +1470,22 @@
      head a1c51ee and on main 00c54ba, where readRouteOf is at route.go:813 and holds for every
      rest, not only a backoff.")
 
+  (fix "the-dashboard-plays-a-coin-when-a-tick-lands" :release "v1.2.14" :status "planned"
+   :title "The dashboard plays a gentle coin when a tick lands a card"
+   :text "The dashboard at :7390 gains one sound and nothing else, on the owner's ask: when a refresh's
+    page copy carries a landed count higher than the refresh before's, the page plays one short coin --
+    two sine partials, the second a fifth above the first, about 0.25 s, a fast decay, peak gain 0.15 --
+    synthesized in app.js with WebAudio, so no audio file joins the repository and the page makes no extra
+    request. It plays once per refresh however many landed in it, never on the first load and never when
+    the count falls (a clear); the tick id the read carried is the copy's at, so two reads of one tick
+    play nothing. A browser refuses audio before a gesture, so the page carries one small speaker glyph
+    beside the landed count, off until clicked once per browser (the choice kept in localStorage); clicked
+    on, it plays the coin once, as the test. One paragraph in docs/SPEC-SPRINT-DASHBOARD.md, \"The coin\",
+    and the lock's ask line with pagelock.txt's digest. Tests sound_test.go (the coin's rules against
+    the shipped app.js) and page_test.go (the glyph and the inline synthesis)."
+   :origin "this card, the-dashboard-plays-a-coin-when-a-tick-lands.w1, 2026-10-11: the owner,
+    2026-10-11 ~12:50 PM ET: \"Please add sounds to the sprint dashboard. Whenever a card lands in the
+    tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle.\"")
   (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.14" :status "planned"
    :title "A rate limit stalls its route briefly; it never fails a card or rests it for 3-in-10"
    :text "A take a provider ends rate-limited (class=rate-limited) never fails the card, on any
@@ -1479,7 +1518,12 @@
     (backoffWait): tests TestABackedOffTierWithTheOtherProviderFullIsAWaitNeverAStall and
     TestABackedOffTierWithTheOtherRouteOutOfTheArrayIsAWaitNeverAStall."
    :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; the owner, 2026-10-11: \"the rate limited should just stall out delay, not fail\"; nova-sprint docs/fixes.sexp entry a-rate-limited-refusal-never-fails-the-cardc; nova-sprint card rate-limit-never-fails-the-card-v2")
-  (fix "friend-give-and-take-say-what-they-mark" :release "v1.2.14" :status "planned"
+    (fix "friend-unstarted-level-honours-dealt-no-more" :release "v1.2.14" :status "planned"
+   :title "The unstarted level gates on friendDealable"
+   :text "friendUnstartedLevel moves stale cards (not started past FriendStartMax) from one friend to another with an idle lane. It now checks friendDealable(s, up[n]) on the recipient before moving a card. This prevents cards from being moved to a friend marked dealt-no-more (who returned cards without taking), a reader-only friend (no builder role), or when the friends' work is off (friends off). The deal already gates on friendDealable; the level's gate ensures every placement follows the same rule (docs/SPEC-SPRINT.md section 1, a friend's card). Tests: TestTheUnstartedLevelMovesNoCardToAFriendDealtNoMore, TestTheUnstartedLevelMovesNoCardToAReaderOnlyFriend."
+   :origin "the coordinator, 2026-10-11 (v1.2.14 defect friend-unstarted-level-honours-dealt-no-more); checked against nova-sprint main 00c54ba")
+
+(fix "friend-give-and-take-say-what-they-mark" :release "v1.2.14" :status "planned"
    :title "friend give hands a named card, and take says the mark it writes"
    :text "friend take --all-unstarted wrote a mark it did not print (taken_from: not dealt to that friend again until friend give) and printed only FRIEND-TAKE OK moved=<n>, so a row that went quiet said nothing; and friend give was only the undo of the mark, so the seat had no verb to hand a named ready card to a friend and the deal drew the queue head instead. FriendTake now appends to each taken card's line \"<id>: back to ready, not dealt to <friend> again until friend give\" (not for the hold, which keeps no card) and plans a summary counting them (marked=<n>, a said line); FriendGive, on a ready card never taken back and never dealt, hands it to the friend named -- the deal's own unit, the work card placed on her fleet row at once with its primary working -- says \"<id>: handed to <friend>\", and clears the mark of a card taken back as it did, the deal filling the rest. A card not ready, one whose tier her row does not serve, and one whose needs have not landed are refused naming why. help friend says take is take back and mark and give is hand or unmark, and the SPEC and FRIENDS docs say the seat hands a named card and the deal fills the rest."
    :origin "this card: friend-give-and-take-say-what-they-mark.w1; the owner, 2026-10-11 ~11:15-11:40 AM ET, driving the coordinator's own friend lane (a 32-card take-back left the row quiet for 10 minutes and five cards could not be put there); code read at nova-sprint main 1405d26")
@@ -1511,9 +1555,32 @@
     TestDoctorRoutesPerTierFailsWhileATierRestsForIts5xxs and
     TestDoctorRoutesPerTierWithOneBackoffAndOneUsableWarns."
    :origin "this card: doctor-warns-while-a-tier-backs-off; the third cold read of nova-sprint PR
-     #86, 2026-10-11, an open non-blocking finding: \"Doctor reports FAIL while every route of a
-     tier backs off\"; listed in the rate-limit-never-fails-the-card-v2 card; checked against
-     nova-sprint main 00c54ba and PR #86's head a1c51ee")
+    #86, 2026-10-11, an open non-blocking finding: \"Doctor reports FAIL while every route of a
+    tier backs off\"; listed in the rate-limit-never-fails-the-card-v2 card; checked against
+    nova-sprint main 00c54ba and PR #86's head a1c51ee")
+   (fix "doctor-names-a-member-whose-link-flapped" :release "v1.2.14" :status "planned"
+    :title "Doctor names a member whose link flapped in the last hour"
+    :text "On 2026-10-11 the coordinator found by hand, in b1's and b3's kernel journals, that
+     their network links had gone down and up, and no check named it. The member probe now reads
+     one more fact before its end marker (cmd/nova-sprint/doctor_probe.go): on Linux the kernel's
+     link changes in DoctorLinkWindow (one hour), journalctl -k -q --no-pager --since \"-1h\"
+     filtered by one extended case-insensitive grep for the drivers' link words (Link is Up, Link
+     is Down, link up, link down, carrier lost, carrier acquired), printed as \"link <count> <the
+     last such line, cut to 160 bytes>\", and on Darwin \"link - not measured on darwin\"; when
+     journalctl is absent or cannot read the kernel journal (no lines and a non-zero exit, or the
+     insufficient-permissions line) it prints \"link - <why>\". parseProbe reads it into
+     MemberProbe (LinkChanges, -1 when not measured; LinkLast; LinkWhy), and DoctorMemberEnv gives
+     a member whose link counted DoctorLinkWarnChanges or more changes in the window one WARN,
+     never a FAIL, naming the member, the count, the last line and the remedy. doctor --preflight
+     replaces its links WARN with the same fact as a gate: a member with that many changes is one
+     FAIL row (area preflight, check links), so a switch or adopt is refused while a member's link
+     flaps, and a member not measured stays a WARN. No secret is printed and the journal window is
+     short, never the whole journal. Tests TestProbeScriptHasTheLinkFactAndQuotesNothingFromConfig
+     and TestParseProbeReadsTheLinkFact (cmd/nova-sprint/doctor_probe_link_test.go),
+     TestDoctorMemberEnvWarnsOnAFlappingLink and TestDoctorMemberEnvQuietOnOneOrNoLinkFact
+     (internal/sprint/doctor_link_test.go); no test runs ssh or journalctl. docs/SPEC-SPRINT.md,
+     the doctor's member-env check and the preflight, says the link fact and its bound."
+    :origin "this card: doctor-names-a-member-whose-link-flapped.w1; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md items 7 and 20 (the owner, 2026-10-11: \"Whatever you are doing manually now, consider adding tool support for it to nova sprint.\"); the coordinator found by hand, in b1's and b3's kernel journals, that      their links had gone down and up")
    (fix "route-ends-read-the-finished-cell" :release "v1.2.14" :status "planned"
     :title "routeEnds reads the Finished column too"
     :text "routeEnds (internal/sprint/route_rest.go), which builds the ended takes the 3-in-10 rest
@@ -1555,7 +1622,7 @@
    :origin "this card, routes-shows-a-rate-limit-backoff.w2, from the first cold read of nova-sprint
     PR #86 (2026-10-11), an open non-blocking finding: \"The backoff is hard to see: nova-sprint
     routes doesn't show it\"; listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md.
-    Checked against main 00c54ba and PR #86's head a1c51ee.")
+     Checked against main 00c54ba and PR #86's head a1c51ee.")
   (fix "take-by-id-starts-the-card-as-a-lane-take-does" :release "v1.2.14" :status "planned"
    :title "take by id starts a friend's card as a lane take does"
    :text "The two forms of take did different things. take --as <friend> --lane <n> moved the card to
@@ -1574,4 +1641,26 @@
     this."
    :origin "this card: take-by-id-starts-the-card-as-a-lane-take-does.w2, from the owner,
     2026-10-11 ~11:15-11:40 AM ET (\"How can we distribute work to friends, if you can't even
-    distribute it to yourself?\"); code read at nova-sprint main 1405d26")))
+    distribute it to yourself?\"); code read at nova-sprint main 1405d26")
+
+  (fix "a-lane-take-honours-the-rank" :release "v1.2.14" :status "planned"
+   :title "A lane take honours the rank"
+   :text "rank <id> --first moves a card to the front of its stream's line and the deal fills a
+    friend's dealt set in that order (the priority ladder, then the stream turns, then work order
+    within a stream), but take --as <friend> --lane <n> drew the lane's next ready card in
+    takeTurns order, which orders by stream name and inside a stream by score and ignores the
+    priority ladder, so a critical card dealt last was passed over and a card a later stream's
+    lane take never saw the deal's own order. A new friendDealtOrder is the one order a friend's
+    dealt set is filled and taken in (the ladder by a card's rank, then the stream turns over a
+    card's stream field, then SortCards within a stream), used by the friend deal pass
+    (friendDealPass) and by a friend's take (takeOne, through s.friendWorkRank, which reads the
+    primary's current level so a priority change after the deal is honoured too); FriendLaneOrder
+    is its exported face and the LANE line prints the held card's position in the deal's order.
+    The member take is unchanged. Reproduced on BASE: a critical card dealt last, a rank --first
+    card passed over by a critical one, and a critical card of a later stream all sat while an
+    earlier normal card was taken."
+   :origin "this card: a-lane-take-honours-the-rank.w4; the owner driving the coordinator's own
+    friend lane by hand from the seat on 2026-10-11 ~11:15-11:40 AM ET (\"How can we distribute
+    work to friends, if you can't even distribute it to yourself?\" / \"Make these fixes
+    critical.\"); five ranked-first cards sat while lanes started lower-ranked ones; code read at
+    nova-sprint main 1405d26")))
