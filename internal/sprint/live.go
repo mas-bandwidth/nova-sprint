@@ -291,6 +291,7 @@ const LiveReturnVerb = "live return"
 // stop-return keeps it. While the machine is STOPPED the return is also the STOP's receipt
 // (stopped_from_gen), so start finds the debt settled. RUNNING or STOPPED alike: a STOPPED
 // machine takes and lands nothing new, and still reconciles.
+// tla/AttemptsEpochs.tla GenStep.
 func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 	var p Plan
 	if s == nil || s.Fleet == nil {

@@ -225,6 +225,7 @@ func laneRefusal(c *Card, as string, n int) string {
 // row, untaken, its lane and its start cleared, one line each: the lane is gone (its daemon
 // stopped, its host down, its process lost), and a lane that asks again is told it holds
 // nothing.
+// tla/AttemptsEpochs.tla GenStep.
 func laneGoneUnits(s *Snapshot) []Unit {
 	var units []Unit
 	working := append([]*Card(nil), s.Fleet.Column(Working)...)
