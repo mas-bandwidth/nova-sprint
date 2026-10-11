@@ -164,9 +164,11 @@ function setCells(box, classes, columns, cellRem) {
   while (box.children.length > classes.length) box.lastChild.remove();
   classes.forEach(function (c, i) { setClass(box.children[i], c ? "cell " + c : "cell"); });
 }
-// How many cells fit across a box at MIN_CELL px each.
-function cellsThatFit(box) {
-  var w = box.clientWidth || 600;
+// How many cells fit across a box at MIN_CELL px each. `w` is a width measured at the last layout
+// (measureMetrics); the live read is a first-render fallback only, so a poll never forces a
+// synchronous layout just to count cells.
+function cellsThatFit(box, w) {
+  w = w || box.clientWidth || 600;
   return Math.max(1, Math.floor((w + GAP) / (MIN_CELL + GAP)));
 }
 // Cards per cell from 1, 2, 3, 4, 5, 10, 20, 25, 50, 100: the smallest that fits.
@@ -359,16 +361,36 @@ function renderStreams(d) {
   setHTML(tc[LANDED_AT], frac(sum.landed, all, digits));
   setText(tc[COST_AT], money(sum.cost));
   setText($("streams-sub"), keys.length + " streams · " + landedStreams + " landed · " + held + " held");
-  // the "landed" header is centred over its n / total cell: same width as the cell, text centred
-  var lw = tc[LANDED_AT].offsetWidth ? tc[LANDED_AT].offsetWidth + "px" : "";
-  if (lw && box._head.children[LANDED_AT].style.width !== lw) box._head.children[LANDED_AT].style.width = lw;
+  // the "landed" header is centred over its n / total cell: same width as the cell, text centred.
+  // The width is measured by measureMetrics at the last layout, not read here: a read after the
+  // writes above would force a synchronous layout on every poll (this card).
   return { sum: sum, all: all };
 }
+
+// Widths a poll needs, measured once per layout — load, resize and fit — instead of every POLL_MS:
+// reading clientWidth/offsetWidth/getComputedStyle forces a synchronous layout, and a page-wide
+// reflow once a second is what starved the browser's smooth scroll under a held Page Down (this
+// card; README's rule that the poll does no layout work). measureMetrics runs on load, on resize
+// (registered before the renderers' resize listeners, so it refreshes before they read the cache),
+// and at the end of fitTables, the one place a fit-key change lands. It also applies the streams
+// "landed" header's width, so renderStreams never reads the cell's offsetWidth after its writes.
+var METRICS = { rem: 0, pie: 0, overall: 0, landedW: 0 };
+function measureMetrics() {
+  METRICS.rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  var pie = $("pie"); if (pie) METRICS.pie = pie.clientWidth;
+  var ob = $("overall"); if (ob) METRICS.overall = ob.clientWidth;
+  var st = $("streams");
+  if (st && st._total && st._head) {
+    METRICS.landedW = st._total._c[LANDED_AT].offsetWidth;
+    if (METRICS.landedW) st._head.children[LANDED_AT].style.width = METRICS.landedW + "px";
+  }
+}
+window.addEventListener("resize", measureMetrics);
 
 var overallLast = null;
 function renderOverall(sum, all) {
   overallLast = { sum: sum, all: all };
-  var box = $("overall"), per = cardsPerCell(all, cellsThatFit(box)), n = Math.ceil(all / per);
+  var box = $("overall"), per = cardsPerCell(all, cellsThatFit(box, METRICS.overall)), n = Math.ceil(all / per);
   var share = allocate(sum, all, n), classes = [];
   STATES.forEach(function (st) { for (var i = 0; i < share[st]; i++) classes.push(st); });
   setCells(box, classes, n);
@@ -695,6 +717,7 @@ function fitTables() {
       if (c.scrollWidth > c.clientWidth + 1) c.title = c.textContent;
     });
   });
+  measureMetrics();
 }
 // A fold or unfold shows or hides a panel's scroll body (index.html: .panel.folded > .scroll),
 // so the layout can differ from the last fit. Re-measure after the toggle lands, so a panel the
@@ -841,9 +864,11 @@ function renderTopStreams(d) {
   rows.sort(function (a, b) { return b.cost - a.cost; });
   var cols = String(order.length + 1); // the tiers with spend, then total
   if (box.style.getPropertyValue("--tier-cols") !== cols) box.style.setProperty("--tier-cols", cols);
-  var pie = $("pie"), rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  // the root font size and the pie's width are measured once per layout (measureMetrics), never
+  // re-read on a poll: a computed-style or a width read forces a synchronous layout (this card)
+  var pw = METRICS.pie, rem = METRICS.rem || 16;
   var n = 10;
-  if (pie && pie.clientWidth) n = Math.max(3, Math.min(rows.length, Math.round((pie.clientWidth + 4 * rem - 4 * rem - 1 * rem) / (5 * rem))));
+  if (pw) n = Math.max(3, Math.min(rows.length, Math.round((pw + 4 * rem - 4 * rem - 1 * rem) / (5 * rem))));
   topN = n;
   // the rows are keyed by stream and patched in place like every other table's; the header and
   // each row grow or lose cells at the end when the tiers with spend change
@@ -1054,6 +1079,7 @@ setInterval(function () { if (stream && Date.now() - streamHeard > STREAM_SILENT
 // pills, the clock or the button after load.
 
 // theme: always dark (the owner 2026-10-04 2:21 PM: no light theme, no toggle)
+measureMetrics(); // the widths a poll reads, measured once here and once per fit, never per POLL_MS
 startPoll();
 connectStream();
 

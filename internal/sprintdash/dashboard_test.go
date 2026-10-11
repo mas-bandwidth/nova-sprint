@@ -511,3 +511,40 @@ func TestAStablePollDoesNotMeasureWidths(t *testing.T) {
 	assert.NotContains(t, render, "scrollWidth", "render itself reads no width")
 	assert.NotContains(t, render, "clientWidth", "render itself reads no clientWidth")
 }
+
+// TestThePollReadsNoLayoutForWidths pins the rest of this card's Done list (the reader's finding on
+// attempt 7, this attempt): moving fitTables out of the poll left other layout-forcing reads in
+// render's path. renderStreams read the landed header's offsetWidth after its own DOM writes,
+// renderOverall counted cells from the overall box's clientWidth, and renderTopStreams read the root
+// font size with getComputedStyle and the pie's clientWidth; each forces a synchronous layout once a
+// POLL_MS, a page-wide reflow during the scroll. They now read a width measured once per layout by
+// measureMetrics — load, resize, and the end of fitTables — and cached, so a poll reads no layout.
+// The one read that stays (flash's void t.offsetWidth, restarting a flash animation in place) is
+// outside this test's scope and is named with its reason and cost in RESULT.md.
+func TestThePollReadsNoLayoutForWidths(t *testing.T) {
+	t.Parallel()
+	app := string(file("app.js"))
+	measure, ok := functionBody(t, app, "measureMetrics")
+	require.True(t, ok, "app.js carries measureMetrics()")
+	for _, read := range []string{"clientWidth", "offsetWidth", "getComputedStyle"} {
+		assert.Contains(t, measure, read, "measureMetrics is the one place a poll's widths are read (%s)", read)
+	}
+	for _, fn := range []string{"renderStreams", "renderTopStreams"} {
+		body, ok := functionBody(t, app, fn)
+		require.True(t, ok, "app.js carries "+fn)
+		for _, read := range []string{"offsetWidth", "clientWidth", "offsetHeight", "getBoundingClientRect", "getComputedStyle"} {
+			assert.NotContains(t, body, read, "%s reads no layout property (%s); it uses the cached width", fn, read)
+		}
+	}
+	overall, ok := functionBody(t, app, "renderOverall")
+	require.True(t, ok, "app.js carries renderOverall")
+	assert.Contains(t, overall, "METRICS.overall", "renderOverall counts cells from the cached overall width")
+	streams, ok := functionBody(t, app, "renderStreams")
+	require.True(t, ok, "app.js carries renderStreams")
+	assert.NotContains(t, streams, "METRICS.landedW", "renderStreams leaves the landed-header width to measureMetrics")
+	fit, ok := functionBody(t, app, "fitTables")
+	require.True(t, ok, "app.js carries fitTables")
+	assert.Contains(t, fit, "measureMetrics()", "the fit refreshes the width cache")
+	assert.Contains(t, app, `window.addEventListener("resize", measureMetrics)`, "a resize refreshes the cache before the renderers read it")
+	assert.Contains(t, app, "measureMetrics(); //", "the cache is primed at load, before the first poll")
+}
