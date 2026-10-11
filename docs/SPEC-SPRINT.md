@@ -622,7 +622,14 @@ them — and stamps it with the lane and, on her row, her start). A card on
 another row is refused (`not in
 friend.<name> ready`), a friend not on the roster is refused (`no friend
 <name> on the roster`), and a count take that took fewer than asked says
-why on a NOTE line. The server runs her verbs as `friend.<name>` (the HTTP form,
+why on a NOTE line. A lane of hers (`take --as friend.<name> --lane <n>`) takes
+in rank order: the one order the deal fills her dealt set in (`friendDealtOrder`,
+`FriendLaneOrder`: the priority ladder, then the stream turns, then work order
+within a stream), so a `rank <card> --first` card leads its stream and a
+`critical` card outranks a lower one however late it was dealt; the `LANE` line
+prints the held card's position in the deal's own order (`FriendLaneOrder`),
+not its position in the take, which reads a work card's primary for its current
+level and may move on a new level before the next deal catches the note up. The server runs her verbs as `friend.<name>` (the HTTP form,
 her bus login, no store address of hers: `workerVerb` takes `friend.<name>` as a
 worker's name beside a member's). A card on her row never sits ready with no one
 to take it: her start takes it into working (a friend's card is working once
@@ -2383,9 +2390,13 @@ snapshot it read, and the lifecycle judges the needs against it; a plan
 without it moves nothing waiting to ready. A card is dealt only when every need
 has landed: the deal refuses a ready card with an unlanded need, and the
 lifecycle refuses every move to dealt whose card's recorded needs have not
-landed whatever path asks for it. A brief edit records the needs its
-`DEPENDS-ON:` lines name, and a ready card that gains a need not landed waits
-until it lands (section 3, the brief verb). The lifecycle is judged first on
+landed whatever path asks for it. A card's needs are set at add, by a brief
+edit's `DEPENDS-ON:` lines, or by `needs set` (`needs set <id> (--needs <a,b> | --clear)`, the coordinator's alone, section 11), and nowhere else: `needs set`
+rewrites the brief's needs line and moves the card by this table, so a card
+admitted with the wrong needs is corrected in place, never by a twin. A brief
+edit records the needs its `DEPENDS-ON:` lines name, and a ready card that gains
+a need not landed waits until it lands (section 3, the brief verb). The
+lifecycle is judged first on
 every unit of a plan; the needs rule is then judged against the landings of
 the units the lifecycle kept only, so a landing the lifecycle refuses
 satisfies no need. A work-table move whose expectation names no place is
@@ -2399,7 +2410,11 @@ except by the coordinator.
 A score is given once, at admission. Work cards, read cards and the merge place
 copy it. No move changes it. A reworked primary therefore sits ahead of the
 primaries admitted after it. Only `rank` changes a score, every copy with it,
-and it is the coordinator's decision, receipted.
+and it is the coordinator's decision, receipted. A friend's lane takes her dealt
+set in the deal's own order — the priority ladder, then the stream turns, then
+work order within a stream (`friendDealtOrder`, `FriendLaneOrder`) — never the
+order the cards were dealt in, so a card brought to the front of its stream by
+`rank --first` is the lane's next card.
 
 ## 5. The fleet
 

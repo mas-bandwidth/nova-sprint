@@ -37,10 +37,14 @@
 \*                       a card waiting for a reader (askwait)
 \*   mq                  the merge table: cards queued to merge
 \*   stat, mc, mr        the fleet table: a machine's status as the fleet
-\*                       knows it, the cards dealt to it, the reads its
-\*                       readers hold; its load is |mc| + |mr| (a read takes
-\*                       room on the reader's host: "the readers dealing work
-\*                       might dirty the fleet table")
+\*                       knows it (up, down, or held), the cards dealt to it,
+\*                       the reads its readers hold; its load is |mc| + |mr|
+\*                       (a read takes room on the reader's host: "the readers
+\*                       dealing work might dirty the fleet table")
+\*   drain               the fleet table: a member's fresh beat says it drains
+\*                       (its binary replaced): it is up but starts no card
+\*   run                 the machine: "running" or "stopped" (the
+\*                       all-providers-out stop)
 \*   noUp                the judgment "no fleet member is up" (open or not)
 \*   Q                   the four queues, one per table
 \*   mctr, rctr, sctr    the placement counters of machines, readers and
@@ -246,6 +250,15 @@ MaxBoundReworks == 3 * Len(Ladder) - 1
 \* The scenario turns the coordinator's rework at the bound on (Scn.rework);
 \* a scenario that names no rework has none.
 ReworkOn == "rework" \in DOMAIN Scn /\ Scn.rework
+\* The scenario turns a member's hold on (Scn.held); one that names none has
+\* none, and no member is held.
+HoldOn == "held" \in DOMAIN Scn /\ Scn.held
+\* The scenario turns a member's drain on (Scn.drain); one that names none has
+\* none, and no member drains.
+DrainOn == "drain" \in DOMAIN Scn /\ Scn.drain
+\* The scenario turns the stop on (Scn.run); one that names none has none, and
+\* the machine runs (run is "running").
+StopOn == "run" \in DOMAIN Scn /\ Scn.run
 \* The scenario turns a refused read on (Scn.refuse); one that names none has
 \* none, and the transition is not reached.
 RefuseOn == "refuse" \in DOMAIN Scn /\ Scn.refuse
@@ -273,7 +286,7 @@ MaxReasks == 2
 VARIABLES col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
           mctr, rctr, sctr, live, miss, acts, ext,
           phase, pumps, sub, addr, notes, wake, act, plc,
-          brk, dealt, always,
+          brk, dealt, always, drain, run,
           okd, ci, ret, tk, rdl, ended, ends, hred, seen, hb, rea, cna, nrt,
           fat, ftr, tier, back, fbk, rwk, rb
 
@@ -307,7 +320,7 @@ VARIABLES col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
 vars == <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
           mctr, rctr, sctr, live, miss, acts, ext,
           phase, pumps, sub, addr, notes, wake, act, plc,
-          brk, dealt, always,
+          brk, dealt, always, drain, run,
           okd, ci, ret, tk, rdl, ended, ends, hred, seen, hb, rea, cna, nrt,
           fat, ftr, tier, back, fbk, rwk, rb>>
 CardVars == <<okd, ci, ret, tk, rdl, ended, ends, hred, seen, hb, rea, cna, nrt,
@@ -340,7 +353,7 @@ Cur == [col |-> col, att |-> att, bnd |-> bnd, rd |-> rd, askw |-> askw,
         mq |-> mq, stat |-> stat, mc |-> mc, mr |-> mr, noUp |-> noUp,
         q |-> Q, mctr |-> mctr, rctr |-> rctr, sctr |-> sctr, addr |-> addr,
         brk |-> brk, dealt |-> dealt, plc |-> <<>>, notes |-> notes,
-        f0 |-> Len(Q["fleet"]),
+        f0 |-> Len(Q["fleet"]), drain |-> drain,
         okd |-> okd, ci |-> ci, ret |-> ret, tk |-> tk, rdl |-> rdl, ended |-> ended, ends |-> ends,
         hred |-> hred, seen |-> seen, hb |-> hb, rea |-> rea, cna |-> cna, nrt |-> nrt,
         fat |-> fat, ftr |-> ftr, tier |-> tier, back |-> back, fbk |-> fbk, rwk |-> rwk, rb |-> rb]
@@ -466,6 +479,7 @@ Release(S, C) ==
 \* the machine counter over the up machines with room.
 Dealable(S, cand) == {c \in cand : S.col[c] = "ready" /\ ~AtRB(S, c) /\ (c \in Served \/ Broken = "noroute")}
 UpRoom(S) == {m \in Machines : S.stat[m] = "up" /\
+                (Broken = "dealdraining" \/ ~S.drain[m]) /\
                 (Broken = "nowidth" \/ Room(S, m) > 0)}
 DealOne(S, cand) ==
   LET D == Dealable(S, cand)
@@ -543,8 +557,11 @@ ApplyR(S, e) ==
     [] e.k = "raback" -> [S EXCEPT !.stat[e.x] = "up"]
     [] OTHER -> S    \* room, echo
 
+\* A reader off: its machine is held or drains (internal/sprint readerOff).
+Off(S, m) == S.stat[m] = "held" \/ S.drain[m]
 AbleReaders(S) == {r \in Readers : ("seefleet" \in Fixes => S.stat[Host[r]] = "up") /\
                                     ("readerup" \in Fixes => S.stat[r] = "up") /\
+                                    ~Off(S, Host[r]) /\
                                     Room(S, Host[r]) > 0}
 \* The readers c may be asked of now: able, and not in seen[c] (A RETURN IS
 \* NOT A READ); Others leaves out the reader that returned it.
@@ -581,7 +598,8 @@ PlaceReads(S) ==
 \* returned and asked again in place only when every reader is in seen of it (a
 \* returned read whose reader's machine went down then waits silently).
 Eligible(S, c) == {r \in Readers \ S.seen[c] : /\ ("seefleet" \in Fixes => S.stat[Host[r]] = "up")
-                                               /\ ("readerup" \in Fixes => S.stat[r] = "up")}
+                                               /\ ("readerup" \in Fixes => S.stat[r] = "up")
+                                               /\ ~Off(S, Host[r])}
 Stranded(S) ==
   {c \in Cards : /\ S.askw[c] /\ ~S.cna[c] /\ ~S.nrt[c]
                  /\ IF Broken = "seenonly" /\ S.rea[c] > 0 THEN Readers \subseteq S.seen[c] ELSE Eligible(S, c) = {}}
@@ -707,6 +725,7 @@ Commit(S) ==
   /\ fat' = S.fat /\ ftr' = S.ftr /\ tier' = S.tier /\ back' = S.back /\ fbk' = S.fbk /\ rwk' = S.rwk /\ rb' = S.rb
   /\ col' = S.col /\ att' = S.att /\ bnd' = S.bnd /\ rd' = S.rd /\ askw' = S.askw
   /\ mq' = S.mq /\ stat' = S.stat /\ mc' = S.mc /\ mr' = S.mr /\ noUp' = S.noUp
+  /\ drain' = S.drain
   /\ Q' = S.q /\ mctr' = S.mctr /\ rctr' = S.rctr /\ sctr' = S.sctr
   /\ addr' = S.addr /\ brk' = S.brk /\ dealt' = S.dealt /\ plc' = S.plc
   /\ notes' = S.notes
@@ -716,6 +735,7 @@ Step == sub' = Min(sub + 1, MaxSub + 1)
 -----------------------------------------------------------------------------
 \* THE TICK.
 TickStart ==
+  /\ run = "running" \/ Broken = "stoppedpump"
   /\ phase = "idle"
   /\ \E t \in Tables : Q[t] # <<>>
   /\ Broken = "outsideonly" => ext
@@ -724,7 +744,7 @@ TickStart ==
   /\ IF Broken = "reset" THEN mctr' = 0 /\ rctr' = 0 /\ sctr' = 0
      ELSE UNCHANGED <<mctr, rctr, sctr>>
   /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
-                 live, miss, acts, wake, brk, dealt, always, CardVars>>
+                 live, miss, acts, wake, brk, dealt, always, drain, run, CardVars>>
 
 \* The first pass's first update: the one pump of the tick.
 PumpWork ==
@@ -733,7 +753,7 @@ PumpWork ==
        /\ Commit(S)
        /\ always' = [s \in Streams |-> always[s] /\ \E c \in Dealable(S, Cards) : StreamOf[c] = s]
   /\ phase' = "readers" /\ pumps' = pumps + 1 /\ act' = "PumpWork" /\ Step
-  /\ UNCHANGED <<live, miss, acts, ext, wake>>
+  /\ UNCHANGED <<live, miss, acts, ext, wake, run>>
 
 NextPhase(t) == CASE t = "readers" -> "merge" [] t = "merge" -> "fleet" [] t = "fleet" -> "drain"
 
@@ -742,7 +762,7 @@ Pass(t) ==
   /\ phase = t
   /\ Commit(Update(t))
   /\ phase' = NextPhase(t) /\ act' = "Pass" /\ Step
-  /\ UNCHANGED <<live, miss, acts, ext, pumps, wake, always>>
+  /\ UNCHANGED <<live, miss, acts, ext, pumps, wake, always, run>>
 
 \* A queue not empty is acted on at once, at any point after the pump.
 Drain(t) ==
@@ -750,7 +770,7 @@ Drain(t) ==
   /\ Q[t] # <<>>
   /\ Commit(Update(t))
   /\ act' = "Drain" /\ Step
-  /\ UNCHANGED <<live, miss, acts, ext, phase, pumps, wake, always>>
+  /\ UNCHANGED <<live, miss, acts, ext, phase, pumps, wake, always, run>>
 
 \* The witness "twopumps": the work queue drained again inside the tick.
 \* The fix "consumersout" (the owner's design of 2026-10-01, ruled 2026-10-11:
@@ -763,7 +783,18 @@ DrainWork ==
   /\ Q["work"] # <<>>
   /\ LET S == Pump(Cur) IN Commit(S)
   /\ pumps' = Min(pumps + 1, 2) /\ act' = "DrainWork" /\ Step
-  /\ UNCHANGED <<live, miss, acts, ext, phase, wake, always>>
+  /\ UNCHANGED <<live, miss, acts, ext, phase, wake, always, run>>
+
+\* The stopped tick: the machine is stopped and moves nothing (a stopped tick
+\* changes no card's column; the witness "stoppedpump" runs the pump instead).
+StoppedTick ==
+  /\ StopOn /\ run = "stopped" /\ Broken # "stoppedpump"
+  /\ phase = "idle"
+  /\ \E t \in Tables : Q[t] # <<>>
+  /\ phase' = "idle" /\ act' = "StoppedTick" /\ plc' = <<>>
+  /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
+                 mctr, rctr, sctr, live, miss, acts, ext, phase, pumps, sub, addr,
+                 notes, wake, brk, dealt, always, drain, run, CardVars>>
 
 TickEnd ==
   /\ phase = "drain"
@@ -775,7 +806,7 @@ TickEnd ==
   /\ phase' = "idle" /\ act' = "TickEnd" /\ plc' = <<>>
   /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
                  mctr, rctr, sctr, live, miss, acts, ext, pumps, sub, addr,
-                 brk, dealt, always, CardVars>>
+                 brk, dealt, always, drain, run, CardVars>>
 
 \* THE SETTLE BOUND (the owner's design: sub-ticks until the consumer queue is
 \* empty, bound 32; internal/sprint/store/tick.go MaxSettle). Reaching it is a
@@ -792,7 +823,7 @@ SettleBound ==
   /\ phase' = "idle" /\ act' = "SettleBound" /\ plc' = <<>>
   /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
                  mctr, rctr, sctr, live, miss, acts, ext, pumps, sub,
-                 brk, dealt, always, CardVars>>
+                 brk, dealt, always, drain, run, CardVars>>
 
 -----------------------------------------------------------------------------
 \* THE OUTSIDE, between ticks: each appends to one queue and writes no table.
@@ -802,7 +833,7 @@ Outside(t, e) ==
   /\ ext' = TRUE /\ act' = "Outside" /\ plc' = <<>>
   /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp,
                  mctr, rctr, sctr, phase, pumps, sub, addr, notes, wake,
-                 brk, dealt, always, CardVars>>
+                 brk, dealt, always, drain, run, CardVars>>
 
 Add(c) ==
   /\ c \in Addable /\ col[c] = "none" /\ Pend("work", "add", c) = 0
@@ -858,7 +889,7 @@ Miss(m) ==
   /\ act' = "Miss" /\ plc' = <<>>
   /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
                  mctr, rctr, sctr, live, acts, ext, phase, pumps, sub, addr,
-                 notes, wake, brk, dealt, always, CardVars>>
+                 notes, wake, brk, dealt, always, drain, run, CardVars>>
 \* A beat between misses resets the count; the machine was up and stays up, so
 \* nothing is queued.
 BeatReset(m) ==
@@ -867,7 +898,7 @@ BeatReset(m) ==
   /\ act' = "BeatReset" /\ plc' = <<>>
   /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
                  mctr, rctr, sctr, live, acts, ext, phase, pumps, sub, addr,
-                 notes, wake, brk, dealt, always, CardVars>>
+                 notes, wake, brk, dealt, always, drain, run, CardVars>>
 \* The worker takes a card dealt to its machine.
 Take(c, m) ==
   /\ Takes /\ c \in mc[m] /\ live[m] /\ ~tk[c] /\ Pend("fleet", "take", c) = 0
@@ -905,12 +936,55 @@ TierOK(t) ==
   /\ \E c \in Cards : col[c] = "ready" /\ AtRB(Cur, c) /\ tier[c] = t
   /\ Outside("fleet", E("tierok", "-", t)) /\ UNCHANGED <<live, miss, acts>>
 
+\* THE HOLD (2026-10-11). The coordinator holds a machine: its status is held
+\* (not up, not down: presence.go PresenceStatus), it is left out of the up
+\* members (state.go UpMembers), and, as a lapse does, its cards come back and
+\* its reads are taken back. A held machine's reader is asked nothing (Off).
+Hold(m) ==
+  /\ HoldOn /\ phase = "idle" /\ stat[m] = "up" /\ acts < MaxActs
+  /\ acts' = acts + 1
+  /\ LET S == UnreadAll(ReturnAll([Cur EXCEPT !.stat[m] = "held", !.mc[m] = {}, !.mr[m] = {}],
+                                  mc[m]), mr[m])
+          S2 == IF mc[m] \cup mr[m] # {} THEN Address(S) ELSE S
+          S3 == IF \E d \in Cards : S2.askw[d] THEN Put(S2, "readers", E("room", "-", m)) ELSE S2
+     IN Commit(S3)
+  /\ act' = "Hold" /\ plc' = <<>>
+  /\ UNCHANGED <<live, miss, ext, phase, pumps, sub, wake, always, run>>
+
+\* THE DRAIN (2026-10-11). A member's fresh beat says it drains (its binary was
+\* replaced): it is up but starts no card, and its no-room word is a drain's
+\* (drain.go). The deal gives it nothing (notQuiet), and its reader is asked
+\* nothing (Off). What it was dealt and has not taken is returned by the level's
+\* drainReturns (tla/NoRoom.tla DealtReturns); the working cards stay.
+DrainStart(m) ==
+  /\ DrainOn /\ phase = "idle" /\ ~drain[m] /\ acts < MaxActs
+  /\ acts' = acts + 1
+  /\ drain' = [drain EXCEPT ![m] = TRUE]
+  /\ act' = "DrainStart" /\ plc' = <<>>
+  /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
+                 mctr, rctr, sctr, live, miss, ext, phase, pumps, sub, addr,
+                 notes, wake, brk, dealt, always, run, CardVars>>
+
+\* THE ALL-PROVIDERS-OUT STOP (steps_tick.go providerConds, p.Stop): every
+\* provider out of credit stops the machine as the tick's plan commits. It is
+\* an outside event here, at the end of a tick: run becomes "stopped", and the
+\* stopped tick that follows moves nothing.
+Stop ==
+  /\ StopOn /\ phase = "idle" /\ run = "running" /\ acts < MaxActs
+  /\ run' = "stopped"
+  /\ acts' = acts + 1
+  /\ act' = "Stop" /\ plc' = <<>>
+  /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
+                 mctr, rctr, sctr, live, miss, ext, phase, pumps, sub, addr,
+                 notes, wake, brk, dealt, always, drain, CardVars>>
+
 -----------------------------------------------------------------------------
 Init ==
   /\ col = Scn.col /\ att = [c \in Cards |-> 1] /\ bnd = [c \in Cards |-> FALSE]
   /\ rd = Scn.rd /\ askw = [c \in Cards |-> FALSE] /\ mq = Scn.mq
   /\ stat = [m \in Machines \cup Readers |-> IF m \in Scn.up THEN "up" ELSE "down"]
   /\ mc = Scn.mc /\ mr = Scn.mr /\ noUp = FALSE /\ Q = Scn.q
+  /\ drain = [m \in Machines |-> FALSE] /\ run = "running"
   /\ mctr = 0 /\ rctr = 0 /\ sctr = 0
   /\ live = [m \in Machines \cup Readers |-> m \in Scn.live] /\ acts = 0 /\ ext = TRUE
   /\ miss = [m \in Machines |-> 0]
@@ -927,7 +1001,7 @@ Init ==
   /\ back = [t \in Tiers |-> FALSE] /\ fbk = [c \in Cards |-> {}]
   /\ rwk = [c \in Cards |-> 0] /\ rb = [c \in Cards |-> 0]
 
-TickNext == TickStart \/ PumpWork \/ DrainWork \/ TickEnd \/ SettleBound \/
+TickNext == TickStart \/ PumpWork \/ DrainWork \/ StoppedTick \/ TickEnd \/ SettleBound \/
             \E t \in Three : Pass(t) \/ Drain(t)
 OutsideNext ==
   \/ \E c \in Cards : Add(c) \/ Merge(c) \/ \E v \in {"ok", "broken"} : Report(c, v)
@@ -935,8 +1009,9 @@ OutsideNext ==
   \/ \E c \in Cards : CIRed(c) \/ CIGreen(c) \/ CIOld(c) \/ Return(c) \/ CoordAccept(c) \/ ReadReturn(c) \/ ReadRefuse(c)
   \/ \E c \in Cards, cl \in BoundClasses, t \in Tiers : ReworkAtBound(c, cl, t)
   \/ \E t \in Tiers : TierOK(t)
-  \/ \E m \in Machines : Beat(m) \/ Lapse(m) \/ Miss(m) \/ BeatReset(m)
+  \/ \E m \in Machines : Beat(m) \/ Lapse(m) \/ Miss(m) \/ BeatReset(m) \/ Hold(m) \/ DrainStart(m)
   \/ \E r \in Readers : ReaderAway(r) \/ ReaderBack(r)
+  \/ Stop
 Next == TickNext \/ OutsideNext
 Spec == Init /\ [][Next]_vars /\ WF_vars(TickNext)
 
@@ -946,8 +1021,9 @@ TypeOK ==
   /\ col \in [Cards -> Cols] /\ att \in [Cards -> 1..MaxAttempts] /\ bnd \in [Cards -> BOOLEAN]
   /\ rd \in [Cards -> Readers \cup {NoR}] /\ askw \in [Cards -> BOOLEAN] /\ mq \subseteq Cards
   /\ miss \in [Machines -> 0..Misses]
-  /\ stat \in [Machines \cup Readers -> {"up", "down"}] /\ mc \in [Machines -> SUBSET Cards]
+  /\ stat \in [Machines \cup Readers -> {"up", "down", "held"}] /\ mc \in [Machines -> SUBSET Cards]
   /\ mr \in [Machines -> SUBSET Cards] /\ noUp \in BOOLEAN
+  /\ drain \in [Machines -> BOOLEAN] /\ run \in {"running", "stopped"}
   /\ phase \in {"idle", "work", "drain"} \cup Three
   /\ pumps \in 0..2 /\ sub \in 0..(MaxSub + 1) /\ addr \in 0..3 /\ notes \in 0..2
   /\ okd \in [Cards -> BOOLEAN] /\ ci \in [Cards -> {"none", "red"}] /\ ret \in [Cards -> BOOLEAN]
@@ -1013,12 +1089,12 @@ PumpDone ==
   /\ Q["work"] = <<>>
   /\ Landable(col) = {} /\ Releasable(col) = {}
   /\ ~(/\ \E c \in Served : col[c] = "ready" /\ ~(ended[c] /\ rdl[c] >= MaxRedeals)
-       /\ \E m \in Machines : stat[m] = "up" /\ RoomNow(m) > 0)
+       /\ \E m \in Machines : stat[m] = "up" /\ ~drain[m] /\ RoomNow(m) > 0)
   /\ ~\E c \in Cards : col[c] = "review" /\ okd[c] /\ ci[c] # "red" /\ ~ret[c]
 ReadersDone ==
   ~\E c \in Cards :
      /\ askw[c] /\ ~nrt[c]
-     /\ \E r \in Readers \ seen[c] : stat[Host[r]] = "up" /\ RoomNow(Host[r]) > 0
+     /\ \E r \in Readers \ seen[c] : stat[Host[r]] = "up" /\ ~Off(Cur, Host[r]) /\ RoomNow(Host[r]) > 0
                                      /\ ("readerup" \in Fixes => stat[r] = "up")
 
 \* ReadersDone leaves out the readers in seen[c]: each gave a verdict at the
@@ -1036,7 +1112,8 @@ RefusedSettles == \A c \in Cards : nrt[c] => rea[c] = 1
 \* in seen, or the rest away or down) has its judgment open, in the same
 \* update (W27; W28: a returned read whose only reader went down).
 EligibleNow(c) == {r \in Readers \ seen[c] : /\ ("seefleet" \in Fixes => stat[Host[r]] = "up")
-                                             /\ ("readerup" \in Fixes => stat[r] = "up")}
+                                             /\ ("readerup" \in Fixes => stat[r] = "up")
+                                             /\ ~Off(Cur, Host[r])}
 StrandingIsJudged ==
   \A c \in Cards : (phase = "idle" /\ askw[c] /\ col[c] = "review" /\ EligibleNow(c) = {}) => cna[c]
 \* A RETURN IS NOT A READ: no card is stranded by its readers' reads before
@@ -1068,7 +1145,7 @@ ConsumerOut(c) ==
   /\ col[c] = "review" /\ ~okd[c] /\ ~bnd[c] /\ ~cna[c] /\ ~nrt[c] => rd[c] # NoR /\ stat[rd[c]] = "up"
 DealableLeft ==
   \E c \in Cards : col[c] = "ready" /\ c \in Served /\ ~(ended[c] /\ rdl[c] >= MaxRedeals)
-                    /\ \E m \in Machines : stat[m] = "up" /\ RoomNow(m) > 0
+                    /\ \E m \in Machines : stat[m] = "up" /\ ~drain[m] /\ RoomNow(m) > 0
 ConsumersOut ==
   [][act' = "TickEnd" => /\ \A c \in Cards : ConsumerOut(c)
                          /\ ~DealableLeft]_vars
@@ -1101,6 +1178,23 @@ RouteGuard == \A c \in Cards \ Served : col[c] \in {"none", "waiting", "ready"}
 
 \* WIDTH: a machine never holds more cards and reads than its width.
 WidthRespected == \A m \in Machines : Cardinality(mc[m]) + Cardinality(mr[m]) <= Width[m]
+
+\* NEVER DEALT TO DRAINING: no deal goes to a member that drains (the beat's
+\* drain word, notQuiet; tla/NoRoom.tla NeverDealtToDraining). The witness
+\* "dealdraining" deals one.
+NeverDealtToDraining ==
+  [][\A i \in 1..Len(plc') : plc'[i].k = "m" => ~drain'[plc'[i].pick]]_vars
+
+\* NOT ASKED OF HELD OR DRAINING: a read is never asked of the reader of a
+\* held or draining machine (readerOff; tla/NoRoom.tla NeverAskedOfHeldOrDraining).
+NotAskedOfHeldOrDraining ==
+  [][\A i \in 1..Len(plc') : plc'[i].k = "r" =>
+        ~(stat'[Host[plc'[i].pick]] = "held" \/ drain'[Host[plc'[i].pick]])]_vars
+
+\* STOPPED MOVES NOTHING: a stopped tick changes no card's column (the STOPPED
+\* tick has no pump; store/tick.go). The witness "stoppedpump" runs the pump
+\* while stopped.
+StoppedMovesNothing == [][run = "stopped" => col' = col]_vars
 
 \* STREAM FAIRNESS: two streams that had a dealable card left after every
 \* pump so far were dealt within one of each other.
