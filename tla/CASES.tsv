@@ -471,6 +471,7 @@ MCRateBudgetProgress.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	requ
 MCRateBudgetBrokenRace.cfg	MCRateBudget.tla	invariant	NeverOverRate	ignore-terminal	ratebudget	required	-
 MCRateBudgetBrokenNoRenew.cfg	MCRateBudget.tla	invariant	NeverOverConcurrent	ignore-terminal	ratebudget	required	-
 MCRateBudgetBrokenNoExpiry.cfg	MCRateBudget.tla	temporal	SlotReclaimed	ignore-terminal	ratebudget	required	-
+MCRateBudgetBrokenKeepSlot.cfg	MCRateBudget.tla	action	AbortedWriteReleasesSlot	ignore-terminal	ratebudget	required	-
 MCDealFill.cfg	MCDealFill.tla	pass	-	ignore-terminal	dealfill	required	-
 MCDealFillBrokenNoAutoclear.cfg	MCDealFill.tla	temporal	FaultHoldClears	ignore-terminal	dealfill	required	-
 MCDealFillBrokenClearPerson.cfg	MCDealFill.tla	action	PersonHoldStays	ignore-terminal	dealfill	required	-
