@@ -7238,8 +7238,9 @@ wait, so the stream it waited behind is reached and bounded in its turn.
 
 With `server switch <binary> [--rollback]` the coordinator or an install switches the server's
 binary file on disk, keeping the previous binary (`<target>.prev`). With `--rollback`, if a
-land fails within the rollback window (default 15 minutes, `--window`), the failed landing
-in `run --land` rolls back the binary on disk to the previous binary, causing the running loop
+land pass fault (exit 2) occurs within the rollback window (default 15 minutes, `--window`), the
+failed landing in `run --land` rolls back the binary on disk to the previous binary (a batch
+refused for a card's own head, exit 1, never does), causing the running loop
 to stop (`RUN STOP the binary this loop runs was replaced...`, exit 3) so its supervisor restarts
 it with the previous binary. `server switch --rollback` without a binary immediately restores
 the previous binary.
@@ -7425,6 +7426,9 @@ the order an adoption meets it, on a coordinator fixture with its own home, laun
 server, member and friend (`TestSeatPlayAdoptsInOrderAndRefusesEachHalfMove`: the old server and
 member stopped before the migration, a refusal after it restarting the old server on the old
 binaries and library).
+
+The release procedure that runs this adoption, the server switch, the schema and the members in
+order, with each step's evidence and the way back, is [RELEASE-PLAYBOOK.md](RELEASE-PLAYBOOK.md).
 
 #### store-latency-row-r.w2: where shows the store round trip the server measures
 

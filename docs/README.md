@@ -34,6 +34,7 @@ planned feature in a design note is not an executable example.
 | Reference | What it helps you understand |
 |---|---|
 | [Sprint contract](SPEC-SPRINT.md) | Cards, dependencies, scheduling, review, landing, and the rules each state change follows. |
+| [Release playbook](RELEASE-PLAYBOOK.md) | Cutting, publishing, switching in and adopting a point release, each step's evidence, and the way back. |
 | [Coordinator credentials](SPRINT-COORDINATOR-SEAT.md) | How locally executed configuration commands get the credentials they need. |
 | [Work tree format](SPEC-WORK-V1.md) | The GitHub issue mirror, the fields it preserves, and import/verify behaviour. |
 | [Work language](SPEC-WORKLANG.md) | The small data grammar used to read tree files without evaluating them. |

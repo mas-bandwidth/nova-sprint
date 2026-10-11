@@ -882,6 +882,15 @@
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
    :origin "this card")
 
+  (fix "release-playbook" :release "v1.2.11" :status "planned"
+   :title "The release playbook: each step's command, its evidence and the way back"
+   :text "docs/RELEASE-PLAYBOOK.md orders a point release: scope, green heads, the bench build and
+    byte-for-byte bundle check, nova-tools published before nova-sprint, the TABLES.lock columns applied to
+    the live store before the switch, doctor's preflight, the stable pair recorded, the switch with a canary
+    on finishes reaching done, a staged members' adopt, and every rollback to the stable pair. Each hand step
+    names the tooling item that replaces it. Docs only."
+   :origin "the owner, 2026-10-11, after the v1.2.10 switch and rollback")
+
   (fix "no-deal-to-a-draining-member" :release "v1.2.10" :status "shipped"
    :title "No deal to a draining member; a held or draining machine's reader is asked nothing"
    :origin "PR #84")

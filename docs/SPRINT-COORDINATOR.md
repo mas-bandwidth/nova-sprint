@@ -389,7 +389,8 @@ configuration store as its owning role, loads the function library, installs the
 agents. A refusal after the window opens restores the previous tools and library and restarts the old agents;
 the configuration migration is not undone. The command names the failed step and what the rollback did.
 The tick does not invoke adoption. See [SPEC-SPRINT.md](SPEC-SPRINT.md), "Adopting a build", for the play's
-checks, receipts and exit codes.
+checks, receipts and exit codes, and [RELEASE-PLAYBOOK.md](RELEASE-PLAYBOOK.md) for a whole point release in
+order.
 
 ## 8. The hourly habits
 
