@@ -957,34 +957,67 @@ const NothingWaits = "nothing waits: the tick accepts every primary in review wh
 // current attempt and head, in reader row order, as many as it needs
 // (ReadsNeeded); fewer when it has fewer.
 func okReaders(s *Snapshot, pr *Card) []*Card {
-	var out []*Card
+	oks, _ := standingReads(s, pr, pr.Int("attempt"))
+	return oks[:min(len(oks), ReadsNeededIn(s, pr))]
+}
+
+// standingReads is the reads that stand on the primary's attempt, from the readers table
+// and the fleet table alike: the ok reads, one a reader, the reader named by its stable
+// reader field (ReadCardAgrees and friendReadAgrees hold it to the card's id; a read retired
+// off its fleet row has no row, so the row names no reader), the readers table's in reader
+// row order and then the fleet's; and the broken reads at the attempt's head (a broken read
+// that pins no head stands too). A read is at the attempt's head when it is the primary's
+// head at its current attempt (a fleet read: or the attempt's work head, readHeadMatches),
+// and the attempt's work head at an earlier one. The accept (okReaders, hasBrokenAtHead) and
+// the readers' verdict on the attempt's work (readVerdict, TickVerdicts) count from it alone,
+// so they cannot disagree: a card accepted on its reads is work counted ok, whichever table
+// its reads are on (Stella's finding of 2026-10-11: the verdicts counted the readers table
+// alone, and a card accepted on two fleet reads left its worker's card in finished, her
+// friends row's done at 0).
+func standingReads(s *Snapshot, pr *Card, attempt int) (oks, broken []*Card) {
+	if s == nil || pr == nil {
+		return nil, nil
+	}
+	attempt = max(attempt, 1)
+	current := attempt == max(pr.Int("attempt"), 1)
+	workHead := ""
+	if !current {
+		_, _, workHead = attemptEnds(s, pr.ID, attempt)
+	}
 	seen := map[string]bool{}
-	need := ReadsNeededIn(s, pr)
-	for _, c := range readsAt(s, pr, pr.Int("attempt")) {
-		r := c.F("reader")
-		if c.Col == OK && c.F("head") == pr.F("head") && ReadCardAgrees(c) && !seen[r] && len(out) < need {
+	if s.Readers != nil {
+		for _, c := range readsAt(s, pr, attempt) {
+			h := c.F("head")
+			atHead := (current && h == pr.F("head")) || (!current && h != "" && h == workHead)
+			switch {
+			case c.Col == OK && atHead && ReadCardAgrees(c) && !seen[c.F("reader")]:
+				seen[c.F("reader")] = true
+				oks = append(oks, c)
+			case c.Col == Broken && (h == "" || atHead):
+				broken = append(broken, c)
+			}
+		}
+	}
+	if s.Fleet == nil {
+		return oks, broken
+	}
+	// a fleet read (a friend's or a member's read card) stands as a read of the readers
+	// table does (docs/SPEC-SPRINT.md, a read asked of any unit with room at or above the
+	// read tier). The ok card returned is the fleet record, so accept guards it where it is.
+	_, fok, fbr := fleetReadsAt(s, pr, attempt)
+	for _, syn := range fok {
+		real := s.Fleet.Card(syn.ID)
+		if real == nil {
+			continue
+		}
+		r := real.F("reader")
+		if friendReadAgrees(real) && readHeadMatchesAt(s, pr, attempt, real) && !seen[r] {
 			seen[r] = true
-			out = append(out, c)
+			oks = append(oks, real)
 		}
 	}
-	// a friend's LAND stands as an ok read (docs/SPEC-SPRINT.md, a read asked of
-	// any unit with room at or above the read tier). The card returned is the
-	// fleet record, so accept guards it where it is.
-	if s.Fleet != nil && len(out) < need {
-		_, oks, _ := friendReadLive(s, pr)
-		for _, syn := range oks {
-			real := s.Fleet.Card(syn.ID)
-			if real == nil {
-				continue
-			}
-			r := real.F("reader")
-			if friendReadAgrees(real) && readHeadMatches(s, pr, real) && !seen[r] && len(out) < need {
-				seen[r] = true
-				out = append(out, real)
-			}
-		}
-	}
-	return out
+	// fleetReadsAt keeps a broken read at the attempt's head, or one that pins no head
+	return oks, append(broken, fbr...)
 }
 
 // readersWord names the readers a primary needs (ReadsNeededIn, none, one or two):
