@@ -114,9 +114,15 @@ ModelFinish(m) ==
 \* fails but the environment does not change ("branchenv" witness below)
 BranchRefused(m) ==
     /\ card[m] = "working"
+    /\ \/ "branchenv" \notin Broken
+          /\ UNCHANGED <<env, held, judged, jcause>>
+       \/ "branchenv" \in Broken
+          /\ (\E c \in Causes : env' = [env EXCEPT ![m] = c] /\ jcause' = [jcause EXCEPT ![m] = c])
+          /\ held' = [held EXCEPT ![m] = TRUE]
+          /\ judged' = [judged EXCEPT ![m] = TRUE]
     /\ card' = [card EXCEPT ![m] = "failed"]
     /\ event' = "rejected"
-    /\ UNCHANGED <<env, held, judged, jcause, known, probe>>
+    /\ UNCHANGED <<known, probe>>
 
 \* the deal gives a known, not-held member a card ("nodeal": a held one too)
 Deal(m) ==
