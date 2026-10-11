@@ -553,6 +553,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		snap, fence, err := st.fencedStep(ctx, tw, step, &res.Repaired, mine)
 		gen := fence.Gen
 		if errors.Is(err, errCleared) && step.Epoch == nil {
+			// tla/DirtyTickRead.tla Commit (the epoch repin: a plain part re-reads after a Clear).
 			// The sprint was cleared while this step read it: read the new
 			// epoch.
 			if st, err = st.repin(ctx); err != nil {
@@ -564,6 +565,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			return res, err
 		}
 		if step.Epoch != nil && (err != nil || *step.Epoch != snap.Epoch) {
+			// tla/DirtyTickRead.tla Commit (the pinned-epoch refusal: OldEpochPartWritesNothing).
 			now, eerr := st.EpochNow(ctx)
 			if eerr != nil {
 				return res, eerr
@@ -595,6 +597,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			return res, nil
 		}
 		if step.StartsWork && fence.StopRevoked {
+			// tla/DirtyTickRead.tla Commit (the StartsWork/ReportsWork/RequiresStopped fences: StartsWorkNotAfterStop).
 			res.Refused = []sprint.Refusal{{Key: step.Verb, Why: "the machine is STOPPED: no new work or read may start"}}
 			return res, nil
 		}
@@ -607,6 +610,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			return res, nil
 		}
 		if fence.Queued > 0 && !step.Pump && !fence.Running && drains < MaxDrains {
+			// tla/DirtyTickRead.tla Drain.
 			// A STOPPED machine has no next tick: the queue it left is drained
 			// before any step, which then writes the work table itself. Past
 			// MaxDrains (a world that keeps queueing) the step plans on the
@@ -982,6 +986,7 @@ const MaxDrains = 4
 // DrainStep is the pump's drain: the work table's whole queue applied in one
 // update (sprint.Drain), and taken off the queue by its commit.
 func DrainStep() Step {
+	// tla/DirtyTickRead.tla Drain.
 	return Step{Verb: sprint.DrainVerb, Actor: sprint.MachineActor, Load: All, Pump: true, Drain: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Drain(s, s.Queue, sprint.MachineActor) }}
 }
