@@ -66,6 +66,8 @@ const (
 	// PropReworkPriority controls priority on the next attempt: fix (default), high or keep.
 	PropReworkPriority = "rework_priority"
 	ReworkKeep         = "keep"
+	// PropLowBalanceUsd is the work table's property: the low balance threshold in USD.
+	PropLowBalanceUsd = "low_balance_usd"
 	// TiersAll is the word of a side that may take every tier, the default.
 	TiersAll = "all"
 	// ReadTierDefault is the word that takes a read tier off: a stream's back to
@@ -105,6 +107,23 @@ func (s *Snapshot) sideTakes(prop, tier string) bool {
 	}
 	v, _ := s.Work.Prop(prop)
 	return v == "" || v == TiersAll || slices.Contains(Split(v), tier)
+}
+
+// LowBalanceUsdDefault is the low balance threshold when the coordinator set none: five dollars.
+const LowBalanceUsdDefault = 5.0
+
+// lowBalanceUsdSetting is the low balance threshold in USD as the work table's properties
+// hold them (PropLowBalanceUsd): a positive number, and ok false while none is set.
+func lowBalanceUsdSetting(props map[string]string) (float64, bool) {
+	v := props[PropLowBalanceUsd]
+	if v == "" {
+		return LowBalanceUsdDefault, false
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
 }
 
 // readsWords is the counts set --reads takes (PropReadsNeeded).
