@@ -79,6 +79,7 @@ func Abstract(o Observed) State {
 		p.ReturnedAt = c.Int(sprint.FieldReturnedAttempt)
 		p.Finder, p.FindingAttempt = c.F(sprint.FieldFindingReader), c.Int(sprint.FieldFindingAttempt)
 		p.BriefAt = c.Int(sprint.FieldBriefAttempt)
+		p.RefusedHead = headAttempt(c.F(sprint.FieldLandRefusedHead))
 		if f := c.F("finding"); strings.HasPrefix(f, sprint.LandRefusedFinding) {
 			p.Refused = strings.TrimPrefix(f, sprint.LandRefusedFinding)
 		}
