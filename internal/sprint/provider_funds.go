@@ -240,7 +240,7 @@ func providerConds(s *Snapshot) (conds []cond, stop string) {
 				spent = fmt.Sprintf("spent %s over the last hour (the sprint's cost records), about %.1f hours left at that spend", Dollars(b.SpendHour), hours)
 			}
 			conds = append(conds, cond{typ: NProviderLow, stream: ProviderSubject(p), streamLevel: true,
-				decisions: []string{"routes rest " + p, "wait", "ack"},
+				decisions: []string{"fund " + p, "funded " + p, "routes rest " + p, "wait", "ack"},
 				what: fmt.Sprintf("provider %s is low on funds: balance %s, %s; a payment is the owner's; its routes %s STILL SERVE: the machine rests none of them for a balance; to rest them: nova-sprint routes rest %s --reason <why>; to look again later: nova-sprint wait <note> --until <RFC3339>; nova-sprint where --json shows the balance",
 					p, b.Said(), spent, strings.Join(slices.Sorted(slices.Values(serving[p])), ", "), p)})
 		}

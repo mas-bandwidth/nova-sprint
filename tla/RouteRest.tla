@@ -194,4 +194,8 @@ NoResultNeverRests ==
 \* a balance low long enough is raised to the coordinator as a judgment
 LowIsRaised == [](low => <>(judged \/ ~low))
 
+\* a take refused for credit rests the provider but spends no redeal
+OutOfCreditSpendsNoRedeal ==
+    [][\A r \in Routes : event' = "credit" => (provRest' = "credit" \/ provRest' = provRest)]_vars
+
 =============================================================================

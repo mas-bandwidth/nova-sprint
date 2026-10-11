@@ -70,6 +70,14 @@
     say woken. TLA+ model RouteRest, property AuthEndsOnlyWoken, with a reversed witness. Tests cover
     routes wake on a key rest."
    :origin "nova-tools PR #5574, head 0c6706f2d; the providers table's until-paid wording is v1.2.5 candidate 6")
+  (fix "low-balance-pushes-the-seat-before-the-refusalc" :release "v1.2.6" :status "shipped"
+   :title "A low balance raises a judgment before a credit refusal costs a card"
+   :text "DeepSeek balance now reads from its API (GET https://api.deepseek.com/user/balance with DEEPSEEK_API_KEY).
+    A balance at or under $5 (low_balance_usd setting) raises NProviderLow judgment with decisions including
+    'fund <provider>' and 'funded <provider>', routes still serve. Out-of-credit refusals (402) rest the provider
+    but withdraw without FieldTakeEnded, spending no redeal or attempt, reusing the rate-limited refusal path.
+    TLA+ model RouteRest, property OutOfCreditSpendsNoRedeal, added to MCRouteRest.cfg."
+   :origin "nova-sprint card low-balance-pushes-the-seat-before-the-refusalc.w4")
   (fix "bare-merge-stream-refused" :release "v1.2.6" :status "shipped"
    :title "A bare merge --stream is refused on a real store"
    :text "Landings are recorded by name or by land; a bare merge --stream on a real store is refused."

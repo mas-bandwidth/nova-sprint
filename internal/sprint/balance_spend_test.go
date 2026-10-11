@@ -144,7 +144,7 @@ func TestALowBalanceIsAJudgmentNeverARest(t *testing.T) {
 	c := conds[0]
 	assert.Equal(t, NProviderLow, c.typ)
 	assert.Equal(t, ProviderSubject("openrouter"), c.stream)
-	assert.Equal(t, []string{"routes rest openrouter", "wait", "ack"}, c.decisions)
+	assert.Equal(t, []string{"fund openrouter", "funded openrouter", "routes rest openrouter", "wait", "ack"}, c.decisions)
 	for _, want := range []string{
 		"balance $162.20 at 2026-10-10T02:04:43Z",
 		"spent $201.07 over the last hour",
