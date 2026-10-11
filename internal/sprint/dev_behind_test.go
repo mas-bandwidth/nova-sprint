@@ -86,10 +86,10 @@ func TestDevBehindProtectedBranches(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		id := "card-" + fmt.Sprint(i)
 		c := &sprint.Card{
-			ID:     id,
-			Row:    "s1",
-			Col:    sprint.Landed,
-			Score:  0,
+			ID:    id,
+			Row:   "s1",
+			Col:   sprint.Landed,
+			Score: 0,
 			Fields: map[string]string{
 				"primary": id,
 				"landed":  promotionTime.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
@@ -123,10 +123,10 @@ func TestDevBehindSprintBranch(t *testing.T) {
 	for i := 1; i <= 30; i++ {
 		id := "card-" + fmt.Sprint(i)
 		c := &sprint.Card{
-			ID:     id,
-			Row:    "s1",
-			Col:    sprint.Landed,
-			Score:  0,
+			ID:    id,
+			Row:   "s1",
+			Col:   sprint.Landed,
+			Score: 0,
 			Fields: map[string]string{
 				"primary": id,
 				"landed":  promotionTime.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
@@ -160,10 +160,10 @@ func TestDevBehindMixedBranches(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		id := "protected-" + fmt.Sprint(i)
 		c := &sprint.Card{
-			ID:     id,
-			Row:    "s1",
-			Col:    sprint.Landed,
-			Score:  0,
+			ID:    id,
+			Row:   "s1",
+			Col:   sprint.Landed,
+			Score: 0,
 			Fields: map[string]string{
 				"primary": id,
 				"landed":  promotionTime.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
@@ -211,10 +211,10 @@ func TestDevBehindWhatListsCards(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		id := "card-" + fmt.Sprint(i)
 		c := &sprint.Card{
-			ID:     id,
-			Row:    "s1",
-			Col:    sprint.Landed,
-			Score:  0,
+			ID:    id,
+			Row:   "s1",
+			Col:   sprint.Landed,
+			Score: 0,
 			Fields: map[string]string{
 				"primary": id,
 				"landed":  promotionTime.Add(time.Duration(i+10) * time.Minute).Format(time.RFC3339),
@@ -253,10 +253,10 @@ func TestDevBehindWhatWithManyCards(t *testing.T) {
 	for i := 0; i < 15; i++ {
 		id := "card-" + fmt.Sprint(i)
 		c := &sprint.Card{
-			ID:     id,
-			Row:    "s1",
-			Col:    sprint.Landed,
-			Score:  0,
+			ID:    id,
+			Row:   "s1",
+			Col:   sprint.Landed,
+			Score: 0,
 			Fields: map[string]string{
 				"primary": id,
 				"landed":  promotionTime.Add(time.Duration(i+10) * time.Minute).Format(time.RFC3339),

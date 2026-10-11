@@ -431,13 +431,18 @@
     (cmd/nova-sprint/backup.go)."
    :origin "dogfood 2026-10-10 evening: fleet-only restart; pre-clear backup, 2026-10-10 (8 fleet parts differed)")
 
-   (fix "inbox-push-write-once-race" :release "v1.2.11" :status "planned"
-    :title "Inbox push cannot overwrite a published judgment"
-    :text "Two overlapping clients share one temporary path, so a second write can change the published
-     file. Use a unique temporary path per writer."
-    :origin "issue #5160")
+    (fix "inbox-push-write-once-race" :release "v1.2.11" :status "planned"
+     :title "Inbox push cannot overwrite a published judgment"
+     :text "Two overlapping clients share one temporary path, so a second write can change the published
+      file. Use a unique temporary path per writer."
+     :origin "issue #5160")
 
-   (fix "seat-judgment-repush" :release "v1.2.9" :status "planned"
+    (fix "dev-is-behind-counts-cards-on-their-own-base" :release "v1.2.11" :status "planned"
+     :title "Dev behind judgment excludes cards landed on protected branches"
+     :text "After moving to one line, cards land straight onto their own base (main for nova-sprint, dev for nova-tools). The dev behind judgment now only counts cards whose base is not a protected branch (dev or main). Cards landed on sprint branches are counted; cards on protected branches are excluded since they landed directly onto the line. The judgment message lists counted cards by name."
+     :origin "this pull request")
+
+    (fix "seat-judgment-repush" :release "v1.2.9" :status "planned"
     :title "Judgments waiting on the seat are re-pushed each look"
     :text "The seat push loop was only pushing judgments once because it cached the 'seen' file list
      for all directories. When following the seat, cached seen prevents re-pushing judgments that are
