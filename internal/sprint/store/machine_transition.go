@@ -17,6 +17,7 @@ import (
 // Acquire advances its generation, so a worker that read RUNNING before STOP
 // cannot commit afterward using its old read. A repeated STOP and a START also
 // re-read the machine under this lock, never overwriting a newer stop reason.
+// tla/DirtyTickRead.tla Stop, Start
 func (st *Store) machineTransition(ctx context.Context, running bool, who, reason string, until time.Time) (before, after Machine, changed bool, err error) {
 	if running {
 		// Settle owed leases whose owner's beat after the STOP no longer names
@@ -108,6 +109,7 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 		if after.RunSeq == ^uint64(0) {
 			return before, false, errors.New("machine start generation is exhausted; nothing was changed")
 		}
+		// tla/DirtyTickRead.tla Start (START bumps the run sequence)
 		after.RunSeq++
 		if n := len(after.Spans); n > 0 && after.Spans[n-1].To.IsZero() {
 			after.Spans[n-1].To = now

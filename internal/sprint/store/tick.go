@@ -1441,6 +1441,7 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 			return p, d
 		}
 		step := TickPartStep(part.Name, fn, t.req, &t.at, nil, &due)
+		// the part records the run sequence it began under (tla/DirtyTickRead.tla Begin)
 		step.TickRunSeq = &t.runSeq
 		step.Pump, step.Drain, step.Twin = table == sprint.Work, drain, t.twin
 		// the deal and the ask draw from the routes (a read card's route,

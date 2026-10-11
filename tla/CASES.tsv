@@ -198,6 +198,7 @@ MCDirtyTickReadAcquire.cfg	MCDirtyTickRead.tla	invariant	TwinIsTheStore	ignore-t
 MCDirtyTickReadHalt.cfg	MCDirtyTickRead.tla	invariant	BeganRunning	ignore-terminal	dirtytickread-halt	required	-
 MCDirtyTickReadCatchup.cfg	MCDirtyTickRead.tla	invariant	ViewIsSnapshot	ignore-terminal	dirtytickread-catchup	required	-
 MCDirtyTickReadLock.cfg	MCDirtyTickRead.tla	invariant	LockedApplyNotLost	ignore-terminal	dirtytickread-lock	required	-
+MCDirtyTickReadBrokenRunSeq.cfg	MCDirtyTickRead.tla	invariant	NoStaleRunCommit	ignore-terminal	dirtytickread-runseq	required	-
 MCRouteIndex.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenRandom.cfg	MCRouteIndex.tla	invariant	RouteFair	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenNoAdvance.cfg	MCRouteIndex.tla	invariant	ExcludedNeverDrawn	ignore-terminal	routeindex	required	-
@@ -440,9 +441,10 @@ MCDealFill.cfg	MCDealFill.tla	pass	-	ignore-terminal	dealfill	required	-
 MCDealFillBrokenNoAutoclear.cfg	MCDealFill.tla	temporal	FaultHoldClears	ignore-terminal	dealfill	required	-
 MCDealFillBrokenClearPerson.cfg	MCDealFill.tla	action	PersonHoldStays	ignore-terminal	dealfill	required	-
 MCFriendDealtReturn.cfg	MCFriendDealtReturn.tla	pass	-	ignore-terminal	frienddealtreturn	required	-
-MCFriendDealtReturnBrokenGate.cfg	MCFriendDealtReturn.tla	invariant	DealtNoMoreHolds	ignore-terminal	frienddealtreturn	required	-
-MCFriendDealtReturnBrokenReady.cfg	MCFriendDealtReturn.tla	invariant	DealtNoMoreHolds	ignore-terminal	frienddealtreturn	required	-
-MCFriendDealtReturnBrokenReturn.cfg	MCFriendDealtReturn.tla	invariant	DealtNoMoreHolds	ignore-terminal	frienddealtreturn	required	-
+MCFriendDealtReturnBrokenGate.cfg	MCFriendDealtReturn.tla	action	DealtNoMoreHolds	ignore-terminal	frienddealtreturn	required	-
+MCFriendDealtReturnBrokenReady.cfg	MCFriendDealtReturn.tla	invariant	TakenNeverMarked	ignore-terminal	frienddealtreturn	required	-
+MCFriendDealtReturnBrokenReturn.cfg	MCFriendDealtReturn.tla	invariant	TakenNeverMarked	ignore-terminal	frienddealtreturn	required	-
+MCFriendDealtReturnBrokenReturnpinned.cfg	MCFriendDealtReturn.tla	action	PinnedNeverReturned	ignore-terminal	frienddealtreturn	required	-
 MCRoadmapEntry.cfg	MCRoadmapEntry.tla	pass	-	ignore-terminal	roadmapentry	required	-
 MCRoadmapEntryBrokenLastChild.cfg	MCRoadmapEntry.tla	invariant	ParentsHold	ignore-terminal	roadmapentry	required	-
 MCRoadmapEntryBrokenSourceFirst.cfg	MCRoadmapEntry.tla	invariant	NoLoss	ignore-terminal	roadmapentry	required	-
@@ -484,3 +486,7 @@ MCHoldsLive.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
 MCServerSwitch.cfg	MCServerSwitch.tla	pass	-	ignore-terminal	serverswitch	required	-
 MCServerSwitchBrokenNodeadline.cfg	MCServerSwitch.tla	invariant	RollbackOnlyInWindow	ignore-terminal	serverswitch	required	-
 MCServerSwitchBrokenKeepstate.cfg	MCServerSwitch.tla	invariant	AtMostOneAutoRollbackPerSwitch	ignore-terminal	serverswitch	required	-
+MCHoldsBrokenResolveHeld.cfg	MCHolds.tla	invariant	HeldMovesOnlyByRelease	ignore-terminal	holds	required	-
+MCHoldsBrokenWorkerReleases.cfg	MCHolds.tla	invariant	OnlyCoordinatorReleases	ignore-terminal	holds	required	-
+MCAttemptsEpochs.cfg	MCAttemptsEpochs.tla	pass	-	ignore-terminal	attemptsepochs	required	-
+MCAttemptsEpochsBrokenNoepochcheck.cfg	MCAttemptsEpochs.tla	invariant	OldEpochWritesNothing	ignore-terminal	attemptsepochs	required	-
