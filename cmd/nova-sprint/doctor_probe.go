@@ -170,6 +170,12 @@ func probeScript(member, seat string, tools []string) string {
 	fmt.Fprintf(&b, "if [ -x \"$HOME/.local/bin/nova-push-credential\" ]; then echo \"push $(\"$HOME/.local/bin/nova-push-credential\" probe %s 2>&1 | tail -1)\"; else echo \"push FAIL no $HOME/.local/bin/nova-push-credential\"; fi\n", doctorPushURL)
 	fmt.Fprintf(&b, "S=%s; NS=$(PATH=\"$P\" command -v nova-secrets); SO=$(PATH=\"$P\" command -v sops)\n", bench.Quote(seat))
 	b.WriteString(`if [ -n "$NS" ] && [ -n "$SO" ]; then o=$("$NS" check --store "$HOME/nova-bench/secrets" --as "$S" --key "$HOME/.config/nova-secrets/$S.key" --sops "$SO" 2>&1); echo "secrets $? $(printf '%s' "$o" | tail -1)"; else echo "secrets 1 nova-secrets or sops is on no PATH entry of its loop"; fi` + "\n")
+	// java on the loop's PATH and the TLA+ tools' jar: only some benches run TLC (the dealer
+	// keeps TLA+ cards off the others), so a missing one is a WARN, never a FAIL.
+	b.WriteString(`echo "tla $(PATH="$P" command -v java 2>/dev/null || echo -) $( [ -f /opt/tla/tla2tools.jar ] && echo present || echo absent )"` + "\n")
+	// the key names the member's secrets seat holds, by name only and never a value
+	// (nova-secrets names reads the file without decrypting); "-" is not measured.
+	b.WriteString(`if [ -n "$NS" ]; then n=$("$NS" names --store "$HOME/nova-bench/secrets" --as "$S" 2>/dev/null | tr '\n' ',' | sed 's/,*$//'); echo "names ${n:--}"; else echo "names -"; fi` + "\n")
 	b.WriteString(`echo "version $(PATH="$P" nova-sprint version 2>/dev/null | head -1)"` + "\n")
 	// the kernel's link changes in the last hour (docs/SPEC-SPRINT.md, doctor: member-env; the
 	// card doctor-names-a-member-whose-link-flapped): one extended grep over a short journal
@@ -229,6 +235,16 @@ func parseProbe(p *sprint.MemberProbe, out []byte) {
 		case "secrets":
 			code, line, _ := strings.Cut(val, " ")
 			p.Secrets, p.SecretOK = probeClip(line, 200), code == "0"
+		case "tla":
+			jp, jr, _ := strings.Cut(val, " ")
+			if jp == "-" {
+				jp = ""
+			}
+			p.Java, p.TLA = jp, strings.TrimSpace(jr)
+		case "names":
+			if val != "" && val != "-" {
+				p.SecretNames = strings.Split(val, ",")
+			}
 		case "version":
 			p.Version = versionWord(val)
 		}
