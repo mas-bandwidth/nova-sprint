@@ -16,8 +16,8 @@ package main
 // cards ran sixteen gates one after another (20 minutes, 2026-10-07); it now runs eight, up
 // to --land-parallel at a time. One base commit's gate and cure stay serial (baseGates); each
 // clone's fetches and every write of its shared refs are serial per clone (fetchLock, keyed
-// on the clone's common git dir), so two clones, and two bases of one clone that need no
-// shared write, go side by side; and each stream's lander (fork) has its own scratch and
+// on the clone's own directory, stable across its creation), so two clones, and two bases
+// of one clone that need no shared write, go side by side; and each stream's lander (fork) has its own scratch and
 // output, so the log keeps its lines and their order.
 //
 // PHASE 2, THE LANDING, ONE LANE PER (clone, base). The built batches land in one lane per
@@ -117,26 +117,37 @@ func (l *lander) locks() *landShared {
 	return l.shared
 }
 
-// fetchKey is the lock key of a fetch or another write of a clone's shared refs: the
-// clone's common git directory, so a stream's worktree, its sibling worktrees and the clone
-// itself take the one lock (a linked worktree's refs/remotes/origin/* and its shared
-// metadata live in the clone's common git dir). The directory itself when git cannot name it
-// (a clone not made yet): its callers still share the lock of the same not-yet-made clone.
+// fetchKey is the lock key of a fetch or another write of a clone's shared refs: the clone's
+// own directory, so a stream's worktree, its sibling worktrees and the clone itself take the
+// one lock (a linked worktree's refs/remotes/origin/* and its shared metadata live in the
+// clone's common git dir, which is the clone's `.git`). The key is the parent of the common
+// git dir, not the common git dir itself, so it is stable across the clone's own creation:
+// git cannot name the common dir before `git clone` has made it, and the directory itself is
+// the fallback then, so keying on the parent (the clone directory) makes the lock a clone
+// holds while it is being made the same lock its later fetches take. Keying on the common
+// git dir made a second lane of one clone (a second base) find `.git` made, compute another
+// key, and prepare the half-made clone beside the clone in progress (land.go, clone).
 func (l *lander) fetchKey(ctx context.Context, dir string) string {
 	out, err := l.git(ctx, dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
 		return dir
 	}
 	if out = strings.TrimSpace(out); out != "" {
-		return out
+		// a normal clone's common git dir is <clone>/.git: its parent is the clone directory,
+		// the same key a not-yet-made clone falls back to
+		if parent := filepath.Dir(out); parent != "." && parent != string(filepath.Separator) {
+			return parent
+		}
 	}
 	return dir
 }
 
 // fetchLock is the clone's own fetch lock: fetches and worktree writes of one clone stay
-// serial, of two clones go side by side. The key is the clone's common git dir (fetchKey),
-// not the directory a caller passes, so a fetch in a stream's worktree takes the same lock
-// as the clone's own worktree add.
+// serial, of two clones go side by side (docs/SPEC-SPRINT.md, the pass: "every fetch and
+// every write of the clone's shared refs is one at a time, per clone"). The key is the
+// clone's own directory (fetchKey, the parent of its common git dir), not the directory a
+// caller passes, so a fetch in a stream's worktree takes the same lock as the clone's own
+// worktree add and as the clone's own creation.
 func (s *landShared) fetchLock(clone string) *sync.Mutex {
 	s.fetchMu.Lock()
 	defer s.fetchMu.Unlock()

@@ -2226,8 +2226,9 @@ func (l *lander) clone(ctx context.Context, repo string) (dir, why string) {
 		return dir, ""
 	}
 	// the clone is made once per repository: two lanes of one clone (two bases) prepare
-	// at once, so its creation is under its own fetch lock too (fetchKey: the same key a
-	// fetch in any of its worktrees takes)
+	// at once, so its creation is under its own fetch lock too (fetchKey: the clone's own
+	// directory, keyed the same before `git clone` makes it and by a fetch in any of its
+	// worktrees after, so a lane that finds `.git` made still waits for the clone in progress)
 	lock := l.locks().fetchLock(l.fetchKey(ctx, dir))
 	lock.Lock()
 	defer lock.Unlock()

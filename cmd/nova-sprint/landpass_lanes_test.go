@@ -251,6 +251,50 @@ func TestAWorktreeFetchTakesItsClonesLock(t *testing.T) {
 	}
 }
 
+// (4) The clone's fetch lock is keyed on a path stable across the clone's own creation: a
+// second lane of one repository (a second base, the card's own case) that calls clone after
+// the first lane's `git clone` has made `<dir>/.git` must take the same lock and wait for the
+// clone to finish, never prepare a half-made clone. Before the fix fetchKey returned `<dir>`
+// before creation and `<dir>/.git` after, so the second lane took a different lock and ran on
+// beside the clone in progress (land.go, clone; landpass.go, fetchKey). The test holds the
+// pre-creation key exactly as the first lane does, makes `.git` as `git clone` does, and
+// drives the second lane's clone call through that window; calling fetchLock with invented
+// keys cannot catch a wrong call-site key, as TestAWorktreeFetchTakesItsClonesLock notes.
+func TestTwoBasesOfOneRepoShareTheClonesCreationLock(t *testing.T) {
+	t.Parallel()
+	r := newLandRig(t)
+	l := &lander{a: r.a}
+	l.locks()
+	ctx := context.Background()
+	root, err := r.a.landRoot()
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	dir := filepath.Join(root, repoDirName(r.remote))
+	// the first lane is inside git clone: it holds the destination directory's lock, the
+	// key before .git exists, and git clone has just made .git there
+	mu := l.locks().fetchLock(l.fetchKey(ctx, dir))
+	require.Equal(t, dir, l.fetchKey(ctx, dir), "a not-yet-made clone keys on its destination directory")
+	mu.Lock()
+	r.git("", "clone", "-q", r.remote, dir)
+	// the second lane of the same repository (another base) calls clone: it must wait for
+	// the first lane's clone, so it takes the same lock, not one keyed on the new .git
+	done := make(chan struct{})
+	go func() { _, _ = l.clone(ctx, r.remote); close(done) }()
+	select {
+	case <-done:
+		mu.Unlock()
+		t.Fatal("a second lane's clone ran on the clone in progress: it took a different lock")
+	case <-time.After(200 * time.Millisecond):
+	}
+	mu.Unlock()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the second lane's clone never took its clone's creation lock")
+	}
+	r.clean()
+}
+
 // (d) A batch refused on one base does not stop another base's lane: the main lane lands
 // while the alt lane's red tree gate blames its head.
 func TestARefusedBatchOnOneBaseDoesNotStopAnotherBasesLane(t *testing.T) {
