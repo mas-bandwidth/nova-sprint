@@ -1244,6 +1244,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	allowPersonal := fs.Bool("allow-personal-base", false, "admit cards whose brief's BASE: is a personal branch (<name>/* for the sprint's coordinator, its owner or a friends table row), by default refused naming the base and this flag: no sprint watches a personal branch's gate (docs/SPEC-SPRINT.md section 11, bases-view-r.w2)")
 	landProtected := fs.String("land-protected", "", "mark a new stream for protected branches while admitting its first card: repositories (owner/name, comma separated) or any")
 	held := fs.Bool("held", false, "admit the cards held: waiting, a sentinel never reached and no card dealt, nothing raised, until nova-sprint release <id> --reason <text>; a wave loads behind a held sentinel with nothing before it")
+	partial := fs.Bool("partial", false, "with --brief-dir or a repeated --brief-file: hold back every brief with a finding and every card that needs a held card, and admit the rest in one write; one HELD line per held card; exit 0 when every card was admitted, 1 when some were held and the rest written, 2 when none could be admitted")
 	decideRecord := fs.String("decide-record", "", "the record `file` of the cards' brief decisions under JEV_API_KEY (default ~/nova-sprint/decide/brief.jsonl, the coordinator's root); each card stores it and its op, and land and drop attach the card's end there")
 	var briefOps stringList
 	fs.Var(&briefOps, "brief-op", "`id=op`: a card's brief decision op id (<id>@brief-<hex>), which add sends its server itself when it asked the decision where it was typed; refused when typed on an add no server runs; repeated, one per card")
@@ -1271,6 +1272,9 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	// again, names one brief file per card, its id the file's name. One
 	// --brief-file with ids, --count or --sentinel is the one brief for every
 	// card they name.
+	if *partial && !(*briefDir != "" || len(briefFiles) > 1 || len(briefFiles) == 1 && len(ids) == 0 && *count == 0 && *sentinel == "") {
+		return refuse(stderr, "add", "--partial admits what passes and holds the rest: it takes --brief-dir or a repeated --brief-file only, not ids, --count, --sentinel or --land-protected (a marked first add is one step)")
+	}
 	if *briefDir != "" || len(briefFiles) > 1 || len(briefFiles) == 1 && len(ids) == 0 && *count == 0 && *sentinel == "" {
 		if *briefDir == "" && len(briefFiles) == 1 && !*one {
 			return refuse(stderr, "add", oneCardWhy(*stream))
@@ -1290,7 +1294,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 		if *every != 0 || *last {
 			return refuse(stderr, "add", "--sentinel-every goes with --count, not a card per brief file")
 		}
-		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, *allowShared, *allowPersonal, *landProtected, *decideRecord, briefOps, sprint.Split(*replaces), c, stdout, stderr)
+		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, *partial, *allowShared, *allowPersonal, *landProtected, *decideRecord, briefOps, sprint.Split(*replaces), c, stdout, stderr)
 	}
 	if len(briefFiles) == 1 {
 		if *brief != "" {
@@ -1455,10 +1459,12 @@ func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) s
 // one card per brief file, in byte order of the directory's *.md files or in
 // the order the files were named. Every brief is read and linted first (one
 // failing brief refuses the whole call, exit 2, nothing written), and one
-// store write adds every card.
+// store write adds every card. With --partial (add_partial.go) the brief check's
+// collector runs instead: every brief with a finding and every card that needs a
+// held card is held back, and the rest are admitted in one write.
 // cmdAddMany admits per-file cards and supports the same atomic first-stream mark as add
 // (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2).
-func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, allowShared, allowPersonal bool, landProtected, decideRecord string, briefOps, replaces []string, c *common, stdout, stderr io.Writer) int {
+func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, partial, allowShared, allowPersonal bool, landProtected, decideRecord string, briefOps, replaces []string, c *common, stdout, stderr io.Writer) int {
 	if stream == "" {
 		return refuse(stderr, "add", "wants --stream and --brief-dir <dir> or --brief-file <file>...")
 	}
@@ -1475,6 +1481,12 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 		return code
 	}
 	extra := sprint.Split(needs)
+	if partial {
+		if sentinel != "" || landProtected != "" {
+			return refuse(stderr, "add", "--partial admits what passes and holds the rest: it takes no --sentinel and no --land-protected (a marked first add is one step)")
+		}
+		return a.cmdAddPartial(stream, files, extra, rs, st, score, before, after, held, allowShared, decideRecord, briefOps, replaces, c, stdout, stderr)
+	}
 	cards := make([]sprint.CardAdd, 0, len(files))
 	for _, path := range files {
 		id := strings.TrimSuffix(filepath.Base(path), ".md")

@@ -250,6 +250,23 @@
     findings of three briefs in one call and leaves its keys equal, the clean brief is exit 0, and a brief
     over the size bound and a lint finding in one file are both said."
    :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 2; the owner, 2026-10-11")
+  (fix "add-partial-admits-what-passes" :release "v1.2.14" :status "planned"
+   :title "add --partial admits what passes and holds the rest"
+   :text "An add was all or none: one failing brief refused the whole call, so the coordinator
+    added, read the refusals, moved the refused files aside and added again. add --partial (with
+    --brief-dir or a repeated --brief-file only; ids, --count, --sentinel and --land-protected are
+    refused, a marked first add is one step) runs the brief check's collector over every brief and
+    holds back every brief with a finding and every card that needs a held card through its Needs:
+    or DEPENDS-ON: line or --needs, transitively. A card the add step's own plan refuses at the
+    write is held the same way and the write is planned again without it, bounded by the card
+    count. It prints one HELD <id>: <its first finding or refusal> line, or HELD <id>: needs
+    <other>, held back, per held card, then add's own closing line for the cards it admitted; exit
+    0 when every card was admitted, 1 when some were held and the rest written, 2 when none could
+    be admitted or for usage. Without the flag add is all or none exactly as before. Tests: five
+    briefs where b2 names an invalid PRIORITY and b4 needs b2, and b1, b3 and b5 land (exit 1, the
+    table holds three); a card whose id exists is held with its refusal and the others land; an
+    all-clean call is exit 0 as add without the flag."
+   :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 1; the owner, 2026-10-11")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
