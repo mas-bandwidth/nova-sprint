@@ -153,6 +153,14 @@ func (h *harness) through(ids ...string) {
 		h.readAllOK(id)
 	}
 	h.must(AcceptStep(sprint.AcceptReq{Sel: sprint.Sel{IDs: ids}}))
+	h.must(verdictsStep())
+}
+
+// verdictsStep applies the tick's verdicts part (sprint.TickVerdicts): the
+// finished work cards whose reads carry a verdict move to their ok or failed cell.
+func verdictsStep() Step {
+	var due int
+	return TickPartStep("verdicts", sprint.TickVerdicts, sprint.TickReq{}, nil, nil, &due)
 }
 
 // readAllOK has every outstanding read of the primary say ok and, while it wants
