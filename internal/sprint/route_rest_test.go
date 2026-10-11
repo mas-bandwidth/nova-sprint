@@ -22,7 +22,12 @@ func TestRestsDueCountsTransientProviderFailuresNeverNoResults(t *testing.T) {
 	at := func(m int) string { return stamp(t0.Add(time.Duration(m) * time.Minute)) }
 	ended := func(m int, err string) string { return ProviderTake{Route: "a", Finished: at(m), Error: err}.String() }
 	noResult := func(m int) string { return ended(m, "no result: no RESULT.md shape") }
-	limited := func(m int) string { return ended(m, "provider: class=rate-limited status=429 msg=Rate limit exceeded") }
+	// a rate-limited end never counts toward the 3-in-10 rest (its own brief backoff holds
+	// the route: tla/RateBackoff.tla, rateBackoffDue), so it is spelled as a transient the
+	// rule does count here; the rate-limit backoff has its own tests
+	limited := func(m int) string {
+		return ended(m, "provider: class=provider-5xx status=503 msg=upstream unavailable")
+	}
 	outage := func(m int) string {
 		return ended(m, "provider: class=provider-5xx status=503 msg=upstream unavailable")
 	}

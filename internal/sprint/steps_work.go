@@ -1623,10 +1623,10 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		switch kind {
 		case cardhdr.EndProvider:
-			if IsRateLimited(r.Report) && rateLimitedRoute(c) && c.Int(FieldRateReturns) < MaxRateReturns {
+			if IsRateLimited(r.Report) && rateLimitedRoute(c) {
 				// a limited route's 429 that got through the member's budget and its retries:
-				// the card is returned untouched, at most MaxRateReturns times (rate_budget.go);
-				// an unlimited route's ends the take and counts toward its rest as before
+				// the card is returned untouched, no redeal spent, no attempt spent, at any
+				// number of returns; the route backs off briefly (route_rest.go)
 				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r, "rate limited",
 					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider rate limited the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
 				continue
@@ -2059,6 +2059,14 @@ func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved str
 	set[FieldProviderError] = line
 	dealt, taken := takeStamps(c)
 	rec := costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)
+	if IsRateLimited(r.Report) {
+		// a rate-limited take is recorded so its route backs off briefly (route_rest.go,
+		// RateTakes), never counted toward the route's 3-in-10 rest; the record is keyed by
+		// the number of rate returns so every one is read back (no bound)
+		num := c.Int(FieldRateReturns) + 1
+		set[FieldRateTake+itoa(num)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
+			Finished: stamp(s.Now), Usage: rec, Error: line, Taken: taken}.String()
+	}
 	if refusal(r.Report) != "" {
 		// the refusal is recorded so the provider rests as it always has (routeEnds reads
 		// ProviderTakes), with the take's own usage; only FieldTakeEnded and the redeal are
