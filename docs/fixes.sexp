@@ -125,6 +125,24 @@
     :title "The TLC cases run on GitHub-hosted runners from a pinned-jar workflow"
     :text "CI only, no product change. The 434 TLC cases in tla/ ran only when someone ran them by hand on a bench; tla/tla2tools.sha256 now pins the jar every tla/RUNS.tsv record names (sha256 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88, the tlaplus v1.7.4 release), and .github/workflows/tlc.yml runs the models on GitHub-hosted ubuntu-latest runners -- nova-sprint is public, so never self-hosted -- nightly by one cron, on workflow_dispatch, and on a pull request touching tla/**, pkg/tlc/** or tools/tlacheck/**. A groups job runs make tlc-test and prints the groups to run (every required group on schedule and dispatch via tlacheck groups --root ., the stale ones on a pull request via tlacheck groups --root . --stale; an empty list ends the workflow green); a models job depends on it, runs a four-wide fail-fast-false matrix over those groups, uses the runner image's own JDK 21 (no setup-java action), downloads the jar from the tlaplus release and refuses it, exit 2 naming both digests, unless sha256sum matches tla/tla2tools.sha256, then runs make tlc TLC_BUDGET=110 and uploads the run directory as a 14-day artifact. It never writes tla/RUNS.tsv into the repository; records still land through cards. New test internal/ci/tlc_workflow_test.go pins the hosted runner, the five-minute timeout, the digest check before make tlc and the 110-second budget. The workflow is unproven until its first run on the forge."
     :origin "this card, nova-sprint-ci-runs-tlc-on-hosted-runners-after-the-wall.w1, 2026-10-11: v1.2.12 inventory item T30 and note 3; checked at nova-sprint main 00c54ba2e")
+   (fix "tla-sprint-tables-fleet-take-and-finish" :release "v1.2.12" :status "planned"
+    :title "tla/SprintTables.tla adds the fleet side: member up or down and Start, Take, Finish, FleetDown, FleetUp"
+    :text "Models only, no product change. tla/SprintTables.tla gains the fleet side of the work table from
+     internal/sprint/refmodel/actions.go: a member is up or down, and a working primary's work card sits on one
+     member's row in a place none, ready (dealt, not taken), working (taken), finished or withdrawn. Start deals a
+     ready primary's work card to an up member's row (a withdrawn card is dealt again); Take moves a dealt card to
+     working on an up member; Finish finishes a working card and moves its primary to review; FleetDown takes a
+     member down and deals its ready and working cards to the other up members or, with no member up, withdraws
+     them and returns their primaries to ready; FleetUp brings a member up. The primary's moves stay rows of the
+     lifecycle's Moves table, so MovesOnlyByTable still holds, and the new WorkingOnAnUpMember (a working card's
+     member is up) holds too. Three reversed witnesses: MCSprintTablesBrokenInsert (an add that moves ready ->
+     waiting without inserting), MCSprintTablesBrokenNeedless (a resolve that drops the needs check) and
+     MCSprintTablesBrokenDownkeeps (a fleet down that keeps a working card on the member that went down, breaking
+     WorkingOnAnUpMember). The round-robin order of the deal (NextMember) and the levelling of the ready queues
+     (T4, the Level action) are choices, not safety rules, and are left out. The refmodel's pending-operation
+     fence (D1: Free) is left out (the module has no pending operation), and F1, F3 and F4 are left to the reads
+     and accept, merge and return, and crash and repair cards."
+    :origin "card tla-sprint-tables-fleet-take-and-finish.w3, 2026-10-11: v1.2.12 inventory item T4, the second of five cards; drift read at nova-sprint main 00c54ba2e")
    (fix "tla-readcards-first-cases" :release "v1.2.12" :status "planned"
     :title "tla/ReadCards.tla checked against the read cards code, first cases"
     :text "Tests and models only, no product change. tla/ReadCards.tla, which had no cfg and no CASES row and had never been checked, now does what the code does: MaxGen 2 (MaxReadGen: the plain id and .g1 and .g2), the needed count 0, 1 or 2 (ReadsNeededIn: the setting or the tier's rule), and the merging-short-of-reads return (ShortReadsBack). MCReadCards.cfg holds TypeOK, OneOpenPerReader, AtMostNeedStanding, NeverTheWorker, NeverTwiceAfterSpent, MergingOnlyOnOks and NoOpenReadOfAnOldAttempt; the reversed witness MCReadCardsBrokenIgnoreSpent.cfg (BugIgnoreSpent = TRUE) breaks NeverTwiceAfterSpent. Both cases run on a bench and pass."
