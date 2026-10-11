@@ -739,12 +739,9 @@ func needsCycleWith(s *Snapshot, id string, proposed map[string][]string) string
 		}
 		return out
 	}
+	// every other open card's stored needs are edges whatever its state
+	// (cycle.go, needGraph.needs)
 	named := map[string][]string{}
-	for _, c := range s.Work.Column(Ready, Working, Review, Merging) {
-		if needs := Split(c.F("needs")); len(needs) > 0 {
-			named[c.ID] = live(c, needs)
-		}
-	}
 	waits := map[string]bool{}
 	for pid, wants := range proposed {
 		named[pid] = live(s.Work.Card(pid), wants)

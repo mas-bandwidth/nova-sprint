@@ -155,9 +155,11 @@ func TestLandRefusesAMalformedEvidenceLedger(t *testing.T) {
 	change := func(title string) string {
 		return strings.Replace(evidenceFile(evidenceEntry("a")), `:title "a"`, `:title "`+title+`"`, 1)
 	}
+	// the card's side does not read (an evaluation form): neither the line merge nor the
+	// merge by form can take it (two changed forms of one entry are both history, and land)
 	heads := map[string]string{
 		"s1-1": r.card("s1-1", map[string]string{"docs/roadmap-evidence/fixed-x.sexp": change("one")}),
-		"s1-2": r.card("s1-2", map[string]string{"docs/roadmap-evidence/fixed-x.sexp": change("two")}),
+		"s1-2": r.card("s1-2", map[string]string{"docs/roadmap-evidence/fixed-x.sexp": strings.Replace(change("two"), `:origin "o"`, `:origin #.(x)`, 1)}),
 	}
 	r.queued(heads, "s1-1", "s1-2")
 	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")

@@ -123,6 +123,10 @@
     :title "The land pass model: a red gate lands the prefix and reworks the blamed head"
     :text "Models only, no product change. LandPass.tla's gate now does what cmd/nova-sprint/landpass.go does when the batch's tree is red: a bisection that blames one head cuts the batch to the prefix before it, pushes that prefix and reworks the blamed head with the stream going on (no longer stopped); a refusal that blames no head (a bench that did not run the gate, a cancelled gate, a bisect environment refusal) returns the batch to queued; and a batch whose tree tests read none of its files lands whole. The new invariant NoHeadPastItsBlame (no head at or after the blamed one lands in that pass) holds, as do LandsOnce and BaseKeepsLandings. Two reversed witnesses: landpastblame pushes the whole batch on a blamed red (fails NoHeadPastItsBlame), unblamedstops stops the stream on an unblamed refusal (fails UnblamedRefusalQueues). A comment on treeGateBase cites tla/LandPass.tla BaseRed."
     :origin "this card; v1.2.12 inventory item T18")
+   (fix "tla-coverage-test-in-nova-sprint" :release "v1.2.12" :status "planned"
+    :title "nova-sprint's own test holds tla/COVERAGE.tsv to the models"
+    :text "Tests only, and the one model witness a green tree gate required. New internal/ci/tla_coverage_test.go (package ci, beside moot_prs_test.go; testify is already in go.mod) holds tla/COVERAGE.tsv to the models. The header is machine, code, module, status, owed_by, note, tab-separated. TestEveryStateMachineHasACurrentModel reads ../../tla/COVERAGE.tsv and fails on each of: a machine empty or listed twice; a note empty or a single dash; a status that is not current, partial, stale or missing; a code file (comma-separated, a dash for none) that is not a regular file; a missing row that names a module or any other row that names none; a named module with no tla/<Module>.tla; a current row whose owed_by is not a dash; and a row that is not current whose owed_by does not match the shape of a card name. Its new check, which the nova-tools test lacks, is that every tla/<X>.tla whose name does not start with MC is named by exactly one row's module column: a module named by no row fails with tla/<X>.tla is named by no row of tla/COVERAGE.tsv; add one (status partial, stale or missing names the card that owes it), and a module named by two rows fails naming both. Each row is a subtest: a row that is not current is skipped by its owed_by, never a pass; a current row passes only if each module it names has at least one tla/CASES.tsv case whose expected is not pass (a reversed witness) and a tla/RUNS.tsv record for every case it declares whose result is PASS and whose input_sha256 equals pkg/tlc's fingerprint of the case now, a case with no record failing unless its debt column is not a dash. The cases of a module are the plan's rows whose MC instance names or extends it (MCSprintTables instantiates SprintTables, MCCardMachineSmall extends CardMachine). The checks are a function of a root and the rows, so fixtures under t.TempDir() call them without the repository and pin a root whose tla/ holds A.tla and B.tla and a row naming only A (fails naming B), a module named by two rows (fails naming both), and the eight bad-row shapes nova-tools' TestTLACoverageRefusesAnOwedRowWithNoCard lists. nova-sprint's COVERAGE.tsv was read by no test before this; nova-tools' test reads only nova-tools' own file; internal/sprint/land_scope_test.go:121 only names the path. This card restores the two tla/COVERAGE.tsv rows the new check reported as missing, rate-backoff (RateBackoff, added by the v1.2.14 card a-rate-limited-refusal-never-fails-the-cardc) and sprint-events (SprintEvents, owed by tla-coverage-rows-for-every-nova-sprint-module), so check (2) is green at the staged head. The rows card this one DEPENDS-ON left the readverdict and donerecord groups' records stale against the runner and the environment-fault-hold row's MCProviderBudgetBrokenBranchEnv.cfg witness without its branch: this card re-ran the providerbudget, readverdict and donerecord groups (make tlc, tlacheck merge --keep tla/RUNS.tsv) and gave tla/ProviderBudget.tla's BranchRefused the 'branchenv' branch its own reverse-witness comment (line 258) already documented (env, jcause, held and judged set on the refusal), so that witness now violates ARejectedPushIsNeverAFault and records PASS. No other row, model or plan row was changed."
+    :origin "this card, tla-coverage-test-in-nova-sprint-after-seatproof.w13, from the coordinator on 2026-10-11; the gap checked at nova-sprint main 00c54ba2e: TestEveryStateMachineHasACurrentModel lives only in nova-tools (internal/ci/tla_coverage_class_test.go) and reads nova-tools' own tla/COVERAGE.tsv, while nova-sprint's is read by no test.")
    (fix "cardmachine-tlc-record-owed" :release "v1.2.12" :status "planned"
     :title "CardMachine gets a finished record and a reversed witness"
     :text "Models only, no product change. tla/CardMachine.tla is the copy model of nova-tools' deleted Lua
@@ -186,6 +190,19 @@
     :title "RoadmapEntry models Note and Save's four writes, and scheduled notes' unchecked :release"
     :text "Models only, no product change. tla/RoadmapEntry.tla gains a Note action (an open entry's title and text change in place, the place and the state unchanged) and models Save's four writes in the code's order -- destination data, destination page, source data, source page -- with a crash possible between any two and NoLoss still held. ChildLinked is restated over what decode() checks, with a Scheduled constant of notes whose :release is read and not checked: the fixes' items are checked (fixes.go:130-131) but the scheduled note's is not (roadmap.go:278). A reversed witness MCRoadmapEntryBrokenPageFirst writes each file's page before its data and fails the new PageNotAhead invariant; MCRoadmapEntryBrokenSourceFirst still fails NoLoss. Note on a done fix or a shipped release is not modelled: the code's Note (roadmap.go:546) edits both with no open or release guard, against the package doc's 'a release whose status is shipped is frozen' (roadmap.go:20-21), a v1.2.14 candidate named in the report."
     :origin "this card, tla-roadmapentry-note-and-four-write-save.w6, 2026-10-11: v1.2.12 inventory item T23; drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-sprint-tables-lifecycle-moves-and-needs" :release "v1.2.12" :status "planned"
+    :title "tla/SprintTables.tla models the card lifecycle: six states, its moves, needs, waivers and sentinels"
+    :text "Models only, no product change. tla/SprintTables.tla is the card lifecycle (internal/sprint/lifecycle.go):
+     six states, waiting ready working review merging landed, landed final, and the Moves table as a set of
+     <<from, to>> pairs, one action per verb whose guard is Legal plus the plan's flags (releasing, inserting,
+     removing as nondeterministic flags), with needs, waivers and sentinels; off the table (a drop) is not a
+     state. It proves TypeOK, NoNeedCycle, NoCardLostOrTwice, MovesOnlyByTable (every change of cell is a Moves
+     row, a drop from an open state, or a remove of a landed card), ReadyToWaitingOnlyByInsert, LandedIsFinal
+     and NeedsLandFirst (a card leaves waiting for ready only with every need landed or waived), with two
+     reversed witnesses: MCSprintTablesBrokenInsert (an add that moves ready -> waiting without inserting) and
+     MCSprintTablesBrokenNeedless (a resolve that drops the needs check). The four cards that depend on it add
+     deal, take, finish and the fleet; reads and accept; merge and return; crash and repair."
+    :origin "card tla-sprint-tables-lifecycle-moves-and-needs.w10, 2026-10-11: v1.2.12 inventory item T4, the first of five cards; drift read at nova-sprint main 00c54ba2e")
    (fix "tla-sprint-tables-fleet-take-and-finish" :release "v1.2.12" :status "planned"
     :title "tla/SprintTables.tla adds the fleet side: member up or down and Start, Take, Finish, FleetDown, FleetUp"
     :text "Models only, no product change. tla/SprintTables.tla gains the fleet side of the work table from
@@ -484,6 +501,22 @@
     leave exactly three new cards; a brief the plan refuses at the write is held with its refusal and the
     others land; with every brief clean the exit is 0, as add without the flag."
    :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 1 (the owner, 2026-10-11: \"Whatever you are doing manually now, consider adding tool support for it to nova sprint.\")")
+  (fix "doctor-preflight-checks-member-prerequisites" :release "v1.2.14" :status "planned"
+   :title "doctor --preflight gates a member's prerequisites"
+   :text "The preflight's member check turns the member-env probe's facts into gate rows (area
+    preflight, check members, subject the member): FAIL for a MemberTools tool or a harness its
+    enabled routes launch the loop's PATH does not find, a push credential that does not
+    authenticate, a secrets seat that does not open, a provider key name its enabled routes read
+    that the seat does not hold (the route and the name both named, by name only and never a
+    value), and a member whose installed nova-sprint is older than the release before the
+    candidate's or newer than it; WARN for a host that does not answer, a probe the budget cut,
+    java or /opt/tla/tla2tools.jar absent, a home under the warn bound, and a member held or
+    draining. probeScript and parseProbe gain java with the TLA+ tools' jar and the key names the
+    seat holds (nova-secrets names, never a value). The member-env check without --preflight is
+    unchanged. Tests: a member missing go is FAIL; a route whose key name is absent is FAIL
+    naming both; java absent is WARN; a held member is WARN with its command; a member two
+    releases back is FAIL and one back OK."
+   :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 20; the owner, 2026-10-11")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
@@ -994,6 +1027,14 @@
     :text "EnvFault now classifies only the text before the first '; ' (the member's own reason), ignoring the child's words after it. A reason carrying '[rejected]' 'non-fast-forward' or '(fetch first)' is a branch refusal, never an environment fault (tla/ProviderBudget.tla, ARejectedPushIsNeverAFault). EnvFault returns the empty string for branch refusals before any class is matched."
     :origin "this card; 2026-10-11; v1.2.11 bug fix")
 
+   (fix "a-reports-verdict-is-never-rewritten-by-a-keyword-match" :release "v1.2.11" :status "planned"
+    :title "A report's stated verdict is never rewritten by keyword matching"
+    :text "A miss against THE ONE THING LEFT may raise one seat judgment asking for the report to be read,
+     but preserves the report's LAND and head and does not fail the worker. A redeal's CARRY line names
+     the newest recorded pushed full SHA regardless of the attempt's outcome, replacing any stale
+     carry in the brief."
+    :origin "this card; 2026-10-11; v1.2.11 bug fix")
+
   (fix "held-friend-reader-serves-nothing" :release "v1.2.6" :status "shipped"
    :title "A held friend's reader serves nothing"
    :text "docs/SPEC-SPRINT.md section 11 (hold): a friend and her reader row are one member to the
@@ -1337,6 +1378,11 @@
    :text "Models only, no product change. tla/StopReturn.tla's SettleByBeat returned and settled in one step, read the beat as a set of running job ids, and carried a ghost guard (d.id \\notin old) the code cannot read. The beat now names the jobs it runs and the reports it holds at their generation (LiveNames, sprint.LiveNamedAt), and a beat that carries no live set reports a stop-returns count (StopReturnsOwed, sprint.Beat.StopReturns); the settle reads the count for a count-only beat and the live set otherwise, the ghost guard is gone, and the settle is the code's three steps -- ReadSettle (the unfenced read), SettleByBeat (the stop-return) and Settle (the settle) -- so NoLiveChildAcrossStart holds with a beat fresh at the read. The reversed witness MCStopReturnBrokenOmitLive (Broken \"omitlive\") lets a fresh beat omit a live (running) child, so the settle returns it and START crosses the live child, failing NoLiveChildAcrossStart. A beat gone stale between the read and START is the v1.2.14 card stop-debt-stale-beat-loses-a-held-report, not modelled here. internal/sprint/store/steps.go StopReturnStep gains one comment line citing the module. tla/RUNS.tsv and tla/COVERAGE.tsv are made current."
    :origin "card tla-stopreturn-settle-by-beat-as-the-code-reads, 2026-10-11: v1.2.12 inventory item T13, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-stopreturn-pins-by-generation-and-reader-leases" :release "v1.2.12" :status "planned"
+   :title "StopReturn pins a STOP lease by generation and models the readers-table leases"
+   :text "Models only, no product change. tla/StopReturn.tla pins a STOP lease by <<card, generation>> as the code does (stopOwned reads the return receipt, sfg = d.gen and gen > d.gen), so a returned card moves freely and a hold redeals it at gen+1; a return steps the generation and leaves the receipt, which survives a later move. START's guard is the code's (unsettledStopDebt): a receipt, or a held report named by the row's fresh live set, or a pre-upgrade record's live leases -- Broken \"preupgrade\" writes no stop-issued flag and no debt list at STOP, so START refuses while any live lease remains (MCStopReturnPreUpgrade). Readers-table leases are modelled: STOP captures the readers' reading column as it captures the fleet's working column (activeStopLeases), and a read returns reading -> asked at the next generation with its receipt (stopDebtReturned); a reader's own still-open read counts in the stop-returns count (the owner's lanes still owed), so a live reader lease is never settled by the beat -- it is returned by the owner's own stop-return (MCStopReturnReaders checks the reader model and its invariants, not the beat settle). The invariant NoStaleGenOwned says a lease never owns a card at a generation other than its current one, and the reversed witness MCStopReturnBrokenById (Broken = \"byid\") pins by id again so a card returned at gen+1 is still owned by the lease captured at gen and NoStaleGenOwned fails."
+   :origin "this card; v1.2.12 inventory item T13, second of three")
+
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
@@ -1429,6 +1475,23 @@
     are not carried: this repository has neither."
    :origin "this card")
 
+  (fix "tla-adopt-the-play-around-the-library" :release "v1.2.12" :status "planned"
+   :title "Adopt models the whole seat play, the one-way migration and PreCheck's refusals"
+   :text "Models only, no product change. tla/Adopt.tla now holds the seat play as a window, not only
+    the library swap. PreCheck (libraryShadow) gains its two refusals, both before the window and
+    changing nothing: a store that holds no function library, and a store the check cannot read. The
+    play's steps become five actions in order — Stop, Migrate, Swap, Reinstall, Restart — and the
+    migration is a one-way flag with a new invariant MigrationIsOneWay (once it has run, no refusal
+    rolls it back); RefusedLeavesOld still holds on every refusal path that checks the library. One
+    reversed witness is added, MCAdoptBrokenUndomigration (Broken = {\"undomigration\"}): the rescue
+    rolls the migration back, failing MigrationIsOneWay — the code's doc says the migration is never
+    undone, so a model where it is would be wrong. cmd/nova-sprint/adopt_play.go gains one comment
+    line on cmdAdoptPlay citing tla/Adopt.tla. tla/CASES.tsv, tla/RUNS.tsv and tla/COVERAGE.tsv are
+    made current. The three in-window refusal paths that exit 1 without checking that the old library
+    is back (adopt_play.go:236-246, :262-266, :247-249) and the rescue's failed_when: false in
+    fleet/tools.yml are left to their v1.2.14 fix cards, which bring the model."
+   :origin "this card, tla-adopt-the-play-around-the-library-2.w5, 2026-10-11: v1.2.12 inventory item T21 and section 9 (D13); drift read at nova-sprint main 00c54ba2e")
+
   (fix "tla-workimport-scoped-verify" :release "v1.2.12" :status "planned"
    :title "WorkImport models a scoped import and verify, and a wider verify never reports done"
    :text "Models only, no product change. tla/WorkImport.tla's Import and Verify each take a scope, a
@@ -1499,10 +1562,24 @@
           :item-cards "1"
           :item-origin ""
           :earlier-title "Briefs carry the card contract by reference"))
-  (fix "the-lifecycle-and-its-model-agree" :release "v1.2.13" :status "planned"
-   :title "The card lifecycle, its inventory and its model agree, and tests hold every plan to it"
-   :text "The base layer of the machine: the lifecycle's table of lawful moves (internal/sprint/lifecycle.go), every place the code writes a primary's column (docs/SPEC-SPRINT.md section 3, the inventory of moves), and tla/SprintTables.tla, made to agree, with PR #96's needs withdrawal taken in. The test world (sim_test.go) holds every plan to Lawful as the store does; an unpin fixture that moved working -> merging and working -> landed by a plan now places the card. Decided from the spec: ready -> waiting by needs is lawful only with a named need not landed (needsOpen); working -> waiting (#96) only when the card's own named needs in the pre-state have not landed (namedNeedsOpen), never by the needs the entry writes; a card in review takes no need not landed (briefDepends), since nothing moves it back; every needs rewrite (needs set, a brief's DEPENDS-ON) is held to add's cycle check (needsCycleWith), over every open card's named needs whatever its state and over a brief batch as a whole; the short-reads pass no longer plans landed -> review (landed is final). The model gains the needs as a variable, NeedsSet with its cycle guard, Withdraw (working -> ready for every cause), #96's NeedsWithdraw and NeedsWait, a waiver's move, rework and redo that deal a work card, a remove that keeps a landed outcome, Rule11 (review, merging, landed), NeedsHeldIntoWorking, WorkingToWaitingOnlyOnNeeds and NeedsWithdrawalWaits, with a reversed witness per rule. Known exclusion, not agreement: a taken card given a need not landed can finish ok before the tick withdraws it and reach review with it; the model leaves it out (its NeedsSet takes a new need only on a dealt, untaken card); follow-up card a-taken-card-given-an-unlanded-need-never-reaches-review-with-it (v1.2.14)."
-   :origin "hand PR hand/the-lifecycle-and-its-model-agree, 2026-10-11: two cold reads found SprintTables disagreeing with lifecycle.go; the #96 reader found the test world skipping Lawful")
+  (fix "the-idle-alarm-is-raised-once-an-episode" :release "v1.2.13" :status "planned"
+   :title "The idle alarm is raised once an episode, with a test that drives the ticks"
+   :text "TestTheIdleAlarmNamesTheRootsOnceAnEpisode (internal/sprint/store/idle_test.go) was red on main and red in every PR's CI: it still expected the older rule, where every end of an idle episode pushed the working-again note. b34ff36f chose the end note by cause (idleEnd): only the fleet working at half its width again says working again, and an episode that ends because no card waits pushes the fleet's idle episode ended, naming that (docs/SPEC-SPRINT.md section 14). The test now pins that rule. A new test, TestTheIdleAlarmIsRaisedOnceAnEpisodeNeverOncePerTick (internal/sprint/idle_test.go), drives 15-second ticks over an idle fleet and checks the count after every tick: none under the window, exactly one at the window and for the rest of the episode (never zero, never two), one working-again note when the fleet works, and exactly one more alarm in the next episode. The reversed witness for one alarm a tick already exists and passes as a witness: tla/MCSprintRulesIdleBrokenEveryTick.cfg (AlarmOncePerEpisode). The seat's flood of the fleet works below its alarm judgment (alarms.go, the alarm_fleet threshold) is a different alarm from the idle note: it is keyed by type alone, one judgment while it stands, and TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds holds it to one an episode on the twin store. The flood was not reproduced from the code at main, so the live cause is still open (a judgment closed or answered between ticks, or a server build older than main, are the candidates); it needs a read of the live judgment log, which this change does not touch."
+   :origin "the owner and the seat, 2026-10-11: the idle alarm flooded the seat and the idle test was red on main")
+  (fix "friend-done-reflects-finishes" :release "v1.2.13" :status "planned"
+   :title "Done is every card a row completed, and the readers' verdict counts the reads the accept counts"
+   :text "Pull request 94. Friend stella's row read done 0 and ok% 0.0% while the log recorded her finishes
+    ok and their reads ok: the readers' verdict (TickVerdicts) read the readers table alone, keyed an ok by
+    the read's row and used the tier's read count, while the accept also counts the fleet table's read
+    cards, retired off their rows with their verdicts, by the reader, at the sprint's count. The accept and
+    the verdict now count from one function (standingReads). A row's done, a friend's or a member's, is
+    every card it completed, of every kind registered in sprint.DoneKinds (a work card the readers' verdict
+    moved to ok, a fix card likewise, a read card completed with a verdict, ok or broken; a returned read
+    completes nothing; a merge card is one more entry once merges are dealt cards), counted from the log
+    lines that complete them through the done record (store.keepDone, store.DoneSince), keyed by epoch and
+    counted from a stats reset's mark. ok% stays the work's measure, the readers' verdicts on the row's
+    work. tla/ReadVerdict.tla models the verdict against the accept."
+   :origin "the owner, 2026-10-11: \"The dashboard has to reflect the truth.\" and \"Done is every card completed.\"; root cause found by Stella")
   (fix "a-review-loop-has-a-circuit-breaker" :release "v1.2.14" :status "planned"
    :title "A review loop has a circuit breaker"
    :text "A card is escalated to the coordinator after 4 consecutive review rounds that each bring a new blocking finding, or after 6 substantive review rounds of any kind, instead of going round again."
@@ -1531,6 +1608,10 @@
    :title "Every producer card has its consumer out after the tick"
    :text "Adds ConsumersOut check at the end of every tick to assert that every producer card (working, fix, review) has its consumer out: an attempt held by an up member/friend for working/fix, or reads asked by up readers for review. Violations are reported as quiet judgments. Also reduces MaxSettle from 64 to 32 as per the owner's design, and changes settle bound handling to push a judgment instead of erroring the tick."
    :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17; card every-producer-card-has-its-consumer-out-after-the-tick.w1")
+   (fix "tla-dirtytick-consumers-out-at-the-tick-end" :release "v1.2.14" :status "planned"
+    :title "DirtyTick models ConsumersOut at each tick's end"
+    :text "tla/DirtyTick.tla gains ConsumersOut, an action property checked at each tick's end: every working card's attempt is held by a machine up, every review card's read is held by a reader up (unless judged stranded, no route, at its bound, or its read already said ok), and every ready card a route serves and a free up slot could take is dealt in the same tick. The fix \"consumersout\" re-pumps the work table in the settle loop (sub-ticks until the consumer queue is empty, bound MaxSub 32, reaching it a judgment SettleBoundJudged). tla/MCDirtyTickConsumers.tla and .cfg (width 2) check it, with four reversed witnesses (a deal of one card per tick, a settle loop cut after one sub-tick, a read asked in the next tick instead of this one, a member-down whose attempts are not re-dealt) that TLC must fail."
+    :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17; card tla-dirtytick-consumers-out-at-the-tick-end-2.w7; continued by card tla-dirtytick-consumers-out-at-the-tick-end-2.w9")
   (fix "ready-over-reads-the-settled-rests" :release "v1.2.14" :status "planned"
    :title "The ready-over judgment reads the deal's settled rests"
    :text "A ready card whose tier is served only by a route resting at the tick's now raises the ready-over
@@ -2086,6 +2167,10 @@
    :title "A ready card whose every serving route is at its provider's budget is held, not stalled"
    :text "The no-stall rule read the concurrency budget two ways. The deal never deals past a provider's budget (Deal draws on withBudgets, internal/sprint/rate_budget.go; drawRoute skips a route whose provider is full, route.go), so a card whose every route of its tier that serves is full waits ready by design. The rule did not: held.waits' Ready case asked routeOf with no index (a check of the tier, which by design never treats a full provider as unserved) and newHeld built its snapshot without withBudgets, so s.budgets was nil; with a member up with room it returned \"a member is below its room (DealAhead times its width), and nothing deals it\" and ok=false, a stall for a card that waits for a slot (the seat's inbox pass, 2026-10-11 epoch 16: j1102, j1111 and j1115 raised it on heavy and pro cards while nova-sprint routes showed LIMIT concurrent deepseek budget=8 in_use=8; each cost a manual routes read to see the limiter was doing its job). newHeld now settles the deal's budget view once per held reading (withBudgets), and held.waits, after the noLauncher check and before the room count, holds a ready card whose every route of its tier that serves is at its provider's budget (budgetWait, rate_budget.go) with ok=true and the why naming each such route and its provider's count. A tier with a free route keeps today's path: room above the cards ahead and still undealt is a stall, as before, so a real deal defect is still judged. Tests in internal/sprint/held_test.go: TestAReadyCardWhoseEveryRouteIsFullIsHeldNotStalled (one heavy card ready, a member up with room, concurrent 1 on the only serving provider with one card of it working, the other heavy route resting: held by the limiter, no Finding), TestAReadyCardWithASlotFreeAndUndealtIsStillStalled (the budget raised to 2, a slot free, and a real deal defect still raises the same stall) and TestARouteOutsideTheTierArrayIsNotServed (an enabled heavy route on a provider with room that the tier's array leaves out is never drawn, so the card still waits for a slot). budgetWait walks the deal's own array and service test (tierArray, servedRoute) and names the routes for a member that serves one (unservedWhy), so what serves and what is full are read exactly as the deal reads them. docs/SPEC-SPRINT.md (section 8, No silent stops; section 9 item 12, the no-stall rule's holders) states it; rate_budget.go and held.go cite docs/SPEC-SPRINT.md section 8 and tla/RateBudget.tla (StalledIsGranted)."
    :origin "this card, a-stall-on-a-provider-budget-says-so.w2, attempt 2 of a-stall-on-a-provider-budget-says-so.w1 (draft tmp/next-sprint-cards/a-stall-on-a-provider-budget-says-so.md); the seat's inbox pass, 2026-10-11, epoch 16, judgments j1102, j1111 and j1115; code read at nova-sprint main 0b151f58")
+  (fix "the-lifecycle-and-its-model-agree" :release "v1.2.14" :status "planned"
+   :title "The card lifecycle, its inventory and its model agree, and tests hold every plan to it"
+   :text "The base layer of the machine: the lifecycle's table of lawful moves (internal/sprint/lifecycle.go), every place the code writes a primary's column (docs/SPEC-SPRINT.md section 3, the inventory of moves), and tla/SprintTables.tla, made to agree, with PR #96's needs withdrawal taken in. The test world (sim_test.go) holds every plan to Lawful as the store does; an unpin fixture that moved working -> merging and working -> landed by a plan now places the card. Decided from the spec: ready -> waiting by needs is lawful only with a named need not landed (needsOpen); working -> waiting (#96) only when the card's own named needs in the pre-state have not landed (namedNeedsOpen), never by the needs the entry writes; a card in review takes no need not landed (briefDepends), since nothing moves it back; every needs rewrite (needs set, a brief's DEPENDS-ON) is held to add's cycle check (needsCycleWith), over every open card's named needs whatever its state (cycle.go needGraph.needs, so sentinel set, a twin's relink and add are held too) and over a brief batch as a whole; the short-reads pass no longer plans landed -> review (landed is final). The model gains the needs as a variable, NeedsSet with its cycle guard, Withdraw (working -> ready for every cause), #96's NeedsWithdraw and NeedsWait, a waiver's move, rework and redo that deal a work card, a remove that keeps a landed outcome, Rule11 (review, merging, landed), NeedsHeldIntoWorking, WorkingToWaitingOnlyOnNeeds and NeedsWithdrawalWaits, with a reversed witness per rule. Known exclusion, not agreement: a taken card given a need not landed can finish ok before the tick withdraws it and reach review with it; the model leaves it out (its NeedsSet takes a new need only on a dealt, untaken card); follow-up card a-taken-card-given-an-unlanded-need-never-reaches-review-with-it (v1.2.14)."
+   :origin "hand PR hand/the-lifecycle-and-its-model-agree, 2026-10-11: two cold reads found SprintTables disagreeing with lifecycle.go; the #96 reader found the test world skipping Lawful")
   (fix "the-landing-gate-runs-its-classes-side-by-side" :release "v1.2.15" :status "planned"
    :title "The landing gate runs its classes side by side"
    :text "Every landing gate ran sprint.BaseClasses one class after another: build, gofmt, vet,
@@ -2145,4 +2230,19 @@
      out at the same time in || ?\" and \"OK please log critical cards to fix all these serial
      things that should be parallel (with good reason to be ||).\"; found by the seat's audit
      child on nova-sprint main the same day (cmd/nova-sprint/landpass.go, THE LANDINGS, SERIAL);
-     attempt 8 fixes the clone-creation key a reader found (land.go, clone)")))
+     attempt 8 fixes the clone-creation key a reader found (land.go, clone)")
+  (fix "lander-resolves-ledger-conflicts" :release "v1.2.13" :status "planned"
+   :title "A landing whose every conflict is a shared ledger lands"
+   :text "Measured over 60 minutes of the live sprint on 2026-10-11: about 300 landing refusals
+    against about 35 landings, most of them conflicts in the shared ledgers alone (docs/fixes.sexp,
+    FIXES.md, tla/COVERAGE.tsv, tla/RUNS.tsv, tla/CASES.tsv, and the schema repository's
+    docs/roadmap-evidence/fixed-<leg>.sexp). The lander now resolves a merge whose every conflicted
+    path is in the one ledger set (cardgen.LedgerInPaths, which now names tla/COVERAGE.tsv): the keyed
+    tables by their first column against the base (COVERAGE by machine, as RUNS and CASES by config),
+    the roadmap data and the evidence ledgers by line and otherwise form by form (a fix by its id, a
+    release block by its name, an evidence ledger as append-only history, every distinct form kept, including the schema
+    repository's bare one-form-a-line ledgers the evidence decoder refused as trailing bytes), FIXES.md regenerated from
+    the merged data. One id both sides change differently is refused naming it, and a code conflict is
+    refused as before. tla/LandLedgers.tla holds CodeConflictNeverLands with three reversed
+    witnesses."
+   :origin "hand-landed by a child of the seat, 2026-10-11, from the live land log's refusals")))

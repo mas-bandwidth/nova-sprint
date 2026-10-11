@@ -92,6 +92,9 @@ func friendServerBrief(name string, p sprint.Packet) string {
 		// a card brief --widen widened starts from the held attempt's head (member.Carried)
 		p.BaseHead, p.BaseAttempt = c.Head, c.Attempt
 	}
+	if p.BaseHead != "" {
+		b.WriteString(member.CarryLine(member.Carry{Card: p.Primary, Attempt: p.BaseAttempt, Head: p.BaseHead}) + "\n")
+	}
 	if p.Attempt > 1 || p.BaseHead != "" {
 		b.WriteString(friendStart(p))
 	}
@@ -101,6 +104,13 @@ func friendServerBrief(name string, p sprint.Packet) string {
 		}
 	}
 	brief := p.Brief
+	// A delivered carry is derived from all earlier successful attempts above. An older
+	// CARRY in the stored brief must not override that newer pushed head.
+	briefLines := strings.Split(brief, "\n")
+	briefLines = slices.DeleteFunc(briefLines, func(line string) bool {
+		return strings.HasPrefix(strings.TrimSpace(line), member.CarryKey)
+	})
+	brief = strings.Join(briefLines, "\n")
 	if p.Rules != "" {
 		if rules, err := swarm.HeldRules(p.Rules); err == nil {
 			brief = swarm.StagedBrief(brief, rules)
@@ -241,16 +251,14 @@ func (a *app) branchTip(ctx context.Context, repo, branch string) (string, error
 // sync reads the report again.
 func friendFinish(ctx context.Context, name string, p sprint.Packet, report string, tip tipFn) (sprint.FinishReq, error) {
 	verdict, head, para := friendReportOf(report)
-	if verdict == VerdictLand {
-		// a LAND that does not address its brief's first line is a HOLD, head kept, by the
-		// daemon's own check (friend.UnaddressedLand): whichever finishes it, it is held
-		if held := friend.UnaddressedLand(friend.HeldByFriendSync, report, friendBrief(name, p)); held != "" {
-			verdict, para = VerdictHold, held+" "+para
-		}
-	}
 	para = oneline.Cap(para, maxFriendReport)
 	row := sprint.FriendRow(name)
 	r := sprint.FinishReq{Sel: sprint.Sel{IDs: []string{p.Card}}, As: row, Gens: map[string]int{p.Card: p.Gen}, Branch: p.Branch, Who: row}
+	if verdict == VerdictLand {
+		if mismatch := friend.UnaddressedLand(friend.HeldByFriendSync, report, friendBrief(name, p)); mismatch != "" {
+			r.SeatJudgment = strings.TrimPrefix(mismatch, "held by friend sync: ") + " Read it."
+		}
+	}
 	// her card's usage (the result's usage line, or the machinery's Cost: line) rides
 	// on the work card, so the friends table's tokens column sums it per friend
 	if usage, ok := sprint.FriendUsage(report); ok {

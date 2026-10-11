@@ -71,3 +71,41 @@ func TestABriefBatchCannotCloseACycleBetweenItsCards(t *testing.T) {
 	w.do(p)
 	require.Empty(t, Cycles(w.s), "no cycle on the table")
 }
+
+// Every writer of needs sees a working card's stored needs (cycle.go,
+// needGraph.needs reads every open card's named needs whatever its state):
+// sentinel set. A dealt card W takes a need on a waiting sentinel S; S then may
+// not need W, or the tick that moves W back to waiting leaves the two waiting on
+// each other forever.
+func TestSentinelSetSeesAWorkingCardsNeeds(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1) // s1-1 ready
+	w.must(Add(w.s, AddReq{Stream: "g", IDs: []string{"S"}, Sentinel: true}))
+	w.must(Deal(w.s, DealReq{Sel: Sel{Only: []string{"s1-1"}}}))
+	require.Equal(t, Working, w.state("s1-1"))
+	w.must(NeedsSet(w.s, NeedsSetReq{ID: "s1-1", Needs: []string{"S"}, Who: "coordinator"}))
+	require.Equal(t, "S", w.s.Work.Card("s1-1").F("needs"))
+
+	p := SentinelSet(w.s, SentinelSetReq{ID: "S", Needs: []string{"s1-1"}, Who: "coordinator"})
+	require.Empty(t, p.Units, "sentinel set closes a loop through the working card: %+v", p)
+	require.Len(t, p.Refused, 1)
+	require.Contains(t, p.Refused[0].Why, "the needs would make a cycle")
+}
+
+// The same for a twin's relink: the waiting card that needed the old id would
+// need the twin, a working card that needs it in turn.
+func TestRelinkSeesAWorkingCardsNeeds(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 3) // s1-1, s1-2, s1-3 ready
+	w.must(Deal(w.s, DealReq{Sel: Sel{Only: []string{"s1-1"}}}))
+	w.must(NeedsSet(w.s, NeedsSetReq{ID: "s1-2", Needs: []string{"s1-3"}, Who: "coordinator"}))
+	require.Equal(t, Waiting, w.state("s1-2"))
+	w.must(NeedsSet(w.s, NeedsSetReq{ID: "s1-1", Needs: []string{"s1-2"}, Who: "coordinator"}))
+	require.Equal(t, Working, w.state("s1-1"))
+
+	p := Relink(w.s, RelinkReq{Old: []string{"s1-3"}, New: "s1-1", Who: "coordinator"})
+	require.Empty(t, p.Units, "the relink closes a loop through the working card: %+v", p)
+	require.Len(t, p.Refused, 1)
+	require.Contains(t, p.Refused[0].Why, "the needs would make a cycle")
+	require.Equal(t, "s1-3", w.s.Work.Card("s1-2").F("needs"), "nothing is written")
+}

@@ -89,7 +89,16 @@ func (l *lander) stageSexpUnion(ctx context.Context, dir string, paths []string)
 		}
 		merged, err := unionSexp(d.kind, p, sides[0], sides[1], sides[2])
 		if err != nil {
-			return nil, nil, nil, p + " conflicts and " + err.Error(), ""
+			// the line merge refused a stretch: merged form by form, by fix id and release
+			// name (land_forms.go), and held to the decoder as the line merge is
+			byForm, ferr := mergeByForm(p, sides[0], sides[1], sides[2])
+			if ferr == nil {
+				ferr = sexpEntriesMerged(d.kind, p, sides[0], sides[1], sides[2], byForm)
+			}
+			if ferr != nil {
+				return nil, nil, nil, p + " conflicts and " + err.Error() + "; by form, " + ferr.Error(), ""
+			}
+			merged = byForm
 		}
 		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(p)), merged, 0o644); err != nil {
 			return nil, nil, nil, "", "the merged " + p + " could not be written: " + err.Error()

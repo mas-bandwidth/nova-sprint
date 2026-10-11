@@ -1,7 +1,9 @@
 package sprint
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -99,4 +101,56 @@ func TestAnIdleEpisodeEndedByTheFleetSwitchSaysTheCause(t *testing.T) {
 	require.Len(t, ended, 1, "the switch ends the episode and names it")
 	assert.Contains(t, ended[0].What, "the fleet's work is switched off (set --fleet on)")
 	assert.Empty(t, w.notesOf(NIdleCleared))
+}
+
+// The alarm is raised once an episode, never once a tick (docs/SPEC-SPRINT.md section 14,
+// the fleet is idle; tla/SprintRules.tla, Part "idle": AlarmOncePerEpisode, and its
+// reversed witness MCSprintRulesIdleBrokenEveryTick, "everytick"). The live sprint was
+// seen to raise "the fleet works below its alarm" about every 15 seconds, one a tick, and
+// the store-level test of the rule was red on main. This drives 15-second ticks over an
+// idle fleet: nothing before the window, then exactly one note, held at one for the
+// rest of the episode and never zero; the fleet works and the episode ends; it goes idle
+// again and the next episode raises exactly one more.
+func TestTheIdleAlarmIsRaisedOnceAnEpisodeNeverOncePerTick(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 4)
+	toReview(w, "s1-1")
+	w.s.Work.Put(&Card{ID: "s1-9", Row: "s1", Col: Waiting, Score: 9, Rev: 1, Fields: map[string]string{"kind": "primary", "attempt": "0", "stream": "s1", "brief": proBrief}})
+	const step = 15 * time.Second
+	perWindow := int(IdleWindow / step)
+	// ticks runs n ticks of step each and checks the count after every one: want(i) is
+	// how many alarms the tick i of the run should have left, so a tick that raises a
+	// second, or a tick that loses the first, fails at that tick.
+	ticks := func(n int, want func(i int) int, why string) {
+		t.Helper()
+		for i := 1; i <= n; i++ {
+			w.tick(step)
+			tickIdle(t, w)
+			require.Len(t, w.notesOf(NIdle), want(i), "%s: after tick %d (%s)", why, i, w.s.Now.Format("15:04:05"))
+		}
+	}
+
+	// episode one: the first tick begins it; the window is IdleWindow of running time
+	require.NotEmpty(t, tickIdle(t, w).Units, "the idle episode begins")
+	require.Empty(t, w.notesOf(NIdle))
+	ticks(perWindow-1, func(int) int { return 0 }, "under the window: nothing yet")
+	ticks(1, func(int) int { return 1 }, "the window is out: the one alarm")
+	ticks(3*perWindow, func(int) int { return 1 }, "the rest of the episode: one, never zero, never a second")
+	n := w.notesOf(NIdle)[0]
+	assert.True(t, strings.HasPrefix(n.What, "fleet 0/128"), n.What)
+
+	// the fleet works at half its width: the episode recovers, with its one clear note
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 1, Who: "coordinator"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 1, Who: "coordinator"}))
+	id := WorkCardID("idle-a", 1)
+	w.s.Fleet.Put(&Card{ID: id, Row: "m1", Col: Working, Rev: 1, Fields: map[string]string{"kind": "primary"}})
+	ticks(perWindow, func(int) int { return 1 }, "the fleet works: no new alarm, the old one stays")
+	require.Len(t, w.notesOf(NIdleCleared), 1, "one working-again note for the episode")
+
+	// episode two: the work finishes and the fleet is idle again with a card waiting
+	w.place(w.s.Fleet, id, "m1", DoneOK)
+	require.NotEmpty(t, tickIdle(t, w).Units, "the second idle episode begins")
+	ticks(perWindow-1, func(int) int { return 1 }, "the second episode, under its window: still the first alarm only")
+	ticks(1, func(int) int { return 2 }, "the second window is out: one more alarm")
+	ticks(3*perWindow, func(int) int { return 2 }, "the rest of the second episode: two in all, one an episode")
 }

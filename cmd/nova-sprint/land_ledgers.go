@@ -337,7 +337,18 @@ func (l *lander) stageEvidenceUnion(ctx context.Context, dir string, paths []str
 			merged, err = unionEvidenceSexp(p, sides[0], sides[1], sides[2])
 		}
 		if err != nil {
-			return nil, nil, p + " conflicts and " + err.Error(), ""
+			// the evidence decoder or the line merge refused it: merged form by form
+			// (land_forms.go), which also reads a ledger of bare (:id ...) forms, one a line,
+			// as the schema repository writes them
+			var base []byte
+			if !baseMissing {
+				base = sides[0]
+			}
+			byForm, ferr := mergeByForm(p, base, sides[1], sides[2])
+			if ferr != nil {
+				return nil, nil, p + " conflicts and " + err.Error() + "; by form, " + ferr.Error(), ""
+			}
+			merged = byForm
 		}
 		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(p)), merged, 0o644); err != nil {
 			return nil, nil, "", "the merged " + p + " could not be written: " + err.Error()

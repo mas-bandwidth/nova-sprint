@@ -15,7 +15,8 @@ import (
 // at 1:30 PM: the fleet ran 4 of 68 slots with 561 cards held, and nothing said why). When
 // the fleet works under half its width for 5 minutes while cards wait, the tick traces each
 // waiting card to the root of its chain and pushes one note to the coordinator naming the
-// roots by the cards behind them; once an episode, and a clear note when it recovers. On
+// roots by the cards behind them; once an episode, and an end note when it ends (a clear
+// note, "working again", when the fleet recovers; idleEnd). On
 // the mem twin, injected clock, no socket; the model is tla/SprintRules.tla
 // (AlarmOncePerEpisode, ClearFollowsAlarm).
 
@@ -70,14 +71,19 @@ func TestTheIdleAlarmNamesTheRootsOnceAnEpisode(t *testing.T) {
 		h.machine()
 	}
 	assert.Len(t, h.notesTo(sprint.NIdle), 1, "once an episode")
-	// the cards behind go: no card waits, the episode ends with a clear note
+	// the cards behind go: no card waits, so the episode ends and says so. Only the fleet
+	// working at half its width again is a recovery that says "working again"
+	// (docs/SPEC-SPRINT.md section 14, the fleet is idle; idleEnd, b34ff36f): this test
+	// pinned the older rule, where every end was a clear note.
 	h.must(DropStep(sprint.DropReq{Sel: sprint.Sel{IDs: []string{"a", "b", "c", "a1", "a2", "a3", "b1", "b2", "c1", "c2", "g1", "g2", "gate"}}, Reason: "done with them"}))
 	h.machine()
-	clears := h.notesTo(sprint.NIdleCleared)
-	require.Len(t, clears, 1, "a clear note when it recovers")
-	assert.Contains(t, clears[0].What, "after 9m0s")
+	ends := h.notesTo(sprint.NIdleEnded)
+	require.Len(t, ends, 1, "an end note when the episode ends")
+	assert.Contains(t, ends[0].What, "no card waits")
+	assert.Contains(t, ends[0].What, "after 9m0s")
+	assert.Empty(t, h.notesTo(sprint.NIdleCleared), "no card waiting is no recovery: never a working-again note")
 	h.machine()
-	assert.Len(t, h.notesTo(sprint.NIdleCleared), 1)
+	assert.Len(t, h.notesTo(sprint.NIdleEnded), 1, "once an episode")
 }
 
 // A chain whose root is in flight and held by a judgment names the card and the judgment.
