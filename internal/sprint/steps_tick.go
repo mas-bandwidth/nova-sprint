@@ -1027,6 +1027,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	p.Units = append(p.Units, fc.Units...)
 	p.Notes = append(p.Notes, fc.Notes...)
 	// every provider out of credit: the binding stops the machine as the plan commits
+	// tla/DirtyTick.tla Stop
 	p.Stop = stop
 	return p, due
 }
