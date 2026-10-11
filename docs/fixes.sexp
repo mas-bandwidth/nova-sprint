@@ -255,6 +255,30 @@
     stream can admit a card based on main or dev without a sentinel card or a follow-up stream set."
    :origin "the seat ledger bug 14")
 
+  (fix "land-merges-the-roadmap-data" :release "v1.2.6" :status "shipped"
+   :title "Land merges the roadmap data, not returns the card"
+   :text "A head whose conflict is in docs/fixes.sexp or docs/roadmap.sexp, with or without FIXES.md and
+    ROADMAP.md, lands: the data is merged entry by entry (each side only adding or only removing whole
+    lines in each conflicted stretch, the tip's additions first), checked by decoding all three sides
+    and the result, and each page is taken from the tip and regenerated from the merged data as `make
+    roadmap` does. Both sides changing one entry is refused as before. Also: main was red on its class
+    gofmt from PR #67 on, so the lander merged no head onto it (PR #74)."
+   :origin "the Studio sprint, epoch 16, 2026-10-10: merging stood at 15 to 21 cards with none landed in 30
+    minutes, every second card refused on FIXES.md and docs/fixes.sexp and reworked at the tip")
+
+  (fix "land-refused-head-never-reoffered" :release "v1.2.6" :status "shipped"
+   :title "A head the landing refused is never offered to accept again; a ledger conflict is no brief defect"
+   :text "A card whose head the landing refused keeps that head (land_refused_head), and while it is still
+    its head no step raises ready to accept on it: at the brief's bound the card is in review with the
+    bound's judgment alone, and with nothing open it is stranded (rework or drop), never offered the
+    accept that queues the refused head again. A conflict only in the shared ledgers (the roadmap's data
+    and pages, the class ledgers, the AGENTS maps, the keyed TLA+ tables, the tables lock) is the tip
+    moving under the card: reworked at the tip every time, never counted toward the brief's bound, so
+    never marked a brief defect, and its finding seeds no bound for a later file conflict."
+   :origin "the Studio sprint, epoch 16, 2026-10-11 00:07-00:20Z: about 30 cards across v126-land, v126-fix,
+    v128 and v129 looped accept, refused on FIXES.md and docs/fixes.sexp, ready to accept, accept; rework
+    refused as a brief defect (land-ns56-backup-live-beats)")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published

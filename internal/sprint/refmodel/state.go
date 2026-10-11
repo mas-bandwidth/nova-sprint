@@ -221,6 +221,10 @@ type Primary struct {
 	// finding is that refusal (sprint.LandRefusedFinding), "" otherwise.
 	BriefAt int
 	Refused string
+	// RefusedHead is the attempt whose head the landing last refused (sprint.FieldLandRefusedHead,
+	// every way but files outside its PATHS), 0 when none: while it is its head, it is never
+	// offered to accept again (RefusedAtHead; tla/Land.tla NoOfferAtRefusedHead).
+	RefusedHead int
 }
 
 // WorkCard is one work card: <primary>.w<attempt>.
@@ -972,6 +976,13 @@ func (s State) AcceptHeld(p string) string {
 	return ""
 }
 
+// RefusedAtHead says the landing refused the primary's current head (sprint.LandRefusedAtHead):
+// it is never offered to accept again, and with nothing open on it it is stranded (exhaust).
+func (s State) RefusedAtHead(p string) bool {
+	pr := s.Primaries[p]
+	return pr.RefusedHead != 0 && pr.RefusedHead == pr.Head
+}
+
 // acceptNote is the ready to accept judgment a step that leaves an
 // acceptable primary in review writes (sprint's reviewJudgment): only when the
 // pump holds it (AcceptHeld) and no judgment open on it offers accept (ready
@@ -979,7 +990,7 @@ func (s State) AcceptHeld(p string) string {
 // accept, RUNNING or STOPPED (at the first pump after start): never a
 // judgment, never a hand step.
 func (n *State) acceptNote(p string) {
-	if !n.InWork(p, Review) || !n.Acceptable(p) || n.Open[Judgment{JAccept, p}] || n.Open[Judgment{JReturned, p}] {
+	if !n.InWork(p, Review) || !n.Acceptable(p) || n.RefusedAtHead(p) || n.Open[Judgment{JAccept, p}] || n.Open[Judgment{JReturned, p}] {
 		return
 	}
 	if n.AcceptHeld(p) != "" {

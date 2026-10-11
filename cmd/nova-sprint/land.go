@@ -1830,7 +1830,9 @@ func (l *lander) mergeHeadLedgers(ctx context.Context, dir, stream string, c lan
 		if len(paths) == 0 {
 			goto abort
 		}
-		if allLedgers(paths, l.ledgers()) {
+		// a roadmap page is regenerated from data a card wrote: a regeneration that fails
+		// (the merged data does not decode) is the card's to redo, never a stopped stream
+		if allLedgers(paths, l.ledgers()) && !slices.ContainsFunc(paths, roadmapPage) {
 			l.conflictKind = "ledger"
 		}
 		// the shrink-only ledgers first (ledgerunion.go): each resolved as the union of
@@ -1863,9 +1865,27 @@ func (l *lander) mergeHeadLedgers(ctx context.Context, dir, stream string, c lan
 			case cwhy != "":
 				why = "; " + cwhy
 			default:
-				if owners, outside := ledgerOwners(rest, l.ledgers()); len(outside) == 0 && len(rest) > 0 {
+				// the roadmap data merged entry by entry and staged (landsexp.go); its pages
+				// regenerate with the generated ledgers below
+				var data, pages []string
+				var swhy, senv string
+				rest, data, pages, swhy, senv = l.stageSexpUnion(ctx, dir, rest)
+				if senv != "" || swhy != "" {
+					env, why = senv, "; "+swhy
+					if swhy == "" {
+						why = ""
+					}
+					break
+				}
+				regen := slices.Clone(rest)
+				for _, p := range pages {
+					if !slices.Contains(regen, p) {
+						regen = append(regen, p)
+					}
+				}
+				if owners, outside := ledgerOwners(regen, l.ledgers()); len(outside) == 0 && len(regen) > 0 {
 					var renv string
-					if note, why, renv = l.resolveLedgers(ctx, dir, stream, c, rest, ours, owners); note != "" {
+					if note, why, renv = l.resolveLedgers(ctx, dir, stream, c, rest, ours, owners, data...); note != "" {
 						if cline != "" {
 							lines = append(lines, cline)
 							note = catalogUnionNote() + "; " + note

@@ -863,8 +863,12 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 		}
 	}
 	var typ, why string
+	// a head the landing refused is never offered to accept again: the accept would queue
+	// the head the lander just refused (redo.go, FieldLandRefusedHead; the loop of
+	// 2026-10-11, epoch 16: accept, refused on a conflict, ready to accept, accept)
+	refused := LandRefusedAtHead(pr)
 	switch {
-	case len(oks) >= ReadsNeededIn(s, pr):
+	case len(oks) >= ReadsNeededIn(s, pr) && !refused:
 		if offers || AcceptHeld(pr) == "" {
 			// the tick's pump accepts it, RUNNING or STOPPED (at the first pump after
 			// start): "accept is mechanical", and a hand step is a missing instruction
@@ -877,6 +881,8 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 		// a brief defect asks again to re-cut the brief, never a stranded rework (docs/SPEC-SPRINT.md
 		// section 1, a brief defect)
 		typ, why = NBriefDefect, "a brief defect, "+pr.F(FieldBriefDefect)+": re-cut the brief; nothing is open on it"
+	case refused:
+		typ, why = NStranded, "the landing refused its head "+orDash(pr.F("head"))+" and nothing is open on it: rework it on the tip, or drop it"
 	case pr.F("result") == "failed":
 		typ, why = NStranded, "its work came back failed and nothing is open on it"
 	case reads == 0 && len(before) == 0:

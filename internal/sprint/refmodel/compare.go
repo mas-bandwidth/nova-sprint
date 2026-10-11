@@ -53,6 +53,7 @@ func Compare(e, m State) []Difference {
 			add("primary", id, "pair", ep.Pair, mp.Pair)
 			add("primary", id, "finder", ep.Finder, mp.Finder)
 			add("primary", id, "reached", ep.Reached, mp.Reached)
+			add("primary", id, "refused_head", ep.RefusedHead, mp.RefusedHead)
 		}
 		if ep.State == Review && mp.State == Review {
 			// what the machine's accept reads of its CI and its return

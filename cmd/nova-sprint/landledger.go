@@ -61,6 +61,19 @@ var landLedgers = []landLedger{{
 	roots: diffcheck.AgentsMapRoots,
 	tests: "TestCommittedMapMatchesTree",
 	run:   []string{"go", "run", "./tools/agentsmap"},
+}, {
+	// the point releases' page, owned by TestFixesIsGeneratedFromTheSexp, regenerated from
+	// docs/fixes.sexp as `make roadmap` does (landsexp.go merges the data first)
+	owns:  func(p string) bool { return p == "FIXES.md" },
+	roots: []string{"FIXES.md"},
+	tests: "TestFixesIsGeneratedFromTheSexp",
+	run:   []string{"go", "run", "./tools/roadmap", "--kind", "fixes", "--file", "docs/fixes.sexp", "--out", "FIXES.md"},
+}, {
+	// the roadmap's page, owned by TestRoadmapIsGeneratedFromTheSexp, the same way
+	owns:  func(p string) bool { return p == "ROADMAP.md" },
+	roots: []string{"ROADMAP.md"},
+	tests: "TestRoadmapIsGeneratedFromTheSexp",
+	run:   []string{"go", "run", "./tools/roadmap", "--file", "docs/roadmap.sexp", "--out", "ROADMAP.md"},
 }}
 
 // landRegenPasses bounds the update runs of one resolution: an update that writes
@@ -206,13 +219,13 @@ func ledgerMessage(id, stream string, paths []string, tests string) []string {
 // owners' update run to a fixed point, the merge committed. note is the card's note
 // when it is resolved; card is why it is not, env a git failure that is not the card's;
 // either way the merge is ended and the clone restored (restore).
-func (l *lander) resolveLedgers(ctx context.Context, dir, stream string, c landCard, paths []string, ours map[string]bool, owners []landLedger) (note, card, env string) {
+func (l *lander) resolveLedgers(ctx context.Context, dir, stream string, c landCard, paths []string, ours map[string]bool, owners []landLedger, data ...string) (note, card, env string) {
 	before, err := l.git(ctx, dir, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return "", "", l.restore(ctx, dir, nil, "the clone's untracked files could not be listed: "+firstLine("", err))
 	}
 	known := strings.Split(before, "\x00")
-	note, card, env = l.resolve(ctx, dir, stream, c, paths, ours, owners)
+	note, card, env = l.resolve(ctx, dir, stream, c, paths, ours, owners, data)
 	if note == "" {
 		env = l.restore(ctx, dir, known, env)
 	}
@@ -248,7 +261,9 @@ func (l *lander) restore(ctx context.Context, dir string, known []string, env st
 }
 
 // resolve is resolveLedgers before the restore.
-func (l *lander) resolve(ctx context.Context, dir, stream string, c landCard, paths []string, ours map[string]bool, owners []landLedger) (note, card, env string) {
+// data is the roadmap data already merged and staged (landsexp.go), which the owners
+// regenerate their pages from.
+func (l *lander) resolve(ctx context.Context, dir, stream string, c landCard, paths []string, ours map[string]bool, owners []landLedger, data []string) (note, card, env string) {
 	tests := testsOf(owners)
 	for _, p := range paths {
 		args := []string{"rm", "-q", "--", p} // the tip deleted it: it stays deleted
@@ -267,8 +282,12 @@ func (l *lander) resolve(ctx context.Context, dir, stream string, c landCard, pa
 	if p := cmp.Or(familyLink(files, owners), onDiskLink(dir, familyPaths(files, owners))); p != "" {
 		return "", "its generated ledgers conflict and " + p + " is a symlink, which an update would write through", ""
 	}
-	if _, err := l.git(ctx, dir, append([]string{"add", "-A", "--"}, paths...)...); err != nil {
-		return "", "", "the ledgers could not be staged: " + firstLine("", err)
+	// no paths is a merge whose only conflict was the roadmap data (landsexp.go), already
+	// staged: a bare add -A would stage the whole tree
+	if len(paths) > 0 {
+		if _, err := l.git(ctx, dir, append([]string{"add", "-A", "--"}, paths...)...); err != nil {
+			return "", "", "the ledgers could not be staged: " + firstLine("", err)
+		}
 	}
 	for runs := 0; ; {
 		again := false
@@ -306,10 +325,25 @@ func (l *lander) resolve(ctx context.Context, dir, stream string, c landCard, pa
 		}
 	}
 	msg := ledgerMessage(c.id, stream, paths, tests)
+	note = ledgerNote(paths, tests)
+	if len(data) > 0 {
+		// the roadmap data merged (landsexp.go); the pages conflicted (the ledger sentence)
+		// or, when they did not, were regenerated from the merged data all the same
+		var pages, pagesNote string
+		switch {
+		case len(paths) > 0:
+			pages, pagesNote = " "+msg[1], "; "+note
+		case len(written) > 0:
+			pages = " The pages " + strings.Join(written, ", ") + " were regenerated from the merged data by " + tests + "' runs."
+			pagesNote = "; the pages " + sprint.Preview(written, ", ") + " regenerated from it by " + tests + "' runs"
+		}
+		msg[1] = "The data " + strings.Join(data, ", ") + " conflicted and was merged entry by entry (" + sexpKept + ")." + pages
+		note = sexpUnionNote(data) + pagesNote
+	}
 	if _, err := l.git(ctx, dir, "commit", "-q", "-m", msg[0], "-m", msg[1]); err != nil {
 		return "", "", "the resolved merge of " + c.id + " could not be committed: " + firstLine("", err)
 	}
-	return ledgerNote(paths, tests), "", ""
+	return note, "", ""
 }
 
 // onDiskLink is a path, or a directory on the way to it, that is a symlink on disk

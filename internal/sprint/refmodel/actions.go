@@ -564,7 +564,15 @@ func Read(s State, r, c string, ok bool) (State, error) {
 // and no open judgment is a judgment: reads exhausted when it was asked at its
 // attempt, else stranded in review. Stranded is the spec's, not the model's.
 func (n *State) exhaust(p string) {
-	if !n.InWork(p, Review) || len(n.OutOf(p)) > 0 || n.Acceptable(p) || n.OpenOn(p) || n.ReadsWanted(p) > 0 {
+	if !n.InWork(p, Review) || len(n.OutOf(p)) > 0 || n.OpenOn(p) {
+		return
+	}
+	if n.RefusedAtHead(p) {
+		// the landing refused its head: never offered to accept again (sprint's reviewJudgment)
+		n.open(JStranded, p)
+		return
+	}
+	if n.Acceptable(p) || n.ReadsWanted(p) > 0 {
 		return // a read wanted is the ask's (sequential reads), nothing to judge
 	}
 	if n.AskedNow(p) {
@@ -970,6 +978,12 @@ func MergeRefused(s State, stream string, batch int, p, way string) (State, erro
 		n.Primaries[p] = pr
 		n.open(JReturned, p)
 		return n, nil
+	}
+	// any other way refused the head as it stands (sprint.FieldLandRefusedHead)
+	if pr.Head != 0 {
+		pr.RefusedHead = pr.Head
+	}
+	switch {
 	case s.AtBriefBound(p, way):
 		pr.State = Review
 		n.Primaries[p] = pr
