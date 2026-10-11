@@ -50,7 +50,8 @@ const (
 func FleetWorking(s *Snapshot) (working, width int) {
 	for _, m := range s.UpMembers() {
 		width += s.Width(m)
-		working += s.Fleet.Count(m, Working)
+		work, _ := rowWorking(s, m)
+		working += work
 	}
 	return working, width
 }
