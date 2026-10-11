@@ -271,6 +271,39 @@ func TestAPinRefusalCountRestartsWhenTheMemberComesUp(t *testing.T) {
 	assert.Equal(t, "m1", wc.Row)
 }
 
+// A refusal and a member's coming up in the same second are still ordered (the member's count
+// of comings up, never stamps in seconds, which tie): a refusal then a down and up in that
+// second resets the member's rest and count; an up then a refusal in that second counts and
+// rests it (Stella's third read of #107).
+func TestARefusalAndAnUpInTheSameSecondAreOrdered(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("flash-a", "flash"))
+	h.must(FleetStep(sprint.FleetReq{Op: "hold", Member: "m2", Who: "coordinator"})) // m1 alone serves it (a hold stays through beats)
+	h.addReady("s1", 1, pinned("prov-flash-a/model-big"))
+	h.startMachine()
+	h.machine()
+	require.Equal(t, "m1", h.snap().Fleet.Card("s1-1.w1").Row)
+	h.tick(time.Minute) // m1 came up a minute ago; all that follows is in one second
+
+	// refusal, then down and up, all in one second: the up resets m1's rest
+	h.failTake("s1-1.w1", pinAuthLine)
+	h.must(FleetStep(sprint.FleetReq{Op: "down", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: sprint.MaxWidth}))
+	h.machine()
+	wc := h.snap().Fleet.Card("s1-1.w1")
+	require.Equal(t, sprint.Ready, wc.Col, "the up after the refusal ends m1's rest, in the same second")
+	require.Equal(t, "m1", wc.Row)
+
+	// up, then a refusal in that same second: it counts afresh and rests m1
+	h.failTake("s1-1.w1", pinAuthLine)
+	assert.Equal(t, "1", h.snap().Fleet.Card("s1-1.w1").F("pin_refusals_m1"), "the count restarted at the up")
+	h.machine()
+	assert.NotEqual(t, sprint.Ready, h.snap().Fleet.Card("s1-1.w1").Col, "the refusal after the up rests m1")
+	open := h.openOf(sprint.NNoRoute)
+	require.Len(t, open, 1)
+	assert.Equal(t, "pin:prov-flash-a/model-big", open[0].Note.Stream)
+}
+
 // Rests written while routes were held stay when every route is removed: the deal, the
 // withdrawal and the take ask the same rests, so the pin is neither dealt to a member a take
 // would refuse nor left there, and its one judgment names it (Stella's second read of #107).

@@ -2631,7 +2631,9 @@ order the cards were dealt in, so a card brought to the front of its stream by
   the work card (`pin_take_<member>`, latest wins, `pin_refusals_<member>` its count):
   it rests that provider's pins on the member for `RouteRestFor`, and after
   `sprint.MaxPinRefusals` (3) refusals the rest stands, with no clock, until the member
-  is brought up again (its control card's `since` passes the last refusal), which also
+  is brought up again (its control card's `since`, which every change of its status
+  writes, is no longer the one the refusal recorded as `pin_since_<member>`: so an up and a
+  refusal in the same second are still ordered), which also
   restarts its count, so one refusal after it rests the member for a time only; the card
   waits under one standing judgment that never reopens while nothing changes. In a
   store with no route nothing is known of keys: every pin is dealt, and a refusal ends

@@ -54,6 +54,12 @@ import (
 const (
 	FieldPinTake     = "pin_take_"
 	FieldPinRefusals = "pin_refusals_"
+	// FieldPinSince + <member> is the member's control card's since when the record's latest
+	// refusal was taken. Every change of the member's status (down, up, held) writes a new
+	// since, so a since that differs from it says the member changed status after that refusal:
+	// an order that two stamps in the same second cannot give (a refusal and an up in one
+	// second stamp equal), read from what the member's card held at the refusal.
+	FieldPinSince = "pin_since_"
 )
 
 // MaxPinRefusals is how many refusals of a provider's pins on one member rest them for a
@@ -85,17 +91,18 @@ func pinProvider(model string) string {
 }
 
 // PinTakes is the refused pin take records a work card holds, one per member (FieldPinTake),
-// with each member's count of them (FieldPinRefusals).
-func PinTakes(wc *Card) (takes map[string]ProviderTake, counts map[string]int) {
+// with each member's count of them (FieldPinRefusals) and its since when the latest was taken
+// (FieldPinSince).
+func PinTakes(wc *Card) (takes map[string]ProviderTake, counts map[string]int, since map[string]string) {
 	for k, v := range wc.Fields {
 		if m, ok := strings.CutPrefix(k, FieldPinTake); ok && v != "" {
 			if takes == nil {
-				takes, counts = map[string]ProviderTake{}, map[string]int{}
+				takes, counts, since = map[string]ProviderTake{}, map[string]int{}, map[string]string{}
 			}
-			takes[m], counts[m] = parseTake(v), wc.Int(FieldPinRefusals+m)
+			takes[m], counts[m], since[m] = parseTake(v), wc.Int(FieldPinRefusals+m), wc.F(FieldPinSince+m)
 		}
 	}
-	return takes, counts
+	return takes, counts, since
 }
 
 // pinRestKey is a member's rest of a provider's pins in pinRests.
@@ -105,10 +112,11 @@ func pinRestKey(provider, member string) string { return provider + " " + member
 // pure function of the fleet table's pin take records (PinTakes) and the members' control
 // cards. The latest refusal rests that provider's pins on the member until RouteRestFor after
 // it; with MaxPinRefusals or more of them (over every work card) the rest stands with no end
-// until the member is brought up again. A member brought up (its control card's since later
-// than a refusal) starts afresh, as tla/RouteIndex.tla's MemberUp resets prc: a record that
-// ended before its since counts nothing and rests nothing, and pinRefusedReturned restarts
-// the count of a record older than it.
+// until the member is brought up again. A member whose status changed after a refusal (its
+// control card's since is no longer the one the record holds, FieldPinSince: so an up and a
+// refusal in the same second are still ordered) starts afresh, as tla/RouteIndex.tla's
+// MemberUp resets prc: such a record counts nothing and rests nothing, and
+// pinRefusedReturned restarts its count.
 func (s *Snapshot) pinRestsOf() map[string]string {
 	out := map[string]string{}
 	if s.Fleet == nil {
@@ -120,11 +128,11 @@ func (s *Snapshot) pinRestsOf() map[string]string {
 		if c.F(FieldRoute) != RoutePin {
 			continue // a pin's records live on its own work card: the scan costs no other card anything
 		}
-		takes, counts := PinTakes(c)
+		takes, counts, since := PinTakes(c)
 		for m, t := range takes {
 			at, err := time.Parse(time.RFC3339, t.Finished)
-			if err != nil || refusal(t.Error) == "" || s.memberSince(m).After(at) {
-				continue // not a refusal, or the member was brought up after it: it counts nothing
+			if err != nil || refusal(t.Error) == "" || s.changedSince(m, since[m]) {
+				continue // not a refusal, or the member changed status after it: it counts nothing
 			}
 			if last == nil {
 				last, count = map[string]time.Time{}, map[string]int{}
@@ -150,11 +158,10 @@ func (s *Snapshot) pinRestsOf() map[string]string {
 	return out
 }
 
-// memberSince is when the member's control card says it last came up (its since), the zero
-// time when it says none.
-func (s *Snapshot) memberSince(member string) time.Time {
-	t, _ := time.Parse(time.RFC3339, s.MemberCtl(member).F("since"))
-	return t
+// changedSince says the member's status changed (it went down, came up or was held) after a
+// refusal taken while its control card's since was was: its since is no longer that one.
+func (s *Snapshot) changedSince(member, was string) bool {
+	return was != "" && s.MemberCtl(member).F("since") != was
 }
 
 // pinRests is the members' pin rests at s.Now: the ones a dealing step settled once
@@ -269,11 +276,13 @@ func pinRefusedReturned(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 		Finished: stamp(s.Now), Error: line, Taken: taken}.String()
 	// the count restarts when the member was brought up after the record's last refusal
 	// (tla/RouteIndex.tla, MemberUp resets prc): only refusals since it came up count
+	// (its since differs from the one the record holds; never two stamps compared, which tie)
 	n := c.Int(FieldPinRefusals + c.Row)
-	if prev, err := time.Parse(time.RFC3339, parseTake(c.F(FieldPinTake+c.Row)).Finished); err != nil || s.memberSince(c.Row).After(prev) {
+	if c.F(FieldPinTake+c.Row) == "" || s.changedSince(c.Row, c.F(FieldPinSince+c.Row)) {
 		n = 0
 	}
 	set[FieldPinRefusals+c.Row] = itoa(n + 1)
+	set[FieldPinSince+c.Row] = s.MemberCtl(c.Row).F("since")
 	prSet := map[string]string{}
 	addConsumer(pr, prSet, workConsumer(s, c, 0, EndPinUnserved, costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)))
 	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
