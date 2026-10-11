@@ -177,6 +177,20 @@ footer; `ok` and `failed` count her cards done; `done` is `sum(ok+failed)` and
 `ok%` is `pct(ok/ok+failed)`, pooled over the friends in the footer, the fleet
 table's own formulas.
 
+Every attempt's end is classed as the worker's or the coordination's (`sprint.EndClass`,
+internal/sprint/end_class.go; the owner, 2026-10-11 ~20:30Z: "failures not attributable to
+the model are supposed to accumulate to a counter for coordination failures"). The
+worker's ends are the model's own work: a not-done verdict on its work, its push refused
+by the gate for its own code, a broken read verdict on its head. Every other end -- a
+harness crash before the first turn, a provider or account limit, a content-filter or key
+refusal, an idle-reap with no run, a missing bench tool or jar, a staging refusal, the
+tick or a hold taking a card back, a card dealt with unlanded needs, a hook-gate refusal,
+a store fault, a landing conflict -- is the coordination's, and unknown is the
+coordination's until classed, so a worker is never blamed by default. A coordination end
+never counts against a worker: `ok%` is worker-ok over worker-ended attempts, a
+coordination end counts toward neither, and a card whose ends are coordination is never
+judged a brief defect for them, so it never reaches its bound on them.
+
 A friend says she is there with `friend beat <friend>` (answered `FRIEND-BEAT OK
 <friend> at=<t> ... row_mode=<batch|one-shot> row_width=<n>`, her nova-config row
 as friend sync last copied it, which is how her daemon reads her delivery mode;
