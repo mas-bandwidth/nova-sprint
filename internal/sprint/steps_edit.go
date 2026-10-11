@@ -82,6 +82,15 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		cards = []BriefCard{{ID: r.ID, Brief: r.Brief, Rules: r.Rules, Needs: r.Needs}}
 	}
 	seen, orphans := map[string]bool{}, map[string]bool{}
+	// every needs rewrite of the batch, judged together against the state with the
+	// whole batch applied (needsCycleWith): two edits that each pass alone may close
+	// a cycle between them
+	proposed := map[string][]string{}
+	for _, b := range cards {
+		if c := s.Work.Placed(b.ID); c != nil && !IsSentinel(c) && !sameNeeds(Split(c.F("needs")), b.Needs) {
+			proposed[b.ID] = b.Needs
+		}
+	}
 	for _, b := range cards {
 		if seen[b.ID] {
 			p.refuse(b.ID, b.ID+" is named twice; nothing was changed")
@@ -91,7 +100,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// a DEPENDS-ON line alone is taken in any state, the machine running or the card dealt
 		if c != nil && !IsSentinel(c) && dependsOnly(c.F("brief"), b.Brief) {
 			seen[b.ID] = true
-			p = briefDepends(s, p, c, b.Brief, b.Needs)
+			p = briefDepends(s, p, c, b.Brief, b.Needs, proposed)
 			continue
 		}
 		// a card merging or landed is refused with what changes it instead:
@@ -146,7 +155,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		cur, want := Split(c.F("needs")), b.Needs
 		toWaiting := false
 		if !sameNeeds(cur, want) {
-			if why := needsCycle(s, c.ID, want); why != "" {
+			if why := needsCycleWith(s, c.ID, proposed); why != "" {
 				p.refuse(c.ID, why)
 				continue
 			}
@@ -525,7 +534,7 @@ func dependsOnly(old, brief string) bool {
 // (docs/SPEC-SPRINT.md section 9, rule 11; tla/SprintTables.tla Rule11 and its
 // reversed witness "reviewneeds"). The brief decision and the grade were over
 // the same task and stay.
-func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string) Plan {
+func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, proposed map[string][]string) Plan {
 	for _, n := range needs {
 		nc := s.Work.Card(n)
 		switch {
@@ -543,7 +552,10 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string) Pl
 			return p
 		}
 	}
-	if why := needsCycle(s, c.ID, needs); why != "" {
+	if proposed == nil {
+		proposed = map[string][]string{c.ID: needs}
+	}
+	if why := needsCycleWith(s, c.ID, proposed); why != "" {
 		p.refuse(c.ID, why)
 		return p
 	}
@@ -637,7 +649,7 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 	// returned to waiting or ready after an attempt (briefInPlace) through
 	// briefDepends, which refuses a ready card a need not landed.
 	if c.Col == Working || c.Col == Review {
-		q := briefDepends(s, p, c, brief, wants)
+		q := briefDepends(s, p, c, brief, wants, nil)
 		answered(&q, s, r.Answers, r.Who)
 		return Lawful(q)
 	}
@@ -693,26 +705,52 @@ func setBriefNeeds(brief string, needs []string) string {
 }
 
 // needsCycle is why rewriting id's needs to wants would close a cycle of needs,
-// "" when it would not: the check add makes (cycle.go, newNeedGraph and closes),
-// on every path that rewrites a card's needs (needs set, a brief's DEPENDS-ON).
-// The card is taken as waiting, since a card with a need not landed waits (or
-// goes back to waiting at the tick). tla/SprintTables.tla NoNeedCycle and its
-// reversed witness "cycle".
+// "" when it would not (needsCycleWith, the batch of one).
 func needsCycle(s *Snapshot, id string, wants []string) string {
-	if len(wants) == 0 {
+	return needsCycleWith(s, id, map[string][]string{id: wants})
+}
+
+// needsCycleWith is why the needs rewrites proposed (by card id, its new needs)
+// would put id on a cycle of needs, "" when they would not: the check add makes
+// (cycle.go, newNeedGraph and closes), on every path that rewrites a card's
+// needs (needs set, a brief's DEPENDS-ON, alone or in a whole brief), judged
+// against the state with the whole batch applied, so a batch whose edits each
+// pass alone (A needs B, B needs A) is refused together. The graph takes every
+// open card's stored named needs, whatever its state: a dealt card that gained a
+// need not landed keeps its edge until the tick moves it back to waiting
+// (needsWithdrawals), and a rewrite that closes a loop through it is a cycle.
+// The cards rewritten are taken as waiting, since a card with a need not landed
+// waits (or goes back to waiting at the tick). tla/SprintTables.tla NoNeedCycle
+// and its reversed witness "cycle".
+func needsCycleWith(s *Snapshot, id string, proposed map[string][]string) string {
+	if len(proposed[id]) == 0 {
 		return ""
 	}
-	var live []string
-	waived := []string(nil)
-	if c := s.Work.Card(id); c != nil {
-		waived = Split(c.F("waived"))
+	live := func(c *Card, needs []string) []string {
+		var waived []string
+		if c != nil {
+			waived = Split(c.F("waived"))
+		}
+		var out []string
+		for _, n := range needs {
+			if !contains(waived, n) {
+				out = append(out, n)
+			}
+		}
+		return out
 	}
-	for _, n := range wants {
-		if !contains(waived, n) {
-			live = append(live, n)
+	named := map[string][]string{}
+	for _, c := range s.Work.Column(Ready, Working, Review, Merging) {
+		if needs := Split(c.F("needs")); len(needs) > 0 {
+			named[c.ID] = live(c, needs)
 		}
 	}
-	g := newNeedGraph(s, map[string][]string{id: live}, nil, map[string]bool{id: true})
+	waits := map[string]bool{}
+	for pid, wants := range proposed {
+		named[pid] = live(s.Work.Card(pid), wants)
+		waits[pid] = true
+	}
+	g := newNeedGraph(s, named, nil, waits)
 	if cycle := g.closes([]string{id}); cycle != nil {
 		return "the needs would make a cycle: " + g.tellLoop(cycle) + "; nothing was changed"
 	}

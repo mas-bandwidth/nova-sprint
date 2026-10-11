@@ -32,3 +32,42 @@ func TestNeedsSetRefusesAnEditThatClosesACycle(t *testing.T) {
 	require.Equal(t, Ready, w.state("s1-2"))
 	require.Empty(t, Cycles(w.s), "no cycle on the table")
 }
+
+// A dealt card that gains a need keeps its edge while it works (the tick moves it
+// back to waiting later): a rewrite that closes a loop through it is a cycle. The
+// graph takes every open card's stored needs, whatever its state (needsCycleWith).
+func TestNeedsSetSeesAWorkingCardsNeeds(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 2) // s1-1 and s1-2, both ready
+	w.must(Deal(w.s, DealReq{Sel: Sel{Only: []string{"s1-1"}}}))
+	require.Equal(t, Working, w.state("s1-1"))
+
+	w.must(NeedsSet(w.s, NeedsSetReq{ID: "s1-1", Needs: []string{"s1-2"}, Who: "coordinator"}))
+	require.Equal(t, "s1-2", w.s.Work.Card("s1-1").F("needs"), "the working card holds its new need")
+	require.Equal(t, Working, w.state("s1-1"))
+
+	p := NeedsSet(w.s, NeedsSetReq{ID: "s1-2", Needs: []string{"s1-1"}, Who: "coordinator"})
+	require.Empty(t, p.Units, "the rewrite closes a loop through the working card: %+v", p)
+	require.Len(t, p.Refused, 1)
+	require.Contains(t, p.Refused[0].Why, "the needs would make a cycle")
+	require.Equal(t, "", w.s.Work.Card("s1-2").F("needs"), "the first edit's graph is kept")
+}
+
+// A brief batch is judged as a whole: two rewrites that each pass alone (s1-1
+// needs s1-2, s1-2 needs s1-1) close a cycle together, and both are refused
+// against the state with the whole batch applied (needsCycleWith).
+func TestABriefBatchCannotCloseACycleBetweenItsCards(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 2) // s1-1 and s1-2, both ready
+	p := Brief(w.s, BriefReq{Cards: []BriefCard{
+		{ID: "s1-1", Brief: "one, reworded\nDEPENDS-ON: s1-2", Needs: []string{"s1-2"}},
+		{ID: "s1-2", Brief: "two, reworded\nDEPENDS-ON: s1-1", Needs: []string{"s1-1"}},
+	}, Who: "coordinator"})
+	require.Empty(t, p.Units, "the batch closes a cycle: %+v", p)
+	require.Len(t, p.Refused, 2, "%+v", p.Refused)
+	for _, r := range p.Refused {
+		require.Contains(t, r.Why, "the needs would make a cycle", r.Key)
+	}
+	w.do(p)
+	require.Empty(t, Cycles(w.s), "no cycle on the table")
+}

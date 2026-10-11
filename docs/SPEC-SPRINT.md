@@ -2429,7 +2429,7 @@ in the same change. Lawful says whether the store's check (`Lawful`,
 | landed -> review | the short-reads pass on a landed card | `steps_tick.go` ShortReadsBack (before v1.2.13) | none (witness "unland") | no: landed is final; the pass now offers merging cards only |
 | open -> off | drop, defer | `steps_review.go` Drop; `defer.go` Defer | Drop | yes, never a needed card |
 | landed -> off | remove | a removing plan | Drop | yes, removing |
-| (refused) a needs rewrite that closes a cycle | `needs set`, a brief's DEPENDS-ON (alone or in a whole brief) | `steps_edit.go` NeedsSet, briefDepends, Brief (needsCycle, the check add makes in `cycle.go`) | NeedsSet's cycle guard (witness "cycle") | refused, naming the loop; nothing written |
+| (refused) a needs rewrite that closes a cycle, judged over every open card's named needs (a working card's included) and over a brief batch as a whole | `needs set`, a brief's DEPENDS-ON (alone or in a whole brief, one card or a batch) | `steps_edit.go` NeedsSet, briefDepends, Brief (needsCycle, the check add makes in `cycle.go`) | NeedsSet's cycle guard (witness "cycle") | refused, naming the loop; nothing written |
 | same state, another stream | stream move | `steps_edit.go` MoveCards | none (streams are not modelled) | judged as any move |
 
 A card's needs never hold one not landed past working (section 9, rule 11): a
