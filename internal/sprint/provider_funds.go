@@ -33,7 +33,7 @@ import (
 //     coordinator's routes wake;
 //   - while the provider rests for its funds or its key, ONE judgment of it is open, never
 //     one per card, decided by funded, ack or wait and never by a rework (a payment is not
-//     the card's to fix): `provider <p> is out of funds`, `provider <p> is low on funds`, or
+//     the card's to fix): `provider <p> is out of funds`, `fund <p>` (low on funds), or
 //     `provider <p> refuses the seat's key`;
 //   - when every enabled route rests because its provider is OUT of credit, the tick stops
 //     the machine (the owner, 2026-10-03: "if all providers are out, then you stop the
@@ -63,6 +63,16 @@ func refusal(line string) string {
 		return ""
 	}
 	return strings.TrimSpace(line)
+}
+
+// outOfCredit says a take's report is the provider's refusal for want of credit (class
+// out-of-credit, a 402). It is the one refusal a LIMITED route returns without ending the
+// take, spending no redeal (steps_work.go, rateLimitedReturned): the provider still rests
+// on the record that refusal leaves (routeEnds, providerRestsDue). An auth refusal (a 401)
+// is never one: it keeps the path that ends the take and rests the provider as before.
+func outOfCredit(line string) bool {
+	m := causeRE.FindStringSubmatch(strings.TrimSpace(line))
+	return m != nil && m[1] == RestCredit
 }
 
 // The transient classes of a provider failure (pkg/swarm ProviderCause): a rate limit
@@ -229,13 +239,14 @@ func providerConds(s *Snapshot) (conds []cond, stop string) {
 		h.routes = append(h.routes, r.Name)
 	}
 	balances := ProviderBalances(s.Fleet)
+	threshold, _ := lowBalanceUsdSetting(s.Work.Props())
 	providers := map[string]bool{}
 	for p := range byProvider {
 		providers[p] = true
 	}
 	for p, b := range balances {
 		// a provider resting already (the coordinator's routes rest, a refusal) is answered
-		if len(serving[p]) > 0 && b.Low() && !resting[p] {
+		if len(serving[p]) > 0 && b.Low(threshold) && !resting[p] {
 			providers[p] = true
 		}
 	}
@@ -260,8 +271,8 @@ func providerConds(s *Snapshot) (conds []cond, stop string) {
 				spent = fmt.Sprintf("spent %s over the last hour (the sprint's cost records), about %.1f hours left at that spend", Dollars(b.SpendHour), hours)
 			}
 			conds = append(conds, cond{typ: NProviderLow, stream: ProviderSubject(p), streamLevel: true,
-				decisions: []string{"routes rest " + p, "wait", "ack"},
-				what: fmt.Sprintf("provider %s is low on funds: balance %s, %s; a payment is the owner's; its routes %s STILL SERVE: the machine rests none of them for a balance; to rest them: nova-sprint routes rest %s --reason <why>; to look again later: nova-sprint wait <note> --until <RFC3339>; nova-sprint where --json shows the balance",
+				decisions: []string{"fund " + p, "funded " + p, "routes rest " + p, "wait", "ack"},
+				what: fmt.Sprintf("fund %s: balance %s, %s; a payment is the owner's; its routes %s STILL SERVE: the machine rests none of them for a balance; to rest them: nova-sprint routes rest %s --reason <why>; to look again later: nova-sprint wait <note> --until <RFC3339>; nova-sprint where --json shows the balance",
 					p, b.Said(), spent, strings.Join(slices.Sorted(slices.Values(serving[p])), ", "), p)})
 		}
 	}

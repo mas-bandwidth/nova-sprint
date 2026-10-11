@@ -14,7 +14,9 @@
 \* After transient provider failures, coord: the coordinator's); win[r], the
 \* route's ended takes since its last rest, the newest W; low, the balance poll's
 \* last read is not over one hour of the spend; judged, the low-on-funds
-\* judgment is open; event, what the last step was (the record the rules read).
+\* judgment is open; event, what the last step was (the record the rules read);
+\* redeal, the redeals spent so far: a take that ends spends one, an
+\* out-of-credit refusal on a limited route spends none (OutOfCreditSpendsNoRedeal).
 \*
 \* The design, Broken = {}:
 \*   TakeEnds   a take on a serving route ends (ok, noresult, transient: a 429,
@@ -44,8 +46,8 @@ EXTENDS Naturals, Sequences, FiniteSets
 
 CONSTANTS Routes, W, After, Broken
 
-VARIABLES provRest, own, win, low, judged, event
-vars == <<provRest, own, win, low, judged, event>>
+VARIABLES provRest, own, win, low, judged, event, redeal
+vars == <<provRest, own, win, low, judged, event, redeal>>
 
 Kinds == {"ok", "noresult", "transient", "credit", "auth"}
 Events == Kinds \cup {"balance", "raise", "payment", "funded", "coord", "wake", "clock"}
@@ -60,6 +62,7 @@ TypeOK ==
     /\ low \in BOOLEAN
     /\ judged \in BOOLEAN
     /\ event \in Events \cup {"init"}
+    /\ redeal \in 0..W
 
 Init ==
     /\ provRest = "none"
@@ -68,6 +71,7 @@ Init ==
     /\ low = FALSE
     /\ judged = FALSE
     /\ event = "init"
+    /\ redeal = 0
 
 Resting(r) == provRest # "none" \/ own[r] # "none"
 
@@ -90,6 +94,7 @@ TakeEnds(r, k) ==
               ELSE /\ own' = own
                    /\ win' = [win EXCEPT ![r] = w]
     /\ event' = k
+    /\ redeal' = IF k = "credit" THEN redeal ELSE IF redeal < W THEN redeal + 1 ELSE redeal
     /\ UNCHANGED <<low, judged>>
 
 \* the poll reads the balance: it writes no rest
@@ -97,7 +102,7 @@ Balance(l) ==
     /\ low' = l
     /\ provRest' = IF "balance" \in Broken /\ l /\ provRest = "none" THEN "balance" ELSE provRest
     /\ event' = "balance"
-    /\ UNCHANGED <<own, win, judged>>
+    /\ UNCHANGED <<own, win, judged, redeal>>
 
 \* the tick holds the low-on-funds judgment open exactly while the balance is low
 Raise ==
@@ -105,27 +110,27 @@ Raise ==
     /\ judged # low
     /\ judged' = low
     /\ event' = "raise"
-    /\ UNCHANGED <<provRest, own, win, low>>
+    /\ UNCHANGED <<provRest, own, win, low, redeal>>
 
 \* a payment the poll sees, or funded: a credit rest ends
 Pay(e) ==
     /\ provRest = "credit"
     /\ provRest' = "none"
     /\ event' = e
-    /\ UNCHANGED <<own, win, low, judged>>
+    /\ UNCHANGED <<own, win, low, judged, redeal>>
 
 \* the coordinator rests the provider, or one route
 RestProvider ==
     /\ provRest = "none"
     /\ provRest' = "coord"
     /\ event' = "coord"
-    /\ UNCHANGED <<own, win, low, judged>>
+    /\ UNCHANGED <<own, win, low, judged, redeal>>
 
 RestRoute(r) ==
     /\ own[r] = "none"
     /\ own' = [own EXCEPT ![r] = "coord"]
     /\ event' = "coord"
-    /\ UNCHANGED <<provRest, win, low, judged>>
+    /\ UNCHANGED <<provRest, win, low, judged, redeal>>
 
 \* the coordinator wakes the provider (its rest, any cause, and its routes' own),
 \* or one route's own while its provider serves
@@ -134,27 +139,27 @@ WakeProvider ==
     /\ provRest' = "none"
     /\ own' = [r \in Routes |-> "none"]
     /\ event' = "wake"
-    /\ UNCHANGED <<win, low, judged>>
+    /\ UNCHANGED <<win, low, judged, redeal>>
 
 WakeRoute(r) ==
     /\ provRest = "none"
     /\ own[r] # "none"
     /\ own' = [own EXCEPT ![r] = "none"]
     /\ event' = "wake"
-    /\ UNCHANGED <<provRest, win, low, judged>>
+    /\ UNCHANGED <<provRest, win, low, judged, redeal>>
 
 \* the clock ends a timed rest; a credit rest has none
 ExpireRoute(r) ==
     /\ own[r] # "none"
     /\ own' = [own EXCEPT ![r] = "none"]
     /\ event' = "clock"
-    /\ UNCHANGED <<provRest, win, low, judged>>
+    /\ UNCHANGED <<provRest, win, low, judged, redeal>>
 
 ExpireProvider ==
     /\ provRest \in IF "authclock" \in Broken THEN {"auth", "coord"} ELSE {"coord"}
     /\ provRest' = "none"
     /\ event' = "clock"
-    /\ UNCHANGED <<own, win, low, judged>>
+    /\ UNCHANGED <<own, win, low, judged, redeal>>
 
 Next ==
     \/ \E r \in Routes, k \in Kinds : TakeEnds(r, k)
@@ -193,5 +198,11 @@ NoResultNeverRests ==
 
 \* a balance low long enough is raised to the coordinator as a judgment
 LowIsRaised == [](low => <>(judged \/ ~low))
+
+\* an out-of-credit refusal (a credit event) rests the provider but spends no redeal:
+\* its card is returned without FieldTakeEnded, so the redeal count is unchanged. Every
+\* other ended take spends one (TakeEnds), so the property is not vacuous.
+OutOfCreditSpendsNoRedeal ==
+    [][event' = "credit" => redeal' = redeal]_vars
 
 =============================================================================

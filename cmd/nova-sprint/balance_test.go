@@ -75,7 +75,7 @@ func TestAPolledBalanceAtZeroIsAJudgmentAndRestsNothing(t *testing.T) {
 	assert.Equal(t, 2, strings.Count(routes, " rested_until=- balance=-$0.51\n"), "every route of the provider serves:\n%s", routes)
 	ta.ok("tick")
 	inbox := ta.ok("inbox")
-	assert.Contains(t, inbox, "provider openrouter is low on funds: balance -$0.51 at ")
+	assert.Contains(t, inbox, "fund openrouter: balance -$0.51 at ")
 	assert.Contains(t, inbox, "STILL SERVE")
 	assert.Contains(t, inbox, "nova-sprint routes rest openrouter --reason")
 	assert.Equal(t, 1, strings.Count(inbox, "! a provider is low on funds"), "one judgment of the provider:\n%s", inbox)
@@ -84,7 +84,7 @@ func TestAPolledBalanceAtZeroIsAJudgmentAndRestsNothing(t *testing.T) {
 	ta.ok("routes rest openrouter --reason 'out of funds: the owner pays in the morning'")
 	assert.Equal(t, 2, strings.Count(ta.ok("routes"), " rested_until=open "), "the coordinator's rest, until woken")
 	ta.ok("tick")
-	assert.NotContains(t, ta.ok("inbox"), "provider openrouter is low on funds", "answered: the provider rests")
+	assert.NotContains(t, ta.ok("inbox"), "fund openrouter", "answered: the provider rests")
 
 	fake.body = `{"data":{"total_credits":2250,"total_usage":1251}}`
 	poll()
@@ -119,7 +119,7 @@ func TestABalanceAtZeroNeverStopsTheSprint(t *testing.T) {
 	assert.NotContains(t, v.Machine, "STOPPED")
 	inbox := ta.ok("inbox")
 	assert.NotContains(t, inbox, "every provider is out of credit")
-	assert.Contains(t, inbox, "provider openrouter is low on funds")
+	assert.Contains(t, inbox, "fund openrouter")
 	ta.ok("start")
 }
 

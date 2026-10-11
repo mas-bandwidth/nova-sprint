@@ -67,6 +67,7 @@ func TestBalanceCoverPaid(t *testing.T) {
 // judgment at or under zero, or not over one hour of the spend; it rests nothing.
 func TestBalanceCoverLow(t *testing.T) {
 	t.Parallel()
+	threshold := LowBalanceUsdDefault
 	for _, tc := range []struct {
 		name string
 		b    ProviderBalance
@@ -95,7 +96,7 @@ func TestBalanceCoverLow(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.want, tc.b.Low())
+			assert.Equal(t, tc.want, tc.b.Low(threshold))
 		})
 	}
 }
