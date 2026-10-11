@@ -40,7 +40,10 @@ func TestUnpinRefusesStartedOrFinishedWork(t *testing.T) {
 			w := friendWorld(t, friendBrief("only friend amy"))
 			dealWith(w, FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash,pro"})
 			c := w.s.Primary("s1-1")
-			w.must(Plan{Units: []Unit{{Key: c.ID, Changes: []Change{change(Work, moveEntry(c, c.Row, col, nil))}}}})
+			// the fixture places the primary in col: working -> merging and working ->
+			// landed are no moves of the lifecycle, so no plan may make them (the
+			// world holds every plan to Lawful, as the store does)
+			w.place(w.s.Work, c.ID, c.Row, col)
 			p := Unpin(w.s, UnpinReq{IDs: []string{c.ID}, Reason: "share"})
 			assert.Empty(t, p.Units)
 			assert.Len(t, p.Refused, 1)

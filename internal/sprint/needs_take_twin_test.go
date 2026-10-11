@@ -61,6 +61,9 @@ func TestTheFriendsDealNeverDealsACardWithUnlandedNeeds(t *testing.T) {
 // is raised.
 func TestADealtThenUnheldFriendDoesNotTakeACardWithUnlandedNeeds(t *testing.T) {
 	t.Parallel()
+	// The withdrawal moves the dealt primary working -> waiting (PR #96's move), held
+	// by the world to the store's lawful-move check: the card's own named needs in the
+	// pre-state have not landed (lifecycle.go namedNeedsOpen).
 	w := friendWorld(t, fleetBrief("flash"))
 	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
 	w.s.Friends = []FriendSeat{amy}

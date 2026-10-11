@@ -1634,6 +1634,9 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		s.Friends = r.Friends
 	}
 	var p Plan
+	// a stop on needs not landed moves working -> waiting, judged by the card's named needs
+	// in the pre-state (lifecycle.go namedNeedsOpen)
+	p.on(s)
 	if !named(r.Sel) && r.As == "" {
 		p.refuse("finish", "a finish by selection names its member: --as <member>; better, name each card: finish <card>@<gen>")
 		return p

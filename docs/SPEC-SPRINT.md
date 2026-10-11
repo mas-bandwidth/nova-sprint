@@ -2409,7 +2409,7 @@ outcome and reason are kept.
 | waiting -> ready | everything it needs has landed or was waived | mechanical |
 | ready -> working | deal: the machine's tick cuts and deals a work card | mechanical |
 | working -> review | its work card finished, ok or failed | mechanical; failed notifies for judgment |
-| working -> ready | its work card was withdrawn because no fleet member is up, or, still ready, because its route rests (its note names the route and the reason); never for needs not landed | mechanical, notifies |
+| working -> ready | its work card was withdrawn, its attempt unchanged: no fleet member is up, its route rests (its note names the route and the reason), its take ended or its staging was refused, its provider rate-limited it, its lane cap redealt it, its friend returned it, or a finished friend card is redealt | mechanical, notifies |
 | working -> waiting | withdraw: its needs have not landed; its dealt work card goes back to the pool (needsWithdrawals), or its worker stopped on them (needsStopReturned) | mechanical, notifies |
 | review -> merging | accept: the readers it needs said ok at this head (one for a flash card, two different readers for a pro card; section 6) | mechanical (the tick), unless its CI is red at its head or it was returned to review at its attempt; the coordinator's verb takes those; refused without them |
 | review -> working | rework with a fix: the next attempt is delegated at once | the coordinator's verb |
@@ -2420,7 +2420,53 @@ outcome and reason are kept.
 | merging -> landed | its batch, green on the stream branch, merged to the development branch | mechanical |
 | any open state -> off the table | drop, with the reason | the coordinator's verb |
 | waiting -> landed | release of a sentinel that is reached, waits for nothing, or waits only for cards under way (landed, dropped, or in flight: taken, in review, merging), and only that | the coordinator's verb |
-| ready -> waiting | add inserts a sentinel in front of it, or a brief edit gives it a need not landed, or its needs have not landed and its work card is dealt nowhere (needsWaits) | mechanical |
+| ready -> waiting | add inserts a sentinel in front of it, or its named needs now hold one not landed and not waived (a brief edit's DEPENDS-ON, `needs set`, or the tick's needsWaits for a card whose work card is dealt nowhere); the lifecycle refuses the move with every named need landed | mechanical |
+
+### The inventory of moves
+
+Every place the code writes a primary's column, by move, with the code site
+and the model action that checks it (`tla/SprintTables.tla`, whose header
+lists the same inventory). Taken by hand from the code (each `change(Work,
+...)` of `moveEntry`, `createEntry` and `removeEntry` under
+`internal/sprint/`), 2026-10-11; a new site joins this table and the model
+in the same change. Lawful says whether the store's check (`Lawful`,
+`lifecycle.go`) admits the move.
+
+| from -> to | cause | code site | model action | lawful |
+|---|---|---|---|---|
+| (admit) -> waiting or ready | add; a sentinel admitted waiting; a stream's reopen admits its stop | `steps_work.go` Add; `stream_reopen.go` reopenAdd | Init | yes |
+| waiting -> ready | its needs have landed or were waived, nothing in line before it | `steps_work.go` resolvePlan, resolveAfter | Resolve | yes |
+| waiting -> ready | the coordinator waives a dropped or missing need | `steps_ack.go` waive | Waive | yes |
+| waiting -> ready | release of a held waiting card | `steps_sentinel.go` releaseHeld | Resolve | yes |
+| waiting -> ready | `needs set` gives it needs that have all landed | `steps_edit.go` NeedsSet | NeedsSet | yes |
+| ready -> working | the deal and redeal, machines and friends | `steps_work.go` deal, redeal; `friend_deal.go` friendDealUnit, friendRedealUnit | Start | yes, its needs landed |
+| review -> working | rework delegated at once | `steps_review.go` Rework (deal) | Rework | yes |
+| merging -> working | redo delegated at once | `redo.go` Redo (deal) | Redo | yes |
+| working -> review | finish | `steps_work.go` finishPlan | Finish | yes |
+| working -> ready | no member up | `steps_work.go` withdrawUnit (fleet down) | FleetDown | yes |
+| working -> ready | route rests, take ended, staging refused, rate limited, finish to ready, lane cap, friend return, friend redeal | `steps_work.go` withdrawUnit, takeEnded, stagingRefused, rateLimitedReturned, finishPlan; `lane_cap.go` capRedeal; `friend_reconcile.go` FriendReturn; `verdicts.go` TickFriendRedeal | Withdraw | yes |
+| review -> merging | accept, the tick's accept | `steps_review.go` Accept; `steps_tick.go` TickAccept | Accept | yes |
+| review -> ready | rework when none is up; a brief edited in place | `steps_review.go` Rework; `steps_edit.go` briefInPlace | Rework | yes |
+| merging -> review | return; the tick's short-reads pass; a refused landing | `steps_review.go` Return; `steps_tick.go` ShortReadsBack; `redo.go` landRefused | Return | yes |
+| merging -> ready | redo when none is up; a refused landing | `redo.go` Redo, landRefused | Redo | yes |
+| merging -> landed | the lander's merge | `steps_merge.go` mergeStep | Merge | yes |
+| waiting -> landed | release of a sentinel, by the verb or the tick | `steps_sentinel.go` Release; `sentinel.go` SentinelReleases | Release | yes, a sentinel, releasing |
+| ready -> waiting | a sentinel inserted in front | `steps_sentinel.go` mod.change (add) | AddMove | yes, inserting |
+| ready -> waiting | a brief edit or `needs set` names a need not landed | `steps_edit.go` Brief, briefInPlace, NeedsSet | NeedsSet | yes, a need open |
+| ready -> waiting | the tick's needs pass, its work card dealt nowhere | `steps_tick.go` needsWaits | NeedsWait | yes, a need open |
+| working -> waiting | a dealt card whose needs have not landed goes back to the pool; a worker stopped on needs not landed | `steps_tick.go` needsWithdrawals; `needs_stop.go` needsStopReturned | NeedsWithdraw | yes, only when the card's own named needs in the pre-state have not landed (never by the needs the entry writes) |
+| landed -> review | the short-reads pass on a landed card | `steps_tick.go` ShortReadsBack (before v1.2.13) | none (witness "unland") | no: landed is final; the pass now offers merging cards only |
+| open -> off | drop, defer | `steps_review.go` Drop; `defer.go` Defer | Drop | yes, never a needed card |
+| landed -> off | remove | a removing plan | Drop | yes, removing |
+| (refused) a needs rewrite that closes a cycle, judged over every open card's named needs (a working card's included) and over a brief batch as a whole | `needs set`, a brief's DEPENDS-ON (alone or in a whole brief, one card or a batch), `sentinel set`, a twin's relink, add | `steps_edit.go` NeedsSet, briefDepends, Brief (needsCycleWith); `steps_sentinel.go` SentinelSet; `twins.go` relinked; `steps_work.go` Add (all on `cycle.go`'s graph, which reads every open card's named needs) | NeedsSet's cycle guard (witness "cycle") | refused, naming the loop; nothing written |
+| same state, another stream | stream move | `steps_edit.go` MoveCards | none (streams are not modelled) | judged as any move |
+
+A card's needs never hold one not landed past working (section 9, rule 11): a
+ready card that gains one moves to waiting; a dealt card that gains one goes
+working -> waiting at the tick (needsWithdrawals); a card in review is refused
+one, since nothing moves it back. A needs rewrite that would close a cycle is
+refused, as add's is. Open: a taken card given a need not landed can finish ok
+before the tick withdraws it, and reach review with it.
 
 The store holds every step's plan to this table before it applies it, whatever
 step built it: a primary is admitted waiting or ready, moves only by a row of
