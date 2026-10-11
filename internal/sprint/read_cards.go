@@ -12,8 +12,8 @@ import (
 
 // A read is a consumer card (docs/SPEC-SPRINT.md section 6, "A read is a consumer card";
 // the owner, 2026-10-06: "reads need to become a type of card"; "send out multiple consumer
-// cards in ||"; "Just remove the complexity. just deal it."). While the sprint's read_cards
-// setting is on (set --read-cards on), the tick's deal deals every read a primary in review
+// cards in ||"; "Just remove the complexity. just deal it."). Unless the sprint's read_cards
+// setting is ReadCardsOffWord (set --read-cards off), the tick's deal deals every read a primary in review
 // still needs AT ONCE, before its work cards, each a read card on the fleet table cut and
 // dealt in one step to a different reader: a friend whose roles name reader and whose tiers
 // hold the read's tier, or a member up whose reader row (reader-<m>) is neither held nor
@@ -22,21 +22,34 @@ import (
 // half a slot of its unit's one width (halfLoad). Its tier is its primary's, its level
 // inherited (ReadPriority). The review is unchanged: a read card's verdict closes the read on
 // the primary as read --ok|--broken does (friendReadCloseUnit, readCardVerb), and the primary
-// leaves review only by the existing rules. The model is tla/ReadCards.tla. With the setting
-// off, the readers table's ask and the friends' read ask, as before; they retire next release.
+// leaves review only by the existing rules. The model is tla/ReadCards.tla. Only with the setting
+// ReadCardsOffWord does the readers table's ask (one read per tick) and the friends' read ask
+// run, as before; they retire next release.
 
 // PropReadCards is the work table's property that turns read cards on: ReadCardsOnWord.
 const PropReadCards = "read_cards"
 
-// ReadCardsOnWord is the setting's on word; any other value is off.
+// ReadCardsOnWord is the setting's on word; ReadTierDefault (default) and an absent
+// property are also on. ReadCardsOffWord is the one word that turns read cards off.
 const ReadCardsOnWord = "on"
 
-// ReadCardsOn says the sprint asks its reads as read cards (PropReadCards).
+// ReadCardsOffWord is the one setting that turns read cards off, and degrades the machine:
+// with it, reads are asked one per tick through the readers table (docs/SPEC-SPRINT.md
+// section 11, the settings; the owner, 2026-10-11: "Defaults should always be the sprint
+// machine works").
+const ReadCardsOffWord = "off"
+
+// ReadCardsOn says the sprint asks its reads as read cards (PropReadCards). It is the
+// working default: an absent property, and ReadTierDefault, are on; only ReadCardsOffWord
+// is off.
 func (s *Snapshot) ReadCardsOn() bool {
 	if s == nil || s.Work == nil {
-		return false
+		return true
 	}
-	v, _ := s.Work.Prop(PropReadCards)
+	v, had := s.Work.Prop(PropReadCards)
+	if !had || v == "" || v == ReadTierDefault {
+		return true
+	}
 	return v == ReadCardsOnWord
 }
 
