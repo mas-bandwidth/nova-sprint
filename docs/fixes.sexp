@@ -1045,6 +1045,21 @@
     tla/ProviderBudget.tla NewMemberProbed, not FleetUpRefusesUncleared. tla/RUNS.tsv and tla/COVERAGE.tsv
     are made current."
    :origin "card tla-providerbudget-every-declared-witness-has-a-cfg, 2026-10-11: v1.2.12 inventory section 4, at nova-sprint main 00c54ba2e")
+  (fix "tla-provider-funds" :release "v1.2.12" :status "planned"
+   :title "ProviderFunds models the provider's rest, the all-out stop and the friend exception"
+   :text "Models only, no product change. tla/ProviderFunds.tla EXTENDS RouteRest and reuses its rest rules
+    for a first provider, adds a second, and models the provider funds machine: a take refused for credit or its
+    key rests the provider (only a take launched after the last rest ended counts), a balance poll never rests
+    and ends a refused credit rest on a payment seen, funded and routes wake end rests, and every provider out
+    of credit stops the machine unless a friend is up; START is the coordinator's. Four invariants
+    (LowNeverStops, NoFundsStopWhileFriendUp, StartIsTheCoordinators, StopOnlyWhenAllOut) and two reversed
+    witnesses: MCProviderFundsBrokenLowIsOut (Broken = {\"lowisout\"}, Out() counts a low balance, fails
+    LowNeverStops) and MCProviderFundsBrokenNoFriendException (Broken = {\"nofriendexception\"}, drops
+    friendsKeepRunning, fails NoFundsStopWhileFriendUp), each with its CASES.tsv row. Comment-only Go changes:
+    internal/sprint/provider_funds.go cites tla/ProviderFunds.tla on providerRestsDue, AllOutOfCredit, Funded
+    and friendsKeepRunning, and AllOutOfCredit's comment no longer says a balance at or under zero is out
+    (Out and Retired exclude balance rests). tla/RUNS.tsv and tla/COVERAGE.tsv are made current."
+   :origin "this card, tla-provider-funds.w2, 2026-10-11: v1.2.12 inventory items T31 and section 5, at nova-sprint main 00c54ba2e")
 
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
