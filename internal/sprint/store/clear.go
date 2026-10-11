@@ -32,6 +32,7 @@ type ClearResult struct {
 // Nothing is deleted; the old epoch stays readable (At), and its writers are
 // refused as stale. The new epoch gets only its own STOPPED announcement
 // (tla/AttemptsEpochs.tla Clear).
+// tla/StopReturn.tla Clear
 func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 	var res ClearResult
 	es, err := st.EpochNow(ctx)

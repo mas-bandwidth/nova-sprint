@@ -24,18 +24,22 @@
 \*   lo, hi    the search: tip(lo - 1) passed (or is the base, lo = 1) and tip(hi) is red
 \*   probes    the gates the search ran
 \*   faulted   a probe met a real bench fault (the bench did not run the gate)
+\*   envfail   the environment refused the batch (a missing tip, a failed diff or reset, a
+\*             cancelled gate, or a remote bench that never ran the gate)
 \*   state     search, blamed (head blamed returned with its finding; heads 1..blamed-1,
-\*             tip(blamed - 1) gated green, go on to land), refused (a bench fault: the
-\*             batch is refused for the pass, no head blamed, its cards still queued)
+\*             tip(blamed - 1) gated green, go on to land), refused (a bench fault or an
+\*             environment refusal: the batch is refused for the pass, no head blamed, its
+\*             cards still queued)
 \*
 \* THE RULES.
 \*   BlameSound: a blamed head is the one whose merge turned a passing tree red: tip(k)
 \*     red and tip(k - 1) passing (or the base). The prefix that lands passed a gate.
 \*   ProbesBounded: at most ceil(log2 N) gates after the batch's own: 99 heads, 7 gates.
 \*   Ends (liveness, under fairness): the search ends, blamed or refused.
-\*   RefusedOnlyByBench (2026-10-10, v1.2.5 candidate 4): a batch is refused only when a
-\*     probe met a real bench fault; a red tree whose test printed a fault's words is
-\*     searched and blamed like any red tree (benchFault reads only the bench's own lines).
+\*   RefusedOnlyByBenchOrEnv: a batch is refused only on a probe that met a real bench
+\*     fault (faulted) or an environment refusal (envfail); a red tree whose test printed
+\*     a fault's words is searched and blamed like any red tree (benchFault reads only the
+\*     bench's own lines).
 \*
 \* Broken: "none" is the design.
 \*   "each"         the walk of every head in order (probe lo, not the middle): the gate
@@ -46,7 +50,9 @@
 \*                  (BlameSound fails when the tree was red before it).
 \*   "anyline"      the fault words matched on any output line, a test's included: a red
 \*                  tip whose test printed them is read as a bench fault and the batch is
-\*                  refused, no head blamed, every pass (RefusedOnlyByBench fails).
+\*                  refused, no head blamed, every pass (RefusedOnlyByBenchOrEnv fails).
+\*   "envblames"    an environment refusal blames the head it was about to probe
+\*                  (BlameSound fails).
 \*
 \* WHAT IS NOT MODELLED. The merges and checks (a head that does not merge ends the batch
 \* before any gate, as before), the base's gate and cure, the deadline (LandPass.tla), the
@@ -60,6 +66,13 @@
 \* witnesses each fail the property their configuration names. The records are tla/RUNS.tsv.
 \* Extended 2026-10-10 (v1.2.6, nova-sprint #48) with Words, faulted, RefusedOnlyByBench and
 \* the "anyline" witness; all five cases rerun on the bench space, records in tla/RUNS.tsv.
+\* Extended 2026-10-11 (v1.2.12) with envfail and the Env refusal (the bisect's other
+\* refusals: a missing tip, a failed diff or reset, a cancelled gate, a remote bench that
+\* never ran the gate), RefusedOnlyByBench restated RefusedOnlyByBenchOrEnv, and the
+\* "envblames" witness. Env is enabled for a one-head batch and after the search narrows to
+\* one head (the code's missing-tip, initial-diff and final-reset refusals, landpass.go
+\* 898-899, 926-927, 953-954), and it never runs a gate, so it leaves probes unchanged and
+\* ProbesBounded keeps its meaning.
 EXTENDS Integers, FiniteSets
 
 CONSTANTS N, Faults, Broken
@@ -67,9 +80,9 @@ CONSTANTS N, Faults, Broken
 ASSUME N \in Nat \ {0}
 ASSUME Faults \in BOOLEAN
 
-VARIABLES red, lo, hi, probes, state, faulted
+VARIABLES red, lo, hi, probes, state, faulted, envfail
 
-vars == <<red, lo, hi, probes, state, faulted>>
+vars == <<red, lo, hi, probes, state, faulted, envfail>>
 
 Heads == 1..N
 
@@ -84,6 +97,7 @@ TypeOK ==
   /\ probes \in Nat
   /\ state \in {"search", "blamed", "refused"}
   /\ faulted \in BOOLEAN
+  /\ envfail \in BOOLEAN
 
 Init ==
   /\ red \in {r \in [Heads -> BOOLEAN] : r[N]}
@@ -91,6 +105,7 @@ Init ==
   /\ probes = 0
   /\ state = "search"
   /\ faulted = FALSE
+  /\ envfail = FALSE
 
 \* The tip probed: the middle of the span, or (each) its first.
 Mid == IF Broken = "each" THEN lo ELSE (lo + hi) \div 2
@@ -100,7 +115,7 @@ Probe ==
   /\ state = "search" /\ lo < hi /\ Broken # "last"
   /\ IF red[Mid] THEN hi' = Mid /\ lo' = lo ELSE lo' = Mid + 1 /\ hi' = hi
   /\ probes' = probes + 1
-  /\ UNCHANGED <<red, state, faulted>>
+  /\ UNCHANGED <<red, state, faulted, envfail>>
 
 \* The bench did not run the gate: the batch is refused for the pass, nothing blamed
 \* (faultblames: the fault is read as a red tree).
@@ -111,7 +126,7 @@ Fault ==
        ELSE state' = "refused" /\ UNCHANGED <<lo, hi>>
   /\ probes' = probes + 1
   /\ faulted' = TRUE
-  /\ UNCHANGED red
+  /\ UNCHANGED <<red, envfail>>
 
 \* A red tip's gate answers with a test's output that carries a bench fault's words. The
 \* bench ran the gate: the tree is red, and the search goes on as for any red tip (anyline:
@@ -122,16 +137,31 @@ Words ==
        THEN state' = "refused" /\ UNCHANGED <<lo, hi>>
        ELSE hi' = Mid /\ lo' = lo /\ UNCHANGED state
   /\ probes' = probes + 1
-  /\ UNCHANGED <<red, faulted>>
+  /\ UNCHANGED <<red, faulted, envfail>>
+
+\* The environment refused the batch: a tip whose merge was not recorded, a git diff or
+\* reset that failed, a gate that was cancelled, or a remote bench that never ran the gate.
+\* It refuses before the search probes (a missing tip, the initial diff), during it, and
+\* once the search narrowed to one head (a failed final reset), so a one-head batch can be
+\* refused too; none of these ran a gate, so probes is unchanged and a failed diff or reset
+\* is not counted as another gate after the completed search. Nothing is blamed (envblames:
+\* the refusal blames the head it was about to probe).
+Env ==
+  /\ state = "search" /\ Broken # "last"
+  /\ IF Broken = "envblames"
+       THEN state' = "blamed" /\ lo' = Mid /\ hi' = Mid
+       ELSE state' = "refused" /\ UNCHANGED <<lo, hi>>
+  /\ envfail' = TRUE
+  /\ UNCHANGED <<red, probes, faulted>>
 
 \* The span is one head: it is blamed (last: the last head, whatever the span).
 Blame ==
   /\ state = "search" /\ (lo = hi \/ Broken = "last")
   /\ state' = "blamed"
   /\ IF Broken = "last" THEN lo' = N /\ hi' = N ELSE UNCHANGED <<lo, hi>>
-  /\ UNCHANGED <<red, probes, faulted>>
+  /\ UNCHANGED <<red, probes, faulted, envfail>>
 
-Next == Probe \/ Fault \/ Words \/ Blame
+Next == Probe \/ Fault \/ Words \/ Env \/ Blame
 
 Spec == Init /\ [][Next]_vars
 
@@ -145,6 +175,6 @@ ProbesBounded == probes <= Log2Ceil(N)
 
 Ends == <>(state # "search")
 
-RefusedOnlyByBench == state = "refused" => faulted
+RefusedOnlyByBenchOrEnv == state = "refused" => (faulted \/ envfail)
 
 =============================================================================
