@@ -83,7 +83,8 @@ func (s *lineTurns) release(now time.Time) {
 }
 
 // ControlLine is the server's line of control; its zero value is free. Lock, TryLock and
-// Unlock are a batch's (and a lane's), TickLock is the run loop's.
+// Unlock are a batch's (and a lane's), TickLock is the run loop's
+// (tla/ServerLanes.tla).
 type ControlLine struct {
 	mu    sync.Mutex
 	turns lineTurns

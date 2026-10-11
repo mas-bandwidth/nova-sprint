@@ -1006,6 +1006,25 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-serverlanes-control-line-tick-turn" :release "v1.2.12" :status "planned"
+   :title "ServerLanes models the control line: batches by ticket and the tick's turn"
+   :text "Model only, no product change. ServerLanes.tla held the server's one line as app.serial: a
+    write took a free line and the tick took it when free. The code is now sprint.ControlLine
+    (internal/sprint/control_line.go): a batch takes the next ticket and is served first come, first
+    served; the tick takes the line at its turn, after the holder in flight and before every batch
+    still waiting; a gone caller's ticket is served and handed back, its verbs never run. The module
+    now models the tickets (next, serving, tkt), the tick's turn (turnDue, with the ghost dueFinishes)
+    and serving a gone write's ticket in turn (ServeGone). Two invariants are added: FCFS (no batch is
+    served before an earlier ticket still waiting) and TickWaitsOneTurn (once the tick's turn is due,
+    at most the batch already holding the line finishes before TickBegin), and the reversed witness
+    MCServerLanesBrokenTickQueues (the tick takes a ticket like a batch) fails TickWaitsOneTurn. The
+    seriallock.go comment no longer claims the read lane's own line is app.serial, and the
+    AbandonedNeverRuns citations are corrected to GoneNeverRuns. GoneNeverRuns,
+    BeatNeverWaitsForTheLine, ReadWaitsOnlyForReads, the lease invariants and EveryBatchEnds still hold.
+    tla/README.md's ServerLanes row now names the four reversed witnesses and the ticket/tick-turn model."
+   :origin "this card, tla-serverlanes-control-line-tick-turn.w3, from the owner on epoch 17,
+    2026-10-11: v1.2.12 inventory item T24, first of two; drift read at nova-sprint main 00c54ba2e")
+
   (fix "tla-stallladder-signs-of-life" :release "v1.2.12" :status "planned"
    :title "StallLadder reads a card's dealt and taken stamps and progress as the code does"
    :text "tla/StallLadder.tla was read against internal/sprint/friend_stall.go and friend_take.go and drifted in four places, each brought to the code. LastActive now counts a card's dealt and taken stamps beside her activity and progress, and the idle clock subtracts stopped time (StoppedTick), so a machine stop never counts against the bound; a progress stamp marks the card started, as the code reads \"started\" (progress, a report, or her beat naming the card), so rung 4 never takes it back; and the rung climbs only when the target rung is higher and resets only at 0, never written outright each tick. The existing invariants hold, and a new invariant NoStampedTaken (no card with a progress stamp is taken back) is checked by the reversed witness MCStallLadderBrokenTakestamped (Broken \"takestamped\"): rung 4 takes back a progress-stamped card, failing NoStampedTaken. friend_take.go gains one comment line citing the module."
