@@ -70,6 +70,19 @@
 \*             head keep it: that landing may be on the base already)
 \*   shortland a ghost: a head was pushed onto the base with fewer ok reads
 \*             than it needed when its landing was marked
+\*   rhead     each card's head the landing refused, as its attempt (0: none):
+\*             sprint.FieldLandRefusedHead, which the code keeps on every
+\*             refusal of the card's own head (every way but files outside
+\*             PATHS, which the model does not hold). The model keeps it only
+\*             for a card a refusal sends to review at its bound, and drops it
+\*             when the accept takes the card out of review or a clear empties
+\*             the tables: a refusal that reworks moves the card to a new
+\*             attempt, and an accept to the queue, where the head kept is no
+\*             offer's concern (OfferAccept reads it of cards in review alone),
+\*             so the abstraction changes no offer and keeps the states few
+\*   offer     the cards the machine offers to accept: a ready to accept
+\*             judgment open on them (sprint's reviewJudgment, OfferAccept),
+\*             closed by the accept
 \*
 \* THE ACTIONS. The lander's, each a call in land.go: Read (the queue with its
 \* heads, the epoch and the tip; a caller's epoch the store is not at is
@@ -90,7 +103,9 @@
 \* lander's calls), OtherLand (another lander lands the queue's head,
 \* correctly), Clear (the epoch moves, the store's tables empty), MoveBase
 \* (another commit on the base), Crash (the lander stops at any step), Resume
-\* (a mind resumes a stream the lander's own failure stopped).
+\* (a mind resumes a stream the lander's own failure stopped). The machine's:
+\* ShortBack (below) and OfferAccept (its ready to accept on a card in review,
+\* v1.2.6: never at the head the landing refused).
 \*
 \* THE RULES.
 \*   LandedInBase: the store records a card landed only at a head the base
@@ -132,6 +147,16 @@
 \*     (sprint.LandingMarked): from the mark, through the push, the report
 \*     and a crash between them. Broken "bouncemarked" ignores the mark, and
 \*     the rule fails.
+\*   NoOfferAtRefusedHead (v1.2.6): the machine never offers to accept a
+\*     card at the head the landing refused (sprint.LandRefusedAtHead): an
+\*     accept of it queues the refused head for the lander to refuse again.
+\*     Refuse keeps the refused head (rhead); OfferAccept, the machine's
+\*     ready to accept on a card in review whose reads stand, is disabled
+\*     while the card's head is that head. Broken "offerrefused" offers it at
+\*     the bound, as v1.2.x did, and the rule fails (Accept, Rework, Read,
+\*     Build, Refuse): the loop the Studio sprint measured on 2026-10-11,
+\*     epoch 16 (accept, refused on a conflict in FIXES.md and
+\*     docs/fixes.sexp, ready to accept, accept, about 30 cards).
 \*   Recovers: a batch pushed and not reported (a crash, or a report the guard
 \*     refused) is recorded by running the lander again: under fairness, once
 \*     the outside is quiet, no queued card's current head stays in the base
@@ -184,6 +209,8 @@
 \*     fails).
 \*   "bouncemarked" sends back a card marked landing (PushedNeverSentBack
 \*     fails: Accept, Read, Build, Check, Push, SetReads, ShortBack).
+\*   "offerrefused" offers to accept a card at the head the landing refused
+\*     (NoOfferAtRefusedHead fails: Accept, Rework, Read, Build, Refuse).
 \*
 \* WHAT IS NOT MODELLED. The check (--check), the red and rejected facts:
 \* those refusals are the lander going idle with the store unchanged. The
@@ -201,17 +228,20 @@ VARIABLES queue, att, landed, epoch, base, tip,
           lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
-          oks, need, reread, shortland, lcheckneed, markneed
+          oks, need, reread, shortland, lcheckneed, markneed,
+          rhead, offer
 
 reads == <<oks, need, reread, markneed>>
-store == <<queue, att, landed, epoch, ready, review, stop, oks, need, reread, markneed>>
+offers == <<rhead, offer>>
+store == <<queue, att, landed, epoch, ready, review, stop, oks, need, reread, markneed, rhead, offer>>
 remote == <<base, tip>>
 lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries, lref, lkind, lcheckneed>>
 ghosts == <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland>>
 vars == <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
-          oks, need, reread, shortland, lcheckneed, markneed>>
+          oks, need, reread, shortland, lcheckneed, markneed,
+          rhead, offer>>
 
 Heads == Cards \X (1..MaxAttempts)
 
@@ -278,6 +308,7 @@ TypeOK ==
   /\ ownstop \in BOOLEAN
   /\ oks \in [Cards -> 1..2] /\ need \in 1..2 /\ reread \subseteq Cards
   /\ shortland \in BOOLEAN /\ lcheckneed \in 1..2 /\ markneed \in [Heads -> 0..2]
+  /\ rhead \in [Cards -> 0..MaxAttempts] /\ offer \subseteq Cards
 
 Init ==
   /\ queue = <<>> /\ att = [c \in Cards |-> 1] /\ landed = {} /\ epoch = 0
@@ -288,6 +319,7 @@ Init ==
   /\ carried = {} /\ ownstop = FALSE
   /\ oks = [c \in Cards |-> 1] /\ need = 1 /\ reread = {} /\ shortland = FALSE /\ lcheckneed = 1
   /\ markneed = [h \in Heads |-> 0]
+  /\ rhead = [c \in Cards |-> 0] /\ offer = {}
 
 \* ---- the lander (land.go) ----
 
@@ -340,7 +372,7 @@ Check ==
                        THEN [h \in Heads |-> IF h \in Range(lbatch) /\ markneed[h] = 0 THEN need ELSE markneed[h]]
                        ELSE markneed
   /\ lcheckneed' = need
-  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, oks, need, reread>>
+  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, oks, need, reread>> /\ UNCHANGED offers
   /\ UNCHANGED remote /\ UNCHANGED <<lq, lbatch, lep, lrep, ltip, tries, lref, lkind>>
   /\ UNCHANGED events /\ UNCHANGED ghosts
 
@@ -393,7 +425,7 @@ Report ==
         \* the refused card is reported after the batch it ended, and only
         \* after one that landed (a report refused is LAND FAILED: nothing more)
         /\ lphase' = IF ok /\ lref # <<>> THEN "refusing" ELSE ReportTo
-  /\ UNCHANGED <<att, epoch, ready, review, stop>> /\ UNCHANGED reads /\ UNCHANGED remote
+  /\ UNCHANGED <<att, epoch, ready, review, stop>> /\ UNCHANGED reads /\ UNCHANGED remote /\ UNCHANGED offers
   /\ UNCHANGED <<lcheckneed, lq, lbatch, lep, lrep, ltip, tries, lref, lkind>>
   /\ UNCHANGED events /\ UNCHANGED <<badcaller, stalepush, lpushed, carried, ownstop, shortland>>
 
@@ -413,20 +445,25 @@ Refuse ==
          ok == Fresh(<<lref>>)
          own == lkind = "own" /\ Broken # "ownstops"
      IN IF ~ok
-        THEN UNCHANGED <<queue, att, ready, review, stop, carried, ownstop, oks>>
+        THEN UNCHANGED <<queue, att, ready, review, stop, carried, ownstop, oks, rhead, offer>>
         ELSE IF own
         THEN /\ queue' = Tail(queue)
              /\ IF att[c] < MaxAttempts
                 THEN /\ att' = [att EXCEPT ![c] = @ + 1] /\ ready' = ready \cup {c}
                      /\ carried' = IF Broken = "nocarry" THEN carried ELSE carried \cup {lref}
                      /\ oks' = [oks EXCEPT ![c] = 1]
-                     /\ UNCHANGED review
+                     /\ UNCHANGED <<review, offer, rhead>>
                 ELSE /\ review' = review \cup {c}
+                     \* the refused head is kept on the card (sprint.FieldLandRefusedHead)
+                     /\ rhead' = [rhead EXCEPT ![c] = lref[2]]
+                     \* the bound's judgment alone (brief, drop); offerrefused also
+                     \* offers the refused head to accept, as v1.2.x did
+                     /\ offer' = IF Broken = "offerrefused" THEN offer \cup {c} ELSE offer
                      /\ UNCHANGED <<att, ready, carried, oks>>
              /\ UNCHANGED <<stop, ownstop>>
         ELSE /\ stop' = IF lkind = "own" THEN "own" ELSE "lander"
              /\ ownstop' = (ownstop \/ lkind = "own")
-             /\ UNCHANGED <<queue, att, ready, review, carried, oks>>
+             /\ UNCHANGED <<queue, att, ready, review, carried, oks, rhead, offer>>
   /\ lphase' = "idle" /\ lref' = <<>>
   /\ UNCHANGED <<landed, epoch, need, reread, shortland, markneed>> /\ UNCHANGED remote
   /\ UNCHANGED <<lcheckneed, lq, lbatch, lep, lrep, ltip, tries, lkind>>
@@ -447,12 +484,16 @@ Accept ==
     /\ oks[c] >= need
     /\ queue' = SubSeq(queue, 1, i - 1) \o <<c>> \o SubSeq(queue, i, Len(queue))
     /\ ready' = ready \ {c} /\ review' = review \ {c} /\ reread' = reread \ {c}
+    \* the accept answers the machine's offer on it (closes ready to accept);
+    \* a card it takes out of review leaves its kept head behind (rhead)
+    /\ offer' = offer \ {c}
+    /\ rhead' = [rhead EXCEPT ![c] = 0]
     /\ UNCHANGED <<att, landed, epoch, stop, oks, need, shortland, markneed>> /\ UNCHANGED remote /\ UNCHANGED lander
 
 Return ==
   \E c \in Range(queue) :
     /\ queue' = SelectSeq(queue, LAMBDA x : x # c)
-    /\ UNCHANGED <<att, landed, epoch, ready, review, stop, shortland>> /\ UNCHANGED reads
+    /\ UNCHANGED <<att, landed, epoch, ready, review, stop, shortland>> /\ UNCHANGED reads /\ UNCHANGED offers
     /\ UNCHANGED remote /\ UNCHANGED lander
 
 \* A rework's new head starts again at one read.
@@ -460,7 +501,7 @@ Rework ==
   \E c \in Range(queue) :
     /\ att[c] < MaxAttempts
     /\ att' = [att EXCEPT ![c] = @ + 1] /\ oks' = [oks EXCEPT ![c] = 1]
-    /\ UNCHANGED <<queue, landed, epoch, ready, review, stop, need, reread, shortland, markneed>>
+    /\ UNCHANGED <<queue, landed, epoch, ready, review, stop, need, reread, shortland, markneed>> /\ UNCHANGED offers
     /\ UNCHANGED remote /\ UNCHANGED lander
 
 \* Another lander lands the queue's head, correctly: never on a stopped stream,
@@ -471,26 +512,27 @@ OtherLand ==
   /\ base' = base \cup {Current(Head(queue))} /\ tip' = tip + 1
   /\ landed' = landed \cup {Current(Head(queue))} /\ queue' = Tail(queue)
   /\ shortland' = (shortland \/ oks[Head(queue)] < need)
-  /\ UNCHANGED <<att, epoch, ready, review, stop>> /\ UNCHANGED reads /\ UNCHANGED lander
+  /\ UNCHANGED <<att, epoch, ready, review, stop>> /\ UNCHANGED reads /\ UNCHANGED offers /\ UNCHANGED lander
 
 Clear ==
   /\ epoch < MaxEpoch
   /\ epoch' = epoch + 1 /\ queue' = <<>> /\ landed' = {}
   /\ ready' = {} /\ review' = {} /\ stop' = "none" /\ reread' = {}
   /\ markneed' = [h \in Heads |-> 0]
+  /\ rhead' = [c \in Cards |-> 0] /\ offer' = {}
   /\ UNCHANGED <<att, oks, need, shortland>> /\ UNCHANGED remote /\ UNCHANGED lander
 
 \* A mind resumes a stream the lander's own failure stopped.
 Resume ==
   /\ stop # "none" /\ stop' = "none"
-  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, shortland>> /\ UNCHANGED reads
+  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, shortland>> /\ UNCHANGED reads /\ UNCHANGED offers
   /\ UNCHANGED remote /\ UNCHANGED lander
 
 \* The owner's set --reads, or a tier pinned on the cards (rework --tier, brief
 \* --tier): the count every card in review and merging needs changes.
 SetReads ==
   /\ need' = 3 - need
-  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, oks, reread, shortland, markneed>>
+  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, oks, reread, shortland, markneed>> /\ UNCHANGED offers
   /\ UNCHANGED remote /\ UNCHANGED lander
 
 \* A second reader's ok read at a card's head, off the queue (in review).
@@ -498,7 +540,7 @@ ReadOk ==
   \E c \in Cards :
     /\ c \notin Range(queue) /\ oks[c] < 2
     /\ oks' = [oks EXCEPT ![c] = 2]
-    /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, need, reread, shortland, markneed>>
+    /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, need, reread, shortland, markneed>> /\ UNCHANGED offers
     /\ UNCHANGED remote /\ UNCHANGED lander
 
 MoveBase ==
@@ -531,10 +573,22 @@ ShortBack ==
        /\ Broken = "bouncemarked" \/ ~Marked(Current(c))
        /\ queue' = SelectSeq(queue, LAMBDA x : x # c)
        /\ reread' = reread \cup {c}
-  /\ UNCHANGED <<att, landed, epoch, ready, review, stop, oks, need, markneed>>
+  /\ UNCHANGED <<att, landed, epoch, ready, review, stop, oks, need, markneed>> /\ UNCHANGED offers
   /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED events /\ UNCHANGED ghosts
 
-Next == Land \/ ShortBack \/ Outside
+\* OfferAccept: the machine's ready to accept on a card in review whose reads
+\* stand at its head (sprint's reviewJudgment: the accept held for a mind, as a
+\* return at its attempt holds it), never while the landing refused that head
+\* (sprint.LandRefusedAtHead, rhead); offerrefused offers it all the same.
+OfferAccept ==
+  /\ \E c \in review :
+       /\ c \notin offer /\ oks[c] >= need
+       /\ Broken = "offerrefused" \/ rhead[c] # att[c]
+       /\ offer' = offer \cup {c}
+  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, rhead>> /\ UNCHANGED reads
+  /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED events /\ UNCHANGED ghosts
+
+Next == Land \/ ShortBack \/ OfferAccept \/ Outside
 
 Spec == Init /\ [][Next]_vars
 
@@ -574,6 +628,10 @@ CarriedHead == \A c \in ready : <<c, att[c] - 1>> \in carried
 \* v1.2.6: the lander pushes no head short of the reads it needed when it
 \* checked the batch, and another lander lands none short of them.
 NoLandWithoutReads == ~shortland
+
+\* v1.2.6: the machine never offers to accept a card at the head the landing
+\* refused (the loop of 2026-10-11; sprint.LandRefusedAtHead).
+NoOfferAtRefusedHead == \A c \in offer : rhead[c] # att[c]
 
 \* A card sent back to review short of its reads is reached (ShortBack is not
 \* vacuous). Shortest: Accept, SetReads, ShortBack.
