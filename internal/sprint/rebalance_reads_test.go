@@ -81,6 +81,20 @@ func TestTheRebalanceDoesNotOverfillAReaderAfterMovingWork(t *testing.T) {
 	assert.Equal(t, 2, readsReady(w.s, "m1"), "reads stay queued when no idle lane remains")
 }
 
+func TestTheRebalanceUsesTheRemainingHalfSlotAfterAQueuedRead(t *testing.T) {
+	t.Parallel()
+	w := readQueueWorld(t, 2)
+	prior := w.s.Fleet.Card(ReadCardID("s1-2", 1, "m1"))
+	prior.Col = DoneOK
+	w.s.Fleet.Put(prior)
+	w.s.Fleet.Put(&Card{ID: ReadCardID("s1-2", 1, "m2"), Row: "m2", Col: Ready, Score: 2, Rev: 1,
+		Fields: map[string]string{"kind": "read", "primary": "s1-2", "stream": "s1", "reader": "m2", "attempt": "1", FieldReadCard: "1", FieldTier: cardhdr.RouteFlash}})
+	p := w.must(Rebalance(w.s, nil, "machine"))
+	assert.Len(t, rebalanced(p), 1, "one read half-slot remains beside the queued read")
+	assert.Equal(t, 2, readsReady(w.s, "m2"), "the remaining half-slot takes exactly one read")
+	assert.Equal(t, 0, readsReady(w.s, "m1"))
+}
+
 // A read never moves to a member whose reader row does not serve its tier, nor back to a
 // row it was rebalanced off.
 func TestTheRebalanceReadNeverMovesToAnIneligibleOrOldRow(t *testing.T) {

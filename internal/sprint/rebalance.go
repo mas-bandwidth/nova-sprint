@@ -93,7 +93,7 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 	}
 	idle := false
 	for _, u := range units {
-		idle = idle || u.idle() > 0
+		idle = idle || rebalanceReadHalfRoom(s, u, 0) > 0
 	}
 	if !idle {
 		return p
@@ -272,9 +272,9 @@ func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, ful
 	}
 	for i := range ruses {
 		if u := unitByRow[ruses[i].row]; u != nil {
-			// The work pass reserves the lanes it just filled. Cap the read pass's
-			// free-lane and half-slot budgets to that shared post-work remainder.
-			ruses[i].idle = min(ruses[i].idle, 2*max(u.idle(), 0))
+			// Share the exact half-slot capacity after the work pass. Round-up
+			// whole-card load loses a usable half-slot when a row holds one read.
+			ruses[i].idle = min(ruses[i].idle, rebalanceReadHalfRoom(s, u, workMoved[u.row]))
 			ruses[i].half -= 2 * workMoved[u.row]
 		}
 	}
@@ -342,4 +342,12 @@ func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, ful
 		}
 	}
 	return out
+}
+
+// rebalanceReadHalfRoom is the exact remaining read capacity of a row after the work
+// pass, in half slots. Unlike rebalanceUnit.idle, it preserves one free half-slot after
+// an odd number of ready or working reads.
+func rebalanceReadHalfRoom(s *Snapshot, u *rebalanceUnit, workMoved int) int {
+	work, reads := rowLoad(s, u.row)
+	return max(2*u.width-2*work-reads-2*workMoved, 0)
 }
