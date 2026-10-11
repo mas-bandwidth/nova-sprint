@@ -796,7 +796,7 @@ func (r *propRun) decide(v InboxView, g sprint.Group, choice int, progress bool)
 		s := r.snap()
 		for _, m := range r.cfg.members {
 			if s != nil && s.MemberCtl(m).F("status") != sprint.Up {
-				r.run("nova-sprint fleet up "+m, FleetStep(sprint.FleetReq{Op: "release", Member: m, Who: "coord", Fresh: true}))
+				r.run("nova-sprint fleet up "+m, FleetStep(sprint.FleetReq{Op: "release", Member: m, Who: "coord", Fresh: true, Probe: sprint.EnvProbePassed}))
 				break
 			}
 		}

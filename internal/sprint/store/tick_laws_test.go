@@ -192,8 +192,8 @@ func TestTheModelAndTheEngineAgreeOnTheAcceptAndRedealLaws(t *testing.T) {
 		require.Equal(t, state, h.model.Primaries[p].State, "%s: %s in the model", when, p)
 	}
 
-	do(dAction{Kind: "fleet", Op: "up", Member: "m1"})
-	do(dAction{Kind: "fleet", Op: "up", Member: "m2"})
+	do(dAction{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"})
+	do(dAction{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"})
 	do(dAction{Kind: "start"})
 	do(dAction{Kind: "add", Stream: "s1", IDs: []string{"a1", "a2"}})
 	do(dAction{Kind: "tick"})
@@ -225,7 +225,7 @@ func TestTheModelAndTheEngineAgreeOnTheAcceptAndRedealLaws(t *testing.T) {
 	for range 2 * refmodel.MaxRedeals {
 		from := member("b1.w1")
 		do(dAction{Kind: "fleet", Op: "down", Member: from})
-		do(dAction{Kind: "fleet", Op: "up", Member: from})
+		do(dAction{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: from})
 	}
 	assert.Equal(t, refmodel.FReady, h.observe().Work["b1.w1"].Place, "members flapping with the card ready")
 	assert.Equal(t, [2]int{0, 0}, [2]int{h.observe().Work["b1.w1"].Redeals, h.model.Work["b1.w1"].Redeals}, "members flapping with the card ready: redeals in the engine and the model")
@@ -351,8 +351,8 @@ func TestWithdrawalsWithoutATakeKeepTheCountAndTheFourthEndedTakeRetires(t *test
 	}
 	allUp := func() {
 		h.setLive("m1", "m2")
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 		h.tick(time.Second)
 		h.machine()
 	}
@@ -371,7 +371,7 @@ func TestWithdrawalsWithoutATakeKeepTheCountAndTheFourthEndedTakeRetires(t *test
 		h.must(TakeStep(sprint.TakeReq{As: c.Row, Sel: sprint.Sel{IDs: []string{c.ID}}, Gens: map[string]int{c.ID: c.Int("gen")}, Who: c.Row}))
 		if ended%2 == 0 {
 			h.must(FleetStep(sprint.FleetReq{Op: "down", Member: c.Row}))
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Member: c.Row}))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: c.Row}))
 			h.tick(time.Second)
 			h.machine()
 		} else {

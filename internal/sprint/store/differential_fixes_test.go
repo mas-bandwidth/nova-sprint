@@ -20,7 +20,7 @@ import (
 func TestACrossNeedDoesNotSurviveAReturn(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"x"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"y"}}))
 	h.through("x")
@@ -181,7 +181,7 @@ func (h *harness) persistNeed(id, need, stream string) {
 func TestAConflictStopClearsANeed(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"x"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"y"}}))
 	h.through("x")
@@ -198,7 +198,7 @@ func TestAConflictStopClearsANeed(t *testing.T) {
 func TestResumeWaitsForANeedOnlyAfterACross(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"x"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"y"}}))
 	h.through("x")
@@ -229,8 +229,8 @@ func TestTheDealTakesEachStreamsFrontInTurnAsTheModelDoes(t *testing.T) {
 	t.Parallel()
 	h := newDHarness(t)
 	for _, a := range []dAction{
-		{Kind: "fleet", Op: "up", Member: "m1"},
-		{Kind: "fleet", Op: "up", Member: "m2"},
+		{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"},
+		{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"},
 		{Kind: "start"},
 		{Kind: "add", Stream: "s1", IDs: []string{"a1", "a2", "a3", "a4"}},
 		{Kind: "add", Stream: "s2", IDs: []string{"b1", "b2", "b3", "b4"}},
@@ -265,9 +265,9 @@ func TestTheDealAndTheAskGoRoundAsTheModelDoes(t *testing.T) {
 	t.Parallel()
 	h := newDHarness(t)
 	for _, a := range []dAction{
-		{Kind: "fleet", Op: "up", Member: "m1"},
-		{Kind: "fleet", Op: "up", Member: "m2"},
-		{Kind: "fleet", Op: "up", Member: "m3"},
+		{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"},
+		{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"},
+		{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"},
 		{Kind: "start"},
 		{Kind: "add", Stream: "s1", IDs: []string{"a1"}},
 		{Kind: "tick"},
@@ -314,7 +314,7 @@ func TestTheRedealsAndTheLevelGoRoundAsTheModelDoes(t *testing.T) {
 	up := func(ms ...string) []dAction {
 		var out []dAction
 		for _, m := range ms {
-			out = append(out, dAction{Kind: "fleet", Op: "up", Member: m})
+			out = append(out, dAction{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: m})
 		}
 		return out
 	}
@@ -400,7 +400,7 @@ func TestTheModelsBriefBoundIsTheEngines(t *testing.T) {
 		require.Empty(t, res.Refused, step.Verb)
 		h.model = h.observe()
 	}
-	for _, a := range []dAction{{Kind: "fleet", Op: "up", Member: "m1"}, {Kind: "start"}, {Kind: "add", Stream: "s1", IDs: []string{"x"}}} {
+	for _, a := range []dAction{{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}, {Kind: "start"}, {Kind: "add", Stream: "s1", IDs: []string{"x"}}} {
 		do(a)
 	}
 	run(SetStep(sprint.SetReq{Streams: []string{"s1"}, Attempts: "2", Who: dCoordinator}))

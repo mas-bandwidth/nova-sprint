@@ -32,7 +32,7 @@ func sprintOf(t *testing.T, members ...string) *world {
 	t.Helper()
 	w := newWorld("reader-a", "reader-b", "reader-c")
 	for _, m := range members {
-		w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Member: m, Who: coordinator}))
+		w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Who: coordinator}))
 	}
 	return w
 }
