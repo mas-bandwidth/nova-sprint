@@ -195,10 +195,10 @@ func TestArchiveKeepsEveryLandedCardAndItsCost(t *testing.T) {
 	assert.False(t, r.snap().Work.Hidden("s2"), "work again: drawn")
 	assert.True(t, r.snap().Work.Hidden("s1"))
 
-	// a clear keeps the streams, and an archived one stays archived
+	// a clear drops the stream rows, and an archived stream's row goes too
 	_, err = r.st.Clear(r.ctx)
 	require.NoError(t, err)
 	s = r.snap()
-	assert.True(t, s.Work.HasRow("s1"))
-	assert.Equal(t, []string{"s1"}, sprint.ArchivedStreams(s))
+	assert.False(t, s.Work.HasRow("s1"))
+	assert.Empty(t, sprint.ArchivedStreams(s))
 }
