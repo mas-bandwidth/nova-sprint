@@ -3012,26 +3012,25 @@ func sweep(s *Snapshot, p *Plan, r FleetReq, up []string, rr *round, moves round
 	}
 }
 
-// level evens the up members' backlogs, once at the start of every tick.
-// A member's backlog is the work cards it holds,
-// ready and working, less its width: below zero it has free lanes its ready
-// cards do not fill, above zero it holds ready cards it cannot start. While the
-// largest backlog of a member with a ready card and the smallest of the members
-// below DealAhead times their width differ by more than one, the newest ready
-// card (the last in work order) of the largest that has a target moves to the
-// next member round the fleet below DealAhead times its width, at least two
-// below, at or below the mean backlog and no refuser of the card
-// (round.levelTo, errata 3 amendment 5: the levelling moves the deal's index
-// too). So no up member has free lanes and an empty ready column while another
-// holds ready cards it cannot start, a member that comes up takes its share at
-// once, and none is levelled past DealAhead times its width (width.go).
+// level evens the up members' backlogs, once at the start of every tick, by
+// the owner's rule (2026-10-11 ~19:05-19:20Z): a card moves only when its
+// member cannot start it, and only to a member that can. A member's backlog is
+// the work cards it holds, ready and working (memberLoads), less its width:
+// above zero it holds ready cards its lanes cannot start. While a member above
+// its width has a ready card and a target, the newest ready card (the last in
+// work order) of the member with the greatest excess moves to the next member
+// round the fleet with a free lane and no refuser of the card (round.levelTo,
+// tla/Level.tla, NeverOffAFreeLane; errata 3 amendment 5: the levelling moves
+// the deal's index too). A member at or below its width keeps every card dealt
+// to it: it takes them at its next pass. So no up member has free lanes and an
+// empty ready column while another holds ready cards its lanes cannot start.
 //
-// The call ends, by two guards, each enough alone (tla/Level.tla; the wedge of
-// 2026-10-02, nova-tools#5122, was a call that did not): every move lowers the
-// sum of squared backlogs by at least two (levelTo's gap), and a card it moved
-// is never one it moves again, so it makes at most as many moves as the fleet
-// had ready cards. A newest card whose only target is refused or one below
-// does not stop an older card that has one.
+// The call ends, by the source bound and the no-requeue guard (tla/Level.tla;
+// the wedge of 2026-10-02, nova-tools#5122, was a call that did not): it moves
+// only cards of a member above its width, each move lowers that member's excess
+// by one, and a card it moved is never one it moves again, so it makes at most
+// as many moves as the fleet had ready cards. A newest card whose only target
+// is refused or one below does not stop an older card that has one.
 func level(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, held map[string]int) {
 	levelWith(s, p, up, rr, moves, held, (*round).levelTo)
 }
@@ -3039,7 +3038,7 @@ func level(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, held 
 // levelTarget is where level sends a card: round.levelTo. A test hands level
 // the rule of the wedge (b7776ca3) to show that the ready count alone ends the
 // loop (tla/Level.tla, MCLevelOldRuleNoRequeue).
-type levelTarget func(r *round, up []string, n, held, widths map[string]int, from string, avoid []string) string
+type levelTarget func(r *round, up []string, n, held, lanes map[string]int, from string, avoid []string) string
 
 // levelWith is level with its target.
 func levelWith(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, held map[string]int, target levelTarget) {
@@ -3050,29 +3049,28 @@ func levelWith(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, h
 	if held == nil {
 		held = memberLoads(s, up)
 	}
-	widths := memberWidths(s, up)
+	lanes := memberLanes(s, up)
 	for _, m := range up {
 		// a read card is its reader's: the level moves work cards alone (read_cards.go)
 		queues[m] = slices.DeleteFunc(append([]*Card{}, s.Fleet.Cell(m, Ready)...), isRead)
 	}
 	for {
-		long, short := "", ""
 		n := map[string]int{}
 		for _, m := range up {
 			n[m] = held[m] - s.Width(m)
 		}
+		// the source is the member with the greatest excess over its width that
+		// still has a ready card: a member at or below its width is left alone
+		long := ""
 		for _, m := range up {
-			if len(queues[m]) > 0 && (long == "" || n[m] > n[long]) {
+			if len(queues[m]) > 0 && n[m] > 0 && (long == "" || n[m] > n[long]) {
 				long = m
 			}
-			if held[m] < widths[m] && (short == "" || n[m] < n[short]) {
-				short = m
-			}
 		}
-		if long == "" || short == "" || n[long]-n[short] <= 1 {
+		if long == "" {
 			return
 		}
-		// the newest card of the longest queue that has a target, never a member that
+		// the newest card of the source that has a target, never a member that
 		// refused it at staging (StagingRefusers; tla/CardContract.tla, Level)
 		q := queues[long]
 		i, to := len(q)-1, ""
@@ -3080,7 +3078,7 @@ func levelWith(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, h
 			// a bench card is never moved off its bench: the members its BENCH line does not
 			// name are avoided as a member that refused it at staging is (bench_deal.go)
 			// nor a member that cannot launch its route (notLaunching: fault 10)
-			to = target(rr, up, n, held, widths, long, append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...))
+			to = target(rr, up, n, held, lanes, long, append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...))
 		}
 		if to == "" {
 			return

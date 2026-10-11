@@ -16,16 +16,16 @@ func refusedBy(member string) map[string]string {
 // wedgeWorld is the fleet of the wedge of 2026-10-02 (nova-tools#5122, the
 // diagnosis's reproduction): four members up in the order A, T, S, U. A (width
 // 3) holds 3 working and 3 ready, its newest refused at staging by S; T (3)
-// holds 3 working and 2 ready; S (3) holds 3 working and 1 ready, the emptiest
-// open member; U (1) holds 5 working and no ready, over its room, raising the
-// mean.
+// holds 3 working and 2 ready; S (5) holds 3 working and 1 ready, the emptiest
+// member with a free lane; U (1) holds 5 working and no ready, over its room,
+// raising the mean.
 func wedgeWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a")
 	for _, m := range []struct {
 		name  string
 		width int
-	}{{"A", 3}, {"T", 3}, {"S", 3}, {"U", 1}} {
+	}{{"A", 3}, {"T", 3}, {"S", 5}, {"U", 1}} {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m.name, Width: m.width}))
 	}
 	score := 1.0
@@ -114,9 +114,9 @@ func TestLevelEndsUnderTheWedgeRuleWithinTheReadyCount(t *testing.T) {
 }
 
 // wedgeLevelTo is round.levelTo as it was at b7776ca3: the longest avoided
-// with the card's refusers, any open member at or below the mean a target, no
-// gap.
-func wedgeLevelTo(r *round, up []string, n, held, widths map[string]int, from string, avoid []string) string {
+// with the card's refusers, any open member (below DealAhead times its width)
+// at or below the mean a target, no gap. lanes is each member's width.
+func wedgeLevelTo(r *round, up []string, n, held, lanes map[string]int, from string, avoid []string) string {
 	avoid = append(append([]string(nil), avoid...), from)
 	total := 0
 	for _, m := range up {
@@ -126,7 +126,7 @@ func wedgeLevelTo(r *round, up []string, n, held, widths map[string]int, from st
 	if total < 0 && total%len(up) != 0 {
 		mean--
 	}
-	open := func(x string) bool { return contains(up, x) && held[x] < widths[x] && !contains(avoid, x) }
+	open := func(x string) bool { return contains(up, x) && held[x] < DealAhead*lanes[x] && !contains(avoid, x) }
 	to := r.scan(func(x string) bool { return open(x) && n[x] < mean })
 	if to == "" {
 		to = r.scan(func(x string) bool { return open(x) && n[x] <= mean })
@@ -158,7 +158,7 @@ func TestLevelMovesNoCardTwice(t *testing.T) {
 	putWorkCard(w, "b3", "b", Ready, 3, nil)
 	p := FleetStep(w.s, FleetReq{Op: "level", Who: MachineActor})
 	levelHolds(t, w.s, p)
-	assert.Equal(t, []string{"b3.w1 b:ready -> a:ready gen=3", "b2.w1 b:ready -> a:ready gen=3", "b1.w1 b:ready -> c:ready gen=3"}, movedLines(p))
+	assert.Equal(t, []string{"b3.w1 b:ready -> a:ready gen=3", "b2.w1 b:ready -> a:ready gen=3"}, movedLines(p))
 	w.must(p)
-	assert.Equal(t, map[string]int{"a": 2, "b": 0, "c": 1}, perMember(w.s))
+	assert.Equal(t, map[string]int{"a": 2, "b": 1, "c": 0}, perMember(w.s))
 }

@@ -293,40 +293,26 @@ func (r *round) nextFree(up []string, q, lanes, room map[string]int, avoid strin
 	return m
 }
 
-// levelTo is where the level moves the newest card of the longest queue, and
-// moves the index past it: the next member round the
-// fleet from the index that is below its room (held, the work cards it
-// holds, under widths: DealAhead times its width, width.go) and whose backlog
-// (n, which may be below zero: level) is below the up members' mean rounded
-// down, or, when none such is below it, at it. A member that receives is
-// at least two below the source's backlog. Each move therefore strictly
-// decreases the sum of squared backlogs, even when staging refusals prevent
-// reaching the shortest queue (tla/Level.tla, PotentialFalls). A member of
-// avoid (the card's StagingRefusers) is never the target. "" when none, and the
-// index does not move.
-func (r *round) levelTo(up []string, n, held, widths map[string]int, from string, avoid []string) string {
-	if len(up) == 0 {
-		return ""
-	}
-	total := 0
-	for _, m := range up {
-		total += n[m]
-	}
-	mean := total / len(up)
-	if total < 0 && total%len(up) != 0 {
-		mean-- // rounded down, below zero too
-	}
+// levelTo is where the level moves the newest card of a member that cannot
+// start it, and moves the index past it: the next member round the fleet from
+// the index with a free lane (held, the work cards it holds, under lanes, its
+// width, width.go) and no refuser, bench or launch exclusion of the card
+// (avoid; tla/Level.tla, NeverOffAFreeLane; the owner, 2026-10-11
+// ~19:05-19:20Z: "cards only may accrue per-fleet or friend, if there are not
+// other machines/friends ready to do that work right now!"). It is the first
+// scan of the deal (round.nextFree) from the deal's cursor. A member below
+// DealAhead times its width but at or above its width has room but no free
+// lane, so it is never a target: the card would queue, not start. A member of
+// avoid (the card's StagingRefusers, its bench, its launch exclusion) is never
+// the target. "" when none, and the index does not move.
+func (r *round) levelTo(up []string, n, held, lanes map[string]int, from string, avoid []string) string {
 	isUp := make(map[string]bool, len(up))
 	for _, x := range up {
 		isUp[x] = true
 	}
-	open := func(x string) bool {
-		return isUp[x] && held[x] < widths[x] && n[from]-n[x] > 1 && !contains(avoid, x)
-	}
-	to := r.scan(func(x string) bool { return open(x) && n[x] < mean })
-	if to == "" {
-		to = r.scan(func(x string) bool { return open(x) && n[x] <= mean })
-	}
+	to := r.scan(func(x string) bool {
+		return isUp[x] && held[x] < lanes[x] && !contains(avoid, x)
+	})
 	if to != "" {
 		r.moved(to)
 	}
