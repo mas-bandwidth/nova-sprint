@@ -793,9 +793,13 @@
    :title "add and brief refuse a card cut off the sprint's base"
    :text "Once the coordinator records the sprint's base (set --base, the work table's sprint_base), add and
     brief refuse a card whose BASE is any other branch outside the promotion stream, exit 2, nothing
-    written; the step holds the same rule against a racing write. With no base recorded, dev alone is
     refused as before, and the promotion stream keeps its mark."
-   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")
+    :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")
+
+   (fix "a-rejected-push-is-never-an-environment-fault" :release "v1.2.11" :status "planned"
+    :title "EnvFault classifies only the member's reason, not child text; rejected push is not envFault"
+    :text "EnvFault now classifies only the text before the first '; ' (the member's own reason), ignoring the child's words after it. A reason carrying '[rejected]' 'non-fast-forward' or '(fetch first)' is a branch refusal, never an environment fault (tla/ProviderBudget.tla, ARejectedPushIsNeverAFault). EnvFault returns the empty string for branch refusals before any class is matched."
+    :origin "this card; 2026-10-11; v1.2.11 bug fix")
 
   (fix "held-friend-reader-serves-nothing" :release "v1.2.6" :status "shipped"
    :title "A held friend's reader serves nothing"
