@@ -367,8 +367,6 @@ type lander struct {
 	// runs took on the lander's clock; keep stamps them onto the next batch line.
 	gateHost string
 	gateWall time.Duration
-	// runGate stands in for goRun in the local gate's tests; nil uses goRun.
-	runGate func(ctx context.Context, dir string, run []string) (string, error)
 	// gateKey is the batch's key on the gate bench's hash ring (landring.go): the stream
 	// being landed (fork), the base re-checked (baseRecheck); gateRing and gateSlot are the
 	// ring's size and the key's slot when a bench ran a gate, for the batch's line.

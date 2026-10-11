@@ -464,15 +464,24 @@ func (l *lander) treeGate(ctx context.Context, dir string, tests bool, changedFi
 			l.ranOnBench("here", l.clock().Sub(start))
 		}
 	}()
-	return l.runGateStages(ctx, dir, stages)
+	return l.runGateStages(ctx, dir, stages, l.gateGoRun)
+}
+
+// gateRunner is one gate run's runner: goRun in the lander, a fake in the local gate's
+// tests.
+type gateRunner func(ctx context.Context, dir string, run []string) (string, error)
+
+// gateGoRun is the local gate's runner over goRun, the variadic form as a gateRunner.
+func (l *lander) gateGoRun(ctx context.Context, dir string, run []string) (string, error) {
+	return l.goRun(ctx, dir, run)
 }
 
 // runGateStages runs the suite's stages in order, each stage's runs side by side: the
 // read-only classes share one tree and the Go build cache, and nothing here touches the
 // store or a branch. A stage waits for all its runs and reports the first red in class
 // order (not the first to finish), so the same red tree gives the same finding; a red
-// stage stops the later ones.
-func (l *lander) runGateStages(ctx context.Context, dir string, stages []gateStage) string {
+// stage stops the later ones. run is the runner: a test passes a fake for goRun.
+func (l *lander) runGateStages(ctx context.Context, dir string, stages []gateStage, run gateRunner) string {
 	for _, st := range stages {
 		for _, r := range st.Runs {
 			l.stage("gate", strings.Join(r.Run, " "))
@@ -488,31 +497,23 @@ func (l *lander) runGateStages(ctx context.Context, dir string, stages []gateSta
 			wg.Add(1)
 			go func(i int, r gateRun) {
 				defer wg.Done()
-				out, err := l.gateCmd(ctx, dir, r.Run)
+				out, err := run(ctx, dir, r.Run)
 				results[i] = gateResult{class: r.Run, out: out, err: err}
 			}(i, r)
 		}
 		wg.Wait()
 		for _, res := range results { // class order, not finish order
 			if err := gateRunError(res.class, res.out, res.err); err != nil {
-				run := res.class
+				one := res.class
 				// A run of several classes is reported as the class its FAIL line names.
-				if c, ok := sprint.ClassForOutput(strings.Join(run, " "), res.out); ok {
-					run = c.Run
+				if c, ok := sprint.ClassForOutput(strings.Join(one, " "), res.out); ok {
+					one = c.Run
 				}
-				return gateWhy(run, err, res.out)
+				return gateWhy(one, err, res.out)
 			}
 		}
 	}
 	return ""
-}
-
-// gateCmd runs one gate command: a test's runGate seam, else goRun.
-func (l *lander) gateCmd(ctx context.Context, dir string, run []string) (string, error) {
-	if l.runGate != nil {
-		return l.runGate(ctx, dir, run)
-	}
-	return l.goRun(ctx, dir, run)
 }
 
 // gateRedRun is the run a red gate ended on, the class its FAIL line names when the run

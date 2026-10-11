@@ -143,7 +143,7 @@ func TestTheLocalGateRunsAStageSideBySide(t *testing.T) {
 	l := &lander{}
 	started := make(chan string, 4)
 	release := make(chan struct{})
-	l.runGate = func(_ context.Context, _ string, run []string) (string, error) {
+	fake := func(_ context.Context, _ string, run []string) (string, error) {
 		cmd := strings.Join(run, " ")
 		switch {
 		case cmd == "go vet ./...":
@@ -164,7 +164,7 @@ func TestTheLocalGateRunsAStageSideBySide(t *testing.T) {
 		return "", nil
 	}
 	go func() { <-started; <-started; close(release) }()
-	why := l.runGateStages(context.Background(), t.TempDir(), stages)
+	why := l.runGateStages(context.Background(), t.TempDir(), stages, fake)
 	assert.Empty(t, why, "both vets started, so the stage went side by side")
 }
 
@@ -175,7 +175,7 @@ func TestTheLocalGateReportsTheFirstRedInClassOrder(t *testing.T) {
 	t.Parallel()
 	stages := gateRuns(true, []string{"internal/ci", "internal/docs"}, nil)
 	l := &lander{}
-	l.runGate = func(_ context.Context, _ string, run []string) (string, error) {
+	fake := func(_ context.Context, _ string, run []string) (string, error) {
 		cmd := strings.Join(run, " ")
 		switch {
 		case cmd == "gofmt -l .":
@@ -186,7 +186,7 @@ func TestTheLocalGateReportsTheFirstRedInClassOrder(t *testing.T) {
 		}
 		return "", nil
 	}
-	why := l.runGateStages(context.Background(), t.TempDir(), stages)
+	why := l.runGateStages(context.Background(), t.TempDir(), stages, fake)
 	assert.Contains(t, why, "gofmt -l .", "gofmt is the earlier class")
 	assert.NotContains(t, why, "vet -tags functional", "the later red is not reported")
 }
