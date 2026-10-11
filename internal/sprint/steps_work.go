@@ -2673,7 +2673,12 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 // receivers' loads and widths, counted on as cards are dealt: a tick that
 // takes several members down in one plan (presence) shares them, so every
 // down member's cards go round the fleet together (every row of every table
-// moves every tick).
+// moves every tick). The machine's fault hold is placed only on a member that
+// carries no hold: a member the sync, the adopt, its environment or the
+// coordinator already holds keeps its hold, its mark, its reason and its finish
+// marker when it goes down, and still goes down (tla/DealFill.tla FaultHold,
+// from held="none" only, and PersonHoldStays; docs/SPEC-SPRINT.md section 5,
+// the fleet).
 func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves, q, widths map[string]int) Plan {
 	var p Plan
 	ctl := s.MemberCtl(r.Member)
@@ -2709,11 +2714,18 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 		// included): the hold is now the coordinator's, and the sync's mark
 		// goes, so the sync never releases it
 		unset = append(unset, FieldHeldBy, FieldFaultSince)
-	case r.Op == "down" && r.HeldBy != "":
+	case r.Op == "down" && r.HeldBy != "" && ctl.F("held") == "":
 		// the machine's down for a fault (presence): mark it held_by=fault and
 		// stamp when, so the tick clears the mark once the member is healthy
 		// again and finishes a card cleanly (faultClear). A plain down carries
-		// no mark, and the member's status stays down until it beats.
+		// no mark, and the member's status stays down until it beats. The
+		// machine's fault hold is placed only on a member that carries no hold:
+		// a member the sync, the adopt, its environment or the coordinator
+		// already holds keeps its hold, its mark, its reason and its finish
+		// marker when it goes down, so the hold's own release still finds it
+		// (tla/DealFill.tla FaultHold, from held="none" only, and PersonHoldStays,
+		// a hold the machine did not make is never changed by it;
+		// docs/SPEC-SPRINT.md section 5, the fleet).
 		set[FieldHeldBy] = r.HeldBy
 		if r.HeldBy == HeldByFault {
 			set[FieldFaultSince] = stamp(s.Now)

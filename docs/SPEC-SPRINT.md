@@ -3048,8 +3048,13 @@ and it is the coordinator's decision, receipted.
   fault: its control card is marked `held_by=fault` with the stamp
   `fault_since`, and the tick's deal clears the mark by itself once the member
   beats again and has finished a card cleanly since that stamp (a probe card if
-  nothing else is dealt), telling the seat with one note. A hold the
-  coordinator made carries no `held_by` mark and stays until a person lifts it.
+  nothing else is dealt), telling the seat with one note. The machine's fault
+  hold is placed only on a member with no hold: a member the sync, the adopt,
+  its environment or the coordinator already holds keeps its hold, its mark,
+  its reason and its finish marker when it goes down, and still goes down
+  (tla/DealFill.tla FaultHold, from `held = "none"` only, and PersonHoldStays).
+  A hold the coordinator made carries no `held_by` mark and stays until a
+  person lifts it.
 - The status cell shows adopting, held, up or down. The load cell shows the highest load
   of the last 10 s with one decimal while the beat is fresh, and is empty
   otherwise, never a zero.
