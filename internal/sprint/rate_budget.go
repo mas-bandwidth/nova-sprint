@@ -212,42 +212,47 @@ func (s *Snapshot) withBudgets() *Snapshot {
 // provider's concurrency budget: the deal never deals past a provider's budget, so the card
 // waits ready and is dealt when a slot frees, never an error and never a stall
 // (docs/SPEC-SPRINT.md section 8, No silent stops; rate_budget.go's header;
-// tla/RateBudget.tla, StalledIsGranted). "" when the tier has a route the deal can draw (a route
-// that serves and is not full), when no route of the tier serves, or when no provider of a
-// serving route has a budget. The words name the routes and their providers' counts, as the
-// deal's own refusal does (unservedWhy). The budgets are the held reading's (newHeld,
-// withBudgets), read once per reading, never once per card.
+// tla/RateBudget.tla, StalledIsGranted). "" when a route the deal can draw serves (a route of
+// the tier's array the deal would hand a member up and whose provider has a slot), when no
+// route of the tier serves, or when no provider of a serving route has a budget. The walk and
+// the service test are the deal's own (tierArray, servedRoute; docs/SPEC-SPRINT.md section 5,
+// the deal): an enabled route the configured array leaves out, one that rests, and one a member
+// up cannot launch are not served, as they are not drawn. The words name the routes and their
+// providers' counts for a member that serves one, as the deal's own refusal does (unservedWhy).
+// The budgets are the held reading's (newHeld, withBudgets), read once per reading, never once
+// per card.
 func (s *Snapshot) budgetWait(tier string, members []string) string {
+	if s.budgets == nil {
+		s = s.withBudgets() // a copy, its rests kept: the rule tests a snapshot the deal never budgeted
+	}
 	if s.budgets == nil || len(s.Routes) == 0 {
 		return ""
 	}
-	full := false
-	for _, r := range s.Routes {
-		if r.Tier != tier || !r.Enabled {
-			continue
-		}
-		if _, ok := s.resting(r.Name); ok {
-			continue // a resting route is not served; its provider is not this wait
-		}
-		can := false
-		for _, m := range members {
-			if s.Launches(m, r) {
-				can = true
+	serving, member := false, ""
+	for _, name := range s.tierArray(tier) {
+		var rt Route
+		served, m := false, ""
+		for _, up := range members {
+			if r, ok := s.servedRoute(tier, up, name, false); ok {
+				rt, served, m = r, true, up
 				break
 			}
 		}
-		if !can {
-			continue // a route no member up can launch is noLauncher's, not this wait
+		if !served {
+			continue // the deal draws no such route for a member up: disabled, rested, or unlaunchable
 		}
-		if isFull, _ := s.budgets.full(r.Provider); !isFull {
+		serving = true
+		if member == "" {
+			member = m
+		}
+		if isFull, _ := s.budgets.full(rt.Provider); !isFull {
 			return "" // a serving route with a slot: the deal draws it
 		}
-		full = true
 	}
-	if !full {
+	if !serving {
 		return ""
 	}
-	_, _, words := s.unservedWhy(tier, "", true)
+	_, _, words := s.unservedWhy(tier, member, true)
 	if len(words) == 0 {
 		return ""
 	}

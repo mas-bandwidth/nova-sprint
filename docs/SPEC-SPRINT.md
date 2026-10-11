@@ -5935,9 +5935,11 @@ tla/StallLadder.tla `NoCardHeldPastBound`). `TestAMemberDownTheCoordinatorDidNot
 
 A ready card whose every route of its tier that serves is at its provider's concurrency budget
 is no stop: the limiter holds it ready and the deal deals it when a slot frees, never an error
-(rate_budget.go; tla/RateBudget.tla). The no-stall rule reads the budget as the deal does, so a
-card waiting for a slot is held by the limiter, never raised as a stall
-(`TestAReadyCardWhoseEveryRouteIsFullIsHeldNotStalled`).
+(rate_budget.go; tla/RateBudget.tla). The no-stall rule reads the budget and reads what serves as
+the deal does — the tier's configured route array, a route resting, and a route no member up can
+launch are not served, exactly as they are not drawn — so a card waiting for a slot is held by the
+limiter, never raised as a stall (`TestAReadyCardWhoseEveryRouteIsFullIsHeldNotStalled`,
+`TestARouteOutsideTheTierArrayIsNotServed`).
 
 ## 9. What is always true
 

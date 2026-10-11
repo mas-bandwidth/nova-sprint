@@ -402,6 +402,23 @@ func TestAReadyCardWithASlotFreeAndUndealtIsStillStalled(t *testing.T) {
 	mustStall(t, running(w), "s1-1", "a member is below its room (DealAhead times its width), and nothing deals it")
 }
 
+// budgetWait reads what serves as the deal does: the tier's configured array, never every
+// enabled route of the store. An enabled heavy route on a provider with room that the array
+// leaves out is never drawn (tierArray, servedRoute; docs/SPEC-SPRINT.md section 5, the deal),
+// so the card still waits for a slot of the route the array names rather than being judged
+// stalled for it.
+func TestARouteOutsideTheTierArrayIsNotServed(t *testing.T) {
+	t.Parallel()
+	w := budgetStallWorld(t, "1")
+	// heavy-free is enabled on a provider with no budget, but the array names only
+	// heavy-inception and heavy-other: the deal never draws it.
+	w.s.Routes = append(w.s.Routes, Route{Name: "heavy-free", Tier: cardhdr.RouteHeavy, Provider: "free", Model: "m", Enabled: true, Deadline: 600})
+	hd := mustHold(t, running(w), "s1-1", HeldByWaiting)
+	require.Contains(t, hd.Why, "waits for a slot of its provider's concurrency budget", "%s", hd)
+	require.Contains(t, hd.Why, "heavy-inception (inception 1 of 1 in flight)", "%s", hd)
+	require.NotContains(t, hd.Why, "heavy-free", "a route the array leaves out is not the deal's: %s", hd)
+}
+
 // "Stopped with moves due" counts the asks the tick would make (reader
 // finding 6): a primary in review never asked at its attempt is a move due.
 func TestMovesDueCountsAsks(t *testing.T) {
