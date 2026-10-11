@@ -361,4 +361,14 @@
      at-width facts are that dependency's width fact, the seat check's fleet and friends lines
      counting up/held/down alone; and the machine's own tick late (pushlate.go) is not joined, the
      loop line holding only the LoopSilence bound."
-    :origin "this pull request")))
+    :origin "this pull request")
+
+   (fix "machine-fault-hold-clears-when-healthy" :release "v1.2.9" :status "shipped"
+    :title "A machine fault hold clears itself once the member is healthy"
+    :text "A hold the machine places for a failure (a harness fault, a failed take, or the member going
+     down) is marked held_by=fault and clears itself on the tick once the member beats and has finished a
+     card cleanly since the hold: the tick releases its down to deal it a card (a probe card if nothing
+     else is dealt) and lifts the hold on the clean finish, telling the seat. A hold a person made carries
+     no held_by mark and is never lifted by the machine. TLA+ model DealFill, properties FaultHoldClears
+     and PersonHoldStays, with two reversed witnesses."
+    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")))
