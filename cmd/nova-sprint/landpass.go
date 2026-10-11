@@ -80,9 +80,16 @@ func gateWaitWhy(ctx context.Context) string {
 
 // landShared is what one pass's streams share while they merge beside each other.
 type landShared struct {
-	// fetchMu serializes every fetch and every other write of the clone's shared refs and
-	// metadata (a worktree added or removed): two fetches of one ref at once fail on its lock.
-	fetchMu sync.Mutex
+	// fetchMu guards fetchLocks. A fetch or another write of a clone's shared refs and
+	// metadata (a worktree added or removed) of one clone waits for that clone's own lock;
+	// two clones' go side by side (two fetches of one ref at once fail on its lock).
+	fetchMu    sync.Mutex
+	fetchLocks map[string]*sync.Mutex
+	// holdMu serializes hold: the clone land locks and the map of the ones held (held) are
+	// one per clone, and the jobs of two lanes of one clone prepare at once.
+	holdMu sync.Mutex
+	// rootMu guards the land root's first read (worktree, clone), taken once.
+	rootMu sync.Mutex
 	// gateMu guards the baseGateCache, baseGateFails and cureTried maps and baseGates.
 	gateMu sync.Mutex
 	// baseGates keeps a gate and its cure single-writer for each base commit: a one-slot
@@ -105,6 +112,20 @@ func (l *lander) locks() *landShared {
 		l.shared = &landShared{pruned: map[string]bool{}, used: map[string]map[string]bool{}}
 	}
 	return l.shared
+}
+
+// fetchLock is the clone's own fetch lock: fetches and worktree writes of one clone stay
+// serial, of two clones go side by side.
+func (s *landShared) fetchLock(clone string) *sync.Mutex {
+	s.fetchMu.Lock()
+	defer s.fetchMu.Unlock()
+	if s.fetchLocks == nil {
+		s.fetchLocks = map[string]*sync.Mutex{}
+	}
+	if s.fetchLocks[clone] == nil {
+		s.fetchLocks[clone] = &sync.Mutex{}
+	}
+	return s.fetchLocks[clone]
 }
 
 func (s *landShared) baseGate(sha string) chan struct{} {
@@ -132,12 +153,12 @@ func (s *landShared) acquireGate(ctx context.Context, sha string) (release func(
 	}
 }
 
-// fetched runs one git fetch (or another write of the clone's shared refs) under the pass's
-// fetch lock.
+// fetched runs one git fetch (or another write of the clone's shared refs) under the
+// clone's own fetch lock.
 func (l *lander) fetched(ctx context.Context, dir string, args ...string) (string, error) {
-	s := l.locks()
-	s.fetchMu.Lock()
-	defer s.fetchMu.Unlock()
+	mu := l.locks().fetchLock(dir)
+	mu.Lock()
+	defer mu.Unlock()
 	return l.git(ctx, dir, args...)
 }
 
@@ -291,12 +312,53 @@ func batchOf(cards []landCard) int {
 	return n
 }
 
+// nextBatch is the next batch of one of a stream's queued cards: the run of consecutive
+// cards from the first naming its repository and base, at most landBatchMax. The caller
+// holds the pass's mutex (queues).
+func nextBatch(l *lander, queues map[string][]landCard, name string) *landJob {
+	cards := queues[name]
+	if len(cards) == 0 {
+		return nil
+	}
+	n := batchOf(cards)
+	ids := make([]string, n)
+	for i, c := range cards[:n] {
+		ids[i] = c.id
+	}
+	return &landJob{stream: name, cards: cards[:n], ids: ids, f: l.fork(name),
+		b: landBatch{Stream: name, Status: "refused", Cards: n, IDs: ids, Repo: cards[0].repo, Base: cards[0].base, DryRun: l.dry}}
+}
+
+// landLane is one (clone, base) key's landing lane: its own ready list of built batches,
+// its own pushed list (what this lane put on the base, which only its own later batches
+// may collide with; another key shares no ref and no tip), its own chain of cuts (jobs of
+// one key cut in priority order), and the events its goroutine reads (launch a job, or a
+// phase-1 job finished). Lanes of different keys are independent instances.
+type landLane struct {
+	key    string
+	events chan laneEvent
+	// prior is the chain's last cut of this key: the next job of the key waits for it
+	// (launch), so one key's batches cut in priority order.
+	prior chan struct{}
+}
+
+// laneEvent is what a lane goroutine receives: launch the job (finish false), or the
+// job's phase 1 finished (finish true).
+type laneEvent struct {
+	j      *landJob
+	finish bool
+}
+
 // pass lands every stream of order: each stream's batches merged beside the others' (phase
-// 1, launch), each built one landed one at a time as it is built (phase 2, land), a stream's
-// next batch started when its last is done, going on past the cards its batch landed and past a card whose
-// own refusal was recorded (reworked at the tip, or returned to review: the stream's other
-// cards land in the same pass), and ending at the lander's own failure, as stream did.
-// failed says a push landed and its report did not.
+// 1, launch), each built one landed one at a time per (clone, base) landing lane (phase 2,
+// runLane and land), a stream's next batch started when its last is done, going on past the
+// cards its batch landed and past a card whose own refusal was recorded (reworked at the
+// tip, or returned to review: the stream's other cards land in the same pass), and ending
+// at the lander's own failure, as stream did. Different clones, and different bases of one
+// clone, share no ref and no tip, so their pushes run side by side; within one key the
+// order is the design and stays (tla/LandPass.tla, Push, PushDisjoint and PushCombined are
+// each one atomic step on one base; BaseAdvancesGated, NoHeadOfLine). failed says a push
+// landed and its report did not.
 func (l *lander) pass(ctx context.Context, s *sprint.Snapshot, order []string) (failed bool) {
 	queues := map[string][]landCard{}
 	var streams []string
@@ -305,59 +367,88 @@ func (l *lander) pass(ctx context.Context, s *sprint.Snapshot, order []string) (
 			queues[name], streams = cards, append(streams, name)
 		}
 	}
-	var pushed []*landJob // the batches landed in this pass, in order: what a later one may collide with
-	next := func(name string) *landJob {
-		cards := queues[name]
-		if len(cards) == 0 {
-			return nil
-		}
-		n := batchOf(cards)
-		ids := make([]string, n)
-		for i, c := range cards[:n] {
-			ids[i] = c.id
-		}
-		return &landJob{stream: name, cards: cards[:n], ids: ids, f: l.fork(name),
-			b: landBatch{Stream: name, Status: "refused", Cards: n, IDs: ids, Repo: cards[0].repo, Base: cards[0].base, DryRun: l.dry}}
-	}
 	prio := map[string]int{}
 	for i, name := range streams {
 		prio[name] = i
 	}
-	m := &mergeRun{finished: make(chan *landJob), sem: make(chan struct{}, max(l.parallel, 1)), prior: map[string]chan struct{}{}}
-	running := map[*landJob]bool{}
-	start := func(jobs []*landJob) {
-		// prepare (the clone, its lock, the worktree) runs here, in the pass's own goroutine,
-		// one job at a time: the first batches in priority order, each later one when its
-		// stream's last batch is done, between landings and beside other streams' merges
-		for _, j := range jobs {
-			l.prepare(ctx, s, j)
+	// mu guards the queues, failed, the lanes map and the output merge (take), all of which
+	// the lanes share; each lane's own ready and pushed are its goroutine's alone.
+	var mu sync.Mutex
+	m := &mergeRun{sem: make(chan struct{}, max(l.parallel, 1))}
+	lanes := map[string]*landLane{}
+	var laneWg, allWork sync.WaitGroup
+	// start queues a job on its (clone, base) lane, making the lane and its goroutine on
+	// first use; the lane's own goroutine launches it and lands it.
+	var start func(*landJob)
+	start = func(j *landJob) {
+		if j == nil {
+			return
 		}
-		for _, j := range jobs {
-			running[j] = true
-			l.launch(ctx, m, j)
+		key := normRepo(j.b.Repo) + "\x00" + j.b.Base
+		mu.Lock()
+		lane := lanes[key]
+		if lane == nil {
+			lane = &landLane{key: key, events: make(chan laneEvent, 1024)}
+			lanes[key] = lane
+			laneWg.Add(1)
+			go func(lane *landLane) {
+				defer laneWg.Done()
+				l.runLane(ctx, s, lane, m, prio, &mu, queues, &failed, &allWork, start)
+			}(lane)
 		}
+		mu.Unlock()
+		allWork.Add(1)
+		lane.events <- laneEvent{j: j}
 	}
+	// the first batches of every stream, in priority order, launched on their lanes
+	mu.Lock()
 	var first []*landJob
 	for _, name := range streams {
-		if j := next(name); j != nil {
+		if j := nextBatch(l, queues, name); j != nil {
 			first = append(first, j)
 		}
 	}
-	start(first)
-	// THE LANDINGS, SERIAL, AS EACH BATCH IS BUILT (2026-10-10, fault item 4): this loop
-	// alone pushes, one batch at a time. A built batch lands in priority order among the
-	// built ones, and waits for a higher-priority stream still in phase 1 for landGrace at
-	// most, never for that stream's whole gate: before, every landing waited in priority
-	// order for each stream before it, up to its LandDeadline, so v1-4's 99-card batch
-	// (708 s) held every later stream's landing. A stream's next batch starts as soon as its
-	// last one is done.
+	mu.Unlock()
+	for _, j := range first {
+		start(j)
+	}
+	allWork.Wait()
+	mu.Lock()
+	for _, lane := range lanes {
+		close(lane.events)
+	}
+	mu.Unlock()
+	laneWg.Wait()
+	return failed
+}
+
+// runLane is one (clone, base) key's phase 2: it reads its own lane's events (a job to
+// launch, a built batch finished), keeps the built ones in its own ready list in stream
+// priority order, and lands them one at a time, waiting for a higher-priority stream still
+// in phase 1 for landGrace at most (exactly as the one pass loop ordered them before).
+// Lanes of different keys run at once.
+func (l *lander) runLane(ctx context.Context, s *sprint.Snapshot, lane *landLane, m *mergeRun, prio map[string]int, mu *sync.Mutex, queues map[string][]landCard, failed *bool, allWork *sync.WaitGroup, start func(*landJob)) {
 	var ready []*landJob
-	for len(running) > 0 || len(ready) > 0 {
+	running := map[*landJob]bool{}
+	var pushed []*landJob
+	handle := func(ev laneEvent) {
+		j := ev.j
+		if !ev.finish {
+			running[j] = true
+			l.launch(ctx, s, m, lane, j)
+			return
+		}
+		delete(running, j)
+		j.grace = l.graceClock(j.stream)
+		ready = append(ready, j)
+	}
+	for {
 		if len(ready) == 0 {
-			j := <-m.finished
-			delete(running, j)
-			j.grace = l.graceClock(j.stream)
-			ready = append(ready, j)
+			ev, ok := <-lane.events
+			if !ok {
+				return
+			}
+			handle(ev)
 			continue
 		}
 		slices.SortStableFunc(ready, func(a, b *landJob) int { return prio[a.stream] - prio[b.stream] })
@@ -368,10 +459,11 @@ func (l *lander) pass(ctx context.Context, s *sprint.Snapshot, order []string) (
 		}
 		if ahead && !j.done && j.grace != nil {
 			select {
-			case f := <-m.finished:
-				delete(running, f)
-				f.grace = l.graceClock(f.stream)
-				ready = append(ready, f)
+			case ev, ok := <-lane.events:
+				if !ok {
+					return
+				}
+				handle(ev)
 				continue
 			case <-j.grace:
 				j.grace = nil // its grace spent: it lands now
@@ -381,27 +473,31 @@ func (l *lander) pass(ctx context.Context, s *sprint.Snapshot, order []string) (
 		if !j.done {
 			l.land(ctx, j, pushed)
 		}
+		mu.Lock()
 		l.take(j.f)
+		mu.Unlock()
 		if j.b.Tip != "" && !l.dry {
-			// what this pass put on the base, a whole batch or the heads before a conflict:
-			// the files a later batch may collide with
+			// what this lane put on the base, a whole batch or the heads before a conflict:
+			// the files a later batch of this key may collide with
 			pushed = append(pushed, j)
 		}
+		mu.Lock()
 		switch {
 		case !j.ok:
-			failed = true
+			*failed = true
 			queues[j.stream] = nil
 		case j.on:
 			queues[j.stream] = queues[j.stream][j.past:]
 		default:
 			queues[j.stream] = nil
 		}
-		if nj := next(j.stream); nj != nil {
-			start([]*landJob{nj})
+		nj := nextBatch(l, queues, j.stream)
+		mu.Unlock()
+		if nj != nil {
+			start(nj) // Add before this job's Done, so allWork never falls to zero with work pending
 		}
+		allWork.Done()
 	}
-	m.wg.Wait()
-	return failed
 }
 
 // refuse ends the job in phase 1 with a refusal: nothing pushed or reported for it.
@@ -548,16 +644,24 @@ func (l *lander) buildFailed(ctx context.Context, j *landJob, why string) {
 func (l *lander) worktree(ctx context.Context, clone, stream, base string) (dir, why string) {
 	root := l.root
 	if root == "" {
-		var err error
-		if root, err = l.a.landRoot(); err != nil {
-			return "", "no directory to keep the stream's worktree in (" + oneline.Err(err) + ")"
+		s := l.locks()
+		s.rootMu.Lock()
+		if l.root == "" {
+			if r, err := l.a.landRoot(); err != nil {
+				s.rootMu.Unlock()
+				return "", "no directory to keep the stream's worktree in (" + oneline.Err(err) + ")"
+			} else {
+				l.root = r
+			}
 		}
-		l.root = root
+		root = l.root
+		s.rootMu.Unlock()
 	}
 	dir = worktreeDir(root, clone, stream)
 	s := l.locks()
-	s.fetchMu.Lock()
-	defer s.fetchMu.Unlock()
+	lock := s.fetchLock(clone)
+	lock.Lock()
+	defer lock.Unlock()
 	s.treesMu.Lock()
 	if s.used[clone] == nil {
 		s.used[clone] = map[string]bool{}
@@ -682,14 +786,11 @@ func (l *lander) beforeWait(stream, what string) {
 	}
 }
 
-// mergeRun is one pass's phase 1: the jobs' exits (finished, read by the pass alone), the
-// width slots, and each repository/base's last cut, which the next job of that pair waits
-// for (the same repository/base cuts in priority order).
+// mergeRun is one pass's shared phase-1 bound: the width slots (--land-parallel), one
+// channel shared by every lane's jobs. Each lane keeps its own chain of cuts (its jobs cut
+// in priority order) and its own exits (its goroutine's events).
 type mergeRun struct {
-	finished chan *landJob
-	sem      chan struct{}
-	prior    map[string]chan struct{}
-	wg       sync.WaitGroup
+	sem chan struct{}
 }
 
 // landGrace is how long a built batch waits for a higher-priority stream still in phase 1
@@ -717,39 +818,31 @@ func (l *lander) landClock(stream string) <-chan time.Time {
 }
 
 // launch is one job's phase 1 in its own goroutine, worktree and lander: it waits for the
-// last cut of its repository/base, then a width slot, then cuts, merges and gates. The job's
-// LandDeadline runs on its own clock from the moment it holds a slot (2026-10-10): its gate
-// past the bound is cancelled and the batch refused for this pass with its cards still
-// queued, nothing blamed. A job waiting for the chain or a slot runs no clock: the holder's
-// own bound frees the wait, so no stream waits there on another for more than one bound at a
-// time and no clock is spent standing in that line. The wait for another stream's gate of its
-// base commit (gateBase, acquireGate, in prepareCut) comes after the slot is held, so the
-// job's own clock does run through it: the holder's bound frees the gate, or the waiter's own
-// bound refuses it first, nothing blamed. The
-// slot is given back before the job's exit is sent, so a job built while the pass lands
-// another holds nothing the others need. A job ended in prepare is sent at once.
-func (l *lander) launch(pass context.Context, m *mergeRun, j *landJob) {
-	m.wg.Add(1)
-	if j.done {
-		go func() {
-			defer m.wg.Done()
-			m.finished <- j
-		}()
-		return
-	}
-	key := normRepo(j.b.Repo) + "\x00" + j.b.Base
-	wait := m.prior[key]
+// last cut of its lane (repository/base), prepares the clone and the stream's worktree in
+// its own goroutine (so two lanes' jobs prepare side by side), then takes a width slot,
+// cuts, merges and gates. The job's LandDeadline runs on its own clock from the moment it
+// holds a slot (2026-10-10): its gate past the bound is cancelled and the batch refused for
+// this pass with its cards still queued, nothing blamed. A job waiting for the chain or a
+// slot runs no clock: the holder's own bound frees the wait, so no stream waits there on
+// another for more than one bound at a time and no clock is spent standing in that line.
+// The wait for another stream's gate of its base commit (gateBase, acquireGate, in
+// prepareCut) comes after the slot is held, so the job's own clock does run through it: the
+// holder's bound frees the gate, or the waiter's own bound refuses it first, nothing
+// blamed. The slot is given back before the job's exit is sent, so a job built while the
+// pass lands another holds nothing the others need. A job ended in prepare is sent at once.
+func (l *lander) launch(pass context.Context, s *sprint.Snapshot, m *mergeRun, lane *landLane, j *landJob) {
+	// the lane's jobs cut in priority order: this job waits for the lane's last cut
+	wait := lane.prior
 	cutDone := make(chan struct{})
-	m.prior[key] = cutDone
+	lane.prior = cutDone
 	go func() {
-		defer m.wg.Done()
 		var cutOnce sync.Once
 		cutIsDone := func() { cutOnce.Do(func() { close(cutDone) }) }
 		ctx, cancel := context.WithCancelCause(pass)
 		defer func() {
 			cancel(nil)
 			cutIsDone()
-			m.finished <- j
+			lane.events <- laneEvent{j: j, finish: true}
 		}()
 		if wait != nil {
 			l.beforeWait(j.stream, "chain")
@@ -759,6 +852,11 @@ func (l *lander) launch(pass context.Context, m *mergeRun, j *landJob) {
 				j.refuse(gateWaitWhy(ctx))
 				return
 			}
+		}
+		// prepare (the clone, its lock, the worktree) runs here, in the job's own goroutine
+		l.prepare(ctx, s, j)
+		if j.done {
+			return
 		}
 		l.beforeWait(j.stream, "slot")
 		select {

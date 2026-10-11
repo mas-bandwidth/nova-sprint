@@ -2206,11 +2206,17 @@ func (l *lander) clone(ctx context.Context, repo string) (dir, why string) {
 		return l.repoDir, l.originIs(ctx, l.repoDir, repo)
 	}
 	if l.root == "" {
-		root, err := l.a.landRoot()
-		if err != nil {
-			return "", "no directory to keep clones in (" + oneline.Err(err) + "); run: nova-sprint land --repo-dir <clone>"
+		s := l.locks()
+		s.rootMu.Lock()
+		if l.root == "" {
+			root, err := l.a.landRoot()
+			if err != nil {
+				s.rootMu.Unlock()
+				return "", "no directory to keep clones in (" + oneline.Err(err) + "); run: nova-sprint land --repo-dir <clone>"
+			}
+			l.root = root
 		}
-		l.root = root
+		s.rootMu.Unlock()
 	}
 	dir = filepath.Join(l.root, repoDirName(repo))
 	if l.dry {
@@ -2239,6 +2245,9 @@ func (l *lander) clone(ctx context.Context, repo string) (dir, why string) {
 // another land holds is refused before any git changes it, naming the holder; its cards
 // stay queued for the next land. release lets every lock go as land ends.
 func (l *lander) hold(ctx context.Context, dir string) string {
+	s := l.locks()
+	s.holdMu.Lock()
+	defer s.holdMu.Unlock()
 	if l.held[dir] != nil {
 		return ""
 	}
