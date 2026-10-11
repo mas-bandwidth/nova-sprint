@@ -160,12 +160,70 @@ func treeTested(p string) bool {
 	return strings.HasSuffix(p, ".go") || strings.HasSuffix(p, ".md") || strings.Contains(p, "testdata/")
 }
 
-// gateRuns is SPEC-SPRINT's base class suite (sprint.BaseClasses), preserving the build
-// first, then formatting, vet and the functional-tier vet. Analyzer classes and the tree
-// tests need their packages (have: the ones the clone holds) and run only when tests is asked.
-// unitPkgs are unit test packages from changed files; when non-empty, a go test run is appended.
-func gateRuns(tests bool, have []string, unitPkgs []string) [][]string {
+// gateRun is one command of the base class suite and the classes it reports as: one
+// for most, and the three whole-tree analyzer classes for their merged run.
+type gateRun struct {
+	Run     []string
+	Classes []sprint.Class
+}
+
+// gateStage is one stage of the suite and its runs, which may go side by side: 0 build,
+// 1 the read-only whole-tree checks, 2 the package tests. The runs keep the class order.
+type gateStage struct {
+	Stage int
+	Runs  []gateRun
+}
+
+// gateCmds flattens the stages to the suite's runs in class order, the form the bench
+// gate and its seam take.
+func gateCmds(stages []gateStage) [][]string {
 	var runs [][]string
+	for _, st := range stages {
+		for _, r := range st.Runs {
+			runs = append(runs, r.Run)
+		}
+	}
+	return runs
+}
+
+// stageFor returns the stage numbered n, adding it (in class order) if new.
+func stageFor(stages *[]gateStage, n int) *gateStage {
+	for i := range *stages {
+		if (*stages)[i].Stage == n {
+			return &(*stages)[i]
+		}
+	}
+	*stages = append(*stages, gateStage{Stage: n})
+	return &(*stages)[len(*stages)-1]
+}
+
+// analyzerRun builds the one run of the classes that share batch (sprint.ClassForBatch):
+// one test binary and one `go test` process for the tree instead of one per class.
+func analyzerRun(batch string) []string {
+	classes := sprint.ClassForBatch(batch)
+	var tests []string
+	var pkg string
+	for _, c := range classes {
+		if i := strings.LastIndex(c.Test, " "); i >= 0 {
+			tests = append(tests, c.Test[i+1:])
+		}
+		if pkg == "" && len(c.Needs) > 0 {
+			pkg = "./" + c.Needs[0] + "/"
+		}
+	}
+	return []string{"go", "test", "-tags", "functional", "-count=1", "-timeout", "600s", "-run", "^(" + strings.Join(tests, "|") + ")$", pkg}
+}
+
+// gateRuns is SPEC-SPRINT's base class suite (sprint.BaseClasses) as its stages: the
+// build (0); then, side by side, formatting, vet, the functional-tier vet and the
+// whole-tree analyzers (1); then the tree tests and any unit packages (2). The analyzer
+// classes share one run (analyzerRun): one test binary and one process for the tree.
+// Analyzer classes and the tree tests need their packages (have: the ones the clone
+// holds) and run only when tests is asked. unitPkgs are unit test packages from changed
+// files; when non-empty, a go test run is appended to the last stage.
+func gateRuns(tests bool, have []string, unitPkgs []string) []gateStage {
+	var stages []gateStage
+	seenBatch := map[string]bool{}
 	for _, class := range sprint.BaseClasses {
 		if class.Name == "class-tests" {
 			if tests && len(have) > 0 {
@@ -173,23 +231,34 @@ func gateRuns(tests bool, have []string, unitPkgs []string) [][]string {
 				for _, p := range have {
 					run = append(run, "./"+p+"/")
 				}
-				runs = append(runs, run)
+				st := stageFor(&stages, class.Stage)
+				st.Runs = append(st.Runs, gateRun{Run: run, Classes: []sprint.Class{class}})
 			}
 			continue
 		}
 		if len(class.Needs) > 0 && (!tests || slices.ContainsFunc(class.Needs, func(p string) bool { return !slices.Contains(have, p) })) {
 			continue
 		}
-		runs = append(runs, slices.Clone(class.Run))
+		st := stageFor(&stages, class.Stage)
+		if class.Batch != "" {
+			if seenBatch[class.Batch] {
+				continue
+			}
+			seenBatch[class.Batch] = true
+			st.Runs = append(st.Runs, gateRun{Run: analyzerRun(class.Batch), Classes: sprint.ClassForBatch(class.Batch)})
+			continue
+		}
+		st.Runs = append(st.Runs, gateRun{Run: slices.Clone(class.Run), Classes: []sprint.Class{class}})
 	}
 	if len(unitPkgs) > 0 {
 		run := []string{"go", "test", "-count=1", "-timeout", "120s", "-skip", "^TestTickDrainAndDealUnderTheGateAtLoad$"}
 		for _, p := range unitPkgs {
 			run = append(run, "./"+p+"/")
 		}
-		runs = append(runs, run)
+		st := stageFor(&stages, 2)
+		st.Runs = append(st.Runs, gateRun{Run: run})
 	}
-	return runs
+	return stages
 }
 
 // gateWhy is a red run as a finding, one line: the run, how it ended and its output.
@@ -364,7 +433,8 @@ func (l *lander) treeGate(ctx context.Context, dir string, tests bool, changedFi
 	}
 	have := treePackages(dir)
 	unitPkgs := sprint.UnitPackages("github.com/mas-bandwidth/nova-sprint", changedFiles)
-	runs := gateRuns(tests, have, unitPkgs)
+	stages := gateRuns(tests, have, unitPkgs)
+	runs := gateCmds(stages)
 	hosts, inLoop, remote := l.gateBenches(ctx)
 	// A test's gateBench seam stands in for the bench when no fleet member is up
 	// (the class-gate regression: a fake runner, no socket, no beat to keep fresh).
@@ -375,7 +445,7 @@ func (l *lander) treeGate(ctx context.Context, dir string, tests bool, changedFi
 				if code == 0 {
 					return ""
 				}
-				return gateWhy(redRun(runs, out), fmt.Errorf("exit status %d on the bench seam", code), out)
+				return gateWhy(gateRedRun(runs, out), fmt.Errorf("exit status %d on the bench seam", code), out)
 			}
 		}
 	}
@@ -394,14 +464,65 @@ func (l *lander) treeGate(ctx context.Context, dir string, tests bool, changedFi
 			l.ranOnBench("here", l.clock().Sub(start))
 		}
 	}()
-	for _, run := range runs {
-		l.stage("gate", strings.Join(run, " "))
-		out, err := l.goRun(ctx, dir, run)
-		if err = gateRunError(run, out, err); err != nil {
-			return gateWhy(run, err, out)
+	return l.runGateStages(ctx, dir, stages)
+}
+
+// runGateStages runs the suite's stages in order, each stage's runs side by side: the
+// read-only classes share one tree and the Go build cache, and nothing here touches the
+// store or a branch. A stage waits for all its runs and reports the first red in class
+// order (not the first to finish), so the same red tree gives the same finding; a red
+// stage stops the later ones.
+func (l *lander) runGateStages(ctx context.Context, dir string, stages []gateStage) string {
+	for _, st := range stages {
+		for _, r := range st.Runs {
+			l.stage("gate", strings.Join(r.Run, " "))
+		}
+		type gateResult struct {
+			class []string
+			out   string
+			err   error
+		}
+		results := make([]gateResult, len(st.Runs))
+		var wg sync.WaitGroup
+		for i, r := range st.Runs {
+			wg.Add(1)
+			go func(i int, r gateRun) {
+				defer wg.Done()
+				out, err := l.gateCmd(ctx, dir, r.Run)
+				results[i] = gateResult{class: r.Run, out: out, err: err}
+			}(i, r)
+		}
+		wg.Wait()
+		for _, res := range results { // class order, not finish order
+			if err := gateRunError(res.class, res.out, res.err); err != nil {
+				run := res.class
+				// A run of several classes is reported as the class its FAIL line names.
+				if c, ok := sprint.ClassForOutput(strings.Join(run, " "), res.out); ok {
+					run = c.Run
+				}
+				return gateWhy(run, err, res.out)
+			}
 		}
 	}
 	return ""
+}
+
+// gateCmd runs one gate command: a test's runGate seam, else goRun.
+func (l *lander) gateCmd(ctx context.Context, dir string, run []string) (string, error) {
+	if l.runGate != nil {
+		return l.runGate(ctx, dir, run)
+	}
+	return l.goRun(ctx, dir, run)
+}
+
+// gateRedRun is the run a red gate ended on, the class its FAIL line names when the run
+// covers several (the merged analyzers).
+func gateRedRun(runs [][]string, out string) []string {
+	run := redRun(runs, out)
+	if c, ok := sprint.ClassForOutput(strings.Join(run, " "), out); ok {
+		return c.Run
+	}
+	return run
 }
 
 // gateRunError enforces the formatter's silent success (SPEC-SPRINT, the base's class
@@ -515,7 +636,7 @@ func (l *lander) gateOn(ctx context.Context, host, dir string, runs [][]string, 
 		// not red, and no head is blamed; the ring's next slot runs it (ringGate)
 		return "", false, &bench.StageError{Host: host, Step: "the gate's toolchain", Code: code, Tail: fault}
 	}
-	return gateWhy(redRun(runs, out), fmt.Errorf("exit status %d on the bench %s", code, host), out), true, nil
+	return gateWhy(gateRedRun(runs, out), fmt.Errorf("exit status %d on the bench %s", code, host), out), true, nil
 }
 
 // copySaid says one stage line: the loop's idle line carries it as the step, and the
@@ -738,24 +859,77 @@ func goPackageResult(t string) (pkg string, ran bool, ok bool) {
 // gateMark starts the line a bench gate prints before each of its runs.
 const gateMark = "GATE RUN: "
 
-// gateScript is the gate's runs as one shell line on the bench: each run named on its
-// own line (gateMark) and then run, the first red ending the line with its status.
+// gateCommand is one gate run as a shell command: gofmt's rule (exit zero and a non-empty
+// list is red) is kept.
+func gateCommand(run []string) string {
+	words := make([]string, len(run))
+	for i, w := range run {
+		words[i] = bench.Quote(w)
+	}
+	command := strings.Join(words, " ")
+	if len(run) > 0 && run[0] == "gofmt" {
+		command = "gate_format=$(" + command + "); printf '%s\\n' \"$gate_format\"; test -z \"$gate_format\""
+	}
+	return command
+}
+
+// gateRunStage is the stage a bench gate run belongs to, so gateScript can run it beside
+// its stage's other runs: the classes' own stages (sprint.BaseClasses), the merged
+// analyzer run (stage 1), and a run of another form its own stage (offset) so such runs
+// stay one at a time, in order.
+func gateRunStage(run []string, i int) int {
+	cmd := strings.Join(run, " ")
+	if strings.Contains(cmd, "TestStaticcheckFindings") && strings.Contains(cmd, "TestUncheckedErrors") && strings.Contains(cmd, "TestDeadCode") {
+		return 1
+	}
+	for _, c := range sprint.BaseClasses {
+		base := strings.Join(c.Run, " ")
+		if base == cmd {
+			return c.Stage
+		}
+		if c.Name == "class-tests" && strings.HasPrefix(cmd, base+" ./") {
+			return c.Stage
+		}
+	}
+	if strings.HasPrefix(cmd, "go test -count=1 -timeout 120s -skip") {
+		return 2
+	}
+	return 1_000_000 + i
+}
+
+// gateScript is the gate's runs as one shell line on the bench: the runs are grouped by
+// their stage (gateRunStage), and each stage's runs go side by side as background jobs,
+// each to its own file under the gate's run directory. The stage's jobs are all waited
+// for, then each run's GATE RUN mark and output are printed in class order and the first
+// red in that order ends the line with its status. redRun reads the output as today.
 func gateScript(runs [][]string) string {
 	// a non-interactive ssh shell reads no profile: when go is not on its PATH, the Go a
 	// bench keeps under ~/sdk (the fleet's install) or /usr/local/go is put there
-	parts := []string{"set -e", `command -v go >/dev/null 2>&1 || for d in "$HOME"/sdk/go*/bin /usr/local/go/bin; do if [ -x "$d/go" ]; then PATH="$d:$PATH"; fi; done; export PATH`}
-	for _, run := range runs {
-		words := make([]string, len(run))
-		for i, w := range run {
-			words[i] = bench.Quote(w)
+	parts := []string{"set -e", `command -v go >/dev/null 2>&1 || for d in "$HOME"/sdk/go*/bin /usr/local/go/bin; do if [ -x "$d/go" ]; then PATH="$d:$PATH"; fi; done; export PATH`, `gate_dir=$(mktemp -d)`, `trap 'rm -rf "$gate_dir"' EXIT`}
+	var order []int
+	groups := map[int][][]string{}
+	for i, run := range runs {
+		s := gateRunStage(run, i)
+		if _, ok := groups[s]; !ok {
+			order = append(order, s)
 		}
-		command := strings.Join(words, " ")
-		if len(run) > 0 && run[0] == "gofmt" {
-			command = "gate_format=$(" + command + "); printf '%s\\n' \"$gate_format\"; test -z \"$gate_format\""
-		}
-		parts = append(parts, "echo "+bench.Quote(gateMark+strings.Join(run, " ")), command)
+		groups[s] = append(groups[s], run)
 	}
-	return strings.Join(parts, "; ")
+	for _, s := range order {
+		group := groups[s]
+		parts = append(parts, "gate_pids=''")
+		for j, run := range group {
+			file := fmt.Sprintf(`"$gate_dir"/r_%d_%d`, s, j)
+			parts = append(parts, "("+gateCommand(run)+") > "+file+" 2>&1 &")
+			parts = append(parts, `gate_pids="$gate_pids $!"`)
+		}
+		parts = append(parts, "set +e", "gate_i=0", `for gate_p in $gate_pids; do wait "$gate_p"; eval "gate_st$gate_i=$?"; gate_i=$((gate_i+1)); done`, "set -e")
+		for j, run := range group {
+			file := fmt.Sprintf(`"$gate_dir"/r_%d_%d`, s, j)
+			parts = append(parts, "echo "+bench.Quote(gateMark+strings.Join(run, " ")), "cat "+file, fmt.Sprintf(`if [ "$gate_st%d" -ne 0 ]; then exit "$gate_st%d"; fi`, j, j))
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 // redRun is the run a red bench gate ended on: the last one its output names, else the

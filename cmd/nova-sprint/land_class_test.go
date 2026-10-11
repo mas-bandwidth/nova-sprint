@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
@@ -105,4 +107,105 @@ func TestTheClassGateReadsGofmtOutputLocallyAndOnTheBench(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The whole-tree analyzer classes are one run of one test binary, not three: the suite
+// is staged (docs/SPEC-SPRINT.md, the base's class suite; the report order is the class
+// order). gateRuns is the suite's stages, and its analyzer run names all three tests.
+func TestGateRunsBatchesTheAnalyzerClasses(t *testing.T) {
+	t.Parallel()
+	stages := gateRuns(true, []string{"internal/ci"}, nil)
+	var analyzer []gateRun
+	for _, st := range stages {
+		for _, r := range st.Runs {
+			cmd := strings.Join(r.Run, " ")
+			if strings.Contains(cmd, "TestStaticcheckFindings") || strings.Contains(cmd, "TestUncheckedErrors") || strings.Contains(cmd, "TestDeadCode") {
+				analyzer = append(analyzer, r)
+			}
+		}
+	}
+	require.Len(t, analyzer, 1, "one analyzer run, not three")
+	cmd := strings.Join(analyzer[0].Run, " ")
+	for _, name := range []string{"TestStaticcheckFindings", "TestUncheckedErrors", "TestDeadCode"} {
+		assert.Contains(t, cmd, name)
+	}
+	assert.Contains(t, cmd, "-run")
+	assert.Contains(t, cmd, "./internal/ci/")
+	require.Len(t, analyzer[0].Classes, 3, "the run reports as all three classes")
+}
+
+// Stage 1 is read-only over one tree, so its classes go side by side. Vet and the
+// functional-tier vet each block until the other starts: a serial gate times out and
+// is red, so this is red before the change.
+func TestTheLocalGateRunsAStageSideBySide(t *testing.T) {
+	t.Parallel()
+	stages := gateRuns(true, []string{"internal/ci", "internal/docs"}, nil)
+	l := &lander{}
+	started := make(chan string, 4)
+	release := make(chan struct{})
+	l.runGate = func(_ context.Context, _ string, run []string) (string, error) {
+		cmd := strings.Join(run, " ")
+		switch {
+		case cmd == "go vet ./...":
+			started <- "vet"
+			select {
+			case <-release:
+			case <-time.After(2 * time.Second):
+				return "", errors.New("the vet waited for a serial gate")
+			}
+		case strings.Contains(cmd, "go vet -tags functional"):
+			started <- "vet-functional"
+			select {
+			case <-release:
+			case <-time.After(2 * time.Second):
+				return "", errors.New("the functional vet waited for a serial gate")
+			}
+		}
+		return "", nil
+	}
+	go func() { <-started; <-started; close(release) }()
+	why := l.runGateStages(context.Background(), t.TempDir(), stages)
+	assert.Empty(t, why, "both vets started, so the stage went side by side")
+}
+
+// Whatever finishes first, the finding is the first red in class order: gofmt runs before
+// the functional-tier vet in the suite (docs/SPEC-SPRINT.md, the report order is the
+// class order).
+func TestTheLocalGateReportsTheFirstRedInClassOrder(t *testing.T) {
+	t.Parallel()
+	stages := gateRuns(true, []string{"internal/ci", "internal/docs"}, nil)
+	l := &lander{}
+	l.runGate = func(_ context.Context, _ string, run []string) (string, error) {
+		cmd := strings.Join(run, " ")
+		switch {
+		case cmd == "gofmt -l .":
+			return "bad.go", errors.New("exit status 1")
+		case strings.Contains(cmd, "go vet -tags functional"):
+			time.Sleep(50 * time.Millisecond)
+			return "later red", errors.New("exit status 1")
+		}
+		return "", nil
+	}
+	why := l.runGateStages(context.Background(), t.TempDir(), stages)
+	assert.Contains(t, why, "gofmt -l .", "gofmt is the earlier class")
+	assert.NotContains(t, why, "vet -tags functional", "the later red is not reported")
+}
+
+// The bench gate runs each stage's runs as background jobs and waits for them (one shell
+// line, gateScript); a red analyzer run is the class its FAIL line names (errcheck for
+// TestUncheckedErrors), read as today (redRun).
+func TestTheBenchGateRunsStagesSideBySide(t *testing.T) {
+	t.Parallel()
+	runs := gateCmds(gateRuns(true, []string{"internal/ci", "internal/docs"}, nil))
+	script := gateScript(runs)
+	assert.Contains(t, script, "2>&1 &", "the stage's runs are background jobs")
+	assert.Contains(t, script, `wait "$gate_p"`, "the stage is waited for")
+	assert.Contains(t, script, "TestStaticcheckFindings", "the merged analyzer run is the script's")
+	assert.NotContains(t, script, "TestStaticcheckFindings$", "not one process per analyzer class")
+
+	merged := runs[4]
+	require.Contains(t, strings.Join(merged, " "), "TestUncheckedErrors")
+	out := gateMark + strings.Join(merged, " ") + "\n--- FAIL: TestUncheckedErrors (0.01s)\nFAIL github.com/mas-bandwidth/nova-sprint/internal/ci\n"
+	red := gateRedRun(runs, out)
+	assert.Equal(t, []string{"go", "test", "-tags", "functional", "-count=1", "-timeout", "600s", "-run", "^TestUncheckedErrors$", "./internal/ci/"}, red)
 }
