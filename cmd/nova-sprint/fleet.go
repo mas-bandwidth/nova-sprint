@@ -24,7 +24,7 @@ The fleet: each member says it is there with nova-sprint fleet beat <member>,
 run on the machine every few seconds; a beat writes the time and the
 machine's load. A beat window is `+sprint.BeatDeadline.String()+`; a member is up until it has missed `+fmt.Sprint(sprint.MissedBeatsDown)+` windows
 in a row (one missed beat marks nothing; a beat resets the count) and down past
-that or when it has never beaten; the tick applies each change
+that or when it has never beaten. A last beat at `+fmt.Sprintf("%.0f", sprint.HeavyLoadPercent)+`% load instead enters a loaded interval at that ordinary down boundary, measured from the beat, and stays up for one more `+sprint.LoadedGrace.String()+`; the stale load cell says "loaded" until then, and the member is down after. The tick applies each change
 (a member down has its unfinished work cards dealt to the members up; a
 member up levels the ready queues). fleet hold <member> --reason <text> (hold
 <member>) holds a member whatever it beats (status held), and fleet down

@@ -170,6 +170,31 @@ func TestASilentMemberGoesDownAndItsCardsAreDealt(t *testing.T) {
 	h.clean("after the member came back")
 }
 
+// A high-load beat enters a bounded loaded interval at the ordinary down edge:
+// the row says loaded and its cards stay put, then the next missed interval downs it.
+func TestAHeavilyLoadedMemberIsNotDownedAtTheOrdinaryProbeEdge(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.setup(4)
+	h.startMachine()
+	h.machine()
+	dealt := h.dealtTo()
+	h.beatAt("m1", 95)
+	h.setLive("m2")
+
+	h.tick(downAfter + time.Second)
+	h.machine()
+	require.Equal(t, dealt, h.dealtTo(), "a loaded member's cards were swept")
+	require.Equal(t, sprint.Up, h.snap().MemberCtl("m1").F("status"), "a loaded member was marked down")
+	require.Contains(t, h.fleetRow("m1")[sprint.Load], "loaded", "the fleet row must say why its beat is stale")
+
+	h.tick(downAfter)
+	h.machine()
+	require.Equal(t, sprint.Down, h.snap().MemberCtl("m1").F("status"), "the loaded interval did not end")
+	require.Zero(t, h.dealtTo()["m1"], "cards stayed on a member after its loaded interval")
+	require.Contains(t, h.memberNotes(sprint.NMemberDown, "m1")[0], "no beat for 1m30s after its loaded interval")
+}
+
 // TestNoMemberUpWithdrawsTheCards: when the last member up falls silent its
 // cards are withdrawn, as fleet down withdraws them.
 func TestNoMemberUpWithdrawsTheCards(t *testing.T) {

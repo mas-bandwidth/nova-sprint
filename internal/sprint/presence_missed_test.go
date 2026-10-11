@@ -32,6 +32,30 @@ func TestThreeMissedBeatsAreDown(t *testing.T) {
 	assert.Equal(t, MissedBeatsDown, b.Missed(edge.Add(time.Second)))
 }
 
+// A heavily loaded member enters loaded at the ordinary down boundary, measured
+// from its last beat, and gets one more missed-beat interval before it is down
+// (docs/SPEC-SPRINT.md section 5; tla/DirtyTick.tla, Lapse).
+func TestAHeavilyLoadedMemberIsLoadedBeforeItGoesDown(t *testing.T) {
+	t.Parallel()
+	b := NextBeat(Beat{}, p0, 95, hostload.HowCPU, hostload.State{})
+	ctl := &Card{Fields: map[string]string{"status": Up}}
+
+	loaded := p0.Add(MissedBeatsDown*BeatDeadline + time.Second)
+	assert.True(t, b.Alive(loaded), "a loaded bench stays available during its loaded interval")
+	assert.True(t, b.Loaded(loaded))
+	assert.Equal(t, Up, FleetRowStatus(ctl, b, loaded))
+	assert.Equal(t, "95.0% loaded", LoadText(b, loaded))
+
+	lastLoaded := p0.Add(2 * MissedBeatsDown * BeatDeadline)
+	assert.True(t, b.Alive(lastLoaded), "the loaded interval ends at its declared boundary")
+	assert.True(t, b.Loaded(lastLoaded))
+	assert.False(t, b.Alive(lastLoaded.Add(time.Second)))
+	assert.Equal(t, Down, FleetRowStatus(ctl, b, lastLoaded.Add(time.Second)))
+	assert.Empty(t, LoadText(b, lastLoaded.Add(time.Second)))
+	belowThreshold := NextBeat(Beat{}, p0, HeavyLoadPercent-0.1, hostload.HowCPU, hostload.State{})
+	assert.False(t, belowThreshold.Alive(loaded), "load below saturation does not extend presence")
+}
+
 // A beat between misses resets the count: two misses, a beat, two more misses
 // is a member that was never down.
 func TestABeatBetweenMissesResetsTheCount(t *testing.T) {
