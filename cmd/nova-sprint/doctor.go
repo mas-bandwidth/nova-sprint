@@ -282,6 +282,7 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 		tools := func(member string) []string {
 			return append(slices.Clone(sprint.MemberTools), sprint.MemberHarnesses(read.Snap, member)...)
 		}
+		probeMirrorRepos = sprint.PendingRepos(read.Snap)
 		in.Probes = o.probeMembers(ctx, members, tools, self)
 	}
 	checks := sprint.Doctor(in)

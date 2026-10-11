@@ -59,6 +59,8 @@ func (a *app) cmdDoctorPreflight(ctx context.Context, c common, binary string, s
 				}
 				return append(slices.Clone(sprint.MemberTools), sprint.MemberHarnesses(snap, member)...)
 			}
+			in.Repos = sprint.PendingRepos(snap)
+			probeMirrorRepos = in.Repos
 			in.Probes = o.probeMembers(ctx, cfg.Machines, tools, self)
 			in.Members = sprint.PreflightMembers(snap, in.Probes)
 		}

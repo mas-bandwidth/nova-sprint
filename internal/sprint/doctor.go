@@ -136,6 +136,10 @@ type MemberProbe struct {
 	Java        string   `json:"java,omitempty"`
 	TLA         string   `json:"tla,omitempty"`
 	SecretNames []string `json:"secret_names,omitempty"`
+	// Mirrors is each repository the preflight's set names (PreflightRepos) by the name a
+	// member names its mirror: where the bench's local mirror is on this host, "" when it
+	// is not found. nil when the probe did not measure mirrors.
+	Mirrors map[string]string `json:"mirrors,omitempty"`
 }
 
 // MemberTools is every program a member's loop runs a card with, which its loop's PATH must
@@ -935,6 +939,23 @@ func DoctorMemberEnv(in DoctorInput) (out []DoctorCheck) {
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorWarn,
 				Evidence: fmt.Sprintf("%d link changes in the last 1h, the last: %s", p.LinkChanges, p.LinkLast),
 				Remedy:   "check " + m + "'s cable and switch port; on the host: journalctl -k --since -1h | grep -iE 'link (is )?(up|down)|carrier'"})
+		}
+		// a repository the sprint's outstanding cards land on with no bench mirror here: a
+		// WARN in member-env (one FAIL per member and repository under doctor --preflight,
+		// docs/SPEC-SPRINT.md, doctor: the preflight); the card that reads the fact is
+		// doctor-preflight-checks-bench-mirrors.
+		var missing []string
+		for repo, where := range p.Mirrors {
+			if where == "" {
+				missing = append(missing, repo)
+			}
+		}
+		if len(missing) > 0 {
+			bad++
+			slices.Sort(missing)
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorWarn,
+				Evidence: "no bench mirror for " + strings.Join(missing, ", ") + ": a card of that repository cannot be staged here",
+				Remedy:   mirrorRemedy(m)})
 		}
 		if bad == 0 {
 			fine++
