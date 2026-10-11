@@ -16,13 +16,14 @@ import (
 )
 
 // The dashboard reads the sprint in this process exactly as where --json --cards prints it, and
-// serves that object as /api/sprint's data.
+// serves the page that object as the live feed reads it, where --json --archived --rows with the
+// feed's folds (sprintdash.PageData): what --cards adds is taken off, exactly.
 func TestDashboardReadsTheSprintAsWhereJSONDoes(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a --members m1,m2")
 	ta.ok("add --stream s1 --count 3")
-	want := ta.ok("where --json --cards")
+	want := string(sprintdash.PageData([]byte(ta.ok("where --json --archived --rows")), ta.a.now()))
 	got, err := ta.a.whereJSON("", false)
 	require.NoError(t, err)
 	assert.JSONEq(t, ta.ok("where --json --cards --rows"), string(got), "the rows place the critical cards (sprintdash.placed)")
@@ -170,8 +171,9 @@ func TestWhereCardsIsWhatThePullRoutesRead(t *testing.T) {
 	assert.Equal(t, "s1-1.w1 s1 working 0s due 2h0m sprint/s1-1.w1.g1.e0", lines[2])
 }
 
-// The dashboard over a store of two releases (stream set --release) shows the current one's
-// streams by default, and another's or every stream when the page asks.
+// The dashboard over a store of two releases (stream set --release): the page shows every
+// stream whatever it asks (the live page has no release switch), and the pull routes'
+// /api/sprint shows the current one's streams by default, another's or every stream when asked.
 func TestTheDashboardOverAStoreOfTwoReleasesShowsOneRelease(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -189,7 +191,23 @@ func TestTheDashboardOverAStoreOfTwoReleasesShowsOneRelease(t *testing.T) {
 	ta.ok("start --actor lead")
 	ta.ok("tick") // the tick counts the critical path into the where record
 
-	srv := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSON("", false) }, Now: ta.a.now, Every: time.Second}
+	page := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSON("", false) }, Now: ta.a.now, Every: time.Second}
+	srv := page.Pull()
+	for _, path := range []string{"/api/sprint", "/api/sprint?release=v1.0.0", "/api/sprint?release=v1.1.0"} {
+		w := httptest.NewRecorder()
+		page.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		var v struct {
+			Data struct {
+				All    int64                      `json:"all"`
+				Tables map[string]json.RawMessage `json:"tables"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &v), path)
+		var work map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(v.Data.Tables["work"], &work), path)
+		assert.Len(t, work, 3, "%s: the page shows every stream", path)
+		assert.Equal(t, int64(12), v.Data.All, "%s: the page counts every stream's cards", path)
+	}
 	critical := func(path string) []string {
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))

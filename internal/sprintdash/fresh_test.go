@@ -27,7 +27,7 @@ func (r *rig) health() (int, string) {
 
 // The freshness check (docs/SPEC-SPRINT-DASHBOARD.md, Serving and publishing): each tick
 // reads, whoever is looking; data older than 2 s for 30 s raises the alarm once (a line
-// on Log, /healthz 503, stale in /api/sprint); the first fresh read clears it, one line.
+// on Log, /healthz 503, stale in the pull routes' /api/sprint); the first fresh read clears it, one line.
 func TestTheFreshnessAlarmIsOlderThanTwoSecondsForThirty(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
@@ -47,14 +47,14 @@ func TestTheFreshnessAlarmIsOlderThanTwoSecondsForThirty(t *testing.T) {
 		r.s.Tick()
 	}
 	assert.NotContains(t, r.log.String(), "ALARM", "older than 2 s for 29 s: no alarm yet")
-	assert.Equal(t, false, r.api()["stale"])
+	assert.Equal(t, false, r.pullAPI()["stale"])
 	r.advance(time.Second)
 	r.s.Tick()
 	assert.Equal(t, 1, strings.Count(r.log.String(), "ALARM stale: the served data is 32s old, older than 2s for 30s"), r.log.String())
 	code, body = r.health()
 	assert.Equal(t, http.StatusServiceUnavailable, code)
 	assert.Contains(t, body, "stale: the served data is older than 2s since 2026-10-02T19:00:05Z")
-	assert.Equal(t, true, r.api()["stale"])
+	assert.Equal(t, true, r.pullAPI()["stale"])
 	for range 10 {
 		r.advance(time.Second)
 		r.s.Tick()
@@ -68,7 +68,7 @@ func TestTheFreshnessAlarmIsOlderThanTwoSecondsForThirty(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(r.log.String(), "FRESH again"), r.log.String())
 	code, _ = r.health()
 	assert.Equal(t, http.StatusOK, code)
-	assert.Equal(t, false, r.api()["stale"])
+	assert.Equal(t, false, r.pullAPI()["stale"])
 }
 
 // Before any good read the data's age runs from the first tick: a dashboard whose sprint
@@ -149,4 +149,16 @@ func TestThePullerServesTheUpstreamsCopy(t *testing.T) {
 	q.s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sprint", nil))
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &v))
 	assert.False(t, v.OK)
+}
+
+// pullAPI is the pull routes' /api/sprint answer, decoded: the one that carries stale (the
+// page's carries the live server's keys alone, pageview.go).
+func (r *rig) pullAPI() map[string]any {
+	r.t.Helper()
+	w := httptest.NewRecorder()
+	r.s.Pull().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sprint", nil))
+	require.Equal(r.t, http.StatusOK, w.Code)
+	var v map[string]any
+	require.NoError(r.t, json.Unmarshal(w.Body.Bytes(), &v))
+	return v
 }

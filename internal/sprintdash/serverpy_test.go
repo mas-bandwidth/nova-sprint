@@ -164,6 +164,11 @@ func TestDashboardServesWhatServerPyServedFromOnePoller(t *testing.T) {
 		t.Parallel()
 		r := newRig(t)
 		for _, path := range rasters {
+			if tile, ok := tileFile[path]; ok {
+				// no --logo: the live page's robot tile, embedded (pageview.go)
+				assert.Equal(t, file(tile), get(r.s, path).Body.Bytes(), "%s: no --logo, the embedded tile", path)
+				continue
+			}
 			assert.Equal(t, http.StatusNotFound, get(r.s, path).Code, "%s: no logo", path)
 		}
 		r.s.Logo = filepath.Join(t.TempDir(), "logo.png")

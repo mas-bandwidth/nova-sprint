@@ -23,6 +23,59 @@ this repository the specification is locked (its lock sections): a line changes 
 with the owner's words, quoted with the date. A copy of nova-tools is its owner's to
 tune the same way.
 
+## The page is the live page (the owner, 2026-10-11)
+
+The owner, 2026-10-11, of the page the Python server serves at `:7390` (dashboard/server.py, its
+files in dashboard/live/, its data from dashboard/bin/ns.sh): "this is what it is." That page is
+the reference, and `nova-sprint dashboard` serves it byte for byte: `page/index.html` and
+`page/app.js` are its files, unchanged, beside its face, the face's licence and its robot tile
+logo at 192 and 384 px (`/logo-tile-192.png`, `/logo-tile-384.png`, the slot and the favicon
+links written as that server writes them, the build number in place of its version). Nothing the
+reference does not draw is drawn: no release picker and no release filter (every stream shows,
+finished ones too), no seat pill, no row, tag, tooltip or figure of the Go page's own.
+
+`/api/sprint` and `/events` on the page's listeners serve the reference server's envelope and no
+other key: `ok`, `data`, `fetchedAt` (the data's own `at`), `dataAgeSeconds`, `attemptAt`, `error`,
+`readSeconds`, `minInterval`, `throughput`, `throughputMinutes`, `build`; a query names nothing.
+`data` is `where --json --archived --rows` as the reference's feed prints it: what `--cards` adds
+for the pull routes (`cards`, `merging`, `judgments`, `holds`, `lanes`) is taken off, no fix
+marks are added, and the feed's three folds are made: each stream's `stream_costs` record is
+merged into its `tables.work` row; each fleet row's `reads_working` and `working` gain the
+`reading` count of its machine's reader rows (`reader-<m>`, `reader-<m>-<n>`; the owner,
+2026-10-11: "Remember that the reason we are in this mess is that you forgot to display the
+orange read cards."), so the orange read cells are lit and the lit cells number the row's
+working figure; and `landed`, `all` and the summary's x/y and ETA are counted over the work cards
+alone, never the sentinels (the owner, 2026-10-11: "sentinel cards should not be counted when we
+are estimating time remaining, or cards per-hour"), the rows and the archived streams' rows of
+the work and merge tables then taken out. `throughput` and
+`throughputMinutes` are counted as the reference server counts them: samples of the page copy's
+`landed` alone, started again when it falls (an archive). A puller serves its upstream's copy and
+throughput as they came, and an upstream that answers any other view is a failed read. The pull listeners' `/api/sprint` keeps its own view (the release switch and
+the fix marks) for the workers that read it. `internal/sprintdash/pageview.go` is this paragraph;
+`TestThePageIsTheLivePage*` hold it.
+
+## The page lock
+
+The owner, 2026-10-11: "don't add things to the dashboard unless I ask for them", and "NEVER
+REMOVE THINGS FROM THE DASHBOARD UNLESS I ASK". The page's files (`internal/sprintdash/page/`) and
+the code that decides what it draws (`internal/sprintdash/pageview.go`) are locked by their digest
+in `internal/sprintdash/pagelock.txt`: a change that adds, removes, hides or filters anything (any
+byte of those files) is red (`TestThePageIsLocked`) until pagelock.txt gains a line with the
+date, the new digest and the owner's exact words asking for that change, and this section gains a
+line of the same date quoting the same words. Each change wants its own ask. The lock only grows:
+CI's "page lock only grows" step (`TestThePageLockOnlyGrows` against the pull request's base) is red
+when an old line of pagelock.txt is rewritten, dropped or moved. The card lint holds
+the same rule before a card is written: `add` and `brief` refuse a card whose PATHS: or NEW:
+reaches the page's files, pageview.go or dashboard.go unless its SOURCE: line quotes the owner
+asking for that visible change, dated (`dashboard-asked-for`, pkg/swarm/dashboardask.go).
+
+- 2026-10-11 the owner, of the page the Python server serves at :7390: "this is what it is."
+- 2026-10-11 the owner: "Remember that the reason we are in this mess is that you forgot to display the orange read cards."
+- 2026-10-11 the owner: "don't add things to the dashboard unless I ask for them"
+- 2026-10-11 the owner: "NEVER REMOVE THINGS FROM THE DASHBOARD UNLESS I ASK"
+- 2026-10-11 the owner: "sentinel cards should not be counted when we are estimating time remaining, or cards per-hour"
+- 2026-10-11 the owner: "Right now they are inflating the ETA"
+
 ## Serving and publishing
 
 `nova-sprint dashboard [--listen <address:port>[,<address:port>...] | none] [--pull <address:port>[,<address:port>...] | none | <url>] [--logo <file>] [--every 1s]`
@@ -48,7 +101,7 @@ is no-store; the page reloads itself when the build number changes (a new binary
 new `--logo` file). A read that fails holds the last good copy, the page says nothing,
 and the dashboard's output takes one line per new failure, and once a minute a line of
 the reads' count, failures and read times. `--logo` names an image file
-served as the logo and the favicon; with none, the slot renders nothing.
+served as the logo and the favicon; with none, the live page's robot tile (The page is the live page).
 `/healthz` answers `ok`.
 
 The reads have one poller: the verb makes the first read before any listener opens, then
@@ -69,7 +122,7 @@ One freshness check: the served data's age is the time since its read (before an
 read, since the dashboard started). Older than 2 s for 30 s raises the alarm: one line
 on the dashboard's output (`ALARM stale: ...`), once an episode; while it stands
 `/healthz` answers 503 with why, on the page's listeners and the pull routes', and
-`/api/sprint` carries `"stale": true`. The first fresh read clears it, with one line
+the pull routes' `/api/sprint` carries `"stale": true` (the page's carries the live server's keys alone). The first fresh read clears it, with one line
 (`FRESH again: ...`).
 
 The public copy is the same verb as a puller: `nova-sprint dashboard --pull <url>`, the
@@ -116,16 +169,14 @@ from the owner edits one line here and nothing else moves.
 - Caching: no-store on everything; versioned asset links; the page reloads itself when the build number changes.
 
 ## Header (one flex row, align-items center)
-- Logo: the image file `--logo` names (the owner's: a robot on the blocks, the sky version), 96 px (120 px from 1200 px wide), the
-  tile's own rounded corners; also the favicon. With no `--logo` the slot and the favicon render nothing.
+- Logo: the robot tile embedded with the page (the owner's: a robot on the blocks, the sky version), 96 px (120 px from 1200 px wide), the
+  tile's own rounded corners; also the favicon. `--logo` names another image file in its place.
 - The word "nova-sprint" in Nunito 800 (lowercase), the page's primary white (never cream), cap height about two
   thirds of the tile, optically centered with the pills.
-- Pills: coordinator <name>, epoch <n>, machine <state>, seat <waiting>; then the Updated clock with its live dot; no theme toggle (dark
+- Pills: coordinator <name>, epoch <n>, machine <state>; then the Updated clock with its live dot; no theme toggle (dark
   only, the owner, 2:21 PM 2026-10-04: "just remove the toggle light/dark. always dark.").
-  The clock never flashes.
-- The seat pill (the owner, 2026-10-10: no silent waits): the judgments waiting on the seat and the oldest's age, "3
-  waiting · oldest 51h", from where --json's seat_waits (the tick's stops record); red while any is past its deadline,
-  its title the count past the deadline and the oldest's id and type. Hidden until the tick has counted them.
+  The clock never flashes. The owner, 2026-10-11, of this line on the live page: "this is what it is." (The page
+  lock above.)
 
 ## Hero row: five tiles, one row at 2000 px, three and two below, two per row below 1100 px, large figure (72 px)
 1. LANDED: n of all; sub-line "<pct>% complete". Narrow: the number alone, sub-line "of <all> · <pct>%".
@@ -144,7 +195,8 @@ from the owner edits one line here and nothing else moves.
   rework is one purple, `--s-fix` (#8b5cf6 on this dark page; #7c3aed on a light one), everywhere a state is
   drawn: the progress bar and its legend carry `fix <n>` between review and merging (in the bar's order,
   landed, merging, fix, review), a Work row's `fix` column, a fleet or friends row's track, and its mark. The
-  view (dashboard.go) marks the copy it serves: a dealt card is at fix when its level is `fix` (the fix
+  page draws where's own fix counts (`fix_working`, a Work row's `fix`; The page is the live page, above). The
+  view (dashboard.go) marks the copy the pull routes serve: a dealt card is at fix when its level is `fix` (the fix
   level, card a-rework-is-priority-fix-bb), or, until where prints that level, when it is an attempt after
   the first (its `attempt`, else its id's `.w<n>`) and not blocker or critical, which keep their red; such a
   card carries `fix: true`; a fleet or friends row's `fix` is its fix cards working (where's `fix_working`
@@ -268,7 +320,7 @@ runs every 1000 ms. Viewer count does not multiply upstream reads.
 The dashboard keeps the last successful snapshot and
 measures its age from the read time. A snapshot older than two seconds for thirty seconds
 raises one stale alarm; the first fresh snapshot clears it. `/healthz` reports stale state,
-`/api/sprint` carries it, and the page does not expose the read's error text.
+the pull routes' `/api/sprint` carries it, and the page does not expose the read's error text.
 
 ### Requested removals (2026-10-08)
 

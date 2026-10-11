@@ -1897,6 +1897,8 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 	for _, f := range cardtree.Lint(brief) {
 		findings = append(findings, swarm.CardHeaderFinding{Check: f.Check, Line: f.Line, Excerpt: f.Excerpt})
 	}
+	// a card that changes the dashboard page quotes the owner asking for it (swarm.LintDashboardAsk)
+	findings = append(findings, swarm.LintDashboardAsk([]byte(brief))...)
 	return "", findings
 }
 

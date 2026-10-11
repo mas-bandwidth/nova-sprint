@@ -18,7 +18,6 @@ package sprintdash
 import (
 	"bytes"
 	"cmp"
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,11 +38,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
-
-// page is the page's files: index.html, app.js, the wordmark's face and its licence.
-//
-//go:embed page/index.html page/app.js page/nunito-800.woff2 page/OFL.txt
-var page embed.FS
 
 const (
 	// Window is how far back the throughput's samples reach.
@@ -87,8 +81,8 @@ type Server struct {
 	Now func() time.Time
 	// Every is the least time between two reads' starts.
 	Every time.Duration
-	// Logo is the image file served as the logo and the favicon; "" is none, and
-	// the page's logo slot renders nothing.
+	// Logo is the image file served as the logo and the favicon; "" is none, and the
+	// page's logo slot is the live page's robot tile, embedded (pageview.go).
 	Logo string
 	// Version is the binary's version, part of the build number.
 	Version string
@@ -111,17 +105,19 @@ type Server struct {
 	// readTimer is a test's read timeout in place of the clock's; nil is the clock.
 	readTimer func(time.Duration) (<-chan time.Time, func())
 
-	mu      sync.Mutex
-	polling bool // Run is the one reader: a request answers from the copy only
-	reading bool
-	began   time.Time // when the last read began; zero before the first
-	snap    snapshot
-	copy    *sprintCopy   // the last good read as the pull routes read it; nil before one
-	gen     uint64        // the good reads so far: an /events client sends each new one
-	changed chan struct{} // closed, and replaced, at each good read
-	samples []sample
-	stats   readStats
-	fresh   freshness
+	mu       sync.Mutex
+	polling  bool // Run is the one reader: a request answers from the copy only
+	reading  bool
+	began    time.Time // when the last read began; zero before the first
+	snap     snapshot
+	page     pageCopy       // the last good read as the page reads it (pageview.go)
+	pageRate pageThroughput // the page's throughput, counted as the live server counts it (pageview.go)
+	copy     *sprintCopy    // the last good read as the pull routes read it; nil before one
+	gen      uint64         // the good reads so far: an /events client sends each new one
+	changed  chan struct{}  // closed, and replaced, at each good read
+	samples  []sample
+	stats    readStats
+	fresh    freshness
 }
 
 // snapshot is /api/sprint's body: the page reads data, throughput,
@@ -161,66 +157,10 @@ type readStats struct {
 	sum, max  time.Duration
 }
 
-// ServeHTTP answers every path the page uses; every answer is no-store.
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h := w.Header()
-	h.Set("Cache-Control", "no-store, max-age=0")
-	h.Set("Pragma", "no-cache")
-	h.Set("Expires", "0")
-	switch r.URL.Path {
-	case "/", "/index.html":
-		s.send(w, "text/html; charset=utf-8", s.index())
-	case "/app.js":
-		s.send(w, "text/javascript; charset=utf-8", file("app.js"))
-	case "/nunito-800.woff2":
-		s.send(w, "font/woff2", file("nunito-800.woff2"))
-	case "/OFL.txt":
-		s.send(w, "text/plain; charset=utf-8", file("OFL.txt"))
-	case "/logo":
-		if body, err := s.logo(); err == nil {
-			s.send(w, logoType(s.Logo, body), body)
-		} else {
-			http.Error(w, "no logo", http.StatusNotFound)
-		}
-	case "/favicon.svg":
-		if vb, inner, ok := s.svgLogo(); ok {
-			s.send(w, "image/svg+xml", []byte(`<svg xmlns="`+svgNS+`" viewBox="`+vb+`" fill="currentColor">`+faviconStyle+inner+`</svg>`))
-		} else {
-			http.Error(w, "no svg logo", http.StatusNotFound)
-		}
-	case "/favicon.png", "/logo-icon.png", "/logo-tile-192.png", "/logo-tile-384.png", "/logo.webp", "/logo.png":
-		// the raster logo's routes a page or a bookmark may still name: each is the --logo file
-		if body, err := s.logo(); err == nil && !isSVG(s.Logo) {
-			s.send(w, logoType(s.Logo, body), body)
-		} else {
-			http.Error(w, "no raster logo", http.StatusNotFound)
-		}
-	case "/api/sprint":
-		s.Refresh()
-		s.send(w, "application/json", s.SnapshotOf(r.URL.Query().Get("release")))
-	case "/events":
-		rel := r.URL.Query().Get("release")
-		s.events(w, r, func(*sprintCopy) ([]byte, bool) { return s.SnapshotOf(rel), true })
-	case "/healthz":
-		s.healthz(w)
-	default:
-		http.Error(w, "not found", http.StatusNotFound)
-	}
-}
-
 func (s *Server) send(w http.ResponseWriter, ctype string, body []byte) {
 	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Content-Length", fmt.Sprint(len(body)))
 	_, _ = w.Write(body) // ignored: a page gone away asks again in a second
-}
-
-// file is an embedded file of the page; every name asked for is embedded.
-func file(name string) []byte {
-	b, err := page.ReadFile("page/" + name)
-	if err != nil {
-		panic("dashboard: " + name + " is not embedded")
-	}
-	return b
 }
 
 // Refresh reads the sprint when Every has passed since the last read began and no
@@ -294,7 +234,13 @@ func (s *Server) timer(d time.Duration) (<-chan time.Time, func()) {
 // read is one read: the sprint, or a puller's upstream with the snapshot it came in.
 func (s *Server) read() ([]byte, *snapshot, error) {
 	if s.From != nil {
-		return s.From.read()
+		body, up, err := s.From.read()
+		if err == nil && up != nil && (up.Release != "" || up.Current != "") {
+			// a pull listener's /api/sprint, or a page from before the page was the live page:
+			// its data carries the release view and the fix marks, which the page never draws
+			return nil, nil, &ReadError{Why: "the upstream dashboard answered a view that is not the page's: --pull names a page's listener of a dashboard that serves the live page"}
+		}
+		return body, up, err
 	}
 	body, err := s.Read()
 	return body, nil, err
@@ -361,6 +307,7 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		s.changed = make(chan struct{})
 		s.snap.OK, s.snap.Error = true, nil
 		s.snap.Data = placed(bytes.TrimSpace(body))
+		s.pageRecord(bytes.TrimSpace(body), up, end)
 		s.snap.FetchedAt, s.snap.Throughput, s.snap.ThroughputMinutes = &at, rate, minutes
 	}
 	s.summarize(end, took, err != nil)
@@ -447,7 +394,7 @@ func (s *Server) SnapshotOf(release string) []byte {
 // pageSum is the build number's part from the embedded files: it changes with the binary.
 var pageSum = func() uint32 {
 	h := crc32.NewIEEE()
-	for _, n := range []string{"index.html", "app.js", "nunito-800.woff2"} {
+	for _, n := range []string{"index.html", "app.js", "nunito-800.woff2", "logo-robot-192.png", "logo-robot-384.png"} {
 		h.Write(file(n))
 	}
 	return h.Sum32()
@@ -516,25 +463,6 @@ func (s *Server) svgLogo() (viewBox, inner string, ok bool) {
 		viewBox = string(v[1])
 	}
 	return htmlpkg.EscapeString(viewBox), string(m[2]), true
-}
-
-// index is the page with its script versioned by the build and the logo slot and
-// favicon filled when a logo is given and readable now: an svg logo is drawn inline in
-// the page's text colour and is the favicon at /favicon.svg; any other image is /logo.
-func (s *Server) index() []byte {
-	build := s.Build()
-	html := strings.Replace(string(file("index.html")), `src="app.js"`, `src="app.js?v=`+build+`"`, 1)
-	slot, icon := "", ""
-	if vb, inner, ok := s.svgLogo(); ok {
-		slot = `<svg id="logo" viewBox="` + vb + `" width="32" height="32" fill="currentColor" aria-hidden="true">` + inner + `</svg>`
-		icon = `<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=` + build + `">`
-	} else if _, err := s.logo(); err == nil {
-		slot = `<img id="logo" class="logo-tile" src="/logo?v=` + build + `" alt="">`
-		icon = `<link rel="icon" href="/logo?v=` + build + `"><link rel="apple-touch-icon" href="/logo?v=` + build + `">`
-	}
-	html = strings.Replace(html, "<!--LOGO-->", slot, 1)
-	html = strings.Replace(html, "<!--FAVICON-->", icon, 1)
-	return []byte(html)
 }
 
 // The fix state (docs/SPEC-SPRINT-DASHBOARD.md, "Fix"; the owner, 2026-10-07 5:58-6:01 PM ET:

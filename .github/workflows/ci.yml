@@ -31,6 +31,19 @@ jobs:
         run: go vet ./...
       - name: test
         run: go test -p 4 ./...
+      - name: page lock only grows
+        # the dashboard page's lock (internal/sprintdash/pagelock.go): every line of the base's
+        # pagelock.txt is kept, so a page change is a new line with the owner's new ask; the base
+        # is the pull request's base, or, for a push, the commit the push moved from
+        # it runs whether or not the test step passed, so a red suite elsewhere never hides it
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000')) }}
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          else
+            git fetch --no-tags --depth=1 origin "${{ github.event.before }}"
+          fi
+          PAGELOCK_BASE=FETCH_HEAD go test -count=1 -run 'TestThePageLockOnlyGrows' ./internal/sprintdash/
 
   # tick-gate is the wall-clock gate the split moved out of nova-tools'
   # certification.yml: the dirty tick drive against a real store, every tick
