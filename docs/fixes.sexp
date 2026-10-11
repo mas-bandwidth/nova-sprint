@@ -1168,12 +1168,15 @@
     says a level event that holds a whole window wakes a run unless it clears first. A look that sees a
     level event cleared forgets the wake (seen is pruned), so a level event cleared and raised again,
     the clear observed, wakes again, matching watchwake.go's pruning of the judgments, the stop and the
-    friends; a clear-and-reappearance between looks is not observed and need not wake. The reversed
-    witness MCCoordinatorWakeBrokenBatchDrops (Broken \"batchdrops\") fires only the first ask of a batch
-    and writes the cursor past the rest, failing NoLapse; the two existing witnesses (nocursor, skip)
-    keep their results. watchwake.go's comments now say bus events, and that a judgment raised and
-    closed inside --judgment-every may never wake. Four cases pass on a bench."
-   :origin "this card, tla-coordinatorwake-batch-and-level-events-2.w5, 2026-10-11: v1.2.12 inventory item T25; drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+    friends; a clear-and-reappearance between looks is not observed and need not wake. Spec now adds
+    WF_vars(Look): held reaches Window only through looks, so a look is fair too, and a level event
+    raised and left raised is eventually a whole window old and due, making LevelSeenWhileItHolds
+    non-vacuous (a run blocked with nothing to wake keeps looking rather than leaving a held level below
+    Window forever). The reversed witness MCCoordinatorWakeBrokenBatchDrops (Broken \"batchdrops\") fires
+    only the first ask of a batch and writes the cursor past the rest, failing NoLapse; the two existing
+    witnesses (nocursor, skip) keep their results. watchwake.go's comments now say bus events, and that a
+    judgment raised and closed inside --judgment-every may never wake. Four cases pass on a bench."
+   :origin "this card, tla-coordinatorwake-batch-and-level-events-2.w6, 2026-10-11: v1.2.12 inventory item T25; drift read at nova-sprint main 00c54ba2e, 2026-10-11")
 
   (fix "tla-serverlanes-control-line-tick-turn" :release "v1.2.12" :status "planned"
    :title "ServerLanes models the control line: batches by ticket and the tick's turn"
