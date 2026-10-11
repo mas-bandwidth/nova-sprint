@@ -1049,6 +1049,19 @@
     names the new test for the machine's. Tests only; no product change."
    :origin "this card; the v1.2.12 inventory card A2 and section 6 (three drain tests red at 04:16Z on 2026-10-11, the probe gate and #84, greened by 2623ab7 with no test of the composition)")
 
+  (fix "tla-land-gate-ring" :release "v1.2.12" :status "planned"
+   :title "The gate bench's hash ring modelled in tla/GateRing.tla"
+   :text "tla/GateRing.tla models the land stage's gate-slot ring: two up benches, the start slot the
+    stream hashes to, the per-pass skip record (SkipAfter), the ring stepped to the next slot on a
+    refusal, the lane always given back, and the local fallback (run here) refused as a remote-bench
+    unavailability whenever another member is configured. It proves AskedAtMostSkipAfter (a host is
+    asked at most SkipAfter times a pass after refusing), NoLocalGoWhenRemote (the gate never runs in
+    the clone while another member is configured), LanesGivenBack, and RefusedStepsToNextSlot (a
+    refused stage steps the gate to the next slot). Two reversed witnesses: noskip (the ring ignores
+    the skip record) and localwhenremote (the fallback runs the gate here even when remote). Models
+    only; no product change."
+   :origin "this card; the v1.2.12 inventory items T31 and section 5 (the land stage's gate-slot ring)")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,

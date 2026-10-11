@@ -342,6 +342,9 @@ MCLandBisectBrokenEach.cfg	MCLandBisect.tla	invariant	ProbesBounded	ignore-termi
 MCLandBisectBrokenFaultBlames.cfg	MCLandBisect.tla	invariant	BlameSound	ignore-terminal	landbisect	required	-
 MCLandBisectBrokenLast.cfg	MCLandBisect.tla	invariant	BlameSound	ignore-terminal	landbisect	required	-
 MCLandBisectBrokenAnyLine.cfg	MCLandBisect.tla	invariant	RefusedOnlyByBench	ignore-terminal	landbisect	required	-
+MCGateRing.cfg	MCGateRing.tla	pass	-	ignore-terminal	gatering	required	-
+MCGateRingBrokenNoskip.cfg	MCGateRing.tla	invariant	AskedAtMostSkipAfter	ignore-terminal	gatering	required	-
+MCGateRingBrokenLocalwhenremote.cfg	MCGateRing.tla	invariant	NoLocalGoWhenRemote	ignore-terminal	gatering	required	-
 MCLatePush.cfg	MCLatePush.tla	pass	-	ignore-terminal	latepush	required	-
 MCLatePushBrokenWipe.cfg	MCLatePush.tla	invariant	OnePushAWindow	ignore-terminal	latepush	required	-
 MCLatePushBrokenForget.cfg	MCLatePush.tla	invariant	OnePushAWindow	ignore-terminal	latepush	required	-

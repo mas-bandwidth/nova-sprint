@@ -243,7 +243,7 @@ func tailLines(s string) string {
 const SkipAfter = 2
 
 // StageSkips is one land pass's record of the benches whose stage failed. Safe for the
-// pass's streams at once.
+// pass's streams at once. tla/GateRing.tla fails, Skipped, AskedAtMostSkipAfter.
 type StageSkips struct {
 	mu    sync.Mutex
 	fails map[string]int
