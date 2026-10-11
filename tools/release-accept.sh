@@ -85,6 +85,12 @@ passed=$(grep -E '^--- PASS: Test' "$work/out" | awk '{print $3}' | sort -u | wc
 failed=$(grep -cE '^--- FAIL: Test' "$work/out" || true)
 missing=$(printf '%s\n' $NAMES | sed '/^$/d' | sort -u | while read -r n; do grep -qE "^--- (PASS|FAIL): $n " "$work/out" || echo "$n"; done)
 
+# the owner's bound: under one minute ideally, two at most; over it is the gate's failure
+BOUND=120
+if [ "$wall" -gt "$BOUND" ]; then
+	echo "RELEASE ACCEPT FAILED wall=${wall}s is over the ${BOUND}s bound (passed=$passed of $want)"
+	exit 1
+fi
 if [ "$status" -ne 0 ] || [ "$passed" -ne "$want" ]; then
 	[ -n "$missing" ] && printf 'RELEASE ACCEPT MISSING %s\n' $missing
 	# each failure with what it said: the --- FAIL line and its indented lines after it

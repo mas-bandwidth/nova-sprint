@@ -213,11 +213,11 @@ owner, 2026-10-11: "I don't have time to wait 10 minutes for long checks each ti
 test a new point release."). Each check the watch looked for is a test that pins the
 behaviour, each on its own store (a fresh redis-server on a port of its own, or the in-memory
 twin) and run in parallel; the set runs in under a minute on a bench and fails at two
-(`-timeout 2m`). `tools/release-accept.sh` holds the list of names; every name must run and
+(`-timeout 2m`, and the script fails a run whose wall time is over 120 s). `tools/release-accept.sh` holds the list of names; every name must run and
 pass, so a test renamed or deleted fails the gate by its count instead of leaving the set.
 `NOVA_SPRINT_BIN=<path>` names the build the canary runs (the release's binary); unset, the
 tree's own is built once. It needs `redis-server` on PATH and fails, never skips, without one
-(`NOVA_CI=1`). Measured on hetzner2 (32 cores), 2026-10-11, three runs: 15 s, 7 s and 10 s of
+(`NOVA_CI=1`). Measured on hetzner2 (32 cores), 2026-10-11, three runs: 10.5 s, 4.7 s and 4.8 s of
 wall time, the binary's build included; 40 of 40 passed each time.
 
 | check | tests |
@@ -229,8 +229,8 @@ wall time, the binary's build included; 40 of 40 passed each time.
 | 5. done (#94): a row's done is its completions (work and fix cards that reached ok, reads with a verdict) | `TestADoneIsEveryCardTheRowCompleted`, `TestDoneCountsEveryKindOfCardFromTheLinesThatCompleteIt` |
 | 6. idle alarm (#102, #106): once an episode, reads are not work | `TestTheIdleAlarmIsRaisedOnceAnEpisodeNeverOncePerTick`, `TestTickIdleAlarmsOnceAnEpisodeAndClears`, `TestTheIdleAlarmNamesTheRootsOnceAnEpisode`, `TestTickIdleAlarmTellsTheCoordinatorWhy`, `TestTheFleetAlarmIgnoresReadsCrossingTheThreshold`, `TestTheIdleFleetCountsWorkNotReads` |
 | 7. lifecycle (#103): every move lawful; no need cycle through needs set, sentinel set, relink or a brief batch | `TestLifecycleIsTheSpecTable`, `TestLawfulRefusesAMoveOutsideTheLifecycle`, `TestTheEngineHoldsEveryPlanToTheLifecycle`, `TestNeedsSetRefusesAnEditThatClosesACycle`, `TestNeedsSetSeesAWorkingCardsNeeds`, `TestSentinelSetSeesAWorkingCardsNeeds`, `TestRelinkSeesAWorkingCardsNeeds`, `TestABriefBatchCannotCloseACycleBetweenItsCards`, `TestAddRefusesACycle` |
-| 8. progress: a cleared sprint on its defaults deals, works, reads, accepts and lands with no seat action | `TestReleaseAcceptAClearedSprintLandsWithNoSeatAction` |
-| 9. canary: one member, on the release's binary, takes one card and finishes it ok | `TestReleaseAcceptCanaryOneMemberFinishesOneCardOnTheBuild` |
+| 8. progress: a cleared sprint deals, works, reads, accepts and lands with no seat action after start. The readers are re-added after the clear because of a known defect (the clear blanks them); the card a-cleared-sprint-keeps-its-readers owes the fix, and when it lands the re-add goes and the test proves the defaults too | `TestReleaseAcceptAClearedSprintLandsWithNoSeatAction` |
+| 9. canary: on the release's binary, init, the member's beat, the ticks, and one member's take and finish ok of one card (the binary refuses a store whose function library is not its own) | `TestReleaseAcceptCanaryOneMemberFinishesOneCardOnTheBuild` |
 
 After the gate a release may still run a live canary of one card on one member of the
 adopted fleet; there is no timed watch.

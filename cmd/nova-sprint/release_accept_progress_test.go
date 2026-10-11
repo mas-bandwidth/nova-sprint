@@ -12,17 +12,22 @@ import (
 )
 
 // TestReleaseAcceptAClearedSprintLandsWithNoSeatAction is the progress check of the release
-// acceptance set (docs/TESTS.md, "Release acceptance"): "defaults are the working machine"
-// and "automatic progress is a build gate". A sprint is cleared, so every setting is the
-// default; its cards are added and the machine started; from then on no seat verb runs.
-// The machine's tick deals, asks and accepts, the members take and finish, the readers read,
-// and the machine's land pass lands every card on origin.
+// acceptance set (docs/TESTS.md, "Release acceptance"): "automatic progress is a build gate".
+// A sprint is cleared, its cards are added and the machine started; from then on no seat verb
+// runs. The machine's tick deals, asks and accepts, the members take and finish, the readers
+// read, and the machine's land pass lands every card on origin.
+//
+// It does not yet prove "defaults are the working machine": a clear leaves the new epoch's
+// readers table blank (a known defect), so finished cards would sit in review with every
+// tick idle and nothing said. The test re-adds the readers after the clear because of that
+// defect. The card that owes the fix is a-cleared-sprint-keeps-its-readers (sprint stream
+// v1214); when it lands, the two reader add lines go and this test proves the defaults.
 func TestReleaseAcceptAClearedSprintLandsWithNoSeatAction(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
 	r.ok("clear --confirm sprint")
-	// a clear leaves the new epoch's readers table blank (the members are carried): the
-	// re-add is the seat's setup, before the start, as after any clear
+	// a known defect, owed by a-cleared-sprint-keeps-its-readers: the clear blanks the
+	// readers, so they are re-added here; remove these two lines when that card lands
 	r.ok("reader add reader-a")
 	r.ok("reader add reader-b")
 	r.ok("add --stream s1 --count 2")

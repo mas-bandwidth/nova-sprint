@@ -2326,15 +2326,19 @@
     watch of the server after server switch --rollback --window 30m, and a hand canary. Each check the
     watch looked for is now a test, each on its own store and in parallel, and make release-accept
     (tools/release-accept.sh) runs exactly that set against a given build (NOVA_SPRINT_BIN, the canary's
-    binary; unset, the tree's is built), with NOVA_CI=1 so a missing redis-server fails, and go test's
-    -timeout 2m as the bound. The script names every test; a name that does not run and pass fails the
+    binary; unset, the tree's is built), with NOVA_CI=1 so a missing redis-server fails, go test's
+    -timeout 2m, and a run whose wall time is over 120 s failed by the script. The script names every test; a name that does not run and pass fails the
     gate by its count. New tests: TestReleaseAcceptTicksOfABusySprintNeverFail (40 ticks of a busy sprint
     on a real store with the world played between them, every tick exit 0, no panic, no REFUSED drain,
     check clean after), TestReleaseAcceptNeedsHoldACardOffTheDealOnTheStore (a dealt card whose need is
     named goes working -> waiting and is never taken), TestReleaseAcceptCanaryOneMemberFinishesOneCardOnTheBuild
-    (one member on the release's binary takes and finishes one card ok on a real store),
-    TestReleaseAcceptAClearedSprintLandsWithNoSeatAction (after a clear, on its defaults, the tick, the
-    members, the readers and the land pass land every card with no seat verb after start) and
+    (on the release's binary: init, the member's beat, the ticks, and one member's take and
+    finish ok of one card on a real store),
+    TestReleaseAcceptAClearedSprintLandsWithNoSeatAction (after a clear the tick, the members, the
+    readers and the land pass land every card with no seat verb after start; the readers are re-added
+    after the clear because of a known defect, the clear blanking them, which the card
+    a-cleared-sprint-keeps-its-readers owes; when it lands the re-add goes and the test proves the
+    defaults) and
     TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain (after the switch the hook-gate refusals roll
     nothing back and the next pass with the seat hooked lands the queued card on the new build). The
     switch rig names its own coordinator (newLandRigAs), so the hook-gate tests run in parallel. The
