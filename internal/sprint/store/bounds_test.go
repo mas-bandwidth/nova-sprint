@@ -146,12 +146,12 @@ func TestAFirstManifestRefusedOnABoundIsNotRetried(t *testing.T) {
 	require.NoError(t, err, "a first manifest refused on a bound: %+v %v; %d sends", res, err, r.calls)
 	require.Empty(t, res.Moved, "a first manifest refused on a bound: %+v %v; %d sends", res, err, r.calls)
 	require.Len(t, res.Refused, 2, "a first manifest refused on a bound: %+v %v; %d sends", res, err, r.calls)
-	require.Equal(t, 1, r.calls, "a first manifest refused on a bound: %+v %v; %d sends", res, err, r.calls)
-	why := res.Refused[0].Why
-	require.Contains(t, why, "changed entries: bound 1", "the refusal: %s", why)
-	require.NotContains(t, why, "kept changing", "the refusal: %s", why)
-	h.nothingWritten(before)
-}
+		require.Equal(t, 1, r.calls, "a first manifest refused on a bound: %+v %v; %d sends", res, err, r.calls)
+		why := res.Refused[0].Why
+		require.Contains(t, why, "changed entries: bound 1", "the refusal: %s", why)
+		require.NotContains(t, why, "kept changing", "the refusal: %s", why)
+		h.nothingWritten(before)
+	}
 
 // pendingOp puts an operation in the fence as a writer cut after acquiring
 // it would leave it.

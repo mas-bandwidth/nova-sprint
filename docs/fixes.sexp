@@ -437,6 +437,12 @@
      file. Use a unique temporary path per writer."
     :origin "issue #5160")
 
+   (fix "brief-file-over-the-bound-is-refused" :release "v1.2.11" :status "planned"
+    :title "Brief over bound refused at step on RUNNING machine"
+    :text "A brief over 16 KiB was queued and refused on drain, stalling the fleet. Now bound is checked
+     at step for both add/brief --dir and brief <id> --brief-file/--brief."
+    :origin "epoch 16 stall")
+
    (fix "seat-judgment-repush" :release "v1.2.9" :status "planned"
     :title "Judgments waiting on the seat are re-pushed each look"
     :text "The seat push loop was only pushing judgments once because it cached the 'seen' file list

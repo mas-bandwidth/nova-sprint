@@ -162,12 +162,37 @@ func TestAFileOverTheReadCapIsRefusedWithItsTrueSize(t *testing.T) {
 	require.Contains(t, errs, fmt.Sprintf("the file is %d bytes, over the %d bytes", store.MaxCardTextBytes+1, store.MaxCardTextBytes))
 }
 
-// bare is one command line with no beat before it, for a test that has set a fault in the
+// brief is one command line with no beat before it, for a test that has set a fault in the
 // store the beat would meet.
 func (ta *testApp) bare(line string) (int, string, string) {
 	var out, errb bytes.Buffer
 	code := ta.a.run(ta.withEpoch(split(line)), &out, &errb)
 	return code, out.String(), errb.String()
+}
+
+// A brief over the bound is refused at the CLI, exit 2, nothing written.
+func TestBriefFileOverTheBoundIsRefused(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("add --stream s1 --count 1 --one")
+	ta.deal(1)
+	ta.ok("take --as m1 s1-1.w1@1")
+	ta.ok("finish --as m1 s1-1.w1@1 --report done")
+	// card back in review for brief
+	ta.ok("drop s1-1 --reason drop")
+	ta.ok("add --stream s2 --count 1 --one")
+	ta.deal(1)
+	// brief <id> --brief-file over the bound (16385 bytes)
+	code, out, errs := ta.do("brief s2-1 --brief-file " + briefOfSize(t, store.MaxBriefBytes+1))
+	require.NotZero(t, code, "brief --brief-file over bound: out %q err %q", out, errs)
+	for _, want := range []string{
+		fmt.Sprintf("the brief is %d bytes, over the bound of %d bytes a brief may be", store.MaxBriefBytes+1, store.MaxBriefBytes),
+		"a brief is a child's whole brief",
+		"shorten it",
+	} {
+		require.Contains(t, errs, want, "err %q", errs)
+	}
 }
 
 // requireFailExit holds the one rule: a line `<token> FAILED` on the output is an exit that

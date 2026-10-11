@@ -116,6 +116,7 @@ Cut from main between sprint releases: no deal to a draining member, the dashboa
 Small bug fixes, one concern each, and no model change. They run as cards on v1.2.10 once it is adopted, so the sprint dogfoods the release it just cut.
 
 - **Inbox push cannot overwrite a published judgment** (planned). Two overlapping clients share one temporary path, so a second write can change the published file. Use a unique temporary path per writer. From: issue #5160.
+- **Brief over bound refused at step on RUNNING machine** (planned). A brief over 16 KiB was queued and refused on drain, stalling the fleet. Now bound is checked at step for both add/brief --dir and brief <id> --brief-file/--brief. From: epoch 16 stall.
 - **Rested routes must not overflow the fleet table property cap** (planned). Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the tick writes nothing. Use one property for all. From: issue #5210.
 - **A stats tidy succeeds over a fleet of more than 64 rows** (planned). Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a property bound. From: card from the sprint store (2026-10-10).
 - **The worklang parser keeps the done field of a unit** (planned). Unit done reads a field the parser never keeps, so a done unit is never counted. The key is added and sibling skipped keys are checked, with a test. From: issue #3499.

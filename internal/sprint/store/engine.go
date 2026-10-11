@@ -741,6 +741,9 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			op.Stuck = stuck.Op
 		}
 		op.Queue = queued
+		if why := unwritableQueued(queued); why != "" {
+			return refuseWhole(res, plan, why)
+		}
 		op.Log = append(op.Log, queuedLines(queued, snap, op.ID)...)
 		if step.Drain {
 			op.Drain = len(snap.Queue)
@@ -1201,6 +1204,26 @@ func unwritable(plan sprint.Plan, op OpRecord) string {
 	for _, man := range op.Manifests {
 		if why := invalid(man); why != "" {
 			return why
+		}
+	}
+	return ""
+}
+
+// unwritableQueued is why a step's queued changes cannot be logged, before
+// queuedLines writes them: a card text field over its bound. "" when it can.
+func unwritableQueued(queued []sprint.QueuedChange) string {
+	for _, q := range queued {
+		if q.Entry == nil {
+			continue
+		}
+		for _, f := range CardTextFields {
+			if v, ok := q.Entry.Set[f]; ok && len(v) > TextBound(f) {
+				why := "shorten it, or point to a file or a comment"
+				if f == "brief" {
+					why = fmt.Sprintf("a brief is a child's whole brief, up to %d KiB, and the card lint advises at most %d bytes; %s", MaxBriefBytes>>10, cardlimits.BriefAdvisoryBytes, why)
+				}
+				return fmt.Sprintf("card %s: field %s is %d bytes, over the bound of %d bytes; %s", q.Entry.ID, f, len(v), TextBound(f), why)
+			}
 		}
 	}
 	return ""
