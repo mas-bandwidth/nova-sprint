@@ -378,6 +378,21 @@
      its RULES paragraph that contradicts its carried rules is a finding under any rule set."
     :origin "this pull request")
 
+   (fix "restore-tests-owed-from-split" :release "v1.2.6" :status "shipped"
+    :title "Restore the tests the repository split moved out of nova-tools"
+    :text "Four of the five doc-pin tests moved out of nova-tools restored in nova-sprint, each wired to the
+     behavior it pins: the coordinator rules (cmd/nova-sprint/handover_rules_test.go,
+     TestEveryCoordinatorRuleNamesVerbsThatExist, holds each rule of docs/SPRINT-COORDINATOR.md section 10
+     to nova-sprint's verb table and the verbs of the tools the runbook names), the processor doc
+     (cmd/nova-sprint/processor_doc_test.go, pinned to docs/PROCESSOR.md's mapping rows), the coordinator
+     tools register (cmd/nova-sprint/coordinator_tools_test.go,
+     TestEveryCoordinatorToolMapsToARealNovaVerb and TestEveryCoordinatorStopgapNamesTheVerbThatReplacesIt,
+     pinned to docs/COORDINATOR-TOOLS.md's table), and the handover now prints every rule by number
+     (cmd/nova-sprint/handover_rules.go, wired in seat.go, so TestHandoverPrintsEachRuleByNumber exercises
+     the real path). The seat play test, the member and contract functional tests, the eight contract cases
+     that build nova-sprint and the tick wall-clock gate CI job are split to cards and still owed."
+    :origin "repository split cold reads (nova-tools PR #5571 and PR #5591)")
+
    (fix "swarm-lint-card-false-refusals" :release "v1.2.9" :status "planned"
     :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
     :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
