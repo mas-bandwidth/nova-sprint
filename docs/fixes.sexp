@@ -495,6 +495,19 @@
     one writer; a write that fails keeps the earlier bound (the safe side) and says so on the
     server's line. Test: TestARechallengeKeepsTheHookLiveUntilItsOwnBound."
    :origin "v1.2.12 inventory 2026-10-11, section 9 row D6; code read at nova-sprint main 00c54ba")
+  (fix "doctor-preflight-checks-bench-mirrors" :release "v1.2.14" :status "planned"
+   :title "doctor --preflight refuses a bench with no mirror for a repository the cards land on"
+   :text "The gate had no row for a repository a bench cannot stage. The set is PendingRepos: the
+    distinct repositories of the sprint's not-yet-landed work cards and the streams' recorded
+    repositories, as the name a member names its mirror (the last path segment without .git or
+    -mirror, pkg/swarm FindBenchMirror's repoName). Each member's probe now prints one
+    'mirror <name> <path|->' line per repository from the same candidates FindBenchMirror tries, in
+    its order, and parseProbe reads them into MemberProbe.Mirrors. Under doctor --preflight every
+    member and repository with no mirror is one FAIL (area preflight, check mirrors, subject
+    <member>/<repo>, remedy the fleet play that makes the mirror), so the switch is refused; without
+    --preflight the same fact is one WARN per member in member-env. docs/SPEC-SPRINT.md (doctor)
+    states the row."
+   :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 20; on 2026-10-11 the coordinator's own machine refused nova-sprint cards with \"no bench mirror for <repo>\"")
   (fix "brief-check-runs-the-add-checks-without-a-write" :release "v1.2.14" :status "planned"
    :title "brief check runs every add check without a write"
    :text "An add's refusals arrived one class at a time, so a brief writer learned of the next only after

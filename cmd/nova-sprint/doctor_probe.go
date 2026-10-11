@@ -151,7 +151,7 @@ func versionWord(line string) string {
 // ahead of it as native puts it on a card's PATH (pkg/swarm BenchPath), each tool found on it, its
 // home's free space, its push credential probe, its secrets seat checked, and its nova-sprint
 // version. It prints one "key value" line each and no secret.
-func probeScript(member, seat string, tools []string) string {
+func probeScript(member, seat string, tools []string, mirrors ...string) string {
 	loop := "member-" + member
 	var b strings.Builder
 	fmt.Fprintf(&b, "L=%s; P=\n", bench.Quote(loop))
@@ -164,6 +164,13 @@ func probeScript(member, seat string, tools []string) string {
 	b.WriteString(`[ -n "$G" ] && P="$(dirname "$G"):$P"; [ -d "$HOME/sdk/bin" ] && P="$HOME/sdk/bin:$P"` + "\n")
 	b.WriteString(`echo "os $(uname -s)"; echo "pathfrom $F"` + "\n")
 	fmt.Fprintf(&b, "for t in %s; do w=$(PATH=\"$P\" command -v \"$t\" 2>/dev/null); echo \"tool $t ${w:--}\"; done\n", quotedWords(tools))
+	// the bench's local mirror of each repository the sprint's outstanding cards land on
+	// (PendingRepos): the same candidates pkg/swarm FindBenchMirror tries, in its order --
+	// the name itself when it is a git directory, $HOME/nova-bench/mirror/<name>.git and
+	// <name>, then the two /tmp names -- so a stage on this host finds what this said
+	if len(mirrors) > 0 {
+		fmt.Fprintf(&b, "for n in %s; do m=-; for c in \"$n\" \"$HOME/nova-bench/mirror/$n.git\" \"$HOME/nova-bench/mirror/$n\" \"/tmp/$n-mirror.git\" \"/tmp/$n.git\"; do { [ -e \"$c/HEAD\" ] || [ -e \"$c/.git\" ]; } && { m=$c; break; }; done; echo \"mirror $n $m\"; done\n", quotedWords(mirrors))
+	}
 	// the gates' toolchain and the pinned harness live beside PATH: found there, they are said where
 	b.WriteString(`if ! PATH="$P" command -v go >/dev/null 2>&1; then w=$(ls -d "$HOME"/sdk/go*/bin/go /usr/local/go/bin/go 2>/dev/null | tail -1); [ -n "$w" ] && echo "near go $w"; fi` + "\n")
 	b.WriteString(`if ! PATH="$P" command -v opencode >/dev/null 2>&1; then w=$(ls -d "$HOME"/nova-bench/harness-*/opencode 2>/dev/null | tail -1); [ -n "$w" ] && echo "tool opencode $w"; fi` + "\n")
@@ -205,6 +212,7 @@ func quotedWords(ws []string) string {
 // parseProbe reads a probe's lines into what it found.
 func parseProbe(p *sprint.MemberProbe, out []byte) {
 	p.Tools, p.Near, p.FreeKB = map[string]string{}, map[string]string{}, -1
+	p.Mirrors = map[string]string{}
 	p.LinkChanges = -1
 	sc := bufio.NewScanner(bytes.NewReader(out))
 	for sc.Scan() {
@@ -230,6 +238,12 @@ func parseProbe(p *sprint.MemberProbe, out []byte) {
 			} else if _, seen := p.Tools[name]; !seen {
 				p.Tools[name] = ""
 			}
+		case "mirror":
+			name, where, _ := strings.Cut(val, " ")
+			if where == "-" {
+				where = ""
+			}
+			p.Mirrors[name] = where
 		case "near":
 			name, where, _ := strings.Cut(val, " ")
 			p.Near[name] = where
@@ -271,6 +285,12 @@ func probeClip(s string, n int) string {
 	return s
 }
 
+// probeMirrorRepos is the repositories each member's probe holds against a local bench
+// mirror: the sprint's not-yet-landed cards' repositories (sprint.PendingRepos), set by
+// the verb that read them before it probes (doctor and doctor --preflight); nil leaves
+// the mirror lines out, and a probe that did not measure mirrors judges none.
+var probeMirrorRepos []string
+
 // probeMembersReal probes each member's host at once, over ssh as the fleet reaches it (its
 // machine row's login), or the local shell on this host, inside doctorProbeBudget.
 func (a *app) probeMembersReal(ctx context.Context, machines []sprint.DoctorMachine, tools func(member string) []string, self string) map[string]sprint.MemberProbe {
@@ -288,7 +308,7 @@ func (a *app) probeMembersReal(ctx context.Context, machines []sprint.DoctorMach
 				host = m.User + "@" + m.Name
 			}
 			p := sprint.MemberProbe{Member: m.Name, Host: host, FreeKB: -1, LinkChanges: -1}
-			script := probeScript(m.Name, m.Seat, tools(m.Name))
+			script := probeScript(m.Name, m.Seat, tools(m.Name), probeMirrorRepos...)
 			var stdout, stderr bytes.Buffer
 			var err error
 			code := 0
