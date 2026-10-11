@@ -2287,4 +2287,21 @@
     the merged data. One id both sides change differently is refused naming it, and a code conflict is
     refused as before. tla/LandLedgers.tla holds CodeConflictNeverLands with three reversed
     witnesses."
-   :origin "hand-landed by a child of the seat, 2026-10-11, from the live land log's refusals")))
+   :origin "hand-landed by a child of the seat, 2026-10-11, from the live land log's refusals")
+  (fix "a-brief-edit-keeps-the-cards-needs-tier-and-bound" :release "v1.2.14" :status "planned"
+   :title "A brief edit keeps the needs, tier and bound a verb set"
+   :text "A brief edit replaces the card's whole text, but the text dumped from the card is the
+    admission-time text: its DEPENDS-ON and line 1 tier are the ones the card was admitted with, not
+    the ones a verb set since, so an edit silently rewrote them. Three rules keep them, and a brief
+    NOTE names every property it kept against the text. The needs are the card's, not the text's: the
+    edit starts from the card's needs, maps a name its relink record re-pointed to its twin (the
+    relink record wins over the text's stale DEPENDS-ON, NOTEd `needs kept: <twin> (relinked from
+    <old> <time>)`), and adds only names the text holds that the card does not; a need the text drops
+    stays, unless `--needs-from-brief` takes the text whole. The tier is a card field (`tier`): a text
+    whose line 1 names another tier than the card's recorded one keeps the recorded one, NOTEd, unless
+    `--tier <t>` names one, and `nova-sprint tier <card> --set <t> --reason` sets it without a text
+    edit (refusing a TLA path at a tier below frontier as the lint does). The bound hashes the task,
+    not the text (the body and PATHS, NEW, SHARED, TEST and DONE-WHEN): an edit that changes only
+    DEPENDS-ON, ORDER, TLC-HOSTS, MERGE, TOOLCHAIN-HOSTS or the tier keeps the count (`bound: same
+    task (<n> attempts stand)`) and a new task resets it (`bound: new task (count reset)`)."
+   :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")))
