@@ -285,6 +285,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 				verb = argv[0]
 			}
 			out.Results[i] = sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s: %s; nothing was changed\n", prog, oneline.Escape(verb), oneline.Escape(why))}
+			a.logRefused(verb, refusedWorker("", argv), 2, refusedCard(argv), out.Results[i].Stderr)
 			continue
 		}
 		switch lane {
@@ -292,13 +293,16 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			beats++
 			if isBudget(argv) {
 				out.Results[i] = lanes.budget(ctx, argv, args)
+				a.logRefused(refusedVerb(argv), refusedWorker(as, argv), out.Results[i].Code, refusedCard(argv), out.Results[i].Stderr)
 				continue
 			}
 			out.Results[i] = lanes.friendBeat(ctx, a, argv, args[words:])
+			a.logRefused(refusedVerb(argv), refusedWorker(as, argv), out.Results[i].Code, refusedCard(argv), out.Results[i].Stderr)
 			continue
 		case "read":
 			reads++
 			out.Results[i] = lanes.readVerbRun(ctx, args)
+			a.logRefused(refusedVerb(argv), refusedWorker(as, argv), out.Results[i].Code, refusedCard(argv), out.Results[i].Stderr)
 			continue
 		}
 		if !held {
@@ -316,6 +320,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		var stdout, stderr bytes.Buffer
 		code := a.run(args, &stdout, &stderr)
 		out.Results[i] = sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String()}
+		a.logRefused(refusedVerb(argv), as, code, refusedCard(argv), stderr.String())
 		if code == 0 && len(argv) > 0 && argv[0] == "queue" && as != "" {
 			if st, err := a.store(common{redis: a.serveAddr, actor: as}); err == nil && st != nil {
 				// ignored: a best-effort lease renewal on reader beat; next beat will renew
@@ -330,6 +335,117 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		}
 	}
 	return out
+}
+
+// refusedLogBytes is the ceiling on the verb's own first stderr line in a SERVE REFUSED
+// line: enough for a refusal sentence, short enough that one runaway value cannot be the
+// whole of the reader's context (oneline.Cap).
+const refusedLogBytes = 300
+
+// refusedVerb is the verb word a refused verb is named by: the first word of its argv.
+func refusedVerb(argv []string) string {
+	if len(argv) == 0 {
+		return ""
+	}
+	return argv[0]
+}
+
+// refusedWorker is the worker a refused verb names: as workerVerb read it, or the --as word
+// itself for a verb the server did not run far enough to read it; "" when it names none.
+func refusedWorker(as string, argv []string) string {
+	if as != "" {
+		return as
+	}
+	for i, w := range argv {
+		if w == "--as" && i+1 < len(argv) {
+			return argv[i+1]
+		}
+		if v, ok := strings.CutPrefix(w, "--as="); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+// refusedCard is the card argument a refused verb names, "" when it names none: the first
+// word shaped <id>@<gen> (never a flag's value, which starts with a dash).
+func refusedCard(argv []string) string {
+	for _, w := range argv {
+		if strings.HasPrefix(w, "-") {
+			continue
+		}
+		if id, gen, ok := strings.Cut(w, "@"); ok && gen != "" && sprint.ValidCardID(id) {
+			return w
+		}
+	}
+	return ""
+}
+
+// firstRefusalLine is the first line of a refused verb's own stderr, one line and cut to
+// refusedLogBytes, marked when it was cut: the verb's own words, never a summary.
+func firstRefusalLine(stderr string) string {
+	s := strings.TrimRight(stderr, "\n")
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	return oneline.Escape(oneline.Cap(strings.TrimSpace(s), refusedLogBytes))
+}
+
+// refusedLine is a SERVE REFUSED line's text before the repeat suffix: the verb word, the
+// worker, the exit, the card when the verb names one, and the verb's own first stderr line.
+func refusedLine(verb, as string, code int, card, first string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "SERVE REFUSED verb=%s as=%s exit=%d",
+		oneline.Field(orDashStr(verb, "-")), oneline.Field(orDashStr(as, "-")), code)
+	if card != "" {
+		fmt.Fprintf(&b, " card=%s", oneline.Field(card))
+	}
+	if first != "" {
+		fmt.Fprintf(&b, ": %s", first)
+	}
+	return b.String()
+}
+
+// logRefused records a verb the server answered with a non-zero code on the server's own
+// log: one line naming the verb, the worker, the exit and the card when the verb names one,
+// with the verb's own first stderr line. The record is rate bounded: the same verb, worker,
+// exit and first line repeated within ServeSayEvery is written once, and when it changes the
+// line that follows says how many repeats it stood for, so 40 minutes of refused finishes
+// from ten members is a few hundred lines and never one per verb. It carries the verb word,
+// the worker, the exit, the card argument and stderr's first line only: never the verb's
+// whole argv (a brief, a report) or its stdout. It is the record the v1.2.10 outage lacked
+// (docs/SPEC-SPRINT.md section 14, The server).
+func (a *app) logRefused(verb, as string, code int, card, stderr string) {
+	if code == 0 || a.serveLog == nil {
+		return
+	}
+	text := refusedLine(verb, as, code, card, firstRefusalLine(stderr))
+	now := a.now()
+	t := &a.served
+	t.mu.Lock()
+	if t.refused == nil {
+		t.refused = map[string]int{}
+	}
+	t.refused[verb]++
+	var said []string
+	switch {
+	case text == t.refuseText && now.Sub(t.refuseSince) < ServeSayEvery:
+		t.refuseRepeat++
+	case t.refuseRepeat > 0:
+		said = append(said, fmt.Sprintf("%s (repeated %d times since %s)", t.refuseText, t.refuseRepeat, t.refuseSince.Format("15:04:05")))
+		t.refuseRepeat, t.refuseSince = 0, now
+		if text != t.refuseText {
+			said = append(said, text)
+			t.refuseText = text
+		}
+	default:
+		said = append(said, text)
+		t.refuseText, t.refuseSince = text, now
+	}
+	t.mu.Unlock()
+	for _, line := range said {
+		a.serveSay("%s", line)
+	}
 }
 
 // ServeHTTP is the listener's shell around serve: one endpoint, a batch in the
