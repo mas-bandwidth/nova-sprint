@@ -81,7 +81,11 @@ const (
 	FieldRateRPM        = "rate_rpm"
 	FieldRateConcurrent = "rate_concurrent"
 	FieldRateReturns    = "rate_returns"
-	MaxRateReturns      = 5
+	// FieldRateTake is a rate-limited take's record on a returned work card, beside
+	// FieldProviderTake, with no bound on its number (rateLimitedReturned; RateTakes reads
+	// every one): the route backs off briefly from these records (RestsDue, rateBackoffs).
+	FieldRateTake  = "rate_take_"
+	MaxRateReturns = 5
 )
 
 // rateLimitedRoute says the card was dealt on a limited route (routes limit): its member

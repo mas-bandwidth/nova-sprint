@@ -3,6 +3,7 @@ package sprint
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/stretchr/testify/assert"
@@ -221,6 +222,7 @@ func TestALimitedRoutesReturnsAreBounded(t *testing.T) {
 	w.s.Fleet.SetProps(map[string]string{PropModelRPM("inception/mercury-3"): "10"})
 	var wc string
 	for i := range MaxRateReturns {
+		w.tick(16 * time.Minute) // past the route's brief rate-limit backoff
 		var moved string
 		moved, wc = takeAndRefuse(t, w)
 		assert.Contains(t, moved, "returned untouched", "return %d", i+1)
@@ -229,9 +231,78 @@ func TestALimitedRoutesReturnsAreBounded(t *testing.T) {
 	assert.Equal(t, MaxRateReturns, c.Int(FieldRateReturns))
 	assert.Empty(t, c.F(FieldTakeEnded), "no take ended in the returns")
 	assert.Equal(t, 1, w.s.Work.Card("s1-1").Int("attempt"), "the returns spent no attempt")
+	w.tick(16 * time.Minute)
 	moved, wc := takeAndRefuse(t, w)
 	assert.NotContains(t, moved, "returned untouched", "the return past the bound ends the take")
 	assert.NotEmpty(t, w.s.Fleet.Card(wc).F(FieldTakeEnded))
+}
+
+// A rate-limited take on a limited route returns the card UNSPENT on the real path (Take
+// then Finish in the store): withdrawn with no take ended, no redeal and no attempt, and no
+// failed-work judgment (a-rate-limited-refusal-never-fails-the-cardc; tla/RateBackoff.tla).
+func TestARateLimitedTakeReturnsTheCardUnspent(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	proMercury(w)
+	w.s.Fleet.SetProps(map[string]string{PropModelRPM("inception/mercury-3"): "10"})
+	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+	wc := w.s.Work.Card("s1-1").F("work")
+	member := w.s.Fleet.Card(wc).Row
+	w.must(Take(w.s, TakeReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	p := w.must(Finish(w.s, FinishReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true, Report: tooMany}))
+	require.Len(t, p.Units, 1)
+	assert.Contains(t, p.Units[0].Moved, "returned untouched")
+	c := w.s.Fleet.Card(wc)
+	assert.Equal(t, Withdrawn, c.Col)
+	assert.Empty(t, c.F(FieldTakeEnded), "no take ended: no redeal spent")
+	assert.Zero(t, c.Int("redeals"), "no redeal")
+	assert.Equal(t, 1, w.s.Work.Card("s1-1").Int("attempt"), "no attempt spent")
+	assert.Empty(t, w.notesOf(NWorkFailed), "no failed-work judgment")
+}
+
+// A rate limit backs the route off briefly from its own records: 60s after the first 429,
+// 120s after a second with no ok between, back to 60s after an ok, and the route serves
+// again by itself once the clock passes the end (tla/RateBackoff.tla, BackoffEnds).
+func TestARateLimitBacksTheRouteOffBriefly(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 2)
+	proMercury(w)
+	w.s.Fleet.SetProps(map[string]string{PropModelRPM("inception/mercury-3"): "10"})
+	deal := func(id string) bool {
+		p := Deal(w.s, DealReq{Sel: Sel{IDs: []string{id}}})
+		if len(p.Refused) > 0 {
+			return false
+		}
+		w.do(p)
+		return true
+	}
+	finish := func(id string, failed bool) {
+		wc := w.s.Work.Card(id).F("work")
+		member := w.s.Fleet.Card(wc).Row
+		w.must(Take(w.s, TakeReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+		report := ""
+		if failed {
+			report = tooMany
+		}
+		w.must(Finish(w.s, FinishReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: failed, Report: report}))
+	}
+	require.True(t, deal("s1-1"))
+	finish("s1-1", true) // the first 429
+	assert.False(t, deal("s1-1"), "the route backs off 60s after the first 429")
+	w.tick(61 * time.Second)
+	assert.True(t, deal("s1-1"), "the route serves once the 60s backoff ends")
+	finish("s1-1", true) // a second 429, no ok between
+	assert.False(t, deal("s1-1"), "the second 429 backs the route off 120s")
+	w.tick(61 * time.Second)
+	assert.False(t, deal("s1-1"), "still resting before the 120s end")
+	w.tick(61 * time.Second)
+	assert.True(t, deal("s1-1"), "the route serves once the 120s backoff ends")
+	finish("s1-1", false) // an ok end resets the count
+	w.tick(time.Second)
+	require.True(t, deal("s1-2"))
+	finish("s1-2", true) // a 429 after an ok backs off 60s again
+	w.tick(61 * time.Second)
+	assert.True(t, deal("s1-2"), "a 429 after an ok backs off 60s, not 180s")
 }
 
 func TestIsRateLimited(t *testing.T) {

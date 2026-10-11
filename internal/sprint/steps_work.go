@@ -2059,6 +2059,13 @@ func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved str
 	set[FieldProviderError] = line
 	dealt, taken := takeStamps(c)
 	rec := costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)
+	if IsRateLimited(r.Report) {
+		// the rate-limited take leaves its own record, unbounded, so the route backs off
+		// briefly from the records alone (RestsDue, rateBackoffs; RateTakes reads every
+		// one): never a FieldProviderTake, so it never counts toward the 3-in-10 rest
+		set[FieldRateTake+itoa(c.Int(FieldRateReturns)+1)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
+			Finished: stamp(s.Now), Error: line, Taken: taken}.String()
+	}
 	if refusal(r.Report) != "" {
 		// the refusal is recorded so the provider rests as it always has (routeEnds reads
 		// ProviderTakes), with the take's own usage; only FieldTakeEnded and the redeal are

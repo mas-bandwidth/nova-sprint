@@ -93,7 +93,10 @@ func transient(line string) bool {
 		return false
 	}
 	m := causeRE.FindStringSubmatch(strings.TrimSpace(line))
-	return m != nil && (m[1] == classRateLimited || m[1] == class5xx || m[1] == classTimeout)
+	// a rate limit never counts here: it stalls the route briefly from its own records
+	// (RestsDue, rateBackoffs), never toward the 3-in-10 rest (a-rate-limited-refusal-
+	// never-fails-the-cardc; tla/RateBackoff.tla)
+	return m != nil && (m[1] == class5xx || m[1] == classTimeout)
 }
 
 // IsRateLimited says a failed take's report is the provider's rate limit: class

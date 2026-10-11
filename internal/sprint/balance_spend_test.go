@@ -161,7 +161,8 @@ func TestALowBalanceIsAJudgmentNeverARest(t *testing.T) {
 // A take that ended with no result is the model's output on that card: however many of
 // them a route's window holds, the tick rests nothing (flash-deepseek41-direct, 2026-10-10
 // 03:38:45Z, rested twenty minutes for "no-result: its children ended with no result").
-// Three 429s rest the route; one refusal for credit rests the provider.
+// A rate limit never rests the route for 3-in-10 either: it backs it off briefly from its
+// own records (a-rate-limited-refusal-never-fails-the-cardc).
 func TestANoResultNeverRestsAndA429Does(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 10, 3, 38, 45, 0, time.UTC)
@@ -181,11 +182,11 @@ func TestANoResultNeverRestsAndA429Does(t *testing.T) {
 			ended("c4", "flash-deepseek41-direct", 6, "no result: no RESULT.md shape"),
 			ended("c5", "flash-deepseek41-direct", 5, "no result: no RESULT.md shape"),
 		}, nil},
-		{"three 429s on the direct route", []*Card{
+		{"a 429 beside a 5xx on the direct route leaves one", []*Card{
 			ended("c1", "flash-deepseek41-direct", 9, "provider: class=rate-limited status=429 msg=Rate limit reached"),
 			ended("c2", "flash-deepseek41-direct", 8, "provider: class=rate-limited status=429 msg=Rate limit reached"),
 			ended("c3", "flash-deepseek41-direct", 7, "provider: class=provider-5xx status=502 msg=bad gateway"),
-		}, []RouteRest{{Route: "flash-deepseek41-direct", At: now, Until: now.Add(RouteRestFor), Cards: []string{"c1", "c2", "c3"}, Cause: RestProvider}}},
+		}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
