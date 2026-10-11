@@ -174,12 +174,15 @@ func TestTheTickDealGoesRoundTheFleet(t *testing.T) {
 }
 
 // The shortest queue does not choose: the index does, and a member with no
-// room is skipped, the index moved past the member dealt to.
+// free lane is skipped, the index moved past the member dealt to. Free lanes
+// first (the owner, 2026-10-11): a member at its width is passed over while
+// another has a free lane, and only when none has one does the room scan take
+// the member at the index, below DealAhead times its width.
 func TestTheDealSkipsAFullMemberAndTheQueueDoesNotChoose(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	// m1 and m2 at width 1, m3 at width 2: rooms (DealAhead times the width) of
-	// 2, 2 and 4
+	// 2, 2 and 4, and lanes (a free lane is a load below the width) of 1, 1, 2
 	for i, m := range []string{"m1", "m2", "m3"} {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: []int{1, 1, 2}[i]}))
 	}
@@ -193,16 +196,19 @@ func TestTheDealSkipsAFullMemberAndTheQueueDoesNotChoose(t *testing.T) {
 	for _, id := range []string{"s1-1", "s1-2", "s1-3", "s1-4"} {
 		got = append(got, deal(id))
 	}
-	want := []string{"m1", "m2", "m3", "m1"}
+	// m1 and m2 are full at their width of 1, so the fourth card takes m3's
+	// free lane (its width is 2), not m1's room
+	want := []string{"m1", "m2", "m3", "m3"}
 	require.Equal(t, want, got, "deals %v, want %v", got, want)
-	// m1 two ready (at its room), m2 one, m3 none ready once it takes its card
-	// (one working): the index is past m1, so m2, though m3's queue is shorter
+	// m1 and m2 are at their width (no free lane), m3 has two held (one
+	// working, one ready) and its room of four: with no member free-laned the
+	// room scan takes the index, m1, though m3's queue is longer
 	w.must(Take(w.s, TakeReq{As: "m3", Sel: Sel{IDs: []string{"s1-3.w1"}}, Gens: gensOf(w.s, "s1-3.w1")}))
 	m := deal("s1-5")
-	require.Equal(t, "m2", m, "s1-5 went to %s, want m2 (the index, not m3's shorter queue)", m)
+	require.Equal(t, "m1", m, "s1-5 went to %s, want m1 (the index, not m3's longer queue)", m)
 	m = deal("s1-6")
-	require.Equal(t, "m3", m, "s1-6 went to %s, want m3", m)
-	// past m3: m1 and m2 are at their room, skipped, and m3 (one working, one
+	require.Equal(t, "m2", m, "s1-6 went to %s, want m2", m)
+	// past m2: m1 and m2 are at their room, skipped, and m3 (one working, two
 	// ready) is below its room of four
 	m = deal("s1-7")
 	require.Equal(t, "m3", m, "s1-7 went to %s, want m3: m1 and m2 are full", m)

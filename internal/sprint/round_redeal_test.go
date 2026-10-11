@@ -114,13 +114,15 @@ func TestTheReworkAvoidsTheMemberThatFailedItWhileAnotherHasRoom(t *testing.T) {
 		w.must(Add(w.s, AddReq{Stream: "s1", Count: 3}))
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})) // m1
 		w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1")}))
-		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: "red"}))
-		// m2 at its room: two ready cards, dealt past the index
-		w.s.Fleet.SetProps(map[string]string{PropDealIndex: "m1"})
+		// m2 at its room: two ready cards. m1 is busy (s1-1 working, no free
+		// lane), so free lanes first sends s1-2 to m2; the index then starts at
+		// m2 for s1-3, whose room scan takes m2 again (the free-lanes-first
+		// change of the-work-deal-fills-free-lanes-first-round-robin).
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-2"}}}))
 		w.s.Fleet.SetProps(map[string]string{PropDealIndex: "m1"})
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-3"}}}))
 		require.Equal(t, 2, w.s.Fleet.Count("m2", Ready), "m2 has %d ready, want 2", w.s.Fleet.Count("m2", Ready))
+		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: "red"}))
 		rework(w, "s1-1")
 		wc := w.s.Fleet.Card("s1-1.w2")
 		require.NotNil(t, wc, "s1-1's second attempt is %+v, want on m1: no other member has room", wc)

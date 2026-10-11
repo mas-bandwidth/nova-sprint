@@ -263,6 +263,48 @@ func (r *round) next(up []string, q, room map[string]int, avoid string) string {
 	return r.member(up, q, room, avoid)
 }
 
+// nextFree is the member a work card placed on the fleet goes to, free lanes
+// first: the first from the deal's cursor that is up with a free lane (q below
+// its width, lanes), and only when no member that may take the card has one,
+// the first from the cursor with q below DealAhead times its width (room). So
+// an idle member is filled before a member already at its width, which the
+// room-first scan treated the same (the owner, 2026-10-11: "cards only may
+// accrue per-fleet or friend, if there are not other machines/friends ready to
+// do that work right now!"). The cursor moves past the member placed, so
+// placements roll ((index++) % n) over the eligible set (the owner,
+// 2026-10-11: "Deal logic should be using ((index++) % n) to roll around, not
+// hitting the same fleet machine or friend each deal."). The avoid member is
+// taken only when no other may; "" when no member may take it. It neither
+// moves the cursor nor counts the card: the caller places it, moves the cursor
+// past it (moved) and counts it (q). q is memberLoads (ready and working, a
+// read at half a slot), lanes each member's width and room DealAhead times it
+// (width.go). Placements never pass a width (tla/DirtyTick.tla, WidthRespected);
+// the model is tla/WhoPreference.tla, DealFreeLanesFirst.
+func (r *round) nextFree(up []string, q, lanes, room map[string]int, avoid string) string {
+	isUp := make(map[string]bool, len(up))
+	for _, x := range up {
+		isUp[x] = true
+	}
+	for _, lane := range []bool{true, false} {
+		m := r.scan(func(x string) bool {
+			if !isUp[x] || x == avoid {
+				return false
+			}
+			if lane {
+				return q[x] < lanes[x]
+			}
+			return q[x] < room[x]
+		})
+		if m != "" {
+			return m
+		}
+	}
+	if avoid != "" && isUp[avoid] && q[avoid] < room[avoid] {
+		return avoid
+	}
+	return ""
+}
+
 // levelTo is where the level moves the newest card of the longest queue, and
 // moves the index past it: the next member round the
 // fleet from the index that is below its room (held, the work cards it

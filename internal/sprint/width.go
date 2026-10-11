@@ -128,6 +128,17 @@ func memberWidths(s *Snapshot, up []string) map[string]int {
 	return w
 }
 
+// memberLanes is each up member's width: the load below which it still has a
+// free lane to start the card at once. A deal fills a member with a free lane
+// before one that has room but no lane (round.go, nextFree).
+func memberLanes(s *Snapshot, up []string) map[string]int {
+	w := map[string]int{}
+	for _, m := range up {
+		w[m] = s.Width(m)
+	}
+	return w
+}
+
 // widthRoom is the sum over the up members of the cards each can still take
 // before it holds DealAhead times its width.
 func widthRoom(s *Snapshot, up []string) int {
