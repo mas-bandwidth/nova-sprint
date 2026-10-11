@@ -401,3 +401,62 @@ func TestDoctorFinishFailuresAFixedCauseIsWarnNotFail(t *testing.T) {
 	in.Probes["b1"] = cut
 	assert.Len(t, failsOn(DoctorFinishFailures(in), CheckFinishFailures), 1, "a cut probe proves nothing fixed")
 }
+
+// TestDoctorReadersWarnsFleetReaderWithDriftingTiers checks that fleet readers
+// whose tiers differ from the fleet's common tiers are named with WARN.
+func TestDoctorReadersWarnsFleetReaderWithDriftingTiers(t *testing.T) {
+	t.Parallel()
+	w := doctorWorld(t)
+	// Set up fleet readers with different tiers.
+	w.s.Readers.SetRows([]string{"reader-m1", "reader-m2", "reader-m3"})
+	w.s.Readers.Texts = map[string]map[string]string{
+		"reader-m1": {ReaderTiers: "flash,pro,heavy"},
+		"reader-m2": {ReaderTiers: "flash,pro,heavy"},
+		"reader-m3": {ReaderTiers: ""}, // default, differs from fleet
+	}
+	w.s.ReaderStates = map[string]string{"reader-m1": ReaderUp, "reader-m2": ReaderUp, "reader-m3": ReaderUp}
+	in := healthyInput(w)
+	// Add beats for new readers so they're not considered stale.
+	now := w.s.Now
+	in.ReaderBeats["reader-m2"] = Beat{At: now.Add(-2 * time.Second)}
+	in.ReaderBeats["reader-m3"] = Beat{At: now.Add(-2 * time.Second)}
+	cs := DoctorReaders(in)
+	// reader-m3 should be WARN because its tiers differ from fleet's common tier.
+	var warnDrift []DoctorCheck
+	for _, c := range cs {
+		if c.Status == DoctorWarn && c.Check == CheckReaders && strings.Contains(c.Line(), "tiers=") {
+			warnDrift = append(warnDrift, c)
+		}
+	}
+	require.Len(t, warnDrift, 1, "one WARN for drifting fleet reader: %s", lines(cs))
+	assert.Equal(t, "reader-m3", warnDrift[0].Subject, lines(cs))
+	assert.Contains(t, warnDrift[0].Evidence, "tiers=default", lines(cs))
+	assert.Contains(t, warnDrift[0].Evidence, "flash,pro,heavy", lines(cs))
+}
+
+// TestDoctorReadersNoDriftWhenAllFleetReadersAgree checks that no WARN is issued
+// when all fleet readers agree on their tiers.
+func TestDoctorReadersNoDriftWhenAllFleetReadersAgree(t *testing.T) {
+	t.Parallel()
+	w := doctorWorld(t)
+	// Set up fleet readers all with same tiers.
+	w.s.Readers.SetRows([]string{"reader-m1", "reader-m2"})
+	w.s.Readers.Texts = map[string]map[string]string{
+		"reader-m1": {ReaderTiers: "flash,pro,heavy"},
+		"reader-m2": {ReaderTiers: "flash,pro,heavy"},
+	}
+	w.s.ReaderStates = map[string]string{"reader-m1": ReaderUp, "reader-m2": ReaderUp}
+	in := healthyInput(w)
+	// Add beats for new readers so they're not considered stale.
+	now := w.s.Now
+	in.ReaderBeats["reader-m2"] = Beat{At: now.Add(-2 * time.Second)}
+	cs := DoctorReaders(in)
+	// No WARN for fleet reader tier drift when all agree.
+	var warnDrift []DoctorCheck
+	for _, c := range cs {
+		if c.Status == DoctorWarn && c.Check == CheckReaders && strings.Contains(c.Line(), "tiers=") {
+			warnDrift = append(warnDrift, c)
+		}
+	}
+	assert.Len(t, warnDrift, 0, "no WARN when all fleet readers agree: %s", lines(cs))
+}

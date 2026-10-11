@@ -1149,9 +1149,17 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 				return refuse(stderr, "init", "a reader name wants letters, digits, _ and -: "+r)
 			}
 		}
+		// For fleet readers, inherit common fleet tier if applicable.
+		tiers := store.CommonFleetTierForAdd(ctx, st, rs)
 		if err := st.B.RowsAdd(ctx, st.Names.Table(sprint.Readers), rs); err != nil {
 			fmt.Fprintf(stderr, "%s init: %s\n", prog, oneline.Escape(err.Error()))
 			return 1
+		}
+		if tiers != "" {
+			if err := writeReaderTiers(ctx, st, rs, tiers); err != nil {
+				fmt.Fprintf(stderr, "%s init: %s\n", prog, oneline.Escape(err.Error()))
+				return 1
+			}
 		}
 	}
 	if rulesPath != "" {
@@ -3328,9 +3336,15 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "reader add", err.Error())
 	}
 	ctx := context.Background()
-	if tiersSet {
-		if err := st.EnsureReaderTiers(ctx); err != nil {
-			return refuse(stderr, "reader add", err.Error())
+	if err := st.EnsureReaderTiers(ctx); err != nil {
+		return refuse(stderr, "reader add", err.Error())
+	}
+	// For fleet readers added without --tiers, inherit common fleet tier if applicable.
+	if !tiersSet {
+		inherited := store.CommonFleetTierForAdd(ctx, st, names)
+		if inherited != "" {
+			tiers = inherited
+			tiersSet = true
 		}
 	}
 	if err := st.B.RowsAdd(ctx, st.Names.Table(sprint.Readers), names); err != nil {

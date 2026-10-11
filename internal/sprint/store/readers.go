@@ -273,3 +273,73 @@ func (st *Store) memberNoRoomInto(ctx context.Context, s *sprint.Snapshot, into 
 	}
 	return nil
 }
+
+// ReadReaderTiers reads all readers and their tiers from the readers table.
+// It returns a map from reader name to tiers cell.
+func ReadReaderTiers(ctx context.Context, st *Store) (map[string]string, error) {
+	if err := st.EnsureReaderTiers(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := st.ReaderRows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return map[string]string{}, nil
+	}
+	snap, _, _, err := st.fencedRead(ctx, []string{st.Names.Table(sprint.Readers)}, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]string{}
+	if snap.Readers != nil && snap.Readers.Texts != nil {
+		for _, r := range rows {
+			if t, ok := snap.Readers.Texts[r]; ok {
+				result[r] = t[sprint.ReaderTiers]
+			}
+		}
+	}
+	return result, nil
+}
+
+// CommonFleetTierForAdd returns the common fleet tier for new fleet readers being
+// added. It returns the common tier if all other fleet readers share the same
+// non-empty tiers; otherwise returns "".
+func CommonFleetTierForAdd(ctx context.Context, st *Store, names []string) string {
+	// Check if any of the named readers are fleet readers.
+	anyFleet := false
+	for _, n := range names {
+		if _, ok := sprint.ReaderMachine(n); ok {
+			anyFleet = true
+			break
+		}
+	}
+	if !anyFleet {
+		return ""
+	}
+	// Load all readers to get their tiers.
+	readerTiers, err := ReadReaderTiers(ctx, st)
+	if err != nil {
+		return ""
+	}
+	// Collect tiers of other fleet readers (not being added now).
+	otherTiers := []string{}
+	for r, t := range readerTiers {
+		if _, ok := sprint.ReaderMachine(r); !ok {
+			continue // skip non-fleet readers
+		}
+		// Skip readers being added now.
+		skip := false
+		for _, n := range names {
+			if r == n {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+		otherTiers = append(otherTiers, t)
+	}
+	return sprint.CommonFleetTier(otherTiers)
+}
