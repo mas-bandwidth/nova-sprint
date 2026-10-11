@@ -2278,4 +2278,27 @@
     the merged data. One id both sides change differently is refused naming it, and a code conflict is
     refused as before. tla/LandLedgers.tla holds CodeConflictNeverLands with three reversed
     witnesses."
-   :origin "hand-landed by a child of the seat, 2026-10-11, from the live land log's refusals")))
+   :origin "hand-landed by a child of the seat, 2026-10-11, from the live land log's refusals")
+  (fix "release-acceptance-is-a-parallel-functional-suite" :release "v1.2.14" :status "planned"
+   :title "The release gate is a parallel functional suite under a minute, not a ten-minute watch"
+   :text "Tests and tooling only, no product change. A point release was accepted by a ten-minute live
+    watch of the server after server switch --rollback --window 30m, and a hand canary. Each check the
+    watch looked for is now a test, each on its own store and in parallel, and make release-accept
+    (tools/release-accept.sh) runs exactly that set against a given build (NOVA_SPRINT_BIN, the canary's
+    binary; unset, the tree's is built), with NOVA_CI=1 so a missing redis-server fails, and go test's
+    -timeout 2m as the bound. The script names every test; a name that does not run and pass fails the
+    gate by its count. New tests: TestReleaseAcceptTicksOfABusySprintNeverFail (40 ticks of a busy sprint
+    on a real store with the world played between them, every tick exit 0, no panic, no REFUSED drain,
+    check clean after), TestReleaseAcceptNeedsHoldACardOffTheDealOnTheStore (a dealt card whose need is
+    named goes working -> waiting and is never taken), TestReleaseAcceptCanaryOneMemberFinishesOneCardOnTheBuild
+    (one member on the release's binary takes and finishes one card ok on a real store),
+    TestReleaseAcceptAClearedSprintLandsWithNoSeatAction (after a clear, on its defaults, the tick, the
+    members, the readers and the land pass land every card with no seat verb after start) and
+    TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain (after the switch the hook-gate refusals roll
+    nothing back and the next pass with the seat hooked lands the queued card on the new build). The
+    switch rig names its own coordinator (newLandRigAs), so the hook-gate tests run in parallel. The
+    rest of the set is the existing tests of needs (#96), ledger landing (#100), done (#94), the idle
+    alarm (#102, #106) and the lifecycle (#103), listed in docs/TESTS.md, Release acceptance.
+    docs/SPRINT-COORDINATOR.md section 7 names the gate as step 0 of the install; a live canary of one
+    card on one member may follow, with no timed watch."
+   :origin "hand-landed by a child of the seat, 2026-10-11, for the owner's ask: move the release checks into functional tests that run in parallel in under a minute, two at most")))

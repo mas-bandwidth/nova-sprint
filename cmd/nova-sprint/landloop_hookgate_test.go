@@ -26,18 +26,20 @@ import (
 
 // switchedRig is a land rig whose binary was switched with a rollback window of 15
 // minutes at t0, the coordinator's hook gate armed for the test, and one card queued to
-// merge. Not parallel: the gate's test seam (hookTests) is keyed by the coordinator's name,
-// which every rig shares.
+// merge. The gate's test seam (hookTests) is keyed by the coordinator's name, so each rig
+// names its own coordinator (seat) and the tests run in parallel.
 type switchedRig struct {
 	*landRig
 	target, dir string
+	seat        string
 	now         *time.Time
 	t0          time.Time
 }
 
 func newSwitchedRig(t *testing.T) *switchedRig {
 	t.Helper()
-	r := newLandRig(t)
+	seat := "coordinator-" + strings.ToLower(strings.NewReplacer("/", "-", "_", "-").Replace(t.Name()))
+	r := newLandRigAs(t, seat)
 	r.ok("add --stream s1 s1-1 --one")
 	r.queued(map[string]string{"s1-1": r.head("s1-1", "main", "a.txt", "a\n")}, "s1-1")
 
@@ -54,9 +56,9 @@ func newSwitchedRig(t *testing.T) *switchedRig {
 	require.NoError(t, sprint.ServerSwitch(context.Background(), sprint.ServerSwitchOptions{
 		Binary: candidate, Target: target, Rollback: true, Window: 15 * time.Minute, Now: func() time.Time { return now },
 	}))
-	sr := &switchedRig{landRig: r, target: target, dir: dir, now: &now, t0: t0}
+	sr := &switchedRig{landRig: r, target: target, dir: dir, seat: seat, now: &now, t0: t0}
 	sr.gate(t, true)
-	t.Cleanup(func() { hookTests.Delete("coordinator") })
+	t.Cleanup(func() { hookTests.Delete(seat) })
 	return sr
 }
 
@@ -65,9 +67,9 @@ func newSwitchedRig(t *testing.T) *switchedRig {
 func (r *switchedRig) gate(t *testing.T, armed bool) {
 	t.Helper()
 	if armed {
-		hookTests.Store("coordinator", true)
+		hookTests.Store(r.seat, true)
 	} else {
-		hookTests.Delete("coordinator")
+		hookTests.Delete(r.seat)
 	}
 }
 
@@ -79,7 +81,7 @@ func (r *switchedRig) hookLive(t *testing.T) {
 	require.NoError(t, err)
 	now := r.a.now()
 	require.NoError(t, writeHook(context.Background(), st, sprint.HookRecord{
-		Name: "coordinator", Session: "s1", State: sprint.HookHooked, Since: now, Proven: now, Live: now.Add(time.Hour),
+		Name: r.seat, Session: "s1", State: sprint.HookHooked, Since: now, Proven: now, Live: now.Add(time.Hour),
 	}))
 }
 
@@ -95,6 +97,7 @@ func (r *switchedRig) binary(t *testing.T) string {
 // switch back. Each pass says once that it waits for the seat's hook, and the window and
 // the card queued to merge are left as they were.
 func TestAHookGateRefusalInTheWindowIsNotARollback(t *testing.T) {
+	t.Parallel()
 	r := newSwitchedRig(t)
 	more := []string{"--repo-dir", r.clone, "--base", "main"}
 	for pass := range 3 {
@@ -126,6 +129,7 @@ func TestAHookGateRefusalInTheWindowIsNotARollback(t *testing.T) {
 // A land that is let through by the hook gate, acts and fails inside the window counts
 // toward the rollback, and one failing past the window does not.
 func TestARealLandFailureInTheWindowStillRollsBack(t *testing.T) {
+	t.Parallel()
 	r := newSwitchedRig(t)
 	r.hookLive(t)
 	more := []string{"--repo-dir", filepath.Join(r.dir, "missing"), "--base", "main"}
@@ -139,4 +143,35 @@ func TestARealLandFailureInTheWindowStillRollsBack(t *testing.T) {
 	assert.Equal(t, "binary-v1", r.binary(t), "a failed land in the window rolls the target back")
 	_, err := os.Stat(r.target + ".switch.json")
 	assert.True(t, errors.Is(err, os.ErrNotExist), "the rollback consumed the window")
+}
+
+// The release gate's switch check (docs/TESTS.md, "Release acceptance"; it replaces the
+// ten-minute watch after server switch --rollback --window 30m): the restart drops the
+// seat's hook, every land pass inside the window waits on it without a rollback, and once
+// the seat hooks in again the same window's next pass lands the queued card for real, on
+// the switched build, and the window stays open.
+func TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain(t *testing.T) {
+	t.Parallel()
+	r := newSwitchedRig(t)
+	more := []string{"--repo-dir", r.clone, "--base", "main"}
+	for pass := range 2 {
+		*r.now = r.t0.Add(time.Second + time.Duration(pass)*LandEvery)
+		var out bytes.Buffer
+		code, _ := r.a.landOnce(context.Background(), "mem:0", more, &out)
+		assert.NotEqual(t, 0, code, "pass %d: nothing was landed while the hook is gone", pass)
+		assert.NotContains(t, out.String(), "SERVER ROLLBACK", "pass %d: %s", pass, out.String())
+		assert.Equal(t, "binary-v2", r.binary(t), "pass %d: the switch stands", pass)
+	}
+	r.hookLive(t)
+	*r.now = r.t0.Add(2 * time.Minute)
+	var out bytes.Buffer
+	code, _ := r.a.landOnce(context.Background(), "mem:0", more, &out)
+	assert.Equal(t, 0, code, "the land after the seat hooked in: %s", out.String())
+	assert.Contains(t, out.String(), "LAND OK stream=s1 cards=1 base=main", out.String())
+	assert.NotContains(t, out.String(), "SERVER ROLLBACK", out.String())
+	assert.Equal(t, "binary-v2", r.binary(t), "a landing on the switched build keeps it")
+	_, err := os.Stat(r.target + ".switch.json")
+	assert.NoError(t, err, "the window is still open after a good landing")
+	r.gate(t, false)
+	assert.Equal(t, map[string]string{"s1-1": "landed/merged"}, r.places("s1-1"), "the card queued before the switch landed")
 }

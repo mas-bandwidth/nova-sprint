@@ -349,6 +349,14 @@ The server's `--land` merges each card whose reads passed (one for a flash card,
 [FLEET.md](FLEET.md) is the adopter's path; this is the order after a landing. Every play runs from a checkout
 at the landed sha, with `NOVA_SPRINT_REDIS` naming the store for the inventory, and has a `--check` form.
 
+0. The release gate, before anything is installed or switched: `make release-accept
+   NOVA_SPRINT_BIN=<the release's nova-sprint>` on a bench, from the checkout at the release's sha. It runs
+   the release checks as tests in parallel (the switch and the hook gate, the ticks of a busy sprint, needs,
+   ledger landings, done, the idle alarm, the lifecycle, progress with no seat action, and a one-card
+   canary on that binary; [TESTS.md](TESTS.md), "Release acceptance") in under a minute, and fails at two.
+   It replaces the ten-minute watch of the live server after `server switch --rollback --window 30m`: a
+   release that is green here is switched with no timed watch. One live card on one member of the adopted
+   fleet may follow as the last step, read once it finishes; nothing is watched on a clock.
 1. Build and install the tools. The tools play builds the release once and installs it on every machine in
    scope, then runs `nova-config migrate` and `nova-redis fn load` on the store deployer:
 

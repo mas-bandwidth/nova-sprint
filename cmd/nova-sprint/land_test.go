@@ -30,9 +30,26 @@ type landRig struct {
 
 func newLandRig(t *testing.T) *landRig {
 	t.Helper()
+	return newLandRigAs(t, "coordinator")
+}
+
+// newLandRigAs is newLandRig with actor as the coordinator who inits the sprint and holds
+// its seat: a test that arms the hook gate (hookTests, keyed by the seat's name) names its
+// own coordinator, so it runs in parallel with every other.
+func newLandRigAs(t *testing.T, actor string) *landRig {
+	t.Helper()
 	// the go tests run under GOFLAGS=-json (make test): a go run of the gate inherits it, and
 	// `go vet -json` exits 0 on a finding, so the gate would pass what it must refuse
 	r := &landRig{testApp: newTestApp(t), dir: t.TempDir()}
+	if actor != "coordinator" {
+		get := r.a.getenv
+		r.a.getenv = func(k string) string {
+			if k == "NOVA_SPRINT_ACTOR" {
+				return actor
+			}
+			return get(k)
+		}
+	}
 	r.env = append(slices.DeleteFunc(os.Environ(), func(e string) bool { return strings.HasPrefix(e, "GOFLAGS=") }), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1",
 		"GIT_AUTHOR_NAME=lander", "GIT_AUTHOR_EMAIL=lander@example.invalid", "GIT_COMMITTER_NAME=lander", "GIT_COMMITTER_EMAIL=lander@example.invalid")
 	r.remote, r.worker, r.clone = filepath.Join(r.dir, "remote.git"), filepath.Join(r.dir, "worker"), filepath.Join(r.dir, "clone")
