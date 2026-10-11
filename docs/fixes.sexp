@@ -92,6 +92,20 @@
     :title "ReadsByRoom models the interim parallel ask rule, with a reversed witness for asking while broken"
     :text "Models only, no product change. tla/ReadsByRoom.tla gains a Rule constant (\"sequential\" or \"parallel\"): parallel is the code's interim rule of 2026-10-06 (ReadsWanted returns 0 once a read is broken, else the reads still needed minus the live reads, asked or ok), and sequential stays the design of 2026-10-04 in its own configuration. ReadsPerLanding is restated as Need times (broken attempts plus one) under parallel (a pro card broken once reads four, where sequential read three); OneAtATime and OneBroken hold only under sequential, and the new NoAskWhileBroken (the ask places no read once a read found it broken) holds under both. Five reversed witnesses: the pair asked together breaks OneAtATime and OneBroken, readers asked whatever their room break WidthRespected, the rework's first read of any reader breaks FinderFirst (a three-reader instance, so a card has a reader to spare), and Broken = \"askbroken\" asks a read while one is broken and breaks NoAskWhileBroken. The refmodel Ask comment (actions.go) now says the parallel rule; readers.go's askPicks comment (line 637) still says sequential and is left for the next card."
     :origin "this card; v1.2.12 inventory item T36, drift read at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "tla-holds-sentinels-stops" :release "v1.2.12" :status "planned"
+    :title "Holds models a held card, a sentinel and its release"
+    :text "Models only, no product change. tla/Holds.tla is a new model of the held card, the sentinel and
+     its release (docs/SPEC-SPRINT.md section 16; internal/sprint held.go, steps_sentinel.go, sentinel.go):
+     one stream whose line is [a, S, b] (S a plain or a cut sentinel) and one held card h, with the actions
+     Resolve, Release, CutRelease, SentinelSet and Hold. It proves HeldMovesOnlyByRelease (a held primary
+     stays waiting until the coordinator's release), OnlyCoordinatorReleases (no worker releases),
+     CutNeverWaives (the machine's self-release waives nothing) and SentinelLandsOnlyWhenWaitsUnderWay (a
+     sentinel lands only when each of its waits is landed or in flight), with two reversed witnesses:
+     resolveheld drops the held check at steps_work.go:922 and fails HeldMovesOnlyByRelease, and
+     workerreleases drops the coordinator check at steps_sentinel.go:318 and fails OnlyCoordinatorReleases.
+     Stream holds, stops, resume and reopen stay outside the module, owed by the next card; DirtyTick's pump
+     still auto-lands sentinels (stale). The COVERAGE row holds-sentinels-stops names Holds, partial."
+    :origin "this card, tla-holds-sentinels-stops-2.w1, 2026-10-11: v1.2.12 inventory item T31 and section 5 (COVERAGE row holds-sentinels-stops)")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."

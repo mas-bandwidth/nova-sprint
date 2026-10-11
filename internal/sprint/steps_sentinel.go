@@ -297,6 +297,7 @@ type ReleaseReq struct {
 // under way (notUnderWay), is released past them, waived on it
 // (nova-tools#5096 item c13).
 func Release(s *Snapshot, r ReleaseReq) Plan {
+	// tla/Holds.tla Release
 	var p Plan
 	p.on(s)
 	p.releasing = true
@@ -473,6 +474,7 @@ type SentinelSetReq struct {
 // sentinel itself, needs that are no card on the table (every one named at once), the
 // needs it has already, and a cycle the new needs would close.
 func SentinelSet(s *Snapshot, r SentinelSetReq) Plan {
+	// tla/Holds.tla SentinelSet
 	var p Plan
 	p.on(s)
 	if why := notCoordinator(s, r.Who, "sentinel set"); why != "" {

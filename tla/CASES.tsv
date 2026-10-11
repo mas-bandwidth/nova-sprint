@@ -442,3 +442,6 @@ MCReadyOverBrokenStale.cfg	MCReadyOver.tla	invariant	ClearsWhenDealt	ignore-term
 MCRateBackoff.cfg	MCRateBackoff.tla	pass	-	ignore-terminal	ratebackoff	required	-
 MCRateBackoffBrokenNoCap.cfg	MCRateBackoff.tla	invariant	BackoffBounded	ignore-terminal	ratebackoff	required	-
 MCRateBackoffBrokenSpend.cfg	MCRateBackoff.tla	invariant	RateLimitSpendsNoRedeal	ignore-terminal	ratebackoff	required	-
+MCHolds.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
+MCHoldsBrokenResolveHeld.cfg	MCHolds.tla	invariant	HeldMovesOnlyByRelease	ignore-terminal	holds	required	-
+MCHoldsBrokenWorkerReleases.cfg	MCHolds.tla	invariant	OnlyCoordinatorReleases	ignore-terminal	holds	required	-

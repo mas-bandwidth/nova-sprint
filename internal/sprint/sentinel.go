@@ -49,6 +49,7 @@ func isCut(c *Card) bool { return len(Split(c.F("needs"))) > 0 }
 // (hold.go). The release units go first and the waves after them, so the caller's bound
 // never cuts a landing from the wave it lets through.
 func SentinelReleases(s *Snapshot, who string) (units, after []Unit, notes []Note, landing map[string]bool) {
+	// tla/Holds.tla CutRelease
 	var ids []string
 	for _, c := range s.Work.Column(Waiting) {
 		if !IsSentinel(c) || !isCut(c) || c.F("reached") == "" {
