@@ -4,10 +4,7 @@ A stranger sets the sprint up from the docs and the tools, with nothing hidden: 
 needs may be a tool only one coordinator has, and nothing that ships is bash, zsh or Python. This page is
 the list of what one coordinator ran on 2026-10-04 that is not a nova verb: one row per wrapper, script and
 loop, what it does in one line, and either the nova verb lines that do the same or `card: <proposed id>`
-with the verb it needs and the PATHS that card would edit. A verb line here is checked against the tool's
-own verb table and FlagSet by `TestEveryCoordinatorToolMapsToARealNovaVerb`
-(`internal/docs/coordinator_tools_test.go`), so a line that names a verb or a flag the tool does not carry
-fails the build. The runbook is [SPRINT-COORDINATOR.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPRINT-COORDINATOR.md); the seat's wrapper for the
+with the verb it needs and the PATHS that card would edit. The runbook is [SPRINT-COORDINATOR.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPRINT-COORDINATOR.md); the seat's wrapper for the
 unserved verbs is [SPRINT-COORDINATOR-SEAT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPRINT-COORDINATOR-SEAT.md); loop rows are
 [FLEET.md](FLEET.md).
 

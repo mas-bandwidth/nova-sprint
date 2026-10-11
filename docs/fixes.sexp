@@ -376,4 +376,15 @@
      checks of the card lint, when it carries its own RULES line, and a friend card with none is still
      held to it, as a child's brief is. The step- scans hold a friend's card still: a line of it outside
      its RULES paragraph that contradicts its carried rules is a finding under any rule set."
-    :origin "this pull request")))
+    :origin "this pull request")
+
+   (fix "restore-tests-owed-from-split" :release "v1.2.6" :status "in-progress"
+    :title "Restore the tests the repository split moved out of nova-tools"
+    :text "Three of the five tests restored in nova-sprint: the coordinator rules
+     (cmd/nova-sprint/handover_rules.go and handover_rules_test.go, the runbook's section 10 in order),
+     the processor doc (cmd/nova-sprint/processor_doc_test.go, pinned to docs/PROCESSOR.md's mapping
+     rows), and the coordinator tools register (cmd/nova-sprint/coordinator_tools_test.go, pinned to
+     docs/COORDINATOR-TOOLS.md's table). The tool class and seat play tests, the member and contract
+     functional tests, the eight contract cases that build nova-sprint, and the tick wall-clock gate job
+     are still owed."
+    :origin "repository split cold reads (nova-tools PR #5571 and PR #5591)")))
