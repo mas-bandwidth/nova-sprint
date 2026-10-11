@@ -588,4 +588,10 @@
     j410 within a minute). notify now compares a material: for the readers behind, the readers' own
     numbers, never review's count (MaterialWhat, readers_behind.go), so the judgment is pushed once when
     it rises, again when the readers move, and not for review."
-   :origin "dogfood 2026-10-10 evening: fleet-only restart; j407, j409, j410 within a minute")))
+   :origin "dogfood 2026-10-10 evening: fleet-only restart; j407, j409, j410 within a minute")
+
+  (fix "server-build-descends-from-base" :release "v1.2.6" :status "in-progress"
+   :title "A sprint server build must descend from the origin base"
+   :text "server switch refuses a build that does not descend from the origin base, so an off-base build
+    cannot become the server."
+   :origin "nova-sprint commit 9338f08 (not carried by the re-seed, nova-sprint PR #28)")))
