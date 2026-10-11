@@ -122,9 +122,32 @@ func TestLandingReadCountsCombineFleetAndLegacyConsumersOnce(t *testing.T) {
 	w.s.Fleet.Put(&Card{ID: "read-jon", Row: "reader-jon", Col: Working, Fields: map[string]string{
 		"primary": c.ID, "reader": "jon", "attempt": "1", "head": "h1", FieldReadCard: "1", "asked": stamp(w.s.Now.Add(-time.Minute)),
 	}})
-	assert.Len(t, landingReadConsumers(w.s, c.ID), 2, "legacy and fleet views of the same read count once")
+	assert.Len(t, landingReadConsumers(w.s, c.ID, true), 2, "legacy and fleet views of the same read count once")
 	n := landingPush(w.s, "s1", "rowan", []*Card{c}, nil, w.s.Now)
 	assert.Contains(t, n.What, "reads 2")
+}
+
+func TestLandingPushCountsCompletedFleetReadsAndBegunLegacyReads(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 4)
+	c := w.s.Work.Card("s1-1")
+	require.NotNil(t, c)
+	w.s.Readers.Put(&Card{ID: "reading-jon", Row: "jon", Col: Reading, Fields: map[string]string{
+		"primary": c.ID, "reader": "jon", "attempt": "1", "head": "h1", "asked": stamp(w.s.Now.Add(-time.Minute)),
+	}})
+	w.s.Readers.Put(&Card{ID: "ok-kim", Row: "kim", Col: OK, Fields: map[string]string{
+		"primary": c.ID, "reader": "kim", "attempt": "1", "head": "h1", "asked": stamp(w.s.Now.Add(-2 * time.Minute)),
+	}})
+	w.s.Fleet.Put(&Card{ID: "done-amy", Row: "reader-amy", Col: DoneOK, Fields: map[string]string{
+		"kind": "read", "primary": c.ID, "reader": "amy", "attempt": "1", "head": "h1", FieldReadCard: "1", "asked": stamp(w.s.Now.Add(-3 * time.Minute)),
+	}})
+	w.s.Fleet.Put(&Card{ID: "done-jon", Row: "reader-jon", Col: DoneFailed, Fields: map[string]string{
+		"kind": "read", "primary": c.ID, "reader": "jon", "attempt": "1", "head": "h1", FieldReadCard: "1", "asked": stamp(w.s.Now.Add(-time.Minute)),
+	}})
+	assert.Len(t, landingReadConsumers(w.s, c.ID, true), 3, "completed fleet and legacy reads count, deduplicated by attempt")
+	assert.Len(t, landingReadConsumers(w.s, c.ID, false), 1, "only the begun legacy read remains outstanding")
+	n := landingPush(w.s, "s1", "rowan", []*Card{c}, nil, w.s.Now)
+	assert.Contains(t, n.What, "reads 3")
 }
 
 func TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall(t *testing.T) {

@@ -79,7 +79,7 @@ const (
 func landingPush(s *Snapshot, stream, who string, landing []*Card, ledger map[string]LandingLedgerEntry, now time.Time) Note {
 	var lines []string
 	for _, c := range landing {
-		reads := len(landingReadConsumers(s, c.ID))
+		reads := len(landingReadConsumers(s, c.ID, true))
 		title, text := c.F(LandingTitleField), c.F(LandingTextField)
 		if entry, ok := ledger[c.ID]; ok {
 			title, text = entry.Title, entry.Text
@@ -100,7 +100,7 @@ func landingPush(s *Snapshot, stream, who string, landing []*Card, ledger map[st
 // landingReadConsumers combines the legacy readers table and fleet read cards
 // by their logical reader/primary/attempt/head identity. During migration a read
 // can briefly appear in both tables; count it once.
-func landingReadConsumers(s *Snapshot, primary string) map[string]time.Time {
+func landingReadConsumers(s *Snapshot, primary string, includeCompleted bool) map[string]time.Time {
 	consumers := map[string]time.Time{}
 	add := func(reader, attempt, head string, at time.Time) {
 		key := reader + "|" + attempt + "|" + head
@@ -110,14 +110,18 @@ func landingReadConsumers(s *Snapshot, primary string) map[string]time.Time {
 	}
 	if s.Readers != nil {
 		for _, c := range s.Readers.Of(primary) {
-			if c.Col == Asked {
+			active := c.Col == Asked || c.Col == Reading
+			completed := c.Col == OK || c.Col == Broken
+			if active || (includeCompleted && completed) {
 				add(c.F("reader"), c.F("attempt"), c.F("head"), stampAt(c, "asked"))
 			}
 		}
 	}
 	if s.Fleet != nil {
 		for _, c := range s.Fleet.Of(primary) {
-			if c.F(FieldReadCard) != "" && (c.Col == Ready || c.Col == Working) {
+			active := c.F(FieldReadCard) != "" && (c.Col == Ready || c.Col == Working)
+			completed := c.F(FieldReadCard) != "" && (c.Col == DoneOK || c.Col == DoneFailed)
+			if active || (includeCompleted && completed) {
 				add(c.F("reader"), c.F("attempt"), c.F("head"), stampAt(c, "asked"))
 			}
 		}
@@ -147,7 +151,7 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 	}
 	byReader := map[string]*readerOut{}
 	for _, primary := range s.Work.Column(Review) {
-		for key, at := range landingReadConsumers(s, primary.ID) {
+		for key, at := range landingReadConsumers(s, primary.ID, false) {
 			rd := strings.SplitN(key, "|", 2)[0]
 			g := byReader[rd]
 			if g == nil {
