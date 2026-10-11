@@ -1208,7 +1208,7 @@
     stalerefusal violate LowNeverStops, NoFundsStopWhileFriendUp and RefusalsAfterLastEnd respectively.
     Comment-only Go citations and the corrected AllOutOfCredit comment accompany current TLC records.
     Exact balance/spend arithmetic, judgment prose/delivery and STOP debt remain outside this model."
-   :origin "card tla-provider-funds.w5, 2026-10-11: carries attempt 4 and repairs its three review findings")
+   :origin "card tla-provider-funds.w6, 2026-10-11: carries attempt 5 (2d4160c2); the earlier ends were environment faults now fixed, the work in it stands")
 
   (fix "tla-whopreference-tiers-pins-and-takeback" :release "v1.2.12" :status "planned"
    :title "WhoPreference gates the deal on tiers, honours the preference order, the take-back memory and the pin release"
