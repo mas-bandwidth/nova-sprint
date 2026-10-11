@@ -823,6 +823,17 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-deal-plan-refusals-and-redeals" :release "v1.2.12" :status "planned"
+   :title "Cover the deal's plan and its refusals through Deal"
+   :text "A new internal/sprint test file drives the deal through Deal (steps_work.go:954) and asserts
+    the plan's units and each refusal's text: the fleet's work off, no member up and every up member held
+    by an environment fault, a bench card whose member is down and one whose bench is at its room, a quiet
+    member beside one at its room, and a selection past two members' room. One behaviour per test. Reading
+    the code at 00c54ba, dealPlan emptied its up list after the len(up)==0 check, so with every up member
+    quiet (or out of room) and a card with no BENCH line benchRefusal indexed an empty bench and Deal
+    panicked (bench_deal.go:137, steps_work.go:1015): that test is a v1.2.14 candidate, not committed here."
+   :origin "this card, cover-deal-plan-refusals-and-redeals.w1 (2026-10-11): tmp/v1.2.12-inventory-2026-10-11.md section 8 item C3")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
