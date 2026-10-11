@@ -2,8 +2,11 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 )
 
 // A card replaced by its twin (docs/SPEC-SPRINT.md section 2; the coordinator, 2026-10-04, at 1:30 PM:
@@ -327,7 +330,22 @@ func Replace(s *Snapshot, r AddReq) Plan {
 		for _, id := range open {
 			dropping[id] = true
 		}
+		// the old cards' spend goes on with the twin (cost.go, FieldCostCarried): each one this
+		// drop takes off is marked carried to the twin and left out of its stream's sum
+		for i := range dp.Units {
+			for j, ch := range dp.Units[i].Changes {
+				if e := ch.Entry; ch.Table == Work && e.Remove && dropping[e.ID] {
+					set := maps.Clone(e.Set)
+					if set == nil {
+						set = map[string]string{}
+					}
+					set[FieldCostCarriedTo] = nw
+					dp.Units[i].Changes[j].Entry.Set = set
+				}
+			}
+		}
 	}
+	carried := carriedSpend(s, open)
 	weights, twin := twinWeights(s, deps, r.Replaces, nw, adding, dropping)
 	var all []Unit
 	for _, u := range ap.Units {
@@ -341,6 +359,9 @@ func Replace(s *Snapshot, r AddReq) Plan {
 					set[k] = v
 				}
 				set[FieldReplaces] = strings.Join(r.Replaces, ",")
+				if carried != "" {
+					set[FieldCostCarried] = carried
+				}
 				delete(set, FieldBehind)
 				if twin > 0 {
 					set[FieldBehind] = itoa(twin)
@@ -365,6 +386,30 @@ func Replace(s *Snapshot, r AddReq) Plan {
 		Props: append(ap.Props, dp.Props...), inserting: ap.inserting}
 	p.on(s)
 	return p
+}
+
+// carriedSpend is what a twin carries from the cards its replace drops (ids, each on the
+// table): each one's own charged total and what it carried in turn, an exact sum in USD; ""
+// when none of it was priced. A card dropped before the replace is not among them: it keeps
+// its own cost where it stands (StreamSpend), so nothing is counted twice.
+func carriedSpend(s *Snapshot, ids []string) string {
+	var sum []string
+	for _, id := range ids {
+		c := s.Work.Card(id)
+		if c == nil {
+			continue
+		}
+		if v := CardCostOf(c).Total.Charged; v != "" {
+			sum = append(sum, v)
+		}
+		if v := c.F(FieldCostCarried); v != "" {
+			sum = append(sum, v)
+		}
+	}
+	if v, ok := cardcost.Sum(sum...); ok && len(sum) > 0 {
+		return v
+	}
+	return ""
 }
 
 // weightOnly says the unit writes a primary's weight and nothing else (weighUnits).

@@ -521,9 +521,11 @@ proof that the work is correct. A twin exercises that flow one command at a
 time. It has no beats or ticks between commands, so it does not test fleet
 timing, the `run` loop, `inbox --wait` or liveness. `finish` without `--head`,
 then `merge`, records a landing without a push. The work table's cost column
-is, per stream, the sum of its landed cards' total cost in US dollars — each
-card's actual cost where one was priced, else its predicted one, `-` when
-none was — so a total is a ledger of recorded spend, not a proof of it.
+is, per stream, the sum of every card's total cost in US dollars, landed, open
+or dropped, its reads and decide calls included, a recut card's on its twin —
+each record's actual cost where one was priced, else its predicted one, `-` when
+none was, the unpriced runs counted beside it — so a total is a ledger of
+recorded spend, not a proof of it.
 
 ### release-check-acceptance-r-b.w3: the acceptance sentinel's six checks
 

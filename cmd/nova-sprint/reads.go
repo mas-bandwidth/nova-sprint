@@ -609,6 +609,10 @@ type whereView struct {
 	// spend by the tier each attempt and read ran on (`cost_by_tier`, money strings), from
 	// the tick's where record (sprint.TierCosts); absent before the first tick of an epoch.
 	StreamCosts map[string]sprint.TierCosts `json:"stream_costs,omitempty"`
+	// CostCheck is the tick's check that the streams' sums are every card's own total
+	// (sprint.CostCheck: ok, both sums exact, the gap); absent before the first tick of a
+	// server that counts it. The text frame prints its line under the work table.
+	CostCheck *sprint.CostCheck `json:"cost_check,omitempty"`
 	// ReadSpend is the day's read spend per route, one line under the summary
 	// (sprint.ReadSpendLine), from the tick's where record; absent when no read ended today.
 	ReadSpend string               `json:"read_spend,omitempty"`
@@ -770,6 +774,23 @@ func archivedOf(t ntable.Table) *archivedView {
 		}
 	}
 	return &a
+}
+
+// archivedCost is the archived streams' whole spend (sprint.TierCosts.TotalCost) summed to
+// the cent, "-" when none of it was priced.
+func archivedCost(streams []string, costs map[string]sprint.TierCosts) string {
+	var sum []string
+	for _, k := range streams {
+		if v, ok := strings.CutPrefix(costs[k].TotalCost, "$"); ok {
+			sum = append(sum, v)
+		}
+	}
+	if total, ok := cardcost.Sum(sum...); ok && len(sum) > 0 {
+		if r, ok := new(big.Rat).SetString(total); ok {
+			return cardcost.Cents(r)
+		}
+	}
+	return "-"
 }
 
 // drawnRows is the table without the archived streams' rows (stream archive),
@@ -1221,6 +1242,11 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if err != nil {
 		return whereView{}, "", err
 	}
+	if v.Archived != nil && facts.Streams != nil {
+		// the archived streams' whole spend from the record stream_costs carries, as the
+		// drawn rows' cost cells are (streamCostColumns)
+		v.Archived.Cost = archivedCost(v.Archived.Streams, facts.Streams)
+	}
 	if facts.HasStoreRTT {
 		p50, p99 := facts.StoreRTTP50MS, facts.StoreRTTP99MS
 		v.StoreRTTP50MS, v.StoreRTTP99MS = &p50, &p99
@@ -1304,6 +1330,12 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if v.ReadSpend = sprint.ReadSpendLine(facts.Streams); v.ReadSpend != "" {
 		b.WriteString(v.ReadSpend + "\n")
 	}
+	// the work table's cost column closed to the tile: the spend no card carries, the total,
+	// and the check that the streams' sums are every card's (sprint.CostCheck)
+	v.CostCheck = facts.CostCheck
+	for _, line := range workCostLines(facts.Streams, v.Archived, facts.CostCheck) {
+		b.WriteString(line + "\n")
+	}
 	b.WriteString("\n")
 	parts := map[string]string{}
 	var friendCards map[string]store.FriendRow
@@ -1337,7 +1369,10 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		if logical == sprint.Work {
 			// dollars per landed card, a column of the text table and a field of each row;
 			// the tiers and the spend by tier go to StreamCosts, from the tick's record (cost_view.go)
-			t = perLandedColumn(t, facts.Streams)
+			// the cost cell is the stream's whole spend from the same record as stream_costs (so
+			// the column and the tile are one sum), and the runs no price covers beside it
+			t = streamCostColumns(t, facts.Streams) // cost | unpriced
+			t = perLandedColumn(t, facts.Streams)   // | per landed, the last
 			for _, r := range t.Rows {
 				// an archived stream's costs stay in stream_costs, its row or not
 				if tc, ok := facts.Streams[r.Key]; ok {
@@ -1347,6 +1382,8 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 					v.StreamCosts[r.Key] = tc
 				}
 				if rows[r.Key] != nil {
+					rows[r.Key][sprint.Cost] = r.Texts[sprint.Cost]
+					rows[r.Key][unpricedField] = r.Texts[unpricedColumnName]
 					rows[r.Key][perLandedField] = r.Texts[perLandedColumnName]
 					// the stream's default level for cards added later, beside it (priority.go)
 					rows[r.Key][streamPriorityField] = sprint.PriorityNormal
@@ -1503,10 +1540,79 @@ const (
 	perLandedField      = "per_landed"
 )
 
+// unpricedColumnName is the work table's column of the runs no price covers, drawn after
+// cost (the owner, 2026-10-11: no run is ever shown as $0), and unpricedField its name in
+// where --json's work rows.
+const (
+	unpricedColumnName = "unpriced"
+	unpricedField      = "unpriced_runs"
+)
+
+// streamCostColumns is the work table with each stream's cost cell its whole spend from
+// the tick's record (sprint.TierCosts.TotalCost: every card's, landed, open or dropped, a
+// recut card's on its twin), the same figure stream_costs carries and the cost tile sums,
+// and the unpriced column after it: the stream's runs that reported no token or no price
+// can be made for, a count beside the cost, never a dollar figure. A stream the record does
+// not hold keeps its cell as the table has it, and "-" unpriced.
+func streamCostColumns(t ntable.Table, streams map[string]sprint.TierCosts) ntable.Table {
+	t.Columns = append(slices.Clone(t.Columns), ntable.Column{Name: unpricedColumnName, Projection: ntable.Text, Fold: ntable.None})
+	rows := make([]ntable.Row, len(t.Rows))
+	for i, r := range t.Rows {
+		texts := map[string]string{}
+		maps.Copy(texts, r.Texts)
+		texts[unpricedColumnName] = "-"
+		if tc, ok := streams[r.Key]; ok {
+			texts[sprint.Cost] = sprint.CostCell(tc.TotalCost)
+			if tc.UnpricedRuns > 0 {
+				texts[unpricedColumnName] = strconv.Itoa(tc.UnpricedRuns)
+			}
+		}
+		r.Texts = texts
+		rows[i] = r
+	}
+	t.Rows = rows
+	return t
+}
+
+// workCostLines are where's summary lines that close the work table's cost column to the
+// tile: the grand total the tile shows, the streams' and the spend no card carries (the
+// providers' count beyond the records, sprint.UnreconciledSpend: the coordinator's own and
+// the probes'), the runs unpriced, and the check that the streams' sums are every card's
+// (sprint.CostCheck). None without the tick's record.
+func workCostLines(streams map[string]sprint.TierCosts, archived *archivedView, check *sprint.CostCheck) []string {
+	if len(streams) == 0 {
+		return nil
+	}
+	sum, other := new(big.Rat), new(big.Rat)
+	unpriced := 0
+	for k, tc := range streams {
+		if archived.has(k) {
+			continue // the tile's scope: the streams on the table (the archived line has the rest)
+		}
+		if r, ok := new(big.Rat).SetString(strings.TrimPrefix(tc.TotalCost, "$")); ok && tc.TotalCost != "" {
+			sum.Add(sum, r)
+		}
+		unpriced += tc.UnpricedRuns
+		if r, ok := new(big.Rat).SetString(strings.TrimPrefix(tc.Unreconciled, "$")); ok && tc.Unreconciled != "" && r.Cmp(other) > 0 {
+			other.Set(r) // the sprint's, on every stream's record: read once, never summed
+		}
+	}
+	all := new(big.Rat).Add(sum, other)
+	if all.Sign() == 0 && (check == nil || check.OK) {
+		return nil // nothing spent and nothing out of place: the frame is its header and its tables
+	}
+	lines := []string{fmt.Sprintf("cost: %s = streams %s + other / unattributed %s (provider spend beyond the cards' records: the seat, probes); %d run(s) unpriced, not counted as $0",
+		cardcost.Cents(all), cardcost.Cents(sum), cardcost.Cents(other), unpriced)}
+	if check != nil {
+		lines = append(lines, check.Line())
+	}
+	return lines
+}
+
 // perLandedColumn is the work table with the per-landed column added: each stream's
-// dollars per landed card from the tick's record (sprint.TierCosts) when it has one, else
-// from the row's own cost cell over its landed count (sprint.PerLandedOf). The column
-// folds nothing: the sprint's figure is the hero's.
+// dollars per landed card from the tick's record (sprint.TierCosts: its landed cards' own
+// cost over them) when it has one, else "-". The column folds nothing: the sprint's figure
+// is the hero's.
 func perLandedColumn(t ntable.Table, streams map[string]sprint.TierCosts) ntable.Table {
 	t.Columns = append(slices.Clone(t.Columns), ntable.Column{Name: perLandedColumnName, Projection: ntable.Text, Fold: ntable.None})
 	rows := make([]ntable.Row, len(t.Rows))
@@ -1516,11 +1622,9 @@ func perLandedColumn(t ntable.Table, streams map[string]sprint.TierCosts) ntable
 		if tc, ok := streams[r.Key]; ok {
 			texts[perLandedColumnName] = tc.PerLanded
 		} else {
-			landed := 0
-			if j := t.Column(sprint.Landed); j >= 0 && j < len(r.Cells) && !r.Cells[j].Unread {
-				landed = int(r.Cells[j].Count)
-			}
-			texts[perLandedColumnName] = sprint.PerLandedOf(r.Texts[sprint.Cost], landed)
+			// the cost cell is the stream's whole spend, not its landed cards' alone: with no
+			// record of the tick there is no landed figure to divide
+			texts[perLandedColumnName] = "-"
 		}
 		r.Texts = texts
 		rows[i] = r

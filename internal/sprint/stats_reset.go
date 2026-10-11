@@ -31,16 +31,18 @@ type ResetRow struct {
 // Done is the row's done at the mark, ok and failed together (the table's done formula).
 func (r ResetRow) Done() int { return r.OK + r.Failed }
 
-// ResetStream is one stream's figures at the mark: the control card's exact landed cost and
-// the landed count (the work table's cost cell and per landed count from them, as a tidy's
-// StreamBase), and its spend as the where view showed it (TierCosts: the total, the work
-// and the reads, and by tier, dollars and cents).
+// ResetStream is one stream's figures at the mark: its landed cards' exact own cost and the
+// landed count (per landed counts from them, as a tidy's StreamBase), and its spend as the
+// where view showed it (TierCosts: the total, exact and in cents, the work, the reads and
+// the decide calls, and by tier, dollars and cents).
 type ResetStream struct {
 	Cost       string            `json:"cost,omitempty"`
 	Landed     int               `json:"landed"`
 	TotalCost  string            `json:"total_cost,omitempty"`
+	TotalUSD   string            `json:"total_usd,omitempty"`
 	WorkCost   string            `json:"work_cost,omitempty"`
 	ReadCost   string            `json:"read_cost,omitempty"`
+	DecideCost string            `json:"decide_cost,omitempty"`
 	CostByTier map[string]string `json:"cost_by_tier,omitempty"`
 }
 
@@ -79,8 +81,8 @@ func ResetMarkOf(s *Snapshot, at time.Time, by, reason string) ResetMark {
 	priced := false
 	for stream, b := range bases {
 		tc := costs[stream]
-		m.Streams[stream] = ResetStream{Cost: b.Cost, Landed: b.Landed, TotalCost: tc.TotalCost, WorkCost: tc.WorkCost, ReadCost: tc.ReadCost,
-			CostByTier: maps.Clone(tc.CostByTier)}
+		m.Streams[stream] = ResetStream{Cost: b.Cost, Landed: b.Landed, TotalCost: tc.TotalCost, TotalUSD: tc.TotalUSD, WorkCost: tc.WorkCost, ReadCost: tc.ReadCost,
+			DecideCost: tc.DecideCost, CostByTier: maps.Clone(tc.CostByTier)}
 		if v, ok := moneyOf(tc.TotalCost); ok {
 			total.Add(total, v)
 			priced = true
@@ -121,6 +123,28 @@ func MoneyLess(now, was string) string {
 	return cardcost.Cents(d)
 }
 
+// ExactLess is an exact USD figure now less the one at the mark, never below zero ("" for
+// nothing since); now unchanged when the mark names none. A mark that counted the stream in
+// cents only (marked, from before the exact figure was kept) leaves no exact figure: "".
+func ExactLess(now, was string, marked bool) string {
+	if was == "" {
+		if marked {
+			return ""
+		}
+		return now
+	}
+	a, err := amountOf(now)
+	b, err2 := amountOf(was)
+	if err != nil || err2 != nil || a == nil || b == nil {
+		return ""
+	}
+	d := new(big.Rat).Sub(a, b)
+	if d.Sign() <= 0 {
+		return ""
+	}
+	return cardcost.Text(d)
+}
+
 // TierCostsSince is the stream's spend since the mark: its total, work and read costs and
 // each tier's less the mark's, never below zero, a tier with nothing since left out (the pie
 // leaves a tier at $0 out). Every other figure (the cards by tier, per landed, the reads of
@@ -128,8 +152,10 @@ func MoneyLess(now, was string) string {
 // landed is counted from the mark's base by the caller (PerLandedSince).
 func TierCostsSince(tc TierCosts, m ResetStream) TierCosts {
 	tc.TotalCost = MoneyLess(tc.TotalCost, m.TotalCost)
+	tc.TotalUSD = ExactLess(tc.TotalUSD, m.TotalUSD, m.TotalCost != "")
 	tc.WorkCost = MoneyLess(tc.WorkCost, m.WorkCost)
 	tc.ReadCost = MoneyLess(tc.ReadCost, m.ReadCost)
+	tc.DecideCost = MoneyLess(tc.DecideCost, m.DecideCost)
 	if len(tc.CostByTier) > 0 {
 		by := map[string]string{}
 		for tier, v := range tc.CostByTier {

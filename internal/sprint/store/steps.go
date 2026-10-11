@@ -314,6 +314,14 @@ func ScoreStep(r sprint.ScoreReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.RecordScores(s, r) }}
 }
 
+// DecideCostStep is decide calls' spend on the cards they decided (sprint.RecordDecideCost):
+// a red gate's call split over its batch, written after the land pass. It reads the routes,
+// which price a decide model where the store holds one.
+func DecideCostStep(r sprint.DecideCostReq) Step {
+	return Step{Named: len(r.Usage) > 0, Args: ArgsOf(r), Verb: "decide cost", Load: tables(sprint.Work), Routes: true,
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.RecordDecideCost(s, r) }}
+}
+
 // ReleaseStep is the coordinator releasing sentinels. The fleet table and the
 // records of needs off the table are read so that release tells a wait in flight
 // (taken, dropped) from one not started (nova-tools#5096 item c13).

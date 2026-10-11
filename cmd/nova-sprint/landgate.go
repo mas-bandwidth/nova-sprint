@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
@@ -87,6 +88,9 @@ func (l *lander) gateRerun(ctx context.Context, dir, stream, base, tip string, c
 	dctx, cancel := context.WithTimeout(ctx, time.Minute)
 	res, err := decide.Gate(dctx, l.gate.backend, l.gate.bars, in, l.gate.record, op, l.gate.now())
 	cancel()
+	if err == nil {
+		l.gateCost(stream, cards, res)
+	}
 	switch {
 	case err != nil:
 		return why + " (no gate decision: " + oneline.Err(err) + ")"
@@ -108,6 +112,45 @@ func (l *lander) gateRerun(ctx context.Context, dir, stream, base, tip string, c
 		return ""
 	}
 	return again + " (run once more: the gate decision classed " + decide.Names(res.Rerun()) + " flaky, op " + op + ")"
+}
+
+// gateCost keeps each decide call the gate made (one a failure asked, not answered from the
+// record) for its batch's cards, its usage split over them (sprint.SplitDecideUsage), to be
+// written on the cards after the pass (recordGateCosts): a gate's spend is the batch's.
+func (l *lander) gateCost(stream string, cards []landCard, res decide.GateResult) {
+	if l.dry || len(cards) == 0 {
+		return
+	}
+	for _, c := range res.Calls {
+		if c.Decision == nil || c.Existing {
+			continue
+		}
+		d := c.Decision
+		parts := sprint.SplitDecideUsage(sprint.DecideUsage(d.Usage.InputTokens, d.Usage.OutputTokens, d.State), len(cards))
+		r := sprint.DecideCostReq{Stream: stream, What: "gate", Op: d.ID, Usage: map[string]string{}, Who: l.c.actor}
+		for i, lc := range cards {
+			r.Usage[lc.id] = parts[i]
+		}
+		l.toCost = append(l.toCost, r)
+	}
+}
+
+// recordGateCosts writes the red gates' decide calls on their batches' cards, one step a
+// call (store.DecideCostStep), after the whole pass so no write of it races a landing; a
+// step that fails is one of the run's notes and changes no exit: the call is in its record.
+func (l *lander) recordGateCosts(ctx context.Context) {
+	for _, r := range l.toCost {
+		step := store.DecideCostStep(r)
+		epoch := l.epoch
+		step.Epoch = &epoch
+		l.a.serial.Lock()
+		res, err := l.st.Run(ctx, step)
+		l.a.serial.Unlock()
+		if code := stepExit(res, err); code != 0 {
+			l.baseNotes = append(l.baseNotes, "the gate decision "+r.Op+"'s cost was not written on its cards ("+stepWhy(res, err)+"); the call is in its record")
+		}
+	}
+	l.toCost = nil
 }
 
 // gateRouted says what a red batch's gate route did: nothing, when the flaky bar is unset.

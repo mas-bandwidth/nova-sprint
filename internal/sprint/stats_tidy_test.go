@@ -117,8 +117,10 @@ func TestStatsTidyZeroesCountersAndKeepsTheWork(t *testing.T) {
 	open, err := r.m.OpenNotes(r.ctx)
 	require.NoError(t, err)
 	where := places(before)
-	costBefore := before.StreamCtl("s1").F(sprint.FieldCost)
+	costBefore := sprint.StreamTierCosts(before)["s1"].TotalCost // the stream's whole spend
 	require.NotEmpty(t, costBefore)
+	landedBefore := sprint.StreamBases(before)["s1"].Cost // the landed cards' own cost, exact
+	require.NotEmpty(t, landedBefore)
 
 	// --dry-run says what would move and writes nothing
 	dry, err := r.st.TidyStats(r.ctx, store.TidyReq{Kinds: sprint.TidyKinds, Reason: "a fresh start", DryRun: true})
@@ -196,7 +198,7 @@ func TestStatsTidyZeroesCountersAndKeepsTheWork(t *testing.T) {
 		want = append(want, sprint.TidyCard{ID: sprint.WorkCardID(fmt.Sprintf("s1-%d", i), 1), Cell: "ok"})
 	}
 	assert.ElementsMatch(t, want, moved)
-	assert.Equal(t, sprint.StreamBase{Cost: costBefore, Landed: 13}, arch.Streams["s1"])
+	assert.Equal(t, sprint.StreamBase{Cost: landedBefore, Landed: 13}, arch.Streams["s1"])
 	assert.NotEmpty(t, arch.Routes, "the route counters are archived")
 
 	// the record names the tidy, to the nanosecond; the stream's cost counts from it
@@ -214,8 +216,10 @@ func TestStatsTidyZeroesCountersAndKeepsTheWork(t *testing.T) {
 	require.NoError(t, err)
 	row := shapes[0].Row("s1")
 	require.GreaterOrEqual(t, row, 0)
-	assert.Equal(t, "-", shapes[0].Rows[row].Texts[sprint.Cost], "nothing landed in s1 since the tidy")
-	assert.Equal(t, costBefore, after.StreamCtl("s1").F(sprint.FieldCost), "the control card keeps the epoch's cost")
+	// the cost cell is the stream's whole spend, the tile's figure, which the tick writes: a
+	// tidy moves no card's cost
+	assert.Equal(t, costBefore, sprint.StreamTierCosts(after)["s1"].TotalCost, "the cards keep the epoch's cost")
+	assert.Equal(t, "-", sprint.PerLandedSince(sprint.StreamTierCosts(after)["s1"].LandedUSD, after.Work.Count("s1", sprint.Landed), sprint.StreamBases(after)["s1"]), "nothing landed in s1 since the tidy: per landed counts from it")
 
 	// stats counts from the tidy: nothing has happened since; the whole epoch is still there
 	ps := sprint.StatsSince(s, since)

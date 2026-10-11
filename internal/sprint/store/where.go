@@ -42,6 +42,9 @@ type WhereRecord struct {
 	// counted here from the cards the tick reads, never by where from per-card reads.
 	Tiers   map[string]int              `json:"tiers,omitempty"`
 	Streams map[string]sprint.TierCosts `json:"streams,omitempty"`
+	// CostCheck is the streams' sums against every card's own total, counted with Streams
+	// before a stats reset's mark is taken off (sprint.CostCheckOf): where prints its line.
+	CostCheck *sprint.CostCheck `json:"cost_check,omitempty"`
 	// StageTimes is the median and p90 of each stage over the cards landed in the last day
 	// (sprint.CycleTimes, docs/SPEC-SPRINT.md, cycle-time-breakdownb.w1), as of the count.
 	StageTimes sprint.StageTimes `json:"stage_times,omitzero"`
@@ -94,6 +97,8 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 	if s.Fleet != nil {
 		r.FleetRev = s.Fleet.Revision
 	}
+	check := sprint.CostCheckOf(s, r.Streams)
+	r.CostCheck = &check
 	r.RowCards, r.ReadCards = sprint.RowCardCounts(s)
 	r.FixStates = sprint.FixStateCounts(s)
 	r.Series, r.SeriesCounted = sprint.SeriesLandings(s, now.Add(-sprint.SeriesWindow)), true
@@ -101,6 +106,46 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 		r.Landings = append(r.Landings, at.Unix())
 	}
 	return r
+}
+
+// streamsSince is the streams' figures (sprint.StreamTierCosts over snap) as where shows
+// them: the spend since the stats reset's mark (sprint.TierCostsSince: the total, the work,
+// the reads, the decide calls and each tier, less the mark's; a stream the mark does not
+// know reads as before), and per landed since the last tidy of the streams or the reset,
+// the later (sprint.PerLandedSince, over the landed cards' own cost counted before the mark).
+func (st *Store) streamsSince(snap *sprint.Snapshot, streams map[string]sprint.TierCosts, stats StatsRecord) map[string]sprint.TierCosts {
+	landedUSD := map[string]string{}
+	for stream, tc := range streams {
+		landedUSD[stream] = tc.LandedUSD
+	}
+	if m := stats.resetIn(st.epoch); m != nil {
+		for stream, tc := range streams {
+			if base, ok := m.Streams[stream]; ok {
+				streams[stream] = sprint.TierCostsSince(tc, base)
+			}
+		}
+	}
+	for stream, b := range stats.basesIn(st.epoch) {
+		tc, ok := streams[stream]
+		if !ok {
+			continue
+		}
+		tc.PerLanded = sprint.PerLandedSince(landedUSD[stream], snap.Work.Count(stream, sprint.Landed), b)
+		streams[stream] = tc
+	}
+	return streams
+}
+
+// costExtras is the tick's extras (tickExtras) and every primary off the work table whose
+// cost its stream counts (sprint.CostOffIDs): what the cost view is counted from, by the
+// where record's count and a stats reset's mark alike, so the two count the same cards. A
+// card off the table is read by id once and kept by the twin after.
+func costExtras(s *sprint.Snapshot) map[string][]string {
+	out := tickExtras(s)
+	if off := sprint.CostOffIDs(s); len(off) > 0 {
+		out[sprint.Work] = append(slices.Clone(out[sprint.Work]), off...)
+	}
+	return out
 }
 
 // readWhere is the where record as stored; false when there is none or it
@@ -149,7 +194,7 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	if !tw.mu.TryLock() {
 		return nil
 	}
-	snap, _, err := st.twinRead(withBudget(ctx), tw, All, tickExtras, nil)
+	snap, _, err := st.twinRead(withBudget(ctx), tw, All, costExtras, nil)
 	tw.mu.Unlock()
 	if errors.Is(err, errCleared) {
 		return nil
@@ -159,29 +204,22 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	}
 	r := whereOf(snap, m, st.now())
 	r.Stats = stamp
-	// the spend since the stats reset's mark (sprint.TierCostsSince): the total, the work, the
-	// reads and each tier, less the mark's; a stream the mark does not know reads as before
-	if m := stats.resetIn(st.epoch); m != nil {
-		for stream, tc := range r.Streams {
-			if base, ok := m.Streams[stream]; ok {
-				r.Streams[stream] = sprint.TierCostsSince(tc, base)
-			}
-		}
+	r.Streams = st.streamsSince(snap, r.Streams, stats)
+	// the work table's cost cells, from the figures just counted (the tile's), the tick the
+	// figure changes; a write that alone moved the table since the count (its revision one
+	// past the count's) is the record's revision, so the record is not counted again for it
+	costs := map[string]string{}
+	for stream, tc := range r.Streams {
+		costs[stream] = tc.TotalCost
 	}
-	// per landed since the last tidy of the streams or the reset, the later (stats tidy, stats
-	// reset, sprint.PerLandedSince)
-	bases := stats.basesIn(st.epoch)
-	for stream, b := range bases {
-		tc, ok := r.Streams[stream]
-		if !ok {
-			continue
+	wrote, err := st.showStreamCosts(ctx, shapes[0], costs)
+	if err != nil {
+		return fmt.Errorf("the work table's cost cells: %w", err)
+	}
+	if wrote && shapes[0].Revision == r.Rev {
+		if after, err := st.B.Shapes(ctx, []string{st.Names.Table(sprint.Work)}); err == nil && len(after) == 1 && after[0].Revision == r.Rev+1 {
+			r.Rev = after[0].Revision
 		}
-		cost := ""
-		if ctl := snap.StreamCtl(stream); ctl != nil {
-			cost = ctl.F(sprint.FieldCost)
-		}
-		tc.PerLanded = sprint.PerLandedSince(cost, snap.Work.Count(stream, sprint.Landed), b)
-		r.Streams[stream] = tc
 	}
 	b, err := json.Marshal(r)
 	if err != nil {
@@ -309,6 +347,8 @@ type WhereFacts struct {
 	// without the record.
 	Tiers   map[string]int
 	Streams map[string]sprint.TierCosts
+	// CostCheck is the record's (WhereRecord.CostCheck); nil without the record.
+	CostCheck *sprint.CostCheck
 	// StageTimes is the record's stage times (sprint.CycleTimes); empty without the record.
 	StageTimes sprint.StageTimes
 	// DealtFleet is the record's count of the fleet's cards on each friend's row
@@ -405,6 +445,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 		// a record counted from another stats record (a reset or a tidy since) is not taken
 		if ok && r.Epoch == st.epoch && r.Stats == stats.statsStamp(st.epoch) && (r.Rev == workRev || st.keptBy(r, f.Machine, f.Heartbeat)) {
 			f.Held, f.Critical, f.Tiers, f.Streams, f.StageTimes, f.DealtFleet = r.Held, r.Critical, r.Tiers, r.Streams, r.StageTimes, r.DealtFleet
+			f.CostCheck = r.CostCheck
 			f.ReadsWaiting, f.Priorities, f.StreamPriorities = r.ReadsWaiting, r.Priorities, r.StreamPriorities
 			f.ReadsWindow = r.ReadsWindow
 			f.RowCards, f.ReadCards = r.RowCards, r.ReadCards
@@ -419,10 +460,46 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 	if f.Held, err = st.HeldBack(ctx); err != nil {
 		return f, err
 	}
+	// the streams' spend from the cards, as the tick counts it (keepWhere), so the cost
+	// column and the tile show the cards as they are when no record of them is there yet
+	if f.Records {
+		if err := st.whereCosts(ctx, &f); err != nil {
+			return f, err
+		}
+	}
 	if f.Landed, err = st.LandedAt(ctx); err != nil {
 		f.Landed = nil // the whole sprint's average (sprint.LandingRate)
 	}
 	return f, nil
+}
+
+// whereCosts counts the streams' figures and the cost check from the cards (the read the
+// tick's count makes: every table and the cards off the table its streams name), into f,
+// for a where that found no record to take; a clear under the read leaves them out.
+func (st *Store) whereCosts(ctx context.Context, f *WhereFacts) error {
+	kv, err := st.kv()
+	if err != nil {
+		return nil
+	}
+	s, err := st.Load(ctx, All, costExtras)
+	if errors.Is(err, errCleared) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	raw, had, err := kv.GetKey(ctx, keyStats)
+	if err != nil {
+		return err
+	}
+	var stats StatsRecord
+	if !had || json.Unmarshal([]byte(raw), &stats) != nil {
+		stats = StatsRecord{}
+	}
+	streams := sprint.StreamTierCosts(s)
+	check := sprint.CostCheckOf(s, streams)
+	f.Streams, f.CostCheck = st.streamsSince(s, streams, stats), &check
+	return nil
 }
 
 // keptBy says the RUNNING machine's loop keeps the record: it ticks (its last

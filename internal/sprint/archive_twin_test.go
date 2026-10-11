@@ -55,7 +55,7 @@ func (r *conflictRig) landWithCost(stream string, ids ...string) {
 // ledger is what the record keeps of a stream: each landed card with its cost, and the
 // stream's cost on its control card.
 func ledger(s *sprint.Snapshot, stream string) map[string]string {
-	out := map[string]string{"ctl": s.StreamCtl(stream).F(sprint.FieldCost)}
+	out := map[string]string{"stream": sprint.StreamTierCosts(s)[stream].TotalUSD} // every card's spend, the cost column's
 	for _, c := range s.Work.Cell(stream, sprint.Landed) {
 		out[c.ID] = c.F(sprint.FieldCost)
 	}
@@ -66,6 +66,7 @@ func ledger(s *sprint.Snapshot, stream string) map[string]string {
 // landed count and cost (the tick deals the cards that are not landed meanwhile).
 func (r *conflictRig) drawn() (rows []string, footer string) {
 	r.t.Helper()
+	r.tick() // the cost cells are the tick's to write, as it counts the where record
 	pinned, err := r.st.Pinned(r.ctx)
 	require.NoError(r.t, err)
 	require.NoError(r.t, pinned.SyncMirrors(r.ctx))

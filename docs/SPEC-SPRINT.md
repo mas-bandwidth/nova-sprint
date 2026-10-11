@@ -32,19 +32,40 @@ fleet | ready | working | width | done | ok% | status | load
 The work table's last column, `cost` (the owner, 2026-10-01: "can you please
 add a final column to the work stream table, which is "cost". This is the sum of
 each landed card's total cost for that work stream, and then a total at the
-bottom."), is a stream's landed cards' cost: the sum, over its landed primaries,
-of each one's total, which is, over its consumers (section 2, What a card cost),
-each one's actual cost where one was reported, else its predicted one, a
-consumer with neither adding nothing. It is in US dollars and cents, rounded up to the next cent (the card keeps the exact figure)
-(`$1.24` for 1.2345), `-` for a stream with no priced landed card, and the footer is
-the sum over the streams' cells as shown, in dollars and cents. A stream with some unpriced
-landed cards shows the sum of the priced ones; `nova-sprint card <id>` and its
-JSON carry the detail. The merge that lands a primary writes its total on it
-(`cost`), the charged figure of the total the card carries (section 2, What a
-card cost), and sets the stream's sum over all its landed primaries on the
-stream's control card; `SyncMirrors` shows it in the cell. The sum is set
-from the cards, never added to: a replayed merge writes the same, and `clear`
-empties it with the tables.
+bottom."), is a stream's whole spend (the owner, 2026-10-11: "The cost per-work
+stream should include all costs, including reading, fix, whatever done to land the
+card, such that the total cost of all work streams = the total cost of the sprint so
+far", and "Just make it so that we capture all cost per-card, on the card itself, and
+then these cards sum up to the stream cost"): the sum, over every primary of the
+stream, landed, open or dropped off the table, of each one's total, which is, over its
+consumers (section 2, What a card cost: its takes, fixes, reads and nova-decide calls),
+each one's actual cost where one was reported, else its predicted one, a consumer with
+neither adding nothing (`sprint.StreamSpend`). It is in US dollars and cents, rounded up
+to the next cent (the card keeps the exact figure) (`$1.24` for 1.2345), `-` for a
+stream with nothing priced; the `unpriced` column beside it counts the stream's runs
+that reported no token or no price can be made for, never shown as `$0`. Below the
+footer, `other / unattributed` is the providers' spend beyond the cards' records
+(`sprint.UnreconciledSpend`: the seat's own, probes), `cost total` the streams and the
+other added, the cost tile's figure, and the check line: `COST OK sum(streams)=total`,
+or `COST FAIL` with the gap between the streams' sums and every card's own total
+(`sprint.CostCheck`, counted by the tick with the where record).
+
+A card dropped keeps its cost and its stream keeps summing it: the drop lists it on the
+stream's control card (`cost_off`), so the tick's count reads it by id off the table. A
+card recut or replaced by its twin (`recut`, `add --replaces`) has its spend carried:
+the twin is created with `cost_carried`, the exact sum of each old card's own total and
+what that one carried, and each old card is marked `cost_carried_to=<twin>` and left out
+of its stream's sum, so the spend is counted once, on the twin, in the twin's stream.
+A nova-decide call is a `decide` record on the card it decided: the brief decision at add
+on the card it is born with, a landed score on its card (and in its landed cost), a red
+gate's call split over its batch's cards; priced by a route of `typesafe/jev-latest`
+where the store holds one, else kept with its tokens (estimated from the text asked
+over, and marked so, when the backend reports none) and counted apart, never priced.
+
+The merge that lands a primary writes its own total on it (`cost`), the figure `per
+landed` divides; no control card holds a sum. `SyncMirrors` writes the cell from the
+where record the tick counts, the figure the dashboard's row and `stream_costs` carry,
+so the column, its footer and the tile are one sum.
 
 After `cost` the text table draws `per landed` (the owner, 2026-10-04: cost
 visibility, after a night of $437 for 844 landings whose pro streams landed at
@@ -6429,11 +6450,11 @@ internal/sprint/stats_tidy.go):
 - The route counters (`sprint.RouteStats` at the tidy) are archived by `--routes`, and by
   `--fleet` and `--friends` too, since they count the fleet table's cards those take off;
   `stats --routes` counts from the last tidy of the routes when given no `--since`.
-- `--streams` takes each stream's landed cost and landed count as its base
-  (`sprint.StreamBases`): the work table's `cost` cell is the control card's cost less
-  the base's (`sprint.StreamCostSince`, `-` when nothing priced landed since; the control
-  card keeps the epoch's figure) and `per landed` is that over the cards landed since
-  (`sprint.PerLandedSince`, counted by the next tick's where record).
+- `--streams` takes each stream's landed cards' own cost and landed count as its base
+  (`sprint.StreamBases`): `per landed` is the landed cost since over the cards landed
+  since (`sprint.PerLandedSince`, counted by the next tick's where record). The `cost`
+  cell is the stream's whole spend, as the tile is, counted from a stats reset's mark
+  and not from a tidy.
 - `--all` is the four. `stats` counts from the last tidy of any kind.
 
 The archive record, `stats:archive:<RFC3339Nano>-<nonce>` (the tidy's time to the

@@ -317,6 +317,9 @@ type lander struct {
 	scope         map[string][]string // each card's scope amendments, as checkCard allowed them (sprint.ScopeAmended)
 	prose         map[string][]string // each stream's prose globs (sprint.StreamProse), whose backquotes checkCard does not read
 	toScore       []scoreJob          // the landed batches, scored after the whole pass (landscore.go)
+	// toCost is the red gates' decide calls, each split over its batch's cards, written on
+	// the cards after the whole pass (landgate.go, recordGateCosts)
+	toCost []sprint.DecideCostReq
 	// cardTips is the batch branch's tip before each head mergeCards merged, then after the
 	// last: what a red batch gate bisects (landpass.go, bisect)
 	cardTips []string
@@ -550,6 +553,7 @@ func (a *app) cmdLand(args []string, stdout, stderr io.Writer) int {
 		sctx = a.landCtx
 	}
 	l.scoreAll(sctx)
+	l.recordGateCosts(sctx)
 	return l.report(failed, pruned, stdout, stderr)
 }
 

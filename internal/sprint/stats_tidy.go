@@ -290,27 +290,26 @@ func withCarried(s *Snapshot, row string, median float64, n int) (float64, int) 
 	return median, n
 }
 
-// StreamBase is a stream's landed cost and count at a tidy: the cost cell and per landed
-// count from it (StreamCostSince, PerLandedSince).
+// StreamBase is a stream's landed cost and count at a tidy: per landed counts from it
+// (StreamCostSince, PerLandedSince).
 type StreamBase struct {
-	Cost   string `json:"cost,omitempty"` // the control card's exact landed cost (FieldCost), "" for none
+	Cost   string `json:"cost,omitempty"` // the landed cards' exact own cost summed (FieldCost), "" for none
 	Landed int    `json:"landed"`
 }
 
-// StreamBases is every stream's base, from its control card and its landed cell.
+// StreamBases is every stream's base, from its landed cards (landedSpend; the count is the
+// landed cell's).
 func StreamBases(s *Snapshot) map[string]StreamBase {
 	out := map[string]StreamBase{}
 	for _, row := range s.Work.Rows() {
 		b := StreamBase{Landed: s.Work.Count(row, Landed)}
-		if ctl := s.StreamCtl(row); ctl != nil {
-			b.Cost = ctl.F(FieldCost)
-		}
+		b.Cost, _ = landedSpend(s, row)
 		out[row] = b
 	}
 	return out
 }
 
-// StreamCostSince is a stream's landed cost since its tidy: the control card's exact
+// StreamCostSince is a stream's landed cost since its tidy: the landed cards' exact
 // cost less the base's, "" when that is nothing (the cell's "-"); the cost unchanged when
 // the base names none or either does not read.
 func StreamCostSince(cost string, base StreamBase) string {

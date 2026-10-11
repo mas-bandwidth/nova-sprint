@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -34,16 +36,30 @@ type TierCosts struct {
 	// the list's bound (in its total, not its list) take the card's; "no tier" only when
 	// none of these names one.
 	CostByTier map[string]string `json:"cost_by_tier,omitempty"`
-	// TotalCost is the stream's complete recorded spend: every take and read of every card
-	// of it in any column, landed or not, at each record's charged figure (the harness's
-	// cost, else its tokens at the route's prices), dollars and cents rounded up; "" when
-	// nothing of it was priced.
+	// TotalCost is the stream's complete recorded spend (StreamSpend): every take, read and
+	// decide call of every card of it in any column, landed, open or dropped off the table,
+	// at each record's charged figure (the harness's cost, else its tokens at the route's
+	// prices), a recut card's spend counted once on its twin, dollars and cents rounded up;
+	// "" when nothing of it was priced. The work table's cost column shows it, and the cost
+	// tile is its sum over the streams (with the unattributed spend, Unreconciled).
 	TotalCost string `json:"total_cost,omitempty"`
-	// WorkCost and ReadCost split TotalCost by kind: every take's charged figure and every
-	// read's, dollars and cents rounded up; "" when nothing of that kind was priced. The
-	// dashboard shows the reads as their own number beside the work.
-	WorkCost string `json:"work_cost,omitempty"`
-	ReadCost string `json:"read_cost,omitempty"`
+	// TotalUSD is TotalCost exact, as the cards' sums give it (cardcost.Sum), and LandedUSD
+	// the landed cards' own cost exact (FieldCost), what PerLanded divides: "" for none.
+	TotalUSD  string `json:"total_usd,omitempty"`
+	LandedUSD string `json:"landed_usd,omitempty"`
+	// WorkCost, ReadCost and DecideCost split TotalCost by kind: every take's charged figure,
+	// every read's and every decide call's, dollars and cents rounded up; "" when nothing of
+	// that kind was priced. The dashboard shows the reads as their own number beside the work.
+	WorkCost   string `json:"work_cost,omitempty"`
+	ReadCost   string `json:"read_cost,omitempty"`
+	DecideCost string `json:"decide_cost,omitempty"`
+	// DecideUnpriced counts the stream's decide calls no route priced (ConsumerDecide): their
+	// tokens kept, no dollar figure made up.
+	DecideUnpriced int `json:"decide_unpriced,omitempty"`
+	// DroppedCards counts the stream's cards kept off the table whose cost is in TotalCost,
+	// and CarriedCards its twins that carry a replaced card's spend (FieldCostCarried).
+	DroppedCards int `json:"dropped_cards,omitempty"`
+	CarriedCards int `json:"carried_cards,omitempty"`
 	// ReadTokens is the tokens of the stream's subscription reads (WhySubscription), the
 	// reads whose cost is their tokens; 0 when none.
 	ReadTokens int64 `json:"read_tokens,omitempty"`
@@ -89,96 +105,199 @@ func TierCounts(s *Snapshot) map[string]int {
 	return out
 }
 
-// StreamTierCosts is each stream's TierCosts, by stream, over the work table's rows.
+// StreamTierCosts is each stream's TierCosts, by stream, over the work table's rows: every
+// card of the stream counted, on the table or kept off it (a dropped card keeps its cost),
+// a card whose spend was carried to its twin counted on the twin (StreamSpend).
 func StreamTierCosts(s *Snapshot) map[string]TierCosts {
+	by := streamCards(s)
 	out := map[string]TierCosts{}
 	for _, st := range s.Work.Rows() {
-		out[st] = streamTierCosts(s, st)
+		out[st] = streamTierCosts(s, st, by[st])
 	}
 	return out
 }
 
-func streamTierCosts(s *Snapshot, stream string) TierCosts {
+// streamCards is every primary of the work table, placed or kept off it (Table.Cards),
+// sentinels left out, by the stream its spend counts in: its own row, or, for a card whose
+// spend was carried to its twin (FieldCostCarriedTo), the stream of the card at the end of
+// the carry, so a twin admitted to another stream takes the old card's records with it.
+func streamCards(s *Snapshot) map[string][]*Card {
+	out := map[string][]*Card{}
+	for _, c := range s.Work.Cards() {
+		if IsSentinel(c) {
+			continue
+		}
+		st := costStream(s, c)
+		out[st] = append(out[st], c)
+	}
+	return out
+}
+
+// costStream is the stream a card's spend counts in (streamCards): its row, its stream
+// field when it is kept off the table, or the stream of the card its spend was carried to,
+// followed to the end of the carry (bounded, so a cycle no step writes ends).
+func costStream(s *Snapshot, c *Card) string {
+	for range MaxTakes {
+		to := c.F(FieldCostCarriedTo)
+		if to == "" {
+			break
+		}
+		next := s.Work.Card(to)
+		if next == nil {
+			break
+		}
+		c = next
+	}
+	return cmp.Or(c.Row, c.F("stream"))
+}
+
+// StreamSpend is a stream's spend over its cards (streamCards), the exact sum in USD and
+// whether anything of it was priced: each card's own charged total and what it carries
+// from the cards it replaced (FieldCostCarried), a card whose spend was carried to its twin
+// left out (counted on the twin: the once-only rule, FieldCostCarriedTo).
+func StreamSpend(cards []*Card) (string, bool) {
+	var sum []string
+	for _, c := range cards {
+		if c.F(FieldCostCarriedTo) != "" {
+			continue
+		}
+		if v := CardCostOf(c).Total.Charged; v != "" {
+			sum = append(sum, v)
+		}
+		if v := c.F(FieldCostCarried); v != "" {
+			sum = append(sum, v)
+		}
+	}
+	if len(sum) == 0 {
+		return "", false
+	}
+	return cardcost.Sum(sum...)
+}
+
+// CardsSpend is the exact sum of every card's own charged total, in USD, over the work
+// table's primaries placed or kept (sentinels left out), nothing carried counted: the figure
+// the streams' sums must equal (CostCheckOf). "" when nothing was priced.
+func CardsSpend(s *Snapshot) string {
+	var sum []string
+	for _, c := range s.Work.Cards() {
+		if IsSentinel(c) {
+			continue
+		}
+		if v := CardCostOf(c).Total.Charged; v != "" {
+			sum = append(sum, v)
+		}
+	}
+	if v, ok := cardcost.Sum(sum...); ok && len(sum) > 0 {
+		return v
+	}
+	return ""
+}
+
+// landedSpend is the exact sum of the stream's landed cards' own cost (FieldCost), what the
+// cost per landed card divides, and how many landed: "" when none of them was priced.
+func landedSpend(s *Snapshot, stream string) (string, int) {
+	var sum []string
+	n := 0
+	for _, c := range s.Work.Cell(stream, Landed) {
+		if IsSentinel(c) {
+			continue
+		}
+		n++
+		if v := c.F(FieldCost); v != "" {
+			sum = append(sum, v)
+		}
+	}
+	if v, ok := cardcost.Sum(sum...); ok && len(sum) > 0 {
+		return v, n
+	}
+	return "", n
+}
+
+func streamTierCosts(s *Snapshot, stream string, cards []*Card) TierCosts {
 	t := TierCosts{Tiers: map[string]int{}, PerLanded: "-", CostByTier: map[string]string{}, ReadsToday: map[string]ReadDay{}, Readers: map[string]ReaderSpend{}}
 	byTier := map[string]*big.Rat{}
-	workCost, readCost := new(big.Rat), new(big.Rat)
-	pricedWork, pricedRead := false, false
+	workCost, readCost, decideCost := new(big.Rat), new(big.Rat), new(big.Rat)
+	pricedWork, pricedRead, pricedDecide := false, false, false
 	day := s.Now.UTC().Format(time.DateOnly)
 	routes := map[string]Route{}
 	for _, r := range s.Routes {
 		routes[r.Name] = r
 	}
-	var landedCost []string
-	var allCost []string
-	landed := 0
-	for _, col := range States {
-		for _, c := range s.Work.Cell(stream, col) {
-			if IsSentinel(c) {
+	for _, c := range cards {
+		if c.Placed() {
+			t.Tiers[TierWord(c)]++ // the cards by tier: those on the table, as before
+		}
+		if !c.Placed() {
+			t.DroppedCards++
+		}
+		if c.F(FieldCostCarried) != "" {
+			t.CarriedCards++
+		}
+		// the card's whole record, whatever its column: every take, read and decide call
+		// behind it, the records past the list's bound included (FieldCostTotal); a card
+		// carried to its twin is here too, its records its own, its sum on the twin
+		v := CardCostOf(c)
+		tot := v.Total
+		t.UnpricedRuns += tot.Records - tot.ChargedOf
+		listed := new(big.Rat)
+		for _, con := range v.Consumers {
+			if con.Kind == ConsumerDecide && cmp.Or(con.Usage.Actual, con.Usage.Predicted) == "" {
+				// a decide call with no price is no run: counted apart (DecideUnpriced)
+				t.UnpricedRuns--
+				t.DecideUnpriced++
+			}
+			if con.Kind == "read" && con.Usage.Unpriced == WhySubscription {
+				// a subscription read's cost is its tokens: priced, never a run unpriced
+				t.UnpricedRuns--
+				t.ReadTokens += con.Usage.Tokens.Total()
+			}
+			if con.Kind == "read" && con.Usage.Unpriced == cardcost.WhyNoTokens {
+				t.ReadsNoTokens++
+			}
+			if con.Kind == "read" && strings.HasPrefix(con.At, day) {
+				addReadDay(t.ReadsToday, con)
+			}
+			if con.Kind == "read" {
+				rd := t.Readers[cmp.Or(con.Who, "-")]
+				rd.addRead(con, s.Now)
+				t.Readers[cmp.Or(con.Who, "-")] = rd
+			}
+			usd, err := amountOf(cmp.Or(con.Usage.Actual, con.Usage.Predicted))
+			if err != nil || usd == nil {
 				continue
 			}
-			t.Tiers[TierWord(c)]++
-			if col == Landed {
-				landed++
-				if v := c.F(FieldCost); v != "" {
-					landedCost = append(landedCost, v)
-				}
+			switch con.Kind {
+			case "read":
+				readCost.Add(readCost, usd)
+				pricedRead = true
+			case ConsumerDecide:
+				decideCost.Add(decideCost, usd)
+				pricedDecide = true
+			default:
+				workCost.Add(workCost, usd)
+				pricedWork = true
 			}
-			// the card's whole record, whatever its column: every take and read behind it,
-			// the records past the list's bound included (FieldCostTotal)
-			tot := CardCostOf(c).Total
-			if tot.Charged != "" {
-				allCost = append(allCost, tot.Charged)
-			}
-			t.UnpricedRuns += tot.Records - tot.ChargedOf
-			listed := new(big.Rat)
-			for _, con := range CardCostOf(c).Consumers {
-				if con.Kind == "read" && con.Usage.Unpriced == WhySubscription {
-					// a subscription read's cost is its tokens: priced, never a run unpriced
-					t.UnpricedRuns--
-					t.ReadTokens += con.Usage.Tokens.Total()
-				}
-				if con.Kind == "read" && con.Usage.Unpriced == cardcost.WhyNoTokens {
-					t.ReadsNoTokens++
-				}
-				if con.Kind == "read" && strings.HasPrefix(con.At, day) {
-					addReadDay(t.ReadsToday, con)
-				}
-				if con.Kind == "read" {
-					rd := t.Readers[cmp.Or(con.Who, "-")]
-					rd.addRead(con, s.Now)
-					t.Readers[cmp.Or(con.Who, "-")] = rd
-				}
-				usd, err := amountOf(cmp.Or(con.Usage.Actual, con.Usage.Predicted))
-				if err != nil || usd == nil {
-					continue
-				}
-				byKind := workCost
-				if con.Kind == "read" {
-					byKind = readCost
-				}
-				byKind.Add(byKind, usd)
-				if con.Kind == "read" {
-					pricedRead = true
-				} else {
-					pricedWork = true
-				}
-				listed.Add(listed, usd)
-				addTier(byTier, runTier(routes, c, con), usd)
-			}
-			// the records past the list's bound: in the card's total and in no record of its
-			// list, so on the card's own tier, that the tiers sum to the total
-			if all, err := amountOf(tot.Charged); err == nil && all != nil && all.Cmp(listed) > 0 {
-				addTier(byTier, attemptTier(c), new(big.Rat).Sub(all, listed))
-			}
+			listed.Add(listed, usd)
+			addTier(byTier, runTier(routes, c, con), usd)
+		}
+		// the records past the list's bound: in the card's total and in no record of its
+		// list, so on the card's own tier, that the tiers sum to the total
+		if all, err := amountOf(tot.Charged); err == nil && all != nil && all.Cmp(listed) > 0 {
+			addTier(byTier, attemptTier(c), new(big.Rat).Sub(all, listed))
 		}
 	}
-	if sum, ok := cardcost.Sum(landedCost...); ok && landed > 0 && len(landedCost) > 0 {
+	// per landed: the landed cards' own cost over the landed cards, the one figure that is
+	// the landed cards' alone
+	if sum, landed := landedSpend(s, stream); sum != "" && landed > 0 {
+		t.LandedUSD = sum
 		if total, err := amountOf(sum); err == nil && total != nil {
 			t.PerLanded = cardcost.Cents(total.Quo(total, big.NewRat(int64(landed), 1)))
 		}
 	}
-	if sum, ok := cardcost.Sum(allCost...); ok && len(allCost) > 0 {
+	// the stream's cost: every card's spend, carried spend counted once (StreamSpend)
+	if sum, ok := StreamSpend(cards); ok {
 		if total, err := amountOf(sum); err == nil && total != nil {
+			t.TotalUSD = sum
 			t.TotalCost = cardcost.Cents(total)
 		}
 	}
@@ -187,6 +306,9 @@ func streamTierCosts(s *Snapshot, stream string) TierCosts {
 	}
 	if pricedRead {
 		t.ReadCost = cardcost.Cents(readCost)
+	}
+	if pricedDecide {
+		t.DecideCost = cardcost.Cents(decideCost)
 	}
 	if len(t.ReadsToday) == 0 {
 		t.ReadsToday = nil
@@ -200,6 +322,114 @@ func streamTierCosts(s *Snapshot, stream string) TierCosts {
 	}
 	t.Reconciles = LatestReconciles(s)
 	return t
+}
+
+// CostCheck is the invariant the cost view keeps (the owner, 2026-10-11: "the total cost of
+// all work streams = the total cost of the sprint so far"): the streams' sums (each stream's
+// TotalUSD, a recut card's spend on its twin) against every card's own total (CardsSpend),
+// both exact. They are equal unless spend was lost or counted twice: a card in no stream
+// of the table, a carry that missed a record or a record that came after it. Gap is
+// cards less streams, exact; Orphans the cards whose stream is not a row of the table.
+type CostCheck struct {
+	Streams string   `json:"streams_usd"`
+	Cards   string   `json:"cards_usd"`
+	Gap     string   `json:"gap_usd,omitempty"`
+	OK      bool     `json:"ok"`
+	Orphans []string `json:"orphans,omitempty"`
+	// Unlisted counts the cards the streams' control cards count dropped and no list names
+	// (FieldCostOff, FieldReplaces): dropped before the list was kept, so no read finds them
+	// and neither sum holds their cost. Not a gap between the sums; said beside them.
+	Unlisted int `json:"unlisted,omitempty"`
+}
+
+// CostCheckOf checks the streams' sums (StreamTierCosts, before any stats reset's mark is
+// taken off) against the cards' (CardsSpend).
+func CostCheckOf(s *Snapshot, streams map[string]TierCosts) CostCheck {
+	var sum []string
+	for _, st := range slices.Sorted(maps.Keys(streams)) {
+		if v := streams[st].TotalUSD; v != "" {
+			sum = append(sum, v)
+		}
+	}
+	k := CostCheck{Streams: "0", Cards: cmp.Or(CardsSpend(s), "0")}
+	if v, ok := cardcost.Sum(sum...); ok && len(sum) > 0 {
+		k.Streams = v
+	}
+	rows := map[string]bool{}
+	for _, r := range s.Work.Rows() {
+		rows[r] = true
+	}
+	for st, cs := range streamCards(s) {
+		if rows[st] {
+			continue
+		}
+		for _, c := range cs {
+			k.Orphans = append(k.Orphans, c.ID)
+		}
+	}
+	slices.Sort(k.Orphans)
+	if s.Merge != nil {
+		known := map[string]map[string]bool{} // by stream: the ids off the table a list names
+		for _, c := range s.Work.Column(States...) {
+			for _, id := range Split(c.F(FieldReplaces)) {
+				if known[c.Row] == nil {
+					known[c.Row] = map[string]bool{}
+				}
+				known[c.Row][id] = true
+			}
+		}
+		for _, st := range s.Work.Rows() {
+			ctl := s.StreamCtl(st)
+			if ctl == nil {
+				continue
+			}
+			for _, id := range Split(ctl.F(FieldCostOff)) {
+				if known[st] == nil {
+					known[st] = map[string]bool{}
+				}
+				known[st][id] = true
+			}
+			k.Unlisted += max(0, ctl.Int("dropped")-len(known[st]))
+		}
+	}
+	a, err := amountOf(k.Streams)
+	b, err2 := amountOf(k.Cards)
+	if err != nil || err2 != nil || a == nil || b == nil {
+		return k
+	}
+	gap := new(big.Rat).Sub(b, a)
+	k.OK = gap.Sign() == 0
+	if !k.OK {
+		k.Gap = cardcost.Text(gap)
+	}
+	return k
+}
+
+// Line is the check as where prints it under the work table: COST OK sum(streams)=total,
+// else COST FAIL with the gap and the cards no stream counts.
+func (k CostCheck) Line() string {
+	money := func(v string) string {
+		r, err := amountOf(v)
+		if err != nil || r == nil {
+			return "$" + v
+		}
+		if r.Sign() < 0 {
+			return "-" + cardcost.Cents(new(big.Rat).Neg(r))
+		}
+		return cardcost.Cents(r)
+	}
+	unlisted := ""
+	if k.Unlisted > 0 {
+		unlisted = fmt.Sprintf("; %d card(s) dropped before the drop list was kept are in neither sum", k.Unlisted)
+	}
+	if k.OK {
+		return fmt.Sprintf("COST OK sum(streams)=total %s (exact %s)%s", money(k.Streams), k.Streams, unlisted)
+	}
+	line := fmt.Sprintf("COST FAIL sum(streams)=%s total=%s gap=%s (exact %s - %s)", money(k.Streams), money(k.Cards), money(cmp.Or(k.Gap, "0")), k.Cards, k.Streams)
+	if len(k.Orphans) > 0 {
+		line += fmt.Sprintf("; %d card(s) in no stream of the table: %s", len(k.Orphans), Preview(k.Orphans, ", "))
+	}
+	return line + unlisted
 }
 
 // tierCostCents partitions the rounded-up stream total into displayed tier cents.

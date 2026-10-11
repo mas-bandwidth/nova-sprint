@@ -79,6 +79,10 @@ type AddReq struct {
 	// none.
 	BriefOps    map[string]string
 	BriefRecord string
+	// BriefUsage is each card's brief decision call's usage (DecideUsage), by card id, for a
+	// call add made (not one answered from the record): the card is created with it as its
+	// first decide record (cost.go, ConsumerDecide).
+	BriefUsage map[string]string `json:",omitempty"`
 	// Replaces names the cards the one card this add admits replaces (add --replaces, twins.go):
 	// it takes over every edge where a waiting card needs one of them, and each still on the
 	// table is dropped "replaced by <the new id>", in the same step, raising no blocked
@@ -526,6 +530,10 @@ func Add(s *Snapshot, r AddReq) Plan {
 			}
 			if op := r.BriefOps[a.id]; op != "" {
 				fields[FieldBriefOp], fields[FieldBriefRecord] = op, r.BriefRecord
+				if u := r.BriefUsage[a.id]; u != "" {
+					// what the brief decision cost, on the card it decided, from its birth
+					addConsumer(&Card{ID: a.id, Fields: map[string]string{}}, fields, decideConsumer(s, a.id, "brief", op, u))
+				}
 			}
 			if !a.sent {
 				if walls == nil {

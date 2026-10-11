@@ -21,8 +21,8 @@ import (
 //
 //   - the record's prediction and its sheet's copy are rewritten on the primary, its total
 //     moved by the difference (cardcost.Total.Repriced, so records past the list's bound
-//     keep their place in it), a landed primary's cost (FieldCost) set to its new charged
-//     figure, and each stream's sum on its control card set again from its landed cards;
+//     keep their place in it), and a landed primary's cost (FieldCost) set to its new charged
+//     figure (a stream's cost is its cards' sum where it is shown, StreamTierCosts);
 //   - the harness's own cost, where a record holds one, stays its charged figure (it was
 //     never a price of ours): its prediction moves and it is counted held (HeldByActual);
 //   - a record that reported no token (unpriced=no-tokens), a subscription read's, one no
@@ -75,7 +75,7 @@ type RepriceReport struct {
 	// no tokens kept to price them by.
 	Cut     int `json:"cut,omitempty"`
 	Cards   int `json:"cards"`   // primaries rewritten
-	Streams int `json:"streams"` // control cards rewritten
+	Streams int `json:"streams"` // streams whose cards were repriced (no control card holds a sum)
 }
 
 // RepriceOf is the reprice's plan and its account (see above).
@@ -119,7 +119,6 @@ func RepriceOf(s *Snapshot, r RepriceReq) (Plan, RepriceReport) {
 		}
 		return u.Predicted
 	}
-	newCost := map[string]string{} // a landed primary's cost after, by id
 	for _, c := range s.Work.Column(States...) {
 		if IsSentinel(c) {
 			continue
@@ -184,7 +183,6 @@ func RepriceOf(s *Snapshot, r RepriceReq) (Plan, RepriceReport) {
 		}
 		set[FieldCostTotal] = total.String()
 		if c.Col == Landed {
-			newCost[c.ID] = total.Charged
 			if total.Charged != c.F(FieldCost) {
 				set[FieldCost] = total.Charged
 			}
@@ -197,39 +195,15 @@ func RepriceOf(s *Snapshot, r RepriceReq) (Plan, RepriceReport) {
 		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, unset...))},
 			Moved: c.ID + " repriced"})
 	}
-	// each stream's sum over its landed cards, set again where one of them moved
-	if len(newCost) > 0 && s.Merge != nil {
-		for _, st := range s.Work.Rows() {
-			ctl := s.StreamCtl(st)
-			if ctl == nil {
-				continue
-			}
-			moved := false
-			var sum []string
-			for _, c := range s.Work.Cell(st, Landed) {
-				v, ok := newCost[c.ID]
-				moved = moved || ok
-				if !ok {
-					v = c.F(FieldCost)
-				}
-				if v != "" {
-					sum = append(sum, v)
-				}
-			}
-			total, ok := cardcost.Sum(sum...)
-			if !moved || !ok || total == ctl.F(FieldCost) {
-				continue
-			}
-			var unset []string
-			if len(sum) == 0 {
-				unset = append(unset, FieldCost)
-				total = ""
-			}
-			rep.Streams++
-			p.Units = append(p.Units, Unit{Key: ctl.ID, Stream: st, Changes: []Change{change(Merge, setEntry(ctl, map[string]string{FieldCost: total}, unset...))},
-				Moved: st + " cost repriced"})
+	// the streams' costs are their cards' sums where they are shown (StreamTierCosts): no
+	// control card holds one to set again; Streams counts the streams whose cards moved
+	streams := map[string]bool{}
+	for _, u := range p.Units {
+		if u.Stream != "" {
+			streams[u.Stream] = true
 		}
 	}
+	rep.Streams = len(streams)
 	for _, name := range slices.Sorted(maps.Keys(by)) {
 		sm := by[name]
 		rr := sm.RepriceRoute

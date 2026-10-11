@@ -145,7 +145,11 @@ function syncRows(box, header, keys, build, update, total) {
     prev = r.node;
   });
   map.forEach(function (r, k) { if (!seen.has(k)) { r.node.remove(); map.delete(k); } });
-  if (total && prev.nextSibling !== total) box.insertBefore(total, prev.nextSibling);
+  // the trailing rows (a total, or several in order), each moved only when out of place
+  (Array.isArray(total) ? total : total ? [total] : []).forEach(function (t) {
+    if (prev.nextSibling !== t) box.insertBefore(t, prev.nextSibling);
+    prev = t;
+  });
 }
 function headRow(labels) {
   var h = el("div", "row head");
@@ -278,6 +282,13 @@ function renderStreams(d) {
     FLOW.forEach(function (st) { box._total._c.push(numCell(st === "landed" ? "frac" : "")); });
     box._total._c.push(quiet(numCell()));
     box._total._c.forEach(function (c) { box._total.appendChild(c); });
+    // the spend no card carries (the seat's own, probes; sprint.UnreconciledSpend): its own
+    // row above the total, so the cost column sums to the tile
+    box._other = el("div", "row");
+    box._other._c = [el("div", "name", "other / unattributed"), el("div")];
+    FLOW.forEach(function () { box._other._c.push(numCell("")); });
+    box._other._c.push(quiet(numCell()));
+    box._other._c.forEach(function (c) { box._other.appendChild(c); });
   }
   // Rows are grouped by status (landed, working, stopped, held), by name within a group,
   // with a thin rule between groups; each row also carries its status pill. Rows are keyed by stream, so a reorder
@@ -302,6 +313,12 @@ function renderStreams(d) {
     epoch.unpriced += int(sc.unpriced_runs);
   });
   sum.epoch = epoch;
+  // the sprint's unreconciled spend rides on every stream's record, an archived one's too:
+  // read once, never summed; the other / unattributed row and the tile add it once
+  Object.keys(d.stream_costs || {}).forEach(function (k) {
+    var uc = cents(d.stream_costs[k].unreconciled); if (uc) sum.unreconciled = Math.max(sum.unreconciled, uc);
+  });
+  epoch.unreconciled = sum.unreconciled;
   var digits = digitsOf(streamOrder(d).reduce(function (a, k) { return a + FLOW.reduce(function (b, st) { return b + int(work[k][st]); }, 0); }, 0));
   FLOW.forEach(function (st) { sum[st] = 0; });
   syncRows(box, box._head, keys, function () {
@@ -316,12 +333,15 @@ function renderStreams(d) {
   }, function (r, k) {
     var w = work[k], m = merge[k] || {}, s = states[k] || {}, c = {}, total = 0;
     FLOW.forEach(function (st) { c[st] = int(w[st]); total += c[st]; });
-    var ct = cents(w.cost);
+    // the stream's cost is its whole spend, every card's (sprint.TierCosts.total_cost), the
+    // figure the tile sums: the column and the tile are one sum by construction; a build that
+    // serves no stream_costs shows the row's cost cell
+    var sc = (d.stream_costs || {})[k], ct = sc ? cents(sc.total_cost) : cents(w.cost), np = sc ? int(sc.unpriced_runs) : 0;
+    sc = sc || {};
     // an archived stream shown is drawn, and counted only on its archived line
     if (!arch[k]) {
       FLOW.forEach(function (st) { sum[st] += c[st]; });
       if (ct) sum.cost += ct;
-      var sc = (d.stream_costs || {})[k] || {};
       var tc = cents(sc.total_cost); if (tc) sum.totalCost += tc;
       // the reads beside the work: the same total split by kind (sprint.TierCosts)
       var wc = cents(sc.work_cost); if (wc) sum.workCost += wc;
@@ -342,17 +362,22 @@ function renderStreams(d) {
     setText(r.tag, tags.join(" · "));
     FLOW.forEach(function (st) { if (st !== "landed") setNum(r.n[st], c[st]); });
     setHTML(r.n.landed, frac(c.landed, total, digits));
-    setText(r.cost, ct === null ? "-" : money(ct)); setClass(r.cost, "num" + (ct === null ? " zero" : ""));
-  }, box._total);
-  // the sprint's unreconciled spend rides on every stream's record, an archived one's too:
-  // read once, never summed
-  Object.keys(d.stream_costs || {}).forEach(function (k) {
-    var uc = cents(d.stream_costs[k].unreconciled); if (uc) sum.unreconciled = Math.max(sum.unreconciled, uc);
-  });
+    // the runs no price covers beside the cost, a count, never $0 (the owner, 2026-10-11)
+    setText(r.cost, (ct === null ? "-" : money(ct)) + (np > 0 ? " +" + np + " unpriced" : ""));
+    setClass(r.cost, "num" + (ct === null ? " zero" : ""));
+    setTitle(r.cost, "every card's spend: work, reads, decide calls, open, landed and dropped" + (np > 0 ? "; " + np + " run(s) reported no tokens or have no price, not counted as $0" : ""));
+  }, sum.unreconciled ? [box._other, box._total] : box._total);
+  if (!sum.unreconciled && box._other.parentNode === box) box._other.remove();
+  var oc = box._other._c;
+  setText(oc[COST_AT], money(sum.unreconciled));
+  setTitle(oc[COST_AT], "what the providers counted beyond the cards' records since the epoch began (the seat, probes)");
   var tc = box._total._c, all = 0;
   FLOW.forEach(function (st, i) { all += sum[st]; if (st !== "landed") setNum(tc[2 + i], sum[st]); });
   setHTML(tc[LANDED_AT], frac(sum.landed, all, digits));
-  setText(tc[COST_AT], money(sum.cost));
+  // the grand total: every stream's spend and the unattributed, the tile's figure
+  // (a build that serves no stream_costs: the rows' cost cells, as before)
+  var streamsCost = d.stream_costs ? sum.totalCost : sum.cost;
+  setText(tc[COST_AT], money(streamsCost + sum.unreconciled) + (sum.unpriced > 0 ? " +" + sum.unpriced + " unpriced" : ""));
   setText($("streams-sub"), keys.length + " streams · " + landedStreams + " landed · " + held + " held");
   // the "landed" header is centred over its n / total cell: same width as the cell, text centred
   var lw = tc[LANDED_AT].offsetWidth ? tc[LANDED_AT].offsetWidth + "px" : "";
@@ -597,7 +622,8 @@ function renderHero(d, s, ft) {
   // streams on the table, or, the sprint done, the epoch's every stream, as the hero's count
   // is. The cost is every recorded take and read of their cards in any column; the cost per
   // card is that over the cards that landed
-  var c = d.done ? s.sum.epoch : s.sum, recorded = c.totalCost;
+  // the streams' spend and the unattributed (other) once: the Work table's total row's figure
+  var c = d.done ? s.sum.epoch : s.sum, recorded = c.totalCost + (c.unreconciled || 0);
   setText($("cost"), money(recorded));
   // after a stats reset the cost counts from its mark, and so do the cards it is over
   // (where --json's stats_reset.landed, the same scope)
@@ -786,7 +812,7 @@ function renderTopStreams(d) {
   var work = (d.tables && d.tables.work) || {}, rows = [];
   var sp = tierSpend(d), byTier = sp.byTier, order = sp.order, fmt = sp.fmt;
   Object.keys(work).forEach(function (k) {
-    var w = work[k], ct = cents(w.cost); if (!ct) return;
+    var w = work[k], sc0 = (d.stream_costs || {})[k], ct = sc0 ? cents(sc0.total_cost) : cents(w.cost); if (!ct) return;
     var n = {}; FLOW.forEach(function (c) { n[c] = parseInt(w[c], 10) || 0; });
     // per card is the row's per_landed (where's, counted from a stats reset's or a tidy's
     // base, as its cost is), else its cost over its landed; tiers from stream_costs as the pie's

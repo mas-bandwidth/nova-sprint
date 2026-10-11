@@ -635,25 +635,14 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 			}
 		}
 		// What each card cost, its total's charged figure as the card carries it
-		// (cost.go, FieldCostTotal), written on it as it lands (FieldCost), and the
-		// stream's sum over every landed card, set on its control card, which the work
-		// table's cost column shows (Cost): a sum of the cards, set, never added to, so
-		// a replay writes the same and a clear empties it with the tables.
+		// (cost.go, FieldCostTotal), written on it as it lands (FieldCost): the landed
+		// card's own, for the stream's cost per landed card. The stream's cost is every
+		// card's, summed where it is shown (StreamTierCosts); the control card keeps no sum.
 		costs := map[string]string{}
-		sum := []string{}
-		for _, pr := range s.Work.Cell(r.Stream, Landed) {
-			if v := pr.F(FieldCost); v != "" {
-				sum = append(sum, v)
-			}
-		}
 		for _, c := range landing {
 			if v := cardcost.ParseTotal(s.Work.Placed(c.ID).F(FieldCostTotal)).Charged; v != "" {
 				costs[c.ID] = v
-				sum = append(sum, v)
 			}
-		}
-		if total, ok := cardcost.Sum(sum...); ok && len(sum) > 0 && total != ctl.F(FieldCost) {
-			ctlSet[FieldCost] = total
 		}
 		for i, c := range landing {
 			u := Unit{Key: c.ID, Stream: r.Stream}

@@ -1185,13 +1185,16 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	decideRecord := fs.String("decide-record", "", "the record `file` of the cards' brief decisions under JEV_API_KEY (default ~/nova-sprint/decide/brief.jsonl, the coordinator's root); each card stores it and its op, and land and drop attach the card's end there")
 	var briefOps stringList
 	fs.Var(&briefOps, "brief-op", "`id=op`: a card's brief decision op id (<id>@brief-<hex>), which add sends its server itself when it asked the decision where it was typed; refused when typed on an add no server runs; repeated, one per card")
+	var briefUsages stringList
+	fs.Var(&briefUsages, "brief-usage", "`id=usage`: what a card's brief decision call spent (input=<n>,output=<n>,model=<provider/model>), which add sends its server beside --brief-op so the card carries its decide cost; refused when typed on an add no server runs; repeated, one per card")
 	ids, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "add", err.Error())
 	}
-	if len(briefOps) > 0 && a.serveAddr == "" {
+	if (len(briefOps) > 0 || len(briefUsages) > 0) && a.serveAddr == "" {
 		return refuse(stderr, "add", briefOpWord)
 	}
+	briefOps = append(briefOps, briefUsageWords(briefUsages)...)
 	if *replaces != "" {
 		*one = true // a twin is one card
 	}
@@ -1301,7 +1304,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 			return code
 		}
 		for i := range rs {
-			rs[i].BriefOps, rs[i].BriefRecord = asked.ops, asked.record
+			rs[i].BriefOps, rs[i].BriefRecord, rs[i].BriefUsage = asked.ops, asked.record, asked.usage
 		}
 	}
 	if a.gateOnly != nil {
@@ -1490,7 +1493,7 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	if code := a.holdPathsAdmit("add", stderr, checks...); code != 0 {
 		return code
 	}
-	r := sprint.AddReq{Stream: stream, Cards: cards, Who: c.actor, Before: before, After: after, Held: held, Score: at, BriefOps: asked.ops, BriefRecord: asked.record, Replaces: replaces}
+	r := sprint.AddReq{Stream: stream, Cards: cards, Who: c.actor, Before: before, After: after, Held: held, Score: at, BriefOps: asked.ops, BriefRecord: asked.record, BriefUsage: asked.usage, Replaces: replaces}
 	c.says = append(c.says, fmt.Sprintf("each card's id is its brief file's name without .md (%s is %s)", files[0], cards[0].ID))
 	for _, cd := range cards {
 		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)

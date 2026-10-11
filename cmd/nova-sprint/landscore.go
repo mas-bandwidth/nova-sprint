@@ -110,7 +110,9 @@ func (l *lander) scoreAll(ctx context.Context) {
 				continue
 			}
 			top, p := decide.Top(d)
-			scores = append(scores, sprint.CardScore{ID: c.id, Op: d.ID, Class: top, P: p})
+			// the call's spend goes on the card it scored (sprint.ConsumerDecide), once per op
+			scores = append(scores, sprint.CardScore{ID: c.id, Op: d.ID, Class: top, P: p,
+				Usage: sprint.DecideUsage(d.Usage.InputTokens, d.Usage.OutputTokens, d.State)})
 		}
 		if len(skipped) > 0 {
 			failed = append(failed, stopped+"; not scored: "+strings.Join(skipped, ", "))

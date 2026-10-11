@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // All is the four tables, for the verbs that read everything.
@@ -223,11 +224,11 @@ func (st *Store) Held(ctx context.Context, id string) (sprint.Hold, error) {
 }
 
 // SyncMirrors brings the display cells up to date: the fleet's (SyncFleet:
-// a member's derived status and measured load), a stream's ci, state and
-// since, and the work table's cost: a stream's landed cost, from the same control
-// card (sprint.FieldCost). They are display only: the state is the control cards', written with
+// a member's derived status and measured load) and a stream's ci, state and
+// since. They are display only: the state is the control cards', written with
 // the moves. A fleet member's done and ok% are the table's own formulas over
-// its finished cells, never written here.
+// its finished cells, never written here. The work table's cost cell, a stream's
+// whole spend, is written by the tick as it counts the where record (showStreamCosts).
 func (st *Store) SyncMirrors(ctx context.Context) error {
 	if _, err := st.SyncFleet(ctx); err != nil {
 		return err
@@ -240,13 +241,6 @@ func (st *Store) SyncMirrors(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// a stream's landed cost, from its control card, for the work table's cost column:
-	// since the last tidy of the streams, less its base (stats tidy, sprint.StreamCostSince)
-	bases, err := st.streamBases(ctx)
-	if err != nil {
-		return err
-	}
-	costs := map[string]string{}
 	openBy := map[string]int64{}
 	for _, shape := range shapes {
 		if shape.Name != st.Names.Table(sprint.Work) {
@@ -282,10 +276,6 @@ func (st *Store) SyncMirrors(ctx context.Context) error {
 		diffs := map[string]map[string]string{}
 		for _, row := range shape.Rows {
 			ctl, _ := rs.Member(st.sid(sprint.CtlID(row.Key)))
-			costs[row.Key] = ctl.Fields[sprint.FieldCost]
-			if b, ok := bases[row.Key]; ok {
-				costs[row.Key] = sprint.StreamCostSince(costs[row.Key], b)
-			}
 			want := map[string]string{
 				sprint.CI:       dash(ctl.Fields["ci"]),
 				sprint.StateCol: dash(sprint.ShownStreamState(ctl.Fields, int(openBy[row.Key]))),
@@ -299,23 +289,33 @@ func (st *Store) SyncMirrors(ctx context.Context) error {
 			return err
 		}
 	}
-	// the work table's cost column: each stream's landed cost, "-" when none was priced
-	for _, shape := range shapes {
-		if shape.Name != st.Names.Table(sprint.Work) || shape.Column(sprint.Cost) < 0 {
-			// a work table made before the cost column (nova-table col add) has no cell to show
-			continue
+	// the work table's cost column is the tick's to write, as it counts the where record
+	// (keepWhere, showStreamCosts): a stream's whole spend changes with every take and read
+	return nil
+}
+
+// showStreamCosts writes the work table's cost cells (shape is the table as read) from each
+// stream's whole spend (sprint.TierCosts.TotalCost, by stream), as the tick counts the where
+// record (keepWhere), so the cell is the figure the tile sums. A stream with nothing priced
+// shows "-" (an empty cell is left empty); a cell already showing its figure is not written.
+// wrote says a cell was.
+func (st *Store) showStreamCosts(ctx context.Context, shape ntable.Table, costs map[string]string) (wrote bool, err error) {
+	if shape.Column(sprint.Cost) < 0 {
+		return false, nil // a work table made before the cost column (nova-table col add) has no cell to show
+	}
+	diffs := map[string]map[string]string{}
+	for _, row := range shape.Rows {
+		if costs[row.Key] == "" && (row.Texts[sprint.Cost] == "" || row.Texts[sprint.Cost] == "-") {
+			continue // nothing priced, and nothing shown: no write
 		}
-		diffs := map[string]map[string]string{}
-		for _, row := range shape.Rows {
-			if d := rowDiff(row, map[string]string{sprint.Cost: sprint.MoneyText(costs[row.Key])}); len(d) > 0 {
-				diffs[row.Key] = d
-			}
-		}
-		if err := st.setRows(ctx, shape.Name, diffs); err != nil {
-			return err
+		if d := rowDiff(row, map[string]string{sprint.Cost: sprint.CostCell(costs[row.Key])}); len(d) > 0 {
+			diffs[row.Key] = d
 		}
 	}
-	return nil
+	if len(diffs) == 0 {
+		return false, nil
+	}
+	return true, st.setRows(ctx, shape.Name, diffs)
 }
 
 func dash(s string) string {
