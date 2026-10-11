@@ -427,8 +427,8 @@ const TickDeadline = 10 * time.Second
 // up the cancel of a given-up tick or the exit of a wedged one: the buffer is
 // handed to stderr in a goroutine the watchdog waits on for at most this long,
 // and a dump not written by then is dropped. The clock is the app's own
-// injectable afterStacks (time.After in production, a test's own), so a test
-// bounds it with no wall clock.
+// injectable after (time.After in production, a test's own), so a test bounds
+// it with no wall clock.
 const TickStacksBound = 2 * time.Second
 
 // TickDeadlineCap is the most the deadline stretches to (unless --tick-deadline
@@ -518,7 +518,7 @@ func (a *app) writeStacks(buf *bytes.Buffer, stdout, stderr io.Writer) {
 	}()
 	select {
 	case <-done:
-	case <-a.afterStacks(TickStacksBound):
+	case <-a.after(TickStacksBound):
 		fmt.Fprintf(stdout, "%s TICK STACKS the goroutine stacks were not written to stderr within %s: the dump is dropped and the watchdog does not wait on it\n",
 			a.now().Format("15:04:05"), TickStacksBound)
 	}

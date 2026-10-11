@@ -29,6 +29,9 @@ func TestTickPastItsDeadlineIsGivenUp(t *testing.T) {
 	a.now = func() time.Time { return time.Date(2026, 10, 2, 14, 26, 11, 0, time.Local) }
 	var waited time.Duration
 	a.after = func(d time.Duration) <-chan time.Time {
+		if d == stacksBound {
+			return make(chan time.Time) // never fires: the writer drains
+		}
 		waited = d
 		fired := make(chan time.Time, 1)
 		fired <- a.now()
@@ -174,9 +177,20 @@ func newAfterScript(steps ...string) *afterScript {
 	return &afterScript{steps: steps, fire: make(chan time.Time, 1)}
 }
 
+// stacksBound mirrors TickStacksBound (run.go): the bound the watchdog waits
+// on for its stacks to reach stderr. The script models the deadline's clock
+// alone, so a wait on the stacks bound is answered by a channel that never
+// fires (the writer here drains) and is never a script step (nor one of
+// asked's): the watchdog's diagnosis never disturbs the deadline the test
+// scripts. A test whose stderr never drains fires the bound itself.
+const stacksBound = 2 * time.Second
+
 func (s *afterScript) after(d time.Duration) <-chan time.Time {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if d == stacksBound {
+		return make(chan time.Time) // never fires: the writer drains
+	}
 	s.asked = append(s.asked, d)
 	step := s.steps[s.i%len(s.steps)]
 	s.i++
@@ -480,7 +494,14 @@ func TestThreeWedgedTicksWithAStderrThatNeverDrainsExitFour(t *testing.T) {
 	t.Parallel()
 	l := newDeadlineLoop(t)
 	s := newAfterScript("deadline", "further", "further", "further")
-	l.ta.a.after = s.after
+	l.ta.a.after = func(d time.Duration) <-chan time.Time {
+		if d == stacksBound {
+			fired := make(chan time.Time, 1) // the bound is reached at once: the pipe never drains
+			fired <- time.Time{}
+			return fired
+		}
+		return s.after(d)
+	}
 	never := make(chan struct{})
 	defer close(never)
 	l.ta.a.tickFn = func(ctx context.Context, _ *store.Store) (store.TickResult, error) {
