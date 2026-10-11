@@ -49,6 +49,10 @@ func newHoldRig(t *testing.T, s1, f1 int) *holdRig {
 	require.NoError(t, r.st.Init(r.ctx))
 	require.NoError(t, m.RowsAdd(r.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
 	require.NoError(t, m.SetCoordinator(r.ctx, "coordinator"))
+	// read cards off: these tests exercise the old readers table (one read a
+	// tick, docs/SPEC-SPRINT.md section 11); seed it explicitly, not on the
+	// default, so they hold once read cards default to on.
+	r.must(store.SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: "coordinator"}))
 	_, _, _, err := r.st.SyncFriends(r.ctx, []store.FriendSpec{{Name: "amy", Width: 2, Class: "pro"}, {Name: "bob", Width: 2, Class: "pro"}})
 	require.NoError(t, err)
 	r.beat()

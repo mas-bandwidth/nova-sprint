@@ -47,6 +47,10 @@ func newAlarmRig(t *testing.T) *alarmRig {
 	require.NoError(t, r.st.Init(r.ctx))
 	require.NoError(t, r.m.RowsAdd(r.ctx, "a-readers", []string{"reader-a", "reader-b"}))
 	require.NoError(t, r.m.SetCoordinator(r.ctx, "coordinator"))
+	// read cards off: these tests exercise the old readers table (one read a
+	// tick, docs/SPEC-SPRINT.md section 11); seed it explicitly, not on the
+	// default, so they hold once read cards default to on.
+	r.must(store.SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: "coordinator"}))
 	r.beat()
 	return r
 }
