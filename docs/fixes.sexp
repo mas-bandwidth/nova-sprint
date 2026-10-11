@@ -857,6 +857,17 @@
     left red and written as a v1.2.14 card, not fixed here."
    :origin "this card, cover-deal-plan-refusals-and-redeals.w4.g8.e17; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C3")
 
+  (fix "cover-route-table-stats-routes" :release "v1.2.12" :status "planned"
+   :title "In-package behaviour tests for the stats route table"
+   :text "RouteTable (internal/sprint/routetable.go:25), the table `nova-sprint stats --routes` prints
+    (docs/SPEC-SPRINT.md, the verb stats), gets tests from inside its own package in
+    internal/sprint/routetable_behaviour_test.go: the window (a finish before since is left out with its
+    provider takes, a deal, take or accept before it still counts), the ok/failed split and takes, the
+    no-route and no-usage rules, the provider no-result and the more-than-fifty storm, landed and 1stT,
+    wrong/reviewed, the money columns and the upper-median wall, and the FLASH (all) and PRO (all) rows.
+    RouteTable's in-package statement coverage goes from 0.0% of 163 to 99.4%. No product change."
+   :origin "the owner, 2026-10-11: v1.2.12 tests and models only; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C1")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
