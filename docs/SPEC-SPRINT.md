@@ -2967,8 +2967,13 @@ order the cards were dealt in, so a card brought to the front of its stream by
   docs/SPEC-CARD-CONTRACT.md section 4).
 - The machine's tick deals every ready primary the fleet has room for in one
   step, in stream turns (each stream's oldest first by score), one card at a
-  time to the next up member round the fleet (the rolling index `deal_index`)
-  that is below its room, DealAhead times its width: 150 ready over eight
+  time to the next up member round the fleet (the rolling index `deal_index`),
+  free lanes first, then the room: a member below its width (a free lane, its
+  ready and working cards together below it) takes the card before a member
+  that is only below its room, DealAhead times its width (`round.nextFree`;
+  tla/WhoPreference.tla, `DealFreeLanesFirst`; the owner, 2026-10-11 ~19:05Z:
+  "cards only may accrue per-fleet or friend, if there are not other
+  machines/friends ready to do that work right now!"): 150 ready over eight
   machines of width 64 all go to working in one tick, 18 or 19 a machine. A
   machine at its room takes no more, whoever deals: the `deal` verb refuses a
   card no up member has room for, and a rework with no member below its room
@@ -2985,7 +2990,8 @@ order the cards were dealt in, so a card brought to the front of its stream by
   card with no BENCH line is dealt round the fleet as every card before it was.
   Every placement of its work cards honours the line: the deal, a redeal, an
   escalation and a rework draw from the members of its bench that are up alone
-  (`round.next` over them, its room DealAhead times its width as any member's),
+  (`round.nextFree` over them, free lanes first then its room DealAhead times
+  its width as any member's),
   a member going down or held withdraws its bench's card instead of dealing it
   to another member, and the level never moves it off the bench it was dealt to
   (the members its line does not name are avoided as a member that refused it at

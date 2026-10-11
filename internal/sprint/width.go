@@ -12,13 +12,15 @@ import (
 // behind them, so the sprint feeds the fleet at width and keeps it working at
 // that width until done. The width is a field of the member's control card,
 // set by init --members <m>:<n> and by fleet up <m> --width <n>, and shown in
-// the fleet table's width column. The deal fills every member up to DealAhead
-// times its width in one step, round the fleet (T3, R6), and the level, once
-// at the start of every tick, moves ready cards from a member that cannot
-// start them to one with free lanes, never past DealAhead times its width
-// (T4, R7). The model is tla/SprintEvents.tla: PlanDeal's room (its Cap),
-// which counts the ready cards of a member; the room here counts ready and
-// working.
+// the fleet table's width column. The deal fills every member free lanes
+// first (a member below its width takes the card, so a lane that is free takes
+// the next card at once), then, only when no member that may take the card has
+// one, the 2x room, DealAhead times its width, round the fleet from the
+// cursor (round.go nextFree; T3, R6); the level, once at the start of every
+// tick, moves ready cards from a member that cannot start them to one with
+// free lanes, never past DealAhead times its width (T4, R7). The model is
+// tla/SprintEvents.tla: PlanDeal's room (its Cap), which counts the ready
+// cards of a member; the room here counts ready and working.
 const (
 	// FieldWidth is the control card's field, and the fleet table's column,
 	// holding the member's width.
@@ -126,6 +128,18 @@ func memberWidths(s *Snapshot, up []string) map[string]int {
 		w[m] = DealAhead * s.Width(m)
 	}
 	return w
+}
+
+// memberLanes is each up member's width: its lanes, the bound of the deal's
+// first scan (nextFree): a member below it has a lane free and takes the card
+// at once, before any member that only has room (below DealAhead times its
+// width, memberWidths).
+func memberLanes(s *Snapshot, up []string) map[string]int {
+	l := map[string]int{}
+	for _, m := range up {
+		l[m] = s.Width(m)
+	}
+	return l
 }
 
 // widthRoom is the sum over the up members of the cards each can still take
