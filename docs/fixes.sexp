@@ -212,6 +212,15 @@
     its epoch: a tick at a clear stops there."
    :origin "the seat ledger v1.2.4-held-2026-10-10.md, bug 6")
 
+  (fix "repair-says-what-it-changes" :release "v1.2.6" :status "shipped"
+   :title "repair says what it changes, takes --dry-run, and returns a rule-6 merging card to review"
+   :text "repair's help names its exact effect, it takes --dry-run that prints each move it would make (and
+    leaves a pending operation open), and it refuses naming the remedy when it can do nothing: a landed
+    card short of its reads is named with look at the card, never check, which reports the same rule. It
+    learns check rule 6: a card merging with ok reads from fewer different readers at its head than it
+    needs goes back to review for its missing read, with the reason recorded."
+   :origin "this pull request")
+
   (fix "frontier-read-judged-by-real-cause" :release "v1.2.6" :status "shipped"
    :title "A frontier read no one may take is judged by its real cause"
    :text "A frontier read the ask leaves waiting (the friend ask and the read-card ask alike) raises one
