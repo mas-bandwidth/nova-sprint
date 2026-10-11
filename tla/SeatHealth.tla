@@ -11,10 +11,19 @@
 \* The state the server owns: holder, gen (the seat), hstate, hseen, hgen (the
 \* friend's health record: the word, the proof's time, the generation it was
 \* observed under; hstate = "none" until the first), held (friend down), beat
-\* (her last raw beat). The outside: the daemons' observations in flight
+\* (her last raw beat), proof (her session's last proof as her beat carried it,
+\* Never until the first). The outside: the daemons' observations in flight
 \* (inflight: each carries the generation its daemon read the seat at and
 \* the proof's time, delivered later in any order, so a delayed or
 \* superseded one is possible), handovers, her beats, the hold, the clock.
+\* Her health row can be deleted (Clear: friend health --clear, or the stall
+\* ladder's rung-5 release), so the row holds no proof to compare and an older
+\* proof is then accepted; rung 5 itself writes the row outside NotHealth
+\* (Rung5Down). Her status is held, or up only on her session's evidence (a
+\* wake ping answered, or the beat's proof on a fresh beat), else down: a raw
+\* beat is never evidence (presence.go FriendEvidence). The code's three
+\* evidence windows (FriendPongWindow 10 m, FriendProofLive 15 m,
+\* FriendFinishWindow 30 m; presence.go) are one DownAfter here.
 \*
 \* Broken = "none" is the design. Every other value is a reversed witness,
 \* each caught by one property below:
@@ -27,13 +36,16 @@
 \*                 A->B->A, A's first seat's proof shows up under A's second)
 \*   "future"      a proof dated after the server's clock writes: ProofNeverAhead
 \*                 (a review of PR 5305: it held her up past its time)
+\*   "clearkeepsrow" the clear deletes the proof but keeps the row observed, so
+\*                 the row's proof goes back while the row exists:
+\*                 ProofNeverGoesBack
 
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Holders, MaxTime, MaxObs, DownAfter, Broken
 
-VARIABLES now, holder, gen, moves, hstate, hseen, hgen, hmoves, held, beat, inflight, sent, accepted
-vars == <<now, holder, gen, moves, hstate, hseen, hgen, hmoves, held, beat, inflight, sent, accepted>>
+VARIABLES now, holder, gen, moves, hstate, hseen, hgen, hmoves, held, beat, proof, inflight, sent, accepted
+vars == <<now, holder, gen, moves, hstate, hseen, hgen, hmoves, held, beat, proof, inflight, sent, accepted>>
 
 Never == 0 \* a time before the clock: no beat, no proof
 
@@ -52,35 +64,42 @@ TypeOK ==
   /\ hmoves \in 0..MaxObs
   /\ held \in BOOLEAN
   /\ beat \in 0..MaxTime
+  /\ proof \in 0..MaxTime
   /\ inflight \subseteq Obs
   /\ sent \in 0..MaxObs
   /\ accepted \in 0..MaxObs
 
 Observed == hstate # "none"
 
-\* The friends' rule (FriendStatus, ObservedStatus): held wins; once observed,
-\* up only for an up word under the current generation with a fresh proof;
-\* else her raw beat, while fresh. The witnesses let the beat decide an
-\* observed friend, or let a proof never age.
+\* The friends' rule (FriendStatus, ObservedStatus): held wins; then up on her
+\* session's evidence: a wake ping her session answered (the row's word "up"
+\* under the current generation with a fresh proof), or her session's proof as
+\* her beat carries it, while the beat is fresh; else down. Her raw beat is
+\* never evidence. The witnesses let the beat decide an observed friend, or
+\* let a proof never age.
 BeatFresh == beat # Never /\ now - beat < DownAfter
 ProofFresh == IF Broken = "noexpiry" THEN TRUE ELSE hseen <= now /\ now - hseen < DownAfter
+BeatProofFresh == proof # Never /\ proof <= now /\ now - proof < DownAfter
 ObservedWord == IF hstate = "up" /\ hgen = gen /\ ProofFresh THEN "up" ELSE "down"
+BeatProofUp == BeatProofFresh /\ BeatFresh
 Status ==
   IF held THEN "held"
-  ELSE IF Observed /\ ~(Broken = "beatwins" /\ BeatFresh) THEN ObservedWord
-  ELSE IF BeatFresh THEN "up" ELSE "down"
+  ELSE IF Observed /\ ObservedWord = "up" THEN "up"
+  ELSE IF BeatProofUp THEN "up"
+  ELSE IF Observed /\ Broken = "beatwins" /\ BeatFresh THEN "up"
+  ELSE "down"
 
 Init ==
   /\ now = 0
   /\ holder \in Holders /\ gen = 1 /\ moves = 0
   /\ hstate = "none" /\ hseen = Never /\ hgen = 0 /\ hmoves = 0
-  /\ held = FALSE /\ beat = Never
+  /\ held = FALSE /\ beat = Never /\ proof = Never
   /\ inflight = {} /\ sent = 0 /\ accepted = 0
 
 Tick ==
   /\ now < MaxTime
   /\ now' = now + 1
-  /\ UNCHANGED <<holder, gen, moves, hstate, hseen, hgen, hmoves, held, beat, inflight, sent, accepted>>
+  /\ UNCHANGED <<holder, gen, moves, hstate, hseen, hgen, hmoves, held, beat, proof, inflight, sent, accepted>>
 
 \* The seat moves to another holder (MoveSeat): the next generation, every
 \* time. The witness keeps the generation.
@@ -90,7 +109,7 @@ Handover(h) ==
   /\ holder' = h
   /\ gen' = IF Broken = "samegen" THEN gen ELSE gen + 1
   /\ moves' = moves + 1
-  /\ UNCHANGED <<now, hstate, hseen, hgen, hmoves, held, beat, inflight, sent, accepted>>
+  /\ UNCHANGED <<now, hstate, hseen, hgen, hmoves, held, beat, proof, inflight, sent, accepted>>
 
 \* A daemon sends an observation of a proof seen at any time, after now too
 \* (a clock ahead of the server's, or a --seen written wrong), under the
@@ -101,7 +120,7 @@ Send(st) ==
   /\ \E t \in 1..MaxTime :
        inflight' = inflight \cup {[state |-> st, seen |-> t, gen |-> gen, moves |-> moves]}
   /\ sent' = sent + 1
-  /\ UNCHANGED <<now, holder, gen, moves, hstate, hseen, hgen, hmoves, held, beat, accepted>>
+  /\ UNCHANGED <<now, holder, gen, moves, hstate, hseen, hgen, hmoves, held, beat, proof, accepted>>
 
 \* An observation arrives at the server (ObserveFriend under the fence):
 \* accepted only at the seat's generation now, with a proof dated no later
@@ -118,22 +137,54 @@ Deliver(o) ==
        THEN /\ hstate' = o.state /\ hseen' = o.seen /\ hgen' = o.gen /\ hmoves' = o.moves
             /\ accepted' = accepted + 1
        ELSE UNCHANGED <<hstate, hseen, hgen, hmoves, accepted>>
-  /\ UNCHANGED <<now, holder, gen, moves, held, beat, sent>>
+  /\ UNCHANGED <<now, holder, gen, moves, held, beat, proof, sent>>
 
-\* Her own beat (friend beat), the coordinator's hold and its release.
+\* Her own beat (friend beat): a raw beat, never evidence by itself.
 Beat ==
   /\ now >= 1
   /\ beat' = now
+  /\ UNCHANGED <<now, holder, gen, moves, hstate, hseen, hgen, hmoves, held, proof, inflight, sent, accepted>>
+
+\* Her session's proof arrives on a beat (friend beat --pong): her session
+\* answered a check her daemon asked, or sent a bus message of its own. It
+\* counts only while the beat that carried it is fresh.
+Prove ==
+  /\ now >= 1
+  /\ beat' = now
+  /\ proof' = now
   /\ UNCHANGED <<now, holder, gen, moves, hstate, hseen, hgen, hmoves, held, inflight, sent, accepted>>
-Hold == held' = TRUE /\ UNCHANGED <<now, holder, gen, moves, hstate, hseen, hgen, hmoves, beat, inflight, sent, accepted>>
-Release == held' = FALSE /\ UNCHANGED <<now, holder, gen, moves, hstate, hseen, hgen, hmoves, beat, inflight, sent, accepted>>
+
+\* Rung 5 of the stall ladder (friend_stall.go TickFriendStall) marks her
+\* down and writes the row outside NotHealth, with Seen = now and the current
+\* generation. Benign for the properties: the proof is fresh and fenced.
+Rung5Down ==
+  /\ now >= 1
+  /\ hstate' = "down" /\ hseen' = now /\ hgen' = gen /\ hmoves' = moves
+  /\ UNCHANGED <<now, holder, gen, moves, held, beat, proof, inflight, sent, accepted>>
+
+\* Her health row is deleted (ClearFriendHealth: friend health --clear, or
+\* the stall ladder's rung-5 release): the row is gone, so the next proof has
+\* no older proof to compare against and is accepted. The witness keeps the
+\* row's word but deletes the proof, so the row exists while its proof goes
+\* back.
+Clear ==
+  /\ Observed
+  /\ hstate' = IF Broken = "clearkeepsrow" THEN hstate ELSE "none"
+  /\ hseen' = Never
+  /\ hgen' = IF Broken = "clearkeepsrow" THEN hgen ELSE 0
+  /\ hmoves' = IF Broken = "clearkeepsrow" THEN hmoves ELSE 0
+  /\ UNCHANGED <<now, holder, gen, moves, held, beat, proof, inflight, sent, accepted>>
+
+\* The coordinator's hold and its release.
+Hold == held' = TRUE /\ UNCHANGED <<now, holder, gen, moves, hstate, hseen, hgen, hmoves, beat, proof, inflight, sent, accepted>>
+Release == held' = FALSE /\ UNCHANGED <<now, holder, gen, moves, hstate, hseen, hgen, hmoves, beat, proof, inflight, sent, accepted>>
 
 Next ==
   \/ Tick
   \/ \E h \in Holders : Handover(h)
   \/ \E st \in {"up", "asleep", "down"} : Send(st)
   \/ \E o \in inflight : Deliver(o)
-  \/ Beat \/ Hold \/ Release
+  \/ Beat \/ Prove \/ Rung5Down \/ Clear \/ Hold \/ Release
 
 Spec == Init /\ [][Next]_vars /\ WF_vars(Tick)
 
@@ -145,15 +196,20 @@ ThreeWords == Status \in {"up", "held", "down"}
 \* Held is the coordinator's hold alone: no observation and no beat shows it.
 HeldIsTheHold == (Status = "held") <=> held
 
-\* A friend is up only on an up word under the current seat with a proof
-\* under DownAfter old, or, never observed, on a fresh beat.
+\* A friend is up only on her session's evidence under a fresh proof: a wake
+\* ping answered (the row's word up under the current seat with a proof under
+\* DownAfter old), or her session's proof on a fresh beat; never a raw beat
+\* (the beatwins witness aside).
 UpOnlyOnFreshProof ==
   Status = "up" => \/ (Observed /\ hstate = "up" /\ hgen = gen /\ hseen <= now /\ now - hseen < DownAfter)
-                   \/ (~Observed /\ BeatFresh)
+                   \/ BeatProofUp
+                   \/ (Observed /\ Broken = "beatwins" /\ BeatFresh)
 
-\* An old seat's proof never looks up under a new seat: what the row holds
-\* was accepted after the last handover (A->B->A rejects A's first seat).
-OldSeatNeverUp == Observed => (hmoves = moves \/ Status # "up")
+\* An old seat's observation never looks up under a new seat: what the row
+\* holds was accepted after the last handover (A->B->A rejects A's first
+\* seat). Her session's beat proof is not the seat's: it is not fenced, so it
+\* may still look up.
+OldSeatNeverUp == Observed /\ ObservedWord = "up" => hmoves = moves
 
 \* An accepted observation names the seat's generation now: the fence.
 AcceptedAtTheSeat == [][accepted' > accepted => hgen' = gen']_vars
@@ -162,11 +218,14 @@ AcceptedAtTheSeat == [][accepted' > accepted => hgen' = gen']_vars
 \* future is refused, so it never holds a friend up past its time.
 ProofNeverAhead == hseen <= now
 
-\* The row's proof never goes back: a delayed or repeated proof writes nothing.
-ProofNeverGoesBack == [][hseen' >= hseen]_vars
+\* The row's proof never goes back while the row exists: a delayed or repeated
+\* proof writes nothing. It goes back only across a Clear, where the row is
+\* gone and the next proof has nothing older to compare against.
+ProofNeverGoesBack == [][Observed /\ Observed' => hseen' >= hseen]_vars
 
-\* Once observed, her raw beat never makes her up.
-ObservedNeverUpByBeat == (Observed /\ ObservedWord = "down" /\ ~held) => Status = "down"
+\* Once observed, her raw beat never makes her up: only her session's
+\* evidence (the pong word, or the beat's proof) does.
+ObservedNeverUpByBeat == (Observed /\ ObservedWord = "down" /\ ~held /\ ~BeatProofUp) => Status = "down"
 
 \* Every handover takes the next generation, and nothing else moves it.
 GenerationStepsWithTheSeat == [][gen' = gen + moves' - moves]_vars
