@@ -282,6 +282,9 @@ func preflightMemberRows(in PreflightInput) (out []DoctorCheck) {
 // whether its beat drains. A nil sprint leaves those facts empty, and the member rows still
 // gate the probe's own facts. The probes are the same map the links check reads.
 func PreflightMembers(s *Snapshot, probes map[string]MemberProbe) []PreflightMember {
+	if len(probes) == 0 {
+		return nil // no probe is no member measured: the check stays the WARN that says so
+	}
 	names := make([]string, 0, len(probes))
 	for m := range probes {
 		names = append(names, m)

@@ -119,6 +119,28 @@ func TestDoctorPreflightMemberVersionSkew(t *testing.T) {
 	assert.Equal(t, DoctorFail, memberRowOf(t, DoctorPreflight(newer), "b1").Status)
 }
 
+// a route whose provider key name the member's seat holds is no FAIL: the candidate
+// can serve it, so a healthy fleet is never refused.
+func TestDoctorPreflightMemberRouteKeyHeldIsOK(t *testing.T) {
+	t.Parallel()
+	in := memberInput(goodProbe())
+	in.Members[0].Probe.SecretNames = []string{"ABLITERATION_API_KEY"}
+	in.Members[0].Routes = []PreflightRouteKey{{Route: "ablit", Key: "ABLITERATION_API_KEY"}}
+	assert.Empty(t, failsOf(DoctorPreflight(in)), "a held key refuses nothing: %+v", DoctorPreflight(in))
+}
+
+// an empty probe set is no member measured, so the member check stays the WARN that
+// says so, never an OK row over zero members.
+func TestPreflightMembersEmptyProbeSetStaysUnmeasured(t *testing.T) {
+	t.Parallel()
+	probes := map[string]MemberProbe{}
+	assert.Nil(t, PreflightMembers(nil, probes), "no probe is no fact")
+	in := PreflightInput{Binary: "/b/nova-sprint", Version: "v1.2.14", Probes: probes, Members: PreflightMembers(nil, probes)}
+	c := memberRowOf(t, DoctorPreflight(in), "-")
+	assert.Equal(t, DoctorWarn, c.Status)
+	assert.Contains(t, c.Evidence, "not measured by this build")
+}
+
 // a member whose host does not answer is one WARN (a switch with a member away is
 // allowed), and a probe the budget cut judges nothing.
 func TestDoctorPreflightMemberDownWarns(t *testing.T) {
