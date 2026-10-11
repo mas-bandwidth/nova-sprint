@@ -306,10 +306,17 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 		fs.IntVar(&landParallel, "land-parallel", landParallelDefault, "with --land, how many streams each landing merges at once before it lands them one at a time (land --land-parallel)")
 		fs.StringVar(&profile, "cpuprofile", "", "write a CPU profile of the loop's first ticks to this file (see --profile-ticks)")
 		fs.IntVar(&profileTicks, "profile-ticks", 10, "the ticks --cpuprofile covers; the profile is written after the last of them")
-		fs.DurationVar(&a.tickDeadline, "tick-deadline", TickDeadline, "the least time a tick may take before it is given up (stretched to 3 x the median wall of the last 20 ticks, at most "+TickDeadlineCap.String()+"): past it the stacks are printed, the tick's plan is given up and the loop goes on; three wedged ticks in a row (given up and not stopped within a further deadline) exit 4 so the supervisor starts the loop again (0: wait for ever)")
+		fs.DurationVar(&a.tickDeadline, "tick-deadline", TickDeadline, "the least time a tick may take before it is given up (stretched to 3 x the median wall of the last 20 ticks, at most "+TickDeadlineCap.String()+"): past it the stacks are printed, the tick's plan is given up and the loop goes on; three wedged ticks in a row (given up and not stopped within a further deadline) exit 4 so the supervisor starts the loop again (0: wait for ever; a negative value is refused)")
 	})
 	if st == nil {
 		return code
+	}
+	// a negative --tick-deadline would switch the watchdog off with nothing said
+	// (tickWithin waits for ever when d <= 0): 0 waits for ever and every
+	// positive value behaves as today, so only a negative is refused.
+	// (docs/SPEC-SPRINT.md section 14, The server, "The tick's deadline")
+	if a.tickDeadline < 0 {
+		return refuse(stderr, "run", "invalid --tick-deadline: "+a.tickDeadline.String()+": a negative value is refused, 0 waits for ever")
 	}
 	st.AnswerRules, st.IdleAlarm = rules, idle
 	st.WakeFriend = a.stallWaker(st, stderr)

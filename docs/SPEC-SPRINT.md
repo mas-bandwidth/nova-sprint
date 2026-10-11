@@ -7115,7 +7115,8 @@ holds the bound.
 
 The tick's deadline. A tick past its deadline gives up its plan, never the process. The
 deadline is three times the median wall of the last 20 ticks (the upper of the two middle
-walls when they are even), never less than `run --tick-deadline` (`TickDeadline`, 10 s) and
+walls when they are even), never less than `run --tick-deadline` (`TickDeadline`, 10 s, where 0
+waits for ever and a negative value is refused) and
 never more than a minute (`TickDeadlineCap`) unless `--tick-deadline` asks for more; a tick
 given up counts its deadline as its wall. So a slow store stretches the deadline (ticks of 8 s
 have 24 s) instead of killing the server, and every `TIMES` line ends `deadline=<d>`, the
