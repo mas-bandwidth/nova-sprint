@@ -50,7 +50,7 @@ func healthyInput(w *world) DoctorInput {
 		Machines: []DoctorMachine{{Name: "m1", User: "nova", Seat: "swarm-m1", Width: 4}},
 		Probes:   map[string]MemberProbe{"m1": fullProbe("m1")},
 		Declared: "v1.2.6",
-		Push:     PushM{Measured: true, Holder: "rowan", Record: PushRecord{Proven: now.Add(-2 * time.Minute)}, Recorded: true},
+		Hook:     HookM{Measured: true, Holder: "rowan", Record: HookRecord{Name: "rowan", Session: "sess-1", State: HookHooked, Proven: now.Add(-2 * time.Minute), Live: now.Add(8 * time.Minute)}, Recorded: true},
 	}
 }
 
@@ -276,17 +276,18 @@ func TestDoctorProvidersFailsAProviderOutOfCredit(t *testing.T) {
 	assert.Equal(t, "nova-sprint funded openrouter --reason '<the payment>'", fails[0].Remedy)
 }
 
-// 9. The seat's push loop unproven past the bound, and judgments past their deadline: FAIL.
-func TestDoctorSeatFailsAStalePushProofAndOverdueJudgments(t *testing.T) {
+// 9. The seat's hook unproven past the bound, and judgments past their deadline: FAIL.
+func TestDoctorSeatFailsAStaleHookAndOverdueJudgments(t *testing.T) {
 	t.Parallel()
 	w := doctorWorld(t)
 	in := healthyInput(w)
-	in.Push.Record.Proven = w.s.Now.Add(-time.Hour)
+	in.Hook.Record.Proven = w.s.Now.Add(-time.Hour)
+	in.Hook.Record.Live = w.s.Now.Add(-55 * time.Minute)
 	in.Seat = SeatWaits{Judgments: 54, Overdue: 50}
 	cs := DoctorSeat(in)
 	fails := failsOn(cs, CheckSeat)
 	require.Len(t, fails, 2, lines(cs))
-	assert.Equal(t, "push", fails[0].Subject)
+	assert.Equal(t, "hook", fails[0].Subject)
 	assert.Contains(t, fails[0].Evidence, "proven=1h0m0s ago")
 	assert.Equal(t, "judgments", fails[1].Subject)
 	assert.Contains(t, fails[1].Evidence, "open=54 overdue=50")

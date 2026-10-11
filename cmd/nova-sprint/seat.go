@@ -47,51 +47,6 @@ func (a *app) owner(ctx context.Context, st *store.Store) (string, error) {
 	return a.getenv(OwnerEnv), nil
 }
 
-// renewSeatProof answers name's outstanding push check from inside the seat's
-// own session, the way seat pong does, when the folder adapter holds the check
-// the push loop wrote (sprint.AdapterFolder): a busy seat is never locked out by
-// a proof that went stale while it worked, because the next verb the session
-// runs proves the seat itself (docs/SPEC-SPRINT.md, "The push proof"; tla/SeatProof.tla
-// Verb; the owner, 2026-10-10: "PUSH DOWN mid-add"). The nonce is read only from
-// the folder's PROOF-<nonce> filename; when there is no unanswered check it writes
-// nothing. It is the acting seat's own renewal alone: nothing calls it for a name
-// that is not the current holder, so a handover destination is never fabricated.
-func renewSeatProof(ctx context.Context, st *store.Store, name string, now time.Time) bool {
-	rec, ok, err := readPush(ctx, st, name)
-	if err != nil || !ok || rec.Adapter != sprint.AdapterFolder {
-		return false
-	}
-	files, _ := filepath.Glob(filepath.Join(rec.Target, sprint.PushProofFilePrefix+"*"))
-	if len(files) == 0 {
-		return false
-	}
-	nonce := strings.TrimPrefix(filepath.Base(files[0]), sprint.PushProofFilePrefix)
-	next, why := sprint.PushPong(rec, ok, nonce, now)
-	if why != "" {
-		return false
-	}
-	return writePush(ctx, st, next) == nil
-}
-
-// pushGateRenewing is pushGate, and when the gate refuses a stale proof on the
-// folder adapter the seat's own session answers the outstanding check and the
-// gate is asked again (renewSeatProof): a busy seat proves itself on its next
-// verb, and a seat that is truly unreachable is still refused (docs/SPEC-SPRINT.md,
-// "The push proof"; tla/SeatProof.tla Verb, VerbNeverFabricates). It is used only
-// for the acting seat (seatPushed, coordinator.go): a coordinator handover to a
-// destination goes through plain pushGate, so the acting session never answers
-// the destination's outstanding check (tla/SeatProof.tla CoordinatorNeverFabricates).
-func pushGateRenewing(ctx context.Context, st *store.Store, name string, now time.Time) (string, error) {
-	why, err := pushGate(ctx, st, name, now)
-	if err != nil || why == "" || !strings.Contains(why, "past "+sprint.PushProofLive.String()) {
-		return why, err
-	}
-	if !renewSeatProof(ctx, st, name, now) {
-		return why, nil
-	}
-	return pushGate(ctx, st, name, now)
-}
-
 func (a *app) cmdCoordinator(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("coordinator")
 	reason := fs.String("reason", "", "why the seat moves, recorded in the log with who moved it (required)")
@@ -119,22 +74,13 @@ func (a *app) cmdCoordinator(args []string, stdout, stderr io.Writer) int {
 	if why := sprint.NotSeat(holder, req); why != "" {
 		return refuse(stderr, "coordinator", why)
 	}
-	// the seat goes only to a session the push loop has reached (pushproof.go)
-	if why, err := pushGate(ctx, st, req.To, a.now()); err != nil {
-		return a.readFailed("coordinator", err, stderr)
-	} else if why != "" {
-		return refuse(stderr, "coordinator", why)
-	}
+	// the new holder hooks in before any of its commands runs (hook.go): the seat moves
+	// to it, and every coordinator command of its waits for its hook
 	how := "given"
 	if req.Take {
 		how = "taken approved_by=" + oneline.Field(req.ApprovedBy)
 	}
 	said := fmt.Sprintf("holder=%s from=%s by=%s %s", oneline.Field(req.To), oneline.Field(holder), oneline.Field(c.actor), how)
-	if push, err := pushSaid(ctx, st, req.To, a.now()); err != nil {
-		return a.readFailed("coordinator", err, stderr)
-	} else if push != "" {
-		said += " " + push
-	}
 	if *dry {
 		fmt.Fprintf(stdout, "COORDINATOR DRY-RUN %s; nothing was changed\n", said)
 		return 0
@@ -633,8 +579,8 @@ func (p *pushTarget) follow(holder string, first bool, stdout, stderr io.Writer)
 // (seat-key-follows-record.w2).
 func (a *app) cmdSeat(args []string, stdout, stderr io.Writer) int {
 	// seat login and seat logout are the seat's store login, kept on this machine and
-	// never in the store (storelogin.go); seat push and seat pong are the seat's push
-	// proof (pushproof.go)
+	// never in the store (storelogin.go); seat push is the seat's push target
+	// (pushproof.go)
 	if len(args) > 0 {
 		switch args[0] {
 		case "login":
@@ -643,8 +589,6 @@ func (a *app) cmdSeat(args []string, stdout, stderr io.Writer) int {
 			return a.cmdSeatLogout(args[1:], stdout, stderr)
 		case "push":
 			return a.cmdSeatPush(args[1:], stdout, stderr)
-		case "pong":
-			return a.cmdSeatPong(args[1:], stdout, stderr)
 		}
 	}
 	fs, c := a.verbSetup("seat")

@@ -152,7 +152,7 @@ type coordinatorView struct {
 	At     time.Time `json:"at"`
 	Epoch  uint64    `json:"epoch"`
 	Seat   string    `json:"seat,omitempty"`
-	Push   string    `json:"push,omitempty"` // the holder's push: adapter=<a> proven=<RFC3339|->
+	Hook   string    `json:"hook,omitempty"` // the holder's hook: state=<s> proven=<RFC3339|-> unacked=<n>
 	// Fleet and Friends are the work switches, carried only when off (nova-sprint set
 	// --fleet off, --friends off): the deal hands that side no work card.
 	Fleet   string `json:"fleet,omitempty"`
@@ -301,13 +301,17 @@ func (a *app) cmdViewWorker(args []string, stdout, stderr io.Writer) int {
 func (a *app) coordinatorView(ctx context.Context, st *store.Store, all bool) (coordinatorView, error) {
 	now := a.now()
 	v := coordinatorView{View: "coordinator", Schema: viewSchema, At: now.UTC().Truncate(time.Second), Items: []viewItem{}}
-	// the holder's push, read where seat push writes it: the store as given, never an epoch's
+	// the holder's hook, read where the server writes it: the store as given, never an epoch's
 	holder, err := st.B.Coordinator(ctx)
 	if err != nil {
 		return v, err
 	}
-	if v.Push, err = pushSaid(ctx, st, holder, now); err != nil {
-		return v, err
+	if holder != "" {
+		rec, ok, err := readHook(ctx, st)
+		if err != nil {
+			return v, err
+		}
+		v.Hook = sprint.HookSaid(rec, ok, holder, now)
 	}
 	st, err = st.Pinned(ctx)
 	if err != nil {
@@ -716,8 +720,8 @@ func coordinatorSum(v coordinatorView, known bool, m store.Machine) string {
 	sum := fmt.Sprintf("seat=%s machine=%s j=%d(max %d behind) alarms=%d asks=%d sentinels=%d friends=%d machines=%d | landed %d/%d +%d/30m | ready %d wait %d work %d review %d merge %d | busy %d/%d | rules %d/h | suppressed %d (lane %d readers %d tier %d)",
 		cmp.Or(v.Seat, "-"), state, n.J, behind, types[itemAlarm], types[itemRequest], types[itemSentinel], types[itemFriend], types[itemMachine],
 		n.Landed, n.All, n.L30, n.Ready, n.Waiting, n.Working, n.Review, n.Merging, n.Busy, n.Width, n.Rules, n.Suppressed, n.By.Lane, n.By.Readers, n.By.Tier)
-	if v.Push != "" {
-		sum += " | push " + v.Push
+	if v.Hook != "" {
+		sum += " | hook " + v.Hook
 	}
 	if line := switchesLine(v.Fleet, v.Friends, v.FleetTiers, v.FriendsTiers); line != "" {
 		sum += " | " + line

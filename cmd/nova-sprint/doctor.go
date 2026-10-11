@@ -118,9 +118,6 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	}
 	now := a.now()
 	machinery := a.withConfigSeat(a.seatCheck(ctx, st, c.redis))
-	// the push proof's nonce is not public: redact it before it reaches --json,
-	// as the seat check's own JSON does (sprint.PublicPushRecord).
-	machinery.Measures.Push.Record = sprint.PublicPushRecord(machinery.Measures.Push.Record)
 	faults := doctorFaults(machinery, rec, check.Violations, snap, now)
 	checks, err := a.doctorChecks(ctx, st, machinery.Measures, rec, *area)
 	if err != nil {
@@ -232,7 +229,7 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 	if o.serverAddr == nil {
 		o = a.realOutside()
 	}
-	in := sprint.DoctorInput{Snap: read.Snap, Req: read.Req, ReaderBeats: read.ReaderBeats, FriendBeats: read.FriendBeats, Push: m.Push, Seat: rec.Seat}
+	in := sprint.DoctorInput{Snap: read.Snap, Req: read.Req, ReaderBeats: read.ReaderBeats, FriendBeats: read.FriendBeats, Hook: m.Hook, Seat: rec.Seat}
 	var cfg doctorConfig
 	if o.doctorConfig != nil {
 		if cfg, err = o.doctorConfig(ctx); err != nil {
