@@ -2087,6 +2087,14 @@ func briefFromFile(path, text string) (string, error) {
 	return strings.TrimSuffix(text, "\n"), nil
 }
 
+// briefSizeCheck says if a brief is over the bound; "" when it is within the bound.
+func briefSizeCheck(path string, n int) string {
+	if n > store.MaxBriefBytes {
+		return fmt.Sprintf("%s: the brief is %d bytes, over the %d bytes a brief may be; a brief is a child's whole brief; shorten it", path, n, store.MaxBriefBytes)
+	}
+	return ""
+}
+
 // lintBrief holds one brief to the card lint's child rules and its model lines
 // (lintBriefReads): the findings print on stderr in the lint's own grammar, at
 // most max of them (0 is all) before a MORE line, and a brief with any is
@@ -2880,7 +2888,13 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return refuse(stderr, "brief", "--brief-file: "+err.Error())
 		}
+		if why := briefSizeCheck(*briefFile, len(text)); why != "" {
+			return refuse(stderr, "brief", why)
+		}
 		*brief = text
+	}
+	if why := briefSizeCheck("brief", len(*brief)); why != "" {
+		return refuse(stderr, "brief", why)
 	}
 	rs, code := a.holdBrief("brief", *brief, *rules, c, &st, stderr)
 	if code != 0 {

@@ -53,7 +53,7 @@ func TestBriefReplacesAnUnstartedPrimarysBriefOnAStoppedSprint(t *testing.T) {
 	code, out, errs = ta.do("brief a-2 --brief-file " + writeBrief(t, strings.Repeat("x", store.MaxBriefBytes)))
 	assert.NotEqual(t, 0, code)
 	assert.NotContains(t, out, "MOVED")
-	assert.Contains(t, errs, "over the bound")
+	assert.Contains(t, errs, "16384 bytes")
 	assert.Equal(t, applies, ta.applies(), "a brief over the bound wrote")
 
 	assert.Contains(t, ta.ok("brief a-2 --brief-file "+good), "a-2 brief replaced")
