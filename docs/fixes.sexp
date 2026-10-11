@@ -823,6 +823,19 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "drain-a-probed-member-drains-and-its-reader-is-asked-nothing" :release "v1.2.12" :status "planned"
+   :title "One test runs the night's composition: a probed member that drains is dealt nothing and its reader is asked nothing"
+   :text "A new store test, TestAProbedMemberThatDrainsIsDealtNothingAndItsReaderIsAskedNothing in
+    internal/sprint/store/drain_test.go, runs the composition the drain tests ran only in halves. Using
+    flashSetup (both members up with EnvProbePassed and reader-m1 up, readers a, b and c away), m1
+    drains after passing its probe; over ticks readyWork(m1) stays empty and readsOn(reader-m1) holds
+    no read asked after the drain. When reader-a is set up the reads waiting for review are asked of
+    it; when m1's beat no longer says it drains, m1 is dealt again and reader-m1 is asked again. The
+    assertions go through the store's steps and the snapshot only. The comment of
+    TestADrainingReadersAskedReadsReturnToAnotherReader now says it runs the reader's own drain and
+    names the new test for the machine's. Tests only; no product change."
+   :origin "this card; the v1.2.12 inventory card A2 and section 6 (three drain tests red at 04:16Z on 2026-10-11, the probe gate and #84, greened by 2623ab7 with no test of the composition)")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
