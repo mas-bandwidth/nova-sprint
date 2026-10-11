@@ -509,4 +509,14 @@
      stamp, and the tick lifts the mark on the clean finish, telling the seat. A hold a person made carries
      no held_by mark and is never lifted by the machine. TLA+ model DealFill, properties FaultHoldClears
      and PersonHoldStays, with two reversed witnesses."
-    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")))
+    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")
+
+  (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.6" :status "planned"
+   :title "Rate-limited takes don't spend redeal or rest route for 30 minutes"
+   :text "A take the provider ended with class rate-limited (a 429 that is not a quota, \"too many requests\",
+    \"rate limit\") is withdrawn without FieldTakeEnded, so no redeal and no attempt is spent. The route
+    backs off briefly (60s, doubling on each further rate-limited end with no ok take in between, capped
+    at 15m) without counting toward the route's 3-in-10 rest. No failed-work judgment is raised.
+    pkg/member Judge reports rate-limited takes with no pushed head as provider failure, so a 429 never
+    reaches the sprint as failed work."
+   :origin "nova-sprint docs/fixes.sexp entry a-rate-limited-refusal-never-fails-the-cardc")))
