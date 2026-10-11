@@ -278,6 +278,7 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 					hn.What = fmt.Sprintf("friend %s stalled %s: unstarted cards taken back", f, idleDuration.Round(time.Second))
 					p.Notes = append(p.Notes, hn)
 				case 5:
+					// tla/SeatHealth.tla Rung5Down
 					gen := max(s.SeatGeneration, FirstSeatGeneration)
 					if p.Health == nil {
 						p.Health = &FriendHealthWrite{
