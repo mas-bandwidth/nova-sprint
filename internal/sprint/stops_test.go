@@ -52,6 +52,18 @@ func (r *holdRig) openNote(typ, subject string) *sprint.Note {
 	return nil
 }
 
+// digestNote is the one NStopsDigest note the sprint wrote, nil when none is.
+func (r *holdRig) digestNote() *sprint.Note {
+	r.t.Helper()
+	for _, x := range r.allNotes() {
+		if x.Kind == sprint.Happened && x.Type == sprint.NStopsDigest {
+			n := x
+			return &n
+		}
+	}
+	return nil
+}
+
 // allNotes is every note the sprint wrote.
 func (r *holdRig) allNotes() []sprint.Note {
 	r.t.Helper()
@@ -144,6 +156,48 @@ func TestAMemberDownTheCoordinatorDidNotHoldIsRaisedAgainUntilItIsHeld(t *testin
 	r.tickBeating(time.Second, "m1")
 	_, ok = r.keptStop(sprint.StopKindMemberDown, "m2")
 	assert.False(t, ok, "and the record no longer lists it")
+}
+
+// One plan that closes a stop must not count it. TickCoordinatorPass runs notify (steps_tick.go),
+// which closes every open stop judgment whose condition no longer holds, and then stopsDigest
+// (stops.go), which gathers its stops from the snapshot as it was before the plan. A member down
+// that is up again closes its NStopMemberDown judgment, yet the digest due in that same tick used
+// to count and name it, telling the coordinator "automatic stops still hold" about one that has
+// just ended. tla/CoordinatorPass.tla, Kind = "stop" (PushedOnlyWhileRaised, ClosedWhenCleared):
+// a stop is pushed only while it holds.
+func TestTheStopsDigestCountsOnlyTheStopsAStopPlanLeavesHolding(t *testing.T) {
+	t.Parallel()
+	r := newHoldRig(t, 2, 0)
+	r.tickBeating(time.Second, "m1", "m2")
+	require.Equal(t, sprint.Up, r.snap().MemberCtl("m1").F("status"))
+	require.Equal(t, sprint.Up, r.snap().MemberCtl("m2").F("status"))
+
+	// both members stop beating: each goes down, and past the dwell each gets its judgment
+	r.tickBeating(time.Minute)
+	r.tickBeating(time.Minute)
+	r.tickBeating(90 * time.Second)
+	require.NotNil(t, r.openNote(sprint.NStopMemberDown, "m1"), "m1 down, unheld: its judgment")
+	require.NotNil(t, r.openNote(sprint.NStopMemberDown, "m2"), "m2 down, unheld: its judgment")
+	require.Equal(t, 0, r.countNotes(sprint.Happened, sprint.NStopsDigest, ""), "no digest of the stops yet")
+
+	// m2 is up again: the plan closes its judgment, and the digest due in the same tick names
+	// only m1, the member still down
+	r.tickBeating(sprint.PassEvery, "m2")
+	assert.Nil(t, r.openNote(sprint.NStopMemberDown, "m2"), "up again, the plan closes its judgment")
+	assert.NotNil(t, r.openNote(sprint.NStopMemberDown, "m1"), "m1 still down: its judgment stands")
+	assert.Equal(t, 1, r.countNotes(sprint.Happened, sprint.NStopsDigest, "1 automatic stops still hold (1 member-down)"), "the digest counts only what holds")
+	d := r.digestNote()
+	require.NotNil(t, d, "one digest")
+	assert.Contains(t, d.What, "m1", "naming the member still down")
+	assert.NotContains(t, d.What, "m2", "the stop the plan closed is not counted nor named")
+
+	// m1 is up too: no stop is left, so neither the digest nor its clock is written, and both
+	// judgments are closed
+	r.tickBeating(sprint.PassEvery, "m1", "m2")
+	assert.Nil(t, r.openNote(sprint.NStopMemberDown, "m1"), "up again, the plan closes it")
+	assert.Nil(t, r.openNote(sprint.NStopMemberDown, "m2"), "and m2's judgment stays closed")
+	assert.Equal(t, 1, r.countNotes(sprint.Happened, sprint.NStopsDigest, ""), "no second digest")
+	assert.Equal(t, 1, r.countNotes(sprint.Acknowledged, sprint.NStopsDigestClock, ""), "and no second clock")
 }
 
 func TestACardPinnedToAFriendWhoIsNotUpIsRaisedUntilUnpinned(t *testing.T) {

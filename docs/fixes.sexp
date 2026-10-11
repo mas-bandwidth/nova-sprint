@@ -66,7 +66,11 @@
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator."))
  :items
- ((fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
+  ((fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
+    :title "The store package's own tests pin stats tidy and stats reset"
+    :text "Tests only, no product change. New tests in internal/sprint/store drive TidyStats and ResetStats through the unit tier's Mem store and assert on their results, on what StatsTidied and StatsReset read back, and on whether the store changed: a dry run counts and writes nothing; a fleet tidy moves history off the done cells and records the archive done; a second tidy within TidyAgainAfter is refused; a fresh tidy marker refuses a tidy or a reset while a stale one is taken as ended; routes alone moves nothing and streams clears the where record; a refused move keeps its archive failed and clears the marker; a reset writes its mark and clears the where record; operation ids replay, conflict and are refused by shape; a compare-and-set that keeps losing errors after its tries; and a tidy's kinds and archives are kept across a reset."
+    :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C5")
+   (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
    :origin "the split, layer L0; PR #28")
@@ -199,6 +203,14 @@
     say a key rest ends only by routes wake, never by funded or a payment, and a test shows a balance poll
     cannot end one."
    :origin "readers' notes on nova-sprint PR #49 and PR #50")
+  (fix "hook-stays-live-while-its-rechallenge-is-in-bound" :release "v1.2.14" :status "planned"
+   :title "A hook stays live while its re-challenge is in bound"
+   :text "The record's Live was the proof's bound alone, so a seat answering in time was refused
+    HookFirst between the proof's Live and a re-challenge's own bound whenever a slow look sent the
+    challenge late. The server now moves Live to the re-challenge's own bound through the record's
+    one writer; a write that fails keeps the earlier bound (the safe side) and says so on the
+    server's line. Test: TestARechallengeKeepsTheHookLiveUntilItsOwnBound."
+   :origin "v1.2.12 inventory 2026-10-11, section 9 row D6; code read at nova-sprint main 00c54ba")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
@@ -574,6 +586,18 @@
      its need."
     :origin "card moved out of the sprint (work record, 2026-10-04)")
 
+   (fix "a-stream-has-a-display-name" :release "v1.2.14" :status "planned"
+    :title "A stream has a display name"
+    :text "A stream's key stays its name everywhere (the work and merge rows, the stream= fields, every
+     verb), and gains a human label: `stream set <s> --display <name>` records one line of printable
+     text, at most 60 bytes, on the stream's control card as its `display` field, cleared with `default`
+     or `none` like every other stream field. The dashboard's Work table and the streams listing show
+     the display name when set, else `point-fix-<release>` when the stream belongs to a release, else
+     the key (sprint.StreamDisplay); the streams verb prints it beside the release, StreamClock and
+     StreamRow carry it in `Display`, and a name over the bound or with a newline is refused whole,
+     nothing written."
+    :origin "the owner, 2026-10-11: \"agree that the name becomes the key, and you add a small display name. good tidy feature. pls add.\"")
+
    (fix "reader-only-friend-no-work" :release "v1.2.9" :status "shipped"
     :title "A reader-only friend is dealt no work card; a builder-only friend is asked no read"
     :text "The deal and the ask honour a friend's roles: a friend whose nova-config row's roles do not
@@ -855,6 +879,35 @@
     RouteTable's in-package statement coverage goes from 0.0% of 163 to 99.4%. No product change."
    :origin "the owner, 2026-10-11: v1.2.12 tests and models only; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C1")
 
+  (fix "fn-dashboard-test-compares-the-page-data" :release "v1.2.12" :status "planned"
+   :title "The dashboard functional test reads where --json as the page serves it"
+   :text "TestDashboardServesThePageOnEveryListener compared each listener's /api/sprint tables against
+    raw where --json; since the page serves internal/sprintdash's pageData, which folds each stream's
+    stream_costs record (the tiers and in_flight fields) into the work rows, the two never matched.
+    The test now puts where --json through sprintdash.PageData at a fixed time before it unmarshals its
+    expectation, and compares tables and landed as before. No product or dashboard change."
+   :origin "this card")
+
+  (fix "store-two-run-loops-retries-a-busy-fence" :release "v1.2.12" :status "planned"
+   :title "The two-run-loops test retries the store's busy refusal"
+   :text "TestCRTwoRunLoopsAtOnce's outside world now retries a step when the store answers with its
+    documented retryable refusal (FenceBusyError, \"the sprint is busy ... nothing was changed; run the
+    verb again\"), up to 20 tries per step, counting the retries per trial; a verb still busy after the
+    bound fails the test with its verb and count, and goes in the report as a v1.2.14 candidate (an
+    outside verb starved by two tick loops), never papered over by a larger bound. Each trial logs its
+    busy retries so a run shows how often the fence was contended. \"changed under the step\" is still
+    counted and every other assertion (judgments once, width, two reads per attempt, h.clean) is
+    unchanged. Test-side only; no product change."
+   :origin "the v1.2.12 plan (tmp/point-release-plan-v1.2.11-v1.2.12.md, last lines); CI run 38140844195 on #89; this card store-two-run-loops-retries-a-busy-fence")
+
+  (fix "tla-coverage-rows-for-every-nova-sprint-module" :release "v1.2.12" :status "planned"
+   :title "tla/COVERAGE.tsv names every TLA+ module in the tree exactly once"
+   :text "Every module in tla/ (every X.tla whose name does not start with MC, SeatProof retired) is
+    named by exactly one row's module column, every row's status is what the drift reads found, and
+    every row that is not current names in owed_by the v1.2.12 card that owes it. Twenty-two rows are
+    added, nineteen are changed, and a row marked missing names module \"-\"."
+   :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
@@ -909,11 +962,42 @@
     key before keying, while the What keeps it, so the judgment is rewritten in place with the latest figures
     and pushed once."
    :origin "the coordinator, 2026-10-11 (v1.2.14 defect ready-over-key-ignores-the-balance-amount); checked against nova-sprint main 00c54ba")
+  (fix "tick-watchdog-refuses-a-negative-deadline" :release "v1.2.14" :status "planned"
+   :title "run refuses a negative --tick-deadline"
+   :text "A negative --tick-deadline is refused right after the flags are parsed, through run's usual refuse helper, before the loop starts or a server listens; the refusal names the flag, the value and that 0 waits for ever. Before, tickDeadlineOf returned 0 for any least <= 0 and tickWithin waited for ever when d <= 0, so --tick-deadline -1s switched the watchdog off with nothing said. 0 still waits for ever and every positive value behaves as today."
+   :origin "nova-tools#5173 (transferred here at the split), roadmap item tick-watchdog-bounded-diagnostics, its negative-deadline half; this card")
+  (fix "stops-digest-counts-only-held-stops" :release "v1.2.14" :status "planned"
+   :title "The stops digest counts only the stops still holding"
+   :text "One plan could close a stop and at the same time send an NStopsDigest saying it still holds: notify closes the open NStopMemberDown judgment of a member up again, and stopsDigest then gathered its stops from the snapshot before the plan, counting and naming the stop just closed. stopsDigest now leaves out every judgment the same plan closes, matched by note id; with no stop left it writes neither the digest nor its clock."
+   :origin "v1.2.12 inventory 2026-10-11, section 9 row D8; card stops-digest-counts-only-held-stops.w1, id given by the coordinator 2026-10-11 (code read at nova-sprint main 00c54ba)")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
    :origin "this card")
+
+ (fix "land-clash-test-sets-git-identity-in-clones" :release "v1.2.11" :status "planned"
+   :title "The clash test sets a git identity in every clone it commits in"
+   :text "The clash test configured user.name and user.email in its first temporary repository only; the clones it makes do not inherit that config, so their commit failed with exit 128 on a machine without a global git identity. The test now sets GIT_AUTHOR_*/GIT_COMMITTER_* for the whole test, the way the package's other git-using tests set an identity."
+   :origin "this card")
+
+  (fix "live-reads-systemd-units-and-launch-daemons" :release "v1.2.11" :status "planned"
+   :title "live reads systemd units on Linux and LaunchDaemons on macOS"
+   :text "The live manifest read only ~/Library/LaunchAgents, so a Linux host refused with no agents directory and a loop installed as a system LaunchDaemon was never listed. live now reads the nova-loop-*.service systemd units of the user and system unit directories on Linux, each an interval agent when a .timer sits beside it, and, on macOS, the com.nova.* launchd daemons of /Library/LaunchDaemons too; each agent records its manager (launchd or systemd)."
+   :origin "this card")
+
+  (fix "hook-finds-the-server-itself" :release "v1.2.11" :status "planned"
+   :title "The hook and the coordinator's verbs find the server the seat's record names"
+   :text "app.server (cmd/nova-sprint/forward.go) read only NOVA_SPRINT_SERVER, so a seat
+    installed with `seat install --server <host:port>` still had to export the variable by
+    hand before `hook` or any coordinator verb would run; every other seat verb answered
+    'You must hook in first'. When the environment names no server, app.server now uses the
+    server the seat's record names (a.seatServer), in the same order seat check already used
+    (machinery.go). A process that is the server, or a verb given its own --redis, still
+    returns none. hook prints the server it used and where it came from
+    (server=<host:port> from=env | from=seat-record), and when neither source names one the
+    refusal names both and the commands that set one."
+   :origin "the seat, 2026-10-11 ~03:19Z: the seat hook proved only with NOVA_SPRINT_SERVER=127.0.0.1:6390 set by hand")
 
   (fix "no-deal-to-a-draining-member" :release "v1.2.10" :status "shipped"
    :title "No deal to a draining member; a held or draining machine's reader is asked nothing"
