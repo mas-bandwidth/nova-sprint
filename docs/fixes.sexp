@@ -595,6 +595,15 @@
      agree; otherwise stores empty tier with from=default message. Doctor warns about fleet readers whose
      tiers differ from the fleet's common tier."
     :origin "a-joined-reader-gets-the-fleet-reader-tiers.w5.g4.e17 (2026-10-11)")
+   (fix "defaults-are-the-working-machine" :release "v1.2.11" :status "planned"
+    :title "The first install gets smart defaults that work"
+    :text "A fresh store, and every store after a clear, works the way the sprint machine works: the
+     read_cards default flips to on, so the first tick asks every read a card in review needs at once and
+     the deal fills both members to their width, instead of asking one read per tick through the old
+     readers table. An absent property and \"default\" are on; set --read-cards off is the one word that
+     turns it off and says it degrades the machine. The set help text and refusal say each default as the
+     working value."
+    :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 24 (2026-10-11)")
 
    (fix "fleet-sync-retires-a-renamed-machines-row" :release "v1.2.6" :status "shipped"
     :title "The tick retires a fleet row whose machine is gone from the inventory"
