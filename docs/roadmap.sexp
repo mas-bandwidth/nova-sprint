@@ -1097,13 +1097,6 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "issue #3478")
-  (item "worklang-done-field-parsed" :group "docs"
-   :title "The worklang parser keeps the done field of a unit"
-   :text "Unit done reads a field the parser never keeps, so a done unit is never counted. The key is
-    added and sibling skipped keys are checked, with a test."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "issue #3499")
   (item "children-visibility-on-table" :group "sprint"
    :title "Show every seat's children on the sprint table within a second"
    :text "The table shows each live child with task, step, age and cost, read from the store, including

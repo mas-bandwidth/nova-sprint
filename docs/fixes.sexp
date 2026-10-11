@@ -437,4 +437,10 @@
      stay; a row with working cards drains then retires; a draining absent row keeps its reader until its
      row leaves; a failed read retires nothing; an offline machine with a record is untouched."
     :origin "the owner, 2026-10-11 ~01:00Z and ~01:05Z, after hetzner was renamed hetzner1 and its old fleet
-     row stayed held; this card; attempt 2")))
+     row stayed held; this card; attempt 2")
+
+   (fix "worklang-done-field-parsed" :release "v1.2.9" :status "planned"
+    :title "The worklang parser keeps the done field of a unit"
+    :text "Unit done reads a field the parser never keeps, so a done unit is never counted. The key is
+     added and sibling skipped keys are checked, with a test."
+    :origin "issue #3499")))
