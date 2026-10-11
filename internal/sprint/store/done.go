@@ -16,7 +16,8 @@ import (
 // logIndexPages pages a tick, so a record behind the log (after a clear, or the first tick of
 // a build that keeps it) catches up over the next ticks. where counts from the record
 // (DoneSince), at most the tick in flight behind, as its other records are. The record is the
-// epoch's: one of another epoch is counted again.
+// epoch's: one of another epoch is counted again. tla/DoneRecord.tla models it (NoDoubleCount,
+// CaughtUpIsTruth, ResetShowsZero, ClearStartsAgain).
 
 const keyDoneRecord = "donerecord" // STRING, the done record (JSON); "done" is the operations' hash
 
