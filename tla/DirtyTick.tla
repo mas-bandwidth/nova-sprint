@@ -545,11 +545,12 @@ ApplyR(S, e) ==
          ELSE IF Broken = "handkeeps" THEN [S EXCEPT !.askw[c] = TRUE]   \* the witness keeps the hold
          ELSE \* counted as a read when the re-asks are spent (the witness
               \* "returnspends": always; "reaskforever": never)
-              LET counted == Broken = "returnspends" \/ (Broken # "reaskforever" /\ S.rea[c] >= MaxReasks)
-              IN Put([S EXCEPT !.rd[c] = NoR, !.askw[c] = TRUE,
-                               !.hb[c] = IF counted THEN NoR ELSE e.x,
-                               !.seen[c] = IF counted THEN @ \cup {e.x} ELSE @],
-                     "fleet", E("readoff", c, Host[e.x]))
+               LET counted == Broken = "returnspends" \/ (Broken # "reaskforever" /\ S.rea[c] >= MaxReasks)
+               IN Put([S EXCEPT !.rd[c] = NoR, !.askw[c] = TRUE,
+                                !.hb[c] = IF counted THEN NoR ELSE e.x,
+                                !.seen[c] = IF counted THEN @ \cup {e.x} ELSE @,
+                                !.mr = [m \in Machines |-> IF m = Host[e.x] THEN S.mr[m] \ {c} ELSE S.mr[m]]],
+                      "fleet", E("readoff", c, Host[e.x]))
     [] e.k = "refused" ->  \* retired as refused: one re-ask, then the tier's judgment
          IF S.rd[c] # e.x \/ S.nrt[c] THEN S
          ELSE IF S.rea[c] >= 1
@@ -564,11 +565,12 @@ ApplyR(S, e) ==
     [] e.k = "raway" ->     \* the reader is not up: its reads are taken back and asked again
          IF S.stat[e.x] = "down" THEN S
          ELSE IF Broken = "keepaway" THEN [S EXCEPT !.stat[e.x] = "down"]    \* the witness keeps them
-         ELSE LET H == {d \in Cards : S.rd[d] = e.x}
-              IN [S EXCEPT !.stat[e.x] = "down",
-                           !.rd = [d \in Cards |-> IF d \in H THEN NoR ELSE @[d]],
-                           !.askw = [d \in Cards |-> IF d \in H THEN TRUE ELSE @[d]],
-                           !.q["fleet"] = @ \o [i \in 1..Cardinality(H) |-> E("readoff", Nth(H, i), Host[e.x])]]
+          ELSE LET H == {d \in Cards : S.rd[d] = e.x}
+               IN [S EXCEPT !.stat[e.x] = "down",
+                            !.rd = [d \in Cards |-> IF d \in H THEN NoR ELSE @[d]],
+                            !.askw = [d \in Cards |-> IF d \in H THEN TRUE ELSE @[d]],
+                            !.mr = [m \in Machines |-> IF m = Host[e.x] THEN S.mr[m] \ H ELSE S.mr[m]],
+                            !.q["fleet"] = @ \o [i \in 1..Cardinality(H) |-> E("readoff", Nth(H, i), Host[e.x])]]
     [] e.k = "raback" -> [S EXCEPT !.stat[e.x] = "up"]
     [] OTHER -> S    \* room, echo
 
