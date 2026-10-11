@@ -284,4 +284,13 @@
     :title "Approval at head is read from the disposition line"
     :text "The review API commit id can differ from the head the reviewer read. Merge checks parse the head
      named in the disposition and treat commit id as untrusted."
-    :origin "issue #2037")))
+    :origin "issue #2037")
+
+   (fix "route-share-falls-with-cost-per-landed" :release "v1.2.9" :status "planned"
+    :title "Route share falls as cost per landed card rises or ok rate falls"
+    :text "Selection share is weighted by outcome: share falls as cost per landed card rises
+     or ok rate falls, with a floor so routes are still sampled. Four flash routes that
+     spent ~$30 and landed nothing were kept being picked; they now get small shares.
+     TLA+ model tla/RouteIndex.tla, property RouteFair (weighted variant).
+     Tests cover floor share and weighted sampling."
+    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")))
