@@ -1551,6 +1551,25 @@
      head a1c51ee and on main 00c54ba, where readRouteOf is at route.go:813 and holds for every
      rest, not only a backoff.")
 
+  (fix "a-friend-that-serves-a-tier-counts-as-its-route" :release "v1.2.14" :status "planned"
+   :title "A friend that serves a tier counts as its route"
+   :text "Whether a tier is served is one question with one answer: tierServed says a tier is served by an
+    enabled, unrested route of it, or by a friend row up and unheld whose tiers include it (a member row
+    likewise when the fleet's tiers allow), and every site that validates a tier reads it. routeTier's
+    frontier branch refused every frontier card before it consulted the check, so rework of a frontier card
+    was refused, held.go and idle.go raised \"no route serves tier frontier\", readers.go and ready_over.go
+    read the same words as its cause, and judgments_retire.go retired the judgment only when a route
+    appeared, while the friends' deal already handed frontier cards to a friend row whose tiers include
+    frontier. A frontier card is now the friends' by design: a friend up whose row lists frontier serves it
+    as a route would, and with no such friend the refusal names both the routes and the friends it looked
+    at. docs/SPEC-SPRINT.md, tiers and routes, says it. Tests:
+    TestReworkAcceptsAFrontierTierAFriendServes, TestAcceptSeesAFrontierTierAFriendServes,
+    TestIdleRootForAFrontierTierAFriendServesIsNoNoRoute, TestAFrontierTierNoFriendServesIsRefused,
+    TestAFrontierTierAFriendServesRaisesNoNoRouteJudgment."
+   :origin "this card; the owner, 2026-10-11 ~11:25 AM ET, on the live epoch 17: \"I hate twins.\" /
+    \"Twinning is the last refuge of the scoundrel. Fix your tools.\"; code read at nova-sprint main
+    1405d26")
+
   (fix "the-dashboard-plays-a-coin-when-a-tick-lands" :release "v1.2.14" :status "planned"
    :title "The dashboard plays a gentle coin when a tick lands a card"
    :text "The dashboard at :7390 gains one sound and nothing else, on the owner's ask: when a refresh's
