@@ -770,9 +770,10 @@
     -- a fixed point in time, never relative to now. Its line is kept beside the route's own rest in
     the provider's rule3_rest_ property (<route>+rate-backoff), never over it, so it never moves the
     3-in-10 window's mark, never blocks the coordinator's rest and is never woken; a backoff on every route of a tier makes the card
-    wait ready, as a provider at its concurrency budget does, never a no-route judgment; restWrites writes
+    wait ready, as a provider at its concurrency budget does, never a no-route judgment, and the no-stall rule holds it on the backoff (never NStalled);
+    restWrites writes
     it and one happened note (\"rate-limit backoff of <d> on <route>, until <t>\") once per end,
-    none while the same end holds, never a judgment. A rate limit no longer counts toward the 3-in-10
+    none while the same end holds, never a judgment, and drops a backoff line once its end has passed. A rate limit no longer counts toward the 3-in-10
     transient rest (transient excludes classRateLimited); a 5xx window still rests the route 30
     minutes, and is written over a backoff that holds. member.Judge treats a rate-limited run with no
     pushed head as a provider failure whatever its shape, while a shaped result that pushed a head
