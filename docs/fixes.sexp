@@ -855,6 +855,10 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (fix "stops-digest-counts-only-held-stops" :release "v1.2.14" :status "planned"
+   :title "The stops digest counts only the stops still holding"
+   :text "stopsDigest leaves out every stop judgment the same plan closes, matched by note id: a member that came back up is no longer counted or named by the digest the tick writes in the plan that ends its stop, and when no stop is left the tick writes neither the digest nor its clock. The code keeps tla/CoordinatorPass.tla's rule for Kind = \"stop\" (PushedOnlyWhileRaised, ClosedWhenCleared)."
+   :origin "the v1.2.12 inventory 2026-10-11, section 9 row D8; the coordinator; code read at nova-sprint main 00c54ba")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
