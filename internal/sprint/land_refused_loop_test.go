@@ -105,6 +105,39 @@ func TestALedgerOnlyConflictIsNeverABriefDefect(t *testing.T) {
 	r.clean("ledger conflicts")
 }
 
+// The recovery of a card the v1.2.x loop left marked a brief defect: accepted again (accept
+// is not refused on the mark), and refused again on the ledgers alone, it is reworked at the
+// tip with the mark cleared, never stopped at the bound a second time.
+func TestALedgerConflictClearsTheLoopsBriefDefectMark(t *testing.T) {
+	t.Parallel()
+	r := newConflictRig(t)
+	why := func(head string) string {
+		return "the head " + head + " of s1-1 does not merge: CONFLICT (content): Merge conflict in internal/x.go"
+	}
+	// the old loop's state: two refusals the same way, the bound's judgment, the rule's mark
+	for _, head := range refusedHeads[:2] {
+		r.toMergingAt("s1-1", head)
+		r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why(head), ConflictKind: "file", ConflictPaths: []string{"internal/x.go"}}))
+	}
+	r.tick()
+	pr := r.snap().Work.Card("s1-1")
+	require.Equal(t, sprint.Review, pr.Col)
+	require.NotEmpty(t, pr.F(sprint.FieldBriefDefect), "the rule marked it")
+
+	var answers []string
+	for _, o := range r.openOn(sprint.NBriefWrong, "s1-1") {
+		answers = append(answers, o.Note.ID)
+	}
+	r.must(store.AcceptStep(sprint.AcceptReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Answers: answers}))
+	require.Equal(t, sprint.Merging, r.snap().Work.Card("s1-1").Col, "accepted again")
+	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: ledgerWhy(refusedHeads[1]), ConflictKind: "file", ConflictPaths: []string{"FIXES.md", "docs/fixes.sexp"}}))
+	pr = r.snap().Work.Card("s1-1")
+	assert.Equal(t, sprint.Ready, pr.Col, "reworked at the tip")
+	assert.Empty(t, pr.F(sprint.FieldBriefDefect), "the mark is cleared")
+	assert.Empty(t, r.openOn(sprint.NBriefWrong, "s1-1"))
+	r.clean("recovered")
+}
+
 // LedgerConflict is the shared ledgers only: the roadmap's data and pages, the class ledgers,
 // the AGENTS maps, the keyed TLA+ tables and the tables lock; any other path, or none, is not.
 func TestLedgerConflictIsTheSharedLedgersOnly(t *testing.T) {

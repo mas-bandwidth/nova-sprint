@@ -65,7 +65,11 @@ func LedgerConflict(paths []string) bool {
 // its read cards retired, the way kept as its finding (LandRefusedFinding), and the seat told
 // once (NLandRefused, nothing to answer). A card at its brief's bound (AtBriefBound: the same
 // refusal twice, or the attempt cap) is not reworked: it goes back to review with the bound's
-// judgment (NBriefWrong). state, ctlSet and notes are the merge step's for the stream.
+// judgment (NBriefWrong). Every way but RefusedPaths keeps the refused head
+// (FieldLandRefusedHead), which is then never offered to accept again (reviewJudgment). A
+// conflict only in the shared ledgers (LedgerConflict) is never at the brief's bound: it is
+// reworked at the tip, clean of any brief-defect mark. state, ctlSet and notes are the merge
+// step's for the stream.
 func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet map[string]string, notes []Note, pr, m *Card) Unit {
 	id, attempt, now := pr.ID, pr.F("attempt"), stamp(s.Now)
 	refusal := "the landing refused attempt " + attempt + "'s head: " + orDash(r.Note)
@@ -141,7 +145,13 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 	}
 	// it is no passed head (FieldPassedHead): the landing refused it, so an attempt that finds
 	// nothing new at it has not answered the fix
-	u.Changes = append(u.Changes, change(Work, moveEntry(pr, r.Stream, Ready, set, "readers", "result", FieldFindingReader, FieldPassedHead)))
+	unset := []string{"readers", "result", FieldFindingReader, FieldPassedHead}
+	if ledger {
+		// a brief-defect mark a ledger conflict left (the v1.2.x loop marked these) is
+		// no brief defect: the card is reworked at the tip clean of it
+		unset = append(unset, FieldBriefDefect)
+	}
+	u.Changes = append(u.Changes, change(Work, moveEntry(pr, r.Stream, Ready, set, unset...)))
 	n := happened(NLandRefused, r.Stream, s.Now, id)
 	n.Who, n.To, n.Card, n.Attempt, n.What = r.Who, s.Coordinator, id, pr.Int("attempt"), cutText(orDash(r.Note), MaxCardTextBytes)
 	u.Notes = append(u.Notes, n)
