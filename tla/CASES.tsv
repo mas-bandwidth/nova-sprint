@@ -308,6 +308,10 @@ MCReadsByRoomBrokenCount.cfg	MCReadsByRoom.tla	invariant	WidthRespected	ignore-t
 MCReadsByRoomBrokenNoFinder.cfg	MCReadsByRoomThree.tla	invariant	FinderFirst	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomBrokenTwoFinders.cfg	MCReadsByRoom.tla	invariant	OneBroken	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomSequential.cfg	MCReadsByRoom.tla	pass	-	ignore-terminal	readsbyroom	required	-
+MCSprintTables.cfg	MCSprintTables.tla	pass	-	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenDownkeeps.cfg	MCSprintTables.tla	action	WorkingOnAnUpMember	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenInsert.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsert	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenNeedless.cfg	MCSprintTables.tla	action	NeedsLandFirst	ignore-terminal	sprinttables	required	-
 MCStallLadder.cfg	MCStallLadder.tla	pass	-	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenBound.cfg	MCStallLadder.tla	invariant	NoCardHeldPastBound	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenRedeal.cfg	MCStallLadder.tla	invariant	NoStartedRedealt	ignore-terminal	stallladder	required	-
@@ -439,6 +443,7 @@ MCRoadmapEntryBrokenLastChild.cfg	MCRoadmapEntry.tla	invariant	ParentsHold	ignor
 MCRoadmapEntryBrokenSourceFirst.cfg	MCRoadmapEntry.tla	invariant	NoLoss	ignore-terminal	roadmapentry	required	-
 MCRoadmapEntryBrokenMoveDone.cfg	MCRoadmapEntry.tla	action	DoneFinal	ignore-terminal	roadmapentry	required	-
 MCRoadmapEntryBrokenShippedMove.cfg	MCRoadmapEntry.tla	action	ShippedFrozen	ignore-terminal	roadmapentry	required	-
+MCRoadmapEntryBrokenPageFirst.cfg	MCRoadmapEntry.tla	invariant	PageNotAhead	ignore-terminal	roadmapentry	required	-
 MCSeatHook.cfg	MCSeatHook.tla	pass	-	ignore-terminal	seathook	required	-
 MCSeatHookLive.cfg	MCSeatHook.tla	pass	-	ignore-terminal	seathook	required	-
 MCSeatHookBrokenNoStream.cfg	MCSeatHook.tla	invariant	ProofMeansRead	ignore-terminal	seathook	required	-

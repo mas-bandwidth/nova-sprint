@@ -147,6 +147,28 @@
     :title "The TLC cases run on GitHub-hosted runners from a pinned-jar workflow"
     :text "CI only, no product change. The 434 TLC cases in tla/ ran only when someone ran them by hand on a bench; tla/tla2tools.sha256 now pins the jar every tla/RUNS.tsv record names (sha256 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88, the tlaplus v1.7.4 release), and .github/workflows/tlc.yml runs the models on GitHub-hosted ubuntu-latest runners -- nova-sprint is public, so never self-hosted -- nightly by one cron, on workflow_dispatch, and on a pull request touching tla/**, pkg/tlc/** or tools/tlacheck/**. A groups job runs make tlc-test and prints the groups to run (every required group on schedule and dispatch via tlacheck groups --root ., the stale ones on a pull request via tlacheck groups --root . --stale; an empty list ends the workflow green); a models job depends on it, runs a four-wide fail-fast-false matrix over those groups, uses the runner image's own JDK 21 (no setup-java action), downloads the jar from the tlaplus release and refuses it, exit 2 naming both digests, unless sha256sum matches tla/tla2tools.sha256, then runs make tlc TLC_BUDGET=110 and uploads the run directory as a 14-day artifact. It never writes tla/RUNS.tsv into the repository; records still land through cards. New test internal/ci/tlc_workflow_test.go pins the hosted runner, the five-minute timeout, the digest check before make tlc and the 110-second budget. The workflow is unproven until its first run on the forge."
     :origin "this card, nova-sprint-ci-runs-tlc-on-hosted-runners-after-the-wall.w1, 2026-10-11: v1.2.12 inventory item T30 and note 3; checked at nova-sprint main 00c54ba2e")
+   (fix "tla-roadmapentry-note-and-four-write-save" :release "v1.2.12" :status "planned"
+    :title "RoadmapEntry models Note and Save's four writes, and scheduled notes' unchecked :release"
+    :text "Models only, no product change. tla/RoadmapEntry.tla gains a Note action (an open entry's title and text change in place, the place and the state unchanged) and models Save's four writes in the code's order -- destination data, destination page, source data, source page -- with a crash possible between any two and NoLoss still held. ChildLinked is restated over what decode() checks, with a Scheduled constant of notes whose :release is read and not checked: the fixes' items are checked (fixes.go:130-131) but the scheduled note's is not (roadmap.go:278). A reversed witness MCRoadmapEntryBrokenPageFirst writes each file's page before its data and fails the new PageNotAhead invariant; MCRoadmapEntryBrokenSourceFirst still fails NoLoss. Note on a done fix or a shipped release is not modelled: the code's Note (roadmap.go:546) edits both with no open or release guard, against the package doc's 'a release whose status is shipped is frozen' (roadmap.go:20-21), a v1.2.14 candidate named in the report."
+    :origin "this card, tla-roadmapentry-note-and-four-write-save.w6, 2026-10-11: v1.2.12 inventory item T23; drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-sprint-tables-fleet-take-and-finish" :release "v1.2.12" :status "planned"
+    :title "tla/SprintTables.tla adds the fleet side: member up or down and Start, Take, Finish, FleetDown, FleetUp"
+    :text "Models only, no product change. tla/SprintTables.tla gains the fleet side of the work table from
+     internal/sprint/refmodel/actions.go: a member is up or down, and a working primary's work card sits on one
+     member's row in a place none, ready (dealt, not taken), working (taken), finished or withdrawn. Start deals a
+     ready primary's work card to an up member's row (a withdrawn card is dealt again); Take moves a dealt card to
+     working on an up member; Finish finishes a working card and moves its primary to review; FleetDown takes a
+     member down and deals its ready and working cards to the other up members or, with no member up, withdraws
+     them and returns their primaries to ready; FleetUp brings a member up. The primary's moves stay rows of the
+     lifecycle's Moves table, so MovesOnlyByTable still holds, and the new WorkingOnAnUpMember (a working card's
+     member is up) holds too. Three reversed witnesses: MCSprintTablesBrokenInsert (an add that moves ready ->
+     waiting without inserting), MCSprintTablesBrokenNeedless (a resolve that drops the needs check) and
+     MCSprintTablesBrokenDownkeeps (a fleet down that keeps a working card on the member that went down, breaking
+     WorkingOnAnUpMember). The round-robin order of the deal (NextMember) and the levelling of the ready queues
+     (T4, the Level action) are choices, not safety rules, and are left out. The refmodel's pending-operation
+     fence (D1: Free) is left out (the module has no pending operation), and F1, F3 and F4 are left to the reads
+     and accept, merge and return, and crash and repair cards."
+    :origin "card tla-sprint-tables-fleet-take-and-finish.w3, 2026-10-11: v1.2.12 inventory item T4, the second of five cards; drift read at nova-sprint main 00c54ba2e")
    (fix "tla-noroom-admission-by-probe" :release "v1.2.12" :status "planned"
     :title "NoRoom models the probe gate and the read return's taker"
     :text "Models only, no product change. tla/NoRoom.tla gains the probe gate: a member is known (accepted into the fleet) only on a passed probe (Accept, the caller's own word, trusted as the code does), and both the deal (Dealable) and the reader's ask (Off) read it, so no deal goes to a member the sprint does not know (NeverDealtUnknown) and a reader whose machine is not a fleet member belongs to no machine and is asked like any reader (steps_work.go fleetStepPlan, drain.go ReaderOwner). ReadReturn is guarded on a taker: a read asked of a held or draining machine's reader is taken back only when another reader can take it (readers.go sweepReads), so it stays otherwise, and ReadsReturn is restated under that guard with NeverReturnedWithoutATaker (a read is never taken back while no other reader can take it). Two reversed witnesses: Broken = \"probeblind\" deals to an unknown member (NeverDealtUnknown) and Broken = \"notaker\" takes a read back with no other reader (NeverReturnedWithoutATaker); the eight existing witnesses keep their results, and the noroom TLC records are refreshed."
@@ -1837,8 +1859,21 @@
     The member take is unchanged. Reproduced on BASE: a critical card dealt last, a rank --first
     card passed over by a critical one, and a critical card of a later stream all sat while an
     earlier normal card was taken."
-   :origin "this card: a-lane-take-honours-the-rank.w4; the owner driving the coordinator's own
-    friend lane by hand from the seat on 2026-10-11 ~11:15-11:40 AM ET (\"How can we distribute
-    work to friends, if you can't even distribute it to yourself?\" / \"Make these fixes
-    critical.\"); five ranked-first cards sat while lanes started lower-ranked ones; code read at
-    nova-sprint main 1405d26")))
+    :origin "this card: a-lane-take-honours-the-rank.w4; the owner driving the coordinator's own
+     friend lane by hand from the seat on 2026-10-11 ~11:15-11:40 AM ET (\"How can we distribute
+     work to friends, if you can't even distribute it to yourself?\" / \"Make these fixes
+     critical.\"); five ranked-first cards sat while lanes started lower-ranked ones; code read at
+     nova-sprint main 1405d26")
+
+  (fix "the-lander-merges-evidence-ledgers" :release "v1.2.14" :status "planned"
+   :title "The lander merges the evidence ledgers entry by entry"
+   :text "The generated ledgers docs/roadmap-evidence/fixed-<leg>.sexp are one entry per card,
+    regenerated by the repository that owns them, the same kind the lander already merges for
+    docs/fixes.sexp and FIXES.md, but the lander treated a conflict there as the card's own and
+    reworked the head at the tip, a full attempt and read lost per landing (2026-10-11, about 120
+    schema cards). The lander now merges the evidence ledgers entry by entry (both kept, in file
+    order, no duplicate, add/add and content conflicts alike), reads the one ledger set from
+    cardgen.LedgerInPaths (the evidence ledgers and any path a repository's own catalog names as a
+    ledger with a LEDGERS line in its AGENTS.md or nova.sexp, read at staging, included), and a
+    malformed entry stops the stream with the conflict-kind ledger, never a rework."
+   :origin "this card, the-lander-merges-evidence-ledgers.w4; the owner, 2026-10-11 ~12:20-12:45 PM ET")))
