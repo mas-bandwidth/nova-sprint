@@ -277,7 +277,7 @@
      kept out and named in the report: refmodel's Accept demands two readers where the code allows one for flash
      and lacks the read-broken guard (v1.2.13 cleanups), and docs/SPEC-SPRINT.md section 3 calls accept mechanical
      (the tick) where lifecycle.go:57 names it Coordinator, so the module models the code."
-     :origin "this card; v1.2.12 inventory item T4, the third of five cards")
+    :origin "this card; v1.2.12 inventory item T4, the third of five cards")
    (fix "tla-sprint-tables-merge-and-return" :release "v1.2.12" :status "planned"
     :title "tla/SprintTables.tla adds the merge side: Rank, Return, MergeGreen, MergeStop, MergeRefused, MergeRed, Resume"
     :text "Models only, no product change. tla/SprintTables.tla gains the merge side of the work table from
