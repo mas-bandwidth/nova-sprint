@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -308,4 +309,30 @@ func TestLandingStallBoundIsSettable(t *testing.T) {
 	assert.Equal(t, LandingStallBound, w.s.landingStallBound())
 	plan := Set(w.s, SetReq{Who: w.s.Coordinator, LandingStallBound: "soon"})
 	assert.NotEmpty(t, plan.Refused)
+}
+
+// A valid full-bound merge note remains valid when the informational refusal
+// adds its card prefix (docs/SPEC-SPRINT.md, the judgments section).
+func TestMergeBoundsTheLandingStallRefusal(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		kind string
+	}{
+		{"own head", "file"},
+		{"lander", "generated"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := setup(t, 1)
+			accepted(w, "s1-1")
+			note := strings.Repeat("x", MaxCardTextBytes)
+			w.must(MergeStep(w.s, MergeReq{Stream: "s1", Conflict: "s1-1", ConflictKind: tc.kind, Note: note}))
+			v, ok := w.s.Work.Prop(PropLandRefusal)
+			require.True(t, ok)
+			assert.LessOrEqual(t, len(v), MaxCardTextBytes, "the card prefix must not make a valid note exceed the property bound")
+			assert.Contains(t, v, "s1-1: x", "the preview retains the card and reason")
+			assert.True(t, strings.HasSuffix(v, "..."), "the informational refusal signals its truncation")
+		})
+	}
 }

@@ -12,8 +12,9 @@ import (
 // The tick-end note (errata 3 amendment 8): a tick that addressed the
 // coordinator nothing writes none; the tick that says the sprint is done
 // writes one, addressed to the coordinator, counting every note for the
-// coordinator since the last tick end (the done: a RUNNING machine's reads
-// open no "ready to accept", the pump accepts), and a wait from before it wakes on it;
+// coordinator since the last tick end (the landing batch and the done: a
+// RUNNING machine's reads open no "ready to accept", the pump accepts), and
+// a wait from before it wakes on it;
 // the inbox does not list it; a start of the done sprint says done again and
 // wakes once more; a wait from the tail runs out its time.
 func TestTheTickEndWakesTheCoordinatorOnce(t *testing.T) {
@@ -27,16 +28,19 @@ func TestTheTickEndWakesTheCoordinatorOnce(t *testing.T) {
 	_, from, err := h.m.Tails(h.ctx)
 	require.NoError(t, err)
 	h.landThrough("s1", "s1-1", "s1-2")
-	if res := h.machine(); res.Done == "" || res.TickEnd != 1 || h.written(sprint.NTickEnd) != 1 {
+	if res := h.machine(); res.Done == "" || res.TickEnd != 2 || h.written(sprint.NTickEnd) != 1 {
 		require.Failf(t, "", "the done tick: done %q, tick end %d, written %d", res.Done, res.TickEnd, h.written(sprint.NTickEnd))
 	}
+	// One landing-batch notice plus one done notice wakes once (docs/SPEC-SPRINT.md, judgments).
+	require.Equal(t, 1, h.written(sprint.NLanding), "the batch of two landings is one coordinator notice")
+	require.Equal(t, 1, h.written(sprint.NSprintDone), "the done sprint is one coordinator notice")
 	notes, _, err := h.m.NotesSince(h.ctx, from, 1000)
 	require.NoError(t, err)
 	last := notes[len(notes)-1]
 	require.Equal(t, sprint.NTickEnd, last.Type, "the tick end: %+v", last)
 	require.Equal(t, sprint.Happened, last.Kind, "the tick end: %+v", last)
 	require.Equal(t, h.st.Actor, last.To, "the tick end: %+v", last)
-	require.Equal(t, "judgments=1", last.What, "the tick end: %+v", last)
+	require.Equal(t, "judgments=2", last.What, "the tick end: %+v", last)
 	woke, err := h.st.WaitTickEnd(h.ctx, from, time.Minute)
 	require.NoError(t, err, "a wait from before the done tick: %v %v", woke, err)
 	require.True(t, woke, "a wait from before the done tick: %v %v", woke, err)

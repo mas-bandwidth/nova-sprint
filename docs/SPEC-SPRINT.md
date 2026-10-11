@@ -7284,13 +7284,14 @@ last refusal (card and reason) and the base's red CI (the check). A sprint with 
 review or merging raises none. The episode clears on the next landing, with the happened
 `landing again after <d>` and both properties empty. The model is its own card,
 `tla-sprintrules-landing-stall-liveness`.
+The last refusal is an informational preview bounded by the card-text field limit, including its card prefix, so a merge note at the input bound is still accepted.
 
 Every landing is also pushed to the coordinator as it happens (`sprint.landingPush`, the
 merge step): one happened `landed <card>` per landing line, with the card's stream, its
 head, the one-line `:title` and `:text` of its fixes ledger entry (read by the lander from
 the landed head and carried onto the merge event), and the attempts and reads it took. A batch of landings in one tick
 is one push with one line per card, addressed to the coordinator and needing no ack beyond
-the hook's. The owner, 2026-10-11: "you should also get this push notification, so you as
+the hook's. The tick-end notice is still written once; its `judgments=N` count includes the addressed landing-batch notice and any completion notice, so a tick that lands a batch and completes the sprint counts two items and wakes once. The owner, 2026-10-11: "you should also get this push notification, so you as
 coordinator can read the card that landed and keep on top of things".
 
 ### The server

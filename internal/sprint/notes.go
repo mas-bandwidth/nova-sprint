@@ -220,8 +220,8 @@ type Note struct {
 	// ReviewSet is when wait set Review: the review time counts running time
 	// from it, as every deadline does.
 	ReviewSet time.Time `json:"review_set,omitempty"`
-	// To is who a happened note is addressed to: the coordinator, for "the
-	// sprint is done". The inbox shows a note
+	// To is who a happened note is addressed to: the coordinator for "the
+	// sprint is done" or a landing batch. The inbox shows a note
 	// addressed to someone first, above the judgments; empty is no one.
 	To string `json:"to,omitempty"`
 	// Hint is what to do next, in words, for a note addressed to someone.
@@ -234,8 +234,9 @@ type Note struct {
 const NTickEnd = "tick end"
 
 // TickEndCounts says a note is an item for the coordinator that a tick-end
-// counts: a judgment, or a happened note addressed to someone (the sprint is
-// done). The tick-end note itself is not.
+// counts: a judgment, or a happened note addressed to someone (a landing batch
+// or the sprint is done). It counts addressed items, not the number of wakes;
+// the tick-end note itself is not.
 func TickEndCounts(n Note) bool {
 	return n.Type != NTickEnd && (n.Kind == Judgment || (n.Kind == Happened && n.To != ""))
 }

@@ -521,14 +521,15 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		j := judgment(typ, r.Stream, s.Now, before, primaries...)
 		j.StreamLevel, j.Who, j.What = true, r.Who, r.Note
 		// the lander's last refusal (judgments.go): the card and the reason, for
-		// the landing-stall alarm's breakdown.
+		// the landing-stall alarm's breakdown. Its informational preview is bounded
+		// with its card prefix (docs/SPEC-SPRINT.md, the judgments section).
 		if len(primaries) > 0 {
 			reason := r.Note
 			if reason == "" {
 				reason = cause
 			}
 			was, had := s.Work.Prop(PropLandRefusal)
-			p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLandRefusal, Value: strings.Join(primaries, ",") + ": " + reason, Was: was, WasAbsent: !had})
+			p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLandRefusal, Value: cutText(strings.Join(primaries, ",")+": "+reason, MaxCardTextBytes), Was: was, WasAbsent: !had})
 		}
 		return Unit{Key: ctl.ID, Stream: r.Stream, Changes: []Change{change(Merge, setEntry(ctl, ctlSet, append(unset, baseGateCount...)...))}, Notes: append(notes, j)}
 	}
@@ -550,9 +551,10 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 				p.refuse(r.Conflict, "queued in merge but not merging in work ("+placeWord(orEmpty(pr, r.Conflict))+"); run: nova-sprint check")
 				return p
 			}
-			// the lander's last refusal (judgments.go): the card and the reason.
+			// the lander's last refusal (judgments.go): the card and the reason,
+			// bounded together (docs/SPEC-SPRINT.md, the judgments section).
 			was, had := s.Work.Prop(PropLandRefusal)
-			p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLandRefusal, Value: r.Conflict + ": " + orDash(r.Note), Was: was, WasAbsent: !had})
+			p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLandRefusal, Value: cutText(r.Conflict+": "+orDash(r.Note), MaxCardTextBytes), Was: was, WasAbsent: !had})
 			p.Units = append(p.Units, landRefused(s, r, way, state, ctl, ctlSet, notes, pr, m))
 			break
 		}
