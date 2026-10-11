@@ -1,6 +1,7 @@
 package store
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,7 +18,7 @@ import (
 func TestACriticalRootIsDealtReadAndJudgedFirst(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"), route("pro-a", "pro"))
-	h.alarmsOff() // the judgments of its cards alone, in order, with no backlog alarm open
+	h.alarmsHigh() // the judgments of its cards alone, in order, with no counted backlog alarm open
 	h.must(FleetStep(sprint.FleetReq{Op: "hold", Member: "m2"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 1}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"leaf"}, Brief: briefOf("flash", "")}))
@@ -46,14 +47,20 @@ func TestACriticalRootIsDealtReadAndJudgedFirst(t *testing.T) {
 	v, err := h.st.Inbox(h.ctx, sprint.DeadlineJudgment, 0, 1000)
 	require.NoError(t, err)
 	var types []string
+	behind := -1
 	for _, g := range v.Groups {
-		if g.Kind == sprint.Judgment {
+		// the backlog alarms the fixture raises (nothing ready, the fleet idle: never off) are
+		// the sprint's, not its cards'
+		if g.Kind == sprint.Judgment && !slices.Contains(sprint.AlarmTypes, g.Type) {
+			if behind < 0 {
+				behind = g.Behind
+			}
 			types = append(types, g.Type)
 		}
 	}
 	require.Len(t, types, 2)
 	assert.Equal(t, sprint.NReadBroken, types[0], "the root's judgment first, though the leaf's is older: %v", types)
-	assert.Equal(t, 3, v.Groups[0].Behind)
+	assert.Equal(t, 3, behind, "the root's judgment counts the three behind it")
 	assert.Equal(t, []sprint.CriticalCard{{ID: "root", Behind: 3, State: sprint.Review}, {ID: "mid", Behind: 2, State: sprint.Waiting}, {ID: "tip", Behind: 1, State: sprint.Waiting}}, sprint.Critical(h.snap(), 5))
 	assert.Equal(t, "critical: root 3 behind, review; mid 2 behind, waiting; tip 1 behind, waiting", sprint.CriticalLine(sprint.Critical(h.snap(), 5)))
 	// a drop writes the weights it changes

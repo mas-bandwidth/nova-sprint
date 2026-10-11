@@ -10,7 +10,10 @@ import (
 // (AlarmReviewDefault, AlarmMergingDefault, AlarmFleetDefault, ready on; the owner,
 // 2026-10-11: "I am sick of these invisible settings being off"), its threshold the
 // coordinator's to change (`set --alarm-review`, `--alarm-merging`, `--alarm-fleet`,
-// `--alarm-ready`, the work table's properties below; default restores it). Each is one
+// `--alarm-ready`, the work table's properties below; default restores it), never off: set
+// refuses off (AlarmOffRefused; the owner, 2026-10-11: "Turning off alarms, warnings is
+// forbidden from now on."), and an off stored before that reads as the working threshold,
+// warned of while it stands (settings_warn.go). Each is one
 // judgment while its condition stands, written once when it starts (notify: one per
 // episode, so a push of new judgments pushes it once) and closed once when it ends, with
 // one cleared note to the coordinator.
@@ -27,8 +30,11 @@ const (
 	PropAlarmMerging = "alarm_merging" // a count: raised while merging holds more
 	PropAlarmFleet   = "alarm_fleet"   // a percent: raised while the up members work below it of their width
 	PropAlarmReady   = "alarm_ready"   // on: raised while nothing is ready and a card waits
-	// AlarmOff is the word that takes an alarm off.
+	// AlarmOff is the word that took an alarm off until 2026-10-11: set refuses it now
+	// (AlarmOffRefused), and a property that still holds it reads as the working threshold.
 	AlarmOff = "off"
+	// AlarmOffRefused is set's refusal of off for an alarm, the rule.
+	AlarmOffRefused = "an alarm is never off: the owner, 2026-10-11: \"Turning off alarms, warnings is forbidden from now on.\" Raise its threshold, or default restores its working one"
 
 	// The alarms' working thresholds, each alarm's value with no property or default: a
 	// fresh store and every store after a clear keeps all four (alarm_ready is on).
@@ -61,10 +67,10 @@ var alarmProps = []struct{ typ, prop, flag, wants string }{
 	{NAlarmReady, PropAlarmReady, "--alarm-ready", "on"},
 }
 
-// alarmValid says a value is one the alarm's property takes: its threshold, default (its
-// working threshold, alarmDefault), or off.
+// alarmValid says a value is one the alarm's property takes: its threshold, or default (its
+// working threshold, alarmDefault). Off is not one (AlarmOffRefused).
 func alarmValid(prop, v string) bool {
-	if v == AlarmOff || v == ReadTierDefault {
+	if v == ReadTierDefault {
 		return true
 	}
 	if prop == PropAlarmReady {
@@ -77,22 +83,30 @@ func alarmValid(prop, v string) bool {
 	return err == nil && n >= 0
 }
 
-// alarmSetting is an alarm's threshold as the work table's property holds it, ok false
-// only when it is off; no property, default or a value it does not take is its working
-// threshold (alarmDefault), so an alarm is never off unless the coordinator turned it off.
-func (s *Snapshot) alarmSetting(prop string) (int, bool) {
+// alarmSetting is an alarm's threshold as the work table's property holds it: no property,
+// default, off (a property written before set refused it) or a value it does not take is its
+// working threshold (alarmDefault), so an alarm is never off. The ready alarm has none (0).
+func (s *Snapshot) alarmSetting(prop string) int {
 	v, ok := s.Work.Prop(prop)
-	if v == AlarmOff {
-		return 0, false
-	}
 	if !ok || !alarmValid(prop, v) || v == ReadTierDefault {
 		v = alarmDefault(prop)
 	}
 	if prop == PropAlarmReady {
-		return 0, true
+		return 0
 	}
 	n, _ := strconv.Atoi(v)
-	return n, true
+	return n
+}
+
+// alarmStoredOff says the alarm's property still holds off, written before set refused it:
+// it reads as the working threshold (alarmSetting), and the design settings' warning says it
+// until a set clears it (settings_warn.go).
+func (s *Snapshot) alarmStoredOff(prop string) bool {
+	if s == nil || s.Work == nil {
+		return false
+	}
+	v, _ := s.Work.Prop(prop)
+	return v == AlarmOff
 }
 
 // alarmFacts is each alarm whose condition stands, with what it says
@@ -106,16 +120,16 @@ func alarmFacts(s *Snapshot) map[string]string {
 	out := map[string]string{}
 	review, merging := len(s.Work.Column(Review)), len(s.Work.Column(Merging))
 	ready, waiting := len(s.Work.Column(Ready)), len(s.Work.Column(Waiting))
-	if n, on := s.alarmSetting(PropAlarmReview); on && review > n {
+	if n := s.alarmSetting(PropAlarmReview); review > n {
 		out[NAlarmReview] = fmt.Sprintf("%d primaries in review, above the alarm of %d: reads or accepts are behind; run: nova-sprint where", review, n)
 	}
-	if n, on := s.alarmSetting(PropAlarmMerging); on && merging > n {
+	if n := s.alarmSetting(PropAlarmMerging); merging > n {
 		out[NAlarmMerging] = fmt.Sprintf("%d primaries merging, above the alarm of %d: landing is behind; run: nova-sprint land", merging, n)
 	}
-	if _, on := s.alarmSetting(PropAlarmReady); on && ready == 0 && waiting > 0 {
+	if ready == 0 && waiting > 0 {
 		out[NAlarmReady] = fmt.Sprintf("0 primaries ready and %d waiting: the deal has nothing to feed the fleet; run: nova-sprint where --all", waiting)
 	}
-	if pct, on := s.alarmSetting(PropAlarmFleet); on && ready+waiting > 0 && !s.FleetOff() {
+	if pct := s.alarmSetting(PropAlarmFleet); ready+waiting > 0 && !s.FleetOff() {
 		working, width := 0, 0
 		for _, m := range s.UpMembers() {
 			working += s.Fleet.Count(m, Working)
@@ -161,14 +175,6 @@ func tickAlarms(s *Snapshot, r TickReq) (Plan, int) {
 
 // alarmNow is what an alarm's cleared note says of the sprint now.
 func alarmNow(s *Snapshot, typ string) string {
-	for _, a := range alarmProps {
-		if a.typ != typ {
-			continue
-		}
-		if _, on := s.alarmSetting(a.prop); !on {
-			return "its alarm is off"
-		}
-	}
 	switch typ {
 	case NAlarmReview:
 		return fmt.Sprintf("%d primaries in review", len(s.Work.Column(Review)))

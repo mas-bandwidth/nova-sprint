@@ -379,7 +379,7 @@ func TestWhereTakesARecordBehindOnlyFromTheLoopThatKeepsIt(t *testing.T) {
 func TestTheWhereCountsTripsArePinned(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.alarmsOff() // an idle tick's trips are pinned without an alarm open
+	h.alarmsHigh() // an idle tick's trips are pinned without a counted alarm open
 	holesUp(h, 3)
 	h.st.CheckTwin = nil // its fresh reads are the test's, not the tick's
 	part := func(res TickResult) PartTime {
@@ -395,12 +395,17 @@ func TestTheWhereCountsTripsArePinned(t *testing.T) {
 	moved := part(h.machine())
 	assert.EqualValues(t, whereMovedTrips, moved.Trips, "a tick that moved the table: %d round trips", moved.Trips)
 	assert.Zero(t, moved.Reads, "no table read whole")
+	// the idle tick after an idle tick: the first idle one also indexes the log lines the tick
+	// before it wrote after its where part (a backlog alarm's tick end; an alarm is never off)
+	wasIdle := false
 	for i := 0; ; i++ {
 		require.Less(t, i, 20, "the tick never went idle")
 		raw, _, err := h.m.GetKey(h.ctx, keyWhere)
 		require.NoError(t, err)
 		res := h.machine()
-		if !res.Idle {
+		idleNow := res.Idle
+		if !idleNow || !wasIdle {
+			wasIdle = idleNow
 			continue
 		}
 		idle := part(res)

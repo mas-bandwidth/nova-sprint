@@ -230,8 +230,8 @@ func TestAckTakesTheCommaListInboxPrints(t *testing.T) {
 // it is written, and the interrupt ends the loop.
 func TestInboxPushThroughTheServerWritesTheGroupWhole(t *testing.T) {
 	t.Parallel()
-	// the backlog alarms off (on by default): the one push is the readers' judgment
-	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2", "nova-sprint set --read-cards off --alarm-review off --alarm-ready off --alarm-merging off --alarm-fleet off",
+	// the counted backlog alarms above any count here (an alarm is never off): the one push is the readers' judgment
+	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2", "nova-sprint set --read-cards off --alarm-review 100000 --alarm-merging 100000 --alarm-fleet 1",
 		"nova-sprint add --stream s1 --count 1 --one --brief-file "+proBriefFile(t), "nova-sprint start", "nova-sprint tick", "nova-sprint tick",
 		"nova-sprint take --as m1 --limit 1", "nova-sprint finish --as m1 --epoch 0 s1-1.w1@1")
 	clock := r.a.now()
@@ -273,7 +273,9 @@ func TestInboxPushThroughTheServerWritesTheGroupWhole(t *testing.T) {
 		case l == "INBOX OK pushed="+id+" file="+path:
 			judged++
 		default:
-			assert.True(t, strings.HasPrefix(l, "INBOX OK pushed=tick-warnings-") || strings.HasPrefix(l, "INBOX OK pushed=set-"), "a push is the judgment or a warning: %s", l)
+			// the warnings of read cards off (the set's and the tick's) and the backlog alarms the
+			// fixture raises (the tick's deadlines part: an alarm is never off)
+			assert.True(t, strings.HasPrefix(l, "INBOX OK pushed=tick-warnings-") || strings.HasPrefix(l, "INBOX OK pushed=set-") || strings.HasPrefix(l, "INBOX OK pushed=tick-deadlines-"), "a push is the judgment, a warning or an alarm: %s", l)
 		}
 	}
 	assert.Equal(t, 1, judged, "one push of the judgment, said once: %s", out)

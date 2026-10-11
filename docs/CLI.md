@@ -63,8 +63,8 @@ nova-sprint release check [--json] [--streams <glob>] [--window <duration>] [--m
 nova-sprint resolve [<id>...] [--stream <s>] [--limit <n>]
 nova-sprint start
 nova-sprint stop
-nova-sprint run [--answer-rules=false] [--idle-alarm=false]
-nova-sprint tick [--answer-rules] [--idle-alarm]
+nova-sprint run [--answer-rules=false]
+nova-sprint tick [--answer-rules]
 nova-sprint promote [--once] [--poll <duration>] [--every <duration>] [--landings <n>] [--branch <name>] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]
 nova-sprint selftest [--dir <d>] [--keep]
 nova-sprint goal set <name> [--file <path>] [--to file:<path>]
@@ -94,8 +94,8 @@ nova-sprint merge --stream <s> [--batch <n>] [--conflict <id> [--conflict-kind f
 nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]
 nova-sprint rebase --from <branch> --to <branch> [--repo-dir <clone>] [--dry-run]
 nova-sprint stream set <stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--prose <glob,...|default>] [--attempts <n|default>] [--base <branch>] [--reason <text>] [--answers <notes>]
-nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--alarm-review <n|default|off>] [--alarm-merging <n|default|off>] [--alarm-fleet <percent|default|off>] [--alarm-ready <on|default|off>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--attempts <n|default>] [--friend-idle <duration|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|default>]
-# the design settings default to their working values: --read-cards on, --alarm-review 40, --alarm-ready on, --alarm-merging 15, --alarm-fleet 50 (default restores each); off degrades the machine, and the tick writes a WARNING to the coordinator, pushed over the hook, naming the set that restores it (SPEC-SPRINT.md section 8, Design settings off)
+nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--alarm-review <n|default>] [--alarm-merging <n|default>] [--alarm-fleet <percent|default>] [--alarm-ready <on|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--attempts <n|default>] [--friend-idle <duration|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|default>]
+# the design settings default to their working values: --read-cards on, --alarm-review 40, --alarm-ready on, --alarm-merging 15, --alarm-fleet 50 (default restores each); an alarm is never off (set refuses off, with the rule); --read-cards off degrades the machine, and the set writes a WARNING to the coordinator, pushed over the hook, naming the set that restores it (SPEC-SPRINT.md section 8, Design settings off)
 nova-sprint resume --stream <s> [--did <text>] [--answers <note>]
 nova-sprint backup (--out <dir> [--part-bytes <n>] [--secrets-store <dir> --secrets-as <seat> --secrets-key <path> --sops <path>] | --file <path> [--dry-run])
 nova-sprint demo load <backup.xz part>... [--sha256 <hex>] [--dir <dir>] [--xz <path>] [--redis-server <path>]
@@ -406,8 +406,8 @@ When the fleet works under half its width for 5 minutes while cards wait, the ru
 tick pushes you one note, `the fleet is idle`: `fleet 4/68: 311 behind 21 drop-blocked
 judgments (oldest 1h50m); 89 behind md-secrets (a card reached its bound, 40m)`, every
 waiting card traced to the root of its chain and the roots named by the cards behind
-them; once an episode, and `the fleet is working again` when it recovers. `run
---idle-alarm=false` turns it off. The contract is [SPEC-SPRINT.md section 14](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-fleet-is-idle).
+them; once an episode, and `the fleet is working again` when it recovers. Every tick
+watches for it, the run loop's and a tick by hand's; nothing turns it off. The contract is [SPEC-SPRINT.md section 14](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-fleet-is-idle).
 
 ### Answering the routine judgments
 

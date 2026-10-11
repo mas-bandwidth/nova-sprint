@@ -62,12 +62,12 @@ func newHarness(t *testing.T) *harness {
 
 func (h *harness) tick(d time.Duration) { h.mu.Lock(); h.now = h.now.Add(d); h.mu.Unlock(); h.beat() }
 
-// alarmsOff takes the four backlog alarms off, as the coordinator: a test whose counts or
-// moves the alarms (on by default since 2026-10-11) would change, and which is not of them.
-func (h *harness) alarmsOff() {
+// alarmsHigh raises the counted backlog alarms' thresholds above any count a test makes, as
+// the coordinator: a test whose counts or moves the alarms (on by default since 2026-10-11,
+// never off) would change, and which is not of them. The ready alarm has no threshold.
+func (h *harness) alarmsHigh() {
 	h.t.Helper()
-	h.settingsSaid(map[string]string{sprint.PropAlarmReview: sprint.SwitchOff, sprint.PropAlarmReady: sprint.SwitchOff,
-		sprint.PropAlarmMerging: sprint.SwitchOff, sprint.PropAlarmFleet: sprint.SwitchOff})
+	h.settingsSaid(map[string]string{sprint.PropAlarmReview: "100000", sprint.PropAlarmMerging: "100000", sprint.PropAlarmFleet: "1"})
 }
 
 // settingsSaid writes design settings onto the work table with the record that their warning

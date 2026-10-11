@@ -286,7 +286,7 @@ func TestAnswerDecideRefusals(t *testing.T) {
 func TestAJudgmentLeftAloneIsOfKindOther(t *testing.T) {
 	t.Parallel()
 	ta, j, record := answering(t, always(decide.VerbRework, 0.9, "own", "cannot-be-done"))
-	ta.ok("set --alarm-review off --alarm-ready off --alarm-merging off --alarm-fleet off") // one judgment of no routine kind, the sentinel's
+	ta.ok("set --alarm-review 100000 --alarm-merging 100000 --alarm-fleet 1") // the counted alarms above any count here
 	ta.ok("add --stream s1 --count 1 --one")
 	ta.ok("add --stream docs --sentinel docs-round2")
 	ta.ok("start")
@@ -296,7 +296,10 @@ func TestAJudgmentLeftAloneIsOfKindOther(t *testing.T) {
 	require.True(t, hasGroup(ta.inboxGroups(), sprint.NSentinelReached))
 	out := ta.ok("answer --bar 0.8 --record " + record)
 	assert.Regexp(t, `(?m)^\S+\s+-\s+other\s+-\s+-\s+left\s+not a routine kind \(sentinel reached\): the coordinator's$`, out)
-	assert.Contains(t, out, " left=1 ")
+	// the sentinel's, and the two backlog alarms the fixture raises (nothing ready while
+	// cards wait, the fleet below its alarm: never off), each of kind other and left
+	assert.Regexp(t, `(?m)^\S+\s+-\s+other\s+-\s+-\s+left\s+not a routine kind \(nothing ready while cards wait\)`, out)
+	assert.Contains(t, out, " left=3 ")
 	assert.Zero(t, j.asks())
 }
 

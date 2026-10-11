@@ -25,7 +25,7 @@ func TestAClearedSprintDealsAndTakesItsReadsWithNoSeatAction(t *testing.T) {
 	ta := newTestApp(t)
 	ta.live = []string{"m1", "m2", "m3"}
 	ta.ok("init --readers reader-m1,reader-m2,reader-m3 --members m1:2,m2:2,m3:2")
-	ta.ok("set --read-cards off --alarm-review off --alarm-fleet off")
+	ta.ok("set --read-cards off --alarm-review 7 --alarm-fleet 11")
 	ta.ok("clear --confirm sprint")
 	ta.ok("reader add reader-m1 reader-m2 reader-m3")
 	ta.ok("add --stream s1 --one --brief-file " + proBrief(t, "s1-1"))

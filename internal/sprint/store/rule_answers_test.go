@@ -102,7 +102,7 @@ func TestRuleBoundRaisesATierAndHeavyGoesToAFriend(t *testing.T) {
 	t.Run("heavy to a friend", func(t *testing.T) {
 		t.Parallel()
 		h := ruled(t)
-		h.alarmsOff() // the friends' deal of this card, with no backlog alarm open
+		h.alarmsHigh() // the friends' deal of this card, with no counted backlog alarm open
 		h.addReady("s1", 1, briefOf("heavy", ""))
 		h.setPrimary("s1-1", map[string]string{sprint.FieldTier: "heavy"})
 		h.startMachine()
@@ -110,7 +110,12 @@ func TestRuleBoundRaisesATierAndHeavyGoesToAFriend(t *testing.T) {
 		h.boundOut("s1-1")
 		pr := h.snap().Work.Card("s1-1")
 		assert.Equal(t, sprint.WhoFriend, pr.F(sprint.FieldWho), "above heavy is a friend")
-		assert.Equal(t, sprint.Ready, pr.Col, "ready for the friends' deal: no friend is up here")
+		// a friend's preference (WHO: friend), not a hard pin: the machines' deal offers it on
+		// (steps_work.go deals every card but OnlyFriend), so with no friend up the next tick that
+		// deals hands it to a member. Before 2026-10-11 the fixture's alarms were off and that
+		// tick was idle, so it sat ready; the fleet's alarm, never off now, makes it a dealing tick.
+		assert.False(t, sprint.OnlyFriend(pr), "a preference, not a pin")
+		assert.Contains(t, []string{sprint.Ready, sprint.Working}, pr.Col, "ready for the friends' deal, or offered on to a member")
 		assert.NotContains(t, h.workCards(), "s1-1.w1", "the attempt at its bound is retired")
 		assert.Empty(t, h.openOf(sprint.NBound))
 		assert.NotEmpty(t, h.answeredBy(sprint.RuleBound))

@@ -187,8 +187,10 @@ func (a *app) machineFlags(name string, args []string, stderr io.Writer, extra .
 }
 
 func (a *app) cmdTick(args []string, stdout, stderr io.Writer) int {
-	var rules, idle, shadow bool
-	c, code := a.machineFlags("tick", args, stderr, answerRulesFlag(&rules, false), idleAlarmFlag(&idle, false), shadowFlag(&shadow))
+	var rules, shadow bool
+	// the idle alarm is always on, a tick by hand's too (idleAlarm)
+	const idle = idleAlarm
+	c, code := a.machineFlags("tick", args, stderr, answerRulesFlag(&rules, false), shadowFlag(&shadow))
 	if c == nil {
 		return code
 	}
@@ -298,8 +300,9 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	var profileTicks int
 	var land bool
 	landParallel := landParallelDefault
-	var rules, idle bool
-	st, c, code := a.machineVerb("run", args, stderr, answerRulesFlag(&rules, true), idleAlarmFlag(&idle, true), func(fs flagSet) {
+	var rules bool
+	const idle = idleAlarm
+	st, c, code := a.machineVerb("run", args, stderr, answerRulesFlag(&rules, true), func(fs flagSet) {
 		fs.StringVar(&listen, "listen", "", "also be the sprint's server: the workers' verbs on this `address:port` (this machine's address on the fleet's private network; a name, a public address, a link-local address, and an every-network address are refused), where nova-swarm member --server <address>:<port> sends them, and the coordinator's verbs on 127.0.0.1 at the same port, where NOVA_SPRINT_SERVER=127.0.0.1:<port> sends them")
 		fs.StringVar(&keyNames, "keys", "", "the `NAME,...` of secrets this process reads from the seat login's nova-secrets seat (also recorded as keys.json beside the login): the decision key and each provider key. A name that cannot be read refuses at start. The unit's environment carries no key value")
 		fs.StringVar(&decideDir, "decide", "", "also keep the record of the sprint's attempt and grade decisions in this `dir` (nova-decide's layer 2: attempt.jsonl, grade.jsonl): the finishes' attempt decisions recorded, every card graded before its first deal with JEV_API_KEY from this environment or read in this process when --keys or keys.json names it, and each decision's outcome attached when its card lands or is dropped, every "+DecideEvery.String())
@@ -903,14 +906,11 @@ func answerRulesFlag(on *bool, byDefault bool) func(flagSet) {
 	}
 }
 
-// idleAlarmFlag is run's and tick's --idle-alarm: the tick watches for an idle fleet
-// (docs/SPEC-SPRINT.md section 14, the fleet is idle); on in the run loop, off in a tick by
-// hand unless asked.
-func idleAlarmFlag(on *bool, byDefault bool) func(flagSet) {
-	return func(fs flagSet) {
-		fs.BoolVar(on, "idle-alarm", byDefault, "when the fleet works under half its width for "+sprint.IdleWindow.String()+" while cards wait, push the coordinator one note (the inbox, and inbox --push) naming the roots the waiting cards are behind, the most cards first, once an episode, and one more when it recovers (run: on by default; a tick by hand only with --idle-alarm)")
-	}
-}
+// idleAlarm says every tick watches for an idle fleet (docs/SPEC-SPRINT.md section 14, the
+// fleet is idle), the run loop's and a tick by hand's alike: there is no flag that turns it
+// off (run's --idle-alarm=false and tick's off-by-default went 2026-10-11; the owner:
+// "Turning off alarms, warnings is forbidden from now on.").
+const idleAlarm = true
 
 // serverStart runs the server startup steps before the first tick:
 // on server start, keep every in-flight read whose lease is live and only

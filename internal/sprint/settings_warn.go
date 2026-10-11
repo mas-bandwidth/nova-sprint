@@ -92,13 +92,15 @@ func DesignSettings(s *Snapshot) []DesignSetting {
 		{PropAlarmFleet, "--alarm-fleet"},
 	} {
 		d := DesignSetting{Flag: a.flag, Working: alarmDefault(a.prop)}
-		n, on := 0, true
+		n := 0
 		if s != nil && s.Work != nil {
-			n, on = s.alarmSetting(a.prop)
+			n = s.alarmSetting(a.prop)
 		}
 		switch {
-		case !on:
-			d.Value = AlarmOff
+		case s.alarmStoredOff(a.prop):
+			// off written before set refused it: the alarm runs at its working threshold,
+			// and the warning says so until a set clears the property
+			d.Value = AlarmOff + " (written before off was refused, read as " + d.Working + ")"
 		case a.prop == PropAlarmReady:
 			d.Value = "on"
 		default:

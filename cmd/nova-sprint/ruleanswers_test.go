@@ -36,7 +36,8 @@ func TestRulesPrintsTheAnswersAndTickAppliesThem(t *testing.T) {
 	ta.clean()
 }
 
-// tick --idle-alarm: an idle fleet with cards waiting tells the coordinator why, once.
+// tick, with no flag (the idle alarm is always on): an idle fleet with cards waiting tells the
+// coordinator why, once.
 func TestTickIdleAlarmTellsTheCoordinatorWhy(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -48,14 +49,14 @@ func TestTickIdleAlarmTellsTheCoordinatorWhy(t *testing.T) {
 	ta.ok("add --stream s2 --sentinel gate --held")
 	ta.ok("add --stream s2 a b")
 	ta.ok("start")
-	ta.ok("tick --idle-alarm")
+	ta.ok("tick")
 	ta.mu.Lock()
 	ta.now = ta.now.Add(6 * time.Minute)
 	ta.mu.Unlock()
-	ta.ok("tick --idle-alarm")
+	ta.ok("tick")
 	inbox := ta.ok("inbox")
 	assert.Contains(t, inbox, "the fleet is idle")
 	assert.Contains(t, inbox, "2 behind sentinel gate (held)")
-	ta.ok("tick --idle-alarm")
+	ta.ok("tick")
 	assert.Equal(t, 1, strings.Count(ta.ok("inbox"), "the fleet is idle"), "once an episode")
 }

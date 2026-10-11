@@ -98,6 +98,17 @@
      says the settings off (tla/SettingsWarn.tla). The tests that exercise the old readers table set read cards off
      explicitly; the next change deletes the off switches and moves them onto read cards."
     :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 24")
+   (fix "an-alarm-is-never-off" :release "v1.2.11" :status "planned"
+    :title "An alarm is never off: set refuses off for the backlog alarms, and the idle alarm has no switch"
+    :text "The owner, 2026-10-11: \"Turning off alarms, warnings is forbidden from now on.\" set
+     --alarm-review, --alarm-ready, --alarm-merging and --alarm-fleet refuse off with that rule and the set
+     that restores the working threshold, and write nothing; an off a store still holds from before reads
+     as the working threshold, and the design settings' warning says it until a set clears it. run's
+     --idle-alarm=false and tick's off-by-default are gone: every tick watches for an idle fleet. Tests
+     that quieted the alarms raise the counted thresholds above their counts instead; the ready and fleet
+     alarms they raise are now part of what those tests see. read cards' off, and the old readers table
+     behind it, go in the change after this one."
+    :origin "the coordinator's PR 2 of defaults-are-the-working-machine, 2026-10-11, split in two")
    (fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
     :title "The SeatProof model of the deleted push proof is retired"
     :text "tla/SeatProof.tla modelled the push proof (its header names PushPong, PushLive, PushWhy,

@@ -54,7 +54,7 @@ func (r *alarmRig) set(req sprint.SetReq) {
 	r.must(store.SetStep(req))
 }
 
-// A fresh store, and a store after a clear whose settings were all moved off, has every
+// A fresh store, and a store after a clear whose settings were all moved, has every
 // design setting at its working value with nothing written: read cards on, the alarms at
 // 40, on, 15 and 50 percent. set --read-cards off turns read cards off; default turns them on
 // again, as on does.
@@ -71,10 +71,11 @@ func TestAFreshAndAClearedStoreHaveEveryDesignSettingAtItsWorkingDefault(t *test
 	r.set(sprint.SetReq{ReadCards: "on"})
 	assert.True(t, r.snap().ReadCardsOn(), "set --read-cards on")
 
-	r.set(sprint.SetReq{ReadCards: "off", AlarmReview: "off", AlarmReady: "off", AlarmMerging: "off", AlarmFleet: "off"})
+	// every design setting moved off its working value (the ready alarm has none to move: on
+	// is its one value, an alarm is never off)
+	r.set(sprint.SetReq{ReadCards: "off", AlarmReview: "7", AlarmMerging: "9", AlarmFleet: "11"})
 	for _, d := range sprint.DesignSettings(r.snap()) {
-		assert.Equal(t, "off", d.Value, "%s set off", d.Flag)
-		assert.False(t, d.At, "%s set off", d.Flag)
+		assert.Equal(t, d.Flag == "--alarm-ready", d.At, "%s is %s, working value %s", d.Flag, d.Value, d.Working)
 	}
 	_, err := r.st.Clear(r.ctx)
 	require.NoError(t, err)
@@ -187,24 +188,25 @@ func (r *alarmRig) running() {
 	require.NoError(r.t, err)
 }
 
-// A set that turns a design setting off is warned of by the next tick, once, as a note to
-// the coordinator naming it and the exact set that restores it; a second setting off is a
+// A set that moves a design setting off its working value is warned of by the set itself,
+// once, as a note to the coordinator naming it and the exact set that restores it (an alarm
+// cannot be off: a threshold away from its working one is the move here); a second setting off is a
 // new warning naming both; back at the working values nothing is said, and the next off is
 // warned of again (off, on, off is two warnings), between two ticks too.
 func TestEveryChangeOfTheDesignSettingsToOffIsWarnedOf(t *testing.T) {
 	t.Parallel()
 	r := newAlarmRig(t)
-	r.set(sprint.SetReq{AlarmReview: "off"})
+	r.set(sprint.SetReq{AlarmReview: "7"})
 	w := r.warnings(sprint.NSettingsOff)
-	require.Len(t, w, 1, "set --alarm-review off is warned of by the set itself, the machine stopped")
-	assert.Contains(t, w[0].What, "--alarm-review is off, working value 40 (restore: nova-sprint set --alarm-review 40)")
+	require.Len(t, w, 1, "set --alarm-review 7 is warned of by the set itself, the machine stopped")
+	assert.Contains(t, w[0].What, "--alarm-review is 7, working value 40 (restore: nova-sprint set --alarm-review 40)")
 	r.set(sprint.SetReq{AlarmReview: "default"})
 	r.running()
 	r.ticks(2)
 	require.Len(t, r.warnings(sprint.NSettingsOff), 1, "back at the working values, the tick says nothing")
 
-	r.set(sprint.SetReq{AlarmReview: "off"})
-	require.Len(t, r.warnings(sprint.NSettingsOff), 2, "set --alarm-review off is warned of at once")
+	r.set(sprint.SetReq{AlarmReview: "7"})
+	require.Len(t, r.warnings(sprint.NSettingsOff), 2, "set --alarm-review 7 is warned of at once")
 	r.ticks(3)
 	require.Len(t, r.warnings(sprint.NSettingsOff), 2, "and once: the ticks after say nothing again")
 
@@ -218,13 +220,13 @@ func TestEveryChangeOfTheDesignSettingsToOffIsWarnedOf(t *testing.T) {
 	r.set(sprint.SetReq{ReadCards: "on", AlarmReview: "default"})
 	r.ticks(2)
 	require.Len(t, r.warnings(sprint.NSettingsOff), 3, "back at the working values, nothing is said")
-	r.set(sprint.SetReq{AlarmReview: "off"})
+	r.set(sprint.SetReq{AlarmReview: "7"})
 	r.ticks(2)
 	require.Len(t, r.warnings(sprint.NSettingsOff), 4, "off, on, off: the second off is warned of again")
 
 	// off, on, off with no tick between: each set that leaves a setting off says so
 	r.set(sprint.SetReq{AlarmReview: "default"})
-	r.set(sprint.SetReq{AlarmReview: "off"})
+	r.set(sprint.SetReq{AlarmReview: "7"})
 	r.ticks(1)
 	require.Len(t, r.warnings(sprint.NSettingsOff), 5, "off, on, off between two ticks is warned of again")
 	r.set(sprint.SetReq{AlarmMerging: "20"})

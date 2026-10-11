@@ -116,8 +116,8 @@ func (r *alarmRig) episodes() map[string][2]int {
 }
 
 // The backlog alarms (docs/SPEC-SPRINT.md section 8, "Backlog alarms"): each of the
-// four, turned off (`set --alarm-... off`; each is on by default, TestTheBacklogAlarmsAreOnWithNoSet),
-// raises nothing until its threshold is set (`set --alarm-...`, the work table's
+// four (on by default, TestTheBacklogAlarmsAreOnWithNoSet; never off, TestAnAlarmIsNeverOff),
+// raises nothing while its count is under its threshold (`set --alarm-...`, the work table's
 // properties), then is raised once when its condition starts, held quiet while it stands
 // whatever the counts do, and cleared once, with one note to the coordinator, when it
 // ends; a second episode is raised again.
@@ -127,9 +127,10 @@ func TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds(t *testing.T) {
 	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a", "b", "c"}}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"d"}, Needs: []string{"a"}}))
-	// every alarm off to start, and the reads through the old readers table on purpose (read
-	// cards off; on by default): the rig was built before read cards
-	r.must(store.SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, AlarmReview: "off", AlarmMerging: "off", AlarmFleet: "off", AlarmReady: "off", Who: "coordinator"}))
+	// the counted alarms' thresholds above the counts to start (an alarm is never off), and the
+	// reads through the old readers table on purpose (read cards off; on by default): the rig
+	// was built before read cards
+	r.must(store.SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, AlarmReview: "100", AlarmMerging: "100", AlarmFleet: "1", Who: "coordinator"}))
 	_, _, _, err := r.st.SetMachine(r.ctx, true)
 	require.NoError(t, err)
 	quiet := [2]int{0, 0}
@@ -142,11 +143,12 @@ func TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds(t *testing.T) {
 		assert.Equal(t, merging, got[sprint.NAlarmMerging], "%s: %s (raised, cleared)", when, sprint.NAlarmMerging)
 	}
 
-	// dealt: a, b and c on m1, none taken; d waits on a. With every alarm off the
-	// conditions hold and nothing is raised.
+	// dealt: a, b and c on m1, none taken; d waits on a. Review and merging are under their
+	// thresholds; the ready alarm is on (its one value) and the fleet's 1 percent is above
+	// m1's 0 of 4: both are raised, once.
 	r.ticks(3)
 	require.Equal(t, 3, len(r.snap().Fleet.Column(sprint.Ready)), "the fixture: a, b and c dealt and not taken")
-	want("every alarm off", quiet, quiet, quiet, quiet)
+	want("review and merging under their thresholds", [2]int{1, 0}, [2]int{1, 0}, quiet, quiet)
 
 	r.must(store.SetStep(sprint.SetReq{AlarmReview: "0", AlarmMerging: "0", AlarmFleet: "50", AlarmReady: "on", Who: "coordinator"}))
 	r.ticks(3)
