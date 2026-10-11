@@ -64,12 +64,22 @@
      pass.")
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
-     breaker on the review loop, and a red base pushed to the coordinator."))
+     breaker on the review loop, and a red base pushed to the coordinator.")
+   (release "v1.2.15" :status "planned"
+    :text "The next small product fixes, one concern each."))
   :items
-   ((fix "tla-liveruns-rows-with-no-live-set" :release "v1.2.12" :status "planned"
+   ((fix "a-take-refuses-a-card-whose-needs-have-not-landed" :release "v1.2.12" :status "planned"
+     :title "A card whose named needs have not landed is neither dealt nor taken"
+     :text "One rule, three doors. A primary whose named needs have not all landed (WaitsFor, steps_work.go) was dealt to a friend, so on 2026-10-11 19:17-19:21Z a friend took six cards whose DEPENDS-ON needs had not landed, each raising a rule-11 invariant, and the take-back verb refused them as working. TickDeal's offer (steps_tick.go) now leaves out a card WaitsFor names needs for, as dealPlan's ready predicate does, and friendDealPass skips such a card too, so neither the ladder nor the attempt cap's deal hands it to a friend. A ready work card already dealt on any row, friend or member, whose primary's needs are not landed goes back to the pool at once in the tick's deal (needsWithdrawals): the work card leaves the fleet table at a new generation, its attempt unchanged and no redeal spent, the primary waits for its needs again, and the note names the needs; so a friend unheld with such a card in her set never takes it. takeOne refuses a card by id whose primary's needs are not landed (\"<id> needs <n,...>, not landed: not taken\") and a take by count passes over it. A take by id of a card already working on the same row at the generation named is a no-op, writing no record and no note, so the log shows one take, never one every 15 to 16 s. docs/SPEC-SPRINT.md (needs and the deal) states the rule for friends and takes."
+     :origin "this card, a-take-refuses-a-card-whose-needs-have-not-landed.w2, 2026-10-11 ~19:25Z; the coordinator for the owner's \"Please log cards to fix this deal and rebalance. It's shit.\" (a friend took six cards whose needs had not landed; log --card schema-dart-msg2-batch repeated a friend:working -> a friend:ready every 15 to 16 s); code read at nova-sprint main af21db3b")
+    (fix "tla-liveruns-rows-with-no-live-set" :release "v1.2.12" :status "planned"
      :title "LiveRuns models the rows whose beat carries no live set and the take's one-pass lag"
      :text "Models only, no product change. tla/LiveRuns.tla gains a Legacy constant (the rows whose beat carries no live set, workers from before v1.2.6) and a live variable, the beat's live set as the member's last pass left it. The reconcile skips a Legacy row as the code does (liveStopped returns early, LiveReturns continues past a beat with no live set, LiveCountKeys counts every such card running), WorkingIsLive is restated over the other rows, and the new LegacyNeverReturned holds that no working card of a Legacy row is returned by the reconcile. Take no longer names its card in the live set at once: it is named at the member's next pass, and the reconcile waits the grace from the take. Two reversed witnesses: Broken \"legacyreturned\" reconciles a Legacy row as an empty set (breaks LegacyNeverReturned) and Broken \"nograce\" drops the grace from the take (breaks NoRunReturned). Every liveruns case runs with Legacy = {\"r2\"} so one row exercises the legacy path in each; every existing case keeps its declared result."
      :origin "this card; v1.2.12 inventory item T12, drift read at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "a-repo-refused-at-staging-is-not-dealt-to-that-member-again" :release "v1.2.12" :status "planned"
+    :title "A repository refused at staging is not dealt to that member again"
+    :text "A staging refusal for want of a bench mirror says the member cannot stage any card of that repository, so it becomes a capability, the way a harness the member cannot launch is one (Launches, notLaunching): mirrorRefusals, derived each tick from the fleet table, is per member the repositories it refused at staging for want of a bench mirror within StagingMirrorWindow (one hour), from the staging takes (StagingTakes) whose error names \"no bench mirror for <url>\", the repository of that url, and a later ok finish by the member of a card of that repository ends it at once. The member check the deal (launchersOf), every move of a dealt card (notLaunching) and routeOf when it names a member share refuses a member for a card whose repository it refused, with the why \"<member> refused <repo> at staging at <time>: no bench mirror; add the mirror on <member> with the fleet play\"; when no member is left the no-launcher judgment says so. A refusal of any other cause stays per card (StagingRefusers)."
+    :origin "this card, a-repo-refused-at-staging-is-not-dealt-to-that-member-again.w2; the owner, 2026-10-11 ~19:05-19:20Z: \"Please log cards to fix this deal and rebalance. It's shit.\"; \"cards only may accrue per-fleet or friend, if there are not other machines/friends ready to do that work right now!\"; studio sat at 4-5 of 16 while its takes were refused 78 times in 2 hours")
    (fix "tla-coordinatorpass-wait-expiry" :release "v1.2.12" :status "planned"
     :title "CoordinatorPass models the wait and its expiry, with a reversed witness for a wait that never expires"
     :text "Models only, no product change. tla/CoordinatorPass.tla gains the wait the code has (internal/sprint/steps_ack.go, Wait): a Wait action that closes the open judgment and holds its condition until a review time chosen within the bound, a tick that raises the condition again when the review time is reached and the condition still holds, and the reraise's skip before the review time (a held judgment is not raised again before it). OneJudgmentAnEpisode, PushedEveryWindow and ClosedWhenCleared still hold, and the new WaitedRaisedAgainOnExpiry (a wait never outlasts its review time) holds. One reversed witness, Broken = \"waitforever\", never expires the hold and breaks WaitedRaisedAgainOnExpiry; the instances and the witness are in tla/README.md and tla/CASES.tsv, and the module's COVERAGE row drops the wait from its gaps. steps_ack.go's Wait gains one comment line citing tla/CoordinatorPass.tla Wait; no other Go file changes."
@@ -100,6 +110,10 @@
     :title "The store package's own tests pin the shadow tick and the holds"
     :text "Tests only, no product change. New tests in internal/sprint/store drive Store.ShadowTick and Store.Holds through the unit tier's Mem store and assert on what a caller sees. ShadowTick: a running sprint with ready cards reports RUNNING with a deal part on the work table and a size the sum of its parts, and writes nothing; a STOPPED machine still plans; an epoch that owes its restore refuses and still owes it after; an operation left pending refuses (it repairs nothing) and is still pending after; queued work-table changes are planned as the drain part and the queue is not emptied; a primary waiting on reads is named in the plan's Reads; a store that moves on every read says the sprint is busy; and a custom Updates list leaves an empty part out, lists a due part with its due count, and a part that panics makes ShadowTick panic. Holds: a store with no sprint returns nil and no error; a held member, reader, friend and stream come back in kind order (members in fleet-table order, streams by name) each with its reason, and the list is empty after unhold; a member held with --return shows Return and without it none; an unreadable reader record is left out with no error and a friend's fleet row is not listed as a member. One defect the tests found (a reader set away with SetReaderAway alone, not held, is listed as held) is written as a v1.2.14 card, never fixed here."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C6")
+   (fix "tla-landpass-prefix-landing-and-unblamed-refusal" :release "v1.2.12" :status "planned"
+    :title "The land pass model: a red gate lands the prefix and reworks the blamed head"
+    :text "Models only, no product change. LandPass.tla's gate now does what cmd/nova-sprint/landpass.go does when the batch's tree is red: a bisection that blames one head cuts the batch to the prefix before it, pushes that prefix and reworks the blamed head with the stream going on (no longer stopped); a refusal that blames no head (a bench that did not run the gate, a cancelled gate, a bisect environment refusal) returns the batch to queued; and a batch whose tree tests read none of its files lands whole. The new invariant NoHeadPastItsBlame (no head at or after the blamed one lands in that pass) holds, as do LandsOnce and BaseKeepsLandings. Two reversed witnesses: landpastblame pushes the whole batch on a blamed red (fails NoHeadPastItsBlame), unblamedstops stops the stream on an unblamed refusal (fails UnblamedRefusalQueues). A comment on treeGateBase cites tla/LandPass.tla BaseRed."
+    :origin "this card; v1.2.12 inventory item T18")
    (fix "cardmachine-tlc-record-owed" :release "v1.2.12" :status "planned"
     :title "CardMachine gets a finished record and a reversed witness"
     :text "Models only, no product change. tla/CardMachine.tla is the copy model of nova-tools' deleted Lua
@@ -209,6 +223,10 @@
     :title "ReadyOver raises only past ReadyMax, one judgment per cause, each held card its own"
     :text "Models only, no product change. tla/ReadyOver.tla was read against internal/sprint/ready_over.go and drifted in four places, each brought to the code. ready is split from past (a card is ready-over only after it sits past ReadyMax), each held card and each bad brief is its own cause (the card's id is in the sentence), and the causes readyWhy names that the model lacked are added: a held stream, friends alone, no launcher and no free width, plus a timed rest (until its time) beside paid and woken. OnePerCause and ClearsWhenDealt still hold. A new invariant RaisedOnlyPastReadyMax (a raise writes a judgment only for a card past the bound) is checked by the reversed witness MCReadyOverBrokenNobound (Broken \"nobound\"): a raise before the bound fails it. ready_over.go gains one comment line citing the module."
     :origin "card tla-readyover-causes-and-bound, 2026-10-11: v1.2.12 inventory item T36, drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-routeindex-first-and-exclusions" :release "v1.2.12" :status "planned"
+    :title "RouteIndex models the first flag, the per-member harness draw, the FieldRoutes exclusion, a resting route and a read's avoid and tier collapse"
+    :text "Models only, no product change. tla/RouteIndex.tla gains a First constant and preferFirst: a route whose first flag is set is drawn before the others of its tier, checked by the new invariant FirstPreferred (a draw never passes over a drawable first-set entry), with the reversed witness MCRouteIndexBrokenNoFirst.cfg (Broken \"nofirst\", the walk that ignores first) and the control MCRouteIndexFirst.cfg. The deal walks past the member's own harness set, not one global set: a new memb variable records the member each card is dealt to, Deal and Redeal leave out MemberUnlaunch[m] for that member, and NeverUnlaunchable is restated per member (last.r notin MemberUnlaunch[last.m]); the harnessblind witness is kept. A new attempt leaves out the routes already in the primary's FieldRoutes: Deal's exclusion is drawn[c] together with the member's set, as Redeal's already was. A resting route (Rested) is walked past as an unserved one. A read leaves out the routes it returned on (Avoid[c]) and is drawn from its primary's collapsed tier (ReadTier: pro to flash, heavy to pro), with the control MCRouteIndexRead.cfg. routeIndexesOf's call in rebalance.go and the route read in routetable.go gain one comment line each citing the module. Still outside the module: a provider at its concurrency budget is not skipped (the deal draws one anyway), and the coordinator's fallback that deals a rework on a full provider."
+    :origin "this card; v1.2.12 inventory item T36, drift read at nova-sprint main 00c54ba2e 2026-10-11")
    (fix "tla-server-switch-rollback-window" :release "v1.2.12" :status "planned"
     :title "ServerSwitch models the server switch and its rollback window, with two reversed witnesses"
     :text "Models only, no product change. tla/ServerSwitch.tla models the server switch (internal/sprint/server_switch.go ServerSwitch, ServerRollback, CheckRollbackOnLandFailure): at most two switches, a rollback window of two, a clock to four, a land that is ok, refused or failed, and a crash between the copy and the state write. ServerSwitch backs the target up to <target>.prev (only when a target exists) and copies the candidate over the target, then writes <target>.switch.json when rollback is on; a land pass fault (exit 2) in the window rolls the previous binary back to the target and removes the state, past the deadline the state is removed and the switch is permanent, and a refusal (exit 1) never rolls back. Three invariants: TargetIsAKnownBinary (the target is always a known binary or absent), RollbackOnlyInWindow, and AtMostOneAutoRollbackPerSwitch; two reversed witnesses: nodeadline skips the deadline check and fails RollbackOnlyInWindow, keepstate keeps the state after a rollback and fails AtMostOneAutoRollbackPerSwitch. Two facts of the code are modelled and named: a second switch inside the window overwrites <target>.prev with the first candidate, and a switch with no prior target leaves a state whose Previous file is missing, so every failure inside the window errors."
@@ -1171,6 +1189,25 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-coordinatorwake-batch-and-level-events" :release "v1.2.12" :status "planned"
+   :title "CoordinatorWake models the batched wake, the filtered message and the level events"
+   :text "Models only, no product change. tla/CoordinatorWake.tla now models the batched wake (one wake
+    fires every bus ask the look read, naming three and counting the rest), the filtered message that
+    moves the cursor without a line, and the level events (a judgment, a stop, a friend down) that set
+    and clear between looks, so NoLapse holds for bus events alone and the new LevelSeenWhileItHolds
+    says a level event that holds a whole window wakes a run unless it clears first. A look that sees a
+    level event cleared forgets the wake (seen is pruned), so a level event cleared and raised again,
+    the clear observed, wakes again, matching watchwake.go's pruning of the judgments, the stop and the
+    friends; a clear-and-reappearance between looks is not observed and need not wake. Spec now adds
+    WF_vars(Look): held reaches Window only through looks, so a look is fair too, and a level event
+    raised and left raised is eventually a whole window old and due, making LevelSeenWhileItHolds
+    non-vacuous (a run blocked with nothing to wake keeps looking rather than leaving a held level below
+    Window forever). The reversed witness MCCoordinatorWakeBrokenBatchDrops (Broken \"batchdrops\") fires
+    only the first ask of a batch and writes the cursor past the rest, failing NoLapse; the two existing
+    witnesses (nocursor, skip) keep their results. watchwake.go's comments now say bus events, and that a
+    judgment raised and closed inside --judgment-every may never wake. Four cases pass on a bench."
+   :origin "this card, tla-coordinatorwake-batch-and-level-events-2.w6, 2026-10-11: v1.2.12 inventory item T25; drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+
   (fix "tla-serverlanes-control-line-tick-turn" :release "v1.2.12" :status "planned"
    :title "ServerLanes models the control line: batches by ticket and the tick's turn"
    :text "Model only, no product change. ServerLanes.tla held the server's one line as app.serial: a
@@ -1314,6 +1351,21 @@
     run. Its cmd_checks.go (the table-model suites over internal/tablemodel) and bench.go's --bench
     are not carried: this repository has neither."
    :origin "this card")
+
+  (fix "tla-workimport-scoped-verify" :release "v1.2.12" :status "planned"
+   :title "WorkImport models a scoped import and verify, and a wider verify never reports done"
+   :text "Models only, no product change. tla/WorkImport.tla's Import and Verify each take a scope, a
+    subset of the repositories: the import writes only its scope's issues and records the scope in
+    the tree (:scope), verify reads the tree's own scope by default and refuses a --repo outside it
+    before any GitHub call, so a verify never reports done outside the import's scope. TreeIsWhole
+    is restated as TreeIsWholeForItsScope (the tree is whole for the import's scope), and the new
+    invariant VerifyNeverPassesOutsideItsScope states a wider verify never reports done. The receipt
+    and Close/Export are marked design-only in the header, as the code's verify prints facts and
+    stores none. Six reversed witnesses (noreceipt, stale, external, noreopen, partial, scoped):
+    Broken \"scoped\" ignores the tree's scope, so a wider verify reports done and fails
+    VerifyNeverPassesOutsideItsScope; MCWorkImportBrokenPartial keeps its result
+    (TreeIsWholeForItsScope)."
+   :origin "this card, tla-workimport-scoped-verify.w6, 2026-10-11: v1.2.12 inventory item T22 and section 9 row D12; drift read at nova-sprint main 00c54ba2e, re-read at the head that records the scope")
 
   (fix "the-server-beat-accepts-draining-and-no-room" :release "v1.2.12" :status "planned"
    :title "The server's beat takes a draining or no-room member"
@@ -1708,6 +1760,28 @@
    :origin "this card, the-dashboard-plays-a-coin-when-a-tick-lands.w1, 2026-10-11: the owner,
     2026-10-11 ~12:50 PM ET: \"Please add sounds to the sprint dashboard. Whenever a card lands in the
     tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle.\"")
+
+  (fix "a-5xx-mentioning-rate-limit-still-rests" :release "v1.2.14" :status "planned"
+   :title "A 5xx whose words mention a rate limit still spends the take and rests the route"
+   :text "IsRateLimited (internal/sprint/provider_funds.go) answered true for class rate-limited or a 429, then
+    fell back to words in the whole line (\"too many requests\", \"rate limit\", or \"concurrency\" with
+    \"exceed\") whatever the class, so a provider's own 5xx whose message mentioned a rate limit (for example
+    `provider: class=provider-5xx status=503 msg=upstream rate limit exceeded, retry later`) counted as one. On a
+    limited route the finish then took the rate-limited return in internal/sprint/steps_work.go: the card went back
+    unspent, with no FieldTakeEnded and no provider take record, so transient() never counted it, and three such
+    5xxs in ten never rested the route for RouteRestFor, reading a real outage as a brief backoff. Now, when the
+    line parses a class of class5xx or classTimeout, only class=rate-limited or status=429 makes it a rate limit and
+    the word fallback is skipped; a line with no parsed class, or another class, keeps the word fallback. Tests:
+    internal/sprint/rate_limit_class_test.go pins the class table (true for class=rate-limited, a 429 under another
+    class and a classless \"Too many requests\"; false for class=provider-5xx or class=timeout whose msg says
+    \"rate limit\" or \"too many requests\", and for an out-of-credit 429) and the behaviour through Deal, Take and
+    Finish (three class=provider-5xx \"rate limit\" takes each spend their take, leaving FieldTakeEnded set, a
+    FieldProviderTake record and no rate_take_ record, and RestsDue then rests the route for RouteRestFor with
+    cause RestProvider). No model change."
+   :origin "this card, a-5xx-mentioning-rate-limit-still-rests.w1, follow-up 2 of
+    tmp/next-sprint-cards/rate-limit-followups.md (the second cold read of nova-sprint PR #86, 2026-10-11); checked
+    against PR #86's head a1c51ee, the code this card's dependency rate-limit-never-fails-the-card-v2 lands on
+    main")
   (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.14" :status "planned"
    :title "A rate limit stalls its route briefly; it never fails a card or rests it for 3-in-10"
    :text "A take a provider ends rate-limited (class=rate-limited) never fails the card, on any
@@ -1845,6 +1919,29 @@
     PR #86 (2026-10-11), an open non-blocking finding: \"The backoff is hard to see: nova-sprint
     routes doesn't show it\"; listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md.
      Checked against main 00c54ba and PR #86's head a1c51ee.")
+  (fix "a-refused-rework-names-the-backoff" :release "v1.2.14" :status "planned"
+   :title "A refused rework or redo names the backoff, never a wait"
+   :text "A coordinator's rework or redo deals on the soft budgets (withSoftBudgets): on the soft
+    draw a full provider is dealt anyway, but a route backing off from a rate limit never is. When
+    every route of the tier backs off the draw fails and routeOf returned its waiting words
+    (\"every route of tier <t> ...: the card waits ready and is dealt when a slot frees or the
+    backoff ends\"), which Rework and Redo refuse the card with, telling the coordinator it waits
+    ready when in fact the rework did not happen and no deal resumes by itself. routeOf's full
+    branch now returns different words when the draw is soft (s.budgets != nil && s.budgets.soft):
+    every route of tier <t> that serves is backing off from a rate limit (<route> ..., until
+    <end>): a rework or redo is never dealt onto a backing-off route, so the card was not dealt;
+    give it again after that time. A deal (not soft) keeps the waiting words, since its card does
+    wait ready. Tests in internal/sprint/rate_backoff_rework_test.go:
+    TestAReworkOnABackedOffRouteIsRefusedNotToldItWaits and
+    TestARedoOnABackedOffRouteIsRefusedNotToldItWaits pin the refusal (no \"waits ready\", names the
+    backoff's end, says give it again); TestADealOnABackedOffRouteStillTellsTheCardItWaits pins the
+    deal's words; TestASoftReworkWithAFullProviderIsStillDealtOnIt pins that a soft rework with a
+    full provider and no backoff is still dealt on the full one (docs/SPEC-SPRINT.md section 5, the
+    deal; tla/RateBackoff.tla, BackoffEnds)."
+   :origin "this card, a-refused-rework-names-the-backoff (the third cold read of nova-sprint PR
+    #86, 2026-10-11): \"A refused rework or redo gets the misleading wording 'waits ready ...
+    backoff ends'\"; listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md, checked
+    against PR #86's head a1c51ee.")
   (fix "take-by-id-starts-the-card-as-a-lane-take-does" :release "v1.2.14" :status "planned"
    :title "take by id starts a friend's card as a lane take does"
    :text "The two forms of take did different things. take --as <friend> --lane <n> moved the card to
@@ -1898,4 +1995,32 @@
     cardgen.LedgerInPaths (the evidence ledgers and any path a repository's own catalog names as a
     ledger with a LEDGERS line in its AGENTS.md or nova.sexp, read at staging, included), and a
     malformed entry stops the stream with the conflict-kind ledger, never a rework."
-   :origin "this card, the-lander-merges-evidence-ledgers.w4; the owner, 2026-10-11 ~12:20-12:45 PM ET")))
+   :origin "this card, the-lander-merges-evidence-ledgers.w4; the owner, 2026-10-11 ~12:20-12:45 PM ET")
+  (fix "the-landing-gate-runs-its-classes-side-by-side" :release "v1.2.15" :status "planned"
+   :title "The landing gate runs its classes side by side"
+   :text "Every landing gate ran sprint.BaseClasses one class after another: build, gofmt, vet,
+    vet -tags functional, then three separate `go test` processes for the internal/ci analyzer
+    classes (staticcheck, errcheck, dead-code), then class-tests and the unit packages. The two
+    vets and the analyzer tests only read the tree and none depends on another's output. The
+    three analyzer classes are now one `go test -tags functional -count=1 -timeout 600s -run
+    '^(TestStaticcheckFindings|TestUncheckedErrors|TestDeadCode)$' ./internal/ci/` run, one test
+    binary for the tree, and a red one is attributed to the class its `--- FAIL:` line names. A
+    class carries a Stage int (0 build; 1 gofmt, vet, vet-functional, analyzers; 2 class-tests
+    and unit); gateRuns returns the runs by stage, the local gate runs each stage's runs
+    concurrently, waits the stage and reports the first red in class order (not finish order),
+    and the bench gate runs each stage's runs as background jobs and prints them in class order.
+    The report order is the class order."
+   :origin "this card, the-landing-gate-runs-its-classes-side-by-side.w2; the owner, 2026-10-11:
+    \"What else is like serial reads, going out one at a time, when they could go out at the same
+    time in || ?\" and \"log critical cards to fix all these serial things that should be
+    parallel\"; found by the seat's audit child on nova-sprint main")
+  (fix "tlc-suite-runs-independent-cases-in-parallel" :release "v1.2.15" :status "planned"
+   :title "Run independent TLC cases in a bounded parallel pool"
+   :text "RunSuite gives each selected case its own Java process, scratch and log while a bounded
+    worker pool runs independent cases concurrently. `--parallel` defaults to one quarter of the
+    bench CPUs and refuses widths above half; Makefile tlc and tlc-full pass TLC_PARALLEL when set.
+    Each result keeps its case wall time, records stay in plan order, and OnCase callbacks are
+    serialized in completion order. The shared 110 second suite deadline and budget-exhausted
+    records remain in force. The real land group passes at width one and the default width with
+    identical PASS/FAIL results."
+   :origin "this card, tlc-suite-runs-independent-cases-in-parallel.w1~17.g7, 2026-10-11")))

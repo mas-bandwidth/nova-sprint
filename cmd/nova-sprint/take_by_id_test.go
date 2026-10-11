@@ -42,9 +42,16 @@ func TestTakeByIDStartsAFriendsCardAsALaneTakeDoes(t *testing.T) {
 	require.Equal(t, 0, code, out)
 	assert.Contains(t, out, "s1-3.w1 progress at")
 
-	// asked again, the card is not taken again, and her finish by id is accepted at generation 1
+	// asked again, the take is a no-op: the card is already working on her row at this
+	// generation, so the by-id take is answered ok with no change and no new record or
+	// note (docs/SPEC-SPRINT.md, take; Done (d)): the log shows one take, never one every
+	// tick, and her finish by id is still accepted at generation 1
 	code, out = ta.served("take", "--as", "friend.amy", "s1-3.w1@1", "--epoch", "0")
-	assert.Contains(t, out, "not in friend.amy ready (it is friend.amy:working)")
+	require.Equal(t, 0, code, out)
+	assert.Contains(t, out, "TAKE-BY-ID OK moved=0 refused=0 notes=0", "a repeated take is a no-op")
+	c = freshCard(ta, "s1-3")
+	assert.Equal(t, sprint.Working, c.Work[0].Col, "nothing moved")
+	assert.Equal(t, sprint.FriendRow("amy"), c.Work[0].Row, "still on her row")
 	ta.clean()
 }
 

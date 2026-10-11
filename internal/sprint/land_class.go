@@ -11,28 +11,66 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 )
 
-// Class is one run of the base's class suite (SPEC-SPRINT, the base's class
-// gate). Needs are tree packages the clone must hold.
+// Class is one class of the base's class suite (SPEC-SPRINT, the base's class
+// gate). Needs are tree packages the clone must hold. Stage is the suite step the
+// class runs in: 0 build; 1 the read-only whole-tree checks (gofmt, the vets, the
+// analyzers); 2 the package tests. Classes in one stage may go side by side. Batch
+// is non-empty for classes that share one run (the whole-tree analyzers): the batch
+// names it, and a red run is attributed to the class its FAIL line names.
 type Class struct {
 	Name  string
 	Run   []string
 	Test  string
 	Needs []string
+	Stage int
+	Batch string
 }
 
 // BaseClasses includes the existing build and every class that guards a base.
 // The whole-tree analyzers need the functional tag, but start no servers.
 var BaseClasses = []Class{
-	{Name: "build", Run: []string{"go", "build", "./..."}},
-	{Name: "gofmt", Run: []string{"gofmt", "-l", "."}},
-	{Name: "vet", Run: []string{"go", "vet", "./..."}},
+	{Name: "build", Run: []string{"go", "build", "./..."}, Stage: 0},
+	{Name: "gofmt", Run: []string{"gofmt", "-l", "."}, Stage: 1},
+	{Name: "vet", Run: []string{"go", "vet", "./..."}, Stage: 1},
 	// vet-functional is the base's own functional-tier vet (Makefile vet-functional):
 	// a plain vet compiles no file built only behind the functional tag.
-	{Name: "vet-functional", Run: []string{"go", "vet", "-tags", "functional", "./..."}},
-	{Name: "staticcheck", Run: []string{"go", "test", "-tags", "functional", "-count=1", "-timeout", "600s", "-run", "^TestStaticcheckFindings$", "./internal/ci/"}, Test: "internal/ci TestStaticcheckFindings", Needs: []string{"internal/ci"}},
-	{Name: "errcheck", Run: []string{"go", "test", "-tags", "functional", "-count=1", "-timeout", "600s", "-run", "^TestUncheckedErrors$", "./internal/ci/"}, Test: "internal/ci TestUncheckedErrors", Needs: []string{"internal/ci"}},
-	{Name: "dead-code", Run: []string{"go", "test", "-tags", "functional", "-count=1", "-timeout", "600s", "-run", "^TestDeadCode$", "./internal/ci/"}, Test: "internal/ci TestDeadCode", Needs: []string{"internal/ci"}},
-	{Name: "class-tests", Run: []string{"go", "test", "-count=1", "-timeout", "600s"}, Needs: []string{"internal/ci", "internal/docs"}},
+	{Name: "vet-functional", Run: []string{"go", "vet", "-tags", "functional", "./..."}, Stage: 1},
+	{Name: "staticcheck", Run: []string{"go", "test", "-tags", "functional", "-count=1", "-timeout", "600s", "-run", "^TestStaticcheckFindings$", "./internal/ci/"}, Test: "internal/ci TestStaticcheckFindings", Needs: []string{"internal/ci"}, Stage: 1, Batch: "ci-analyzers"},
+	{Name: "errcheck", Run: []string{"go", "test", "-tags", "functional", "-count=1", "-timeout", "600s", "-run", "^TestUncheckedErrors$", "./internal/ci/"}, Test: "internal/ci TestUncheckedErrors", Needs: []string{"internal/ci"}, Stage: 1, Batch: "ci-analyzers"},
+	{Name: "dead-code", Run: []string{"go", "test", "-tags", "functional", "-count=1", "-timeout", "600s", "-run", "^TestDeadCode$", "./internal/ci/"}, Test: "internal/ci TestDeadCode", Needs: []string{"internal/ci"}, Stage: 1, Batch: "ci-analyzers"},
+	{Name: "class-tests", Run: []string{"go", "test", "-count=1", "-timeout", "600s"}, Needs: []string{"internal/ci", "internal/docs"}, Stage: 2},
+}
+
+// ClassForBatch returns the classes that share one run (BaseClasses' Batch): the
+// whole-tree analyzer classes, in report order. nil for a class that runs alone.
+func ClassForBatch(batch string) []Class {
+	var out []Class
+	for _, c := range BaseClasses {
+		if batch != "" && c.Batch == batch {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// ClassForOutput returns the class a red suite run is attributed to: for a run
+// that covers several classes (the analyzers) the class whose test a `--- FAIL:`
+// line names, and for a run of one class that class.
+func ClassForOutput(cmd, out string) (Class, bool) {
+	if m := classFailRE.FindStringSubmatch(out); m != nil {
+		for _, c := range BaseClasses {
+			if c.Test != "" && strings.HasSuffix(c.Test, " "+m[1]) && strings.Contains(cmd, m[1]) {
+				return c, true
+			}
+		}
+	}
+	cmd = strings.TrimSpace(cmd)
+	for _, c := range BaseClasses {
+		if strings.Join(c.Run, " ") == cmd {
+			return c, true
+		}
+	}
+	return Class{}, false
 }
 
 var (

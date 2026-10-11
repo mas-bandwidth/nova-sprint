@@ -172,6 +172,7 @@ func cmdInputs(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// cmdRun applies the README.md width rule to the independently runnable cases.
 func cmdRun(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -183,6 +184,7 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 	shards := fs.Int("shards", 1, "divide the selection into this many shards")
 	shard := fs.Int("shard", 0, "run this zero-based shard of the selection")
 	timeout := fs.Duration("timeout", 110*time.Second, "the whole suite's time limit")
+	parallel := fs.Int("parallel", max(1, runtime.NumCPU()/4), "number of independent cases to run at once")
 	workers := fs.Int("workers", 2, "TLC workers for a case expected to pass")
 	manual := fs.Bool("manual", false, "an explicit bench experiment: mode=manual")
 	if err := fs.Parse(args); err != nil {
@@ -193,6 +195,9 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 	}
 	if *dir == "" {
 		return refuse(stderr, "run", errors.New("--dir is required: the output directory of the run"))
+	}
+	if err := tlc.CheckParallel(*parallel, runtime.NumCPU()); err != nil {
+		return refuse(stderr, "run", err)
 	}
 	cases, err := tlc.LoadCases(*root)
 	if err != nil {
@@ -228,7 +233,7 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 	}
 	res, err := tlc.RunSuite(tlc.Options{
 		Root: *root, Cases: chosen, Jar: j, Java: javaPath, JavaVer: javaVer,
-		Out: *dir, Budget: *timeout, Workers: *workers, Manual: *manual,
+		Out: *dir, Budget: *timeout, Workers: *workers, Parallel: *parallel, Manual: *manual,
 		Platform: platform, CPUs: runtime.NumCPU(),
 		Selection: tlc.Selection{Group: *group, Shards: *shards, Shard: *shard},
 		OnCase: func(r tlc.Record) {
