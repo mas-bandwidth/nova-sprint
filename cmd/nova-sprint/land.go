@@ -2205,22 +2205,35 @@ func (l *lander) clone(ctx context.Context, repo string) (dir, why string) {
 		}
 		return l.repoDir, l.originIs(ctx, l.repoDir, repo)
 	}
+	// the land root is read and resolved under rootMu: two lanes of two clones prepare
+	// at once, and clone() is where a lane first reads it (landpass.go, prepare per job)
+	s := l.locks()
+	s.rootMu.Lock()
 	if l.root == "" {
 		root, err := l.a.landRoot()
 		if err != nil {
+			s.rootMu.Unlock()
 			return "", "no directory to keep clones in (" + oneline.Err(err) + "); run: nova-sprint land --repo-dir <clone>"
 		}
 		l.root = root
 	}
-	dir = filepath.Join(l.root, repoDirName(repo))
+	root := l.root
+	s.rootMu.Unlock()
+	dir = filepath.Join(root, repoDirName(repo))
 	if l.dry {
 		return dir, ""
 	}
+	// the clone is made once per repository: two lanes of one clone (two bases) prepare
+	// at once, so its creation is under its own fetch lock too (fetchKey: the same key a
+	// fetch in any of its worktrees takes)
+	lock := l.locks().fetchLock(l.fetchKey(ctx, dir))
+	lock.Lock()
+	defer lock.Unlock()
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 		return dir, l.originIs(ctx, dir, repo)
 	}
-	if err := os.MkdirAll(l.root, 0o755); err != nil {
-		return "", "the land directory " + l.root + " could not be made: " + oneline.Err(err)
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return "", "the land directory " + root + " could not be made: " + oneline.Err(err)
 	}
 	// one branch, never every branch: the landing fetches the base and the heads it needs
 	// itself (build), and a clone of a card repository's thousands of branches was 80 s
@@ -2239,6 +2252,9 @@ func (l *lander) clone(ctx context.Context, repo string) (dir, why string) {
 // another land holds is refused before any git changes it, naming the holder; its cards
 // stay queued for the next land. release lets every lock go as land ends.
 func (l *lander) hold(ctx context.Context, dir string) string {
+	s := l.locks()
+	s.holdMu.Lock()
+	defer s.holdMu.Unlock()
 	if l.held[dir] != nil {
 		return ""
 	}
