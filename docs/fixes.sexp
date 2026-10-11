@@ -1667,6 +1667,10 @@
    :title "The tick watchdog never waits on its own dump"
    :text "An overrun's goroutine stacks are written into memory first (pprof's WriteTo into a bytes.Buffer, which cannot block), then the watchdog acts (the tick's cancel, or the wedged exit), and only then hands the buffer to stderr in a goroutine it waits on at most TickStacksBound (2 s); a stderr nobody drains (a full pipe under a supervisor, a blocked terminal) can no longer hold up the cancel or the exit, and a dump not written within the bound is dropped with one TICK STACKS line saying so."
    :origin "the card tick-watchdog-exit-never-waits-on-its-dump w2; nova-tools issue #5173, roadmap item tick-watchdog-bounded-diagnostics; code read at nova-sprint main 00c54ba")
+  (fix "the-tick-gate-drives-pushed-landings-not-a-bare-merge" :release "v1.2.14" :status "planned"
+   :title "The dirty tick gate drives pushed landings through the real CLI"
+   :text "The functional dirty-tick driver now gives its finished cards a real pushed head and records queued merge batches through the CLI's named --landed <id>@<head> path, with --repo and a fetched origin/main. It still executes one ordinary bare merge and asserts the real store's refusal, preserving the regression boundary; the full 3,000-card drive keeps its landing, distribution and settle checks and must finish in under a minute."
+   :origin "outside-sprint card the-tick-gate-drives-pushed-landings-not-a-bare-merge, 2026-10-11")
   (fix "stops-digest-counts-only-held-stops" :release "v1.2.14" :status "planned"
    :title "The stops digest counts only the stops still holding"
    :text "One plan could close a stop and at the same time send an NStopsDigest saying it still holds: notify closes the open NStopMemberDown judgment of a member up again, and stopsDigest then gathered its stops from the snapshot before the plan, counting and naming the stop just closed. stopsDigest now leaves out every judgment the same plan closes, matched by note id; with no stop left it writes neither the digest nor its clock."

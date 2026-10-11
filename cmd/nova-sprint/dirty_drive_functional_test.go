@@ -7,7 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,10 +23,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/driver"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testgit"
 )
 
 // The dirty-driven tick driven on a store (the owner's shape of 2026-09-30:
@@ -146,6 +151,7 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 		do(world, "fleet", "beat", m)
 	}
 	do(world, "start")
+	landings := newDriveLandings(t, world.run, []string{"--redis", addr, "--actor", "coordinator"})
 
 	st, _, code := loop.machineVerb("run", nil, &bytes.Buffer{})
 	require.NotNil(t, st, "run: %d", code)
@@ -400,7 +406,30 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 	go func() {
 		// a merge step's batch is a tenth of a stream (play's default of 100 at a thousand),
 		// so the streams' spread is held to the same three batches at either size
-		played <- world.run([]string{"play", "--every", "10ms", "--batch", strconv.Itoa(perStream / 10), "--broken", "0", "--fail", "0", "--stuck", "0", "--cross", "0", "--down", "0", "--up", "0"}, &pout, &perr)
+		given := make(map[string]float64, len(driver.ChanceRows))
+		for _, row := range driver.ChanceRows {
+			given[row.Flag] = 0
+		}
+		chances, err := driver.Set(false, given)
+		if err != nil {
+			_, _ = perr.Write([]byte(err.Error()))
+			played <- 2
+			return
+		}
+		facts := driver.NewSeeded(1)
+		facts.Use(chances, 10*time.Millisecond)
+		d := &driver.Driver{
+			Run:  landings.run,
+			Base: []string{"--redis", addr, "--actor", "coordinator"}, Facts: facts, Clock: appClock{world}, Out: &pout,
+			Config: driver.Config{Every: 10 * time.Millisecond, Batch: perStream / 10},
+		}
+		_, err = d.Loop()
+		if err != nil {
+			_, _ = perr.Write([]byte(err.Error()))
+			played <- 2
+			return
+		}
+		played <- 0
 	}()
 	select {
 	case code = <-played:
@@ -422,6 +451,10 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 	close(wake)
 	<-coordDone
 	require.Zero(t, code, "play: %d\n%s\n%s", code, tail(pout.String(), 30), perr.String())
+	require.Equal(t, 2, landings.bareCode, "the bare merge path remains refused: %s", landings.bareErr)
+	require.Contains(t, landings.bareErr, "a bare merge records the queue's head as landed with no push, and a real store refuses it; nothing was changed; record a pushed landing")
+	require.Empty(t, landings.wrapErr)
+	require.Less(t, wall, time.Minute, "the dirty tick drive took %s; it must stay under one minute", wall.Round(time.Millisecond))
 
 	// ---- what the drive asserts -------------------------------------------------
 	snap, err := st.Load(ctx, store.All, nil)
@@ -673,4 +706,141 @@ func tail(s string, n int) string {
 		lines = lines[len(lines)-n:]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// driveLandings gives the simulated world one real commit to finish against:
+// it pushes that head to a temporary bare origin's main, then records each
+// stream's queued cards through merge --landed. The real CLI checks every
+// card's head against the fetched base before the store records the landing.
+type driveLandings struct {
+	invoke    func([]string, io.Writer, io.Writer) int
+	base      []string
+	repo      string
+	head      string
+	bareCode  int
+	bareErr   string
+	bareTried bool
+	wrapErr   string
+}
+
+func newDriveLandings(t *testing.T, run func([]string, io.Writer, io.Writer) int, base []string) *driveLandings {
+	t.Helper()
+	dir := t.TempDir()
+	bare := filepath.Join(dir, "origin.git")
+	repo := filepath.Join(dir, "repo")
+	gitEnv := testgit.Environ(testgit.NoGlobalConfig(t)...)
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Env = gitEnv
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %s: %s", strings.Join(args, " "), out)
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "--bare", "--initial-branch=main", bare)
+	git("clone", bare, repo)
+	git("-C", repo, "config", "user.name", testgit.Name)
+	git("-C", repo, "config", "user.email", testgit.Email)
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "README"), []byte("pushed landing fixture\n"), 0o644))
+	git("-C", repo, "add", "README")
+	git("-C", repo, "commit", "-m", "fixture base")
+	git("-C", repo, "push", "-u", "origin", "HEAD:refs/heads/main")
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "landing.txt"), []byte("pushed\n"), 0o644))
+	git("-C", repo, "add", "landing.txt")
+	git("-C", repo, "commit", "-m", "pushed landing head")
+	head := git("-C", repo, "rev-parse", "HEAD")
+	git("-C", repo, "push", "origin", "HEAD:refs/heads/drive/landing")
+	git("-C", repo, "push", "origin", head+":refs/heads/main")
+	git("-C", repo, "fetch", "origin", "main")
+	remote := git("-C", repo, "ls-remote", "origin", "refs/heads/main")
+	require.Contains(t, remote, head+"\trefs/heads/main", "the fixture head must actually be pushed to the base")
+	return &driveLandings{invoke: run, base: append([]string(nil), base...), repo: repo, head: head}
+}
+
+func (l *driveLandings) run(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		return l.invoke(args, stdout, stderr)
+	}
+	switch args[0] {
+	case "finish":
+		withHead := make([]string, 0, len(args)+2)
+		withHead = append(withHead, args[0], "--head", l.head)
+		withHead = append(withHead, args[1:]...)
+		return l.invoke(withHead, stdout, stderr)
+	case "merge":
+		if strings.Contains(" "+strings.Join(args, " ")+" ", " --red ") ||
+			strings.Contains(" "+strings.Join(args, " ")+" ", " --rejected ") ||
+			strings.Contains(" "+strings.Join(args, " ")+" ", " --conflict ") ||
+			strings.Contains(" "+strings.Join(args, " ")+" ", " --cross ") ||
+			strings.Contains(" "+strings.Join(args, " ")+" ", " --base-red ") {
+			return l.invoke(args, stdout, stderr)
+		}
+		if !l.bareTried {
+			l.bareTried = true
+			var out, errb bytes.Buffer
+			l.bareCode = l.invoke(args, &out, &errb)
+			l.bareErr = strings.TrimSpace(errb.String())
+			if l.bareCode != 2 {
+				l.wrapErr = fmt.Sprintf("bare merge returned %d: %s%s", l.bareCode, out.String(), errb.String())
+				fmt.Fprint(stderr, l.wrapErr)
+				return l.bareCode
+			}
+		}
+		stream := optionValue(args, "--stream")
+		batch, _ := strconv.Atoi(optionValue(args, "--batch"))
+		var out, errb bytes.Buffer
+		query := append([]string{"queue", "--stream", stream, "--json"}, l.base...)
+		if code := l.invoke(query, &out, &errb); code != 0 {
+			l.wrapErr = fmt.Sprintf("queue %s returned %d: %s%s", stream, code, out.String(), errb.String())
+			fmt.Fprint(stderr, l.wrapErr)
+			return code
+		}
+		var q struct {
+			Cards []struct {
+				ID   string `json:"id"`
+				Col  string `json:"col"`
+				Head string `json:"head"`
+			} `json:"cards"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &q); err != nil {
+			l.wrapErr = "decode queue: " + err.Error()
+			fmt.Fprint(stderr, l.wrapErr)
+			return 2
+		}
+		var named []string
+		for _, card := range q.Cards {
+			if card.Col == "queued" {
+				named = append(named, card.ID+"@"+card.Head)
+				if batch > 0 && len(named) == batch {
+					break
+				}
+			}
+		}
+		if len(named) == 0 {
+			l.wrapErr = "merge had no queued cards to name for stream " + stream
+			fmt.Fprint(stderr, l.wrapErr)
+			return 2
+		}
+		land := append([]string(nil), args...)
+		for _, card := range named {
+			land = append(land, "--landed", card)
+		}
+		land = append(land, "--repo", l.repo, "--base-ref", "origin/main")
+		code := l.invoke(land, stdout, stderr)
+		if code != 0 {
+			l.wrapErr = fmt.Sprintf("named landing for stream %s returned %d", stream, code)
+		}
+		return code
+	default:
+		return l.invoke(args, stdout, stderr)
+	}
+}
+
+func optionValue(args []string, option string) string {
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == option {
+			return args[i+1]
+		}
+	}
+	return ""
 }
