@@ -49,12 +49,12 @@ const FieldFindings = "findings"
 // stream's (stream set --attempts), over the sprint's; AttemptsDefault is the cap when
 // neither is set, and AttemptsMax the most a cap may be.
 const (
-	PropAttempts    = "attempts"
-	FieldAttempts   = "attempts"
-	AttemptsDefault = 4
-	AttemptsMax     = 100
-	ReviewBreakerNew      = 4
-	ReviewBreakerRounds   = 6
+	PropAttempts        = "attempts"
+	FieldAttempts       = "attempts"
+	AttemptsDefault     = 4
+	AttemptsMax         = 100
+	ReviewBreakerNew    = 4
+	ReviewBreakerRounds = 6
 )
 
 // AttemptsCap is how many attempts one brief may run in the stream: the stream's
