@@ -48,6 +48,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
@@ -1808,6 +1809,7 @@ func (l *lander) mergeHeadLedgers(ctx context.Context, dir, stream string, c lan
 	if conflict && inMerge == nil {
 		paths, ours := unmergedPaths(unmerged)
 		l.conflictPaths, l.conflictKind = paths, "file"
+		catalog := cardgen.CatalogLedgers(dir)
 		// the append-only records, keyed tables and the tables lock first (landappend.go):
 		// resolved and staged; what is left goes on as before, and a merge left with
 		// nothing is committed
@@ -1835,9 +1837,9 @@ func (l *lander) mergeHeadLedgers(ctx context.Context, dir, stream string, c lan
 		if len(paths) == 0 {
 			goto abort
 		}
-		// a roadmap page is regenerated from data a card wrote: a regeneration that fails
-		// (the merged data does not decode) is the card's to redo, never a stopped stream
-		if allLedgers(paths, l.ledgers()) && !slices.ContainsFunc(paths, roadmapPage) {
+		// a roadmap page or the roadmap data is the card's to redo when its merge or
+		// regeneration fails (the merged data does not decode), never a stopped stream
+		if allLedgers(paths, l.ledgers(), catalog) && !slices.ContainsFunc(paths, func(p string) bool { return roadmapPage(p) || roadmapData(p) }) {
 			l.conflictKind = "ledger"
 		}
 		// the shrink-only ledgers first (ledgerunion.go): each resolved as the union of
@@ -1882,13 +1884,26 @@ func (l *lander) mergeHeadLedgers(ctx context.Context, dir, stream string, c lan
 					}
 					break
 				}
+				// the evidence ledgers merged entry by entry and staged (land_ledgers.go),
+				// on top of the roadmap data; they regenerate no page
+				var edata []string
+				var ewhy, eenv string
+				rest, edata, ewhy, eenv = l.stageEvidenceUnion(ctx, dir, rest)
+				if eenv != "" || ewhy != "" {
+					env, why = eenv, "; "+ewhy
+					if ewhy == "" {
+						why = ""
+					}
+					break
+				}
+				data = append(data, edata...)
 				regen := slices.Clone(rest)
 				for _, p := range pages {
 					if !slices.Contains(regen, p) {
 						regen = append(regen, p)
 					}
 				}
-				if owners, outside := ledgerOwners(regen, l.ledgers()); len(outside) == 0 && len(regen) > 0 {
+				if owners, outside := ledgerOwners(regen, l.ledgers()); len(outside) == 0 && (len(regen) > 0 || len(data) > 0) {
 					var renv string
 					if note, why, renv = l.resolveLedgers(ctx, dir, stream, c, rest, ours, owners, data...); note != "" {
 						if cline != "" {
@@ -2436,12 +2451,17 @@ func firstLine(out string, err error) string {
 	return oneline.Cap(strings.ReplaceAll(out, "\n", " | "), 400)
 }
 
-// allLedgers says every path is a ledger: a shrink-only one (ledgerunion.go) or a generated
-// one a family regenerates (landledger.go). A conflict on those alone is the lander's own to
-// resolve, and one it could not is no conflict the conflict rule redoes.
-func allLedgers(paths []string, ledgers []landLedger) bool {
+// allLedgers says every path is a ledger the lander resolves as its own: a shrink-only one
+// (ledgerunion.go), a generated one a family regenerates (landledger.go), or an evidence or
+// catalog-named ledger (cardgen.LedgerInPaths; land_ledgers.go). The roadmap data and its
+// pages are ledgers too, but a conflict in them the lander cannot resolve is the card's to
+// redo, so they are no part of this set (the caller excludes them). A conflict on these
+// alone is the lander's own to resolve, and one it could not is no conflict the conflict
+// rule redoes.
+func allLedgers(paths []string, ledgers []landLedger, catalog []string) bool {
 	_, rest := unionPaths(paths, ledgers)
 	_, outside := ledgerOwners(rest, ledgers)
+	outside = slices.DeleteFunc(outside, func(p string) bool { return cardgen.LedgerInPaths(p, catalog...) })
 	return len(outside) == 0
 }
 
