@@ -142,14 +142,15 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 	// card queued on a unit whose lanes all work moves to a unit with an idle lane whose
 	// reader row serves the read's tier and which has not read the card at this attempt,
 	// as many as the idle lanes take (a read is half a slot), in one tick.
-	full := map[string]bool{}
+	readFull := map[string]bool{}
 	for _, g := range units {
-		if g.width > 0 && g.working >= g.width {
-			full[g.row] = true
+		work, reads := rowWorking(s, g.row)
+		if g.width > 0 && 2*work+reads >= 2*g.width {
+			readFull[g.row] = true
 		}
 	}
-	if len(full) > 0 {
-		p.Units = append(p.Units, rebalanceReads(s, seats, units, full, workMoved, &p, ri, who)...)
+	if len(readFull) > 0 {
+		p.Units = append(p.Units, rebalanceReads(s, seats, units, readFull, workMoved, &p, ri, who)...)
 	}
 	ri.write(&p)
 	return p

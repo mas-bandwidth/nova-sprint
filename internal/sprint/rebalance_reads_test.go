@@ -95,6 +95,24 @@ func TestTheRebalanceUsesTheRemainingHalfSlotAfterAQueuedRead(t *testing.T) {
 	assert.Equal(t, 0, readsReady(w.s, "m1"))
 }
 
+func TestTheRebalanceKeepsAReadQueueWhenItsDonorHasHalfALaneFree(t *testing.T) {
+	t.Parallel()
+	w := rbWorld(t, "m1", "m2")
+	w.s.Readers.SetRows(append(w.s.Readers.Rows(), ReaderPrefix+"m2"))
+	for i, col := range []string{Working, Ready} {
+		id := fmt.Sprintf("s1-%d", i+1)
+		w.s.Work.Put(&Card{ID: id, Row: "s1", Col: Review, Score: float64(i + 1), Rev: 1,
+			Fields: map[string]string{"kind": "primary", "attempt": "1", "stream": "s1", "brief": fleetBrief(cardhdr.RouteFlash), FieldTierNow: cardhdr.RouteFlash}})
+		w.s.Fleet.Put(&Card{ID: ReadCardID(id, 1, "m1"), Row: "m1", Col: col, Score: float64(i + 1), Rev: 1,
+			Fields: map[string]string{"kind": "read", "primary": id, "stream": "s1", "reader": "m1", "attempt": "1", FieldReadCard: "1", FieldTier: cardhdr.RouteFlash}})
+	}
+
+	p := w.must(Rebalance(w.s, nil, "machine"))
+	assert.Empty(t, rebalanced(p), "one working read leaves half a lane, so the queue can remain on m1")
+	assert.Equal(t, 1, readsReady(w.s, "m1"))
+	assert.Equal(t, 0, readsReady(w.s, "m2"))
+}
+
 // A read never moves to a member whose reader row does not serve its tier, nor back to a
 // row it was rebalanced off.
 func TestTheRebalanceReadNeverMovesToAnIneligibleOrOldRow(t *testing.T) {
