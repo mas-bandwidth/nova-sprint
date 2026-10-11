@@ -774,12 +774,13 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		}
 		if _, tier, why, byFriend := s.routeOf(escalating(s, c), nil, nil); byFriend {
 			// no route serves its tier and a friend up does: the friends' deal's, never a
-			// machine's (tierServed); withdrawn or taken back from every such friend, no worker
+			// machine's (tierServed); withdrawn or taken back from every such friend, or left by
+			// an empty run on her lane (cardLeft), no worker
 			// is left for it, and the tier's one judgment names it
 			if len(s.friendsFor(c, tier)) == 0 {
 				unserved[tier] = append(unserved[tier], c.ID)
 				if whyOf[tier] == "" {
-					whyOf[tier] = "no machine route serves tier " + tier + ", and every friend up who serves it had the card withdrawn or taken back, so no worker is left for it: bring up another friend whose row lists " + tier + ", enable a route of the tier, or drop the card"
+					whyOf[tier] = "no machine route serves tier " + tier + ", and every friend up who serves it had the card withdrawn or taken back, or ran it empty, so no worker is left for it: bring up another friend whose row lists " + tier + ", enable a route of the tier, or drop the card"
 				}
 			}
 			continue
