@@ -281,7 +281,7 @@ func TestTreeGateDoesNotStartAfterCallerCanceled(t *testing.T) {
 	cancel()
 	l := &lander{a: r.a}
 	assert.ErrorIs(t, ctx.Err(), context.Canceled)
-	assert.Equal(t, context.Canceled.Error(), l.treeGate(ctx, dir, true))
+	assert.Equal(t, context.Canceled.Error(), l.treeGate(ctx, dir, true, nil))
 	assert.Zero(t, gates.Load(), "an already-canceled caller starts no gate")
 	r.clean()
 }

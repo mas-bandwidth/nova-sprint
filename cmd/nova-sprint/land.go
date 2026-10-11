@@ -938,7 +938,7 @@ func (l *lander) baseRecheck(ctx context.Context, s *sprint.Snapshot) {
 		if !cached || red != "" {
 			dir, _ := l.clone(ctx, at.repo)
 			l.gatesBase(at.base)
-			red = l.treeGate(ctx, dir, true)
+			red = l.treeGate(ctx, dir, true, nil)
 		}
 		if ctx.Err() != nil {
 			return // an interrupted re-check is no evidence about the base
