@@ -225,7 +225,7 @@ CONSTANTS
   Machines, Width, MOrder, Readers, ROrder, Host, SOrder,
   MaxAttempts, MaxActs, MaxSub, CtrMod,
   Addable, Scn, Fixes, Broken,
-  MaxRedeals, Takes, Coord
+  MaxRedeals, Takes, Coord, DealAhead, ReadCost
 
 Tables == {"work", "readers", "merge", "fleet"}
 \* The cards a route serves, or that pin a model: the scenario's (THE ROUTE).
@@ -363,12 +363,27 @@ Put(S, t, e) == [S EXCEPT !.q[t] = Append(@, e)]
 \* Room on m as a plan sees it: the fleet table's load, the placements this
 \* plan made (entries past f0 in the fleet queue), and, with "pendingroom",
 \* the placements already queued to the fleet and not yet applied.
-PendRoom(seq, lo, hi, m) ==
-  Cardinality({i \in lo..hi : seq[i].k \in {"dealt", "readon"} /\ seq[i].x = m})
+PendDealt(seq, lo, hi, m) == Cardinality({i \in lo..hi : seq[i].k = "dealt" /\ seq[i].x = m})
+PendReads(seq, lo, hi, m) == Cardinality({i \in lo..hi : seq[i].k = "readon" /\ seq[i].x = m})
+\* The load a machine holds as the code counts it (width.go, read_cards.go
+\* halfLoad): a work card is a whole slot; a read is a whole slot under
+\* ReadCost "apart" (the readers table) and half a slot, rounded up, under
+\* "half" (read cards). The reversed witness "floorreads" rounds the reads
+\* down, so a plan over-fills a machine and HoldRespected catches it.
+LoadCount(w, r) ==
+  IF ReadCost = "half"
+  THEN IF Broken = "floorreads" THEN w + (r \div 2) ELSE w + ((r + 1) \div 2)
+  ELSE w + r
+\* The load the code keeps: a read is half a slot rounded up under "half"
+\* (read_cards.go halfLoad), whatever Broken says; HoldRespected checks it.
+HoldLoad(w, r) ==
+  IF ReadCost = "half" THEN w + ((r + 1) \div 2) ELSE w + r
 Room(S, m) ==
-  Width[m] - Cardinality(S.mc[m]) - Cardinality(S.mr[m])
-  - PendRoom(S.q["fleet"], S.f0 + 1, Len(S.q["fleet"]), m)
-  - (IF "pendingroom" \in Fixes THEN PendRoom(S.q["fleet"], 1, S.f0, m) ELSE 0)
+  LET wd == Cardinality(S.mc[m]) + PendDealt(S.q["fleet"], S.f0 + 1, Len(S.q["fleet"]), m)
+      wr == Cardinality(S.mr[m]) + PendReads(S.q["fleet"], S.f0 + 1, Len(S.q["fleet"]), m)
+      wd0 == IF "pendingroom" \in Fixes THEN PendDealt(S.q["fleet"], 1, S.f0, m) ELSE 0
+      wr0 == IF "pendingroom" \in Fixes THEN PendReads(S.q["fleet"], 1, S.f0, m) ELSE 0
+  IN DealAhead * Width[m] - LoadCount(wd + wd0, wr + wr0)
 
 \* A coordinator-addressed event: counted; the witness "percard" writes a
 \* note for each at once instead of one at the tick's end.
@@ -533,7 +548,8 @@ ApplyR(S, e) ==
               LET counted == Broken = "returnspends" \/ (Broken # "reaskforever" /\ S.rea[c] >= MaxReasks)
               IN Put([S EXCEPT !.rd[c] = NoR, !.askw[c] = TRUE,
                                !.hb[c] = IF counted THEN NoR ELSE e.x,
-                               !.seen[c] = IF counted THEN @ \cup {e.x} ELSE @],
+                               !.seen[c] = IF counted THEN @ \cup {e.x} ELSE @,
+                               !.mr = [m \in Machines |-> IF m = Host[e.x] THEN S.mr[m] \ {c} ELSE S.mr[m]]],
                      "fleet", E("readoff", c, Host[e.x]))
     [] e.k = "refused" ->  \* retired as refused: one re-ask, then the tier's judgment
          IF S.rd[c] # e.x \/ S.nrt[c] THEN S
@@ -549,11 +565,12 @@ ApplyR(S, e) ==
     [] e.k = "raway" ->     \* the reader is not up: its reads are taken back and asked again
          IF S.stat[e.x] = "down" THEN S
          ELSE IF Broken = "keepaway" THEN [S EXCEPT !.stat[e.x] = "down"]    \* the witness keeps them
-         ELSE LET H == {d \in Cards : S.rd[d] = e.x}
-              IN [S EXCEPT !.stat[e.x] = "down",
-                           !.rd = [d \in Cards |-> IF d \in H THEN NoR ELSE @[d]],
-                           !.askw = [d \in Cards |-> IF d \in H THEN TRUE ELSE @[d]],
-                           !.q["fleet"] = @ \o [i \in 1..Cardinality(H) |-> E("readoff", Nth(H, i), Host[e.x])]]
+          ELSE LET H == {d \in Cards : S.rd[d] = e.x}
+               IN [S EXCEPT !.stat[e.x] = "down",
+                            !.rd = [d \in Cards |-> IF d \in H THEN NoR ELSE @[d]],
+                            !.askw = [d \in Cards |-> IF d \in H THEN TRUE ELSE @[d]],
+                            !.mr = [m \in Machines |-> IF m = Host[e.x] THEN S.mr[m] \ H ELSE S.mr[m]],
+                            !.q["fleet"] = @ \o [i \in 1..Cardinality(H) |-> E("readoff", Nth(H, i), Host[e.x])]]
     [] e.k = "raback" -> [S EXCEPT !.stat[e.x] = "up"]
     [] OTHER -> S    \* room, echo
 
@@ -899,9 +916,12 @@ BeatReset(m) ==
   /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
                  mctr, rctr, sctr, live, acts, ext, phase, pumps, sub, addr,
                  notes, wake, brk, dealt, always, drain, run, CardVars>>
-\* The worker takes a card dealt to its machine.
+\* The worker takes a card dealt to its machine: a member runs at most its
+\* width, so the cards already taken on m must be below Width[m] (the reversed
+\* witness "nolanes" drops the guard).
 Take(c, m) ==
   /\ Takes /\ c \in mc[m] /\ live[m] /\ ~tk[c] /\ Pend("fleet", "take", c) = 0
+  /\ Broken = "nolanes" \/ Cardinality({d \in mc[m] : tk[d]}) < Width[m]
   /\ Outside("fleet", E("take", c, m)) /\ UNCHANGED <<live, miss, acts>>
 \* The coordinator's verbs: a CI result on a card in review (red at its head,
 \* or green), a return of a card queued to merge, an accept of a card the
@@ -1083,8 +1103,9 @@ NothingLost ==
 \* (the queue applied, sentinels landed, cards released, ready cards dealt
 \* while a machine has room); at the tick's end no card waits for a reader
 \* that could take it.
-RoomNow(m) == Width[m] - Cardinality(mc[m]) - Cardinality(mr[m])
-              - Count(Q["fleet"], LAMBDA e : e.k \in {"dealt", "readon"} /\ e.x = m)
+RoomNow(m) == DealAhead * Width[m]
+              - HoldLoad(Cardinality(mc[m]) + Count(Q["fleet"], LAMBDA e : e.k = "dealt" /\ e.x = m),
+                         Cardinality(mr[m]) + Count(Q["fleet"], LAMBDA e : e.k = "readon" /\ e.x = m))
 PumpDone ==
   /\ Q["work"] = <<>>
   /\ Landable(col) = {} /\ Releasable(col) = {}
@@ -1176,8 +1197,15 @@ PlacementsRound ==
 \* dealt (it stays ready for the coordinator).
 RouteGuard == \A c \in Cards \ Served : col[c] \in {"none", "waiting", "ready"}
 
-\* WIDTH: a machine never holds more cards and reads than its width.
-WidthRespected == \A m \in Machines : Cardinality(mc[m]) + Cardinality(mr[m]) <= Width[m]
+\* HOLD: a machine never holds more cards and reads than DealAhead times its
+\* width, a read counting a whole slot (ReadCost "apart", the readers table)
+\* or half a slot rounded up (ReadCost "half", read cards).
+HoldRespected == \A m \in Machines :
+  HoldLoad(Cardinality(mc[m]), Cardinality(mr[m])) <= DealAhead * Width[m]
+
+\* LANES: a member runs at most its width: the cards taken at m.
+LanesRespected == \A m \in Machines :
+  Cardinality({c \in mc[m] : tk[c]}) <= Width[m]
 
 \* NEVER DEALT TO DRAINING: no deal goes to a member that drains (the beat's
 \* drain word, notQuiet; tla/NoRoom.tla NeverDealtToDraining). The witness
