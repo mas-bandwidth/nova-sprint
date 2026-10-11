@@ -396,3 +396,33 @@ func TestABalancePollCannotEndAKeyRest(t *testing.T) {
 		assert.Equal(t, tc.ends, len(p.Notes) == 1, "%s: the funded note", tc.cause)
 	}
 }
+
+// A balance at the low threshold raises exactly one NProviderLow judgment, with words
+// leading with "fund <provider>" and decisions including "funded <provider>", routes still
+// serving, and no card judgment.
+func TestALowBalanceAtTheThresholdRaisesOneJudgment(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 10, 2, 0, 0, 0, time.UTC)
+	work := nightWork(t, nightRest)
+	f := NewTable(Fleet)
+	s := &Snapshot{Now: now, Fleet: f, Work: work, Routes: nightRoutes, Coordinator: Coordinator}
+
+	p := Balance(s, BalanceReq{Reads: []ProviderRead{{Provider: "openrouter", Known: true, Balance: 4.99}}, Who: MachineActor})
+	require.Len(t, p.Props, 1, "the balance only")
+	f.SetProp(p.Props[0].Name, p.Props[0].Value)
+
+	ws, _ := s.withRests()
+	conds, stop := providerConds(ws)
+	assert.Empty(t, stop, "a low balance never stops the sprint")
+	require.Len(t, conds, 1, "one judgment of the provider")
+	c := conds[0]
+	assert.Equal(t, NProviderLow, c.typ)
+	assert.Equal(t, ProviderSubject("openrouter"), c.stream)
+	assert.Contains(t, c.decisions, "fund openrouter")
+	assert.Contains(t, c.decisions, "funded openrouter")
+	assert.Contains(t, c.what, "fund openrouter:")
+	for _, r := range nightRoutes {
+		_, resting := ws.resting(r.Name)
+		assert.False(t, resting, "%s serves", r.Name)
+	}
+}

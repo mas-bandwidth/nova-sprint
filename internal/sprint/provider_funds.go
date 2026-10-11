@@ -86,6 +86,15 @@ func transient(line string) bool {
 	return m != nil && (m[1] == classRateLimited || m[1] == class5xx || m[1] == classTimeout)
 }
 
+// IsOutOfCredit says a take's line is a provider credit refusal (class out-of-credit).
+func IsOutOfCredit(line string) bool {
+	if IsNoResult(strings.TrimSpace(line)) {
+		return false
+	}
+	m := causeRE.FindStringSubmatch(strings.TrimSpace(line))
+	return m != nil && m[1] == "out-of-credit"
+}
+
 // providerRestsDue is the rests a provider's refusal writes now, one per provider (Route
 // "", PropProviderRest), in provider order. A provider not resting at s.Now is rested by its
 // newest take refused for credit or its key whose child launched after its last rest ended
@@ -215,7 +224,7 @@ func providerConds(s *Snapshot) (conds []cond, stop string) {
 	}
 	for p, b := range balances {
 		// a provider resting already (the coordinator's routes rest, a refusal) is answered
-		if len(serving[p]) > 0 && b.Low() && !resting[p] {
+		if len(serving[p]) > 0 && (b.Low() || b.LowThreshold(s.LowBalanceUSD())) && !resting[p] {
 			providers[p] = true
 		}
 	}
@@ -240,8 +249,8 @@ func providerConds(s *Snapshot) (conds []cond, stop string) {
 				spent = fmt.Sprintf("spent %s over the last hour (the sprint's cost records), about %.1f hours left at that spend", Dollars(b.SpendHour), hours)
 			}
 			conds = append(conds, cond{typ: NProviderLow, stream: ProviderSubject(p), streamLevel: true,
-				decisions: []string{"routes rest " + p, "wait", "ack"},
-				what: fmt.Sprintf("provider %s is low on funds: balance %s, %s; a payment is the owner's; its routes %s STILL SERVE: the machine rests none of them for a balance; to rest them: nova-sprint routes rest %s --reason <why>; to look again later: nova-sprint wait <note> --until <RFC3339>; nova-sprint where --json shows the balance",
+				decisions: []string{"fund " + p, "funded " + p, "routes rest " + p, "wait", "ack"},
+				what: fmt.Sprintf("fund %s: balance %s, %s; a payment is the owner's; its routes %s STILL SERVE: the machine rests none of them for a balance; to rest them: nova-sprint routes rest %s --reason <why>; to look again later: nova-sprint wait <note> --until <RFC3339>; nova-sprint where --json shows the balance",
 					p, b.Said(), spent, strings.Join(slices.Sorted(slices.Values(serving[p])), ", "), p)})
 		}
 	}

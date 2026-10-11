@@ -388,4 +388,14 @@
     :title "One column field every reader agrees on"
     :text "Card output carries a single column field so a card's state is not confused with the state of
      its need."
-    :origin "card moved out of the sprint (work record, 2026-10-04)")))
+    :origin "card moved out of the sprint (work record, 2026-10-04)")
+
+   (fix "low-balance-pushes-the-seat-before-the-refusalc" :release "v1.2.6" :status "planned"
+    :title "Provider out-of-credit refusals spend no redeal and balance threshold raises judgment"
+    :text "A take refused for credit (class=out-of-credit status=402) is withdrawn without
+     FieldTakeEnded: the card spends no redeal or attempt, the primary goes back to ready, and no
+     failed-work judgment is raised. A balance at or under the threshold (sprint setting
+     low_balance_usd, default 5) raises one NProviderLow judgment per provider whose words lead
+     with "fund <provider>" and decisions include "funded <provider>"; its routes still serve.
+     DeepSeek balance is read from the USD entry in the balance_infos array."
+    :origin "nova-sprint docs/fixes.sexp entry low-balance-pushes-the-seat-before-the-refusalc")))

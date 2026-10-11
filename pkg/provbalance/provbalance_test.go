@@ -32,10 +32,13 @@ func (f *fake) RoundTrip(r *http.Request) (*http.Response, error) {
 	return &http.Response{StatusCode: f.status, Body: io.NopCloser(strings.NewReader(f.body)), Header: http.Header{}, Request: r}, nil
 }
 
-func env(key string) func(string) string {
+func env(key string, deepseekKey string) func(string) string {
 	return func(k string) string {
 		if k == "OPENROUTER_API_KEY" {
 			return key
+		}
+		if k == "DEEPSEEK_API_KEY" {
+			return deepseekKey
 		}
 		return ""
 	}
@@ -47,7 +50,7 @@ func env(key string) func(string) string {
 func TestOpenRouterBalanceIsCreditsLessUsage(t *testing.T) {
 	t.Parallel()
 	f := &fake{status: 200, body: `{"data":{"total_credits":1250,"total_usage":1250.51}}`}
-	rd := Read(context.Background(), f, "openrouter", env(fakeKey))
+	rd := Read(context.Background(), f, "openrouter", env(fakeKey, ""))
 	require.Len(t, f.seen, 1)
 	assert.Equal(t, http.MethodGet, f.seen[0].Method)
 	assert.Equal(t, OpenRouterURL, f.seen[0].URL.String())
@@ -73,17 +76,52 @@ func TestAnUnreadableBalanceIsUnknownAndSaysWhy(t *testing.T) {
 		{"not the shape", "openrouter", fakeKey, &fake{status: 200, body: `{"data":{}}`}, "answered no data.total_credits and data.total_usage", true},
 		{"down", "openrouter", fakeKey, &fake{err: errors.New("connection refused")}, "connection refused", true},
 		{"opencode has no endpoint", "opencode", fakeKey, &fake{status: 200}, "opencode Zen publishes no balance endpoint (anomalyco/opencode#44189", false},
-		{"another provider", "deepseek", fakeKey, &fake{status: 200}, "no balance endpoint is known for provider deepseek", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			rd := Read(context.Background(), tc.f, tc.provider, env(tc.key))
+			rd := Read(context.Background(), tc.f, tc.provider, env(tc.key, ""))
 			assert.False(t, rd.Known)
 			assert.Contains(t, rd.Note, tc.why)
 			assert.NotContains(t, rd.Note, fakeKey, "the key is never said")
 			assert.Equal(t, tc.asked, len(tc.f.seen) > 0)
 		})
 	}
+}
+
+func TestReadDeepSeekBalance(t *testing.T) {
+	t.Parallel()
+	t.Run("USD entry read", func(t *testing.T) {
+		t.Parallel()
+		f := &fake{status: 200, body: `{"is_available":true,"balance_infos":[{"currency":"USD","total_balance":"4.99"},{"currency":"CNY","total_balance":"30"}]}`}
+		rd := Read(context.Background(), f, "deepseek", env("", fakeKey))
+		require.Len(t, f.seen, 1)
+		assert.Equal(t, http.MethodGet, f.seen[0].Method)
+		assert.Equal(t, DeepSeekURL, f.seen[0].URL.String())
+		assert.Equal(t, "Bearer "+fakeKey, f.seen[0].Header.Get("Authorization"))
+		assert.True(t, rd.Known)
+		assert.InDelta(t, 4.99, rd.Balance, 1e-9)
+		assert.Equal(t, "deepseek", rd.Provider)
+	})
+	t.Run("CNY-only answer unknown", func(t *testing.T) {
+		t.Parallel()
+		f := &fake{status: 200, body: `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"30"}]}`}
+		rd := Read(context.Background(), f, "deepseek", env("", fakeKey))
+		assert.False(t, rd.Known)
+		assert.Contains(t, rd.Note, "no USD entry in balance_infos")
+	})
+	t.Run("non-200 unknown", func(t *testing.T) {
+		t.Parallel()
+		f := &fake{status: 401, body: `{"error":"unauthorized"}`}
+		rd := Read(context.Background(), f, "deepseek", env("", fakeKey))
+		assert.False(t, rd.Known)
+		assert.Contains(t, rd.Note, "answered 401")
+	})
+	t.Run("key never in a note", func(t *testing.T) {
+		t.Parallel()
+		f := &fake{status: 401, body: `{"error":"unauthorized"}`}
+		rd := Read(context.Background(), f, "deepseek", env("", fakeKey))
+		assert.NotContains(t, rd.Note, fakeKey)
+	})
 }
 
 // The usage read: openrouter's key endpoint answers the UTC day's usage, read through the
@@ -93,7 +131,7 @@ func TestReadUsageIsTheProvidersCountOfTheDay(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	f := &fake{status: 200, body: `{"data":{"label":"sk-or-v1-abc...","usage":1250.5,"usage_daily":11.25,"usage_weekly":80}}`}
-	rd := ReadUsage(ctx, f, "openrouter", "2026-10-05", env(fakeKey))
+	rd := ReadUsage(ctx, f, "openrouter", "2026-10-05", env(fakeKey, ""))
 	require.True(t, rd.Known, "%+v", rd)
 	assert.Equal(t, "2026-10-05", rd.Day)
 	assert.InDelta(t, 11.25, rd.Used, 1e-9)
@@ -114,7 +152,7 @@ func TestReadUsageIsTheProvidersCountOfTheDay(t *testing.T) {
 		"no daily":      {&fake{status: 200, body: `{"data":{"usage":3}}`}, "openrouter", fakeKey, "no data.usage_daily"},
 		"no connection": {&fake{err: errors.New("dial tcp: refused")}, "openrouter", fakeKey, "failed"},
 	} {
-		rd := ReadUsage(ctx, c.rt, c.provider, "2026-10-05", env(c.key))
+		rd := ReadUsage(ctx, c.rt, c.provider, "2026-10-05", env(c.key, ""))
 		assert.False(t, rd.Known, "%s: %+v", name, rd)
 		assert.Contains(t, rd.Note, c.says, name)
 		assert.NotContains(t, rd.Note, fakeKey, "%s: the key is never said", name)

@@ -1574,7 +1574,14 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			continue
 		}
 		switch kind {
-		case cardhdr.EndProvider, cardhdr.EndNoResult:
+		case cardhdr.EndProvider:
+			if IsOutOfCredit(r.Report) {
+				p.Units = append(p.Units, creditRefused(s, c, pr, r))
+				continue
+			}
+			p.Units = append(p.Units, takeEnded(s, c, pr, r, kind, used))
+			continue
+		case cardhdr.EndNoResult:
 			p.Units = append(p.Units, takeEnded(s, c, pr, r, kind, used))
 			continue
 		case cardhdr.EndStaging:
@@ -1957,6 +1964,27 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
 	}, Notes: notes, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s refused it at staging; %s working -> ready", c.ID, c.Int("gen")+1, c.Row, pr.ID)}
+}
+
+// creditRefused is the unit of a take the provider refused for credit (class out-of-credit).
+// The work card is withdrawn WITHOUT FieldTakeEnded and its primary goes back to ready,
+// spending no redeal: the provider's failure, never the card's. No failed-work judgment
+// is raised. The take's record is kept but never counts toward redeal bound.
+func creditRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
+	set := nextGen(c, "", s.Now)
+	set["withdrawn"] = stamp(s.Now)
+	line := cutText(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(r.Report, cardhdr.EndProvider), ":")), MaxProviderErrorBytes)
+	set[FieldProviderError] = line
+	var notes []Note
+	if !contains(StagingRefusers(c), c.Row) {
+		set[FieldProviderTake+itoa(c.Int("redeals")+1)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
+			Finished: stamp(s.Now), Usage: r.Usage, Error: line}.String()
+	}
+	prSet := map[string]string{}
+	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
+		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
+		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
+	}, Notes: notes, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, provider refused the take for credit; %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)}
 }
 
 // withdrawCard is the unit that withdraws work card c from its member, the one path of a

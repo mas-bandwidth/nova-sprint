@@ -65,6 +65,8 @@ func paid(rest RouteRest, was, b ProviderBalance) bool {
 // Low says a balance calls for the coordinator's judgment: at or under zero, or not over
 // one hour of the spend. It rests nothing (providerConds).
 func (b ProviderBalance) Low() bool { return b.Known && b.Balance <= max(0, b.SpendHour) }
+// LowThreshold is whether the known balance is at or under the given threshold in dollars.
+func (b ProviderBalance) LowThreshold(threshold float64) bool { return b.Known && b.Balance <= threshold }
 
 // HoursLeft is how long the balance lasts at the spend an hour; ok is false with no spend
 // measured (or no balance known).

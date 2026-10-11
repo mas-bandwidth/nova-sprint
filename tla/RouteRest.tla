@@ -21,7 +21,8 @@
 \*              a 5xx, a timeout at the provider, credit: a 402, auth: a 401);
 \*              the tick that sees it rests the provider on a refusal, and the
 \*              route when its window holds After transient failures. A
-\*              no-result counts in the window and never toward a rest.
+\*              no-result counts in the window and never toward a rest. A
+\*              credit end never spends a redeal and never writes a provider rest.
 \*   Balance    the poll reads the balance low or not: it writes no rest.
 \*   Raise      the tick opens the low-on-funds judgment while the balance is
 \*              low, and closes it when it is not.
@@ -49,6 +50,31 @@ vars == <<provRest, own, win, low, judged, event>>
 
 Kinds == {"ok", "noresult", "transient", "credit", "auth"}
 Events == Kinds \cup {"balance", "raise", "payment", "funded", "coord", "wake", "clock"}
+
+\* the ends that count toward a route's own rest (RestsDue: transient only)
+Counts(k) == k = "transient" \/ ("noresult" \in Broken /\ k = "noresult")
+
+CountIn(s) == Cardinality({i \in 1..Len(s) : Counts(s[i])})
+
+\* a take on a serving route ends; the tick's rests in the same step
+TakeEnds(r, k) ==
+    /\ ~Resting(r)
+    /\ IF k = "credit" THEN
+         \/ credit ends never rest the route or spend a redeal
+         /\ provRest' = provRest
+         /\ own' = own
+         /\ win' = [win EXCEPT ![r] = Push(win[r], k)]
+         /\ event' = k
+         /\ UNCHANGED <<low, judged>>
+       ELSE LET w == Push(win[r], k) IN
+            /\ provRest' = IF k = "auth" THEN "auth" ELSE provRest
+            /\ IF k \notin {"credit", "auth"} /\ CountIn(w) >= After
+                 THEN /\ own' = [own EXCEPT ![r] = "provider"]
+                      /\ win' = [win EXCEPT ![r] = << >>]
+                 ELSE /\ own' = own
+                      /\ win' = [win EXCEPT ![r] = w]
+            /\ event' = k
+            /\ UNCHANGED <<low, judged>>
 
 \* the bounded windows of ended takes
 Windows == UNION {[1..n -> Kinds] : n \in 0..W}
@@ -78,19 +104,6 @@ Push(s, k) == IF Len(s) < W THEN Append(s, k) ELSE Append(Tail(s), k)
 Counts(k) == k = "transient" \/ ("noresult" \in Broken /\ k = "noresult")
 
 CountIn(s) == Cardinality({i \in 1..Len(s) : Counts(s[i])})
-
-\* a take on a serving route ends; the tick's rests in the same step
-TakeEnds(r, k) ==
-    /\ ~Resting(r)
-    /\ LET w == Push(win[r], k) IN
-         /\ provRest' = IF k = "credit" THEN "credit" ELSE IF k = "auth" THEN "auth" ELSE provRest
-         /\ IF k \notin {"credit", "auth"} /\ CountIn(w) >= After
-              THEN /\ own' = [own EXCEPT ![r] = "provider"]
-                   /\ win' = [win EXCEPT ![r] = << >>]
-              ELSE /\ own' = own
-                   /\ win' = [win EXCEPT ![r] = w]
-    /\ event' = k
-    /\ UNCHANGED <<low, judged>>
 
 \* the poll reads the balance: it writes no rest
 Balance(l) ==
@@ -193,5 +206,9 @@ NoResultNeverRests ==
 
 \* a balance low long enough is raised to the coordinator as a judgment
 LowIsRaised == [](low => <>(judged \/ ~low))
+
+\* a credit end never spends a redeal and never writes a provider rest
+OutOfCreditSpendsNoRedeal ==
+    [][event' = "credit" => (provRest' = provRest /\ own' = own)]_vars
 
 =============================================================================
