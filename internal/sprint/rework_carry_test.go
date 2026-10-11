@@ -24,6 +24,9 @@ func carryCard(w *world, id, head string, note string) {
 	pr.Col = Review
 	pr.Fields["attempt"] = "4"
 	pr.Fields[FieldFindings] = "attempt 1: one way\nattempt 2: another\nattempt 3: a third\nattempt 4: a fourth"
+	// a card at its bound has already been reworked, so it carries the previous fix;
+	// the carry's note must replace it, not be dropped with it
+	pr.Fields["fix"] = "the previous attempt's fix"
 	w.s.Fleet.Put(&Card{ID: WorkCardID(id, 4), Row: "m1", Col: DoneOK, Score: pr.Score, Rev: 1, Fields: map[string]string{
 		"kind": "work", "primary": id, "stream": pr.Row, "attempt": "4", "gen": "1", "member": "m1", "head": head}})
 	if note == NBriefWrong {

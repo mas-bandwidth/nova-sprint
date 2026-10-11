@@ -78,6 +78,11 @@ func reworkCarried(s *Snapshot, r ReworkReq) Plan {
 				}
 				if r.Fix != "" {
 					ch.Entry.Set["fix"] = cutText(r.Fix, MaxCardTextBytes)
+					// briefInPlace drops the rework's fix by putting "fix" in the
+					// entry's Unset, and the stores apply Set then Unset, so the note
+					// just set would be deleted; keep it, as widenInPlace does. A card
+					// at its brief bound has already been reworked, so it carries one.
+					ch.Entry.Unset = slices.DeleteFunc(ch.Entry.Unset, func(f string) bool { return f == "fix" })
 				}
 			}
 			// a coordination brief defect is answered as well: Brief closes the bound's
