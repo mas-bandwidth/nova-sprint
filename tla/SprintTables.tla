@@ -56,15 +56,17 @@
 \*   Read(r)         the reader records ok or broken on a read asked or
 \*                   reading.
 \*   Accept(c)       review -> merging when the primary has the reads its tier
-\*                   needs; its asked and reading read cards retire.
+\*                   needs and no broken read stands at its head; its asked
+\*                   and reading read cards retire.
 \*
 \* Invariants: TypeOK, NoNeedCycle, NoCardLostOrTwice, and the action
 \* properties MovesOnlyByTable (every change of cell is a Moves row, a drop
 \* from an open state, or a remove of a landed card), ReadyToWaitingOnlyByInsert,
 \* LandedIsFinal, NeedsLandFirst and WorkingOnAnUpMember (a card in a member's
 \* working cell sits on an up member), plus AcceptHeld (no primary enters
-\* merging short of its reads) and NeverReadByItsWorker (a read is never asked
-\* of the reader that worked the card).
+\* merging short of its reads), NeverAcceptBroken (no primary enters merging
+\* with a broken read at its head) and NeverReadByItsWorker (a read is never
+\* asked of the reader that worked the card).
 \*
 \* Refmodel invariants not stated here. The pending-operation fence (D1: Free,
 \* actions.go free, the refusal "operation %s is pending (D1: Free)" that
@@ -82,6 +84,8 @@
 \*   "downkeeps"  fleet down leaves a working card on the member that went down.
 \*   "shortaccept" the accept drops the read guard and accepts with one read
 \*                fewer than the tier needs (AcceptHeld fails).
+\*   "acceptbroken" the accept drops the no-broken guard and accepts with a
+\*                broken read at the head (NeverAcceptBroken fails).
 \*
 \* Not modelled here (other cards): merge and return, crash and repair.
 EXTENDS Naturals, FiniteSets
@@ -379,16 +383,21 @@ Read ==
 
 \* accept: review -> merging when the primary has the reads its tier needs
 \* (refmodel Accept, actions.go line 593, held to ReadsNeededIn: one for a
-\* flash card, two for a pro card). Named, one primary at a time, all or
-\* nothing (D4); its asked and reading read cards retire (F1). The reversed
-\* witness "shortaccept" drops the read guard and accepts with one read fewer.
+\* flash card, two for a pro card) and no broken read stands at its head
+\* (steps_review.go hasBrokenAtHead: a broken verdict at the same head
+\* outweighs any number of oks; NeverAcceptBroken). Named, one primary at a
+\* time, all or nothing (D4); its asked and reading read cards retire (F1).
+\* The reversed witnesses: "shortaccept" drops the read guard and accepts with
+\* one read fewer, and "acceptbroken" drops the no-broken guard and accepts
+\* with a broken read at the head.
 Accept ==
   \E c \in Card :
     /\ ~IsSentinel(c)
     /\ state[c] = "review"
-    /\ \/ Acceptable(c)
-       \/ /\ Broken = "shortaccept"
-          /\ Cardinality(OkReaders(c)) >= Needs(c) - 1
+    /\ \/ /\ \/ Acceptable(c)
+             \/ /\ Broken = "shortaccept"
+                /\ Cardinality(OkReaders(c)) >= Needs(c) - 1
+          /\ \/ Broken = "acceptbroken" \/ ~BrokenRead(c)
     /\ state' = [state EXCEPT ![c] = "merging"]
     /\ RetireOutstanding(c)
     /\ UNCHANGED <<waived, members, wplace, wmember>>
@@ -520,6 +529,11 @@ WorkingOnAnUpMember ==
 \* ok read cards from as many different readers at its head as its tier needs
 \* (readers.go ReadsNeededIn).
 AcceptHeld == \A c \in Card : state[c] = "merging" => Acceptable(c)
+
+\* NeverAcceptBroken: the accept never queues a head a reader found broken
+\* (readers.go hasBrokenAtHead, docs/SPEC-SPRINT.md section 8, the read-broken
+\* rule): no primary enters merging with a broken read standing at its head.
+NeverAcceptBroken == \A c \in Card : state[c] = "merging" => ~BrokenRead(c)
 
 \* NeverReadByItsWorker: a primary's read is never asked of its own worker
 \* (readers.go: the reader ran the program itself; a read is asked of readers
