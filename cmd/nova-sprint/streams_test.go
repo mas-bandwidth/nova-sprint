@@ -35,9 +35,9 @@ func TestStreamsListsEveryStreamByRepoInOneCall(t *testing.T) {
 
 	out := ta.ok("streams --cards")
 	// every stream is one STREAM line with its repos, bases, release, open and landed
-	require.Contains(t, out, "STREAM s1 repos=acme/widgets bases=sprint/base release=- open=2 landed=0")
-	require.Contains(t, out, "STREAM s2 repos=acme/gears bases=sprint/base release=v1.0.0 open=1 landed=0")
-	require.Contains(t, out, "STREAM s3 repos=acme/gears,acme/widgets bases=sprint/base release=- open=2 landed=0")
+	require.Contains(t, out, "STREAM s1 repos=acme/widgets bases=sprint/base release=- display=s1 open=2 landed=0")
+	require.Contains(t, out, "STREAM s2 repos=acme/gears bases=sprint/base release=v1.0.0 display=point-fix-v1.0.0 open=1 landed=0")
+	require.Contains(t, out, "STREAM s3 repos=acme/gears,acme/widgets bases=sprint/base release=- display=s3 open=2 landed=0")
 	// the mixed stream is the finding
 	assert.Contains(t, out, "NOTE stream s3 names more than one repository (acme/gears, acme/widgets)")
 	// every card, with its state, tier, title and needs
@@ -84,6 +84,6 @@ func TestStreamsListsEveryStreamByRepoInOneCall(t *testing.T) {
 	out = ta.ok("drop --repo acme/gears --expect 2 --reason 'not for the next release'")
 	assert.Contains(t, out, "DROP OK")
 	out = ta.ok("streams")
-	assert.Contains(t, out, "STREAM s2 repos=acme/gears bases=sprint/base release=v1.0.0 open=0 landed=0")
-	assert.Contains(t, out, "STREAM s3 repos=acme/gears,acme/widgets bases=sprint/base release=- open=0 landed=0")
+	assert.Contains(t, out, "STREAM s2 repos=acme/gears bases=sprint/base release=v1.0.0 display=point-fix-v1.0.0 open=0 landed=0")
+	assert.Contains(t, out, "STREAM s3 repos=acme/gears,acme/widgets bases=sprint/base release=- display=s3 open=0 landed=0")
 }

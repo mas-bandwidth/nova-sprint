@@ -50,6 +50,20 @@ func newLandRig(t *testing.T) *landRig {
 	return r
 }
 
+// stubGreenGate stands the tree gate in for the bench, answering every run green: the
+// tests that call it pin the merges, the gate counts and the worktrees the lander builds,
+// never the gate's own findings (TestLandGatesEveryTipOfTheBatchBranch, TestTreeGateWords
+// and the base-gate tests run the real gate). The seam is treeGate's own (landgo.go, a
+// test's gateBench/hand-land seam): it skips the go build, gofmt, go vet and tree-test
+// subprocesses, which on four cores are the package's wall time, and drops no assertion:
+// gateRan (the count) runs before the seam.
+func (r *landRig) stubGreenGate() {
+	r.t.Helper()
+	r.a.landState().gateBench = func(context.Context, string, string, [][]string, bool) (string, int, error) {
+		return "", 0, nil
+	}
+}
+
 // git runs git in dir and returns its trimmed stdout.
 func (r *landRig) git(dir string, args ...string) string {
 	r.t.Helper()

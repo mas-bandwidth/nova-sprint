@@ -524,8 +524,17 @@ var stopKindOf = map[string]string{
 	NFriendStalled:  StopKindFriendStalled,
 }
 
-// stopsDigest writes the tick's digest of the stops still holding when one is due (above).
+// stopsDigest writes the tick's digest of the stops still holding when one is due (above;
+// docs/SPEC-SPRINT.md section 8, "The coordinator's pass").
+// The plan's closes are not counted: notify (steps_tick.go) appends to p.Closes each open
+// judgment whose condition no longer holds this tick, and a stop that ends in this very
+// tick must not be pushed as still holding. tla/CoordinatorPass.tla, Kind = "stop"
+// (PushedOnlyWhileRaised, ClosedWhenCleared): a stop is pushed only while it holds.
 func stopsDigest(p *Plan, s *Snapshot, r TickReq) {
+	closed := map[string]bool{}
+	for _, o := range p.Closes {
+		closed[o.Note.ID] = true
+	}
 	var clock *Open
 	for i, o := range s.Acked {
 		if o.Note.Type == NStopsDigestClock {
@@ -541,7 +550,7 @@ func stopsDigest(p *Plan, s *Snapshot, r TickReq) {
 	due := false
 	for _, o := range s.Open {
 		n := o.Note
-		if n.Kind != Judgment || !slices.Contains(StopTypes, n.Type) || seen[n.ID] {
+		if n.Kind != Judgment || !slices.Contains(StopTypes, n.Type) || seen[n.ID] || closed[n.ID] {
 			continue
 		}
 		seen[n.ID] = true

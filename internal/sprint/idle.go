@@ -25,6 +25,10 @@ import (
 const (
 	NIdle        = "the fleet is idle"
 	NIdleCleared = "the fleet is working again"
+	// NIdleEnded is the note when an idle episode ends for a reason that is no recovery: no
+	// card waits, no width is up, or the fleet's work is switched off (idleEnd; docs/SPEC-SPRINT.md
+	// section 14, the fleet is idle). Only the fleet working at half its width again clears.
+	NIdleEnded = "the fleet's idle episode ended"
 )
 
 // The idle alarm's numbers and state.
@@ -238,13 +242,34 @@ func rank(kind string) int {
 	return slices.Index([]string{rootDropped, rootMissing, rootJudgment, rootSentinel, rootHeld, rootStopped, rootNoRoute, rootFlight, rootNext}, kind)
 }
 
+// idleEnd is why an idle episode stopped holding, called only when idle is false: recovered
+// is the fleet working at half its width or more again (a), the one ending that is a recovery;
+// else cause names the reason, in the order the fleet's own numbers fail -- no width is up
+// (c: every member is down, held or drained), the fleet's work is switched off (d), no card
+// waits (b) -- and the What suffix the end's note carries (docs/SPEC-SPRINT.md section 14,
+// the fleet is idle).
+func idleEnd(s *Snapshot, working, width, waiting int) (recovered bool, cause string) {
+	switch {
+	case width == 0:
+		return false, "no width up: every member is down, held or drained (fleet up <member> --width <n>)"
+	case s.FleetOff():
+		return false, "the fleet's work is switched off (set --fleet on)"
+	case waiting == 0:
+		return false, "no card waits"
+	default:
+		return true, "" // 2*working >= width: the fleet works at half its width or more
+	}
+}
+
 // TickIdle is the idle alarm, the tick's part after the overdue judgments (TickReq.IdleAlarm,
 // run --idle-alarm): the episode begins when the fleet works under half its width while a
 // card waits, and is written on the fleet table (PropIdleSince); past IdleWindow of running
 // time, one note to the coordinator says the fleet's working and width and the roots
-// (TraceIdle), and the episode is marked said (PropIdleSaid); when the fleet works at half
-// its width again, or no card waits, the episode ends, and a note says so when one was
-// pushed.
+// (TraceIdle), and the episode is marked said (PropIdleSaid). The episode ends when idle no
+// longer holds, and when one was pushed the end's note is chosen by cause (idleEnd): the
+// fleet works at half its width again (a) pushes NIdleCleared, "working again"; no card waits
+// (b), no width is up (c), or the fleet's work is switched off (d) push NIdleEnded naming the
+// cause (docs/SPEC-SPRINT.md section 14, the fleet is idle).
 func TickIdle(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	if !r.IdleAlarm || s.Fleet == nil || s.Work == nil {
@@ -279,13 +304,18 @@ func TickIdle(s *Snapshot, r TickReq) (Plan, int) {
 		write(PropIdleSaid, "")
 		u := Unit{Key: PartIdle, Moved: fmt.Sprintf("fleet %d/%d: the idle episode since %s ended", working, width, since)}
 		if said != "" {
-			n := happened(NIdleCleared, "", s.Now)
-			n.Who, n.To = r.who(), to
 			took := ""
 			if d, ok := r.running(s.Now, since); ok {
 				took = " after " + d.Round(time.Second).String()
 			}
-			n.What = fmt.Sprintf("fleet %d/%d, %d waiting: working again%s", working, width, waiting, took)
+			n := happened(NIdleEnded, "", s.Now)
+			if recovered, cause := idleEnd(s, working, width, waiting); recovered {
+				n = happened(NIdleCleared, "", s.Now)
+				n.What = fmt.Sprintf("fleet %d/%d, %d waiting: working again%s", working, width, waiting, took)
+			} else {
+				n.What = fmt.Sprintf("fleet %d/%d, %d waiting: %s%s", working, width, waiting, cause, took)
+			}
+			n.Who, n.To = r.who(), to
 			u.Notes = append(u.Notes, n)
 		}
 		p.Units = append(p.Units, u)

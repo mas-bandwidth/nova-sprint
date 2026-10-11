@@ -337,7 +337,9 @@ function renderStreams(d) {
     if (r.node.dataset.status !== status) r.node.dataset.status = status;
     r.node.classList.toggle("group-start", prevRank !== null && rank(k) !== prevRank);
     prevRank = rank(k);
-    setText(r.nameT, k);
+    // the stream cell shows the stream's display name (stream set --display; point-fix-<release>
+    // when a release is set), else its key; the row stays keyed, sorted and grouped by the key
+    setText(r.nameT, (states[k] || {}).Display || k);
     var tone = { landed: "done", working: "active", held: "warning", stopped: "critical" }[status] || "neutral";
     setPill(r.pill, status, tone, status + (s.State ? " · stream " + s.State + (s.Since ? " since " + clockShort(new Date(s.Since)) : "") : ""));
     // an archived stream shown is marked: the total row leaves it out
