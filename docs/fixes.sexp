@@ -616,4 +616,15 @@
     in a judgment. TLA+ model StopReturn, property AbsentJobSettles, with the reversed witness
     nosettlebybeat; the model's Beat is drop-only while STOPPED, so a job a stopped owner's beat shows gone
     stays gone."
-   :origin "the seat, 2026-10-10: START refused on 33 fleet jobs whose members never sent stop-return receipts")))
+   :origin "the seat, 2026-10-10: START refused on 33 fleet jobs whose members never sent stop-return receipts")
+
+  (fix "ok-percent-counts-reader-verdicts" :release "v1.2.6" :status "in-progress"
+   :title "ok% counts the readers' verdicts; a friend's card past its deadline is a redeal"
+   :text "A worker's finish, ok or failed, moves its work card to the fleet's hidden finished cell, where
+    it counts in no ok%; the readers' verdict on the attempt moves it on, to ok when as many different
+    readers as the primary needs read it ok, to failed when a reader read it broken, and work no reader
+    reads stays finished. A friend's card past its deadline unfinished is redealt, counted in the shown
+    redealt column on her row, never a failure and never a late judgment. The fleet table gains the
+    finished and redealt columns, the friends table the redealt column, and a migration on a stopped
+    machine takes the live store to the locked shape (migrations/0001_fleet_finished_redealt.sh)."
+   :origin "the owner, 2026-10-04: trust but VERIFY; I want to trust the ok%")))
