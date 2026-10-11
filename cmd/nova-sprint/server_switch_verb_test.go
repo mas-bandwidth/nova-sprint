@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
 )
 
 func TestServerGroupAndSwitchHelp(t *testing.T) {
@@ -82,15 +83,14 @@ func newSwitchBase(t *testing.T) switchBase {
 func candidateAt(t *testing.T, path, commit, body string) string {
 	t.Helper()
 	script := "#!/bin/sh\nif [ \"$1\" = version ]; then echo 'nova-sprint v9.9.9 linux/amd64 go1.26 commit=" + commit + "'; exit 0; fi\n" + body
-	// write beside then rename into place: a file a concurrent exec still holds open for
-	// writing is not the file switched in, and rename replaces the inode (ETXTBSY)
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp.*")
-	require.NoError(t, err)
-	_, err = tmp.WriteString(script)
-	require.NoError(t, err)
-	require.NoError(t, tmp.Chmod(0o755))
-	require.NoError(t, tmp.Close())
-	require.NoError(t, os.Rename(tmp.Name(), path))
+	// written under the fork lock (testbin.WriteExecutable), then renamed into place: a
+	// parallel test's fork while the file is open for writing would inherit the write
+	// descriptor until its exec, and the rename keeps that inode, so this test's exec of the
+	// candidate failed with ETXTBSY, "text file busy" (2 of 4 runs of the package on a
+	// 32-core bench, 2026-10-11)
+	tmp := path + ".tmp"
+	require.NoError(t, testbin.WriteExecutable(tmp, []byte(script), 0o755))
+	require.NoError(t, os.Rename(tmp, path))
 	return path
 }
 
