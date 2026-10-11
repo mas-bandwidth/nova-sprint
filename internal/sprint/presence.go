@@ -323,6 +323,7 @@ func FriendStatus(f FriendPresence, now time.Time) string {
 // last one seen, and the beat's age when she beats, so a row read down while
 // her daemon beats says why; for a beat that says down, until when and why;
 // for held, "held".
+// tla/SeatHealth.tla Status
 func FriendEvidence(f FriendPresence, now time.Time) (string, string) {
 	if f.Held {
 		return Held, "held"
