@@ -362,20 +362,8 @@ func scriptVerified(s *Snapshot, pr *Card) bool {
 // goes back to work with the finding. A read pinned to an older head is about
 // work the card moved past and stands for nothing (readHeadMatches).
 func hasBrokenAtHead(s *Snapshot, pr *Card) bool {
-	for _, rc := range readsAt(s, pr, pr.Int("attempt")) {
-		if rc.Col == Broken && (rc.F("head") == "" || rc.F("head") == pr.F("head")) {
-			return true
-		}
-	}
-	if s.Fleet != nil {
-		_, _, fbr := friendReadLive(s, pr)
-		for _, rc := range fbr {
-			if h := rc.F("head"); h == "" || readHeadMatches(s, pr, rc) {
-				return true
-			}
-		}
-	}
-	return false
+	_, broken := standingReads(s, pr, pr.Int("attempt"))
+	return len(broken) > 0
 }
 
 // acceptable says the primary has ok reads from ReadsNeededIn different readers
