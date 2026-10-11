@@ -79,8 +79,9 @@ type HoldReq struct {
 	// Friends is the friend roster's names (nova-config's friend rows): the snapshot
 	// holds no table of them.
 	Friends []string `json:",omitempty"`
-	// Alive, with Release, is the members whose beat is alive now: one comes up at once.
-	Alive []string `json:",omitempty"`
+	// Alive is the members whose beat is alive now: one comes up at once, and a live member keeps taken cards on hold.
+	Alive     []string `json:",omitempty"`
+	BeatsRead bool     `json:"-"`
 	// Started is the work cards the friends held have started, as friend down reads them
 	// (a push on the branch at its tip, her beat naming it running), each with its why: the
 	// hold takes them too, and a push's head is carried (FriendTake). It is read state, so
@@ -214,7 +215,7 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 			add(fleetStepPlan(s, FleetReq{Op: "release", Member: t.Name, Who: r.Who, Fresh: slices.Contains(r.Alive, t.Name), Why: r.Reason}, rr, moves))
 		case t.Kind == HoldMember:
 			ctl := s.MemberCtl(t.Name)
-			upNow := ctl != nil && ctl.F("status") == Up
+			upNow := ctl != nil && (slices.Contains(r.Alive, t.Name) || (!r.BeatsRead && ctl.F("status") == Up))
 			taken := s.Fleet.Cell(t.Name, Working)
 			finish := !r.Return || upNow
 			if r.Return && upNow {

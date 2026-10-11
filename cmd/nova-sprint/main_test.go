@@ -356,8 +356,12 @@ func TestAStaleFinishIsRefusedAndARetryReplays(t *testing.T) {
 	ta.json("queue --as m1", &q)
 	card := q.Cards[0].ID
 	ta.ok("take --as m1 " + card + "@1")
-	ta.ok("fleet down m1")                      // an up member keeps its taken card even as the fleet transition holds it
-	ta.ok("hold m1 --return --reason dead-run") // now down, its working card is a dead run and is returned
+	ta.mu.Lock()
+	ta.live = []string{"m2"} // m1 stops beating: this test returns a genuinely dead run
+	ta.now = ta.now.Add(sprint.MissedBeatsDown*sprint.BeatDeadline + time.Second)
+	ta.mu.Unlock()
+	ta.ok("tick") // the presence sweep observes m1's missed beat windows
+	ta.ok("hold m1 --return --reason dead-run")
 	code, _, errs := ta.do("finish --as m1 " + card + "@1")
 	require.Equal(t, 1, code, "a stale finish: %d %s", code, errs)
 	require.Contains(t, errs, "stale", "a stale finish: %d %s", code, errs)
