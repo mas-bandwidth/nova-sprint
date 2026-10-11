@@ -62,7 +62,7 @@ type BriefReq struct {
 
 // Brief replaces primaries' briefs in place (nova-sprint brief; docs/SPEC-SPRINT.md,
 // the brief verb): each a primary waiting, ready or in review, on a RUNNING machine
-// as on a STOPPED one; a card working, merging or landed keeps its brief. A running
+// as on a STOPPED one; a card merging or landed keeps its brief; a working card takes one for its next attempt. A running
 // machine's pump holds a card a queued change names until the change drains
 // (store.Step's Pump), so the brief is in place before the card can be dealt. The
 // card keeps its id, stream, score and needs; one an attempt was dealt for opens its
@@ -93,8 +93,8 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			p = briefDepends(s, p, c, b.Brief, b.Needs)
 			continue
 		}
-		// a card working, merging or landed is refused with what changes it instead:
-		// stopping the machine would not let its brief be replaced. A card waiting, ready
+		// a card merging or landed is refused with what changes it instead:
+		// stopping the machine would not let its brief be replaced. A card waiting, ready, or working takes one in place;
 		// or in review takes one on a RUNNING machine as on a STOPPED one.
 		why := briefKept(s, b.ID)
 		if why != "" && c != nil && !IsSentinel(c) {
