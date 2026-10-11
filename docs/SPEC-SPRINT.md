@@ -6006,6 +6006,19 @@ bytes, so no step can wedge the sprint. Every command checks first that the
 store's table function library is this build's, and refuses (exit 2) with the
 command that loads it.
 
+`nova-sprint version` prints the one line naming this build, whose second field
+is the build's identity. `nova-sprint version --features` lists the fixes this
+build carries, one line per fix `<release> <fix-id> <title>`, for every fix of a
+release at or below the build's version in semantic version order and release
+then ledger order; a build whose version is not a release (a dev build) lists
+the shipped releases' fixes and says the unreleased fixes of the tree it was
+built from are not listed. `nova-sprint version --has <fix-id>` exits 0 when the
+build carries the named fix, 1 when the ledger names it in a later release or
+not at all, naming which, and 2 on a usage error. `--json` prints
+`{version, fixes:[{release,id,title}]}`. The fixes ledger is compiled into the
+binary (docs/embed.go) and decoded with the parser `make roadmap` uses, so a
+built binary answers which fixes it holds with no file beside it.
+
 | verb | does |
 |---|---|
 | init | creates the four tables and the view; `--readers`, `--members`, `--attempts <n>` (the sprint's attempt cap, as `set --attempts` writes it; section 2), `--coordinator` (the one actor who releases sentinels; default the actor; the seat then moves by `coordinator`), `--owner` (who may give the seat and whose name a take carries; set once, kept by a clear, removed by teardown), `--rules <file>` (the child rules file every brief is held to, one required sentence per line; its absolute path is recorded as the key `sprint:rules`, kept by a clear and removed by teardown; refused at once when the file cannot be read or holds no rule; this repository's is `fleet/child-rules.txt`); its line names every reader of the sprint (`readers=`), and on a twin a NOTE says a member it adds is up after the next tick |
@@ -7403,7 +7416,9 @@ no shadow. Tested on the twin store with this binary as a working candidate and 
 candidates that error, panic, hang past the deadline and print no plan
 (`TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary`), the store byte for byte unchanged
 by a shadow (`TestShadowTickPlansOnTheStoreAndWritesNothing`), and every write of the read-only
-store refused (`TestShadowTickStoreRefusesEveryWrite`).
+store refused (`TestShadowTickStoreRefusesEveryWrite`). run and the shadow tick also
+refuse a store whose tables lack a column of `internal/sprint/TABLES.lock`, before either
+starts or plans, and the refusal names the `nova-table` commands that mend it.
 
 #### Adopting a build
 

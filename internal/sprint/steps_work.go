@@ -2563,7 +2563,12 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 		default:
 			set := map[string]string{}
 			var unset []string
-			if comeUp && ctl.F("status") != Up {
+			// a member whose probe is clearing an environment fault comes up only
+			// when the fault's hold is the machine's own: a passed probe lifts only
+			// the environment's own hold, so a coordinator's, the fault's or the
+			// sync's hold stays for a person to lift (docs/SPEC-SPRINT.md section 5,
+			// the fleet; tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+			if comeUp && ctl.F("status") != Up && !(envCleared && ctl.F(FieldHeldBy) != HeldByEnv) {
 				set["status"], set["since"] = Up, stamp(s.Now)
 				n = statusNote(s, r, NMemberUp, "up")
 			}
@@ -2583,7 +2588,12 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 					set[FieldHarnesses] = h
 				}
 			}
-			if r.Op == "release" && ctl.F("held") != "" {
+			// fleet up releases the hold (docs/SPEC-SPRINT.md section 5); a passed
+			// probe clearing an environment fault instead releases only the machine's
+			// own environment hold, left to EnvProbePatch below, so a coordinator's,
+			// the fault's or the sync's hold stays for a person to lift
+			// (tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+			if r.Op == "release" && ctl.F("held") != "" && !envCleared {
 				unset = append(unset, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish)
 				if !comeUp {
 					line = r.Member + " released, down until it beats"

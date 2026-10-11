@@ -494,6 +494,15 @@
      the facts read (internal/sprint/doctor_preflight.go); exit 1 on any FAIL, as doctor does."
     :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 20")
 
+   (fix "server-refuses-to-run-on-a-store-missing-locked-columns" :release "v1.2.11" :status "planned"
+    :title "The server and its shadow refuse a store missing the locked columns"
+    :text "The live store's fleet table never got finished and redealt (internal/sprint/TABLES.lock, the
+     Change of 2026-10-06), so the adopted v1.2.10 server refused every finish that moved a card to done.
+     run and tick --shadow now check the store's tables against the build's locked definitions before either
+     starts or plans, and refuse with the nova-table commands that mend it; the server switch's shadow tick
+     catches a candidate before the swap."
+    :origin "the coordinator, 2026-10-11, on v1.2.10 (00c54ba): server-refuses-to-run-on-a-store-missing-locked-columns.w1")
+
    (fix "tick-under-its-gate-at-load" :release "v1.2.9" :status "planned"
     :title "The deal builds no per-card route map, so the tick stays under its gate"
     :text "Drain and deal take 0.4 to 0.7 seconds at load, so the tick is over its one-second gate, and the
@@ -1062,6 +1071,17 @@
    :text "When presence takes a member down for a missed beat, the machine writes its own fault hold (held_by=fault, fault_since) only on a member that carries no hold: a member the sync, the adopt, its environment or the coordinator already holds keeps its hold, its mark, its reason and its finish marker when it goes down, and still goes down. Overwriting the mark hid the hold from its own release, so a held member could no longer be released and the clear left a markless hold (tla/DealFill.tla FaultHold and PersonHoldStays; docs/SPEC-SPRINT.md section 5)."
    :origin "the seat's audit, 2026-10-11 (a reader finding on card a-member-environment-fault-holds-it-and-pushes-the-seatb, attempt 5, head 38c66ea7542f); this card")
 
+  (fix "version-features-answers-what-a-build-has" :release "v1.2.14" :status "planned"
+    :title "The version verb says which fixes a build carries"
+    :text "nova-sprint version --features lists the fixes this build carries, one line each
+     `<release> <fix-id> <title>`, from the fixes ledger compiled into the binary (docs/embed.go) and
+     read with make roadmap's parser: every fix of a release at or below the build's version. A build
+     whose version is not a release (a dev build) lists the shipped releases' fixes and says the
+     unreleased fixes of the tree it was built from are not listed. nova-sprint version --has
+     <fix-id> exits 0 when the build carries the fix and 1 when the ledger names it in a later release
+     or not at all, naming which; --json prints {version, fixes:[{release,id,title}]}."
+    :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 16 (the owner, 2026-10-11); the v1.2.10 bisect, where the coordinator ran strings on two binaries to learn whether v1.2.9 held the environment-fault fix")
+
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
@@ -1150,4 +1170,14 @@
     liveOf and LiveReturns keep their fresh-only reading. No model change."
    :origin "the coordinator 2026-10-11, added to v1.2.14 beside the v1.2.12 inventory's section 9 row
     D2 (a held finished report across STOP refused as stale); D2's first cause was fixed by
-    nova-sprint #87 (15c779c); this is what that fix left; code read at nova-sprint main 00c54ba")))
+    nova-sprint #87 (15c779c); this is what that fix left; code read at nova-sprint main 00c54ba")
+   (fix "fleet-up-probe-releases-an-environment-held-member" :release "v1.2.11" :status "planned"
+    :title "fleet up --probe passed releases a member held by an environment fault"
+    :text "fleet up --probe passed on a member held by an environment fault (held_by=environment) was
+     refused by the store's manifest check: the release path and EnvProbePatch each unset the hold's four
+     fields, so one entry named each twice. A field is now unset once per entry (unsetPresent keeps each
+     name once, in first-seen order), and fleet up's own unset of the hold is left to EnvProbePatch when
+     the passed probe clears the fault, so a coordinator's, the fault's or the sync's hold stays for a
+     person to lift (the probe never lifts a person's hold). tla/ProviderBudget.tla, FleetUpRefusesUncleared,
+     already said a passed probe clears the fault; this is the implementation catching up."
+    :origin "this card")))
