@@ -406,6 +406,10 @@ MCRateBudgetBrokenNoExpiry.cfg	MCRateBudget.tla	temporal	SlotReclaimed	ignore-te
 MCDealFill.cfg	MCDealFill.tla	pass	-	ignore-terminal	dealfill	required	-
 MCDealFillBrokenNoAutoclear.cfg	MCDealFill.tla	temporal	FaultHoldClears	ignore-terminal	dealfill	required	-
 MCDealFillBrokenClearPerson.cfg	MCDealFill.tla	action	PersonHoldStays	ignore-terminal	dealfill	required	-
+MCFriendDealtReturn.cfg	MCFriendDealtReturn.tla	pass	-	ignore-terminal	frienddealtreturn	required	-
+MCFriendDealtReturnBrokenGate.cfg	MCFriendDealtReturn.tla	invariant	DealtNoMoreHolds	ignore-terminal	frienddealtreturn	required	-
+MCFriendDealtReturnBrokenReady.cfg	MCFriendDealtReturn.tla	invariant	DealtNoMoreHolds	ignore-terminal	frienddealtreturn	required	-
+MCFriendDealtReturnBrokenReturn.cfg	MCFriendDealtReturn.tla	invariant	DealtNoMoreHolds	ignore-terminal	frienddealtreturn	required	-
 MCRoadmapEntry.cfg	MCRoadmapEntry.tla	pass	-	ignore-terminal	roadmapentry	required	-
 MCRoadmapEntryBrokenLastChild.cfg	MCRoadmapEntry.tla	invariant	ParentsHold	ignore-terminal	roadmapentry	required	-
 MCRoadmapEntryBrokenSourceFirst.cfg	MCRoadmapEntry.tla	invariant	NoLoss	ignore-terminal	roadmapentry	required	-
@@ -421,3 +425,7 @@ MCSeatHookBrokenNoMiss.cfg	MCSeatHook.tla	invariant	CommandSafe	ignore-terminal	
 MCSeatHookBrokenSilentDrop.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-terminal	seathook	required	-
 MCSeatHookBrokenStrictCadence.cfg	MCSeatHook.tla	temporal	HookStays	ignore-terminal	seathook	required	-
 MCStopReturnBrokenNoSettleByBeat.cfg	MCStopReturn.tla	temporal	AbsentJobSettles	ignore-terminal	stopreturn	required	-
+MCProviderBudget.cfg	MCProviderBudget.tla	pass	-	ignore-terminal	providerbudget	required	-
+MCProviderBudgetBrokenNewMember.cfg	MCProviderBudget.tla	action	NewMemberProbed	ignore-terminal	providerbudget	required	-
+MCProviderBudgetBrokenNoPush.cfg	MCProviderBudget.tla	action	FaultClearsOnPush	ignore-terminal	providerbudget	required	-
+MCProviderBudgetBrokenStale.cfg	MCProviderBudget.tla	action	JudgmentNamesTheCause	ignore-terminal	providerbudget	required	-
