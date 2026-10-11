@@ -81,7 +81,7 @@ func copyBinary(src, dst string) error {
 }
 
 // ServerSwitch replaces the server binary with candidate binary, keeping previous binary
-// for rollback (docs/SPEC-SPRINT.md section 14; item 14).
+// for rollback (docs/SPEC-SPRINT.md section 14; item 14). tla/ServerSwitch.tla Switch.
 func ServerSwitch(ctx context.Context, opts ServerSwitchOptions) error {
 	target := opts.Target
 	if target == "" {
@@ -157,7 +157,7 @@ func ServerSwitch(ctx context.Context, opts ServerSwitchOptions) error {
 	return nil
 }
 
-// ServerRollback restores the target binary from its previous backup (docs/SPEC-SPRINT.md section 14).
+// ServerRollback restores the target binary from its previous backup (docs/SPEC-SPRINT.md section 14). tla/ServerSwitch.tla ManualRollback.
 func ServerRollback(ctx context.Context, target string) error {
 	prev := target + ".prev"
 	if _, err := os.Stat(prev); err != nil {
@@ -186,6 +186,7 @@ func (e *LandError) Error() string { return e.Msg }
 // enabled, and if a land pass fault (exit 2) occurred within the rollback window, rolls back
 // to previous binary (docs/SPEC-SPRINT.md section 14; item 14). Exit 1 (card's own head failed
 // the tree gate, build or test failure, conflict, lander check) does not trigger rollback.
+// tla/ServerSwitch.tla LandFailedRollback.
 func CheckRollbackOnLandFailure(target string, landErr error, now time.Time) (rolledBack bool, err error) {
 	if landErr == nil {
 		return false, nil

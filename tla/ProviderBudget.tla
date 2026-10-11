@@ -30,6 +30,9 @@
 \*                   and the card returns to ready (no attempt spent).
 \*   ModelFinish(m)  a card on m fails the model's way: nothing is held and no
 \*                   environment judgment is raised; the card is failed work.
+\*   BranchRefused(m) a card on m is refused by the branch (rejected, non-fast-forward):
+\*                   card[m] becomes failed, event' becomes rejected, but env, held,
+\*                   judged, jcause remain unchanged (the branch, not environment).
 \*   Deal(m)         the deal gives m a card only while it is known and not held.
 \*   Push(m)         m's next card pushes: env[m] clears, held[m] FALSE, judged[m]
 \*                   FALSE, jcause[m] none. The fault clears itself.
@@ -58,7 +61,7 @@ CONSTANTS Members, Causes, Broken
 VARIABLES env, held, judged, jcause, known, probe, card, event
 vars == <<env, held, judged, jcause, known, probe, card, event>>
 
-Events == Causes \cup {"model", "deal", "pushed", "probe-pass", "probe-fail",
+Events == Causes \cup {"model", "deal", "rejected", "pushed", "probe-pass", "probe-fail",
                       "probe-new", "boot", "accept", "refuse", "init"}
 
 TypeOK ==
@@ -106,6 +109,14 @@ ModelFinish(m) ==
     /\ card' = [card EXCEPT ![m] = "failed"]
     /\ event' = "model"
     /\ UNCHANGED <<env, judged, jcause, known, probe>>
+
+\* a card on m is refused by the branch (rejected, non-fast-forward): the card
+\* fails but the environment does not change ("branchenv" witness below)
+BranchRefused(m) ==
+    /\ card[m] = "working"
+    /\ card' = [card EXCEPT ![m] = "failed"]
+    /\ event' = "rejected"
+    /\ UNCHANGED <<env, held, judged, jcause, known, probe>>
 
 \* the deal gives a known, not-held member a card ("nodeal": a held one too)
 Deal(m) ==
@@ -192,6 +203,7 @@ Refuse(m) ==
 Next ==
     \/ \E m \in Members, c \in Causes : EnvFinish(m, c)
     \/ \E m \in Members : ModelFinish(m)
+    \/ \E m \in Members : BranchRefused(m)
     \/ \E m \in Members : Deal(m)
     \/ \E m \in Members : Push(m)
     \/ \E m \in Members : ProbePass(m)
@@ -203,9 +215,10 @@ Next ==
 
 Spec == Init /\ [][Next]_vars /\ WF_vars(Next)
 
-\* ---------------------------------------------------------------- the rules
+\* ---------------------------------------------------------------------- rules
 
-\* a member is held only by an environment finish: a model failure holds no one
+\* a member is held only by an environment finish: a model failure or branch
+\* refusal holds no one
 EnvOnlyByEnvironmentFinish ==
     [][\A m \in Members : (~held[m] /\ held[m]') => event' \in Causes]_vars
 
@@ -237,4 +250,11 @@ NewMemberProbed ==
 HeldHasACause ==
     [][\A m \in Members : held[m] => env[m] # "none"]_vars
 
+\* a rejected push never changes env or held: the branch, not environment, refused
+ARejectedPushIsNeverAFault ==
+    [][\A m \in Members : (event' = "rejected" /\ card[m] = "working" /\ card[m]' = "failed") =>
+        (env'[m] = env[m] /\ held'[m] = held[m])]_vars
+
+\* Reverse witness: "branchenv" in Broken sets env[m]' and jcause[m]' arbitrarily
+\* and held[m]' and judged[m]' to TRUE on a BranchRefused step, violating the above
 =============================================================================
