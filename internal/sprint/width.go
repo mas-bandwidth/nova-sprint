@@ -12,8 +12,13 @@ import (
 // behind them, so the sprint feeds the fleet at width and keeps it working at
 // that width until done. The width is a field of the member's control card,
 // set by init --members <m>:<n> and by fleet up <m> --width <n>, and shown in
-// the fleet table's width column. The deal fills every member up to DealAhead
-// times its width in one step, round the fleet (T3, R6), and the level, once
+// the fleet table's width column. Every placement of a work card on a member
+// fills a free lane first, then the room of DealAhead times the width, round
+// the fleet from the deal's cursor (round.go, nextFree): the deal fills every
+// member up to DealAhead times its width in one step, round the fleet (T3, R6),
+// its cards going first to a member with a lane free to run one now
+// (memberLanes: q below the width), and only when none may take the card to a
+// member below its room, and the level, once
 // at the start of every tick, moves ready cards from a member that cannot
 // start them to one with free lanes, never past DealAhead times its width
 // (T4, R7). The model is tla/SprintEvents.tla: PlanDeal's room (its Cap),
@@ -117,6 +122,19 @@ func memberLoads(s *Snapshot, up []string) map[string]int {
 // member itself runs at most its width (the fleet row's, pkg/member);
 // the rest wait in its ready column.
 const DealAhead = 2
+
+// memberLanes is each up member's free-lane bound: its width. A member is
+// eligible for the free-lanes-first scan of a placement (round.go, nextFree)
+// while its q (memberLoads: ready and working, a read at half a slot) is below
+// it, so a card goes first to a member with a lane free to run it now, and only
+// when no such member may take the card to one below DealAhead times its width.
+func memberLanes(s *Snapshot, up []string) map[string]int {
+	w := map[string]int{}
+	for _, m := range up {
+		w[m] = s.Width(m)
+	}
+	return w
+}
 
 // memberWidths is each up member's room for every placement (the deal, a
 // redeal, the level, a down member's cards): DealAhead times its width.
