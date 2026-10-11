@@ -1242,8 +1242,8 @@ var ReworkResolves = []string{NWorkFailed, NReadBroken, NBriefWrong, NCIRed, NRe
 // of the attempt's work card, that member only when no other has room; the
 // index moved past it and written with the step) and the primary moves
 // review -> working in the same step; its read cards are retired, and the
-// fixed work is asked round the readers when it returns. With no member up, or none below its width (tla/DirtyTick.tla,
-// WidthRespected), the primary moves review -> ready with the fix and the
+// fixed work is asked round the readers when it returns. With no member up, or none below twice its width (tla/DirtyTick.tla,
+// HoldRespected), the primary moves review -> ready with the fix and the
 // tick's deal cuts its card when a member has room.
 //
 // A primary that takes no rework is refused with what to run instead, by its
@@ -1432,8 +1432,8 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 			unset = append(unset, FieldPassedHead)
 		}
 		var u Unit
-		// the next member round the fleet with room (width.go; tla/DirtyTick.tla, WidthRespected):
-		// none up, or none below its width, and the primary waits ready for the tick's deal
+		// the next member round the fleet with room (width.go; tla/DirtyTick.tla, HoldRespected):
+		// none up, or none below twice its width, and the primary waits ready for the tick's deal
 		m := ""
 		_, friend := FriendCard(c)
 		bench := Bench(c)

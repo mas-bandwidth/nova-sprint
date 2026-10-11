@@ -10,7 +10,7 @@ import (
 // A member holds at most DealAhead times its width of dealt-or-working work cards (its width
 // working and as many ready behind them), whoever deals them: the tick, the deal verb and the
 // coordinator's rework (tla/DirtyTick.tla, Room and
-// WidthRespected, with the reversed witness "nowidth"; docs/SPEC-SPRINT.md, the deal).
+// HoldRespected, with the reversed witness "nowidth"; docs/SPEC-SPRINT.md, the deal).
 
 // widthHeld is the work cards a member holds, ready and working.
 func widthHeld(w *world, m string) int {
