@@ -1391,7 +1391,7 @@
   (fix "hold-return-leaves-taken-cards-with-their-worker" :release "v1.2.12" :status "planned"
    :title "Keep taken cards with a live fleet member during hold --return"
    :text "A hold of a member whose beat is up hands back only its dealt, untaken ready cards. Taken work and reads stay on the worker at their generation and finish there, even with --return. A down member still returns dead working cards. The hold note names the taken cards that stay."
-   :origin "card hold-return-leaves-taken-cards-with-their-worker.w1, 2026-10-11")
+   :origin "card hold-return-leaves-taken-cards-with-their-worker.w2, 2026-10-11")
 
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
