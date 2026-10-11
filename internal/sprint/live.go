@@ -220,7 +220,7 @@ func RowWorkingKeys(s *Snapshot) map[string][]string {
 // row's working cards (keys, <card>@<gen>), those its fresh live set names running, those it
 // names held (finished, the report waiting), and the stale rest, which it names neither way
 // (the reconcile returns them within LiveGrace). A row whose beat carries no live set counts
-// every working card running, as before.
+// every working card running, as before (tla/LiveRuns.tla Legacy).
 func LiveCountKeys(keys []string, b Beat, now time.Time) (running, held, stale int) {
 	live := liveOf(b, now)
 	if !live.known {

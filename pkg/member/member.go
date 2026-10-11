@@ -740,7 +740,8 @@ func (m *Member) Stalled() time.Duration {
 // the fleet) is the highest of the last ten seconds; with no sample it names none and
 // nova-sprint fleet beat measures the machine itself. A reader's is its queue, the verb that
 // is a reader's beat (docs/SPEC-SPRINT.md, the readers), its answer not read. A beat that
-// fails is the error: the next goes at the next interval.
+// fails is the error: the next goes at the next interval. The live set it carries is the one
+// the last pass left (tla/LiveRuns.tla Beat, named).
 func (m *Member) Beat() error {
 	m.beatMu.Lock()
 	defer m.beatMu.Unlock()
