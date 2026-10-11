@@ -550,7 +550,15 @@ func (s *Snapshot) drawRoute(c, wc *Card, ri routeIndexes, member, tier string) 
 		drawn = append(drawn, wc.F(FieldRoute))
 	}
 	drawing := ri != nil
+	// Build served route map for preferFirstWeighted
 	served := func(name string) (Route, bool) { return s.servedRoute(tier, member, name, drawing) }
+	servedMap := make(map[string]Route)
+	for _, name := range arr {
+		r, ok := served(name)
+		if ok {
+			servedMap[name] = r
+		}
+	}
 	// every entry served is left out: the exclusion lapses, as when the tier has one route
 	fresh := false
 	for _, name := range arr {
@@ -563,18 +571,25 @@ func (s *Snapshot) drawRoute(c, wc *Card, ri routeIndexes, member, tier string) 
 	} else if v, ok := s.Fleet.Prop(PropRouteIndex(tier)); ok {
 		at, _ = strconv.ParseUint(v, 10, 64)
 	}
-	r, steps, ok = preferFirst(arr, served, drawn, fresh, at)
+	r, steps, ok = preferFirstWeighted(arr, servedMap, drawn, fresh, at, s.routeStats)
 	if !ok && drawing && s.budgets != nil && s.budgets.soft {
 		// a coordinator's rework or redo is never refused for a full provider: with no route
 		// of room it is dealt on a full one anyway, and the take holds it ready until a slot
 		// frees (takeBudgetWhy)
 		soft := func(name string) (Route, bool) { return s.servedRoute(tier, member, name, false) }
+		softMap := make(map[string]Route)
+		for _, name := range arr {
+			r, ok := soft(name)
+			if ok {
+				softMap[name] = r
+			}
+		}
 		fresh = false
 		for _, name := range arr {
 			_, isServed := soft(name)
 			fresh = fresh || isServed && !contains(drawn, name)
 		}
-		r, steps, ok = preferFirst(arr, soft, drawn, fresh, at)
+		r, steps, ok = preferFirstWeighted(arr, softMap, drawn, fresh, at, s.routeStats)
 	}
 	if !ok {
 		rested, unlaunchable, full = s.unservedWhy(tier, member, drawing)

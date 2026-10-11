@@ -559,6 +559,8 @@ type Snapshot struct {
 	// budgets is a dealing step's view of the providers' concurrency budgets (withBudgets,
 	// rate_budget.go): nil is none set, and the deal draws as before.
 	budgets *budgetPlan
+	// routeStats is computed once per tick (TickDeal) to avoid O(ready x fleet) cost.
+	routeStats map[string]RouteStat
 	// restScans, when set, counts withRests' scans of the fleet table: the tick's
 	// cost gate (TestTheTicksCheckSettlesTheRestsOnceAtScale) holds them to one a part.
 	restScans *int
