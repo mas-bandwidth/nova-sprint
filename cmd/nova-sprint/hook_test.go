@@ -21,6 +21,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
 )
 
 // shortSock is where a test's hook takes its session's lines: a directory of its own,
@@ -34,18 +36,43 @@ func shortSock(t *testing.T) func(string) (string, error) {
 }
 
 // hookSprint is a sprint whose coordinator is name, armed for the hook's gate, its
-// owner glenn, and the server's store the twin.
+// owner glenn, the server's store the twin, and the bus store (NOVA_BUS_REDIS, where
+// the shared hook records and the bus push live) an in-memory one (hookBus).
 func hookSprint(t *testing.T, name string) (*testApp, map[string]string) {
 	t.Helper()
 	ta := newTestApp(t)
-	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": name}
+	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": name, busRedisEnv: "bus:test"}
 	var mu sync.Mutex
 	ta.a.getenv = func(k string) string { mu.Lock(); defer mu.Unlock(); return env[k] }
+	fake := bustest.NewFake(t0, name, "glenn")
+	// a read that finds nothing waits a little, never spins
+	fake.Sleep = func(time.Duration) { time.Sleep(5 * time.Millisecond) }
+	ta.a.busOpen = func(context.Context, string, string) (*bus.Bus, func(), error) {
+		return &bus.Bus{Store: fake}, func() {}, nil
+	}
 	hookTests.Store(name, true)
 	t.Cleanup(func() { hookTests.Delete(name) })
 	ta.ok("init --readers reader-a,reader-b --members m1,m2 --owner glenn")
 	ta.a.serveAddr = "mem:0"
 	return ta, env
+}
+
+// hookShared is the app's shared hook records (the bus store's hook:<name>).
+func (ta *testApp) hookShared() sprint.Hooker {
+	ta.t.Helper()
+	h, err := ta.a.hooker(context.Background())
+	require.NoError(ta.t, err)
+	return h
+}
+
+// busProven records name's bus push armed and proven now, as its hook process does
+// once the session answers a challenge over both pushes: for a test of the server's
+// side, which runs no hook process.
+func (ta *testApp) busProven(name, role string) {
+	ta.t.Helper()
+	h := ta.hookShared()
+	require.NoError(ta.t, h.Arm(context.Background(), name, role, ta.a.now()))
+	require.NoError(ta.t, h.Prove(context.Background(), name, ta.a.now()))
 }
 
 // lined runs f holding the server's line, as every verb the server runs does: the
@@ -72,14 +99,15 @@ func (ta *testApp) hookRecord() (rec sprint.HookRecord, ok bool) {
 	return
 }
 
-// refusedFirst wants the line refused with exactly the hook's line, exit 1, and nothing
-// written.
+// refusedFirst wants the line refused with the hook's one line, exit 1, and nothing
+// written: the line starts with want (the gate's lines lead with their rule and go on
+// to the breadcrumb).
 func (ta *testApp) refusedFirst(line, want string) {
 	ta.t.Helper()
 	before := ta.applies()
 	code, out, errs := ta.doLined(line)
 	require.Equal(ta.t, 1, code, "%s: exit %d\n%s%s", line, code, out, errs)
-	require.Equal(ta.t, want+"\n", errs, line)
+	require.True(ta.t, strings.HasPrefix(errs, want) && strings.Count(errs, "\n") == 1 && strings.HasSuffix(errs, "\n"), "%s: %q", line, errs)
 	require.Empty(ta.t, out, line)
 	require.Equal(ta.t, before, ta.applies(), "%s was refused and wrote", line)
 }
@@ -112,18 +140,34 @@ func (ta *testApp) hookOn(name string) *hookClient {
 	return c
 }
 
-// next is the next line the server sent, of the type wanted.
+// next is the next line the server sent, of the type wanted; a waiting-judgment
+// warning push between is passed over unless a push is what is wanted (warning).
 func (c *hookClient) next(t string) hookMsg {
 	c.t.Helper()
-	select {
-	case m, ok := <-c.lines:
-		require.True(c.t, ok, "the hook closed, wanting %s", t)
-		require.Equal(c.t, t, m.T, "%+v", m)
-		return m
-	case <-time.After(10 * time.Second):
-		c.t.Fatalf("no %s line", t)
+	for {
+		select {
+		case m, ok := <-c.lines:
+			require.True(c.t, ok, "the hook closed, wanting %s", t)
+			if m.T == "push" && m.What == hookWarnWhat && t != "push" {
+				continue
+			}
+			require.Equal(c.t, t, m.T, "%+v", m)
+			return m
+		case <-time.After(10 * time.Second):
+			c.t.Fatalf("no %s line", t)
+		}
+		return hookMsg{}
 	}
-	return hookMsg{}
+}
+
+// quiet wants no line from the server within a moment.
+func (c *hookClient) quiet(why string) {
+	c.t.Helper()
+	select {
+	case m := <-c.lines:
+		c.t.Fatalf("%s: %+v", why, m)
+	case <-time.After(200 * time.Millisecond):
+	}
 }
 
 // say sends one of the session's lines and returns the server's answer.
@@ -147,7 +191,12 @@ func (ta *testApp) hookSession() *hookSession {
 	h := ta.a.hookHub()
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.cur
+	for _, s := range h.cur {
+		if s.coordinator() {
+			return s
+		}
+	}
+	return nil
 }
 
 // waitHook waits for the record to say state.
@@ -183,13 +232,13 @@ func TestEveryCoordinatorCommandFailsUntilHookedIn(t *testing.T) {
 		default:
 			continue
 		}
-		why, err := coordinatorOnly(ctx, st, common{verb: v, actor: name})
+		why, err := ta.a.coordinatorOnly(ctx, st, common{verb: v, actor: name})
 		require.NoError(t, err, v)
 		if hookExempt[v] {
 			assert.Empty(t, why, v)
 			continue
 		}
-		assert.Equal(t, sprint.HookFirst, why, v)
+		assert.True(t, strings.HasPrefix(why, sprint.HookFirst), "%s: %s", v, why)
 	}
 	for _, line := range []string{"add --stream s1 --count 2", "init --readers reader-c", "start", "hold s1-1 --reason r", "where", "view coordinator", "card s1-1", "inbox", "seat check", "seat push", "coordinator glenn --reason r"} {
 		ta.refusedFirst(line, sprint.HookFirst)
@@ -260,6 +309,9 @@ func TestAProvenHookRunsAndAPushBlocksUntilAcknowledged(t *testing.T) {
 	assert.Equal(t, ta.a.now().Add(sprint.HookEvery+sprint.HookAnswerBound).UTC(), r.Live.UTC())
 	r = c.say(hookMsg{T: "prove", Challenge: chal})
 	assert.Equal(t, "refused", r.T, "a challenge counts once")
+	// the sprint push alone is not enough: the bus push is the other half
+	ta.refusedFirst("add --stream s1 --count 2", sprint.HookBreadcrumb(sprint.HookRoleCoordinator, name, sprint.HookPushBus, ""))
+	ta.busProven(name, sprint.HookRoleCoordinator)
 	ta.lined(func() { ta.ok("add --stream s1 --count 2") })
 	ta.lined(func() { ta.ok("where") })
 
@@ -331,6 +383,7 @@ func TestADropIsGoneAndUnhookIsAway(t *testing.T) {
 	c := ta.hookOn(name)
 	c.next("hello")
 	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+	ta.busProven(name, sprint.HookRoleCoordinator)
 	ta.lined(func() { ta.ok("where") })
 	require.NoError(t, c.conn.Close())
 	rec := ta.waitHook(sprint.HookGone)
@@ -373,7 +426,7 @@ func TestADropIsGoneAndUnhookIsAway(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, writeHook(context.Background(), st, sprint.HookRecord{Name: name, Session: "old", State: sprint.HookHooked, Proven: ta.a.now(), Live: ta.a.now().Add(time.Hour)}))
 	})
-	ta.lined(func() { ta.ok("where") })
+	ta.lined(func() { ta.ok("where") }) // the bus push proven above holds within its bound
 	ta.a.hookServerStart(context.Background())
 	rec, _ = ta.hookRecord()
 	assert.Equal(t, sprint.HookGone, rec.State)
@@ -408,6 +461,7 @@ func TestTheHookFromTheCommandLine(t *testing.T) {
 	// coordinator command goes to the server
 	client := newApp(ta.a.getenv)
 	client.hookSock = ta.a.hookSock
+	client.busOpen, client.now = ta.a.busOpen, ta.a.now
 	run := func(line string) (int, string, string) {
 		var out, errb bytes.Buffer
 		code := client.run(strings.Fields(line), &out, &errb)
@@ -440,7 +494,7 @@ func TestTheHookFromTheCommandLine(t *testing.T) {
 
 	code, out, errs := run("add --stream s1 --count 2")
 	assert.Equal(t, 1, code, out+errs)
-	assert.Equal(t, sprint.HookFirst+"\n", errs)
+	assert.True(t, strings.HasPrefix(errs, sprint.HookFirst), errs)
 
 	// a second hook on this machine is refused: one Monitor holds the seat
 	code, _, errs = run("hook")
@@ -470,7 +524,7 @@ func TestTheHookFromTheCommandLine(t *testing.T) {
 	}
 	code, _, errs = run("add --stream s2 --count 1 --one")
 	assert.Equal(t, 1, code)
-	assert.Equal(t, sprint.HookFirst+"\n", errs)
+	assert.True(t, strings.HasPrefix(errs, sprint.HookFirst), errs)
 }
 
 // The record's Live is the outstanding challenge's bound, not the proof's: a
@@ -487,6 +541,7 @@ func TestARechallengeKeepsTheHookLiveUntilItsOwnBound(t *testing.T) {
 	c.next("hello")
 	provedAt := ta.a.now()
 	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+	ta.busProven(name, sprint.HookRoleCoordinator)
 	rec, _ := ta.hookRecord()
 	require.Equal(t, provedAt.Add(sprint.HookEvery+sprint.HookAnswerBound).UTC(), rec.Live.UTC())
 
@@ -503,6 +558,8 @@ func TestARechallengeKeepsTheHookLiveUntilItsOwnBound(t *testing.T) {
 	ta.step(sprint.HookAnswerBound - 15*time.Second)
 	require.True(t, ta.a.now().After(provedAt.Add(sprint.HookEvery+sprint.HookAnswerBound)),
 		"the proof's bound has passed")
+	// this test is the sprint push's bound: the bus push is proven on its own here
+	ta.busProven(name, sprint.HookRoleCoordinator)
 	ta.lined(func() { ta.ok("where") })
 	rec, _ = ta.hookRecord()
 	require.Equal(t, challengeAt.Add(sprint.HookAnswerBound).UTC(), rec.Live.UTC(),
@@ -573,6 +630,7 @@ func TestAPushIsSentOnlyOnceRecorded(t *testing.T) {
 	ta.waitHook(sprint.HookHooked)
 	r := c.say(hookMsg{T: "prove", Challenge: chal})
 	require.Equal(t, "ok", r.T, r.Why)
+	ta.busProven(name, sprint.HookRoleCoordinator)
 
 	// the record write fails for this look: it is delivered nothing, and the record
 	// names no unacknowledged push

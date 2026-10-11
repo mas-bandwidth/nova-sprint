@@ -92,6 +92,7 @@ func TestTheHookNamesTheServerItUsedAndWhereItCameFrom(t *testing.T) {
 	connected := func() string {
 		t.Helper()
 		client := newApp(ta.a.getenv)
+		client.busOpen = ta.a.busOpen // the twin's bus store: the hook arms its bus push there
 		t.Cleanup(client.close)
 		client.loginFile = func() (string, error) { return filepath.Join(dir, "login.json"), nil }
 		client.hookSock = func(nm string) (string, error) {

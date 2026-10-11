@@ -201,6 +201,10 @@ type app struct {
 	// lines, in place of the user's cache directory.
 	hooks    *hookHub
 	hookSock func(name string) (string, error)
+	// hk is this process's shared hook records (hook.go, hooker): the bus store
+	// NOVA_BUS_REDIS names, opened at the first gate that reads it and kept; the server's
+	// lane apps share their server's (servelanes.go), so a lane opens no store of its own.
+	hk       *hookerBox
 	served   serveTally
 	serveLog io.Writer
 	// forward sends verbs to the sprint's server named by NOVA_SPRINT_SERVER (the
@@ -360,6 +364,7 @@ func newApp(getenv func(string) string) *app {
 	a.readTip, a.readHeads = a.branchTip, a.branchHeads
 	a.bus = a.sendBus
 	a.busOpen = a.openBus
+	a.hk = &hookerBox{}
 	a.landRoot = defaultLandRoot
 	a.home = os.UserHomeDir
 	a.decideBackend = func(key string) decide.Backend { return decide.JevHTTP(key, decide.JevTimeout) }
@@ -727,7 +732,7 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 			return nil, err
 		}
 	}
-	if why, err := coordinatorOnly(ctx, st, c); err != nil || why != "" {
+	if why, err := a.coordinatorOnly(ctx, st, c); err != nil || why != "" {
 		if err == nil {
 			err = errors.New(why)
 		}

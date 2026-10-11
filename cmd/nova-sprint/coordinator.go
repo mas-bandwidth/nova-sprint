@@ -80,16 +80,17 @@ func needsActor(c common) string {
 // init names the coordinator (--coordinator, else the actor); every later
 // coordinator verb, init included, is that actor's alone. A store with no
 // coordinator takes init and teardown only. Every command run as the
-// coordinator waits for the seat's live, proven hook (hookedIn; hook.go): the
-// first init, on a store with no coordinator, only names the seat.
-func coordinatorOnly(ctx context.Context, st *store.Store, c common) (string, error) {
+// coordinator, and every worker verb a worker friend runs, waits for its caller's two
+// pushes live and proven (hookedIn; hook.go): the first init, on a store with no
+// coordinator, only names the seat.
+func (a *app) coordinatorOnly(ctx context.Context, st *store.Store, c common) (string, error) {
 	if verbClasses[c.verb] == classCoordinator {
 		why, err := coordinatorsAlone(ctx, st, c)
 		if err != nil || why != "" {
 			return why, err
 		}
 	}
-	return hookedIn(ctx, st, c)
+	return a.hookedIn(ctx, st, c)
 }
 
 // coordinatorsAlone is why the actor may not do what is the coordinator's

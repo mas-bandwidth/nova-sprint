@@ -180,7 +180,7 @@ func init() {
 		{"seat uninstall", "[--dir <dir>]", "seat uninstall --dir ./no-unit-here", (*app).cmdSeatUninstall},
 		{"seat push", "[--harness <name> --target <dir> [--session <id>]] [--dry-run]", "seat push", (*app).cmdSeatPush},
 		{"seat", "[--repair --reason <text>] | push [--harness <name> --target <dir> [--session <id>]]", "seat", (*app).cmdSeat},
-		{"hook", "[--prove <challenge> | --ack <id>]", "hook --ack 1", (*app).cmdHook},
+		{"hook", "[--prove <sprint>.<bus> | --ack <id>]", "hook --ack 1", (*app).cmdHook},
 		{"unhook", "", "unhook", (*app).cmdUnhook},
 		{"fsck seat", "[--pg <host:port or postgres:// URI>]", "fsck seat", (*app).cmdFsckSeat},
 		{"routes rest", "<provider|route> --reason <text> [--for <duration> | --until <RFC3339>]", "routes rest openrouter --reason 'balance $40, about 1.6 hours left' --for 2h", (*app).cmdRoutesRest},

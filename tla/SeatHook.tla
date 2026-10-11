@@ -88,15 +88,36 @@
 \*   "nostartrewrite" the next server's start leaves a dead server's record
 \*                   hooked: rec.state = "hooked" with no subscription, so no
 \*                   rewrite and the owner not told (RecordTrue)
+\*   "nobus"         the bus push is not wanted: the challenge reaches the session
+\*                   without its bus half, the gate does not read the shared
+\*                   record, and a bus subscription that fails does not end the
+\*                   hook: a command runs with no bus push (CommandSafe)
+\*
+\* The bus push (2026-10-11, the owner: "For a coordinator, this is hooking into
+\* to sprint push notifications and message bus push notifications."; docs/
+\* SPEC-SPRINT.md, "The two pushes"; the shared hook's own model is nova-tools'
+\* tla/Hook.tla once that module lands). The hook process holds a second
+\* subscription, to the coordinator's own bus stream (busSub), and arms the
+\* shared record hook:<name> in the bus store (bus = "armed"). Each challenge has
+\* a bus half the hook process sends to its own stream; the session sees the
+\* challenge only once that half comes back off the subscription (Read wants
+\* busSub), and the one answer proves both: the server takes its half, then the
+\* hook process records the bus push proven (bus = "proven", live until busLive,
+\* the proof's plus HookEvery + HookAnswerBound: HookSharedBound). A bus
+\* subscription that fails ends the hook (the hook process closes its server
+\* connection: BusDrop is a Drop). Unhook records the shared record unhooked
+\* (bus = "none"). The gate wants both (sprint.HookGateCall).
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Items, MaxChallenges, MaxTime, HookEvery, HookAnswerBound, Broken, Outside
 
 VARIABLES sub, proven, chal, chalAt, issued, answered, seen, reading, now, live,
-          delivered, acked, overdue, rec, ends, told, cmdBad
+          delivered, acked, overdue, rec, ends, told, cmdBad, busSub, bus, busLive
 
 vars == <<sub, proven, chal, chalAt, issued, answered, seen, reading, now, live,
-          delivered, acked, overdue, rec, ends, told, cmdBad>>
+          delivered, acked, overdue, rec, ends, told, cmdBad, busSub, bus, busLive>>
+
+busVars == <<busSub, bus, busLive>>
 
 Challenges == 1..MaxChallenges
 States == {"none", "hooked", "away", "gone"}
@@ -119,6 +140,9 @@ TypeOK ==
     /\ ends \in Nat
     /\ told \in Nat
     /\ cmdBad \in BOOLEAN
+    /\ busSub \in BOOLEAN
+    /\ bus \in {"none", "armed", "proven"}
+    /\ busLive \in 0..(MaxTime + HookEvery + HookAnswerBound)
 
 Init ==
     /\ sub = "none"
@@ -138,6 +162,9 @@ Init ==
     /\ ends = 0
     /\ told = 0
     /\ cmdBad = FALSE
+    /\ busSub = FALSE
+    /\ bus = "none"
+    /\ busLive = 0
 
 \* The pushes delivered and neither acknowledged nor within their bound.
 Blocking == overdue \ acked
@@ -163,6 +190,7 @@ Rule ==
     /\ answered \in seen
     /\ ~LateC
     /\ Blocking = {}
+    /\ busSub
 
 \* The gate as the code computes it, from the record and the clock
 \* (sprint.HookGate: HookLive, then the oldest push unacknowledged). HookLive
@@ -175,6 +203,9 @@ Gate ==
     /\ ("noproof" \in Broken \/ "nomiss" \in Broken \/ now <= live)
     /\ ("nomiss" \in Broken \/ ~LateC)
     /\ ("noack" \in Broken \/ Blocking = {})
+    /\ ("nobus" \in Broken \/ bus # "none")
+    /\ ("nobus" \in Broken \/ "noproof" \in Broken \/ bus = "proven")
+    /\ ("nobus" \in Broken \/ "noproof" \in Broken \/ "nomiss" \in Broken \/ now <= busLive)
 
 \* `nova-sprint hook`: a fresh subscription, unproven, its first challenge sent at
 \* once (chalAt = now). The session may or may not read what it streams. The
@@ -194,17 +225,21 @@ Hook ==
     /\ acked' = {}
     /\ overdue' = {}
     /\ rec' = [state |-> "hooked", proven |-> FALSE]
+    /\ busSub' = TRUE
+    /\ bus' = "armed"
+    /\ busLive' = 0
     /\ UNCHANGED <<now, seen, ends, told, cmdBad>>
 
 \* The session reads the challenge off its stream (the Monitor's event).
 Read ==
     /\ sub = "open"
     /\ reading
+    /\ ("nobus" \in Broken \/ busSub)
     /\ chal # 0
     /\ chal \notin seen
     /\ seen' = seen \cup {chal}
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, reading, now, live,
-                   delivered, acked, overdue, rec, ends, told, cmdBad>>
+                   delivered, acked, overdue, rec, ends, told, cmdBad, busVars>>
 
 \* "nostream": the challenge is somewhere besides the stream; the session that
 \* knows it need not have read anything.
@@ -224,8 +259,10 @@ Prove(v) ==
     /\ chalAt' = 0
     /\ live' = now + HookEvery + HookAnswerBound
     /\ rec' = [rec EXCEPT !.proven = TRUE]
+    /\ bus' = IF bus = "none" THEN "none" ELSE "proven"
+    /\ busLive' = IF bus = "none" THEN busLive ELSE now + HookEvery + HookAnswerBound
     /\ UNCHANGED <<sub, issued, seen, reading, now, delivered, acked, overdue,
-                   ends, told, cmdBad>>
+                   ends, told, cmdBad, busSub>>
 
 \* "nosub": a pong with no subscription (the old seat pong against a record).
 HandPong ==
@@ -236,7 +273,7 @@ HandPong ==
     /\ answered' = issued
     /\ rec' = [rec EXCEPT !.proven = TRUE]
     /\ UNCHANGED <<sub, chal, chalAt, issued, seen, reading, now, live, delivered,
-                   acked, overdue, ends, told, cmdBad>>
+                   acked, overdue, ends, told, cmdBad, busVars>>
 
 \* The cadence: the look re-challenges a proven hook once HookEvery has passed
 \* (now >= RechallengeDue); it sends the fresh challenge but does not move the
@@ -251,7 +288,7 @@ Rechallenge ==
     /\ chal' = issued + 1
     /\ chalAt' = now
     /\ UNCHANGED <<sub, proven, answered, seen, reading, now, live, delivered,
-                   acked, overdue, rec, ends, told, cmdBad>>
+                   acked, overdue, rec, ends, told, cmdBad, busVars>>
 
 \* The look moves the record's Live to the re-challenge's own bound, its send time
 \* plus HookAnswerBound, when that is later than the Live the record holds
@@ -266,7 +303,7 @@ ChallengeLive ==
     /\ live < chalAt + HookAnswerBound
     /\ live' = chalAt + HookAnswerBound
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
-                   now, delivered, acked, overdue, rec, ends, told, cmdBad>>
+                   now, delivered, acked, overdue, rec, ends, told, cmdBad, busVars>>
 
 \* A missed challenge unhooks: the record says gone and the owner is told
 \* ("nomiss": the hook stays).
@@ -282,8 +319,9 @@ Miss ==
     /\ rec' = [state |-> "gone", proven |-> FALSE]
     /\ ends' = ends + 1
     /\ told' = told + 1
+    /\ busSub' = FALSE
     /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
-                   cmdBad>>
+                   cmdBad, bus, busLive>>
 
 \* A judgment or push is delivered over the subscription, with its id.
 Deliver(i) ==
@@ -291,7 +329,7 @@ Deliver(i) ==
     /\ i \notin delivered
     /\ delivered' = delivered \cup {i}
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
-                   now, live, acked, overdue, rec, ends, told, cmdBad>>
+                   now, live, acked, overdue, rec, ends, told, cmdBad, busVars>>
 
 \* hook --ack <id>, over the subscription, by a session that read it.
 Ack(i) ==
@@ -300,14 +338,14 @@ Ack(i) ==
     /\ i \in delivered \ acked
     /\ acked' = acked \cup {i}
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
-                   now, live, delivered, overdue, rec, ends, told, cmdBad>>
+                   now, live, delivered, overdue, rec, ends, told, cmdBad, busVars>>
 
 \* A delivered push passes its ack bound.
 Overdue(i) ==
     /\ i \in delivered \ (acked \cup overdue)
     /\ overdue' = overdue \cup {i}
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
-                   now, live, delivered, acked, rec, ends, told, cmdBad>>
+                   now, live, delivered, acked, rec, ends, told, cmdBad, busVars>>
 
 \* A coordinator command: it runs only through the gate; the ghost marks a run
 \* against the rule.
@@ -315,7 +353,7 @@ Cmd ==
     /\ Gate
     /\ cmdBad' = (cmdBad \/ ~Rule)
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
-                   now, live, delivered, acked, overdue, rec, ends, told>>
+                   now, live, delivered, acked, overdue, rec, ends, told, busVars>>
 
 \* The outside: the session stops reading (its Monitor died, or it does not
 \* read its events) while the hook process stays connected.
@@ -324,7 +362,7 @@ StopReading ==
     /\ reading
     /\ reading' = FALSE
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, now, live,
-                   delivered, acked, overdue, rec, ends, told, cmdBad>>
+                   delivered, acked, overdue, rec, ends, told, cmdBad, busVars>>
 
 \* The connection drops: recorded gone at once and told ("silentdrop": neither).
 Drop ==
@@ -339,8 +377,30 @@ Drop ==
               ELSE [state |-> "gone", proven |-> FALSE]
     /\ ends' = ends + 1
     /\ told' = IF "silentdrop" \in Broken THEN told ELSE told + 1
+    /\ busSub' = FALSE
     /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
-                   cmdBad>>
+                   cmdBad, bus, busLive>>
+
+\* The bus subscription fails (three reads in a row): the hook process closes its
+\* server connection, which the server records as a drop ("nobus": the hook goes
+\* on without its bus subscription).
+BusDrop ==
+    /\ Outside
+    /\ busSub
+    /\ busSub' = FALSE
+    /\ IF "nobus" \in Broken
+       THEN UNCHANGED <<sub, proven, chal, chalAt, live, rec, ends, told>>
+       ELSE /\ sub = "open"
+            /\ sub' = "none"
+            /\ proven' = FALSE
+            /\ chal' = 0
+            /\ chalAt' = 0
+            /\ live' = 0
+            /\ rec' = [state |-> "gone", proven |-> FALSE]
+            /\ ends' = ends + 1
+            /\ told' = told + 1
+    /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
+                   cmdBad, bus, busLive>>
 
 \* nova-sprint unhook: recorded away and told.
 Unhook ==
@@ -354,6 +414,9 @@ Unhook ==
     /\ rec' = [state |-> "away", proven |-> FALSE]
     /\ ends' = ends + 1
     /\ told' = told + 1
+    /\ busSub' = FALSE
+    /\ bus' = "none"
+    /\ busLive' = 0
     /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
                    cmdBad>>
 
@@ -373,8 +436,9 @@ ServerStart ==
               ELSE [state |-> "gone", proven |-> FALSE]
     /\ ends' = ends + 1
     /\ told' = IF "nostartrewrite" \in Broken THEN told ELSE told + 1
+    /\ busSub' = FALSE
     /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
-                   cmdBad>>
+                   cmdBad, bus, busLive>>
 
 \* The look's clock: one step a turn of the look, so TLC chooses when the
 \* re-challenge goes and how late a look has run.
@@ -382,13 +446,13 @@ Tick ==
     /\ now < MaxTime
     /\ now' = now + 1
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading, live,
-                   delivered, acked, overdue, rec, ends, told, cmdBad>>
+                   delivered, acked, overdue, rec, ends, told, cmdBad, busVars>>
 
 Next ==
     \/ Hook \/ Read \/ \E v \in Challenges : Prove(v) \/ HandPong
     \/ Rechallenge \/ ChallengeLive \/ Miss
     \/ \E i \in Items : Deliver(i) \/ Ack(i) \/ Overdue(i)
-    \/ Cmd \/ StopReading \/ Drop \/ Unhook \/ ServerStart \/ Tick
+    \/ Cmd \/ StopReading \/ Drop \/ BusDrop \/ Unhook \/ ServerStart \/ Tick
 
 Spec == Init /\ [][Next]_vars
         /\ WF_vars(Read) /\ WF_vars(\E v \in Challenges : Prove(v))
@@ -406,6 +470,10 @@ ProofMeansRead == proven => answered \in seen
 
 \* A proof stands only on a live subscription.
 ProvenIsSubscribed == proven => sub = "open"
+
+\* The hook's server subscription is open only while its bus subscription is:
+\* one hook, both pushes.
+BothOrNeither == sub = "open" => busSub
 
 \* The record the gate reads says hooked only while the subscription is open,
 \* and every end of a subscription is told to the owner.
