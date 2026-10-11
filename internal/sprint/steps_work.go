@@ -1471,6 +1471,12 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 	// from every stream alike, never one stream's lowest scores first. Its reads are taken
 	// before its work, a read being at reader priority (priority.go).
 	ready := takeTurns(s.Fleet.Cell(r.As, Ready), slices.Index(s.Members(), r.As))
+	if IsFriendRow(r.As) {
+		// a friend's ready cards are taken in the one order the deal fills her dealt set in
+		// (friendDealtOrder; docs/SPEC-SPRINT.md, rank and take): the ladder (priority), the
+		// stream turns, then work order (rank) — never the order they were dealt in
+		ready = friendDealtOrder(ready, func(c *Card) string { return c.F("stream") }, s.friendWorkRank, nil)
+	}
 	// the providers' concurrency budgets, held at the one writer: the cards this take
 	// moves to working, by provider (rate_budget.go, takeBudgetWhy)
 	planned := map[string]int{}
