@@ -625,29 +625,32 @@ func (s *Snapshot) servedRoute(tier, member, name string, drawing bool) (Route, 
 // backoffWait is the wait of a ready card of tier while a rate limit backs the tier off:
 // at least one enabled route of the tier backs off (a rest of cause RestRateBackoff the
 // dealing step settled, withRests) and no route of the tier can be drawn for any of
-// members (each other route rests for any cause, none of members can launch it, or its
-// provider is at its concurrency budget). The card is waiting out a stall that ends by
-// itself, never stalled work and never a judgment (held.go, rebalance.go;
-// tla/RateBackoff.tla, BackoffEnds). "" when no route of the tier backs off or one can be
-// drawn.
+// members. The card is waiting out a stall that ends by itself, never stalled work and
+// never a judgment (held.go, rebalance.go; tla/RateBackoff.tla, BackoffEnds). "" when no
+// route of the tier backs off or one can be drawn.
+//
+// Drawable is decided with the deal's own view, never a looser one (docs/SPEC-SPRINT.md
+// section 5, the deal): the walk is the tier's route array (tierArray), as drawRoute's is,
+// so an enabled route the configured array leaves out is never counted; a route counts
+// only when servedRoute serves it for a draw to one of members, the draw's own test (not
+// resting for any cause, the member launches it, its provider has a slot); and the
+// provider budgets are the dealing step's (withBudgets) when the caller holds none, since
+// the no-stall rule and the rebalance test a snapshot the deal never budgeted. A nil plan
+// reads as "no provider is full", which once counted a full provider as drawable and raised
+// NStalled on a card the deal had just refused (rate-limit-never-fails-the-card-v2).
 func (s *Snapshot) backoffWait(tier string, members []string) string {
+	if s.budgets == nil {
+		s = s.withBudgets() // a copy, its settled rests kept
+	}
 	var backs []string
 	drawable := false
-	for _, r := range s.Routes {
-		if r.Tier != tier || !r.Enabled {
-			continue
-		}
-		if rest, ok := s.resting(r.Name); ok {
-			if rest.Cause == RestRateBackoff {
-				backs = append(backs, r.Name+" until "+rest.UntilSaid())
-			}
-			continue
-		}
-		if full, _ := s.budgets.full(r.Provider); full {
+	for _, name := range s.tierArray(tier) {
+		if rest, ok := s.resting(name); ok && rest.Cause == RestRateBackoff && s.enabledRoute(tier, name) {
+			backs = append(backs, name+" until "+rest.UntilSaid())
 			continue
 		}
 		for _, m := range members {
-			if s.Launches(m, r) {
+			if _, ok := s.servedRoute(tier, m, name, true); ok {
 				drawable = true
 				break
 			}
@@ -657,6 +660,17 @@ func (s *Snapshot) backoffWait(tier string, members []string) string {
 		return ""
 	}
 	return "waits for the rate-limit backoff on " + strings.Join(backs, ", ") + ": the deal resumes by itself"
+}
+
+// enabledRoute says name is an enabled route of tier (a configured tier array may name a
+// route since disabled or moved; the deal never draws one, backoffWait never waits on one).
+func (s *Snapshot) enabledRoute(tier, name string) bool {
+	for _, r := range s.Routes {
+		if r.Name == name && r.Tier == tier && r.Enabled {
+			return true
+		}
+	}
+	return false
 }
 
 // unservedWhy names the routes of tier no deal to member draws, for the tier's judgment

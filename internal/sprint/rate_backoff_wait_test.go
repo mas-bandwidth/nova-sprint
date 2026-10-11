@@ -64,14 +64,21 @@ func TestAnOkFinishResetsTheBackoffAndAFailedOneDoesNot(t *testing.T) {
 // for its 5xxs (a 3-in-10 rest), so a deal draws pro-a.
 func twoProRoutes(t *testing.T) *world {
 	t.Helper()
+	w := twoProRoutesServing(t)
+	rest := RouteRest{At: w.s.Now, Until: w.s.Now.Add(RouteRestFor), Cards: []string{"x1", "x2", "x3"}, Cause: RestProvider}
+	w.s.Fleet.SetProps(map[string]string{PropRule3Rest("deepseek"): "pro-b " + rest.value()})
+	return w
+}
+
+// twoProRoutesServing is twoProRoutes with both routes serving: nothing rests.
+func twoProRoutesServing(t *testing.T) *world {
+	t.Helper()
 	w := setup(t, 1)
 	w.s.Routes = []Route{
 		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "inception", Model: "mercury-3", Enabled: true, Deadline: 600},
 		{Name: "pro-b", Tier: cardhdr.RoutePro, Provider: "deepseek", Model: "v4", Enabled: true, Deadline: 600},
 	}
 	w.s.Tiers = map[string][]string{cardhdr.RoutePro: {"pro-a", "pro-b"}}
-	rest := RouteRest{At: w.s.Now, Until: w.s.Now.Add(RouteRestFor), Cards: []string{"x1", "x2", "x3"}, Cause: RestProvider}
-	w.s.Fleet.SetProps(map[string]string{PropRule3Rest("deepseek"): "pro-b " + rest.value()})
 	return w
 }
 
@@ -91,6 +98,54 @@ func TestAPartlyBackedOffTierIsAWaitNeverAStall(t *testing.T) {
 	assert.Contains(t, hd.Why, "waits for the rate-limit backoff on pro-a", "%s", hd)
 	_, why, _ := w.s.routeServed(w.s.Work.Card("s1-1"), nil, "")
 	assert.Empty(t, why, "no no-route judgment: the backed-off route is not unserved")
+}
+
+// backoffWaitAsserts are the three asserts of a tier with one route backing off and the other
+// undrawable for a reason only the deal's own view knows: the ready card s1-1 is never
+// stalled work (no NStalled), its holder names the backoff, and the rebalance moves a
+// friend's queued pro card onto no machine (no machine's tier has a route to draw).
+func backoffWaitAsserts(t *testing.T, w *world) {
+	t.Helper()
+	require.Equal(t, Ready, w.state("s1-1"))
+	for _, f := range Unheld(running(w), w.s.Now) {
+		assert.NotEqual(t, "s1-1", f.Subject, "a backoff is never stalled work: %s", f.Why)
+	}
+	hd := Holder(running(w), w.s.Now, "s1-1")
+	assert.Contains(t, hd.Why, "waits for the rate-limit backoff on pro-a", "%s", hd)
+	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RoutePro}}
+	rbPlace(w, "s1-8", cardhdr.RoutePro, FriendRow("amy"), Working)
+	rbPlace(w, "s1-9", cardhdr.RoutePro, FriendRow("amy"), Ready)
+	assert.Empty(t, rebalanced(Rebalance(w.s, []FriendSeat{amy}, "machine")), "no machine has a pro route to draw")
+}
+
+// A tier whose one route backs off from a rate limit while the other's provider is at its
+// concurrency budget has no route a deal can draw, and the no-stall rule and the rebalance
+// decide with the deal's own view (its budgets): the ready card waits out the backoff, never
+// stalled work, and the rebalance moves nothing onto a machine with no route to draw
+// (tla/RateBackoff.tla, BackoffEnds; docs/SPEC-SPRINT.md section 5). At PR #86's head both
+// read a nil budget plan as "no provider is full" and raised NStalled.
+func TestABackedOffTierWithTheOtherProviderFullIsAWaitNeverAStall(t *testing.T) {
+	t.Parallel()
+	w := twoProRoutesServing(t)
+	w.s.Fleet.SetProps(map[string]string{PropProviderConcurrency("deepseek"): "1"})
+	w.s.Fleet.Put(&Card{ID: "d1", Row: "m2", Col: Working, Fields: map[string]string{"kind": "work", FieldRoute: "pro-b", FieldModel: "deepseek/v4"}})
+	_, wc := takeAndRefuse(t, w)
+	require.Equal(t, "pro-a", w.s.Fleet.Card(wc).F(FieldRoute), "the deal drew the route with room")
+	backoffWaitAsserts(t, w)
+}
+
+// A tier whose one route backs off from a rate limit while the other is enabled but left out
+// of the tier's configured route array (tierArray) has no route a deal can draw: the draw
+// walks the array, so the no-stall rule and the rebalance walk it too (tla/RateBackoff.tla,
+// BackoffEnds; docs/SPEC-SPRINT.md section 5). At PR #86's head both walked every enabled
+// route of the tier and counted the one never drawn as drawable, raising NStalled.
+func TestABackedOffTierWithTheOtherRouteOutOfTheArrayIsAWaitNeverAStall(t *testing.T) {
+	t.Parallel()
+	w := twoProRoutesServing(t)
+	w.s.Tiers = map[string][]string{cardhdr.RoutePro: {"pro-a"}}
+	_, wc := takeAndRefuse(t, w)
+	require.Equal(t, "pro-a", w.s.Fleet.Card(wc).F(FieldRoute), "the deal drew the array's one route")
+	backoffWaitAsserts(t, w)
 }
 
 // The rebalance never moves a friend's queued card onto a machine whose tier's every route
