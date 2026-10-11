@@ -983,6 +983,11 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-stopreturn-clear-cases" :release "v1.2.12" :status "planned"
+   :title "StopReturn's clear is the code's, with its two cases"
+   :text "StopReturn.tla's Clear now does what internal/sprint/store/clear.go does: it stops the machine itself (the same effect as Stop), then refuses while a live lease (a working card) is out and otherwise advances to a blank epoch. The invariant ClearNeverWithALiveLease says clear never advances with a live lease, and ClearEnabled says clear is enabled once no lease is live, from running or stopped. Two cases join group stopreturn: MCStopReturnClear (with ClearEnabled, so a clear is reachable) passes, and MCStopReturnBrokenClearBlocked (the \"clearblocked\" reversed witness, which drops the live-lease guard) fails ClearNeverWithALiveLease. Model only; no product change."
+   :origin "v1.2.12 inventory item T13, first of three cards; drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step

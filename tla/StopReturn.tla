@@ -38,18 +38,18 @@
 (*                 beaten and whose job the beat shows gone still stays    *)
 (*                 owed until the owner's own receipt, so START waits on   *)
 (*                 it (AbsentJobSettles fails);                            *)
-(*  "clearblocked"    - clear reads the debt record, not the live state,   *)
-(*                 and refuses while any debt remains even when every      *)
-(*                 lease is returned, so a stop-returned lease blocks the  *)
-(*                 epoch advance (ClearEnabled fails).                     *)
+(*  "clearblocked"    - clear drops the live-lease guard and advances     *)
+(*                 while a card is still working, so a clear goes through  *)
+(*                 with a live lease (ClearNeverWithALiveLease fails).     *)
 (*                                                                         *)
-(* Clear (docs/SPEC-SPRINT.md section 13, the blank-slate clear): once the *)
-(* machine is STOPPED and no card is still working (every lease returned   *)
-(* or its card no longer working), clear advances to a blank epoch: every  *)
-(* card ready at generation 1, no debt, no cancelled child remembered, no  *)
-(* beat or beaten owner carried. A clear that still owes a debt never      *)
-(* refuses while a returned card waits for its settle: it reads the live   *)
-(* state (col), not the debt record.                                       *)
+(* Clear (docs/SPEC-SPRINT.md section 13, the blank-slate clear, as the    *)
+(* code does it in internal/sprint/store/clear.go): clear stops the        *)
+(* machine itself (the same effect as Stop), then refuses while a live     *)
+(* lease (a working card) is still out and otherwise advances to a blank   *)
+(* epoch: every card ready at generation 1, no debt, no cancelled child    *)
+(* remembered, no beat or beaten owner carried. It reads the live state    *)
+(* (col), not the debt record, so a stop-returned lease that has not       *)
+(* settled never blocks it.                                                *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -207,14 +207,17 @@ Start ==
     /\ beaten' = {}
     /\ UNCHANGED <<row, col, gen, sfg, child, old, beat>>
 
-\* clear: the blank-slate advance. The fixed guard reads the live state (no
-\* card working); the reversed witness "clearblocked" reads the debt record
-\* instead and blocks on a returned lease that has not settled yet.
+\* clear: the blank-slate advance, as the code does it: it stops the machine
+\* itself (the same effect as Stop), then refuses while a live lease (a working
+\* card) is out and advances otherwise. The fixed guard reads the live state (no
+\* card working); the reversed witness "clearblocked" drops that guard and
+\* advances with a working card still out (ClearNeverWithALiveLease fails).
 Clear ==
-    /\ mach = "stop"
+    /\ mach \in {"run", "stop"}
     /\ IF Broken = "clearblocked"
-         THEN debt = {}
+         THEN TRUE
          ELSE \A c \in Cards : col[c] = "ready"
+    /\ mach' = "stop"
     /\ col' = [c \in Cards |-> "ready"]
     /\ gen' = [c \in Cards |-> 1]
     /\ sfg' = [c \in Cards |-> 0]
@@ -223,7 +226,7 @@ Clear ==
     /\ old' = {}
     /\ beat' = [o \in Owners |-> {}]
     /\ beaten' = {}
-    /\ UNCHANGED <<mach, row>>
+    /\ UNCHANGED <<row>>
 
 Next ==
     \/ Stop \/ Start \/ Settle \/ SettleByBeat \/ Clear
@@ -262,9 +265,14 @@ AbsentJobSettles ==
          /\ col[d.id] = "working" /\ gen[d.id] = d.gen /\ d.id \notin old /\ d.gen < MaxGen)
             ~> (d \notin debt)
 
-(* A stop-returned lease never blocks clear: once the machine is stopped  *)
-(* and no card is still working, clear is enabled (the epoch advances, a  *)
-(* returned card's unsettled debt notwithstanding).                       *)
+(* A stop-returned lease never blocks clear: once no card is still working *)
+(* (no live lease), clear is enabled, from running or stopped (the code    *)
+(* stops the machine itself), so a clear is reachable without a prior STOP.*)
 ClearEnabled ==
-    (mach = "stop" /\ \A c \in Cards : col[c] = "ready") => ENABLED Clear
+    (\A c \in Cards : col[c] = "ready") => ENABLED Clear
+
+(* Safety: clear never advances while a live lease (a working card) is     *)
+(* out; the reversed witness "clearblocked" drops the guard and fails it.  *)
+ClearNeverWithALiveLease ==
+    (\E c \in Cards : col[c] = "working") => ~ENABLED Clear
 =============================================================================

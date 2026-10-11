@@ -25,7 +25,8 @@ type ClearResult struct {
 }
 
 // Clear stops the sprint and clears all work in it: it sets the machine
-// STOPPED, then refuses only live work/read leases (SPEC-SPRINT section 14).
+// STOPPED, then refuses only live work/read leases (SPEC-SPRINT section 14;
+// tla/StopReturn.tla Clear).
 // It finishes or abandons the old epoch's pending operation, then advances
 // the epoch once. All sprint state is keyed by epoch, so the new epoch starts
 // empty without restoring any of the old shape (the blank-slate clear design).
