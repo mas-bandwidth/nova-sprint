@@ -5,6 +5,7 @@ import (
 	"maps"
 	"path"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -465,6 +466,83 @@ func friendLoad(s *Snapshot, name string) int {
 	return s.Fleet.Count(row, Ready) + s.Fleet.Count(row, Working)
 }
 
+// friendDealtOrder is the one order a friend's dealt set is filled and taken in
+// (docs/SPEC-SPRINT.md, rank and take): the priority ladder (rankOf) highest first; within a
+// level the stream turns (one card of each stream in turn from the round's index, the streams
+// in name order when it is nil), within a stream in work order (SortCards: score then id, so
+// a rank --first card leads its stream). streamOf names the stream a card belongs to: a
+// primary's own row, a friend's work card's "stream" field. The friend deal offers its
+// primaries in this order (TickDeal, friendDealByLadder) and a lane of hers takes her ready
+// cards in it too (takeOne, FriendLaneOrder), so the lane take is the deal's order and never
+// the order the cards happened to be dealt in.
+func friendDealtOrder(cards []*Card, streamOf func(*Card) string, rankOf func(*Card) int, r *round) []*Card {
+	out := streamTurnsBy(cards, streamOf, r)
+	sort.SliceStable(out, func(i, j int) bool { return rankOf(out[i]) < rankOf(out[j]) })
+	return out
+}
+
+// FriendLaneOrder is the order a lane of a friend takes her dealt set in: the same order the
+// deal fills it (friendDealtOrder), over a work card's own stream field, with the streams in
+// name order (no deal round): the ladder, the stream turns, then work order within a stream.
+// It is what laneLine prints the held card's rank position in (lanetake.go).
+func FriendLaneOrder(cards []*Card) []*Card {
+	return friendDealtOrder(cards, func(c *Card) string { return c.F("stream") }, cardRank, nil)
+}
+
+// friendWorkRank is a friend's dealt work card's place on the ladder: a work card's own level
+// is written at its deal (priorityOnWork) and may be stale after a priority change, so its
+// primary's current level is read (the lane take's order; takeOne).
+func (s *Snapshot) friendWorkRank(c *Card) int {
+	if c.F("kind") == "work" && s != nil && s.Work != nil {
+		if pr := s.Work.Card(c.F("primary")); pr != nil {
+			return cardRank(pr)
+		}
+	}
+	return cardRank(c)
+}
+
+// streamTurnsBy is the cards in stream turns over the stream streamOf names for a card (a
+// primary's row, a friend's work card's stream field), as streamTurns (round.go) is over
+// c.Row: one card of each stream in turn from the round's index (name order when it is nil),
+// within a stream in work order (SortCards), a stream with no card left skipped; a card of a
+// stream the round does not name takes its turn after them, its streams in name order.
+func streamTurnsBy(cards []*Card, streamOf func(*Card) string, r *round) []*Card {
+	by := map[string][]*Card{}
+	known := map[string]bool{}
+	var order []string
+	if r != nil {
+		n := len(r.order)
+		for i := 0; i < n; i++ {
+			st := r.order[(r.start()+i)%n]
+			order = append(order, st)
+			known[st] = true
+		}
+	}
+	var extra []string
+	for _, c := range cards {
+		st := streamOf(c)
+		if !known[st] {
+			known[st] = true
+			extra = append(extra, st)
+		}
+		by[st] = append(by[st], c)
+	}
+	slices.Sort(extra)
+	order = append(order, extra...)
+	for _, st := range order {
+		SortCards(by[st])
+	}
+	out := make([]*Card, 0, len(cards))
+	for turn := 0; len(out) < len(cards); turn++ {
+		for _, st := range order {
+			if turn < len(by[st]) {
+				out = append(out, by[st][turn])
+			}
+		}
+	}
+	return out
+}
+
 // friendDealPass is the tick's friend deal (TickDeal), run before the machines' deal: friends
 // first (docs/SPEC-SPRINT.md, WHO preference; tla/WhoPreference.tla checks the selection,
 // not the room). It offers every ready card given (in the order given, the deal's stream
@@ -505,6 +583,10 @@ func friendLoad(s *Snapshot, name string) int {
 // passes (a pass of the cards above reads, then the reads, then the rest) reclaims once, in
 // its last pass, after the reads.
 func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool) (p Plan, dealt, dealtWorking map[string]int) {
+	// the one order her dealt set is filled in (friendDealtOrder; docs/SPEC-SPRINT.md, rank
+	// and take): the ladder, the deal's stream turns, then work order (rank) — the same order
+	// a lane of hers takes in (takeOne, FriendLaneOrder)
+	cards = friendDealtOrder(cards, rowOf, cardRank, streamRound(s, PropStreamIndex))
 	free, lanes, seat := map[string]int{}, map[string]int{}, map[string]FriendSeat{}
 	dealt, dealtWorking = map[string]int{}, map[string]int{}
 	var up []string

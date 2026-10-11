@@ -1618,4 +1618,26 @@
     this."
    :origin "this card: take-by-id-starts-the-card-as-a-lane-take-does.w2, from the owner,
     2026-10-11 ~11:15-11:40 AM ET (\"How can we distribute work to friends, if you can't even
-    distribute it to yourself?\"); code read at nova-sprint main 1405d26")))
+    distribute it to yourself?\"); code read at nova-sprint main 1405d26")
+
+  (fix "a-lane-take-honours-the-rank" :release "v1.2.14" :status "planned"
+   :title "A lane take honours the rank"
+   :text "rank <id> --first moves a card to the front of its stream's line and the deal fills a
+    friend's dealt set in that order (the priority ladder, then the stream turns, then work order
+    within a stream), but take --as <friend> --lane <n> drew the lane's next ready card in
+    takeTurns order, which orders by stream name and inside a stream by score and ignores the
+    priority ladder, so a critical card dealt last was passed over and a card a later stream's
+    lane take never saw the deal's own order. A new friendDealtOrder is the one order a friend's
+    dealt set is filled and taken in (the ladder by a card's rank, then the stream turns over a
+    card's stream field, then SortCards within a stream), used by the friend deal pass
+    (friendDealPass) and by a friend's take (takeOne, through s.friendWorkRank, which reads the
+    primary's current level so a priority change after the deal is honoured too); FriendLaneOrder
+    is its exported face and the LANE line prints the held card's position in the deal's order.
+    The member take is unchanged. Reproduced on BASE: a critical card dealt last, a rank --first
+    card passed over by a critical one, and a critical card of a later stream all sat while an
+    earlier normal card was taken."
+   :origin "this card: a-lane-take-honours-the-rank.w4; the owner driving the coordinator's own
+    friend lane by hand from the seat on 2026-10-11 ~11:15-11:40 AM ET (\"How can we distribute
+    work to friends, if you can't even distribute it to yourself?\" / \"Make these fixes
+    critical.\"); five ranked-first cards sat while lanes started lower-ranked ones; code read at
+    nova-sprint main 1405d26")))
