@@ -512,9 +512,10 @@
     'mirror <name> <path|->' line per repository from the same candidates FindBenchMirror tries, in
     its order, and parseProbe reads them into MemberProbe.Mirrors. Under doctor --preflight every
     member and repository with no mirror is one FAIL (area preflight, check mirrors, subject
-    <member>/<repo>, remedy the fleet play that makes the mirror), so the switch is refused; without
-    --preflight the same fact is one WARN per member in member-env. docs/SPEC-SPRINT.md (doctor)
-    states the row."
+     <member>/<repo>, remedy the loops play nova-tools' fleet/loops.yml, whose mirror-refresh row
+     keeps ~/nova-bench/mirror/<repo>.git fresh), so the switch is refused; without --preflight the
+     same fact is one WARN per member in member-env; a probe that did not measure mirrors (nil
+     MemberProbe.Mirrors) judges none. docs/SPEC-SPRINT.md (doctor) states the row."
    :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 20; on 2026-10-11 the coordinator's own machine refused nova-sprint cards with \"no bench mirror for <repo>\"")
   (fix "brief-check-runs-the-add-checks-without-a-write" :release "v1.2.14" :status "planned"
    :title "brief check runs every add check without a write"

@@ -6076,7 +6076,8 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   members' probes and the sprint's outstanding cards: for every repository the not-yet-landed
   cards land on (PendingRepos, the name a member names its mirror) a member whose probe found no
   bench mirror for it is one FAIL row (area preflight, check mirrors, subject <member>/<repo>),
-  whose remedy is the fleet play that makes the mirror, so a switch or adopt is refused while a
+  whose remedy is the loops play that names it, nova-tools' fleet/loops.yml, whose mirror-refresh
+  row keeps nova-bench/mirror/<repo>.git fresh, so a switch or adopt is refused while a
   bench that will be dealt those cards cannot stage them; without --preflight the same fact is
   one WARN per member in member-env. The member check is filled in when the preflight read the
   members' probes and the sprint's facts beside them (area preflight, check members, its subject

@@ -36,11 +36,12 @@ const (
 )
 
 // mirrorRemedy is the bench play that makes a member's local mirror of a repository: the
-// fleet play that keeps nova-bench/mirror/<name>.git on every bench (nova-tools fleet/,
-// the play that names nova-bench/mirror). Each repository the sprint's outstanding cards
-// land on must have one before a switch or adopt.
+// loops play, nova-tools' fleet/loops.yml, whose mirror-refresh row keeps
+// nova-bench/mirror/<name>.git fresh on every bench (the play that names the mirror;
+// found with grep -rn 'nova-bench/mirror' fleet in nova-tools). Each repository the
+// sprint's outstanding cards land on must have one before a switch or adopt.
 func mirrorRemedy(member string) string {
-	return "make -C fleet mirror HOST=" + member
+	return "ansible-playbook fleet/loops.yml -l " + member
 }
 
 // PendingRepos is the distinct repositories the sprint's not-yet-landed work cards land
@@ -171,16 +172,17 @@ func DoctorPreflight(in PreflightInput) []DoctorCheck {
 // (PendingRepos), a member whose probe found no bench mirror for it is one FAIL row
 // (area preflight, check mirrors, subject <member>/<repo>), so a switch or adopt is
 // refused while a bench that will be dealt those cards cannot stage them. A member the
-// probe did not reach or that a cut probe did not measure is left to the member check's
-// own WARN, never read as every mirror missing; a set with every mirror in place is one
-// OK row. The card is doctor-preflight-checks-bench-mirrors.
+// probe did not reach, that a cut probe did not measure, or whose probe did not measure
+// mirrors at all (nil Mirrors) is left to the member check's own WARN, never read as every
+// mirror missing; a set with every mirror in place is one OK row. The card is
+// doctor-preflight-checks-bench-mirrors.
 func preflightMirrorRows(in PreflightInput) []DoctorCheck {
 	repos := append([]string{}, in.Repos...)
 	sort.Strings(repos)
 	var out []DoctorCheck
 	for _, m := range in.Members {
 		p := m.Probe
-		if !p.Reached || !p.Complete {
+		if !p.Reached || !p.Complete || p.Mirrors == nil {
 			continue
 		}
 		subject := cmp.Or(p.Member, p.Host, "-")

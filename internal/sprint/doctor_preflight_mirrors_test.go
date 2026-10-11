@@ -97,3 +97,29 @@ func TestDoctorMemberEnvWarnsOnAMissingMirror(t *testing.T) {
 	assert.Equal(t, 1, warns, lines(cs))
 	assert.Empty(t, failsOn(cs, CheckMemberEnv), "a missing mirror is never a FAIL in member-env: %s", lines(cs))
 }
+
+// mirrorRemedy names the bench play that makes the mirror, so the FAIL and the WARN send a
+// reader to it rather than to a target this tree does not carry (docs/SPEC-SPRINT.md,
+// doctor: the preflight; the card doctor-preflight-checks-bench-mirrors, THE TASK item 3:
+// name the play found in nova-tools fleet/, do not guess).
+func TestMirrorRemedyNamesTheFleetPlay(t *testing.T) {
+	t.Parallel()
+	got := mirrorRemedy("b1")
+	assert.Contains(t, got, "fleet/loops.yml", got)
+	assert.Contains(t, got, "b1", got)
+	assert.NotContains(t, got, "mirror HOST=", "no guessed make target: %s", got)
+}
+
+// a reached, complete probe that did not measure mirrors (nil Mirrors) judges none: the
+// member check's own WARN says so, never every mirror missing.
+func TestPreflightMirrorRowsSkipAnUnmeasuredProbe(t *testing.T) {
+	t.Parallel()
+	w := doctorWorld(t)
+	in := PreflightInput{Version: "v1.2.14", Repos: []string{"nova-sprint"}}
+	p := fullProbe("m1")
+	p.Mirrors = nil
+	in.Probes = map[string]MemberProbe{"m1": p}
+	in.Members = PreflightMembers(w.s, in.Probes)
+	cs := preflightMirrorRows(in)
+	assert.Empty(t, failsOn(cs, CheckPreflightMirrors), lines(cs))
+}
