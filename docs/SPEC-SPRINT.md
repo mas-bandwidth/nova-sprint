@@ -6988,6 +6988,26 @@ stream costs, and `stats_since=` on the sum, are owed in cmd/nova-sprint/reads.g
 `total_cost`, `cost_by_tier`, `work_cost` and `read_cost` in `where --json` stay the
 epoch's.
 
+### An environment exit
+
+A child that ends 134 or 137, or that leaves no result at all (`why=no-result`, whatever its
+line), did not judge the card: it is an environment event of the member. The opencode harness
+aborts under the landlock sandbox with `Error: Unknown: ChildProcess.spawn (...)` and exit
+134/137, and the card comes back `no verdict` or `not-done`; the finish records it on the
+attempt as `ended=environment exit=<n>` (never failed, never broken), leaves the card in ready
+at the same attempt number, and spends none of its reader slots: the member may read the card
+again. The finish keeps the last `HarnessTailLines` (40) of the harness output on the card, so
+the cause is on the card a reader reads (`sprint.EnvExit`, `sprint.EnvironmentExit`,
+`sprint.HarnessTail`, internal/sprint/attempts.go). The doctor reads the attempt records keyed
+by the epoch and names, under `member-env`, each member whose environment exits are over the
+rate over the last hour's children: over `EnvExitFailPct` (10%) with at least `EnvExitMinN`
+(10) children is a FAIL, from `EnvExitWarnPct` (3%) to 10% a WARN, below an OK, with no line
+under the floor (`sprint.EnvExitStatus`, `sprint.EnvExitCheck`). `nova-sprint stats --children`
+prints the same counts as a per-member histogram of child exit codes for the window. Tests:
+`TestEnvExitClassifiesTheMemberEnvironmentExit`, `TestEnvironmentExitNamesTheCode`,
+`TestHarnessTailKeepsTheLastFortyLines`, `TestEnvExitRateThresholds`,
+`TestEnvExitCheckNamesTheRateAndTheCard`.
+
 ### release-check-frame
 
 `release check [--json] [--streams <glob>] [--check <name>]...` is a read-class verb (the owner, 2026-10-04: a release ships when the tool says so, not when someone feels it is done): it runs the registry of release checks (`sprint.ReleaseChecks`, internal/sprint/releasecheck.go) over the store's log and the sprint's settings and writes nothing. Each check is a pure function over `sprint.ReleaseFacts` (the clock, the log, the dealt bound; later checks add git facts), prints `RELEASE CHECK <name> ok|fail <evidence>`, and on a fail the evidence names what to look at; then one summary line, `RELEASE OK checks=<n>` or `RELEASE NOT READY failed=<n>`; exit 0 every check passed, 1 a check failed, 2 usage or a store that did not answer. `--json` prints the one report object (`results`, `checks`, `failed`, `ready`, `summary`); `--streams` keeps the log of the streams the glob names; `--check` runs only the named checks. `release check` is its own verb beside `release <id> --reason`, which still releases a held card or sentinel; `add` refuses a card whose id is `check`, naming the reason. The first check, `no-stuck-friend`, fails when a friend was stuck at any moment of the last 4 hours, stuck being the deadline rule's own lateness (`WorkDeadline`): a working card held past its deadline (its own `friend_deadline`, else `DeadlineUnfinished`, from its first take), or a card dealt to it and not taken past the dealt bound. No other definition of a stuck friend exists on this tree (the where table carries none), so this is the one, and any later count of stuck friends reuses `sprint.NoStuckFriend`'s spans. Tests: `TestReleaseCheckFailsWhileAFriendWasStuckInTheLastFourHours`, `TestTheReleaseReportSaysOKOrNotReadyByTheChecksRun`, `TestEveryReleaseCheckStatesItsBar`, `TestReleaseStreamsFilterKeepsTheStreamsTheGlobNames`.
