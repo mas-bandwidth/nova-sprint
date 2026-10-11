@@ -329,12 +329,26 @@ func (ri routeIndexes) write(p *Plan) {
 // and a route is sampled proportional to share. Routes with high cost or low ok rate
 // get smaller shares but are still sampled (floor). Design: tla/RouteIndex.tla,
 // RouteFair (weighted variant).
-func preferFirstWeighted(arr []string, served map[string]Route, skip []string, hold bool, at uint64) (Route, uint64, bool) {
+func preferFirstWeighted(s *Snapshot, arr []string, served map[string]Route, skip []string, hold bool, at uint64) (Route, uint64, bool) {
 	n := uint64(len(arr))
 	if n == 0 {
 		return Route{}, 0, false
 	}
 	take := func(wantFirst bool) (Route, uint64, bool) {
+		// Build route stats from fleet table (attempts, ok, landings)
+		stats := RouteStats(s.Routes, s.Fleet)
+		routeStat := map[string]RouteStat{}
+		for _, st := range stats {
+			routeStat[st.Route.Name] = st
+		}
+		// Count pushed landings for each route
+		pushedLandings := map[string]int{}
+		for _, c := range s.Fleet.Column(DoneOK) {
+			route := c.F(FieldRoute)
+			if route != "" && route != RoutePin {
+				pushedLandings[route]++
+			}
+		}
 		var cands []RoutePickStats
 		for i := uint64(0); i < n; i++ {
 			cur, ok := served[arr[(at+i)%n]]
@@ -344,9 +358,11 @@ func preferFirstWeighted(arr []string, served map[string]Route, skip []string, h
 			if cur.First != wantFirst {
 				continue
 			}
-			// For now, use equal share for all candidates; weighting will be
-			// computed from route stats when available.
-			cands = append(cands, RoutePickStats{Name: cur.Name, Share: 1.0})
+			st, ok := routeStat[cur.Name]
+			if !ok {
+				st = RouteStat{Route: cur}
+			}
+			cands = append(cands, RoutePickStatsFromRouteStats(st, pushedLandings))
 		}
 		if len(cands) == 0 {
 			return Route{}, 0, false
@@ -469,7 +485,7 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 		v, _ := s.Fleet.Prop(PropRouteIndex(tier))
 		at, _ = strconv.ParseUint(v, 10, 64)
 	}
-	r, steps, ok := preferFirstWeighted(arr, served, drawn, fresh, at)
+	r, steps, ok := preferFirstWeighted(s, arr, served, drawn, fresh, at)
 	if ok {
 		if ri != nil {
 			ri[tier].r.count += steps

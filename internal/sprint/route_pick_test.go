@@ -115,3 +115,47 @@ func TestPickRouteWeightedFloorSampled(t *testing.T) {
 			sampled["a"], sampled["b"], sampled["c"])
 	}
 }
+
+func TestPreferFirstWeightedShares(t *testing.T) {
+	// Two routes with equal price, one with zero landings over 20 takes,
+	// and 0% ok rate. The one with zero landings should get a smaller share
+	// but not zero.
+	routes := []Route{
+		{Name: "route-a", Enabled: true},
+		{Name: "route-b", Enabled: true},
+	}
+
+	// Test that RoutePickStatsFromRouteStats computes different shares
+	// based on OK rate and landings
+	statsA := RouteStat{
+		Route:    routes[0],
+		Attempts: 20,
+		OK:       0,
+		Failed:   20,
+	}
+	statsB := RouteStat{
+		Route:    routes[1],
+		Attempts: 20,
+		OK:       10,
+		Failed:   10,
+	}
+
+	pushedLandings := map[string]int{
+		"route-a": 0,
+		"route-b": 5,
+	}
+
+	statsA2 := RoutePickStatsFromRouteStats(statsA, pushedLandings)
+	statsB2 := RoutePickStatsFromRouteStats(statsB, pushedLandings)
+
+	// Route A should have lower share due to zero OK rate
+	if statsA2.Share >= statsB2.Share {
+		t.Errorf("route-a share %f should be < route-b share %f", statsA2.Share, statsB2.Share)
+	}
+
+	// Both should have floor share at minimum
+	const floor = 0.01
+	if statsA2.Share < floor {
+		t.Errorf("route-a share %f should be >= floor %f", statsA2.Share, floor)
+	}
+}

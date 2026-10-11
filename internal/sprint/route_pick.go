@@ -107,6 +107,7 @@ func pickRouteWeighted(stats []RoutePickStats) (string, bool) {
 }
 
 // cardCostPerLand returns the USD spent for a route.
+// Currently returns 0; cost computation requires fleet table access.
 func cardCostPerLand(name string) (float64, error) {
 	return 0, nil
 }
