@@ -63,9 +63,11 @@ func LedgerConflict(paths []string) bool {
 // (widen.go, rules.go). Any other way is reworked at once: its next attempt waits ready with
 // the refusal as its fix, its finished head the base staging carries onto the tip (BaseOf),
 // its read cards retired, the way kept as its finding (LandRefusedFinding), and the seat told
-// once (NLandRefused, nothing to answer). A card at its brief's bound (AtBriefBound: the same
-// refusal twice, or the attempt cap) is not reworked: it goes back to review with the bound's
-// judgment (NBriefWrong). Every way but RefusedPaths keeps the refused head
+// once (NLandRefused, nothing to answer). A card at its brief's bound, whatever the way
+// (AtBriefBound: the same refusal twice, or the attempt cap; for files outside PATHS also
+// WidensSpent, the widen cap), is neither reworked nor left to the widen rule: it goes back to
+// review with the bound's judgment (NBriefWrong; tla/Land.tla Refuse). Every way but
+// RefusedPaths keeps the refused head
 // (FieldLandRefusedHead), which is then never offered to accept again (reviewJudgment). A
 // conflict only in the shared ledgers (LedgerConflict) is never at the brief's bound: it is
 // reworked at the tip, clean of any brief-defect mark. state, ctlSet and notes are the merge
@@ -98,6 +100,37 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 		}
 		return u
 	}
+	// the brief's bound first, for every way (the ejection-bound audit of 2026-10-10: the E12
+	// branch below skipped it, and the widen rule's brief edit resets the attempts it counts, so
+	// a card whose heads kept naming new adjacent files was widened and redealt without end).
+	// For files outside PATHS the bound is also the widen cap: widened MaxWidens times, it is
+	// the brief's bound and never widened again. A conflict only in the shared ledgers is never
+	// at the bound (LedgerConflict): it is reworked at the tip, clean of any brief-defect mark.
+	finding := LandRefusedFinding + way
+	ledger := way == RefusedConflict && LedgerConflict(r.ConflictPaths)
+	if ledger {
+		finding = LandRefusedFinding + "a conflict in the shared ledgers only (" + strings.Join(r.ConflictPaths, ", ") + ")"
+	}
+	// any way but RefusedPaths refused this head as it stands (a widen of PATHS, below, is what
+	// lets the same head through): it is never offered to accept again (reviewJudgment), at the
+	// bound or not
+	if way != RefusedPaths {
+		if h := pr.F("head"); h != "" {
+			set[FieldLandRefusedHead] = h
+		}
+	}
+	bound := ""
+	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok && !ledger {
+		bound = bb.Why()
+	} else if spent := WidensSpent(pr); way == RefusedPaths && spent != "" {
+		bound = spent
+	}
+	if bound != "" {
+		j := judgment(NBriefWrong, r.Stream, s.Now, 0, id) // its decisions alone: it is the repeat
+		j.Who, j.Card, j.Attempt, j.What = r.Who, id, pr.Int("attempt"), cutText(bound+"; "+refusal, MaxCardTextBytes)
+		u.Moved = fmt.Sprintf("%s merging -> review (the landing refused its head at its brief's bound; off merge %s)", id, m.Col)
+		return review(j)
+	}
 	if way == RefusedPaths {
 		set[FieldRuleRedo], set[FieldRuleRefused], set[FieldRuleRefusal] = attempt, way, cutText(orDash(r.Note), MaxCardTextBytes)
 		j := judgment(NReturned, r.Stream, s.Now, pr.Int("returns"), id)
@@ -106,25 +139,6 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 			j.Decisions = removeDecision(j.Decisions, "accept")
 		}
 		u.Moved = fmt.Sprintf("%s merging -> review (the landing refused its head: files outside its PATHS; off merge %s)", id, m.Col)
-		return review(j)
-	}
-	// any other way refused this head as it stands (a widen of PATHS, above, is what lets the
-	// same head through): it is never offered to accept again (reviewJudgment)
-	if h := pr.F("head"); h != "" {
-		set[FieldLandRefusedHead] = h
-	}
-	finding := LandRefusedFinding + way
-	// a conflict only in the shared ledgers is the tip moving under the card, never the
-	// brief: it is reworked at the tip whatever came before, and its finding is its own, so
-	// it seeds no same-refusal bound for a later file conflict either (LedgerConflict)
-	ledger := way == RefusedConflict && LedgerConflict(r.ConflictPaths)
-	if ledger {
-		finding = LandRefusedFinding + "a conflict in the shared ledgers only (" + strings.Join(r.ConflictPaths, ", ") + ")"
-	}
-	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok && !ledger {
-		j := judgment(NBriefWrong, r.Stream, s.Now, 0, id) // its decisions alone: it is the repeat
-		j.Who, j.Card, j.Attempt, j.What = r.Who, id, pr.Int("attempt"), cutText(bb.Why()+"; "+refusal, MaxCardTextBytes)
-		u.Moved = fmt.Sprintf("%s merging -> review (the landing refused its head at its brief's bound; off merge %s)", id, m.Col)
 		return review(j)
 	}
 	broken := 0

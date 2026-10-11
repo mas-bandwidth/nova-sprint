@@ -179,6 +179,9 @@ func widenAnswers(s *Snapshot, r TickReq) []widenAnswer {
 		if pr == nil || pr.Col != Review || mindCard(pr) != "" || !typedrec.IsFullSha(pr.F("head")) {
 			continue
 		}
+		if WidensSpent(pr) != "" {
+			continue // widened MaxWidens times: the brief's bound, a mind's (landRefused raises it for E12)
+		}
 		if i, ok := at[pr.ID]; ok {
 			out[i].opens = append(out[i].opens, o)
 			continue
@@ -313,6 +316,7 @@ func widenInPlace(s *Snapshot, r TickReq, a widenAnswer) Plan {
 			}
 			e.Set["fix"] = fix
 			e.Set[FieldNote], e.Set[FieldRuleAnswer] = said, RuleWiden+": "+ActWiden+" at "+stamp(s.Now)
+			e.Set[FieldWidens] = itoa(pr.Int(FieldWidens) + 1) // Brief never resets it: the widen loop's cap
 			keep := []string{"fix"}
 			if w := pr.F(FieldWho); w != "" && e.Set[FieldWho] == "" {
 				e.Set[FieldWho] = w // whoever held the work keeps the card

@@ -665,9 +665,9 @@ func Read(s *Snapshot, r ReadReq) Plan {
 				}
 				// a finding naming files outside PATHS is no bound while the card may be widened:
 				// the read-broken rule widens the brief in place by them, the bound's own remedy;
-				// past MaxReadWidens such a finding is the bound itself (rules_read.go)
+				// past MaxWidens such a finding is the bound itself (rules_read.go)
 				outside := len(FilesOutsidePaths(pr.F("brief"), r.Finding)) > 0
-				spent := ReadWidensSpent(pr)
+				spent := WidensSpent(pr)
 				bound := ""
 				if bb, ok := briefStopAt(s, at, c.Row, r.Finding); ok && (!outside || spent != "") {
 					bound = bb.String()

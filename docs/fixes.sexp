@@ -560,4 +560,14 @@
     is named on the line). The seat probes the ssh port of each such member's machine row at once under one
     3 s bound, with a beating member other than the seat's own machine as the control of its network: no
     control answer, no member excused."
-   :origin "v1.2.5 candidate list")))
+   :origin "v1.2.5 candidate list")
+   (fix "widen-loop-capped" :release "v1.2.6" :status "shipped"
+    :title "The widen loop is capped: every widen counts toward the brief's bound"
+    :text "A card whose heads keep naming files outside its PATHS was widened and redealt without end: the
+     E12 branch of the merge step skipped the brief's bound, and the widen rule's brief edit reset the
+     attempts the bound counts. Now one widen count (FieldWidens, shared by the read-broken and widen
+     rules) caps every widen, and the merge step checks the brief's bound before its E12 branch, so a
+     card widened MaxWidens (3) times, or refused for files outside PATHS at its brief's bound, goes back
+     to review as the brief is wrong, a mind's, never widened again. TLA+ model Land, properties
+     AttemptsBounded, SameRefusalHalts and Settles, with the reversed witness ReachWidenLands."
+    :origin "nova-sprint #64; the seat ledger v1.2.4-held-2026-10-10.md (the ejection-bound audit of 2026-10-10)")))
