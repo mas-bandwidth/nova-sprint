@@ -461,6 +461,16 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 		return set, tier, "", false
 	}
 	if len(full) > 0 {
+		// a coordinator's rework or redo is never told it waits ready: the rework or redo
+		// did not happen, and no deal resumes by itself, so the words say the card was not
+		// dealt, name the backoff's end, and say to give it again after that time
+		// (docs/SPEC-SPRINT.md section 5, the deal; tla/RateBackoff.tla, BackoffEnds). Only
+		// a soft draw (a rework's or a redo's) reaches this: the soft fallback past a full
+		// provider (drawRoute) never draws a route backing off, so a soft draw that fails
+		// has full only of backoffs. A deal's own words are the waiting ones below.
+		if s.budgets != nil && s.budgets.soft {
+			return nil, tier, "every route of tier " + tier + " that serves is backing off from a rate limit (" + strings.Join(full, "; ") + "): a rework or redo is never dealt onto a backing-off route, so the card was not dealt; give it again after that time", false
+		}
 		// every route of the tier that serves is at its provider's budget: the card waits
 		// ready, never an error, never an attempt spent, and the next deal draws it when a
 		// slot frees (the owner, 2026-10-11: "if nothing else is available, you wait and
