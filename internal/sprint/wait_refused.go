@@ -34,6 +34,10 @@ var WaitRefused = map[string]string{
 	NBound:       "rework it on a higher tier, or drop it",
 	NBriefWrong:  "brief it again, or drop it",
 	NBriefDefect: "re-cut its brief, or drop it",
+	// a read that cannot be asked, a base or a read branch gone: the card waits on it
+	NCannotAsk:         "add a reader, rework the card, or drop it",
+	NMissingBase:       "rebase the card, or drop it",
+	NReadBranchMissing: "rework it with a fix, drop it, or ack it once its branch is on origin",
 	// a friend's report, a repair the store refused
 	NReportJudgment: "read the report and rework, accept or drop the card",
 	NCIRed:          "rework the card, return it, or drop it; ack it when the red is not the card's",

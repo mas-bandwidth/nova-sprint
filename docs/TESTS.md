@@ -281,6 +281,7 @@ Failed work and broken reads rework themselves, and no wait parks a card
 - `TestWaitIsRefusedOnACardHoldingJudgment` (internal/sprint/store/no_parked_test.go)
 - `TestWaitStillWorksOnAnAlarm` (internal/sprint/store/no_parked_test.go)
 - `TestASharedFailureIsOneFleetJudgmentAtOnce` (internal/sprint/store/no_parked_test.go)
+- `TestAFailurePerTickRaisesOneFleetJudgmentAtTheThird` (internal/sprint/store/no_parked_test.go)
 - `TestAPinnedModelFailureReworksOnItsTier` (internal/sprint/store/no_parked_test.go)
 - `TestAFrontierTierFailureReworksOnItsTier` (internal/sprint/store/no_parked_test.go)
 - `TestTheSameFailureOnManyCardsIsReworkedOnItsTier` (internal/sprint/store/rule_answers_test.go)

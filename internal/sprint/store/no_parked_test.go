@@ -221,3 +221,35 @@ func answerOf(t *testing.T, h *harness, typ, subject string) sprint.RuleAnswer {
 	t.Fatalf("no %q judgment open on %s", typ, subject)
 	return sprint.RuleAnswer{}
 }
+
+// The fleet's failure is counted across ticks: a card failing one tick, another the next and a
+// third the tick after raise exactly one fleet judgment, at the third, whatever rule answered
+// the first two; it takes no wait and is not raised again while open.
+func TestAFailurePerTickRaisesOneFleetJudgmentAtTheThird(t *testing.T) {
+	t.Parallel()
+	h := ruled(t)
+	n := sprint.RuleSameFailureCards
+	h.addReady("s1", n, briefOf("flash", ""))
+	h.startMachine()
+	h.machine()
+	report := "step 2 broken: post: exit0 go vet ./...: exit status 126; exec: go: Permission denied"
+	for i := 1; i <= n; i++ {
+		h.failTake(fmt.Sprintf("s1-%d.w1", i), report)
+		h.tick(time.Minute)
+		h.machine()
+		open := h.judgmentsOf(sprint.NFleetFailure)
+		if i < n {
+			require.Empty(t, open, "failure %d of %d: not yet the fleet's", i, n)
+			continue
+		}
+		require.Len(t, open, 1, "the third failure in the window raises one fleet judgment")
+		for j := 1; j <= n; j++ {
+			assert.Contains(t, open[0].Note.What, fmt.Sprintf("s1-%d", j), "it names every card")
+		}
+		_, err := h.waitOn(open[0].Note.ID)
+		require.Error(t, err, "the fleet's failure takes no wait")
+	}
+	h.tick(time.Minute)
+	h.machine()
+	assert.Len(t, h.judgmentsOf(sprint.NFleetFailure), 1, "never raised again while it is open")
+}
