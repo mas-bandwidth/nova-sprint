@@ -199,6 +199,17 @@
     say a key rest ends only by routes wake, never by funded or a payment, and a test shows a balance poll
     cannot end one."
    :origin "readers' notes on nova-sprint PR #49 and PR #50")
+  (fix "load-cache-mark-not-read-after-chunks" :release "v1.2.14" :status "planned"
+   :title "A load over more than one read set reads the mark, not just the revision"
+   :text "readInto reads a table of more than one read set (over 1024 records) in several read sets and
+    checked only that each saw the table's revision. A store that lost writes and rewrote to the same
+    revision between two read sets gives one revision and two histories, and the load mixed them. When the
+    backend marks its change events (TableMarker), readInto now reads the mark of the event that left the
+    table's revision before the first read set and after the last, as the load cache does when it reads a
+    table whole, and a mark that changed is a moved read, taken again under LoadTries. A table of at most
+    one read set, or a backend with no marks, reads as before. tla/LoadCache.tla LoadIsSnapshot, the
+    broken \"nomark\"."
+   :origin "v1.2.12 inventory 2026-10-11, section 9 row D5; this card")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose

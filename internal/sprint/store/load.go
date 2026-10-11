@@ -293,8 +293,31 @@ func (st *Store) shapes(ctx context.Context, stored []string) ([]ntable.Table, e
 	return out, nil
 }
 
-// readInto reads ids into t in read sets, each of which must see t's revision.
+// readInto reads ids into t in read sets, each of which must see t's revision
+// (docs/SPEC-SPRINT.md section 3, the store's reads).
+//
+// A table read in more than one read set can span a store that lost writes and
+// rewrote to the same revision between two sets: one revision, two histories
+// (tla/LoadCache.tla, LoadIsSnapshot). When the backend marks its change events
+// (TableMarker), readInto reads the mark of the event that left the table's
+// revision before the first read set and after the last, as the load cache does
+// when it reads a table whole (markOf, loadcache.go), and a mark that changed is
+// a movedError, as a changed revision is: the load reads again under LoadTries. A
+// table of at most ntable.LimitReadSetMembers records, or a backend that keeps no
+// marks, reads as before.
 func (st *Store) readInto(ctx context.Context, t *sprint.Table, ids []string, placed bool) error {
+	shape := ntable.Table{Name: st.Names.Table(t.Name), Epoch: t.Epoch, Revision: t.Revision}
+	var before string
+	var marked bool
+	if len(ids) > ntable.LimitReadSetMembers {
+		if _, ok := st.B.(TableMarker); ok {
+			mark, ok, err := st.markOf(ctx, shape)
+			if err != nil {
+				return err
+			}
+			before, marked = mark, ok
+		}
+	}
 	for start := 0; start < len(ids); start += ntable.LimitReadSetMembers {
 		end := min(start+ntable.LimitReadSetMembers, len(ids))
 		res, err := st.readSet(ctx, st.Names.Table(t.Name), ids[start:end])
@@ -313,6 +336,15 @@ func (st *Store) readInto(ctx context.Context, t *sprint.Table, ids []string, pl
 				c.Row, c.Col = m.Row, m.Col
 			}
 			t.Put(c)
+		}
+	}
+	if marked {
+		mark, ok, err := st.markOf(ctx, shape)
+		if err != nil {
+			return err
+		}
+		if !ok || mark != before {
+			return &movedError{table: st.Names.Table(t.Name)}
 		}
 	}
 	return nil
