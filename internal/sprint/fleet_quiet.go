@@ -103,6 +103,7 @@ func quietNow(s *Snapshot) map[string]Quiet {
 // start no card (Snapshot.NoRoom: free disk under the floor): the deal and the level give
 // such a member nothing (docs/SPEC-SPRINT.md section 5, fleet-quiet-machine-b.w7), so a card
 // is not dealt to a machine that hands it straight back refused at staging.
+// tla/DirtyTick.tla NeverDealtToDraining
 func notQuiet(s *Snapshot, up []string) []string {
 	quiet := quietNow(s)
 	if len(quiet) == 0 && len(s.NoRoom) == 0 {
