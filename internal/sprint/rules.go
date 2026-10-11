@@ -107,6 +107,7 @@ const (
 	RefusedPaths    = "paths"    // the lander's checks: it changes files outside its PATHS (E12)
 	RefusedChecks   = "checks"   // the lander's other checks: a stranded fragment (E4)
 	RefusedGate     = "gate"     // the merged tree fails the tree gate
+	RefusedClash    = "clash"    // the head's tests fail but pass on base alone: merge clash
 )
 
 // RefusalWay is the way the lander refused a head, from the conflict fact it recorded
@@ -125,6 +126,8 @@ func RefusalWay(kind, what string) string {
 		return RefusedChecks
 	case strings.Contains(what, " fails the tree gate: "):
 		return RefusedGate
+	case strings.Contains(what, " clashes at the merged tip: "):
+		return RefusedClash
 	}
 	return ""
 }

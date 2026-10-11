@@ -804,7 +804,7 @@ func (l *lander) merge(ctx context.Context, j *landJob) {
 		// where a head changed what they read, so that tip is not recorded as gated)
 		start := time.Now()
 		l.stage("gate", "the batch's tree")
-		red := l.treeGate(ctx, dir, true)
+		red := l.treeGate(ctx, dir, true, nil)
 		since(&b.Times.Merge, start)
 		if why := gateWaitWhy(ctx); why != "" {
 			j.refuse(why)
@@ -898,23 +898,24 @@ func (l *lander) bisect(ctx context.Context, dir string, tips []string, n int, r
 	if n < 1 || len(tips) < n+1 {
 		return 0, "", false, "the tips of the batch's merges were not recorded, so its red gate blames no head"
 	}
-	tested := func(i int) (bool, string) {
+	tested := func(i int) (bool, []string, string) {
 		changed, err := l.git(ctx, dir, "diff", "--name-only", "-M", tips[0], tips[i])
 		if err != nil {
-			return false, "the files the batch changes up to head " + strconv.Itoa(i) + " could not be listed: " + firstLine("", err)
+			return false, nil, "the files the batch changes up to head " + strconv.Itoa(i) + " could not be listed: " + firstLine("", err)
 		}
-		return slices.ContainsFunc(strings.Split(changed, "\n"), treeTested), ""
+		files := strings.Split(changed, "\n")
+		return slices.ContainsFunc(files, treeTested), files, ""
 	}
 	gate := func(i int) (string, bool, string) {
 		if _, err := l.git(ctx, dir, "reset", "-q", "--hard", tips[i]); err != nil {
 			return "", false, "the batch branch could not be moved to the tip after head " + strconv.Itoa(i) + " for the bisection of its red gate: " + firstLine("", err)
 		}
-		tests, why := tested(i)
+		tests, files, why := tested(i)
 		if why != "" {
 			return "", false, why
 		}
 		l.stage("gate", "bisect: the tip after head "+strconv.Itoa(i)+" of "+strconv.Itoa(n))
-		red := l.treeGate(ctx, dir, tests)
+		red := l.treeGate(ctx, dir, tests, files)
 		if wait := gateWaitWhy(ctx); wait != "" {
 			return "", false, wait
 		}
@@ -923,7 +924,7 @@ func (l *lander) bisect(ctx context.Context, dir string, tips []string, n int, r
 		}
 		return red, tests, ""
 	}
-	if tests, why := tested(n); why != "" {
+	if tests, _, why := tested(n); why != "" {
 		return 0, "", false, why
 	} else if !tests {
 		// the batch's red came from tree tests that read none of its files
@@ -1141,7 +1142,7 @@ func (l *lander) again(ctx context.Context, j *landJob, newBase string, pushed [
 	if collide, gate := needsGate(j.merged, merged, batchFiles, lines(landedFiles)); gate {
 		start := time.Now()
 		l.stage("gate", "the combined tree")
-		red := l.treeGate(ctx, dir, true)
+		red := l.treeGate(ctx, dir, true, batchFiles)
 		if wait := gateWaitWhy(ctx); wait != "" {
 			return wait
 		}
