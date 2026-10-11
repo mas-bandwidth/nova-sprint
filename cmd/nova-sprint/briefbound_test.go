@@ -257,13 +257,55 @@ func TestCheckRepairTickAndGroupFailsExitNonZero(t *testing.T) {
 		t.Parallel()
 		ta := newTestApp(t)
 		ta.ok("init --readers reader-a,reader-b --members m1")
-		ta.ok("add --stream s1 --count 3")
-		ta.deal(3)
-		ta.failOnce("m1", "s1-1.w1@1", "tests red")
-		g := ta.group(sprint.NWorkFailed, "s1")
-		ta.failOnce("m1", "s1-2.w1@1", "tests red")
-		line := "accept --group " + g.ID + " --expect 1"
-		code, out, errs := ta.do(line)
-		requireFailExit(t, line, "ACCEPT", code, out, errs)
+	ta.ok("add --stream s1 --count 3")
+	ta.deal(3)
+	ta.failOnce("m1", "s1-1.w1@1", "tests red")
+	g := ta.group(sprint.NWorkFailed, "s1")
+	ta.failOnce("m1", "s1-2.w1@1", "tests red")
+	line := "accept --group " + g.ID + " --expect 1"
+	code, out, errs := ta.do(line)
+	requireFailExit(t, line, "ACCEPT", code, out, errs)
 	})
+}
+
+// TestBriefFileOverTheBoundIsRefused verifies that brief <id> --brief-file and brief <id> --brief
+// refuse over-bound briefs with exit 2, using the same words as brief --dir.
+func TestBriefFileOverTheBoundIsRefused(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("add --stream s1 --count 1 --one")
+
+	// Test --brief-file with over-bound brief (linted passing brief + padding)
+	passingBase := passingBrief("")
+	overText := passingBase + strings.Repeat("x", store.MaxBriefBytes-len(passingBase)+1)
+	overFile := filepath.Join(t.TempDir(), "over.md")
+	require.NoError(t, os.WriteFile(overFile, []byte(overText), 0o600))
+	code, _, errs := ta.do("brief s1-1 --brief-file " + overFile)
+	require.Equal(t, 2, code, errs)
+	for _, want := range []string{
+		fmt.Sprintf("the brief is %d bytes, over the %d bytes a brief may be", len(overText), store.MaxBriefBytes),
+		"a brief is a child's whole brief",
+		"shorten it",
+	} {
+		require.Contains(t, errs, want)
+	}
+
+	// Test --brief with over-bound text
+	overBrief := passingBase + strings.Repeat("y", store.MaxBriefBytes-len(passingBase)+1)
+	code, _, errs = ta.do("brief s1-1 --brief '" + strings.ReplaceAll(overBrief, "'", "") + "'")
+	require.Equal(t, 2, code)
+	for _, want := range []string{
+		fmt.Sprintf("the brief is %d bytes, over the %d bytes a brief may be", len(overBrief), store.MaxBriefBytes),
+		"a brief is a child's whole brief",
+		"shorten it",
+	} {
+		require.Contains(t, errs, want)
+	}
+
+	// Verify that a brief of exactly MaxBriefBytes is still accepted
+	atBound := passingBase + strings.Repeat("z", store.MaxBriefBytes-len(passingBase))
+	underFile := filepath.Join(t.TempDir(), "under.md")
+	require.NoError(t, os.WriteFile(underFile, []byte(atBound), 0o600))
+	ta.ok("brief s1-1 --brief-file " + underFile)
 }

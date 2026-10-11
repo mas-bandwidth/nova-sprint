@@ -2882,6 +2882,9 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 		}
 		*brief = text
 	}
+	if len(*brief) > store.MaxBriefBytes {
+		return refuse(stderr, "brief", fmt.Sprintf("the brief is %d bytes, over the bound of %d bytes a brief may be; a brief is a child's whole brief; shorten it", len(*brief), store.MaxBriefBytes))
+	}
 	rs, code := a.holdBrief("brief", *brief, *rules, c, &st, stderr)
 	if code != 0 {
 		return code

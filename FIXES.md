@@ -115,4 +115,5 @@ Inbox push writes each judgment once without concurrent writers sharing a tempor
 
 Small bug fixes after v1.2.10, one concern each.
 
+- **Over-bound briefs refused at the step, not at the drain** (planned). On a RUNNING machine, a brief over the 16 KiB bound slipped through the step's check (QueueOf moved it to the work queue, then unwritable checked plan.Units which was empty) and was refused by the drain. Now the step checks its queued changes before logging them, so oversized fields are refused at the step with exit 2, nothing queued and nothing logged. Tests TestABriefOverTheBoundIsRefusedWhileRunning, TestBriefFileOverTheBoundIsRefused. From: this card.
 - **doctor reads nova-config from the caller's environment** (planned). doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials. From: this card.

@@ -224,3 +224,25 @@ func TestAFirstManifestOverABoundIsAbandonedAtOnce(t *testing.T) {
 	var pe *PendingError
 	require.False(t, errors.As(err, &pe), pe)
 }
+
+// TestABriefOverTheBoundIsRefusedWhileRunning verifies that on a RUNNING machine, a BriefStep
+// with an over-bound brief is refused at the step, with no queue entry and no log line.
+func TestABriefOverTheBoundIsRefusedWhileRunning(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.setup(1)
+	// Start the machine (it's STOPPED after setup)
+	h.startMachine()
+	before := h.revisions()
+	// Brief with an over-bound brief (17,000 bytes)
+	res, err := h.st.Run(h.ctx, BriefStep(sprint.BriefReq{Cards: []sprint.BriefCard{{ID: "s1-1", Brief: strings.Repeat("b", 17000)}}}))
+	require.NoError(t, err, "a brief over bound: %+v %v", res, err)
+	require.Empty(t, res.Moved, "a brief over bound: %+v %v", res, err)
+	require.Len(t, res.Refused, 1, "a brief over bound: %+v %v", res, err)
+	why := res.Refused[0].Why
+	require.Contains(t, why, "field brief")
+	require.Contains(t, why, "17000 bytes")
+	require.Contains(t, why, "16384 bytes")
+	require.Contains(t, why, "a brief is a child's whole brief")
+	h.nothingWritten(before)
+}
