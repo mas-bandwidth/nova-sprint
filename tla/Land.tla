@@ -140,15 +140,17 @@
 \*     one read of two.
 \*   PushedNeverSentBack (v1.2.6): the tick sends a queued card short of its
 \*     reads back to review for the read it lacks (ShortBack,
-\*     sprint.ShortReadsBack), but never one whose head the lander pushed in
-\*     the store's epoch (a clear is a new store, and an older epoch's push
-\*     is not its to know). It holds because every head a lander pushes was
-\*     marked landing before the push, the mark stays on that head (only a clear removes it; a return
-\*     and an accept again keep it, which TLC found: Return, Accept,
-\*     SetReads, ShortBack took a pushed head back), and ShortBack takes no marked card
+\*     sprint.ShortReadsBack), and repair's return of a short merging card
+\*     (Repair, sprint.Rule6Merging) sends none either, but never one whose head
+\*     the lander pushed in the store's epoch (a clear is a new store, and an
+\*     older epoch's push is not its to know). It holds because every head a
+\*     lander pushes was marked landing before the push, the mark stays on that
+\*     head (only a clear removes it; a return and an accept again keep it,
+\*     which TLC found: Return, Accept, SetReads, ShortBack took a pushed head
+\*     back), and ShortBack and Repair take no marked card
 \*     (sprint.LandingMarked): from the mark, through the push, the report
-\*     and a crash between them. Broken "bouncemarked" ignores the mark, and
-\*     the rule fails.
+\*     and a crash between them. Broken "bouncemarked" ignores the mark in
+\*     ShortBack, and "repairmarked" in Repair, and the rule fails.
 \*   NoOfferAtRefusedHead (v1.2.6): the machine never offers to accept a
 \*     card at the head the landing refused (sprint.LandRefusedAtHead): an
 \*     accept of it queues the refused head for the lander to refuse again.
@@ -217,6 +219,9 @@
 \*     (NoOfferAtRefusedHead fails: Accept, Rework, Read, Build, Refuse).
 \*   "norepair" removes the repair verb's return of a short merging card to
 \*     review (ReachRepair, the reversed witness, holds: nothing repairs).
+\*   "repairmarked" drops Repair's marked (and pushed-unreported) guard
+\*     (PushedNeverSentBack fails: Accept, Read, Build, Check, Push, SetReads,
+\*     Repair).
 \*   "nowidencap" widens with no cap, as the E12 branch did before
 \*     2026-10-10 (AttemptsBounded fails, MCLandBound).
 \*   "nosamefinding" reworks the same refusal twice on one brief
@@ -271,6 +276,16 @@ WaysOn == FALSE
 Cap == MaxAttempts
 MaxWidens == 0
 Files == {}
+
+\* The code's repair skips a sentinel (a card of kind "sentinel",
+\* internal/sprint/steps_sentinel.go IsSentinel) and a card a change is queued
+\* for (s.Held, internal/sprint/state.go), as the tick's ShortReadsBack does:
+\* neither reaches the merge queue this module models (a sentinel waits for the
+\* coordinator's release, a held card waits for the queued change's tick), so
+\* the sets are empty here and Repair's guards name them for the code's four
+\* (internal/sprint/check.go Rule6Merging), never taking either.
+Sentinels == {}
+HeldCards == {}
 
 VARIABLES queue, att, landed, epoch, base, tip,
           lphase, lq, lbatch, lep, lrep, ltip, tries,
@@ -714,16 +729,24 @@ OfferAccept ==
 \* Repair: the repair verb returns a queued card short of its reads to review
 \* (cmd/nova-sprint/repair.go cmdRepair -> sprint.Rule6Merging ->
 \* store.ReturnStep, Merging -> Review), the transition the tick's ShortBack
-\* takes, but on demand rather than on the tick's pump. A card a lander marked
-\* landing (Marked) is never returned: the lander completes it, never review,
-\* as ShortBack holds too. repairback records the return so the witness names
-\* repair's, not the tick's; Broken "norepair" removes it. Repair is not in
-\* FairSpec: it runs when a mind calls it, never on its own.
+\* takes, but on demand rather than on the tick's pump. The cards the code
+\* skips are never returned (internal/sprint/check.go Rule6Merging): a
+\* sentinel, a card a change is queued for (held), a card a lander marked
+\* landing (Marked), and one pushed and not reported (Current(c) \in lpushed).
+\* The marked guard is the one PushedNeverSentBack checks: a head a lander
+\* pushes was marked at the check just before the push and the mark stays, so
+\* ~Marked alone already skips the pushed-unreported card; the pushed-unreported
+\* conjunct is stated for the code's four, and Broken "repairmarked" drops both.
+\* repairback records the return so the witness names repair's, not the tick's;
+\* Broken "norepair" removes Repair. Repair is not in FairSpec: it runs when a
+\* mind calls it, never on its own.
 Repair ==
   /\ Broken # "norepair"
   /\ \E c \in Range(queue) :
        /\ oks[c] < need
-       /\ ~Marked(Current(c))
+       /\ c \notin Sentinels
+       /\ c \notin HeldCards
+       /\ Broken = "repairmarked" \/ (~Marked(Current(c)) /\ Current(c) \notin lpushed)
        /\ queue' = SelectSeq(queue, LAMBDA x : x # c)
        /\ reread' = reread \cup {c}
   /\ repairback' = TRUE
@@ -814,11 +837,12 @@ ReachShortBack == reread = {}
 \* the witness is repair's, not ShortBack's.
 ReachRepair == ~repairback
 
-\* The tick never sends back to review a card whose head this lander pushed in
-\* the store's epoch (lpushed: a clear is a new store, which knows nothing of an
-\* older epoch's push, as ReportHoldsTheEpoch says).
+\* Neither the tick (ShortBack) nor repair (Repair) sends back to review a card
+\* whose head this lander pushed in the store's epoch (lpushed: a clear is a new
+\* store, which knows nothing of an older epoch's push, as ReportHoldsTheEpoch
+\* says).
 PushedNeverSentBack ==
-  [][ShortBack => \A c \in Range(queue) \ Range(queue') : Current(c) \notin lpushed]_vars
+  [][(ShortBack \/ Repair) => \A c \in Range(queue) \ Range(queue') : Current(c) \notin lpushed]_vars
 
 \* A card this lander pushed and landed while another, reworked by a refusal
 \* of its own head, waits ready: the lander went on past it. Shortest: Accept,
