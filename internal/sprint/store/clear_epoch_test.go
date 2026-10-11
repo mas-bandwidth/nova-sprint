@@ -262,9 +262,9 @@ func (a *advanceHook) AdvanceEpoch(ctx context.Context, from uint64, at time.Tim
 }
 
 // A member brought up and a member taken down between clear's start and its
-// advance are both of the old epoch: the blank-slate clear carries neither
-// into the new epoch, whose fleet table is empty.
-func TestRowAddedDuringClearIsKept(t *testing.T) {
+// advance are both of the old epoch: the blank-slate clear carries the members
+// as clear's start read them (m1 and m2 up), not the mid-clear changes.
+func TestAMemberChangedMidClearIsNotCarried(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.setup(1)
@@ -280,7 +280,8 @@ func TestRowAddedDuringClearIsKept(t *testing.T) {
 	_, err := st.Clear(h.ctx)
 	require.NoError(t, err)
 	s := h.snap()
-	require.Empty(t, s.Fleet.Rows(), "a clear carries no member row into the new epoch: rows %v", s.Fleet.Rows())
+	require.Equal(t, []string{"m1", "m2"}, s.Fleet.Rows(), "the members carry over as clear's start read them: rows %v", s.Fleet.Rows())
+	require.Equal(t, []string{"m1", "m2"}, s.UpMembers(), "a member brought up or taken down mid-clear is the old epoch's: %v", s.UpMembers())
 	h.clean("after the clear")
 }
 
