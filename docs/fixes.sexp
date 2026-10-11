@@ -1009,7 +1009,18 @@
    :text "One plan could close a stop and at the same time send an NStopsDigest saying it still holds: notify closes the open NStopMemberDown judgment of a member up again, and stopsDigest then gathered its stops from the snapshot before the plan, counting and naming the stop just closed. stopsDigest now leaves out every judgment the same plan closes, matched by note id; with no stop left it writes neither the digest nor its clock."
    :origin "v1.2.12 inventory 2026-10-11, section 9 row D8; card stops-digest-counts-only-held-stops.w1, id given by the coordinator 2026-10-11 (code read at nova-sprint main 00c54ba)")
 
-(fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
+   (fix "version-features-answers-what-a-build-has" :release "v1.2.14" :status "planned"
+    :title "The version verb says which fixes a build carries"
+    :text "nova-sprint version --features lists the fixes this build carries, one line each
+     `<release> <fix-id> <title>`, from the fixes ledger compiled into the binary (docs/embed.go) and
+     read with make roadmap's parser: every fix of a release at or below the build's version. A build
+     whose version is not a release (a dev build) lists the shipped releases' fixes and says the
+     unreleased fixes of the tree it was built from are not listed. nova-sprint version --has
+     <fix-id> exits 0 when the build carries the fix and 1 when the ledger names it in a later release
+     or not at all, naming which; --json prints {version, fixes:[{release,id,title}]}."
+    :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 16 (the owner, 2026-10-11); the v1.2.10 bisect, where the coordinator ran strings on two binaries to learn whether v1.2.9 held the environment-fault fix")
+
+ (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
    :origin "this card")
