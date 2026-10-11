@@ -383,7 +383,11 @@ type idleWait struct {
 // those cards and where they sit, and offers to deal them to her, to have a friend
 // take the other row, or to keep. While the cards sit where the text says, the
 // text does not change, so the episode stays one (the condition key includes the
-// text; steps_tick.go is not this card's file).
+// text; steps_tick.go is not this card's file). The text is taken from the
+// judgment the coordinator holds (s.Acked, an acknowledgement or a wait not yet
+// reached) as well as from an open one, so an acknowledged episode is never
+// raised again while the conjunction holds (docs/SPEC-SPRINT.md section 8, "The
+// coordinator's pass"; tla/CoordinatorPass.tla, OneJudgmentAnEpisode).
 func emptyConds(p *Plan, s *Snapshot, r TickReq) []cond {
 	watches := map[string]Open{}
 	for _, o := range s.Acked {
@@ -394,6 +398,17 @@ func emptyConds(p *Plan, s *Snapshot, r TickReq) []cond {
 	openWhat := map[string]string{}
 	for _, o := range s.Open {
 		if o.Note.Kind == Judgment && o.Note.Type == NFriendEmpty {
+			openWhat[o.Subject()] = o.Note.What
+		}
+	}
+	// The episode's text is the one the coordinator holds as well as the one an
+	// open judgment carries: an acknowledged NFriendEmpty on her row, or one
+	// waited to a review time not yet reached, keeps the text it was written
+	// with, so the key holds and no second judgment is written though the cards
+	// it names move (tla/CoordinatorPass.tla, OneJudgmentAnEpisode,
+	// Kind = "empty"; docs/SPEC-SPRINT.md section 8, "The coordinator's pass").
+	for _, o := range s.Acked {
+		if o.Note.Type == NFriendEmpty && openWhat[o.Subject()] == "" {
 			openWhat[o.Subject()] = o.Note.What
 		}
 	}
