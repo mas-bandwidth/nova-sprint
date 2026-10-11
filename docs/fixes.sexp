@@ -776,11 +776,14 @@
     rate_take_<n> record numbered after the last one the card holds, with no gap and no bound, so
     RateTakes reads every one. The route backs off briefly, then serves again by itself: RestsDue
     computes the backoff purely from those records, k being the route's rate-limited ends since its
-    last ok end and last the latest one's time, ending at last + min(60s*2^(k-1), 15m) (RateBackoff)
+    last ok end (a take the worker finished ok, in the finished cell or past it; a failed finish
+    resets nothing) and last the latest one's time, ending at last + min(60s*2^(k-1), 15m) (RateBackoff)
     -- a fixed point in time, never relative to now. Its line is kept beside the route's own rest in
     the provider's rule3_rest_ property (<route>+rate-backoff), never over it, so it never moves the
     3-in-10 window's mark, never blocks the coordinator's rest and is never woken; a backoff on every route of a tier makes the card
-    wait ready, as a provider at its concurrency budget does, never a no-route judgment, and the no-stall rule holds it on the backoff (never NStalled);
+    wait ready, as a provider at its concurrency budget does, never a no-route judgment, and the no-stall rule holds it on the backoff whenever a route of
+    the tier backs off and none can be drawn (never NStalled); the rebalance never moves a card
+    onto a machine with no route it can draw;
     restWrites writes
     it and one happened note (\"rate-limit backoff of <d> on <route>, until <t>\") once per end,
     none while the same end holds, never a judgment, and drops a backoff line once its end has passed. A rate limit no longer counts toward the 3-in-10
