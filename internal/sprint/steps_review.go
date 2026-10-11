@@ -1236,7 +1236,7 @@ type ReworkCard struct {
 }
 
 // ReworkResolves is the judgments a rework discharges on its primary.
-var ReworkResolves = []string{NWorkFailed, NReadBroken, NBriefWrong, NCIRed, NRepairSkipped, NReadyToAccept, NReturned, NReadsExhausted, NStranded, NStalled, NBound}
+var ReworkResolves = []string{NWorkFailed, NReportJudgment, NReadBroken, NBriefWrong, NCIRed, NRepairSkipped, NReadyToAccept, NReturned, NReadsExhausted, NStranded, NStalled, NBound}
 
 // Rework delegates at once: the next work card attempt, carrying the fix, is
 // cut into the next member round the fleet (round.go:
