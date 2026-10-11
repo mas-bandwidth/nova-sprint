@@ -879,4 +879,17 @@
 
   (fix "two-ci-flakes-text-file-busy-and-git-maintenance" :release "v1.2.10" :status "shipped"
    :title "Two CI flakes: exec'd stubs written under the fork lock, and git's auto maintenance off in tests"
-   :origin "PR #88")))
+   :origin "PR #88")
+
+  (fix "a-stats-reset-zeroes-the-unattributed-spend" :release "v1.2.14" :status "planned"
+   :title "A stats reset zeroes the unattributed spend"
+   :text "After nova-sprint stats reset every stream's spend counts from the mark, but the grand total
+    did not reach zero: the cost line's <other>, the largest TierCosts.Unreconciled on any stream's
+    record, is the sprint's UnreconciledSpend since the epoch's clear, never since the mark. ResetMark
+    now holds the sprint's unattributed spend at the mark (in cents) and streamsSince subtracts it on
+    every stream's record, the streams the mark does not know included, so the cost line, the dashboard's
+    cost tile and where --json's unreconciled count from the mark, never below zero. The mark line names
+    it beside the total."
+   :origin "the seat's v1.2.14 audit, 2026-10-11 (a stats reset does not zero the grand total spent),
+    checked against nova-sprint main 00c54ba; the owner's rule of 2026-10-09: a stats reset clears every
+    cost figure, the total spent, per card and per tier; this card a-stats-reset-zeroes-the-unattributed-spend")))
