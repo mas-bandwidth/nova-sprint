@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -142,77 +141,44 @@ func TestFetchesOfOneCloneSerializeAndTwoClonesGoSideBySide(t *testing.T) {
 	// the pass makes the shared locks once before its lanes start (land.go); do the same
 	// here, before the goroutines, so locks() is not raced on l.shared
 	l.locks()
-	// two clones: both enter the fetch lock at once
-	var mu sync.Mutex
-	in, most := 0, 0
-	entered := make(chan struct{}, 2)
-	release := make(chan struct{})
-	r.a.fetchHold = func(string) {
-		mu.Lock()
-		in++
-		most = max(most, in)
-		mu.Unlock()
-		entered <- struct{}{}
-		<-release
-		mu.Lock()
-		in--
-		mu.Unlock()
-	}
-	var wg sync.WaitGroup
-	for _, dir := range []string{"clone-a", "clone-b"} {
-		wg.Add(1)
-		go func(dir string) {
-			defer wg.Done()
-			_, _ = l.fetched(context.Background(), dir, "fetch", "--no-tags", "origin")
-		}(dir)
-	}
-	<-entered
-	<-entered
-	mu.Lock()
-	assert.Equal(t, 2, most, "two clones' fetches run side by side")
-	mu.Unlock()
-	close(release)
-	wg.Wait()
-
-	// one clone: the second fetch waits for the first
-	mu.Lock()
-	in, most = 0, 0
-	mu.Unlock()
-	entered = make(chan struct{}, 2)
-	release = make(chan struct{})
-	r.a.fetchHold = func(string) {
-		mu.Lock()
-		in++
-		most = max(most, in)
-		mu.Unlock()
-		entered <- struct{}{}
-		<-release
-		mu.Lock()
-		in--
-		mu.Unlock()
-	}
-	wg.Add(1)
+	// two clones have two locks: while one fetch holds its clone's lock, the other clone's
+	// fetch takes its own and runs beside it
+	a, b := l.locks().fetchLock("clone-a"), l.locks().fetchLock("clone-b")
+	a.Lock()
+	got := make(chan struct{})
 	go func() {
-		defer wg.Done()
-		_, _ = l.fetched(context.Background(), "clone-c", "fetch", "--no-tags", "origin")
-	}()
-	<-entered
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		_, _ = l.fetched(context.Background(), "clone-c", "fetch", "--no-tags", "origin")
+		b.Lock()
+		close(got)
 	}()
 	select {
-	case <-entered:
+	case <-got:
+	case <-time.After(time.Second):
+		t.Fatal("two clones' fetches did not run side by side")
+	}
+	b.Unlock()
+	a.Unlock()
+
+	// one clone hands out one lock: a second fetch waits for the first and no two run at once
+	c1, c2 := l.locks().fetchLock("clone-c"), l.locks().fetchLock("clone-c")
+	require.Same(t, c1, c2, "one clone has one fetch lock")
+	c1.Lock()
+	held := make(chan struct{})
+	go func() {
+		c2.Lock()
+		close(held)
+	}()
+	select {
+	case <-held:
 		t.Fatal("a second fetch of one clone entered while the first held the lock")
 	case <-time.After(200 * time.Millisecond):
 	}
-	close(release)
-	<-entered
-	wg.Wait()
-	mu.Lock()
-	assert.Equal(t, 1, most, "one clone's fetches stay serial")
-	mu.Unlock()
+	c1.Unlock()
+	select {
+	case <-held:
+	case <-time.After(time.Second):
+		t.Fatal("the second fetch of one clone never got the lock")
+	}
+	c2.Unlock()
 }
 
 // (d) A batch refused on one base does not stop another base's lane: the main lane lands

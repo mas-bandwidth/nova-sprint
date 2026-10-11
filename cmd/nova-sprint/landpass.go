@@ -159,9 +159,6 @@ func (l *lander) fetched(ctx context.Context, dir string, args ...string) (strin
 	mu := l.locks().fetchLock(dir)
 	mu.Lock()
 	defer mu.Unlock()
-	if l.a != nil && l.a.fetchHold != nil {
-		l.a.fetchHold(dir)
-	}
 	return l.git(ctx, dir, args...)
 }
 
