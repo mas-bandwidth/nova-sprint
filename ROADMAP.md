@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (209)
+- [The sprint machine](#the-sprint-machine) (208)
 - [Setup, release and operations](#setup-release-and-operations) (27)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (20)
@@ -1197,14 +1197,6 @@ Render the work tree with state, evidence, counts and linked issues on the nodes
 Target: after v1.4
 
 From: issue #2113
-
-### A loaded bench must not be marked down by the fleet probe
-
-The fleet-state probe marks a heavily loaded but healthy bench down after a few missed probes, and the dealer then kills its loops and sweeps its queue. Define state-entry timing and tell loaded from down.
-
-Target: v1.3
-
-From: issue #2161
 
 ### Emit merge-queue and expander events to the structured log
 

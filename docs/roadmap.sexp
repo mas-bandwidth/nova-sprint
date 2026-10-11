@@ -1409,14 +1409,6 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "issue #2113")
-  (item "fleet-probe-loaded-bench-not-down" :group "sprint"
-   :title "A loaded bench must not be marked down by the fleet probe"
-   :text "The fleet-state probe marks a heavily loaded but healthy bench down after a few missed probes,
-    and the dealer then kills its loops and sweeps its queue. Define state-entry timing and tell
-    loaded from down."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "issue #2161")
   (item "sprint-event-log-merge-and-expander" :group "sprint"
    :title "Emit merge-queue and expander events to the structured log"
    :text "Log enqueue, group start, group verdict and park events from the merge queue, and derive and cut
