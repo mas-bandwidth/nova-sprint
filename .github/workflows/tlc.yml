@@ -1,0 +1,103 @@
+# nova-sprint TLC: the models in tla/ run on GitHub-hosted ubuntu-latest
+# runners. nova-sprint is a public repository, so the fleet's self-hosted
+# runners (registered to nova-tools) are not allowed here, and neither is a
+# desktop. The TLC jar is pinned by digest in tla/tla2tools.sha256 -- the same
+# digest every tla/RUNS.tsv record names -- and downloaded from the tlaplus
+# v1.7.4 release. The jobs never write tla/RUNS.tsv: records still land
+# through cards, from a bench.
+name: TLC
+
+on:
+  schedule:
+    # one nightly run, a little after the fleet's own bench hours
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "tla/**"
+      - "pkg/tlc/**"
+      - "tools/tlacheck/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tlc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  groups:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      groups: ${{ steps.groups.outputs.groups }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: make tlc-test
+        run: make tlc-test
+      - name: the groups to run
+        id: groups
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            # a pull request runs only the groups a model edit made stale
+            groups=$(go run ./tools/tlacheck groups --root . --stale)
+          else
+            # schedule and workflow_dispatch run every required group
+            # (the Makefile's tlc-groups target is the --stale set, so ask
+            # tlacheck directly for every required group)
+            groups=$(go run ./tools/tlacheck groups --root .)
+          fi
+          echo "groups=${groups}" >> "${GITHUB_OUTPUT}"
+          echo "groups to run: ${groups}"
+
+  models:
+    needs: groups
+    # an empty list ends the workflow green: no groups means no matrix
+    if: ${{ needs.groups.outputs.groups != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        group: ${{ fromJSON(needs.groups.outputs.groups) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: java from the runner image
+        # the runner image ships JDK 21; no setup-java action
+        run: |
+          set -euo pipefail
+          echo "${JAVA_HOME_21_X64}/bin" >> "${GITHUB_PATH}"
+          "${JAVA_HOME_21_X64}/bin/java" -version
+      - name: tlc ${{ matrix.group }}
+        # download the pinned jar, refuse it unless it matches
+        # tla/tla2tools.sha256, then run the group with the 110-second budget
+        run: |
+          set -euo pipefail
+          jar="${RUNNER_TEMP}/tla2tools.jar"
+          curl -fsSL -o "${jar}" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+          want=$(cut -d' ' -f1 tla/tla2tools.sha256)
+          got=$(sha256sum "${jar}" | cut -d' ' -f1)
+          if [ "${got}" != "${want}" ]; then
+            echo "tla2tools.jar digest mismatch: want ${want}, got ${got}" >&2
+            exit 2
+          fi
+          make tlc \
+            TLC_JAR="${jar}" \
+            TLC_GROUP="${{ matrix.group }}" \
+            TLC_OUT="${RUNNER_TEMP}/tlc-${{ matrix.group }}" \
+            TLC_BUDGET=110
+      - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        if: ${{ always() }}
+        with:
+          name: tlc-${{ matrix.group }}
+          path: ${{ runner.temp }}/tlc-${{ matrix.group }}
+          retention-days: 14

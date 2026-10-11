@@ -9,11 +9,14 @@
 \* t is due at (0 is never set); fired[t], how many judgments named timer t;
 \* now, the clock; mem, the machine's read of the store, which a restart loses
 \* and the next tick reads again. The outside: a timer is set and cancelled at
-\* any time, including while the machine is down, and the clock moves.
+\* any time, including while the machine is down, and the clock moves. The code
+\* due test counts running time (DueNow: the time the machine was STOPPED since
+\* the timer was set does not count; store/timers.go:105-110, timers.go:84-87);
+\* the model's now is the running clock, and stopped time is not modelled.
 \*
 \* The design, Broken = {}:
-\*   Set      a timer is written to the store with a due time the clock has
-\*            not passed.
+\*   Set      a timer is written to the store with a due time strictly after
+\*            now (the code refuses a due time not after now, store/timers.go:78).
 \*   Cancel   an open timer is taken off the store; a fired one cannot be
 \*            (it is no longer open), so a cancelled timer never fires.
 \*   Tick     the machine reads the store's open timers and raises each one
@@ -60,10 +63,10 @@ Init ==
     /\ fired = [t \in Timers |-> 0]
     /\ mem = {}
 
-\* a timer is written to the store, due at a clock time not yet reached
+\* a timer is written to the store, due at a clock time strictly after now
 Set(t, d) ==
     /\ t \notin armed
-    /\ d \in now..MaxTime
+    /\ d \in (now + 1)..MaxTime
     /\ due' = [due EXCEPT ![t] = d]
     /\ open' = open \cup {t}
     /\ armed' = armed \cup {t}

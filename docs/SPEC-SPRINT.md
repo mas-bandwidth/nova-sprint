@@ -562,14 +562,17 @@ receipt in use is friend sync's.
 
 Working on her row means started: a work card working on a friend's row whose
 `started` is not its generation was moved there by no start of hers (her
-finish's next, `friendNext`; a take-back's next, `FriendTake`; a `take --as
-friend.<name>`, which is no start receipt), and the tick, before its deal, puts
-it back `ready` on her row, `taken` and her deadline unset (and its first take,
-when no friend ever started it), its start bound from then (`untaken_since`), one
+finish's next, `friendNext`; a take-back's next, `FriendTake`), and the tick,
+before its deal, puts it back `ready` on her row, `taken` and her deadline
+unset (and its first take, when no friend ever started it), its start bound
+from then (`untaken_since`), one
 line each (`<card> friend.<f>:working -> ready (working with no start of hers:
 it waits ready until she starts it)`; `sprint.friendUnstartedWorking`); one her
-beat names running is stamped started where it is. The friends table's
-`working` is then started cards only.
+beat names running is stamped started where it is. A `take --as friend.<name>`
+is her start: both forms of the verb take the card through the one move
+(`sprint.NamedLaneTake`, `takeOne` then `laneSet`), so it carries `started` and
+the tick never puts it back. The friends table's `working` is then started
+cards only.
 
 A card dealt and not started within the start bound (`friend_start_max`, a
 duration on the work table, default 20 minutes, `Snapshot.FriendStartMax`) of
@@ -583,6 +586,8 @@ that it has not left and who is not herself stuck so, ready on that row at its
 next generation, the friend it left added to `friends_left` so it never goes
 back to her, one line each (`... (not started 20m0s after its deal, and friend
 <name> names no job running)`; `sprint.friendUnstartedLevel`; a hard pin stays).
+The recipient must be dealable (up, with builder role, not marked dealt-no-more,
+and friends work on).
 A card no friend may take stays, and the deadline rule judges it once
 `friend_start_max` plus `FriendReadyMax` has run (`TickDeadlines`). The level's
 own evening leaves the oldest unstarted cards that hold her free lanes to her
@@ -594,8 +599,8 @@ start (`TestAFriendCardIsWorkingOnlyOnceTheFriendStartsIt`,
 `TestFriendSyncCollectsAReportOnACardStillReady`). Not yet built: the
 `collect` verb, `friend reconcile` and her daemon's outbox pass read only cards
 working on her row, so a report on a card still ready waits for friend sync's
-start receipt; and `friendNext`, `FriendTake` and a friend's `take` still move a
-card to working, for the tick to put back.
+start receipt; and `friendNext` and `FriendTake` still move a card to working,
+for the tick to put back.
 
 **A friend takes her own ready cards** (2026-10-05, 11:20 PM: a friend held
 fourteen cards, six of them ready, and could not take one: `take --as
@@ -608,8 +613,13 @@ row into working, by id (`<card>@<gen>`) or by count, as a member takes
 they take a member's working card. Her status and her lanes are her friends
 row's, never a control card's: she takes while she is up (held or down, her
 cards wait ready, and the refusal names why), within her lanes (her width, in either mode; hard, as a member's width: a take past them is refused,
-`friend friend.<name> is at its width`), and a card she takes is taken now and
-carries her deadline (`friendTaken`). A card on another row is refused (`not in
+`friend friend.<name> is at its width`), and a card she takes is taken now,
+carries her start and her deadline (`friendStartSet`, through the one move:
+`take --as friend.<name> <card>@<gen> [--lane <n>]` is `sprint.NamedLaneTake`,
+which takes the named card by `takeOne` — the row's seat and width, the card's
+route rest and the providers' concurrency budget held as a take by count holds
+them — and stamps it with the lane and, on her row, her start). A card on
+another row is refused (`not in
 friend.<name> ready`), a friend not on the roster is refused (`no friend
 <name> on the roster`), and a count take that took fewer than asked says
 why on a NOTE line. The server runs her verbs as `friend.<name>` (the HTTP form,

@@ -40,6 +40,7 @@ var verbExit = map[string]string{
 	"demo load":     "exit codes: 0 the demo is up and where read it, 1 failed (a damaged backup, a demo already up, a Redis that did not start or a line not replayed: what this load started is stopped and removed), 2 usage",
 	"demo stop":     "exit codes: 0 stopped and removed, 1 failed (no demo up, or a recorded pid or directory that is not the demo's: nothing stopped or removed), 2 usage",
 	"server switch": "exit codes: 0 done, 1 failed or refused (the candidate's shadow tick failed: nothing changed), 2 usage",
+	"brief check":   "exit codes: 0 no finding, 1 one or more findings, 2 usage or an unreadable file, 3 the store did not answer and the store-free checks found nothing",
 }
 
 // verbEffect is a verb's effect line, the last line of its -h, where the verb
@@ -52,6 +53,7 @@ var verbEffect = map[string]string{
 	"friend hold":       "local write: holds the named friends in the sprint's store, as hold does (every card she holds goes back to ready); --dry-run writes nothing",
 	"friend unhold":     "local write: releases the named friends' holds in the sprint's store, as unhold does; --dry-run writes nothing",
 	"check":             "inspection: reads the sprint's tables and prints each violation, writes nothing",
+	"brief check":       "inspection: reads the named briefs and runs every check add runs, in add's order, over every brief, collecting every finding instead of stopping at the first; reads the store read-only and writes nothing",
 	"routes":            "inspection: reads the route table and prints each route, writes nothing",
 	"cost reconcile":    "local write: reads each provider's usage of today through the seat's key and writes the reconciliation and its gap judgment to the sprint's store; --dry-run writes nothing",
 	"cost reprice":      "local write: rewrites every priced consumer record's cost, each card's totals and each stream's landed sum from the records' tokens at the routes' current prices in the sprint's store; --dry-run writes nothing",
