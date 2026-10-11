@@ -202,11 +202,14 @@
      Accept) with internal/sprint/readers.go ReadsNeededIn and internal/sprint/lifecycle.go Moves as the
      reference: a card in review asks its reads of readers other than its worker, a read begins and returns ok or
      broken, and accept moves it to merging when it has the reads its tier needs (one for a flash card, two for a
-     pro card; ReadsNeededIn). Invariants AcceptHeld (no primary enters merging short of its reads),
-     NeverReadByItsWorker and MovesOnlyByTable, with the reversed witness MCSprintTablesBrokenShortAccept (an
-     accept with one read fewer fails AcceptHeld). Drift kept out and named in the report: refmodel's Accept
-     demands two readers where the code allows one for flash (a v1.2.13 cleanup), and docs/SPEC-SPRINT.md section 3
-     calls accept mechanical (the tick) where lifecycle.go:57 names it Coordinator, so the module models the code."
+     pro card; ReadsNeededIn) and no broken read stands at its head (steps_review.go hasBrokenAtHead). Invariants
+     AcceptHeld (no primary enters merging short of its reads), NeverAcceptBroken (no primary enters merging with
+     a broken read at its head), NeverReadByItsWorker and MovesOnlyByTable, with the reversed witnesses
+     MCSprintTablesBrokenShortAccept (an accept with one read fewer fails AcceptHeld) and
+     MCSprintTablesBrokenAcceptBroken (an accept with a broken read at its head fails NeverAcceptBroken). Drift
+     kept out and named in the report: refmodel's Accept demands two readers where the code allows one for flash
+     and lacks the read-broken guard (v1.2.13 cleanups), and docs/SPEC-SPRINT.md section 3 calls accept mechanical
+     (the tick) where lifecycle.go:57 names it Coordinator, so the module models the code."
     :origin "this card; v1.2.12 inventory item T4, the third of five cards")
    (fix "tla-noroom-admission-by-probe" :release "v1.2.12" :status "planned"
     :title "NoRoom models the probe gate and the read return's taker"
