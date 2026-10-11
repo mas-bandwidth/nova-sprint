@@ -211,25 +211,68 @@
 \*     fails: Accept, Read, Build, Check, Push, SetReads, ShortBack).
 \*   "offerrefused" offers to accept a card at the head the landing refused
 \*     (NoOfferAtRefusedHead fails: Accept, Rework, Read, Build, Refuse).
+\*   "nowidencap" widens with no cap, as the E12 branch did before
+\*     2026-10-10 (AttemptsBounded fails, MCLandBound).
+\*   "nosamefinding" reworks the same refusal twice on one brief
+\*     (SameRefusalHalts fails, MCLandBound).
+\*
+\* THE BOUND (WaysOn; off in every instance but MCLandBound, where the
+\* definitions below are replaced). sprint.landRefused answers a refusal of
+\* the card's own head one of two ways, and the brief's bound comes first for
+\* both (the ejection-bound audit of 2026-10-10: the E12 branch skipped it):
+\*   bat       the attempt the card's brief was last replaced at (its
+\*             FieldBriefAttempt): the attempts cap counts from it
+\*   prevw     the way of the refusal the card's finding names, at attempt
+\*             prevat ("none" when its finding is no refusal's)
+\*   widens    the rule widenings of its PATHS (FieldWidens): no brief edit
+\*             resets it
+\*   paths     the files outside its first PATHS that widenings added
+\*   regneed   the regression's files outside the first PATHS (chosen at Init)
+\*   cleared   the card's head no longer fails: chosen at each new attempt,
+\*             TRUE only when regneed is empty or the PATHS meet it (meeting it
+\*             is necessary, not sufficient)
+\* A refusal of way "other" (a conflict of its own, the checks, the tree gate)
+\* is reworked with the way as its finding; one of way "paths" (files outside
+\* PATHS, E12) goes to the widen rule, which widens the brief in place by the
+\* files named (the brief replaced, so bat moves: the brief reset), or, when
+\* a file is not adjacent, to the conflict rule's redo inside PATHS (no
+\* finding kept). Either is refused at the brief's bound: the attempts cap
+\* (Cap attempts since bat), the same refusal at two attempts of one brief,
+\* or, for "paths", MaxWidens widenings spent; then the card goes to review,
+\* a mind's. Every failure is an attempt, counted in att and never reset, so
+\* AttemptsBounded holds the whole loop to MaxAttempts =
+\* MaxWidens * (Cap - 1) + Cap. A card whose head is never cleared halts in
+\* review (AttemptsBounded, NeverRightNeverLands, Settles); one whose fix is
+\* reachable can land (ReachWidenLands, a reversed witness). A reworked card
+\* comes back by Redeal (its next attempt worked, read and accepted), the
+\* machine's own step under fairness, so the loop is the design's to bound
+\* and not the outside's event count.
 \*
 \* WHAT IS NOT MODELLED. The check (--check), the red and rejected facts:
-\* those refusals are the lander going idle with the store unchanged. The
-\* bound is MaxAttempts, the attempts a card's brief may run, with no brief
-\* replaced and no same-refusal-twice bound (refmodel and the engine's tests
-\* hold those). Files outside a card's PATHS go back to review for the widen
-\* rule in the code; here every refusal of the card's own head is reworked
-\* or bound. A card's attempts are counted across a clear, so a head is never
-\* reused by another card. One stream, one base.
+\* those refusals are the lander going idle with the store unchanged. With
+\* WaysOn FALSE the bound is MaxAttempts alone, every refusal of the card's
+\* own head reworked or bound (refmodel and the engine's tests hold the
+\* rest). The readers' widen (SprintRules.tla Part "reads") shares the
+\* widen count in the code and is not here. A card's attempts are counted
+\* across a clear, so a head is never reused by another card. One stream,
+\* one base.
 EXTENDS Integers, Sequences, FiniteSets, TLC
 
 CONSTANTS Cards, MaxAttempts, MaxEpoch, MaxEvents, Broken
+
+\* The bound's part, off unless an instance replaces these (MCLandBound).
+WaysOn == FALSE
+Cap == MaxAttempts
+MaxWidens == 0
+Files == {}
 
 VARIABLES queue, att, landed, epoch, base, tip,
           lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
           oks, need, reread, shortland, lcheckneed, markneed,
-          rhead, offer
+          rhead, offer,
+          bat, prevw, prevat, widens, paths, regneed, cleared, twice
 
 reads == <<oks, need, reread, markneed>>
 offers == <<rhead, offer>>
@@ -237,11 +280,13 @@ store == <<queue, att, landed, epoch, ready, review, stop, oks, need, reread, ma
 remote == <<base, tip>>
 lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries, lref, lkind, lcheckneed>>
 ghosts == <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland>>
+bound == <<bat, prevw, prevat, widens, paths, regneed, cleared, twice>>
 vars == <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
           oks, need, reread, shortland, lcheckneed, markneed,
-          rhead, offer>>
+          rhead, offer,
+          bat, prevw, prevat, widens, paths, regneed, cleared, twice>>
 
 Heads == Cards \X (1..MaxAttempts)
 
@@ -286,7 +331,7 @@ ReportTo == IF Broken = "reportfirst" THEN "reported" ELSE "idle"
 
 TypeOK ==
   /\ queue \in Seq(Cards) /\ Len(queue) <= Cardinality(Cards)
-  /\ att \in [Cards -> 1..MaxAttempts]
+  /\ att \in [Cards -> Nat \ {0}]
   /\ landed \subseteq Heads
   /\ epoch \in 0..MaxEpoch
   /\ base \subseteq Heads
@@ -309,6 +354,11 @@ TypeOK ==
   /\ oks \in [Cards -> 1..2] /\ need \in 1..2 /\ reread \subseteq Cards
   /\ shortland \in BOOLEAN /\ lcheckneed \in 1..2 /\ markneed \in [Heads -> 0..2]
   /\ rhead \in [Cards -> 0..MaxAttempts] /\ offer \subseteq Cards
+  /\ bat \in [Cards -> Nat] /\ prevat \in [Cards -> Nat]
+  /\ prevw \in [Cards -> {"none", "paths", "other"}]
+  /\ widens \in [Cards -> Nat]
+  /\ paths \in [Cards -> SUBSET Files] /\ regneed \in [Cards -> SUBSET Files]
+  /\ cleared \in [Cards -> BOOLEAN] /\ twice \in BOOLEAN
 
 Init ==
   /\ queue = <<>> /\ att = [c \in Cards |-> 1] /\ landed = {} /\ epoch = 0
@@ -320,6 +370,9 @@ Init ==
   /\ oks = [c \in Cards |-> 1] /\ need = 1 /\ reread = {} /\ shortland = FALSE /\ lcheckneed = 1
   /\ markneed = [h \in Heads |-> 0]
   /\ rhead = [c \in Cards |-> 0] /\ offer = {}
+  /\ bat = [c \in Cards |-> 0] /\ prevw = [c \in Cards |-> "none"] /\ prevat = [c \in Cards |-> 0]
+  /\ widens = [c \in Cards |-> 0] /\ paths = [c \in Cards |-> {}]
+  /\ regneed \in [Cards -> SUBSET Files] /\ cleared = [c \in Cards |-> FALSE] /\ twice = FALSE
 
 \* ---- the lander (land.go) ----
 
@@ -332,7 +385,7 @@ Read ==
     /\ Broken = "latepoch" \/ cep = epoch
     /\ lphase' = "read" /\ lq' = QHeads /\ lep' = cep /\ lrep' = epoch /\ ltip' = tip /\ tries' = 0
     /\ UNCHANGED store /\ UNCHANGED remote /\ UNCHANGED <<lbatch, lref, lkind, lcheckneed>>
-    /\ UNCHANGED events /\ UNCHANGED ghosts
+    /\ UNCHANGED events /\ UNCHANGED ghosts /\ UNCHANGED bound
 
 \* Build: the pinned heads merged in queue order, ended by the first card
 \* that stops it: refused (lref, its own or the lander's failure, lkind) or
@@ -350,6 +403,11 @@ Build ==
           /\ lbatch' = SubSeq(lq, 1, n)
           /\ r => n < Len(lq) /\ lq[n + 1] \notin base /\ Broken # "reportfirst" /\ LanderReadsOk(lq[n + 1])
           /\ n > 0 \/ r
+          \* with the bound on, a head fails exactly when its card is not cleared,
+          \* and only on the card's own account
+          /\ WaysOn => /\ k = "own"
+                       /\ \A i \in 1..n : lq[i] \in base \/ cleared[lq[i][1]]
+                       /\ r => ~cleared[lq[n + 1][1]]
           /\ lref' = IF r THEN lq[n + 1] ELSE <<>>
           /\ lkind' = k
           /\ lphase' = IF n = 0 THEN "refusing" ELSE "built"
@@ -357,7 +415,7 @@ Build ==
         /\ lphase' = "idle"
         /\ UNCHANGED <<lbatch, lref, lkind>>
   /\ UNCHANGED store /\ UNCHANGED remote /\ UNCHANGED <<lcheckneed, lq, lep, lrep, ltip, tries>>
-  /\ UNCHANGED events /\ UNCHANGED ghosts
+  /\ UNCHANGED events /\ UNCHANGED ghosts /\ UNCHANGED bound
 
 \* Check: the queue's heads and the epoch read again just before the push
 \* (queueHead); a stale batch is refused, nothing pushed, and so is one with
@@ -374,7 +432,7 @@ Check ==
   /\ lcheckneed' = need
   /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, oks, need, reread>> /\ UNCHANGED offers
   /\ UNCHANGED remote /\ UNCHANGED <<lq, lbatch, lep, lrep, ltip, tries, lref, lkind>>
-  /\ UNCHANGED events /\ UNCHANGED ghosts
+  /\ UNCHANGED events /\ UNCHANGED ghosts /\ UNCHANGED bound
 
 \* Push: git push, which the store cannot fence. A moved tip is rejected and
 \* the batch rebuilt on the new tip, to be checked again, once; then given up
@@ -383,7 +441,7 @@ Check ==
 Push ==
   /\ lphase = PushFrom
   /\ UNCHANGED store /\ UNCHANGED <<lcheckneed, lq, lep, lrep, lbatch, lref, lkind>> /\ UNCHANGED events
-  /\ UNCHANGED <<stalerec, carried, ownstop>>
+  /\ UNCHANGED <<stalerec, carried, ownstop>> /\ UNCHANGED bound
   /\ IF ltip # tip
      THEN IF tries < 1
           THEN /\ ltip' = tip /\ tries' = tries + 1 /\ lphase' = RebuildTo
@@ -428,6 +486,57 @@ Report ==
   /\ UNCHANGED <<att, epoch, ready, review, stop>> /\ UNCHANGED reads /\ UNCHANGED remote /\ UNCHANGED offers
   /\ UNCHANGED <<lcheckneed, lq, lbatch, lep, lrep, ltip, tries, lref, lkind>>
   /\ UNCHANGED events /\ UNCHANGED <<badcaller, stalepush, lpushed, carried, ownstop, shortland>>
+  /\ UNCHANGED bound
+
+\* The regression can clear at a new attempt only when it needs nothing outside
+\* the first PATHS or the PATHS now meet what it needs: necessary, not
+\* sufficient, so the clear is chosen.
+Clearable(c, p) == regneed[c] = {} \/ p \cap regneed[c] # {}
+
+\* The card's next attempt: counted, the refused head carried, ready, and its
+\* head cleared or not (cl, chosen by the caller).
+NextAttempt(c, cl) ==
+  /\ att' = [att EXCEPT ![c] = @ + 1] /\ ready' = ready \cup {c}
+  /\ carried' = IF Broken = "nocarry" THEN carried ELSE carried \cup {lref}
+  /\ cleared' = [cleared EXCEPT ![c] = cl]
+  /\ UNCHANGED review
+
+\* landRefused with the bound on: the way w of the refusal (the lander names
+\* the files F outside PATHS for "paths"), the brief's bound first for both
+\* ways, then the rework ("other"), the widen in place or the redo ("paths").
+RefuseWays(c) ==
+  \E w \in {"paths", "other"}, F \in SUBSET (Files \ paths[c]) :
+    /\ (w = "paths") = (F # {})
+    /\ LET same == prevw[c] = w /\ prevat[c] > bat[c] /\ prevat[c] < att[c]
+           capped == att[c] - bat[c] >= Cap
+           spent == w = "paths" /\ widens[c] >= MaxWidens /\ Broken # "nowidencap"
+           atBound == capped \/ spent \/ (same /\ Broken # "nosamefinding")
+       IN IF atBound
+          THEN /\ review' = review \cup {c}
+               /\ UNCHANGED <<att, ready, carried>> /\ UNCHANGED bound
+          ELSE /\ twice' = (twice \/ same)
+               /\ UNCHANGED regneed
+               /\ IF w = "other"
+                  THEN \E cl \in IF Clearable(c, paths[c]) THEN BOOLEAN ELSE {FALSE} :
+                         /\ NextAttempt(c, cl)
+                         /\ prevw' = [prevw EXCEPT ![c] = w] /\ prevat' = [prevat EXCEPT ![c] = att[c]]
+                         /\ UNCHANGED <<bat, widens, paths>>
+                  ELSE \E widen \in BOOLEAN :
+                         IF widen
+                         THEN \* the widen rule: the brief edited in place by F (bat moves)
+                              LET np == paths[c] \cup F
+                              IN \E cl \in IF Clearable(c, np) THEN BOOLEAN ELSE {FALSE} :
+                                   /\ NextAttempt(c, cl)
+                                   /\ paths' = [paths EXCEPT ![c] = np]
+                                   /\ widens' = [widens EXCEPT ![c] = @ + 1]
+                                   /\ bat' = [bat EXCEPT ![c] = att[c]]
+                                   /\ prevw' = [prevw EXCEPT ![c] = "none"]
+                                   /\ UNCHANGED prevat
+                         ELSE \* a file not adjacent: the conflict rule's redo inside PATHS
+                              \E cl \in IF Clearable(c, paths[c]) THEN BOOLEAN ELSE {FALSE} :
+                                   /\ NextAttempt(c, cl)
+                                   /\ prevw' = [prevw EXCEPT ![c] = "none"]
+                                   /\ UNCHANGED <<bat, widens, paths, prevat>>
 
 \* Refuse: the conflict fact of the refused card, one store step fenced to the
 \* epoch held and guarded to plan only while the queue starts with that card
@@ -445,25 +554,29 @@ Refuse ==
          ok == Fresh(<<lref>>)
          own == lkind = "own" /\ Broken # "ownstops"
      IN IF ~ok
-        THEN UNCHANGED <<queue, att, ready, review, stop, carried, ownstop, oks, rhead, offer>>
+        THEN UNCHANGED <<queue, att, ready, review, stop, carried, ownstop, oks, rhead, offer>> /\ UNCHANGED bound
+        ELSE IF own /\ WaysOn
+        THEN /\ queue' = Tail(queue)
+             /\ RefuseWays(c)
+             /\ UNCHANGED <<stop, ownstop, oks, rhead, offer>>
         ELSE IF own
         THEN /\ queue' = Tail(queue)
              /\ IF att[c] < MaxAttempts
                 THEN /\ att' = [att EXCEPT ![c] = @ + 1] /\ ready' = ready \cup {c}
                      /\ carried' = IF Broken = "nocarry" THEN carried ELSE carried \cup {lref}
                      /\ oks' = [oks EXCEPT ![c] = 1]
-                     /\ UNCHANGED <<review, offer, rhead>>
+                     /\ UNCHANGED <<review, offer, rhead>> /\ UNCHANGED bound
                 ELSE /\ review' = review \cup {c}
                      \* the refused head is kept on the card (sprint.FieldLandRefusedHead)
                      /\ rhead' = [rhead EXCEPT ![c] = lref[2]]
                      \* the bound's judgment alone (brief, drop); offerrefused also
                      \* offers the refused head to accept, as v1.2.x did
                      /\ offer' = IF Broken = "offerrefused" THEN offer \cup {c} ELSE offer
-                     /\ UNCHANGED <<att, ready, carried, oks>>
+                     /\ UNCHANGED <<att, ready, carried, oks>> /\ UNCHANGED bound
              /\ UNCHANGED <<stop, ownstop>>
         ELSE /\ stop' = IF lkind = "own" THEN "own" ELSE "lander"
              /\ ownstop' = (ownstop \/ lkind = "own")
-             /\ UNCHANGED <<queue, att, ready, review, carried, oks, rhead, offer>>
+             /\ UNCHANGED <<queue, att, ready, review, carried, oks, rhead, offer>> /\ UNCHANGED bound
   /\ lphase' = "idle" /\ lref' = <<>>
   /\ UNCHANGED <<landed, epoch, need, reread, shortland, markneed>> /\ UNCHANGED remote
   /\ UNCHANGED <<lcheckneed, lq, lbatch, lep, lrep, ltip, tries, lkind>>
@@ -488,12 +601,12 @@ Accept ==
     \* a card it takes out of review leaves its kept head behind (rhead)
     /\ offer' = offer \ {c}
     /\ rhead' = [rhead EXCEPT ![c] = 0]
-    /\ UNCHANGED <<att, landed, epoch, stop, oks, need, shortland, markneed>> /\ UNCHANGED remote /\ UNCHANGED lander
+    /\ UNCHANGED <<att, landed, epoch, stop, oks, need, shortland, markneed>> /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED bound
 
 Return ==
   \E c \in Range(queue) :
     /\ queue' = SelectSeq(queue, LAMBDA x : x # c)
-    /\ UNCHANGED <<att, landed, epoch, ready, review, stop, shortland>> /\ UNCHANGED reads /\ UNCHANGED offers
+    /\ UNCHANGED <<att, landed, epoch, ready, review, stop, shortland>> /\ UNCHANGED reads /\ UNCHANGED offers /\ UNCHANGED bound
     /\ UNCHANGED remote /\ UNCHANGED lander
 
 \* A rework's new head starts again at one read.
@@ -501,18 +614,20 @@ Rework ==
   \E c \in Range(queue) :
     /\ att[c] < MaxAttempts
     /\ att' = [att EXCEPT ![c] = @ + 1] /\ oks' = [oks EXCEPT ![c] = 1]
-    /\ UNCHANGED <<queue, landed, epoch, ready, review, stop, need, reread, shortland, markneed>> /\ UNCHANGED offers
+    /\ UNCHANGED <<queue, landed, epoch, ready, review, stop, need, reread, shortland, markneed>> /\ UNCHANGED offers /\ UNCHANGED bound
     /\ UNCHANGED remote /\ UNCHANGED lander
 
 \* Another lander lands the queue's head, correctly: never on a stopped stream,
-\* and never a card short of its reads.
+\* never a card short of its reads, and, with the bound on, only a head that
+\* does not fail (it runs the same checks this lander does).
 OtherLand ==
   /\ Len(queue) > 0 /\ stop = "none"
   /\ ReadsOk(Current(Head(queue)))
+  /\ WaysOn => cleared[Head(queue)]
   /\ base' = base \cup {Current(Head(queue))} /\ tip' = tip + 1
   /\ landed' = landed \cup {Current(Head(queue))} /\ queue' = Tail(queue)
   /\ shortland' = (shortland \/ oks[Head(queue)] < need)
-  /\ UNCHANGED <<att, epoch, ready, review, stop>> /\ UNCHANGED reads /\ UNCHANGED offers /\ UNCHANGED lander
+  /\ UNCHANGED <<att, epoch, ready, review, stop>> /\ UNCHANGED reads /\ UNCHANGED offers /\ UNCHANGED lander /\ UNCHANGED bound
 
 Clear ==
   /\ epoch < MaxEpoch
@@ -520,19 +635,19 @@ Clear ==
   /\ ready' = {} /\ review' = {} /\ stop' = "none" /\ reread' = {}
   /\ markneed' = [h \in Heads |-> 0]
   /\ rhead' = [c \in Cards |-> 0] /\ offer' = {}
-  /\ UNCHANGED <<att, oks, need, shortland>> /\ UNCHANGED remote /\ UNCHANGED lander
+  /\ UNCHANGED <<att, oks, need, shortland>> /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED bound
 
 \* A mind resumes a stream the lander's own failure stopped.
 Resume ==
   /\ stop # "none" /\ stop' = "none"
-  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, shortland>> /\ UNCHANGED reads /\ UNCHANGED offers
+  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, shortland>> /\ UNCHANGED reads /\ UNCHANGED offers /\ UNCHANGED bound
   /\ UNCHANGED remote /\ UNCHANGED lander
 
 \* The owner's set --reads, or a tier pinned on the cards (rework --tier, brief
 \* --tier): the count every card in review and merging needs changes.
 SetReads ==
   /\ need' = 3 - need
-  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, oks, reread, shortland, markneed>> /\ UNCHANGED offers
+  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, oks, reread, shortland, markneed>> /\ UNCHANGED offers /\ UNCHANGED bound
   /\ UNCHANGED remote /\ UNCHANGED lander
 
 \* A second reader's ok read at a card's head, off the queue (in review).
@@ -540,23 +655,23 @@ ReadOk ==
   \E c \in Cards :
     /\ c \notin Range(queue) /\ oks[c] < 2
     /\ oks' = [oks EXCEPT ![c] = 2]
-    /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, need, reread, shortland, markneed>> /\ UNCHANGED offers
+    /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, need, reread, shortland, markneed>> /\ UNCHANGED offers /\ UNCHANGED bound
     /\ UNCHANGED remote /\ UNCHANGED lander
 
 MoveBase ==
   /\ tip' = tip + 1
-  /\ UNCHANGED store /\ UNCHANGED base /\ UNCHANGED lander /\ UNCHANGED shortland
+  /\ UNCHANGED store /\ UNCHANGED base /\ UNCHANGED lander /\ UNCHANGED shortland /\ UNCHANGED bound
 
 Crash ==
   /\ lphase # "idle"
   /\ lphase' = "idle" /\ tries' = 0 /\ lref' = <<>>
   /\ UNCHANGED store /\ UNCHANGED remote /\ UNCHANGED <<lcheckneed, lq, lbatch, lep, lrep, ltip, lkind>>
-  /\ UNCHANGED shortland
+  /\ UNCHANGED shortland /\ UNCHANGED bound
 
 Outside ==
   /\ events < MaxEvents
   /\ events' = events + 1
-  /\ UNCHANGED <<badcaller, stalepush, stalerec, carried, ownstop>>
+  /\ UNCHANGED <<badcaller, stalepush, stalerec, carried, ownstop>> /\ UNCHANGED bound
   /\ (Accept \/ Return \/ Rework \/ OtherLand \/ Clear \/ MoveBase \/ Crash \/ Resume \/ SetReads \/ ReadOk)
   /\ lpushed' = IF epoch' # epoch THEN {} ELSE lpushed
 
@@ -573,7 +688,7 @@ ShortBack ==
        /\ Broken = "bouncemarked" \/ ~Marked(Current(c))
        /\ queue' = SelectSeq(queue, LAMBDA x : x # c)
        /\ reread' = reread \cup {c}
-  /\ UNCHANGED <<att, landed, epoch, ready, review, stop, oks, need, markneed>> /\ UNCHANGED offers
+  /\ UNCHANGED <<att, landed, epoch, ready, review, stop, oks, need, markneed>> /\ UNCHANGED offers /\ UNCHANGED bound
   /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED events /\ UNCHANGED ghosts
 
 \* OfferAccept: the machine's ready to accept on a card in review whose reads
@@ -585,16 +700,26 @@ OfferAccept ==
        /\ c \notin offer /\ oks[c] >= need
        /\ Broken = "offerrefused" \/ rhead[c] # att[c]
        /\ offer' = offer \cup {c}
-  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, rhead>> /\ UNCHANGED reads
+  /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, rhead>> /\ UNCHANGED reads /\ UNCHANGED bound
   /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED events /\ UNCHANGED ghosts
 
-Next == Land \/ ShortBack \/ OfferAccept \/ Outside
+\* With the bound on, a reworked card comes back: its next attempt worked, read
+\* and accepted, queued at the end (the machine's own step, fair).
+Redeal ==
+  /\ WaysOn
+  /\ \E c \in ready :
+       /\ c \notin Range(queue)
+       /\ queue' = Append(queue, c) /\ ready' = ready \ {c}
+  /\ UNCHANGED <<att, landed, epoch, review, stop>> /\ UNCHANGED reads /\ UNCHANGED offers /\ UNCHANGED remote /\ UNCHANGED lander
+  /\ UNCHANGED events /\ UNCHANGED ghosts /\ UNCHANGED bound
+
+Next == Land \/ ShortBack \/ OfferAccept \/ Redeal \/ Outside
 
 Spec == Init /\ [][Next]_vars
 
-\* The lander runs again whenever it can: the coordinator re-runs land; and the
-\* tick runs.
-FairSpec == Spec /\ WF_vars(Land) /\ WF_vars(ShortBack)
+\* The lander runs again whenever it can: the coordinator re-runs land; with
+\* the bound on, a reworked card is redealt, and the tick runs.
+FairSpec == Spec /\ WF_vars(Land) /\ WF_vars(ShortBack) /\ WF_vars(Redeal)
 
 \* ---- the rules ----
 
@@ -618,10 +743,28 @@ LeavesMergeRightly ==
   [][Land => \A c \in Range(queue) \ Range(queue') :
          \/ Current(c) \in landed'
          \/ c \in ready' /\ att'[c] = att[c] + 1
-         \/ c \in review' /\ att[c] = MaxAttempts
+         \/ c \in review' /\ (WaysOn \/ att[c] = MaxAttempts)
     ]_vars
 
 NeverStoppedByOwn == ~ownstop
+
+\* The bound's rules (WaysOn). Every failure is an attempt and the loop of
+\* reworks, widens and redos stops at MaxAttempts.
+AttemptsBounded == \A c \in Cards : att[c] <= MaxAttempts
+
+\* The same refusal at two attempts of one brief is never reworked again.
+SameRefusalHalts == ~twice
+
+\* A card whose head never clears never lands.
+NeverRightNeverLands == \A c \in Cards : Current(c) \in landed => cleared[c]
+
+\* Once the outside is quiet every card has left the loop: landed, or halted in
+\* review at its bound (or taken off by the outside), nothing queued or ready.
+Settles == <>[](stop = "none" => queue = <<>> /\ ready = {})
+
+\* Reversed witness: a card widened by the rule and then landed (its fix
+\* reachable through the widened PATHS).
+ReachWidenLands == ~(\E c \in Cards : widens[c] > 0 /\ Current(c) \in landed)
 
 CarriedHead == \A c \in ready : <<c, att[c] - 1>> \in carried
 
