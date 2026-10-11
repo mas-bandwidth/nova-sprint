@@ -310,7 +310,7 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 	add := func(table string, cs []*sprint.Card) {
 		for _, x := range cs {
 			cards = append(cards, queueCard{ID: x.ID, Table: table, Row: x.Row, Col: x.Col, Primary: x.F("primary"), Stream: x.F("stream"),
-				Attempt: x.Int("attempt"), Gen: x.Int("gen"), Head: x.F("head"), Score: x.Score, Priority: queuePriority(x),
+				Attempt: x.Int("attempt"), Gen: sprint.WireGen(x), Head: x.F("head"), Score: x.Score, Priority: queuePriority(x),
 				Dealt: x.F("dealt"), Taken: x.F("taken"), Asked: x.F("asked"), Begun: x.F("begun"), kind: x.F("kind")})
 		}
 	}

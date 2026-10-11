@@ -127,12 +127,13 @@ func TestAFriendRowReadsPacketNamesTheOutboxReturn(t *testing.T) {
 }
 
 // A read already on a friend row at gen 0 (the shape the ask wrote before this change)
-// is read and returned by the verb as it stands: no repair step is needed.
+// is read and returned by the verb as it stands: no repair step is needed. Its packet hands
+// its live generation, 1 (sprint.WireGen): the card stores none.
 func TestAGenZeroFriendReadIsStillReturnable(t *testing.T) {
 	t.Parallel()
 	ta, _, id := friendReadTwin(t, true)
 	out := ta.ok("queue --as friend.amy")
-	require.Contains(t, out, "PACKET "+id+" attempt=1 gen=0 ")
+	require.Contains(t, out, "PACKET "+id+" attempt=1 gen=1 ")
 	ta.ok(packetReadLine(t, out))
 	requireClosedOK(t, ta, id)
 }
