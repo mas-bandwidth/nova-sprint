@@ -251,10 +251,10 @@ func Judge(r Result, pu Push) (fin Finish, why string) {
 		return FinishFailed, EndStaging + ": budget " + cmp.Or(r.Budget, "unverifiable: the usage source stopped answering")
 	case pu.Refused != "":
 		return FinishFailed, "push refused: " + pu.Refused
-	case r.End == EndProvider && r.Provider != "" && !r.Shaped:
-		// the provider failed the run and it left no result: the kind and the
-		// provider's reason, never the shape's; the sprint deals the card again. A refused
-		// push above, and a shaped result below (nothing, not done), are the card's own
+	case r.End == EndProvider && r.Provider != "" && (pu.Sha == "" || !r.Shaped):
+		// the provider failed the run: the kind and the provider's reason. If the push
+		// was not accepted or the result has no shape, the sprint deals the card again.
+		// A shaped result with a pushed head stays the card's own (below).
 		return FinishFailed, EndProvider + ": " + r.Provider
 	case !r.Shaped && r.End == "":
 		// the child ended by itself and left no result: no work came back, and the sprint

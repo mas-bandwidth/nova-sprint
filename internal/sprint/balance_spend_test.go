@@ -184,7 +184,7 @@ func TestANoResultNeverRestsAndA429Does(t *testing.T) {
 			ended("c1", "flash-deepseek41-direct", 9, "provider: class=rate-limited status=429 msg=Rate limit reached"),
 			ended("c2", "flash-deepseek41-direct", 8, "provider: class=rate-limited status=429 msg=Rate limit reached"),
 			ended("c3", "flash-deepseek41-direct", 7, "provider: class=provider-5xx status=502 msg=bad gateway"),
-		}, []RouteRest{{Route: "flash-deepseek41-direct", At: now, Until: now.Add(RouteRestFor), Cards: []string{"c1", "c2", "c3"}, Cause: RestProvider}}},
+		}, []RouteRest{{Route: "flash-deepseek41-direct", At: now, Until: now.Add(RouteRateLimitBackoffFor), Cards: []string{"c1", "c2"}, Cause: RestRateLimit}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -203,7 +203,7 @@ func TestANoResultNeverRestsAndA429Does(t *testing.T) {
 			restWrites(&p, s, due, MachineActor)
 			require.Len(t, p.Notes, 1)
 			assert.Equal(t, NRouteRested, p.Notes[0].Type)
-			assert.Contains(t, p.Notes[0].What, "its provider failed 3 of its last 10 ended takes or fewer (a rate limit, a 5xx or a timeout: c1, c2, c3)")
+			assert.Contains(t, p.Notes[0].What, "rested until")
 		})
 	}
 }
