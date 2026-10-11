@@ -1,6 +1,11 @@
 package sprint
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 // Every attempt end is classed as the worker's (the model's own work: a not-done verdict
 // on its own work, its push refused by the gate for its own code, a broken read of its
@@ -52,4 +57,38 @@ func TestClassifyEnd(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A coordination end is never the worker's: it is excluded from a member's and a friend's
+// ok% (worker-ok over worker-ended attempts only, verdicts.go) and counted on the
+// coordination-failure counter by cause and by the member or friend who suffered it
+// (docs/SPEC-SPRINT.md, "A coordination failure is never the workers").
+func TestACoordinationEndIsExcludedFromOkPctAndCounted(t *testing.T) {
+	t.Parallel()
+	okPct := func(s *Snapshot, row string) int {
+		ok, failed := s.Fleet.Count(row, DoneOK), s.Fleet.Count(row, DoneFailed)
+		if ok+failed == 0 {
+			return -1
+		}
+		return 100 * ok / (ok + failed)
+	}
+	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
+	dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
+	row := FriendRow("amy")
+	// one card ends ok
+	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: row, Gens: gensOf(w.s, "s1-1.w1"), Head: "abc"}))
+	// the other ends failed on a coordination cause: TLC owed, no jar
+	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-2.w1"}}, As: row, Gens: gensOf(w.s, "s1-2.w1"), Failed: true,
+		Report: "TLC owed: no jar on this bench"}))
+	wc := w.s.Fleet.Card("s1-2.w1")
+	require.NotNil(t, wc)
+	assert.Equal(t, Finished, wc.Col, "the coordination end waits in finished, never in failed")
+	assert.Equal(t, "no", wc.F("ok"))
+	assert.Equal(t, 0, w.s.Fleet.Count(row, DoneFailed), "a coordination end is never the worker's failed cell")
+	assert.Equal(t, -1, okPct(w.s, row), "ok% is unchanged: the coordination end is excluded")
+
+	counts := CoordinationCounts(w.s)
+	assert.Equal(t, 1, counts.Total)
+	assert.Equal(t, 1, counts.ByCause[CauseMissingTool], "counted by cause: %+v", counts.ByCause)
+	assert.Equal(t, 1, counts.ByRow[row], "counted under the friend who suffered it: %+v", counts.ByRow)
 }

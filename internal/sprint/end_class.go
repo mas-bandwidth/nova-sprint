@@ -92,3 +92,47 @@ func ClassifyEnd(line string) (EndClass, string) {
 	}
 	return EndCoordination, CauseUnknown
 }
+
+// NCoordination is the note type of a coordination end: the seat's to fix, never the
+// worker's, so the note is addressed to the coordinator and pushed over the hook.
+const NCoordination = "a coordination failure"
+
+// CoordinationTotal is the coordination-failure counter for one epoch: the total of ends
+// that ClassifyEnd classes coordination, by cause and by the member or friend who suffered
+// them (docs/SPEC-SPRINT.md, "A coordination failure is never the workers").
+type CoordinationTotal struct {
+	Total   int            `json:"total"`
+	ByCause map[string]int `json:"by_cause,omitempty"`
+	ByRow   map[string]int `json:"by_row,omitempty"`
+}
+
+// CoordinationCounts counts the coordination ends the fleet table holds: every ended work
+// card (in finished or done-failed) whose own word was a failed finish (ok=no) and whose
+// report classes coordination. A card that ended ok, or on a brief defect, or with no
+// report, is none. The count is read from the cards, as ok% and the defect count are, so it
+// never disagrees with the table.
+func CoordinationCounts(s *Snapshot) CoordinationTotal {
+	var t CoordinationTotal
+	if s == nil || s.Fleet == nil {
+		return t
+	}
+	t.ByCause = map[string]int{}
+	t.ByRow = map[string]int{}
+	for _, c := range s.Fleet.Column(Finished, DoneFailed) {
+		if c.F("ok") != "no" {
+			continue // an ok end, or no worker's word, is never coordination
+		}
+		report := c.F("report")
+		if report == "" {
+			continue
+		}
+		class, cause := ClassifyEnd(report)
+		if class != EndCoordination {
+			continue
+		}
+		t.Total++
+		t.ByCause[cause]++
+		t.ByRow[c.Row]++
+	}
+	return t
+}

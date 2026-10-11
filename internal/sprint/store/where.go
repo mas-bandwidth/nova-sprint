@@ -77,6 +77,10 @@ type WhereRecord struct {
 	// where counts them against the rows' beats at each read (sprint.LiveCountKeys), so the
 	// dashboard's working cell is the live runs, never a take whose run is gone (v1.2.6).
 	RowWorking map[string][]string `json:"row_working,omitempty"`
+	// Coordination is the epoch's coordination-failure counter (sprint.CoordinationCounts):
+	// total and by cause and by the member or friend who suffered each, counted from the cards
+	// the tick reads, so no worker is blamed for a coordinator fault (docs/SPEC-SPRINT.md).
+	Coordination sprint.CoordinationTotal `json:"coordination,omitempty"`
 	// Stats is the stats record the spend and per landed were counted from (statsStamp: the
 	// last tidy of the streams and the reset's mark); a record whose stamp is not the stats
 	// record's is counted again and never taken, though no table moved.
@@ -148,6 +152,7 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 	r.FixStates = sprint.FixStateCounts(s)
 	r.Series, r.SeriesCounted = sprint.SeriesLandings(s, now.Add(-sprint.SeriesWindow)), true
 	r.RowWorking = sprint.RowWorkingKeys(s)
+	r.Coordination = sprint.CoordinationCounts(s)
 	for _, at := range sprint.RecentLandings(landed, m.Spans, m.FirstStart(s.Cleared), now) {
 		r.Landings = append(r.Landings, at.Unix())
 	}
@@ -450,6 +455,9 @@ type WhereFacts struct {
 	// writer reads the log for the series (sprint.LandedSeriesFrom).
 	Series        []sprint.Landing
 	SeriesCounted bool
+	// Coordination is the record's coordination-failure counter (WhereRecord.Coordination):
+	// the epoch's total and by cause and by member/friend, shown under the tables.
+	Coordination sprint.CoordinationTotal
 	// Done is the epoch's done record (done.go), read in the same exchange; its Cursor is
 	// empty when there is none of the epoch yet (DoneOf then reads the log).
 	Done DoneRecord
@@ -523,6 +531,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			f.RowCards, f.ReadCards = r.RowCards, r.ReadCards
 			f.FixStates = r.FixStates
 			f.RowWorking, f.FleetRev = r.RowWorking, r.FleetRev
+			f.Coordination = r.Coordination
 			for _, s := range r.Landings {
 				f.Landed = append(f.Landed, time.Unix(s, 0).UTC())
 			}

@@ -29,6 +29,16 @@ func readVerdict(s *Snapshot, pr, wc *Card) string {
 	if pr == nil || wc == nil {
 		return ""
 	}
+	// A coordination end is never the worker's (end_class.go): it is excluded from the ok and
+	// failed cells, so a member's and a friend's ok% is worker-ok over worker-ended attempts
+	// only (docs/SPEC-SPRINT.md, "A coordination failure is never the workers"). Its card
+	// stays in finished and counts on the coordination-failure counter (CoordinationCounts),
+	// never toward a reader's verdict or the brief's bound.
+	if wc.F("ok") == "no" {
+		if class, _ := ClassifyEnd(wc.F("report")); class == EndCoordination {
+			return ""
+		}
+	}
 	attempt := max(wc.Int("attempt"), 1)
 	oks, broken := standingReads(s, pr, attempt)
 	need := ReadsNeededIn(s, pr)
