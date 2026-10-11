@@ -677,12 +677,6 @@ func cardCommands(n sprint.Note, card string) []sprint.Command {
 func allowedVerbs(cmds []sprint.Command) []string {
 	var out []string
 	for _, c := range cmds {
-		// a card at its brief's bound prints rework --carry first (brief_bound.go), but the
-		// automatic answer may not choose it: carrying a card from its last pushed head is the
-		// seat's decision, and a plain rework deals the same brief again (rework_bound_test.go)
-		if c.Decision == sprint.DecisionReworkCarry {
-			continue
-		}
 		if v := decide.VerbOf(c.Decision); v != "" && !slices.Contains(out, v) {
 			out = append(out, v)
 		}

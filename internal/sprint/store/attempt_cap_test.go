@@ -60,7 +60,6 @@ func TestFailedWorkReachesTheAttemptCapToo(t *testing.T) {
 	open := h.openOf(sprint.NBriefWrong)
 	require.Len(t, open, 1, "the second failure is the cap's judgment, with the cap at 2")
 	assert.Contains(t, open[0].Note.What, "s1-1: brief defect after 2 attempts, nothing priced; the brief is wrong, not the worker; findings: attempt 1: r; attempt 2: r")
-	assert.Contains(t, open[0].Note.What, "nova-sprint rework s1-1 --carry --fix", "the finish's cap judgment names the carry command first")
 	assert.Contains(t, open[0].Note.What, "nova-sprint brief s1-1 --brief-file <path>", "the finish's cap judgment names the brief command")
 	assert.Contains(t, open[0].Note.What, "nova-sprint drop s1-1 --reason '<why>'", "and the drop command")
 	assert.Equal(t, []string{sprint.DecisionReworkCarry, "brief", "drop"}, open[0].Note.Decisions)

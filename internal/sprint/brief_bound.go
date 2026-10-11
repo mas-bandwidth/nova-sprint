@@ -120,12 +120,11 @@ func (b BriefBound) String() string {
 	return line
 }
 
-// Remedy is what changes the brief: carried from the card's last pushed head (rework --carry),
-// corrected in place, or the card dropped. A plain rework's --fix changes the brief not at all,
-// so the carry line comes first: it opens the next attempt from the work already pushed.
+// Remedy is what changes the brief: corrected in place, the card's next attempt staged from
+// its last pushed head, or the card dropped. A rework's --fix changes the brief not at all, so
+// it is never offered.
 func (b BriefBound) Remedy() string {
-	return "run: nova-sprint rework " + b.ID + " --carry --fix '<what changes>' (keeps the brief, its latest pushed head as its carry, its next attempt from it, the bound reset), or nova-sprint brief " +
-		b.ID + " --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop " + b.ID + " --reason '<why>'"
+	return "run: nova-sprint brief " + b.ID + " --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop " + b.ID + " --reason '<why>'"
 }
 
 // Why is the rework's refusal of a card at the bound: the line, and the remedy.

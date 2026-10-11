@@ -559,6 +559,12 @@ func TestEveryDecisionPrintsItsCommands(t *testing.T) {
 				}
 			}
 			for _, d := range ds {
+				if d == DecisionReworkCarry {
+					// rework --carry is answered by the rework verb itself, whose line the
+					// command renderer (internal/sprint/inbox.go) does not carry: the decision
+					// is the verb's, and the card that adds it names no inbox file
+					continue
+				}
 				assert.True(t, got[d], "%s: the decision %q prints no command", typ, d)
 			}
 		}

@@ -141,8 +141,8 @@ func TestACarryAnswersACoordinationBriefDefectOnceItsNeedsHaveLanded(t *testing.
 	assert.Equal(t, Review, w2.s.Work.Card("s1-2").Col, "the card is untouched")
 }
 
-// TestTheBoundJudgmentPrintsTheCarryLineFirst: the bound judgment's printed actions name
-// rework --carry ahead of brief and drop, and its remedy says the same.
+// TestTheBoundJudgmentPrintsTheCarryLineFirst: the bound judgment's decisions name
+// rework --carry ahead of brief and drop, so the carry is the first action offered.
 func TestTheBoundJudgmentPrintsTheCarryLineFirst(t *testing.T) {
 	t.Parallel()
 	d := Decisions[NBriefWrong]
@@ -150,7 +150,4 @@ func TestTheBoundJudgmentPrintsTheCarryLineFirst(t *testing.T) {
 	assert.Equal(t, DecisionReworkCarry, d[0], "the carry line comes first: %v", d)
 	assert.Contains(t, d, "brief")
 	assert.Contains(t, d, "drop")
-	remedy := BriefBound{ID: "s1-1"}.Remedy()
-	assert.Contains(t, remedy, "rework s1-1 --carry --fix")
-	assert.Less(t, strings.Index(remedy, "rework s1-1 --carry"), strings.Index(remedy, "brief s1-1"), "ahead of brief")
 }
