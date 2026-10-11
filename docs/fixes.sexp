@@ -192,6 +192,19 @@
     public mirror unit."
    :origin "nova-tools PR #5588, head 08f6af5a8")
 
+  (fix "a-stats-reset-zeroes-the-unattributed-spend" :release "v1.2.14" :status "planned"
+   :title "A stats reset zeroes the unattributed spend"
+   :text "After nova-sprint stats reset the streams' spend counted from the mark but the grand total did
+    not reach zero: the cost line's other / unattributed figure is the sprint's unreconciled spend
+    (sprint.UnreconciledSpend), the same on every stream's record, and the mark did not hold it.
+    ResetMark gains unreconciled (the sprint's figure at the mark, in cents), and the where view
+    subtracts it from every stream's record, the streams the mark does not know too, so the cost line
+    and the dashboard's cost tile count from the mark; a mark written before this change leaves the
+    figure as today. The stats reset mark line names the unattributed figure at the mark beside the
+    total."
+   :origin "the seat's v1.2.14 audit, 2026-10-11 (a stats reset does not zero the grand total spent),
+    checked against nova-sprint main 00c54ba; the owner's rule of 2026-10-09: a stats reset clears every
+    cost figure, the total spent, per card and per tier")
   (fix "operator-wording-bare-merge-and-key-rest" :release "v1.2.14" :status "planned"
    :title "What an operator reads matches the bare-merge refusal and the key rest"
    :text "A late-merge judgment prints land for a real store and the bare merge only as the twin's form; the

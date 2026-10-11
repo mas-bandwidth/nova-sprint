@@ -53,6 +53,35 @@ func cell(t ntable.Table, row, col string) string {
 	return ntable.CellText(t.Columns, t.Rows[i], j)
 }
 
+// A stats reset clears the unattributed spend too (the owner, 2026-10-09: "Clear the total
+// cost."): the provider figure beyond the sprint's records is the sprint's, the same on every
+// stream's record, and the mark holds it, so after the reset nothing is unattributed and only
+// the gap since the mark shows.
+func TestAStatsResetZeroesTheUnattributedSpend(t *testing.T) {
+	t.Parallel()
+	r := newConflictRig(t)
+	r.landOnM1(3)
+	day := r.now.UTC().Format(time.DateOnly)
+	read := func(used float64) store.Step {
+		return store.CostReconcileStep(sprint.CostReconcileReq{Reads: []sprint.UsageRead{{Provider: "prov-flash-a", Known: true, Day: day, Used: used}}})
+	}
+	r.must(read(50))
+	before := r.resetView()
+	require.NotEmpty(t, before.facts.Streams["s1"].Unreconciled, "s1's unattributed spend before the reset")
+
+	_, err := r.st.ResetStats(r.ctx, store.ResetReq{Reason: "zero the unattributed"})
+	require.NoError(t, err)
+
+	now := r.resetView()
+	require.NotNil(t, now.facts.Reset)
+	assert.Empty(t, now.facts.Streams["s1"].Unreconciled, "the unattributed spend counts from the mark: nothing")
+
+	// the provider's same-day figure rises $1.00: exactly that is unattributed since the mark
+	r.must(read(51))
+	after := r.resetView()
+	assert.Equal(t, "$1.00", after.facts.Streams["s1"].Unreconciled, "the spend since the mark, never below zero")
+}
+
 func TestAStatsResetCountsEveryFigureFromItsMarkAndMovesNothing(t *testing.T) {
 	t.Parallel()
 	r := newConflictRig(t)

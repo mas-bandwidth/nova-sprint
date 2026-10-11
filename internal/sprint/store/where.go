@@ -157,8 +157,10 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 // streamsSince is the streams' figures (sprint.StreamTierCosts over snap) as where shows
 // them: the spend since the stats reset's mark (sprint.TierCostsSince: the total, the work,
 // the reads, the decide calls and each tier, less the mark's; a stream the mark does not
-// know reads as before), and per landed since the last tidy of the streams or the reset,
-// the later (sprint.PerLandedSince, over the landed cards' own cost counted before the mark).
+// know reads as before), the sprint's unattributed spend less the mark's on EVERY stream's
+// record (the figure is the sprint's, not the stream's), and per landed since the last tidy
+// of the streams or the reset, the later (sprint.PerLandedSince, over the landed cards' own
+// cost counted before the mark).
 func (st *Store) streamsSince(snap *sprint.Snapshot, streams map[string]sprint.TierCosts, stats StatsRecord) map[string]sprint.TierCosts {
 	landedUSD := map[string]string{}
 	for stream, tc := range streams {
@@ -167,8 +169,15 @@ func (st *Store) streamsSince(snap *sprint.Snapshot, streams map[string]sprint.T
 	if m := stats.resetIn(st.epoch); m != nil {
 		for stream, tc := range streams {
 			if base, ok := m.Streams[stream]; ok {
-				streams[stream] = sprint.TierCostsSince(tc, base)
+				tc = sprint.TierCostsSince(tc, base)
 			}
+			// the unattributed spend is the sprint's, the same on every stream's record,
+			// known to the mark or not: the largest would show the old figure if one
+			// stream were left unsubtracted (workCostLines and the tile take it).
+			if m.Unreconciled != "" {
+				tc.Unreconciled = sprint.MoneyLess(tc.Unreconciled, m.Unreconciled)
+			}
+			streams[stream] = tc
 		}
 	}
 	for stream, b := range stats.basesIn(st.epoch) {

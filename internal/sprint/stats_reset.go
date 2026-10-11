@@ -60,6 +60,11 @@ type ResetMark struct {
 	Rows      map[string]ResetRow    `json:"rows,omitempty"`
 	Streams   map[string]ResetStream `json:"streams,omitempty"`
 	TotalCost string                 `json:"total_cost,omitempty"`
+	// Unreconciled is the sprint's unattributed spend at the mark (UnreconciledSpend, in
+	// cents, as cost_view.go makes the stream's figure): the provider figures beyond the
+	// sprint's records. It is the sprint's, the same on every stream's record, so the mark
+	// holds it once; "" when nothing is.
+	Unreconciled string `json:"unreconciled,omitempty"`
 	// Op is the caller's operation id the mark was written under (--op): the same id again
 	// returns this mark and writes nothing.
 	Op string `json:"op,omitempty"`
@@ -67,7 +72,8 @@ type ResetMark struct {
 
 // ResetMarkOf is the mark of the sprint s at at: every fleet row's done cells, every stream's
 // landed cost and count (StreamBases) and its spend (StreamTierCosts, the figures the tick
-// counts for the where view), and the epoch's total.
+// counts for the where view), the epoch's total, and the sprint's unattributed spend
+// (UnreconciledSpend, the same on every stream's record).
 func ResetMarkOf(s *Snapshot, at time.Time, by, reason string) ResetMark {
 	m := ResetMark{At: at.UTC(), Epoch: s.Epoch, By: by, Reason: reason, Rows: map[string]ResetRow{}, Streams: map[string]ResetStream{}}
 	if s.Fleet != nil {
@@ -90,6 +96,9 @@ func ResetMarkOf(s *Snapshot, at time.Time, by, reason string) ResetMark {
 	}
 	if priced {
 		m.TotalCost = cardcost.Cents(total)
+	}
+	if unrec := UnreconciledSpend(s); unrec > 0 {
+		m.Unreconciled = cardcost.Cents(new(big.Rat).SetFloat64(unrec))
 	}
 	return m
 }
@@ -147,9 +156,12 @@ func ExactLess(now, was string, marked bool) string {
 
 // TierCostsSince is the stream's spend since the mark: its total, work and read costs and
 // each tier's less the mark's, never below zero, a tier with nothing since left out (the pie
-// leaves a tier at $0 out). Every other figure (the cards by tier, per landed, the reads of
-// the day, the readers' spend, the unpriced runs, the reconciliation) is as it was: per
-// landed is counted from the mark's base by the caller (PerLandedSince).
+// leaves a tier at $0 out). The sprint's unattributed spend is the mark's too and the caller
+// subtracts it from every stream's record (streamsSince; the figure is the sprint's, not the
+// stream's). Every other figure (the cards by tier, per landed, the reads of the day, the
+// readers' spend, the unpriced runs, the providers' reconcile records) is as it was: per
+// landed is counted from the mark's base by the caller (PerLandedSince), the reconcile
+// records (Reconciles) are the providers' own, not a figure the mark names.
 func TierCostsSince(tc TierCosts, m ResetStream) TierCosts {
 	tc.TotalCost = MoneyLess(tc.TotalCost, m.TotalCost)
 	tc.TotalUSD = ExactLess(tc.TotalUSD, m.TotalUSD, m.TotalCost != "")

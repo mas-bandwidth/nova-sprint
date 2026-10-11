@@ -30,6 +30,7 @@ func TestStatsResetVerbMarksShowsAndReplaces(t *testing.T) {
 	out := ta.ok("stats reset --reason 'count from now' --dry-run")
 	assert.Contains(t, out, "STATS-RESET DRY-RUN would mark at=")
 	assert.Contains(t, out, "ROW m1 done=0 ok=0 failed=0")
+	assert.Contains(t, out, "unattributed=-", "the mark line names the unattributed spend at the mark beside the total")
 	assert.Contains(t, ta.ok("stats reset --show"), "STATS-RESET none", "a dry run writes no mark")
 	assert.NotContains(t, ta.ok("stats"), "since=", "a dry run records nothing")
 

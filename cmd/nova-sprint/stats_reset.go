@@ -91,10 +91,12 @@ func (a *app) cmdStatsReset(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// markLine is a mark in one line: when, by whom, its rows and streams and the epoch's total.
+// markLine is a mark in one line: when, by whom, its rows and streams, the epoch's total and
+// the sprint's unattributed spend at the mark (the owner, 2026-10-09: "Clear the total
+// cost.": the whole cost counts from the mark, the unattributed spend included).
 func markLine(m sprint.ResetMark) string {
-	return fmt.Sprintf("at=%s by=%s rows=%d streams=%d total=%s reason=%s", m.At.Format(time.RFC3339Nano), cmpDash(m.By),
-		len(m.Rows), len(m.Streams), sprint.MoneyText(strings.TrimPrefix(m.TotalCost, "$")), oneline.Escape(m.Reason))
+	return fmt.Sprintf("at=%s by=%s rows=%d streams=%d total=%s unattributed=%s reason=%s", m.At.Format(time.RFC3339Nano), cmpDash(m.By),
+		len(m.Rows), len(m.Streams), sprint.MoneyText(strings.TrimPrefix(m.TotalCost, "$")), sprint.MoneyText(strings.TrimPrefix(m.Unreconciled, "$")), oneline.Escape(m.Reason))
 }
 
 // printMark is the mark's counters, a line a row and a stream, in name order.
