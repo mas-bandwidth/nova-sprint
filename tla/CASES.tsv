@@ -403,6 +403,7 @@ MCLiveRunsBrokenDebtById.cfg	MCLiveRuns.tla	invariant	StopMarkerIsWorking	ignore
 MCLiveRunsBrokenHeldNotLive.cfg	MCLiveRuns.tla	invariant	NoReportLost	ignore-terminal	liveruns	required	-
 MCLiveRunsBrokenStaleAsAbsent.cfg	MCLiveRuns.tla	invariant	NoRunReturned	ignore-terminal	liveruns	required	-
 MCLiveRunsBrokenDebtNotSettled.cfg	MCLiveRuns.tla	invariant	DebtIsOwed	ignore-terminal	liveruns	required	-
+MCLiveRunsBrokenSettleByCount.cfg	MCLiveRuns.tla	invariant	NoReportLost	ignore-terminal	liveruns	required	-
 MCLiveRunsBrokenLegacyReturned.cfg	MCLiveRuns.tla	invariant	LegacyNeverReturned	ignore-terminal	liveruns	required	-
 MCLiveRunsBrokenNoGrace.cfg	MCLiveRuns.tla	invariant	NoRunReturned	ignore-terminal	liveruns	required	-
 MCFriendEmptyRun.cfg	MCFriendEmptyRun.tla	pass	-	ignore-terminal	friendemptyrun	required	-
