@@ -106,6 +106,7 @@ func (lc *LoadCache) table(name string) *cachedTable {
 // that read). A record that moved while the changes were read is a movedError, and
 // the caller reads again.
 func (st *Store) placedFromCache(ctx context.Context, lc *LoadCache, t *sprint.Table, shape ntable.Table) (bool, error) {
+	// tla/LoadCache.tla Take
 	ct := lc.table(shape.Name)
 	ct.mu.Lock()
 	defer ct.mu.Unlock()
@@ -191,6 +192,7 @@ func (st *Store) catchUpCached(ctx context.Context, ct *cachedTable, shape ntabl
 // another event at its revision, drops it. ok is false when the stream does not
 // give it: the read is then not kept.
 func (st *Store) markOf(ctx context.Context, shape ntable.Table) (string, bool, error) {
+	// tla/LoadCache.tla Mark
 	_, _, mark, ok, err := st.B.(TableMarker).TableChangesMarked(ctx, shape.Name, shape.Revision, shape.Revision)
 	var grant *GrantError
 	var gap *GapError
@@ -204,6 +206,7 @@ func (st *Store) markOf(ctx context.Context, shape ntable.Table) (string, bool, 
 // load cache with mark (markOf), unless the cache holds the table at a later
 // revision of the same epoch already (its own mark is checked when it is used).
 func (lc *LoadCache) keepLoaded(t *sprint.Table, shape ntable.Table, mark string) {
+	// tla/LoadCache.tla Keep
 	ct := lc.table(shape.Name)
 	ct.mu.Lock()
 	defer ct.mu.Unlock()
