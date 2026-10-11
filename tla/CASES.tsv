@@ -198,6 +198,7 @@ MCDirtyTickReadAcquire.cfg	MCDirtyTickRead.tla	invariant	TwinIsTheStore	ignore-t
 MCDirtyTickReadHalt.cfg	MCDirtyTickRead.tla	invariant	BeganRunning	ignore-terminal	dirtytickread-halt	required	-
 MCDirtyTickReadCatchup.cfg	MCDirtyTickRead.tla	invariant	ViewIsSnapshot	ignore-terminal	dirtytickread-catchup	required	-
 MCDirtyTickReadLock.cfg	MCDirtyTickRead.tla	invariant	LockedApplyNotLost	ignore-terminal	dirtytickread-lock	required	-
+MCDirtyTickReadBrokenRunSeq.cfg	MCDirtyTickRead.tla	invariant	NoStaleRunCommit	ignore-terminal	dirtytickread-runseq	required	-
 MCRouteIndex.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenRandom.cfg	MCRouteIndex.tla	invariant	RouteFair	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenNoAdvance.cfg	MCRouteIndex.tla	invariant	ExcludedNeverDrawn	ignore-terminal	routeindex	required	-
