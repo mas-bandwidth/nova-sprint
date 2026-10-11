@@ -106,7 +106,7 @@ const (
 // clear, and a branch named by the card alone holds the last epoch's push, so every push of the
 // next would be refused non-fast-forward; and a card dealt again within one epoch (withdrawn
 // from a member, or redealt after a staging or provider failure) is another generation, whose
-// push would collide with the first launch's on a branch named by the epoch alone.
+// push would collide with the first launch's on a branch named by the epoch alone (tla/AttemptsEpochs.tla Launch).
 func BranchOf(prefix string, epoch uint64, workCard string, gen int) string {
 	return "sprint/" + prefix + workCard + ".g" + strconv.Itoa(gen) + ".e" + strconv.FormatUint(epoch, 10)
 }

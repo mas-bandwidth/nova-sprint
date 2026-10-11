@@ -20,6 +20,7 @@ type StopReturnReq struct {
 
 // StopReturn releases acknowledged work and reads to their own row. The new
 // generation fences an old child's finish (and a read's late verdict).
+// tla/AttemptsEpochs.tla GenStep.
 func StopReturn(s *Snapshot, r StopReturnReq) Plan {
 	var p Plan
 	if strings.TrimSpace(r.Reason) == "" {
