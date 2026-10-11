@@ -45,6 +45,7 @@ func workedRig(t *testing.T, n, ready int) (*serverRig, []string) {
 		"add --stream s --brief-dir " + dir, "start", "tick", "tick"} {
 		ta.ok(line)
 	}
+	ta.ok("set --read-cards off")
 	ta.a.serveAddr = "mem:0"
 	r := &serverRig{t: t, a: ta.a}
 	cards := taken(t, r.one("take", "--as", "m", "--limit", fmt.Sprint(n), "--epoch", "0", "--json"))

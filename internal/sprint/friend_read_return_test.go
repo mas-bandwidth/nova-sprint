@@ -10,7 +10,7 @@ import (
 // friend amy on her fleet row (friendReadAsk), and the read card's id.
 func friendReadAsked(t *testing.T) (*world, string) {
 	t.Helper()
-	w := newWorld(t, "reader-a", "reader-b")
+	w := offWorld(t, "reader-a", "reader-b")
 	putReview(w, "s1-1", "s1-1: work (s1) tier: frontier\n\nAS A READ\nread it\n", 1, 1, "head-1")
 	askReaders(t, w, []FriendSeat{frontierSeat("amy", 2, Up, "")})
 	id := ReadCardID("s1-1", 1, "amy")

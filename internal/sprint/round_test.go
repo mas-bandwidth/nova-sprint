@@ -19,7 +19,7 @@ import (
 // n ready primaries in stream s1.
 func fleetWorld(t *testing.T, primaries, width int, members ...string) *world {
 	t.Helper()
-	w := newWorld(t, "reader-a")
+	w := offWorld(t, "reader-a")
 	for _, m := range members {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: width}))
 	}

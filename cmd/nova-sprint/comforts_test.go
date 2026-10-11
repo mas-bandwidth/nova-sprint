@@ -36,6 +36,7 @@ func TestAddBriefFileStoresTheBriefByteForByte(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	dir := t.TempDir()
 	// the brief is the card lint's passing brief, then the paragraphs under test
 	rules := strings.TrimSuffix(passingBrief("Fix the empty case."), "\n")
@@ -66,6 +67,7 @@ func TestAddBriefFileRefusals(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "brief.md")
 	require.NoError(t, os.WriteFile(path, []byte("a brief\n"), 0o600))
@@ -117,6 +119,7 @@ func TestTheCoordinatorsMergeNeedsNoEpoch(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	ta.ok("add --stream s1 --count 3")
 	ta.deal(3)
 	ta.ok("take --as m1 --limit 3")
@@ -156,6 +159,7 @@ func TestOutsidersStaleEpochMergeIsRefusedNamingTheClear(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	ta.ok("clear --confirm sprint")
 	before := ta.applies()
 	code, _, errs := ta.raw("merge --stream s1 --batch 1 --actor outsider --epoch 0")
@@ -174,6 +178,7 @@ func TestInboxJSONCarriesTheJudgmentsToActOn(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	ta.ok("add --stream s1 --count 3")
 	ta.ok("add --stream s2 --count 1 --one")
 	ta.deal(4)
@@ -274,6 +279,7 @@ func TestInboxJSONSaysWhenTheSprintIsDone(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1,m2")
+	ta.ok("set --read-cards off")
 	ta.ok("add --stream s1 --count 3")
 	ta.ok("start")
 	ta.playToDone(1)
@@ -302,6 +308,7 @@ func TestInboxWaitWithJSONOnTimeoutEmitsOnlyValidJSON(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	for _, cmd := range []string{
 		"inbox --wait --timeout 50ms --json",
 		"inbox --wait --json",

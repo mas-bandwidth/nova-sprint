@@ -19,6 +19,7 @@ func TestReaderRetireKeepsTheHistoryAndTakesTheRowOff(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1")
+	ta.ok("set --read-cards off")
 	ta.inReview(1)
 	ta.ok("ask s1-1")
 	require.Equal(t, []string{"s1-1.r1.reader-a"}, ta.askedOf("reader-a"), "a pro card's reads are asked together")
@@ -63,6 +64,7 @@ func TestReaderRetireDryRunWritesNothing(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	before := ta.readerState("reader-a")
 	assert.Contains(t, ta.ok("reader retire --dry-run reader-a"), "READER-RETIRE DRY-RUN readers=reader-a; nothing was changed")
 	assert.Equal(t, before, ta.readerState("reader-a"), "a dry run retires no one")
@@ -85,6 +87,7 @@ func TestReaderRetireHelpSaysWhatHappensToAReadInReading(t *testing.T) {
 	assert.Contains(t, out, sentence)
 
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1")
+	ta.ok("set --read-cards off")
 	ta.inReview(1)
 	ta.ok("ask")
 	var reading string

@@ -47,6 +47,9 @@ func newAlarmRig(t *testing.T) *alarmRig {
 	require.NoError(t, r.st.Init(r.ctx))
 	require.NoError(t, r.m.RowsAdd(r.ctx, "a-readers", []string{"reader-a", "reader-b"}))
 	require.NoError(t, r.m.SetCoordinator(r.ctx, "coordinator"))
+	// read cards off: the alarm rig's cards are read through the readers table, as
+	// it was written (defaults-are-the-working-machine).
+	r.must(store.SetStep(sprint.SetReq{ReadCards: "off", Who: "coordinator"}))
 	r.beat()
 	return r
 }

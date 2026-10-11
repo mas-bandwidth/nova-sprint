@@ -19,6 +19,7 @@ func TestReadReturnIsAskedOfAnotherReaderByTheNextTick(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1")
+	ta.ok("set --read-cards off")
 	ta.ok("reader away reader-c")
 	ta.inReview(1)
 	ta.ok("ask")

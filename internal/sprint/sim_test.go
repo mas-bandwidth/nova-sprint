@@ -33,6 +33,15 @@ func newWorld(t testing.TB, readers ...string) *world {
 	return &world{t: t, s: s}
 }
 
+// offWorld is newWorld with read cards off: the world of a test that exercises the
+// old readers-table ask or the friends' read ask on purpose (defaults-are-the-working-machine).
+func offWorld(t testing.TB, readers ...string) *world {
+	t.Helper()
+	w := newWorld(t, readers...)
+	w.s.Work.SetProp(PropReadCards, SwitchOff)
+	return w
+}
+
 func (w *world) tick(d time.Duration) { w.s.Now = w.s.Now.Add(d) }
 
 // do applies a plan and fails on any refusal unless allowed.

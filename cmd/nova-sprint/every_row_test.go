@@ -95,6 +95,7 @@ func everyRowMoves(t *testing.T, width int) {
 		ms = append(ms, m+":"+strconv.Itoa(width))
 	}
 	ta.ok("init --readers reader-a,reader-b,reader-c,reader-d --members " + strings.Join(ms, ","))
+	ta.ok("set --read-cards off")
 	for _, s := range []string{"s1", "s2", "s3"} {
 		ta.ok("add --stream " + s + " --count 50")
 	}

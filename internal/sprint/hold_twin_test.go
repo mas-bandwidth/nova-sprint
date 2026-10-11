@@ -49,6 +49,9 @@ func newHoldRig(t *testing.T, s1, f1 int) *holdRig {
 	require.NoError(t, r.st.Init(r.ctx))
 	require.NoError(t, m.RowsAdd(r.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
 	require.NoError(t, m.SetCoordinator(r.ctx, "coordinator"))
+	// the hold rigs exercise the readers table and the friends' read ask, the old
+	// way: read cards off, as they were written (defaults-are-the-working-machine).
+	r.must(store.SetStep(sprint.SetReq{ReadCards: "off", Who: "coordinator"}))
 	_, _, _, err := r.st.SyncFriends(r.ctx, []store.FriendSpec{{Name: "amy", Width: 2, Class: "pro"}, {Name: "bob", Width: 2, Class: "pro"}})
 	require.NoError(t, err)
 	r.beat()

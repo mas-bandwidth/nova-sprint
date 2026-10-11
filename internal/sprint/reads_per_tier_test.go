@@ -252,7 +252,7 @@ func TestTheRebalanceLeavesAProReadWhenOneReaderIsUp(t *testing.T) {
 // that writes it (tickOn) or once it is open (judgment); a pro card is, both ways.
 func TestFewReadersHoldsOnlyTheCardsThatNeedMoreReaders(t *testing.T) {
 	t.Parallel()
-	w := newWorld(t, "reader-a", "reader-b", "reader-c")
+	w := offWorld(t, "reader-a", "reader-b", "reader-c")
 	w.s.Work.SetRows(append(w.s.Work.Rows(), "s1"))
 	put := func(id, brief string, score float64) {
 		w.s.Work.Put(&Card{ID: id, Row: "s1", Col: Review, Score: score, Rev: 1,

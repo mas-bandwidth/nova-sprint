@@ -53,6 +53,7 @@ func answering(t *testing.T, by func(state string) (string, float64, string, str
 	j := &judge{by: by}
 	ta.a.decider = j
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	return ta, j, filepath.Join(t.TempDir(), "judgment.jsonl")
 }
 

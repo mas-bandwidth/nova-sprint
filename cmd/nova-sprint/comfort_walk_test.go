@@ -65,6 +65,7 @@ func TestTheLogPrintsACostRecordAsOneShortLine(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	ta.inReview(1)
 	ta.ok("ask")
 	ta.ok("read --as reader-a --ok s1-1.r1.reader-a --usage 'wall=6s budget=100/400000 input=5 output=7'")

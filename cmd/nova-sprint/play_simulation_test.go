@@ -27,6 +27,7 @@ func playing(t *testing.T) *testApp {
 	t.Helper()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1,m2")
+	ta.ok("set --read-cards off")
 	ta.ok("add --stream s1 --count 6")
 	ta.ok("start")
 	return ta
@@ -80,6 +81,7 @@ func TestTheFlagsReachTheSourceThatDraws(t *testing.T) {
 	// --red 1 with nothing else drawn: the first merge batch is red
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1,m2")
+	ta.ok("set --read-cards off")
 	ta.ok("add --stream s1 --count 6")
 	ta.ok("start")
 	for round := 1; round <= 60; round++ {
@@ -100,6 +102,7 @@ func TestAPlayThatIsRefusedPrintsNothingOnStdout(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	ta.ok("add --stream s1 --count 3")
 	code, out, errs := ta.do("play --simulation --seed 1 --ticks 1")
 	require.Equal(t, 2, code, "play with the machine stopped: exit %d, stdout %q, stderr %q", code, out, errs)
@@ -143,6 +146,7 @@ func landsUnder(t *testing.T, flags string) map[string]int {
 	t.Helper()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1,m2,m3")
+	ta.ok("set --read-cards off")
 	for _, s := range []string{"s1", "s2", "s3"} {
 		ta.ok("add --stream " + s + " --count 20")
 	}
@@ -226,6 +230,7 @@ func TestPlaySimulationBatchesOneCallForEveryMachineATick(t *testing.T) {
 	ta := newTestApp(t)
 	ta.live = members
 	ta.ok("init --readers reader-a,reader-b,reader-c --members " + strings.Join(members, ","))
+	ta.ok("set --read-cards off")
 	ta.ok("add --stream s1 --count 150")
 	ta.ok("start")
 	ta.ok("tick") // the machine deals the ready queues

@@ -53,6 +53,7 @@ func TestPlayWithACoordinatorLandsEveryStream(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1,m2")
+	ta.ok("set --read-cards off")
 	for _, s := range []string{"s1", "s2", "s3"} {
 		ta.ok("add --stream " + s + " --count 15")
 	}
@@ -93,6 +94,7 @@ func TestPlaySaysWhatWaitsForTheCoordinator(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	ta.ok("add --stream s1 --count 3")
 	code, _, errs := ta.do("play --seed 1 --ticks 1")
 	require.Equal(t, 2, code, "play with the machine stopped: %d %s", code, errs)

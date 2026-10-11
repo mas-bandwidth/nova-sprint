@@ -23,6 +23,7 @@ func heldAndWaiting(t *testing.T) (*testApp, sprint.Group) {
 	t.Helper()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	ta.ok("add --stream s1 --count 1 --one")
 	ta.ok("add --stream s2 --count 1 --one")
 	ta.deal(2)
@@ -189,6 +190,7 @@ func TestInboxPushRefusesWhatItCannotCombine(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	dir := t.TempDir()
 	for _, line := range []string{"inbox --push " + dir, "inbox --wait --push " + dir + " --read", "inbox --wait --push " + dir + " --open x", "inbox --wait --push " + dir + " --at-epoch 0"} {
 		code, out, errs := ta.do(line)
@@ -209,6 +211,7 @@ func TestAckTakesTheCommaListInboxPrints(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("set --read-cards off")
 	ta.ok("add --stream s1 --count 1 --one")
 	ta.ok("drop s1-1 --reason obsolete")
 	before := ta.applies()

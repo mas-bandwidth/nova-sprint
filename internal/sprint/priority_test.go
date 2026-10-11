@@ -75,7 +75,7 @@ func TestAHighPrimarysReadIsAskedAndDealtFirst(t *testing.T) {
 
 	t.Run("the machines' ask", func(t *testing.T) {
 		t.Parallel()
-		w := newWorld(t, "reader-m1")
+		w := offWorld(t, "reader-m1")
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 1}))
 		putReview(w, "s1-1", "s1-1: older (s1) tier: flash\n", 1, 1, "h1")
 		w.s.Work.Card("s1-1").Fields[FieldFinishedAt] = stamp(t0.Add(-60 * 60e9))

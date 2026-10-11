@@ -94,7 +94,7 @@ func TestAReviewCardIsAskedAReadTheSameTick(t *testing.T) {
 
 	t.Run("a frontier read with a friend free is asked of her in the same tick", func(t *testing.T) {
 		t.Parallel()
-		w := newWorld(t, "reader-a", "reader-b")
+		w := offWorld(t, "reader-a", "reader-b")
 		putReview(w, "s1-1", "s1-1: work (s1) tier: frontier\n", 1, 1, "head")
 		seats := []FriendSeat{frontierSeat("amy", 1, Up, "")}
 		tickAsk(t, w, seats)
@@ -104,7 +104,7 @@ func TestAReviewCardIsAskedAReadTheSameTick(t *testing.T) {
 
 	t.Run("a frontier read with every friend at her room goes to a paid reader", func(t *testing.T) {
 		t.Parallel()
-		w := newWorld(t, "reader-a", "reader-b")
+		w := offWorld(t, "reader-a", "reader-b")
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
 			putReview(w, id, id+": work (s1) tier: frontier\n", 1, float64(i+1), "head")
 		}
@@ -123,7 +123,7 @@ func TestAReviewCardIsAskedAReadTheSameTick(t *testing.T) {
 
 	t.Run("a frontier read taken back from a friend is asked again", func(t *testing.T) {
 		t.Parallel()
-		w := newWorld(t, "reader-a", "reader-b")
+		w := offWorld(t, "reader-a", "reader-b")
 		putReview(w, "s1-1", "s1-1: work (s1) tier: frontier\n", 1, 1, "head")
 		seats := []FriendSeat{frontierSeat("amy", 1, Up, ""), frontierSeat("bob", 1, Up, "")}
 		tickAsk(t, w, seats)
@@ -145,7 +145,7 @@ func TestAReviewCardIsAskedAReadTheSameTick(t *testing.T) {
 
 	t.Run("a frontier read with no friend up is asked of a paid reader", func(t *testing.T) {
 		t.Parallel()
-		w := newWorld(t, "reader-a", "reader-b")
+		w := offWorld(t, "reader-a", "reader-b")
 		putReview(w, "s1-1", "s1-1: work (s1) tier: frontier\n", 1, 1, "head")
 		seats := []FriendSeat{frontierSeat("amy", 1, Down, "")}
 		w.s.Friends = seats

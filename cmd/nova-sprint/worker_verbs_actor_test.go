@@ -116,6 +116,7 @@ func newWorkerApp(t *testing.T) *testApp {
 	t.Helper()
 	ta := newTestApp(t)
 	ta.ok("init --members m1,m2 --readers reader-a,reader-b")
+	ta.ok("set --read-cards off")
 	return ta
 }
 

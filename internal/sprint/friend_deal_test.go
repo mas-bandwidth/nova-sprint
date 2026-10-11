@@ -23,7 +23,7 @@ func friendBrief(who string) string {
 // friendWorld is a world with two machines up and the cards of each brief given, one
 // stream, ids s1-1, s1-2, ... in order.
 func friendWorld(t *testing.T, briefs ...string) *world {
-	w := newWorld(t, "reader-a", "reader-b")
+	w := offWorld(t, "reader-a", "reader-b")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	var cards []CardAdd
@@ -422,7 +422,7 @@ func TestABuilderFriendIsDealtWork(t *testing.T) {
 // is asked no read; a row without a role list keeps the pre-role behavior.
 func TestAReaderOnlyFriendIsAskedARead(t *testing.T) {
 	t.Parallel()
-	w := newWorld(t, "reader-a", "reader-b")
+	w := offWorld(t, "reader-a", "reader-b")
 	putReview(w, "s1-1", "s1-1: read this (s1) tier: pro\n", 1, 1, "head-s1-1")
 	askReaders(t, w, []FriendSeat{{Name: "amy", Width: 8, Status: Up, Class: "flash,pro", Roles: []string{RoleReader}}})
 	require.NotNil(t, w.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")), "a friend whose roles name reader is asked the read")
@@ -444,7 +444,7 @@ func TestAFriendWithNoRolesIsDealtWorkAndAskedARead(t *testing.T) {
 	dealStarted(w, FriendSeat{Name: "amy", Width: 8, Status: Up, Class: "flash,pro"})
 	require.NotNil(t, w.s.Fleet.Card("s1-1.w1"), "a friend with no role list is dealt work, as before roles")
 
-	w2 := newWorld(t, "reader-a", "reader-b")
+	w2 := offWorld(t, "reader-a", "reader-b")
 	putReview(w2, "s1-1", "s1-1: read this (s1) tier: pro\n", 1, 1, "head-s1-1")
 	askReaders(t, w2, []FriendSeat{{Name: "amy", Width: 8, Status: Up, Class: "flash,pro"}})
 	require.NotNil(t, w2.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")), "a friend with no role list is asked the read, as before roles")

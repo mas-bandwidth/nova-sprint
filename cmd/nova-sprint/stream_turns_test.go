@@ -67,6 +67,7 @@ func fairStreams(t *testing.T, count, width int) {
 		ms = append(ms, m+":"+strconv.Itoa(width))
 	}
 	ta.ok("init --readers reader-a,reader-b,reader-c,reader-d --members " + strings.Join(ms, ","))
+	ta.ok("set --read-cards off")
 	for _, s := range streams {
 		ta.ok(fmt.Sprintf("add --stream %s --count %d --one", s, count))
 	}

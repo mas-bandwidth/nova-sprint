@@ -158,6 +158,11 @@ func newLandedRig(t *testing.T) *landedRig {
 	require.NoError(t, r.st.Init(r.ctx))
 	require.NoError(t, m.RowsAdd(r.ctx, "t-readers", []string{"reader-a", "reader-b"}))
 	require.NoError(t, m.SetCoordinator(r.ctx, "coordinator"))
+	// read cards off: the rig's reads go through the readers table, as it was
+	// written (defaults-are-the-working-machine).
+	res, err := r.st.Run(r.ctx, store.SetStep(sprint.SetReq{ReadCards: "off", Who: "coordinator"}))
+	require.NoError(t, err)
+	require.Empty(t, res.Refused, "set read cards off refused: %v", res.Refused)
 	return r
 }
 

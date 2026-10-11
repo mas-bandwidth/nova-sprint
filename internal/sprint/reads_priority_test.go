@@ -21,7 +21,7 @@ import (
 // (WHO: only friend amy, so no machine is dealt one).
 func priorityWorld(t *testing.T, working, flashReads, frontierReads, ready int) (*world, FriendSeat) {
 	t.Helper()
-	w := newWorld(t)
+	w := offWorld(t)
 	w.s.Work.SetRows([]string{"s1", "s2", "s3"})
 	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}
 	if working > 0 {
@@ -245,7 +245,7 @@ func TestLowFillsOnlyAnIdleLane(t *testing.T) {
 func TestFleetReadersReadOnlyTheirTiers(t *testing.T) {
 	t.Parallel()
 	setup := func(t *testing.T, tiers map[string]string, readers ...string) *world {
-		w := newWorld(t, readers...)
+		w := offWorld(t, readers...)
 		w.s.Routes = []Route{
 			{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
 			{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "p", Enabled: true},

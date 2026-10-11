@@ -55,6 +55,7 @@ func backupTwinFile(t *testing.T, planted string) string {
 	file := filepath.Join(t.TempDir(), "sprint.twin")
 	for _, line := range []string{
 		"nova-sprint init --readers reader-a,reader-b --members m1",
+		"nova-sprint set --read-cards off",
 		"nova-sprint add --stream s1 --count 3",
 		"nova-sprint add --stream s2 --count 2",
 		"nova-sprint start",

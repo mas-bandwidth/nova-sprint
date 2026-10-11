@@ -18,7 +18,7 @@ import (
 // m2 of the widths given, and n flash primaries in review, unasked.
 func widthWorld(t *testing.T, w1, w2, primaries int) *world {
 	t.Helper()
-	w := newWorld(t, "reader-m1", "reader-m2")
+	w := offWorld(t, "reader-m1", "reader-m2")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: w1}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: w2}))
 	w.s.Work.SetRows(append(w.s.Work.Rows(), "s1"))

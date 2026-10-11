@@ -42,6 +42,7 @@ func TestADoneSprintStopsItsMachineAndTellsTheCoordinator(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1,m2")
+	ta.ok("set --read-cards off")
 	for _, s := range []string{"s1", "s2", "s3"} {
 		ta.ok("add --stream " + s + " --count 3")
 	}

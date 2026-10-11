@@ -41,6 +41,7 @@ func TestAnyUnitWithRoomAtOrAboveTheReadTierServesARead(t *testing.T) {
 	require.NoError(t, err)
 	ta.a.tip = tipIs(t, landHead)
 	ta.ok("init --readers reader-a,reader-b --members m1:8")
+	ta.ok("set --read-cards off")
 	root := t.TempDir()
 	ta.ok("friend sync --root " + root) // roster only: she stays down, so the flash card is not dealt to her as work
 
