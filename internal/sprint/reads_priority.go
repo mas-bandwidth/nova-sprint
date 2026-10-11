@@ -198,7 +198,7 @@ func friendDealByLadder(s *Snapshot, offer []*Card, seats []FriendSeat) (p Plan,
 			dealtWorking[k] = max(dealtWorking[k], v) // the start receipts: every pass plans the same
 		}
 	}
-	keys, rows := map[string]bool{}, map[RowAdd]bool{}
+	keys, rows, props := map[string]bool{}, map[RowAdd]bool{}, map[string]bool{}
 	for _, part := range parts {
 		for _, r := range part.Rows {
 			if !rows[r] {
@@ -214,6 +214,14 @@ func friendDealByLadder(s *Snapshot, offer []*Card, seats []FriendSeat) (p Plan,
 			p.Units = append(p.Units, u)
 		}
 		p.Refused = append(p.Refused, part.Refused...)
+		for _, pw := range part.Props {
+			k := pw.Table + "." + pw.Name
+			if props[k] {
+				continue // a friend's start clears the dealt-no-more mark, planned in every pass, one write
+			}
+			props[k] = true
+			p.Props = append(p.Props, pw)
+		}
 	}
 	// the seats the level reads: the room her reads took, and the whole of it while a read she
 	// may take still waits; the work dealt is the level's own count (dealt), never twice
