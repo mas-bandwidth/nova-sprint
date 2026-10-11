@@ -65,7 +65,8 @@ type BriefReq struct {
 // as on a STOPPED one; a card merging or landed keeps its brief; a working card takes one for its next attempt. A running
 // machine's pump holds a card a queued change names until the change drains
 // (store.Step's Pump), so the brief is in place before the card can be dealt. The
-// card keeps its id, stream, score and needs; one an attempt was dealt for opens its
+// card keeps its id, stream and score; its needs follow the new brief's
+// DEPENDS-ON lines (a brief that names none clears them; steps_edit.go). One an attempt was dealt for opens its
 // next attempt (briefInPlace): a brief correction is never a twin (the owner,
 // 2026-10-06: "We gotta stop doing this twin shit. it's waste."). The command line
 // holds the brief to the card lint, and the store to its bound, as add's. A card
@@ -137,12 +138,38 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		} else {
 			unset = append(unset, FieldBench)
 		}
+		// the brief's needs are the DEPENDS-ON lines it carries (docs/SPEC-SPRINT.md,
+		// needs and the deal): the ordinary path writes them whenever they differ
+		// from the card's — a brief that drops its DEPENDS-ON clears them — and a
+		// ready card that gains a need not landed moves ready -> waiting with them,
+		// in this same unit (unmet and Lawful accept the move).
+		cur, want := Split(c.F("needs")), b.Needs
+		toWaiting := false
+		if !sameNeeds(cur, want) {
+			if len(want) > 0 {
+				set["needs"] = strings.Join(want, ",")
+			} else {
+				unset = append(unset, "needs")
+			}
+			if c.Col == Ready {
+				for _, n := range want {
+					if s.StateOf(n) != Landed {
+						toWaiting = true
+					}
+				}
+			}
+		}
 		if c.Int("attempt") > 0 {
-			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who)
+			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who, toWaiting)
 			if orphan {
 				orphans[c.ID] = true
 			}
 			p.Units = append(p.Units, u)
+			continue
+		}
+		if toWaiting {
+			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Waiting, set, unset...))},
+				Moved: fmt.Sprintf("%s brief replaced (%d bytes) stream=%s %s -> waiting, needs %s", c.ID, len(b.Brief), c.Row, c.Col, strings.Join(want, ","))})
 			continue
 		}
 		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, unset...))},
@@ -180,7 +207,7 @@ func briefKept(s *Snapshot, id string) string {
 // is reset, since it counts attempts under one brief (FieldBriefAttempt, in set); the
 // rework's fix is the old brief's and is dropped; and the record, the next attempt's
 // why, says who edited it, at which attempt, and what changed (briefChange).
-func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, unset []string, who string) (u Unit, orphan bool) {
+func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, unset []string, who string, toWaiting bool) (u Unit, orphan bool) {
 	if c.F(FieldBriefDefect) != "" {
 		reworkPriority(s, c, set)
 		unset = append(unset, FieldBriefDefect)
@@ -224,7 +251,14 @@ func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, uns
 			orphan = true
 		}
 	} else {
-		changes = append(changes, change(Work, setEntry(c, set, unset...)))
+		if toWaiting {
+			// a ready card that gains a need not landed waits with its new needs
+			// (steps_edit.go, the ordinary brief path)
+			to = Waiting
+			changes = append(changes, change(Work, moveEntry(c, c.Row, Waiting, set, unset...)))
+		} else {
+			changes = append(changes, change(Work, setEntry(c, set, unset...)))
+		}
 	}
 	u = Unit{Key: c.ID, Stream: c.Row, Changes: changes, Closes: closesFor(s.Open, ReworkResolves, c.ID),
 		Moved: fmt.Sprintf("%s %s; %s -> %s, attempt %d next, from its last pushed head; %d cards retired", c.ID, said, c.Col, to, n+1, len(changes)-1)}
@@ -253,6 +287,20 @@ func briefChange(old, brief string) string {
 // order: no line changed.
 func sameLines(old, brief string) bool {
 	return len(linesNotIn(old, brief)) == 0 && len(linesNotIn(brief, old)) == 0
+}
+
+// sameNeeds says two need lists are the same, in order: the ordinary brief path
+// writes a card's needs only when they differ from the brief's (steps_edit.go).
+func sameNeeds(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // linesNotIn is the lines of a, trimmed, that b does not hold, each counted as often as b

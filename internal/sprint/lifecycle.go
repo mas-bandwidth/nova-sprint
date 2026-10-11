@@ -168,6 +168,18 @@ func unmet(u Unit, pre *Snapshot, landing map[string]bool) string {
 			pc := pre.Work.Card(e.ID)
 			needs, waived = Split(pc.F("needs")), append(Split(pc.F("waived")), Split(e.Set["waived"])...)
 			needs = append(needs, PositionWaits(pre, pc, landing)...)
+		case e.Move != nil && e.Move.Col == Working:
+			// a card is dealt only when every need has landed (docs/SPEC-SPRINT.md,
+			// needs and the deal): judge the move to dealt against the card's stored
+			// needs, whichever path asks for it, so Lawful refuses the deal.
+			if pre == nil {
+				continue
+			}
+			pc := pre.Work.Card(e.ID)
+			if pc == nil {
+				continue
+			}
+			needs, waived = Split(pc.F("needs")), Split(pc.F("waived"))
 		default:
 			continue
 		}
@@ -220,7 +232,7 @@ func unlawful(u Unit, p *Plan) string {
 		switch {
 		case from == Waiting && to == Landed && (!p.releasing || !sentinel):
 			return "the lifecycle lands from waiting only a sentinel, and only by release"
-		case from == Ready && to == Waiting && !p.inserting:
+		case from == Ready && to == Waiting && !p.inserting && e.Set["needs"] == "":
 			return "the lifecycle moves ready -> waiting only as the effect of inserting a sentinel"
 		case sentinel && to != "" && to != Landed:
 			return "a sentinel moves only waiting -> landed, by release"

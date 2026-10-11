@@ -75,7 +75,10 @@ func TestTheDealAlternatesTheStreamsWithCardsAndAnEmptyOneJoinsAtItsTurn(t *test
 	}
 	want := []string{"s1", "s3", "s1", "s3"}
 	require.Equal(t, want, got, "with s2 waiting the deal goes %v, want %v", got, want)
-	// s2's cards are ready now: past s3 comes s1, then s2 at its turn
+	// s2's cards are ready now: past s3 comes s1, then s2 at its turn. s2 was
+	// added needing s1-5, so land it first: a ready card with a need not landed is
+	// no longer dealt (a brief edit records its needs; docs/SPEC-SPRINT.md).
+	w.place(w.s.Work, "s1-5", "s1", Landed)
 	for _, id := range []string{"s2-1", "s2-2", "s2-3"} {
 		w.place(w.s.Work, id, "s2", Ready)
 	}
