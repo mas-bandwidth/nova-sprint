@@ -1032,6 +1032,19 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-coordinatorwake-batch-and-level-events" :release "v1.2.12" :status "planned"
+   :title "CoordinatorWake models the batched wake, the filtered message and the level events"
+   :text "Models only, no product change. tla/CoordinatorWake.tla now models the batched wake (one wake
+    fires every bus ask the look read, naming three and counting the rest), the filtered message that
+    moves the cursor without a line, and the level events (a judgment, a stop, a friend down) that set
+    and clear between looks, so NoLapse holds for bus events alone and the new LevelSeenWhileItHolds
+    says a level event that holds a whole window wakes a run unless it clears first. The reversed
+    witness MCCoordinatorWakeBrokenBatchDrops (Broken \"batchdrops\") fires only the first ask of a batch
+    and writes the cursor past the rest, failing NoLapse; the two existing witnesses (nocursor, skip)
+    keep their results. watchwake.go's comments now say bus events, and that a judgment raised and closed
+    inside --judgment-every may never wake. Four cases pass on a bench."
+   :origin "this card, tla-coordinatorwake-batch-and-level-events-2.w2, 2026-10-11: v1.2.12 inventory item T25; drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+
   (fix "tla-stallladder-signs-of-life" :release "v1.2.12" :status "planned"
    :title "StallLadder reads a card's dealt and taken stamps and progress as the code does"
    :text "tla/StallLadder.tla was read against internal/sprint/friend_stall.go and friend_take.go and drifted in four places, each brought to the code. LastActive now counts a card's dealt and taken stamps beside her activity and progress, and the idle clock subtracts stopped time (StoppedTick), so a machine stop never counts against the bound; a progress stamp marks the card started, as the code reads \"started\" (progress, a report, or her beat naming the card), so rung 4 never takes it back; and the rung climbs only when the target rung is higher and resets only at 0, never written outright each tick. The existing invariants hold, and a new invariant NoStampedTaken (no card with a progress stamp is taken back) is checked by the reversed witness MCStallLadderBrokenTakestamped (Broken \"takestamped\"): rung 4 takes back a progress-stamped card, failing NoStampedTaken. friend_take.go gains one comment line citing the module."
