@@ -23,7 +23,7 @@ TICK_GATE_TEST := ^TestTickDrainAndDealUnderTheGateAtLoad$$
 # auto maintenance off for every git the tests start: git 2.46 and later detach a
 # `git maintenance run --auto` after a commit that can outlive a test's scratch repository
 # and race its cleanup (.github/workflows/ci.yml)
-NO_AUTO_MAINTENANCE := GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=maintenance.auto GIT_CONFIG_VALUE_0=false
+NO_AUTO_MAINTENANCE := GIT_CONFIG_PARAMETERS="'maintenance.auto'='false'"
 
 test: vet
 	$(NO_AUTO_MAINTENANCE) $(GO) test -p $(GOTEST_P) -skip '$(TICK_GATE_TEST)' ./...
