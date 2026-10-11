@@ -1326,6 +1326,15 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	if code := a.holdBase("add", st, *allowPersonal, stderr, *brief); code != 0 {
 		return code
 	}
+	// add --land-protected founds the stream and writes its mark in the same step, so
+	// this read, before the mark exists, lets the step's own mark-and-admit rule judge
+	// the card (promotionGuard, sprint.AddMarked; docs/SPEC-SPRINT.md section 7, the
+	// sprint branch)
+	if *landProtected == "" {
+		if code := a.holdSprintBase("add", st, stderr, rs...); code != 0 {
+			return code
+		}
+	}
 	if code := holdTlaRecords("add", stderr, briefCheck{id: strings.Join(ids, ","), brief: *brief}); code != 0 {
 		return code
 	}
@@ -1495,6 +1504,13 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 		return code
 	}
 	r := sprint.AddReq{Stream: stream, Cards: cards, Who: c.actor, Before: before, After: after, Held: held, Score: at, BriefOps: asked.ops, BriefRecord: asked.record, Replaces: replaces}
+	// a marked first add is judged by the step that writes the mark (promotionGuard,
+	// sprint.AddMarked), as cmdAdd holds it (docs/SPEC-SPRINT.md section 7)
+	if landProtected == "" {
+		if code := a.holdSprintBase("add", st, stderr, r); code != 0 {
+			return code
+		}
+	}
 	c.says = append(c.says, fmt.Sprintf("each card's id is its brief file's name without .md (%s is %s)", files[0], cards[0].ID))
 	for _, cd := range cards {
 		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
@@ -1795,6 +1811,17 @@ func modelLinesWhy(why string) string {
 	return "the brief's model lines: " + why + "; line 1 names `tier: flash|pro|heavy|frontier`, and a pinned card carries `model: <provider>/<model>` (with `tokens: <n>|unmetered` and `deadline: <seconds>`) under it"
 }
 
+// friendRulesHeadRE opens a RULES line, the head of the paragraph where a card carries its
+// own rules (pkg/swarm/lintchild.go's childRulesHeadRE, not exported).
+var friendRulesHeadRE = regexp.MustCompile(`(?m)^(?:#{1,6}[ \t]+)?RULES\b`)
+
+// friendOwnRules reports whether a brief is a friend's card that carries its own RULES
+// line (cardhdr.ReadWho; a friend's card, docs/SPEC-SPRINT.md section 1).
+func friendOwnRules(brief string) bool {
+	w, why := cardhdr.ReadWho(brief)
+	return why == "" && w.Friend && friendRulesHeadRE.MatchString(brief)
+}
+
 // lintBriefReads holds one brief to the card lint's child rules and to its
 // model lines: it returns the model-line why ("" when the lines read) and the
 // lint findings. The single-brief and many-brief paths both call it, so one
@@ -1809,6 +1836,18 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 		findings = swarm.LintCardChildByReference([]byte(brief), rs.rules)
 	} else {
 		findings = swarm.LintCardChildWith([]byte(brief), rs.rules)
+	}
+	if friendOwnRules(brief) {
+		// A FRIEND CARD THAT CARRIES ITS OWN RULES LINE IS ACCEPTED, not held for the child
+		// RULES paragraph: a friend is not a child, and her card carries its own rules
+		// (docs/SPEC-SPRINT.md section 1, a friend's card; rules by reference: a card that
+		// names no held file carries its own rules, as every card did before). The rule-
+		// checks are the child paragraph's presence checks (pkg/swarm/lintchild.go); the
+		// step- scans still hold her card, a line of it outside its RULES paragraph that
+		// contradicts its carried rules being a finding under any set.
+		findings = slices.DeleteFunc(findings, func(f swarm.CardHeaderFinding) bool {
+			return strings.HasPrefix(f.Check, "rule-")
+		})
 	}
 	// a tree card's steps are held too (pkg/cardtree; docs/SPEC-SPRINT.md, a card is
 	// a tree of steps): a flat brief has no such finding
@@ -2697,7 +2736,7 @@ func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 // cmdBrief replaces a primary's brief in place, on a running machine as on a stopped one
 // (changing a sprint happens through the verbs, never by hand; docs/SPEC-SPRINT.md, the
 // brief verb): the brief held to the card lint as add's is (holdBrief), then one step
-// (sprint.Brief), refused for a card working, merging or landed; the card keeps its id,
+// (sprint.Brief), refused for a card merging or landed; a working card takes one for its next attempt; the card keeps its id,
 // stream, score and needs, and one in review opens its next attempt. --dir replaces one
 // brief per file (cmdBriefDir); --group answers an inbox group as inbox prints it
 // (a group of one with --brief-file, of several with --dir); --widen widens its PATHS by
@@ -2705,7 +2744,7 @@ func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 // owner, 2026-10-06: "We gotta stop doing this twin shit. it's waste.").
 func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("brief")
-	brief := fs.String("brief", "", fmt.Sprintf("the new brief: a child's whole brief, at most %d KiB, held to the card lint as add holds one (--rules, else the file init --rules recorded, else the built-in general rules) and to the same PATHS check at the BASE tip (a literal path must exist, a glob must match a file, and every func, type or verb STOP or START names with a file must be inside a PATHS file; a CARRY: head= brief, such as --widen writes, skips the existence check) and refused, exit 2, nothing written, when it fails; a primary waiting, ready or in review takes one in place, on a STOPPED machine or a RUNNING one (there applied at its next tick), keeping its id: one an attempt was dealt for opens its next attempt, staged from its last pushed head, its bound reset; a card working, merging or landed keeps its brief; one that differs in its DEPENDS-ON: line alone is taken in any state, the machine running or the card dealt, and re-points the card's needs", cardlimits.MaxBriefBytes>>10))
+	brief := fs.String("brief", "", fmt.Sprintf("the new brief: a child's whole brief, at most %d KiB, held to the card lint as add holds one (--rules, else the file init --rules recorded, else the built-in general rules) and to the same PATHS check at the BASE tip (a literal path must exist, a glob must match a file, and every func, type or verb STOP or START names with a file must be inside a PATHS file; a CARRY: head= brief, such as --widen writes, skips the existence check) and refused, exit 2, nothing written, when it fails; a primary waiting, ready or in review takes one in place, on a STOPPED machine or a RUNNING one (there applied at its next tick), keeping its id: one an attempt was dealt for opens its next attempt, staged from its last pushed head, its bound reset; a card merging or landed keeps its brief; a working card takes one for its next attempt; one that differs in its DEPENDS-ON: line alone is taken in any state, the machine running or the card dealt, and re-points the card's needs", cardlimits.MaxBriefBytes>>10))
 	briefFile := fs.String("brief-file", "", "the new brief, read from this file: its bytes as they are, its one trailing newline cut; not with --brief")
 	dir := fs.String("dir", "", "a directory of new briefs: one per *.md file, the card its base name without .md, each read and held as --brief-file's; one bad file refuses the whole call, nothing written; not with an id, --brief or --brief-file; with --group, one file for each member of the group and no other")
 	rules := fs.String("rules", "", "the child rules file the brief is held to (default: the file init --rules recorded, else the built-in general rules)")
@@ -2920,7 +2959,58 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 	if code := a.holdWho("brief", st, stderr, streams, texts...); code != 0 {
 		return code
 	}
-	return a.runStep("brief", *c, st, store.BriefStep(req), stdout, stderr)
+	// a new BASE is held as add holds one: the sprint's base, outside the promotion
+	// stream (docs/SPEC-SPRINT.md section 7, the sprint branch); refused here, exit 2,
+	// and again by the step against a write that races this read
+	if s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil); err == nil {
+		if p := sprint.WithBriefBases(sprint.Plan{}, s, req, cardBase); len(p.Refused) > 0 {
+			return refuse(stderr, "brief", joinWhy(p.Refused))
+		}
+	}
+	step := store.BriefStep(req)
+	replace := step.Plan
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithBriefBases(replace(s), s, req, cardBase) }
+	return a.runStep("brief", *c, st, step, stdout, stderr)
+}
+
+// cardBase is the branch a brief's BASE: line names, its pin cut; "" for none.
+func cardBase(brief string) string { return swarm.ReadCardBase([]byte(brief)).Ref }
+
+// joinWhy is refusals as one line: each card's why, in order.
+func joinWhy(refused []sprint.Refusal) string {
+	why := make([]string, len(refused))
+	for i, r := range refused {
+		why[i] = r.Why
+	}
+	return strings.Join(why, "; ")
+}
+
+// holdSprintBase refuses, exit 2, nothing written, an add of a card cut on a branch that
+// is not the sprint's base, outside the promotion stream (sprint.SprintBranchWhy;
+// docs/SPEC-SPRINT.md section 7, the sprint branch), every such card named; the add step
+// holds the same rule against a write that races this read. A store that cannot be read
+// is left to the step to report.
+func (a *app) holdSprintBase(verbName string, st *store.Store, stderr io.Writer, rs ...sprint.AddReq) int {
+	s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil)
+	if err != nil {
+		return 0
+	}
+	var refused []sprint.Refusal
+	for _, r := range rs {
+		for i, id := range sprint.AddIDs(s, r) {
+			base := r.Base
+			if len(r.Cards) > 0 {
+				base = r.Cards[i].Base
+			}
+			if why := sprint.SprintBranchWhy(s, r.Stream, base, id); why != "" {
+				refused = append(refused, sprint.Refusal{Key: id, Why: why})
+			}
+		}
+	}
+	if len(refused) == 0 {
+		return 0
+	}
+	return refuse(stderr, verbName, joinWhy(refused))
 }
 
 // cmdMove moves unstarted primaries to another stream (changing a stopped
@@ -3448,6 +3538,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	fleetTiers := fs.String("fleet-tiers", "", "the tiers the fleet may take: flash, pro, heavy, frontier, comma separated, or all (the default); the deal hands a machine only a work card, and a member's reader only a read card, whose tier is one of them, on top of each row's own tiers")
 	friendsTiers := fs.String("friends-tiers", "", "the tiers the friends may take, as --fleet-tiers says the fleet's: a friend is dealt a work or read card only of one of them, on top of her row's own tiers")
 	finish := fs.String("friend-finish", "", fmt.Sprintf("how long a friend holding working cards may finish none (working to done) before the coordinator's pass judges her idle: a duration, or default (%s)", sprint.FriendFinishDefault))
+	base := fs.String("base", "", "the sprint's base, the branch every stream lands on (sprint/<name>; never dev or main, which promotion alone reaches): add and brief then refuse a card whose BASE: is any other branch outside the promotion stream (docs/SPEC-SPRINT.md section 7, the sprint branch); default takes it off, and add holds dev alone")
 	readCards := fs.String("read-cards", "", "on: the tick asks every read a card in review needs at once, as read cards on the fleet table dealt to friends and to members with a reader row, half a slot each; off or default: the readers table asks, one read at a time")
 	reworkPriority := fs.String("rework-priority", "", "the priority a normal or low card gets when its next attempt opens: fix (the default), high, or keep to retain its level")
 	reads := fs.String("reads", "", "the ok reads at its head every card in review needs, whatever its tier: 0 (no read: a primary whose work finished LAND is accepted on it), 1 or 2; default: one for a flash card, two above")
@@ -3468,6 +3559,10 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if *finish != "" {
 		set := step.Plan
 		step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithFriendFinish(set(s), s, *finish) }
+	}
+	if *base != "" {
+		set := step.Plan
+		step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithSprintBase(set(s), s, *base) }
 	}
 	return a.runStep("set", *c, st, step, stdout, stderr)
 }

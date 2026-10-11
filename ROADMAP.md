@@ -7,9 +7,9 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (210)
+- [The sprint machine](#the-sprint-machine) (205)
 - [Setup, release and operations](#setup-release-and-operations) (27)
-- [Docs, models and the repository](#docs-models-and-the-repository) (23)
+- [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (20)
 
 ## Lessons from Prime Agent's rewrite
@@ -213,22 +213,6 @@ The card verb reads the whole work table and log on each call; make a read use p
 Target: v1.3
 
 From: cards moved out of the sprint (work record, 2026-10-04)
-
-### Fix log --since for windows wider than 22 hours
-
-A wide --since window returns nothing; pin the window and return every event in it.
-
-Target: v1.3
-
-From: card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)
-
-### One column field every reader agrees on
-
-Card output carries a single column field so a card's state is not confused with the state of its need.
-
-Target: v1.3
-
-From: card moved out of the sprint (work record, 2026-10-04)
 
 ### Automatic promotion to dev and drift alarms
 
@@ -1206,14 +1190,6 @@ Target: after v1.4
 
 From: issue #2113
 
-### A loaded bench must not be marked down by the fleet probe
-
-The fleet-state probe marks a heavily loaded but healthy bench down after a few missed probes, and the dealer then kills its loops and sweeps its queue. Define state-entry timing and tell loaded from down.
-
-Target: v1.3
-
-From: issue #2161
-
 ### Emit merge-queue and expander events to the structured log
 
 Log enqueue, group start, group verdict and park events from the merge queue, and derive and cut events from the work language expander, as the logging spec requires.
@@ -1321,14 +1297,6 @@ From: card from the sprint store (2026-10-10)
 ### A route carries a request budget and a jittered rest end
 
 A route can carry a requests-per-minute budget that the deal keeps. The end of a route rest is jittered so routes do not return together.
-
-Target: v1.3
-
-From: card from the sprint store (2026-10-10)
-
-### A stats tidy succeeds over a fleet of more than 64 rows
-
-Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a property bound.
 
 Target: v1.3
 
@@ -1702,14 +1670,6 @@ Target: v1.3
 
 From: issue #1853; issue #1728; issue #2584; issue #2605; issue #2728
 
-### Card lint refuses valid cards: make gates and text inside fenced blocks
-
-Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside fenced blocks. It should accept both.
-
-Target: v1.3
-
-From: issue #1994; issue #2302; issue #3470
-
 ### A mechanical guard check as a review verb
 
 The unguarded verdict came from a model and was wrong about a third of the time. A verb reverts non-test files, runs the named tests and reports mechanically.
@@ -2061,14 +2021,6 @@ A lease past its deadline reads as expired, may be extended once, and can escala
 Target: after v1.4
 
 From: issue #2338
-
-### The worklang parser keeps the done field of a unit
-
-Unit done reads a field the parser never keeps, so a done unit is never counted. The key is added and sibling skipped keys are checked, with a test.
-
-Target: v1.3
-
-From: issue #3499
 
 ### The reference model learns reads needed and tiers
 

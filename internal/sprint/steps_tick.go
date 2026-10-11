@@ -203,6 +203,12 @@ type TickReq struct {
 	// the deadlines part keeps a judgment for each drift. nil is none read, and no drift
 	// judgment is raised or closed.
 	Drift *DriftFacts
+	// Machines is every machine record the inventory (nova-config) names, read by the
+	// binding with the tick (the same config read as fleet sync; fleet_retire.go): the
+	// retire part takes a fleet row whose record is absent off the table. nil or empty
+	// is no read, or a read that failed or held no row, and the part retires nothing
+	// (never act on a missing read).
+	Machines []string
 }
 
 func (r TickReq) who() string {
@@ -856,8 +862,8 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	pc, stop := providerConds(s)
 	pc, stop = friendsKeepRunning(pc, stop, r.Friends)
 	conds = append(conds, pc...)
-	// a member whose cards are timing out, three within the window (overload.go)
-	conds = append(conds, overloadConds(s)...)
+	// a member or a friend whose cards are timing out, three within the window (overload.go)
+	conds = append(conds, overloadConds(s, r.Friends)...)
 	// a member back from down whose adoption of the latest failed (fleet_back.go)
 	conds = append(conds, adoptConds(s)...)
 	// the friend sync loop refusing past its bound (friend_sync_state.go)

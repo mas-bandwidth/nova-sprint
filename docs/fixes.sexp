@@ -294,6 +294,16 @@
     row or a changed card still does."
    :origin "pre-clear backup, 2026-10-10 (8 fleet parts differed)")
 
+  (fix "backup-restores-the-fleet-rows" :release "v1.2.6" :status "planned"
+   :title "backup --file passes on a fleet that is beating"
+   :text "The restore check of backup --file sets aside what a live member's beat rewrites while the dump
+    is taken (the fleet table's revision, a fleet row's place, load text and up or down status) and
+    compares everything else exactly, so the pre-adopt backup of a running fleet no longer refuses with
+    the dump does not restore the sprint the store held; a held status, a missing row or a changed card
+    still does. store.SemanticRestore (internal/sprint/store/restore.go) is the check, run from runBackup
+    (cmd/nova-sprint/backup.go)."
+   :origin "dogfood 2026-10-10 evening: fleet-only restart; pre-clear backup, 2026-10-10 (8 fleet parts differed)")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
@@ -325,10 +335,139 @@
      named in the disposition and treat commit id as untrusted."
     :origin "issue #2037")
 
+   (fix "log-since-wide-window" :release "v1.2.9" :status "planned"
+    :title "Fix log --since for windows wider than 22 hours"
+    :text "A wide --since window returns nothing; pin the window and return every event in it. Did not
+     reproduce at 6f3323a6c83f9e7b340bf477886862c39001315e."
+    :origin "card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)")
+
+   (fix "fleet-probe-loaded-bench-not-down" :release "v1.2.9" :status "shipped"
+    :title "A loaded bench must not be marked down by the fleet probe"
+    :text "The fleet-state probe marks a heavily loaded but healthy bench down after a few missed probes,
+     and the dealer then kills its loops and sweeps its queue. Define state-entry timing and tell loaded
+     from down."
+    :origin "issue #2161")
+
    (fix "bound-judgment-names-its-remedy" :release "v1.2.6" :status "shipped"
     :title "A bound judgment names the exact command that answers it"
     :text "A card at its redeal bound says which tier above to rework on and the drop command whole, and a
      card at its brief's bound names brief --brief-file and the drop command, in the judgment's own text as
      a rework's refusal already said, so the coordinator runs the remedy as printed instead of guessing."
     :origin "dogfood 2026-10-10 evening: a fleet-only restart bounded several cards, and answering them took
-     four tries -- brief --tier, redo, rework, rework --group")))
+     four tries -- brief --tier, redo, rework, rework --group")
+
+   (fix "overload-alarm-covers-friends" :release "v1.2.6" :status "shipped"
+    :title "The overload alarm covers friends too"
+    :text "A friend up whose cards keep ending on a timeout raises the overload judgment as a member
+     does: three timeouts within OverloadWindow on her row friend.<name>, counted after her finishes'
+     `friend <name> <VERDICT>: ` prefix, her width the roster's. Its remedy is her width in
+     nova-config, applied by friend sync."
+    :origin "sprint card overload-alarm-covers-friends")
+
+   (fix "doctor-checks-the-definition-of-done" :release "v1.2.7" :status "shipped"
+    :title "The doctor names every definition-of-done fault with its evidence"
+    :text "The read-only doctor joins the seat check's centralized machinery verdicts (the friends and
+     the fleet up, the loop ticking, the dashboard answering, and a dashboard whose served snapshot
+     is a second or more old) with the coordinator's automatic-stop ledger, section 9's always-true
+     rules, the deal dry with cards waiting and the seat's overdue waits, and prints one
+     evidence-bearing line per fault. It exits 0 when clean and 1 when red, and --json carries the
+     fault lines and the machinery evidence with the push proof redacted. Three faults the card
+     names are held for the dependencies that decide them, not judged here: working equals reality
+     (a card working whose row's beat names no live run) waits on land-ns54-working-is-live, whose
+     beat live set (RowWorkingKeys/LiveCountKeys) is not landed on main; the members' and friends'
+     at-width facts are that dependency's width fact, the seat check's fleet and friends lines
+     counting up/held/down alone; and the machine's own tick late (pushlate.go) is not joined, the
+     loop line holding only the LoopSilence bound."
+    :origin "this pull request")
+
+   (fix "friend-card-carries-own-rules" :release "v1.2.6" :status "shipped"
+    :title "A friend card that carries its own RULES line is accepted at add"
+    :text "A friend is not a child: her card is not held for the child RULES paragraph, the rule- presence
+     checks of the card lint, when it carries its own RULES line, and a friend card with none is still
+     held to it, as a child's brief is. The step- scans hold a friend's card still: a line of it outside
+     its RULES paragraph that contradicts its carried rules is a finding under any rule set."
+    :origin "this pull request")
+
+   (fix "swarm-lint-card-false-refusals" :release "v1.2.9" :status "planned"
+    :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
+    :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
+     fenced blocks. It should accept both."
+    :origin "issue #1994; issue #2302; issue #3470")
+
+   (fix "card-column-single-field" :release "v1.2.9" :status "planned"
+    :title "One column field every reader agrees on"
+    :text "Card output carries a single column field so a card's state is not confused with the state of
+     its need."
+    :origin "card moved out of the sprint (work record, 2026-10-04)")
+
+   (fix "reader-only-friend-no-work" :release "v1.2.9" :status "shipped"
+    :title "A reader-only friend is dealt no work card; a builder-only friend is asked no read"
+    :text "The deal and the ask honour a friend's roles: a friend whose nova-config row's roles do not
+     name builder (RoleBuilder) is dealt no work card, and one whose roles do not name reader (RoleReader)
+     is asked no read, in the read-card ask and the friends' ask alike. A row with no role list is a row
+     from before roles and keeps the pre-role behavior: it is dealt work and asked reads (friendHasRole).
+     The dogfood of 2026-10-10 evening: a reader-only friend was dealt 16 work cards once it came up,
+     and builder-only friends were asked reads."
+    :origin "dogfood 2026-10-10 evening: fleet-only restart")
+
+   (fix "stats-tidy-large-fleet" :release "v1.2.9" :status "planned"
+    :title "A stats tidy succeeds over a fleet of more than 64 rows"
+    :text "Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a
+     property bound."
+    :origin "card from the sprint store (2026-10-10)")
+
+   (fix "fleet-sync-retires-a-renamed-machines-row" :release "v1.2.6" :status "shipped"
+    :title "The tick retires a fleet row whose machine is gone from the inventory"
+    :text "A rename (hetzner -> hetzner1) left the old fleet row held on the table forever, because
+     nothing ever removed a row: fleet sync adds and resizes only. The tick now reads the same machine
+     records fleet sync reads (nova-config, no new store) and, every tick and with no verb run by anyone,
+     retires a row whose record is absent (sprint.TickRetireAbsent, internal/sprint/fleet_retire.go): a row
+     with no record and no cards leaves the fleet table and the dashboard, its reader reader-<old> is
+     retired with the row and only once it leaves (the rows store.DropMembers deleted that tick), its stats
+     stay queryable under the old name, and one HAPPENED note records it; a row with no record that still
+     holds cards is held and its cards dealt away, retired on the first tick its set is empty; a config read
+     that fails retires nothing (never act on a missing read); a machine whose record exists but is offline
+     stays down. fleet sync --check already lists what the next tick would retire, as its remove drift for
+     an absent member with no card. Model tla/RetireAbsent.tla: RecordsKeepRows is the state invariant (a
+     recorded machine keeps its row) and FleetRowsMatchConfig and LiveRetire are the leads-to the tick's
+     fair reads and retirement make true; two reversed witnesses are declared, MCRetireAbsentBroken retiring
+     a recorded row on a failed read as the counterexample to RecordsKeepRows. The TLC pass is recorded in
+     tla/RUNS.tsv (MCRetireAbsent.cfg 2563 states, 468 distinct, exit 0; MCRetireAbsentBroken.cfg exit 12
+     on RecordsKeepRows). Tests: a record removed, a tick, and the row and reader are gone while the stats
+     stay; a row with working cards drains then retires; a draining absent row keeps its reader until its
+     row leaves; a failed read retires nothing; an offline machine with a record is untouched."
+    :origin "the owner, 2026-10-11 ~01:00Z and ~01:05Z, after hetzner was renamed hetzner1 and its old fleet
+     row stayed held; this card; attempt 2")
+
+   (fix "worklang-done-field-parsed" :release "v1.2.9" :status "planned"
+    :title "The worklang parser keeps the done field of a unit"
+    :text "Unit done reads a field the parser never keeps, so a done unit is never counted. The key is
+     added and sibling skipped keys are checked, with a test."
+    :origin "issue #3499")
+
+  (fix "add-refuses-card-off-sprint-base" :release "v1.2.6" :status "shipped"
+   :title "add and brief refuse a card cut off the sprint's base"
+   :text "Once the coordinator records the sprint's base (set --base, the work table's sprint_base), add and
+    brief refuse a card whose BASE is any other branch outside the promotion stream, exit 2, nothing
+    written; the step holds the same rule against a racing write. With no base recorded, dev alone is
+    refused as before, and the promotion stream keeps its mark."
+   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")
+
+  (fix "held-friend-reader-serves-nothing" :release "v1.2.6" :status "shipped"
+   :title "A held friend's reader serves nothing"
+   :text "docs/SPEC-SPRINT.md section 11 (hold): a friend and her reader row are one member to the
+    server. A held friend's reader row (reader-<friend>) serves nothing: ownModelReader and
+    readerServesTier both say so, no route judgment counts her up, and the TLA+ model ReaderTiers
+    carries the held reader beside its reversed witness. A hold with --return also takes back the
+    reads asked of her reader row, where a reader up is free to read them."
+   :origin "dogfood 2026-10-10 evening: fleet-only restart")
+
+  (fix "brief-on-a-working-card" :release "v1.2.6" :status "shipped"
+   :title "A brief replaces a working card's in place, for its next attempt"
+   :text "A card working takes a new brief in place, as one in review does (briefKept, docs/SPEC-SPRINT.md,
+    the brief verb): the brief is stored on the same card, its id, stream, score and needs kept and no
+    twin cut, and the record and the card's next attempt's why read <id> brief edited in place by <actor>
+    at attempt <n>: <what changed>, so the coordinator corrects a running card without waiting for
+    review. Only a merging or landed card keeps its brief, with what changes it instead (briefStarted).
+    The verb's help and docs/SPEC-SPRINT.md say so."
+   :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine; this card")))

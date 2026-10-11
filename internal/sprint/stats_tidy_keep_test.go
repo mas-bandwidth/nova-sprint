@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // What a stats tidy keeps (stats_tidy.go, TidyKept), on a world built by hand: the live
@@ -107,7 +109,7 @@ func TestATidyKeepsTheRecentAndTheRulesSamplesAndTakesTheRest(t *testing.T) {
 }
 
 // A machine whose median run wall is 20 minutes, on a 30-minute route, keeps its
-// 60-minute deadline through a tidy: the tidy carries the median (PropCarriedMedian) while
+// 60-minute deadline through a tidy: the tidy carries the median (PropCarriedMedians) while
 // the live sample is smaller than the carried count, and drops it once it is as large.
 func TestATidyKeepsTheDeadlineItsMedianGave(t *testing.T) {
 	t.Parallel()
@@ -129,9 +131,9 @@ func TestATidyKeepsTheDeadlineItsMedianGave(t *testing.T) {
 	rows, p := TidyDone(w.s, []string{TidyFleet}, nil)
 	require.Len(t, movedIDs(rows), 40)
 	w.must(p)
-	v, ok := w.s.Fleet.Prop(PropCarriedMedian(m))
+	v, ok := w.s.Fleet.Prop(PropCarriedMedians)
 	require.True(t, ok)
-	assert.Equal(t, "1200 50", v)
+	assert.Equal(t, m+"=1200,50", v)
 	median, n = MemberMedianWall(w.s, m)
 	assert.Equal(t, 1200.0, median, "the live ten say 100 s; the carried median stands")
 	assert.Equal(t, 50, n)
@@ -164,4 +166,44 @@ func TestATidyKeepsTheDeadlineItsMedianGave(t *testing.T) {
 	gm, gn := FriendMedianWall(w.s, "carry-amy")
 	assert.Equal(t, fm, gm, "her median is carried through the tidy")
 	assert.Equal(t, 12, gn)
+}
+
+// A fleet wider than a table's property bound still tidies: the tidy carries every row's
+// median run wall in one property, not one property a row, so a fleet of more than
+// ntable.LimitTableProps (64) rows does not meet the bound. On 2026-10-10 a tidy of 66 rows
+// wrote 66 properties and the store refused at 64 (stats_reset.go, StatsRecord.Reset, took
+// the same lesson; docs/SPEC-SPRINT.md section 11, Statistics).
+func TestATidyOfAFleetWiderThanThePropertyBoundCarriesEveryRow(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a")
+	now := w.s.Now
+	var rows []string
+	for i := range ntable.LimitTableProps + 1 {
+		row := fmt.Sprintf("wide-m%02d", i)
+		rows = append(rows, row)
+		// eleven old ok finishes of 900 s: each row's newest ten stay (the rest rule's
+		// sample), its oldest moves, and its median is carried
+		for j := range 11 {
+			putDone(w, row, fmt.Sprintf("w%02d-%02d.w1", i, j), DoneOK, now.Add(-48*time.Hour+time.Duration(j)*time.Minute), "prov-a/x", "", "900s")
+		}
+	}
+
+	tidied, p := TidyDone(w.s, []string{TidyFleet}, nil)
+	require.Len(t, movedIDs(tidied), len(rows), "one card off each of the %d rows", len(rows))
+	var fleetProps int
+	for _, pw := range p.Props {
+		if pw.Table == Fleet {
+			fleetProps++
+		}
+	}
+	assert.LessOrEqual(t, fleetProps, ntable.LimitTableProps,
+		"a tidy of %d rows writes %d fleet properties; the table holds at most %d", len(rows), fleetProps, ntable.LimitTableProps)
+
+	w.must(p)
+	w.s.Fleet.cells = nil
+	for _, row := range rows {
+		median, n := MemberMedianWall(w.s, row)
+		assert.Equal(t, 900.0, median, "%s's median is carried through the tidy", row)
+		assert.Equal(t, 11, n, "%s's carried sample stands while the live ten is smaller", row)
+	}
 }

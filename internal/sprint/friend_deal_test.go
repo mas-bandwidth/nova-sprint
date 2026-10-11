@@ -398,3 +398,57 @@ func FriendDeal(s *Snapshot, cards []*Card, seats []FriendSeat) Plan {
 func friendDeal(s *Snapshot, cards []*Card, seats []FriendSeat) (p Plan, dealt, dealtWorking map[string]int) {
 	return friendDealPass(s, cards, seats, true)
 }
+
+// The deal honours a friend's roles (docs/SPEC-SPRINT.md section 1, a friend's card; the
+// dogfood of 2026-10-10 evening: a reader-only friend was dealt 16 work cards once it came
+// up). A row without the builder role (RoleBuilder) is dealt no work card; a row whose role
+// list is empty is a row from before roles and keeps the pre-role behavior.
+func TestAReaderOnlyFriendIsDealtNoWorkCard(t *testing.T) {
+	t.Parallel()
+	w := friendWorld(t, friendBrief("only friend amy"))
+	dealWith(w, FriendSeat{Name: "amy", Width: 8, Status: Up, Class: "flash,pro", Roles: []string{RoleReader}})
+	assert.Nil(t, w.s.Fleet.Card("s1-1.w1"), "a friend whose roles do not name builder is dealt no work card")
+	assert.Equal(t, Ready, w.s.StateOf("s1-1"), "the primary waits ready")
+	assert.Equal(t, 0, w.s.Fleet.Count(FriendRow("amy"), Ready)+w.s.Fleet.Count(FriendRow("amy"), Working), "her row holds no work card")
+}
+
+func TestABuilderFriendIsDealtWork(t *testing.T) {
+	t.Parallel()
+	w := friendWorld(t, friendBrief("only friend amy"))
+	dealStarted(w, FriendSeat{Name: "amy", Width: 8, Status: Up, Class: "flash,pro", Roles: []string{RoleBuilder}})
+	require.NotNil(t, w.s.Fleet.Card("s1-1.w1"), "a friend whose roles name builder is dealt work")
+	assert.Equal(t, Working, w.s.StateOf("s1-1"))
+}
+
+// The ask honours a friend's roles (docs/SPEC-SPRINT.md section 6, Who reads; the dogfood of
+// 2026-10-10 evening: builder-only friends were asked reads). A row without the reader role
+// is asked no read; a row without a role list keeps the pre-role behavior.
+func TestAReaderOnlyFriendIsAskedARead(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a", "reader-b")
+	putReview(w, "s1-1", "s1-1: read this (s1) tier: pro\n", 1, 1, "head-s1-1")
+	askReaders(t, w, []FriendSeat{{Name: "amy", Width: 8, Status: Up, Class: "flash,pro", Roles: []string{RoleReader}}})
+	require.NotNil(t, w.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")), "a friend whose roles name reader is asked the read")
+}
+
+func TestABuilderOnlyFriendIsAskedNoRead(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a", "reader-b")
+	putReview(w, "s1-1", "s1-1: read this (s1) tier: pro\n", 1, 1, "head-s1-1")
+	askReaders(t, w, []FriendSeat{{Name: "bob", Width: 8, Status: Up, Class: "flash,pro", Roles: []string{RoleBuilder}}})
+	assert.Nil(t, w.s.Fleet.Card(ReadCardID("s1-1", 1, "bob")), "a friend whose roles do not name reader is asked no read")
+}
+
+// A row from a snapshot before roles (no role list) keeps the pre-role behavior: it is dealt
+// work and asked reads alike (docs/SPEC-SPRINT.md section 1, a friend's card).
+func TestAFriendWithNoRolesIsDealtWorkAndAskedARead(t *testing.T) {
+	t.Parallel()
+	w := friendWorld(t, friendBrief("only friend amy"))
+	dealStarted(w, FriendSeat{Name: "amy", Width: 8, Status: Up, Class: "flash,pro"})
+	require.NotNil(t, w.s.Fleet.Card("s1-1.w1"), "a friend with no role list is dealt work, as before roles")
+
+	w2 := newWorld(t, "reader-a", "reader-b")
+	putReview(w2, "s1-1", "s1-1: read this (s1) tier: pro\n", 1, 1, "head-s1-1")
+	askReaders(t, w2, []FriendSeat{{Name: "amy", Width: 8, Status: Up, Class: "flash,pro"}})
+	require.NotNil(t, w2.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")), "a friend with no role list is asked the read, as before roles")
+}

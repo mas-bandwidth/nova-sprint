@@ -223,7 +223,7 @@ func (r *reader) symbol() (Form, error) {
 	if err := r.node(start); err != nil {
 		return Form{}, err
 	}
-	return Form{Kind: Symbol, Offset: start, Value: string(r.data[start:r.pos])}, nil
+	return Form{Kind: Symbol, Offset: start, End: r.pos, Value: string(r.data[start:r.pos])}, nil
 }
 
 func (r *reader) list() (Form, error) {

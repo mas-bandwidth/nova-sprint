@@ -433,14 +433,19 @@ func RestoreLevel(src SnapshotSource, twin SnapshotTwin) string {
 }
 
 // SemanticRestore loads dump into the twin and compares the sprint state it
-// holds with want, the source's: nil only when they are the same in every part.
-// The error names the parts that differ.
+// holds with want, the source's: nil when they agree in every part the sprint
+// holds, with the fleet's beat cells set aside (DiffLive). A source the sprint
+// keeps writing to is read twice, its dump and its state, and a running fleet
+// rewrites the fleet table's display cells between them (the tick's showFleet
+// and orderFleet, presence.go): a beat is not a restore failure, while a held
+// status, a missing row or a changed card is (docs/SPEC-SPRINT.md,
+// sprint-backup-verb). The error names the parts that differ.
 func SemanticRestore(ctx context.Context, want SprintState, twin StateTwin, dump []byte) error {
 	got, err := twin.LoadState(ctx, dump)
 	if err != nil {
 		return fmt.Errorf("the dump does not load into an isolated store whose sprint can be read: %w", err)
 	}
-	if d := want.Diff(got); len(d) > 0 {
+	if d := want.DiffLive(got); len(d) > 0 {
 		return fmt.Errorf("the restored sprint is not the store's in %d part(s): %s", len(d), diffText(d))
 	}
 	return nil

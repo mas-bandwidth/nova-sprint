@@ -3,6 +3,7 @@ package sprint
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"math/big"
 	"slices"
 	"strconv"
@@ -162,11 +163,9 @@ func TidyDone(s *Snapshot, kinds []string, stopped func(from, to time.Time) time
 			p.Units = append(p.Units, Unit{Key: wc.ID, Changes: []Change{change(Fleet, removeEntry(wc, nil))},
 				Moved: fmt.Sprintf("%s done %s -> off the table (stats tidy: its record kept)", wc.ID, cell)})
 		}
-		if len(r.Moved) > 0 {
-			p.Props = append(p.Props, carryMedian(s, row)...)
-		}
 		rows = append(rows, r)
 	}
+	p.Props = append(p.Props, carryMedians(s, rows)...)
 	return rows, p
 }
 
@@ -178,31 +177,91 @@ func doneWord(col string) string {
 	return "ok"
 }
 
-// PropCarriedMedian is the fleet table's property holding a row's median run wall as a
-// tidy found it: "<seconds> <samples>". The deadline rules (MemberMedianWall,
-// FriendMedianWall) use it while the row's live ok sample is smaller than its count, and
-// drop it once the live sample is at least as large, so a tidy never changes a deadline.
-func PropCarriedMedian(row string) string { return "carried_median_" + row }
+// PropCarriedMedians is the fleet table's one property holding every tidied row's median
+// run wall as a tidy found it: "row=<seconds>,<samples>" for each row, in row order, a blank
+// between. One property for the whole fleet, not one a row (a table holds at most
+// ntable.LimitTableProps, 64): on 2026-10-10 a tidy of 66 rows wrote 66 properties and the
+// store refused at the bound (stats_reset.go, StatsRecord.Reset, took the same lesson). The
+// deadline rules (MemberMedianWall, FriendMedianWall) use it while the row's live ok sample
+// is smaller than its count, and drop it once the live sample is at least as large, so a
+// tidy never changes a deadline.
+const PropCarriedMedians = "carried_medians"
 
-// carryMedian is the property write that carries the row's median run wall through a tidy,
-// none when the row has no sample or carries the same already.
-func carryMedian(s *Snapshot, row string) []PropWrite {
-	var median float64
-	var n int
-	if f, ok := FriendOfRow(row); ok {
-		median, n = FriendMedianWall(s, f)
-	} else {
-		median, n = MemberMedianWall(s, row)
+// carriedSample is one row's carried median run wall and its sample count.
+type carriedSample struct {
+	Median float64
+	N      int
+}
+
+// parseCarriedMedians is the record by row; an entry that cannot be read is no sample, and
+// its row reads as none carried.
+func parseCarriedMedians(v string) map[string]carriedSample {
+	out := map[string]carriedSample{}
+	for _, e := range strings.Fields(v) {
+		row, rest, ok := strings.Cut(e, "=")
+		if !ok || row == "" {
+			continue
+		}
+		m, c, ok := strings.Cut(rest, ",")
+		if !ok {
+			continue
+		}
+		median, err := strconv.ParseFloat(m, 64)
+		n, err2 := strconv.Atoi(c)
+		if err != nil || err2 != nil || n <= 0 {
+			continue
+		}
+		out[row] = carriedSample{Median: median, N: n}
 	}
-	if n == 0 {
+	return out
+}
+
+func formatCarriedMedians(m map[string]carriedSample) string {
+	rows := slices.Sorted(maps.Keys(m))
+	parts := make([]string, len(rows))
+	for i, row := range rows {
+		parts[i] = row + "=" + strconv.FormatFloat(m[row].Median, 'f', -1, 64) + "," + strconv.Itoa(m[row].N)
+	}
+	return strings.Join(parts, " ")
+}
+
+// carryMedians is the property write that carries each tidied row's median run wall through
+// a tidy, none when no row has a sample or every sample is carried already. A row this tidy
+// did not name keeps the sample it carried: a later tidy of another kind never drops it.
+func carryMedians(s *Snapshot, rows []TidyRow) []PropWrite {
+	if s.Fleet == nil {
 		return nil
 	}
-	v := strconv.FormatFloat(median, 'f', -1, 64) + " " + strconv.Itoa(n)
-	was, had := s.Fleet.Prop(PropCarriedMedian(row))
-	if had && was == v {
+	was, had := s.Fleet.Prop(PropCarriedMedians)
+	carried := parseCarriedMedians(was)
+	changed := false
+	for _, r := range rows {
+		if len(r.Moved) == 0 {
+			continue
+		}
+		var median float64
+		var n int
+		if f, ok := FriendOfRow(r.Row); ok {
+			median, n = FriendMedianWall(s, f)
+		} else {
+			median, n = MemberMedianWall(s, r.Row)
+		}
+		if n == 0 {
+			continue
+		}
+		if prev, ok := carried[r.Row]; !ok || prev.Median != median || prev.N != n {
+			carried[r.Row] = carriedSample{Median: median, N: n}
+			changed = true
+		}
+	}
+	if !changed {
 		return nil
 	}
-	return []PropWrite{{Table: Fleet, Name: PropCarriedMedian(row), Value: v, Was: was, WasAbsent: !had}}
+	value := formatCarriedMedians(carried)
+	if value == was {
+		return nil
+	}
+	return []PropWrite{{Table: Fleet, Name: PropCarriedMedians, Value: value, Was: was, WasAbsent: !had}}
 }
 
 // carriedMedian is the row's carried median run wall and its sample count; ok false when
@@ -211,20 +270,15 @@ func carriedMedian(s *Snapshot, row string) (median float64, n int, ok bool) {
 	if s.Fleet == nil {
 		return 0, 0, false
 	}
-	v, had := s.Fleet.Prop(PropCarriedMedian(row))
+	v, had := s.Fleet.Prop(PropCarriedMedians)
 	if !had {
 		return 0, 0, false
 	}
-	m, c, found := strings.Cut(v, " ")
-	if !found {
+	c, ok := parseCarriedMedians(v)[row]
+	if !ok {
 		return 0, 0, false
 	}
-	median, err := strconv.ParseFloat(m, 64)
-	n, err2 := strconv.Atoi(c)
-	if err != nil || err2 != nil || n <= 0 {
-		return 0, 0, false
-	}
-	return median, n, true
+	return c.Median, c.N, true
 }
 
 // withCarried is the live median and count, or the row's carried ones while the live

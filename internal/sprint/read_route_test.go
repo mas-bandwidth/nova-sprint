@@ -151,3 +151,81 @@ func TestAReaderRefusedForNoRouteIsNotSweptAway(t *testing.T) {
 	assert.Equal(t, map[string]string{"reader-m1": ReaderUp, "reader-m2": ReaderUp}, w.s.ReaderStates, "the readers stay up")
 	assert.ElementsMatch(t, []string{"reader-m1", "reader-m2"}, w.s.UpReaders())
 }
+
+// A held friend's reader serves nothing: a friend and her reader row are one member to
+// the server, so a held friend's reader brings no model and serves no tier, whatever
+// its tiers cell names (docs/SPEC-SPRINT.md section 11, hold). Her reads are dealt no
+// new card, and the tier's route judgment no longer counts her.
+func TestAHeldFriendReaderDoesNotServe(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-m1", "reader-amy")
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+	// amy is a friend: the tick hands the snapshot her seat, held
+	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Held}}
+	w.s.ReaderStates = map[string]string{"reader-m1": ReaderUp, "reader-amy": ReaderUp}
+
+	assert.False(t, w.s.ownModelReader("reader-amy"), "a held friend's reader brings no model")
+	assert.False(t, w.s.readerServesTier("reader-amy", cardhdr.RouteFlash), "a held friend's reader serves no flash")
+	assert.False(t, w.s.readerServesTier("reader-amy", cardhdr.RoutePro), "a held friend's reader serves no pro")
+	assert.False(t, w.s.ownModelReaderUp(cardhdr.RoutePro), "a held friend's reader up counts for no tier's route judgment")
+
+	// unheld, the same reader brings her model and serves her tiers: the rule is the
+	// hold's, not her name's
+	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up}}
+	assert.True(t, w.s.ownModelReader("reader-amy"), "a friend up's reader brings her own model")
+	assert.True(t, w.s.readerServesTier("reader-amy", cardhdr.RoutePro), "and serves her tier")
+}
+
+// holdingFriend is a world with a fleet reader up beside a friend's reader row,
+// the friend up, and an asked read of one flash primary on her reader row
+// (reader-<name>): what a friend hold with --return takes back (docs/SPEC-SPRINT.md
+// section 11, hold).
+func holdingFriend(t *testing.T) (*world, *Card) {
+	t.Helper()
+	const head = "0123456789abcdef0123456789abcdef01234567"
+	w := newWorld(t, "reader-m1", ReaderPrefix+"amy")
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}}
+	w.s.ReaderStates = map[string]string{"reader-m1": ReaderUp, ReaderPrefix + "amy": ReaderUp}
+	putReview(w, "s1-1", "s1-1: a flash card\n\nThe task.", 1, 1, head)
+	rc := putRead(w, "s1-1", 1, ReaderPrefix+"amy", Asked)
+	return w, rc
+}
+
+// A friend and her reader row are one member to the server: a hold of the friend with
+// --return takes back the reads asked of reader-<friend> (returnReads), and a held
+// friend's reader is asked no new read (readerServesTier). Without --return the asked
+// read stays on her row, as a held reader's does (docs/SPEC-SPRINT.md section 11, hold).
+func TestAHeldFriendTakesBackHerReaderReads(t *testing.T) {
+	t.Parallel()
+	w, rc := holdingFriend(t)
+	require.True(t, rc.Placed(), "the read starts on her reader row")
+
+	w.must(HoldNames(w.s, HoldReq{Names: []string{"amy"}, Return: true, Reason: "held", Who: "coordinator", Friends: []string{"amy"}}))
+	back := w.s.Readers.Card(rc.ID)
+	require.NotNil(t, back, "the read's record stays, retired")
+	assert.False(t, back.Placed(), "the hold --return takes the read back off her reader row")
+	assert.Equal(t, RetiredByHold, back.F("retired_by"), "the hold --return took it back")
+
+	// the store writes her hold: the next tick hands the snapshot her seat held. A held
+	// friend and her reader row are one member, so she brings no model and serves no tier.
+	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Held, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}}
+	assert.False(t, w.s.ownModelReader(ReaderPrefix+"amy"), "a held friend's reader brings no model")
+	assert.False(t, w.s.readerServesTier(ReaderPrefix+"amy", cardhdr.RouteFlash), "a held friend's reader serves no tier")
+
+	// no new read is asked of her row: the ask skips her, held
+	askReaders(t, w, nil)
+	for _, c := range w.s.Readers.Cards() {
+		if c.Placed() && c.F("reader") == ReaderPrefix+"amy" {
+			t.Errorf("a read %s is asked of a held friend's reader row", c.ID)
+		}
+	}
+
+	// the control: a hold with no --return leaves her asked read on the row
+	c, crc := holdingFriend(t)
+	c.must(HoldNames(c.s, HoldReq{Names: []string{"amy"}, Reason: "held", Who: "coordinator", Friends: []string{"amy"}}))
+	kept := c.s.Readers.Card(crc.ID)
+	require.NotNil(t, kept)
+	assert.True(t, kept.Placed(), "a hold with no --return leaves her reader row's read")
+	assert.Empty(t, kept.F("retired_by"))
+}

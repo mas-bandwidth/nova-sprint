@@ -301,12 +301,6 @@
    :date "2026-10-10"
    :release "v1.3"
    :origin "cards moved out of the sprint (work record, 2026-10-04)")
-  (item "log-since-wide-window" :group "sprint"
-   :title "Fix log --since for windows wider than 22 hours"
-   :text "A wide --since window returns nothing; pin the window and return every event in it."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)")
   (item "store-backup-and-demo-load-verbs" :group "ops"
    :title "Backup, restore and demo-load verbs for the sprint store"
    :text "Replace the hand backup procedure with verbs that dump, split, checksum, scan for secrets and
@@ -314,13 +308,6 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "cards moved out of the sprint (work record, 2026-10-04)")
-  (item "card-column-single-field" :group "sprint"
-   :title "One column field every reader agrees on"
-   :text "Card output carries a single column field so a card's state is not confused with the state of
-    its need."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "auto-promotion-and-drift-alarms" :group "sprint"
    :title "Automatic promotion to dev and drift alarms"
    :text "The machine promotes the base to dev itself and raises an alarm when the live server, a card
@@ -1110,13 +1097,6 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "issue #3478")
-  (item "worklang-done-field-parsed" :group "docs"
-   :title "The worklang parser keeps the done field of a unit"
-   :text "Unit done reads a field the parser never keeps, so a done unit is never counted. The key is
-    added and sibling skipped keys are checked, with a test."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "issue #3499")
   (item "children-visibility-on-table" :group "sprint"
    :title "Show every seat's children on the sprint table within a second"
    :text "The table shows each live child with task, step, age and cost, read from the store, including
@@ -1415,14 +1395,6 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "issue #2113")
-  (item "fleet-probe-loaded-bench-not-down" :group "sprint"
-   :title "A loaded bench must not be marked down by the fleet probe"
-   :text "The fleet-state probe marks a heavily loaded but healthy bench down after a few missed probes,
-    and the dealer then kills its loops and sweeps its queue. Define state-entry timing and tell
-    loaded from down."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "issue #2161")
   (item "sprint-event-log-merge-and-expander" :group "sprint"
    :title "Emit merge-queue and expander events to the structured log"
    :text "Log enqueue, group start, group verdict and park events from the merge queue, and derive and cut
@@ -1578,13 +1550,6 @@
    :title "TLA+ models for reads on a missing branch and the friend card"
    :text "A model for a read on a missing branch that spends no reader, and for a friend card's lifecycle
     and the friend's liveness. Each names the evidence the code reads."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "card from the sprint store (2026-10-10)")
-  (item "stats-tidy-large-fleet" :group "sprint"
-   :title "A stats tidy succeeds over a fleet of more than 64 rows"
-   :text "Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a
-    property bound."
    :date "2026-10-10"
    :release "v1.3"
    :origin "card from the sprint store (2026-10-10)")
@@ -2077,13 +2042,6 @@
    :date "2026-10-10"
    :release "v1.3"
    :origin "issue #1853; issue #1728; issue #2584; issue #2605; issue #2728")
-  (item "swarm-lint-card-false-refusals" :group "sprint"
-   :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
-   :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
-    fenced blocks. It should accept both."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "issue #1994; issue #2302; issue #3470")
   (item "review-guard-check-verb" :group "sprint"
    :title "A mechanical guard check as a review verb"
    :text "The unguarded verdict came from a model and was wrong about a third of the time. A verb reverts

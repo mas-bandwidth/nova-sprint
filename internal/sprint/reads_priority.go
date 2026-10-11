@@ -67,12 +67,14 @@ func ReadsWaiting(s *Snapshot) int {
 }
 
 // friendMayRead says the friend may be asked the primary's read at its attempt: she is up,
-// one of her tiers is at or above its read tier (friendAtOrAbove), she did not work the
-// attempt, and no read card of hers at the attempt exists (a read taken back keeps its id,
-// so she is not asked it again). The friends' ask (friendReadAsk) and the deal's reads first
-// (friendReadsFirst) ask the same question.
+// her roles name reader (RoleReader) or her role list is empty (a row from before roles,
+// friendHasRole), one of her tiers is at or above its read tier (friendAtOrAbove), she did
+// not work the attempt, and no read card of hers at the attempt exists (a read taken back
+// keeps its id, so she is not asked it again). The friends' ask (friendReadAsk) and the
+// deal's reads first (friendReadsFirst) ask the same question.
 func friendMayRead(s *Snapshot, f FriendSeat, pr *Card, attempt int, tier, worker string) bool {
-	return f.Status == Up && f.Name != worker && friendAtOrAbove(s, f, tier) && s.Fleet.Card(ReadCardID(pr.ID, attempt, f.Name)) == nil
+	return f.Status == Up && friendHasRole(f, RoleReader) && f.Name != worker &&
+		friendAtOrAbove(s, f, tier) && s.Fleet.Card(ReadCardID(pr.ID, attempt, f.Name)) == nil
 }
 
 // readAttempt is the primary's attempt as the reads count it: 1 when it names none.

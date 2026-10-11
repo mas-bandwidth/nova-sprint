@@ -97,12 +97,15 @@ type ReadersM struct {
 }
 
 // DashM is the local dashboard: address, HTTP status of GET /api/sprint
-// (0 when request failed, Err says how) and build id the body carries.
+// (0 when request failed, Err says how), the build id the body carries, and
+// the snapshot's own time (the body's "fetchedAt", zero when the body carries
+// none).
 type DashM struct {
-	Addr   string `json:"addr"`
-	Status int    `json:"status"`
-	Err    string `json:"err,omitempty"`
-	Build  string `json:"build,omitempty"`
+	Addr   string    `json:"addr"`
+	Status int       `json:"status"`
+	Err    string    `json:"err,omitempty"`
+	Build  string    `json:"build,omitempty"`
+	At     time.Time `json:"at,omitzero"`
 }
 
 // BusM is nova-bus2's store: address NOVA_BUS_REDIS names ("" is not
@@ -415,7 +418,9 @@ func JudgeSeatCheck(m SeatCheckMeasures, now time.Time) SeatCheckReport {
 		}
 	}
 
-	// 7. dashboard
+	// 7. dashboard (docs/SPEC-SPRINT.md, "The seat check"; the owner, 2026-10-10: the data
+	// it serves must be under a second old, so a dashboard answering with a stale snapshot is
+	// DOWN with its age)
 	if !failed(SeatCheckDashboard) {
 		d := m.Dashboard
 		remedy := "nova-sprint dashboard --listen " + d.Addr
@@ -428,8 +433,14 @@ func JudgeSeatCheck(m SeatCheckMeasures, now time.Time) SeatCheckReport {
 			add(SeatCheckLine{Thing: SeatCheckDashboard, Facts: []string{"addr=" + d.Addr, "status=" + fmt.Sprint(d.Status)}, Remedy: remedy})
 		case d.Build == "":
 			add(SeatCheckLine{Thing: SeatCheckDashboard, Facts: []string{"addr=" + d.Addr, "status=200", "why=" + quoteSeatCheck("/api/sprint carries no build id")}, Remedy: remedy})
+		case !d.At.IsZero() && now.Sub(d.At) >= time.Second:
+			add(SeatCheckLine{Thing: SeatCheckDashboard, Facts: []string{"addr=" + d.Addr, "status=200", "age=" + formatAge(now.Sub(d.At)), "why=" + quoteSeatCheck("the dashboard serves data "+formatAge(now.Sub(d.At))+" old")}, Remedy: remedy})
 		default:
-			add(SeatCheckLine{Thing: SeatCheckDashboard, Up: true, Facts: []string{"addr=" + d.Addr, "status=200", "build=" + d.Build}})
+			facts := []string{"addr=" + d.Addr, "status=200", "build=" + d.Build}
+			if !d.At.IsZero() {
+				facts = append(facts, "age="+formatAge(now.Sub(d.At)))
+			}
+			add(SeatCheckLine{Thing: SeatCheckDashboard, Up: true, Facts: facts})
 		}
 	}
 

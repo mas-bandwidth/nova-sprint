@@ -54,6 +54,6 @@ string are each refused naming the byte.
 **Refusals.** Every refusal is a `*worklang.Refusal` whose `ExitCode()` is 2 and whose message is
 `plan file=<file>: <reason>`. The reason names the byte or the bound it refuses.
 
-**Byte ranges.** A form carries `Offset` (its first byte), and a list, string, keyword or
-integer also carries `End` (the byte just past it). A caller names a byte in its own refusals
-from `Offset`.
+**Byte ranges.** Every form carries `Offset` (its first byte) and `End` (the byte
+just past it), so a caller can name the span of any form. A caller names a byte in
+its own refusals from `Offset`.

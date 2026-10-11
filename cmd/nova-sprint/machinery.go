@@ -256,10 +256,14 @@ func (a *app) seatCheck(ctx context.Context, st *store.Store, redisAddr string) 
 			m.Dashboard.Err = err.Error()
 		} else {
 			var snap struct {
-				Build string `json:"build"`
+				Build     string     `json:"build"`
+				FetchedAt *time.Time `json:"fetchedAt"`
 			}
 			_ = json.Unmarshal(body, &snap) // ignored: a body that is no snapshot carries no build
 			m.Dashboard.Build = snap.Build
+			if snap.FetchedAt != nil {
+				m.Dashboard.At = *snap.FetchedAt
+			}
 		}
 	}
 

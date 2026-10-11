@@ -358,3 +358,51 @@ func TestATidyWhoseCardMovedKeepsItsArchive(t *testing.T) {
 	assert.Equal(t, sprint.Withdrawn, r.snap().Fleet.Card(first).Col, "it stays where the other writer put it")
 	assert.Nil(t, r.snap().Fleet.Placed(sprint.WorkCardID("s1-2", 1)))
 }
+
+// A stats tidy succeeds over a fleet wider than a table's property bound
+// (ntable.LimitTableProps, 64): the tidy carries every row's median in one property, not one
+// a row, so the move's manifest stays under the bound. On 2026-10-10 a tidy of 66 rows wrote
+// 66 properties and the store refused at 64 (stats_reset.go, StatsRecord.Reset, took the same
+// lesson; docs/SPEC-SPRINT.md section 11, Statistics).
+func TestATidySucceedsOverAFleetWiderThanThePropertyBound(t *testing.T) {
+	t.Parallel()
+	r := newConflictRig(t)
+	_, _, _, err := r.st.SetMachine(r.ctx, true)
+	require.NoError(t, err)
+	rows := ntable.LimitTableProps + 1
+	names := make([]string, rows)
+	for i := range rows {
+		names[i] = fmt.Sprintf("wide-m%02d", i)
+	}
+	fleetTable := r.st.Names.Table(sprint.Fleet)
+	require.NoError(t, r.m.RowsAdd(r.ctx, fleetTable, names))
+	// eleven old ok work cards of 900 s on each row: the newest ten stay (the rest rule's
+	// sample), the oldest moves, and the row's median is carried
+	finished := r.st.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339)
+	var es []ntable.BatchMemberEntry
+	for i := range rows {
+		for j := range 11 {
+			es = append(es, ntable.BatchMemberEntry{ID: fmt.Sprintf("wide-%02d-%02d.w1", i, j),
+				Expect: &ntable.MemberExpect{Absent: true},
+				Create: &ntable.MemberCreateOp{Row: names[i], Col: sprint.DoneOK, Score: float64(j + 1)},
+				Set: map[string]string{"kind": "work", "primary": fmt.Sprintf("wide-%02d-%02d", i, j), "attempt": "1",
+					"ok": "yes", "finished": finished, "model": "prov-a/x", "usage": "wall=900s"}})
+		}
+	}
+	for i := 0; i < len(es); i += 100 {
+		end := min(i+100, len(es))
+		_, err := r.m.Apply(r.ctx, ntable.BatchManifest{Schema: 1, Table: fleetTable, Epoch: "0",
+			ExpectedTableRevision: fmt.Sprint(r.m.Revision(fleetTable)), OperationID: fmt.Sprintf("seed-%d", i), Members: es[i:end]})
+		require.NoError(t, err)
+	}
+
+	res, err := r.st.TidyStats(r.ctx, store.TidyReq{Kinds: []string{sprint.TidyFleet}, Reason: "a wide fleet"})
+	require.NoError(t, err, "a tidy of %d rows meets no property bound", rows)
+	require.Empty(t, res.Refused)
+	assert.Equal(t, rows, res.Moved, "one card off each of the %d rows", rows)
+	s, err := r.st.Load(r.ctx, []string{sprint.Fleet}, nil)
+	require.NoError(t, err)
+	carried, ok := s.Fleet.Prop(sprint.PropCarriedMedians)
+	require.True(t, ok, "the tidy carries the rows' medians")
+	assert.Len(t, strings.Fields(carried), rows, "every row's median in the one property")
+}
