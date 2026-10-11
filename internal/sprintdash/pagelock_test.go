@@ -2,6 +2,7 @@ package sprintdash
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -95,4 +96,40 @@ func TestThePageLockOnKnownCases(t *testing.T) {
 	// a malformed line, and an empty lock
 	require.Error(t, CheckPageLock(lock+"2026-10-12 nodigest \"x\"\n", spec, base))
 	require.Error(t, CheckPageLock("# nothing\n", spec, base))
+}
+
+// The lock only grows: against the base a change is merged into (PAGELOCK_BASE, a git revision:
+// CI names the pull request's base), every line of the base's pagelock.txt is still there, in
+// order, at the head of this one, so a change cannot rewrite an old line's digest under an ask
+// already given; a new ask is a new line. A base with no lock yet (its first change) passes.
+// Unset, it is not checked (a bench's run with no base to compare).
+func TestThePageLockOnlyGrows(t *testing.T) {
+	t.Parallel()
+	base := os.Getenv("PAGELOCK_BASE")
+	if base == "" {
+		t.Skip("PAGELOCK_BASE names no base revision; CI sets it to the pull request's base")
+	}
+	out, err := exec.Command("git", "show", base+":internal/sprintdash/pagelock.txt").Output()
+	if err != nil {
+		t.Logf("%s holds no pagelock.txt: this change is the lock's first", base)
+		return
+	}
+	lock, err := os.ReadFile("pagelock.txt")
+	require.NoError(t, err)
+	if err := LockGrows(string(out), string(lock)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The growth rule on known cases: lines appended pass; an old line rewritten, dropped or
+// reordered is red.
+func TestThePageLockGrowthOnKnownCases(t *testing.T) {
+	t.Parallel()
+	a := "2026-10-11 " + strings.Repeat("a", 64) + " \"this is what it is.\"\n"
+	b := "2026-10-12 " + strings.Repeat("b", 64) + " \"show the reads\"\n"
+	require.NoError(t, LockGrows("# head\n"+a, "# head\n"+a+b), "known yes: a line appended")
+	require.NoError(t, LockGrows(a, a), "known yes: unchanged")
+	require.Error(t, LockGrows(a, strings.Replace(a, "aaaa", "cccc", 1)), "known no: the old line's digest rewritten under the same ask")
+	require.Error(t, LockGrows(a+b, b), "known no: an old line dropped")
+	require.Error(t, LockGrows(a+b, b+a), "known no: lines reordered")
 }

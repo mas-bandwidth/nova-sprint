@@ -129,3 +129,24 @@ func quoted(l string) []string {
 	}
 	return out
 }
+
+// LockGrows is why the lock now does not keep every line of the lock it changes from (base),
+// in order, at its head; nil when it does. Comments and blank lines are not lines of the lock.
+func LockGrows(base, now string) error {
+	lines := func(s string) []string {
+		var out []string
+		for _, l := range strings.Split(s, "\n") {
+			if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
+				out = append(out, l)
+			}
+		}
+		return out
+	}
+	was, is := lines(base), lines(now)
+	for i, l := range was {
+		if i >= len(is) || is[i] != l {
+			return fmt.Errorf("pagelock.txt line %d of the base, %q, is not kept as it was: the lock only grows, and a change of the page is a new line with the owner's new ask, never an old line rewritten", i+1, l)
+		}
+	}
+	return nil
+}

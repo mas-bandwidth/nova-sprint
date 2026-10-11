@@ -62,7 +62,9 @@ the code that decides what it draws (`internal/sprintdash/pageview.go`) are lock
 in `internal/sprintdash/pagelock.txt`: a change that adds, removes, hides or filters anything (any
 byte of those files) is red (`TestThePageIsLocked`) until pagelock.txt gains a line with the
 date, the new digest and the owner's exact words asking for that change, and this section gains a
-line of the same date quoting the same words. Each change wants its own ask. The card lint holds
+line of the same date quoting the same words. Each change wants its own ask. The lock only grows:
+CI's "page lock only grows" step (`TestThePageLockOnlyGrows` against the pull request's base) is red
+when an old line of pagelock.txt is rewritten, dropped or moved. The card lint holds
 the same rule before a card is written: `add` and `brief` refuse a card whose PATHS: or NEW:
 reaches the page's files, pageview.go or dashboard.go unless its SOURCE: line quotes the owner
 asking for that visible change, dated (`dashboard-asked-for`, pkg/swarm/dashboardask.go).
