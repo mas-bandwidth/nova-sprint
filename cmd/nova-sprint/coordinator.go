@@ -95,13 +95,15 @@ func coordinatorOnly(ctx context.Context, st *store.Store, c common) (string, er
 // live push proof (docs/SPEC-SPRINT.md, "The push proof"; pushproof.go): ""
 // is may. The first init, on a store with no coordinator, only names the
 // seat, and the push loop follows a seat that has a holder: every verb after
-// it, init again included, waits for the holder's proof.
+// it, init again included, waits for the holder's proof. It is the seat's own
+// session acting, so a busy seat answers its own outstanding check here and the
+// gate is asked again (pushGateRenewing): a busy seat is never locked out.
 func seatPushed(ctx context.Context, st *store.Store) (string, error) {
 	seat, err := st.B.Coordinator(ctx)
 	if err != nil || seat == "" {
 		return "", err
 	}
-	return pushGate(ctx, st, seat, st.Now())
+	return pushGateRenewing(ctx, st, seat, st.Now())
 }
 
 // coordinatorsAlone is why the actor may not do what is the coordinator's

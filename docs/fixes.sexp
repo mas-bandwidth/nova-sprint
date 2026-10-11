@@ -226,6 +226,17 @@
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
 
+  (fix "seat-proof-renews-while-the-seat-works" :release "v1.2.6" :status "in-progress"
+   :title "A busy seat's own verb renews its stale push proof, and only its own"
+   :text "A coordinator verb refused with PUSH DOWN for a proof past its 15m bound is answered by the
+    seat's own session when the folder holds the check the push loop wrote but nothing answered: the verb
+    answers the outstanding proof itself and records the pong (the way seat pong does), so a busy seat is
+    never locked out; a seat with no outstanding check to answer, or truly unreachable, is still refused.
+    The renewal is confined to the acting seat: a coordinator handover to a destination gates on the
+    destination's proof with plain pushGate, so the acting session never answers the destination's
+    outstanding check, and a destination whose session never answered is still refused."
+   :origin "the seat, 2026-10-10: PUSH DOWN mid-add")
+
   (fix "cut-sentinel-releases-itself" :release "v1.2.6" :status "shipped"
    :title "A cut sentinel releases itself on the tick, and pushes the seat that the release is ready to cut"
    :text "A sentinel that names its needs (a cut: a stream's reopen stop, a release sentinel) is released by
