@@ -18,9 +18,9 @@
 (* Both writers are two steps, as in the code, so TLC sees them            *)
 (* interleave:                                                             *)
 (*  - a reset reads the stats record (its version, ver; refused while a    *)
-(*    tidy is in flight) and the sprint (ResetRead), then writes the mark  *)
-(*    by compare-and-set: only while the record is the version it read,    *)
-(*    else it reads again (ResetWrite, ResetRetry);                        *)
+(*    fresh tidy is in flight) and the sprint (ResetRead), then writes the *)
+(*    mark by compare-and-set: only while the record is the version it     *)
+(*    read, else it reads again (ResetWrite, ResetRetry);                  *)
 (*  - a tidy writes its marker, the mark in force then (TidyStart), moves  *)
 (*    any subset of a row's finished cards, not the oldest first           *)
 (*    (TidyMove: a card whose primary has not landed stays whatever its    *)
@@ -29,6 +29,11 @@
 (*    sprint.ResetMark.Rebase, by each card's stamp).                      *)
 (* The tidy takes cards off for good: the figure since the mark is the     *)
 (* cards since it still on the row (later wins).                           *)
+(*                                                                         *)
+(* A tidy in flight carries when it began (tstart, on the clock): a        *)
+(* marker older than TidyStale is stale, and a reset reads it as ended and *)
+(* goes on, while a fresh marker refuses the reset (stats_tidy.go Fresh,   *)
+(* stats_reset.go). The clock advances on its own (Tick).                  *)
 (*                                                                         *)
 (* The where record (store/where.go keepWhere) caches the shown figures:   *)
 (* the tick reads in one step and writes in a later one, and where takes   *)
@@ -58,16 +63,19 @@ CONSTANTS Figures,     \* the rows and streams, each one figure here
           MaxFig,      \* a figure's bound
           MaxRev,      \* the table's revision bound (every table write)
           MaxVer,      \* the stats record's version bound (every write of it)
+          TidyStale,   \* how long a tidy in flight stands on the clock
+          MaxClock,    \* the clock's bound
           Broken       \* "none", "norebase", "bycount", "nolock" or "nostamp"
 
 VARIABLES live, fig, after, pend,
           marked, mark, known, markId,
           ver, rev, rec, reading,
           rr,       \* a reset's read: active, the version read, the figures, the live set
-          tidying, tseen, tpre, tall, tmoved
+          tidying, tseen, tpre, tall, tmoved,
+          clock, tstart
 
 vars == <<live, fig, after, pend, marked, mark, known, markId, ver, rev, rec, reading,
-          rr, tidying, tseen, tpre, tall, tmoved>>
+          rr, tidying, tseen, tpre, tall, tmoved, clock, tstart>>
 
 Zero == [f \in Figures |-> 0]
 NoRecord == [rev |-> -1, stamp |-> -1, vals |-> Zero]
@@ -78,6 +86,9 @@ Less(a, b) == IF a > b THEN a - b ELSE 0
 \* the figure shown: the epoch's less the mark's when the mark knows it
 Shown(f) == IF marked /\ f \in known THEN Less(fig[f], mark[f]) ELSE fig[f]
 
+\* a tidy in flight still stands: begun within TidyStale of the clock
+FreshTidy == tidying /\ clock - tstart < TidyStale
+
 TypeOK ==
     /\ live \subseteq Figures
     /\ fig \in [Figures -> 0..MaxFig]
@@ -85,6 +96,7 @@ TypeOK ==
     /\ \A f \in Figures : pend[f] <= after[f] /\ after[f] <= fig[f]
     /\ marked \in BOOLEAN /\ mark \in [Figures -> 0..MaxFig] /\ known \subseteq Figures
     /\ ver \in 0..MaxVer /\ rev \in 0..MaxRev
+    /\ clock \in 0..MaxClock /\ tstart \in 0..MaxClock
     /\ tidying \in BOOLEAN /\ tmoved \in BOOLEAN
     /\ tpre \in [Figures -> 0..MaxFig] /\ tall \in [Figures -> 0..MaxFig]
 
@@ -93,6 +105,7 @@ Init ==
     /\ marked = FALSE /\ mark = Zero /\ known = {} /\ markId = 0
     /\ ver = 0 /\ rev = 0 /\ rec = NoRecord /\ reading = NoRecord
     /\ rr = NoRead
+    /\ clock = 0 /\ tstart = 0
     /\ tidying = FALSE /\ tseen = 0 /\ tpre = Zero /\ tall = Zero /\ tmoved = FALSE
 
 \* a table write: the revision moves
@@ -100,11 +113,17 @@ Write == rev < MaxRev /\ rev' = rev + 1
 \* a write of the stats record: its version moves
 Rewrite == ver < MaxVer /\ ver' = ver + 1
 
+\* the clock advances, alone
+Tick ==
+    /\ clock < MaxClock
+    /\ clock' = clock + 1
+    /\ UNCHANGED <<live, fig, after, pend, marked, mark, known, markId, ver, rev, rec, reading, rr, tidying, tseen, tpre, tall, tmoved, tstart>>
+
 Appear(f) ==
     /\ f \notin live
     /\ Write
     /\ live' = live \cup {f}
-    /\ UNCHANGED <<fig, after, pend, marked, mark, known, markId, ver, rec, reading, rr, tidying, tseen, tpre, tall, tmoved>>
+    /\ UNCHANGED <<fig, after, pend, marked, mark, known, markId, ver, rec, reading, rr, tidying, tseen, tpre, tall, tmoved, clock, tstart>>
 
 \* a card finishes on the row: since the mark, and since a reset's read in flight
 Grow(f) ==
@@ -114,15 +133,15 @@ Grow(f) ==
     /\ fig' = [fig EXCEPT ![f] = @ + 1]
     /\ after' = [after EXCEPT ![f] = @ + 1]
     /\ pend' = IF rr.active THEN [pend EXCEPT ![f] = @ + 1] ELSE pend
-    /\ UNCHANGED <<live, marked, mark, known, markId, ver, rec, reading, rr, tidying, tseen, tpre, tall, tmoved>>
+    /\ UNCHANGED <<live, marked, mark, known, markId, ver, rec, reading, rr, tidying, tseen, tpre, tall, tmoved, clock, tstart>>
 
 \* ---- the reset, two steps ----
 ResetRead ==
     /\ ~rr.active
-    /\ (Broken = "nolock" \/ ~tidying)
+    /\ (Broken = "nolock" \/ ~FreshTidy)
     /\ rr' = [active |-> TRUE, ver |-> ver, vals |-> fig, live |-> live]
     /\ pend' = Zero
-    /\ UNCHANGED <<live, fig, after, marked, mark, known, markId, ver, rev, rec, reading, tidying, tseen, tpre, tall, tmoved>>
+    /\ UNCHANGED <<live, fig, after, marked, mark, known, markId, ver, rev, rec, reading, tidying, tseen, tpre, tall, tmoved, clock, tstart>>
 
 \* the compare-and-set found the record changed: the reset reads again
 ResetRetry ==
@@ -131,11 +150,11 @@ ResetRetry ==
     /\ rr.ver # ver
     /\ rr' = NoRead
     /\ pend' = Zero
-    /\ UNCHANGED <<live, fig, after, marked, mark, known, markId, ver, rev, rec, reading, tidying, tseen, tpre, tall, tmoved>>
+    /\ UNCHANGED <<live, fig, after, marked, mark, known, markId, ver, rev, rec, reading, tidying, tseen, tpre, tall, tmoved, clock, tstart>>
 
 ResetWrite ==
     /\ rr.active
-    /\ Broken = "nolock" \/ (rr.ver = ver /\ ~tidying)
+    /\ Broken = "nolock" \/ (rr.ver = ver /\ ~FreshTidy)
     /\ Rewrite
     /\ marked' = TRUE
     /\ mark' = [f \in Figures |-> IF f \in rr.live THEN rr.vals[f] ELSE 0]
@@ -145,16 +164,17 @@ ResetWrite ==
     /\ rec' = NoRecord
     /\ rr' = NoRead
     /\ pend' = Zero
-    /\ UNCHANGED <<live, fig, rev, reading, tidying, tseen, tpre, tall, tmoved>>
+    /\ UNCHANGED <<live, fig, rev, reading, tidying, tseen, tpre, tall, tmoved, clock, tstart>>
 
 \* ---- the tidy, three steps ----
 TidyStart ==
     /\ ~tidying
     /\ Rewrite
     /\ tidying' = TRUE
+    /\ tstart' = clock
     /\ tseen' = markId
     /\ tpre' = Zero /\ tall' = Zero /\ tmoved' = FALSE
-    /\ UNCHANGED <<live, fig, after, pend, marked, mark, known, markId, rev, rec, reading, rr>>
+    /\ UNCHANGED <<live, fig, after, pend, marked, mark, known, markId, rev, rec, reading, rr, clock>>
 
 \* any subset of the row's finished cards: k0 from before the mark, k1 since the mark and
 \* before a reset's read in flight, k2 since that read
@@ -170,7 +190,7 @@ TidyMove(f) ==
         /\ tpre' = [tpre EXCEPT ![f] = k0]
         /\ tall' = [tall EXCEPT ![f] = k0 + k1 + k2]
     /\ tmoved' = TRUE
-    /\ UNCHANGED <<live, marked, mark, known, markId, ver, rec, reading, rr, tidying, tseen>>
+    /\ UNCHANGED <<live, marked, mark, known, markId, ver, rec, reading, rr, tidying, tseen, clock, tstart>>
 
 \* the end: the marker cleared, the mark it saw rebased by the moved cards before it
 TidyEnd ==
@@ -182,23 +202,24 @@ TidyEnd ==
                [] Broken = "nolock" -> [f \in Figures |-> Less(mark[f], tpre[f])]
                [] OTHER -> IF tseen = markId THEN [f \in Figures |-> Less(mark[f], tpre[f])] ELSE mark
     /\ tpre' = Zero /\ tall' = Zero /\ tmoved' = FALSE
-    /\ UNCHANGED <<live, fig, after, pend, marked, known, markId, rev, rec, reading, rr, tseen>>
+    /\ UNCHANGED <<live, fig, after, pend, marked, known, markId, rev, rec, reading, rr, tseen, clock, tstart>>
 
 \* ---- the tick's where record, two steps ----
 CountRead ==
     /\ reading' = [rev |-> rev, stamp |-> ver, vals |-> [f \in Figures |-> IF f \in live THEN Shown(f) ELSE 0]]
-    /\ UNCHANGED <<live, fig, after, pend, marked, mark, known, markId, ver, rev, rec, rr, tidying, tseen, tpre, tall, tmoved>>
+    /\ UNCHANGED <<live, fig, after, pend, marked, mark, known, markId, ver, rev, rec, rr, tidying, tseen, tpre, tall, tmoved, clock, tstart>>
 
 CountWrite ==
     /\ reading.rev >= 0
     /\ rec' = reading
     /\ reading' = NoRecord
-    /\ UNCHANGED <<live, fig, after, pend, marked, mark, known, markId, ver, rev, rr, tidying, tseen, tpre, tall, tmoved>>
+    /\ UNCHANGED <<live, fig, after, pend, marked, mark, known, markId, ver, rev, rr, tidying, tseen, tpre, tall, tmoved, clock, tstart>>
 
 Next ==
     \/ \E f \in Figures : Appear(f) \/ Grow(f) \/ TidyMove(f)
     \/ ResetRead \/ ResetRetry \/ ResetWrite
     \/ TidyStart \/ TidyEnd
+    \/ Tick
     \/ CountRead \/ CountWrite
 
 Spec == Init /\ [][Next]_vars
