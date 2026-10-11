@@ -65,6 +65,27 @@ func TestHarnessTailKeepsTheLastFortyLines(t *testing.T) {
 	}
 }
 
+// EnvironmentExitRecord is the finish's one record of an environment exit: the ended word at
+// the child's exit and the last HarnessTailLines of its harness output, so the cause rides
+// the card. An empty output leaves an empty tail; the ended word still names the code.
+func TestEnvironmentExitRecordCarriesTheEndedWordAndTail(t *testing.T) {
+	if got := EnvironmentExitRecord(134, ""); got.Ended != "environment exit=134" || got.Harness != "" {
+		t.Fatalf("EnvironmentExitRecord(134, \"\") = %+v", got)
+	}
+	var b strings.Builder
+	for i := 1; i <= 100; i++ {
+		b.WriteString(itoa(i) + "\n")
+	}
+	got := EnvironmentExitRecord(137, b.String())
+	if got.Ended != "environment exit=137" {
+		t.Fatalf("Ended = %q", got.Ended)
+	}
+	lines := strings.Split(strings.TrimRight(got.Harness, "\n"), "\n")
+	if len(lines) != 40 || lines[0] != "61" || lines[39] != "100" {
+		t.Fatalf("Harness tail = %d lines, first %q last %q", len(lines), lines[0], lines[39])
+	}
+}
+
 // The doctor's rate thresholds (docs/SPEC-SPRINT.md, "An environment exit"): over 10% with
 // n >= 10 is FAIL, 3% to 10% is WARN, below is OK; the counts come from the attempt records.
 func TestEnvExitRateThresholds(t *testing.T) {

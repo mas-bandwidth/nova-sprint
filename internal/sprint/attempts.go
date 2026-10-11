@@ -74,6 +74,24 @@ func EnvExitCheck(member string, env, n int, last, id string) (DoctorCheck, bool
 	return DoctorCheck{}, false
 }
 
+// EnvExitRecord is the finish's whole record of an environment exit on the attempt: the
+// ended word (`environment exit=<n>`) and the harness tail the finish keeps on the card
+// (HarnessTailLines), so the cause rides the card a reader reads (docs/SPEC-SPRINT.md, "An
+// environment exit"; a-card-carries-its-consumer-history). The finish writes these on the
+// withdrawn work card WITHOUT ending the take, so the attempt and the reader slot stand.
+type EnvExitRecord struct {
+	Ended   string
+	Harness string
+}
+
+// EnvironmentExitRecord is the record of an environment exit at exit with the child's whole
+// harness output: the ended word EnvironmentExit(exit) and the last HarnessTailLines of the
+// output. It is the one place the finish and its tests build the pair, so the tail length is
+// never named twice.
+func EnvironmentExitRecord(exit int, harnessOut string) EnvExitRecord {
+	return EnvExitRecord{Ended: EnvironmentExit(exit), Harness: HarnessTail(harnessOut, HarnessTailLines)}
+}
+
 // HarnessTail is the last n lines of a child's harness output, so the finish can keep the
 // cause on the card (HarnessTailLines). Fewer than n lines keeps all; an empty output is
 // empty; a trailing newline is preserved.
