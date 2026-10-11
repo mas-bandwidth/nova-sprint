@@ -174,26 +174,26 @@ func TestACommentOnlyLineHoldsOnlyACommentChange(t *testing.T) {
 	co := a + "2026-10-11 " + strings.Repeat("b", 64) + " comment-only \"privacy\"\n"
 	asked := a + "2026-10-12 " + strings.Repeat("b", 64) + " \"show the reads\"\n"
 	for name, c := range map[string]map[string][]byte{
-		"a js line comment":    with("page/app.js", "the owner's words", "other words"),
-		"a js block comment":   with("page/app.js", "a note", "another note"),
-		"a css comment":        with("page/index.html", "why", "because"),
-		"an html comment":      with("page/index.html", "note", "other note"),
-		"an inline js comment": with("page/index.html", "// c", "// d"),
+		"a js line comment":             with("page/app.js", "the owner's words", "other words"),
+		"a js block comment":            with("page/app.js", "a note", "another note"),
+		"a css comment":                 with("page/index.html", "why", "because"),
+		"an html comment":               with("page/index.html", "note", "other note"),
+		"an inline js comment":          with("page/index.html", "// c", "// d"),
 		"an html comment between words": with("page/index.html", "p<!--k-->q", "p<!--m-->q"),
 		"a js comment after if":         with("page/app.js", "// note-one", "// note-two"),
 	} {
 		require.NoError(t, CommentOnlyHolds(a, co, base, c), "known yes: %s", name)
 	}
 	for name, c := range map[string]map[string][]byte{
-		"a string with //":      with("page/app.js", "http://x", "http://y"),
-		"a regex with quotes":   with("page/app.js", "/[&<>\"']/g", "/[&<>\"]/g"),
-		"code after a division": with("page/app.js", "a / b", "a / c"),
-		"a css value":           with("page/index.html", "color:red", "color:blue"),
-		"a css string with /*":  with("page/index.html", "/* kept */", "/* gone */"),
-		"the page's text":       with("page/index.html", "<p>text</p>", "<p>more</p>"),
-		"a fill slot":           with("page/index.html", "<!--LOGO-->", "<!--LOGO2-->"),
-		"inline js code":        with("page/index.html", "var x=1", "var x=2"),
-		"pageview.go":           with("pageview.go", "package x", "package y"),
+		"a string with //":                   with("page/app.js", "http://x", "http://y"),
+		"a regex with quotes":                with("page/app.js", "/[&<>\"']/g", "/[&<>\"]/g"),
+		"code after a division":              with("page/app.js", "a / b", "a / c"),
+		"a css value":                        with("page/index.html", "color:red", "color:blue"),
+		"a css string with /*":               with("page/index.html", "/* kept */", "/* gone */"),
+		"the page's text":                    with("page/index.html", "<p>text</p>", "<p>more</p>"),
+		"a fill slot":                        with("page/index.html", "<!--LOGO-->", "<!--LOGO2-->"),
+		"inline js code":                     with("page/index.html", "var x=1", "var x=2"),
+		"pageview.go":                        with("pageview.go", "package x", "package y"),
 		"an html comment written as a space": with("page/index.html", "p<!--k-->q", "p q"),
 		"a comment in a quoted attribute":    with("page/index.html", "<!--z-->", "<!--q-->"),
 		"a data-src script body":             with("page/index.html", "p<!--k2-->q", "p q"),
