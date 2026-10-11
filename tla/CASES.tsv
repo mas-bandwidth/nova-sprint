@@ -482,3 +482,5 @@ MCHoldsLive.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
 MCServerSwitch.cfg	MCServerSwitch.tla	pass	-	ignore-terminal	serverswitch	required	-
 MCServerSwitchBrokenNodeadline.cfg	MCServerSwitch.tla	invariant	RollbackOnlyInWindow	ignore-terminal	serverswitch	required	-
 MCServerSwitchBrokenKeepstate.cfg	MCServerSwitch.tla	invariant	AtMostOneAutoRollbackPerSwitch	ignore-terminal	serverswitch	required	-
+MCAttemptsEpochs.cfg	MCAttemptsEpochs.tla	pass	-	ignore-terminal	attemptsepochs	required	-
+MCAttemptsEpochsBrokenNoepochcheck.cfg	MCAttemptsEpochs.tla	invariant	OldEpochWritesNothing	ignore-terminal	attemptsepochs	required	-
