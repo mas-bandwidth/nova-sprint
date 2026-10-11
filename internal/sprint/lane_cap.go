@@ -69,7 +69,7 @@ func capNextTier(pr *Card) string {
 	if pr.F(FieldCapRedealt) != "" {
 		return ""
 	}
-	m, bad := cardhdr.ReadModel(pr.F("brief"))
+	m, bad := modelOf(pr)
 	if bad != "" || pinnedTier(pr, m) {
 		return ""
 	}
