@@ -2422,7 +2422,7 @@ in the same change. Lawful says whether the store's check (`Lawful`,
 | ready -> waiting | a sentinel inserted in front | `steps_sentinel.go` mod.change (add) | AddMove | yes, inserting |
 | ready -> waiting | a brief edit or `needs set` names a need not landed | `steps_edit.go` Brief, briefInPlace, NeedsSet | NeedsSet | yes, a need open |
 | ready -> waiting | the tick's needs withdrawal of a ready primary | `steps_tick.go` needsWithdrawals | NeedsWait | yes, a need open |
-| working -> waiting | the tick's needs withdrawal of a dealt primary | `steps_tick.go` needsWithdrawals | NeedsWithdraw (Pending96) | no: refused on main; PR #96 adds the move |
+| working -> waiting | the tick's needs withdrawal of a dealt primary | `steps_tick.go` needsWithdrawals | NeedsWithdraw (Pending96) | no: refused on main; PR #96 adds the move. Guarded already: only when the card's own named needs in the pre-state have not landed, never by the needs the entry writes |
 | landed -> review | the short-reads pass on a landed card | `steps_tick.go` ShortReadsBack (before v1.2.13) | none (witness "unland") | no: landed is final; the pass now offers merging cards only |
 | open -> off | drop, defer | `steps_review.go` Drop; `defer.go` Defer | Drop | yes, never a needed card |
 | landed -> off | remove | a removing plan | Drop | yes, removing |

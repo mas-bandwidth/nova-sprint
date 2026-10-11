@@ -254,6 +254,13 @@ func unlawful(u Unit, p *Plan) string {
 			return "the lifecycle lands from waiting only a sentinel, and only by release"
 		case from == Ready && to == Waiting && !p.inserting && !needsOpen(e, p.pre):
 			return "the lifecycle moves ready -> waiting only as the effect of inserting a sentinel, or with a named need not landed"
+		case from == Working && to == Waiting && !namedNeedsOpen(e.ID, p.pre):
+			// PR #96's move (a dealt card whose needs have not landed waits again) is
+			// judged by the card's own named needs in the pre-state, never by the
+			// needs the entry writes: a manifest that writes needs cannot move a
+			// working card whose needs have all landed (tla/SprintTables.tla
+			// WorkingToWaitingOnlyOnNeeds, witness "withdrawmet")
+			return "the lifecycle moves working -> waiting only when the card's named needs have not landed"
 		case sentinel && to != "" && to != Landed:
 			return "a sentinel moves only waiting -> landed, by release"
 		}
@@ -285,6 +292,27 @@ func needsOpen(e ntable.BatchMemberEntry, pre *Snapshot) bool {
 	}
 	waived = append(waived, Split(e.Set["waived"])...)
 	for _, n := range needs {
+		if !contains(waived, n) && pre.StateOf(n) != Landed {
+			return true
+		}
+	}
+	return false
+}
+
+// namedNeedsOpen says the card's named needs in the pre-state hold one that
+// has not landed and is not waived; false when the plan carries no pre-state
+// or the pre-state does not hold the card (nothing to judge by, so the move
+// that needs it is refused).
+func namedNeedsOpen(id string, pre *Snapshot) bool {
+	if pre == nil {
+		return false
+	}
+	pc := pre.Work.Card(id)
+	if pc == nil {
+		return false
+	}
+	waived := Split(pc.F("waived"))
+	for _, n := range Split(pc.F("needs")) {
 		if !contains(waived, n) && pre.StateOf(n) != Landed {
 			return true
 		}

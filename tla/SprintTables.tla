@@ -92,8 +92,8 @@
 \* (every change of cell is a lawful move, a drop from an open state, or a
 \* remove of a landed card), ReadyToWaitingOnlyByInsertOrNeeds, LandedIsFinal,
 \* NeedsLandFirst (waiting -> ready only with every need landed or waived),
-\* NeedsHeldIntoReady (no move into ready or working with a need not landed)
-\* and WorkingOnAnUpMember.
+\* NeedsHeldIntoReady (no move into ready or working with a need not landed),
+\* WorkingToWaitingOnlyOnNeeds and WorkingOnAnUpMember.
 \*
 \* Refmodel invariants not stated here. The pending-operation fence (D1: Free)
 \* is left out: this module has no pending operation, a step is one atomic
@@ -126,6 +126,8 @@
 \*                  as ShortReadsBack planned before this card
 \*                  (LandedIsFinal).
 \*   "comeback"     a dropped card is admitted again (NoCardLostOrTwice).
+\*   "withdrawmet"  with Pending96, a working card whose needs have all landed
+\*                  is withdrawn to waiting (WorkingToWaitingOnlyOnNeeds).
 \* TypeOK has no witness: it is the shape of the variables, not a rule.
 EXTENDS Naturals, FiniteSets
 
@@ -581,12 +583,15 @@ NeedsWait ==
 \* NeedsWithdraw (pending PR #96): a dealt, untaken card whose needs have not
 \* landed goes back to the pool and its primary waits: working -> waiting. On
 \* main the store refuses this unit, so it is no step (Pending96 = FALSE).
+\* lifecycle.go judges it by the card's own named needs in the pre-state
+\* (namedNeedsOpen), never by the needs the entry writes. The reversed witness
+\* "withdrawmet" withdraws a card whose needs have all landed.
 NeedsWithdraw ==
   /\ Pending96
   /\ \E c \in Card :
        /\ state[c] = "working"
        /\ wplace[c] = "ready"
-       /\ ~NeedsMet(c)
+       /\ Broken = "withdrawmet" \/ ~NeedsMet(c)
        /\ state' = [state EXCEPT ![c] = "waiting"]
        /\ wplace' = [wplace EXCEPT ![c] = "none"]
        /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace>>
@@ -686,6 +691,12 @@ NeedsLandFirst ==
 NeedsHeldIntoReady ==
   [][\A c \in Card \ Sentinels : \A s \in {"ready", "working"} :
     state'[c] = s /\ state[c] # s => (NeedsMet(c))']_vars
+
+\* WorkingToWaitingOnlyOnNeeds: PR #96's move takes a working card back to
+\* waiting only when its named needs, as the step found them, have not landed.
+WorkingToWaitingOnlyOnNeeds ==
+  [][\A c \in Card :
+    state[c] = "working" /\ state'[c] = "waiting" => ~NeedsMet(c)]_vars
 
 \* WorkingOnAnUpMember: a card in a member's working cell sits on an up member.
 WorkingOnAnUpMember ==
