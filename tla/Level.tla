@@ -1,7 +1,9 @@
 ------------------------------- MODULE Level -------------------------------
 \* The fleet's level (internal/sprint/steps_work.go level, round.go levelTo):
-\* the rebalance that runs at the start of every tick and inside every planner
-\* that computes holds (held.go). One call is the loop this module models: while
+\* the rebalance that runs at the start of every tick and at a fleet up's comeUp.
+\* The callers are the level op (steps_work.go:2674, issued at steps_tick.go:1231
+\* TickLevel) and fleet up's comeUp (steps_work.go:2640); held.go never calls it.
+\* One call is the loop this module models: while
 \* the longest backlog of a member with a ready card and the emptiest open member
 \* differ by more than one, a ready card of the longest moves to the member
 \* levelTo names. The call has to end. On 2026-10-02 at 2:26 PM it did not: the
@@ -17,7 +19,8 @@
 \*          sweep placed on it in the same plan, and cards this call moved onto
 \*          it. held is work plus the queue
 \*   loc    the member each card is on
-\*   ref    each card's StagingRefusers, fixed for the call
+\*   ref    each card's StagingRefusers, fixed for the call: an abstraction of
+\*          the avoid set the code hands levelTo (see WHAT IS NOT MODELLED)
 \*   up     the order the call reads the members up in (s.UpMembers(): the
 \*          fleet's row order, not always name order); the first of equals is
 \*          long, and short
@@ -66,7 +69,11 @@
 \* at most once there already, it is never queued on its receiver), the plan's
 \* units and generations (a move is one unit), members not up (level is handed
 \* the up members), the deal and the sweep before the level (their cards are in
-\* work), the store. A bounded instance of the loop checked over every start the
+\* work), the store. The avoid set the code hands levelTo is a card's refusers
+\* plus its bench's non-members plus the members that cannot launch its route
+\* (steps_work.go:2955); the model's ref is StagingRefusers alone, so bench and
+\* not-launching refusals are folded into the refusers (an abstraction). A
+\* bounded instance of the loop checked over every start the
 \* constants allow, not a proof for every fleet.
 EXTENDS Integers, Sequences, FiniteSets
 

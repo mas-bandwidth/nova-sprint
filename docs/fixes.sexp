@@ -96,6 +96,10 @@
      :title "AttemptsEpochs models the sprint's epoch and clear, with a reversed witness for a late writer"
      :text "Models only, no product change. tla/AttemptsEpochs.tla is new: the sprint's epoch n, the restore marker the epoch hash's restore field names, the per-epoch streams, readers and members tables, a step that pins an epoch, clear in its steps (the CAS advance on n, its settle, the members carried and the new epoch's streams and readers blank), the pin's restore (copying the old shape into a new epoch that still owes it), a late writer of the old epoch refused as stale, and a second concurrent clear whose advance lost the CAS writes nothing. It proves OldEpochWritesNothing, NewEpochBlank (but the members), OldEpochReadable and EpochMonotone; one reversed witness, Broken = \"noepochcheck\", drops the write's epoch check (engine.go:566) and fails OldEpochWritesNothing. store/epoch.go and store/clear.go cite the module. The crash cut between AdvanceEpoch and SettleEpoch, which leaves the restore set so the next pin copies the old streams and readers (against section 13), is a v1.2.14 candidate named in the module and not modelled here."
      :origin "this card; v1.2.12 inventory item T31 and section 5, drift read at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "nova-sprint-ci-runs-tlc-on-hosted-runners" :release "v1.2.12" :status "planned"
+     :title "The TLC cases run on GitHub-hosted runners from a pinned-jar workflow"
+     :text "CI only, no product change. The 434 TLC cases in tla/ ran only when someone ran them by hand on a bench; tla/tla2tools.sha256 now pins the jar every tla/RUNS.tsv record names (sha256 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88, the tlaplus v1.7.4 release), and .github/workflows/tlc.yml runs the models on GitHub-hosted ubuntu-latest runners -- nova-sprint is public, so never self-hosted -- nightly by one cron, on workflow_dispatch, and on a pull request touching tla/**, pkg/tlc/** or tools/tlacheck/**. A groups job runs make tlc-test and prints the groups to run (every required group on schedule and dispatch via tlacheck groups --root ., the stale ones on a pull request via tlacheck groups --root . --stale; an empty list ends the workflow green); a models job depends on it, runs a four-wide fail-fast-false matrix over those groups, uses the runner image's own JDK 21 (no setup-java action), downloads the jar from the tlaplus release and refuses it, exit 2 naming both digests, unless sha256sum matches tla/tla2tools.sha256, then runs make tlc TLC_BUDGET=110 and uploads the run directory as a 14-day artifact. It never writes tla/RUNS.tsv into the repository; records still land through cards. New test internal/ci/tlc_workflow_test.go pins the hosted runner, the five-minute timeout, the digest check before make tlc and the 110-second budget. The workflow is unproven until its first run on the forge."
+     :origin "this card, nova-sprint-ci-runs-tlc-on-hosted-runners-after-the-wall.w1, 2026-10-11: v1.2.12 inventory item T30 and note 3; checked at nova-sprint main 00c54ba2e")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
@@ -1080,6 +1084,25 @@
     names the new test for the machine's. Tests only; no product change."
    :origin "this card; the v1.2.12 inventory card A2 and section 6 (three drain tests red at 04:16Z on 2026-10-11, the probe gate and #84, greened by 2623ab7 with no test of the composition)")
 
+  (fix "tla-matching-models-say-what-they-hold" :release "v1.2.12" :status "planned"
+   :title "The four matching models' headers say what their code does"
+   :text "Four TLA+ models whose actions already match their code had wrong headers and citations; the
+    headers are corrected and the code cited, and no model action or invariant changed (Timer's Set is
+    made strict, d > now, to match the code's due time strictly after now; no case's result changes).
+    DealFill: a fault is a presence down marked held_by=fault with fault_since, set by the beat-lapse
+    down alone and lifted by faultClear after a beat and an ok finish; a harness fault or a failed take
+    holds by HeldByEnv, and the one person value stands for the coordinator's, HeldBySync, HeldByAdopt
+    and HeldByEnv marks; faultCleanFinish compares second-resolution stamps, so a finish in the hold's
+    own second counts, which the model's ok reset forbids (an abstraction). Level: the callers are the
+    level op and fleet up's comeUp, not held.go, and the model's ref is StagingRefusers alone, an
+    abstraction of the code's avoid set (refusers plus bench plus notLaunching). RetireAbsent: the
+    fleet_retire.go citation called FleetRowsMatchConfig the invariant (it is a leads-to; RecordsKeepRows
+    is the invariant) and misspelled LiveRetire as LiveRets; an answered read that names no record
+    retires nothing, which the code is stricter about than the model's failed-read guard. Timer: the due
+    test counts running time and a due time must be strictly after now. Each module already had a
+    reversed witness, so none is added. tla/COVERAGE.tsv notes say the same, and the four groups
+    (dealfill, level, retire-absent, timer) were rerun with TLC and merged into tla/RUNS.tsv."
+   :origin "this card; v1.2.12 inventory item T36 (the deal/route/rules group), drift read at nova-sprint main 00c54ba2e, 2026-10-11")
   (fix "tla-land-gate-ring" :release "v1.2.12" :status "planned"
    :title "The gate bench's hash ring modelled in tla/GateRing.tla"
    :text "tla/GateRing.tla models the land stage's gate-slot ring: two up benches, the start slot the
@@ -1475,6 +1498,67 @@
     TestDoctorRoutesPerTierFailsWhileATierRestsForIts5xxs and
     TestDoctorRoutesPerTierWithOneBackoffAndOneUsableWarns."
    :origin "this card: doctor-warns-while-a-tier-backs-off; the third cold read of nova-sprint PR
-    #86, 2026-10-11, an open non-blocking finding: \"Doctor reports FAIL while every route of a
-    tier backs off\"; listed in the rate-limit-never-fails-the-card-v2 card; checked against
-    nova-sprint main 00c54ba and PR #86's head a1c51ee")))
+     #86, 2026-10-11, an open non-blocking finding: \"Doctor reports FAIL while every route of a
+     tier backs off\"; listed in the rate-limit-never-fails-the-card-v2 card; checked against
+     nova-sprint main 00c54ba and PR #86's head a1c51ee")
+   (fix "route-ends-read-the-finished-cell" :release "v1.2.14" :status "planned"
+    :title "routeEnds reads the Finished column too"
+    :text "routeEnds (internal/sprint/route_rest.go), which builds the ended takes the 3-in-10 rest
+     window counts, walked fleet.Column(Ready, Working, DoneOK, DoneFailed, DoneDefect, Withdrawn)
+     and read a card's own finish only for DoneOK and DoneFailed, so a work card in the Finished
+     column added nothing to its route's window: neither the provider takes it recorded before it was
+     redealt nor its own finish. A 5xx that preceded a card that finished and waits for the readers'
+     verdict went uncounted until the verdict moved the card on. routeEnds now walks Finished too and
+     counts a Finished card's own finish exactly as a DoneOK or DoneFailed one, the same take number,
+     so a card counts once wherever it sits: when it moves on from Finished it is the same card and
+     the same record (tla/RouteRest.tla; docs/SPEC-SPRINT.md section 5, the routes' rests: \"each work
+     card's own finish\"). rateBackoffs already read Finished; the window's size, the rest's length,
+     the provider refusal rests and rateBackoffs are untouched. Tests
+     TestRestsDueReadsAFinishedCardsTake and TestAFinishedCardsEndCountsAsAnEndedTake;
+     TestRestsDueCountsTransientProviderFailuresNeverNoResults and
+     TestARateBackoffNeverHoldsOffTheFiveHundredsRest stay green."
+    :origin "this card, route-ends-read-the-finished-cell.w1; the third cold read of nova-sprint PR
+     #86 (2026-10-11), an open finding marked main's own: \"routeEnds (the 3-in-10 window) does not
+     read the Finished column\"; listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md;
+     checked on main 00c54ba (route_rest.go near line 376) and on PR #86's head a1c51ee")
+  (fix "routes-shows-a-rate-limit-backoff" :release "v1.2.14" :status "planned"
+   :title "routes shows a route backing off from a rate limit"
+   :text "`nova-sprint routes` printed rested_until=- for a route backing off from a rate limit, so
+    a held route read as serving while the deal drew nothing on it. After
+    rate-limit-never-fails-the-card-v2, RouteRests reads rule3Rests, which drops every
+    <route>+rate-backoff line on purpose (the backoff line is restWrites' alone), so the route's
+    backoff, computed by the unexported rateBackoffs and held while now is before its Until, never
+    reached the verb. A new exported read in internal/sprint/rate_backoff_view.go,
+    RateBackoffsAt(fleet, now), returns the backoffs rateBackoffs computes that hold at now and
+    nothing else, so the deal's path is unchanged. cmdRoutes merges it into its rests (cmd/nova-sprint/
+    reads.go, cmdRoutes and restAt): a route resting for its 5xxs or its provider's credit prints as
+    today, and when a rest and a backoff both hold the one that ends later is shown, as RouteRests
+    already picks between a route's rest and its provider's. --json's rested_for begins
+    \"rate-backoff: \". Tests TestRoutesShowsARateLimitBackoff (a withdrawn card holding one
+    FieldRateTake record prints the backoff's end in the ROUTE line and in --json, and both show -
+    once the clock passes the end) and TestRestAtShowsTheRestThatEndsLater, in
+    cmd/nova-sprint/routes_backoff_test.go (docs/SPEC-SPRINT.md, the routes verb; tla/RateBackoff.tla,
+    BackoffEnds)."
+   :origin "this card, routes-shows-a-rate-limit-backoff.w2, from the first cold read of nova-sprint
+    PR #86 (2026-10-11), an open non-blocking finding: \"The backoff is hard to see: nova-sprint
+    routes doesn't show it\"; listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md.
+    Checked against main 00c54ba and PR #86's head a1c51ee.")
+  (fix "take-by-id-starts-the-card-as-a-lane-take-does" :release "v1.2.14" :status "planned"
+   :title "take by id starts a friend's card as a lane take does"
+   :text "The two forms of take did different things. take --as <friend> --lane <n> moved the card to
+    working through the lane's move (laneSet), so it carried the lane and, on a friend's row, her start
+    (friendStartSet) and the tick left it working. take --as <friend> <card>@<gen> by id moved it with
+    friendTaken instead, which set no start, so the next tick put it back ready (friendUnstartedWorking)
+    and her progress was refused \"not working\"; a lane take then re-dealt the card at a new generation
+    and her finish was refused stale. The by-id take now goes through the lane's move too
+    (sprint.NamedLaneTake, TakeReq.LaneByID): each named card is taken by takeOne -- so every guard a
+    take by count holds holds for it too (the row's seat and width, the card's live generation, its
+    route rest and the providers' fleet-wide concurrency budget) -- and is then stamped as a lane's take
+    stamps the card it is given (laneSet: the lane when --lane <n> names one, the row's lane heard from
+    now, and on a friend's row her start), so both forms of the verb write working, holder, lane and
+    generation the same way. A member's by-id take is unchanged and names no lane. TAKE-BY-ID says a
+    LANE line per card as the lane's take does. On 2026-10-11 the seat lost two takes and one finish to
+    this."
+   :origin "this card: take-by-id-starts-the-card-as-a-lane-take-does.w2, from the owner,
+    2026-10-11 ~11:15-11:40 AM ET (\"How can we distribute work to friends, if you can't even
+    distribute it to yourself?\"); code read at nova-sprint main 1405d26")))

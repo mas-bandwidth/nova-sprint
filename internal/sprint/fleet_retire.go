@@ -26,8 +26,9 @@ import (
 // the read fails or holds no row, and this part does nothing then.
 //
 // The model is tla/RetireAbsent.tla: RetireAbsent is the tick's action,
-// FleetRowsMatchConfig is the invariant that no up/held/down row outlives its
-// empty set once its record is absent, and LiveRets rows a row retired.
+// FleetRowsMatchConfig the leads-to that no up/held/down row outlives its
+// empty set once its record is absent (RecordsKeepRows is the state
+// invariant), and LiveRetire the liveness that the row is retired.
 
 // PartRetireAbsent is the name of the tick's retirement part (TickRetireAbsent).
 const PartRetireAbsent = "retire absent"
