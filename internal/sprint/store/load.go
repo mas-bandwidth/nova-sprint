@@ -294,25 +294,57 @@ func (st *Store) shapes(ctx context.Context, stored []string) ([]ntable.Table, e
 }
 
 // readInto reads ids into t in read sets, each of which must see t's revision.
+// A table read in more than one read set must see one history, not just one
+// revision number: a store that lost writes and wrote others up to the same
+// revision between two read sets (a restart from an older save, a failover)
+// gives one revision and two histories, and reading the sets alone returns a
+// snapshot mixing them (docs/SPEC-SPRINT.md section 14, the store's reads;
+// tla/LoadCache.tla, LoadIsSnapshot, with the store's rollback). So the mark of
+// the change event that left t's revision is read at the table's revision
+// before the first read set and after the last (TableChangesMarked, as markOf
+// reads it, loadcache.go), and a mark that
+// changed, as a changed revision, is a movedError: the load reads again under
+// its existing retry (Load, LoadTries). A table of at most
+// ntable.LimitReadSetMembers records, or a backend that keeps no marks, reads
+// as it did.
 func (st *Store) readInto(ctx context.Context, t *sprint.Table, ids []string, placed bool) error {
+	table := st.Names.Table(t.Name)
+	mark, marked := "", false
+	if len(ids) > ntable.LimitReadSetMembers {
+		if _, ok := st.B.(TableMarker); ok {
+			var err error
+			if mark, marked, err = st.markOf(ctx, ntable.Table{Name: table, Revision: t.Revision}); err != nil {
+				return err
+			}
+		}
+	}
 	for start := 0; start < len(ids); start += ntable.LimitReadSetMembers {
 		end := min(start+ntable.LimitReadSetMembers, len(ids))
-		res, err := st.readSet(ctx, st.Names.Table(t.Name), ids[start:end])
+		res, err := st.readSet(ctx, table, ids[start:end])
 		if err != nil {
 			return err
 		}
 		if res.Revision != t.Revision || (placed && len(res.Missing) > 0) {
-			return &movedError{table: st.Names.Table(t.Name)}
+			return &movedError{table: table}
 		}
 		for _, m := range res.Members {
 			if placed && !m.Placed {
-				return &movedError{table: st.Names.Table(t.Name)}
+				return &movedError{table: table}
 			}
 			c := &sprint.Card{ID: sprint.CardID(m.ID), Score: m.Score, Rev: m.Revision, Fields: m.Fields}
 			if m.Placed {
 				c.Row, c.Col = m.Row, m.Col
 			}
 			t.Put(c)
+		}
+	}
+	if marked {
+		after, ok, err := st.markOf(ctx, ntable.Table{Name: table, Revision: t.Revision})
+		if err != nil {
+			return err
+		}
+		if !ok || after != mark {
+			return &movedError{table: table}
 		}
 	}
 	return nil
