@@ -12,6 +12,7 @@ import (
 func TestTheReadyToMergeNoteNamesLand(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --stream s1 --count 1 --one")
 	ta.ok("start")

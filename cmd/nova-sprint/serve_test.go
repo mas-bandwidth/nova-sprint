@@ -52,11 +52,6 @@ func newServerRig(t *testing.T, lines ...string) *serverRig {
 	r := &serverRig{t: t, a: a}
 	for _, l := range lines {
 		r.boss(l)
-		if strings.HasPrefix(l, prog+" init") {
-			// the rigs read through the old readers table on purpose: read cards off (on by
-			// default; the next change moves them onto read cards)
-			r.boss(prog + " set --read-cards off")
-		}
 	}
 	return r
 }

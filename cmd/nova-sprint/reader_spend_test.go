@@ -17,6 +17,7 @@ import (
 func TestWhereReadersCarryEachReadersSpend(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1:8")
 	ta.ok("add --stream s1 --count 1 --one --brief-file " + proBriefFile(t))
 	ta.ok("start")

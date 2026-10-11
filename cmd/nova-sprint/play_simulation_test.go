@@ -26,6 +26,7 @@ func chancesLine(t *testing.T, out string) string {
 func playing(t *testing.T) *testApp {
 	t.Helper()
 	ta := newTestApp(t)
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	ta.ok("init --readers reader-a,reader-b --members m1,m2")
 	ta.ok("add --stream s1 --count 6")
 	ta.ok("start")
@@ -79,6 +80,7 @@ func TestTheFlagsReachTheSourceThatDraws(t *testing.T) {
 	}
 	// --red 1 with nothing else drawn: the first merge batch is red
 	ta := newTestApp(t)
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	ta.ok("init --readers reader-a,reader-b --members m1,m2")
 	ta.ok("add --stream s1 --count 6")
 	ta.ok("start")
@@ -142,6 +144,7 @@ var simulationEvents = map[string]string{
 func landsUnder(t *testing.T, flags string) map[string]int {
 	t.Helper()
 	ta := newTestApp(t)
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1,m2,m3")
 	for _, s := range []string{"s1", "s2", "s3"} {
 		ta.ok("add --stream " + s + " --count 20")

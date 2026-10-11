@@ -90,6 +90,7 @@ func everyRowMoves(t *testing.T, width int) {
 	members := []string{"m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"}
 	ta := newTestApp(t)
 	ta.live = members
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	var ms []string
 	for _, m := range members {
 		ms = append(ms, m+":"+strconv.Itoa(width))

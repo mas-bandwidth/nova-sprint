@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,7 +23,6 @@ import (
 func TestAClearedSprintDealsAndTakesItsReadsWithNoSeatAction(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.defaults = true
 	ta.live = []string{"m1", "m2", "m3"}
 	ta.ok("init --readers reader-m1,reader-m2,reader-m3 --members m1:2,m2:2,m3:2")
 	ta.ok("set --read-cards off --alarm-review off --alarm-fleet off")
@@ -58,11 +58,11 @@ func TestAClearedSprintDealsAndTakesItsReadsWithNoSeatAction(t *testing.T) {
 	ta.clean()
 }
 
-// warnSprint is hookSprint at the working defaults: the sprint init makes keeps read cards on.
+// warnSprint is hookSprint at the working defaults, its one member wide enough for both
+// cards.
 func warnSprint(t *testing.T, name string) *testApp {
 	t.Helper()
 	ta := newTestApp(t)
-	ta.defaults = true
 	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": name}
 	var mu sync.Mutex
 	ta.a.getenv = func(k string) string { mu.Lock(); defer mu.Unlock(); return env[k] }
@@ -73,7 +73,8 @@ func warnSprint(t *testing.T, name string) *testApp {
 	return ta
 }
 
-// pushes is every push the hook delivers on one look of the server, after a tick.
+// pushes is every push the hook delivers on one look of the server, after a tick, each
+// acknowledged as the seat does once all are read.
 func (c *hookClient) pushes(ta *testApp) []hookMsg {
 	c.t.Helper()
 	ta.lined(func() { ta.ok("tick") })
@@ -93,10 +94,20 @@ func (c *hookClient) pushes(ta *testApp) []hookMsg {
 			done = true
 		}
 	}
-	// each acknowledged, as the seat does, once all are read
 	for _, m := range out {
 		r := c.say(hookMsg{T: "ack", ID: m.ID})
 		require.Equal(c.t, "ok", r.T, r.Why)
+	}
+	return out
+}
+
+// warned is the pushes of the warning type (sprint.NSettingsOff, NReviewOffReadCards).
+func warned(ps []hookMsg, typ string) []hookMsg {
+	var out []hookMsg
+	for _, p := range ps {
+		if strings.Contains(p.Text, typ) {
+			out = append(out, p)
+		}
 	}
 	return out
 }
@@ -109,22 +120,13 @@ func pushLines(name string, m hookMsg) string {
 	return b.String()
 }
 
-// warned is the pushes of the warning (hookWarnSettings, hookWarnReview).
-func warned(ps []hookMsg, what string) []hookMsg {
-	var out []hookMsg
-	for _, p := range ps {
-		if p.What == what {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-// A hooked coordinator is pushed a WARNING over the hook when a design setting is turned
-// off, naming it and the set that restores it, and one for every card that enters review
-// while read cards are off; a clear with nothing else pushes no warning (every setting is
-// back at its working default).
-func TestTheHookIsPushedAWarningForEverySettingOffAndEveryCardIntoReviewWithReadCardsOff(t *testing.T) {
+// A hooked coordinator is pushed, as a numbered PUSH line, every warning the tick writes:
+// a setting turned off, naming it and the set that restores it; off, on, off again is pushed
+// twice; a clear and nothing else pushes nothing; the same off after the clear is pushed
+// again; and with read cards off every card that enters review, each once, a card back in
+// review after a clear included. The where view says the settings off too, for a seat that
+// is not hooked.
+func TestTheHookIsPushedEveryWarning(t *testing.T) {
 	t.Parallel()
 	const name = "hook-w"
 	ta := warnSprint(t, name)
@@ -134,40 +136,60 @@ func TestTheHookIsPushedAWarningForEverySettingOffAndEveryCardIntoReviewWithRead
 	ta.waitHook(sprint.HookHooked)
 	r := c.say(hookMsg{T: "prove", Challenge: chal})
 	require.Equal(t, "ok", r.T, r.Why)
+	ta.lined(func() { ta.ok("start") })
 
-	ta.lined(func() { ta.ok("set --alarm-ready off") })
-	ta.lined(func() { ta.ok("clear --confirm sprint") })
 	ps := c.pushes(ta)
-	assert.Empty(t, warned(ps, hookWarnSettings), "a clear and nothing else: every setting at its default, no warning: %+v", ps)
+	require.Empty(t, warned(ps, sprint.NSettingsOff), "every setting at its working value: no warning: %+v", ps)
 
 	ta.lined(func() { ta.ok("set --read-cards off") })
 	ps = c.pushes(ta)
-	w := warned(ps, hookWarnSettings)
+	w := warned(ps, sprint.NSettingsOff)
 	require.Len(t, w, 1, "set --read-cards off is pushed as a warning: %+v", ps)
 	assert.Contains(t, w[0].Text, "WARNING: ")
-	assert.Contains(t, w[0].Text, "--read-cards is off, working default on (restore: nova-sprint set --read-cards on)")
+	assert.Contains(t, w[0].Text, "--read-cards is off, working value on (restore: nova-sprint set --read-cards on)")
 	line := pushLines(name, w[0])
-	assert.Contains(t, line, fmt.Sprintf("PUSH %d %s: read it, then acknowledge: nova-sprint hook --ack %d", w[0].ID, hookWarnSettings, w[0].ID), "a numbered PUSH line on the hook")
-	assert.Contains(t, line, "\n  WARNING: design settings off their working defaults")
+	assert.Contains(t, line, fmt.Sprintf("PUSH %d ", w[0].ID), "a numbered PUSH line on the hook")
+	assert.Contains(t, line, "read it, then acknowledge: nova-sprint hook --ack "+fmt.Sprint(w[0].ID))
+	var where whereView
+	ta.lined(func() { ta.json("where", &where) })
+	assert.Contains(t, where.SettingsOff, "--read-cards is off", "where says it too, for a seat with no hook")
+
+	ta.lined(func() { ta.ok("set --read-cards on") })
+	require.Empty(t, warned(c.pushes(ta), sprint.NSettingsOff), "back on: nothing to say")
+	ta.lined(func() { ta.ok("set --read-cards off") })
+	require.Len(t, warned(c.pushes(ta), sprint.NSettingsOff), 1, "off, on, off: the second off is pushed again")
 
 	ta.lined(func() { ta.ok("reader add reader-a reader-b") })
 	ta.lined(func() { ta.ok("add --stream s1 --count 2") })
-	ta.lined(func() { ta.ok("start") })
 	ta.lined(func() { ta.ok("tick") })
 	ta.lined(func() { ta.ok("tick") })
 	ta.lined(func() { ta.ok("take --as m1 --limit 2") })
 	ta.lined(func() { ta.ok("finish --as m1 s1-1.w1@1 --report done") })
 	ps = c.pushes(ta)
-	w = warned(ps, hookWarnReview)
+	w = warned(ps, sprint.NReviewOffReadCards)
 	require.Len(t, w, 1, "s1-1 into review with read cards off is pushed: %+v", ps)
 	assert.Contains(t, w[0].Text, "s1-1@1 entered review")
-	assert.Contains(t, pushLines(name, w[0]), fmt.Sprintf("PUSH %d %s: read it, then acknowledge", w[0].ID, hookWarnReview), "a numbered PUSH line on the hook")
-	assert.Contains(t, w[0].Text, "nova-sprint set --read-cards on")
+	assert.Contains(t, pushLines(name, w[0]), fmt.Sprintf("PUSH %d ", w[0].ID))
 
 	ta.lined(func() { ta.ok("finish --as m1 s1-2.w1@1 --report done") })
-	ps = c.pushes(ta)
-	w = warned(ps, hookWarnReview)
-	require.Len(t, w, 1, "s1-2 into review is pushed too, after s1-1's was acknowledged: %+v", ps)
-	assert.Contains(t, w[0].Text, "s1-2@1 entered review")
-	assert.NotContains(t, w[0].Text, "s1-1", "only the card new to review")
+	w = warned(c.pushes(ta), sprint.NReviewOffReadCards)
+	require.Len(t, w, 1, "s1-2 into review is pushed too, s1-1 not again")
+	assert.Contains(t, w[0].Text, "s1-2@1 entered review (1 more already in review")
+
+	// a clear, then nothing else: every setting back at its working value, nothing pushed;
+	// the same off in the new epoch, and the same card id back in review, are pushed again
+	ta.lined(func() { ta.ok("clear --confirm sprint") })
+	ta.lined(func() { ta.ok("start") })
+	require.Empty(t, warned(c.pushes(ta), sprint.NSettingsOff), "a clear and nothing else: no warning")
+	ta.lined(func() { ta.ok("set --read-cards off") })
+	require.Len(t, warned(c.pushes(ta), sprint.NSettingsOff), 1, "the same off after a clear is pushed again")
+	ta.lined(func() { ta.ok("reader add reader-a reader-b") })
+	ta.lined(func() { ta.ok("add --stream s1 --count 1 --one") })
+	ta.lined(func() { ta.ok("tick") })
+	ta.lined(func() { ta.ok("tick") })
+	ta.lined(func() { ta.ok("take --as m1 --limit 1") })
+	ta.lined(func() { ta.ok("finish --as m1 s1-1.w1@1 --report done") })
+	w = warned(c.pushes(ta), sprint.NReviewOffReadCards)
+	require.Len(t, w, 1, "s1-1 in review in the new epoch is pushed again")
+	assert.Contains(t, w[0].Text, "s1-1@1 entered review")
 }

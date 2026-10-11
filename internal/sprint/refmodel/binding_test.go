@@ -107,8 +107,11 @@ func loadSample(tb testing.TB, s sample) *loaded {
 		l.apply(stored, placed)
 		l.apply(stored, kept)
 		l.apply(stored, removed)
-		if v, ok := tab.Prop(sprint.PropStatusSeen); ok {
-			l.props(stored, map[string]string{sprint.PropStatusSeen: v})
+		for _, p := range []string{sprint.PropStatusSeen, sprint.PropSettingsWarned, sprint.PropReviewWarned} {
+			// the status transitions' record, and the warnings' records (sprint.TickWarnings)
+			if v, ok := tab.Prop(p); ok {
+				l.props(stored, map[string]string{p: v})
+			}
 		}
 	}
 	l.judgments(t)

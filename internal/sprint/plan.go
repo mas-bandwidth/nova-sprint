@@ -328,6 +328,15 @@ func moveEntry(c *Card, row, col string, set map[string]string, unset ...string)
 	e := ntable.BatchMemberEntry{ID: c.ID, Expect: at(c)}
 	if row != c.Row || col != c.Col {
 		e.Move = &ntable.MemberMoveOp{Row: row, Col: col}
+		if col == Review && c.Col != Review {
+			// each entry into review is its own: the revision it entered from
+			// (FieldReviewEntered, settings_warn.go)
+			set = maps.Clone(set)
+			if set == nil {
+				set = map[string]string{}
+			}
+			set[FieldReviewEntered] = itoa(int(c.Rev))
+		}
 		if _, held := set[FieldLane]; !held {
 			// a card that moves is no lane's unless the move gives it one (a lane's take,
 			// lane_hold.go): a lane's hold never survives a move by another path

@@ -59,7 +59,7 @@ func (p *twinPusher) Push(pk member.Packet, _ member.Result) member.Push {
 func twinMemberFlow(t *testing.T, pu *twinPusher) (r *serverRig, branch, out string) {
 	t.Helper()
 	r = newServerRig(t,
-		"nova-sprint init --readers reader-a,reader-b --members m1",
+		"nova-sprint init --readers reader-a,reader-b --members m1", "nova-sprint set --read-cards off", // the old readers table, on purpose (read cards are on by default)
 		"nova-sprint add --stream s1 --count 1 --one",
 		"nova-sprint start",
 		"nova-sprint tick",

@@ -44,7 +44,6 @@ func requireReadCards(t *testing.T, ta *testApp, id string) {
 func TestAFirstInstallAsksEveryReadInOneTick(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.defaults = true
 	ta.live = []string{"m1", "m2", "m3"}
 	ta.ok("init --readers reader-m1,reader-m2,reader-m3 --members m1:2,m2:2,m3:2")
 	ta.ok("add --stream s1 --one --brief-file " + proBrief(t, "s1-1"))
@@ -63,7 +62,6 @@ func TestAFirstInstallAsksEveryReadInOneTick(t *testing.T) {
 func TestAFirstInstallFillsBothMembersToTheirFullWidth(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.defaults = true
 	ta.ok("init --readers reader-m1,reader-m2 --members m1:2,m2:2")
 	ta.ok("add --stream s1 --count 4")
 	ta.ok("start")
@@ -82,7 +80,6 @@ func TestAFirstInstallFillsBothMembersToTheirFullWidth(t *testing.T) {
 func TestAfterAClearReadsAreAskedAtOnceAgain(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.defaults = true
 	ta.live = []string{"m1", "m2", "m3"}
 	ta.ok("init --readers reader-m1,reader-m2,reader-m3 --members m1:2,m2:2,m3:2")
 	ta.ok("set --read-cards off --reads 2 --dealt-max 1h --go-lanes 3 --alarm-review 1 --fleet off")
@@ -104,7 +101,6 @@ func TestAfterAClearReadsAreAskedAtOnceAgain(t *testing.T) {
 func TestAnAbsentReadCardsPropertyBehavesAsOn(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.defaults = true
 	ta.live = []string{"m1", "m2", "m3"}
 	ta.ok("init --readers reader-m1,reader-m2,reader-m3 --members m1:2,m2:2,m3:2")
 	ta.ok("add --stream s1 --one --brief-file " + proBrief(t, "s1-1"))

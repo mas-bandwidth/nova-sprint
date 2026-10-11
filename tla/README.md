@@ -27,6 +27,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `SprintRules`, `StallLadder` | The rules that answer failures, and a stalled friend's ladder. |
 | `SeatHealth`, `ServerLanes` | The seat's generation and a friend's health; the server's lanes. |
 | `SeatHook` | The coordinator's hook: the server's subscription, its challenge and cadence, the record's Live from the proof and a re-challenge's own bound (so the gate can refuse up to one look period early), the pushes and their acknowledgement, a drop, unhook, the next server's start rewriting a dead server's record gone, and the gate every coordinator command passes. |
+| `SettingsWarn` | The design settings' warnings (internal/sprint/settings_warn.go, TickWarnings): a setting off said by its set, and every card into review while read cards are off said by the tick, each a stored note to the coordinator, the records a set and a clear empty, and the hook's delivery of every stored note (SeatHook's Deliver). |
 | `LiveRuns` | Working means a live run: the beat's live set, the reconcile while RUNNING and STOPPED, the STOP debt's receipt, held reports. |
 | `Timer`, `LoadCache`, `StatsReset` | Timers, the load cache, and a stats reset. |
 | `AttemptsEpochs` | The epoch a clear advances: the restore marker, the per-epoch tables, a late writer refused, a second concurrent clear. |

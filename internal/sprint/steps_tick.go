@@ -355,6 +355,7 @@ func TickLive(s *Snapshot, r TickReq) (Plan, int) { return LiveReturns(s, r.Beat
 var TickEnd = []TickPartDef{
 	{"check", TickCheck},
 	{"deadlines", TickDeadlines},
+	{PartWarnings, TickWarnings},
 	{"overdue", TickOverdue},
 	{PartDone, TickDone},
 }

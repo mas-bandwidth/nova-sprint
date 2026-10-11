@@ -632,36 +632,6 @@ func (s *hookSession) look(ctx context.Context) {
 			s.open = append(s.open, sprint.HookItem{ID: s.seq, What: g.ID, At: now})
 			pushes = append(pushes, hookMsg{T: "push", ID: s.seq, What: g.ID, Text: groupText(g, now, false)})
 		}
-		// the warnings of the design settings off their working values (sprint
-		// settings_warn.go), of the store as it is now: each pushed as every push is
-		snap, err := st.Load(ctx, []string{sprint.Work}, nil)
-		if err != nil {
-			return err
-		}
-		for _, w := range hookWarnings(snap) {
-			var fresh []string // the cards new to this subscription, for the review's
-			for i, k := range w.keys {
-				if !s.sent[k] {
-					addedSent = append(addedSent, k)
-					if i < len(w.cards) {
-						fresh = append(fresh, w.cards[i])
-					} else {
-						fresh = append(fresh, k)
-					}
-				}
-				s.sent[k] = true
-			}
-			if len(fresh) == 0 {
-				continue
-			}
-			text := w.text
-			if len(w.cards) > 0 {
-				text = sprint.ReviewOffReadCardsWhat(fresh)
-			}
-			s.seq++
-			s.open = append(s.open, sprint.HookItem{ID: s.seq, What: w.what, At: now})
-			pushes = append(pushes, hookMsg{T: "push", ID: s.seq, What: w.what, Text: text})
-		}
 		return nil
 	})
 	if err != nil {
@@ -693,40 +663,6 @@ func (s *hookSession) look(ctx context.Context) {
 			return
 		}
 	}
-}
-
-// The hook's warning pushes' words (sprint settings_warn.go): what each push is.
-const (
-	hookWarnSettings = "warning:settings"
-	hookWarnReview   = "warning:review"
-)
-
-// hookWarning is one warning the hook pushes: what it is, its text, and the keys that
-// tell it apart on a subscription (a push is sent when any of them is new).
-type hookWarning struct {
-	what, text string
-	keys       []string
-	cards      []string // the review's: the card of each key, <id>@<attempt>
-}
-
-// hookWarnings is the warnings of the snapshot (docs/SPEC-SPRINT.md section 8, "Design
-// settings off"): the design settings off their working values, keyed by what it says, so
-// each change of them is pushed again; and, while read cards are off, the cards in review,
-// each keyed by its card and attempt, so every card that enters review is pushed, the new
-// ones of a look in one push naming only them.
-func hookWarnings(snap *sprint.Snapshot) []hookWarning {
-	var out []hookWarning
-	if what := sprint.SettingsOffWhat(sprint.DesignSettings(snap)); what != "" {
-		out = append(out, hookWarning{what: hookWarnSettings, text: what, keys: []string{hookWarnSettings + ":" + what}})
-	}
-	if cards := sprint.ReviewOffReadCards(snap); len(cards) > 0 {
-		w := hookWarning{what: hookWarnReview, cards: cards}
-		for _, c := range cards {
-			w.keys = append(w.keys, hookWarnReview+":"+c)
-		}
-		out = append(out, w)
-	}
-	return out
 }
 
 func (s *hookSession) isEnded() bool {

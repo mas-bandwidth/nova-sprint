@@ -141,6 +141,7 @@ func TestTheAskNeverAsksAnAwayReader(t *testing.T) {
 func TestFewerThanTwoReadersUpIsOneJudgmentPerTick(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1")
 	ta.ok("reader away reader-a reader-b")
 	ta.inReview(3)
@@ -172,6 +173,7 @@ func TestFewerThanTwoReadersUpIsOneJudgmentPerTick(t *testing.T) {
 func TestAReadAskedOfAReaderThatGoesAwayIsAskedAgain(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1")
 	ta.ok("reader away reader-c")
 	ta.inReview(1)

@@ -21,7 +21,7 @@ import (
 func readRig(t *testing.T) *serverRig {
 	t.Helper()
 	r := newServerRig(t,
-		"nova-sprint init --readers reader-m1,reader-x --members m1:2",
+		"nova-sprint init --readers reader-m1,reader-x --members m1:2", "nova-sprint set --read-cards off", // the old readers table, on purpose (read cards are on by default)
 		"nova-sprint add --stream s1 --count 3 --brief-file "+proBriefFile(t), // pro: read by both readers
 		"nova-sprint start",
 		"nova-sprint tick",

@@ -37,7 +37,7 @@ func TestReadCardsDefaultsOn(t *testing.T) {
 		require.False(t, c.Placed(), "the readers table is asked nothing by default")
 	}
 
-	for _, set := range []string{"", ReadCardsOnWord, ReadTierDefault} {
+	for _, set := range []string{"", ReadCardsOnWord, ReadTierDefault, "ON", "true"} {
 		w2 := newWorld(t, ReaderPrefix+"m1")
 		w2.s.Work.SetProps(nil)
 		if set != "" {

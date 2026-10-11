@@ -79,6 +79,7 @@ func TestReaderRetireDryRunWritesNothing(t *testing.T) {
 func TestReaderRetireHelpSaysWhatHappensToAReadInReading(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	code, out, errs := ta.do("reader retire -h")
 	require.Equal(t, 0, code, errs)
 	const sentence = "a read it is reading is taken back at the next tick and asked of a reader up with no card at that attempt, and it stays when none can take it"

@@ -115,6 +115,7 @@ func TestRemindWithoutAnActorIsRefused(t *testing.T) {
 func newWorkerApp(t *testing.T) *testApp {
 	t.Helper()
 	ta := newTestApp(t)
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	ta.ok("init --members m1,m2 --readers reader-a,reader-b")
 	return ta
 }

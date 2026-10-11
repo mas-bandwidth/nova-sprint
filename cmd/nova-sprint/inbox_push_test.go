@@ -231,7 +231,7 @@ func TestAckTakesTheCommaListInboxPrints(t *testing.T) {
 func TestInboxPushThroughTheServerWritesTheGroupWhole(t *testing.T) {
 	t.Parallel()
 	// the backlog alarms off (on by default): the one push is the readers' judgment
-	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2", "nova-sprint set --alarm-review off --alarm-ready off --alarm-merging off --alarm-fleet off",
+	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2", "nova-sprint set --read-cards off --alarm-review off --alarm-ready off --alarm-merging off --alarm-fleet off",
 		"nova-sprint add --stream s1 --count 1 --one --brief-file "+proBriefFile(t), "nova-sprint start", "nova-sprint tick", "nova-sprint tick",
 		"nova-sprint take --as m1 --limit 1", "nova-sprint finish --as m1 --epoch 0 s1-1.w1@1")
 	clock := r.a.now()
@@ -265,7 +265,18 @@ func TestInboxPushThroughTheServerWritesTheGroupWhole(t *testing.T) {
 	require.Len(t, in.Judgments, 1, text)
 	id := in.Judgments[0].ID
 	path := filepath.Join(dir, id+".md")
-	assert.Equal(t, "INBOX OK pushed="+id+" file="+path+"\n", out, "one push, said once")
+	// the judgment pushed once; the rest of the pushes are the warnings of read cards off,
+	// which this rig turns off on purpose: the set's and the tick's (sprint settings_warn.go)
+	var judged int
+	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+		switch {
+		case l == "INBOX OK pushed="+id+" file="+path:
+			judged++
+		default:
+			assert.True(t, strings.HasPrefix(l, "INBOX OK pushed=tick-warnings-") || strings.HasPrefix(l, "INBOX OK pushed=set-"), "a push is the judgment or a warning: %s", l)
+		}
+	}
+	assert.Equal(t, 1, judged, "one push of the judgment, said once: %s", out)
 	file, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Contains(t, string(file), "JUDGMENT "+id+" ! fewer than two readers up", string(file))

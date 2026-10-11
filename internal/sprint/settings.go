@@ -657,6 +657,28 @@ func Set(s *Snapshot, r SetReq) Plan {
 	for _, a := range alarmProps {
 		kvs = append(kvs, [2]string{a.prop, alarms[a.prop]})
 	}
+	// a design setting written is warned of at once when it leaves anything off, with the
+	// record of what was said (settings_warn.go, setWarning), whether or not the machine runs:
+	// an off -> on -> off is two warnings, and the tick says nothing again
+	if r.ReadCards != "" || len(alarms) > 0 {
+		props := s.Work.Props()
+		after := map[string]string{}
+		for k, v := range props {
+			after[k] = v
+		}
+		for _, kv := range kvs {
+			if kv[1] != "" {
+				after[kv[0]] = kv[1]
+			}
+		}
+		n, w := setWarning(s, after, r.Who)
+		if n != nil {
+			p.Notes = append(p.Notes, *n)
+		}
+		if w != nil {
+			p.Props = append(p.Props, *w)
+		}
+	}
 	for _, kv := range kvs {
 		if kv[1] == "" {
 			continue

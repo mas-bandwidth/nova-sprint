@@ -31,6 +31,9 @@ func newWorld(readers ...string) *world {
 		Merge: sprint.NewTable(sprint.Merge), Fleet: sprint.NewTable(sprint.Fleet), Coordinator: "coordinator", Actor: "coordinator"}
 	// the reference model is of the old readers table: read cards off (on by default)
 	s.Work.SetProp(sprint.PropReadCards, sprint.SwitchOff)
+	// the world's read cards off was warned of when it was set (sprint.TickWarnings): the
+	// duties of a test start with it said
+	s.Work.SetProp(sprint.PropSettingsWarned, sprint.SettingsOffWhat(sprint.DesignSettings(s)))
 	s.Readers.SetRows(append(s.Readers.Rows(), readers...))
 	return &world{s: s}
 }
@@ -74,7 +77,7 @@ func (w *world) apply(p sprint.Plan) error {
 	for _, pw := range p.Props {
 		tb := w.s.T(pw.Table)
 		props := map[string]string{}
-		for _, n := range []string{sprint.PropDealIndex, sprint.PropAskIndex, sprint.PropStatusSeen, sprint.PropReadCards} {
+		for _, n := range []string{sprint.PropDealIndex, sprint.PropAskIndex, sprint.PropStatusSeen, sprint.PropReadCards, sprint.PropSettingsWarned, sprint.PropReviewWarned} {
 			if v, ok := tb.Prop(n); ok {
 				props[n] = v
 			}

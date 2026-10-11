@@ -31,6 +31,7 @@ const (
 	DutyAsk          = "ask"           // primaries in review are asked the reads they want, one at a time
 	DutyCheck        = "check"         // a broken rule and a stall are judgments
 	DutyDeadlines    = "deadlines"     // a late card or stream is a judgment
+	DutyWarnings     = "warnings"      // a design setting off, or a card into review with read cards off, is said to the coordinator
 	DutyOverdue      = "overdue"       // a judgment past its due time is marked
 	DutyDone         = "done"          // the sprint done is said to the coordinator, and the machine stops
 	DutyRemind       = "remind"        // each person due is pushed their goal
@@ -38,7 +39,7 @@ const (
 
 // dutyNames is the duties' names in the tick's order, which the canonical order
 // of moves follows. Duties lists the same names, and a test holds them equal.
-var dutyNames = []string{DutyLive, DutyLevel, DutyLevelReads, DutyResolve, DutyCapDeal, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
+var dutyNames = []string{DutyLive, DutyLevel, DutyLevelReads, DutyResolve, DutyCapDeal, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyWarnings, DutyOverdue, DutyDone, DutyRemind}
 
 // Duty is one duty of the tick: its name and the function that decides it.
 type Duty struct {
@@ -68,6 +69,7 @@ var Duties = []Duty{
 	{DutyFriendRedeal, FriendRedealMoves},
 	{DutyCheck, CheckMoves},
 	{DutyDeadlines, DeadlineMoves},
+	{DutyWarnings, WarningMoves},
 	{DutyOverdue, OverdueMoves},
 	{DutyDone, DoneMoves},
 	{DutyRemind, RemindMoves},
@@ -183,6 +185,11 @@ func CheckMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyC
 // deadline in running time, and the close of one whose cause is gone (T5).
 func DeadlineMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyDeadlines) }
 
+// WarningMoves is a note to the coordinator for a design setting newly off its working value
+// and for each card newly in review while read cards are off, and the work table's records of
+// what was said (sprint.TickWarnings).
+func WarningMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyWarnings) }
+
 // OverdueMoves is one overdue line and one hold for each judgment past its due
 // time, and the close of a hold whose judgment closed.
 func OverdueMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyOverdue) }
@@ -234,6 +241,7 @@ func decisions() []dutyOn {
 		{DutyFriendRedeal, partOn(DutyFriendRedeal)},
 		{DutyCheck, partOn(DutyCheck)},
 		{DutyDeadlines, partOn(DutyDeadlines)},
+		{DutyWarnings, partOn(DutyWarnings)},
 		{DutyOverdue, partOn(DutyOverdue)},
 		{DutyDone, partOn(DutyDone)},
 		{DutyRemind, remindOn},

@@ -24,6 +24,7 @@ import (
 func TestAnyUnitWithRoomAtOrAboveTheReadTierServesARead(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	home, prev := t.TempDir(), ta.a.getenv
 	ta.a.getenv = func(k string) string {
 		if k == "HOME" {

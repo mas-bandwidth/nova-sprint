@@ -41,6 +41,7 @@ func (ta *testApp) playToDone(from int) (int, string) {
 func TestADoneSprintStopsItsMachineAndTellsTheCoordinator(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1,m2")
 	for _, s := range []string{"s1", "s2", "s3"} {
 		ta.ok("add --stream " + s + " --count 3")

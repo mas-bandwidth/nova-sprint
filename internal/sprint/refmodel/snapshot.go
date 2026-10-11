@@ -102,6 +102,12 @@ func cloneTable(t *sprint.Table) *sprint.Table {
 		// transition and its judgment as the tick does
 		props[sprint.PropStatusSeen] = v
 	}
+	for _, name := range []string{sprint.PropSettingsWarned, sprint.PropReviewWarned} {
+		// the warnings' records (sprint.TickWarnings): what was said already is not said again
+		if v, ok := t.Prop(name); ok {
+			props[name] = v
+		}
+	}
 	if v, ok := t.Prop(sprint.PropReadCards); ok {
 		// the read cards setting: the model is of the old readers table, which asks only
 		// with read cards off (on by default, sprint.ReadCardsOn)

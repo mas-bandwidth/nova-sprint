@@ -82,7 +82,7 @@ func TestAFreshAndAClearedStoreHaveEveryDesignSettingAtItsWorkingDefault(t *test
 
 	// default restores an alarm's working threshold, as a number does
 	r.set(sprint.SetReq{AlarmReview: "7"})
-	assert.Contains(t, sprint.SettingsOffWhat(sprint.DesignSettings(r.snap())), "--alarm-review is 7, working default 40 (restore: nova-sprint set --alarm-review 40)")
+	assert.Contains(t, sprint.SettingsOffWhat(sprint.DesignSettings(r.snap())), "--alarm-review is 7, working value 40 (restore: nova-sprint set --alarm-review 40)")
 	r.set(sprint.SetReq{AlarmReview: "default"})
 	requireWorkingDefaults(t, r.snap(), "after set --alarm-review default")
 }
@@ -161,33 +161,83 @@ func TestReadsAreDealtByTheTickWithNoAskAtTheDefault(t *testing.T) {
 	}
 }
 
-// A set that turns a design setting off is what the hook's warning says (SettingsOffWhat;
-// cmd/nova-sprint/hook.go pushes it): each setting off with its working default and the set
-// that restores it, and one set that restores them all; restored, there is nothing to say.
-func TestASetThatTurnsADesignSettingOffIsWhatTheWarningSays(t *testing.T) {
-	t.Parallel()
-	r := newAlarmRig(t)
-	require.Empty(t, sprint.SettingsOffWhat(sprint.DesignSettings(r.snap())), "nothing off, nothing to warn of")
-
-	r.set(sprint.SetReq{AlarmReview: "off"})
-	what := sprint.SettingsOffWhat(sprint.DesignSettings(r.snap()))
-	assert.True(t, strings.HasPrefix(what, sprint.WarningWord), what)
-	assert.Contains(t, what, "--alarm-review is off, working default 40 (restore: nova-sprint set --alarm-review 40)")
-
-	r.set(sprint.SetReq{ReadCards: "off"})
-	what = sprint.SettingsOffWhat(sprint.DesignSettings(r.snap()))
-	assert.Contains(t, what, "--read-cards is off, working default on (restore: nova-sprint set --read-cards on)")
-	assert.Contains(t, what, "--alarm-review is off")
-	assert.Contains(t, what, "run: nova-sprint set --read-cards on --alarm-review 40")
-
-	r.set(sprint.SetReq{ReadCards: "on", AlarmReview: "default"})
-	assert.Empty(t, sprint.SettingsOffWhat(sprint.DesignSettings(r.snap())), "restored, nothing to warn of")
+// warnings is every warning note of the type the sprint wrote in its epoch, in order:
+// happened notes addressed to the coordinator (the hook pushes each).
+func (r *alarmRig) warnings(typ string) []sprint.Note {
+	r.t.Helper()
+	notes, _, err := r.m.NotesSince(r.ctx, "", 100000)
+	require.NoError(r.t, err)
+	var out []sprint.Note
+	for _, n := range notes {
+		if n.Type == typ {
+			require.Equal(r.t, sprint.Happened, n.Kind, "a warning is a note, never a judgment that holds a card")
+			require.Equal(r.t, "coordinator", n.To, "a warning is the coordinator's: the hook pushes it")
+			require.True(r.t, strings.HasPrefix(n.What, sprint.WarningWord), n.What)
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
-// With read cards off, every primary in review is one the hook warns of, by its card and
-// attempt (ReviewOffReadCards), so a card that enters review is a new warning; with read
-// cards on, none.
-func TestEveryCardInReviewWithReadCardsOffIsOneToWarnOf(t *testing.T) {
+// running starts the rig's machine: the deadlines part, which writes the warnings, runs
+// in a running tick.
+func (r *alarmRig) running() {
+	r.t.Helper()
+	_, _, _, err := r.st.SetMachine(r.ctx, true)
+	require.NoError(r.t, err)
+}
+
+// A set that turns a design setting off is warned of by the next tick, once, as a note to
+// the coordinator naming it and the exact set that restores it; a second setting off is a
+// new warning naming both; back at the working values nothing is said, and the next off is
+// warned of again (off, on, off is two warnings), between two ticks too.
+func TestEveryChangeOfTheDesignSettingsToOffIsWarnedOf(t *testing.T) {
+	t.Parallel()
+	r := newAlarmRig(t)
+	r.set(sprint.SetReq{AlarmReview: "off"})
+	w := r.warnings(sprint.NSettingsOff)
+	require.Len(t, w, 1, "set --alarm-review off is warned of by the set itself, the machine stopped")
+	assert.Contains(t, w[0].What, "--alarm-review is off, working value 40 (restore: nova-sprint set --alarm-review 40)")
+	r.set(sprint.SetReq{AlarmReview: "default"})
+	r.running()
+	r.ticks(2)
+	require.Len(t, r.warnings(sprint.NSettingsOff), 1, "back at the working values, the tick says nothing")
+
+	r.set(sprint.SetReq{AlarmReview: "off"})
+	require.Len(t, r.warnings(sprint.NSettingsOff), 2, "set --alarm-review off is warned of at once")
+	r.ticks(3)
+	require.Len(t, r.warnings(sprint.NSettingsOff), 2, "and once: the ticks after say nothing again")
+
+	r.set(sprint.SetReq{ReadCards: "off"})
+	r.ticks(2)
+	w = r.warnings(sprint.NSettingsOff)
+	require.Len(t, w, 3, "a second setting off is a new warning")
+	assert.Contains(t, w[2].What, "--read-cards is off, working value on (restore: nova-sprint set --read-cards on)")
+	assert.Contains(t, w[2].What, "run: nova-sprint set --read-cards on --alarm-review 40")
+
+	r.set(sprint.SetReq{ReadCards: "on", AlarmReview: "default"})
+	r.ticks(2)
+	require.Len(t, r.warnings(sprint.NSettingsOff), 3, "back at the working values, nothing is said")
+	r.set(sprint.SetReq{AlarmReview: "off"})
+	r.ticks(2)
+	require.Len(t, r.warnings(sprint.NSettingsOff), 4, "off, on, off: the second off is warned of again")
+
+	// off, on, off with no tick between: each set that leaves a setting off says so
+	r.set(sprint.SetReq{AlarmReview: "default"})
+	r.set(sprint.SetReq{AlarmReview: "off"})
+	r.ticks(1)
+	require.Len(t, r.warnings(sprint.NSettingsOff), 5, "off, on, off between two ticks is warned of again")
+	r.set(sprint.SetReq{AlarmMerging: "20"})
+	require.Len(t, r.warnings(sprint.NSettingsOff), 6, "any set of a design setting that leaves one off says so again")
+
+	// a clear, and the same off in the next epoch: TestTheHookIsPushedEveryWarning
+	// (cmd/nova-sprint) drives it through the verbs
+}
+
+// With read cards off, every card that enters review is warned of by the tick, the ones new
+// at a tick in one note naming only them; a card still in review is never warned of twice; a
+// card that leaves review and comes back is warned of again. With read cards on, none.
+func TestEveryCardEnteringReviewWithReadCardsOffIsWarnedOf(t *testing.T) {
 	t.Parallel()
 	for _, on := range []bool{false, true} {
 		r := newAlarmRig(t)
@@ -196,24 +246,39 @@ func TestEveryCardInReviewWithReadCardsOffIsOneToWarnOf(t *testing.T) {
 		}
 		r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
 		r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a", "b"}}))
-		_, _, _, err := r.st.SetMachine(r.ctx, true)
-		require.NoError(t, err)
+		r.running()
 		r.ticks(2)
 		r.must(store.TakeStep(sprint.TakeReq{As: "m1", Sel: sprint.Sel{Limit: 2}, Who: "m1"}))
 		r.finish("a")
-		r.ticks(1)
+		r.ticks(2)
 		if on {
-			assert.Empty(t, sprint.ReviewOffReadCards(r.snap()), "read cards on: nothing to warn of")
+			assert.Empty(t, r.warnings(sprint.NReviewOffReadCards), "read cards on: no warning")
 			continue
 		}
-		require.Equal(t, []string{"a@1"}, sprint.ReviewOffReadCards(r.snap()), "a entered review with read cards off")
+		w := r.warnings(sprint.NReviewOffReadCards)
+		require.Len(t, w, 1, "a entered review with read cards off")
+		assert.Equal(t, []string{"a"}, w[0].Primaries)
+		assert.Contains(t, w[0].What, "a@1 entered review")
+		assert.Contains(t, w[0].What, "run: nova-sprint set --read-cards on")
+
 		r.finish("b")
-		r.ticks(1)
-		cards := sprint.ReviewOffReadCards(r.snap())
-		assert.ElementsMatch(t, []string{"a@1", "b@1"}, cards, "b entering review is one more")
-		what := sprint.ReviewOffReadCardsWhat([]string{"b@1"})
-		assert.True(t, strings.HasPrefix(what, sprint.WarningWord), what)
-		assert.Contains(t, what, "b@1 entered review")
-		assert.Contains(t, what, "run: nova-sprint set --read-cards on")
+		r.ticks(2)
+		w = r.warnings(sprint.NReviewOffReadCards)
+		require.Len(t, w, 2, "b entering review is warned of too, a not again")
+		assert.Equal(t, []string{"b"}, w[1].Primaries)
+		assert.Contains(t, w[1].What, "b@1 entered review (1 more already in review, warned of before)")
+
+		// a leaves review (dropped back to ready by a rework) and comes back: warned again
+		r.must(store.ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"a"}}, Fix: "again", Who: "coordinator"}))
+		r.ticks(3)
+		r.must(store.TakeStep(sprint.TakeReq{As: "m1", Sel: sprint.Sel{Limit: 1}, Who: "m1"}))
+		r.finish("a")
+		r.ticks(2)
+		w = r.warnings(sprint.NReviewOffReadCards)
+		require.Len(t, w, 3, "a back in review at its next attempt is warned of again")
+		assert.Contains(t, w[2].What, "a@2 entered review")
+
+		// a clear, and the same card id in review in the next epoch:
+		// TestTheHookIsPushedEveryWarning (cmd/nova-sprint) drives it
 	}
 }

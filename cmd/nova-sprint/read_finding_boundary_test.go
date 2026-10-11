@@ -29,6 +29,7 @@ func TestAuthoritativeBrokenReadFindingBoundary(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ta := newTestApp(t)
+			ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 			ta.ok("init --readers reader-a,reader-b,reader-c --members m1")
 			ta.ok("reader away reader-c")
 			ta.inReview(1)

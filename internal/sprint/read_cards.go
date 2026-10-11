@@ -41,11 +41,10 @@ func (s *Snapshot) ReadCardsOn() bool {
 	if s == nil || s.Work == nil {
 		return true
 	}
-	v, ok := s.Work.Prop(PropReadCards)
-	if !ok || v == ReadTierDefault {
-		return true
-	}
-	return v == ReadCardsOnWord
+	// off is the one value that turns them off: an absent property, default, on, or any
+	// value set does not take (ON, true) is on, as an alarm's is its working threshold
+	v, _ := s.Work.Prop(PropReadCards)
+	return v != SwitchOff
 }
 
 // FieldReadCard marks a read card the deal cut (read_cards.go), "1": a friend's read asked

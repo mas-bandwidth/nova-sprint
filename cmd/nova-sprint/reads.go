@@ -659,7 +659,10 @@ type whereView struct {
 	// FleetWork and FriendsWork are the work switches (nova-sprint set --fleet, --friends;
 	// sprint.PropFleet, sprint.PropFriends): on or off, always carried, so the dashboard greys
 	// a side that is off. Off, the deal hands that side no work card; reads flow.
-	FleetWork   string `json:"fleet_work"`
+	FleetWork string `json:"fleet_work"`
+	// SettingsOff is the design settings off their working values, as the tick's warning
+	// says them (sprint.SettingsOffWhat), "" when every one is at it.
+	SettingsOff string `json:"settings_off,omitempty"`
 	FriendsWork string `json:"friends_work"`
 	// FleetTiers and FriendsTiers are the tiers each side may take (nova-sprint set
 	// --fleet-tiers, --friends-tiers; sprint.PropFleetTiers, sprint.PropFriendsTiers):
@@ -1336,6 +1339,12 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	b.WriteString(a.seatTitle(v.Coordinator, v.Seat, now) + "\n\n" + whereHeader(v.Summary, v.Machine) + "\n")
 	if line := switchesLine(v.FleetWork, v.FriendsWork, fleetTiers, friendsTiers); line != "" {
 		b.WriteString(line + "\n")
+	}
+	// the design settings off, said where an unhooked seat reads too (settings_warn.go)
+	ws := &sprint.Snapshot{Work: sprint.NewTable(sprint.Work)}
+	ws.Work.SetProps(shapes[0].Props)
+	if v.SettingsOff = sprint.SettingsOffWhat(sprint.DesignSettings(ws)); v.SettingsOff != "" {
+		b.WriteString(v.SettingsOff + "\n")
 	}
 	v.ReadsNeeded = sprint.ReadTierDefault
 	if n, ok := sprint.ReadsSetting(shapes[0].Props); ok {

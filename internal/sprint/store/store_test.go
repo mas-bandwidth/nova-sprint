@@ -53,8 +53,9 @@ func newHarness(t *testing.T) *harness {
 	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
 	// the harness acts as the sprint's coordinator: judgments are theirs
 	require.NoError(t, h.m.SetCoordinator(h.ctx, h.st.Actor))
-	// the old readers table on purpose: read cards off (on by default; the next change moves this rig onto read cards)
-	h.must(SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: h.st.Actor}))
+	// the old readers table on purpose: read cards off (on by default; the next change moves
+	// this rig onto read cards), written as already warned of (settingsSaid)
+	h.settingsSaid(map[string]string{sprint.PropReadCards: sprint.SwitchOff})
 	h.beat()
 	return h
 }
@@ -65,7 +66,33 @@ func (h *harness) tick(d time.Duration) { h.mu.Lock(); h.now = h.now.Add(d); h.m
 // moves the alarms (on by default since 2026-10-11) would change, and which is not of them.
 func (h *harness) alarmsOff() {
 	h.t.Helper()
-	h.must(SetStep(sprint.SetReq{AlarmReview: "off", AlarmReady: "off", AlarmMerging: "off", AlarmFleet: "off", Who: h.st.Actor}))
+	h.settingsSaid(map[string]string{sprint.PropAlarmReview: sprint.SwitchOff, sprint.PropAlarmReady: sprint.SwitchOff,
+		sprint.PropAlarmMerging: sprint.SwitchOff, sprint.PropAlarmFleet: sprint.SwitchOff})
+}
+
+// settingsSaid writes design settings onto the work table with the record that their warning
+// was said, as another writer: a rig's fixture, so a test that is not of the warnings counts
+// no warning note (set writes one, settings_warn.go). TestEveryChangeOfTheDesignSettingsToOffIsWarnedOf
+// and the hook's test are the warnings' own.
+func (h *harness) settingsSaid(props map[string]string) {
+	h.t.Helper()
+	s := h.snap()
+	after := s.Work.Props()
+	for k, v := range props {
+		after[k] = v
+	}
+	w := &sprint.Snapshot{Work: sprint.NewTable(sprint.Work)}
+	w.Work.SetProps(after)
+	writes := map[string]string{sprint.PropSettingsWarned: sprint.SettingsOffWhat(sprint.DesignSettings(w))}
+	for k, v := range props {
+		writes[k] = v
+	}
+	es, err := h.m.Epoch(h.ctx)
+	require.NoError(h.t, err)
+	_, err = h.m.Apply(h.ctx, ntable.BatchManifest{Schema: 1, Table: h.st.Names.Table(sprint.Work), Epoch: fmt.Sprint(es.N),
+		ExpectedTableRevision: fmt.Sprint(s.Work.Revision), OperationID: fmt.Sprintf("settings-said-%d", s.Work.Revision),
+		Members: []ntable.BatchMemberEntry{}, Props: writes})
+	require.NoError(h.t, err)
 }
 
 // readersTable sets read cards off, as the coordinator: the old readers table, on purpose

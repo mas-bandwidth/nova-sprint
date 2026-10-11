@@ -41,6 +41,7 @@ func workedRig(t *testing.T, n, ready int) (*serverRig, []string) {
 	// the memory/clock fixture so each finish does not serialize every brief.
 	ta := newTestApp(t)
 	ta.live = []string{"m"}
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	for _, line := range []string{fmt.Sprintf("init --readers r,r2 --members m:%d", n),
 		"add --stream s --brief-dir " + dir, "start", "tick", "tick"} {
 		ta.ok(line)

@@ -77,7 +77,13 @@ func dump(s refmodel.Snapshot) string {
 
 func TestDumpSeesEveryPartOfASnapshot(t *testing.T) {
 	t.Parallel()
-	base := snapshots()[len(snapshots())-1].snap
+	// the last walk's snapshot that holds a work card, so a change to a card's field shows
+	var base refmodel.Snapshot
+	for _, x := range snapshots() {
+		if len(x.snap.Tables.Work.Cards()) > 0 {
+			base = x.snap
+		}
+	}
 	for name, change := range map[string]func(*refmodel.Snapshot){
 		"running":     func(s *refmodel.Snapshot) { s.Running = !s.Running },
 		"since":       func(s *refmodel.Snapshot) { s.Since = s.Since.Add(time.Second) },

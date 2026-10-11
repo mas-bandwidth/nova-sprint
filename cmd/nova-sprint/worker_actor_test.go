@@ -15,7 +15,8 @@ import (
 // name the member or reader, never the coordinator whose shell ran them.
 func TestAWorkersVerbIsRecordedAsTheWorker(t *testing.T) {
 	t.Parallel()
-	ta := newTestApp(t) // NOVA_SPRINT_ACTOR is the coordinator
+	ta := newTestApp(t)  // NOVA_SPRINT_ACTOR is the coordinator
+	ta.oldReaders = true // the old readers table, on purpose (read cards are on by default)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --stream s1 --count 1 --one")
 	ta.ok("start")

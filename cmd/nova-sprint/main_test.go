@@ -42,11 +42,10 @@ type testApp struct {
 	quiet map[string]bool
 	// queue is the merge queues land asks, a fake: no forge is asked
 	queue *heldQueue
-	// defaults keeps the sprint an init makes at its working defaults (read cards on);
-	// false, a test written for the old readers table, has every init followed by read
-	// cards off, explicitly, as those tests exercise that table on purpose (the next
-	// change moves them onto read cards). The defaults' own tests set it.
-	defaults bool
+	// oldReaders has every init followed by set --read-cards off, explicitly: a test
+	// written for the old readers table, which it exercises on purpose (the next change moves
+	// these onto read cards). Every other test runs the sprint at its working defaults.
+	oldReaders bool
 }
 
 // readersTableOn runs set --read-cards off on the sprint the init line just made, with the
@@ -157,7 +156,7 @@ func (ta *testApp) do(line string) (int, string, string) {
 	ta.beat()
 	args := split(line)
 	code := ta.a.run(ta.withEpoch(args), &out, &errb)
-	if code == 0 && !ta.defaults && len(args) > 0 && args[0] == "init" && !slices.Contains(args, "--help") && !slices.Contains(args, "-h") {
+	if code == 0 && ta.oldReaders && len(args) > 0 && args[0] == "init" && !slices.Contains(args, "--help") && !slices.Contains(args, "-h") {
 		ta.readersTableOn(args)
 	}
 	return code, out.String(), errb.String()

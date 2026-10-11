@@ -492,3 +492,9 @@ MCHoldsBrokenResolveHeld.cfg	MCHolds.tla	invariant	HeldMovesOnlyByRelease	ignore
 MCHoldsBrokenWorkerReleases.cfg	MCHolds.tla	invariant	OnlyCoordinatorReleases	ignore-terminal	holds	required	-
 MCAttemptsEpochs.cfg	MCAttemptsEpochs.tla	pass	-	ignore-terminal	attemptsepochs	required	-
 MCAttemptsEpochsBrokenNoepochcheck.cfg	MCAttemptsEpochs.tla	invariant	OldEpochWritesNothing	ignore-terminal	attemptsepochs	required	-
+MCSettingsWarn.cfg	MCSettingsWarn.tla	pass	-	ignore-terminal	settingswarn	required	-
+MCSettingsWarnLive.cfg	MCSettingsWarn.tla	pass	-	ignore-terminal	settingswarn	required	-
+MCSettingsWarnBrokenNoReset.cfg	MCSettingsWarn.tla	invariant	OffWarned	ignore-terminal	settingswarn	required	-
+MCSettingsWarnBrokenNoSetNote.cfg	MCSettingsWarn.tla	invariant	SetWarned	ignore-terminal	settingswarn	required	-
+MCSettingsWarnBrokenNoEpoch.cfg	MCSettingsWarn.tla	invariant	OffWarned	ignore-terminal	settingswarn	required	-
+MCSettingsWarnBrokenNoEntry.cfg	MCSettingsWarn.tla	invariant	OffWarned	ignore-terminal	settingswarn	required	-

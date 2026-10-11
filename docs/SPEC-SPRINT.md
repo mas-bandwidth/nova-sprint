@@ -3717,7 +3717,7 @@ read should have been going through consumer cards the whole time"; "send out mu
 cards in ||"; "Go wide with reads, 2X regular width"; "start with tier"; "Just remove the
 complexity. just deal it." While the sprint's setting says so (`set --read-cards on`, the work
 table's `read_cards` property; on by default, `default` is on, and `off` is the one way off,
-a degraded machine the server warns of over the hook: section 8, "Design settings off"),
+a degraded machine the tick warns of, pushed over the hook: section 8, "Design settings off"),
 a read is a card on the fleet table,
 the table its work cards are dealt on, and the readers table asks nothing new
 (`sprint/read_cards.go`). The review is unchanged: a primary still goes through review, its
@@ -5130,7 +5130,7 @@ and says the count now. The judgment and that note are what `inbox --wait --push
 pushes, so an episode is pushed once when it starts and once when it ends. `ack` keeps
 it quiet until the episode ends (the next is raised again); `wait --for` until that
 much running time has passed, when one that still stands is raised again; `off` takes
-an alarm off, and an open one clears, a degraded machine the server warns of over the hook
+an alarm off, and an open one clears, a degraded machine the tick warns of, pushed over the hook
 until it is back at its working threshold ("Design settings off" below).
 
 ### Design settings off
@@ -5147,23 +5147,34 @@ working value on) and the four backlog alarms at their working thresholds (`--al
 40, `--alarm-ready` on, `--alarm-merging` 15, `--alarm-fleet` 50). Each is its working value
 by default, with no property written, so a fresh store and every store after a clear works
 untouched (`sprint.DesignSettings`; a value the property does not take reads as the working
-one). A design setting moved off its working value is never invisible: the server pushes a
-WARNING over the coordinator's hook (`cmd/nova-sprint/hook.go`, the hook's look,
-`hookWarnings`), of the store as it is at each look, two kinds:
+one, and only off reads as off). A design setting moved off its working value is never
+invisible. A WARNING is a happened note addressed to the coordinator, stored in the epoch: the hook
+pushes it as a numbered PUSH like every note to the coordinator, and the inbox lists it whether
+or not a hook is attached (`where` says the settings off too, as its own line, for a seat with
+no hook). Two kinds:
 
-- **`warning:settings`**: every design setting off or away from its working value, each with
-  the value it has, its working value and the exact `set` that restores it, and one `set` that
-  restores them all (`sprint.SettingsOffWhat`). It is pushed once a subscription for each
-  change of what it says: a `set` that turns one off pushes it at the next look; a server's
-  start ends every hook, and the hook after it is pushed it afresh; after a clear every
-  setting is at its working value and nothing is pushed.
-- **`warning:review`**: while read cards are off, every primary that enters review, by its
-  card and attempt (`sprint.ReviewOffReadCards`): each is pushed once, the cards new at a look
-  together in one push naming only them, so a card added to review is never left unsaid
-  while read cards stay off, whatever was acknowledged before it.
+- **a design setting is off its working default**: every design setting off or away from its
+  working value, each with the value it has, its working value and the exact `set` that
+  restores it, and one `set` that restores them all (`sprint.SettingsOffWhat`). Every `set` of
+  a design setting that leaves one off writes it at once, in the set's own step, whether or not
+  the machine runs (`setWarning`; an off, on, off is two warnings), and records what it said
+  in the work table (`settings_warned`); back at the working values the record is cleared.
+  The tick's warnings part (`warnings`, after the deadlines; `sprint.TickWarnings`) writes it
+  too when what is off differs from the record (a store from before the warnings, a property
+  written by another writer), and a clear starts the next epoch with no record.
+- **a card entered review with read cards off**: while read cards are off, every primary that
+  enters review, written by the tick's warnings part, the cards new at a tick in one note naming only them and how many others were already in review. The tick records
+  the entries it warned of (`review_warned`), each by card, attempt and entry
+  (`sprint.ReviewOffReadCards`; every move into review stamps the card's `review_entered`, the
+  revision it entered from), only those still in review: a card that leaves review and comes
+  back is warned of again, at the same attempt and between two ticks too, read cards back on clears the record, and a clear
+  starts the next epoch with none.
 
-Each is a push like every push: it carries its id, and one left unacknowledged past its
-bound refuses every coordinator command (the hook's gate) until `nova-sprint hook --ack`.
+A setting off is warned of by its set, stopped or not; a card into review at the next tick
+(a STOPPED machine ticks nothing, so a card that enters review while it is stopped is warned
+of at the first tick after start). Each is pushed like every push: it carries its id, and one left unacknowledged past its bound refuses every
+coordinator command (the hook's gate) until `nova-sprint hook --ack`. The model is
+tla/SettingsWarn.tla (SetWarned, OffWarned, EveryNoteDelivered).
 
 ### Drift alarms
 
