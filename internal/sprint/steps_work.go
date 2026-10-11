@@ -1214,6 +1214,12 @@ func redeal(s *Snapshot, c, wc *Card, m string, q map[string]int, ri routeIndexe
 		}
 		set[k] = v
 	}
+	// a card dealt again from a limited route onto an unlimited one carries no limit words
+	for _, k := range []string{FieldRateRPM, FieldRateConcurrent} {
+		if _, ok := work[k]; !ok && wc.F(k) != "" {
+			unset = append(unset, k)
+		}
+	}
 	g := s.gateFields()
 	for _, k := range []string{FieldDecideGateFlaky, FieldDecideGatePreexisting} {
 		if v, ok := g[k]; ok {
@@ -1586,9 +1592,10 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		switch kind {
 		case cardhdr.EndProvider:
-			if IsRateLimited(r.Report) {
-				// the provider's rate limit got through the member's budget and its retries:
-				// the card is returned untouched (rate_budget.go)
+			if IsRateLimited(r.Report) && rateLimitedRoute(c) && c.Int(FieldRateReturns) < MaxRateReturns {
+				// a limited route's 429 that got through the member's budget and its retries:
+				// the card is returned untouched, at most MaxRateReturns times (rate_budget.go);
+				// an unlimited route's ends the take and counts toward its rest as before
 				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r))
 				continue
 			}
@@ -1979,9 +1986,11 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 	}, Notes: notes, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s refused it at staging; %s working -> ready", c.ID, c.Int("gen")+1, c.Row, pr.ID)}
 }
 
-// rateLimitedReturned is the unit of a take the provider rate limited (IsRateLimited) that
-// the member's budget and its in-place retries did not absorb (an older member, or retries
-// out of the card's deadline). The card is returned UNTOUCHED, as a staging refusal is: the
+// rateLimitedReturned is the unit of a take on a LIMITED route (rateLimitedRoute) the
+// provider rate limited (IsRateLimited) that the member's budget and its in-place retries
+// did not absorb (an older member, or retries out of the card's deadline), returned fewer
+// than MaxRateReturns times before (FieldRateReturns, counted here; past it the take ends as
+// any provider failure does). The card is returned UNTOUCHED, as a staging refusal is: the
 // work card is withdrawn WITHOUT FieldTakeEnded, so no redeal and no attempt is spent; no
 // take record is written, so it never counts toward the route's 3-in-10 rest; no judgment
 // is raised; and its primary goes back to ready, where the deal draws it again, falling
@@ -1993,6 +2002,7 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 	set := nextGen(c, "", s.Now)
 	set["withdrawn"] = stamp(s.Now)
+	set[FieldRateReturns] = itoa(c.Int(FieldRateReturns) + 1)
 	set[FieldProviderError] = cutText(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(r.Report, cardhdr.EndProvider), ":")), MaxProviderErrorBytes)
 	prSet := map[string]string{}
 	if r.Usage != "" {

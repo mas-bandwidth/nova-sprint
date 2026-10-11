@@ -29,6 +29,12 @@ import (
 //     slot is its place in the fleet table: a member that dies is put down by its beat and
 //     its cards withdrawn, so no slot outlives its holder (the lease's expiry).
 //
+// AN RPM BUDGET NEVER MAKES A ROUTE FULL: it paces requests, it refuses no card. With rpm
+// alone, k cards on the route share the minute's requests and most may end by deadline, so
+// an rpm-limited route is given a concurrency budget too (routes limit <provider>
+// --concurrent n): the deal then falls back past it once n cards are on its provider. No
+// concurrency is implied by an rpm (a second, hidden setting); set both.
+//
 // A route with neither set is not limited: no field is stamped on its cards and its member
 // never asks the server (zero code path change). A limit is stamped on the cards dealt on
 // its route (FieldRateRPM, FieldRateConcurrent) so the member installs its request gate;
@@ -68,11 +74,24 @@ func modelOfProp(p string) string { return strings.Replace(p, ".", "/", 1) }
 func PropProviderConcurrency(provider string) string { return "provider_concurrency_" + provider }
 
 // The work and read card fields of a limited route, stamped by the deal from the
-// properties: the member's request gate is installed when one is set.
+// properties: the member's request gate is installed when one is set. FieldRateReturns
+// counts the takes of the card a rate limit returned untouched (rateLimitedReturned): at
+// MaxRateReturns the next one ends as any provider failure does, so no card loops forever.
 const (
 	FieldRateRPM        = "rate_rpm"
 	FieldRateConcurrent = "rate_concurrent"
+	FieldRateReturns    = "rate_returns"
+	MaxRateReturns      = 5
 )
+
+// rateLimitedRoute says the card was dealt on a limited route (routes limit): its member
+// took the budget before each request and retried a 429 in place, so a 429 that still
+// reaches the sprint is the limiter's to absorb, not the route's to rest for. A card on an
+// unlimited route has neither field, and its 429 ends the take and counts toward the
+// route's rest as before.
+func rateLimitedRoute(c *Card) bool {
+	return c.F(FieldRateRPM) != "" || c.F(FieldRateConcurrent) != ""
+}
 
 // NRouteLimited is the happened note of a budget the coordinator set or cleared.
 const NRouteLimited = "a model's or provider's rate budget set by the coordinator"
@@ -140,6 +159,18 @@ func InFlight(s *Snapshot, provider string, cols ...string) int {
 // cards the step has dealt on it so far.
 type budgetPlan struct {
 	budget, inFlight map[string]int
+	// soft is a coordinator's rework or redo: it falls back past a full provider while
+	// another route has room, and is dealt on a full one when none has (never refused)
+	soft bool
+}
+
+// withSoftBudgets is withBudgets for a coordinator's rework or redo (budgetPlan.soft).
+func (s *Snapshot) withSoftBudgets() *Snapshot {
+	n := s.withBudgets()
+	if n.budgets != nil {
+		n.budgets.soft = true
+	}
+	return n
 }
 
 // withBudgets is s with its dealing step's concurrency view: nil when no provider has a

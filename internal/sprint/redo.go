@@ -222,6 +222,8 @@ func Redo(s *Snapshot, r RedoReq) Plan {
 
 	up := s.UpMembers()
 	q, room := memberLoads(s, up), memberWidths(s, up)
+	// a redo falls back past a full provider, and is dealt on one when none has room
+	s = s.withSoftBudgets()
 	rr, ri := dealRound(s), routeIndexesOf(s)
 	moves := roundMoves{}
 	streams := map[string]bool{}

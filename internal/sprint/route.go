@@ -394,6 +394,7 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 	// a resting route (rule 3, route_rest.go) serves no work card until its rest ends
 	served := map[string]Route{}
 	var rested, unlaunchable, full []string
+	fullSet := map[string]Route{} // the routes passed over for a full provider
 	for _, r := range s.Routes {
 		if r.Tier != tier || !r.Enabled {
 			continue
@@ -412,6 +413,7 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 		if ri != nil {
 			if isFull, said := s.budgets.full(r.Provider); isFull {
 				full = append(full, r.Name+" ("+said+")")
+				fullSet[r.Name] = r
 				continue
 			}
 		}
@@ -436,6 +438,18 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 		at, _ = strconv.ParseUint(v, 10, 64)
 	}
 	r, steps, ok := preferFirst(arr, served, drawn, fresh, at)
+	if !ok && len(fullSet) > 0 && s.budgets.soft {
+		// a coordinator's rework or redo is never refused for a full provider: with no route
+		// of room it is dealt on a full one anyway, and the take holds it ready until a slot
+		// frees (takeBudgetWhy)
+		maps.Copy(served, fullSet)
+		fresh = false
+		for _, name := range arr {
+			_, ok := served[name]
+			fresh = fresh || ok && !contains(drawn, name)
+		}
+		r, steps, ok = preferFirst(arr, served, drawn, fresh, at)
+	}
 	if ok {
 		if ri != nil {
 			ri[tier].r.count += steps

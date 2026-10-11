@@ -54,6 +54,16 @@ func TestTheDrawFallsBackPastAFullProvider(t *testing.T) {
 	set, _, why, _ = s.routeOf(card, nil, nil, "")
 	require.Empty(t, why, "a check of the tier never sees a full provider as unserved")
 	assert.Equal(t, "flash-mercury3", set[FieldRoute])
+
+	// both providers full: the deal's draw waits; a rework's or a redo's (soft) is dealt
+	// on a full one anyway, and the take holds it ready
+	s.Fleet.SetProps(map[string]string{PropProviderConcurrency("inception"): "1", PropProviderConcurrency("deepseek"): "1"})
+	inFlightOn(s, "y.w1", "m2", "flash-deepseek", "deepseek/v4", Ready)
+	_, _, why, _ = s.withBudgets().routeOf(card, nil, routeIndexesOf(s), "m1")
+	assert.Contains(t, why, "waits ready")
+	set, _, why, _ = s.withSoftBudgets().routeOf(card, nil, routeIndexesOf(s), "m1")
+	require.Empty(t, why, "a rework is never refused for a full provider")
+	assert.NotEmpty(t, set[FieldRoute])
 }
 
 // Every route of the tier full: the deal refuses the card with the words why, it waits
@@ -139,10 +149,10 @@ func TestConcurrencyTwoTheThirdTakeWaits(t *testing.T) {
 	assert.Len(t, p.Units, 1, "taken once a slot freed")
 }
 
-// A rate-limited take that reaches the sprint (an older member, or retries out of the
-// card's deadline) returns the card untouched: withdrawn without a take ended, so no
-// redeal and no attempt are spent; no take record, so the route's 3-in-10 rest never
-// counts it; no failed-work judgment.
+// A rate-limited take on a LIMITED route that reaches the sprint (an older member, or
+// retries out of the card's deadline) returns the card untouched: withdrawn without a take
+// ended, so no redeal and no attempt are spent; no take record, so the route's 3-in-10 rest
+// never counts it; no failed-work judgment.
 func TestARateLimitedTakeReturnsTheCardUntouched(t *testing.T) {
 	t.Parallel()
 	for _, report := range []string{
@@ -150,7 +160,10 @@ func TestARateLimitedTakeReturnsTheCardUntouched(t *testing.T) {
 		"provider failure: provider: class=other status=400 msg=Your current concurrency is 9/12, which exceeds your concurrency limit",
 	} {
 		w := setup(t, 1)
+		proMercury(w)
+		w.s.Fleet.SetProps(map[string]string{PropModelRPM("inception/mercury-3"): "10"})
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+		require.Equal(t, "10", w.s.Fleet.Card(w.s.Work.Card("s1-1").F("work")).F(FieldRateRPM), "the limited route's card carries its rpm")
 		wc := w.s.Work.Card("s1-1").F("work")
 		member := w.s.Fleet.Card(wc).Row
 		w.must(Take(w.s, TakeReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
@@ -167,6 +180,58 @@ func TestARateLimitedTakeReturnsTheCardUntouched(t *testing.T) {
 		assert.Empty(t, w.notesOf(NWorkFailed), "no failed-work judgment")
 		assert.Equal(t, 1, w.s.Work.Card("s1-1").Int("attempt"), "the attempt is the same attempt")
 	}
+}
+
+const tooMany = "provider failure: provider: class=rate-limited status=429 msg=Too many requests"
+
+// takeAndRefuse deals s1-1 (again), takes it and finishes it with a 429, and says how the
+// finish moved it and which work card it was.
+func takeAndRefuse(t *testing.T, w *world) (string, string) {
+	t.Helper()
+	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+	wc := w.s.Work.Card("s1-1").F("work")
+	member := w.s.Fleet.Card(wc).Row
+	w.must(Take(w.s, TakeReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	p := w.must(Finish(w.s, FinishReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true, Report: tooMany}))
+	require.Len(t, p.Units, 1)
+	return p.Units[0].Moved, wc
+}
+
+// An UNLIMITED route's 429 ends the take as any provider failure does: a take ended, its
+// record written (it counts toward the route's 3-in-10 rest), a redeal spent. Only a
+// limited route's 429 is the limiter's to absorb.
+func TestAnUnlimitedRoutes429EndsTheTake(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	proMercury(w)
+	moved, wc := takeAndRefuse(t, w)
+	assert.NotContains(t, moved, "returned untouched")
+	c := w.s.Fleet.Card(wc)
+	assert.NotEmpty(t, c.F(FieldTakeEnded), "the take ended")
+	takes, _ := ProviderTakes(c)
+	assert.Len(t, takes, 1, "the take's record counts toward the route's rest")
+}
+
+// Even a limited route cannot loop a card forever: MaxRateReturns untouched returns, then
+// the next 429 ends the take as any provider failure does.
+func TestALimitedRoutesReturnsAreBounded(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	proMercury(w)
+	w.s.Fleet.SetProps(map[string]string{PropModelRPM("inception/mercury-3"): "10"})
+	var wc string
+	for i := range MaxRateReturns {
+		var moved string
+		moved, wc = takeAndRefuse(t, w)
+		assert.Contains(t, moved, "returned untouched", "return %d", i+1)
+	}
+	c := w.s.Fleet.Card(wc)
+	assert.Equal(t, MaxRateReturns, c.Int(FieldRateReturns))
+	assert.Empty(t, c.F(FieldTakeEnded), "no take ended in the returns")
+	assert.Equal(t, 1, w.s.Work.Card("s1-1").Int("attempt"), "the returns spent no attempt")
+	moved, wc := takeAndRefuse(t, w)
+	assert.NotContains(t, moved, "returned untouched", "the return past the bound ends the take")
+	assert.NotEmpty(t, w.s.Fleet.Card(wc).F(FieldTakeEnded))
 }
 
 func TestIsRateLimited(t *testing.T) {
