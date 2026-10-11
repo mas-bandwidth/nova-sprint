@@ -1499,11 +1499,16 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	cards := make([]sprint.CardAdd, 0, len(files))
 	for _, path := range files {
 		id := strings.TrimSuffix(filepath.Base(path), ".md")
-		if why := reservedCardID(id); why != "" {
-			return refuse(stderr, "add", path+": "+why)
-		}
-		if !sprint.ValidID(id) {
-			return refuse(stderr, "add", fmt.Sprintf("%s: the card id is the file's base name without .md, and %q is not one (letters, digits, _ and -)", path, id))
+		// --partial collects the id and size faults and holds the brief back
+		// with the rest (partialFindings, add_partial.go), so they are refused
+		// whole only by the all-or-none add
+		if !partial {
+			if why := reservedCardID(id); why != "" {
+				return refuse(stderr, "add", path+": "+why)
+			}
+			if !sprint.ValidID(id) {
+				return refuse(stderr, "add", fmt.Sprintf("%s: the card id is the file's base name without .md, and %q is not one (letters, digits, _ and -)", path, id))
+			}
 		}
 		text, err := readTextFile(path, briefReadCap)
 		if err != nil {
@@ -1511,7 +1516,7 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 		}
 		// an empty file here is linted, and the lint says it once, naming the file
 		briefText := strings.TrimSuffix(text, "\n")
-		if len(briefText) > store.MaxBriefBytes {
+		if !partial && len(briefText) > store.MaxBriefBytes {
 			return refuse(stderr, "add", fmt.Sprintf("%s: the brief is %d bytes, over the %d bytes a brief may be; a brief is a child's whole brief; shorten it", path, len(briefText), store.MaxBriefBytes))
 		}
 		cards = append(cards, sprint.CardAdd{ID: id, Brief: briefText, Needs: uniquify(append(briefNeeds(briefText), extra...)), File: path, Base: swarm.ReadCardBase([]byte(briefText)).Ref, Repo: swarm.ReadCardBase([]byte(briefText)).Named})

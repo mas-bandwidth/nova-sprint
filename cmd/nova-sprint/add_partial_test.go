@@ -1,9 +1,12 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
 // add --partial holds back every brief of the call the checks find a fault in,
@@ -70,6 +73,31 @@ func TestAddPartialAllCleanExitsZero(t *testing.T) {
 	require.Equal(t, 0, code, "exit %d\n%s%s", code, out, errs)
 	require.NotContains(t, out, "HELD ", out)
 	require.Contains(t, out, "ADD OK stream=s1 cards=2 ", out)
+	ta.clean()
+}
+
+// --partial runs the collector over every brief, the id and size-bound checks
+// included: a brief whose file name is not a card id and a brief over the size
+// bound are held with their findings like any other, and the clean brief beside
+// them is admitted in the one write, exit 1 (docs/CLI.md).
+func TestAddPartialHoldsABadIDAndAnOversizeBrief(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	dir := t.TempDir()
+	writeBriefFile(t, dir, "b.2", passingBrief("Fix b.2."))
+	writeNeedsBrief(t, dir, "clean", "Fix clean.", "")
+	writeBriefFile(t, dir, "zbig", passingBrief("Fix zbig.")+strings.Repeat("x", store.MaxBriefBytes))
+	code, out, errs := ta.do("add --stream s1 --brief-dir " + dir + " --partial")
+	require.Equal(t, 1, code, "exit %d\n%s%s", code, out, errs)
+	require.Contains(t, out, "HELD b.2: ", out)
+	require.Contains(t, out, "not a card id", out)
+	require.Contains(t, out, "HELD zbig: ", out)
+	require.Contains(t, out, "over the", out)
+	require.Contains(t, out, "ADD OK stream=s1 cards=1 ", out)
+	var w whereView
+	ta.json("where", &w)
+	require.Equal(t, int64(1), w.All, "only the clean brief lands: %s", out)
 	ta.clean()
 }
 

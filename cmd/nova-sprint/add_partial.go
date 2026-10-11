@@ -200,7 +200,13 @@ func printHeld(cards []sprint.CardAdd, held, heldNeed map[string]string, stdout 
 // PATHS refusal attributed to the first brief, the card lint per brief, then
 // every store check add runs (briefStoreChecks, brief_check.go). It reads only.
 func (a *app) partialFindings(st *store.Store, items []briefItem, stream string, rs ruleSet, allowShared bool, c *common) ([]briefFinding, error) {
+	// the id and size bound first, as brief check runs them: each brief the
+	// checks fault is held back, never refused whole (briefIDSizeFindings,
+	// brief_check.go)
 	var findings []briefFinding
+	for _, it := range items {
+		findings = append(findings, briefIDSizeFindings(it.file, it.id, it.text)...)
+	}
 	if !allowShared {
 		if why := sharedPaths(briefCardsOf(items)); why != "" {
 			findings = append(findings, briefFinding{File: items[0].file, ID: items[0].id, Check: "shared-paths", Why: why, order: chkShared})
