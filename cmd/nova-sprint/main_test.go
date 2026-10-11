@@ -506,7 +506,7 @@ func TestClearByTheCommand(t *testing.T) {
 	ta.json("where", &w)
 	require.Equal(t, uint64(1), w.Epoch, "where after clear: %+v", w)
 	require.Equal(t, int64(0), w.All, "where after clear: %+v", w)
-	require.Equal(t, "waiting", w.Tables["merge"]["s1"]["state"], "where after clear: %+v", w)
+	require.Empty(t, w.Tables["merge"], "where after clear drops the streams: %+v", w)
 	ta.json("where --at-epoch 0", &w)
 	require.Equal(t, uint64(0), w.Epoch, "where at the old epoch: %+v", w)
 	require.Equal(t, int64(2), w.All, "where at the old epoch: %+v", w)
