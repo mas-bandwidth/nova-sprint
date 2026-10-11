@@ -394,7 +394,8 @@ MCLandBisect.cfg	MCLandBisect.tla	pass	-	ignore-terminal	landbisect	required	-
 MCLandBisectBrokenEach.cfg	MCLandBisect.tla	invariant	ProbesBounded	ignore-terminal	landbisect	required	-
 MCLandBisectBrokenFaultBlames.cfg	MCLandBisect.tla	invariant	BlameSound	ignore-terminal	landbisect	required	-
 MCLandBisectBrokenLast.cfg	MCLandBisect.tla	invariant	BlameSound	ignore-terminal	landbisect	required	-
-MCLandBisectBrokenAnyLine.cfg	MCLandBisect.tla	invariant	RefusedOnlyByBench	ignore-terminal	landbisect	required	-
+MCLandBisectBrokenAnyLine.cfg	MCLandBisect.tla	invariant	RefusedOnlyByBenchOrEnv	ignore-terminal	landbisect	required	-
+MCLandBisectBrokenEnvBlames.cfg	MCLandBisect.tla	invariant	BlameSound	ignore-terminal	landbisect	required	-
 MCGateRing.cfg	MCGateRing.tla	pass	-	ignore-terminal	gatering	required	-
 MCGateRingBrokenNoskip.cfg	MCGateRing.tla	invariant	AskedAtMostSkipAfter	ignore-terminal	gatering	required	-
 MCGateRingBrokenLocalwhenremote.cfg	MCGateRing.tla	invariant	NoLocalGoWhenRemote	ignore-terminal	gatering	required	-
@@ -473,6 +474,7 @@ MCRateBudgetProgress.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	requ
 MCRateBudgetBrokenRace.cfg	MCRateBudget.tla	invariant	NeverOverRate	ignore-terminal	ratebudget	required	-
 MCRateBudgetBrokenNoRenew.cfg	MCRateBudget.tla	invariant	NeverOverConcurrent	ignore-terminal	ratebudget	required	-
 MCRateBudgetBrokenNoExpiry.cfg	MCRateBudget.tla	temporal	SlotReclaimed	ignore-terminal	ratebudget	required	-
+MCRateBudgetBrokenKeepSlot.cfg	MCRateBudget.tla	action	AbortedWriteReleasesSlot	ignore-terminal	ratebudget	required	-
 MCDealFill.cfg	MCDealFill.tla	pass	-	ignore-terminal	dealfill	required	-
 MCDealFillBrokenNoAutoclear.cfg	MCDealFill.tla	temporal	FaultHoldClears	ignore-terminal	dealfill	required	-
 MCDealFillBrokenClearPerson.cfg	MCDealFill.tla	action	PersonHoldStays	ignore-terminal	dealfill	required	-
