@@ -111,6 +111,7 @@ func (st *Store) loadOnce(ctx context.Context, tables []string, extras func(*spr
 // the table (loadcache.go), else read whole (the tables read whole share one
 // exchange for their cells' member ids) and kept in the cache.
 func (st *Store) placedRecords(ctx context.Context, tables []string, shapes []ntable.Table) ([]*sprint.Table, error) {
+	// tla/LoadCache.tla Mark, Ids, Records, Keep (the trips of a not-held table)
 	lc := st.loadCache()
 	tbls := make([]*sprint.Table, len(shapes))
 	var whole []ntable.Table
@@ -308,6 +309,7 @@ func (st *Store) shapes(ctx context.Context, stored []string) ([]ntable.Table, e
 // ntable.LimitReadSetMembers records, or a backend that keeps no marks, reads
 // as it did.
 func (st *Store) readInto(ctx context.Context, t *sprint.Table, ids []string, placed bool) error {
+	// tla/LoadCache.tla Records
 	table := st.Names.Table(t.Name)
 	mark, marked := "", false
 	if len(ids) > ntable.LimitReadSetMembers {

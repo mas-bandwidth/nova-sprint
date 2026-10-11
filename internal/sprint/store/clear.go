@@ -33,6 +33,7 @@ type ClearResult struct {
 // refused as stale. The new epoch gets only its own STOPPED announcement
 // (tla/AttemptsEpochs.tla Clear).
 func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
+	// tla/LoadCache.tla Clear
 	var res ClearResult
 	es, err := st.EpochNow(ctx)
 	if err != nil {
