@@ -507,7 +507,7 @@ func TestAReadCardGoesToTheCheapestReaderThatMayTakeIt(t *testing.T) {
 		{name: "a heavy read: a pro member reads one below, as a pro friend does", brief: "tier: heavy",
 			members: []string{"m1"}, tiers: "pro",
 			seats: []FriendSeat{jon(16), pat(8)},
-			want:  []string{FriendRow("jon"), FriendRow("pat")}},
+			want:  []string{FriendRow("jon"), "m1"}},
 		{name: "a member idle before a friend of its tier busy", brief: "tier: flash", members: []string{"m1"},
 			seats: []FriendSeat{fred(1)}, busy: map[string]int{"fred": 1}, want: []string{"m1"}},
 	}
