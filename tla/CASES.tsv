@@ -314,7 +314,7 @@ MCReadsByRoomBrokenTwoFinders.cfg	MCReadsByRoom.tla	invariant	OneBroken	ignore-t
 MCReadsByRoomSequential.cfg	MCReadsByRoom.tla	pass	-	ignore-terminal	readsbyroom	required	-
 MCSprintTables.cfg	MCSprintTables.tla	pass	-	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenDownkeeps.cfg	MCSprintTables.tla	action	WorkingOnAnUpMember	ignore-terminal	sprinttables	required	-
-MCSprintTablesBrokenInsert.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsertOrNeedsset	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenInsert.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsert	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenNeedless.cfg	MCSprintTables.tla	action	NeedsLandFirst	ignore-terminal	sprinttables	required	-
 MCStallLadder.cfg	MCStallLadder.tla	pass	-	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenBound.cfg	MCStallLadder.tla	invariant	NoCardHeldPastBound	ignore-terminal	stallladder	required	-
