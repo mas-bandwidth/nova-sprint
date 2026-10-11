@@ -226,6 +226,11 @@ CONSTANTS
 Tables == {"work", "readers", "merge", "fleet"}
 \* The cards a route serves, or that pin a model: the scenario's (THE ROUTE).
 Served == Scn.served
+\* A card's needs (its DEPENDS-ON): the cards that must have landed before it
+\* is dealt. The scenario names them; a scenario without them has none. A card
+\* whose needs have not landed is never dealt (it stays ready).
+NeedsOf(c) == IF "needs" \in DOMAIN Scn THEN Scn.needs[c] ELSE {}
+NeedsLanded(S, c) == \A d \in NeedsOf(c) : S.col[d] = "landed"
 Three == {"readers", "merge", "fleet"}
 Cols == {"none", "waiting", "ready", "working", "review", "merging", "landed"}
 NoR == "none"
@@ -233,6 +238,13 @@ Min(a, b) == IF a < b THEN a ELSE b
 \* The beat windows a machine misses in a row before it is down
 \* (internal/sprint/presence.go MissedBeatsDown).
 Misses == 3
+\* THE SETTLE BOUND (2026-10-11, the owner's tick design of 2026-10-01): the
+\* settle loop runs sub-ticks until the consumer queue is empty, bound 32.
+\* Reaching the bound is a judgment, not a silent cut: the coordinator is
+\* told the tick did not settle (the Go tick's "tick-settle" quiet at
+\* MaxSettle). The small configs bound the tick at MaxSub (12) steps, below
+\* 32; the bench instance reaches the bound.
+MaxSettle == 32
 \* The classes a bound's takes end with, and the tiers (THE BOUND ACROSS
 \* ATTEMPTS): two of each are enough to tell the same from another.
 BoundClasses == {"noresult", "provider"}
@@ -464,7 +476,7 @@ Release(S, C) ==
 \* The deal: the streams take turns by the stream counter over the streams
 \* with a dealable card; within a stream the lowest position; the machine by
 \* the machine counter over the up machines with room.
-Dealable(S, cand) == {c \in cand : S.col[c] = "ready" /\ ~AtRB(S, c) /\ (c \in Served \/ Broken = "noroute")}
+Dealable(S, cand) == {c \in cand : S.col[c] = "ready" /\ ~AtRB(S, c) /\ NeedsLanded(S, c) /\ (c \in Served \/ Broken = "noroute")}
 UpRoom(S) == {m \in Machines : S.stat[m] = "up" /\
                 (Broken = "nowidth" \/ Room(S, m) > 0)}
 DealOne(S, cand) ==
@@ -685,7 +697,9 @@ Pump(S0) ==
       C2 == IF Broken = "onread" THEN S0.col ELSE S2.col
       S3 == Release(S2, C2)
       cand == IF Broken = "onread" THEN {c \in Cards : S0.col[c] = "ready"} ELSE Cards
-      S4 == Deal(S3, cand)
+      S4 == IF Broken = "noredeal"
+            THEN Deal(S3, cand \ {c \in Cards : Pend("work", "returned", c) > 0})
+            ELSE Deal(S3, cand)
   IN AcceptAll(NoUpJudge(S4, cand))
 
 -----------------------------------------------------------------------------
@@ -693,12 +707,17 @@ Pump(S0) ==
 Update(t) ==
   LET S0 == [Cur EXCEPT !.q[t] = <<>>, !.f0 = IF t = "fleet" THEN 0 ELSE @]
       S1 == Fold(t, S0, Q[t])
-      S2 == IF t = "readers" THEN JudgeStranded(PlaceReads(S1)) ELSE S1
+      S2 == IF t = "readers"
+            THEN JudgeStranded(IF Broken = "asknext" THEN S1 ELSE PlaceReads(S1))
+            ELSE S1
       \* the witness "echo": readers and fleet each tell the other they ran
       S3 == IF Broken = "echo" /\ t = "readers" THEN Put(S2, "fleet", E("echo", "-", "-"))
             ELSE IF Broken = "echo" /\ t = "fleet" THEN Put(S2, "readers", E("echo", "-", "-"))
             ELSE S2
-  IN S3
+      \* the settle bound: a settle sub-tick past MaxSettle addresses the
+      \* coordinator (the tick did not settle), never a silent cut.
+      S4 == IF phase \in {"drain"} /\ sub >= MaxSettle THEN Address(S3) ELSE S3
+  IN S4
 
 Commit(S) ==
   /\ okd' = S.okd /\ ci' = S.ci /\ ret' = S.ret /\ tk' = S.tk /\ rdl' = S.rdl
@@ -763,7 +782,10 @@ DrainWork ==
 
 TickEnd ==
   /\ phase = "drain"
-  /\ Broken = "defer" \/ \A t \in Three : Q[t] = <<>>
+  \* the witness "defer": a dirty bit left for the next tick; the witness
+  \* "cutsettle": the settle loop cut after one sub-tick, the consumer queue
+  \* still holding producers.
+  /\ Broken \in {"defer", "cutsettle"} \/ \A t \in Three : Q[t] = <<>>
   /\ IF addr > 0 \/ Broken = "always"
      THEN notes' = Min(notes + 1, 2) /\ wake' = addr
      ELSE UNCHANGED <<notes, wake>>
@@ -1032,6 +1054,47 @@ ReadsStandOnReadersUp == \A c \in Cards : rd[c] # NoR => stat[rd[c]] = "up"
 EveryRowWithWorkMoves ==
   [][/\ act' = "PumpWork" => PumpDone'
      /\ act' = "TickEnd" => ReadersDone]_vars
+
+\* THE CONSUMERS OUT (2026-10-11, the owner: "after the tick, ALL producer
+\* cards should have consumer cards out. No exceptions."; his tick design of
+\* 2026-10-01: sub-ticks until the consumer queue is empty, bound MaxSettle).
+\* A producer card is one in working or review (the code's "fix" is a working
+\* attempt re-run, not modelled separately); its consumer is, for working, an
+\* attempt held by a member that is up, and for review, its read held by a
+\* reader that is up (up to the one read the model gives each attempt).
+\* ConsumersOut: after the pump every ready card whose needs have landed and
+\* whose tier a free slot serves is dealt in that same tick, and at the tick's
+\* end, after the settle loop, every producer card has its consumer out.
+\* A working card's attempt leaves its machine when its finish or return is on
+\* the way to the pump (the card moves to review or ready the next tick); a
+\* review card's read is done when its verdict is on the way, and a card no
+\* reader may be asked of is judged (cna) or at its bound (bnd) or the tier's
+\* refusal (nrt). The witnesses: "perrow" deals one card a tick (W1);
+\* "cutsettle" cuts the settle loop after one sub-tick; "asknext" asks a read
+\* in the next tick instead of this one; "noredeal" does not re-deal a
+\* member-down's attempts.
+PumpDealsAll ==
+  \A c \in Cards :
+    col[c] = "ready" /\ NeedsLanded(Cur, c) /\ ~AtRB(Cur, c) /\ c \in Served =>
+      ~\E m \in Machines : stat[m] = "up" /\ RoomNow(m) > 0
+WorkingConsumerOut ==
+  \A c \in Cards :
+    col[c] = "working" =>
+      \/ \E m \in Machines : c \in mc[m] /\ stat[m] = "up"
+      \/ Pend("work", "finished", c) > 0 \/ Pend("work", "returned", c) > 0
+ReviewConsumerOut ==
+  \A c \in Cards :
+    col[c] = "review" /\ ~bnd[c] /\ ~okd[c] /\
+    Pend("work", "readok", c) = 0 /\ Pend("work", "broken", c) = 0 =>
+      rd[c] # NoR \/ cna[c] \/ nrt[c]
+ConsumersOut ==
+  [][/\ act' = "PumpWork" => PumpDealsAll'
+     /\ act' = "TickEnd" => WorkingConsumerOut' /\ ReviewConsumerOut']_vars
+\* THE SETTLE BOUND IS A JUDGMENT: a tick whose settle loop reaches the bound
+\* addresses the coordinator (the Go tick's "tick-settle" quiet), never a
+\* silent cut. The small configs bound the tick at MaxSub (12) below the bound;
+\* the bench instance (dirtytick-bench/MCDirtyTickFull.cfg) reaches it.
+SettlesJudged == [][act' = "TickEnd" /\ sub >= MaxSettle => addr > 0]_vars
 
 \* THE WAKE: once, at the tick's end, with the count, and never for nothing.
 OneWakePerTick == notes <= 1

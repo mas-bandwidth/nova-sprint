@@ -326,6 +326,11 @@ MCWhoPreferenceOnlyWrong.cfg	MCWhoPreference.tla	invariant	OnlyToItsFriend	ignor
 MCWhoPreferenceRebalanceStarted.cfg	MCWhoPreference.tla	action	NoStartedCardMoves	ignore-terminal	whopreference	required	-
 MCWhoPreferenceRebalanceTiers.cfg	MCWhoPreference.tla	invariant	RebalancedAdmitted	ignore-terminal	whopreference	required	-
 MCDirtyTickRefused.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
+MCDirtyTickConsumers.cfg	MCDirtyTickConsumers.tla	pass	-	ignore-terminal	dirtytick	required	-
+MCDirtyTickConsumersPerrow.cfg	MCDirtyTickConsumers.tla	action	ConsumersOut	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickConsumersCutSettle.cfg	MCDirtyTickConsumers.tla	action	ConsumersOut	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickConsumersAskNext.cfg	MCDirtyTickConsumers.tla	action	ConsumersOut	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickConsumersNoRedeal.cfg	MCDirtyTickConsumers.tla	action	ConsumersOut	ignore-terminal	dirtytick-witnesses	required	-
 MCLandPass.cfg	MCLandPass.tla	pass	-	ignore-terminal	landpass	required	-
 MCLandPassSerial.cfg	MCLandPass.tla	pass	-	ignore-terminal	landpass	required	-
 MCLandPassLive.cfg	MCLandPass.tla	pass	-	ignore-terminal	landpass	required	-
