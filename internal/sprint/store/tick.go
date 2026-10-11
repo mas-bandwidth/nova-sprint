@@ -1176,13 +1176,17 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	// members whose machine record it read as gone (sprint.TickRetireAbsent): a
 	// row is the table layer's, outside any batch, so its delete is a write of its
 	// own (DropMembers), each conditional on the control card still being off the
-	// table; the reader reader-<old> goes with it. Nothing is deleted when the
-	// inventory could not be read (inventoryRead false): never act on a missing read.
+	// table; the reader reader-<old> goes with the row it names, never before it.
+	// DropMembers returns the rows it actually deleted: a row still draining (its
+	// control card on the table) is not among them and keeps its reader until the
+	// tick its set is empty. Nothing is deleted when the inventory could not be
+	// read (inventoryRead false): never act on a missing read.
 	if inventoryRead && len(retiring) > 0 {
-		if _, err := st.DropMembers(ctx, machines); err != nil {
+		deleted, err := st.DropMembers(ctx, machines)
+		if err != nil {
 			st.stats().note("retiring the fleet rows of the machines the inventory no longer names: " + err.Error())
 		}
-		if err := st.DropReadersRetired(ctx, retiring); err != nil {
+		if err := st.DropReadersRetired(ctx, deleted); err != nil {
 			st.stats().note("retiring the reader rows of the machines the inventory no longer names: " + err.Error())
 		}
 	}
