@@ -429,8 +429,11 @@ MCSeatHookBrokenSilentDrop.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-termin
 MCSeatHookBrokenStrictCadence.cfg	MCSeatHook.tla	temporal	HookStays	ignore-terminal	seathook	required	-
 MCStopReturnBrokenNoSettleByBeat.cfg	MCStopReturn.tla	temporal	AbsentJobSettles	ignore-terminal	stopreturn	required	-
 MCProviderBudget.cfg	MCProviderBudget.tla	pass	-	ignore-terminal	providerbudget	required	-
+MCProviderBudgetBrokenClear.cfg	MCProviderBudget.tla	action	FleetUpRefusesUncleared	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenNewMember.cfg	MCProviderBudget.tla	action	NewMemberProbed	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenNoPush.cfg	MCProviderBudget.tla	action	FaultClearsOnPush	ignore-terminal	providerbudget	required	-
+MCProviderBudgetBrokenNoenv.cfg	MCProviderBudget.tla	action	EnvOnlyByEnvironmentFinish	ignore-terminal	providerbudget	required	-
+MCProviderBudgetBrokenNodeal.cfg	MCProviderBudget.tla	action	HeldDealtNothing	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenStale.cfg	MCProviderBudget.tla	action	JudgmentNamesTheCause	ignore-terminal	providerbudget	required	-
 MCReadyOver.cfg	MCReadyOver.tla	pass	-	ignore-terminal	readyover	required	-
 MCReadyOverBrokenMerge.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-

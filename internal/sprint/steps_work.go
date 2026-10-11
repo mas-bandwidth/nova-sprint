@@ -2549,7 +2549,7 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			// a member the sprint does not know runs its own probe (the push-credential
 			// probe, the harness check) before its width is accepted: no probe or a failed
 			// one refuses it, so a machine joining without the push credential never gets
-			// width (the owner, 2026-10-11; tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+			// width (the owner, 2026-10-11; tla/ProviderBudget.tla, NewMemberProbed).
 			// init bootstraps a fleet by passing EnvProbePassed for each member it sets up.
 			why := "its own probe has not passed: " + EnvProbeLine(r.Member)
 			if r.Probe != "" {
