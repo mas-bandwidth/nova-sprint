@@ -710,10 +710,10 @@ func TestMachineCoverRelease(t *testing.T) {
 }
 
 // TestMachineCoverClear covers Clear (machine.go:302): the machine is
-// STOPPED, the epoch advanced once, every table empty with the streams'
-// rows kept waiting, the members with their status and no work, the
-// judgments and the fence empty, and the coordinator kept. A second row
-// clears an untouched New.
+// STOPPED, the epoch advanced once, every table empty (no stream or reader
+// row), the members with their status and no work, the judgments and the
+// fence empty, and the coordinator kept. A second row clears an untouched
+// New.
 func TestMachineCoverClear(t *testing.T) {
 	t.Parallel()
 	full := func() State {
@@ -731,16 +731,14 @@ func TestMachineCoverClear(t *testing.T) {
 		return s
 	}
 	for name, tc := range map[string]struct {
-		s           State
-		wantEpo     uint64
-		wantStreams map[string]Stream
+		s       State
+		wantEpo uint64
 	}{
 		"a full sprint clears to the next epoch": {
 			s: full(), wantEpo: 4,
-			wantStreams: map[string]Stream{"s1": {State: SWaiting}, "b": {State: SWaiting}},
 		},
 		"an untouched sprint clears to epoch one": {
-			s: coverState(), wantEpo: 1, wantStreams: map[string]Stream{},
+			s: coverState(), wantEpo: 1,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -756,10 +754,10 @@ func TestMachineCoverClear(t *testing.T) {
 			assert.Empty(t, got.Open, "the judgments are the new epoch's own")
 			assert.Empty(t, got.Acked)
 			assert.Empty(t, got.Pending, "the fence is the new epoch's own")
-			assert.Equal(t, tc.wantStreams, got.Streams, "the streams keep their rows, waiting")
+			assert.Empty(t, got.Streams, "the streams are the new epoch's own, empty")
 			assert.Equal(t, tc.s.Members, got.Members, "every member keeps its status")
 			assert.Equal(t, tc.s.Order, got.Order)
-			assert.Equal(t, tc.s.Readers, got.Readers)
+			assert.Empty(t, got.Readers, "the readers are the new epoch's own, empty")
 			assert.Equal(t, tc.s.Coordinator, got.Coordinator, "the coordinator is kept")
 		})
 	}
