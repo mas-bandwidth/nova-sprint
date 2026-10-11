@@ -271,3 +271,12 @@ file it wrote; verify names the same `sha256`, and when the two differ it says
 `differences=0` is the proof the tree holds what GitHub holds.
 
 
+## Release acceptance
+
+**TestTheServersLandLoopLandsWhileTheSeatIsUnhooked** (cmd/nova-sprint/landloop_unhooked_test.go): queued accepted cards land with no hook. The server's internal land loop runs whether or not the seat is hooked.
+
+**TestAHandLandIsStillRefusedUntilHooked** (cmd/nova-sprint/landloop_unhooked_test.go): a hand land by the coordinator is still refused until the seat hooks in.
+
+**cmd/nova-sprint/landing_unhooked_functional_test.go** (owner, 2026-10-11): every stall gets a unit and a functional test. Seat hooks in, card is accepted, hook lapses (live-until passes with no prove; measured on the live server 2026-10-11: the hook drops about 15 minutes after each prove and every coordinator verb is refused until a new challenge is answered), card lands anyway within one tick; under 30s, t.Parallel().
+
+

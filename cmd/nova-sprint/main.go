@@ -727,7 +727,7 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 			return nil, err
 		}
 	}
-	if why, byHook, err := coordinatorGate(ctx, st, c); err != nil || why != "" {
+	if why, byHook, err := a.coordinatorGate(ctx, st, c); err != nil || why != "" {
 		if err == nil {
 			err = errors.New(why)
 			if byHook {
@@ -737,6 +737,25 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 		return nil, err
 	}
 	return st, nil
+}
+
+// coordinatorGate is coordinatorOnly, checking the hook gate unless this is
+// the server's internal land loop (a.landLazy set), which must run without the seat hooked.
+func (a *app) coordinatorGate(ctx context.Context, st *store.Store, c common) (why string, byHook bool, err error) {
+	if verbClasses[c.verb] == classCoordinator {
+		why, err := coordinatorsAlone(ctx, st, c)
+		if err != nil || why != "" {
+			return why, false, err
+		}
+	}
+	// The server's internal land loop (landLoop) runs a.land() with a.landLazy=true.
+	// This machine land must run whether or not the seat is hooked.
+	// Hand land by the coordinator still requires the hook.
+	if a.landLazy {
+		return "", false, nil
+	}
+	why, err = hookedIn(ctx, st, c)
+	return why, err == nil && why != "", err
 }
 
 // run is the one entry point: the command line, and the driver, which runs

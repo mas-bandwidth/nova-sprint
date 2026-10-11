@@ -64,7 +64,8 @@
      pass.")
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
-     breaker on the review loop, and a red base pushed to the coordinator.")
+     breaker on the review loop, a red base pushed to the coordinator, and the server's internal land
+     loop exempt from the hook gate.")
    (release "v1.2.15" :status "planned"
     :text "The next small product fixes, one concern each."))
   :items
@@ -2348,4 +2349,20 @@
     the merged data. One id both sides change differently is refused naming it, and a code conflict is
     refused as before. tla/LandLedgers.tla holds CodeConflictNeverLands with three reversed
     witnesses."
-   :origin "hand-landed by a child of the seat, 2026-10-11, from the live land log's refusals")))
+   :origin "hand-landed by a child of the seat, 2026-10-11, from the live land log's refusals")
+  (fix "landing-never-waits-on-the-seats-hook" :release "v1.2.14" :status "planned"
+   :title "The server's internal land loop lands without the seat hooked"
+   :text "The server's own automatic landing of accepted cards is machine work, not a coordinator command.
+    It must run whether or not the seat is hooked. The hook gate is exempted for the server's internal
+    land loop by its identity (a.landLazy set when the loop runs), not by an --as or a flag a caller can
+    pass. A hand land by the coordinator still requires the hook. Tests in cmd/nova-sprint/landloop_unhooked_test.go:
+    TestTheServersLandLoopLandsWhileTheSeatIsUnhooked, TestAHandLandIsStillRefusedUntilHooked, and the
+    functional test cmd/nova-sprint/landing_unhooked_functional_test.go (owner, 2026-10-11: every stall
+    gets a unit and a functional test). docs/SPEC-SPRINT.md names the split between machine landing and
+    coordinator landing."
+   :origin "the v1.2.13 release watch, 2026-10-11 22:45Z: \"LAND IDLE queued=9 was already stalled on v1.2.12
+    from about 21:56Z (last LAND OK) until your re-hook, then it drained\". The server's own land loop runs
+    as the coordinator, so the hook gate refuses it whenever the seat's hook is down (a server restart, a
+    dropped stream, a seat away). Since #99 the loop waits instead of rolling back, but it waits forever,
+    with no bound and no judgment."
+)))
