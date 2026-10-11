@@ -130,6 +130,12 @@ type MemberProbe struct {
 	LinkChanges int    `json:"link_changes"`
 	LinkLast    string `json:"link_last,omitempty"`
 	LinkWhy     string `json:"link_why,omitempty"`
+	// Java is where the loop's PATH finds java, "" when it does not; TLA is whether
+	// /opt/tla/tla2tools.jar is present ("present" or "absent"). SecretNames is the key
+	// names the member's secrets seat holds (nova-secrets names), nil when not measured.
+	Java        string   `json:"java,omitempty"`
+	TLA         string   `json:"tla,omitempty"`
+	SecretNames []string `json:"secret_names,omitempty"`
 }
 
 // MemberTools is every program a member's loop runs a card with, which its loop's PATH must

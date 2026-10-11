@@ -407,6 +407,22 @@
     leave exactly three new cards; a brief the plan refuses at the write is held with its refusal and the
     others land; with every brief clean the exit is 0, as add without the flag."
    :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 1 (the owner, 2026-10-11: \"Whatever you are doing manually now, consider adding tool support for it to nova sprint.\")")
+  (fix "doctor-preflight-checks-member-prerequisites" :release "v1.2.14" :status "planned"
+   :title "doctor --preflight gates a member's prerequisites"
+   :text "The preflight's member check turns the member-env probe's facts into gate rows (area
+    preflight, check members, subject the member): FAIL for a MemberTools tool or a harness its
+    enabled routes launch the loop's PATH does not find, a push credential that does not
+    authenticate, a secrets seat that does not open, a provider key name its enabled routes read
+    that the seat does not hold (the route and the name both named, by name only and never a
+    value), and a member whose installed nova-sprint is older than the release before the
+    candidate's or newer than it; WARN for a host that does not answer, a probe the budget cut,
+    java or /opt/tla/tla2tools.jar absent, a home under the warn bound, and a member held or
+    draining. probeScript and parseProbe gain java with the TLA+ tools' jar and the key names the
+    seat holds (nova-secrets names, never a value). The member-env check without --preflight is
+    unchanged. Tests: a member missing go is FAIL; a route whose key name is absent is FAIL
+    naming both; java absent is WARN; a held member is WARN with its command; a member two
+    releases back is FAIL and one back OK."
+   :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 20; the owner, 2026-10-11")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
