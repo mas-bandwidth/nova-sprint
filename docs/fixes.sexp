@@ -35,6 +35,8 @@
     once while it holds; the tick under its gate at load; holds and approvals read at the current head;
     log --since windows wider than 22 hours; a loaded bench not marked down; a reader-only friend dealt no work; a
     machine fault hold that clears itself.")
+   (release "v1.2.10" :status "shipped" :date "2026-10-11"
+    :text "Cut from main between sprint releases: no deal to a draining member, the dashboard as the live page, main green after the night's landings, and two CI flakes fixed.")
    (release "v1.2.11" :status "planned" :date "2026-10-11"
     :text "Small bug fixes, one concern each, and no model change. They run as cards on v1.2.10 once it is
      adopted, so the sprint dogfoods the release it just cut.")
@@ -852,4 +854,29 @@
   (fix "a-red-base-is-pushed-to-the-coordinator" :release "v1.2.14" :status "planned"
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
-   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")))
+   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+
+(fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
+   :title "doctor reads nova-config from the caller's environment"
+   :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
+   :origin "this card")
+
+  (fix "no-deal-to-a-draining-member" :release "v1.2.10" :status "shipped"
+   :title "No deal to a draining member; a held or draining machine's reader is asked nothing"
+   :origin "PR #84")
+
+  (fix "dashboard-is-the-live-page" :release "v1.2.10" :status "shipped"
+   :title "The dashboard is the live page, byte for byte; the page lock and the card lint hold it"
+   :origin "PR #83")
+
+  (fix "dashboard-comments-name-the-owner" :release "v1.2.10" :status "shipped"
+   :title "The page's comments name the owner as the owner; the lock takes a proven comment-only change"
+   :origin "PR #85")
+
+  (fix "main-green-after-the-night-landings" :release "v1.2.10" :status "shipped"
+   :title "Main green: four semantic conflicts between the night's landings resolved"
+   :origin "PR #87")
+
+  (fix "two-ci-flakes-text-file-busy-and-git-maintenance" :release "v1.2.10" :status "shipped"
+   :title "Two CI flakes: exec'd stubs written under the fork lock, and git's auto maintenance off in tests"
+   :origin "PR #88")))

@@ -100,7 +100,8 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 			exe = os.Executable
 		}
 		if target, err := exe(); err == nil {
-			if rolled, rerr := sprint.CheckRollbackOnLandFailure(target, fmt.Errorf("land failed: %d", code), a.now()); rolled {
+			landErr := &sprint.LandError{Msg: fmt.Sprintf("land failed: %d", code), Code: code}
+			if rolled, rerr := sprint.CheckRollbackOnLandFailure(target, landErr, a.now()); rolled {
 				at := oneline.Field(a.now().Format("15:04:05"))
 				fmt.Fprintf(stdout, "%s SERVER ROLLBACK land failed within switch window; rolled back to previous binary %s.prev\n", at, target)
 			} else if rerr != nil {

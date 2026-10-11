@@ -101,6 +101,16 @@ Seat, tick and fleet fixes: judgments waiting on the seat re-pushed, and a stand
 - **A machine fault hold clears itself once the member is healthy** (shipped). A hold the machine places for a failure (a harness fault, a failed take, or the member going down) is marked held_by=fault and clears itself on the tick once the member beats and has finished a card cleanly since the hold: the machine's down is its fault hold, presence writes the mark and its stamp, and the tick lifts the mark on the clean finish, telling the seat. A hold a person made carries no held_by mark and is never lifted by the machine. TLA+ model DealFill, properties FaultHoldClears and PersonHoldStays, with two reversed witnesses. From: the owner, 2026-10-10: what else is manual that should be automatic from the machine.
 - **A standing judgment is one judgment, pushed once while it holds** (planned). A standing condition is one judgment, keyed by its type and subject, rewritten in place while it holds and pushed again only when its own numbers move. The readers-are-behind judgment is keyed by type and subject (condKey, NReadersBehind), but its rewrite test compared the whole line, review's count included, and review moves every tick as cards flow through it: the tick rewrote and pushed the one judgment every tick while the readers' numbers held (dogfood 2026-10-10: j407, j409, j410 within a minute). notify now compares a material: for the readers behind, the readers' own numbers, never review's count (MaterialWhat, readers_behind.go), so the judgment is pushed once when it rises, again when the readers move, and not for review. From: dogfood 2026-10-10 evening: fleet-only restart; j407, j409, j410 within a minute.
 
+## v1.2.10 (shipped, 2026-10-11)
+
+Cut from main between sprint releases: no deal to a draining member, the dashboard as the live page, main green after the night's landings, and two CI flakes fixed.
+
+- **No deal to a draining member; a held or draining machine's reader is asked nothing** (shipped). From: PR #84.
+- **The dashboard is the live page, byte for byte; the page lock and the card lint hold it** (shipped). From: PR #83.
+- **The page's comments name the owner as the owner; the lock takes a proven comment-only change** (shipped). From: PR #85.
+- **Main green: four semantic conflicts between the night's landings resolved** (shipped). From: PR #87.
+- **Two CI flakes: exec'd stubs written under the fork lock, and git's auto maintenance off in tests** (shipped). From: PR #88.
+
 ## v1.2.11 (planned, 2026-10-11)
 
 Small bug fixes, one concern each, and no model change. They run as cards on v1.2.10 once it is adopted, so the sprint dogfoods the release it just cut.
@@ -109,6 +119,7 @@ Small bug fixes, one concern each, and no model change. They run as cards on v1.
 - **Rested routes must not overflow the fleet table property cap** (planned). Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the tick writes nothing. Use one property for all. From: issue #5210.
 - **A stats tidy succeeds over a fleet of more than 64 rows** (planned). Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a property bound. From: card from the sprint store (2026-10-10).
 - **The worklang parser keeps the done field of a unit** (planned). Unit done reads a field the parser never keeps, so a done unit is never counted. The key is added and sibling skipped keys are checked, with a test. From: issue #3499.
+- **doctor reads nova-config from the caller's environment** (planned). doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials. From: this card.
 
 ## v1.2.12 (planned, 2026-10-11)
 

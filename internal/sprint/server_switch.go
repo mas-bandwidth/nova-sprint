@@ -174,9 +174,18 @@ func ServerRollback(ctx context.Context, target string) error {
 	return nil
 }
 
+// LandError represents a land pass failure with its exit code.
+type LandError struct {
+	Msg  string
+	Code int
+}
+
+func (e *LandError) Error() string { return e.Msg }
+
 // CheckRollbackOnLandFailure checks whether target binary was recently switched with rollback
-// enabled, and if a land failed within the rollback window, rolls back to previous binary
-// (docs/SPEC-SPRINT.md section 14; item 14).
+// enabled, and if a land pass fault (exit 2) occurred within the rollback window, rolls back
+// to previous binary (docs/SPEC-SPRINT.md section 14; item 14). Exit 1 (card's own head failed
+// the tree gate, build or test failure, conflict, lander check) does not trigger rollback.
 func CheckRollbackOnLandFailure(target string, landErr error, now time.Time) (rolledBack bool, err error) {
 	if landErr == nil {
 		return false, nil
@@ -210,6 +219,13 @@ func CheckRollbackOnLandFailure(target string, landErr error, now time.Time) (ro
 		// Window has expired: remove state file, switch is permanent
 		// ignored: clean up state file after rollback window expiry
 		_ = os.Remove(stateFile)
+		return false, nil
+	}
+
+	// Check if this is a pass fault (exit 2) or a card refusal (exit 1)
+	var le *LandError
+	if errors.As(landErr, &le) && le.Code != 2 {
+		// Exit 1 is a card's refusal, not a fault of the pass; do not rollback
 		return false, nil
 	}
 

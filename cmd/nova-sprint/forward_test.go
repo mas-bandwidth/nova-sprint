@@ -89,6 +89,7 @@ func TestWhatTheCoordinatorRunsItself(t *testing.T) {
 		"run":                   {"run"},
 		"tick":                  {"tick"},
 		"fleet sync":            {"fleet", "sync", "--check"},
+		"doctor":                {"doctor"},
 		"a verb with its store": {"add", "--stream", "s1", "--count", "1", "--one", "--redis", "mem:" + filepath.Join(t.TempDir(), "other.twin")},
 		"a read with its store": {"where", "--redis", "mem:" + filepath.Join(t.TempDir(), "other.twin")},
 	} {
