@@ -478,4 +478,15 @@
     at attempt <n>: <what changed>, so the coordinator corrects a running card without waiting for
     review. Only a merging or landed card keeps its brief, with what changes it instead (briefStarted).
     The verb's help and docs/SPEC-SPRINT.md say so."
-   :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine; this card")))
+   :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine; this card")
+
+  (fix "broken-verdict-always-records" :release "v1.2.6" :status "shipped"
+   :title "A broken verdict at the same head always records"
+   :text "Every reader, the coordinator included, records broken on a card in review at any bound: a
+    broken verdict at the same head outweighs any number of oks, so accept never queues the head a
+    reader found broken, ask --another never answers it, and the card goes back to work with the
+    finding (reworked or widened in place) rather than accepted on a fleet ok. In tla/SprintRules.tla
+    the read machine's fixed findings (rdfixed) bound the new rework at the brief's bound, and the
+    reversed witness MCSprintRulesReadsBrokenBoundInside leaves an inside finding at the bound,
+    violating ReworkAtBound."
+   :origin "dogfood 2026-10-10 evening: fleet-only restart")))
