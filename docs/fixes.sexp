@@ -388,4 +388,12 @@
     :title "One column field every reader agrees on"
     :text "Card output carries a single column field so a card's state is not confused with the state of
      its need."
-    :origin "card moved out of the sprint (work record, 2026-10-04)")))
+    :origin "card moved out of the sprint (work record, 2026-10-04)")
+
+  (fix "add-refuses-card-off-sprint-base" :release "v1.2.6" :status "shipped"
+   :title "add and brief refuse a card cut off the sprint's base"
+   :text "Once the coordinator records the sprint's base (set --base, the work table's sprint_base), add and
+    brief refuse a card whose BASE is any other branch outside the promotion stream, exit 2, nothing
+    written; the step holds the same rule against a racing write. With no base recorded, dev alone is
+    refused as before, and the promotion stream keeps its mark."
+   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")))
