@@ -176,6 +176,7 @@ func driftConds(s *Snapshot, r TickReq, f *DriftFacts) (conds []cond, unknown []
 // for each drift that starts, the open one raised again every PassEvery of running time
 // while it holds, and closed when it stops. A type the facts say nothing of keeps its open
 // judgment, and the coordinator's wait on it, as they are: no fact is never a clear.
+// tla/CoordinatorPass.tla Tick
 func TickDrift(s *Snapshot, r TickReq, f *DriftFacts) (Plan, int) {
 	var p Plan
 	conds, unknown := driftConds(s, r, f)
