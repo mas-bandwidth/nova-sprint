@@ -460,4 +460,14 @@
     readerServesTier both say so, no route judgment counts her up, and the TLA+ model ReaderTiers
     carries the held reader beside its reversed witness. A hold with --return also takes back the
     reads asked of her reader row, where a reader up is free to read them."
-   :origin "dogfood 2026-10-10 evening: fleet-only restart")))
+   :origin "dogfood 2026-10-10 evening: fleet-only restart")
+
+  (fix "brief-on-a-working-card" :release "v1.2.6" :status "shipped"
+   :title "A brief replaces a working card's in place, for its next attempt"
+   :text "A card working takes a new brief in place, as one in review does (briefKept, docs/SPEC-SPRINT.md,
+    the brief verb): the brief is stored on the same card, its id, stream, score and needs kept and no
+    twin cut, and the record and the card's next attempt's why read <id> brief edited in place by <actor>
+    at attempt <n>: <what changed>, so the coordinator corrects a running card without waiting for
+    review. Only a merging or landed card keeps its brief, with what changes it instead (briefStarted).
+    The verb's help and docs/SPEC-SPRINT.md say so."
+   :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine; this card")))

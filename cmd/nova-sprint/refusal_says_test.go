@@ -27,13 +27,7 @@ func TestBriefAndReturnOnAWorkingCardSayWhyAndTheRemedy(t *testing.T) {
 	ta.deal(1)
 	ta.ok("start")
 
-	code, _, errs := ta.do("brief a-1 --brief-file " + writeBrief(t, "the new work"))
-	require.Equal(t, 1, code)
-	assert.Contains(t, errs, "REFUSED a-1: a-1 is working: a card working, merging or landed keeps its brief", errs)
-	assert.Contains(t, errs, "; run: nova-sprint drop a-1 --reason '<why>'", "the remedy is in the text, not only in --json: %s", errs)
-	assert.Contains(t, errs, "BRIEF FAILED moved=0 refused=1")
-
-	code, _, errs = ta.do("return a-1 --reason 'suspect of the red batch'")
+	code, _, errs := ta.do("return a-1 --reason 'suspect of the red batch'")
 	require.Equal(t, 1, code)
 	assert.Contains(t, errs, "REFUSED a-1: not merging (it is working)", errs)
 	assert.Contains(t, errs, "; run: nova-sprint card a-1 (its attempt is running: once it finishes (review), accept, rework or drop it), or now: nova-sprint drop a-1 --reason '<why>'",
