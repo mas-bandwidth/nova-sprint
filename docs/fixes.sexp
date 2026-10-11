@@ -882,6 +882,11 @@
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
    :origin "this card")
 
+  (fix "live-reads-systemd-units-and-launch-daemons" :release "v1.2.11" :status "planned"
+   :title "live reads systemd units on Linux and LaunchDaemons on macOS"
+   :text "The live manifest read only ~/Library/LaunchAgents, so a Linux host refused with no agents directory and a loop installed as a system LaunchDaemon was never listed. live now reads the nova-loop-*.service systemd units of the user and system unit directories on Linux, each an interval agent when a .timer sits beside it, and, on macOS, the com.nova.* launchd daemons of /Library/LaunchDaemons too; each agent records its manager (launchd or systemd)."
+   :origin "this card")
+
   (fix "no-deal-to-a-draining-member" :release "v1.2.10" :status "shipped"
    :title "No deal to a draining member; a held or draining machine's reader is asked nothing"
    :origin "PR #84")

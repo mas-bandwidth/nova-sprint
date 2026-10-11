@@ -79,8 +79,8 @@ func adoptLastLine(s string) string {
 func init() {
 	verbClasses["live"] = classRead
 	notServed = append(notServed, "live")
-	verbExit["live"] = "exit codes: 0 the manifest was read (whatever it says: a stale process or a library mismatch is a line, not a failure), 1 the installed nova-sprint or the agents directory could not be read, 2 usage"
-	verbEffect["live"] = "inspection: reads only, writes nothing: the installed nova-sprint's version and inode, the store's function library through nova-redis fn check, the dashboard links, and every com.nova.* launchd agent of this login (its plist, its pid from launchctl print, its running arguments from ps, its executable's inode from lsof); a friend daemon's last beat from nova-friend status"
+	verbExit["live"] = "exit codes: 0 the manifest was read (whatever it says: a stale process or a library mismatch is a line, not a failure), 1 the installed nova-sprint or a named agents directory could not be read, 2 usage"
+	verbEffect["live"] = "inspection: reads only, writes nothing: the installed nova-sprint's version and inode, the store's function library through nova-redis fn check, the dashboard links, every com.nova.* launchd agent of this login read from the agents directory (target gui/<uid>/<label>) and from the daemons directory (target system/<label>) with launchctl print, and, on linux, the nova-loop-*.service systemd units of the user and system unit directories, each read with systemctl show and its running binary's inode from /proc/<pid>/exe; a friend daemon's last beat from nova-friend status"
 }
 
 // liveManifest is what live prints with --json.
@@ -125,11 +125,14 @@ type liveDashboard struct {
 	Current bool   `json:"current"`
 }
 
-// liveAgent is one com.nova.* launchd agent of this login.
+// liveAgent is one com.nova.* launchd agent of this login, or one nova-loop-*
+// systemd unit of this host (docs/SPEC-SPRINT.md, "Adopting a build").
 type liveAgent struct {
-	Label   string   `json:"label"`
-	Plist   string   `json:"plist"`
-	Target  string   `json:"target"` // the launchctl service target, gui/<uid>/<label>
+	Label string `json:"label"`
+	Plist string `json:"plist"`
+	// Manager is the supervisor that runs the agent: launchd, or systemd.
+	Manager string   `json:"manager"`
+	Target  string   `json:"target"` // launchctl gui/<uid>/<label> or system/<label>; systemd user/<unit> or system/<unit>
 	Program []string `json:"program"`
 	// Tool is the nova tool the agent runs (its last nova-* word that is not
 	// the secrets wrap), Binary the path the plist names for it, Role server
@@ -194,8 +197,20 @@ type liveProcess struct {
 
 // liveProbe reads the host; run is exec in production, a fake in a test.
 type liveProbe struct {
-	agentsDir   string // the launchd agents directory, ~/Library/LaunchAgents by default
-	launchctl   string // the launchctl the agents are read with
+	agentsDir  string // the launchd agents directory, ~/Library/LaunchAgents by default
+	daemonsDir string // the launchd daemons directory, /Library/LaunchDaemons by default
+	launchctl  string // the launchctl the agents are read with
+	// userUnitsDir and systemUnitsDir are the systemd unit directories, the
+	// user's ~/.config/systemd/user and /etc/systemd/system; a missing one is
+	// a host with no loops, never a refusal.
+	userUnitsDir   string
+	systemUnitsDir string
+	// procRoot is the procfs root the running inode is read under, "" for
+	// /proc; a test points it at a temporary directory.
+	procRoot string
+	// goos is the platform whose supervisor is read (runtime.GOOS): linux
+	// reads systemd units, any other reads launchd. A test sets it.
+	goos        string
 	binDir      string
 	uid         int
 	redis       string // the store fn check reads, "" for none
@@ -241,17 +256,18 @@ func (p liveProbe) read(ctx context.Context) (liveManifest, error) {
 		}
 		m.Dashboard = append(m.Dashboard, liveDashboard{Link: link, Target: target, Current: target == server})
 	}
-	// a missing agents directory is no answer, never an empty host
-	if fi, err := os.Stat(p.agentsDir); err != nil || !fi.IsDir() {
-		return m, fmt.Errorf("the agents directory %s is not a directory that reads", p.agentsDir)
-	}
-	plists, err := filepath.Glob(filepath.Join(p.agentsDir, "com.nova.*.plist"))
-	if err != nil {
+	// The platform's own supervisor: linux reads systemd units, every other
+	// platform reads launchd (docs/SPEC-SPRINT.md, "Adopting a build"). The
+	// agents directory is read when it is named; on linux it defaults to none,
+	// so a host whose ~/Library/LaunchAgents does not exist is a host with no
+	// launchd agents, never a refusal.
+	if err := p.readAgents(ctx, &m); err != nil {
 		return m, err
 	}
-	sort.Strings(plists)
-	for _, pl := range plists {
-		m.Agents = append(m.Agents, p.agent(ctx, pl))
+	if p.goos == "linux" {
+		p.readSystemd(ctx, &m)
+	} else {
+		p.readDaemons(ctx, &m)
 	}
 	holding := map[int]bool{}
 	for _, pr := range m.Processes {
@@ -396,10 +412,180 @@ func listenOf(args []string) []string {
 	return out
 }
 
-// agent reads one plist and the process launchd holds for it.
-func (p liveProbe) agent(ctx context.Context, plist string) liveAgent {
+// readAgents lists the launchd agents of the agents directory. A named
+// directory that is not there is no answer, never an empty host; an unnamed
+// one (linux's default) is none (docs/SPEC-SPRINT.md, "Adopting a build").
+func (p liveProbe) readAgents(ctx context.Context, m *liveManifest) error {
+	if p.agentsDir == "" {
+		return nil
+	}
+	if fi, err := os.Stat(p.agentsDir); err != nil || !fi.IsDir() {
+		return fmt.Errorf("the agents directory %s is not a directory that reads", p.agentsDir)
+	}
+	plists, err := filepath.Glob(filepath.Join(p.agentsDir, "com.nova.*.plist"))
+	if err != nil {
+		return err
+	}
+	sort.Strings(plists)
+	for _, pl := range plists {
+		label := strings.TrimSuffix(filepath.Base(pl), ".plist")
+		m.Agents = append(m.Agents, p.agent(ctx, pl, fmt.Sprintf("gui/%d/%s", p.uid, label)))
+	}
+	return nil
+}
+
+// readDaemons lists the com.nova.*.plist launchd daemons in the daemons
+// directory, each target system/<label>; a missing daemons directory is no
+// daemons, never a refusal (docs/SPEC-SPRINT.md, "Adopting a build"). A label
+// in both the agents and daemons directory is one agent per file, each with its
+// own target.
+func (p liveProbe) readDaemons(ctx context.Context, m *liveManifest) {
+	if p.daemonsDir == "" {
+		return
+	}
+	if fi, err := os.Stat(p.daemonsDir); err != nil || !fi.IsDir() {
+		return
+	}
+	plists, err := filepath.Glob(filepath.Join(p.daemonsDir, "com.nova.*.plist"))
+	if err != nil {
+		return
+	}
+	sort.Strings(plists)
+	for _, pl := range plists {
+		label := strings.TrimSuffix(filepath.Base(pl), ".plist")
+		m.Agents = append(m.Agents, p.agent(ctx, pl, "system/"+label))
+	}
+}
+
+// readSystemd lists the nova-loop-*.service units of the user and system unit
+// directories, each one agent. A unit directory that is not there is a host
+// with no loops, never a refusal (docs/SPEC-SPRINT.md, "Adopting a build").
+func (p liveProbe) readSystemd(ctx context.Context, m *liveManifest) {
+	for _, src := range []struct{ dir, scope string }{{p.userUnitsDir, "user"}, {p.systemUnitsDir, "system"}} {
+		if src.dir == "" {
+			continue
+		}
+		if fi, err := os.Stat(src.dir); err != nil || !fi.IsDir() {
+			continue
+		}
+		units, err := filepath.Glob(filepath.Join(src.dir, "nova-loop-*.service"))
+		if err != nil {
+			continue
+		}
+		sort.Strings(units)
+		for _, u := range units {
+			m.Agents = append(m.Agents, p.systemdAgent(ctx, u, src.scope))
+		}
+	}
+}
+
+// procPath is the path of a process's exe under the procfs root, /proc by
+// default; a test points procRoot at a temporary directory.
+func (p liveProbe) procPath(pid int) string {
+	root := p.procRoot
+	if root == "" {
+		root = "/proc"
+	}
+	return filepath.Join(root, strconv.Itoa(pid), "exe")
+}
+
+// systemdAgent reads one nova-loop-*.service unit through systemctl and the
+// running binary through /proc: the label is the unit name without .service
+// (what the play passes to systemd_service) and the target scope/<unit>.
+func (p liveProbe) systemdAgent(ctx context.Context, path, scope string) liveAgent {
+	unit := filepath.Base(path)
+	label := strings.TrimSuffix(unit, ".service")
+	a := liveAgent{Label: label, Plist: path, Manager: "systemd", Target: scope + "/" + label, Role: "agent", BeatAge: -1, Listen: []string{}}
+	args := []string{}
+	if scope == "user" {
+		args = append(args, "--user")
+	}
+	args = append(args, "show", unit, "-p", "LoadState,ActiveState,MainPID,ExecStart")
+	if out, err := p.run(ctx, "systemctl", args...); err == nil {
+		facts := systemdFacts(out)
+		a.Loaded = facts["LoadState"] == "loaded"
+		a.PID, _ = strconv.Atoi(facts["MainPID"]) // ignored: no MainPID leaves 0
+		a.Program = execStartWords(facts["ExecStart"])
+	}
+	at := toolAt(a.Program)
+	if at >= 0 {
+		a.Binary = a.Program[at]
+		a.Tool = filepath.Base(a.Binary)
+		a.BinaryInode = inodeOf(a.Binary)
+		a.Installed = a.Binary == filepath.Join(p.binDir, a.Tool)
+		verb := ""
+		if at+1 < len(a.Program) {
+			verb = a.Program[at+1]
+		}
+		switch {
+		case a.Tool == "nova-sprint" && verb == "run":
+			a.Role = "server"
+			a.Listen = listenOf(a.Program[at:])
+		case a.Tool == "nova-friend" && verb == "run":
+			a.Role = "friend"
+		}
+	}
+	if a.PID > 0 {
+		// The running arguments are the unit's ExecStart words and the running
+		// binary's inode is /proc/<pid>/exe's, so the same judge decides.
+		a.Running = strings.Join(a.Program, " ")
+		a.RunInode = inodeOf(p.procPath(a.PID))
+	}
+	if fi, err := os.Stat(strings.TrimSuffix(path, ".service") + ".timer"); err == nil && !fi.IsDir() {
+		a.Interval = true
+	}
+	if at >= 0 {
+		p.judge(&a, at, a.Program)
+	}
+	if a.Role == "friend" {
+		p.friendOf(ctx, &a, at)
+	}
+	return a
+}
+
+// systemdFacts is systemctl show's key=value lines.
+func systemdFacts(out string) map[string]string {
+	facts := map[string]string{}
+	for _, l := range strings.Split(out, "\n") {
+		k, v, ok := strings.Cut(l, "=")
+		if !ok {
+			continue
+		}
+		facts[strings.TrimSpace(k)] = strings.TrimSpace(v)
+	}
+	return facts
+}
+
+// execStartWords is a unit's ExecStart words: the argv[] of systemctl show,
+// with a leading - (ignore failure) or @ (argv[0] override) prefix stripped.
+func execStartWords(s string) []string {
+	i := strings.Index(s, "argv[]=")
+	if i < 0 {
+		if j := strings.Index(s, "path="); j >= 0 {
+			s = s[j:]
+		} else {
+			return nil
+		}
+	} else {
+		s = s[i+len("argv[]="):]
+	}
+	if k := strings.Index(s, " ;"); k >= 0 {
+		s = s[:k]
+	}
+	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "}"))
+	words := strings.Fields(s)
+	if len(words) > 0 {
+		words[0] = strings.TrimLeft(words[0], "-@")
+	}
+	return words
+}
+
+// agent reads one plist and the process its supervisor holds for it; target is
+// the launchctl service target, gui/<uid>/<label> for an agent and
+// system/<label> for a daemon.
+func (p liveProbe) agent(ctx context.Context, plist, target string) liveAgent {
 	label := strings.TrimSuffix(filepath.Base(plist), ".plist")
-	a := liveAgent{Label: label, Plist: plist, Target: fmt.Sprintf("gui/%d/%s", p.uid, label), Role: "agent", BeatAge: -1, Listen: []string{}}
+	a := liveAgent{Label: label, Plist: plist, Manager: "launchd", Target: target, Role: "agent", BeatAge: -1, Listen: []string{}}
 	if b, err := os.ReadFile(plist); err == nil {
 		a.Program = friend.PlistArgs(string(b))
 		facts := plistFacts(string(b))
@@ -632,7 +818,10 @@ func (a *app) cmdLive(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup(name)
 	home := a.getenv("HOME")
 	binDir := fs.String("bin-dir", filepath.Join(home, ".local", "bin"), "the bin directory the build is installed in")
-	agentsDir := fs.String("agents-dir", a.getenv("NOVA_LAUNCH_AGENTS"), "the launchd agents directory read (else NOVA_LAUNCH_AGENTS, else ~/Library/LaunchAgents)")
+	agentsDir := fs.String("agents-dir", a.getenv("NOVA_LAUNCH_AGENTS"), "the launchd agents directory read (else NOVA_LAUNCH_AGENTS, else ~/Library/LaunchAgents on macOS; ignored on linux)")
+	daemonsDir := fs.String("daemons-dir", "/Library/LaunchDaemons", "the launchd daemons directory read on macOS; a missing one is no daemons")
+	userUnitsDir := fs.String("user-units-dir", "", "the systemd user unit directory read on linux (default: ~/.config/systemd/user)")
+	systemUnitsDir := fs.String("system-units-dir", "/etc/systemd/system", "the systemd system unit directory read on linux; a missing one is no loops")
 	launchctl := fs.String("launchctl", "launchctl", "the launchctl the agents are read with")
 	var dash stringList
 	fs.Var(&dash, "dashboard", "a dashboard binary link that should name the installed nova-sprint (repeatable)")
@@ -640,8 +829,16 @@ func (a *app) cmdLive(args []string, stdout, stderr io.Writer) int {
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, name, argErr("takes no words ", err, pos...))
 	}
-	if *agentsDir == "" {
+	// The platform's supervisor is read: systemd units on linux, launchd on
+	// macOS, where the agents directory also defaults. On linux an unnamed
+	// agents directory is none, so a host with no ~/Library/LaunchAgents is a
+	// host with no launchd agents, never a refusal.
+	goos := a.seatOS()
+	if *agentsDir == "" && goos != "linux" {
 		*agentsDir = filepath.Join(home, "Library", "LaunchAgents")
+	}
+	if *userUnitsDir == "" {
+		*userUnitsDir = filepath.Join(home, ".config", "systemd", "user")
 	}
 	// liveProbe runs fn check against the store: credentials come from the
 	// environment (NOVA_SPRINT_REDIS_USER/PASSWORD_ENV), then the recorded
@@ -664,7 +861,9 @@ func (a *app) cmdLive(args []string, stdout, stderr io.Writer) int {
 			pw = getenv(pwEnv)
 		}
 	}
-	p := liveProbe{agentsDir: *agentsDir, launchctl: *launchctl, binDir: *binDir, uid: os.Getuid(), redis: c.redis,
+	p := liveProbe{agentsDir: *agentsDir, daemonsDir: *daemonsDir, launchctl: *launchctl,
+		userUnitsDir: *userUnitsDir, systemUnitsDir: *systemUnitsDir, goos: goos,
+		binDir: *binDir, uid: os.Getuid(), redis: c.redis,
 		user: user, pwEnv: pwEnv, pw: pw, dashboards: dash, run: execAdoptRunner, now: a.now}
 	if fake, ok := liveRunnerOf.Load(a); ok {
 		p.run = fake.(adoptRunner)
