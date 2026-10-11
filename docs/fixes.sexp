@@ -1421,6 +1421,11 @@
    :text "Models only, no product change. tla/StopReturn.tla pins a STOP lease by <<card, generation>> as the code does (stopOwned reads the return receipt, sfg = d.gen and gen > d.gen), so a returned card moves freely and a hold redeals it at gen+1; a return steps the generation and leaves the receipt, which survives a later move. START's guard is the code's (unsettledStopDebt): a receipt, or a held report named by the row's fresh live set, or a pre-upgrade record's live leases -- Broken \"preupgrade\" writes no stop-issued flag and no debt list at STOP, so START refuses while any live lease remains (MCStopReturnPreUpgrade). Readers-table leases are modelled: STOP captures the readers' reading column as it captures the fleet's working column (activeStopLeases), and a read returns reading -> asked at the next generation with its receipt (stopDebtReturned); a reader's own still-open read counts in the stop-returns count (the owner's lanes still owed), so a live reader lease is never settled by the beat -- it is returned by the owner's own stop-return (MCStopReturnReaders checks the reader model and its invariants, not the beat settle). The invariant NoStaleGenOwned says a lease never owns a card at a generation other than its current one, and the reversed witness MCStopReturnBrokenById (Broken = \"byid\") pins by id again so a card returned at gen+1 is still owned by the lease captured at gen and NoStaleGenOwned fails."
    :origin "this card; v1.2.12 inventory item T13, second of three")
 
+  (fix "tla-stopreturn-clear-cases" :release "v1.2.12" :status "planned"
+   :title "StopReturn clear stops first and refuses an advance over a live lease"
+   :text "Models only, no product change. Clear now takes STOP as its first step from RUNNING, then checks the current work/read leases before advancing, also on a retry while STOPPED. The split preserves a return receipt between STOP and the lease read. ClearEnabled checks reachability from RUNNING and STOPPED with no live lease; ClearNeverWithALiveLease records whether an advance crossed a live lease. MCStopReturnClear passes both; BrokenClearBlocked drops only the live-lease guard and fails ClearNeverWithALiveLease. All stopreturn cases pass inside 110 seconds, preserving the existing safety and liveness assertions. Readers-table leases, generation pinning and settle-by-beat are the pins/readers and settle-by-beat cards, already landed; a beat gone stale between the read and START remains a v1.2.14 candidate, not modelled."
+   :origin "this card, tla-stopreturn-clear-cases.w8, 2026-10-11: v1.2.12 inventory item T13, third of three; drift read at nova-sprint main 00c54ba2e")
+
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
@@ -1499,6 +1504,22 @@
     the skip record) and localwhenremote (the fallback runs the gate here even when remote). Models
     only; no product change."
    :origin "this card; the v1.2.12 inventory items T31 and section 5 (the land stage's gate-slot ring)")
+
+  (fix "tla-landbisect-refusals-beyond-the-bench" :release "v1.2.12" :status "planned"
+   :title "LandBisect models the red batch's refusals beyond the bench"
+   :text "tla/LandBisect.tla (the bisect that blames a red batch's head) refused the batch only on a
+    bench fault, but the code's bisect also refuses when a tip was not recorded, a git diff or reset
+    failed, a gate was cancelled, or a remote bench never ran the gate, each blaming no head. The
+    module gains envfail and an Env action for those environment refusals, and RefusedOnlyByBench is
+    restated RefusedOnlyByBenchOrEnv (faulted \\/ envfail); BlameSound still holds. Env refuses at
+    every stage the code does: before the search probes (a missing tip, the initial diff), during it,
+    and after the search narrowed to one head (a failed final reset), so a one-head batch can be
+    refused too, and it never counts as a gate, so ProbesBounded keeps its meaning. A new reversed
+    witness, Broken \"envblames\" (MCLandBisectBrokenEnvBlames.cfg), lets an environment refusal blame
+    the head it was about to probe and fails BlameSound; MCLandBisectBrokenAnyLine still fails
+    RefusedOnlyByBenchOrEnv. landgo.go's ringGate, gateOn and benchFault gain comment lines citing the
+    module. Models only; no product change."
+   :origin "this card; v1.2.12 inventory item T19, drift read at nova-sprint main 00c54ba2e 2026-10-11")
 
   (fix "tlc-runs-inside-the-job-wall" :release "v1.2.12" :status "planned"
    :title "TLC runs inside the job wall"
