@@ -23,9 +23,9 @@ func TestLandedSinceProtectedBranches(t *testing.T) {
 
 	// Card on main (protected) - should NOT be counted
 	mainCard := &sprint.Card{
-		ID:   "main-card",
-		Row:  "s1",
-		Col:  sprint.Landed,
+		ID:    "main-card",
+		Row:   "s1",
+		Col:   sprint.Landed,
 		Score: 0,
 		Fields: map[string]string{
 			"primary": "main-card",
@@ -37,9 +37,9 @@ func TestLandedSinceProtectedBranches(t *testing.T) {
 
 	// Card on dev (protected) - should NOT be counted
 	devCard := &sprint.Card{
-		ID:   "dev-card",
-		Row:  "s1",
-		Col:  sprint.Landed,
+		ID:    "dev-card",
+		Row:   "s1",
+		Col:   sprint.Landed,
 		Score: 0,
 		Fields: map[string]string{
 			"primary": "dev-card",
@@ -51,9 +51,9 @@ func TestLandedSinceProtectedBranches(t *testing.T) {
 
 	// Card on sprint branch - SHOULD be counted
 	sprintCard := &sprint.Card{
-		ID:   "sprint-card",
-		Row:  "s1",
-		Col:  sprint.Landed,
+		ID:    "sprint-card",
+		Row:   "s1",
+		Col:   sprint.Landed,
 		Score: 0,
 		Fields: map[string]string{
 			"primary": "sprint-card",
@@ -65,8 +65,8 @@ func TestLandedSinceProtectedBranches(t *testing.T) {
 
 	// Create snapshot
 	s := &sprint.Snapshot{
-		Now:   promotionTime.Add(60 * time.Minute),
-		Work:  work,
+		Now:  promotionTime.Add(60 * time.Minute),
+		Work: work,
 	}
 	s.Work.SetProp("promoted_at", promotionTime.Format(time.RFC3339))
 
@@ -90,10 +90,10 @@ func TestDevBehindProtectedBranches(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		id := "card-" + string(rune('0'+i))
 		c := &sprint.Card{
-			ID:     id,
-			Row:    "s1",
-			Col:    sprint.Landed,
-			Score:  0,
+			ID:    id,
+			Row:   "s1",
+			Col:   sprint.Landed,
+			Score: 0,
 			Fields: map[string]string{
 				"primary": id,
 				"landed":  promotionTime.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
@@ -104,8 +104,8 @@ func TestDevBehindProtectedBranches(t *testing.T) {
 	}
 
 	s := &sprint.Snapshot{
-		Now:   promotionTime.Add(35 * time.Minute),
-		Work:  work,
+		Now:  promotionTime.Add(35 * time.Minute),
+		Work: work,
 	}
 	s.Work.SetProp("promoted_at", promotionTime.Format(time.RFC3339))
 
@@ -128,10 +128,10 @@ func TestDevBehindMixed(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		id := "protected-" + string(rune('0'+i))
 		c := &sprint.Card{
-			ID:     id,
-			Row:    "s1",
-			Col:    sprint.Landed,
-			Score:  0,
+			ID:    id,
+			Row:   "s1",
+			Col:   sprint.Landed,
+			Score: 0,
 			Fields: map[string]string{
 				"primary": id,
 				"landed":  promotionTime.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
@@ -145,10 +145,10 @@ func TestDevBehindMixed(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		id := "sprint-" + string(rune('0'+i))
 		c := &sprint.Card{
-			ID:     id,
-			Row:    "s1",
-			Col:    sprint.Landed,
-			Score:  0,
+			ID:    id,
+			Row:   "s1",
+			Col:   sprint.Landed,
+			Score: 0,
 			Fields: map[string]string{
 				"primary": id,
 				"landed":  promotionTime.Add(time.Duration(20+i) * time.Minute).Format(time.RFC3339),
@@ -159,8 +159,8 @@ func TestDevBehindMixed(t *testing.T) {
 	}
 
 	s := &sprint.Snapshot{
-		Now:   promotionTime.Add(60 * time.Minute),
-		Work:  work,
+		Now:  promotionTime.Add(60 * time.Minute),
+		Work: work,
 	}
 	s.Work.SetProp("promoted_at", promotionTime.Format(time.RFC3339))
 
@@ -181,10 +181,10 @@ func TestDevBehindNoBase(t *testing.T) {
 
 	// Card without base field - should be counted
 	c := &sprint.Card{
-		ID:     "no-base-card",
-		Row:    "s1",
-		Col:    sprint.Landed,
-		Score:  0,
+		ID:    "no-base-card",
+		Row:   "s1",
+		Col:   sprint.Landed,
+		Score: 0,
 		Fields: map[string]string{
 			"primary": "no-base-card",
 			"landed":  promotionTime.Add(10 * time.Minute).Format(time.RFC3339),
@@ -193,8 +193,8 @@ func TestDevBehindNoBase(t *testing.T) {
 	work.Put(c)
 
 	s := &sprint.Snapshot{
-		Now:   promotionTime.Add(60 * time.Minute),
-		Work:  work,
+		Now:  promotionTime.Add(60 * time.Minute),
+		Work: work,
 	}
 	s.Work.SetProp("promoted_at", promotionTime.Format(time.RFC3339))
 
