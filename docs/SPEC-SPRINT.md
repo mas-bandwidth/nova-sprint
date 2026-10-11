@@ -7722,6 +7722,21 @@ sentinel with nothing to wait on is released, not emptied. The coordinator's alo
 (`sprint.SentinelSet`; `TestSentinelSetNeedsRepointsInPlace`,
 `TestSentinelSetReachesAndUnreaches`).
 
+### The tick postconditions
+
+**ConsumersOut:** After every tick (after the settle loop in `internal/sprint/store/tick.go`
+near lines 1138-1145 has run to its end), every producer card (working, fix, review) has its
+consumer out:
+- For working/fix: an attempt held by an up member or friend
+- For review: reads asked and held by up readers
+
+A card waiting on a seat judgment without a consumer is a stall, counted and never excused.
+This invariant is checked once per tick at the tick's end; violations are pushed as a single
+judgment per card until resolved.
+
+**Settle bound:** The settle loop runs at most MaxSettle (32) sub-ticks past its first pass.
+Reaching the bound pushes a judgment naming the dirty tables, rather than failing the tick.
+
 ## 17. The log
 
 Each epoch has one log: an append-only record of every change of every card

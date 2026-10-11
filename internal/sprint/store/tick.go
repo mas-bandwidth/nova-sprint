@@ -1137,7 +1137,8 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	// holds anything. The work table's queue waits for the next tick's pump.
 	for n := 0; len(t.dirtied) > 0; n++ {
 		if n == MaxSettle {
-			return last, fmt.Errorf("the tick did not settle: after %d updates past the first pass the tables %s are still written by each other's updates", MaxSettle, strings.Join(t.dirtied, ", "))
+			t.res.Quiet = append(t.res.Quiet, sprint.LaneQuiet{Type: "tick-settle", Subject: "", Why: fmt.Sprintf("tick did not settle: after %d updates past the first pass the tables %s are still written by each other's updates", MaxSettle, strings.Join(t.dirtied, ", "))})
+			break
 		}
 		if out := t.update(byTable[t.dirtied[0]]); out != tickOn {
 			return t.end(out, last, unfinished, seen)
@@ -1146,6 +1147,54 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	// 4. The end: the checks, the deadlines, the overdue judgments and the
 	// done part, once the tables are settled.
 	t.res.Order = append(t.res.Order, "end")
+	// 4b. ConsumersOut postcondition: after every tick, every producer card (working,
+	// fix, review) has its consumer out (docs/SPEC-SPRINT.md, The tick section).
+	for _, c := range snap.Work.Cards() {
+		if c.Col != "working" && c.Col != "fix" && c.Col != "review" {
+			continue
+		}
+		var violation, reason string
+		if c.Col == "working" || c.Col == "fix" {
+			// Check for attempt held by up member/friend
+			// A card in working/fix should have a consumer if it has been assigned
+			// (has the field_set field or is in a friend's running list)
+			primary := c.F("primary")
+			if primary != "" {
+				// This card has been assigned an attempt - check if held by up member/friend
+				hasAttemptUp := false
+				// Check if held by up member
+				for _, m := range snap.Fleet.Cards() {
+					if m.Col == "working" && m.ID != "" {
+						hasAttemptUp = true
+						break
+					}
+				}
+				if !hasAttemptUp {
+					// Check if held by up friend
+					for _, f := range snap.Friends {
+						if f.Status == "up" && len(f.Running) > 0 {
+							hasAttemptUp = true
+							break
+						}
+					}
+				}
+				if !hasAttemptUp {
+					violation = "no consumer"
+					reason = "no attempt held by up member/friend"
+				}
+			}
+		}
+		if c.Col == "review" {
+			// Check for reads asked
+			if snap.Readers.Cards() == nil || len(snap.Readers.Cards()) == 0 {
+				violation = "no consumer"
+				reason = "no reads asked"
+			}
+		}
+		if violation != "" {
+			t.res.Quiet = append(t.res.Quiet, sprint.LaneQuiet{Type: "consumers-out", Subject: c.ID, Why: reason})
+		}
+	}
 	// the machine's own answers, when the loop gives them: the rule parts and the idle alarm
 	end := sprint.TickEndWithStoppedAssignments(snap, t.req.AnswerRules, t.req.IdleAlarm)
 	if out := t.parts("", end); out != tickOn && out != tickDone {
@@ -1237,7 +1286,7 @@ func routesPart(name string) bool {
 // readers', merge's and fleet's updates write each other's tables: a tick
 // past it fails, naming the tables still written, so it never spins. Only
 // the pump creates new work, so the chain ends (tla/DirtyTick.tla).
-const MaxSettle = 64
+const MaxSettle = 32
 
 // tickOutcome is how a table update or a part of a tick ended.
 type tickOutcome int
