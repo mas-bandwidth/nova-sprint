@@ -104,3 +104,15 @@ func TestAStallRefusesWaitOnlyWhenItNamesACard(t *testing.T) {
 		assert.NotEqual(t, "wait", c.Decision, "the inbox offers no refused wait")
 	}
 }
+
+// A judgment shared by two cards, one of them answered, holds only the other: the count reads
+// each open entry's own subject, never the note's whole list (Stella's read of 2026-10-11).
+func TestAPartlyAnsweredJudgmentCountsOnlyTheCardsStillHeld(t *testing.T) {
+	t.Parallel()
+	w, _ := friendInReview(t, false, "friend amy LAND: done")
+	require.Equal(t, Review, w.state("s1-1"))
+	shared := Note{ID: "j-shared", Kind: Judgment, Type: NReadBroken, Stream: "s1", Primaries: []string{"s1-1", "s1-2"}}
+	// s1-1's entry was answered and closed; s1-2's entry stays open, its note naming both
+	w.s.Open = append(w.s.Open, Open{Key: OpenKey(shared.ID, "s1-2"), Note: shared})
+	assert.Zero(t, CardsHeldByJudgments(w.s), "s1-1 was answered: the open entry holds s1-2 alone, which is not on the work table here")
+}

@@ -5831,17 +5831,24 @@ happen again"). Two rules make it so, the tool and not the seat's discipline:
   review, a card reached its bound, the brief is wrong, a brief defect, blocked on something
   dropped or missing, a friend's report needs a read, repair skipped, returned to review (merge
   stopped), ci red, the five stream-stopped kinds, the fleet's failure (below), and a stall that
-  names a card (`sprint.WaitRefusedWhenItNamesACard`: it holds the card in place). Two kinds
-  still take a wait, each with why (`sprint.WaitAllowedOnACard`): a stall that names no card (a
-  report about a stream or the fleet, nothing held) and sentinel reached (a stop the coordinator
-  placed: pausing is its own purpose). The inbox never offers a wait the judgment refuses
+  names a card (`sprint.WaitRefusedWhenItNamesACard`: it holds the card in place), cannot ask, the
+  base branch is gone, a read branch missing, no route serves the tier, a ready card is not dealt,
+  and a merging card names a base not on origin. The kinds that hold a card are derived from the
+  code (every kind whose decisions offer a verb on a card, and every kind a rework discharges),
+  so a new kind is refused or named an exception. The exceptions, each with why
+  (`sprint.WaitAllowedOnACard`): a stall that names no card, sentinel reached and the fleet is
+  starving (stops the coordinator placed), and the two lateness alarms (a work or read card past
+  its deadline: the card keeps working under its holder and the late rules answer it; a wait
+  quiets the alarm, not the card). The inbox never offers a wait the judgment refuses
   (`TestAStallRefusesWaitOnlyWhenItNamesACard`). `wait` stays the answer to
   the informational kinds: the alarms, the status and presence conditions the tick keeps, a
   lateness (`TestWaitIsRefusedOnACardHoldingJudgment`, `TestEveryKindThatHoldsACardRefusesWait`,
   `TestNoJudgmentOffersADecisionItsVerbRefuses`, `TestWaitByGroupIsRefusedOnFailedWork`,
   `TestWaitByAliasIsRefusedOnFailedWork`, `TestWaitStillWorksOnAnAlarm`).
-- **The fleet's failure is judged at once.** When `RuleSameFailureCards` or more cards first
-  fail the same way, the tick that reworks them raises one sprint-level judgment, `the same
+- **The fleet's failure is judged at once.** When `RuleSameFailureCards` or more cards have
+  recorded the same failure within `RuleFleetWindow` (an hour of running time), in any column
+  but landed and in one tick or one a tick, the tick part `rule fleet failure` raises one
+  sprint-level judgment, `the same
   failure on many cards: the fleet's, not the card's`, naming the failure and the cards, at
   their first failure, never per card; it takes no wait, is acked once its cause is mended, and
   is not raised again for that failure while it is open (`TestASharedFailureIsOneFleetJudgmentAtOnce`).

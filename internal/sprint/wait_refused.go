@@ -38,6 +38,10 @@ var WaitRefused = map[string]string{
 	NCannotAsk:         "add a reader, rework the card, or drop it",
 	NMissingBase:       "rebase the card, or drop it",
 	NReadBranchMissing: "rework it with a fix, drop it, or ack it once its branch is on origin",
+	// a card the deal cannot place, or whose merge base is gone
+	NNoRoute:   "add a route, look at the card, or drop it",
+	NReadyOver: "look at the card and give the deal what it lacks, or drop it",
+	NDeadBase:  "rebase or return the card, or drop it",
 	// a friend's report, a repair the store refused
 	NReportJudgment: "read the report and rework, accept or drop the card",
 	NCIRed:          "rework the card, return it, or drop it; ack it when the red is not the card's",
@@ -63,6 +67,12 @@ var WaitRefused = map[string]string{
 var WaitAllowedOnACard = map[string]string{
 	// a stall that names a card holds it and is refused (WaitRefusedWhenItNamesACard)
 	NStalled: "a stall that names no card on the work table is a report about a stream or the fleet with nothing held; one that names a card refuses wait",
+	// lateness: the card keeps working (or being read) under its holder, and the late rules
+	// answer it (rules.go ruleLate, judgment_rules.go read-late); a wait holds the alarm, not the card
+	NWorkLate: "the card is still working under its holder: the late rule waits, returns or redeals it; a wait quiets the lateness alarm, not the card",
+	NReadLate: "the read is still with its reader: the read-late rule asks another; a wait quiets the lateness alarm, not the card",
+	// the held wave's sentinel, never a card: a stop the coordinator placed
+	NStarving: "names the first held wave's sentinel, a stop the coordinator placed, never a single card",
 	// a deliberate stop: "do more before going on" is the sentinel's own decision
 	NSentinelReached: "a sentinel is a stop the coordinator placed: doing more before going on is its own decision, and its release is a gated cut",
 }
@@ -128,10 +138,10 @@ func CardsHeldByJudgments(s *Snapshot) int {
 		if n.Kind != Judgment || WaitRefusal(n) == "" {
 			continue
 		}
-		for _, sub := range append(n.Subjects(), n.Primaries...) {
-			if s.Work.Placed(sub) != nil {
-				seen[sub] = true
-			}
+		// an open entry is one active subject: a card-level entry holds its own card only (its
+		// note may still name cards answered since; Stella's read of 2026-10-11)
+		if sub := o.Subject(); !n.StreamLevel && s.Work.Placed(sub) != nil {
+			seen[sub] = true
 		}
 		if n.StreamLevel && n.Stream != "" {
 			for _, c := range s.Work.Column(Review, Merging) {

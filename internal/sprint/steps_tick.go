@@ -144,7 +144,7 @@ var TickDecisions = map[string][]string{
 	NBrokenReadsOutrun: {"look at the readers", "raise the read tier", "act"},
 	NReaderBreaks:      {"look at the reader", "act"},
 	NDevBehind:         {"promoted", "wait 30m"}, // promotion.go
-	NNoRoute:           {"route add", "look at the card", "drop", "wait"},
+	NNoRoute:           {"route add", "look at the card", "drop"},
 	// a payment and a key are the owner's: no rework is offered (provider_funds.go)
 	NProviderFunds:  {"ack", "wait"}, // and "funded <provider>", named per provider (providerConds)
 	NProviderLow:    {"ack", "wait"}, // the same
