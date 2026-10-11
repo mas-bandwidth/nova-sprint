@@ -47,6 +47,51 @@ func (a *app) owner(ctx context.Context, st *store.Store) (string, error) {
 	return a.getenv(OwnerEnv), nil
 }
 
+// renewSeatProof answers name's outstanding push check from inside the seat's
+// own session, the way seat pong does, when the folder adapter holds the check
+// the push loop wrote (sprint.AdapterFolder): a busy seat is never locked out by
+// a proof that went stale while it worked, because the next verb the session
+// runs proves the seat itself (docs/SPEC-SPRINT.md, "The push proof"; tla/SeatProof.tla
+// Verb; the owner, 2026-10-10: "PUSH DOWN mid-add"). The nonce is read only from
+// the folder's PROOF-<nonce> filename; when there is no unanswered check it writes
+// nothing. It is the acting seat's own renewal alone: nothing calls it for a name
+// that is not the current holder, so a handover destination is never fabricated.
+func renewSeatProof(ctx context.Context, st *store.Store, name string, now time.Time) bool {
+	rec, ok, err := readPush(ctx, st, name)
+	if err != nil || !ok || rec.Adapter != sprint.AdapterFolder {
+		return false
+	}
+	files, _ := filepath.Glob(filepath.Join(rec.Target, sprint.PushProofFilePrefix+"*"))
+	if len(files) == 0 {
+		return false
+	}
+	nonce := strings.TrimPrefix(filepath.Base(files[0]), sprint.PushProofFilePrefix)
+	next, why := sprint.PushPong(rec, ok, nonce, now)
+	if why != "" {
+		return false
+	}
+	return writePush(ctx, st, next) == nil
+}
+
+// pushGateRenewing is pushGate, and when the gate refuses a stale proof on the
+// folder adapter the seat's own session answers the outstanding check and the
+// gate is asked again (renewSeatProof): a busy seat proves itself on its next
+// verb, and a seat that is truly unreachable is still refused (docs/SPEC-SPRINT.md,
+// "The push proof"; tla/SeatProof.tla Verb, VerbNeverFabricates). It is used only
+// for the acting seat (seatPushed, coordinator.go): a coordinator handover to a
+// destination goes through plain pushGate, so the acting session never answers
+// the destination's outstanding check (tla/SeatProof.tla CoordinatorNeverFabricates).
+func pushGateRenewing(ctx context.Context, st *store.Store, name string, now time.Time) (string, error) {
+	why, err := pushGate(ctx, st, name, now)
+	if err != nil || why == "" || !strings.Contains(why, "past "+sprint.PushProofLive.String()) {
+		return why, err
+	}
+	if !renewSeatProof(ctx, st, name, now) {
+		return why, nil
+	}
+	return pushGate(ctx, st, name, now)
+}
+
 func (a *app) cmdCoordinator(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("coordinator")
 	reason := fs.String("reason", "", "why the seat moves, recorded in the log with who moved it (required)")

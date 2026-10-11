@@ -348,9 +348,14 @@ func TestASeatOnAFolderAdapterIsProvenByItsNonceAndRefusedWithout(t *testing.T) 
 	again := strings.TrimPrefix(filepath.Base(proofs[0]), "PROOF-")
 	require.NotEqual(t, nonce, again)
 	ta.step(sprint.PushAnswerBound + time.Second)
-	ta.refusedPushDown("add --stream s2 --count 1 --one", "last pong is 15m1s old")
-	ta.ok("seat pong " + again)
-	ta.ok("add --stream s2 --count 1 --one")
+	// the seat was busy and the proof went stale: the verb itself answers the
+	// outstanding check (the seat's own session acting) and succeeds, recording
+	// the pong, so a busy seat is never locked out (seat-proof-renews.w4)
+	out = ta.ok("add --stream s2 --count 1 --one")
+	rec, ok, err = readPush(ctx, st, name)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, again, rec.PongOf, "the verb answered the outstanding proof itself")
 
 	// the seat goes to a name the folder reaches, and says so
 	other := "pushproof-folder-b"
@@ -360,6 +365,120 @@ func TestASeatOnAFolderAdapterIsProvenByItsNonceAndRefusedWithout(t *testing.T) 
 	require.NoError(t, writePush(ctx, st, sprint.PushRecord{Name: other, Harness: "claude", Adapter: sprint.AdapterFolder, Target: folder, Nonce: "n1", Sent: now, Proven: now, PongOf: "n1"}))
 	out = ta.ok("coordinator " + other + " --reason 'its folder is proven'")
 	assert.Contains(t, out, "COORDINATOR OK holder="+other+" from="+name+" by="+name+" given adapter=folder proven="+now.UTC().Format(time.RFC3339), out)
+}
+
+// The seat proves itself on its own verb when the proof went stale while it
+// worked and the push loop is up (the owner, 2026-10-10: "PUSH DOWN mid-add"):
+// the folder holds a check the push loop wrote and nothing answered, so the
+// verb the session runs answers it itself and records the pong, the way seat
+// pong would; a seat that is truly unreachable, with no outstanding check to
+// answer, is still refused.
+func TestASeatVerbAnswersItsOwnStaleProof(t *testing.T) {
+	t.Parallel()
+	const name = "pushproof-renew"
+	ta, _ := pushProofSprint(t, name)
+	pushTests.Store(name, pushArmedOnly{}) // the real adapter: the folder
+	ctx := context.Background()
+	ta.ok("init --readers reader-a,reader-b --members m1,m2 --owner glenn")
+	st, err := ta.a.store(common{redis: "mem:0", actor: name})
+	require.NoError(t, err)
+	home, err := ta.a.home()
+	require.NoError(t, err)
+	folder := filepath.Join(home, name+"-working", "inbox", "sprint-judgments")
+	require.NoError(t, os.MkdirAll(folder, 0o755))
+	ta.ok("seat install --redis 127.0.0.1:6381 --harness claude --target " + folder)
+
+	// the push loop proves the seat once
+	src := &storeSource{st: st, redis: "mem:0"}
+	var said bytes.Buffer
+	ta.a.prove(ctx, src, name, false, &said)
+	proofs, err := filepath.Glob(filepath.Join(folder, "PROOF-*"))
+	require.NoError(t, err)
+	require.Len(t, proofs, 1)
+	nonce := strings.TrimPrefix(filepath.Base(proofs[0]), "PROOF-")
+	ta.ok("seat pong " + nonce)
+
+	// the loop writes the next check and the seat is busy: it goes unanswered
+	// and the proof goes stale past its 15m bound
+	ta.step(sprint.PushProofEvery)
+	ta.a.prove(ctx, src, name, false, &said)
+	proofs, err = filepath.Glob(filepath.Join(folder, "PROOF-*"))
+	require.NoError(t, err)
+	require.Len(t, proofs, 1)
+	again := strings.TrimPrefix(filepath.Base(proofs[0]), "PROOF-")
+	require.NotEqual(t, nonce, again)
+	ta.step(sprint.PushAnswerBound + time.Second)
+
+	// the seat's own verb answers the outstanding check and succeeds, recording
+	// the pong
+	out := ta.ok("add --stream s1 --count 2")
+	assert.Contains(t, out, "ADD OK stream=s1 cards=2")
+	rec, ok, err := readPush(ctx, st, name)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, again, rec.PongOf, "the verb answered the outstanding proof itself")
+	assert.True(t, sprint.PushLive(rec, true, ta.a.now()), "the seat is live again")
+
+	// with no push loop up -- the last check answered but stale, no new one
+	// written -- the seat is truly unreachable and the verb is still refused
+	ta.step(sprint.PushProofLive + time.Second)
+	ta.refusedPushDown("add --stream s2 --count 1 --one", "last pong is 15m1s old")
+}
+
+// The renewal is confined to the acting seat: a coordinator handover to a
+// destination checks the destination with plain pushGate, so a destination whose
+// session never answered is still refused even when a stale PROOF-<nonce> sits in
+// its folder (tla/SeatProof.tla CoordinatorNeverFabricates; the finding, 2026-10-10:
+// the current session must not answer on the destination's behalf).
+func TestACoordinatorHandoverDoesNotRenewTheDestination(t *testing.T) {
+	t.Parallel()
+	const name = "pushproof-holder"
+	ta, _ := pushProofSprint(t, name)
+	pushTests.Store(name, pushArmedOnly{}) // the real adapter: the folder
+	ctx := context.Background()
+	ta.ok("init --readers reader-a,reader-b --members m1,m2 --owner glenn")
+	st, err := ta.a.store(common{redis: "mem:0", actor: name})
+	require.NoError(t, err)
+	home, err := ta.a.home()
+	require.NoError(t, err)
+
+	// the acting seat is proven
+	holderFolder := filepath.Join(home, name+"-working", "inbox", "sprint-judgments")
+	require.NoError(t, os.MkdirAll(holderFolder, 0o755))
+	ta.ok("seat install --redis 127.0.0.1:6381 --harness claude --target " + holderFolder)
+	src := &storeSource{st: st, redis: "mem:0"}
+	var said bytes.Buffer
+	ta.a.prove(ctx, src, name, false, &said)
+	proofs, err := filepath.Glob(filepath.Join(holderFolder, "PROOF-*"))
+	require.NoError(t, err)
+	require.Len(t, proofs, 1)
+	ta.ok("seat pong " + strings.TrimPrefix(filepath.Base(proofs[0]), "PROOF-"))
+
+	// the destination's folder holds a check the push loop wrote but the
+	// destination's session never answered: its record is stale with an older pong
+	dest := "pushproof-dest"
+	pushTests.Store(dest, pushArmedOnly{})
+	t.Cleanup(func() { pushTests.Delete(dest) })
+	destFolder := filepath.Join(home, dest+"-working", "inbox", "sprint-judgments")
+	require.NoError(t, os.MkdirAll(destFolder, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(destFolder, "PROOF-deadbeefdeadbeef"), []byte("check"), 0o600))
+	now := ta.a.now()
+	stale := now.Add(-sprint.PushProofLive - time.Second)
+	require.NoError(t, writePush(ctx, st, sprint.PushRecord{
+		Name: dest, Harness: "claude", Adapter: sprint.AdapterFolder, Target: destFolder,
+		Nonce: "deadbeefdeadbeef", Sent: stale, Proven: stale, PongOf: "prevnonce",
+	}))
+
+	// the handover must refuse the destination: the acting seat never answers on
+	// its behalf, and nothing is renewed
+	code, _, errs := ta.do("coordinator " + dest + " --reason r")
+	require.Equal(t, 2, code, errs)
+	assert.Contains(t, errs, "coordinator REFUSED: PUSH DOWN: "+dest, errs)
+	assert.Equal(t, name, ta.holder(), "the seat did not move")
+	rec, ok, err := readPush(ctx, st, dest)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, "prevnonce", rec.PongOf, "the destination's proof was not renewed")
 }
 
 // The folder is the only source of the proof nonce (SPEC-SPRINT, "The push proof").
