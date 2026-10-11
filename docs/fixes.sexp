@@ -823,6 +823,20 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
+   :title "Cover the gc loop and the backup --out refusals"
+   :text "New unit tests in cmd/nova-sprint, tests and models only, no product change:
+    gc_loop_behaviour_test.go drives (a *app) gcLoop inside testing/synctest (nothing before
+    gcLoopFirst, the local machine's first run with why=first and its class and summary lines
+    prefixed, no second local run within the hour, the inventory failure said once and again
+    only after a round that answered, a cancelled context ends the loop), and
+    backup_out_refusals_test.go breaks one field per test of (b *backupOut) run (a --out that
+    is a regular file, a source that gives no dump, xz or split /bin/false, no throwaway
+    store, a twin restoring other counts, no secret scan seat, a source with no state reader
+    compared on counts only, an existing empty --out replaced). gcLoop 0.0 to 88.9 percent,
+    backupOut.run 72.1 to 77.5."
+   :origin "this card")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
