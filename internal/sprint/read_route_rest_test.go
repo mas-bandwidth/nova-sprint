@@ -31,19 +31,22 @@ func readRouteRestWorld(t *testing.T) *world {
 	return w
 }
 
-// readRouteEnded puts one ended take record on the fleet table for route, as a withdrawn
-// card's provider take, so the rest rules read it (routeEnds, RestsDue).
-func readRouteEnded(w *world, id, route, err string, at time.Time) {
-	take := ProviderTake{Route: route, Finished: stamp(at), Error: err}
+// readRouteRateLimited puts one rate-limited take record on the fleet table for route, as a
+// withdrawn card's take, so the rest rules read it (rateBackoffs, RestsDue): the first route
+// of the rotation backs off its rate limit, so it rests at s.Now.
+func readRouteRateLimited(w *world, id, route string, at time.Time) {
+	take := ProviderTake{Route: route, Finished: stamp(at),
+		Error: "provider: class=rate-limited status=429 msg=Too many requests"}
 	w.s.Fleet.Put(&Card{ID: id, Row: "m1", Col: Withdrawn,
-		Fields: map[string]string{FieldProviderTake + "1": take.String(), FieldRoute: route}})
+		Fields: map[string]string{FieldRateTake + "1": take.String(), FieldRoute: route}})
 }
 
 // TestAReadIsNeverAskedOntoARestingRoute pins that readRouteOf leaves out the routes of the
 // read tier that rest at s.Now while another route of the tier serves, as it leaves out
 // avoid: the ask draws the serving route's fields, never a resting route's. A 3-in-10 rule
-// rest (three transient provider failures in the route's window) and a provider's credit
-// rest (one refused take) both hold the first route of the rotation; the second serves.
+// rest (three transient provider failures in the route's window) and a rate-limit backoff
+// (one rate-limited take record, the dependency rate-limit-never-fails-the-card-v2) both
+// hold the first route of the rotation; the second serves.
 func TestAReadIsNeverAskedOntoARestingRoute(t *testing.T) {
 	t.Parallel()
 	t.Run("a 3-in-10 rest", func(t *testing.T) {
@@ -62,10 +65,10 @@ func TestAReadIsNeverAskedOntoARestingRoute(t *testing.T) {
 			require.Equal(t, "pro-b", c.F(FieldRoute), "a read is never asked onto a resting route while another serves")
 		}
 	})
-	t.Run("a provider's credit rest", func(t *testing.T) {
+	t.Run("a rate-limit backoff", func(t *testing.T) {
 		t.Parallel()
 		w := readRouteRestWorld(t)
-		readRouteEnded(w, "t1", "pro-a", "provider: class=out-of-credit status=402 msg=Insufficient credits", w.s.Now.Add(time.Minute))
+		readRouteRateLimited(w, "t1", "pro-a", w.s.Now.Add(time.Minute))
 		dealReads(t, w, nil)
 		reads := readCardsOf(w, "s1-1")
 		require.NotEmpty(t, reads, "the pro primary is asked its reads")
