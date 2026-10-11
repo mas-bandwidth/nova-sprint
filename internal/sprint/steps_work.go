@@ -1270,6 +1270,14 @@ type TakeReq struct {
 	// Lane is a lane's take (take --as <member> --lane <n>, lane_hold.go LaneTake): the card
 	// lane n of the member's row holds, else one it is given now; 0 is no lane.
 	Lane int
+	// LaneByID says the take names its cards and takes them through the lane's move
+	// (take --as friend.<name> <card>@<gen> [--lane <n>]; docs/SPEC-SPRINT.md, take): each
+	// named card is taken by takeOne, so every guard a take by count holds (the row's seat
+	// and width, the card's route rest, the providers' concurrency budget) holds here too,
+	// and is then stamped as a lane's take stamps the card it is given (laneSet), so on a
+	// friend's row it is her start and the tick never puts it back ready. The verb's
+	// by-count and by-lane forms leave it false.
+	LaneByID bool
 }
 
 // named says the selection names its cards by id.
@@ -1295,6 +1303,9 @@ func liveGen(verb string, c *Card, gens map[string]int) string {
 // tick, every member's row at once); a take by id
 // names one member.
 func Take(s *Snapshot, r TakeReq) Plan {
+	if r.LaneByID {
+		return NamedLaneTake(s, r)
+	}
 	if r.Lane != 0 {
 		return LaneTake(s, r)
 	}
@@ -1320,6 +1331,56 @@ func Take(s *Snapshot, r TakeReq) Plan {
 		p.Refused = append(p.Refused, one.Refused...)
 	}
 	return p
+}
+
+// NamedLaneTake is a take by id through the lane's move (docs/SPEC-SPRINT.md, take): each
+// named card is taken by takeOne, so it is held to the same guards as a take by count (the
+// row's seat and width, the card's live generation, its route rest and the providers'
+// concurrency budget), and is then stamped as a lane's take stamps the card it is given
+// (laneSet: the lane when r.Lane names one, the row's lane heard from now, and on a friend's
+// row her start), so both forms of the verb write working, holder, lane and generation the
+// same way. A name that is not on the row's ready cell is refused as a take by id is; a take
+// naming no card is the lane's own take (LaneTake).
+func NamedLaneTake(s *Snapshot, r TakeReq) Plan {
+	if !named(r.Sel) {
+		return LaneTake(s, r)
+	}
+	if len(Split(r.As)) != 1 {
+		var p Plan
+		for _, id := range r.IDs {
+			p.refuse(id, "a take by id names one member: --as <member>")
+		}
+		return p
+	}
+	one := takeOne(s, r)
+	for i := range one.Units {
+		u := &one.Units[i]
+		c := s.Fleet.Card(u.Key)
+		if c == nil {
+			continue
+		}
+		set, unset := laneSet(s, c, r.As, r.Lane)
+		for j := range u.Changes {
+			e := &u.Changes[j].Entry
+			if e.ID != c.ID {
+				continue
+			}
+			merged := maps.Clone(e.Set)
+			if merged == nil {
+				merged = map[string]string{}
+			}
+			maps.Copy(merged, set)
+			e.Set = nonEmpty(merged)
+			// each field unset once, and never the lane's own: the lane's move sets them
+			all := slices.DeleteFunc(append(slices.Clone(e.Unset), unset...), func(n string) bool { return n == FieldLane || n == FieldLaneAt })
+			slices.Sort(all)
+			e.Unset = unsetPresent(c, slices.Compact(all))
+		}
+		if r.Lane != 0 {
+			u.Moved += " lane=" + laneOf(r.Lane)
+		}
+	}
+	return one
 }
 
 // takeSeat is the width a take for as is held to, or why it takes nothing. A machine
@@ -1409,6 +1470,12 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 	// from every stream alike, never one stream's lowest scores first. Its reads are taken
 	// before its work, a read being at reader priority (priority.go).
 	ready := takeTurns(s.Fleet.Cell(r.As, Ready), slices.Index(s.Members(), r.As))
+	if IsFriendRow(r.As) {
+		// a friend's ready cards are taken in the one order the deal fills her dealt set in
+		// (friendDealtOrder; docs/SPEC-SPRINT.md, rank and take): the ladder (priority), the
+		// stream turns, then work order (rank) — never the order they were dealt in
+		ready = friendDealtOrder(ready, func(c *Card) string { return c.F("stream") }, s.friendWorkRank, nil)
+	}
 	// the providers' concurrency budgets, held at the one writer: the cards this take
 	// moves to working, by provider (rate_budget.go, takeBudgetWhy)
 	planned := map[string]int{}

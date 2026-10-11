@@ -747,6 +747,7 @@ func (m *Member) Stalled() time.Duration {
 // nova-sprint fleet beat measures the machine itself. A reader's is its queue, the verb that
 // is a reader's beat (docs/SPEC-SPRINT.md, the readers), its answer not read. A beat that
 // fails is the error: the next goes at the next interval.
+// tla/LiveRuns.tla Beat
 func (m *Member) Beat() error {
 	m.beatMu.Lock()
 	defer m.beatMu.Unlock()
@@ -1205,6 +1206,7 @@ func (m *Member) takeVerb() string {
 // is neither counted nor begun again. It returns the starts, and, when the store
 // did not answer the verb, what the verb printed (nil otherwise): nothing was
 // taken, and the pass goes on.
+// tla/LiveRuns.tla Take
 func (m *Member) take(q queueOut, held []string, now time.Time, launch func(Packet) bool) (acted int, unanswered []byte) {
 	room := m.width - m.Running()
 	if !m.cfg.Reader {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -28,6 +29,24 @@ func (a *app) cmdDoctorPreflight(ctx context.Context, c common, binary string, s
 	if _, _, err := runShadow(ctx, binary, c.redis, TickDeadline); err != nil {
 		in.ShadowCode = 2
 		in.ShadowText = err.Error()
+	}
+	// the members' link fact (docs/SPEC-SPRINT.md, doctor: member-env and the preflight; the card
+	// doctor-names-a-member-whose-link-flapped): the same probe doctor runs, so a flapping link is
+	// one FAIL row and refuses the switch; a fleet the preflight cannot reach leaves Probes nil
+	// and the links check a WARN. A test with no outside reads none.
+	o := a.outside
+	if o.doctorConfig == nil {
+		o = a.realOutside()
+	}
+	if o.doctorConfig != nil && o.probeMembers != nil {
+		if cfg, err := o.doctorConfig(ctx); err == nil && cfg.Machines != nil {
+			self := ""
+			if o.hostname != nil {
+				self = o.hostname()
+			}
+			tools := func(string) []string { return slices.Clone(sprint.MemberTools) }
+			in.Probes = o.probeMembers(ctx, cfg.Machines, tools, self)
+		}
 	}
 	red := false
 	for _, ch := range sprint.DoctorPreflight(in) {

@@ -562,14 +562,17 @@ receipt in use is friend sync's.
 
 Working on her row means started: a work card working on a friend's row whose
 `started` is not its generation was moved there by no start of hers (her
-finish's next, `friendNext`; a take-back's next, `FriendTake`; a `take --as
-friend.<name>`, which is no start receipt), and the tick, before its deal, puts
-it back `ready` on her row, `taken` and her deadline unset (and its first take,
-when no friend ever started it), its start bound from then (`untaken_since`), one
+finish's next, `friendNext`; a take-back's next, `FriendTake`), and the tick,
+before its deal, puts it back `ready` on her row, `taken` and her deadline
+unset (and its first take, when no friend ever started it), its start bound
+from then (`untaken_since`), one
 line each (`<card> friend.<f>:working -> ready (working with no start of hers:
 it waits ready until she starts it)`; `sprint.friendUnstartedWorking`); one her
-beat names running is stamped started where it is. The friends table's
-`working` is then started cards only.
+beat names running is stamped started where it is. A `take --as friend.<name>`
+is her start: both forms of the verb take the card through the one move
+(`sprint.NamedLaneTake`, `takeOne` then `laneSet`), so it carries `started` and
+the tick never puts it back. The friends table's `working` is then started
+cards only.
 
 A card dealt and not started within the start bound (`friend_start_max`, a
 duration on the work table, default 20 minutes, `Snapshot.FriendStartMax`) of
@@ -583,6 +586,8 @@ that it has not left and who is not herself stuck so, ready on that row at its
 next generation, the friend it left added to `friends_left` so it never goes
 back to her, one line each (`... (not started 20m0s after its deal, and friend
 <name> names no job running)`; `sprint.friendUnstartedLevel`; a hard pin stays).
+The recipient must be dealable (up, with builder role, not marked dealt-no-more,
+and friends work on).
 A card no friend may take stays, and the deadline rule judges it once
 `friend_start_max` plus `FriendReadyMax` has run (`TickDeadlines`). The level's
 own evening leaves the oldest unstarted cards that hold her free lanes to her
@@ -594,8 +599,8 @@ start (`TestAFriendCardIsWorkingOnlyOnceTheFriendStartsIt`,
 `TestFriendSyncCollectsAReportOnACardStillReady`). Not yet built: the
 `collect` verb, `friend reconcile` and her daemon's outbox pass read only cards
 working on her row, so a report on a card still ready waits for friend sync's
-start receipt; and `friendNext`, `FriendTake` and a friend's `take` still move a
-card to working, for the tick to put back.
+start receipt; and `friendNext` and `FriendTake` still move a card to working,
+for the tick to put back.
 
 **A friend takes her own ready cards** (2026-10-05, 11:20 PM: a friend held
 fourteen cards, six of them ready, and could not take one: `take --as
@@ -608,11 +613,23 @@ row into working, by id (`<card>@<gen>`) or by count, as a member takes
 they take a member's working card. Her status and her lanes are her friends
 row's, never a control card's: she takes while she is up (held or down, her
 cards wait ready, and the refusal names why), within her lanes (her width, in either mode; hard, as a member's width: a take past them is refused,
-`friend friend.<name> is at its width`), and a card she takes is taken now and
-carries her deadline (`friendTaken`). A card on another row is refused (`not in
+`friend friend.<name> is at its width`), and a card she takes is taken now,
+carries her start and her deadline (`friendStartSet`, through the one move:
+`take --as friend.<name> <card>@<gen> [--lane <n>]` is `sprint.NamedLaneTake`,
+which takes the named card by `takeOne` — the row's seat and width, the card's
+route rest and the providers' concurrency budget held as a take by count holds
+them — and stamps it with the lane and, on her row, her start). A card on
+another row is refused (`not in
 friend.<name> ready`), a friend not on the roster is refused (`no friend
 <name> on the roster`), and a count take that took fewer than asked says
-why on a NOTE line. The server runs her verbs as `friend.<name>` (the HTTP form,
+why on a NOTE line. A lane of hers (`take --as friend.<name> --lane <n>`) takes
+in rank order: the one order the deal fills her dealt set in (`friendDealtOrder`,
+`FriendLaneOrder`: the priority ladder, then the stream turns, then work order
+within a stream), so a `rank <card> --first` card leads its stream and a
+`critical` card outranks a lower one however late it was dealt; the `LANE` line
+prints the held card's position in the deal's own order (`FriendLaneOrder`),
+not its position in the take, which reads a work card's primary for its current
+level and may move on a new level before the next deal catches the note up. The server runs her verbs as `friend.<name>` (the HTTP form,
 her bus login, no store address of hers: `workerVerb` takes `friend.<name>` as a
 worker's name beside a member's). A card on her row never sits ready with no one
 to take it: her start takes it into working (a friend's card is working once
@@ -2373,9 +2390,13 @@ snapshot it read, and the lifecycle judges the needs against it; a plan
 without it moves nothing waiting to ready. A card is dealt only when every need
 has landed: the deal refuses a ready card with an unlanded need, and the
 lifecycle refuses every move to dealt whose card's recorded needs have not
-landed whatever path asks for it. A brief edit records the needs its
-`DEPENDS-ON:` lines name, and a ready card that gains a need not landed waits
-until it lands (section 3, the brief verb). The lifecycle is judged first on
+landed whatever path asks for it. A card's needs are set at add, by a brief
+edit's `DEPENDS-ON:` lines, or by `needs set` (`needs set <id> (--needs <a,b> | --clear)`, the coordinator's alone, section 11), and nowhere else: `needs set`
+rewrites the brief's needs line and moves the card by this table, so a card
+admitted with the wrong needs is corrected in place, never by a twin. A brief
+edit records the needs its `DEPENDS-ON:` lines name, and a ready card that gains
+a need not landed waits until it lands (section 3, the brief verb). The
+lifecycle is judged first on
 every unit of a plan; the needs rule is then judged against the landings of
 the units the lifecycle kept only, so a landing the lifecycle refuses
 satisfies no need. A work-table move whose expectation names no place is
@@ -2389,7 +2410,11 @@ except by the coordinator.
 A score is given once, at admission. Work cards, read cards and the merge place
 copy it. No move changes it. A reworked primary therefore sits ahead of the
 primaries admitted after it. Only `rank` changes a score, every copy with it,
-and it is the coordinator's decision, receipted.
+and it is the coordinator's decision, receipted. A friend's lane takes her dealt
+set in the deal's own order — the priority ladder, then the stream turns, then
+work order within a stream (`friendDealtOrder`, `FriendLaneOrder`) — never the
+order the cards were dealt in, so a card brought to the front of its stream by
+`rank --first` is the lane's next card.
 
 ## 5. The fleet
 
@@ -5829,7 +5854,9 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   (pkg/swarm `BenchPath`), never the login shell's: every tool of `MemberTools`, sqlite3 among
   them, and the harnesses of its routes; the push
   credential probe; `nova-secrets check` of its seat; free disk; the installed build against the
-  seat's), **lander-loop** (a head the landing refused offered or accepted again at the same
+  seat's; the kernel's link changes in DoctorLinkWindow, where DoctorLinkWarnChanges or more are
+  one WARN, never a FAIL, naming the last kernel line and the remedy, one change is no line, and a
+  fact not measured is no line), **lander-loop** (a head the landing refused offered or accepted again at the same
   head; a card stranded in review with nothing open), **fleet-rows** (a fleet row whose machine
   record is gone is FAIL; fleet sync's other drift is DRIFT), **providers** (each resting
   provider, its balance and the routes it takes), **seat** (the push loop proven within 15
@@ -5853,7 +5880,10 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   FAIL row with its text, and a shadow that passes is one OK row naming the candidate's version.
   The gate's later checks (members, their tools, keys, holds and version; mirrors; links; stable)
   are WARN rows saying "not measured by this build" until their cards land, from one table each
-  later card fills in, so a preflight always says what it did not check. A switch or adopt runs
+  later card fills in, so a preflight always says what it did not check. The links check is filled
+  in when the preflight read the members' probes: a member with DoctorLinkWarnChanges or more link
+  changes in DoctorLinkWindow is one FAIL row (area preflight, check links), so a switch or adopt
+  is refused while its link is flapping, and a member not measured stays a WARN there. A switch or adopt runs
   the frame first, so the coordinator has the same answer as the switch's own shadow, which
   already refuses such a candidate; exit 1 on any FAIL, as doctor does.
 
