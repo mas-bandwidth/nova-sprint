@@ -639,6 +639,7 @@ func TestRedisTeardownLeavesNoKeyAndNothingElse(t *testing.T) {
 	b.startMachine()
 	b.must(AddStep(sprint.AddReq{Stream: "s1", Count: 2}))
 	b.startMachine()
+	b.seedReaders()
 	b.through("s1-1")
 	// keys of no sprint, and keys that look like the sprint's but are not its own
 	foreign := []string{"other:key", "f-stranger", "table:f-work:stranger", "f-sprint-not:fence"}
@@ -657,6 +658,7 @@ func TestRedisTeardownLeavesNoKeyAndNothingElse(t *testing.T) {
 		a.startMachine()
 		a.must(AddStep(sprint.AddReq{Stream: "s1", Count: 2}))
 		a.startMachine()
+		a.seedReaders()
 		a.through("s1-1")
 		require.NoError(t, a.st.B.SetCoordinator(ctx, "tester"))
 	}

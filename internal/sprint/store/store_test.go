@@ -144,6 +144,18 @@ func (h *harness) setup(n int) {
 	h.clean("setup")
 }
 
+// seedReaders puts the harness's readers back into the pinned epoch and beats
+// them up: a clear leaves the new epoch blank (the blank-slate clear carries no
+// reader row into the new epoch), so a test that clears the sprint seeds them
+// again before it deals.
+func (h *harness) seedReaders() {
+	h.t.Helper()
+	pinned, err := h.st.pin(h.ctx)
+	require.NoError(h.t, err)
+	require.NoError(h.t, pinned.B.RowsAdd(h.ctx, h.st.Names.Table(sprint.Readers), []string{"reader-a", "reader-b", "reader-c"}))
+	require.NoError(h.t, h.st.BeatReaders(h.ctx))
+}
+
 // through drives primaries to merging queued.
 func (h *harness) through(ids ...string) {
 	h.t.Helper()

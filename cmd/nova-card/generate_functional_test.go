@@ -4,6 +4,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -11,10 +13,13 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/goenv"
 )
 
@@ -88,7 +93,8 @@ func TestAGeneratedDirectoryIsAdmittedWholeAndItsWavesHold(t *testing.T) {
 	// the seat's name is the role word, as in cmd/nova-swarm's member drive: add holds
 	// every brief to name no coordinator by name (personal-name), and a one-letter
 	// name is a word of any brief
-	env := append(goenv.Clean(os.Environ()), "NOVA_SPRINT_REDIS=mem:"+filepath.Join(t.TempDir(), "twin"), "NOVA_SPRINT_ACTOR=coordinator",
+	twinFile := filepath.Join(t.TempDir(), "twin")
+	env := append(goenv.Clean(os.Environ()), "NOVA_SPRINT_REDIS=mem:"+twinFile, "NOVA_SPRINT_ACTOR=coordinator",
 		// the lander's clones go under the test's own directories (os.UserCacheDir)
 		"HOME="+t.TempDir(), "XDG_CACHE_HOME="+t.TempDir())
 	sprintRun := func(args ...string) (int, string) {
@@ -107,22 +113,13 @@ func TestAGeneratedDirectoryIsAdmittedWholeAndItsWavesHold(t *testing.T) {
 	}
 	code, text := sprintRun("init", "--members", "m1", "--readers", "r1")
 	require.Equal(t, 0, code, text)
-	// the seat is proven before any coordinator verb runs, as the built binary
-	// wants of every name (docs/SPEC-SPRINT.md, "The push proof"): a folder push
-	// target recorded, a check reported delivered, and the session's pong
-	const nonce = "0123456789abcdef"
-	for _, step := range [][]string{
-		{"seat", "push", "--harness", "claude", "--target", t.TempDir()},
-		{"seat", "push", "--sent", nonce},
-	} {
-		code, text = sprintRun(step...)
-		require.Contains(t, []int{0, 1}, code, "nova-sprint %s: %s", strings.Join(step, " "), text) // 1 is PUSH DOWN, not proven yet
-	}
-	code, text = sprintRun("seat", "pong", nonce)
-	require.Equal(t, 0, code, text)
-	code, text = sprintRun("seat", "push")
-	require.Equal(t, 0, code, text)
-	require.Contains(t, text, "PUSH OK name=coordinator")
+	// The built binary runs with the seat's hook gate armed (hook.go), and a twin
+	// has no server to hold the hook the proof now rides (the owner, 2026-10-10:
+	// the hook replaced the push proof's files and seat pong). The test proves the
+	// seat as the server's own proof leaves it: it writes the live, proven hook
+	// record (HookProven) into the twin, and the gate lets the coordinator's verbs
+	// through.
+	seedHook(t, twinFile, "coordinator")
 	code, text = sprintRun("add", "--stream", "s", "--brief-dir", admit)
 	assert.Equal(t, 2, code, "without --allow-shared-paths the cards' shared ledger is refused: %s", text)
 	code, text = sprintRun("add", "--stream", "s", "--brief-dir", admit, "--allow-shared-paths")
@@ -134,4 +131,24 @@ func TestAGeneratedDirectoryIsAdmittedWholeAndItsWavesHold(t *testing.T) {
 	_, text = sprintRun("card", "serial-tests-cmd-a-a")
 	assert.Contains(t, text, "ready")
 	assert.NotContains(t, text, "  needs serial")
+}
+
+// seedHook writes a live, proven hook record for name into a twin file, as the
+// server's own proof does (sprint.HookProven): the test drives the built binary
+// over a twin with no server to hold the hook, and the seat's gate reads the
+// record the server keeps (store.KeySeatHook).
+func seedHook(t *testing.T, twinFile, name string) {
+	t.Helper()
+	doc, err := os.ReadFile(twinFile)
+	require.NoError(t, err, "the twin after init")
+	m := store.NewMem()
+	require.NoError(t, m.Restore(doc))
+	now := time.Now().UTC()
+	rec := sprint.HookProven(sprint.HookRecord{Name: name, Session: name, State: sprint.HookHooked, Since: now}, now)
+	b, err := json.Marshal(rec)
+	require.NoError(t, err)
+	require.NoError(t, m.SetKey(context.Background(), store.KeySeatHook, string(b)))
+	out, err := m.Snapshot()
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(twinFile, out, 0o600))
 }

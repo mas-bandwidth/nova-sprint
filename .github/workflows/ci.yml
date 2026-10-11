@@ -1,6 +1,8 @@
 # nova-sprint CI: build, vet and the unit tier, cut down from nova-tools'
-# ci.yml to this module. GitHub-hosted runners only: nova-tools' self-hosted
-# runners are registered to nova-tools and are not shared with this repository.
+# ci.yml to this module. The unit tier runs on GitHub-hosted runners. The
+# functional tier (job `functional`) is the fleet's to run: it starts throwaway
+# redis-servers and drives a real table layer, so it belongs on the fleet's
+# self-hosted runner, never on hosted minutes.
 name: CI
 
 on:
@@ -65,6 +67,36 @@ jobs:
             git fetch --no-tags --depth=1 origin "${{ github.event.before }}"
           fi
           PAGELOCK_BASE=FETCH_HEAD go test -count=1 -run 'TestThePageLockOnlyGrows' ./internal/sprintdash/
+
+  # functional runs the functional tier (build tag functional) against a real
+  # store for every pull request. It runs on the fleet's self-hosted runner,
+  # never on GitHub-hosted minutes: it starts throwaway redis-servers and drives
+  # a real table layer, and the tier is a per-PR gate now, not a bench's job.
+  # NOVA_CI=1 makes a missing redis-server a failure, never a skip, so a green
+  # run cannot be a run that skipped the store; the runner must have
+  # redis-server on PATH. make functional bounds each package at two minutes
+  # (the standing rule: one ideally, two max; a package over the bound is the
+  # test's defect, never the runner's). The runner's registration is outside
+  # this repository: see the card's report for the exact change owed.
+  functional:
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 20
+    env:
+      NOVA_CI: "1"
+      GIT_CONFIG_PARAMETERS: "'maintenance.auto'='false'"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: redis-server on PATH
+        run: |
+          command -v redis-server >/dev/null || {
+            echo "the functional runner needs redis-server on PATH for the store tests" >&2
+            exit 1
+          }
+      - name: functional tier
+        run: make functional
 
   # tick-gate is the wall-clock gate the split moved out of nova-tools'
   # certification.yml: the dirty tick drive against a real store, every tick

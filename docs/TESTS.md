@@ -22,6 +22,14 @@ a twin file in a temporary directory. The twin counts its operation ids
 tests beside it (`cmd/nova-sprint/*_functional_test.go`) run against a real
 store.
 
+The functional tier runs for every pull request on the fleet's self-hosted
+runner (`.github/workflows/ci.yml`, job `functional`; `make functional`), never
+on GitHub-hosted minutes, and each package is bounded at two minutes: a package
+over that bound is the test's defect, not the runner's. The runner needs
+`redis-server` on PATH, and `NOVA_CI=1` turns a missing `redis-server` into a
+failure rather than a skip, so a green run cannot be a run that skipped the
+store.
+
 ### First run
 
 ```text

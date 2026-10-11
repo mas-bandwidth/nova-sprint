@@ -41,10 +41,9 @@ func TestEveryProducerCard(t *testing.T) {
 
 	do("init", "--members", "m1:4,m2:4,m3:4,m4:4", "--readers", "r1,r2,r3")
 
-	// Add 16 ready cards
-	for i := 1; i <= 16; i++ {
-		do("add", "--stream", "a", "--count", "1")
-	}
+	// Add 16 ready cards in one wave: a single card is refused by design
+	// ("BATCH EVERYTHING"), so the count names all sixteen.
+	do("add", "--stream", "a", "--count", "16")
 	// Beat all members up
 	for i := 1; i <= 4; i++ {
 		do("fleet", "beat", "m"+strconv.Itoa(i))

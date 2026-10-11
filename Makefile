@@ -15,7 +15,7 @@ help:
 	@echo "make build       go build ./..."
 	@echo "make vet         go vet ./..."
 	@echo "make test        go vet ./... and go test -p GOTEST_P ./... (the unit tier)"
-	@echo "make functional  go test -tags functional ./... (needs redis-server on PATH)"
+	@echo "make functional  go test -tags functional ./... (needs redis-server; two minutes per package)"
 	@echo "make roadmap     regenerate ROADMAP.md and FIXES.md from their sexp"
 	@echo "make tlc         run a group on a TLC bench: TLC_JAR, TLC_OUT and TLC_GROUP"
 	@echo "make tlc-full    run a manual group: TLC_JAR, TLC_OUT, TLC_GROUP and an explicit TLC_BUDGET"
@@ -41,8 +41,15 @@ test: vet
 	$(NO_AUTO_MAINTENANCE) $(GO) test -p $(GOTEST_P) -skip '$(TICK_GATE_TEST)' ./...
 	$(NO_AUTO_MAINTENANCE) $(GO) test -count=1 -run '$(TICK_GATE_TEST)' ./internal/sprint/
 
+# the functional tier runs against a real store and needs redis-server on PATH.
+# It runs for every pull request on the fleet's self-hosted runner
+# (.github/workflows/ci.yml). Each package is bounded at two minutes (the
+# standing rule: one ideally, two max): a package over the bound is the test's
+# defect, never the runner's, so the bound is the gate, not a footnote.
+FUNCTIONAL_TIMEOUT := 120s
+
 functional:
-	$(NO_AUTO_MAINTENANCE) $(GO) test -p $(GOTEST_P) -tags functional ./...
+	$(NO_AUTO_MAINTENANCE) $(GO) test -p $(GOTEST_P) -count=1 -timeout $(FUNCTIONAL_TIMEOUT) -tags functional ./...
 
 roadmap:
 	$(GO) run ./tools/roadmap --file docs/roadmap.sexp --out ROADMAP.md
