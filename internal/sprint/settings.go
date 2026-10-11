@@ -661,10 +661,9 @@ func Set(s *Snapshot, r SetReq) Plan {
 	// record of what was said (settings_warn.go, setWarning), whether or not the machine runs:
 	// an off -> on -> off is two warnings, and the tick says nothing again
 	if r.ReadCards != "" || len(alarms) > 0 {
-		props := s.Work.Props()
-		after := map[string]string{}
-		for k, v := range props {
-			after[k] = v
+		after := s.Work.Props() // a copy: the settings as the set leaves them
+		if after == nil {
+			after = map[string]string{}
 		}
 		for _, kv := range kvs {
 			if kv[1] != "" {

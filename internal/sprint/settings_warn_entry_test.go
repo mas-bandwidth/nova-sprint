@@ -31,6 +31,7 @@ func TestACardBackInReviewAtTheSameAttemptBetweenTwoTicksIsWarnedOfAgain(t *test
 	t.Parallel()
 	snap := func(entered string) *Snapshot {
 		s := &Snapshot{Work: NewTable(Work), Coordinator: "boss"}
+		s.Work.SetRows([]string{"s1"})
 		s.Work.SetProps(map[string]string{PropReadCards: SwitchOff})
 		s.Work.Put(&Card{ID: "a", Row: "s1", Col: Review, Rev: 12, Fields: map[string]string{"attempt": "1", FieldReviewEntered: entered}})
 		return s
