@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testgit"
 )
 
 // TestTwoGreenHeadsRedTogetherRefuseTheSecondAsAClash verifies the clash detection
@@ -21,10 +22,10 @@ func TestTwoGreenHeadsRedTogetherRefuseTheSecondAsAClash(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Initialize git repo
+	// Initialize git repo. Every commit below — the base, and each clone's — carries
+	// the shared test identity from testgit in the command's environment, so no repo
+	// or clone leans on a global config the runner may not have.
 	runCmd(t, tmpDir, "git", "init")
-	runCmd(t, tmpDir, "git", "config", "user.email", "test@test.com")
-	runCmd(t, tmpDir, "git", "config", "user.name", "Test User")
 
 	// Create go.mod
 	os.WriteFile(tmpDir+"/go.mod", []byte("module github.com/mas-bandwidth/nova-sprint\n"), 0644)
@@ -136,6 +137,7 @@ func runCmd(t *testing.T, dir, name string, args ...string) {
 	t.Helper()
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
+	cmd.Env = testgit.Environ("GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -147,6 +149,7 @@ func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = testgit.Environ("GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git %v failed: %v", args, err)
