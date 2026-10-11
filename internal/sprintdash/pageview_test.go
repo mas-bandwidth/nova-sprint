@@ -18,11 +18,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The live page's files as the Python server served them on 2026-10-11 (dashboard/live/,
-// read at 03:28Z): the page is that page, byte for byte (pageview.go).
+// The live page's files as the Python server serves them (dashboard/live/, read 2026-10-11 at
+// 03:28Z, its comments since naming the owner as "the owner" there and here alike, a
+// comment-only change): the page is that page, byte for byte (pageview.go).
 const (
-	liveIndexSHA256 = "6a0395ad2788c654ab21bfd59a1eed0617fce9704318bb3727ef64dcae99c781"
-	liveAppSHA256   = "4ac9dc9ba6c4bc832311ab496aea9e79c5a11a3acbf2173a4511bbeb43aa9711"
+	liveIndexSHA256 = "dfd644d676c948bacc1f32461897d699b8a3b09ce64a594abc525eb7446be30c"
+	liveAppSHA256   = "1421928a0c96ac5fa6179a7bf5638199dc1c04843e479619dec3afa327738067"
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )
