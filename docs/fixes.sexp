@@ -459,6 +459,15 @@
      tick writes nothing. Use one property for all."
     :origin "issue #5210")
 
+   (fix "server-refuses-to-run-on-a-store-missing-locked-columns" :release "v1.2.11" :status "planned"
+    :title "The server and its shadow refuse a store missing the locked columns"
+    :text "The live store's fleet table never got finished and redealt (internal/sprint/TABLES.lock, the
+     Change of 2026-10-06), so the adopted v1.2.10 server refused every finish that moved a card to done.
+     run and tick --shadow now check the store's tables against the build's locked definitions before either
+     starts or plans, and refuse with the nova-table commands that mend it; the server switch's shadow tick
+     catches a candidate before the swap."
+    :origin "the coordinator, 2026-10-11, on v1.2.10 (00c54ba): server-refuses-to-run-on-a-store-missing-locked-columns.w1")
+
    (fix "tick-under-its-gate-at-load" :release "v1.2.9" :status "planned"
     :title "The deal builds no per-card route map, so the tick stays under its gate"
     :text "Drain and deal take 0.4 to 0.7 seconds at load, so the tick is over its one-second gate, and the
