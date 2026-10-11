@@ -203,6 +203,15 @@ func (a *app) hookFirst(args []string, stderr io.Writer) (int, bool) {
 		return 0, false
 	}
 	fmt.Fprintln(stderr, why)
+	// the gate's refusal names the server to hook into when neither source names one:
+	// the environment first, else the seat's record (namedServer); a process that is
+	// the server, or a verb with its own store, names one itself. (docs/SPEC-SPRINT.md,
+	// "The server".)
+	if why == sprint.HookFirst && a.serveAddr == "" {
+		if addr, _ := a.namedServer(); addr == "" {
+			fmt.Fprintln(stderr, a.noServerHint())
+		}
+	}
 	return 1, true
 }
 
@@ -761,13 +770,15 @@ func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 	case *ack != 0:
 		return a.hookAsk(c.actor, hookMsg{T: "ack", ID: *ack}, stdout, stderr)
 	}
-	addr := a.getenv(ServerEnv)
+	// the sprint's server the environment names, else the seat's record: the same order
+	// the coordinator's verbs use (forward.go, namedServer). (docs/SPEC-SPRINT.md, "The server".)
+	addr, from := a.namedServer()
 	if addr == "" {
-		return refuse(stderr, name, "the hook is a subscription the sprint's server holds: set "+ServerEnv+"=<host:port> (run --listen prints it); run: "+ServerEnv+"=127.0.0.1:<port> nova-sprint hook")
+		return refuse(stderr, name, a.noServerHint())
 	}
 	ctx, stop := a.notify(context.Background())
 	defer stop()
-	return a.hookHold(ctx, addr, c.actor, stdout, stderr)
+	return a.hookHold(ctx, addr, from, c.actor, stdout, stderr)
 }
 
 // cmdUnhook is nova-sprint unhook: the seat stops, over the running hook's connection;
@@ -881,7 +892,7 @@ func (r *hookRelay) answered(m hookMsg) bool {
 // socket for the session's lines opened, and every line from the server said on stdout,
 // one event per line for the Monitor. Exit 0 after unhook; 1 for any other end, which
 // the server records as gone.
-func (a *app) hookHold(ctx context.Context, addr, name string, stdout, stderr io.Writer) int {
+func (a *app) hookHold(ctx context.Context, addr, from, name string, stdout, stderr io.Writer) int {
 	const verb = "hook"
 	sock, err := a.hookSocket(name)
 	if err != nil {
@@ -966,7 +977,7 @@ func (a *app) hookHold(ctx context.Context, addr, name string, stdout, stderr io
 			}
 			continue
 		}
-		hookSay(stdout, name, m)
+		hookSay(stdout, name, addr, from, m)
 	}
 	if unhooked {
 		fmt.Fprintf(stdout, "HOOK ENDED name=%s: unhooked; the seat is recorded away\n", oneline.Field(name))
@@ -977,11 +988,13 @@ func (a *app) hookHold(ctx context.Context, addr, name string, stdout, stderr io
 }
 
 // hookSay is one line from the server as the Monitor shows it: one event a line, a
-// push's text indented under its line.
-func hookSay(w io.Writer, name string, m hookMsg) {
+// push's text indented under its line. The connected line names the server the hook
+// used and where it was named (addr, from: env or seat-record). (docs/SPEC-SPRINT.md,
+// "The server".)
+func hookSay(w io.Writer, name, addr, from string, m hookMsg) {
 	switch m.T {
 	case "hello":
-		fmt.Fprintf(w, "HOOK CONNECTED name=%s session=%s: not hooked until the challenge below is answered\n", oneline.Field(m.Name), oneline.Field(m.Session))
+		fmt.Fprintf(w, "HOOK CONNECTED name=%s session=%s server=%s from=%s: not hooked until the challenge below is answered\n", oneline.Field(m.Name), oneline.Field(m.Session), oneline.Field(addr), oneline.Field(from))
 	case "challenge":
 		fmt.Fprintf(w, "HOOK CHALLENGE %s: answer now, before anything else: nova-sprint hook --prove %s --actor %s\n", m.Challenge, m.Challenge, oneline.Field(name))
 	case "push":
