@@ -486,6 +486,14 @@
     review. Only a merging or landed card keeps its brief, with what changes it instead (briefStarted).
     The verb's help and docs/SPEC-SPRINT.md say so."
    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine; this card")
+  (fix "personal-name-check-exempts-paths" :release "v1.2.6" :status "shipped"
+   :title "The personal-name check exempts names inside file paths"
+   :text "The card's personal-name check refuses a brief whose SOURCE or PATHS line contains a name of the
+    deployment outside a double-quoted span. A name inside a file path (a whitespace-separated token
+    containing a slash or ending in .md) is fine; only names in prose are refused. Before this fix, a
+    name in a path triggered the check, so a brief like 'See /home/ada/projects/' was refused, and a
+    line mixing a path with prose on the same line was incorrectly allowed."
+   :origin "dogfood 2026-10-10: add refused briefs over a path segment")
 
    (fix "machine-fault-hold-clears-when-healthy" :release "v1.2.9" :status "shipped"
     :title "A machine fault hold clears itself once the member is healthy"
