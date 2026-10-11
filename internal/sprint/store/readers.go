@@ -302,10 +302,17 @@ func ReadReaderTiers(ctx context.Context, st *Store) (map[string]string, error) 
 	return result, nil
 }
 
+// commonTierResult holds the result of computing a common fleet tier for a new reader.
+type commonTierResult struct {
+	Tier     string
+	HasOther bool
+	Differ   bool
+}
+
 // CommonFleetTierForAdd returns the common fleet tier for new fleet readers being
 // added. It returns the common tier if all other fleet readers share the same
-// non-empty tiers; otherwise returns "".
-func CommonFleetTierForAdd(ctx context.Context, st *Store, names []string) string {
+// non-empty tiers; otherwise returns empty with reason info.
+func CommonFleetTierForAdd(ctx context.Context, st *Store, names []string) commonTierResult {
 	// Check if any of the named readers are fleet readers.
 	anyFleet := false
 	for _, n := range names {
@@ -315,12 +322,12 @@ func CommonFleetTierForAdd(ctx context.Context, st *Store, names []string) strin
 		}
 	}
 	if !anyFleet {
-		return ""
+		return commonTierResult{}
 	}
 	// Load all readers to get their tiers.
 	readerTiers, err := ReadReaderTiers(ctx, st)
 	if err != nil {
-		return ""
+		return commonTierResult{}
 	}
 	// Collect tiers of other fleet readers (not being added now).
 	otherTiers := []string{}
@@ -341,5 +348,12 @@ func CommonFleetTierForAdd(ctx context.Context, st *Store, names []string) strin
 		}
 		otherTiers = append(otherTiers, t)
 	}
-	return sprint.CommonFleetTier(otherTiers)
+	if len(otherTiers) == 0 {
+		return commonTierResult{HasOther: false}
+	}
+	tier := sprint.CommonFleetTier(otherTiers)
+	if tier == "" {
+		return commonTierResult{HasOther: true, Differ: true}
+	}
+	return commonTierResult{Tier: tier, HasOther: true}
 }

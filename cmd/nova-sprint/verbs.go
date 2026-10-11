@@ -1150,13 +1150,13 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 			}
 		}
 		// For fleet readers, inherit common fleet tier if applicable.
-		tiers := store.CommonFleetTierForAdd(ctx, st, rs)
+		res := store.CommonFleetTierForAdd(ctx, st, rs)
 		if err := st.B.RowsAdd(ctx, st.Names.Table(sprint.Readers), rs); err != nil {
 			fmt.Fprintf(stderr, "%s init: %s\n", prog, oneline.Escape(err.Error()))
 			return 1
 		}
-		if tiers != "" {
-			if err := writeReaderTiers(ctx, st, rs, tiers); err != nil {
+		if res.Tier != "" {
+			if err := writeReaderTiers(ctx, st, rs, res.Tier); err != nil {
 				fmt.Fprintf(stderr, "%s init: %s\n", prog, oneline.Escape(err.Error()))
 				return 1
 			}
@@ -3340,10 +3340,21 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "reader add", err.Error())
 	}
 	// For fleet readers added without --tiers, inherit common fleet tier if applicable.
+	var inheritReason string
 	if !tiersSet {
-		inherited := store.CommonFleetTierForAdd(ctx, st, names)
-		if inherited != "" {
-			tiers = inherited
+		res := store.CommonFleetTierForAdd(ctx, st, names)
+		if res.Tier != "" {
+			tiers = res.Tier
+			tiersSet = true
+		} else if res.HasOther {
+			// Fleet readers exist but differ.
+			inheritReason = "from=default: the fleet readers differ"
+			tiers = ""
+			tiersSet = true
+		} else {
+			// No other fleet readers.
+			inheritReason = "from=default: no other fleet reader"
+			tiers = ""
 			tiersSet = true
 		}
 	}
@@ -3363,6 +3374,9 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 		word := sprint.ReaderTiersShown(tiers)
 		line += " tiers=" + word
 		facts["tiers"] = word
+		if inheritReason != "" {
+			line += " " + inheritReason
+		}
 	}
 	sayOK(stdout, c.json, "reader add", line, facts)
 	return 0
