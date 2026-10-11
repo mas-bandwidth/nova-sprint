@@ -429,6 +429,7 @@ MCNoRoomBrokenProbeBlind.cfg	MCNoRoom.tla	invariant	NeverDealtUnknown	ignore-ter
 MCNoRoomBrokenNoTaker.cfg	MCNoRoom.tla	invariant	NeverReturnedWithoutATaker	ignore-terminal	noroom	required	-
 MCAdopt.cfg	MCAdopt.tla	pass	-	ignore-terminal	adopt	required	-
 MCAdoptBrokenKeepNew.cfg	MCAdopt.tla	invariant	RefusedLeavesOld	ignore-terminal	adopt	required	-
+MCAdoptBrokenUndomigration.cfg	MCAdopt.tla	invariant	MigrationIsOneWay	ignore-terminal	adopt	required	-
 MCRetireAbsent.cfg	MCRetireAbsent.tla	pass	-	ignore-terminal	retire-absent	required	-
 MCRetireAbsentBroken.cfg	MCRetireAbsent.tla	invariant	RecordsKeepRows	ignore-terminal	retire-absent	required	-
 MCReadCards.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
