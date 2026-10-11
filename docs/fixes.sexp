@@ -1260,6 +1260,22 @@
     are not carried: this repository has neither."
    :origin "this card")
 
+  (fix "the-server-beat-accepts-draining-and-no-room" :release "v1.2.12" :status "planned"
+   :title "The server's beat takes a draining or no-room member"
+   :text "The member's beat is `fleet beat <member> [--stop-returns <n>] [--no-room <why>]
+    [--draining] [--live <set>] --load <percent>` (nova-tools pkg/member: Beat, drainArgs,
+    noRoomArgs), the optional words in any order with --load anywhere among them. The
+    v1.2.11 server's fleetBeatWords took only `<as> [--stop-returns n] [--live set] --load
+    pct` with --load last, so a draining member, or one at its disk floor, was refused on
+    every beat: superman and batman each had 1,237 --stop-returns beats refused and then
+    every --draining beat refused, and superman read down for twenty minutes with six
+    children still finishing. The server now takes the member's full word list; an unknown
+    word is refused naming it, and a beat without --load is refused because the server
+    cannot measure another machine. cmd/nova-sprint/serve_beat_test.go and
+    internal/sprint/fleet_beat_test.go pin it here, nova-tools pkg/member/stop_test.go the
+    words sent."
+   :origin "this card; the seat's child 2026-10-11 ~18:45Z, reading superman's and batman's member logs after the v1.2.11 adopt")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
