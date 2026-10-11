@@ -21,11 +21,17 @@
 \*   sub        the server's subscription: "none" or "open"
 \*   proven     the server's word: the subscription answered a challenge it sent
 \*   chal       the challenge outstanding on the subscription, 0 for none
+\*   chalAt     when the outstanding challenge was sent (0 for none)
 \*   issued     challenges issued so far (each fresh: 1..MaxChallenges)
 \*   answered   the challenge the proof answered, 0 for none
 \*   seen       the challenges the session read off its stream
 \*   reading    the session reads its stream (a Monitor live, its events read)
-\*   lateC      the outstanding challenge passed its answer bound unanswered
+\*   now        the running clock: one step a look
+\*   live       the server's record's Live, the gate reads it, not a variable of
+\*              the server: the proof's own bound (the proof time plus HookEvery +
+\*              HookAnswerBound, so RechallengeDue is live - HookAnswerBound)
+\*              until the look sends a re-challenge, then that challenge's own
+\*              bound (its send time plus HookAnswerBound)
 \*   delivered, acked, overdue
 \*              the pushes delivered over the subscription, acknowledged over
 \*              it, and past the ack bound
@@ -33,19 +39,33 @@
 \*   ends, told the subscription's ends and the pushes of them to the owner
 \*   cmdBad     ghost: a coordinator command ran against the rule
 \*
-\* The outside: the session stops reading, the connection drops, unhook; each
-\* at any time (Outside = TRUE). Time is abstract: a challenge passes its bound
-\* only while the session does not read (an answering session answers within
-\* it), and a delivered push passes its ack bound at any time.
+\* The outside: the session stops reading, the connection drops, unhook, and the
+\* server starts again (a record left hooked by a dead server is rewritten gone);
+\* each at any time (Outside = TRUE). Time is a look: the clock steps (Tick) and
+\* the look takes its turn, so TLC chooses when the re-challenge goes (at or
+\* after HookEvery; the look's own 2 s period and the serial line's delay are
+\* folded into that choice) and how late a look has run. A challenge passes its
+\* bound only while the session does not read (an answering session answers
+\* within it), and a delivered push passes its ack bound at any time.
+\*
+\* The live window: Live is the proof's own bound (the proof time plus HookEvery +
+\* HookAnswerBound, internal/sprint/hook.go HookProven). The look re-challenges
+\* once HookEvery has passed, and only then does the record's Live move on to the
+\* re-challenge's own bound (ChallengeLive, the code's challengeLive). So between
+\* the proof's Live and the re-challenge's bound the gate refuses HookFirst even
+\* though the re-challenge is inside its bound, and it can refuse up to one look
+\* period early. The model's Gate reads the record's Live; the old model refused
+\* only on the outstanding challenge's bound (lateC), which is looser than the
+\* code.
 \*
 \* What it leaves out: the record is written by the same server step that
 \* changes the subscription, under the server's line of control, as a forwarded
 \* coordinator verb runs; a verb run on the store directly (--redis) reads the
 \* record between two such steps, and a server that died leaves its record
-\* hooked until its Live bound lapses (HookLive). A hook while one is open
-\* replaces it, which is an end and a hook; the model hooks only when none is
-\* open. The ack is cumulative in the code (every id up to the one named); one
-\* id at a time here.
+\* hooked until the next server's start rewrites it gone (ServerStart) or its
+\* Live bound lapses (HookLive). A hook while one is open replaces it, which is
+\* an end and a hook; the model hooks only when none is open. The ack is
+\* cumulative in the code (every id up to the one named); one id at a time here.
 \*
 \* Reversed witnesses (Broken):
 \*   "nostream"      the challenge reaches the session off the stream (the PROOF
@@ -65,14 +85,17 @@
 \*                   subscription, and the drop is never told (RecordTrue)
 \*   "strictcadence" the cadence's bound runs whether or not the session reads:
 \*                   an answering seat loses its hook (HookStays)
+\*   "nostartrewrite" the next server's start leaves a dead server's record
+\*                   hooked: rec.state = "hooked" with no subscription, so no
+\*                   rewrite and the owner not told (RecordTrue)
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Items, MaxChallenges, Broken, Outside
+CONSTANTS Items, MaxChallenges, MaxTime, HookEvery, HookAnswerBound, Broken, Outside
 
-VARIABLES sub, proven, chal, issued, answered, seen, reading, lateC,
+VARIABLES sub, proven, chal, chalAt, issued, answered, seen, reading, now, live,
           delivered, acked, overdue, rec, ends, told, cmdBad
 
-vars == <<sub, proven, chal, issued, answered, seen, reading, lateC,
+vars == <<sub, proven, chal, chalAt, issued, answered, seen, reading, now, live,
           delivered, acked, overdue, rec, ends, told, cmdBad>>
 
 Challenges == 1..MaxChallenges
@@ -82,11 +105,13 @@ TypeOK ==
     /\ sub \in {"none", "open"}
     /\ proven \in BOOLEAN
     /\ chal \in 0..MaxChallenges
+    /\ chalAt \in 0..MaxTime
     /\ issued \in 0..MaxChallenges
     /\ answered \in 0..MaxChallenges
     /\ seen \subseteq Challenges
     /\ reading \in BOOLEAN
-    /\ lateC \in BOOLEAN
+    /\ now \in 0..MaxTime
+    /\ live \in 0..(MaxTime + HookEvery + HookAnswerBound)
     /\ delivered \subseteq Items
     /\ acked \subseteq delivered
     /\ overdue \subseteq delivered
@@ -99,11 +124,13 @@ Init ==
     /\ sub = "none"
     /\ proven = FALSE
     /\ chal = 0
+    /\ chalAt = 0
     /\ issued = 0
     /\ answered = 0
     /\ seen = {}
     /\ reading = FALSE
-    /\ lateC = FALSE
+    /\ now = 0
+    /\ live = 0
     /\ delivered = {}
     /\ acked = {}
     /\ overdue = {}
@@ -115,25 +142,43 @@ Init ==
 \* The pushes delivered and neither acknowledged nor within their bound.
 Blocking == overdue \ acked
 
+\* The proof's cadence deadline: the record's Live is the proof's HookEvery +
+\* HookAnswerBound, so the look may send the next challenge once now reaches
+\* live - HookAnswerBound (the proof's own time plus HookEvery). It is read only
+\* while chal = 0, when live is the latest proof's bound.
+RechallengeDue == live - HookAnswerBound
+
+\* The outstanding challenge passed its answer bound unanswered: only while the
+\* session does not read ("strictcadence": whether or not it reads).
+LateC ==
+    /\ chal # 0
+    /\ now > chalAt + HookAnswerBound
+    /\ ("strictcadence" \in Broken \/ ~reading)
+
 \* The rule: a live subscription, proven by a challenge the session read off it,
 \* the current challenge within its bound, no push blocking.
 Rule ==
     /\ sub = "open"
     /\ proven
     /\ answered \in seen
-    /\ ~lateC
+    /\ ~LateC
     /\ Blocking = {}
 
 \* The gate as the code computes it, from the record and the clock
-\* (sprint.HookGate: HookLive, then the oldest push unacknowledged).
+\* (sprint.HookGate: HookLive, then the oldest push unacknowledged). HookLive
+\* reads the record's Live: now <= live. "noproof" (the gate reads the record's
+\* state and not its proof) and "nomiss" (the gate does not read the deadline)
+\* each drop the Live check; "nomiss" also drops the challenge's own bound.
 Gate ==
     /\ rec.state = "hooked"
     /\ ("noproof" \in Broken \/ rec.proven)
-    /\ ("nomiss" \in Broken \/ ~lateC)
+    /\ ("noproof" \in Broken \/ "nomiss" \in Broken \/ now <= live)
+    /\ ("nomiss" \in Broken \/ ~LateC)
     /\ ("noack" \in Broken \/ Blocking = {})
 
 \* `nova-sprint hook`: a fresh subscription, unproven, its first challenge sent at
-\* once. The session may or may not read what it streams.
+\* once (chalAt = now). The session may or may not read what it streams. The
+\* record has no Live until a proof sets it.
 Hook ==
     /\ sub = "none"
     /\ issued < MaxChallenges
@@ -141,14 +186,15 @@ Hook ==
     /\ proven' = FALSE
     /\ issued' = issued + 1
     /\ chal' = issued + 1
+    /\ chalAt' = now
     /\ answered' = 0
     /\ reading' \in (IF Outside THEN BOOLEAN ELSE {TRUE})
-    /\ lateC' = FALSE
+    /\ live' = 0
     /\ delivered' = {}
     /\ acked' = {}
     /\ overdue' = {}
     /\ rec' = [state |-> "hooked", proven |-> FALSE]
-    /\ UNCHANGED <<seen, ends, told, cmdBad>>
+    /\ UNCHANGED <<now, seen, ends, told, cmdBad>>
 
 \* The session reads the challenge off its stream (the Monitor's event).
 Read ==
@@ -157,7 +203,7 @@ Read ==
     /\ chal # 0
     /\ chal \notin seen
     /\ seen' = seen \cup {chal}
-    /\ UNCHANGED <<sub, proven, chal, issued, answered, reading, lateC,
+    /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, reading, now, live,
                    delivered, acked, overdue, rec, ends, told, cmdBad>>
 
 \* "nostream": the challenge is somewhere besides the stream; the session that
@@ -165,7 +211,8 @@ Read ==
 Knows(v) == IF "nostream" \in Broken THEN v \in 1..issued ELSE v \in seen
 
 \* hook --prove <v>, over the subscription: the server accepts the outstanding
-\* challenge and nothing else.
+\* challenge and nothing else. The proof sets the record's Live to the proof's
+\* own bound, the proof time plus HookEvery + HookAnswerBound (HookProven).
 Prove(v) ==
     /\ Knows(v)
     /\ sub = "open"
@@ -174,9 +221,10 @@ Prove(v) ==
     /\ proven' = TRUE
     /\ answered' = v
     /\ chal' = 0
-    /\ lateC' = FALSE
+    /\ chalAt' = 0
+    /\ live' = now + HookEvery + HookAnswerBound
     /\ rec' = [rec EXCEPT !.proven = TRUE]
-    /\ UNCHANGED <<sub, issued, seen, reading, delivered, acked, overdue,
+    /\ UNCHANGED <<sub, issued, seen, reading, now, delivered, acked, overdue,
                    ends, told, cmdBad>>
 
 \* "nosub": a pong with no subscription (the old seat pong against a record).
@@ -187,46 +235,54 @@ HandPong ==
     /\ proven' = TRUE
     /\ answered' = issued
     /\ rec' = [rec EXCEPT !.proven = TRUE]
-    /\ UNCHANGED <<sub, chal, issued, seen, reading, lateC, delivered, acked,
-                   overdue, ends, told, cmdBad>>
+    /\ UNCHANGED <<sub, chal, chalAt, issued, seen, reading, now, live, delivered,
+                   acked, overdue, ends, told, cmdBad>>
 
-\* The cadence: a proven hook is challenged again; it stays proven while the
-\* new challenge is within its bound.
+\* The cadence: the look re-challenges a proven hook once HookEvery has passed
+\* (now >= RechallengeDue); it sends the fresh challenge but does not move the
+\* record's Live (ChallengeLive does that, as the code's challengeLive does).
 Rechallenge ==
     /\ sub = "open"
     /\ proven
     /\ chal = 0
     /\ issued < MaxChallenges
+    /\ now >= RechallengeDue
     /\ issued' = issued + 1
     /\ chal' = issued + 1
-    /\ UNCHANGED <<sub, proven, answered, seen, reading, lateC, delivered,
+    /\ chalAt' = now
+    /\ UNCHANGED <<sub, proven, answered, seen, reading, now, live, delivered,
                    acked, overdue, rec, ends, told, cmdBad>>
 
-\* The outstanding challenge passes its bound: only while the session does not
-\* read ("strictcadence": whether or not it reads).
-Late ==
+\* The look moves the record's Live to the re-challenge's own bound, its send time
+\* plus HookAnswerBound, when that is later than the Live the record holds
+\* (challengeLive; a failed write keeps the earlier bound). Until this step the
+\* record still holds the proof's Live, so the gate refuses HookFirst while the
+\* re-challenge is inside its bound: the code is stricter than a gate that reads
+\* only the outstanding challenge's bound.
+ChallengeLive ==
     /\ sub = "open"
+    /\ proven
     /\ chal # 0
-    /\ ~lateC
-    /\ ("strictcadence" \in Broken \/ ~reading)
-    /\ lateC' = TRUE
-    /\ UNCHANGED <<sub, proven, chal, issued, answered, seen, reading,
-                   delivered, acked, overdue, rec, ends, told, cmdBad>>
+    /\ live < chalAt + HookAnswerBound
+    /\ live' = chalAt + HookAnswerBound
+    /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
+                   now, delivered, acked, overdue, rec, ends, told, cmdBad>>
 
 \* A missed challenge unhooks: the record says gone and the owner is told
 \* ("nomiss": the hook stays).
 Miss ==
     /\ sub = "open"
-    /\ lateC
+    /\ LateC
     /\ "nomiss" \notin Broken
     /\ sub' = "none"
     /\ proven' = FALSE
     /\ chal' = 0
-    /\ lateC' = FALSE
+    /\ chalAt' = 0
+    /\ live' = 0
     /\ rec' = [state |-> "gone", proven |-> FALSE]
     /\ ends' = ends + 1
     /\ told' = told + 1
-    /\ UNCHANGED <<issued, answered, seen, reading, delivered, acked, overdue,
+    /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
                    cmdBad>>
 
 \* A judgment or push is delivered over the subscription, with its id.
@@ -234,8 +290,8 @@ Deliver(i) ==
     /\ sub = "open"
     /\ i \notin delivered
     /\ delivered' = delivered \cup {i}
-    /\ UNCHANGED <<sub, proven, chal, issued, answered, seen, reading, lateC,
-                   acked, overdue, rec, ends, told, cmdBad>>
+    /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
+                   now, live, acked, overdue, rec, ends, told, cmdBad>>
 
 \* hook --ack <id>, over the subscription, by a session that read it.
 Ack(i) ==
@@ -243,23 +299,23 @@ Ack(i) ==
     /\ reading
     /\ i \in delivered \ acked
     /\ acked' = acked \cup {i}
-    /\ UNCHANGED <<sub, proven, chal, issued, answered, seen, reading, lateC,
-                   delivered, overdue, rec, ends, told, cmdBad>>
+    /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
+                   now, live, delivered, overdue, rec, ends, told, cmdBad>>
 
 \* A delivered push passes its ack bound.
 Overdue(i) ==
     /\ i \in delivered \ (acked \cup overdue)
     /\ overdue' = overdue \cup {i}
-    /\ UNCHANGED <<sub, proven, chal, issued, answered, seen, reading, lateC,
-                   delivered, acked, rec, ends, told, cmdBad>>
+    /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
+                   now, live, delivered, acked, rec, ends, told, cmdBad>>
 
 \* A coordinator command: it runs only through the gate; the ghost marks a run
 \* against the rule.
 Cmd ==
     /\ Gate
     /\ cmdBad' = (cmdBad \/ ~Rule)
-    /\ UNCHANGED <<sub, proven, chal, issued, answered, seen, reading, lateC,
-                   delivered, acked, overdue, rec, ends, told>>
+    /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
+                   now, live, delivered, acked, overdue, rec, ends, told>>
 
 \* The outside: the session stops reading (its Monitor died, or it does not
 \* read its events) while the hook process stays connected.
@@ -267,8 +323,8 @@ StopReading ==
     /\ Outside
     /\ reading
     /\ reading' = FALSE
-    /\ UNCHANGED <<sub, proven, chal, issued, answered, seen, lateC, delivered,
-                   acked, overdue, rec, ends, told, cmdBad>>
+    /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, now, live,
+                   delivered, acked, overdue, rec, ends, told, cmdBad>>
 
 \* The connection drops: recorded gone at once and told ("silentdrop": neither).
 Drop ==
@@ -277,12 +333,13 @@ Drop ==
     /\ sub' = "none"
     /\ proven' = FALSE
     /\ chal' = 0
-    /\ lateC' = FALSE
+    /\ chalAt' = 0
+    /\ live' = IF "silentdrop" \in Broken THEN live ELSE 0
     /\ rec' = IF "silentdrop" \in Broken THEN rec
               ELSE [state |-> "gone", proven |-> FALSE]
     /\ ends' = ends + 1
     /\ told' = IF "silentdrop" \in Broken THEN told ELSE told + 1
-    /\ UNCHANGED <<issued, answered, seen, reading, delivered, acked, overdue,
+    /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
                    cmdBad>>
 
 \* nova-sprint unhook: recorded away and told.
@@ -292,18 +349,46 @@ Unhook ==
     /\ sub' = "none"
     /\ proven' = FALSE
     /\ chal' = 0
-    /\ lateC' = FALSE
+    /\ chalAt' = 0
+    /\ live' = 0
     /\ rec' = [state |-> "away", proven |-> FALSE]
     /\ ends' = ends + 1
     /\ told' = told + 1
-    /\ UNCHANGED <<issued, answered, seen, reading, delivered, acked, overdue,
+    /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
                    cmdBad>>
+
+\* The next server's start: a record left hooked by a server that died is a
+\* subscription that server held, gone with it; it is rewritten gone, its Live
+\* cleared, and the owner told ("nostartrewrite": neither, so the record still
+\* says hooked with no subscription).
+ServerStart ==
+    /\ Outside
+    /\ rec.state = "hooked"
+    /\ sub' = "none"
+    /\ proven' = FALSE
+    /\ chal' = 0
+    /\ chalAt' = 0
+    /\ live' = IF "nostartrewrite" \in Broken THEN live ELSE 0
+    /\ rec' = IF "nostartrewrite" \in Broken THEN rec
+              ELSE [state |-> "gone", proven |-> FALSE]
+    /\ ends' = ends + 1
+    /\ told' = IF "nostartrewrite" \in Broken THEN told ELSE told + 1
+    /\ UNCHANGED <<issued, answered, seen, reading, now, delivered, acked, overdue,
+                   cmdBad>>
+
+\* The look's clock: one step a turn of the look, so TLC chooses when the
+\* re-challenge goes and how late a look has run.
+Tick ==
+    /\ now < MaxTime
+    /\ now' = now + 1
+    /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading, live,
+                   delivered, acked, overdue, rec, ends, told, cmdBad>>
 
 Next ==
     \/ Hook \/ Read \/ \E v \in Challenges : Prove(v) \/ HandPong
-    \/ Rechallenge \/ Late \/ Miss
+    \/ Rechallenge \/ ChallengeLive \/ Miss
     \/ \E i \in Items : Deliver(i) \/ Ack(i) \/ Overdue(i)
-    \/ Cmd \/ StopReading \/ Drop \/ Unhook
+    \/ Cmd \/ StopReading \/ Drop \/ Unhook \/ ServerStart \/ Tick
 
 Spec == Init /\ [][Next]_vars
         /\ WF_vars(Read) /\ WF_vars(\E v \in Challenges : Prove(v))

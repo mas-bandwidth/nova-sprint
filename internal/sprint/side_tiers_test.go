@@ -42,19 +42,25 @@ func TestAModelPinDoesNotOverrideTheFleetsTiers(t *testing.T) {
 	assert.Equal(t, RoutePin, set[FieldRoute], "a flash card pinned to a model runs on its pin")
 }
 
-// A frontier card waits for the coordinator whatever the fleet's tiers: its judgment under
-// --fleet-tiers flash is the one under all, and a frontier friend up does not make it the
-// friends' deal's.
+// A frontier card is the friends' by design (docs/SPEC-SPRINT.md, tiers and routes): a
+// friend up whose row lists frontier serves it, and the fleet's tiers leave that
+// unchanged, as they never made a machine draw it. With no such friend it is the
+// coordinator's, whatever the fleet's tiers.
 func TestAFrontierCardsJudgmentIsUnchangedByTheFleetsTiers(t *testing.T) {
 	t.Parallel()
 	w := sideTierWorld(t)
 	w.s.Friends = []FriendSeat{{Name: "fay", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFrontier}}}
 	c := sidePrimary("c: a card tier: frontier\n")
 	_, tier, why, byFriend := w.s.routeOf(c, nil, nil, "")
+	assert.Equal(t, cardhdr.RouteFrontier, tier)
+	assert.True(t, byFriend, "a frontier friend up serves frontier: it is the friends' deal's")
+	assert.Contains(t, why, "a friend up serves it")
 	w.s.Work.SetProp(PropFleetTiers, TiersAll)
 	_, tierAll, whyAll, byFriendAll := w.s.routeOf(c, nil, nil, "")
-	assert.Equal(t, cardhdr.RouteFrontier, tier)
-	assert.Contains(t, why, "a frontier card waits for the coordinator")
-	assert.False(t, byFriend)
 	assert.Equal(t, []any{tierAll, whyAll, byFriendAll}, []any{tier, why, byFriend}, "unchanged by --fleet-tiers flash")
+	// no friend up: the coordinator's, naming the routes and the friends it looked at
+	w.s.Friends = nil
+	_, _, whyNone, byNone := w.s.routeOf(c, nil, nil, "")
+	assert.False(t, byNone)
+	assert.Contains(t, whyNone, "no route and no friend serves tier frontier")
 }
