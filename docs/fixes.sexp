@@ -756,7 +756,7 @@
     witness MCRouteRestBrokenBalance still failing. Tests TestReadDeepSeekBalance,
     TestALowBalanceAtTheThresholdRaisesOneJudgment and TestAnOutOfCreditTakeSpendsNoRedeal. The run
     loop's nova-secrets exec --only list must include DEEPSEEK_API_KEY for the poll to read it."
-    :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry low-balance-pushes-the-seat-before-the-refusalc")
+   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry low-balance-pushes-the-seat-before-the-refusalc")
 
   (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.6" :status "planned"
    :title "A rate limit stalls its route briefly; it never fails a card or rests it for 3-in-10"
@@ -769,7 +769,8 @@
     last ok end and last the latest one's time, ending at last + min(60s*2^(k-1), 15m) (RateBackoff)
     -- a fixed point in time, never relative to now. Its line is kept beside the route's own rest in
     the provider's rule3_rest_ property (<route>+rate-backoff), never over it, so it never moves the
-    3-in-10 window's mark, never blocks the coordinator's rest and is never woken; restWrites writes
+    3-in-10 window's mark, never blocks the coordinator's rest and is never woken; a backoff on every route of a tier makes the card
+    wait ready, as a provider at its concurrency budget does, never a no-route judgment; restWrites writes
     it and one happened note (\"rate-limit backoff of <d> on <route>, until <t>\") once per end,
     none while the same end holds, never a judgment. A rate limit no longer counts toward the 3-in-10
     transient rest (transient excludes classRateLimited); a 5xx window still rests the route 30
@@ -781,4 +782,4 @@
     TestARateLimitBacksTheRouteOffBriefly, TestARateLimitedRunIsAProviderFailure,
     TestARateTakeIsNumberedAfterTheLastRateTake, TestARateBackoffNeverHoldsOffTheFiveHundredsRest
     and TestARateBackoffIsWrittenAndNotedOncePerEnd. Landed by hand after 15 sprint attempts."
-   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry a-rate-limited-refusal-never-fails-the-cardc")))
+   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; the owner, 2026-10-11: \"the rate limited should just stall out delay, not fail\"; nova-sprint docs/fixes.sexp entry a-rate-limited-refusal-never-fails-the-cardc")))
