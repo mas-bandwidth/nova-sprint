@@ -5933,6 +5933,14 @@ tla/StallLadder.tla `NoCardHeldPastBound`). `TestAMemberDownTheCoordinatorDidNot
 `TestARestartedPushLoopDoesNotRepushALateTickInsideTheWindow` and
 `TestAPromotionEjectedFromTheMergeQueueIsToldToTheSeat` (cmd/nova-sprint/stops_test.go) drive it.
 
+A ready card whose every route of its tier that serves is at its provider's concurrency budget
+is no stop: the limiter holds it ready and the deal deals it when a slot frees, never an error
+(rate_budget.go; tla/RateBudget.tla). The no-stall rule reads the budget and reads what serves as
+the deal does — the tier's configured route array, a route resting, and a route no member up can
+launch are not served, exactly as they are not drawn — so a card waiting for a slot is held by the
+limiter, never raised as a stall (`TestAReadyCardWhoseEveryRouteIsFullIsHeldNotStalled`,
+`TestARouteOutsideTheTierArrayIsNotServed`).
+
 ## 9. What is always true
 
 Checked by `nova-sprint check`, and by the model. Sets of primaries are compared
@@ -5978,7 +5986,11 @@ exactly, member by member, never by their counts.
     serve is counted on the room of the friends up who serve it and may be
     dealt it, never on the machines', and is stalled only when one of them has
     room for it and the deal does not hand it over,
-    `TestAFriendHeldCardIsNotAStall`); (e) with
+    `TestAFriendHeldCardIsNotAStall`; a ready card whose every route of its
+    tier that serves is at its provider's concurrency budget waits for a slot
+    of that provider, held by the limiter and dealt when one frees, never
+    stalled, `TestAReadyCardWhoseEveryRouteIsFullIsHeldNotStalled`);
+    (e) with
     the machine STOPPED, the next tick. A chain that ends in nothing or in a
     cycle holds nothing. A judgment past its due time that no overdue mark
     holds, a stopped stream with no open judgment, and an operation pending
