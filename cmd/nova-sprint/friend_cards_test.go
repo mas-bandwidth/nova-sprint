@@ -135,6 +135,11 @@ func TestFriendSyncFinishesALandReportAndTheCardReachesReview(t *testing.T) {
 			}
 			// collected once: the card is finished, and the sync after finishes nothing
 			assert.Contains(t, ta.ok("friend sync --root "+root), "nothing to do")
+			// the readers' verdicts move the finished card to ok, where it counts done
+			ta.ok("ask --limit 100")
+			ta.ok("read --as reader-a --ok --limit 100")
+			ta.ok("read --as reader-b --ok --limit 100")
+			ta.ok("tick")
 			assert.Contains(t, tableOf(ta.frame(), sprint.Friends), "amy     |     0 |       0 |     8 |    1 | 100.0% |       0 | up")
 		})
 	}
