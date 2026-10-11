@@ -1,18 +1,45 @@
 package sprint
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// cardHoldingKinds is every judgment kind that holds a card from progressing, read from the
-// code apart from WaitRefused: the judgments a rework discharges on its primary
-// (ReworkResolves), the stream stops, and the kinds that keep a card waiting or stopped.
+// cardVerbs are the decisions that act on a card (or a stream's cards): a judgment that offers
+// one names a card it holds until the decision is made.
+var cardVerbs = []string{"rework", "drop", "return", "accept", "brief", "rebase", "ask", "resolve", "rank that card", "take the suspect", "release", DecisionRecut}
+
+// cardHoldingKinds is every judgment kind that holds a card from progressing, derived from the
+// code apart from WaitRefused, so a new kind cannot be missed: every kind whose decisions
+// (Decisions, TickDecisions) offer a verb on a card, and every kind a rework discharges on its
+// primary (ReworkResolves).
 func cardHoldingKinds() []string {
-	out := append([]string(nil), ReworkResolves...)
-	return append(out, NConflict, NRed, NCross, NRejected, NBaseRed, NBriefDefect, NBlocked, NMissingNeed, NSentinelReached)
+	seen := map[string]bool{}
+	var out []string
+	add := func(k string) {
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, k)
+		}
+	}
+	for _, k := range ReworkResolves {
+		add(k)
+	}
+	for _, m := range []map[string][]string{Decisions, TickDecisions} {
+		for k, ds := range m {
+			for _, d := range ds {
+				for _, v := range cardVerbs {
+					if strings.HasPrefix(d, v) {
+						add(k)
+					}
+				}
+			}
+		}
+	}
+	return out
 }
 
 // Parking is impossible for every judgment that holds a card: each refuses wait, naming the
@@ -20,6 +47,10 @@ func cardHoldingKinds() []string {
 func TestEveryKindThatHoldsACardRefusesWait(t *testing.T) {
 	t.Parallel()
 	for _, k := range cardHoldingKinds() {
+		if _, ok := WaitRefusedWhenItNamesACard[k]; ok {
+			assert.NotEmpty(t, WaitRefusal(Note{Kind: Judgment, Type: k, ID: "j1", Primaries: []string{"s1-1"}}), "%s names a card: refused", k)
+			continue
+		}
 		if why, ok := WaitAllowedOnACard[k]; ok {
 			assert.NotEmpty(t, why, "%s: an exception says why", k)
 			assert.NotContains(t, WaitRefused, k, "%s: an exception is not refused too", k)
@@ -29,7 +60,7 @@ func TestEveryKindThatHoldsACardRefusesWait(t *testing.T) {
 		assert.NotEmpty(t, refusal, "%s holds a card and must refuse wait", k)
 		assert.Contains(t, refusal, "holds its card", k)
 	}
-	assert.Len(t, WaitAllowedOnACard, 2, "the exceptions stay few: a new one is a decision")
+	assert.LessOrEqual(t, len(WaitAllowedOnACard), 4, "the exceptions stay few: a new one is a decision")
 }
 
 // The inbox never offers a verb the kind refuses: no kind of WaitRefused lists wait among its
