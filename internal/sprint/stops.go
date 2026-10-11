@@ -479,6 +479,7 @@ func (w SeatWaits) Line(now time.Time) string {
 // BehindLevel is the escalation level of the judgments late on the coordinator: one level
 // for every BehindEscalateEvery of running time since since, the overdue line of the oldest
 // of them the pass counts (behindConds).
+// tla/CoordinatorPass.tla Level: the level falls to the next when the oldest closes.
 func BehindLevel(s *Snapshot, r TickReq, since time.Time) int {
 	d, ok := r.running(s.Now, stamp(since))
 	if !ok || d < 0 {
