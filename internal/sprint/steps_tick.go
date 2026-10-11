@@ -948,6 +948,9 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	if len(up) > 0 {
+		// Compute route stats once per tick to avoid O(ready x fleet) cost per draw
+		s.routeStats = routeStatsByName(s.Fleet)
+		s.routeCostPerLanded = routeCostPerLanded(s.Fleet)
 		room := widthRoom(s, up)
 		n := min(room, TickMaxDeal, len(ready))
 		due = min(room, len(ready)) - n
