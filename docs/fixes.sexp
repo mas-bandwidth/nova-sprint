@@ -653,6 +653,15 @@
     nosettlebybeat; the model's Beat is drop-only while STOPPED, so a job a stopped owner's beat shows gone
     stays gone."
    :origin "the seat, 2026-10-10: START refused on 33 fleet jobs whose members never sent stop-return receipts")
+  (fix "a-card-ready-over-a-minute-pushes-the-seat" :release "v1.2.6" :status "planned"
+   :title "A ready card that sits past a minute pushes the seat"
+   :text "A card that sits in ready past the ready bound (the sprint setting ready_max, default one
+    minute) raises one judgment per (reason, tier), with the reason the deal leaves it: the tier, each route
+    that serves no card and why (disabled, resting until paid, resting until woken, out of budget), no member up
+    with free width to launch a route of its tier (fleet up), a hold, or a sentinel, and the remedy verb
+    (routes wake, funded, fleet up, release). Cards that share a cause are one alert, never one per card, and it
+    clears itself the tick the card is dealt. The rule is tla/ReadyOver.tla."
+   :origin "card a-card-ready-over-a-minute-pushes-the-seatb.w8")
   (fix "a-member-environment-fault-holds-it-and-pushes-the-seat" :release "v1.2.6" :status "planned"
    :title "A member's environment fault holds it and pushes the seat"
    :text "A finish failure whose cause is the member's environment -- a push refusal (no credential, auth,

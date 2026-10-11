@@ -19,6 +19,9 @@ import (
 const (
 	// PropDealtMax is the work table's property: the dealt bound, a duration.
 	PropDealtMax = "dealt_max"
+	// PropReadyMax is the work table's property: how long a ready card may sit undealt
+	// before the tick raises the ready-over judgment, a duration (a-card-ready-over-a-minute-pushes-the-seat).
+	PropReadyMax = "ready_max"
 	// PropFriendIdle is the work table's property: how long a friend holding cards may
 	// show no session activity before it is an alarm, a duration.
 	PropFriendIdle = "friend_idle"
@@ -182,6 +185,22 @@ func (s *Snapshot) DealtMax() time.Duration {
 		}
 	}
 	return DealtMaxDefault
+}
+
+// ReadyMaxDefault is how long a ready card may sit undealt before the tick raises the
+// ready-over judgment (a-card-ready-over-a-minute-pushes-the-seat).
+const ReadyMaxDefault = time.Minute
+
+// ReadyMax is that bound: the sprint's setting, else ReadyMaxDefault.
+func (s *Snapshot) ReadyMax() time.Duration {
+	if s.Work != nil {
+		if v, ok := s.Work.Prop(PropReadyMax); ok {
+			if d, err := time.ParseDuration(v); err == nil && d > 0 {
+				return d
+			}
+		}
+	}
+	return ReadyMaxDefault
 }
 
 // FriendIdleDefault is how long a friend holding cards may show no file write under her

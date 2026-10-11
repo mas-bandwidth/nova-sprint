@@ -1486,13 +1486,16 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	due := notify(&p, s, conds, []string{NWorkLate, NReadLate, NMergeLate}, r)
+	// the ready-over judgments (ready_over.go), on a plan of their own the same way
+	ro, readyDue := TickReadyOver(s, r)
+	p.Notes, p.Closes, p.Updates = append(p.Notes, ro.Notes...), append(p.Closes, ro.Closes...), append(p.Updates, ro.Updates...)
 	// the backlog alarms, on a plan of their own: each notify closes and judges after its own closes
 	a, alarmsDue := tickAlarms(s, r)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, a.Notes...), append(p.Closes, a.Closes...), append(p.Updates, a.Updates...)
 	// the drift alarms, on a plan of their own the same way (drift.go)
 	d, driftDue := TickDrift(s, r, r.Drift)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, d.Notes...), append(p.Closes, d.Closes...), append(p.Updates, d.Updates...)
-	return p, due + alarmsDue + driftDue
+	return p, due + readyDue + alarmsDue + driftDue
 }
 
 // TickOverdue marks each open judgment overdue once, when it passes its due
@@ -1642,6 +1645,11 @@ func condKey(typ, subject, card, what string) string {
 		NStopMemberDown, NStopPinWaits, NFriendStalled,
 		NNoFrontierRoom:
 		what = ""
+	case NReadyOver:
+		// one judgment per (reason, tier): the reason is the stable cause, so
+		// distinct causes of one tier are distinct judgments, never merged
+		// (readyOverWhy; tla/ReadyOver.tla, OnePerCause)
+		what = readyOverWhy(what)
 	case NCoordinatorBehind:
 		// one condition a level (stops.go, BehindLevel): its count and its ages change
 		// within a level, and a new level is a new judgment
@@ -1808,10 +1816,10 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 			if !open[k] {
 				fresh = append(fresh, sub)
 			}
-			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || slices.Contains(StopTypes, c.typ)) {
+			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || c.typ == NReadyOver || slices.Contains(StopTypes, c.typ)) {
 				var primaries []string
-				if c.typ == NNoFrontierRoom {
-					primaries = c.primaries // the reads it names, rewritten in place as they join or leave
+				if c.typ == NNoFrontierRoom || c.typ == NReadyOver {
+					primaries = c.primaries // the cards it names, rewritten in place as they join or leave the cause
 				}
 				update(n, c.what, c.decisions, primaries) // the latest facts, in place
 			}
