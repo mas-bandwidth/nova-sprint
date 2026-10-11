@@ -2335,7 +2335,7 @@ outcome and reason are kept.
 | merging -> landed | its batch, green on the stream branch, merged to the development branch | mechanical |
 | any open state -> off the table | drop, with the reason | the coordinator's verb |
 | waiting -> landed | release of a sentinel that is reached, waits for nothing, or waits only for cards under way (landed, dropped, or in flight: taken, in review, merging), and only that | the coordinator's verb |
-| ready -> waiting | add inserts a sentinel in front of it | mechanical |
+| ready -> waiting | add inserts a sentinel in front of it, or a brief edit gives it a need not landed | mechanical |
 
 The store holds every step's plan to this table before it applies it, whatever
 step built it: a primary is admitted waiting or ready, moves only by a row of
@@ -2344,7 +2344,12 @@ naming the move. A step refused whole writes nothing, not even the rows of a
 stream it would have declared. A primary leaves waiting only when every need has landed or
 was waived: a step that may move a primary to ready builds its plan on the
 snapshot it read, and the lifecycle judges the needs against it; a plan
-without it moves nothing waiting to ready. The lifecycle is judged first on
+without it moves nothing waiting to ready. A card is dealt only when every need
+has landed: the deal refuses a ready card with an unlanded need, and the
+lifecycle refuses every move to dealt whose card's recorded needs have not
+landed whatever path asks for it. A brief edit records the needs its
+`DEPENDS-ON:` lines name, and a ready card that gains a need not landed waits
+until it lands (section 3, the brief verb). The lifecycle is judged first on
 every unit of a plan; the needs rule is then judged against the landings of
 the units the lifecycle kept only, so a landing the lifecycle refuses
 satisfies no need. A work-table move whose expectation names no place is

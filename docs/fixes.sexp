@@ -1229,7 +1229,31 @@
     = X and FieldHeldBy: X) and fails naming the value and its file:line when no table row names it, so
     a new hold kind cannot ship without the table checked against it. The known-yes proof is
     envFaulted's status line deleted: the environment row then fails at UpMembers."
-   :origin "this card, card-lint-a-hold-owner-every-reader-accepts.w1, from the reader finding on
-    a-member-environment-fault-holds-it-and-pushes-the-seatb attempt 5 (head 38c66ea7542f): the
-    environment hold was written with held_by=environment but the member's status was left Up, so the
-    level dealt to it and presence wrote held_by=fault over the mark")))
+    :origin "this card, card-lint-a-hold-owner-every-reader-accepts.w1, from the reader finding on
+     a-member-environment-fault-holds-it-and-pushes-the-seatb attempt 5 (head 38c66ea7542f): the
+     environment hold was written with held_by=environment but the member's status was left Up, so
+     the level dealt to it and presence wrote held_by=fault over the mark")
+   (fix "a-brief-edit-records-its-needs-and-the-deal-checks-them" :release "v1.2.14" :status "planned"
+    :title "A brief edit records its needs, and the deal refuses a card whose needs have not landed"
+    :text "A card's needs are only the column's, not the brief's: brief re-points needs only through
+     dependsOnly (the DEPENDS-ON line the only difference), and any other edit took the ordinary path,
+     wrote the brief and dropped the parsed needs, so on 2026-10-11 a brief --dir moved 85 briefs that
+     now carry DEPENDS-ON while every card kept zero needs and stayed ready; and dealPlan's eligibility
+     checked stream held, friend pin and inState(c, Ready) only, no guard on needs, so a ready card with
+     unlanded needs was dealt. Now the ordinary brief path writes the needs the new brief's DEPENDS-ON
+     names whenever they differ from the card's; a ready card that gains a need not landed moves ready ->
+     waiting in the same unit (the lifecycle accepts the move, ready -> waiting being no longer only a
+     sentinel's effect when the edit records needs); dealPlan refuses a card with WaitsFor(s, c, nil)
+     non-empty, and unmet judges every move to dealt (Working) against the card's stored needs, so Lawful
+     refuses dealing a card whose needs have not landed whatever path asks for it; a card dealt or working
+     keeps its attempt and the new needs apply from its next deal. help brief says this. Red tests in
+     internal/sprint/needs_guard_test.go (a ready card whose brief gains an unlanded need waits with its
+     needs recorded; a waiting or ready card whose edit names landed needs stays or becomes ready; a ready
+     card with an unlanded need built in the store is never dealt and the tick's invariant names it; an
+     edit with no needs change leaves them). The invariant a primary anywhere but waiting has every need
+     landed already named such a card; this is the deal and the brief catching up (docs/SPEC-SPRINT.md,
+     needs and the deal)."
+    :origin "this card, a-brief-edit-records-its-needs-and-the-deal-checks-them.w2, from the owner on
+     the live epoch 17, 2026-10-11 ~10:40-11:00 AM ET: 89 v1212 cards ran or sat ready before their
+     DEPENDS-ON landed (four failed four attempts each); code read at nova-sprint main 1405d26; the
+     owner: \"by definition this must not happen.\"")))

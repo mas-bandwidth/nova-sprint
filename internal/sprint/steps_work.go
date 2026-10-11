@@ -974,6 +974,7 @@ const noRoomWhy = "every up fleet member is at its room (DealAhead times its wid
 
 func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMoves) {
 	var p Plan
+	p.on(s)
 	moves := roundMoves{}
 	ready := func(c *Card) string {
 		if StreamHeld(s, c.Row) {
@@ -982,7 +983,16 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		if OnlyFriend(c) && !PinReleased(s, c, s.Friends) {
 			return friendCardWhy
 		}
-		return inState(c, Ready)
+		if why := inState(c, Ready); why != "" {
+			return why
+		}
+		// a card is dealt only when every need has landed (docs/SPEC-SPRINT.md,
+		// needs and the deal): a ready card whose brief named a need not landed
+		// (a brief edit records them) waits here, and the tick's invariant names it.
+		if w := WaitsFor(s, c, nil); len(w) > 0 {
+			return c.ID + " is ready and needs " + strings.Join(w, ",") + ", not landed: it is not dealt until its needs land"
+		}
+		return ""
 	}
 	chosen := pick(&p, r.Sel, eligibleTurns(s.Work.Column(Ready), ready, streamRound(s, PropStreamIndex)), rowOf, ready, s.primaryCard)
 	up := s.UpMembers()
