@@ -467,6 +467,9 @@ MCProviderBudgetBrokenNoenv.cfg	MCProviderBudget.tla	action	EnvOnlyByEnvironment
 MCProviderBudgetBrokenNodeal.cfg	MCProviderBudget.tla	action	HeldDealtNothing	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenStale.cfg	MCProviderBudget.tla	action	JudgmentNamesTheCause	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenBranchEnv.cfg	MCProviderBudget.tla	action	ARejectedPushIsNeverAFault	ignore-terminal	providerbudget	required	-
+MCProviderFunds.cfg	MCProviderFunds.tla	pass	-	ignore-terminal	providerfunds	required	-
+MCProviderFundsBrokenLowIsOut.cfg	MCProviderFunds.tla	action	LowNeverStops	ignore-terminal	providerfunds	required	-
+MCProviderFundsBrokenNoFriendException.cfg	MCProviderFunds.tla	action	NoFundsStopWhileFriendUp	ignore-terminal	providerfunds	required	-
 MCReadyOver.cfg	MCReadyOver.tla	pass	-	ignore-terminal	readyover	required	-
 MCReadyOverBrokenMerge.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-
 MCReadyOverBrokenSilent.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-
@@ -482,3 +485,4 @@ MCHoldsLive.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
 MCServerSwitch.cfg	MCServerSwitch.tla	pass	-	ignore-terminal	serverswitch	required	-
 MCServerSwitchBrokenNodeadline.cfg	MCServerSwitch.tla	invariant	RollbackOnlyInWindow	ignore-terminal	serverswitch	required	-
 MCServerSwitchBrokenKeepstate.cfg	MCServerSwitch.tla	invariant	AtMostOneAutoRollbackPerSwitch	ignore-terminal	serverswitch	required	-
+MCProviderFundsBrokenStaleRefusal.cfg	MCProviderFunds.tla	action	RefusalsAfterLastEnd	ignore-terminal	providerfunds	required	-

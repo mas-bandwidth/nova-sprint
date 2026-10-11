@@ -130,6 +130,8 @@ func IsRateLimited(report string) bool {
 // then routes wake); the rest names the take's card, its route and the
 // provider's words, and keeps the balance the poll last read (the mark a payment is seen
 // against, balance.go).
+//
+// tla/ProviderFunds.tla Launch, Refuse, RefusalsAfterLastEnd
 func providerRestsDue(s *Snapshot, rests map[string]RouteRest, ends map[string][]routeEnd) []RouteRest {
 	newest := map[string]routeEnd{}
 	on := map[string]string{}
@@ -180,10 +182,12 @@ const FundsCause = "every provider is out of credit"
 const NAllOutOfCredit = "every provider is out of credit"
 
 // AllOutOfCredit is the words of FundsCause when every enabled route of every tier rests at
-// now because its provider is out of credit (RouteRest.Out: a take refused for credit, or a
-// balance at or under zero), naming the providers; "" when a route serves, or rests for
-// another cause (a provider low on funds included: it still has money), or there is no
-// enabled route.
+// now because its provider is out of credit (RouteRest.Out: a take refused for credit, never
+// a balance at or under zero, which Retired excludes), naming the providers; "" when a route
+// serves, or rests for another cause (a provider low on funds included: it still has money),
+// or there is no enabled route.
+//
+// tla/ProviderFunds.tla AllOutBroken, StopOnlyWhenAllOut
 func AllOutOfCredit(routes []Route, rests map[string]RouteRest, now time.Time) string {
 	providers := map[string]bool{}
 	for _, r := range routes {
@@ -216,6 +220,7 @@ func (s *Snapshot) OutOfCredit() string {
 // never the machine's (the owner, 2026-10-10; tla/RouteRest.tla); and NAllOutOfCredit when
 // every enabled route rests because its provider refused for credit (stop says so), from
 // the rests a dealing step settled (withRests).
+// tla/ProviderFunds.tla Judgment, Judgments
 func providerConds(s *Snapshot) (conds []cond, stop string) {
 	type held struct {
 		routes []string
@@ -385,6 +390,8 @@ type FundedReq struct {
 // for its funds, or no reason is given. The provider's judgment closes at the next tick, and
 // a machine the tick stopped because every provider was out of credit is then the
 // coordinator's to start.
+//
+// tla/ProviderFunds.tla Pay, EndMark
 func Funded(s *Snapshot, r FundedReq) Plan {
 	var p Plan
 	if strings.TrimSpace(r.Reason) == "" {
@@ -415,6 +422,8 @@ func Funded(s *Snapshot, r FundedReq) Plan {
 // (each provider's own judgment stays) and the machine keeps dealing to friends and
 // landing, so the all-out judgment and the stop are dropped (the owner, 2026-10-04: "the
 // machine can continue sending work to friends. So it's just a WRONG error message.").
+//
+// tla/ProviderFunds.tla NoFundsStopWhileFriendUp
 func friendsKeepRunning(conds []cond, stop string, friends []FriendSeat) ([]cond, string) {
 	if stop == "" || !AnyFriendUp(friends) {
 		return conds, stop

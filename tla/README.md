@@ -152,3 +152,16 @@ the gap test removed from PR #5127's levelTo. Naive: a holds c2 and c3, c3
 refused by c, the emptiest two below; only c3 is tried, and the call returns
 with c2 still able to go to c. NoSkip: c3 goes onto c, its refuser (the code
 before #5000).
+
+## Provider funds
+
+`ProviderFunds` instantiates `RouteRest` for each of two providers, with one
+enabled route each. Two outstanding takes per provider retain the strict
+launch-after-last-rest-end relation without an unbounded or wrapping clock:
+payment, funded and wake invalidate every outstanding launch. The stale-refusal
+witness removes that ordering guard and violates `RefusalsAfterLastEnd`.
+The existing low-is-out and missing-friend-exception witnesses remain.
+`Judgments` is the snapshot computation in `providerConds`: credit and key
+precede low, any provider rest suppresses low, and ending the rest clears its
+judgment and reveals a still-low balance. Exact balance dollars, spend arithmetic,
+judgment text and note delivery are abstracted; STOP debt is outside this card.
