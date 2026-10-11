@@ -780,4 +780,8 @@
   (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
+   :origin "this card")
+  (fix "dev-is-behind-counts-cards-on-their-own-base" :release "v1.2.11" :status "planned"
+   :title "dev is behind alarm excludes cards landed on protected branches"
+   :text "The dev is behind judgment now counts only cards landed on sprint branches. Cards landed on protected branches (dev, main) are excluded from the count, since the 2026-10-09 move to one-line land."
    :origin "this card")))

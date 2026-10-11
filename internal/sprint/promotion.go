@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -41,6 +42,7 @@ type DevLag struct {
 	Branch string
 	At     time.Time
 	Sha    string
+	Cards  []*Card
 }
 
 // Promotion is the last promotion the store records: when and the sha; ok false when none.
@@ -59,6 +61,7 @@ func Promotion(s *Snapshot) (at time.Time, sha string, ok bool) {
 
 // LandedSince is the primaries (sentinels aside) landed after the last promotion, oldest
 // first by their landing stamp, and the branch the most of them name as their base.
+// Cards landed on protected branches (dev, main) are not counted.
 func LandedSince(s *Snapshot) (cards []*Card, branch string) {
 	if s.Work == nil {
 		return nil, ""
@@ -72,6 +75,10 @@ func LandedSince(s *Snapshot) (cards []*Card, branch string) {
 		}
 		t, err := time.Parse(time.RFC3339, c.F("landed"))
 		if err != nil || !t.After(at) {
+			continue
+		}
+		// Skip cards landed on protected branches
+		if b := c.F("base"); b != "" && slices.Contains(ProtectedBranches, b) {
 			continue
 		}
 		cards = append(cards, c)
@@ -108,7 +115,7 @@ func DevBehind(s *Snapshot) (DevLag, bool) {
 	if len(cards) < PromoteCards && s.Now.Sub(oldest) < PromoteAge {
 		return DevLag{}, false
 	}
-	d := DevLag{Count: len(cards), Branch: branch}
+	d := DevLag{Count: len(cards), Branch: branch, Cards: cards}
 	d.At, d.Sha, _ = Promotion(s)
 	return d, true
 }
@@ -120,8 +127,28 @@ func (d DevLag) What() string {
 	if !d.At.IsZero() {
 		last = "the last promotion at " + d.At.UTC().Format(time.RFC3339) + " (" + orDash(d.Sha) + ")"
 	}
-	return fmt.Sprintf("dev is behind: %d cards landed on %s since %s; promote: merge origin/dev into the sprint branch, open the PR to dev, run the functional tier, queue it; then: nova-sprint promoted --sha <merge sha>",
-		d.Count, d.Branch, last)
+	cards := ""
+	if len(d.Cards) > 0 {
+		n := len(d.Cards)
+		if n > 10 {
+			n = 10
+		}
+		for i, c := range d.Cards[:n] {
+			if i > 0 {
+				cards += ", "
+			}
+			base := c.F("base")
+			if base == "" {
+				base = "unknown"
+			}
+			cards += c.ID + " on " + base
+		}
+		if len(d.Cards) > 10 {
+			cards += fmt.Sprintf(", and %d more", len(d.Cards)-10)
+		}
+	}
+	return fmt.Sprintf("dev is behind: %d cards landed on %s since %s; %s; promote: merge origin/dev into the sprint branch, open the PR to dev, run the functional tier, queue it; then: nova-sprint promoted --sha <merge sha>",
+		d.Count, d.Branch, last, cards)
 }
 
 // Decisions are the judgment's: the promotion recorded, or wait 30m.

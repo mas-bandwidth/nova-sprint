@@ -4070,12 +4070,17 @@ recorded counts every landing), and raises the judgment "dev is behind" when the
 reaches 25 (`sprint.PromoteCards`) or the oldest of them landed 30 minutes ago
 (`sprint.PromoteAge`), whichever comes first (`sprint.DevBehind`, internal/sprint/promotion.go,
 one pure decision): `dev is behind: <n> cards landed on <branch> since the last promotion at
-<time> (<sha>); promote: merge origin/dev into the sprint branch, open the PR to dev, run the
+<time> (<sha>); <card list>; promote: merge origin/dev into the sprint branch, open the PR to dev, run the
 functional tier, queue it; then: nova-sprint promoted --sha <merge sha>` (the branch is the
 base the most of them name; with no promotion recorded, `since no promotion recorded`),
 decisions promoted and wait 30m, updated in place while it holds and closed when `promoted`
 is recorded; `promoted --answers <note>` is held as every answer is (`answered`): an answer
-naming no open judgment refuses the whole step, nothing written
+naming no open judgment refuses the whole step, nothing written.
+
+Cards landed on protected branches (dev, main) are not counted: since the 2026-10-09 move
+to one-line land, cards land straight onto their own base (main for nova-sprint, dev for
+nova-tools), and those landings do not count toward "dev is behind" (`sprint.ProtectedBranches`,
+internal/sprint/protected.go). Only cards whose base is a sprint branch count (`TestLandedSinceProtectedBranches`).
 (`TestTheTickRaisesDevBehindAtTwentyFiveLandingsOrThirtyMinutes`, `TestPromotedHoldsItsAnswers`).
 
 **Dev sync every cycle.** On 2026-10-04 the base and the development branch drifted for an
