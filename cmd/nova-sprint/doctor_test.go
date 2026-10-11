@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -164,4 +166,135 @@ func TestDoctorJSONCarriesTheFaults(t *testing.T) {
 	require.NotEmpty(t, got.Faults, "the faults are named: %s", out)
 	assert.Contains(t, strings.Join(got.Faults, "\n"), "MACHINERY fleet DOWN", "the fault evidence: %v", got.Faults)
 	assert.NotEmpty(t, got.Machinery, "the machinery evidence rides along")
+}
+
+// doctorOutside is the healthy outside with the doctor's reaches given: nova-config naming
+// machines, each member's host probed as probe says, and the server started an hour ago.
+func doctorOutside(ta *testApp, machines []string, probe func(m string) sprint.MemberProbe) outside {
+	o := mockHealthyOutside()
+	o.doctorConfig = func(context.Context) (doctorConfig, error) {
+		cfg := doctorConfig{Loops: map[string][]string{}}
+		for _, m := range machines {
+			cfg.Machines = append(cfg.Machines, sprint.DoctorMachine{Name: m, User: "nova", Seat: "swarm-" + m, Width: 64}) // init's width
+		}
+		return cfg, nil
+	}
+	o.serverStarted = func(context.Context, string) (time.Time, string) { return ta.a.now().Add(-time.Hour), "test" }
+	o.declared = func(context.Context) string { return "v1.2.6" }
+	o.probeMembers = func(_ context.Context, ms []sprint.DoctorMachine, tools func(string) []string, _ string) map[string]sprint.MemberProbe {
+		out := map[string]sprint.MemberProbe{}
+		for _, m := range ms {
+			p := sprint.MemberProbe{Member: m.Name, Host: "nova@" + m.Name, Reached: true, OS: "Linux", PathFrom: "loop", Tools: map[string]string{}, FreeKB: 100 << 20,
+				Push: "PUSH-CREDENTIAL OK", PushOK: true, Secrets: "CHECK OK", SecretOK: true, Version: "v1.2.6"}
+			for _, t := range tools(m.Name) {
+				p.Tools[t] = "/usr/bin/" + t
+			}
+			if probe != nil {
+				p = probe(m.Name)
+				if p.Tools == nil {
+					p.Tools = map[string]string{}
+				}
+			}
+			out[m.Name] = p
+		}
+		return out
+	}
+	return o
+}
+
+// The fleet group against nova-config and each host: a fleet row whose machine record is gone
+// (the night's hetzner after its rename) and a member whose loop's PATH has no sqlite3 and whose
+// push credential fails (the night's b1-b3) are each a FAIL line with the verb, and exit 1.
+func TestDoctorAreaFleetNamesAStaleRowAndAMemberMissingATool(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1,m2")
+	ta.ok("start")
+	ta.ok("tick")
+	ta.a.outside = doctorOutside(ta, []string{"m1"}, func(m string) sprint.MemberProbe {
+		p := sprint.MemberProbe{Member: m, Host: "nova@" + m, Reached: true, OS: "Linux", PathFrom: "loop", Tools: map[string]string{}, FreeKB: 100 << 20,
+			Push: "PUSH-CREDENTIAL FAIL reason=no-credential", Secrets: "CHECK OK", SecretOK: true, Version: "v1.2.6"}
+		for _, t := range append(slices.Clone(sprint.MemberTools), sprint.OpenCode) {
+			if t != "sqlite3" {
+				p.Tools[t] = "/usr/bin/" + t
+			}
+		}
+		return p
+	})
+
+	code, out, errs := ta.do("doctor --area fleet")
+	require.Equal(t, 1, code, "a stale row and a broken member are RED\n%s%s", out, errs)
+	assert.Contains(t, out, "DOCTOR FAIL fleet-rows m2 fleet row m2", out)
+	assert.Contains(t, out, "remedy=nova-sprint fleet sync", out)
+	assert.Contains(t, out, "DOCTOR FAIL member-env m1 tool=sqlite3 is on no PATH entry of its cards", out)
+	assert.Contains(t, out, "DOCTOR FAIL member-env m1 push credential: PUSH-CREDENTIAL FAIL reason=no-credential", out)
+	assert.NotContains(t, out, "DOCTOR routes GREEN", "--area fleet prints the fleet group alone: %s", out)
+	assert.Contains(t, out, "DOCTOR RED ", out)
+}
+
+// The whole doctor on a healthy sprint with every reach given: no FAIL line, exit 0, and the
+// JSON carries the checks for the dashboard.
+func TestDoctorChecksHealthyStoreExitZeroAndJSON(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	ta.ok("start")
+	ta.ok("tick")
+	ta.a.outside = doctorOutside(ta, []string{"m1"}, nil)
+
+	code, out, errs := ta.do("doctor")
+	require.Equal(t, 0, code, "a healthy sprint\n%s%s", out, errs)
+	assert.NotContains(t, out, "DOCTOR FAIL ", out)
+	assert.Contains(t, out, "DOCTOR OK member-env all", out)
+	assert.Contains(t, out, "DOCTOR OK fleet-rows all", out)
+
+	code, out, errs = ta.do("doctor --json --area fleet")
+	require.Equal(t, 0, code, "%s%s", out, errs)
+	var got struct {
+		Checks  []sprint.DoctorCheck `json:"checks"`
+		FixSafe []string             `json:"fix_safe"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &got), out)
+	require.NotEmpty(t, got.Checks)
+	for _, c := range got.Checks {
+		assert.Equal(t, sprint.AreaFleet, c.Area, "--area fleet: %+v", c)
+	}
+	assert.Contains(t, got.FixSafe, sprint.CheckFleetRows)
+}
+
+// --area takes an area of the doctor, and nothing else.
+func TestDoctorRefusesAnUnknownArea(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	code, _, errs := ta.do("doctor --area nowhere")
+	require.NotEqual(t, 0, code)
+	assert.Contains(t, errs, "which is no area")
+}
+
+// The probe's lines are read into what it found; the server's elapsed time is read from ps.
+func TestDoctorProbeParsesItsLines(t *testing.T) {
+	t.Parallel()
+	var p sprint.MemberProbe
+	parseProbe(&p, []byte("os Linux\npathfrom loop\ntool git /usr/bin/git\ntool sqlite3 -\ntool go -\nnear go /home/nova/sdk/go1.26.6/bin/go\nfree 900000000\npush PUSH-CREDENTIAL OK seat=swarm-b1\nsecrets 0 CHECK OK\nversion nova-sprint v1.2.6 linux/amd64 go1.26.6\n"))
+	assert.Equal(t, "Linux", p.OS)
+	assert.Equal(t, "/usr/bin/git", p.Tools["git"])
+	assert.Equal(t, "", p.Tools["sqlite3"])
+	_, said := p.Tools["sqlite3"]
+	assert.True(t, said, "a tool the loop's PATH lacks is said, empty")
+	assert.Equal(t, "", p.Tools["go"], "the toolchain off the loop's PATH does not count: the gate runs on that PATH")
+	assert.Equal(t, "/home/nova/sdk/go1.26.6/bin/go", p.Near["go"], "but where it is is said")
+	assert.Equal(t, int64(900000000), p.FreeKB)
+	assert.True(t, p.PushOK)
+	assert.True(t, p.SecretOK)
+	assert.Equal(t, "v1.2.6", p.Version)
+	for in, want := range map[string]time.Duration{"39:28": 39*time.Minute + 28*time.Second, "01:02:03": time.Hour + 2*time.Minute + 3*time.Second, "2-00:00:01": 48*time.Hour + time.Second} {
+		got, ok := parseEtime(in)
+		assert.True(t, ok, in)
+		assert.Equal(t, want, got, in)
+	}
+	script := probeScript("b1", "swarm-b1", []string{"git", "sqlite3"})
+	assert.Contains(t, script, "nova-loop-$L.service", "the loop unit's PATH, not the login shell's")
+	assert.Contains(t, script, "nova-push-credential\" probe "+doctorPushURL)
+	assert.NotContains(t, script, "exec ", "the probe runs nothing but reads")
 }

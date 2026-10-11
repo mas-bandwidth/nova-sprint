@@ -5682,6 +5682,36 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   with its age, effect and undo verb, then the seat's waits; exit 1 when a stop holds or a
   judgment is past its deadline. The card the-doctor-checks-every-layer-and-refuses-a-red builds
   its layers onto this verb.
+- **The doctor's checks of the desired state** (the owner, 2026-10-11 ~02:10Z: "I think we need
+  to prioritize sprint doctor to find stuff like this"; ~02:12Z: "Think of it like ansible for
+  sprint setup, fleet, friends, cards everything"; internal/sprint/doctor.go). After the stops,
+  `doctor` holds the declared state (nova-config's machine and loop rows, the sprint's own rules)
+  against the live store and each member's host, one line per finding:
+  `DOCTOR OK|WARN|DRIFT|FAIL <check> <subject> <evidence> remedy=<verb>`; any FAIL exits 1;
+  `--area sprint|fleet|friends|readers|routes|cards|seat` runs one group; `--json` carries the
+  checks for the dashboard, with the checks a later `doctor --fix` may run unattended
+  (`fix_safe`: loops-redial, fleet-rows). It writes nothing. The checks, each a fault of the night
+  of 2026-10-10: **ready-not-dealt** (every card ready past a minute, grouped by the deal's own
+  reason: the tick's deal planned on the read, its judgments, and the deal asked by name;
+  never derived again), **routes-per-tier** (enabled routes not resting a member up can launch;
+  FAIL at 0 with ready cards, WARN at 1), **readers** (each reader's beat, reading against width,
+  reads waiting while every reader is idle or hung), **loops-redial** (a member or reader whose
+  last beat is older than the server's start plus 60 s; a host that does not answer is down,
+  WARN), **member-env** (probed over ssh as the fleet reaches each member, on the PATH its cards
+  run with: its loop unit's PATH with the bench's toolchain ahead of it as native adds it
+  (pkg/swarm `BenchPath`), never the login shell's: every tool of `MemberTools`, sqlite3 among
+  them, and the harnesses of its routes; the push
+  credential probe; `nova-secrets check` of its seat; free disk; the installed build against the
+  seat's), **lander-loop** (a head the landing refused offered or accepted again at the same
+  head; a card stranded in review with nothing open), **fleet-rows** (a fleet row whose machine
+  record is gone is FAIL; fleet sync's other drift is DRIFT), **providers** (each resting
+  provider, its balance and the routes it takes), **seat** (the push loop proven within 15
+  minutes; judgments overdue), **finish-failures** (a member whose takes in the last hour end
+  mostly on its environment: a missing tool, no push credential, native refused, and a take with
+  no result on a member that has one of those too; named once per member and once for the fleet;
+  a push refused for the card's own head and a staging refusal of the card's head are the card's),
+  and **friends** (each friend's
+  daemon beating, her proof, working against width and against her report, her hold and why).
 
 Left as they are, and listed: the route and provider rests (route_rest.go, provider_funds.go: a
 sibling card makes their decision the coordinator's); the stall ladder's take-back and down at
