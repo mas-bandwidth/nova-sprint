@@ -93,7 +93,7 @@ func TestPerLandedUsesTotalSpendOnLandedCards(t *testing.T) {
 	h.must(MergeStep(sprint.MergeReq{Stream: "s1", Batch: 10}))
 	require.Equal(t, sprint.Landed, h.state("landed-1"))
 
-	// landed-2: one failed attempt ($1), one successful ($1) = $2 total
+	// landed-2: one failed attempt ($1), one successful ($1) = $1 spent on landing
 	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"landed-2"}}}))
 	wc = h.snap().Fleet.Card(h.snap().Work.Card("landed-2").F("work"))
 	g = map[string]int{wc.ID: wc.Int("gen")}
@@ -123,14 +123,14 @@ func TestPerLandedUsesTotalSpendOnLandedCards(t *testing.T) {
 	costs := sprint.StreamTierCosts(h.snap())
 	s1 := costs["s1"]
 
-	// Per-landed: ($1 + $2) / 2 landed cards = $1.50
-	assert.Equal(t, "$1.50", s1.PerLanded, "per-landed is total spend on landed cards divided by landed count")
+	// Per-landed: ($1 + $1) / 2 landed cards = $1.00
+	assert.Equal(t, "$1.00", s1.PerLanded, "per-landed is total spend on landed cards divided by landed count")
 
 	// In-flight: $10 from the card still in waiting
 	assert.Equal(t, "$10.00", s1.InFlight, "in-flight cost shows spend on cards not yet landed")
 
-	// Total should be the sum of landed ($3) and in-flight ($10)
-	assert.Equal(t, "$13.00", s1.TotalCost, "total cost is landed + in-flight")
+	// Total should be the sum of landed ($2) and in-flight ($10)
+	assert.Equal(t, "$12.00", s1.TotalCost, "total cost is landed + in-flight")
 
 	h.clean("per-landed uses total spend on landed cards")
 }

@@ -290,15 +290,16 @@ function renderStreams(d) {
   });
   var rank = function (k) { return RANK[statusOf[k]] == null ? 3.5 : RANK[statusOf[k]]; };
   var keys = streamOrder(d).filter(function (k) { return !arch[k]; }).sort(function (a, b) { return rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0); });
-  var sum = { cost: 0, totalCost: 0, workCost: 0, readCost: 0, unreconciled: 0, unpriced: 0 }, held = 0, landedStreams = 0, prevRank = null;
+  var sum = { cost: 0, totalCost: 0, workCost: 0, readCost: 0, inFlight: 0, unreconciled: 0, unpriced: 0 }, held = 0, landedStreams = 0, prevRank = null;
   // the epoch's spend, every stream's, the archived ones' too: the cost tile's scope once the
   // sprint is done (where --json's done), when the table's streams are all archived
-  var epoch = { totalCost: 0, workCost: 0, readCost: 0, unpriced: 0 };
+  var epoch = { totalCost: 0, workCost: 0, readCost: 0, inFlight: 0, unpriced: 0 };
   streamOrder(d).forEach(function (k) {
     var sc = (d.stream_costs || {})[k] || {};
     var tc = cents(sc.total_cost); if (tc) epoch.totalCost += tc;
     var wc = cents(sc.work_cost); if (wc) epoch.workCost += wc;
     var rc = cents(sc.read_cost); if (rc) epoch.readCost += rc;
+    var ifc = cents(sc.in_flight); if (ifc) epoch.inFlight += ifc;
     epoch.unpriced += int(sc.unpriced_runs);
   });
   sum.epoch = epoch;
@@ -326,6 +327,7 @@ function renderStreams(d) {
       // the reads beside the work: the same total split by kind (sprint.TierCosts)
       var wc = cents(sc.work_cost); if (wc) sum.workCost += wc;
       var rc = cents(sc.read_cost); if (rc) sum.readCost += rc;
+      var ifc = cents(sc.in_flight); if (ifc) sum.inFlight += ifc;
       sum.unpriced += int(sc.unpriced_runs);
     }
     var status = statusOf[k];
@@ -596,15 +598,17 @@ function renderHero(d, s, ft) {
   // the cost tile and its tooltip cover one scope (docs/SPEC-SPRINT.md, the summary line): the
   // streams on the table, or, the sprint done, the epoch's every stream, as the hero's count
   // is. The cost is every recorded take and read of their cards in any column; the cost per
-  // card is that over the cards that landed
+  // card is that over the cards that landed; the in-flight cost is the spend on cards not yet
+  // landed
   var c = d.done ? s.sum.epoch : s.sum, recorded = c.totalCost;
   setText($("cost"), money(recorded));
   // after a stats reset the cost counts from its mark, and so do the cards it is over
   // (where --json's stats_reset.landed, the same scope)
   var perN = d.stats_reset ? int(d.stats_reset.landed) : landed;
-  var per = perN ? money(Math.ceil(recorded / perN)) + " per card" : "";
+  var landedSpend = recorded - (c.inFlight || 0);
+  var per = perN ? money(Math.ceil(landedSpend / perN)) + " per card" : "";
   setText($("cost-per"), per || " ");
-  setText($("inflight"), s.sum.working + (s.sum.fix || 0) + s.sum.review + s.sum.merging);
+  setText($("inflight"), money(c.inFlight || 0));
   inflightLast = s.sum; renderInflight(s.sum);
   // throughput: cards landed per hour over the last hour, from the server's samples
   setText($("tput"), throughput == null ? "\u2014" : String(Math.round(throughput)));

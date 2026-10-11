@@ -95,7 +95,7 @@ func TestAStatsResetCountsEveryFigureFromItsMarkAndMovesNothing(t *testing.T) {
 	assert.Empty(t, s1.WorkCost)
 	assert.Empty(t, s1.ReadCost)
 	assert.Empty(t, s1.CostByTier, "no tier has spent since the mark: the pie is empty")
-	assert.Equal(t, "$0.50", s1.PerLanded, "per landed is total landed spend / total landed count")
+	assert.Equal(t, "-", s1.PerLanded, "per landed counts from the mark: nothing since: blank")
 	assert.Equal(t, "-", cell(now.work, "s1", sprint.Cost), "the stream's cost cell")
 	assert.Equal(t, "0", cell(now.fleet, "m1", sprint.Done), "done counts from the mark")
 	assert.Equal(t, int64(0), now.facts.Reset.LandedSince(now.work, nil), "no card landed since: the per card is blank")
