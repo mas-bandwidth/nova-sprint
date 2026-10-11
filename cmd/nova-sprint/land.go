@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
+	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
@@ -1071,6 +1072,30 @@ func againRemedy(stream string) string {
 	return "run land again, which rereads the queue and lets its checks decide (where the cards are as they were, their merges and push are no-ops and the report records them; a card reworked since is merged at its new head, or meets a real conflict): nova-sprint land --stream " + stream
 }
 
+// landingLedgerEntry reads the card's own fixes ledger record at its pushed head,
+// where the lander has already verified and fetched the commit.
+func (l *lander) landingLedgerEntry(ctx context.Context, head, id string) (sprint.LandingLedgerEntry, error) {
+	if _, err := l.git(ctx, l.repoDir, "cat-file", "-e", head+"^{commit}"); err != nil {
+		if _, fetchErr := l.git(ctx, l.repoDir, "fetch", "--no-tags", "origin", head); fetchErr != nil {
+			return sprint.LandingLedgerEntry{}, fmt.Errorf("fetch landed head %s: %w", head, fetchErr)
+		}
+	}
+	data, err := l.git(ctx, l.repoDir, "show", head+":docs/fixes.sexp")
+	if err != nil {
+		return sprint.LandingLedgerEntry{}, err
+	}
+	fixes, err := roadmapdoc.DecodeFixes("docs/fixes.sexp", []byte(data))
+	if err != nil {
+		return sprint.LandingLedgerEntry{}, err
+	}
+	for _, fix := range fixes.Items {
+		if fix.ID == id {
+			return sprint.LandingLedgerEntry{Title: fix.Title, Text: fix.Text}, nil
+		}
+	}
+	return sprint.LandingLedgerEntry{}, fmt.Errorf("fix %q is absent from docs/fixes.sexp at %s", id, head)
+}
+
 // landed reports a pushed batch through the merge step; false (and the line
 // FAILED, with land again as the remedy) when the store did not take it.
 func (l *lander) landed(b landBatch, stream string, pins []landCard) bool {
@@ -1081,7 +1106,15 @@ func (l *lander) landed(b landBatch, stream string, pins []landCard) bool {
 	b.Cards, b.IDs = len(ids), ids
 	l.stage("report", "merge report")
 	start := time.Now()
-	res, err := l.step(sprint.MergeReq{Stream: stream, Batch: len(ids), Who: l.c.actor}, pins)
+	ledgerEntries := make(map[string]sprint.LandingLedgerEntry, len(pins))
+	for _, c := range pins {
+		entry, readErr := l.landingLedgerEntry(context.Background(), c.head, c.id)
+		if readErr != nil {
+			entry.Error = oneline.Cap(readErr.Error(), 300)
+		}
+		ledgerEntries[c.id] = entry
+	}
+	res, err := l.step(sprint.MergeReq{Stream: stream, Batch: len(ids), Who: l.c.actor, LedgerEntries: ledgerEntries}, pins)
 	if b.Times != nil {
 		since(&b.Times.Report, start)
 	}
