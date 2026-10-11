@@ -454,3 +454,5 @@ MCHolds.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
 MCHoldsBrokenResumeEarly.cfg	MCHolds.tla	action	CrossResumesAfterNeed	ignore-terminal	holds	required	-
 MCHoldsBrokenSilentStop.cfg	MCHolds.tla	invariant	NoSilentStall	ignore-terminal	holds	required	-
 MCHoldsLive.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
+MCHoldsBrokenResolveHeld.cfg	MCHolds.tla	invariant	HeldMovesOnlyByRelease	ignore-terminal	holds	required	-
+MCHoldsBrokenWorkerReleases.cfg	MCHolds.tla	invariant	OnlyCoordinatorReleases	ignore-terminal	holds	required	-
