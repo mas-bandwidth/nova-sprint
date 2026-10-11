@@ -1,5 +1,7 @@
 # The page lock (pagelock.go): one line per change of the dashboard page, newest last:
 # <YYYY-MM-DD> <sha256 digest of page/ and pageview.go> "<the owner's exact words asking for the change>"
 # each line's words are quoted on a line of the same date under "The page lock" in docs/SPEC-SPRINT-DASHBOARD.md
+# a change that touches comments alone may read <YYYY-MM-DD> <digest> comment-only "<the reason>", its reason quoted there as an ask is
+# such a line holds only a change whose rendered form (RenderedForm: what a browser runs, every comment taken out) digests the same at the base and here
 2026-10-11 bded6828cc7c6df0f5032d31fc10ebeae1de4dfc20c2de6846c94f2f8853d6b7 "this is what it is."
 2026-10-11 1c29f90cae6086b0aa4afa04f2ea73f7e150ebae4fdcb53c0172bcce7f1fc6f2 comment-only "privacy: the page's comments name the owner as the owner"
