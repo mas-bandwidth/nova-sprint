@@ -24,6 +24,17 @@ func Encode(t *Tree) ([]byte, error) {
 	b.WriteString(" :source " + quote(t.Source) + "\n")
 	b.WriteString(" :org " + quote(t.Org) + "\n")
 	b.WriteString(" :fetched " + quote(t.Fetched) + "\n")
+	// :scope names the repositories a scoped import read. A whole-organization
+	// tree has no scope and no :scope line, so its file is byte for byte what
+	// it always was (SPEC-WORK-V1 section 1.2).
+	if len(t.Scope) > 0 {
+		for i, s := range t.Scope {
+			if i > 0 && s <= t.Scope[i-1] {
+				return nil, fmt.Errorf("workfile: scope repository %q is out of order or repeated after %q", s, t.Scope[i-1])
+			}
+		}
+		b.WriteString(" :scope " + stringList(t.Scope) + "\n")
+	}
 	b.WriteString(" :repos\n (")
 	for i, r := range t.Repos {
 		if i > 0 {
