@@ -583,12 +583,17 @@
     is pushed to the coordinator as it happens (landingPush): one happened NLanding, \"landed
     <card>\" a line, with the card's stream, head, the one-line :title and :text of its ledger
     entry (read from the work card), and the attempts and reads it took; a batch in one tick is one
-    push with a line a card. The model card tla-sprintrules-landing-stall-liveness is its own card.
+    push with a line a card. The informational refusal preview bounds its card prefix and reason
+    together by the card text byte limit. The tick-end count includes landing and completion
+    notices while emitting one wake. The model card tla-sprintrules-landing-stall-liveness is its
+    own card.
     Tests TestLandingStallIsJudgedWhenCardsWaitAndNothingLands, TestLandingStallIsReRaisedEachBound,
     TestLandingStallClearsOnTheNextLanding, TestNoStallWithNothingWaiting,
     TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall, TestEveryLandingIsPushedToTheCoordinator,
     TestMergeWritesTheLandingStallFacts, TestMergeWritesTheLandersLastRefusal,
-    TestTickDeadlinesRaisesTheLandingStall."
+    TestTickDeadlinesRaisesTheLandingStall. TestMergeBoundsTheLandingStallRefusal pins both refusal
+    branches at the byte bound, and TestTheTickEndWakesTheCoordinatorOnce pins two addressed
+    items with one tick-end write and wake."
    :origin "the owner, 2026-10-11 ~12:20-12:45 PM ET, after landed sat at 68/294 +0/30m for half an
     hour while 76 cards sat in review and 68 in fix and no judgment reached the seat: \"I shouldn't
     need to tell you this, you should just get a push notification about it\" and \"Fix the fucking
