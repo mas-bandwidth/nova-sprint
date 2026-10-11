@@ -20,7 +20,7 @@ func rbWorld(t *testing.T, members ...string) *world {
 	t.Helper()
 	w := newWorld(t)
 	for _, m := range members {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m, Width: 1}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 1}))
 	}
 	w.s.Routes = []Route{
 		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},

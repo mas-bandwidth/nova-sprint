@@ -21,7 +21,7 @@ func TestRedisTheFleetRowsAreUpThenHeldThenDown(t *testing.T) {
 	h.setLive("b", "c", "d", "e")
 	h.beat()
 	for _, m := range []string{"e", "d", "c", "b", "a"} {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: m, Width: 2}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: 2}))
 	}
 	h.must(FleetStep(sprint.FleetReq{Op: "hold", Member: "c"}))
 	fleet := h.st.Names.Table(sprint.Fleet)

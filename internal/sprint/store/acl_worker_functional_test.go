@@ -63,7 +63,7 @@ func TestRedisAWorkersStepsRunUnderTheRenderedMemberACL(t *testing.T) {
 	t.Cleanup(func() { _ = bench.Close() })
 	w := &harness{t: t, st: &Store{B: &Redis{C: bench, Names: names, Now: time.Now}, Names: names, Actor: "m1"}, ctx: ctx, now: time.Now()}
 
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 8}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 8}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 4, Brief: "c: the work (s1) tier: flash\n\nThe task.\n"}))
 	h.must(DealStep(sprint.DealReq{}))
 	usage := "wall=1.00s budget=11/400000 input=10 output=1 model=opencode/m actual_usd=0.001 actual_by=harness"

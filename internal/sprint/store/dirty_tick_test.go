@@ -316,7 +316,7 @@ func TestAReadOnARunningMachineOpensNoReadyToAccept(t *testing.T) {
 func TestChangesQueuedDuringThePumpWaitForTheNextTick(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 3}))
 	h.startMachine()
 	dropped, ranks := false, 0
@@ -404,7 +404,7 @@ func TestADealHeldBackByTheQueueMovesNoIndex(t *testing.T) {
 		h.mu.Unlock()
 		h.beat()
 		for _, m := range []string{"m1", "m2", "m3"} {
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Member: m}))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 		}
 		for i, id := range []string{"a", "b", "c"} {
 			h.must(AddStep(sprint.AddReq{Stream: "s" + strconv.Itoa(i+1), IDs: []string{id}}))

@@ -24,7 +24,7 @@ func TestFleetSyncCoverHeldInInventory(t *testing.T) {
 			name: "the coordinators hold is named",
 			build: func(t *testing.T) *Snapshot {
 				w := newWorld(t, "reader-a")
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 				w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m1", Who: "coordinator"}))
 				return w.s
 			},
@@ -35,8 +35,8 @@ func TestFleetSyncCoverHeldInInventory(t *testing.T) {
 			name: "the syncs hold is left alone",
 			build: func(t *testing.T) *Snapshot {
 				w := newWorld(t, "reader-a")
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2"}))
+				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 				w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync", Sync: []SyncMember{{Name: "m1", Width: DefaultWidth}}, Machines: []string{"m1", "m2"}}))
 				return w.s
 			},
@@ -47,7 +47,7 @@ func TestFleetSyncCoverHeldInInventory(t *testing.T) {
 			name: "a member no one holds is not named",
 			build: func(t *testing.T) *Snapshot {
 				w := newWorld(t, "reader-a")
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 				return w.s
 			},
 			want: []SyncMember{{Name: "m1", Width: DefaultWidth}},
@@ -65,8 +65,8 @@ func TestFleetSyncCoverHeldInInventory(t *testing.T) {
 			name: "holds are named sorted, not in the want order",
 			build: func(t *testing.T) *Snapshot {
 				w := newWorld(t, "reader-a")
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2"}))
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 				w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m2", Who: "coordinator"}))
 				w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m1", Who: "coordinator"}))
 				return w.s
@@ -78,8 +78,8 @@ func TestFleetSyncCoverHeldInInventory(t *testing.T) {
 			name: "a hold outside want is not named",
 			build: func(t *testing.T) *Snapshot {
 				w := newWorld(t, "reader-a")
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2"}))
+				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 				w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m1", Who: "coordinator"}))
 				return w.s
 			},

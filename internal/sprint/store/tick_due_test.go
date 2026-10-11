@@ -40,7 +40,7 @@ func (h *harness) landUnresolved(stream string) {
 func TestTheTickResolvesEveryWaiterOfOneNeedPastTheBound(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"root"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", Count: sprint.TickMaxMoves + 50, Needs: []string{"root"}}))
 	h.through("root")
@@ -81,7 +81,7 @@ func (l *loseTickPart) Acquire(ctx context.Context, gen uint64, op OpRecord) (bo
 func TestAResolveThatLostToOtherWritersIsDoneNextTick(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"b"}, Needs: []string{"a"}}))
 	h.through("a")
@@ -243,7 +243,7 @@ func TestFewReadersIsWrittenOncePerSprint(t *testing.T) {
 	h.st.B = h.m
 	require.NoError(t, h.st.Init(h.ctx))
 	h.beat()
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 2}))
 	h.startMachine()
 	h.machine()
