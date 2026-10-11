@@ -1062,6 +1062,10 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (fix "an-acked-empty-row-is-one-episode" :release "v1.2.14" :status "planned"
+   :title "An acknowledged empty row is one episode while it holds"
+   :text "emptyConds keys the empty-row episode by its text, and the text was rebuilt from the cards waiting once the judgment no longer sat in Open, so a second ready card she could do changed the text, wrote a second NFriendEmpty judgment and closed the acknowledgement, though the conjunction (she is up, her row empty, cards she could do wait) never cleared. The episode's text now comes from the judgment the coordinator holds (an acknowledgement, or a wait not yet due) as well as from an open one, so tla/CoordinatorPass.tla's OneJudgmentAnEpisode (Kind = \"empty\") holds in the code: the acknowledged episode stays one until the condition clears, a card dealt to her closes it, and a later episode is judged afresh past EmptyRowAfter."
+   :origin "v1.2.12 inventory 2026-10-11, section 9 row D9; this card")
    (fix "pagelock-stripper-hardening" :release "v1.2.14" :status "planned"
     :title "The page lock's comment-only check reads the page a browser renders"
     :text "The stripper that proves a comment-only change renders nothing no longer mistakes four visible things for comments: an HTML text comment leaves nothing rather than a space; a comment opener inside a quoted attribute value is code; an inline script with a data-src attribute is read as JS; and a slash after a control if, while or for condition opens a regex, failing closed otherwise. The lock's header and the spec's The page lock state the comment-only form and that the card lint is ask-only."

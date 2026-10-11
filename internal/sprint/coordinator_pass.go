@@ -381,9 +381,12 @@ type idleWait struct {
 // row, closed when she is not up, her row is not empty, or nothing she could do
 // is waiting, so time down or held does not count. The judgment's text names her,
 // those cards and where they sit, and offers to deal them to her, to have a friend
-// take the other row, or to keep. While the cards sit where the text says, the
-// text does not change, so the episode stays one (the condition key includes the
-// text; steps_tick.go is not this card's file).
+// take the other row, or to keep. The text is the one the open judgment, or the
+// judgment the coordinator holds, already carries, so the episode stays one while
+// the conjunction holds even as the cards change: the condition key includes the
+// text (steps_tick.go condKey), and tla/CoordinatorPass.tla keeps an acknowledged
+// empty-row judgment never raised again until the condition clears
+// (OneJudgmentAnEpisode, Kind = "empty"). steps_tick.go is not this card's file.
 func emptyConds(p *Plan, s *Snapshot, r TickReq) []cond {
 	watches := map[string]Open{}
 	for _, o := range s.Acked {
@@ -391,11 +394,28 @@ func emptyConds(p *Plan, s *Snapshot, r TickReq) []cond {
 			watches[o.Subject()] = o
 		}
 	}
-	openWhat := map[string]string{}
-	for _, o := range s.Open {
-		if o.Note.Kind == Judgment && o.Note.Type == NFriendEmpty {
-			openWhat[o.Subject()] = o.Note.What
+	// The episode's text: from an open judgment, and from the one the
+	// coordinator already holds -- an acknowledgement, or a wait whose review
+	// time has not been reached. The condition key includes the text
+	// (steps_tick.go condKey), so a text built afresh from the cards on hand
+	// would key a second judgment and close the acknowledgement, though the
+	// conjunction never cleared. The episode stays one while it holds
+	// (tla/CoordinatorPass.tla, OneJudgmentAnEpisode).
+	heldWhat := map[string]string{}
+	for _, o := range slices.Concat(s.Open, s.Acked) {
+		if o.Note.Type != NFriendEmpty {
+			continue
 		}
+		if o.Note.Kind == Acknowledged && !o.Note.Review.IsZero() {
+			base := o.Note.ReviewSet
+			if base.IsZero() {
+				base = o.Note.At
+			}
+			if DueNow(s.Now, o.Note.Review, base, r.Stopped) {
+				continue // the wait ran out: the condition is raised afresh
+			}
+		}
+		heldWhat[o.Subject()] = o.Note.What
 	}
 	if s.Fleet == nil {
 		for _, w := range watches {
@@ -422,7 +442,7 @@ func emptyConds(p *Plan, s *Snapshot, r TickReq) []cond {
 			continue
 		}
 		want[row] = true
-		_, judged := openWhat[row]
+		_, judged := heldWhat[row]
 		w, watching := watches[row]
 		if !watching && !judged {
 			p.Notes = append(p.Notes, Note{Kind: Acknowledged, Type: NFriendRowEmpty, Primaries: []string{row}, Count: 1,
@@ -436,7 +456,7 @@ func emptyConds(p *Plan, s *Snapshot, r TickReq) []cond {
 			}
 		}
 		what := emptyRowWhat(name, cards)
-		if prev := openWhat[row]; prev != "" {
+		if prev := heldWhat[row]; prev != "" {
 			what = prev // one episode while it holds; the key includes the text
 		}
 		out = append(out, cond{typ: NFriendEmpty, primaries: []string{row}, what: what, decisions: emptyRowDecisions(name, cards)})
