@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -135,17 +136,66 @@ func countsText(c store.SnapshotCounts) string {
 	return "keys=" + n(c.Keys) + " cards=" + n(c.Cards)
 }
 
-// redisSource asks a Redis for its snapshot: BGSAVE, wait for LASTSAVE to
-// move with the save reported ok, then copy the RDB file the server wrote
+// saveMark is what INFO persistence says about the last completed RDB save:
+// rdb_saves (Redis 7+, a counter, exact) or else rdb_last_save_time (unix
+// seconds, the same clock LASTSAVE reports). The ACL user the coordinator
+// runs as may not call LASTSAVE, but INFO is allowed, so the verb reads the
+// INFO text it already reads.
+type saveMark struct {
+	saves    int64
+	hasSaves bool
+	lastTime int64
+	hasTime  bool
+}
+
+func parseSaveMark(info string) saveMark {
+	var m saveMark
+	for _, ln := range strings.Split(info, "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(ln), ":")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "rdb_saves":
+			if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+				m.saves, m.hasSaves = n, true
+			}
+		case "rdb_last_save_time":
+			if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+				m.lastTime, m.hasTime = n, true
+			}
+		}
+	}
+	return m
+}
+
+// usable reports whether INFO carried any completion marker at all.
+func (m saveMark) usable() bool { return m.hasSaves || m.hasTime }
+
+// movedSince reports whether a save completed after the before mark. The
+// counter is preferred when both sides have it; otherwise the save time.
+func (m saveMark) movedSince(before saveMark) bool {
+	if m.hasSaves && before.hasSaves {
+		return m.saves > before.saves
+	}
+	return m.hasTime && before.hasTime && m.lastTime > before.lastTime
+}
+
+// redisSource asks a Redis for its snapshot: BGSAVE, wait for INFO
+// persistence to show a completed save with the save reported ok, then copy the RDB file the server wrote
 // (CONFIG GET dir, dbfilename), which is readable only on the store's host.
 type redisSource struct{ b *store.Redis }
 
 func (r *redisSource) Save(ctx context.Context) ([]byte, store.SnapshotCounts, error) {
 	none := store.SnapshotCounts{Keys: -1, Cards: -1}
 	c := r.b.C
-	before, err := c.LastSave(ctx).Result()
+	info0, err := c.Info(ctx, "persistence").Result()
 	if err != nil {
 		return nil, none, err
+	}
+	before := parseSaveMark(info0)
+	if !before.usable() {
+		return nil, none, errors.New("INFO persistence shows neither rdb_saves nor rdb_last_save_time; cannot tell when the BGSAVE completes")
 	}
 	if err := c.BgSave(ctx).Err(); err != nil && !strings.Contains(err.Error(), "already in progress") {
 		return nil, none, err
@@ -160,7 +210,7 @@ func (r *redisSource) Save(ctx context.Context) ([]byte, store.SnapshotCounts, e
 			if strings.Contains(info, "rdb_last_bgsave_status:err") {
 				return nil, none, errors.New("the store's BGSAVE failed (rdb_last_bgsave_status:err)")
 			}
-			if now, err := c.LastSave(ctx).Result(); err == nil && now > before {
+			if parseSaveMark(info).movedSince(before) {
 				break
 			}
 		}
