@@ -167,6 +167,36 @@ func TestAReviewOpensNReadCardsAtOnceOnTheTwin(t *testing.T) {
 	require.Equal(t, 2, sprint.ReadsWaiting(s), "the two reads dealt and not started are the reads waiting")
 }
 
+// TestReadDealCursorPersistsAcrossStoreRestart pins the store rule in docs/SPEC-SPRINT.md
+// section 1: the read cursor is an epoch table property, committed with its read cards, so a
+// fresh Store over the same twin continues after the last reader instead of starting over.
+func TestReadDealCursorPersistsAcrossStoreRestart(t *testing.T) {
+	t.Parallel()
+	r := newReadCardsRig(t, "m1", "m2", "m3", "m4", "m5")
+	worker := r.toReview("s1-1", proBrief)
+	first := map[string]bool{}
+	for _, c := range r.readCards("s1-1") {
+		first[c.Row] = true
+	}
+	require.Equal(t, map[string]bool{"m2": true, "m3": true}, first, "m1 worked the card; the cursor skips it and serves the next two")
+	before := r.snap()
+	index, ok := before.Fleet.Prop(sprint.PropReadDealIndex("pro"))
+	require.True(t, ok, "the cursor is persisted on the fleet table")
+	require.Equal(t, "3", index, "the cursor advances past the worker and both assigned readers")
+	require.Equal(t, "m1", worker)
+
+	// Reconstruct the store binding over the same tables, as a process restart does.
+	r.st = &store.Store{B: r.m, Names: r.st.Names, Actor: "coordinator", Now: r.st.Now, Sleep: func(time.Duration) {}}
+	require.NoError(t, r.st.Init(r.ctx))
+	r.beat()
+	r.toReview("s1-2", proBrief)
+	second := map[string]bool{}
+	for _, c := range r.readCards("s1-2") {
+		second[c.Row] = true
+	}
+	require.Equal(t, map[string]bool{"m4": true, "m5": true}, second, "the restarted deal resumes after m3")
+}
+
 // rec is a fleet record by id, placed or kept.
 func (r *readCardsRig) rec(id string) *sprint.Card {
 	r.t.Helper()
