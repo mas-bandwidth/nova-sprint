@@ -298,6 +298,38 @@
     only when nothing was removed or a removal failed."
    :origin "the seat ledger v1.2.4-held-2026-10-10, bug 12; card stream-remove-removes-what-exists")
 
+  (fix "friend-dealt-cards-return" :release "v1.2.6" :status "shipped"
+   :title "A friend's dealt card not taken returns to the pool; a friend that has not taken is dealt no more"
+   :text "A card dealt to a friend and not taken within the dealt bound (dealt-max) is returned to the
+    pool and dealt to the next capable member, and a friend that has not taken a dealt card is dealt
+    no more until she takes one (a fleet property marks her, her start clears it). The tick's friend
+    deal returns the untaken cards (friendDealtReturn, no redeal of its bound spent) before the level,
+    so the idle fleet machines take the cards the friends' daemons could not, instead of the friends
+    first deal stranding every card on friends that never start. tla/FriendDealtReturn.tla
+    DealtNoMoreHolds, with the reversed witness MCFriendDealtReturnBrokenGate."
+   :origin "dogfood 2026-10-10: the deal starved the fleet behind friends that could not take")
+
+  (fix "friend-working-start-clears-dealt-no-more" :release "v1.2.6" :status "shipped"
+   :title "A friend's working-card start clears the dealt-no-more mark, and a friend who took one is not marked"
+   :text "The re-admission half of the dealt-no-more mark covers the tick's working-card start: a card a
+    finish's next moved to working that she is working (friendStarted) is confirmed started by the tick's
+    friendUnstartedWorking, which clears the mark as FriendStart and the ready-card start (friendStartUnits)
+    do, and friendDealtReturn leaves alone a friend with such a working card, so a friend who has taken a
+    card is never dealt no more. tla/FriendDealtReturn.tla Start and DealtNoMoreHolds, with the reversed
+    witness MCFriendDealtReturnBrokenReturn."
+   :origin "dogfood 2026-10-10: a friend who took a working card stayed dealt no more despite having taken one")
+
+  (fix "friend-has-taken-one-predicate" :release "v1.2.6" :status "shipped"
+   :title "A friend who has taken a card is never marked dealt no more, by one predicate"
+   :text "The return's leave-alone gate and every clear of the dealt-no-more mark read the one predicate
+    friendHasTaken (her beat names a job running, or any card on her row, ready or working, is started or
+    carries her progress), so a ready card carrying progress that the tick promotes to working this same
+    tick is a start: the friend is not marked dealt no more, and her untaken cards are not returned, in
+    the same tick she took one. friendDealPass, friendUnstartedWorking and FriendStart each clear the mark
+    through the one helper. tla/FriendDealtReturn.tla Return guards on no card of hers in started, with
+    Start and Progress its start paths, and the reversed witness MCFriendDealtReturnBrokenReady."
+   :origin "dogfood 2026-10-10; seat rebrief 2026-10-11: a ready card carrying progress was invisible to the return's gate")
+
   (fix "land-merges-the-roadmap-data" :release "v1.2.6" :status "shipped"
    :title "Land merges the roadmap data, not returns the card"
    :text "A head whose conflict is in docs/fixes.sexp or docs/roadmap.sexp, with or without FIXES.md and

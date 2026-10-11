@@ -97,9 +97,11 @@ func friendStartUnits(s *Snapshot, seats []FriendSeat) (units []Unit, started ma
 // running, or its progress stamp) is stamped started now, its deadline from now; any other
 // goes back ready on her row, untaken, its deadline unset and its start bound from now
 // (untaken_since), one line each, and friend sync's start receipt (FriendStart) or her beat
-// moves it to working again when she begins it.
-func friendUnstartedWorking(s *Snapshot, seats []FriendSeat) []Unit {
-	var units []Unit
+// moves it to working again when she begins it. A friend who takes a card this way is dealt
+// again: her start clears the dealt-no-more mark (PropFriendDealtNoMore), as FriendStart does
+// (tla/FriendDealtReturn.tla Start removes f from dealtNoMore).
+func friendUnstartedWorking(s *Snapshot, seats []FriendSeat) (units []Unit, props []PropWrite) {
+	cleared := map[string]bool{}
 	for _, f := range seats {
 		row := FriendRow(f.Name)
 		working := append([]*Card(nil), s.Fleet.Cell(row, Working)...)
@@ -112,6 +114,10 @@ func friendUnstartedWorking(s *Snapshot, seats []FriendSeat) []Unit {
 				set, unset := friendStartSet(s, c, f.Name)
 				units = append(units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, setEntry(c, set, unset...))},
 					Moved: fmt.Sprintf("%s %s:working started (her beat names it running)", c.ID, row)})
+				if !cleared[f.Name] {
+					cleared[f.Name] = true
+					props = append(props, friendTakenClear(s, f)...)
+				}
 				continue
 			}
 			unset := []string{"taken", FieldFriendDeadline}
@@ -122,7 +128,7 @@ func friendUnstartedWorking(s *Snapshot, seats []FriendSeat) []Unit {
 				Moved: fmt.Sprintf("%s %s:working -> ready (working with no start of hers: it waits ready until she starts it)", c.ID, row)})
 		}
 	}
-	return units
+	return units, props
 }
 
 // FriendStartReq is friend sync's start receipt: the friend, the cards on her row she has
@@ -139,10 +145,15 @@ type FriendStartReq struct {
 // now, its deadline from now (friendStartSet); one working on her row with no start of hers
 // (startedNow) is stamped started now, where it is. A card she started already changes
 // nothing; one not on her row, not ready or working, or at another generation is refused,
-// one refusal each. A start is her fact: her lanes and her status do not gate it.
+// one refusal each. A start is her fact: her lanes and her status do not gate it. Her start
+// also clears the dealt-no-more mark (PropFriendDealtNoMore), as the tick's start does
+// (friendDealPass), so a marked friend who takes a card through friend sync — a hard-pinned
+// card that stays on her row, or a card the level moved to her — is dealt again, never
+// banned forever.
 func FriendStart(s *Snapshot, r FriendStartReq) Plan {
 	var p Plan
 	row := FriendRow(r.Friend)
+	started := false
 	for _, id := range r.IDs {
 		c := s.Fleet.Placed(id)
 		switch {
@@ -162,6 +173,10 @@ func FriendStart(s *Snapshot, r FriendStartReq) Plan {
 		why := cmp.Or(r.Why[id], "friend sync read it begun")
 		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, moveEntry(c, row, Working, set, unset...))},
 			Moved: fmt.Sprintf("%s %s:%s -> working (started: %s)", c.ID, row, c.Col, why)})
+		started = true
+	}
+	if started {
+		p.Props = append(p.Props, friendTakenClear(s, FriendSeat{Name: r.Friend, Running: r.IDs})...)
 	}
 	return p
 }
