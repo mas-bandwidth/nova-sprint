@@ -231,6 +231,16 @@
     rewritten in place when its facts change, never raised anew, and closed when the reads are asked."
    :origin "this pull request; frontier reader judgment")
 
+  (fix "repair-says-what-it-changes" :release "v1.2.6" :status "shipped"
+   :title "repair says what it changes, takes --dry-run, and returns a rule-6 merging card to review"
+    :text "repair's help names its effect, it takes --dry-run that prints each move it would make (and leaves a
+    pending operation open), and it refuses naming the remedy when it can do nothing. It learns check rule
+    6: a card merging with ok reads from fewer different readers at its head than it needs goes back to
+    review for its missing read, with the reason recorded, and never a card a lander marked landing (or
+    pushed and not reported, or with a change queued for it): a landing once committed is completed, so
+    repair skips it exactly as the tick's ShortReadsBack does."
+   :origin "this pull request")
+
   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
    :title "The worker brief says never amend, rebase or reset onto origin"
    :text "One line in the worker brief (the child rule no-rewrite-history, internal/fleetrules/child-rules.txt,
