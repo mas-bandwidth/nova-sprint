@@ -65,8 +65,12 @@
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator."))
- :items
-  ((fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
+  :items
+   ((fix "tla-routerest-open-coordinator-rests" :release "v1.2.12" :status "planned"
+     :title "RouteRest models the open coordinator rest, a take in flight, and the window reset on a provider rest"
+     :text "Model only, no product change. RouteRest's coordinator rest splits into timed and open (the open one ends only by wake, never by the clock: CoordOpenEndsOnlyWoken); a take in flight across a rest whose refusal was launched before the mark is ignored; and a route's window of ended takes restarts on the provider's rest as well as its own. One reversed witness, MCRouteRestBrokenCoordClock, lets the clock end an open coordinator rest and fails CoordOpenEndsOnlyWoken."
+     :origin "this card; v1.2.12 inventory item T36")
+    (fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
     :title "The store package's own tests pin stats tidy and stats reset"
     :text "Tests only, no product change. New tests in internal/sprint/store drive TidyStats and ResetStats through the unit tier's Mem store and assert on their results, on what StatsTidied and StatsReset read back, and on whether the store changed: a dry run counts and writes nothing; a fleet tidy moves history off the done cells and records the archive done; a second tidy within TidyAgainAfter is refused; a fresh tidy marker refuses a tidy or a reset while a stale one is taken as ended; routes alone moves nothing and streams clears the where record; a refused move keeps its archive failed and clears the marker; a reset writes its mark and clears the where record; operation ids replay, conflict and are refused by shape; a compare-and-set that keeps losing errors after its tries; and a tidy's kinds and archives are kept across a reset."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C5")
