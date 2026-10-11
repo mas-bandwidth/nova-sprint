@@ -194,7 +194,7 @@ func providerBack(s *Snapshot, wc *Card) bool {
 		}
 	}
 	for _, c := range s.Fleet.Column(DoneOK, Finished) {
-		if c.F("ok") == "yes" && failed[providerOf(c.F(FieldModel))] && stampAt(c, "finished").After(since) {
+		if (c.Col == DoneOK || c.F("ok") == "yes") && failed[providerOf(c.F(FieldModel))] && stampAt(c, "finished").After(since) {
 			return true
 		}
 	}

@@ -95,6 +95,13 @@ func TestStatsTidyZeroesCountersAndKeepsTheWork(t *testing.T) {
 	}
 	wc := r.snap().Fleet.Card(r.snap().Work.Card("s2-2").F("work"))
 	r.must(store.FinishStep(sprint.FinishReq{Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")}}))
+	r.must(store.AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{"s2-2"}}}))
+	for _, rc := range r.snap().Readers.Of("s2-2") {
+		if rc.Col == sprint.Asked || rc.Col == sprint.Reading {
+			r.must(store.ReadStep(sprint.ReadReq{Usage: "input=1000 output=100", As: rc.Row, Verdict: "ok", Finding: "f:1", Sel: sprint.Sel{IDs: []string{rc.ID}}}))
+		}
+	}
+	r.must(verdictsStep())
 	r.must(store.DrainStep())
 	// an hour of RUNNING on, and half a second: no finish is within the keep window, which
 	// is running time (a stopped machine's hour would keep every finish)

@@ -71,3 +71,14 @@ func TestOkPercentCountsReaderVerdictsOnlyAndADeadlineIsARedeal(t *testing.T) {
 	late := Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-4.w1"}}, As: amy, Gens: gensOf(w.s, "s1-4.w1"), Head: "abc"})
 	assert.Empty(t, late.Units, "a redealt card is finished by no one")
 }
+
+// okVerdict drives the primary's reads to ok (readOK) and applies the verdicts part:
+// its finished work card moves to its ok cell (TickVerdicts).
+func okVerdict(w *world, id string) {
+	w.t.Helper()
+	w.must(Ask(w.s, AskReq{Sel: Sel{IDs: []string{id}}}))
+	for _, rc := range readsAt(w.s, w.s.Work.Card(id), 1) {
+		w.must(Read(w.s, ReadReq{As: rc.Row, Verdict: "ok", Sel: Sel{IDs: []string{rc.ID}}}))
+	}
+	w.must(w.part(TickVerdictsFn, TickReq{}))
+}

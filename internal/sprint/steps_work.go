@@ -1573,7 +1573,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			who = r.Who
 		}
 		pr := s.Work.Placed(c.F("primary"))
-		late := c.Col == DoneFailed // a late report for the attempt a deadline failed (lateFinish)
+		late := c.Col == DoneFailed || c.Col == Finished // a late report for the attempt a deadline failed (lateFinish)
 		// how a failed finish is routed: by the reason line's prefix, or by the take's
 		// attempt decision at or above its class's bar on the card (decide.go, finishKind)
 		kind, class, used := "", "", false
@@ -1806,7 +1806,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 // deadline failed takes one (deadlineFailed): an attempt its own worker failed was
 // reported already, and a finish for it again (a retry, a duplicate) is refused as before.
 func lateFinish(s *Snapshot, c *Card) bool {
-	if c == nil || !c.Placed() || c.Col != DoneFailed || c.F("kind") == "read" {
+	if c == nil || !c.Placed() || (c.Col != DoneFailed && c.Col != Finished) || c.F("kind") == "read" {
 		return false
 	}
 	if !deadlineFailed(c.F("report")) {
