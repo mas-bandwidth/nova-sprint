@@ -75,11 +75,11 @@ func TestReworkCarriesTheFixTheFindingAndWhyInTheNextPacket(t *testing.T) {
 		h.a2ToReview("s1-1", false)
 		rc := h.pairAsked("s1-1")
 		for i, c := range rc[:2] {
-			h.must(ReadStep(sprint.ReadReq{Usage: "input=1000 output=100", As: c.Row, Verdict: "broken", Finding: "f:1 " + strings.Repeat(string(rune('a'+i)), 5000), Sel: sprint.Sel{IDs: []string{c.ID}}}))
+			h.must(ReadStep(sprint.ReadReq{Usage: "input=1000 output=100", As: c.Row, Verdict: "broken", Finding: "f:1 " + strings.Repeat(string(rune('a'+i)), MaxCardTextBytes-4), Sel: sprint.Sel{IDs: []string{c.ID}}}))
 		}
 		h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Fix: "short"}))
 		p := packetOf(h, "s1-1.w2")
-		assert.Len(t, p.Finding, MaxCardTextBytes, "two 5000-byte findings are cut to the bound")
+		assert.Len(t, p.Finding, MaxCardTextBytes, "two findings at the bound are cut to it")
 		assert.True(t, strings.HasSuffix(p.Finding, "..."))
 		// a failed finish with a report at the bound, and no --fix: the fix taken and why are cut too
 		h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"s1-2"}}}))
