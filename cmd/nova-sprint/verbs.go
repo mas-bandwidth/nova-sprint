@@ -1155,11 +1155,9 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "%s init: %s\n", prog, oneline.Escape(err.Error()))
 			return 1
 		}
-		if tiers != "" {
-			if err := writeReaderTiers(ctx, st, rs, tiers); err != nil {
-				fmt.Fprintf(stderr, "%s init: %s\n", prog, oneline.Escape(err.Error()))
-				return 1
-			}
+		if err := writeReaderTiers(ctx, st, rs, tiers); err != nil {
+			fmt.Fprintf(stderr, "%s init: %s\n", prog, oneline.Escape(err.Error()))
+			return 1
 		}
 	}
 	if rulesPath != "" {
@@ -3342,10 +3340,8 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 	// For fleet readers added without --tiers, inherit common fleet tier if applicable.
 	if !tiersSet {
 		inherited := store.CommonFleetTierForAdd(ctx, st, names)
-		if inherited != "" {
-			tiers = inherited
-			tiersSet = true
-		}
+		tiers = inherited
+		tiersSet = true
 	}
 	if err := st.B.RowsAdd(ctx, st.Names.Table(sprint.Readers), names); err != nil {
 		fmt.Fprintf(stderr, "%s reader add: %s\n", prog, oneline.Escape(err.Error()))

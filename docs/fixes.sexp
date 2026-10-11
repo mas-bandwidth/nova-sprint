@@ -780,4 +780,8 @@
   (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
-   :origin "this card")))
+   :origin "this card")
+  (fix "a-joined-reader-gets-the-fleet-reader-tiers" :release "v1.2.11" :status "planned"
+   :title "fleet readers inherit common fleet tiers on add"
+   :text "reader add and init --readers now inherit the common fleet tier when adding fleet readers without --tiers. If all other fleet readers share the same non-empty tiers, the new reader gets those tiers. If fleet readers differ or there are no other fleet readers, the new reader gets the default (empty cell). Doctor warns when a fleet reader's tiers differ from the fleet's common tier."
+   :origin "the seat, 2026-10-11 ~03:15Z, reader-b1, reader-b2 and reader-b3 joined with tiers \"default\" and were never asked a read while every other fleet reader was at flash,pro,heavy")))
