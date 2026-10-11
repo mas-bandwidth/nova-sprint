@@ -1387,13 +1387,16 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	due := notify(&p, s, conds, []string{NWorkLate, NReadLate, NMergeLate}, r)
+	// the ready-over judgments (ready_over.go), on a plan of their own the same way
+	ro, readyDue := TickReadyOver(s, r)
+	p.Notes, p.Closes, p.Updates = append(p.Notes, ro.Notes...), append(p.Closes, ro.Closes...), append(p.Updates, ro.Updates...)
 	// the backlog alarms, on a plan of their own: each notify closes and judges after its own closes
 	a, alarmsDue := tickAlarms(s, r)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, a.Notes...), append(p.Closes, a.Closes...), append(p.Updates, a.Updates...)
 	// the drift alarms, on a plan of their own the same way (drift.go)
 	d, driftDue := TickDrift(s, r, r.Drift)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, d.Notes...), append(p.Closes, d.Closes...), append(p.Updates, d.Updates...)
-	return p, due + alarmsDue + driftDue
+	return p, due + readyDue + alarmsDue + driftDue
 }
 
 // TickOverdue marks each open judgment overdue once, when it passes its due
@@ -1536,7 +1539,7 @@ type cond struct {
 // stays one condition, so they are keyed by their type and subject only.
 func condKey(typ, subject, card, what string) string {
 	switch typ {
-	case NNoMember, NAdoptFailed, NCannotAsk, NNoRoute, NFewReaders, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NStarving, NOverloaded, NReadersBehind, NDevBehind, NRaiseReadTier,
+	case NNoMember, NAdoptFailed, NCannotAsk, NNoRoute, NReadyOver, NFewReaders, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NStarving, NOverloaded, NReadersBehind, NDevBehind, NRaiseReadTier,
 		NBrokenReadsOutrun, NReaderBreaks,
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
