@@ -882,6 +882,11 @@
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
    :origin "this card")
 
+   (fix "a-refused-verb-is-logged-with-its-refusal" :release "v1.2.11" :status "planned"
+    :title "A refused verb is logged with its refusal"
+    :text "A verb the server refuses writes one line on the server's log: SERVE REFUSED verb=<verb> as=<worker> exit=<n> card=<card>: <the verb's own first stderr line>, the verb word, the worker, the exit, the card argument and stderr's first line alone, cut to 300 bytes; a verb that exits 0 writes nothing. The same verb, worker, exit and first line repeated within a minute is written once, and the next written line carries (repeated <n> times since <t>), so a flood of one refusal is a few hundred lines rather than one a verb. The SERVE tally line counts the refused verbs by verb word. docs/SPEC-SPRINT.md section 14, The server, says both."
+    :origin "this card")
+
   (fix "no-deal-to-a-draining-member" :release "v1.2.10" :status "shipped"
    :title "No deal to a draining member; a held or draining machine's reader is asked nothing"
    :origin "PR #84")
