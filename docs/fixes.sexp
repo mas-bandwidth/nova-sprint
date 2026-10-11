@@ -2321,6 +2321,7 @@
    :origin "this card, every-need-names-a-live-card-checked-every-second.w1, from the owner,
     2026-10-11 ~23:25Z: \"this must never happen again. We must have a process that checks all card
     dependencies and if they don't exist, once per-second, you are alerted via push notification.\""
+  )
   (fix "lander-resolves-ledger-conflicts" :release "v1.2.13" :status "planned"
    :title "A landing whose every conflict is a shared ledger lands"
    :text "Measured over 60 minutes of the live sprint on 2026-10-11: about 300 landing refusals
