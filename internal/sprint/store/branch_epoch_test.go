@@ -37,7 +37,7 @@ func TestTheAttemptBranchRoundTripsAndIsNewAfterAClear(t *testing.T) {
 
 	_, err := h.st.Clear(h.ctx)
 	require.NoError(t, err)
-	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"s1-1"}}))
+	h.setup(1) // the blank new epoch gets its members and stream fresh
 	h.must(DealStep(sprint.DealReq{}))
 	second := h.packetOf("s1-1.w1")
 	assert.Greater(t, second.Epoch, first.Epoch)

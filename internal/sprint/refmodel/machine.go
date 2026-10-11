@@ -233,6 +233,18 @@ func (n *State) tickAsk(choice map[string][]string) error {
 	// in stream turns from the ask's stream index;
 	// Ask moves it past each primary's stream
 	review = n.streamTurns(review, n.AskStreamLast)
+	// Fewer than two readers up: the sprint's one judgment says so and no
+	// absent reader is asked (sprint.TickAsk, NFewReaders), as the tick's
+	// no-member judgment names the fleet.
+	j := Judgment{JFewReaders, "stream:"}
+	if len(n.Readers) < 2 && len(review) > 0 {
+		if !n.Acked[j] {
+			n.Open[j] = true
+		}
+		return nil
+	}
+	delete(n.Open, j)
+	delete(n.Acked, j)
 	// the finders' reads first (sprint.askFinders): each counted in its reader's
 	// load before the primary's own Ask places it (Reserved)
 	n.Reserved = map[string]int{}
@@ -320,18 +332,17 @@ func Release(s State, ids []string, who string) (State, error) {
 	return n, nil
 }
 
-// Clear is the spec's clear (section 13): the machine STOPPED, the epoch
-// advanced once; at the new epoch every table is empty with the same rows,
-// every stream waiting, every member with its status and no work; the
-// judgments and the fence are the new epoch's own, empty. The coordinator is
-// the sprint's and is kept. From the spec, not yet in the model.
+// Clear is the spec's blank-slate clear (section 13): the machine STOPPED, the
+// epoch advanced once; the new epoch is empty by construction — no stream,
+// reader, work, read or merge row and no open judgment — so nothing of the old
+// shape is restored. The fleet's members are not sprint state: their rows and
+// status survive a clear (the machines are still there), but their holds do
+// not (the Work map is empty). The coordinator is the sprint's and is kept.
 func Clear(s State) (State, error) {
-	n := New(s.Readers, s.Order, s.Coordinator)
+	n := New(nil, s.Order, s.Coordinator)
 	maps.Copy(n.Members, s.Members)
-	for st := range s.Streams {
-		n.Streams[st] = Stream{State: SWaiting}
-	}
 	n.Epoch = s.Epoch + 1
 	n.Machine = Stopped
+	n.Cap = s.Cap
 	return n, nil
 }

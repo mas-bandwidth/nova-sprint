@@ -483,10 +483,14 @@ func (h *dHarness) record(a dAction, post, next refmodel.State, merr error, refu
 		out = append(out, dFinding{Seq: seq, Kind: "choice", Detail: "the engine made a choice the model does not allow: " + ce.Why})
 		next = h.model
 	case merr != nil:
-		if d := refmodel.Compare(post, base); len(d) > 0 {
+		// next is the state the model's step left before it refused (for a
+		// clear that stops the machine first, the machine is STOPPED in it);
+		// compare the engine's post against it, not the pre-action base, so a
+		// refusal that also acts (clear's stop) is not read as the engine
+		// acting where the model did not.
+		if d := refmodel.Compare(post, next); len(d) > 0 {
 			out = append(out, dFinding{Seq: seq, Kind: "refusal", Detail: "model refuses: " + merr.Error() + "; the engine acted", Diffs: d})
 		}
-		next = h.model
 	case refusedWhy != "":
 		if d := refmodel.Compare(h.model, next); len(d) > 0 {
 			out = append(out, dFinding{Seq: seq, Kind: "refusal", Detail: "engine refuses: " + refusedWhy + "; the model acts"})
@@ -874,10 +878,24 @@ func (h *dHarness) modelStep(a dAction, pre, post refmodel.State) (refmodel.Stat
 	case "resolve":
 		next, err = refmodel.Resolve(s, a.id())
 	case "clear":
-		if len(h.stopDebt) > 0 {
-			return s, fmt.Errorf("clear requires STOP owner cancellation receipts")
+		// Clear stops the machine first (the engine sets STOPPED and leaves it
+		// STOPPED), then refuses only leases still live (a card in Fleet
+		// Working or Readers Reading) after STOP; a stop-returned or
+		// no-longer-working lease does not block the epoch advance (the
+		// blank-slate clear, SPEC-SPRINT section 14).
+		stopped, serr := refmodel.SetMachine(s, false)
+		if serr != nil {
+			return s, serr
 		}
-		next, err = refmodel.Clear(s)
+		h.stopIssued = true
+		if h.stopHeld == nil {
+			h.stopHeld = h.activeStopLeases(s)
+			h.stopDebt = maps.Clone(h.stopHeld)
+		}
+		if live := h.activeStopLeases(stopped); len(live) > 0 {
+			return stopped, fmt.Errorf("clear stopped the machine with %d captured owner work/read leases", len(live))
+		}
+		next, err = refmodel.Clear(stopped)
 		if err == nil {
 			h.stopIssued = true
 			h.stopHeld = nil
