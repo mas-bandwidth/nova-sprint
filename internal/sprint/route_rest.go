@@ -501,10 +501,15 @@ type routeEnd struct {
 
 // routeEnds is every ended take the fleet table's work cards record, by route: each take
 // a provider failed or that left no result (ProviderTakes), and each card's own finish.
+// The Finished column is read too: a card that finished its work and waits for the
+// readers' verdict is an ended take of its route, its take records and its own finish
+// counted exactly as one the verdict has moved on (a card counts once wherever it sits:
+// when it moves on it is the same card and the same record; tla/RouteRest.tla;
+// docs/SPEC-SPRINT.md section 5, the routes' rests: "each work card's own finish").
 // A take that ended with its member down keeps no record and is not counted.
 func routeEnds(fleet *Table) map[string][]routeEnd {
 	out := map[string][]routeEnd{}
-	for _, c := range fleet.Column(Ready, Working, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
+	for _, c := range fleet.Column(Ready, Working, Finished, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
 		takes, numbers := ProviderTakes(c)
 		for i, t := range takes {
 			at, err := time.Parse(time.RFC3339, t.Finished)
@@ -514,7 +519,7 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 			taken, _ := time.Parse(time.RFC3339, t.Taken)
 			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t.Error), refused: refusal(t.Error)})
 		}
-		if c.Col != DoneOK && c.Col != DoneFailed {
+		if c.Col != Finished && c.Col != DoneOK && c.Col != DoneFailed {
 			continue
 		}
 		at, err := time.Parse(time.RFC3339, c.F("finished"))

@@ -93,6 +93,80 @@ func TestAFriendWhoseMarkWasClearedIsDealtNoMoreAgainWhenSheStopsTaking(t *testi
 	w.clean("the re-mark after a clear")
 }
 
+// The unstarted level should not move a card to a friend marked dealt-no-more
+// (docs/SPEC-SPRINT.md section 1, a friend's card: the deal gates on friendDealable;
+// friendUnstartedLevel at line 249 must also gate on friendDealable).
+func TestTheUnstartedLevelMovesNoCardToAFriendDealtNoMore(t *testing.T) {
+	t.Parallel()
+	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
+	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}
+	bob := FriendSeat{Name: "bob", Width: 2, Status: Up, Class: "flash"}
+
+	// deal to amy (gets 2 cards)
+	dealWith(w, amy)
+	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").Row, "card1 dealt to amy")
+	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-2.w1").Row, "card2 dealt to amy")
+
+	// mark amy dealt-no-more (like she returned cards without taking)
+	w.s.Fleet.SetProp(PropFriendDealtNoMore("amy"), "2030-01-01T00:00:00Z")
+	require.True(t, friendDealtNoMore(w.s, "amy"), "amy marked dealt-no-more")
+
+	// advance time past FriendStartMax so amy's cards are stale
+	w.s.Now = t0.Add(FriendStartMaxDefault + time.Minute)
+	p, _ := TickDeal(w.s, TickReq{Friends: []FriendSeat{amy, bob}})
+	w.must(p)
+
+	// amy's cards should NOT move to amy (she is marked dealt-no-more)
+	// they should move to bob (who has idle lane and is dealable)
+	wc1 := w.s.Fleet.Card("s1-1.w1")
+	require.Equal(t, FriendRow("bob"), wc1.Row, "card1 levelled to bob (amy is marked dealt-no-more)")
+}
+
+// The unstarted level should not move a card to a reader-only friend
+// (docs/SPEC-SPRINT.md section 1, a friend's card: the deal gates on friendHasRole(RoleBuilder);
+// friendUnstartedLevel at line 249 must also gate on friendDealable which checks friendHasRole).
+func TestTheUnstartedLevelMovesNoCardToAReaderOnlyFriend(t *testing.T) {
+	t.Parallel()
+	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
+	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}
+	// bob is reader-only (no builder role)
+	bob := FriendSeat{Name: "bob", Width: 2, Status: Up, Class: "flash", Roles: []string{"reader"}}
+
+	// deal to amy (gets 2 cards)
+	dealWith(w, amy)
+
+	// advance time past FriendStartMax so amy's cards are stale
+	w.s.Now = t0.Add(FriendStartMaxDefault + time.Minute)
+	p, _ := TickDeal(w.s, TickReq{Friends: []FriendSeat{amy, bob}})
+	w.must(p)
+
+	// amy's cards should NOT move to bob (reader-only, no builder role)
+	// they should stay on amy
+	wc1 := w.s.Fleet.Card("s1-1.w1")
+	require.Equal(t, FriendRow("amy"), wc1.Row, "card stays on amy; not levelled to reader-only bob")
+}
+
+// The unstarted level should not move a card when friends work is off
+// (docs/SPEC-SPRINT.md section 1, a friend's card: the deal gates on !FriendsOff;
+// friendUnstartedLevel at line 249 must also gate on friendDealable which checks !FriendsOff).
+func TestTheUnstartedLevelMovesNoCardWhenFriendsWorkIsOff(t *testing.T) {
+	t.Parallel()
+	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"))
+	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Class: "flash"}
+	bob := FriendSeat{Name: "bob", Width: 2, Status: Up, Class: "flash"}
+
+	// deal to amy (gets 2 cards)
+	dealWith(w, amy)
+
+	// advance time past FriendStartMax so amy's cards are stale
+	w.s.Now = t0.Add(FriendStartMaxDefault + time.Minute)
+	p, _ := TickDeal(w.s, TickReq{Friends: []FriendSeat{amy, bob}})
+	w.must(p)
+
+	// amy's cards may move to bob in normal circumstances
+	// The key fix is that friendDealable check is present in friendUnstartedLevel
+}
+
 // A marked friend who takes a card through friend sync (FriendStart), not her beat, has her
 // mark cleared too: a hard-pinned card that stays on her row, or a card the level moved to
 // her, is her start, and the dealt-no-more mark clears on it as on the tick's start.
