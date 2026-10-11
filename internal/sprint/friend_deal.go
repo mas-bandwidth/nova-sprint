@@ -294,6 +294,7 @@ func friendCanRead(s *Snapshot, f FriendSeat) bool {
 // set --friends-tiers). A friend whose row names no tier takes none, and every friend
 // deal and move is gated on it, whatever the card's WHO line, so a frontier card never
 // reaches a friend without frontier.
+// tla/WhoPreference.tla Admits
 func friendTakes(s *Snapshot, f FriendSeat, tier string) bool {
 	return slices.Contains(friendTiers(f), tier) && s.FriendsTake(tier)
 }
@@ -418,6 +419,7 @@ func friendRoom(f FriendSeat) (room, width int) {
 // friend-deal-idle-lanes-first.w1): a friend with an idle lane (lanes > 0) before every
 // friend with none, the most idle lanes first, then the most room free, then the first by
 // name; "" when names is empty. The caller gives only the friends the card may go to.
+// tla/WhoPreference.tla Candidate
 func preferredFriend(names []string, lanes, free map[string]int) string {
 	best := ""
 	for _, f := range names {
