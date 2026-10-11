@@ -3403,10 +3403,13 @@ func streamWords() string {
 	return strings.TrimSpace(`
 The streams: add --stream <s> opens a stream, its row of the work and merge
 tables, and a clear keeps it. stream remove takes streams off both tables, on
-a STOPPED machine only (nova-sprint stop first), refused while a stream holds a
-card (a primary or a sentinel in any column of its work row, a merge card in
-its merge row: nova-sprint clear --confirm sprint, or drop) and all or none
-for the streams named. A clear does not bring a removed stream back; an add
+a STOPPED machine only (nova-sprint stop first), and removes the streams that
+exist: each stream stands on its own, a name on neither table is reported and
+refuses nothing, and a stream that holds a card is not removed (a primary or
+a sentinel in any column of its work row, a merge card in
+its merge row: nova-sprint clear --confirm sprint, or drop); the exit is 1
+only when nothing was removed or a removal failed. A clear does not bring a
+removed stream back; an add
 under its name does, in this epoch or the next (a NOTE line says it came
 back). stream archive takes streams
 whose every card has landed off both tables, on a running machine too: their
@@ -3585,11 +3588,15 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 // cmdStreamRemove takes the named streams off the work and merge tables:
 // removing a work stream is a verb, one that succeeds only on a STOPPED
 // machine; it removes each stream's row of both tables, with the stream's
-// control card the merge row holds, the one card add made for it. Refused,
-// exit 1 and nothing written, on a RUNNING machine, for a stream that is no
-// row, or for one that holds a card (sprint.StreamRemove), all or none for
-// the streams named. Every open judgment and held condition that names a
-// removed stream is retired with it, a NOTE line each (sprint.RetireStreams).
+// control card the merge row holds, the one card add made for it. Unlike the
+// all-or-none verbs, it takes off every named stream that may leave and
+// reports each name that may not: a name that is no row, a stream that holds
+// a card, and every name on a RUNNING machine are refused by name
+// (sprint.StreamRemoveExisting, the seat ledger v1.2.4-held-2026-10-10.md bug
+// 12, stream-remove-removes-what-exists), and the verb exits 1 only when
+// nothing was removed or a removal failed. Every open judgment and held
+// condition that names a removed stream is retired with it, a NOTE line each
+// (sprint.RetireStreams).
 func (a *app) cmdStreamRemove(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("stream remove")
 	names, err := parse(fs, args)
@@ -3612,26 +3619,30 @@ func (a *app) cmdStreamRemove(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return a.readFailed("stream remove", err, stderr)
 	}
-	if refused := sprint.StreamRemove(s, m.Running(), names); len(refused) > 0 {
-		var whys []string
-		for _, r := range refused {
-			whys = append(whys, r.Key+": "+r.Why)
-		}
+	remove, refused := sprint.StreamRemoveExisting(s, m.Running(), names)
+	var whys []string
+	for _, r := range refused {
+		whys = append(whys, r.Key+": "+r.Why)
+	}
+	if len(remove) == 0 {
 		fmt.Fprintf(stderr, "%s stream remove: %s; run: nova-sprint help stream\n", prog, oneline.Escape(strings.Join(whys, "; ")))
 		return 1
 	}
+	if len(refused) > 0 {
+		fmt.Fprintf(stderr, "%s stream remove: not removed: %s\n", prog, oneline.Escape(strings.Join(whys, "; ")))
+	}
 	for _, t := range []string{sprint.Work, sprint.Merge} {
-		if err := st.B.RowsDel(ctx, st.Names.Table(t), names); err != nil {
+		if err := st.B.RowsDel(ctx, st.Names.Table(t), remove); err != nil {
 			fmt.Fprintf(stderr, "%s stream remove: %s; run it again to finish\n", prog, oneline.Escape(err.Error()))
 			return 1
 		}
 	}
-	said, err := retireStreams(ctx, st, "stream remove", names, "was removed (stream remove), so nothing can act on this")
+	said, err := retireStreams(ctx, st, "stream remove", remove, "was removed (stream remove), so nothing can act on this")
 	if err != nil {
 		fmt.Fprintf(stderr, "%s stream remove: the streams are removed, and retiring what names them failed: %s; the next tick retires them\n", prog, oneline.Escape(err.Error()))
 		return 1
 	}
-	fmt.Fprintf(stdout, "STREAM-REMOVE OK streams=%s\n", strings.Join(names, ","))
+	fmt.Fprintf(stdout, "STREAM-REMOVE OK streams=%s\n", strings.Join(remove, ","))
 	for _, l := range said {
 		fmt.Fprintf(stdout, "NOTE %s\n", oneline.Escape(l))
 	}
