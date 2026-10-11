@@ -294,6 +294,35 @@
    :date "2026-10-10"
    :release "v1.4"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
+  (item "client-server-conversion" :group "sprint"
+   :title "Convert every client-held copy of sprint state to client/server"
+   :text "The first v1.4 rewrite step. Each item in the 2026-10-10 inventory where a client keeps its own copy
+    of sprint state is converted in place so the server is the one truth and clients ask it: the friend
+    daemon's lanes and epoch, the member loop's lane table and local recovery (one lane protocol for friends
+    and fleet), the seat's file proof, friend messages through folders and the separate bus Redis, config
+    split across Postgres and the store, hosts following versions, the dashboard's own snapshot, and the
+    lander as a second truth in git. All state is keyed by epoch. A TLA+ model of the lane protocol comes
+    first. Faults found while the point releases run are recorded here as input."
+   :why "Point releases continue meanwhile; their faults are the input to this rewrite cleanup."
+   :date "2026-10-11"
+   :release "v1.4"
+   :origin "the owner, 2026-10-11")
+  (item "secure-the-layers-bottom-up" :group "sprint"
+   :title "Secure the sprint's layers from the bottom up"
+   :text "Name the layers that are really there and secure each in turn, lowest first, each an anchor so a
+    later fault stops there: L0 machine (one join entry point, drift check, doctor member-env green); L1
+    transport (loops re-dial, seat proof, push delivery); L2 providers and routes (the global limiter live, a
+    provider fault never fails a card); L3 deal and take (a machine fault holds the machine, no silent
+    ready); L4 read (no lost verdict, no cannot-ask while readers idle); L5 land (ledger merge done,
+    judgments rare and hands-off); L6 observability (doctor and pushes catch every fault first). A layer is
+    secured when it has a TLA+ model with reversed witnesses checked by TLC, tests on a real store including
+    every refusal, a second reader's probes green, real use by the seat and by friends, docs, and a lock
+    agreed with the owner."
+   :why "Comes after the client/server conversion of the 2026-10-10 inventory, so the layers are secured on
+    the converted design rather than on client-held state."
+   :date "2026-10-11"
+   :release "v1.4"
+   :origin "the owner, 2026-10-11")
   (item "card-verb-bounded-reads" :group "sprint"
    :title "One card read touches only that card"
    :text "The card verb reads the whole work table and log on each call; make a read use per-card indexes
