@@ -823,6 +823,19 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "tlc-runs-inside-the-job-wall" :release "v1.2.12" :status "planned"
+   :title "TLC runs inside the job wall"
+   :text "tools/tlacheck is built in this repository on this tree's pkg/tlc, with the groups
+    (--root, --stale), inputs, run (--root, --jar, --java, --dir, --group, --shards/--shard,
+    --timeout, --workers, --manual) and merge (--root, --keep, --out, then the runs) verbs, and the
+    Makefile tlc, tlc-full, tlc-groups and tlc-test targets. Since the split the runner lived in
+    nova-tools and refused this root (the two pkg/tlc trees differ in suite.go, which this tree
+    builds against pkg/safepath), so no worker in nova-sprint could run TLC, make tlc named a target
+    that did not exist, and some cards hand-wrote RUNS.tsv rows. The runner now runs where the cards
+    run. Its cmd_checks.go (the table-model suites over internal/tablemodel) and bench.go's --bench
+    are not carried: this repository has neither."
+   :origin "this card")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
