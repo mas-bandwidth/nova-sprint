@@ -197,19 +197,19 @@ func takeAndRefuse(t *testing.T, w *world) (string, string) {
 	return p.Units[0].Moved, wc
 }
 
-// An UNLIMITED route's 429 ends the take as any provider failure does: a take ended, its
-// record written (it counts toward the route's 3-in-10 rest), a redeal spent. Only a
-// limited route's 429 is the limiter's to absorb.
+// An UNLIMITED route's 429 is the rate limiter's to absorb: the take is withdrawn without
+// FieldTakeEnded (no redeal spent) and the route rests briefly (60s) without counting toward
+// the 3-in-10 rest. Only a limited route's 429 is fully absorbed by the limiter.
 func TestAnUnlimitedRoutes429EndsTheTake(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
 	proMercury(w)
 	moved, wc := takeAndRefuse(t, w)
-	assert.NotContains(t, moved, "returned untouched")
+	assert.Contains(t, moved, "backoff")
 	c := w.s.Fleet.Card(wc)
-	assert.NotEmpty(t, c.F(FieldTakeEnded), "the take ended")
+	assert.Empty(t, c.F(FieldTakeEnded), "no redeal spent")
 	takes, _ := ProviderTakes(c)
-	assert.Len(t, takes, 1, "the take's record counts toward the route's rest")
+	assert.Empty(t, takes, "no take record toward route's rest")
 }
 
 // Even a limited route cannot loop a card forever: MaxRateReturns untouched returns, then
@@ -218,7 +218,8 @@ func TestALimitedRoutesReturnsAreBounded(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
 	proMercury(w)
-	w.s.Fleet.SetProps(map[string]string{PropModelRPM("inception/mercury-3"): "10"})
+	// Set a rate limit to make this a limited route
+	w.s.Fleet.SetProps(map[string]string{PropModelRPM("inception/mercury-3"): "10", PropProviderConcurrency("inception"): "1"})
 	var wc string
 	for i := range MaxRateReturns {
 		var moved string

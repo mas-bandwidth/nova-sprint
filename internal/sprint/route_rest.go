@@ -330,15 +330,18 @@ func restedRoutes(r RouteRest, routes []Route) []string {
 
 // routeEnd is one ended take on a route: the work card, when it ended, when it was taken
 // (its child launched; zero when its record holds none), whether the provider failed it
-// transiently (a rate limit, a 5xx, a timeout: transient), and the provider's line when the
-// provider refused it for credit or for its key (refusal, provider_funds.go), "" otherwise.
-// A take that left no result is neither: it is the model's, never the provider's.
+// transiently (a 5xx, a timeout: transient), whether it was rate-limited (rateLimited),
+// and the provider's line when the provider refused it for credit or for its key
+// (refusal, provider_funds.go), "" otherwise. A take that left no result is neither: it is
+// the model's, never the provider's. Rate-limited ends rest the route briefly without
+// counting toward the route's 3-in-10 rest.
 type routeEnd struct {
-	card      string
-	take      int
-	at, taken time.Time
-	transient bool
-	refused   string
+	card        string
+	take        int
+	at, taken   time.Time
+	transient   bool
+	rateLimited bool
+	refused     string
 }
 
 // routeEnds is every ended take the fleet table's work cards record, by route: each take
@@ -354,14 +357,17 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 				continue
 			}
 			taken, _ := time.Parse(time.RFC3339, t.Taken)
-			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t.Error), refused: refusal(t.Error)})
+			errLine := strings.TrimSpace(t.Error)
+			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(errLine) && !IsRateLimited(errLine), rateLimited: IsRateLimited(errLine), refused: refusal(errLine)})
 		}
 		if c.Col != DoneOK && c.Col != DoneFailed {
 			continue
 		}
 		at, err := time.Parse(time.RFC3339, c.F("finished"))
 		if r := c.F(FieldRoute); r != "" && r != RoutePin && err == nil {
-			out[r] = append(out[r], routeEnd{card: c.ID, take: c.Int("redeals") + 1, at: at})
+			report := c.F(FieldProviderError)
+			rateLimited := IsRateLimited(report)
+			out[r] = append(out[r], routeEnd{card: c.ID, take: c.Int("redeals") + 1, at: at, rateLimited: rateLimited, transient: transient(report) && !rateLimited})
 		}
 	}
 	return out

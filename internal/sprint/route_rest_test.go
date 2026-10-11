@@ -58,18 +58,18 @@ func TestRestsDueCountsTransientProviderFailuresNeverNoResults(t *testing.T) {
 		rest  string // the property's value before
 		cards []string
 	}{
-		{"three 429s", map[string]string{"c1": limited(1), "c2": limited(2), "c3": limited(3)}, nil, "", []string{"c1", "c2", "c3"}},
-		{"a 429, a 5xx and a timeout", map[string]string{"c1": limited(1), "c2": outage(2), "c3": slow(3)}, nil, "", []string{"c1", "c2", "c3"}},
+		{"three 429s never rest (rate-limited ends do not count)", map[string]string{"c1": limited(1), "c2": limited(2), "c3": limited(3)}, nil, "", nil},
+		{"a 429, a 5xx and a timeout (rate-limited excluded)", map[string]string{"c1": limited(1), "c2": outage(2), "c3": slow(3)}, nil, "", nil},
 		{"three no results never rest", map[string]string{"c1": noResult(1), "c2": noResult(2), "c3": noResult(3)}, nil, "", nil},
 		{"ten no results never rest", map[string]string{"c1": noResult(1), "c2": noResult(2), "c3": noResult(3), "c4": noResult(4), "c5": noResult(5), "c6": noResult(6), "c7": noResult(7), "c8": noResult(8), "c9": noResult(9), "c10": noResult(10)}, nil, "", nil},
 		{"a no result is not the provider's", map[string]string{"c1": limited(1), "c2": noResult(2), "c3": outage(3)}, nil, "", nil},
 		{"a failure of another class does not count", map[string]string{"c1": limited(1), "c2": other(2), "c3": outage(3)}, nil, "", nil},
 		{"two", map[string]string{"c1": limited(1), "c2": limited(2)}, oks(3, 5), "", nil},
-		{"three among ok ends, within ten", map[string]string{"c1": limited(1), "c2": outage(5), "c3": slow(9)}, oks(2, 3), "", []string{"c1", "c2", "c3"}},
+		{"three among ok ends, within ten (rate-limited excluded)", map[string]string{"c1": limited(1), "c2": outage(5), "c3": slow(9)}, oks(2, 3), "", nil},
 		{"the first slid out of the window", map[string]string{"c1": limited(1), "c2": limited(20), "c3": limited(21)}, oks(2, 9), "", nil},
 		{"ends before the last rest do not count", map[string]string{"c1": limited(1), "c2": limited(2), "c3": limited(40)}, nil, was(10, 30), nil},
 		{"resting now", map[string]string{"c1": limited(41), "c2": limited(42), "c3": limited(43)}, nil, was(40, 70), nil},
-		{"a rest ended, three after it", map[string]string{"c1": limited(31), "c2": limited(32), "c3": limited(33)}, nil, was(0, 30), []string{"c1", "c2", "c3"}},
+		{"a rest ended, three after it (rate-limited excluded)", map[string]string{"c1": limited(31), "c2": limited(32), "c3": limited(33)}, nil, was(0, 30), nil},
 		{"a retired no-result rest holds nothing", map[string]string{"c1": noResult(41)}, nil, at(40) + " " + at(70) + " x,y,z", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -358,10 +358,10 @@ func TestARetiredRestKeepsItsMark(t *testing.T) {
 		{"an old 402 under an open balance rest", map[string]string{PropProviderRest("openrouter"): open}, []*Card{refused("old1", "2026-10-09T20:00:00Z")}, nil},
 		{"an old 402 under an ended balance rest", map[string]string{PropProviderRest("openrouter"): ended}, []*Card{refused("old1", "2026-10-09T20:00:00Z")}, nil},
 		{"a 402 launched after the balance rest began", map[string]string{PropProviderRest("openrouter"): open}, []*Card{refused("new1", "2026-10-10T05:30:00Z")}, []string{"provider"}},
-		{"429s before a retired no-result rest", map[string]string{PropRule3Rest("deepseek"): noResult},
+		{"429s before a retired no-result rest (rate-limited excluded)", map[string]string{PropRule3Rest("deepseek"): noResult},
 			[]*Card{limited("a1", "2026-10-10T03:00:00Z"), limited("a2", "2026-10-10T03:10:00Z"), limited("a3", "2026-10-10T03:20:00Z")}, nil},
-		{"429s after a retired no-result rest", map[string]string{PropRule3Rest("deepseek"): noResult},
-			[]*Card{limited("a1", "2026-10-10T05:00:00Z"), limited("a2", "2026-10-10T05:10:00Z"), limited("a3", "2026-10-10T05:20:00Z")}, []string{"flash-deepseek41-direct"}},
+		{"429s after a retired no-result rest (rate-limited excluded)", map[string]string{PropRule3Rest("deepseek"): noResult},
+			[]*Card{limited("a1", "2026-10-10T05:00:00Z"), limited("a2", "2026-10-10T05:10:00Z"), limited("a3", "2026-10-10T05:20:00Z")}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -1592,12 +1592,19 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		switch kind {
 		case cardhdr.EndProvider:
-			if IsRateLimited(r.Report) && rateLimitedRoute(c) && c.Int(FieldRateReturns) < MaxRateReturns {
-				// a limited route's 429 that got through the member's budget and its retries:
-				// the card is returned untouched, at most MaxRateReturns times (rate_budget.go);
-				// an unlimited route's ends the take and counts toward its rest as before
-				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r))
-				continue
+			if IsRateLimited(r.Report) {
+				if rateLimitedRoute(c) && c.Int(FieldRateReturns) < MaxRateReturns {
+					// a limited route's 429 that got through the member's budget and its retries:
+					// the card is returned untouched, at most MaxRateReturns times (rate_budget.go)
+					p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r))
+					continue
+				}
+				if !rateLimitedRoute(c) {
+					// an unlimited route's 429: rest the route briefly without spending a redeal
+					p.Units = append(p.Units, rateLimitedBackoff(s, c, pr, r))
+					continue
+				}
+				// rate-limited past MaxRateReturns on a limited route: ends the take as any provider failure
 			}
 			p.Units = append(p.Units, takeEnded(s, c, pr, r, kind, used))
 			continue
@@ -2013,6 +2020,33 @@ func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
 	}, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, the provider rate limited the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)}
+}
+
+// rateLimitedBackoff is the unit of a take on an UNLIMITED route that the provider rate
+// limited (IsRateLimited). The card is withdrawn WITHOUT FieldTakeEnded, so no redeal and
+// no attempt is spent. The route is rested briefly (60s, doubling on each further
+// rate-limited backoff with no ok take in between, capped at 15m) without counting toward
+// the route's 3-in-10 rest. No failed-work judgment is raised.
+func rateLimitedBackoff(s *Snapshot, c, pr *Card, r FinishReq) Unit {
+	set := nextGen(c, "", s.Now)
+	set["withdrawn"] = stamp(s.Now)
+	// Record the rate-limited end for backoff calculation
+	endStamp := stamp(s.Now)
+	if prev := c.F(RouteRateLimitBackoffEnds); prev != "" {
+		endStamp = prev + " " + endStamp
+	}
+	set[RouteRateLimitBackoffEnds] = endStamp
+	line := cutText(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(r.Report, cardhdr.EndProvider), ":")), MaxProviderErrorBytes)
+	set[FieldProviderError] = line
+	prSet := map[string]string{}
+	if r.Usage != "" {
+		dealt, taken := takeStamps(c)
+		addConsumer(pr, prSet, workConsumer(s, c, 0, "rate limited", costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)))
+	}
+	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
+		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
+		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
+	}, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, the provider rate limited the take (backoff: no redeal spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)}
 }
 
 // withdrawCard is the unit that withdraws work card c from its member, the one path of a
