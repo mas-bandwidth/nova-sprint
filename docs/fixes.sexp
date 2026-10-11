@@ -388,4 +388,12 @@
     :title "One column field every reader agrees on"
     :text "Card output carries a single column field so a card's state is not confused with the state of
      its need."
-    :origin "card moved out of the sprint (work record, 2026-10-04)")))
+    :origin "card moved out of the sprint (work record, 2026-10-04)")
+
+   (fix "held-friend-reader-serves-nothing" :release "v1.2.6" :status "shipped"
+    :title "A held friend's reader serves nothing"
+    :text "docs/SPEC-SPRINT.md section 11 (hold): a friend and her reader row are one member to the
+     server. A held friend's reader row (reader-<friend>) serves nothing: ownModelReader and
+     readerServesTier both say so, and no route judgment counts her up. A hold with --return also takes
+     back the reads asked of her reader row, where a reader up is free to read them."
+    :origin "dogfood 2026-10-10 evening: fleet-only restart")))
