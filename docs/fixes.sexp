@@ -933,6 +933,14 @@
     :text "EnvFault now classifies only the text before the first '; ' (the member's own reason), ignoring the child's words after it. A reason carrying '[rejected]' 'non-fast-forward' or '(fetch first)' is a branch refusal, never an environment fault (tla/ProviderBudget.tla, ARejectedPushIsNeverAFault). EnvFault returns the empty string for branch refusals before any class is matched."
     :origin "this card; 2026-10-11; v1.2.11 bug fix")
 
+   (fix "a-reports-verdict-is-never-rewritten-by-a-keyword-match" :release "v1.2.11" :status "planned"
+    :title "A report's stated verdict is never rewritten by keyword matching"
+    :text "A miss against THE ONE THING LEFT may raise one seat judgment asking for the report to be read,
+     but preserves the report's LAND and head and does not fail the worker. A redeal's CARRY line names
+     the newest recorded pushed full SHA regardless of the attempt's outcome, replacing any stale
+     carry in the brief."
+    :origin "this card; 2026-10-11; v1.2.11 bug fix")
+
   (fix "held-friend-reader-serves-nothing" :release "v1.2.6" :status "shipped"
    :title "A held friend's reader serves nothing"
    :text "docs/SPEC-SPRINT.md section 11 (hold): a friend and her reader row are one member to the
