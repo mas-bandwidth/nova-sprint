@@ -169,7 +169,7 @@ func TestTheLanderHoldsTheCasePlanToTheTree(t *testing.T) {
 			"tla/MCReal.cfg":    "INIT Init\n",
 		}
 		head := map[string]string{
-			"tla/CASES.tsv": root["tla/CASES.tsv"] + "MCGhost.cfg\tMCGhost.tla\tpass\t-\tcheck\tbeta\trequired\t-\n",
+			"tla/CASES.tsv":   root["tla/CASES.tsv"] + "MCGhost.cfg\tMCGhost.tla\tpass\t-\tcheck\tbeta\trequired\t-\n",
 			"tla/MCGhost.tla": "---- MODULE MCGhost ----\n====\n",
 		}
 		r := newMergeRig(t, root, head)
