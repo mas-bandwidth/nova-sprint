@@ -881,8 +881,59 @@ function accept(j) {
   if ("throughput" in j) { throughput = j.throughput == null ? null : j.throughput; throughputMinutes = j.throughputMinutes || 0; }
   renderRelease(j);
   try { render(d); } catch (e) { console.error(e); }
+  coinSnapshot(d);
   setLive(new Date(at));
 }
+// The land coin (docs/SPEC-SPRINT-DASHBOARD.md, "The coin"; the owner 2026-10-11: "Whenever a card
+// lands in the tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping.
+// Keep it subtle."). One short two-tone chirp when a refresh shows more cards landed than the
+// refresh before, however many landed in it; never on the first load, never on a fall (a clear),
+// never twice in one refresh (d.at is the tick id the read carried). It is silent until the owner
+// clicks the speaker once, because browsers refuse audio before a gesture, and the choice is kept
+// in localStorage. The tone is synthesized here: no audio file, no extra network request.
+var COIN_KEY = "sprint-coin", coinLanded = null, coinTick = null, coinOn = false, coinCtx = null;
+try { coinOn = localStorage.getItem(COIN_KEY) === "1"; } catch (e) {}
+function coinAudio() {
+  if (coinCtx) return coinCtx;
+  var C = window.AudioContext || window.webkitAudioContext;
+  coinCtx = C ? new C() : null;
+  return coinCtx;
+}
+function coinChirp() { // two sine partials, the second a fifth above, ~0.25 s, fast decay, peak 0.15
+  var c = coinAudio(); if (!c) return;
+  if (c.state === "suspended") c.resume();
+  var t = c.currentTime;
+  [880, 1320].forEach(function (f) {
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = "sine"; o.frequency.value = f;
+    g.gain.setValueAtTime(0.15, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    o.connect(g); g.connect(c.destination);
+    o.start(t); o.stop(t + 0.25);
+  });
+}
+function coinSnapshot(d) {
+  var n = int(d && d.landed), id = d && d.at;
+  if (coinTick === id) return; // once per refresh, however many landed
+  var first = coinTick === null;
+  coinTick = id;
+  if (first) { coinLanded = n; return; } // never on the first load
+  if (n > coinLanded && coinOn) coinChirp();
+  coinLanded = n;
+}
+function coinPaint() {
+  var b = $("coin"); if (!b) return;
+  var t = "Land sounds: " + (coinOn ? "on" : "off");
+  b.classList.toggle("on", coinOn);
+  b.title = t; b.setAttribute("aria-label", t); b.setAttribute("aria-pressed", coinOn ? "true" : "false");
+}
+function coinToggle() { // clicked on: the coin once, the test the owner hears before relying on it
+  coinOn = !coinOn;
+  try { localStorage.setItem(COIN_KEY, coinOn ? "1" : "0"); } catch (e) {}
+  coinPaint();
+  if (coinOn) coinChirp();
+}
+if ($("coin")) { $("coin").addEventListener("click", coinToggle); coinPaint(); }
 // The poll: a fixed 1 s timer that never waits on the round trip. Up to two fetches in flight;
 // a third tick is skipped (console.debug). A fetch that hangs is aborted after 10 s so it cannot
 // hold a slot. A failure changes nothing on the page.

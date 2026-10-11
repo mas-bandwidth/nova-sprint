@@ -81,6 +81,21 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-11 the owner: "Right now they are inflating the ETA"
 - 2026-10-11 comment-only, no rendered byte changed (the owner's privacy is a hard rule in this public repository): "privacy: the page's comments name the owner as the owner"
 - 2026-10-11 the owner: "agree that the name becomes the key, and you add a small display name. good tidy feature. pls add."
+- 2026-10-11 the owner: "Please add sounds to the sprint dashboard. Whenever a card lands in the tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle."
+
+## The coin
+
+The owner, 2026-10-11: "Whenever a card lands in the tick (1 or more), play a single gentle
+'ca-ching' sound, like a coin dropping. Keep it subtle." When a refresh's data carries a landed
+count higher than the refresh before's, the page plays one short coin — two sine partials, the
+second a fifth above the first, about 0.25 s, a fast decay, peak gain 0.15 — synthesized in app.js
+with WebAudio, so no audio file joins the repository and the page makes no extra request. It plays
+once per refresh however many landed in it, never on the first load and never when the count falls
+(a clear); the tick id the copy was read at is its `at`, so two reads of one tick play nothing. A
+browser refuses audio before a gesture, so the page carries one small speaker glyph beside the
+landed count, off until clicked once per browser (the choice kept in localStorage); clicked on, it
+plays the coin once, as the test he hears before relying on it, and it is the only addition to the
+page.
 
 ## Serving and publishing
 

@@ -1350,6 +1350,22 @@
    :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
     2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
     owner: \"this should be caught by card lint.\"")
+  (fix "the-dashboard-plays-a-coin-when-a-tick-lands" :release "v1.2.14" :status "planned"
+   :title "The dashboard plays a gentle coin when a tick lands a card"
+   :text "The dashboard at :7390 gains one sound and nothing else, on the owner's ask: when a refresh's
+    page copy carries a landed count higher than the refresh before's, the page plays one short coin --
+    two sine partials, the second a fifth above the first, about 0.25 s, a fast decay, peak gain 0.15 --
+    synthesized in app.js with WebAudio, so no audio file joins the repository and the page makes no extra
+    request. It plays once per refresh however many landed in it, never on the first load and never when
+    the count falls (a clear); the tick id the read carried is the copy's at, so two reads of one tick
+    play nothing. A browser refuses audio before a gesture, so the page carries one small speaker glyph
+    beside the landed count, off until clicked once per browser (the choice kept in localStorage); clicked
+    on, it plays the coin once, as the test. One paragraph in docs/SPEC-SPRINT-DASHBOARD.md, \"The coin\",
+    and the lock's ask line with pagelock.txt's digest. Tests sound_test.go (the coin's rules against
+    the shipped app.js) and page_test.go (the glyph and the inline synthesis)."
+   :origin "this card, the-dashboard-plays-a-coin-when-a-tick-lands.w1, 2026-10-11: the owner,
+    2026-10-11 ~12:50 PM ET: \"Please add sounds to the sprint dashboard. Whenever a card lands in the
+    tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle.\"")
   (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.14" :status "planned"
    :title "A rate limit stalls its route briefly; it never fails a card or rests it for 3-in-10"
    :text "A take a provider ends rate-limited (class=rate-limited) never fails the card, on any
