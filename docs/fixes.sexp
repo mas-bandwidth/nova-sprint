@@ -319,6 +319,16 @@
     :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
     :origin "issue #2710")
 
+   (fix "reader-behind-judgment-stable" :release "v1.2.7" :status "planned"
+    :title "The readers-are-behind judgment is pushed once while it holds"
+    :text "A standing judgment is one judgment, keyed by type and subject and rewritten in place, pushed
+     only when its numbers change materially. The readers-behind line named review, a count that moves as
+     cards enter and leave the queue while the readers read and wait as before, so What() differed on every
+     move of the queue and the tick pushed the same judgment again (dogfood 2026-10-10: j407, j409, j410
+     within a minute). The line is the readers' own numbers now; review stays a fact of the decision, not of
+     the judgment's text."
+    :origin "dogfood 2026-10-10: j407, j409, j410 within a minute; TestReadersBehindWhatHoldsWhenOnlyReviewMoves")
+
    (fix "merge-approval-head-from-disposition" :release "v1.2.9" :status "planned"
     :title "Approval at head is read from the disposition line"
     :text "The review API commit id can differ from the head the reviewer read. Merge checks parse the head
