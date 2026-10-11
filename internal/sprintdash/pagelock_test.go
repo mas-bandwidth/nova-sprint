@@ -109,11 +109,19 @@ func TestThePageLockOnlyGrows(t *testing.T) {
 	if base == "" {
 		t.Skip("PAGELOCK_BASE names no base revision; CI sets it to the pull request's base")
 	}
-	out, err := exec.Command("git", "show", base+":internal/sprintdash/pagelock.txt").Output()
-	if err != nil {
+	// the base must be a commit git can read: a misspelled rev, no git, a refused repository
+	// or a broken fetch is red, never a pass
+	if out, err := exec.Command("git", "rev-parse", "--verify", "--quiet", base+"^{commit}").CombinedOutput(); err != nil {
+		t.Fatalf("PAGELOCK_BASE %s is no commit git can read here (%v: %s): the lock's growth is unchecked", base, err, strings.TrimSpace(string(out)))
+	}
+	const path = "internal/sprintdash/pagelock.txt"
+	// a commit that holds no pagelock.txt is the one case of the lock's first
+	if exec.Command("git", "cat-file", "-e", base+":"+path).Run() != nil {
 		t.Logf("%s holds no pagelock.txt: this change is the lock's first", base)
 		return
 	}
+	out, err := exec.Command("git", "show", base+":"+path).Output()
+	require.NoError(t, err, "git show %s:%s", base, path)
 	lock, err := os.ReadFile("pagelock.txt")
 	require.NoError(t, err)
 	if err := LockGrows(string(out), string(lock)); err != nil {
