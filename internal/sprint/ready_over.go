@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -126,14 +127,29 @@ func (s *Snapshot) noFreeWidth(c, ec *Card, tier string, up []string) string {
 // readyOverWhy is the reason part of a ready-over what sentence ("<n> primaries of tier
 // <t> sit in ready past <max>: <why>"): the stable cause the judgment is keyed on, so
 // distinct causes of one tier are distinct judgments, never merged
-// (tla/ReadyOver.tla, OnePerCause).
+// (tla/ReadyOver.tla, OnePerCause). The figures the cause names that move while it stands
+// -- a route's balance ("out of budget (balance $x)") and a rest's end ("resting until
+// <stamp>") -- are taken out of the key, so a balance or a rest that moves keys the same
+// judgment and is rewritten in place with the latest figures; the What keeps them
+// (notify's update). The open rests' words ("paid", "woken") are not figures and stay.
 func readyOverWhy(what string) string {
 	_, why, ok := strings.Cut(what, ": ")
 	if !ok {
 		return what
 	}
+	why = readyOverBalanceRE.ReplaceAllString(why, "(balance)")
+	why = readyOverRestEndRE.ReplaceAllString(why, "resting until")
 	return why
 }
+
+// readyOverBalanceRE matches a route's out-of-budget balance figure: "(balance $x)"; the
+// key keeps the words, never the figure.
+var readyOverBalanceRE = regexp.MustCompile(`\(balance [^)]*\)`)
+
+// readyOverRestEndRE matches a rest's end stamp ("resting until <stamp>", the stamp a
+// year-first RFC3339, route_rest.go UntilSaid); the key keeps the words, never the
+// stamp. An open rest's "paid"/"woken" is no figure and is left to stand.
+var readyOverRestEndRE = regexp.MustCompile(`resting until [0-9][^ ]*`)
 
 // readyOverConds is the ready-over conditions of the tick: one per (reason, tier), the
 // ready primaries of it that have sat in ready past s.ReadyMax() grouped, with the reason

@@ -152,6 +152,129 @@ func TestAGroupRefreshesAsCardsJoin(t *testing.T) {
 	require.Len(t, w.notesOf(NReadyOver), 1, "one judgment per cause, never one per card")
 }
 
+// A ready-over judgment is keyed on the cause, never the figures the cause names: the
+// balance moves while the card sits ready, one judgment, rewritten in place with the
+// latest balance (tla/ReadyOver.tla, OnePerCause).
+func TestAReadyOverJudgmentStaysOneAsTheBalanceMoves(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	// pro-a is enabled and not resting, but the tier's applied array leaves it out, so
+	// the deal draws no route of the tier and routeWhys names it: out of budget.
+	w.s.Routes = []Route{{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true}}
+	w.s.Tiers = map[string][]string{cardhdr.RoutePro: {"pro-b"}}
+	w.s.Fleet.SetProp(PropProviderBalance("p"), ProviderBalance{Known: true, Balance: -1, At: w.s.Now}.value())
+	w.tick(61 * time.Second)
+	p, _ := TickReadyOver(w.s, TickReq{})
+	require.NotEmpty(t, p.Notes, "a ready card out of budget past its bound raises nothing")
+	w.do(p)
+	open := func() []Note {
+		var out []Note
+		for _, o := range w.s.Open {
+			if o.Note.Type == NReadyOver {
+				out = append(out, o.Note)
+			}
+		}
+		return out
+	}
+	ns := open()
+	require.Len(t, ns, 1, "one cause: one judgment, not %d", len(ns))
+	require.Contains(t, ns[0].What, "-$1.00", "the reason names the balance")
+	// the balance moves while the cause stands: one judgment, rewritten in place
+	w.s.Fleet.SetProp(PropProviderBalance("p"), ProviderBalance{Known: true, Balance: -2, At: w.s.Now}.value())
+	p2, _ := TickReadyOver(w.s, TickReq{})
+	require.Empty(t, p2.Closes, "the balance's move closed the judgment")
+	require.Empty(t, p2.Notes, "the balance's move wrote a second judgment")
+	w.do(p2)
+	ns = open()
+	require.Len(t, ns, 1, "one open judgment, not %d: %v", len(ns), ns)
+	require.Contains(t, ns[0].What, "-$2.00", "the judgment is rewritten with the latest balance")
+}
+
+// A rest whose end moves while the cause stands is one judgment, rewritten in place
+// (tla/ReadyOver.tla, OnePerCause).
+func TestAReadyOverJudgmentStaysOneAsTheRestEndMoves(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	w.s.Routes = []Route{{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true}}
+	until1 := w.s.Now.Add(30 * time.Minute)
+	w.s.Fleet.SetProp(PropProviderRest("p"), RouteRest{At: w.s.Now, Until: until1, Cause: RestCoordinator, Why: "rested by boss"}.value())
+	w.tick(61 * time.Second)
+	w.s.rests = nil
+	w.s, _ = w.s.withRests()
+	p, _ := TickReadyOver(w.s, TickReq{})
+	require.NotEmpty(t, p.Notes, "a ready card whose tier rests past its bound raises nothing")
+	w.do(p)
+	open := func() []Note {
+		var out []Note
+		for _, o := range w.s.Open {
+			if o.Note.Type == NReadyOver {
+				out = append(out, o.Note)
+			}
+		}
+		return out
+	}
+	ns := open()
+	require.Len(t, ns, 1, "one cause: one judgment, not %d", len(ns))
+	require.Contains(t, ns[0].What, "resting until "+stamp(until1), "the reason names the rest's end")
+	// the provider's rest is extended: the cause stands, the judgment is rewritten in place
+	until2 := w.s.Now.Add(60 * time.Minute)
+	w.s.Fleet.SetProp(PropProviderRest("p"), RouteRest{At: w.s.Now, Until: until2, Cause: RestCoordinator, Why: "rested by boss"}.value())
+	w.tick(1 * time.Second)
+	w.s.rests = nil
+	w.s, _ = w.s.withRests()
+	p2, _ := TickReadyOver(w.s, TickReq{})
+	require.Empty(t, p2.Closes, "the rest end's move closed the judgment")
+	require.Empty(t, p2.Notes, "the rest end's move wrote a second judgment")
+	w.do(p2)
+	ns = open()
+	require.Len(t, ns, 1, "one open judgment, not %d: %v", len(ns), ns)
+	require.Contains(t, ns[0].What, "resting until "+stamp(until2), "the judgment is rewritten with the latest rest end")
+}
+
+// Two different causes of one tier are two judgments, never merged (tla/ReadyOver.tla,
+// OnePerCause): here an out-of-budget route and a held card.
+func TestAnOutOfBudgetCauseAndAHeldCauseRaiseTwoJudgments(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 2)
+	w.s.Routes = []Route{{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true}}
+	w.s.Tiers = map[string][]string{cardhdr.RoutePro: {"pro-b"}}
+	w.s.Fleet.SetProp(PropProviderBalance("p"), ProviderBalance{Known: true, Balance: -1, At: w.s.Now}.value())
+	// s1-2 is held: a second cause of the same tier.
+	w.s.Work.Card("s1-2").Fields[FieldHeld] = "coordinator"
+	w.tick(61 * time.Second)
+	p, _ := TickReadyOver(w.s, TickReq{})
+	require.NotEmpty(t, p.Notes, "two causes of one tier raise nothing")
+	w.do(p)
+	ns := w.notesOf(NReadyOver)
+	require.Len(t, ns, 2, "two causes of one tier raise one judgment, not %d", len(ns))
+	var held, budget bool
+	for _, n := range ns {
+		if strings.Contains(n.What, "held by the coordinator") {
+			held = true
+			assert.Equal(t, []string{"s1-2"}, n.Primaries)
+		}
+		if strings.Contains(n.What, "out of budget") {
+			budget = true
+			assert.Equal(t, []string{"s1-1"}, n.Primaries)
+		}
+	}
+	assert.True(t, held && budget, "the causes are not split: %v", ns)
+}
+
+// The ready-over key is the cause, never its figures: the balance and a rest's end are
+// dropped, while distinct causes stay distinct (tla/ReadyOver.tla, OnePerCause).
+func TestReadyOverWhyDropsTheFiguresButKeepsTheCause(t *testing.T) {
+	t.Parallel()
+	budget := "1 primaries of tier pro sit in ready past 1m0s: tier pro has no serving route (pro-a: out of budget (balance -$1.00)): enable a route"
+	assert.Equal(t, readyOverWhy(strings.Replace(budget, "-$1.00", "-$2.00", 1)), readyOverWhy(budget),
+		"the balance figure is in the key")
+	rest := "1 primaries of tier pro sit in ready past 1m0s: tier pro has no serving route (pro-a: resting until 2030-01-02T03:34:05Z: rested by boss): enable a route"
+	assert.Equal(t, readyOverWhy(strings.Replace(rest, "2030-01-02T03:34:05Z", "2030-01-02T04:04:05Z", 1)), readyOverWhy(rest),
+		"the rest end is in the key")
+	disabled := "1 primaries of tier pro sit in ready past 1m0s: tier pro has no serving route (pro-a: disabled): enable a route"
+	assert.NotEqual(t, readyOverWhy(budget), readyOverWhy(disabled), "two causes of one tier were merged")
+}
+
 func TestAReadyCardBlockedOnlyOnRoomRaisesFleetUp(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
