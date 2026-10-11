@@ -314,7 +314,7 @@ func TestThePageIsTheLivePagePullerReadsOnlyAPage(t *testing.T) {
 // Sentinels are not work (the owner, 2026-10-11: "sentinel cards should not be counted when we
 // are estimating time remaining, or cards per-hour"): the page's landed, all and summary are the
 // live feed's second jq's, case for case. testdata/sentinel_fold.json holds the cases with the
-// jq's own answers, made by running that jq with its now pinned: the last hour's landings, an
+// jq's own answers, made by running that jq with its now pinned: the last hour's landings, a sprint never cleared (where's zero time), an
 // offset clear the jq does not read, a days-long ETA, a summary of another shape.
 func TestThePageIsTheLivePageSentinelsAreNotWork(t *testing.T) {
 	t.Parallel()
@@ -332,7 +332,7 @@ func TestThePageIsTheLivePageSentinelsAreNotWork(t *testing.T) {
 		} `json:"cases"`
 	}
 	require.NoError(t, json.Unmarshal(b, &f))
-	require.Len(t, f.Cases, 4)
+	require.Len(t, f.Cases, 5)
 	for name, c := range f.Cases {
 		var got struct {
 			Landed  int             `json:"landed"`

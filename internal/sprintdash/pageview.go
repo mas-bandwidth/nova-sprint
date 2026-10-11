@@ -394,14 +394,17 @@ var jqFraction = regexp.MustCompile(`\.[0-9]+`)
 
 // jqTime is a time as the feed's jq reads it (sub("\\.[0-9]+"; "") | fromdateiso8601): the first
 // run of a point and digits cut, then exactly YYYY-MM-DDTHH:MM:SSZ, in seconds; false when it does
-// not read so (an offset other than Z, or no time).
+// not read so (an offset other than Z, or no time), and false before 1900, which the Studio's
+// jq (jq-1.7.1-apple) does not read either: where's zero time, 0001-01-01T00:00:00Z, a sprint never
+// cleared, reads as none there and so here. (That jq also refuses the last seconds of 1969, a
+// clock no sprint carries; that one quirk is not followed.)
 func jqTime(s string) (float64, bool) {
 	cut := jqFraction.FindStringIndex(s)
 	if cut != nil {
 		s = s[:cut[0]] + s[cut[1]:]
 	}
 	t, err := time.Parse("2006-01-02T15:04:05Z", s)
-	if err != nil {
+	if err != nil || t.Year() < 1900 {
 		return 0, false
 	}
 	return float64(t.Unix()), true

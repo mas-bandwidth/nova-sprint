@@ -1,6 +1,6 @@
 {
  "now": "2026-10-11T04:00:00Z",
- "source": "the live feed's second jq (dashboard/bin/ns.sh, 2026-10-11 00:01), run with now pinned to 2026-10-11T04:00:00Z",
+ "source": "the live feed's second jq (dashboard/bin/ns.sh, 2026-10-11 00:11, --arg fold 1), run by the Studio's /usr/bin/jq (jq-1.7.1-apple) with now pinned to 2026-10-11T04:00:00Z",
  "cases": {
   "hour": {
    "input": {
@@ -403,6 +403,156 @@
     "landed": 5,
     "all": 8,
     "summary": "5/8 62.5% -> ETA 2d15h"
+   }
+  },
+  "zeroclear": {
+   "input": {
+    "landed": 99,
+    "all": 99,
+    "summary": "10/16 62.5% -> ETA 1h0m",
+    "cleared": "0001-01-01T00:00:00Z",
+    "rows": [
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "landed",
+      "score": 1,
+      "fields": {
+       "landed": "2026-10-08T03:30:00Z"
+      }
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "landed",
+      "score": 1,
+      "fields": {
+       "landed": "2026-10-08T03:30:00Z"
+      }
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "landed",
+      "score": 1,
+      "fields": {
+       "landed": "2026-10-08T03:30:00Z"
+      }
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "landed",
+      "score": 1,
+      "fields": {
+       "landed": "2026-10-08T03:30:00Z"
+      }
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "landed",
+      "score": 1,
+      "fields": {
+       "landed": "2026-10-08T03:30:00Z"
+      }
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "landed",
+      "score": 1,
+      "fields": {
+       "landed": "2026-10-08T03:30:00Z"
+      }
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "landed",
+      "score": 1,
+      "fields": {
+       "landed": "2026-10-08T03:30:00Z"
+      }
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "landed",
+      "score": 1,
+      "fields": {
+       "landed": "2026-10-08T03:30:00Z"
+      }
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "landed",
+      "score": 1,
+      "fields": {
+       "landed": "2026-10-08T03:30:00Z"
+      }
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "landed",
+      "score": 1,
+      "fields": {
+       "landed": "2026-10-08T03:30:00Z"
+      }
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "waiting",
+      "score": 1,
+      "fields": {}
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "waiting",
+      "score": 1,
+      "fields": {}
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "waiting",
+      "score": 1,
+      "fields": {}
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "waiting",
+      "score": 1,
+      "fields": {}
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "waiting",
+      "score": 1,
+      "fields": {}
+     },
+     {
+      "id": "x",
+      "stream": "s",
+      "column": "waiting",
+      "score": 1,
+      "fields": {}
+     }
+    ],
+    "tables": {
+     "work": {}
+    }
+   },
+   "want": {
+    "landed": 10,
+    "all": 16,
+    "summary": "10/16 62.5% -> ETA -"
    }
   },
   "noshape": {
