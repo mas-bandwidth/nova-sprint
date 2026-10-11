@@ -135,6 +135,19 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 		to.load++
 		p.Units = append(p.Units, rebalanceMove(s, &p, declared, ri, g, to, pr, wc, tier, who))
 	}
+	// Reads are rebalanced too (docs/SPEC-SPRINT.md section 1, the rebalance): a read
+	// card queued on a unit whose lanes all work moves to a unit with an idle lane whose
+	// reader row serves the read's tier and which has not read the card at this attempt,
+	// as many as the idle lanes take (a read is half a slot), in one tick.
+	full := map[string]bool{}
+	for _, g := range units {
+		if g.width > 0 && g.working >= g.width {
+			full[g.row] = true
+		}
+	}
+	if len(full) > 0 {
+		p.Units = append(p.Units, rebalanceReads(s, seats, units, full, &p, ri, who)...)
+	}
 	ri.write(&p)
 	return p
 }
@@ -236,4 +249,82 @@ func rebalanceMove(s *Snapshot, p *Plan, declared map[string]bool, ri routeIndex
 	n.Who, n.What = who, what
 	return Unit{Key: pr.ID, Stream: pr.Row, Changes: changes, Notes: []Note{n},
 		Moved: fmt.Sprintf("%s gen=%d (its lanes all work; an idle lane takes it)", what, wc.Int("gen")+1)}
+}
+
+// rebalanceReads is the rebalance's read pass (Rebalance): every read card ready on a
+// unit whose lanes all work (full) goes to an idle unit whose reader row serves its tier
+// and that has not read the card at this attempt (readRefusal), the cheapest read tier
+// first, as many as the idle lanes take (a read is half a slot: readUnit.half and idle
+// are in half slots), in one tick. A read never goes back to a row it was rebalanced off
+// (FieldRebalancedFrom). The moved read keeps its attempt: it is dealt again under the
+// new reader's identity, its record retired on the row it left.
+func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, full map[string]bool, p *Plan, ri routeIndexes, who string) []Unit {
+	ruses := readUnitsOf(s, seats)
+	if len(ruses) == 0 {
+		return nil
+	}
+	idx := fleetReadIndex(s)
+	var out []Unit
+	for _, g := range units {
+		if !full[g.row] {
+			continue
+		}
+		for _, wc := range s.Fleet.Cell(g.row, Ready) {
+			if !isRead(wc) {
+				continue
+			}
+			pr := s.Work.Placed(wc.F("primary"))
+			if pr == nil {
+				continue
+			}
+			attempt := readAttempt(pr)
+			worker := attemptUnit(s, pr.ID, attempt)
+			cards := idx[pr.ID]
+			gone := Split(wc.F(FieldRebalancedFrom))
+			var best *readUnit
+			bestDist := 0
+			for i := range ruses {
+				u := &ruses[i]
+				if u.row == g.row || slices.Contains(gone, u.row) || u.idle <= 0 || u.half <= 0 {
+					continue
+				}
+				if !mayReadCard(s, *u, pr, attempt, worker, cards) {
+					continue
+				}
+				d := readTierDistance(s, *u, pr)
+				if best == nil || d < bestDist || (d == bestDist && u.idle > best.idle) {
+					best, bestDist = u, d
+				}
+			}
+			if best == nil {
+				continue
+			}
+			id := readCardIDFor(cards, pr.ID, attempt, best.name)
+			if id == "" {
+				continue
+			}
+			fields := map[string]string{}
+			for k, v := range wc.Fields {
+				fields[k] = v
+			}
+			fields["reader"] = best.name
+			fields[FieldRebalancedFrom] = strings.Join(append(Split(wc.F(FieldRebalancedFrom)), g.row), ",")
+			if best.friend {
+				fields[FieldTier] = friendReadTier(s, pr)
+				if !s.Fleet.HasRow(best.row) {
+					p.Rows = append(p.Rows, RowAdd{Fleet, best.row})
+				}
+			}
+			// the moved read is a fresh card on the new reader; the one it left is retired
+			// spending nothing of it (the machine took it back)
+			best.idle--
+			best.half--
+			idx[pr.ID] = append(idx[pr.ID], &Card{ID: id, Row: best.row, Col: Ready, Score: wc.Score, Fields: fields})
+			out = append(out, Unit{Key: pr.ID, Stream: pr.Row, Changes: []Change{
+				change(Fleet, createEntry(id, best.row, Ready, wc.Score, fields)),
+				change(Fleet, removeEntry(wc, map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByAway})),
+			}, Moved: fmt.Sprintf("rebalanced %s from %s to %s", wc.ID, g.row, best.row)})
+		}
+	}
+	return out
 }
