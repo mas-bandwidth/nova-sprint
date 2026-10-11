@@ -79,6 +79,22 @@ ScnAccept == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.rd = [c \in Card
 \* no model (THE ROUTE): c1 lives its life, c2 stays ready.
 ScnRoute == [Base EXCEPT !.served = Cards \ {"c2"}]
 
+\* THE HOLD. c1 in review waiting for a read; the coordinator may hold m1
+\* (r1's machine): the ask asks r1 nothing and places the read on r2. No
+\* machine lapses: the outside event is the hold.
+ScnHold == [held |-> TRUE, lapse |-> FALSE] @@
+  [Base EXCEPT !.col = [c \in Cards |-> "review"],
+               !.q = Queues(<<>>, <<E("ask", "c1", "-")>>, <<>>, <<>>)]
+
+\* THE DRAIN. c1 added; m1 may drain, and the deal gives a draining member
+\* nothing: c1 is dealt to m2. No machine lapses.
+ScnDrain == [drain |-> TRUE, lapse |-> FALSE] @@ Base
+
+\* THE STOP. c1 added and every machine up; the all-providers-out stop ends a
+\* tick, and the stopped ticks that follow change no card's column. No machine
+\* lapses.
+ScnStopped == [run |-> TRUE, lapse |-> FALSE] @@ Base
+
 \* THE READERS' PRESENCE. c1 in review waiting for a read, r1 away: the read is
 \* asked of r2, and r1 may come back or go away again.
 ScnReader == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.away = TRUE,

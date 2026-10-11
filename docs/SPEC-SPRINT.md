@@ -2390,9 +2390,13 @@ snapshot it read, and the lifecycle judges the needs against it; a plan
 without it moves nothing waiting to ready. A card is dealt only when every need
 has landed: the deal refuses a ready card with an unlanded need, and the
 lifecycle refuses every move to dealt whose card's recorded needs have not
-landed whatever path asks for it. A brief edit records the needs its
-`DEPENDS-ON:` lines name, and a ready card that gains a need not landed waits
-until it lands (section 3, the brief verb). The lifecycle is judged first on
+landed whatever path asks for it. A card's needs are set at add, by a brief
+edit's `DEPENDS-ON:` lines, or by `needs set` (`needs set <id> (--needs <a,b> | --clear)`, the coordinator's alone, section 11), and nowhere else: `needs set`
+rewrites the brief's needs line and moves the card by this table, so a card
+admitted with the wrong needs is corrected in place, never by a twin. A brief
+edit records the needs its `DEPENDS-ON:` lines name, and a ready card that gains
+a need not landed waits until it lands (section 3, the brief verb). The
+lifecycle is judged first on
 every unit of a plan; the needs rule is then judged against the landings of
 the units the lifecycle kept only, so a landing the lifecycle refuses
 satisfies no need. A work-table move whose expectation names no place is
