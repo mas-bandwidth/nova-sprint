@@ -1391,7 +1391,7 @@ func sameMap(a, b map[string]string) bool {
 
 // ------------------------------------------------------------------ ci, ack
 
-// CiRed is SprintTables.tla CiRed(p) (line 654): a red CI observation on a
+// CiRed is SprintTables.tla CiRed: a red CI observation on a
 // placed primary in any state opens the ci judgment and moves nothing.
 func CiRed(s State, p string) (State, error) {
 	if err := free(s); err != nil {
@@ -1406,10 +1406,10 @@ func CiRed(s State, p string) (State, error) {
 	return n, nil
 }
 
-// CiGreen is the spec's green observation (section 8): a happened note; on
+// CiGreen is SprintTables.tla CiGreen: a happened note; on
 // the current head it resolves a red one, and when that closes the primary's
 // last judgment in review the exhausted or stranded judgment is written
-// (section 6). From the spec, not yet in the model.
+// (section 6).
 func CiGreen(s State, p string) (State, error) {
 	if err := free(s); err != nil {
 		return s, err
@@ -1427,7 +1427,7 @@ func CiGreen(s State, p string) (State, error) {
 	return n, nil
 }
 
-// Ack is SprintTables.tla Ack(n) (line 667) on every subject of one
+// Ack is SprintTables.tla Ack on every subject of one
 // notification: the coordinator looked and nothing is to be done; refused for
 // a stopped stream's judgment while the stream is stopped (F3). The ack that
 // leaves a primary in review with no judgment writes its exhausted or
@@ -1438,7 +1438,7 @@ func CiGreen(s State, p string) (State, error) {
 // skipped; every other is refused. The tick's conditions are held by wait.
 //
 // waive is, for a blocked judgment, the dropped needs its notification names:
-// the ack waives those (Waive, line 298), and the blocked judgment closes only
+// the ack waives those (SprintTables.tla Waive), and the blocked judgment closes only
 // when no dropped need of the primary is left unwaived.
 func Ack(s State, typ string, subjects []string, waive []string) (State, error) {
 	if err := free(s); err != nil {
@@ -1490,7 +1490,7 @@ func Ack(s State, typ string, subjects []string, waive []string) (State, error) 
 
 // ------------------------------------------------------------------ the fence
 
-// Crash is SprintTables.tla Crash (line 687): the process writing a step
+// Crash is SprintTables.tla Crash: the process writing a step
 // over more than one table is cut before its last write, the work table; the
 // operation stays pending. The state it leaves is the step's (post) but for
 // the work table, which holds every primary's record, and the judgments,
@@ -1505,9 +1505,9 @@ func Crash(pre, post State, verb string) State {
 	return n
 }
 
-// Repair is SprintTables.tla Repair (line 695) after Crash: the work-table
+// Repair is SprintTables.tla Repair after Crash: the work-table
 // write is applied from the operation record, where its expectation holds, and
-// the operation releases. Continue (line 679) is the same write by the same
+// the operation releases. Continue is the same write by the same
 // process; a step that is not cut is Continue at once, so the action
 // functions above return the state after Continue.
 func Repair(post State) State {
