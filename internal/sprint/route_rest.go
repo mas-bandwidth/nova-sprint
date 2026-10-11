@@ -30,6 +30,9 @@ const (
 	RouteRestWindow = 10
 	RouteRestAfter  = 3
 	RouteRestFor    = 30 * time.Minute
+	// Rate limited backoff: starts at 60s, doubles each time, capped at 15 minutes.
+	RouteRateLimitedBackoffBase = 60 * time.Second
+	RouteRateLimitedBackoffCap  = 15 * time.Minute
 )
 
 // PropRule3Rest is the fleet table's property that holds one provider's rule-3 rests:

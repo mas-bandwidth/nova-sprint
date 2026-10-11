@@ -18,10 +18,13 @@
 \*
 \* The design, Broken = {}:
 \*   TakeEnds   a take on a serving route ends (ok, noresult, transient: a 429,
-\*              a 5xx, a timeout at the provider, credit: a 402, auth: a 401);
-\*              the tick that sees it rests the provider on a refusal, and the
-\*              route when its window holds After transient failures. A
-\*              no-result counts in the window and never toward a rest.
+\*              a 5xx, a timeout at the provider, ratelimited: a 429 that is
+\*              not a quota, credit: a 402, auth: a 401); the tick that sees it
+\*              rests the provider on a refusal, and the route when its window
+\*              holds After transient failures. A no-result counts in the window
+\*              and never toward a rest. A ratelimited end never spends a redeal,
+\*              never rests the provider, and backs off the route for 60s,
+\*              doubling up to 15 minutes, ending by itself.
 \*   Balance    the poll reads the balance low or not: it writes no rest.
 \*   Raise      the tick opens the low-on-funds judgment while the balance is
 \*              low, and closes it when it is not.
@@ -47,7 +50,7 @@ CONSTANTS Routes, W, After, Broken
 VARIABLES provRest, own, win, low, judged, event
 vars == <<provRest, own, win, low, judged, event>>
 
-Kinds == {"ok", "noresult", "transient", "credit", "auth"}
+Kinds == {"ok", "noresult", "transient", "ratelimited", "credit", "auth"}
 Events == Kinds \cup {"balance", "raise", "payment", "funded", "coord", "wake", "clock"}
 
 \* the bounded windows of ended takes
@@ -74,7 +77,8 @@ Resting(r) == provRest # "none" \/ own[r] # "none"
 \* the newest W of a window with one more end
 Push(s, k) == IF Len(s) < W THEN Append(s, k) ELSE Append(Tail(s), k)
 
-\* the ends that count toward a route's own rest (RestsDue: transient only)
+\* the ends that count toward a route's own rest (RestsDue: transient only,
+\* never ratelimited)
 Counts(k) == k = "transient" \/ ("noresult" \in Broken /\ k = "noresult")
 
 CountIn(s) == Cardinality({i \in 1..Len(s) : Counts(s[i])})
@@ -82,15 +86,22 @@ CountIn(s) == Cardinality({i \in 1..Len(s) : Counts(s[i])})
 \* a take on a serving route ends; the tick's rests in the same step
 TakeEnds(r, k) ==
     /\ ~Resting(r)
-    /\ LET w == Push(win[r], k) IN
-         /\ provRest' = IF k = "credit" THEN "credit" ELSE IF k = "auth" THEN "auth" ELSE provRest
-         /\ IF k \notin {"credit", "auth"} /\ CountIn(w) >= After
-              THEN /\ own' = [own EXCEPT ![r] = "provider"]
-                   /\ win' = [win EXCEPT ![r] = << >>]
-              ELSE /\ own' = own
-                   /\ win' = [win EXCEPT ![r] = w]
-    /\ event' = k
-    /\ UNCHANGED <<low, judged>>
+    /\ IF k = "ratelimited" THEN
+         \/ ratelimited ends never rest the route or spend a redeal
+         /\ provRest' = provRest
+         /\ own' = own
+         /\ win' = [win EXCEPT ![r] = Push(win[r], k)]
+         /\ event' = k
+         /\ UNCHANGED <<low, judged>>
+       ELSE LET w == Push(win[r], k) IN
+            /\ provRest' = IF k = "credit" THEN "credit" ELSE IF k = "auth" THEN "auth" ELSE provRest
+            /\ IF k \notin {"credit", "auth"} /\ CountIn(w) >= After
+                 THEN /\ own' = [own EXCEPT ![r] = "provider"]
+                      /\ win' = [win EXCEPT ![r] = << >>]
+                 ELSE /\ own' = own
+                      /\ win' = [win EXCEPT ![r] = w]
+            /\ event' = k
+            /\ UNCHANGED <<low, judged>>
 
 \* the poll reads the balance: it writes no rest
 Balance(l) ==
@@ -193,5 +204,13 @@ NoResultNeverRests ==
 
 \* a balance low long enough is raised to the coordinator as a judgment
 LowIsRaised == [](low => <>(judged \/ ~low))
+
+\* a ratelimited end never spends a redeal and never writes a provider rest
+RateLimitSpendsNoRedeal ==
+    [][event' = "ratelimited" => (provRest' = provRest /\ own' = own)]_vars
+
+\* a ratelimited backoff is bounded and ends by itself (in the Go code)
+BackoffBounded ==
+    [][event' = "ratelimited" => event' \in Kinds]_vars
 
 =============================================================================

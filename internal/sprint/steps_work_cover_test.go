@@ -182,3 +182,25 @@ func TestStepsWorkCoverTakeEnded(t *testing.T) {
 		assert.Contains(t, u.Moved, "nova-decide classed the take "+decide.ClassNoResult)
 	})
 }
+
+func TestARateLimitedTakeReturnsTheCardUnspent(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+	wc := w.s.Work.Card("s1-1").F("work")
+	member := w.s.Fleet.Card(wc).Row
+	w.must(Take(w.s, TakeReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	// First take: rate-limited (EndProvider with class=rate-limited)
+	report := "provider failure: provider: class=rate-limited status=429 msg=Too many requests"
+	p := Finish(w.s, FinishReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true, Report: report})
+	require.Len(t, p.Units, 1, "%+v", p)
+	assert.Contains(t, p.Units[0].Moved, "provider rate-limited the take")
+	w.must(p)
+	c := w.s.Fleet.Card(wc)
+	// card withdraws WITHOUT FieldTakeEnded (no redeal spent)
+	assert.Equal(t, Withdrawn, c.Col, "the take's card withdraws for the next deal")
+	assert.Equal(t, "", c.F(FieldTakeEnded), "no FieldTakeEnded means no redeal is spent")
+	assert.Equal(t, "provider: class=rate-limited status=429 msg=Too many requests", c.F(FieldProviderError), "the card keeps the ended take's line")
+	assert.Equal(t, Ready, w.state("s1-1"), "the primary goes back to ready")
+	assert.Empty(t, w.notesOf(NWorkFailed), "no failed-work judgment is written")
+}

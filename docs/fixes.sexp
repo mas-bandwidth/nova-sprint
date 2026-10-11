@@ -284,4 +284,13 @@
     :title "Approval at head is read from the disposition line"
     :text "The review API commit id can differ from the head the reviewer read. Merge checks parse the head
      named in the disposition and treat commit id as untrusted."
-    :origin "issue #2037")))
+    :origin "issue #2037")
+
+   (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.6" :status "planned"
+    :title "Provider rate-limit does not fail a card or rest all routes"
+    :text "A 429 that is not a quota (class rate-limited) is treated like a staging refusal: the work card
+    is withdrawn without spending a redeal, no failed-work judgment is raised, and the route backs off
+    briefly (60s, doubling up to 15 minutes) instead of a 30-minute provider rest. A rate-limited
+    failure is always reported as a provider failure in the member's Judge, regardless of the shape.
+    TLA+ model RouteRest, property RateLimitSpendsNoRedeal."
+    :origin "nova-sprint docs/fixes.sexp entry a-rate-limited-refusal-never-fails-the-cardc")))

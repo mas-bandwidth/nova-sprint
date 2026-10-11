@@ -249,6 +249,10 @@ func Judge(r Result, pu Push) (fin Finish, why string) {
 		// and opens no judgment on it (StageRefused); a result with the shape is judged
 		// below as any budget end's is
 		return FinishFailed, EndStaging + ": budget " + cmp.Or(r.Budget, "unverifiable: the usage source stopped answering")
+	case r.End == EndProvider && r.Provider != "" && strings.Contains(r.Provider, "class=rate-limited"):
+		// the provider rate-limited the run: the kind and the provider's reason, regardless
+		// of shape; a 429 never reaches the sprint as failed work
+		return FinishFailed, EndProvider + ": " + r.Provider
 	case pu.Refused != "":
 		return FinishFailed, "push refused: " + pu.Refused
 	case r.End == EndProvider && r.Provider != "" && !r.Shaped:

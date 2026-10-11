@@ -86,6 +86,15 @@ func transient(line string) bool {
 	return m != nil && (m[1] == classRateLimited || m[1] == class5xx || m[1] == classTimeout)
 }
 
+// IsRateLimited says a take's line is a provider rate limit (class rate-limited).
+func IsRateLimited(line string) bool {
+	if IsNoResult(strings.TrimSpace(line)) {
+		return false
+	}
+	m := causeRE.FindStringSubmatch(strings.TrimSpace(line))
+	return m != nil && m[1] == classRateLimited
+}
+
 // providerRestsDue is the rests a provider's refusal writes now, one per provider (Route
 // "", PropProviderRest), in provider order. A provider not resting at s.Now is rested by its
 // newest take refused for credit or its key whose child launched after its last rest ended
