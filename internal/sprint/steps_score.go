@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
 )
 
 // THE LANDED SCORE (docs/SPEC-SPRINT.md section 7, the landed score; docs/SPEC-NOVA-DECIDE.md
@@ -30,6 +32,9 @@ const (
 type CardScore struct {
 	ID, Op, Class string
 	P             float64
+	// Usage is the score call's usage (DecideUsage): written on the card as its decide
+	// record (cost.go, ConsumerDecide), "" when none is known.
+	Usage string `json:",omitempty"`
 }
 
 // ScoreReq is a batch's scores, as land reports them after the batch landed.
@@ -58,6 +63,14 @@ func RecordScores(s *Snapshot, r ScoreReq) Plan {
 			continue
 		}
 		set := map[string]string{FieldLandedP: strconv.FormatFloat(sc.P, 'f', 3, 64), FieldLandedClass: sc.Class, FieldLandedOp: sc.Op}
+		if sc.Usage != "" {
+			// what the score call spent, on the card it scored (cost.go): its stream sums it
+			addConsumer(c, set, decideConsumer(s, sc.ID, "score", sc.Op, sc.Usage))
+			// and in its landed cost, the figure per landed card divides (FieldCost)
+			if v := cardcost.ParseTotal(set[FieldCostTotal]).Charged; v != "" && set[FieldCostTotal] != "" {
+				set[FieldCost] = v
+			}
+		}
 		p.Units = append(p.Units, Unit{Key: sc.ID, Stream: r.Stream, Changes: []Change{change(Work, setEntry(c, set))},
 			Moved: fmt.Sprintf("%s scored %s %s", sc.ID, sc.Class, set[FieldLandedP])})
 		if barred && sc.P >= bar {

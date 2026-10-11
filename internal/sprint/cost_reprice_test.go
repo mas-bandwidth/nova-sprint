@@ -15,7 +15,7 @@ import (
 // 2026-10-01) and is now right: a landed primary with two takes priced at the old sheet, a
 // working primary with a take and a read at the old sheet, a run that reported no token
 // and a take on the pro route, whose prices never changed. The stream's control card holds
-// the landed card's cost.
+// no sum (the stream's cost is its cards').
 func repriceWorld(t *testing.T) (*world, Route, Route) {
 	w := newWorld(t)
 	old := Route{Name: "flash-ds", Provider: "openrouter", Model: "deepseek/v4.1-flash", Enabled: true,
@@ -52,7 +52,7 @@ func repriceWorld(t *testing.T) (*world, Route, Route) {
 			Usage: priced(pro, "input=1000000 output=1000000")}, // 3, unchanged
 	)
 	w.s.Work.Put(working)
-	w.s.Merge.Put(&Card{ID: CtlID("s1"), Row: "s1", Col: Ctl, Fields: map[string]string{FieldCost: landed.F(FieldCost)}})
+	w.s.Merge.Put(&Card{ID: CtlID("s1"), Row: "s1", Col: Ctl, Fields: map[string]string{}})
 
 	fixed := old
 	fixed.Prices.Input, fixed.Prices.Output, fixed.Prices.AsOf = "0.3", "1.2", "2026-10-05"
@@ -62,7 +62,7 @@ func repriceWorld(t *testing.T) (*world, Route, Route) {
 
 // Every priced consumer record is computed again from its stored tokens at its route's
 // current prices: the record's predicted cost and its copy of the sheet, each primary's
-// total, a landed primary's cost and its stream's sum on the control card, and the where
+// total, a landed primary's cost, and the where
 // view's per-stream spend all move to the repriced figures; the report says, per route, the
 // old sum, the new sum, the records and the price_as_of it used, one log line each; a run
 // that reported no token is left as it is and counted; --route and --since narrow it.
@@ -82,7 +82,7 @@ func TestRepriceRecomputesEveryPricedRecordFromItsTokens(t *testing.T) {
 		OldPredicted: "3", NewPredicted: "3", OldCharged: "3", NewCharged: "3"}, pro)
 	assert.Equal(t, 1, rep.NoTokens, "the run with no token is counted")
 	assert.Equal(t, 2, rep.Cards)
-	assert.Equal(t, 1, rep.Streams)
+	assert.Equal(t, 1, rep.Streams, "the streams whose cards moved")
 
 	var logged []string
 	for _, u := range p.Units {
@@ -102,7 +102,7 @@ func TestRepriceRecomputesEveryPricedRecordFromItsTokens(t *testing.T) {
 	assert.Equal(t, 2, landed.Total.PredOf)
 	assert.Equal(t, int64(3000000), landed.Total.Tokens.Input, "the tokens are as they were")
 	assert.Equal(t, "2.1", w.s.Work.Placed("s1-1").F(FieldCost))
-	assert.Equal(t, "2.1", w.s.StreamCtl("s1").F(FieldCost))
+	assert.Empty(t, w.s.StreamCtl("s1").F(FieldCost), "no control card holds a sum: the stream's cost is its cards'")
 	for _, c := range landed.Consumers {
 		assert.Contains(t, c.Usage.Prices, "in:0.3,out:1.2", c.Key)
 		assert.Contains(t, c.Usage.Prices, "asof:2026-10-05", c.Key)

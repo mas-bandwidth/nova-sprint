@@ -172,20 +172,6 @@ func (rec StatsRecord) sinceIn(epoch uint64, kind string) time.Time {
 	return t
 }
 
-// streamBases is the streams' bases the work table's cost column counts from: the
-// record's in the store's epoch, none otherwise.
-//
-// A stats reset later than the last tidy of the streams gives the bases instead (each
-// stream's at its mark, sprint.ResetStream.Base): the later of the two is where the cost
-// column counts from.
-func (st *Store) streamBases(ctx context.Context) (map[string]sprint.StreamBase, error) {
-	rec, err := st.StatsTidied(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return rec.basesIn(st.epoch), nil
-}
-
 // basesIn is the streams' bases in the epoch: the last tidy's of the streams, or the
 // reset's when it is later; none with neither.
 func (rec StatsRecord) basesIn(epoch uint64) map[string]sprint.StreamBase {

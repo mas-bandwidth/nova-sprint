@@ -175,7 +175,7 @@ type landJob struct {
 // lander/<stream>) and its own output, merged into the pass's in landing order (pass).
 func (l *lander) fork(stream string) *lander {
 	f := *l
-	f.out, f.toScore = nil, nil
+	f.out, f.toScore, f.toCost = nil, nil, nil
 	f.ledgerLog, f.recLog, f.recNote, f.baseFix = nil, nil, "", ""
 	f.conflictKind, f.conflictPaths, f.cardTips = "", nil, nil
 	f.baseStop, f.baseCount, f.baseWhy = false, false, ""
@@ -195,9 +195,10 @@ func (l *lander) take(f *lander) {
 		l.toScore = append(l.toScore, j)
 	}
 	l.out = append(l.out, f.out...)
+	l.toCost = append(l.toCost, f.toCost...)
 	maps.Copy(l.diffs, f.diffs)
 	maps.Copy(l.scope, f.scope)
-	f.out, f.toScore = nil, nil
+	f.out, f.toScore, f.toCost = nil, nil, nil
 }
 
 // openStream reads one stream's queue as the pass lands it: the cards with where each

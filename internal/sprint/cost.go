@@ -2,7 +2,10 @@ package sprint
 
 import (
 	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"maps"
 	"math/big"
 	"slices"
 	"sort"
@@ -315,6 +318,12 @@ type CardCostView struct {
 	Consumers []Consumer     `json:"consumers"`
 	Total     cardcost.Total `json:"total"`
 	Cut       int            `json:"cut,omitempty"`
+	// Carried is what the card carries from the cards it replaced (FieldCostCarried), exact
+	// USD, and From those cards (FieldReplaces); CarriedTo the twin this card's spend went
+	// on with (FieldCostCarriedTo), its stream counting it there.
+	Carried     string `json:"carried_usd,omitempty"`
+	CarriedFrom string `json:"carried_from,omitempty"`
+	CarriedTo   string `json:"carried_to,omitempty"`
 }
 
 // CardCostOf is the producer's cost as the primary carries it: its records, in the
@@ -338,6 +347,10 @@ func CardCostOf(pr *Card) CardCostView {
 	})
 	v.Total = cardcost.ParseTotal(pr.F(FieldCostTotal))
 	v.Cut = pr.Int(FieldCostCut)
+	if v.Carried = pr.F(FieldCostCarried); v.Carried != "" {
+		v.CarriedFrom = pr.F(FieldReplaces)
+	}
+	v.CarriedTo = pr.F(FieldCostCarriedTo)
 	return v
 }
 
@@ -374,6 +387,12 @@ func (v CardCostView) CostLines() []string {
 	out = append(out, fmt.Sprintf("COST TOTAL consumers=%d %s wait=%s run=%s predicted_usd=%s predicted_of=%d/%d actual_usd=%s actual_by=%s actual_of=%d/%d charged_usd=%s%s",
 		t.Records, tokenWords(t.Tokens), seconds(t.Wait), seconds(t.Run), orDash(t.Predicted), t.PredOf, t.Records, orDash(t.Actual), orDash(t.ActualBy), t.ActualOf, t.Records,
 		orDash(t.Charged), cut))
+	if v.Carried != "" {
+		out = append(out, fmt.Sprintf("COST CARRIED from=%s usd=%s (the replaced cards' spend, counted in this card's stream)", orDash(v.CarriedFrom), v.Carried))
+	}
+	if v.CarriedTo != "" {
+		out = append(out, fmt.Sprintf("COST CARRIED-TO twin=%s (this card's spend is counted on its twin)", v.CarriedTo))
+	}
 	return out
 }
 
@@ -397,10 +416,184 @@ func seconds(n int64) string {
 	return strconv.FormatInt(n, 10) + "s"
 }
 
-// FieldCost is a landed primary's total cost (its total's charged figure, written as
-// it lands) and a stream's control card's sum over its landed primaries: an exact decimal in USD, absent when nothing of it was priced.
-// The work table's cost column shows the control card's (Cost; SyncMirrors).
+// FieldCost is a landed primary's own total cost (its total's charged figure, written as
+// it lands): an exact decimal in USD, absent when nothing of it was priced. It is read for
+// the stream's cost per landed card alone (TierCosts.PerLanded); the stream's cost is every
+// card's (StreamSpend), and no control card carries a sum of its own (the owner, 2026-10-11:
+// "capture all cost per-card, on the card itself, and then these cards sum up to the
+// stream cost").
 const FieldCost = "cost"
+
+// What a card cost, carried (the owner, 2026-10-11: "The cost per-work stream should include
+// all costs, including reading, fix, whatever done to land the card, such that the total cost
+// of all work streams = the total cost of the sprint so far"). A card recut or replaced by its
+// twin (Replace, Recut) is dropped "replaced by <twin>" and its spend goes on with the work:
+// the twin is created with FieldCostCarried, the exact sum of each old card's own charged
+// total and what that card carried in turn, and each old card is marked FieldCostCarriedTo
+// the twin. The once-only rule: a card marked carried-to is left out of its stream's sum
+// (StreamSpend), its spend counted once, on the twin that carries it. A card dropped by any
+// other path keeps its cost and is summed where it stands, off the table or not.
+const (
+	FieldCostCarried   = "cost_carried"    // exact USD the card carries from the cards it replaced
+	FieldCostCarriedTo = "cost_carried_to" // on a replaced card: the twin its spend was carried to
+)
+
+// FieldCostOff is a stream's control card's list of its primaries taken off the work table
+// (Drop, and the drop of a replace), comma separated: a card off the table is no cell's, so
+// the snapshot the cost view is counted from reads it by id (CostOffIDs), and its cost stays
+// in its stream's sum. The ids, not a sum: the cost is the card's, read from the card.
+const FieldCostOff = "cost_off"
+
+// CostOffIDs is every primary off the work table whose cost its stream counts, for the
+// read that counts the cost view (the where record, a stats reset's mark): the ids each
+// stream's control card lists (FieldCostOff), and the cards each card on the table replaced
+// (FieldReplaces; a twin from before the list was kept names its old card), less those on
+// the table. Named over the placed cards alone, as the read's extras are (a fresh read names
+// them before it reads any record off the table), so the twin and a fresh read agree.
+func CostOffIDs(s *Snapshot) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(id string) {
+		if id != "" && !seen[id] && s.Work.Placed(id) == nil {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	if s.Merge != nil {
+		for _, st := range s.Work.Rows() {
+			if ctl := s.StreamCtl(st); ctl != nil {
+				for _, id := range Split(ctl.F(FieldCostOff)) {
+					add(id)
+				}
+			}
+		}
+	}
+	for _, c := range s.Work.Column(States...) {
+		for _, id := range Split(c.F(FieldReplaces)) {
+			add(id)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// ConsumerDecide is the kind of a nova-decide call's record on the card it decided (a
+// brief decision at add, a landed card's score, a red gate's share): what the decision
+// layer spent for the card, beside its work and its reads.
+const ConsumerDecide = "decide"
+
+// DecideModel is the model a decide record names, provider/model: a route of that model
+// in the store prices it (priceRoute), else it is kept unpriced=no-route with its tokens.
+const DecideModel = "typesafe/jev-latest"
+
+// UsageEstimated is the usage word a decide record carries when its backend reported no
+// token and the input is estimated from the text asked over (EstimateTokens).
+const UsageEstimated = "tokens=estimated"
+
+// EstimateTokens is the input tokens a text is estimated at when a backend reports none:
+// one token for every four bytes, rounded up. An estimate is marked (UsageEstimated); it is
+// a count, never a price.
+func EstimateTokens(text string) int64 { return int64((len(text) + 3) / 4) }
+
+// DecideUsage is a decide call's usage line (cardcost.ParseUsage): the tokens the backend
+// reported, else the input estimated from the state it asked over, marked so.
+func DecideUsage(input, output int, state string) string {
+	if input > 0 || output > 0 {
+		return fmt.Sprintf("input=%d output=%d model=%s", input, output, DecideModel)
+	}
+	return fmt.Sprintf("input=%d model=%s %s", EstimateTokens(state), DecideModel, UsageEstimated)
+}
+
+// SplitDecideUsage splits one decide call's usage (DecideUsage's line) over n cards: each
+// token class divided, the remainder to the first cards, so the parts sum to the whole.
+func SplitDecideUsage(line string, n int) []string {
+	if n <= 0 {
+		return nil
+	}
+	u := cardcost.ParseUsage(line)
+	part := func(v int64, i int) int64 {
+		if v < 0 {
+			return v
+		}
+		q := v / int64(n)
+		if int64(i) < v%int64(n) {
+			q++
+		}
+		return q
+	}
+	out := make([]string, n)
+	for i := range out {
+		w := []string{}
+		if v := part(u.Tokens.Input, i); v >= 0 {
+			w = append(w, "input="+strconv.FormatInt(v, 10))
+		}
+		if v := part(u.Tokens.Output, i); v >= 0 {
+			w = append(w, "output="+strconv.FormatInt(v, 10))
+		}
+		w = append(w, "model="+cmp.Or(u.Model, DecideModel))
+		w = append(w, u.Extra...)
+		out[i] = strings.Join(w, " ")
+	}
+	return out
+}
+
+// decideConsumer is one decide call's record for the card id: what it decided (what: brief,
+// score, gate), its op in the decision record, its usage (DecideUsage) priced by a route of
+// its model where the store holds one, never by a price made up. The key is the card's and
+// the op's, so a replay of the same call records nothing twice (addConsumer).
+func decideConsumer(s *Snapshot, id, what, op, usage string) Consumer {
+	u := cardcost.ParseUsage(usage)
+	model := cmp.Or(u.Model, DecideModel)
+	var priced cardcost.Usage
+	if r, ok := s.priceRoute("", model, false); ok && u.Tokens.Reported() && !slices.Contains(u.Extra, UsageEstimated) {
+		// an estimated count is kept as tokens, never priced: a cost is never guessed
+		priced = u.Priced(r.Name, r.Prices)
+	} else {
+		priced = u.Priced("", cardcost.Prices{})
+	}
+	priced.Model = model
+	sum := sha256.Sum256([]byte(op))
+	return Consumer{Kind: ConsumerDecide, Card: id, Who: "nova-decide", Model: model, Tier: ConsumerDecide, End: what, At: stamp(s.Now),
+		Key: id + "#d" + hex.EncodeToString(sum[:6]), Usage: priced}
+}
+
+// DecideCostReq is decide calls' spend reported on the cards they decided: one usage line
+// per card (a gate's call split over its batch beforehand, SplitDecideUsage).
+type DecideCostReq struct {
+	Stream string
+	What   string            // brief, score or gate
+	Op     string            // the call's op in its decision record
+	Usage  map[string]string // card id -> its usage line
+	Who    string
+}
+
+// RecordDecideCost writes each card's decide record on it (addConsumer): a card no longer
+// on the table is refused, by name, its share not written.
+func RecordDecideCost(s *Snapshot, r DecideCostReq) Plan {
+	var p Plan
+	for _, id := range slices.Sorted(maps.Keys(r.Usage)) {
+		c := s.Work.Placed(id)
+		if c == nil {
+			p.refuse(id, "not on the table ("+placeWord(orEmpty(s.Work.Card(id), id))+"); its share of the decide call "+r.Op+" was not written")
+			continue
+		}
+		set := map[string]string{}
+		addConsumer(c, set, decideConsumer(s, id, r.What, r.Op, r.Usage[id]))
+		if len(set) == 0 {
+			continue // recorded already
+		}
+		if v := cardcost.ParseTotal(set[FieldCostTotal]).Charged; c.Col == Landed && v != "" && set[FieldCostTotal] != "" {
+			set[FieldCost] = v // a landed card's own cost, which per landed divides
+		}
+		p.Units = append(p.Units, Unit{Key: id, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set))},
+			Moved: id + " decide " + r.What + " cost recorded"})
+	}
+	return p
+}
+
+// CostCell is a stream's whole spend (TierCosts.TotalCost, dollars and cents) as the work
+// table's cost cell shows it: "-" when nothing of it was priced.
+func CostCell(totalCost string) string { return cmp.Or(totalCost, "-") }
 
 // MoneyText is a cost as the work table's cost cell shows it: US dollars and cents,
 // rounded up to the next cent ("$1.24" for 1.2345; nothing past the cent is

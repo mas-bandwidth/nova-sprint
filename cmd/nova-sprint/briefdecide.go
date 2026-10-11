@@ -70,7 +70,26 @@ type briefAsked struct {
 	ops    map[string]string
 	record string
 	lines  []string
+	// usage is each card's brief decision call's usage (sprint.DecideUsage), for a call
+	// made here, not one the record answered: the card carries it as its decide cost
+	usage map[string]string
 }
+
+// briefUsagePrefix marks a --brief-usage word among the --brief-op words add hands its
+// brief gate (briefUsageWords): the two travel together and are checked together.
+const briefUsagePrefix = "usage/"
+
+// briefUsageWords are the --brief-usage words as the brief gate reads them.
+func briefUsageWords(ws []string) []string {
+	out := make([]string, len(ws))
+	for i, w := range ws {
+		out[i] = briefUsagePrefix + w
+	}
+	return out
+}
+
+// briefUsageWire is a usage line as one --brief-usage word: its words joined by commas.
+func briefUsageWire(usage string) string { return strings.Join(strings.Fields(usage), ",") }
 
 // briefOpWord is the one refusal of a --brief-op that is no op this add asked: typed
 // on an add not run by a server, or on the wire naming another card's decision.
@@ -83,13 +102,26 @@ const briefOpWord = "--brief-op is the served add's wire word, an op add asked w
 // of this add. With no key it asks and says nothing: the key is the opt-in.
 func (a *app) briefGate(cards map[string]string, recordFlag string, sent []string, c *common, stdout, stderr io.Writer) (briefAsked, int) {
 	if a.serveAddr != "" {
-		asked := briefAsked{ops: map[string]string{}, record: recordFlag}
+		asked := briefAsked{ops: map[string]string{}, record: recordFlag, usage: map[string]string{}}
 		for _, w := range sent {
+			if u, ok := strings.CutPrefix(w, briefUsagePrefix); ok {
+				id, usage, ok := strings.Cut(u, "=")
+				if !ok || cards[id] == "" || strings.TrimSpace(usage) == "" {
+					return briefAsked{}, refuse(stderr, "add", fmt.Sprintf("--brief-usage %s names no card of this add with a usage (%s)", oneline.Field(u), briefOpWord))
+				}
+				asked.usage[id] = strings.ReplaceAll(usage, ",", " ")
+				continue
+			}
 			id, op, ok := strings.Cut(w, "=")
 			if !ok || cards[id] == "" || !strings.HasPrefix(op, id+"@brief-") {
 				return briefAsked{}, refuse(stderr, "add", fmt.Sprintf("%s names no brief decision of a card of this add (%s)", oneline.Field(w), briefOpWord))
 			}
 			asked.ops[id] = op
+		}
+		for id := range asked.usage {
+			if asked.ops[id] == "" {
+				return briefAsked{}, refuse(stderr, "add", fmt.Sprintf("--brief-usage %s has no --brief-op beside it: a usage is the cost of a brief decision the card names (%s)", oneline.Field(id), briefOpWord))
+			}
 		}
 		return asked, 0
 	}
@@ -143,7 +175,7 @@ func (a *app) briefGate(cards map[string]string, recordFlag string, sent []strin
 		note("no brief decision: " + err.Error())
 		return done(briefAsked{})
 	}
-	asked := briefAsked{ops: map[string]string{}, record: record}
+	asked := briefAsked{ops: map[string]string{}, record: record, usage: map[string]string{}}
 	var refused []string
 	for _, m := range made {
 		id := m.Inputs["card"]
@@ -152,6 +184,9 @@ func (a *app) briefGate(cards map[string]string, recordFlag string, sent []strin
 			continue
 		}
 		asked.ops[id] = m.ID
+		if !m.Existing { // a call made now: its spend goes on the card (sprint.ConsumerDecide)
+			asked.usage[id] = sprint.DecideUsage(m.Usage.InputTokens, m.Usage.OutputTokens, m.State)
+		}
 		b := decide.BriefOf(m.Decision)
 		recorded := map[bool]string{true: "existing", false: "new"}[m.Existing]
 		say(fmt.Sprintf("BRIEF card=%s op=%s %s recorded=%s", oneline.Field(id), oneline.Field(m.ID), oneline.Escape(b.Line()), oneline.Field(recorded)))
@@ -188,6 +223,9 @@ func (a *app) gateForward(v verbArgs, args []string, stdout, stderr io.Writer) (
 	}
 	for _, id := range slices.Sorted(maps.Keys(asked.ops)) {
 		extra = append(extra, "--brief-op", id+"="+asked.ops[id])
+		if u := asked.usage[id]; u != "" {
+			extra = append(extra, "--brief-usage", id+"="+briefUsageWire(u))
+		}
 	}
 	if len(extra) > 0 && !v.given("decide-record") {
 		extra = append(extra, "--decide-record", asked.record)

@@ -82,9 +82,10 @@ func (ta *testApp) costCells() map[string]string {
 		switch {
 		case strings.HasPrefix(l, "work "):
 			in = true
-			// cost, then per landed, are the work table's last columns
+			// cost, the runs unpriced, then per landed, are the work table's last columns
 			require.Equal(ta.t, "per landed", strings.TrimSpace(f[len(f)-1]), "per landed is the work table's last column")
-			at = len(f) - 2
+			require.Equal(ta.t, "unpriced", strings.TrimSpace(f[len(f)-2]), "the runs unpriced beside the cost")
+			at = len(f) - 3
 			require.Equal(ta.t, "cost", strings.TrimSpace(f[at]), "cost is the column before it")
 		case in && strings.TrimSpace(l) == "":
 			return out

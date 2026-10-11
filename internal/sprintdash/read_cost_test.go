@@ -17,19 +17,26 @@ import (
 const readCostDriver = `
 context.render(input.data);
 const txt = id => doc.getElementById(id).textContent;
+// the Work table's trailing rows' cost cell: -1 the total, -2 the row above it
+const lastCell = at => { try { const b = doc.getElementById('streams'), r = b.children[b.children.length + at]; return r.children[r.children.length - 1].textContent + "|" + r.children[0].textContent; } catch (e) { return "ERR " + e.message; } };
 process.stdout.write(JSON.stringify({ cost: txt('cost'), per: doc.getElementById('cost-per').innerHTML, title: doc.getElementById('cost-per').title || "",
-  unreconciled: txt('cost-unreconciled'), landed: txt('landed'), all: txt('all'), eta: txt('eta') }));
+  unreconciled: txt('cost-unreconciled'), landed: txt('landed'), all: txt('all'), eta: txt('eta'),
+  workTotal: lastCell(-1), other: lastCell(-2) }));
 `
 
 // The cost tile shows its recorded total and only the amount per landed card below it.
 func TestTheCostTileShowsReadsBesideWork(t *testing.T) {
 	t.Parallel()
 	res := drawCostTile(t, nil)
-	assert.Equal(t, "$3.00", res.Cost, "the total includes recorded work and reads")
+	assert.Equal(t, "$3.40", res.Cost, "the total includes recorded work and reads, and the $0.40 no card carries (other / unattributed), once")
 	assert.Regexp(t, `^\$[0-9]+\.[0-9]{2} per card$`, res.Per)
 	assert.Empty(t, res.Title)
 	assert.Empty(t, res.Unreconciled)
 	assert.NotContains(t, string(file("index.html")), `id="cost-unreconciled"`)
+	// the Work table's total is the tile's figure, by construction: every stream's spend and
+	// the other / unattributed row above it (the owner, 2026-10-11)
+	assert.Equal(t, "$0.40|other / unattributed", res.Other)
+	assert.Equal(t, res.Cost+" +2 unpriced|Total", res.WorkTotal, "the total row is the tile, the unpriced runs beside it")
 }
 
 // A sprint done (where --json's done: every stream archived by the tick) reads the same on the
@@ -42,13 +49,13 @@ func TestTheHeroOfASprintDoneIsTheEpochs(t *testing.T) {
 		d["summary"] = "9/9 100.0% done"
 	})
 	assert.Equal(t, [3]string{"9", "9", "done"}, [3]string{res.Landed, res.All, res.Eta})
-	assert.Equal(t, "$4.50", res.Cost, "the epoch's cost: the table's and the archived streams'")
-	assert.Equal(t, "$0.50 per card", res.Per)
+	assert.Equal(t, "$4.90", res.Cost, "the epoch's cost: the table's and the archived streams', and the unattributed once")
+	assert.Equal(t, "$0.55 per card", res.Per, "$4.90 over 9, rounded up")
 	assert.Empty(t, res.Title)
 }
 
 // costTile is the cost tile and the hero as app.js draws them.
-type costTile struct{ Cost, Per, Title, Unreconciled, Landed, All, Eta string }
+type costTile struct{ Cost, Per, Title, Unreconciled, Landed, All, Eta, WorkTotal, Other string }
 
 // drawCostTile draws the fixture with an archived stream old ($1.50: $1.00 work, $0.50 reads)
 // beside ci ($3.00: $2.00 work, $1.00 reads) and $0.40 unreconciled, edited by edit, and reads

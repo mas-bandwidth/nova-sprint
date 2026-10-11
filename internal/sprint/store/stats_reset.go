@@ -145,7 +145,7 @@ func (st *Store) ResetStats(ctx context.Context, req ResetReq) (ResetResult, err
 			res.Mark, res.Replay = *m, true
 			return res, nil
 		}
-		s, err := st.Load(ctx, All, tickExtras)
+		s, err := st.Load(ctx, All, costExtras) // the cards the where record counts (costExtras)
 		if err != nil {
 			return res, err
 		}

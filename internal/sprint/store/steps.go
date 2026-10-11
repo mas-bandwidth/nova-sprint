@@ -22,6 +22,9 @@ func AddStep(r sprint.AddReq) Step {
 		load = All
 	}
 	return Step{Named: len(r.IDs) > 0 || len(r.Cards) > 0 || len(r.Replaces) > 0, Args: ArgsOf(r), Verb: "add", Load: load, Mirrors: true,
+		// the routes when a brief decision's record is written at add: priced by a route of its
+		// model (cost.go); an add with none reads no routes
+		Routes: len(r.BriefUsage) > 0,
 		Extras: func(s *sprint.Snapshot) map[string][]string {
 			ids := append(append([]string(nil), sprint.AddIDs(s, r)...), r.Replaces...)
 			needs := append([]string(nil), r.Needs...)
@@ -327,6 +330,14 @@ func CIStep(r sprint.CIReq) Step {
 func ScoreStep(r sprint.ScoreReq) Step {
 	return Step{Named: len(r.Scores) > 0, Args: ArgsOf(r), Verb: "score", Load: tables(sprint.Work), Routes: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.RecordScores(s, r) }}
+}
+
+// DecideCostStep is decide calls' spend on the cards they decided (sprint.RecordDecideCost):
+// a red gate's call split over its batch, written after the land pass. It reads the routes,
+// which price a decide model where the store holds one.
+func DecideCostStep(r sprint.DecideCostReq) Step {
+	return Step{Named: len(r.Usage) > 0, Args: ArgsOf(r), Verb: "decide cost", Load: tables(sprint.Work), Routes: true,
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.RecordDecideCost(s, r) }}
 }
 
 // ReleaseStep is the coordinator releasing sentinels. The fleet table and the

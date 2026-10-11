@@ -57,5 +57,5 @@ func TestWhereCarriesTiersAndPerLandedCost(t *testing.T) {
 			assert.Equal(t, "$3.00", strings.TrimSpace(cells[len(cells)-2]), "s1's cost: %s", l)
 		}
 	}
-	require.Regexp(t, "\\| +cost \\| per landed$", header, "per landed is the last column, after cost")
+	require.Regexp(t, "\\| +cost \\| unpriced \\| per landed$", header, "per landed is the last column, after cost and the runs unpriced")
 }

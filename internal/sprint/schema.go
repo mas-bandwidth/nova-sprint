@@ -83,9 +83,10 @@ const (
 	Stuck    = "stuck"
 	CI       = "ci"
 	StateCol = "state"
-	// Cost is the work table's last column: a stream's cell is the sum
-	// of its landed cards' totals, kept on the stream's control card (FieldCost) and
-	// mirrored as the row's text; the footer is the sum over the streams.
+	// Cost is the work table's cost column: a stream's cell is its whole spend, every
+	// card's total (sprint.StreamSpend, TierCosts.TotalCost), written by the tick as it
+	// counts the where record; no control card keeps a sum. The footer is the sum over the
+	// streams.
 	Cost     = "cost"
 	Since    = "since"
 	Returned = "returned"

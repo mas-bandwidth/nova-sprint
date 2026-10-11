@@ -134,7 +134,7 @@ func TestAStatsResetCountsEveryFigureFromItsMarkAndMovesNothing(t *testing.T) {
 	}
 	landedCost := card.F(sprint.FieldCost)
 	assert.Equal(t, cents(t, landedCost), s1.PerLanded, "per landed is the one card's")
-	assert.Equal(t, sprint.MoneyText(landedCost), cell(one.work, "s1", sprint.Cost))
+	assert.Equal(t, want, cell(one.work, "s1", sprint.Cost), "the cost cell is the stream's whole spend since the mark, the tile's")
 	assert.Equal(t, int64(1), one.facts.Reset.LandedSince(one.work, nil), "per card is over the one card")
 	assert.Equal(t, "1", cell(one.fleet, worker, sprint.Done), "done counts the one card on %s", worker)
 	assert.Equal(t, "100.0%", cell(one.fleet, worker, sprint.OkPct))
@@ -303,7 +303,8 @@ func TestAWhereRecordCountedBeforeAResetIsNeverTaken(t *testing.T) {
 	require.Equal(t, shapes[0].Revision, uint64(rec["rev"].(float64)), "the stale record is at the revision where reads")
 	facts, err := pinned.WhereFacts(r.ctx, shapes[0].Revision)
 	require.NoError(t, err)
-	assert.Nil(t, facts.Streams, "a record counted from another stats record is not taken, though its revision is current")
+	// not taken: where counts the cards, from the mark, never the stale record's spend
+	assert.Empty(t, facts.Streams["s1"].TotalCost, "a record counted from another stats record is not taken, though its revision is current")
 
 	// the next tick counts it again, from the mark
 	again := r.resetView()
