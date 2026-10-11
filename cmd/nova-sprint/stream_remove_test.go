@@ -46,8 +46,15 @@ func TestStreamRemoveTakesStreamsOffAStoppedSprint(t *testing.T) {
 		ta.ok("add --stream " + st + " --count 1 --one")
 	}
 	ta.ok("clear --confirm sprint")
+	// a clear drops the streams: they are added fresh at the new epoch, then
+	// their cards are dropped so each stream is empty and removable
+	require.Equal(t, map[string][]string{sprint.Work: {}, sprint.Merge: {}}, ta.streamRows(), "a clear drops the streams' rows")
+	for _, st := range []string{"a", "b", "c"} {
+		ta.ok("add --stream " + st + " --count 1 --one")
+	}
+	ta.ok("drop a-1 b-1 c-1 --reason r")
 	all := map[string][]string{sprint.Work: {"a", "b", "c"}, sprint.Merge: {"a", "b", "c"}}
-	require.Equal(t, all, ta.streamRows(), "a clear keeps the streams' rows")
+	require.Equal(t, all, ta.streamRows(), "the streams are added fresh at the new epoch")
 
 	ta.ok("start")
 	code, _, errs := ta.do("stream remove a")
@@ -81,9 +88,9 @@ func TestStreamRemoveTakesStreamsOffAStoppedSprint(t *testing.T) {
 	ta.clean()
 
 	ta.ok("clear --confirm sprint")
-	assert.Equal(t, map[string][]string{sprint.Work: {"c"}, sprint.Merge: {"c"}}, ta.streamRows(), "a clear does not bring a removed stream back")
+	assert.Equal(t, map[string][]string{sprint.Work: {}, sprint.Merge: {}}, ta.streamRows(), "a clear drops every stream")
 	assert.Contains(t, ta.ok("add --stream a --count 1 --one"), "MOVED a-1 -> ready stream=a")
-	assert.Equal(t, map[string][]string{sprint.Work: {"a", "c"}, sprint.Merge: {"a", "c"}}, ta.streamRows())
+	assert.Equal(t, map[string][]string{sprint.Work: {"a"}, sprint.Merge: {"a"}}, ta.streamRows())
 	ta.clean()
 }
 
@@ -100,6 +107,12 @@ func TestStreamRemoveRemovesWhatExistsAndNamesTheMissing(t *testing.T) {
 		ta.ok("add --stream " + st + " --count 1 --one")
 	}
 	ta.ok("clear --confirm sprint")
+	// a clear drops the streams: they are added fresh at the new epoch, then
+	// their cards are dropped so each stream is empty and removable
+	for _, st := range []string{"a", "b"} {
+		ta.ok("add --stream " + st + " --count 1 --one")
+	}
+	ta.ok("drop a-1 b-1 --reason r")
 	code, out, errs := ta.do("stream remove a b zz")
 	assert.Equal(t, 0, code, "the streams that exist were removed: %s", errs)
 	assert.Contains(t, out, "STREAM-REMOVE OK streams=a,b")
@@ -124,6 +137,12 @@ func TestStreamRemoveNamesAStreamThatHoldsACardAndRemovesTheRest(t *testing.T) {
 		ta.ok("add --stream " + st + " --count 1 --one")
 	}
 	ta.ok("clear --confirm sprint")
+	// a clear drops the streams: a and b are added fresh then emptied (so a may
+	// leave), and c holds a card (so it is named)
+	for _, st := range []string{"a", "b"} {
+		ta.ok("add --stream " + st + " --count 1 --one")
+	}
+	ta.ok("drop a-1 b-1 --reason r")
 	ta.ok("add --stream c --count 1 --one")
 	code, out, errs := ta.do("stream remove a c")
 	assert.Equal(t, 0, code, "a left; c is reported, not the whole batch")
@@ -145,6 +164,12 @@ func TestARemovedStreamComesBackWhenACardIsAddedInItsEpoch(t *testing.T) {
 		ta.ok("add --stream " + st + " --count 1 --one")
 	}
 	ta.ok("clear --confirm sprint")
+	// a clear drops the streams: a and b are added fresh then emptied, so a
+	// may be removed and come back when a card is added under its name
+	for _, st := range []string{"a", "b"} {
+		ta.ok("add --stream " + st + " --count 1 --one")
+	}
+	ta.ok("drop a-1 b-1 --reason r")
 	ta.ok("stream remove a")
 	require.Equal(t, map[string][]string{sprint.Work: {"b"}, sprint.Merge: {"b"}}, ta.streamRows())
 
