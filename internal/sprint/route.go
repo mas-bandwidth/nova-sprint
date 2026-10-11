@@ -294,15 +294,18 @@ func (s *Snapshot) noRoute(c *Card) (tier, why string) {
 // tierServed is the one check of every verb that validates a tier, asked once no enabled
 // route of it can be drawn (rested: the tier's routes resting, said first). A tier is
 // served by an enabled fleet route or by a friend up (friendDealable: not held, not down)
-// whose row lists it (friendTakes; the owner, 2026-10-04: "Fleet flash only; pro to
-// friends"). up is the friends up who serve it: its cards are then the friends' deal's,
-// never a machine's, and why says so to a machine's deal. With none, why is the refusal,
-// naming both ways and the friends whose row lists the tier but who are held or down.
+// whose row lists it (friendTiers; the owner, 2026-10-04: "Fleet flash only; pro to
+// friends"). The friends' tiers set (set --friends-tiers) is the deal's bound on what a
+// friend may be handed (friendTakes), never the tier's service: a friend up whose row
+// lists the tier serves it however the sets stand (docs/SPEC-SPRINT.md, tiers and routes).
+// up is the friends up who serve it: its cards are then the friends' deal's, never a
+// machine's, and why says so to a machine's deal. With none, why is the refusal, naming
+// both ways and the friends whose row lists the tier but who are held or down.
 func (s *Snapshot) tierServed(tier string, rested []string) (up []string, why string) {
 	var off []string
 	for _, f := range s.Friends {
 		switch {
-		case !friendTakes(s, f, tier):
+		case !slices.Contains(friendTiers(f), tier):
 		case friendDealable(s, f):
 			up = append(up, f.Name)
 		default:
@@ -523,8 +526,21 @@ func (s *Snapshot) routeTier(c *Card) (tier, why string, byFriend, done bool, m 
 		// names (an unknown word too), else flash's
 		return tier, "its brief's model lines: " + bad, false, true, m
 	}
-	if tier == cardhdr.RouteFrontier && m.Pin == "" && len(s.Routes) > 0 {
-		return tier, "a frontier card waits for the coordinator: run it, or pin it with a model: <provider>/<model> line", false, true, m
+	if tier == cardhdr.RouteFrontier && m.Pin == "" {
+		// By design a frontier card is the friends' (docs/SPEC-SPRINT.md, tiers and
+		// routes): a friend up whose row lists frontier serves it as a route would
+		// (tierServed), and the friends' deal deals it. With no friend up and a store that
+		// holds routes, it waits for the coordinator; the refusal names the routes it
+		// looked at and the friends whose row lists frontier but who are held or down
+		// (2026-10-11: the coordinator's own friend row was up at width 8 with
+		// tiers=frontier while rework of 36 frontier cards was refused for want of a route).
+		up, why := s.tierServed(tier, nil)
+		if len(up) > 0 {
+			return tier, why, true, true, m
+		}
+		if len(s.Routes) > 0 {
+			return tier, "no route and no friend serves tier frontier; a frontier card waits for the coordinator: run it, or pin it with a model: <provider>/<model> line (" + why + ")", false, true, m
+		}
 	}
 	if !s.FleetTakes(tier) {
 		// the fleet's tiers leave it out (set --fleet-tiers): no machine draws it, whatever
