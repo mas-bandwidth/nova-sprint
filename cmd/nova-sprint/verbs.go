@@ -1322,6 +1322,15 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	if code := a.holdBase("add", st, *allowPersonal, stderr, *brief); code != 0 {
 		return code
 	}
+	// add --land-protected founds the stream and writes its mark in the same step, so
+	// this read, before the mark exists, lets the step's own mark-and-admit rule judge
+	// the card (promotionGuard, sprint.AddMarked; docs/SPEC-SPRINT.md section 7, the
+	// sprint branch)
+	if *landProtected == "" {
+		if code := a.holdSprintBase("add", st, stderr, rs...); code != 0 {
+			return code
+		}
+	}
 	if code := holdTlaRecords("add", stderr, briefCheck{id: strings.Join(ids, ","), brief: *brief}); code != 0 {
 		return code
 	}
@@ -1491,6 +1500,13 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 		return code
 	}
 	r := sprint.AddReq{Stream: stream, Cards: cards, Who: c.actor, Before: before, After: after, Held: held, Score: at, BriefOps: asked.ops, BriefRecord: asked.record, Replaces: replaces}
+	// a marked first add is judged by the step that writes the mark (promotionGuard,
+	// sprint.AddMarked), as cmdAdd holds it (docs/SPEC-SPRINT.md section 7)
+	if landProtected == "" {
+		if code := a.holdSprintBase("add", st, stderr, r); code != 0 {
+			return code
+		}
+	}
 	c.says = append(c.says, fmt.Sprintf("each card's id is its brief file's name without .md (%s is %s)", files[0], cards[0].ID))
 	for _, cd := range cards {
 		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
@@ -2939,7 +2955,58 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 	if code := a.holdWho("brief", st, stderr, streams, texts...); code != 0 {
 		return code
 	}
-	return a.runStep("brief", *c, st, store.BriefStep(req), stdout, stderr)
+	// a new BASE is held as add holds one: the sprint's base, outside the promotion
+	// stream (docs/SPEC-SPRINT.md section 7, the sprint branch); refused here, exit 2,
+	// and again by the step against a write that races this read
+	if s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil); err == nil {
+		if p := sprint.WithBriefBases(sprint.Plan{}, s, req, cardBase); len(p.Refused) > 0 {
+			return refuse(stderr, "brief", joinWhy(p.Refused))
+		}
+	}
+	step := store.BriefStep(req)
+	replace := step.Plan
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithBriefBases(replace(s), s, req, cardBase) }
+	return a.runStep("brief", *c, st, step, stdout, stderr)
+}
+
+// cardBase is the branch a brief's BASE: line names, its pin cut; "" for none.
+func cardBase(brief string) string { return swarm.ReadCardBase([]byte(brief)).Ref }
+
+// joinWhy is refusals as one line: each card's why, in order.
+func joinWhy(refused []sprint.Refusal) string {
+	why := make([]string, len(refused))
+	for i, r := range refused {
+		why[i] = r.Why
+	}
+	return strings.Join(why, "; ")
+}
+
+// holdSprintBase refuses, exit 2, nothing written, an add of a card cut on a branch that
+// is not the sprint's base, outside the promotion stream (sprint.SprintBranchWhy;
+// docs/SPEC-SPRINT.md section 7, the sprint branch), every such card named; the add step
+// holds the same rule against a write that races this read. A store that cannot be read
+// is left to the step to report.
+func (a *app) holdSprintBase(verbName string, st *store.Store, stderr io.Writer, rs ...sprint.AddReq) int {
+	s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil)
+	if err != nil {
+		return 0
+	}
+	var refused []sprint.Refusal
+	for _, r := range rs {
+		for i, id := range sprint.AddIDs(s, r) {
+			base := r.Base
+			if len(r.Cards) > 0 {
+				base = r.Cards[i].Base
+			}
+			if why := sprint.SprintBranchWhy(s, r.Stream, base, id); why != "" {
+				refused = append(refused, sprint.Refusal{Key: id, Why: why})
+			}
+		}
+	}
+	if len(refused) == 0 {
+		return 0
+	}
+	return refuse(stderr, verbName, joinWhy(refused))
 }
 
 // cmdMove moves unstarted primaries to another stream (changing a stopped
@@ -3467,6 +3534,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	fleetTiers := fs.String("fleet-tiers", "", "the tiers the fleet may take: flash, pro, heavy, frontier, comma separated, or all (the default); the deal hands a machine only a work card, and a member's reader only a read card, whose tier is one of them, on top of each row's own tiers")
 	friendsTiers := fs.String("friends-tiers", "", "the tiers the friends may take, as --fleet-tiers says the fleet's: a friend is dealt a work or read card only of one of them, on top of her row's own tiers")
 	finish := fs.String("friend-finish", "", fmt.Sprintf("how long a friend holding working cards may finish none (working to done) before the coordinator's pass judges her idle: a duration, or default (%s)", sprint.FriendFinishDefault))
+	base := fs.String("base", "", "the sprint's base, the branch every stream lands on (sprint/<name>; never dev or main, which promotion alone reaches): add and brief then refuse a card whose BASE: is any other branch outside the promotion stream (docs/SPEC-SPRINT.md section 7, the sprint branch); default takes it off, and add holds dev alone")
 	readCards := fs.String("read-cards", "", "on: the tick asks every read a card in review needs at once, as read cards on the fleet table dealt to friends and to members with a reader row, half a slot each; off or default: the readers table asks, one read at a time")
 	reworkPriority := fs.String("rework-priority", "", "the priority a normal or low card gets when its next attempt opens: fix (the default), high, or keep to retain its level")
 	reads := fs.String("reads", "", "the ok reads at its head every card in review needs, whatever its tier: 0 (no read: a primary whose work finished LAND is accepted on it), 1 or 2; default: one for a flash card, two above")
@@ -3487,6 +3555,10 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if *finish != "" {
 		set := step.Plan
 		step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithFriendFinish(set(s), s, *finish) }
+	}
+	if *base != "" {
+		set := step.Plan
+		step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithSprintBase(set(s), s, *base) }
 	}
 	return a.runStep("set", *c, st, step, stdout, stderr)
 }

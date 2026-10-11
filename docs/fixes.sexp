@@ -443,4 +443,12 @@
     :title "The worklang parser keeps the done field of a unit"
     :text "Unit done reads a field the parser never keeps, so a done unit is never counted. The key is
      added and sibling skipped keys are checked, with a test."
-    :origin "issue #3499")))
+    :origin "issue #3499")
+
+  (fix "add-refuses-card-off-sprint-base" :release "v1.2.6" :status "shipped"
+   :title "add and brief refuse a card cut off the sprint's base"
+   :text "Once the coordinator records the sprint's base (set --base, the work table's sprint_base), add and
+    brief refuse a card whose BASE is any other branch outside the promotion stream, exit 2, nothing
+    written; the step holds the same rule against a racing write. With no base recorded, dev alone is
+    refused as before, and the promotion stream keeps its mark."
+   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")))
