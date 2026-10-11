@@ -1500,6 +1500,22 @@
     only; no product change."
    :origin "this card; the v1.2.12 inventory items T31 and section 5 (the land stage's gate-slot ring)")
 
+  (fix "tla-landbisect-refusals-beyond-the-bench" :release "v1.2.12" :status "planned"
+   :title "LandBisect models the red batch's refusals beyond the bench"
+   :text "tla/LandBisect.tla (the bisect that blames a red batch's head) refused the batch only on a
+    bench fault, but the code's bisect also refuses when a tip was not recorded, a git diff or reset
+    failed, a gate was cancelled, or a remote bench never ran the gate, each blaming no head. The
+    module gains envfail and an Env action for those environment refusals, and RefusedOnlyByBench is
+    restated RefusedOnlyByBenchOrEnv (faulted \\/ envfail); BlameSound still holds. Env refuses at
+    every stage the code does: before the search probes (a missing tip, the initial diff), during it,
+    and after the search narrowed to one head (a failed final reset), so a one-head batch can be
+    refused too, and it never counts as a gate, so ProbesBounded keeps its meaning. A new reversed
+    witness, Broken \"envblames\" (MCLandBisectBrokenEnvBlames.cfg), lets an environment refusal blame
+    the head it was about to probe and fails BlameSound; MCLandBisectBrokenAnyLine still fails
+    RefusedOnlyByBenchOrEnv. landgo.go's ringGate, gateOn and benchFault gain comment lines citing the
+    module. Models only; no product change."
+   :origin "this card; v1.2.12 inventory item T19, drift read at nova-sprint main 00c54ba2e 2026-10-11")
+
   (fix "tlc-runs-inside-the-job-wall" :release "v1.2.12" :status "planned"
    :title "TLC runs inside the job wall"
    :text "tools/tlacheck is built in this repository on this tree's pkg/tlc, with the groups
