@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -35,9 +36,15 @@ func newWorld(t testing.TB, readers ...string) *world {
 
 func (w *world) tick(d time.Duration) { w.s.Now = w.s.Now.Add(d) }
 
-// do applies a plan and fails on any refusal unless allowed.
+// do applies a plan and fails on any refusal unless allowed. The plan is held
+// to the lifecycle first, as the store holds every plan before it applies it
+// (store/engine.go, sprint.Applied): a unit the store's lawful-move check
+// refuses fails the test and is not applied. A world that skipped the check
+// let tests pass on moves the live store refuses (the #96 reader's finding:
+// an unlawful working -> waiting went through here).
 func (w *world) do(p Plan) Plan {
 	w.t.Helper()
+	p = w.lawful(p)
 	for _, ra := range p.Rows {
 		tb := w.s.T(ra.Table)
 		if !tb.HasRow(ra.Row) {
@@ -85,6 +92,20 @@ func (w *world) do(p Plan) Plan {
 	}
 	for _, tb := range []*Table{w.s.Work, w.s.Readers, w.s.Merge, w.s.Fleet} {
 		tb.cells, tb.byPrimary = nil, nil
+	}
+	return p
+}
+
+// lawful is the store's lawful-move check (Lawful) on a plan as the world
+// applies it: every refusal it adds to the ones the plan already carries is a
+// unit the live store would not apply, and fails the test.
+func (w *world) lawful(p Plan) Plan {
+	w.t.Helper()
+	before := len(p.Refused)
+	p.Refused = slices.Clone(p.Refused)
+	p = Lawful(p)
+	for _, r := range p.Refused[before:] {
+		w.t.Errorf("the store's lawful-move check refuses %s: %s", r.Key, r.Why)
 	}
 	return p
 }

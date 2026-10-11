@@ -53,7 +53,7 @@ var Moves = []Move{
 	{Waiting, Ready, "resolve", Mechanical, "everything it needs has landed"},
 	{Ready, Working, "deal", Mechanical, "a work card is cut and dealt"},
 	{Working, Review, "finish", Mechanical, "its work card finished, ok or failed"},
-	{Working, Ready, "fleet down", Mechanical, "its work card was withdrawn because no fleet member is up, or, still ready, because its route rests, or returned untouched (a rate limit, a staging refusal); never for needs not landed, which go working -> waiting"},
+	{Working, Ready, "withdraw", Mechanical, "its work card was withdrawn, its attempt unchanged: no fleet member is up (fleet down), its route rests, its take ended or its staging was refused, its provider rate-limited it, its lane cap redealt it, its friend returned it, or a finished friend card is redealt"},
 	{Working, Waiting, "withdraw", Mechanical, "its needs have not landed: its dealt work card goes back to the pool, or its worker stopped on them (needsWithdrawals, needsStopReturned)"},
 	{Review, Merging, "accept", Coordinator, "the readers it needs said ok at this head (one for a flash card, two different for a pro card)"},
 	{Review, Working, "rework", Coordinator, "rework with a fix: the next attempt is delegated at once to an up member"},
@@ -63,8 +63,14 @@ var Moves = []Move{
 	{Merging, Ready, "redo", Coordinator, "redo a conflicted card when no fleet member is up: start delegates it later"},
 	{Merging, Landed, "merge", Mechanical, "its batch, green on the stream branch, merged to the development branch"},
 	{Waiting, Landed, "release", Coordinator, "a sentinel reached, or with nothing before it, released by the coordinator (kind sentinel only)"},
-	{Ready, Waiting, "add", Mechanical, "a sentinel inserted in front of it, or its needs have not landed (needsWaits; a brief edit's or needs set's need)"},
+	{Ready, Waiting, "add", Mechanical, "a sentinel inserted in front of it, or its named needs now hold one not landed: a brief edit's DEPENDS-ON, needs set, or the tick's needs withdrawal and needsWaits"},
 }
+
+// The lifecycle's rows are the moves the code makes, and the model's actions are
+// the same moves (tla/SprintTables.tla; docs/SPEC-SPRINT.md section 3, the
+// inventory). working -> waiting (needsWithdrawals, needsStopReturned) and the
+// tick's ready -> waiting pass (needsWaits) are judged by the card's needs:
+// unlawful holds each to a named need not landed.
 
 // Legal says from -> to is a move of the lifecycle.
 func Legal(from, to State) bool {
@@ -245,10 +251,15 @@ func unlawful(u Unit, p *Plan) string {
 		switch {
 		case from == Waiting && to == Landed && (!p.releasing || !sentinel):
 			return "the lifecycle lands from waiting only a sentinel, and only by release"
-		case from == Ready && to == Waiting && !p.inserting && e.Set["needs"] == "":
-			return "the lifecycle moves ready -> waiting only as the effect of inserting a sentinel"
-		case from == Working && to == Waiting && e.Set["needs"] == "":
-			return "the lifecycle moves working -> waiting only for needs not landed"
+		case from == Ready && to == Waiting && !p.inserting && !needsOpen(e, p.pre):
+			return "the lifecycle moves ready -> waiting only as the effect of inserting a sentinel, or with a named need not landed"
+		case from == Working && to == Waiting && !namedNeedsOpen(e.ID, p.pre):
+			// PR #96's move (a dealt card whose needs have not landed waits again) is
+			// judged by the card's own named needs in the pre-state, never by the
+			// needs the entry writes: a manifest that writes needs cannot move a
+			// working card whose needs have all landed (tla/SprintTables.tla
+			// WorkingToWaitingOnlyOnNeeds, witness "withdrawmet")
+			return "the lifecycle moves working -> waiting only when the card's named needs have not landed"
 		case sentinel && to != "" && to != Landed:
 			return "a sentinel moves only waiting -> landed, by release"
 		}
@@ -260,6 +271,52 @@ func unlawful(u Unit, p *Plan) string {
 		}
 	}
 	return ""
+}
+
+// needsOpen says a move ready -> waiting carries its cause: the needs the entry
+// writes name one that has not landed and is not waived (docs/SPEC-SPRINT.md
+// section 3: a brief edit, needs set or the tick's needs withdrawal gives it a
+// need not landed). It is judged against the step's pre-state; a plan that
+// carries none is judged by the needs it writes alone, as before.
+// tla/SprintTables.tla ReadyToWaitingOnlyByInsertOrNeeds; its reversed witness
+// "needsany" moves a ready card whose needs have all landed.
+func needsOpen(e ntable.BatchMemberEntry, pre *Snapshot) bool {
+	needs := Split(e.Set["needs"])
+	if pre == nil {
+		return len(needs) > 0
+	}
+	var waived []string
+	if pc := pre.Work.Card(e.ID); pc != nil {
+		waived = Split(pc.F("waived"))
+	}
+	waived = append(waived, Split(e.Set["waived"])...)
+	for _, n := range needs {
+		if !contains(waived, n) && pre.StateOf(n) != Landed {
+			return true
+		}
+	}
+	return false
+}
+
+// namedNeedsOpen says the card's named needs in the pre-state hold one that
+// has not landed and is not waived; false when the plan carries no pre-state
+// or the pre-state does not hold the card (nothing to judge by, so the move
+// that needs it is refused).
+func namedNeedsOpen(id string, pre *Snapshot) bool {
+	if pre == nil {
+		return false
+	}
+	pc := pre.Work.Card(id)
+	if pc == nil {
+		return false
+	}
+	waived := Split(pc.F("waived"))
+	for _, n := range Split(pc.F("needs")) {
+		if !contains(waived, n) && pre.StateOf(n) != Landed {
+			return true
+		}
+	}
+	return false
 }
 
 // Rejudge holds entries a repair is about to apply one by one to the

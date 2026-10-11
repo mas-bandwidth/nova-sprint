@@ -26,6 +26,58 @@ func TestLawfulRefusedLandingSatisfiesNoNeed(t *testing.T) {
 	require.Contains(t, p.Refused[1].Why, "b needs s1-1", "a refused landing lent to a waiter: %+v", p)
 }
 
+// ready -> waiting carries its cause (docs/SPEC-SPRINT.md section 3): a
+// sentinel inserted, or a named need not landed. Needs that have all landed
+// move nothing back to waiting (tla/SprintTables.tla
+// ReadyToWaitingOnlyByInsertOrNeeds, witness "needsany").
+func TestLawfulReadyToWaitingNeedsANeedNotLanded(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 2) // s1-1 and s1-2 ready
+	w.place(w.s.Work, "s1-2", "s1", Landed)
+	s11 := w.s.Work.Card("s1-1")
+	back := func(needs string) Plan {
+		p := Plan{Units: []Unit{{Key: "s1-1", Changes: []Change{change(Work, moveEntry(s11, s11.Row, Waiting, map[string]string{"needs": needs}))}}}}
+		p.on(w.s)
+		return Lawful(p)
+	}
+	p := back("s1-2")
+	require.Empty(t, p.Units, "a need landed moved a ready card back: %+v", p)
+	require.Len(t, p.Refused, 1)
+	require.Contains(t, p.Refused[0].Why, "ready -> waiting only")
+	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"n"}}))
+	p = back("s1-2,n")
+	require.Len(t, p.Units, 1, "a need not landed moves it back: %+v", p)
+	require.Empty(t, p.Refused)
+}
+
+// working -> waiting (PR #96's move) is judged by the card's own named needs in
+// the pre-state, never by the needs the entry writes: a manifest that writes a
+// need not landed cannot move a working card whose needs have all landed
+// (tla/SprintTables.tla WorkingToWaitingOnlyOnNeeds, witness "withdrawmet").
+// With a named need not landed the move is kept.
+func TestLawfulWorkingToWaitingNeedsTheCardsOwnNeedNotLanded(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 2)
+	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"n"}})) // n is not landed
+	w.place(w.s.Work, "s1-2", "s1", Landed)
+	w.place(w.s.Work, "s1-1", "s1", Working)
+	s11 := w.s.Work.Card("s1-1")
+	back := func() Plan {
+		p := Plan{Units: []Unit{{Key: "s1-1", Changes: []Change{change(Work, moveEntry(s11, s11.Row, Waiting, map[string]string{"needs": "n"}))}}}}
+		p.on(w.s)
+		return Lawful(p)
+	}
+	s11.Fields["needs"] = "s1-2" // its own need has landed
+	p := back()
+	require.Empty(t, p.Units, "a written need moved a working card whose needs landed: %+v", p)
+	require.Len(t, p.Refused, 1)
+	require.Contains(t, p.Refused[0].Why, "working -> waiting only when the card's named needs have not landed")
+	s11.Fields["needs"] = "s1-2,n" // its own need n has not landed
+	p = back()
+	require.Empty(t, p.Refused, "a working card whose own need has not landed waits again: %+v", p)
+	require.Len(t, p.Units, 1)
+}
+
 // A work-table move whose expectation names no place is judged from the
 // pre-state; one the pre-state does not hold is refused.
 func TestLawfulMoveWithoutPlace(t *testing.T) {

@@ -233,6 +233,8 @@ MCLandReachLandsOn.cfg	MCLand.tla	invariant	ReachLandsOn	ignore-terminal	land	re
 MCLandReachReview.cfg	MCLand.tla	invariant	ReachReview	ignore-terminal	land	required	-
 MCLandBrokenNoCheckReads.cfg	MCLand.tla	invariant	NoLandWithoutReads	ignore-terminal	land	required	-
 MCLandBrokenBounceMarked.cfg	MCLand.tla	action	PushedNeverSentBack	ignore-terminal	land	required	-
+MCLandBrokenRepairMarked.cfg	MCLand.tla	action	PushedNeverSentBack	ignore-terminal	land	required	-
+MCLandBrokenRepairHeld.cfg	MCLand.tla	action	NeverHeldBack	ignore-terminal	land	required	-
 MCLandReachShortBack.cfg	MCLand.tla	invariant	ReachShortBack	ignore-terminal	land	required	-
 MCLandBrokenOfferRefused.cfg	MCLand.tla	invariant	NoOfferAtRefusedHead	ignore-terminal	land	required	-
 MCLandReachRepair.cfg	MCLand.tla	invariant	ReachRepair	ignore-terminal	land	required	-
@@ -326,11 +328,20 @@ MCReadsByRoomBrokenTwoFinders.cfg	MCReadsByRoom.tla	invariant	OneBroken	ignore-t
 MCReadsByRoomSequential.cfg	MCReadsByRoom.tla	pass	-	ignore-terminal	readsbyroom	required	-
 MCSprintTables.cfg	MCSprintTables.tla	pass	-	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenDownkeeps.cfg	MCSprintTables.tla	action	WorkingOnAnUpMember	ignore-terminal	sprinttables	required	-
-MCSprintTablesBrokenInsert.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsert	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenInsert.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsertOrNeeds	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenNeedless.cfg	MCSprintTables.tla	action	NeedsLandFirst	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenWithdrawready.cfg	MCSprintTables.tla	action	NeedsWithdrawalWaits	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenShortAccept.cfg	MCSprintTables.tla	invariant	AcceptHeld	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenAcceptBroken.cfg	MCSprintTables.tla	invariant	NeverAcceptBroken	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenNeedsAny.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsertOrNeeds	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenReviewNeeds.cfg	MCSprintTables.tla	invariant	Rule11	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenDealUnmet.cfg	MCSprintTables.tla	action	NeedsHeldIntoWorking	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenCycle.cfg	MCSprintTables.tla	invariant	NoNeedCycle	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenOwnRead.cfg	MCSprintTables.tla	invariant	NeverReadByItsWorker	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenSkip.cfg	MCSprintTables.tla	action	MovesOnlyByTable	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenUnland.cfg	MCSprintTables.tla	action	LandedIsFinal	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenComeback.cfg	MCSprintTables.tla	action	NoCardLostOrTwice	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenWithdrawMet.cfg	MCSprintTables.tla	action	WorkingToWaitingOnlyOnNeeds	ignore-terminal	sprinttables	required	-
 MCStallLadder.cfg	MCStallLadder.tla	pass	-	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenBound.cfg	MCStallLadder.tla	invariant	NoCardHeldPastBound	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenRedeal.cfg	MCStallLadder.tla	invariant	NoStartedRedealt	ignore-terminal	stallladder	required	-
@@ -522,3 +533,5 @@ MCLandLedgers.cfg	MCLandLedgers.tla	pass	-	ignore-terminal	landledgers	required	
 MCLandLedgersBrokenAnyConflict.cfg	MCLandLedgers.tla	invariant	CodeConflictNeverLands	ignore-terminal	landledgers	required	-
 MCLandLedgersBrokenNoCheck.cfg	MCLandLedgers.tla	invariant	OnlyCheckedResolutionsLand	ignore-terminal	landledgers	required	-
 MCLandLedgersBrokenRefuseLedgers.cfg	MCLandLedgers.tla	invariant	NoLedgerOnlyRefusal	ignore-terminal	landledgers	required	-
+MCAttemptsEpochsBrokenKeepGen.cfg	MCAttemptsEpochs.tla	invariant	SuffixUnique	ignore-terminal	attemptsepochs	required	-
+MCAttemptsEpochsBrokenNoGenGuard.cfg	MCAttemptsEpochs.tla	invariant	StaleGenRefused	ignore-terminal	attemptsepochs	required	-

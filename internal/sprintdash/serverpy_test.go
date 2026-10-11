@@ -54,8 +54,19 @@ func TestDashboardServesWhatServerPyServedFromOnePoller(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
 		go func() { s.Run(ctx, tick); close(done) }()
+		t.Cleanup(func() {
+			cancel()
+			<-done
+		})
 		tick <- now
-		require.Eventually(t, func() bool { return count() == 1 }, 5*time.Second, time.Millisecond)
+		require.Eventually(t, func() bool {
+			if count() != 1 {
+				return false
+			}
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			return s.copy != nil
+		}, 5*time.Second, time.Millisecond)
 		for range 20 {
 			mu.Lock()
 			now = now.Add(time.Minute)

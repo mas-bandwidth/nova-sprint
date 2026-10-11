@@ -15,9 +15,11 @@ import (
 // every card of a line is in exactly one sentinel's interval and one walk
 // over the whole table is linear in its cards.
 //
-// Only a waiting card waits: a card ready or in flight is past every stop and
-// holds nothing up, and a landed card, a card off the table or a name with no
-// card needs nothing. A waived need counts as landed.
+// Only a waiting card waits by its place in line: a card ready or in flight is
+// past every stop. Every open card's named needs are edges, whatever its state
+// (a card in flight that gained a need not landed goes back to waiting at the
+// tick); a landed card, a card off the table or a name with no card needs
+// nothing. A waived need counts as landed.
 
 // needGraph is the graph over a snapshot and the cards an add would place.
 type needGraph struct {
@@ -96,7 +98,11 @@ func (g *needGraph) needs(id string) (named, place []string) {
 	c := g.card(id)
 	if n, ok := g.named[id]; ok {
 		named = n
-	} else if g.waiting(c) {
+	} else if c != nil && c.Placed() && IsOpen(c.Col) {
+		// every open card's named needs, whatever its state: a dealt card that gained
+		// a need not landed keeps its edge while it works, and the tick moves it back
+		// to waiting (needsWithdrawals), so a loop through it is a cycle for every
+		// writer (needs set, a brief, sentinel set, a twin's relink, add)
 		waived := Split(c.F("waived"))
 		for _, n := range Split(c.F("needs")) {
 			if !contains(waived, n) {
