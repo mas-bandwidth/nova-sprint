@@ -16,7 +16,9 @@ set -eu
 GO=${GO:-go}
 P=${RELEASE_ACCEPT_P:-8}
 
-# the tests, by the check each pins (the numbers are the release checks of 2026-10-11)
+# the tests, by the check each pins (the numbers are the release checks of 2026-10-11), then
+# the stall and stuck classes of 2026-10-11, each class's functional test (TestStall...) and
+# its unit tests (docs/TESTS.md, "Stall and stuck coverage")
 NAMES='
 TestAHookGateRefusalInTheWindowIsNotARollback
 TestARealLandFailureInTheWindowStillRollsBack
@@ -59,8 +61,37 @@ TestAddRefusesACycle
 TestReleaseAcceptAClearedSprintLandsWithNoSeatAction
 TestReleaseAcceptCanaryOneMemberFinishesOneCardOnTheBuild
 TestReleaseAcceptTheBinaryNeverReachesAConfiguredServer
+TestStallASwitchedServerNeverRollsBackOnTheHookGate
+TestStallANeedCycleThroughAWorkingCardIsRefusedOnTheStore
+TestStallALedgerOnlyConflictLandsOnTheStore
+TestStallDoneCountsEveryCompletionOnTheStore
+TestStallTheIdleAlarmCountsWorkNotReadsOnTheStore
+TestStallAnOverBoundMergeNoteNeverPoisonsTheDrain
+TestAnOverBoundMergeNoteIsRefusedAndTheTickStillDrains
+TestAMergeNoteAtTheBoundIsTaken
+TestMergeNoteOverTheBoundIsRefusedAtTheVerb
+TestCardTextBoundIs64KiB
+TestBoundedChecksKeepsWholeFindingsAndSaysWhatItLeftOut
+TestStallAnOverBoundBriefNeverPoisonsTheDrain
+TestBriefFileOverTheBoundIsRefused
+TestABriefOverTheBoundIsRefusedWhileRunning
+TestStallTheBinaryRefusesAStoreMissingItsLockedColumns
+TestShadowTickRefusesAStoreMissingTheLockedFleetColumns
+TestRunRefusesAStoreMissingTheLockedFleetColumns
+TestLockedShapeRefusesTheFleetTableBeforeTheVerdictsMigration
+TestDoctorPreflightRefusesAStoreMissingTheLockedColumns
+TestStallQueuedReadsMoveToAMemberThatComesUpOnTheStore
+TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick
+TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick
+TestTheLevelVerbRebalancesTheReadsToo
+TestAMemberProcessKilledOrRestartedLeavesNoGhostRead
+TestAMemberKilledSilentGivesItsReadsBackByTheDownPath
+TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat
+TestAMemberRestartReturnsItsReadsAtOnce
+TestAWorkingReadTheBeatNamesIsNeverReturned
+TestAReadWhoseStageFailedIsRunAgainNotHeldAsAGhost
 '
-PKGS='./cmd/nova-sprint/ ./internal/sprint/ ./internal/sprint/store/'
+PKGS='./cmd/nova-sprint/ ./internal/sprint/ ./internal/sprint/store/ ./pkg/member/'
 
 want=$(printf '%s\n' $NAMES | sed '/^$/d' | sort -u | wc -l | tr -d ' ')
 run="^($(printf '%s\n' $NAMES | sed '/^$/d' | paste -sd '|' -))\$"

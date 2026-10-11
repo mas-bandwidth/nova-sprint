@@ -259,6 +259,65 @@ wall time, the binary's build included; 41 of 41 passed each time.
 After the gate a release may still run a live canary of one card on one member of the
 adopted fleet; there is no timed watch.
 
+### Stall and stuck coverage
+
+Every fix of 2026-10-11 for a stall, a card stuck or the machine not working is held by a unit
+test and a functional test, and both are in `make release-accept` (the owner, 2026-10-11:
+"Each time we find these terrible breakages, we clip in with unit tests and functional tests,
+so this way of failing never happens again."). A functional test here is a real store (a
+redis-server on a port of its own, the function library loaded) with the binary under
+acceptance running the workers', the readers' and the machine's verbs (the tick, `run`), and
+the coordinator's verbs in process: the binary arms the seat's hook gate for every coordinator
+verb and a test cannot hook in (cmd/nova-sprint/stall_harness_functional_test.go). Each
+`TestStall...` test was red against the parent of its fix. A class whose fix is not on main has
+no test yet; its GAP line names the card or pull request that owes both, and that work adds them
+to this table and to tools/release-accept.sh. With these the gate is 70 tests; measured on
+hetzner2, 2026-10-11, three runs: 15.1 s, 8.1 s and 8.1 s of wall time, the build included.
+
+| class | fix | unit tests | functional tests |
+|---|---|---|---|
+| hook-gate race on a server switch: the restart drops the seat's hook, the first land pass is refused by the gate, and the switch rolled back 1.5 s in | #99 (846c7364) | `TestAHookGateRefusalInTheWindowIsNotARollback`, `TestARealLandFailureInTheWindowStillRollsBack`, `TestTheHookGateRefusalIsATypedError`, `TestCheckRollbackOnLandFailureExitCodes`, `TestServerSwitchVerbSwitchesAndRollsBack` | `TestStallASwitchedServerNeverRollsBackOnTheHookGate` (the switched binary's `run --land`, no seat hooked), `TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain` |
+| a card dealt or taken before its needs land; a needs-stop blamed on the worker | #96 (50aa393d) | `TestTheFriendsDealNeverDealsACardWithUnlandedNeeds`, `TestADealtThenUnheldFriendDoesNotTakeACardWithUnlandedNeeds`, `TestAMemberTakeRefusesACardWithUnlandedNeeds`, `TestAReadyCardWithAnUnlandedNeedIsNeverDealt`, `TestAStopOnUnlandedNeedsIsNotTheWorkers`, `TestANoUsageNeedsStopIsStillOneTake`, `TestACardWithdrawnForItsNeedsIsDealtWhenTheyLand`, `TestLawfulWorkingToWaitingNeedsTheCardsOwnNeedNotLanded` | `TestReleaseAcceptNeedsHoldACardOffTheDealOnTheStore` |
+| landings stalled on conflicts in the shared ledgers alone (about 300 refusals to 35 landings an hour) | #100 (b1a020b2) | `TestALedgerOnlyConflictLandsWithBothSidesRows`, `TestASameIdFixConflictIsRefused`, `TestACodeConflictIsStillRefused`, `TestEvidenceFormsKeepBoth`, `TestEvidenceHistoryKeepsEveryRevision` | `TestStallALedgerOnlyConflictLandsOnTheStore` |
+| done read 0 for work read on fleet read cards, which never left finished | #94 (ee8fb936) | `TestADoneIsEveryCardTheRowCompleted`, `TestDoneCountsEveryKindOfCardFromTheLinesThatCompleteIt` | `TestStallDoneCountsEveryCompletionOnTheStore` |
+| the idle alarm: once an episode, and reads working are not work | #102 (tests), #106 (b2aa60ba) | `TestTheIdleAlarmIsRaisedOnceAnEpisodeNeverOncePerTick`, `TestTickIdleAlarmsOnceAnEpisodeAndClears`, `TestTheIdleAlarmNamesTheRootsOnceAnEpisode`, `TestTickIdleAlarmTellsTheCoordinatorWhy`, `TestTheFleetAlarmIgnoresReadsCrossingTheThreshold`, `TestTheIdleFleetCountsWorkNotReads` | `TestStallTheIdleAlarmCountsWorkNotReadsOnTheStore` |
+| a need cycle through a working card: two cards waiting on each other for ever | #103 (8dd283b8, cf237351) | `TestLifecycleIsTheSpecTable`, `TestLawfulRefusesAMoveOutsideTheLifecycle`, `TestTheEngineHoldsEveryPlanToTheLifecycle`, `TestNeedsSetRefusesAnEditThatClosesACycle`, `TestNeedsSetSeesAWorkingCardsNeeds`, `TestSentinelSetSeesAWorkingCardsNeeds`, `TestRelinkSeesAWorkingCardsNeeds`, `TestABriefBatchCannotCloseACycleBetweenItsCards`, `TestAddRefusesACycle` | `TestStallANeedCycleThroughAWorkingCardIsRefusedOnTheStore` |
+| a refused tick step poisons the drain: a 40 KiB lander note in a card's why (16:35Z, 20 minutes frozen) | #91 (d30ab7f0) | `TestAnOverBoundMergeNoteIsRefusedAndTheTickStillDrains`, `TestAMergeNoteAtTheBoundIsTaken`, `TestMergeNoteOverTheBoundIsRefusedAtTheVerb`, `TestCardTextBoundIs64KiB`, `TestBoundedChecksKeepsWholeFindingsAndSaysWhatItLeftOut` | `TestStallAnOverBoundMergeNoteNeverPoisonsTheDrain` |
+| a refused tick step poisons the drain: a brief over 16 KiB taken on a running machine (04:17Z, 37 minutes frozen) | brief-file-over-the-bound-is-refused (101b2e30) | `TestBriefFileOverTheBoundIsRefused`, `TestABriefOverTheBoundIsRefusedWhileRunning` | `TestStallAnOverBoundBriefNeverPoisonsTheDrain` |
+| a server build switched onto a store missing its locked columns: every finish refused for 40 minutes | server-refuses-to-run-on-a-store-missing-locked-columns (2788a093), doctor-preflight-checks-the-store-schema (3e55d518) | `TestShadowTickRefusesAStoreMissingTheLockedFleetColumns`, `TestRunRefusesAStoreMissingTheLockedFleetColumns`, `TestLockedShapeRefusesTheFleetTableBeforeTheVerdictsMigration`, `TestDoctorPreflightRefusesAStoreMissingTheLockedColumns` | `TestStallTheBinaryRefusesAStoreMissingItsLockedColumns` |
+| reads queued behind full lanes while a member sat idle (the rebalance skipped reads; fleet level moved 0) | the-rebalance-levels-reads-every-tick-all-at-once (77eb17e6) | `TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick`, `TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick`, `TestTheLevelVerbRebalancesTheReadsToo` | `TestStallQueuedReadsMoveToAMemberThatComesUpOnTheStore` |
+| a read the member is not running held working to the 60-minute deadline (ghost reads) | #112 (5d5959c6) | `TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat`, `TestAMemberRestartReturnsItsReadsAtOnce`, `TestAWorkingReadTheBeatNamesIsNeverReturned`, `TestAReadWhoseStageFailedIsRunAgainNotHeldAsAGhost` | `TestAMemberProcessKilledOrRestartedLeavesNoGhostRead`, `TestAMemberKilledSilentGivesItsReadsBackByTheDownPath` (#112's own, red-first there) |
+
+GAP lines, owed by work not on main (each adds its unit and functional test to the table and to
+tools/release-accept.sh when it lands):
+
+- GAP: any other whole-step refusal inside a tick step is still retried every second with no
+  judgment and no skip. Owed by card `a-poisoned-queued-change-never-stops-the-drain`.
+- GAP: read cards are off by default and a clear resets them off, so reads crawl one a tick.
+  Owed by PR #92 (defaults are the working machine).
+- GAP: a clear empties the readers table, so after a clear every finished card waits in review
+  with no judgment (`TestReleaseAcceptAClearedSprintLandsWithNoSeatAction` re-adds the readers to
+  pass). Owed by card `a-cleared-sprint-keeps-its-readers`.
+- GAP: a wait parks a judgment that holds a card (failed work, a broken read), and about 22 of 42
+  review cards froze. Owed by PR #111 (its tests are store tests on the twin; its functional test
+  is owed with it).
+- GAP: a card dropped while live cards need it strands them in merging and waiting with no
+  alarm. Owed by card `every-need-names-a-live-card-checked-every-second`.
+- GAP: a card the store moved to another member keeps its old run going on the first. Owed by
+  card `a-moved-card-stops-its-old-run`.
+- GAP: the server's land loop waits on the seat's hook, so landing stops while the seat is away.
+  Owed by card `landing-never-waits-on-the-seats-hook` (`TestStallASwitchedServerNeverRollsBackOnTheHookGate`
+  asserts no rollback only, so it stays green when landing stops waiting).
+- GAP: a seat's wait comes back overdue after a reconnect or a restart. Owed by card
+  `a-seat-wait-survives-a-reconnect-and-a-restart`.
+- GAP: a taken card given an unlanded need runs to review with it. Owed by card
+  `a-taken-card-given-an-unlanded-need-never-reaches-review-with-it`.
+- GAP: every producer card has its consumer out after the tick (on main, 56b4f817) is a check
+  that cannot fail as written: its working and fix branch reads a `primary` field no primary
+  carries, its review branch passes on any read card of the readers table and flags a card read on
+  fleet read cards, and `TestEveryProducerCard` asserts nothing. It is not in release-accept; the
+  check and its tests are owed again by the card `every-producer-card-has-its-consumer-out-after-the-tick`.
+
 
 ## nova-card
 
