@@ -182,10 +182,10 @@ func TestANoResultNeverRestsAndA429Does(t *testing.T) {
 			ended("c5", "flash-deepseek41-direct", 5, "no result: no RESULT.md shape"),
 		}, nil},
 		{"three 429s on the direct route", []*Card{
-			ended("c1", "flash-deepseek41-direct", 9, "provider: class=rate-limited status=429 msg=Rate limit reached"),
-			ended("c2", "flash-deepseek41-direct", 8, "provider: class=rate-limited status=429 msg=Rate limit reached"),
-			ended("c3", "flash-deepseek41-direct", 7, "provider: class=provider-5xx status=502 msg=bad gateway"),
-		}, []RouteRest{{Route: "flash-deepseek41-direct", At: now, Until: now.Add(RouteRestFor), Cards: []string{"c1", "c2", "c3"}, Cause: RestProvider}}},
+			ended("c1", "flash-deepseek41-direct", 2, "provider: class=rate-limited status=429 msg=Rate limit reached"),
+			ended("c2", "flash-deepseek41-direct", 1, "provider: class=rate-limited status=429 msg=Rate limit reached"),
+			ended("c3", "flash-deepseek41-direct", 0, "provider: class=rate-limited status=429 msg=Rate limit reached"),
+		}, []RouteRest{{Route: "flash-deepseek41-direct", At: now, Until: now.Add(4 * time.Minute), Cards: []string{"c1", "c2", "c3"}, Cause: RestProvider}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -3,6 +3,7 @@ package sprint
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -366,6 +367,7 @@ type routeEnd struct {
 	at, taken time.Time
 	transient bool
 	refused   string
+	error     string
 }
 
 // routeEnds is every ended take the fleet table's work cards record, by route: each take
@@ -381,7 +383,7 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 				continue
 			}
 			taken, _ := time.Parse(time.RFC3339, t.Taken)
-			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t.Error), refused: refusal(t.Error)})
+			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t.Error), refused: refusal(t.Error), error: t.Error})
 		}
 		if c.Col != DoneOK && c.Col != DoneFailed {
 			continue
@@ -421,12 +423,31 @@ func RestsDue(s *Snapshot) []RouteRest {
 		slices.SortFunc(window, cmpEnd)
 		window = window[max(0, len(window)-RouteRestWindow):]
 		var cards []string
+		var rateLimitedCards []string
+		var rateLimitedUntil time.Time
+		var lastOkAt time.Time
 		for _, e := range window {
 			if e.transient {
 				cards = append(cards, e.card)
+				if IsRateLimited(e.error) {
+					rateLimitedCards = append(rateLimitedCards, e.card)
+					if e.at.After(rateLimitedUntil) {
+						rateLimitedUntil = e.at
+					}
+				}
+			} else {
+				lastOkAt = e.at
 			}
 		}
-		if len(cards) >= RouteRestAfter {
+		if len(rateLimitedCards) >= RouteRestAfter && (!lastOkAt.IsZero() && rateLimitedUntil.After(lastOkAt) || lastOkAt.IsZero()) {
+			k := len(rateLimitedCards)
+			backoff := time.Duration(60*int(math.Pow(2, float64(k-1)))) * time.Second
+			if backoff > 15*time.Minute {
+				backoff = 15 * time.Minute
+			}
+			until := rateLimitedUntil.Add(backoff)
+			out = append(out, RouteRest{Route: r.Name, At: s.Now, Until: until, Cards: rateLimitedCards, Cause: RestProvider})
+		} else if len(cards)-len(rateLimitedCards) >= RouteRestAfter {
 			out = append(out, RouteRest{Route: r.Name, At: s.Now, Until: s.Now.Add(RouteRestFor), Cards: cards, Cause: RestProvider})
 		}
 	}
