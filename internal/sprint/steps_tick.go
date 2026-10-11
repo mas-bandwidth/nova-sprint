@@ -75,6 +75,13 @@ const (
 	FieldProviderTake  = "provider_take_" // + the take's number, redeals + 1 when it ended
 )
 
+// FieldRateTake is the record of a take the provider rate limited (class rate-limited),
+// keyed by a counter of the rate-limited ends on this work card (rate_take_1, rate_take_2,
+// etc). A rate-limited end withdraws the work card without FieldTakeEnded, so no redeal
+// and no attempt is spent. The record is not counted by redealBound, identicalEnds, or
+// BoundClass, and route stats do not count it (tla/CardContract.tla, ProviderFailure).
+const FieldRateTake = "rate_take_"
+
 // FieldStagingTake is the record of a launch its member refused at staging, keyed by the
 // generation refused (ProviderTake's shape: the route, the member, when, the reason). A
 // staging refusal spends none of the redeal bound: its own bound is the fleet, each member

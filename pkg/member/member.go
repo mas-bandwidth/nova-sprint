@@ -251,6 +251,12 @@ func Judge(r Result, pu Push) (fin Finish, why string) {
 		return FinishFailed, EndStaging + ": budget " + cmp.Or(r.Budget, "unverifiable: the usage source stopped answering")
 	case pu.Refused != "":
 		return FinishFailed, "push refused: " + pu.Refused
+	case r.End == EndProvider && r.Provider != "" && isRateLimited(r.Provider):
+		// the provider rate-limited the run: the kind and the provider's reason,
+		// regardless of shape (a shaped result with a pushed head is still the card's);
+		// the sprint deals the card again on a different route (rate limit is not the
+		// card's fault)
+		return FinishFailed, EndProvider + ": " + r.Provider
 	case r.End == EndProvider && r.Provider != "" && !r.Shaped:
 		// the provider failed the run and it left no result: the kind and the
 		// provider's reason, never the shape's; the sprint deals the card again. A refused
@@ -2424,4 +2430,21 @@ func IsReadCardID(id string) bool {
 	}
 	n, err := strconv.Atoi(strings.TrimPrefix(parts[1], "r"))
 	return strings.HasPrefix(parts[1], "r") && err == nil && n >= 1
+}
+
+// isRateLimited says the provider report is a rate limit: class rate-limited, a 429 that
+// is not a refusal for credit or the key, or the provider's words for a request or
+// concurrency limit ("Too many requests", "rate limit", "concurrency ... exceeds").
+func isRateLimited(provider string) bool {
+	line := strings.TrimSpace(provider)
+	if strings.Contains(strings.ToLower(line), "too many requests") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(line), "rate limit") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(line), "concurrency") && strings.Contains(strings.ToLower(line), "exceed") {
+		return true
+	}
+	return strings.Contains(line, "class=rate-limited")
 }

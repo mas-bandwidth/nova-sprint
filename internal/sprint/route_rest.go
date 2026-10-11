@@ -30,6 +30,9 @@ const (
 	RouteRestWindow = 10
 	RouteRestAfter  = 3
 	RouteRestFor    = 30 * time.Minute
+	// Rate limited backoff: starts at 60s, doubles per rate-limited end, capped at 15 min
+	RateLimitBackoffInitial = 60 * time.Second
+	RateLimitBackoffCap     = 15 * time.Minute
 )
 
 // PropRule3Rest is the fleet table's property that holds one provider's rule-3 rests:
@@ -75,12 +78,13 @@ type RouteRest struct {
 // RestBalance (a balance poll's, retired: a low balance is a judgment, never a rest) are
 // read only to say a rest written before is Retired.
 const (
-	RestProvider    = "provider"
-	RestCredit      = "out-of-credit"
-	RestAuth        = "auth"
-	RestCoordinator = "coordinator"
-	RestNoResult    = "no-result"
-	RestBalance     = "balance"
+	RestProvider       = "provider"
+	RestCredit         = "out-of-credit"
+	RestAuth           = "auth"
+	RestCoordinator    = "coordinator"
+	RestNoResult       = "no-result"
+	RestBalance        = "balance"
+	RateLimitBackoff   = "rate-limited"
 )
 
 // Retired says the rest was written by a rule the machine no longer keeps, so it holds no
@@ -330,20 +334,23 @@ func restedRoutes(r RouteRest, routes []Route) []string {
 
 // routeEnd is one ended take on a route: the work card, when it ended, when it was taken
 // (its child launched; zero when its record holds none), whether the provider failed it
-// transiently (a rate limit, a 5xx, a timeout: transient), and the provider's line when the
-// provider refused it for credit or for its key (refusal, provider_funds.go), "" otherwise.
-// A take that left no result is neither: it is the model's, never the provider's.
+// transiently (a 5xx or a timeout: transient, never a rate limit), whether it was rate
+// limited, and the provider's line when the provider refused it for credit or for its key
+// (refusal, provider_funds.go), "" otherwise. A take that left no result is neither: it is
+// the model's, never the provider's.
 type routeEnd struct {
-	card      string
-	take      int
-	at, taken time.Time
-	transient bool
-	refused   string
+	card       string
+	take       int
+	at, taken  time.Time
+	transient  bool
+	rateLimited bool
+	refused    string
 }
 
 // routeEnds is every ended take the fleet table's work cards record, by route: each take
 // a provider failed or that left no result (ProviderTakes), and each card's own finish.
-// A take that ended with its member down keeps no record and is not counted.
+// Rate-limited takes are recorded in FieldRateTake and tracked apart from transient
+// failures. A take that ended with its member down keeps no record and is not counted.
 func routeEnds(fleet *Table) map[string][]routeEnd {
 	out := map[string][]routeEnd{}
 	for _, c := range fleet.Column(Ready, Working, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
@@ -356,6 +363,26 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 			taken, _ := time.Parse(time.RFC3339, t.Taken)
 			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t.Error), refused: refusal(t.Error)})
 		}
+		// read rate-limited takes (written by rateLimitedReturned in steps_work.go)
+		// only count those that weren't absorbed by the route's rate limit
+		for n := 1; n <= MaxRedeals+1; n++ {
+			v := c.F(FieldRateTake + itoa(n))
+			if v == "" {
+				continue
+			}
+			t := parseTake(v)
+			at, err := time.Parse(time.RFC3339, t.Finished)
+			if t.Route == "" || t.Route == RoutePin || err != nil {
+				continue
+			}
+			taken, _ := time.Parse(time.RFC3339, t.Taken)
+			// skip if this rate-limited end was absorbed on a limited route
+			// (card has FieldRateReturns set, meaning rateLimitedReturned was called)
+			if c.F(FieldRateReturns) != "" {
+				continue
+			}
+			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: n, at: at, taken: taken, rateLimited: true})
+		}
 		if c.Col != DoneOK && c.Col != DoneFailed {
 			continue
 		}
@@ -365,6 +392,38 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 		}
 	}
 	return out
+}
+
+// rateLimitBackoff computes the backoff for a route based on rate-limited ends: starts at
+// RateLimitBackoffInitial, doubles per rate-limited end with no ok take in between, capped
+// at RateLimitBackoffCap. It reads FieldRateTake records and returns a RouteRest if backoff
+// is due. A backoff ends by itself at its time (never by coordinator action).
+func rateLimitBackoff(route string, ends map[string][]routeEnd) (RouteRest, bool) {
+	eList := ends[route]
+	// count consecutive rate-limited ends with no ok take in between
+	var rateLimitedEnds int
+	var lastOkAt time.Time
+	for _, e := range eList {
+		if e.rateLimited {
+			if !lastOkAt.IsZero() && e.at.Before(lastOkAt) {
+				// ends are sorted by time, so skip older ones
+				continue
+			}
+			rateLimitedEnds++
+		} else if e.take > 0 {
+			// a finish (ok or failed) resets the count
+			if e.at.After(lastOkAt) {
+				lastOkAt = e.at
+			}
+		}
+	}
+	if rateLimitedEnds == 0 {
+		return RouteRest{}, false
+	}
+	// compute backoff: 60s * 2^(rateLimitedEnds-1), capped at 15 min
+	backoff := RateLimitBackoffInitial * time.Duration(1<<uint(rateLimitedEnds-1))
+	backoff = min(backoff, RateLimitBackoffCap)
+	return RouteRest{Route: route, At: time.Now(), Until: time.Now().Add(backoff), Cause: RateLimitBackoff}, true
 }
 
 // RestsDue is the rests the rule writes now: each route of the store not resting at s.Now
@@ -399,10 +458,14 @@ func RestsDue(s *Snapshot) []RouteRest {
 				cards = append(cards, e.card)
 			}
 		}
-		if len(cards) >= RouteRestAfter {
-			out = append(out, RouteRest{Route: r.Name, At: s.Now, Until: s.Now.Add(RouteRestFor), Cards: cards, Cause: RestProvider})
-		}
+	if len(cards) >= RouteRestAfter {
+		out = append(out, RouteRest{Route: r.Name, At: s.Now, Until: s.Now.Add(RouteRestFor), Cards: cards, Cause: RestProvider})
 	}
+	// compute rate-limited backoff for this route
+	if rest, ok := rateLimitBackoff(r.Name, ends); ok {
+		out = append(out, rest)
+	}
+}
 	// a provider's refusal rests the provider, every route of it, over rule 3's on its routes
 	byProvider := providerRestsDue(s, ProviderRests(s.Fleet), ends)
 	if len(byProvider) == 0 {
