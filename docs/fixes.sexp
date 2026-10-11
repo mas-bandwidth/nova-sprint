@@ -237,6 +237,12 @@
     outstanding check, and a destination whose session never answered is still refused."
    :origin "the seat, 2026-10-10: PUSH DOWN mid-add")
 
+  (fix "defer-cards-to-the-roadmap" :release "v1.2.6" :status "in-progress"
+   :title "A verb defers waiting cards to the roadmap with their whole briefs"
+   :text "nova-sprint defer writes the named waiting cards, or a stream or repository of them, into the
+    roadmap data with each whole brief, and drops them from the store; --expect checks the count."
+   :origin "this pull request")
+
   (fix "cut-sentinel-releases-itself" :release "v1.2.6" :status "shipped"
    :title "A cut sentinel releases itself on the tick, and pushes the seat that the release is ready to cut"
    :text "A sentinel that names its needs (a cut: a stream's reopen stop, a release sentinel) is released by
