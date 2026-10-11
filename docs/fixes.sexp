@@ -495,4 +495,13 @@
      stamp, and the tick lifts the mark on the clean finish, telling the seat. A hold a person made carries
      no held_by mark and is never lifted by the machine. TLA+ model DealFill, properties FaultHoldClears
      and PersonHoldStays, with two reversed witnesses."
-    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")))
+    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")
+
+  (fix "down-member-is-down-not-fault" :release "v1.2.6" :status "planned"
+   :title "A member whose host is offline is shown down, not as a fault"
+   :text "The seat check reports a member that does not beat on an offline host as down (offline=name, the
+    fleet line stays OK); DOWN when the host answers, or gives no clear no-answer (a name that does not resolve
+    is named on the line). The seat probes the ssh port of each such member's machine row at once under one
+    3 s bound, with a beating member other than the seat's own machine as the control of its network: no
+    control answer, no member excused."
+   :origin "v1.2.5 candidate list")))
