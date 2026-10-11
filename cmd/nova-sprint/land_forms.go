@@ -5,20 +5,27 @@ package main
 // the line merge (landsexp.go, land_ledgers.go) refuses a stretch: two cards that each put
 // their fix first in docs/fixes.sexp's :items change one line, though they add two forms.
 // Each keyed list (a list whose members are forms with an id: (fix "id" ...), (release "id"
-// ...), (fixed "id" ...), or (:id "id" ...)) is merged by id against the base: a form one side
+// ...)) is merged by id against the base: a form one side
 // changed is that side's, one a side added is there, one a side removed is gone, and one both
 // sides changed or added differently is a real conflict, refused naming it. A form both sides
 // hold alike is kept once. The tip's text is kept as it stands and the card's added forms go
-// after the tip's in its list. A file with no wrapping form (the schema repository's
-// evidence ledgers, one (:id ...) form a line) is one keyed list. The merged text is read
-// back and must hold exactly the forms the merge wants, or it is refused.
+// after the tip's in its list, the tip's text between members (comments, blank lines) kept
+// byte for byte. An evidence ledger (docs/roadmap-evidence/*.sexp) is append-only history,
+// not one current form per task: java/C7 done at two tested revisions is two forms, both
+// kept, so its members are keyed by their whole text and only exact duplicates are one. A
+// file with no wrapping form (the schema repository's evidence ledgers, one (:id ...) form a
+// line) is one list. The merged text is read back and must hold exactly the forms the merge
+// wants, and every comment of the tip outside the spans it rewrote, or it is refused.
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
 	"github.com/mas-bandwidth/nova-sprint/internal/worklang"
 )
@@ -105,6 +112,12 @@ func keyedList(f worklang.Form) bool {
 // (a side that does not hold the file) is a doc with nothing in it.
 func readFormDoc(file string, data []byte) (formDoc, error) {
 	d := formDoc{data: data}
+	// an evidence ledger is append-only history: one task's forms at several revisions all
+	// stand, so a member is keyed by its whole canonical text, never by its id
+	key := formKey
+	if cardgen.EvidenceLedger(file) {
+		key = formString
+	}
 	if strings.TrimSpace(stripComments(string(data))) == "" {
 		return d, nil
 	}
@@ -120,7 +133,7 @@ func readFormDoc(file string, data []byte) (formDoc, error) {
 			if v.Kind == worklang.List && keyedList(v) {
 				l := formList{name: kw.Value, off: v.Offset, end: v.End}
 				for _, it := range v.List {
-					l.items = append(l.items, keyedForm{key: formKey(it), canon: formString(it), off: it.Offset, end: it.End})
+					l.items = append(l.items, keyedForm{key: key(it), canon: formString(it), off: it.Offset, end: it.End})
 				}
 				d.lists = append(d.lists, l)
 				continue
@@ -140,7 +153,7 @@ func readFormDoc(file string, data []byte) (formDoc, error) {
 	}
 	l := formList{off: 0, end: len(data), bare: true}
 	for _, it := range top.List {
-		l.items = append(l.items, keyedForm{key: formKey(it), canon: formString(it), off: it.Offset - 2, end: it.End - 2})
+		l.items = append(l.items, keyedForm{key: key(it), canon: formString(it), off: it.Offset - 2, end: it.End - 2})
 	}
 	d.lists = append(d.lists, l)
 	return d, nil
@@ -248,54 +261,79 @@ func mergeByForm(file string, base, ours, theirs []byte) ([]byte, error) {
 			}
 		}
 	}
-	// the edits on the tip's text, each list rebuilt whole, applied from the back
-	type edit struct {
-		off, end int
-		text     string
-	}
-	var edits []edit
+	// the edits on the tip's text: only the replaced and dropped members' own spans, and the
+	// card's added members after the tip's last; every byte between members (comments,
+	// blank lines) is the tip's, kept as it stands
+	var edits []formEdit
 	for _, s := range docs[1].scalars {
 		if r, ok := replace[s.key]; ok {
-			edits = append(edits, edit{s.off, s.end, r})
+			edits = append(edits, formEdit{s.off, s.end, r})
 		}
 	}
 	data := docs[1].data
+	var touched [][2]int // the tip's spans the merge rewrites, outside which no text may change
 	listed := map[string]bool{}
 	for _, l := range docs[1].lists {
 		listed[l.name] = true
-		var items []string
-		changed := false
-		for _, it := range l.items {
+		last := -1 // the tip's last member the merge keeps
+		for i, it := range l.items {
 			k := l.name + "/" + it.key
 			switch {
 			case drop[k]:
-				changed = true
+				from, to := memberLines(data, it)
+				edits = append(edits, formEdit{from, to, ""})
+				touched = append(touched, [2]int{from, to})
 			case replace[k] != "":
-				items, changed = append(items, replace[k]), true
+				edits = append(edits, formEdit{it.off, it.end, replace[k]})
+				touched = append(touched, [2]int{it.off, it.end})
+				last = i
 			default:
-				items = append(items, string(data[it.off:it.end]))
+				last = i
 			}
 		}
+		var add []string
 		for _, k := range added {
 			if lists[2][k] == l.name {
-				items, changed = append(items, text(docs[2], t[k])), true
+				add = append(add, text(docs[2], t[k]))
 			}
 		}
-		if !changed {
+		if len(add) == 0 {
 			continue
 		}
-		head, sep, foot := listFrame(data, l)
-		edits = append(edits, edit{l.off, l.end, head + strings.Join(items, sep) + foot})
+		switch {
+		case len(l.items) == 0 && l.bare:
+			body := strings.TrimRight(string(data), " \t\r\n")
+			if body != "" {
+				body += "\n"
+			}
+			edits = append(edits, formEdit{0, len(data), body + strings.Join(add, "\n") + "\n"})
+			touched = append(touched, [2]int{0, len(data)})
+		case len(l.items) == 0:
+			edits = append(edits, formEdit{l.end - 1, l.end - 1, strings.Join(add, "\n  ")})
+		case last < 0:
+			return nil, fmt.Errorf("the card removes every entry of %s and adds others", cmp.Or(l.name, "the file"))
+		default:
+			sep := memberSep(data, l, last)
+			at := l.items[last].end
+			edits = append(edits, formEdit{at, at, sep + strings.Join(add, sep)})
+		}
 	}
 	for _, k := range added {
 		if !listed[lists[2][k]] {
 			return nil, fmt.Errorf("the card adds %s to a list the tip lacks", trimList(k))
 		}
 	}
-	slices.SortFunc(edits, func(a, b edit) int { return b.off - a.off })
+	slices.SortFunc(edits, func(a, b formEdit) int { return cmp.Or(b.off-a.off, b.end-a.end) })
 	out := slices.Clone(data)
-	for _, e := range edits {
+	for i, e := range edits {
+		if i > 0 && e.end > edits[i-1].off {
+			return nil, errors.New("two of the merge's edits overlap")
+		}
 		out = append(out[:e.off:e.off], append([]byte(e.text), out[e.end:]...)...)
+	}
+	// every comment of the tip outside the spans the merge rewrites is still there
+	if c := lostComment(data, out, touched); c != "" {
+		return nil, fmt.Errorf("the merged data loses the comment %q", c)
 	}
 	// the merged text, read back, holds exactly what the merge wants
 	d, err := readFormDoc(file, out)
@@ -321,26 +359,82 @@ func mergeByForm(file string, base, ours, theirs []byte) ([]byte, error) {
 	return out, nil
 }
 
-// listFrame is what a rebuilt list keeps of the tip's: the text before its first member,
-// the separator between members, and the text after its last.
-func listFrame(data []byte, l formList) (head, sep, foot string) {
-	sep = "\n  "
-	if l.bare {
-		sep = "\n"
+// formEdit is one splice of the tip's text: [off, end) becomes text.
+type formEdit struct {
+	off, end int
+	text     string
+}
+
+// memberLines is a dropped member's span widened to its own lines: the indentation before
+// it when only whitespace stands there on its line, and the spaces and the newline after it
+// when nothing else follows on its line. What surrounds it (comments, blank lines) stays.
+func memberLines(data []byte, it keyedForm) (from, to int) {
+	from, to = it.off, it.end
+	for to < len(data) && (data[to] == ' ' || data[to] == '\t' || data[to] == '\r') {
+		to++
 	}
-	switch n := len(l.items); {
-	case n == 0 && l.bare:
-		body := strings.TrimRight(string(data[l.off:l.end]), " \t\r\n")
-		if body != "" {
-			body += "\n"
+	if to < len(data) && data[to] == '\n' {
+		to++
+		for from > 0 && (data[from-1] == ' ' || data[from-1] == '\t') {
+			from--
 		}
-		return body, sep, "\n"
-	case n == 0:
-		return string(data[l.off : l.end-1]), sep, string(data[l.end-1 : l.end])
-	case n > 1:
-		sep = string(data[l.items[n-2].end:l.items[n-1].off])
+		return from, to
 	}
-	return string(data[l.off:l.items[0].off]), sep, string(data[l.items[len(l.items)-1].end:l.end])
+	return it.off, it.end
+}
+
+// memberSep is the separator an added member takes after the tip's member i: the gap before
+// member i when it holds no comment, else a newline and member i's indentation.
+func memberSep(data []byte, l formList, i int) string {
+	it := l.items[i]
+	if i > 0 {
+		if gap := string(data[l.items[i-1].end:it.off]); strings.Contains(gap, "\n") && !strings.Contains(gap, ";") {
+			return gap
+		}
+	}
+	ls := it.off
+	for ls > 0 && (data[ls-1] == ' ' || data[ls-1] == '\t') {
+		ls--
+	}
+	if ls == 0 || data[ls-1] == '\n' {
+		return "\n" + string(data[ls:it.off])
+	}
+	if l.bare {
+		return "\n"
+	}
+	return "\n  "
+}
+
+// commentLines is the ; comment lines of data outside the spans, each trimmed, with how
+// many times each stands there.
+func commentLines(data []byte, spans [][2]int) map[string]int {
+	out := map[string]int{}
+	inSpan := func(i int) bool {
+		return slices.ContainsFunc(spans, func(s [2]int) bool { return i >= s[0] && i < s[1] })
+	}
+	for i := 0; i < len(data); {
+		j := i
+		for j < len(data) && data[j] != '\n' {
+			j++
+		}
+		if line := strings.TrimSpace(string(data[i:j])); strings.HasPrefix(line, ";") && !inSpan(i) {
+			out[line]++
+		}
+		i = j + 1
+	}
+	return out
+}
+
+// lostComment is a comment line of the tip (outside the rewritten spans) that the merged
+// text holds fewer times than the tip, "" for none.
+func lostComment(tip, merged []byte, touched [][2]int) string {
+	want, got := commentLines(tip, touched), commentLines(merged, nil)
+	for _, c := range slices.Sorted(maps.Keys(want)) {
+		if got[c] < want[c] {
+			return c
+		}
+	}
+	return ""
 }
 
 // trimList is a merge key without its list name.

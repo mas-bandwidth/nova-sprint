@@ -4548,9 +4548,13 @@ for `tla/COVERAGE.tsv`), the header kept once, a row both sides hold alike kept 
 (the lander's own resolution of the run records, `resolveTableByConfig`); the roadmap
 data and the evidence ledgers line by line where each side only adds or removes whole
 lines, and otherwise form by form (`land_forms.go`): a `(fix "<id>" ...)` form by its id,
-a `(release "<id>" ...)` block by its name, a `(:id "<id>" ...)` evidence form by its id
-(the schema repository's ledgers are bare forms, one a line, with no wrapping form), an
-exact duplicate kept once. `FIXES.md` and `ROADMAP.md` are never merged as text: they are
+a `(release "<id>" ...)` block by its name; an evidence ledger is append-only history, so
+every distinct form is kept (one task done at two tested revisions is two forms) and only an
+exact duplicate is one (the schema repository's ledgers are bare forms, one a line, with no
+wrapping form). Only the changed members' spans are rewritten and the card's additions go
+after the tip's last member: the tip's comments and blank lines between members are kept
+byte for byte, and a merge that loses one is refused. A keyed table side that names one key
+twice, differently, is refused naming the key. `FIXES.md` and `ROADMAP.md` are never merged as text: they are
 regenerated from the merged data by `make roadmap`'s generator. One id both sides add or
 change differently is a real conflict and is refused, naming it. The merged text is read
 back and must hold exactly the entries the merge wants and decode as the generator reads

@@ -15,7 +15,7 @@ import (
 // docs/SPEC-CARD-CONTRACT.md): the files a change must touch to keep the tree green are
 // inside every card's PATHS. The owner, 2026-10-06: "Can we stop this whole 'test
 // outside of paths' thing. It's wasteful."
-const AlwaysInPathsRule = "Files a change must touch to keep the tree green are always inside PATHS, whatever the brief names: every *_test.go, every file under a testdata/ directory, tla/RUNS.tsv and tla/CASES.tsv, internal/docs/catalog.go, and every AGENTS.md map; any other file outside PATHS is still out of scope."
+const AlwaysInPathsRule = "Files a change must touch to keep the tree green are always inside PATHS, whatever the brief names: every *_test.go, every file under a testdata/ directory, tla/RUNS.tsv, tla/CASES.tsv and tla/COVERAGE.tsv, internal/docs/catalog.go, and every AGENTS.md map; any other file outside PATHS is still out of scope."
 
 // alwaysInPathsFiles are the single files AlwaysInPathsRule names.
 var alwaysInPathsFiles = []string{"tla/RUNS.tsv", "tla/CASES.tsv", "internal/docs/catalog.go"}

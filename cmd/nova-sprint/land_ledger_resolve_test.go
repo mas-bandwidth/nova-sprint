@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -189,4 +191,59 @@ func TestEvidenceFormsKeepBoth(t *testing.T) {
 			r.clean()
 		})
 	}
+}
+
+// TestEvidenceHistoryKeepsEveryRevision: the schema evidence ledgers are append-only history
+// (Stella's read of PR #100). A slice of the real fixed-java.sexp at schema ec49ddfb holds
+// java/C7 done at two tested revisions; two heads each add an unrelated task. The second
+// lands through the real landing path, every revision of java/C7 kept, both tasks added,
+// the tip's forms first. Before, the merge by form keyed evidence by :id and refused
+// "id:java/C7 is named twice".
+func TestEvidenceHistoryKeepsEveryRevision(t *testing.T) {
+	t.Parallel()
+	history, err := os.ReadFile(filepath.Join("testdata", "fixed-java-history.sexp"))
+	require.NoError(t, err)
+	r := newLandRig(t)
+	const p = "docs/roadmap-evidence/fixed-java.sexp"
+	r.git(r.worker, "switch", "-q", "--detach", "origin/main")
+	r.files("the evidence", map[string]string{p: string(history)})
+	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
+	r.git(r.worker, "fetch", "-q", "origin")
+	r.ok("add --stream s1 --count 2")
+	task := func(id string) string {
+		return `(:id "java/` + id + `" :state :done :evidence ("x_test.go: Test` + id + `") :tested-revision "abc")` + "\n"
+	}
+	heads := map[string]string{
+		"s1-1": r.card("s1-1", map[string]string{p: string(history) + task("T1")}),
+		"s1-2": r.card("s1-2", map[string]string{p: string(history) + task("T2")}),
+	}
+	r.queued(heads, "s1-1", "s1-2")
+	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
+	require.Equal(t, 0, code, out+errs)
+	assert.Contains(t, out, "LAND OK stream=s1 cards=2 base=main")
+	got := r.git(r.remote, "show", "main:"+p)
+	assert.Equal(t, 2, strings.Count(got, `"java/C7"`), got)
+	assert.Contains(t, got, "bb83ab4dfac22dfe73c39d4e79b3e9664fa83b65")
+	assert.Contains(t, got, "d446cee1512ff86479bc2137a4f794dab3529bc2")
+	assert.Less(t, strings.Index(got, `"java/T1"`), strings.Index(got, `"java/T2"`), "the tip's forms first")
+	assert.True(t, strings.HasPrefix(got, strings.TrimSuffix(string(history), "\n")), "the tip's text kept")
+	assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "landed/merged"}, r.places("s1-1", "s1-2"))
+	r.clean()
+}
+
+// TestAKeyedTableRefusesADivergentDuplicateKeyInOneSide: a side of a keyed table that names one
+// key twice, differently, is malformed; the resolution refuses it naming the key, never
+// silently keeping one of the rows (Stella's read of PR #100).
+func TestAKeyedTableRefusesADivergentDuplicateKeyInOneSide(t *testing.T) {
+	t.Parallel()
+	base := coverageHeader
+	ours := coverageHeader + "m\told\n" + "m\tnew\n"
+	theirs := coverageHeader + "m\tnew\n" + "n\tx\n"
+	_, _, _, err := resolveCoverageByMachine([]byte(base), []byte(ours), []byte(theirs))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "m")
+	assert.Contains(t, err.Error(), "twice")
+	// an exact duplicate row is one row, not a refusal
+	_, _, _, err = resolveCoverageByMachine([]byte(base), []byte(coverageHeader+"m\tnew\nm\tnew\n"), []byte(theirs))
+	assert.NoError(t, err)
 }

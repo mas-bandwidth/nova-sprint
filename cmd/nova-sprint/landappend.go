@@ -206,6 +206,7 @@ func resolveTableByConfig(path string, base, ours, theirs []byte) (out []byte, n
 	type tableData struct {
 		order []string
 		rows  map[string]string
+		dup   string // a key met twice with different rows
 	}
 
 	parseTable := func(rows []string) tableData {
@@ -218,9 +219,15 @@ func resolveTableByConfig(path string, base, ours, theirs []byte) (out []byte, n
 			if k == "" {
 				continue
 			}
-			if _, exists := td.rows[k]; !exists {
-				td.order = append(td.order, k)
+			if prev, exists := td.rows[k]; exists {
+				// one key twice in one side, differently, is a malformed table: refused
+				// naming it, never resolved by keeping one of the rows
+				if prev != l && td.dup == "" {
+					td.dup = k
+				}
+				continue
 			}
+			td.order = append(td.order, k)
 			td.rows[k] = l
 		}
 		return td
@@ -229,6 +236,11 @@ func resolveTableByConfig(path string, base, ours, theirs []byte) (out []byte, n
 	bData := parseTable(bRows)
 	oData := parseTable(oRows)
 	tData := parseTable(tRows)
+	for i, d := range []tableData{bData, oData, tData} {
+		if d.dup != "" {
+			return nil, 0, 0, fmt.Errorf("the %s side names %s twice, differently", []string{"base", "tip's", "card's"}[i], d.dup)
+		}
+	}
 
 	allKeys := make([]string, 0, len(bData.order)+len(oData.order)+len(tData.order))
 	seenKey := make(map[string]bool)
