@@ -117,6 +117,20 @@
     :title "ReadsByRoom models the interim parallel ask rule, with a reversed witness for asking while broken"
     :text "Models only, no product change. tla/ReadsByRoom.tla gains a Rule constant (\"sequential\" or \"parallel\"): parallel is the code's interim rule of 2026-10-06 (ReadsWanted returns 0 once a read is broken, else the reads still needed minus the live reads, asked or ok), and sequential stays the design of 2026-10-04 in its own configuration. ReadsPerLanding is restated as Need times (broken attempts plus one) under parallel (a pro card broken once reads four, where sequential read three); OneAtATime and OneBroken hold only under sequential, and the new NoAskWhileBroken (the ask places no read once a read found it broken) holds under both. Five reversed witnesses: the pair asked together breaks OneAtATime and OneBroken, readers asked whatever their room break WidthRespected, the rework's first read of any reader breaks FinderFirst (a three-reader instance, so a card has a reader to spare), and Broken = \"askbroken\" asks a read while one is broken and breaks NoAskWhileBroken. The refmodel Ask comment (actions.go) now says the parallel rule; readers.go's askPicks comment (line 637) still says sequential and is left for the next card."
     :origin "this card; v1.2.12 inventory item T36, drift read at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "tla-cardisa-lands-only-by-the-table" :release "v1.2.12" :status "planned"
+    :title "CardISA lands a card only by the table: merging, or a released wait card"
+    :text "Models only, no product change. tla/CardISA.tla narrows IsaLandEvent to the release that lands a
+     wait card (a waiting wait card with released, as internal/sprint/lifecycle.go unlawful refuses
+     waiting -> landed unless the plan is releasing and the card is a sentinel), so a wait card is landed
+     by its release and never dealt; Wait resolves a non-wait card alone, and the inherited
+     drop-to-landed (Verdict) and done-already-to-landed (EndWorkDone) branches are replaced by
+     IsaVerdict and IsaEndWorkDone without them, neither a Moves row. The new action property
+     LandsOnlyByTable (a card lands from merging, or from waiting a wait card) is checked by
+     MCCardISA.cfg, which now also checks IsaSafety; WaitDispatchesOnlyWhenOperandHolds is restated as
+     a wait card lands only when its operand holds. A fourth reversed witness
+     MCCardISABrokenLandAnywhere (Broken = \"landanywhere\") restores the old landing set and breaks
+     LandsOnlyByTable; the three earlier witnesses still break the property their rows name."
+    :origin "this card; v1.2.12 inventory item T5, drift read at nova-sprint main 00c54ba2e 2026-10-11")
    (fix "tla-friendemptyrun-every-path-to-a-friend" :release "v1.2.12" :status "planned"
     :title "FriendEmptyRun models the four friend moves, the brief-defect return and the cap's working card"
     :text "Models only, no product change. tla/FriendEmptyRun.tla gains FriendMove, one action for the four paths that read cardLeft and move a ready attempt to a friend's lane (friendLevel, friendUnstartedLevel, reclaimUnit, friendCouldTake), reading wleft and left as they do; Rework gains the brief-defect early return, the failed rule's other early return beside the brief's bound, which writes the friend at any attempt; and CapDeal places the card working on her row, as AttemptCapDeal does, not queued. NeverBackToTheEmptyLane still holds, and a reversed witness (MCFriendEmptyRunBrokenLevelLeft) reads only the work card's list and breaks it. ruleHarness and AttemptCapDeal cite the module; friend_start.go and friend_deal.go citations are their own cards."
