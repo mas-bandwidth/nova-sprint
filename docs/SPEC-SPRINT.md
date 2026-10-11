@@ -7319,7 +7319,7 @@ generation for `LiveGrace` (60 s) since its take or its last sighting goes back
 ready on its row at its next generation with `lost_from_gen` and `lost_reason`,
 its progress kept as a stop-return keeps it. A read card is held to the same
 rule (v1.2.14): a read working on a member is named by its member's latest
-beat, or within the grace (tla/ReadCards.tla NamedOrWithinGrace, NoGhostRead).
+beat, or within the grace (tla/ReadCards.tla NoGhostRead, liveness under LiveSpec).
 Past it the read card leaves the fleet table retired `lost`, with
 `lost_from_gen` and `lost_reason`, spending no reader and marking no failure,
 and the next read-card ask deals the read again at its next generation to
