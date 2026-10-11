@@ -289,5 +289,6 @@ Failed work and broken reads rework themselves, and no wait parks a card
 - `TestNoJudgmentOffersADecisionItsVerbRefuses` (internal/sprint/wait_refused_test.go)
 - `TestAStoppedStreamCountsTheCardsItHolds` (internal/sprint/wait_refused_test.go)
 - `TestAStallRefusesWaitOnlyWhenItNamesACard` (internal/sprint/wait_refused_test.go)
+- `TestAPartlyAnsweredJudgmentCountsOnlyTheCardsStillHeld` (internal/sprint/wait_refused_test.go)
 - `TestWaitByGroupIsRefusedOnFailedWork` (cmd/nova-sprint/no_parked_test.go)
 - `TestWaitByAliasIsRefusedOnFailedWork` (cmd/nova-sprint/no_parked_test.go)
