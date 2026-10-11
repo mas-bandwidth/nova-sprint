@@ -1789,7 +1789,17 @@ the level and a down member's redeal never place the attempt's card on a
 member that refused it, which refuses it once (one record, one note), and when every
 member up has refused it the judgment "a card reached its bound" names the
 members and the reason, once, and it is dealt no more until a member that has
-not refused it is up, a rework or a drop; tla/CardContract.tla, StageRefused
+not refused it is up, a rework or a drop; a refusal for want of a bench mirror
+is about the whole repository, not one card: the member cannot stage any card
+of it, so it becomes a capability, the way a harness the member cannot launch
+is one (Launches, notLaunching), and within StagingMirrorWindow (one hour) the
+deal (launchersOf), the level and a down member's redeal (notLaunching) and
+routeOf when it names a member all refuse that member every card of that
+repository, with the why "<member> refused <repo> at staging at <time>: no
+bench mirror; add the mirror on <member> with the fleet play", and when no
+member is left the no-launcher judgment (noLauncher) says so with that why,
+and a later ok finish by that member of a card of it ends the refusal at once
+(mirrorRefusals, staging_repo.go); tla/CardContract.tla, StageRefused
 and Restage), ok (set
 only when finished), head, report. It takes its primary's score. The primary
 names its live work card.
@@ -2390,7 +2400,17 @@ snapshot it read, and the lifecycle judges the needs against it; a plan
 without it moves nothing waiting to ready. A card is dealt only when every need
 has landed: the deal refuses a ready card with an unlanded need, and the
 lifecycle refuses every move to dealt whose card's recorded needs have not
-landed whatever path asks for it. A card's needs are set at add, by a brief
+landed whatever path asks for it. The friends' deal holds the same rule: it
+offers a card whose needs have not landed to no friend (TickDeal's offer,
+friendDealPass), as the machines' deal does not. A ready work card already dealt
+on any row, friend or member, whose primary's needs have not landed goes back to
+the pool at once in the tick's deal (needsWithdrawals): the work card leaves the
+fleet table at a new generation, its attempt unchanged and no redeal spent, the
+primary waits for its needs again, and the note names the needs; so a friend
+unheld with such a card in her set never takes it. A take refuses a card whose
+primary's needs have not landed by id (`<id> needs <n,...>, not landed: not taken`) and passes over it by count (takeOne). A take by id of a card already
+working on the same row at the generation named is a no-op: it writes nothing
+and records nothing, so the log shows one take, never one every tick. A card's needs are set at add, by a brief
 edit's `DEPENDS-ON:` lines, or by `needs set` (`needs set <id> (--needs <a,b> | --clear)`, the coordinator's alone, section 11), and nowhere else: `needs set`
 rewrites the brief's needs line and moves the card by this table, so a card
 admitted with the wrong needs is corrected in place, never by a twin. A brief
@@ -4406,7 +4426,7 @@ push of the temporary ref that is refused is said as `copy refused: push
 <ref>: ...` and the gate runs in the clone.
 `--check` is the caller's own command on top, once a batch, as before.
 
-**The base's class gate.** Before a head is merged, the base passes its build, `gofmt -l .` (nonempty output is red even at exit zero), `go vet ./...`, `go vet -tags functional ./...` (the functional tier), staticcheck, errcheck and dead-code checks, then the available tree packages `internal/ci` and `internal/docs`. The analyzer class tests run individually with `-tags functional` and a 600-second test timeout; their whole-tree analysis needs the tag and starts no store. `sprint.BaseClasses` supplies the runs to the same local or bench runner used by the lander; a clone that lacks a class's package skips that class, and a clone without `go.mod` has no gate. The first red class refuses every landing onto the base, under the existing base-gate retries. The rule's stop raises one judgment for that base, naming its class, run and finding plus the `fix-red-<class>-<base>` card stamped by `cardgen.PlanClassRed` and its test. A green base commit is cached across rounds and streams. A queued head is a cure only when its tree passes this complete suite; it lands first, and a head that fixes one class but leaves another red is not a cure. The real lander regression is `TestARedClassOnTheBaseStopsLandings` in `cmd/nova-sprint/land_class_test.go`.
+**The base's class gate.** Before a head is merged, the base passes its classes in three stages: stage 0 is the build; stage 1 runs side by side over the one read-only tree: `gofmt -l .` (nonempty output is red even at exit zero), `go vet ./...`, `go vet -tags functional ./...` (the functional tier) and the whole-tree analyzer classes; stage 2 runs side by side: the available tree packages `internal/ci` and `internal/docs` and any unit packages. The three analyzer classes (staticcheck, errcheck and dead-code) are one `go test -tags functional` run of one test binary, with a 600-second test timeout; their whole-tree analysis needs the tag and starts no store, and a red run is attributed to the class its `--- FAIL:` line names. The report order is the class order: `sprint.BaseClasses` names the classes in order and carries each class's stage, a red stage stops the later stages, and the first red class in class order refuses every landing onto the base, under the existing base-gate retries. `sprint.BaseClasses` supplies the runs to the same local or bench runner used by the lander; a clone that lacks a class's package skips that class, and a clone without `go.mod` has no gate. The rule's stop raises one judgment for that base, naming its class, run and finding plus the `fix-red-<class>-<base>` card stamped by `cardgen.PlanClassRed` and its test. A green base commit is cached across rounds and streams. A queued head is a cure only when its tree passes this complete suite; it lands first, and a head that fixes one class but leaves another red is not a cure. The real lander regression is `TestARedClassOnTheBaseStopsLandings` in `cmd/nova-sprint/land_class_test.go`.
 
 **Always inside PATHS.** Files a change must touch to keep the tree green are always
 inside PATHS, whatever the brief names: every `*_test.go`, every file under a `testdata/`

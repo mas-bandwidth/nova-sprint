@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -218,5 +220,26 @@ func writeFile(t *testing.T, path, text string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRunRefusesInvalidParallelWidths(t *testing.T) {
+	root := checkout(t)
+	max := runtime.NumCPU() / 2
+	if max < 1 {
+		max = 1
+	}
+	for _, value := range []string{"0", strconv.Itoa(max + 1)} {
+		dir := t.TempDir()
+		code, _, errs := cli("run", "--root", root, "--dir", dir, "--parallel", value)
+		if code != exitRefused {
+			t.Fatalf("--parallel %s exited %d, want %d: %s", value, code, exitRefused, errs)
+		}
+		if !strings.Contains(errs, "parallel must be between") {
+			t.Fatalf("--parallel %s refusal did not explain the allowed range: %s", value, errs)
+		}
+		if _, err := os.Stat(filepath.Join(dir, tlc.RunsFile)); !os.IsNotExist(err) {
+			t.Fatalf("--parallel %s wrote records", value)
+		}
 	}
 }
