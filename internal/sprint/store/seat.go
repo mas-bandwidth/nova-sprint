@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -100,11 +101,76 @@ func (st *Store) InitSeat(ctx context.Context, first string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	name := first
 	if ok {
-		name = rec.Holder
+		return rec.Holder, st.B.SetCoordinator(ctx, rec.Holder)
 	}
-	return name, st.B.SetCoordinator(ctx, name)
+	held, err := st.B.Coordinator(ctx)
+	if err != nil {
+		return "", err
+	}
+	// init-coordinator-moves-the-seat-recorded: a store that keeps no key and
+	// no record, but is not new, has lost the seat's record. The name init is
+	// given moves the seat, so init records the move as the seat's own step
+	// does; an observation made under the lost seat then lapses by
+	// FriendEvidence's generation check.
+	if held == "" && st.sprintHasRecords(ctx) {
+		return first, st.initSeatMove(ctx, first)
+	}
+	return first, st.B.SetCoordinator(ctx, first)
+}
+
+// sprintHasRecords says the store is not new: it holds a row of any of the four
+// tables, or a friend's observation (the friend-health key an earlier seat's
+// holder wrote). A fresh store's first init writes no seat record
+// (init-coordinator-moves-the-seat-recorded; docs/SPEC-SPRINT.md, "Handing over
+// the seat").
+func (st *Store) sprintHasRecords(ctx context.Context) bool {
+	tables := make([]string, len(All))
+	for i, t := range All {
+		tables[i] = st.Names.Table(t)
+	}
+	if shapes, err := st.B.Shapes(ctx, tables); err == nil {
+		for _, sh := range shapes {
+			if len(sh.Rows) > 0 {
+				return true
+			}
+		}
+	}
+	r, kv, err := st.roster(ctx)
+	if err != nil {
+		return false
+	}
+	for name := range r {
+		if _, ok, err := kv.GetKey(ctx, friendHealthKey(name)); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
+// initSeatMove records init's write of a coordinator name as a seat change
+// (docs/SPEC-SPRINT.md, "Handing over the seat"; the seat never moves
+// unrecorded): the seat's record with the generation stepped, written with the
+// coordinator key, a happened note and its log line. It runs as the store's own
+// step, so the commit writes the key with the record as the seat's steps do.
+func (st *Store) initSeatMove(ctx context.Context, first string) error {
+	const reason = "init wrote the coordinator onto a store whose seat record was lost"
+	step := Step{Verb: "init", Actor: first,
+		Plan: func(s *sprint.Snapshot) sprint.Plan {
+			c := &sprint.SeatChange{Holder: first, Generation: max(s.SeatGeneration, sprint.FirstSeatGeneration) + 1,
+				At: s.Now, By: first, Reason: reason}
+			n := sprint.Note{Kind: sprint.Happened, Type: sprint.NSeat, At: s.Now, Who: first, To: first,
+				What: first + " holds the seat: " + reason}
+			return sprint.Plan{Notes: []sprint.Note{n}, Seat: c}
+		}}
+	res, err := st.Run(ctx, step)
+	if err != nil {
+		return err
+	}
+	if len(res.Refused) > 0 {
+		return errors.New(res.Refused[0].Why)
+	}
+	return nil
 }
 
 // SeatRepairStep writes the coordinator key from the seat's record, read now
