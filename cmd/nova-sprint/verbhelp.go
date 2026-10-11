@@ -139,6 +139,10 @@ var verbEffect = map[string]string{
 // commonExit is the codes of every other verb.
 const commonExit = "exit codes: 0 done, 1 failed or incomplete (including refused; the line names why), 2 usage or a store that did not answer"
 
+// doctorPreflightWords is doctor's prose: the release gate's frame, --preflight, which
+// a switch or adopt runs first (docs/SPEC-SPRINT.md section 14, "The server").
+const doctorPreflightWords = "doctor --preflight <candidate binary> is the release gate's frame, run before any server switch or adopt: it runs the candidate's version and its tick --shadow --json against the store this doctor reads, holds the store's tables against the candidate's TABLES.lock, and lists the gate's later checks (members, mirrors, links, stable) as WARN rows until their cards land, so it always says what it did not check. A store missing a locked column is one FAIL whose evidence is the shadow's own error text whole, which names the columns and the exact nova-table commands that mend them, and whose remedy is to run those commands on a STOPPED machine or the adopt's schema step. The switch's own shadow already refuses such a candidate, and a switch or adopt runs this frame first so the coordinator has the same answer before the switch. Exit 1 on any FAIL, as doctor does."
+
 // verbExits is the exit-code line a verb's -h prints.
 func verbExits(name string) string {
 	if e, ok := verbExit[name]; ok {
@@ -249,6 +253,8 @@ const cardHelpWords = "a brief is held to the card lint (nova-swarm template --n
 // still carries the inbox walkthrough and the friends section on their own.
 func verbProse(name string) string {
 	switch name {
+	case "doctor":
+		return doctorPreflightWords + "\n"
 	case "inbox":
 		return inboxExample
 	case "release":

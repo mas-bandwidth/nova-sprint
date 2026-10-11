@@ -91,6 +91,7 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	const name = "doctor"
 	fs, c := a.verbSetup(name)
 	area := fs.String("area", "", "run one group of checks: "+strings.Join(sprint.DoctorAreas, ", ")+" (the sprint area is the stops, rules and machinery lines)")
+	preflight := fs.String("preflight", "", "run the release gate's frame against this candidate binary before a switch or adopt: its version and its tick --shadow --json against the store this doctor reads, the store's tables against the candidate's TABLES.lock (a locked-shape refusal is one FAIL whose evidence is the shadow's own error text, naming the columns and the nova-table commands that mend them); the gate's later checks are WARN rows until their cards land; exit 1 on any FAIL")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, name, err.Error())
@@ -106,6 +107,9 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, name, err.Error())
 	}
 	ctx := context.Background()
+	if *preflight != "" {
+		return a.cmdDoctorPreflight(ctx, *c, *preflight, stdout, stderr)
+	}
 	rec, err := st.StopsNow(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint where\n", prog, name, oneline.Escape(noSprintYet(err).Error()))
