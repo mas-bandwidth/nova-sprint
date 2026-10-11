@@ -67,8 +67,27 @@
      breaker on the review loop, and a red base pushed to the coordinator.")
    (release "v1.2.15" :status "planned"
     :text "The next small product fixes, one concern each."))
-  :items
-   ((fix "a-take-refuses-a-card-whose-needs-have-not-landed" :release "v1.2.12" :status "planned"
+   :items
+    ((fix "a-coordination-failure-is-never-the-workers" :release "v1.2.12" :status "planned"
+      :title "A coordination failure is never the worker's"
+      :text "Every attempt's end is classed as the worker's (EndWorker: a not-done verdict on its
+       own work, its push refused by the gate for its own code, a broken read verdict on its head)
+       or the coordination's (EndCoordination: everything the machine, the bench, the harness, the
+       provider or the seat caused). EndClass (internal/sprint/end_class.go) names the cause of a
+       coordination end -- harness crash before the first turn, provider or account limit,
+       content-filter or key refusal, idle-reap with no run, a missing bench tool or jar, a staging
+       refusal, the tick or a hold taking a card back, a card dealt with unlanded needs, a
+       hook-gate refusal, a store fault, a landing conflict -- and unknown is the coordination's
+       until classed, so a worker is never blamed by default. A coordination end never counts
+       against a worker, never consumes an attempt toward its card's bound, and accumulates on a
+       coordination-failure counter by cause. internal/sprint/end_class_test.go pins the class of
+       each reason, the owner's evidence of 2026-10-11: friends' and fleet machines' rows read as
+       failures that were the seat's, the bench's or the provider's work."
+      :origin "this card, a-coordination-failure-is-never-the-workers.w1; the owner, 2026-10-11
+       ~20:30Z: \"Remember that failures not attributable to the model, are supposed to accumulate
+       to a counter for coordination failures\"; \"I'm sick of seeing friends and fleet machines
+       get blamed for coordinator fuckups\"")
+     (fix "a-take-refuses-a-card-whose-needs-have-not-landed" :release "v1.2.12" :status "planned"
      :title "A card whose named needs have not landed is neither dealt nor taken"
      :text "One rule, three doors. A primary whose named needs have not all landed (WaitsFor, steps_work.go) was dealt to a friend, so on 2026-10-11 19:17-19:21Z a friend took six cards whose DEPENDS-ON needs had not landed, each raising a rule-11 invariant, and the take-back verb refused them as working. TickDeal's offer (steps_tick.go) now leaves out a card WaitsFor names needs for, as dealPlan's ready predicate does, and friendDealPass skips such a card too, so neither the ladder nor the attempt cap's deal hands it to a friend. A ready work card already dealt on any row, friend or member, whose primary's needs are not landed goes back to the pool at once in the tick's deal (needsWithdrawals): the work card leaves the fleet table at a new generation, its attempt unchanged and no redeal spent, the primary waits for its needs again, and the note names the needs; so a friend unheld with such a card in her set never takes it. takeOne refuses a card by id whose primary's needs are not landed (\"<id> needs <n,...>, not landed: not taken\") and a take by count passes over it. A take by id of a card already working on the same row at the generation named is a no-op, writing no record and no note, so the log shows one take, never one every 15 to 16 s. docs/SPEC-SPRINT.md (needs and the deal) states the rule for friends and takes."
      :origin "this card, a-take-refuses-a-card-whose-needs-have-not-landed.w2, 2026-10-11 ~19:25Z; the coordinator for the owner's \"Please log cards to fix this deal and rebalance. It's shit.\" (a friend took six cards whose needs had not landed; log --card schema-dart-msg2-batch repeated a friend:working -> a friend:ready every 15 to 16 s); code read at nova-sprint main af21db3b")
