@@ -663,7 +663,10 @@ func cardRest(s *Snapshot, c *Card) (RouteRest, bool) {
 // provider's rest began is never taken and refused there (takeOne refuses it), so it is
 // withdrawn while ready by the path a member going down takes (withdrawCard): no take ended,
 // so no redeal is spent (redeal), and its primary goes back to ready for the next deal to
-// place on a route that serves (routeOf), its timeline noting why (NRestWithdrawn).
+// place on a route that serves (routeOf), its timeline noting why (NRestWithdrawn). A
+// rate-limit backoff already notes itself once per new end (restWrites), never a judgment,
+// so its withdrawals write no note per card (tla/RateBackoff.tla; docs/SPEC-SPRINT.md
+// section 5, the deal).
 func restWithdrawals(s *Snapshot, who string) []Unit {
 	var out []Unit
 	for _, c := range s.Fleet.Column(Ready) {
@@ -671,7 +674,14 @@ func restWithdrawals(s *Snapshot, who string) []Unit {
 			continue // a read card is its reader's: the read-card deal draws a read off a resting route
 		}
 		if rest, ok := cardRest(s, c); ok {
-			out = append(out, withdrawCard(s, c, false, NRestWithdrawn, who, "taken back: its route "+c.F(FieldRoute)+" rests ("+rest.Said()+")"))
+			u := withdrawCard(s, c, false, NRestWithdrawn, who, "taken back: its route "+c.F(FieldRoute)+" rests ("+rest.Said()+")")
+			if rest.Cause == RestRateBackoff {
+				// a backoff already notes itself once per new end (restWrites, NRouteRested);
+				// a note per card would drown that one note, so none is added (tla/RateBackoff.tla,
+				// docs/SPEC-SPRINT.md section 5, the deal)
+				u.Notes = slices.DeleteFunc(u.Notes, func(n Note) bool { return n.Type == NRestWithdrawn })
+			}
+			out = append(out, u)
 		}
 	}
 	return out
