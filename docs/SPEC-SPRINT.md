@@ -856,9 +856,9 @@ STATUS, then the carried head and branch, the card's STOP is the fix alone. A re
 `Verdict: LAND` and `Head:` remain authoritative when its first paragraph misses words from THE ONE
 THING LEFT: the mismatch may raise one seat judgment asking for the report to be read, but never
 rewrites the verdict, fails the card, or counts against the friend's ok%; a valid LAND goes to
-review with its reported head. A later attempt's delivered `CARRY:` line names the newest full head
-any earlier attempt pushed, replacing any older CARRY in the brief (`TestAFriendsReworkStartsFromTheTipOfItsBase`,
-`TestAFriendsRedealBriefCarriesTheNewestPushedHead`).
+review with its reported head (`TestAKeywordMissIsAJudgmentNeverAHold`). A later attempt's delivered
+`CARRY:` line names the newest full head any earlier attempt pushed, replacing any older CARRY in
+the brief (`TestAFriendsReworkStartsFromTheTipOfItsBase`, `TestARedealCarriesTheNewestPushedHead`).
 A friend has no staged commit, so nothing checks that her Head descends from that tip: the
 `ls-remote` tip check below, Head is origin's tip of her branch, is the only guard on her finish),
 `<job>` the card's id as the table layer holds it at its
