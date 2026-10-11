@@ -29,6 +29,17 @@ func TestPendingReposNamesTheOutstandingCardsRepositories(t *testing.T) {
 	assert.Equal(t, []string{"nova-sprint", "nova-tools"}, PendingRepos(w.s))
 }
 
+// PendingRepos also names a stream's recorded repository (steps_work.go: every admitted
+// card records its repository on its stream's control card, FieldRepo), so a repository
+// whose outstanding cards name none still has a mirror checked.
+func TestPendingReposNamesTheStreamsRecordedRepository(t *testing.T) {
+	t.Parallel()
+	w := doctorWorld(t)
+	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1, Repo: "mas-bandwidth/nova-roadmap"}))
+	w.s.Work.Card("s1-1").Col = Landed
+	assert.Equal(t, []string{"nova-roadmap"}, PendingRepos(w.s))
+}
+
 // one member holding one of two mirrors is one FAIL under --preflight, and a member
 // holding none is one FAIL for each repository.
 func TestPreflightMirrorRowsFailAMissingMirror(t *testing.T) {
