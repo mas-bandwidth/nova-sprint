@@ -388,6 +388,14 @@
      its RULES paragraph that contradicts its carried rules is a finding under any rule set."
     :origin "this pull request")
 
+   (fix "per-landed-spend-on-landed" :release "v1.2.7" :status "planned"
+    :title "Per-landed cost uses spend on landed cards only; in-flight shown separately"
+    :text "The per-landed figure now divides total spend on landed cards (including failed attempts
+     and reworks) by the landed count, rather than dividing all spend so far by landed count.
+     In-flight spend on cards in waiting, placed, or merging is shown separately, so the total
+     is still visible and nothing is hidden. Stream table and sprint totals now agree."
+    :origin "dogfood 2026-10-10: $7.74 per landed at 6 of 82; stream table $0.03 vs total $46.39")
+
    (fix "swarm-lint-card-false-refusals" :release "v1.2.9" :status "planned"
     :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
     :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
