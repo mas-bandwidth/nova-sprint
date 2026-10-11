@@ -168,17 +168,12 @@ func TestAMechanicalJudgmentIsAnsweredByItsRule(t *testing.T) {
 		assert.Empty(t, openOf(w, NReadBroken, "s1-1"), "answered")
 		assert.Len(t, logged(w, RuleReadBroken), 1, "logged with the rule's name")
 
-		// the same finding twice: still the rule's to rework with it (a broken
-		// verdict at any bound is reworked, never left for the coordinator)
+		// the same finding twice: goes to coordinator
 		brokenOnce(t, w, finding)
-		a = answerOn(t, w, on(), NReadBroken, "s1-1")
-		require.Equal(t, RuleReadBroken, a.Rule)
-		assert.True(t, a.Answers(), "the same finding twice is answered by rule: %s %s", a.Act, a.Why)
-		rules(w, on())
-		assert.Equal(t, 3, w.s.Work.Card("s1-1").Int("attempt"), "reworked again with the finding")
-		assert.Equal(t, finding, w.s.Work.Card("s1-1").F("fix"), "the finding is the fix")
-		assert.Empty(t, openOf(w, NBriefWrong, "s1-1"), "a broken finding is no brief defect")
-		assert.Len(t, logged(w, RuleReadBroken), 2, "both findings answered by the rule")
+		briefWrong := openOf(w, NBriefWrong, "s1-1")
+		assert.Len(t, briefWrong, 1, "the same finding twice goes to coordinator")
+		assert.Contains(t, briefWrong[0].Note.What, "failed the same way twice")
+		assert.Len(t, logged(w, RuleReadBroken), 1, "only the first finding is answered by rule")
 	})
 
 	t.Run("a friend's card she has not started past its bound is redealt", func(t *testing.T) {

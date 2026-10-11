@@ -57,9 +57,11 @@ import (
 // how many looks each friend has been down, and the time of the last wake of
 // each kind. It is written, whole and in place, before the line is printed, so
 // a wake is never printed for a cursor not kept (CoordinatorWake.tla,
-// AtMostOnce), and an event that arrives between two runs is found by the
-// second (NoLapse). The first run, with no file, starts from now: what is
-// already there is not new.
+// AtMostOnce), and a bus event that arrives between two runs is found by the
+// second (NoLapse, over bus events only). A judgment raised and closed inside
+// --judgment-every may never wake: the judgments, the stop and the friends are
+// level state, not cursors, and each can clear before any run wakes on it. The
+// first run, with no file, starts from now: what is already there is not new.
 
 func init() { notServed = append(notServed, "watch") }
 
@@ -178,6 +180,7 @@ var notAnAsk = regexp.MustCompile(`(?i)pong|ping|^card \S+ dealt|card \S+ finish
 
 // wakes says the message is one the coordinator is woken by: by its kind when
 // it has one, by its subject when it has none; never the coordinator's own.
+// tla/CoordinatorWake.tla ArriveAsk ArriveFilter
 func (m wakeMsg) wakes(coordinator string) bool {
 	switch {
 	case m.From == coordinator:
@@ -191,8 +194,10 @@ func (m wakeMsg) wakes(coordinator string) bool {
 // step is one look decided against the state: the wake it is due, if any, with
 // the state moved as that wake moves it; a look that wakes nothing moves only
 // what a look moves (the bus cursor past what is filtered, the friends' counts).
-// The kinds are tried in the order the header lists them, and a kind not chosen
-// keeps its cursor, so it wakes a later run (tla/CoordinatorWake.tla, NoLapse).
+// The kinds are tried in the order the header lists them, and a bus event not
+// chosen keeps its cursor, so it wakes a later run (tla/CoordinatorWake.tla,
+// NoLapse, over bus events only); the judgments, the stop and the friends are
+// level state, not cursors, and each can clear before any run wakes on it.
 func (s *wakeState) step(cfg wakeCfg, l wakeLook, now time.Time) (wakeLine, bool) {
 	if s.Last == nil {
 		s.Last = map[string]time.Time{}
@@ -387,6 +392,7 @@ type storeWake struct {
 // busBatch bounds one read of the stream.
 const busBatch = 100
 
+// tla/CoordinatorWake.tla ArriveAsk ArriveFilter RaiseLevel ClearLevel
 func (w *storeWake) look(ctx context.Context, after string) (wakeLook, error) {
 	var l wakeLook
 	v, _, err := w.a.where(ctx, w.st, defaultStale, false)
