@@ -93,12 +93,12 @@ func TestPerLandedUsesTotalSpendOnLandedCards(t *testing.T) {
 	h.must(MergeStep(sprint.MergeReq{Stream: "s1", Batch: 10}))
 	require.Equal(t, sprint.Landed, h.state("landed-1"))
 
-	// landed-2: one failed attempt ($1), one successful ($1) = $1 spent on landing
+	// landed-2: one failed attempt ($0), one successful ($1) = $1 spent on landing
 	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"landed-2"}}}))
 	wc = h.snap().Fleet.Card(h.snap().Work.Card("landed-2").F("work"))
 	g = map[string]int{wc.ID: wc.Int("gen")}
 	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: g}))
-	h.must(FinishStep(sprint.FinishReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: g, Failed: true, Usage: "input=10 actual_usd=1 actual_by=harness"}))
+	h.must(FinishStep(sprint.FinishReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: g, Failed: true, Usage: "input=10 actual_usd=0 actual_by=harness"}))
 	h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"landed-2"}}, Fix: "fix"}))
 	wc = h.snap().Fleet.Card(h.snap().Work.Card("landed-2").F("work"))
 	g = map[string]int{wc.ID: wc.Int("gen")}
