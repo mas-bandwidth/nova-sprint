@@ -451,4 +451,13 @@
     brief refuse a card whose BASE is any other branch outside the promotion stream, exit 2, nothing
     written; the step holds the same rule against a racing write. With no base recorded, dev alone is
     refused as before, and the promotion stream keeps its mark."
-   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")))
+   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")
+
+  (fix "a-card-ready-over-a-minute-pushes-the-seat" :release "v1.2.6" :status "planned"
+   :title "A ready card that sits past a minute pushes the seat"
+   :text "A card that sits in ready past the ready bound (the sprint setting ready_max, default one
+    minute) raises one judgment per tier, with the reason the deal leaves it: the tier, each route
+    that serves no card and why (disabled, resting until paid, resting until woken, out of budget),
+    and the remedy verb (routes wake, funded, fleet up, release). Cards blocked by one cause are one
+    alert, not one per card, and it clears itself the tick the card is dealt."
+   :origin "this pull request")))
