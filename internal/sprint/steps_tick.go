@@ -1075,14 +1075,11 @@ func needsWithdrawals(s *Snapshot, who string) []Unit {
 		// back to the pool: the dealt card leaves the fleet table at a new generation, its
 		// attempt unchanged and no redeal spent, and the primary waits for its needs again
 		// (a withdrawn card's primary would have to be ready, which rule 11 forbids while
-		// its needs are unlanded: check.go rule 2 and rule 11). A dealt primary is working,
-		// and the lifecycle has no move working -> waiting (lifecycle.go Moves): it goes
-		// working -> ready here (the withdrawal's move) and ready -> waiting in the next
-		// tick (needsWaits below), each move a row of the lifecycle
+		// its needs are unlanded: check.go rule 2 and rule 11). A dealt primary is working:
+		// it goes working -> waiting at once, the lifecycle's move for needs not landed
+		// (lifecycle.go Moves; tla/SprintTables.tla NeedsWithdraw), so the check at the
+		// tick's end finds no ready or working card with an unlanded need
 		to, wset := Waiting, needsSet(pr, waits)
-		if pr.Col == Working {
-			to, wset = Ready, nil
-		}
 		u := Unit{Key: c.ID, Stream: c.F("stream"),
 			Changes: []Change{change(Fleet, removeEntry(c, set)), change(Work, moveEntry(pr, pr.Row, to, wset))},
 			Moved:   fmt.Sprintf("%s %s:ready -> pool, %s:%s -> %s (its needs %s have not landed)", c.ID, c.Row, pr.ID, pr.Col, to, strings.Join(waits, ","))}
@@ -1094,9 +1091,9 @@ func needsWithdrawals(s *Snapshot, who string) []Unit {
 	return append(out, needsWaits(s)...)
 }
 
-// needsSet is the field set a ready -> waiting move for unlanded needs carries: the
-// primary's needs, which the lifecycle reads as the move's cause (lifecycle.go: a move
-// ready -> waiting is the effect of inserting a sentinel or of needs not landed).
+// needsSet is the field set a ready -> waiting or working -> waiting move for unlanded needs
+// carries: the primary's needs, which the lifecycle reads as the move's cause (lifecycle.go:
+// such a move is the effect of inserting a sentinel, or of needs not landed).
 func needsSet(pr *Card, waits []string) map[string]string {
 	needs := pr.F("needs")
 	if needs == "" {
@@ -1107,9 +1104,10 @@ func needsSet(pr *Card, waits []string) map[string]string {
 
 // needsWaits is the tick's units that move each ready primary whose named needs have not
 // landed, and whose work card is dealt nowhere (none on a row ready or working), back to
-// waiting (docs/SPEC-SPRINT.md, needs and the deal): the second half of a withdrawal
-// (needsWithdrawals) or a stop on unlanded needs (needsStopReturned) of a primary that was
-// working, which went working -> ready, the one lifecycle move open to it.
+// waiting (docs/SPEC-SPRINT.md, needs and the deal; tla/SprintTables.tla NeedsWait): a card
+// that was already ready when it gained the need (released by the seat, or returned to
+// ready by another path such as fleet down), never a withdrawn working card, which goes
+// working -> waiting in its own withdrawal (needsWithdrawals, needsStopReturned).
 func needsWaits(s *Snapshot) []Unit {
 	var out []Unit
 	for _, pr := range s.Work.Column(Ready) {

@@ -1723,11 +1723,13 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		// A stop on needs that have not landed is a coordination failure, never the worker's
 		// and never a brief defect (docs/SPEC-SPRINT.md, needs and the deal; needs_stop.go):
-		// the card was dealt before its needs landed. The work card is withdrawn untouched
-		// (no fail mark, no ok% hit, no attempt or redeal spent) and the primary goes back to
-		// ready, then waiting at the next tick while its needs have not landed. A late report is the deadline's failed attempt and takes none of this.
+		// the card was dealt before its needs landed. The work card goes back to the pool (no
+		// fail mark, no ok% hit, no redeal spent) and the primary waits for its needs. Decided
+		// on the table's facts (NamedWaits at the finish), never on the report's words, and
+		// capped (MaxNeedsReturns). A late report is the deadline's failed attempt and takes
+		// none of this.
 		if r.Failed && kind == "" && !late {
-			if waits := stoppedOnNeeds(s, pr, r.Report); len(waits) > 0 {
+			if waits := stoppedOnNeeds(s, pr); len(waits) > 0 {
 				u := needsStopReturned(s, c, pr, r, waits, who)
 				friendNext(s, c, &u, p.Units)
 				p.Units = append(p.Units, u)

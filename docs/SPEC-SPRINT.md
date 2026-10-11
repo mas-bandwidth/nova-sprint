@@ -2380,7 +2380,8 @@ outcome and reason are kept.
 | waiting -> ready | everything it needs has landed or was waived | mechanical |
 | ready -> working | deal: the machine's tick cuts and deals a work card | mechanical |
 | working -> review | its work card finished, ok or failed | mechanical; failed notifies for judgment |
-| working -> ready | its work card was withdrawn because no fleet member is up, or, still ready, because its route rests (its note names the route and the reason) | mechanical, notifies |
+| working -> ready | its work card was withdrawn because no fleet member is up, or, still ready, because its route rests (its note names the route and the reason); never for needs not landed | mechanical, notifies |
+| working -> waiting | withdraw: its needs have not landed; its dealt work card goes back to the pool (needsWithdrawals), or its worker stopped on them (needsStopReturned) | mechanical, notifies |
 | review -> merging | accept: the readers it needs said ok at this head (one for a flash card, two different readers for a pro card; section 6) | mechanical (the tick), unless its CI is red at its head or it was returned to review at its attempt; the coordinator's verb takes those; refused without them |
 | review -> working | rework with a fix: the next attempt is delegated at once | the coordinator's verb |
 | review -> ready | rework with a fix when no fleet member is up or none is below its width; the tick deals it when one has room | the coordinator's verb |
@@ -2390,7 +2391,7 @@ outcome and reason are kept.
 | merging -> landed | its batch, green on the stream branch, merged to the development branch | mechanical |
 | any open state -> off the table | drop, with the reason | the coordinator's verb |
 | waiting -> landed | release of a sentinel that is reached, waits for nothing, or waits only for cards under way (landed, dropped, or in flight: taken, in review, merging), and only that | the coordinator's verb |
-| ready -> waiting | add inserts a sentinel in front of it, or a brief edit gives it a need not landed | mechanical |
+| ready -> waiting | add inserts a sentinel in front of it, or a brief edit gives it a need not landed, or its needs have not landed and its work card is dealt nowhere (needsWaits) | mechanical |
 
 The store holds every step's plan to this table before it applies it, whatever
 step built it: a primary is admitted waiting or ready, moves only by a row of
@@ -2407,25 +2408,31 @@ offers a card whose needs have not landed to no friend (TickDeal's offer,
 friendDealPass), as the machines' deal does not. A ready work card already dealt
 on any row, friend or member, whose primary's needs have not landed goes back to
 the pool at once in the tick's deal (needsWithdrawals): the work card leaves the
-fleet table at a new generation, its attempt unchanged and no redeal spent, the
-primary waits for its needs again, and the note names the needs; so a friend
+fleet table at a new generation, no redeal spent, the primary goes working ->
+waiting at once (the `withdraw` row above), and the note names the needs; so a friend
 unheld with such a card in her set never takes it. A take refuses a card whose
 primary's needs have not landed by id (`<id> needs <n,...>, not landed: not taken`) and passes over it by count (takeOne). A take by id of a card already
 working on the same row at the generation named is a no-op: it writes nothing
 and records nothing, so the log shows one take, never one every tick. A worker
 that stops because its card's needs have not landed is a coordination failure,
-never the worker's and never a brief defect: a failed finish whose primary still
-waits for a named need, or whose report names one of its named needs (not waived)
-as not landed, sends the work card back to the pool untouched at a new
-generation, as the withdrawal above does (no fail mark, no `ok%` hit on the
-worker's row, no attempt and no redeal spent), the primary goes working -> ready,
-and the happened note `a card returned: dealt before its needs landed` names the
-needs and the report (needsStopReturned); no brief-defect, failed-work or
-invariant judgment is written. The lifecycle has no move working -> waiting, so
-a withdrawn or stopped primary that was working goes working -> ready, and the
-tick's deal moves a ready primary whose needs have not landed and whose work
-card is dealt nowhere ready -> waiting (needsWaits), each move a row of the
-lifecycle; the deal never deals it in between. A card's needs are set at add, by a brief
+never the worker's and never a brief defect. It is decided on the table's facts
+alone: a failed finish whose primary has a named need (not waived) that has not
+landed at the finish, never on the report's words. Such a finish sends the work
+card back to the pool at a new generation, as the withdrawal above does (no fail
+mark, no `ok%` hit on the worker's row, no redeal spent, and the route's and
+model's stats count it neither ok nor failed); the primary goes working ->
+waiting at once, so the check at the tick's end finds no rule-11 break; and the
+happened note `a card returned: dealt before its needs landed` names the needs
+and the report (needsStopReturned). No brief-defect, failed-work or invariant
+judgment is written. The next deal after its needs land cuts the primary's next
+attempt: an attempt number is spent, but no redeal and no failure. A primary is
+returned this way at most three times (`needs_returns`, MaxNeedsReturns); past
+that, and whenever every need has landed by the finish, a HOLD is judged as any
+other (the brief-defect and hold rules). A ready primary whose needs have not
+landed and whose work card is dealt nowhere moves ready -> waiting in the tick's
+deal (needsWaits). The moves are modelled in tla/SprintTables.tla (NeedsWithdraw,
+NeedsWait; WorkingToWaitingOnlyOnNeeds, NeedsWithdrawalWaits and its reversed
+witness `withdrawready`). A card's needs are set at add, by a brief
 edit's `DEPENDS-ON:` lines, or by `needs set` (`needs set <id> (--needs <a,b> | --clear)`, the coordinator's alone, section 11), and nowhere else: `needs set`
 rewrites the brief's needs line and moves the card by this table, so a card
 admitted with the wrong needs is corrected in place, never by a twin. A brief

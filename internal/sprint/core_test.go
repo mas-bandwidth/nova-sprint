@@ -17,6 +17,7 @@ func TestLifecycleIsTheSpecTable(t *testing.T) {
 		{Review, Merging}: true, {Review, Working}: true, {Review, Ready}: true, {Merging, Review}: true, {Merging, Landed}: true,
 		{Merging, Working}: true, {Merging, Ready}: true,
 		{Waiting, Landed}: true, {Ready, Waiting}: true, // a sentinel released; a sentinel inserted in front
+		{Working, Waiting}: true, // its needs have not landed (needsWithdrawals, needsStopReturned)
 	}
 	for _, a := range States {
 		for _, b := range States {
