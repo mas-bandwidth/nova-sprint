@@ -52,6 +52,8 @@ func (s *Snapshot) ReaderOwner(reader string) (string, bool) {
 // its beat says it drains, or the fleet machine it belongs to (ReaderOwner) is held or
 // drains; "" when none is so. A reader whose beat says only that it has no room (its disk)
 // is passed by the ask (readerRooms) and hands back what it is asked itself.
+// tla/NoRoom.tla Off: known[m] and (held or draining), so a reader of a machine the
+// sprint does not know belongs to no machine and is asked like any reader.
 func (s *Snapshot) readerOff(reader string) string {
 	if s.Draining(reader) {
 		return reader + " drains (" + s.NoRoom[reader] + ")"
