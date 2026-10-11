@@ -351,6 +351,22 @@
     stream can admit a card based on main or dev without a sentinel card or a follow-up stream set."
    :origin "the seat ledger bug 14")
 
+   (fix "idle-cleared-says-working-only-when-it-works" :release "v1.2.14" :status "planned"
+    :title "An idle episode that ends with no width or no work says why, never working again"
+    :text "TickIdle ends an idle episode for four reasons and only one is a recovery. The fleet
+     working at half its width again (a) keeps NIdleCleared, \"working again\"; no card waits (b),
+     no width up -- every member down, held or drained (c) -- and the fleet's work switched off
+     (d) push a new happened type NIdleEnded, \"the fleet's idle episode ended\", naming the cause:
+     \"no card waits\", \"no width up: every member is down, held or drained (fleet up <member>
+     --width <n>)\", or \"the fleet's work is switched off (set --fleet on)\". Both properties are
+     cleared on every end as before. docs/SPEC-SPRINT.md section 14 says which end says what. The
+     episode machine is unchanged (AlarmOncePerEpisode, ClearFollowsAlarm), so tla/SprintRules.tla,
+     Part \"idle\", is not edited. TestAnIdleEpisodeEndedByNoWidthNeverSaysWorkingAgain (red on the
+     base), TestAnIdleEpisodeEndedByWorkSaysWorkingAgain, TestAnIdleEpisodeEndedByNoWaitingCardSaysTheCause,
+     TestAnIdleEpisodeEndedByTheFleetSwitchSaysTheCause."
+    :origin "the seat's v1.2.14 audit, 2026-10-11 (TickIdle says \"working again\" when width is 0),
+     checked against nova-sprint main 00c54ba; this card")
+
   (fix "stream-remove-removes-what-exists" :release "v1.2.6" :status "in-progress"
    :title "stream remove takes every stream that exists and names each that does not"
    :text "One name that is no row of the work or merge table no longer refuses the whole batch: stream
@@ -462,6 +478,15 @@
     :text "Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the
      tick writes nothing. Use one property for all."
     :origin "issue #5210")
+
+   (fix "server-refuses-to-run-on-a-store-missing-locked-columns" :release "v1.2.11" :status "planned"
+    :title "The server and its shadow refuse a store missing the locked columns"
+    :text "The live store's fleet table never got finished and redealt (internal/sprint/TABLES.lock, the
+     Change of 2026-10-06), so the adopted v1.2.10 server refused every finish that moved a card to done.
+     run and tick --shadow now check the store's tables against the build's locked definitions before either
+     starts or plans, and refuse with the nova-table commands that mend it; the server switch's shadow tick
+     catches a candidate before the swap."
+    :origin "the coordinator, 2026-10-11, on v1.2.10 (00c54ba): server-refuses-to-run-on-a-store-missing-locked-columns.w1")
 
    (fix "tick-under-its-gate-at-load" :release "v1.2.9" :status "planned"
     :title "The deal builds no per-card route map, so the tick stays under its gate"
@@ -988,6 +1013,10 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+   (fix "pagelock-stripper-hardening" :release "v1.2.14" :status "planned"
+    :title "The page lock's comment-only check reads the page a browser renders"
+    :text "The stripper that proves a comment-only change renders nothing no longer mistakes four visible things for comments: an HTML text comment leaves nothing rather than a space; a comment opener inside a quoted attribute value is code; an inline script with a data-src attribute is read as JS; and a slash after a control if, while or for condition opens a regex, failing closed otherwise. The lock's header and the spec's The page lock state the comment-only form and that the card lint is ask-only."
+    :origin "this card")
   (fix "verify-defaults-to-the-trees-import-scope" :release "v1.2.14" :status "planned"
    :title "verify compares the scope its tree was imported with, not the whole organization"
    :text "import --repo <org>/<name> now records the repositories it read as the work-tree's :scope, written only for a scoped import; a whole-organization tree stays byte for byte what it was, and a file without :scope reads as a whole-organization tree. verify with no --repo compares the tree's own scope (tla/WorkImport.tla's Verify already read the scope it imported), --repo narrows within it, and a --repo outside it is refused naming the scope before any GitHub call; verify --against does the same. Before, verify with no --repo read the whole organization and reported MISSING for every repository the scoped import left out."
@@ -1000,6 +1029,16 @@
     on the snapshot the conditions are counted on, so the route the judgment names as resting is exactly one
     the deal does not draw; a rest whose time has ended is not named and the card is dealt."
    :origin "card ready-over-reads-the-settled-rests.w2; the seat's v1.2.14 audit, 2026-10-11")
+  (fix "ready-over-key-ignores-the-balance-amount" :release "v1.2.14" :status "planned"
+   :title "The ready-over judgment is keyed on the cause, never its figures"
+   :text "The ready-over judgment is one per (reason, tier), keyed by the reason the deal leaves the card
+    (condKey's NReadyOver case, readyOverWhy). The reason names figures that move while the cause stands --
+    a route's balance (out of budget (balance $x)) and a rest's end (resting until <stamp>) -- so as the
+    balance moved the key changed, notify closed the old judgment and wrote a second one: one cause, a second
+    push, and the coordinator's wait on the first lost. readyOverWhy now takes each moving figure out of the
+    key before keying, while the What keeps it, so the judgment is rewritten in place with the latest figures
+    and pushed once."
+   :origin "the coordinator, 2026-10-11 (v1.2.14 defect ready-over-key-ignores-the-balance-amount); checked against nova-sprint main 00c54ba")
   (fix "tick-watchdog-refuses-a-negative-deadline" :release "v1.2.14" :status "planned"
    :title "run refuses a negative --tick-deadline"
    :text "A negative --tick-deadline is refused right after the flags are parsed, through run's usual refuse helper, before the loop starts or a server listens; the refusal names the flag, the value and that 0 waits for ever. Before, tickDeadlineOf returned 0 for any least <= 0 and tickWithin waited for ever when d <= 0, so --tick-deadline -1s switched the watchdog off with nothing said. 0 still waits for ever and every positive value behaves as today."
@@ -1012,6 +1051,25 @@
    :title "init over a keyless store records the seat move, so an earlier observation lapses"
    :text "init writing a coordinator name onto a store whose key holds none while a friend-health record survives (an observation made under an earlier seat) now records the move as a seat change, as the seat's own step does: the seat record and its generation stepped, written with the key, its log line and its note, so the earlier observation lapses by FriendEvidence's generation check. A fresh store's first init writes no seat record, and init over a held key keeps the holder, as before."
    :origin "this card; v1.2.12 inventory 2026-10-11 section 9 row D10 (code read at nova-sprint main 00c54ba)")
+  (fix "lander-empty-commit-says-no-result-is-held" :release "v1.2.14" :status "planned"
+   :title "The lander's empty-commit refusal says a result is missing when it holds none"
+   :text "The lander's empty-commit check refused an empty diff with no result to read (a nil work card: the fleet row absent or the work card tidied away) with the same finding as one whose result claimed changes, \"empty commit: the result claims changes the diff does not show\", naming a claim nothing made. It now returns emptyCommitNoResultFinding, \"empty commit: the head changes nothing from the attempt's start, and the lander holds no result to say why\", and both findings return the card to review through one helper, isEmptyCommitFinding."
+   :origin "this card: lander-empty-commit-says-no-result-is-held, from the v1.2.14 point-release plan and the roadmap item lander-empty-commit-handling")
+  (fix "a-fault-down-keeps-another-holds-mark" :release "v1.2.14" :status "planned"
+   :title "A machine's fault down keeps another's hold mark"
+   :text "When presence takes a member down for a missed beat, the machine writes its own fault hold (held_by=fault, fault_since) only on a member that carries no hold: a member the sync, the adopt, its environment or the coordinator already holds keeps its hold, its mark, its reason and its finish marker when it goes down, and still goes down. Overwriting the mark hid the hold from its own release, so a held member could no longer be released and the clear left a markless hold (tla/DealFill.tla FaultHold and PersonHoldStays; docs/SPEC-SPRINT.md section 5)."
+   :origin "the seat's audit, 2026-10-11 (a reader finding on card a-member-environment-fault-holds-it-and-pushes-the-seatb, attempt 5, head 38c66ea7542f); this card")
+
+  (fix "version-features-answers-what-a-build-has" :release "v1.2.14" :status "planned"
+    :title "The version verb says which fixes a build carries"
+    :text "nova-sprint version --features lists the fixes this build carries, one line each
+     `<release> <fix-id> <title>`, from the fixes ledger compiled into the binary (docs/embed.go) and
+     read with make roadmap's parser: every fix of a release at or below the build's version. A build
+     whose version is not a release (a dev build) lists the shipped releases' fixes and says the
+     unreleased fixes of the tree it was built from are not listed. nova-sprint version --has
+     <fix-id> exits 0 when the build carries the fix and 1 when the ledger names it in a later release
+     or not at all, naming which; --json prints {version, fixes:[{release,id,title}]}."
+    :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 16 (the owner, 2026-10-11); the v1.2.10 bisect, where the coordinator ran strings on two binaries to learn whether v1.2.9 held the environment-fault fix")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
@@ -1041,6 +1099,21 @@
     refusal names both and the commands that set one."
    :origin "the seat, 2026-10-11 ~03:19Z: the seat hook proved only with NOVA_SPRINT_SERVER=127.0.0.1:6390 set by hand")
 
+  (fix "a-refused-verb-is-logged-with-its-refusal" :release "v1.2.11" :status "planned"
+   :title "A refused verb is written on the server's own log, with its refusal"
+   :text "serveCtx now writes one SERVE REFUSED line for every verb it answers with a non-zero code,
+    whether the worker's verb (a refused finish), one the server does not run (exit 2) or a lane verb
+    (a friend's beat, a read): the verb word, the worker, the exit and the card argument when the verb
+    names one, with the verb's own first stderr line cut to 300 bytes, never the verb's whole argv or
+    its stdout. The same verb, worker, exit and first line repeated within a minute is written once,
+    and when it changes the line that follows says (repeated <n> times since <stamp>), so 40 minutes
+    of refused finishes from ten members is a few hundred lines and never one per verb. The SERVE
+    tally counts the refused verbs by verb word and its line says refused=<n>
+    refused-by=<verb>:<count>,...; no new verb. On the v1.2.10 server every done-path finish was
+    refused for about 40 minutes and the log held no line for a refused verb, so the refusal could
+    not be read."
+   :origin "this card; the owner, 2026-10-11: everything that has been hard work in this bisect and rollback, make it better with tools")
+
   (fix "no-deal-to-a-draining-member" :release "v1.2.10" :status "shipped"
    :title "No deal to a draining member; a held or draining machine's reader is asked nothing"
    :origin "PR #84")
@@ -1059,4 +1132,60 @@
 
   (fix "two-ci-flakes-text-file-busy-and-git-maintenance" :release "v1.2.10" :status "shipped"
    :title "Two CI flakes: exec'd stubs written under the fork lock, and git's auto maintenance off in tests"
-   :origin "PR #88")))
+   :origin "PR #88")
+
+  (fix "a-stats-reset-zeroes-the-unattributed-spend" :release "v1.2.14" :status "planned"
+   :title "A stats reset zeroes the unattributed spend"
+   :text "After nova-sprint stats reset every stream's spend counts from the mark, but the grand total
+    did not reach zero: the cost line's <other>, the largest TierCosts.Unreconciled on any stream's
+    record, is the sprint's UnreconciledSpend since the epoch's clear, never since the mark. ResetMark
+    now holds the sprint's unattributed spend at the mark (in cents) and streamsSince subtracts it on
+    every stream's record, the streams the mark does not know included, so the cost line, the dashboard's
+    cost tile and where --json's unreconciled count from the mark, never below zero. The mark line names
+    it beside the total."
+   :origin "the seat's v1.2.14 audit, 2026-10-11 (a stats reset does not zero the grand total spent),
+    checked against nova-sprint main 00c54ba; the owner's rule of 2026-10-09: a stats reset clears every
+    cost figure, the total spent, per card and per tier; this card a-stats-reset-zeroes-the-unattributed-spend")
+
+  (fix "stop-debt-stale-beat-loses-a-held-report" :release "v1.2.14" :status "planned"
+   :title "A stale post-STOP beat keeps its word for the settle"
+   :text "settleStopDebtByBeat read a machine's live set fresh-only (sprint.LiveNamesAt through
+    liveOf), so a machine that beat once after the STOP naming its held report and then went silent
+    past BeatDeadline had its lease settled at START: the card went back to ready at gen+1, was dealt
+    again, and the held report was refused as stale when it came. The owner's last beat since the STOP
+    now keeps its word fresh or stale (sprint.LiveNamedAt, no clock), as tla/StopReturn.tla
+    SettleByBeat reads it (d.id \\notin beat); tla/LiveRuns.tla's reversed witness \"staleasabsent\" is
+    exactly that wrong reading: a silent row's stale beat as an empty live set. LiveNamesAt, LiveHeldAt,
+    liveOf and LiveReturns keep their fresh-only reading. No model change."
+   :origin "the coordinator 2026-10-11, added to v1.2.14 beside the v1.2.12 inventory's section 9 row
+    D2 (a held finished report across STOP refused as stale); D2's first cause was fixed by
+    nova-sprint #87 (15c779c); this is what that fix left; code read at nova-sprint main 00c54ba")
+   (fix "fleet-up-probe-releases-an-environment-held-member" :release "v1.2.11" :status "planned"
+    :title "fleet up --probe passed releases a member held by an environment fault"
+    :text "fleet up --probe passed on a member held by an environment fault (held_by=environment) was
+     refused by the store's manifest check: the release path and EnvProbePatch each unset the hold's four
+     fields, so one entry named each twice. A field is now unset once per entry (unsetPresent keeps each
+     name once, in first-seen order), and fleet up's own unset of the hold is left to EnvProbePatch when
+     the passed probe clears the fault, so a coordinator's, the fault's or the sync's hold stays for a
+     person to lift (the probe never lifts a person's hold). tla/ProviderBudget.tla, FleetUpRefusesUncleared,
+     already said a passed probe clears the fault; this is the implementation catching up."
+    :origin "this card")
+
+  (fix "card-lint-a-hold-owner-every-reader-accepts" :release "v1.2.14" :status "planned"
+   :title "Every held_by write names a hold mark, and each mark keeps the member off the deal"
+   :text "Tests only, no product change. internal/sprint/hold_marks_test.go holds a table of every
+    mark a member's held_by carries -- none (the coordinator's), the sync's, the machine's fault, the
+    adopt's and the environment's -- each written by its own writer (a fleet hold with its HeldBy,
+    presence's down for the fault, holdAdopting for the adopt, a finish whose report is an environment
+    fault for envFaulted) and cleared by its own release (fleet up, the sync's release, faultClear,
+    clearEnvFault, the adopt's finish). For each it pins the behaviour: the member is not up and dealt
+    no card by the deal or the level, a tick presence with a fresh beat leaves held and held_by as they
+    were, another mark's mark-scoped release leaves it held with its mark, and its own release clears
+    it. It then scans the package's non-test .go files for every held_by assignment (a name[FieldHeldBy]
+    = X and FieldHeldBy: X) and fails naming the value and its file:line when no table row names it, so
+    a new hold kind cannot ship without the table checked against it. The known-yes proof is
+    envFaulted's status line deleted: the environment row then fails at UpMembers."
+   :origin "this card, card-lint-a-hold-owner-every-reader-accepts.w1, from the reader finding on
+    a-member-environment-fault-holds-it-and-pushes-the-seatb attempt 5 (head 38c66ea7542f): the
+    environment hold was written with held_by=environment but the member's status was left Up, so the
+    level dealt to it and presence wrote held_by=fault over the mark")))

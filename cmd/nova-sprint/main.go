@@ -14,6 +14,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,12 +22,18 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"golang.org/x/mod/semver"
+
+	"github.com/mas-bandwidth/nova-sprint/docs"
+	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
@@ -748,8 +755,7 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 		return helpCommand(args[1:], stdout, stderr)
 	}
 	if args[0] == "--version" || args[0] == "version" {
-		fmt.Fprintln(stdout, versionLine())
-		return 0
+		return versionCommand(args[1:], buildVersion(), stdout, stderr)
 	}
 	if code, sent := a.forwarded(args, stdout, stderr); sent {
 		return code
@@ -846,3 +852,168 @@ func (a *app) storeAtCtx(ctx context.Context, c common, at int64) (*store.Store,
 	}
 	return st.At(uint64(at)), nil
 }
+
+// versionFeature is one fix this build carries, as version --features lists it
+// and --json carries it.
+type versionFeature struct {
+	Release string `json:"release"`
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+}
+
+// buildVersion is the build's own version as the version line prints it (the
+// second field): the release tag, the module version, the vcs stamp, or devel.
+func buildVersion() string { return buildinfo.Version(version) }
+
+// versionCommand is the version verb's body (docs/SPEC-SPRINT.md section 11,
+// the version verb): with no argument it prints the one version line; --features
+// lists the fixes the build carries; --has <fix-id> answers whether it carries
+// one. build is the build's own version, as the version line prints it, so the
+// rules below are testable against a fixed version.
+func versionCommand(args []string, build string, stdout, stderr io.Writer) int {
+	var features, jsonOut, has bool
+	var id string
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--features" || a == "-features":
+			features = true
+		case a == "--json" || a == "-json":
+			jsonOut = true
+		case a == "--has" || a == "-has":
+			if i+1 >= len(args) {
+				return refuse(stderr, "version", "--has wants a fix id; run: nova-sprint version --has <fix-id>")
+			}
+			i++
+			has, id = true, args[i]
+		case strings.HasPrefix(a, "--has="):
+			has, id = true, strings.TrimPrefix(a, "--has=")
+		case strings.HasPrefix(a, "-has="):
+			has, id = true, strings.TrimPrefix(a, "-has=")
+		default:
+			return refuse(stderr, "version", "unknown flag "+oneline.Escape(a)+"; version takes --features, --has <fix-id> and --json")
+		}
+	}
+	if features && has {
+		return refuse(stderr, "version", "--features and --has are one at a time")
+	}
+	if !features && !has {
+		if jsonOut {
+			return refuse(stderr, "version", "--json goes with --features or --has")
+		}
+		fmt.Fprintln(stdout, versionLine())
+		return 0
+	}
+	fx, err := roadmapdoc.DecodeFixes("fixes.sexp", docs.FixesSexp)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s version: the compiled fixes ledger does not decode: %s\n", prog, err)
+		return 1
+	}
+	carried := versionCarried(build, fx)
+	if has {
+		return versionHas(id, build, fx, carried, stdout, stderr)
+	}
+	return versionFeatures(build, fx, carried, jsonOut, stdout, stderr)
+}
+
+// versionCarried is the set of fix ids the build at build carries: every fix of
+// a release at or below build (semantic version order), or, when build is not a
+// release (a dev build: devel, a vcs stamp), the fixes of the shipped releases
+// alone (docs/SPEC-SPRINT.md section 11, the version verb).
+func versionCarried(build string, fx *roadmapdoc.Fixes) map[string]bool {
+	shipped := map[string]bool{}
+	for _, r := range fx.Releases {
+		if r.Status == "shipped" {
+			shipped[r.ID] = true
+		}
+	}
+	carried := map[string]bool{}
+	for _, f := range fx.Items {
+		switch {
+		case semver.IsValid(build):
+			if semver.IsValid(f.Release) && semver.Compare(f.Release, build) <= 0 {
+				carried[f.ID] = true
+			}
+		case shipped[f.Release]:
+			carried[f.ID] = true
+		}
+	}
+	return carried
+}
+
+// versionFeatures prints the fixes the build carries, one line
+// "<release> <fix-id> <title>", in release then ledger order; a dev build adds
+// the one line saying the unreleased fixes of its tree are not listed
+// (docs/SPEC-SPRINT.md section 11, the version verb). With jsonOut it prints
+// {version, fixes:[{release,id,title}]} instead.
+func versionFeatures(build string, fx *roadmapdoc.Fixes, carried map[string]bool, jsonOut bool, stdout, stderr io.Writer) int {
+	index := map[string]int{}
+	for i, f := range fx.Items {
+		if _, ok := index[f.ID]; !ok {
+			index[f.ID] = i
+		}
+	}
+	var items []roadmapdoc.Fix
+	for _, f := range fx.Items {
+		if carried[f.ID] {
+			items = append(items, f)
+		}
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if c := semver.Compare(items[i].Release, items[j].Release); c != 0 {
+			return c < 0
+		}
+		return index[items[i].ID] < index[items[j].ID]
+	})
+	if jsonOut {
+		out := struct {
+			Version string           `json:"version"`
+			Fixes   []versionFeature `json:"fixes"`
+		}{Version: build}
+		for _, f := range items {
+			out.Fixes = append(out.Fixes, versionFeature{Release: f.Release, ID: f.ID, Title: versionTitle(f.Title)})
+		}
+		b, err := json.Marshal(out)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s version: %s\n", prog, err)
+			return 1
+		}
+		fmt.Fprintln(stdout, string(b))
+		return 0
+	}
+	for _, f := range items {
+		fmt.Fprintf(stdout, "%s %s %s\n", f.Release, f.ID, versionTitle(f.Title))
+	}
+	if !semver.IsValid(build) {
+		fmt.Fprintln(stdout, "and the unreleased fixes of the tree it was built from: not listed")
+	}
+	return 0
+}
+
+// versionHas answers whether the build carries one fix (docs/SPEC-SPRINT.md
+// section 11, the version verb): exit 0 when it does; exit 1, naming the
+// release, when the ledger names the fix in a later release or does not name it
+// at all.
+func versionHas(id, build string, fx *roadmapdoc.Fixes, carried map[string]bool, stdout, stderr io.Writer) int {
+	var found *roadmapdoc.Fix
+	for i := range fx.Items {
+		if fx.Items[i].ID == id {
+			found = &fx.Items[i]
+			break
+		}
+	}
+	if found == nil {
+		fmt.Fprintf(stderr, "%s version: the fixes ledger does not name %s; this build carries no such fix\n", prog, id)
+		return 1
+	}
+	if carried[id] {
+		fmt.Fprintf(stdout, "%s %s %s\n", found.Release, found.ID, versionTitle(found.Title))
+		return 0
+	}
+	fmt.Fprintf(stderr, "%s version: this build (%s) does not carry %s: the ledger names it in %s, a later release\n", prog, build, id, found.Release)
+	return 1
+}
+
+// versionTitle is a fix's title on one line: runs of whitespace become one
+// space, so a title the ledger wrapped still prints as the one line the version
+// verb promises.
+func versionTitle(title string) string { return strings.Join(strings.Fields(title), " ") }

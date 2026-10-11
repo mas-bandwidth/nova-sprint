@@ -65,8 +65,15 @@ func (a *app) shadowTick(c common, rules, idle bool, stdout, stderr io.Writer) i
 		return refuse(stderr, "tick", err.Error())
 	}
 	st.AnswerRules, st.IdleAlarm = rules, idle
-	plan, err := st.ShadowTick(ctx)
-	err = noSprintYet(err)
+	// the locked shape first: a store missing a column of TABLES.lock fails the
+	// shadow here, before it plans, so server switch refuses the candidate
+	// (docs/SPEC-SPRINT.md section 14, install-canary-shadow-tick-r.w1).
+	var plan store.ShadowPlan
+	err = st.LockedShape(ctx)
+	if err == nil {
+		plan, err = st.ShadowTick(ctx)
+		err = noSprintYet(err)
+	}
 	if c.json {
 		o := shadowOut{}
 		if err != nil {

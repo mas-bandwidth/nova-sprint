@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -194,6 +196,15 @@ type serveTally struct {
 	serialVerbs, gone     int
 	waitMax, holdMax      time.Duration
 	holdWhat              string
+	// refused counts the refused verbs since the last SERVE line, by verb word (logRefused,
+	// serve.go), so the line says refused=<n> by verb (docs/SPEC-SPRINT.md section 14).
+	refused map[string]int
+	// refuseText, refuseSince and refuseRepeat are the refusal rate bound (logRefused): the
+	// last line said, when it was said, and how many identical refusals have stood behind it
+	// since; unlike the counts above they are kept across SERVE lines.
+	refuseText   string
+	refuseSince  time.Time
+	refuseRepeat int
 }
 
 // tally adds one batch: its verbs on the beat lane, on the read lane and on the line, the
@@ -221,8 +232,26 @@ func (a *app) tally(beats, reads, serial, gone int, wait, hold time.Duration, fi
 	if a.serveLog == nil || now.Sub(t.since) < ServeSayEvery {
 		return
 	}
-	fmt.Fprintf(a.serveLog, "%s SERVE batches=%d beat-lane=%d read-lane=%d on-line=%d gone=%d wait-max=%s held-max=%s held-by=%s over=%s\n",
-		now.Format("15:04:05"), t.batches, t.beats, t.reads, t.serialVerbs, t.gone,
+	total, byVerb := refusedCounts(t.refused)
+	fmt.Fprintf(a.serveLog, "%s SERVE batches=%d beat-lane=%d read-lane=%d on-line=%d gone=%d refused=%d refused-by=%s wait-max=%s held-max=%s held-by=%s over=%s\n",
+		now.Format("15:04:05"), t.batches, t.beats, t.reads, t.serialVerbs, t.gone, total,
+		oneline.Field(orDashStr(byVerb, "-")),
 		t.waitMax.Round(time.Millisecond), t.holdMax.Round(time.Millisecond), oneline.Field(orDashStr(t.holdWhat, "-")), now.Sub(t.since).Round(time.Second))
 	t.since, t.batches, t.beats, t.reads, t.serialVerbs, t.gone, t.waitMax, t.holdMax, t.holdWhat = now, 0, 0, 0, 0, 0, 0, 0, ""
+	t.refused = nil
+}
+
+// refusedCounts is the refused verbs by verb word as the SERVE line prints them: the total
+// and <verb>:<n> joined with commas, sorted so the same tally is always the same words.
+func refusedCounts(m map[string]int) (total int, byVerb string) {
+	if len(m) == 0 {
+		return 0, ""
+	}
+	keys := slices.Sorted(maps.Keys(m))
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		total += m[k]
+		parts = append(parts, fmt.Sprintf("%s:%d", k, m[k]))
+	}
+	return total, strings.Join(parts, ",")
 }

@@ -3048,8 +3048,13 @@ and it is the coordinator's decision, receipted.
   fault: its control card is marked `held_by=fault` with the stamp
   `fault_since`, and the tick's deal clears the mark by itself once the member
   beats again and has finished a card cleanly since that stamp (a probe card if
-  nothing else is dealt), telling the seat with one note. A hold the
-  coordinator made carries no `held_by` mark and stays until a person lifts it.
+  nothing else is dealt), telling the seat with one note. The machine's fault
+  hold is placed only on a member with no hold: a member the sync, the adopt,
+  its environment or the coordinator already holds keeps its hold, its mark,
+  its reason and its finish marker when it goes down, and still goes down
+  (tla/DealFill.tla FaultHold, from `held = "none"` only, and PersonHoldStays).
+  A hold the coordinator made carries no `held_by` mark and stays until a
+  person lifts it.
 - The status cell shows adopting, held, up or down. The load cell shows the highest load
   of the last 10 s with one decimal while the beat is fresh, and is empty
   otherwise, never a zero.
@@ -4110,7 +4115,12 @@ review called wrong for a fragment, and no other; over the land merges of 215 of
 them it finds those four and one more, diaryr-37, a lead-in left without its end
 the review passed. On those land merges the PATHS rule flags negd-42 and three
 cards of its shape (negd-17, -32, -41: a file the card edited after a name card
-renamed it from the name its PATHS gives), which the review passed. A head that fails is taken off
+renamed it from the name its PATHS gives), which the review passed. An empty commit is
+read against the result the lander holds (`claimText`): an empty diff whose result claims
+changes (a verdict of ok, a step line with a commit sha, a non-empty diff stat) is refused
+as a claim the diff does not show, while an empty diff for which the lander holds no result
+at all (the fleet row is absent, or the work card was tidied away) is refused as a missing
+result, its finding naming that nothing is held to say why. A head that fails is taken off
 the batch branch and ends the batch as a head in conflict does: the conflict fact
 on it names every failure, `<file>:<line>` and the rule.
 
@@ -4782,7 +4792,11 @@ internal/sprint/ready_over.go, the ready-over part `TickReadyOver` of TickDeadli
 reason names the tier and each route of it that serves no card and why (disabled, resting
 until paid, resting until woken, resting until its time, out of budget) with the remedy verb
 (routes wake, funded, fleet up, release), so cards that share a cause are one judgment, never
-one per card; it clears itself the tick the card is dealt. The rests it names are the deal's
+one per card; the key is the cause without its figures (`readyOverWhy`): a figure the cause
+names that moves while it stands -- a route's balance (`(balance $x)`) and a rest's end stamp
+(`resting until <stamp>`) -- is taken out of the key, so a balance or a rest that moves is the
+same judgment, rewritten in place, with the What keeping the latest figures. It clears itself
+the tick the card is dealt. The rests it names are the deal's
 settled rests: the ready-over part settles them once, as the deal does (`withRests`,
 route_rest.go), on the snapshot the conditions are counted on, so the route the judgment
 names as resting is exactly one the deal does not draw, the fleet's recorded rests and those
@@ -5977,6 +5991,19 @@ bytes, so no step can wedge the sprint. Every command checks first that the
 store's table function library is this build's, and refuses (exit 2) with the
 command that loads it.
 
+`nova-sprint version` prints the one line naming this build, whose second field
+is the build's identity. `nova-sprint version --features` lists the fixes this
+build carries, one line per fix `<release> <fix-id> <title>`, for every fix of a
+release at or below the build's version in semantic version order and release
+then ledger order; a build whose version is not a release (a dev build) lists
+the shipped releases' fixes and says the unreleased fixes of the tree it was
+built from are not listed. `nova-sprint version --has <fix-id>` exits 0 when the
+build carries the named fix, 1 when the ledger names it in a later release or
+not at all, naming which, and 2 on a usage error. `--json` prints
+`{version, fixes:[{release,id,title}]}`. The fixes ledger is compiled into the
+binary (docs/embed.go) and decoded with the parser `make roadmap` uses, so a
+built binary answers which fixes it holds with no file beside it.
+
 | verb | does |
 |---|---|
 | init | creates the four tables and the view; `--readers`, `--members`, `--attempts <n>` (the sprint's attempt cap, as `set --attempts` writes it; section 2), `--coordinator` (the one actor who releases sentinels; default the actor; the seat then moves by `coordinator`), `--owner` (who may give the seat and whose name a take carries; set once, kept by a clear, removed by teardown), `--rules <file>` (the child rules file every brief is held to, one required sentence per line; its absolute path is recorded as the key `sprint:rules`, kept by a clear and removed by teardown; refused at once when the file cannot be read or holds no rule; this repository's is `fleet/child-rules.txt`); its line names every reader of the sprint (`readers=`), and on a twin a NOTE says a member it adds is up after the next tick |
@@ -6579,17 +6606,20 @@ stream, no archive, no table property. It writes one mark into the stats record
 when, by whom, why, the epoch, and the counters as they stand: each fleet row's `ok` and
 `failed` (the machines' rows and the friends' alike), each stream's landed cost and count
 (the control card's exact figure, as a tidy's base) and its spend as the where view shows
-it (`total_cost`, `work_cost`, `read_cost`, `cost_by_tier`), and the epoch's total. Every
+it (`total_cost`, `work_cost`, `read_cost`, `cost_by_tier`), the epoch's total, and the
+sprint's unattributed spend at the mark (`UnreconciledSpend`, one figure, the same on every
+stream's record). Every
 figure the mark covers is then shown as the epoch's less the mark's, never below zero
 (`sprint.MoneyLess`, `sprint.TierCostsSince`, `sprint.ResetMark.FleetSince`): a row's
 `done` and `ok%` (over the cards finished since), a stream's `cost` cell and `per landed`
 (the later of the reset and the last tidy of the streams gives the base), `stream_costs`
-in `where --json` (a tier with nothing since left out), and `stats` (from the later of the
+in `where --json` (a tier with nothing since left out), the sprint's unattributed spend
+(`unreconciled`, counted from the mark on every stream's record), and `stats` (from the later of the
 reset and the last tidy). `where --json` carries `stats_reset` (`at`, `by`, `reason`, and
 `landed`, the cards landed since over the headline's scope), and the dashboard's cost per
 card divides the cost tile by that `landed`. A figure the mark does not cover (a row or a
 stream it never knew, the cards by tier, the reads of the day, the unpriced runs, the
-reconciliation) reads as before. The tick counts the where record again after a reset,
+providers' reconcile records, `Reconciles`) reads as before. The tick counts the where record again after a reset,
 since a reset writes no table and so moves no revision; the mark is written, then the
 where record is emptied and the display cells mirrored, as after a tidy of the streams. The
 where record also carries the stamp of the stats record it was counted from (the last tidy
@@ -7084,12 +7114,16 @@ kind that needs a person first: a need dropped (`<n> behind <k> drop-blocked jud
 <age>)`), a need missing, a card in flight held by an open judgment (`<n> behind <card>
 (<judgment type>, <age>)`), a sentinel held or reached and not released, a held card, a stream
 stopped, a tier no route serves, else work in flight; grouped and named by the cards behind
-each, the most first, at most `IdleRoots` (8). When the fleet works at half its width again,
-or no primary waits, the episode ends: both properties are cleared, and when its note was
-pushed a second note says `the fleet is working again` with how long it lasted. One note an
-episode, a clear only after a note (tla/SprintRules.tla, `AlarmOncePerEpisode`,
-`ClearFollowsAlarm`; `TestTheIdleAlarmNamesTheRootsOnceAnEpisode`,
-`TestTheIdleTraceNamesACardAtItsBound`).
+each, the most first, at most `IdleRoots` (8). The episode ends when idle no longer holds,
+and the end's note is chosen by cause (`sprint.idleEnd`). Only the fleet working at half its
+width again is a recovery: both properties are cleared and, when its note was pushed, a
+second note says `the fleet is working again` with how long it lasted. No card waiting, no
+width up (every member down, held or drained), and the fleet's work switched off (`set --fleet off`) end the episode too -- both properties cleared the same way -- and, when its
+note was pushed, one note says `the fleet's idle episode ended` naming the cause: `no card waits`, `no width up: every member is down, held or drained (fleet up <member> --width <n>)`, or `the fleet's work is switched off (set --fleet on)`. One note an episode, a clear
+only after a note (tla/SprintRules.tla, `AlarmOncePerEpisode`, `ClearFollowsAlarm`; the end's
+note chosen by cause leaves the episode machine unchanged, so the model is not edited;
+`TestTheIdleAlarmNamesTheRootsOnceAnEpisode`, `TestTheIdleTraceNamesACardAtItsBound`,
+`TestAnIdleEpisodeEndedByNoWidthNeverSaysWorkingAgain`).
 
 **STOP assignment alerts.** Each tick observes canonical fleet Working and reader
 Reading assignments under the operation fence, including legacy STOP records
@@ -7138,9 +7172,18 @@ and a batch was run whenever its turn came: from 2:06 PM the line held the run l
 a friend) timed out at its 10 s deadline and was still run later, and the line never drained. On a
 twin file (`mem:<file>`), which the server writes whole after every verb, every verb takes the
 line. The server says what its batches cost once a minute when it answered any: `SERVE
-batches=<n> beat-lane=<n> read-lane=<n> on-line=<n> gone=<n> wait-max=<d> held-max=<d>
-held-by=<verb> over=<d>`. The model is `tla/ServerLanes.tla`. The server keeps
-nothing between requests.
+batches=<n> beat-lane=<n> read-lane=<n> on-line=<n> gone=<n> refused=<n>
+refused-by=<verb>:<count>,... wait-max=<d> held-max=<d>
+held-by=<verb> over=<d>`, the refused verbs counted by verb word beside the lane counts.
+
+A verb the server answers with a non-zero code is written on the server's own log: one line
+`SERVE REFUSED verb=<v> as=<worker> exit=<n> card=<id@gen when the verb names one>: <the verb's own first stderr line, cut to 300 bytes>`. The line carries the verb word, the
+worker, the exit, the card argument and stderr's first line only, never the verb's whole
+argv (a brief, a report) or its stdout. It is bounded: the same verb, worker, exit and first
+line repeated within a minute is written once, and when it changes the line that follows says
+`(repeated <n> times since <stamp>)`, so 40 minutes of refused finishes from ten members is a
+few hundred lines and never one per verb. The model is `tla/ServerLanes.tla`. The server
+keeps nothing between requests.
 
 The tick's turn. The batches, the lanes beside the tick (land's reads and report, decide,
 balance) and the tick take one line of control. The batches and the lanes take it in the order
@@ -7358,7 +7401,9 @@ no shadow. Tested on the twin store with this binary as a working candidate and 
 candidates that error, panic, hang past the deadline and print no plan
 (`TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary`), the store byte for byte unchanged
 by a shadow (`TestShadowTickPlansOnTheStoreAndWritesNothing`), and every write of the read-only
-store refused (`TestShadowTickStoreRefusesEveryWrite`).
+store refused (`TestShadowTickStoreRefusesEveryWrite`). run and the shadow tick also
+refuse a store whose tables lack a column of `internal/sprint/TABLES.lock`, before either
+starts or plans, and the refusal names the `nova-table` commands that mend it.
 
 #### Adopting a build
 

@@ -2563,7 +2563,12 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 		default:
 			set := map[string]string{}
 			var unset []string
-			if comeUp && ctl.F("status") != Up {
+			// a member whose probe is clearing an environment fault comes up only
+			// when the fault's hold is the machine's own: a passed probe lifts only
+			// the environment's own hold, so a coordinator's, the fault's or the
+			// sync's hold stays for a person to lift (docs/SPEC-SPRINT.md section 5,
+			// the fleet; tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+			if comeUp && ctl.F("status") != Up && !(envCleared && ctl.F(FieldHeldBy) != HeldByEnv) {
 				set["status"], set["since"] = Up, stamp(s.Now)
 				n = statusNote(s, r, NMemberUp, "up")
 			}
@@ -2583,7 +2588,12 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 					set[FieldHarnesses] = h
 				}
 			}
-			if r.Op == "release" && ctl.F("held") != "" {
+			// fleet up releases the hold (docs/SPEC-SPRINT.md section 5); a passed
+			// probe clearing an environment fault instead releases only the machine's
+			// own environment hold, left to EnvProbePatch below, so a coordinator's,
+			// the fault's or the sync's hold stays for a person to lift
+			// (tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+			if r.Op == "release" && ctl.F("held") != "" && !envCleared {
 				unset = append(unset, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish)
 				if !comeUp {
 					line = r.Member + " released, down until it beats"
@@ -2673,7 +2683,12 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 // receivers' loads and widths, counted on as cards are dealt: a tick that
 // takes several members down in one plan (presence) shares them, so every
 // down member's cards go round the fleet together (every row of every table
-// moves every tick).
+// moves every tick). The machine's fault hold is placed only on a member that
+// carries no hold: a member the sync, the adopt, its environment or the
+// coordinator already holds keeps its hold, its mark, its reason and its finish
+// marker when it goes down, and still goes down (tla/DealFill.tla FaultHold,
+// from held="none" only, and PersonHoldStays; docs/SPEC-SPRINT.md section 5,
+// the fleet).
 func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves, q, widths map[string]int) Plan {
 	var p Plan
 	ctl := s.MemberCtl(r.Member)
@@ -2709,11 +2724,18 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 		// included): the hold is now the coordinator's, and the sync's mark
 		// goes, so the sync never releases it
 		unset = append(unset, FieldHeldBy, FieldFaultSince)
-	case r.Op == "down" && r.HeldBy != "":
+	case r.Op == "down" && r.HeldBy != "" && ctl.F("held") == "":
 		// the machine's down for a fault (presence): mark it held_by=fault and
 		// stamp when, so the tick clears the mark once the member is healthy
 		// again and finishes a card cleanly (faultClear). A plain down carries
-		// no mark, and the member's status stays down until it beats.
+		// no mark, and the member's status stays down until it beats. The
+		// machine's fault hold is placed only on a member that carries no hold:
+		// a member the sync, the adopt, its environment or the coordinator
+		// already holds keeps its hold, its mark, its reason and its finish
+		// marker when it goes down, so the hold's own release still finds it
+		// (tla/DealFill.tla FaultHold, from held="none" only, and PersonHoldStays,
+		// a hold the machine did not make is never changed by it;
+		// docs/SPEC-SPRINT.md section 5, the fleet).
 		set[FieldHeldBy] = r.HeldBy
 		if r.HeldBy == HeldByFault {
 			set[FieldFaultSince] = stamp(s.Now)

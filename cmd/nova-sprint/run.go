@@ -324,6 +324,13 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	if a.twinOpen(c.redis) {
 		return refuse(stderr, "run", twinMachine)
 	}
+	// the locked shape: a store missing a column this build writes is refused
+	// before any key is read, port bound or loop begun, so a build never starts
+	// on a table it would write a missing column to (internal/sprint/TABLES.lock,
+	// the Change of 2026-10-06).
+	if err := st.LockedShape(context.Background()); err != nil {
+		return refuse(stderr, "run", "the store's tables lack the columns this build writes: "+err.Error()+"; this server does not start")
+	}
 	// named secrets are read here, before a port is bound, so a name that cannot
 	// be read refuses without listening (keys.go)
 	if err := a.holdNamedUnitKeys(keyNames); err != nil {
