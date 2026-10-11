@@ -24,7 +24,9 @@
      comments, the pre-window shadow tick passes when only the library differs, and the post-load check
      refuses a library that is not the new build's.")
    (release "v1.2.9" :status "planned" :date "2026-10-10"
-   :text "Inbox push writes each judgment once without concurrent writers sharing a temporary path."))
+   :text "Inbox push writes each judgment once without concurrent writers sharing a temporary path.")
+   (release "v1.2.11" :status "planned"
+    :text "Small bug fixes after v1.2.10, one concern each."))
  :items
  ((fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
@@ -774,4 +776,8 @@
     witness MCRouteRestBrokenBalance still failing. Tests TestReadDeepSeekBalance,
     TestALowBalanceAtTheThresholdRaisesOneJudgment and TestAnOutOfCreditTakeSpendsNoRedeal. The run
     loop's nova-secrets exec --only list must include DEEPSEEK_API_KEY for the poll to read it."
-   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry low-balance-pushes-the-seat-before-the-refusalc")))
+   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry low-balance-pushes-the-seat-before-the-refusalc")
+  (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
+   :title "doctor reads nova-config from the caller's environment"
+   :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
+   :origin "this card")))

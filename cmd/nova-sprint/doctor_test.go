@@ -273,6 +273,19 @@ func TestDoctorRefusesAnUnknownArea(t *testing.T) {
 }
 
 // The probe's lines are read into what it found; the server's elapsed time is read from ps.
+func TestDoctorDoesNotForwardWhenServerSet(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	ta.ok("start")
+	ta.ok("tick")
+	ta.a.outside = doctorOutside(ta, []string{"m1"}, nil)
+
+	code, out, errs := ta.do("doctor")
+	require.Equal(t, 0, code, "doctor should run locally, not be forwarded\n%s%s", out, errs)
+	assert.Contains(t, out, "DOCTOR OK member-env all", "doctor reads config from caller's env")
+}
+
 func TestDoctorProbeParsesItsLines(t *testing.T) {
 	t.Parallel()
 	var p sprint.MemberProbe
