@@ -323,10 +323,10 @@ func ReadCardExtras(s *Snapshot) []string {
 	return out
 }
 
-// mayReadCard says the unit may be dealt a read of the primary at the attempt, by the rules
-// a work card is dealt by (its tier: a friend's tiers reach it, friendAtOrAbove; a member's reader
-// row serves it, readerServesTier) and the two of a read: it did not work the attempt, and
-// it holds no read card of the attempt and closed none (readSpent).
+// mayReadCard says the unit is eligible for a read of the primary at the attempt: its tier
+// set serves it, it did not work the attempt, it did not refuse staging, and it holds no read
+// card of the attempt and closed none (readSpent; readCardsAskFull checks room separately,
+// docs/SPEC-SPRINT.md section 1, the read-card deal).
 //
 // A unit one tier below the read's tier may read it too, by the interim rule (the owner,
 // 2026-10-06 7:11 PM ET "let flash read pro", 7:41 PM "let pro do it"), never two below;
@@ -336,8 +336,9 @@ func mayReadCard(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, 
 }
 
 // readRefusal is the clause of mayReadCard that refuses the unit the read, "" when none
-// does: worker, spent, no id, friends' set, friend tier, reader row (a readers-table read
-// of the attempt), fleet set, reader tier.
+// does: worker, spent, no id, staging refusal, friends' set, friend tier, reader row (a
+// readers-table read of the attempt), fleet set, reader tier (docs/SPEC-SPRINT.md section
+// 1, the read-card deal).
 func readRefusal(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, cards []*Card) string {
 	mine := readerCardsAt(cards, pr.ID, attempt, u.name)
 	switch {
@@ -348,6 +349,13 @@ func readRefusal(s *Snapshot, u readUnit, pr *Card, attempt int, worker string, 
 		return "spent(" + c.ID[strings.LastIndex(c.ID, ".")+1:] + " col=" + c.Col + " verdict=" + c.F("verdict") + " retired_by=" + c.F("retired_by") + " head=" + c.F("head") + ")"
 	case readCardIDFor(mine, pr.ID, attempt, u.name) == "":
 		return "no id"
+	}
+	if !u.friend {
+		for _, c := range mine {
+			if slices.Contains(StagingRefusers(c), u.name) {
+				return "staging refusal"
+			}
+		}
 	}
 	if u.friend {
 		// a friend reads her tier or any below it, as her reads always did: a heavy friend
@@ -552,7 +560,9 @@ func readCardsAskWhy(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]st
 
 // readCardsAskFull is readCardsAskWhy, and with full non-nil, for each primary that waits because
 // every unit that may read it is at its room, the names of those units (the frontier-room
-// judgment's cause, frontierRoomCondsOfWaits).
+// judgment's cause, frontierRoomCondsOfWaits). It advances and writes one guarded fleet-table
+// cursor per read tier with the cards it deals (docs/SPEC-SPRINT.md section 1, the read-card
+// deal).
 func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]string, full map[string][]string) (p Plan, waits map[string]string) {
 	waits = map[string]string{}
 	if s == nil || s.Work == nil || s.Fleet == nil {
@@ -584,6 +594,11 @@ func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]s
 	}
 	units := readUnitsOf(view, seats)
 	idx := fleetReadIndex(view)
+	unitByName := make(map[string]int, len(units))
+	for i, u := range units {
+		unitByName[u.name] = i
+	}
+	readRounds := map[string]*round{}
 	if why != nil {
 		var us, out []string
 		for _, u := range units {
@@ -605,39 +620,51 @@ func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]s
 		worker := attemptUnit(view, pr.ID, attempt)
 		cards := idx[pr.ID]
 		var may []int
-		dist := map[int]int{}
 		for i, u := range units {
 			if mayReadCard(view, u, pr, attempt, worker, cards) {
 				may = append(may, i)
-				dist[i] = readTierDistance(view, u, pr)
 			}
 		}
-		var room []int
-		for _, i := range may {
-			if units[i].half > 0 {
-				room = append(room, i)
-			}
+		tier := friendReadTier(view, pr)
+		cursor, ok := readRounds[tier]
+		if !ok {
+			cursor = readDealRound(view, tier, units)
+			readRounds[tier] = cursor
 		}
-		slices.SortStableFunc(room, func(a, b int) int {
-			x, y := units[a], units[b]
-			switch {
-			case (x.idle > 0) != (y.idle > 0):
-				// an idle lane first: a read is stacked on a busy reader only when every
-				// reader that may take it is busy
-				if x.idle > 0 {
-					return -1
+		var picked []int
+		chosen := map[int]bool{}
+		for len(picked) < want {
+			hasIdle := false
+			for _, i := range may {
+				if !chosen[i] && units[i].half > 0 && units[i].idle > 0 {
+					hasIdle = true
+					break
 				}
-				return 1
-			case dist[a] != dist[b]:
-				return dist[a] - dist[b]
-			case max(x.idle, 0) != max(y.idle, 0):
-				return max(y.idle, 0) - max(x.idle, 0)
-			case x.half != y.half:
-				return y.half - x.half
 			}
-			return strings.Compare(x.name, y.name)
-		})
-		picked := room[:min(want, len(room))]
+			bestDistance := 2*len(capLadder) + 1
+			for _, i := range may {
+				if !chosen[i] && units[i].half > 0 && (!hasIdle || units[i].idle > 0) {
+					bestDistance = min(bestDistance, readTierDistance(view, units[i], pr))
+				}
+			}
+			eligible := func(name string, requireIdle bool) bool {
+				i, exists := unitByName[name]
+				return exists && !chosen[i] && units[i].half > 0 && (!hasIdle || units[i].idle > 0) && (!requireIdle || units[i].idle > 0) && mayReadCard(view, units[i], pr, attempt, worker, cards) && readTierDistance(view, units[i], pr) == bestDistance
+			}
+			// Deal through the strict ring among readers with a free lane. Only
+			// when none of those can take this read do queued readers enter the ring.
+			name := cursor.scan(func(name string) bool { return eligible(name, true) })
+			if name == "" {
+				name = cursor.scan(func(name string) bool { return eligible(name, false) })
+			}
+			if name == "" {
+				break
+			}
+			i := unitByName[name]
+			picked = append(picked, i)
+			chosen[i] = true
+			cursor.moved(name)
+		}
 		u := Unit{Key: pr.ID, Stream: pr.Row, Changes: back[pr.ID]}
 		delete(back, pr.ID)
 		if len(picked) < want {
@@ -738,6 +765,13 @@ func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]s
 			continue
 		}
 		p.Units = append(p.Units, Unit{Key: key, Stream: cmp.Or(fieldOf(s.Work.Card(key), "stream"), ""), Changes: back[key], Moved: key + ": its read cards taken back"})
+	}
+	for _, tier := range slices.Sorted(maps.Keys(readRounds)) {
+		r := readRounds[tier]
+		if r.value() == r.read {
+			continue
+		}
+		p.Props = append(p.Props, PropWrite{Table: r.table, Name: r.name, Value: r.value(), Was: r.read, WasAbsent: !r.had})
 	}
 	return Lawful(p), waits
 }
@@ -859,14 +893,12 @@ func readCardsWaitingCount(s *Snapshot) int {
 	return n
 }
 
-// withReadCards is the read-card deal (TickDeal; the owner, 2026-10-06: "Just remove the
-// complexity. just deal it."): the plan that deals every read the primaries in review want
-// (readCardsAsk), each drawn on its tier's routes from the tier's index as it stands (a
-// read moves no index: the work cards of the deal move it), and the snapshot with those
-// cards placed and the cards it takes back off their rows, which the work of the same deal
-// is dealt on: every room the deal counts (memberLoads, widthRoom, friendLoad) holds the
-// reads first, at half a slot each (reads are a card priority: a read waits behind no
-// work card). With read cards off, nothing and the snapshot as it is.
+// withReadCards is the read-card deal (TickDeal): it deals every read the primaries in
+// review want (readCardsAsk), advances a persisted fleet-table cursor per read tier, and
+// places the reads before work so the room the deal counts holds them at half a slot each
+// (docs/SPEC-SPRINT.md section 1, the read-card deal; README.md, free capacity gets another
+// ready card). Its snapshot includes the cards it places and takes back, which the work of
+// the same deal is dealt on. With read cards off, nothing and the snapshot as it is.
 // tla/ReadCards.tla Deal
 func (s *Snapshot) withReadCards(seats []FriendSeat) (*Snapshot, Plan) {
 	if !s.ReadCardsOn() || s.Fleet == nil {

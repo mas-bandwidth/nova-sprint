@@ -51,8 +51,9 @@ func TickRebalance(s *Snapshot, r TickReq) (Plan, int) {
 // Rebalance moves each work card dealt and not started (ready on its row: a friend has not
 // started it, friendStarted; a member has not taken it), queued on a unit whose lanes all
 // work, to a unit with an idle lane that may take it, one move a card, at most the idle
-// lanes. A card stays when it is a read, a sentinel's, of a held stream, a bench card, a
-// hard pin (OnlyFriend), a pin honoured where it sits (its WHO names the friend it is on, or
+// lanes. Read cards use the same full-to-idle rule in rebalanceReads. A work card stays when
+// it is a sentinel's, of a held stream, a bench card, a hard pin (OnlyFriend), a pin honoured
+// where it sits (its WHO names the friend it is on, or
 // a model pin on a member; a WHO: friend card on a friend's row goes to no member), run by a lane (laneRunsIt), or its route rests. A friend may take
 // it when she is dealable, her tiers and the friends' set hold its tier (friendTakes) and it
 // has not left her (friendsLeft); a member up, while the fleet's work is on, when the fleet's
@@ -92,7 +93,7 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 	}
 	idle := false
 	for _, u := range units {
-		idle = idle || u.idle() > 0
+		idle = idle || rebalanceReadHalfRoom(s, u, 0) > 0
 	}
 	if !idle {
 		return p
@@ -125,6 +126,7 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 	}
 	ri := routeIndexesOf(s) // tla/RouteIndex.tla Deal (the rebalance's routeOf draw)
 	declared := map[string]bool{}
+	workMoved := map[string]int{}
 	for _, pr := range ladderOrder(dealOrder(s, prims)) {
 		g, wc := from[pr.ID], work[pr.ID]
 		tier := s.DealTier(pr)
@@ -133,7 +135,22 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 			continue
 		}
 		to.load++
+		workMoved[to.row]++
 		p.Units = append(p.Units, rebalanceMove(s, &p, declared, ri, g, to, pr, wc, tier, who))
+	}
+	// Reads are rebalanced too (docs/SPEC-SPRINT.md section 1, the rebalance): a read
+	// card queued on a unit whose lanes all work moves to a unit with an idle lane whose
+	// reader row serves the read's tier and which has not read the card at this attempt,
+	// as many as the idle lanes take (a read is half a slot), in one tick.
+	readFull := map[string]bool{}
+	for _, g := range units {
+		work, reads := rowWorking(s, g.row)
+		if g.width > 0 && 2*work+reads >= 2*g.width {
+			readFull[g.row] = true
+		}
+	}
+	if len(readFull) > 0 {
+		p.Units = append(p.Units, rebalanceReads(s, seats, units, readFull, workMoved, &p, ri, who)...)
 	}
 	ri.write(&p)
 	return p
@@ -236,4 +253,102 @@ func rebalanceMove(s *Snapshot, p *Plan, declared map[string]bool, ri routeIndex
 	n.Who, n.What = who, what
 	return Unit{Key: pr.ID, Stream: pr.Row, Changes: changes, Notes: []Note{n},
 		Moved: fmt.Sprintf("%s gen=%d (its lanes all work; an idle lane takes it)", what, wc.Int("gen")+1)}
+}
+
+// rebalanceReads is the rebalance's read pass (Rebalance): every read card ready on a
+// unit whose lanes all work (full) goes to an idle unit whose reader row serves its tier
+// and that has not read the card at this attempt (readRefusal), the cheapest read tier
+// first, as many as the idle lanes take (a read is half a slot: readUnit.half and idle
+// are in half slots), in one tick. A read never goes back to a row it was rebalanced off
+// (FieldRebalancedFrom). The moved read keeps its attempt: it is dealt again under the
+// new reader's identity, its record retired on the row it left.
+func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, full map[string]bool, workMoved map[string]int, p *Plan, ri routeIndexes, who string) []Unit {
+	ruses := readUnitsOf(s, seats)
+	if len(ruses) == 0 {
+		return nil
+	}
+	unitByRow := make(map[string]*rebalanceUnit, len(units))
+	for _, u := range units {
+		unitByRow[u.row] = u
+	}
+	for i := range ruses {
+		if u := unitByRow[ruses[i].row]; u != nil {
+			// Share the exact half-slot capacity after the work pass. Round-up
+			// whole-card load loses a usable half-slot when a row holds one read.
+			ruses[i].idle = min(ruses[i].idle, rebalanceReadHalfRoom(s, u, workMoved[u.row]))
+			ruses[i].half -= 2 * workMoved[u.row]
+		}
+	}
+	idx := fleetReadIndex(s)
+	var out []Unit
+	for _, g := range units {
+		if !full[g.row] {
+			continue
+		}
+		for _, wc := range s.Fleet.Cell(g.row, Ready) {
+			if !isRead(wc) {
+				continue
+			}
+			pr := s.Work.Placed(wc.F("primary"))
+			if pr == nil {
+				continue
+			}
+			attempt := readAttempt(pr)
+			worker := attemptUnit(s, pr.ID, attempt)
+			cards := idx[pr.ID]
+			gone := Split(wc.F(FieldRebalancedFrom))
+			var best *readUnit
+			bestDist := 0
+			for i := range ruses {
+				u := &ruses[i]
+				if u.row == g.row || slices.Contains(gone, u.row) || u.idle <= 0 || u.half <= 0 {
+					continue
+				}
+				if !mayReadCard(s, *u, pr, attempt, worker, cards) {
+					continue
+				}
+				d := readTierDistance(s, *u, pr)
+				if best == nil || d < bestDist || (d == bestDist && u.idle > best.idle) {
+					best, bestDist = u, d
+				}
+			}
+			if best == nil {
+				continue
+			}
+			id := readCardIDFor(cards, pr.ID, attempt, best.name)
+			if id == "" {
+				continue
+			}
+			fields := map[string]string{}
+			for k, v := range wc.Fields {
+				fields[k] = v
+			}
+			fields["reader"] = best.name
+			fields[FieldRebalancedFrom] = strings.Join(append(Split(wc.F(FieldRebalancedFrom)), g.row), ",")
+			if best.friend {
+				fields[FieldTier] = friendReadTier(s, pr)
+				if !s.Fleet.HasRow(best.row) {
+					p.Rows = append(p.Rows, RowAdd{Fleet, best.row})
+				}
+			}
+			// the moved read is a fresh card on the new reader; the one it left is retired
+			// spending nothing of it (the machine took it back)
+			best.idle--
+			best.half--
+			idx[pr.ID] = append(idx[pr.ID], &Card{ID: id, Row: best.row, Col: Ready, Score: wc.Score, Fields: fields})
+			out = append(out, Unit{Key: pr.ID, Stream: pr.Row, Changes: []Change{
+				change(Fleet, createEntry(id, best.row, Ready, wc.Score, fields)),
+				change(Fleet, removeEntry(wc, map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByAway})),
+			}, Moved: fmt.Sprintf("rebalanced %s from %s to %s", wc.ID, g.row, best.row)})
+		}
+	}
+	return out
+}
+
+// rebalanceReadHalfRoom is the exact remaining read capacity of a row after the work
+// pass, in half slots. Unlike rebalanceUnit.idle, it preserves one free half-slot after
+// an odd number of ready or working reads.
+func rebalanceReadHalfRoom(s *Snapshot, u *rebalanceUnit, workMoved int) int {
+	work, reads := rowLoad(s, u.row)
+	return max(2*u.width-2*work-reads-2*workMoved, 0)
 }
