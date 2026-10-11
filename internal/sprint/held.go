@@ -237,7 +237,10 @@ func newHeld(h HeldState, now time.Time) *held {
 	// the resting routes, settled once at this clock: the rule asks noRoute of every
 	// ready primary (judgment), each a map read (route_rest.go)
 	sp, _ := s.withRests()
-	s = *sp
+	// the providers' concurrency budgets, counted once per held reading, never once per
+	// card: the deal's own view, so the no-stall rule reads a full provider as it does
+	// (rate_budget.go; tla/RateBudget.tla)
+	s = *sp.withBudgets()
 	// the friends' deal is a part of the next tick too: it deals with the friends the
 	// snapshot holds (friendDealPass), as the tick does
 	c := &held{h: h, s: &s, req: TickReq{Who: MachineActor, Stopped: h.Stopped, Friends: s.Friends},
@@ -534,7 +537,10 @@ func (c *held) judgment(pr *Card) string {
 }
 
 // waits is (d): what the primary waits on, when each of those is held; else
-// why the chain holds nothing, with the stalled card it ends at (root).
+// why the chain holds nothing, with the stalled card it ends at (root). A ready
+// card whose every route of its tier that serves is at its provider's
+// concurrency budget waits for a slot, held by the limiter, never stalled
+// (docs/SPEC-SPRINT.md section 8, No silent stops; rate_budget.go; tla/RateBudget.tla).
 func (c *held) waits(pr *Card) (why, root string, ok bool) {
 	s := c.s
 	switch pr.Col {
@@ -637,6 +643,13 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 				// those that refused it at staging) can launch one: not the members' room
 				return lwhy + "; and no judgment says so", "", false
 			}
+		}
+		if bwhy := s.budgetWait(tier, up); bwhy != "" {
+			// every route of its tier that serves is at its provider's concurrency budget:
+			// the deal never deals past it, and the card is held ready for a slot, never
+			// stalled work (docs/SPEC-SPRINT.md section 8, No silent stops; rate_budget.go's
+			// header; tla/RateBudget.tla)
+			return bwhy, "", true
 		}
 		// The members' free places (each one's room, DealAhead times its width,
 		// less its ready and working cards, width.go) go to the ready primaries in the
