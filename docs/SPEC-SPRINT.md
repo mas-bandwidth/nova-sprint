@@ -5830,10 +5830,11 @@ happen again"). Two rules make it so, the tool and not the seat's discipline:
   work came back failed, a reader found it broken, ready to accept, reads exhausted, stranded in
   review, a card reached its bound, the brief is wrong, a brief defect, blocked on something
   dropped or missing, a friend's report needs a read, repair skipped, returned to review (merge
-  stopped), the five stream-stopped kinds, sentinel reached, and the fleet's failure (below).
-  Two kinds a rework discharges still take a wait, each with why (`sprint.WaitAllowedOnACard`):
-  ci red (CI's word on a head, the card's own judgment holds it) and stalled (the no-stall
-  rule's judgment names its own subject and re-raises every pass). `wait` stays the answer to
+  stopped), the five stream-stopped kinds, and the fleet's failure (below). Three kinds still take a
+  wait, each with why (`sprint.WaitAllowedOnACard`): ci red (CI's word on a head, the card's own
+  judgment holds it), stalled (the no-stall rule's judgment names its own subject and re-raises
+  every pass) and sentinel reached (a stop the coordinator placed: doing more before going on
+  is its own decision). `wait` stays the answer to
   the informational kinds: the alarms, the status and presence conditions the tick keeps, a
   lateness (`TestWaitIsRefusedOnACardHoldingJudgment`, `TestEveryKindThatHoldsACardRefusesWait`,
   `TestNoJudgmentOffersADecisionItsVerbRefuses`, `TestWaitByGroupIsRefusedOnFailedWork`,

@@ -319,7 +319,7 @@ func notAckable(n Note, entries []Open) string {
 		lines = append(lines, c.Decision+": "+strings.Join(c.Lines, " && "))
 	}
 	why := fmt.Sprintf("ack does not answer %s (%s): its decisions are", n.ID, n.Type)
-	if TickKept(n.Type) {
+	if TickKept(n.Type) && WaitRefusal(n) == "" {
 		why = fmt.Sprintf("ack does not answer %s (%s), a condition the tick keeps; wait sets when it is shown again: its decisions are", n.ID, n.Type)
 	}
 	return why + " " + strings.Join(lines, "; ")

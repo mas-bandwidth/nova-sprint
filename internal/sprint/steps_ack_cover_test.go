@@ -95,7 +95,7 @@ func TestStepsAckCoverWait(t *testing.T) {
 	})
 	t.Run("refuses a judgment the tick does not keep", func(t *testing.T) {
 		t.Parallel()
-		n := Note{ID: "j1", Kind: Judgment, Type: NBlocked, Stream: "s1", Decisions: Decisions[NBlocked]}
+		n := Note{ID: "j1", Kind: Judgment, Type: NCIRed, Stream: "s1", Decisions: Decisions[NCIRed]}
 		s := &Snapshot{Now: coverT0, Coordinator: Coordinator, Epoch: 0,
 			Open: []Open{{Key: OpenKey("j1", "p1"), Note: n}}}
 		p := Wait(s, WaitReq{Note: "j1", Until: coverUntil, Who: Coordinator})

@@ -48,7 +48,6 @@ var WaitRefused = map[string]string{
 	NCross:           "rank the card it needs first, look at both, return it, or drop it",
 	NRejected:        "rework the card the merge queue rejected, or drop it, and resume",
 	NBaseRed:         "mend the base (the base-gate rule resumes the stream once its tip is green), or resume",
-	NSentinelReached: "release it, do more before going on, or drop it",
 	// the fleet's failure: every card failing that way reworks itself to its bound meanwhile
 	NFleetFailure: "mend its cause (the toolchain, a member, a route or a provider) and ack it; the cards rework themselves to their bound meanwhile",
 }
@@ -59,6 +58,8 @@ var WaitRefused = map[string]string{
 var WaitAllowedOnACard = map[string]string{
 	NCIRed:   "CI's word on a head: the card's own read or failed-work judgment holds it, and CI runs again on its own",
 	NStalled: "the no-stall rule's judgment names its own subject (a card, a stream or the fleet) and re-raises it every pass",
+	// a deliberate stop: "do more before going on" is the sentinel's own decision
+	NSentinelReached: "a sentinel is a stop the coordinator placed: doing more before going on is its own decision, and its release is a gated cut",
 }
 
 // WaitRefusedKinds is WaitRefused's kinds in name order.
