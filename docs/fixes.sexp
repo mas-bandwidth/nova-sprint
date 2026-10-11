@@ -1318,17 +1318,17 @@
   (fix "tla-workimport-scoped-verify" :release "v1.2.12" :status "planned"
    :title "WorkImport models a scoped import and verify, and a wider verify never reports done"
    :text "Models only, no product change. tla/WorkImport.tla's Import and Verify each take a scope, a
-    subset of the repositories: the import writes only its scope's issues and the tree does not
-    record the scope, so a verify whose scope is wider than the import's reads the wider scope's
-    issues as missing and stays imported (it fails safe), and a verify never reports done outside
-    the import's scope. TreeIsWhole is restated as TreeIsWholeForItsScope (the tree is whole for
-    the import's scope), and the new invariant VerifyNeverPassesOutsideItsScope states a wider
-    verify never reports done. The receipt and Close/Export are marked design-only in the header,
-    as the code's verify prints facts and stores none. Six reversed witnesses (noreceipt, stale,
-    external, noreopen, partial, scoped): Broken \"scoped\" compares only the issues the tree
-    holds, so a wider verify passes a scoped tree and fails VerifyNeverPassesOutsideItsScope;
-    MCWorkImportBrokenPartial keeps its result (TreeIsWholeForItsScope)."
-   :origin "this card, tla-workimport-scoped-verify.w5, 2026-10-11: v1.2.12 inventory item T22 and section 9 row D12; drift read at nova-sprint main 00c54ba2e")
+    subset of the repositories: the import writes only its scope's issues and records the scope in
+    the tree (:scope), verify reads the tree's own scope by default and refuses a --repo outside it
+    before any GitHub call, so a verify never reports done outside the import's scope. TreeIsWhole
+    is restated as TreeIsWholeForItsScope (the tree is whole for the import's scope), and the new
+    invariant VerifyNeverPassesOutsideItsScope states a wider verify never reports done. The receipt
+    and Close/Export are marked design-only in the header, as the code's verify prints facts and
+    stores none. Six reversed witnesses (noreceipt, stale, external, noreopen, partial, scoped):
+    Broken \"scoped\" ignores the tree's scope, so a wider verify reports done and fails
+    VerifyNeverPassesOutsideItsScope; MCWorkImportBrokenPartial keeps its result
+    (TreeIsWholeForItsScope)."
+   :origin "this card, tla-workimport-scoped-verify.w6, 2026-10-11: v1.2.12 inventory item T22 and section 9 row D12; drift read at nova-sprint main 00c54ba2e, re-read at the head that records the scope")
 
   (fix "the-server-beat-accepts-draining-and-no-room" :release "v1.2.12" :status "planned"
    :title "The server's beat takes a draining or no-room member"
