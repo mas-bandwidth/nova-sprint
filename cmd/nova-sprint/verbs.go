@@ -73,7 +73,7 @@ func init() {
 		{"queue", "--as <reader|member> | --stream <s>", "queue --as reader-a", (*app).cmdQueue},
 		{"read", "--as <reader> (--begin | --ok | --broken) [<card>[@<gen>]...] --epoch <n> [--max <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--usage <text>]", "read --as reader-a --ok --max 5 --epoch 0", (*app).cmdRead},
 		{"accept", "(<id>... [--heavy --evidence <path> --reason <text>] | --stream <s> | --read-ok | --group <id> [--expect <n>]) [--answers <note>]", "accept --read-ok", (*app).cmdAccept},
-		{"rework", "(<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--fix <text>] [--tier <tier>] [--answers <note>] [--one]", "rework s1-4 --fix 'handle the empty case'", (*app).cmdReworkSel},
+		{"rework", "(<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--fix <text>] [--tier <tier>] [--carry] [--answers <note>] [--one]", "rework s1-4 --carry --fix 'start from the last head it pushed'", (*app).cmdReworkSel},
 		{"return", "(<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--reason <text>] [--answers <note>]", "return s1-7 --reason 'suspect of the red batch'", (*app).cmdReturnSel},
 		{"redo", "<card>... [--stream <s>] [--answers <note>]", "redo s1-2", (*app).cmdRedo},
 		{"drop", "(<id>... | --stream <s> --col <state> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>] [--one]", "drop s1-9 --reason obsolete", (*app).cmdDropSel},
@@ -2799,9 +2799,11 @@ func (a *app) cmdAccept(args []string, stdout, stderr io.Writer) int {
 
 func (a *app) cmdRework(args []string, stdout, stderr io.Writer) int {
 	var fix, ans, tier *string
+	var carry *bool
 	return a.setVerb("rework", args, stdout, stderr, false, func(fs flagSet) {
-		fix = fs.String("fix", "", "the fix for every primary; without it each takes its own: the finding of its broken read, or the report of its failed work; the next attempt is staged at the tip of the card's base branch, the last pushed attempt's work carried on top where it applies cleanly, and where it does not the child is told that work must be redone")
+		fix = fs.String("fix", "", "the fix for every primary; without it each takes its own: the finding of its broken read, or the report of its failed work; the next attempt is staged at the tip of the card's base branch, the last pushed attempt's work carried on top where it applies cleanly, and where it does not the child is told that work must be redone; with --carry the fix is written as the carried attempt's fix")
 		ans = fs.String("answers", "", answersWords)
+		carry = fs.Bool("carry", false, "answer a bound judgment or a coordination brief-defect judgment: keep each card's brief, write its latest pushed head as its CARRY: line (as brief --widen writes it), take --fix as its next attempt's fix, reset its bound, and open its next attempt staged from that head; a card none of whose attempts pushed a head refuses the whole step, by name, and writes nothing; a coordination brief defect whose needs have not landed is refused, naming them")
 		tier = fs.String("tier", "", "the tier ("+cardhdr.RouteList+") this attempt and every later deal of the card draws its route from, over its brief's line 1, kept on the card: it pins the card, never escalated past it (flash first); a card whose brief pins a model is refused; at a redeal bound it never names a lower tier, and when the attempt before also ended at its bound on the card's tier the rework is refused unless it names a tier above (flash, pro, heavy, frontier) or the provider its takes failed on is back, which lifts it once per tier per card")
 	}, func(ids []string, s *sel) string {
 		var why []string
@@ -2811,9 +2813,12 @@ func (a *app) cmdRework(args []string, stdout, stderr io.Writer) int {
 		if *tier != "" && !cardhdr.IsRoute(*tier) {
 			why = append(why, "--tier wants "+cardhdr.RouteList+", found "+oneline.Escape(*tier))
 		}
+		if *carry && *tier != "" {
+			why = append(why, "--carry writes the brief's CARRY: line and takes no --tier")
+		}
 		return strings.Join(why, "; ")
 	}, func(ids []string, s *sel, c *common) store.Step {
-		return store.ReworkStep(sprint.ReworkReq{Sel: s.sel(ids), Fix: *fix, Answers: answers(*ans), Tier: *tier, Who: c.actor})
+		return store.ReworkStep(sprint.ReworkReq{Sel: s.sel(ids), Fix: *fix, Answers: answers(*ans), Tier: *tier, Carry: *carry, Who: c.actor})
 	})
 }
 

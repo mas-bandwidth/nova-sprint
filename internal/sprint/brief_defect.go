@@ -20,7 +20,11 @@ const (
 	BriefDefectDuplicate = "a duplicate of landed work"
 	BriefDefectDecision  = "a decision delivered"
 	BriefDefectPaths     = "PATHS do not hold what the brief names"
-	BriefDefectOther     = "named by the worker"
+	// BriefDefectCoordination is the cause a worker's HOLD names when it was dealt before
+	// its DEPENDS-ON: or ORDER prerequisites landed: a coordination failure, and the one
+	// brief defect rework --carry answers once those needs have landed (rework_carry.go).
+	BriefDefectCoordination = "dealt before its needs landed"
+	BriefDefectOther        = "named by the worker"
 )
 
 // FieldBriefDefect (rules.go, the field the brief-defect rule stamps) also carries, on a work
@@ -55,6 +59,9 @@ var briefDefectReasons = []struct {
 	{regexp.MustCompile(`(?i)` + negatedComma + `(?:\bduplicates?\s+(?:of\s+)?landed\s+work\b|\bnothing\s+to\s+do\s*[:;,.—-]?\s*(?:the\s+)?(?:staged\s+)?base\s+already\s+(?:contains|has)\b|\b(?:the\s+)?(?:staged\s+)?base\s+already\s+(?:contains|has)\s+(?:this\s+card[’']s\s+(?:change|implementation)|the\s+change)\b)`), BriefDefectDuplicate},
 	{regexp.MustCompile(`(?i)` + negated + `\bdecision\s+(?:(?:is|was|has\s+been|already)\s+)*delivered\b`), BriefDefectDecision},
 	{regexp.MustCompile(`(?i)` + negated + `\bPATHS\s+do\s+not\s+hold\b`), BriefDefectPaths},
+	// the coordination failure: the worker says it was dealt before its DEPENDS-ON or ORDER
+	// prerequisites landed (rework --carry answers it once they have; rework_carry.go)
+	{regexp.MustCompile(`(?i)` + negated + `\b(?:dealt|run|started)\s+before\s+(?:its\s+)?(?:DEPENDS-ON|ORDER|needs|prerequisites)\b|\b(?:DEPENDS-ON|ORDER|needs|prerequisites)\s+(?:have\s+|has\s+)?not\s+landed\b`), BriefDefectCoordination},
 }
 
 // briefDefectLabel is the label a worker may name a brief defect with when its words are
