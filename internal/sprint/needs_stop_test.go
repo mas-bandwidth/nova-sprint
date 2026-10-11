@@ -176,6 +176,36 @@ func TestAStopOnUnlandedNeedsIsNotTheWorkers(t *testing.T) {
 	})
 }
 
+// A needs-stop whose worker reported no usage is still one take of its route, counted neither
+// ok nor failed (Stella's read of PR 96): its consumer record is written priced or not, as an
+// ordinary finish's is, so the route stats (StatsSince) never lose it.
+func TestANoUsageNeedsStopIsStillOneTake(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 1}}))
+	wc := w.s.Fleet.Card("s1-1.w1")
+	require.NotNil(t, wc)
+	w.must(Take(w.s, TakeReq{As: wc.Row, Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Who: wc.Row}))
+	route := wc.F(FieldRoute)
+	if route == "" {
+		route = "-"
+	}
+	setNeeds(w.s, "s1-1", "n1")
+	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: wc.Row, Gens: gensOf(w.s, "s1-1.w1"), Failed: true,
+		Report: "HOLD: DEPENDS-ON n1 has not landed"})) // no Usage
+	require.Len(t, w.notesOf(NNeedsUnlanded), 1, "the fixture: a needs-stop")
+	var got *RouteTakes
+	for i, r := range Stats(w.s).Routes {
+		if r.Route == route {
+			got = &Stats(w.s).Routes[i]
+		}
+	}
+	require.NotNil(t, got, "the take is attributed to its route %q", route)
+	assert.Equal(t, 1, got.Takes, "one take")
+	assert.Equal(t, 0, got.OK)
+	assert.Equal(t, 0, got.Failed, "a coordination failure is never the route's failure")
+}
+
 // (5) When the needs land, the card is dealt on the next tick as any card: a card withdrawn
 // for its needs waits (working -> waiting at once), and once they land the tick's resolve
 // readies it and the deal deals it.

@@ -57,10 +57,11 @@ func needsStopReturned(s *Snapshot, c, pr *Card, r FinishReq, waits []string, wh
 	set[FieldTakenBack] = "its needs " + needs + " have not landed: a coordination failure, not the worker's"
 	prSet := needsSet(pr, waits)
 	prSet[FieldNeedsReturns] = itoa(pr.Int(FieldNeedsReturns) + 1)
-	if r.Usage != "" {
-		dealt, taken := takeStamps(c)
-		addConsumer(pr, prSet, workConsumer(s, c, 0, EndNeedsUnlanded, costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)))
-	}
+	// the take's consumer record, priced or not, as an ordinary finish writes one: the route
+	// and model stats count their takes from the consumers alone (StatsSince), so a stop
+	// whose worker reported no usage is still one take, counted neither ok nor failed
+	dealt, taken := takeStamps(c)
+	addConsumer(pr, prSet, workConsumer(s, c, 0, EndNeedsUnlanded, costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)))
 	n := happened(NNeedsUnlanded, pr.Row, s.Now, pr.ID)
 	n.Who, n.Attempt, n.Card = who, c.Int("attempt"), c.ID
 	n.What = fmt.Sprintf("%s stopped on %s: needs %s have not landed; dealt before them, a coordination failure, not the worker's (no fail mark, no redeal spent; return %d of %d); %s -> waiting",
