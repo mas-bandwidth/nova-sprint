@@ -2557,7 +2557,11 @@ func (a *app) cmdRoutes(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return a.readFailed("routes", err, stderr)
 		}
-		b, _ := json.Marshal(map[string]any{"tiers": sprint.TierRoutes(rs), "routes": stats, "decide_judgment_bar": bar})
+		out := map[string]any{"tiers": sprint.TierRoutes(rs), "routes": stats, "decide_judgment_bar": bar}
+		if lim := limitsText(ctx, st, s, a.now()); len(lim) > 0 {
+			out["limits"] = lim // the global rate budgets set (routes limit)
+		}
+		b, _ := json.Marshal(out)
 		fmt.Fprintln(stdout, string(b))
 		return 0
 	}
@@ -2578,6 +2582,11 @@ func (a *app) cmdRoutes(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "ROUTE %s model=%s %s attempts=%d ok=%d failed=%d provider_failures=%d mean_wall=%s rested_until=%s balance=%s\n",
 			oneline.Field(r.Name), oneline.Field(model), how, x.Attempts, x.OK, x.Failed, x.Provider, x.MeanWall, orDashStr(x.RestedUntil, "-"), oneline.Field(orDashStr(x.Balance, "-")))
+	}
+	// the global rate budgets set (routes limit; rate_budget.go): rpm in use is the grants
+	// in the model's window now, concurrent in use the cards working on the provider
+	for _, l := range limitsText(ctx, st, s, a.now()) {
+		fmt.Fprintf(stdout, "LIMIT %s %s budget=%d in_use=%d\n", l.Kind, oneline.Field(l.Target), l.Budget, l.InUse)
 	}
 	fmt.Fprintf(stdout, "ROUTES OK routes=%d\n", len(stats))
 	return 0

@@ -1242,6 +1242,8 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 	up := s.UpMembers()
 	// the room of each member is its width (width.go)
 	q, room := memberLoads(s, up), memberWidths(s, up)
+	// a rework falls back past a full provider, and is dealt on one when none has room
+	s = s.withSoftBudgets()
 	rr, ri := dealRound(s), routeIndexesOf(s)
 	moves := roundMoves{}
 	orphans := map[string]bool{}

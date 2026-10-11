@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -392,7 +393,8 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 	}
 	// a resting route (rule 3, route_rest.go) serves no work card until its rest ends
 	served := map[string]Route{}
-	var rested, unlaunchable []string
+	var rested, unlaunchable, full []string
+	fullSet := map[string]Route{} // the routes passed over for a full provider
 	for _, r := range s.Routes {
 		if r.Tier != tier || !r.Enabled {
 			continue
@@ -404,6 +406,16 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 		if !s.Launches(member, r) {
 			unlaunchable = append(unlaunchable, r.Name+" (runs under "+r.Harness+")")
 			continue
+		}
+		// a draw (ri set) falls back past a route whose provider is at its concurrency
+		// budget, as past a resting one (rate_budget.go; TestTheDrawFallsBackPastAFullProvider);
+		// a check of the tier (ri nil) does not, so a full provider is never a judgment
+		if ri != nil {
+			if isFull, said := s.budgets.full(r.Provider); isFull {
+				full = append(full, r.Name+" ("+said+")")
+				fullSet[r.Name] = r
+				continue
+			}
 		}
 		served[r.Name] = r
 	}
@@ -426,6 +438,18 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 		at, _ = strconv.ParseUint(v, 10, 64)
 	}
 	r, steps, ok := preferFirst(arr, served, drawn, fresh, at)
+	if !ok && len(fullSet) > 0 && s.budgets.soft {
+		// a coordinator's rework or redo is never refused for a full provider: with no route
+		// of room it is dealt on a full one anyway, and the take holds it ready until a slot
+		// frees (takeBudgetWhy)
+		maps.Copy(served, fullSet)
+		fresh = false
+		for _, name := range arr {
+			_, ok := served[name]
+			fresh = fresh || ok && !contains(drawn, name)
+		}
+		r, steps, ok = preferFirst(arr, served, drawn, fresh, at)
+	}
 	if ok {
 		if ri != nil {
 			ri[tier].r.count += steps
@@ -436,7 +460,18 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 		if !pinnedTier(c, m) {
 			set[FieldTierNow] = tier // the primary is on the tier drawn (cardTier)
 		}
+		maps.Copy(set, rateFields(s, r))
+		if ri != nil {
+			s.budgets.dealt(r.Provider)
+		}
 		return set, tier, "", false
+	}
+	if len(full) > 0 {
+		// every route of the tier that serves is at its provider's budget: the card waits
+		// ready, never an error, never an attempt spent, and the next deal draws it when a
+		// slot frees (the owner, 2026-10-11: "if nothing else is available, you wait and
+		// try again later")
+		return nil, tier, "every route of tier " + tier + " that serves is at its provider's concurrency budget (" + strings.Join(full, "; ") + "): the card waits ready and is dealt when a slot frees", false
 	}
 	up, why := s.tierServed(tier, rested)
 	if len(up) == 0 && len(unlaunchable) > 0 {
@@ -641,8 +676,12 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 	ri[tier].r.count += steps
 	was, _ := strconv.ParseUint(ri[tier].moves[key], 10, 64)
 	ri[tier].moves[key] = strconv.FormatUint(was+steps, 10)
-	return map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness,
+	out := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness,
 		FieldDeadline: strconv.Itoa(r.Deadline), FieldTier: tier}
+	// a read on a limited route carries its limits too: its reader's requests take the
+	// same budget (rate_budget.go), and its take is held by the provider's concurrency
+	maps.Copy(out, rateFields(s, r))
+	return out
 }
 
 // readRouteMissing is the tier of the primary pr's reads (readTierOf), and why

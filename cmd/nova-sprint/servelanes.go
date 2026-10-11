@@ -137,6 +137,29 @@ func (l *serveLanes) friendBeat(ctx context.Context, a *app, argv, args []string
 	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String()}
 }
 
+// isBudget says the worker's verb is a budget take, renew or release (workerVerb has held it to
+// its words): it writes only its own keys, outside every table, and runs on the beat lane,
+// so a model request never waits for a tick (rate_budget.go).
+func isBudget(argv []string) bool {
+	return len(argv) >= 2 && argv[0] == "budget" && (argv[1] == "take" || argv[1] == "renew" || argv[1] == "release")
+}
+
+// budget is a budget take or release on the beat lane: no line taken, run by the read
+// lane's app on the lanes' backend, and not run for a caller that has gone.
+func (l *serveLanes) budget(ctx context.Context, argv, args []string) sprintwire.Result {
+	if ctx.Err() != nil {
+		return goneResult(argv)
+	}
+	// its own app on the lanes' backend: many takes run at once, none on another's state
+	r := newApp(l.read.getenv)
+	b := l.b
+	r.now, r.serveAddr = l.now, l.read.serveAddr
+	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
+	var stdout, stderr bytes.Buffer
+	code := r.run(args, &stdout, &stderr)
+	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String()}
+}
+
 // readVerbRun is a read on the read lane: it waits for the reads ahead of it alone, and
 // not past its caller.
 func (l *serveLanes) readVerbRun(ctx context.Context, args []string) sprintwire.Result {

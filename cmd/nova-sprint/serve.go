@@ -109,6 +109,18 @@ func workerVerb(argv []string) (as string, words int, why string) {
 		}
 		return argv[2], 2, ""
 	}
+	if len(argv) >= 2 && argv[0] == "budget" && (argv[1] == "take" || argv[1] == "renew" || argv[1] == "release") {
+		// a model request's take of the global rate budget, or its release (rate_budget.go):
+		// the model, the worker and the request's holder, --json at most, nothing more
+		rest := argv[2:]
+		if n := len(rest); (n != 5 && n != 6) || !strings.Contains(rest[0], "/") || rest[1] != "--as" || rest[3] != "--holder" || rest[4] == "" || (n == 6 && rest[5] != "--json") {
+			return "", 0, "a budget's verb sent to the server is `budget " + argv[1] + " <provider/model> --as <worker> --holder <id> [--json]` and nothing more"
+		}
+		if name, ok := sprint.FriendOfRow(rest[2]); !sprint.ValidID(rest[2]) && (!ok || !sprint.ValidID(name)) {
+			return "", 0, "a budget's verb names one worker (letters, digits, _ and -, or friend.<name>), found " + rest[2]
+		}
+		return rest[2], 2, ""
+	}
 	if len(argv) >= 2 && argv[0] == "lane" && (argv[1] == "take" || argv[1] == "give") {
 		// a lane's take or give (lane.go; docs/SPEC-SPRINT.md section 18): its kind, the
 		// machine and the worker, and nothing more; the server never waits (--wait asks again
@@ -123,7 +135,7 @@ func workerVerb(argv []string) (as string, words int, why string) {
 	// through the server (a friend's daemon has no store of its own to send it to; 2026-10-10
 	// 21:55Z on a one-shot friend host, every stop-return refused here)
 	if len(argv) == 0 || !slices.Contains([]string{"take", "finish", "progress", "read", "queue", "stop-return", "remind"}, argv[0]) {
-		return "", 0, "the server runs the workers' verbs only: take, finish, progress, read, queue, stop-return, remind, fleet beat, friend beat, friend cards, lane take, lane give"
+		return "", 0, "the server runs the workers' verbs only: take, finish, progress, read, queue, stop-return, remind, fleet beat, friend beat, friend cards, lane take, lane give, budget take, budget renew, budget release"
 	}
 	verb, rest := argv[0], argv[1:]
 	if len(rest) < 2 || rest[0] != "--as" {
@@ -234,7 +246,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		case why == "":
 			// a worker's write names the epoch its worker holds, whoever sent it (runStep)
 			serving = true
-			if lanes != nil && isFriendBeat(argv) {
+			if lanes != nil && (isFriendBeat(argv) || isBudget(argv)) {
 				lane = "beat"
 			}
 			args = slices.Concat(argv[:words], []string{"--redis", a.serveAddr, "--actor", as}, argv[words:])
@@ -262,6 +274,10 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		switch lane {
 		case "beat":
 			beats++
+			if isBudget(argv) {
+				out.Results[i] = lanes.budget(ctx, argv, args)
+				continue
+			}
 			out.Results[i] = lanes.friendBeat(ctx, a, argv, args[words:])
 			continue
 		case "read":

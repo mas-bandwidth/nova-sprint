@@ -86,6 +86,26 @@ func transient(line string) bool {
 	return m != nil && (m[1] == classRateLimited || m[1] == class5xx || m[1] == classTimeout)
 }
 
+// IsRateLimited says a failed take's report is the provider's rate limit: class
+// rate-limited, a 429 that is not a refusal for credit or the key, or the provider's
+// words for a request or concurrency limit ("Too many requests", "concurrency ...
+// exceeds"). An out-of-credit or key refusal is never one: it ends the take as before.
+func IsRateLimited(report string) bool {
+	line := strings.TrimSpace(report)
+	if IsNoResult(line) || !IsProviderFailure(line) && causeRE.FindStringSubmatch(line) == nil {
+		return false
+	}
+	if refusal(line) != "" {
+		return false
+	}
+	if m := causeRE.FindStringSubmatch(line); m != nil && (m[1] == classRateLimited || m[2] == "429") {
+		return true
+	}
+	low := strings.ToLower(line)
+	return strings.Contains(low, "too many requests") || strings.Contains(low, "rate limit") ||
+		strings.Contains(low, "concurrency") && strings.Contains(low, "exceed")
+}
+
 // providerRestsDue is the rests a provider's refusal writes now, one per provider (Route
 // "", PropProviderRest), in provider order. A provider not resting at s.Now is rested by its
 // newest take refused for credit or its key whose child launched after its last rest ended
