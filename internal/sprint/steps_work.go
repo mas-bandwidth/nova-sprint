@@ -1133,7 +1133,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 // primary's score, into the ready queue of the up member m (the next round the
 // fleet, a deal's or a rework's), at generation 1, on the route at its tier's
 // index (ri, moved past it: route.go), and moves
-// the primary to working with set; given is more fields of the work card.
+// the primary to working with set; given is more fields of the work card (tla/AttemptsEpochs.tla Deal).
 func deal(s *Snapshot, c *Card, fix, m string, q map[string]int, ri routeIndexes, set, given map[string]string, unset ...string) (Unit, string) {
 	attempt := c.Int("attempt") + 1
 	card := WorkCardID(c.ID, attempt)
@@ -1211,7 +1211,7 @@ func escalate(s *Snapshot, c, prev *Card, tier, why, m string, q map[string]int,
 // the card's own, unchanged. The redeal counts only when a take of the card
 // ended (FieldTakeEnded): a card withdrawn while ready keeps its count
 // (tla/DirtyTick.tla DealOne). Its route is the next at its tier's index that the
-// card was not dealt on (ri, moved past it and the entries skipped: route.go).
+// card was not dealt on (ri, moved past it and the entries skipped: route.go; tla/AttemptsEpochs.tla Redeal).
 func redeal(s *Snapshot, c, wc *Card, m string, q map[string]int, ri routeIndexes) (Unit, string) {
 	route, _, why, _ := s.routeOf(c, wc, ri, m)
 	if why != "" {
@@ -1284,7 +1284,7 @@ type TakeReq struct {
 func named(sel Sel) bool { return len(sel.IDs) > 0 || sel.Only != nil }
 
 // liveGen is the refusal of a card whose generation the request does not
-// name, or names and is not the card's live one.
+// name, or names and is not the card's live one (tla/AttemptsEpochs.tla Report).
 func liveGen(verb string, c *Card, gens map[string]int) string {
 	g, ok := gens[c.ID]
 	live := max(c.Int("gen"), 1) // legacy first read cards omit gen; their lease is g1
@@ -3096,7 +3096,7 @@ func levelWith(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, h
 // nextGen is the fields of a work card dealt again: a new generation, bound
 // to the member it is dealt to, with dealt stamped now ("" when it is
 // withdrawn: no member, and dealt is unset by the caller), and untaken_since
-// stamped when this is the first deal since its last take.
+// stamped when this is the first deal since its last take (tla/AttemptsEpochs.tla Redeal).
 func nextGen(c *Card, member string, now time.Time) map[string]string {
 	set := map[string]string{"gen": itoa(c.Int("gen") + 1)}
 	if member != "" {
