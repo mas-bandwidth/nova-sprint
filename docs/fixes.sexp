@@ -211,6 +211,18 @@
     one writer; a write that fails keeps the earlier bound (the safe side) and says so on the
     server's line. Test: TestARechallengeKeepsTheHookLiveUntilItsOwnBound."
    :origin "v1.2.12 inventory 2026-10-11, section 9 row D6; code read at nova-sprint main 00c54ba")
+  (fix "init-coordinator-moves-the-seat-recorded" :release "v1.2.14" :status "planned"
+   :title "An init that writes the seat's key records the move"
+   :text "init writes the coordinator key through InitSeat; with no seat record it wrote the name it was
+    given and left the generation at FirstSeatGeneration, so an observation a friend's health made under
+    an earlier holder still counted under the new one (seat.go's own rule: the seat never moves
+    unrecorded). When the key holds none and the store is not new, init now records the move as the
+    seat's own step does: the seat record with the generation stepped, written with the key, a happened
+    note and its log line, so earlier observations lapse by FriendEvidence's generation check. A fresh
+    store's first init writes no seat record, as before. Test:
+    TestInitAfterTheSeatKeyIsLostLapsesOldObservations (red first), with
+    TestInitSeatKeepsTheRecordsHolder and TestFirstInitOnAFreshStoreWritesNoSeatRecord."
+   :origin "v1.2.12 inventory 2026-10-11, section 9 row D10; this card")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
