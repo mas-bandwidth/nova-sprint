@@ -1674,6 +1674,30 @@ soon as the loop sees it, at most once every ten minutes while it stays there
 `TestTheTickRunsGcHourlyAndOnAFullVolume`, `TestGcVerbReclaimsThisMachinesFinishedScratch`,
 `TestGcMachineRunsTheVerbThroughTheFleetRunner`.)
 
+### A coordination failure is never the workers
+
+Every attempt end is classed (`sprint.EndClass`, `sprint.ClassifyEnd`,
+internal/sprint/end_class.go): **worker** — the model's own work, a not-done verdict with a
+pushed head, a gate refusal on the worker's own diff, a broken read of its head — or
+**coordination** — everything the machine, the bench, the harness, the provider or the seat
+caused. The coordination causes are: a harness exit within seconds with no RESULT (a crash
+before the first turn), a provider or account limit, a provider content-filter or key
+refusal, an idle-reap with no run (`ran=false`, `idle=0s`), a missing bench tool or jar
+(`TLC owed` with no jar, `no rustc on PATH`), staging refused for no bench mirror, the tick
+or a hold taking a card back, a card dealt with unlanded needs, a hook-gate refusal, a
+server or store fault, and a landing refused for a conflict with another card's landing.
+Unknown is coordination until classed: never blame by default.
+
+A coordination end never counts against a worker: it never consumes an attempt toward the
+brief's bound (brief_bound.go, "a card has reached its bound: the brief is wrong, not the
+worker" counts worker ends only, so a card whose ends are all coordination is never judged a
+brief defect for them), and it is excluded from a fleet member's and a friend's ok% — the
+ok% is worker-ok over worker-ended attempts only. A coordination-failure counter accumulates
+each such end per epoch, total and by cause, and per member and friend who suffered it; it is
+shown in `where --all` and `stats`, as one line on the dashboard under the fleet and friends
+tables, and each new coordination end is pushed to the coordinator's hook (a coordinator
+fault is the seat's to fix).
+
 ## 2. The cards
 
 Layer 1 of the processor, the instruction set, is [SPEC-ISA.md](SPEC-ISA.md): a

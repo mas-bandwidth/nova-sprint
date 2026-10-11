@@ -52,6 +52,8 @@ refusals with reasons (`REFUSED`, on stderr), and the sprint's summary
 
 `where --json` carries `landedSeries`: cards landed per 10 minutes over the last 24 hours, 144 buckets, split `friends` and `fleet`. A landing is a work-table move to `<stream>:landed` from any state but waiting. A sentinel's release is not work. Each card counts once, the first landing. The worker is the last `<who>:ok` of the card's work attempt (`<card>.wN`): `friend.<name>` is a friend and anything else is a fleet machine. The lander is not the worker. `where -h` states it. The text frame does not carry the series. `dashboard` reads one `where --json` and the series is on that object, so the page does not loop the log. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), the `where` frame.
 
+`where --all` and `stats` carry the coordination-failure counter: `coordination` (per epoch, `total` and by `cause` — harness crash, limit, content-filter/key refusal, idle-reap, missing tool/jar, staging refused, taken back, unlanded needs, hook-gate, store fault, landing conflict — and per member/friend who suffered each), beside the fleet and friends tables. A fleet member's and a friend's `ok%` is worker-ok over worker-ended attempts only: coordination ends are excluded, and never consume an attempt toward the brief's bound. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), "A coordination failure is never the workers".
+
 ### Verbs
 
 ```
