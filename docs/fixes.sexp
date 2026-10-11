@@ -643,4 +643,4 @@
     with free width to launch a route of its tier (fleet up), a hold, or a sentinel, and the remedy verb
     (routes wake, funded, fleet up, release). Cards that share a cause are one alert, never one per card, and it
     clears itself the tick the card is dealt. The rule is tla/ProviderBudget.tla."
-   :origin "card a-card-ready-over-a-minute-pushes-the-seatb.w7")))
+   :origin "card a-card-ready-over-a-minute-pushes-the-seatb.w8")))

@@ -23,6 +23,7 @@
 \*   Rest      a route rests until paid, or until woken.
 \*   Wake      the coordinator wakes a route; a payment ends a paid rest.
 \*   Hold      the coordinator holds one ready card; Release undoes it.
+\*   Ready     the deal's resolve step: a card becomes ready to be dealt.
 \*   Deal      a card whose cause no longer holds is dealt: it leaves ready.
 \*   Raise     the tick opens each blocked ready card's (cause, tier)
 \*             judgment, once per cause, and closes a cause whose cards are
@@ -41,7 +42,11 @@ vars == <<enabled, rest, budget, held, ready, judged, event>>
 \* a route's why, as routeWhys names it
 Why == {"disabled", "paid", "woken", "out", "serves"}
 
-Causes == {"hold"} \cup [Routes -> Why]
+\* a cause is a function over the routes so TLC can compare causes of one type:
+\* a held card's cause maps every route to "hold"; a route-blocked card's maps
+\* each route to its why (routeWhys). "hold" is not a route why.
+CauseWhy == Why \cup {"hold"}
+Causes == [Routes -> CauseWhy]
 
 TypeOK ==
     /\ enabled \in [Routes -> BOOLEAN]
@@ -50,7 +55,7 @@ TypeOK ==
     /\ held \in SUBSET Cards
     /\ ready \in SUBSET Cards
     /\ judged \in SUBSET Causes
-    /\ event \in {"balance", "disable", "rest", "wake", "hold", "deal", "raise", "init"}
+    /\ event \in {"balance", "disable", "rest", "wake", "hold", "ready", "deal", "raise", "init"}
 
 Init ==
     /\ enabled = [r \in Routes |-> TRUE]
@@ -76,11 +81,15 @@ Serves == {r \in Routes : routeWhy(r) = "serves"}
 Blocked(c) == c \in held \/ Serves = {}
 
 \* the reason a ready card is not dealt (readyWhy): a hold, else the routes'
-\* whys (its tier has no serving route)
-Cause(c) == IF c \in held THEN "hold" ELSE [r \in Routes |-> routeWhy(r)]
+\* whys (its tier has no serving route). Both are functions over Routes so one
+\* cause is comparable to another: a held card's cause maps every route to
+\* "hold"; a route-blocked card's maps each route to its why.
+Cause(c) == IF c \in held
+            THEN [r \in Routes |-> "hold"]
+            ELSE [r \in Routes |-> routeWhy(r)]
 
 \* the causes of the cards blocked in ready
-BlockedCauses == {Cause(c) : c \in ready /\ Blocked(c)}
+BlockedCauses == {Cause(c) : c \in {x \in ready : Blocked(x)}}
 
 \* the poll reads a provider's budget: out (at or under zero) or ok; a balance
 \* never rests a route (balance.go, tla/RouteRest.tla)
@@ -123,6 +132,14 @@ Release(c) ==
     /\ event' = "hold"
     /\ UNCHANGED <<enabled, rest, budget, ready, judged>>
 
+\* the deal's resolve step: a card becomes ready to be dealt; it then waits,
+\* blocked (held or no serving route) until its cause no longer holds
+Ready(c) ==
+    /\ c \notin ready
+    /\ ready' = ready \cup {c}
+    /\ event' = "ready"
+    /\ UNCHANGED <<enabled, rest, budget, held, judged>>
+
 \* a card whose cause no longer holds is dealt: it leaves ready, and its
 \* cause's judgment clears when its last card is dealt
 Deal(c) ==
@@ -152,6 +169,7 @@ Next ==
     \/ \E r \in Routes : Wake(r)
     \/ \E c \in Cards : Hold(c)
     \/ \E c \in Cards : Release(c)
+    \/ \E c \in Cards : Ready(c)
     \/ \E c \in Cards : Deal(c)
     \/ Raise
 
@@ -164,16 +182,19 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Raise)
 OutOfBudget ==
     \A r \in Routes : routeWhy(r) = "out" <=> (enabled[r] /\ rest[r] = "none" /\ budget[r] = "out")
 
-\* every blocked ready card's cause is eventually judged: once per cause, and
-\* distinct causes of one tier are never merged away into one judgment
+\* every blocked ready card's cause is eventually judged, once per cause, and
+\* distinct causes of one tier are never merged away into one judgment. A card
+\* may stop being blocked (dealt or its routes serve again) instead of being
+\* judged: that discharges the obligation, so a silent tick and a merged tick
+\* each leave a still-blocked card unjudged and are caught.
 OnePerCause ==
-    \A c \in Cards : (c \in ready /\ Blocked(c)) ~> Cause(c) \in judged
-
-\* a cause with no blocked card left is eventually cleared, the tick its last
-\* card is dealt
-ClearsWhenDealt ==
     \A c \in Cards :
-        (Cause(c) \in judged /\ ~(\E d \in Cards : d \in ready /\ Blocked(d) /\ Cause(d) = Cause(c)))
-            ~> Cause(c) \notin judged
+        []( (c \in ready /\ Blocked(c)) => <>(Cause(c) \in judged \/ ~(c \in ready /\ Blocked(c))) )
+
+\* a judgment is open exactly for the causes that block ready cards the tick it
+\* is written: a cause with no blocked card left is gone that same tick, so a
+\* dealt card's judgment clears itself the tick the card is dealt. A stale tick
+\* keeps a dealt card's judgment open, and ClearsWhenDealt catches it.
+ClearsWhenDealt == []( (event = "raise") => (judged = BlockedCauses) )
 
 =============================================================================
