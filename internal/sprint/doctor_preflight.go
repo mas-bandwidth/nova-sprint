@@ -31,8 +31,64 @@ const (
 	CheckPreflightVersion = "version"
 	CheckPreflightSchema  = "schema"
 	CheckPreflightMembers = "members"
+	CheckPreflightMirrors = "mirrors"
 	CheckPreflightLinks   = "links"
 )
+
+// mirrorRemedy is the bench play that makes a member's local mirror of a repository: the
+// fleet play that keeps nova-bench/mirror/<name>.git on every bench (nova-tools fleet/,
+// the play that names nova-bench/mirror). Each repository the sprint's outstanding cards
+// land on must have one before a switch or adopt.
+func mirrorRemedy(member string) string {
+	return "make -C fleet mirror HOST=" + member
+}
+
+// PendingRepos is the distinct repositories the sprint's not-yet-landed work cards land
+// on, and those the streams record, as the name a member names its mirror: the last path
+// segment of the repository without .git or -mirror (pkg/swarm FindBenchMirror's name).
+// These are the repositories a bench must hold a mirror for before the next switch. A
+// card that has landed is left out.
+func PendingRepos(s *Snapshot) []string {
+	if s == nil || s.Work == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(v string) {
+		r := MirrorRepoName(v)
+		if r != "" && !seen[r] {
+			seen[r] = true
+			out = append(out, r)
+		}
+	}
+	for _, c := range s.Work.Cards() {
+		if c.Placed() && c.Col != Landed {
+			add(s.cardRepo(c))
+		}
+	}
+	for _, stream := range s.Work.Rows() {
+		if ctl := s.StreamCtl(stream); ctl != nil {
+			for _, r := range Split(ctl.F(FieldRepo)) {
+				add(r)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// MirrorRepoName is a repository as the name a member names its bench mirror: the last
+// path segment of an owner/name, URL or clone path, without .git or -mirror
+// (pkg/swarm FindBenchMirror's repoName). "" for no name.
+func MirrorRepoName(v string) string {
+	v = RepoName(v)
+	v = strings.TrimSuffix(v, ".git")
+	v = strings.TrimSuffix(v, "-mirror")
+	if i := strings.LastIndex(v, "/"); i >= 0 {
+		v = v[i+1:]
+	}
+	return v
+}
 
 // preflightLockedShapeMark is the mark a locked-shape refusal carries
 // (internal/sprint/store/locked_shape.go through cmd/nova-sprint/shadow.go): the
@@ -62,6 +118,10 @@ type PreflightInput struct {
 	// Members is each member host's probe and the facts the gate reads beside it, nil
 	// when the member check was not measured and its row says so.
 	Members []PreflightMember
+	// Repos is the repositories the sprint's not-yet-landed cards land on (PendingRepos):
+	// each member's probe holds a mirror of each or is one FAIL row. nil or empty is no
+	// repository to check and the mirrors check is one OK row.
+	Repos []string
 }
 
 // PreflightRouteKey is one enabled route a member launches and the secret name its provider
@@ -89,6 +149,12 @@ type PreflightMember struct {
 func DoctorPreflight(in PreflightInput) []DoctorCheck {
 	out := []DoctorCheck{preflightVersionRow(in), preflightSchemaRow(in)}
 	out = append(out, preflightMemberRows(in)...)
+	if in.Members != nil {
+		out = append(out, preflightMirrorRows(in)...)
+	} else {
+		out = append(out, DoctorCheck{Area: AreaPreflight, Check: CheckPreflightMirrors, Subject: "-", Status: DoctorWarn,
+			Evidence: "not measured by this build: the member probe was not run", Remedy: "-"})
+	}
 	for _, later := range preflightLaterChecks {
 		if later.check == CheckPreflightLinks && in.Probes != nil {
 			out = append(out, preflightLinkRows(in.Probes)...)
@@ -96,6 +162,38 @@ func DoctorPreflight(in PreflightInput) []DoctorCheck {
 		}
 		out = append(out, DoctorCheck{Area: AreaPreflight, Check: later.check, Subject: "-", Status: DoctorWarn,
 			Evidence: "not measured by this build: " + later.card, Remedy: "-"})
+	}
+	return out
+}
+
+// preflightMirrorRows is the mirrors check as a gate (docs/SPEC-SPRINT.md, doctor: the
+// preflight): for every repository the sprint's not-yet-landed cards land on
+// (PendingRepos), a member whose probe found no bench mirror for it is one FAIL row
+// (area preflight, check mirrors, subject <member>/<repo>), so a switch or adopt is
+// refused while a bench that will be dealt those cards cannot stage them. A member the
+// probe did not reach or that a cut probe did not measure is left to the member check's
+// own WARN, never read as every mirror missing; a set with every mirror in place is one
+// OK row. The card is doctor-preflight-checks-bench-mirrors.
+func preflightMirrorRows(in PreflightInput) []DoctorCheck {
+	repos := append([]string{}, in.Repos...)
+	sort.Strings(repos)
+	var out []DoctorCheck
+	for _, m := range in.Members {
+		p := m.Probe
+		if !p.Reached || !p.Complete {
+			continue
+		}
+		subject := cmp.Or(p.Member, p.Host, "-")
+		for _, repo := range repos {
+			if p.Mirrors[repo] == "" {
+				out = append(out, DoctorCheck{Area: AreaPreflight, Check: CheckPreflightMirrors, Subject: subject + "/" + repo, Status: DoctorFail,
+					Evidence: "no bench mirror for " + repo + " on " + subject + ": a card of that repository cannot be staged there",
+					Remedy:   mirrorRemedy(subject)})
+			}
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, okCheck(AreaPreflight, CheckPreflightMirrors, "all", "every member holds a bench mirror for every repository the outstanding cards land on"))
 	}
 	return out
 }
@@ -162,11 +260,10 @@ func preflightSchemaRow(in PreflightInput) DoctorCheck {
 }
 
 // preflightLaterChecks is the release gate's later checks, one row each saying this
-// build does not measure it, until the card that measures it fills the check in:
-// mirrors, links and stable. One table, so --preflight's output always says what it
-// did not check.
+// build does not measure it, until the card that measures it fills the check in: links
+// and stable. Mirrors is measured (preflightMirrorRows). One table, so --preflight's
+// output always says what it did not check.
 var preflightLaterChecks = []struct{ check, card string }{
-	{"mirrors", "doctor-preflight-checks-bench-mirrors"},
 	{"links", "doctor-names-a-member-whose-link-flapped"},
 	{"stable", "doctor-stable-checks-the-stable-pair"},
 }

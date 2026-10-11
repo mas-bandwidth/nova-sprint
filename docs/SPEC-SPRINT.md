@@ -5969,9 +5969,15 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   each missing column and the exact nova-table commands that mend it, and whose remedy is to run
   those commands on a STOPPED machine, or the adopt's schema step; any other shadow failure is a
   FAIL row with its text, and a shadow that passes is one OK row naming the candidate's version.
-  The gate's later checks (mirrors, links and stable) are WARN rows saying "not measured by
+  The gate's later checks (links and stable) are WARN rows saying "not measured by
   this build" until their cards land, from one table each later card fills in, so a preflight
-  always says what it did not check. The member check is filled in when the preflight read the
+  always says what it did not check. The mirrors check is filled in when the preflight read the
+  members' probes and the sprint's outstanding cards: for every repository the not-yet-landed
+  cards land on (PendingRepos, the name a member names its mirror) a member whose probe found no
+  bench mirror for it is one FAIL row (area preflight, check mirrors, subject <member>/<repo>),
+  whose remedy is the fleet play that makes the mirror, so a switch or adopt is refused while a
+  bench that will be dealt those cards cannot stage them; without --preflight the same fact is
+  one WARN per member in member-env. The member check is filled in when the preflight read the
   members' probes and the sprint's facts beside them (area preflight, check members, its subject
   the member): FAIL for a MemberTools tool or a harness its enabled routes launch the loop's PATH
   does not find, a push credential that does not authenticate, a secrets seat that does not open,
