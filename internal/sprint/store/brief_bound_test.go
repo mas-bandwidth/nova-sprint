@@ -88,9 +88,10 @@ func TestReworkReworksACardWhoseLastTwoFindingsMatch(t *testing.T) {
 }
 
 // The judgment raised for a card at the brief's bound on repeated failed work names the brief,
-// not the worker: the two matching reports and their attempts, and its decisions are brief and
-// drop, never rework. A broken finding at the bound is reworked, never left, so the bound itself
-// is shown on failed work.
+// not the worker: the two matching reports and their attempts, and its decisions are rework
+// --carry first (each card keeps its brief and starts from its last pushed head), then brief and
+// drop, never a plain rework. A broken finding at the bound is reworked, never left, so the bound
+// itself is shown on failed work.
 func TestTheBoundJudgmentNamesTheBriefNotTheWorker(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"))
@@ -107,13 +108,16 @@ func TestTheBoundJudgmentNamesTheBriefNotTheWorker(t *testing.T) {
 	assert.Equal(t, "a card has reached its bound: the brief is wrong, not the worker", n.Type)
 	assert.Contains(t, n.What, "the brief is wrong, not the worker")
 	assert.Contains(t, n.What, "findings: attempt 1: r; attempt 2: r")
-	assert.Equal(t, []string{"brief", "drop"}, n.Decisions)
-	for _, c := range h.commandsOf(sprint.NBriefWrong) {
-		for _, l := range c.Lines {
-			assert.NotContains(t, l, "rework", "the inbox prints no rework for it: %s", l)
+	assert.Equal(t, []string{sprint.DecisionReworkCarry, "brief", "drop"}, n.Decisions)
+	cmds := h.commandsOf(sprint.NBriefWrong)
+	require.NotEmpty(t, cmds)
+	assert.Equal(t, sprint.DecisionReworkCarry, cmds[0].Decision, "the carry line prints first")
+	assert.Contains(t, cmds[0].Lines[0], "--carry", "the first command carries the card from its last head: %v", cmds[0].Lines)
+	for _, c := range cmds {
+		assert.Contains(t, []string{sprint.DecisionReworkCarry, "brief", "drop"}, c.Decision)
+		if c.Decision == "brief" {
+			assert.True(t, strings.HasPrefix(c.Lines[0], "nova-sprint brief s1-1 --brief-file"), c.Lines)
 		}
-		assert.Contains(t, []string{"brief", "drop"}, c.Decision)
 	}
-	assert.True(t, strings.HasPrefix(h.commandsOf(sprint.NBriefWrong)[0].Lines[0], "nova-sprint brief s1-1 --brief-file"), h.commandsOf(sprint.NBriefWrong)[0].Lines)
 	h.clean("the brief's bound judged")
 }

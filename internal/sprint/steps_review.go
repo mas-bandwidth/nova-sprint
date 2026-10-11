@@ -1252,6 +1252,12 @@ type ReworkReq struct {
 	// Tier, when set, is the tier every later deal of the card draws its route from
 	// (route.go, cardTier): written on the primary as FieldTier, over its brief's line 1.
 	Tier string `json:",omitempty"`
+	// Carry, when set, answers a bound judgment or a coordination brief-defect judgment:
+	// each selected card keeps its brief, its latest pushed head is written as its CARRY:
+	// line (PathsWidened's form, as --widen writes it), Fix is its next attempt's fix, its
+	// bound is reset, and its next attempt is opened staged from that head (reworkCarried).
+	// A card none of whose attempts pushed a head refuses the whole step, by name.
+	Carry bool `json:",omitempty"`
 	// PerCard is each card's own fix, tier and fields, over Fix and Tier: the tick's rule
 	// answers rework many cards in one step, each its own way (rules.go). A card that names
 	// a Rule records every judgment the rework closes on it as answered by that rule.
@@ -1285,6 +1291,12 @@ var ReworkResolves = []string{NWorkFailed, NReportJudgment, NReadBroken, NBriefW
 // state (reworkWhy), as brief is (briefStarted).
 func Rework(s *Snapshot, r ReworkReq) Plan {
 	s, _ = s.withRests() // the resting routes, read once (rule 3, route_rest.go)
+	if r.Carry {
+		// --carry answers a bound judgment or a coordination brief-defect judgment: it edits
+		// each card's own brief (Brief, in place, no twin) with its latest pushed head and opens
+		// its next attempt from there, rather than dealing the same brief again (rework_carry.go).
+		return reworkCarried(s, r)
+	}
 	var p Plan
 	// a primary in review, or one at its redeal bound (ready, its work card
 	// withdrawn and dealt no more): rework is its next attempt

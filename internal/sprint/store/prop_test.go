@@ -757,6 +757,12 @@ func (r *propRun) decide(v InboxView, g sprint.Group, choice int, progress bool)
 		resume("dropped the batch")
 	case d == "rework with the finding" || d == "rework with a fix" && g.Type == sprint.NWorkFailed:
 		rework(members, "", notes)
+	case d == sprint.DecisionReworkCarry:
+		// a card at its bound (brief_bound.go, rework_carry.go): each card keeps its brief,
+		// its latest pushed head is its carry and its next attempt starts from it; a card
+		// with no pushed head refuses and the random coordinator moves on
+		r.run("nova-sprint rework "+strings.Join(members, " ")+" --carry --fix 'fix' --answers "+strings.Join(notes, ","),
+			ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: members}, Fix: "fix", Carry: true, Answers: notes, Who: "coord"}))
 	case d == "rework with a fix" || d == "rework":
 		rework(members, "fix", notes)
 	case d == sprint.ReworkOnAHigherTier:

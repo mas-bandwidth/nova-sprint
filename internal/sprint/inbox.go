@@ -531,6 +531,10 @@ func commands(g Group, first Note, prefix string) []Command {
 			add(d, cmd+"rework"+subj+subjAns) // each takes its own finding or report
 		case d == ReworkOnAHigherTier:
 			add(d, cmd+"rework"+subj+" --fix "+fixText+" --tier '<a higher tier>'"+subjAns)
+		case d == DecisionReworkCarry:
+			// a card at its bound (brief_bound.go, rework_carry.go): each card keeps its brief,
+			// its latest pushed head is its carry and its next attempt starts from it
+			add(d, cmd+"rework"+grp+" --carry --fix "+fixText+ans)
 		case d == "rework with a fix" || d == "rework":
 			add(d, cmd+"rework"+subj+" --fix "+fixText+subjAns)
 		case d == "ask":
