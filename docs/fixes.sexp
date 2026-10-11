@@ -325,6 +325,12 @@
      named in the disposition and treat commit id as untrusted."
     :origin "issue #2037")
 
+   (fix "log-since-wide-window" :release "v1.2.9" :status "planned"
+    :title "Fix log --since for windows wider than 22 hours"
+    :text "A wide --since window returns nothing; pin the window and return every event in it. Did not
+     reproduce at 6f3323a6c83f9e7b340bf477886862c39001315e."
+    :origin "card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)")
+
    (fix "bound-judgment-names-its-remedy" :release "v1.2.6" :status "shipped"
     :title "A bound judgment names the exact command that answers it"
     :text "A card at its redeal bound says which tier above to rework on and the drop command whole, and a
