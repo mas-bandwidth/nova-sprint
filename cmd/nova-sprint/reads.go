@@ -304,6 +304,15 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 	if *col != "" && (*col != sprint.Waiting || *stream == "") {
 		return refuse(stderr, "queue", "--col takes waiting, with --stream <s>")
 	}
+	if *as != "" {
+		// queue --as is a worker's verb (coordinator.go): its actor is the reader or
+		// member it names, as take's is, whatever --actor says (a reader's queue is its
+		// beat, so the record names it)
+		c.orActor(*as)
+	} else {
+		// queue --stream is a read: it writes nothing and needs no actor
+		c.read = true
+	}
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, "queue", err.Error())

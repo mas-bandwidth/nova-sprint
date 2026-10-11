@@ -250,6 +250,15 @@ func LiveHeldAt(b Beat, id string, gen int, now time.Time) bool {
 	return ok && e.Held && e.Gen == max(gen, 1)
 }
 
+// LiveNamesAt says the row's fresh live set names the card at gen, running or held: its
+// worker still has it (a child runs it, or its report waits in the outbox), so the beat does
+// not show the job gone (Store.settleStopDebtByBeat: a machine's beat that carries a live set
+// names its jobs as a friend's does; tla/StopReturn.tla SettleByBeat, d.id \notin beat).
+func LiveNamesAt(b Beat, id string, gen int, now time.Time) bool {
+	e, ok := liveOf(b, now).now[id]
+	return ok && e.Gen == max(gen, 1)
+}
+
 // LiveReturnVerb is the reconcile's step verb: the one writer's own return, which a STOP
 // debt does not refuse (it is the owner's receipt, read off its beats).
 const LiveReturnVerb = "live return"
