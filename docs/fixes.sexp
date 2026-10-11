@@ -66,7 +66,21 @@
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator."))
  :items
-  ((fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
+  ((fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
+    :title "The SeatProof model of the deleted push proof is retired"
+    :text "tla/SeatProof.tla modelled the push proof (its header names PushPong, PushLive, PushWhy,
+     renewSeatProof and a pushGate) with its instance MCSeatProof.tla and three configurations; none of
+     that code exists: the PROOF files and the seat pong are gone (internal/sprint/pushproof.go:7-11,
+     cmd/nova-sprint/pushproof.go:9-14), the old verbs are gone (cmd/nova-sprint/hook_test.go:221-228),
+     and the hook replaced the push proof (docs/SPEC-SPRINT.md:6311), modelled by SeatHook.tla. The only
+     pushGate left is a different one, a concurrency limit on pushes (pkg/member/member.go:531-536). No Go
+     file cites SeatProof and it has no COVERAGE row. The module, its instance and the three configurations
+     are deleted, and their three CASES.tsv rows (MCSeatProof, MCSeatProofBrokenNoRenew,
+     MCSeatProofBrokenRenewDest) and three hand-written RUNS.tsv rows (started_utc ending .000000, seconds
+     \"-\") are removed, and nothing else in either file. SeatProof (the push proof) was retired in v1.2.12:
+     the hook replaced it; SeatHook.tla is its model."
+    :origin "this card, tla-retire-seatproof.w1, 2026-10-11: v1.2.12 inventory item T1 (\"SeatProof models deleted code\"); drift read at nova-sprint main 00c54ba2e")
+   (fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
     :title "The store package's own tests pin stats tidy and stats reset"
     :text "Tests only, no product change. New tests in internal/sprint/store drive TidyStats and ResetStats through the unit tier's Mem store and assert on their results, on what StatsTidied and StatsReset read back, and on whether the store changed: a dry run counts and writes nothing; a fleet tidy moves history off the done cells and records the archive done; a second tidy within TidyAgainAfter is refused; a fresh tidy marker refuses a tidy or a reset while a stale one is taken as ended; routes alone moves nothing and streams clears the where record; a refused move keeps its archive failed and clears the marker; a reset writes its mark and clears the where record; operation ids replay, conflict and are refused by shape; a compare-and-set that keeps losing errors after its tries; and a tidy's kinds and archives are kept across a reset."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C5")
