@@ -935,6 +935,11 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "fn-view-after-a-clear-draws-no-old-stream" :release "v1.2.12" :status "planned"
+   :title "The view after a clear draws no old stream"
+   :text "TestTheViewAfterAClearDrawsNoOldStream (cmd/nova-sprint/view_hide_functional_test.go) pins the blank-slate clear (docs/SPEC-SPRINT.md section 13): after init, an add of the streams a, b and c, and a clear, the view still draws the work, readers, merge and fleet tables with the fleet member m1 carried over, and draws no old stream row; add admits a card on every form, so it cannot open a stream with no cards, and after add --stream b the view draws b and neither a nor c. The old test expected the three stream rows kept at zero, an expectation from before the clear became a blank slate."
+   :origin "this card")
+
   (fix "cover-idle-trace-and-the-bound-rule" :release "v1.2.12" :status "planned"
    :title "Cover the idle trace and the bound rule in their own package"
    :text "internal/sprint's own tests never ran the idle alarm's words (TraceIdle, idle.go:90) or
