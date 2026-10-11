@@ -823,6 +823,19 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "nova-sprint-ci-runs-tlc-on-hosted-runners" :release "v1.2.12" :status "planned"
+   :title "TLC runs on GitHub-hosted runners"
+   :text "A nightly, dispatchable and pull-request workflow (.github/workflows/tlc.yml) runs the
+    TLC cases on GitHub-hosted ubuntu-latest runners, never the fleet's own: a public repository
+    may not use those. A groups job runs make tlc-test and picks the groups -- every required
+    group on a schedule or dispatch, only the stale groups on a pull request that touches tla/,
+    pkg/tlc/ or tools/tlacheck/, an empty list a green workflow; a models job runs each group
+    under a 110 s budget against the tlaplus release pinned by tla/tla2tools.sha256 (TLA+ Tools
+    2.0 2024-08-08), its JDK 21 from the runner image, and uploads each run directory.
+    internal/ci/tlc_workflow_test.go pins it: ubuntu-latest only, a five-minute job wall, the jar
+    checked before make tlc, and TLC_BUDGET=110."
+   :origin "v1.2.12 inventory item T30 and note 3; the coordinator, 2026-10-11: nova-sprint is a public repository, so this runs on GitHub-hosted runners")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
