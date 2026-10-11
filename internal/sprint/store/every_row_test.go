@@ -28,7 +28,7 @@ func fleetOf(t *testing.T, n, width int) (*harness, []string) {
 	h.setLive(ms...)
 	h.beat()
 	for _, m := range ms {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: m, Width: width}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: width}))
 	}
 	return h, ms
 }

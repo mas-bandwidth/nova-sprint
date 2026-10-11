@@ -38,11 +38,11 @@ func TestTheLogHoldsEveryMoveAndReplaysToTheTables(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.live = []string{"m1", "m2"}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"p1"}, Brief: "do the thing"}))
 	h.startMachine()
 	h.machine() // p1 dealt to m1
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	h.live = []string{"m2"} // m1 silent: its card is taken back and redealt
 	for i := 0; i < 3; i++ {
 		h.tick(pastDown / 3)
@@ -138,7 +138,7 @@ func TestALatenessStaysRaisedUntilItsAttemptEnds(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.live = []string{"m1"}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1}))
 	h.startMachine()
 	h.machine()
@@ -211,8 +211,8 @@ func TestTheRedealBoundEndsTheTakeAndAbandonLoop(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.live = []string{"m1", "m2"}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1}))
 	h.startMachine()
 	h.machine()
@@ -309,7 +309,7 @@ func TestSentinelsInsertedIntoALongStreamAreBoundedRecords(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.m.MaxWrite = 4 << 20
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1000}))
 	for k := 1; k <= 9; k++ {
 		gate := fmt.Sprintf("s1-gate-%d", k)

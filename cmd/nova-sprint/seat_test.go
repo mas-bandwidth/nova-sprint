@@ -179,7 +179,8 @@ func TestATakeWithoutTheOwnersNameIsRefused(t *testing.T) {
 	assert.Equal(t, "rowan", ta2.holder())
 }
 
-// handover prints what the next seat needs, from the store, in one screen.
+// handover prints the store view, then the coordinator's numbered rules, one
+// line each.
 func TestHandoverPrintsWhatTheNextSeatNeeds(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -202,7 +203,7 @@ func TestHandoverPrintsWhatTheNextSeatNeeds(t *testing.T) {
 		"MEMBER m2 held by coordinator\n",
 		"DECISION ",
 		" hold member m2 by coordinator: --return: its work begun is handed back now\n",
-		"RULE Cards are admitted and released in waves of at least the fleet's width: add takes a directory, release names a wave, rework and drop answer a group; a single-card verb outside a judgment is the sign of doing it wrong.\n",
+		"RULE R1. A friend is working only when its cards go from working to done; awake is not working.\n",
 		"FIRST nova-sprint where\n",
 		"FIRST nova-sprint inbox --wait --push seat\n",
 		"FIRST read docs/SPEC-SPRINT.md, \"Handing over the seat\"\n",
@@ -212,7 +213,7 @@ func TestHandoverPrintsWhatTheNextSeatNeeds(t *testing.T) {
 		assert.Contains(t, out, want, out)
 	}
 	assert.Contains(t, out, "ROUTES ", "the routes line is there, disabled or none:\n%s", out)
-	assert.Less(t, strings.Count(out, "\n"), 60, "one screen:\n%s", out)
+	assert.Equal(t, len(coordinatorRules), strings.Count(out, "\nRULE R"), "every rule of section 10, by number:\n%s", out)
 
 	var h struct {
 		Seat      struct{ Holder string } `json:"seat"`

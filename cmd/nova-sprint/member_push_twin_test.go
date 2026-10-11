@@ -128,17 +128,22 @@ func TestTheMembersPushIsWhatTheLandingReads(t *testing.T) {
 	assert.Contains(t, first, "branch "+branch)
 }
 
-// A push the member could not make is a failed finish through the server: the card
-// is in review as failed, with git's line first in its report, never done.
-func TestARefusedPushIsAFailedCard(t *testing.T) {
+// A push the member could not make for the environment's own reason (no credential) is an
+// environment fault, not failed work: the card is back in ready untouched, its member is
+// held and one judgment names the remedy, git's line first in its report. A push refused
+// for the branch's reason stays failed work (internal/sprint/env_fault_test.go,
+// tla/ProviderBudget.tla).
+func TestARefusedPushForNoCredentialIsAnEnvironmentFault(t *testing.T) {
 	t.Parallel()
 	line := "fatal: could not read Username for the origin: terminal prompts disabled"
 	r, _, out := twinMemberFlow(t, &twinPusher{push: member.Push{Refused: line}})
 	assert.Contains(t, out, "NOTE push s1-1.w1 refused: "+line)
 	assert.Contains(t, out, "finish s1-1.w1 ok=false exit=0")
 	story := r.boss("nova-sprint card s1-1")
-	assert.Contains(t, story, "push refused: "+line+"; did the work")
-	assert.True(t, strings.Contains(story, "failed"), "the card's story says it failed:\n%s", story)
+	assert.Contains(t, story, "the member's environment faulted (push)")
+	assert.Contains(t, story, "push refused: "+line+"; did the work", "git's line is kept in the report")
+	assert.Contains(t, story, "run the fleet push-credential play with --limit m1")
+	assert.NotContains(t, story, "work came back failed", "the card is not failed work")
 }
 
 // A child that committed nothing is a failed card through the server: the finish

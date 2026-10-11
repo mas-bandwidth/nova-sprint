@@ -54,7 +54,7 @@ func TestTheLandLoopBeatsAndRaisesAStuckLanding(t *testing.T) {
 	r.queued(heads, "s1-1")
 
 	r.ok("fleet beat vision --load 1 --cores 8")
-	r.ok("fleet up vision")
+	r.ok("fleet up vision --probe passed")
 	var w whereView
 	r.json("where", &w)
 	for name, row := range w.Tables["fleet"] {
@@ -282,7 +282,7 @@ func TestTheLandLoopRefusesWhenTheBenchDoesNotAnswer(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "go"), []byte("#!/bin/sh\nprintf ran > \"$GATE_MARKER\"\nexit 1\n"), 0o755))
 	r.a.gitEnv = append(r.env, "PATH="+bin+":"+os.Getenv("PATH"), "GATE_MARKER="+marker, "GOCACHE="+t.TempDir())
 	r.ok("fleet beat vision --load 1 --cores 8")
-	r.ok("fleet up vision")
+	r.ok("fleet up vision --probe passed")
 	var w whereView
 	r.json("where", &w)
 	for name, row := range w.Tables["fleet"] {
@@ -364,7 +364,7 @@ func TestUnavailableBenchLeavesTheBaseGateRetryOpen(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	}
 	r.ok("fleet beat vision --load 1 --cores 8")
-	r.ok("fleet up vision")
+	r.ok("fleet up vision --probe passed")
 	var w whereView
 	r.json("where", &w)
 	for name, row := range w.Tables["fleet"] {
@@ -425,7 +425,7 @@ func TestCanceledCureGateDoesNotRememberTheHeadAsRed(t *testing.T) {
 	r.git(r.clone, "switch", "-q", "--no-track", "--force-create", "land/s1", "refs/remotes/origin/main")
 	baseSha := r.git(r.clone, "rev-parse", "HEAD")
 	r.ok("fleet beat vision --load 1 --cores 8")
-	r.ok("fleet up vision")
+	r.ok("fleet up vision --probe passed")
 	var w whereView
 	r.json("where", &w)
 	for name, row := range w.Tables["fleet"] {

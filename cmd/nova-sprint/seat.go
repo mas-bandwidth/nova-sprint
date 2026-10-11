@@ -26,8 +26,8 @@ import (
 // The coordinator's seat (docs/SPEC-SPRINT.md, "Handing over the seat"; the owner,
 // 2026-10-02: "We need to make handover MORE SMOOTH."; nova-tools#5096 item 28).
 // coordinator <name> gives the seat (its holder, or the owner) or takes it (the
-// one taking it, --take --approved-by <owner>); handover prints what the next
-// seat needs, from the store, in one screen; inbox --wait --push seat writes to
+// one taking it, --take --approved-by <owner>); handover prints the store view,
+// then the coordinator's numbered rules, one line each; inbox --wait --push seat writes to
 // the holder's inbox, and follows the seat.
 
 // OwnerEnv names the sprint's owner when init named none: the name a take
@@ -311,7 +311,7 @@ func (a *app) handover(ctx context.Context, st *store.Store) (handoverView, stri
 			h.Members = append(h.Members, memberView{Member: m, Status: status})
 		}
 	}
-	h.Rules = []string{handoverWaves}
+	h.Rules = handoverRules()
 	h.First = []string{"nova-sprint where", "nova-sprint inbox --wait --push " + pushSeat, `read docs/SPEC-SPRINT.md, "Handing over the seat"`}
 	return h, a.handoverText(h), nil
 }
@@ -352,12 +352,8 @@ func decisionOf(l sprint.Line) (decisionView, bool) {
 	return decisionView{At: l.At, Verb: l.Verb, What: what, By: l.Actor, Reason: reason}, true
 }
 
-// handoverWaves is the first rule of the seat (the owner, 2026-10-03: "BATCH EVERYTHING"):
-// the verbs refuse singles (add --one, rework and drop --one) and the tick raises "the fleet
-// is starving" under twice the width.
-const handoverWaves = "Cards are admitted and released in waves of at least the fleet's width: add takes a directory, release names a wave, rework and drop answer a group; a single-card verb outside a judgment is the sign of doing it wrong."
-
-// handoverText is the handover in lines a person reads in one screen.
+// handoverText is the handover: the store view, then the coordinator's numbered
+// rules, one line each.
 func (a *app) handoverText(h handoverView) string {
 	var b strings.Builder
 	line := func(format string, args ...any) { fmt.Fprintln(&b, oneline.Escape(fmt.Sprintf(format, args...))) }

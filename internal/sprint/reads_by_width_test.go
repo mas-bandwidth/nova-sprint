@@ -19,8 +19,8 @@ import (
 func widthWorld(t *testing.T, w1, w2, primaries int) *world {
 	t.Helper()
 	w := newWorld(t, "reader-m1", "reader-m2")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: w1}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: w2}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: w1}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: w2}))
 	w.s.Work.SetRows(append(w.s.Work.Rows(), "s1"))
 	w.s.ReaderStates = map[string]string{"reader-m1": ReaderUp, "reader-m2": ReaderUp}
 	for i := 1; i <= primaries; i++ {
@@ -99,7 +99,7 @@ func TestTheLevelMovesReadsOffAReaderOverItsWidth(t *testing.T) {
 	w := widthWorld(t, 8, 4, 8)
 	w.part(TickAsk, TickReq{})
 	require.Equal(t, 8, w.s.readerLoad("reader-m1")+w.s.readerLoad("reader-m2"))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 1}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 1}))
 	w.part(TickLevelReads, TickReq{})
 	assert.Equal(t, 4, w.s.readerLoad("reader-m2"), "m2 is filled to its width and no further")
 	assert.Equal(t, 4, w.s.readerLoad("reader-m1"), "the rest stay: no reader has room")

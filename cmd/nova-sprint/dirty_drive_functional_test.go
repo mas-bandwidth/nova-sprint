@@ -59,8 +59,8 @@ const (
 	// where the drive runs against a bench's store (GateStoreEnv).
 	MaxTickWall = time.Second
 	// GateStoreEnv, set to 1, says the drive runs against a real store on a
-	// bench, and the wall-clock bound is asserted: the certification tier
-	// sets it (.github/workflows/certification.yml, tick-gate). Everywhere
+	// bench, and the wall-clock bound is asserted: the tick-gate job
+	// sets it (.github/workflows/ci.yml, tick-gate). Everywhere
 	// else the bound is printed, not asserted: the functional container is
 	// not the store, its two CPUs shared by the redis-server, the loop and the
 	// world driver playing every 10 ms, whose operations hold the fence the
