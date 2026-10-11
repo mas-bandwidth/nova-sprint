@@ -528,8 +528,9 @@ const NoReaderMayRead = "no reader up may read it"
 // different unit that may read it (mayReadCard) with half a slot free, the cheapest first:
 // a unit with an idle lane before every unit with none (a read waits in a ready queue only
 // when every reader that may take it is busy), then by tier distance (readTierDistance: the
-// read's own tier, one tier below, then the tiers above, nearest first), then the most idle
-// lanes, then the most room, then by name; friends and members alike. waits is why
+// read's own tier, one tier below, then the tiers above, nearest first), then the persisted
+// ring cursor (read_deal_index_<tier>, docs/SPEC-SPRINT.md section 1, the read-card deal), a
+// full or ineligible reader skipped; friends and members alike. waits is why
 // each primary that wants more reads than it was dealt waits. With ri nil the reads draw
 // no route (the deal's dry run: what the reads would take).
 func readCardsAsk(s *Snapshot, seats []FriendSeat, ri routeIndexes) (p Plan, waits map[string]string) {
