@@ -169,6 +169,7 @@ func (st *Store) keepArchive(ctx context.Context, running bool) (ArchiveResult, 
 		return res, err
 	}
 	kept := slices.Clone(rec.Kept)
+	var candidates []string
 	for _, r := range work.Rows {
 		landed, open := 0, 0
 		for k, c := range work.Columns {
@@ -190,7 +191,21 @@ func (st *Store) keepArchive(ctx context.Context, running bool) (ArchiveResult, 
 			}
 		case !running || r.Hidden || landed == 0 || slices.Contains(kept, r.Key):
 		default:
-			res.Archived = append(res.Archived, r.Key)
+			candidates = append(candidates, r.Key)
+		}
+	}
+	// A stream holding a sentinel is never archived by the tick: a sentinel is a
+	// stop the coordinator releases, not work, so releasing one never takes its
+	// stream off the table (docs/SPEC-SPRINT.md section 16; the owner, 2026-10-11:
+	// archiving is a manual request only). The stream leaves only on an explicit
+	// stream archive.
+	for _, key := range candidates {
+		stop, err := st.streamHasSentinel(ctx, key)
+		if err != nil {
+			return res, err
+		}
+		if !stop {
+			res.Archived = append(res.Archived, key)
 		}
 	}
 	if !slices.Equal(kept, rec.Kept) {
@@ -222,6 +237,22 @@ func (st *Store) keepArchive(ctx context.Context, running bool) (ArchiveResult, 
 		return sprint.Plan{Notes: notes}
 	}})
 	return res, err
+}
+
+// streamHasSentinel says the stream's row holds a sentinel among its landed
+// cards. The tick archives no stream that holds one: a released sentinel is not
+// work, so its release leaves the stream drawn (keepArchive).
+func (st *Store) streamHasSentinel(ctx context.Context, stream string) (bool, error) {
+	cards, err := st.ReadCells(ctx, sprint.Work, stream, sprint.Landed)
+	if err != nil {
+		return false, err
+	}
+	for _, c := range cards {
+		if sprint.IsSentinel(c) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // cellCount is the count cell of the row's column, 0 when the table has none.

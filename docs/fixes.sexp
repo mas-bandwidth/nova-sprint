@@ -684,4 +684,19 @@
     cleared, and on a new member runs its own probe before accepting width (init bootstraps by passing
     the probe). Modeled by tla/ProviderBudget.tla."
    :origin "sprint card a-member-environment-fault-holds-it-and-pushes-the-seat; the owner, 2026-10-11Z:
-    the failure here is not noticing this until now; attempts 3 and 5")))
+    the failure here is not noticing this until now; attempts 3 and 5")
+  (fix "sentinels-are-not-work-in-eta-or-throughput" :release "v1.2.6" :status "shipped"
+   :title "A sentinel is not work: it leaves the ETA, the landing rate and the summary counts"
+   :text "A sentinel (sprint.IsSentinel) is a stop the coordinator releases, not work, so the sprint
+    line's x/y and percent, where --json's landed and all (and archived_cards and archived_landed), the
+    ETA, its five-landed floor and the landing rate count work cards only, across the epoch's streams on
+    the table and archived, and never a sentinel's released stamp (docs/SPEC-SPRINT.md sections 1 and
+    16). The work table's cells still count sentinels. The where record carries each stream's sentinels,
+    all and landed, counted from the cards the tick already reads, so where reads no card for them;
+    sprintLine agrees with where. Releasing a sentinel never archives its stream: the tick's archive part
+    leaves a stream holding a sentinel drawn, and a stream is archived only by an explicit stream
+    archive. The Go dashboard port (branch dashboard-is-the-live-page) must carry the same exclusion in
+    its /api/sprint."
+   :origin "the owner, 2026-10-11 ~03:55Z: sentinel cards should not be counted when estimating time
+    remaining or cards per hour; the seat, ~04:00Z: releasing cut sentinels made the tick archive their
+    streams")))
