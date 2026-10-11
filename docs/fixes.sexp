@@ -479,6 +479,21 @@
      tick writes nothing. Use one property for all."
     :origin "issue #5210")
 
+   (fix "doctor-preflight-checks-the-store-schema" :release "v1.2.11" :status "planned"
+    :title "Doctor's preflight gate checks the store's schema before a switch or adopt"
+    :text "New `doctor --preflight <candidate build>` frame, the release gate's first check, run before
+     any server switch or adopt: it runs the candidate's `version` and its `tick --shadow --json`
+     against the store this doctor reads (runShadow, read-only), and holds the store's tables against
+     the candidate's TABLES.lock. A locked-shape refusal is one FAIL row (area preflight, check schema,
+     subject the candidate's version) whose evidence is the shadow's own error text whole, naming each
+     missing column and the exact nova-table commands that mend it, and whose remedy is to run those
+     commands on a STOPPED machine, or the adopt's schema step; any other shadow failure is a FAIL row
+     with its text, and a shadow that passes is one OK row naming the candidate's version. The gate's
+     later checks (members, mirrors, links, stable) are WARN rows saying \"not measured by this build\"
+     until their cards land, from one table each fills in. The rows are built by a pure function over
+     the facts read (internal/sprint/doctor_preflight.go); exit 1 on any FAIL, as doctor does."
+    :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 20")
+
    (fix "server-refuses-to-run-on-a-store-missing-locked-columns" :release "v1.2.11" :status "planned"
     :title "The server and its shadow refuse a store missing the locked columns"
     :text "The live store's fleet table never got finished and redealt (internal/sprint/TABLES.lock, the
@@ -927,6 +942,23 @@
     expectation, and compares tables and landed as before. No product or dashboard change."
    :origin "this card")
 
+  (fix "cover-deal-plan-refusals-and-redeals" :release "v1.2.12" :status "planned"
+   :title "In-package behaviour tests for the deal's plan, refusals and redeals"
+   :text "Deal (internal/sprint/steps_work.go:954; its doc comment is the contract) gets tests in
+    internal/sprint/deal_plan_behaviour_test.go driving Deal and asserting on the plan's units and each
+    refusal's text: the fleet's work off refuses every chosen card with \"run: nova-sprint set --fleet on\";
+    every up member env-held refuses \"no fleet member is up\"; a BENCH card whose bench is down or at its
+    room is refused with the bench's words; one member quiet and the other at its room refuses with the
+    room words then \"; quiet: <m> until <t>\"; a withdrawn card is redealt at generation+1 with its attempt
+    unchanged, never to a member StagingRefusers names; a withdrawn card every up member refused at staging
+    is refused naming them; a withdrawn card at its redeal bound below its ceiling escalates to the next
+    tier, its why naming the bound and redeals, and at its ceiling is refused with its bound and
+    \": rework it with a fix, or drop it\"; four cards over two members of width 1 are dealt round the fleet
+    never past DealAhead times a width. dealPlan's statement coverage goes from 65.0% to 86.4%. A real
+    defect was found and is a v1.2.14 candidate: Deal panics when every up member is quiet or out of room
+    (benchRefusal indexes bench[0] of an empty bench). No product change."
+   :origin "this card")
+
   (fix "store-two-run-loops-retries-a-busy-fence" :release "v1.2.12" :status "planned"
    :title "The two-run-loops test retries the store's busy refusal"
    :text "TestCRTwoRunLoopsAtOnce's outside world now retries a step when the store answers with its
@@ -1156,6 +1188,35 @@
    :origin "the coordinator 2026-10-11, added to v1.2.14 beside the v1.2.12 inventory's section 9 row
     D2 (a held finished report across STOP refused as stale); D2's first cause was fixed by
     nova-sprint #87 (15c779c); this is what that fix left; code read at nova-sprint main 00c54ba")
+   (fix "fleet-up-probe-releases-an-environment-held-member" :release "v1.2.11" :status "planned"
+    :title "fleet up --probe passed releases a member held by an environment fault"
+    :text "fleet up --probe passed on a member held by an environment fault (held_by=environment) was
+     refused by the store's manifest check: the release path and EnvProbePatch each unset the hold's four
+     fields, so one entry named each twice. A field is now unset once per entry (unsetPresent keeps each
+     name once, in first-seen order), and fleet up's own unset of the hold is left to EnvProbePatch when
+     the passed probe clears the fault, so a coordinator's, the fault's or the sync's hold stays for a
+     person to lift (the probe never lifts a person's hold). tla/ProviderBudget.tla, FleetUpRefusesUncleared,
+     already said a passed probe clears the fault; this is the implementation catching up."
+    :origin "this card")
+
+  (fix "card-lint-a-hold-owner-every-reader-accepts" :release "v1.2.14" :status "planned"
+   :title "Every held_by write names a hold mark, and each mark keeps the member off the deal"
+   :text "Tests only, no product change. internal/sprint/hold_marks_test.go holds a table of every
+    mark a member's held_by carries -- none (the coordinator's), the sync's, the machine's fault, the
+    adopt's and the environment's -- each written by its own writer (a fleet hold with its HeldBy,
+    presence's down for the fault, holdAdopting for the adopt, a finish whose report is an environment
+    fault for envFaulted) and cleared by its own release (fleet up, the sync's release, faultClear,
+    clearEnvFault, the adopt's finish). For each it pins the behaviour: the member is not up and dealt
+    no card by the deal or the level, a tick presence with a fresh beat leaves held and held_by as they
+    were, another mark's mark-scoped release leaves it held with its mark, and its own release clears
+    it. It then scans the package's non-test .go files for every held_by assignment (a name[FieldHeldBy]
+    = X and FieldHeldBy: X) and fails naming the value and its file:line when no table row names it, so
+    a new hold kind cannot ship without the table checked against it. The known-yes proof is
+    envFaulted's status line deleted: the environment row then fails at UpMembers."
+   :origin "this card, card-lint-a-hold-owner-every-reader-accepts.w1, from the reader finding on
+    a-member-environment-fault-holds-it-and-pushes-the-seatb attempt 5 (head 38c66ea7542f): the
+    environment hold was written with held_by=environment but the member's status was left Up, so the
+    level dealt to it and presence wrote held_by=fault over the mark")
 
   (fix "a-brief-edit-records-its-needs-and-the-deal-checks-them" :release "v1.2.14" :status "planned"
    :title "A brief edit records its needs and the deal checks them"
