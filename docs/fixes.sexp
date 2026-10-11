@@ -241,7 +241,7 @@
     repair skips it exactly as the tick's ShortReadsBack does."
    :origin "this pull request")
 
-  (fix "clear-is-a-blank-slate" :release "v1.2.6" :status "in-progress"
+  (fix "clear-is-a-blank-slate" :release "v1.2.6" :status "shipped"
    :title "Clear starts a blank epoch and reports only live leases"
    :text "Clear lists every live card generation and owner row it refuses on; a returned or nonworking
     lease does not block. A successful clear advances to an empty epoch — no work, merge, stream or
