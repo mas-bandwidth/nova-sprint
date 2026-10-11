@@ -823,6 +823,17 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-deal-plan-refusals-and-redeals" :release "v1.2.12" :status "planned"
+   :title "Cover the deal plan's refusals and redeals"
+   :text "New unit tests in internal/sprint drive Deal and assert on each refusal its doc comment names:
+    the fleet's work off, no up member (and every up member env-held), a bench card whose member is down
+    and one whose member is at its room, a quiet member beside a member at its room, a withdrawal dealt
+    again at a new generation with its attempt unchanged, and a selection that never passes a member's
+    room. dealPlan coverage 65.0% (67/103) -> 67.0% (69/103). A card no up member has room for still
+    panics (bench_deal.go:137 indexes a nil bench): a v1.2.14 candidate, its red test kept out of this
+    card."
+   :origin "this card")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
