@@ -24,7 +24,10 @@ func TestTwoGreenHeadsRedTogetherRefuseTheSecondAsAClash(t *testing.T) {
 	// A clone does not inherit the repository config, so each commit made in a clone
 	// needs an identity from the environment (the way the package's other git-using
 	// tests set it); otherwise git commit fails with exit 128 on a machine without a
-	// global git identity (CI, a bench).
+	// global git identity (CI, a bench). The global and system config are ignored for
+	// the same reason the package's other git-using tests ignore them.
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_AUTHOR_NAME", "Test User")
 	t.Setenv("GIT_AUTHOR_EMAIL", "test@test.com")
 	t.Setenv("GIT_COMMITTER_NAME", "Test User")
