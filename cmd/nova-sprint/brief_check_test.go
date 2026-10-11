@@ -72,6 +72,41 @@ func TestBriefCheckNamesASizeAndLintFindingTogether(t *testing.T) {
 	require.Contains(t, out, "CHECK "+over+" rule-worktree:", out)
 }
 
+// A store that opens but does not answer the plan's one read-only snapshot load
+// is the store not answering: the store-free checks alone run and it says so,
+// exit 3 (not 0: half the checks did not run), never a false clean. The brief
+// here names a PRIORITY add refuses, so against a store that answered the call
+// would find it.
+func TestBriefCheckSaysWhenTheStoreDidNotAnswer(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	dir := t.TempDir()
+	writeBriefFile(t, dir, "priority-card", passingBrief(
+		"RESULT: c sha=0123456789ab tier: pro\nPRIORITY: medium\nTHE TASK. Fix the empty case."))
+	code, out, errs := ta.bare("brief check --stream s1 " + dir)
+	require.Equal(t, 3, code, "exit %d\n%s%s", code, out, errs)
+	require.Contains(t, out, "CHECK store: not reached", out)
+	require.Contains(t, out, "the store's checks (names, dropped cards, needs, the plan) were not run", out)
+	require.NotContains(t, out, "findings=1", "a store that did not answer is not a clean brief: %s", out)
+	require.Contains(t, out, "BRIEF CHECK files=1 findings=0", out)
+}
+
+// A model-line fault in one brief never hides another brief's lint findings:
+// the card lint runs once per brief, so a directory with a bad model line and a
+// brief with lint drift names both findings in one call.
+func TestBriefCheckKeepsEveryBriefsLintFindings(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	dir := t.TempDir()
+	bad := writeBriefFile(t, dir, "bad-model", passingBrief("tier: bogus\nTHE TASK. Fix the empty case."))
+	drift := writeBriefFile(t, dir, "drift-card", "RESULT: c sha=0123456789ab tier: pro\nTHE TASK. Fix the empty case.")
+	code, out, errs := ta.do("brief check --stream s1 " + dir)
+	require.Equal(t, 1, code, "exit %d\n%s%s", code, out, errs)
+	require.Contains(t, out, "CHECK "+bad+" lint:", out)
+	require.Contains(t, out, "CHECK "+drift+" rule-worktree:", out)
+}
+
 func boolToInt(b bool) int {
 	if b {
 		return 1

@@ -132,14 +132,24 @@ func (a *app) cmdBriefCheck(args []string, stdout, stderr io.Writer) int {
 	} else {
 		rs = ruleSet{rules: swarm.DefaultChildRules}
 	}
-	// the card lint, one buffer over every brief: each LINT DRIFT line names
-	// its own file
-	var lintBuf bytes.Buffer
-	lintBriefFiles("brief check", cards, rs, c.max, &lintBuf)
-	findings = append(findings, lintFindings(lintBuf.String())...)
+	// the card lint, one buffer per brief as the hold functions are called: a
+	// model-line fault in one brief never hides another brief's findings
+	for _, card := range cards {
+		var lintBuf bytes.Buffer
+		lintBriefFiles("brief check", []sprint.CardAdd{card}, rs, c.max, &lintBuf)
+		findings = append(findings, lintFindings(lintBuf.String())...)
+	}
 	if storeErr == nil {
-		findings = append(findings, a.briefStoreChecks(st, items, *stream, c)...)
-	} else {
+		var storeFindings []briefFinding
+		storeFindings, storeErr = a.briefStoreChecks(st, items, *stream, c)
+		if storeErr == nil {
+			findings = append(findings, storeFindings...)
+		}
+	}
+	if storeErr != nil {
+		// the store did not answer: the store-free checks alone run, and the
+		// store's checks (who, base, card checks, brief base, sprint base, the
+		// plan) are named not run
 		findings = append(findings, a.briefStoreFreeChecks(items)...)
 	}
 	sort.SliceStable(findings, func(i, j int) bool {
@@ -195,8 +205,21 @@ func (a *app) briefStoreFreeChecks(items []briefItem) []briefFinding {
 
 // briefStoreChecks runs every store check add runs, in add's order, each once
 // per brief with its own buffer as stderr, then the add step's own plan read
-// read-only: the step is never run and nothing is written.
-func (a *app) briefStoreChecks(st *store.Store, items []briefItem, stream string, c *common) []briefFinding {
+// read-only: the step is never run and nothing is written. The plan's one
+// read-only snapshot is loaded first, so a store that does not answer is
+// reported as such (the caller runs the store-free checks alone) rather than
+// silently dropping the plan-level checks.
+func (a *app) briefStoreChecks(st *store.Store, items []briefItem, stream string, c *common) ([]briefFinding, error) {
+	// the add step's plan on one read-only snapshot: its Refused list is the
+	// plan-level checks (priority, model tier, bench, sprint branch, an id that
+	// exists, needs that exist), store.AddStep's Plan, never the step
+	r := sprint.AddReq{Stream: stream, Cards: briefCardsOf(items), Who: c.actor}
+	step := store.AddStep(r)
+	snap, err := st.Load(context.Background(), step.Load, step.Extras)
+	if err != nil {
+		// the read did not answer: no store check was run
+		return nil, err
+	}
 	var out []briefFinding
 	byID := map[string]string{}
 	for _, it := range items {
@@ -226,20 +249,10 @@ func (a *app) briefStoreChecks(st *store.Store, items []briefItem, stream string
 			return a.holdSprintBase("brief check", st, w, r)
 		})...)
 	}
-	// the add step's plan on one read-only snapshot: its Refused list is the
-	// plan-level checks (priority, model tier, bench, sprint branch, an id that
-	// exists, needs that exist), store.AddStep's Plan, never the step
-	r := sprint.AddReq{Stream: stream, Cards: briefCardsOf(items), Who: c.actor}
-	step := store.AddStep(r)
-	snap, err := st.Load(context.Background(), step.Load, step.Extras)
-	if err != nil {
-		// the read did not answer: the plan's refusals are not run
-		return out
-	}
 	for _, ref := range step.Plan(snap).Refused {
 		out = append(out, briefFinding{File: byID[ref.Key], ID: ref.Key, Check: "plan", Why: ref.Why, order: chkPlan})
 	}
-	return out
+	return out, nil
 }
 
 func briefCardsOf(items []briefItem) []sprint.CardAdd {
