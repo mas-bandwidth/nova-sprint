@@ -2062,13 +2062,18 @@
     different bases of one clone, share no ref and no tip, so their pushes run side by side
     (serial within one base is the design and stays, tla/LandPass.tla). The job's prepare
     runs in its own goroutine, the first cuts of one repository and base still in priority
-    order; the fetch lock becomes one lock per clone, keyed on the clone's common git dir
-    (fetchKey), so a fetch in a stream's worktree takes the same lock as the clone's own
-    worktree writes: two clones' fetches and worktree writes go side by side while one
-    clone's stay serial; failed and the queues are updated under one mutex. The landing
-    order within one base and every message are unchanged."
-   :origin "this card, a-landing-pushes-each-repo-and-base-on-its-own-lane.w5; the owner,
-    2026-10-11: \"What else is like serial reads, going out one at a time, when they could go
-    out at the same time in || ?\" and \"OK please log critical cards to fix all these serial
-    things that should be parallel (with good reason to be ||).\"; found by the seat's audit
-    child on nova-sprint main the same day (cmd/nova-sprint/landpass.go, THE LANDINGS, SERIAL)")))
+     order; the fetch lock becomes one lock per clone, keyed on the clone's own directory
+     (fetchKey, the parent of its common git dir), so a fetch in a stream's worktree takes
+     the same lock as the clone's own worktree writes: two clones' fetches and worktree
+     writes go side by side while one clone's stay serial; failed and the queues are updated
+     under one mutex. The key is stable across the clone's own creation (it was the directory
+     before `git clone` made it and the common git dir after, so two lanes of one repository
+     could take two locks and prepare a half-made clone; attempt 8 keys on the clone
+     directory, the common git dir's parent). The landing
+     order within one base and every message are unchanged."
+    :origin "this card, a-landing-pushes-each-repo-and-base-on-its-own-lane.w5; the owner,
+     2026-10-11: \"What else is like serial reads, going out one at a time, when they could go
+     out at the same time in || ?\" and \"OK please log critical cards to fix all these serial
+     things that should be parallel (with good reason to be ||).\"; found by the seat's audit
+     child on nova-sprint main the same day (cmd/nova-sprint/landpass.go, THE LANDINGS, SERIAL);
+     attempt 8 fixes the clone-creation key a reader found (land.go, clone)")))
