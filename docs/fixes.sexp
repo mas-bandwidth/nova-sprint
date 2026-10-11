@@ -823,6 +823,17 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
+   :title "Unit-cover Store.TidyStats and Store.ResetStats in the store package"
+   :text "New tests in internal/sprint/store (stats_tidy_reset_behaviour_test.go) pin the two stats
+    verbs' store steps from inside the store package on the Mem harness: TidyStats (stats_tidy.go:210)
+    dry-run, the fleet move and its archive, the second-tidy window, a fresh and a stale in-flight
+    marker, routes and streams kinds, and a refused move's failed archive; ResetStats
+    (stats_reset.go:97) dry-run, write and replace, operation-id replay and conflict, the in-flight
+    marker, a churning SwapKey and the tidy's kinds and archives kept across a reset. TidyStats
+    statement coverage rises from 0.0% to 81.6%, ResetStats from 0.0% to 75.9%."
+   :origin "the v1.2.12 test card cover-store-stats-tidy-and-reset.w1; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C5")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
