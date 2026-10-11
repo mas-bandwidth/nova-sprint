@@ -844,6 +844,20 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-store-shadow-tick-and-holds" :release "v1.2.12" :status "planned"
+   :title "Unit tests for Store.ShadowTick and Store.Holds, the two store reads no store-package test covers"
+   :text "Behaviour tests on the in-memory store for the shadow tick's plan (tick.go:2041) and the holds
+    where --json list (hold.go:121), each read a sprint verb prints but no store-package test drove.
+    ShadowTick: a running sprint's deal with the plan's size the sum of its parts, a stopped machine's
+    plan, an owed restore refused, a pending operation refused and left pending, a queued drain planned
+    and left queued, a primary waiting on reads named in Reads, a store that moves under the read refused
+    as busy, and a custom Updates list (an empty part left out, a due part listed with its count, a
+    panicking part not recovered). Holds: a bare store, members, readers, friends and streams in kind
+    order with reason and who held them, a member hold's Return, and an unreadable reader record left out
+    with a friend's fleet row not listed as a member. One defect found, a reader merely away listed as
+    held where the doc names only a reader held (hold.go:185 against hold.go:117-118), is a v1.2.14 card."
+   :origin "this card")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
