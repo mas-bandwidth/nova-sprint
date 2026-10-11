@@ -118,7 +118,7 @@ func TestBriefReplacesWaitingBriefsWhileRunningAndByDir(t *testing.T) {
 	assert.Equal(t, text("the newer second"), ta.primary("a-2").F("brief"))
 	assert.Equal(t, text("the new third"), ta.primary("a-3").F("brief"))
 
-	// a working card keeps its brief: the call that names one writes nothing
+	// a working card takes its brief for the next attempt: the call that names one writes BRIEF OK
 	writeNeedsBrief(t, dir, "a-1", "the new work", "")
 	writeNeedsBrief(t, dir, "a-2", "the newest second", "")
 	out = ta.ok("brief --dir " + dir)

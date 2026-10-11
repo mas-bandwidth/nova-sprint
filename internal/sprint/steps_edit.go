@@ -62,7 +62,7 @@ type BriefReq struct {
 
 // Brief replaces primaries' briefs in place (nova-sprint brief; docs/SPEC-SPRINT.md,
 // the brief verb): each a primary waiting, ready or in review, on a RUNNING machine
-// as on a STOPPED one; a card working, merging or landed keeps its brief. A running
+// as on a STOPPED one; a card merging or landed keeps its brief; a working card takes one for its next attempt. A running
 // machine's pump holds a card a queued change names until the change drains
 // (store.Step's Pump), so the brief is in place before the card can be dealt. The
 // card keeps its id, stream, score and needs; one an attempt was dealt for opens its
@@ -93,8 +93,8 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			p = briefDepends(s, p, c, b.Brief, b.Needs)
 			continue
 		}
-		// a card working, merging or landed is refused with what changes it instead:
-		// stopping the machine would not let its brief be replaced. A card waiting, ready
+		// a card merging or landed is refused with what changes it instead:
+		// stopping the machine would not let its brief be replaced. A card waiting, ready, or working takes one in place;
 		// or in review takes one on a RUNNING machine as on a STOPPED one.
 		why := briefKept(s, b.ID)
 		if why != "" && c != nil && !IsSentinel(c) {
@@ -312,10 +312,11 @@ func briefTier(s *Snapshot, p Plan, r BriefReq) Plan {
 	return p
 }
 
-// briefStarted is the remedy of a brief refused for a card working, merging or
-// landed: what changes its work instead, by the lifecycle's moves (lifecycle.go,
-// Moves). Once the card is in review the brief is edited in place, its next attempt;
-// drop takes any open card off the table, and the new brief is then a new card.
+// briefStarted is the remedy of a brief refused for a card merging or landed (a
+// working card now takes one in place, briefKept): what changes its work instead,
+// by the lifecycle's moves (lifecycle.go, Moves). From merging a return puts it
+// back in review, where the brief is edited in place, its next attempt; drop takes
+// any open card off the table, and the new brief is then a new card.
 func briefStarted(c *Card) string {
 	readd := "nova-sprint add --stream " + c.Row + " <new id> --brief-file <path>"
 	drop := "nova-sprint drop " + c.ID + " --reason '<why>', then " + readd
@@ -325,8 +326,6 @@ func briefStarted(c *Card) string {
 		return "run: nova-sprint return " + c.ID + " --reason '<why>', then " + brief + ", or " + drop
 	case Landed:
 		return "run: " + readd + " for the change"
-	case Working:
-		return "run: " + drop + ", or once it finishes (review), " + brief
 	}
 	return "run: " + drop
 }
