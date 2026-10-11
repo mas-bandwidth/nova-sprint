@@ -408,6 +408,8 @@ MCNoRoomBrokenReadBlind.cfg	MCNoRoom.tla	invariant	NeverAskedOfHeldOrDraining	ig
 MCNoRoomBrokenSilentDrain.cfg	MCNoRoom.tla	temporal	DealtReturns	ignore-terminal	noroom	required	-
 MCNoRoomBrokenNoReturn.cfg	MCNoRoom.tla	temporal	DealtReturns	ignore-terminal	noroom	required	-
 MCNoRoomBrokenNoReadReturn.cfg	MCNoRoom.tla	temporal	ReadsReturn	ignore-terminal	noroom	required	-
+MCNoRoomBrokenProbeBlind.cfg	MCNoRoom.tla	invariant	NeverDealtUnknown	ignore-terminal	noroom	required	-
+MCNoRoomBrokenNoTaker.cfg	MCNoRoom.tla	invariant	NeverReturnedWithoutATaker	ignore-terminal	noroom	required	-
 MCAdopt.cfg	MCAdopt.tla	pass	-	ignore-terminal	adopt	required	-
 MCAdoptBrokenKeepNew.cfg	MCAdopt.tla	invariant	RefusedLeavesOld	ignore-terminal	adopt	required	-
 MCRetireAbsent.cfg	MCRetireAbsent.tla	pass	-	ignore-terminal	retire-absent	required	-
@@ -451,6 +453,7 @@ MCProviderBudgetBrokenNoPush.cfg	MCProviderBudget.tla	action	FaultClearsOnPush	i
 MCProviderBudgetBrokenNoenv.cfg	MCProviderBudget.tla	action	EnvOnlyByEnvironmentFinish	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenNodeal.cfg	MCProviderBudget.tla	action	HeldDealtNothing	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenStale.cfg	MCProviderBudget.tla	action	JudgmentNamesTheCause	ignore-terminal	providerbudget	required	-
+MCProviderBudgetBrokenBranchEnv.cfg	MCProviderBudget.tla	action	ARejectedPushIsNeverAFault	ignore-terminal	providerbudget	required	-
 MCReadyOver.cfg	MCReadyOver.tla	pass	-	ignore-terminal	readyover	required	-
 MCReadyOverBrokenMerge.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-
 MCReadyOverBrokenSilent.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-
@@ -463,3 +466,6 @@ MCHolds.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
 MCHoldsBrokenResumeEarly.cfg	MCHolds.tla	action	CrossResumesAfterNeed	ignore-terminal	holds	required	-
 MCHoldsBrokenSilentStop.cfg	MCHolds.tla	invariant	NoSilentStall	ignore-terminal	holds	required	-
 MCHoldsLive.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
+MCServerSwitch.cfg	MCServerSwitch.tla	pass	-	ignore-terminal	serverswitch	required	-
+MCServerSwitchBrokenNodeadline.cfg	MCServerSwitch.tla	invariant	RollbackOnlyInWindow	ignore-terminal	serverswitch	required	-
+MCServerSwitchBrokenKeepstate.cfg	MCServerSwitch.tla	invariant	AtMostOneAutoRollbackPerSwitch	ignore-terminal	serverswitch	required	-
