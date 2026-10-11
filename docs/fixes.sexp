@@ -323,6 +323,14 @@
      file. Use a unique temporary path per writer."
     :origin "issue #5160")
 
+  (fix "route-share-falls-with-cost-per-landed" :release "v1.2.9" :status "planned"
+   :title "Route share falls as cost per landed card rises"
+   :text "Route share in weighted draws now falls as cost per landed card rises or ok rate falls.
+    Routes with zero landings (high cost per landed) now get a smaller share of picks but not zero,
+    due to a floor that ensures they are still sampled. The weighted draw preserves the First rule,
+    proper index advancement, and uses RouteStats for shared accounting. TLA+ model RouteIndex,
+    property RouteFair, with the weighted draw invariant."
+   :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine; this card")
    (fix "seat-judgment-repush" :release "v1.2.9" :status "planned"
     :title "Judgments waiting on the seat are re-pushed each look"
     :text "The seat push loop was only pushing judgments once because it cached the 'seen' file list
