@@ -561,6 +561,8 @@ type Snapshot struct {
 	budgets *budgetPlan
 	// routeStats is computed once per tick (TickDeal) to avoid O(ready x fleet) cost.
 	routeStats map[string]RouteStat
+	// routeCostPerLanded is computed once per tick (TickDeal) to avoid O(ready x fleet) cost.
+	routeCostPerLanded map[string]float64
 	// restScans, when set, counts withRests' scans of the fleet table: the tick's
 	// cost gate (TestTheTicksCheckSettlesTheRestsOnceAtScale) holds them to one a part.
 	restScans *int

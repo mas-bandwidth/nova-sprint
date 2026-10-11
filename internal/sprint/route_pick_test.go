@@ -99,7 +99,7 @@ func TestRouteShareFallsWithCostPerLanded(t *testing.T) {
 	aCount := 0
 	bCount := 0
 	for i := 0; i < 100; i++ {
-		r, _, ok := preferFirstWeighted(arr, served, nil, false, 0, routeStats)
+		r, _, ok := preferFirstWeighted(arr, served, nil, false, 0, routeStats, costPerLanded)
 		require.True(t, ok)
 		if r.Name == "flash-a" {
 			aCount++

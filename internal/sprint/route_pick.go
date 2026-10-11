@@ -10,7 +10,7 @@ import (
 // so the route is still sampled. Returns the selected route, steps taken,
 // and whether selection succeeded.
 // Design section in route.go preferFirst.
-func preferFirstWeighted(arr []string, served map[string]Route, skip []string, hold bool, at uint64, stats map[string]RouteStat) (r Route, steps uint64, ok bool) {
+func preferFirstWeighted(arr []string, served map[string]Route, skip []string, hold bool, at uint64, stats map[string]RouteStat, costPerLanded map[string]float64) (r Route, steps uint64, ok bool) {
 	// Two-pass walk like preferFirst: first pass for First routes, second for others.
 	// This preserves the First rule from route.go.
 	servedFirst := func(name string) bool {
@@ -23,17 +23,17 @@ func preferFirstWeighted(arr []string, served map[string]Route, skip []string, h
 	}
 
 	// First pass: try to pick a route with First set
-	if pick, steps, ok := preferFirstWithShares(arr, served, servedFirst, skip, hold, at, stats); ok {
+	if pick, steps, ok := preferFirstWithShares(arr, served, servedFirst, skip, hold, at, stats, costPerLanded); ok {
 		return pick, steps, true
 	}
 
 	// Second pass: pick from routes without First set
-	return preferFirstWithShares(arr, served, servedNonFirst, skip, hold, at, stats)
+	return preferFirstWithShares(arr, served, servedNonFirst, skip, hold, at, stats, costPerLanded)
 }
 
 // preferFirstWithShares is like preferFirst but uses weighted selection based on shares.
 // It counts array positions for index advancement, not filtered candidates.
-func preferFirstWithShares(arr []string, served map[string]Route, wantFirst func(string) bool, skip []string, hold bool, at uint64, stats map[string]RouteStat) (r Route, steps uint64, ok bool) {
+func preferFirstWithShares(arr []string, served map[string]Route, wantFirst func(string) bool, skip []string, hold bool, at uint64, stats map[string]RouteStat, costPerLanded map[string]float64) (r Route, steps uint64, ok bool) {
 	n := uint64(len(arr))
 	if n == 0 {
 		return Route{}, 0, false
@@ -61,7 +61,7 @@ func preferFirstWithShares(arr []string, served map[string]Route, wantFirst func
 	}
 
 	// Compute shares for candidates from precomputed stats
-	shares := computeRouteShares(candidates, stats)
+	shares := computeRouteShares(candidates, stats, costPerLanded)
 
 	// Check if all shares are equal (within tolerance)
 	allEqual := true
@@ -122,7 +122,7 @@ func preferFirstWithShares(arr []string, served map[string]Route, wantFirst func
 // computeRouteShares computes the share weight for each candidate route.
 // Share falls as cost per landed card rises or ok rate falls.
 // This should be called once per tick, not per draw, to avoid O(ready x fleet) cost.
-func computeRouteShares(candidates []string, stats map[string]RouteStat) []float64 {
+func computeRouteShares(candidates []string, stats map[string]RouteStat, costPerLanded map[string]float64) []float64 {
 	if len(candidates) == 0 {
 		return nil
 	}
@@ -130,7 +130,9 @@ func computeRouteShares(candidates []string, stats map[string]RouteStat) []float
 	shares := make([]float64, len(candidates))
 	for i, name := range candidates {
 		if s, ok := stats[name]; ok {
-			shares[i] = routeShare(s, 0) // costPerLanded computed separately, 0 here
+			// Use actual cost per landed from fleet, default to 0 if not found
+			cost := costPerLanded[name]
+			shares[i] = routeShare(s, cost)
 		} else {
 			// No stats yet, give equal weight
 			shares[i] = 1.0
@@ -202,7 +204,7 @@ const shareFloor = 0.1
 // routeShare computes the share weight for a route based on its stats and cost per landed.
 // The share falls as cost per landed card rises or ok rate falls.
 // A floor ensures the route is still sampled.
-// Design: docs/SPEC-SPRINT.md deal section.
+// Design section in route.go preferFirst.
 func routeShare(stats RouteStat, costPerLanded float64) float64 {
 	// Compute ok rate (0 if no attempts)
 	okRate := 0.0
