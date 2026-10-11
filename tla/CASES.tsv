@@ -459,6 +459,7 @@ MCSeatHookBrokenStrictCadence.cfg	MCSeatHook.tla	temporal	HookStays	ignore-termi
 MCSeatHookBrokenNoStartRewrite.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-terminal	seathook	required	-
 MCStopReturnBrokenNoSettleByBeat.cfg	MCStopReturn.tla	temporal	AbsentJobSettles	ignore-terminal	stopreturn	required	-
 MCStopReturnBrokenOmitLive.cfg	MCStopReturn.tla	invariant	NoLiveChildAcrossStart	ignore-terminal	stopreturn	required	-
+MCStopReturnBrokenById.cfg	MCStopReturn.tla	invariant	NoStaleGenOwned	ignore-terminal	stopreturn	required	-
 MCProviderBudget.cfg	MCProviderBudget.tla	pass	-	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenClear.cfg	MCProviderBudget.tla	action	FleetUpRefusesUncleared	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenNewMember.cfg	MCProviderBudget.tla	action	NewMemberProbed	ignore-terminal	providerbudget	required	-
