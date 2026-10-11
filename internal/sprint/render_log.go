@@ -149,6 +149,20 @@ func renderWork(l Line, fromRow, fromCol, toRow, toCol string, moved bool, by st
 		return s
 	case toCol == DoneFailed:
 		return fmt.Sprintf("%s finished attempt %s: FAILED", fromRow, a)
+	case toCol == Finished:
+		// a worker's finish, ok or failed, moves the card to finished (verdicts.go):
+		// the log records the worker's own word, the readers' verdict moves it on
+		if l.Set["ok"] == "no" {
+			return fmt.Sprintf("%s finished attempt %s: FAILED", fromRow, a)
+		}
+		s := fmt.Sprintf("%s finished attempt %s: ok", fromRow, a)
+		if h := l.Set["head"]; h != "" {
+			s += ", head " + h
+		}
+		if b := l.Set["branch"]; b != "" {
+			s += " on " + b
+		}
+		return s
 	case toCol == DoneDefect:
 		return fmt.Sprintf("%s finished attempt %s: HOLD on a brief defect (%s)", fromRow, a, l.Set[FieldBriefDefect])
 	case toCol == string(Ready) && fromCol == Withdrawn:

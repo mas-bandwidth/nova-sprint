@@ -129,6 +129,7 @@ type FriendRow struct {
 	Width      int    `json:"width"`
 	OK         int    `json:"ok"`
 	Failed     int    `json:"failed"`
+	Redealt    int    `json:"redealt"`
 	Status     string `json:"status"`
 	Class      string `json:"class,omitempty"`
 	Mode       string `json:"mode,omitempty"`
@@ -418,6 +419,7 @@ func (st *Store) FriendRows(ctx context.Context, now time.Time) ([]FriendRow, er
 		for _, col := range []string{sprint.Ready, sprint.Working, sprint.DoneOK, sprint.DoneFailed} {
 			cards = append(cards, fleet.Cell(row, col)...)
 		}
+		rows[i].Redealt = len(fleet.Cell(row, sprint.Redealt))
 		rows[i].Tokens = sprint.FriendTokensFromCards(cards)
 		rows[i].Charged = sprint.FriendChargedFromCards(cards)
 	}

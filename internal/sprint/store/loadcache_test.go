@@ -135,7 +135,7 @@ func TestLoadCacheAfterTheStoreLostWrites(t *testing.T) {
 		before.machine()
 		lc := NewLoadCache()
 		cached, _, _ := cachedLoad(before, lc, sprint.Fleet)
-		require.NotEmpty(t, cached.Fleet.Cell("m1", sprint.DoneOK), "the cache holds m1's finished cards")
+		require.NotEmpty(t, cached.Fleet.Cell("m1", sprint.Finished), "the cache holds m1's finished cards")
 
 		after := newHarness(t)
 		after.setup(20)
