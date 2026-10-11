@@ -65,8 +65,12 @@
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator."))
- :items
-  ((fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
+  :items
+   ((fix "tla-noroom-admission-by-probe" :release "v1.2.12" :status "planned"
+    :title "NoRoom models admission by probe and the read return's taker"
+    :text "Model only, no product change. tla/NoRoom.tla now holds admission: known[m] with Accept(m) on a passed probe, required by Dealable and by the reader's Ask, so a member the sprint does not know is dealt nothing and its reader belongs to no machine (NeverDealtUnknown). ReadReturn is guarded on a taker (sweepReads takes a read back only when another reader can take it), and ReadsReturn is restated under it. Two new reversed witnesses: probeblind deals to an unknown member (NeverDealtUnknown) and notaker takes a read back with no other reader (ReadsReturn); the eight existing witnesses keep their results. The RUNS.tsv records for the changed model are owed (tlacheck is not in this tree yet)."
+    :origin "this card (tla-noroom-admission-by-probe.w1); source v1.2.12 inventory item T28")
+   (fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
     :title "The store package's own tests pin stats tidy and stats reset"
     :text "Tests only, no product change. New tests in internal/sprint/store drive TidyStats and ResetStats through the unit tier's Mem store and assert on their results, on what StatsTidied and StatsReset read back, and on whether the store changed: a dry run counts and writes nothing; a fleet tidy moves history off the done cells and records the archive done; a second tidy within TidyAgainAfter is refused; a fresh tidy marker refuses a tidy or a reset while a stale one is taken as ended; routes alone moves nothing and streams clears the where record; a refused move keeps its archive failed and clears the marker; a reset writes its mark and clears the where record; operation ids replay, conflict and are refused by shape; a compare-and-set that keeps losing errors after its tries; and a tidy's kinds and archives are kept across a reset."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C5")
