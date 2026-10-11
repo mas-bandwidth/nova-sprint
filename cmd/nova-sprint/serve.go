@@ -223,6 +223,72 @@ func flagWord(words []string, name string) (value string, ok bool) {
 // which install the push loop as a service of the machine they are typed on.
 var notServed = []string{"run", "tick", "land", "play", "fleet sync", "friend sync", "friend reconcile", "friend clean", "dashboard", "doctor", "answer", "seat install", "seat uninstall", "selftest land", "server switch", "hook", "unhook"}
 
+// servedVerbWord is the verb's own word as the server names it (docs/SPEC-SPRINT.md
+// section 14, The server): the longest verb name the argument list begins with, so a
+// friend's beat is "friend beat" and not "friend"; the first word when the list names no
+// verb of the command.
+func servedVerbWord(argv []string) string {
+	name := ""
+	for _, v := range verbs {
+		w := strings.Fields(v.name)
+		if len(argv) >= len(w) && slices.Equal(argv[:len(w)], w) && len(w) > len(strings.Fields(name)) {
+			name = v.name
+		}
+	}
+	if name != "" {
+		return name
+	}
+	if len(argv) > 0 {
+		return argv[0]
+	}
+	return ""
+}
+
+// servedWorker is the one worker a refused verb names: the word after --as, or the member
+// or friend of a beat's own words; "" when it names none (a coordinator's verb, or a verb
+// with no worker). It is read from the argument list alone, as the log's own fact.
+func servedWorker(argv []string) string {
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] == "--as" {
+			return argv[i+1]
+		}
+	}
+	if len(argv) >= 3 && ((argv[0] == "fleet" && argv[1] == "beat") || (argv[0] == "friend" && argv[1] == "beat")) {
+		return argv[2]
+	}
+	return ""
+}
+
+// servedCard is the card argument of a refused verb, <id>@<gen>, "" when it names none.
+func servedCard(argv []string) string {
+	for _, w := range argv {
+		if strings.HasPrefix(w, "-") {
+			continue
+		}
+		id, g, ok := strings.Cut(w, "@")
+		if !ok || !sprint.ValidCardID(id) {
+			continue
+		}
+		if _, err := strconv.Atoi(g); err != nil {
+			continue
+		}
+		return w
+	}
+	return ""
+}
+
+// serveRefusedResult logs a refused verb's answer (serveRefused), naming the worker from
+// the argument list when the server did not know it: a verb that exited 0 logs nothing.
+func (a *app) serveRefusedResult(argv []string, as string, res sprintwire.Result) {
+	if res.Code == 0 {
+		return
+	}
+	if as == "" {
+		as = servedWorker(argv)
+	}
+	a.serveRefused(servedVerbWord(argv), as, res.Code, servedCard(argv), res.Stderr)
+}
+
 // serveCtx is the server's one step: the batch's verbs run in order, each through
 // the verb's own code with its worker as the actor, and each answered. The
 // server's own words (the store, the actor) go between the verb and what the
@@ -284,7 +350,9 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			if len(argv) > 0 {
 				verb = argv[0]
 			}
-			out.Results[i] = sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s: %s; nothing was changed\n", prog, oneline.Escape(verb), oneline.Escape(why))}
+			res := sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s: %s; nothing was changed\n", prog, oneline.Escape(verb), oneline.Escape(why))}
+			out.Results[i] = res
+			a.serveRefusedResult(argv, "", res)
 			continue
 		}
 		switch lane {
@@ -292,13 +360,16 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			beats++
 			if isBudget(argv) {
 				out.Results[i] = lanes.budget(ctx, argv, args)
+				a.serveRefusedResult(argv, as, out.Results[i])
 				continue
 			}
 			out.Results[i] = lanes.friendBeat(ctx, a, argv, args[words:])
+			a.serveRefusedResult(argv, as, out.Results[i])
 			continue
 		case "read":
 			reads++
 			out.Results[i] = lanes.readVerbRun(ctx, args)
+			a.serveRefusedResult(argv, as, out.Results[i])
 			continue
 		}
 		if !held {
@@ -316,6 +387,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		var stdout, stderr bytes.Buffer
 		code := a.run(args, &stdout, &stderr)
 		out.Results[i] = sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String()}
+		a.serveRefusedResult(argv, as, out.Results[i])
 		if code == 0 && len(argv) > 0 && argv[0] == "queue" && as != "" {
 			if st, err := a.store(common{redis: a.serveAddr, actor: as}); err == nil && st != nil {
 				// ignored: a best-effort lease renewal on reader beat; next beat will renew

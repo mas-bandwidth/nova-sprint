@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -186,7 +189,30 @@ func goneResult(argv []string) sprintwire.Result {
 // it answered any.
 const ServeSayEvery = time.Minute
 
-// serveTally is what the server's batches cost since its last SERVE line.
+// ServeRefusedEvery is how long the same refusal is held to one line: the same verb,
+// worker, exit and first stderr line repeated within it is written once, and the next
+// written line carries how many repeats there were since the last (serveRefused), so a
+// flood of one refusal is at most a line a minute, never one per verb.
+const ServeRefusedEvery = time.Minute
+
+// refusalKey names one refusal for the rate bound: its verb word, worker, exit and the
+// first line of what it printed.
+type refusalKey struct {
+	verb, as string
+	exit     int
+	first    string
+}
+
+// refusalState is when a refusal was last written and how often it came again since (not
+// counting the write).
+type refusalState struct {
+	at    time.Time
+	count int
+}
+
+// serveTally is what the server's batches cost since its last SERVE line, and the refused
+// verbs by verb word (reset with the line) and the rate-bound state of each refusal (kept
+// across lines).
 type serveTally struct {
 	mu                    sync.Mutex
 	since                 time.Time
@@ -194,6 +220,65 @@ type serveTally struct {
 	serialVerbs, gone     int
 	waitMax, holdMax      time.Duration
 	holdWhat              string
+	refused               map[string]int
+	refLast               map[refusalKey]*refusalState
+}
+
+// serveRefused writes one line on the server's log for a verb the server refused
+// (docs/SPEC-SPRINT.md section 14, The server): the verb word, the worker, the exit, the
+// card argument when the verb names one, and the verb's own first stderr line, one line
+// and cut to 300 bytes, never a summary and never the verb's whole argument list or its
+// stdout. The same verb, worker, exit and first line repeated within ServeRefusedEvery is
+// written once; when it comes again after that, the line carries how many repeats there
+// were since the last, so a flood is bounded. The verb word is counted for the SERVE line
+// (tally).
+func (a *app) serveRefused(verb, as string, exit int, card, stderr string) {
+	if a.serveLog == nil {
+		return
+	}
+	first := oneline.Escape(oneline.Cap(servedFirstLine(stderr), 300))
+	now := a.now()
+	key := refusalKey{verb: verb, as: as, exit: exit, first: first}
+	t := &a.served
+	t.mu.Lock()
+	if t.refused == nil {
+		t.refused = map[string]int{}
+	}
+	t.refused[verb]++
+	if t.refLast == nil {
+		t.refLast = map[refusalKey]*refusalState{}
+	}
+	prev := t.refLast[key]
+	if prev != nil && now.Sub(prev.at) < ServeRefusedEvery {
+		prev.count++
+		t.mu.Unlock()
+		return
+	}
+	repeated := 0
+	var since time.Time
+	if prev != nil {
+		repeated, since = prev.count, prev.at
+	}
+	t.refLast[key] = &refusalState{at: now, count: 0}
+	t.mu.Unlock()
+	line := "SERVE REFUSED verb=" + verb + " as=" + orDashStr(as, "-") + " exit=" + strconv.Itoa(exit)
+	if card != "" {
+		line += " card=" + card
+	}
+	line += ": " + first
+	if repeated > 0 {
+		line += fmt.Sprintf(" (repeated %d times since %s)", repeated, since.Format("15:04:05"))
+	}
+	a.serveSay("%s", line)
+}
+
+// servedFirstLine is the first line of a verb's output, the text a refusal line carries.
+func servedFirstLine(s string) string {
+	s = strings.TrimRight(s, "\n")
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	return s
 }
 
 // tally adds one batch: its verbs on the beat lane, on the read lane and on the line, the
@@ -221,8 +306,16 @@ func (a *app) tally(beats, reads, serial, gone int, wait, hold time.Duration, fi
 	if a.serveLog == nil || now.Sub(t.since) < ServeSayEvery {
 		return
 	}
-	fmt.Fprintf(a.serveLog, "%s SERVE batches=%d beat-lane=%d read-lane=%d on-line=%d gone=%d wait-max=%s held-max=%s held-by=%s over=%s\n",
-		now.Format("15:04:05"), t.batches, t.beats, t.reads, t.serialVerbs, t.gone,
+	refused := "0"
+	if len(t.refused) > 0 {
+		parts := make([]string, 0, len(t.refused))
+		for _, verb := range slices.Sorted(maps.Keys(t.refused)) {
+			parts = append(parts, fmt.Sprintf("%s:%d", verb, t.refused[verb]))
+		}
+		refused = strings.Join(parts, ",")
+	}
+	fmt.Fprintf(a.serveLog, "%s SERVE batches=%d beat-lane=%d read-lane=%d on-line=%d gone=%d refused=%s wait-max=%s held-max=%s held-by=%s over=%s\n",
+		now.Format("15:04:05"), t.batches, t.beats, t.reads, t.serialVerbs, t.gone, refused,
 		t.waitMax.Round(time.Millisecond), t.holdMax.Round(time.Millisecond), oneline.Field(orDashStr(t.holdWhat, "-")), now.Sub(t.since).Round(time.Second))
-	t.since, t.batches, t.beats, t.reads, t.serialVerbs, t.gone, t.waitMax, t.holdMax, t.holdWhat = now, 0, 0, 0, 0, 0, 0, 0, ""
+	t.since, t.batches, t.beats, t.reads, t.serialVerbs, t.gone, t.waitMax, t.holdMax, t.holdWhat, t.refused = now, 0, 0, 0, 0, 0, 0, 0, "", nil
 }

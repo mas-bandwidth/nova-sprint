@@ -7096,8 +7096,15 @@ and a batch was run whenever its turn came: from 2:06 PM the line held the run l
 a friend) timed out at its 10 s deadline and was still run later, and the line never drained. On a
 twin file (`mem:<file>`), which the server writes whole after every verb, every verb takes the
 line. The server says what its batches cost once a minute when it answered any: `SERVE
-batches=<n> beat-lane=<n> read-lane=<n> on-line=<n> gone=<n> wait-max=<d> held-max=<d>
-held-by=<verb> over=<d>`. The model is `tla/ServerLanes.tla`. The server keeps
+batches=<n> beat-lane=<n> read-lane=<n> on-line=<n> gone=<n> refused=<verb>:<n>,... wait-max=<d> held-max=<d>
+held-by=<verb> over=<d>`, the refused verbs counted by verb word since the last line. A
+verb the server refuses writes one line on the server's log as it is refused: `SERVE
+REFUSED verb=<verb> as=<worker> exit=<n> card=<card>: <the verb's own first stderr line>`,
+the card argument only when the verb names one and the first stderr line cut to 300 bytes,
+never the verb's whole argument list or its stdout; the same verb, worker, exit and first
+line repeated within a minute is written once, and the next written line carries
+`(repeated <n> times since <t>)`, so a flood of one refusal is at most a line a minute.
+The model is `tla/ServerLanes.tla`. The server keeps
 nothing between requests.
 
 The tick's turn. The batches, the lanes beside the tick (land's reads and report, decide,
