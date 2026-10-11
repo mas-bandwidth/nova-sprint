@@ -388,4 +388,10 @@
     :title "One column field every reader agrees on"
     :text "Card output carries a single column field so a card's state is not confused with the state of
      its need."
-    :origin "card moved out of the sprint (work record, 2026-10-04)")))
+    :origin "card moved out of the sprint (work record, 2026-10-04)")
+
+   (fix "stats-tidy-large-fleet" :release "v1.2.9" :status "planned"
+    :title "A stats tidy succeeds over a fleet of more than 64 rows"
+    :text "Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a
+     property bound."
+    :origin "card from the sprint store (2026-10-10)")))
