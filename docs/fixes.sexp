@@ -983,6 +983,20 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-sprint-tables-lifecycle-moves-and-needs" :release "v1.2.12" :status "planned"
+   :title "tla/SprintTables.tla models the card lifecycle's six states and its moves"
+   :text "Models only, no product change. tla/SprintTables.tla is the card lifecycle (internal/sprint/lifecycle.go):
+    six states, waiting ready working review merging landed, landed final, and the Moves table as a set of
+    <<from, to>> pairs, one action per verb whose guard is Legal plus the plan's flags (releasing, inserting,
+    removing as nondeterministic flags), needs, waivers and sentinels; off the table (a drop) is not a state.
+    It proves TypeOK, NoNeedCycle, NoCardLostOrTwice and the action properties MovesOnlyByTable (every change
+    of cell is a Moves row, a drop from an open state, or a remove of a landed card), ReadyToWaitingOnlyByInsert,
+    LandedIsFinal and NeedsLandFirst (a card leaves waiting for ready only with every need landed or waived),
+    with two reversed witnesses: MCSprintTablesBrokenInsert (an add that moves ready -> waiting without
+    inserting) and MCSprintTablesBrokenNeedless (a resolve that drops the needs check). The four cards that
+    depend on it add deal, take, finish and the fleet; reads and accept; merge and return; crash and repair."
+   :origin "card tla-sprint-tables-lifecycle-moves-and-needs.w2, 2026-10-11: v1.2.12 inventory item T4, at nova-sprint main 00c54ba2e")
+
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
