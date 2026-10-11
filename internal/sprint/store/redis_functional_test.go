@@ -148,6 +148,8 @@ func TestRedisClear(t *testing.T) {
 	require.NoError(t, err, "clear: %+v %v", res, err)
 	require.Equal(t, uint64(1), res.To, "clear: %+v %v", res, err)
 	h.clean("cleared")
+	// the clear opened a blank epoch: its readers are added again (see addReaders)
+	h.addReaders()
 	old, err := st.At(0).Load(h.ctx, All, nil)
 	require.NoError(t, err, "the old epoch: %v", err)
 	require.Equal(t, sprint.Landed, old.StateOf("s1-1"), "the old epoch: %v", err)

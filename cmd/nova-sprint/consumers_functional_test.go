@@ -41,9 +41,9 @@ func TestEveryProducerCard(t *testing.T) {
 
 	do("init", "--members", "m1:4,m2:4,m3:4,m4:4", "--readers", "r1,r2,r3")
 
-	// Add 16 ready cards
+	// Add 16 ready cards (--count 1 is refused without --one, an add of one card)
 	for i := 1; i <= 16; i++ {
-		do("add", "--stream", "a", "--count", "1")
+		do("add", "--stream", "a", "--count", "1", "--one")
 	}
 	// Beat all members up
 	for i := 1; i <= 4; i++ {

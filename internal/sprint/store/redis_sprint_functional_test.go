@@ -634,6 +634,8 @@ func TestRedisTeardownLeavesNoKeyAndNothingElse(t *testing.T) {
 	b.through("s1-1")
 	_, err := b.st.Clear(ctx)
 	require.NoError(t, err)
+	// the clear opened a blank epoch: its readers are added again (see addReaders)
+	b.addReaders()
 	// a clear leaves the machine STOPPED by an explicit stop, which revokes takes
 	// until start (docs/SPEC-SPRINT.md sections 13 and 14)
 	b.startMachine()
@@ -654,6 +656,8 @@ func TestRedisTeardownLeavesNoKeyAndNothingElse(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		_, err := a.st.Clear(ctx)
 		require.NoError(t, err)
+		// the clear opened a blank epoch: its readers are added again (see addReaders)
+		a.addReaders()
 		a.startMachine()
 		a.must(AddStep(sprint.AddReq{Stream: "s1", Count: 2}))
 		a.startMachine()

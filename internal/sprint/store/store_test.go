@@ -117,8 +117,10 @@ func (h *harness) table() *sprint.Snapshot {
 
 func (h *harness) state(id string) string { return h.snap().StateOf(id) }
 
-// setup: two members up, n primaries in s1.
-func (h *harness) setup(n int) {
+// addReaders puts the harness's readers on the current epoch's table and beats
+// them up. A clear opens a blank epoch with no reader rows, so setup calls this
+// at the start and a test that drives reads after a clear calls it again.
+func (h *harness) addReaders() {
 	h.t.Helper()
 	// a clear leaves the new epoch blank, so its readers are added fresh here
 	// (a no-op while they already exist): the blank-slate clear carries no
@@ -129,6 +131,12 @@ func (h *harness) setup(n int) {
 	if err := h.st.BeatReaders(h.ctx); err != nil { // a reader asks for its queue: it is up
 		require.NoError(h.t, err)
 	}
+}
+
+// setup: two members up, n primaries in s1.
+func (h *harness) setup(n int) {
+	h.t.Helper()
+	h.addReaders()
 	// a member brought up here is as wide as the set is large: the deal holds a member to its
 	// width (tla/DirtyTick.tla, WidthRespected), so a verb that deals all n needs the room; a
 	// member the test brought up before keeps its width

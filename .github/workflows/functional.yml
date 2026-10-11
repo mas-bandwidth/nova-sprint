@@ -1,0 +1,47 @@
+# The functional tier: every test under `-tags functional`, which drives a real
+# redis-server, runs for every pull request on the fleet runner. No GitHub-hosted
+# minutes are spent here (the standing rule): the job is pinned to the
+# self-hosted fleet runner, not ubuntu-latest. `make functional` bounds each
+# package at two minutes (-timeout 120s); a package over the bound is the test's
+# defect, not the runner's.
+#
+# OWED OUTSIDE THIS REPOSITORY. nova-sprint is a public repository, so the
+# fleet's self-hosted runners (registered to nova-tools) are not allowed here
+# (see .github/workflows/tlc.yml). This job therefore queues with no runner
+# until one of these is done outside the repository, by the fleet's owner:
+# register the fleet runner to mas-bandwidth/nova-sprint, or make nova-sprint
+# private and share the runner, or run `make functional` from nova-tools' CI
+# against this repository at the pull request's head. That is the one change
+# this repository cannot make for itself.
+name: functional
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: functional-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  functional:
+    runs-on: [self-hosted, fleet]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: redis-server
+        # the fleet runner is expected to carry redis-server; a runner without
+        # it gets one, the same shape ci.yml's tick-gate uses
+        run: command -v redis-server || (sudo apt-get update && sudo apt-get install -y redis-server)
+      - name: make functional
+        env:
+          # a missing redis-server fails the tier instead of skipping it, so a
+          # green run is a run that really executed the store
+          NOVA_CI: "1"
+        run: make functional

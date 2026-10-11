@@ -22,6 +22,18 @@ a twin file in a temporary directory. The twin counts its operation ids
 tests beside it (`cmd/nova-sprint/*_functional_test.go`) run against a real
 store.
 
+### The tiers and where they run
+
+The unit tier (`make test`) runs on every pull request on the GitHub-hosted
+runner. The functional tier (`make functional`, `go test -tags functional
+./...`) needs a real redis-server, and it too runs on every pull request: the
+`functional` workflow pins the job to the self-hosted fleet runner (never
+GitHub-hosted minutes, per `.github/workflows/functional.yml`) and runs `make
+functional` with `NOVA_CI=1`, so a missing redis-server fails the tier instead
+of skipping it. Every package is bounded at two minutes (`-timeout 120s`);
+a package over the bound is the test's defect. A runner is expected to carry
+redis-server; the job installs one otherwise.
+
 ### First run
 
 ```text
