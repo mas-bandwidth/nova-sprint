@@ -402,6 +402,7 @@ MCDealFillBrokenNoAutoclear.cfg	MCDealFill.tla	temporal	FaultHoldClears	ignore-t
 MCDealFillBrokenClearPerson.cfg	MCDealFill.tla	action	PersonHoldStays	ignore-terminal	dealfill	required	-
 MCFriendDealtReturn.cfg	MCFriendDealtReturn.tla	pass	-	ignore-terminal	frienddealtreturn	required	-
 MCFriendDealtReturnBrokenGate.cfg	MCFriendDealtReturn.tla	invariant	DealtNoMoreHolds	ignore-terminal	frienddealtreturn	required	-
+MCFriendDealtReturnBrokenReady.cfg	MCFriendDealtReturn.tla	invariant	DealtNoMoreHolds	ignore-terminal	frienddealtreturn	required	-
 MCFriendDealtReturnBrokenReturn.cfg	MCFriendDealtReturn.tla	invariant	DealtNoMoreHolds	ignore-terminal	frienddealtreturn	required	-
 MCRoadmapEntry.cfg	MCRoadmapEntry.tla	pass	-	ignore-terminal	roadmapentry	required	-
 MCRoadmapEntryBrokenLastChild.cfg	MCRoadmapEntry.tla	invariant	ParentsHold	ignore-terminal	roadmapentry	required	-
