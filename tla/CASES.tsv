@@ -522,3 +522,5 @@ MCLandLedgers.cfg	MCLandLedgers.tla	pass	-	ignore-terminal	landledgers	required	
 MCLandLedgersBrokenAnyConflict.cfg	MCLandLedgers.tla	invariant	CodeConflictNeverLands	ignore-terminal	landledgers	required	-
 MCLandLedgersBrokenNoCheck.cfg	MCLandLedgers.tla	invariant	OnlyCheckedResolutionsLand	ignore-terminal	landledgers	required	-
 MCLandLedgersBrokenRefuseLedgers.cfg	MCLandLedgers.tla	invariant	NoLedgerOnlyRefusal	ignore-terminal	landledgers	required	-
+MCAttemptsEpochsBrokenKeepGen.cfg	MCAttemptsEpochs.tla	invariant	SuffixUnique	ignore-terminal	attemptsepochs	required	-
+MCAttemptsEpochsBrokenNoGenGuard.cfg	MCAttemptsEpochs.tla	invariant	StaleGenRefused	ignore-terminal	attemptsepochs	required	-
