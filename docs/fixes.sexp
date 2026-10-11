@@ -159,6 +159,22 @@
     :title "RoadmapEntry models Note and Save's four writes, and scheduled notes' unchecked :release"
     :text "Models only, no product change. tla/RoadmapEntry.tla gains a Note action (an open entry's title and text change in place, the place and the state unchanged) and models Save's four writes in the code's order -- destination data, destination page, source data, source page -- with a crash possible between any two and NoLoss still held. ChildLinked is restated over what decode() checks, with a Scheduled constant of notes whose :release is read and not checked: the fixes' items are checked (fixes.go:130-131) but the scheduled note's is not (roadmap.go:278). A reversed witness MCRoadmapEntryBrokenPageFirst writes each file's page before its data and fails the new PageNotAhead invariant; MCRoadmapEntryBrokenSourceFirst still fails NoLoss. Note on a done fix or a shipped release is not modelled: the code's Note (roadmap.go:546) edits both with no open or release guard, against the package doc's 'a release whose status is shipped is frozen' (roadmap.go:20-21), a v1.2.14 candidate named in the report."
     :origin "this card, tla-roadmapentry-note-and-four-write-save.w6, 2026-10-11: v1.2.12 inventory item T23; drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-sprint-tables-lifecycle-moves-and-needs" :release "v1.2.12" :status "planned"
+    :title "tla/SprintTables.tla models the card lifecycle: six states, its moves, needs, waivers and sentinels"
+    :text "Models only, no product change. tla/SprintTables.tla is the card lifecycle (internal/sprint/lifecycle.go):
+     six states, waiting ready working review merging landed, landed final, and the Moves table as a set of
+     <<from, to>> pairs, one action per verb whose guard is Legal plus the plan's flags (releasing, inserting,
+     removing as nondeterministic flags), with needs, waivers and sentinels; off the table (a drop) is not a
+     state. A primary moves ready -> waiting only as the effect of inserting a sentinel in front of it, or of
+     rewriting its needs (needs set, steps_edit.go): a ready card that gains a need not landed moves back to
+     waiting, so the ready -> waiting rule is ReadyToWaitingOnlyByInsertOrNeedsset, naming both. It proves
+     TypeOK, NoNeedCycle, NoCardLostOrTwice, MovesOnlyByTable (every change of cell is a Moves row, a drop from
+     an open state, or a remove of a landed card), ReadyToWaitingOnlyByInsertOrNeedsset, LandedIsFinal and
+     NeedsLandFirst (a card leaves waiting for ready only with every need landed or waived), with two reversed
+     witnesses: MCSprintTablesBrokenInsert (an add that moves ready -> waiting without inserting or a needs set)
+     and MCSprintTablesBrokenNeedless (a resolve that drops the needs check). The four cards that depend on it
+     add deal, take, finish and the fleet; reads and accept; merge and return; crash and repair."
+    :origin "card tla-sprint-tables-lifecycle-moves-and-needs.w7, 2026-10-11: v1.2.12 inventory item T4, the first of five cards; drift read at nova-sprint main 00c54ba2e")
    (fix "tla-sprint-tables-fleet-take-and-finish" :release "v1.2.12" :status "planned"
     :title "tla/SprintTables.tla adds the fleet side: member up or down and Start, Take, Finish, FleetDown, FleetUp"
     :text "Models only, no product change. tla/SprintTables.tla gains the fleet side of the work table from
