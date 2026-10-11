@@ -173,7 +173,9 @@ func TestReturnAndDropAnswerTheStreamJudgmentsThatListThem(t *testing.T) {
 	}
 }
 
-// reads exhausted: ask --another names it with --answers.
+// ask --another does not answer a broken read: the broken verdict stays open
+// (a broken verdict at the head outweighs any oks), so the read is asked of
+// another reader and the judgment is answered by a rework with the finding.
 func TestAskAnotherAnswersABrokenRead(t *testing.T) {
 	t.Parallel()
 	p := newProbe(t)
@@ -182,10 +184,9 @@ func TestAskAnotherAnswersABrokenRead(t *testing.T) {
 	rs := p.pairAsked("s1-1")
 	p.read(rs[0].F("reader"), rs[0].ID, "ok")
 	p.read(rs[1].F("reader"), rs[1].ID, "broken")
-	br := p.noteOf("s1-1", sprint.NReadBroken)
-	r := p.do("ask another --answers broken", AskStep(sprint.AskReq{Sel: ids("s1-1"), Another: true, Answers: []string{br}}))
-	if len(r.Moved) != 1 || len(r.Refused) != 0 || p.noteOf("s1-1", sprint.NReadBroken) != "" {
-		assert.Fail(t, fmt.Sprintf("ask --another --answers <broken read>: moved=%v refused=%v; open after: %v", r.Moved, r.Refused, p.openOn("s1-1")))
+	r := p.do("ask another", AskStep(sprint.AskReq{Sel: ids("s1-1"), Another: true}))
+	if len(r.Moved) != 1 || len(r.Refused) != 0 || p.noteOf("s1-1", sprint.NReadBroken) == "" {
+		assert.Fail(t, fmt.Sprintf("ask --another: moved=%v refused=%v; open after: %v", r.Moved, r.Refused, p.openOn("s1-1")))
 	}
 }
 

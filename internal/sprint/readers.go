@@ -352,14 +352,43 @@ func scriptVerified(s *Snapshot, pr *Card) bool {
 	return false
 }
 
+// hasBrokenAtHead says the primary has a broken read at its current attempt and
+// head, from a reader on the readers table or a reader on the fleet table: such a
+// read stands whatever ok reads there are (docs/SPEC-SPRINT.md section 8, the
+// read-broken rule; tla/SprintRules.tla, Part "reads": a broken verdict at the
+// same head outweighs any number of oks), so it is not acceptable and the card
+// goes back to work with the finding. A read pinned to an older head is about
+// work the card moved past and stands for nothing (readHeadMatches).
+func hasBrokenAtHead(s *Snapshot, pr *Card) bool {
+	for _, rc := range readsAt(s, pr, pr.Int("attempt")) {
+		if rc.Col == Broken && (rc.F("head") == "" || rc.F("head") == pr.F("head")) {
+			return true
+		}
+	}
+	if s.Fleet != nil {
+		_, _, fbr := friendReadLive(s, pr)
+		for _, rc := range fbr {
+			if h := rc.F("head"); h == "" || readHeadMatches(s, pr, rc) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // acceptable says the primary has ok reads from ReadsNeededIn different readers
 // at its current attempt and head (okReaders), or one script read of a script card
 // (scriptVerified). With no read needed (set --reads 0) its work's finish is the
-// evidence: the work came back LAND at a head.
+// evidence: the work came back LAND at a head. A broken read at its head is never
+// acceptable, however many oks stand: the broken verdict outweighs them
+// (hasBrokenAtHead; docs/SPEC-SPRINT.md section 8, the read-broken rule).
 func acceptable(s *Snapshot, pr *Card) bool {
 	need := ReadsNeededIn(s, pr)
 	if need == 0 {
 		return pr.F("result") != "failed" && pr.F("head") != ""
+	}
+	if hasBrokenAtHead(s, pr) {
+		return false
 	}
 	return len(okReaders(s, pr)) >= need || scriptVerified(s, pr)
 }
