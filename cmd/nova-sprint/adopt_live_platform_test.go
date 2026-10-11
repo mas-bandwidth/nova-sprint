@@ -102,6 +102,32 @@ func TestLiveLinuxWithNoUnitsIsAnEmptyHost(t *testing.T) {
 	assert.Contains(t, out.String(), `"agents":[]`)
 }
 
+// TestLiveLinuxIgnoresMissingAgentsDir: on linux a named agents directory that
+// is not there is ignored, not a refusal, so the play's old call to
+// ~/Library/LaunchAgents stops refusing.
+func TestLiveLinuxIgnoresMissingAgentsDir(t *testing.T) {
+	home := t.TempDir()
+	fake := adoptRunner(func(_ context.Context, name string, args ...string) (string, error) {
+		line := strings.Join(append([]string{name}, args...), " ")
+		switch {
+		case line == filepath.Join(home, ".local", "bin")+"/nova-sprint version":
+			return "nova-sprint v1.2.10 linux/amd64", nil
+		case strings.HasPrefix(line, "ps -A"):
+			return "", nil
+		}
+		return "", errors.New("exit status 1")
+	})
+	a := newApp(func(k string) string { return map[string]string{"HOME": home}[k] })
+	a.goos = "linux"
+	liveRunnerOf.Store(a, fake)
+	t.Cleanup(func() { liveRunnerOf.Delete(a) })
+
+	var out, errs bytes.Buffer
+	missing := filepath.Join(home, "Library", "LaunchAgents")
+	require.Equal(t, 0, a.run([]string{"live", "--json", "--agents-dir", missing}, &out, &errs), errs.String())
+	assert.Contains(t, out.String(), `"agents":[]`)
+}
+
 // TestLiveDarwinReadsDaemonsDirectory: on darwin a daemon in the daemons
 // directory is listed next to the (empty) agents directory with target
 // system/<label>.

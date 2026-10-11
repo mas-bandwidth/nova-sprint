@@ -414,12 +414,18 @@ func listenOf(args []string) []string {
 
 // readAgents lists the launchd agents of the agents directory. A named
 // directory that is not there is no answer, never an empty host; an unnamed
-// one (linux's default) is none (docs/SPEC-SPRINT.md, "Adopting a build").
+// one (linux's default) is none. On linux the directory is ignored unless it
+// names a directory that exists, so the play's old call to
+// ~/Library/LaunchAgents stops refusing (docs/SPEC-SPRINT.md, "Adopting a
+// build").
 func (p liveProbe) readAgents(ctx context.Context, m *liveManifest) error {
 	if p.agentsDir == "" {
 		return nil
 	}
 	if fi, err := os.Stat(p.agentsDir); err != nil || !fi.IsDir() {
+		if p.goos == "linux" {
+			return nil
+		}
 		return fmt.Errorf("the agents directory %s is not a directory that reads", p.agentsDir)
 	}
 	plists, err := filepath.Glob(filepath.Join(p.agentsDir, "com.nova.*.plist"))
