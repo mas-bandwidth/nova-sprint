@@ -171,6 +171,8 @@ MCDirtyTickW18.cfg	MCDirtyTick.tla	action	RedealBoundHolds	ignore-terminal	dirty
 MCDirtyTickW19.cfg	MCDirtyTick.tla	action	AcceptHolds	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickRoute.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickW20.cfg	MCDirtyTick.tla	invariant	RouteGuard	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickHeldStream.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
+MCDirtyTickBrokenDealHeldStream.cfg	MCDirtyTick.tla	invariant	HeldStreamNotDealt	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickReader.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickReaderAway.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickW21.cfg	MCDirtyTick.tla	invariant	ReadsStandOnReadersUp	ignore-terminal	dirtytick-witnesses	required	-
