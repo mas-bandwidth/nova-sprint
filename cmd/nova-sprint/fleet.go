@@ -178,6 +178,7 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 	draining := fs.Bool("draining", false, "the member's word that it drains (its binary was replaced: it takes no new card and stops when its running cards end): while its beat is fresh the deal gives it none and the tick returns the cards dealt to it and not taken; a beat without it clears it")
 	fdWarn := fs.Int("fd-warn", 0, fmt.Sprintf("the machine's open file descriptors above which the beat says warn and lists the top holders (else NOVA_FD_WARN, else %d)", hostload.FilesWarnDefault))
 	fdAlarm := fs.Int("fd-alarm", 0, fmt.Sprintf("the machine's open file descriptors above which the beat says alarm and the tick writes one judgment of the member (else NOVA_FD_ALARM, else %d)", hostload.FilesAlarmDefault))
+	dry := fs.Bool("dry-run", false, "plan the beat and print it, write no record: the doctor's member-env probe runs an installed build's beat form this way (docs/SPEC-SPRINT.md, \"The doctor's refused-verb and beat-form checks\")")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "fleet beat", err.Error())
@@ -226,6 +227,17 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 		}
 		v := *given
 		src.Given = func() (float64, bool) { return v, true }
+	}
+	if *dry {
+		// the doctor's member-env probe: the whole form is read and the beat is planned, and
+		// nothing is written, so an installed build whose beat form the server would refuse
+		// answers here (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form checks").
+		load := 0.0
+		if given != nil {
+			load = *given
+		}
+		fmt.Fprintf(stdout, "FLEET-BEAT WOULD %s load=%.1f%% dry-run: nothing written\n", pos[0], load)
+		return 0
 	}
 	c.orActor(pos[0])
 	st, err := a.store(*c)

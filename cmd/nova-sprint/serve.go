@@ -319,7 +319,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 				verb = argv[0]
 			}
 			out.Results[i] = sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s: %s; nothing was changed\n", prog, oneline.Escape(verb), oneline.Escape(why))}
-			a.logRefused(verb, refusedWorker("", argv), 2, refusedCard(argv), out.Results[i].Stderr)
+			a.logRefused(argv, refusedWorker("", argv), 2, out.Results[i].Stderr)
 			continue
 		}
 		switch lane {
@@ -327,16 +327,16 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			beats++
 			if isBudget(argv) {
 				out.Results[i] = lanes.budget(ctx, argv, args)
-				a.logRefused(refusedVerb(argv), refusedWorker(as, argv), out.Results[i].Code, refusedCard(argv), out.Results[i].Stderr)
+				a.logRefused(argv, refusedWorker(as, argv), out.Results[i].Code, out.Results[i].Stderr)
 				continue
 			}
 			out.Results[i] = lanes.friendBeat(ctx, a, argv, args[words:])
-			a.logRefused(refusedVerb(argv), refusedWorker(as, argv), out.Results[i].Code, refusedCard(argv), out.Results[i].Stderr)
+			a.logRefused(argv, refusedWorker(as, argv), out.Results[i].Code, out.Results[i].Stderr)
 			continue
 		case "read":
 			reads++
 			out.Results[i] = lanes.readVerbRun(ctx, args)
-			a.logRefused(refusedVerb(argv), refusedWorker(as, argv), out.Results[i].Code, refusedCard(argv), out.Results[i].Stderr)
+			a.logRefused(argv, refusedWorker(as, argv), out.Results[i].Code, out.Results[i].Stderr)
 			continue
 		}
 		if !held {
@@ -354,7 +354,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		var stdout, stderr bytes.Buffer
 		code := a.run(args, &stdout, &stderr)
 		out.Results[i] = sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String()}
-		a.logRefused(refusedVerb(argv), as, code, refusedCard(argv), stderr.String())
+		a.logRefused(argv, as, code, stderr.String())
 		if code == 0 && len(argv) > 0 && argv[0] == "queue" && as != "" {
 			if st, err := a.store(common{redis: a.serveAddr, actor: as}); err == nil && st != nil {
 				// ignored: a best-effort lease renewal on reader beat; next beat will renew
@@ -384,11 +384,51 @@ func refusedVerb(argv []string) string {
 	return argv[0]
 }
 
-// refusedWorker is the worker a refused verb names: as workerVerb read it, or the --as word
-// itself for a verb the server did not run far enough to read it; "" when it names none.
+// refusedVerbName is the verb word a refused verb is recorded by: a beat is its two words
+// (the doctor's member-beat check names `fleet beat` and not `fleet`), every other verb its
+// first word (refusedVerb).
+func refusedVerbName(argv []string) string {
+	if len(argv) >= 2 && (argv[0] == "fleet" || argv[0] == "friend") && argv[1] == "beat" {
+		return argv[0] + " beat"
+	}
+	return refusedVerb(argv)
+}
+
+// recordRefused appends one refused verb to the epoch's refused-verb record, the server's own
+// record the doctor reads (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form
+// checks"): the verb, the member, the card it named, what it sent and the refusal's first
+// line. It is best effort; nothing of the refusal's answer depends on it.
+func (a *app) recordRefused(argv []string, as string, code int, stderr string) {
+	member := refusedWorker(as, argv)
+	if member == "" {
+		return
+	}
+	st, err := a.store(common{redis: a.serveAddr, actor: member})
+	if err != nil || st == nil {
+		return
+	}
+	// ignored: the record is best effort; a refusal is answered whether or not it is recorded
+	_ = st.RecordRefused(context.Background(), sprint.RefusedVerb{
+		At:     a.now(),
+		Verb:   refusedVerbName(argv),
+		Member: member,
+		Card:   refusedCard(argv),
+		Argv:   strings.Join(argv, " "),
+		Why:    firstRefusalLine(stderr),
+	})
+}
+
+// refusedWorker is the worker a refused verb names: as workerVerb read it; a beat refused
+// before workerVerb read its member names it positionally (`fleet beat <member>` /
+// `friend beat <member>`, its third word), so a form refusal (no --load, an unknown word) is
+// still recorded under the member that sent it; otherwise the --as word itself for a verb
+// the server did not run far enough to read it; "" when it names none.
 func refusedWorker(as string, argv []string) string {
 	if as != "" {
 		return as
+	}
+	if len(argv) >= 3 && (argv[0] == "fleet" || argv[0] == "friend") && argv[1] == "beat" && sprint.ValidID(argv[2]) {
+		return argv[2]
 	}
 	for i, w := range argv {
 		if w == "--as" && i+1 < len(argv) {
@@ -449,8 +489,13 @@ func refusedLine(verb, as string, code int, card, first string) string {
 // the worker, the exit, the card argument and stderr's first line only: never the verb's
 // whole argv (a brief, a report) or its stdout. It is the record the v1.2.10 outage lacked
 // (docs/SPEC-SPRINT.md section 14, The server).
-func (a *app) logRefused(verb, as string, code int, card, stderr string) {
-	if code == 0 || a.serveLog == nil {
+func (a *app) logRefused(argv []string, as string, code int, stderr string) {
+	if code == 0 {
+		return
+	}
+	verb, card := refusedVerb(argv), refusedCard(argv)
+	a.recordRefused(argv, as, code, stderr)
+	if a.serveLog == nil {
 		return
 	}
 	text := refusedLine(verb, as, code, card, firstRefusalLine(stderr))

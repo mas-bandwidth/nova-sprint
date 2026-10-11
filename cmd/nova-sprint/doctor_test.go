@@ -13,6 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
 
 // The doctor checks the definition of done (docs/SPEC-SPRINT.md, "The seat check"): each
@@ -318,4 +319,107 @@ func TestDoctorProbeParsesItsLines(t *testing.T) {
 	odd := probeScript("b1;id", "swarm-b1", []string{"git;id"})
 	assert.Contains(t, odd, "L='member-b1;id'", "the member's name is quoted")
 	assert.Contains(t, odd, "for t in 'git;id';", "each tool's name is quoted")
+}
+
+// refusedAt plants one refused verb on the test app's own store, at the app's clock, the way
+// the server records them (store.RecordRefused).
+func refusedAt(t *testing.T, ta *testApp, ago time.Duration, verb, member, argv, why string) {
+	t.Helper()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now}
+	require.NoError(t, st.RecordRefused(context.Background(), sprint.RefusedVerb{
+		At: ta.now.Add(-ago), Verb: verb, Member: member, Argv: argv, Why: why,
+	}))
+}
+
+// The doctor reads the server's own refused-verb record, never a member's log: a member whose
+// beats the server refused RefusedBeatBound (3) or more times in the window is one member-beat
+// FAIL naming the count, the last refusal and what it sent, before and independent of the
+// member-down stop; a member with none is OK. (docs/SPEC-SPRINT.md, "The doctor's refused-verb
+// and beat-form checks").
+func TestDoctorNamesRefusedBeatsBeforeTheMemberDown(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1,m2")
+	ta.ok("start")
+	ta.ok("tick")
+	ta.a.outside = mockHealthyOutside()
+
+	for i := range 3 {
+		refusedAt(t, ta, time.Duration(i)*time.Minute, sprint.RefusedBeatVerb, "m1", "fleet beat m1", "a beat wants --load")
+	}
+	code, out, errs := ta.do("doctor")
+	require.Equal(t, 1, code, "refused beats are RED\n%s%s", out, errs)
+	assert.Contains(t, out, "DOCTOR FAIL member-beat m1: 3 beats refused in 10m0s, last: a beat wants --load, argv: fleet beat m1 remedy=",
+		"the member-beat fault names the cause, not only the down symptom: %s", out)
+	assert.Contains(t, out, "DOCTOR OK member-beat m2", "a member whose beats were not refused is OK: %s", out)
+}
+
+// The server records a form-refused beat under the member that sent it, and the doctor's
+// member-beat check reads that record: `fleet beat <m>` with no --load, sent through the
+// server's own step (serveCtx) RefusedBeatBound (3) times, is one DOCTOR FAIL member-beat.
+// The record must be the server's own, written by the refusal, never planted by a test
+// (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form checks").
+func TestDoctorNamesRefusedBeatsTheServerWrote(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1,m2")
+	ta.ok("start")
+	ta.ok("tick")
+	ta.a.outside = mockHealthyOutside()
+	ta.a.serveAddr = "mem:0"
+
+	for range sprint.RefusedBeatBound {
+		res := ta.a.serveCtx(context.Background(), sprintwire.Request{Verbs: [][]string{{"fleet", "beat", "m1"}}}, false)
+		require.Equal(t, 2, res.Results[0].Code, "a beat with no --load is refused: %s", res.Results[0].Stderr)
+		require.Contains(t, res.Results[0].Stderr, "--load", "the refusal names the missing --load: %s", res.Results[0].Stderr)
+	}
+	code, out, errs := ta.do("doctor")
+	require.Equal(t, 1, code, "the server's refused beats are RED\n%s%s", out, errs)
+	assert.Contains(t, out, "DOCTOR FAIL member-beat m1: 3 beats refused in 10m0s, last: ",
+		"the doctor names the member the server's record refused, from the refusal's own write: %s", out)
+	assert.Contains(t, out, "argv: fleet beat m1 remedy=", "and what it sent: %s", out)
+}
+
+// The doctor prints the refused-beat FAIL before the member-down symptom: the cause is read
+// above the symptom, though the checks are computed independently
+// (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form checks").
+func TestDoctorPrintsRefusedBeatsAboveTheMemberDownStop(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1,m2,m3") // ta.live is m1, m2: m3 never beats
+	ta.ok("start")
+	ta.ok("tick")
+	ta.a.outside = mockHealthyOutside()
+	ta.a.serveAddr = "mem:0"
+
+	for range sprint.RefusedBeatBound {
+		res := ta.a.serveCtx(context.Background(), sprintwire.Request{Verbs: [][]string{{"fleet", "beat", "m1"}}}, false)
+		require.Equal(t, 2, res.Results[0].Code, res.Results[0].Stderr)
+	}
+	code, out, errs := ta.do("doctor")
+	require.Equal(t, 1, code, "refused beats and a member down are RED\n%s%s", out, errs)
+	beat := strings.Index(out, "DOCTOR FAIL member-beat m1")
+	down := strings.Index(out, "MACHINERY fleet DOWN")
+	require.GreaterOrEqual(t, beat, 0, "the refused-beat fault is printed: %s", out)
+	require.GreaterOrEqual(t, down, 0, "the member-down symptom is printed: %s", out)
+	assert.Less(t, beat, down, "the cause is printed above the symptom: %s", out)
+}
+
+// The refused-verbs check groups every verb word, not only beat: RefusedVerbBound (10) or more
+// of one verb word in the window is one FAIL, from the same epoch-keyed record.
+func TestDoctorNamesRefusedVerbsAtTen(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	ta.ok("start")
+	ta.ok("tick")
+	ta.a.outside = mockHealthyOutside()
+
+	for i := range 10 {
+		refusedAt(t, ta, time.Duration(i)*time.Second, "queue", "m1", "queue --as m1", "the store refused it")
+	}
+	code, out, errs := ta.do("doctor")
+	require.Equal(t, 1, code, "ten refused verbs are RED\n%s%s", out, errs)
+	assert.Contains(t, out, "DOCTOR FAIL refused-verbs m1: queue x 10 in 10m0s, last: the store refused it",
+		"the refused-verbs fault names the verb and its count: %s", out)
 }

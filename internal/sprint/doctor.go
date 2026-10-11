@@ -136,6 +136,13 @@ type MemberProbe struct {
 	Java        string   `json:"java,omitempty"`
 	TLA         string   `json:"tla,omitempty"`
 	SecretNames []string `json:"secret_names,omitempty"`
+	// BeatKnown says the probe ran the member's installed `nova-sprint fleet beat <m> --load 0
+	// --dry-run`; BeatOK says it exited 0 (the installed beat's form is one the server
+	// accepts); BeatForm is its own last line, the form that disagreed
+	// (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form checks").
+	BeatKnown bool   `json:"beat_known,omitempty"`
+	BeatOK    bool   `json:"beat_ok,omitempty"`
+	BeatForm  string `json:"beat_form,omitempty"`
 }
 
 // MemberTools is every program a member's loop runs a card with, which its loop's PATH must
@@ -929,6 +936,15 @@ func DoctorMemberEnv(in DoctorInput) (out []DoctorCheck) {
 		if in.Declared != "" && p.Version != "" && p.Version != in.Declared {
 			bad++
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorDrift, Evidence: "installed=" + p.Version + " declared=" + in.Declared, Remedy: joinRemedy(m)})
+		}
+		// the beat form the member's installed build sends against the server's: a pair whose
+		// forms disagree is a FAIL, the cause of the member-down stop the doctor also names
+		// (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form checks").
+		if p.BeatKnown && !p.BeatOK {
+			bad++
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorFail,
+				Evidence: "beat form: the installed nova-sprint " + cmp.Or(p.Version, "?") + " sends a beat the server at " + cmp.Or(in.Declared, "?") + " refuses: " + cmp.Or(p.BeatForm, "the dry-run beat printed no line"),
+				Remedy:   joinRemedy(m)})
 		}
 		if p.LinkChanges >= DoctorLinkWarnChanges {
 			bad++

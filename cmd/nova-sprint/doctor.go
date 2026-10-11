@@ -123,15 +123,21 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	now := a.now()
 	machinery := a.withConfigSeat(a.seatCheck(ctx, st, c.redis))
 	faults := doctorFaults(machinery, rec, check.Violations, snap, now)
-	checks, err := a.doctorChecks(ctx, st, machinery.Measures, rec, *area)
+	checks, refused, err := a.doctorChecks(ctx, st, machinery.Measures, rec, *area)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint where\n", prog, name, oneline.Escape(noSprintYet(err).Error()))
 		return 2
 	}
 	sprintArea := *area == "" || *area == sprint.AreaSprint
 	if !sprintArea {
-		faults = nil
+		faults, refused = nil, nil
 	}
+	// The refused-verb checks (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form
+	// checks"): the server's own record, keyed by epoch, names a member whose beats it refused
+	// (member-beat) and every verb word it refused (refused-verbs), before and independent of
+	// the member-down stop that names only the symptom.
+	refusedFaults := append(sprint.RefusedBeatLines(refused, now), sprint.RefusedVerbLines(refused, now)...)
+	refusedBeat := sprint.RefusedBeats(refused, now)
 	byLayer := map[string][]sprint.Stop{}
 	for _, x := range rec.Stops {
 		layer := stopLayer[x.Kind]
@@ -144,7 +150,7 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	for _, ch := range checks {
 		counts[ch.Status]++
 	}
-	red := len(faults) > 0 || counts[sprint.DoctorFail] > 0
+	red := len(faults) > 0 || len(refusedFaults) > 0 || counts[sprint.DoctorFail] > 0
 	code := 0
 	if red {
 		code = 1
@@ -173,7 +179,10 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 		if checks == nil {
 			checks = []sprint.DoctorCheck{}
 		}
-		b, err := json.Marshal(map[string]any{"verb": name, "status": status, "exit": code, "at": now.UTC(), "area": *area, "faults": faults, "machinery": machinery, "stops": stops, "seat": rec.Seat,
+		if refusedFaults == nil {
+			refusedFaults = []string{}
+		}
+		b, err := json.Marshal(map[string]any{"verb": name, "status": status, "exit": code, "at": now.UTC(), "area": *area, "faults": faults, "refused": refusedFaults, "machinery": machinery, "stops": stops, "seat": rec.Seat,
 			"checks": checks, "counts": counts, "fix_safe": sprint.DoctorFixSafe})
 		if err != nil {
 			fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint doctor\n", prog, name, oneline.Escape(err.Error()))
@@ -183,6 +192,12 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	if sprintArea {
+		// the refused-verb FAILs are printed before the automatic stop lines: a beat the
+		// server refused is the cause, the member-down stop the symptom, so the cause is read
+		// first (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form checks").
+		for _, line := range refusedFaults {
+			fmt.Fprintln(stdout, "DOCTOR FAIL "+line)
+		}
 		for _, layer := range doctorLayers {
 			stops := byLayer[layer]
 			if len(stops) == 0 {
@@ -196,6 +211,13 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 		}
 		for _, fault := range faults {
 			fmt.Fprintln(stdout, "DOCTOR fault "+fault)
+		}
+		if snap != nil {
+			for _, m := range snap.Members() {
+				if len(refusedBeat[m]) == 0 {
+					fmt.Fprintln(stdout, sprint.RefusedBeatOK(m))
+				}
+			}
 		}
 		seat := "GREEN"
 		if rec.Seat.Overdue > 0 {
@@ -218,13 +240,13 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 // doctorChecks reads what the checks of the desired state need (store.DoctorRead, nova-config,
 // the server's start, the seat's build, each member's host) and runs them, the area's alone when
 // area names one. A reach the outside does not configure is left unmeasured, and its check says so.
-func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCheckMeasures, rec store.StopsRecord, area string) ([]sprint.DoctorCheck, error) {
-	if area == sprint.AreaSprint {
-		return nil, nil
-	}
+func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCheckMeasures, rec store.StopsRecord, area string) ([]sprint.DoctorCheck, []sprint.RefusedVerb, error) {
 	read, err := st.DoctorRead(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	if area == sprint.AreaSprint {
+		return nil, read.Refused, nil
 	}
 	// every reach past the store under the run's deadline (doctorRunBudget)
 	ctx, cancel := context.WithTimeout(ctx, doctorRunBudget)
@@ -286,7 +308,7 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 	}
 	checks := sprint.Doctor(in)
 	if area == "" {
-		return checks, nil
+		return checks, read.Refused, nil
 	}
 	var out []sprint.DoctorCheck
 	for _, ch := range checks {
@@ -294,5 +316,5 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 			out = append(out, ch)
 		}
 	}
-	return out, nil
+	return out, read.Refused, nil
 }

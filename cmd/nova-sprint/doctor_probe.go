@@ -184,6 +184,10 @@ func probeScript(member, seat string, tools []string) string {
 	// verb; "names measured" marks a seat that answered, even when it holds no key.
 	b.WriteString(`if [ -n "$NS" ]; then o=$("$NS" names --store "$HOME/nova-bench/secrets" --as "$S" --max 0 2>/dev/null); rc=$?; if [ "$rc" -eq 0 ]; then printf '%s\n' "$o" | sed -n 's/^/name /p'; echo "names measured"; else echo "names -"; fi; else echo "names -"; fi` + "\n")
 	b.WriteString(`echo "version $(PATH="$P" nova-sprint version 2>/dev/null | head -1)"` + "\n")
+	// the installed build's beat form, against the server's: fleet beat plans and writes
+	// nothing with --dry-run, so an installed build whose beat form the server would refuse
+	// answers here (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form checks").
+	fmt.Fprintf(&b, "BO=$(PATH=\"$P\" nova-sprint fleet beat %s --load 0 --dry-run 2>&1); BRC=$?; echo \"beat $BRC $(printf '%%s' \"$BO\" | tail -1)\"\n", bench.Quote(member))
 	// the kernel's link changes in the last hour (docs/SPEC-SPRINT.md, doctor: member-env; the
 	// card doctor-names-a-member-whose-link-flapped): one extended grep over a short journal
 	// window, never the whole journal, and nothing from nova-config quoted into it.
@@ -258,6 +262,10 @@ func parseProbe(p *sprint.MemberProbe, out []byte) {
 			}
 		case "version":
 			p.Version = versionWord(val)
+		case "beat":
+			code, line, _ := strings.Cut(val, " ")
+			p.BeatKnown, p.BeatOK = true, code == "0"
+			p.BeatForm = probeClip(line, 200)
 		}
 	}
 }
