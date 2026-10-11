@@ -62,14 +62,14 @@ func TestEveryStateMachineHasACurrentModel(t *testing.T) {
 }
 
 // checkCurrentModule pins that a current row's module has at least one reversed
-// witness in tla/CASES.tsv and a tla/RUNS.tsv record for every case it declares.
-// A case with no record fails unless its debt column is not "-". The freshness
-// of a record against the runner is reported, not fatal: the records under the
-// staged tree are stale for every group because pkg/tlc/suite.go changed after
-// they were written (run "make tlc TLC_GROUP=<group>"), and one current case,
-// MCProviderBudgetBrokenBranchEnv.cfg, is FAIL in the tree and owed by the
-// ProviderBudget v1.2.12 model card; both are named in this card's report and
-// neither is patched here.
+// witness in tla/CASES.tsv and a tla/RUNS.tsv record for every case it declares
+// with result PASS and an input_sha256 equal to pkg/tlc's fingerprint of the
+// case now. A case with no record fails unless its debt column is not "-"; a
+// record whose result is not PASS, or whose fingerprint no longer matches what
+// the runner and inputs hash to now (tlacheck groups --stale), fails too. A red
+// here is named in this card's report and left for the model card that owes it:
+// the row and the case are named, the row is not patched and the model is not
+// touched here.
 func checkCurrentModule(t *testing.T, root string, src tlc.Source, machine, module string, cases []tlc.Case, runs map[string]runRecord) {
 	t.Helper()
 	modCases := casesOfModule(cases, module)
@@ -93,13 +93,13 @@ func checkCurrentModule(t *testing.T, root string, src tlc.Source, machine, modu
 			continue
 		}
 		if rec.result != "PASS" {
-			t.Logf("%s: %s record result is %s, not PASS (owed by its model card): run make tlc TLC_GROUP=%s", machine, c.Config, rec.result, c.Group)
+			t.Errorf("%s: %s record result is %s, not PASS (owed by its model card): run make tlc TLC_GROUP=%s", machine, c.Config, rec.result, c.Group)
 			continue
 		}
 		sha, _, err := src.Fingerprint(c.Config)
 		require.NoError(t, err, "%s: cannot fingerprint %s", machine, c.Config)
 		if sha != rec.sha256 {
-			t.Logf("%s: %s input_sha256 is stale (the runner changed since it was written): run make tlc TLC_GROUP=%s", machine, c.Config, c.Group)
+			t.Errorf("%s: %s input_sha256 is stale (the runner changed since it was written): run make tlc TLC_GROUP=%s", machine, c.Config, c.Group)
 		}
 	}
 }
