@@ -983,6 +983,18 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-sprintrules-conflict-brief-and-redo" :release "v1.2.12" :status "planned"
+   :title "SprintRules Part \"conflict\": the conflict rule's reset to flash, the brief-defect answer and the redo"
+   :text "Models only, no product change. Part \"conflict\" of tla/SprintRules.tla holds the conflict rule
+    (internal/sprint rules.go ruleConflict, ruleRedo): a stream stopped on a conflict, the card returned to
+    be redone on the current tip at flash (FieldTierNow RouteFlash), the same refusal twice a brief defect
+    (the card marked, the stream held for a mind), and the redo of the returned card one attempt more on the
+    tip. LadderClimbs is restated as no rule but the conflict rule lowers a card's tier, and
+    ConflictResetsToFlash (a card the conflict rule returns is at flash) is checked, with the reversed
+    witness MCSprintRulesConflictBrokenConflictKeeps (Broken \"conflictkeeps\" keeps the tier, failing
+    ConflictResetsToFlash)."
+   :origin "card tla-sprintrules-conflict-brief-and-redo, 2026-10-11: v1.2.12 inventory item T36 (SprintRules third of four), at nova-sprint main 00c54ba2e")
+
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
