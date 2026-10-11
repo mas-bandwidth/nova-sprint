@@ -215,7 +215,7 @@ func TestABrokenReadIsReworkedByRuleWithItsFinding(t *testing.T) {
 		assert.Contains(t, bound[0].Note.What, "widened 3 times")
 		assert.Nil(t, s.Work.Card("r-1b"), "never twinned")
 	})
-	t.Run("at the brief's bound: the coordinator's", func(t *testing.T) {
+	t.Run("at the brief's bound: still reworked with the finding", func(t *testing.T) {
 		t.Parallel()
 		r := newConflictRig(t)
 		r.readCard()
@@ -228,10 +228,9 @@ func TestABrokenReadIsReworkedByRuleWithItsFinding(t *testing.T) {
 		r.tick()
 
 		pr := r.snap().Work.Card("r-1")
-		assert.Equal(t, 2, pr.Int("attempt"), "the same finding twice is not reworked")
-		assert.Equal(t, sprint.Review, pr.Col)
-		assert.Len(t, r.openOnCard(sprint.NBriefWrong, "r-1"), 1, "the bound stays a judgment")
-		assert.Len(t, r.answeredBy(sprint.RuleReadBroken), 1, "the rule answered the first finding alone")
+		assert.Equal(t, 3, pr.Int("attempt"), "the same finding twice is still reworked")
+		assert.Empty(t, r.openOnCard(sprint.NBriefWrong, "r-1"), "a broken finding is no brief defect")
+		assert.Len(t, r.answeredBy(sprint.RuleReadBroken), 2, "the rule answered both findings")
 	})
 	t.Run("turned off: stays a judgment", func(t *testing.T) {
 		t.Parallel()

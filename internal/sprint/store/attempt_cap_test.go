@@ -1,7 +1,6 @@
 package store
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,7 +24,7 @@ func (h *harness) brokenDifferently(id string) {
 	h.attemptFoundBroken(id, "internal/f"+a+".go:"+a+": wrong in attempt "+a)
 }
 
-func TestTheAttemptCapIsOneJudgmentWithEveryFindingAndTheSpend(t *testing.T) {
+func TestABrokenFindingIsReworkedPastTheAttemptCap(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"))
 	h.addReady("s1", 1, briefOf("flash", ""))
@@ -33,35 +32,19 @@ func TestTheAttemptCapIsOneJudgmentWithEveryFindingAndTheSpend(t *testing.T) {
 	rework := func() []sprint.Refusal {
 		return h.run(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Who: "tester"})).Refused
 	}
-	for a := 1; a < sprint.AttemptsDefault; a++ {
+	for a := 1; a <= sprint.AttemptsDefault+1; a++ {
 		// each attempt's work costs a dollar, reported by the member (cost.go)
 		wc := h.snap().Fleet.Card(h.snap().Work.Card("s1-1").F("work"))
 		g := map[string]int{wc.ID: wc.Int("gen")}
 		h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: g}))
 		h.must(FinishStep(sprint.FinishReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: g, Head: "h" + wc.F("attempt"), Report: "r", Usage: "input=1 actual_usd=1 actual_by=harness"}))
 		h.readBrokenAt("s1-1", "internal/f"+wc.F("attempt")+".go:1: wrong in attempt "+wc.F("attempt"))
-		require.Empty(t, rework(), "attempt %d of %d: reworked", a, sprint.AttemptsDefault)
-		assert.Len(t, h.openOf(sprint.NBriefWrong), 0, "attempt %d: under the cap", a)
+		require.Empty(t, rework(), "attempt %d: a broken finding is reworked, not stopped at the cap", a)
+		assert.Len(t, h.openOf(sprint.NBriefWrong), 0, "attempt %d: no brief defect for a broken finding", a)
 	}
 	pr := h.snap().Work.Card("s1-1")
-	assert.Equal(t, "attempt 1: internal/f1.go:1: wrong in attempt 1\nattempt 2: internal/f2.go:1: wrong in attempt 2\nattempt 3: internal/f3.go:1: wrong in attempt 3", pr.F(sprint.FieldFindings), "the rework keeps every attempt's finding")
-	// the fourth attempt: the cap, whatever it finds
-	h.brokenDifferently("s1-1")
-	open := h.openOf(sprint.NBriefWrong)
-	require.Len(t, open, 1, "one judgment: the brief is wrong")
-	n := open[0].Note
-	assert.Equal(t, "s1-1: brief defect after 4 attempts, $3.00 spent; the brief is wrong, not the worker; findings: attempt 1: internal/f1.go:1: wrong in attempt 1; attempt 2: internal/f2.go:1: wrong in attempt 2; attempt 3: internal/f3.go:1: wrong in attempt 3; attempt 4: internal/f4.go:4: wrong in attempt 4; run: nova-sprint brief s1-1 --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop s1-1 --reason '<why>'; attempt 4 found: internal/f4.go:4: wrong in attempt 4", n.What)
-	assert.Equal(t, []string{"brief", "drop"}, n.Decisions)
-	assert.Empty(t, h.openOf(sprint.NReadBroken), "the cap's judgment, not the reader's")
-	refused := rework()
-	require.Len(t, refused, 1, "rework refuses a card at the cap")
-	assert.True(t, strings.HasPrefix(refused[0].Why, "s1-1: brief defect after 4 attempts, $3.00 spent; the brief is wrong, not the worker; findings: attempt 1:"), refused[0].Why)
-	assert.True(t, strings.HasSuffix(refused[0].Why, "run: nova-sprint brief s1-1 --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop s1-1 --reason '<why>'"), refused[0].Why)
-	assert.Equal(t, sprint.Review, h.snap().Work.Card("s1-1").Col, "not dealt again")
-	for _, c := range h.commandsOf(sprint.NBriefWrong) {
-		assert.Contains(t, []string{"brief", "drop"}, c.Decision)
-	}
-	h.clean("at the attempt cap")
+	assert.Contains(t, pr.F(sprint.FieldFindings), "attempt 1: internal/f1.go:1: wrong in attempt 1", "the rework keeps every attempt's finding")
+	h.clean("a broken finding past the cap")
 }
 
 func TestFailedWorkReachesTheAttemptCapToo(t *testing.T) {

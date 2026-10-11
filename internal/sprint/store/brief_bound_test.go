@@ -39,15 +39,13 @@ func (h *harness) attemptFoundBroken(id, finding string) {
 	h.readBrokenAt(id, finding)
 }
 
-func TestReworkRefusesACardWhoseLastTwoFindingsMatch(t *testing.T) {
+func TestReworkReworksACardWhoseLastTwoFindingsMatch(t *testing.T) {
 	t.Parallel()
 	rework := func(h *harness, fix string) []sprint.Refusal {
 		h.t.Helper()
 		return h.run(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Fix: fix, Who: "tester"})).Refused
 	}
-	const line = "s1-1 has failed the same way twice (attempts 1 and 2: files outside PATHS: internal/x.go); the brief is wrong, not the worker; " +
-		"run: nova-sprint brief s1-1 --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop s1-1 --reason '<why>'"
-	t.Run("the same finding twice", func(t *testing.T) {
+	t.Run("the same finding twice is reworked with the finding", func(t *testing.T) {
 		t.Parallel()
 		h := routeHarness(t, route("flash-a", "flash"))
 		h.addReady("s1", 1, briefOf("flash", ""))
@@ -57,37 +55,22 @@ func TestReworkRefusesACardWhoseLastTwoFindingsMatch(t *testing.T) {
 		pr := h.snap().Work.Card("s1-1")
 		assert.Equal(t, "1", pr.F(sprint.FieldFindingAttempt), "the rework records whose finding the primary carries")
 		h.attemptFoundBroken("s1-1", "Files  outside its PATHS: internal/y.go, internal/z.go")
-		before := h.revisions()
-		refused := rework(h, "")
-		require.Len(t, refused, 1)
-		assert.Equal(t, line, refused[0].Why)
-		refused = rework(h, "keep to the PATHS")
-		require.Len(t, refused, 1)
-		assert.Equal(t, line, refused[0].Why, "a --fix changes the brief not at all")
-		assert.Equal(t, sprint.Review, h.snap().Work.Card("s1-1").Col, "nothing moved")
-		h.nothingWritten(before)
-		// the brief replaced, as Brief writes it: the bound counts from here, and the rework
-		// is its next attempt
-		h.setPrimary("s1-1", map[string]string{"brief": briefOf("flash", "PATHS: internal/x.go, internal/y.go"), sprint.FieldBriefAttempt: "2"})
-		require.Empty(t, rework(h, ""), "a changed brief lifts the bound")
+		require.Empty(t, rework(h, ""), "the same finding twice is still reworked, not refused at the bound")
 		assert.Equal(t, 3, h.snap().Work.Card("s1-1").Int("attempt"))
-		h.clean("reworked on the new brief")
+		assert.Empty(t, h.openOf(sprint.NBriefWrong), "a broken finding is no brief defect")
+		h.clean("reworked on the matching finding")
 	})
-	t.Run("too many attempts on one brief", func(t *testing.T) {
+	t.Run("too many attempts on one brief is still reworked for a broken finding", func(t *testing.T) {
 		t.Parallel()
 		h := routeHarness(t, route("flash-a", "flash"))
 		h.addReady("s1", 1, briefOf("flash", ""))
 		h.must(DealStep(sprint.DealReq{}))
-		for a := 1; a < sprint.AttemptsDefault; a++ {
+		for a := 1; a <= sprint.AttemptsDefault+1; a++ {
 			h.attemptFoundBroken("s1-1", "internal/f"+string(rune('0'+a))+".go:"+string(rune('0'+a))+": wrong")
-			require.Empty(t, rework(h, ""), "attempt %d: a new finding each time is reworked", a)
+			require.Empty(t, rework(h, ""), "attempt %d: a broken finding is reworked past the cap", a)
 		}
-		h.attemptFoundBroken("s1-1", "internal/g.go:6: wrong")
-		refused := rework(h, "")
-		require.Len(t, refused, 1)
-		assert.Equal(t, "s1-1: brief defect after 4 attempts, nothing priced; the brief is wrong, not the worker; "+
-			"findings: attempt 1: internal/f1.go:1: wrong; attempt 2: internal/f2.go:2: wrong; attempt 3: internal/f3.go:3: wrong; attempt 4: internal/g.go:6: wrong; "+
-			"run: nova-sprint brief s1-1 --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop s1-1 --reason '<why>'", refused[0].Why)
+		assert.Empty(t, h.openOf(sprint.NBriefWrong), "a broken finding is no brief defect")
+		h.clean("reworked past the cap")
 	})
 	t.Run("a card never dealt, and one whose findings differ, are at no bound", func(t *testing.T) {
 		t.Parallel()
@@ -104,23 +87,26 @@ func TestReworkRefusesACardWhoseLastTwoFindingsMatch(t *testing.T) {
 	})
 }
 
-// The judgment raised for a card at the brief's bound names the brief, not the worker: the two
-// matching findings and their attempts, and its decisions are brief and drop, never rework.
+// The judgment raised for a card at the brief's bound on repeated failed work names the brief,
+// not the worker: the two matching reports and their attempts, and its decisions are brief and
+// drop, never rework. A broken finding at the bound is reworked, never left, so the bound itself
+// is shown on failed work.
 func TestTheBoundJudgmentNamesTheBriefNotTheWorker(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"))
 	h.addReady("s1", 1, briefOf("flash", ""))
+	h.must(SetStep(sprint.SetReq{Attempts: "2", Who: h.st.Actor}))
 	h.must(DealStep(sprint.DealReq{}))
-	h.attemptFoundBroken("s1-1", "files outside PATHS: internal/x.go")
-	require.Len(t, h.openOf(sprint.NReadBroken), 1, "the first finding is a broken read")
+	h.finishAttempt("s1-1", true, "the tests fail")
 	h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Who: "tester"}))
-	h.attemptFoundBroken("s1-1", "files outside its PATHS: internal/y.go")
-	assert.Empty(t, h.openOf(sprint.NReadBroken), "the second time it is not the worker's")
+	h.finishAttempt("s1-1", true, "the tests fail")
+	assert.Empty(t, h.openOf(sprint.NWorkFailed), "the second failure is the brief's, not the worker's")
 	open := h.openOf(sprint.NBriefWrong)
 	require.Len(t, open, 1)
 	n := open[0].Note
 	assert.Equal(t, "a card has reached its bound: the brief is wrong, not the worker", n.Type)
-	assert.Equal(t, "s1-1 has failed the same way twice (attempts 1 and 2: files outside PATHS: internal/x.go); the brief is wrong, not the worker; run: nova-sprint brief s1-1 --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop s1-1 --reason '<why>'; attempt 2 found: files outside its PATHS: internal/y.go", n.What)
+	assert.Contains(t, n.What, "the brief is wrong, not the worker")
+	assert.Contains(t, n.What, "findings: attempt 1: r; attempt 2: r")
 	assert.Equal(t, []string{"brief", "drop"}, n.Decisions)
 	for _, c := range h.commandsOf(sprint.NBriefWrong) {
 		for _, l := range c.Lines {

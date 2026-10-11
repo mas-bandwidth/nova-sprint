@@ -62,6 +62,8 @@
 \*                PATHS: WidensWiden
 \*   "boundoutside" the read stops a finding naming a file outside PATHS at the brief's
 \*                bound instead of letting the rule widen it: OutsideNeverBound
+\*   "boundinside"  the read-broken rule leaves a card at its brief's bound with a finding
+\*                inside PATHS instead of reworking it: ReworkAtBound
 \*   "nowidencap" the rule widens on every finding outside PATHS, past MaxWidens:
 \*                WidensBounded
 \*   "nofinding"  the read-broken rule reworks a broken read that carries no finding:
@@ -97,7 +99,7 @@ RdFindings == RdFiles \cup {"in1", "in2"}
 VARIABLES col, need, blocked, twin,               \* twins
           tier, fails, st, attempts, envFails,     \* rules
           gen, waited, progress, late, waits, lst, stamped, badReturn, \* late
-          rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, \* reads
+          rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, \* reads
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
           anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, \* answers
@@ -106,7 +108,7 @@ VARIABLES col, need, blocked, twin,               \* twins
 twinVars == <<col, need, blocked, twin>>
 ruleVars == <<tier, fails, st, attempts, envFails>>
 lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn>>
-rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal>>
+rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed>>
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
 anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless>>
@@ -143,6 +145,7 @@ TypeOK ==
   /\ rdpaths \subseteq RdFiles
   /\ rdwidens \in Nat
   /\ rdtotal \in Nat
+  /\ rdfixed \subseteq RdFindings
   /\ gfails \in 0..3
   /\ stopped \in BOOLEAN
   /\ idle \in BOOLEAN
@@ -171,7 +174,7 @@ Init ==
   /\ gen = 0 /\ waited = -1 /\ progress = FALSE /\ late = FALSE /\ waits = 0 /\ lst = "working"
   /\ stamped = FALSE /\ badReturn = FALSE
   /\ rdst = "working" /\ rdatt = 1 /\ rdlast = None /\ rdfind = None /\ rdpaths = {}
-  /\ rdwidens = 0 /\ rdtotal = 0
+  /\ rdwidens = 0 /\ rdtotal = 0 /\ rdfixed = {}
   /\ gfails = 0 /\ stopped = FALSE
   /\ idle = FALSE /\ since = -1 /\ said = FALSE /\ alarms = 0 /\ clk = 0 /\ nalarm = 0 /\ nclear = 0
   /\ anst = "working" /\ anatt = 1 /\ anreworks = 0 /\ anhead = 0 /\ ancarry = 0
@@ -437,19 +440,22 @@ RdWidenable(f) == RdOutside(f) /\ (rdwidens < MaxWidens \/ Broken = "nowidencap"
 
 \* the outside: a reader finds the attempt broken with finding f (Read writes the brief's
 \* bound judgment instead at the bound, unless f names a file outside PATHS under the widen
-\* cap; and for a file outside PATHS past the cap), or the attempt lands
+\* cap; and for a file outside PATHS past the cap, or at the bound for the boundoutside
+\* defect), a finding whose fix already stands is not read again (it is in rdfixed), or the
+\* attempt lands
 RdReadBroken(f) ==
   /\ rdst = "working"
+  /\ f \notin rdfixed
   /\ rdfind' = f
   /\ rdst' = IF Broken # "nobound"
                   /\ \/ (RdAtBound(f) \/ RdOutside(f)) /\ ~RdWidenable(f)
                      \/ RdAtBound(f) /\ Broken = "boundoutside"
-               THEN "bound" ELSE "broken"
-  /\ UNCHANGED <<rdatt, rdlast, rdpaths, rdwidens, rdtotal>>
+                THEN "bound" ELSE "broken"
+  /\ UNCHANGED <<rdatt, rdlast, rdpaths, rdwidens, rdtotal, rdfixed>>
 RdLands ==
   /\ rdst = "working"
   /\ rdst' = "done"
-  /\ UNCHANGED <<rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal>>
+  /\ UNCHANGED <<rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed>>
 
 \* the rule: a finding naming a file outside PATHS widens the card's PATHS in place by it,
 \* attempts on the widened brief from the first; any other finding is the fix of a rework on
@@ -462,12 +468,20 @@ RuleReadBroken ==
        ELSE /\ rdatt' = rdatt + 1 /\ rdlast' = rdfind
             /\ UNCHANGED <<rdpaths, rdwidens>>
   /\ rdst' = "working" /\ rdtotal' = rdtotal + 1
-  /\ UNCHANGED rdfind
+  /\ UNCHANGED <<rdfind, rdfixed>>
 
-\* a card at its brief's bound is answered by a mind (brief or drop), never by rule
+\* a card at its brief's bound is answered by a mind: a finding inside PATHS is reworked with
+\* the finding as its fix (a broken verdict at the same head outweighs the bound, and the fix
+\* stands so the finding is not read again: rdfixed), where a finding outside PATHS the bound's
+\* remedy did not reach is left with the brief or drop. The boundinside defect leaves the
+\* inside finding instead: ReworkAtBound.
 RdMind ==
   /\ rdst = "bound"
-  /\ rdst' = "judged"
+  /\ IF ~RdOutside(rdfind) /\ Broken # "boundinside"
+       THEN /\ rdst' = "working"
+            /\ rdfixed' = rdfixed \cup {rdfind}
+       ELSE /\ rdst' = "judged"
+            /\ UNCHANGED rdfixed
   /\ UNCHANGED <<rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal>>
 
 RdNext == RdLands \/ RuleReadBroken \/ RdMind \/ \E f \in RdFindings : RdReadBroken(f)
@@ -483,6 +497,11 @@ WidensWiden == rdwidens <= Cardinality(rdpaths)
 \* card's widenings are under the cap: the rule widens the brief in place, the bound's own
 \* remedy.
 OutsideNeverBound == rdst = "bound" /\ RdOutside(rdfind) => rdwidens >= MaxWidens
+
+\* A finding inside PATHS at the brief's bound is still reworked, never left with brief/drop:
+\* a broken verdict at the same head outweighs the bound (rules_read.go, ReworkAtBound). The
+\* boundinside defect answers the bound with brief/drop instead of reworking.
+ReworkAtBound == (rdst = "bound" /\ ~RdOutside(rdfind)) ~> (rdst = "working")
 
 \* Readers' findings widen one card's PATHS at most MaxWidens times: a reader naming a new
 \* file outside PATHS every round never widens it for ever.
