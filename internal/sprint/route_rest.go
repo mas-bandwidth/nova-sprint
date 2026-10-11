@@ -726,6 +726,14 @@ func restWrites(p *Plan, s *Snapshot, due []RouteRest, who string) {
 		if len(written) == 0 {
 			continue
 		}
+		for key, old := range merged {
+			// a backoff line whose end has passed holds nothing and is never read again:
+			// dropped on the provider's next write, so the property grows with the backoffs
+			// that hold, never with every route that ever backed off
+			if strings.HasSuffix(key, rateBackoffKey) && !s.Now.Before(old.Until) {
+				delete(merged, key)
+			}
+		}
 		p.Props = append(p.Props, PropWrite{Table: Fleet, Name: name, Value: rule3Text(merged), Was: was, WasAbsent: !had})
 		for _, r := range written {
 			tier := ""

@@ -622,6 +622,29 @@ func (s *Snapshot) servedRoute(tier, member, name string, drawing bool) (Route, 
 	return Route{}, false
 }
 
+// tierBackingOff says every enabled route of tier is backing off from a rate limit at
+// s.Now (a rest of cause RestRateBackoff the dealing step settled, withRests), naming each
+// and its end: a ready card of that tier is waiting out a stall that ends by itself, never
+// stalled work and never a judgment (held.go; tla/RateBackoff.tla, BackoffEnds). "" when
+// the tier has no enabled route or any of them is not backing off.
+func (s *Snapshot) tierBackingOff(tier string) string {
+	var backs []string
+	for _, r := range s.Routes {
+		if r.Tier != tier || !r.Enabled {
+			continue
+		}
+		rest, ok := s.resting(r.Name)
+		if !ok || rest.Cause != RestRateBackoff {
+			return ""
+		}
+		backs = append(backs, r.Name+" until "+rest.UntilSaid())
+	}
+	if len(backs) == 0 {
+		return ""
+	}
+	return "waits for the rate-limit backoff on " + strings.Join(backs, ", ") + ": the deal resumes by itself"
+}
+
 // unservedWhy names the routes of tier no deal to member draws, for the tier's judgment
 // when none serves: those resting (route_rest.go), those the member cannot launch
 // (Launches), and those at their provider's concurrency budget (rate_budget.go; only for a

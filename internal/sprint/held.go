@@ -622,6 +622,12 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 		if len(up) == 0 {
 			return "no fleet member is up, and no judgment says so", "", false
 		}
+		if bwhy := s.tierBackingOff(tier); bwhy != "" {
+			// every route of its tier backs off from a rate limit: a stall that ends by
+			// itself, never stalled work (a-rate-limited-refusal-never-fails-the-cardc;
+			// tla/RateBackoff.tla)
+			return bwhy, "", true
+		}
 		if rwhy == "" {
 			if lwhy := s.noLauncher(pr, ec, tier, all); lwhy != "" {
 				// a route serves its tier and no member the deal may give it (its bench, less

@@ -63,6 +63,7 @@ func TestThreeRateLimitedTakesOnALimitedRouteRestNothing(t *testing.T) {
 	h.machine()
 	assert.Len(t, h.noteWhats(sprint.NRouteRested), 1, "no second note while the same until holds")
 	assert.Empty(t, h.openOf(sprint.NNoRoute), "a backoff on the tier's one route is a stall, never a judgment")
+	assert.Empty(t, h.openOf(sprint.NStalled), "a backoff is a wait that ends by itself, never stalled work")
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
 		c := s.Fleet.Card(id)
 		assert.Zero(t, c.Int("redeals"), "%s spent no redeal", id)
@@ -76,6 +77,7 @@ func TestThreeRateLimitedTakesOnALimitedRouteRestNothing(t *testing.T) {
 		assert.Equal(t, sprint.Ready, s.Fleet.Card(id).Col, "%s is dealt again once the backoff ends", id)
 	}
 	assert.Empty(t, h.openOf(sprint.NNoRoute), "no judgment after the backoff either")
+	assert.Empty(t, h.openOf(sprint.NStalled), "no stalled-work judgment after the backoff either")
 }
 
 // A route rests only on a provider-typed failure (tla/RouteRest.tla): three takes on one route

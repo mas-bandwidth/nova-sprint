@@ -383,3 +383,22 @@ func TestNoBudgetDealsAsBefore(t *testing.T) {
 	_, conc := set[FieldRateConcurrent]
 	assert.False(t, rpm || conc, "no limit field on an unlimited route's card: %v", set)
 }
+
+// A ready card whose tier's every route backs off from a rate limit waits out a stall that
+// ends by itself: the no-stall rule holds it on the backoff, never stalled work and never a
+// judgment, and once the backoff ends the card is dealt again (tla/RateBackoff.tla,
+// BackoffEnds).
+func TestARateLimitBackoffIsAWaitNeverAStall(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	proMercury(w)
+	takeAndRefuse(t, w)
+	require.Equal(t, Ready, w.state("s1-1"))
+	for _, f := range Unheld(running(w), w.s.Now) {
+		assert.NotEqual(t, "s1-1", f.Subject, "a backoff is never stalled work: %s", f.Why)
+	}
+	hd := Holder(running(w), w.s.Now, "s1-1")
+	assert.Contains(t, hd.Why, "waits for the rate-limit backoff on pro-mercury3", "%s", hd)
+	w.tick(RateBackoffFor + time.Second)
+	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+}
