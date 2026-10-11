@@ -126,6 +126,41 @@ func TestNeedsSetOnADealtCardKeepsItsAttempt(t *testing.T) {
 	ta.clean()
 }
 
+// (i)(ii) a ready card that already has an attempt — one returned to ready in
+// place after an attempt (briefInPlace, steps_edit.go) — takes the lifecycle
+// move, not the DEPENDS-ON rule: a need not landed moves it ready -> waiting,
+// and --clear moves it back waiting -> ready. The card chooses the path by its
+// column, not by its attempt counter (finding, attempt 3): choosing by attempt
+// routed it through briefDepends, which refuses a ready card an unlanded need
+// and sends the coordinator to drop and re-add a twin.
+func TestNeedsSetOnACardWithAnAttemptUsesItsColumn(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("add --stream a a-1 --one --brief-file " + writeBrief(t, "one"))
+	ta.ok("add --stream a a-2 --one --brief-file " + writeBrief(t, "two"))
+	ta.deal(2)
+	ta.ok("take --as m1 a-2.w1@1")
+	ta.ok("finish --as m1 a-2.w1@1 --head " + landHead + " --report done")
+	ta.ok("brief a-2 --brief-file " + writeBrief(t, "two corrected"))
+	pr := ta.primary("a-2")
+	require.Equal(t, sprint.Ready, pr.Col, "a reviewed card returns to ready in place")
+	require.Equal(t, "1", pr.F("attempt"), "it keeps its attempt")
+
+	ta.ok("needs set a-2 --needs a-1")
+	c := ta.primary("a-2")
+	assert.Equal(t, sprint.Waiting, c.Col, "a ready card that gains a need not landed waits")
+	assert.Equal(t, "a-1", c.F("needs"), "the verb recorded the needs")
+	assert.Equal(t, "1", c.F("attempt"), "it keeps its attempt")
+
+	ta.ok("needs set a-2 --clear")
+	c = ta.primary("a-2")
+	assert.Equal(t, sprint.Ready, c.Col, "with no needs left, a waiting card is ready")
+	assert.Equal(t, "", c.F("needs"), "--clear emptied the needs")
+	assert.Equal(t, "1", c.F("attempt"), "it keeps its attempt")
+	ta.clean()
+}
+
 // (vi) a landed or dropped card is refused.
 func TestNeedsSetRefusesALandedOrDroppedCard(t *testing.T) {
 	t.Parallel()

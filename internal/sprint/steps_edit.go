@@ -604,9 +604,16 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 		return p
 	}
 	brief := setBriefNeeds(c.F("brief"), wants)
-	if c.Int("attempt") > 0 {
-		// a card dealt or working keeps its attempt: the DEPENDS-ON rule the
-		// brief edit takes in any state (steps_edit.go, briefDepends)
+	// the path is chosen by the card's column, not by whether it has ever been
+	// dealt: a card working or in review is dealt, so it takes the new needs
+	// through the DEPENDS-ON rule (steps_edit.go, briefDepends) for its next
+	// attempt, keeping its attempt; a card waiting or ready has no work in
+	// flight, so it takes the lifecycle move, which computes the column from the
+	// new needs and keeps the attempt field the card holds (the same branch a
+	// card that was never dealt takes). Choosing by attempt would route a card
+	// returned to waiting or ready after an attempt (briefInPlace) through
+	// briefDepends, which refuses a ready card a need not landed.
+	if c.Col == Working || c.Col == Review {
 		q := briefDepends(s, p, c, brief, wants)
 		answered(&q, s, r.Answers, r.Who)
 		return Lawful(q)
