@@ -474,6 +474,26 @@
     one writer; a write that fails keeps the earlier bound (the safe side) and says so on the
     server's line. Test: TestARechallengeKeepsTheHookLiveUntilItsOwnBound."
    :origin "v1.2.12 inventory 2026-10-11, section 9 row D6; code read at nova-sprint main 00c54ba")
+  (fix "a-pinned-card-goes-only-to-a-worker-with-its-provider" :release "v1.2.14" :status "planned"
+   :title "A pinned card goes only to a worker that can serve its pin"
+   :text "A card pinned to anthropic/claude-fable-5-1 was dealt to batman, hetzner2, superman and b3, its
+    whole redeal bound in 22 seconds; each take was refused class=auth for want of an Anthropic key no fleet
+    member holds, and a judgment blamed the card. routeOf and routeServed treated every model: pin as served
+    by every member. Now a member serves a pin only when an enabled opencode route names the pin's provider
+    (the fleet holds its key), the provider does not rest, and the member's own takes of that provider's
+    pins were not refused for its key or credit within the route rest window; the deal, the redeal, the
+    rebalance and the level offer a pinned card only to such a member (internal/sprint/pin_serve.go). A
+    pinned card no member of its pool serves waits ready and spends no redeal, under one judgment of the
+    pin (no worker can serve pin <model>), open while a card of it waits and closed when one is served. A
+    provider's key or credit refusal of a pin's take is a coordination failure, accounted as a stop on
+    unlanded needs is: withdrawn with no take ended (no redeal), no ok field (no fail mark, no ok% hit), its
+    consumer end counted neither ok nor failed, and its record rests that provider's pins for that member.
+    A store with no route still deals every pin. Tests: TestAPinnedCardIsNeverDealtToAMemberWithoutItsProvider,
+    TestAPinnedCardNoOneCanServeWaitsWithOneJudgment, TestAProviderAuthFailureOnAPinNeverSpendsTheCardsRedeals
+    and the control TestAPinnedCardAMemberCanServeIsDealtAsUsual. tla/RouteIndex.tla gains the pin-serve
+    guard, PinRefused, PinDealtServes and PinSpendsNoRedeal, with the pinblind witness and the ReachPinRest
+    reach."
+   :origin "live 2026-10-11: a fable-pinned card burned its redeal bound on four fleet members")
   (fix "brief-check-runs-the-add-checks-without-a-write" :release "v1.2.14" :status "planned"
    :title "brief check runs every add check without a write"
    :text "An add's refusals arrived one class at a time, so a brief writer learned of the next only after

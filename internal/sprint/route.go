@@ -122,6 +122,9 @@ func (s *Snapshot) noLauncher(c, ec *Card, tier string, up []string) string {
 	if ms, _ := s.launchersOf(ec, wc, pool); len(ms) > 0 {
 		return ""
 	}
+	if w := s.pinUnservedWhy(c, ec, up); w != "" {
+		return w // the pin's own judgment (pin_serve.go), never the tier's harness sentence
+	}
 	// a member of the pool that refused the card's repository at staging for want of a
 	// bench mirror (stagingRepoWhy) is why the judgment is raised: the mirror, what to
 	// add and where, never unlaunchableWhy's generic harness sentence (the card: "the
@@ -165,8 +168,13 @@ func (s *Snapshot) unlaunchableWhy(c *Card, tier string, pool, refused []string)
 func notLaunching(s *Snapshot, up []string, c *Card) []string {
 	r := Route{Harness: c.F(FieldHarness)}
 	var out []string
+	pin := ""
+	if c.F(FieldRoute) == RoutePin {
+		pin = c.F(FieldModel)
+	}
 	for _, m := range up {
-		if !s.Launches(m, r) || s.stagingRepoWhy(m, c) != "" {
+		if !s.Launches(m, r) || s.stagingRepoWhy(m, c) != "" || pin != "" && s.pinServedWhy(pin, m) != "" {
+			// a pinned card moves only to a member that serves its pin (pin_serve.go)
 			// a member that refused the card's repository at staging for want of a bench
 			// mirror (stagingRepoWhy) is avoided as one that cannot launch its route is
 			out = append(out, m)
@@ -452,6 +460,10 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 		return nil, tier, w, false
 	}
 	if m.Pin != "" {
+		// a pin runs on its member's key: dealt only to a member that serves it (pin_serve.go)
+		if w := s.pinServedWhy(m.Pin, member); w != "" {
+			return nil, "", "pin " + m.Pin + " is not served on " + member + ": " + w, false
+		}
 		return map[string]string{FieldRoute: RoutePin, FieldModel: m.Pin, FieldTokens: m.Tokens, FieldUSD: "", FieldDeadline: strconv.Itoa(m.Deadline)}, "", "", false
 	}
 	if len(s.Routes) == 0 {
@@ -515,7 +527,11 @@ func (s *Snapshot) routeServed(c, wc *Card, member string) (tier, why string, by
 		return tier, w, false
 	}
 	if m.Pin != "" {
-		return "", "", false // a pinned card runs on its pin: served
+		// a pinned card runs on its pin, on a member that serves it (pin_serve.go)
+		if w := s.pinServedWhy(m.Pin, member); w != "" {
+			return "", "pin " + m.Pin + " is not served on " + member + ": " + w, false
+		}
+		return "", "", false
 	}
 	if len(s.Routes) == 0 {
 		return "", "", false

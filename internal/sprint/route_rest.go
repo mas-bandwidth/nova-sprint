@@ -615,6 +615,7 @@ func (s *Snapshot) withRests() (*Snapshot, []RouteRest) {
 	}
 	n := *s
 	n.rests = map[string]RouteRest{}
+	n.pinRested = pinRestsOf(s.Fleet, s.Now)
 	for name, r := range RouteRests(s.Routes, s.Fleet) {
 		if r.Resting(s.Now) {
 			n.rests[name] = r

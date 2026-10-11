@@ -1046,6 +1046,9 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 				if w := s.stagingRefusalWhy(card, of); w != "" {
 					return "", w
 				}
+				if w := s.pinUnservedWhy(c, card, of); w != "" {
+					return "", w // no member serves its pin (pin_serve.go)
+				}
 				_, tier, _, _ := s.routeOf(card, nil, nil, "")
 				return "", s.unlaunchableWhy(c, tier, of, refused)
 			}
@@ -1757,6 +1760,13 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		switch kind {
 		case cardhdr.EndProvider:
+			if pinRefused(c, kind, r) && !late {
+				// a pin the provider refused for its key or credit: a coordination failure,
+				// never the worker's or the card's (pin_serve.go; tla/PinServe.tla): no redeal
+				// spent, no fail mark, and the pin rests for that member
+				p.Units = append(p.Units, pinRefusedReturned(s, c, pr, r))
+				continue
+			}
 			if IsRateLimited(r.Report) {
 				// a rate limit NEVER fails the card, on any route and however many times: the
 				// card is returned untouched (no take ended, no redeal, no attempt) and the

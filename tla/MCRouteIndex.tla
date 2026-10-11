@@ -19,6 +19,9 @@ MCRested == {}
 MCAvoid == [c \in Cards |-> {}]
 MCReadTier == [t \in Tiers |-> t]
 
+\* m1 holds no key for the pin's provider; m2 does, until the provider refuses it.
+MCPinBlind == {"m1"}
+
 \* A case that exercises them (MCRouteIndexRead.cfg): b rests, the read c6 avoids
 \* a, and a pro primary's read is drawn on flash (readTierOf's collapse).
 MCRestedB == {"b"}

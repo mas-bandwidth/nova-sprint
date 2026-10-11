@@ -772,6 +772,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	var ready []*Card
 	var conds []cond
 	unserved, whyOf := map[string][]string{}, map[string]string{}
+	unservedPin, whyPin := map[string][]string{}, map[string]string{} // by pin (pin_serve.go)
 	up := s.UpMembers()
 	// Friends first: every ready card a friend may take, except a held stream
 	// (dealt nowhere) and a bench card (bench_deal.go keeps it for its bench).
@@ -847,6 +848,17 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 			continue
 		}
 		ec := escalating(s, c)
+		if why := s.pinUnservedWhy(c, ec, up); why != "" {
+			// a pinned card no member of its pool serves (no route of its provider, the
+			// provider resting, or each member's pins of it resting): it waits ready, spends
+			// no redeal, and the pin's one judgment names it (pin_serve.go; tla/PinServe.tla)
+			pin := pinOf(ec)
+			unservedPin[pin] = append(unservedPin[pin], c.ID)
+			if whyPin[pin] == "" {
+				whyPin[pin] = why
+			}
+			continue
+		}
 		if tier, why, byFriend := s.routeServed(ec, nil, ""); byFriend {
 			// no route serves its tier and a friend up does: the friends' deal's, never a
 			// machine's (tierServed); withdrawn or taken back from every such friend, or left by
@@ -920,6 +932,11 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	for _, tier := range slices.Sorted(maps.Keys(unserved)) {
 		conds = append(conds, cond{typ: NNoRoute, stream: TierSubject(tier), streamLevel: true, primaries: unserved[tier],
 			what: fmt.Sprintf("%d primaries of tier %s wait: %s", len(unserved[tier]), tier, whyOf[tier])})
+	}
+	// one judgment per pin no worker can serve, open while a card of it waits (pin_serve.go)
+	for _, pin := range slices.Sorted(maps.Keys(unservedPin)) {
+		conds = append(conds, cond{typ: NNoRoute, stream: PinSubject(pin), streamLevel: true, primaries: unservedPin[pin],
+			what: fmt.Sprintf("%d primaries pinned to %s wait: %s", len(unservedPin[pin]), pin, whyPin[pin])})
 	}
 	// one judgment per provider while its routes rest for its funds or its key, never one
 	// per card (provider_funds.go)

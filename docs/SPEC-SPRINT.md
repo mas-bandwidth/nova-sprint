@@ -2590,7 +2590,26 @@ order the cards were dealt in, so a card brought to the front of its stream by
   ordered list of route names, a name repeated for more turns, and a tier with
   none takes its enabled routes in name order. The deal (and a redeal, and a
   rework's next attempt) resolves the card at deal time: a pin is its route
-  (`pin`) and moves no index; a store with no route deals as before (the member
+  (`pin`) and moves no index, and **a pinned card goes only to a member that serves
+  its pin** (v1.2.14, `internal/sprint/pin_serve.go`; 2026-10-11: a card pinned to
+  `anthropic/claude-fable-5-1` was dealt to four members in 22 seconds, its whole
+  redeal bound, each refusing it `class=auth` for want of a key no member holds): an
+  enabled opencode route names the pin's provider (the fleet holds its key), the
+  provider does not rest, and the member's own takes of that provider's pins were not
+  refused for its key or credit within `RouteRestFor`. The deal, the redeal, the
+  rebalance and the level offer a pinned card to no other member. A pinned card no
+  member of its pool serves waits ready, spends no redeal, and the tick raises one
+  judgment of the pin (`no route serves the tier` under the subject `pin:<model>`,
+  saying `no worker can serve pin <model>`), open while a card of it waits, closed
+  when one is served. A provider's key or credit refusal of a pin's take is a
+  coordination failure, accounted as a stop on unlanded needs is: the work card is
+  withdrawn with no take ended (no redeal), no ok field (no fail mark, no ok% hit on
+  the member), its consumer end `pin not served` counted neither ok nor failed, and its
+  record (`pin_take_<n>`) rests that provider's pins for that member
+  (`TestAPinnedCardIsNeverDealtToAMemberWithoutItsProvider`,
+  `TestAPinnedCardNoOneCanServeWaitsWithOneJudgment`,
+  `TestAProviderAuthFailureOnAPinNeverSpendsTheCardsRedeals`; `tla/RouteIndex.tla`,
+  `PinDealtServes`); a store with no route deals as before, every pin with it (the member
   runs its override); a frontier card with no pin is the friends' by design (a
   friend up whose row lists frontier serves it as a route would, `tierServed`),
   and with no such friend it is the coordinator's and is

@@ -113,11 +113,11 @@ func TestARoutesDollarBudgetRidesTheCardAndThePacket(t *testing.T) {
 func TestAPinnedCardRunsOnItsPinAndBypassesTheDraw(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("pro-a", "pro"))
-	h.addReady("s1", 1, briefOf("pro", "model: anthropic/claude-x\ntokens: 5000\ndeadline: 5m"))
+	h.addReady("s1", 1, briefOf("pro", "model: prov-pro-a/claude-x\ntokens: 5000\ndeadline: 5m"))
 	h.must(DealStep(sprint.DealReq{}))
 	wc := h.workCards()["s1-1.w1"]
 	assert.Equal(t, sprint.RoutePin, wc.F(sprint.FieldRoute))
-	assert.Equal(t, "anthropic/claude-x", wc.F(sprint.FieldModel))
+	assert.Equal(t, "prov-pro-a/claude-x", wc.F(sprint.FieldModel))
 	assert.Equal(t, "5000", wc.F(sprint.FieldTokens))
 	assert.Equal(t, "300", wc.F(sprint.FieldDeadline))
 }
@@ -150,7 +150,7 @@ func TestACardWithNoRouteIsNotDealtAndJudgedOncePerTier(t *testing.T) {
 	}
 	h.addReady("s2", 1, briefOf("flash", ""))
 	h.addReady("s3", 1, briefOf("frontier", ""))
-	h.addReady("s4", 1, briefOf("frontier", "model: anthropic/claude-frontier\ntokens: unmetered\ndeadline: 3600"))
+	h.addReady("s4", 1, briefOf("frontier", "model: prov-flash-a/claude-frontier\ntokens: unmetered\ndeadline: 3600"))
 	res := h.run(DealStep(sprint.DealReq{}))
 	refused := fmt.Sprint(res.Refused)
 	assert.Contains(t, refused, "no enabled route and no up friend serves tier pro")
@@ -423,7 +423,7 @@ func TestAPinnedCardLeavesTheRouteIndex(t *testing.T) {
 	t.Parallel()
 	h := tierHarness(t, map[string][]string{"flash": {"a", "b"}})
 	h.addReady("s1", 1, briefOf("flash", ""))
-	h.addReady("s2", 2, briefOf("flash", "model: x/y\ntokens: 100\ndeadline: 60"))
+	h.addReady("s2", 2, briefOf("flash", "model: prov-a/y\ntokens: 100\ndeadline: 60"))
 	h.must(DealStep(sprint.DealReq{}))
 	assert.Equal(t, "1", h.routeIndexOf("flash"), "the two pinned cards do not move it")
 	assert.Equal(t, []string{"a"}, h.dealtRoutes("s1", 1))
@@ -559,7 +559,7 @@ func TestReadsTheirCardsTierCannotServeAreJudgedAtOnce(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("heavy-a", "heavy"))
 	require.NoError(t, h.st.BeatReaders(h.ctx))
-	h.addReady("s1", 1, briefOf("pro", "model: x/y\ntokens: 100\ndeadline: 60"))
+	h.addReady("s1", 1, briefOf("pro", "model: prov-heavy-a/y\ntokens: 100\ndeadline: 60"))
 	h.startMachine()
 	h.machine()
 	h.work("m1")

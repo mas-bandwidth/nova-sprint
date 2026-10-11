@@ -214,6 +214,8 @@ MCRouteIndexHarness.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	requi
 MCRouteIndexBrokenHarnessBlind.cfg	MCRouteIndex.tla	invariant	NeverUnlaunchable	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenJudgeFleet.cfg	MCRouteIndex.tla	invariant	StrandedIsJudged	ignore-terminal	routeindex	required	-
 MCRouteIndexFirst.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
+MCRouteIndexBrokenPinBlind.cfg	MCRouteIndex.tla	invariant	PinDealtServes	ignore-terminal	routeindex	required	-
+MCRouteIndexReachPinRest.cfg	MCRouteIndex.tla	invariant	ReachPinRest	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenNoFirst.cfg	MCRouteIndex.tla	invariant	FirstPreferred	ignore-terminal	routeindex	required	-
 MCRouteIndexRead.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
 MCLand.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-

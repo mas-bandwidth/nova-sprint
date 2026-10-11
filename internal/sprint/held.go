@@ -497,6 +497,12 @@ func (c *held) judgment(pr *Card) string {
 			return "no route serves tier " + tier + "; open: " + strings.Join(c.judged[StreamSubject(TierSubject(tier))], ", ")
 		}
 		ec := escalating(c.s, pr)
+		// no member of its pool serves its pin: the pin's one judgment names it (TickDeal)
+		if pin := pinOf(ec); pin != "" {
+			if open := c.judged[StreamSubject(PinSubject(pin))]; len(open) > 0 && c.s.pinUnservedWhy(pr, ec, c.s.UpMembers()) != "" {
+				return "no worker can serve pin " + pin + "; open: " + strings.Join(open, ", ")
+			}
+		}
 		_, tier, why, byFriend := c.s.routeOf(ec, nil, nil, "")
 		open := c.judged[StreamSubject(TierSubject(tier))]
 		// friends alone serve its tier and none up who serves it may be dealt it: the same

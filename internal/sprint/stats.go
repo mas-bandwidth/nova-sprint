@@ -181,7 +181,7 @@ func StatsSince(s *Snapshot, since time.Time) PassStats {
 				z.ok++
 			case strings.HasPrefix(c.End, cardhdr.EndProvider), strings.HasPrefix(c.End, cardhdr.EndNoResult):
 				z.provider++
-			case c.End == EndNeedsUnlanded:
+			case c.End == EndNeedsUnlanded, c.End == EndPinUnserved:
 				// a stop on needs not landed is a coordination failure (needs_stop.go): neither
 				// ok nor failed for the route or model
 			default:
