@@ -373,3 +373,5 @@ MCAdoptBrokenKeepNew.cfg	MCAdopt.tla	invariant	RefusedLeavesOld	ignore-terminal	
 MCSeatProof.cfg	MCSeatProof.tla	pass	-	ignore-terminal	seatproof	required	-
 MCSeatProofBrokenNoRenew.cfg	MCSeatProof.tla	action	BusySeatNeverLockedOut	ignore-terminal	seatproof	required	-
 MCSeatProofBrokenRenewDest.cfg	MCSeatProof.tla	action	CoordinatorNeverFabricates	ignore-terminal	seatproof	required	-
+MCRetireAbsent.cfg	MCRetireAbsent.tla	pass	-	ignore-terminal	retire-absent	required	-
+MCRetireAbsentBroken.cfg	MCRetireAbsent.tla	invariant	RecordsKeepRows	ignore-terminal	retire-absent	required	-

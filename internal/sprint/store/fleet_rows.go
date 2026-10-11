@@ -310,3 +310,29 @@ func ctlIDs(members []string) []string {
 	}
 	return out
 }
+
+// DropReadersRetired takes the reader row reader-<m> of every machine m the tick
+// retired off the readers table (sprint.TickRetireAbsent, fleet_retire.go): a
+// machine whose record is gone from the inventory has no reader, and a read card
+// the row held is unplaced with it and asked again elsewhere by the next ask. A
+// machine with no reader row is left; a reader named for no machine is never
+// named here.
+func (st *Store) DropReadersRetired(ctx context.Context, members []string) error {
+	rows, err := st.ReaderRows(ctx)
+	if err != nil || len(rows) == 0 {
+		return err
+	}
+	var gone []string
+	for _, m := range members {
+		if r := sprint.ReaderPrefix + m; slices.Contains(rows, r) {
+			gone = append(gone, r)
+		}
+	}
+	if len(gone) == 0 {
+		return nil
+	}
+	if err := st.B.RowsDel(ctx, st.Names.Table(sprint.Readers), gone); err != nil {
+		return err
+	}
+	return st.ForgetReaders(ctx, gone)
+}
