@@ -321,6 +321,7 @@ MCSprintTables.cfg	MCSprintTables.tla	pass	-	ignore-terminal	sprinttables	requir
 MCSprintTablesBrokenDownkeeps.cfg	MCSprintTables.tla	action	WorkingOnAnUpMember	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenInsert.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsert	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenNeedless.cfg	MCSprintTables.tla	action	NeedsLandFirst	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenWithdrawready.cfg	MCSprintTables.tla	action	NeedsWithdrawalWaits	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenShortAccept.cfg	MCSprintTables.tla	invariant	AcceptHeld	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenAcceptBroken.cfg	MCSprintTables.tla	invariant	NeverAcceptBroken	ignore-terminal	sprinttables	required	-
 MCStallLadder.cfg	MCStallLadder.tla	pass	-	ignore-terminal	stallladder	required	-
