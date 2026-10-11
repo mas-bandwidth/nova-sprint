@@ -19,6 +19,22 @@
 \* read", and a refusal writes nothing. What those models found about layers
 \* 1 and 2 is theirs and is not repeated here.
 \*
+\* DESIGN-ONLY AND WHAT THE CODE KEEPS (a re-scope, 2026-10-11). The design's
+\* core is design-only: no Go file has the agenda, the parked keys, the log and
+\* its cursor, jopen, STALEGEN, INGESTAT or TickLease, or R7's tick-start
+\* level; the code fences a step on Fence.Gen and RunSeq instead
+\* (internal/sprint/store/backend.go:130-139, engine.go:577), and its level is
+\* its own machine (internal/sprint/steps_work.go levelTo; tla/Level.tla).
+\* What the code keeps, and this model keeps too: the deal's stream turns
+\* (TurnSorted and W28; internal/sprint/steps_tick.go:656-665 dealTurns), the
+\* rolling indexes dcur and acur (internal/sprint/round.go:26-46, 76-80,
+\* roundWrites:450-464), the dealt bound (WorkDeadline,
+\* internal/sprint/steps_tick.go:1954-1958), PlanDown
+\* (internal/sprint/fleet_sync.go:22), and the room, which counts a member's
+\* ready and its working cards together (internal/sprint/width.go:19-21,
+\* widthRoom:119, 133-139; read_cards.go:151-153 halfLoad) against Cap, the
+\* model's one number for DealAhead times the width.
+\*
 \* THE STATE (variables, section 5's table, as far as this model keeps it).
 \*   col, score, fld     work table: card -> column, score, the fields the rules read
 \*   wk                  a primary's live work card: its places (a set, so that
@@ -164,7 +180,7 @@ CONSTANTS
   AddScore,     \* card -> -1 (an integer score from the counter) or an odd score (an insertion)
   Refuses,      \* the cards deal's planner refuses (a Plan.Refused entry)
   RankTo,       \* the scores rank may choose
-  Cap,          \* ready cards a member (2 in the design)
+  Cap,          \* ready and working cards a member (2 in the design; the model's one number stands for the code's DealAhead times the width)
   Chunk,        \* StepChunk: the changes one plan takes
   StepBound,    \* the units one request carries, as the builder counts
   L1Bound,      \* the units layer 1 accepts: below StepBound, the builder counted wrong (LIMIT)
@@ -290,8 +306,16 @@ InWorking(w) == \E x \in w.pl : x[2] = "working"
 MemberOf(w) == IF w.pl \ {Withdrawn} # {} THEN (CHOOSE x \in w.pl \ {Withdrawn} : TRUE)[1] ELSE None
 ReadyAt(m) == {p \in Prims : <<m, "ready">> \in wk[p].pl}
 RCount(m) == Cardinality(ReadyAt(m))
+WorkingAt(m) == {p \in Prims : <<m, "working">> \in wk[p].pl}
+WCount(m) == Cardinality(WorkingAt(m))
+\* A member's load: its ready and its working cards, what the code's room
+\* counts (internal/sprint/width.go widthRoom: DealAhead times the width less
+\* halfLoad of the ready and working, read_cards.go:151-153; the model's Cap
+\* stands for DealAhead times the width). Broken "readyonly" counts the ready
+\* cards only, the model's old room, and so over-fills a member that is working.
+Load(m) == IF Broken = "readyonly" THEN RCount(m) ELSE RCount(m) + WCount(m)
 Up == {m \in Members : status[m] = "up"}
-Room == Cardinality({x \in Up \X (1..Cap) : x[2] > RCount(x[1])})
+Room == Cardinality({x \in Up \X (1..Cap) : x[2] > Load(x[1])})
 BeatFresh(m) == beat[m] > 0              \* a beat is fresh while beat:m lies above R
 \* H12's repair (stablesince): R6 deals only to a member up for two beat
 \* periods (stable_since); the other rules place cards on any up member.
@@ -304,11 +328,11 @@ StableOn == "stablesince" \in Fixes
 PlaceOn == "unplaced" \in Fixes
 TriesOn == StableOn \/ PlaceOn
 DealUp == {m \in Up : ~StableOn \/ stab[m] = 0}
-DealRoom == Cardinality({x \in DealUp \X (1..Cap) : x[2] > RCount(x[1])})
+DealRoom == Cardinality({x \in DealUp \X (1..Cap) : x[2] > Load(x[1])})
 \* The up members other than a work card's present one with room, and the
-\* one of a set with the shortest ready queue.
-Others(p) == {m \in Up \ {MemberOf(wk[p])} : RCount(m) < Cap}
-Shortest(ms) == CHOOSE m \in ms : \A n \in ms : RCount(m) <= RCount(n)
+\* one of a set with the shortest load.
+Others(p) == {m \in Up \ {MemberOf(wk[p])} : Load(m) < Cap}
+Shortest(ms) == CHOOSE m \in ms : \A n \in ms : Load(m) <= Load(n)
 
 \* The record a revision guards: every field but the entries, and the timers,
 \* whose absolute stamps do not move with time (only this model's relative
@@ -498,12 +522,12 @@ OnCard == {"release", "reach", "unreach", "deal", "redealw", "refuse", "redeal2"
 U(op, c, m, x) == [op |-> op, c |-> c, m |-> m, x |-> x,
                    rec |-> IF op \in OnCard THEN Rec(c) ELSE IF op \in MemberOps THEN status[c] ELSE None,
                    cnt |-> IF op \in {"deal", "redealw", "redeal2", "replace", "replaceF", "rework"} /\ m # None
-                           THEN RCount(m) ELSE 0]
+                           THEN Load(m) ELSE 0]
 
 \* memberup and the count guard (W18: deal, and the redeal of a withdrawn
 \* card, without memberup; the other receivers keep it).
 MemberUp(u) == status[u.m] = "up" \/ (Broken = "W18" /\ u.op \in {"deal", "redealw"})
-Recv(u) == MemberUp(u) /\ RCount(u.m) <= u.cnt
+Recv(u) == MemberUp(u) /\ Load(u.m) <= u.cnt
 \* W5 breaks reach, unreach and the release verb; W5Reach breaks reach and
 \* unreach, not the verb.
 ReachBroken == Broken \in {"W5", "W5Reach"}
@@ -676,7 +700,7 @@ AssignOne(cnt, ms, av) ==
                 ELSE CHOOSE r2 \in {CHOOSE m \in pref : \A n \in pref : cnt[m] <= cnt[n] :
                                     pref \in {IF room \ {av} # {} THEN room \ {av} ELSE room}} : TRUE :
                 room \in {{m \in ms : cnt[m] < Cap}}} : TRUE
-Counts == [m \in Members |-> RCount(m)]
+Counts == [m \in Members |-> Load(m)]
 
 \* The deal goes round the fleet and the ask round the readers (errata 3,
 \* amendment 5; internal/sprint/round.go): a fixed order of the members (the
@@ -1650,6 +1674,12 @@ TypeOK ==
 \* A card is in at most one place in each table (the fleet: one live work card).
 OnePlace == \A p \in Prims : Cardinality(wk[p].pl) <= 1
 
+\* A member's ready and working cards together never pass its cap (the code's
+\* width: internal/sprint/width.go widthRoom counts ready and working against
+\* DealAhead times the width). Broken "readyonly" counts ready only and so
+\* over-fills a member that is working.
+HeldWithinCap == \A m \in Up : RCount(m) + WCount(m) <= Cap
+
 \* E2: the lines ingested are exactly those at or before the cursor, once each.
 IngestOnce == \A i \in DOMAIN log : log[i].ing = IF i <= cur THEN 1 ELSE 0
 
@@ -1771,8 +1801,8 @@ Named(c) ==
   \/ dropping[S(c)] # None /\ Present("opcut", OpS(dropping[S(c)]), "-")
   \/ \E k \in parked : ParkedMoves(k, c)
 \* (d) of R16's table: what a card waits on (an open need, the first
-\* sentinel, the cards before a sentinel, the cards filling every ready
-\* cell deal may fill).
+\* sentinel, the cards before a sentinel, the cards filling every cell deal
+\* may fill: a member's ready and its working cards, since the room counts both).
 WaitsOn(c) ==
   IF col[c] = "waiting"
   THEN LET g == Sigma(S(c)) IN
@@ -1780,7 +1810,7 @@ WaitsOn(c) ==
        \cup (IF g # None /\ g # c /\ score[g] < score[c] THEN {g} ELSE {})
        \cup (IF c = g THEN {d \in Cards : S(d) = S(c) /\ col[d] \in OpenCols /\ score[d] < score[c]} ELSE {})
        \cup (IF c = g /\ ~HasBefore(c) THEN {d \in Prims : col[d] \in InFlightCols} ELSE {})   \* next: held by the work in flight
-  ELSE IF col[c] = "ready" /\ DealUp # {} /\ DealRoom = 0 THEN UNION {ReadyAt(m) : m \in DealUp}
+  ELSE IF col[c] = "ready" /\ DealUp # {} /\ DealRoom = 0 THEN UNION {ReadyAt(m) \cup WorkingAt(m) : m \in DealUp}
   ELSE {}
 RECURSIVE NamedD(_, _)
 NamedD(c, d) == Named(c) \/ (d > 0 /\ \E x \in WaitsOn(c) : NamedD(x, d - 1))
@@ -1818,7 +1848,7 @@ NothingSilent ==
     \/ ActorBefore(c)
     \/ RuleHolds(c)
     \/ WaitsOn(c) # {}                                                 \* (d)
-    \/ col[c] = "ready" /\ DealRoom = 0 /\ (DealUp # {} \/ Up = {})   \* (d) every ready cell deal may fill is full (vacuous with none up)
+    \/ col[c] = "ready" /\ DealRoom = 0 /\ (DealUp # {} \/ Up = {})   \* (d) every cell deal may fill is full (vacuous with none up)
 
 \* One open judgment per (type, subject, cause); none while a hold on it is
 \* before its time.
@@ -1917,7 +1947,7 @@ DealTakesTurns ==
 \* the ring). Stated from dcur and the ring, not from RoundOne.
 DealOp(u) == u.op \in {"deal", "redealw"}
 DealGoesRound ==
-  (Dealable # {} /\ DealRoom > 0 /\ DealUp = Members /\ \A m \in Members : RCount(m) = 0) =>
+  (Dealable # {} /\ DealRoom > 0 /\ DealUp = Members /\ \A m \in Members : Load(m) = 0) =>
     LET dl == SelectSeq(PlanDeal(DealK, Chunk).units, DealOp)
     IN (\A i \in DOMAIN dl : fld[dl[i].c].avoid = None) =>
          \A i \in 1..Min(Len(dl), Cardinality(Members)) : dl[i].m = At(MemSeq, dcur, i - 1)

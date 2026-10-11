@@ -137,6 +137,11 @@ ScnStoppedReady == [ScnReady1 EXCEPT !.running = FALSE]
 \* g1 waiting alone at the head of s1 (4), nothing before it; s2: p2 merging (2). The
 \* sentinel is next, not reached, until p2 lands (W30, C30: NextNotReached, NextReached).
 ScnNext == [Base EXCEPT !.col = Cols4("none", "merging", "none", "waiting"), !.score = Cols4(0, 2, 0, 4), !.next = 6]
+\* p1 taken and working at m1 (s1, 2); p3 ready and never dealt (s1, 4); m2
+\* down: the ready-only room deals p3 onto m1 beside the working p1, two cards
+\* in one cell (HeldWithinCap).
+ScnRoomWorking == [Base EXCEPT !.col = Cols4("working", "none", "ready", "none"), !.score = Cols4(2, 0, 4, 0),
+                              !.wpl = [NoCard EXCEPT !["p1"] = AtM("m1", "working")], !.status = UpDown, !.next = 6]
 
 \* Reachability probes (expected to fail: each names a state a configuration
 \* must reach for its case to mean anything).

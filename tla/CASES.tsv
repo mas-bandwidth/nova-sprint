@@ -80,6 +80,7 @@ MCSprintEventsW27.cfg	MCSprintEvents.tla	invariant	NoLostWork	ignore-terminal	sp
 MCSprintEventsW28.cfg	MCSprintEvents.tla	invariant	DealTakesTurns	ignore-terminal	sprintevents-witnesses-b	required	-
 MCSprintEventsW29.cfg	MCSprintEvents.tla	invariant	DealGoesRound	ignore-terminal	sprintevents-witnesses-b	required	-
 MCSprintEventsW31.cfg	MCSprintEvents.tla	action	DealtBoundHeld	ignore-terminal	sprintevents-witnesses-b	required	-
+MCSprintEventsBrokenReadyOnly.cfg	MCSprintEvents.tla	invariant	HeldWithinCap	ignore-terminal	sprintevents-witnesses-b	required	-
 MCSprintEventsGoalNamed.cfg	MCSprintEvents.tla	temporal	ProgressLiteral	ignore-terminal	sprintevents-goals	required	-
 MCSprintEventsGoalStopped.cfg	MCSprintEvents.tla	temporal	Progress	ignore-terminal	sprintevents-goals	required	-
 MCSprintEventsGoalSpan.cfg	MCSprintEvents.tla	temporal	Progress	ignore-terminal	sprintevents-goals	required	-
@@ -90,7 +91,7 @@ MCSprintEventsGoalCursor.cfg	MCSprintEvents.tla	invariant	CursorSoundLiteral	ign
 MCSprintEventsGoalDue.cfg	MCSprintEvents.tla	invariant	DueAgreesLiteral	ignore-terminal	sprintevents-goals	required	-
 MCSprintEventsGoalDownDeal.cfg	MCSprintEvents.tla	invariant	NoLostWork	ignore-terminal	sprintevents-goals	required	-
 MCSprintEventsGoalRank.cfg	MCSprintEvents.tla	invariant	Answerable	ignore-terminal	sprintevents-goals-b	required	-
-MCSprintEventsGoalTakeRoom.cfg	MCSprintEvents.tla	invariant	NoLostWork	ignore-terminal	sprintevents-goals-b	required	-
+MCSprintEventsGoalTakeRoom.cfg	MCSprintEvents.tla	pass	-	ignore-terminal	sprintevents-goals-b	required	-
 MCSprintEventsGoalSeen.cfg	MCSprintEvents.tla	invariant	NoLostWork	ignore-terminal	sprintevents-goals-b	required	-
 MCSprintEventsGoalMade.cfg	MCSprintEvents.tla	invariant	Answerable	ignore-terminal	sprintevents-goals-b	required	-
 MCSprintEventsGoalCut.cfg	MCSprintEvents.tla	invariant	Answerable	ignore-terminal	sprintevents-goals-b	required	-
