@@ -1048,6 +1048,21 @@
      its need."
     :origin "card moved out of the sprint (work record, 2026-10-04)")
 
+   (fix "card-json-needs-carry-their-column" :release "v1.2.14" :status "planned"
+    :title "A card's needs carry their column, in the needs verb's words"
+    :text "card --json carried each need as sprint.NeedState, whose only place field was state (json
+     \"state\"), while needs --json printed the same fact as column in its own words, so a reader of
+     card --json read state for a need and column for its card, in a different vocabulary: the
+     confusion the v1.2.9 fixes entry card-column-single-field names, \"a card's state is not confused
+     with the state of its need\", whose landing 30d65733b moved the entry only. NeedsOf now fills
+     NeedState.Column from the one NeedWord, moved into internal/sprint beside it, which needs.go
+     calls too, so each need in card --json carries column as the needs verb prints it (its table
+     column, dropped, or absent), with state kept beside it as a deprecated alias for one release as
+     where --rows keeps state beside column. The card story's lines are unchanged. docs/SPEC-SPRINT.md
+     section 11 states the rule; the red test is TestCardJSONNeedsCarryTheirColumn in
+     cmd/nova-sprint/card_state_test.go."
+    :origin "this card, card-json-needs-carry-their-column.w2; the fixes entry card-column-single-field (release v1.2.9) it implements, moved to the ledger by 30d65733b with no code; code read at nova-sprint main 00c54ba")
+
    (fix "a-stream-has-a-display-name" :release "v1.2.14" :status "planned"
     :title "A stream has a display name"
     :text "A stream's key stays its name everywhere (the work and merge rows, the stream= fields, every

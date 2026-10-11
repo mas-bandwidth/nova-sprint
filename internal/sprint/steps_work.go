@@ -729,14 +729,65 @@ func NamedWaits(s *Snapshot, c *Card, landing map[string]bool) []string {
 	return out
 }
 
-// NeedState is one need of a primary as it stands: the need's state (its
-// column, or off the table with its outcome), and whether it was waived.
+// NeedState is one need of a primary as it stands: the need's place as its
+// column, and whether it was waived.
 type NeedState struct {
-	ID       string `json:"id"`
+	ID string `json:"id"`
+	// Column is the need's place in the needs verb's words (NeedWord): its
+	// table column, "dropped" for a kept record whose outcome is dropped, or
+	// "absent" for no record at all (docs/SPEC-SPRINT.md section 11).
+	Column string `json:"column"`
+	// State is the need's raw state as it stands (its column, or off the table
+	// with its outcome): a deprecated alias of Column for one release, kept
+	// beside it as where --rows keeps state beside column (docs/SPEC-SPRINT.md
+	// section 11).
 	State    string `json:"state"`
 	Waived   bool   `json:"waived,omitempty"`
 	WaivedBy string `json:"waived_by,omitempty"` // who waived the primary's needs last, and when
 	WaivedAt string `json:"waived_at,omitempty"`
+}
+
+// The words a need's place is printed with when it no longer sits in a work
+// column: a kept record's outcome dropped, and no record at all
+// (docs/SPEC-SPRINT.md section 11).
+const (
+	DroppedWord = "dropped"
+	AbsentWord  = "absent"
+)
+
+// NeedWord is a need's place as the needs verb prints it: a column name,
+// dropped for a kept record whose outcome is dropped, that outcome for a
+// record kept with any other outcome, or absent for no record at all (NeedsOf
+// reads the record; StateOf and Card.Placed tell the three apart;
+// docs/SPEC-SPRINT.md section 11). It is the one function both the card and
+// needs readers call, so a card's state is not confused with its need's.
+func NeedWord(state string) string {
+	switch state {
+	case "not on the table":
+		return AbsentWord
+	}
+	if out, ok := offOutcome(state); ok {
+		if out == "dropped" {
+			return DroppedWord
+		}
+		return out
+	}
+	return state
+}
+
+// offOutcome is the outcome a kept record's state names: NeedsOf writes the
+// state "off the table (<outcome>)", false for a placed card's state, which is
+// a column name.
+func offOutcome(state string) (string, bool) {
+	rest, ok := strings.CutPrefix(state, "off the table (")
+	if !ok {
+		return "", false
+	}
+	out, ok := strings.CutSuffix(rest, ")")
+	if !ok {
+		return "", false
+	}
+	return out, true
 }
 
 // NeedsOf is each need of the primary with its state, and the primaries on
@@ -756,7 +807,7 @@ func NeedsOf(s *Snapshot, id string) (needs []NeedState, neededBy []string) {
 		} else if nc != nil {
 			st = "off the table (" + orDash(nc.F("outcome")) + ")"
 		}
-		ns := NeedState{ID: n, State: st, Waived: contains(Split(c.F("waived")), n)}
+		ns := NeedState{ID: n, Column: NeedWord(st), State: st, Waived: contains(Split(c.F("waived")), n)}
 		if ns.Waived {
 			ns.WaivedBy, ns.WaivedAt = c.F("waived_by"), c.F("waived_at")
 		}
