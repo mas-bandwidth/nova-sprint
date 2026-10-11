@@ -855,6 +855,10 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (fix "load-cache-mark-not-read-after-chunks" :release "v1.2.14" :status "planned"
+   :title "A load over more than one read set reads the table's mark"
+   :text "readInto read a table of more than ntable.LimitReadSetMembers records in several read sets and checked only that each saw the table's revision, so a store that lost writes and wrote others up to the same revision between two read sets (a restart from an older save, a failover) gave one revision and two histories and the load mixed them. It now reads the mark of the change event that left the table's revision (TableChangesMarked, as markOf reads it) before the first read set and after the last, and a mark that changed is a movedError, as a changed revision is, so the load reads again under its existing retry. A table of at most 1024 records, or a backend that keeps no marks, reads as before (tla/LoadCache.tla, LoadIsSnapshot)."
+   :origin "the v1.2.12 inventory 2026-10-11, section 9 row D5; code read at nova-sprint main 00c54ba")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
