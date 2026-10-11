@@ -203,6 +203,12 @@ type TickReq struct {
 	// the deadlines part keeps a judgment for each drift. nil is none read, and no drift
 	// judgment is raised or closed.
 	Drift *DriftFacts
+	// Machines is every machine record the inventory (nova-config) names, read by the
+	// binding with the tick (the same config read as fleet sync; fleet_retire.go): the
+	// retire part takes a fleet row whose record is absent off the table. nil or empty
+	// is no read, or a read that failed or held no row, and the part retires nothing
+	// (never act on a missing read).
+	Machines []string
 }
 
 func (r TickReq) who() string {

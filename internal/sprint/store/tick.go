@@ -1051,11 +1051,20 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	}
 	at := snap.Epoch
 	res.Tables = newTables()
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend}
+	// The tick's read of the inventory (the machine records nova-config names, the
+	// same config read as fleet sync; sprint.TickRetireAbsent, fleet_retire.go): a
+	// read that fails or holds no row leaves Machines nil, and the retire part
+	// wants nothing (never act on a missing read).
+	machines, inventoryRead := st.tickInventory(ctx)
+	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend, Machines: machines}
 	// the first read as it was: the twin it came from moves on with every
 	// part's writes, and with any other writer in this process
 	first := *snap
 	first.Work, first.Readers, first.Merge, first.Fleet = snap.Work.Frozen(), snap.Readers.Frozen(), snap.Merge.Frozen(), snap.Fleet.Frozen()
+	// the fleet rows whose machine record this tick read as gone: their rows and
+	// their reader rows reader-<m> are deleted once the retire part has taken
+	// their control cards off the table (sprint.TickRetireAbsent)
+	retiring := sprint.AbsentMembers(&first, machines)
 	// who is up is read once, with the tick's one read: every part plans on it
 	if err := pinned.readerStatesInto(ctx, &first); err != nil {
 		return last, err
@@ -1085,6 +1094,13 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	// a note (sprint.TickRetireGone): a judgment open before stream remove took its
 	// stream off, whose next step would only be refused.
 	if out := t.parts("", []sprint.TickPartDef{{Name: sprint.PartRetire, Fn: sprint.TickRetireGone}}); out != tickOn {
+		return t.end(out, last, unfinished, seen)
+	}
+	// A fleet row whose machine record the inventory no longer names retires next,
+	// each with a HAPPENED note (sprint.TickRetireAbsent, fleet_retire.go): the
+	// same moves fleet sync's removal makes, before the deal could put a card on
+	// the row. A failed or empty inventory read plans nothing.
+	if out := t.parts("", []sprint.TickPartDef{{Name: sprint.PartRetireAbsent, Fn: sprint.TickRetireAbsent}}); out != tickOn {
 		return t.end(out, last, unfinished, seen)
 	}
 	// 0. The start: the fleet's and the readers' rebalance, once, before any
@@ -1156,10 +1172,39 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 			return last, err
 		}
 	}
+	// The tick retires, in the same tick, the rows and reader rows of the fleet
+	// members whose machine record it read as gone (sprint.TickRetireAbsent): a
+	// row is the table layer's, outside any batch, so its delete is a write of its
+	// own (DropMembers), each conditional on the control card still being off the
+	// table; the reader reader-<old> goes with it. Nothing is deleted when the
+	// inventory could not be read (inventoryRead false): never act on a missing read.
+	if inventoryRead && len(retiring) > 0 {
+		if _, err := st.DropMembers(ctx, machines); err != nil {
+			st.stats().note("retiring the fleet rows of the machines the inventory no longer names: " + err.Error())
+		}
+		if err := st.DropReadersRetired(ctx, retiring); err != nil {
+			st.stats().note("retiring the reader rows of the machines the inventory no longer names: " + err.Error())
+		}
+	}
 	// What it saw is the read before its own moves: a change by anyone after
 	// that read, its own moves included, makes the next tick read the whole
 	// sprint again, so nothing that happens during a tick is missed.
 	return seen, nil
+}
+
+// tickInventory is the tick's read of the inventory: the machine records nova-config
+// names (the same config read as fleet sync), and whether the read answered. A read
+// that fails or holds no row is ok false: the retire part wants nothing then (never
+// act on a missing read). nil Inventory is ok false.
+func (st *Store) tickInventory(ctx context.Context) (machines []string, ok bool) {
+	if st.Inventory == nil {
+		return nil, false
+	}
+	ms, read := st.Inventory(ctx)
+	if !read || len(ms) == 0 {
+		return nil, false
+	}
+	return ms, true
 }
 
 // routesPart says a tick part plans with the routes: the deal and the ask draw
