@@ -22,12 +22,17 @@
 \* strands no card, and a card needing two reads cannot be made to need a third.
 \* The instance is the module, as ReaderTiers' is, run with a cfg setting
 \* BugIgnoreSpent: FALSE holds every invariant; TRUE, the reversed witness (a deal
-\* that forgets a spent reader), breaks NeverTwiceAfterSpent. Its cases are in
+\* that forgets a spent reader), breaks NeverTwiceAfterSpent. BugOnePerTick: FALSE,
+\* every deal places every read owed that an eligible reader has room for, in the one
+\* step (DealsEveryOwedReadAtOnce: the owner, 2026-10-11 "Multiple reads now go out in
+\* ||"; read_cards.go readCardsAskFull); TRUE, the reversed witness (one read a tick),
+\* breaks it. Eligible stands for a reader that may read the attempt and has a free
+\* half slot: the room is the deal's, not modelled here. Its cases are in
 \* tla/CASES.tsv and their bench records in tla/RUNS.tsv.
 
 EXTENDS Naturals, FiniteSets
 
-CONSTANT BugIgnoreSpent, Need
+CONSTANT BugIgnoreSpent, BugOnePerTick, Need
 
 ASSUME Need \in {0, 1, 2}
 
@@ -69,14 +74,21 @@ Eligible ==
      /\ \A c \in Mine(attempt, r) : c.st \notin Open
      /\ NextGen(attempt, r) <= MaxGen}
 
-\* the deal: some of the reads wanted, at once, each to a different eligible reader (the
-\* room decides how many: any number up to the wanted)
+Min(x, y) == IF x < y THEN x ELSE y
+
+\* Owed is how many reads the deal places now: every read wanted that an eligible reader
+\* has room for (the reversed witness: one a tick)
+Owed == IF BugOnePerTick THEN Min(1, Min(Wanted, Cardinality(Eligible)))
+        ELSE Min(Wanted, Cardinality(Eligible))
+
+\* the deal: every read owed, at once, each to a different eligible reader
+\* (readCardsAskFull: every primary's every wanted read, in the one tick's deal)
 Deal ==
   /\ pstate = "review"
   /\ Wanted > 0
+  /\ Owed > 0
   /\ \E S \in SUBSET Eligible :
-       /\ S # {}
-       /\ Cardinality(S) <= Wanted
+       /\ Cardinality(S) = Owed
        /\ cards' = cards \cup {Card(attempt, r, NextGen(attempt, r), "ready") : r \in S}
   /\ UNCHANGED <<attempt, pstate, need>>
 
@@ -120,6 +132,14 @@ ShortReadsBack ==
 Next == Deal \/ Take \/ Close \/ Return \/ Late \/ TakeBack \/ Accept \/ Rework \/ SetReads \/ ShortReadsBack
 
 Spec == Init /\ [][Next]_vars
+
+\* every read owed is placed in the one step that deals: a step that cuts read cards
+\* cuts as many as are wanted and an eligible reader has room for, never fewer (the
+\* owner, 2026-10-11: "Multiple reads now go out in ||"; 2026-10-06: "I don't want any
+\* serial reads again")
+DealsEveryOwedReadAtOnce ==
+  [][Cardinality(cards') > Cardinality(cards) =>
+       Cardinality(cards') - Cardinality(cards) = Min(Wanted, Cardinality(Eligible))]_vars
 
 \* one open read card per (attempt, reader)
 OneOpenPerReader == \A a \in 1..MaxAttempt, r \in Readers : Cardinality({c \in Mine(a, r) : c.st \in Open}) <= 1

@@ -106,6 +106,13 @@ func TestSetReadsRoundTripsAndResets(t *testing.T) {
 	_, ok = ReadsSetting(nil)
 	assert.False(t, ok)
 
-	assert.Contains(t, Set(settingsSnapshot(nil, "s1"), SetReq{Reads: "3", Who: "coord"}).Refused[0].Why, "--reads wants 0, 1, 2 or default")
+	p = Set(settingsSnapshot(nil, "s1"), SetReq{Reads: "3", Who: "coord"})
+	require.Empty(t, p.Refused, "three reads is a count set --reads takes")
+	assert.Equal(t, PropWrite{Table: Work, Name: PropReadsNeeded, Value: "3", WasAbsent: true}, p.Props[0])
+	n, ok = ReadsSetting(map[string]string{PropReadsNeeded: "3"})
+	assert.True(t, ok)
+	assert.Equal(t, 3, n)
+
+	assert.Contains(t, Set(settingsSnapshot(nil, "s1"), SetReq{Reads: "4", Who: "coord"}).Refused[0].Why, "--reads wants 0, 1, 2, 3 or default")
 	assert.Contains(t, Set(settingsSnapshot(nil, "s1"), SetReq{Streams: []string{"s1"}, Reads: "1", Who: "coord"}).Refused[0].Why, "--reads is the sprint's")
 }

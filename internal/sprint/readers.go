@@ -112,12 +112,14 @@ func fewReaders(s *Snapshot) string {
 
 // cannotAskWhy is the ask's refusal of a primary at an attempt no reader can be
 // asked: it needs want different readers, free is the number up with room and
-// no read card at the attempt, full the number more that are at width. A reader
-// is asked an attempt once (its read card, placed or retired, is one read per
-// reader per attempt: a read taken back away, levelled or returned counts), so
-// the readers left are new ones (reader add), or the next attempt (rework).
+// no read card at the attempt, full the number more that are at width. A read the
+// machine takes back (a reader away or down, a hold, a level move, the unstarted
+// bound) spends no reader: it is asked again at a fresh generation (readCardIDFor).
+// A read the reader itself ends with no verdict (returned, late) spends it: the next
+// read goes to another reader. So the readers left are new ones (reader add), or the
+// next attempt (rework).
 func cannotAskWhy(s *Snapshot, pr *Card, attempt, want, free, full int) string {
-	return fmt.Sprintf("needs %d different readers and %d is free with no read card at attempt %d of %s (%d free but at width); a reader is asked an attempt once, and once more when its read was taken back with no verdict, and a reader away or down is not asked (readers: %s); run: nova-sprint reader add <name>, nova-sprint reader up <name>, or nova-sprint rework %s --fix <text> for a new attempt every reader may read", want, free, attempt, pr.ID, full, readersText(s), pr.ID)
+	return fmt.Sprintf("needs %d different readers and %d is free with no read card at attempt %d of %s (%d free but at width); a reader is asked an attempt once, and again whenever the machine takes its read back (a reader away or down, a hold, a level move, the unstarted bound), while a read handed back with no verdict spends it, so the next read goes to another, and a reader away or down is not asked (readers: %s); run: nova-sprint reader add <name>, nova-sprint reader up <name>, or nova-sprint rework %s --fix <text> for a new attempt every reader may read", want, free, attempt, pr.ID, full, readersText(s), pr.ID)
 }
 
 // NWaitingForReader is the tick's note on a primary in review whose read it
