@@ -967,9 +967,8 @@ Each is a place this runbook describes a workaround; the change that removes it 
   server has no tick deadline; PR 5127 fixes the rebalance loop that wedged it, and until it is installed the
   verbs that compute holds (`card`, `inbox`, `ack`, `tick`, `fleet level`, `fleet up`) can spin on a fleet
   whose emptiest member refused the card at staging.
-- `nova-sprint handover` prints one `RULE` line, the waves rule; printing each rule of section 10 by number
-  needs a card whose PATHS take in `cmd/nova-sprint/seat.go`, where the handover's rules are set
-  (`cmd/nova-sprint/handover_rules.go` holds the numbered sentences, kept equal to section 10 by its test).
+- `nova-sprint handover` prints every rule of section 10 by number, `RULE R<n>. <sentence>`, from
+  `cmd/nova-sprint/handover_rules.go`, kept equal to section 10 by its test.
 - After card every-unit-installed-by-a-verb: `nova-sprint install`, `uninstall` and `units --check` are in
   nova-sprint's verb table, and `nova-swarm install disk-guard` writes the disk-guard unit in the swarm
   binary (the shared unit text is `internal/units`, which a worker may import). `nova-swarm install mirror-refresh` and a
