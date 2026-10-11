@@ -28,8 +28,8 @@ func fourMembers(t *testing.T) *harness {
 	h.live = append(h.live, "m3", "m4")
 	h.mu.Unlock()
 	h.beat()
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m3"}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m4"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m4"}))
 	return h
 }
 

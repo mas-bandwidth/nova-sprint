@@ -38,7 +38,7 @@ func tierWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a", "reader-b", "reader-c")
 	for _, m := range []string{"m1", "m2"} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
 	for _, r := range []struct{ name, tier string }{{"flash-a", "flash"}, {"flash-b", "flash"}, {"pro-a", "pro"}, {"pro-b", "pro"}} {
 		rt := Route{Name: r.name, Tier: r.tier, Provider: "p", Model: r.name, Tokens: 1000, Enabled: true}

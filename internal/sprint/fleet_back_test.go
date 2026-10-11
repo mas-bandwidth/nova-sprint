@@ -91,7 +91,7 @@ func newBackRig(t *testing.T, cards int) *backRig {
 	require.NoError(t, m.SetCoordinator(r.ctx, "coordinator"))
 	r.beat()
 	for _, member := range []string{"m1", "m2"} {
-		_, err := r.st.Run(r.ctx, store.FleetStep(sprint.FleetReq{Op: "up", Member: member, Width: 2}))
+		_, err := r.st.Run(r.ctx, store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: member, Width: 2}))
 		require.NoError(t, err)
 	}
 	_, err := r.st.Run(r.ctx, store.AddStep(sprint.AddReq{Stream: "s1", Count: cards}))

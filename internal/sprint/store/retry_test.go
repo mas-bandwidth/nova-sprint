@@ -118,7 +118,7 @@ func TestABusyFenceWaitsWithJitter(t *testing.T) {
 	st.B = fenceMover{Backend: h.m, mu: &sync.Mutex{}, gen: &gen}
 	st.Sleep = sl.sleep
 	st.Rand = func(n int64) int64 { return n / 4 }
-	_, err := st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	_, err := st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	require.Error(t, err, "run: %v", err)
 	require.ErrorContains(t, err, "the sprint is busy", "run: %v", err)
 	require.ErrorContains(t, err, "nothing was changed", "run: %v", err)
@@ -136,7 +136,7 @@ func TestAZeroStoreHasWorkingDefaults(t *testing.T) {
 		m := NewMem()
 		st := &Store{B: m, Names: sprint.Names{Prefix: "z-"}, Now: time.Now}
 		require.NoError(t, st.Init(context.Background()))
-		res, err := st.Run(context.Background(), FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+		res, err := st.Run(context.Background(), FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 		require.NoError(t, err, "run: %+v %v", res, err)
 		require.NotEmpty(t, res.Op, "run: %+v %v", res, err)
 		r := st.retry(context.Background())
@@ -159,9 +159,9 @@ func TestFreshStoresGenerateDifferentOperationIDs(t *testing.T) {
 	}
 	a, b := fresh(), fresh()
 	require.NoError(t, a.Init(context.Background()))
-	ra, err := a.Run(context.Background(), FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	ra, err := a.Run(context.Background(), FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	require.NoError(t, err)
-	rb, err := b.Run(context.Background(), FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+	rb, err := b.Run(context.Background(), FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	require.NoError(t, err)
 	require.NotEqual(t, rb.Op, ra.Op, "both stores used operation id %s", ra.Op)
 	require.NotEqual(t, b.newID(), a.newID(), "two fresh ids are the same")

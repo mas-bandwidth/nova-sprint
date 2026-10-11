@@ -26,7 +26,7 @@ func wedgeWorld(t *testing.T) *world {
 		name  string
 		width int
 	}{{"A", 3}, {"T", 3}, {"S", 3}, {"U", 1}} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m.name, Width: m.width}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m.name, Width: m.width}))
 	}
 	score := 1.0
 	put := func(member, col string, n int) {
@@ -151,7 +151,7 @@ func TestLevelMovesNoCardTwice(t *testing.T) {
 		name  string
 		width int
 	}{{"c", 3}, {"a", 2}, {"b", 1}} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m.name, Width: m.width}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m.name, Width: m.width}))
 	}
 	putWorkCard(w, "b1", "b", Ready, 1, nil)
 	putWorkCard(w, "b2", "b", Ready, 2, refusedBy("c"))

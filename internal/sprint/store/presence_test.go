@@ -267,7 +267,7 @@ func TestAMemberThatNeverBeatIsDown(t *testing.T) {
 	h := newHarness(t)
 	h.setup(2)
 	h.startMachine()
-	h.must(FleetStep(sprint.FleetReq{Op: "release", Member: "m3"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "release", Member: "m3", Probe: sprint.EnvProbePassed}))
 	h.machine()
 	h.tick(time.Second)
 	h.machine()

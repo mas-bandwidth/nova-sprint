@@ -132,7 +132,7 @@ func (h *harness) setup(n int) {
 		if h.snap().Fleet.HasRow(m) {
 			w = 0
 		}
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: m, Width: w}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: w}))
 	}
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: n}))
 	h.clean("setup")
@@ -395,7 +395,7 @@ func TestALaterMemberChangedIsSkippedByRepair(t *testing.T) {
 		require.Fail(t, fmt.Sprintf("repair overwrote the newer state: %s %s", c.Col, c.F("brief")))
 	}
 	h.tick(2 * time.Minute)
-	_, err = h.st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Member: "m3"}))
+	_, err = h.st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}))
 	require.NoError(t, err, "a verb after the repair: %v", err)
 }
 
@@ -424,11 +424,11 @@ func TestAnUnappliedPendingOperationIsAbandonedAfterTheGrace(t *testing.T) {
 		OperationID: "intruder", Members: []ntable.BatchMemberEntry{{ID: "s1-1.w1", Expect: &ntable.MemberExpect{Absent: true},
 			Create: &ntable.MemberCreateOp{Row: "m1", Col: sprint.DoneOK, Score: 1}}}})
 	require.NoError(t, err)
-	if _, err := h.st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Member: "m3"})); err == nil || h.m.Pending() == nil {
+	if _, err := h.st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"})); err == nil || h.m.Pending() == nil {
 		require.Fail(t, fmt.Sprintf("within the grace the operation is its writer's: %v", err))
 	}
 	h.tick(2 * time.Minute)
-	res := h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m3"}))
+	res := h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}))
 	if h.m.Pending() != nil || len(res.Repaired) != 1 || !strings.Contains(res.Repaired[0], "abandoned") {
 		require.Fail(t, fmt.Sprintf("past the grace: %+v", res))
 	}
@@ -564,7 +564,7 @@ func TestAReceiptThisBuildCannotReadIsUnknown(t *testing.T) {
 	h := newHarness(t)
 	st := *h.st
 	st.B = unreadable{h.m}
-	_, err := st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	_, err := st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	if !errors.Is(err, ErrUnknown) || !strings.Contains(err.Error(), "do not match this build") || !strings.Contains(err.Error(), "nova-redis fn load") {
 		require.Fail(t, fmt.Sprintf("an unreadable receipt: %v", err))
 	}

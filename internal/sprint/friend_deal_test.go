@@ -24,8 +24,8 @@ func friendBrief(who string) string {
 // stream, ids s1-1, s1-2, ... in order.
 func friendWorld(t *testing.T, briefs ...string) *world {
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	var cards []CardAdd
 	for i, b := range briefs {
 		cards = append(cards, CardAdd{ID: "s1-" + itoa(i+1), Brief: b})
@@ -356,8 +356,8 @@ func TestAFriendUpWhoseControlCardIsHeldOrDownIsNotDealt(t *testing.T) {
 func TestDealerNeverDealsAFriendOutsideHerStreams(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	brief := "c: in-scope friend work\nREPO: mas-bandwidth/nova-tools\nWHO: friend\nKIND: fix\n\nThe task."
 	w.must(Add(w.s, AddReq{Stream: "security-a", Cards: []CardAdd{
 		{ID: "security-a-1", Brief: brief},

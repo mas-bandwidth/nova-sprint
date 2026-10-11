@@ -89,7 +89,7 @@ func TestAHeldFirstSlotLaneSendsTheGateToTheNextBench(t *testing.T) {
 	r.queued(heads, "s1-1")
 	for _, m := range []string{"vision", "space"} {
 		r.ok("fleet beat " + m + " --load 1 --cores 8")
-		r.ok("fleet up " + m)
+		r.ok("fleet up " + m + " --probe passed")
 	}
 	var w whereView
 	r.json("where", &w)

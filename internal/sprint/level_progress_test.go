@@ -49,7 +49,7 @@ func TestLevelStopsWhenOnlyNonprogressTargetsRemain(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := fleetWorld(t, 0, 2, "a", "b")
-			w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "c", Width: 1}))
+			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "c", Width: 1}))
 			refusal := map[string]string{FieldStagingTake + "1": ProviderTake{Member: "c"}.String()}
 			putWorkCard(w, "newest", "a", Ready, 4, refusal)
 			var olderFields map[string]string

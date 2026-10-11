@@ -179,8 +179,8 @@ func TestRedisRowsDelIfKeepsARowWhoseRecordChanged(t *testing.T) {
 	t.Parallel()
 	st, _ := liveStore(t)
 	h := &harness{t: t, st: st, ctx: context.Background(), now: time.Now(), live: []string{"m1", "m2"}}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	removeM2 := func() RowGuard {
 		h.must(FleetStep(sprint.FleetReq{Op: "sync", Who: "functional", Sync: []sprint.SyncMember{{Name: "m1", Width: 4}}, Machines: []string{"m1"}}))
 		pinned, err := st.pin(h.ctx)
@@ -219,8 +219,8 @@ func TestRedisARejoinBetweenTheReadAndTheExecKeepsTheRow(t *testing.T) {
 	t.Parallel()
 	st, _ := liveStore(t)
 	h := &harness{t: t, st: st, ctx: context.Background(), now: time.Now(), live: []string{"m1", "m2"}}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "sync", Who: "functional", Sync: []sprint.SyncMember{{Name: "m1", Width: 4}}, Machines: []string{"m1"}}))
 	require.Nil(t, h.snap().MemberCtl("m2"), "the sync took m2's control card off")
 	_, err := st.Beat(h.ctx, "m2", new(float64), hostload.Source{NCPU: 8})

@@ -21,7 +21,7 @@ func TestRedisTheTickRaisesReadersBehindWhenReadsWaitTheWindow(t *testing.T) {
 	require.NoError(t, c.HSet(h.ctx, config.RouteKey("flash-a"), "name", "flash-a", "tier", "flash", "provider", "prov-flash-a", "model", "model-flash-a",
 		"tokens", "1000", "deadline", "900", "enabled", "true").Err())
 	require.NoError(t, h.st.B.RowsAdd(h.ctx, h.st.Names.Table(sprint.Readers), []string{"reader-m1"}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	readersBehind(h, func(typ string) []sprint.Open { return liveOpen(h, typ) }, func(typ string) int { return liveWritten(h, typ) })
 }

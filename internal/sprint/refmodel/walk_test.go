@@ -65,7 +65,7 @@ func newWalk(seed uint64) *walk {
 		k.members = append(k.members, fmt.Sprintf("m%d", i+1))
 	}
 	for _, m := range k.members {
-		k.try(sprint.FleetStep(k.s, sprint.FleetReq{Op: "release", Member: m, Who: coordinator, Fresh: true}))
+		k.try(sprint.FleetStep(k.s, sprint.FleetReq{Op: "release", Member: m, Who: coordinator, Fresh: true, Probe: sprint.EnvProbePassed}))
 	}
 	k.beatAll()
 	return k

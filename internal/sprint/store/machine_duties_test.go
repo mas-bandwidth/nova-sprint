@@ -32,7 +32,7 @@ func (h *harness) crTicks(n int, when string) {
 func TestCRResolveBoundLeavesTheRestWaitingForever(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"root"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", Count: 250, Needs: []string{"root"}}))
 	h.through("root")
@@ -74,7 +74,7 @@ func (l *loseResolve) Acquire(ctx context.Context, gen uint64, op OpRecord) (boo
 func TestCRResolveThatLosesToOtherWritersIsNeverRetried(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"b"}, Needs: []string{"a"}}))
 	h.through("a")
@@ -236,7 +236,7 @@ func TestCRThousandReadyThreeMembers(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	for _, m := range []string{"m1", "m2", "m3"} {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: m}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 	}
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: crScale.Ready}))
 	h.startMachine()
@@ -284,7 +284,7 @@ func TestCROneReaderThenTwo(t *testing.T) {
 		Now: func() time.Time { h.mu.Lock(); defer h.mu.Unlock(); return h.now }, NewID: func() string { n++; return fmt.Sprint(n) }, Sleep: func(time.Duration) {}}
 	require.NoError(t, h.st.Init(h.ctx))
 	h.beat()
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 3}))
 	h.startMachine()
 	h.machine()

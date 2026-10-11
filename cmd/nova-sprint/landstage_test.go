@@ -36,7 +36,7 @@ func TestARefusedStageStepsTheGateToTheNextSlot(t *testing.T) {
 	r.queued(heads, "s1-1", "s1-2", "s1-3")
 	for _, m := range []string{"vision", "space"} {
 		r.ok("fleet beat " + m + " --load 1 --cores 8")
-		r.ok("fleet up " + m)
+		r.ok("fleet up " + m + " --probe passed")
 	}
 	var w whereView
 	r.json("where", &w)
@@ -129,7 +129,7 @@ func TestATwiceRefusedBenchIsPassedOverForThePass(t *testing.T) {
 	r := newLandRig(t)
 	for _, m := range []string{"vision", "space"} {
 		r.ok("fleet beat " + m + " --load 1 --cores 8")
-		r.ok("fleet up " + m)
+		r.ok("fleet up " + m + " --probe passed")
 	}
 	st, err := r.a.store(common{redis: "mem:0", actor: "tester"})
 	require.NoError(t, err)

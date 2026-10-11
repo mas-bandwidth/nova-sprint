@@ -71,7 +71,7 @@ func TestAReworkRaisesTheTierEveryLaterDealDrawsFrom(t *testing.T) {
 		pr := h.snap().Work.Card("s1-1")
 		require.Equal(t, sprint.Ready, pr.Col, "no member up: the rework leaves it ready")
 		require.Equal(t, "pro", pr.F(sprint.FieldTier))
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 		h.must(DealStep(sprint.DealReq{}))
 		wc := h.workCards()[h.snap().Work.Card("s1-1").F("work")]
 		require.NotNil(t, wc)

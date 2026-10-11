@@ -23,7 +23,7 @@ func TestAHeavyCardIsReadByAFriendReaderWithNoHeavyRoute(t *testing.T) {
 	const head = "0123456789abcdef0123456789abcdef01234567"
 	setup := func(up ...string) *world {
 		w := newWorld(t, "reader-m1", "reader-amy", "reader-bob")
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 		// amy and bob are friends: the tick hands the snapshot their seats
 		w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up}, {Name: "bob", Width: 1, Status: Up}}
 		w.s.Routes = []Route{
@@ -99,8 +99,8 @@ func TestAReaderRefusedForNoRouteIsNotSweptAway(t *testing.T) {
 	t.Parallel()
 	const head = "0123456789abcdef0123456789abcdef01234567"
 	w := newWorld(t, "reader-m1", "reader-m2")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	w.s.ReaderStates = map[string]string{"reader-m1": ReaderUp, "reader-m2": ReaderUp}
 	// the store holds no route, so the sprint believes every reader runs its own: the
 	// read cards carry none, and the fleet readers' members have no override

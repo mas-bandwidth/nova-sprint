@@ -94,7 +94,7 @@ func TestAStepTheTableLayerRefusesIsRefusedBeforeAnyWrite(t *testing.T) {
 	require.Contains(t, why, "field value bytes", "the refusal: %s", why)
 	require.NotContains(t, why, "kept changing", "the refusal: %s", why)
 	h.nothingWritten(before)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m3"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}))
 }
 
 // S2 (b). A step's manifests are split by bytes as well as by entries: 128
@@ -201,7 +201,7 @@ func TestRepairSkipsALaterManifestRefusedOnABound(t *testing.T) {
 	require.Empty(t, s.Work.Card("s1-1").F("probe"), "applied: s1-1 %q s1-2 %q", s.Work.Card("s1-1").F("probe"), s.Work.Card("s1-2").F("probe"))
 	n := len(h.skipNotes())
 	require.Equal(t, 1, n, "%d skip judgments", n)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m3"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}))
 }
 
 // S2 (d). A pending operation whose first manifest can never apply (a bound)
@@ -217,7 +217,7 @@ func TestAFirstManifestOverABoundIsAbandonedAtOnce(t *testing.T) {
 		{Schema: 1, Table: "t-work", Epoch: "0", ExpectedTableRevision: fmt.Sprint(s.Work.Revision), OperationID: "cut-2-1", Actor: "tester",
 			Members: []ntable.BatchMemberEntry{{ID: p1.ID, Set: map[string]string{"probe": strings.Repeat("v", ntable.LimitFieldValueBytes+1)}}}},
 	}})
-	res, err := h.st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Member: "m3"}))
+	res, err := h.st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}))
 	require.NoError(t, err, "the verb after an unwritable pending operation: %+v %v", res, err)
 	require.Len(t, res.Repaired, 1, "the verb after an unwritable pending operation: %+v %v", res, err)
 	require.True(t, strings.HasSuffix(res.Repaired[0], RepairAbandoned), "the verb after an unwritable pending operation: %+v %v", res, err)

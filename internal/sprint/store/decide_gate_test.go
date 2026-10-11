@@ -22,7 +22,7 @@ func TestEveryWorkCardCarriesTheGateBars(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t)
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 			h.m.SetRoutes([]sprint.Route{route("flash-a", "flash")})
 			h.m.SetGateBars(tc.flaky, tc.pre)
 			bars, err := h.st.GateBars(h.ctx)
@@ -38,7 +38,7 @@ func TestEveryWorkCardCarriesTheGateBars(t *testing.T) {
 			// the member goes down holding it, the bars are turned off, and the redeal takes them off
 			h.must(TakeStep(sprint.TakeReq{As: "m1", Sel: sprint.Sel{IDs: []string{w1.ID}}, Gens: map[string]int{w1.ID: w1.Int("gen")}, Who: "m1"}))
 			h.run(FleetStep(sprint.FleetReq{Op: "down", Member: "m1"}))
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 			h.m.SetGateBars("", "")
 			h.run(DealStep(sprint.DealReq{}))
 			wc := h.workCards()["s1-1.w1"]

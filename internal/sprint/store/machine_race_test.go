@@ -59,7 +59,7 @@ func (x *injector) Release(ctx context.Context, op OpRecord, commit bool) error 
 func raceScene(t *testing.T) *harness {
 	h := newHarness(t)
 	for _, m := range []string{"m1", "m2"} {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: m}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 	}
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s2", IDs: []string{"b"}}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s3", IDs: []string{"a"}}))
@@ -97,7 +97,7 @@ func TestCRTickRacesEveryVerbAtEveryCall(t *testing.T) {
 		"return":      func() Step { return ReturnStep(sprint.ReturnReq{Sel: sprint.Sel{IDs: []string{"a"}}, Reason: "r"}) },
 		"resume":      func() Step { return ResumeStep(sprint.ResumeReq{Stream: "s3", Did: "d"}) },
 		"fleet-down":  func() Step { return FleetStep(sprint.FleetReq{Op: "down", Member: "m1"}) },
-		"fleet-up":    func() Step { return FleetStep(sprint.FleetReq{Op: "up", Member: "m3"}) },
+		"fleet-up":    func() Step { return FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}) },
 	}
 	for name, mk := range verbs {
 		for k := 1; k <= 200; k += crScale.CallStride {

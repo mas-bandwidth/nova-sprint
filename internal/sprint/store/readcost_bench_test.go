@@ -42,7 +42,7 @@ func benchSprint(b *testing.B, streams, perStream int) (*Store, *redis.Client) {
 	ctx := context.Background()
 	require.NoError(b, st.BeatReaders(ctx))
 	for _, m := range []string{"m1", "m2"} {
-		res, err := st.Run(ctx, FleetStep(sprint.FleetReq{Op: "up", Member: m, Width: 64}))
+		res, err := st.Run(ctx, FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: 64}))
 		require.NoError(b, err)
 		require.Empty(b, res.Refused)
 	}

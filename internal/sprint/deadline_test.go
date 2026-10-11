@@ -14,7 +14,7 @@ import (
 func TestTheMedianWallIsOverTheLastFiftyOkAttempts(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	put := func(i int, finished, wall string) {
 		w.s.Fleet.Put(&Card{ID: fmt.Sprintf("p%d.w1", i), Row: "m1", Col: DoneOK, Rev: 1,
 			Fields: map[string]string{"kind": "work", "primary": fmt.Sprintf("p%d", i), "attempt": "1", "ok": "yes", "finished": finished, FieldUsage: "wall=" + wall}})
@@ -86,7 +86,7 @@ func TestOneDeadlineRuleForMembersAndFriends(t *testing.T) {
 	assert.Equal(t, 200, Deadline(0, 0, 200), "the own deadline when n is zero")
 	// Test member deadline path
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	for i := 1; i <= DeadlineSamples; i++ {
 		w.s.Fleet.Put(&Card{ID: fmt.Sprintf("p%d.w1", i), Row: "m1", Col: DoneOK, Rev: 1,
 			Fields: map[string]string{"kind": "work", "primary": fmt.Sprintf("p%d", i), "attempt": "1", "ok": "yes", "finished": fmt.Sprintf("2030-01-01T01:%02d:00Z", i%60), FieldUsage: "wall=100s"}})
@@ -112,7 +112,7 @@ func TestTickDealMeasuresEachDoneOKCellOnce(t *testing.T) {
 	w := newWorld(t, "reader-a")
 	members := []string{"deal-once-a", "deal-once-b"}
 	for _, m := range members {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
 	w.s.Routes = []Route{{Name: "flash-deal-once", Tier: "flash", Provider: "prov-deal-once", Model: "model-deal-once", Tokens: 1000, Deadline: int(10 * time.Minute / time.Second), Enabled: true}}
 	for _, m := range members {

@@ -21,7 +21,7 @@ func TestProbe1bStaleFinishWithoutGeneration(t *testing.T) {
 	h.must(TakeStep(sprint.TakeReq{As: first, Sel: sprint.Sel{IDs: []string{"s1-1.w1"}}, Gens: map[string]int{"s1-1.w1": 1}}))
 	h.must(FleetStep(sprint.FleetReq{Op: "down", Member: first}))
 	second := h.snap().Fleet.Card("s1-1.w1").Row
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: first}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: first}))
 	h.must(FleetStep(sprint.FleetReq{Op: "down", Member: second}))
 	c := h.snap().Fleet.Card("s1-1.w1")
 	require.Equal(t, first, c.Row, "the card is at %s gen %d", c.Row, c.Int("gen"))
@@ -58,7 +58,7 @@ func TestStartAfterAWithdrawalDealsTheSameCardThroughTheStore(t *testing.T) {
 		require.Fail(t, fmt.Sprintf("withdrawn: card %s:%s, primary %s", c.Row, c.Col, h.state("s1-1")))
 	}
 	h.clean("withdrawn")
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}}))
 	s := h.snap()
 	c, pr := s.Fleet.Card("s1-1.w1"), s.Work.Card("s1-1")

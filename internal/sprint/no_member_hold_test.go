@@ -27,8 +27,8 @@ func noMemberNote(t *testing.T, w *world, r TickReq) Note {
 func TestNoMemberJudgmentNamesTheHoldWhenEveryBeatingMemberIsHeld(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
 	w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m1", Who: "coordinator"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m2", Who: "coordinator"}))

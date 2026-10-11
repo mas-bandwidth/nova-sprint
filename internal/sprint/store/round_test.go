@@ -16,7 +16,7 @@ func TestTheRollingIndexesSurviveAStopAndAStart(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.setup(6)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m3"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}))
 	st := h.st
 	deal := func(id string) string {
 		t.Helper()

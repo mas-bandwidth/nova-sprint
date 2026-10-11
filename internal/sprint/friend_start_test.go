@@ -196,8 +196,8 @@ func TestStartBoundLevellingSkipsARestrictedRecipient(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newWorld(t, "reader-a", "reader-b")
-			w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
-			w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2"}))
+			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 			id := tc.stream + "-1"
 			brief := "c: a restricted level\nREPO: mas-bandwidth/nova-tools\nWHO: friend\nKIND: " + tc.kind + "\n\nThe task."
 			w.must(Add(w.s, AddReq{Stream: tc.stream, Cards: []CardAdd{{ID: id, Brief: brief}}}))

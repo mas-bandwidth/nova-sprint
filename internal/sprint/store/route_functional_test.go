@@ -50,7 +50,7 @@ func TestRedisTheDealReadsTheRoutesApplyWrites(t *testing.T) {
 	assert.Equal(t, "x-ai/grok-4", rs[1].Model)
 
 	h := &harness{t: t, st: st, ctx: ctx, now: time.Now(), live: []string{"m1", "m2"}}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1, Brief: "c: the work (s1) tier: pro\n\nThe task.\n"}))
 	h.setPrimary("s1-1", map[string]string{sprint.FieldTierNow: "pro"}) // a pro card on pro (flash first: escalated)
 	h.must(DealStep(sprint.DealReq{}))
@@ -72,7 +72,7 @@ func TestRedisTheTickDealsAFreshCardOnARouteOfItsTier(t *testing.T) {
 	st, c := liveStore(t)
 	ctx := context.Background()
 	h := &harness{t: t, st: st, ctx: ctx, now: time.Now(), live: []string{"m1", "m2"}}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.beat()
 	put := func(name, tier, enabled string) {
 		require.NoError(t, c.SAdd(ctx, config.RoutesKey, name).Err())

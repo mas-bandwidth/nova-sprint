@@ -150,7 +150,7 @@ func TestAFinishWithoutItsGenerationIsRefused(t *testing.T) {
 	p.do("take by first (gen 1)", TakeStep(sprint.TakeReq{As: first, Sel: ids("s1-1.w1"), Gens: map[string]int{"s1-1.w1": 1}}))
 	p.do("fleet down first", FleetStep(sprint.FleetReq{Op: "down", Member: first}))
 	second := p.snap().Fleet.Card("s1-1.w1").Row
-	p.do("fleet up first", FleetStep(sprint.FleetReq{Op: "up", Member: first}))
+	p.do("fleet up first", FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: first}))
 	p.do("fleet down second", FleetStep(sprint.FleetReq{Op: "down", Member: second}))
 	c := p.snap().Fleet.Card("s1-1.w1")
 	t.Logf("card now at %s:%s gen %s", c.Row, c.Col, c.F("gen"))
@@ -276,7 +276,7 @@ func everyVerb() map[string]Step {
 		"rank":     RankStep(sprint.RankReq{IDs: []string{"s1-2"}, First: true}),
 		"merge":    MergeStep(sprint.MergeReq{Stream: "s1"}),
 		"resume":   ResumeStep(sprint.ResumeReq{Stream: "s1"}),
-		"fleet up": FleetStep(sprint.FleetReq{Op: "up", Member: "m9"}),
+		"fleet up": FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m9"}),
 		"level":    FleetStep(sprint.FleetReq{Op: "level"}),
 		"ci":       CIStep(sprint.CIReq{Sel: ids("s1-2"), Red: true, Run: "r"}),
 	}
@@ -528,8 +528,8 @@ func TestWithdrawAndReturn(t *testing.T) {
 	}
 	res := p.do("old worker finish", FinishStep(sprint.FinishReq{As: c.Row, Sel: ids(c.ID), Gens: map[string]int{c.ID: 2}}))
 	t.Logf("finish on a withdrawn card: %+v", res.Refused)
-	p.do("up m2", FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
-	p.do("up m1", FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	p.do("up m2", FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
+	p.do("up m1", FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	p.do("deal all again", DealStep(sprint.DealReq{Sel: sprint.Sel{Limit: 4}}))
 	s := p.snap()
 	for _, m := range []string{"m1", "m2"} {

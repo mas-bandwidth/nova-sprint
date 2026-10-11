@@ -16,8 +16,8 @@ import (
 func TestTheTickRaisesStarvingWhileReadyIsUnderTwiceTheWidth(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 2}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2", Width: 2}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 2}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 3}))
 	// the wave: a held sentinel with nothing before it, four cards loaded behind it
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"s2-gate"}, Sentinel: true, Held: true}))

@@ -15,8 +15,8 @@ import (
 func TestNStarvingCarriesWorkingAndWidth(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 2}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 2}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2}))
 	// three cards ready, nothing working, and a wave held behind a sentinel
 	w.must(Add(w.s, AddReq{Brief: proBrief, Stream: "s1", Count: 3}))
 	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"s2-gate"}, Sentinel: true, Held: true}))
@@ -66,8 +66,8 @@ func TestNStarvingCarriesWorkingAndWidth(t *testing.T) {
 func TestNStarvingAllDealt(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 2}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 2}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2}))
 	// two cards, dealt round the fleet, then each member takes one into working
 	w.must(Add(w.s, AddReq{Brief: proBrief, Stream: "s1", Count: 2}))
 	p, _ := TickDeal(w.s, TickReq{})

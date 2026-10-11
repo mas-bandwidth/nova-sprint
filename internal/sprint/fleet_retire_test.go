@@ -13,8 +13,8 @@ import (
 func TestAbsentMembersNamesOnlyTheGone(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	assert.Equal(t, []string{"m1"}, AbsentMembers(w.s, []string{"m2"}))
 	assert.Empty(t, AbsentMembers(w.s, []string{"m1", "m2"}))
 	assert.Equal(t, []string{"m1", "m2"}, AbsentMembers(w.s, nil))
@@ -26,8 +26,8 @@ func TestAbsentMembersNamesOnlyTheGone(t *testing.T) {
 func TestTickRetireAbsentRetiresAnEmptyAbsentRow(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 
 	p, due := TickRetireAbsent(w.s, TickReq{Machines: []string{"m1"}})
 	assert.Zero(t, due)

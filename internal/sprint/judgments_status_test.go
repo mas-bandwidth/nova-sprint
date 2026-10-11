@@ -45,7 +45,7 @@ func newTransitionRig(t *testing.T) *transitionRig {
 	_, _, _, err := r.st.SyncFriends(r.ctx, []store.FriendSpec{{Name: "amy", Width: 2, Class: "pro"}})
 	require.NoError(t, err)
 	r.beat()
-	res, err := r.st.Run(r.ctx, store.FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 2}))
+	res, err := r.st.Run(r.ctx, store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
 	require.NoError(t, err)
 	require.Empty(t, res.Refused)
 	_, _, _, err = r.st.SetMachine(r.ctx, true)

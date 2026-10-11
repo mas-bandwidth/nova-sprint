@@ -126,7 +126,7 @@ func TestD3AssignmentGeneration(t *testing.T) {
 	w.must(Take(w.s, TakeReq{As: c1.Row, Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: map[string]int{"s1-1.w1": 2}}))
 	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: map[string]int{"s1-1.w1": 2}}))
 	// a finish that arrived first is not redistributed
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	other := w.s.Fleet.Card("s1-1.w1").Row
 	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: other}))
 	done := w.s.Fleet.Card("s1-1.w1")
@@ -134,7 +134,7 @@ func TestD3AssignmentGeneration(t *testing.T) {
 	require.Equal(t, other, done.Row, "a done card was redistributed: %+v", done)
 	require.Equal(t, "2", done.F("gen"), "a done card was redistributed: %+v", done)
 	// a level move and a withdrawal change the generation too
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: other}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: other}))
 	for _, c := range w.s.Fleet.Column(Ready) {
 		require.GreaterOrEqual(t, c.Int("gen"), 1, "no generation on %s", c.ID)
 	}
@@ -151,7 +151,7 @@ func TestD3AssignmentGeneration(t *testing.T) {
 	}
 	w.clean("withdrawn")
 	// Rule 2 is a bijection: two live cards for one working primary is caught.
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 1}}))
 	live := w.s.Fleet.Column(Ready)[0]
 	w.s.Fleet.Put(&Card{ID: live.F("primary") + ".w9", Row: m, Col: Ready, Score: live.Score, Rev: 1, Fields: map[string]string{"primary": live.F("primary")}})

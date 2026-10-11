@@ -25,7 +25,7 @@ func widthSprint(t *testing.T, width, perStream int) *harness {
 	h.mu.Unlock()
 	h.beat()
 	for _, m := range widthMembers {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: m, Width: width}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: width}))
 	}
 	for _, st := range []string{"s1", "s2", "s3"} {
 		h.must(AddStep(sprint.AddReq{Stream: st, Count: perStream}))
@@ -141,7 +141,7 @@ func TestWidthTwoDealsDealAheadTimesTwo(t *testing.T) {
 func TestTheFleetTableShowsTheWidth(t *testing.T) {
 	t.Parallel()
 	h := widthSprint(t, 64, 1)
-	h.must(FleetStep(sprint.FleetReq{Op: "release", Member: "m2", Width: 8}))
+	h.must(FleetStep(sprint.FleetReq{Op: "release", Member: "m2", Width: 8, Probe: sprint.EnvProbePassed}))
 	shapes, err := h.m.Shapes(h.ctx, []string{"t-fleet"})
 	require.NoError(t, err, "shapes: %v", err)
 	require.Len(t, shapes, 1, "shapes: %v", err)

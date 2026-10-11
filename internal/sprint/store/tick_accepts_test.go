@@ -245,8 +245,8 @@ func TestTheModelAndTheEngineAgreeTheTickAcceptsWithNoHandStep(t *testing.T) {
 		assert.Equal(t, want, h.model.Open[j], "%s: ready to accept open on %s in the model", when, p)
 	}
 
-	do(dAction{Kind: "fleet", Op: "up", Member: "m1"})
-	do(dAction{Kind: "fleet", Op: "up", Member: "m2"})
+	do(dAction{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"})
+	do(dAction{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"})
 	do(dAction{Kind: "start"})
 	do(dAction{Kind: "add", Stream: "s1", IDs: []string{"a1", "a2"}})
 	do(dAction{Kind: "tick"})

@@ -88,8 +88,8 @@ func TestFleetVerbsLevelNothingToAMemberWithNoRoom(t *testing.T) {
 	require.NoError(t, err)
 	_, err = h.st.BeatOwing(h.ctx, "m4", &zero, hostload.Source{}, nil, "")
 	require.NoError(t, err)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m3", Width: 12, Who: "coordinator"}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m4", Width: 12, Who: "coordinator"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3", Width: 12, Who: "coordinator"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m4", Width: 12, Who: "coordinator"}))
 	// m1 goes down: its cards are dealt round the members up, never to m3
 	h.must(FleetStep(sprint.FleetReq{Op: "down", Member: "m1", Who: "coordinator"}))
 	s := h.snap()

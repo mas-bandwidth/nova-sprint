@@ -139,7 +139,7 @@ func TestStampsOnEveryPath(t *testing.T) {
 		require.Failf(t, "", "withdrawn: %s dealt=%q taken=%q", wc3.Col, wc3.F("dealt"), wc3.F("taken"))
 	}
 	// up again, start deals the same card again: dealt stamped
-	h.nDo(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.nDo(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.nDo(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}}))
 	s = h.snap()
 	wc4 := s.Fleet.Card("s1-1.w1")
@@ -150,7 +150,7 @@ func TestStampsOnEveryPath(t *testing.T) {
 	h.nDo(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 3}))
 	h.nDo(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"s1-2", "s1-3", "s1-4"}}}))
 	before := h.snap()
-	h.nDo(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+	h.nDo(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	after := h.snap()
 	moved := 0
 	for _, c := range after.Fleet.Cell("m2", sprint.Ready) {

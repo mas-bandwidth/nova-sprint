@@ -61,7 +61,7 @@ func TestReworkCarriesTheFixTheFindingAndWhyInTheNextPacket(t *testing.T) {
 		h.must(FleetStep(sprint.FleetReq{Op: "down", Member: "m2"}))
 		h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Fix: "add the test"}))
 		require.Equal(t, sprint.Ready, h.state("s1-1"), "no member is up: the rework waits for start")
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 		h.must(DealStep(sprint.DealReq{}))
 		p := packetOf(h, "s1-1.w2")
 		assert.Equal(t, "add the test", p.Fix)

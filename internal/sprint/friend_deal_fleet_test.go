@@ -49,8 +49,8 @@ func putReads(w *world, friend string, n int) {
 // (stream ahead, ready on its row and untaken), and the cards of each stream given added.
 func aheadWorld(t *testing.T, streams map[string][]string) *world {
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 2}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 2}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2}))
 	var ahead []CardAdd
 	for i := range 2 * DealAhead * 2 {
 		ahead = append(ahead, CardAdd{ID: "ahead-" + itoa(i+1), Brief: fleetBrief("flash")})
@@ -234,8 +234,8 @@ func TestAFriendReclaimsAnUntakenDealtAheadCard(t *testing.T) {
 func TestTheReclaimIsBoundedAndAnUnstartedReclaimGoesBackToTheMachines(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 4}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 4}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 4}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 4}))
 	var ahead []CardAdd
 	for i := range 16 {
 		ahead = append(ahead, CardAdd{ID: "ahead-" + itoa(i+1), Brief: fleetBrief("flash")})
@@ -254,8 +254,8 @@ func TestTheReclaimIsBoundedAndAnUnstartedReclaimGoesBackToTheMachines(t *testin
 
 	// a friend as wide as the fleet takes at most half of each machine's queue in a tick
 	w2 := newWorld(t, "reader-a", "reader-b")
-	w2.must(FleetStep(w2.s, FleetReq{Op: "up", Member: "m1", Width: 4}))
-	w2.must(FleetStep(w2.s, FleetReq{Op: "up", Member: "m2", Width: 4}))
+	w2.must(FleetStep(w2.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 4}))
+	w2.must(FleetStep(w2.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 4}))
 	w2.must(Add(w2.s, AddReq{Stream: "ahead", Cards: ahead}))
 	dealWith(w2)
 	wide := FriendSeat{Name: "fay", Width: 32, Status: Up, Class: "flash", Tiers: []string{"flash"}}

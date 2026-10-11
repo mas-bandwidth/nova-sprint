@@ -224,7 +224,7 @@ func TestLowFillsOnlyAnIdleLane(t *testing.T) {
 	t.Run("the fleet", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a")
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 1}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 1}))
 		w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{
 			{ID: "s1-1", Brief: "c: a low card\nPRIORITY: low\n\nThe task."},
 			{ID: "s1-2", Brief: "c: a normal card\n\nThe task."},

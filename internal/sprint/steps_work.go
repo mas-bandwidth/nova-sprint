@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -974,6 +975,9 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 	}
 	chosen := pick(&p, r.Sel, eligibleTurns(s.Work.Column(Ready), ready, streamRound(s, PropStreamIndex)), rowOf, ready, s.primaryCard)
 	up := s.UpMembers()
+	// a member held by an uncleared environment fault is dealt nothing: the fault holds it
+	// until its probe passes or its next card pushes (envFaulted, tla/ProviderBudget.tla)
+	up = slices.DeleteFunc(up, s.EnvHeld)
 	if s.FleetOff() {
 		for _, c := range chosen {
 			p.refuse(c.ID, "the fleet's work is off: no card is dealt to a machine; run: nova-sprint set --fleet on")
@@ -1316,6 +1320,12 @@ func takeSeat(s *Snapshot, as string) (width int, why string) {
 	if !s.Fleet.HasRow(as) {
 		return 0, "no fleet member " + as
 	}
+	// a member held by an uncleared environment fault takes nothing: the fault is the
+	// member's and no work runs on it until the remedy is run and its probe passes
+	// (envFaulted, tla/ProviderBudget.tla)
+	if cause, reason := s.MemberEnvFault(as); cause != "" {
+		return 0, "member " + as + " is held by an environment fault (" + cause + ": " + reason + "): " + EnvFaultRemedy(as, cause)
+	}
 	if st := s.MemberCtl(as).F("status"); st != Up {
 		return 0, "member " + as + " is " + orDash(st)
 	}
@@ -1563,6 +1573,20 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		if r.Failed {
 			kind, class, used = finishKind(c, r)
 		}
+		// An environment fault is the member's: the card returns to ready untouched, the
+		// member is held and one judgment is pushed to the seat (EnvFault, envFaulted;
+		// tla/ProviderBudget.tla). A late report is the deadline's failed attempt and takes
+		// none of this.
+		if r.Failed && kind == "" && !late {
+			if cause := EnvFault(r.Report); cause != "" {
+				u, upd := envFaulted(s, c, pr, r, cause, who)
+				p.Units = append(p.Units, u)
+				if upd != nil {
+					p.Updates = append(p.Updates, *upd)
+				}
+				continue
+			}
+		}
 		// a lane ended at its tier's cap: the first cap re-deals the card one tier up before
 		// it counts as a failure (lane_cap.go)
 		lc, capped := LaneCap{}, false
@@ -1666,6 +1690,12 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		addConsumer(pr, set, cons)
 		u := Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{change(Fleet, moveEntry(c, c.Row, into, cardSet))},
 			Moved: fmt.Sprintf("%s working -> done %s; %s working -> review", c.ID, result, pr.ID)}
+		// A member's uncleared environment fault clears itself when its next card pushes:
+		// the fault's record and hold go, and its judgment closes (tla/ProviderBudget.tla,
+		// FaultClearsOnPush).
+		if !r.Failed && r.Head != "" {
+			clearEnvFault(s, c.Row, &u)
+		}
 		if late {
 			// the attempt's failed judgments are this report's to answer: closed, and the
 			// finish writes its own below
@@ -1959,6 +1989,184 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 	}, Notes: notes, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s refused it at staging; %s working -> ready", c.ID, c.Int("gen")+1, c.Row, pr.ID)}
 }
 
+// AN ENVIRONMENT FAULT IS THE MEMBER'S, NEVER THE CARD'S OR THE MODEL'S (the owner,
+// 2026-10-11, on b1, b2 and b3 joining the fleet without the push credential and failing
+// every card at push for over an hour, each raised only as one card's "work came back
+// failed": "the failure here is not noticing this until now."). A failed finish whose
+// reason is an environment fault returns the card to ready untouched -- the work card
+// withdraws without FieldTakeEnded, so no redeal is spent, its attempt is unchanged and it
+// is never failed work -- and holds the member, so no new card is dealt to it, and raises
+// one judgment to the seat for the member, kept naming its current cause and remedy (one
+// per member and cause: a later fault with a different cause rewrites it, so the seat is
+// never left a stale remedy). The member's next card that pushes clears the fault, or
+// fleet up clears it when the member's own probe passes. It is
+// the shape a provider's rest takes (PropProviderRest, ProviderRests, route_rest.go),
+// applied to the member's environment. The model is tla/ProviderBudget.tla.
+const (
+	// FieldEnvFault is the member's control card's record of the last environment fault
+	// that holds it: the cause (EnvPush, EnvHarness, EnvTool, EnvSandbox, EnvDisk or
+	// EnvOther), with its reason and when it began beside it. It is cleared when the
+	// member's next card pushes, or by fleet up when the member's probe passes.
+	FieldEnvFault       = "env_fault"
+	FieldEnvFaultReason = "env_fault_reason"
+	FieldEnvFaultAt     = "env_fault_at"
+	// FieldEnvProbe is the member's control card's record of its own environment probe's
+	// last result (EnvProbePassed, or the reason it failed): a new member runs its probe
+	// before fleet up accepts its width (tla/ProviderBudget.tla).
+	FieldEnvProbe = "env_probe"
+	// HeldByEnv marks the hold an environment fault put on the member (FieldHeldBy): the
+	// fault alone releases it.
+	HeldByEnv = "environment"
+	// NMemberEnvFault is the judgment, one per member, that the member's environment is
+	// broken and it is held until the remedy is run and its probe passes; it names the
+	// member's current cause and remedy, rewritten when that cause changes (envFaultNote).
+	NMemberEnvFault = "a member's environment is broken"
+	// NMemberEnvFaulted is the happened note of a card returned to ready by an
+	// environment fault (never failed work).
+	NMemberEnvFaulted = "a card returned to ready: its member's environment faulted"
+	// EnvProbePassed is the member's own probe's result when it passed.
+	EnvProbePassed = "passed"
+)
+
+// The causes of an environment fault, as the classifier names them.
+const (
+	EnvPush    = "push"
+	EnvHarness = "harness"
+	EnvTool    = "tool"
+	EnvSandbox = "sandbox"
+	EnvDisk    = "disk"
+	EnvOther   = "environment"
+)
+
+// envFaultClasses is each environment cause and the words that say it, in the order a
+// finish report is matched. A push refusal counts only when its git line is the
+// environment's (no credential, auth, unreachable remote), never a refused push that is the
+// branch's (rejected, non-fast-forward).
+var envFaultClasses = []struct {
+	cause string
+	re    *regexp.Regexp
+}{
+	{EnvPush, regexp.MustCompile(`(?i)could not read (username|password|from remote)|terminal prompts disabled|authentication failed|permission denied \(publickey\)|could not resolve host|unable to access '|no (push )?credential|invalid username or password|support for password authentication was removed|remote: (invalid username or password|permission denied)`)},
+	{EnvHarness, regexp.MustCompile(`(?i)\bno harness\b|harness[^.;]{0,40}not (found|installed|present|available)|\bno such harness\b`)},
+	{EnvTool, regexp.MustCompile(`(?i)executable file not found|command not found|\bmissing (tool|binary)\b|tool [^.;]{0,40}not found`)},
+	{EnvSandbox, regexp.MustCompile(`(?i)\bsandbox\b|operation not permitted|read-only file system|blocked by the wall|the wall (refused|blocked)`)},
+	{EnvDisk, regexp.MustCompile(`(?i)no space left on device|disk (is )?full|quota exceeded`)},
+}
+
+// EnvFault classifies a failed finish's reason as an environment fault: its cause (EnvPush,
+// EnvHarness, EnvTool, EnvSandbox, EnvDisk), or "" when it is none.
+func EnvFault(report string) string {
+	for _, c := range envFaultClasses {
+		if c.re.MatchString(report) {
+			return c.cause
+		}
+	}
+	return ""
+}
+
+// MemberEnvFault is the member's last environment fault as its control card holds it: its
+// cause and reason, "" when it has none.
+func (s *Snapshot) MemberEnvFault(member string) (cause, reason string) {
+	ctl := s.MemberCtl(member)
+	if ctl == nil {
+		return "", ""
+	}
+	return ctl.F(FieldEnvFault), ctl.F(FieldEnvFaultReason)
+}
+
+// EnvHeld says the member is held by an uncleared environment fault: it is dealt no new
+// card (Deal) and takes none (takeSeat) until its probe passes (fleet up) or its next card
+// pushes (finishPlan).
+func (s *Snapshot) EnvHeld(member string) bool {
+	cause, _ := s.MemberEnvFault(member)
+	return cause != ""
+}
+
+// envFaulted is the unit of a finish whose report is an environment fault (EnvFault): the
+// work card withdraws WITHOUT FieldTakeEnded (withdrawUnit), so the take spends none of the
+// redeal bound, and its primary goes back to ready with its attempt unchanged; the member's
+// control card records the fault (FieldEnvFault) and its hold (held, HeldByEnv), so the
+// deal gives it no new card; and one judgment is raised to the seat per member, naming the
+// remedy (tla/ProviderBudget.tla). No failed-work judgment is written and the primary's
+// failed count does not move: the fault is the member's, never the card's or the model's.
+// When a later fault has a different cause, the open judgment is rewritten in place (the
+// returned update) so the seat is never left a remedy for a cause that is no longer the
+// member's (envFaultNote).
+func envFaulted(s *Snapshot, c, pr *Card, r FinishReq, cause, who string) (Unit, *Note) {
+	line := cutText(oneLine(r.Report), MaxProviderErrorBytes)
+	u := withdrawUnit(s, c, nil, nil, NMemberEnvFaulted, who, "the member's environment faulted ("+cause+"): "+line)
+	if ctl := s.MemberCtl(c.Row); ctl != nil {
+		set := map[string]string{
+			FieldEnvFault:       cause,
+			FieldEnvFaultReason: line,
+			FieldEnvFaultAt:     stamp(s.Now),
+			"held":              stamp(s.Now),
+			FieldHeldBy:         HeldByEnv,
+			FieldHeldReason:     "environment fault: " + cause,
+		}
+		u.Changes = append(u.Changes, change(Fleet, setEntry(ctl, set, FieldHeldFinish)))
+	}
+	u.Moved += "; " + EnvFaultRemedy(c.Row, cause)
+	n, upd := envFaultNote(s, c.Row, pr.ID, cause, line, who)
+	if n.Type != "" {
+		u.Notes = append(u.Notes, n)
+	}
+	return u, upd
+}
+
+// envFaultNote is the judgment an environment fault raises for the member: its first cause
+// opens one, addressed to the seat, naming the cause, the reason and the remedy; a later
+// fault with the SAME cause adds none (one judgment per member and cause); a later fault
+// with a DIFFERENT cause rewrites the open judgment's cause, reason, remedy and card in
+// place (the returned update), so the seat is never told to run a remedy that will not fix
+// the member's current fault (tla/ProviderBudget.tla, JudgmentNamesTheCause).
+func envFaultNote(s *Snapshot, member, primary, cause, line, who string) (Note, *Note) {
+	sub := MemberSubject(member)
+	for _, o := range s.Open {
+		if o.Note.Type != NMemberEnvFault || o.Subject() != sub {
+			continue
+		}
+		if prev, _ := s.MemberEnvFault(member); prev == cause {
+			return Note{}, nil // the same cause is open already: no second judgment
+		}
+		n := o.Note
+		n.Card, n.At = primary, s.Now
+		n.What = envFaultWhat(member, primary, cause, line)
+		return Note{}, &n
+	}
+	n := judgment(NMemberEnvFault, sub, s.Now, 0, sub)
+	n.Who, n.To = who, s.Coordinator
+	n.Card = primary
+	n.Decisions = []string{"fleet up " + member, "wait"}
+	n.What = envFaultWhat(member, primary, cause, line)
+	return n, nil
+}
+
+// envFaultWhat is the judgment's text: the member's cause and reason, its card back in
+// ready, and the remedy that clears the cause (EnvFaultRemedy).
+func envFaultWhat(member, primary, cause, line string) string {
+	return "member " + member + "'s environment faulted (" + cause + "): " + line +
+		"; its card " + primary + " is back in ready, nothing counted; the member is held, so no new card is dealt to it. Remedy: " + EnvFaultRemedy(member, cause)
+}
+
+// clearEnvFault is the control card change and the judgment closed when the member's
+// environment fault clears: the record goes with the hold, and the open judgment on the
+// member closes (tla/ProviderBudget.tla, FaultClearsOnPush).
+func clearEnvFault(s *Snapshot, member string, u *Unit) {
+	ctl := s.MemberCtl(member)
+	if ctl == nil || ctl.F(FieldEnvFault) == "" {
+		return
+	}
+	u.Changes = append(u.Changes, change(Fleet, setEntry(ctl, nil,
+		FieldEnvFault, FieldEnvFaultReason, FieldEnvFaultAt, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish)))
+	sub := MemberSubject(member)
+	for _, o := range s.Open {
+		if o.Note.Type == NMemberEnvFault && o.Subject() == sub {
+			u.Closes = append(u.Closes, o)
+		}
+	}
+}
+
 // withdrawCard is the unit that withdraws work card c from its member, the one path of a
 // member going down (FleetStep), of a ready card on a resting route (restWithdrawals) and
 // of a friend's card taken back (FriendTake, by withdrawUnit): a new generation and the
@@ -2022,6 +2230,12 @@ type FleetReq struct {
 	// (FieldHarnesses, route.go Launches): a comma list, HarnessesNone to clear them, ""
 	// to leave them as they are.
 	Harnesses string `json:",omitempty"`
+	// Probe, with up or release, is the member's own environment probe's last result: the
+	// member's push-credential probe and its harness check. EnvProbePassed when it passed,
+	// else the reason it failed, "" when none was run. fleet up runs it before accepting a
+	// member the sprint does not know or whose last environment fault is not cleared, and
+	// a pass clears the fault (tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+	Probe string `json:",omitempty"`
 	// Sync, with Op sync, is every machine the inventory says is a member
 	// and its width (fleet_sync.go); Member is empty.
 	Sync []SyncMember `json:",omitempty"`
@@ -2155,6 +2369,34 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			p.refuse(r.Member, why)
 			return p
 		}
+		// A member whose last environment fault is not cleared is refused until its own
+		// probe passes; a member the sprint does not know runs its own probe before its
+		// width is accepted, and a pass clears the fault (tla/ProviderBudget.tla,
+		// FleetUpRefusesUncleared).
+		envCleared := false
+		if cause, reason := s.MemberEnvFault(r.Member); cause != "" {
+			if r.Probe != EnvProbePassed {
+				why := "its last environment fault is not cleared (" + cause + ": " + reason + "): " + EnvFaultRemedy(r.Member, cause) + "; run its own probe and return with --probe " + EnvProbePassed
+				if r.Probe != "" {
+					why = "its own probe failed (" + r.Probe + "): the last environment fault (" + cause + ") is not cleared: " + EnvFaultRemedy(r.Member, cause)
+				}
+				p.refuse(r.Member, why)
+				return p
+			}
+			envCleared = true
+		} else if s.MemberCtl(r.Member) == nil && r.Probe != EnvProbePassed {
+			// a member the sprint does not know runs its own probe (the push-credential
+			// probe, the harness check) before its width is accepted: no probe or a failed
+			// one refuses it, so a machine joining without the push credential never gets
+			// width (the owner, 2026-10-11; tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+			// init bootstraps a fleet by passing EnvProbePassed for each member it sets up.
+			why := "its own probe has not passed: " + EnvProbeLine(r.Member)
+			if r.Probe != "" {
+				why = "its own probe failed (" + r.Probe + "): " + EnvFaultRemedy(r.Member, EnvOther)
+			}
+			p.refuse(r.Member, why)
+			return p
+		}
 		if !s.Fleet.HasRow(r.Member) {
 			p.Rows = append(p.Rows, RowAdd{Fleet, r.Member})
 		}
@@ -2212,6 +2454,13 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 					line = r.Member + " released, down until it beats"
 				}
 			}
+			if envCleared {
+				// the passed probe clears the member's last environment fault with its hold
+				// (balance.go, EnvProbePatch; the environment's analogue of a payment)
+				pset, punset := EnvProbePatch(r.Probe)
+				maps.Copy(set, pset)
+				unset = append(unset, punset...)
+			}
 			if len(set) > 0 || len(unset) > 0 {
 				head = append(head, change(Fleet, setEntry(ctl, set, unset...)))
 			}
@@ -2244,6 +2493,14 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			}
 		}
 		headOf(&p, r.Member, head, n, line)
+		if envCleared {
+			sub := MemberSubject(r.Member)
+			for _, o := range s.Open {
+				if o.Note.Type == NMemberEnvFault && o.Subject() == sub {
+					p.Units[0].Closes = append(p.Units[0].Closes, o)
+				}
+			}
+		}
 	case "down", "hold":
 		// the room of each receiver is its width (width.go): its work cards
 		// held, ready and working, under it

@@ -95,7 +95,7 @@ func TestStepsWorkCoverEscalate(t *testing.T) {
 	bound := func(t *testing.T) (*world, *Card, *Card, map[string]int) {
 		t.Helper()
 		w := newWorld(t)
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 		w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}}))
 		c := w.s.Work.Card("s1-1")
 		c.Fields["attempt"] = "3"

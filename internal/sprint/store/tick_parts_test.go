@@ -113,7 +113,7 @@ func TestTheTickAsksTwoReadersAndSaysWhenItCannot(t *testing.T) {
 	require.NoError(t, h2.m.RowsAdd(h2.ctx, "t-readers", []string{"reader-a"}))
 	h2.beat()
 	h2.beat()
-	h2.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h2.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h2.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 1}))
 	h2.startMachine()
 	h2.machine()
@@ -135,10 +135,10 @@ func TestTheTickAsksTwoReadersAndSaysWhenItCannot(t *testing.T) {
 func TestTheTickLevelsUnevenQueues(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 5}))
-	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{Limit: 5}})) // five on m1, dealt by hand
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))  // up levels: 3 and 2
+	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{Limit: 5}}))                              // five on m1, dealt by hand
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"})) // up levels: 3 and 2
 	// a member's queue grows by hand past the other's by more than one
 	s := h.snap()
 	c := s.Fleet.Cell("m2", sprint.Ready)[0]
@@ -183,7 +183,7 @@ func TestTheTickFinishesAPendingOperationPastItsGrace(t *testing.T) {
 func TestTheTickResumesACrossStopWhenTheCardLands(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"b"}}))
 	h.through("a", "b")
@@ -239,7 +239,7 @@ func TestNoMemberUpIsOneJudgmentUntilAMemberIsUp(t *testing.T) {
 	h.machine()
 	require.Len(t, h.openOf(sprint.NNoMember), 1, "no member: open %d written %d", len(h.openOf(sprint.NNoMember)), h.written(sprint.NNoMember))
 	require.Equal(t, 1, h.written(sprint.NNoMember), "no member: open %d written %d", len(h.openOf(sprint.NNoMember)), h.written(sprint.NNoMember))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.machine()
 	require.Empty(t, h.openOf(sprint.NNoMember), "after a member came up: open %d, s1-1 %s", len(h.openOf(sprint.NNoMember)), h.state("s1-1"))
 	require.Equal(t, sprint.Working, h.state("s1-1"), "after a member came up: open %d, s1-1 %s", len(h.openOf(sprint.NNoMember)), h.state("s1-1"))
@@ -364,8 +364,8 @@ func TestOwnerWorkWaitsForStartWhileCoordinatorCanLandStopped(t *testing.T) {
 // three rounds from that round (0 never), while the outside actors go on.
 func sprintOf(t *testing.T, n, stopAt int) *harness {
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	for _, s := range []string{"s1", "s2", "s3"} {
 		h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: s, Count: n / 3}))
 	}

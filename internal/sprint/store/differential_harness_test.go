@@ -45,6 +45,7 @@ type dAction struct {
 	Other         string // the other card of a cross fact
 	Did           string
 	Op            string // a fleet verb: up, down, level
+	Probe         string // a fleet up's own environment probe result (sprint.EnvProbePassed, ...)
 	Type          string // an ack's judgment type, as the model names it
 	Subject       string // an ack's subject
 	Run           int    // a ci run
@@ -598,7 +599,7 @@ func (h *dHarness) engine(a dAction, pre refmodel.State) (refused string, cutOK 
 		case "up":
 			op = "release" // the verb fleet up releases a hold, adding a new member
 		}
-		return run(FleetStep(sprint.FleetReq{Op: op, Member: a.Member, Fresh: true})), cutOK
+		return run(FleetStep(sprint.FleetReq{Op: op, Member: a.Member, Fresh: true, Probe: a.Probe})), cutOK
 	case "ci":
 		return run(CIStep(sprint.CIReq{Sel: sprint.Sel{IDs: a.IDs}, Red: !a.OK, Run: fmt.Sprint(a.Run), Source: "test"})), cutOK
 	case "ack":
@@ -1170,7 +1171,7 @@ func (h *dHarness) pick1(rng *rand.Rand, n *int) dAction {
 			case 1, 2:
 				return dAction{Kind: "fleet", Op: "down", Member: m}
 			}
-			return dAction{Kind: "fleet", Op: "up", Member: m}
+			return dAction{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: m}
 		case w < 106:
 			*n++
 			return dAction{Kind: "ci", IDs: []string{one(placed())}, OK: rng.IntN(2) == 0, Run: *n}
@@ -1237,8 +1238,8 @@ func appendUniq(xs []string, x string) []string {
 // running, and five primaries in two streams.
 func dSetup() []dAction {
 	return []dAction{
-		{Kind: "fleet", Op: "up", Member: "m1"},
-		{Kind: "fleet", Op: "up", Member: "m2"},
+		{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"},
+		{Kind: "fleet", Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"},
 		{Kind: "start"},
 		{Kind: "add", Stream: "s1", IDs: []string{"a1", "a2", "a3"}},
 		{Kind: "add", Stream: "s2", IDs: []string{"b1", "b2"}, Needs: []string{"a1"}},

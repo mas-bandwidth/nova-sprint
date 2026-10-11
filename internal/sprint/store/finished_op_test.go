@@ -299,7 +299,7 @@ var zombieMembers = []string{"m1", "m2", "m3"}
 func zombieSprint(t *testing.T) *harness {
 	h := newHarness(t)
 	for _, m := range zombieMembers {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: m}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 	}
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"c1"}}))
 	for i := 2; i <= 6; i++ {

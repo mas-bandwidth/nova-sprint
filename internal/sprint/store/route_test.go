@@ -32,8 +32,8 @@ func briefOf(tier, extra string) string {
 func routeHarness(t *testing.T, routes ...sprint.Route) *harness {
 	h := newHarness(t)
 	// wide members: a test deals hundreds of cards, and the deal holds a member to its width
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: sprint.MaxWidth}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2", Width: sprint.MaxWidth}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: sprint.MaxWidth}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: sprint.MaxWidth}))
 	h.m.SetRoutes(routes)
 	// the readers' rows name every tier, as reader set --tiers all writes them: a fleet row
 	// that names no tier reads flash alone while the store holds routes (sprint
@@ -197,7 +197,7 @@ func TestARedealLeavesOutTheRouteItWasDealtOn(t *testing.T) {
 			rs = append(rs, route("flash-b", "flash"))
 		}
 		h := newHarness(t)
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 		h.m.SetRoutes(rs)
 		h.addReady("s1", 1, briefOf("flash", ""))
 		h.must(DealStep(sprint.DealReq{}))
@@ -207,7 +207,7 @@ func TestARedealLeavesOutTheRouteItWasDealtOn(t *testing.T) {
 		gens := map[string]int{w1.ID: w1.Int("gen")}
 		h.must(TakeStep(sprint.TakeReq{As: "m1", Sel: sprint.Sel{IDs: []string{w1.ID}}, Gens: gens, Who: "m1"}))
 		h.run(FleetStep(sprint.FleetReq{Op: "down", Member: "m1"}))
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 		h.run(DealStep(sprint.DealReq{}))
 		wc := h.workCards()["s1-1.w1"]
 		require.NotNil(t, wc)
@@ -410,7 +410,7 @@ func TestARedealSkipsTheExcludedEntryAndMovesPastIt(t *testing.T) {
 	gens := map[string]int{w1.ID: w1.Int("gen")}
 	h.must(TakeStep(sprint.TakeReq{As: "m1", Sel: sprint.Sel{IDs: []string{w1.ID}}, Gens: gens, Who: "m1"}))
 	h.run(FleetStep(sprint.FleetReq{Op: "down", Member: "m1"}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	h.run(DealStep(sprint.DealReq{}))
 	wc := h.workCards()["s1-1.w1"]
 	require.Equal(t, "m2", wc.Row, "dealt again")
@@ -465,8 +465,8 @@ func TestATickOf1000CardsKeepsTheTripPin(t *testing.T) {
 	t.Parallel()
 	trips := func(routed bool) (map[string]int64, *harness) {
 		h := newHarness(t)
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 500}))
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2", Width: 500}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 500}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 500}))
 		if routed {
 			h.m.SetRoutes([]sprint.Route{route("a", "flash"), route("b", "flash"), route("c", "flash")})
 			h.m.SetTiers(map[string][]string{"flash": {"a", "b", "c", "c"}})

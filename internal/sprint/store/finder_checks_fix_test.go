@@ -129,7 +129,7 @@ func TestTheFinderIsNotPreferredWhenAwayOrWithoutRoom(t *testing.T) {
 		h := routeHarness(t, route("flash-a", "flash"), route("pro-a", "pro"))
 		require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-m1"}))
 		h.readersRead("flash,pro,heavy,frontier") // the added row reads every tier, as the harness's do
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 1}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 1}))
 		h.beat()
 		h.addReady("s1", 2, briefOf("pro", ""))
 		for _, id := range []string{"s1-1", "s1-2"} {

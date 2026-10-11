@@ -21,7 +21,7 @@ func fleetWorld(t *testing.T, primaries, width int, members ...string) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a")
 	for _, m := range members {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m, Width: width}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: width}))
 	}
 	if primaries > 0 {
 		w.must(Add(w.s, AddReq{Stream: "s1", Count: primaries}))
@@ -87,7 +87,7 @@ func eightIdle(t *testing.T, readers ...string) *world {
 	t.Helper()
 	w := newWorld(t, readers...)
 	for i := 1; i <= 8; i++ {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: fmt.Sprintf("m%d", i)}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: fmt.Sprintf("m%d", i)}))
 	}
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 30}))
 	return w
@@ -181,7 +181,7 @@ func TestTheDealSkipsAFullMemberAndTheQueueDoesNotChoose(t *testing.T) {
 	// m1 and m2 at width 1, m3 at width 2: rooms (DealAhead times the width) of
 	// 2, 2 and 4
 	for i, m := range []string{"m1", "m2", "m3"} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m, Width: []int{1, 1, 2}[i]}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: []int{1, 1, 2}[i]}))
 	}
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 8}))
 	deal := func(id string) string {
@@ -215,7 +215,7 @@ func TestTheDealSkipsADownMemberEvenly(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	for _, m := range []string{"m1", "m2", "m3", "m4"} {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
 	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m2"}))
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 9}))
@@ -289,7 +289,7 @@ func TestTheDealGoesRoundTheFleetAcrossStreams(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	for i := 1; i <= 8; i++ {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: fmt.Sprintf("m%d", i)}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: fmt.Sprintf("m%d", i)}))
 	}
 	streams := []string{"s1", "s2", "s3"}
 	for _, st := range streams {
@@ -345,7 +345,7 @@ func TestTheAskGoesRoundTheReadersAcrossStreams(t *testing.T) {
 	readers := []string{"reader-a", "reader-b", "reader-c", "reader-d"}
 	w := newWorld(t, readers...)
 	for i := 1; i <= 8; i++ {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: fmt.Sprintf("m%d", i)}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: fmt.Sprintf("m%d", i)}))
 	}
 	streams := []string{"s1", "s2", "s3"}
 	var ids []string

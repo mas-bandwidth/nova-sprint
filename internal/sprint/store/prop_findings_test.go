@@ -34,7 +34,7 @@ func (h *harness) commandsOf(typ string) []sprint.Command {
 func TestACrossStopsCommandsNameTheStuckCardAndTheCardItNeeds(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"p8"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s3", IDs: []string{"p10"}, Needs: []string{"p8"}}))
 	h.through("p8")
@@ -65,7 +65,7 @@ func TestACrossStopsCommandsNameTheStuckCardAndTheCardItNeeds(t *testing.T) {
 func TestTheTickClosingALateReadWritesWhatThePrimaryNeeds(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", IDs: []string{"p2"}}))
 	h.startMachine()
 	h.machine() // deals p2
@@ -106,7 +106,7 @@ func TestTheTickClosingALateReadWritesWhatThePrimaryNeeds(t *testing.T) {
 func TestTheTickClosingTheOnlyLateReadWritesWhatThePrimaryNeeds(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", IDs: []string{"p2"}}))
 	h.startMachine()
 	h.machine() // deals p2

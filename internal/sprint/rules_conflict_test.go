@@ -53,8 +53,8 @@ func newConflictRig(t *testing.T) *conflictRig {
 		{Name: "pro-a", Tier: "pro", Provider: "prov-pro-a", Model: "model-pro-a", Tokens: 1000, Deadline: conflictRouteSeconds, Enabled: true},
 	})
 	r.beat()
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 4}))
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Member: "m2", Width: 4}))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 4}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", Count: 3, Brief: "c: the work (s1) tier: flash\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"}))
 	_, _, _, err := r.st.SetMachine(r.ctx, true)
 	require.NoError(t, err)

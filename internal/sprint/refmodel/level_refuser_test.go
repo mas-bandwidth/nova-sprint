@@ -24,7 +24,7 @@ func TestLevelRefuserTheEngineAndTheModelAgree(t *testing.T) {
 	t.Parallel()
 	w := newWorld("reader-a", "reader-b")
 	for _, m := range []string{"A", "T", "S", "U"} {
-		w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Member: m, Width: refmodel.Width, Who: coordinator}))
+		w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: refmodel.Width, Who: coordinator}))
 	}
 	w.s.Work.SetRows(append(w.s.Work.Rows(), "s1"))
 	score := 1.0
