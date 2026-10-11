@@ -256,6 +256,10 @@ func Judge(r Result, pu Push) (fin Finish, why string) {
 		// provider's reason, never the shape's; the sprint deals the card again. A refused
 		// push above, and a shaped result below (nothing, not done), are the card's own
 		return FinishFailed, EndProvider + ": " + r.Provider
+	case r.End == EndProvider && strings.Contains(r.Report, "class=rate-limited"):
+		// the provider rate limited a limited route's take: report as provider failure
+		// whatever the shape, so a 429 never reaches the sprint as failed work
+		return FinishFailed, EndProvider + ": " + r.Provider
 	case !r.Shaped && r.End == "":
 		// the child ended by itself and left no result: no work came back, and the sprint
 		// deals the card again on another route (cardhdr.EndNoResult). A run its budget or
