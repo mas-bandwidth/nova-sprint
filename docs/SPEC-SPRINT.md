@@ -4774,6 +4774,20 @@ the tick would make, no other open judgment on it).
 | stalled: nothing holds a card (rule 12) | the decisions its place allows and that would be accepted (ask --another for a primary asked already, never ask), else look at the card; drop; wait | no, while the stall stands |
 | review above its alarm, merging above its alarm, nothing ready while cards wait, the fleet works below its alarm (the backlog alarms, below) | ack (seen: quiet until the episode ends), wait | yes |
 
+**A ready card is not dealt.** A primary that has sat in ready past the sprint's bound
+(`ready_max`, default one minute) raises one judgment per (reason, tier), `a ready card is
+not dealt`: `<n> primaries of tier <t> sit in ready past <max>: <why>`, keyed, and grouped,
+by the reason the deal leaves it (the deal's own checks, `readyWhy` and `readyOverConds` in
+internal/sprint/ready_over.go, the ready-over part `TickReadyOver` of TickDeadlines). The
+reason names the tier and each route of it that serves no card and why (disabled, resting
+until paid, resting until woken, resting until its time, out of budget) with the remedy verb
+(routes wake, funded, fleet up, release), so cards that share a cause are one judgment, never
+one per card; it clears itself the tick the card is dealt. The rests it names are the deal's
+settled rests: the ready-over part settles them once, as the deal does (`withRests`,
+route_rest.go), on the snapshot the conditions are counted on, so the route the judgment
+names as resting is exactly one the deal does not draw, the fleet's recorded rests and those
+due this tick alike. The model is tla/ReadyOver.tla.
+
 A condition the tick keeps (cannot ask, fewer than two readers up, no member up, a deadline passed, an
 invariant broken; a failing reminder too) is answered for a while by
 `wait <note> --for <duration>`: the judgment is closed and the condition held
