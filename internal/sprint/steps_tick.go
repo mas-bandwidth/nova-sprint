@@ -745,17 +745,20 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		if wc := AtRedealBound(s, c); wc != nil {
 			cd := cond{typ: NBound, stream: c.Row, card: wc.ID, primaries: []string{c.ID}, what: boundWhat(wc, c.ID)}
 			held, _ := reworkAtTheSameBound(s, c, wc, "")
-			if held != "" {
-				// the attempt before ended at its bound on its tier: its own judgment, which
-				// closes and opens again as plain when the provider is back, once (failure.go)
-				cd.what += "; a second bound on tier " + cardTierOf(c) + ": not reworked on it again"
-			}
 			cd.decisions = boundDecisions(c, wc, held != "")
 			if bb, ok := AtBriefBound(c, "", s.AttemptsCap(c.Row)); ok {
 				// too many attempts on one brief: the brief is wrong, not the worker, and the
-				// judgment offers brief and drop, never rework (brief_bound.go)
-				cd.what = bb.String() + "; " + cd.what
+				// judgment offers brief and drop, never rework (brief_bound.go); its text names
+				// the exact command that answers it (BriefBound.Remedy), as a rework's refusal
+				// does, so the coordinator runs brief --brief-file, never rework or redo
+				cd.what = bb.Why() + "; " + cd.what
 				cd.decisions = append([]string(nil), Decisions[NBriefWrong]...)
+			} else if held != "" {
+				// the attempt before ended at its bound on its tier: its own judgment, which
+				// closes and opens again as plain when the provider is back, once (failure.go);
+				// the remedy (reworkAtTheSameBound) names the exact tier to rework on and the
+				// drop command, so the answer runs as printed
+				cd.what += "; a second bound on tier " + cardTierOf(c) + ": not reworked on it again; " + held
 			}
 			conds = append(conds, cd)
 			continue

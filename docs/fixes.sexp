@@ -308,4 +308,12 @@
     :title "Approval at head is read from the disposition line"
     :text "The review API commit id can differ from the head the reviewer read. Merge checks parse the head
      named in the disposition and treat commit id as untrusted."
-    :origin "issue #2037")))
+    :origin "issue #2037")
+
+   (fix "bound-judgment-names-its-remedy" :release "v1.2.6" :status "shipped"
+    :title "A bound judgment names the exact command that answers it"
+    :text "A card at its redeal bound says which tier above to rework on and the drop command whole, and a
+     card at its brief's bound names brief --brief-file and the drop command, in the judgment's own text as
+     a rework's refusal already said, so the coordinator runs the remedy as printed instead of guessing."
+    :origin "dogfood 2026-10-10 evening: a fleet-only restart bounded several cards, and answering them took
+     four tries -- brief --tier, redo, rework, rework --group")))

@@ -120,7 +120,7 @@ func TestTheBoundJudgmentNamesTheBriefNotTheWorker(t *testing.T) {
 	require.Len(t, open, 1)
 	n := open[0].Note
 	assert.Equal(t, "a card has reached its bound: the brief is wrong, not the worker", n.Type)
-	assert.Equal(t, "s1-1 has failed the same way twice (attempts 1 and 2: files outside PATHS: internal/x.go); the brief is wrong, not the worker; attempt 2 found: files outside its PATHS: internal/y.go", n.What)
+	assert.Equal(t, "s1-1 has failed the same way twice (attempts 1 and 2: files outside PATHS: internal/x.go); the brief is wrong, not the worker; run: nova-sprint brief s1-1 --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop s1-1 --reason '<why>'; attempt 2 found: files outside its PATHS: internal/y.go", n.What)
 	assert.Equal(t, []string{"brief", "drop"}, n.Decisions)
 	for _, c := range h.commandsOf(sprint.NBriefWrong) {
 		for _, l := range c.Lines {

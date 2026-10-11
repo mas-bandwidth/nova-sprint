@@ -123,7 +123,7 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 	}
 	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok && !ledger {
 		j := judgment(NBriefWrong, r.Stream, s.Now, 0, id) // its decisions alone: it is the repeat
-		j.Who, j.Card, j.Attempt, j.What = r.Who, id, pr.Int("attempt"), cutText(bb.String()+"; "+refusal, MaxCardTextBytes)
+		j.Who, j.Card, j.Attempt, j.What = r.Who, id, pr.Int("attempt"), cutText(bb.Why()+"; "+refusal, MaxCardTextBytes)
 		u.Moved = fmt.Sprintf("%s merging -> review (the landing refused its head at its brief's bound; off merge %s)", id, m.Col)
 		return review(j)
 	}

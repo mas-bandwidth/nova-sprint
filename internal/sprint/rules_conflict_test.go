@@ -299,6 +299,8 @@ func TestTheSameLandingRefusalTwiceIsABriefDefect(t *testing.T) {
 	open := r.open(sprint.NBriefWrong)
 	require.Len(t, open, 1, "the brief-defect judgment")
 	assert.Contains(t, open[0].Note.What, "has failed the same way twice (attempts 1 and 2")
+	assert.Contains(t, open[0].Note.What, "nova-sprint brief s1-1 --brief-file <path>", "the landing refusal's bound judgment names the brief command")
+	assert.Contains(t, open[0].Note.What, "nova-sprint drop s1-1 --reason '<why>'", "and the drop command")
 	assert.NotEqual(t, sprint.StreamStopped, s.StreamCtl("s1").F("state"))
 	r.clean("refused twice")
 }
@@ -375,6 +377,7 @@ func TestACardAtItsBoundIsNotReworkedOnConflict(t *testing.T) {
 	open := r.open(sprint.NBriefWrong)
 	require.Len(t, open, 1, "the bound's judgment")
 	assert.Contains(t, open[0].Note.What, why)
+	assert.Contains(t, open[0].Note.What, "nova-sprint brief s1-1 --brief-file <path>", "the landing refusal's cap judgment names the brief command")
 	assert.Empty(t, r.open(sprint.NConflict))
 	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Cards: []string{"s1-2"}}))
 	assert.Equal(t, sprint.Landed, r.snap().Work.Card("s1-2").Col, "the stream lands on")
