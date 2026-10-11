@@ -1594,7 +1594,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			who = r.Who
 		}
 		pr := s.Work.Placed(c.F("primary"))
-		late := c.Col == DoneFailed // a late report for the attempt a deadline failed (lateFinish)
+		late := c.Col == DoneFailed || c.Col == Finished // a late report for the attempt a deadline failed (lateFinish)
 		// how a failed finish is routed: by the reason line's prefix, or by the take's
 		// attempt decision at or above its class's bar on the card (decide.go, finishKind)
 		kind, class, used := "", "", false
@@ -1657,9 +1657,12 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		if head == "" {
 			head = c.ID
 		}
-		result, okWord, into := "ok", "yes", DoneOK
+		// ok% is the readers' (docs/SPEC-SPRINT.md section 1; verdicts.go): a worker's
+		// finish, ok or failed, moves its work card to the hidden finished cell, where it
+		// counts in no ok%; the readers' verdict moves it on to ok or failed (TickVerdicts).
+		result, okWord, into := "ok", "yes", Finished
 		if r.Failed {
-			result, okWord, into = "failed", "no", DoneFailed
+			result, okWord, into = "failed", "no", Finished
 		}
 		// A rework whose child found nothing to do, or committed nothing, at the head an
 		// earlier attempt pushed and a reader passed is no failed work: the card was right.
@@ -1667,7 +1670,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		// (docs/SPEC-SPRINT.md section 6; Rework sets FieldPassedHead).
 		passed := r.Failed && r.Head == "" && IsNothingNew(r.Report) && pr.F(FieldPassedHead) != ""
 		if passed {
-			head, result, okWord, into = pr.F(FieldPassedHead), "ok", "yes", DoneOK
+			head, result, okWord, into = pr.F(FieldPassedHead), "ok", "yes", Finished
 		}
 		// A HOLD naming a brief defect is the brief's, never the worker's (brief_defect.go;
 		// docs/SPEC-SPRINT.md section 1, a brief defect): its work card ends in the member's
@@ -1679,6 +1682,11 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		if defect != "" {
 			into = DoneDefect
+		}
+		if late {
+			// a late report finishes the attempt the deadline already failed (DoneFailed): it
+			// stays failed, never a fresh finish waiting on a reader's verdict
+			into = DoneFailed
 		}
 		cardSet := map[string]string{"ok": okWord, "head": head, "finished": stamp(s.Now)}
 		if !r.Reported.IsZero() {
@@ -1849,7 +1857,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 // deadline failed takes one (deadlineFailed): an attempt its own worker failed was
 // reported already, and a finish for it again (a retry, a duplicate) is refused as before.
 func lateFinish(s *Snapshot, c *Card) bool {
-	if c == nil || !c.Placed() || c.Col != DoneFailed || c.F("kind") == "read" {
+	if c == nil || !c.Placed() || (c.Col != DoneFailed && c.Col != Finished) || c.F("kind") == "read" {
 		return false
 	}
 	if !deadlineFailed(c.F("report")) {

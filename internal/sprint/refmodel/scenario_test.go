@@ -25,7 +25,7 @@ const (
 func scenarios() []sample {
 	var out []sample
 	for seed := uint64(0); seed < scenarioSeeds; seed++ {
-		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendStalls, aCardPastItsCap, aMemberWithFreeLanes, aQueuedCardOnAFullFriend} {
+		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendStalls, aCardPastItsCap, aMemberWithFreeLanes, aQueuedCardOnAFullFriend, aFriendCardPastItsDeadlineRedealt, aWaitingPrimaryWhoseNeedLanded} {
 			out = append(out, run(newWalk(scenarioBase+seed))...)
 		}
 	}
@@ -287,4 +287,58 @@ func aQueuedCardOnAFullFriend(k *walk) []sample {
 		return nil
 	}
 	return []sample{k.sample()}
+}
+
+// aFriendCardPastItsDeadlineRedealt deals a friend a card, has her take it, and lets
+// it run unfinished past her deadline (DeadlineUnfinished: no ok attempt yet): the
+// friend-redeal part moves it into her redealt column, never a failure (sprint.TickFriendRedeal;
+// the walks give no friend).
+func aFriendCardPastItsDeadlineRedealt(k *walk) []sample {
+	k.friends = []sprint.FriendSeat{{Name: "fee", Width: 3, Status: sprint.Up, Class: cardhdr.RouteFrontier, Tiers: []string{cardhdr.RouteFlash, cardhdr.RouteFrontier}}}
+	id := fmt.Sprintf("p%d", k.next)
+	k.next++
+	if !k.try(sprint.Add(k.s, sprint.AddReq{Brief: friendBrief("fee"), Stream: k.streams[0], IDs: []string{id}, Who: coordinator})) {
+		return nil
+	}
+	if !k.runPart("deal") {
+		return nil
+	}
+	wc := k.s.Fleet.Placed(k.s.Work.Card(id).F("work"))
+	if wc == nil {
+		return nil
+	}
+	k.s.Friends = k.friends // her take reads the roster
+	took := k.try(sprint.Take(k.s, sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")}, Who: wc.Row}))
+	k.s.Friends = nil
+	if !took {
+		return nil
+	}
+	k.now = k.now.Add(sprint.DeadlineUnfinished + time.Hour)
+	k.beatAll()
+	out := []sample{k.sample()}
+	k.runPart(sprint.PartFriendRedeal)
+	return out
+}
+
+// aWaitingPrimaryWhoseNeedLanded admits a primary needing another, and lands the
+// needed card by an outside hand that moves nothing after it: the resolve part
+// moves the waiting one to ready.
+func aWaitingPrimaryWhoseNeedLanded(k *walk) []sample {
+	need := k.addTo(k.streams[0])
+	if need == "" {
+		return nil
+	}
+	waiter := k.addTo(k.streams[0], need)
+	if waiter == "" {
+		return nil
+	}
+	out := []sample{k.sample()}
+	if !k.advance(need, sprint.Merging) {
+		return out
+	}
+	c := k.s.Work.Card(need)
+	c.Col = sprint.Landed
+	c.Rev++
+	k.s.Work.Put(c)
+	return append(out, k.sample())
 }

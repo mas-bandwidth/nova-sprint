@@ -52,10 +52,28 @@ func MemberMedianWall(s *Snapshot, member string) (median float64, n int) {
 	if s.Fleet == nil {
 		return 0, 0
 	}
-	if cell := s.Fleet.Cell(member, DoneOK); len(cell) > 0 {
+	if cell := okAttempts(s, member); len(cell) > 0 {
 		median, n = medianWalls.of(member, cell)
 	}
 	return withCarried(s, member, median, n)
+}
+
+// okAttempts is the member's ok work cards by the worker's word (ok=yes): the
+// finished cell holds them before the readers' verdict, the ok cell after
+// (verdicts.go).
+func okAttempts(s *Snapshot, member string) []*Card {
+	cell := s.Fleet.Cell(member, DoneOK)
+	fin := s.Fleet.Cell(member, Finished)
+	if len(fin) == 0 {
+		return cell
+	}
+	out := append([]*Card(nil), cell...)
+	for _, c := range fin {
+		if c.F("ok") == "yes" {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // medianWalls is each member's median run wall as last measured, with the done-ok cell

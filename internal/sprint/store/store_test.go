@@ -153,6 +153,14 @@ func (h *harness) through(ids ...string) {
 		h.readAllOK(id)
 	}
 	h.must(AcceptStep(sprint.AcceptReq{Sel: sprint.Sel{IDs: ids}}))
+	h.must(verdictsStep())
+}
+
+// verdictsStep applies the tick's verdicts part (sprint.TickVerdicts): the
+// finished work cards whose reads carry a verdict move to their ok or failed cell.
+func verdictsStep() Step {
+	var due int
+	return TickPartStep("verdicts", sprint.TickVerdicts, sprint.TickReq{}, nil, nil, &due)
 }
 
 // readAllOK has every outstanding read of the primary say ok and, while it wants
@@ -457,7 +465,7 @@ func TestD3ARetriedFinishReturnsTheOriginal(t *testing.T) {
 	if !again.Replay || len(again.Moved) != len(first.Moved) || again.Op != first.Op {
 		require.Fail(t, fmt.Sprintf("retry: %+v, first %+v", again, first))
 	}
-	n := h.snap().Fleet.Count(m, sprint.DoneFailed)
+	n := h.snap().Fleet.Count(m, sprint.Finished)
 	require.Equal(t, 1, n, "failed counted %d times", n)
 	open, _ := h.m.OpenNotes(h.ctx)
 	require.Len(t, open, 1, "notified %d times", len(open))
