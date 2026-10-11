@@ -24,20 +24,25 @@ import (
 // refusal with one line naming the case, its group and the command that makes the record.
 // A tree with no tla/CASES.tsv holds no models and is not checked.
 
-// recordsRefusals is the run-record check of a merge in the clone dir whose diff against
-// the batch branch's tip is diff: one refusal per case the merge touches that has no
-// current record. RepairMerge calls it, so the lander refuses with it as with a document's
-// fault.
+// recordsRefusals is the check of a merge in the clone dir whose diff against the batch
+// branch's tip is diff: the case plan is held to the merged tree by tlacheck's loader
+// (tlc.LoadCases), and a case the merge touches with no current record is refused. A plan
+// edit alone is enough to hold a tree that carries models (some MC*.cfg) to its plan.
+// RepairMerge calls it, so the lander refuses with it as with a document's fault.
 func recordsRefusals(dir, diff string) ([]DocFix, error) {
 	edited := map[string]bool{}
+	planEdited := false
 	for _, f := range diffcheck.Parse(diff) {
 		for _, p := range []string{f.Old, f.New} {
 			if modelFile(p) {
 				edited[p] = true
 			}
+			if p == "tla/"+tlc.CasesFile {
+				planEdited = true
+			}
 		}
 	}
-	if len(edited) == 0 {
+	if len(edited) == 0 && !planEdited {
 		return nil, nil
 	}
 	tla := filepath.Join(dir, "tla")
@@ -48,10 +53,25 @@ func recordsRefusals(dir, diff string) ([]DocFix, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A tree that carries no configuration (no MC*.cfg) holds no models, as one with no
+	// tla/CASES.tsv holds none: a tla/CASES.tsv edit alone holds only a tree that carries
+	// models to its plan (docs/SPEC-SPRINT.md section 7, "The run records").
+	if len(edited) == 0 {
+		cfgs, _ := filepath.Glob(filepath.Join(tla, "MC*.cfg"))
+		if len(cfgs) == 0 {
+			return nil, nil
+		}
+	}
 	runsFile := "tla/" + tlc.RunsFile
 	cases, err := tlc.ParseCases(bytes.NewReader(plan))
 	if err != nil {
 		return []DocFix{{File: "tla/" + tlc.CasesFile, Line: 1, What: "cannot be read, so no edited model's run record can be checked: " + err.Error()}}, nil
+	}
+	// the loader holds the plan to the tree, not just to its own fields (docs/SPEC-SPRINT.md
+	// section 7, "The run records")
+	if _, err := tlc.LoadCases(dir); err != nil {
+		return []DocFix{{File: "tla/" + tlc.CasesFile, Line: 1, What: "the case plan does not match the tree: " + err.Error() +
+			"; add the missing row (config, module, expected pass or the reversed witness's kind and property, deadlock, group, gate, debt) or take the file out, then run make tlc TLC_GROUP=<group> (tla/README.md)"}}, nil
 	}
 	runner, err := treeRunner(dir)
 	if err != nil {
