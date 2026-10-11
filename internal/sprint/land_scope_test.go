@@ -114,11 +114,12 @@ func TestAlwaysInPathsNamesTheFilesThatKeepTheTreeGreen(t *testing.T) {
 	for _, p := range []string{
 		"a_test.go", "internal/x/y_test.go", "./internal/x/y_test.go", "cmd/z/testdata/a/b.json",
 		"testdata/x.txt", "tla/RUNS.tsv", "tla/CASES.tsv", "internal/docs/catalog.go", "AGENTS.md", "cmd/AGENTS.md",
+		"tla/COVERAGE.tsv", // a shared ledger since lander-resolves-ledger-conflicts (v1.2.13)
 	} {
 		assert.True(t, cardgen.AlwaysInPaths(p), p)
 	}
 	for _, p := range []string{
-		"internal/x/y.go", "internal/x/test.go", "internal/x/testdata.go", "tla/COVERAGE.tsv",
+		"internal/x/y.go", "internal/x/test.go", "internal/x/testdata.go",
 		"tla/Sprint.tla", "internal/docs/docs.go", "docs/STANDARD.md", "AGENTS.md.bak", "../x_test.go", "/abs/x_test.go", "",
 	} {
 		assert.False(t, cardgen.AlwaysInPaths(p), p)
