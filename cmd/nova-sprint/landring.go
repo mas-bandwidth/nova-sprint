@@ -28,7 +28,7 @@ func ringSlot(key string, n int) int {
 
 // benchRing is hosts (the up benches in the fleet's order) rotated so that key's slot is
 // first, then (slot+1) % n, ... (slot+n-1) % n: every host once, in the order the gate asks
-// their lanes. No hosts is nil.
+// their lanes. No hosts is nil. tla/GateRing.tla Ring.
 func benchRing(key string, hosts []string) []string {
 	n := len(hosts)
 	if n == 0 {

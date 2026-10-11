@@ -66,7 +66,21 @@
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator."))
  :items
-  ((fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
+  ((fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
+    :title "The SeatProof model of the deleted push proof is retired"
+    :text "tla/SeatProof.tla modelled the push proof (its header names PushPong, PushLive, PushWhy,
+     renewSeatProof and a pushGate) with its instance MCSeatProof.tla and three configurations; none of
+     that code exists: the PROOF files and the seat pong are gone (internal/sprint/pushproof.go:7-11,
+     cmd/nova-sprint/pushproof.go:9-14), the old verbs are gone (cmd/nova-sprint/hook_test.go:221-228),
+     and the hook replaced the push proof (docs/SPEC-SPRINT.md:6311), modelled by SeatHook.tla. The only
+     pushGate left is a different one, a concurrency limit on pushes (pkg/member/member.go:531-536). No Go
+     file cites SeatProof and it has no COVERAGE row. The module, its instance and the three configurations
+     are deleted, and their three CASES.tsv rows (MCSeatProof, MCSeatProofBrokenNoRenew,
+     MCSeatProofBrokenRenewDest) and three hand-written RUNS.tsv rows (started_utc ending .000000, seconds
+     \"-\") are removed, and nothing else in either file. SeatProof (the push proof) was retired in v1.2.12:
+     the hook replaced it; SeatHook.tla is its model."
+    :origin "this card, tla-retire-seatproof.w1, 2026-10-11: v1.2.12 inventory item T1 (\"SeatProof models deleted code\"); drift read at nova-sprint main 00c54ba2e")
+   (fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
     :title "The store package's own tests pin stats tidy and stats reset"
     :text "Tests only, no product change. New tests in internal/sprint/store drive TidyStats and ResetStats through the unit tier's Mem store and assert on their results, on what StatsTidied and StatsReset read back, and on whether the store changed: a dry run counts and writes nothing; a fleet tidy moves history off the done cells and records the archive done; a second tidy within TidyAgainAfter is refused; a fresh tidy marker refuses a tidy or a reset while a stale one is taken as ended; routes alone moves nothing and streams clears the where record; a refused move keeps its archive failed and clears the marker; a reset writes its mark and clears the where record; operation ids replay, conflict and are refused by shape; a compare-and-set that keeps losing errors after its tries; and a tidy's kinds and archives are kept across a reset."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C5")
@@ -1054,6 +1068,18 @@
     reversed witness, so none is added. tla/COVERAGE.tsv notes say the same, and the four groups
     (dealfill, level, retire-absent, timer) were rerun with TLC and merged into tla/RUNS.tsv."
    :origin "this card; v1.2.12 inventory item T36 (the deal/route/rules group), drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+  (fix "tla-land-gate-ring" :release "v1.2.12" :status "planned"
+   :title "The gate bench's hash ring modelled in tla/GateRing.tla"
+   :text "tla/GateRing.tla models the land stage's gate-slot ring: two up benches, the start slot the
+    stream hashes to, the per-pass skip record (SkipAfter), the ring stepped to the next slot on a
+    refusal, the lane always given back, and the local fallback (run here) refused as a remote-bench
+    unavailability whenever another member is configured. It proves AskedAtMostSkipAfter (a host is
+    asked at most SkipAfter times a pass after refusing), NoLocalGoWhenRemote (the gate never runs in
+    the clone while another member is configured), LanesGivenBack, and RefusedStepsToNextSlot (a
+    refused stage steps the gate to the next slot). Two reversed witnesses: noskip (the ring ignores
+    the skip record) and localwhenremote (the fallback runs the gate here even when remote). Models
+    only; no product change."
+   :origin "this card; the v1.2.12 inventory items T31 and section 5 (the land stage's gate-slot ring)")
 
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
@@ -1141,6 +1167,10 @@
    :title "The lander's empty-commit refusal says a result is missing when it holds none"
    :text "The lander's empty-commit check refused an empty diff with no result to read (a nil work card: the fleet row absent or the work card tidied away) with the same finding as one whose result claimed changes, \"empty commit: the result claims changes the diff does not show\", naming a claim nothing made. It now returns emptyCommitNoResultFinding, \"empty commit: the head changes nothing from the attempt's start, and the lander holds no result to say why\", and both findings return the card to review through one helper, isEmptyCommitFinding."
    :origin "this card: lander-empty-commit-says-no-result-is-held, from the v1.2.14 point-release plan and the roadmap item lander-empty-commit-handling")
+  (fix "a-hook-push-is-sent-only-once-recorded" :release "v1.2.14" :status "planned"
+   :title "A hook push is sent only once its record names it"
+   :text "When the hook record write fails, a look now delivers none of that look's pushes and undoes what it added (the note keys it marked sent, the pushes it added to the open list, and the sequence), so the next look offers them again, records them, and sends them once. The SEAT HOOK line it prints is unchanged. Before, the push was delivered while the record named no unacknowledged push, so a push delivered over a failed record write never blocked the gate: past HookAckBound a coordinator command ran though the push had been delivered and was never recorded."
+   :origin "the card a-hook-push-is-sent-only-once-recorded w1; the v1.2.12 inventory 2026-10-11 section 9 row D7 (code read at nova-sprint main 00c54ba)")
   (fix "a-fault-down-keeps-another-holds-mark" :release "v1.2.14" :status "planned"
    :title "A machine's fault down keeps another's hold mark"
    :text "When presence takes a member down for a missed beat, the machine writes its own fault hold (held_by=fault, fault_since) only on a member that carries no hold: a member the sync, the adopt, its environment or the coordinator already holds keeps its hold, its mark, its reason and its finish marker when it goes down, and still goes down. Overwriting the mark hid the hold from its own release, so a held member could no longer be released and the clear left a markless hold (tla/DealFill.tla FaultHold and PersonHoldStays; docs/SPEC-SPRINT.md section 5)."

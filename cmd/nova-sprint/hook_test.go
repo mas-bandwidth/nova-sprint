@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http/httptest"
@@ -19,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
 // shortSock is where a test's hook takes its session's lines: a directory of its own,
@@ -529,4 +531,90 @@ func (ta *testApp) step(d time.Duration) {
 	ta.mu.Lock()
 	ta.now = ta.now.Add(d)
 	ta.mu.Unlock()
+}
+
+// failHookKV embeds the test's in-memory store, so every part of it (the sprint
+// Backend, KV, and the optional interfaces the engine may find) is what it was, and
+// refuses the first n writes of the seat's hook record (store.KeySeatHook): a failed
+// record write.
+type failHookKV struct {
+	*store.Mem
+	left int
+}
+
+func (f *failHookKV) SetKey(ctx context.Context, name, value string) error {
+	if f.left > 0 && name == store.KeySeatHook {
+		f.left--
+		return errors.New("the hook record could not be written")
+	}
+	return f.Mem.SetKey(ctx, name, value)
+}
+
+// failHookWrite arms the store so the next n writes of the hook record fail.
+func (ta *testApp) failHookWrite(n int) {
+	kv := &failHookKV{Mem: ta.m, left: n}
+	ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return kv, nil }
+}
+
+// A push is delivered only once its record names it (SeatHook.tla, Deliver and
+// AckedOrBlocking: Deliver writes the record in the same step). A record write that
+// fails records and sends nothing: the look undoes the sequence, the sent keys and the
+// open entries it added, so the next look offers the push again, records it, and sends
+// it once. Before the fix the push went out while the record named no unacknowledged
+// push, so a coordinator command past HookAckBound ran, though the push was delivered.
+func TestAPushIsSentOnlyOnceRecorded(t *testing.T) {
+	t.Parallel()
+	const name = "hook-f"
+	ta, _ := hookSprint(t, name)
+
+	c := ta.hookOn(name)
+	c.next("hello")
+	chal := c.next("challenge").Challenge
+	ta.waitHook(sprint.HookHooked)
+	r := c.say(hookMsg{T: "prove", Challenge: chal})
+	require.Equal(t, "ok", r.T, r.Why)
+
+	// the record write fails for this look: it is delivered nothing, and the record
+	// names no unacknowledged push
+	ta.failHookWrite(1)
+	ta.lined(func() { ta.ok("add --stream s1 --count 2") })
+	ta.lined(func() { ta.ok("where") })
+	ta.lined(func() { ta.ok("remind --in 1m --note look-here --for " + name) })
+	ta.step(2 * time.Minute)
+	ta.lined(func() { ta.ok("tick") })
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	s.look(context.Background())
+	select {
+	case m := <-c.lines:
+		t.Fatalf("a push was delivered though its record write failed: %+v", m)
+	case <-time.After(200 * time.Millisecond):
+	}
+	rec, _ := ta.hookRecord()
+	assert.Nil(t, rec.Oldest)
+	assert.Equal(t, 0, rec.Unacked)
+
+	// the next look offers it again, records it, and delivers it once, with id 1
+	s.look(context.Background())
+	p := c.next("push")
+	assert.Equal(t, uint64(1), p.ID)
+	assert.NotEmpty(t, p.What)
+	rec, _ = ta.hookRecord()
+	require.NotNil(t, rec.Oldest)
+	assert.Equal(t, 1, rec.Unacked)
+	assert.Equal(t, uint64(1), rec.Oldest.ID)
+	s.look(context.Background()) // nothing new: nothing pushed twice
+	select {
+	case m := <-c.lines:
+		t.Fatalf("the push was delivered twice: %+v", m)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// past its bound unacknowledged, the command is refused naming it; after the ack
+	// it runs
+	ta.step(sprint.HookAckBound + time.Second)
+	ta.refusedFirst("add --stream s2 --count 1 --one", sprint.HookUnacked(*rec.Oldest, 1))
+	r = c.say(hookMsg{T: "ack", ID: 1})
+	require.Equal(t, "ok", r.T, r.Why)
+	ta.lined(func() { ta.ok("add --stream s2 --count 1 --one") })
 }
