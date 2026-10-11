@@ -88,6 +88,23 @@
     :title "The store package's own tests pin the shadow tick and the holds"
     :text "Tests only, no product change. New tests in internal/sprint/store drive Store.ShadowTick and Store.Holds through the unit tier's Mem store and assert on what a caller sees. ShadowTick: a running sprint with ready cards reports RUNNING with a deal part on the work table and a size the sum of its parts, and writes nothing; a STOPPED machine still plans; an epoch that owes its restore refuses and still owes it after; an operation left pending refuses (it repairs nothing) and is still pending after; queued work-table changes are planned as the drain part and the queue is not emptied; a primary waiting on reads is named in the plan's Reads; a store that moves on every read says the sprint is busy; and a custom Updates list leaves an empty part out, lists a due part with its due count, and a part that panics makes ShadowTick panic. Holds: a store with no sprint returns nil and no error; a held member, reader, friend and stream come back in kind order (members in fleet-table order, streams by name) each with its reason, and the list is empty after unhold; a member held with --return shows Return and without it none; an unreadable reader record is left out with no error and a friend's fleet row is not listed as a member. One defect the tests found (a reader set away with SetReaderAway alone, not held, is listed as held) is written as a v1.2.14 card, never fixed here."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C6")
+   (fix "cardmachine-tlc-record-owed" :release "v1.2.12" :status "planned"
+    :title "CardMachine gets a finished record and a reversed witness"
+    :text "Models only, no product change. tla/CardMachine.tla is the copy model of nova-tools' deleted Lua
+     card machine (02_card_move.lua, its deletion recorded in nova-tools internal/ci/testdata/deleted-tests.txt),
+     kept because CardISA EXTENDS it and reuses its actions. Its one case (MCCardMachine.cfg, Cards {c1,c2} with
+     c2 needing c1, Consumers {k1,k2} one slot each, MaxCopies 3, HeadBound(2), nine invariants and three temporal
+     properties under SF) had never finished: its only record was a timeout. A reduced instance beside it:
+     MCCardMachineSmall.cfg (Cards {c1} with no Deps, Consumers {k1,k2}, MaxCopies 2, HeadBound(1)) checks the nine
+     invariants only, and MCCardMachineSmallLive.cfg the same instance with ReadyIsOneWay, CopiesEnd and Progress.
+     One reversed witness, MCCardMachineBrokenReadsInReview, removes DealRead's where = \"review\" guard so a ready
+     card gets a read cut outside review and must violate ReadsInReview. The original over-budget instance moved to
+     tla/cardmachine-bench/ (its timeout row removed from RUNS.tsv), and two stale comments in steps_review.go and
+     friend_read.go cite EndReadStale now. CardMachine itself, CardISA and the running lifecycle (SprintTables) are
+     not touched."
+    :origin "this card: cardmachine-tlc-record-owed.w4, from draft tmp/next-sprint-cards/cardmachine-tlc-record-owed.md
+     (epoch 16: MCCardMachine.cfg timed out at the 110 s cap, and a --manual rerun at 1800 s timed out too) and the
+     v1.2.12 inventory item T3 (at 300 s: 615,742 distinct states, 307,578 on the queue, both growing).")
    (fix "tla-readsbyroom-parallel-rule" :release "v1.2.12" :status "planned"
     :title "ReadsByRoom models the interim parallel ask rule, with a reversed witness for asking while broken"
     :text "Models only, no product change. tla/ReadsByRoom.tla gains a Rule constant (\"sequential\" or \"parallel\"): parallel is the code's interim rule of 2026-10-06 (ReadsWanted returns 0 once a read is broken, else the reads still needed minus the live reads, asked or ok), and sequential stays the design of 2026-10-04 in its own configuration. ReadsPerLanding is restated as Need times (broken attempts plus one) under parallel (a pro card broken once reads four, where sequential read three); OneAtATime and OneBroken hold only under sequential, and the new NoAskWhileBroken (the ask places no read once a read found it broken) holds under both. Five reversed witnesses: the pair asked together breaks OneAtATime and OneBroken, readers asked whatever their room break WidthRespected, the rework's first read of any reader breaks FinderFirst (a three-reader instance, so a card has a reader to spare), and Broken = \"askbroken\" asks a read while one is broken and breaks NoAskWhileBroken. The refmodel Ask comment (actions.go) now says the parallel rule; readers.go's askPicks comment (line 637) still says sequential and is left for the next card."
