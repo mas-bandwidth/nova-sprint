@@ -68,6 +68,14 @@
 (*                        report is held is settled and dealt again, and   *)
 (*                        its held report's generation is gone (breaks     *)
 (*                        NoReportLost).                                   *)
+(*                                                                         *)
+(* A product candidate, not a reversed witness: the settle returns a        *)
+(* Legacy row's STOP-owned card too (its beat carries no live set, so       *)
+(* LiveNamedAt reads nothing and the settle does not skip it as the         *)
+(* reconcile does): a held report's generation is gone and a running        *)
+(* child is returned, so NoReportLost and NoRunReturned do not hold over    *)
+(* a Legacy row. This card is tests and models only, so the candidate       *)
+(* stays open; MCLiveRunsSettleByLegacy surfaces it.                        *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -354,15 +362,18 @@ StopReturn(c) ==
 \* card whose row has beaten since the STOP and whose fresh live set does not
 \* name it (running or held, LiveNamesAt) is returned to ready at its next
 \* generation with its receipt, without the owner's own stop-return. A Legacy
-\* row's beat carries no live set, so there is no fresh live set to judge and
-\* the settle skips it as the reconcile does. Broken "settlebycount" reads the
-\* row's stop-returns count instead of its live set (no card of the row
-\* cancelled): the code before #87 for a machine lease.
+\* row's beat carries no live set, so LiveNamedAt reads nothing and the settle
+\* returns its card too (the settle does not skip Legacy as the reconcile
+\* does): with a held report and no cancelled child the held report's
+\* generation is gone, and with a running child the card is returned while it
+\* still runs, so NoReportLost and NoRunReturned do not hold over a Legacy
+\* row — a product candidate, unfinished scope, surfaced not fixed. Broken
+\* "settlebycount" reads the row's stop-returns count instead of its live set
+\* (no card of the row cancelled): the code before #87 for a machine lease.
 SettleByBeat(c) ==
   /\ ~running
   /\ Owned(c)
   /\ row[c] \in beaten
-  /\ row[c] \notin Legacy
   /\ IF "settlebycount" \in Broken
        THEN \A d \in Cards : row[d] = row[c] => wk[d] /= "cancelled"
        ELSE ~Live(c)
