@@ -71,7 +71,7 @@ Progress(c) == /\ owner[c] \in Friends /\ c \notin started /\ c \notin progress
 \* with an idle lane. The recipient must be dealable (not marked dealt-no-more).
 \* BadLevel = "level" removes the gate, allowing moves to marked friends.
 Level(c, g, to) == /\ owner[c] = g /\ g \in Friends /\ to \in Friends /\ g \notin {to}
-                   /\ \A c \in Cards : owner[c] = to => c \notin started
+                   /\ \A cc \in Cards : owner[cc] = to => cc \notin started
                    /\ \/ BadLevel = "level" \/ Dealable(to)
                    /\ owner' = [owner EXCEPT ![c] = to]
                    /\ UNCHANGED <<started, progress, dealtNoMore>>
