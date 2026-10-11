@@ -9,10 +9,8 @@ import (
 	"testing"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
 )
 
@@ -51,19 +49,19 @@ func TestEveryProducerCard(t *testing.T) {
 	}
 
 	// Run a tick
-	var out, errb bytes.Buffer
-	st, _, code := world.machineVerb("run", nil, &out, &errb)
-	require.Equal(t, 0, code, "run: %d %s", code, errb.String())
+	var out bytes.Buffer
+	st, _, code := world.machineVerb("run", nil, &out)
+	require.Equal(t, 0, code, "run: %d", code)
 	require.NotNil(t, st)
 
 	// Check the heartbeat for quiet violations
-	st.snap, err = st.Load(ctx, store.All, nil)
+	_, hb, err := st.Machine(ctx)
 	require.NoError(t, err)
 
 	// At this point, cards should be dealt and have consumers
 	// Any violations will be in the heartbeat's quiet field
-	t.Logf("tick completed, %d quiet violations", len(st.heartbeat.Quiet))
-	for _, v := range st.heartbeat.Quiet {
+	t.Logf("tick completed, %d quiet violations", len(hb.Quiet))
+	for _, v := range hb.Quiet {
 		t.Logf("  %s: %s - %s", v.Type, v.Subject, v.Why)
 	}
 }
