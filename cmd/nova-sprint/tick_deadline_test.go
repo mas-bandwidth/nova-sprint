@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -416,4 +418,62 @@ func TestTheTickDeadlineStretchesWithTheMedianWall(t *testing.T) {
 		}
 	}
 	assert.Equal(t, []string{"deadline=10s", "deadline=24s", "deadline=24s"}, deadlines, out.String())
+}
+
+// run refuses a negative --tick-deadline before any tick: a usage refusal (exit
+// 2) naming the flag, the value and that 0 waits for ever, with the store
+// untouched and no TICK line on stdout. Left alone, a negative value reaches
+// tickDeadlineOf, which returns 0 for any least <= 0, and tickWithin, which
+// waits for ever at d <= 0, so the watchdog is switched off with nothing said.
+// The app is the file's own (newTestApp); the loop is stopped after its first
+// tick by the replaced binary (server_restart_test.go), so a run that does not
+// refuse still ends rather than looping.
+func TestRunRefusesANegativeTickDeadline(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("start")
+	exe := filepath.Join(t.TempDir(), "nova-sprint")
+	require.NoError(t, os.WriteFile(exe, []byte("the build the server started with"), 0o755))
+	ta.a.executable = func() (string, error) { return exe, nil }
+	ta.a.after = func(time.Duration) <-chan time.Time { return make(chan time.Time) }
+	ticks := 0
+	ta.a.ticked = func(int, time.Time, string) {
+		ticks++
+		require.NoError(t, os.WriteFile(exe, []byte("the build installed under it, longer"), 0o755))
+	}
+	var out, errb startBuffer
+	ta.beat()
+	code := ta.a.run([]string{"run", "--tick-deadline", "-1s"}, &out, &errb)
+	assert.Equal(t, 2, code, "a negative --tick-deadline is a usage refusal: %s%s", out.String(), errb.String())
+	assert.Zero(t, ticks, "run refused before any tick")
+	assert.NotContains(t, out.String(), "TICK", "no TICK line on stdout")
+	assert.Contains(t, errb.String(), "--tick-deadline", "the refusal names the flag")
+	assert.Contains(t, errb.String(), "-1s", "the refusal names the value")
+	assert.Contains(t, errb.String(), "0 waits for ever", "the refusal says what 0 means")
+}
+
+// --tick-deadline 0 still starts and runs a tick with no deadline: the refusal
+// catches a negative value, never 0. The tick returns, and the loop is stopped
+// after it by the replaced binary (server_restart_test.go).
+func TestRunWithNoTickDeadlineStillTicks(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("start")
+	exe := filepath.Join(t.TempDir(), "nova-sprint")
+	require.NoError(t, os.WriteFile(exe, []byte("the build the server started with"), 0o755))
+	ta.a.executable = func() (string, error) { return exe, nil }
+	ta.a.after = func(time.Duration) <-chan time.Time { return make(chan time.Time) }
+	ticks := 0
+	ta.a.ticked = func(int, time.Time, string) {
+		ticks++
+		require.NoError(t, os.WriteFile(exe, []byte("the build installed under it, longer"), 0o755))
+	}
+	var out, errb startBuffer
+	ta.beat()
+	code := ta.a.run([]string{"run", "--tick-deadline", "0"}, &out, &errb)
+	assert.Equal(t, exitReplaced, code, "0 runs the loop, not refused: %s%s", out.String(), errb.String())
+	assert.Equal(t, 1, ticks, "0 ran a tick with no deadline")
+	assert.NotContains(t, errb.String(), "REFUSED", "0 is never refused")
 }
