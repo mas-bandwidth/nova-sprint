@@ -103,7 +103,14 @@ func transient(line string) bool {
 // IsRateLimited says a failed take's report is the provider's rate limit: class
 // rate-limited, a 429 that is not a refusal for credit or the key, or the provider's
 // words for a request or concurrency limit ("Too many requests", "concurrency ...
-// exceeds"). An out-of-credit or key refusal is never one: it ends the take as before.
+// exceeds"). When the line parses a class the provider itself gave its own server error
+// or a timeout (class5xx or classTimeout), only class=rate-limited or a 429 makes it one
+// and the word fallback is skipped: such a take is the provider's own failure and spends
+// its take, so three of them rest the route (docs/SPEC-SPRINT.md section 5;
+// tla/RateBackoff.tla; tla/RouteRest.tla, RestProvider), never the brief backoff a word
+// match would read. A line with no parsed class, or with another class, keeps the word
+// fallback. An out-of-credit or key refusal
+// is never one: it ends the take as before.
 func IsRateLimited(report string) bool {
 	line := strings.TrimSpace(report)
 	if IsNoResult(line) || !IsProviderFailure(line) && causeRE.FindStringSubmatch(line) == nil {
@@ -112,8 +119,13 @@ func IsRateLimited(report string) bool {
 	if refusal(line) != "" {
 		return false
 	}
-	if m := causeRE.FindStringSubmatch(line); m != nil && (m[1] == classRateLimited || m[2] == "429") {
-		return true
+	if m := causeRE.FindStringSubmatch(line); m != nil {
+		if m[1] == class5xx || m[1] == classTimeout {
+			return m[2] == "429"
+		}
+		if m[1] == classRateLimited || m[2] == "429" {
+			return true
+		}
 	}
 	low := strings.ToLower(line)
 	return strings.Contains(low, "too many requests") || strings.Contains(low, "rate limit") ||
