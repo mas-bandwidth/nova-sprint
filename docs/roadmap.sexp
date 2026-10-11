@@ -308,13 +308,6 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "cards moved out of the sprint (work record, 2026-10-04)")
-  (item "card-column-single-field" :group "sprint"
-   :title "One column field every reader agrees on"
-   :text "Card output carries a single column field so a card's state is not confused with the state of
-    its need."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "auto-promotion-and-drift-alarms" :group "sprint"
    :title "Automatic promotion to dev and drift alarms"
    :text "The machine promotes the base to dev itself and raises an alarm when the live server, a card
