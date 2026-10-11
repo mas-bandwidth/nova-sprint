@@ -1038,6 +1038,13 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		next := func(card, wc *Card, of, refused []string) (string, string) {
 			ms, why := s.launchersOf(card, wc, of)
 			if len(ms) == 0 && len(of) > 0 && why != "" {
+				// a member of of that refused the card's repository at staging for want
+				// of a bench mirror is the refusal the coordinator reads, never the
+				// generic harness sentence (the card: "the no-launcher judgment says so
+				// with that why"; stagingRefusalWhy)
+				if w := s.stagingRefusalWhy(card, of); w != "" {
+					return "", w
+				}
 				_, tier, _, _ := s.routeOf(card, nil, nil, "")
 				return "", s.unlaunchableWhy(c, tier, of, refused)
 			}
@@ -1438,6 +1445,23 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		return p
 	}
 	byID := named(sel)
+	// a repeated take is a no-op: a take by id of a card already Working on the same row
+	// at the generation named changes nothing and writes no record (docs/SPEC-SPRINT.md,
+	// take): the log shows one take, never one every tick
+	if byID && len(sel.IDs) > 0 {
+		var keep []string
+		for _, id := range sel.IDs {
+			c := s.Fleet.Card(id)
+			if c != nil && c.Row == r.As && c.Col == Working && r.Gens[id] == max(c.Int("gen"), 1) {
+				continue
+			}
+			keep = append(keep, id)
+		}
+		if len(keep) == 0 {
+			return p
+		}
+		sel.IDs = keep
+	}
 	// THE WIDTH IS HARD: a member's working cards never pass its width, held here, at the
 	// sprint's one writer, whatever the member asks. A take by
 	// count is cut to the room; a take by id past it is refused. While read cards are on a
@@ -1511,6 +1535,14 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		}
 		if !c.Placed() || c.Row != r.As || c.Col != Ready {
 			return "not in " + r.As + " ready (it is " + placeWord(c) + ")"
+		}
+		// a card whose primary's named needs have not landed is not taken
+		// (docs/SPEC-SPRINT.md, needs and the deal; WaitsFor): a take by id is refused,
+		// a take by count passes over it
+		if pr := s.Work.Placed(c.F("primary")); pr != nil {
+			if w := WaitsFor(s, pr, nil); len(w) > 0 {
+				return pr.ID + " needs " + strings.Join(w, ",") + ", not landed: not taken"
+			}
 		}
 		// a card dealt before its route rested is never taken there: the provider would
 		// refuse it, spending a redeal; the tick withdraws it (restWithdrawals)

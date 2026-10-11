@@ -68,10 +68,18 @@
    (release "v1.2.15" :status "planned"
     :text "The next small product fixes, one concern each."))
   :items
-   ((fix "tla-liveruns-rows-with-no-live-set" :release "v1.2.12" :status "planned"
+   ((fix "a-take-refuses-a-card-whose-needs-have-not-landed" :release "v1.2.12" :status "planned"
+     :title "A card whose named needs have not landed is neither dealt nor taken"
+     :text "One rule, three doors. A primary whose named needs have not all landed (WaitsFor, steps_work.go) was dealt to a friend, so on 2026-10-11 19:17-19:21Z a friend took six cards whose DEPENDS-ON needs had not landed, each raising a rule-11 invariant, and the take-back verb refused them as working. TickDeal's offer (steps_tick.go) now leaves out a card WaitsFor names needs for, as dealPlan's ready predicate does, and friendDealPass skips such a card too, so neither the ladder nor the attempt cap's deal hands it to a friend. A ready work card already dealt on any row, friend or member, whose primary's needs are not landed goes back to the pool at once in the tick's deal (needsWithdrawals): the work card leaves the fleet table at a new generation, its attempt unchanged and no redeal spent, the primary waits for its needs again, and the note names the needs; so a friend unheld with such a card in her set never takes it. takeOne refuses a card by id whose primary's needs are not landed (\"<id> needs <n,...>, not landed: not taken\") and a take by count passes over it. A take by id of a card already working on the same row at the generation named is a no-op, writing no record and no note, so the log shows one take, never one every 15 to 16 s. docs/SPEC-SPRINT.md (needs and the deal) states the rule for friends and takes."
+     :origin "this card, a-take-refuses-a-card-whose-needs-have-not-landed.w2, 2026-10-11 ~19:25Z; the coordinator for the owner's \"Please log cards to fix this deal and rebalance. It's shit.\" (a friend took six cards whose needs had not landed; log --card schema-dart-msg2-batch repeated a friend:working -> a friend:ready every 15 to 16 s); code read at nova-sprint main af21db3b")
+    (fix "tla-liveruns-rows-with-no-live-set" :release "v1.2.12" :status "planned"
      :title "LiveRuns models the rows whose beat carries no live set and the take's one-pass lag"
      :text "Models only, no product change. tla/LiveRuns.tla gains a Legacy constant (the rows whose beat carries no live set, workers from before v1.2.6) and a live variable, the beat's live set as the member's last pass left it. The reconcile skips a Legacy row as the code does (liveStopped returns early, LiveReturns continues past a beat with no live set, LiveCountKeys counts every such card running), WorkingIsLive is restated over the other rows, and the new LegacyNeverReturned holds that no working card of a Legacy row is returned by the reconcile. Take no longer names its card in the live set at once: it is named at the member's next pass, and the reconcile waits the grace from the take. Two reversed witnesses: Broken \"legacyreturned\" reconciles a Legacy row as an empty set (breaks LegacyNeverReturned) and Broken \"nograce\" drops the grace from the take (breaks NoRunReturned). Every liveruns case runs with Legacy = {\"r2\"} so one row exercises the legacy path in each; every existing case keeps its declared result."
      :origin "this card; v1.2.12 inventory item T12, drift read at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "a-repo-refused-at-staging-is-not-dealt-to-that-member-again" :release "v1.2.12" :status "planned"
+    :title "A repository refused at staging is not dealt to that member again"
+    :text "A staging refusal for want of a bench mirror says the member cannot stage any card of that repository, so it becomes a capability, the way a harness the member cannot launch is one (Launches, notLaunching): mirrorRefusals, derived each tick from the fleet table, is per member the repositories it refused at staging for want of a bench mirror within StagingMirrorWindow (one hour), from the staging takes (StagingTakes) whose error names \"no bench mirror for <url>\", the repository of that url, and a later ok finish by the member of a card of that repository ends it at once. The member check the deal (launchersOf), every move of a dealt card (notLaunching) and routeOf when it names a member share refuses a member for a card whose repository it refused, with the why \"<member> refused <repo> at staging at <time>: no bench mirror; add the mirror on <member> with the fleet play\"; when no member is left the no-launcher judgment says so. A refusal of any other cause stays per card (StagingRefusers)."
+    :origin "this card, a-repo-refused-at-staging-is-not-dealt-to-that-member-again.w2; the owner, 2026-10-11 ~19:05-19:20Z: \"Please log cards to fix this deal and rebalance. It's shit.\"; \"cards only may accrue per-fleet or friend, if there are not other machines/friends ready to do that work right now!\"; studio sat at 4-5 of 16 while its takes were refused 78 times in 2 hours")
    (fix "tla-coordinatorpass-wait-expiry" :release "v1.2.12" :status "planned"
     :title "CoordinatorPass models the wait and its expiry, with a reversed witness for a wait that never expires"
     :text "Models only, no product change. tla/CoordinatorPass.tla gains the wait the code has (internal/sprint/steps_ack.go, Wait): a Wait action that closes the open judgment and holds its condition until a review time chosen within the bound, a tick that raises the condition again when the review time is reached and the condition still holds, and the reraise's skip before the review time (a held judgment is not raised again before it). OneJudgmentAnEpisode, PushedEveryWindow and ClosedWhenCleared still hold, and the new WaitedRaisedAgainOnExpiry (a wait never outlasts its review time) holds. One reversed witness, Broken = \"waitforever\", never expires the hold and breaks WaitedRaisedAgainOnExpiry; the instances and the witness are in tla/README.md and tla/CASES.tsv, and the module's COVERAGE row drops the wait from its gaps. steps_ack.go's Wait gains one comment line citing tla/CoordinatorPass.tla Wait; no other Go file changes."
@@ -102,6 +110,10 @@
     :title "The store package's own tests pin the shadow tick and the holds"
     :text "Tests only, no product change. New tests in internal/sprint/store drive Store.ShadowTick and Store.Holds through the unit tier's Mem store and assert on what a caller sees. ShadowTick: a running sprint with ready cards reports RUNNING with a deal part on the work table and a size the sum of its parts, and writes nothing; a STOPPED machine still plans; an epoch that owes its restore refuses and still owes it after; an operation left pending refuses (it repairs nothing) and is still pending after; queued work-table changes are planned as the drain part and the queue is not emptied; a primary waiting on reads is named in the plan's Reads; a store that moves on every read says the sprint is busy; and a custom Updates list leaves an empty part out, lists a due part with its due count, and a part that panics makes ShadowTick panic. Holds: a store with no sprint returns nil and no error; a held member, reader, friend and stream come back in kind order (members in fleet-table order, streams by name) each with its reason, and the list is empty after unhold; a member held with --return shows Return and without it none; an unreadable reader record is left out with no error and a friend's fleet row is not listed as a member. One defect the tests found (a reader set away with SetReaderAway alone, not held, is listed as held) is written as a v1.2.14 card, never fixed here."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C6")
+   (fix "tla-landpass-prefix-landing-and-unblamed-refusal" :release "v1.2.12" :status "planned"
+    :title "The land pass model: a red gate lands the prefix and reworks the blamed head"
+    :text "Models only, no product change. LandPass.tla's gate now does what cmd/nova-sprint/landpass.go does when the batch's tree is red: a bisection that blames one head cuts the batch to the prefix before it, pushes that prefix and reworks the blamed head with the stream going on (no longer stopped); a refusal that blames no head (a bench that did not run the gate, a cancelled gate, a bisect environment refusal) returns the batch to queued; and a batch whose tree tests read none of its files lands whole. The new invariant NoHeadPastItsBlame (no head at or after the blamed one lands in that pass) holds, as do LandsOnce and BaseKeepsLandings. Two reversed witnesses: landpastblame pushes the whole batch on a blamed red (fails NoHeadPastItsBlame), unblamedstops stops the stream on an unblamed refusal (fails UnblamedRefusalQueues). A comment on treeGateBase cites tla/LandPass.tla BaseRed."
+    :origin "this card; v1.2.12 inventory item T18")
    (fix "cardmachine-tlc-record-owed" :release "v1.2.12" :status "planned"
     :title "CardMachine gets a finished record and a reversed witness"
     :text "Models only, no product change. tla/CardMachine.tla is the copy model of nova-tools' deleted Lua
@@ -1340,6 +1352,21 @@
     are not carried: this repository has neither."
    :origin "this card")
 
+  (fix "tla-workimport-scoped-verify" :release "v1.2.12" :status "planned"
+   :title "WorkImport models a scoped import and verify, and a wider verify never reports done"
+   :text "Models only, no product change. tla/WorkImport.tla's Import and Verify each take a scope, a
+    subset of the repositories: the import writes only its scope's issues and records the scope in
+    the tree (:scope), verify reads the tree's own scope by default and refuses a --repo outside it
+    before any GitHub call, so a verify never reports done outside the import's scope. TreeIsWhole
+    is restated as TreeIsWholeForItsScope (the tree is whole for the import's scope), and the new
+    invariant VerifyNeverPassesOutsideItsScope states a wider verify never reports done. The receipt
+    and Close/Export are marked design-only in the header, as the code's verify prints facts and
+    stores none. Six reversed witnesses (noreceipt, stale, external, noreopen, partial, scoped):
+    Broken \"scoped\" ignores the tree's scope, so a wider verify reports done and fails
+    VerifyNeverPassesOutsideItsScope; MCWorkImportBrokenPartial keeps its result
+    (TreeIsWholeForItsScope)."
+   :origin "this card, tla-workimport-scoped-verify.w6, 2026-10-11: v1.2.12 inventory item T22 and section 9 row D12; drift read at nova-sprint main 00c54ba2e, re-read at the head that records the scope")
+
   (fix "the-server-beat-accepts-draining-and-no-room" :release "v1.2.12" :status "planned"
    :title "The server's beat takes a draining or no-room member"
    :text "The member's beat is `fleet beat <member> [--stop-returns <n>] [--no-room <why>]
@@ -1732,6 +1759,28 @@
    :origin "this card, the-dashboard-plays-a-coin-when-a-tick-lands.w1, 2026-10-11: the owner,
     2026-10-11 ~12:50 PM ET: \"Please add sounds to the sprint dashboard. Whenever a card lands in the
     tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle.\"")
+
+  (fix "a-5xx-mentioning-rate-limit-still-rests" :release "v1.2.14" :status "planned"
+   :title "A 5xx whose words mention a rate limit still spends the take and rests the route"
+   :text "IsRateLimited (internal/sprint/provider_funds.go) answered true for class rate-limited or a 429, then
+    fell back to words in the whole line (\"too many requests\", \"rate limit\", or \"concurrency\" with
+    \"exceed\") whatever the class, so a provider's own 5xx whose message mentioned a rate limit (for example
+    `provider: class=provider-5xx status=503 msg=upstream rate limit exceeded, retry later`) counted as one. On a
+    limited route the finish then took the rate-limited return in internal/sprint/steps_work.go: the card went back
+    unspent, with no FieldTakeEnded and no provider take record, so transient() never counted it, and three such
+    5xxs in ten never rested the route for RouteRestFor, reading a real outage as a brief backoff. Now, when the
+    line parses a class of class5xx or classTimeout, only class=rate-limited or status=429 makes it a rate limit and
+    the word fallback is skipped; a line with no parsed class, or another class, keeps the word fallback. Tests:
+    internal/sprint/rate_limit_class_test.go pins the class table (true for class=rate-limited, a 429 under another
+    class and a classless \"Too many requests\"; false for class=provider-5xx or class=timeout whose msg says
+    \"rate limit\" or \"too many requests\", and for an out-of-credit 429) and the behaviour through Deal, Take and
+    Finish (three class=provider-5xx \"rate limit\" takes each spend their take, leaving FieldTakeEnded set, a
+    FieldProviderTake record and no rate_take_ record, and RestsDue then rests the route for RouteRestFor with
+    cause RestProvider). No model change."
+   :origin "this card, a-5xx-mentioning-rate-limit-still-rests.w1, follow-up 2 of
+    tmp/next-sprint-cards/rate-limit-followups.md (the second cold read of nova-sprint PR #86, 2026-10-11); checked
+    against PR #86's head a1c51ee, the code this card's dependency rate-limit-never-fails-the-card-v2 lands on
+    main")
   (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.14" :status "planned"
    :title "A rate limit stalls its route briefly; it never fails a card or rests it for 3-in-10"
    :text "A take a provider ends rate-limited (class=rate-limited) never fails the card, on any
@@ -1869,6 +1918,29 @@
     PR #86 (2026-10-11), an open non-blocking finding: \"The backoff is hard to see: nova-sprint
     routes doesn't show it\"; listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md.
      Checked against main 00c54ba and PR #86's head a1c51ee.")
+  (fix "a-refused-rework-names-the-backoff" :release "v1.2.14" :status "planned"
+   :title "A refused rework or redo names the backoff, never a wait"
+   :text "A coordinator's rework or redo deals on the soft budgets (withSoftBudgets): on the soft
+    draw a full provider is dealt anyway, but a route backing off from a rate limit never is. When
+    every route of the tier backs off the draw fails and routeOf returned its waiting words
+    (\"every route of tier <t> ...: the card waits ready and is dealt when a slot frees or the
+    backoff ends\"), which Rework and Redo refuse the card with, telling the coordinator it waits
+    ready when in fact the rework did not happen and no deal resumes by itself. routeOf's full
+    branch now returns different words when the draw is soft (s.budgets != nil && s.budgets.soft):
+    every route of tier <t> that serves is backing off from a rate limit (<route> ..., until
+    <end>): a rework or redo is never dealt onto a backing-off route, so the card was not dealt;
+    give it again after that time. A deal (not soft) keeps the waiting words, since its card does
+    wait ready. Tests in internal/sprint/rate_backoff_rework_test.go:
+    TestAReworkOnABackedOffRouteIsRefusedNotToldItWaits and
+    TestARedoOnABackedOffRouteIsRefusedNotToldItWaits pin the refusal (no \"waits ready\", names the
+    backoff's end, says give it again); TestADealOnABackedOffRouteStillTellsTheCardItWaits pins the
+    deal's words; TestASoftReworkWithAFullProviderIsStillDealtOnIt pins that a soft rework with a
+    full provider and no backoff is still dealt on the full one (docs/SPEC-SPRINT.md section 5, the
+    deal; tla/RateBackoff.tla, BackoffEnds)."
+   :origin "this card, a-refused-rework-names-the-backoff (the third cold read of nova-sprint PR
+    #86, 2026-10-11): \"A refused rework or redo gets the misleading wording 'waits ready ...
+    backoff ends'\"; listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md, checked
+    against PR #86's head a1c51ee.")
   (fix "take-by-id-starts-the-card-as-a-lane-take-does" :release "v1.2.14" :status "planned"
    :title "take by id starts a friend's card as a lane take does"
    :text "The two forms of take did different things. take --as <friend> --lane <n> moved the card to

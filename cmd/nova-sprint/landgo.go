@@ -281,9 +281,10 @@ type baseGateFail struct {
 }
 
 // treeGateBase gates the base's tip at baseSha: "" when green, else the finding, and stop
-// when the stream stops on it. A green base is cached for its commit, so the same base
-// commit is not re-gated across streams or rounds. A red one is the base-gate rule's
-// (docs/SPEC-SPRINT.md section 8, answered by rule; the coordinator, 2026-10-04: five streams sat
+// when the stream stops on it. tla/LandPass.tla BaseRed. A green base is cached for its
+// commit, so the same base commit is not re-gated across streams or rounds. A red one is
+// the base-gate rule's (docs/SPEC-SPRINT.md section 8, answered by rule; the coordinator,
+// 2026-10-04: five streams sat
 // stopped 16 minutes on a toolchain's transient "package ... is not in std"): it is gated
 // again after sprint.BaseGateRetries[0], then after [1], each landing in between refused
 // with the finding and when it is gated again; its third failure stops every stream that

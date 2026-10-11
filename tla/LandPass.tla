@@ -46,8 +46,12 @@
 \* from the base as it is; the base's own gate runs first unless the base is in the cache
 \* (BaseRed(s): a red base refuses the batch for the pass, no head merged, as the base-gate
 \* rule does before its third refusal; its cure is below this module's grain); Gate(s)
-\* gates the batch's tree once (green: the batch waits to land; red: the breaking head is
-\* found by bisection and returned with its finding, LandBisect.tla). Abandon(s) is
+\* gates the batch's tree once (green: the batch waits to land; red: the bisection blames
+\* the head that turned it red, the batch is cut to the prefix before it and that prefix
+\* goes on to land while the blamed head is reworked with the stream going on; a refusal
+\* that blames no head -- a bench that did not run the gate, a cancelled gate, a bisect
+\* environment refusal -- returns the batch to queued; a batch whose tree tests read none
+\* of its files lands whole, nothing blamed). Abandon(s) is
 \* LandDeadline on the stream's own clock, started when it took its slot: a stuck gate
 \* cancelled and its slot freed, the batch out of this pass with nothing cached, no stop
 \* and no blame. A stream waiting for a slot, the same-repository/base chain or the
@@ -78,6 +82,9 @@
 \*     cache, the pushes and no other stream's phase.
 \*   RefusalTouchesNoOtherStream (an action property): a refusal changes the base and no
 \*     other stream's phase or cut.
+\*   UnblamedRefusalQueues (an action property): a gate that refuses the batch with no head
+\*     blamed leaves it queued, never stopped.
+\*   NoHeadPastItsBlame: no head at or after the blamed one lands in the pass that blames it.
 \*   CachedIsGreen: every tree recorded as gated is green: a disjoint merge is never
 \*     recorded, so the next pass's base gate runs on it and a base red from two heads green
 \*     alone is found there, blaming no head.
@@ -108,15 +115,26 @@
 \*   "pushempty"   a re-merge that merges no head is reported landed all the same, the
 \*                 base's own tip pushed and a batch of none reported (BaseKeepsLandings
 \*                 fails: landed, and not in the base).
+\*   "landpastblame" a blamed red gate pushes the whole batch, heads at and after the blamed
+\*                 one included (NoHeadPastItsBlame fails).
+\*   "unblamedstops" a refusal that blames no head stops the stream (UnblamedRefusalQueues
+\*                 fails: the batch is not queued).
 \* The "plainwait" witness of 2026-10-09 (a waiter ignoring the pass's cancellation) is
 \* retired with the pass's cancellation of waiters: no waiter is cancelled now.
 \*
 \* WHAT IS NOT MODELLED. The report (Land.tla), the base's own gate and its cure (the base
 \* is green here), --check, pushes from outside the pass (a rejected push is met once more
-\* and reported, as before), the heads inside a batch (LandBisect.tla), the batch's size
+\* and reported, as before), the heads inside a batch beyond the one blamed and the prefix
+\* before it (LandBisect.tla holds the search), the batch's size
 \* (landBatchMax), the store, and landGrace (a built batch waits up to 30 s for a
 \* higher-priority stream still merging: timing, so every order of landings is a behaviour
 \* here, and NoHeadOfLine holds whatever the grace).
+\*
+\* TLC, 2026-10-11, on a Linux bench, the same jar: the controls and the seven earlier
+\* reversed witnesses pass or fail as before, with Heads and blame in every configuration;
+\* the two new reversed witnesses each fail the property their configuration names
+\* (MCLandPassBrokenLandPastBlame fails NoHeadPastItsBlame, MCLandPassBrokenUnblamedStops
+\* fails UnblamedRefusalQueues). The records are tla/RUNS.tsv.
 \*
 \* TLC, 2026-10-10, hetzner2, the same jar: MCLandPass, MCLandPassSerial, MCLandPassLive
 \* (Lands, Leaves) and MCLandPassSlow (NoHeadOfLine) pass; MCLandPassBrokenInOrder fails
@@ -134,12 +152,20 @@
 \* property their configuration names. The records are tla/RUNS.tsv.
 EXTENDS Integers, Sequences, FiniteSets, TLC
 
-CONSTANTS Streams, Order, Files, Touches, Width, Shrinks, Broken
+CONSTANTS Streams, Order, Files, Touches, Width, Shrinks, Broken, Heads, blame
+
+\* blame[s] is the head the bisection blames when the stream's tree is red, or one of these
+\* two outcomes instead: the gate refused the batch with no head blamed (Unblamed), or the
+\* tree tests read none of the batch's files and the batch lands whole (Whole).
+Unblamed == 0
+Whole == -1
 
 ASSUME Width \in Nat \ {0}
 ASSUME Shrinks \in BOOLEAN
 ASSUME Len(Order) = Cardinality(Streams) /\ {Order[i] : i \in 1..Len(Order)} = Streams
 ASSUME Touches \in [Streams -> SUBSET Files]
+ASSUME Heads \subseteq Nat \ {0} /\ Heads # {}
+ASSUME blame \in [Streams -> (Heads \cup {Unblamed, Whole})]
 
 VARIABLES phase, cut, base, green, running, pushes, collided, cached, stuck
 
@@ -147,7 +173,7 @@ vars == <<phase, cut, base, green, running, pushes, collided, cached, stuck>>
 
 Trees == SUBSET Streams
 
-Phases == {"queued", "merging", "green", "landed", "stopped", "abandoned"}
+Phases == {"queued", "merging", "green", "landed", "stopped", "abandoned", "reworked"}
 
 \* The files the batches in a tree touch.
 Touched(T) == UNION {Touches[t] : t \in T}
@@ -158,13 +184,23 @@ Since(s) == base \ cut[s]
 \* The batch's files and the files landed since it was cut do not meet.
 Disjoint(s) == Touches[s] \cap Touched(Since(s)) = {}
 
+\* The heads of the stream's batch that are landed: all of them when the batch landed, the
+\* prefix before the blamed head when a red gate reworked it, none while it is still on its
+\* way (a head is <<card, attempt>> in the code; the reworked head is a new attempt, so this
+\* module does not re-land it).
+Prefix(s) == {h \in Heads : h < blame[s]}
+Landed(s) ==
+  IF phase[s] = "landed" THEN Heads
+  ELSE IF phase[s] = "reworked" THEN Prefix(s)
+  ELSE {}
+
 TypeOK ==
   /\ phase \in [Streams -> Phases]
   /\ cut \in [Streams -> Trees]
   /\ base \in Trees
   /\ green \in [Trees -> BOOLEAN]
   /\ running \in 0..Width
-  /\ pushes \in Seq([s : Streams, tree : Trees, since : Trees, how : {"own", "disjoint", "combined"}])
+  /\ pushes \in Seq([s : Streams, tree : Trees, since : Trees, how : {"own", "disjoint", "combined", "prefix", "whole"}])
   /\ collided \subseteq Streams
   /\ cached \subseteq Trees
   /\ stuck \subseteq Streams
@@ -182,6 +218,9 @@ Init ==
 
 \* A stream is in phase 1 (its batch is the pass's to merge, or waiting for a slot to).
 InPass(s) == phase[s] \in {"queued", "merging"}
+
+\* One push, recorded with the stream, the tree pushed, what landed since its cut and how.
+Pushed(s, tree, how) == pushes' = Append(pushes, [s |-> s, tree |-> tree, since |-> Since(s), how |-> how])
 
 \* ---- phase 1: the merges, in parallel (landpass.go, prepare and launch) ----
 
@@ -205,14 +244,54 @@ BaseRed(s) ==
 
 \* The base green (gated now and recorded, or recorded before), the batch's tree is gated
 \* once: green, it waits to land; red, the head that turned it red is found by bisection
-\* and returned with its finding (LandBisect.tla), which at this grain ends the batch with
-\* the card's own fact. A stuck gate answers nothing.
-Gate(s) ==
-  /\ phase[s] = "merging" /\ s \notin stuck /\ (cut[s] \in cached \/ green[cut[s]])
-  /\ phase' = [phase EXCEPT ![s] = IF green[cut[s] \cup {s}] THEN "green" ELSE "stopped"]
+\* and the batch is cut to the prefix before it (which goes on to land) while the blamed
+\* head is reworked, the stream going on; a refusal that blames no head returns the batch
+\* to queued; and a batch whose tree tests read none of its files lands whole (LandBisect.tla
+\* holds the search). A stuck gate answers nothing.
+GateGuard(s) ==
+  phase[s] = "merging" /\ s \notin stuck /\ (cut[s] \in cached \/ green[cut[s]])
+
+GateGreen(s) ==
+  /\ GateGuard(s) /\ green[cut[s] \cup {s}]
+  /\ phase' = [phase EXCEPT ![s] = "green"]
   /\ running' = running - 1
   /\ cached' = cached \cup {cut[s]}
   /\ UNCHANGED <<cut, base, green, pushes, collided, stuck>>
+
+\* Red, blamed: the bisection blames one head (blame[s]); the prefix before it lands and the
+\* head is reworked, the stream going on (landpastblame: the whole batch lands, heads at and
+\* after the blamed one included, which NoHeadPastItsBlame catches).
+GateBlame(s) ==
+  /\ GateGuard(s) /\ ~green[cut[s] \cup {s}] /\ blame[s] \in Heads
+  /\ phase' = [phase EXCEPT ![s] = IF Broken = "landpastblame" THEN "landed" ELSE "reworked"]
+  /\ base' = base \cup {s}
+  /\ running' = running - 1
+  /\ cached' = cached \cup {cut[s]}
+  /\ Pushed(s, base \cup {s}, "prefix")
+  /\ UNCHANGED <<cut, green, collided, stuck>>
+
+\* Red, refused with no head blamed: a bench that did not run the gate, a cancelled gate, or
+\* a bisect environment refusal leaves the batch queued, nothing landed (unblamedstops: the
+\* stream stops on it, which UnblamedRefusalQueues catches).
+GateUnblamed(s) ==
+  /\ GateGuard(s) /\ ~green[cut[s] \cup {s}] /\ blame[s] = Unblamed
+  /\ phase' = [phase EXCEPT ![s] = IF Broken = "unblamedstops" THEN "stopped" ELSE "queued"]
+  /\ running' = running - 1
+  /\ cached' = cached \cup {cut[s]}
+  /\ UNCHANGED <<cut, base, green, pushes, collided, stuck>>
+
+\* Red, but the tree tests read none of the batch's files: the batch lands whole, nothing
+\* blamed, and its tip is not recorded as gated (the tree tests never saw it green).
+GateWhole(s) ==
+  /\ GateGuard(s) /\ ~green[cut[s] \cup {s}] /\ blame[s] = Whole
+  /\ phase' = [phase EXCEPT ![s] = "landed"]
+  /\ base' = base \cup {s}
+  /\ running' = running - 1
+  /\ cached' = cached \cup {cut[s]}
+  /\ Pushed(s, base \cup {s}, "whole")
+  /\ UNCHANGED <<cut, green, collided, stuck>>
+
+Gate(s) == GateGreen(s) \/ GateBlame(s) \/ GateUnblamed(s) \/ GateWhole(s)
 
 \* LandDeadline, on the stream's own clock (started when it took its slot): a stuck gate
 \* is cancelled and its slot freed, the batch out of this pass with nothing cached, no
@@ -225,8 +304,6 @@ Abandon(s) ==
   /\ UNCHANGED <<cut, base, green, pushes, collided, cached, stuck>>
 
 \* ---- phase 2: the landings, one at a time, as each batch is built (landpass.go, land) ----
-
-Pushed(s, tree, how) == pushes' = Append(pushes, [s |-> s, tree |-> tree, since |-> Since(s), how |-> how])
 
 \* A built batch lands when it is built, whatever stream is still merging: every landing
 \* is one atomic step here, so landing onto the base stays serial (inorder: it waits until
@@ -346,15 +423,25 @@ BaseAdvancesGated ==
       /\ p.how = "own" => p.since = {} /\ green[p.tree]
       /\ p.how = "combined" => green[p.tree]
       /\ p.how = "disjoint" => Touches[p.s] \cap Touched(p.since) = {}
+      /\ p.how = "prefix" => blame[p.s] \in Heads
+      /\ p.how = "whole" => blame[p.s] = Whole
 
 LandsOnce == \A s \in Streams : Cardinality({i \in 1..Len(pushes) : pushes[i].s = s}) <= 1
 
-BaseKeepsLandings == \A s \in Streams : phase[s] = "landed" => s \in base
+BaseKeepsLandings == \A s \in Streams : phase[s] \in {"landed", "reworked"} => s \in base
 
 \* A refused batch is still queued in the store (and so is one abandoned at a deadline).
 RefusedStaysMerging == \A s \in collided : phase[s] \in {"queued", "abandoned"}
 
 CachedIsGreen == \A T \in cached : green[T]
+
+\* No head at or after the blamed one lands in the pass that blames it: a blamed red gate
+\* (a "prefix" push) lands only the prefix before the blamed head, the head reworked and
+\* nothing after it landed.
+NoHeadPastItsBlame ==
+  \A i \in 1..Len(pushes) :
+    LET p == pushes[i] IN
+      p.how = "prefix" => Landed(p.s) \cap {h \in Heads : h >= blame[p.s]} = {}
 
 RefusalTouchesNoOtherStream ==
   [][\A s \in Streams : Refuse(s) => base' = base /\ \A t \in Streams \ {s} : phase'[t] = phase[t] /\ cut'[t] = cut[t]]_vars
@@ -362,6 +449,10 @@ RefusalTouchesNoOtherStream ==
 \* An abandonment changes the base, the cache, the pushes and no other stream's phase.
 AbandonTouchesNothingElse ==
   [][\A s \in Streams : Abandon(s) => base' = base /\ cached' = cached /\ pushes' = pushes /\ \A t \in Streams \ {s} : phase'[t] = phase[t]]_vars
+
+\* A gate that refuses the batch with no head blamed leaves it queued, never stopped.
+UnblamedRefusalQueues ==
+  [][\A s \in Streams : GateUnblamed(s) => phase'[s] = "queued"]_vars
 
 \* Every tree green, no gate stuck and no re-merge dropping a head (Shrinks off), every batch
 \* lands, under fairness.

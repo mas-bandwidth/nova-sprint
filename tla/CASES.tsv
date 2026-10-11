@@ -123,7 +123,8 @@ MCWorkImport.cfg	MCWorkImport.tla	pass	-	ignore-terminal	workimport	required	-
 MCWorkImportBrokenExternal.cfg	MCWorkImport.tla	invariant	ExternalStaysOpen	ignore-terminal	workimport	required	-
 MCWorkImportBrokenNoReceipt.cfg	MCWorkImport.tla	invariant	DestructiveOnlyWithReceipt	ignore-terminal	workimport	required	-
 MCWorkImportBrokenNoReopen.cfg	MCWorkImport.tla	invariant	ExportRestores	ignore-terminal	workimport	required	-
-MCWorkImportBrokenPartial.cfg	MCWorkImport.tla	invariant	TreeIsWhole	ignore-terminal	workimport	required	-
+MCWorkImportBrokenPartial.cfg	MCWorkImport.tla	invariant	TreeIsWholeForItsScope	ignore-terminal	workimport	required	-
+MCWorkImportBrokenScoped.cfg	MCWorkImport.tla	invariant	VerifyNeverPassesOutsideItsScope	ignore-terminal	workimport	required	-
 MCWorkImportBrokenStale.cfg	MCWorkImport.tla	invariant	Lossless	ignore-terminal	workimport	required	-
 MCDirtyTick.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick	required	-
 MCDirtyTickConsumers.cfg	MCDirtyTickConsumers.tla	pass	-	ignore-terminal	dirtytick	required	-
@@ -370,6 +371,8 @@ MCLandPassBrokenCacheDisjoint.cfg	MCLandPass.tla	invariant	CachedIsGreen	ignore-
 MCLandPassBrokenPushEmpty.cfg	MCLandPass.tla	invariant	BaseKeepsLandings	ignore-terminal	landpass	required	-
 MCLandPassSlow.cfg	MCLandPass.tla	pass	-	ignore-terminal	landpass	required	-
 MCLandPassBrokenInOrder.cfg	MCLandPass.tla	temporal	NoHeadOfLine	ignore-terminal	landpass	required	-
+MCLandPassBrokenLandPastBlame.cfg	MCLandPass.tla	invariant	NoHeadPastItsBlame	ignore-terminal	landpass	required	-
+MCLandPassBrokenUnblamedStops.cfg	MCLandPass.tla	action	UnblamedRefusalQueues	ignore-terminal	landpass	required	-
 MCLandBisect.cfg	MCLandBisect.tla	pass	-	ignore-terminal	landbisect	required	-
 MCLandBisectBrokenEach.cfg	MCLandBisect.tla	invariant	ProbesBounded	ignore-terminal	landbisect	required	-
 MCLandBisectBrokenFaultBlames.cfg	MCLandBisect.tla	invariant	BlameSound	ignore-terminal	landbisect	required	-
