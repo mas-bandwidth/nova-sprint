@@ -34,7 +34,7 @@ func (f *fake) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func env(key string) func(string) string {
 	return func(k string) string {
-		if k == "OPENROUTER_API_KEY" {
+		if k == "OPENROUTER_API_KEY" || k == "DEEPSEEK_API_KEY" {
 			return key
 		}
 		return ""
@@ -73,7 +73,7 @@ func TestAnUnreadableBalanceIsUnknownAndSaysWhy(t *testing.T) {
 		{"not the shape", "openrouter", fakeKey, &fake{status: 200, body: `{"data":{}}`}, "answered no data.total_credits and data.total_usage", true},
 		{"down", "openrouter", fakeKey, &fake{err: errors.New("connection refused")}, "connection refused", true},
 		{"opencode has no endpoint", "opencode", fakeKey, &fake{status: 200}, "opencode Zen publishes no balance endpoint (anomalyco/opencode#44189", false},
-		{"another provider", "deepseek", fakeKey, &fake{status: 200}, "no balance endpoint is known for provider deepseek", false},
+		{"another provider", "acme", fakeKey, &fake{status: 200}, "no balance endpoint is known for provider acme", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -119,4 +119,39 @@ func TestReadUsageIsTheProvidersCountOfTheDay(t *testing.T) {
 		assert.Contains(t, rd.Note, c.says, name)
 		assert.NotContains(t, rd.Note, fakeKey, "%s: the key is never said", name)
 	}
+}
+
+// DeepSeek's balance, read with the seat's key as a bearer token: the balance is the USD
+// entry's total_balance.
+func TestDeepSeekBalanceIsUSDTotalBalance(t *testing.T) {
+	t.Parallel()
+	f := &fake{status: 200, body: `{"is_available":true,"balance_infos":[{"currency":"USD","total_balance":"12.34"}]}`}
+	rd := Read(context.Background(), f, "deepseek", env(fakeKey))
+	require.Len(t, f.seen, 1)
+	assert.Equal(t, http.MethodGet, f.seen[0].Method)
+	assert.Equal(t, DeepSeekURL, f.seen[0].URL.String())
+	assert.Equal(t, "Bearer "+fakeKey, f.seen[0].Header.Get("Authorization"))
+	assert.True(t, rd.Known)
+	assert.InDelta(t, 12.34, rd.Balance, 1e-9)
+	assert.Equal(t, "deepseek", rd.Provider)
+}
+
+// DeepSeek balance with no USD entry is unknown.
+func TestDeepSeekBalanceNoUSDEntryIsUnknown(t *testing.T) {
+	t.Parallel()
+	f := &fake{status: 200, body: `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"100"}]}`}
+	rd := Read(context.Background(), f, "deepseek", env(fakeKey))
+	assert.False(t, rd.Known)
+	assert.Contains(t, rd.Note, "no USD entry")
+	assert.NotContains(t, rd.Note, fakeKey)
+}
+
+// DeepSeek balance with non-200 response is unknown.
+func TestDeepSeekBalanceNon200IsUnknown(t *testing.T) {
+	t.Parallel()
+	f := &fake{status: 401, body: `{"error":"unauthorized"}`}
+	rd := Read(context.Background(), f, "deepseek", env(fakeKey))
+	assert.False(t, rd.Known)
+	assert.Contains(t, rd.Note, "401")
+	assert.NotContains(t, rd.Note, fakeKey)
 }

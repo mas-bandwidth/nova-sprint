@@ -54,6 +54,12 @@ The fixes held during the split, the point-release candidates found on 2026-10-1
 - **The overload alarm covers friends too** (shipped). A friend up whose cards keep ending on a timeout raises the overload judgment as a member does: three timeouts within OverloadWindow on her row friend.<name>, counted after her finishes' `friend <name> <VERDICT>: ` prefix, her width the roster's. Its remedy is her width in nova-config, applied by friend sync. From: sprint card overload-alarm-covers-friends.
 - **A friend card that carries its own RULES line is accepted at add** (shipped). A friend is not a child: her card is not held for the child RULES paragraph, the rule- presence checks of the card lint, when it carries its own RULES line, and a friend card with none is still held to it, as a child's brief is. The step- scans hold a friend's card still: a line of it outside its RULES paragraph that contradicts its carried rules is a finding under any rule set. From: this pull request.
 
+## v1.2.10 (planned, 2026-10-11)
+
+The low balance threshold and DeepSeek balance reading fix.
+
+- **Low balance threshold and DeepSeek balance reading** (planned). Add a low balance threshold (default $5) that raises a NProviderLow judgment when a provider's balance is at or under the threshold, with routes still serving. Add DeepSeek balance reading via the DEEPSEEK_API_KEY environment variable. From: low-balance-pushes-the-seat-before-the-refusalc.w2.
+
 ## v1.2.7 (planned, 2026-10-10)
 
 The adopt can carry a change of the store's function library: its digest covers code, not comments, the pre-window shadow tick passes when only the library differs, and the post-load check refuses a library that is not the new build's.

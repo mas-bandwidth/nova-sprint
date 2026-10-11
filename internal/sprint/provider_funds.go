@@ -215,7 +215,7 @@ func providerConds(s *Snapshot) (conds []cond, stop string) {
 	}
 	for p, b := range balances {
 		// a provider resting already (the coordinator's routes rest, a refusal) is answered
-		if len(serving[p]) > 0 && b.Low() && !resting[p] {
+		if len(serving[p]) > 0 && b.Low(s.LowBalanceUSD()) && !resting[p] {
 			providers[p] = true
 		}
 	}

@@ -5,7 +5,8 @@
 \* you as a thing to do, but not do it automatically." A route rests only on a
 \* provider-typed failure or the coordinator's word; a take that ended with no
 \* result is the model's output on that card and never rests the route; a low
-\* balance is a judgment raised to the coordinator, never a rest.
+\* balance (at or under a threshold) is a judgment raised to the coordinator,
+\* never a rest.
 \*
 \* The state, for one provider and its routes: provRest, the provider's one
 \* rest property (none, credit: it refused a take for want of credit, auth: it
@@ -99,7 +100,8 @@ Balance(l) ==
     /\ event' = "balance"
     /\ UNCHANGED <<own, win, judged>>
 
-\* the tick holds the low-on-funds judgment open exactly while the balance is low
+\* the tick holds the low-on-funds judgment open exactly while the balance is at
+\* or under the threshold (at or under zero, or not over one hour of the spend)
 Raise ==
     /\ "silent" \notin Broken
     /\ judged # low

@@ -64,9 +64,11 @@ func TestBalanceCoverPaid(t *testing.T) {
 }
 
 // TestBalanceCoverLow pins ProviderBalance.Low: a balance calls for the coordinator's
-// judgment at or under zero, or not over one hour of the spend; it rests nothing.
+// judgment at or under the threshold, at or under zero, or not over one hour of the spend;
+// it rests nothing.
 func TestBalanceCoverLow(t *testing.T) {
 	t.Parallel()
+	threshold := 5.0
 	for _, tc := range []struct {
 		name string
 		b    ProviderBalance
@@ -92,10 +94,25 @@ func TestBalanceCoverLow(t *testing.T) {
 			b:    ProviderBalance{Known: true, Balance: 50, SpendHour: 60},
 			want: true,
 		},
+		{
+			name: "refusal: balance at or under threshold",
+			b:    ProviderBalance{Known: true, Balance: 4.99, SpendHour: 60},
+			want: true,
+		},
+		{
+			name: "main: balance just above threshold with high spend",
+			b:    ProviderBalance{Known: true, Balance: 5.01, SpendHour: 60},
+			want: true,
+		},
+		{
+			name: "refusal: balance above threshold with low spend",
+			b:    ProviderBalance{Known: true, Balance: 5.01, SpendHour: 5},
+			want: false,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.want, tc.b.Low())
+			assert.Equal(t, tc.want, tc.b.Low(threshold))
 		})
 	}
 }

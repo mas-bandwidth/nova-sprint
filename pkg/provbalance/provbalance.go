@@ -40,9 +40,13 @@ type UsageRead struct {
 // {"data": {"total_credits": <dollars bought>, "total_usage": <dollars used>}}.
 const OpenRouterURL = "https://openrouter.ai/api/v1/credits"
 
+// DeepSeekURL is deepseek's balance endpoint: GET with the key as a bearer token answers
+// {"is_available": <bool>, "balance_infos": [{"currency": "USD"|"CNY", "total_balance": "<decimal string>", ...}]}.
+const DeepSeekURL = "https://api.deepseek.com/user/balance"
+
 // KeyEnv is the variable each provider's key is in, as nova-secrets exec delivers it to the
 // run loop (`nova-secrets exec --only OPENROUTER_API_KEY -- nova-sprint run ...`).
-var KeyEnv = map[string]string{"openrouter": "OPENROUTER_API_KEY"}
+var KeyEnv = map[string]string{"openrouter": "OPENROUTER_API_KEY", "deepseek": "DEEPSEEK_API_KEY"}
 
 // unknownWhy is why a provider with no balance endpoint is recorded unknown.
 var unknownWhy = map[string]string{
@@ -62,7 +66,7 @@ const maxBody = 64 << 10
 // is unknown with why.
 func Read(ctx context.Context, rt http.RoundTripper, provider string, getenv func(string) string) ProviderRead {
 	unknown := func(why string) ProviderRead { return ProviderRead{Provider: provider, Note: why} }
-	if provider != "openrouter" {
+	if provider != "openrouter" && provider != "deepseek" {
 		if why, ok := unknownWhy[provider]; ok {
 			return unknown(why)
 		}
@@ -75,7 +79,13 @@ func Read(ctx context.Context, rt http.RoundTripper, provider string, getenv fun
 	}
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, OpenRouterURL, nil)
+	var url string
+	if provider == "openrouter" {
+		url = OpenRouterURL
+	} else {
+		url = DeepSeekURL
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return unknown("the request could not be made: " + err.Error())
 	}
@@ -93,7 +103,34 @@ func Read(ctx context.Context, rt http.RoundTripper, provider string, getenv fun
 		return unknown("GET " + OpenRouterURL + ": the answer could not be read: " + err.Error())
 	}
 	if resp.StatusCode != http.StatusOK {
-		return unknown(fmt.Sprintf("GET %s answered %d", OpenRouterURL, resp.StatusCode))
+		return unknown(fmt.Sprintf("GET %s answered %d", url, resp.StatusCode))
+	}
+	if provider == "deepseek" {
+		var wire struct {
+			IsAvailable bool `json:"is_available"`
+			BalanceInfo []struct {
+				Currency    string `json:"currency"`
+				TotalBalance string `json:"total_balance"`
+			} `json:"balance_infos"`
+		}
+		if err := json.Unmarshal(raw, &wire); err != nil {
+			return unknown("GET " + url + " answered: " + err.Error())
+		}
+		var balance float64
+		var found bool
+		for _, info := range wire.BalanceInfo {
+			if info.Currency == "USD" {
+				if _, err := fmt.Sscanf(info.TotalBalance, "%f", &balance); err != nil {
+					return unknown("GET " + url + ": USD balance not a number")
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return unknown("GET " + url + ": no USD entry in balance_infos")
+		}
+		return ProviderRead{Provider: provider, Known: true, Balance: balance}
 	}
 	var wire struct {
 		Data struct {
@@ -102,7 +139,7 @@ func Read(ctx context.Context, rt http.RoundTripper, provider string, getenv fun
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &wire); err != nil || wire.Data.Credits == nil || wire.Data.Usage == nil {
-		return unknown("GET " + OpenRouterURL + " answered no data.total_credits and data.total_usage")
+		return unknown("GET " + url + " answered no data.total_credits and data.total_usage")
 	}
 	return ProviderRead{Provider: provider, Known: true, Balance: *wire.Data.Credits - *wire.Data.Usage, HasUsed: true, Used: *wire.Data.Usage}
 }

@@ -15,10 +15,13 @@
   (release "v1.2.4" :status "shipped" :date "2026-10-10"
    :text "One fix: the sprint store's function library is back at its v1.2.2 digest, so an adopt can load it.")
    (release "v1.2.6" :status "planned"
-    :text "The fixes held during the split, the point-release candidates found on 2026-10-10, the owed
-     tests, and the sprint store cards that are point-release work. Each is re-applied or written in
-     this repository, then cut as one release."
-    :date "2026-10-10")
+     :text "The fixes held during the split, the point-release candidates found on 2026-10-10, the owed
+      tests, and the sprint store cards that are point-release work. Each is re-applied or written in
+      this repository, then cut as one release."
+     :date "2026-10-10")
+   (release "v1.2.10" :status "planned"
+     :text "The low balance threshold and DeepSeek balance reading fix."
+     :date "2026-10-11")
    (release "v1.2.7" :status "planned" :date "2026-10-10"
     :text "The adopt can carry a change of the store's function library: its digest covers code, not
      comments, the pre-window shadow tick passes when only the library differs, and the post-load check
@@ -378,6 +381,10 @@
      its RULES paragraph that contradicts its carried rules is a finding under any rule set."
     :origin "this pull request")
 
+   (fix "low-balance-threshold-and-deepseek-balance" :release "v1.2.10" :status "planned"
+    :title "Low balance threshold and DeepSeek balance reading"
+    :text "Add a low balance threshold (default $5) that raises a NProviderLow judgment when a provider's balance is at or under the threshold, with routes still serving. Add DeepSeek balance reading via the DEEPSEEK_API_KEY environment variable."
+    :origin "low-balance-pushes-the-seat-before-the-refusalc.w2")
    (fix "swarm-lint-card-false-refusals" :release "v1.2.9" :status "planned"
     :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
     :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside

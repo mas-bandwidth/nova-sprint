@@ -30,6 +30,10 @@ const (
 	PropFriendStallStep = "friend_stall_step"
 	// PropReadTier is the work table's property: the sprint's read tier.
 	PropReadTier = "read_tier"
+	// PropLowBalanceUSD is the work table's property: the low balance threshold in dollars.
+	PropLowBalanceUSD = "low_balance_usd"
+	// LowBalanceUSDDefault is the low balance threshold in dollars when the coordinator set none.
+	LowBalanceUSDDefault = 5
 	// FieldReadTier is a stream's control card's field: the stream's read tier,
 	// over the sprint's.
 	FieldReadTier = "read_tier"
@@ -182,6 +186,18 @@ func (s *Snapshot) DealtMax() time.Duration {
 		}
 	}
 	return DealtMaxDefault
+}
+
+// LowBalanceUSD returns the low balance threshold in dollars: the sprint's setting, else LowBalanceUSDDefault.
+func (s *Snapshot) LowBalanceUSD() float64 {
+	if s.Work != nil {
+		if v, ok := s.Work.Prop(PropLowBalanceUSD); ok {
+			if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+				return f
+			}
+		}
+	}
+	return LowBalanceUSDDefault
 }
 
 // FriendIdleDefault is how long a friend holding cards may show no file write under her

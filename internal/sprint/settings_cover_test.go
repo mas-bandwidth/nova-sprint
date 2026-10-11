@@ -130,4 +130,11 @@ func TestSettingsCoverSetWritesAndRefusesWhole(t *testing.T) {
 			})
 		}
 	})
+	t.Run("the low balance threshold", func(t *testing.T) {
+		t.Parallel()
+		s := settingsSnapshot(map[string]string{PropLowBalanceUSD: "10"})
+		assert.Equal(t, 10.0, s.LowBalanceUSD())
+		s = settingsSnapshot(nil)
+		assert.Equal(t, 5.0, s.LowBalanceUSD())
+	})
 }
