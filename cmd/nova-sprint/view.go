@@ -860,12 +860,15 @@ func (a *app) workerView(ctx context.Context, st *store.Store, as string) (worke
 	v.Quiet = sprint.QuietLines(shapes[0].Props, now)
 
 	// my results not landed: the cards finished ok whose primaries wait in review or merging
-	done, err := st.ReadCells(ctx, sprint.Fleet, row, sprint.DoneOK)
+	done, err := st.ReadCells(ctx, sprint.Fleet, row, sprint.DoneOK, sprint.Finished)
 	if err != nil {
 		return v, false, err
 	}
 	byPrimary := map[string]*sprint.Card{}
 	for _, c := range done {
+		if c.Col == sprint.Finished && c.F("ok") != "yes" {
+			continue // a worker's failed finish, before any readers' verdict: no result
+		}
 		p := c.F(sprint.PrimaryField)
 		if old := byPrimary[p]; old == nil || c.F("finished") > old.F("finished") {
 			byPrimary[p] = c

@@ -202,7 +202,7 @@ func TestActionsCoverFinish(t *testing.T) {
 
 	n, err := Finish(s, "m", WC("p", 1), 1, true)
 	require.NoError(t, err)
-	assert.Equal(t, FDone, n.Work[WC("p", 1)].Place)
+	assert.Equal(t, FFinished, n.Work[WC("p", 1)].Place)
 	assert.Equal(t, Review, n.Primaries["p"].State)
 	assert.Equal(t, 1, n.Primaries["p"].Head)
 

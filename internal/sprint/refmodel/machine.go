@@ -77,8 +77,25 @@ func Tick(s State, ch TickChoices) (State, error) {
 		return s, err
 	}
 	n.tickResume()
+	n.tickVerdicts()
 	n.tickDone()
 	return n, nil
+}
+
+// tickVerdicts is the fleet update's verdicts part (sprint.TickVerdicts): a
+// finished work card whose primary's reads carry a verdict (workVerdict) moves
+// to done, where it counts in ok%. A worker's failed card no reader reads
+// stays finished.
+func (n *State) tickVerdicts() {
+	for id, w := range n.Work {
+		if w.Place != FFinished {
+			continue
+		}
+		if n.workVerdict(w.Primary, w.Attempt) != "" {
+			w.Place = FDone
+			n.Work[id] = w
+		}
+	}
 }
 
 // tickDone is the machine's done rule (sprint.TickDone): the
