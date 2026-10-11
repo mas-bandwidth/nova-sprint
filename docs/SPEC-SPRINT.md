@@ -7483,6 +7483,39 @@ journal deliver the notes; files remain available to the native consumer across
 restarts. PAUSED work remains RUNNING for settlement and does not trigger STOP
 alerts (tla/SprintRules.tla, `AlarmOncePerEpisode`, `ClearFollowsAlarm`).
 
+### The landing stall
+
+The owner, 2026-10-11: landed 68/294 `+0/30m` for half an hour while 76 cards sat in review
+and 68 in fix, and no judgment reached the seat; the seat's own hand watch is retired when
+this lands. The tick end's landing-stall alarm (`sprint.TickLandingStall`,
+internal/sprint/judgments.go) runs in the deadlines part (`sprint.TickDeadlines`), so it is
+watched every tick whether or not the idle alarm is on. The merge step writes the facts the
+alarm measures from, on the work table: `last_landing` (the stamp of the last card that
+landed) and `land_refusal` (the lander's last refusal, the card and the reason). An episode
+begins when cards wait in review or merging and the work table's last landing is
+`landing_stall_bound` or more of running time ago; if no landing has occurred, the first tick
+that sees waiting cards starts the episode. The bound is the sprint setting
+`--landing-stall-bound`, default one minute (`LandingStallBound`, the owner's number: "10 minute stall watch is too long. 1
+minute."); its start is the work table's property `landing_stall_since`. The judgment
+`landing stalled` is raised to the coordinator, once, and re-raised each bound the condition
+still holds (the open judgment rewritten in place with fresh facts, `landing_stall_said`
+marking the last push), with its cause breakdown from `sprint.landingStallWhat`: the reads
+out (count, by reader, oldest age), the cards waiting on the coordinator's judgment (count,
+oldest alias; a review where every card waits on the coordinator is named the seat's stall
+as such), the accepted and not merged (count, with each stream's merge state), the lander's
+last refusal (card and reason) and the base's red CI (the check). A sprint with nothing in
+review or merging raises none. The episode clears on the next landing, with the happened
+`landing again after <d>` and both properties empty. The model is its own card,
+`tla-sprintrules-landing-stall-liveness`.
+
+Every landing is also pushed to the coordinator as it happens (`sprint.landingPush`, the
+merge step): one happened `landed <card>` per landing line, with the card's stream, its
+head, the one-line `:title` and `:text` of its fixes ledger entry (read by the lander from
+the landed head and carried onto the merge event), and the attempts and reads it took. A batch of landings in one tick
+is one push with one line per card, addressed to the coordinator and needing no ack beyond
+the hook's. The owner, 2026-10-11: "you should also get this push notification, so you as
+coordinator can read the card that landed and keep on top of things".
+
 ### The server
 
 The owner, 2026-10-01: "single threaded server, pipelined batches like redis." / "I think we
