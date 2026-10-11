@@ -1030,6 +1030,21 @@
     names the new test for the machine's. Tests only; no product change."
    :origin "this card; the v1.2.12 inventory card A2 and section 6 (three drain tests red at 04:16Z on 2026-10-11, the probe gate and #84, greened by 2623ab7 with no test of the composition)")
 
+  (fix "tla-dirtytick-deal-order-and-skips" :release "v1.2.12" :status "planned"
+   :title "DirtyTick models the deal's held-stream skip and its reads-before-work order"
+   :text "DirtyTick's Deal now skips a held stream's ready cards, to a machine and a friend alike
+    (a Scn.heldStreams set, empty in every existing configuration; internal/sprint/hold.go StreamHeld,
+    steps_tick.go:776,792 and steps_work.go:980), with the invariant HeldStreamNotDealt (shaped like
+    RouteGuard) and the reversed witness dealheldstream: MCDirtyTickHeldStream.cfg passes and
+    MCDirtyTickBrokenDealHeldStream.cfg fails HeldStreamNotDealt. The ReadCost \"half\" mode records the
+    code's reads-before-work order (steps_tick.go:764 withReadCards, read_cards.go halfLoad); read cards
+    as dealt entities are outside the module, whose reads are the readers table's. The deal's friends-first
+    ladder (tla/WhoPreference.tla), bench pool and staging refusers (tla/RouteIndex.tla Pool), friend-dealt
+    return (tla/FriendDealtReturn.tla) and fault-hold clear (tla/DealFill.tla FaultHoldClears) are cited to
+    their modules in the model's comments. Models only, no product change. TLC owed: the two new cases have
+    no RUNS.tsv record yet."
+   :origin "v1.2.12 inventory item T7, second half; card tla-dirtytick-deal-order-and-skips.w2")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
