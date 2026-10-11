@@ -363,3 +363,7 @@ MCFriendEmptyRunBrokenCapLeft.cfg	MCFriendEmptyRun.tla	invariant	NeverBackToTheE
 MCFriendEmptyRunCapReach.cfg	MCFriendEmptyRun.tla	invariant	NeverPinned	ignore-terminal	friendemptyrun	required	-
 MCFriendEmptyRunBrokenRuleLeft.cfg	MCFriendEmptyRun.tla	invariant	NeverBackToTheEmptyLane	ignore-terminal	friendemptyrun	required	-
 MCFriendEmptyRunAnyFriend.cfg	MCFriendEmptyRun.tla	pass	-	ignore-terminal	friendemptyrun	required	-
+MCNoRoom.cfg	MCNoRoom.tla	pass	-	ignore-terminal	noroom	required	-
+MCNoRoomBrokenDrainSkip.cfg	MCNoRoom.tla	invariant	WordIsThisTicks	ignore-terminal	noroom	required	-
+MCNoRoomBrokenFleetBlind.cfg	MCNoRoom.tla	invariant	NeverDealtUnderFloor	ignore-terminal	noroom	required	-
+MCNoRoomBrokenTickBlind.cfg	MCNoRoom.tla	invariant	NeverDealtUnderFloor	ignore-terminal	noroom	required	-
