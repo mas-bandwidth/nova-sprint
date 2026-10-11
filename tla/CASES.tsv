@@ -298,6 +298,7 @@ MCServerLanesBrokenTickQueues.cfg	MCServerLanes.tla	invariant	TickWaitsOneTurn	i
 MCCoordinatorWake.cfg	MCCoordinatorWake.tla	pass	-	ignore-terminal	coordinatorwake	required	-
 MCCoordinatorWakeBrokenNoCursor.cfg	MCCoordinatorWake.tla	invariant	AtMostOnce	ignore-terminal	coordinatorwake	required	-
 MCCoordinatorWakeBrokenSkip.cfg	MCCoordinatorWake.tla	temporal	NoLapse	ignore-terminal	coordinatorwake	required	-
+MCCoordinatorWakeBrokenBatchDrops.cfg	MCCoordinatorWake.tla	temporal	NoLapse	ignore-terminal	coordinatorwake	required	-
 MCCardISA.cfg	MCCardISA.tla	pass	-	ignore-terminal	cardisa	required	-
 MCCardISALive.cfg	MCCardISA.tla	pass	-	ignore-terminal	cardisa	required	-
 MCCardISABrokenSecondLand.cfg	MCCardISA.tla	invariant	NoCardRetiresTwice	ignore-terminal	cardisa	required	-
