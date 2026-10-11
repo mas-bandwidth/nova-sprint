@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -295,4 +296,139 @@ func TestDashboardServesTheLogoAndItsBuild(t *testing.T) {
 	assert.NotEqual(t, before, r.s.Build(), "a new logo file is a new build number")
 	r.s.Version = "v9"
 	assert.NotEqual(t, before, r.s.Build())
+}
+
+// keyframeDeclRe finds a declaration's property inside a @keyframes block: an identifier, optionally
+// with the two leading dashes of a custom property, before its colon. Percent stops ("0%,") carry no
+// colon, so only properties match.
+var keyframeDeclRe = regexp.MustCompile(`(-{0,2}[a-zA-Z][a-zA-Z0-9-]*)\s*:`)
+
+// keyframes returns each @keyframes block's name and the property names it declares, de-duplicated.
+func keyframes(t *testing.T, css string) map[string][]string {
+	t.Helper()
+	out := map[string][]string{}
+	rest := css
+	for {
+		i := strings.Index(rest, "@keyframes")
+		if i < 0 {
+			return out
+		}
+		open := strings.IndexByte(rest[i:], '{')
+		if open < 0 {
+			return out
+		}
+		name := strings.TrimSpace(rest[i+len("@keyframes") : i+open])
+		block, after := braceBlock(t, rest[i+open:])
+		for _, m := range keyframeDeclRe.FindAllStringSubmatch(block, -1) {
+			if !contains(out[name], m[1]) {
+				out[name] = append(out[name], m[1])
+			}
+		}
+		rest = after
+	}
+}
+
+// braceBlock returns the balanced {...} at the start of s (deepest included) and the remainder.
+func braceBlock(t *testing.T, s string) (string, string) {
+	t.Helper()
+	if len(s) == 0 || s[0] != '{' {
+		t.Fatalf("braceBlock: %q does not start with {", s)
+	}
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return s[:i+1], s[i+1:]
+			}
+		}
+	}
+	t.Fatalf("braceBlock: unbalanced braces in %q", s)
+	return "", ""
+}
+
+func contains(xs []string, x string) bool {
+	for _, s := range xs {
+		if s == x {
+			return true
+		}
+	}
+	return false
+}
+
+// functionBody returns the { ... } body of the named JS function, by balanced braces.
+func functionBody(t *testing.T, src, name string) (string, bool) {
+	t.Helper()
+	i := strings.Index(src, "function "+name+"(")
+	if i < 0 {
+		return "", false
+	}
+	open := strings.IndexByte(src[i:], '{')
+	if open < 0 {
+		return "", false
+	}
+	body, _ := braceBlock(t, src[i+open:])
+	return body, true
+}
+
+// TestThePulseAnimatesOpacityOnTheCompositor pins the owner's scroll fix (this card): the top bar's
+// pulse is a compositor animation of opacity itself, not a main-thread animation of the registered
+// custom property --pulse. A custom-property animation runs on the main thread, so every frame
+// re-styles and repaints all 151 in-flight cells and starves the browser's smooth scroll; opacity
+// runs on the compositor. The pulse keeps the same 2.4 s cycle, the same negative delays per state,
+// and still stops when the sprint is stopped or motion is reduced. Any @keyframes block that
+// animates a custom property fails here, as does a one-shot animation of anything but opacity,
+// transform or filter.
+func TestThePulseAnimatesOpacityOnTheCompositor(t *testing.T) {
+	t.Parallel()
+	css := string(file("index.html"))
+	blocks := keyframes(t, css)
+	pulse, ok := blocks["pulse"]
+	require.True(t, ok, "the page carries @keyframes pulse")
+	assert.Equal(t, []string{"opacity"}, pulse, "the pulse animates opacity itself (a compositor property)")
+	assert.NotContains(t, css, "@property --pulse", "no registered custom property")
+	assert.NotContains(t, css, "var(--pulse)", "no cell reads the custom property")
+	for name, props := range blocks {
+		for _, p := range props {
+			assert.False(t, strings.HasPrefix(p, "--"),
+				"@keyframes %s animates the custom property %q; a custom property animates on the main thread", name, p)
+			if infiniteAnimation(css, name) {
+				assert.Contains(t, []string{"opacity", "transform", "filter"}, p,
+					"@keyframes %s runs infinitely and animates %q; only opacity, transform or filter compose", name, p)
+			}
+		}
+	}
+	assert.Regexp(t, `#overall \.cell\.merging[^}]*animation:\s*pulse 2\.4s ease-in-out infinite`, css,
+		"merging keeps the 2.4 s cycle")
+	assert.Regexp(t, `#overall \.cell\.review[^}]*animation-delay:\s*-2\.25s`, css, "review keeps its negative delay")
+	assert.Regexp(t, `#overall \.cell\.working[^}]*animation-delay:\s*-2\.1s`, css, "working keeps its negative delay")
+	assert.Contains(t, css, "#overall.stopped .cell", "a stopped sprint still stops the pulse")
+	assert.Contains(t, css, "prefers-reduced-motion", "reduced motion still stops the pulse")
+}
+
+// infiniteAnimation reports whether some animation shorthand in css names keyframe and runs infinite.
+func infiniteAnimation(css, keyframe string) bool {
+	name := regexp.QuoteMeta(keyframe) + `([^\w-]|$)`
+	re := regexp.MustCompile(`animation[^;}]*` + name + `[^;}]*infinite`)
+	return re.MatchString(css)
+}
+
+// TestRenderFitsOnlyWhenTheLayoutCanChange pins the owner's scroll fix (this card): render() no
+// longer calls fitTables() on every poll (POLL_MS = 1000), which removed .compact from four panels
+// and read every row and cell's scrollWidth once a second, a forced synchronous layout during the
+// scroll. The fit runs on load, on resize, and from render() only when a panel's data-derived fit
+// key changes.
+func TestRenderFitsOnlyWhenTheLayoutCanChange(t *testing.T) {
+	t.Parallel()
+	app := string(file("app.js"))
+	body, ok := functionBody(t, app, "render")
+	require.True(t, ok, "app.js carries render(d)")
+	assert.NotContains(t, body, "fitTables();", "render must not fit tables unconditionally on every poll")
+	assert.Contains(t, body, "fitIfChanged(", "render fits only when the layout key changes")
+	assert.Contains(t, app, "function fitIfChanged(", "the conditional fit lives in fitIfChanged")
+	assert.Contains(t, app, "function fitKey(", "the fit key is computed from the data")
+	assert.Contains(t, app, `window.addEventListener("resize", fitTables)`, "the fit still runs on resize")
 }
