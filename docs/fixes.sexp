@@ -2027,4 +2027,27 @@
     serialized in completion order. The shared 110 second suite deadline and budget-exhausted
     records remain in force. The real land group passes at width one and the default width with
     identical PASS/FAIL results."
-   :origin "this card, tlc-suite-runs-independent-cases-in-parallel.w1~17.g7, 2026-10-11")))
+   :origin "this card, tlc-suite-runs-independent-cases-in-parallel.w1~17.g7, 2026-10-11")
+
+  (fix "a-landing-pushes-each-repo-and-base-on-its-own-lane" :release "v1.2.15" :status "planned"
+   :title "A land pass pushes each repository and base on its own lane"
+   :text "A land pass merged and gated streams side by side (phase 1), then landed every
+    built batch from one serial loop across every repository and every base: while one
+    batch rebuilt and ran a combined tree gate (minutes), a built batch of another
+    repository or another base waited, and the same goroutine prepared each next job. Phase
+    2 now runs one landing lane per (clone, base): each lane is a goroutine with its own
+    ready list and its own pushed list, ordered by stream priority and landGrace exactly as
+    the one loop ordered them, and pushes its batches one at a time; different clones, and
+    different bases of one clone, share no ref and no tip, so their pushes run side by side
+    (serial within one base is the design and stays, tla/LandPass.tla). The job's prepare
+    runs in its own goroutine, the first cuts of one repository and base still in priority
+    order; the fetch lock becomes one lock per clone, keyed on the clone's common git dir
+    (fetchKey), so a fetch in a stream's worktree takes the same lock as the clone's own
+    worktree writes: two clones' fetches and worktree writes go side by side while one
+    clone's stay serial; failed and the queues are updated under one mutex. The landing
+    order within one base and every message are unchanged."
+   :origin "this card, a-landing-pushes-each-repo-and-base-on-its-own-lane.w5; the owner,
+    2026-10-11: \"What else is like serial reads, going out one at a time, when they could go
+    out at the same time in || ?\" and \"OK please log critical cards to fix all these serial
+    things that should be parallel (with good reason to be ||).\"; found by the seat's audit
+    child on nova-sprint main the same day (cmd/nova-sprint/landpass.go, THE LANDINGS, SERIAL)")))
