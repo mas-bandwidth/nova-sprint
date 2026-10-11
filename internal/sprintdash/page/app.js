@@ -503,6 +503,7 @@ function setMachine(line) {
   // the bar pulses only while the machine runs (the owner 2026-10-04 9:14 AM)
   var running = /^(running|STALE)\b/.test(text);
   var box = $("overall"); if (box) box.classList.toggle("stopped", !running);
+  setClass($("live"), "live" + (stopped ? " stopped" : ""));
 }
 
 // Providers (SPEC.md, the owner 8:03 and 8:18 AM): shown only when the store carries tables.providers
@@ -583,7 +584,7 @@ function renderReaders(d) {
 function renderHero(d, s, ft) {
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
-  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "-");
+  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : (landed === 0 ? "nothing" : "-"));
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
   if (m) {
     setHTML($("eta"), etaText(m[1]));
@@ -661,7 +662,9 @@ function renderRelease(j) {
   });
 }
 function setLive(since) {
-  setClass($("live"), "live ok");
+  var live = $("live");
+  var wasStopped = live.classList.contains("stopped");
+  setClass(live, "live ok" + (wasStopped ? " stopped" : ""));
   // the viewer's zone after the time, from the browser (SPEC.md, the owner 9:59 PM): EDT now, EST after the change
   // "10:00:02 PM EDT": the digits right-aligned in a fixed 8ch box (no jump from 9 to 10 o'clock),
   // then one ordinary (proportional) blank before PM and one before the zone. The browser's own time string
@@ -823,9 +826,22 @@ function renderTopStreams(d) {
     });
     putKid(r.node, cellCount - 1, "num", fmt(row.cost));
   });
-  if (!box._none) box._none = el("div", "row faint", "no stream has spent anything yet");
-  if (!rows.length && box._none.parentNode !== box) box.appendChild(box._none);
-  if (rows.length && box._none.parentNode === box) box._none.remove();
+  // empty state: keep header and draw blank rows with "-" in every cell
+  var EMPTY_ROWS = 3;
+  if (!rows.length && (!box._empties || box._empties.length !== EMPTY_ROWS)) {
+    if (box._empties) box._empties.forEach(function (r) { r.remove(); });
+    box._empties = [];
+    for (var e = 0; e < EMPTY_ROWS; e++) {
+      var r = el("div", "row");
+      setCount(r, cellCount, function () { return quiet(el("div")); });
+      for (var c = 0; c < cellCount; c++) { putKid(r, c, "num faint", "-"); }
+      box.appendChild(r);
+      box._empties.push(r);
+    }
+  } else if (rows.length && box._empties) {
+    box._empties.forEach(function (r) { r.remove(); });
+    box._empties = null;
+  }
   // the pie's legend in the header: each tier as the state legend draws an item, its square in
   // the tier's color, the name grey and the amount white, in the pie's order, no separators
   var ts = $("tier-sub");

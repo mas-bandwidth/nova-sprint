@@ -269,6 +269,10 @@
     :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
     :origin "issue #2710")
 
+    (fix "dashboard-empty-and-stopped-states" :release "v1.2.6" :status "planned"
+     :title "Cost breakdown empty state, landed tile text, and stopped dot red"
+     :text "When the epoch has no spend, the cost breakdown table keeps its header and shows three empty rows with \"-\" in each cell, instead of showing prose. When landed is 0 of 0, the landed tile reads \"nothing complete\" instead of \"- complete\". When the machine is STOPPED, the Updated clock dot is red (the stopped class) instead of green (the ok class). The fix preserves the stopped state across the setLive call that updates the clock."
+     :origin "seat fix, 2026-10-10")
    (fix "merge-approval-head-from-disposition" :release "v1.2.9" :status "planned"
     :title "Approval at head is read from the disposition line"
     :text "The review API commit id can differ from the head the reviewer read. Merge checks parse the head
