@@ -1910,6 +1910,11 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 	for _, f := range cardtree.Lint(brief) {
 		findings = append(findings, swarm.CardHeaderFinding{Check: f.Check, Line: f.Line, Excerpt: f.Excerpt})
 	}
+	// a header key below the first prose line is refused, never ignored: the gate reads
+	// only the header block, so a DEPENDS-ON: (or KIND:, PATHS:, ...) below the prose is
+	// a key the card would carry and never have read (swarm.LintHeaderStranded;
+	// docs/SPEC-SPRINT.md section 2, the card header)
+	findings = append(findings, swarm.LintHeaderStranded([]byte(brief))...)
 	// a card that changes the dashboard page quotes the owner asking for it (swarm.LintDashboardAsk)
 	findings = append(findings, swarm.LintDashboardAsk([]byte(brief))...)
 	return "", findings

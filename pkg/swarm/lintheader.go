@@ -188,9 +188,10 @@ func cardHeaderBlock(raw []byte) (block map[string]headerField, stranded map[str
 		}
 		m := headerKeyRE.FindStringSubmatch(line)
 		if ended {
-			// Past the block, only the five typed keys matter: any other `KEY:` line
-			// is a table row or a heading and is nobody's business here.
-			if m != nil && cardTypedKeys[m[1]] {
+			// Past the block, a header key the card format names is collected: LintHeaderStranded
+			// refuses it, since the gate never reads it. Any other `KEY:` line is a table row or a
+			// heading and is nobody's business here.
+			if m != nil && cardHeaderKeys[m[1]] {
 				if _, seen := stranded[m[1]]; !seen {
 					stranded[m[1]] = n
 				}
@@ -240,6 +241,38 @@ func CardPaths(raw []byte) []string {
 
 // cardTypedKeys is the five lines SPEC-TOOLWORK.md §5 rule 1 names, as a set.
 var cardTypedKeys = map[string]bool{"KIND": true, "PATHS": true, "TEST": true, "LEGS": true, "SOURCE": true}
+
+// cardHeaderKeys is every key the card header grammar names: the five typed lines
+// (cardTypedKeys) plus the brief's own keys (docs/SPEC-SPRINT.md section 2, the card
+// header). A `KEY: value` line of one of these below the header block is a header key
+// the gate will never read; LintHeaderStranded refuses it rather than letting a card
+// writer find out at accept. The names stay as written: `tier` is lower case, as the
+// contract line writes it.
+var cardHeaderKeys = map[string]bool{
+	"KIND": true, "PATHS": true, "TEST": true, "LEGS": true, "SOURCE": true,
+	"START": true, "STOP": true,
+	"DEPENDS-ON": true, "PRIORITY": true, "NEW": true, "SHARED": true,
+	"REPO": true, "BASE": true, "tier": true, "RESULT": true,
+}
+
+// LintHeaderStranded returns one finding per header key (cardHeaderKeys) written as a
+// `KEY: value` line below the header block the gate reads (docs/SPEC-SPRINT.md section 2,
+// the card header). A key in the header passes; a key below the first prose line is one
+// finding naming the key and its line. A sentence that merely mentions a key mid-line is
+// not a `KEY: value` line and draws nothing.
+func LintHeaderStranded(raw []byte) []CardHeaderFinding {
+	_, stranded := cardHeaderBlock(raw)
+	var out []CardHeaderFinding
+	for _, k := range slices.Sorted(maps.Keys(stranded)) {
+		line := stranded[k]
+		out = append(out, CardHeaderFinding{
+			Check:   "stranded-key",
+			Line:    line,
+			Excerpt: fmt.Sprintf("%s: on line %d is below the header block and is not read: the header is the unbroken run of `KEY: value` lines directly under the contract line; a header key below the first prose line is refused, never ignored", k, line),
+		})
+	}
+	return out
+}
 
 // cardKeyCheck is the token that answers for each typed key. LEGS: and SOURCE: have no
 // token of their own, so a stranded or repeated one answers under `kind-declared`, which
@@ -344,8 +377,12 @@ func lintCardHeader(raw []byte, trust TrustState, required bool, instructionOf f
 		out = append(out, CardHeaderFinding{Check: check, Line: line, Excerpt: excerpt})
 	}
 	// The stranded lines first, in line order, because they are why the rest of this
-	// card's header reads the way it does.
+	// card's header reads the way it does. Only a typed key answers here: a key with no
+	// token of its own is LintHeaderStranded's finding.
 	for _, k := range slices.Sorted(maps.Keys(stranded)) {
+		if cardKeyCheck[k] == "" {
+			continue
+		}
 		add(cardKeyCheck[k], stranded[k], fmt.Sprintf("%s: on line %d is below the header block and the gate will never read it: the typed header is the unbroken run of `KEY: value` lines directly under the contract line", k, stranded[k]))
 	}
 	// A repeated key next: a card with two of one line has no one value for it.

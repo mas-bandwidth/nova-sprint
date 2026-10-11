@@ -1669,6 +1669,18 @@ attempt when it was last returned to review, by any return, an orphan merge
 card's included), and the last CI observation for its current head (ci,
 ci_head) and of any head (ci_run, ci_run_status, ci_source).
 
+**The card header.** A brief's header is the leading run of `KEY: value` lines under its
+contract line (line 1), blank lines skipped; the run ends at the first line that is not a
+`KEY: value` line, and that line begins the card's prose. Only the header is read, so a
+header key written below the first prose line — `KIND:`, `PATHS:`, `TEST:`, `LEGS:`,
+`SOURCE:`, `START:`, `STOP:`, `DEPENDS-ON:`, `PRIORITY:`, `NEW:`, `SHARED:`, `REPO:`,
+`BASE:`, `RESULT:` or `tier:` — is refused, never ignored: the card lint
+(`swarm.LintHeaderStranded`) draws one `stranded-key` finding naming the key and its line,
+and `add`, `brief`, `recut` and `preflight` refuse it, exit 2 (preflight exit 1), nothing
+written. `add` and `brief` both print the finding as `LINT DRIFT brief <file>: stranded-key: <line>: <key>: on line <line> is below the header block and is not read: ... remedy=<remedy>`. The card that wrote
+its `DEPENDS-ON:` here was dealt before its dependencies landed (the owner, 2026-10-11, on
+epoch 17).
+
 **Rules by reference** (the owner, 2026-10-02: "Rules by reference: the member injects
 fleet/child-rules.txt once; the card does not carry it; a per-repo rules file for second
 repos."; nova-tools#5174 rule 6). A brief is the card's own text; the primary's field `rules`
