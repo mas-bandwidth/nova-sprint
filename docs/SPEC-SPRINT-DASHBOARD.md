@@ -64,7 +64,10 @@ byte of those files) is red (`TestThePageIsLocked`) until pagelock.txt gains a l
 date, the new digest and the owner's exact words asking for that change, and this section gains a
 line of the same date quoting the same words. Each change wants its own ask. The lock only grows:
 CI's "page lock only grows" step (`TestThePageLockOnlyGrows` against the pull request's base) is red
-when an old line of pagelock.txt is rewritten, dropped or moved. The card lint holds
+when an old line of pagelock.txt is rewritten, dropped or moved. One change needs no ask: a comment-only
+line (`<date> <digest> comment-only "<reason>"`, its reason quoted here on a line of its date) for a change
+that touches comments alone. The same CI check holds it to that: the page's rendered form (every comment taken
+out of index.html, its CSS and inline scripts, and app.js) must digest the same at the base and the head. The card lint holds
 the same rule before a card is written: `add` and `brief` refuse a card whose PATHS: or NEW:
 reaches the page's files, pageview.go or dashboard.go unless its SOURCE: line quotes the owner
 asking for that visible change, dated (`dashboard-asked-for`, pkg/swarm/dashboardask.go).
@@ -75,6 +78,7 @@ asking for that visible change, dated (`dashboard-asked-for`, pkg/swarm/dashboar
 - 2026-10-11 the owner: "NEVER REMOVE THINGS FROM THE DASHBOARD UNLESS I ASK"
 - 2026-10-11 the owner: "sentinel cards should not be counted when we are estimating time remaining, or cards per-hour"
 - 2026-10-11 the owner: "Right now they are inflating the ETA"
+- 2026-10-11 comment-only, no rendered byte changed (the owner's privacy is a hard rule in this public repository): "privacy: the page's comments name the owner as the owner"
 
 ## Serving and publishing
 

@@ -24,6 +24,19 @@ import (
 // until a new line of pagelock.txt carries the new digest and the owner's words for it, and
 // the spec's page lock section carries the same words on a line of the same date. Each
 // change wants its own ask: no two lines quote the same words.
+//
+// A COMMENT-ONLY CHANGE IS THE ONE CHANGE WITHOUT AN ASK, AND IT IS PROVEN TO RENDER NOTHING
+// NEW. A line may read
+//
+//	<YYYY-MM-DD> <sha256 digest> comment-only "<the reason, quoted in the spec as an ask is>"
+//
+// for a change that touches only comments (the first being the owner's privacy: his name
+// out of the page's comments in this public repository). Its reason is held to the spec as
+// an ask is; and the lock's growth check (TestThePageLockOnlyGrows, run in CI against the
+// change's base) holds it to its claim: when every line the change adds is comment-only, the
+// files' rendered form (RenderedForm: the bytes a browser runs, every comment taken out)
+// must digest the same at the base and at the head. A comment-only line over a change that
+// renders differently is red.
 
 // PageLockSection is the heading of the spec's section the lock's quotes are read from.
 const PageLockSection = "## The page lock"
@@ -48,16 +61,18 @@ func PageDigest(files map[string][]byte) string {
 }
 
 var (
-	lockLine = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}) ([0-9a-f]{64}) "(.+)"$`)
+	lockLine = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}) ([0-9a-f]{64}) (comment-only )?"(.+)"$`)
 	specDate = regexp.MustCompile(`^- (\d{4}-\d{2}-\d{2}) `)
 )
 
-// lockEntry is one line of pagelock.txt.
-type lockEntry struct{ date, digest, quote string }
+// lockEntry is one line of pagelock.txt; commentOnly marks a comment-only change.
+type lockEntry struct {
+	date, digest, quote string
+	commentOnly         bool
+}
 
-// CheckPageLock holds the locked files' digest now to the lock and the spec (above); nil when
-// it holds, else why, in words that say what to do.
-func CheckPageLock(lock, spec, digest string) error {
+// parseLock is pagelock.txt's lines.
+func parseLock(lock string) ([]lockEntry, error) {
 	var entries []lockEntry
 	for i, l := range strings.Split(lock, "\n") {
 		l = strings.TrimSpace(l)
@@ -66,9 +81,19 @@ func CheckPageLock(lock, spec, digest string) error {
 		}
 		m := lockLine.FindStringSubmatch(l)
 		if m == nil {
-			return fmt.Errorf("pagelock.txt line %d is not `<YYYY-MM-DD> <sha256> \"<the owner's words>\"`: %s", i+1, l)
+			return nil, fmt.Errorf("pagelock.txt line %d is not `<YYYY-MM-DD> <sha256> \"<the owner's words>\"` (or `<YYYY-MM-DD> <sha256> comment-only \"<the reason>\"`): %s", i+1, l)
 		}
-		entries = append(entries, lockEntry{m[1], m[2], m[3]})
+		entries = append(entries, lockEntry{m[1], m[2], m[4], m[3] != ""})
+	}
+	return entries, nil
+}
+
+// CheckPageLock holds the locked files' digest now to the lock and the spec (above); nil when
+// it holds, else why, in words that say what to do.
+func CheckPageLock(lock, spec, digest string) error {
+	entries, err := parseLock(lock)
+	if err != nil {
+		return err
 	}
 	if len(entries) == 0 {
 		return fmt.Errorf("pagelock.txt holds no line: the page is locked by its first line")
@@ -147,6 +172,33 @@ func LockGrows(base, now string) error {
 		if i >= len(is) || is[i] != l {
 			return fmt.Errorf("pagelock.txt line %d of the base, %q, is not kept as it was: the lock only grows, and a change of the page is a new line with the owner's new ask, never an old line rewritten", i+1, l)
 		}
+	}
+	return nil
+}
+
+// CommentOnlyHolds is why a change from base to head (their locks and their locked files) is
+// not what its comment-only lines claim, nil when it is: when every line head's lock adds is
+// comment-only, the files must render the same (RenderDigest) at both; a change any of whose
+// new lines quotes an ask of the owner's is held by that ask instead.
+func CommentOnlyHolds(baseLock, headLock string, baseFiles, headFiles map[string][]byte) error {
+	was, err := parseLock(baseLock)
+	if err != nil {
+		return err
+	}
+	is, err := parseLock(headLock)
+	if err != nil {
+		return err
+	}
+	if len(is) <= len(was) {
+		return nil
+	}
+	for _, e := range is[len(was):] {
+		if !e.commentOnly {
+			return nil
+		}
+	}
+	if b, h := RenderDigest(baseFiles), RenderDigest(headFiles); b != h {
+		return fmt.Errorf("pagelock.txt's new lines say comment-only, and the page renders differently: its files' rendered form (comments taken out) digests to %s at the base and %s here. A change a browser sees wants the owner's ask, quoted (the owner, 2026-10-11: \"NEVER REMOVE THINGS FROM THE DASHBOARD UNLESS I ASK\")", b, h)
 	}
 	return nil
 }
