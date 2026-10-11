@@ -310,6 +310,62 @@ func TestAProvenHookRunsAndAPushBlocksUntilAcknowledged(t *testing.T) {
 	assert.Contains(t, sent, "seat "+name+" is gone -> glenn")
 }
 
+// A re-challenge sent late keeps the seat live until that challenge's own bound, not
+// the proof's (SeatHook.tla, Rechallenge: proven stays TRUE and the outstanding
+// challenge is not late; Gate refuses only on ~lateC). The server sends it from a look,
+// which runs every hookLook, so it can go out after HookEvery: the record's Live must be
+// that challenge's send time plus HookAnswerBound, or a seat answering in time is refused
+// HookFirst while its challenge is still within bound. Past that challenge's own bound it
+// is gone at the look, and a fresh proof is live for HookEvery + HookAnswerBound again
+// (HookProven, unchanged).
+func TestARechallengedHookStaysLiveUntilItsOwnBound(t *testing.T) {
+	t.Parallel()
+	const name = "hook-e"
+	ta, _ := hookSprint(t, name)
+
+	c := ta.hookOn(name)
+	c.next("hello")
+	chal := c.next("challenge").Challenge
+	provedAt := ta.a.now()
+	r := c.say(hookMsg{T: "prove", Challenge: chal})
+	require.Equal(t, "ok", r.T, r.Why)
+	assert.Equal(t, provedAt.Add(sprint.HookEvery+sprint.HookAnswerBound).UTC(), r.Live.UTC())
+
+	// the look that sends the re-challenge runs late: step past HookEvery by the look's
+	// lag and look, so the challenge goes out after the proof's own Live
+	ta.step(sprint.HookEvery + 30*time.Second)
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	s.look(context.Background())
+	again := c.next("challenge").Challenge
+	require.NotEqual(t, chal, again)
+
+	// past the proof's Live but inside the re-challenge's own bound: a coordinator
+	// command runs (on the unfixed code the record still holds the proof's Live, and
+	// this is refused HookFirst)
+	ta.step(sprint.HookAnswerBound - 15*time.Second)
+	ta.lined(func() { ta.ok("where") })
+
+	// a proof of the new challenge inside its bound is live for HookEvery +
+	// HookAnswerBound again (HookProven, unchanged)
+	r = c.say(hookMsg{T: "prove", Challenge: again})
+	require.Equal(t, "ok", r.T, r.Why)
+	assert.Equal(t, ta.a.now().Add(sprint.HookEvery+sprint.HookAnswerBound).UTC(), r.Live.UTC())
+
+	// unanswered past its own bound, the next look records the seat gone and every
+	// command is refused HookFirst, as before
+	ta.step(sprint.HookEvery)
+	s.look(context.Background())
+	c.next("challenge")
+	ta.step(sprint.HookAnswerBound + time.Second)
+	s.look(context.Background())
+	bye := c.next("bye")
+	assert.Contains(t, bye.Why, "not answered in time")
+	rec := ta.waitHook(sprint.HookGone)
+	assert.Contains(t, rec.Why, "was not answered within 5m0s")
+	ta.refusedFirst("where", sprint.HookFirst)
+}
+
 func subjects(ta *testApp) []string {
 	var out []string
 	for _, m := range ta.sent {

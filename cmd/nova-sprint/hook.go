@@ -396,6 +396,39 @@ func (s *hookSession) challenge(now time.Time) error {
 	return s.send(hookMsg{T: "challenge", Challenge: c})
 }
 
+// rechallenge is the cadence's turn: a proven hook HookEvery old is sent a fresh
+// challenge, and the record's Live moves to that challenge's own bound, the send time
+// plus HookAnswerBound, when it is later than the Live the record holds (SeatHook.tla,
+// Rechallenge: the gate reads the outstanding challenge's deadline, ~lateC, never the
+// old proof's; the look runs every hookLook, so the challenge can go out after
+// HookEvery). The record is read and written under the line, as record does. A write
+// that fails leaves the record as it is (the earlier, safe bound), says so on the
+// server's line, and does not end the subscription.
+func (s *hookSession) rechallenge(ctx context.Context, now time.Time) {
+	if err := s.challenge(now); err != nil {
+		s.end(ctx, sprint.HookGone, "the challenge could not be sent: "+err.Error())
+		return
+	}
+	err := s.a.onLine(ctx, func(st *store.Store) error {
+		r, _, err := readHook(ctx, st)
+		if err != nil {
+			return err
+		}
+		if r.Session != s.id {
+			return errors.New("the record is another hook's")
+		}
+		live := now.Add(sprint.HookAnswerBound)
+		if !live.After(r.Live) {
+			return nil
+		}
+		r.Live = live
+		return writeHook(ctx, st, r)
+	})
+	if err != nil {
+		s.a.serveSay("SEAT HOOK name=%s: the re-challenge's bound could not be recorded: %s", s.name, oneline.Escape(err.Error()))
+	}
+}
+
 // send writes one line to the session; a write that fails ends the subscription.
 func (s *hookSession) send(m hookMsg) error {
 	b, err := json.Marshal(m)
@@ -550,10 +583,7 @@ func (s *hookSession) look(ctx context.Context) {
 		s.end(ctx, sprint.HookGone, fmt.Sprintf("the challenge sent at %s was not answered within %s", chalAt.UTC().Format(time.RFC3339), sprint.HookAnswerBound))
 		return
 	case chal == "" && !proven.IsZero() && now.Sub(proven) >= sprint.HookEvery:
-		if err := s.challenge(now); err != nil {
-			s.end(ctx, sprint.HookGone, "the challenge could not be sent: "+err.Error())
-			return
-		}
+		s.rechallenge(ctx, now)
 	}
 	var pushes []hookMsg
 	err := s.a.onLine(ctx, func(st *store.Store) error {
