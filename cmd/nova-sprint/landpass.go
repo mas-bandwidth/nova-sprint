@@ -14,13 +14,16 @@ package main
 // left (bisect, since 2026-10-10; before, each head was gated alone again from the base), so
 // the red head is blamed with the finding the lander always gave. A pass of eight batches of two
 // cards ran sixteen gates one after another (20 minutes, 2026-10-07); it now runs eight, up
-// to --land-parallel at a time. One base commit's gate and cure stay serial (baseGates), the
-// fetches and every write of the clone's shared refs too (fetchMu), and each stream's lander
-// (fork) has its own scratch and output, so the log keeps its lines and their order.
+// to --land-parallel at a time. One base commit's gate and cure stay serial (baseGates); each
+// clone's fetches and every write of its shared refs are serial per clone (fetchLock, keyed
+// on the clone's common git dir), so two clones, and two bases of one clone that need no
+// shared write, go side by side; and each stream's lander (fork) has its own scratch and
+// output, so the log keeps its lines and their order.
 //
-// PHASE 2, THE LANDING, SERIAL. The built batches land onto the base one at a time, as
-// they are built: in priority order among the built ones, a batch waiting for a
-// higher-priority stream still merging for landGrace at most (2026-10-10, fault item 4:
+// PHASE 2, THE LANDING, ONE LANE PER (clone, base). The built batches land in one lane per
+// (clone, base): within one base one at a time, in priority order among the built ones, a
+// batch waiting for a higher-priority stream still merging for landGrace at most
+// (2026-10-10, fault item 4:
 // before, each landing waited for every stream before it, up to its LandDeadline, and one
 // 99-card batch held every later stream's landing). Each job's LandDeadline runs on its own
 // clock from when it holds a width slot (launch): a gate past it is abandoned for this pass,
@@ -543,12 +546,12 @@ func (l *lander) ownRefusal(stream string, f conflictCard) bool {
 	return l.conflict(stream, f)
 }
 
-// prepare is the batch before any cut or merge, run by the pass alone, one job at a time
-// (the first batches in priority order, each later one as its stream's last is done, pass): the
-// refusals before git (placeWhy, pause), the clone and its lock, the clone restored when a
-// pass cut short left it dirty (restoreClone, LAND CLEANED), and the stream's worktree made
-// or cleaned. The cut and base gate run with the stream's merge in prepareCut. A dry run
-// ends here (dryBatch).
+// prepare is the batch before any cut or merge, run in the job's own goroutine (launch), so the
+// jobs of two lanes prepare side by side: the refusals before git (placeWhy, pause), the clone
+// and its lock, the clone restored when a pass cut short left it dirty (restoreClone, LAND
+// CLEANED), and the stream's worktree made or cleaned. The cut and base gate run with the
+// stream's merge in prepareCut, after the job's width slot; the first cuts of one repository
+// and base stay in priority order (the lane's chain, launch). A dry run ends here (dryBatch).
 func (l *lander) prepare(ctx context.Context, s *sprint.Snapshot, j *landJob) {
 	b := &j.b
 	if why, also := l.placeWhy(j.stream, j.cards); why != "" {

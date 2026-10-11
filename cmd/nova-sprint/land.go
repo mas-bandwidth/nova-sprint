@@ -103,7 +103,8 @@ Landing, the coordinator's: an external delivery (git pushes the base) and a sto
     merges the streams' batches beside each other, up to that many at once, each in
     its own worktree of the clone (<clone>@<stream> under the land root), each batch's
     tree gated once as a whole (a red gate then gates its heads one by one, to blame
-    the head); then lands the green batches one at a time in priority order: a batch
+    the head); then lands the green batches, one lane per (clone, base): each base's
+    batches one at a time in priority order, different bases and clones side by side: a batch
     cut from the tip the base still has is pushed with no new gate; one whose base moved
     (a batch landed before it) is merged again onto the new tip and pushed with no new
     gate when it changes no file the landings since touched, else gated once combined,
@@ -423,7 +424,7 @@ func (a *app) cmdLand(args []string, stdout, stderr io.Writer) int {
 	base := fs.String("base", "", "the base branch of a card whose brief names no BASE: line")
 	check := fs.String("check", "", "a command run once per batch, by sh -c in the clone on the batch branch, before the push (bounded to 30m); non-zero reports the batch red and pushes nothing")
 	dry := fs.Bool("dry-run", false, "print the batches it would land and change nothing: reads the store only (no git, no push, no report)")
-	parallel := fs.Int("land-parallel", landParallelDefault, "how many streams merge at once, each in its own worktree of the clone, before the landings go one at a time (landpass.go); 1 merges the streams one after another")
+	parallel := fs.Int("land-parallel", landParallelDefault, "how many streams merge at once, each in its own worktree of the clone, before each base's landings go one at a time (landpass.go); 1 merges the streams one after another")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "land", err.Error())
@@ -536,7 +537,8 @@ func (a *app) cmdLand(args []string, stdout, stderr io.Writer) int {
 	}
 	order = stillQueued(s, order)
 	// the pass: every stream's batch merged beside the others', then the green ones landed
-	// one at a time in this order (landpass.go; tla/LandPass.tla)
+	// in one lane per (clone, base), one at a time within a base and side by side across
+	// bases and clones (landpass.go; tla/LandPass.tla)
 	failed := l.pass(ctx, s, order) || recordFailed
 	if !l.dry {
 		l.pruneWorktrees(ctx)
