@@ -83,8 +83,7 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-11 the owner: "agree that the name becomes the key, and you add a small display name. good tidy feature. pls add."
 - 2026-10-11 the owner: "Please add sounds to the sprint dashboard. Whenever a card lands in the tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle."
 
-## The coin
-
+**The coin** (a note on the page, not a part of it: it has no panel of its own and adds none).
 The owner, 2026-10-11: "Whenever a card lands in the tick (1 or more), play a single gentle
 'ca-ching' sound, like a coin dropping. Keep it subtle." When a refresh's data carries a landed
 count higher than the refresh before's, the page plays one short coin — two sine partials, the
