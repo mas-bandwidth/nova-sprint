@@ -365,6 +365,7 @@ func withdrawnFrom(wc *Card) []string {
 // friendStarted says the friend has started the work card, by the store's own data: her
 // beat names it running (the card, its job or its primary), or it carries a progress stamp
 // (FieldProgress). The tick's level never moves a started card.
+// tla/FriendDealtReturn.tla Progress and Run (the model's take paths: Taken).
 func friendStarted(s *Snapshot, f FriendSeat, c *Card) bool {
 	if c.F(FieldProgress) != "" {
 		return true
