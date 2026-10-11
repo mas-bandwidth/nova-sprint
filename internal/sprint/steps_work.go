@@ -3098,37 +3098,40 @@ func levelWith(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, h
 	if held == nil {
 		held = memberLoads(s, up)
 	}
-	widths := memberWidths(s, up)
+	lanes := memberLanes(s, up)
 	for _, m := range up {
 		// a read card is its reader's: the level moves work cards alone (read_cards.go)
 		queues[m] = slices.DeleteFunc(append([]*Card{}, s.Fleet.Cell(m, Ready)...), isRead)
 	}
 	for {
-		long, short := "", ""
-		n := map[string]int{}
+		// the source is a member whose cards held (ready and working, a read at
+		// half a slot) exceed its lanes, so it holds a card it cannot start, and
+		// that has a ready card to give; it gives at most its excess (once its
+		// held reaches its lanes it is no source again), its newest ready cards
+		// first. A member at or below its lanes keeps every card dealt to it: it
+		// will take them at its next pass.
+		long, n := "", map[string]int{}
 		for _, m := range up {
-			n[m] = held[m] - s.Width(m)
+			n[m] = held[m] - lanes[m]
 		}
 		for _, m := range up {
-			if len(queues[m]) > 0 && (long == "" || n[m] > n[long]) {
+			if len(queues[m]) > 0 && held[m] > lanes[m] && (long == "" || n[m] > n[long]) {
 				long = m
 			}
-			if held[m] < widths[m] && (short == "" || n[m] < n[short]) {
-				short = m
-			}
 		}
-		if long == "" || short == "" || n[long]-n[short] <= 1 {
+		if long == "" {
 			return
 		}
-		// the newest card of the longest queue that has a target, never a member that
-		// refused it at staging (StagingRefusers; tla/CardContract.tla, Level)
+		// the newest card of the over-full member that has a target, never a
+		// member that refused it at staging (StagingRefusers; tla/CardContract.tla,
+		// Level)
 		q := queues[long]
 		i, to := len(q)-1, ""
 		for ; i >= 0 && to == ""; i-- {
 			// a bench card is never moved off its bench: the members its BENCH line does not
 			// name are avoided as a member that refused it at staging is (bench_deal.go)
 			// nor a member that cannot launch its route (notLaunching: fault 10)
-			to = target(rr, up, n, held, widths, long, append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...))
+			to = target(rr, up, n, held, lanes, long, append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...))
 		}
 		if to == "" {
 			return
