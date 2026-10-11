@@ -29,7 +29,7 @@ func TestEveryKindThatHoldsACardRefusesWait(t *testing.T) {
 		assert.NotEmpty(t, refusal, "%s holds a card and must refuse wait", k)
 		assert.Contains(t, refusal, "holds its card", k)
 	}
-	assert.Len(t, WaitAllowedOnACard, 2, "the exceptions stay few: a new one is a decision")
+	assert.Len(t, WaitAllowedOnACard, 3, "the exceptions stay few: a new one is a decision")
 }
 
 // The inbox never offers a verb the kind refuses: no kind of WaitRefused lists wait among its

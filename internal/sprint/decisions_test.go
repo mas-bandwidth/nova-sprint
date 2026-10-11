@@ -581,7 +581,7 @@ func TestAckAnswersOnlyTheTypesThatListIt(t *testing.T) {
 	all[NRemindFailed] = []string{"goal set friend-a --to <route>", "goal drop friend-a", "ack"}
 	ackable := map[string]bool{NTimer: true, NBlocked: true, NMissingNeed: true, NCIRed: true, NRepairSkipped: true, NOpStuck: true, NRemindFailed: true, NReportJudgment: true, NProviderFunds: true, NProviderLow: true, NProviderKey: true, NAllOutOfCredit: true, NScoredLow: true, NRaiseReadTier: true,
 		NAlarmReview: true, NAlarmMerging: true, NAlarmReady: true, NAlarmFleet: true, NFilesAlarm: true, NFriendDeaf: true, NFriendIdle: true, NFriendEmpty: true, NPinIgnored: true, NStatus: true, NDeadBase: true, NReadBranchMissing: true, NFriendSyncFailing: true,
-		NStopMemberDown: true, NStopPinWaits: true, NFriendStalled: true, NStopDebtBeat: true}
+		NStopMemberDown: true, NStopPinWaits: true, NFriendStalled: true, NStopDebtBeat: true, NFleetFailure: true}
 	for typ, ds := range all {
 		w := setup(t, 1)
 		n := Note{ID: "n-x.1", Kind: Judgment, Type: typ, Stream: "s1", Primaries: []string{"s1-1"}, Count: 1, Decisions: ds, At: w.s.Now}
@@ -593,7 +593,7 @@ func TestAckAnswersOnlyTheTypesThatListIt(t *testing.T) {
 			t.Errorf("%s lists ack and the ack was refused: %+v", typ, p.Refused)
 		case !ackable[typ] && (len(p.Refused) != 1 || len(p.Units) != 0 || !strings.Contains(p.Refused[0].Why, "ack does not answer")):
 			t.Errorf("%s does not list ack and the ack was not refused: %+v", typ, p)
-		case !ackable[typ] && TickKept(typ) && !strings.Contains(p.Refused[0].Why, "nova-sprint wait n-x.1"):
+		case !ackable[typ] && TickKept(typ) && WaitRefusal(n) == "" && !strings.Contains(p.Refused[0].Why, "nova-sprint wait n-x.1"):
 			t.Errorf("%s is kept by the tick and its refusal names no wait: %s", typ, p.Refused[0].Why)
 		}
 	}

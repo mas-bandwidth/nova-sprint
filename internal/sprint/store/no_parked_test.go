@@ -201,6 +201,8 @@ func TestAFrontierTierFailureReworksOnItsTier(t *testing.T) {
 	h.startMachine()
 	h.machine()
 	h.failTake("s1-1.w1", "verdict not-done; the tests fail at TestA: internal/x/a.go:12")
+	h.st.AnswerRules = false // the queue drained with no answer, then the brief made frontier
+	h.machine()
 	h.setPrimary("s1-1", map[string]string{"brief": briefOf("frontier", "")})
 	a := answerOf(t, h, sprint.NWorkFailed, "s1-1")
 	assert.Equal(t, sprint.ActRework, a.Act, a.Why)
