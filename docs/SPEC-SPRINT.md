@@ -586,6 +586,8 @@ that it has not left and who is not herself stuck so, ready on that row at its
 next generation, the friend it left added to `friends_left` so it never goes
 back to her, one line each (`... (not started 20m0s after its deal, and friend
 <name> names no job running)`; `sprint.friendUnstartedLevel`; a hard pin stays).
+The recipient must be dealable (up, with builder role, not marked dealt-no-more,
+and friends work on).
 A card no friend may take stays, and the deadline rule judges it once
 `friend_start_max` plus `FriendReadyMax` has run (`TickDeadlines`). The level's
 own evening leaves the oldest unstarted cards that hold her free lanes to her

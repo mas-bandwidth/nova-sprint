@@ -20,7 +20,7 @@ EXTENDS Naturals, FiniteSets, TLC
 \* whose ready card carries progress (she has taken one), so she is dealt no more
 \* though she has taken one. The fleet worker has no take of its own, as the deal
 \* fills it as it fills a member; a friend's card is ready until she starts it.
-CONSTANT BadGate, BadReturn
+CONSTANT BadGate, BadReturn, BadLevel
 
 Cards == {"c1", "c2", "c3", "c4"}
 Friends == {"a", "b"}
@@ -67,6 +67,15 @@ Progress(c) == /\ owner[c] \in Friends /\ c \notin started /\ c \notin progress
                /\ dealtNoMore' = dealtNoMore \ {owner[c]}
                /\ UNCHANGED <<owner, started>>
 
+\* the tick's level: a stale card (not started) moves from one friend to another
+\* with an idle lane. The recipient must be dealable (not marked dealt-no-more).
+\* BadLevel = "level" removes the gate, allowing moves to marked friends.
+Level(c, g, to) == /\ owner[c] = g /\ g \in Friends /\ to \in Friends /\ g \notin {to}
+                   /\ \A c \in Cards : owner[c] = to => c \notin started
+                   /\ \/ BadLevel = "level" \/ Dealable(to)
+                   /\ owner' = [owner EXCEPT ![c] = to]
+                   /\ UNCHANGED <<started, progress, dealtNoMore>>
+
 \* the tick's return past the bound: the friend holds a card and none of the
 \* cards she holds is started (a friend who has taken one is left alone; the
 \* code's friendDealtReturn skips a friend when friendHasTaken holds), so every
@@ -84,6 +93,7 @@ Return(f) == /\ f \in Friends
              /\ UNCHANGED <<started, progress>>
 
 Next == (\E c \in Cards, w \in Workers : Deal(c, w) \/ Start(c) \/ Progress(c))
+        \/ (\E c \in Cards, g \in Friends, to \in Friends : Level(c, g, to))
         \/ (\E f \in Friends : Return(f))
 Spec == Init /\ [][Next]_vars
 
