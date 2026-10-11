@@ -39,7 +39,21 @@
    :title "Docs, models and the repository"
    :text "Documentation suites, the TLA+ ledger, and the models.")
   (group "friends" :title "Friend AIs"
-   :text "Friend AIs, their lanes, harnesses and the way the sprint deals to them."))
+   :text "Friend AIs, their lanes, harnesses and the way the sprint deals to them.")
+  (group "v13-client-server" :title "v1.3: client/server"
+   :text "First of v1.3. One server holds the truth; members and friends become clients that ask it,
+    on one lane protocol. Each item here was a card or a card file moved out of the sprint on
+    2026-10-11 (the owner: everything for v1.3 and later leaves the sprint; only v1.2.x fleet
+    tightening stays).")
+  (group "v13-schema-tables" :title "v1.3: schema tables"
+   :text "Second of v1.3. The sprint wire in schema message form, cards as typed tables, and the
+    ledgers (fixes, TLA run records, evidence) as tables keyed by id. Moved out of the sprint on
+    2026-10-11.")
+  (group "v13-friends" :title "v1.3: friends back, as clients"
+   :text "Third of v1.3. Every friend-lane fix: the verdict a friend reports, reads and holds on a
+    friend's row, finishes, presence and pong, friend daemons and harness lanes, each friend's lane
+    issues, and the one lane protocol they all become clients of. Moved out of the sprint on
+    2026-10-11."))
 
  :items
  (
@@ -2097,4 +2111,166 @@
    :text "An append-only log of the coordinator's decisions, which the machine reads before it raises a judgment, so a question already settled is not asked again."
    :why "New capability."
    :release "v1.3"
-   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")))
+   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (item "card-a1-wire" :group "v13-client-server"
+   :title "Group A native runtime, A1: the wire and the process group"
+   :text "Done when: the card's gate go test -count=1 ./internal/sprintwire -run
+    TestStopReturnOpSerialization passes on the stop-return wire types, the process group anchor and
+    the visible sandbox roots. Needs: nothing in its brief (the v1.3 manifest schedules it after
+    card-slice-d-stop-pause)."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card file moved out of the sprint plan (rowan-new
+    tmp/v1.3-cards/slice-a/card-a1-wire.md, 2026-10-11; brief written against nova-tools dev
+    b0e29f2, before the split)")
+  (item "card-a2-store" :group "v13-client-server"
+   :title "Group A native runtime, A2: the store engine and its state machine"
+   :text "Done when: go test -count=1 ./internal/sprint/store -run TestLandAdmission passes with the
+    land admission checks and atomic transitions in the store. Needs: card-a1-wire."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card file moved out of the sprint plan (rowan-new
+    tmp/v1.3-cards/slice-a/card-a2-store.md, 2026-10-11; brief written against nova-tools dev
+    b0e29f2, before the split)")
+  (item "card-a3-driver" :group "v13-client-server"
+   :title "Group A native runtime, A3: the driver, the deal and the reconciler"
+   :text "Done when: go test -count=1 ./internal/sprint -run TestFriendDeal passes with dealing,
+    capacity reconciliation and the loop dispatch in the driver. Needs: card-a2-store."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card file moved out of the sprint plan (rowan-new
+    tmp/v1.3-cards/slice-a/card-a3-driver.md, 2026-10-11; brief written against nova-tools dev
+    b0e29f2, before the split)")
+  (item "card-a4-handler" :group "v13-client-server"
+   :title "Group A native runtime, A4: the verbs and promotion handlers"
+   :text "Done when: go test -count=1 ./cmd/nova-sprint -run TestVerbHelp passes with the admission
+    and promotion verbs wired into the command line. Needs: card-a3-driver."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card file moved out of the sprint plan (rowan-new
+    tmp/v1.3-cards/slice-a/card-a4-handler.md, 2026-10-11; brief written against nova-tools dev
+    b0e29f2, before the split)")
+  (item "card-a5-telemetry" :group "v13-client-server"
+   :title "Group A native runtime, A5: the test rigs and telemetry"
+   :text "Done when: go test -count=1 ./cmd/nova-sprint -run TestLandgateFault passes on the
+    fault-injection rigs for the whole Group A stack. Needs: card-a4-handler."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card file moved out of the sprint plan (rowan-new
+    tmp/v1.3-cards/slice-a/card-a5-telemetry.md, 2026-10-11; brief written against nova-tools dev
+    b0e29f2, before the split)")
+  (item "card-slice-d-stop-pause" :group "v13-client-server"
+   :title "Slice D: pause admission and STOP-return replay identity"
+   :text "Done when: go test -count=1 ./internal/sprint/store -run TestLandAdmission passes:
+    admitted cards settle while paused, nothing new is admitted, and a STOP-return replays
+    idempotently by a stable operation id across restarts. Needs: card-slice-e-priority-width."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card file moved out of the sprint plan (rowan-new
+    tmp/v1.3-cards/slice-d/card-slice-d-stop-pause.md, 2026-10-11; donor 5d7fffe3, nova-tools PR
+    #5472)")
+  (item "schema-cards-c02-parse-once-render-many" :group "v13-schema-tables"
+   :title "Cards as schema tables, L2: parse once, render many"
+   :text "Done when: make cards-test runs and passes TestParseRenderCorpus,
+    TestParseRefusesAStrandedKey and TestParseBodyBoundary, absent at the start commit
+    (mas-bandwidth/schema). Needs: schema-cards-c01-declaration-and-roundtrip (landed in the sprint
+    on 2026-10-11, during the move)."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card moved out of the sprint (sprint store, 2026-10-11: stream schema-cards, working)")
+  (item "schema-cards-c03-versioning-corpus-and-upgrade" :group "v13-schema-tables"
+   :title "Cards as schema tables, L3: the versioning corpus and the upgrade"
+   :text "Done when: make cards-test runs TestEveryCorpusRecordReadsWithTheCurrentModel,
+    TestUpgradeKeepsEveryField and TestUnsupportedDataIsReported; every shipped fixture upgrades,
+    lossy probes refuse, and cards-corpus-check is mandatory in cards-test and test-go
+    (mas-bandwidth/schema). Needs: schema-cards-c02-parse-once-render-many."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card moved out of the sprint (sprint store, 2026-10-11: stream schema-cards, waiting)")
+  (item "schema-cards-c04-field-edits-and-the-view" :group "v13-schema-tables"
+   :title "Cards as schema tables, L4: field edits and the reflection view"
+   :text "Done when: make cards-test cards-fuzz passes in the generated cards module; an edit to one
+    field never touches the body, refused edits keep the original wire, and needs and paths keep the
+    shared 512-entry bound (mas-bandwidth/schema). Needs:
+    schema-cards-c03-versioning-corpus-and-upgrade."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card moved out of the sprint (sprint store, 2026-10-11: stream schema-cards, waiting)")
+  (item "schema-cards-c05-the-cards-page" :group "v13-schema-tables"
+   :title "Cards as schema tables, L5: the cards page"
+   :text "Done when: make cards-test cards-example passes both named tests, removing a facade entry
+    from the page fails its test, and a separate customer module uses the facade without internal
+    imports (mas-bandwidth/schema). Needs: schema-cards-c04-field-edits-and-the-view."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card moved out of the sprint (sprint store, 2026-10-11: stream schema-cards, waiting)")
+  (item "tla-cardversioning-no-field-is-lost" :group "v13-schema-tables"
+   :title "A TLA+ model of card versioning: no field is lost"
+   :text "Done when: bounded TLC exhausts the model with TypeOK, NoFieldLost, BodyUnchanged,
+    RefusalKeepsOriginal, UnknownIsReported and ShippedUpgradeSucceeds, each reversed cfg fails its
+    invariant, and tables/cards/upgrade.go cites the model (mas-bandwidth/schema). Needs:
+    schema-cards-c03-versioning-corpus-and-upgrade."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card moved out of the sprint (sprint store, 2026-10-11: stream schema-cards, waiting)")
+  (item "a-reports-verdict-is-never-rewritten-by-a-keyword-match" :group "v13-friends"
+   :title "A report's verdict is never rewritten by a keyword match"
+   :text "Done when: TestAKeywordMissIsAJudgmentNeverAHold (a LAND report missing the brief's words
+    lands in review with one judgment and the friend's row not failed) and
+    TestARedealCarriesTheNewestPushedHead pass, red first, and docs/SPEC-SPRINT.md states the rule.
+    Needs: nothing."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card moved out of the sprint (sprint store, 2026-10-11: stream v1214, working;
+    nova-sprint PR #98, Stella's fix, is its open change)")
+  (item "a-down-friends-cards-bounce-back-at-the-tick" :group "v13-friends"
+   :title "A down, deaf or held friend's cards bounce back at the tick"
+   :text "Done when: internal/sprint/friend_bounce_test.go, red first: every dealt-and-not-started
+    card and read on a down, deaf or held friend's row returns to the pool in the tick that records
+    the state and is dealt again in that tick, her started cards finish, and a ready card over her
+    width moves to a free slot. Needs: nothing."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card file moved out of the sprint plan (rowan-new
+    tmp/next-sprint-cards/v1.2.15/a-down-friends-cards-bounce-back-at-the-tick.md, 2026-10-11;
+    planned for v1.2.15)")
+  (item "card-slice-e-priority-width" :group "v13-friends"
+   :title "Slice E: the fix priority tier and a one-shot friend's configured width"
+   :text "Done when: go test -count=1 ./internal/sprint -run TestPriority passes: fix outranks
+    blocker, role priority is apart from producer urgency, and a one-shot friend holds up to her
+    configured width. Needs: card-slice-j-nudge-debt (nova-tools roadmap)."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card file moved out of the sprint plan (rowan-new
+    tmp/v1.3-cards/slice-e/card-slice-e-priority-width.md, 2026-10-11; donor 2814fbb9)")
+  (item "a-model-has-a-requests-per-second-budget" :group "sprint"
+   :title "One requests-per-second budget per model, shared by every caller"
+   :text "Done when: one bucket per model and key in the sprint store, taken atomically by every
+    fleet member, friend lane, reader and manual run, so 10 per second for Mercury 3 is 10 in total
+    (the manifest's gate is TestModelRateLimitBucket); Mercury 3 becomes heavy once it lands. Needs:
+    nothing."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card file moved out of the sprint plan (rowan-new
+    tmp/v1.3-cards/a-model-has-a-requests-per-second-budget.md, 2026-10-11; the owner, 2026-10-08
+    and 2026-10-09)")
+  (item "a-tick-does-bounded-work-under-the-gate" :group "sprint"
+   :title "A tick does bounded work under the gate"
+   :text "Done when: TestTheDirtyTickDriveOnAStore passes 3 runs of 3 with no tick over 1 s at CI's
+    load, the certification workflow's tick-gate job is green, and each package's tests stay under
+    one minute. Needs: nothing in its brief (it names nova-tools #5543 and #5557 first, from before
+    the split)."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card file moved out of the sprint plan (rowan-new
+    tmp/v1.3-cards/a-tick-does-bounded-work-under-the-gate.md, 2026-10-11)")
+  (item "the-lander-records-its-own-landings" :group "sprint"
+   :title "The lander records its own landings"
+   :text "Done when: tla/LandPass.tla makes an unrecorded pushed batch reachable, every pushed card
+    is recorded landed by the end of its pass (or the next pass records it), a reversed witness that
+    skips the record fails, and no pushed head waits in merging for a seat merge --stream. Needs:
+    nothing."
+   :date "2026-10-11"
+   :release "v1.3"
+   :origin "card file moved out of the sprint plan (rowan-new
+    tmp/v1.3-cards/the-lander-records-its-own-landings.md, 2026-10-11)")))
