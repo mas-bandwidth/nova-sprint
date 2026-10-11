@@ -158,7 +158,7 @@ func TestABrokenReadIsReworkedByRuleWithItsFinding(t *testing.T) {
 		assert.Len(t, r.answeredBy(sprint.RuleReadBroken), 1, "widened once")
 		r.clean("widened in place by rule")
 	})
-	t.Run("a finding outside PATHS at the brief's bound: widened in place, not stopped", func(t *testing.T) {
+	t.Run("a finding outside PATHS at the brief's bound: goes to coordinator", func(t *testing.T) {
 		t.Parallel()
 		r := newConflictRig(t)
 		r.readCard()
@@ -167,26 +167,16 @@ func TestABrokenReadIsReworkedByRuleWithItsFinding(t *testing.T) {
 		require.Equal(t, 2, r.snap().Work.Card("r-1").Int("attempt"), "a finding naming no file is reworked")
 		// the sprint's cap lowered to 2 once attempt 2 is dealt: the read of attempt 2 is at the
 		// brief's bound (the cap's attempts on one brief), so a finding outside PATHS reaches
-		// the bound check in Read and must pass it (steps_review.go, the !outside guard). The
-		// sprint's cap, not the stream's: the read step's snapshot holds the work table's
-		// property, and no stream control card (AttemptsCap)
+		// the bound check in Read. The sprint's cap, not the stream's.
 		r.must(store.SetStep(sprint.SetReq{Attempts: "2", Who: "coordinator"}))
 		_, atCap := sprint.AtBriefBound(r.snap().Work.Card("r-1"), "", 2)
 		require.True(t, atCap, "attempt 2 of a brief whose cap is 2 is at the brief's bound")
 		finding := "internal/y/b.go:40 still calls the old name, outside PATHS; rename the call too"
 		r.brokenRead("r-1", finding)
-		assert.Empty(t, r.openOnCard(sprint.NBriefWrong, "r-1"), "a finding naming a file outside PATHS raises no bound")
 		r.tick()
 
-		s := r.snap()
-		assert.Nil(t, s.Work.Card("r-1b"), "no twin")
-		pr := s.Work.Placed("r-1")
-		require.NotNil(t, pr)
-		assert.NotEqual(t, sprint.Review, pr.Col, "its next attempt is opened")
-		assert.Contains(t, pr.F("brief"), "\nPATHS: internal/x/a.go,internal/y/b.go\n")
-		assert.Equal(t, "2", pr.F(sprint.FieldBriefAttempt), "its brief's bound counts again from attempt 2")
-		assert.Empty(t, r.openOnCard(sprint.NReadBroken, "r-1"))
-		assert.Empty(t, r.openOnCard(sprint.NBriefWrong, "r-1"))
+		briefWrong := r.openOnCard(sprint.NBriefWrong, "r-1")
+		assert.Len(t, briefWrong, 1, "at the bound, goes to coordinator")
 	})
 	t.Run("widened MaxWidens times: a new file outside PATHS is the brief's bound, never widened again", func(t *testing.T) {
 		t.Parallel()
@@ -215,7 +205,7 @@ func TestABrokenReadIsReworkedByRuleWithItsFinding(t *testing.T) {
 		assert.Contains(t, bound[0].Note.What, "widened 3 times")
 		assert.Nil(t, s.Work.Card("r-1b"), "never twinned")
 	})
-	t.Run("at the brief's bound: still reworked with the finding", func(t *testing.T) {
+	t.Run("at the brief's bound: goes to coordinator", func(t *testing.T) {
 		t.Parallel()
 		r := newConflictRig(t)
 		r.readCard()
@@ -225,12 +215,10 @@ func TestABrokenReadIsReworkedByRuleWithItsFinding(t *testing.T) {
 		require.Equal(t, 2, r.snap().Work.Card("r-1").Int("attempt"))
 		r.brokenRead("r-1", finding)
 		r.tick()
-		r.tick()
 
-		pr := r.snap().Work.Card("r-1")
-		assert.Equal(t, 3, pr.Int("attempt"), "the same finding twice is still reworked")
-		assert.Empty(t, r.openOnCard(sprint.NBriefWrong, "r-1"), "a broken finding is no brief defect")
-		assert.Len(t, r.answeredBy(sprint.RuleReadBroken), 2, "the rule answered both findings")
+		briefWrong := r.openOnCard(sprint.NBriefWrong, "r-1")
+		assert.Len(t, briefWrong, 1, "the same finding twice goes to coordinator")
+		assert.Contains(t, briefWrong[0].Note.What, "failed the same way twice")
 	})
 	t.Run("turned off: stays a judgment", func(t *testing.T) {
 		t.Parallel()
@@ -329,4 +317,120 @@ func TestAWidenKeepsTheFinderOfTheWidenedAttempt(t *testing.T) {
 	assert.Contains(t, pr.F("brief"), "internal/y/b.go", "widened in place")
 	assert.Equal(t, "2", pr.F(sprint.FieldFindingAttempt), "the finding is attempt 2's")
 	assert.Equal(t, second, pr.F(sprint.FieldFindingReader), "its finder is the reader who broke attempt 2")
+}
+
+func TestTheSameInsidePathsFindingTwiceGoesToTheCoordinator(t *testing.T) {
+	t.Parallel()
+	r := newConflictRig(t)
+	r.readCard()
+
+	finding := "internal/x/a.go:12 drops the error from Close; return it"
+	r.brokenRead("r-1", finding)
+	r.tick()
+	s := r.snap()
+	pr := s.Work.Card("r-1")
+	require.Equal(t, 2, pr.Int("attempt"), "reworked by rule in tick 1")
+	require.Empty(t, r.openOnCard(sprint.NBriefWrong, "r-1"), "no NBriefWrong after first broken read")
+
+	// Second broken read with SAME finding
+	t.Log("Before second broken read")
+	r.brokenRead("r-1", finding)
+	t.Log("After second broken read, before tick")
+	r.tick()
+	s = r.snap()
+	pr = s.Work.Card("r-1")
+
+	t.Logf("attempt: %d", pr.Int("attempt"))
+	t.Logf("brief_attempt: %d", pr.Int(sprint.FieldBriefAttempt))
+	t.Logf("finding field: %q", pr.F("finding"))
+	t.Logf("FieldFindingAttempt: %d", pr.Int(sprint.FieldFindingAttempt))
+	t.Logf("FieldFindingKeys: %q", pr.F(sprint.FieldFindingKeys))
+	t.Logf("FieldFindings: %q", pr.F(sprint.FieldFindings))
+	t.Logf("opening NBriefWrong: %v", r.openOnCard(sprint.NBriefWrong, "r-1"))
+	t.Logf("opening NReadBroken: %v", r.openOnCard(sprint.NReadBroken, "r-1"))
+
+	// Should have NBriefWrong saying "has failed the same way twice"
+	briefWrong := r.openOnCard(sprint.NBriefWrong, "r-1")
+	require.Len(t, briefWrong, 1, "should have NBriefWrong judgment after same finding twice")
+	assert.Contains(t, briefWrong[0].Note.What, "failed the same way twice")
+}
+
+func TestBreakerResetOnBriefEdit(t *testing.T) {
+	t.Parallel()
+	r := newConflictRig(t)
+	r.readCard()
+
+	finding1 := "internal/x/a.go:12 drops the error from Close; return it"
+	r.brokenRead("r-1", finding1)
+	r.tick()
+	require.Equal(t, 2, r.snap().Work.Card("r-1").Int("attempt"))
+
+	finding2 := "internal/x/a.go:34 missing nil check before dereference"
+	r.brokenRead("r-1", finding2)
+	r.tick()
+	require.Equal(t, 3, r.snap().Work.Card("r-1").Int("attempt"))
+
+	finding3 := "internal/x/a.go:56 wrong error message text"
+	r.brokenRead("r-1", finding3)
+	r.tick()
+	require.Equal(t, 4, r.snap().Work.Card("r-1").Int("attempt"))
+
+	// Edit the brief to reset the count
+	r.must(store.BriefStep(sprint.BriefReq{ID: "r-1", Brief: readBrief + "\n--- edited ---\n", Who: "coordinator"}))
+
+	// Now next broken read should be reworked by rule again
+	finding4 := "internal/x/a.go:78 closes context after use"
+	r.brokenRead("r-1", finding4)
+	r.tick()
+	require.Equal(t, 5, r.snap().Work.Card("r-1").Int("attempt"), "should be reworked by rule after brief edit")
+	require.Empty(t, r.openOnCard(sprint.NBriefWrong, "r-1"), "no NBriefWrong after brief edit resets count")
+}
+
+func TestTheFourthRoundOfNewBlockingFindingsGoesToTheCoordinator(t *testing.T) {
+	t.Parallel()
+	r := newConflictRig(t)
+	r.readCard()
+
+	// Four rounds, each with a new finding inside PATHS (different file:line keys)
+	finding1 := "internal/x/a.go:12 drops the error from Close; return it"
+	r.brokenRead("r-1", finding1)
+	r.tick()
+	s := r.snap()
+	pr := s.Work.Card("r-1")
+	require.Equal(t, 2, pr.Int("attempt"), "reworked by rule in tick 1")
+
+	finding2 := "internal/x/a.go:34 missing nil check before dereference"
+	r.brokenRead("r-1", finding2)
+	r.tick()
+	s = r.snap()
+	pr = s.Work.Card("r-1")
+	require.Equal(t, 3, pr.Int("attempt"), "reworked by rule in tick 2")
+
+	finding3 := "internal/x/a.go:56 wrong error message text"
+	r.brokenRead("r-1", finding3)
+	r.tick()
+	s = r.snap()
+	pr = s.Work.Card("r-1")
+	require.Equal(t, 4, pr.Int("attempt"), "reworked by rule in tick 3")
+
+	finding4 := "internal/x/a.go:78 closes context after use"
+	r.brokenRead("r-1", finding4)
+	r.tick()
+	s = r.snap()
+	pr = s.Work.Card("r-1")
+
+	// After 4th broken read: should have NBriefWrong, not NReadBroken
+	briefWrong := r.openOnCard(sprint.NBriefWrong, "r-1")
+	t.Logf("NBriefWrong: %+v", briefWrong)
+	t.Logf("NReadBroken: %+v", r.openOnCard(sprint.NReadBroken, "r-1"))
+	require.Len(t, briefWrong, 1, "should have NBriefWrong judgment after 4th round with new findings")
+	assert.Contains(t, briefWrong[0].Note.What, "review circuit breaker")
+	openReadBroken := r.openOnCard(sprint.NReadBroken, "r-1")
+	require.Len(t, openReadBroken, 0, "should have no NReadBroken")
+
+	// Tick again: attempt should not change (no rework past breaker)
+	r.tick()
+	s = r.snap()
+	pr = s.Work.Card("r-1")
+	require.Equal(t, 4, pr.Int("attempt"), "attempt should not increment after breaker trips")
 }
