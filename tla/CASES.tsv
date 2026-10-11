@@ -287,6 +287,7 @@ MCServerLanesLive.cfg	MCServerLanes.tla	pass	-	ignore-terminal	serverlanes	requi
 MCServerLanesBrokenBeatOnLine.cfg	MCServerLanes.tla	invariant	BeatNeverWaitsForTheLine|LanesHoldNoLine	ignore-terminal	serverlanes	required	-
 MCServerLanesBrokenReadOnLine.cfg	MCServerLanes.tla	invariant	ReadWaitsOnlyForReads|LanesHoldNoLine	ignore-terminal	serverlanes	required	-
 MCServerLanesBrokenRunGone.cfg	MCServerLanes.tla	invariant	GoneNeverRuns	ignore-terminal	serverlanes	required	-
+MCServerLanesBrokenTickQueues.cfg	MCServerLanes.tla	invariant	TickWaitsOneTurn	ignore-terminal	serverlanes	required	-
 MCCoordinatorWake.cfg	MCCoordinatorWake.tla	pass	-	ignore-terminal	coordinatorwake	required	-
 MCCoordinatorWakeBrokenNoCursor.cfg	MCCoordinatorWake.tla	invariant	AtMostOnce	ignore-terminal	coordinatorwake	required	-
 MCCoordinatorWakeBrokenSkip.cfg	MCCoordinatorWake.tla	temporal	NoLapse	ignore-terminal	coordinatorwake	required	-
@@ -403,6 +404,8 @@ MCAdopt.cfg	MCAdopt.tla	pass	-	ignore-terminal	adopt	required	-
 MCAdoptBrokenKeepNew.cfg	MCAdopt.tla	invariant	RefusedLeavesOld	ignore-terminal	adopt	required	-
 MCRetireAbsent.cfg	MCRetireAbsent.tla	pass	-	ignore-terminal	retire-absent	required	-
 MCRetireAbsentBroken.cfg	MCRetireAbsent.tla	invariant	RecordsKeepRows	ignore-terminal	retire-absent	required	-
+MCReadCards.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
+MCReadCardsBrokenIgnoreSpent.cfg	MCReadCards.tla	invariant	NeverTwiceAfterSpent	ignore-terminal	readcards	required	-
 MCReaderTiers.cfg	MCReaderTiers.tla	pass	-	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenHeld.cfg	MCReaderTiers.tla	invariant	NoReadToAHeldReader	ignore-terminal	readertiers	required	-
 MCRateBudget.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
