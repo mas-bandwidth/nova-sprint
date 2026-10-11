@@ -479,21 +479,29 @@
    :text "A card pinned to anthropic/claude-fable-5-1 was dealt to batman, hetzner2, superman and b3, its
     whole redeal bound in 22 seconds; each take was refused class=auth for want of an Anthropic key no fleet
     member holds, and a judgment blamed the card. routeOf and routeServed treated every model: pin as served
-    by every member. Now a member serves a pin only when an enabled opencode route names the pin's provider
-    (the fleet holds its key), the provider does not rest, and the member's own takes of that provider's
-    pins were not refused for its key or credit within the route rest window; the deal, the redeal, the
-    rebalance and the level offer a pinned card only to such a member (internal/sprint/pin_serve.go). A
-    pinned card no member of its pool serves waits ready and spends no redeal, under one judgment of the
-    pin (no worker can serve pin <model>), open while a card of it waits and closed when one is served. A
-    provider's key or credit refusal of a pin's take is a coordination failure, accounted as a stop on
-    unlanded needs is: withdrawn with no take ended (no redeal), no ok field (no fail mark, no ok% hit), its
-    consumer end counted neither ok nor failed, and its record rests that provider's pins for that member.
-    A store with no route still deals every pin. Tests: TestAPinnedCardIsNeverDealtToAMemberWithoutItsProvider,
-    TestAPinnedCardNoOneCanServeWaitsWithOneJudgment, TestAProviderAuthFailureOnAPinNeverSpendsTheCardsRedeals
-    and the control TestAPinnedCardAMemberCanServeIsDealtAsUsual. tla/RouteIndex.tla gains the pin-serve
-    guard, PinRefused, PinDealtServes and PinSpendsNoRedeal, with the pinblind witness and the ReachPinRest
-    reach."
-   :origin "live 2026-10-11: a fable-pinned card burned its redeal bound on four fleet members")
+    by every member. Now, in a store that holds routes, a member serves a pin only when an enabled opencode
+    route names the pin's provider (the fleet holds its key), the provider does not rest, and the member's
+    pins of that provider do not rest; the deal, the redeal, the rebalance and the level offer a pinned card
+    only to such a member, every take (by id and by count) refuses one on a member whose pins rest, and the
+    tick withdraws a pinned card ready on a member that no longer serves it (internal/sprint/pin_serve.go).
+    A pinned card no member of its pool serves waits ready and spends no redeal, under one judgment of the
+    pin (no worker can serve pin <model>). A provider's key or credit refusal of a pin's take is a
+    coordination failure, accounted as a stop on unlanded needs is: withdrawn with no take ended (no
+    redeal), no ok field (no fail mark, no ok% hit), its consumer end counted neither ok nor failed. Its
+    record is one per member on the work card, latest wins, with a count: the refusal rests that provider's
+    pins on the member for the route rest window, and after three refusals the rest stands, so the card
+    waits under one standing judgment that never reopens, until the member is brought up again. In a store
+    with no route nothing is known of keys: every pin is dealt and a refusal ends its take as any provider
+    failure does, spending a redeal, so the redeal bound ends it. A late refusal (the deadline already
+    ended the take) keeps the deadline's path, as every late report does. Tests:
+    TestAPinnedCardIsNeverDealtToAMemberWithoutItsProvider, TestAPinnedCardNoOneCanServeWaitsWithOneJudgment,
+    TestAProviderAuthFailureOnAPinNeverSpendsTheCardsRedeals, TestAPinRefusalInAStoreWithNoRouteSpendsARedealAndEnds,
+    TestAPinRefusedOnEveryMemberStandsUnderOneJudgment, TestAPinnedCardReadyOnARestingMemberIsNotTakenAndIsWithdrawn
+    and the control TestAPinnedCardAMemberCanServeIsDealtAsUsual. tla/RouteIndex.tla (THE PIN) models the
+    pin's deal, the code's redeal path, the refusal, the rest's end, its standing cap, the member brought up
+    and the store with no route: PinDealtServes, RedealsAreTakeEnds and RefusalsBounded, with the pinblind,
+    pinspend, noroutesloop and norestcap witnesses."
+   :origin "live 2026-10-11: a fable-pinned card burned its redeal bound on four fleet members; cold reads of PR #107")
   (fix "brief-check-runs-the-add-checks-without-a-write" :release "v1.2.14" :status "planned"
    :title "brief check runs every add check without a write"
    :text "An add's refusals arrived one class at a time, so a brief writer learned of the next only after

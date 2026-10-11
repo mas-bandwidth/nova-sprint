@@ -1556,6 +1556,14 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		if rest, ok := cardRest(s, c); ok {
 			return "its route " + c.F(FieldRoute) + " rests until " + rest.UntilSaid() + " (" + rest.Said() + "): the tick withdraws it and deals it again on a route that serves"
 		}
+		// a pinned card dealt before its provider's pins rested on this member is never taken
+		// here: the provider would refuse it again; the tick withdraws it (restWithdrawals,
+		// pin_serve.go)
+		if c.F(FieldRoute) == RoutePin && !IsFriendRow(c.Row) {
+			if w := s.pinRestWhy(pinProvider(c.F(FieldModel)), r.As); w != "" {
+				return "its pin " + c.F(FieldModel) + " is not served on " + r.As + ": " + w + ": the tick withdraws it and deals it to a member that serves it"
+			}
+		}
 		if byID && room < cost(c) {
 			return fmt.Sprintf("%s %s is at its width (%d working of %d): a card is taken when one is reported", worker, r.As, len(s.Fleet.Cell(r.As, Working)), width)
 		}
@@ -1760,9 +1768,9 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		switch kind {
 		case cardhdr.EndProvider:
-			if pinRefused(c, kind, r) && !late {
+			if pinRefused(s, c, kind, r) && !late {
 				// a pin the provider refused for its key or credit: a coordination failure,
-				// never the worker's or the card's (pin_serve.go; tla/PinServe.tla): no redeal
+				// never the worker's or the card's (pin_serve.go; tla/RouteIndex.tla, THE PIN): no redeal
 				// spent, no fail mark, and the pin rests for that member
 				p.Units = append(p.Units, pinRefusedReturned(s, c, pr, r))
 				continue

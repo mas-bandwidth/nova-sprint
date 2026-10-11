@@ -615,7 +615,7 @@ func (s *Snapshot) withRests() (*Snapshot, []RouteRest) {
 	}
 	n := *s
 	n.rests = map[string]RouteRest{}
-	n.pinRested = pinRestsOf(s.Fleet, s.Now)
+	n.pinRested = s.pinRestsOf()
 	for name, r := range RouteRests(s.Routes, s.Fleet) {
 		if r.Resting(s.Now) {
 			n.rests[name] = r
@@ -688,6 +688,15 @@ func restWithdrawals(s *Snapshot, who string) []Unit {
 				u.Notes = slices.DeleteFunc(u.Notes, func(n Note) bool { return n.Type == NRestWithdrawn })
 			}
 			out = append(out, u)
+			continue
+		}
+		// a pinned card ready on a member that no longer serves its pin (its pins of the
+		// provider rest there, or no route names the provider): withdrawn the same way, no
+		// redeal spent, for the deal to give a member that serves it (pin_serve.go)
+		if c.F(FieldRoute) == RoutePin && !IsFriendRow(c.Row) {
+			if w := s.pinServedWhy(c.F(FieldModel), c.Row); w != "" {
+				out = append(out, withdrawCard(s, c, false, NRestWithdrawn, who, "taken back: its pin "+c.F(FieldModel)+" is not served on "+c.Row+" ("+w+")"))
+			}
 		}
 	}
 	return out

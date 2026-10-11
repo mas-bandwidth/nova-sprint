@@ -2593,23 +2593,35 @@ order the cards were dealt in, so a card brought to the front of its stream by
   (`pin`) and moves no index, and **a pinned card goes only to a member that serves
   its pin** (v1.2.14, `internal/sprint/pin_serve.go`; 2026-10-11: a card pinned to
   `anthropic/claude-fable-5-1` was dealt to four members in 22 seconds, its whole
-  redeal bound, each refusing it `class=auth` for want of a key no member holds): an
-  enabled opencode route names the pin's provider (the fleet holds its key), the
-  provider does not rest, and the member's own takes of that provider's pins were not
-  refused for its key or credit within `RouteRestFor`. The deal, the redeal, the
-  rebalance and the level offer a pinned card to no other member. A pinned card no
-  member of its pool serves waits ready, spends no redeal, and the tick raises one
-  judgment of the pin (`no route serves the tier` under the subject `pin:<model>`,
-  saying `no worker can serve pin <model>`), open while a card of it waits, closed
-  when one is served. A provider's key or credit refusal of a pin's take is a
-  coordination failure, accounted as a stop on unlanded needs is: the work card is
-  withdrawn with no take ended (no redeal), no ok field (no fail mark, no ok% hit on
-  the member), its consumer end `pin not served` counted neither ok nor failed, and its
-  record (`pin_take_<n>`) rests that provider's pins for that member
+  redeal bound, each refusing it `class=auth` for want of a key no member holds): in a
+  store that holds routes, an enabled opencode route names the pin's provider (the
+  fleet holds its key), the provider does not rest, and the member's pins of that
+  provider do not rest. The deal, the redeal, the rebalance and the level offer a
+  pinned card to no other member; every take, by id and by count, refuses one on a
+  member whose pins of its provider rest, and the tick withdraws such a ready card (no
+  redeal spent). A pinned card no member of its pool serves waits ready, spends no
+  redeal, and the tick raises one judgment of the pin (`no route serves the tier`
+  under the subject `pin:<model>`, saying `no worker can serve pin <model>`). A
+  provider's key or credit refusal of a pin's take is a coordination failure,
+  accounted as a stop on unlanded needs is: the work card is withdrawn with no take
+  ended (no redeal), no ok field (no fail mark, no ok% hit on the member), its consumer
+  end `pin not served` counted neither ok nor failed. Its record is one per member on
+  the work card (`pin_take_<member>`, latest wins, `pin_refusals_<member>` its count):
+  it rests that provider's pins on the member for `RouteRestFor`, and after
+  `sprint.MaxPinRefusals` (3) refusals the rest stands, with no clock, until the member
+  is brought up again (its control card's `since` passes the last refusal), so the card
+  waits under one standing judgment that never reopens while nothing changes. In a
+  store with no route nothing is known of keys: every pin is dealt, and a refusal ends
+  its take as any provider failure does, spending a redeal, so the redeal bound ends
+  it. A late refusal (the deadline already ended the take) keeps the deadline's path,
+  as every late report does
   (`TestAPinnedCardIsNeverDealtToAMemberWithoutItsProvider`,
   `TestAPinnedCardNoOneCanServeWaitsWithOneJudgment`,
-  `TestAProviderAuthFailureOnAPinNeverSpendsTheCardsRedeals`; `tla/RouteIndex.tla`,
-  `PinDealtServes`); a store with no route deals as before, every pin with it (the member
+  `TestAProviderAuthFailureOnAPinNeverSpendsTheCardsRedeals`,
+  `TestAPinRefusalInAStoreWithNoRouteSpendsARedealAndEnds`,
+  `TestAPinRefusedOnEveryMemberStandsUnderOneJudgment`,
+  `TestAPinnedCardReadyOnARestingMemberIsNotTakenAndIsWithdrawn`; `tla/RouteIndex.tla`,
+  `PinDealtServes`, `RedealsAreTakeEnds`, `RefusalsBounded``PinDealtServes`); a store with no route deals as before, every pin with it (the member
   runs its override); a frontier card with no pin is the friends' by design (a
   friend up whose row lists frontier serves it as a route would, `tierServed`),
   and with no such friend it is the coordinator's and is

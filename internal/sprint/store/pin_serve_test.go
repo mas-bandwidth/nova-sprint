@@ -1,8 +1,9 @@
 package store
 
 import (
-	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,7 +13,7 @@ import (
 )
 
 // A pinned card goes only to a worker that can serve its pin (internal/sprint/pin_serve.go;
-// tla/PinServe.tla), on the mem twin. 2026-10-11: a brief pinned `model:
+// tla/RouteIndex.tla, THE PIN), on the mem twin. 2026-10-11: a brief pinned `model:
 // anthropic/claude-fable-5-1`, the deal sent it to four members in 22 seconds, its whole
 // redeal bound, each refused `class=auth` for want of an Anthropic key, and a judgment
 // blamed the card.
@@ -121,13 +122,15 @@ func TestAProviderAuthFailureOnAPinNeverSpendsTheCardsRedeals(t *testing.T) {
 		require.NotNil(t, wc, "take %d dealt", i+1)
 		require.Equal(t, sprint.Ready, wc.Col, "take %d dealt", i+1)
 		members[wc.Row] = true
+		row := wc.Row
 		h.failTake("s1-1.w1", pinAuthLine)
 		wc = h.snap().Fleet.Card("s1-1.w1")
 		assert.Equal(t, sprint.Withdrawn, wc.Col)
 		assert.Empty(t, wc.F(sprint.FieldTakeEnded), "no take ended: no redeal spent")
 		assert.Empty(t, wc.F("ok"), "no fail mark on the member")
 		assert.Equal(t, 0, wc.Int("redeals"))
-		assert.NotEmpty(t, wc.F(fmt.Sprintf("pin_take_%d", i+1)), "the refusal's record rests the pin for that member")
+		assert.NotEmpty(t, wc.F("pin_take_"+row), "the refusal's record rests the pin for that member")
+		assert.Equal(t, "1", wc.F("pin_refusals_"+row))
 		pr := h.snap().Work.Card("s1-1")
 		assert.Equal(t, sprint.Ready, pr.Col)
 		assert.Equal(t, 0, pr.Int("failed"))
@@ -147,6 +150,123 @@ func TestAProviderAuthFailureOnAPinNeverSpendsTheCardsRedeals(t *testing.T) {
 	wc := h.snap().Fleet.Card("s1-1.w1")
 	assert.Equal(t, sprint.Ready, wc.Col, "dealt again once the rest ends")
 	assert.Equal(t, 0, wc.Int("redeals"))
+}
+
+// In a store with no route nothing is known of keys: a pin's refusal ends its take as any
+// provider failure does, spending a redeal, so the redeal bound and its judgment end it.
+// Never a loop of refusals that spend nothing.
+func TestAPinRefusalInAStoreWithNoRouteSpendsARedealAndEnds(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t)
+	h.addReady("s1", 1, pinned("anthropic/claude-fable-5-1"))
+	h.startMachine()
+	h.machine()
+	refusals := 0
+	for range 2 * sprint.MaxRedeals {
+		wc := h.snap().Fleet.Card("s1-1.w1")
+		require.NotNil(t, wc)
+		if wc.Col != sprint.Ready {
+			break
+		}
+		h.failTake("s1-1.w1", pinAuthLine)
+		refusals++
+		assert.NotEmpty(t, h.snap().Fleet.Card("s1-1.w1").F(sprint.FieldTakeEnded), "refusal %d ends the take: a redeal is spent", refusals)
+		h.machine()
+	}
+	assert.Equal(t, sprint.MaxRedeals+1, refusals, "the redeal bound ends it")
+	assert.Equal(t, sprint.Withdrawn, h.snap().Fleet.Card("s1-1.w1").Col, "not dealt again")
+	assert.Len(t, h.openOf(sprint.NBound), 1, "the bound's one judgment names it")
+}
+
+// A pin refused on every member, again and again: each member keeps ONE record (latest
+// wins, with its count), and after MaxPinRefusals rests a member's rest stands, so the card
+// waits under one standing judgment that does not reopen while nothing changes. Bringing a
+// member up again ends its rest and the card is dealt to it.
+func TestAPinRefusedOnEveryMemberStandsUnderOneJudgment(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("flash-a", "flash"))
+	h.addReady("s1", 1, pinned("prov-flash-a/model-big"))
+	h.startMachine()
+	h.machine()
+	refusals := 0
+	for range 40 {
+		wc := h.snap().Fleet.Card("s1-1.w1")
+		require.NotNil(t, wc)
+		if wc.Col == sprint.Ready {
+			h.failTake("s1-1.w1", pinAuthLine)
+			refusals++
+		} else {
+			h.tick(sprint.RouteRestFor)
+		}
+		h.machine()
+	}
+	assert.Equal(t, 2*sprint.MaxPinRefusals, refusals, "each member is refused MaxPinRefusals times, then its rest stands")
+	wc := h.snap().Fleet.Card("s1-1.w1")
+	assert.Equal(t, sprint.Withdrawn, wc.Col)
+	assert.Equal(t, 0, wc.Int("redeals"))
+	records := 0
+	for k := range wc.Fields {
+		if strings.HasPrefix(k, sprint.FieldPinTake) {
+			records++
+		}
+	}
+	assert.Equal(t, 2, records, "one record per member, never one per refusal")
+	assert.Equal(t, "3", wc.F("pin_refusals_m1"))
+	open := h.openOf(sprint.NNoRoute)
+	require.Len(t, open, 1, "one standing judgment")
+	res := h.run(DealStep(sprint.DealReq{}))
+	assert.Contains(t, refusedWhys(res), "until it is brought up again", "both members' rests stand")
+	written := h.written(sprint.NNoRoute)
+	for range 4 {
+		h.tick(sprint.RouteRestFor)
+		h.machine()
+	}
+	assert.Equal(t, written, h.written(sprint.NNoRoute), "the standing judgment does not reopen")
+	assert.Len(t, h.openOf(sprint.NNoRoute), 1)
+
+	// m1 brought up again (its key fixed): its rest ends and the card is dealt to it
+	h.must(FleetStep(sprint.FleetReq{Op: "down", Member: "m1"}))
+	h.tick(time.Minute)
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: sprint.MaxWidth}))
+	h.machine()
+	wc = h.snap().Fleet.Card("s1-1.w1")
+	assert.Equal(t, sprint.Ready, wc.Col, "dealt again")
+	assert.Equal(t, "m1", wc.Row)
+}
+
+// A pinned card already ready on a member whose pins of its provider now rest is never
+// taken there (a take by id is refused naming the pin), and the tick withdraws it, with no
+// redeal spent, for a member that serves it.
+func TestAPinnedCardReadyOnARestingMemberIsNotTakenAndIsWithdrawn(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("flash-a", "flash"))
+	h.addReady("s1", 4, pinned("prov-flash-a/model-big"))
+	h.startMachine()
+	h.machine()
+	first := h.snap().Fleet.Card("s1-1.w1")
+	require.NotNil(t, first)
+	x := first.Row
+	var other *sprint.Card
+	for _, c := range h.snap().Fleet.Cell(x, sprint.Ready) {
+		if c.ID != first.ID {
+			other = c
+		}
+	}
+	require.NotNil(t, other, "a second pinned card ready on %s", x)
+	h.failTake(first.ID, pinAuthLine)
+	res := h.run(TakeStep(sprint.TakeReq{As: x, Sel: sprint.Sel{IDs: []string{other.ID}}, Gens: map[string]int{other.ID: other.Int("gen")}, Who: x}))
+	assert.Contains(t, refusedWhys(res), "its pin prov-flash-a/model-big is not served on "+x, "a take by id is refused")
+	// a take by count passes over every pinned card of the provider ready on x
+	h.run(TakeStep(sprint.TakeReq{As: x, Sel: sprint.Sel{Limit: 100}, Who: x}))
+	for _, c := range h.snap().Fleet.Column(sprint.Working) {
+		assert.NotEqual(t, x, c.Row, "a take by count never takes %s on %s", c.ID, x)
+	}
+	h.machine()
+	h.machine()
+	moved := h.snap().Fleet.Card(other.ID)
+	assert.Equal(t, sprint.Ready, moved.Col)
+	assert.NotEqual(t, x, moved.Row, "withdrawn from the resting member and dealt to one that serves it")
+	assert.Equal(t, 0, moved.Int("redeals"))
 }
 
 // refusedWhys is every refusal's why of a step's result, joined.

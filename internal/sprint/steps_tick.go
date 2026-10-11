@@ -851,7 +851,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		if why := s.pinUnservedWhy(c, ec, up); why != "" {
 			// a pinned card no member of its pool serves (no route of its provider, the
 			// provider resting, or each member's pins of it resting): it waits ready, spends
-			// no redeal, and the pin's one judgment names it (pin_serve.go; tla/PinServe.tla)
+			// no redeal, and the pin's one judgment names it (pin_serve.go; tla/RouteIndex.tla, THE PIN)
 			pin := pinOf(ec)
 			unservedPin[pin] = append(unservedPin[pin], c.ID)
 			if whyPin[pin] == "" {

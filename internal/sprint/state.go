@@ -556,9 +556,9 @@ type Snapshot struct {
 	// rests is the routes resting at Now, settled once by a step that deals
 	// (withRests, route_rest.go); nil is not yet settled.
 	rests map[string]RouteRest
-	// pinRested is the members' pin rests at Now (pinRestsOf, pin_serve.go), settled with
+	// pinRested is the members' pin rests at Now (pinRestsOf, pin_serve.go: each rest's why), settled with
 	// rests; nil is not yet settled.
-	pinRested map[string]time.Time
+	pinRested map[string]string
 	// budgets is a dealing step's view of the providers' concurrency budgets (withBudgets,
 	// rate_budget.go): nil is none set, and the deal draws as before.
 	budgets *budgetPlan

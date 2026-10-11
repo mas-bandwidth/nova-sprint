@@ -93,16 +93,30 @@
 \* THE PIN (v1.2.14, 2026-10-11: a card pinned to anthropic/claude-fable-5-1 was
 \* dealt to four members in 22 seconds, its whole redeal bound, each refusing it
 \* class=auth for want of a key no member holds; internal/sprint/pin_serve.go). A
-\* pinned card is dealt only to a member of its pool that serves its pin: not one
-\* of PinBlind (no enabled route of the pin's provider, so no key on the fleet, or
-\* the provider resting) and not one whose own take of the pin the provider refused
-\* (pinRest, from the refusal's record). Such a refusal (PinRefused) is a
-\* coordination failure: the card goes back to ready with no redeal spent and that
-\* member's pins rest. A pinned card none of whose pool serves its pin waits ready
-\* and the tick judges it (the pin's one judgment: StrandedIsJudged). "pinblind" is
-\* the deal before the fix, the pin dealt to any member of its pool
-\* (PinDealtServes fails). The rest's end (RouteRestFor after the refusal) is not
-\* modelled: pinRest only grows, which is the safe side of the invariant.
+\* pinned card is dealt (Pin) and dealt again after a take that ended (RedealPin,
+\* the code's redeal path, spending a redeal) only to a member of its pool that
+\* serves its pin: not one of PinBlind (no enabled route of the pin's provider, so no
+\* key on the fleet, or the provider resting) and not one whose pins rest
+\* (resting). A refusal of the pin for its key (PinRefused) is a coordination
+\* failure in a routed store: the card goes back to ready with no take ended (no
+\* redeal) and the member's pins rest; the rest ends by itself (PinRestEnds) until
+\* the member has been refused MaxPinRests times (prc), when it STANDS until the
+\* member is brought up again (MemberUp, once in the instance: ups). Any other ended
+\* take (PinFail, a 5xx) ends the take and spends a redeal as a work card's does. In
+\* a store with no route (NoRoutes) nothing is known of keys: every member serves the
+\* pin and a refusal ends the take as PinFail does, so the redeal bound ends it. A
+\* pinned card none of whose pool serves its pin waits and the tick judges it (the
+\* pin's one judgment: StrandedIsJudged). ends and refusals are ghosts: the takes
+\* that ended (each may spend a redeal) and the refusals. Witnesses: "pinblind"
+\* deals the pin to any member of its pool (PinDealtServes fails); "pinspend" ends a
+\* routed refusal's take, so its redeal is spent on no ended take
+\* (RedealsAreTakeEnds fails); "noroutesloop" returns a no-route refusal to ready
+\* spending nothing and resting nothing, the loop of PR #107's first head
+\* (RefusalsBounded fails); "norestcap" lets every rest end by itself, never
+\* standing (RefusalsBounded fails). PinFaults turns the refusals, the other ended
+\* takes, the rests' ends and the member brought up on: the cases that check them
+\* run a small instance of their own (one work card and the pinned one), and the
+\* route-index cases keep them off, so their state space is as it was.
 \*
 \* WHAT IS NOT MODELLED. Members, widths and the tick (DirtyTick.tla); an entry
 \* that names no enabled route (the deal skips it as it skips an excluded one,
@@ -117,13 +131,13 @@ EXTENDS Integers, Sequences, FiniteSets, TLC
 
 CONSTANTS Tiers, Arr, Cards, TierOf, Pinned, Reads, MaxRedeals, Broken,
           Members, MemberUnlaunch, BenchOf, Refused, First, Rested, Avoid,
-          ReadTier, PinBlind
+          ReadTier, PinBlind, NoRoutes, MaxPinRests, PinFaults
 
 VARIABLES ridx, st, route, drawn, rdl, deals, skipped, hist, last, judged, tock,
-          memb, pinRest
+          memb, resting, prc, ends, refusals, ups
 
 vars == <<ridx, st, route, drawn, rdl, deals, skipped, hist, last, judged, tock,
-          memb, pinRest>>
+          memb, resting, prc, ends, refusals, ups>>
 
 Routes == UNION {{Arr[t][k] : k \in 1..Len(Arr[t])} : t \in Tiers}
 
@@ -188,13 +202,13 @@ Pool(c) == BenchOf[c] \ (IF st[c] = "withdrawn" THEN Refused[c] ELSE {})
 CanLaunchIn(c, P) == \E m \in P : Open(TierOf[c], MemberUnlaunch[m] \cup Rested)
 
 \* The members of P that serve the pin: neither blind to it nor resting it.
-PinServers(P) == P \ (PinBlind \cup pinRest)
+PinServers(P) == IF NoRoutes THEN P ELSE P \ (PinBlind \cup resting)
 
 \* A card waiting to be dealt that no member of its pool can launch: a work card
 \* whose tier none can launch, or a pinned card whose pin none serves.
 Stranded(c) ==
   \/ c \in WorkCards /\ st[c] \in {"ready", "withdrawn"} /\ Pool(c) # {} /\ ~CanLaunchIn(c, Pool(c))
-  \/ c \in Pinned /\ st[c] = "ready" /\ Pool(c) # {} /\ PinServers(Pool(c)) = {}
+  \/ c \in Pinned /\ (st[c] = "ready" \/ (st[c] = "withdrawn" /\ rdl[c] < MaxRedeals)) /\ Pool(c) # {} /\ PinServers(Pool(c)) = {}
 
 \* The members the tick's judgment asks over (judgefleet: every member).
 JudgePool(c) == IF Broken = "judgefleet" THEN Members ELSE Pool(c)
@@ -217,7 +231,11 @@ TypeOK ==
   /\ judged \subseteq Cards
   /\ tock \in BOOLEAN
   /\ memb \in [Cards -> Members \cup {"none"}]
-  /\ pinRest \subseteq Members
+  /\ resting \subseteq Members
+  /\ prc \in [Members -> 0..MaxPinRests]
+  /\ ends \in [Cards -> Nat]
+  /\ refusals \in [Cards -> Nat]
+  /\ ups \in 0..1
 
 Init ==
   /\ ridx = [t \in Tiers |-> 0]
@@ -232,7 +250,11 @@ Init ==
   /\ judged = {}
   /\ tock = FALSE
   /\ memb = [c \in Cards |-> "none"]
-  /\ pinRest = {}
+  /\ resting = {}
+  /\ prc = [m \in Members |-> 0]
+  /\ ends = [c \in Cards |-> 0]
+  /\ refusals = [c \in Cards |-> 0]
+  /\ ups = 0
 
 \* Take route r for card c dealt to member m, the index moved by adv; by is the
 \* steps the rule says.
@@ -262,7 +284,7 @@ DealTo(c, m) ==
   /\ Broken = "harnessblind" \/ Open(t, b)
   /\ st' = [st EXCEPT ![c] = "dealt"]
   /\ tock' = FALSE
-  /\ UNCHANGED <<rdl, judged, pinRest>>
+  /\ UNCHANGED <<rdl, judged, resting, prc, ends, refusals, ups>>
   /\ IF Broken = "random"
      THEN \E k \in 1..Len(Arr[t]) : Take(c, m, Arr[t][k], 1, 1)
      ELSE IF Broken = "readapart" /\ c \in Reads
@@ -290,18 +312,79 @@ Pin(c) ==
   /\ st' = [st EXCEPT ![c] = "dealt"]
   /\ route' = [route EXCEPT ![c] = "pin"]
   /\ tock' = FALSE
-  /\ UNCHANGED <<ridx, drawn, rdl, deals, skipped, hist, last, judged, pinRest>>
+  /\ UNCHANGED <<ridx, drawn, rdl, deals, skipped, hist, last, judged, resting, prc, ends, refusals, ups>>
 
-\* The provider refuses the pin's take for its key or credit on the member: a
-\* coordination failure. The card goes back to ready with no redeal spent, and the
-\* member's pins of the provider rest.
+\* The provider refuses the pin's take for its key or credit on its member. In a
+\* routed store a coordination failure: back to ready, no take ended, the member's
+\* pins rest and its count goes up (pinspend ends the take instead). In a store with
+\* no route the take ends as any provider failure's (noroutesloop: back to ready,
+\* nothing spent, nothing rested).
 PinRefused(c) ==
+  LET m == memb[c] IN
+  /\ PinFaults
   /\ c \in Pinned
   /\ st[c] = "dealt"
-  /\ st' = [st EXCEPT ![c] = "ready"]
-  /\ pinRest' = pinRest \cup {memb[c]}
+  /\ refusals' = [refusals EXCEPT ![c] = @ + 1]
   /\ tock' = FALSE
-  /\ UNCHANGED <<ridx, route, drawn, rdl, deals, skipped, hist, last, judged, memb>>
+  /\ UNCHANGED <<ridx, route, drawn, rdl, deals, skipped, hist, last, judged, memb, ups>>
+  /\ IF NoRoutes
+     THEN IF Broken = "noroutesloop"
+          THEN /\ st' = [st EXCEPT ![c] = "ready"]
+               /\ UNCHANGED <<resting, prc, ends>>
+          ELSE /\ st' = [st EXCEPT ![c] = "withdrawn"]
+               /\ ends' = [ends EXCEPT ![c] = @ + 1]
+               /\ UNCHANGED <<resting, prc>>
+     ELSE /\ st' = [st EXCEPT ![c] = IF Broken = "pinspend" THEN "withdrawn" ELSE "ready"]
+          /\ resting' = resting \cup {m}
+          /\ prc' = [prc EXCEPT ![m] = IF @ < MaxPinRests THEN @ + 1 ELSE @]
+          /\ UNCHANGED ends
+
+\* Any other take of the pin that ends (a 5xx, a timeout, its member lost): the take
+\* ended, a redeal to be spent, while its redeals are under the bound.
+PinFail(c) ==
+  /\ PinFaults
+  /\ c \in Pinned
+  /\ st[c] = "dealt"
+  /\ rdl[c] < MaxRedeals
+  /\ st' = [st EXCEPT ![c] = "withdrawn"]
+  /\ ends' = [ends EXCEPT ![c] = @ + 1]
+  /\ tock' = FALSE
+  /\ UNCHANGED <<ridx, route, drawn, rdl, deals, skipped, hist, last, judged, memb, resting, prc, refusals, ups>>
+
+\* The code's redeal of a withdrawn pinned card (redeal: a redeal counted), to a
+\* member of its pool that serves the pin, below the bound.
+RedealPin(c) ==
+  /\ c \in Pinned
+  /\ st[c] = "withdrawn"
+  /\ rdl[c] < MaxRedeals
+  /\ \E m \in PinServers(Pool(c)) : memb' = [memb EXCEPT ![c] = m]
+  /\ st' = [st EXCEPT ![c] = "dealt"]
+  /\ rdl' = [rdl EXCEPT ![c] = @ + 1]
+  /\ tock' = FALSE
+  /\ UNCHANGED <<ridx, route, drawn, deals, skipped, hist, last, judged, resting, prc, ends, refusals, ups>>
+
+\* A member's pin rest ends by itself (RouteRestFor) while it has been refused fewer
+\* than MaxPinRests times; at it the rest stands (norestcap: it always ends).
+PinRestEnds(m) ==
+  /\ PinFaults
+  /\ m \in resting
+  /\ Broken = "norestcap" \/ prc[m] < MaxPinRests
+  /\ resting' = resting \ {m}
+  /\ tock' = FALSE
+  /\ UNCHANGED <<ridx, st, route, drawn, rdl, deals, skipped, hist, last, judged, memb, prc, ends, refusals, ups>>
+
+\* A member whose rest stands is brought up again (its key fixed, fleet up): its rest
+\* and its count end. Once in the instance (ups), which bounds the refusals.
+MemberUp(m) ==
+  /\ PinFaults
+  /\ m \in resting
+  /\ prc[m] = MaxPinRests
+  /\ ups = 0
+  /\ ups' = 1
+  /\ resting' = resting \ {m}
+  /\ prc' = [prc EXCEPT ![m] = 0]
+  /\ tock' = FALSE
+  /\ UNCHANGED <<ridx, st, route, drawn, rdl, deals, skipped, hist, last, judged, memb, ends, refusals>>
 
 \* The card's take ends without a finish (its member lost, the provider failed):
 \* withdrawn, to be dealt again, while its redeals are under the bound.
@@ -311,7 +394,8 @@ Withdraw(c) ==
   /\ rdl[c] < MaxRedeals
   /\ st' = [st EXCEPT ![c] = "withdrawn"]
   /\ tock' = FALSE
-  /\ UNCHANGED <<ridx, route, drawn, rdl, deals, skipped, hist, last, judged, memb, pinRest>>
+  /\ ends' = [ends EXCEPT ![c] = @ + 1]
+  /\ UNCHANGED <<ridx, route, drawn, rdl, deals, skipped, hist, last, judged, memb, resting, prc, refusals, ups>>
 
 \* One redeal of card c to member m: the next entry from the place that is not
 \* left out, the index moved past it and every entry skipped. The routes already
@@ -329,7 +413,7 @@ RedealTo(c, m) ==
   /\ st' = [st EXCEPT ![c] = "dealt"]
   /\ rdl' = [rdl EXCEPT ![c] = @ + 1]
   /\ tock' = FALSE
-  /\ UNCHANGED <<judged, pinRest>>
+  /\ UNCHANGED <<judged, resting, prc, ends, refusals, ups>>
   /\ IF Broken = "noadvance"
      THEN Take(c, m, At(t, ridx[t]), 1, s)
      ELSE IF Broken = "harnessblind"
@@ -346,12 +430,13 @@ Redeal(c) ==
 \* member).
 TickJudge ==
   /\ judged' = {c \in WorkCards : st[c] \in {"ready", "withdrawn"} /\ JudgePool(c) # {} /\ ~CanLaunchIn(c, JudgePool(c))}
-                \cup {c \in Pinned : st[c] = "ready" /\ JudgePool(c) # {} /\ PinServers(JudgePool(c)) = {}}
+                \cup {c \in Pinned : (st[c] = "ready" \/ (st[c] = "withdrawn" /\ rdl[c] < MaxRedeals)) /\ JudgePool(c) # {} /\ PinServers(JudgePool(c)) = {}}
   /\ tock' = TRUE
-  /\ UNCHANGED <<ridx, st, route, drawn, rdl, deals, skipped, hist, last, memb, pinRest>>
+  /\ UNCHANGED <<ridx, st, route, drawn, rdl, deals, skipped, hist, last, memb, resting, prc, ends, refusals, ups>>
 
 \* A card that finishes is one that is not withdrawn again: no action of its own.
-Next == TickJudge \/ \E c \in Cards : Deal(c) \/ Pin(c) \/ PinRefused(c) \/ Withdraw(c) \/ Redeal(c)
+Next == TickJudge \/ (\E m \in Members : PinRestEnds(m) \/ MemberUp(m))
+        \/ \E c \in Cards : Deal(c) \/ Pin(c) \/ PinRefused(c) \/ PinFail(c) \/ RedealPin(c) \/ Withdraw(c) \/ Redeal(c)
 
 Spec == Init /\ [][Next]_vars
 
@@ -392,16 +477,23 @@ FirstPreferred ==
 StrandedIsJudged == tock => \A c \in Cards : Stranded(c) => c \in judged
 
 \* A dealt pinned card's member serves the pin (pin_serve.go): it is not blind to
-\* it and its pins of the provider do not rest. One pinned card in the instance: a
-\* second card's refusal on the same member is its own coordination failure.
-PinDealtServes == \A c \in Pinned : st[c] = "dealt" => memb[c] \notin PinBlind \cup pinRest
+\* it and its pins of the provider do not rest. In a store with no route nothing is
+\* known of keys. One pinned card in the instance: a second card's refusal on the
+\* same member is its own coordination failure.
+PinDealtServes == ~NoRoutes => \A c \in Pinned : st[c] = "dealt" => memb[c] \notin PinBlind \cup resting
 
-\* A pinned card's refusals spend no redeal.
-PinSpendsNoRedeal == \A c \in Pinned : rdl[c] = 0
+\* A pinned card's redeals are spent only by takes that ended (a refusal of its pin
+\* in a routed store spends none).
+RedealsAreTakeEnds == \A c \in Pinned : rdl[c] <= ends[c]
 
-\* Reachability (a reversed witness, written to be false where the design must
-\* reach): a provider refused a pin on a member, so its pins rest there.
-ReachPinRest == pinRest = {}
+\* Never a loop: a pinned card's refusals are bounded, MaxPinRests a member per time
+\* it is brought up, and the redeal bound's in a store with no route.
+RefusalsBounded == \A c \in Pinned : refusals[c] <= (Cardinality(Members) + ups) * MaxPinRests + MaxRedeals + 1
+
+\* Reachability (reversed witnesses): a provider refused a pin on a member, so its
+\* pins rest there; and a member's rest stands.
+ReachPinRest == resting = {}
+ReachPinStands == \A m \in Members : prc[m] < MaxPinRests
 
 \* Reachability (a reversed witness, written to be false where the design must
 \* reach): a redeal that passed over an entry it left out.
