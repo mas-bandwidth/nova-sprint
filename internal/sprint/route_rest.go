@@ -16,20 +16,29 @@ import (
 // The tick counts the ended takes of each route over a sliding window, the last
 // RouteRestWindow takes on it that ended after its last rest began, and when
 // RouteRestAfter of them ended with a TRANSIENT provider failure (the provider's own line,
-// class rate-limited, provider-5xx or timeout: a 429, a 5xx, the provider not answering)
-// it rests the route for RouteRestFor (cause RestProvider): the rest is one line in the
-// fleet table's property rule3_rest_<provider>, one property per provider however many of
-// its routes rest, written in the deal's batch with a happened note to the coordinator
-// naming the cards; the deal draws no work card (a first deal, a redeal or a rework's) on a
-// resting route, and the rest ends by itself at its time. A take that ended with NO RESULT
-// is the model's output on that card, never the provider's: it counts against the card's
-// attempt and the route's ok%, and it never rests the route (rule 3 of 2026-10-02 rested on
-// three of them; that rule is retired, and a rest it wrote holds no route: Retired). The
-// rest is the sprint's, never config: nova-config's enabled stays the coordinator's.
+// class provider-5xx or timeout: a 5xx, the provider not answering) it rests the route for
+// RouteRestFor (cause RestProvider): the rest is one line in the fleet table's property
+// rule3_rest_<provider>, one property per provider however many of its routes rest, written
+// in the deal's batch with a happened note to the coordinator naming the cards; the deal
+// draws no work card (a first deal, a redeal or a rework's) on a resting route, and the rest
+// ends by itself at its time. A take that ended with NO RESULT is the model's output on
+// that card, never the provider's: it counts against the card's attempt and the route's ok%,
+// and it never rests the route (rule 3 of 2026-10-02 rested on three of them; that rule is
+// retired, and a rest it wrote holds no route: Retired). The rest is the sprint's, never
+// config: nova-config's enabled stays the coordinator's.
+//
+// Rate-limited ends (class rate-limited, a 429 that is not a quota or a credit/key refusal)
+// do NOT count toward the 3-in-10 rest: they are the provider's own limit, never the
+// route's fault. Instead, each rate-limited end backs the ROUTE off briefly: 60s, doubling
+// for each further rate-limited end with no ok take on the route in between, capped at
+// 15m, ending by itself. The backoff writes at most one happened note to the coordinator
+// and never a judgment; the existing rule for provider-5xx and timeout stays as it is.
 const (
 	RouteRestWindow = 10
 	RouteRestAfter  = 3
 	RouteRestFor    = 30 * time.Minute
+	RouteRateLimitBackoffFor = 60 * time.Second
+	RouteRateLimitBackoffCap = 15 * time.Minute
 )
 
 // PropRule3Rest is the fleet table's property that holds one provider's rule-3 rests:
@@ -68,14 +77,16 @@ type RouteRest struct {
 	Why        string
 }
 
-// The causes of a rest: a route's transient provider failures (RestProvider: rate limit,
-// 5xx, timeout); a provider out of credit (a take it refused for want of credit); a take it
-// refused for its key; and the coordinator's word (RestCoordinator, routes rest). Only out
-// of credit counts toward stopping the sprint. RestNoResult (rule 3's, retired) and
-// RestBalance (a balance poll's, retired: a low balance is a judgment, never a rest) are
-// read only to say a rest written before is Retired.
+// The causes of a rest: a route's transient provider failures (RestProvider: 5xx, timeout);
+// rate-limited ends (RestRateLimit: backoff for a rate-limited end); a provider out of
+// credit (a take it refused for want of credit); a take it refused for its key; and the
+// coordinator's word (RestCoordinator, routes rest). Only out of credit counts toward
+// stopping the sprint. RestNoResult (rule 3's, retired) and RestBalance (a balance poll's,
+// retired: a low balance is a judgment, never a rest) are read only to say a rest written
+// before is Retired.
 const (
 	RestProvider    = "provider"
+	RestRateLimit   = "rate-limit"
 	RestCredit      = "out-of-credit"
 	RestAuth        = "auth"
 	RestCoordinator = "coordinator"
@@ -330,15 +341,17 @@ func restedRoutes(r RouteRest, routes []Route) []string {
 
 // routeEnd is one ended take on a route: the work card, when it ended, when it was taken
 // (its child launched; zero when its record holds none), whether the provider failed it
-// transiently (a rate limit, a 5xx, a timeout: transient), and the provider's line when the
-// provider refused it for credit or for its key (refusal, provider_funds.go), "" otherwise.
-// A take that left no result is neither: it is the model's, never the provider's.
+// transiently (a 5xx, a timeout: transient), whether it ended with class rate-limited
+// (rateLimited), and the provider's line when the provider refused it for credit or for
+// its key (refusal, provider_funds.go), "" otherwise. A take that left no result is
+// neither: it is the model's, never the provider's.
 type routeEnd struct {
-	card      string
-	take      int
-	at, taken time.Time
-	transient bool
-	refused   string
+	card       string
+	take       int
+	at, taken  time.Time
+	transient  bool
+	rateLimited bool
+	refused    string
 }
 
 // routeEnds is every ended take the fleet table's work cards record, by route: each take
@@ -354,14 +367,15 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 				continue
 			}
 			taken, _ := time.Parse(time.RFC3339, t.Taken)
-			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t.Error), refused: refusal(t.Error)})
+			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t.Error), rateLimited: IsRateLimited(t.Error), refused: refusal(t.Error)})
 		}
 		if c.Col != DoneOK && c.Col != DoneFailed {
 			continue
 		}
 		at, err := time.Parse(time.RFC3339, c.F("finished"))
 		if r := c.F(FieldRoute); r != "" && r != RoutePin && err == nil {
-			out[r] = append(out[r], routeEnd{card: c.ID, take: c.Int("redeals") + 1, at: at})
+			errorLine := c.F(FieldProviderError)
+			out[r] = append(out[r], routeEnd{card: c.ID, take: c.Int("redeals") + 1, at: at, transient: transient(errorLine), rateLimited: IsRateLimited(errorLine)})
 		}
 	}
 	return out
@@ -401,6 +415,37 @@ func RestsDue(s *Snapshot) []RouteRest {
 		}
 		if len(cards) >= RouteRestAfter {
 			out = append(out, RouteRest{Route: r.Name, At: s.Now, Until: s.Now.Add(RouteRestFor), Cards: cards, Cause: RestProvider})
+		}
+		// rate-limited ends back the route off briefly: 60s, doubling for each further rate-limited
+		// end with no ok take on the route in between, capped at 15m, ending by itself
+		var rateLimitedCards []string
+		for _, e := range window {
+			if e.rateLimited {
+				rateLimitedCards = append(rateLimitedCards, e.card)
+			}
+		}
+		if len(rateLimitedCards) > 0 {
+			// count ok takes (non rate-limited, non-transient) since last rate-limited backoff
+			okSinceRateLimit := 0
+			lastRateLimitBackoff := s.Now.Add(-RouteRateLimitBackoffCap)
+			for _, e := range ends[r.Name] {
+				if e.at.After(lastRateLimitBackoff) {
+					if e.rateLimited {
+						okSinceRateLimit = 0
+					} else if !e.transient {
+						okSinceRateLimit++
+					}
+				}
+			}
+			// doubling backoff: 60s * 2^okSinceRateLimit, capped at 15m
+			backoff := RouteRateLimitBackoffFor
+			for i := 0; i < okSinceRateLimit && backoff < RouteRateLimitBackoffCap; i++ {
+				backoff *= 2
+			}
+			if backoff > RouteRateLimitBackoffCap {
+				backoff = RouteRateLimitBackoffCap
+			}
+			out = append(out, RouteRest{Route: r.Name, At: s.Now, Until: s.Now.Add(backoff), Cards: rateLimitedCards, Cause: RestRateLimit})
 		}
 	}
 	// a provider's refusal rests the provider, every route of it, over rule 3's on its routes

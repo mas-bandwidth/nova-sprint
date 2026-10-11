@@ -560,4 +560,12 @@
     is named on the line). The seat probes the ssh port of each such member's machine row at once under one
     3 s bound, with a beating member other than the seat's own machine as the control of its network: no
     control answer, no member excused."
-   :origin "v1.2.5 candidate list")))
+    :origin "v1.2.5 candidate list")
+
+  (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.6" :status "planned"
+   :title "Rate-limited ends withdrawn unspent with brief route backoff"
+   :text "Rate-limited ends (class rate-limited, a 429 that is not a quota or credit/key refusal)
+    now behave like staging refused: work card withdrawn WITHOUT FieldTakeEnded (no redeal/attempt spent),
+    route backs off briefly (60s, doubling, 15m cap, self-ending), and Judge reports as `provider failure:`
+    whatever its shape unless pushed head accepted. Rate-limited ends excluded from 3-in-10 rest."
+   :origin "a-rate-limited-refusal-never-fails-the-cardc")))
