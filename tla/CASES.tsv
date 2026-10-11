@@ -414,6 +414,7 @@ MCStatsReset.cfg	MCStatsReset.tla	pass	-	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoRebase.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenByCount.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoLock.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
+MCStatsResetBrokenStale.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoStamp.cfg	MCStatsReset.tla	invariant	RecordShowsShown	ignore-terminal	statsreset	required	-
 MCStopReturn.cfg	MCStopReturn.tla	pass	-	ignore-terminal	stopreturn	required	-
 MCStopReturnBrokenNoSettle.cfg	MCStopReturn.tla	temporal	ReturnedFreesItsRow	ignore-terminal	stopreturn	required	-

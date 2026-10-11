@@ -260,6 +260,7 @@ func (st *Store) TidyStats(ctx context.Context, req TidyReq) (TidyResult, error)
 	// stands, and the mark in force now is the one this tidy rebases at its end
 	var inFlight TidyInFlight
 	if _, err := st.updateStats(ctx, kv, func(rec *StatsRecord) error {
+		// tla/StatsReset.tla TidyStart
 		if t := rec.Tidying; t.Fresh(st.now()) {
 			return fmt.Errorf("another stats tidy is in flight (archive %s, since %s): nothing written; run it again after it ends", t.Archive, t.At.Format(time.RFC3339Nano))
 		} else if t != nil {
