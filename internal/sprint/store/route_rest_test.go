@@ -29,8 +29,8 @@ func (h *harness) noteWhats(typ string) []string {
 }
 
 // rateLimitLine is a member's report of a take the provider refused for its rate limit: on
-// an unlimited route it counts toward the route's rest; on a limited route (routes limit)
-// it returns the card untouched (rate_budget.go; TestThreeRateLimitedTakesOnALimitedRouteRestNothing).
+// any route it returns the card untouched and backs the route off briefly (rate_budget.go,
+// route_rest.go; TestThreeRateLimitedTakesOnALimitedRouteRestNothing).
 const rateLimitLine = cardhdr.EndProvider + ": provider: class=rate-limited status=429 msg=Rate limit exceeded: free-models-per-min"
 
 // Three takes the provider rate limited (429) on a LIMITED route never rest the route for
@@ -50,11 +50,18 @@ func TestThreeRateLimitedTakesOnALimitedRouteRestNothing(t *testing.T) {
 	h.machine()
 	whats := h.noteWhats(sprint.NRouteRested)
 	require.Len(t, whats, 1, "one rate-limit backoff note")
-	assert.Contains(t, whats[0], "rate-limit backoff")
+	assert.Contains(t, whats[0], "rate-limit backoff of 4m0s on flash-a", "three 429s with no ok between: 240s from the last")
 	s := h.snap()
-	rest, ok := sprint.RouteRests([]sprint.Route{route("flash-a", "flash")}, s.Fleet)["flash-a"]
-	require.True(t, ok, "the route backs off")
-	assert.Equal(t, sprint.RestRateBackoff, rest.Cause, "a brief backoff, never the 3-in-10 rest")
+	assert.Empty(t, sprint.RouteRests([]sprint.Route{route("flash-a", "flash")}, s.Fleet), "never the 3-in-10 rest")
+	backoff := ""
+	for name, v := range s.Fleet.Props() {
+		if strings.HasPrefix(name, sprint.PropRule3Rest("")) && strings.Contains(v, "flash-a+rate-backoff ") {
+			backoff = v
+		}
+	}
+	assert.Contains(t, backoff, sprint.RestRateBackoff, "the backoff's line, beside the route's own")
+	h.machine()
+	assert.Len(t, h.noteWhats(sprint.NRouteRested), 1, "no second note while the same until holds")
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
 		c := s.Fleet.Card(id)
 		assert.Zero(t, c.Int("redeals"), "%s spent no redeal", id)

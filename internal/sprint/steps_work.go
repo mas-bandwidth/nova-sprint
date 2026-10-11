@@ -1623,10 +1623,13 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		switch kind {
 		case cardhdr.EndProvider:
-			if IsRateLimited(r.Report) && rateLimitedRoute(c) && c.Int(FieldRateReturns) < MaxRateReturns {
-				// a limited route's 429 that got through the member's budget and its retries:
-				// the card is returned untouched, at most MaxRateReturns times (rate_budget.go);
-				// an unlimited route's ends the take and counts toward its rest as before
+			if IsRateLimited(r.Report) {
+				// a rate limit NEVER fails the card, on any route and however many times: the
+				// card is returned untouched (no take ended, no redeal, no attempt) and the
+				// route backs off briefly from the take's record (RestsDue, rateBackoffs), so
+				// the deal falls back to another route of the tier or waits and tries again
+				// (a-rate-limited-refusal-never-fails-the-cardc; tla/RateBackoff.tla,
+				// RateLimitSpendsNoRedeal)
 				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r, "rate limited",
 					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider rate limited the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
 				continue
@@ -2034,19 +2037,20 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 	}, Notes: notes, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s refused it at staging; %s working -> ready", c.ID, c.Int("gen")+1, c.Row, pr.ID)}
 }
 
-// rateLimitedReturned is the one no-spend path of a take on a LIMITED route
-// (rateLimitedRoute): the provider rate limited it (IsRateLimited) or refused it for want of
-// credit (outOfCredit), and the member's budget and its in-place retries did not absorb it
-// (an older member, or retries out of the card's deadline). It is used for fewer than
-// MaxRateReturns returns (FieldRateReturns, counted here; past it the take ends as any
-// provider failure does). The card is returned UNTOUCHED, as a staging refusal is: the work
+// rateLimitedReturned is the no-spend path of a take the provider rate limited
+// (IsRateLimited), on ANY route and with no bound, and of a take on a LIMITED route
+// (rateLimitedRoute) the provider refused for want of credit (outOfCredit), fewer than
+// MaxRateReturns times (FieldRateReturns, counted here for those alone; past it that take
+// ends as any provider failure does). A rate limit never fails a card: it leaves a
+// FieldRateTake record and the route backs off briefly from it (rateBackoffs;
+// tla/RateBackoff.tla). The card is returned UNTOUCHED, as a staging refusal is: the work
 // card is withdrawn WITHOUT FieldTakeEnded, so no redeal and no attempt is spent, and its
 // primary goes back to ready, where the deal draws it again, falling back past the route it
 // was on while another of its tier serves (routeOf's exclusion) or waiting for a slot (the
 // owner, 2026-10-11: "the rate limited should just stall out delay, not fail";
 // TestARateLimitedTakeReturnsTheCardUntouched). label names the cost on the producer's
-// record; moved is the unit's words. A rate limit writes NO take record, so it never counts
-// toward the route's 3-in-10 rest; an out-of-credit refusal DOES write one, so the provider
+// record; moved is the unit's words. A rate limit writes NO FieldProviderTake, so it never
+// counts toward the route's 3-in-10 rest; an out-of-credit refusal DOES write one, so the provider
 // rests exactly as it did when the take ended (routeEnds, providerRestsDue; tla/RouteRest.tla,
 // OutOfCreditSpendsNoRedeal): only FieldTakeEnded and the redeal are omitted. The provider's
 // line stays on the card for its reader; what the run cost is the producer's record, as a
@@ -2054,17 +2058,22 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved string) Unit {
 	set := nextGen(c, "", s.Now)
 	set["withdrawn"] = stamp(s.Now)
-	set[FieldRateReturns] = itoa(c.Int(FieldRateReturns) + 1)
 	line := cutText(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(r.Report, cardhdr.EndProvider), ":")), MaxProviderErrorBytes)
 	set[FieldProviderError] = line
 	dealt, taken := takeStamps(c)
 	rec := costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)
 	if IsRateLimited(r.Report) {
-		// the rate-limited take leaves its own record, unbounded, so the route backs off
-		// briefly from the records alone (RestsDue, rateBackoffs; RateTakes reads every
-		// one): never a FieldProviderTake, so it never counts toward the 3-in-10 rest
-		set[FieldRateTake+itoa(c.Int(FieldRateReturns)+1)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
+		// the rate-limited take leaves its own record, numbered after the last one the card
+		// holds (RateTakes), so the numbers have no gap and no bound and RateTakes reads
+		// every one; the route backs off briefly from these records alone (RestsDue,
+		// rateBackoffs; tla/RateBackoff.tla). It is never a FieldProviderTake, so it never
+		// counts toward the 3-in-10 rest, the redeal bound or a bound class, and it spends
+		// none of FieldRateReturns, which an out-of-credit return alone counts
+		rates, _ := RateTakes(c)
+		set[FieldRateTake+itoa(len(rates)+1)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
 			Finished: stamp(s.Now), Error: line, Taken: taken}.String()
+	} else {
+		set[FieldRateReturns] = itoa(c.Int(FieldRateReturns) + 1)
 	}
 	if refusal(r.Report) != "" {
 		// the refusal is recorded so the provider rests as it always has (routeEnds reads

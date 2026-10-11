@@ -259,7 +259,8 @@ func Judge(r Result, pu Push) (fin Finish, why string) {
 	case r.End == EndProvider && r.Provider != "" && strings.Contains(r.Provider, "class=rate-limited") && pu.Sha == "":
 		// the provider rate limited the take and no head was pushed: report as provider
 		// failure whatever the shape, so a 429 never reaches the sprint as failed work; a
-		// shaped result that pushed a head stays the card's own
+		// shaped result that pushed a head stays the card's own (the sprint returns the card
+		// unspent: a-rate-limited-refusal-never-fails-the-cardc; tla/RateBackoff.tla)
 		return FinishFailed, EndProvider + ": " + r.Provider
 	case !r.Shaped && r.End == "":
 		// the child ended by itself and left no result: no work came back, and the sprint

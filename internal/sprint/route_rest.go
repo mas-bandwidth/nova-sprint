@@ -32,20 +32,37 @@ const (
 	RouteRestFor    = 30 * time.Minute
 )
 
-// A RATE LIMIT STALLS A ROUTE BRIEFLY, NEVER RESTS IT FOR THE 3-IN-10 RULE (the owner,
-// 2026-10-11: "the rate limited should just stall out delay, not fail"; tla/RateBackoff.tla).
-// From the rate-limited take records alone (RateTakes): for a route, k is its rate-limited
-// ends since its last ok end (time order) and last the latest one's time, so the backoff
-// ends at last + min(RateBackoffFor*2^(k-1), RateBackoffMax). It is a fixed point in time,
-// never relative to now, so it ends by itself and the route serves again.
+// A RATE LIMIT STALLS A ROUTE BRIEFLY, NEVER RESTS IT FOR THE 3-IN-10 RULE AND NEVER FAILS
+// A CARD (the owner, 2026-10-11: "the rate limited should just stall out delay, not fail";
+// tla/RateBackoff.tla). A take the provider ended rate-limited returns its card unspent
+// (rateLimitedReturned) and leaves a FieldRateTake record; from those records alone, for a
+// route, k is its rate-limited ends since its last ok end (time order) and last the latest
+// one's time, and the route backs off until last + RateBackoff(k). The end is a fixed point
+// in time, never relative to now, so the same records always give the same end and the
+// backoff ends by itself (BackoffEnds); it is never past RateBackoffMax (BackoffBounded).
 const (
 	RateBackoffFor = 60 * time.Second
 	RateBackoffMax = 15 * time.Minute
 )
 
+// RateBackoff is the backoff of a route's k-th rate-limited end since its last ok end:
+// min(RateBackoffFor*2^(k-1), RateBackoffMax), so 60s, 120s, 240s, ... capped at 15 minutes
+// (tla/RateBackoff.tla, Backoff). k below 1 is no backoff.
+func RateBackoff(k int) time.Duration {
+	if k < 1 {
+		return 0
+	}
+	d := RateBackoffFor
+	for i := 1; i < k && d < RateBackoffMax; i++ {
+		d *= 2
+	}
+	return min(d, RateBackoffMax)
+}
+
 // RateTakes is every rate-limited take record a work card holds (FieldRateTake), in take
-// order, reading EVERY field the card carries (no bound: a card limits its returns, not the
-// records the sprint reads).
+// order. The records are numbered 1, 2, 3, ... with no gap and no bound (rateLimitedReturned
+// numbers each one after the last RateTakes reads), so reading up to the first absent number
+// reads every one.
 func RateTakes(wc *Card) (takes []ProviderTake, numbers []int) {
 	for n := 1; ; n++ {
 		v := wc.F(FieldRateTake + itoa(n))
@@ -57,23 +74,26 @@ func RateTakes(wc *Card) (takes []ProviderTake, numbers []int) {
 	return takes, numbers
 }
 
-// rateBackoffs is each route's rate-limit backoff, computed from the rate-limited take
-// records and the cards' ok ends alone. A route with no rate-limited end since its last ok
-// end has none; one with k of them since backs off until the last of them plus
-// min(RateBackoffFor*2^(k-1), RateBackoffMax). At is zero here (the step that emits the rest
-// sets it to now); the until is absolute, so the same records always give the same end.
+// rateBackoffs is each route's rate-limit backoff, a pure function of the fleet table's
+// rate-limited take records (RateTakes) and its cards' ok ends (a card done on the route,
+// as routeEnds counts one): a route with no rate-limited end since its last ok end has
+// none; one with k of them since backs off from the last of them (At) until At +
+// RateBackoff(k), naming the cards those takes were (tla/RateBackoff.tla: RateEnd sets until
+// from the end's own time, OkEnd resets k). Whether it holds is the caller's: now before
+// Until (RestsDue).
 func rateBackoffs(fleet *Table) map[string]RouteRest {
+	if fleet == nil {
+		return nil
+	}
 	type ev struct {
 		at   time.Time
 		lim  bool
 		card string
 	}
 	byRoute := map[string][]ev{}
-	if fleet == nil {
-		return nil
-	}
 	for _, c := range fleet.Column(Ready, Working, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
-		for _, t := range mustRateTakes(c) {
+		takes, _ := RateTakes(c)
+		for _, t := range takes {
 			if at, err := time.Parse(time.RFC3339, t.Finished); err == nil && t.Route != "" && t.Route != RoutePin {
 				byRoute[t.Route] = append(byRoute[t.Route], ev{at: at, lim: true, card: c.ID})
 			}
@@ -88,42 +108,44 @@ func rateBackoffs(fleet *Table) map[string]RouteRest {
 	}
 	out := map[string]RouteRest{}
 	for route, evs := range byRoute {
-		slices.SortFunc(evs, func(a, b ev) int { return a.at.Compare(b.at) })
-		// the last ok end resets k: only rate-limited ends after it count
+		// the last ok end resets k: only the rate-limited ends after it count
 		var lastOk time.Time
 		for _, e := range evs {
-			if !e.lim {
+			if !e.lim && e.at.After(lastOk) {
 				lastOk = e.at
 			}
 		}
+		k, last := 0, time.Time{}
 		var cards []string
-		var last time.Time
 		for _, e := range evs {
-			if e.lim && (lastOk.IsZero() || e.at.After(lastOk)) {
-				cards = append(cards, e.card)
+			if !e.lim || !e.at.After(lastOk) {
+				continue
+			}
+			k++
+			if e.at.After(last) {
 				last = e.at
 			}
+			if !slices.Contains(cards, e.card) {
+				cards = append(cards, e.card)
+			}
 		}
-		if len(cards) == 0 {
+		if k == 0 {
 			continue
 		}
-		backoff := RateBackoffFor
-		for i := 1; i < len(cards) && backoff < RateBackoffMax; i++ {
-			backoff *= 2
-		}
-		if backoff > RateBackoffMax {
-			backoff = RateBackoffMax
-		}
-		out[route] = RouteRest{Route: route, Until: last.Add(backoff), Cards: cards, Cause: RestRateBackoff}
+		slices.Sort(cards)
+		d := RateBackoff(k)
+		out[route] = RouteRest{Route: route, At: last, Until: last.Add(d), Cards: cards, Cause: RestRateBackoff,
+			Why: fmt.Sprintf("rate-limit backoff of %s after %d rate-limited ends since its last ok end", d, k)}
 	}
 	return out
 }
 
-// mustRateTakes is RateTakes with the takes alone (the numbers read off the record order).
-func mustRateTakes(wc *Card) []ProviderTake {
-	takes, _ := RateTakes(wc)
-	return takes
-}
+// rateBackoffKey is the suffix of a route's rate-limit backoff line in its provider's
+// PropRule3Rest (`<route>+rate-backoff <rest>`): beside the route's own 3-in-10 rest line,
+// never over it, so a backoff never moves the mark the 3-in-10 window counts after, never
+// holds a coordinator's rest off and is never woken (rule3Rests skips it). The line is read
+// back only by restWrites, so a backoff it has written is never written or noted again.
+const rateBackoffKey = "+rate-backoff"
 
 // PropRule3Rest is the fleet table's property that holds one provider's rule-3 rests:
 // one property per provider, one line per route that has rested, so the table's
@@ -387,7 +409,13 @@ func rule3Rests(fleet *Table) map[string]map[string]RouteRest {
 		if !ok {
 			continue
 		}
-		out[p] = parseRule3(v) // a retired line stays: its mark (it holds nothing: Resting)
+		own := parseRule3(v) // a retired line stays: its mark (it holds nothing: Resting)
+		for route := range own {
+			if strings.HasSuffix(route, rateBackoffKey) {
+				delete(own, route) // a backoff's line is restWrites' alone (rateBackoffKey)
+			}
+		}
+		out[p] = own
 	}
 	return out
 }
@@ -492,7 +520,10 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 // whose window (its last RouteRestWindow ended takes after its last rest began, in the
 // order they ended) holds RouteRestAfter or more the provider failed transiently, rested
 // from s.Now for RouteRestFor, naming those takes' cards (a take that left no result never
-// counts: tla/RouteRest.tla); and each provider a refusal rests
+// counts: tla/RouteRest.tla); each other route not resting whose rate-limited takes back it
+// off at s.Now (rateBackoffs: a fixed end from the records, never from s.Now, so it holds
+// while now is before it and is due again on every step until then; tla/RateBackoff.tla);
+// and each provider a refusal rests
 // (providerRestsDue: one rest, Route "", over rule 3's on its routes); the providers' first,
 // then the routes', in name order.
 func RestsDue(s *Snapshot) []RouteRest {
@@ -505,13 +536,6 @@ func RestsDue(s *Snapshot) []RouteRest {
 	for _, r := range s.Routes {
 		last, had := rests[r.Name]
 		if had && last.Resting(s.Now) {
-			continue
-		}
-		// a rate limit backs the route off briefly from its own records, a fixed end that
-		// ends by itself: never the 3-in-10 rest (RestsDue below counts no rate limit)
-		if b, ok := backs[r.Name]; ok && s.Now.Before(b.Until) {
-			b.At = s.Now
-			out = append(out, b)
 			continue
 		}
 		var window []routeEnd
@@ -530,6 +554,14 @@ func RestsDue(s *Snapshot) []RouteRest {
 		}
 		if len(cards) >= RouteRestAfter {
 			out = append(out, RouteRest{Route: r.Name, At: s.Now, Until: s.Now.Add(RouteRestFor), Cards: cards, Cause: RestProvider})
+			continue
+		}
+		// a rate limit backs the route off briefly from its own records, a fixed end that
+		// ends by itself, never the 3-in-10 rest (transient counts no rate limit); a 5xx
+		// window that is due rests the route for longer, so it is the one written
+		// (tla/RateBackoff.tla, BackoffEnds and BackoffBounded)
+		if b, ok := backs[r.Name]; ok && s.Now.Before(b.Until) {
+			out = append(out, b)
 		}
 	}
 	// a provider's refusal rests the provider, every route of it, over rule 3's on its routes
@@ -671,11 +703,30 @@ func restWrites(p *Plan, s *Snapshot, due []RouteRest, who string) {
 		name := PropRule3Rest(prov)
 		was, had := s.Fleet.Prop(name)
 		merged := parseRule3(was)
+		var written []RouteRest
 		for _, r := range b.routes {
+			if r.Cause == RestRateBackoff {
+				// a backoff is due on every step while it holds (RestsDue); its line, beside
+				// the route's own (rateBackoffKey), is written once per end, and so is its
+				// note: none while the same until holds (tla/RateBackoff.tla)
+				key := r.Route + rateBackoffKey
+				if old, ok := merged[key]; ok && old.Until.Equal(r.Until) {
+					continue
+				}
+				x := r
+				x.Route = key
+				merged[key] = x
+				written = append(written, r)
+				continue
+			}
 			merged[r.Route] = r
+			written = append(written, r)
+		}
+		if len(written) == 0 {
+			continue
 		}
 		p.Props = append(p.Props, PropWrite{Table: Fleet, Name: name, Value: rule3Text(merged), Was: was, WasAbsent: !had})
-		for _, r := range b.routes {
+		for _, r := range written {
 			tier := ""
 			for _, x := range s.Routes {
 				if x.Name == r.Route {

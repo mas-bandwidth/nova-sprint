@@ -429,3 +429,95 @@ func TestRouteRestCoverEnvFaultRemedy(t *testing.T) {
 	assert.Contains(t, EnvFaultRemedy("m1", EnvOther), "repair m1's environment")
 	assert.Equal(t, "fleet up m1 --probe passed", EnvProbeLine("m1"))
 }
+
+// A rate-limit backoff never holds off or moves the 3-in-10 rest of 5xxs: three 5xxs rest
+// the route for RouteRestFor while a backoff holds (the longer rest is the one written), and
+// a backoff's line, kept beside the route's own (rateBackoffKey), is never the mark the
+// window counts after (tla/RateBackoff.tla beside tla/RouteRest.tla).
+func TestARateBackoffNeverHoldsOffTheFiveHundredsRest(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2030, 1, 2, 3, 0, 0, 0, time.UTC)
+	at := func(m int) string { return stamp(t0.Add(time.Duration(m) * time.Minute)) }
+	outage := func(m int) string {
+		return ProviderTake{Route: "a", Finished: at(m), Error: "provider: class=provider-5xx status=503 msg=upstream unavailable"}.String()
+	}
+	rated := func(m int) string {
+		return ProviderTake{Route: "a", Finished: at(m), Error: "provider: class=rate-limited status=429 msg=Too many requests"}.String()
+	}
+	fleet := func(fields map[string]map[string]string) *Table {
+		f := NewTable(Fleet)
+		f.SetRows([]string{"m1"})
+		for id, fs := range fields {
+			fs[FieldRoute] = "a"
+			f.Put(&Card{ID: id, Row: "m1", Col: Withdrawn, Fields: fs})
+		}
+		return f
+	}
+	routes := []Route{{Name: "a", Tier: "pro", Enabled: true}}
+
+	// three 5xxs and a 429 at once: the 30-minute rest, never only the backoff
+	s := &Snapshot{Now: t0.Add(10*time.Minute + 30*time.Second), Routes: routes, Fleet: fleet(map[string]map[string]string{
+		"c1": {FieldProviderTake + "1": outage(8)}, "c2": {FieldProviderTake + "1": outage(9)},
+		"c3": {FieldProviderTake + "1": outage(10)}, "r1": {FieldRateTake + "1": rated(10)},
+	})}
+	due := RestsDue(s)
+	require.Len(t, due, 1)
+	assert.Equal(t, RestProvider, due[0].Cause)
+	assert.Equal(t, s.Now.Add(RouteRestFor), due[0].Until)
+
+	// a backoff written between the 5xxs is not the window's mark: the third 5xx rests
+	s = &Snapshot{Now: t0.Add(20 * time.Minute), Routes: routes, Fleet: fleet(map[string]map[string]string{
+		"c1": {FieldProviderTake + "1": outage(5)}, "c2": {FieldProviderTake + "1": outage(6)},
+		"r1": {FieldRateTake + "1": rated(10)}, "c3": {FieldProviderTake + "1": outage(12)},
+	})}
+	back := rateBackoffs(s.Fleet)["a"]
+	require.Equal(t, t0.Add(11*time.Minute), back.Until, "60s after the one 429")
+	back.Route = "a" + rateBackoffKey
+	s.Fleet.SetProps(map[string]string{PropRule3Rest(""): "a" + rateBackoffKey + " " + back.value()})
+	assert.Empty(t, RouteRests(routes, s.Fleet), "a backoff's line is never the route's own rest")
+	due = RestsDue(s)
+	require.Len(t, due, 1)
+	assert.Equal(t, RestProvider, due[0].Cause)
+	assert.Equal(t, []string{"c1", "c2", "c3"}, due[0].Cards)
+}
+
+// A backoff is due on every step while it holds; restWrites writes its line and its one
+// happened note once, none while the same until holds, never a judgment, and a new end
+// (a later until) writes it and notes it again (tla/RateBackoff.tla).
+func TestARateBackoffIsWrittenAndNotedOncePerEnd(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2030, 1, 2, 3, 0, 0, 0, time.UTC)
+	rated := func(m int) string {
+		return ProviderTake{Route: "a", Finished: stamp(t0.Add(time.Duration(m) * time.Minute)), Error: "provider: class=rate-limited status=429 msg=Too many requests"}.String()
+	}
+	f := NewTable(Fleet)
+	f.SetRows([]string{"m1"})
+	f.Put(&Card{ID: "r1", Row: "m1", Col: Withdrawn, Fields: map[string]string{FieldRoute: "a", FieldRateTake + "1": rated(0)}})
+	s := &Snapshot{Now: t0.Add(30 * time.Second), Routes: []Route{{Name: "a", Tier: "pro", Enabled: true}}, Fleet: f, Coordinator: "seat"}
+	step := func() Plan {
+		var p Plan
+		restWrites(&p, s, RestsDue(s), "machine")
+		for _, w := range p.Props {
+			s.Fleet.SetProps(map[string]string{w.Name: w.Value})
+		}
+		return p
+	}
+	p := step()
+	require.Len(t, p.Notes, 1, "a new backoff writes one note")
+	assert.Equal(t, NRouteRested, p.Notes[0].Type)
+	assert.Equal(t, "rate-limit backoff of 1m0s on a, until "+stamp(t0.Add(time.Minute)), p.Notes[0].What)
+	assert.Equal(t, Happened, p.Notes[0].Kind, "never a judgment")
+	s.Now = s.Now.Add(10 * time.Second)
+	p = step()
+	assert.Empty(t, p.Notes, "none while the same until holds")
+	assert.Empty(t, p.Props, "nothing written again")
+	// a second 429 with no ok between: 120s from it, written and noted once more
+	f.Card("r1").Fields[FieldRateTake+"2"] = rated(1)
+	s.Now = t0.Add(70 * time.Second)
+	p = step()
+	require.Len(t, p.Notes, 1)
+	assert.Equal(t, "rate-limit backoff of 2m0s on a, until "+stamp(t0.Add(3*time.Minute)), p.Notes[0].What)
+	// past its end the route serves: nothing is due
+	s.Now = t0.Add(3 * time.Minute)
+	assert.Empty(t, RestsDue(s), "the backoff ended by itself")
+}
