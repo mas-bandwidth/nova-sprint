@@ -51,7 +51,9 @@ func TestTheFriendsDealNeverDealsACardWithUnlandedNeeds(t *testing.T) {
 			}
 		}
 	}
-	require.Equal(t, Ready, w.s.StateOf("s1-1"), "the undealt primary stays ready")
+	// rule 11 (check.go): a primary anywhere but waiting has every need landed, so the
+	// undealt primary goes back to waiting for its needs (needsWaits)
+	require.Equal(t, Waiting, w.s.StateOf("s1-1"), "the undealt primary waits for its needs")
 }
 
 // (2) A card already on a friend's ready cell whose needs have not landed goes back to the
@@ -69,9 +71,12 @@ func TestADealtThenUnheldFriendDoesNotTakeACardWithUnlandedNeeds(t *testing.T) {
 
 	// its two needs have not landed
 	setNeeds(w.s, "s1-1", "n1", "n2")
-	// the next tick withdraws the ready card off her row
-	dealWith(w, amy)
+	// the next tick withdraws the ready card off her row, every move a row of the lifecycle
+	// as the store holds it (a dealt primary is working: working -> ready, then the tick
+	// after moves it ready -> waiting)
+	lawfulDeal(w, amy)
 	require.False(t, w.s.Fleet.Card("s1-1.w1").Placed(), "the dealt card leaves the fleet table")
+	lawfulDeal(w, amy)
 	require.Equal(t, Waiting, w.s.StateOf("s1-1"), "the primary waits for its needs again")
 	require.Equal(t, 0, w.s.Fleet.Count(FriendRow("amy"), Ready), "the friend's ready cell is empty")
 

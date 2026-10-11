@@ -53,14 +53,18 @@ func TestBriefDependsOnOnlyChangeIsTakenInAnyState(t *testing.T) {
 	assert.Equal(t, "a-3", ta.primary("a-2").F("needs"))
 	assert.Equal(t, "waiting", ta.primary("a-2").Col)
 
-	// a card dealt: the change applies to its next attempt, the needs follow
+	// a card dealt: the needs follow, and a dealt card whose needs have not landed goes back
+	// to the pool (docs/SPEC-SPRINT.md, needs and the deal; needsWithdrawals): its primary
+	// goes working -> ready in that tick and ready -> waiting in the next (needsWaits)
 	require.Equal(t, "working", ta.primary("a-1").Col, "the tick dealt a-1")
 	out = ta.ok("brief a-1 --brief-file " + writeHeaderBrief(t, t.TempDir(), "a-1", "a-3", "internal/a1.go"))
 	assert.Contains(t, out, "MOVED a-1 DEPENDS-ON replaced: needs a-3 ")
 	ta.ok("tick")
 	assert.Equal(t, "a-3", ta.primary("a-1").F("needs"))
 	assert.Contains(t, ta.primary("a-1").F("brief"), "DEPENDS-ON: a-3\n")
-	assert.Equal(t, "working", ta.primary("a-1").Col)
+	assert.Equal(t, "ready", ta.primary("a-1").Col, "withdrawn: its need a-3 has not landed")
+	ta.ok("tick")
+	assert.Equal(t, "waiting", ta.primary("a-1").Col, "it waits for a-3")
 	out = ta.ok("brief a-1 --brief-file " + writeHeaderBrief(t, t.TempDir(), "a-1", "a-3", "internal/other.go"))
-	assert.Contains(t, out, "a-1 brief edited in place")
+	assert.Contains(t, out, "a-1 brief edited in place", "an attempt was dealt: its next attempt takes the brief")
 }
