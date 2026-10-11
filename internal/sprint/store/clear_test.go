@@ -66,12 +66,68 @@ func settleMidFlightStop(h *harness) {
 	require.NoError(h.t, err, "START follows the captured same-owner cancellation receipts")
 }
 
+func TestClearStartsAnEmptyEpochAfterAStopReturn(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.setup(1)
+	h.through("s1-1")
+	_, err := h.st.ArchiveStreams(h.ctx, []string{"s1"})
+	require.NoError(t, err)
+	h.must(AddStep(sprint.AddReq{Stream: "s2", Count: 1}))
+	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"s2-1"}}}))
+	h.startMachine()
+	wc := h.snap().Fleet.Card("s2-1.w1")
+	require.NotNil(t, wc)
+	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: 1}}))
+	_, stopped, _, err := h.st.SetMachine(h.ctx, false)
+	require.NoError(t, err)
+	require.Len(t, stopped.StopDebt, 1)
+	h.must(StopReturnStep(sprint.StopReturnReq{As: wc.Row, IDs: []string{wc.ID}, Gens: map[string]int{wc.ID: 1}, Reason: "child exited"}))
+	old, err := h.st.At(0).Load(h.ctx, All, nil)
+	require.NoError(t, err)
+	require.Contains(t, old.Work.Rows(), "s1", "the old epoch retains its archived stream")
+	require.Contains(t, old.Work.Rows(), "s2", "the old epoch retains its work stream")
+
+	_, err = h.st.Clear(h.ctx)
+	require.NoError(t, err, "a stop-returned lease does not block clear")
+	after := h.snap()
+	for _, table := range []*sprint.Table{after.Work, after.Merge, after.Readers, after.Fleet} {
+		require.Empty(t, table.Rows(), "%s rows leaked into epoch %d", table.Name, after.Epoch)
+	}
+}
+
+func TestClearRefusesWithEveryLiveLeaseAndOwner(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.setup(2)
+	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"s1-1", "s1-2"}}}))
+	h.startMachine()
+	owners := map[string]bool{}
+	for _, id := range []string{"s1-1", "s1-2"} {
+		wc := h.snap().Fleet.Card(id + ".w1")
+		require.NotNil(t, wc)
+		owners[wc.Row] = true
+		h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: 1}}))
+	}
+	res, err := h.st.Clear(h.ctx)
+	require.Error(t, err)
+	require.Len(t, res.Refused, 2)
+	for _, id := range []string{"s1-1.w1@1", "s1-2.w1@1"} {
+		require.Contains(t, err.Error(), id, "clear refusal must list all live leases and their owner rows")
+	}
+	for owner := range owners {
+		require.Contains(t, err.Error(), owner, "clear refusal must list each lease's owner row")
+	}
+}
+
 func TestClearStopsTheSprintAndClearsAllWork(t *testing.T) {
 	t.Parallel()
 	h := midFlight(t)
 	before := h.snap()
 	res, err := h.st.Clear(h.ctx)
 	require.ErrorContains(t, err, "captured owner work/read leases", "clear must not erase work while STOP still owes an owner cancellation receipt")
+	require.Contains(t, err.Error(), "s1-5.w1@1", "clear names a live lease")
+	require.Contains(t, err.Error(), "m1", "clear names the lease's owner row")
 	assert.Equal(t, uint64(0), h.snap().Epoch, "a refused clear keeps the old epoch for the owner to return its children")
 	m, _, merr := h.st.Machine(h.ctx)
 	require.NoError(t, merr)
@@ -91,18 +147,8 @@ func TestClearStopsTheSprintAndClearsAllWork(t *testing.T) {
 	}
 	after := h.snap()
 	require.Equal(t, uint64(1), after.Epoch, "epoch %d", after.Epoch)
-	for _, pair := range [][2]*sprint.Table{{before.Work, after.Work}, {before.Readers, after.Readers}, {before.Merge, after.Merge}, {before.Fleet, after.Fleet}} {
-		if !slices.Equal(pair[0].Rows(), pair[1].Rows()) {
-			require.Fail(t, fmt.Sprintf("%s rows %v, were %v", pair[1].Name, pair[1].Rows(), pair[0].Rows()))
-		}
-		for _, c := range pair[1].Cards() {
-			if c.Placed() && c.Col != sprint.Ctl {
-				require.Fail(t, fmt.Sprintf("%s still holds %s at %s", pair[1].Name, c.ID, c.Col))
-			}
-		}
-	}
-	if after.StreamCtl("s1").F("state") != sprint.StreamWaiting || after.MemberCtl("m1").F("status") != sprint.Up || after.Fleet.Count("m1", sprint.DoneOK) != 0 {
-		require.Fail(t, fmt.Sprintf("control cards: %v %v", after.StreamCtl("s1").Fields, after.MemberCtl("m1").Fields))
+	for _, table := range []*sprint.Table{after.Work, after.Readers, after.Merge, after.Fleet} {
+		require.Empty(t, table.Rows(), "%s rows leaked into the new epoch", table.Name)
 	}
 	if open, _ := h.st.Inbox(h.ctx, 0, 0, 100); len(open.Groups) != 1 || open.Groups[0].Type != sprint.NMachineStopped {
 		require.Fail(t, fmt.Sprintf("the new epoch's inbox is not the one line that the machine is STOPPED: %+v", open.Groups))
@@ -138,16 +184,15 @@ func TestClearStopsTheSprintAndClearsAllWork(t *testing.T) {
 	require.NoError(t, err, "the old epoch's inbox: %+v %v", v, err)
 	require.NotEmpty(t, v.Groups, "the old epoch's inbox: %+v %v", v, err)
 
-	// The same ids run again, to landed, in the new epoch.
-	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 3}))
+	// The same ids run again from the blank new epoch: the fleet and the
+	// stream are added fresh, and the ids are reusable.
+	h.setup(3)
 	_, _, _, err = h.st.SetMachine(h.ctx, true)
 	require.NoError(t, err, "new work starts only after the cleared sprint starts its new run")
-	h.through("s1-1", "s1-2", "s1-3")
-	h.must(MergeStep(sprint.MergeReq{Stream: "s1"}))
-	if s := h.snap(); s.StateOf("s1-1") != sprint.Landed || s.StateOf("s1-3") != sprint.Landed {
-		require.Failf(t, "", "the same ids again: %s %s", s.StateOf("s1-1"), s.StateOf("s1-3"))
+	if s := h.snap(); s.Work.Card("s1-1") == nil || s.Work.Card("s1-3") == nil {
+		require.Failf(t, "", "the same ids again are not fresh: %+v", s.Work.Rows())
 	}
-	h.clean("landed again")
+	h.clean("reused")
 
 	// Clear twice in a row.
 	for want := uint64(2); want <= 3; want++ {
@@ -158,14 +203,14 @@ func TestClearStopsTheSprintAndClearsAllWork(t *testing.T) {
 	}
 }
 
-// A clear cut after the epoch advanced, before its shape was restored, is
-// finished by the next clear, which then clears again.
+// A clear cut before the epoch advanced changes nothing: the next clear
+// advances once and leaves the new epoch blank, restoring no shape.
 func TestACutClearIsFinishedByTheNext(t *testing.T) {
 	t.Parallel()
 	h := midFlight(t)
 	settleMidFlightStop(h)
 	h.m.Fail = func(p string) error {
-		if strings.HasPrefix(p, "apply ") {
+		if p == "advance" {
 			return errors.New("cut")
 		}
 		return nil
@@ -175,12 +220,13 @@ func TestACutClearIsFinishedByTheNext(t *testing.T) {
 	h.m.Fail = nil
 	res, err := h.st.Clear(h.ctx)
 	require.NoError(t, err, "the next clear: %+v %v", res, err)
-	require.True(t, res.Restored, "the next clear: %+v %v", res, err)
-	require.Equal(t, uint64(1), res.From, "the next clear: %+v %v", res, err)
-	require.Equal(t, uint64(2), res.To, "the next clear: %+v %v", res, err)
+	require.False(t, res.Restored, "a blank-slate clear has no shape restore")
+	require.Equal(t, uint64(0), res.From, "the next clear: %+v %v", res, err)
+	require.Equal(t, uint64(1), res.To, "the next clear: %+v %v", res, err)
 	s := h.snap()
-	require.Equal(t, sprint.StreamWaiting, s.StreamCtl("s1").F("state"), "the shape is not restored")
-	require.NotNil(t, s.MemberCtl("m2"), "the shape is not restored")
+	for _, table := range []*sprint.Table{s.Work, s.Readers, s.Merge, s.Fleet} {
+		require.Empty(t, table.Rows(), "%s rows leaked into epoch %d", table.Name, s.Epoch)
+	}
 	h.clean("finished and cleared")
 }
 
@@ -200,9 +246,7 @@ func TestTeardownAfterClearsLeavesNoKey(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		_, err := h.st.Clear(h.ctx)
 		require.NoError(t, err)
-		h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 2}))
-		h.startMachine() // clear leaves STOPPED; the next epoch needs its own run
-		h.through("s1-1")
+		h.setup(2) // the new epoch gets fresh rows before it is cleared again
 	}
 	_, err := h.st.Teardown(h.ctx)
 	require.NoError(t, err)
@@ -277,7 +321,7 @@ func TestATickInFlightAtAClearIsRefusedAsStale(t *testing.T) {
 	require.NoError(t, err, "the next tick: %+v %v", res, err)
 	require.Equal(t, Stopped, res.State, "the next tick: %+v %v", res, err)
 	require.Empty(t, res.Parts, "the next tick: %+v %v", res, err)
-	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 4}))
+	h.setup(4)
 	h.startMachine()
 	res, err = loop.Tick(h.ctx)
 	require.NoError(t, err, "the first tick at the new epoch: %+v %v", res, err)

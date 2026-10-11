@@ -120,6 +120,12 @@ func (h *harness) state(id string) string { return h.snap().StateOf(id) }
 // setup: two members up, n primaries in s1.
 func (h *harness) setup(n int) {
 	h.t.Helper()
+	// a clear leaves the new epoch blank, so its readers are added fresh here
+	// (a no-op while they already exist): the blank-slate clear carries no
+	// reader row into the new epoch.
+	if pinned, err := h.st.pin(h.ctx); err == nil {
+		require.NoError(h.t, pinned.B.RowsAdd(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
+	}
 	if err := h.st.BeatReaders(h.ctx); err != nil { // a reader asks for its queue: it is up
 		require.NoError(h.t, err)
 	}

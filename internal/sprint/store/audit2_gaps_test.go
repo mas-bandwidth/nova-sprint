@@ -283,7 +283,7 @@ func TestAudit2ClosedRepairSkipNamesAStoredIDAfterAClear(t *testing.T) {
 	h.setup(1)
 	_, err := h.st.Clear(h.ctx)
 	require.NoError(t, err)
-	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"s1-1"}}))
+	h.setup(1) // the blank new epoch gets its members and stream fresh
 	outside := &a2Racer{racer: &racer{Backend: h.m, at: "apply t-work"}}
 	outside.do = func() {
 		s := h.snap()
@@ -588,7 +588,7 @@ func TestNoStoredIDReachesTheCoordinator(t *testing.T) {
 	h.setup(1)
 	_, err := h.st.Clear(h.ctx)
 	require.NoError(t, err)
-	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 6}))
+	h.setup(6) // the blank new epoch gets its members, readers and six primaries fresh
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"w"}, Needs: []string{"s1-6"}}))
 	h.startMachine()
