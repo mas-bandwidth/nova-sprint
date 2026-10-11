@@ -12,16 +12,19 @@
 \*   Read(c)    the WATCH read of the model's window: how many grants it holds now;
 \*   Write(c)   the MULTI/EXEC: a grant recorded only while the count c read is under N
 \*              AND the window did not move since c read it (dirty: another caller
-\*              wrote); a lost race reads again; a spent window releases c's slot and
-\*              c waits (it stalls, never fails);
+\*              wrote); a lost race releases the slot and the caller waits (it stalls,
+\*              never fails); a spent window does the same;
+\*   Renew(c)   the request's best-effort renewal of its lease (budget renew, every
+\*              LeaseTTL/3 while the request runs): a renewal that is not written lets
+\*              the lease lapse while the request still runs;
 \*   Release(c) the request ended: its slot is freed;
 \*   Refused(c) the provider refused the request with a 429 anyway: the request waits
 \*              and is retried in place (the member's backoff), its slot freed; nothing
 \*              is spent (no attempt, no route rest: the sprint's side is Go-tested);
 \*   Crash(c)   the holder dies holding its slot; Recover(c) once its lease expired;
 \*   Tick       time passes: every grant ages one step (one leaves the window at age
-\*              Win) and the leases of live holders are renewed, a dead holder's run
-\*              down (LeaseTTL);
+\*              Win) and the leases of holders run down (LeaseTTL); a dead holder's run
+\*              out, a live holder's is renewed by Renew, not by Tick;
 \*   Down, Up   the store stops or starts answering; OpenGo(c) a waiting caller whose
 \*              store does not answer proceeds unlimited (open): the limiter is never a
 \*              source of errors, and a grant it could not record is outside its count.
@@ -33,14 +36,22 @@
 \* Properties: NeverOverRate (at most N recorded grants in any Win ticks),
 \* NeverOverConcurrent (at most C requests holding a slot), InFlightHeld (every request
 \* in flight that the store granted holds a live lease), StalledIsGranted (a waiting
-\* caller is eventually in flight, or died), SlotReclaimed (a dead holder's slot frees).
+\* caller is eventually in flight, or died), SlotReclaimed (a dead holder's slot frees),
+\* AbortedWriteReleasesSlot (a lost WATCH race releases the slot).
+\* InFlightHeld and NeverOverConcurrent hold while every renewal inside its bound
+\* succeeds: renewal is best-effort, and a renewal not written (the store down, or the
+\* holder too slow) lets the lease lapse while the request still runs. The model keeps
+\* that assumption as a guard, not a fairness: Tick leaves a live holder's lease above
+\* zero while its renewal is unbroken ("norenew" is the broken case that lifts it).
 \* Fairness: the store is fair to a caller that keeps asking (strong fairness on its
 \* take when the budget has room): that is the assumption the Waiter's polling makes.
 \*
 \* Reversed witnesses (Broken): "race" writes without the WATCH guard (a read and an
-\* unguarded write) and breaks NeverOverRate; "norenew" lets a live holder's lease run
-\* out and breaks NeverOverConcurrent; "noexpiry" keeps a dead holder's lease forever and
-\* breaks SlotReclaimed.
+\* unguarded write) and breaks NeverOverRate; "norenew" lets a live holder's renewal
+\* fail, so its lease runs out, and breaks NeverOverConcurrent; "noexpiry" keeps a dead
+\* holder's lease forever and breaks SlotReclaimed; "keepslot" (the pre-fix behaviour: an
+\* aborted write kept the slot instead of releasing it) keeps the slot after an aborted
+\* write and breaks AbortedWriteReleasesSlot.
 EXTENDS Naturals, FiniteSets
 
 \* MaxWants bounds each caller's requests (0: unbounded): the liveness instance's, so that
@@ -60,6 +71,10 @@ SumTo(i) == IF i = 0 THEN 0 ELSE SumTo(i - 1) + win[i - 1]
 InWin == SumTo(Win)
 
 Live == {c \in Callers : lease[c] > 0}
+
+\* a live holder whose renewal is written: the store answers, the lease is still live,
+\* and the renewal is not the broken case
+Renewable(c) == st[c] \in Holding /\ ~opened[c] /\ ~down /\ lease[c] > 0 /\ "norenew" \notin Broken
 
 TypeOK ==
     /\ st \in [Callers -> States]
@@ -116,16 +131,25 @@ Write(c) ==
               /\ st' = [st EXCEPT ![c] = "inflight"]
               /\ UNCHANGED <<lease, down, opened, wants>>
        ELSE IF dirty[c]
-         THEN \* EXEC aborted: the window moved; read again
-              /\ st' = [st EXCEPT ![c] = "slotted"]
+         THEN \* EXEC aborted (the window moved): the slot is released and the caller
+              \* waits ("keepslot" is the broken case that keeps the slot instead)
+              /\ st' = [st EXCEPT ![c] = IF "keepslot" \in Broken THEN "slotted" ELSE "waiting"]
+              /\ lease' = [lease EXCEPT ![c] = IF "keepslot" \in Broken THEN @ ELSE 0]
               /\ dirty' = [dirty EXCEPT ![c] = FALSE]
               /\ seen' = [seen EXCEPT ![c] = 0]
-              /\ UNCHANGED <<win, lease, down, opened, wants>>
+              /\ UNCHANGED <<win, down, opened, wants>>
          ELSE \* the window is spent: the slot is released and the request waits
               /\ st' = [st EXCEPT ![c] = "waiting"]
               /\ lease' = [lease EXCEPT ![c] = 0]
               /\ seen' = [seen EXCEPT ![c] = 0]
               /\ UNCHANGED <<win, dirty, down, opened, wants>>
+
+\* the request's best-effort renewal of its lease while it runs: the renewal is written
+\* while the store answers, the lease is still live, and it is not the broken case
+Renew(c) ==
+    /\ Renewable(c)
+    /\ lease' = [lease EXCEPT ![c] = TTL]
+    /\ UNCHANGED <<st, win, dirty, seen, down, opened, wants>>
 
 Release(c) ==
     /\ st[c] = "inflight"
@@ -159,11 +183,19 @@ Recover(c) ==
     /\ opened' = [opened EXCEPT ![c] = FALSE]
     /\ UNCHANGED <<win, lease, dirty, seen, down, wants>>
 
+\* time passes: the window ages and leases run down. A live holder's lease never reaches
+\* zero while its renewal is unbroken (the guard that every renewal inside its bound
+\* succeeds); Renew, not Tick, is what brings it back up. "noexpiry" keeps a dead
+\* holder's lease forever (the expiry clock is broken); "keepslot" keeps only the slot
+\* after an aborted write (Write, which AbortedWriteReleasesSlot sees), and a dead
+\* holder's lease still runs down here, so a holder that kept its slot and then died has
+\* its slot reclaimed like any other: keepslot breaks AbortedWriteReleasesSlot, not
+\* SlotReclaimed.
 Tick ==
     /\ win' = [a \in Ages |-> IF a = 0 THEN 0 ELSE win[a - 1]]
     /\ lease' = [c \in Callers |->
-                   IF st[c] \in Holding /\ ~opened[c] /\ "norenew" \notin Broken THEN TTL
-                   ELSE IF st[c] = "crashed" /\ "noexpiry" \in Broken THEN lease[c]
+                   IF st[c] = "crashed" /\ "noexpiry" \in Broken THEN lease[c]
+                   ELSE IF st[c] \in Holding /\ ~opened[c] /\ "norenew" \notin Broken /\ lease[c] <= 1 THEN lease[c]
                    ELSE IF lease[c] > 0 THEN lease[c] - 1 ELSE 0]
     /\ UNCHANGED <<st, dirty, seen, down, opened, wants>>
 
@@ -185,8 +217,8 @@ OpenGo(c) ==
 Next ==
     \/ Tick \/ Down \/ Up
     \/ \E c \in Callers :
-         \/ Want(c) \/ Slot(c) \/ Read(c) \/ Write(c) \/ Release(c) \/ Refused(c)
-         \/ Crash(c) \/ Recover(c) \/ OpenGo(c)
+         \/ Want(c) \/ Slot(c) \/ Read(c) \/ Write(c) \/ Renew(c)
+         \/ Release(c) \/ Refused(c) \/ Crash(c) \/ Recover(c) \/ OpenGo(c)
 
 \* the store is fair to a caller that keeps asking: a take that can commit infinitely
 \* often commits (the Waiter polls every MaxPoll at most). TLC's first liveness run found
@@ -202,6 +234,7 @@ Fairness ==
     /\ \A c \in Callers :
          /\ SF_vars(Slot(c)) /\ SF_vars(SlotRoom(c)) /\ SF_vars(ReadRoom(c)) /\ SF_vars(WriteClean(c))
          /\ WF_vars(Write(c)) /\ WF_vars(Release(c)) /\ WF_vars(Recover(c))
+         /\ WF_vars(Renew(c))
          /\ SF_vars(OpenGo(c))
 
 Spec == Init /\ [][Next]_vars /\ Fairness
@@ -209,10 +242,15 @@ Spec == Init /\ [][Next]_vars /\ Fairness
 \* at most N grants the store recorded in any Win ticks
 NeverOverRate == InWin <= N
 
-\* at most C requests hold a slot the store granted (an open request holds none)
+\* at most C requests hold a slot the store granted (an open request holds none).
+\* It holds while every renewal inside its bound succeeds: a renewal not written lets a
+\* live holder's lease lapse, which frees a slot for one more holder than the store
+\* granted ("norenew" is the case that breaks it).
 NeverOverConcurrent == Cardinality({c \in Callers : st[c] \in Holding /\ ~opened[c]}) <= C
 
-\* every request the store granted holds a live lease while it is in flight
+\* every request the store granted holds a live lease while it is in flight. It holds
+\* while every renewal inside its bound succeeds: a renewal not written lets the lease
+\* lapse while the request still runs ("norenew" is the case that breaks it).
 InFlightHeld == \A c \in Callers : st[c] \in Holding /\ ~opened[c] => lease[c] > 0
 
 \* the budget never stalls everyone: while any caller waits, some caller is eventually in
@@ -231,5 +269,11 @@ StalledIsGranted == \A c \in Callers : (st[c] = "waiting") ~> (st[c] \in {"infli
 
 \* a dead holder's slot is reclaimed by its lease's expiry
 SlotReclaimed == \A c \in Callers : (st[c] = "crashed") ~> (lease[c] = 0)
+
+\* an aborted write (a lost WATCH race: another caller wrote after c read) releases c's
+\* slot, so the request waits without holding a slot ("keepslot" is the broken case that
+\* keeps the slot instead and breaks this)
+AbortedWriteReleasesSlot ==
+    [][\A c \in Callers : (Write(c) /\ dirty[c]) => lease'[c] = 0]_vars
 
 =============================================================================

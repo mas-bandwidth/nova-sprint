@@ -269,9 +269,11 @@ MCSprintRulesTwinsBrokenSilent.cfg	MCSprintRules.tla	invariant	NoDanglingNeed	ig
 MCSprintRulesRules.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
 MCSprintRulesRulesBrokenNoCap.cfg	MCSprintRules.tla	invariant	RuleAttemptsBounded	ignore-terminal	sprintrules	required	-
 MCSprintRulesRulesBrokenDown.cfg	MCSprintRules.tla	action	LadderClimbs	ignore-terminal	sprintrules	required	-
+MCSprintRulesRulesBrokenUnservedTier.cfg	MCSprintRules.tla	action	EscalatesOnlyToServed	ignore-terminal	sprintrules	required	-
 MCSprintRulesLate.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
 MCSprintRulesLateBrokenWaitAlways.cfg	MCSprintRules.tla	invariant	WaitOnce	ignore-terminal	sprintrules	required	-
 MCSprintRulesLateBrokenReturnUnstamped.cfg	MCSprintRules.tla	invariant	NeverStampedNeverReturned	ignore-terminal	sprintrules	required	-
+MCSprintRulesLateBrokenReturnEarly.cfg	MCSprintRules.tla	invariant	HeldToItsOwnDeadline	ignore-terminal	sprintrules	required	-
 MCSprintRulesLateReachReturn.cfg	MCSprintRules.tla	invariant	NeverReturned	ignore-terminal	sprintrules	required	-
 MCSprintRulesReads.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
 MCSprintRulesReadsBrokenNoBound.cfg	MCSprintRules.tla	invariant	ReadAnswersBounded	ignore-terminal	sprintrules	required	-
@@ -475,6 +477,7 @@ MCRateBudgetProgress.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	requ
 MCRateBudgetBrokenRace.cfg	MCRateBudget.tla	invariant	NeverOverRate	ignore-terminal	ratebudget	required	-
 MCRateBudgetBrokenNoRenew.cfg	MCRateBudget.tla	invariant	NeverOverConcurrent	ignore-terminal	ratebudget	required	-
 MCRateBudgetBrokenNoExpiry.cfg	MCRateBudget.tla	temporal	SlotReclaimed	ignore-terminal	ratebudget	required	-
+MCRateBudgetBrokenKeepSlot.cfg	MCRateBudget.tla	action	AbortedWriteReleasesSlot	ignore-terminal	ratebudget	required	-
 MCDealFill.cfg	MCDealFill.tla	pass	-	ignore-terminal	dealfill	required	-
 MCDealFillBrokenNoAutoclear.cfg	MCDealFill.tla	temporal	FaultHoldClears	ignore-terminal	dealfill	required	-
 MCDealFillBrokenClearPerson.cfg	MCDealFill.tla	action	PersonHoldStays	ignore-terminal	dealfill	required	-

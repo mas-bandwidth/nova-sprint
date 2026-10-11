@@ -16,7 +16,7 @@
 // THE CONCURRENCY BUDGET IS LEASES. A provider's in-flight slots are a sorted set of
 // holders, score the lease's expiry: a slot is held until its holder releases it or its
 // lease expires, so a holder that crashed frees its slot by the clock and never strands
-// a lane (NoSlotLost). A holder renews by taking again.
+// a lane (SlotReclaimed). A holder renews by taking again.
 //
 // ATOMIC WITHOUT SCRIPTS. A worker's store user holds no scripting (pkg/redisacl), so a
 // take is WATCH on its key, a read, then one MULTI/EXEC that writes only if the key did
@@ -121,6 +121,7 @@ type Redis struct{ C redis.UniversalClient }
 
 // TakeRate is WATCH key; ZCOUNT of the window; MULTI ZREMRANGEBYSCORE (the grants that
 // left) ZADD PEXPIRE EXEC only while the count is under n.
+// tla/RateBudget.tla Read, Write
 func (r Redis) TakeRate(ctx context.Context, key string, n int, window time.Duration, now time.Time, id string) (Grant, error) {
 	if n <= 0 {
 		return Grant{OK: true}, nil
@@ -169,6 +170,7 @@ func (r Redis) TakeRate(ctx context.Context, key string, n int, window time.Dura
 
 // Acquire is WATCH key; the live slots; MULTI ZREMRANGEBYSCORE (the expired leases) ZADD
 // PEXPIRE EXEC only while the holder holds one already or fewer than n are live.
+// tla/RateBudget.tla Slot, Renew
 func (r Redis) Acquire(ctx context.Context, key, holder string, n int, ttl time.Duration, now time.Time) (Grant, error) {
 	if n <= 0 {
 		return Grant{OK: true}, nil
@@ -210,6 +212,7 @@ func (r Redis) Acquire(ctx context.Context, key, holder string, n int, ttl time.
 }
 
 // Release is ZREM key holder.
+// tla/RateBudget.tla Release
 func (r Redis) Release(ctx context.Context, key, holder string) error {
 	return r.C.ZRem(ctx, key, holder).Err()
 }

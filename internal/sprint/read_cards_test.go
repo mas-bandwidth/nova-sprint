@@ -686,3 +686,65 @@ func TestAReadNoUnitMayTakeIsCannotAskOnce(t *testing.T) {
 		require.NotEqual(t, NCannotAsk, n.Type, "raised once: it stays open")
 	}
 }
+
+// TestReadsAreAskedEveryTickUntilThereIsRoom: a pro primary in review wants its two reads;
+// while every reader that may read it is at its room (K = 5 ticks) no read is dealt and no
+// cannot-ask judgment is opened (the primary's waiting mark says why, nothing more); then one
+// reader frees a lane per tick and each read goes out on the first tick its reader has room,
+// with no seat verb (docs/SPEC-SPRINT.md section 6; the owner, 2026-10-06: "I don't want any
+// serial reads again").
+func TestReadsAreAskedEveryTickUntilThereIsRoom(t *testing.T) {
+	t.Parallel()
+	const K = 5
+	w := readCardsWorld(t, 4)
+	putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "bob", 1)
+	full := []FriendSeat{
+		readerSeat("amy", 0, []string{"pro"}, []string{"reader"}),
+		readerSeat("cal", 0, []string{"pro"}, []string{"reader"}),
+	}
+	for i := 0; i < K; i++ {
+		dealReads(t, w, full)
+		raised, _ := askTick(t, w, full)
+		require.Empty(t, readCardsOf(w, "s1-1"), "tick %d: no read while every reader is at its room", i)
+		require.Empty(t, raised, "tick %d: waiting for room is no judgment", i)
+		require.Empty(t, openCannotAsk(w, "s1-1"), "tick %d: no cannot-ask judgment", i)
+		require.Equal(t, "every reader up who may read it is at its room", waitOf(w, full, "s1-1"), "tick %d: the wait says why", i)
+		require.NotEmpty(t, w.s.Work.Card("s1-1").F(FieldWaitingReader), "tick %d: the waiting mark", i)
+	}
+	// one reader frees a lane each tick: the first read, then the second
+	dealt := []FriendSeat{readerSeat("amy", 2, []string{"pro"}, []string{"reader"}), full[1]}
+	dealReads(t, w, dealt)
+	first := readCardsOf(w, "s1-1")
+	require.Len(t, first, 1, "the first read goes out on the first tick its reader has room")
+	require.Equal(t, "amy", first[0].F("reader"), "to the reader with room")
+	oneMore := []FriendSeat{dealt[0], readerSeat("cal", 2, []string{"pro"}, []string{"reader"})}
+	dealReads(t, w, oneMore)
+	require.Len(t, readCardsOf(w, "s1-1"), 2, "the second read goes out the next tick its reader has room")
+}
+
+// TestAReaskedFriendReadTwiceClosesAtItsSecondGeneration: a friend read the machine takes
+// back and asks again twice lands at her second generation (base.g2), and her report closes
+// it by its own key: ReadCardGenIDs names every identity the read index holds, the rule
+// readCardIDFor and ReadCardExtras use (docs/SPEC-SPRINT.md section 6; the owner,
+// 2026-10-06: "I don't want any serial reads again"). Regression: the .g2 identity must not
+// be dropped.
+func TestAReaskedFriendReadTwiceClosesAtItsSecondGeneration(t *testing.T) {
+	t.Parallel()
+	w, seats, first := friendReadWorld(t)
+	named, holds := "sprint/s1-1.w1.g3.e0", "sprint/s1-1.w1.g1.e0"
+	w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", first.ID, missingReport,
+		map[string]MissingBranch{first.ID: {Named: named, Holds: holds}}))
+	dealReads(t, w, seats)
+	again := readCardsOf(w, "s1-1")
+	require.Len(t, again, 1, "asked again")
+	require.Equal(t, first.ID+".g1", again[0].ID)
+	w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", again[0].ID, missingReport,
+		map[string]MissingBranch{again[0].ID: {Named: named, Holds: holds}}))
+	dealReads(t, w, seats)
+	second := readCardsOf(w, "s1-1")
+	require.Len(t, second, 1, "asked again twice")
+	require.Equal(t, first.ID+".g2", second[0].ID, "the second re-ask is generation 2")
+	require.Contains(t, ReadCardExtras(w.s), first.ID+".g3", "the store must read the generation after the highest it holds")
+	w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", second[0].ID, "Verdict: LAND\n", nil))
+	require.Equal(t, "ok", w.s.Fleet.Card(second[0].ID).F("verdict"), "her report on .g2 closes it by its own key")
+}

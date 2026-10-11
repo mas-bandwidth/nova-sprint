@@ -12,11 +12,16 @@
 \*   does the same for a drop and an add made apart. Drop raises a blocked judgment on
 \*   every waiting card that needs the dropped card (the code's Drop).
 \* Part "rules": one card's attempts under the failed and bound rules: tiers 1 (flash),
-\*   2 (pro), 3 (heavy), 4 (a friend's card, where no rule answers: a mind does).
+\*   2 (pro), 3 (heavy), 4 (a friend's card, where no rule answers: a mind does). A rule
+\*   escalates to the first served tier above (a route serves it: Served), skipping tiers
+\*   no route serves, and to a friend's card past the last served tier; the fleet's failure
+\*   (the same failure on three cards), a card at its brief's bound, and a budget
+\*   exhaustion at its second attempt all take the failed and bound rules' place.
 \* Part "late": one work card past its deadline, its holder's progress stamps (the `progress`
 \*   verb, an outside event: Stamp, and Silence as the stamp ages past the window), the one
 \*   wait a generation, the hold of a card whose holder never stamped (the default: wait
-\*   only), and the return and redeal of one whose holder stamped and went silent.
+\*   only), and the return and redeal of one whose holder stamped and went silent, once its
+\*   holder has had its own whole deadline (own counts it, Window is it).
 \* Part "reads": one card's attempts under a reader's broken reads (rules.go, ruleReadBroken):
 \*   the rule reworks it with the finding as the fix, on the same tier; a finding that names
 \*   a file outside PATHS widens the card's PATHS in place by that file (the same card, never
@@ -58,9 +63,13 @@
 \*                says so)
 \*   "nocap"      the failed rule redeals on the same tier for ever: RuleAttemptsBounded
 \*   "down"       the bound rule may lower the tier: LadderClimbs
+\*   "unservedtier" a rule climbs to the next tier whether a route serves it or not:
+\*                EscalatesOnlyToServed
 \*   "waitalways" the late rule waits whenever there was progress: WaitOnce
 \*   "returnunstamped" the late rule returns a late card with no progress, stamped or not
 \*                (the rule before the stamp existed): NeverStampedNeverReturned
+\*   "returnearly" the late rule returns a stamped card before its holder's own deadline:
+\*                HeldToItsOwnDeadline
 \*   "stopfirst"  the base gate stops the stream on its first failure: BaseStopsOnThird
 \*   "everytick"  the idle alarm is pushed every tick of an episode: AlarmOncePerEpisode
 \*   "nobound"    the read-broken rule reworks a card at its brief's bound: ReadAnswersBounded
@@ -87,7 +96,7 @@
 
 EXTENDS Integers, FiniteSets
 
-CONSTANTS Part, Broken, Cap, MaxFails, MaxGen, Window, MaxClock
+CONSTANTS Part, Broken, Cap, MaxFails, MaxGen, Window, MaxClock, Served
 
 None == "none"
 
@@ -107,8 +116,8 @@ RdFindings == RdFiles \cup {"in1", "in2"}
 
 \* -- every part's variables
 VARIABLES col, need, blocked, twin,               \* twins
-          tier, fails, st, attempts, envFails,     \* rules
-          gen, waited, progress, late, waits, lst, stamped, badReturn, \* late
+          tier, fails, st, attempts, envFails, fclass, same, bbound, \* rules
+          gen, waited, progress, late, waits, lst, stamped, badReturn, own, badDeadline, \* late
           rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, \* reads
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
@@ -117,8 +126,8 @@ VARIABLES col, need, blocked, twin,               \* twins
           jf, jfstarted, jr, jrasked, jh, jhlanded \* judgments
 
 twinVars == <<col, need, blocked, twin>>
-ruleVars == <<tier, fails, st, attempts, envFails>>
-lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn>>
+ruleVars == <<tier, fails, st, attempts, envFails, fclass, same, bbound>>
+lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn, own, badDeadline>>
 rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed>>
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
@@ -142,6 +151,9 @@ TypeOK ==
   /\ st \in {"working", "failed", "bound", "done", "judged"}
   /\ attempts \in Nat
   /\ envFails \in 0..MaxFails
+  /\ fclass \in {"budget", "other", None}
+  /\ same \in BOOLEAN
+  /\ bbound \in BOOLEAN
   /\ gen \in 0..MaxGen
   /\ waited \in (0..MaxGen) \cup {-1}
   /\ progress \in BOOLEAN
@@ -150,6 +162,8 @@ TypeOK ==
   /\ lst \in {"working", "withdrawn"}
   /\ stamped \in BOOLEAN
   /\ badReturn \in BOOLEAN
+  /\ own \in 0..Window
+  /\ badDeadline \in BOOLEAN
   /\ rdst \in {"working", "broken", "bound", "done", "judged"}
   /\ rdatt \in Nat
   /\ rdlast \in RdFindings \cup {None}
@@ -187,8 +201,9 @@ Init ==
   /\ blocked = [x \in TwinIds |-> {}]
   /\ twin = [x \in TwinIds |-> None]
   /\ tier = 1 /\ fails = 0 /\ st = "working" /\ attempts = 0 /\ envFails = 0
+  /\ fclass = None /\ same = FALSE /\ bbound = FALSE
   /\ gen = 0 /\ waited = -1 /\ progress = FALSE /\ late = FALSE /\ waits = 0 /\ lst = "working"
-  /\ stamped = FALSE /\ badReturn = FALSE
+  /\ stamped = FALSE /\ badReturn = FALSE /\ own = 0 /\ badDeadline = FALSE
   /\ rdst = "working" /\ rdatt = 1 /\ rdlast = None /\ rdfind = None /\ rdpaths = {}
   /\ rdwidens = 0 /\ rdtotal = 0 /\ rdfixed = {}
   /\ gfails = 0 /\ stopped = FALSE
@@ -287,42 +302,74 @@ NoDanglingNeed ==
 -----------------------------------------------------------------------------
 \* Part "rules": one card's attempts.
 
-\* the outside: an attempt comes back failed, reaches its bound, or lands
+\* the classes a failed or bound attempt can carry: budget (a prompt's budget
+\* exhausted, the cost rule), or any other failure
+FailureClasses == {"budget", "other"}
+
+\* the tier a rule escalates to: the first served tier of the ladder above (a route
+\* serves it, Served), skipping tiers no route serves, and a friend's card (4) past the
+\* last served tier. The unservedtier defect climbs to tier+1 whatever its route.
+NextTier(t) ==
+  IF Broken = "unservedtier" THEN t + 1
+  ELSE IF \E s \in Served : s > t
+       THEN CHOOSE s \in Served : s > t /\ \A u \in Served : u > t => u >= s
+       ELSE 4
+
+\* the outside: an attempt comes back failed (its class, and whether the fleet holds the
+\* same failure on three cards, and whether the card is at its brief's bound), reaches its
+\* bound, or lands
 WorkFails ==
   /\ st = "working" /\ envFails < MaxFails
   /\ st' = "failed" /\ envFails' = envFails + 1
+  /\ fclass' \in FailureClasses /\ same' \in BOOLEAN /\ bbound' \in BOOLEAN
   /\ UNCHANGED <<tier, fails, attempts>>
 WorkBounds ==
   /\ st = "working" /\ envFails < MaxFails
   /\ st' = "bound" /\ envFails' = envFails + 1
+  /\ fclass' \in FailureClasses /\ same' \in BOOLEAN /\ bbound' \in BOOLEAN
   /\ UNCHANGED <<tier, fails, attempts>>
 WorkLands ==
   /\ st = "working"
   /\ st' = "done"
-  /\ UNCHANGED <<tier, fails, attempts, envFails>>
+  /\ UNCHANGED <<tier, fails, attempts, envFails, fclass, same, bbound>>
 
-\* the failed rule: the next route on the tier, the Cap-th failure a tier up
+\* the failed rule: below its brief's bound, and not the fleet's failure (the same
+\* failure on three cards; a budget exhaustion follows tier escalation instead), the next
+\* route on the tier, the Cap-th failure a tier up
 RuleFailed ==
   /\ st = "failed" /\ tier <= 3
+  /\ ~bbound
+  /\ ~same \/ fclass = "budget"
   /\ IF fails + 1 < Cap \/ Broken = "nocap"
        THEN /\ fails' = IF Broken = "nocap" THEN fails ELSE fails + 1
             /\ UNCHANGED tier
-       ELSE /\ tier' = tier + 1 /\ fails' = 0
+       ELSE /\ tier' = NextTier(tier) /\ fails' = 0
   /\ st' = "working" /\ attempts' = attempts + 1
-  /\ UNCHANGED envFails
+  /\ fclass' = None
+  /\ UNCHANGED <<envFails, same, bbound>>
 
-\* the bound rule: a tier up (heavy's next is a friend's card)
+\* the bound rule: below its brief's bound, and not the fleet's failure except a budget
+\* exhaustion at its second attempt (which escalates), a tier up (heavy's next is a
+\* friend's card)
 RuleBound ==
   /\ st = "bound" /\ tier <= 3
-  /\ tier' = IF Broken = "down" /\ tier > 1 THEN tier - 1 ELSE tier + 1
+  /\ ~bbound
+  /\ ~same \/ (fclass = "budget" /\ attempts = 1)
+  /\ tier' = IF Broken = "down" /\ tier > 1 THEN tier - 1 ELSE NextTier(tier)
   /\ fails' = 0 /\ st' = "working" /\ attempts' = attempts + 1
-  /\ UNCHANGED envFails
+  /\ fclass' = None
+  /\ UNCHANGED <<envFails, same, bbound>>
 
-\* a friend's card is answered by a mind, never by rule
+\* a friend's card, a card at its brief's bound, or the fleet's failure is answered by a
+\* mind, never by rule
 Mind ==
-  /\ st \in {"failed", "bound"} /\ tier = 4
+  /\ st \in {"failed", "bound"}
+  /\ \/ tier = 4
+     \/ bbound
+     \/ st = "failed" /\ same /\ fclass # "budget"
+     \/ st = "bound" /\ same /\ ~(fclass = "budget" /\ attempts = 1)
   /\ st' = "judged"
-  /\ UNCHANGED <<tier, fails, attempts, envFails>>
+  /\ UNCHANGED <<tier, fails, attempts, envFails, fclass, same, bbound>>
 
 RuleNext == WorkFails \/ WorkBounds \/ WorkLands \/ RuleFailed \/ RuleBound \/ Mind
 
@@ -331,6 +378,9 @@ RuleAttemptsBounded == attempts <= 3 * Cap
 
 \* A rule never lowers a card's tier.
 LadderClimbs == [][tier' >= tier]_ruleVars
+
+\* A rule escalates only to a tier a route serves, or to a friend's card.
+EscalatesOnlyToServed == [][tier' = tier \/ tier' \in Served \/ tier' = 4]_ruleVars
 
 \* Every failure or bound is answered: by rule below a friend's card, by a mind there.
 Answered == (st \in {"failed", "bound"}) ~> (st \notin {"failed", "bound"})
@@ -341,50 +391,63 @@ Answered == (st \in {"failed", "bound"}) ~> (st \notin {"failed", "bound"})
 GoLate ==
   /\ lst = "working" /\ ~late
   /\ late' = TRUE
-  /\ UNCHANGED <<gen, waited, progress, waits, lst, stamped, badReturn>>
+  /\ UNCHANGED <<gen, waited, progress, waits, lst, stamped, badReturn, own, badDeadline>>
 
 \* the holder's `progress` verb (the member while its child prints, the friend daemon while a
 \* lane's turn prints): a fresh stamp, at the server's time, on the card it works
 Stamp ==
   /\ lst = "working"
   /\ stamped' = TRUE /\ progress' = TRUE
-  /\ UNCHANGED <<gen, waited, late, waits, lst, badReturn>>
+  /\ UNCHANGED <<gen, waited, late, waits, lst, badReturn, own, badDeadline>>
 
 \* the holder goes silent: its last stamp ages past RuleProgressWindow
 Silence ==
   /\ progress
   /\ progress' = FALSE
-  /\ UNCHANGED <<gen, waited, late, waits, lst, stamped, badReturn>>
+  /\ UNCHANGED <<gen, waited, late, waits, lst, stamped, badReturn, own, badDeadline>>
+
+\* the holder's own deadline passes: own counts its time, Window is its deadline
+OwnTick ==
+  /\ lst = "working" /\ own < Window
+  /\ own' = own + 1
+  /\ UNCHANGED <<gen, waited, progress, late, waits, lst, stamped, badReturn, badDeadline>>
 
 \* the late rule: a wait once a generation with progress; a card whose holder stamped and went
-\* silent, or whose one wait is spent, returned and redealt; a card whose holder never stamped
+\* silent, or whose one wait is spent, returned and redealt, once its holder has had its own
+\* whole deadline (own = Window) or its one wait is spent; a card whose holder never stamped
 \* this take held (the default, wait only: the judgment closed, raised again later)
 RuleLate ==
   /\ late
   /\ IF progress /\ (waited # gen \/ Broken = "waitalways")
        THEN /\ waited' = gen /\ waits' = waits + 1 /\ late' = FALSE
-            /\ UNCHANGED <<gen, lst, progress, stamped, badReturn>>
-     ELSE IF stamped \/ waited = gen \/ Broken = "returnunstamped"
+            /\ UNCHANGED <<gen, lst, progress, stamped, badReturn, own, badDeadline>>
+     ELSE IF (stamped \/ waited = gen \/ Broken = "returnunstamped")
+                /\ (own >= Window \/ waited = gen \/ Broken = "returnearly")
        THEN /\ gen < MaxGen
             /\ gen' = gen + 1 /\ waits' = 0 /\ late' = FALSE /\ lst' = "withdrawn"
             /\ badReturn' = (badReturn \/ ~stamped)
+            /\ badDeadline' = (badDeadline \/ (own < Window /\ waited # gen))
             /\ stamped' = FALSE /\ progress' = FALSE \* the next take's holder has stamped nothing
-            /\ UNCHANGED waited
+            /\ UNCHANGED <<waited, own>>
      ELSE /\ late' = FALSE
-          /\ UNCHANGED <<gen, waited, progress, waits, lst, stamped, badReturn>>
+          /\ UNCHANGED <<gen, waited, progress, waits, lst, stamped, badReturn, own, badDeadline>>
 
 Redeal ==
   /\ lst = "withdrawn"
-  /\ lst' = "working"
-  /\ UNCHANGED <<gen, waited, progress, late, waits, stamped, badReturn>>
+  /\ lst' = "working" /\ own' = 0
+  /\ UNCHANGED <<gen, waited, progress, late, waits, stamped, badReturn, badDeadline>>
 
-LateNext == (GoLate \/ Stamp \/ Silence \/ RuleLate \/ Redeal) /\ waits <= 1
+LateNext == (GoLate \/ Stamp \/ Silence \/ OwnTick \/ RuleLate \/ Redeal) /\ waits <= 1
 
 \* One wait a generation, whatever the progress.
 WaitOnce == waits <= 1
 
 \* A card whose holder never stamped is never returned by the late rule.
 NeverStampedNeverReturned == ~badReturn
+
+\* A stamped card is not returned before its holder's own whole deadline (or the late
+\* rule's one wait is spent).
+HeldToItsOwnDeadline == ~badDeadline
 
 \* Progress is a stamp of this take's holder.
 ProgressIsStamped == progress => stamped

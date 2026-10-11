@@ -78,6 +78,16 @@ func syncApp(t *testing.T) (*testApp, *inventory) {
 	return ta, inv
 }
 
+// probeUp follows the fleet sync report for each member it just added: a member
+// new to the sprint is held until its own probe passes, so the operator runs
+// fleet up <m> --probe passed before the member serves.
+func (ta *testApp) probeUp(members ...string) {
+	ta.t.Helper()
+	for _, m := range members {
+		ta.ok("fleet up " + m + " --probe passed")
+	}
+}
+
 type fleetRow map[string]string
 
 func (ta *testApp) fleetRows() map[string]fleetRow {
@@ -118,8 +128,9 @@ func (ta *testApp) dealIndex() string {
 }
 
 // TestFleetSyncBringsTheInventoryUpAtItsWidths: a member the inventory names
-// and the fleet lacks is added at its width (the row's width field), down
-// until it beats; the tick, as for fleet up, brings it up.
+// and the fleet lacks is added at its width (the row's width field), held until
+// its own probe passes; the report names the line to run, and presence brings
+// it up once it has.
 func TestFleetSyncBringsTheInventoryUpAtItsWidths(t *testing.T) {
 	t.Parallel()
 	ta, inv := syncApp(t)
@@ -127,7 +138,7 @@ func TestFleetSyncBringsTheInventoryUpAtItsWidths(t *testing.T) {
 	inv.set("m2", 2)
 	inv.set("m3", 0) // width 0: no member
 	out := ta.ok("fleet sync")
-	for _, want := range []string{"MOVED m1 added, down until it beats width=4", "MOVED m2 added, down until it beats width=2", "FLEET-SYNC OK moved=2"} {
+	for _, want := range []string{"MOVED m1 added, held until its own probe passes (fleet up m1 --probe passed) width=4", "MOVED m2 added, held until its own probe passes (fleet up m2 --probe passed) width=2", "FLEET-SYNC OK moved=2"} {
 		assert.Contains(t, out, want, "fleet sync lacks %q", want)
 	}
 	rows := ta.fleetRows()
@@ -135,6 +146,7 @@ func TestFleetSyncBringsTheInventoryUpAtItsWidths(t *testing.T) {
 	require.Equal(t, "4", rows["m1"]["width"], "the fleet table: %v", rows)
 	require.Equal(t, "2", rows["m2"]["width"], "the fleet table: %v", rows)
 	require.Nil(t, rows["m3"], "the fleet table: %v", rows)
+	ta.probeUp("m1", "m2")
 	ta.ok("start")
 	ta.ok("tick")
 	rows = ta.fleetRows()
@@ -210,6 +222,7 @@ func TestFleetSyncHoldsAMemberTheInventoryDropsAndRedealsItsCards(t *testing.T) 
 	inv.set("m1", 8)
 	inv.set("m2", 8)
 	ta.ok("fleet sync")
+	ta.probeUp("m1", "m2")
 	ta.ok("add --stream s1 --count 8")
 	ta.ok("start")
 	ta.ok("tick") // the fleet update, last in the tick, brings the members up
@@ -267,7 +280,9 @@ func TestFleetSyncCheckPrintsTheDriftExitsTwoAndWritesNothing(t *testing.T) {
 	code, out, errs := ta.do("fleet sync --check")
 	require.Equal(t, 2, code, "check with drift: exit %d %q", code, errs)
 	require.Empty(t, errs, "check with drift: exit %d %q", code, errs)
-	for _, want := range []string{"DRIFT width m1 has width 4 and the inventory says 5", "DRIFT hold m2 is a member of the fleet and not of the inventory", "DRIFT add m3 is a member of the inventory and not of the fleet: add it at width 2", "FLEET-SYNC CHECK DRIFT drift=3 members=2"} {
+	// m2 was added by the sync and is held by the probe, so width 0 leaves it
+	// held and down with nothing for the sync to write (no hold: it is held)
+	for _, want := range []string{"DRIFT width m1 has width 4 and the inventory says 5", "DRIFT add m3 is a member of the inventory and not of the fleet: add it at width 2", "FLEET-SYNC CHECK DRIFT drift=2 members=2"} {
 		assert.Contains(t, out, want, "check lacks %q", want)
 	}
 	require.Equal(t, writes, ta.applies(), "--check wrote")
@@ -277,7 +292,7 @@ func TestFleetSyncCheckPrintsTheDriftExitsTwoAndWritesNothing(t *testing.T) {
 	err := jsonInto(raw, &rep)
 	require.NoError(t, err, "--json check: %v %+v", err, rep)
 	require.True(t, rep.Check, "--json check: %v %+v", err, rep)
-	require.Len(t, rep.Drift, 3, "--json check: %v %+v", err, rep)
+	require.Len(t, rep.Drift, 2, "--json check: %v %+v", err, rep)
 	require.Empty(t, rep.Moved, "--json check: %v %+v", err, rep)
 	// the sync writes exactly what the check printed, then the check is clean
 	ta.ok("fleet sync")
@@ -292,6 +307,7 @@ func TestFleetSyncExitsThreeWhenTheConfigCannotBeRead(t *testing.T) {
 	ta, inv := syncApp(t)
 	inv.set("m1", 4)
 	ta.ok("fleet sync")
+	ta.probeUp("m1")
 	writes := ta.applies()
 	inv.fail = errors.New("postgres at 127.0.0.1: connection refused")
 	for _, line := range []string{"fleet sync", "fleet sync --check"} {
@@ -313,13 +329,17 @@ func TestFleetSyncExitsThreeWhenTheConfigCannotBeRead(t *testing.T) {
 
 // TestFleetSyncLeavesTheCoordinatorsHold: a member the inventory names that
 // the coordinator holds down keeps its hold and gets its width; the sync says
-// how to release it.
+// how to release it. The sync's add holds each new member until its own probe
+// passes, so m1 and m2 are probed up before the coordinator's hold (fleet_sync.go
+// the add; steps_work.go the gate).
 func TestFleetSyncLeavesTheCoordinatorsHold(t *testing.T) {
 	t.Parallel()
 	ta, inv := syncApp(t)
 	inv.set("m1", 4)
 	inv.set("m2", 4)
 	ta.ok("fleet sync")
+	ta.ok("fleet up m1 --probe passed")
+	ta.ok("fleet up m2 --probe passed")
 	ta.ok("fleet down m1")
 	inv.set("m1", 6)
 	out := ta.ok("fleet sync")
@@ -392,6 +412,12 @@ func TestSyncAfterSyncIsSync(t *testing.T) {
 		}
 		ta.ok("fleet sync")
 		ws, _ := inv.fn()(context.Background(), "")
+		// follow the sync report: every member it added waits for its own probe
+		for _, w := range ws {
+			if w.Member() {
+				ta.ok("fleet up " + w.Machine + " --probe passed")
+			}
+		}
 		rows := ta.fleetRows()
 		for _, w := range ws {
 			switch {
@@ -416,18 +442,21 @@ func TestSyncAfterSyncIsSync(t *testing.T) {
 
 func jsonInto(raw string, v any) error { return json.Unmarshal([]byte(raw), v) }
 
-// TestFleetSyncAddsANewMemberDownUntilItBeats: a member the fleet lacks is
-// added down even with a fresh beat, and never up by the sync: presence
-// brings it up at the tick (fleet_sync.go, the add).
-func TestFleetSyncAddsANewMemberDownUntilItBeats(t *testing.T) {
+// TestFleetSyncAddsANewMemberHeldUntilItsProbe: a member the fleet lacks is
+// added held by the probe even with a fresh beat, and never up by the sync;
+// following the report (fleet up --probe passed) clears the hold and presence
+// brings it up at the tick (fleet_sync.go, the add; tla/ProviderBudget.tla,
+// NewMemberProbed).
+func TestFleetSyncAddsANewMemberHeldUntilItsProbe(t *testing.T) {
 	t.Parallel()
 	ta, inv := syncApp(t)
 	inv.set("m1", 4)
 	ta.ok("fleet sync") // every command beats m1 and m2 first: its beat is fresh
-	require.Equal(t, sprint.Down, ta.ctlStatus("m1"), "a new member with a fresh beat is stored down after the sync, until the tick")
+	require.Equal(t, sprint.Held, ta.fleetRows()["m1"]["status"], "a new member with a fresh beat is held by the probe after the sync")
+	ta.probeUp("m1")
 	ta.ok("start")
 	ta.ok("tick")
-	require.Equal(t, sprint.Up, ta.ctlStatus("m1"), "presence did not bring it up")
+	require.Equal(t, sprint.Up, ta.fleetRows()["m1"]["status"], "presence did not bring it up once its probe passed")
 }
 
 // TestFleetSyncRedealsToTheWidthsItSets: the cards of a member the sync holds
@@ -441,6 +470,7 @@ func TestFleetSyncRedealsToTheWidthsItSets(t *testing.T) {
 	inv.set("m2", 4)
 	inv.set("m3", 1)
 	ta.ok("fleet sync")
+	ta.probeUp("m1", "m2", "m3")
 	ta.ok("add --stream s1 --count 12")
 	ta.ok("start")
 	ta.ok("tick") // the fleet update, last in the tick, brings the members up
@@ -489,6 +519,7 @@ func TestFleetSyncReleasesItsOwnHoldAndNotTheCoordinators(t *testing.T) {
 	inv.set("m1", 4)
 	inv.set("m2", 4)
 	ta.ok("fleet sync")
+	ta.probeUp("m1", "m2")
 	ta.ok("start")
 	ta.ok("tick")
 	inv.set("m2", 0)
@@ -565,6 +596,7 @@ func TestAClearKeepsWhoMadeAHold(t *testing.T) {
 	inv.set("m1", 4)
 	inv.set("m2", 4)
 	ta.ok("fleet sync")
+	ta.probeUp("m1", "m2")
 	inv.set("m2", 0)
 	ta.ok("fleet sync")
 	ta.ok("clear --confirm sprint")
