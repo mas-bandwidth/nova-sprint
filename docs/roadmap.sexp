@@ -150,13 +150,6 @@
    :why "A new verb."
    :cards 1
    :date "2026-10-09")
-  (item "briefs-by-reference" :group "sprint" :area "nova-card"
-   :title "Briefs carry the card contract by reference"
-   :text "A brief names the card contract instead of carrying its text, so briefs are shorter and the
-    contract has one copy."
-   :why "A format change."
-   :cards 1
-   :date "2026-10-09")
   (item "friends-token-cost-category" :group "sprint" :area "nova-sprint"
    :title "A cost category for friend work, in tokens"
    :text "Friend work counted in tokens as its own cost category beside the tiers, so subscription work
@@ -2086,4 +2079,22 @@
     confidence lowers or flags the verdict."
    :date "2026-10-10"
    :release "v1.3"
-   :origin "issue #3393")))
+   :origin "issue #3393")
+  (item "a-plan-gate-before-code" :group "sprint" :date "2026-10-11"
+   :title "A plan gate before code"
+   :text "A card above a size bound writes a plan first, and a reader reviews the plan before implementation starts."
+   :why "A new machine stage, not a fix."
+   :release "v1.3"
+   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (item "a-review-audit" :group "sprint" :date "2026-10-11"
+   :title "A review audit"
+   :text "The last gate checks the reads instead of adding another read: that each reader had the repository, ran the tests, and cited lines."
+   :why "A new gate, not a fix."
+   :release "v1.3"
+   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (item "a-precedent-log" :group "sprint" :date "2026-10-11"
+   :title "A precedent log"
+   :text "An append-only log of the coordinator's decisions, which the machine reads before it raises a judgment, so a question already settled is not asked again."
+   :why "New capability."
+   :release "v1.3"
+   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")))

@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (206)
+- [The sprint machine](#the-sprint-machine) (208)
 - [Setup, release and operations](#setup-release-and-operations) (27)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (20)
@@ -115,14 +115,6 @@ A verb that lands a card again from named commits.
 Why it waits: A new verb.
 
 Replaces 1 open sprint card, each mapped to `reland-from-commits-verb`.
-
-### Briefs carry the card contract by reference
-
-A brief names the card contract instead of carrying its text, so briefs are shorter and the contract has one copy.
-
-Why it waits: A format change.
-
-Replaces 1 open sprint card, each mapped to `briefs-by-reference`.
 
 ### A cost category for friend work, in tokens
 
@@ -1697,6 +1689,36 @@ The review verdict passes any rounded score of eight or more whatever the confid
 Target: v1.3
 
 From: issue #3393
+
+### A plan gate before code
+
+A card above a size bound writes a plan first, and a reader reviews the plan before implementation starts.
+
+Why it waits: A new machine stage, not a fix.
+
+Target: v1.3
+
+From: the owner, 2026-10-11: a lesson from the Cockroach Labs write-up "Five months treating bugs like patients" (MOLT Sinai)
+
+### A review audit
+
+The last gate checks the reads instead of adding another read: that each reader had the repository, ran the tests, and cited lines.
+
+Why it waits: A new gate, not a fix.
+
+Target: v1.3
+
+From: the owner, 2026-10-11: a lesson from the Cockroach Labs write-up "Five months treating bugs like patients" (MOLT Sinai)
+
+### A precedent log
+
+An append-only log of the coordinator's decisions, which the machine reads before it raises a judgment, so a question already settled is not asked again.
+
+Why it waits: New capability.
+
+Target: v1.3
+
+From: the owner, 2026-10-11: a lesson from the Cockroach Labs write-up "Five months treating bugs like patients" (MOLT Sinai)
 
 ## Setup, release and operations
 

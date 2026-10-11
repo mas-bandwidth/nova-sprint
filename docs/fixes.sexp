@@ -822,4 +822,24 @@
     copies: this one its internal copies, nova-tools by importing nova-roadmap from this repository.
     Net fewer lines. Its s-expressions stay importable later as a node by nova-work; that import is a
     v1.3 item, not this one."
-   :origin "the owner, 2026-10-11: v1.2.13 contraction, pass 4 (shared code into modules); nova-roadmap lives in nova-sprint")))
+   :origin "the owner, 2026-10-11: v1.2.13 contraction, pass 4 (shared code into modules); nova-roadmap lives in nova-sprint")
+  (fix "briefs-by-reference" :release "v1.2.13" :status "planned"
+   :title "Brief boilerplate moves into the card contract"
+   :text "A brief names the card contract instead of carrying its text, so briefs are shorter and the
+    contract has one copy. The RULES, LEDGERS, WALL AND TOOLS and BUDGET blocks, about 6 KB of every 10 to 11 KB brief, are referenced once from the card contract instead of repeated in each brief, and a card lint refuses repeated instruction text in a brief. Agreed with the owner on 2026-10-11 as a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)."
+   :origin "roadmap item briefs-by-reference"
+   :kept (:item-group "sprint"
+          :item-date "2026-10-09"
+          :item-why "A format change."
+          :item-area "nova-card"
+          :item-cards "1"
+          :item-origin ""
+          :earlier-title "Briefs carry the card contract by reference"))
+  (fix "a-review-loop-has-a-circuit-breaker" :release "v1.2.14" :status "planned"
+   :title "A review loop has a circuit breaker"
+   :text "A card is escalated to the coordinator after 4 consecutive review rounds that each bring a new blocking finding, or after 6 substantive review rounds of any kind, instead of going round again."
+   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (fix "a-red-base-is-pushed-to-the-coordinator" :release "v1.2.14" :status "planned"
+   :title "A red base is pushed to the coordinator"
+   :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
+   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")))
