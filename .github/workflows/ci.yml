@@ -31,3 +31,25 @@ jobs:
         run: go vet ./...
       - name: test
         run: go test -p 4 ./...
+
+  # tick-gate is the wall-clock gate the split moved out of nova-tools'
+  # certification.yml: the dirty tick drive against a real store, every tick
+  # held to MaxTickWall (NOVA_SPRINT_GATE_STORE=1 asserts it). It is a bench's
+  # job, not a per-PR gate: run it by hand (workflow_dispatch) on a runner with
+  # redis-server and enough cores to meet the one-second tick bound.
+  tick-gate:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: redis-server
+        run: sudo apt-get update && sudo apt-get install -y redis-server
+      - name: tick gate
+        env:
+          NOVA_CI: "1"
+          NOVA_SPRINT_GATE_STORE: "1"
+        run: go test -tags functional -run TestTheDirtyTickDriveOnAStore -count=1 -timeout 600s ./cmd/nova-sprint
