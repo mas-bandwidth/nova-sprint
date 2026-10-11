@@ -191,6 +191,7 @@ func gateCount(r *landRig) (count func() []string) {
 func TestLandMergesStreamsInParallelAndLandsThemOneAtATime(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
+	r.stubGreenGate()
 	twoStreams(t, r,
 		map[string]map[string]string{"a1": {"a1.go": "package main\n\nfunc a1() {}\n"}, "a2": {"a2.go": "package main\n\nfunc a2() {}\n"}},
 		map[string]map[string]string{"b1": {"b1.go": "package main\n\nfunc b1() {}\n"}, "b2": {"b2.go": "package main\n\nfunc b2() {}\n"}})
@@ -228,6 +229,7 @@ func TestLandMergesStreamsInParallelAndLandsThemOneAtATime(t *testing.T) {
 func TestLandGatesTheCombinedTreeOnceWhenFilesCollide(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
+	r.stubGreenGate()
 	twoStreams(t, r,
 		map[string]map[string]string{"a1": {"NOTES.md": "fine\n\nand a1\n"}},
 		map[string]map[string]string{"b1": {"NOTES.md": "b1 first\n\nfine\n"}})
@@ -245,6 +247,7 @@ func TestLandGatesTheCombinedTreeOnceWhenFilesCollide(t *testing.T) {
 func TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
+	r.stubGreenGate()
 	twoStreams(t, r,
 		map[string]map[string]string{"a1": {"NOTES.md": "fine\n\nand a1\n"}},
 		map[string]map[string]string{"b1": {"NOTES.md": "b1 first\n\nfine\n"}})
@@ -349,6 +352,7 @@ func TestLandBlamesTheHeadWhenTheBatchsOneGateIsRed(t *testing.T) {
 func TestLandParallelOneAndARefusedCount(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
+	r.stubGreenGate()
 	twoStreams(t, r,
 		map[string]map[string]string{"a1": {"a1.go": "package main\n\nfunc a1() {}\n"}},
 		map[string]map[string]string{"b1": {"b1.go": "package main\n\nfunc b1() {}\n"}})
@@ -366,6 +370,7 @@ func TestLandParallelOneAndARefusedCount(t *testing.T) {
 func TestLandRebuildOfTheSameBranchResetsItsTree(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
+	r.stubGreenGate()
 	twoStreams(t, r,
 		map[string]map[string]string{"a1": {"a1.go": "package main\n\nfunc a1() {}\n"}},
 		map[string]map[string]string{"b1": {"b1.go": "package main\n\nfunc b1() {}\n"}})
@@ -429,6 +434,7 @@ func TestLandReMergeOntoTheMovedBaseThatMergesFewerHeads(t *testing.T) {
 	t.Run("a prefix: the heads before the conflict land, gated once more", func(t *testing.T) {
 		t.Parallel()
 		r := newLandRig(t)
+		r.stubGreenGate()
 		twoStreams(t, r,
 			map[string]map[string]string{"a1": edit("a1")},
 			map[string]map[string]string{"b1": {"b1.go": "package main\n\nfunc b1() {}\n"}, "b2": edit("b2")})
@@ -447,6 +453,7 @@ func TestLandReMergeOntoTheMovedBaseThatMergesFewerHeads(t *testing.T) {
 	t.Run("none: the conflict is reported and nothing is pushed", func(t *testing.T) {
 		t.Parallel()
 		r := newLandRig(t)
+		r.stubGreenGate()
 		twoStreams(t, r,
 			map[string]map[string]string{"a1": edit("a1")},
 			map[string]map[string]string{"b1": edit("b1")})
