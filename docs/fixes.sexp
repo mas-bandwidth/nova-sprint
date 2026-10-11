@@ -684,4 +684,25 @@
     cleared, and on a new member runs its own probe before accepting width (init bootstraps by passing
     the probe). Modeled by tla/ProviderBudget.tla."
    :origin "sprint card a-member-environment-fault-holds-it-and-pushes-the-seat; the owner, 2026-10-11Z:
-    the failure here is not noticing this until now; attempts 3 and 5")))
+    the failure here is not noticing this until now; attempts 3 and 5")
+
+  (fix "low-balance-pushes-the-seat-before-the-refusalc" :release "v1.2.6" :status "planned"
+   :title "A provider's low balance is raised before a refusal; a credit refusal spends no redeal"
+   :text "The seat hears a provider is running dry before a refusal costs a card. The balance poll
+    reads DeepSeek's balance (GET /user/balance with the key as a bearer token from DEEPSEEK_API_KEY,
+    the USD entry's total_balance; an answer with no USD entry is unknown, never a currency
+    conversion) beside OpenRouter's, so a provider the poll could not see is no longer unknown. Low
+    is true at or under the low_balance_usd threshold (a sprint row setting, default 5 dollars) as
+    well as at or under zero or under an hour's spend, and raises the one NProviderLow judgment per
+    provider, its words leading with fund <provider> and its decisions naming funded <provider>; its
+    routes STILL SERVE, as the owner ruled on 2026-10-10: a balance raises a thing to do, it never
+    rests a route by itself. A take the provider refused for credit (class out-of-credit, a 402) on
+    a limited route still rests the provider exactly as before, but returns the card through the
+    same no-spend path a rate limit uses: withdrawn without FieldTakeEnded, so no redeal and no
+    attempt is spent and no failed-work judgment is raised, the refusal still recorded so the
+    provider rests; a 401 keeps the path that ends the take. TLA+ model RouteRest, property
+    OutOfCreditSpendsNoRedeal (a credit event leaves the redeal count unchanged), with the reversed
+    witness MCRouteRestBrokenBalance still failing. Tests TestReadDeepSeekBalance,
+    TestALowBalanceAtTheThresholdRaisesOneJudgment and TestAnOutOfCreditTakeSpendsNoRedeal. The run
+    loop's nova-secrets exec --only list must include DEEPSEEK_API_KEY for the poll to read it."
+   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry low-balance-pushes-the-seat-before-the-refusalc")))
