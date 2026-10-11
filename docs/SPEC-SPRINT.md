@@ -1789,7 +1789,17 @@ the level and a down member's redeal never place the attempt's card on a
 member that refused it, which refuses it once (one record, one note), and when every
 member up has refused it the judgment "a card reached its bound" names the
 members and the reason, once, and it is dealt no more until a member that has
-not refused it is up, a rework or a drop; tla/CardContract.tla, StageRefused
+not refused it is up, a rework or a drop; a refusal for want of a bench mirror
+is about the whole repository, not one card: the member cannot stage any card
+of it, so it becomes a capability, the way a harness the member cannot launch
+is one (Launches, notLaunching), and within StagingMirrorWindow (one hour) the
+deal (launchersOf), the level and a down member's redeal (notLaunching) and
+routeOf when it names a member all refuse that member every card of that
+repository, with the why "<member> refused <repo> at staging at <time>: no
+bench mirror; add the mirror on <member> with the fleet play", and when no
+member is left the no-launcher judgment (noLauncher) says so with that why,
+and a later ok finish by that member of a card of it ends the refusal at once
+(mirrorRefusals, staging_repo.go); tla/CardContract.tla, StageRefused
 and Restage), ok (set
 only when finished), head, report. It takes its primary's score. The primary
 names its live work card.

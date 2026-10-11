@@ -122,6 +122,15 @@ func (s *Snapshot) noLauncher(c, ec *Card, tier string, up []string) string {
 	if ms, _ := s.launchersOf(ec, wc, pool); len(ms) > 0 {
 		return ""
 	}
+	// a member of the pool that refused the card's repository at staging for want of a
+	// bench mirror (stagingRepoWhy) is why the judgment is raised: the mirror, what to
+	// add and where, never unlaunchableWhy's generic harness sentence (the card: "the
+	// no-launcher judgment says so with that why"). The owner, 2026-10-11: "cards only
+	// may accrue per-fleet or friend, if there are not other machines/friends ready to
+	// do that work right now!"
+	if w := s.stagingRefusalWhy(ec, pool); w != "" {
+		return w
+	}
 	return s.unlaunchableWhy(c, tier, pool, refused)
 }
 
@@ -157,7 +166,9 @@ func notLaunching(s *Snapshot, up []string, c *Card) []string {
 	r := Route{Harness: c.F(FieldHarness)}
 	var out []string
 	for _, m := range up {
-		if !s.Launches(m, r) {
+		if !s.Launches(m, r) || s.stagingRepoWhy(m, c) != "" {
+			// a member that refused the card's repository at staging for want of a bench
+			// mirror (stagingRepoWhy) is avoided as one that cannot launch its route is
 			out = append(out, m)
 		}
 	}
@@ -437,6 +448,9 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 	if done {
 		return nil, tier, why, byFriend
 	}
+	if w := s.stagingRepoWhy(member, c); w != "" {
+		return nil, tier, w, false
+	}
 	if m.Pin != "" {
 		return map[string]string{FieldRoute: RoutePin, FieldModel: m.Pin, FieldTokens: m.Tokens, FieldUSD: "", FieldDeadline: strconv.Itoa(m.Deadline)}, "", "", false
 	}
@@ -496,6 +510,9 @@ func (s *Snapshot) routeServed(c, wc *Card, member string) (tier, why string, by
 	tier, why, byFriend, done, m := s.routeTier(c)
 	if done {
 		return tier, why, byFriend
+	}
+	if w := s.stagingRepoWhy(member, c); w != "" {
+		return tier, w, false
 	}
 	if m.Pin != "" {
 		return "", "", false // a pinned card runs on its pin: served
