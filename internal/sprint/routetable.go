@@ -40,7 +40,7 @@ func RouteTable(lines []Line, since time.Time) string {
 		}
 		switch {
 		case l.Table == "fleet" && l.Set["route"] != "" && l.Set["gen"] != "":
-			dealt[l.Card+"#g"+l.Set["gen"]] = l.Set["route"]
+			dealt[l.Card+"#g"+l.Set["gen"]] = l.Set["route"] // tla/RouteIndex.tla Deal (the route the deal drew)
 		case l.Table == "fleet" && l.Verb == "take":
 			if ts, err := time.Parse(time.RFC3339, l.Set["taken"]); err == nil {
 				takenAt[fmt.Sprintf("%s#g%d", l.Card, l.Gen)] = ts
