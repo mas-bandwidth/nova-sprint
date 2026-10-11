@@ -810,7 +810,7 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 				col = c.Col
 			}
 			// A hold pinned to an older head is not a hold at the current head
-			// (docs/SPEC-SPRINT.md section 6; tla/CardMachine.tla, ReadAtOldHead:
+			// (docs/SPEC-SPRINT.md section 6; tla/CardMachine.tla, EndReadStale:
 			// a verdict the PR moved past does not count, either way): a broken
 			// read whose sha is not the primary's head is about work the
 			// card moved past, and a later read at the head stands in its place:

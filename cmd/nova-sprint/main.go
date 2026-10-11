@@ -296,7 +296,7 @@ type app struct {
 // (docs/SPEC-SPRINT.md section 14, The server, "The tick's turn"). LockCtx gives a
 // wait up when its caller has gone: on 2026-10-04 a sync.Mutex here kept every
 // timed-out friend beat in the line, each run long after its caller had gone, and
-// the line never drained (tla/ServerLanes.tla, AbandonedNeverRuns). The zero value
+// the line never drained (tla/ServerLanes.tla, GoneNeverRuns). The zero value
 // is a free line.
 type controlLine struct {
 	sprint.ControlLine

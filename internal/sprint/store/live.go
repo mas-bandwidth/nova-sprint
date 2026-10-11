@@ -20,6 +20,7 @@ func LiveReturnStep(beats map[string]sprint.Beat) Step {
 // liveStopped is a STOPPED tick's reconcile: a STOPPED machine takes and lands nothing new,
 // and still makes working what runs. Nothing is read or written while no beat carries a
 // live set (workers from before v1.2.6).
+// tla/LiveRuns.tla Tick
 func (st *Store) liveStopped(ctx context.Context, beats map[string]sprint.Beat, res *TickResult) error {
 	known := false
 	for _, b := range beats {
