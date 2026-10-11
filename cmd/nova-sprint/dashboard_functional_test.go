@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprintdash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +43,7 @@ func TestDashboardServesThePageOnEveryListener(t *testing.T) {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a --members m1,m2")
 	ta.ok("add --stream s1 --count 3")
-	want := ta.ok("where --json")
+	want := string(sprintdash.PageData([]byte(ta.ok("where --json")), ta.a.now()))
 	ta.a.now, ta.a.sleep = time.Now, time.Sleep // real sockets, real time
 	ctx, cancel := context.WithCancel(t.Context())
 	ta.a.notify = func(context.Context) (context.Context, context.CancelFunc) { return ctx, func() {} }
