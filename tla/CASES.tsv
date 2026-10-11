@@ -424,6 +424,7 @@ MCSeatHookBrokenNoAck.cfg	MCSeatHook.tla	invariant	AckedOrBlocking	ignore-termin
 MCSeatHookBrokenNoMiss.cfg	MCSeatHook.tla	invariant	CommandSafe	ignore-terminal	seathook	required	-
 MCSeatHookBrokenSilentDrop.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-terminal	seathook	required	-
 MCSeatHookBrokenStrictCadence.cfg	MCSeatHook.tla	temporal	HookStays	ignore-terminal	seathook	required	-
+MCSeatHookBrokenNoStartRewrite.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-terminal	seathook	required	-
 MCStopReturnBrokenNoSettleByBeat.cfg	MCStopReturn.tla	temporal	AbsentJobSettles	ignore-terminal	stopreturn	required	-
 MCProviderBudget.cfg	MCProviderBudget.tla	pass	-	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenNewMember.cfg	MCProviderBudget.tla	action	NewMemberProbed	ignore-terminal	providerbudget	required	-

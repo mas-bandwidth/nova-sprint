@@ -25,7 +25,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `CoordinatorPass`, `CoordinatorWake` | The coordinator's pass and its wake. |
 | `SprintRules`, `StallLadder` | The rules that answer failures, and a stalled friend's ladder. |
 | `SeatHealth`, `ServerLanes` | The seat's generation and a friend's health; the server's lanes. |
-| `SeatHook` | The coordinator's hook: the server's subscription, its challenge and cadence, the pushes and their acknowledgement, a drop and unhook, and the gate every coordinator command passes. |
+| `SeatHook` | The coordinator's hook: the server's subscription, its challenge and cadence, the record's Live from the proof and a re-challenge's own bound (so the gate can refuse up to one look period early), the pushes and their acknowledgement, a drop, unhook, the next server's start rewriting a dead server's record gone, and the gate every coordinator command passes. |
 | `LiveRuns` | Working means a live run: the beat's live set, the reconcile while RUNNING and STOPPED, the STOP debt's receipt, held reports. |
 | `Timer`, `LoadCache`, `StatsReset` | Timers, the load cache, and a stats reset. |
 | `StopReturn` | STOP's captured owner leases, the owner's stop-return, its settle off the debt, and START. |
