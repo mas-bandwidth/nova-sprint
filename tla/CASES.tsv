@@ -239,6 +239,8 @@ MCLandReachLandsOn.cfg	MCLand.tla	invariant	ReachLandsOn	ignore-terminal	land	re
 MCLandReachReview.cfg	MCLand.tla	invariant	ReachReview	ignore-terminal	land	required	-
 MCLandBrokenNoCheckReads.cfg	MCLand.tla	invariant	NoLandWithoutReads	ignore-terminal	land	required	-
 MCLandBrokenBounceMarked.cfg	MCLand.tla	action	PushedNeverSentBack	ignore-terminal	land	required	-
+MCLandBrokenRepairMarked.cfg	MCLand.tla	action	PushedNeverSentBack	ignore-terminal	land	required	-
+MCLandBrokenRepairHeld.cfg	MCLand.tla	action	NeverHeldBack	ignore-terminal	land	required	-
 MCLandReachShortBack.cfg	MCLand.tla	invariant	ReachShortBack	ignore-terminal	land	required	-
 MCLandBrokenOfferRefused.cfg	MCLand.tla	invariant	NoOfferAtRefusedHead	ignore-terminal	land	required	-
 MCLandReachRepair.cfg	MCLand.tla	invariant	ReachRepair	ignore-terminal	land	required	-

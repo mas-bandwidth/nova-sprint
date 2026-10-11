@@ -1488,7 +1488,7 @@ rebalanced off (`rebalanced_from`). The cheapest unit first: the card's own tier
 draws on its tier's routes; a friend whose highest tier is the card's), then one tier up as
 overflow, never more and never below (a pro card never reaches a flash unit); then the most
 idle lanes, then the name. Each card moves at most once a tick, in the deal's order, and the
-moves are bounded by the idle lanes. A started card, a read card, a hard pin, a pin honoured
+moves are bounded by the idle lanes. A started card, a hard pin, a pin honoured
 where it sits (its WHO names the friend it is on, or a model pin; a `WHO: friend` card on a
 friend's row goes to another friend, never a member), a bench card, a card of a
 held stream, a card a lane runs, and a card whose route rests never move. The card keeps its
@@ -1501,6 +1501,28 @@ say `rebalanced <card> from <row> to <unit>`
 `TestRebalanceMovesAProCardToAProFriendNeverAFlashMember`,
 `TestRebalanceNeverMovesAStartedCard`, `TestRebalanceNeverMovesAPinnedCard`,
 `TestRebalanceNeverMovesACardToAUnitItLeft`, `TestRebalanceMovesOneCardPerIdleLane`).
+
+**Reads are rebalanced too** (the owner, 2026-10-11: "it seems like we could possibly
+rebalance this a bit better", "Not one card at a time per-tick", "This should NOT be
+manual."; `sprint.Rebalance`'s read pass). A read card queued ready on a unit whose lanes
+all work (reads at half a slot) goes, in the same one tick and in the same pass, to a unit
+with an idle lane whose reader row serves the read's tier (`readRefusal`, `mayReadCard`) and
+which has not read the card at this attempt, as many as the idle lanes take (a read is half
+a slot). A read never goes back to a row it was rebalanced off (`rebalanced_from`), to a
+reader row that does not serve its tier, or to a reader that already read the card at the
+attempt; it keeps its attempt number and is dealt again under the new reader's identity, the
+record on the row it left retired. All eligible cards move in the one tick, never one per
+tick (`TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick`,
+`TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick`). The read-card deal keeps a
+fleet-table cursor for each read tier (`read_deal_index_<tier>`), persisted with the dealt
+cards for the epoch: restart and switching read cards off and on keep its place; clear starts
+the next epoch at the first reader. Each read goes cheapest first: an idle lane before a busy
+one, then the nearest served tier (`readTierDistance`), then the most idle lanes, the cursor
+breaking a tie, so a burst spreads over equal readers in cursor order and never exceeds a
+unit's room (`DealAhead` times its width, reads at half a slot); a unit that is down, does
+not serve the tier, has no room, refused the read at staging, or already read that primary
+at the attempt is skipped (`TestReadCardDealUsesAPersistedRoundRobinCursor`,
+`TestReadCardDealSkipsAReaderWhoseReadWasRefusedAtStaging`).
 
 ### one-lane-per-card.w1: one lane per card
 
@@ -5300,8 +5322,8 @@ the work table's properties `alarm_review`, `alarm_merging`, `alarm_fleet` and `
 - merging above its alarm: more primaries merging than `--alarm-merging <n>`;
 - nothing ready while cards wait: with `--alarm-ready on`, no primary ready and one or
   more waiting;
-- the fleet works below its alarm: the members up working fewer work cards than
-  `--alarm-fleet <percent>` (1 to 100) of their width, while a primary is ready or
+- the fleet works below its alarm: the members up working fewer work cards (read cards
+  excluded) than `--alarm-fleet <percent>` (1 to 100) of their width, while a primary is ready or
   waiting.
 
 An alarm is an episode: one judgment of the sprint (no primaries) written when its
