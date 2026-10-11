@@ -396,6 +396,33 @@ func (s *hookSession) challenge(now time.Time) error {
 	return s.send(hookMsg{T: "challenge", Challenge: c})
 }
 
+// challengeLive moves the record's Live to a re-challenge's own bound: the challenge
+// sent at now may be answered until now + HookAnswerBound, and the record is live until
+// then (SeatHook.tla, Rechallenge; docs/SPEC-SPRINT.md, "The hook": Live is the
+// outstanding challenge's bound). It goes through readHook and writeHook under onLine,
+// the record's one writer (as record does), and keeps the later of the two bounds. A
+// write that fails leaves the record as it was (the earlier bound: the safe side), says
+// so on the server's SEAT HOOK line, and does not end the subscription.
+func (s *hookSession) challengeLive(ctx context.Context, now time.Time) {
+	err := s.a.onLine(ctx, func(st *store.Store) error {
+		r, _, err := readHook(ctx, st)
+		if err != nil {
+			return err
+		}
+		if r.Session != s.id {
+			return errors.New("the record is another hook's")
+		}
+		if live := now.Add(sprint.HookAnswerBound); live.After(r.Live) {
+			r.Live = live
+			return writeHook(ctx, st, r)
+		}
+		return nil
+	})
+	if err != nil {
+		s.a.serveSay("SEAT HOOK name=%s: the challenge's bound could not be recorded: %s", s.name, oneline.Escape(err.Error()))
+	}
+}
+
 // send writes one line to the session; a write that fails ends the subscription.
 func (s *hookSession) send(m hookMsg) error {
 	b, err := json.Marshal(m)
@@ -554,6 +581,7 @@ func (s *hookSession) look(ctx context.Context) {
 			s.end(ctx, sprint.HookGone, "the challenge could not be sent: "+err.Error())
 			return
 		}
+		s.challengeLive(ctx, now)
 	}
 	var pushes []hookMsg
 	err := s.a.onLine(ctx, func(st *store.Store) error {

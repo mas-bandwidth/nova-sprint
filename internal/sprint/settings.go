@@ -39,6 +39,12 @@ const (
 	// FieldRelease is a stream's control card's field: the release the stream
 	// belongs to (e.g. "v1.2.0"), set by stream set --release (docs/SPEC-SPRINT.md section 11).
 	FieldRelease = "release"
+	// FieldDisplay is a stream's control card's field: the stream's display name, the
+	// human label the dashboard's Work table shows in place of the key, set by stream
+	// set --display (docs/SPEC-SPRINT.md section 11). It is not the stream's key: the
+	// key stays the stream's name everywhere (the every stream= field, the rows and the
+	// verbs); the display is a label alone.
+	FieldDisplay = "display"
 	// FieldProse is a stream's control card's field: the globs (PATHS globs, comma
 	// separated) of the files whose backquotes are their own, which the lander does not
 	// read for a code span (land_repair.go); set by stream set --prose.
@@ -319,6 +325,10 @@ type SetReq struct {
 	// they land on (FieldLandProtected, docs/SPEC-SPRINT.md section 7).
 	LandProtected string `json:",omitempty"`
 	Release       string `json:",omitempty"`
+	// Display is the streams' display name (FieldDisplay, docs/SPEC-SPRINT.md section
+	// 11): one line of printable text, at most DisplayMax bytes, the label the dashboard
+	// shows in place of the key; default or none takes it off.
+	Display string `json:",omitempty"`
 	// Prose is the streams' prose globs (FieldProse): comma separated, default or none
 	// takes them off.
 	Prose string `json:",omitempty"`
@@ -493,7 +503,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
 	}
-	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Prose == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
+	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
 		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --friend-stall-after, --friend-stall-step, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
 	}
 	if len(r.Streams) > 0 && r.GoLanes != "" {
@@ -504,6 +514,9 @@ func Set(s *Snapshot, r SetReq) Plan {
 	}
 	if len(r.Streams) == 0 && r.Release != "" {
 		why = append(why, "--release is a stream's, not the sprint's: nova-sprint stream set <s> --release "+r.Release)
+	}
+	if len(r.Streams) == 0 && r.Display != "" {
+		why = append(why, "--display is a stream's, not the sprint's: nova-sprint stream set <s> --display "+r.Display)
 	}
 	if len(r.Streams) > 0 && r.FriendIdle != "" {
 		why = append(why, "--friend-idle is the sprint's, not a stream's: nova-sprint set --friend-idle "+r.FriendIdle)
@@ -540,6 +553,15 @@ func Set(s *Snapshot, r SetReq) Plan {
 			return p
 		}
 	}
+	// a display name is one line of printable text, at most DisplayMax bytes: refused
+	// whole, nothing written, when it is not (stream set --display, docs/SPEC-SPRINT.md
+	// section 11).
+	if r.Display != "" && r.Display != ReadTierDefault && r.Display != "none" {
+		if why := DisplayNameWhy(r.Display); why != "" {
+			p.refuse("set", why)
+			return p
+		}
+	}
 	if len(r.Streams) > 0 {
 		for _, st := range r.Streams {
 			ctl := s.StreamCtl(st)
@@ -567,6 +589,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 			for _, f := range []struct{ field, v, word, off string }{
 				{FieldLandProtected, r.LandProtected, "land-protected", "none"},
 				{FieldRelease, r.Release, "release", "none"},
+				{FieldDisplay, r.Display, "display", "none"},
 				{FieldProse, r.Prose, "prose", "none"},
 			} {
 				switch f.v {

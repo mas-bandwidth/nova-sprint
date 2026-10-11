@@ -173,6 +173,8 @@ var TickDecisions = map[string][]string{
 	NDriftCardBase: {"act", "wait"},
 	NDriftServer:   {"act", "wait"},
 	NDriftBaseRed:  {"act", "wait"},
+	// the base's CI after a landing (base_ci.go): the same, mended, or quiet a while
+	NBaseCIRed: {"act", "wait"},
 }
 
 // TickReq is what a tick is given beside the snapshot.
@@ -211,6 +213,11 @@ type TickReq struct {
 	// the deadlines part keeps a judgment for each drift. nil is none read, and no drift
 	// judgment is raised or closed.
 	Drift *DriftFacts
+	// BaseCI is the base's CI after a landing, one per repository and base, read by the
+	// binding (base_ci.go, docs/SPEC-SPRINT.md section 8, "Drift alarms"): the deadlines
+	// part keeps one judgment per red (Repo, Base), once per red stretch. nil is none
+	// read, and no red-base judgment is raised or closed.
+	BaseCI []BaseCIFacts
 	// Machines is every machine record the inventory (nova-config) names, read by the
 	// binding with the tick (the same config read as fleet sync; fleet_retire.go): the
 	// retire part takes a fleet row whose record is absent off the table. nil or empty
@@ -1514,7 +1521,10 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	// the drift alarms, on a plan of their own the same way (drift.go)
 	d, driftDue := TickDrift(s, r, r.Drift)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, d.Notes...), append(p.Closes, d.Closes...), append(p.Updates, d.Updates...)
-	return p, due + readyDue + alarmsDue + driftDue
+	// the base's CI after a landing, on a plan of its own the same way (base_ci.go)
+	b, baseCIDue := TickBaseCI(s, r)
+	p.Notes, p.Closes, p.Updates = append(p.Notes, b.Notes...), append(p.Closes, b.Closes...), append(p.Updates, b.Updates...)
+	return p, due + readyDue + alarmsDue + driftDue + baseCIDue
 }
 
 // TickOverdue marks each open judgment overdue once, when it passes its due
@@ -1661,6 +1671,7 @@ func condKey(typ, subject, card, what string) string {
 		NBrokenReadsOutrun, NReaderBreaks,
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
+		NBaseCIRed,
 		NStopMemberDown, NStopPinWaits, NFriendStalled,
 		NNoFrontierRoom:
 		what = ""

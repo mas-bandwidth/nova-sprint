@@ -1,8 +1,11 @@
 package sprint
 
 import (
+	"fmt"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // FieldRepo is a stream's control card field: the repositories its cards name, in the
@@ -32,16 +35,54 @@ type StreamCard struct {
 }
 
 // StreamRow is one stream in a streams listing: the repositories and bases its cards
-// record, its release, the state it shows, its open and landed counts, and its cards when asked.
+// record, its release, the name it is shown by (its display name; else "point-fix-"
+// plus its release when one is set; else its key), the state it shows, its open and
+// landed counts, and its cards when asked.
 type StreamRow struct {
 	Stream  string       `json:"stream"`
 	Repos   []string     `json:"repos"`
 	Bases   []string     `json:"bases"`
 	Release string       `json:"release,omitempty"`
+	Display string       `json:"display,omitempty"`
 	State   string       `json:"state,omitempty"`
 	Open    int          `json:"open"`
 	Landed  int          `json:"landed"`
 	Cards   []StreamCard `json:"cards,omitempty"`
+}
+
+// DisplayMax is a stream's display name's bound: one line of printable text, at most
+// this many bytes (stream set --display, docs/SPEC-SPRINT.md section 11).
+const DisplayMax = 60
+
+// DisplayNameWhy says why a stream's display name is refused: empty is fine (it means
+// none), a name is one line of printable text, at most DisplayMax bytes, and any other
+// byte is refused naming the bound (stream set --display, docs/SPEC-SPRINT.md section 11).
+func DisplayNameWhy(name string) string {
+	if len(name) > DisplayMax {
+		return fmt.Sprintf("--display wants one line of printable text, at most %d bytes; found %d bytes", DisplayMax, len(name))
+	}
+	if !utf8.ValidString(name) {
+		return fmt.Sprintf("--display wants one line of printable text, at most %d bytes; found invalid UTF-8", DisplayMax)
+	}
+	for _, r := range name {
+		if !unicode.IsPrint(r) {
+			return fmt.Sprintf("--display wants one line of printable text, at most %d bytes; found a non-printable character", DisplayMax)
+		}
+	}
+	return ""
+}
+
+// StreamDisplay is the name a stream is shown by (docs/SPEC-SPRINT-DASHBOARD.md, Work):
+// its display name when set; else, when a release is set, "point-fix-" plus the release
+// exactly as stored; else its key. A version is never parsed out of the key.
+func StreamDisplay(stream, display, release string) string {
+	if display != "" {
+		return display
+	}
+	if release != "" {
+		return "point-fix-" + release
+	}
+	return stream
 }
 
 // StreamsView is the whole listing: one row per stream, and the streams whose cards
@@ -134,16 +175,17 @@ func StreamsOf(s *Snapshot, r StreamsReq) StreamsView {
 		if len(r.Repos) > 0 && !anyRepo(r.Repos, repos) {
 			continue
 		}
-		var release string
+		var release, display string
 		var fields map[string]string
 		if ctl := s.StreamCtl(stream); ctl != nil {
 			release = ctl.F(FieldRelease)
+			display = ctl.F(FieldDisplay)
 			fields = ctl.Fields
 		}
 		if r.Release != "" && release != r.Release {
 			continue
 		}
-		row := StreamRow{Stream: stream, Repos: repos, Bases: StreamBasesOf(s, stream), Release: release}
+		row := StreamRow{Stream: stream, Repos: repos, Bases: StreamBasesOf(s, stream), Release: release, Display: StreamDisplay(stream, display, release)}
 		for _, col := range States {
 			for _, c := range s.Work.Cell(stream, col) {
 				if IsOpen(col) {
