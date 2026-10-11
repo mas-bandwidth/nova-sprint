@@ -335,22 +335,8 @@ func moveEntry(c *Card, row, col string, set map[string]string, unset ...string)
 		}
 	}
 	e.Set = nonEmpty(set)
-	e.Unset = unsetPresent(c, uniqNames(unset))
+	e.Unset = unsetPresent(c, unset)
 	return e
-}
-
-// uniqNames is names with each kept once, in its first place: the store refuses a field
-// unset twice in one entry.
-func uniqNames(names []string) []string {
-	seen := make(map[string]bool, len(names))
-	out := names[:0:0]
-	for _, n := range names {
-		if !seen[n] {
-			seen[n] = true
-			out = append(out, n)
-		}
-	}
-	return out
 }
 
 // setEntry changes fields of a card in place.
@@ -387,12 +373,17 @@ func nonEmpty(m map[string]string) map[string]string {
 	return m
 }
 
-// unsetPresent keeps the unset names the card has: unsetting an absent field
-// is a no-op the manifest need not carry.
+// unsetPresent keeps the unset names the card has, each named once in its first place:
+// unsetting an absent field is a no-op the manifest need not carry, and the store refuses
+// a field unset twice in one entry (rule ARGS), so every setEntry and moveEntry caller is
+// safe however its two paths overlap (the release of a hold and a passed probe's clear,
+// fleetStepPlan; envFaulted).
 func unsetPresent(c *Card, names []string) []string {
+	seen := make(map[string]bool, len(names))
 	var out []string
 	for _, n := range names {
-		if c.Has(n) {
+		if !seen[n] && c.Has(n) {
+			seen[n] = true
 			out = append(out, n)
 		}
 	}

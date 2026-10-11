@@ -2583,7 +2583,11 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 					set[FieldHarnesses] = h
 				}
 			}
-			if r.Op == "release" && ctl.F("held") != "" {
+			// A release lifts a person's hold; the probe's clear (EnvProbePatch,
+			// balance.go) lifts only the machine's own environment hold, so a member
+			// whose fault the passed probe clears keeps a coordinator's hold
+			// (tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+			if r.Op == "release" && !envCleared && ctl.F("held") != "" {
 				unset = append(unset, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish)
 				if !comeUp {
 					line = r.Member + " released, down until it beats"

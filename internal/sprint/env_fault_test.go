@@ -151,6 +151,32 @@ func TestFleetUpRefusesUntilTheProbePasses(t *testing.T) {
 	assert.Empty(t, w.openOn(MemberSubject("m1")), "and closes its judgment")
 }
 
+// The plan that releases an environment-held member with its probe passed names no field
+// twice in one entry's Unset: the store's manifest check refuses a field unset twice in
+// one step (rule ARGS), and the in-memory world must catch that class too
+// (plan.go, unsetPresent; tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+func TestFleetUpProbeNamesNoFieldTwiceInOneEntry(t *testing.T) {
+	t.Parallel()
+	w := envFaultWorld(t)
+	wc := w.s.Work.Card("s1-1").F("work")
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
+		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	require.True(t, w.s.EnvHeld("m1"))
+
+	p := FleetStep(w.s, FleetReq{Op: "release", Member: "m1", Probe: EnvProbePassed, Fresh: true})
+	require.Empty(t, p.Refused, "%+v", p)
+	for _, u := range p.Units {
+		for _, c := range u.Changes {
+			seen := map[string]bool{}
+			for _, f := range c.Entry.Unset {
+				assert.False(t, seen[f], "change to %s names %q twice in its Unset: %v", c.Entry.ID, f, c.Entry.Unset)
+				seen[f] = true
+			}
+		}
+	}
+}
+
 // A successful push clears an uncleared environment fault by itself, closing its judgment
 // (tla/ProviderBudget.tla).
 func TestASuccessfulPushClearsTheEnvironmentFault(t *testing.T) {

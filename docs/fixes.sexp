@@ -879,4 +879,9 @@
 
   (fix "two-ci-flakes-text-file-busy-and-git-maintenance" :release "v1.2.10" :status "shipped"
    :title "Two CI flakes: exec'd stubs written under the fork lock, and git's auto maintenance off in tests"
-   :origin "PR #88")))
+   :origin "PR #88")
+
+  (fix "fleet-up-probe-releases-an-environment-held-member" :release "v1.2.11" :status "planned"
+   :title "fleet up --probe passed releases an environment-held member"
+   :text "The plan that releases a member and clears its environment fault unset the same four hold fields twice in one entry, and the store refused the whole step (rule ARGS), so an environment-held member could never be released: fleet up --probe passed and unhold were both refused. unsetPresent now names each present field once, and a passed probe's clear no longer rides the release path that lifts a person's hold: the machine's own environment hold and the fault's record go, a coordinator's hold stays, and the member serves again."
+   :origin "the coordinator, 2026-10-11, on v1.2.10 (00c54ba); this card")))
