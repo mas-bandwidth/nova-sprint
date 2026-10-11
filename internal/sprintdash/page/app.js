@@ -654,27 +654,77 @@ function setLive(since) {
 function setLiveHTML(e, s) { if (e.innerHTML !== s) e.innerHTML = s; }
 var DEBUG_FLASH = /(?:^|[?&])debug=flash(?:&|$)/.test(location.search), prevSig = null;
 // The full form of a table, unless any of its rows or cells would overflow: then the compact form.
-// Measured with the class removed and set again in the same task, so nothing flickers.
+// The fit follows README's rule that the poll does no layout work: it runs on load, on resize, and
+// from render() only when fitKey(d) changes, and it measures the full form without toggling .compact
+// on a live panel that keeps it (an off-screen copy is measured instead), so a held PageDown is
+// never starved by a style or layout pass once a second (the owner 2026-10-11: "weird slowness").
+function overflow(box) {
+  return [].some.call(box.querySelectorAll(".row"), function (r) {
+    if (r.scrollWidth > r.clientWidth + 1) return true;
+    // a number's flash tint bleeds 6 px into the gutter by design (.fv), so numbers get 7 px of slack
+    return [].some.call(r.children, function (c) {
+      var slack = (c.classList.contains("num") || c.classList.contains("frac")) ? 7 : 1;
+      // a name that does not fit is ellipsized (full text on hover), never a reason for the compact layout (the owner 11:50 AM)
+      if (c.classList.contains("name")) return false;
+      return c.offsetParent !== null && !c.classList.contains("cells") && c.scrollWidth > c.clientWidth + slack;
+    });
+  });
+}
 function fitTables() {
   ["streams", "fleet", "friends", "providers"].forEach(function (id) {
     var panel = document.querySelector(".panel." + id), head = panel && panel.querySelector(".row.head");
     if (!head) return;
-    panel.classList.remove("compact");
-    // every row, not only the header: a row's pill or name can be wider than its header
-    var over = [].some.call(panel.querySelectorAll(".row"), function (r) {
-      if (r.scrollWidth > r.clientWidth + 1) return true;
-      // a number's flash tint bleeds 6 px into the gutter by design (.fv), so numbers get 7 px of slack
-      return [].some.call(r.children, function (c) {
-        var slack = (c.classList.contains("num") || c.classList.contains("frac")) ? 7 : 1;
-        // a name that does not fit is ellipsized (full text on hover), never a reason for the compact layout (the owner 11:50 AM)
-        if (c.classList.contains("name")) { if (c.scrollWidth > c.clientWidth + 1) c.title = c.textContent; return false; }
-        return c.offsetParent !== null && !c.classList.contains("cells") && c.scrollWidth > c.clientWidth + slack;
-      });
-    });
-    if (over) panel.classList.add("compact");
+    var box = panel, copy = null;
+    if (panel.classList.contains("compact")) {
+      // a compact panel keeps its class: the full form is measured on an off-screen copy, so no
+      // class toggle sits between the reads and the live panel is never restyled by the measure
+      copy = panel.cloneNode(true); copy.classList.remove("compact");
+      copy.style.position = "absolute"; copy.style.top = "0"; copy.style.left = "-10000px"; copy.style.visibility = "hidden";
+      document.body.appendChild(copy); box = copy;
+    } else {
+      panel.classList.remove("compact");
+    }
+    var over = overflow(box);
+    if (copy) copy.remove();
+    if (over) panel.classList.add("compact"); else panel.classList.remove("compact");
+  });
+  // an ellipsized name in the full form carries its full text on hover; the fit sets it, on the live rows
+  [].forEach.call(document.querySelectorAll("#streams .row .name, #fleet .row .name, #friends .row .name, #providers .row .name"), function (c) {
+    if (c.scrollWidth > c.clientWidth + 1) c.title = c.textContent;
   });
 }
+// The fit key: each panel's row count plus the longest text of each column, from the data (never the
+// DOM), so render() fits only when the layout can have changed. Counts that grow the same width and
+// rows that do not arrive leave it alone; a new row or a longer name changes it.
+function fitKey(d) {
+  var t = (d && d.tables) || {};
+  return ["work", "fleet", "friends", "providers"].map(function (name) {
+    var tab = t[name];
+    if (!tab || typeof tab !== "object") return name + ":0";
+    var rows = 0, lens = {};
+    Object.keys(tab).forEach(function (k) {
+      var row = tab[k];
+      if (!row || typeof row !== "object") return;
+      rows++;
+      Object.keys(row).forEach(function (c) {
+        var v = row[c];
+        if (v == null || (typeof v !== "string" && typeof v !== "number")) return;
+        var n = String(v).length;
+        if (lens[c] == null || n > lens[c]) lens[c] = n;
+      });
+    });
+    return name + ":" + rows + ":" + Object.keys(lens).sort().map(function (c) { return c + "=" + lens[c]; }).join(",");
+  }).join("|");
+}
+var lastFitKey = null;
+function fitIfChanged(d) {
+  var k = fitKey(d);
+  if (k === lastFitKey) return; // the layout cannot have changed: no style or layout pass this poll
+  lastFitKey = k;
+  fitTables();
+}
 window.addEventListener("resize", fitTables);
+
 // Spend row (the owner 2026-10-04 10:15 AM): the pie of cards by tier and the ten most expensive streams.
 var TIERS = ["flash", "pro", "heavy", "frontier"], topN = 10, lastSpendData = null;
 window.addEventListener("resize", function () { if (lastSpendData) renderTopStreams(lastSpendData); });
@@ -857,7 +907,7 @@ function render(d) {
   renderProviders(d);
   if (SHOW_ALL) renderReaders(d);
   renderHero(d, s, ft);
-  fitTables();
+  fitIfChanged(d);
   if (DEBUG_FLASH) { // ?debug=flash: one line per refresh, same=1 when the rendered data did not change
     var sig = JSON.stringify([d.landed, d.all, d.summary, d.coordinator, d.epoch, d.machine, d.tables.work, d.tables.fleet, d.tables.friends || null,
       (d.streams || []).map(function (x) { return [x.Stream, x.State]; }), d.tables.merge]);
