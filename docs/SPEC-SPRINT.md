@@ -1516,9 +1516,10 @@ tick (`TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick`,
 `TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick`). The read-card deal keeps a
 fleet-table cursor for each read tier (`read_deal_index_<tier>`), persisted with the dealt
 cards for the epoch: restart and switching read cards off and on keep its place; clear starts
-the next epoch at the first reader. Each read goes cheapest first: an idle lane before a busy
-one, then the nearest served tier (`readTierDistance`), then the most idle lanes, the cursor
-breaking a tie, so a burst spreads over equal readers in cursor order and never exceeds a
+the next epoch at the first reader. Each read goes cheapest first: a free lane before a busy
+one (a lane counts the unit's queue: ready and working, `readUnit.idle`), then the nearest
+served tier (`readTierDistance`), then the cursor round every unit with a free lane, so a
+burst spreads over equal readers in cursor order and never exceeds a
 unit's room (`DealAhead` times its width, reads at half a slot); a unit that is down, does
 not serve the tier, has no room, refused the read at staging, or already read that primary
 at the attempt is skipped (`TestReadCardDealUsesAPersistedRoundRobinCursor`,
@@ -3914,13 +3915,22 @@ reads close as `read --ok|--broken` closes them, and it leaves review only by th
    (`NoReaderMayRead`). The attempt gets exactly the reads the sprint's count says
    (`set --reads 0|1|2|3`, `ReadsNeededIn`), each read cut once per need. A read goes to the
    cheapest reader
-  that may take it, friends and members alike: one with an idle lane before every one with
+  that may take it, friends and members alike: one with a free lane before every one with
   none (a read waits in a ready queue only when every reader that may take it is busy), then
   by tier distance (`readTierDistance`, against the read's tier before `readTierOf` lowers
   it, for friends and members alike: the read's own tier, one tier below, then the tiers
   above, nearest first, then a member whose read is drawn two or more tiers below; a pro read
-  on a heavy reader is a waste, and the flash reader takes the flash reads), then the most idle lanes, then the most room, then by name
-  (`TestAReadCardGoesToTheCheapestReaderThatMayTakeIt`).
+  on a heavy reader is a waste, and the flash reader takes the flash reads), then the
+  persisted ring cursor (`read_deal_index_<tier>`) round every unit with a free lane, never
+  the most idle and never the name (the owner, 2026-10-11: "Deal logic should be using
+  ((index++) % n) to roll around, not hitting the same fleet machine or friend each deal").
+  **A free lane counts the queue**: a unit's free lanes are twice its width less twice its
+  work cards and its read cards, ready and working (`rowLoad`), so a lane already promised to
+  a queued card is not free and a burst of reads never lands on a member with a queue while
+  another has a free lane (the owner, 2026-10-11: "cards only may accrue per-fleet or friend,
+  if there are not other machines/friends ready to do that work right now!";
+  `TestTheReadDealSkipsAMemberWithAQueue`).
+  (`TestAReadCardGoesToTheCheapestReaderThatMayTakeIt`, `TestTheReadDealGivesNarrowMembersTheirTurn`).
   There is no finder, no rolling index and no per-reader room.
 - **Half a slot.** A read card holds half a slot of its unit's one width: a row's load is its
   work cards and half its reads, rounded up (`halfLoad`), in the deal's room (`memberLoads`,

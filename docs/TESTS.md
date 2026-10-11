@@ -290,3 +290,12 @@ file it wrote; verify names the same `sha256`, and when the two differ it says
 `differences=0` is the proof the tree holds what GitHub holds.
 
 
+
+## Release acceptance
+
+The release-acceptance list (PR #110) takes these tests so this way of failing cannot come back unseen:
+
+- `TestAMovedCardsOldRunIsStoppedAtTheNextBeat`: a card moved from m1 g1 to m2 g2; m1's next beat names g1; the answer stops it; m1 ends that child alone.
+- `TestOldAttemptIsStopped`: an old attempt (.w9 when the card is at .w10) is stopped the same way.
+- `TestRunNeverStopsValidRun`: a run the store holds at that member and generation is never stopped.
+

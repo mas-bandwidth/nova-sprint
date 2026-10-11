@@ -85,10 +85,35 @@
       held by the probe, not known) with its acceptance through a passed probe and the \"newup\"
       witness, which now also makes a SyncAdd known with no probe and breaks NewMemberProbed."
      :origin "this card; the seat's v1.2.14 audit 2026-10-11 (a sync-added member skips its probe), checked against nova-sprint main 00c54ba; the owner's rule of 2026-10-11 cited at steps_work.go near line 2526")
+    (fix "a-moved-card-stops-its-old-run" :release "v1.2.14" :status "planned"
+     :title "When a card moves, the old member stops the old generation within one beat"
+     :text "When a card moves via rebalance/level/redeal to a new member, the old member stops old runs within one beat; server answers stop for runs not held at that generation. cmd/nova-sprint/moved_card_stops_functional_test.go tests this. docs/TESTS.md Release acceptance lists all tests."
+     :origin "this card; seat process survey 2026-10-11 ~23:25Z: 43 live runs, 11 for moved cards, old runs kept going; quarter of fleet runs were waste.")
     (fix "the-rebalance-levels-reads-every-tick-all-at-once" :release "v1.2.12" :status "planned"
      :title "The rebalance levels reads every tick, all at once"
      :text "The Rebalance (internal/sprint/rebalance.go) skipped every card whose kind was not work, so a member that was idle when a burst of reads was dealt sat with dozens of read cards queued while the rest of the fleet had idle lanes, and nothing moved them until it drained its own queue (the owner, 2026-10-11 ~18:50Z: \"it seems like we could possibly rebalance this a bit better\", \"Not one card at a time per-tick\", \"This should NOT be manual.\"; the same shape ~12:40Z). The rebalance now has a read pass: a read card queued ready on a unit whose lanes all work goes, in the same rebalance and the same tick, to a unit with an idle lane whose reader row serves the read's tier and that has not read the card at this attempt, as many as the idle lanes take (a read is half a slot); never back to a row it was rebalanced off (FieldRebalancedFrom), to a reader row that does not serve its tier, or to a reader that already read it; it keeps its attempt and is dealt again under the new reader's identity, the record on the row it left retired. All eligible cards move in one tick, never one per tick. The hand verb fleet level now runs the rebalance after the level (FleetReq Rebalance) and takes --dry-run, so it reports what the tick would move, reads included: on the 36-read shape its moved count is 36, not 0; the tick's level part is unchanged, the rebalance is its own part after the deal. The read-card dealer now keeps an epoch-scoped fleet cursor per read tier (read_deal_index_<tier>), persists it through TickDeal, and deals each read cheapest first (an idle lane, then the nearest served tier, then the most idle lanes) with the cursor breaking a tie; a reader that refused the read at staging is skipped, and ineligible, duplicate, and full readers are skipped. Tests TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick, TestTheRebalanceReadNeverMovesToAnIneligibleOrOldRow, TestTheRebalanceReadNeverMovesToAReaderThatAlreadyReadIt, and TestTheRebalanceReadNeverMovesBackToARowItWasRebalancedOff in internal/sprint/rebalance_reads_test.go, TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick and TestTheLevelVerbRebalancesTheReadsToo in internal/sprint/rebalance_test.go, plus cursor, refusal, and restart coverage in internal/sprint/deal_test.go (docs/SPEC-SPRINT.md section 1, the rebalance and read-card deal)."
      :origin "this card, the-rebalance-levels-reads-every-tick-all-at-once.w9, from the owner, 2026-10-11 ~18:50Z watching the fleet table (b3 held 36 ready behind 16 working, mini-m5 9 behind 16, while b1, b2, hetzner1, hetzner2, space, studio and vision had 2 to 9 idle lanes each), and the same shape ~12:40Z (\"ready cards are sitting dead on freddy while he's full, and they should be assigned elsewhere via rebalancing\").")
+    (fix "the-read-deal-counts-the-queue-and-fills-free-lanes-first" :release "v1.2.12" :status "planned"
+     :title "The read deal counts the queue and fills free lanes first"
+     :text "The read deal measured the wrong thing. readUnitsOf counted a unit's idle lanes from its
+      working cards alone (rowWorking), so a member with a long ready queue never looked less idle, and
+      the sort's most-idle tie-break put it first however long its queue: on 2026-10-11 b3 held 40 queued
+      read cards after its restart, then hetzner2 22 (36 read cards came off it at the seat's hold at
+      19:03:26Z), while other readers had free lanes; in the 2h before 19:08Z the read deal gave mini-m5
+      180 reads, hetzner2 174, b3 139, superman 24, batman 8. A unit's free lanes now count the queue,
+      twice its width less twice its work cards and its read cards, ready and working (rowLoad), so a
+      lane already promised to a queued card is not free (readUnitsOf, read_cards.go). The sort keeps a
+      free lane first and the tier distance second, then the persisted ring cursor
+      (read_deal_index_<tier>) round every unit with a free lane, never the most idle and never the name
+      (readCardsAskFull); the room bound (half, DealAhead times the width) still bounds the overflow when
+      no unit that may read the card has a free lane. mayReadCard, the worker exclusion and readSpent are
+      unchanged. docs/SPEC-SPRINT.md section 6 states the rule. Tests: TestTheReadDealSkipsAMemberWithAQueue
+      and TestTheReadDealGivesNarrowMembersTheirTurn (internal/sprint/read_deal_free_lanes_twin_test.go)."
+     :origin "this card, the-read-deal-counts-the-queue-and-fills-free-lanes-first.w1, from the owner,
+      2026-10-11 ~19:05-19:20Z: \"cards only may accrue per-fleet or friend, if there are not other
+      machines/friends ready to do that work right now!\"; \"Deal logic should be using ((index++) % n)
+      to roll around, not hitting the same fleet machine or friend each deal\"; tla/WhoPreference.tla,
+      DealFreeLanesFirst; code read at nova-sprint main 230d7b27")
     (fix "a-cards-reads-go-out-together-in-parallel" :release "v1.2.12" :status "planned"
      :title "The reads go out together, all of them, every tick, until they are out"
      :text "The owner, 2026-10-11 ~19:25Z: \"Multiple reads now go out in ||. Critical card if not being done already. It will double or triple the speed of reads.\"; \"Moving review -> reads should keep going, every second, even if there is no capacity. It repeats over and over until there is.\"; 2026-10-06: \"Make sure that we deal the multiple reads out in ||\": \"I don't want any serial reads again. That was silly.\" The read-card deal is already parallel and runs every tick (readCardsWanted cuts every read an attempt still needs at once, readCardsAskFull places as many as units have room), but the generation cap defeated it: MaxReadGen 2 gave a reader three identities per attempt, and a read the machine took back three times left readCardIDFor with none, so readRefusal answered \"no id\" and that reader was out of the attempt for good; as readers ran out the ask waited on NoReaderMayRead and raised a cannot-ask judgment instead of asking again. MaxReadGen is removed: readCardIDFor and ReadCardGenIDs deal the generation after the highest the read index holds (fleetReadIndex), and ReadCardExtras names that identity from the same rule, so no reader is ever refused \"no id\" (a read the reader itself ended with no verdict stays spent; a broken read stops the rest, as before). set --reads 3 is a count --reads takes (readsWords), so an attempt gets exactly the reads the sprint's count says (ReadsNeededIn, each read cut once for the same need). Waiting for room is the primary's waiting mark and nothing more (FieldWaitingReader); the cannot-ask judgment stays only for a read no unit up may ever read by capability (NoReaderMayRead). cannotAskWhy drops \"asked an attempt once\" for reads the machine took back. Tests, red first on the twin: TestAnAttemptsReadsGoOutTogether (set --reads 3, three readers take in one tick), TestReadsAreAskedEveryTickUntilThereIsRoom (every reader at its room for five ticks, then a lane frees a tick), TestATakenBackReadIsAskedOfTheSameReaderAgain (four unstarted take-backs, a fifth deal at a fresh generation, ReadCardExtras names it); reads_setting_test.go pins 3 taken and 4 refused. docs/SPEC-SPRINT.md section 6 and docs/CLI.md state the rule in the owner's words. tla/ReadCards.tla's Deal (read) needs the no-cap rule for (b); its model change is owed as its own card."
@@ -283,6 +308,25 @@
      and lacks the read-broken guard (v1.2.13 cleanups), and docs/SPEC-SPRINT.md section 3 calls accept mechanical
      (the tick) where lifecycle.go:57 names it Coordinator, so the module models the code."
     :origin "this card; v1.2.12 inventory item T4, the third of five cards")
+   (fix "tla-sprint-tables-merge-and-return" :release "v1.2.12" :status "planned"
+    :title "tla/SprintTables.tla adds the merge side: Rank, Return, MergeGreen, MergeStop, MergeRefused, MergeRed, Resume"
+    :text "Models only, no product change. tla/SprintTables.tla gains the merge side of the work table from
+     internal/sprint/refmodel/actions.go: each primary belongs to a stream, a stream is waiting, merging, stopped
+     (with a cause) or landed, and a primary in merge sits in a merge cell none, queued, merged, stuck or returned.
+     Rework moves review to working or ready; Return moves merging to review and leaves the card returned; Redo moves
+     merging to working or ready (the redo move, both rows); MergeGreen lands the queued batch and moves merging to
+     landed; MergeStop stops a stream on a conflict (the card stuck); MergeRefused sends the card back to review or
+     ready; MergeRed stops the stream on a red branch; Resume clears the cause and requeues the stuck cards; Rank
+     marks a card ranked first and is refused for a landed primary; Drop clears the merge cell as the card leaves
+     the table. StreamAfter (G4, a stream's state follows its merge cells and cause) and RankRefusesLanded (G6, a
+     landed primary is never ranked) are stated; the instance is split into two cfgs, the fleet and reads side
+     (MCSprintTables.cfg, MergeSide = FALSE) and the merge side (MCSprintTablesMerge.cfg, MergeSide = TRUE). Two new
+     reversed witnesses: MCSprintTablesBrokenLandunmerged (Broken \"landunmerged\", a card lands from review, breaking
+     MovesOnlyByTable) and MCSprintTablesBrokenReturnlost (Broken \"returnlost\", a card returned from merging is
+     dropped, breaking NoCardLostOrTwice). G3 (ExhaustNote) and F3 (a stopped stream's judgment and a skipped repair)
+     are left with the crash-and-repair card, and F4 and D6 (a cross-stream merge need and a stop on it) stay outside
+     the module."
+    :origin "card tla-sprint-tables-merge-and-return.w7, 2026-10-11: v1.2.12 inventory item T4, the fourth of five cards; drift read at nova-sprint main 00c54ba2e")
    (fix "tla-noroom-admission-by-probe" :release "v1.2.12" :status "planned"
     :title "NoRoom models the probe gate and the read return's taker"
     :text "Models only, no product change. tla/NoRoom.tla gains the probe gate: a member is known (accepted into the fleet) only on a passed probe (Accept, the caller's own word, trusted as the code does), and both the deal (Dealable) and the reader's ask (Off) read it, so no deal goes to a member the sprint does not know (NeverDealtUnknown) and a reader whose machine is not a fleet member belongs to no machine and is asked like any reader (steps_work.go fleetStepPlan, drain.go ReaderOwner). ReadReturn is guarded on a taker: a read asked of a held or draining machine's reader is taken back only when another reader can take it (readers.go sweepReads), so it stays otherwise, and ReadsReturn is restated under that guard with NeverReturnedWithoutATaker (a read is never taken back while no other reader can take it). Two reversed witnesses: Broken = \"probeblind\" deals to an unknown member (NeverDealtUnknown) and Broken = \"notaker\" takes a read back with no other reader (NeverReturnedWithoutATaker); the eight existing witnesses keep their results, and the noroom TLC records are refreshed."

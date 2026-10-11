@@ -164,7 +164,12 @@ type readUnit struct {
 	friend bool
 	seat   FriendSeat
 	half   int // free room, in half slots: twice its room less twice its work and its reads
-	idle   int // idle lanes, in half slots: twice its width less what works
+	// idle is its free lanes, in half slots: twice its width less twice its work cards and
+	// its read cards, ready and working (rowLoad): a lane promised to a queued card is not
+	// free (the owner, 2026-10-11: "cards only may accrue per-fleet or friend, if there are
+	// not other machines/friends ready to do that work right now!"; tla/WhoPreference.tla,
+	// DealFreeLanesFirst)
+	idle int
 }
 
 // RoleReader is the role a friend's nova-config row names to be dealt read cards; a machine
@@ -186,8 +191,7 @@ func readUnitsOf(s *Snapshot, seats []FriendSeat) []readUnit {
 		room, width := friendRoom(g)
 		row := FriendRow(f.Name)
 		work, reads := rowLoad(s, row)
-		ww, wr := rowWorking(s, row)
-		out = append(out, readUnit{name: f.Name, row: row, friend: true, seat: f, half: 2*(room-work) - reads, idle: 2*width - 2*ww - wr})
+		out = append(out, readUnit{name: f.Name, row: row, friend: true, seat: f, half: 2*(room-work) - reads, idle: 2*width - 2*work - reads})
 	}
 	for _, m := range notQuiet(s, s.UpMembers()) { // a member quiet, under its floor or draining reads nothing (drain.go)
 		if !memberReads(s, m) {
@@ -195,8 +199,7 @@ func readUnitsOf(s *Snapshot, seats []FriendSeat) []readUnit {
 		}
 		w := s.Width(m)
 		work, reads := rowLoad(s, m)
-		ww, wr := rowWorking(s, m)
-		out = append(out, readUnit{name: m, row: m, half: 2*(DealAhead*w-work) - reads, idle: 2*w - 2*ww - wr})
+		out = append(out, readUnit{name: m, row: m, half: 2*(DealAhead*w-work) - reads, idle: 2*w - 2*work - reads})
 	}
 	return out
 }
@@ -571,10 +574,12 @@ const NoReaderMayRead = "no reader up may read it"
 // different unit that may read it (mayReadCard) with half a slot free, the cheapest first:
 // a unit with an idle lane before every unit with none (a read waits in a ready queue only
 // when every reader that may take it is busy), then by tier distance (readTierDistance: the
-// read's own tier, one tier below, then the tiers above, nearest first), then the most idle
-// lanes, the persisted ring cursor (read_deal_index_<tier>, docs/SPEC-SPRINT.md section 1,
-// the read-card deal) breaking a tie, a full or ineligible reader skipped; friends and
-// members alike. waits is why
+// read's own tier, one tier below, then the tiers above, nearest first), then the persisted
+// ring cursor (read_deal_index_<tier>, docs/SPEC-SPRINT.md section 1, the read-card deal)
+// round every unit with a free lane, a full or ineligible reader skipped; friends and
+// members alike. A free lane counts the unit's queue (readUnit.idle: ready and working),
+// so a read waits in a ready queue only when no unit that may take it has a free lane. waits
+// is why
 // each primary that wants more reads than it was dealt waits. With ri nil the reads draw
 // no route (the deal's dry run: what the reads would take).
 func readCardsAsk(s *Snapshot, seats []FriendSeat, ri routeIndexes) (p Plan, waits map[string]string) {
@@ -689,27 +694,22 @@ func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]s
 					break
 				}
 			}
-			// the cheapest tier first (readTierDistance), then the most idle lanes, the
-			// persisted ring cursor (read_deal_index_<tier>) breaking a tie: a burst of
-			// reads spreads in proportion to the idle lanes, never past a reader's room,
-			// and the cursor rolls so the same reader is not hit every deal.
+			// the cheapest tier first (readTierDistance), then the persisted ring cursor
+			// (read_deal_index_<tier>) round every unit with a free lane, never the most
+			// idle and never the name: a burst of reads rolls round the free lanes of the
+			// whole fleet, a narrow member's too, never past a reader's room (the owner,
+			// 2026-10-11: "Deal logic should be using ((index++) % n) to roll around, not
+			// hitting the same fleet machine or friend each deal"; tla/WhoPreference.tla,
+			// DealFreeLanesFirst).
 			bestDistance := 2*len(capLadder) + 1
 			for _, i := range may {
 				if !chosen[i] && units[i].half > 0 && (!hasIdle || units[i].idle > 0) {
 					bestDistance = min(bestDistance, readTierDistance(view, units[i], pr))
 				}
 			}
-			bestIdle := -1
-			if hasIdle {
-				for _, i := range may {
-					if !chosen[i] && units[i].half > 0 && units[i].idle > 0 && readTierDistance(view, units[i], pr) == bestDistance {
-						bestIdle = max(bestIdle, units[i].idle)
-					}
-				}
-			}
 			eligible := func(name string) bool {
 				i, exists := unitByName[name]
-				return exists && !chosen[i] && units[i].half > 0 && (!hasIdle || units[i].idle > 0) && mayReadCard(view, units[i], pr, attempt, worker, cards) && readTierDistance(view, units[i], pr) == bestDistance && (!hasIdle || units[i].idle == bestIdle)
+				return exists && !chosen[i] && units[i].half > 0 && (!hasIdle || units[i].idle > 0) && mayReadCard(view, units[i], pr, attempt, worker, cards) && readTierDistance(view, units[i], pr) == bestDistance
 			}
 			name := cursor.scan(eligible)
 			if name == "" {

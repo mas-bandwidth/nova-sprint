@@ -469,8 +469,8 @@ func busyFriend(w *world, name string, n int) {
 // waste"; the flash reader is the widest, fastest and cheapest and takes the flash reads;
 // reads are dealt in parallel, never stacked behind one reader). Of the readers that may
 // take a read (mayReadCard), one with an idle lane first; among them the read's own tier,
-// then one tier below, then the tiers above, nearest first; within a tier the most idle
-// lanes, then the most room, then by name. Friends and members are ordered together.
+// then one tier below, then the tiers above, nearest first; within a tier the ring cursor
+// round the units with a free lane. Friends and members are ordered together.
 func TestAReadCardGoesToTheCheapestReaderThatMayTakeIt(t *testing.T) {
 	t.Parallel()
 	fred := func(width int) FriendSeat { return readerSeat("fred", width, []string{"flash"}, []string{"reader"}) }
@@ -504,10 +504,12 @@ func TestAReadCardGoesToTheCheapestReaderThatMayTakeIt(t *testing.T) {
 			members: []string{"m1", "m2"}, tiers: "pro",
 			seats: []FriendSeat{readerSeat("ada", 16, []string{"frontier"}, []string{"reader"}), jon(16)},
 			want:  []string{FriendRow("ada"), FriendRow("jon")}},
+		// the second read: m1 and pat are both one tier below; the ring cursor, never the
+		// most idle, picks among equals (the-read-deal-counts-the-queue-and-fills-free-lanes-first)
 		{name: "a heavy read: a pro member reads one below, as a pro friend does", brief: "tier: heavy",
 			members: []string{"m1"}, tiers: "pro",
 			seats: []FriendSeat{jon(16), pat(8)},
-			want:  []string{FriendRow("jon"), FriendRow("pat")}},
+			want:  []string{FriendRow("jon"), "m1"}},
 		{name: "a member idle before a friend of its tier busy", brief: "tier: flash", members: []string{"m1"},
 			seats: []FriendSeat{fred(1)}, busy: map[string]int{"fred": 1}, want: []string{"m1"}},
 	}
