@@ -575,7 +575,8 @@ func (l *lander) benchGate(ctx context.Context, hosts []string, dir string, runs
 
 // ringGate asks the ring for a lane and runs the gate there, stepping to the next slot
 // when a bench's stage is refused (benchGate). tla/GateRing.tla AskRun, AskRefused,
-// AskNoAnswer, Exhaust, Fallback.
+// AskNoAnswer, Exhaust, Fallback. tla/LandBisect.tla Fault: a bench fault steps to the
+// next slot (a retry is a Probe), refusing only when no slot ran the gate.
 func (l *lander) ringGate(ctx context.Context, hosts []string, dir string, runs [][]string, tests bool, st *bench.MirrorStage) (string, bool) {
 	skips := l.stageSkips()
 	tried, said := map[string]bool{}, map[string]bool{}
@@ -614,7 +615,8 @@ func (l *lander) ringGate(ctx context.Context, hosts []string, dir string, runs 
 }
 
 // gateOn runs the gate on host, whose Go lane the lander holds and gives back: the finding
-// ("" green) and ran, or the stage's refusal when the tree never reached the bench.
+// ("" green) and ran, or the stage's refusal when the tree never reached the bench
+// (tla/LandBisect.tla Fault).
 func (l *lander) gateOn(ctx context.Context, host, dir string, runs [][]string, tests bool, st *bench.MirrorStage) (why string, ran bool, refused *bench.StageError) {
 	defer l.giveGateLane(host)
 	l.stage("gate", "bench "+host+" held by "+l.laneWho()+" ("+l.gateWhose()+"): "+strings.Join(runs[0], " "))
@@ -738,6 +740,8 @@ var benchFaults = []string{"disk quota exceeded", "no space left on device"}
 // test's line. A block ends at the next header, result line or test marker; a test's raw
 // print that lands in an open block of another package whose build failed is read with it
 // (two failures at once; the rarer misread, and never a red tree blamed on a full disk).
+// tla/LandBisect.tla Fault, Words: only the bench's own lines are a fault; a red tree whose
+// test printed them is searched and blamed like any red tree.
 func benchFault(code int, out string) string {
 	var (
 		found   []string            // the bench's own lines, kept whatever follows
