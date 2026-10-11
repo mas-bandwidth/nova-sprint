@@ -780,7 +780,10 @@ TickEnd ==
 \* THE SETTLE BOUND (the owner's design: sub-ticks until the consumer queue is
 \* empty, bound 32; internal/sprint/store/tick.go MaxSettle). Reaching it is a
 \* judgment, not a silent stall: the tick addresses the coordinator and ends.
+\* It is the "consumersout" fix's: without it the tick's bound is checked by
+\* TickBounded alone, as before.
 SettleBound ==
+  /\ "consumersout" \in Fixes
   /\ phase = "drain"
   /\ sub >= MaxSub
   /\ \E t \in Tables : Q[t] # <<>>
