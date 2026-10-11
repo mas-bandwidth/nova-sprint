@@ -576,6 +576,12 @@ func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]s
 		}
 		view = &v
 	}
+	// the read's route is never a resting one (readRouteOf, s.resting): settle the
+	// routes' rests here, once for the whole ask, when the snapshot holds none, so no
+	// read scans the fleet table (docs/SPEC-SPRINT.md section 6, the reads)
+	if view.rests == nil {
+		view, _ = view.withRests()
+	}
 	units := readUnitsOf(view, seats)
 	idx := fleetReadIndex(view)
 	if why != nil {

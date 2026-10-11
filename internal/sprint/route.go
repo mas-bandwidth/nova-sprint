@@ -876,7 +876,11 @@ func (s *Snapshot) readTierOf(pr *Card) string {
 // summed under pr's unit, so the deal and the reads of a tier share one
 // rotation (tla/RouteIndex.tla, THE READS). The routes avoid (those a read of
 // the primary returned on) are left out while another of the tier is served,
-// as a redeal leaves out the routes already taken. The tier alone when the store holds
+// as a redeal leaves out the routes already taken, and so is a route that rests
+// at s.Now (s.resting; the ask settles the rests once for the whole ask,
+// readCardsAskFull, so no read scans the fleet table): a read is never asked onto
+// a resting route while another of the tier serves (docs/SPEC-SPRINT.md section 6,
+// the reads). The tier alone when the store holds
 // no route or none serves the tier: the read carries no route and its reader runs its
 // own --model.
 func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[string]string {
@@ -891,13 +895,22 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 		}
 	}
 	arr := s.tierArray(tier)
+	// a resting route is left out as an avoided one is: skip holds both, and other
+	// asks whether any served entry is left drawable, so with every route resting the
+	// walk falls back to the first of them as it did before the ask knew of rests
+	skip := slices.Clone(avoid)
+	for _, r := range served {
+		if _, rests := s.resting(r.Name); rests {
+			skip = append(skip, r.Name)
+		}
+	}
 	other := false
 	for _, name := range arr {
 		_, ok := routeByName(served, name)
-		other = other || ok && !contains(avoid, name)
+		other = other || ok && !contains(skip, name)
 	}
 	at := ri[tier].r.count
-	r, steps, ok := preferFirst(arr, func(name string) (Route, bool) { return routeByName(served, name) }, avoid, other, at)
+	r, steps, ok := preferFirst(arr, func(name string) (Route, bool) { return routeByName(served, name) }, skip, other, at)
 	if !ok {
 		return map[string]string{FieldTier: tier}
 	}
