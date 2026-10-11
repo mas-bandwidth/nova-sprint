@@ -167,7 +167,8 @@ func TestAWatchThroughTheServerSendsOneReadAFrame(t *testing.T) {
 // inbox as inbox --wait prints it.
 func TestAnInboxWaitThroughTheServerPollsForATickEnd(t *testing.T) {
 	t.Parallel()
-	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2",
+	// the backlog alarms off (on by default): the wait wakes for the readers' judgment alone
+	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2", "nova-sprint set --alarm-review off --alarm-ready off --alarm-merging off --alarm-fleet off",
 		"nova-sprint add --stream s1 --count 1 --one --brief-file "+proBriefFile(t), "nova-sprint start", "nova-sprint tick", "nova-sprint tick",
 		"nova-sprint take --as m1 --limit 1", "nova-sprint finish --as m1 --epoch 0 s1-1.w1@1")
 	clock := r.a.now()
@@ -189,7 +190,7 @@ func TestAnInboxWaitThroughTheServerPollsForATickEnd(t *testing.T) {
 	require.Equal(t, 0, code, errs)
 	assert.Equal(t, 2, polls, "woke at the tick end after the judgment, not at the timeout")
 	plain := r.boss("nova-sprint inbox")
-	assert.Equal(t, "inbox --wait: new=tick-ask-t35-1.1\n"+plain, out, "the wake line, then the inbox as inbox --wait prints it when it woke")
+	assert.Equal(t, "inbox --wait: new=tick-ask-t37-1.1\n"+plain, out, "the wake line, then the inbox as inbox --wait prints it when it woke")
 	assert.Contains(t, out, "fewer than two readers up")
 	assert.Len(t, sent, 6, "the log and the inbox at the start, two reads of the log, the inbox at the tick end, then the inbox")
 

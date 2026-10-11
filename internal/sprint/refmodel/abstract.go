@@ -1,6 +1,7 @@
 package refmodel
 
 import (
+	"slices"
 	"sort"
 	"strings"
 
@@ -175,6 +176,11 @@ func headAttempt(h string) int {
 // subject.
 func judgment(o sprint.Open) (Judgment, bool) {
 	t := strings.TrimSuffix(o.Note.Type, sprint.NRepeatSuffix)
+	if slices.Contains(sprint.AlarmTypes, t) {
+		// a backlog alarm (sprint alarms.go, on by default since 2026-10-11) is no judgment
+		// the model keeps: the model is of the tables' moves, not of the alarms' thresholds
+		return Judgment{}, false
+	}
 	if t == sprint.NOverdue || t == sprint.NStatus {
 		// a status transition's judgment is the members' status, which the model compares
 		// itself (sprint.StatusTransitions): no judgment of the model's own

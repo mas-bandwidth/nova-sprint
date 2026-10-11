@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -41,6 +42,40 @@ type testApp struct {
 	quiet map[string]bool
 	// queue is the merge queues land asks, a fake: no forge is asked
 	queue *heldQueue
+	// defaults keeps the sprint an init makes at its working defaults (read cards on);
+	// false, a test written for the old readers table, has every init followed by read
+	// cards off, explicitly, as those tests exercise that table on purpose (the next
+	// change moves them onto read cards). The defaults' own tests set it.
+	defaults bool
+}
+
+// readersTableOn runs set --read-cards off on the sprint the init line just made, with the
+// init's own store and actor flags, as its coordinator does.
+func (ta *testApp) readersTableOn(initArgs []string) {
+	ta.t.Helper()
+	args := []string{"set", "--read-cards", "off"}
+	actor := false
+	coordinator := ""
+	for i, a := range initArgs {
+		switch {
+		case (a == "--redis" || a == "--actor") && i+1 < len(initArgs):
+			args = append(args, a, initArgs[i+1])
+			actor = actor || a == "--actor"
+		case strings.HasPrefix(a, "--redis=") || strings.HasPrefix(a, "--actor="):
+			args = append(args, a)
+			actor = actor || strings.HasPrefix(a, "--actor=")
+		case a == "--coordinator" && i+1 < len(initArgs):
+			coordinator = initArgs[i+1]
+		case strings.HasPrefix(a, "--coordinator="):
+			coordinator = strings.TrimPrefix(a, "--coordinator=")
+		}
+	}
+	if !actor && coordinator != "" {
+		args = append(args, "--actor", coordinator) // the sprint's coordinator sets it
+	}
+	var out, errb bytes.Buffer
+	code := ta.a.run(args, &out, &errb)
+	require.Equal(ta.t, 0, code, "%s: %s%s", strings.Join(args, " "), out.String(), errb.String())
 }
 
 func newTestApp(t *testing.T) *testApp {
@@ -120,7 +155,11 @@ func (ta *testApp) beat() {
 func (ta *testApp) do(line string) (int, string, string) {
 	var out, errb bytes.Buffer
 	ta.beat()
-	code := ta.a.run(ta.withEpoch(split(line)), &out, &errb)
+	args := split(line)
+	code := ta.a.run(ta.withEpoch(args), &out, &errb)
+	if code == 0 && !ta.defaults && len(args) > 0 && args[0] == "init" && !slices.Contains(args, "--help") && !slices.Contains(args, "-h") {
+		ta.readersTableOn(args)
+	}
 	return code, out.String(), errb.String()
 }
 

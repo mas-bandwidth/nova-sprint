@@ -17,6 +17,7 @@ import (
 func TestACriticalRootIsDealtReadAndJudgedFirst(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"), route("pro-a", "pro"))
+	h.alarmsOff() // the judgments of its cards alone, in order, with no backlog alarm open
 	h.must(FleetStep(sprint.FleetReq{Op: "hold", Member: "m2"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 1}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"leaf"}, Brief: briefOf("flash", "")}))

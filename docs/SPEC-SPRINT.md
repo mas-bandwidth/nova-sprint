@@ -3716,7 +3716,8 @@ The owner, 2026-10-06: "reads need to become a type of card"; "These are all goo
 read should have been going through consumer cards the whole time"; "send out multiple consumer
 cards in ||"; "Go wide with reads, 2X regular width"; "start with tier"; "Just remove the
 complexity. just deal it." While the sprint's setting says so (`set --read-cards on`, the work
-table's `read_cards` property; on by default, `default` is on, and `off` is the one way off),
+table's `read_cards` property; on by default, `default` is on, and `off` is the one way off,
+a degraded machine the server warns of over the hook: section 8, "Design settings off"),
 a read is a card on the fleet table,
 the table its work cards are dealt on, and the readers table asks nothing new
 (`sprint/read_cards.go`). The review is unchanged: a primary still goes through review, its
@@ -5106,9 +5107,12 @@ The nova-wake unit: the tool left cmd/ (fleet/retired-tools.txt) and its binary 
 ### Backlog alarms
 
 Four conditions of the whole sprint the tick keeps (its deadlines part plans them
-with the deadlines), each off until the coordinator sets its threshold with `set`,
-the work table's properties `alarm_review`, `alarm_merging`, `alarm_fleet` and `alarm_ready`
-(a clear starts the next epoch with none):
+with the deadlines), each on by default at its working threshold (the owner, 2026-10-11: "I
+am sick of these invisible settings being off"): review 40, merging 15, the fleet 50 percent,
+ready on. The coordinator changes a threshold with `set`, the work table's properties
+`alarm_review`, `alarm_merging`, `alarm_fleet` and `alarm_ready` (`default` restores the
+working threshold; a clear starts the next epoch with none written, so at the working
+thresholds; a value the property does not take reads as the working threshold):
 
 - review above its alarm: more primaries in review than `--alarm-review <n>`;
 - merging above its alarm: more primaries merging than `--alarm-merging <n>`;
@@ -5126,7 +5130,40 @@ and says the count now. The judgment and that note are what `inbox --wait --push
 pushes, so an episode is pushed once when it starts and once when it ends. `ack` keeps
 it quiet until the episode ends (the next is raised again); `wait --for` until that
 much running time has passed, when one that still stands is raised again; `off` takes
-an alarm off, and an open one clears.
+an alarm off, and an open one clears, a degraded machine the server warns of over the hook
+until it is back at its working threshold ("Design settings off" below).
+
+### Design settings off
+
+The owner, 2026-10-11: "Defaults should always be the sprint machine works"; "I am sick of
+these invisible settings being off" and "breaking everything wasting hours of my life"; and
+"There must be an alert, every time cards are added to "review" set, if read cards is off, and
+you get it via push as a warning." That day the running server's read cards were off after a
+clear (their default was off then): the tick dealt no read, 75 cards sat in review and 81 of
+140 fleet slots idled until the seat ran `ask` by hand.
+
+The design settings are the ones the machine works by as designed: read cards (`--read-cards`,
+working value on) and the four backlog alarms at their working thresholds (`--alarm-review`
+40, `--alarm-ready` on, `--alarm-merging` 15, `--alarm-fleet` 50). Each is its working value
+by default, with no property written, so a fresh store and every store after a clear works
+untouched (`sprint.DesignSettings`; a value the property does not take reads as the working
+one). A design setting moved off its working value is never invisible: the server pushes a
+WARNING over the coordinator's hook (`cmd/nova-sprint/hook.go`, the hook's look,
+`hookWarnings`), of the store as it is at each look, two kinds:
+
+- **`warning:settings`**: every design setting off or away from its working value, each with
+  the value it has, its working value and the exact `set` that restores it, and one `set` that
+  restores them all (`sprint.SettingsOffWhat`). It is pushed once a subscription for each
+  change of what it says: a `set` that turns one off pushes it at the next look; a server's
+  start ends every hook, and the hook after it is pushed it afresh; after a clear every
+  setting is at its working value and nothing is pushed.
+- **`warning:review`**: while read cards are off, every primary that enters review, by its
+  card and attempt (`sprint.ReviewOffReadCards`): each is pushed once, the cards new at a look
+  together in one push naming only them, so a card added to review is never left unsaid
+  while read cards stay off, whatever was acknowledged before it.
+
+Each is a push like every push: it carries its id, and one left unacknowledged past its
+bound refuses every coordinator command (the hook's gate) until `nova-sprint hook --ack`.
 
 ### Drift alarms
 

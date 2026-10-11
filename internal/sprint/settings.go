@@ -414,7 +414,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 	alarms := r.alarms()
 	for _, a := range alarmProps {
 		if v := alarms[a.prop]; v != "" && !alarmValid(a.prop, v) {
-			why = append(why, a.flag+" wants "+a.wants+", or "+AlarmOff+" to take it off; found "+v)
+			why = append(why, a.flag+" wants "+a.wants+", "+ReadTierDefault+" ("+alarmDefault(a.prop)+"), or "+AlarmOff+" to take it off; found "+v)
 		}
 		if v := alarms[a.prop]; v != "" && len(r.Streams) > 0 {
 			why = append(why, a.flag+" is the sprint's, not a stream's: nova-sprint set "+a.flag+" "+v)
@@ -694,6 +694,8 @@ func orDefault(v, name string) string {
 		return "default (on: the deal asks every read at once)"
 	case name == PropReadsNeeded:
 		return "default (one for a flash card, two above)"
+	case name == PropAlarmReview || name == PropAlarmMerging || name == PropAlarmFleet || name == PropAlarmReady:
+		return "default (" + alarmDefault(name) + ")"
 	}
 	return "default (each card's own tier)"
 }

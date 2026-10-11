@@ -286,6 +286,7 @@ func TestAnswerDecideRefusals(t *testing.T) {
 func TestAJudgmentLeftAloneIsOfKindOther(t *testing.T) {
 	t.Parallel()
 	ta, j, record := answering(t, always(decide.VerbRework, 0.9, "own", "cannot-be-done"))
+	ta.ok("set --alarm-review off --alarm-ready off --alarm-merging off --alarm-fleet off") // one judgment of no routine kind, the sentinel's
 	ta.ok("add --stream s1 --count 1 --one")
 	ta.ok("add --stream docs --sentinel docs-round2")
 	ta.ok("start")

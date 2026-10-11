@@ -76,6 +76,14 @@ func loadSample(tb testing.TB, s sample) *loaded {
 		Sleep: func(time.Duration) {}}
 	l.must(l.st.Init(l.ctx))
 	l.must(l.m.SetCoordinator(l.ctx, t.Coordinator))
+	if v, ok := t.Work.Prop(sprint.PropReadCards); ok {
+		// the sample's read cards setting (the model is of the old readers table: off)
+		res, err := l.st.Run(l.ctx, store.SetStep(sprint.SetReq{ReadCards: v, Who: t.Coordinator}))
+		l.must(err)
+		if len(res.Refused) > 0 {
+			l.must(fmt.Errorf("read cards %s refused: %v", v, res.Refused))
+		}
+	}
 	for _, name := range store.All {
 		tab := t.T(name)
 		stored := l.st.Names.Table(name)

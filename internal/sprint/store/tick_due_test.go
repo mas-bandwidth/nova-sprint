@@ -242,6 +242,8 @@ func TestFewReadersIsWrittenOncePerSprint(t *testing.T) {
 	h.m = NewMem()
 	h.st.B = h.m
 	require.NoError(t, h.st.Init(h.ctx))
+	require.NoError(t, h.m.SetCoordinator(h.ctx, h.st.Actor))
+	h.readersTable()
 	h.beat()
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 2}))

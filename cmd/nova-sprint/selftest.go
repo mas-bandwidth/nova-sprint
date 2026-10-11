@@ -196,6 +196,8 @@ func (a *app) selftestFlow(d string, env []string) (land time.Duration, landed i
 		args []string
 	}{
 		{"init", []string{"init", "--readers", "reader-a,reader-b", "--members", "m1"}},
+		// the flow reads through the readers table (reader-a): read cards, the default, replace it next
+		{"set", []string{"set", "--read-cards", "off"}},
 		{"add", []string{"add", "--stream", "s1", "--count", "1", "--one"}}, // one card on purpose: add refuses a single card without --one
 		// the throwaway origin stands for the promotion stream: its main is the protected
 		// branch the flow lands on (docs/SPEC-SPRINT.md section 7, the protected branches)

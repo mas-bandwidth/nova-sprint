@@ -230,7 +230,8 @@ func TestAckTakesTheCommaListInboxPrints(t *testing.T) {
 // it is written, and the interrupt ends the loop.
 func TestInboxPushThroughTheServerWritesTheGroupWhole(t *testing.T) {
 	t.Parallel()
-	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2",
+	// the backlog alarms off (on by default): the one push is the readers' judgment
+	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2", "nova-sprint set --alarm-review off --alarm-ready off --alarm-merging off --alarm-fleet off",
 		"nova-sprint add --stream s1 --count 1 --one --brief-file "+proBriefFile(t), "nova-sprint start", "nova-sprint tick", "nova-sprint tick",
 		"nova-sprint take --as m1 --limit 1", "nova-sprint finish --as m1 --epoch 0 s1-1.w1@1")
 	clock := r.a.now()

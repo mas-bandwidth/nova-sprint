@@ -158,6 +158,10 @@ func newLandedRig(t *testing.T) *landedRig {
 	require.NoError(t, r.st.Init(r.ctx))
 	require.NoError(t, m.RowsAdd(r.ctx, "t-readers", []string{"reader-a", "reader-b"}))
 	require.NoError(t, m.SetCoordinator(r.ctx, "coordinator"))
+	// the old readers table on purpose: read cards off (on by default; the next change moves this rig onto read cards)
+	res, err := r.st.Run(r.ctx, store.SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: "coordinator"}))
+	require.NoError(t, err)
+	require.Empty(t, res.Refused)
 	return r
 }
 

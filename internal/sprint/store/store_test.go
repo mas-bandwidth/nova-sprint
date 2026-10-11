@@ -53,11 +53,27 @@ func newHarness(t *testing.T) *harness {
 	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
 	// the harness acts as the sprint's coordinator: judgments are theirs
 	require.NoError(t, h.m.SetCoordinator(h.ctx, h.st.Actor))
+	// the old readers table on purpose: read cards off (on by default; the next change moves this rig onto read cards)
+	h.must(SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: h.st.Actor}))
 	h.beat()
 	return h
 }
 
 func (h *harness) tick(d time.Duration) { h.mu.Lock(); h.now = h.now.Add(d); h.mu.Unlock(); h.beat() }
+
+// alarmsOff takes the four backlog alarms off, as the coordinator: a test whose counts or
+// moves the alarms (on by default since 2026-10-11) would change, and which is not of them.
+func (h *harness) alarmsOff() {
+	h.t.Helper()
+	h.must(SetStep(sprint.SetReq{AlarmReview: "off", AlarmReady: "off", AlarmMerging: "off", AlarmFleet: "off", Who: h.st.Actor}))
+}
+
+// readersTable sets read cards off, as the coordinator: the old readers table, on purpose
+// (read cards are on by default; the next change moves these tests onto read cards).
+func (h *harness) readersTable() {
+	h.t.Helper()
+	h.must(SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: h.st.Actor}))
+}
 
 // beat is one beat of every live member, at load 0, and of every reader (the
 // readers of a harness are always there; reader away holds one away).

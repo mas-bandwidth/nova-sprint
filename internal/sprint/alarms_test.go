@@ -28,6 +28,8 @@ type alarmRig struct {
 	st  *store.Store
 	mu  sync.Mutex
 	now time.Time
+	// extra is the members beside m1 each beat beats (readRig, settings_warn_test.go)
+	extra []string
 }
 
 func newAlarmRig(t *testing.T) *alarmRig {
@@ -56,8 +58,10 @@ func (r *alarmRig) beat() {
 	r.t.Helper()
 	require.NoError(r.t, r.st.BeatReaders(r.ctx))
 	zero := 0.0
-	_, err := r.st.Beat(r.ctx, "m1", &zero, hostload.Source{})
-	require.NoError(r.t, err)
+	for _, m := range append([]string{"m1"}, r.extra...) {
+		_, err := r.st.Beat(r.ctx, m, &zero, hostload.Source{})
+		require.NoError(r.t, err)
+	}
 }
 
 func (r *alarmRig) must(step store.Step) {
@@ -112,8 +116,9 @@ func (r *alarmRig) episodes() map[string][2]int {
 }
 
 // The backlog alarms (docs/SPEC-SPRINT.md section 8, "Backlog alarms"): each of the
-// four is off until its threshold is set (`set --alarm-...`, the work table's
-// properties), then raised once when its condition starts, held quiet while it stands
+// four, turned off (`set --alarm-... off`; each is on by default, TestTheBacklogAlarmsAreOnWithNoSet),
+// raises nothing until its threshold is set (`set --alarm-...`, the work table's
+// properties), then is raised once when its condition starts, held quiet while it stands
 // whatever the counts do, and cleared once, with one note to the coordinator, when it
 // ends; a second episode is raised again.
 func TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds(t *testing.T) {
@@ -122,6 +127,9 @@ func TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds(t *testing.T) {
 	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 4}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a", "b", "c"}}))
 	r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"d"}, Needs: []string{"a"}}))
+	// every alarm off to start, and the reads through the old readers table on purpose (read
+	// cards off; on by default): the rig was built before read cards
+	r.must(store.SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, AlarmReview: "off", AlarmMerging: "off", AlarmFleet: "off", AlarmReady: "off", Who: "coordinator"}))
 	_, _, _, err := r.st.SetMachine(r.ctx, true)
 	require.NoError(t, err)
 	quiet := [2]int{0, 0}
@@ -134,11 +142,11 @@ func TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds(t *testing.T) {
 		assert.Equal(t, merging, got[sprint.NAlarmMerging], "%s: %s (raised, cleared)", when, sprint.NAlarmMerging)
 	}
 
-	// dealt: a, b and c on m1, none taken; d waits on a. With no threshold set the
+	// dealt: a, b and c on m1, none taken; d waits on a. With every alarm off the
 	// conditions hold and nothing is raised.
 	r.ticks(3)
 	require.Equal(t, 3, len(r.snap().Fleet.Column(sprint.Ready)), "the fixture: a, b and c dealt and not taken")
-	want("no thresholds set", quiet, quiet, quiet, quiet)
+	want("every alarm off", quiet, quiet, quiet, quiet)
 
 	r.must(store.SetStep(sprint.SetReq{AlarmReview: "0", AlarmMerging: "0", AlarmFleet: "50", AlarmReady: "on", Who: "coordinator"}))
 	r.ticks(3)

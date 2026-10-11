@@ -38,6 +38,7 @@ func shortSock(t *testing.T) func(string) (string, error) {
 func hookSprint(t *testing.T, name string) (*testApp, map[string]string) {
 	t.Helper()
 	ta := newTestApp(t)
+	ta.defaults = true // the hook's tests read nothing through the old readers table
 	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": name}
 	var mu sync.Mutex
 	ta.a.getenv = func(k string) string { mu.Lock(); defer mu.Unlock(); return env[k] }

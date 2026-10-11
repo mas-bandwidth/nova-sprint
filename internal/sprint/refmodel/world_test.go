@@ -29,6 +29,8 @@ type world struct {
 func newWorld(readers ...string) *world {
 	s := &sprint.Snapshot{Now: t0, Work: sprint.NewTable(sprint.Work), Readers: sprint.NewTable(sprint.Readers),
 		Merge: sprint.NewTable(sprint.Merge), Fleet: sprint.NewTable(sprint.Fleet), Coordinator: "coordinator", Actor: "coordinator"}
+	// the reference model is of the old readers table: read cards off (on by default)
+	s.Work.SetProp(sprint.PropReadCards, sprint.SwitchOff)
 	s.Readers.SetRows(append(s.Readers.Rows(), readers...))
 	return &world{s: s}
 }
@@ -72,7 +74,7 @@ func (w *world) apply(p sprint.Plan) error {
 	for _, pw := range p.Props {
 		tb := w.s.T(pw.Table)
 		props := map[string]string{}
-		for _, n := range []string{sprint.PropDealIndex, sprint.PropAskIndex, sprint.PropStatusSeen} {
+		for _, n := range []string{sprint.PropDealIndex, sprint.PropAskIndex, sprint.PropStatusSeen, sprint.PropReadCards} {
 			if v, ok := tb.Prop(n); ok {
 				props[n] = v
 			}

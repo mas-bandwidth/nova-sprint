@@ -6,11 +6,14 @@ import (
 )
 
 // The backlog alarms (docs/SPEC-SPRINT.md section 8, "Backlog alarms"): four conditions
-// of the whole sprint the tick keeps, each off until the coordinator sets its threshold
-// (`set --alarm-review`, `--alarm-merging`, `--alarm-fleet`, `--alarm-ready`, the work
-// table's properties below). Each is one judgment while its condition stands, written
-// once when it starts (notify: one per episode, so a push of new judgments pushes it
-// once) and closed once when it ends, with one cleared note to the coordinator.
+// of the whole sprint the tick keeps, each on by default at its working threshold
+// (AlarmReviewDefault, AlarmMergingDefault, AlarmFleetDefault, ready on; the owner,
+// 2026-10-11: "I am sick of these invisible settings being off"), its threshold the
+// coordinator's to change (`set --alarm-review`, `--alarm-merging`, `--alarm-fleet`,
+// `--alarm-ready`, the work table's properties below; default restores it). Each is one
+// judgment while its condition stands, written once when it starts (notify: one per
+// episode, so a push of new judgments pushes it once) and closed once when it ends, with
+// one cleared note to the coordinator.
 const (
 	NAlarmReview  = "review above its alarm"
 	NAlarmMerging = "merging above its alarm"
@@ -26,7 +29,26 @@ const (
 	PropAlarmReady   = "alarm_ready"   // on: raised while nothing is ready and a card waits
 	// AlarmOff is the word that takes an alarm off.
 	AlarmOff = "off"
+
+	// The alarms' working thresholds, each alarm's value with no property or default: a
+	// fresh store and every store after a clear keeps all four (alarm_ready is on).
+	AlarmReviewDefault  = 40 // primaries in review
+	AlarmMergingDefault = 15 // primaries merging
+	AlarmFleetDefault   = 50 // percent of the up members' width
 )
+
+// alarmDefault is the alarm's working value as its property says it: its threshold, or on.
+func alarmDefault(prop string) string {
+	switch prop {
+	case PropAlarmReview:
+		return strconv.Itoa(AlarmReviewDefault)
+	case PropAlarmMerging:
+		return strconv.Itoa(AlarmMergingDefault)
+	case PropAlarmFleet:
+		return strconv.Itoa(AlarmFleetDefault)
+	}
+	return "on"
+}
 
 // AlarmTypes is the backlog alarms' judgment types, in the order the tick checks them.
 var AlarmTypes = []string{NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet}
@@ -39,9 +61,10 @@ var alarmProps = []struct{ typ, prop, flag, wants string }{
 	{NAlarmReady, PropAlarmReady, "--alarm-ready", "on"},
 }
 
-// alarmValid says a value is one the alarm's property takes: its threshold, or off.
+// alarmValid says a value is one the alarm's property takes: its threshold, default (its
+// working threshold, alarmDefault), or off.
 func alarmValid(prop, v string) bool {
-	if v == AlarmOff {
+	if v == AlarmOff || v == ReadTierDefault {
 		return true
 	}
 	if prop == PropAlarmReady {
@@ -55,11 +78,15 @@ func alarmValid(prop, v string) bool {
 }
 
 // alarmSetting is an alarm's threshold as the work table's property holds it, ok false
-// when it is off (no property, off, or a value it does not take).
+// only when it is off; no property, default or a value it does not take is its working
+// threshold (alarmDefault), so an alarm is never off unless the coordinator turned it off.
 func (s *Snapshot) alarmSetting(prop string) (int, bool) {
 	v, ok := s.Work.Prop(prop)
-	if !ok || !alarmValid(prop, v) || v == AlarmOff {
+	if v == AlarmOff {
 		return 0, false
+	}
+	if !ok || !alarmValid(prop, v) || v == ReadTierDefault {
+		v = alarmDefault(prop)
 	}
 	if prop == PropAlarmReady {
 		return 0, true

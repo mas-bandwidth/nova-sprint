@@ -379,6 +379,7 @@ func TestWhereTakesARecordBehindOnlyFromTheLoopThatKeepsIt(t *testing.T) {
 func TestTheWhereCountsTripsArePinned(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
+	h.alarmsOff() // an idle tick's trips are pinned without an alarm open
 	holesUp(h, 3)
 	h.st.CheckTwin = nil // its fresh reads are the test's, not the tick's
 	part := func(res TickResult) PartTime {

@@ -96,10 +96,19 @@ func cloneTable(t *sprint.Table) *sprint.Table {
 	c := sprint.NewTable(t.Name)
 	c.Epoch, c.Revision = t.Epoch, t.Revision
 	c.SetRows(slices.Clone(t.Rows()))
+	props := map[string]string{}
 	if v, ok := t.Prop(sprint.PropStatusSeen); ok {
-		// the one property the model carries: the status transitions' record, which the
-		// presence duty reads to decide a transition and its judgment as the tick does
-		c.SetProps(map[string]string{sprint.PropStatusSeen: v})
+		// the status transitions' record, which the presence duty reads to decide a
+		// transition and its judgment as the tick does
+		props[sprint.PropStatusSeen] = v
+	}
+	if v, ok := t.Prop(sprint.PropReadCards); ok {
+		// the read cards setting: the model is of the old readers table, which asks only
+		// with read cards off (on by default, sprint.ReadCardsOn)
+		props[sprint.PropReadCards] = v
+	}
+	if len(props) > 0 {
+		c.SetProps(props)
 	}
 	for row, texts := range t.Texts {
 		c.Texts[row] = maps.Clone(texts)

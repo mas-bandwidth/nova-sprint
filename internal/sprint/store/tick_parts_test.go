@@ -110,6 +110,8 @@ func TestTheTickAsksTwoReadersAndSaysWhenItCannot(t *testing.T) {
 	h2.m = NewMem()
 	h2.st.B = h2.m
 	require.NoError(t, h2.st.Init(h2.ctx))
+	require.NoError(t, h2.m.SetCoordinator(h2.ctx, h2.st.Actor))
+	h2.readersTable()
 	require.NoError(t, h2.m.RowsAdd(h2.ctx, "t-readers", []string{"reader-a"}))
 	h2.beat()
 	h2.beat()

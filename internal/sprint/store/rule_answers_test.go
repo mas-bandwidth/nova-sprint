@@ -102,6 +102,7 @@ func TestRuleBoundRaisesATierAndHeavyGoesToAFriend(t *testing.T) {
 	t.Run("heavy to a friend", func(t *testing.T) {
 		t.Parallel()
 		h := ruled(t)
+		h.alarmsOff() // the friends' deal of this card, with no backlog alarm open
 		h.addReady("s1", 1, briefOf("heavy", ""))
 		h.setPrimary("s1-1", map[string]string{sprint.FieldTier: "heavy"})
 		h.startMachine()
