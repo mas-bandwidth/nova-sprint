@@ -102,10 +102,10 @@ Each witness turns on one broken rule (`Broken`); its control is the unbroken co
 | W1 | per-row tick: the pump deals one card | `EveryRowWithWorkMoves` | 5 |
 | W2 | a second work pump inside the tick | `WorkPumpedOnce` | 6 |
 | W3 | a queue left for the next tick (a deferred dirty bit) | `ThreeQueuesEmptyAtTickEnd` | 18 |
-| W4 | placement in name order | `PlacementsRound` | 31 |
+| W4 | placement in name order | `PlacementsRound` | 3 |
 | W5 | a wake per addressed card | `OneWakePerTick` | 3 |
 | W6 | the fleet deals from ready to a machine that came up | `WorkChangesOnlyInPump` | 10 |
-| W7, W7b | the counters reset every tick | `PlacementsRound`; with it alone, `StreamFairness` | 16, 31 |
+| W7, W7b | the counters reset every tick | `PlacementsRound`; with it alone, `StreamFairness` | 208, 279 |
 | W8 | merge writes landed into the work table | `WorkChangesOnlyInPump` | 5 |
 | W9 | the pump applies a broken entry twice | `NothingLost` | 23 |
 | W10 | the fleet drops a finish | `NothingLost` | 5 |
@@ -125,9 +125,9 @@ Each witness turns on one broken rule (`Broken`); its control is the unbroken co
 | W22 | a reader that goes away keeps its reads (a read sat asked of it) | `ReadsStandOnReadersUp` | 66 |
 | W24 | a read returned is asked again and kept by its reader (the read that sat held for two hours) | `NothingLost` | 49 |
 | W25 | a read returned is counted as a read: the reader that returned it, the only one, is judged "cannot ask" with no re-ask | `JudgedOnlyAfterTheBound` | 25 |
-| W26 | a returned read is asked again in place with no bound (a reader that never launches returns it every few seconds for ever, no judgment) | `ReasksBounded` | 589 |
-| W27 | a card no reader may be asked of is left waiting with no judgment | `StrandingIsJudged` | 680 |
-| W28 | a read once returned is judged only when every reader is in `seen` of it: r1 returns it, is asked it again in place, its machine lapses, and the read waits with no reader up, silently | `StrandingIsJudged` | 2,295 |
+| W26 | a returned read is asked again in place with no bound (a reader that never launches returns it every few seconds for ever, no judgment) | `ReasksBounded` | 378 |
+| W27 | a card no reader may be asked of is left waiting with no judgment | `StrandingIsJudged` | 509 |
+| W28 | a read once returned is judged only when every reader is in `seen` of it: r1 returns it, is asked it again in place, its machine lapses, and the read waits with no reader up, silently | `StrandingIsJudged` | 604 |
 
 The control of W24: `MCDirtyTickHandBack` (a read r1 holds, r1 returns it, and it is asked of r2 in the same update: 3,835 states before `seen` and `hb`), with one outside event (`MaxActs = 1`) for the reason given below for `MCDirtyTickReaderAway`: with two, m1's lapse after r1's return queues an `unread` from the host's stale count of reads, which the code's reads (no host) have no counterpart of.
 
