@@ -959,7 +959,7 @@
   (fix "stops-digest-counts-only-held-stops" :release "v1.2.14" :status "planned"
    :title "The stops digest counts only the stops still holding"
    :text "One plan could close a stop and at the same time send an NStopsDigest saying it still holds: notify closes the open NStopMemberDown judgment of a member up again, and stopsDigest then gathered its stops from the snapshot before the plan, counting and naming the stop just closed. stopsDigest now leaves out every judgment the same plan closes, matched by note id; with no stop left it writes neither the digest nor its clock."
-   :origin "the v1.2.12 inventory 2026-10-11, section 9 row D8; card stops-digest-counts-only-held-stops.w1, id given by the coordinator 2026-10-11 (code read at nova-sprint main 00c54ba)")
+   :origin "v1.2.12 inventory 2026-10-11, section 9 row D8; card stops-digest-counts-only-held-stops.w1, id given by the coordinator 2026-10-11 (code read at nova-sprint main 00c54ba)")
   (fix "a-fault-down-keeps-another-holds-mark" :release "v1.2.14" :status "planned"
    :title "A machine's fault down keeps another's hold mark"
    :text "When presence takes a member down for a missed beat, the machine writes its own fault hold (held_by=fault, fault_since) only on a member that carries no hold: a member the sync, the adopt, its environment or the coordinator already holds keeps its hold, its mark, its reason and its finish marker when it goes down, and still goes down. Overwriting the mark hid the hold from its own release, so a held member could no longer be released and the clear left a markless hold (tla/DealFill.tla FaultHold and PersonHoldStays; docs/SPEC-SPRINT.md section 5)."
