@@ -66,7 +66,11 @@
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator."))
  :items
-  ((fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
+  ((fix "tla-roadmapentry-note-and-four-write-save" :release "v1.2.12" :status "planned"
+    :title "RoadmapEntry models the note verb and Save's four writes, with a page-first reversed witness"
+    :text "Models only, no product change. tla/RoadmapEntry.tla gains a Note action (a todo or open entry's title and text change, its place does not move) and models Save as its four writes in the code's order: the destination file's data, then its page, then the source's data, then its page, a crash possible between any two, so a stop leaves the entry twice (torn), never nowhere, and a page stale, never ahead; the destination is written before the source, so NoLoss still holds. The new invariant PageNotAhead (a page is never ahead of its data) is checked by the reversed witness Broken = \"pagefirst\", which writes each file's page before its data. ChildLinked is restated over the decoder's checks: a roadmap item's :group and a fix's :release are checked (roadmapdoc.go), and Scheduled, a constant set of scheduled notes whose :release the decoder does not check (roadmapdoc.go:278), is outside it. Note on a done fix or a shipped release is out of scope: the code's Note holds no open() or release() guard, against the package doc \"a release whose status is shipped is frozen\" (roadmap.go:20-21), a v1.2.14 candidate."
+    :origin "this card; v1.2.12 inventory item T23; drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+  (fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
     :title "The SeatProof model of the deleted push proof is retired"
     :text "tla/SeatProof.tla modelled the push proof (its header names PushPong, PushLive, PushWhy,
      renewSeatProof and a pushGate) with its instance MCSeatProof.tla and three configurations; none of
