@@ -205,6 +205,27 @@
     :title "ServerSwitch models the server switch and its rollback window, with two reversed witnesses"
     :text "Models only, no product change. tla/ServerSwitch.tla models the server switch (internal/sprint/server_switch.go ServerSwitch, ServerRollback, CheckRollbackOnLandFailure): at most two switches, a rollback window of two, a clock to four, a land that is ok, refused or failed, and a crash between the copy and the state write. ServerSwitch backs the target up to <target>.prev (only when a target exists) and copies the candidate over the target, then writes <target>.switch.json when rollback is on; a land pass fault (exit 2) in the window rolls the previous binary back to the target and removes the state, past the deadline the state is removed and the switch is permanent, and a refusal (exit 1) never rolls back. Three invariants: TargetIsAKnownBinary (the target is always a known binary or absent), RollbackOnlyInWindow, and AtMostOneAutoRollbackPerSwitch; two reversed witnesses: nodeadline skips the deadline check and fails RollbackOnlyInWindow, keepstate keeps the state after a rollback and fails AtMostOneAutoRollbackPerSwitch. Two facts of the code are modelled and named: a second switch inside the window overwrites <target>.prev with the first candidate, and a switch with no prior target leaves a state whose Previous file is missing, so every failure inside the window errors."
     :origin "this card, tla-server-switch-rollback-window.w5, 2026-10-11: v1.2.12 inventory items T31 and section 5, and D11; survey at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "tla-land-repair-guards" :release "v1.2.12" :status "planned"
+    :title "Land's Repair skips sentinels, held and pushed-unreported cards, and PushedNeverSentBack covers Repair"
+    :text "Models only, no product change. tla/Land.tla Repair checked only ~Marked, where the code's repair
+     also skips a sentinel (check.go Rule6Merging: IsSentinel), a card a change is queued for (s.Held) and
+     one pushed and not reported (PushedUnreportedMatches), and PushedNeverSentBack constrained only
+     ShortBack, so Repair's ~Marked guard was checked by no property. Repair now skips all four, and
+     PushedNeverSentBack is extended from ShortBack to ShortBack \\/ Repair (the mark stands from the check
+     through the push, the report and a crash between them, so ~Marked also skips the pushed-unreported
+     card). Sentinels and HeldCards are CONSTANTS, nonempty in the control instance (c1 a sentinel, c2 a
+     card a change is queued for) so the guards are not constant-TRUE: a sentinel is never queued (Accept
+     refuses one; NoSentinelInQueue checks it, released straight to landed by the coordinator, never
+     merged), and Repair never returns a held card (NeverHeldBack; the reversed witness \"repairheld\"
+     drops the held guard and fails it). Broken \"repairmarked\" drops ~Marked from Repair and fails the
+     extended PushedNeverSentBack (Accept, Read, Build, Check, Push, SetReads, Repair), the reversed
+     witness; its configuration is MCLandBrokenRepairMarked.cfg with a CASES.tsv row. Broken \"norepair\"
+     still passes (ReachRepair holds: nothing repairs), so MCLandBrokenNoRepair's row is left as it is. A
+     comment line on cmdRepair (cmd/nova-sprint/repair.go) cites tla/Land.tla Repair. Left for v1.2.14:
+     repair is not atomic (Rule6Merging reads a snapshot and never re-checks LandingMarked, so a card
+     marked and pushed after the snapshot can be sent back to review), and the pending fenced operation
+     finish (repair.go:70; COVERAGE row pending-fenced-op, missing)."
+    :origin "this card, tla-land-repair-guards.w5, 2026-10-11: v1.2.12 inventory item T20; drift read at nova-sprint main 00c54ba2e 2026-10-11")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
