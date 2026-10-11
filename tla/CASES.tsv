@@ -375,3 +375,5 @@ MCSeatProofBrokenNoRenew.cfg	MCSeatProof.tla	action	BusySeatNeverLockedOut	ignor
 MCSeatProofBrokenRenewDest.cfg	MCSeatProof.tla	action	CoordinatorNeverFabricates	ignore-terminal	seatproof	required	-
 MCRetireAbsent.cfg	MCRetireAbsent.tla	pass	-	ignore-terminal	retire-absent	required	-
 MCRetireAbsentBroken.cfg	MCRetireAbsent.tla	invariant	RecordsKeepRows	ignore-terminal	retire-absent	required	-
+MCReaderTiers.cfg	MCReaderTiers.tla	pass	-	ignore-terminal	readertiers	required	-
+MCReaderTiersBrokenHeld.cfg	MCReaderTiers.tla	invariant	NoReadToAHeldReader	ignore-terminal	readertiers	required	-
