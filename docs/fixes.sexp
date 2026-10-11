@@ -231,6 +231,28 @@
     :title "DirtyTickRead models Start, the run sequence, and the stale-run refusal"
     :text "Models only, no product change. tla/DirtyTickRead.tla gains a runseq variable and a Start action as the code has them: Stop and Start each take the fence (the generation steps), Start bumps runseq (machine_transition.go's RunSeq), and a part records the runseq it began under (tick.go's TickRunSeq) so its Commit requires it to be the current one (engine.go's StaleRun refusal). The new invariant NoStaleRunCommit holds that no part commits under a runseq other than the one current at its commit, and the reversed witness MCDirtyTickReadBrokenRunSeq (Broken \"runseq\" drops the runseq check from Commit) violates it; the four existing witnesses keep the property their rows name. The small instances drop MaxParts to two and add MaxStarts = 1 so each finishes in budget."
     :origin "this card, tla-dirtytickread-start-and-run-sequence-2.w4, 2026-10-11: v1.2.12 inventory item T9; drift read at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "tla-land-repair-guards" :release "v1.2.12" :status "planned"
+    :title "Land's Repair skips sentinels, held and pushed-unreported cards, and PushedNeverSentBack covers Repair"
+    :text "Models only, no product change. tla/Land.tla Repair checked only ~Marked, where the code's repair
+     also skips a sentinel (check.go Rule6Merging: IsSentinel), a card a change is queued for (s.Held) and
+     one pushed and not reported (PushedUnreportedMatches), and PushedNeverSentBack constrained only
+     ShortBack, so Repair's ~Marked guard was checked by no property. Repair now skips all four, and
+     PushedNeverSentBack is extended from ShortBack to ShortBack \\/ Repair (the mark stands from the check
+     through the push, the report and a crash between them, so ~Marked also skips the pushed-unreported
+     card). Sentinels and HeldCards are CONSTANTS, nonempty in the control instance (c1 a sentinel, c2 a
+     card a change is queued for) so the guards are not constant-TRUE: a sentinel is never queued (Accept
+     refuses one; NoSentinelInQueue checks it, released straight to landed by the coordinator, never
+     merged), and Repair never returns a held card (NeverHeldBack; the reversed witness \"repairheld\"
+     drops the held guard and fails it). Broken \"repairmarked\" drops ~Marked from Repair and fails the
+     extended PushedNeverSentBack (Accept, Read, Build, Check, Push, SetReads, Repair), the reversed
+     witness; its configuration is MCLandBrokenRepairMarked.cfg with a CASES.tsv row. Broken \"norepair\"
+     still passes (ReachRepair holds: nothing repairs), so MCLandBrokenNoRepair's row is left as it is. A
+     comment line on cmdRepair (cmd/nova-sprint/repair.go) cites tla/Land.tla Repair. Left for v1.2.14:
+     repair is not atomic (Rule6Merging reads a snapshot and never re-checks LandingMarked, so a card
+     marked and pushed after the snapshot can be sent back to review), and the pending fenced operation
+     finish (repair.go:70; COVERAGE row pending-fenced-op, missing)."
+    :origin "this card, tla-land-repair-guards.w6, 2026-10-11: v1.2.12 inventory item T20; drift read at nova-sprint main 00c54ba2e 2026-10-11")
+
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
