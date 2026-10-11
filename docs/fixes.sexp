@@ -756,4 +756,23 @@
     witness MCRouteRestBrokenBalance still failing. Tests TestReadDeepSeekBalance,
     TestALowBalanceAtTheThresholdRaisesOneJudgment and TestAnOutOfCreditTakeSpendsNoRedeal. The run
     loop's nova-secrets exec --only list must include DEEPSEEK_API_KEY for the poll to read it."
-   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry low-balance-pushes-the-seat-before-the-refusalc")))
+   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry low-balance-pushes-the-seat-before-the-refusalc")
+  (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.6" :status "in-progress"
+   :title "A rate limit stalls a card, it never fails it: the route backs off briefly by itself"
+   :text "A provider's rate limit (a take ending provider failure: provider: class=rate-limited) is
+    never a card's failure and never the 30-minute rule-3 rest. transient() excludes class
+    rate-limited, so it does not count toward that rest; the dispatch returns the take unspent (no
+    FieldTakeEnded, no redeal, no attempt, no NWorkFailed), at any number of returns, and writes a
+    rate_take_<n> record the reader reads back with no bound. RestsDue computes the route's backoff
+    purely from those records: k is the route's rate-limited ends since its last ok end, last the
+    latest, and the route rests until last + Min(60s * 2^(k-1), 15m); the clock alone ends it, so
+    the route serves again by itself. A new backoff writes one happened note (\"rate-limit backoff
+    of <d> on <route>, until <t>\"), none while the same until holds, never a judgment.
+    member.Judge reports a rate-limited run as a provider failure only with no pushed head, so a
+    shaped result with a pushed head stays the card's own. TLA+ model RateBackoff, properties
+    RateLimitSpendsNoRedeal and BackoffBounded and the temporal BackoffEnds, with the reversed
+    witnesses MCRateBackoffBrokenSpend and MCRateBackoffBrokenNoCap. From: sprint card
+    a-rate-limited-refusal-never-fails-the-cardc; the owner, 2026-10-11: a rate limit stalls, it
+    never fails a card."
+   :origin "sprint card a-rate-limited-refusal-never-fails-the-cardc; owner, 2026-10-11")
+  ))

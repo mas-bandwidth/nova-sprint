@@ -348,7 +348,7 @@ func TestARetiredRestKeepsItsMark(t *testing.T) {
 		return &Card{ID: id, Row: "m1", Col: DoneOK, Fields: map[string]string{FieldProviderTake + "1": take.String(), FieldRoute: "flash-glm53-openrouter", "finished": taken}}
 	}
 	limited := func(id, at string) *Card {
-		take := ProviderTake{Route: "flash-deepseek41-direct", Taken: at, Finished: at, Error: "provider: class=rate-limited status=429 msg=slow down"}
+		take := ProviderTake{Route: "flash-deepseek41-direct", Taken: at, Finished: at, Error: "provider: class=provider-5xx status=503 msg=slow down"}
 		return &Card{ID: id, Row: "m1", Col: Withdrawn, Fields: map[string]string{FieldProviderTake + "1": take.String()}}
 	}
 	open := "2026-10-10T01:54:32Z open - balance low on funds: provider openrouter balance $190.77"
