@@ -479,6 +479,21 @@
      tick writes nothing. Use one property for all."
     :origin "issue #5210")
 
+   (fix "doctor-preflight-checks-the-store-schema" :release "v1.2.11" :status "planned"
+    :title "Doctor's preflight gate checks the store's schema before a switch or adopt"
+    :text "New `doctor --preflight <candidate build>` frame, the release gate's first check, run before
+     any server switch or adopt: it runs the candidate's `version` and its `tick --shadow --json`
+     against the store this doctor reads (runShadow, read-only), and holds the store's tables against
+     the candidate's TABLES.lock. A locked-shape refusal is one FAIL row (area preflight, check schema,
+     subject the candidate's version) whose evidence is the shadow's own error text whole, naming each
+     missing column and the exact nova-table commands that mend it, and whose remedy is to run those
+     commands on a STOPPED machine, or the adopt's schema step; any other shadow failure is a FAIL row
+     with its text, and a shadow that passes is one OK row naming the candidate's version. The gate's
+     later checks (members, mirrors, links, stable) are WARN rows saying \"not measured by this build\"
+     until their cards land, from one table each fills in. The rows are built by a pure function over
+     the facts read (internal/sprint/doctor_preflight.go); exit 1 on any FAIL, as doctor does."
+    :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 20")
+
    (fix "tick-under-its-gate-at-load" :release "v1.2.9" :status "planned"
     :title "The deal builds no per-card route map, so the tick stays under its gate"
     :text "Drain and deal take 0.4 to 0.7 seconds at load, so the tick is over its one-second gate, and the
