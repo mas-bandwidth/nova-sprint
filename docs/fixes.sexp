@@ -875,6 +875,15 @@
     RouteTable's in-package statement coverage goes from 0.0% of 163 to 99.4%. No product change."
    :origin "the owner, 2026-10-11: v1.2.12 tests and models only; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C1")
 
+  (fix "fn-dashboard-test-compares-the-page-data" :release "v1.2.12" :status "planned"
+   :title "The dashboard functional test reads where --json as the page serves it"
+   :text "TestDashboardServesThePageOnEveryListener compared each listener's /api/sprint tables against
+    raw where --json; since the page serves internal/sprintdash's pageData, which folds each stream's
+    stream_costs record (the tiers and in_flight fields) into the work rows, the two never matched.
+    The test now puts where --json through sprintdash.PageData at a fixed time before it unmarshals its
+    expectation, and compares tables and landed as before. No product or dashboard change."
+   :origin "this card")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
