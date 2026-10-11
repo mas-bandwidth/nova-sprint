@@ -49,7 +49,19 @@
      cards run first. A real defect a new test finds is written as a v1.2.14 card, never fixed inside a
      test card.")
    (release "v1.2.13" :status "planned" :date "2026-10-11"
-    :text "Blocker fixes: needs, ledgers at landing, done, the hook race.")
+    :text "Contraction: fewer lines, no behaviour change, with v1.2.12's tests and checked models as the net
+     under it. Passes in this order, one writer per package: remove dead and stale code; adopt the Go
+     standard library or established packages where they replace hand-rolled code; run go fix (and gopls
+     modernize) over all Go code; pull code the tools share into modules, then code the modules share
+     into modules; make each test minimal, on test frameworks and shared helper modules. The module pass also covers
+     the copies across the two repositories: 59 same-named packages exist as separate copies in
+     nova-sprint and nova-tools (about 71,500 shared lines, measured 2026-10-11 at nova-sprint 15c779c
+     and nova-tools 2a648d8). Each gets one owner, nova-sprint as with nova-roadmap, and the other
+     repository imports it: the identical copies first, then the diverged ones (member, fleet, cardtree,
+     tool, and parts of friend and swarm), reconciled under v1.2.12's tests. The first named entries are
+     the nova-roadmap extraction and the brief boilerplate moving into the card contract. Measured as
+     lines per repository and package, product against test, from a baseline taken before the first
+     pass.")
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator.")
