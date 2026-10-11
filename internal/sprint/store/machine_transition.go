@@ -81,7 +81,13 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 		return before, false, err
 	}
 	if running {
-		if err := unsettledStopDebt(before, s); err != nil {
+		// a debt card whose child finished, its report held (its row's live set says so),
+		// does not hold the start back: the report is taken once the machine runs
+		_, beats, err := st.fleetBeats(ctx, nil)
+		if err != nil {
+			return before, false, err
+		}
+		if err := unsettledStopDebt(before, s, beats, st.now()); err != nil {
 			return before, false, err
 		}
 	}
@@ -135,11 +141,20 @@ func activeStopLeases(s *sprint.Snapshot) []StopLease {
 }
 
 // unsettledStopDebt enforces StopReturn.tla ExplicitStart against each exact
-// same-owner return receipt (docs/SPEC-SPRINT.md section 14).
-func unsettledStopDebt(m Machine, s *sprint.Snapshot) error {
+// same-owner return receipt (docs/SPEC-SPRINT.md section 14), as tla/LiveRuns.tla Start
+// reads it (v1.2.6): an entry is open while it still owns its card (stopOwned: working on
+// its row at the captured generation), unless its row's fresh live set names the card held
+// at that generation (its child finished and its report waits: it is taken once the
+// machine runs, at the same generation, so nothing is lost). A card returned and moved
+// since (a hold, a give) is settled: only a return moves an owned card.
+func unsettledStopDebt(m Machine, s *sprint.Snapshot, beats map[string]sprint.Beat, now time.Time) error {
 	var open []string
 	for _, d := range m.StopDebt {
-		if !stopDebtReturned(d, s) {
+		if d.Gen < 1 || d.Table != sprint.Fleet && d.Table != sprint.Readers {
+			open = append(open, d.Row+":"+d.ID+"@"+fmt.Sprint(d.Gen))
+			continue
+		}
+		if stopOwned(s, d) && !sprint.LiveHeldAt(sprint.RowBeat(beats, d.Row), d.ID, d.Gen, now) {
 			open = append(open, d.Row+":"+d.ID+"@"+fmt.Sprint(d.Gen))
 		}
 	}

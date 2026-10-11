@@ -237,7 +237,6 @@
     byte for byte nova-tools' fleet/child-rules.txt, with a test pinning the digest in both repositories)
     stops children rewriting history, which caused the does-not-descend refusals."
    :origin "v1.2.5 candidate list")
-
   (fix "seat-proof-renews-while-the-seat-works" :release "v1.2.6" :status "in-progress"
    :title "A busy seat's own verb renews its stale push proof, and only its own"
    :text "A coordinator verb refused with PUSH DOWN for a proof past its 15m bound is answered by the
@@ -248,6 +247,15 @@
     destination's proof with plain pushGate, so the acting session never answers the destination's
     outstanding check, and a destination whose session never answered is still refused."
    :origin "the seat, 2026-10-10: PUSH DOWN mid-add")
+
+  (fix "working-is-a-live-run" :release "v1.2.6" :status "shipped"
+   :title "Working means a live run, RUNNING or STOPPED; a returned card is no longer STOP-owned"
+   :text "A worker's beat carries its live set (fleet beat and friend beat --live), and the tick returns a
+    working card its row's live set has not named for 60 s to ready, while running and while stopped; the
+    dashboard's working cell counts live runs. A stop-returned card is no longer STOP-owned, so a hold
+    of its row is not refused before start, and a report refused for the stop is kept and taken after.
+    Modelled in tla/LiveRuns.tla."
+   :origin "the STOPPED sprint of 2026-10-10: 59 stale takes, and the hold of friend.zhi refused; nova-sprint PR #54")
 
   (fix "defer-cards-to-the-roadmap" :release "v1.2.6" :status "in-progress"
    :title "A verb defers waiting cards to the roadmap with their whole briefs"

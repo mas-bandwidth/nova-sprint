@@ -131,6 +131,8 @@ func cloneBeats(bs map[string]sprint.Beat) map[string]sprint.Beat {
 	out := make(map[string]sprint.Beat, len(bs))
 	for m, b := range bs {
 		b.Samples = slices.Clone(b.Samples)
+		b.Live = slices.Clone(b.Live)
+		b.LiveSeen = maps.Clone(b.LiveSeen)
 		if b.Meter.Ticks != nil {
 			t := *b.Meter.Ticks
 			b.Meter.Ticks = &t

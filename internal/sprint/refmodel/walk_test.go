@@ -135,6 +135,7 @@ var walkActions = []struct {
 	{5, (*walk).tick, false},
 	{8, (*walk).clock, false},
 	{4, (*walk).beat, false},
+	{4, (*walk).runGone, true},
 	{1, (*walk).toggle, false},
 	{2, (*walk).land, true},
 	{2, (*walk).landNeed, true},
@@ -393,6 +394,31 @@ func (k *walk) beatAll() {
 			k.beats[m] = sprint.Beat{At: k.now.Add(-time.Duration(k.pick(walkBeatAge)) * time.Second)}
 		}
 	}
+}
+
+// runGone is a v1.2.6 worker whose run of a card has gone: past the grace, its beat
+// carries a live set naming the other cards working on its row and not this one, so
+// the reconcile (the live duty) returns it. Captured at once: the tick would return it
+// before the next snapshot.
+func (k *walk) runGone() bool {
+	if k.s.Fleet == nil {
+		return false
+	}
+	m := k.member()
+	cs := k.s.Fleet.Cell(m, sprint.Working)
+	if len(cs) == 0 {
+		return false
+	}
+	gone := cs[k.pick(len(cs))].ID
+	k.now = k.now.Add(sprint.LiveGrace + time.Second)
+	b := sprint.Beat{At: k.now, LiveKnown: true, Live: []string{}, LiveSince: k.now.Add(-2 * sprint.LiveGrace)}
+	for _, c := range cs {
+		if c.ID != gone {
+			b.Live = append(b.Live, sprint.LiveKey(c.ID, c.Int("gen")))
+		}
+	}
+	k.beats[m] = b
+	return true
 }
 
 // beat has a member's machine fall silent, or beat again: a silent one is down

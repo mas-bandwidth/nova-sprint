@@ -153,6 +153,13 @@ func (st *Store) Beat(ctx context.Context, member string, given *float64, src ho
 // the member's word that it starts no card (fleet beat --no-room; sprint.Beat.NoRoom), each
 // beat's own: a beat without it clears it.
 func (st *Store) BeatOwing(ctx context.Context, member string, given *float64, src hostload.Source, stopReturns *int, noRoom string) (sprint.Beat, error) {
+	return st.BeatLive(ctx, member, given, src, stopReturns, noRoom, nil)
+}
+
+// BeatLive is BeatOwing with the member's live set (fleet beat --live; sprint.ParseLive): nil
+// when the beat carries none, which leaves its row unreconciled (sprint.LiveReturns); its
+// entries' sightings carried from the record before (sprint.NextLive).
+func (st *Store) BeatLive(ctx context.Context, member string, given *float64, src hostload.Source, stopReturns *int, noRoom string, live []string) (sprint.Beat, error) {
 	if !sprint.ValidID(member) {
 		return sprint.Beat{}, fmt.Errorf("a member name wants letters, digits, _ and -: %s", member)
 	}
@@ -196,6 +203,7 @@ func (st *Store) BeatOwing(ctx context.Context, member string, given *float64, s
 		b.StopReturns = prev.StopReturns
 	}
 	b.NoRoom = noRoom
+	b.Live, b.LiveKnown, b.LiveSince, b.LiveSeen = sprint.NextLive(prev, now, live)
 	out, err := json.Marshal(b)
 	if err != nil {
 		return b, err
@@ -373,7 +381,9 @@ func (st *Store) fleetBeats(ctx context.Context, shapes []ntable.Table) (ntable.
 		if err != nil {
 			return shape, beats, err
 		}
-		if b.Friend != nil {
+		if b.Friend != nil || b.LiveKnown {
+			// her live set is her row's evidence for working (sprint.LiveReturns), with or
+			// without a report beside it
 			if beats == nil {
 				beats = map[string]sprint.Beat{}
 			}

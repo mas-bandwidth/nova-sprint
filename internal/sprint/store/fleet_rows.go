@@ -141,7 +141,8 @@ func (st *Store) DropMembers(ctx context.Context, keep []string) ([]string, erro
 					return fmt.Errorf("the machine's %s record is unreadable: %w", keyMachine, err)
 				}
 			}
-			debt := machine.StopDebt
+			// only an entry that still owns its card holds the row (stopOwned)
+			debt := owedDebt(s, machine.StopDebt)
 			if machine.stopRevoked() && !machine.StopIssued {
 				debt = append(append([]StopLease(nil), debt...), activeStopLeases(s)...)
 			}
