@@ -123,3 +123,35 @@ func TestTheRebalanceReadNeverMovesToAnIneligibleOrOldRow(t *testing.T) {
 	assert.Empty(t, rebalanced(w.must(Rebalance(w.s, nil, "machine"))),
 		"a member whose reader row does not serve the read's tier takes no read")
 }
+
+// A read never moves to a member that already read the card at this attempt (the deal's
+// eligibility, mayReadCard's readSpent): the donor's read stays queued, the other reads
+// still move.
+func TestTheRebalanceReadNeverMovesToAReaderThatAlreadyReadIt(t *testing.T) {
+	t.Parallel()
+	w := readQueueWorld(t, 2)
+	// m2 already holds a read of s1-2 at this attempt
+	w.s.Fleet.Put(&Card{ID: ReadCardID("s1-2", 1, "m2"), Row: "m2", Col: Ready, Score: 2, Rev: 1,
+		Fields: map[string]string{"kind": "read", "primary": "s1-2", "stream": "s1", "reader": "m2", "attempt": "1", FieldReadCard: "1", FieldTier: cardhdr.RouteFlash}})
+	p := w.must(Rebalance(w.s, nil, "machine"))
+	require.Len(t, rebalanced(p), 1, "only s1-3 moves: m2 already read s1-2 at this attempt")
+	require.NotNil(t, w.s.Fleet.Card(ReadCardID("s1-3", 1, "m2")), "s1-3 still moves to m2")
+	require.True(t, w.s.Fleet.Card(ReadCardID("s1-2", 1, "m1")).Placed(),
+		"s1-2's read stays queued on m1, never to the member that already read it")
+}
+
+// A read never moves back to a row it was rebalanced off (FieldRebalancedFrom): it takes
+// the other idle reader instead.
+func TestTheRebalanceReadNeverMovesBackToARowItWasRebalancedOff(t *testing.T) {
+	t.Parallel()
+	w := readQueueWorld(t, 1)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m3", Width: 1}))
+	w.s.Readers.SetRows(append(w.s.Readers.Rows(), ReaderPrefix+"m3"))
+	rc := w.s.Fleet.Card(ReadCardID("s1-2", 1, "m1"))
+	rc.Fields[FieldRebalancedFrom] = "m2"
+	w.s.Fleet.Put(rc)
+	p := w.must(Rebalance(w.s, nil, "machine"))
+	require.Len(t, rebalanced(p), 1)
+	require.NotNil(t, w.s.Fleet.Card(ReadCardID("s1-2", 1, "m3")), "it moves to m3, never back to m2")
+	require.Nil(t, w.s.Fleet.Card(ReadCardID("s1-2", 1, "m2")))
+}
