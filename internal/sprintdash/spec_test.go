@@ -368,8 +368,8 @@ func TestEmptyStoppedDotTests(t *testing.T) {
 
 	// Clear work table for empty cost breakdown
 	snap["tables"] = map[string]any{
-		"work":   map[string]any{},
-		"fleet":  map[string]any{"bench-a": map[string]any{"status": "up", "width": "4", "ready": "0", "working": "0", "done": "0"}},
+		"work":    map[string]any{},
+		"fleet":   map[string]any{"bench-a": map[string]any{"status": "up", "width": "4", "ready": "0", "working": "0", "done": "0"}},
 		"friends": map[string]any{},
 	}
 
@@ -395,10 +395,10 @@ process.stdout.write(JSON.stringify({
 	t.Logf("outBuf=%s errBuf=%s", outBuf.String(), errBuf.String())
 	require.Empty(t, errBuf.String(), "app.js threw while drawing")
 	var res struct {
-		Pct        string `json:"pct"`
-		LiveClass  string `json:"liveClass"`
-		TopStreams int    `json:"topStreams"`
-		HeaderText string `json:"headerText"`
+		Pct            string `json:"pct"`
+		LiveClass      string `json:"liveClass"`
+		TopStreams     int    `json:"topStreams"`
+		HeaderText     string `json:"headerText"`
 		TopStreamsText string `json:"topStreamsText"`
 	}
 	require.NoError(t, json.Unmarshal(outBuf.Bytes(), &res), outBuf.String())
