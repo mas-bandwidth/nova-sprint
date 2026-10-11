@@ -1322,6 +1322,39 @@ func takeSeat(s *Snapshot, as string) (width int, why string) {
 	return s.Width(as), ""
 }
 
+// providerConcurrencyBudget reads the provider's concurrency budget from the fleet table.
+// It returns the budget as an int, with ok=true when set. Empty/absent means unbounded.
+func providerConcurrencyBudget(s *Snapshot, provider string) (budget int, ok bool) {
+	v, _ := s.Fleet.Prop(PropProviderConcurrency(provider))
+	if v == "" {
+		return 0, false // unbounded
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// providerInFlightCount counts the number of takes in flight for a provider across all members.
+// It counts work cards in the Working column whose route's provider matches.
+func providerInFlightCount(s *Snapshot, provider string) int {
+	count := 0
+	for _, c := range s.Fleet.Column(Working) {
+		route := c.F(FieldRoute)
+		if route == "" || route == RoutePin {
+			continue
+		}
+		// provider is the first word of the model id
+		model := c.F(FieldModel)
+		p, _, _ := strings.Cut(model, "/")
+		if p == provider {
+			count++
+		}
+	}
+	return count
+}
+
 func takeOne(s *Snapshot, r TakeReq) Plan {
 	var p Plan
 	sel := r.Sel
@@ -1409,6 +1442,18 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		// refuse it, spending a redeal; the tick withdraws it (restWithdrawals)
 		if rest, ok := cardRest(s, c); ok {
 			return "its route " + c.F(FieldRoute) + " rests until " + rest.UntilSaid() + " (" + rest.Said() + "): the tick withdraws it and deals it again on a route that serves"
+		}
+		// provider concurrency budget: refuse when the provider is at its budget (the fleet's
+		// count in flight, read from the store's one snapshot; model id's first word)
+		model := c.F(FieldModel)
+		provider, _, _ := strings.Cut(model, "/")
+		if provider != "" {
+			if budget, ok := providerConcurrencyBudget(s, provider); ok && budget > 0 {
+				inFlight := providerInFlightCount(s, provider)
+				if inFlight >= budget {
+					return fmt.Sprintf("provider %s is at its concurrency budget (%d of %d in flight): it is taken when one ends", provider, inFlight, budget)
+				}
+			}
 		}
 		if byID {
 			if room < cost(c) {

@@ -156,15 +156,17 @@ func Balance(s *Snapshot, r BalanceReq) Plan {
 }
 
 // ProviderRow is one row of the providers table (where --json): the provider, its balance
-// as the poll last read it, the spend over the last hour, and its state: serving, or resting
-// until a time and why.
+// as the poll last read it, the spend over the last hour, its concurrency budget and count
+// in flight, and its state: serving, or resting until a time and why.
 type ProviderRow struct {
-	Name      string  `json:"name"`
-	Balance   string  `json:"balance"` // dollars and cents rounded up, or "unknown"
-	BalanceAt string  `json:"balance_at,omitempty"`
-	SpendHour float64 `json:"spend_hour"`
-	State     string  `json:"state"`
-	Note      string  `json:"note,omitempty"` // why the balance is unknown
+	Name           string  `json:"name"`
+	Balance        string  `json:"balance"` // dollars and cents rounded up, or "unknown"
+	BalanceAt      string  `json:"balance_at,omitempty"`
+	SpendHour      float64 `json:"spend_hour"`
+	Concurrency    string  `json:"concurrency"` // budget (or unbounded) and count in flight
+	State          string  `json:"state"`
+	Note           string  `json:"note,omitempty"` // why the balance is unknown
+	ConcurrencySet bool    `json:"concurrency_set"`
 }
 
 // ProviderRows is the providers table: a row for each provider the routes name, in name
@@ -212,6 +214,16 @@ func ProviderRows(routes []Route, fleet *Table, now time.Time) []ProviderRow {
 			row.State = "resting until " + last.UntilSaid() + " (" + why + ")"
 		case len(resting) > 0:
 			row.State = "serving; resting " + strings.Join(resting, ", ") + " until " + last.UntilSaid() + " (" + why + ")"
+		}
+		// concurrency: budget and count in flight from fleet table
+		budgetStr, _ := fleet.Prop(PropProviderConcurrency(name))
+		if budgetStr != "" {
+			if budgetStr == "0" {
+				row.Concurrency = "unbounded"
+			} else {
+				row.Concurrency = budgetStr
+			}
+			row.ConcurrencySet = true
 		}
 		out = append(out, row)
 	}

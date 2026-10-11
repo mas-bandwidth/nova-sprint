@@ -42,6 +42,12 @@ func PropRule3Rest(provider string) string { return "rule3_rest_" + provider }
 // table's properties (ntable.LimitTableProps) grow with the providers, not the routes.
 func PropProviderRest(provider string) string { return "provider_rest_" + provider }
 
+// PropProviderConcurrency is the fleet table's property that holds a provider's concurrency
+// budget: ONE per provider, never a copy on each of its routes, so a provider's budget is
+// one read and the table's properties (ntable.LimitTableProps) grow with the providers,
+// not the routes. Empty or absent means unbounded.
+func PropProviderConcurrency(provider string) string { return "provider_concurrency_" + provider }
+
 // NRouteRested is the happened note of a rest the tick wrote, to the coordinator, and
 // NProviderRested the note of a provider's (provider_funds.go).
 const (

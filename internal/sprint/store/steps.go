@@ -270,6 +270,11 @@ func RouteWakeStep(r sprint.RouteWakeReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.WakeRoutes(s, r) }}
 }
 
+func RouteLimitStep(r sprint.RouteLimitReq) Step {
+	return Step{Named: true, Args: ArgsOf(r), Verb: "routes limit", Load: tables(sprint.Fleet), Routes: true,
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.SetConcurrencyLimit(s, r) }}
+}
+
 // CostReconcileStep is one cost reconciliation (sprint.CostReconcile): each provider's own
 // count of a UTC day beside the sprint's records of it, read from the work table and the
 // routes, written to the fleet table's record, and the provider's one gap judgment.

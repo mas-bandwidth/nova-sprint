@@ -45,6 +45,15 @@ type RouteWakeReq struct {
 	Who    string
 }
 
+// RouteLimitReq is the coordinator's setting of a provider's concurrency budget in the sprint's
+// store. Concurrent 0 clears the budget. The fleet enforces this across all members in takeOne.
+type RouteLimitReq struct {
+	Target    string
+	Concurrent int
+	Reason    string
+	Who       string
+}
+
 // routeTarget is what a target names: a provider (provider true, its routes) or one route
 // (its provider); ok is false when it names neither.
 func routeTarget(s *Snapshot, target string) (provider string, routes []string, isProvider, ok bool) {
@@ -172,5 +181,40 @@ func WakeRoutes(s *Snapshot, r RouteWakeReq) Plan {
 	n.What = fmt.Sprintf("routes %s serve again: woken by %s: %s", strings.Join(routes, ", "), r.Who, oneLine(r.Reason))
 	p.Notes = append(p.Notes, n)
 	p.Units = append(p.Units, Unit{Key: r.Target, Moved: "routes " + strings.Join(routes, ", ") + " woken"})
+	return p
+}
+
+// SetConcurrencyLimit is routes limit: sets the provider's concurrency budget in the sprint's
+// store; 0 clears it. The fleet enforces this across all members in takeOne.
+func SetConcurrencyLimit(s *Snapshot, r RouteLimitReq) Plan {
+	var p Plan
+	if strings.TrimSpace(r.Reason) == "" {
+		p.refuse(r.Target, "routes limit wants --reason: why the limit is set, in a few words")
+		return p
+	}
+	provider, _, isProvider, ok := routeTarget(s, r.Target)
+	if !ok {
+		p.refuse(r.Target, r.Target+" names no route and no provider of a route (nova-sprint routes lists them)")
+		return p
+	}
+	if !isProvider {
+		p.refuse(r.Target, "routes limit wants a provider, not a route (nova-sprint routes lists them)")
+		return p
+	}
+	budgetStr := itoa(r.Concurrent)
+	if r.Concurrent == 0 {
+		budgetStr = "" // 0 clears the budget
+	}
+	was, had := s.Fleet.Prop(PropProviderConcurrency(provider))
+	p.Props = append(p.Props, PropWrite{Table: Fleet, Name: PropProviderConcurrency(provider), Value: budgetStr, Was: was, WasAbsent: !had})
+	n := happened("a provider's concurrency budget set", ProviderSubject(provider), s.Now)
+	n.To, n.Who = s.Coordinator, r.Who
+	n.What = fmt.Sprintf("provider %s concurrency budget set to %s: %s", provider, budgetStr, oneLine(r.Reason))
+	p.Notes = append(p.Notes, n)
+	msg := fmt.Sprintf("provider %s concurrency budget set to %s", provider, budgetStr)
+	if r.Concurrent == 0 {
+		msg = fmt.Sprintf("provider %s concurrency budget cleared", provider)
+	}
+	p.Units = append(p.Units, Unit{Key: r.Target, Moved: msg})
 	return p
 }

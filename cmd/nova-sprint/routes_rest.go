@@ -12,10 +12,13 @@ import (
 func init() {
 	verbClasses["routes rest"] = classCoordinator
 	verbClasses["routes wake"] = classCoordinator
+	verbClasses["routes limit"] = classCoordinator
 	verbEffect["routes rest"] = "local write: rests every route of the provider, or the one route, in the sprint's store until the time or until routes wake (the deal draws no work card on them); --dry-run writes nothing"
 	verbEffect["routes wake"] = "local write: ends the rest holding the provider or the route in the sprint's store now, with the reason (never a payment: that is funded's); --dry-run writes nothing"
+	verbEffect["routes limit"] = "local write: sets the provider's concurrency budget in the sprint's store; 0 clears it; the fleet enforces it across all members; --dry-run writes nothing"
 	stepDryRun["routes rest"] = true
 	stepDryRun["routes wake"] = true
+	stepDryRun["routes limit"] = true
 }
 
 // cmdRoutesRest is routes rest <provider|route> --reason <text> [--for <duration> | --until
@@ -78,4 +81,26 @@ func (a *app) cmdRoutesWake(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, name, err.Error())
 	}
 	return a.runStep(name, *c, st, store.RouteWakeStep(sprint.RouteWakeReq{Target: pos[0], Reason: *reason, Who: c.actor}), stdout, stderr)
+}
+
+// cmdRoutesLimit is routes limit <provider> --concurrent <n> --reason <text>: the coordinator
+// sets the provider's concurrency budget in the sprint's store; 0 clears it. The fleet
+// enforces this across all members when taking work (takeOne; tla/ProviderBudget.tla).
+func (a *app) cmdRoutesLimit(args []string, stdout, stderr io.Writer) int {
+	const name = "routes limit"
+	fs, c := a.verbSetup(name)
+	concurrent := fs.Int("concurrent", 0, "concurrency budget for the provider (0 clears it)")
+	reason := fs.String("reason", "", "why the limit is set, in a few words (required)")
+	pos, err := parse(fs, args)
+	if err != nil || len(pos) != 1 {
+		return refuse(stderr, name, argErr("wants one word, a provider as nova-sprint routes names it, ", err, pos...))
+	}
+	if strings.TrimSpace(*reason) == "" {
+		return refuse(stderr, name, "--reason <text> is required: why the limit is set")
+	}
+	st, err := a.store(*c)
+	if err != nil {
+		return refuse(stderr, name, err.Error())
+	}
+	return a.runStep(name, *c, st, store.RouteLimitStep(sprint.RouteLimitReq{Target: pos[0], Concurrent: *concurrent, Reason: *reason, Who: c.actor}), stdout, stderr)
 }

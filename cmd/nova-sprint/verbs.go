@@ -182,6 +182,7 @@ func init() {
 		{"fsck seat", "[--pg <host:port or postgres:// URI>]", "fsck seat", (*app).cmdFsckSeat},
 		{"routes rest", "<provider|route> --reason <text> [--for <duration> | --until <RFC3339>]", "routes rest openrouter --reason 'balance $40, about 1.6 hours left' --for 2h", (*app).cmdRoutesRest},
 		{"routes wake", "<provider|route> --reason <text>", "routes wake openrouter --reason 'the rest was a balance rule the machine no longer keeps'", (*app).cmdRoutesWake},
+		{"routes limit", "<provider> --concurrent <n> --reason <text>", "routes limit openrouter --concurrent 2 --reason 'limiting concurrent takes'", (*app).cmdRoutesLimit},
 		{"routes", "", "routes", (*app).cmdRoutes},
 		{"rules", "", "rules", (*app).cmdRules},
 		{"stats tidy", "(--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]", "stats tidy --all --reason 'a fresh start' --dry-run", (*app).cmdStatsTidy},
