@@ -1471,6 +1471,26 @@
     TestDoctorRoutesPerTierFailsWhileATierRestsForIts5xxs and
     TestDoctorRoutesPerTierWithOneBackoffAndOneUsableWarns."
    :origin "this card: doctor-warns-while-a-tier-backs-off; the third cold read of nova-sprint PR
-    #86, 2026-10-11, an open non-blocking finding: \"Doctor reports FAIL while every route of a
-    tier backs off\"; listed in the rate-limit-never-fails-the-card-v2 card; checked against
-    nova-sprint main 00c54ba and PR #86's head a1c51ee")))
+     #86, 2026-10-11, an open non-blocking finding: \"Doctor reports FAIL while every route of a
+     tier backs off\"; listed in the rate-limit-never-fails-the-card-v2 card; checked against
+     nova-sprint main 00c54ba and PR #86's head a1c51ee")
+   (fix "route-ends-read-the-finished-cell" :release "v1.2.14" :status "planned"
+    :title "routeEnds reads the Finished column too"
+    :text "routeEnds (internal/sprint/route_rest.go), which builds the ended takes the 3-in-10 rest
+     window counts, walked fleet.Column(Ready, Working, DoneOK, DoneFailed, DoneDefect, Withdrawn)
+     and read a card's own finish only for DoneOK and DoneFailed, so a work card in the Finished
+     column added nothing to its route's window: neither the provider takes it recorded before it was
+     redealt nor its own finish. A 5xx that preceded a card that finished and waits for the readers'
+     verdict went uncounted until the verdict moved the card on. routeEnds now walks Finished too and
+     counts a Finished card's own finish exactly as a DoneOK or DoneFailed one, the same take number,
+     so a card counts once wherever it sits: when it moves on from Finished it is the same card and
+     the same record (tla/RouteRest.tla; docs/SPEC-SPRINT.md section 5, the routes' rests: \"each work
+     card's own finish\"). rateBackoffs already read Finished; the window's size, the rest's length,
+     the provider refusal rests and rateBackoffs are untouched. Tests
+     TestRestsDueReadsAFinishedCardsTake and TestAFinishedCardsEndCountsAsAnEndedTake;
+     TestRestsDueCountsTransientProviderFailuresNeverNoResults and
+     TestARateBackoffNeverHoldsOffTheFiveHundredsRest stay green."
+    :origin "this card, route-ends-read-the-finished-cell.w1; the third cold read of nova-sprint PR
+     #86 (2026-10-11), an open finding marked main's own: \"routeEnds (the 3-in-10 window) does not
+     read the Finished column\"; listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md;
+     checked on main 00c54ba (route_rest.go near line 376) and on PR #86's head a1c51ee")))
