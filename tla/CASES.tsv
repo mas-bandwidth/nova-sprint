@@ -319,7 +319,7 @@ MCReadsByRoomBrokenTwoFinders.cfg	MCReadsByRoom.tla	invariant	OneBroken	ignore-t
 MCReadsByRoomSequential.cfg	MCReadsByRoom.tla	pass	-	ignore-terminal	readsbyroom	required	-
 MCSprintTables.cfg	MCSprintTables.tla	pass	-	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenDownkeeps.cfg	MCSprintTables.tla	action	WorkingOnAnUpMember	ignore-terminal	sprinttables	required	-
-MCSprintTablesBrokenInsert.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsert	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenInsert.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsertOrNeedsset	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenNeedless.cfg	MCSprintTables.tla	action	NeedsLandFirst	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenShortAccept.cfg	MCSprintTables.tla	invariant	AcceptHeld	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenAcceptBroken.cfg	MCSprintTables.tla	invariant	NeverAcceptBroken	ignore-terminal	sprinttables	required	-

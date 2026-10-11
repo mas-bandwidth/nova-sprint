@@ -27,7 +27,9 @@
 \*   redo         merging -> ready     (no member is up)
 \*   merge        merging -> landed
 \*   release      waiting -> landed    (a sentinel only)
-\*   add          ready   -> waiting   (a sentinel inserted in front)
+\*   add          ready   -> waiting   (a sentinel inserted in front, or a
+\*                                      needs set: a ready card gains a need
+\*                                      not landed)
 \* Off the table (drop) is legal from every open state.
 \*
 \* The fleet side (refmodel actions.go) follows the code:
@@ -61,8 +63,9 @@
 \*
 \* Invariants: TypeOK, NoNeedCycle, NoCardLostOrTwice, and the action
 \* properties MovesOnlyByTable (every change of cell is a Moves row, a drop
-\* from an open state, or a remove of a landed card), ReadyToWaitingOnlyByInsert,
-\* LandedIsFinal, NeedsLandFirst and WorkingOnAnUpMember (a card in a member's
+\* from an open state, or a remove of a landed card),
+\* ReadyToWaitingOnlyByInsertOrNeedsset, LandedIsFinal, NeedsLandFirst and
+\* WorkingOnAnUpMember (a card in a member's
 \* working cell sits on an up member), plus AcceptHeld (no primary enters
 \* merging short of its reads), NeverAcceptBroken (no primary enters merging
 \* with a broken read at its head) and NeverReadByItsWorker (a read is never
@@ -78,7 +81,8 @@
 \* merge and return, and crash and repair.
 \*
 \* Reversed witnesses (Broken):
-\*   "insert"     the add move runs ready -> waiting without inserting.
+\*   "insert"    the add move runs ready -> waiting without inserting and
+\*               without a needs set.
 \*   "needless"   resolve drops the needs check, so a card with an unmet need
 \*                still moves waiting -> ready.
 \*   "downkeeps"  fleet down leaves a working card on the member that went down.
@@ -141,6 +145,10 @@ IsSentinel(c) == c \in Sentinels
 \* The step's plan flags (lifecycle.go Plan): releasing lands a sentinel,
 \* inserting moves a primary ready -> waiting, removing takes a landed primary
 \* off the table. Each is a nondeterministic choice of the plan the step runs.
+\* The inserting flag stands for both of the code's ready -> waiting causes
+\* (lifecycle.go:247 admits the move by the plan's inserting flag or by the
+\* entry's needs set, steps_edit.go): the module's needs are a constant, so a
+\* needs set has no state of its own and both causes are this one flag.
 Flags == [releasing : BOOLEAN, inserting : BOOLEAN, removing : BOOLEAN]
 
 VARIABLES state, waived, flags, members, wplace, wmember, rplace
@@ -441,8 +449,11 @@ Release ==
     /\ flags.releasing
     /\ Move(c, "landed")
 
-\* add: ready -> waiting, only as the effect of inserting a sentinel in front.
-\* The reversed witness "insert" lets it run without inserting.
+\* add: ready -> waiting, as the effect of inserting a sentinel in front, or of
+\* rewriting the card's needs (needs set, steps_edit.go): a ready card that
+\* gains a need not landed moves back to waiting. The module's needs are a
+\* constant, so both causes are the one plan flag inserting. The reversed
+\* witness "insert" lets it run without inserting and without a needs set.
 AddMove ==
   \E c \in Card :
     /\ state[c] = "ready"
@@ -501,9 +512,12 @@ MovesOnlyByTable ==
     \/ /\ state'[c] = "off"
        /\ (IsOpen(state[c]) \/ flags.removing)]_vars
 
-\* ReadyToWaitingOnlyByInsert: a primary moves ready -> waiting only as the
-\* effect of inserting a sentinel in front of it.
-ReadyToWaitingOnlyByInsert ==
+\* ReadyToWaitingOnlyByInsertOrNeedsset: a primary moves ready -> waiting only
+\* as the effect of inserting a sentinel in front of it, or of rewriting its
+\* needs (needs set, steps_edit.go: a ready card that gains a need not landed).
+\* The module's needs are a constant, so both causes are the one plan flag
+\* inserting.
+ReadyToWaitingOnlyByInsertOrNeedsset ==
   [][\A c \in Card :
     state[c] = "ready" /\ state'[c] = "waiting" => flags.inserting]_vars
 
