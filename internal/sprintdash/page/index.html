@@ -296,22 +296,21 @@ footer a:hover { color: var(--text); }
 .cell.flash { animation-name: flash-cell; border-radius: 1px; }
 /* The top bar's pulse (SPEC-SPRINT-DASHBOARD.md, the owner 2026-10-03 11:03 and 11:06 PM): merging, review and working
    cells pulse between opacity 1 and .55 over 2 s, one state after another, review 0.05 s behind merging and
-   working 0.05 s behind review. The animation runs on every cell of the bar from the moment the cell is made
-   and drives a registered property; only the three states read it, and the delay is per state, so a cell
-   changing state never restarts its clock and every cell of a state moves with the others. Landed, ready and
-   waiting cells are still; table cells flash once on change. */
-@property --pulse { syntax: "<number>"; inherits: false; initial-value: 1; }
+   working 0.05 s behind review. The animation animates opacity itself, a property the compositor runs on its own
+   thread, so the pulse never re-styles the page on the main thread; only the three states carry it, and the delay
+   is per state, so a cell changing state never restarts its clock and every cell of a state moves with the others.
+   (The owner 2026-10-11: a held PageDown juddered; a custom-property animation runs on the main thread and 151
+   cells re-styled every frame.) Landed, ready and waiting cells are still; table cells flash once on change. */
 /* the owner 2026-10-04 9:15 AM: hold max intensity about 50% longer: the cycle grows 2 s -> 2.4 s and the extra
    0.4 s is a plateau at full opacity before the dip. */
-@keyframes pulse { 0%, 17%, 100% { --pulse: 1; } 58.5% { --pulse: .55; } }
-#overall .cell { animation: pulse 2.4s ease-in-out infinite; }
-#overall .cell.merging { opacity: var(--pulse); }
-#overall .cell.review { opacity: var(--pulse); animation-delay: -2.25s; } /* 0.15 s behind merging on the 2.4 s cycle (the owner 12:27 PM) */
-#overall .cell.working { opacity: var(--pulse); animation-delay: -2.1s; } /* 0.15 s behind review */
+@keyframes pulse { 0%, 17%, 100% { opacity: 1; } 58.5% { opacity: .55; } }
+#overall .cell.merging { opacity: 1; animation: pulse 2.4s ease-in-out infinite; }
+#overall .cell.review { opacity: 1; animation: pulse 2.4s ease-in-out infinite; animation-delay: -2.25s; } /* 0.15 s behind merging on the 2.4 s cycle (the owner 12:27 PM) */
+#overall .cell.working { opacity: 1; animation: pulse 2.4s ease-in-out infinite; animation-delay: -2.1s; } /* 0.15 s behind review */
 /* When the machine is not running (the owner 2026-10-04 9:14 AM: "When the sprint is stopped ... the pulsing ... should stop"),
    the bar holds still: app.js puts .stopped on #overall whenever the machine line does not say running. */
-#overall.stopped .cell { animation: none; }
-@media (prefers-reduced-motion: reduce) { .flash, #overall .cell { animation: none; } }
+#overall.stopped .cell, #overall.stopped .cell.merging, #overall.stopped .cell.review, #overall.stopped .cell.working { animation: none; }
+@media (prefers-reduced-motion: reduce) { .flash, #overall .cell.merging, #overall .cell.review, #overall .cell.working { animation: none; } }
 
 
 /* ---------- tables (SPEC.md: Work, Fleet, Friends, Responsive) ----------
