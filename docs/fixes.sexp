@@ -1286,7 +1286,7 @@
     (ScnWidth takes a third card to contend), MCDirtyTickG2.cfg and MCDirtyTickW15.cfg (nowidth, three cards on
     one machine) are retuned for the wider room; the six Go comments that stated the width-w rule now say
     twice the width and cite HoldRespected. Models only; no product change."
-   :origin "this card, tla-dirtytick-deals-to-twice-the-width-2.w2, 2026-10-11: v1.2.12 inventory item T6; drift read at nova-sprint main 00c54ba2e")
+   :origin "this card, tla-dirtytick-deals-to-twice-the-width-2.w4, 2026-10-11: v1.2.12 inventory item T6; drift read at nova-sprint main 00c54ba2e")
   (fix "tla-land-gate-ring" :release "v1.2.12" :status "planned"
    :title "The gate bench's hash ring modelled in tla/GateRing.tla"
    :text "tla/GateRing.tla models the land stage's gate-slot ring: two up benches, the start slot the
