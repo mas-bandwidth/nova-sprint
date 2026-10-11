@@ -30,10 +30,13 @@ func (a *app) cmdDoctorPreflight(ctx context.Context, c common, binary string, s
 		in.ShadowCode = 2
 		in.ShadowText = err.Error()
 	}
-	// the members' link fact (docs/SPEC-SPRINT.md, doctor: member-env and the preflight; the card
-	// doctor-names-a-member-whose-link-flapped): the same probe doctor runs, so a flapping link is
-	// one FAIL row and refuses the switch; a fleet the preflight cannot reach leaves Probes nil
-	// and the links check a WARN. A test with no outside reads none.
+	// the members' facts (docs/SPEC-SPRINT.md, doctor: member-env and the preflight): the
+	// same probe doctor runs, so a missing tool, a push credential that does not
+	// authenticate, a seat that does not open and a flapping link are FAIL rows that
+	// refuse the switch, and a member held, draining, away, or short of java/the TLA+
+	// tools is a WARN. The sprint's own facts beside each probe (harnesses, provider key
+	// names, hold, drain) come from the store; a fleet the preflight cannot reach leaves
+	// Probes and Members nil and their checks WARN. A test with no outside reads none.
 	o := a.outside
 	if o.doctorConfig == nil {
 		o = a.realOutside()
@@ -44,8 +47,20 @@ func (a *app) cmdDoctorPreflight(ctx context.Context, c common, binary string, s
 			if o.hostname != nil {
 				self = o.hostname()
 			}
-			tools := func(string) []string { return slices.Clone(sprint.MemberTools) }
+			var snap *sprint.Snapshot
+			if st, err := a.shadowStore(ctx, c); err == nil {
+				if read, err := st.DoctorRead(ctx); err == nil {
+					snap = read.Snap
+				}
+			}
+			tools := func(member string) []string {
+				if snap == nil {
+					return slices.Clone(sprint.MemberTools)
+				}
+				return append(slices.Clone(sprint.MemberTools), sprint.MemberHarnesses(snap, member)...)
+			}
 			in.Probes = o.probeMembers(ctx, cfg.Machines, tools, self)
+			in.Members = sprint.PreflightMembers(snap, in.Probes)
 		}
 	}
 	red := false
