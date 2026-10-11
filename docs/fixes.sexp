@@ -855,8 +855,17 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (fix "tick-watchdog-refuses-a-negative-deadline" :release "v1.2.14" :status "planned"
+   :title "run refuses a negative --tick-deadline"
+   :text "nova-sprint run refuses a negative --tick-deadline as a usage error (exit 2) right after the
+    flags are parsed, before the loop or a listen, naming the flag, the value and that 0 waits for ever.
+    Before, tickDeadlineOf returned 0 for any least <= 0 and tickWithin waited for ever at d <= 0, so a
+    negative value switched the watchdog off with nothing said. 0 still waits for ever and every positive
+    value behaves as today. Tests: TestRunRefusesANegativeTickDeadline (red at BASE) and
+    TestRunWithNoTickDeadlineStillTicks."
+   :origin "nova-tools issue #5173, tick-watchdog-bounded-diagnostics, the negative-deadline half; this card tick-watchdog-refuses-a-negative-deadline.w1")
 
-(fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
+ (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
    :origin "this card")
