@@ -298,6 +298,7 @@ MCCardISALive.cfg	MCCardISA.tla	pass	-	ignore-terminal	cardisa	required	-
 MCCardISABrokenSecondLand.cfg	MCCardISA.tla	invariant	NoCardRetiresTwice	ignore-terminal	cardisa	required	-
 MCCardISABrokenOtherBase.cfg	MCCardISA.tla	invariant	RetiredHeadOnBase	ignore-terminal	cardisa	required	-
 MCCardISABrokenWaitFirst.cfg	MCCardISA.tla	invariant	WaitDispatchesOnlyWhenOperandHolds	ignore-terminal	cardisa	required	-
+MCCardISABrokenLandAnywhere.cfg	MCCardISA.tla	action	LandsOnlyByTable	ignore-terminal	cardisa	required	-
 MCReadsByRoom.cfg	MCReadsByRoom.tla	pass	-	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomBrokenAskBroken.cfg	MCReadsByRoomThree.tla	invariant	NoAskWhileBroken	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomBrokenPair.cfg	MCReadsByRoom.tla	invariant	OneAtATime	ignore-terminal	readsbyroom	required	-
@@ -445,7 +446,9 @@ MCSeatHookBrokenNoAck.cfg	MCSeatHook.tla	invariant	AckedOrBlocking	ignore-termin
 MCSeatHookBrokenNoMiss.cfg	MCSeatHook.tla	invariant	CommandSafe	ignore-terminal	seathook	required	-
 MCSeatHookBrokenSilentDrop.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-terminal	seathook	required	-
 MCSeatHookBrokenStrictCadence.cfg	MCSeatHook.tla	temporal	HookStays	ignore-terminal	seathook	required	-
+MCSeatHookBrokenNoStartRewrite.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-terminal	seathook	required	-
 MCStopReturnBrokenNoSettleByBeat.cfg	MCStopReturn.tla	temporal	AbsentJobSettles	ignore-terminal	stopreturn	required	-
+MCStopReturnBrokenOmitLive.cfg	MCStopReturn.tla	invariant	NoLiveChildAcrossStart	ignore-terminal	stopreturn	required	-
 MCProviderBudget.cfg	MCProviderBudget.tla	pass	-	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenClear.cfg	MCProviderBudget.tla	action	FleetUpRefusesUncleared	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenNewMember.cfg	MCProviderBudget.tla	action	NewMemberProbed	ignore-terminal	providerbudget	required	-

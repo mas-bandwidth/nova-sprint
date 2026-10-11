@@ -751,6 +751,7 @@ func (a *app) serveSay(format string, args ...any) {
 
 // hookServerStart is the server's start: a record left hooked by an earlier server is a
 // subscription that server held, gone with it; it is recorded gone and told.
+// tla/SeatHook.tla ServerStart
 func (a *app) hookServerStart(ctx context.Context) {
 	var rec sprint.HookRecord
 	var ok bool
