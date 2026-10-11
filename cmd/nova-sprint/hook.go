@@ -130,7 +130,8 @@ func writeHook(ctx context.Context, st *store.Store, rec sprint.HookRecord) erro
 // but a worker's, a report's and the machine's when the seat's holder runs it. The
 // hook and unhook are never refused, nor is anything on a sprint with no holder (the
 // first init).
-func hookedIn(ctx context.Context, st *store.Store, c common) (string, error) {
+// srvServer is an optional function to check for the sprint server; nil means no hint.
+func hookedIn(ctx context.Context, st *store.Store, c common, srvServer func() string) (string, error) {
 	if hookExempt[c.verb] {
 		return "", nil
 	}
@@ -160,7 +161,13 @@ func hookedIn(ctx context.Context, st *store.Store, c common) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return sprint.HookGate(rec, ok, seat, st.Now()), nil
+	why := sprint.HookGate(rec, ok, seat, st.Now())
+	if why == sprint.HookFirst && srvServer != nil {
+		if srvServer() == "" {
+			why += "; no sprint server named: " + ServerEnv + " is not set and the seat's record names none; run: export " + ServerEnv + "=<host:port>, or record it: nova-sprint seat install --server <host:port>"
+		}
+	}
+	return why, nil
 }
 
 // hookFirst runs the gate before the verb, on the verb's own words, so its refusal is
@@ -198,7 +205,12 @@ func (a *app) hookFirst(args []string, stderr io.Writer) (int, bool) {
 	if err != nil {
 		return 0, false
 	}
-	why, err := hookedIn(context.Background(), st, c)
+	why, err := hookedIn(context.Background(), st, c, func() string {
+		if env := a.getenv(ServerEnv); env != "" {
+			return env
+		}
+		return a.seatServer()
+	})
 	if err != nil || why == "" {
 		return 0, false
 	}
@@ -761,12 +773,20 @@ func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 	case *ack != 0:
 		return a.hookAsk(c.actor, hookMsg{T: "ack", ID: *ack}, stdout, stderr)
 	}
-	addr := a.getenv(ServerEnv)
+	var addr, from string
+	if env := a.getenv(ServerEnv); env != "" {
+		addr, from = env, "env"
+	} else if rec := a.seatServer(); rec != "" {
+		addr, from = rec, "seat-record"
+	}
 	if addr == "" {
-		return refuse(stderr, name, "the hook is a subscription the sprint's server holds: set "+ServerEnv+"=<host:port> (run --listen prints it); run: "+ServerEnv+"=127.0.0.1:<port> nova-sprint hook")
+		path, _ := a.seatRecordPath()
+		fmt.Fprintln(stderr, "nova-sprint "+name+" REFUSED: no sprint server named: "+ServerEnv+" is not set and the seat's record "+path+" names none; run: export "+ServerEnv+"=<host:port>, or record it: nova-sprint seat install --server <host:port>")
+		return 1
 	}
 	ctx, stop := a.notify(context.Background())
 	defer stop()
+	fmt.Fprintf(stdout, "HOOK OK server=%s from=%s\n", addr, from)
 	return a.hookHold(ctx, addr, c.actor, stdout, stderr)
 }
 

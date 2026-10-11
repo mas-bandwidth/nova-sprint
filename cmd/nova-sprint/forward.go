@@ -136,11 +136,15 @@ func (v verbArgs) unserved() string {
 // server is the sprint's server this process sends the verb's reads and writes to
 // (NOVA_SPRINT_SERVER), "" when the verb runs on a store here: no server named, this
 // process is the server, or the verb was given its own --redis (fs, as parsed).
+// Uses env first, else the seat record (seat install --server), matching seat check.
 func (a *app) server(fs *flag.FlagSet) string {
 	if a.serveAddr != "" || (verbArgs{fs: fs}).given("redis") {
 		return ""
 	}
-	return a.getenv(ServerEnv)
+	if env := a.getenv(ServerEnv); env != "" {
+		return env
+	}
+	return a.seatServer()
 }
 
 // forwarded sends the verb to the sprint's server when there is one and the server runs

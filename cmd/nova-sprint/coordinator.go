@@ -89,7 +89,7 @@ func coordinatorOnly(ctx context.Context, st *store.Store, c common) (string, er
 			return why, err
 		}
 	}
-	return hookedIn(ctx, st, c)
+	return hookedIn(ctx, st, c, nil)
 }
 
 // coordinatorsAlone is why the actor may not do what is the coordinator's

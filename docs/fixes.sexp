@@ -861,6 +861,11 @@
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
    :origin "this card")
 
+(fix "hook-finds-the-server-itself" :release "v1.2.11" :status "planned"
+   :title "hook and forwarded verbs find the sprint server from the seat record"
+   :text "When NOVA_SPRINT_SERVER is unset, forwarded verbs now use the server from the seat record (seat install --server). The hook command reports where it got the server from (from=env or from=seat-record) and refuses with a helpful hint when neither source names a server."
+   :origin "this card")
+
   (fix "no-deal-to-a-draining-member" :release "v1.2.10" :status "shipped"
    :title "No deal to a draining member; a held or draining machine's reader is asked nothing"
    :origin "PR #84")
