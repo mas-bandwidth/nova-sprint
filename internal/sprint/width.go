@@ -13,7 +13,10 @@ import (
 // that width until done. The width is a field of the member's control card,
 // set by init --members <m>:<n> and by fleet up <m> --width <n>, and shown in
 // the fleet table's width column. The deal fills every member up to DealAhead
-// times its width in one step, round the fleet (T3, R6), and the level, once
+// times its width in one step, round the fleet from the deal's cursor, and
+// fills a member with a free lane (a load below the width) before one that has
+// room but no lane (round.go, nextFree; tla/WhoPreference.tla,
+// DealFreeLanesFirst). The level, once
 // at the start of every tick, moves ready cards from a member that cannot
 // start them to one with free lanes, never past DealAhead times its width
 // (T4, R7). The model is tla/SprintEvents.tla: PlanDeal's room (its Cap),

@@ -2967,14 +2967,22 @@ order the cards were dealt in, so a card brought to the front of its stream by
   docs/SPEC-CARD-CONTRACT.md section 4).
 - The machine's tick deals every ready primary the fleet has room for in one
   step, in stream turns (each stream's oldest first by score), one card at a
-  time to the next up member round the fleet (the rolling index `deal_index`)
-  that is below its room, DealAhead times its width: 150 ready over eight
+  time round the fleet from the deal's cursor (the rolling index `deal_index`),
+  free lanes first: the next up member with a free lane, a load below its
+  width, and only when no member that may take the card has one, the next below
+  its room, DealAhead times its width. So an idle member is filled before one
+  already at its width, and the cursor moves past the member placed, so
+  placements roll (`(index++) % n`) over the eligible set: 150 ready over eight
   machines of width 64 all go to working in one tick, 18 or 19 a machine. A
   machine at its room takes no more, whoever deals: the `deal` verb refuses a
   card no up member has room for, and a rework with no member below its room
   sends its primary ready with the fix, for the tick to deal
   (`tla/DirtyTick.tla`, `Room` and `WidthRespected`, which bound the room;
-  `TestAReworkIsNotDealtToAMemberAtDealAheadTimesItsWidth`). A member takes
+  `tla/WhoPreference.tla`, `DealFreeLanesFirst`, and `round.nextFree`;
+  the owner, 2026-10-11: "cards only may accrue per-fleet or friend, if there
+  are not other machines/friends ready to do that work right now!" and "Deal
+  logic should be using ((index++) % n) to roll around, not hitting the same
+  fleet machine or friend each deal."). A member takes
   its ready cards in stream turns, so it starts every stream alike.
 - A card's bench: a brief whose header carries `BENCH: <member>`, or a
   comma-separated list of members, names the members that have what the card
