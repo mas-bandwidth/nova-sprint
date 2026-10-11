@@ -136,10 +136,10 @@ func lowBalanceUsdSetting(props map[string]string) (float64, bool) {
 }
 
 // readsWords is the counts set --reads takes (PropReadsNeeded).
-var readsWords = []string{"0", "1", "2"}
+var readsWords = []string{"0", "1", "2", "3"}
 
 // ReadsSetting is the reads every card in review needs as the work table's properties
-// hold them (PropReadsNeeded): 0, 1 or 2, and ok false while none is set (default: each
+// hold them (PropReadsNeeded): 0, 1, 2 or 3, and ok false while none is set (default: each
 // card's own rule, ReadsNeeded).
 func ReadsSetting(props map[string]string) (n int, ok bool) {
 	v := props[PropReadsNeeded]
@@ -352,7 +352,7 @@ type SetReq struct {
 	// ReadCards turns read cards on or off (PropReadCards, read_cards.go): on, off, or
 	// default (off).
 	ReadCards string `json:",omitempty"`
-	// Reads is the reads every card in review needs (PropReadsNeeded): 0, 1, 2, or
+	// Reads is the reads every card in review needs (PropReadsNeeded): 0, 1, 2, 3, or
 	// default (each card's own rule, ReadsNeeded).
 	Reads string `json:",omitempty"`
 	// Base, with Streams, re-points the stream's cards that are not yet dealt and
@@ -494,7 +494,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 	}
 	if r.Reads != "" {
 		if r.Reads != ReadTierDefault && !slices.Contains(readsWords, r.Reads) {
-			why = append(why, "--reads wants 0, 1, 2 or "+ReadTierDefault+" (one for a flash card, two above); found "+r.Reads)
+			why = append(why, "--reads wants 0, 1, 2, 3 or "+ReadTierDefault+" (one for a flash card, two above); found "+r.Reads)
 		}
 		if len(r.Streams) > 0 {
 			why = append(why, "--reads is the sprint's, not a stream's: nova-sprint set --reads "+r.Reads)
