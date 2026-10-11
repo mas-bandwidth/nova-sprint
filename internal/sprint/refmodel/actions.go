@@ -634,6 +634,7 @@ func Accept(s State, set []string) (State, error) {
 // work card avoided unless no other has room; the index moved past it), and
 // the primary goes review -> working; with none up (m is "")
 // review -> ready; its card judgments close.
+// tla/SprintTables.tla Rework
 func Rework(s State, p, m string) (State, error) {
 	if err := free(s); err != nil {
 		return s, err
@@ -708,6 +709,7 @@ func Rework(s State, p, m string) (State, error) {
 // closes. A sprint it finishes, by dropping the last open card, is found done
 // by the tick's judgment tickDone: with nothing open and a card dropped, the
 // sprint is done.
+// tla/SprintTables.tla Drop
 func Drop(s State, p string) (State, error) {
 	if err := free(s); err != nil {
 		return s, err
@@ -801,6 +803,7 @@ func (s State) sprintDone() bool {
 // for a landed primary (G6). score is the choice: below every other primary of
 // its stream on the table (the spec's "first": ahead of every primary of its
 // stream).
+// tla/SprintTables.tla Rank
 func Rank(s State, p string, score float64) (State, error) {
 	if err := free(s); err != nil {
 		return s, err
@@ -824,6 +827,7 @@ func Rank(s State, p string, score float64) (State, error) {
 // skipped repair (F3), and opens returned to review (spec section 7, not in
 // the model); the primary is marked returned at its attempt, which the
 // machine's accept holds (AcceptHeld).
+// tla/SprintTables.tla Return
 func Return(s State, p string) (State, error) {
 	if err := free(s); err != nil {
 		return s, err
@@ -852,6 +856,7 @@ func Return(s State, p string) (State, error) {
 // sentinel whose needs have all landed (spec section 7). A sprint it finishes,
 // by landing the last open card, is found done by the tick's judgment tickDone:
 // with nothing open and a card landed, the sprint is done.
+// tla/SprintTables.tla MergeGreen
 func MergeGreen(s State, stream string, batch int) (State, error) {
 	if err := free(s); err != nil {
 		return s, err
@@ -911,6 +916,7 @@ func (n *State) resolveAll() {
 // need of card q of another stream first (D6), refused unless q is placed, in
 // another stream and not landed (F4). The card goes to stuck, the stream
 // stops, the coordinator is told.
+// tla/SprintTables.tla MergeStop
 func MergeStop(s State, stream string, batch int, p, cause, q string) (State, error) {
 	if err := free(s); err != nil {
 		return s, err
@@ -947,6 +953,7 @@ func MergeStop(s State, stream string, batch int, p, cause, q string) (State, er
 // (RefusedPaths) go back to review under returned to review, for the widen rule; at its
 // brief's bound (AtBriefBound) the card goes back to review with the bound's judgment; else its
 // read cards retire and its next attempt waits ready, the way its finding.
+// tla/SprintTables.tla MergeRefused
 func MergeRefused(s State, stream string, batch int, p, way string) (State, error) {
 	if way == "" {
 		return MergeStop(s, stream, batch, p, CConflict, "")
@@ -1007,6 +1014,7 @@ func MergeRefused(s State, stream string, batch int, p, way string) (State, erro
 // MergeRed is SprintTables.tla MergeRed(s) (line 569): the branch red or the
 // merge queue rejected the batch; the stream stops, no card moves, the
 // coordinator is told.
+// tla/SprintTables.tla MergeRed
 func MergeRed(s State, stream string, rejected bool) (State, error) {
 	if err := free(s); err != nil {
 		return s, err
@@ -1028,6 +1036,7 @@ func MergeRed(s State, stream string, rejected bool) (State, error) {
 // refused while a stuck card's cross-stream need has not landed (D6), and
 // after a red branch without --did (spec section 7). The stuck cards go back
 // to queued; the stream's state follows; the stream's judgment closes (D5).
+// tla/SprintTables.tla Resume
 func Resume(s State, stream, did string) (State, error) {
 	if err := free(s); err != nil {
 		return s, err
