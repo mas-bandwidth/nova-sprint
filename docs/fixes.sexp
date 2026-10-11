@@ -462,6 +462,15 @@
     reads asked of her reader row, where a reader up is free to read them."
    :origin "dogfood 2026-10-10 evening: fleet-only restart")
 
+  (fix "route-share-falls-with-cost-per-landed" :release "v1.2.6" :status "shipped"
+   :title "Route share falls with cost per landed card"
+   :text "No route is toggled, but each route's share of new takes is weighted by its measured outcome:
+    share falls as its cost per landed card rises or its ok rate falls, with a floor so it is still sampled.
+    Four flash routes spent about 30 and landed nothing and kept being picked. The fix computes each candidate's
+    share from its measured route stats (cost per landed card and ok rate from RouteStats), with a floor above
+    zero. The weighted routing is used when route stats are available, falling back to round-robin when routes
+    have no history. Model tla/RouteIndex.tla; tests TestRouteShareFallsWithCostPerLanded (internal/sprint/route_pick_test.go)."
+   :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine; this card")
   (fix "brief-on-a-working-card" :release "v1.2.6" :status "shipped"
    :title "A brief replaces a working card's in place, for its next attempt"
    :text "A card working takes a new brief in place, as one in review does (briefKept, docs/SPEC-SPRINT.md,

@@ -437,7 +437,22 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 		v, _ := s.Fleet.Prop(PropRouteIndex(tier))
 		at, _ = strconv.ParseUint(v, 10, 64)
 	}
-	r, steps, ok := preferFirst(arr, served, drawn, fresh, at)
+	statsMap := routeStatsMap(s.Fleet)
+	useWeighted := false
+	for _, name := range arr {
+		if _, ok := statsMap[name]; ok {
+			useWeighted = true
+			break
+		}
+	}
+	var r Route
+	var steps uint64
+	var ok bool
+	if useWeighted {
+		r, steps, ok = preferFirstWeighted(arr, served, drawn, fresh, at, s.Fleet)
+	} else {
+		r, steps, ok = preferFirst(arr, served, drawn, fresh, at)
+	}
 	if !ok && len(fullSet) > 0 && s.budgets.soft {
 		// a coordinator's rework or redo is never refused for a full provider: with no route
 		// of room it is dealt on a full one anyway, and the take holds it ready until a slot
@@ -448,7 +463,11 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 			_, ok := served[name]
 			fresh = fresh || ok && !contains(drawn, name)
 		}
-		r, steps, ok = preferFirst(arr, served, drawn, fresh, at)
+		if useWeighted {
+			r, steps, ok = preferFirstWeighted(arr, served, drawn, fresh, at, s.Fleet)
+		} else {
+			r, steps, ok = preferFirst(arr, served, drawn, fresh, at)
+		}
 	}
 	if ok {
 		if ri != nil {
@@ -669,7 +688,7 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 		other = other || ok && !contains(avoid, name)
 	}
 	at := ri[tier].r.count
-	r, steps, ok := preferFirst(arr, served, avoid, other, at)
+	r, steps, ok := preferFirstWeighted(arr, served, avoid, other, at, s.Fleet)
 	if !ok {
 		return map[string]string{FieldTier: tier}
 	}
