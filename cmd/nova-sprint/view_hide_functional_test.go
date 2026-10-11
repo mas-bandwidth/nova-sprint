@@ -15,11 +15,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The stored view shows a stream with no cards in any column: after init, an
-// add of three streams and a clear, the drawn view still has the work and merge
-// tables with their three stream rows at zero, and the readers and the fleet. The
-// frame is the one `nova-table watch --view sprint` draws (ntable.RenderTables).
-func TestTheViewShowsAStreamWithNoCards(t *testing.T) {
+// A clear is a blank slate (docs/SPEC-SPRINT.md section 13): it advances to an
+// empty epoch with no work, merge, stream or reader rows, and the fleet's
+// members carry over. So after init, an add of three streams and a clear, the
+// drawn view still has all four tables (work, readers, merge, fleet) with the
+// fleet member m1 carried over, and no old stream row in any of them; a stream
+// added after the clear is drawn. add admits a card on every form, so it cannot
+// open a stream with no cards, and no cardless stream is drawn on an empty
+// epoch. The frame is the one `nova-table watch --view sprint` draws
+// (ntable.RenderTables).
+func TestTheViewAfterAClearDrawsNoOldStream(t *testing.T) {
 	t.Parallel()
 	addr := testutil.Start(t)
 	c := redis.NewClient(&redis.Options{Addr: addr})
@@ -63,16 +68,21 @@ func TestTheViewShowsAStreamWithNoCards(t *testing.T) {
 	require.Contains(t, got, "\na ", "streams with a card each: the work table is drawn:\n%s", got)
 	run("clear", "--confirm", "sprint")
 	got = frame()
+	// The empty epoch: the view still draws all four tables, the fleet's member
+	// m1 carries over, and no old stream row is drawn in any of them.
 	for _, table := range []string{"work", "merge", "readers", "fleet"} {
 		require.True(t, has(got, table), "after a clear the %s table is drawn:\n%s", table, got)
 	}
+	require.Contains(t, got, "\nm1 ", "after a clear the fleet member m1 carries over:\n%s", got)
 	for _, stream := range []string{"\na ", "\nb ", "\nc "} {
-		require.GreaterOrEqual(t, strings.Count(got, stream), 2, "after a clear the stream row %q is in the work and merge tables, at zero:\n%s", stream, got)
+		require.NotContains(t, got, stream, "after a clear the old stream row %q is not drawn:\n%s", stream, got)
 	}
+	// add admits a card on every form, so it cannot open a stream with no cards:
+	// the stream it opens after the clear is the one the view draws.
 	run("add", "--stream", "b", "--count", "1", "--one")
 	got = frame()
 	require.True(t, has(got, "work"), "every stream is drawn, with a card or none:\n%s", got)
-	require.Contains(t, got, "\na ", "every stream is drawn, with a card or none:\n%s", got)
+	require.NotContains(t, got, "\na ", "every stream is drawn, with a card or none:\n%s", got)
 	require.Contains(t, got, "\nb ", "every stream is drawn, with a card or none:\n%s", got)
-	require.Contains(t, got, "\nc ", "every stream is drawn, with a card or none:\n%s", got)
+	require.NotContains(t, got, "\nc ", "every stream is drawn, with a card or none:\n%s", got)
 }
