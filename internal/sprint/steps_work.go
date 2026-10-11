@@ -1133,6 +1133,12 @@ func deal(s *Snapshot, c *Card, fix, m string, q map[string]int, ri routeIndexes
 	q[m]++
 	fields := map[string]string{"kind": "work", "primary": c.ID, "stream": c.Row, "attempt": itoa(attempt), "gen": "1", "member": m,
 		"dealt": stamp(s.Now), "first_dealt": stamp(s.Now), "untaken_since": stamp(s.Now)}
+	// inherit rate returns from the current work card (for rate-limited return tracking)
+	if wc := s.Fleet.Card(c.F("work")); wc != nil {
+		if rateRet := wc.F(FieldRateReturns); rateRet != "" {
+			fields[FieldRateReturns] = rateRet
+		}
+	}
 	if fix != "" {
 		fields["fix"] = fix
 	}
@@ -1997,29 +2003,30 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 // (provider_funds.go classRateLimited; pkg/swarm ClassifyProvider: a 429 that is not a quota,
 // "too many requests", "rate limit"): the card is returned UNTOUCHED, as a staging refusal
 // is: the work card is withdrawn WITHOUT FieldTakeEnded, so no redeal and no attempt is
-// spent; no take record is written, so it never counts toward the route's 3-in-10 rest; no
-// judgment is raised; and its primary goes back to ready, where the deal draws it again,
-// falling back past the route it was on while another of its tier serves (routeOf's
-// exclusion) or waiting for a slot (the owner, 2026-10-11: "the rate limited should just
-// stall out delay, not fail"). The route backs off briefly instead of the 30-minute rest:
+// spent; a take record is written (FieldStagingTake), so routeEnds reads it for the route's
+// rate-limited backoff; no judgment is raised; and its primary goes back to ready, where the
+// deal draws it again, falling back past the route it was on while another of its tier serves
+// (routeOf's exclusion) or waiting for a slot (the owner, 2026-10-11: "the rate limited should
+// just stall out delay, not fail"). The route backs off briefly instead of the 30-minute rest:
 // 60s, doubling for each further rate-limited end with no ok take in between, capped at
 // 15m, ending by itself (route_rest.go). The provider's line stays on the card for its
 // reader; what the run cost is the producer's record, as a staging refusal's is.
+// (tla/RouteRest.tla, RateLimitSpendsNoRedeal; docs/SPEC-CARD-CONTRACT.md section 4)
 func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 	set := nextGen(c, "", s.Now)
 	set["withdrawn"] = stamp(s.Now)
 	set[FieldRateReturns] = itoa(c.Int(FieldRateReturns) + 1)
 	set[RouteRateLimitBackoffEnds] = itoa(c.Int(RouteRateLimitBackoffEnds) + 1)
 	set[FieldProviderError] = cutText(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(r.Report, cardhdr.EndProvider), ":")), MaxProviderErrorBytes)
-	prSet := map[string]string{}
+	prSet := map[string]string{"work": c.ID, "attempt": c.F("attempt")}
 	if r.Usage != "" {
 		dealt, taken := takeStamps(c)
 		addConsumer(pr, prSet, workConsumer(s, c, 0, "rate limited", costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)))
 	}
 	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
-		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
+		change(Fleet, moveEntry(c, c.Row, Ready, set, "taken", "dealt")),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
-	}, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, the provider rate limited the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)}
+	}, Moved: fmt.Sprintf("%s working -> ready gen=%d, %s provider rate limited the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, c.Row, pr.ID)}
 }
 
 // withdrawCard is the unit that withdraws work card c from its member, the one path of a

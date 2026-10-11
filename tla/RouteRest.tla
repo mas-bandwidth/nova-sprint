@@ -52,8 +52,8 @@ EXTENDS Naturals, Sequences, FiniteSets
 
 CONSTANTS Routes, W, After, Broken
 
-VARIABLES provRest, own, win, low, judged, event
-vars == <<provRest, own, win, low, judged, event>>
+VARIABLES provRest, own, win, redeal, low, judged, event
+vars == <<provRest, own, win, redeal, low, judged, event>>
 
 Kinds == {"ok", "noresult", "transient", "rate-limited", "credit", "auth"}
 Events == Kinds \cup {"balance", "raise", "payment", "funded", "coord", "wake", "clock"}
@@ -65,6 +65,7 @@ TypeOK ==
     /\ provRest \in {"none", "credit", "auth", "coord", "balance"}
     /\ own \in [Routes -> {"none", "provider", "coord"}]
     /\ win \in [Routes -> Windows]
+    /\ redeal \in Nat
     /\ low \in BOOLEAN
     /\ judged \in BOOLEAN
     /\ event \in Events \cup {"init"}
@@ -73,6 +74,7 @@ Init ==
     /\ provRest = "none"
     /\ own = [r \in Routes |-> "none"]
     /\ win = [r \in Routes |-> << >>]
+    /\ redeal = 0
     /\ low = FALSE
     /\ judged = FALSE
     /\ event = "init"
@@ -89,15 +91,17 @@ Counts(k) == k = "transient" \/ ("noresult" \in Broken /\ k = "noresult")
 CountIn(s) == Cardinality({i \in 1..Len(s) : Counts(s[i])})
 
 \* a take on a serving route ends; the tick's rests in the same step
+\* redeal is spent when the take ends with FieldTakeEnded (not on rate-limited)
 TakeEnds(r, k) ==
     /\ ~Resting(r)
     /\ LET w == Push(win[r], k) IN
          /\ provRest' = IF k = "credit" THEN "credit" ELSE IF k = "auth" THEN "auth" ELSE provRest
          /\ IF k \notin {"credit", "auth"} /\ CountIn(w) >= After
-              THEN /\ own' = [own EXCEPT ![r] = "provider"]
-                   /\ win' = [win EXCEPT ![r] = << >>]
-              ELSE /\ own' = own
-                   /\ win' = [win EXCEPT ![r] = w]
+               THEN /\ own' = [own EXCEPT ![r] = "provider"]
+                    /\ win' = [win EXCEPT ![r] = << >>]
+               ELSE /\ own' = own
+                    /\ win' = [win EXCEPT ![r] = w]
+         /\ redeal' = IF k \in {"ok", "noresult", "transient"} THEN redeal + 1 ELSE redeal
     /\ event' = k
     /\ UNCHANGED <<low, judged>>
 
@@ -202,12 +206,13 @@ NoResultNeverRests ==
     [][event' = "noresult" => (provRest' = provRest /\ own' = own)]_vars
 
 \* a rate-limited end never triggers the 3-in-10 rest; it triggers route backoff
+\* and never spends a redeal (redeal is spent only on FieldTakeEnded)
 RateLimitSpendsNoRedeal ==
-    [][event' = "rate-limited" => (own' = own /\ UNCHANGED <<provRest>>)]_vars
+    [][event' = "rate-limited" => (own' = own /\ provRest' = provRest /\ redeal' = redeal)]_vars
 
-\* a rate-limited backoff is bounded (15m cap) and ends by itself (at its time)
+\* a rate-limited backoff is bounded (never triggers provider rest) and ends by itself
 BackoffBounded ==
-    []((event = "rate-limited") => <>((\A r \in Routes : own[r] = "none")))
+    [][event' = "rate-limited" => provRest' = "none"]_vars
 
 \* a balance low long enough is raised to the coordinator as a judgment
 LowIsRaised == [](low => <>(judged \/ ~low))

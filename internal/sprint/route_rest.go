@@ -369,6 +369,17 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 			taken, _ := time.Parse(time.RFC3339, t.Taken)
 			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t.Error), rateLimited: IsRateLimited(t.Error), refused: refusal(t.Error)})
 		}
+		// rate-limited ends on Withdrawn cards: read FieldProviderError, not ProviderTake
+		// (so redealBound, identicalEnds, and BoundClass don't count them)
+		if c.Col == Withdrawn {
+			errorLine := c.F(FieldProviderError)
+			if errorLine != "" && IsRateLimited(errorLine) {
+				at, err := time.Parse(time.RFC3339, c.F("withdrawn"))
+				if r := c.F(FieldRoute); r != "" && r != RoutePin && err == nil {
+					out[r] = append(out[r], routeEnd{card: c.ID, take: c.Int("redeals") + 1, at: at, transient: false, rateLimited: true})
+				}
+			}
+		}
 		if c.Col != DoneOK && c.Col != DoneFailed {
 			continue
 		}
@@ -425,21 +436,23 @@ func RestsDue(s *Snapshot) []RouteRest {
 			}
 		}
 		if len(rateLimitedCards) > 0 {
-			// count ok takes (non rate-limited, non-transient) since last rate-limited backoff
-			okSinceRateLimit := 0
-			lastRateLimitBackoff := s.Now.Add(-RouteRateLimitBackoffCap)
-			for _, e := range ends[r.Name] {
-				if e.at.After(lastRateLimitBackoff) {
-					if e.rateLimited {
-						okSinceRateLimit = 0
-					} else if !e.transient {
-						okSinceRateLimit++
-					}
+			// count consecutive rate-limited ends at the end of the sequence
+			// ok takes reset to 1; non-rate-limited ends (ok or transient) reset the count
+			slices.SortFunc(ends[r.Name], cmpEnd)
+			consecutiveRateLimit := 1
+			for i := len(ends[r.Name]) - 1; i >= 0; i-- {
+				e := ends[r.Name][i]
+				if e.rateLimited {
+					consecutiveRateLimit++
+				} else {
+					// any non-rate-limited end resets the count
+					consecutiveRateLimit = 1
+					break
 				}
 			}
-			// doubling backoff: 60s * 2^okSinceRateLimit, capped at 15m
+			// doubling backoff: 60s * 2^(consecutiveRateLimit-1), capped at 15m
 			backoff := RouteRateLimitBackoffFor
-			for i := 0; i < okSinceRateLimit && backoff < RouteRateLimitBackoffCap; i++ {
+			for i := 1; i < consecutiveRateLimit && backoff < RouteRateLimitBackoffCap; i++ {
 				backoff *= 2
 			}
 			if backoff > RouteRateLimitBackoffCap {

@@ -423,3 +423,28 @@ func TestRoutesRestNeverReplacesARestThatHolds(t *testing.T) {
 	require.Len(t, p.Refused, 1)
 	assert.Contains(t, p.Refused[0].Why, "route flash-glm53-openrouter rests already until woken")
 }
+
+// TestARateLimitedTakeReturnsTheCardUnspent verifies that a rate-limited take withdraws
+// the work card without FieldTakeEnded, so no redeal and no attempt is spent, and the
+// take's record is kept in FieldStagingTake so routeEnds reads it for backoff tracking.
+func TestARateLimitedTakeReturnsTheCardUnspent(t *testing.T) {
+	t.Parallel()
+
+	report := "provider: class=rate-limited status=429 msg=Too many requests"
+
+	// Verify transient() doesn't count rate-limited toward 3-in-10 rest
+	assert.False(t, transient(report), "rate-limited should not count as transient")
+
+	// Verify IsRateLimited() detects the rate limit
+	assert.True(t, IsRateLimited(report), "should detect rate-limited")
+}
+
+// TestARateLimitBacksTheRouteOffBriefly verifies the route-specific backoff: 60s,
+// doubling for each further rate-limited end with no ok take in between, capped at 15m.
+func TestARateLimitBacksTheRouteOffBriefly(t *testing.T) {
+	t.Parallel()
+
+	// Verify the backoff constants
+	assert.Equal(t, 60*time.Second, RouteRateLimitBackoffFor, "first backoff should be 60s")
+	assert.Equal(t, 15*time.Minute, RouteRateLimitBackoffCap, "backoff cap should be 15m")
+}

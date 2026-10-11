@@ -39,6 +39,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
 	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
 )
@@ -251,6 +252,11 @@ func Judge(r Result, pu Push) (fin Finish, why string) {
 		return FinishFailed, EndStaging + ": budget " + cmp.Or(r.Budget, "unverifiable: the usage source stopped answering")
 	case pu.Refused != "":
 		return FinishFailed, "push refused: " + pu.Refused
+	case r.End == EndProvider && r.Provider != "" && swarm.IsRateLimited(r.Provider) && (pu.Sha == ""):
+		// the provider failed the run with a rate limit and no pushed head: report as
+		// provider failure regardless of shape, so a 429 never reaches the sprint as
+		// failed work. A shaped result with a pushed head stays the card's own (below).
+		return FinishFailed, EndProvider + ": " + r.Provider
 	case r.End == EndProvider && r.Provider != "" && (pu.Sha == "" || !r.Shaped):
 		// the provider failed the run: the kind and the provider's reason. If the push
 		// was not accepted or the result has no shape, the sprint deals the card again.

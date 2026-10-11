@@ -172,7 +172,7 @@ func TestARateLimitedTakeReturnsTheCardUntouched(t *testing.T) {
 		assert.Contains(t, p.Units[0].Moved, "returned untouched")
 		w.must(p)
 		c := w.s.Fleet.Card(wc)
-		assert.Equal(t, Withdrawn, c.Col)
+		assert.Equal(t, Ready, c.Col)
 		assert.Empty(t, c.F(FieldTakeEnded), "no take ended: no redeal spent")
 		takes, _ := ProviderTakes(c)
 		assert.Empty(t, takes, "no take record: never counted toward a route's rest")

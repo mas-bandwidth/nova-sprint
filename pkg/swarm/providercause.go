@@ -213,3 +213,16 @@ func causeMessage(s string) string {
 	}
 	return oneline.Cap(novalog.Redact(s), providerMsgBytes)
 }
+
+// IsRateLimited says a failed take's report is the provider's rate limit: class
+// rate-limited, a 429 that is not a refusal for credit or the key, or the provider's
+// words for a request or concurrency limit ("Too many requests", "concurrency ...
+// exceeds"). An out-of-credit or key refusal is never one: it ends the take as before.
+func IsRateLimited(report string) bool {
+	line := strings.TrimSpace(report)
+	if line == "" {
+		return false
+	}
+	c := ClassifyProvider(0, line)
+	return c == CauseRateLimited
+}
