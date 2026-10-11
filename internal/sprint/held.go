@@ -460,6 +460,12 @@ func (c *held) tickOn(pr *Card) string {
 	if pr.Col == Ready && !IsSentinel(pr) && c.noMember {
 		return "writes " + NNoMember
 	}
+	if c.waitsToBeAsked(pr) && c.s.Readers != nil && len(c.s.Readers.Rows()) == 0 {
+		// the readers table is empty: the tick writes that there is no reader
+		// to ask (NReviewNoReader), read from the state, not from a note the
+		// tick may already have written and will not write again
+		return "writes " + NReviewNoReader
+	}
 	if c.fewReaders && c.waitsToBeAsked(pr) && !enoughReadersUp(c.s, pr) {
 		return "writes " + NFewReaders
 	}

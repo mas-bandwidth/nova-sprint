@@ -332,14 +332,16 @@ func Release(s State, ids []string, who string) (State, error) {
 	return n, nil
 }
 
-// Clear is the spec's blank-slate clear (section 13): the machine STOPPED, the
-// epoch advanced once; the new epoch is empty by construction — no stream,
-// reader, work, read or merge row and no open judgment — so nothing of the old
-// shape is restored. The fleet's members are not sprint state: their rows and
-// status survive a clear (the machines are still there), but their holds do
-// not (the Work map is empty). The coordinator is the sprint's and is kept.
+// Clear is the spec's tabula-rasa-for-work clear (section 13): the machine
+// STOPPED, the epoch advanced once; the new epoch holds no stream, work, read
+// or merge row and no open judgment, so none of the old work is restored. The
+// sprint's configuration is not work: the fleet's members (their rows and
+// status) and the readers (their rows) survive a clear (the machines and the
+// readers are still there), but their holds and cards do not (the Work map is
+// empty and New builds fresh tables). The coordinator is the sprint's and is
+// kept.
 func Clear(s State) (State, error) {
-	n := New(nil, s.Order, s.Coordinator)
+	n := New(s.Readers, s.Order, s.Coordinator)
 	maps.Copy(n.Members, s.Members)
 	n.Epoch = s.Epoch + 1
 	n.Machine = Stopped

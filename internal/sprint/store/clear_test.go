@@ -91,11 +91,12 @@ func TestClearStartsAnEmptyEpochAfterAStopReturn(t *testing.T) {
 	_, err = h.st.Clear(h.ctx)
 	require.NoError(t, err, "a stop-returned lease does not block clear")
 	after := h.snap()
-	for _, table := range []*sprint.Table{after.Work, after.Merge, after.Readers} {
+	for _, table := range []*sprint.Table{after.Work, after.Merge} {
 		require.Empty(t, table.Rows(), "%s rows leaked into epoch %d", table.Name, after.Epoch)
 	}
 	require.Equal(t, []string{"m1", "m2"}, after.Fleet.Rows(), "the members carry over a clear")
 	require.Equal(t, []string{"m1", "m2"}, after.UpMembers(), "the members' status carries over a clear")
+	require.Equal(t, []string{"reader-a", "reader-b", "reader-c"}, after.Readers.Rows(), "the readers carry over a clear")
 }
 
 func TestClearRefusesWithEveryLiveLeaseAndOwner(t *testing.T) {
@@ -149,11 +150,12 @@ func TestClearStopsTheSprintAndClearsAllWork(t *testing.T) {
 	}
 	after := h.snap()
 	require.Equal(t, uint64(1), after.Epoch, "epoch %d", after.Epoch)
-	for _, table := range []*sprint.Table{after.Work, after.Readers, after.Merge} {
+	for _, table := range []*sprint.Table{after.Work, after.Merge} {
 		require.Empty(t, table.Rows(), "%s rows leaked into the new epoch", table.Name)
 	}
 	require.Equal(t, []string{"m1", "m2"}, after.Fleet.Rows(), "the members carry over a clear")
 	require.Equal(t, []string{"m1", "m2"}, after.UpMembers(), "the members' status carries over a clear")
+	require.Equal(t, []string{"reader-a", "reader-b", "reader-c"}, after.Readers.Rows(), "the readers carry over a clear")
 	if open, _ := h.st.Inbox(h.ctx, 0, 0, 100); len(open.Groups) != 1 || open.Groups[0].Type != sprint.NMachineStopped {
 		require.Fail(t, fmt.Sprintf("the new epoch's inbox is not the one line that the machine is STOPPED: %+v", open.Groups))
 	}
@@ -228,10 +230,11 @@ func TestACutClearIsFinishedByTheNext(t *testing.T) {
 	require.Equal(t, uint64(0), res.From, "the next clear: %+v %v", res, err)
 	require.Equal(t, uint64(1), res.To, "the next clear: %+v %v", res, err)
 	s := h.snap()
-	for _, table := range []*sprint.Table{s.Work, s.Readers, s.Merge} {
+	for _, table := range []*sprint.Table{s.Work, s.Merge} {
 		require.Empty(t, table.Rows(), "%s rows leaked into epoch %d", table.Name, s.Epoch)
 	}
 	require.Equal(t, []string{"m1", "m2"}, s.Fleet.Rows(), "the members carry over a clear")
+	require.Equal(t, []string{"reader-a", "reader-b", "reader-c"}, s.Readers.Rows(), "the readers carry over a clear")
 	h.clean("finished and cleared")
 }
 

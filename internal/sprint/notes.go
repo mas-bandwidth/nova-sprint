@@ -121,6 +121,13 @@ const (
 	// it stands: rewritten in place only when its facts change, never raised
 	// anew (friend_read.go, read_cards.go).
 	NNoFrontierRoom = "no frontier reader has room"
+	// NReviewNoReader is the tick's judgment that a primary sits in review with
+	// no read out and no reader to take it: the readers table is empty, so the
+	// ask has no one to ask (TickAsk). One judgment while it stands, never a
+	// silent idle: a card in review always has an open judgment or a reader on
+	// its way. Run: nova-sprint reader add <name> (the readers a clear keeps are
+	// restored by restoreMembers; an empty table is a sprint with none).
+	NReviewNoReader = "review has no reader"
 )
 
 // Decisions open to each judgment type.
@@ -154,6 +161,7 @@ var Decisions = map[string][]string{
 	NTimer:             {"ack"},                      // a timer the actor set woke it: nothing to decide
 	NStalled:           {"look at the card", "wait"}, // each stall names its own
 	NNoFrontierRoom:    {"reader add", "wait"},
+	NReviewNoReader:    {"reader add", "wait"}, // the readers table is empty (steps_review.go)
 	// a STOP debt owner that has not beaten since the STOP: acknowledged by the
 	// coordinator, who stop-returns its leases by hand, or waited for its beat.
 	NStopDebtBeat: {"ack", "wait"},
