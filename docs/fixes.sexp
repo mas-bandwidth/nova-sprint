@@ -79,6 +79,18 @@
     TLA+ model StopReturn, properties NoLiveChildAcrossStart and ReturnedFreesItsRow, with two
     reversed witnesses."
    :origin "the seat, 2026-10-10: hold alex and hold emma refused after their stop-returns")
+  (fix "stop-debt-settles-from-the-members-beat" :release "v1.2.6" :status "shipped"
+   :title "STOP debt settles from the owner's beat, so START never waits on its receipt"
+   :text "After a STOP the server settles each owed lease whose owner has beaten since the STOP and whose
+    beat no longer names the job, returning the card with a recorded reason, so START never waits on the
+    owner's own stop-return receipt. A friend's beat names the jobs she runs: a lease whose job it still
+    names stays owed, one it no longer names is settled. A machine's beat names no job; its stop-returns
+    count is its word how many its lanes still owe, so a machine lease (a reader machine's too) is settled
+    at zero and stays owed above zero. An owner that has not beaten since the STOP is reported to the seat
+    in a judgment. TLA+ model StopReturn, property AbsentJobSettles, with the reversed witness
+    nosettlebybeat; the model's Beat is drop-only while STOPPED, so a job a stopped owner's beat shows gone
+    stays gone."
+   :origin "the seat, 2026-10-10: START refused on 33 fleet jobs whose members never sent stop-return receipts")
 
   (fix "a-refusal-always-says-why" :release "v1.2.6" :status "shipped"
    :title "Every refusal says why, and what to run instead, in the text output"

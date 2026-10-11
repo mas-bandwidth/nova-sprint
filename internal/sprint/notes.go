@@ -134,6 +134,9 @@ var Decisions = map[string][]string{
 	NScoredLow:         {"add a repair card", "ack"}, // landed: a rework is a new card; ack accepts the landing
 	NTimer:             {"ack"},                      // a timer the actor set woke it: nothing to decide
 	NStalled:           {"look at the card", "wait"}, // each stall names its own
+	// a STOP debt owner that has not beaten since the STOP: acknowledged by the
+	// coordinator, who stop-returns its leases by hand, or waited for its beat.
+	NStopDebtBeat: {"ack", "wait"},
 }
 
 // RepeatDecision is added to a judgment for a primary that came back a second

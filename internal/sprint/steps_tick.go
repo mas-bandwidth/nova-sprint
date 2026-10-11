@@ -108,6 +108,9 @@ const (
 
 	NMachineStarted = "the machine started"
 	NMachineStopped = "the machine stopped"
+	// NStopDebtBeat names the seat's judgment that a STOP debt owner has not
+	// beaten since the STOP, so its lease cannot be settled from the beat.
+	NStopDebtBeat = "STOP debt: an owner has not beaten since the stop"
 )
 
 // Sentinel is the kind of a card that marks a point in a stream: the tick
@@ -224,6 +227,27 @@ func (r TickReq) running(now time.Time, stampText string) (time.Duration, bool) 
 		d -= r.Stopped(t, now)
 	}
 	return d, true
+}
+
+// FriendBeatNamesJob says the friend's beat names the work card c still
+// running: its id, its job (StoredID, with .g<gen> past the first) or its
+// primary. It is the server's test of tla/StopReturn.tla SettleByBeat: a STOP
+// debt whose job the owner's beat, taken after the STOP, still names stays
+// owed, while one the beat no longer names is settled.
+func FriendBeatNamesJob(b Beat, c *Card, epoch uint64) bool {
+	if b.Friend == nil {
+		return false
+	}
+	job := StoredID(c.ID, epoch)
+	if g := c.Int("gen"); g > 1 {
+		job += ".g" + itoa(g)
+	}
+	for _, r := range b.Friend.Running {
+		if r == c.ID || r == job || (r != "" && r == c.F("primary")) {
+			return true
+		}
+	}
+	return false
 }
 
 // TickPartFn is one part of the tick over an observed state: its plan, held
