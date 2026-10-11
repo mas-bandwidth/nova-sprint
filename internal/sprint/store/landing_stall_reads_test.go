@@ -47,3 +47,31 @@ func TestLandingPushCountsFinishedFriendReadsAfterAccept(t *testing.T) {
 	require.Len(t, landing, 1)
 	require.True(t, strings.Contains(landing[0].What, "reads 2"), "landing push includes two completed friend reads: %s", landing[0].What)
 }
+
+func TestLandingPushCountsActiveFriendReadsWithReadCardsOff(t *testing.T) {
+	t.Parallel()
+	h := inReview(t, 1)
+	require.False(t, h.snap().ReadCardsOn(), "exercise the supported legacy friend-ask path")
+	for _, rd := range []string{"reader-a", "reader-b", "reader-c"} {
+		require.NoError(t, h.st.SetReaderAway(h.ctx, rd, true, "coordinator"))
+	}
+	_, _, _, err := h.st.SyncFriends(h.ctx, []FriendSpec{
+		{Name: "stella", Width: 16, Class: "flash,frontier,heavy,pro"},
+		{Name: "johnny", Width: 16, Class: "flash,pro"},
+	})
+	require.NoError(t, err)
+	h.up("stella")
+	h.up("johnny")
+	_, refused := askOf(h.machine())
+	require.Empty(t, refused)
+	readers := friendReadsOf(h.snap(), "s1-1")
+	require.Len(t, readers, 2)
+	count := 0
+	for _, c := range h.snap().Fleet.Cards() {
+		if c.Placed() && c.F("kind") == "read" && c.F("primary") == "s1-1" {
+			count++
+			require.Empty(t, c.F(sprint.FieldReadCard), "the off-mode producer does not attach the ReadCards marker")
+		}
+	}
+	require.Equal(t, 2, count, "the producer creates two unmarked read cards for active friends")
+}

@@ -128,6 +128,20 @@ func TestLandingReadCountsCombineFleetAndLegacyConsumersOnce(t *testing.T) {
 	assert.Contains(t, n.What, "reads 2")
 }
 
+func TestLandingReadCountsAnActiveUnmarkedFleetRead(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 4)
+	c := w.s.Work.Card("s1-1")
+	require.NotNil(t, c)
+	stallCard(w, c.ID, Review)
+	c.Fields["attempt"], c.Fields["head"] = "1", "h1"
+	w.s.Fleet.Put(&Card{ID: "legacy-friend-read", Row: "friend.stella", Col: Working, Fields: map[string]string{
+		"kind": "read", "primary": c.ID, "reader": "stella", "attempt": "1", "head": "h1",
+	}})
+	assert.Len(t, landingReadConsumers(w.s, c.ID, false), 1, "the off-mode friend ask has no ReadCards marker but remains an active reader")
+	assert.Contains(t, landingStallWhat(w.s, TickReq{}, time.Minute), "reads out: stella=1")
+}
+
 func TestLandingPushCountsCompletedFleetReadsAndBegunLegacyReads(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 4)

@@ -199,7 +199,7 @@ func landingReadConsumers(s *Snapshot, primary string, includeCompleted bool) ma
 			if c.F("primary") != primary {
 				continue
 			}
-			active := c.F(FieldReadCard) != "" && (c.Col == Ready || c.Col == Working)
+			active := isRead(c) && (c.Col == Ready || c.Col == Working)
 			completed := c.F(FieldReadCard) != "" && (c.Col == DoneOK || c.Col == DoneFailed)
 			if active || (includeCompleted && completed) {
 				add(c.F("reader"), c.Int("attempt"), c.F("head"), stampAt(c, "asked"))
