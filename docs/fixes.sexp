@@ -368,4 +368,18 @@
      at-width facts are that dependency's width fact, the seat check's fleet and friends lines
      counting up/held/down alone; and the machine's own tick late (pushlate.go) is not joined, the
      loop line holding only the LoopSilence bound."
-    :origin "this pull request")))
+    :origin "this pull request")
+
+   (fix "friend-card-carries-own-rules" :release "v1.2.6" :status "shipped"
+    :title "A friend card that carries its own RULES line is accepted at add"
+    :text "A friend is not a child: her card is not held for the child RULES paragraph, the rule- presence
+     checks of the card lint, when it carries its own RULES line, and a friend card with none is still
+     held to it, as a child's brief is. The step- scans hold a friend's card still: a line of it outside
+     its RULES paragraph that contradicts its carried rules is a finding under any rule set."
+    :origin "this pull request")
+
+   (fix "swarm-lint-card-false-refusals" :release "v1.2.9" :status "planned"
+    :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
+    :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
+     fenced blocks. It should accept both."
+    :origin "issue #1994; issue #2302; issue #3470")))
