@@ -291,7 +291,11 @@
    :origin "the Studio sprint, epoch 16, 2026-10-10: merging stood at 15 to 21 cards with none landed in 30
     minutes, every second card refused on FIXES.md and docs/fixes.sexp and reworked at the tip")
 
-  (fix "land-refused-head-never-reoffered" :release "v1.2.6" :status "shipped"
+   (fix "dashboard-empty-and-stopped-states" :release "v1.2.6" :status "shipped"
+    :title "Cost breakdown empty state, landed tile text, and stopped dot red"
+    :text "When the epoch has no spend, the cost breakdown table keeps its header and shows three empty rows with \"-\" in each cell, instead of showing prose. When landed is 0 of 0, the landed tile reads \"nothing complete\" instead of \"- complete\". When the machine is STOPPED, the Updated clock dot is red (the stopped class) instead of green (the ok class). The fix preserves the stopped state across the setLive call that updates the clock."
+    :origin "seat fix, 2026-10-10")
+   (fix "land-refused-head-never-reoffered" :release "v1.2.6" :status "shipped"
    :title "A head the landing refused is never offered to accept again; a ledger conflict is no brief defect"
    :text "A card whose head the landing refused keeps that head (land_refused_head), and while it is still
     its head no step raises ready to accept on it: at the brief's bound the card is in review with the
