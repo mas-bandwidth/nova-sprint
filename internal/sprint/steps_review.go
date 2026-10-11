@@ -278,7 +278,7 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			moves[c.ID] = joinMoves(moves[c.ID], rd)
 		}
 		for i, rd := range chosenReaders {
-			fields := map[string]string{"kind": "read", "primary": c.ID, "stream": c.Row, "reader": rd, "attempt": itoa(attempt), "head": c.F("head"), "asked": stamp(s.Now)}
+			fields := map[string]string{"kind": "read", "primary": c.ID, "stream": c.Row, "reader": rd, "attempt": itoa(attempt), "head": c.F("head"), "asked": stamp(s.Now), "gen": "1"}
 			priorityOnRead(fields, c) // its primary's level when above reader (priority.go)
 			if rd == finder {
 				fields[FieldFinderRead] = "1" // placed on purpose: the level leaves it where it is

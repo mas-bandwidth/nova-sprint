@@ -185,13 +185,24 @@ func NextLine(attempts []*Card) string {
 	return "NEXT starts from the card's base: no attempt pushed a head"
 }
 
+// WireGen is the generation a card is handed to a worker at (its queue entry, its packet). A
+// read card the review path asked before it wrote gen (Ask, steps_review.go) has none stored,
+// and the server holds its live generation to be 1 (max(gen, 1): lanetake, lane_hold,
+// steps_work), so it is handed at 1: a worker echoing <id>@<gen> back names @1, never @0.
+func WireGen(c *Card) int {
+	if c.F("kind") == "read" {
+		return max(c.Int("gen"), 1)
+	}
+	return c.Int("gen")
+}
+
 // PacketOf is a work or read card's packet: the primary gives the brief (and a read's
 // fix), a work card its own fix, finding and why; a work card of a later attempt starts from the
 // attempt before's branch (as reported, else as named) and at BaseOf its earlier attempts; a read
 // card reads its attempt's work card (work, when it is known).
 func PacketOf(prefix string, epoch uint64, c, primary *Card, earlier []*Card, work *Card) Packet {
 	p := Packet{Card: c.ID, Kind: c.F("kind"), As: c.Row, Primary: c.F("primary"), Stream: c.F("stream"), Attempt: c.Int("attempt"),
-		Gen: c.Int("gen"), Epoch: epoch, Notes: []string{}}
+		Gen: WireGen(c), Epoch: epoch, Notes: []string{}}
 	if primary != nil {
 		p.Brief = primary.F("brief")
 		p.Rules = primary.F(FieldRules)
