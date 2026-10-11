@@ -223,6 +223,7 @@ MCLandReachShortBack.cfg	MCLand.tla	invariant	ReachShortBack	ignore-terminal	lan
 MCLandBrokenOfferRefused.cfg	MCLand.tla	invariant	NoOfferAtRefusedHead	ignore-terminal	land	required	-
 MCLandReachRepair.cfg	MCLand.tla	invariant	ReachRepair	ignore-terminal	land	required	-
 MCLandBrokenNoRepair.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
+MCLandBrokenRepairMarked.cfg	MCLand.tla	action	PushedNeverSentBack	ignore-terminal	land	required	-
 MCLandBound.cfg	MCLandBound.tla	pass	-	ignore-terminal	land	required	-
 MCLandBoundBrokenNoWidenCap.cfg	MCLandBound.tla	invariant	AttemptsBounded	ignore-terminal	land	required	-
 MCLandBoundBrokenNoSameFinding.cfg	MCLandBound.tla	invariant	SameRefusalHalts	ignore-terminal	land	required	-
