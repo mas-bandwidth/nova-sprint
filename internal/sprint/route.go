@@ -622,24 +622,38 @@ func (s *Snapshot) servedRoute(tier, member, name string, drawing bool) (Route, 
 	return Route{}, false
 }
 
-// tierBackingOff says every enabled route of tier is backing off from a rate limit at
-// s.Now (a rest of cause RestRateBackoff the dealing step settled, withRests), naming each
-// and its end: a ready card of that tier is waiting out a stall that ends by itself, never
-// stalled work and never a judgment (held.go; tla/RateBackoff.tla, BackoffEnds). "" when
-// the tier has no enabled route or any of them is not backing off.
-func (s *Snapshot) tierBackingOff(tier string) string {
+// backoffWait is the wait of a ready card of tier while a rate limit backs the tier off:
+// at least one enabled route of the tier backs off (a rest of cause RestRateBackoff the
+// dealing step settled, withRests) and no route of the tier can be drawn for any of
+// members (each other route rests for any cause, none of members can launch it, or its
+// provider is at its concurrency budget). The card is waiting out a stall that ends by
+// itself, never stalled work and never a judgment (held.go, rebalance.go;
+// tla/RateBackoff.tla, BackoffEnds). "" when no route of the tier backs off or one can be
+// drawn.
+func (s *Snapshot) backoffWait(tier string, members []string) string {
 	var backs []string
+	drawable := false
 	for _, r := range s.Routes {
 		if r.Tier != tier || !r.Enabled {
 			continue
 		}
-		rest, ok := s.resting(r.Name)
-		if !ok || rest.Cause != RestRateBackoff {
-			return ""
+		if rest, ok := s.resting(r.Name); ok {
+			if rest.Cause == RestRateBackoff {
+				backs = append(backs, r.Name+" until "+rest.UntilSaid())
+			}
+			continue
 		}
-		backs = append(backs, r.Name+" until "+rest.UntilSaid())
+		if full, _ := s.budgets.full(r.Provider); full {
+			continue
+		}
+		for _, m := range members {
+			if s.Launches(m, r) {
+				drawable = true
+				break
+			}
+		}
 	}
-	if len(backs) == 0 {
+	if drawable || len(backs) == 0 {
 		return ""
 	}
 	return "waits for the rate-limit backoff on " + strings.Join(backs, ", ") + ": the deal resumes by itself"

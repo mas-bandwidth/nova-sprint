@@ -76,8 +76,7 @@ func RateTakes(wc *Card) (takes []ProviderTake, numbers []int) {
 }
 
 // rateBackoffs is each route's rate-limit backoff, a pure function of the fleet table's
-// rate-limited take records (RateTakes) and its cards' ok ends (a card done on the route,
-// as routeEnds counts one): a route with no rate-limited end since its last ok end has
+// rate-limited take records (RateTakes) and its cards' ok ends on the route (okEnd): a route with no rate-limited end since its last ok end has
 // none; one with k of them since backs off from the last of them (At) until At +
 // RateBackoff(k), naming the cards those takes were (tla/RateBackoff.tla: RateEnd sets until
 // from the end's own time, OkEnd resets k). Whether it holds is the caller's: now before
@@ -92,14 +91,14 @@ func rateBackoffs(fleet *Table) map[string]RouteRest {
 		card string
 	}
 	byRoute := map[string][]ev{}
-	for _, c := range fleet.Column(Ready, Working, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
+	for _, c := range fleet.Column(Ready, Working, Finished, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
 		takes, _ := RateTakes(c)
 		for _, t := range takes {
 			if at, err := time.Parse(time.RFC3339, t.Finished); err == nil && t.Route != "" && t.Route != RoutePin {
 				byRoute[t.Route] = append(byRoute[t.Route], ev{at: at, lim: true, card: c.ID})
 			}
 		}
-		if c.Col == DoneOK || c.Col == DoneFailed {
+		if okEnd(c) {
 			if at, err := time.Parse(time.RFC3339, c.F("finished")); err == nil {
 				if r := c.F(FieldRoute); r != "" && r != RoutePin {
 					byRoute[r] = append(byRoute[r], ev{at: at})
@@ -139,6 +138,15 @@ func rateBackoffs(fleet *Table) map[string]RouteRest {
 			Why: fmt.Sprintf("rate-limit backoff of %s after %d rate-limited ends since its last ok end", d, k)}
 	}
 	return out
+}
+
+// okEnd says the work card's take ended ok on its route (tla/RateBackoff.tla, OkEnd: "the
+// take ends ok"): the worker finished it ok (its ok field "yes"), whether it waits in the
+// member's finished cell for the readers' verdict (Finished) or the verdict moved it on
+// (DoneOK, DoneFailed: a reader's broken verdict is on the work, not on the route serving).
+// A failed finish is never one: it resets no rate-limit count.
+func okEnd(c *Card) bool {
+	return (c.Col == Finished || c.Col == DoneOK || c.Col == DoneFailed) && c.F("ok") == "yes"
 }
 
 // rateBackoffKey is the suffix of a route's rate-limit backoff line in its provider's
