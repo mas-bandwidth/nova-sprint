@@ -213,23 +213,23 @@ func TestReadyToAcceptOncePerAttempt(t *testing.T) {
 	for _, id := range []string{"s1-1", "s1-2", "s1-3"} {
 		h.heldByRedCI(id)
 	}
-	// s1-1: two oks, then a third reader broken
+	// s1-1: two oks, then a third reader broken: the broken verdict stays open
+	// and accept refuses the card (a broken verdict at the head outweighs the
+	// oks); rework takes it back to work with the finding.
 	h.nReadAll("s1-1", "ok")
 	if n := len(h.nAllNotes(sprint.NReadyToAccept)); n != 1 || len(h.nOpenOf(sprint.NReadyToAccept, "s1-1")) != 1 {
 		require.Fail(t, fmt.Sprintf("after two oks: %d notes", n))
 	}
 	h.nDo(AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Another: true}))
 	h.nReadAll("s1-1", "broken")
-	if n := len(h.nAllNotes(sprint.NReadyToAccept)); n != 1 || len(h.nOpenOf(sprint.NReadyToAccept, "s1-1")) != 1 {
-		require.Fail(t, fmt.Sprintf("after a third broken: %d notes", n))
-	}
-	t.Logf("s1-1 after a third reader's broken: open %v", h.judgmentsOn("s1-1"))
-	// accept closes it, then return: two oks at head, no judgment
-	h.nDo(AcceptStep(sprint.AcceptReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}}))
-	require.Empty(t, h.judgmentsOn("s1-1"), "accept left open: %v", h.judgmentsOn("s1-1"))
-	h.nDo(ReturnStep(sprint.ReturnReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Reason: "look again"}))
-	t.Logf("s1-1 returned to review, open judgments: %v (ready to accept notes total %d)", h.judgmentsOn("s1-1"), len(h.nAllNotes(sprint.NReadyToAccept)))
-	// s1-2: ok, broken, another, ok -> one; rework closes; new attempt: one more (both its
+	require.Len(t, h.nOpenOf(sprint.NReadBroken, "s1-1"), 1, "the broken verdict stays: %v", h.judgmentsOn("s1-1"))
+	refused := h.nDoR(AcceptStep(sprint.AcceptReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}}))
+	require.Len(t, refused.Refused, 1, "accept of a card with a broken read at its head: %+v", refused)
+	require.Contains(t, refused.Refused[0].Why, "broken", "accept names the broken read: %+v", refused.Refused[0])
+	h.nDo(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}}))
+	require.Empty(t, h.judgmentsOn("s1-1"), "rework left open: %v", h.judgmentsOn("s1-1"))
+	// s1-2: ok, broken, another, ok -> the broken read is the judgment that
+	// returns the card to work; rework closes; new attempt: one more (both its
 	// reads asked together)
 	both := h.outstanding("s1-2")
 	require.Len(t, both, 2, "s1-2 asked both reads together")
@@ -239,11 +239,11 @@ func TestReadyToAcceptOncePerAttempt(t *testing.T) {
 	require.Empty(t, h.nOpenOf(sprint.NReadyToAccept, "s1-2"), "ready to accept on one ok")
 	h.nDo(AskStep(sprint.AskReq{Sel: sprint.Sel{IDs: []string{"s1-2"}}, Another: true}))
 	h.nReadAll("s1-2", "ok")
-	if len(h.nOpenOf(sprint.NReadyToAccept, "s1-2")) != 1 {
+	if len(h.nOpenOf(sprint.NReadBroken, "s1-2")) != 1 {
 		require.Fail(t, fmt.Sprintf("ok, broken, another ok: %v", h.judgmentsOn("s1-2")))
 	}
 	h.nDo(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-2"}}, Fix: "again"}))
-	require.Empty(t, h.nOpenOf(sprint.NReadyToAccept, "s1-2"), "rework left ready to accept open")
+	require.Empty(t, h.nOpenOf(sprint.NReadBroken, "s1-2"), "rework left the broken read open")
 	s := h.snap()
 	w := s.Fleet.Card("s1-2.w2")
 	h.nDo(TakeStep(sprint.TakeReq{As: w.Row, Sel: sprint.Sel{IDs: []string{w.ID}}, Gens: map[string]int{w.ID: 1}}))
@@ -257,7 +257,7 @@ func TestReadyToAcceptOncePerAttempt(t *testing.T) {
 			on2++
 		}
 	}
-	require.Equal(t, 2, on2, "s1-2 over two attempts: %d notes, open %d", on2, len(h.nOpenOf(sprint.NReadyToAccept, "s1-2")))
+	require.Equal(t, 1, on2, "s1-2 over two attempts: %d notes, open %d", on2, len(h.nOpenOf(sprint.NReadyToAccept, "s1-2")))
 	require.Len(t, h.nOpenOf(sprint.NReadyToAccept, "s1-2"), 1, "s1-2 over two attempts: %d notes, open %d", on2, len(h.nOpenOf(sprint.NReadyToAccept, "s1-2")))
 	// s1-3: two oks, drop closes
 	h.nReadAll("s1-3", "ok")

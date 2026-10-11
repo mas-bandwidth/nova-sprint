@@ -403,9 +403,11 @@ func TestG3ReadsExhaustedIsAJudgment(t *testing.T) {
 	third := askedRead(w, "s1-1")
 	w.must(Read(w.s, ReadReq{Usage: "input=1000 output=100", As: third.F("reader"), Verdict: "ok", Sel: Sel{IDs: []string{third.ID}}}))
 	o := w.openOn("s1-1")
-	require.Len(t, o, 1, "reads exhausted by a read: %v", o)
-	require.Equal(t, NReadsExhausted, o[0].Note.Type, "reads exhausted by a read: %v", o)
-	require.Contains(t, o[0].Note.Decisions, "ask another reader", "reads exhausted by a read: %v", o)
+	require.Len(t, o, 2, "both broken judgments remain open: %v", o)
+	for _, n := range o {
+		require.Equal(t, NReadBroken, n.Note.Type, "a broken verdict stays a judgment: %v", o)
+		require.Contains(t, n.Note.Decisions, "ask another reader", "a broken verdict stays a judgment: %v", o)
+	}
 	// s1-2: one ok, one broken; ack does not answer a broken read: refused,
 	// and the broken judgment stays open.
 	r2 := readsAt(w.s, w.s.Work.Card("s1-2"), 1)

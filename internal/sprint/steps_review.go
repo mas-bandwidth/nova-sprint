@@ -312,7 +312,11 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			u.Moved += "; its read taken back from " + instead + " (instead)"
 		}
 		if another {
-			u.Closes = closesFor(s.Open, []string{NReadBroken, NBriefWrong, NReadsExhausted, NStranded, NStalled}, c.ID)
+			// one more reader never overrules a broken verdict at the head: the broken
+			// judgment (a reader found it broken, or the brief's bound it raised) stays
+			// open and the card goes back to work with the finding (docs/SPEC-SPRINT.md
+			// section 8, the read-broken rule; tla/SprintRules.tla, Part "reads").
+			u.Closes = closesFor(s.Open, []string{NReadsExhausted, NStranded, NStalled}, c.ID)
 		} else {
 			u.Closes = closesFor(s.Open, []string{NStranded, NStalled}, c.ID)
 		}
@@ -662,18 +666,22 @@ func Read(s *Snapshot, r ReadReq) Plan {
 				// a finding naming files outside PATHS is no bound while the card may be widened:
 				// the read-broken rule widens the brief in place by them, the bound's own remedy;
 				// past MaxReadWidens such a finding is the bound itself (rules_read.go)
-				outside, spent := len(FilesOutsidePaths(pr.F("brief"), r.Finding)) > 0, ReadWidensSpent(pr)
+				outside := len(FilesOutsidePaths(pr.F("brief"), r.Finding)) > 0
+				spent := ReadWidensSpent(pr)
 				bound := ""
 				if bb, ok := briefStopAt(s, at, c.Row, r.Finding); ok && (!outside || spent != "") {
-					bound = bb.Why()
+					bound = bb.String()
 				} else if outside && spent != "" {
 					bound = spent
 				}
-				if bound != "" {
+				if bound != "" && outside {
 					// the same finding as the attempts before (briefStopAt: the same reader class,
-					// file and line, two in a row by default), or too many attempts on one brief:
-					// the brief is wrong, not the worker, and the judgment offers brief and drop
-					// (brief_bound.go)
+					// file and line, two in a row by default), or too many attempts on one brief,
+					// for a finding outside PATHS past the widen cap: the brief is wrong, not the
+					// worker, and the judgment offers brief and drop (brief_bound.go). A finding
+					// inside PATHS at the bound keeps NReadBroken: the card is still reworked with
+					// the finding, not left for the coordinator (rules_read.go; tla/SprintRules.tla,
+					// Part "reads": ReworkAtBound)
 					n = judgment(NBriefWrong, pr.Row, s.Now, 0, pr.ID) // its decisions alone: it is the repeat
 					n.Who, n.Attempt, n.What = c.Row, c.Int("attempt"), bound+"; attempt "+c.F("attempt")+" found: "+firstSentence(r.Finding)
 				}
@@ -868,7 +876,13 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 	// 2026-10-11, epoch 16: accept, refused on a conflict, ready to accept, accept)
 	refused := LandRefusedAtHead(pr)
 	switch {
-	case len(oks) >= ReadsNeededIn(s, pr) && !refused:
+	case open[NReadBroken]:
+		// a broken read at the head outweighs any number of oks (docs/SPEC-SPRINT.md section 8,
+		// the read-broken rule; tla/SprintRules.tla, Part "reads": a broken verdict at the same
+		// head outweighs any number of oks): the broken judgment stays open and the card goes
+		// back to work with the finding, whatever other reads say ok
+		return Note{}, false
+	case len(oks) >= ReadsNeededIn(s, pr) && !broken && !refused:
 		if offers || AcceptHeld(pr) == "" {
 			// the tick's pump accepts it, RUNNING or STOPPED (at the first pump after
 			// start): "accept is mechanical", and a hand step is a missing instruction
@@ -1022,6 +1036,14 @@ func Accept(s *Snapshot, r AcceptReq) Plan {
 				names = append(names, o.F("reader"))
 			}
 			return fmt.Sprintf("needs ok from %s at head %s; has ok from %d (%s)", readersWord(ReadsNeededIn(s, c)), orDash(c.F("head")), len(oks)+heavyReads, orDash(strings.Join(names, ",")))
+		}
+		if !r.Heavy && hasBrokenAtHead(s, c) {
+			// a broken read at the head outweighs any number of oks: accept never queues the
+			// head a reader found broken (docs/SPEC-SPRINT.md section 8, the read-broken rule;
+			// tla/SprintRules.tla, Part "reads": a broken verdict at the same head outweighs
+			// any number of oks). accept --heavy is the coordinator's own read overruling the
+			// broken one, and is allowed (heavyRead; docs/SPEC-SPRINT.md section 6).
+			return "a broken read stands at its head: the broken verdict outweighs its oks; rework it with the finding, or drop it"
 		}
 		if m := s.Merge.Card(c.ID); m != nil && (!m.Placed() || m.Col != Returned) {
 			return "its merge record is " + placeWord(m)
@@ -1284,11 +1306,16 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		}
 		// the brief's bound: the same finding twice (briefStopAt), or too many attempts on one
 		// brief, and the brief is wrong, not the worker; a --fix changes the brief not at all,
-		// so it does not lift it (brief_bound.go)
-		if bb, ok := briefStopAt(s, c, finderOf(s, c), brokenFindings(s, c)); ok {
-			p.refuse(c.ID, bb.Why())
-			stays()
-			continue
+		// so it does not lift it (brief_bound.go). A broken finding at the bound is still
+		// reworked with the finding as the fix: the broken verdict outweighs the bound
+		// (tla/SprintRules.tla, Part "reads": ReworkAtBound), so only a non-broken bound (a
+		// failure's attempt cap) refuses.
+		if fb := brokenFindings(s, c); fb == "" {
+			if bb, ok := briefStopAt(s, c, finderOf(s, c), ""); ok {
+				p.refuse(c.ID, bb.Why())
+				stays()
+				continue
+			}
 		}
 		fix := r.Fix
 		if one.Fix != "" {

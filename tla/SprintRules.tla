@@ -62,6 +62,8 @@
 \*                PATHS: WidensWiden
 \*   "boundoutside" the read stops a finding naming a file outside PATHS at the brief's
 \*                bound instead of letting the rule widen it: OutsideNeverBound
+\*   "boundinside"  the read-broken rule leaves a card at its brief's bound with a finding
+\*                inside PATHS instead of reworking it: ReworkAtBound
 \*   "nowidencap" the rule widens on every finding outside PATHS, past MaxWidens:
 \*                WidensBounded
 \*   "nofinding"  the read-broken rule reworks a broken read that carries no finding:
@@ -436,15 +438,17 @@ RdAtBound(f) == f = rdlast \/ rdatt >= Cap
 RdWidenable(f) == RdOutside(f) /\ (rdwidens < MaxWidens \/ Broken = "nowidencap")
 
 \* the outside: a reader finds the attempt broken with finding f (Read writes the brief's
-\* bound judgment instead at the bound, unless f names a file outside PATHS under the widen
-\* cap; and for a file outside PATHS past the cap), or the attempt lands
+\* bound judgment instead at the bound for findings outside PATHS past the cap,
+\* but not for findings inside PATHS - those get reworked even at the bound, so the
+\* card goes back to work with the finding), or the attempt lands
 RdReadBroken(f) ==
   /\ rdst = "working"
   /\ rdfind' = f
   /\ rdst' = IF Broken # "nobound"
-                  /\ \/ (RdAtBound(f) \/ RdOutside(f)) /\ ~RdWidenable(f)
+                  /\ \/ RdOutside(f) /\ ~RdWidenable(f)
+                     \/ RdAtBound(f) /\ ~RdOutside(f) /\ Broken = "boundinside"
                      \/ RdAtBound(f) /\ Broken = "boundoutside"
-               THEN "bound" ELSE "broken"
+                THEN "bound" ELSE "broken"
   /\ UNCHANGED <<rdatt, rdlast, rdpaths, rdwidens, rdtotal>>
 RdLands ==
   /\ rdst = "working"
@@ -483,6 +487,10 @@ WidensWiden == rdwidens <= Cardinality(rdpaths)
 \* card's widenings are under the cap: the rule widens the brief in place, the bound's own
 \* remedy.
 OutsideNeverBound == rdst = "bound" /\ RdOutside(rdfind) => rdwidens >= MaxWidens
+
+\* A finding inside PATHS at the brief's bound is still reworked, never left with brief/drop:
+\* a broken verdict at the same head outweighs the bound (rules_read.go, ReworkAtBound).
+ReworkAtBound == rdst = "bound" /\ ~RdOutside(rdfind) => FALSE
 
 \* Readers' findings widen one card's PATHS at most MaxWidens times: a reader naming a new
 \* file outside PATHS every round never widens it for ever.
