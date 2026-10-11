@@ -109,6 +109,18 @@ var dKnown = []dKnownDiff{
 		}
 		return sigHas("another", "open.accept=yes/no", "primary.pair")(f)
 	}},
+	// MODEL. A blank-slate clear empties the reader roster, and the model's
+	// tick refuses "fewer than two readers" on a card that then needs reads,
+	// where the engine's tick asks nothing and opens its cannot-ask judgment.
+	{"MODEL a blank epoch's tick refuses fewer-than-two-readers where the engine opens cannot-ask", func(f dFinding) bool {
+		return f.Kind == "refusal" && f.Seq[len(f.Seq)-1].Kind == "tick" && strings.Contains(f.Detail, "fewer than two readers")
+	}},
+	// MODEL. Clear stops the machine as its first act, before it refuses on
+	// live leases (SPEC-SPRINT section 13), so a refused clear leaves the
+	// engine's machine STOPPED while the model's stays RUNNING.
+	{"MODEL a refused clear stops the machine in the engine but not in the model", func(f dFinding) bool {
+		return f.Kind == "refusal" && f.Seq[len(f.Seq)-1].Kind == "clear" && strings.Contains(f.Sig(), "machine.state")
+	}},
 }
 
 func dClassify(f dFinding) (string, bool) {

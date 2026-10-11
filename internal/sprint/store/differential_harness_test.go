@@ -874,8 +874,10 @@ func (h *dHarness) modelStep(a dAction, pre, post refmodel.State) (refmodel.Stat
 	case "resolve":
 		next, err = refmodel.Resolve(s, a.id())
 	case "clear":
-		if len(h.stopDebt) > 0 {
-			return s, fmt.Errorf("clear requires STOP owner cancellation receipts")
+		// Clear refuses on every lease still live in Fleet Working or Readers
+		// Reading after STOP; a returned or nonworking lease never blocks.
+		if live := h.activeStopLeases(s); len(live) > 0 {
+			return s, fmt.Errorf("clear stopped the machine with %d captured owner work/read leases", len(live))
 		}
 		next, err = refmodel.Clear(s)
 		if err == nil {

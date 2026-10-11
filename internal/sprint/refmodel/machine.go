@@ -1,7 +1,5 @@
 package refmodel
 
-import "maps"
-
 // The machine, the tick, sentinels' release and clear: from the spec
 // (sections 13, 14 and 16), not yet in the model. The model's Next lets any
 // enabled action happen at any time; the spec's machine runs the mechanical
@@ -303,17 +301,13 @@ func Release(s State, ids []string, who string) (State, error) {
 	return n, nil
 }
 
-// Clear is the spec's clear (section 13): the machine STOPPED, the epoch
-// advanced once; at the new epoch every table is empty with the same rows,
-// every stream waiting, every member with its status and no work; the
-// judgments and the fence are the new epoch's own, empty. The coordinator is
-// the sprint's and is kept. From the spec, not yet in the model.
+// Clear is the spec's clear (section 13, blank-slate rule): the machine
+// STOPPED, the epoch advanced once; every table and sprint record is keyed by
+// epoch, so the new epoch is empty by construction: no stream, reader, member,
+// work, merge, hold or judgment rows. The coordinator is the sprint's and is
+// kept. From the spec, not yet in the model.
 func Clear(s State) (State, error) {
-	n := New(s.Readers, s.Order, s.Coordinator)
-	maps.Copy(n.Members, s.Members)
-	for st := range s.Streams {
-		n.Streams[st] = Stream{State: SWaiting}
-	}
+	n := New(nil, nil, s.Coordinator)
 	n.Epoch = s.Epoch + 1
 	n.Machine = Stopped
 	return n, nil

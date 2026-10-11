@@ -65,6 +65,7 @@ func TestNoteIDsCarryTheEpoch(t *testing.T) {
 	oldID := failIt()
 	_, err := h.st.Clear(h.ctx)
 	require.NoError(t, err)
+	h.refleet()
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 2}))
 	h.startMachine() // a clear leaves the new epoch STOPPED
 	newID := failIt()

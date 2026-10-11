@@ -117,9 +117,28 @@ func (h *harness) table() *sprint.Snapshot {
 
 func (h *harness) state(id string) string { return h.snap().StateOf(id) }
 
-// setup: two members up, n primaries in s1.
+// refleet restores the harness's roster after a blank-slate clear: the new
+// epoch starts with no fleet or reader rows, so a test that keeps working
+// brings m1, m2 and the readers up again.
+func (h *harness) refleet() {
+	h.t.Helper()
+	pinned, err := h.st.pin(h.ctx)
+	require.NoError(h.t, err)
+	require.NoError(h.t, pinned.B.RowsAdd(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
+	require.NoError(h.t, h.st.BeatReaders(h.ctx))
+	for _, m := range []string{"m1", "m2"} {
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
+	}
+	h.beat()
+}
+
+// setup: two members up, n primaries in s1. A blank-slate clear emptied the
+// roster, so setup brings the readers and the two members back as well.
 func (h *harness) setup(n int) {
 	h.t.Helper()
+	pinned, err := h.st.pin(h.ctx)
+	require.NoError(h.t, err)
+	require.NoError(h.t, pinned.B.RowsAdd(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
 	if err := h.st.BeatReaders(h.ctx); err != nil { // a reader asks for its queue: it is up
 		require.NoError(h.t, err)
 	}

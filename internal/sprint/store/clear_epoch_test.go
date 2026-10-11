@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -235,6 +234,7 @@ func TestOldEpochUnchangedByReuse(t *testing.T) {
 		return b.String()
 	}
 	was := dump()
+	h.refleet()
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 4}))
 	_, _, _, err = h.st.SetMachine(h.ctx, true)
 	require.NoError(t, err, "the new epoch starts before reusing work IDs")
@@ -261,9 +261,9 @@ func (a *advanceHook) AdvanceEpoch(ctx context.Context, from uint64, at time.Tim
 	return a.Backend.AdvanceEpoch(ctx, from, at)
 }
 
-// C3: a member brought up (a new fleet row) and a member taken down between
-// clear's start and its advance are both kept: the shape is read after the
-// advance, from the old epoch, frozen from then on.
+// C3: a member brought up and one taken down between clear's start and its
+// advance land in the old epoch, which the advance freezes; the new epoch is
+// blank, so neither row is carried into it.
 func TestRowAddedDuringClearIsKept(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -280,64 +280,8 @@ func TestRowAddedDuringClearIsKept(t *testing.T) {
 	_, err := st.Clear(h.ctx)
 	require.NoError(t, err)
 	s := h.snap()
-	if !slices.Contains(s.Fleet.Rows(), "m3") || s.MemberCtl("m3").F("status") != sprint.Up {
-		assert.Fail(t, fmt.Sprintf("a member brought up before the advance was lost by the clear: rows %v", s.Fleet.Rows()))
+	for _, table := range []*sprint.Table{s.Work, s.Readers, s.Merge, s.Fleet} {
+		require.Empty(t, table.Rows(), "%s rows leaked into epoch %d", table.Name, s.Epoch)
 	}
-	assert.Equal(t, string(sprint.Down), s.MemberCtl("m1").F("status"), "m1 taken down before the advance is up again at the new epoch")
 	h.clean("after the clear")
-}
-
-// C3: a clear cut between its advance and its restore records only that the
-// restore is owed; the next verb, or the next tick, performs it first. C6:
-// the owed restore removes a fence the old epoch still holds.
-func TestAnOwedRestoreIsPerformedFirst(t *testing.T) {
-	t.Parallel()
-	for _, next := range []string{"verb", "tick"} {
-		t.Run(next, func(t *testing.T) {
-			t.Parallel()
-			h := newHarness(t)
-			h.setup(2)
-			dead := OpRecord{ID: "dead-1", Verb: "take", At: t0}
-			st := *h.st
-			st.B = &advanceHook{Backend: h.m, do: func() {
-				// a writer takes the old epoch's fence just before the advance,
-				// and dies
-				f, _ := h.m.ReadFence(h.ctx)
-				if ok, err := h.m.Acquire(h.ctx, f.Gen, dead); !ok || err != nil {
-					assert.Fail(t, fmt.Sprintf("acquire: %v %v", ok, err))
-				}
-			}}
-			h.m.Fail = func(p string) error {
-				if strings.HasPrefix(p, "apply ") {
-					return errors.New("cut")
-				}
-				return nil
-			}
-			_, err := st.Clear(h.ctx)
-			require.Error(t, err, "the clear was not cut")
-			h.m.Fail = nil
-			if es, _ := h.m.Epoch(h.ctx); es.N != 1 || !es.Owed {
-				require.Fail(t, fmt.Sprintf("after the cut: %+v", es))
-			}
-			if p := h.m.AtEpoch(0, true).(*Mem).Pending(); p == nil || p.ID != dead.ID {
-				require.Fail(t, fmt.Sprintf("the old epoch's fence: %+v", p))
-			}
-			switch next {
-			case "verb":
-				h.must(AddStep(sprint.AddReq{Stream: "s2", Count: 1}))
-			case "tick":
-				h.machine()
-			}
-			if es, _ := h.m.Epoch(h.ctx); es.N != 1 || es.Owed {
-				require.Fail(t, fmt.Sprintf("after the %s: %+v", next, es))
-			}
-			s := h.snap()
-			require.Equal(t, string(sprint.StreamWaiting), s.StreamCtl("s1").F("state"), "the shape is not restored by the %s", next)
-			require.Equal(t, string(sprint.Up), s.MemberCtl("m2").F("status"), "the shape is not restored by the %s", next)
-			if p := h.m.AtEpoch(0, true).(*Mem).Pending(); p != nil {
-				require.Fail(t, fmt.Sprintf("the old epoch still holds the fence of %s", p.ID))
-			}
-			h.clean("restored")
-		})
-	}
 }
