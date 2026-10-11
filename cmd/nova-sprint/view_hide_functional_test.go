@@ -15,11 +15,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The stored view shows a stream with no cards in any column: after init, an
-// add of three streams and a clear, the drawn view still has the work and merge
-// tables with their three stream rows at zero, and the readers and the fleet. The
-// frame is the one `nova-table watch --view sprint` draws (ntable.RenderTables).
-func TestTheViewShowsAStreamWithNoCards(t *testing.T) {
+// A clear advances to an empty epoch, so the stored view draws the blank slate:
+// after init, an add of three streams and a clear, the frame still draws the
+// four tables, the fleet carrying its members over, and holds no row for the
+// streams a, b or c the old epoch had. A stream added after the clear is drawn
+// again; the old streams are not. The test's old point (a stream with no cards
+// is drawn) cannot be kept on this path: no verb adds a stream without a card
+// (add wants ids, --count, --sentinel or a brief), so the stream added after
+// the clear carries one. The frame is the one `nova-table watch --view sprint`
+// draws (ntable.RenderTables).
+func TestTheViewAfterAClearDrawsNoOldStream(t *testing.T) {
 	t.Parallel()
 	addr := testutil.Start(t)
 	c := redis.NewClient(&redis.Options{Addr: addr})
@@ -63,16 +68,18 @@ func TestTheViewShowsAStreamWithNoCards(t *testing.T) {
 	require.Contains(t, got, "\na ", "streams with a card each: the work table is drawn:\n%s", got)
 	run("clear", "--confirm", "sprint")
 	got = frame()
+	// the empty epoch draws the four tables; the fleet holds the member carried over
 	for _, table := range []string{"work", "merge", "readers", "fleet"} {
 		require.True(t, has(got, table), "after a clear the %s table is drawn:\n%s", table, got)
 	}
+	require.Contains(t, got, "\nm1 ", "after a clear the fleet carries its members over:\n%s", got)
 	for _, stream := range []string{"\na ", "\nb ", "\nc "} {
-		require.GreaterOrEqual(t, strings.Count(got, stream), 2, "after a clear the stream row %q is in the work and merge tables, at zero:\n%s", stream, got)
+		require.NotContains(t, got, stream, "after a clear the old stream row %q is gone (blank slate):\n%s", stream, got)
 	}
 	run("add", "--stream", "b", "--count", "1", "--one")
 	got = frame()
-	require.True(t, has(got, "work"), "every stream is drawn, with a card or none:\n%s", got)
-	require.Contains(t, got, "\na ", "every stream is drawn, with a card or none:\n%s", got)
-	require.Contains(t, got, "\nb ", "every stream is drawn, with a card or none:\n%s", got)
-	require.Contains(t, got, "\nc ", "every stream is drawn, with a card or none:\n%s", got)
+	require.True(t, has(got, "work"), "a stream added after the clear is drawn:\n%s", got)
+	require.Contains(t, got, "\nb ", "a stream added after the clear is drawn:\n%s", got)
+	require.NotContains(t, got, "\na ", "the old streams are not drawn again:\n%s", got)
+	require.NotContains(t, got, "\nc ", "the old streams are not drawn again:\n%s", got)
 }
