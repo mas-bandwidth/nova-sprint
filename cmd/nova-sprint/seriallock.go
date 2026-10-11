@@ -5,15 +5,13 @@ import (
 	"sync"
 )
 
-// serialLock is the server's one line of control (app.serial): a tick of the run loop,
-// a batch's writes, and the short store steps of the land, decide and balance lanes each
-// hold it, so none runs during another. It is a mutex whose waiters wait in the order
-// they came (a channel's senders queue first in, first out) and whose wait can be given
-// up: a batch waits for it under its caller's request (LockCtx), so a caller that has
-// gone stops waiting and its verbs are never run (serve.go, serveCtx). On 2026-10-04 a
-// sync.Mutex here kept every timed-out friend beat in the line, each run long after
-// its caller had gone, and the line never drained (docs/SPEC-SPRINT.md section 14, The
-// server; tla/ServerLanes.tla, AbandonedNeverRuns). The zero value is unlocked.
+// serialLock is the read lane's own line (servelanes.go): one read at a time on the read
+// twin's state, beside the server's line of control (app.serial, a sprint.ControlLine).
+// It is a mutex whose waiters wait in the order they came (a channel's senders queue
+// first in, first out) and whose wait can be given up: a read waits for it under its
+// caller's request (LockCtx), so a caller that has gone stops waiting and its verbs are
+// never run (servelanes.go, the read lane; tla/ServerLanes.tla, GoneNeverRuns). The zero
+// value is unlocked.
 type serialLock struct {
 	once sync.Once
 	ch   chan struct{}

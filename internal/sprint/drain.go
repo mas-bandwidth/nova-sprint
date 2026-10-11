@@ -20,7 +20,7 @@ import (
 // (NeverDealtToDraining, NeverAskedOfHeldOrDraining, DealtReturns).
 
 // Draining says the member's or reader's fresh beat says it drains (its no-room word is a
-// drain's, DrainWord).
+// drain's, DrainWord). // tla/DirtyTick.tla DrainStart
 func (s *Snapshot) Draining(name string) bool { return IsDrainWord(s.NoRoom[name]) }
 
 // ReaderOwner is the fleet machine a reader row belongs to: reader-<m>, or reader-<m>-<n>
@@ -54,6 +54,7 @@ func (s *Snapshot) ReaderOwner(reader string) (string, bool) {
 // is passed by the ask (readerRooms) and hands back what it is asked itself.
 // tla/NoRoom.tla Off: known[m] and (held or draining), so a reader of a machine the
 // sprint does not know belongs to no machine and is asked like any reader.
+// tla/DirtyTick.tla NotAskedOfHeldOrDraining
 func (s *Snapshot) readerOff(reader string) string {
 	if s.Draining(reader) {
 		return reader + " drains (" + s.NoRoom[reader] + ")"
