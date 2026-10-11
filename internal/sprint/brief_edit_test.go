@@ -73,6 +73,20 @@ func TestABriefDroppingANeedKeepsItUnlessNeedsFromBrief(t *testing.T) {
 	assert.Equal(t, "a-1", w.s.Work.Placed("b").F("needs"), "--needs-from-brief takes the text's stale list")
 }
 
+func TestABriefChangingOnlyDependsKeepsARelinkedNeed(t *testing.T) {
+	t.Parallel()
+	w := relinkWorld(t)
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"c"}, Brief: "old c", Who: "coordinator"}))
+	// the brief differs from the card's only in its DEPENDS-ON: line (the body is
+	// the same), so Brief takes the depends-only path; the relink record must still
+	// win over the text's stale DEPENDS-ON, as it does on the ordinary path.
+	p := Brief(w.s, briefOf("b", "tier: flash\nDEPENDS-ON: a-1,c\n\nthe task", "a-1,c"))
+	require.Empty(t, p.Refused)
+	w.must(p)
+	assert.Equal(t, "a-2,c", w.s.Work.Placed("b").F("needs"), "the relink record wins over the text's stale DEPENDS-ON on the depends-only path")
+	assert.Contains(t, strings.Join(p.Said, "\n"), "needs kept: a-2 (relinked from a-1 2030-01-02T03:04:05Z)")
+}
+
 func TestBriefKeepsARecordedTierAgainstTheText(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")

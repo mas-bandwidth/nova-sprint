@@ -103,7 +103,16 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// a DEPENDS-ON line alone is taken in any state, the machine running or the card dealt
 		if c != nil && !IsSentinel(c) && dependsOnly(c.F("brief"), b.Brief) {
 			seen[b.ID] = true
-			p = briefDepends(s, p, c, b.Brief, b.Needs)
+			// the needs rule holds on this path too (docs/SPEC-SPRINT.md, the needs):
+			// the text's DEPENDS-ON is the admission-time list, so a need the relink
+			// record re-pointed stays its twin and a need the text drops stays, unless
+			// --needs-from-brief takes the text whole.
+			needs, notes := b.Needs, []string(nil)
+			if !r.NeedsFromBrief {
+				needs, notes = briefNeedsKept(Split(c.F("needs")), b.Needs, c.F(FieldRelinked))
+				p.Said = append(p.Said, notes...)
+			}
+			p = briefDepends(s, p, c, b.Brief, needs)
 			continue
 		}
 		// a card merging or landed is refused with what changes it instead:
@@ -650,7 +659,8 @@ func dependsOnly(old, brief string) bool {
 // state, on a RUNNING machine and for a card dealt (it applies to the next
 // attempt), since re-pointing a card's needs after a drop is not a change of
 // its task (the comfort list of 2026-10-03, item 2). The card's needs become
-// the line's: each a primary on the table, not the card itself; a ready card
+// needs, which Brief maps through the needs rule (briefNeedsKept) before it
+// calls: each a primary on the table, not the card itself; a ready card
 // takes no need that has not landed (the deal would run it first: ready ->
 // waiting is only a sentinel's effect, lifecycle.go). The brief decision and
 // the grade were over the same task and stay.
