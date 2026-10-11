@@ -471,6 +471,59 @@ func TestTheHookFromTheCommandLine(t *testing.T) {
 	assert.Equal(t, sprint.HookFirst+"\n", errs)
 }
 
+// The record's Live is the outstanding challenge's bound, not the proof's: a
+// re-challenge sent late (a slow look) keeps the seat live until the challenge's own
+// bound, so a command between the proof's Live and that bound runs. The model refuses
+// only once the outstanding challenge is late (SeatHook.tla, Rechallenge and Gate:
+// ~lateC); before this the record held the proof's bound and refused HookFirst.
+func TestARechallengeKeepsTheHookLiveUntilItsOwnBound(t *testing.T) {
+	t.Parallel()
+	const name = "hook-e"
+	ta, _ := hookSprint(t, name)
+
+	c := ta.hookOn(name)
+	c.next("hello")
+	provedAt := ta.a.now()
+	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+	rec, _ := ta.hookRecord()
+	require.Equal(t, provedAt.Add(sprint.HookEvery+sprint.HookAnswerBound).UTC(), rec.Live.UTC())
+
+	// the look that sends the re-challenge runs late: the challenge goes out 30s after
+	// HookEvery, and its own bound is later than the proof's
+	ta.step(sprint.HookEvery + 30*time.Second)
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	s.look(context.Background())
+	challengeAt := ta.a.now()
+	require.Len(t, c.next("challenge").Challenge, 32)
+
+	// past the proof's Live, inside the challenge's own bound: a command runs
+	ta.step(sprint.HookAnswerBound - 15*time.Second)
+	require.True(t, ta.a.now().After(provedAt.Add(sprint.HookEvery+sprint.HookAnswerBound)),
+		"the proof's bound has passed")
+	ta.lined(func() { ta.ok("where") })
+	rec, _ = ta.hookRecord()
+	require.Equal(t, challengeAt.Add(sprint.HookAnswerBound).UTC(), rec.Live.UTC(),
+		"the record is live until the re-challenge's own bound")
+
+	// unanswered past the challenge's own bound, the look unhooks it (Miss)
+	ta.step(30 * time.Second)
+	s.look(context.Background())
+	bye := c.next("bye")
+	assert.Contains(t, bye.Why, "not answered in time")
+	rec = ta.waitHook(sprint.HookGone)
+	assert.Contains(t, rec.Why, "was not answered within 5m0s")
+	ta.refusedFirst("where", sprint.HookFirst)
+
+	// a fresh proof is live until its next challenge's bound (HookProven, unchanged)
+	d := ta.hookOn(name)
+	d.next("hello")
+	provedAt = ta.a.now()
+	require.Equal(t, "ok", d.say(hookMsg{T: "prove", Challenge: d.next("challenge").Challenge}).T)
+	rec, _ = ta.hookRecord()
+	assert.Equal(t, provedAt.Add(sprint.HookEvery+sprint.HookAnswerBound).UTC(), rec.Live.UTC())
+}
+
 // step moves the test's clock.
 func (ta *testApp) step(d time.Duration) {
 	ta.mu.Lock()

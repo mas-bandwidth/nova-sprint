@@ -1063,7 +1063,13 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	// read that fails or holds no row leaves Machines nil, and the retire part
 	// wants nothing (never act on a missing read).
 	machines, inventoryRead := st.tickInventory(ctx)
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend, Machines: machines}
+	// the tick's read of the base's CI after a landing (sprint.TickBaseCI, base_ci.go):
+	// nil when the binding sets none, and no red-base judgment is raised or closed.
+	var baseCI []sprint.BaseCIFacts
+	if st.BaseCI != nil {
+		baseCI = st.BaseCI()
+	}
+	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, WakeFriend: st.WakeFriend, Machines: machines, BaseCI: baseCI}
 	// the first read as it was: the twin it came from moves on with every
 	// part's writes, and with any other writer in this process
 	first := *snap

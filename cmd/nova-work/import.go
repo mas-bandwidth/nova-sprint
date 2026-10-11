@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -127,6 +128,16 @@ func (g github) importTree(c *tool.Call) *tool.Out {
 	}
 
 	tree := &workfile.Tree{Source: "github", Org: org, Fetched: start.UTC().Format(time.RFC3339)}
+	// A scoped import records its scope (:scope), so verify with no --repo
+	// compares the repositories imported, not the whole organization
+	// (SPEC-WORK-V1 sections 1.2 and 1.6). A whole-organization import writes
+	// no :scope. metas is sorted by name, so the scope is canonical.
+	if len(repos(c)) > 0 {
+		tree.Scope = make([]string, len(metas))
+		for i, m := range metas {
+			tree.Scope[i] = m.Name
+		}
+	}
 	var perRepo [][]any
 	for _, m := range metas {
 		before := f.Calls
@@ -151,6 +162,12 @@ func (g github) importTree(c *tool.Call) *tool.Out {
 	back, err := workfile.Decode("(encoded)", data, workfile.Limits(len(data)+1))
 	if err != nil {
 		return ended(tool.Fail("the encoded tree does not read back: " + err.Error()))
+	}
+	// The scope must survive the file too: a scoped tree that lost its
+	// :scope would verify against the whole organization (SPEC-WORK-V1
+	// sections 1.2 and 1.6).
+	if !slices.Equal(back.Scope, tree.Scope) {
+		return ended(tool.Fail(fmt.Sprintf("the encoded tree reads back with scope %v, want %v", back.Scope, tree.Scope)))
 	}
 	if diffs := workfile.Diff(back, tree, nil); len(diffs) > 0 {
 		d := diffs[0]

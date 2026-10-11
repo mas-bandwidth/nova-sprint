@@ -199,6 +199,14 @@
     say a key rest ends only by routes wake, never by funded or a payment, and a test shows a balance poll
     cannot end one."
    :origin "readers' notes on nova-sprint PR #49 and PR #50")
+  (fix "hook-stays-live-while-its-rechallenge-is-in-bound" :release "v1.2.14" :status "planned"
+   :title "A hook stays live while its re-challenge is in bound"
+   :text "The record's Live was the proof's bound alone, so a seat answering in time was refused
+    HookFirst between the proof's Live and a re-challenge's own bound whenever a slow look sent the
+    challenge late. The server now moves Live to the re-challenge's own bound through the record's
+    one writer; a write that fails keeps the earlier bound (the safe side) and says so on the
+    server's line. Test: TestARechallengeKeepsTheHookLiveUntilItsOwnBound."
+   :origin "v1.2.12 inventory 2026-10-11, section 9 row D6; code read at nova-sprint main 00c54ba")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
@@ -574,6 +582,18 @@
      its need."
     :origin "card moved out of the sprint (work record, 2026-10-04)")
 
+   (fix "a-stream-has-a-display-name" :release "v1.2.14" :status "planned"
+    :title "A stream has a display name"
+    :text "A stream's key stays its name everywhere (the work and merge rows, the stream= fields, every
+     verb), and gains a human label: `stream set <s> --display <name>` records one line of printable
+     text, at most 60 bytes, on the stream's control card as its `display` field, cleared with `default`
+     or `none` like every other stream field. The dashboard's Work table and the streams listing show
+     the display name when set, else `point-fix-<release>` when the stream belongs to a release, else
+     the key (sprint.StreamDisplay); the streams verb prints it beside the release, StreamClock and
+     StreamRow carry it in `Display`, and a name over the bound or with a newline is refused whole,
+     nothing written."
+    :origin "the owner, 2026-10-11: \"agree that the name becomes the key, and you add a small display name. good tidy feature. pls add.\"")
+
    (fix "reader-only-friend-no-work" :release "v1.2.9" :status "shipped"
     :title "A reader-only friend is dealt no work card; a builder-only friend is asked no read"
     :text "The deal and the ask honour a friend's roles: a friend whose nova-config row's roles do not
@@ -856,6 +876,26 @@
     an artifact. The job never writes tla/RUNS.tsv: records still land through cards."
    :origin "v1.2.12 inventory item T30 and note 3; this card")
 
+  (fix "cover-route-table-stats-routes" :release "v1.2.12" :status "planned"
+   :title "In-package behaviour tests for the stats route table"
+   :text "RouteTable (internal/sprint/routetable.go:25), the table `nova-sprint stats --routes` prints
+    (docs/SPEC-SPRINT.md, the verb stats), gets tests from inside its own package in
+    internal/sprint/routetable_behaviour_test.go: the window (a finish before since is left out with its
+    provider takes, a deal, take or accept before it still counts), the ok/failed split and takes, the
+    no-route and no-usage rules, the provider no-result and the more-than-fifty storm, landed and 1stT,
+    wrong/reviewed, the money columns and the upper-median wall, and the FLASH (all) and PRO (all) rows.
+    RouteTable's in-package statement coverage goes from 0.0% of 163 to 99.4%. No product change."
+   :origin "the owner, 2026-10-11: v1.2.12 tests and models only; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C1")
+
+  (fix "fn-dashboard-test-compares-the-page-data" :release "v1.2.12" :status "planned"
+   :title "The dashboard functional test reads where --json as the page serves it"
+   :text "TestDashboardServesThePageOnEveryListener compared each listener's /api/sprint tables against
+    raw where --json; since the page serves internal/sprintdash's pageData, which folds each stream's
+    stream_costs record (the tiers and in_flight fields) into the work rows, the two never matched.
+    The test now puts where --json through sprintdash.PageData at a fixed time before it unmarshals its
+    expectation, and compares tables and landed as before. No product or dashboard change."
+   :origin "this card")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
@@ -888,6 +928,26 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (fix "verify-defaults-to-the-trees-import-scope" :release "v1.2.14" :status "planned"
+   :title "verify compares the scope its tree was imported with, not the whole organization"
+   :text "import --repo <org>/<name> now records the repositories it read as the work-tree's :scope, written only for a scoped import; a whole-organization tree stays byte for byte what it was, and a file without :scope reads as a whole-organization tree. verify with no --repo compares the tree's own scope (tla/WorkImport.tla's Verify already read the scope it imported), --repo narrows within it, and a --repo outside it is refused naming the scope before any GitHub call; verify --against does the same. Before, verify with no --repo read the whole organization and reported MISSING for every repository the scoped import left out."
+   :origin "the card verify-defaults-to-the-trees-import-scope w2; the v1.2.12 inventory 2026-10-11 section 9 row D12 (code read at nova-sprint main 00c54ba)")
+  (fix "ready-over-reads-the-settled-rests" :release "v1.2.14" :status "planned"
+   :title "The ready-over judgment reads the deal's settled rests"
+   :text "A ready card whose tier is served only by a route resting at the tick's now raises the ready-over
+    judgment (a ready card is not dealt), naming the resting route, whether the provider's recorded rest or
+    one the rule rests this tick. The ready-over part settles the rests once as the deal does (withRests),
+    on the snapshot the conditions are counted on, so the route the judgment names as resting is exactly one
+    the deal does not draw; a rest whose time has ended is not named and the card is dealt."
+   :origin "card ready-over-reads-the-settled-rests.w2; the seat's v1.2.14 audit, 2026-10-11")
+  (fix "tick-watchdog-refuses-a-negative-deadline" :release "v1.2.14" :status "planned"
+   :title "run refuses a negative --tick-deadline"
+   :text "A negative --tick-deadline is refused right after the flags are parsed, through run's usual refuse helper, before the loop starts or a server listens; the refusal names the flag, the value and that 0 waits for ever. Before, tickDeadlineOf returned 0 for any least <= 0 and tickWithin waited for ever when d <= 0, so --tick-deadline -1s switched the watchdog off with nothing said. 0 still waits for ever and every positive value behaves as today."
+   :origin "nova-tools#5173 (transferred here at the split), roadmap item tick-watchdog-bounded-diagnostics, its negative-deadline half; this card")
+  (fix "stops-digest-counts-only-held-stops" :release "v1.2.14" :status "planned"
+   :title "The stops digest counts only the stops still holding"
+   :text "One plan could close a stop and at the same time send an NStopsDigest saying it still holds: notify closes the open NStopMemberDown judgment of a member up again, and stopsDigest then gathered its stops from the snapshot before the plan, counting and naming the stop just closed. stopsDigest now leaves out every judgment the same plan closes, matched by note id; with no stop left it writes neither the digest nor its clock."
+   :origin "v1.2.12 inventory 2026-10-11, section 9 row D8; card stops-digest-counts-only-held-stops.w1, id given by the coordinator 2026-10-11 (code read at nova-sprint main 00c54ba)")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"

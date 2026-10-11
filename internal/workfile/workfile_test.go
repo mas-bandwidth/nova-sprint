@@ -44,6 +44,35 @@ func recorded(t *testing.T) *workfile.Tree {
 	return &workfile.Tree{Source: "github", Org: "mas-bandwidth", Fetched: "2026-01-01T00:00:00Z", Repos: []workfile.Repo{r}}
 }
 
+// TestEncodeRecordsAScopedImportsScope (SPEC-WORK-V1 sections 1.2 and 1.6):
+// :scope is written only for a scoped import, reads back, and a tree without
+// it is a whole-organization tree whose file carries no :scope (so its bytes
+// are what they always were).
+func TestEncodeRecordsAScopedImportsScope(t *testing.T) {
+	t.Parallel()
+	whole, err := workfile.Encode(hard())
+	require.NoError(t, err)
+	assert.NotContains(t, string(whole), ":scope", "a whole-organization tree carries :scope")
+
+	scoped := hard()
+	scoped.Scope = []string{"o/a", "o/b"}
+	data, err := workfile.Encode(scoped)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `:scope ("o/a" "o/b")`)
+	back, err := workfile.Decode("scoped", data, workfile.Limits(len(data)))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"o/a", "o/b"}, back.Scope)
+
+	old, err := workfile.Decode("whole", whole, workfile.Limits(len(whole)))
+	require.NoError(t, err)
+	assert.Empty(t, old.Scope, "a file without :scope is a whole-organization tree")
+
+	out := hard()
+	out.Scope = []string{"o/b", "o/a"}
+	_, err = workfile.Encode(out)
+	assert.ErrorContains(t, err, "out of order or repeated", "an unsorted scope was written")
+}
+
 // TestEncodeDecodeIsTheIdentity (SPEC-WORK-V1 section 1.2): encoded and read
 // back, a tree equals itself field for field, and encodes to the same bytes.
 func TestEncodeDecodeIsTheIdentity(t *testing.T) {

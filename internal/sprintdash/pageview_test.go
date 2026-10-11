@@ -20,10 +20,11 @@ import (
 
 // The live page's files as the Python server serves them (dashboard/live/, read 2026-10-11 at
 // 03:28Z, its comments since naming the owner as "the owner" there and here alike, a
-// comment-only change): the page is that page, byte for byte (pageview.go).
+// comment-only change; app.js's Work stream cell now shows the stream's display name, the
+// owner's ask of 2026-10-11): the page is that page, byte for byte (pageview.go).
 const (
 	liveIndexSHA256 = "dfd644d676c948bacc1f32461897d699b8a3b09ce64a594abc525eb7446be30c"
-	liveAppSHA256   = "1421928a0c96ac5fa6179a7bf5638199dc1c04843e479619dec3afa327738067"
+	liveAppSHA256   = "ae65112ec1612f6f957f490ad57377a1120acea05e2715259023f585e11d0054"
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )
@@ -350,4 +351,28 @@ func TestThePageIsTheLivePageSentinelsAreNotWork(t *testing.T) {
 	// no rows: as where printed it
 	plain := `{"landed":3,"all":5,"summary":"3/5 60.0% -> ETA 1h0m","tables":{"work":{}}}`
 	assert.JSONEq(t, plain, string(PageData([]byte(plain), f.Now)))
+}
+
+// The page's data carries a stream's display name in streams[] (the /api/sprint body), so
+// app.js draws it in the Work table's stream cell (docs/SPEC-SPRINT-DASHBOARD.md, Work;
+// the owner, 2026-10-11: "agree that the name becomes the key, and you add a small display
+// name. good tidy feature. pls add.").
+func TestThePageDataCarriesTheStreamDisplayName(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	r.next = func() ([]byte, error) {
+		return []byte(strings.Replace(string(twoReleases(8)),
+			`{"Stream":"sprint-v1-release","Release":"v1.0.0","State":"moving"}`,
+			`{"Stream":"sprint-v1-release","Release":"v1.0.0","Display":"point-fix-v1.0.0","State":"moving"}`, 1)), nil
+	}
+	_, d := apiOf(t, r.s.Pull(), "/api/sprint")
+	b, err := json.Marshal(d["streams"])
+	require.NoError(t, err)
+	var streams []struct{ Stream, Display string }
+	require.NoError(t, json.Unmarshal(b, &streams))
+	byName := map[string]string{}
+	for _, s := range streams {
+		byName[s.Stream] = s.Display
+	}
+	assert.Equal(t, "point-fix-v1.0.0", byName["sprint-v1-release"], "the display name rides in streams[]")
 }

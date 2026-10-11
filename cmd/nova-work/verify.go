@@ -16,7 +16,9 @@ import (
 
 // verifyTree is layer 1's check (SPEC-WORK-V1 section 1.6): a fresh read of
 // the source compared with the tree field for field; zero differences is the
-// receipt tla/WorkImport.tla's Verify action records.
+// receipt tla/WorkImport.tla's Verify action records. Like that Verify, it
+// compares only the repositories the tree was imported with (its :scope),
+// not the whole organization (SPEC-WORK-V1 section 1.2).
 func (g github) verifyTree(c *tool.Call) *tool.Out {
 	path := c.Str("tree")
 	start := g.now()
@@ -30,6 +32,12 @@ func (g github) verifyTree(c *tool.Call) *tool.Out {
 	for _, r := range repos(c) {
 		if o, _, _ := strings.Cut(r, "/"); o != tree.Org {
 			c.Problem(fmt.Sprintf("--repo %s is not in the tree's organization %s", r, tree.Org))
+		}
+		// A scoped tree names its repositories: a --repo outside that scope
+		// is refused here, before any GitHub call (SPEC-WORK-V1 sections 1.2
+		// and 1.6).
+		if len(tree.Scope) > 0 && !slices.Contains(tree.Scope, r) {
+			c.Problem(fmt.Sprintf("--repo %s is not in the tree's scope (%s); the tree was imported with --repo", r, strings.Join(tree.Scope, ", ")))
 		}
 	}
 	if o := c.Refused(); o != nil {
@@ -50,10 +58,17 @@ func (g github) verifyTree(c *tool.Call) *tool.Out {
 		return withTree(tool.Refuse(err.Error()), path, ghRemedy(ghPath)).Fact("calls", f.Calls).Fact("gh", ghPath)
 	}
 
+	// The default scope is the tree's own: the repositories a scoped import
+	// read (tla/WorkImport.tla's Verify reads the scope it imported). A
+	// whole-organization tree has none, so the scope is the organization.
+	scopeRepos := repos(c)
+	if len(scopeRepos) == 0 {
+		scopeRepos = tree.Scope
+	}
 	var metas []workgh.RepoMeta
 	var err error
-	if len(repos(c)) > 0 {
-		metas, err = scope(ctx, f, tree.Org, repos(c))
+	if len(scopeRepos) > 0 {
+		metas, err = scope(ctx, f, tree.Org, scopeRepos)
 	} else {
 		metas, err = f.Repos(ctx, tree.Org)
 	}
@@ -68,7 +83,7 @@ func (g github) verifyTree(c *tool.Call) *tool.Out {
 		}
 		fresh.Repos = append(fresh.Repos, r)
 	}
-	diffs := workfile.Diff(tree, fresh, repos(c))
+	diffs := workfile.Diff(tree, fresh, scopeRepos)
 	cnt := fresh.Count()
 	o := tool.Done()
 	if len(diffs) > 0 {
@@ -87,7 +102,13 @@ func verifyAgainst(c *tool.Call, path string, tree *workfile.Tree, data []byte, 
 	if refused != nil {
 		return refused
 	}
+	// As with the GitHub read, the default scope is the tree's own
+	// (SPEC-WORK-V1 sections 1.2 and 1.6); --repo narrows within it and was
+	// checked against it before this call.
 	scope := repos(c)
+	if len(scope) == 0 {
+		scope = tree.Scope
+	}
 	fresh := &workfile.Tree{Source: other.Source, Org: other.Org}
 	for _, r := range other.Repos {
 		if len(scope) == 0 || slices.Contains(scope, r.Name) {

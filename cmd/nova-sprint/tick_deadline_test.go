@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -416,4 +418,56 @@ func TestTheTickDeadlineStretchesWithTheMedianWall(t *testing.T) {
 		}
 	}
 	assert.Equal(t, []string{"deadline=10s", "deadline=24s", "deadline=24s"}, deadlines, out.String())
+}
+
+// runOnce runs `run` with args as the app's dispatch does, ending the loop after
+// its first tick by replacing the binary the loop reads before each tick
+// (run_replaced_test.go): a run refused before the loop returns the refusal and
+// prints nothing to stdout, and a run that starts returns exitReplaced after
+// one tick. It returns the exit code, stdout and stderr.
+func runOnce(t *testing.T, ta *testApp, args ...string) (int, string, string) {
+	t.Helper()
+	exe := filepath.Join(t.TempDir(), "nova-sprint")
+	require.NoError(t, os.WriteFile(exe, []byte("the build the loop began with"), 0o755))
+	ta.a.executable = func() (string, error) { return exe, nil }
+	ta.a.ticked = func(int, time.Time, string) {
+		require.NoError(t, os.WriteFile(exe, []byte("a build installed under the loop, longer"), 0o755))
+	}
+	var out, errb bytes.Buffer
+	code := ta.a.run(ta.withEpoch(append([]string{"run"}, args...)), &out, &errb)
+	return code, out.String(), errb.String()
+}
+
+// A negative --tick-deadline would silently switch the watchdog off (tickWithin
+// waits for ever when d <= 0): it is a usage refusal after the parse, before any
+// tick, naming the flag, the value and that 0 waits for ever.
+// (docs/SPEC-SPRINT.md section 14, The server, "The tick's deadline";
+// nova-tools#5173, tick-watchdog-bounded-diagnostics)
+func TestRunRefusesANegativeTickDeadline(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("add --stream s1 --count 3")
+	ta.ok("start")
+	code, out, errs := runOnce(t, ta, "--tick-deadline", "-1s")
+	assert.Equal(t, 2, code, "a negative deadline is a usage refusal\n%s%s", out, errs)
+	assert.Empty(t, out, "the refusal is before any tick, so stdout has no TICK line")
+	assert.NotContains(t, out+errs, "TICK DEADLINE", "no tick was given up")
+	assert.Contains(t, errs, "--tick-deadline", "the refusal names the flag")
+	assert.Contains(t, errs, "-1s", "the refusal names the value")
+	assert.Contains(t, errs, "0 waits for ever", "the refusal says 0 waits for ever")
+}
+
+// --tick-deadline 0 is not caught by the refusal: it waits for ever, the tick
+// runs with no deadline, and the loop goes on.
+func TestRunTickDeadlineZeroStillTicks(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("add --stream s1 --count 3")
+	ta.ok("start")
+	code, out, errs := runOnce(t, ta, "--tick-deadline", "0")
+	assert.Equal(t, exitReplaced, code, "one tick ran, then the replaced binary stopped the loop\n%s%s", out, errs)
+	assert.Contains(t, out, "deadline=0s", "the tick ran with no deadline")
+	assert.NotContains(t, errs, "REFUSED", "0 is not refused")
 }
