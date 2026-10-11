@@ -101,18 +101,29 @@ func hookArmed(name string) bool {
 	return ok
 }
 
-// hookExempt are the verbs the gate never refuses: the hook itself and its end. help,
-// -h and version run before the gate (main.go, run), and a verb's own -h is its help.
-var hookExempt = map[string]bool{"hook": true, "unhook": true}
+// hookExempt are the verbs the gate never refuses, whoever runs them (docs/SPEC-SPRINT.md,
+// "The two pushes"): the hook itself and its end, and the server's own life (run, the
+// server; tick, its loop; server switch and seat install, which put a server in place;
+// selftest land, the server's self test). The hook is a stream from the server, so a
+// verb that starts or replaces the server cannot wait on it. help, -h and version run
+// before the gate (main.go, run), and a verb's own -h is its help. Every other verb, the
+// machine's adopt, seat uninstall and friend clean among them, is gated for the holder.
+var hookExempt = map[string]bool{"hook": true, "unhook": true, "run": true, "tick": true, "server switch": true, "seat install": true, "selftest land": true}
 
-// hookWorkerFree are the worker verbs a worker friend runs unhooked: the beats, its
-// daemon's liveness, which the friend row's health is read from.
-var hookWorkerFree = map[string]bool{"fleet beat": true, "friend beat": true}
-
-// hookMachineVerb says verb is the machine's (classMachine: the run loop, the server
-// and its install), never a caller's: the hook is a stream from the server, so the
-// verb that starts the server cannot wait on it.
-func hookMachineVerb(verb string) bool { return verbClasses[verb] == classMachine }
+// hookExemptCall says the call of verb with these words is exempt: tick is, but not
+// tick --answer-rules, which answers judgments as the coordinator (the word read as the
+// command line has it, so no flag parse can lose it).
+func hookExemptCall(verb string, args []string) bool {
+	if verb == "tick" {
+		for _, w := range args {
+			name, val, _ := strings.Cut(strings.TrimLeft(w, "-"), "=")
+			if strings.HasPrefix(w, "-") && name == "answer-rules" && val != "false" {
+				return false
+			}
+		}
+	}
+	return hookExempt[verb]
+}
 
 // readHook is the seat's hook record; ok false when there is none.
 func readHook(ctx context.Context, st *store.Store) (sprint.HookRecord, bool, error) {
@@ -144,65 +155,31 @@ func writeHook(ctx context.Context, st *store.Store, rec sprint.HookRecord) erro
 	return kv.SetKey(ctx, store.KeySeatHook, string(b))
 }
 
-// hookCaller is whom the gate judges for a call of verb, and as what: the seat's holder
-// as the coordinator, on every verb but the exempt and the machine's; a worker friend
-// (a name on the friends table) on its worker and report verbs but the beats; role ""
-// for a call the gate does not judge (anyone else: the owner, a fleet member, a
-// reader). who is the worker a worker verb names (--as), else the actor.
-func hookCaller(ctx context.Context, st *store.Store, verb, who string) (role string, err error) {
-	if who == "" || hookExempt[verb] || hookMachineVerb(verb) || !hookArmed(who) {
+// hookedIn is why the call may not run for want of the seat's hook, "" when it may
+// (docs/SPEC-SPRINT.md, "The two pushes"; sprint.HookGateCall; SeatHook.tla, Gate): the
+// seat's holder, on every verb but the exempt, wants both its pushes live, the sprint
+// push as the server recorded it and the bus push from its record in the bus store (read
+// from a copy at most a second old: hookerShared). A record that cannot be read refuses,
+// naming why (fail closed). Nothing on a sprint with no holder is judged (the first init
+// names the seat). c.actor is the caller's own name (--actor, NOVA_SPRINT_ACTOR), never a
+// worker's --as. exempt is the caller's word on the call (hookExemptCall reads its
+// words; the store's open has the verb alone).
+func (a *app) hookedIn(ctx context.Context, st *store.Store, c common, exempt bool) (string, error) {
+	if c.actor == "" || exempt || !hookArmed(c.actor) {
 		return "", nil
 	}
 	holder, err := st.B.Coordinator(ctx)
+	if err != nil || holder == "" || c.actor != holder {
+		return "", err
+	}
+	call := sprint.HookCall{Identity: c.actor}
+	rec, ok, err := readHook(ctx, st)
 	if err != nil {
-		return "", err
+		call.Unread = "the sprint push's record could not be read: " + oneline.Escape(err.Error())
 	}
-	if who == holder {
-		return sprint.HookRoleCoordinator, nil
-	}
-	switch verbClasses[verb] {
-	case classWorker, classReport:
-	default:
-		return "", nil
-	}
-	if hookWorkerFree[verb] {
-		return "", nil
-	}
-	friends, err := st.FriendNames(ctx)
-	if err != nil {
-		return "", err
-	}
-	if slices.Contains(friends, who) {
-		return sprint.HookRoleWorker, nil
-	}
-	return "", nil
-}
-
-// hookedIn is why the call may not run for want of its caller's hook, "" when it may
-// (docs/SPEC-SPRINT.md, "The two pushes"; sprint.HookGateCall; SeatHook.tla, Gate): the
-// caller's role (hookCaller) wants both its pushes live, the sprint push as the server
-// recorded it and the shared record in the bus store for the rest. A record that cannot
-// be read refuses, naming why (fail closed). Nothing on a sprint with no holder is
-// judged for the coordinator (the first init names the seat).
-func (a *app) hookedIn(ctx context.Context, st *store.Store, c common) (string, error) {
-	role, err := hookCaller(ctx, st, c.verb, c.actor)
-	if err != nil || role == "" {
-		return "", err
-	}
-	call := sprint.HookCall{Role: role, Identity: c.actor}
-	if role == sprint.HookRoleCoordinator {
-		rec, ok, err := readHook(ctx, st)
-		if err != nil {
-			call.Unread = "the sprint push's record could not be read: " + oneline.Escape(err.Error())
-		}
-		call.Seat, call.SeatOK = rec, ok
-	}
+	call.Seat, call.SeatOK = rec, ok
 	if call.Unread == "" {
-		h, err := a.hooker(ctx)
-		if err == nil {
-			call.Shared, call.SharedOK, err = h.Shared(ctx, c.actor)
-		}
-		if err != nil {
+		if call.Shared, err = a.hookerShared(ctx, c.actor); err != nil {
 			call.Unread = "the bus push's record (" + sprint.HookSharedKey(c.actor) + " in the bus store) could not be read: " + oneline.Escape(err.Error())
 		}
 	}
@@ -211,15 +188,17 @@ func (a *app) hookedIn(ctx context.Context, st *store.Store, c common) (string, 
 
 // hookFirst runs the gate before the verb, on the verb's own words, so its refusal is
 // the one line and nothing else, exit 1: "You must hook in first: run nova-sprint hook
-// --actor <name> (...)", the breadcrumb, or the push to acknowledge. It fails closed:
-// a caller it judges whose store is not named or does not open is refused with why.
-// It lets the verb run only when the gate does, when no one is named to judge (no
-// actor and no --as: a read that changes nothing, or a verb that refuses for want of
-// an actor), and for a verb's help or flags it refuses (the verb refuses them itself,
-// exit 2, writing nothing).
+// --actor <name> (...)", the breadcrumb, or the push to acknowledge. The caller is the
+// actor (--actor, else NOVA_SPRINT_ACTOR), judged against the seat's holder before
+// anything else: a worker verb's --as names its worker, and never takes the holder past
+// the gate. It fails closed: a caller whose store is not named or does not open is
+// refused with why. It lets the verb run only when the gate does, when no one is named to
+// judge (no actor: a read that changes nothing, or a verb that refuses for want of an
+// actor), and for a verb's help or flags it refuses (the verb refuses them itself, exit
+// 2, writing nothing).
 func (a *app) hookFirst(args []string, stderr io.Writer) (int, bool) {
 	v := readVerb(args)
-	if v.words == 0 || v.help || v.err != nil || hookExempt[v.name] || hookMachineVerb(v.name) {
+	if v.words == 0 || v.help || v.err != nil || hookExemptCall(v.name, args[v.words:]) {
 		return 0, false
 	}
 	c := common{verb: v.name, redis: firstEnv(a.getenv, "NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR", seatLoginAddr), actor: a.getenv("NOVA_SPRINT_ACTOR")}
@@ -229,13 +208,6 @@ func (a *app) hookFirst(args []string, stderr io.Writer) (int, bool) {
 	if f := v.fs.Lookup("actor"); f != nil && v.given("actor") {
 		c.actor = f.Value.String()
 	}
-	// a worker verb is its worker's (orActor): the name --as gives is who is judged
-	if f := v.fs.Lookup("as"); f != nil && v.given("as") {
-		switch verbClasses[v.name] {
-		case classWorker, classReport:
-			c.actor = f.Value.String()
-		}
-	}
 	if c.actor == "" || !hookArmed(c.actor) {
 		return 0, false
 	}
@@ -244,15 +216,15 @@ func (a *app) hookFirst(args []string, stderr io.Writer) (int, bool) {
 		return 1, true
 	}
 	if strings.TrimSpace(c.redis) == "" {
-		return refuse(sprint.HookBreadcrumb("", c.actor, "", "no sprint store is named (NOVA_SPRINT_REDIS or --redis), so the hook cannot be checked"))
+		return refuse(sprint.HookBreadcrumb(c.actor, "", "no sprint store is named (NOVA_SPRINT_REDIS or --redis), so the hook cannot be checked"))
 	}
 	st, err := a.storeCtx(context.Background(), common{redis: c.redis})
 	if err != nil {
-		return refuse(sprint.HookBreadcrumb("", c.actor, "", "the sprint store "+oneline.Field(c.redis)+" did not open, so the hook cannot be checked: "+oneline.Escape(err.Error())))
+		return refuse(sprint.HookBreadcrumb(c.actor, "", "the sprint store "+oneline.Field(c.redis)+" did not open, so the hook cannot be checked: "+oneline.Escape(err.Error())))
 	}
-	why, err := a.hookedIn(context.Background(), st, c)
+	why, err := a.hookedIn(context.Background(), st, c, false) // the exempt call left above
 	if err != nil {
-		return refuse(sprint.HookBreadcrumb("", c.actor, "", "the hook could not be checked: "+oneline.Escape(err.Error())))
+		return refuse(sprint.HookBreadcrumb(c.actor, "", "the hook could not be checked: "+oneline.Escape(err.Error())))
 	}
 	if why == "" {
 		return 0, false
@@ -270,12 +242,11 @@ func (a *app) hookFirst(args []string, stderr io.Writer) (int, bool) {
 	return 1, true
 }
 
-// --- the shared record (sprint.Hooker) over the bus store ---
+// --- the bus push's record (sprint.Hooker) over the bus store ---
 
-// busHooker is sprint.Hooker over the bus store: the hash hook:<identity> (HookShared's
-// fields), written with the bus store's marks (HSET, HDEL) and read with Marks
-// (HGETALL). It is the layout nova-tools' nova-hook keeps (docs/SPEC-SPRINT.md, "The
-// two pushes").
+// busHooker is sprint.Hooker over the bus store: the hash sprint-hook:<identity>
+// (HookShared's fields), written with the bus store's marks (HSET, HDEL) and read with
+// Marks (HGETALL). It is interim: the hook module's record replaces it.
 type busHooker struct{ s bus.Store }
 
 func (h busHooker) Shared(ctx context.Context, identity string) (sprint.HookShared, bool, error) {
@@ -302,10 +273,10 @@ func (h busHooker) set(ctx context.Context, identity string, fields map[string]s
 
 func hookStamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
-// Arm records identity armed for role at at, its role's pushes armed and neither
+// Arm records identity armed as the coordinator at at, both pushes armed and neither
 // proven nor unhooked since.
-func (h busHooker) Arm(ctx context.Context, identity, role string, at time.Time) error {
-	return h.set(ctx, identity, map[string]string{"role": role, "pushes": strings.Join(sprint.HookRolePushes(role), ","), "armed_at": hookStamp(at), "proved_at": "", "unhooked_at": ""})
+func (h busHooker) Arm(ctx context.Context, identity string, at time.Time) error {
+	return h.set(ctx, identity, map[string]string{"role": sprint.HookRoleCoordinator, "pushes": strings.Join(sprint.HookCoordinatorPushes, ","), "armed_at": hookStamp(at), "proved_at": "", "unhooked_at": ""})
 }
 
 // Prove records both pushes proven at at.
@@ -324,12 +295,16 @@ func (h busHooker) Unhook(ctx context.Context, identity string, at time.Time) er
 func (a *app) hooker(ctx context.Context) (sprint.Hooker, error) {
 	a.hk.mu.Lock()
 	defer a.hk.mu.Unlock()
+	return a.hookerLocked(ctx)
+}
+
+func (a *app) hookerLocked(ctx context.Context) (sprint.Hooker, error) {
 	if a.hk.cur != nil {
 		return a.hk.cur, nil
 	}
 	addr := a.getenv(busRedisEnv)
 	if addr == "" {
-		return nil, errors.New(busRedisEnv + " is not set: the bus store, where every hook is recorded (" + sprint.HookSharedPrefix + "<name>), is not named")
+		return nil, errors.New(busRedisEnv + " is not set: the bus store, where the bus push is recorded (" + sprint.HookSharedPrefix + "<name>), is not named")
 	}
 	b, _, err := a.busOpen(ctx, addr, a.getenv(busUserEnv))
 	if err != nil {
@@ -339,12 +314,97 @@ func (a *app) hooker(ctx context.Context) (sprint.Hooker, error) {
 	return a.hk.cur, nil
 }
 
-// hookerBox holds a process's Hooker and the bus store under it, once opened: one per
-// process, shared by the server's lane apps.
+// hookCacheFresh is how old a copy of a bus push record the gate takes: a second. A
+// server keeps every copy fresh off its line of control (hookerRefresh), so a gate
+// taken on the line reads memory and never waits on the bus store.
+const (
+	hookCacheFresh  = time.Second
+	hookCacheRefill = 500 * time.Millisecond
+)
+
+// hookerBox holds a process's Hooker and the bus store under it, once opened, and the
+// copies of the records the gate has read (by name, with when each was read, on this
+// process's own clock): one per process, shared by the server's lane apps.
 type hookerBox struct {
-	mu  sync.Mutex
-	cur sprint.Hooker
-	bus *bus.Bus
+	mu        sync.Mutex
+	cur       sprint.Hooker
+	bus       *bus.Bus
+	cache     map[string]hookCopy
+	refilling bool
+}
+
+type hookCopy struct {
+	rec sprint.HookShared
+	at  time.Time
+}
+
+// hookerShared is identity's record for the gate: the copy when it is at most
+// hookCacheFresh old, else read now (and kept). In a server the copies are refilled every
+// hookCacheRefill off the line (hookerRefresh), so the read here is the first one only.
+func (a *app) hookerShared(ctx context.Context, identity string) (sprint.HookShared, error) {
+	a.hk.mu.Lock()
+	if c, ok := a.hk.cache[identity]; ok && time.Since(c.at) <= hookCacheFresh {
+		a.hk.mu.Unlock()
+		return c.rec, nil
+	}
+	h, err := a.hookerLocked(ctx)
+	a.hk.mu.Unlock()
+	if err != nil {
+		return sprint.HookShared{}, err
+	}
+	rec, _, err := h.Shared(ctx, identity)
+	if err != nil {
+		return sprint.HookShared{}, err
+	}
+	a.hk.mu.Lock()
+	if a.hk.cache == nil {
+		a.hk.cache = map[string]hookCopy{}
+	}
+	a.hk.cache[identity] = hookCopy{rec: rec, at: time.Now()}
+	start := a.serveAddr != "" && !a.hk.refilling
+	if start {
+		a.hk.refilling = true
+	}
+	a.hk.mu.Unlock()
+	if start {
+		go a.hookerRefresh(context.Background())
+	}
+	return rec, nil
+}
+
+// hookerRefresh keeps a server's copies fresh: every hookCacheRefill it reads each record
+// the gate has asked for, off the line, and replaces the copy; a read that fails leaves
+// the copy to age past hookCacheFresh, so the gate then reads for itself and refuses on
+// the error (fail closed). It runs for the life of the server.
+func (a *app) hookerRefresh(ctx context.Context) {
+	t := time.NewTicker(hookCacheRefill)
+	defer t.Stop()
+	for range t.C {
+		a.hk.mu.Lock()
+		h := a.hk.cur
+		names := slices.Collect(maps.Keys(a.hk.cache))
+		a.hk.mu.Unlock()
+		if h == nil {
+			continue
+		}
+		for _, n := range names {
+			rec, _, err := h.Shared(ctx, n)
+			if err != nil {
+				continue
+			}
+			a.hk.mu.Lock()
+			a.hk.cache[n] = hookCopy{rec: rec, at: time.Now()}
+			a.hk.mu.Unlock()
+		}
+	}
+}
+
+// hookerForget drops identity's copy: a write by this process (arm, prove, unhook) is
+// read again at the next gate.
+func (a *app) hookerForget(identity string) {
+	a.hk.mu.Lock()
+	delete(a.hk.cache, identity)
+	a.hk.mu.Unlock()
 }
 
 // hookHub is the server's hold of the hooks: the one subscription open for each name
@@ -363,21 +423,25 @@ type hookSession struct {
 	a    *app
 	id   string
 	name string
-	role string // sprint.HookRoleCoordinator (the seat's holder) or sprint.HookRoleWorker (a friend)
 	conn io.ReadWriteCloser
 
 	wmu sync.Mutex // one line at a time on the connection
 
-	mu      sync.Mutex
-	chal    string
-	chalAt  time.Time
-	proven  time.Time
-	seq     uint64
-	open    []sprint.HookItem // delivered, not acknowledged, oldest first
-	sent    map[string]bool
-	ended   bool
-	done    chan struct{}
-	endOnce sync.Once
+	mu     sync.Mutex
+	chal   string
+	chalAt time.Time
+	proven time.Time
+	seq    uint64
+	open   []sprint.HookItem // delivered, not acknowledged, oldest first
+	sent   map[string]bool
+	// firstSeen is when this hook first saw each open judgment group (by id), and warnSet
+	// the last waiting-judgment warning's set: its full text goes out when the set changes
+	// (sprint.JudgmentWarnings).
+	firstSeen map[string]time.Time
+	warnSet   string
+	ended     bool
+	done      chan struct{}
+	endOnce   sync.Once
 }
 
 func (a *app) hookHub() *hookHub {
@@ -395,6 +459,25 @@ func hookNonce() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b) // ignored: crypto/rand.Read never fails (Go 1.24+)
 	return hex.EncodeToString(b)
+}
+
+// hookRead runs f on a store for reading, off the server's line of control: the read
+// lane's (servelanes.go), under the lane's own line, when the server has lanes; else (a
+// twin file, or no server: a test's) on the line.
+func (a *app) hookRead(ctx context.Context, f func(st *store.Store) error) error {
+	l := a.lanesFor(ctx)
+	if l == nil {
+		return a.onLine(ctx, f)
+	}
+	if err := l.line.LockCtx(ctx); err != nil {
+		return err
+	}
+	defer l.line.Unlock()
+	st, err := l.read.store(common{redis: l.read.serveAddr})
+	if err != nil {
+		return err
+	}
+	return f(st)
 }
 
 // onLine runs f holding the server's line of control (a.serial), where every verb the
@@ -429,12 +512,12 @@ func (a *app) serveHook(w http.ResponseWriter, r *http.Request, local bool) {
 		http.Error(w, "the hook is a stream: Upgrade: "+hookUpgrade+"; run: nova-sprint hook", http.StatusUpgradeRequired)
 		return
 	}
-	role, why, err := a.hookRoleOf(r.Context(), name)
+	why, err := a.hookHolderWhy(r.Context(), name)
 	if err != nil {
 		http.Error(w, "the store did not answer: "+oneline.Err(err), http.StatusServiceUnavailable)
 		return
 	}
-	if role == "" {
+	if why != "" {
 		http.Error(w, why, http.StatusForbidden)
 		return
 	}
@@ -458,30 +541,21 @@ func (a *app) serveHook(w http.ResponseWriter, r *http.Request, local bool) {
 	a.hookRun(context.Background(), name, &deadlineConn{Conn: conn, r: brw.Reader}, hookLook)
 }
 
-// hookRoleOf is the role name hooks in as: the seat's holder is the coordinator; a name
-// on the friends table is a worker; anyone else has no hook here, and why says so.
-func (a *app) hookRoleOf(ctx context.Context, name string) (role, why string, err error) {
+// hookHolderWhy is why name may not hook in here, "" when it may: the hook is the seat's
+// holder's alone. (A worker friend's hook is the shared nova-tools hook module's, and
+// lands with its client: docs/SPEC-SPRINT.md, "The two pushes".)
+func (a *app) hookHolderWhy(ctx context.Context, name string) (why string, err error) {
 	err = a.onLine(ctx, func(st *store.Store) error {
 		holder, err := st.B.Coordinator(ctx)
 		if err != nil {
 			return err
 		}
-		if holder == name {
-			role = sprint.HookRoleCoordinator
-			return nil
+		if holder != name {
+			why = fmt.Sprintf("the hook is the seat's holder's: %s, not %s; nothing was changed", orDashStr(holder, "nobody"), name)
 		}
-		friends, err := st.FriendNames(ctx)
-		if err != nil {
-			return err
-		}
-		if slices.Contains(friends, name) {
-			role = sprint.HookRoleWorker
-			return nil
-		}
-		why = fmt.Sprintf("the hook is the seat's holder's (%s) or a friend's, and %s is neither; nothing was changed", orDashStr(holder, "nobody"), name)
 		return nil
 	})
-	return role, why, err
+	return why, err
 }
 
 // deadlineConn is the hook's connection: reads through the buffer the upgrade read, and
@@ -503,7 +577,7 @@ func (d *deadlineConn) Write(p []byte) (int, error) {
 // look, and the session's lines read until the connection ends. An end that is not
 // unhook is a drop, recorded gone and told (Drop).
 func (a *app) hookRun(ctx context.Context, name string, conn io.ReadWriteCloser, look time.Duration) {
-	s := &hookSession{a: a, id: hookNonce(), name: name, conn: conn, sent: map[string]bool{}, done: make(chan struct{})}
+	s := &hookSession{a: a, id: hookNonce(), name: name, conn: conn, sent: map[string]bool{}, firstSeen: map[string]time.Time{}, done: make(chan struct{})}
 	if err := s.start(ctx); err != nil {
 		s.end(ctx, sprint.HookGone, "the hook could not begin: "+err.Error())
 		return
@@ -530,15 +604,14 @@ func (a *app) hookRun(ctx context.Context, name string, conn io.ReadWriteCloser,
 // this one's), records this one hooked and unproven, and sends the hello and the first
 // challenge.
 func (s *hookSession) start(ctx context.Context) error {
-	role, why, err := s.a.hookRoleOf(ctx, s.name)
+	why, err := s.a.hookHolderWhy(ctx, s.name)
 	if err != nil {
 		return err
 	}
-	if role == "" {
+	if why != "" {
 		_ = s.send(hookMsg{T: "bye", Why: why}) // ignored: it ends either way
 		return errors.New(why)
 	}
-	s.role = role
 	h := s.a.hookHub()
 	h.mu.Lock()
 	old := h.cur[s.name]
@@ -548,23 +621,17 @@ func (s *hookSession) start(ctx context.Context) error {
 		old.replaced()
 	}
 	now := s.a.now()
-	if s.coordinator() {
-		if err := s.a.onLine(ctx, func(st *store.Store) error {
-			return writeHook(ctx, st, sprint.HookRecord{Name: s.name, Session: s.id, State: sprint.HookHooked, Since: now})
-		}); err != nil {
-			return err
-		}
+	if err := s.a.onLine(ctx, func(st *store.Store) error {
+		return writeHook(ctx, st, sprint.HookRecord{Name: s.name, Session: s.id, State: sprint.HookHooked, Since: now})
+	}); err != nil {
+		return err
 	}
-	s.a.serveSay("SEAT HOOK name=%s role=%s session=%s: hooked, unproven until the challenge is answered", s.name, s.role, s.id[:8])
-	if err := s.send(hookMsg{T: "hello", Name: s.name, Role: s.role, Session: s.id}); err != nil {
+	s.a.serveSay("SEAT HOOK name=%s session=%s: hooked, unproven until the challenge is answered", s.name, s.id[:8])
+	if err := s.send(hookMsg{T: "hello", Name: s.name, Role: sprint.HookRoleCoordinator, Session: s.id}); err != nil {
 		return err
 	}
 	return s.challenge(now)
 }
-
-// coordinator says the session is the seat's (its record is the sprint push's word);
-// a worker's session keeps no record in the sprint store: its word is the shared one.
-func (s *hookSession) coordinator() bool { return s.role != sprint.HookRoleWorker }
 
 // challenge sends a fresh challenge and starts its clock (SeatHook.tla, Hook and
 // Rechallenge).
@@ -584,9 +651,6 @@ func (s *hookSession) challenge(now time.Time) error {
 // write that fails leaves the record as it was (the earlier bound: the safe side), says
 // so on the server's SEAT HOOK line, and does not end the subscription.
 func (s *hookSession) challengeLive(ctx context.Context, now time.Time) {
-	if !s.coordinator() {
-		return
-	}
 	err := s.a.onLine(ctx, func(st *store.Store) error {
 		r, _, err := readHook(ctx, st)
 		if err != nil {
@@ -679,11 +743,6 @@ func (s *hookSession) prove(ctx context.Context, c string) hookMsg {
 	now := s.a.now()
 	var rec sprint.HookRecord
 	err := s.a.onLine(ctx, func(st *store.Store) error {
-		if !s.coordinator() {
-			// a worker's proof is recorded by its hook process in the shared record
-			rec = sprint.HookProven(sprint.HookRecord{Name: s.name, Session: s.id, State: sprint.HookHooked}, now)
-			return nil
-		}
 		r, _, err := readHook(ctx, st)
 		if err != nil {
 			return err
@@ -700,6 +759,7 @@ func (s *hookSession) prove(ctx context.Context, c string) hookMsg {
 	s.mu.Lock()
 	s.chal, s.proven = "", now
 	s.mu.Unlock()
+	s.a.hookerForget(s.name) // the bus push's proof, written just before, is read afresh
 	s.a.serveSay("SEAT HOOK name=%s session=%s: proven until %s", s.name, s.id[:8], rec.Live.UTC().Format(time.RFC3339))
 	return hookMsg{T: "ok", Name: s.name, Live: rec.Live, Unacked: rec.Unacked}
 }
@@ -726,12 +786,6 @@ func (s *hookSession) ack(ctx context.Context, id uint64) hookMsg {
 // returns it.
 func (s *hookSession) record(ctx context.Context) (sprint.HookRecord, error) {
 	var rec sprint.HookRecord
-	if !s.coordinator() {
-		s.mu.Lock()
-		rec.Unacked = len(s.open)
-		s.mu.Unlock()
-		return rec, nil
-	}
 	err := s.a.onLine(ctx, func(st *store.Store) error {
 		r, _, err := readHook(ctx, st)
 		if err != nil {
@@ -790,46 +844,17 @@ func (s *hookSession) look(ctx context.Context) {
 	var seqBefore uint64
 	var openBefore int
 	var warn *hookMsg
-	err := s.a.onLine(ctx, func(st *store.Store) error {
-		if !s.coordinator() {
-			// a worker's work push: every card dealt to it, once (DealtTo)
-			cards, err := friendCardsOf(ctx, st, s.name)
-			if err != nil {
-				return err
-			}
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			seqBefore, openBefore = s.seq, len(s.open)
-			for _, c := range cards {
-				k := fmt.Sprintf("card:%s:%d:%d:%s", c.Card, c.Attempt, c.Gen, c.Col)
-				if s.sent[k] {
-					continue
-				}
-				s.sent[k] = true
-				addedSent = append(addedSent, k)
-				s.seq++
-				s.open = append(s.open, sprint.HookItem{ID: s.seq, What: c.Card, At: now})
-				pushes = append(pushes, hookMsg{T: "push", ID: s.seq, What: c.Card, Text: fmt.Sprintf("WORK card=%s col=%s kind=%s attempt=%d job=%s: run: nova-sprint friend cards %s", c.Card, c.Col, c.Kind, c.Attempt, c.Job, s.name)})
-			}
-			return nil
-		}
-		v, err := st.Inbox(ctx, defaultDeadline, defaultStale, 10000)
-		if err != nil {
-			return err
-		}
+	// the inbox is read off the server's line of control (hookRead: the read lane), so a
+	// look each second never holds the line; only a look with a push to record takes it
+	var v store.InboxView
+	err := s.a.hookRead(ctx, func(st *store.Store) error {
+		var err error
+		v, err = st.Inbox(ctx, defaultDeadline, defaultStale, 10000)
+		return err
+	})
+	if err == nil {
 		s.mu.Lock()
-		defer s.mu.Unlock()
 		seqBefore, openBefore = s.seq, len(s.open)
-		defer func() {
-			// the waiting-judgment warning: one push a look listing every judgment open
-			// sprint.JudgmentWarnAfter or longer, every look until it is answered. It is
-			// not an open push (an ack does not silence it and it never blocks the gate);
-			// it goes after this look's own pushes.
-			if ws := sprint.JudgmentWarnings(v.Groups, now); len(ws) > 0 {
-				s.seq++
-				warn = &hookMsg{T: "push", ID: s.seq, What: hookWarnWhat, Text: sprint.JudgmentWarningText(ws)}
-			}
-		}()
 		for _, g := range v.Groups {
 			if !forCoordinator(g) {
 				continue
@@ -850,8 +875,25 @@ func (s *hookSession) look(ctx context.Context) {
 			s.open = append(s.open, sprint.HookItem{ID: s.seq, What: g.ID, At: now})
 			pushes = append(pushes, hookMsg{T: "push", ID: s.seq, What: g.ID, Text: groupText(g, now, false)})
 		}
-		return nil
-	})
+		// the waiting-judgment warning: one push a look listing every judgment open
+		// sprint.JudgmentWarnAfter or longer, every look until it is answered: its full
+		// text when the set changed, else its one line. It is not an open push (an ack
+		// does not silence it and it never blocks the gate); it goes after this look's
+		// own pushes.
+		if ws := sprint.JudgmentWarnings(v.Groups, now, s.firstSeen); len(ws) > 0 {
+			s.seq++
+			set := sprint.JudgmentWarningSet(ws)
+			text := set
+			if set != s.warnSet {
+				text = sprint.JudgmentWarningText(ws)
+			}
+			s.warnSet = set
+			warn = &hookMsg{T: "push", ID: s.seq, What: hookWarnWhat, Text: text}
+		} else {
+			s.warnSet = ""
+		}
+		s.mu.Unlock()
+	}
 	if err != nil {
 		s.a.serveSay("SEAT HOOK name=%s: the inbox could not be read: %s", s.name, oneline.Escape(err.Error()))
 		return
@@ -930,13 +972,7 @@ func (s *hookSession) end(ctx context.Context, state, why string) {
 		if !mine {
 			return
 		}
-		if !s.coordinator() {
-			s.a.serveSay("SEAT HOOK name=%s role=%s state=%s why=%s", s.name, s.role, state, oneline.Quote(why))
-			if state != sprint.HookAway {
-				_ = s.conn.Close() // ignored: a drop's connection is gone already
-			}
-			return
-		}
+		s.a.hookerForget(s.name)
 		now := s.a.now()
 		var owner string
 		err := s.a.onLine(ctx, func(st *store.Store) error {
@@ -1011,6 +1047,18 @@ func (a *app) hookServerStart(ctx context.Context) {
 	if ok && rec.State == sprint.HookGone && rec.Why == "the server restarted: the subscription it held is gone" {
 		a.tellOwner(ctx, owner, rec.Name, rec.State, rec.Why)
 	}
+	// the bus store is dialled, and the holder's bus push read, off the line now, so the
+	// first gate on the line reads memory (hookerShared)
+	go func() {
+		var holder string
+		if err := a.onLine(ctx, func(st *store.Store) error {
+			var err error
+			holder, err = st.B.Coordinator(ctx)
+			return err
+		}); err == nil && holder != "" {
+			_, _ = a.hookerShared(ctx, holder) // ignored: a gate reads it again, and refuses on its error
+		}
+	}()
 }
 
 // --- the session's side ---
@@ -1347,13 +1395,13 @@ func (a *app) hookHold(ctx context.Context, addr, from, name string, stdout, std
 		switch m.T {
 		case "hello":
 			role = cmp.Or(m.Role, sprint.HookRoleCoordinator)
-			if err := hk.Arm(ctx, name, role, a.now()); err != nil {
+			if err := hk.Arm(ctx, name, a.now()); err != nil {
 				out.printf("HOOK BUS DOWN name=%s: the shared record could not be armed (%s); the hook ends; run: %s\n", oneline.Field(name), oneline.Escape(err.Error()), hookMonitor(name))
 				_ = conn.Close()
 				continue
 			}
 			out.printf("HOOK CONNECTED name=%s role=%s session=%s server=%s from=%s bus=%s: armed (the %s push and the %s push); not hooked until the challenge below is answered\n",
-				oneline.Field(m.Name), role, oneline.Field(m.Session), oneline.Field(addr), oneline.Field(from), oneline.Field(stream), sprint.HookRolePushes(role)[0], sprint.HookRolePushes(role)[1])
+				oneline.Field(m.Name), role, oneline.Field(m.Session), oneline.Field(addr), oneline.Field(from), oneline.Field(stream), sprint.HookCoordinatorPushes[0], sprint.HookCoordinatorPushes[1])
 			continue
 		case "challenge":
 			// the server's half; the bus half goes out on the bus and the line is said once
@@ -1407,16 +1455,25 @@ func (h *hookHoldState) busRead(c string) (string, bool) {
 }
 
 // take is the server's half of answer when answer is <sprint>.<bus> for the challenge
-// outstanding, its bus half read back off the bus; the challenge then counts once.
-func (h *hookHoldState) take(answer string) (string, bool) {
+// outstanding, its bus half read back off the bus, and the bus half; nothing is cleared
+// here (used clears it once the server has taken its half).
+func (h *hookHoldState) take(answer string) (sprintC, busC string, ok bool) {
 	sc, bc, ok := strings.Cut(strings.TrimSpace(answer), ".")
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if !ok || sc == "" || bc == "" || bc != h.busC || !h.busSeen {
-		return "", false
+		return "", "", false
 	}
-	h.busC, h.busSeen = "", false
-	return sc, true
+	return sc, bc, true
+}
+
+// used clears the bus half busC once the server took the answer: a challenge counts once.
+func (h *hookHoldState) used(busC string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.busC == busC {
+		h.busC, h.busSeen = "", false
+	}
 }
 
 // hookRelayed carries one of the session's lines to the server and records what the
@@ -1425,17 +1482,21 @@ func (h *hookHoldState) take(answer string) (string, bool) {
 func (a *app) hookRelayed(ctx context.Context, hk sprint.Hooker, hs *hookHoldState, relay *hookRelay, name string, m hookMsg) (hookMsg, error) {
 	switch m.T {
 	case "prove":
-		sc, ok := hs.take(m.Challenge)
+		sc, bc, ok := hs.take(m.Challenge)
 		if !ok {
 			return hookMsg{T: "refused", Why: "that is not the challenge outstanding on this hook: answer the last HOOK CHALLENGE its stream showed, both halves (<sprint>.<bus>)"}, nil
+		}
+		// the bus half is checked: its proof is recorded first, so the server's word,
+		// once it takes its half, finds both (the gate wants both; a bus proof alone opens
+		// nothing)
+		if err := hk.Prove(ctx, name, a.now()); err != nil {
+			return hookMsg{T: "refused", Why: "the bus push's proof could not be recorded in " + sprint.HookSharedKey(name) + ": " + err.Error()}, nil
 		}
 		r, err := relay.ask(hookMsg{T: "prove", Challenge: sc})
 		if err != nil || r.T != "ok" {
 			return r, err
 		}
-		if err := hk.Prove(ctx, name, a.now()); err != nil {
-			return hookMsg{T: "refused", Why: "the server took the proof, and the bus push's could not be recorded in " + sprint.HookSharedKey(name) + ": " + err.Error()}, nil
-		}
+		hs.used(bc)
 		return r, nil
 	case "unhook":
 		r, err := relay.ask(hookMsg{T: "unhook"})
@@ -1480,6 +1541,11 @@ func hookSay(w io.Writer, name, addr, from string, m hookMsg) {
 	case "push":
 		var b strings.Builder
 		if m.What == hookWarnWhat {
+			if !strings.Contains(strings.TrimRight(m.Text, "\n"), "\n") {
+				// the set has not changed: one line a second
+				fmt.Fprintf(w, "PUSH %d %s: %s\n", m.ID, hookWarnWhat, oneline.Escape(strings.TrimSpace(m.Text)))
+				return
+			}
 			fmt.Fprintf(&b, "PUSH %d %s: answer the judgments below; an ack does not silence it\n", m.ID, hookWarnWhat)
 		} else {
 			fmt.Fprintf(&b, "PUSH %d %s: read it, then acknowledge: nova-sprint hook --ack %d --actor %s\n", m.ID, oneline.Field(m.What), m.ID, oneline.Field(name))

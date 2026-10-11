@@ -26,43 +26,57 @@ import (
 // with no live, proven hook, every verb of the help registry (verbs) fails with exit
 // 1 and the one line that starts "You must hook in first: run nova-sprint hook" and
 // leads on to the exact commands (the breadcrumb), and nothing is written. The table is
-// the whole registry, so a verb added later is covered by construction. Exempt: hook
-// and unhook (the way in and out; help and version are not verbs of the registry and
-// run before the gate), and the machine's verbs, which are the run loop's and the
-// server's own and never the caller's (the hook is a stream from the server, so the
-// verb that starts the server cannot wait on it).
+// the whole registry, so a verb added later is covered by construction. Exempt: hook and
+// unhook (the way in and out), and the server's own life (run, tick, server switch, seat
+// install, selftest land: the hook is a stream from the server, so a verb that starts
+// the server cannot wait on it); help and version are not verbs of the registry and run
+// before the gate. The holder's --as never takes it past the gate: every worker and
+// report verb is run again as the holder with --as a fleet member, and tick with
+// --answer-rules is gated.
 func TestEveryVerbRefusesTheCoordinatorUntilHooked(t *testing.T) {
 	t.Parallel()
 	const name = "hook-every"
 	ta, _ := hookSprint(t, name)
 
-	var refused, ran, crumbless []string
+	var lines []string
 	for _, v := range verbs {
-		if hookExempt[v.name] || verbClasses[v.name] == classMachine {
+		if hookExempt[v.name] {
 			continue
 		}
+		lines = append(lines, v.name)
+		if fs := verbFlags(v.name); fs != nil && fs.Lookup("as") != nil {
+			lines = append(lines, v.name+" --as m1")
+		}
+	}
+	lines = append(lines, "tick --answer-rules")
+	var refused, ran, crumbless []string
+	for _, line := range lines {
 		before := ta.applies()
-		code, out, errs := ta.doLined(v.name)
-		line := strings.TrimRight(errs, "\n")
-		ok := code == 1 && out == "" && !strings.Contains(line, "\n") &&
-			strings.HasPrefix(line, sprint.HookFirst) &&
-			strings.Contains(line, "nova-sprint hook --actor "+name) &&
-			strings.Contains(line, "nova-sprint hook --prove ") &&
-			strings.Contains(line, "nova-sprint unhook --actor "+name) &&
+		code, out, errs := ta.doLined(line)
+		got := strings.TrimRight(errs, "\n")
+		ok := code == 1 && out == "" && !strings.Contains(got, "\n") &&
+			strings.HasPrefix(got, sprint.HookFirst) &&
+			strings.Contains(got, "nova-sprint hook --actor "+name) &&
+			strings.Contains(got, "nova-sprint hook --prove ") &&
+			strings.Contains(got, "nova-sprint unhook --actor "+name) &&
+			!strings.Contains(got, "(none)") &&
 			before == ta.applies()
 		if ok {
-			refused = append(refused, v.name)
+			refused = append(refused, line)
 			continue
 		}
-		if code == 1 && strings.HasPrefix(line, sprint.HookFirst) {
-			crumbless = append(crumbless, v.name)
+		if code == 1 && strings.HasPrefix(got, sprint.HookFirst) {
+			crumbless = append(crumbless, line)
 			continue
 		}
-		ran = append(ran, v.name+" (exit "+strconv.Itoa(code)+": "+gateFirstLine(out+errs)+")")
+		ran = append(ran, line+" (exit "+strconv.Itoa(code)+": "+gateFirstLine(out+errs)+")")
 	}
 	assert.Empty(t, ran, "verbs the unhooked coordinator ran past the gate")
-	assert.Empty(t, crumbless, "verbs refused without the breadcrumb (role, push, and the exact commands)")
+	assert.Empty(t, crumbless, "verbs refused without the breadcrumb (the push, and the exact commands)")
 	assert.NotEmpty(t, refused)
+	for _, v := range []string{"adopt", "seat uninstall", "friend clean", "tick --answer-rules", "take --as m1"} {
+		assert.Contains(t, refused, v, "gated for the holder")
+	}
 	// the way in and out is never refused by the gate
 	for _, v := range []string{"hook", "unhook"} {
 		assert.True(t, slices.ContainsFunc(verbs, func(x verb) bool { return x.name == v }), v)
@@ -194,7 +208,6 @@ func TestTheBreadcrumbHooksTheCallerIn(t *testing.T) {
 	require.True(t, strings.HasPrefix(line, sprint.HookFirst), line)
 	assert.Contains(t, line, "the sprint push is not live")
 	assert.Contains(t, line, "the coordinator "+name+" wants the sprint push and the bus push live")
-	assert.Contains(t, line, "nova-hook hook --as "+name+" --role coordinator")
 
 	hookIn := func() *heldHook {
 		hh := cli.hold(crumb(t, line, "You must hook in first: run"))
@@ -252,19 +265,19 @@ func TestTheBreadcrumbHooksTheCallerIn(t *testing.T) {
 
 // The coordinator's two pushes, each required (the owner: "For a coordinator, this is
 // hooking into to sprint push notifications and message bus push notifications."):
-// the sprint push proven and the bus push not is refused naming the bus push; the bus
-// push proven and the sprint push not, naming the sprint push; both, and it runs; the
-// bus push unhooked, refused again.
+// the bus push proven and the sprint push not is refused naming the sprint push; the
+// sprint push proven and the bus push not, naming the bus push; both, and it runs; the
+// bus push unhooked, refused again; its proof lapsed, refused.
 func TestTheCoordinatorWantsBothPushes(t *testing.T) {
 	t.Parallel()
 	const name = "hook-both"
 	ta, _ := hookSprint(t, name)
-	busOnly := sprint.HookBreadcrumb(sprint.HookRoleCoordinator, name, sprint.HookPushSprint, "")
-	sprintOnly := sprint.HookBreadcrumb(sprint.HookRoleCoordinator, name, sprint.HookPushBus, "")
+	busOnly := sprint.HookBreadcrumb(name, sprint.HookPushSprint, "")
+	sprintOnly := sprint.HookBreadcrumb(name, sprint.HookPushBus, "")
 	assert.Contains(t, busOnly, "the sprint push is not live")
 	assert.Contains(t, sprintOnly, "the bus push is not live")
 
-	ta.busProven(name, sprint.HookRoleCoordinator)
+	ta.busProven(name)
 	ta.refusedFirst("where", busOnly)
 
 	c := ta.hookOn(name)
@@ -273,12 +286,9 @@ func TestTheCoordinatorWantsBothPushes(t *testing.T) {
 	ta.lined(func() { ta.ok("where") })
 
 	require.NoError(t, ta.hookShared().Unhook(context.Background(), name, ta.a.now()))
+	ta.a.hookerForget(name)
 	ta.refusedFirst("where", sprintOnly)
-	// armed for the other role is not armed for this one
-	require.NoError(t, ta.hookShared().Arm(context.Background(), name, sprint.HookRoleWorker, ta.a.now()))
-	require.NoError(t, ta.hookShared().Prove(context.Background(), name, ta.a.now()))
-	ta.refusedFirst("where", sprintOnly)
-	ta.busProven(name, sprint.HookRoleCoordinator)
+	ta.busProven(name)
 	ta.lined(func() { ta.ok("where") })
 	// past its bound unanswered, the bus push lapses
 	ta.step(sprint.HookSharedBound + time.Second)
@@ -287,52 +297,47 @@ func TestTheCoordinatorWantsBothPushes(t *testing.T) {
 	assert.True(t, strings.HasPrefix(errs, sprint.HookFirst), errs)
 }
 
-// A worker friend (a name on the friends table) is gated on its two pushes, the bus
-// push and the work push, for its worker verbs (the owner: "For a friend in sprint as
-// worker, it is message bus and work notifications as push."); its beats run, as do
-// another worker's verbs and the friend's reads. Its hook is the server's work stream
-// and the bus: hello names the worker role, and a proof keeps no seat record.
-func TestAWorkerFriendWantsItsBusAndWorkPushes(t *testing.T) {
+// The gate reads the bus push's record from a copy at most a second old, kept fresh off
+// the server's line of control, so a gate on the line never waits on the bus store
+// (cold read B, 3; "measure holdMax before/after"): with a bus store that takes 200 ms a
+// read, the first gate reads it once and every verb after it in the second reads
+// memory. Without the copy, each of the ten verbs below held the line 200 ms on the read
+// (2 s in all); with it, they take milliseconds together.
+func TestTheGateReadsTheBusPushOffTheLine(t *testing.T) {
 	t.Parallel()
-	const seat, friend = "hook-seat-w", "hook-zhi"
-	ta, _ := hookSprint(t, seat)
-	hookTests.Store(friend, true)
-	t.Cleanup(func() { hookTests.Delete(friend) })
-	ta.lined(func() {
-		st, err := ta.a.store(common{redis: "mem:0"})
-		require.NoError(t, err)
-		_, _, _, err = st.SyncFriends(context.Background(), []store.FriendSpec{{Name: friend, Width: 1, Class: "flash"}})
-		require.NoError(t, err)
-	})
-	want := sprint.HookBreadcrumb(sprint.HookRoleWorker, friend, sprint.HookPushBus, "")
-	assert.Contains(t, want, "the worker "+friend+" wants the bus push and the work push live")
-	for _, line := range []string{"take --as " + friend, "finish --as " + friend + " c-1", "queue --as " + friend, "progress --as " + friend} {
-		ta.refusedFirst(line, want)
-	}
-	// its beats, another worker's verbs, and its reads are not its work
-	code, out, errs := ta.doLined("friend beat --as " + friend)
-	assert.NotContains(t, out+errs, sprint.HookFirst, code)
-	_, out, errs = ta.doLined("take --as m1")
-	assert.NotContains(t, out+errs, sprint.HookFirst)
-	_, out, errs = ta.doLined("where --actor " + friend)
-	assert.NotContains(t, out+errs, sprint.HookFirst)
+	const name = "hook-cache"
+	ta, _ := hookSprint(t, name)
+	c := ta.hookOn(name)
+	c.next("hello")
+	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+	ta.busProven(name)
+	ta.a.hk.mu.Lock()
+	ta.a.hk.cur = busHooker{s: &slowMarks{Store: ta.a.hk.bus.Store, d: 200 * time.Millisecond}}
+	ta.a.hk.mu.Unlock()
+	ta.a.hookerForget(name)
 
-	// the server's side of its hook: the worker role, its proof keeps no seat record
-	c := ta.hookOn(friend)
-	assert.Equal(t, sprint.HookRoleWorker, c.next("hello").Role)
-	r := c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge})
-	require.Equal(t, "ok", r.T, r.Why)
-	rec, ok := ta.hookRecord()
-	assert.False(t, ok && rec.Name == friend, "a worker's hook writes no seat record: %+v", rec)
-	ta.busProven(friend, sprint.HookRoleWorker)
-	_, out, errs = ta.doLined("take --as " + friend)
-	assert.NotContains(t, out+errs, sprint.HookFirst)
-	// armed as a coordinator is not armed as a worker
-	ta.busProven(friend, sprint.HookRoleCoordinator)
-	ta.refusedFirst("take --as "+friend, want)
-	// a name that is neither the seat's nor a friend's has no hook on this server
-	d := ta.hookOn("nobody-here")
-	assert.Contains(t, d.next("bye").Why, "is neither")
+	start := time.Now()
+	ta.lined(func() { ta.ok("where") })
+	first := time.Since(start)
+	assert.GreaterOrEqual(t, first, 200*time.Millisecond, "the first gate reads the store")
+	start = time.Now()
+	for range 10 {
+		ta.lined(func() { ta.ok("where") })
+	}
+	ten := time.Since(start)
+	t.Logf("gate hold: first %s (one read of the bus store), next ten %s together", first.Round(time.Millisecond), ten.Round(time.Millisecond))
+	assert.Less(t, ten, 200*time.Millisecond, "ten gates in the copy's second read no store")
+}
+
+// slowMarks is a bus store whose record reads take d.
+type slowMarks struct {
+	bus.Store
+	d time.Duration
+}
+
+func (s *slowMarks) Marks(ctx context.Context, keys ...string) ([]map[string]string, error) {
+	time.Sleep(s.d)
+	return s.Store.Marks(ctx, keys...)
 }
 
 // Fail closed (the owner: "Fail closed, not open."): a caller the gate judges is refused
@@ -346,7 +351,7 @@ func TestTheGateFailsClosed(t *testing.T) {
 	c := ta.hookOn(name)
 	c.next("hello")
 	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
-	ta.busProven(name, sprint.HookRoleCoordinator)
+	ta.busProven(name)
 	ta.lined(func() { ta.ok("where") })
 
 	// a fresh process with no bus store named cannot read the bus push's record
@@ -417,7 +422,7 @@ func TestAWaitingJudgmentIsPushedAsAWarningEverySecond(t *testing.T) {
 	c := ta.hookOn(name)
 	c.next("hello")
 	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
-	ta.busProven(name, sprint.HookRoleCoordinator)
+	ta.busProven(name)
 
 	ta.lined(func() { ta.ok("add --stream s1 --count 2") })
 	ta.lined(func() { ta.ok("start") }) // the machine runs, so its tick raises the timer
@@ -447,7 +452,7 @@ func TestAWaitingJudgmentIsPushedAsAWarningEverySecond(t *testing.T) {
 	s.look(ctx)
 	w2 := c.next("push")
 	require.Equal(t, hookWarnWhat, w2.What)
-	assert.Contains(t, w2.Text, "waited=11s")
+	assert.Equal(t, "WARNING 1 judgment(s) waiting on the coordinator 10s or longer: j1", w2.Text, "the set has not changed: its one line")
 	assert.Greater(t, w2.ID, w.ID, "each warning is a push of its own number")
 
 	// an ack does not silence it, and a warning never blocks the gate
@@ -459,7 +464,7 @@ func TestAWaitingJudgmentIsPushedAsAWarningEverySecond(t *testing.T) {
 	ta.lined(func() { ta.ok("where") })
 
 	// answered with the command it names: no more warnings
-	ta.lined(func() { ta.ok(strings.Join(warningAnswer(t, w3.Text), " ")) })
+	ta.lined(func() { ta.ok(strings.Join(warningAnswer(t, w.Text), " ")) })
 	ta.step(time.Second)
 	s.look(ctx)
 	c.quiet("answered: no warning")
@@ -494,8 +499,38 @@ func TestTheWarningArrivesAsAPushLineOnTheHook(t *testing.T) {
 	assert.Contains(t, hh.next("  WARNING "), "judgment(s) waiting on the coordinator 10s or longer")
 	// again, a second later, as a push of its own
 	again := hh.next("PUSH ")
-	assert.Contains(t, again, hookWarnWhat)
+	assert.Contains(t, again, hookWarnWhat+": WARNING 1 judgment(s) waiting on the coordinator 10s or longer: j1", "the set has not changed: one line")
 	assert.NotEqual(t, first, again)
 	_, _, _ = cli.run("unhook", "--actor", name)
 	hh.ended()
+}
+
+// A judgment computed at read time (machine:stopped: its oldest is always the read's own
+// now) is warned about from when the hook first saw it (cold read A, 5): seen, 9 s
+// later nothing, 10 s later the warning names it.
+func TestAReadTimeJudgmentIsWarnedFromWhenFirstSeen(t *testing.T) {
+	t.Parallel()
+	const name = "hook-warn-read"
+	ta, _ := hookSprint(t, name)
+	c := ta.hookOn(name)
+	c.next("hello")
+	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+	ta.busProven(name)
+	ta.lined(func() { ta.ok("add --stream s1 --count 2") }) // never started: the machine is stopped with moves due, a read-time judgment
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	ctx := context.Background()
+	s.look(ctx)
+	p := c.next("push")
+	require.Equal(t, "machine:stopped", p.What, "%+v", p)
+	c.quiet("one push")
+
+	ta.step(9 * time.Second)
+	s.look(ctx)
+	c.quiet("9 s after it was first seen: no warning")
+	ta.step(time.Second)
+	s.look(ctx)
+	w := c.next("push")
+	require.Equal(t, hookWarnWhat, w.What, "%+v", w)
+	assert.Contains(t, w.Text, "- machine:stopped cards=- waited=10s")
 }

@@ -90,7 +90,7 @@ func (a *app) coordinatorOnly(ctx context.Context, st *store.Store, c common) (s
 			return why, err
 		}
 	}
-	return a.hookedIn(ctx, st, c)
+	return a.hookedIn(ctx, st, c, hookExempt[c.verb])
 }
 
 // coordinatorsAlone is why the actor may not do what is the coordinator's

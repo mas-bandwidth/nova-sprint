@@ -67,12 +67,14 @@ func (ta *testApp) hookShared() sprint.Hooker {
 
 // busProven records name's bus push armed and proven now, as its hook process does
 // once the session answers a challenge over both pushes: for a test of the server's
-// side, which runs no hook process.
-func (ta *testApp) busProven(name, role string) {
+// side, which runs no hook process. The gate's copy is dropped, as the server drops it
+// when it takes a proof.
+func (ta *testApp) busProven(name string) {
 	ta.t.Helper()
 	h := ta.hookShared()
-	require.NoError(ta.t, h.Arm(context.Background(), name, role, ta.a.now()))
+	require.NoError(ta.t, h.Arm(context.Background(), name, ta.a.now()))
 	require.NoError(ta.t, h.Prove(context.Background(), name, ta.a.now()))
+	ta.a.hookerForget(name)
 }
 
 // lined runs f holding the server's line, as every verb the server runs does: the
@@ -192,9 +194,7 @@ func (ta *testApp) hookSession() *hookSession {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, s := range h.cur {
-		if s.coordinator() {
-			return s
-		}
+		return s
 	}
 	return nil
 }
@@ -247,9 +247,13 @@ func TestEveryCoordinatorCommandFailsUntilHookedIn(t *testing.T) {
 	code, _, errs := ta.doLined("add --stream s1 --count 2 --no-hook")
 	assert.NotEqual(t, 0, code, errs)
 
-	// the workers', the machine's and another's verbs run
+	// the machine's tick and another's verbs run; the holder's --as never passes the gate
+	// (cold read A, 1), while the worker it names, acting as itself, is not judged
 	ta.lined(func() { ta.ok("tick") })
 	code, _, errs = ta.doLined("take --as m1")
+	assert.Equal(t, 1, code, errs)
+	assert.True(t, strings.HasPrefix(errs, sprint.HookFirst), errs)
+	code, _, errs = ta.doLined("take --as m1 --actor m1")
 	assert.NotContains(t, errs, sprint.HookFirst)
 	assert.NotEqual(t, 2, code, errs)
 	_, out, errs := ta.doLined("where --actor glenn")
@@ -310,8 +314,8 @@ func TestAProvenHookRunsAndAPushBlocksUntilAcknowledged(t *testing.T) {
 	r = c.say(hookMsg{T: "prove", Challenge: chal})
 	assert.Equal(t, "refused", r.T, "a challenge counts once")
 	// the sprint push alone is not enough: the bus push is the other half
-	ta.refusedFirst("add --stream s1 --count 2", sprint.HookBreadcrumb(sprint.HookRoleCoordinator, name, sprint.HookPushBus, ""))
-	ta.busProven(name, sprint.HookRoleCoordinator)
+	ta.refusedFirst("add --stream s1 --count 2", sprint.HookBreadcrumb(name, sprint.HookPushBus, ""))
+	ta.busProven(name)
 	ta.lined(func() { ta.ok("add --stream s1 --count 2") })
 	ta.lined(func() { ta.ok("where") })
 
@@ -383,7 +387,7 @@ func TestADropIsGoneAndUnhookIsAway(t *testing.T) {
 	c := ta.hookOn(name)
 	c.next("hello")
 	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
-	ta.busProven(name, sprint.HookRoleCoordinator)
+	ta.busProven(name)
 	ta.lined(func() { ta.ok("where") })
 	require.NoError(t, c.conn.Close())
 	rec := ta.waitHook(sprint.HookGone)
@@ -541,7 +545,7 @@ func TestARechallengeKeepsTheHookLiveUntilItsOwnBound(t *testing.T) {
 	c.next("hello")
 	provedAt := ta.a.now()
 	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
-	ta.busProven(name, sprint.HookRoleCoordinator)
+	ta.busProven(name)
 	rec, _ := ta.hookRecord()
 	require.Equal(t, provedAt.Add(sprint.HookEvery+sprint.HookAnswerBound).UTC(), rec.Live.UTC())
 
@@ -559,7 +563,7 @@ func TestARechallengeKeepsTheHookLiveUntilItsOwnBound(t *testing.T) {
 	require.True(t, ta.a.now().After(provedAt.Add(sprint.HookEvery+sprint.HookAnswerBound)),
 		"the proof's bound has passed")
 	// this test is the sprint push's bound: the bus push is proven on its own here
-	ta.busProven(name, sprint.HookRoleCoordinator)
+	ta.busProven(name)
 	ta.lined(func() { ta.ok("where") })
 	rec, _ = ta.hookRecord()
 	require.Equal(t, challengeAt.Add(sprint.HookAnswerBound).UTC(), rec.Live.UTC(),
@@ -630,7 +634,7 @@ func TestAPushIsSentOnlyOnceRecorded(t *testing.T) {
 	ta.waitHook(sprint.HookHooked)
 	r := c.say(hookMsg{T: "prove", Challenge: chal})
 	require.Equal(t, "ok", r.T, r.Why)
-	ta.busProven(name, sprint.HookRoleCoordinator)
+	ta.busProven(name)
 
 	// the record write fails for this look: it is delivered nothing, and the record
 	// names no unacknowledged push
