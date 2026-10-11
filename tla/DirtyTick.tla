@@ -217,7 +217,17 @@
 \* reader's away and back, a read returned, and a read refused);
 \* outside actions during a tick (they run between ticks); byte and step
 \* budgets; two sentinels in one stream (the pump lands at most one per
-\* stream per tick); the log itself (a queue entry is its line).
+\* stream per tick); the log itself (a queue entry is its line); read cards
+\* as dealt entities (a read is a consumer card, docs/SPEC-SPRINT.md section
+\* 6, internal/sprint/read_cards.go): the code's deal cuts the reads a
+\* primary in review still needs at once, each a card on the fleet table.
+\* The model's reads are the readers table's (rd, askw), placed by the
+\* readers update, not a dealt card; the read card's own life (dealt, taken,
+\* closed, returned, late) is tla/ReadCards.tla's. The read card's half slot
+\* (ReadCost "half", read_cards.go halfLoad) and the reads-before-work order
+\* ARE modelled here: a read holds half a slot (ReadLoad, Room), so the reads
+\* the readers update places are counted at half a slot before the next
+\* pump's work deal fills the room they leave.
 EXTENDS Integers, Sequences, FiniteSets, TLC
 
 CONSTANTS
@@ -230,6 +240,11 @@ CONSTANTS
 Tables == {"work", "readers", "merge", "fleet"}
 \* The cards a route serves, or that pin a model: the scenario's (THE ROUTE).
 Served == Scn.served
+\* The streams the coordinator holds (hold <stream>): the deal deals none of
+\* their ready cards, to a machine or a friend, until unhold
+\* (internal/sprint/hold.go StreamHeld; steps_tick.go:776,798; steps_work.go:980).
+\* The scenario's; empty in every existing configuration.
+HeldStreams == Scn.heldStreams
 Three == {"readers", "merge", "fleet"}
 Cols == {"none", "waiting", "ready", "working", "review", "merging", "landed"}
 NoR == "none"
@@ -277,7 +292,8 @@ ScnRefuse == [
   mc |-> [m \in Machines |-> {}],
   mr |-> [m \in Machines |-> IF m = "m1" THEN {"c1"} ELSE {}],
   q |-> [t \in Tables |-> <<>>],
-  served |-> Cards
+  served |-> Cards,
+  heldStreams |-> {}
 ]
 \* The in-place re-asks of a returned read at its attempt (internal/sprint
 \* MaxReadReasks).
@@ -360,13 +376,20 @@ Cur == [col |-> col, att |-> att, bnd |-> bnd, rd |-> rd, askw |-> askw,
 
 Put(S, t, e) == [S EXCEPT !.q[t] = Append(@, e)]
 
+\* A read card costs half a slot (ReadCost "half"; internal/sprint/read_cards.go
+\* halfLoad: work + (reads + 1) / 2, a row holds its width of work or twice it
+\* of reads). The reads on a host's row take ceil(n/2) of its slots, so a
+\* machine of width w holds w work cards, 2w reads, or a mix that keeps
+\* |mc| + ReadLoad(mr) within its width.
+ReadLoad(reads) == (Cardinality(reads) + 1) \div 2
+
 \* Room on m as a plan sees it: the fleet table's load, the placements this
 \* plan made (entries past f0 in the fleet queue), and, with "pendingroom",
 \* the placements already queued to the fleet and not yet applied.
 PendRoom(seq, lo, hi, m) ==
   Cardinality({i \in lo..hi : seq[i].k \in {"dealt", "readon"} /\ seq[i].x = m})
 Room(S, m) ==
-  Width[m] - Cardinality(S.mc[m]) - Cardinality(S.mr[m])
+  Width[m] - Cardinality(S.mc[m]) - ReadLoad(S.mr[m])
   - PendRoom(S.q["fleet"], S.f0 + 1, Len(S.q["fleet"]), m)
   - (IF "pendingroom" \in Fixes THEN PendRoom(S.q["fleet"], 1, S.f0, m) ELSE 0)
 
@@ -477,7 +500,23 @@ Release(S, C) ==
 \* The deal: the streams take turns by the stream counter over the streams
 \* with a dealable card; within a stream the lowest position; the machine by
 \* the machine counter over the up machines with room.
-Dealable(S, cand) == {c \in cand : S.col[c] = "ready" /\ ~AtRB(S, c) /\ (c \in Served \/ Broken = "noroute")}
+\* THE DEAL'S ORDER AND SKIPS (the code's TickDeal, internal/sprint/steps_tick.go):
+\*   reads first (steps_tick.go:764 withReadCards: a read card is dealt
+\*   before any work card, at half a slot, read_cards.go:153 halfLoad) --
+\*   modelled here: a read holds half a slot (ReadLoad, Room), so the reads
+\*   the readers update places are counted at half a slot before this pump's
+\*   work deal fills the room they leave;
+\*   friends first by the ladder (steps_tick.go:792; tla/WhoPreference.tla
+\*   checks the selection, not the room);
+\*   a held stream skipped (steps_tick.go:776,798 and steps_work.go:980 the
+\*   deal refuses a held stream) -- modelled here, HeldStreams;
+\*   the bench skip (steps_tick.go:785,875; the bench pool and the staging
+\*   refusers, tla/RouteIndex.tla Pool);
+\*   the staging bound (steps_tick.go:831; tla/RouteIndex.tla);
+\*   the friend-dealt return (steps_tick.go:995; tla/FriendDealtReturn.tla);
+\*   the fault-hold clear (steps_tick.go:1149; tla/DealFill.tla FaultHoldClears).
+Dealable(S, cand) == {c \in cand : S.col[c] = "ready" /\ ~AtRB(S, c) /\ (c \in Served \/ Broken = "noroute")
+                                      /\ (StreamOf[c] \notin HeldStreams \/ Broken = "dealheldstream")}
 UpRoom(S) == {m \in Machines : S.stat[m] = "up" /\
                 (Broken = "dealdraining" \/ ~S.drain[m]) /\
                 (Broken = "nowidth" \/ Room(S, m) > 0)}
@@ -1061,12 +1100,13 @@ NothingLost ==
 \* (the queue applied, sentinels landed, cards released, ready cards dealt
 \* while a machine has room); at the tick's end no card waits for a reader
 \* that could take it.
-RoomNow(m) == Width[m] - Cardinality(mc[m]) - Cardinality(mr[m])
+RoomNow(m) == Width[m] - Cardinality(mc[m]) - ReadLoad(mr[m])
               - Count(Q["fleet"], LAMBDA e : e.k \in {"dealt", "readon"} /\ e.x = m)
 PumpDone ==
   /\ Q["work"] = <<>>
   /\ Landable(col) = {} /\ Releasable(col) = {}
   /\ ~(/\ \E c \in Served : col[c] = "ready" /\ ~(ended[c] /\ rdl[c] >= MaxRedeals)
+                         /\ StreamOf[c] \notin HeldStreams
        /\ \E m \in Machines : stat[m] = "up" /\ ~drain[m] /\ RoomNow(m) > 0)
   /\ ~\E c \in Cards : col[c] = "review" /\ okd[c] /\ ci[c] # "red" /\ ~ret[c]
 ReadersDone ==
@@ -1136,8 +1176,14 @@ PlacementsRound ==
 \* dealt (it stays ready for the coordinator).
 RouteGuard == \A c \in Cards \ Served : col[c] \in {"none", "waiting", "ready"}
 
-\* WIDTH: a machine never holds more cards and reads than its width.
-WidthRespected == \A m \in Machines : Cardinality(mc[m]) + Cardinality(mr[m]) <= Width[m]
+\* THE HELD STREAM: a card of a held stream is never dealt, to a machine or a
+\* friend, until unhold (it stays ready for the coordinator). The witness
+\* "dealheldstream" deals it.
+HeldStreamNotDealt == \A c \in Cards : StreamOf[c] \in HeldStreams => col[c] \in {"none", "waiting", "ready"}
+
+\* WIDTH: a machine never holds more cards and reads than its width, a read
+\* at half a slot (ReadLoad).
+WidthRespected == \A m \in Machines : Cardinality(mc[m]) + ReadLoad(mr[m]) <= Width[m]
 
 \* NEVER DEALT TO DRAINING: no deal goes to a member that drains (the beat's
 \* drain word, notQuiet; tla/NoRoom.tla NeverDealtToDraining). The witness

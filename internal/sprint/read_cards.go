@@ -868,6 +868,7 @@ func readCardsWaitingCount(s *Snapshot) int {
 // reads first, at half a slot each (reads are a card priority: a read waits behind no
 // work card). With read cards off, nothing and the snapshot as it is.
 // tla/ReadCards.tla Deal
+// tla/DirtyTick.tla Room (ReadLoad: a read at half a slot, reads before work)
 func (s *Snapshot) withReadCards(seats []FriendSeat) (*Snapshot, Plan) {
 	if !s.ReadCardsOn() || s.Fleet == nil {
 		return s, Plan{}
