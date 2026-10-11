@@ -416,7 +416,8 @@ func (j *landJob) refuse(why string) {
 func (j *landJob) ended(past int, on, ok bool) { j.done, j.past, j.on, j.ok = true, past, on, ok }
 
 // ownRefusal reports the card that ended its batch with its own refusal, as batch did: an
-// empty commit whose result claims changes returns the card to review (returnCard); any other
+// empty commit (isEmptyCommitFinding, whether it reads as a claim or as a missing result)
+// returns the card to review (returnCard); any other
 // refusal is the conflict fact (conflict), which reworks the card at the tip and stops
 // nothing, or stops the stream for the lander's own failure (a ledger it could not resolve, a
 // head origin does not hold). true when the stream goes on.

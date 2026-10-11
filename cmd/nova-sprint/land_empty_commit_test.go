@@ -45,10 +45,6 @@ func TestLandRefusesAnEmptyCommitThatClaimsChanges(t *testing.T) {
 				result: "STEP 1. Commit 2d720d219ff5\nthere was nothing to do after that\n",
 			},
 			{
-				name:   "no result text at all fails closed",
-				result: "",
-			},
-			{
 				name:   "non-empty diff stat table row",
 				result: "cmd/nova-sprint/land.go | 10 ++++++++++\n",
 			},
@@ -59,6 +55,23 @@ func TestLandRefusesAnEmptyCommitThatClaimsChanges(t *testing.T) {
 				assert.Equal(t, wantFinding, got)
 			})
 		}
+	})
+
+	t.Run("empty diff with no result held refuses as a missing result", func(t *testing.T) {
+		t.Parallel()
+		for _, result := range []string{"", "   \n"} {
+			got := checkEmptyCommit(true, result)
+			assert.Equal(t, emptyCommitNoResultFinding, got)
+			assert.NotContains(t, got, "the result claims changes", "an absent result must not read as a claim")
+		}
+	})
+
+	t.Run("both empty-commit findings are one refusal", func(t *testing.T) {
+		t.Parallel()
+		assert.True(t, isEmptyCommitFinding(emptyCommitFinding), "a claiming empty commit is refused as an empty commit")
+		assert.True(t, isEmptyCommitFinding(emptyCommitNoResultFinding), "a missing result is refused as an empty commit")
+		assert.False(t, isEmptyCommitFinding(""), "no refusal is not an empty commit")
+		assert.False(t, isEmptyCommitFinding("the head does not merge"), "another refusal is not an empty commit")
 	})
 
 	t.Run("empty diff with nothing-to-do result passes", func(t *testing.T) {
@@ -102,7 +115,9 @@ func TestLandRefusesAnEmptyCommitThatClaimsChanges(t *testing.T) {
 		assert.Empty(t, checkEmptyCommit(true, claimText(generic)), "generic report does not claim changes")
 		none := &sprint.Card{Fields: map[string]string{"ok": "yes", "head": "2d720d219ff5", "report": "nothing to do: the card was right"}}
 		assert.Empty(t, checkEmptyCommit(true, claimText(none)))
-		assert.Equal(t, wantFinding, checkEmptyCommit(true, claimText(nil)), "no work card fails closed")
+		assert.Equal(t, emptyCommitNoResultFinding, checkEmptyCommit(true, claimText(nil)), "no work card fails closed")
+		assert.NotContains(t, checkEmptyCommit(true, claimText(nil)), "the result claims changes", "no work card must not read as a claim")
+		assert.True(t, isEmptyCommitFinding(checkEmptyCommit(true, claimText(nil))), "no work card is still refused as an empty commit, so the card returns to review")
 	})
 
 	t.Run("non-empty diff passes", func(t *testing.T) {

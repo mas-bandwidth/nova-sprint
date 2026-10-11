@@ -855,6 +855,10 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (fix "lander-empty-commit-says-no-result-is-held" :release "v1.2.14" :status "planned"
+   :title "The empty-commit refusal reads as a missing result when the lander holds none"
+   :text "When an empty commit's landing holds no work card (the fleet row absent or the work card tidied away), checkEmptyCommit refuses with emptyCommitNoResultFinding, saying the head changes nothing and the lander holds no result, instead of emptyCommitFinding's claim that the result claims changes. Both findings are empty commits through isEmptyCommitFinding and both return the card to review."
+   :origin "this card")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"

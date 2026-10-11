@@ -4111,7 +4111,13 @@ the review passed. On those land merges the PATHS rule flags negd-42 and three
 cards of its shape (negd-17, -32, -41: a file the card edited after a name card
 renamed it from the name its PATHS gives), which the review passed. A head that fails is taken off
 the batch branch and ends the batch as a head in conflict does: the conflict fact
-on it names every failure, `<file>:<line>` and the rule.
+on it names every failure, `<file>:<line>` and the rule. An empty commit, a head whose
+diff from the attempt's start is empty, is refused too: when the recorded result claims
+changes the refusal reads as a claim (`emptyCommitFinding`, "the result claims changes the
+diff does not show"), and when the lander holds no result at all to read the refusal reads as
+a missing result (`emptyCommitNoResultFinding`, the head changes nothing and the lander holds
+no result to say why); both are empty commits (`isEmptyCommitFinding`) and both return the card
+to review rather than stopping the stream.
 
 What each of the lander's checks does with a head:
 

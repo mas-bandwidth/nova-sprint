@@ -781,11 +781,12 @@ type conflictCard struct {
 	// ConflictKind: the conflict rule redoes a file conflict on the tip).
 	kind        string
 	paths       []string
-	emptyCommit bool // the refusal is an empty commit that claims changes: return the card to review, do not stop the stream on a conflict
+	emptyCommit bool // the refusal is an empty commit (isEmptyCommitFinding): return the card to review, do not stop the stream on a conflict
 }
 
 // returnCard returns one card to review when its landing was refused because the
-// head's diff from the attempt's start is empty while the result claims changes
+// head's diff from the attempt's start is empty (isEmptyCommitFinding), whether the
+// result claims changes or the lander holds no result at all
 // (docs/SPEC-SPRINT.md section 7, the lander's checks). The finding is the return
 // reason. A conflict is not recorded and the stream is not stopped: the card goes
 // back to review for the coordinator.
@@ -1660,7 +1661,7 @@ func (l *lander) mergeCards(ctx context.Context, dir, stream string, cards []lan
 		case env != "":
 			return nil, failed, env + "; no card is blamed and nothing was pushed or reported"
 		case refused != "":
-			return merged, conflictCard{landCard: *card, why: refused, kind: l.conflictKind, paths: l.conflictPaths, emptyCommit: refused == emptyCommitFinding}, ""
+			return merged, conflictCard{landCard: *card, why: refused, kind: l.conflictKind, paths: l.conflictPaths, emptyCommit: isEmptyCommitFinding(refused)}, ""
 		}
 		merged = append(merged, card.id)
 	}
@@ -1933,6 +1934,21 @@ func (l *lander) ledgers() []landLedger {
 // start is empty while the result claims changes. It is the return reason, whole.
 const emptyCommitFinding = "empty commit: the result claims changes the diff does not show"
 
+// emptyCommitNoResultFinding is the refusal when a landing's head diff from the
+// attempt's start is empty and the lander holds no result at all to say why (the
+// fleet row is absent or the work card was tidied away): nothing claimed changes,
+// so the refusal reads as a missing result, not as a claim. It is the return reason,
+// whole, and the card still goes back to review (isEmptyCommitFinding).
+const emptyCommitNoResultFinding = "empty commit: the head changes nothing from the attempt's start, and the lander holds no result to say why"
+
+// isEmptyCommitFinding says a refusal is an empty commit (docs/SPEC-SPRINT.md
+// section 7, the lander's checks), whether it reads as a claim (emptyCommitFinding)
+// or as a missing result (emptyCommitNoResultFinding): both return the card to
+// review, and every comparison of a refusal against the findings goes through here.
+func isEmptyCommitFinding(finding string) bool {
+	return finding == emptyCommitFinding || finding == emptyCommitNoResultFinding
+}
+
 var (
 	verdictOkRE = regexp.MustCompile(`(?im)^\s*verdict:\s*ok\b`)
 	// nothingRE is a result line that says the child found nothing to do: the verdict
@@ -1977,12 +1993,16 @@ func claimText(wc *sprint.Card) string {
 // or a diff stat that is not empty) is refused with emptyCommitFinding. A result that
 // claims nothing (a nothing-to-do verdict or report line, every step -) passes. A result
 // the lander does not hold cannot be told to claim nothing, so an empty diff with no
-// result text is refused too. A non-empty diff passes.
+// result text is refused too, but as emptyCommitNoResultFinding: nothing claimed changes,
+// and the refusal reads as a missing result (isEmptyCommitFinding). A non-empty diff passes.
 func checkEmptyCommit(emptyDiff bool, resultText string) string {
 	if !emptyDiff {
 		return ""
 	}
-	if strings.TrimSpace(resultText) == "" || verdictOkRE.MatchString(resultText) {
+	if strings.TrimSpace(resultText) == "" {
+		return emptyCommitNoResultFinding
+	}
+	if verdictOkRE.MatchString(resultText) {
 		return emptyCommitFinding
 	}
 	if nothingRE.MatchString(resultText) {
