@@ -68,6 +68,19 @@ func TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick(t *testing.T) {
 	assert.Equal(t, "m1", moved.F(FieldRebalancedFrom))
 }
 
+// Work moved in the work pass consumes the same destination lane budget as the read pass.
+func TestTheRebalanceDoesNotOverfillAReaderAfterMovingWork(t *testing.T) {
+	t.Parallel()
+	w := readQueueWorld(t, 2)
+	rbPlace(w, "s1-work", cardhdr.RouteFlash, "m1", Ready)
+
+	p := w.must(Rebalance(w.s, nil, "machine"))
+	assert.NotEmpty(t, rebalanced(p), "the ready work card should move to m2 first")
+	assert.Equal(t, "m2", w.s.Fleet.Card(WorkCardID("s1-work", 1)).Row)
+	assert.Equal(t, 0, readsReady(w.s, "m2"), "m2's lane was consumed by moved work")
+	assert.Equal(t, 2, readsReady(w.s, "m1"), "reads stay queued when no idle lane remains")
+}
+
 // A read never moves to a member whose reader row does not serve its tier, nor back to a
 // row it was rebalanced off.
 func TestTheRebalanceReadNeverMovesToAnIneligibleOrOldRow(t *testing.T) {

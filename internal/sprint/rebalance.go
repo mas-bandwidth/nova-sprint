@@ -126,6 +126,7 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 	}
 	ri := routeIndexesOf(s)
 	declared := map[string]bool{}
+	workMoved := map[string]int{}
 	for _, pr := range ladderOrder(dealOrder(s, prims)) {
 		g, wc := from[pr.ID], work[pr.ID]
 		tier := s.DealTier(pr)
@@ -134,6 +135,7 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 			continue
 		}
 		to.load++
+		workMoved[to.row]++
 		p.Units = append(p.Units, rebalanceMove(s, &p, declared, ri, g, to, pr, wc, tier, who))
 	}
 	// Reads are rebalanced too (docs/SPEC-SPRINT.md section 1, the rebalance): a read
@@ -147,7 +149,7 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 		}
 	}
 	if len(full) > 0 {
-		p.Units = append(p.Units, rebalanceReads(s, seats, units, full, &p, ri, who)...)
+		p.Units = append(p.Units, rebalanceReads(s, seats, units, full, workMoved, &p, ri, who)...)
 	}
 	ri.write(&p)
 	return p
@@ -259,10 +261,22 @@ func rebalanceMove(s *Snapshot, p *Plan, declared map[string]bool, ri routeIndex
 // are in half slots), in one tick. A read never goes back to a row it was rebalanced off
 // (FieldRebalancedFrom). The moved read keeps its attempt: it is dealt again under the
 // new reader's identity, its record retired on the row it left.
-func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, full map[string]bool, p *Plan, ri routeIndexes, who string) []Unit {
+func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, full map[string]bool, workMoved map[string]int, p *Plan, ri routeIndexes, who string) []Unit {
 	ruses := readUnitsOf(s, seats)
 	if len(ruses) == 0 {
 		return nil
+	}
+	unitByRow := make(map[string]*rebalanceUnit, len(units))
+	for _, u := range units {
+		unitByRow[u.row] = u
+	}
+	for i := range ruses {
+		if u := unitByRow[ruses[i].row]; u != nil {
+			// The work pass reserves the lanes it just filled. Cap the read pass's
+			// free-lane and half-slot budgets to that shared post-work remainder.
+			ruses[i].idle = min(ruses[i].idle, 2*max(u.idle(), 0))
+			ruses[i].half -= 2 * workMoved[u.row]
+		}
 	}
 	idx := fleetReadIndex(s)
 	var out []Unit
