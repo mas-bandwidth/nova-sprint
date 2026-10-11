@@ -1030,6 +1030,11 @@
     names the new test for the machine's. Tests only; no product change."
    :origin "this card; the v1.2.12 inventory card A2 and section 6 (three drain tests red at 04:16Z on 2026-10-11, the probe gate and #84, greened by 2623ab7 with no test of the composition)")
 
+  (fix "tla-dirtytickread-epoch-and-stop-fences" :release "v1.2.12" :status "planned"
+   :title "DirtyTickRead models the epoch repin, the stop fences and the stopped drain"
+   :text "The tick's read model (tla/DirtyTickRead.tla) now holds the second half of engine.go's Run that it lacked: an epoch advanced by an outside Clear, a part that pins the epoch it began under and is refused writing nothing when it moved (OldEpochPartWritesNothing), the StartsWork/ReportsWork/RequiresStopped fences on StopRevoked (StartsWorkNotAfterStop), and the drain of a STOPPED machine's queue (Drain). Two reversed witnesses: Broken \"epoch\" drops the epoch check (OldEpochPartWritesNothing fails), and Broken \"startsafterstop\" lets a StartsWork part commit after a stop revoked it (StartsWorkNotAfterStop fails). Models only; no product change."
+   :origin "v1.2.12 inventory item T9, the second half; code read at nova-sprint main 00c54ba2e")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,

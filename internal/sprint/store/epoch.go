@@ -82,6 +82,7 @@ func (st *Store) pinOnly(ctx context.Context) (*Store, EpochState, error) {
 }
 
 // repin is the store pinned again, to the epoch the sprint is at now.
+// tla/DirtyTickRead.tla Clear.
 func (st *Store) repin(ctx context.Context) (*Store, error) {
 	c := st.clone()
 	c.pinned = false
