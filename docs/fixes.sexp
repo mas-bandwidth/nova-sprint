@@ -194,7 +194,23 @@
      (T4, the Level action) are choices, not safety rules, and are left out. The refmodel's pending-operation
      fence (D1: Free) is left out (the module has no pending operation), and F1, F3 and F4 are left to the reads
      and accept, merge and return, and crash and repair cards."
-    :origin "card tla-sprint-tables-fleet-take-and-finish.w3, 2026-10-11: v1.2.12 inventory item T4, the second of five cards; drift read at nova-sprint main 00c54ba2e")
+     :origin "card tla-sprint-tables-fleet-take-and-finish.w3, 2026-10-11: v1.2.12 inventory item T4, the second of five cards; drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-sprint-tables-reads-and-accept" :release "v1.2.12" :status "planned"
+    :title "The SprintTables model holds the reads and the accept"
+    :text "Models only, no product change. tla/SprintTables.tla adds the read actions and the accept to the
+     sprint tables model, written from internal/sprint/refmodel/actions.go (Ask, AskAnother, ReadStart, Read,
+     Accept) with internal/sprint/readers.go ReadsNeededIn and internal/sprint/lifecycle.go Moves as the
+     reference: a card in review asks its reads of readers other than its worker, a read begins and returns ok or
+     broken, and accept moves it to merging when it has the reads its tier needs (one for a flash card, two for a
+     pro card; ReadsNeededIn) and no broken read stands at its head (steps_review.go hasBrokenAtHead). Invariants
+     AcceptHeld (no primary enters merging short of its reads), NeverAcceptBroken (no primary enters merging with
+     a broken read at its head), NeverReadByItsWorker and MovesOnlyByTable, with the reversed witnesses
+     MCSprintTablesBrokenShortAccept (an accept with one read fewer fails AcceptHeld) and
+     MCSprintTablesBrokenAcceptBroken (an accept with a broken read at its head fails NeverAcceptBroken). Drift
+     kept out and named in the report: refmodel's Accept demands two readers where the code allows one for flash
+     and lacks the read-broken guard (v1.2.13 cleanups), and docs/SPEC-SPRINT.md section 3 calls accept mechanical
+     (the tick) where lifecycle.go:57 names it Coordinator, so the module models the code."
+    :origin "this card; v1.2.12 inventory item T4, the third of five cards")
    (fix "tla-noroom-admission-by-probe" :release "v1.2.12" :status "planned"
     :title "NoRoom models the probe gate and the read return's taker"
     :text "Models only, no product change. tla/NoRoom.tla gains the probe gate: a member is known (accepted into the fleet) only on a passed probe (Accept, the caller's own word, trusted as the code does), and both the deal (Dealable) and the reader's ask (Off) read it, so no deal goes to a member the sprint does not know (NeverDealtUnknown) and a reader whose machine is not a fleet member belongs to no machine and is asked like any reader (steps_work.go fleetStepPlan, drain.go ReaderOwner). ReadReturn is guarded on a taker: a read asked of a held or draining machine's reader is taken back only when another reader can take it (readers.go sweepReads), so it stays otherwise, and ReadsReturn is restated under that guard with NeverReturnedWithoutATaker (a read is never taken back while no other reader can take it). Two reversed witnesses: Broken = \"probeblind\" deals to an unknown member (NeverDealtUnknown) and Broken = \"notaker\" takes a read back with no other reader (NeverReturnedWithoutATaker); the eight existing witnesses keep their results, and the noroom TLC records are refreshed."

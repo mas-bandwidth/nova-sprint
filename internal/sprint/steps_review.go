@@ -1017,6 +1017,8 @@ func ReadCardAgrees(c *Card) bool {
 // read is outstanding on a primary that is not in review. Named ids are all or nothing under one
 // pre-state; a selection (a stream, the primaries with the ok reads they need, an inbox
 // group) moves the eligible and lists the rest with the reason.
+// tla/SprintTables.tla Accept: review -> merging only with the reads its tier
+// needs (AcceptHeld) and no broken read at its head (NeverAcceptBroken).
 func Accept(s *Snapshot, r AcceptReq) Plan {
 	var p Plan
 	// in stream turns from the accept's stream index on the work table

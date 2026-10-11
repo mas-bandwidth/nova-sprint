@@ -1,13 +1,16 @@
 ------------------------------- MODULE MCSprintTables ---------------------------
 \* The instance: three cards, c2 a sentinel, c3 needing c1 and in line behind
-\* the sentinel, and two members m1 and m2, both up at the start. c1 starts
-\* ready (nothing to wait for) and is dealt to m1, taken, finished, and its
-\* member may go down and come up; c2 the sentinel starts waiting and lands
-\* only by release; c3 starts waiting for its need c1 and for the sentinel c2
-\* to land first.
+\* the sentinel, two members m1 and m2 both up at the start, and three readers
+\* r1, r2, r3 (r1 on m1, r2 on m2, r3 a friend). c1 is a flash card (one read)
+\* and c3 a pro card (two reads). c1 starts ready (nothing to wait for) and is
+\* dealt to m1, taken, finished, read by a reader other than its worker r1, and
+\* accepted on one read; c2 the sentinel starts waiting and lands only by
+\* release; c3 starts waiting for its need c1 and for the sentinel c2 to land
+\* first, then is dealt, taken, finished, read by two readers other than its
+\* worker, and accepted on two reads.
 EXTENDS SprintTables, TLC
 
-CONSTANTS c1, c2, c3
+CONSTANTS c1, c2, c3, r1, r2, r3
 
 MCCard == {c1, c2, c3}
 MCSentinels == {c2}
@@ -17,4 +20,8 @@ MCInitOf == [c \in MCCard |-> IF c = c1 THEN "ready" ELSE "waiting"]
 
 MCMember == {"m1", "m2"}
 MCInitUp == {"m1", "m2"}
+
+MCReader == {"r1", "r2", "r3"}
+MCFlash == {c1}
+MCMemberReader == [m \in MCMember |-> IF m = "m1" THEN "r1" ELSE "r2"]
 =============================================================================
