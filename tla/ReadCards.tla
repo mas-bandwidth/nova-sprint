@@ -24,10 +24,26 @@
 \* BugIgnoreSpent: FALSE holds every invariant; TRUE, the reversed witness (a deal
 \* that forgets a spent reader), breaks NeverTwiceAfterSpent. Its cases are in
 \* tla/CASES.tsv and their bench records in tla/RUNS.tsv.
+\*
+\* Live reads (v1.2.14, a-member-hands-back-a-read-it-is-not-running; the ghost reads of
+\* 2026-10-11, schema-c-t04-versions.r8.b2 working with no child for an hour). A working
+\* card's member may run a child for it (run) or not (Live: the cfgs that check the live reads,
+\* MCReadCardsLive and its witnesses, bounded to one attempt at the cfg's need by LiveBound in
+\* MCReadCards.tla; with Live FALSE the live actions are off and the space is the deal's alone): a child its member lost (Lose: a
+\* restart, a crash, a stage failure, or a take recorded with no child started). The
+\* member beats (Beat): its live set names a card while a child runs it, and gone counts the
+\* beats since one last did, to Grace + 1. The tick runs between two beats (TickEvery <
+\* BeatEvery), and its reconcile takes a working card the beats have not named for Grace
+\* windows back to the read deal (LiveReturn: lost, spending no one), so NamedOrWithinGrace
+\* holds and no read is a ghost past the grace (NoGhostRead). Two reversed witnesses:
+\* BugNamesHeld, a member whose live set names a read it runs no child for (pkg/member's
+\* stage retry before v1.2.14: the launch kept its held result, waiting for a packet the
+\* queue never sends), breaks NoGhostRead; BugNoLiveReturn, a reconcile that leaves a read
+\* card working (a read returned only at ReadCardDeadline), breaks NamedOrWithinGrace.
 
 EXTENDS Naturals, FiniteSets
 
-CONSTANT BugIgnoreSpent, Need
+CONSTANT BugIgnoreSpent, Need, Live, BugNamesHeld, BugNoLiveReturn
 
 ASSUME Need \in {0, 1, 2}
 
@@ -35,6 +51,7 @@ Readers == {"w", "a", "b"}
 Worker == "w"
 MaxAttempt == 2
 MaxGen == 2
+Grace == 1
 
 Open == {"ready", "working"}
 Spent == {"ok", "broken", "returned", "late"}
@@ -43,14 +60,15 @@ VARIABLES attempt, pstate, need, cards
 vars == <<attempt, pstate, need, cards>>
 
 \* cards: a set of records, one per card ever cut
-Card(a, r, g, st) == [att |-> a, rd |-> r, gen |-> g, st |-> st]
+Card(a, r, g, st) == [att |-> a, rd |-> r, gen |-> g, st |-> st, run |-> FALSE, gone |-> 0]
 
 TypeOK ==
   /\ attempt \in 1..MaxAttempt
   /\ pstate \in {"review", "merging"}
   /\ need \in {0, 1, 2}
   /\ \A c \in cards : c.att \in 1..MaxAttempt /\ c.rd \in Readers /\ c.gen \in 0..MaxGen
-                      /\ c.st \in Open \cup Spent \cup {"away", "rework"}
+                      /\ c.st \in Open \cup Spent \cup {"away", "rework", "lost"}
+                      /\ c.run \in BOOLEAN /\ c.gone \in 0..(Grace + 1)
 
 Init == attempt = 1 /\ pstate = "review" /\ need = Need /\ cards = {}
 
@@ -80,10 +98,39 @@ Deal ==
        /\ cards' = cards \cup {Card(attempt, r, NextGen(attempt, r), "ready") : r \in S}
   /\ UNCHANGED <<attempt, pstate, need>>
 
-Move(c, st) == cards' = (cards \ {c}) \cup {[c EXCEPT !.st = st]}
+\* a card leaving working keeps no child and no count: what it was is its st alone
+Move(c, st) == cards' = (cards \ {c}) \cup {[c EXCEPT !.st = st, !.run = FALSE, !.gone = 0]}
 
-Take == \E c \in At(attempt) : c.st = "ready" /\ Move(c, "working") /\ UNCHANGED <<attempt, pstate, need>>
-Close == \E c \in At(attempt), v \in {"ok", "broken"} : c.st = "working" /\ Move(c, v) /\ UNCHANGED <<attempt, pstate, need>>
+Set(c, d) == cards' = (cards \ {c}) \cup {d}
+
+\* the take starts a child (run); a take recorded with no child started is Take then Lose
+\* (the same states: a separate action would add none)
+Take == \E c \in At(attempt) : c.st = "ready" /\ Set(c, [c EXCEPT !.st = "working", !.run = TRUE, !.gone = 0]) /\ UNCHANGED <<attempt, pstate, need>>
+\* the member loses the child of a working card: restarted, crashed, its stage failed, or
+\* its take started none
+Lose == Live /\ \E c \in cards : c.st = "working" /\ c.run /\ Set(c, [c EXCEPT !.run = FALSE]) /\ UNCHANGED <<attempt, pstate, need>>
+Close == \E c \in At(attempt), v \in {"ok", "broken"} : c.st = "working" /\ c.run /\ Move(c, v) /\ UNCHANGED <<attempt, pstate, need>>
+
+\* the member's live set names the card: while a child runs it, or, under BugNamesHeld,
+\* whenever it is working (a held launch with no child)
+Named(c) == c.run \/ BugNamesHeld
+\* the member beats: a card its live set names was seen now, any other working card one
+\* beat longer unnamed. The tick runs between two beats, so a card unnamed for Grace beats
+\* has been returned before the next (unless BugNoLiveReturn)
+Beat ==
+  /\ Live
+  /\ BugNoLiveReturn \/ \A c \in cards : (c.st = "working" /\ ~Named(c)) => c.gone < Grace
+  /\ cards' = {IF c.st = "working"
+                THEN [c EXCEPT !.gone = IF c.run THEN 0 ELSE IF c.gone > Grace THEN Grace + 1 ELSE c.gone + 1]
+                ELSE c : c \in cards}
+  /\ UNCHANGED <<attempt, pstate, need>>
+\* the reconcile (sprint.LiveReturns): a working read its member's beats have not named for
+\* Grace windows goes back to the read deal, lost, spending no one
+LiveReturn ==
+  /\ Live
+  /\ ~BugNoLiveReturn
+  /\ \E c \in cards : c.st = "working" /\ ~Named(c) /\ c.gone >= Grace /\ Move(c, "lost")
+  /\ UNCHANGED <<attempt, pstate, need>>
 Return == \E c \in At(attempt) : c.st \in Open /\ Move(c, "returned") /\ UNCHANGED <<attempt, pstate, need>>
 Late == \E c \in At(attempt) : c.st = "working" /\ Move(c, "late") /\ UNCHANGED <<attempt, pstate, need>>
 TakeBack == \E c \in At(attempt) : c.st \in Open /\ Move(c, "away") /\ UNCHANGED <<attempt, pstate, need>>
@@ -117,7 +164,8 @@ ShortReadsBack ==
   /\ pstate' = "review"
   /\ UNCHANGED <<attempt, need, cards>>
 
-Next == Deal \/ Take \/ Close \/ Return \/ Late \/ TakeBack \/ Accept \/ Rework \/ SetReads \/ ShortReadsBack
+Next == Deal \/ Take \/ Lose \/ Close \/ Return \/ Late \/ TakeBack \/ Beat \/ LiveReturn
+        \/ Accept \/ Rework \/ SetReads \/ ShortReadsBack
 
 Spec == Init /\ [][Next]_vars
 
@@ -142,5 +190,11 @@ MergingOnlyOnOks == pstate = "merging" => Cardinality(OkReaders(attempt)) >= Nee
 
 \* the open cards of an attempt past are retired: no read of a reworked attempt stays open
 NoOpenReadOfAnOldAttempt == \A c \in cards : c.att < attempt => c.st \notin Open
+
+\* a read working on a member is named by its latest beat, or within the grace
+NamedOrWithinGrace == \A c \in cards : (c.st = "working" /\ ~Named(c)) => c.gone <= Grace
+
+\* no read stays working with no child past the grace: a ghost read is returned
+NoGhostRead == \A c \in cards : (c.st = "working" /\ ~c.run) => c.gone <= Grace
 
 =============================================================================

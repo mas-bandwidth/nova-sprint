@@ -67,6 +67,10 @@ const (
 	// RetiredByUnstarted is a read card left in ready past the deal bound: the machine's
 	// take-back, spending nothing.
 	RetiredByUnstarted = "unstarted"
+	// RetiredByLost is a read card working on a row whose fresh live set has not named it
+	// for LiveGrace (LiveReturns): no child of its member runs it. The machine takes it back
+	// to the read deal, spending nothing of the reader's and marking no failure.
+	RetiredByLost = "lost"
 )
 
 // isRead says the card is a read card.

@@ -7274,7 +7274,18 @@ same generation once it runs), or `-` for none. The beat is the evidence for
 working: a card working on a row whose live set has not named it at its
 generation for `LiveGrace` (60 s) since its take or its last sighting goes back
 ready on its row at its next generation with `lost_from_gen` and `lost_reason`,
-its progress kept as a stop-return keeps it. The tick does it RUNNING (its first
+its progress kept as a stop-return keeps it. A read card is held to the same
+rule (v1.2.14): a read working on a member is named by its member's latest
+beat, or within the grace (tla/ReadCards.tla NamedOrWithinGrace, NoGhostRead).
+Past it the read card leaves the fleet table retired `lost`, with
+`lost_from_gen` and `lost_reason`, spending no reader and marking no failure,
+and the next read-card ask deals the read again at its next generation to
+whichever reader the deal picks, that member included; it is never left in the
+lost member's ready, and never waits for `ReadCardDeadline` (2026-10-11: about
+20 reads sat working with no child for up to an hour). A member's live set names
+only what it runs: a read whose stage failed is run again from the launch's
+own packet after `ReadStageRetry` (a member's queue sends no packet for a card it
+names in `--have`), never kept held with no child. The tick does it RUNNING (its first
 part, `live`) and STOPPED alike (the STOPPED tick's one step, `live return`): a
 STOPPED machine takes and lands nothing new, and still makes working what runs.
 A STOPPED return also writes the STOP's receipt (`stopped_from_gen`). A STOP
