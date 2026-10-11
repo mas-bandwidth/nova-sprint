@@ -70,7 +70,7 @@ func needsActor(c common) string {
 	case "", classRead, classMachine:
 		return ""
 	}
-	if c.actor != "" {
+	if c.actor != "" || c.read {
 		return ""
 	}
 	return "--actor <name> is required (or NOVA_SPRINT_ACTOR): who acts is recorded with every change, and there is no default; nothing was changed"

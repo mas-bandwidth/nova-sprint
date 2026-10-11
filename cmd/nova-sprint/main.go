@@ -605,6 +605,7 @@ func longClose(src string, i, level int) int {
 // common is the flags every store verb takes.
 type common struct {
 	verb             string // the verb's name: its class (coordinator.go)
+	read             bool   // set by a worker's verb whose words make it a read (queue --stream): it needs no actor
 	coordinator      string // init --coordinator: the coordinator it names
 	redis, actor, op string
 	json             bool
