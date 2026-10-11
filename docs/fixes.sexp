@@ -2327,7 +2327,12 @@
     watch looked for is now a test, each on its own store and in parallel, and make release-accept
     (tools/release-accept.sh) runs exactly that set against a given build (NOVA_SPRINT_BIN, the canary's
     binary; unset, the tree's is built), with NOVA_CI=1 so a missing redis-server fails, go test's
-    -timeout 2m, and a run whose wall time is over 120 s failed by the script. The script names every test; a name that does not run and pass fails the
+    and a bound of 120 s on the whole run (the clock started before the build, the build and the tests
+    killed when it passes). Every run of the binary is given --redis naming the test's own store and an
+    environment scrubbed of every NOVA_ variable with HOME and XDG_CONFIG_HOME its own, so no verb is
+    forwarded to a server NOVA_SPRINT_SERVER or the seat's record names;
+    TestReleaseAcceptTheBinaryNeverReachesAConfiguredServer proves it against an outside listener named
+    both ways, after witnesses that the listener catches a verb named either way. The script names every test; a name that does not run and pass fails the
     gate by its count. New tests: TestReleaseAcceptTicksOfABusySprintNeverFail (40 ticks of a busy sprint
     on a real store with the world played between them, every tick exit 0, no panic, no REFUSED drain,
     check clean after), TestReleaseAcceptNeedsHoldACardOffTheDealOnTheStore (a dealt card whose need is

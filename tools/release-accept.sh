@@ -58,39 +58,78 @@ TestABriefBatchCannotCloseACycleBetweenItsCards
 TestAddRefusesACycle
 TestReleaseAcceptAClearedSprintLandsWithNoSeatAction
 TestReleaseAcceptCanaryOneMemberFinishesOneCardOnTheBuild
+TestReleaseAcceptTheBinaryNeverReachesAConfiguredServer
 '
 PKGS='./cmd/nova-sprint/ ./internal/sprint/ ./internal/sprint/store/'
 
 want=$(printf '%s\n' $NAMES | sed '/^$/d' | sort -u | wc -l | tr -d ' ')
 run="^($(printf '%s\n' $NAMES | sed '/^$/d' | paste -sd '|' -))\$"
 
+# the owner's bound: under one minute ideally, two at most. The clock starts here, before
+# the build, and the whole run (the build and the tests) is killed when it passes BOUND:
+# bounded() runs a command under a watchdog that sends TERM at the deadline and KILL 5 s
+# later, to that command's PID only (it started it).
+BOUND=120
+# a lower bound may be named, to prove the kill on a known case; never a higher one
+if [ -n "${RELEASE_ACCEPT_BOUND:-}" ] && [ "$RELEASE_ACCEPT_BOUND" -lt "$BOUND" ]; then
+	BOUND=$RELEASE_ACCEPT_BOUND
+fi
+began=$(date +%s)
+deadline=$((began + BOUND))
+timed_out=0
+bounded() {
+	"$@" &
+	pid=$!
+	(
+		while kill -0 "$pid" 2>/dev/null; do
+			if [ "$(date +%s)" -ge "$deadline" ]; then
+				kill -TERM "$pid" 2>/dev/null
+				sleep 5
+				kill -KILL "$pid" 2>/dev/null
+				exit 0
+			fi
+			sleep 1
+		done
+	) &
+	watchdog=$!
+	rc=0
+	wait "$pid" || rc=$?
+	kill "$watchdog" 2>/dev/null || true
+	wait "$watchdog" 2>/dev/null || true
+	if [ "$(date +%s)" -ge "$deadline" ]; then
+		timed_out=1
+	fi
+	return "$rc"
+}
+over() {
+	echo "RELEASE ACCEPT FAILED wall=$(($(date +%s) - began))s: killed at the ${BOUND}s bound ($1)"
+	exit 1
+}
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 if [ -z "${NOVA_SPRINT_BIN:-}" ]; then
 	NOVA_SPRINT_BIN=$work/nova-sprint
-	$GO build -o "$NOVA_SPRINT_BIN" ./cmd/nova-sprint
+	bounded $GO build -o "$NOVA_SPRINT_BIN" ./cmd/nova-sprint || { [ "$timed_out" -eq 1 ] && over "the build"; echo "RELEASE ACCEPT FAILED the build"; exit 1; }
 fi
 export NOVA_SPRINT_BIN NOVA_CI=1
 # auto maintenance off for every git the tests start (Makefile, NO_AUTO_MAINTENANCE)
 export GIT_CONFIG_PARAMETERS="'maintenance.auto'='false'"
 
-began=$(date +%s)
+left=$((deadline - $(date +%s)))
+[ "$left" -gt 0 ] || over "before the tests"
 status=0
+# go test's own -timeout is what is left of the bound too, so a test binary stops itself
 # shellcheck disable=SC2086 # PKGS is a list of packages
-$GO test -tags functional -count=1 -p "$P" -parallel "$P" -timeout 2m -v -run "$run" $PKGS >"$work/out" 2>&1 || status=$?
+bounded $GO test -tags functional -count=1 -p "$P" -parallel "$P" -timeout "${left}s" -v -run "$run" $PKGS >"$work/out" 2>&1 || status=$?
 wall=$(($(date +%s) - began))
+[ "$timed_out" -eq 0 ] || over "the tests"
 
 grep -E '^(FAIL|ok  )' "$work/out" || true
 passed=$(grep -E '^--- PASS: Test' "$work/out" | awk '{print $3}' | sort -u | wc -l | tr -d ' ')
 failed=$(grep -cE '^--- FAIL: Test' "$work/out" || true)
 missing=$(printf '%s\n' $NAMES | sed '/^$/d' | sort -u | while read -r n; do grep -qE "^--- (PASS|FAIL): $n " "$work/out" || echo "$n"; done)
 
-# the owner's bound: under one minute ideally, two at most; over it is the gate's failure
-BOUND=120
-if [ "$wall" -gt "$BOUND" ]; then
-	echo "RELEASE ACCEPT FAILED wall=${wall}s is over the ${BOUND}s bound (passed=$passed of $want)"
-	exit 1
-fi
 if [ "$status" -ne 0 ] || [ "$passed" -ne "$want" ]; then
 	[ -n "$missing" ] && printf 'RELEASE ACCEPT MISSING %s\n' $missing
 	# each failure with what it said: the --- FAIL line and its indented lines after it
