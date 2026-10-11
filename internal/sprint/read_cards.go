@@ -281,7 +281,8 @@ func readGenOf(id, base string) int {
 // ReadCardGenIDs is the identities one reader's read card of an attempt may have: the plain
 // one (generation 0) and its generations through gen. With no gen named it is the plain
 // identity and the second (ReadCardSecondID), as a re-asked friend read is named; a caller
-// that holds the read index names the generation after the highest it holds (ReadCardExtras).
+// that holds the read index names the generation after the highest it holds (readNextGen;
+// ReadCardExtras and friendReadCardOf do).
 func ReadCardGenIDs(primary string, attempt int, reader string, gen ...int) []string {
 	id := ReadCardID(primary, attempt, reader)
 	n := 1
@@ -295,12 +296,12 @@ func ReadCardGenIDs(primary string, attempt int, reader string, gen ...int) []st
 	return out
 }
 
-// readCardIDFor is the id of the reader's next read card of the attempt: the generation
-// after the highest the read index holds (readGenOf), the plain identity when it holds
-// none. It never runs out, so a reader whose read the machine took back is dealt it again
-// at a fresh generation (the owner, 2026-10-06: "I don't want any serial reads again"; a
-// read machine-taken-back spends no reader, spentBy). tla/ReadCards.tla Deal.
-func readCardIDFor(cards []*Card, primary string, attempt int, reader string) string {
+// readNextGen is the generation after the highest the read index holds for one reader's read
+// card identity (readGenOf): 0 when it holds none. The read-card deal never caps the
+// generation, so a reader whose read the machine took back is dealt it again at a fresh one
+// (the owner, 2026-10-06: "I don't want any serial reads again"; a read machine-taken-back
+// spends no reader, spentBy). tla/ReadCards.tla Deal.
+func readNextGen(cards []*Card, primary string, attempt int, reader string) int {
 	base := ReadCardID(primary, attempt, reader)
 	next := 0
 	for _, c := range cards {
@@ -308,10 +309,20 @@ func readCardIDFor(cards []*Card, primary string, attempt int, reader string) st
 			next = g + 1
 		}
 	}
-	if next == 0 {
-		return base
+	return next
+}
+
+// readCardIDFor is the id of the reader's next read card of the attempt: the generation
+// after the highest the read index holds (readNextGen), the plain identity when it holds
+// none. It never runs out, so a reader whose read the machine took back is dealt it again
+// at a fresh generation (the owner, 2026-10-06: "I don't want any serial reads again"; a
+// read machine-taken-back spends no reader, spentBy). tla/ReadCards.tla Deal.
+func readCardIDFor(cards []*Card, primary string, attempt int, reader string) string {
+	base := ReadCardID(primary, attempt, reader)
+	if next := readNextGen(cards, primary, attempt, reader); next > 0 {
+		return base + ".g" + itoa(next)
 	}
-	return base + ".g" + itoa(next)
+	return base
 }
 
 // ReadCardExtras is the fleet table's read card ids a step that judges reads must read as
@@ -337,13 +348,7 @@ func ReadCardExtras(s *Snapshot) []string {
 			// the identities the store must read are those the read index holds and the
 			// generation after the highest of them, the one readCardIDFor deals next: no
 			// reader is ever refused "no id", however often its read was taken back
-			base := ReadCardID(c.ID, attempt, name)
-			next := 0
-			for _, rc := range s.Fleet.Cards() {
-				if g := readGenOf(rc.ID, base); g >= next {
-					next = g + 1
-				}
-			}
+			next := readNextGen(s.Fleet.Cards(), c.ID, attempt, name)
 			for _, id := range ReadCardGenIDs(c.ID, attempt, name, next) {
 				if s.Fleet.Placed(id) == nil {
 					out = append(out, id)
