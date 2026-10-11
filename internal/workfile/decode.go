@@ -65,8 +65,9 @@ func (d *decoder) finish(t *Tree) (*Tree, error) {
 	return nil, errors.Join(d.probs...)
 }
 
-// record reads (head <id?> :key value ...) with exactly the keys given.
-func (d *decoder) record(at string, f worklang.Form, head string, withID bool, keys []string) (worklang.Form, map[string]worklang.Form, error) {
+// record reads (head <id?> :key value ...) with exactly the keys given, plus
+// the optional keys, which may be absent (SPEC-WORK-V1 section 1.2).
+func (d *decoder) record(at string, f worklang.Form, head string, withID bool, keys []string, optional ...string) (worklang.Form, map[string]worklang.Form, error) {
 	var id worklang.Form
 	if f.Kind != worklang.List || len(f.List) == 0 || f.List[0].Kind != worklang.Symbol || f.List[0].Value != head {
 		return id, nil, d.errf(at, "want a (%s ...) record", head)
@@ -78,13 +79,16 @@ func (d *decoder) record(at string, f worklang.Form, head string, withID bool, k
 		}
 		id, rest = rest[0], rest[1:]
 	}
-	m, err := d.pairs(at, head, rest, keys)
+	m, err := d.pairs(at, head, rest, keys, optional)
 	return id, m, err
 }
 
-func (d *decoder) pairs(at, head string, rest []worklang.Form, keys []string) (map[string]worklang.Form, error) {
+func (d *decoder) pairs(at, head string, rest []worklang.Form, keys, optional []string) (map[string]worklang.Form, error) {
 	want := map[string]bool{}
 	for _, k := range keys {
+		want[k] = true
+	}
+	for _, k := range optional {
 		want[k] = true
 	}
 	m := map[string]worklang.Form{}
@@ -220,7 +224,7 @@ func (d *decoder) tree(f worklang.Form) (*Tree, error) {
 		d.fail("(root)", "version %s is not read; this build reads %s", v, Format)
 		return d.finish(nil)
 	}
-	id, m, _ := d.record("(root)", f, "work-tree", true, []string{"source", "org", "fetched", "repos"})
+	id, m, _ := d.record("(root)", f, "work-tree", true, []string{"source", "org", "fetched", "repos"}, "scope")
 	if m == nil {
 		return d.finish(nil)
 	}
@@ -236,6 +240,23 @@ func (d *decoder) tree(f worklang.Form) (*Tree, error) {
 	}
 	if s, ok := d.takeStr("(root)", "fetched", m); ok {
 		t.Fetched = s
+	}
+	// :scope is present only for a scoped import; its absence is a
+	// whole-organization tree (SPEC-WORK-V1 section 1.2). An empty :scope the
+	// writer never writes is refused, so one tree still has one file.
+	if sv, ok := m["scope"]; ok {
+		if xs, err := d.strs("(root)", "scope", sv); err == nil {
+			if len(xs) == 0 {
+				d.fail("(root)", ":scope is empty; a whole-organization tree omits :scope")
+			}
+			for i, s := range xs {
+				if i > 0 && s <= xs[i-1] {
+					d.fail("(root)", ":scope repository %q is out of order or repeated", s)
+					break
+				}
+			}
+			t.Scope = xs
+		}
 	}
 	if reposForm, ok := m["repos"]; ok {
 		if repos, err := d.list("(root)", "repos", reposForm); err == nil {
@@ -361,7 +382,7 @@ func (d *decoder) issue(repo string, f worklang.Form) (Issue, bool) {
 	}
 	if fv, ok := m["milestone"]; ok {
 		if ms, err := d.list(at, "milestone", fv); err == nil && len(ms) > 0 {
-			mm, _ := d.pairs(at, "milestone", ms, []string{"number", "title"})
+			mm, _ := d.pairs(at, "milestone", ms, []string{"number", "title"}, nil)
 			if mm != nil {
 				is.Milestone = &Milestone{}
 				if n, ok := mm["number"]; ok {
