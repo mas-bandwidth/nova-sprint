@@ -545,7 +545,8 @@ func decideConsumer(s *Snapshot, id, what, op, usage string) Consumer {
 	u := cardcost.ParseUsage(usage)
 	model := cmp.Or(u.Model, DecideModel)
 	var priced cardcost.Usage
-	if r, ok := s.priceRoute("", model, false); ok && u.Tokens.Reported() {
+	if r, ok := s.priceRoute("", model, false); ok && u.Tokens.Reported() && !slices.Contains(u.Extra, UsageEstimated) {
+		// an estimated count is kept as tokens, never priced: a cost is never guessed
 		priced = u.Priced(r.Name, r.Prices)
 	} else {
 		priced = u.Priced("", cardcost.Prices{})

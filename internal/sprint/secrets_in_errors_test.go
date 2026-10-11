@@ -1,6 +1,7 @@
 package sprint_test
 
 import (
+	"errors"
 	"go/parser"
 	"go/token"
 	"io/fs"
@@ -73,8 +74,18 @@ func sprintSecretFiles(t *testing.T) []secretcheck.File {
 	var out []secretcheck.File
 	for _, r := range sprintSecretRoots {
 		err := filepath.WalkDir(filepath.Join(root, r), func(path string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			if err != nil {
+				// a directory another package's tests make and remove under a
+				// walked root (a hook's short socket directory) can vanish
+				// between the listing and the open; not a secret, and no file
+				// of it is read
+				if errors.Is(err, fs.ErrNotExist) {
+					return nil
+				}
 				return err
+			}
+			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
 			}
 			rel, err := filepath.Rel(root, path)
 			if err != nil {

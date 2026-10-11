@@ -22,6 +22,9 @@ func AddStep(r sprint.AddReq) Step {
 		load = All
 	}
 	return Step{Named: len(r.IDs) > 0 || len(r.Cards) > 0 || len(r.Replaces) > 0, Args: ArgsOf(r), Verb: "add", Load: load, Mirrors: true,
+		// the routes when a brief decision's record is written at add: priced by a route of its
+		// model (cost.go); an add with none reads no routes
+		Routes: len(r.BriefUsage) > 0,
 		Extras: func(s *sprint.Snapshot) map[string][]string {
 			ids := append(append([]string(nil), sprint.AddIDs(s, r)...), r.Replaces...)
 			needs := append([]string(nil), r.Needs...)
@@ -174,6 +177,14 @@ func DropStep(r sprint.DropReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Drop(s, r) }}
 }
 
+// DeferStep is the coordinator deferring waiting primaries to the roadmap:
+// the verb writes their whole briefs into the roadmap data and this step drops
+// them from the store (sprint.Defer). Only a waiting primary defers.
+func DeferStep(r sprint.DeferReq) Step {
+	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "defer", Load: All, Mirrors: true,
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Defer(s, r) }}
+}
+
 // BriefStep is the coordinator replacing the briefs of primaries in place, on a
 // running machine as on a stopped one (sprint.Brief); all or none. It reads what a
 // rework reads: a card in review edited in place opens its next attempt.
@@ -268,6 +279,13 @@ func RouteRestStep(r sprint.RouteRestReq) Step {
 func RouteWakeStep(r sprint.RouteWakeReq) Step {
 	return Step{Named: true, Args: ArgsOf(r), Verb: "routes wake", Load: tables(sprint.Fleet), Routes: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.WakeRoutes(s, r) }}
+}
+
+// RouteLimitStep is routes limit: a model's requests per minute or a provider's concurrency
+// set in the fleet table's properties (sprint.SetRouteLimit).
+func RouteLimitStep(r sprint.RouteLimitReq) Step {
+	return Step{Named: true, Args: ArgsOf(r), Verb: "routes limit", Load: tables(sprint.Fleet), Routes: true,
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.SetRouteLimit(s, r) }}
 }
 
 // CostReconcileStep is one cost reconciliation (sprint.CostReconcile): each provider's own

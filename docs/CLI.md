@@ -152,8 +152,8 @@ nova-sprint seat login --store <secrets dir> --as <seat> --key <keyfile> --secre
 nova-sprint seat login --check
 nova-sprint seat logout
 nova-sprint seat push [--harness <name> --target <dir> [--session <id>]] [--json]
-nova-sprint seat pong <nonce>
-nova-sprint seat watch <dir> [--json]
+nova-sprint hook [--prove <challenge> | --ack <id>]
+nova-sprint unhook
 nova-sprint seat install --harness <name> --target <dir> [--session <id>] [--server <host:port>] [--config-seat <name> --config-dsn <dsn> --config-password-env <NAME>] [--dry-run]
 nova-sprint seat check
 nova-sprint routes
@@ -234,7 +234,7 @@ state (`backup: reads (review ... > working ...)`) while there is one
 
 `nova-sprint seat login --store <secrets dir> --as <seat> --key <keyfile> --secret <NAME> --user <redis user> --redis <addr>` records the store login in `~/.config/nova-sprint/login.json` (or under `$XDG_CONFIG_HOME`), mode 0600: the address, the user and where the password is in nova-secrets, never the password, and only once the secret resolves. After it, `nova-sprint <verb>` typed bare reaches that store as that user, the password read in the verb's own process through nova-secrets' checks, with no `nova-secrets exec` wrapper; `--redis`, `NOVA_SPRINT_REDIS`/`NOVA_REDIS_ADDR` and `NOVA_SPRINT_REDIS_USER` still win. `seat login --check` prints `SEAT LOGIN file=… redis=… user=… … resolves=yes|no` (exit 1 on no), the password never shown; `seat logout` removes the record. A recorded secret that does not resolve is refused naming the file and the remedy, never dialed without a password. `nova-sprint run --keys <NAME,...>` records the decision key and each provider key in `keys.json` beside that login (names only, never a value) and the run process reads each one from the seat; a name that cannot be read refuses at start, naming the name. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-seats-store-login) and [SPEC-SECRETS.md](SPEC-SECRETS.md) ("A tool's store login").
 
-The seat is held only by a session the push loop reaches ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-push-proof)). `nova-sprint seat install --actor <seat> --harness <harness> --target <session dir>` records the seat's push target and installs the push loop; the loop delivers `NOVA SPRINT PUSH CHECK <nonce>` into the session through the harness's nova-friend adapter, and the session answers with `nova-sprint seat pong <nonce> --actor <seat>`. Until that pong is in, and again whenever it is older than 15 minutes (the loop asks every 10), every coordinator verb is refused with one line, `PUSH DOWN: <why>; ... run: nova-sprint seat install ...`, and `coordinator <name>` refuses a name with no live proof. `seat push` prints `PUSH OK` or `PUSH DOWN` with why and the remedy (exit 1). A harness with no deliver command uses the folder adapter: install resolves `--target` to an absolute existing directory, and the push loop writes `PROOF-<nonce>` there. The actual nonce appears only in that filename; status, refusals, errors, and pong responses never reveal it. `seat push --json` reports `proof=none|pending|proven` without `nonce` or `pong_of`; `live` separately reports whether the proof is still valid. Run the printed Monitor command, `nova-sprint seat watch <dir>`, from inside the session, then answer each proof filename with `seat pong`. The native Monitor prints complete regular files already present and each new file every second, one flushed path per line (`--json`: one object with `path` per file); it skips dot files and directories, prints a removed name again when it reappears, writes nothing, runs locally, and stops on an interrupt. `seat check` prints `proven=<age> ago` on OK and `proven=-` plus both commands on DOWN.
+The coordinator hooks in ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-hook)). Every command run as the coordinator fails with exactly `You must hook in first: run nova-sprint hook` until the seat holds a live, proven hook. Run `nova-sprint hook --actor <seat>` under a Monitor, with `NOVA_SPRINT_SERVER` set: it holds one subscription on the server and prints one event a line. Answer its `HOOK CHALLENGE <c>` with `nova-sprint hook --prove <c>`; the server challenges again every 10 minutes, and an answer later than 5 minutes unhooks. Acknowledge each `PUSH <id>` with `nova-sprint hook --ack <id>`: a push unacknowledged for 10 minutes refuses every coordinator command, naming it. `nova-sprint unhook` ends it (recorded away, the owner told); a hook that drops is recorded gone at once and the owner told. There is no override.
 
 `nova-sprint seat install --server <host:port> --config-seat <name> --config-dsn <dsn> --config-password-env <NAME>` (beside the push loop's unit) records the sprint's server in `seat.json` beside that login and writes the nova-config seat profile, the row `<name>\t<dsn>\t<NAME>` of `~/.config/nova-config/seats.tsv`. After it, `nova-sprint seat check` measures the recorded server when `NOVA_SPRINT_SERVER` is not set and prints `MACHINERY config OK seat=<name> …` (or DOWN with the remedy), and `nova-config <verb> --seat <name>` (or `NOVA_SEAT`) reaches the config store with no `nova-secrets exec`: the password is read in process from the store login's nova-secrets seat under `<NAME>` when that variable is not set and `NOVA_PG_PASSWORD_ENV` is not given (`NOVA_PG_PASSWORD_ENV` given still wins). The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#handing-over-the-seat) and [SPEC-CONFIG.md](SPEC-CONFIG.md#connecting).
 
@@ -697,4 +697,70 @@ Reads the tree and GitHub again and writes nothing: zero differences is
 `VERIFY OK ... differences=0`, the receipt that the tree holds what GitHub
 holds. `--against <tree>` puts a second tree file where GitHub stands and reads
 no network at all.
+
+### roadmap check, list, add, remove, pull, done, note, render
+
+```
+nova-work roadmap check  [--repo <dir>]
+nova-work roadmap list   [--repo <dir>] [--file roadmap|fixes] [--release <v> | --group <g>] [--state <s>] [--text <t>] [--max <n>]
+nova-work roadmap add    [--repo <dir>] --id <id> (--release <v> | --group <g>) --title <t> [--text <t>] --origin <o> [--status planned|in-progress] [--why <w>]
+nova-work roadmap remove [--repo <dir>] --id <id>...
+nova-work roadmap pull   [--repo <dir>] --id <id>... (--release <v> | --group <g>)
+nova-work roadmap done   [--repo <dir>] --id <id>... --evidence <PR #n | commit>
+nova-work roadmap note   [--repo <dir>] --id <id>... [--text <t>] [--title <t>]
+nova-work roadmap render [--repo <dir>] | --file <data.sexp> --out <page.md> [--source <name>]
+```
+
+Edit and read a repository's own work record: `docs/roadmap.sexp` (rendered to
+`ROADMAP.md`) and `docs/fixes.sexp` (rendered to `FIXES.md`), in the shapes of
+`internal/roadmapdoc`. Every writing verb edits the data, decodes it again, and
+writes the data and its page in the same step, so neither is edited by hand and
+the sync tests (`TestRoadmapIsGeneratedFromTheSexp`,
+`TestFixesIsGeneratedFromTheSexp`) stay green. Every byte a verb does not change
+(comments, spacing, the other records) is kept; a removed record takes only its
+own trailing comment with it. `--id` repeats for more entries.
+
+The verbs read and write local files only: no GitHub call per entry. A batch of
+edits lands as one commit and one pull request, so GitHub sees an occasional push
+rather than one API call per item (the 2026-10-10 cleanup made about 1,000 calls,
+one per issue and pull request closed or moved, and tripped GitHub's secondary
+rate limit).
+
+- `check`: both files decode, no id stands in both, each page is what its data
+  renders. Exit 1, one `ROADMAP-CHECK FAILED` line per problem.
+- `list`: the entries, by file, release or group, state and words; `--json` is
+  one object with an `entry` item per entry (id, file, kind, place, state, title).
+- `add`: a roadmap item under `--group`, or a fix in `--release` (planned unless
+  `--status in-progress`). A duplicate id (in either file, groups and releases
+  included) is refused.
+- `remove`: the entries go.
+- `pull`: to `--release`, an item becomes a planned fix or a fix changes release;
+  to `--group`, a fix becomes an item or an item changes group.
+- `done`: a fix's status becomes `done`; an item moves to the roadmap's `:done`
+  list, dated today. `--evidence` (a pull request or a commit) is appended to the
+  text.
+- `note`: `--text` is appended to each entry's text; `--title` retitles it, and
+  the title it had is kept under `:kept` (`earlier-title`).
+
+A move across the two files, and `done` of an item, carries every field. A field
+the target shape has no key for is kept under the record's `:kept` as
+`<from>-<key>` (`item-why` on a fix, `fix-status` on an item), and a move back
+restores it, so roadmap -> fixes -> roadmap gives back the item it was.
+- `render`: writes the pages from the data; `--file` and `--out` render data kept
+  outside the repository whose page it is (a roadmap held in the private work
+  repository) through the same renderer.
+
+An entry is todo (a roadmap item), open (a fix, planned or in-progress) or done
+(an item on `:done`, a fix done or shipped), and its rules are modelled in
+[tla/RoadmapEntry.tla](../tla/RoadmapEntry.tla): done is final; a release whose
+status is shipped is frozen; every group and release keeps one entry, so a
+remove, pull or done that would empty one is refused; every entry names a group
+or release that is there. A pull across the two files writes the destination
+first, so a stop between the writes leaves the id in both files (check names
+it, every verb refuses until one copy is removed), never in neither. On a
+refusal (exit 2) nothing is written.
+
+The roadmap verbs of nova-sprint 8c87a4b (`roadmap check`, `add`, `remove`,
+`pull`, `note`) edited the private work record's `roadmaps/*.sexp` and were left
+out by the v1.2.3 re-seed. These verbs replace them, on the repository's own files.
 

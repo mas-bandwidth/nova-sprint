@@ -36,7 +36,7 @@ const (
 var verbClasses = map[string]string{
 	"init": classCoordinator, "add": classCoordinator, "quack": classCoordinator, "release": classCoordinator, "resolve": classCoordinator,
 	"start": classCoordinator, "stop": classCoordinator, "ask": classCoordinator, "accept": classCoordinator,
-	"rework": classCoordinator, "return": classCoordinator, "redo": classCoordinator, "drop": classCoordinator, "unpin": classCoordinator, "priority": classCoordinator, "rank": classCoordinator, "relink": classCoordinator, "recut": classCoordinator, "brief": classCoordinator, "move": classCoordinator,
+	"rework": classCoordinator, "return": classCoordinator, "redo": classCoordinator, "drop": classCoordinator, "defer": classCoordinator, "unpin": classCoordinator, "priority": classCoordinator, "rank": classCoordinator, "relink": classCoordinator, "recut": classCoordinator, "brief": classCoordinator, "move": classCoordinator,
 	"resume": classCoordinator, "land": classCoordinator, "fleet up": classCoordinator, "fleet down": classCoordinator, "hold": classCoordinator, "unhold": classCoordinator, "fleet hold": classCoordinator, "fleet unhold": classCoordinator, "friend hold": classCoordinator, "friend unhold": classCoordinator,
 	"fleet level": classCoordinator, "fleet quiet": classCoordinator, "fleet sync": classCoordinator, "friend sync": classCoordinator, "friend reconcile": classCoordinator, "friend down": classCoordinator, "friend up": classCoordinator, "friend take": classCoordinator, "friend give": classCoordinator, "friend level": classCoordinator, "friend health": classCoordinator, "reader add": classCoordinator, "reader set": classCoordinator, "reader away": classCoordinator, "reader up": classCoordinator, "reader remove": classCoordinator, "reader retire": classCoordinator, "stream remove": classCoordinator, "stream set": classCoordinator, "set": classCoordinator, "promoted": classCoordinator, "funded": classCoordinator, "cost reconcile": classCoordinator, "cost reprice": classCoordinator, "wait": classCoordinator,
 	"merge-window open": classCoordinator,
@@ -52,7 +52,7 @@ var verbClasses = map[string]string{
 	"tick": classMachine, "run": classMachine, "friend clean": classMachine, "seat install": classMachine, "seat uninstall": classMachine, "selftest land": classMachine, "server switch": classMachine,
 
 	"inbox": classRead, "card": classRead, "log": classRead, "check": classRead, "where": classRead, "watch": classRead, "dashboard": classRead, "routes": classRead, "rules": classRead, "stats": classRead, "bases": classRead,
-	"goal show": classRead, "handover": classRead, "seat": classRead, "seat push": classRead, "seat pong": classRead, "lane list": classRead, "fsck seat": classRead, "doctor": classRead,
+	"goal show": classRead, "handover": classRead, "seat": classRead, "seat push": classRead, "hook": classRead, "unhook": classRead, "lane list": classRead, "fsck seat": classRead, "doctor": classRead,
 
 	"coordinator": classSeat,
 }
@@ -76,34 +76,20 @@ func needsActor(c common) string {
 	return "--actor <name> is required (or NOVA_SPRINT_ACTOR): who acts is recorded with every change, and there is no default; nothing was changed"
 }
 
-// coordinatorOnly is why the actor may not run a coordinator verb: "" is
-// may. The first init names the coordinator (--coordinator, else the actor);
-// every later coordinator verb, init included, is that actor's alone. A
-// store with no coordinator takes init and teardown only.
+// coordinatorOnly is why the actor may not run the verb: "" is may. The first
+// init names the coordinator (--coordinator, else the actor); every later
+// coordinator verb, init included, is that actor's alone. A store with no
+// coordinator takes init and teardown only. Every command run as the
+// coordinator waits for the seat's live, proven hook (hookedIn; hook.go): the
+// first init, on a store with no coordinator, only names the seat.
 func coordinatorOnly(ctx context.Context, st *store.Store, c common) (string, error) {
-	if verbClasses[c.verb] != classCoordinator {
-		return "", nil
+	if verbClasses[c.verb] == classCoordinator {
+		why, err := coordinatorsAlone(ctx, st, c)
+		if err != nil || why != "" {
+			return why, err
+		}
 	}
-	why, err := coordinatorsAlone(ctx, st, c)
-	if err != nil || why != "" {
-		return why, err
-	}
-	return seatPushed(ctx, st)
-}
-
-// seatPushed is why the coordinator's verb may not run while the seat has no
-// live push proof (docs/SPEC-SPRINT.md, "The push proof"; pushproof.go): ""
-// is may. The first init, on a store with no coordinator, only names the
-// seat, and the push loop follows a seat that has a holder: every verb after
-// it, init again included, waits for the holder's proof. It is the seat's own
-// session acting, so a busy seat answers its own outstanding check here and the
-// gate is asked again (pushGateRenewing): a busy seat is never locked out.
-func seatPushed(ctx context.Context, st *store.Store) (string, error) {
-	seat, err := st.B.Coordinator(ctx)
-	if err != nil || seat == "" {
-		return "", err
-	}
-	return pushGateRenewing(ctx, st, seat, st.Now())
+	return hookedIn(ctx, st, c)
 }
 
 // coordinatorsAlone is why the actor may not do what is the coordinator's

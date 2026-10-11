@@ -51,7 +51,7 @@ const preAlpha = "nova-work is pre-alpha: not ready for production use."
 func workTool(gh github) *tool.Tool {
 	return &tool.Tool{
 		Name:  "nova-work",
-		What:  "every issue of an organization's repositories in one tree file, verified field for field",
+		What:  "every issue of an organization's repositories in one tree file, verified field for field; a repository's roadmap and fixes edited as data",
 		Stage: preAlpha,
 		Stamp: version,
 		How: `import reads every issue through your gh login, read-only, into one tree file.
@@ -60,8 +60,10 @@ verify reads GitHub again: one MISSING, EXTRA or DRIFT line per difference; none
 verify --against compares two tree files and reads no network (a minimal tree: verify -h).
 first run: gh logged in (gh auth status); export ORG and REPO, a repository you can read.`,
 		ExitTable: "0 done, or verify found no difference; 1 verify found differences, or an import's " +
-			"encoded tree did not read back equal; 2 could not run (a flag, the budget, gh, GitHub, a file)",
-		Verbs: []tool.Verb{
+			"encoded tree did not read back equal, or roadmap check found problems; 2 could not run (a flag, the budget, gh, GitHub, a file)",
+		UsageNote:  roadmapUsageNote,
+		GroupNotes: map[string]string{"roadmap": roadmapUsageNote},
+		Verbs: append(append([]tool.Verb{
 			{
 				Name: "import",
 				Usage: "import --org <org> (--out <tree.lisp> [--replace] | --dry-run) [--repo <owner/name>]... [--fixture <dir>] [--max-calls <n>] " +
@@ -114,7 +116,8 @@ import --org $ORG --repo $ORG/$REPO --page-size 15 --out ./tree.lisp`,
 				},
 				Run: gh.verifyTree,
 			},
-			{
+		}, gh.roadmapVerbs()...),
+			tool.Verb{
 				// help is the door every tool has; declaring it puts it in the
 				// skeleton's verb list, which an unknown-verb refusal names
 				// (STANDARD section 2, the names there are). It carries no
@@ -122,10 +125,16 @@ import --org $ORG --repo $ORG/$REPO --page-size 15 --out ./tree.lisp`,
 				Name:   "help",
 				Effect: tool.Inspection,
 				Run:    func(*tool.Call) *tool.Out { return tool.Done() },
-			},
-		},
+			}),
 	}
 }
+
+// roadmapUsageNote is the banner's word under the usage block: where the roadmap
+// verbs went and what they edit now.
+const roadmapUsageNote = `roadmap: the verbs edit this repository's own docs/roadmap.sexp and docs/fixes.sexp and write
+ROADMAP.md and FIXES.md in the same step, locally, with no GitHub call per entry. The old roadmap
+verbs, which edited the private work record's roadmaps/*.sexp, are gone (the v1.2.3 re-seed);
+these replace them. nova-work roadmap -h lists them; nova-work help roadmap check gives the shapes.`
 
 const importDetail = `Reads every issue (open and closed) of every repository of --org (or of each
 --repo) with its full contents: number, url, node id, title, body, state and

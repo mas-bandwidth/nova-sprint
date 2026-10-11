@@ -153,13 +153,15 @@ func (a *app) cmdSeatInstall(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "SEAT INSTALL OK unit=%s written=%t loaded=true\n", oneline.Field(r.Path), r.Changed)
 	fmt.Fprintf(stdout, "  runs: %s\n", strings.Join(u.Args(), " "))
 	if push.Adapter == sprint.AdapterFolder {
-		fmt.Fprintf(stdout, "  push: %s into %s adapter=folder: each check is written there as %s<nonce> and each judgment as a file; the seat is live once the session answers the check (seat push shows it)\n", oneline.Field(push.Harness), oneline.Field(push.Target), sprint.PushProofFilePrefix)
-		fmt.Fprintf(stdout, "  monitor: %s\n", sprint.FolderWatch(push.Target))
-		fmt.Fprintf(stdout, "  prove: %s\n", sprint.FolderProve(push.Name, "<nonce>"))
-		return 0
+		fmt.Fprintf(stdout, "  push: %s into %s adapter=folder: each judgment is written there as a file\n", oneline.Field(push.Harness), oneline.Field(push.Target))
+	} else {
+		fmt.Fprintf(stdout, "  push: %s into %s\n", oneline.Field(push.Harness), oneline.Field(push.Target))
 	}
-	fmt.Fprintf(stdout, "  push: %s into %s; the seat is live once the session answers the push check with nova-sprint seat pong (seat push shows it)\n", oneline.Field(push.Harness), oneline.Field(push.Target))
-	fmt.Fprint(stdout, seat.String())
+	fmt.Fprintf(stdout, "  monitor: %s\n", hookMonitor(push.Name))
+	fmt.Fprintf(stdout, "  hook: every coordinator command is refused until the Monitor's HOOK CHALLENGE <c> is answered: nova-sprint hook --prove <c> --actor %s\n", oneline.Field(push.Name))
+	if push.Adapter != sprint.AdapterFolder {
+		fmt.Fprint(stdout, seat.String())
+	}
 	return 0
 }
 

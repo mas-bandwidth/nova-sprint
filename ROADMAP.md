@@ -7,9 +7,9 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (205)
+- [The sprint machine](#the-sprint-machine) (204)
 - [Setup, release and operations](#setup-release-and-operations) (27)
-- [Docs, models and the repository](#docs-models-and-the-repository) (23)
+- [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (20)
 
 ## Lessons from Prime Agent's rewrite
@@ -1518,14 +1518,6 @@ Target: after v1.4
 
 From: nova-sprint commit 7a4988d (not carried by the re-seed, nova-sprint PR #28), remainder; card moved out of the sprint (work record, 2026-10-04)
 
-### nova-work roadmap check, add, remove, pull and note
-
-Verbs over the roadmap s-expression files with byte-stable round trips; each writing verb refuses a file that check rejects.
-
-Target: after v1.4
-
-From: nova-sprint commit 8c87a4b (not carried by the re-seed, nova-sprint PR #28)
-
 ### Work lint, then a machine gate before a read, then gate lint
 
 One ordered stack: ten mechanical lint checks rework a finished attempt before any read; a bench gate runs the TEST line, vet and tests at the head before a read, and a red gate reworks without spending a read; reach analysis checks the TEST line can reach the change.
@@ -2021,14 +2013,6 @@ A lease past its deadline reads as expired, may be extended once, and can escala
 Target: after v1.4
 
 From: issue #2338
-
-### The worklang parser keeps the done field of a unit
-
-Unit done reads a field the parser never keeps, so a done unit is never counted. The key is added and sibling skipped keys are checked, with a test.
-
-Target: v1.3
-
-From: issue #3499
 
 ### The reference model learns reads needed and tiers
 

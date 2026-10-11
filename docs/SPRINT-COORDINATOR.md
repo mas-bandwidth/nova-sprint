@@ -42,27 +42,17 @@ line the inbox prints for it, filled in; `nova-sprint inbox --open <id>` shows t
   export NOVA_SPRINT_ACTOR=$(nova-sprint where --json | jq -r .coordinator)
   ```
 
-- The seat is held only by a session the push loop reaches ([The push proof](SPEC-SPRINT.md#the-push-proof)):
-  until it is proven every coordinator verb is refused with `PUSH DOWN` and the setup. A Claude Code session has
-  no deliver command, so its seat is on the folder adapter: install it once with the folder the session watches
-  (the holder's inbox, `~/<seat>-working/inbox/sprint-judgments`), and the install prints the session's two
-  commands:
+- The coordinator hooks in ([The hook](SPEC-SPRINT.md#the-hook)): every command run as the coordinator fails with
+  `You must hook in first: run nova-sprint hook` until the seat holds a live, proven hook. From inside the session:
 
-  ```
-  nova-sprint seat install --actor $NOVA_SPRINT_ACTOR --harness claude --target ~/$NOVA_SPRINT_ACTOR-working/inbox/sprint-judgments
-  ```
-
-  1. Run as a Monitor, from inside the session, the `monitor:` line it printed (each new file in the folder is
-     one event: a judgment, or a `PROOF-<nonce>`):
-     `nova-sprint seat watch <folder>`. It prints existing complete files on startup and new files every second,
-     one path per flushed line; dot files and directories are skipped.
-  2. Answer each `PROOF-<nonce>` the Monitor shows, at once: `nova-sprint seat pong <nonce> --actor $NOVA_SPRINT_ACTOR`.
-
-  The push loop writes a new check every 10 minutes and the seat is down 15 minutes after the last answer;
-  `seat push` says `adapter=folder proven=<RFC3339>` when live; `seat check` says `proven=<age> ago` on OK
-  and `proven=-` on DOWN. A refusal carries both commands with literal `<nonce>` placeholders. The actual
-  nonce appears only in the folder's `PROOF-<nonce>` filename; `seat push --json` reports `proof=pending`
-  while a check awaits its answer and never exposes the nonce.
+  1. Run as a Monitor (with `NOVA_SPRINT_SERVER` set): `nova-sprint hook --actor $NOVA_SPRINT_ACTOR`. Each line it
+     prints is one event: `HOOK CHALLENGE <c>`, `PUSH <id> <group>` with its text, `HOOK BYE`, `HOOK DROPPED`.
+  2. Answer each `HOOK CHALLENGE <c>` at once: `nova-sprint hook --prove <c> --actor $NOVA_SPRINT_ACTOR`. The server
+     challenges again every 10 minutes; an answer later than 5 minutes unhooks the seat (recorded gone, the owner
+     told).
+  3. Read each `PUSH <id>` and acknowledge it: `nova-sprint hook --ack <id> --actor $NOVA_SPRINT_ACTOR` (every id up
+     to it). A push unacknowledged for 10 minutes refuses every coordinator command, naming it.
+  4. When you stop: `nova-sprint unhook --actor $NOVA_SPRINT_ACTOR` (recorded away, the owner told).
 - Not served, and run where typed with credentials of their own: `run`, `tick`, `land`, `play`, `fleet sync`,
   `friend sync`, and any verb given its own `--redis`. `fleet sync` and `friend sync` read the config store, so
   they run under one `nova-secrets exec` wrapper that names variables and never a value;

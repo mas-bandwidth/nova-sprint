@@ -2,9 +2,12 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
@@ -79,7 +82,7 @@ func HarnessesWhy(words string) string {
 // some members can launch goes to one of them (the second cold read of nova-tools#5576).
 func (s *Snapshot) launchersOf(c, wc *Card, ms []string) (out []string, why string) {
 	for _, m := range ms {
-		if _, _, w, _ := s.routeOf(c, wc, nil, m); w == "" {
+		if _, w, _ := s.routeServed(c, wc, m); w == "" {
 			out = append(out, m)
 		} else if why == "" {
 			why = w
@@ -211,6 +214,57 @@ const (
 	FieldTierNow = "tier_now"
 )
 
+// modelRead is the memo of one brief's model lines (cardhdr.ReadModel): the model
+// m it read and its why ("" when the lines read). ReadModel is a pure read of the
+// brief, and the deal walks every ready primary each tick, resolving the tier of
+// each more than once (routeOf in the machines' pass, then dealTierOf in the
+// friends'), so a brief is parsed many times a tick; its parse is a regexp over
+// line 1 with an allocation each call, and it is the deal's dominant cost at load,
+// what keeps the tick past its one-second gate. The brief a card carries is
+// immutable on the table (a re-cut writes a new brief), so one read a brief is
+// every read.
+type modelRead struct {
+	m   cardhdr.Model
+	why string
+}
+
+// modelCache is ReadModel memoized by brief: each parsed brief's model, kept for the
+// process (a brief never names a different model once written), bounded by the number
+// of distinct briefs the sprint has ever held, never by the number of ticks that read
+// them.
+var modelCache sync.Map // brief string -> modelRead
+
+// modelReads counts the briefs ReadModel was actually parsed for (a memo miss), a
+// diagnostic for the tick's cost gate: TestTheTickDealReadsEachBriefOnceAtScale holds
+// it to the number of distinct briefs the deal walked, whatever the number of parts
+// that resolved one card's tier in the tick (routeOf, then the friends' dealTierOf).
+// The machine's own path never reads it.
+var modelReads atomic.Int64
+
+// resetModelMemo empties the brief memo and its parse counter, so a test that asserts
+// on the count starts from a clean process whatever a prior test or run cached (a memo
+// is a process global; a snapshot of the memo's age would read the count of its
+// neighbours). The machine's own run never resets it.
+func resetModelMemo() {
+	modelCache.Clear()
+	modelReads.Store(0)
+}
+
+// modelOf is a card's model lines, read once per brief: every later read of the same
+// brief is the memo, so the deal, the ask and the cap deal that all resolve one card's
+// tier in a tick parse it once, not once each.
+func modelOf(c *Card) (cardhdr.Model, string) {
+	brief := c.F("brief")
+	if v, ok := modelCache.Load(brief); ok {
+		r := v.(modelRead)
+		return r.m, r.why
+	}
+	m, why := cardhdr.ReadModel(brief)
+	modelCache.Store(brief, modelRead{m: m, why: why})
+	modelReads.Add(1)
+	return m, why
+}
+
 // PropRouteIndex is the fleet table's property that holds the tier's route index
 // (route_index_flash, route_index_pro), beside deal_index: a uint64 counter read
 // with the step's tables and written in its batch, guarded on the value read
@@ -230,7 +284,7 @@ func TierSubject(tier string) string { return "tier:" + tier }
 // has no route at all) or a friend up does (tierServed), else the tier it is judged under
 // and the sentence. It moves no index.
 func (s *Snapshot) noRoute(c *Card) (tier, why string) {
-	_, tier, why, byFriend := s.routeOf(c, nil, nil, "")
+	tier, why, byFriend := s.routeServed(c, nil, "")
 	if byFriend {
 		return tier, ""
 	}
@@ -324,6 +378,19 @@ func (ri routeIndexes) write(p *Plan) {
 	}
 }
 
+// routeByName is the route in served named name; ok false when none is. It is the reads'
+// lookup over a slice (readRouteOf), which a map used to be: a lookup over the tier's few
+// routes allocates no map. The deal's own lookup is servedRoute, which scans the store's
+// routes directly so it builds no map or slice per ready primary each tick.
+func routeByName(served []Route, name string) (Route, bool) {
+	for _, r := range served {
+		if r.Name == name {
+			return r, true
+		}
+	}
+	return Route{}, false
+}
+
 // preferFirst is the entry a draw takes from the tier's array at counter at.
 // A route with first set is drawn before the others of its tier: the walk takes
 // the first served entry whose first is set, and an entry without it only when
@@ -331,12 +398,15 @@ func (ri routeIndexes) write(p *Plan) {
 // taken, and the amount the index moves (docs/SPEC-SPRINT.md, the deal).
 // RouteFair (tla/RouteIndex.tla) is this walk when no route of the tier has
 // first set. hold leaves skip out while another entry remains drawable, as a
-// redeal leaves out routes already taken.
-func preferFirst(arr []string, served map[string]Route, skip []string, hold bool, at uint64) (r Route, steps uint64, ok bool) {
+// redeal leaves out routes already taken. served is the name lookup: the deal's
+// (servedRoute) scans the store's few routes so it builds no map or slice per
+// ready primary each tick, which routeOf's map did (the deal's dominant
+// allocation at load); the reads' (routeByName) looks a slice up.
+func preferFirst(arr []string, served func(string) (Route, bool), skip []string, hold bool, at uint64) (r Route, steps uint64, ok bool) {
 	n := uint64(len(arr))
 	take := func(wantFirst bool) (Route, uint64, bool) {
 		for i := uint64(0); i < n; i++ {
-			cur, ok := served[arr[(at+i)%n]]
+			cur, ok := served(arr[(at+i)%n])
 			if !ok || hold && contains(skip, cur.Name) {
 				continue
 			}
@@ -363,7 +433,85 @@ func preferFirst(arr []string, served map[string]Route, skip []string, hold bool
 // unserved one is, and a tier with no route it can launch is not dealt to it, why naming
 // the routes and the member; "" draws every route (a check of the tier alone).
 func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map[string]string, tier, why string, byFriend bool) {
-	m, bad := cardhdr.ReadModel(c.F("brief"))
+	tier, why, byFriend, done, m := s.routeTier(c)
+	if done {
+		return nil, tier, why, byFriend
+	}
+	if m.Pin != "" {
+		return map[string]string{FieldRoute: RoutePin, FieldModel: m.Pin, FieldTokens: m.Tokens, FieldUSD: "", FieldDeadline: strconv.Itoa(m.Deadline)}, "", "", false
+	}
+	if len(s.Routes) == 0 {
+		return nil, "", "", false
+	}
+	r, steps, ok, rested, unlaunchable, full := s.drawRoute(c, wc, ri, member, tier)
+	if ok {
+		if ri != nil {
+			ri[tier].r.count += steps
+			ri[tier].moves[c.ID] = strconv.FormatUint(steps, 10)
+		}
+		set := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness,
+			FieldDeadline: strconv.Itoa(r.Deadline), FieldTier: tier, FieldRoutes: strings.Join(append(Split(c.F(FieldRoutes)), r.Name), ",")}
+		if !pinnedTier(c, m) {
+			set[FieldTierNow] = tier // the primary is on the tier drawn (cardTier)
+		}
+		maps.Copy(set, rateFields(s, r))
+		if ri != nil {
+			s.budgets.dealt(r.Provider)
+		}
+		return set, tier, "", false
+	}
+	if len(full) > 0 {
+		// every route of the tier that serves is at its provider's budget: the card waits
+		// ready, never an error, never an attempt spent, and the next deal draws it when a
+		// slot frees (the owner, 2026-10-11: "if nothing else is available, you wait and
+		// try again later")
+		return nil, tier, "every route of tier " + tier + " that serves is at its provider's concurrency budget (" + strings.Join(full, "; ") + "): the card waits ready and is dealt when a slot frees", false
+	}
+	up, why := s.tierServed(tier, rested)
+	if len(up) == 0 && len(unlaunchable) > 0 {
+		why = "member " + member + " can launch no route of tier " + tier + " that serves: " + strings.Join(unlaunchable, ", ") + " and its control card names no such harness (fleet up " + member + " --harnesses <h,...> declares the ones on its PATH); the deal deals it to a member that can"
+	}
+	return nil, tier, why, len(up) > 0
+}
+
+// routeServed is routeOf's check: whether a route serves a deal of c to member, and why
+// none does, without the route fields. The tick's machines' pass (TickDeal) and the checks
+// that pick a member (launchersOf) and name the tier's judgment (noRoute) walk every ready
+// primary each tick asking only whether a route is drawn, never its fields, so they pay no
+// set; routeOf builds the fields only for the callers that deal (deal, redeal, the
+// rebalance), which move at most the width's cards a tick. A full provider (rate_budget.go)
+// is never a judgment here, as in routeOf's check of the tier alone.
+func (s *Snapshot) routeServed(c, wc *Card, member string) (tier, why string, byFriend bool) {
+	tier, why, byFriend, done, m := s.routeTier(c)
+	if done {
+		return tier, why, byFriend
+	}
+	if m.Pin != "" {
+		return "", "", false // a pinned card runs on its pin: served
+	}
+	if len(s.Routes) == 0 {
+		return "", "", false
+	}
+	if _, _, ok, rested, unlaunchable, _ := s.drawRoute(c, wc, nil, member, tier); ok {
+		return tier, "", false
+	} else {
+		up, why := s.tierServed(tier, rested)
+		if len(up) == 0 && len(unlaunchable) > 0 {
+			why = "member " + member + " can launch no route of tier " + tier + " that serves: " + strings.Join(unlaunchable, ", ") + " and its control card names no such harness (fleet up " + member + " --harnesses <h,...> declares the ones on its PATH); the deal deals it to a member that can"
+		}
+		return tier, why, len(up) > 0
+	}
+}
+
+// routeTier is routeOf's and routeServed's shared opening: the tier a deal of c draws
+// from, and the cases that end before the draw — a brief whose model lines do not read, a
+// frontier card, and a tier the fleet's set leaves out (tierServed). done says one of
+// those settled the answer (the returned tier, why and byFriend are it, with no set); else
+// the caller goes on to the pin, a store with no route, or the draw. m is the card's
+// model, for the pin's fields and the tier a deal writes on the primary.
+func (s *Snapshot) routeTier(c *Card) (tier, why string, byFriend, done bool, m cardhdr.Model) {
+	var bad string
+	m, bad = modelOf(c)
 	tier = drawTier(c, m)
 	if tier == "" {
 		tier = s.startTier(c, m) // its first deal on a route: flash first, or its grade's pro (decide.go)
@@ -372,27 +520,104 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 		tier = ceilingTier(c, m)
 		// a card admitted before the lint read its lines: judged under the tier it
 		// names (an unknown word too), else flash's
-		return nil, tier, "its brief's model lines: " + bad, false
+		return tier, "its brief's model lines: " + bad, false, true, m
 	}
 	if tier == cardhdr.RouteFrontier && m.Pin == "" && len(s.Routes) > 0 {
-		return nil, tier, "a frontier card waits for the coordinator: run it, or pin it with a model: <provider>/<model> line", false
+		return tier, "a frontier card waits for the coordinator: run it, or pin it with a model: <provider>/<model> line", false, true, m
 	}
 	if !s.FleetTakes(tier) {
 		// the fleet's tiers leave it out (set --fleet-tiers): no machine draws it, whatever
 		// its routes or a model pin (the set is the owner's switch); the friends' deal deals
 		// it when a friend up serves it
 		up, why := s.tierServed(tier, nil)
-		return nil, tier, why, len(up) > 0
+		return tier, why, len(up) > 0, true, m
 	}
-	if m.Pin != "" {
-		return map[string]string{FieldRoute: RoutePin, FieldModel: m.Pin, FieldTokens: m.Tokens, FieldUSD: "", FieldDeadline: strconv.Itoa(m.Deadline)}, "", "", false
+	return tier, "", false, false, m
+}
+
+// drawRoute is the draw from the tier's array for one deal of c to member: the entry at
+// the tier's rolling index, past the entries skipped (preferFirst), the index moved past it
+// (ri, when given). ok says a route is drawn; else rested and unlaunchable name the routes
+// left out, and full the routes at their provider's concurrency budget (only when ri is
+// given, a draw; a check of the tier alone never judges a full provider), for the tier's
+// judgment. It builds no set of route fields and no map or slice of served routes
+// (servedRoute scans the store's few), so the tick's per-card walk pays for none of the
+// allocations routeOf's served map and set once did (the deal's dominant cost at load).
+func (s *Snapshot) drawRoute(c, wc *Card, ri routeIndexes, member, tier string) (r Route, steps uint64, ok bool, rested, unlaunchable, full []string) {
+	arr := s.tierArray(tier)
+	drawn := Split(c.F(FieldRoutes))
+	if wc != nil && wc.F(FieldRoute) != "" {
+		drawn = append(drawn, wc.F(FieldRoute))
 	}
-	if len(s.Routes) == 0 {
-		return nil, "", "", false
+	drawing := ri != nil
+	served := func(name string) (Route, bool) { return s.servedRoute(tier, member, name, drawing) }
+	// every entry served is left out: the exclusion lapses, as when the tier has one route
+	fresh := false
+	for _, name := range arr {
+		_, isServed := served(name)
+		fresh = fresh || isServed && !contains(drawn, name)
 	}
-	// a resting route (rule 3, route_rest.go) serves no work card until its rest ends
-	served := map[string]Route{}
-	var rested, unlaunchable []string
+	var at uint64
+	if drawing {
+		at = ri[tier].r.count
+	} else if v, ok := s.Fleet.Prop(PropRouteIndex(tier)); ok {
+		at, _ = strconv.ParseUint(v, 10, 64)
+	}
+	r, steps, ok = preferFirst(arr, served, drawn, fresh, at)
+	if !ok && drawing && s.budgets != nil && s.budgets.soft {
+		// a coordinator's rework or redo is never refused for a full provider: with no route
+		// of room it is dealt on a full one anyway, and the take holds it ready until a slot
+		// frees (takeBudgetWhy)
+		soft := func(name string) (Route, bool) { return s.servedRoute(tier, member, name, false) }
+		fresh = false
+		for _, name := range arr {
+			_, isServed := soft(name)
+			fresh = fresh || isServed && !contains(drawn, name)
+		}
+		r, steps, ok = preferFirst(arr, soft, drawn, fresh, at)
+	}
+	if !ok {
+		rested, unlaunchable, full = s.unservedWhy(tier, member, drawing)
+	}
+	return r, steps, ok, rested, unlaunchable, full
+}
+
+// servedRoute is the route named name when it serves a deal to member on tier: an
+// enabled route of the tier that does not rest (route_rest.go) and, for a named member,
+// that member can launch (Launches). It is the deal's name lookup, scanning the store's
+// few routes, so no map or slice is built for every ready primary each tick, which the
+// per-card served map did (the deal's dominant allocation at load). A draw (drawing) also
+// leaves out a route whose provider is at its concurrency budget (rate_budget.go), as it
+// leaves out a resting one; a check of the tier (not drawing) does not, so a full provider
+// is never a judgment. A route disabled or removed since the tier's array was set, a
+// resting one, and one the member cannot launch are not served.
+func (s *Snapshot) servedRoute(tier, member, name string, drawing bool) (Route, bool) {
+	for _, r := range s.Routes {
+		if r.Name != name || r.Tier != tier || !r.Enabled {
+			continue
+		}
+		if _, ok := s.resting(r.Name); ok {
+			return Route{}, false
+		}
+		if !s.Launches(member, r) {
+			return Route{}, false
+		}
+		if drawing {
+			if isFull, _ := s.budgets.full(r.Provider); isFull {
+				return Route{}, false
+			}
+		}
+		return r, true
+	}
+	return Route{}, false
+}
+
+// unservedWhy names the routes of tier no deal to member draws, for the tier's judgment
+// when none serves: those resting (route_rest.go), those the member cannot launch
+// (Launches), and those at their provider's concurrency budget (rate_budget.go; only for a
+// draw, where a full provider is a judgment). It is built only when no route is drawn, so
+// the per-card walk pays nothing for it.
+func (s *Snapshot) unservedWhy(tier, member string, drawing bool) (rested, unlaunchable, full []string) {
 	for _, r := range s.Routes {
 		if r.Tier != tier || !r.Enabled {
 			continue
@@ -405,44 +630,13 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 			unlaunchable = append(unlaunchable, r.Name+" (runs under "+r.Harness+")")
 			continue
 		}
-		served[r.Name] = r
-	}
-	arr := s.tierArray(tier)
-	drawn := Split(c.F(FieldRoutes))
-	if wc != nil && wc.F(FieldRoute) != "" {
-		drawn = append(drawn, wc.F(FieldRoute))
-	}
-	// every entry served is left out: the exclusion lapses, as when the tier has one route
-	fresh := false
-	for _, name := range arr {
-		_, ok := served[name]
-		fresh = fresh || ok && !contains(drawn, name)
-	}
-	var at uint64
-	if ri != nil {
-		at = ri[tier].r.count
-	} else {
-		v, _ := s.Fleet.Prop(PropRouteIndex(tier))
-		at, _ = strconv.ParseUint(v, 10, 64)
-	}
-	r, steps, ok := preferFirst(arr, served, drawn, fresh, at)
-	if ok {
-		if ri != nil {
-			ri[tier].r.count += steps
-			ri[tier].moves[c.ID] = strconv.FormatUint(steps, 10)
+		if drawing {
+			if isFull, said := s.budgets.full(r.Provider); isFull {
+				full = append(full, r.Name+" ("+said+")")
+			}
 		}
-		set := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness,
-			FieldDeadline: strconv.Itoa(r.Deadline), FieldTier: tier, FieldRoutes: strings.Join(append(Split(c.F(FieldRoutes)), r.Name), ",")}
-		if !pinnedTier(c, m) {
-			set[FieldTierNow] = tier // the primary is on the tier drawn (cardTier)
-		}
-		return set, tier, "", false
 	}
-	up, why := s.tierServed(tier, rested)
-	if len(up) == 0 && len(unlaunchable) > 0 {
-		why = "member " + member + " can launch no route of tier " + tier + " that serves: " + strings.Join(unlaunchable, ", ") + " and its control card names no such harness (fleet up " + member + " --harnesses <h,...> declares the ones on its PATH); the deal deals it to a member that can"
-	}
-	return nil, tier, why, len(up) > 0
+	return rested, unlaunchable, full
 }
 
 // Flash first on every card (the owner, 2026-10-02, cost rule 1 of nova-tools#5174,
@@ -505,7 +699,7 @@ func ceilingTier(c *Card, m cardhdr.Model) string {
 // CardTiers is the tier the primary is on (cardTier) and its ceiling, as `card` prints
 // them.
 func CardTiers(c *Card) (now, ceiling string) {
-	m, _ := cardhdr.ReadModel(c.F("brief"))
+	m, _ := modelOf(c)
 	return cardTier(c, m), ceilingTier(c, m)
 }
 
@@ -538,7 +732,7 @@ func (s *Snapshot) DealTier(c *Card) string {
 // friend of tier flash sat empty for an hour while every brief whose line 1 said
 // tier: heavy was read as heavy for her and dealt on flash to the machines).
 func (s *Snapshot) dealTierOf(c *Card) string {
-	m, bad := cardhdr.ReadModel(c.F("brief"))
+	m, bad := modelOf(c)
 	if bad != "" {
 		return ceilingTier(c, m)
 	}
@@ -555,7 +749,7 @@ func (s *Snapshot) dealTierOf(c *Card) string {
 // function decides it for every bound that escalates: the redeal bound (Deal) and the
 // failure bounds.
 func (s *Snapshot) NextTier(c *Card) string {
-	m, bad := cardhdr.ReadModel(c.F("brief"))
+	m, bad := modelOf(c)
 	if bad != "" || len(s.Routes) == 0 {
 		return ""
 	}
@@ -582,7 +776,7 @@ func (s *Snapshot) NextTier(c *Card) string {
 // readTierDistance), so a member whose read is drawn lower ranks by how far below it
 // really reads (docs/SPEC-SPRINT.md section 6, who reads).
 func (s *Snapshot) readTierOf(pr *Card) string {
-	m, _ := cardhdr.ReadModel(pr.F("brief"))
+	m, _ := modelOf(pr)
 	t := cardTier(pr, m)
 	if t == cardhdr.RouteFrontier {
 		t = cardhdr.RouteHeavy
@@ -621,28 +815,32 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 	if len(s.Routes) == 0 || ri[tier] == nil {
 		return map[string]string{FieldTier: tier}
 	}
-	served := map[string]Route{}
+	served := make([]Route, 0, len(s.Routes))
 	for _, r := range s.Routes {
 		if r.Tier == tier && r.Enabled {
-			served[r.Name] = r
+			served = append(served, r)
 		}
 	}
 	arr := s.tierArray(tier)
 	other := false
 	for _, name := range arr {
-		_, ok := served[name]
+		_, ok := routeByName(served, name)
 		other = other || ok && !contains(avoid, name)
 	}
 	at := ri[tier].r.count
-	r, steps, ok := preferFirst(arr, served, avoid, other, at)
+	r, steps, ok := preferFirst(arr, func(name string) (Route, bool) { return routeByName(served, name) }, avoid, other, at)
 	if !ok {
 		return map[string]string{FieldTier: tier}
 	}
 	ri[tier].r.count += steps
 	was, _ := strconv.ParseUint(ri[tier].moves[key], 10, 64)
 	ri[tier].moves[key] = strconv.FormatUint(was+steps, 10)
-	return map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness,
+	out := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness,
 		FieldDeadline: strconv.Itoa(r.Deadline), FieldTier: tier}
+	// a read on a limited route carries its limits too: its reader's requests take the
+	// same budget (rate_budget.go), and its take is held by the provider's concurrency
+	maps.Copy(out, rateFields(s, r))
+	return out
 }
 
 // readRouteMissing is the tier of the primary pr's reads (readTierOf), and why

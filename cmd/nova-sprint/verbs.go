@@ -76,6 +76,7 @@ func init() {
 		{"return", "(<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--reason <text>] [--answers <note>]", "return s1-7 --reason 'suspect of the red batch'", (*app).cmdReturnSel},
 		{"redo", "<card>... [--stream <s>] [--answers <note>]", "redo s1-2", (*app).cmdRedo},
 		{"drop", "(<id>... | --stream <s> --col <state> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>] [--one]", "drop s1-9 --reason obsolete", (*app).cmdDropSel},
+		{"defer", "(<id>... | --stream <s> | --repo <owner/name>) --repo-dir <dir> --reason <text> [--expect <n>]", "defer s1-9 --repo-dir ../nova-sprint --reason 'outside the ladder' --expect 1", (*app).cmdDefer},
 		{"priority", "<id>... | (<id>... | --stream <s>) (--blocker | --critical | --fix | --high | --normal | --low) --reason <text>", "priority s1-4 --high --reason 'the release waits on it'", (*app).cmdPriority},
 		{"unpin", "(<id>... | --stream <s>) --reason <text> [--dry-run]", "unpin s1-1 --reason available", (*app).cmdUnpin},
 		{"rebase", "--from <branch> --to <branch> [--repo-dir <clone>] [--dry-run]", "rebase --from dev --to sprint/s1 --repo-dir ../name --dry-run", (*app).cmdRebase},
@@ -174,15 +175,19 @@ func init() {
 		{"view cards", "[--col <c>] [--stream <s>] [--holder <member>] [--by tier|stream|col|holder] [--json]", "view cards --col review --by tier --json", (*app).cmdViewCards},
 		{"view worker", "--as <member|friend> [--since <cursor>] [--json]", "view worker --as m1 --json", (*app).cmdViewWorker},
 		{"seat install", "--harness <name> --target <dir> [--session <id>] [--dir <dir>] [--log <file>] [--server <host:port>] [--config-seat <name> --config-dsn <dsn> --config-password-env <NAME>] [--dry-run]", "seat install --dry-run --redis 127.0.0.1:6381", (*app).cmdSeatInstall},
-		{"seat watch", "<dir> [--json]", "seat watch ./inbox", (*app).cmdSeatWatch},
 		{"seat uninstall", "[--dir <dir>]", "seat uninstall --dir ./no-unit-here", (*app).cmdSeatUninstall},
-		{"seat push", "[--harness <name> --target <dir> [--session <id>]] | --sent <nonce> [--failed <why>] [--dry-run]", "seat push", (*app).cmdSeatPush},
-		{"seat pong", "<nonce> [--dry-run]", "seat pong received-nonce", (*app).cmdSeatPong},
-		{"seat", "[--repair --reason <text>] | push [--harness <name> --target <dir> [--session <id>]] | pong <nonce>", "seat", (*app).cmdSeat},
+		{"seat push", "[--harness <name> --target <dir> [--session <id>]] [--dry-run]", "seat push", (*app).cmdSeatPush},
+		{"seat", "[--repair --reason <text>] | push [--harness <name> --target <dir> [--session <id>]]", "seat", (*app).cmdSeat},
+		{"hook", "[--prove <challenge> | --ack <id>]", "hook --ack 1", (*app).cmdHook},
+		{"unhook", "", "unhook", (*app).cmdUnhook},
 		{"fsck seat", "[--pg <host:port or postgres:// URI>]", "fsck seat", (*app).cmdFsckSeat},
 		{"routes rest", "<provider|route> --reason <text> [--for <duration> | --until <RFC3339>]", "routes rest openrouter --reason 'balance $40, about 1.6 hours left' --for 2h", (*app).cmdRoutesRest},
 		{"routes wake", "<provider|route> --reason <text>", "routes wake openrouter --reason 'the rest was a balance rule the machine no longer keeps'", (*app).cmdRoutesWake},
+		{"routes limit", "<provider|route> (--rpm <n> | --concurrent <n>) --reason <text>", "routes limit pro-mercury3 --rpm 10 --reason 'Inception asks under 10 requests a minute on the preview'", (*app).cmdRoutesLimit},
 		{"routes", "", "routes", (*app).cmdRoutes},
+		{"budget take", "<provider/model> --as <worker> --holder <id>", "budget take inception/mercury-3-preview-1002 --as hetzner --holder c1.g2.r7", (*app).cmdBudgetTake},
+		{"budget renew", "<provider/model> --as <worker> --holder <id>", "budget renew deepseek/deepseek-chat --as hetzner --holder c1.g2.r7", (*app).cmdBudgetRenew},
+		{"budget release", "<provider/model> --as <worker> --holder <id>", "budget release deepseek/deepseek-chat --as hetzner --holder c1.g2.r7", (*app).cmdBudgetRelease},
 		{"rules", "", "rules", (*app).cmdRules},
 		{"stats tidy", "(--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]", "stats tidy --all --reason 'a fresh start' --dry-run", (*app).cmdStatsTidy},
 		{"stats reset", "--reason <text> [--dry-run] | --show", "stats reset --reason 'count from now' --dry-run", (*app).cmdStatsReset},
@@ -1325,6 +1330,15 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	if code := a.holdBase("add", st, *allowPersonal, stderr, *brief); code != 0 {
 		return code
 	}
+	// add --land-protected founds the stream and writes its mark in the same step, so
+	// this read, before the mark exists, lets the step's own mark-and-admit rule judge
+	// the card (promotionGuard, sprint.AddMarked; docs/SPEC-SPRINT.md section 7, the
+	// sprint branch)
+	if *landProtected == "" {
+		if code := a.holdSprintBase("add", st, stderr, rs...); code != 0 {
+			return code
+		}
+	}
 	if code := holdTlaRecords("add", stderr, briefCheck{id: strings.Join(ids, ","), brief: *brief}); code != 0 {
 		return code
 	}
@@ -1494,6 +1508,13 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 		return code
 	}
 	r := sprint.AddReq{Stream: stream, Cards: cards, Who: c.actor, Before: before, After: after, Held: held, Score: at, BriefOps: asked.ops, BriefRecord: asked.record, BriefUsage: asked.usage, Replaces: replaces}
+	// a marked first add is judged by the step that writes the mark (promotionGuard,
+	// sprint.AddMarked), as cmdAdd holds it (docs/SPEC-SPRINT.md section 7)
+	if landProtected == "" {
+		if code := a.holdSprintBase("add", st, stderr, r); code != 0 {
+			return code
+		}
+	}
 	c.says = append(c.says, fmt.Sprintf("each card's id is its brief file's name without .md (%s is %s)", files[0], cards[0].ID))
 	for _, cd := range cards {
 		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
@@ -2719,7 +2740,7 @@ func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 // cmdBrief replaces a primary's brief in place, on a running machine as on a stopped one
 // (changing a sprint happens through the verbs, never by hand; docs/SPEC-SPRINT.md, the
 // brief verb): the brief held to the card lint as add's is (holdBrief), then one step
-// (sprint.Brief), refused for a card working, merging or landed; the card keeps its id,
+// (sprint.Brief), refused for a card merging or landed; a working card takes one for its next attempt; the card keeps its id,
 // stream, score and needs, and one in review opens its next attempt. --dir replaces one
 // brief per file (cmdBriefDir); --group answers an inbox group as inbox prints it
 // (a group of one with --brief-file, of several with --dir); --widen widens its PATHS by
@@ -2727,7 +2748,7 @@ func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 // owner, 2026-10-06: "We gotta stop doing this twin shit. it's waste.").
 func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("brief")
-	brief := fs.String("brief", "", fmt.Sprintf("the new brief: a child's whole brief, at most %d KiB, held to the card lint as add holds one (--rules, else the file init --rules recorded, else the built-in general rules) and to the same PATHS check at the BASE tip (a literal path must exist, a glob must match a file, and every func, type or verb STOP or START names with a file must be inside a PATHS file; a CARRY: head= brief, such as --widen writes, skips the existence check) and refused, exit 2, nothing written, when it fails; a primary waiting, ready or in review takes one in place, on a STOPPED machine or a RUNNING one (there applied at its next tick), keeping its id: one an attempt was dealt for opens its next attempt, staged from its last pushed head, its bound reset; a card working, merging or landed keeps its brief; one that differs in its DEPENDS-ON: line alone is taken in any state, the machine running or the card dealt, and re-points the card's needs", cardlimits.MaxBriefBytes>>10))
+	brief := fs.String("brief", "", fmt.Sprintf("the new brief: a child's whole brief, at most %d KiB, held to the card lint as add holds one (--rules, else the file init --rules recorded, else the built-in general rules) and to the same PATHS check at the BASE tip (a literal path must exist, a glob must match a file, and every func, type or verb STOP or START names with a file must be inside a PATHS file; a CARRY: head= brief, such as --widen writes, skips the existence check) and refused, exit 2, nothing written, when it fails; a primary waiting, ready or in review takes one in place, on a STOPPED machine or a RUNNING one (there applied at its next tick), keeping its id: one an attempt was dealt for opens its next attempt, staged from its last pushed head, its bound reset; a card merging or landed keeps its brief; a working card takes one for its next attempt; one that differs in its DEPENDS-ON: line alone is taken in any state, the machine running or the card dealt, and re-points the card's needs", cardlimits.MaxBriefBytes>>10))
 	briefFile := fs.String("brief-file", "", "the new brief, read from this file: its bytes as they are, its one trailing newline cut; not with --brief")
 	dir := fs.String("dir", "", "a directory of new briefs: one per *.md file, the card its base name without .md, each read and held as --brief-file's; one bad file refuses the whole call, nothing written; not with an id, --brief or --brief-file; with --group, one file for each member of the group and no other")
 	rules := fs.String("rules", "", "the child rules file the brief is held to (default: the file init --rules recorded, else the built-in general rules)")
@@ -2942,7 +2963,58 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 	if code := a.holdWho("brief", st, stderr, streams, texts...); code != 0 {
 		return code
 	}
-	return a.runStep("brief", *c, st, store.BriefStep(req), stdout, stderr)
+	// a new BASE is held as add holds one: the sprint's base, outside the promotion
+	// stream (docs/SPEC-SPRINT.md section 7, the sprint branch); refused here, exit 2,
+	// and again by the step against a write that races this read
+	if s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil); err == nil {
+		if p := sprint.WithBriefBases(sprint.Plan{}, s, req, cardBase); len(p.Refused) > 0 {
+			return refuse(stderr, "brief", joinWhy(p.Refused))
+		}
+	}
+	step := store.BriefStep(req)
+	replace := step.Plan
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithBriefBases(replace(s), s, req, cardBase) }
+	return a.runStep("brief", *c, st, step, stdout, stderr)
+}
+
+// cardBase is the branch a brief's BASE: line names, its pin cut; "" for none.
+func cardBase(brief string) string { return swarm.ReadCardBase([]byte(brief)).Ref }
+
+// joinWhy is refusals as one line: each card's why, in order.
+func joinWhy(refused []sprint.Refusal) string {
+	why := make([]string, len(refused))
+	for i, r := range refused {
+		why[i] = r.Why
+	}
+	return strings.Join(why, "; ")
+}
+
+// holdSprintBase refuses, exit 2, nothing written, an add of a card cut on a branch that
+// is not the sprint's base, outside the promotion stream (sprint.SprintBranchWhy;
+// docs/SPEC-SPRINT.md section 7, the sprint branch), every such card named; the add step
+// holds the same rule against a write that races this read. A store that cannot be read
+// is left to the step to report.
+func (a *app) holdSprintBase(verbName string, st *store.Store, stderr io.Writer, rs ...sprint.AddReq) int {
+	s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil)
+	if err != nil {
+		return 0
+	}
+	var refused []sprint.Refusal
+	for _, r := range rs {
+		for i, id := range sprint.AddIDs(s, r) {
+			base := r.Base
+			if len(r.Cards) > 0 {
+				base = r.Cards[i].Base
+			}
+			if why := sprint.SprintBranchWhy(s, r.Stream, base, id); why != "" {
+				refused = append(refused, sprint.Refusal{Key: id, Why: why})
+			}
+		}
+	}
+	if len(refused) == 0 {
+		return 0
+	}
+	return refuse(stderr, verbName, joinWhy(refused))
 }
 
 // cmdMove moves unstarted primaries to another stream (changing a stopped
@@ -3429,10 +3501,13 @@ func streamWords() string {
 	return strings.TrimSpace(`
 The streams: add --stream <s> opens a stream, its row of the work and merge
 tables, and a clear keeps it. stream remove takes streams off both tables, on
-a STOPPED machine only (nova-sprint stop first), refused while a stream holds a
-card (a primary or a sentinel in any column of its work row, a merge card in
-its merge row: nova-sprint clear --confirm sprint, or drop) and all or none
-for the streams named. A clear does not bring a removed stream back; an add
+a STOPPED machine only (nova-sprint stop first), and removes the streams that
+exist: each stream stands on its own, a name on neither table is reported and
+refuses nothing, and a stream that holds a card is not removed (a primary or
+a sentinel in any column of its work row, a merge card in
+its merge row: nova-sprint clear --confirm sprint, or drop); the exit is 1
+only when nothing was removed or a removal failed. A clear does not bring a
+removed stream back; an add
 under its name does, in this epoch or the next (a NOTE line says it came
 back). stream archive takes streams
 whose every card has landed off both tables, on a running machine too: their
@@ -3470,6 +3545,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	fleetTiers := fs.String("fleet-tiers", "", "the tiers the fleet may take: flash, pro, heavy, frontier, comma separated, or all (the default); the deal hands a machine only a work card, and a member's reader only a read card, whose tier is one of them, on top of each row's own tiers")
 	friendsTiers := fs.String("friends-tiers", "", "the tiers the friends may take, as --fleet-tiers says the fleet's: a friend is dealt a work or read card only of one of them, on top of her row's own tiers")
 	finish := fs.String("friend-finish", "", fmt.Sprintf("how long a friend holding working cards may finish none (working to done) before the coordinator's pass judges her idle: a duration, or default (%s)", sprint.FriendFinishDefault))
+	base := fs.String("base", "", "the sprint's base, the branch every stream lands on (sprint/<name>; never dev or main, which promotion alone reaches): add and brief then refuse a card whose BASE: is any other branch outside the promotion stream (docs/SPEC-SPRINT.md section 7, the sprint branch); default takes it off, and add holds dev alone")
 	readCards := fs.String("read-cards", "", "on: the tick asks every read a card in review needs at once, as read cards on the fleet table dealt to friends and to members with a reader row, half a slot each; off or default: the readers table asks, one read at a time")
 	reworkPriority := fs.String("rework-priority", "", "the priority a normal or low card gets when its next attempt opens: fix (the default), high, or keep to retain its level")
 	reads := fs.String("reads", "", "the ok reads at its head every card in review needs, whatever its tier: 0 (no read: a primary whose work finished LAND is accepted on it), 1 or 2; default: one for a flash card, two above")
@@ -3490,6 +3566,10 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if *finish != "" {
 		set := step.Plan
 		step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithFriendFinish(set(s), s, *finish) }
+	}
+	if *base != "" {
+		set := step.Plan
+		step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithSprintBase(set(s), s, *base) }
 	}
 	return a.runStep("set", *c, st, step, stdout, stderr)
 }
@@ -3611,11 +3691,15 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 // cmdStreamRemove takes the named streams off the work and merge tables:
 // removing a work stream is a verb, one that succeeds only on a STOPPED
 // machine; it removes each stream's row of both tables, with the stream's
-// control card the merge row holds, the one card add made for it. Refused,
-// exit 1 and nothing written, on a RUNNING machine, for a stream that is no
-// row, or for one that holds a card (sprint.StreamRemove), all or none for
-// the streams named. Every open judgment and held condition that names a
-// removed stream is retired with it, a NOTE line each (sprint.RetireStreams).
+// control card the merge row holds, the one card add made for it. Unlike the
+// all-or-none verbs, it takes off every named stream that may leave and
+// reports each name that may not: a name that is no row, a stream that holds
+// a card, and every name on a RUNNING machine are refused by name
+// (sprint.StreamRemoveExisting, the seat ledger v1.2.4-held-2026-10-10.md bug
+// 12, stream-remove-removes-what-exists), and the verb exits 1 only when
+// nothing was removed or a removal failed. Every open judgment and held
+// condition that names a removed stream is retired with it, a NOTE line each
+// (sprint.RetireStreams).
 func (a *app) cmdStreamRemove(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("stream remove")
 	names, err := parse(fs, args)
@@ -3638,26 +3722,30 @@ func (a *app) cmdStreamRemove(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return a.readFailed("stream remove", err, stderr)
 	}
-	if refused := sprint.StreamRemove(s, m.Running(), names); len(refused) > 0 {
-		var whys []string
-		for _, r := range refused {
-			whys = append(whys, r.Key+": "+r.Why)
-		}
+	remove, refused := sprint.StreamRemoveExisting(s, m.Running(), names)
+	var whys []string
+	for _, r := range refused {
+		whys = append(whys, r.Key+": "+r.Why)
+	}
+	if len(remove) == 0 {
 		fmt.Fprintf(stderr, "%s stream remove: %s; run: nova-sprint help stream\n", prog, oneline.Escape(strings.Join(whys, "; ")))
 		return 1
 	}
+	if len(refused) > 0 {
+		fmt.Fprintf(stderr, "%s stream remove: not removed: %s\n", prog, oneline.Escape(strings.Join(whys, "; ")))
+	}
 	for _, t := range []string{sprint.Work, sprint.Merge} {
-		if err := st.B.RowsDel(ctx, st.Names.Table(t), names); err != nil {
+		if err := st.B.RowsDel(ctx, st.Names.Table(t), remove); err != nil {
 			fmt.Fprintf(stderr, "%s stream remove: %s; run it again to finish\n", prog, oneline.Escape(err.Error()))
 			return 1
 		}
 	}
-	said, err := retireStreams(ctx, st, "stream remove", names, "was removed (stream remove), so nothing can act on this")
+	said, err := retireStreams(ctx, st, "stream remove", remove, "was removed (stream remove), so nothing can act on this")
 	if err != nil {
 		fmt.Fprintf(stderr, "%s stream remove: the streams are removed, and retiring what names them failed: %s; the next tick retires them\n", prog, oneline.Escape(err.Error()))
 		return 1
 	}
-	fmt.Fprintf(stdout, "STREAM-REMOVE OK streams=%s\n", strings.Join(names, ","))
+	fmt.Fprintf(stdout, "STREAM-REMOVE OK streams=%s\n", strings.Join(remove, ","))
 	for _, l := range said {
 		fmt.Fprintf(stdout, "NOTE %s\n", oneline.Escape(l))
 	}

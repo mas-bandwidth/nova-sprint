@@ -29,7 +29,7 @@ const (
 	SeatCheckInbox     = "inbox"
 	SeatCheckQueue     = "queue"
 	SeatCheckVersions  = "versions"
-	SeatCheckPush      = "push"
+	SeatCheckHook      = "hook"
 )
 
 // SeatCheckToken is the first word of every line.
@@ -77,6 +77,21 @@ type MemberM struct {
 	Status string        `json:"status"`
 	Beaten bool          `json:"beaten"`
 	Age    time.Duration `json:"age_ns"`
+	// HostOffline is the evidence that the member's host does not answer (the
+	// binding probes it, only for a member that does not beat): a member that does
+	// not beat on a host that is offline is down, not a fault. false is unknown or
+	// reachable, so an unprobed member is never excused.
+	HostOffline bool `json:"host_offline,omitempty"`
+	// HostErr is why a member that does not beat was not excused when its host was probed
+	// and gave no clear no-answer (a name that does not resolve, the seat's own network
+	// unproved, no machine row): said on the DOWN line beside it. "" is none.
+	HostErr string `json:"host_err,omitempty"`
+}
+
+// NeedsHostProbe says the member's host is worth probing: not held, and it does not beat
+// (never, or not within MemberDownAfter). A member that beats is up whatever its host says.
+func NeedsHostProbe(m MemberM) bool {
+	return m.Status != "held" && (!m.Beaten || m.Age > MemberDownAfter)
 }
 
 // FriendM is one friend: her status as the friends table shows it and her last
@@ -142,13 +157,12 @@ type VersionsM struct {
 	Machines []MachineVersionM `json:"machines,omitempty"`
 }
 
-// PushM is the seat's push proof (pushproof.go): the holder and its push
-// record, as read; Measured false is a check that did not read it, which says
-// no line.
-type PushM struct {
+// HookM is the seat's hook (hook.go): the holder and the hook record, as read;
+// Measured false is a check that did not read it, which says no line.
+type HookM struct {
 	Measured bool       `json:"measured,omitempty"`
 	Holder   string     `json:"holder,omitempty"`
-	Record   PushRecord `json:"record,omitzero"`
+	Record   HookRecord `json:"record,omitzero"`
 	Recorded bool       `json:"recorded,omitempty"`
 }
 
@@ -165,7 +179,7 @@ type SeatCheckMeasures struct {
 	Inbox     InboxM            `json:"inbox"`
 	Queue     QueueM            `json:"queue,omitempty"`
 	Versions  VersionsM         `json:"versions,omitempty"`
-	Push      PushM             `json:"push,omitzero"`
+	Hook      HookM             `json:"hook,omitzero"`
 	Host      string            `json:"host"`
 	Errs      map[string]string `json:"errs,omitempty"`
 }
@@ -228,8 +242,7 @@ func (r SeatCheckReport) Summary() string {
 
 // JSON is the report as --json prints it.
 func (r SeatCheckReport) JSON() string {
-	// Measurements are public too; only the folder reveals the proof nonce.
-	r.Measures.Push.Record = PublicPushRecord(r.Measures.Push.Record)
+	// Measurements are public too: the hook record holds no challenge (the stream alone does).
 	if r.Lines == nil {
 		r.Lines = []SeatCheckLine{}
 	}
@@ -245,6 +258,30 @@ const MemberDownAfter = 3 * 15 * time.Second
 
 func memberIsDown(m MemberM) bool {
 	return m.Status == "down" || (m.Status != "held" && (!m.Beaten || m.Age > MemberDownAfter))
+}
+
+// The verdicts of MemberVerdict.
+const (
+	MemberOK    = "ok"    // beating
+	MemberHeld  = "held"  // held by the coordinator or the inventory
+	MemberDown  = "down"  // does not beat and its host is offline: the state wanted, not an error
+	MemberFault = "fault" // does not beat and its host is reachable: the member's loop is broken
+)
+
+// MemberVerdict is the pure decision for one member (Glenn, 2026-10-10: "Down is not an
+// error, when they are actually down"): FAULT only when the host is reachable and the
+// member does not beat. The evidence of the host is given in (MemberM.HostOffline), never
+// probed here.
+func MemberVerdict(m MemberM) string {
+	switch {
+	case memberIsDown(m) && m.HostOffline && NeedsHostProbe(m):
+		return MemberDown
+	case memberIsDown(m):
+		return MemberFault
+	case m.Status == "held":
+		return MemberHeld
+	}
+	return MemberOK
 }
 
 // NotMeasured is what the dashboard, bus and friend agents say when the check
@@ -360,21 +397,34 @@ func JudgeSeatCheck(m SeatCheckMeasures, now time.Time) SeatCheckReport {
 	// 4. the fleet (beats)
 	if !failed(SeatCheckFleet) {
 		var up, held int
-		var down, remedies []string
+		var down, offline, whys, remedies []string
 		for _, mm := range m.Fleet {
-			switch {
-			case memberIsDown(mm):
+			switch MemberVerdict(mm) {
+			case MemberFault:
 				down = append(down, mm.Name+":"+formatBeatAge(mm.Beaten, mm.Age))
 				remedies = append(remedies, "nova-config loop show "+MemberLoopRecord(mm.Name))
-			case mm.Status == "held":
+				if mm.HostErr != "" {
+					whys = append(whys, mm.Name+": "+mm.HostErr)
+				}
+			case MemberDown:
+				offline = append(offline, mm.Name)
+			case MemberHeld:
 				held++
 			default:
 				up++
 			}
 		}
 		f := []string{"up=" + fmt.Sprint(up), "held=" + fmt.Sprint(held)}
+		if len(offline) > 0 {
+			// down, not DOWN: the host is offline, which is no error and does not fail the check
+			f = append(f, "offline="+strings.Join(offline, ","))
+		}
 		if len(down) > 0 {
-			add(SeatCheckLine{Thing: SeatCheckFleet, Facts: append(f, "down="+strings.Join(down, ",")), Remedy: strings.Join(remedies, "; ")})
+			f = append(f, "down="+strings.Join(down, ","))
+			if len(whys) > 0 {
+				f = append(f, "host="+quoteSeatCheck(strings.Join(whys, "; ")))
+			}
+			add(SeatCheckLine{Thing: SeatCheckFleet, Facts: f, Remedy: strings.Join(remedies, "; ")})
 		} else {
 			add(SeatCheckLine{Thing: SeatCheckFleet, Up: true, Facts: append(f, "down=0")})
 		}
@@ -557,17 +607,18 @@ func JudgeSeatCheck(m SeatCheckMeasures, now time.Time) SeatCheckReport {
 		}
 	}
 
-	// 12. the push proof: PUSH DOWN with the setup while the seat has none live
-	if p := m.Push; p.Measured && !failed(SeatCheckPush) {
-		facts := []string{"holder=" + orDash(p.Holder), "harness=" + orDash(p.Record.Harness), "adapter=" + p.Record.AdapterName()}
-		if why := PushWhy(p.Holder, p.Record, p.Recorded, now); why != "" {
-			remedy := PushSetup(p.Holder, p.Record, p.Recorded)
-			if p.Recorded && p.Record.Adapter == AdapterFolder {
-				remedy += "; then, " + FolderSteps(p.Record)
-			}
-			add(SeatCheckLine{Thing: SeatCheckPush, Facts: append(facts, "proven=-", "why="+quoteSeatCheck(why)), Remedy: remedy})
+	// 12. the hook: DOWN with its line while the seat has no live, proven hook or a push
+	// waits past its bound unacknowledged (HookGate)
+	if h := m.Hook; h.Measured && !failed(SeatCheckHook) {
+		state := "none"
+		if h.Recorded {
+			state = h.Record.State
+		}
+		facts := []string{"holder=" + orDash(h.Holder), "state=" + state, fmt.Sprintf("unacked=%d", h.Record.Unacked)}
+		if why := HookGate(h.Record, h.Recorded, h.Holder, now); why != "" {
+			add(SeatCheckLine{Thing: SeatCheckHook, Facts: append(facts, "proven=-", "why="+quoteSeatCheck(why)), Remedy: "nova-sprint hook"})
 		} else {
-			add(SeatCheckLine{Thing: SeatCheckPush, Up: true, Facts: append(facts, "proven="+formatAge(now.Sub(p.Record.Proven))+" ago")})
+			add(SeatCheckLine{Thing: SeatCheckHook, Up: true, Facts: append(facts, "proven="+formatAge(now.Sub(h.Record.Proven))+" ago")})
 		}
 	}
 

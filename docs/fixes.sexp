@@ -63,6 +63,18 @@
     MCLandBrokenNoCheckReads and MCLandBrokenBounceMarked."
    :origin "the Studio sprint, epoch 16, 2026-10-10: rule 6 raised on cards merging with one read of two, and two landed on one read")
 
+  (fix "the-coordinator-hooks-in" :release "v1.2.6" :status "shipped"
+   :title "The coordinator must hook in, and prove it, before any command runs"
+   :text "nova-sprint hook holds the seat's subscription on the server, which streams every judgment and
+    push with an id and a challenge; the hook counts once the session answers the challenge over the same
+    connection, and again every 10 minutes. Every command run as the coordinator fails with exactly 'You
+    must hook in first: run nova-sprint hook' until then, and names a push left unacknowledged past 10
+    minutes; there is no override. unhook records the seat away, a drop records it gone at once, and each
+    is pushed to the owner. seat watch, the PROOF files and seat pong are gone. tla/SeatHook.tla:
+    CommandSafe, AckedOrBlocking, ProofMeansRead, ProvenIsSubscribed, RecordTrue, KeepsHook, HookStays,
+    with seven reversed witnesses. Supersedes the v1.2.8 card the-coordinator-must-hook-in."
+   :origin "the owner, 2026-10-10 ~22:55Z: about 1,200 pushes went unread for hours while the seat answered PROOF files by hand")
+
   (fix "provider-key-refusal-rests-until-woken" :release "v1.2.6" :status "shipped"
    :title "A provider that refuses its key rests until woken, never for a time"
    :text "A route whose provider refuses the key rests until routes wake, never for a time, and the rest
@@ -237,6 +249,12 @@
     outstanding check, and a destination whose session never answered is still refused."
    :origin "the seat, 2026-10-10: PUSH DOWN mid-add")
 
+  (fix "defer-cards-to-the-roadmap" :release "v1.2.6" :status "in-progress"
+   :title "A verb defers waiting cards to the roadmap with their whole briefs"
+   :text "nova-sprint defer writes the named waiting cards, or a stream or repository of them, into the
+    roadmap data with each whole brief, and drops them from the store; --expect checks the count."
+   :origin "this pull request")
+
   (fix "cut-sentinel-releases-itself" :release "v1.2.6" :status "shipped"
    :title "A cut sentinel releases itself on the tick, and pushes the seat that the release is ready to cut"
    :text "A sentinel that names its needs (a cut: a stream's reopen stop, a release sentinel) is released by
@@ -254,6 +272,13 @@
    :text "add --land-protected marks a new stream atomically with its first card, so a point-release
     stream can admit a card based on main or dev without a sentinel card or a follow-up stream set."
    :origin "the seat ledger bug 14")
+
+  (fix "stream-remove-removes-what-exists" :release "v1.2.6" :status "in-progress"
+   :title "stream remove takes every stream that exists and names each that does not"
+   :text "One name that is no row of the work or merge table no longer refuses the whole batch: stream
+    remove takes off every named stream that may leave, reports each name that may not, and exits 1
+    only when nothing was removed or a removal failed."
+   :origin "the seat ledger v1.2.4-held-2026-10-10, bug 12; card stream-remove-removes-what-exists")
 
   (fix "land-merges-the-roadmap-data" :release "v1.2.6" :status "shipped"
    :title "Land merges the roadmap data, not returns the card"
@@ -324,6 +349,27 @@
      tick writes nothing. Use one property for all."
     :origin "issue #5210")
 
+   (fix "tick-under-its-gate-at-load" :release "v1.2.9" :status "planned"
+    :title "The deal builds no per-card route map, so the tick stays under its gate"
+    :text "Drain and deal take 0.4 to 0.7 seconds at load, so the tick is over its one-second gate, and the
+     dominant cost is the deal's routeOf, which built a served map (route.go, served[r.Name] = r) and a
+     set of route fields (the map literal and set[FieldTierNow]) for every ready primary each tick, and
+     again per up member in the launch check (launchersOf): 65% of the deal's alloc_space, which the GC
+     spent near half the deal on (gcDrain 44% of cpu). The model read the deal also paid (cardhdr.ReadModel's
+     regexp over line 1) is a minor share (4.7%). routeOf now builds served as an on-demand scan over the
+     store's few routes (servedRoute) instead of a map, and the tick's per-card check asks only whether a
+     route serves, never its fields (routeServed, called by the machines' pass, launchersOf and noRoute),
+     so it builds no set; only the callers that deal (deal, redeal, the rebalance) build the fields, at most
+     the width's cards a tick. The model read is also memoized once per brief (modelOf), wired through the
+     call sites the tick reaches (friend_deal.go, friend_read.go, readers.go, lane_cap.go). On the loaded
+     store of 80,000 ready beside 80,000 done and 8 friends the steady deal drops about 0.64s to 0.29s on
+     this bench, both under the one-second gate, and TestTickDrainAndDealUnderTheGateAtLoad shows the deal
+     stays under the gate; TestTickDealAllocatesNoPerCardRouteMapAtScale holds the removed allocations with
+     a count and no clock (near 57 a ready card to near 23, so it fails on the unfixed code and passes
+     after), BenchmarkTickDealAtLoad measures the deal and BenchmarkTickDrainAtLoad the drain, and
+     TestTheTickDealReadsEachBriefOnceAtScale holds the parse to one a brief."
+    :origin "seat ledger v1.2.4-held-2026-10-10.md 5577 tick gate")
+
    (fix "hold-pinned-to-head-sha" :release "v1.2.9" :status "shipped"
     :title "A hold pinned to an older head is not a hold at the current head"
     :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
@@ -388,6 +434,14 @@
      its RULES paragraph that contradicts its carried rules is a finding under any rule set."
     :origin "this pull request")
 
+   (fix "per-landed-spend-on-landed" :release "v1.2.7" :status "shipped"
+    :title "Per-landed cost uses spend on landed cards only; in-flight shown separately"
+    :text "The per-landed figure now divides total spend on landed cards (including failed attempts
+     and reworks) by the landed count, rather than dividing all spend so far by landed count.
+     In-flight spend on cards in waiting, placed, or merging is shown separately, so the total
+     is still visible and nothing is hidden. Stream table and sprint totals now agree."
+    :origin "dogfood 2026-10-10: $7.74 per landed at 6 of 82; stream table $0.03 vs total $46.39")
+
    (fix "swarm-lint-card-false-refusals" :release "v1.2.9" :status "planned"
     :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
     :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
@@ -414,4 +468,108 @@
     :title "A stats tidy succeeds over a fleet of more than 64 rows"
     :text "Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a
      property bound."
-    :origin "card from the sprint store (2026-10-10)")))
+    :origin "card from the sprint store (2026-10-10)")
+
+   (fix "fleet-sync-retires-a-renamed-machines-row" :release "v1.2.6" :status "shipped"
+    :title "The tick retires a fleet row whose machine is gone from the inventory"
+    :text "A rename (hetzner -> hetzner1) left the old fleet row held on the table forever, because
+     nothing ever removed a row: fleet sync adds and resizes only. The tick now reads the same machine
+     records fleet sync reads (nova-config, no new store) and, every tick and with no verb run by anyone,
+     retires a row whose record is absent (sprint.TickRetireAbsent, internal/sprint/fleet_retire.go): a row
+     with no record and no cards leaves the fleet table and the dashboard, its reader reader-<old> is
+     retired with the row and only once it leaves (the rows store.DropMembers deleted that tick), its stats
+     stay queryable under the old name, and one HAPPENED note records it; a row with no record that still
+     holds cards is held and its cards dealt away, retired on the first tick its set is empty; a config read
+     that fails retires nothing (never act on a missing read); a machine whose record exists but is offline
+     stays down. fleet sync --check already lists what the next tick would retire, as its remove drift for
+     an absent member with no card. Model tla/RetireAbsent.tla: RecordsKeepRows is the state invariant (a
+     recorded machine keeps its row) and FleetRowsMatchConfig and LiveRetire are the leads-to the tick's
+     fair reads and retirement make true; two reversed witnesses are declared, MCRetireAbsentBroken retiring
+     a recorded row on a failed read as the counterexample to RecordsKeepRows. The TLC pass is recorded in
+     tla/RUNS.tsv (MCRetireAbsent.cfg 2563 states, 468 distinct, exit 0; MCRetireAbsentBroken.cfg exit 12
+     on RecordsKeepRows). Tests: a record removed, a tick, and the row and reader are gone while the stats
+     stay; a row with working cards drains then retires; a draining absent row keeps its reader until its
+     row leaves; a failed read retires nothing; an offline machine with a record is untouched."
+    :origin "the owner, 2026-10-11 ~01:00Z and ~01:05Z, after hetzner was renamed hetzner1 and its old fleet
+     row stayed held; this card; attempt 2")
+
+   (fix "worklang-done-field-parsed" :release "v1.2.9" :status "planned"
+    :title "The worklang parser keeps the done field of a unit"
+    :text "Unit done reads a field the parser never keeps, so a done unit is never counted. The key is
+     added and sibling skipped keys are checked, with a test."
+    :origin "issue #3499")
+
+  (fix "add-refuses-card-off-sprint-base" :release "v1.2.6" :status "shipped"
+   :title "add and brief refuse a card cut off the sprint's base"
+   :text "Once the coordinator records the sprint's base (set --base, the work table's sprint_base), add and
+    brief refuse a card whose BASE is any other branch outside the promotion stream, exit 2, nothing
+    written; the step holds the same rule against a racing write. With no base recorded, dev alone is
+    refused as before, and the promotion stream keeps its mark."
+   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")
+
+  (fix "held-friend-reader-serves-nothing" :release "v1.2.6" :status "shipped"
+   :title "A held friend's reader serves nothing"
+   :text "docs/SPEC-SPRINT.md section 11 (hold): a friend and her reader row are one member to the
+    server. A held friend's reader row (reader-<friend>) serves nothing: ownModelReader and
+    readerServesTier both say so, no route judgment counts her up, and the TLA+ model ReaderTiers
+    carries the held reader beside its reversed witness. A hold with --return also takes back the
+    reads asked of her reader row, where a reader up is free to read them."
+   :origin "dogfood 2026-10-10 evening: fleet-only restart")
+
+  (fix "brief-on-a-working-card" :release "v1.2.6" :status "shipped"
+   :title "A brief replaces a working card's in place, for its next attempt"
+   :text "A card working takes a new brief in place, as one in review does (briefKept, docs/SPEC-SPRINT.md,
+    the brief verb): the brief is stored on the same card, its id, stream, score and needs kept and no
+    twin cut, and the record and the card's next attempt's why read <id> brief edited in place by <actor>
+    at attempt <n>: <what changed>, so the coordinator corrects a running card without waiting for
+    review. Only a merging or landed card keeps its brief, with what changes it instead (briefStarted).
+    The verb's help and docs/SPEC-SPRINT.md say so."
+   :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine; this card")
+  (fix "personal-name-check-exempts-paths" :release "v1.2.6" :status "shipped"
+   :title "The personal-name check exempts names inside file paths"
+   :text "The card's personal-name check refuses a brief whose SOURCE or PATHS line contains a name of the
+    deployment outside a double-quoted span. A name inside a file path (a whitespace- or comma-separated
+    token containing a slash or ending in .md) is fine; only names in prose are refused. Before this fix,
+    a name in a path triggered the check, so a brief like 'See /home/ada/projects/' was refused, and a
+    line mixing a path with prose on the same line was incorrectly allowed."
+   :origin "dogfood 2026-10-10: add refused briefs over a path segment")
+
+  (fix "nova-work-roadmap-verbs" :release "v1.2.6" :status "planned"
+   :title "nova-work roadmap check, list, add, remove, pull, done, note and render"
+   :text "Verbs over the roadmap s-expression files with byte-stable round trips; each writing verb
+    refuses a file that check rejects. Pulled into v1.2.6 by its own verb: the verbs edit docs/roadmap.sexp and docs/fixes.sexp and write both pages, locally, with no GitHub call per entry."
+   :origin "nova-sprint commit 8c87a4b (not carried by the re-seed, nova-sprint PR #28)"
+   :kept (:item-group "sprint"
+          :item-date "2026-10-10"
+          :item-release "after v1.4"
+           :earlier-title "nova-work roadmap check, add, remove, pull and note"))
+
+   (fix "machine-fault-hold-clears-when-healthy" :release "v1.2.9" :status "shipped"
+    :title "A machine fault hold clears itself once the member is healthy"
+    :text "A hold the machine places for a failure (a harness fault, a failed take, or the member going
+     down) is marked held_by=fault and clears itself on the tick once the member beats and has finished a
+     card cleanly since the hold: the machine's down is its fault hold, presence writes the mark and its
+     stamp, and the tick lifts the mark on the clean finish, telling the seat. A hold a person made carries
+     no held_by mark and is never lifted by the machine. TLA+ model DealFill, properties FaultHoldClears
+     and PersonHoldStays, with two reversed witnesses."
+    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")
+
+  (fix "broken-verdict-always-records" :release "v1.2.6" :status "shipped"
+   :title "A broken verdict at the same head always records"
+   :text "Every reader, the coordinator included, records broken on a card in review at any bound: a
+    broken verdict at the same head outweighs any number of oks, so accept never queues the head a
+    reader found broken, ask --another never answers it, and the card goes back to work with the
+    finding (reworked or widened in place) rather than accepted on a fleet ok. In tla/SprintRules.tla
+    the read machine's fixed findings (rdfixed) bound the new rework at the brief's bound, and the
+    reversed witness MCSprintRulesReadsBrokenBoundInside leaves an inside finding at the bound,
+    violating ReworkAtBound."
+   :origin "dogfood 2026-10-10 evening: fleet-only restart")
+
+  (fix "down-member-is-down-not-fault" :release "v1.2.6" :status "planned"
+   :title "A member whose host is offline is shown down, not as a fault"
+   :text "The seat check reports a member that does not beat on an offline host as down (offline=name, the
+    fleet line stays OK); DOWN when the host answers, or gives no clear no-answer (a name that does not resolve
+    is named on the line). The seat probes the ssh port of each such member's machine row at once under one
+    3 s bound, with a beating member other than the seat's own machine as the control of its network: no
+    control answer, no member excused."
+   :origin "v1.2.5 candidate list")))

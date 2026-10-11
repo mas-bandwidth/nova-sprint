@@ -59,6 +59,27 @@ func (a *app) readInventory(ctx context.Context, pg string) ([]config.MachineWid
 	return ws, err
 }
 
+// inventoryMachines is the tick's read of the inventory (store.Store.Inventory,
+// sprint.TickRetireAbsent, fleet_retire.go): every machine record nova-config
+// names, and whether the read answered. It is the same config read as fleet sync
+// (a.inventory: config.Widths over the config store, no new store). A read that
+// fails, or holds no machine row, returns ok false, and the tick retires nothing:
+// never act on a missing read. A test app that names no inventory returns false.
+func (a *app) inventoryMachines(ctx context.Context) ([]string, bool) {
+	if a.inventory == nil {
+		return nil, false
+	}
+	ws, err := a.inventory(ctx, "")
+	if err != nil || len(ws) == 0 {
+		return nil, false
+	}
+	names := make([]string, 0, len(ws))
+	for _, w := range ws {
+		names = append(names, w.Machine)
+	}
+	return names, true
+}
+
 // withConfig runs read on nova-config's Postgres store, found by the config
 // tool's own address rules (config.ResolveDSN), within 30 s; a schema behind
 // this binary's is refused before read runs.

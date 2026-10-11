@@ -81,7 +81,7 @@ func TestPresenceTakesAMemberDownAndDealsItsCards(t *testing.T) {
 	beats["m1"] = 2 * time.Minute // its last beat is long past
 	got := refmodel.PresenceMoves(w.snapshot(beats), later(0))
 	expect(t, got,
-		"set fleet ctl-m1 since=2030-01-02T03:04:05Z,status=down",
+		"set fleet ctl-m1 fault_since=2030-01-02T03:04:05Z,held_by=fault,since=2030-01-02T03:04:05Z,status=down",
 		"prop fleet deal_index=4", // every placement moves the deal's counter, by two past the member down (errata 3 amendment 5)
 		"move fleet s1-1.w1 m1:working>m2:ready",
 		"move fleet s1-3.w1 m1:ready>m2:ready",

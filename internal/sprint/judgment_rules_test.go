@@ -152,7 +152,7 @@ func TestAMechanicalJudgmentIsAnsweredByItsRule(t *testing.T) {
 		}
 	})
 
-	t.Run("read-broken: the first finding is the fix; the same finding twice is left for the coordinator", func(t *testing.T) {
+	t.Run("read-broken: the first finding is the fix; the same finding twice is reworked again", func(t *testing.T) {
 		t.Parallel()
 		w := setup(t, 1)
 		finished(w, "s1-1", false)
@@ -168,17 +168,17 @@ func TestAMechanicalJudgmentIsAnsweredByItsRule(t *testing.T) {
 		assert.Empty(t, openOf(w, NReadBroken, "s1-1"), "answered")
 		assert.Len(t, logged(w, RuleReadBroken), 1, "logged with the rule's name")
 
+		// the same finding twice: still the rule's to rework with it (a broken
+		// verdict at any bound is reworked, never left for the coordinator)
 		brokenOnce(t, w, finding)
-		for _, a := range RuleAnswers(w.s, on()) {
-			if a.Subject == "s1-1" && a.Type == NReadBroken {
-				assert.False(t, a.Answers(), "the same finding twice is not answered by rule: %s %s", a.Act, a.Why)
-			}
-		}
+		a = answerOn(t, w, on(), NReadBroken, "s1-1")
+		require.Equal(t, RuleReadBroken, a.Rule)
+		assert.True(t, a.Answers(), "the same finding twice is answered by rule: %s %s", a.Act, a.Why)
 		rules(w, on())
-		assert.Equal(t, 2, w.s.Work.Card("s1-1").Int("attempt"), "not reworked again")
-		assert.NotEmpty(t, w.s.Work.Card("s1-1").F(FieldBriefDefect), "marked a brief defect")
-		assert.Len(t, openOf(w, NBriefWrong, "s1-1"), 1, "the brief defect stays open for the coordinator")
-		assert.Len(t, logged(w, RuleReadBroken), 1)
+		assert.Equal(t, 3, w.s.Work.Card("s1-1").Int("attempt"), "reworked again with the finding")
+		assert.Equal(t, finding, w.s.Work.Card("s1-1").F("fix"), "the finding is the fix")
+		assert.Empty(t, openOf(w, NBriefWrong, "s1-1"), "a broken finding is no brief defect")
+		assert.Len(t, logged(w, RuleReadBroken), 2, "both findings answered by the rule")
 	})
 
 	t.Run("friend-take: a friend's card she has not started past its bound is taken back and dealt again", func(t *testing.T) {

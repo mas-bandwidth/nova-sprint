@@ -408,9 +408,6 @@ func (a *app) pushLoop(ctx context.Context, src inboxSource, dir string, timeout
 	if code := p.follow(look.holder, true, stdout, stderr); code != 0 {
 		return code
 	}
-	if p.fixed == "" {
-		a.prove(ctx, src, look.holder, asJSON, stdout)
-	}
 	fresh, err := p.unseen(look)
 	if err != nil {
 		return refuse(stderr, "inbox", "--push: "+err.Error())
@@ -438,9 +435,6 @@ func (a *app) pushLoop(ctx context.Context, src inboxSource, dir string, timeout
 		running := lineRunning(look.machine)
 		fresh, look, err = a.waitNew(ctx, src, func(l inboxLook) ([]sprint.Group, error) {
 			p.follow(l.holder, false, stdout, stderr)
-			if p.fixed == "" {
-				a.prove(ctx, src, l.holder, asJSON, stdout)
-			}
 			a.pushLate(ctx, src, p, late, l, asJSON, stdout, stderr)
 			return p.unseen(l)
 		}, running, timeout)

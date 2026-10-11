@@ -34,6 +34,28 @@ const (
 	FieldHeldFinish = "held_finish"
 )
 
+// HeldByFault is the hold mark (FieldHeldBy) of a member the machine holds for a
+// failure: a harness fault, a failed take, or the member going down. Such a hold is
+// the machine's own, and the tick clears it by itself once the member proves healthy
+// by taking a card and finishing it cleanly (faultClear); a hold the coordinator
+// made carries no mark and stays until a person lifts it (fleet up). The model is
+// tla/DealFill.tla, FaultHoldClears.
+const HeldByFault = "fault"
+
+// FieldFaultSince is a fault-held member's control card's stamp of when the machine
+// held it: kept through the probe (faultClear) so the tick can tell a clean finish
+// after the hold from one before it.
+const FieldFaultSince = "fault_since"
+
+// FaultHeld says the member is held by the machine for a failure (HeldByFault), the
+// one kind of hold the tick lifts by itself; the coordinator's hold (fleet down, no
+// held_by) and the sync's and the adopt's are never cleared by this rule. It is true
+// through the probe too: while the member beats again the machine keeps the mark, so
+// the clear still knows it is the machine's own hold to lift.
+func FaultHeld(ctl *Card) bool {
+	return ctl != nil && ctl.F(FieldHeldBy) == HeldByFault
+}
+
 // HoldReq is one hold or unhold of names, each a fleet member, a reader, a friend or a
 // stream (docs/SPEC-SPRINT.md section 11).
 type HoldReq struct {
@@ -50,6 +72,10 @@ type HoldReq struct {
 	Kind   string `json:",omitempty"`
 	Reason string
 	Who    string
+	// HeldBy, when the hold is the machine's own (HeldByFault), marks it so the tick
+	// clears it by itself once the member is healthy; a coordinator's hold leaves it
+	// empty and stays until a person lifts it.
+	HeldBy string `json:",omitempty"`
 	// Friends is the friend roster's names (nova-config's friend rows): the snapshot
 	// holds no table of them.
 	Friends []string `json:",omitempty"`
@@ -183,7 +209,7 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 		case t.Kind == HoldMember && r.Release:
 			add(fleetStepPlan(s, FleetReq{Op: "release", Member: t.Name, Who: r.Who, Fresh: slices.Contains(r.Alive, t.Name), Why: r.Reason}, rr, moves))
 		case t.Kind == HoldMember:
-			add(downPlan(s, FleetReq{Op: "hold", Member: t.Name, Who: r.Who, Why: holdWhy(r), Reason: r.Reason, Finish: !r.Return, keep: keep}, up, rr, moves, q, widths))
+			add(downPlan(s, FleetReq{Op: "hold", Member: t.Name, Who: r.Who, Why: holdWhy(r), Reason: r.Reason, HeldBy: r.HeldBy, Finish: !r.Return, keep: keep}, up, rr, moves, q, widths))
 		case t.Kind == HoldStream:
 			var sp Plan
 			sp, line = holdStream(s, t.Name, r)
@@ -196,6 +222,13 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 			var fp Plan
 			fp, line = holdFriendCards(s, t.Name, r)
 			add(fp)
+			if r.Return {
+				rp, rline := takeBackFriendReaderReads(s, t.Name, r.Who)
+				add(rp)
+				if rline != "" {
+					line = joinSaid(line, rline)
+				}
+			}
 		}
 		p.Notes = append(p.Notes, holdNote(s, t, r, line))
 	}
@@ -384,4 +417,27 @@ func holdFriendCards(s *Snapshot, friend string, r HoldReq) (Plan, string) {
 		line += fmt.Sprintf("; carried the pushed head of %d: %s", len(carried), Preview(carried, ","))
 	}
 	return p, line
+}
+
+// takeBackFriendReaderReads returns a held friend's reader-row reads: reader-<friend>
+// (pkg/friend ReaderOf) is her reader row, and a friend and her reader row are one
+// member to the server, so a hold with --return takes back the reads asked of it too
+// (returnReads), where a reader up is free to read them (docs/SPEC-SPRINT.md section
+// 11, hold).
+func takeBackFriendReaderReads(s *Snapshot, friend, who string) (Plan, string) {
+	if s.Readers == nil {
+		return Plan{}, ""
+	}
+	return returnReads(s, ReaderPrefix+friend, who)
+}
+
+// joinSaid joins two lines one note says, either empty left out.
+func joinSaid(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	}
+	return a + "; " + b
 }
