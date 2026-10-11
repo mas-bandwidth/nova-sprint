@@ -899,6 +899,16 @@
     on the snapshot the conditions are counted on, so the route the judgment names as resting is exactly one
     the deal does not draw; a rest whose time has ended is not named and the card is dealt."
    :origin "card ready-over-reads-the-settled-rests.w2; the seat's v1.2.14 audit, 2026-10-11")
+  (fix "ready-over-key-ignores-the-balance-amount" :release "v1.2.14" :status "planned"
+   :title "The ready-over judgment is keyed on the cause, never its figures"
+   :text "The ready-over judgment is one per (reason, tier), keyed by the reason the deal leaves the card
+    (condKey's NReadyOver case, readyOverWhy). The reason names figures that move while the cause stands --
+    a route's balance (out of budget (balance $x)) and a rest's end (resting until <stamp>) -- so as the
+    balance moved the key changed, notify closed the old judgment and wrote a second one: one cause, a second
+    push, and the coordinator's wait on the first lost. readyOverWhy now takes each moving figure out of the
+    key before keying, while the What keeps it, so the judgment is rewritten in place with the latest figures
+    and pushed once."
+   :origin "the coordinator, 2026-10-11 (v1.2.14 defect ready-over-key-ignores-the-balance-amount); checked against nova-sprint main 00c54ba")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
