@@ -387,12 +387,16 @@ func nonEmpty(m map[string]string) map[string]string {
 	return m
 }
 
-// unsetPresent keeps the unset names the card has: unsetting an absent field
-// is a no-op the manifest need not carry.
+// unsetPresent keeps the unset names the card has, each once in its first
+// place: unsetting an absent field is a no-op the manifest need not carry, and
+// naming one field twice is refused by the store's manifest check (pkg/ntable,
+// rule ARGS), so a field is unset at most once a step.
 func unsetPresent(c *Card, names []string) []string {
 	var out []string
+	seen := make(map[string]bool, len(names))
 	for _, n := range names {
-		if c.Has(n) {
+		if c.Has(n) && !seen[n] {
+			seen[n] = true
 			out = append(out, n)
 		}
 	}

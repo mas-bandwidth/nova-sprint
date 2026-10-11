@@ -348,3 +348,29 @@ func TestTheEnvironmentFaultsOwnClearReleasesTheMember(t *testing.T) {
 	assert.Empty(t, w.s.MemberCtl("m1").F(FieldHeldBy), "and its environment mark is gone")
 	assert.Empty(t, w.openOn(MemberSubject("m1")), "and its judgment closed")
 }
+
+// The release plan of an environment-held member (fleet up --probe passed)
+// names no field twice in one entry's unset: the store's manifest check refuses
+// a field unset twice (pkg/ntable, rule ARGS), and the plan the in-memory world
+// admits must carry none, so this class is caught without the twin store
+// (tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+func TestTheReleasePlanUnsetsNoFieldTwice(t *testing.T) {
+	t.Parallel()
+	w := envFaultWorld(t)
+	wc := w.s.Work.Card("s1-1").F("work")
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
+		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	require.True(t, w.s.EnvHeld("m1"))
+
+	p := FleetStep(w.s, FleetReq{Op: "release", Member: "m1", Probe: EnvProbePassed, Fresh: true})
+	for _, u := range p.Units {
+		for _, ch := range u.Changes {
+			seen := map[string]bool{}
+			for _, f := range ch.Entry.Unset {
+				assert.False(t, seen[f], "field %q is unset twice in %s of %s: %v", f, ch.Table, u.Key, ch.Entry.Unset)
+				seen[f] = true
+			}
+		}
+	}
+}
