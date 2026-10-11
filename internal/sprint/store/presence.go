@@ -160,6 +160,13 @@ func (st *Store) BeatOwing(ctx context.Context, member string, given *float64, s
 // when the beat carries none, which leaves its row unreconciled (sprint.LiveReturns); its
 // entries' sightings carried from the record before (sprint.NextLive).
 func (st *Store) BeatLive(ctx context.Context, member string, given *float64, src hostload.Source, stopReturns *int, noRoom string, live []string) (sprint.Beat, error) {
+	return st.BeatDraining(ctx, member, given, src, stopReturns, noRoom, live, false)
+}
+
+// BeatDraining is BeatLive with the member's word that it drains (fleet beat --draining: its
+// binary was replaced; sprint.Beat.Draining), stamped from its first such beat
+// (sprint.DrainingFrom): a beat without it clears it.
+func (st *Store) BeatDraining(ctx context.Context, member string, given *float64, src hostload.Source, stopReturns *int, noRoom string, live []string, draining bool) (sprint.Beat, error) {
 	if !sprint.ValidID(member) {
 		return sprint.Beat{}, fmt.Errorf("a member name wants letters, digits, _ and -: %s", member)
 	}
@@ -204,6 +211,7 @@ func (st *Store) BeatLive(ctx context.Context, member string, given *float64, sr
 	}
 	b.NoRoom = noRoom
 	b.Live, b.LiveKnown, b.LiveSince, b.LiveSeen = sprint.NextLive(prev, now, live)
+	b.Draining, b.DrainingSince = sprint.DrainingFrom(prev, draining, now)
 	out, err := json.Marshal(b)
 	if err != nil {
 		return b, err

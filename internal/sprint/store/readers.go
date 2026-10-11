@@ -63,6 +63,13 @@ func (st *Store) ReaderRows(ctx context.Context) ([]string, error) {
 // table: the reader's own queue is its beat. noRoom is the reader's word that it
 // starts no read (queue --no-room; sprint.Beat.NoRoom), "" for none.
 func (st *Store) ReaderBeat(ctx context.Context, reader, noRoom string) (bool, error) {
+	return st.ReaderBeatDraining(ctx, reader, noRoom, false)
+}
+
+// ReaderBeatDraining is ReaderBeat with the reader's word that it drains (queue --draining:
+// its binary was replaced; sprint.Beat.Draining), stamped from its first such beat
+// (sprint.DrainingFrom): a beat without it clears it.
+func (st *Store) ReaderBeatDraining(ctx context.Context, reader, noRoom string, draining bool) (bool, error) {
 	rows, err := st.ReaderRows(ctx)
 	if err != nil || !contains(rows, reader) {
 		return false, err
@@ -72,7 +79,30 @@ func (st *Store) ReaderBeat(ctx context.Context, reader, noRoom string) (bool, e
 	if err != nil || states[reader] == sprint.ReaderRetired {
 		return false, err
 	}
-	return true, st.beatReaders(ctx, noRoom, reader)
+	if !draining {
+		return true, st.beatReaders(ctx, noRoom, reader)
+	}
+	kv, err := st.rootKV()
+	if err != nil {
+		return true, nil // a store that keeps no beats holds every reader up
+	}
+	var prev sprint.Beat
+	raw, ok, err := kv.GetKey(ctx, readerBeatKey(reader))
+	if err != nil {
+		return true, err
+	}
+	if ok {
+		// ignored: an unreadable record is a first beat, which this write replaces
+		_ = json.Unmarshal([]byte(raw), &prev)
+	}
+	now := st.now()
+	b := sprint.Beat{At: now.UTC().Truncate(time.Second), NoRoom: noRoom}
+	b.Draining, b.DrainingSince = sprint.DrainingFrom(prev, true, now)
+	out, err := json.Marshal(b)
+	if err != nil {
+		return true, err
+	}
+	return true, kv.SetKey(ctx, readerBeatKey(reader), string(out))
 }
 
 // BeatReaders is a beat of every reader of the readers table: the readers of

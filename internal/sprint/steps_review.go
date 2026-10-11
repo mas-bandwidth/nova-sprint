@@ -237,7 +237,7 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			// in place only on a reader of the card's tier. A reader outside it
 			// is not asked the read again; the card is taken back (retired_by
 			// returned) and the read goes to a reader who reads the tier.
-			if len(chosenReaders)+len(again) < want && s.readerServesTier(rc.F("reader"), s.readTierOf(c)) {
+			if len(chosenReaders)+len(again) < want && s.readerServesTier(rc.F("reader"), s.readTierOf(c)) && s.readerOff(rc.F("reader")) == "" {
 				inPlace = append(inPlace, rc)
 				again = append(again, rc.F("reader"))
 				continue
@@ -1261,7 +1261,7 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		}
 		return reworkWhy(c)
 	}, s.primaryCard)
-	up := s.UpMembers()
+	up := notQuiet(s, s.UpMembers()) // a member quiet, under its floor or draining is dealt nothing (drain.go)
 	// the room of each member is its width (width.go)
 	q, room := memberLoads(s, up), memberWidths(s, up)
 	// a rework falls back past a full provider, and is dealt on one when none has room

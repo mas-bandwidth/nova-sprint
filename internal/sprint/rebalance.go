@@ -84,7 +84,9 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 		}
 	}
 	if !s.FleetOff() {
-		for _, m := range s.UpMembers() {
+		// a member quiet, or whose beat says it starts no card (its disk, or it drains:
+		// drain.go), is given nothing (notQuiet); its own ready cards are the level's
+		for _, m := range notQuiet(s, s.UpMembers()) {
 			add(&rebalanceUnit{name: m, row: m, width: s.Width(m)})
 		}
 	}

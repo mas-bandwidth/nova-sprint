@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
@@ -113,15 +114,61 @@ type Beat struct {
 	LiveKnown bool                 `json:"live_known,omitempty"`
 	LiveSince time.Time            `json:"live_since,omitzero"`
 	LiveSeen  map[string]time.Time `json:"live_seen,omitempty"`
+	// Draining is a member's or reader's word that it drains (fleet beat or queue --draining:
+	// its binary was replaced under it): it takes no new card and stops when its running
+	// cards end, which can be hours. DrainingSince is when the first beat that said so was
+	// written, kept from beat to beat while it drains; a beat without it clears both. While
+	// its beat is fresh the server holds it at no room (NoRoomNow): the deal gives it no card,
+	// the ask asks it no read, and the tick's level returns what it was dealt and has not
+	// taken (drainReturns; tla/NoRoom.tla, NeverDealtToDraining).
+	Draining      bool      `json:"draining,omitempty"`
+	DrainingSince time.Time `json:"draining_since,omitzero"`
 }
 
+// DrainingPrefix begins the no-room word the server gives a member or reader whose fresh beat
+// says it drains (DrainWord): the deal, the level and the ask read it as any no-room word, and
+// IsDrainWord tells it from a member's own (its disk under its floor).
+const DrainingPrefix = "draining since "
+
+// DrainWord is the no-room word of a member or reader draining since since.
+func DrainWord(since time.Time) string {
+	return DrainingPrefix + stamp(since) + ": its binary was replaced; it takes no new card and stops when its running cards end"
+}
+
+// IsDrainWord says the no-room word is a drain's (DrainWord).
+func IsDrainWord(why string) bool { return strings.HasPrefix(why, DrainingPrefix) }
+
 // NoRoomNow is the word of a beat fresh at now that its member or reader starts no card,
-// "" when it says none or is not fresh.
+// "" when it says none or is not fresh. A beat that says it drains is a drain's word
+// (DrainWord), its own no-room word after it when it says one too.
 func NoRoomNow(b Beat, now time.Time) string {
 	if !b.Fresh(now) {
 		return ""
 	}
+	if b.Draining {
+		since := b.DrainingSince
+		if since.IsZero() {
+			since = b.At
+		}
+		if b.NoRoom != "" {
+			return DrainWord(since) + "; " + b.NoRoom
+		}
+		return DrainWord(since)
+	}
 	return b.NoRoom
+}
+
+// DrainingFrom is the drain stamp of a beat written now with draining said or not, from the
+// beat before it (prev): its first drain beat stamps now, a later one keeps the stamp, and a
+// beat that does not say it clears it.
+func DrainingFrom(prev Beat, draining bool, now time.Time) (bool, time.Time) {
+	switch {
+	case !draining:
+		return false, time.Time{}
+	case prev.Draining && !prev.DrainingSince.IsZero():
+		return true, prev.DrainingSince
+	}
+	return true, now.UTC().Truncate(time.Second)
 }
 
 // FriendReport is what a friend's machinery reports with her beat, as a machine's beat

@@ -45,6 +45,10 @@ const (
 	NStagingRefused = "a member refused a card at staging"    // dealt to another member
 	NRestWithdrawn  = "a card withdrawn from a resting route" // dealt again on one that serves
 	NFriendReturned = "a friend's card returned to ready"     // by friend reconcile: no report, and her queue says done or does not hold it
+	// A card dealt to a member that drains, or a read asked of a reader that drains or whose
+	// machine is held or drains, and not taken, returned for the deal or the ask to give to
+	// another (drain.go). Addressed to the coordinator; nothing to answer.
+	NDrainReturned = "a card returned from a member that takes no work"
 	// The landing refused a card's head (it does not merge on the base's tip, or fails the tree
 	// gate the base passes): the card was reworked at the tip and its stream landed on
 	// (landRefused, redo.go). Addressed to the coordinator; nothing to answer.

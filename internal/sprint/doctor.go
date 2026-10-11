@@ -64,6 +64,7 @@ const (
 	CheckSeat           = "seat"
 	CheckFinishFailures = "finish-failures"
 	CheckFriends        = "friends"
+	CheckDraining       = "draining"
 )
 
 // DoctorFixSafe is the checks whose remedy is idempotent and safe for a later `doctor --fix`
@@ -174,6 +175,9 @@ const (
 	DoctorFinishWindow = time.Hour
 	// DoctorStrandedBound is how long a card may sit in review with nothing open on it and no read live.
 	DoctorStrandedBound = 10 * time.Minute
+	// DoctorDrainBound is how long a member or reader may drain (its binary replaced: it takes
+	// no new card until its running cards end) before the doctor names it with those cards.
+	DoctorDrainBound = 10 * time.Minute
 	// DoctorDiskWarnKB and DoctorDiskFailKB are a member home's free space bounds.
 	DoctorDiskWarnKB = 20 << 20
 	DoctorDiskFailKB = 5 << 20
@@ -184,6 +188,7 @@ func Doctor(in DoctorInput) []DoctorCheck {
 	var out []DoctorCheck
 	out = append(out, DoctorFleetRows(in)...)
 	out = append(out, DoctorLoopsRedial(in)...)
+	out = append(out, DoctorDraining(in)...)
 	out = append(out, DoctorMemberEnv(in)...)
 	out = append(out, DoctorFinishFailures(in)...)
 	out = append(out, DoctorFriends(in)...)
@@ -686,6 +691,58 @@ func DoctorLoopsRedial(in DoctorInput) (out []DoctorCheck) {
 	}
 	if len(out) == 0 {
 		return []DoctorCheck{okCheck(area, check, "all", fmt.Sprintf("loops=%d every one beat since the server started %s ago (%s)", n, s.Now.Sub(in.ServerStarted).Round(time.Second), in.ServerHow))}
+	}
+	return out
+}
+
+// ---- 4b. draining --------------------------------------------------------------------------
+
+// DoctorDraining names every member and reader whose fresh beat has said it drains for longer
+// than DoctorDrainBound (Beat.Draining: its binary was replaced, so it takes no new card and
+// stops when its running cards end, which can be hours), with the cards it still runs: WARN,
+// since the server deals it nothing and returned what it was dealt (drain.go), but its width
+// is idle until its longest card ends. A restart of its loop bounds the drain (SIGTERM: at most
+// member.DrainMost, its cards still running dealt again when it is down).
+func DoctorDraining(in DoctorInput) (out []DoctorCheck) {
+	const area, check = AreaFleet, CheckDraining
+	s := in.Snap
+	if s == nil || s.Fleet == nil {
+		return nil
+	}
+	n := 0
+	judge := func(loop, name string, b Beat, beaten bool, running []*Card) {
+		if !beaten || !b.Draining || !b.Fresh(s.Now) {
+			return
+		}
+		n++
+		since := b.DrainingSince
+		if since.IsZero() {
+			since = b.At
+		}
+		d := s.Now.Sub(since)
+		if d <= DoctorDrainBound {
+			return
+		}
+		var ids []string
+		for _, c := range running {
+			ids = append(ids, c.ID)
+		}
+		ev := fmt.Sprintf("draining since %s (%s): it takes no new card and stops when its running cards end; running=%d %s", stamp(since), d.Round(time.Second), len(ids), cmp.Or(someIDs(ids, 8), "-"))
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: name, Status: DoctorWarn, Evidence: ev,
+			Remedy: loopRemedy(in, loop) + " (a restart bounds the drain: its running cards are dealt again)"})
+	}
+	for _, m := range s.Members() {
+		b, beaten := in.Req.Beats[m]
+		judge("member-"+m, m, b, beaten, s.Fleet.Cell(m, Working))
+	}
+	if s.Readers != nil {
+		for _, r := range s.Readers.Rows() {
+			b, beaten := in.ReaderBeats[r]
+			judge(r, r, b, beaten, s.Readers.Cell(r, Reading))
+		}
+	}
+	if len(out) == 0 {
+		return []DoctorCheck{okCheck(area, check, "all", fmt.Sprintf("draining=%d none longer than %s", n, DoctorDrainBound))}
 	}
 	return out
 }

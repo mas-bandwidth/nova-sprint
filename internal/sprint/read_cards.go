@@ -184,7 +184,7 @@ func readUnitsOf(s *Snapshot, seats []FriendSeat) []readUnit {
 		ww, wr := rowWorking(s, row)
 		out = append(out, readUnit{name: f.Name, row: row, friend: true, seat: f, half: 2*(room-work) - reads, idle: 2*width - 2*ww - wr})
 	}
-	for _, m := range s.UpMembers() {
+	for _, m := range notQuiet(s, s.UpMembers()) { // a member quiet, under its floor or draining reads nothing (drain.go)
 		if !memberReads(s, m) {
 			continue
 		}
