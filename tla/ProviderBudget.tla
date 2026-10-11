@@ -57,8 +57,17 @@ CONSTANTS Members, Causes, Broken
 VARIABLES env, held, judged, jcause, known, probe, card, event
 vars == <<env, held, judged, jcause, known, probe, card, event>>
 
-Events == Causes \cup {"model", "deal", "push", "probe-pass", "probe-fail",
-                      "probe-new", "boot", "accept", "refuse", "init"}
+\* An environment finish's event is its cause, prefixed so a cause named "push" is never
+\* confused with the Push action's own event "push" (the two share a word, and
+\* FaultClearsOnPush reads the event).
+EnvEvent(c) == CASE c = "push" -> "env-push"
+                   [] c = "harness" -> "env-harness"
+                   [] c = "disk" -> "env-disk"
+                   [] OTHER -> "env-other"
+EnvEvents == {EnvEvent(c) : c \in Causes}
+
+Events == EnvEvents \cup {"model", "deal", "push", "probe-pass", "probe-fail",
+                          "probe-new", "boot", "accept", "refuse", "init"}
 
 TypeOK ==
     /\ env \in [Members -> {"none"} \cup Causes]
@@ -94,7 +103,7 @@ EnvFinish(m, c) ==
     /\ judged' = [judged EXCEPT ![m] = TRUE]
     /\ jcause' = [jcause EXCEPT ![m] = (IF "stale" \in Broken THEN jcause[m] ELSE c)]
     /\ card' = [card EXCEPT ![m] = "ready"]
-    /\ event' = c
+    /\ event' = EnvEvent(c)
     /\ UNCHANGED <<known, probe>>
 
 \* a card on m fails the model's way: not the environment's, so nothing is held
@@ -206,28 +215,34 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Next)
 
 \* a member is held only by an environment finish: a model failure holds no one
 EnvOnlyByEnvironmentFinish ==
-    [][\A m \in Members : (~held[m] /\ held[m]') => event' \in Causes]_vars
+    [][\A m \in Members : (~held[m] /\ held[m]') => event' \in EnvEvents]_vars
 
-\* a held member is dealt nothing
+\* a held member is dealt nothing; the property names the member dealt to (its card just
+\* became "working" from "ready"), since a deal elsewhere is no deal to the held member
 HeldDealtNothing ==
-    [][\A m \in Members : (held[m] /\ event' = "deal") => FALSE]_vars
+    [][\A m \in Members : (event' = "deal" /\ card[m] = "ready" /\ card'[m] = "working") =>
+        ~held[m]]_vars
 
 \* one judgment per (member, cause): it names the member's current cause, so a
 \* second, different fault is surfaced, never left as a stale remedy
 JudgmentNamesTheCause ==
     [][\A m \in Members : judged[m] => jcause[m] = env[m]]_vars
 
-\* the member's next card that pushes clears the fault by itself
+\* the member's next card that pushes clears the fault by itself; the property names the
+\* member that pushed (its card just became "pushed"), since a push clears only its own
+\* member's fault and other members may still be held
 FaultClearsOnPush ==
-    [][\A m \in Members : (event' = "push") => (env'[m] = "none" /\ held'[m] = FALSE)]_vars
+    [][\A m \in Members : (event' = "push" /\ card[m] # "pushed" /\ card'[m] = "pushed") =>
+        (env'[m] = "none" /\ held'[m] = FALSE)]_vars
 
 \* a held member is released only by a push or a probe that passes
 FleetUpRefusesUncleared ==
     [][\A m \in Members : (held[m] /\ ~held[m]' /\ event' # "push") => event' = "probe-pass"]_vars
 
-\* a new member is accepted only when its own probe passed (init's Boot sets it)
+\* a new member is accepted only when its own probe passed (init's Boot sets it in the
+\* same step it accepts the member, so the property reads the primed probe)
 NewMemberProbed ==
-    [][\A m \in Members : (~known[m] /\ known[m]') => probe[m] = "pass"]_vars
+    [][\A m \in Members : (~known[m] /\ known[m]') => probe'[m] = "pass"]_vars
 
 \* the member has a cause while it is held
 HeldHasACause ==

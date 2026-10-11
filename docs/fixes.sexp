@@ -594,6 +594,11 @@
     member's next card pushes, or when fleet up runs the member's own probe (the push-credential probe,
     the harness check) and it passes; fleet up refuses a member whose last environment fault is not
     cleared, and on a new member runs its own probe before accepting width (init bootstraps by passing
-    the probe). Modeled by tla/ProviderBudget.tla."
+    the probe). A member an environment fault holds carries the Held status beside its hold (the way a
+    hold writes a status in downPlan), so UpMembers no longer returns it, the level and the deal give it
+    nothing, and presence leaves it alone instead of reclassifying it down over the environment mark; its
+    clear -- a push or a passed probe -- puts the member back up, so the fault alone releases it. Modeled
+    by tla/ProviderBudget.tla, whose NewMemberProbed reads the probed member's primed probe and whose
+    environment-finish event is the cause tagged apart from the push action's own event."
    :origin "sprint card a-member-environment-fault-holds-it-and-pushes-the-seat; the owner, 2026-10-11Z:
-    the failure here is not noticing this until now; attempts 3 and 5")))
+    the failure here is not noticing this until now; attempts 3, 5 and 6")))

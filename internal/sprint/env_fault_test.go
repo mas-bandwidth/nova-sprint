@@ -264,6 +264,48 @@ func TestAnEnvironmentFaultRecordsBesideACoordinatorsHold(t *testing.T) {
 	assert.Equal(t, "looking", ctl.F(FieldHeldReason), "with its reason: %v", ctl.Fields)
 }
 
+// A member an environment fault holds is Held, not Up: the level sweeps its ready cards
+// onto the members up, and the held member is not one of them, so it is dealt nothing while
+// the fault stands (envFaulted; tla/ProviderBudget.tla, HeldDealtNothing).
+func TestALevelAfterAnEnvironmentFaultDealsTheMemberNothing(t *testing.T) {
+	t.Parallel()
+	w := envFaultWorld(t)
+	wc := w.s.Work.Card("s1-1").F("work")
+	next := w.s.Work.Card("s1-2").F("work")
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
+		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	require.True(t, w.s.EnvHeld("m1"))
+	assert.Equal(t, Held, w.s.MemberCtl("m1").F("status"), "the fault holds the member's status too")
+	assert.NotContains(t, w.s.UpMembers(), "m1", "the held member is not up")
+
+	w.must(FleetStep(w.s, FleetReq{Op: "level"}))
+	assert.NotEqual(t, Working, w.s.Fleet.Card(next).Col, "the level deals the held member nothing")
+	assert.Empty(t, w.s.Fleet.Cell("m1", Working), "no card is taken on the held member")
+	assert.Equal(t, Ready, w.state("s1-2"), "the second card stays ready for the next deal")
+}
+
+// The member's own clear releases it: fleet up runs the passed probe, the fault and its
+// hold go, its status is up again and the member is dealt to (envFaulted, EnvProbePatch;
+// tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+func TestAMembersPassedProbeReleasesTheEnvironmentHold(t *testing.T) {
+	t.Parallel()
+	w := envFaultWorld(t)
+	wc := w.s.Work.Card("s1-1").F("work")
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
+		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	require.True(t, w.s.EnvHeld("m1"))
+	require.Equal(t, Held, w.s.MemberCtl("m1").F("status"))
+
+	p := FleetStep(w.s, FleetReq{Op: "release", Member: "m1", Probe: EnvProbePassed})
+	require.Empty(t, p.Refused, "%+v", p)
+	w.must(p)
+	assert.False(t, w.s.EnvHeld("m1"), "the passed probe clears the fault")
+	assert.Equal(t, Up, w.s.MemberCtl("m1").F("status"), "and puts the member back up")
+	assert.Contains(t, w.s.UpMembers(), "m1", "so it is dealt to again")
+}
+
 // EnvProbePatch, the passed probe's clear, unsets the machine's own environment hold with
 // the fault but leaves a hold of another mark (a coordinator's, the fault's, the sync's)
 // alone: only the fault's record goes, so a person's hold is never lifted by a probe
