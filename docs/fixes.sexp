@@ -1138,6 +1138,22 @@
     are not carried: this repository has neither."
    :origin "this card")
 
+  (fix "tla-liveruns-settle-by-beat-keeps-a-held-report" :release "v1.2.12" :status "planned"
+   :title "LiveRuns models the beat settle, and a reversed witness for the pre-#87 settle by count"
+   :text "Models only, no product change. tla/LiveRuns.tla gains a beaten variable (the rows that have
+    beaten since the STOP: empty at Init and Stop, a row added by Beat(r) while stopped and not silent) and
+    the SettleByBeat action (settleStopDebtByBeat, internal/sprint/store/machine_transition.go): a STOP-owned
+    card whose row has beaten since the STOP and whose fresh live set no longer names it, running or held
+    (sprint.LiveNamesAt, internal/sprint/live.go), is returned to ready at gen+1 with its receipt, absent 0,
+    and its debt entry leaves, without the owner's own stop-return. A sixth reversed witness, settlebycount,
+    reads the row's stop-returns count instead of its live set (no card of the row cancelled), the code
+    before #87 for a machine lease, and fails NoReportLost: a child finishes and its report is held, STOP, a
+    beat with no cancelled child, the settle returns the card, and the held report's generation is gone.
+    MCLiveRuns.cfg still passes every invariant with SettleByBeat in Next, and the five existing witnesses
+    still fail their CASES.tsv properties; MCLiveRunsBrokenSettleByCount.cfg has its CASES.tsv row and its
+    RUNS.tsv record."
+   :origin "this card, tla-liveruns-settle-by-beat-keeps-a-held-report-2.w3, 2026-10-11: the v1.2.12 plan (tmp/point-release-plan-v1.2.11-v1.2.12.md, last line), nova-sprint #87 commit 2cc11a2; code read at internal/sprint/store/machine_transition.go settleStopDebtByBeat")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
