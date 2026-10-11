@@ -1340,5 +1340,26 @@
     any of them, add admitted every card straight to ready, and cards were dealt before their dependencies
     landed."
    :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
-    2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
-    owner: \"this should be caught by card lint.\"")))
+     2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
+     owner: \"this should be caught by card lint.\"")
+
+  (fix "a-5xx-mentioning-rate-limit-still-rests" :release "v1.2.14" :status "planned"
+   :title "A 5xx whose words mention a rate limit still spends the take and rests the route"
+   :text "IsRateLimited (internal/sprint/provider_funds.go) answered true for class rate-limited or a 429, then
+    fell back to words in the whole line (\"too many requests\", \"rate limit\", or \"concurrency\" with
+    \"exceed\") whatever the class, so a provider's own 5xx whose message mentioned a rate limit (for example
+    `provider: class=provider-5xx status=503 msg=upstream rate limit exceeded, retry later`) counted as one. On a
+    limited route the finish then took the rate-limited return in internal/sprint/steps_work.go: the card went back
+    unspent, with no FieldTakeEnded and no provider take record, so transient() never counted it, and three such
+    5xxs in ten never rested the route for RouteRestFor, reading a real outage as a brief backoff. Now, when the
+    line parses a class of class5xx or classTimeout, only class=rate-limited or status=429 makes it a rate limit and
+    the word fallback is skipped; a line with no parsed class, or another class, keeps the word fallback. Tests:
+    internal/sprint/rate_limit_class_test.go pins the class table (true for class=rate-limited, a 429 under another
+    class and a classless \"Too many requests\"; false for class=provider-5xx or class=timeout whose msg says
+    \"rate limit\" or \"too many requests\", and for an out-of-credit 429) and the behaviour through Deal, Take and
+    Finish (three class=provider-5xx \"rate limit\" takes each spend their take and leave no rate return, and
+    RestsDue then rests the route for RouteRestFor with cause RestProvider). No model change."
+   :origin "this card, a-5xx-mentioning-rate-limit-still-rests.w1, follow-up 2 of
+    tmp/next-sprint-cards/rate-limit-followups.md (the second cold read of nova-sprint PR #86, 2026-10-11); checked
+    against PR #86's head a1c51ee, the code this card's dependency rate-limit-never-fails-the-card-v2 lands on
+    main")))
