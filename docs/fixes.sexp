@@ -65,8 +65,12 @@
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator."))
- :items
-  ((fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
+  :items
+   ((fix "tla-liveruns-rows-with-no-live-set" :release "v1.2.12" :status "planned"
+     :title "LiveRuns models the rows whose beat carries no live set and the take's one-pass lag"
+     :text "Models only, no product change. tla/LiveRuns.tla gains a Legacy constant (the rows whose beat carries no live set, workers from before v1.2.6) and a live variable, the beat's live set as the member's last pass left it. The reconcile skips a Legacy row as the code does (liveStopped returns early, LiveReturns continues past a beat with no live set, LiveCountKeys counts every such card running), WorkingIsLive is restated over the other rows, and the new LegacyNeverReturned holds that no working card of a Legacy row is returned by the reconcile. Take no longer names its card in the live set at once: it is named at the member's next pass, and the reconcile waits the grace from the take. Two reversed witnesses: Broken \"legacyreturned\" reconciles a Legacy row as an empty set (breaks LegacyNeverReturned) and Broken \"nograce\" drops the grace from the take (breaks NoRunReturned). Every liveruns case runs with Legacy = {\"r2\"} so one row exercises the legacy path in each; every existing case keeps its declared result."
+     :origin "this card; v1.2.12 inventory item T12, drift read at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
     :title "The SeatProof model of the deleted push proof is retired"
     :text "tla/SeatProof.tla modelled the push proof (its header names PushPong, PushLive, PushWhy,
      renewSeatProof and a pushGate) with its instance MCSeatProof.tla and three configurations; none of
@@ -80,6 +84,10 @@
      \"-\") are removed, and nothing else in either file. SeatProof (the push proof) was retired in v1.2.12:
      the hook replaced it; SeatHook.tla is its model."
     :origin "this card, tla-retire-seatproof.w1, 2026-10-11: v1.2.12 inventory item T1 (\"SeatProof models deleted code\"); drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-dirtytick-held-draining-and-stopped" :release "v1.2.12" :status "planned"
+     :title "DirtyTick models held, draining and stopped members"
+     :text "Models only, no product change. tla/DirtyTick.tla gains a member status held, a per-member drain flag, and a run state (running or stopped), each turned on by its scenario so the existing configurations keep their state spaces. New invariants NeverDealtToDraining (no deal goes to a draining member), NotAskedOfHeldOrDraining (a held or draining machine's reader is asked nothing) and StoppedMovesNothing (a stopped tick changes no card's column), with the reversed witnesses MCDirtyTickBrokenDealDraining and MCDirtyTickBrokenStoppedPump and the control cases MCDirtyTickHold, MCDirtyTickDrain and MCDirtyTickStopped. The all-providers-out stop is the outside event that sets run to stopped at the end of a tick."
+     :origin "this card")
    (fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
     :title "The store package's own tests pin stats tidy and stats reset"
     :text "Tests only, no product change. New tests in internal/sprint/store drive TidyStats and ResetStats through the unit tier's Mem store and assert on their results, on what StatsTidied and StatsReset read back, and on whether the store changed: a dry run counts and writes nothing; a fleet tidy moves history off the done cells and records the archive done; a second tidy within TidyAgainAfter is refused; a fresh tidy marker refuses a tidy or a reset while a stale one is taken as ended; routes alone moves nothing and streams clears the where record; a refused move keeps its archive failed and clears the marker; a reset writes its mark and clears the where record; operation ids replay, conflict and are refused by shape; a compare-and-set that keeps losing errors after its tries; and a tidy's kinds and archives are kept across a reset."
@@ -88,14 +96,43 @@
     :title "The store package's own tests pin the shadow tick and the holds"
     :text "Tests only, no product change. New tests in internal/sprint/store drive Store.ShadowTick and Store.Holds through the unit tier's Mem store and assert on what a caller sees. ShadowTick: a running sprint with ready cards reports RUNNING with a deal part on the work table and a size the sum of its parts, and writes nothing; a STOPPED machine still plans; an epoch that owes its restore refuses and still owes it after; an operation left pending refuses (it repairs nothing) and is still pending after; queued work-table changes are planned as the drain part and the queue is not emptied; a primary waiting on reads is named in the plan's Reads; a store that moves on every read says the sprint is busy; and a custom Updates list leaves an empty part out, lists a due part with its due count, and a part that panics makes ShadowTick panic. Holds: a store with no sprint returns nil and no error; a held member, reader, friend and stream come back in kind order (members in fleet-table order, streams by name) each with its reason, and the list is empty after unhold; a member held with --return shows Return and without it none; an unreadable reader record is left out with no error and a friend's fleet row is not listed as a member. One defect the tests found (a reader set away with SetReaderAway alone, not held, is listed as held) is written as a v1.2.14 card, never fixed here."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C6")
+   (fix "cardmachine-tlc-record-owed" :release "v1.2.12" :status "planned"
+    :title "CardMachine gets a finished record and a reversed witness"
+    :text "Models only, no product change. tla/CardMachine.tla is the copy model of nova-tools' deleted Lua
+     card machine (02_card_move.lua, its deletion recorded in nova-tools internal/ci/testdata/deleted-tests.txt),
+     kept because CardISA EXTENDS it and reuses its actions. Its one case (MCCardMachine.cfg, Cards {c1,c2} with
+     c2 needing c1, Consumers {k1,k2} one slot each, MaxCopies 3, HeadBound(2), nine invariants and three temporal
+     properties under SF) had never finished: its only record was a timeout. A reduced instance beside it:
+     MCCardMachineSmall.cfg (Cards {c1} with no Deps, Consumers {k1,k2}, MaxCopies 2, HeadBound(1)) checks the nine
+     invariants only, and MCCardMachineSmallLive.cfg the same instance with ReadyIsOneWay, CopiesEnd and Progress.
+     One reversed witness, MCCardMachineBrokenReadsInReview, removes DealRead's where = \"review\" guard so a ready
+     card gets a read cut outside review and must violate ReadsInReview. The original over-budget instance moved to
+     tla/cardmachine-bench/ (its timeout row removed from RUNS.tsv), and two stale comments in steps_review.go and
+     friend_read.go cite EndReadStale now. CardMachine itself, CardISA and the running lifecycle (SprintTables) are
+     not touched."
+    :origin "this card: cardmachine-tlc-record-owed.w4, from draft tmp/next-sprint-cards/cardmachine-tlc-record-owed.md
+     (epoch 16: MCCardMachine.cfg timed out at the 110 s cap, and a --manual rerun at 1800 s timed out too) and the
+     v1.2.12 inventory item T3 (at 300 s: 615,742 distinct states, 307,578 on the queue, both growing).")
    (fix "tla-readsbyroom-parallel-rule" :release "v1.2.12" :status "planned"
     :title "ReadsByRoom models the interim parallel ask rule, with a reversed witness for asking while broken"
     :text "Models only, no product change. tla/ReadsByRoom.tla gains a Rule constant (\"sequential\" or \"parallel\"): parallel is the code's interim rule of 2026-10-06 (ReadsWanted returns 0 once a read is broken, else the reads still needed minus the live reads, asked or ok), and sequential stays the design of 2026-10-04 in its own configuration. ReadsPerLanding is restated as Need times (broken attempts plus one) under parallel (a pro card broken once reads four, where sequential read three); OneAtATime and OneBroken hold only under sequential, and the new NoAskWhileBroken (the ask places no read once a read found it broken) holds under both. Five reversed witnesses: the pair asked together breaks OneAtATime and OneBroken, readers asked whatever their room break WidthRespected, the rework's first read of any reader breaks FinderFirst (a three-reader instance, so a card has a reader to spare), and Broken = \"askbroken\" asks a read while one is broken and breaks NoAskWhileBroken. The refmodel Ask comment (actions.go) now says the parallel rule; readers.go's askPicks comment (line 637) still says sequential and is left for the next card."
     :origin "this card; v1.2.12 inventory item T36, drift read at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "tla-friendemptyrun-every-path-to-a-friend" :release "v1.2.12" :status "planned"
+    :title "FriendEmptyRun models the four friend moves, the brief-defect return and the cap's working card"
+    :text "Models only, no product change. tla/FriendEmptyRun.tla gains FriendMove, one action for the four paths that read cardLeft and move a ready attempt to a friend's lane (friendLevel, friendUnstartedLevel, reclaimUnit, friendCouldTake), reading wleft and left as they do; Rework gains the brief-defect early return, the failed rule's other early return beside the brief's bound, which writes the friend at any attempt; and CapDeal places the card working on her row, as AttemptCapDeal does, not queued. NeverBackToTheEmptyLane still holds, and a reversed witness (MCFriendEmptyRunBrokenLevelLeft) reads only the work card's list and breaks it. ruleHarness and AttemptCapDeal cite the module; friend_start.go and friend_deal.go citations are their own cards."
+    :origin "this card, tla-friendemptyrun-every-path-to-a-friend-2.w1, 2026-10-11: v1.2.12 inventory item T36 (\"FriendEmptyRun: uncited by any Go file\"); drift read at nova-sprint main 00c54ba2e")
    (fix "nova-sprint-ci-runs-tlc-on-hosted-runners" :release "v1.2.12" :status "planned"
     :title "The TLC cases run on GitHub-hosted runners from a pinned-jar workflow"
     :text "CI only, no product change. The 434 TLC cases in tla/ ran only when someone ran them by hand on a bench; tla/tla2tools.sha256 now pins the jar every tla/RUNS.tsv record names (sha256 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88, the tlaplus v1.7.4 release), and .github/workflows/tlc.yml runs the models on GitHub-hosted ubuntu-latest runners -- nova-sprint is public, so never self-hosted -- nightly by one cron, on workflow_dispatch, and on a pull request touching tla/**, pkg/tlc/** or tools/tlacheck/**. A groups job runs make tlc-test and prints the groups to run (every required group on schedule and dispatch via tlacheck groups --root ., the stale ones on a pull request via tlacheck groups --root . --stale; an empty list ends the workflow green); a models job depends on it, runs a four-wide fail-fast-false matrix over those groups, uses the runner image's own JDK 21 (no setup-java action), downloads the jar from the tlaplus release and refuses it, exit 2 naming both digests, unless sha256sum matches tla/tla2tools.sha256, then runs make tlc TLC_BUDGET=110 and uploads the run directory as a 14-day artifact. It never writes tla/RUNS.tsv into the repository; records still land through cards. New test internal/ci/tlc_workflow_test.go pins the hosted runner, the five-minute timeout, the digest check before make tlc and the 110-second budget. The workflow is unproven until its first run on the forge."
     :origin "this card, nova-sprint-ci-runs-tlc-on-hosted-runners-after-the-wall.w1, 2026-10-11: v1.2.12 inventory item T30 and note 3; checked at nova-sprint main 00c54ba2e")
+   (fix "tla-noroom-admission-by-probe" :release "v1.2.12" :status "planned"
+    :title "NoRoom models the probe gate and the read return's taker"
+    :text "Models only, no product change. tla/NoRoom.tla gains the probe gate: a member is known (accepted into the fleet) only on a passed probe (Accept, the caller's own word, trusted as the code does), and both the deal (Dealable) and the reader's ask (Off) read it, so no deal goes to a member the sprint does not know (NeverDealtUnknown) and a reader whose machine is not a fleet member belongs to no machine and is asked like any reader (steps_work.go fleetStepPlan, drain.go ReaderOwner). ReadReturn is guarded on a taker: a read asked of a held or draining machine's reader is taken back only when another reader can take it (readers.go sweepReads), so it stays otherwise, and ReadsReturn is restated under that guard with NeverReturnedWithoutATaker (a read is never taken back while no other reader can take it). Two reversed witnesses: Broken = \"probeblind\" deals to an unknown member (NeverDealtUnknown) and Broken = \"notaker\" takes a read back with no other reader (NeverReturnedWithoutATaker); the eight existing witnesses keep their results, and the noroom TLC records are refreshed."
+    :origin "this card, tla-noroom-admission-by-probe.w3, 2026-10-11: v1.2.12 inventory item T28 (three drain tests went red when the probe gate and the drain landed apart, and no model holds both); drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-seathook-live-window-and-server-start" :release "v1.2.12" :status "planned"
+    :title "The SeatHook model holds the Live window and the server's start"
+    :text "Models only, no product change. tla/SeatHook.tla adds the clock (now, Tick) and the record's Live: Prove sets it from the proof time plus HookEvery + HookAnswerBound, the look (Rechallenge) is delayed by TLC at or after HookEvery and sends the re-challenge without moving Live (ChallengeLive moves it to the re-challenge's own bound), and the gate refuses when Live has lapsed even with a challenge inside its bound, so it can refuse up to one look period early. It adds ServerStart, the next server's start rewriting a dead server's hooked record gone. Eight reversed witnesses: the seven before plus MCSeatHookBrokenNoStartRewrite (\"nostartrewrite\" leaves the record hooked at a server start, and RecordTrue fails). The header and tla/README.md say the gate can refuse up to one look period early, which internal/sprint/hook.go's doc does not (a doc fix named in the report, not made here: the code is the reference)."
+    :origin "this card; v1.2.12 inventory 2026-10-11 item T16, section 9 rows D6 and D7; drift read at nova-sprint main 00c54ba2e")
    (fix "tla-readcards-first-cases" :release "v1.2.12" :status "planned"
     :title "tla/ReadCards.tla checked against the read cards code, first cases"
     :text "Tests and models only, no product change. tla/ReadCards.tla, which had no cfg and no CASES row and had never been checked, now does what the code does: MaxGen 2 (MaxReadGen: the plain id and .g1 and .g2), the needed count 0, 1 or 2 (ReadsNeededIn: the setting or the tier's rule), and the merging-short-of-reads return (ShortReadsBack). MCReadCards.cfg holds TypeOK, OneOpenPerReader, AtMostNeedStanding, NeverTheWorker, NeverTwiceAfterSpent, MergingOnlyOnOks and NoOpenReadOfAnOldAttempt; the reversed witness MCReadCardsBrokenIgnoreSpent.cfg (BugIgnoreSpent = TRUE) breaks NeverTwiceAfterSpent. Both cases run on a bench and pass."
@@ -104,6 +141,22 @@
     :title "StopReturn's Clear stops the machine and refuses while a lease is live, with the clearblocked witness"
     :text "Models only, no product change. tla/StopReturn.tla's Clear now does what internal/sprint/store/clear.go does: from RUNNING it first stops the machine (the same effect as Stop -- the debt, the live children, the beaten set), then refuses while a working lease is still live, else advances to the blank epoch (every card ready at generation 1, no debt, no cancelled child remembered, no beat or beaten owner carried); it reads the live state (col), not the debt record. The new invariant ClearNeverWithALiveLease holds: a card whose child was alive at the last stop and has not been cancelled since is still working, so the blank-slate advance is reachable only when no card is working. ClearEnabled is restated for the new Clear (from RUNNING with no card working, the advance is enabled). MCStopReturnClear.cfg (Broken = \"none\", ClearEnabled and ClearNeverWithALiveLease) passes; the reversed witness MCStopReturnBrokenClearBlocked.cfg (Broken = \"clearblocked\") drops the live-lease guard and advances over a still-working card, failing ClearNeverWithALiveLease. Both get CASES rows in group stopreturn; clear.go now cites the module (tla/StopReturn.tla Clear)."
     :origin "this card; v1.2.12 inventory item T13, drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+   (fix "tla-holds-no-stall-liveness" :release "v1.2.12" :status "planned"
+    :title "The holds module models the no-stall rule and a card's liveness"
+    :text "Models only, no product change. tla/Holds.tla adds the no-stall rule (internal/sprint/held.go Unheld): a stop raises an open judgment on the stream (open), which the coordinator's answer (SayDid then Resume) or the tick's cross resume (TickResume) closes. NoSilentStall says every stopped stream has an open judgment or is the coordinator's hold (holder c, held.go judgment), and Progress, under fairness of the coordinator's answers and the machine's steps, says a card the coordinator does not hold eventually lands, is held, or is stopped with an open judgment (MCHoldsLive, checked in its own liveness config). The reversed witness MCHoldsBrokenSilentStop stops a stream with no judgment and fails NoSilentStall. The held card and member and the sentinel are still outside the module."
+    :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item T31")
+   (fix "tla-holds-stream-stop-resume-reopen" :release "v1.2.12" :status "planned"
+    :title "The holds module models a stream's hold, stop, resume and reopen"
+    :text "Models only, no product change. tla/Holds.tla holds a stream control card with held and held_reason and a state among waiting, merging, stopped, landed and working, and a stop's cause cross, conflict, red or rejected, with a second stream whose card o the cross need names. HoldStream and Unhold withdraw a held stream's ready cards (its working ones with --return); the deal refuses a held stream while a stopped stream still deals its ready cards; Stop (cross and red) stops the stream and a cross stop sticks the merge card on need_card o; a refusal of the card's own head stops nothing; Resume moves the stream again (a cross stop waits until o has landed, a red stop needs --did); TickResume does the cross resume on its own; and ReopenAdd reopens a stream past a landed stop. Invariants HeldStreamDealsNothing, CrossResumesAfterNeed and OwnRefusalNeverStops, with the reversed witness MCHoldsBrokenResumeEarly (Resume without the needed-card check) failing CrossResumesAfterNeed. The held card and member and the sentinel are the holds machine's first card."
+    :origin "this card; v1.2.12 inventory item T31, the second card of the holds machine")
+   (fix "tla-readyover-causes-and-bound" :release "v1.2.12" :status "planned"
+    :title "ReadyOver raises only past ReadyMax, one judgment per cause, each held card its own"
+    :text "Models only, no product change. tla/ReadyOver.tla was read against internal/sprint/ready_over.go and drifted in four places, each brought to the code. ready is split from past (a card is ready-over only after it sits past ReadyMax), each held card and each bad brief is its own cause (the card's id is in the sentence), and the causes readyWhy names that the model lacked are added: a held stream, friends alone, no launcher and no free width, plus a timed rest (until its time) beside paid and woken. OnePerCause and ClearsWhenDealt still hold. A new invariant RaisedOnlyPastReadyMax (a raise writes a judgment only for a card past the bound) is checked by the reversed witness MCReadyOverBrokenNobound (Broken \"nobound\"): a raise before the bound fails it. ready_over.go gains one comment line citing the module."
+    :origin "card tla-readyover-causes-and-bound, 2026-10-11: v1.2.12 inventory item T36, drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-server-switch-rollback-window" :release "v1.2.12" :status "planned"
+    :title "ServerSwitch models the server switch and its rollback window, with two reversed witnesses"
+    :text "Models only, no product change. tla/ServerSwitch.tla models the server switch (internal/sprint/server_switch.go ServerSwitch, ServerRollback, CheckRollbackOnLandFailure): at most two switches, a rollback window of two, a clock to four, a land that is ok, refused or failed, and a crash between the copy and the state write. ServerSwitch backs the target up to <target>.prev (only when a target exists) and copies the candidate over the target, then writes <target>.switch.json when rollback is on; a land pass fault (exit 2) in the window rolls the previous binary back to the target and removes the state, past the deadline the state is removed and the switch is permanent, and a refusal (exit 1) never rolls back. Three invariants: TargetIsAKnownBinary (the target is always a known binary or absent), RollbackOnlyInWindow, and AtMostOneAutoRollbackPerSwitch; two reversed witnesses: nodeadline skips the deadline check and fails RollbackOnlyInWindow, keepstate keeps the state after a rollback and fails AtMostOneAutoRollbackPerSwitch. Two facts of the code are modelled and named: a second switch inside the window overwrites <target>.prev with the first candidate, and a switch with no prior target leaves a state whose Previous file is missing, so every failure inside the window errors."
+    :origin "this card, tla-server-switch-rollback-window.w5, 2026-10-11: v1.2.12 inventory items T31 and section 5, and D11; survey at nova-sprint main 00c54ba2e 2026-10-11")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
@@ -258,6 +311,24 @@
     findings of three briefs in one call and leaves its keys equal, the clean brief is exit 0, and a brief
     over the size bound and a lint finding in one file are both said."
    :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 2; the owner, 2026-10-11")
+  (fix "add-partial-admits-what-passes" :release "v1.2.14" :status "planned"
+   :title "add --partial holds back what fails and admits the rest"
+   :text "add was all or none: one failing brief refused the whole call, so the coordinator looped add, read
+    the refusals, moved the refused files aside and added again. add --partial, with --brief-dir or a
+    repeated --brief-file only, runs brief check's collector over every brief, holds back every brief with a
+    finding and every card that needs a held card through its Needs: or DEPENDS-ON: line or --needs,
+    transitively, then runs the add step's own plan over the rest and holds back each card its Refused list
+    names with the cards that need it, planning the write again without them; the rounds are bounded by the
+    number of cards, and nothing is written for a held card. The rest are admitted in one store write, the
+    brief decision asked for them only. It prints one HELD <id>: <its first finding or refusal> or HELD
+    <id>: needs <other>, held back line per held card, then the add's closing line, and exits 0 when every
+    card was admitted, 1 when some were held and the rest written, and 2 when none could be admitted or for
+    usage. --partial is refused with ids, --count, --sentinel or --land-protected, since a marked first add
+    is one step. Without --partial add is all or none as before. Tests: five briefs, b2 with a PRIORITY add
+    refuses and b4 DEPENDS-ON b2, admit b1, b3 and b5, hold b2 and b4 with their two lines, exit 1, and
+    leave exactly three new cards; a brief the plan refuses at the write is held with its refusal and the
+    others land; with every brief clean the exit is 0, as add without the flag."
+   :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 1 (the owner, 2026-10-11: \"Whatever you are doing manually now, consider adding tool support for it to nova sprint.\")")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
@@ -760,9 +831,13 @@
    :title "add and brief refuse a card cut off the sprint's base"
    :text "Once the coordinator records the sprint's base (set --base, the work table's sprint_base), add and
     brief refuse a card whose BASE is any other branch outside the promotion stream, exit 2, nothing
-    written; the step holds the same rule against a racing write. With no base recorded, dev alone is
     refused as before, and the promotion stream keeps its mark."
-   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")
+    :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")
+
+   (fix "a-rejected-push-is-never-an-environment-fault" :release "v1.2.11" :status "planned"
+    :title "EnvFault classifies only the member's reason, not child text; rejected push is not envFault"
+    :text "EnvFault now classifies only the text before the first '; ' (the member's own reason), ignoring the child's words after it. A reason carrying '[rejected]' 'non-fast-forward' or '(fetch first)' is a branch refusal, never an environment fault (tla/ProviderBudget.tla, ARejectedPushIsNeverAFault). EnvFault returns the empty string for branch refusals before any class is matched."
+    :origin "this card; 2026-10-11; v1.2.11 bug fix")
 
   (fix "held-friend-reader-serves-nothing" :release "v1.2.6" :status "shipped"
    :title "A held friend's reader serves nothing"
@@ -1036,6 +1111,25 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-serverlanes-control-line-tick-turn" :release "v1.2.12" :status "planned"
+   :title "ServerLanes models the control line: batches by ticket and the tick's turn"
+   :text "Model only, no product change. ServerLanes.tla held the server's one line as app.serial: a
+    write took a free line and the tick took it when free. The code is now sprint.ControlLine
+    (internal/sprint/control_line.go): a batch takes the next ticket and is served first come, first
+    served; the tick takes the line at its turn, after the holder in flight and before every batch
+    still waiting; a gone caller's ticket is served and handed back, its verbs never run. The module
+    now models the tickets (next, serving, tkt), the tick's turn (turnDue, with the ghost dueFinishes)
+    and serving a gone write's ticket in turn (ServeGone). Two invariants are added: FCFS (no batch is
+    served before an earlier ticket still waiting) and TickWaitsOneTurn (once the tick's turn is due,
+    at most the batch already holding the line finishes before TickBegin), and the reversed witness
+    MCServerLanesBrokenTickQueues (the tick takes a ticket like a batch) fails TickWaitsOneTurn. The
+    seriallock.go comment no longer claims the read lane's own line is app.serial, and the
+    AbandonedNeverRuns citations are corrected to GoneNeverRuns. GoneNeverRuns,
+    BeatNeverWaitsForTheLine, ReadWaitsOnlyForReads, the lease invariants and EveryBatchEnds still hold.
+    tla/README.md's ServerLanes row now names the four reversed witnesses and the ticket/tick-turn model."
+   :origin "this card, tla-serverlanes-control-line-tick-turn.w3, from the owner on epoch 17,
+    2026-10-11: v1.2.12 inventory item T24, first of two; drift read at nova-sprint main 00c54ba2e")
+
   (fix "tla-stallladder-signs-of-life" :release "v1.2.12" :status "planned"
    :title "StallLadder reads a card's dealt and taken stamps and progress as the code does"
    :text "tla/StallLadder.tla was read against internal/sprint/friend_stall.go and friend_take.go and drifted in four places, each brought to the code. LastActive now counts a card's dealt and taken stamps beside her activity and progress, and the idle clock subtracts stopped time (StoppedTick), so a machine stop never counts against the bound; a progress stamp marks the card started, as the code reads \"started\" (progress, a report, or her beat naming the card), so rung 4 never takes it back; and the rung climbs only when the target rung is higher and resets only at 0, never written outright each tick. The existing invariants hold, and a new invariant NoStampedTaken (no card with a progress stamp is taken back) is checked by the reversed witness MCStallLadderBrokenTakestamped (Broken \"takestamped\"): rung 4 takes back a progress-stamped card, failing NoStampedTaken. friend_take.go gains one comment line citing the module."
@@ -1053,6 +1147,11 @@
     tla/ProviderBudget.tla NewMemberProbed, not FleetUpRefusesUncleared. tla/RUNS.tsv and tla/COVERAGE.tsv
     are made current."
    :origin "card tla-providerbudget-every-declared-witness-has-a-cfg, 2026-10-11: v1.2.12 inventory section 4, at nova-sprint main 00c54ba2e")
+
+  (fix "tla-whopreference-tiers-pins-and-takeback" :release "v1.2.12" :status "planned"
+   :title "WhoPreference gates the deal on tiers, honours the preference order, the take-back memory and the pin release"
+   :text "Models only, no product change. tla/WhoPreference.tla was read against internal/sprint/friend_deal.go, friend_take.go, rebalance.go and stops.go and drifted in four places, each brought to the code. The deal is now gated on tiers (friendTakes / the fleet's set): a flash card never reaches a friend whose tiers are pro alone, checked by the new invariant DealtAdmitted, which the unchanged model violates (plain, a flash card, dealt to friend b whose tiers are pro). The friends' choice is the code's preference order, an idle lane first then the most room then the first by name, not the fixed a-before-b. A card taken back from a friend is never dealt to her again (takenBack, the take's taken_from), checked by NeverBackToTheSameFriend. A hard pin is released past its bound while its friend is not up and is offered on as a named pin is (stops.go PinReleased), so OnlyToItsFriend holds only before the release. Two reversed witnesses: anytier drops the deal's tier gate (fails DealtAdmitted) and dealback redeals a taken-back card to the same friend (fails NeverBackToTheSameFriend). The rebalance's one-tier-up overflow and cheapest-first order (rebalance.go:143-188) are left out: a two-tier model has no tier above pro. friend_take.go and stops.go each gain one comment line citing the module."
+   :origin "this card: tla-whopreference-tiers-pins-and-takeback.w2; v1.2.12 inventory item T36, drift read at nova-sprint main 00c54ba2e, 2026-10-11")
 
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
@@ -1422,9 +1521,36 @@
     17: 89 v1212 briefs carried DEPENDS-ON: below the REPO:/BASE: sentence, briefNeeds read no needs from
     any of them, add admitted every card straight to ready, and cards were dealt before their dependencies
     landed."
-   :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
-    2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
-    owner: \"this should be caught by card lint.\"")
+    :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
+     2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
+     owner: \"this should be caught by card lint.\"")
+
+   (fix "needs-set-repoints-a-cards-needs-in-place" :release "v1.2.14" :status "planned"
+    :title "needs set re-points a card's needs in place"
+    :text "The only way to change a card's needs after admission was drop and re-add, so a card admitted
+     with the wrong needs needed a twin. A card's needs are read once at add (briefNeeds) and a brief edit
+     drops them on any change beyond the DEPENDS-ON line, and on 2026-10-11 ~100 frontier cards could not
+     be re-pointed or reworked without twins. Now nova-sprint needs set <id> (--needs <a,b> | --clear)
+     [--answers <note>] is the direct verb, the coordinator's alone: it rewrites the line the brief names
+     its needs on (Needs: or DEPENDS-ON:, keeping that line's key; --clear takes the line off; a brief
+     with no such line gains a DEPENDS-ON: line) so card <id> shows the truth, and it moves the card by
+     the one lifecycle table: a ready card that gains a need not landed moves ready -> waiting, a waiting
+     card whose new needs have all landed moves waiting -> ready, a card working or in review keeps its
+     attempt with the new needs applying from its next deal (the brief edit's briefDepends path), and a
+     landed or off-table card, a sentinel, and a need that is no primary on the table (named whole) are
+     refused, exit 1, nothing written. The path is chosen by the card's column, not by whether it has
+     ever been dealt: a card returned to waiting or ready in place after an attempt takes the lifecycle
+     move and keeps its attempt field, so it is never sent to drop and re-add a twin. unmet now judges
+     a move waiting -> ready by the needs the unit
+     writes, not the ones the pre-state holds. help needs names it (docs/SPEC-SPRINT.md, needs). Red tests
+     in cmd/nova-sprint/needs_set_test.go pin all seven: ready -> waiting with the move printed, waiting ->
+     ready on landed needs, --clear emptying a waiting card to ready, a need not on the table refused
+     naming it with nothing written, a dealt card keeping its attempt, a landed and a dropped card refused,
+     and the brief's DEPENDS-ON line rewritten with no other line changed."
+    :origin "this card: needs-set-repoints-a-cards-needs-in-place.w3 (attempts 1-2 carried), from the owner
+      on the live epoch 17,
+     2026-10-11 ~11:25 AM ET (\"I hate twins.\" / \"Twinning is the last refuge of the scoundrel. Fix your
+     tools.\"); code read at nova-sprint main 1405d26; seat tooling item 26")
    (fix "a-read-is-never-asked-onto-a-resting-route" :release "v1.2.14" :status "planned"
     :title "A read is never asked onto a resting route while another of its tier serves"
     :text "readRouteOf (internal/sprint/route.go), which draws a read card's route from the
@@ -1450,6 +1576,25 @@
      listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md; checked on PR #86's
      head a1c51ee and on main 00c54ba, where readRouteOf is at route.go:813 and holds for every
      rest, not only a backoff.")
+
+  (fix "a-friend-that-serves-a-tier-counts-as-its-route" :release "v1.2.14" :status "planned"
+   :title "A friend that serves a tier counts as its route"
+   :text "Whether a tier is served is one question with one answer: tierServed says a tier is served by an
+    enabled, unrested route of it, or by a friend row up and unheld whose tiers include it (a member row
+    likewise when the fleet's tiers allow), and every site that validates a tier reads it. routeTier's
+    frontier branch refused every frontier card before it consulted the check, so rework of a frontier card
+    was refused, held.go and idle.go raised \"no route serves tier frontier\", readers.go and ready_over.go
+    read the same words as its cause, and judgments_retire.go retired the judgment only when a route
+    appeared, while the friends' deal already handed frontier cards to a friend row whose tiers include
+    frontier. A frontier card is now the friends' by design: a friend up whose row lists frontier serves it
+    as a route would, and with no such friend the refusal names both the routes and the friends it looked
+    at. docs/SPEC-SPRINT.md, tiers and routes, says it. Tests:
+    TestReworkAcceptsAFrontierTierAFriendServes, TestAcceptSeesAFrontierTierAFriendServes,
+    TestIdleRootForAFrontierTierAFriendServesIsNoNoRoute, TestAFrontierTierNoFriendServesIsRefused,
+    TestAFrontierTierAFriendServesRaisesNoNoRouteJudgment."
+   :origin "this card; the owner, 2026-10-11 ~11:25 AM ET, on the live epoch 17: \"I hate twins.\" /
+    \"Twinning is the last refuge of the scoundrel. Fix your tools.\"; code read at nova-sprint main
+    1405d26")
 
   (fix "the-dashboard-plays-a-coin-when-a-tick-lands" :release "v1.2.14" :status "planned"
    :title "The dashboard plays a gentle coin when a tick lands a card"
@@ -1622,4 +1767,26 @@
     this."
    :origin "this card: take-by-id-starts-the-card-as-a-lane-take-does.w2, from the owner,
     2026-10-11 ~11:15-11:40 AM ET (\"How can we distribute work to friends, if you can't even
-    distribute it to yourself?\"); code read at nova-sprint main 1405d26")))
+    distribute it to yourself?\"); code read at nova-sprint main 1405d26")
+
+  (fix "a-lane-take-honours-the-rank" :release "v1.2.14" :status "planned"
+   :title "A lane take honours the rank"
+   :text "rank <id> --first moves a card to the front of its stream's line and the deal fills a
+    friend's dealt set in that order (the priority ladder, then the stream turns, then work order
+    within a stream), but take --as <friend> --lane <n> drew the lane's next ready card in
+    takeTurns order, which orders by stream name and inside a stream by score and ignores the
+    priority ladder, so a critical card dealt last was passed over and a card a later stream's
+    lane take never saw the deal's own order. A new friendDealtOrder is the one order a friend's
+    dealt set is filled and taken in (the ladder by a card's rank, then the stream turns over a
+    card's stream field, then SortCards within a stream), used by the friend deal pass
+    (friendDealPass) and by a friend's take (takeOne, through s.friendWorkRank, which reads the
+    primary's current level so a priority change after the deal is honoured too); FriendLaneOrder
+    is its exported face and the LANE line prints the held card's position in the deal's order.
+    The member take is unchanged. Reproduced on BASE: a critical card dealt last, a rank --first
+    card passed over by a critical one, and a critical card of a later stream all sat while an
+    earlier normal card was taken."
+   :origin "this card: a-lane-take-honours-the-rank.w4; the owner driving the coordinator's own
+    friend lane by hand from the seat on 2026-10-11 ~11:15-11:40 AM ET (\"How can we distribute
+    work to friends, if you can't even distribute it to yourself?\" / \"Make these fixes
+    critical.\"); five ranked-first cards sat while lanes started lower-ranked ones; code read at
+    nova-sprint main 1405d26")))

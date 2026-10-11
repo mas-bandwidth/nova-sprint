@@ -251,6 +251,10 @@ const briefExampleCard = "RESULT: <label> sha=<sha12>\n" +
 // cardHelpWords is the brief example shown in help add and help brief.
 const cardHelpWords = "a brief is held to the card lint (nova-swarm template --name card):\n\n" + briefExampleCard
 
+// addPartialWords is add --partial's prose: what it holds back, and its exit
+// codes (docs/CLI.md, add --partial).
+const addPartialWords = "\n\nadd --partial, with --brief-dir or a repeated --brief-file, runs every check over every brief, holds back every brief with a finding and every card that needs a held card through its Needs: or DEPENDS-ON: line, and admits the rest in one store write; one HELD <id>: line per held card, then the add's closing line. It exits 0 when every card was admitted, 1 when some were held and the rest written, and 2 when none could be admitted, or for a usage refusal: --partial is refused with ids, --count, --sentinel or --land-protected, since a marked first add is one step."
+
 // verbProse is the explanation a verb's -h carries past its flags. The banner
 // still carries the inbox walkthrough and the friends section on their own.
 func verbProse(name string) string {
@@ -273,7 +277,9 @@ func verbProse(name string) string {
 		return friendCardsWords
 	case "friend level":
 		return friendLevelWords
-	case "add", "brief":
+	case "add":
+		return cardHelpWords + addPartialWords
+	case "brief":
 		return cardHelpWords
 	case "hold", "unhold":
 		return holdWords()

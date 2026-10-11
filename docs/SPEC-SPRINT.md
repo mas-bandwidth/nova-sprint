@@ -622,7 +622,14 @@ them — and stamps it with the lane and, on her row, her start). A card on
 another row is refused (`not in
 friend.<name> ready`), a friend not on the roster is refused (`no friend
 <name> on the roster`), and a count take that took fewer than asked says
-why on a NOTE line. The server runs her verbs as `friend.<name>` (the HTTP form,
+why on a NOTE line. A lane of hers (`take --as friend.<name> --lane <n>`) takes
+in rank order: the one order the deal fills her dealt set in (`friendDealtOrder`,
+`FriendLaneOrder`: the priority ladder, then the stream turns, then work order
+within a stream), so a `rank <card> --first` card leads its stream and a
+`critical` card outranks a lower one however late it was dealt; the `LANE` line
+prints the held card's position in the deal's own order (`FriendLaneOrder`),
+not its position in the take, which reads a work card's primary for its current
+level and may move on a new level before the next deal catches the note up. The server runs her verbs as `friend.<name>` (the HTTP form,
 her bus login, no store address of hers: `workerVerb` takes `friend.<name>` as a
 worker's name beside a member's). A card on her row never sits ready with no one
 to take it: her start takes it into working (a friend's card is working once
@@ -2383,9 +2390,13 @@ snapshot it read, and the lifecycle judges the needs against it; a plan
 without it moves nothing waiting to ready. A card is dealt only when every need
 has landed: the deal refuses a ready card with an unlanded need, and the
 lifecycle refuses every move to dealt whose card's recorded needs have not
-landed whatever path asks for it. A brief edit records the needs its
-`DEPENDS-ON:` lines name, and a ready card that gains a need not landed waits
-until it lands (section 3, the brief verb). The lifecycle is judged first on
+landed whatever path asks for it. A card's needs are set at add, by a brief
+edit's `DEPENDS-ON:` lines, or by `needs set` (`needs set <id> (--needs <a,b> | --clear)`, the coordinator's alone, section 11), and nowhere else: `needs set`
+rewrites the brief's needs line and moves the card by this table, so a card
+admitted with the wrong needs is corrected in place, never by a twin. A brief
+edit records the needs its `DEPENDS-ON:` lines name, and a ready card that gains
+a need not landed waits until it lands (section 3, the brief verb). The
+lifecycle is judged first on
 every unit of a plan; the needs rule is then judged against the landings of
 the units the lifecycle kept only, so a landing the lifecycle refuses
 satisfies no need. A work-table move whose expectation names no place is
@@ -2399,7 +2410,11 @@ except by the coordinator.
 A score is given once, at admission. Work cards, read cards and the merge place
 copy it. No move changes it. A reworked primary therefore sits ahead of the
 primaries admitted after it. Only `rank` changes a score, every copy with it,
-and it is the coordinator's decision, receipted.
+and it is the coordinator's decision, receipted. A friend's lane takes her dealt
+set in the deal's own order — the priority ladder, then the stream turns, then
+work order within a stream (`friendDealtOrder`, `FriendLaneOrder`) — never the
+order the cards were dealt in, so a card brought to the front of its stream by
+`rank --first` is the lane's next card.
 
 ## 5. The fleet
 
@@ -2459,7 +2474,9 @@ and it is the coordinator's decision, receipted.
   none takes its enabled routes in name order. The deal (and a redeal, and a
   rework's next attempt) resolves the card at deal time: a pin is its route
   (`pin`) and moves no index; a store with no route deals as before (the member
-  runs its override); a frontier card with no pin is the coordinator's and is
+  runs its override); a frontier card with no pin is the friends' by design (a
+  friend up whose row lists frontier serves it as a route would, `tierServed`),
+  and with no such friend it is the coordinator's and is
   not dealt; otherwise the deal takes the array's entry at the tier's rolling
   index, the fleet table's `route_index_<tier>` (`route_index_flash`, `route_index_pro`, `route_index_heavy`), a uint64
   counter modulo the array's length as the member rule's `deal_index` is, and
@@ -2508,7 +2525,7 @@ and it is the coordinator's decision, receipted.
   a card put on the table makes a new cell, never once a card dealt: the deal
   costs the cards it deals, not those times the member's history
   (`TestTheMedianWallIsMeasuredOnceACellAndAgainAfterAPut`; the tick gate under
-  load, `TestTheTickGateHoldsUnderLoad`). A tier is served by an enabled fleet route or by a friend up (not held, not down) whose row lists it, one check for every verb that validates a tier (`tierServed`; a tier friends alone serve is the friends' deal's, and a rework at it waits ready for them, `TestReworkAcceptsATierAFriendServes`). The sides' tiers bound both ways: `set --fleet-tiers <tiers|all>` and `set --friends-tiers <tiers|all>` (the work table's properties `fleet_tiers` and `friends_tiers`, flash, pro, heavy, frontier comma separated, default all) are the tiers each side may take, on top of each row's own tiers (a member's routes and reader row, a friend's row). The deal hands a machine only a work card whose tier is in the fleet's set (`routeOf`: a tier the set leaves out draws no route), and a friend only one whose tier is in the friends' set (`friendTakes`), for every friend deal, level and move; a read card is dealt by its read tier the same way, a friend still reading her tier or any below it and the one-tier-below rule reading only inside the set (the read tier and the tier read at both in it). A card pinned to a model is no exception (the set is the owner's switch, `TestAModelPinDoesNotOverrideTheFleetsTiers`), and a frontier card waits for the coordinator whatever the sets (`TestAFrontierCardsJudgmentIsUnchangedByTheFleetsTiers`). A card no side may take is not dealt and is named in its tier's one `no route serves the tier` judgment, which says the side's tiers; a card in review whose read tier no side may read is named in the same judgment (`TestFleetTiersLimitWhatTheFleetTakes`, `TestFriendsTiersLimitWhatFriendsTake`, `TestAReadCardNoSideMayTakeRaisesTheTiersJudgment`). While a side's tiers are set, `where` and `view coordinator` say both sides (`fleet: on, tiers flash  friends: on, tiers all`), `where --json` carries `fleet_tiers` and `friends_tiers` (`"all"` or the list) always and `view coordinator --json` a side's only when set (`TestTheTierSettingsAreSaidWhereTheCoordinatorLooks`). A card of such a tier withdrawn or taken back from every friend up who serves it has no worker left: the tick names it in its tier's one `no route serves the tier` judgment (`TestACardWithdrawnFromItsLastFriendRaisesOneJudgment`). A card no route serves stays ready: the deal refuses it naming the
+  load, `TestTheTickGateHoldsUnderLoad`). A tier is served by an enabled fleet route or by a friend up (not held, not down) whose row lists it, one check for every verb that validates a tier (`tierServed`; a tier friends alone serve is the friends' deal's, and a rework at it waits ready for them, `TestReworkAcceptsATierAFriendServes`). The sides' tiers bound both ways: `set --fleet-tiers <tiers|all>` and `set --friends-tiers <tiers|all>` (the work table's properties `fleet_tiers` and `friends_tiers`, flash, pro, heavy, frontier comma separated, default all) are the tiers each side may take, on top of each row's own tiers (a member's routes and reader row, a friend's row). The deal hands a machine only a work card whose tier is in the fleet's set (`routeOf`: a tier the set leaves out draws no route), and a friend only one whose tier is in the friends' set (`friendTakes`), for every friend deal, level and move; a read card is dealt by its read tier the same way, a friend still reading her tier or any below it and the one-tier-below rule reading only inside the set (the read tier and the tier read at both in it). A card pinned to a model is no exception (the set is the owner's switch, `TestAModelPinDoesNotOverrideTheFleetsTiers`), and a frontier card is the friends' by design: a friend up whose row lists frontier serves it however the sets stand (`tierServed`, `TestReworkAcceptsAFrontierTierAFriendServes`), and with no such friend it waits for the coordinator whatever the sets (`TestAFrontierCardsJudgmentIsUnchangedByTheFleetsTiers`). A card no side may take is not dealt and is named in its tier's one `no route serves the tier` judgment, which says the side's tiers; a card in review whose read tier no side may read is named in the same judgment (`TestFleetTiersLimitWhatTheFleetTakes`, `TestFriendsTiersLimitWhatFriendsTake`, `TestAReadCardNoSideMayTakeRaisesTheTiersJudgment`). While a side's tiers are set, `where` and `view coordinator` say both sides (`fleet: on, tiers flash  friends: on, tiers all`), `where --json` carries `fleet_tiers` and `friends_tiers` (`"all"` or the list) always and `view coordinator --json` a side's only when set (`TestTheTierSettingsAreSaidWhereTheCoordinatorLooks`). A card of such a tier withdrawn or taken back from every friend up who serves it has no worker left: the tick names it in its tier's one `no route serves the tier` judgment (`TestACardWithdrawnFromItsLastFriendRaisesOneJudgment`). A card no route serves stays ready: the deal refuses it naming the
   tier, and the tick writes one judgment, `no route serves the tier`, per tier
   (its subject `stream:tier:<tier>`, the primaries listed), never one per
   card, closed when the tier is served (tla/DirtyTick.tla, RouteGuard; witness

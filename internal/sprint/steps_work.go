@@ -1470,6 +1470,12 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 	// from every stream alike, never one stream's lowest scores first. Its reads are taken
 	// before its work, a read being at reader priority (priority.go).
 	ready := takeTurns(s.Fleet.Cell(r.As, Ready), slices.Index(s.Members(), r.As))
+	if IsFriendRow(r.As) {
+		// a friend's ready cards are taken in the one order the deal fills her dealt set in
+		// (friendDealtOrder; docs/SPEC-SPRINT.md, rank and take): the ladder (priority), the
+		// stream turns, then work order (rank) — never the order they were dealt in
+		ready = friendDealtOrder(ready, func(c *Card) string { return c.F("stream") }, s.friendWorkRank, nil)
+	}
 	// the providers' concurrency budgets, held at the one writer: the cards this take
 	// moves to working, by provider (rate_budget.go, takeBudgetWhy)
 	planned := map[string]int{}
@@ -2240,10 +2246,20 @@ var envFaultClasses = []struct {
 }
 
 // EnvFault classifies a failed finish's reason as an environment fault: its cause (EnvPush,
-// EnvHarness, EnvTool, EnvSandbox, EnvDisk), or "" when it is none.
+// EnvHarness, EnvTool, EnvSandbox, EnvDisk), or "" when it is none. The reason is the text
+// before the first "; " (the member's own explanation); child text after it is ignored.
+// A reason that carries "[rejected]", "non-fast-forward", or "(fetch first)" is a branch
+// refusal, never an environment fault (tla/ProviderBudget.tla, ARejectedPushIsNeverAFault).
 func EnvFault(report string) string {
+	reason := report
+	if i := strings.Index(report, "; "); i >= 0 {
+		reason = report[:i]
+	}
+	if strings.Contains(reason, "[rejected]") || strings.Contains(reason, "non-fast-forward") || strings.Contains(reason, "(fetch first)") {
+		return ""
+	}
 	for _, c := range envFaultClasses {
-		if c.re.MatchString(report) {
+		if c.re.MatchString(reason) {
 			return c.cause
 		}
 	}
@@ -2612,6 +2628,7 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			// one refuses it, so a machine joining without the push credential never gets
 			// width (the owner, 2026-10-11; tla/ProviderBudget.tla, NewMemberProbed).
 			// init bootstraps a fleet by passing EnvProbePassed for each member it sets up.
+			// tla/NoRoom.tla Accept: known only on a passed probe, the deal and the ask read it.
 			why := "its own probe has not passed: " + EnvProbeLine(r.Member)
 			if r.Probe != "" {
 				why = "its own probe failed (" + r.Probe + "): " + EnvFaultRemedy(r.Member, EnvOther)
