@@ -76,28 +76,27 @@ func movedLines(p Plan) []string {
 	return out
 }
 
-// The wedge's shape under the rule: the newest card of the longest queue has
-// no target (its one member two below refused it), so the next older card
-// moves to the emptiest member, and the call returns (Zhi's guard at card
-// selection, zhi-b7086744a0b9: the gap is tested per card, so a blocked newest
-// card never stops an older one).
-func TestLevelMovesAnOlderCardWhenTheNewestIsBlocked(t *testing.T) {
+// The wedge's shape under the free-lane rule: every member is at or above its
+// width (A 6, T 5, S 4, U 5), so no member has a free lane and the level moves
+// nothing, however long the queues (round.levelTo, nextLane; tla/Level.tla,
+// NeverOffAFreeLane). The card that the mean rule moved to S stays on A.
+func TestLevelLeavesTheWedgeWhenNoLaneIsFree(t *testing.T) {
 	t.Parallel()
 	w := wedgeWorld(t)
 	p := FleetStep(w.s, FleetReq{Op: "level", Who: MachineActor})
 	levelHolds(t, w.s, p)
-	assert.Equal(t, []string{"A-ready-1.w1 A:ready -> S:ready gen=3"}, movedLines(p))
+	assert.Empty(t, movedLines(p), "the level moved a card with no free lane")
 	w.must(p)
 	assert.Equal(t, "A", w.s.Fleet.Card("A-refused.w1").Row, "the refused card stays")
-	assert.Equal(t, "S", w.s.Fleet.Card("A-ready-1.w1").Row)
+	assert.Equal(t, "A", w.s.Fleet.Card("A-ready-1.w1").Row, "no free lane, so no move")
 }
 
-// The ready count ends the loop alone: the rule of the wedge (b7776ca3: the
-// card's refusers and the longest avoided, no gap), on the wedge's shape, does
-// not move the card back and forth, because a card the call moved is never
-// queued again (tla/Level.tla, MCLevelOldRuleNoRequeue). The target counts its
-// calls so that a loop that does not end fails here, not in the heap.
-func TestLevelEndsUnderTheWedgeRuleWithinTheReadyCount(t *testing.T) {
+// The call ends under a target that never takes a card when no free lane
+// exists, on the wedge's shape: the ready count, not the mean, bounds the
+// calls, and a card the call moved is never queued again (tla/Level.tla,
+// MCLevelOldRuleNoRequeue). The target counts its calls so that a loop that
+// does not end fails here, not in the heap.
+func TestLevelEndsWithNoFreeLaneWithinTheReadyCount(t *testing.T) {
 	t.Parallel()
 	w := wedgeWorld(t)
 	asked := 0
@@ -110,7 +109,7 @@ func TestLevelEndsUnderTheWedgeRuleWithinTheReadyCount(t *testing.T) {
 	up := w.s.UpMembers()
 	levelWith(w.s, &p, up, dealRound(w.s), roundMoves{}, nil, wedge)
 	levelHolds(t, w.s, p)
-	assert.NotEmpty(t, p.Units)
+	assert.Empty(t, p.Units, "the wedge has no free lane")
 }
 
 // wedgeLevelTo is round.levelTo as it was at b7776ca3: the longest avoided
@@ -137,13 +136,11 @@ func wedgeLevelTo(r *round, up []string, n, held, widths map[string]int, from st
 	return to
 }
 
-// The shape TLC found (tla/Level.tla, MCLevelBrokenRequeue): members up in the
-// order c, a, b, widths 3, 2 and 1, the deal's index at a; b holds three ready
-// cards, the middle one refused at staging by c. With a moved card queued again
-// on its receiver (PR #5127 as it stood), b3 went b -> a, then a -> c: four
-// moves for three ready cards, and the second unit of b3 guarded on the place
-// b3 had before the first. A card the call moved is not queued again: three
-// moves, each card once.
+// A card the call moved is not queued again: three ready cards on b (width 1),
+// b2 refused at staging by c, so the source b gives its two excess cards to the
+// one free lane a they may take (b2 may not go to c), and b1 stays. No card
+// moves twice, and no more cards move than b is over its width (tla/Level.tla,
+// MovesBounded). The shape is the one TLC found (MCLevelBrokenRequeue).
 func TestLevelMovesNoCardTwice(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
@@ -158,7 +155,7 @@ func TestLevelMovesNoCardTwice(t *testing.T) {
 	putWorkCard(w, "b3", "b", Ready, 3, nil)
 	p := FleetStep(w.s, FleetReq{Op: "level", Who: MachineActor})
 	levelHolds(t, w.s, p)
-	assert.Equal(t, []string{"b3.w1 b:ready -> a:ready gen=3", "b2.w1 b:ready -> a:ready gen=3", "b1.w1 b:ready -> c:ready gen=3"}, movedLines(p))
+	assert.Equal(t, []string{"b3.w1 b:ready -> a:ready gen=3", "b2.w1 b:ready -> a:ready gen=3"}, movedLines(p))
 	w.must(p)
-	assert.Equal(t, map[string]int{"a": 2, "b": 0, "c": 1}, perMember(w.s))
+	assert.Equal(t, map[string]int{"a": 2, "b": 1, "c": 0}, perMember(w.s))
 }
