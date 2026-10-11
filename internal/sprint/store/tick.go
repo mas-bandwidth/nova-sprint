@@ -716,7 +716,7 @@ func (st *Store) Tick(ctx context.Context) (res TickResult, err error) {
 	if !m.Running() {
 		// A STOPPED machine moves nothing; the tick shows the fleet as its
 		// beats say and says it looked, so start can tell a run loop is
-		// waiting.
+		// waiting. // tla/DirtyTick.tla StoppedTick
 		shape, beats, err := st.fleetBeats(ctx, nil)
 		if err == nil {
 			_, err = st.showFleet(ctx, shape, beats, st.now())
