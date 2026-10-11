@@ -852,9 +852,13 @@ does not apply), and that the Head she reports must be on that tip: the rule a m
 staged by, docs/SPEC-CARD-CONTRACT.md, where a rework starts; `TestAFriendsReworkStartsFromTheTipOfItsBase`.
 Her daemon writes a rework's brief with the fix first, not as the `The coordinator asks:` line under
 the start: `THE ONE THING LEFT: <fix>` and `The reader found: <finding>` are the first lines after
-STATUS, then the carried head and branch, the card's STOP is the fix alone, and a LAND whose report
-does not name the fix's key words is finished as a HOLD (docs/SPEC-FRIEND.md, a reworked brief
-opens with the fix; `TestAReworkedBriefOpensWithTheFix`).
+STATUS, then the carried head and branch, the card's STOP is the fix alone. A report's stated
+`Verdict: LAND` and `Head:` remain authoritative when its first paragraph misses words from THE ONE
+THING LEFT: the mismatch may raise one seat judgment asking for the report to be read, but never
+rewrites the verdict, fails the card, or counts against the friend's ok%; a valid LAND goes to
+review with its reported head. A later attempt's delivered `CARRY:` line names the newest full head
+any earlier attempt pushed, replacing any older CARRY in the brief (`TestAFriendsReworkStartsFromTheTipOfItsBase`,
+`TestAFriendsRedealBriefCarriesTheNewestPushedHead`).
 A friend has no staged commit, so nothing checks that her Head descends from that tip: the
 `ls-remote` tip check below, Head is origin's tip of her branch, is the only guard on her finish),
 `<job>` the card's id as the table layer holds it at its
@@ -4842,6 +4846,7 @@ the tick would make, no other open judgment on it).
 | notification | answered by | ack |
 |---|---|---|
 | work came back failed | rework (with a fix), drop | no |
+| a friend's report needs a read | read the report (inspect the card, then acknowledge) | no |
 | a brief defect | re-cut the brief (drop, then add the re-cut card), drop | no |
 | a reader found it broken | rework (with the finding), ask --another, drop | no |
 | a read's branch is not on origin (a broken read's branch origin does not hold, and no branch of the work on origin holds its head: section 6; the primary is asked no read while it is open) | ack (the branch is on origin now: the tick asks the read again), rework with a fix, drop | yes |
