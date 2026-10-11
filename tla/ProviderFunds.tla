@@ -8,14 +8,25 @@
 \* normalized to none by the source reader and cannot be created by these actions.
 EXTENDS Naturals, Sequences, FiniteSets
 CONSTANTS Routes, W, After, Broken
-VARIABLES rest, own, win, low, redeal, event, takes, ended, running, friendUp
+VARIABLES rest1, own1, win1, low1, redeal1, judged1,
+          rest2, own2, win2, low2, redeal2, judged2,
+          event, takes, ended, running, friendUp
 Providers == {"p1", "p2"}
 Slots == {1, 2}
 Route(p) == IF p = "p1" THEN "r1" ELSE "r2"
-RR(p) == INSTANCE RouteRest WITH
-    Routes <- {Route(p)}, provRest <- rest[p], own <- own[p], win <- win[p],
-    low <- low[p], judged <- FALSE, redeal <- redeal[p]
-pvars == <<rest, own, win, low, redeal, event, takes, ended, running, friendUp>>
+R1 == INSTANCE RouteRest WITH Routes <- {"r1"}, provRest <- rest1,
+    own <- own1, win <- win1, low <- low1, judged <- judged1, redeal <- redeal1
+R2 == INSTANCE RouteRest WITH Routes <- {"r2"}, provRest <- rest2,
+    own <- own2, win <- win2, low <- low2, judged <- judged2, redeal <- redeal2
+rest == [p \in Providers |-> IF p = "p1" THEN rest1 ELSE rest2]
+own == [p \in Providers |-> IF p = "p1" THEN own1 ELSE own2]
+win == [p \in Providers |-> IF p = "p1" THEN win1 ELSE win2]
+low == [p \in Providers |-> IF p = "p1" THEN low1 ELSE low2]
+redeal == [p \in Providers |-> IF p = "p1" THEN redeal1 ELSE redeal2]
+Resting(p) == IF p = "p1" THEN R1!Resting("r1") ELSE R2!Resting("r2")
+pvars == <<rest1, own1, win1, low1, redeal1, judged1,
+           rest2, own2, win2, low2, redeal2, judged2,
+           event, takes, ended, running, friendUp>>
 
 \* Finite order abstraction of e.taken.After(last.Mark()), NOT a wrapping clock:
 \* after = a known launch strictly after the last rest end (or no prior rest);
@@ -24,38 +35,38 @@ pvars == <<rest, own, win, low, redeal, event, takes, ended, running, friendUp>>
 \* stale. A fresh launch then becomes after. Two slots preserve a delayed take
 \* across a different take's refusal, rest and payment/wake, indefinitely.
 PFInit ==
-    /\ \A p \in Providers : RR(p)!Init
+    /\ R1!Init /\ R2!Init
     /\ takes = [p \in Providers |-> [s \in Slots |-> "none"]]
     /\ ended = [p \in Providers |-> FALSE]
     /\ running = TRUE
     /\ friendUp = FALSE
 
-Other(p) == \A q \in Providers \ {p} :
-    UNCHANGED <<rest[q], own[q], win[q], low[q], redeal[q]>>
+Other(p) == IF p = "p1" THEN UNCHANGED <<rest2, own2, win2, low2, redeal2, judged2>>
+            ELSE UNCHANGED <<rest1, own1, win1, low1, redeal1, judged1>>
 MachineStill == UNCHANGED <<running, friendUp>>
 Launch(p, s, stamp) ==
-    /\ ~RR(p)!Resting(Route(p))
+    /\ ~Resting(p)
     /\ takes[p][s] = "none"
     /\ stamp \in {"after", "unknown"}
     /\ takes' = [takes EXCEPT ![p][s] = stamp]
-    /\ UNCHANGED <<rest, own, win, low, redeal, event, ended, running, friendUp>>
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, judged1, rest2, own2, win2, low2, redeal2, judged2, event, ended, running, friendUp>>
 
 Eligible(p, s) == ~ended[p] \/ takes[p][s] = "after"
 Refuse(p, s, cause) ==
     /\ takes[p][s] # "none"
     /\ cause \in {"credit", "auth"}
     /\ IF (Eligible(p, s) \/ "stalerefusal" \in Broken)
-           /\ ~RR(p)!Resting(Route(p))
-         THEN /\ RR(p)!TakeEnds(Route(p), cause)
+           /\ ~Resting(p)
+         THEN /\ IF p = "p1" THEN R1!TakeEnds("r1", cause) ELSE R2!TakeEnds("r2", cause)
               /\ Other(p)
-         ELSE /\ UNCHANGED <<rest, own, win, low, redeal>>
+         ELSE /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, judged1, rest2, own2, win2, low2, redeal2, judged2>>
               /\ event' = "ignored"
     /\ takes' = [takes EXCEPT ![p][s] = "none"]
     /\ UNCHANGED ended
     /\ MachineStill
 
 Poll(p, l) ==
-    /\ RR(p)!Balance(l)
+    /\ IF p = "p1" THEN R1!Balance(l) ELSE R2!Balance(l)
     /\ Other(p)
     /\ UNCHANGED <<takes, ended>>
     /\ MachineStill
@@ -65,17 +76,17 @@ EndMark(p) ==
     /\ takes' = [takes EXCEPT ![p] =
          [s \in Slots |-> IF takes[p][s] = "none" THEN "none" ELSE "stale"]]
 Pay(p, e) ==
-    /\ RR(p)!Pay(e)
+    /\ IF p = "p1" THEN R1!Pay(e) ELSE R2!Pay(e)
     /\ Other(p)
     /\ EndMark(p)
     /\ MachineStill
 Wake(p) ==
-    /\ RR(p)!WakeProvider
+    /\ IF p = "p1" THEN R1!WakeProvider ELSE R2!WakeProvider
     /\ Other(p)
     /\ EndMark(p)
     /\ MachineStill
 Rest(p) ==
-    /\ RR(p)!RestProvider
+    /\ IF p = "p1" THEN R1!RestProvider ELSE R2!RestProvider
     /\ Other(p)
     /\ UNCHANGED <<takes, ended>>
     /\ MachineStill
@@ -96,14 +107,14 @@ Stop ==
     /\ running /\ AllOutBroken
     /\ ~friendUp \/ "nofriendexception" \in Broken
     /\ running' = FALSE /\ event' = "stop"
-    /\ UNCHANGED <<rest, own, win, low, redeal, takes, ended, friendUp>>
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, judged1, rest2, own2, win2, low2, redeal2, judged2, takes, ended, friendUp>>
 Start ==
     /\ ~running /\ (~AllOutBroken \/ friendUp)
     /\ running' = TRUE /\ event' = "start"
-    /\ UNCHANGED <<rest, own, win, low, redeal, takes, ended, friendUp>>
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, judged1, rest2, own2, win2, low2, redeal2, judged2, takes, ended, friendUp>>
 Friend(b) ==
     /\ friendUp' = b
-    /\ UNCHANGED <<rest, own, win, low, redeal, event, takes, ended, running>>
+    /\ UNCHANGED <<rest1, own1, win1, low1, redeal1, judged1, rest2, own2, win2, low2, redeal2, judged2, event, takes, ended, running>>
 PFNext ==
     \/ \E p \in Providers, s \in Slots, stamp \in {"after", "unknown"} : Launch(p,s,stamp)
     \/ \E p \in Providers, s \in Slots, c \in {"credit", "auth"} : Refuse(p,s,c)
@@ -114,10 +125,11 @@ PFNext ==
     \/ \E b \in BOOLEAN : Friend(b)
 PFSpec == PFInit /\ [][PFNext]_pvars
 PFTypeOK ==
+    /\ judged1 = FALSE /\ judged2 = FALSE
     /\ \A p \in Providers :
         /\ rest[p] \in {"none", "credit", "auth", "coord"}
         /\ own[p] \in [{Route(p)} -> {"none"}]
-        /\ win[p] \in [{Route(p)} -> RR(p)!Windows]
+        /\ win[p] \in [{Route(p)} -> R1!Windows]
         /\ low[p] \in BOOLEAN
         /\ redeal[p] \in 0..W
     /\ takes \in [Providers -> [Slots -> {"none", "after", "stale", "unknown"}]]
