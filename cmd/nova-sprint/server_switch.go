@@ -13,13 +13,14 @@ import (
 )
 
 // cmdServerSwitch switches the server binary to <binary>, keeping the previous binary
-// and rolling back if a land fails within the window (docs/SPEC-SPRINT.md section 14).
+// and rolling back if a land pass fault (exit 2) occurs within the window
+// (docs/SPEC-SPRINT.md section 14).
 // Before the swap it runs the candidate's shadow tick against the store, read-only, and
 // refuses the swap when the shadow fails (shadow.go; install-canary-shadow-tick-r.w1).
 func (a *app) cmdServerSwitch(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("server switch")
 	rollback := fs.Bool("rollback", false, "roll back to previous binary, or enable automatic rollback on failed land in window")
-	windowStr := fs.String("window", "15m", "rollback window duration: if a land fails within this window, roll back")
+	windowStr := fs.String("window", "15m", "rollback window duration: if a land pass fault (exit 2) occurs within this window, roll back")
 	target := fs.String("target", "", "target binary to replace (default: this binary or NOVA_SPRINT_SERVER_BIN)")
 	repo := fs.String("repo", "", "the clone origin's sprint base is fetched into, where the candidate's build commit is checked (default NOVA_SPRINT_SERVER_REPO)")
 	base := fs.String("base", "", "the sprint base, a branch on origin: the candidate's build commit must be an ancestor of its tip (default NOVA_SPRINT_BASE)")
