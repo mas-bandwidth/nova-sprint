@@ -83,13 +83,30 @@ func needsActor(c common) string {
 // coordinator waits for the seat's live, proven hook (hookedIn; hook.go): the
 // first init, on a store with no coordinator, only names the seat.
 func coordinatorOnly(ctx context.Context, st *store.Store, c common) (string, error) {
+	why, _, err := coordinatorGate(ctx, st, c)
+	return why, err
+}
+
+// hookGateError is the hook gate's refusal as an error: the command was refused for want
+// of the seat's live, proven hook (or for an unacknowledged push) before it read or wrote
+// anything. It is a type so a caller that must tell it from a failure finds it with
+// errors.As, never by its words (the land loop: a land the gate refused is a wait for the
+// seat, not a land fault, and never rolls a switch back; docs/SPEC-SPRINT.md section 14,
+// tla/ServerSwitch.tla LandHookRefused).
+type hookGateError struct{ why string }
+
+func (e *hookGateError) Error() string { return e.why }
+
+// coordinatorGate is coordinatorOnly, saying also whether the refusal is the hook gate's.
+func coordinatorGate(ctx context.Context, st *store.Store, c common) (why string, byHook bool, err error) {
 	if verbClasses[c.verb] == classCoordinator {
 		why, err := coordinatorsAlone(ctx, st, c)
 		if err != nil || why != "" {
-			return why, err
+			return why, false, err
 		}
 	}
-	return hookedIn(ctx, st, c)
+	why, err = hookedIn(ctx, st, c)
+	return why, err == nil && why != "", err
 }
 
 // coordinatorsAlone is why the actor may not do what is the coordinator's

@@ -1588,6 +1588,9 @@ type FinishReq struct {
 	Failed bool
 	Head   string
 	Report string
+	// SeatJudgment is a coordinator's concern about a worker report that does not
+	// change the worker's stated verdict or finish result.
+	SeatJudgment string
 	// Branch and Base are the branch the work is on and the one it started
 	// from, as the worker reports them.
 	Branch, Base string
@@ -1718,6 +1721,21 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		if r.Failed && kind == "" && !late {
 			if cause := EnvFault(r.Report); cause != "" {
 				envFaulted(s, c, pr, r, cause, who, &p, envSeen)
+				continue
+			}
+		}
+		// A stop on needs that have not landed is a coordination failure, never the worker's
+		// and never a brief defect (docs/SPEC-SPRINT.md, needs and the deal; needs_stop.go):
+		// the card was dealt before its needs landed. The work card goes back to the pool (no
+		// fail mark, no ok% hit, no redeal spent) and the primary waits for its needs. Decided
+		// on the table's facts (NamedWaits at the finish), never on the report's words, and
+		// capped (MaxNeedsReturns). A late report is the deadline's failed attempt and takes
+		// none of this.
+		if r.Failed && kind == "" && !late {
+			if waits := stoppedOnNeeds(s, pr); len(waits) > 0 {
+				u := needsStopReturned(s, c, pr, r, waits, who)
+				friendNext(s, c, &u, p.Units)
+				p.Units = append(p.Units, u)
 				continue
 			}
 		}
@@ -1945,6 +1963,11 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 				// which route failed it: a bad route is seen in the inbox
 				n.What = "route=" + c.F(FieldRoute) + " model=" + c.F(FieldModel) + ": " + r.Report
 			}
+			u.Notes = append(u.Notes, n)
+		}
+		if r.SeatJudgment != "" {
+			n := judgment(NReportJudgment, pr.Row, s.Now, 0, pr.ID)
+			n.Who, n.Attempt, n.Card, n.What = who, attempt, c.ID, r.SeatJudgment
 			u.Notes = append(u.Notes, n)
 		}
 		u.Changes = append(u.Changes, change(Work, moveEntry(pr, pr.Row, Review, set, ruleAnswerConsumed(pr, set)...)))

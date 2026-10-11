@@ -13,20 +13,57 @@ import (
 // as many different readers as the primary needs (ReadsNeeded) read it ok, to failed
 // when a reader read it broken. Work no reader reads (a failed finish) stays finished.
 
-// readVerdict is the readers' verdict on an attempt of primary pr: DoneFailed when a
-// reader read the attempt broken, DoneOK when ReadsNeeded different readers read
-// it ok, "" while neither. reads are the attempt's read cards (readsAt).
-func readVerdict(pr *Card, reads []*Card) string {
-	ok := map[string]bool{}
-	for _, rc := range reads {
-		switch rc.F("verdict") {
-		case "broken":
-			return DoneFailed
-		case "ok":
-			ok[rc.Row] = true
-		}
+// readVerdict is the readers' verdict on the work card wc, an attempt of primary pr, by the
+// accept's own rules, from the reads that stand on the attempt whichever table they are on
+// (standingReads, the function okReaders and hasBrokenAtHead count from), so the verdict and
+// the accept cannot disagree: DoneOK when the primary was accepted at this attempt and its
+// reads still stand as the lander holds them (ReadsShort), DoneFailed when a broken read
+// stands at the attempt's head, DoneOK when as many different readers as the primary needs
+// (ReadsNeededIn, the sprint's count while one is set, as the accept counts it) read it ok,
+// with the coordinator's heavy read and a script read counted as the accept counts them
+// (ReadsStanding, scriptVerified); "" while neither. With no read needed (set --reads 0) the
+// worker's own LAND is the verdict, as it is the accept's evidence (acceptable); a failed
+// finish no reader reads stays finished. An earlier attempt than the primary's current one is
+// judged on its own reads at its work head.
+func readVerdict(s *Snapshot, pr, wc *Card) string {
+	if pr == nil || wc == nil {
+		return ""
 	}
-	if pr != nil && len(ok) >= ReadsNeeded(pr) {
+	attempt := max(wc.Int("attempt"), 1)
+	oks, broken := standingReads(s, pr, attempt)
+	need := ReadsNeededIn(s, pr)
+	if attempt != max(pr.Int("attempt"), 1) {
+		switch {
+		case len(broken) > 0:
+			return DoneFailed
+		case need == 0:
+			return landWord(wc)
+		case len(oks) >= need:
+			return DoneOK
+		}
+		return ""
+	}
+	_, _, short := ReadsShort(s, pr)
+	accepted := (pr.Col == Merging || pr.Col == Landed) && pr.F("accepted") != ""
+	switch {
+	case accepted && !short:
+		// the accept read these reads (Accept), a heavy read overruling a broken one
+		// included, and the lander still holds them standing
+		return DoneOK
+	case len(broken) > 0:
+		return DoneFailed
+	case need == 0:
+		return landWord(wc)
+	case !short:
+		return DoneOK
+	}
+	return ""
+}
+
+// landWord is the worker's own word on wc as a verdict where no read is needed: DoneOK for a
+// LAND at a head, "" for a failed finish, which no reader reads and which stays finished.
+func landWord(wc *Card) string {
+	if wc.F("ok") == "yes" && wc.F("head") != "" {
 		return DoneOK
 	}
 	return ""
@@ -34,11 +71,11 @@ func readVerdict(pr *Card, reads []*Card) string {
 
 // verdictChange is the move of a work card waiting in finished to the cell of the
 // readers' verdict on it (readVerdict), false when there is none yet.
-func verdictChange(pr, wc *Card, reads []*Card) (Change, string, bool) {
+func verdictChange(s *Snapshot, pr, wc *Card) (Change, string, bool) {
 	if wc == nil || !wc.Placed() || wc.Col != Finished {
 		return Change{}, "", false
 	}
-	col := readVerdict(pr, reads)
+	col := readVerdict(s, pr, wc)
 	if col == "" {
 		return Change{}, "", false
 	}
@@ -57,7 +94,7 @@ func TickVerdicts(s *Snapshot, _ TickReq) (Plan, int) {
 		if pr == nil {
 			continue
 		}
-		ch, col, ok := verdictChange(pr, wc, readsAt(s, pr, wc.Int("attempt")))
+		ch, col, ok := verdictChange(s, pr, wc)
 		if !ok {
 			continue
 		}

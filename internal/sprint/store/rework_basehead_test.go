@@ -76,6 +76,20 @@ func TestAReworkStagesAtTheLastPushedHeadOfAnyEarlierAttempt(t *testing.T) {
 		assert.Equal(t, pushedB, p.BaseHead)
 		assert.Equal(t, 2, p.BaseAttempt)
 	})
+	t.Run("failed attempt 2 retains its pushed head", func(t *testing.T) {
+		h := newHarness(t)
+		h.setup(1)
+		h.must(DealStep(sprint.DealReq{}))
+		h.finishAttempt("s1-1", false, pushedA)
+		h.reworkBroken("s1-1")
+		// The attempt pushed B, then its report was misclassified as failed. The result flag
+		// must not make the packet carry stale A when the next attempt is dealt.
+		h.finishAttempt("s1-1", true, pushedB)
+		h.must(ReworkStep(sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Fix: "fix again"}))
+		p := packetOf(h, "s1-1.w3")
+		assert.Equal(t, pushedB, p.BaseHead)
+		assert.Equal(t, 2, p.BaseAttempt)
+	})
 	t.Run("no attempt pushed", func(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)

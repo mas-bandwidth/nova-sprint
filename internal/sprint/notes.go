@@ -50,6 +50,11 @@ const (
 	// machine is held or drains, and not taken, returned for the deal or the ask to give to
 	// another (drain.go). Addressed to the coordinator; nothing to answer.
 	NDrainReturned = "a card returned from a member that takes no work"
+	// A worker stopped because its card's named needs had not landed: the card was dealt
+	// before its needs landed, a coordination failure and never the worker's, so the work
+	// card is withdrawn untouched and the primary waits for its needs (needsStopReturned,
+	// steps_work.go; docs/SPEC-SPRINT.md, needs and the deal). Nothing to answer.
+	NNeedsUnlanded = "a card returned: dealt before its needs landed"
 	// The landing refused a card's head (it does not merge on the base's tip, or fails the tree
 	// gate the base passes): the card was reworked at the tip and its stream landed on
 	// (landRefused, redo.go). Addressed to the coordinator; nothing to answer.
@@ -86,6 +91,7 @@ const (
 	NReadyToAccept   = "ready to accept"    // the readers it needs said ok at its head (ReadsNeeded)
 	NReturned        = "returned to review" // sent back from merging: the coordinator decides again
 	NWorkFailed      = "work came back failed"
+	NReportJudgment  = "a friend's report needs a read"
 	NBriefDefect     = "a brief defect" // a HOLD naming the brief: re-cut it (brief_defect.go)
 	NReadBroken      = "a reader found it broken"
 	NBriefWrong      = "a card has reached its bound: the brief is wrong, not the worker" // brief_bound.go
@@ -119,6 +125,7 @@ const (
 
 // Decisions open to each judgment type.
 var Decisions = map[string][]string{
+	NReportJudgment:    {"read the report", "ack"},
 	NReadyToAccept:     {"accept", "rework", "drop"},
 	NReturned:          {"rework", "accept", "drop"}, // accept only while its reads stand at its head
 	NWorkFailed:        {"rework with a fix", "drop"},

@@ -231,10 +231,16 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	if err != nil {
 		return err
 	}
-	// the where record and the stats record (stats tidy's streams' bases) in one exchange
-	vals, oks, err := getKeys(ctx, kv, []string{keyWhere, keyStats})
+	// the where record, the stats record (stats tidy's streams' bases) and the done record in
+	// one exchange
+	vals, oks, err := getKeys(ctx, kv, []string{keyWhere, keyStats, keyDoneRecord})
 	if err != nil {
 		return err
+	}
+	// the done record takes the log's new lines' completions (done.go): a write only when
+	// there were any
+	if err := st.keepDone(ctx, kv, vals[2], oks[2]); err != nil {
+		return fmt.Errorf("the done record: %w", err)
 	}
 	stats := st.statsRecordOf(vals[1], oks[1]) // permissive: an unreadable one is no tidy
 	stamp := stats.statsStamp(st.epoch)
@@ -444,6 +450,9 @@ type WhereFacts struct {
 	// writer reads the log for the series (sprint.LandedSeriesFrom).
 	Series        []sprint.Landing
 	SeriesCounted bool
+	// Done is the epoch's done record (done.go), read in the same exchange; its Cursor is
+	// empty when there is none of the epoch yet (DoneOf then reads the log).
+	Done DoneRecord
 }
 
 // StoreLine is where's store line, "store: rtt p50=<ms>ms p99=<ms>ms", or
@@ -471,11 +480,12 @@ func (f WhereFacts) StoreLine() string {
 func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, error) {
 	var f WhereFacts
 	if kv, err := st.kv(); err == nil {
-		vals, oks, err := getKeys(ctx, kv, []string{keyMachine, keyHeartbeat, keyWhere, keyStoreRTT, keyStats, keyStops})
+		vals, oks, err := getKeys(ctx, kv, []string{keyMachine, keyHeartbeat, keyWhere, keyStoreRTT, keyStats, keyStops, keyDoneRecord})
 		if err != nil {
 			return f, err
 		}
 		f.Records = true
+		f.Done = st.doneRecordOf(vals[6], oks[6])
 		// the stats reset's mark, in the same exchange: an unreadable stats record is none
 		// here, as it is no tidy (the tick says it, statsRecordOf)
 		var stats StatsRecord
