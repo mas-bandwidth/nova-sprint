@@ -533,6 +533,37 @@
     :origin "the seat's v1.2.14 audit, 2026-10-11 (TickIdle says \"working again\" when width is 0),
      checked against nova-sprint main 00c54ba; this card")
 
+  (fix "a-landing-stall-is-a-judgment" :release "v1.2.14" :status "planned"
+   :title "The tick judges and pushes a landing stall, and pushes every landing"
+   :text "When cards wait in review or merging and no card has landed for one minute of running
+    time (the landing_stall_bound setting, default LandingStallBound; the owner's number: \"10
+    minute stall watch is too long. 1 minute.\"), the tick end raises one judgment NLandingStall,
+    \"landing stalled\", to the coordinator with its cause breakdown: the reads out (count, by
+    reader, oldest age), the cards waiting on the coordinator's judgment (count, oldest alias; a
+    review where every card waits on the coordinator is named the seat's stall), the accepted and
+    not merged (count, the stream's merge state), the lander's last refusal (card and reason) and
+    the base's red CI. The alarm runs in the deadlines part (TickDeadlines), independent of the
+    idle alarm, and the merge step writes the facts it measures from, on the work table:
+    last_landing (the stamp of the last card that landed) and land_refusal (the lander's last
+    refusal). The episode lives on the work table's properties (landing_stall_since,
+    landing_stall_said), is re-raised each bound it holds (the open judgment rewritten in place
+    with fresh facts) and clears on the next landing with the happened NLandingAgain, \"landing
+    again after <d>\"; a sprint with nothing in review or merging raises none. docs/SPEC-SPRINT.md,
+    the judgments section, names the stall, its bound, its breakdown and its clear. Every landing
+    is pushed to the coordinator as it happens (landingPush): one happened NLanding, \"landed
+    <card>\" a line, with the card's stream, head, the one-line :title and :text of its ledger
+    entry (read from the work card), and the attempts and reads it took; a batch in one tick is one
+    push with a line a card. The model card tla-sprintrules-landing-stall-liveness is its own card.
+    Tests TestLandingStallIsJudgedWhenCardsWaitAndNothingLands, TestLandingStallIsReRaisedEachBound,
+    TestLandingStallClearsOnTheNextLanding, TestNoStallWithNothingWaiting,
+    TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall, TestEveryLandingIsPushedToTheCoordinator,
+    TestMergeWritesTheLandingStallFacts, TestMergeWritesTheLandersLastRefusal,
+    TestTickDeadlinesRaisesTheLandingStall."
+   :origin "the owner, 2026-10-11 ~12:20-12:45 PM ET, after landed sat at 68/294 +0/30m for half an
+    hour while 76 cards sat in review and 68 in fix and no judgment reached the seat: \"I shouldn't
+    need to tell you this, you should just get a push notification about it\" and \"Fix the fucking
+    gaps in push notifications\"; this card")
+
   (fix "stream-remove-removes-what-exists" :release "v1.2.6" :status "in-progress"
    :title "stream remove takes every stream that exists and names each that does not"
    :text "One name that is no row of the work or merge table no longer refuses the whole batch: stream
