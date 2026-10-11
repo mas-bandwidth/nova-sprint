@@ -7,8 +7,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -22,10 +20,13 @@ import (
 )
 
 // The owner, 2026-10-11: "The dashboard has to reflect the truth." "Anytime when it doesn't is
-// a bug." Friend stella's row read done 0 and ok% 0.0% while the log recorded her finishes ok
-// and their reads ok: the readers' verdict (TickVerdicts) counted the readers table's reads
-// alone, and her cards were read on read cards of the fleet table, retired off their rows with
-// their verdicts, so her work waited in finished however the accept took it (Stella's finding).
+// a bug." and "Done is every card completed." Friend stella's row read done 0 and ok% 0.0% while
+// the log recorded her finishes ok and their reads ok: the readers' verdict (TickVerdicts)
+// counted the readers table's reads alone, and her cards were read on read cards of the fleet
+// table, retired off their rows with their verdicts, so her work waited in finished however
+// the accept took it (Stella's finding). A row's done is now every card it completed, of every
+// kind (sprint.DoneKinds): work and fix cards the readers' verdict moved to ok, and read cards
+// completed with a verdict.
 
 // inboxJobOf is the job of her inbox whose name begins with the card's id.
 func inboxJobOf(t *testing.T, root, friend, id string) string {
@@ -41,26 +42,23 @@ func inboxJobOf(t *testing.T, root, friend, id string) string {
 	return ""
 }
 
-// friendRowCells is a friend's friends-table cells as where --json carries them.
-func friendRowCells(ta *testApp, friend string) map[string]any {
+// rowCells is a row's cells of the named table as where --json carries them.
+func rowCells(ta *testApp, table, row string) map[string]any {
 	var w whereView
 	ta.json("where", &w)
-	return withoutRowCards(w.Tables[sprint.Friends][friend])
+	return withoutRowCards(w.Tables[table][row])
 }
 
-// okFinishLine is the log's line of a worker's own ok finish (sprint render_log: the move
-// into finished, with the head her report named): the card it names, before the line (a
-// card the line does not name by its branch) or in the branch (sprint/<card>.g<gen>.e<epoch>).
-// The readers' verdict's move to ok renders as a finish line with no head, never counted.
-var okFinishLine = regexp.MustCompile(`(?:(\S+): )?friend\.stella finished attempt \d+: ok, head \S+(?: on sprint/(\S+?)\.g\d+)?`)
-
-// A friend finishes three cards ok by the three paths that record a friend's finish: friend
-// sync collecting her report, her own finish verb (--as friend.stella), and friend reconcile
-// collecting a report her queue says done. Each is read ok on a read card of the fleet table by
-// a reader friend, retired with its verdict. Her friends row then shows done 3 and ok% 100.0%,
-// in where --json and in the dashboard's pull of her row, and done is the count of her ok
-// finishes the log records, each card once. Red before the fix: done 0, ok% 0.0%.
-func TestAFriendsDoneIsHerOkFinishesWhicheverPathRecordedThem(t *testing.T) {
+// A friend completes six cards by every path that records a completion: three work cards
+// (friend sync collecting her report, her own finish verb as friend.stella, friend reconcile
+// collecting a report her queue says done), one fix card (the rework of a card a reader read
+// broken), each read ok on a read card of the fleet table by the reader friend fred, and two
+// read cards of fred's work she completes herself. Her row shows done 6 (3 work + 1 fix + 2
+// reads) in where --json and in the dashboard's pull of her row; ok% is her work's alone, the
+// readers' verdicts on her ok and failed cells, which her reads never move. Fred, a friend who both builds and reads,
+// shows his 2 work cards and his 6 reads; member m1 shows the work card it completed. A stats
+// reset counts done from its mark: 0 for every row. Red before the fix: stella's done 0.
+func TestADoneIsEveryCardTheRowCompleted(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	home, prev := t.TempDir(), ta.a.getenv
@@ -75,8 +73,8 @@ func TestAFriendsDoneIsHerOkFinishesWhicheverPathRecordedThem(t *testing.T) {
 		return cfg.List(ctx, config.KindFriend)
 	}
 	for _, f := range []config.Row{
-		{Name: "stella", Fields: map[string]string{"slots": "4", "tiers": "flash", "width": "8", "roles": "builder"}},
-		{Name: "fred", Fields: map[string]string{"slots": "4", "tiers": "flash", "mode": "one-shot", "width": "8", "roles": "reader"}},
+		{Name: "stella", Fields: map[string]string{"slots": "8", "tiers": "flash", "width": "8", "roles": "builder,reader"}},
+		{Name: "fred", Fields: map[string]string{"slots": "8", "tiers": "flash", "mode": "one-shot", "width": "8", "roles": "builder,reader"}},
 	} {
 		_, err := cfg.Insert(context.Background(), config.KindFriend, f, "t")
 		require.NoError(t, err)
@@ -85,33 +83,80 @@ func TestAFriendsDoneIsHerOkFinishesWhicheverPathRecordedThem(t *testing.T) {
 	ta.ok("init --readers reader-a --members m1:8")
 	ta.ok("set --read-cards on")
 	root := t.TempDir()
-	ta.ok("friend sync --root " + root)
-	ta.beatUp("stella")
-	ta.beatUp("fred")
+	ta.ok("friend sync --root " + root) // roster only: both down, so the member's card is the machine's
 
 	dir := t.TempDir()
-	for _, id := range []string{"s1-1", "s1-2", "s1-3"} {
-		brief := passingBrief(id + ": a friend's card (s1) tier: flash\nREPO: mas-bandwidth/nova-tools\nWHO: only friend stella\n\nHOW THIS CARD IS JUDGED\nthe flag is reachable\n")
-		require.NoError(t, os.WriteFile(filepath.Join(dir, id+".md"), []byte(brief), 0o644))
+	brief := func(id, who string) {
+		lead := id + ": a card (s1) tier: flash\nREPO: mas-bandwidth/nova-tools\n"
+		if who != "" {
+			lead += "WHO: only friend " + who + "\n"
+		}
+		require.NoError(t, os.WriteFile(filepath.Join(dir, id+".md"), []byte(passingBrief(lead+"\nHOW THIS CARD IS JUDGED\nthe flag is reachable\n")), 0o644))
 	}
+	for _, id := range []string{"s1-1", "s1-2", "s1-3", "s1-6"} {
+		brief(id, "stella")
+	}
+	brief("s1-4", "fred")
+	brief("s1-5", "fred")
+	brief("s1-7", "")
 	ta.ok("add --stream s1 --brief-dir " + dir)
 	ta.ok("start")
 	ta.ok("tick")
-	ta.ok("friend sync --root " + root)
-	ta.startFriend("stella", 3)
-	require.Equal(t, "3", friendRowCells(ta, "stella")["working"], "her three cards dealt and started")
 
-	report := "Verdict: LAND\nHead: " + landHead + "\n\nthe flag is reachable; go test ./... green\n"
-	// s1-1: friend sync collects her report
-	outboxReport(t, root, "stella", inboxJobOf(t, root, "stella", "s1-1.w1"), report)
+	land := "Verdict: LAND\nHead: " + landHead + "\n\nthe flag is reachable; go test ./... green\n"
+	hold := "Verdict: HOLD\n\ninternal/x.go:1: the flag is not reachable from the verb\n"
+	// answer every read card dealt to the friend: LAND, or HOLD for the primaries in broken
+	answerReads := func(friend string, ids []string, broken map[string]bool) {
+		t.Helper()
+		ta.ok("tick")
+		ta.ok("friend sync --root " + root)
+		var card cardView
+		answered := 0
+		for _, id := range ids {
+			ta.json("card "+id, &card)
+			for _, rc := range card.Reads {
+				if rc.Row != sprint.FriendRow(friend) || !rc.Placed() {
+					continue
+				}
+				report := land
+				if broken[id] {
+					report = hold
+				}
+				outboxReport(t, root, friend, inboxJobOf(t, root, friend, rc.ID), report)
+				answered++
+			}
+		}
+		require.Equal(t, len(ids), answered, "%s holds one read of each of %v", friend, ids)
+		ta.ok("friend sync --root " + root)
+	}
+
+	// member m1 works s1-7 while no friend is up
+	ta.ok("take --as m1 --limit 1")
+	ta.ok("finish --as m1 s1-7.w1@1 --report done --head " + landHead)
+
+	// fred comes up: he reads m1's card (the only reader up) and works his two
+	ta.beatUp("fred")
+	answerReads("fred", []string{"s1-7"}, nil)
+	ta.startFriend("fred", 2)
+	for _, id := range []string{"s1-4.w1", "s1-5.w1"} {
+		outboxReport(t, root, "fred", inboxJobOf(t, root, "fred", id), land)
+	}
+	ta.ok("friend sync --root " + root)
+
+	// stella comes up: she reads fred's two (fred never reads his own) and works her four
+	ta.beatUp("stella")
+	answerReads("stella", []string{"s1-4", "s1-5"}, nil)
+	ta.startFriend("stella", 4)
+	// s1-1 and s1-6: friend sync collects her reports
+	outboxReport(t, root, "stella", inboxJobOf(t, root, "stella", "s1-1.w1"), land)
+	outboxReport(t, root, "stella", inboxJobOf(t, root, "stella", "s1-6.w1"), land)
 	out := ta.ok("friend sync --root " + root)
 	require.Contains(t, out, "FRIEND-CARD FINISHED friend=stella card=s1-1.w1 result=ok", out)
 	// s1-2: her own finish verb, as friend.stella
 	ta.ok("finish --as " + sprint.FriendRow("stella") + " s1-2.w1@1 --report done --head " + landHead)
 	// s1-3: friend reconcile collects the report her queue says done
 	job3 := inboxJobOf(t, root, "stella", "s1-3.w1")
-	outboxReport(t, root, "stella", job3, report)
-	// her session marks the card done in the queue friend sync keeps (friendQueue)
+	outboxReport(t, root, "stella", job3, land)
 	queuePath := filepath.Join(root, "stella-working", "inbox", "QUEUE.json")
 	text, err := os.ReadFile(queuePath)
 	require.NoError(t, err)
@@ -130,38 +175,36 @@ func TestAFriendsDoneIsHerOkFinishesWhicheverPathRecordedThem(t *testing.T) {
 	out = ta.ok("friend reconcile stella --root " + root)
 	require.Contains(t, out, "collected=1", out)
 
-	var card cardView
-	for _, id := range []string{"s1-1", "s1-2", "s1-3"} {
-		ta.json("card "+id, &card)
-		require.Len(t, card.Work, 1, id)
-		require.Equal(t, sprint.Finished, card.Work[0].Col, "%s: her finish put her work card in finished", id)
-	}
-	// her word alone counts nothing (the readers' ok%): done waits for the reads
-	assert.Equal(t, "0", friendRowCells(ta, "stella")["done"])
-
-	// the reads: a read card each, dealt to fred, read ok by his LAND, retired with the verdict
+	// fred reads her four: ok, but s1-6 broken, which is reworked with its finding: its next
+	// attempt, the fix card, is hers again
+	answerReads("fred", []string{"s1-1", "s1-2", "s1-3", "s1-6"}, map[string]bool{"s1-6": true})
+	ta.ok("rework s1-6")
 	ta.ok("tick")
 	ta.ok("friend sync --root " + root)
-	for _, id := range []string{"s1-1", "s1-2", "s1-3"} {
-		ta.json("card "+id, &card)
-		require.Len(t, card.Reads, 1, "%s: one read card", id)
-		rc := card.Reads[0]
-		require.Equal(t, sprint.FriendRow("fred"), rc.Row, "%s: the reader friend reads it", id)
-		outboxReport(t, root, "fred", inboxJobOf(t, root, "fred", rc.ID), report)
-	}
+	ta.startFriend("stella", 1)
+	outboxReport(t, root, "stella", inboxJobOf(t, root, "stella", "s1-6.w2"), land)
 	ta.ok("friend sync --root " + root)
-	for _, id := range []string{"s1-1", "s1-2", "s1-3"} {
-		ta.json("card "+id, &card)
-		require.Len(t, card.Reads, 1)
-		require.Equal(t, "ok", card.Reads[0].F("verdict"), "%s: read ok", id)
-		require.Empty(t, card.Reads[0].Row, "%s: the read card is retired off its row", id)
-	}
+	answerReads("fred", []string{"s1-6"}, nil)
 	ta.ok("tick")
 	ta.ok("tick")
 
-	stella := friendRowCells(ta, "stella")
-	assert.Equal(t, "3", stella["done"], "done is her three ok finishes: %v", stella)
-	assert.Equal(t, "100.0%", stella["okpct"], "ok%% is ok over ok+failed: %v", stella)
+	st, err := ta.a.store(common{redis: "mem:0", actor: "tester"})
+	require.NoError(t, err)
+	done, err := st.DoneSince(context.Background(), time.Time{})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]int{sprint.DoneKindWork: 3, sprint.DoneKindFix: 1, sprint.DoneKindRead: 2}, done[sprint.FriendRow("stella")], "stella's completions by kind")
+	assert.Equal(t, map[string]int{sprint.DoneKindWork: 2, sprint.DoneKindRead: 6}, done[sprint.FriendRow("fred")], "fred's: s1-7, s1-1..3 and both reads of s1-6")
+	assert.Equal(t, map[string]int{sprint.DoneKindWork: 1}, done["m1"], "the member's work")
+
+	stella := rowCells(ta, sprint.Friends, "stella")
+	assert.Equal(t, "6", stella["done"], "3 work + 1 fix + 2 reads: %v", stella)
+	assert.Equal(t, "100.0%", stella["okpct"], "ok%% is her work's alone (4 ok; the rework took the broken attempt off her row): %v", stella)
+	fred := rowCells(ta, sprint.Friends, "fred")
+	assert.Equal(t, "8", fred["done"], "2 work + 6 reads: %v", fred)
+	assert.Equal(t, "100.0%", fred["okpct"], "his reads never move his ok%%: %v", fred)
+	m1 := rowCells(ta, sprint.Fleet, "m1")
+	assert.Equal(t, "1", m1["done"], "the member's work: %v", m1)
+	assert.Equal(t, "100.0%", m1["okpct"], "%v", m1)
 
 	// the dashboard's pull of her row says the same
 	srv := &sprintdash.Server{Read: func() ([]byte, error) { return ta.a.whereJSON("", false) }, Now: ta.a.now, Every: time.Second}
@@ -170,18 +213,17 @@ func TestAFriendsDoneIsHerOkFinishesWhicheverPathRecordedThem(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var view sprintdash.PullView
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &view), w.Body.String())
-	assert.Equal(t, "3", view.Row.Done, "the dashboard's friend row: %+v", view.Row)
+	assert.Equal(t, "6", view.Row.Done, "the dashboard's friend row: %+v", view.Row)
 	assert.Equal(t, "100.0%", view.Row.OKPct)
+	w = httptest.NewRecorder()
+	srv.Pull().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/machine/m1", nil))
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &view), w.Body.String())
+	assert.Equal(t, "1", view.Row.Done, "the dashboard's member row: %+v", view.Row)
 
-	// and done is the count of her ok finishes in the log, each card once (the verdict's
-	// move to ok renders as a finish line too: the cards, not the lines, are counted)
-	finished := map[string]bool{}
-	logText := ta.ok("log")
-	for _, l := range strings.Split(logText, "\n") {
-		if m := okFinishLine.FindStringSubmatch(l); m != nil {
-			finished[m[1]+m[2]] = true
-		}
+	// a stats reset counts done from its mark
+	ta.ok("stats reset --reason 'count from now'")
+	for _, r := range []struct{ table, row string }{{sprint.Friends, "stella"}, {sprint.Friends, "fred"}, {sprint.Fleet, "m1"}} {
+		assert.Equal(t, "0", rowCells(ta, r.table, r.row)["done"], "%s after the reset", r.row)
 	}
-	assert.Len(t, finished, 3, "her ok finishes in the log: %v\n%s", finished, logText)
-	assert.Equal(t, view.Row.Done, strconv.Itoa(len(finished)))
 }

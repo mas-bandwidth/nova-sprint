@@ -1408,6 +1408,20 @@
           :item-cards "1"
           :item-origin ""
           :earlier-title "Briefs carry the card contract by reference"))
+  (fix "friend-done-reflects-finishes" :release "v1.2.13" :status "planned"
+   :title "Done is every card a row completed, and the readers' verdict counts the reads the accept counts"
+   :text "Pull request 94. Friend stella's row read done 0 and ok% 0.0% while the log recorded her finishes
+    ok and their reads ok: the readers' verdict (TickVerdicts) read the readers table alone, keyed an ok by
+    the read's row and used the tier's read count, while the accept also counts the fleet table's read
+    cards, retired off their rows with their verdicts, by the reader, at the sprint's count. The accept and
+    the verdict now count from one function (standingReads). A row's done, a friend's or a member's, is
+    every card it completed, of every kind registered in sprint.DoneKinds (a work card the readers' verdict
+    moved to ok, a fix card likewise, a read card completed with a verdict, ok or broken; a returned read
+    completes nothing; a merge card is one more entry once merges are dealt cards), counted from the log
+    lines that complete them through the done record (store.keepDone, store.DoneSince), keyed by epoch and
+    counted from a stats reset's mark. ok% stays the work's measure, the readers' verdicts on the row's
+    work. tla/ReadVerdict.tla models the verdict against the accept."
+   :origin "the owner, 2026-10-11: \"The dashboard has to reflect the truth.\" and \"Done is every card completed.\"; root cause found by Stella")
   (fix "a-review-loop-has-a-circuit-breaker" :release "v1.2.14" :status "planned"
    :title "A review loop has a circuit breaker"
    :text "A card is escalated to the coordinator after 4 consecutive review rounds that each bring a new blocking finding, or after 6 substantive review rounds of any kind, instead of going round again."
