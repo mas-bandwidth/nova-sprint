@@ -417,6 +417,14 @@ func (l *lander) stage(name, proc string) {
 }
 
 func (a *app) cmdLand(args []string, stdout, stderr io.Writer) int {
+	var gate *hookGateError
+	return a.land(args, stdout, stderr, &gate)
+}
+
+// land is cmdLand, setting *gate when the hook gate refused it at the store's open,
+// before it read, fetched, pushed or reported anything: the land loop waits for the
+// seat's hook then, and the refusal is no fault of the pass (landOnce).
+func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError) int {
 	fs, c := a.verbSetup("land")
 	var streams listFlag
 	fs.Var(&streams, "stream", "a stream to land (again, or comma separated, for more; default: every stream with cards queued to merge and not stopped)")
@@ -455,6 +463,9 @@ func (a *app) cmdLand(args []string, stdout, stderr io.Writer) int {
 	st, err := a.store(*c)
 	a.serial.Unlock()
 	if err != nil {
+		if !errors.As(err, gate) {
+			*gate = nil
+		}
 		return refuse(stderr, "land", err.Error())
 	}
 	// the epoch the caller holds is checked before anything is read or run

@@ -419,4 +419,6 @@ func TestTheWhereCountsTripsArePinned(t *testing.T) {
 // And two more since card-read-speed.w2 (load.go, where.go): the card log
 // index's cursor read and its new lines' entries written (the log's new lines
 // are read too, an exchange the stand-in does not count).
-const whereMovedTrips = 11
+// And one more since friend-done-reflects-finishes (done.go): the done record, read with the
+// where record in one exchange, written when the log's new lines moved it.
+const whereMovedTrips = 12

@@ -8,11 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The fleet table's done and ok% are the table's own formulas over the hidden
-// ok and failed cells: finish places a work card in finished, reader verdicts move it
-// to ok or failed. Three ok and one failed on m1 is 4 done and 75.0%; m2 with
-// none is 0 and the known-empty 0.0%; the footer pools over the members (3 of 4,
-// 75.0%, not the mean 37.5%).
+// The fleet table's ok% is the table's own formula over the hidden ok and failed
+// cells: finish places a work card in finished, reader verdicts move it to ok or
+// failed. Its done is every card the member completed (docs/SPEC-SPRINT.md section 1,
+// done and ok%): the three work cards read ok, never the one read broken. Three ok
+// and one failed on m1 is 3 done and 75.0%; m2 with none is 0 and the known-empty
+// 0.0%; the footer sums done and pools ok% over the members (3 of 4, 75.0%, not the
+// mean 37.5%).
 func TestFleetDoneAndOkPctAreTableFormulas(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -45,15 +47,15 @@ func TestFleetDoneAndOkPctAreTableFormulas(t *testing.T) {
 	}
 	want := "fleet | ready | working | width | done | ok%   | redealt | status | load\n" +
 		"------+-------+---------+-------+------+-------+---------+--------+-----\n" +
-		"m1    |     0 |       0 |    64 |    4 | 75.0% |       0 | up     | 0.0%\n" +
+		"m1    |     0 |       0 |    64 |    3 | 75.0% |       0 | up     | 0.0%\n" +
 		"m2    |     0 |       0 |    64 |    0 | 0.0%  |       0 | up     | 0.0%\n" +
 		"------+-------+---------+-------+------+-------+---------+--------+-----\n" +
-		"      |     0 |       0 |   128 |    4 | 75.0% |       0 |        |\n"
+		"      |     0 |       0 |   128 |    3 | 75.0% |       0 |        |\n"
 	require.Equal(t, want, fleet, "the fleet table")
 	var v whereView
 	require.NoError(t, json.Unmarshal([]byte(ta.ok("where --json")), &v))
 	m1, m2 := v.Tables["fleet"]["m1"], v.Tables["fleet"]["m2"]
-	require.Equal(t, "4", m1["done"], "where --json fleet: %v %v", m1, m2)
+	require.Equal(t, "3", m1["done"], "where --json fleet: %v %v", m1, m2)
 	require.Equal(t, "75.0%", m1["okpct"], "where --json fleet: %v %v", m1, m2)
 	require.Equal(t, "3", m1["ok"], "where --json fleet: %v %v", m1, m2)
 	require.Equal(t, "1", m1["failed"], "where --json fleet: %v %v", m1, m2)
