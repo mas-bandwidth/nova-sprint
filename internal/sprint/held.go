@@ -143,6 +143,7 @@ func Holder(h HeldState, now time.Time, id string) Hold { return newHeld(h, now)
 // operation is pending the tables are a partial state of it, and only the
 // operation is judged: it is a stall past its grace when a tick since has not
 // finished it.
+// tla/Holds.tla NoSilentStall
 func Unheld(h HeldState, now time.Time) []Finding {
 	var out []Finding
 	if p := h.Pending; p != nil {
@@ -467,6 +468,7 @@ func (c *held) tickOn(pr *Card) string {
 // judgment is (c): the open judgment, or the acknowledged condition of the
 // tick, that names the primary, its stopped stream, or its stream while it
 // merges there; "" when none.
+// tla/Holds.tla NoSilentStall
 func (c *held) judgment(pr *Card) string {
 	if IsHeld(pr) {
 		return "held by the coordinator (add --held) until release"
