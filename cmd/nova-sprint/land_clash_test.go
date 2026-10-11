@@ -21,6 +21,15 @@ func TestTwoGreenHeadsRedTogetherRefuseTheSecondAsAClash(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	// A clone does not inherit the repository config, so each commit made in a clone
+	// needs an identity from the environment (the way the package's other git-using
+	// tests set it); otherwise git commit fails with exit 128 on a machine without a
+	// global git identity (CI, a bench).
+	t.Setenv("GIT_AUTHOR_NAME", "Test User")
+	t.Setenv("GIT_AUTHOR_EMAIL", "test@test.com")
+	t.Setenv("GIT_COMMITTER_NAME", "Test User")
+	t.Setenv("GIT_COMMITTER_EMAIL", "test@test.com")
+
 	// Initialize git repo
 	runCmd(t, tmpDir, "git", "init")
 	runCmd(t, tmpDir, "git", "config", "user.email", "test@test.com")
