@@ -1,0 +1,89 @@
+# nova-sprint TLC: the 434 TLC cases on GitHub-hosted runners. This is a public
+# repository, so the fleet's own runners are never used here. Every night
+# the required groups run; a pull request touching tla/, pkg/tlc/ or tools/tlacheck/
+# runs only the stale groups. Each group has a 110 s budget and a five-minute job
+# wall; a group that needs more is a red job, not a bigger budget.
+name: TLC
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tla/**'
+      - 'pkg/tlc/**'
+      - 'tools/tlacheck/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tlc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  groups:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      groups: ${{ steps.pick.outputs.groups }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: tlc-test
+        run: make tlc-test
+      - name: groups to run
+        # a pull request runs only the stale groups; a schedule or dispatch runs every
+        # required group. An empty list is a green workflow: the matrix below is then empty.
+        id: pick
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            go run ./tools/tlacheck groups --root . --stale > "$RUNNER_TEMP/groups.txt"
+          else
+            make tlc-groups > "$RUNNER_TEMP/groups.txt"
+          fi
+          groups="$(jq -R -s -c 'split("\n") | map(select(length > 0))' "$RUNNER_TEMP/groups.txt")"
+          echo "groups=$groups" >> "$GITHUB_OUTPUT"
+
+  models:
+    needs: groups
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        group: ${{ fromJSON(needs.groups.outputs.groups) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: java
+        # the runner image's own JDK 21; no setup-java action
+        run: echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
+      - name: tla2tools.jar
+        # the tlaplus release the pinned digest names (v1.7.4, TLA+ Tools 2.0 2024-08-08);
+        # a jar whose sha256 differs is refused, exit 2, naming both digests
+        id: jar
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/tla2tools.jar"
+          curl -sSL -o "$jar" https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar
+          want="$(cut -d' ' -f1 tla/tla2tools.sha256)"
+          got="$(sha256sum "$jar" | cut -d' ' -f1)"
+          if [ "$got" != "$want" ]; then
+            echo "refusing: tla2tools.jar sha256 is $got, tla/tla2tools.sha256 pins $want" >&2
+            exit 2
+          fi
+          echo "jar=$jar" >> "$GITHUB_OUTPUT"
+      - name: tlc
+        run: make tlc TLC_JAR="${{ steps.jar.outputs.jar }}" TLC_GROUP="${{ matrix.group }}" TLC_OUT="$RUNNER_TEMP/tlc-${{ matrix.group }}" TLC_BUDGET=110
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: tlc-${{ matrix.group }}
+          path: ${{ runner.temp }}/tlc-${{ matrix.group }}
+          retention-days: 14
+          if-no-files-found: warn
