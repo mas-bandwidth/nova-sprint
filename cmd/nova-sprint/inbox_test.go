@@ -51,12 +51,20 @@ func (ta *testApp) timerOnce(note string, actor ...string) {
 		as = " --actor " + actor[0]
 	}
 	ta.a.sleep(time.Second) // each notification at its own clock reading
+	ta.ok("remind --in 1s --note " + note + as)
+	// a timer's time is running time, which a STOPPED machine does not spend: run the machine
+	// for the second it needs, and leave it as it was
+	started := false
+	if code, _, _ := ta.do("start" + as); code == 0 {
+		started = true
+	}
 	ta.mu.Lock()
-	at := ta.now.UTC().Format(time.RFC3339)
+	ta.now = ta.now.Add(2 * time.Second)
 	ta.mu.Unlock()
-	// due at once: a timer's time is running time, which a STOPPED machine does not spend
-	ta.ok("remind --at " + at + " --note " + note + as)
 	ta.ok("tick" + as)
+	if started {
+		ta.ok("stop --reason 'the timer fixture' --until 1h" + as)
+	}
 }
 
 // I1: a group is named by an id that does not move when a newer group sorts
