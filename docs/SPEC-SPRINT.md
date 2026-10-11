@@ -6415,11 +6415,17 @@ internal/sprint/stats_tidy.go):
 - A tidy never changes a deadline: the deal's deadline is DeadlineK times the row's median
   run wall over its done-ok cell (`sprint.MemberMedianWall`, `sprint.FriendMedianWall`),
   so a tidy that moves a row's cards writes the row's median and sample count as it found
-  them to the fleet table's property `carried_median_<row>` (`sprint.PropCarriedMedian`,
-  `<seconds> <samples>`), in the same step. The deadline rules use the carried median
-  while the row's live sample is smaller than the carried count, and the live one once it
-  is at least as large (`TestATidyKeepsTheDeadlineItsMedianGave`: a machine with a
-  20-minute median on a 30-minute route keeps its 60-minute deadline).
+  them to the fleet table's one property `carried_medians` (`sprint.PropCarriedMedians`,
+  `row=<seconds>,<samples>` for each tidied row, a blank between), in the same step. One
+  property for the whole fleet, not one a row: a table holds at most
+  `ntable.LimitTableProps` (64), and on 2026-10-10 a tidy of 66 rows wrote 66 properties
+  and the store refused at the bound, so a fleet wider than 64 rows could not be tidied
+  (`stats_reset.go`, `StatsRecord.Reset`, the same lesson for the mark). The deadline
+  rules use the carried median while the row's live sample is smaller than the carried
+  count, and the live one once it is at least as large
+  (`TestATidyKeepsTheDeadlineItsMedianGave`: a machine with a 20-minute median on a
+  30-minute route keeps its 60-minute deadline; `TestATidySucceedsOverAFleetWiderThanThePropertyBound`,
+  `TestATidyOfAFleetWiderThanThePropertyBoundCarriesEveryRow`).
 - The route counters (`sprint.RouteStats` at the tidy) are archived by `--routes`, and by
   `--fleet` and `--friends` too, since they count the fleet table's cards those take off;
   `stats --routes` counts from the last tidy of the routes when given no `--since`.
