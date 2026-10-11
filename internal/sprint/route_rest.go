@@ -385,7 +385,7 @@ func ProviderRests(fleet *Table) map[string]RouteRest {
 
 // RouteRests is the rest that decides each route of routes that has one: its own last rest
 // (rule 3's) or its provider's, whichever ends later, the provider's on a tie, named for
-// the route.
+// the route. Rate backoff rests are also read from PropRateBackoff.
 func RouteRests(routes []Route, fleet *Table) map[string]RouteRest {
 	out := map[string]RouteRest{}
 	byProvider := ProviderRests(fleet)
@@ -495,24 +495,6 @@ func RestsDue(s *Snapshot) []RouteRest {
 		}
 		if len(cards) >= RouteRestAfter {
 			out = append(out, RouteRest{Route: r.Name, At: s.Now, Until: s.Now.Add(RouteRestFor), Cards: cards, Cause: RestProvider})
-		}
-	}
-	// Compute rate backoff rests for routes with rate-limited ends (not toward the 3-in-10 rest)
-	for _, r := range s.Routes {
-		// Check if already resting from other rules
-		if rest, ok := rests[r.Name]; ok && rest.Resting(s.Now) {
-			continue
-		}
-		// Find the last ok take for this route
-		var lastOKAt time.Time
-		for _, e := range ends[r.Name] {
-			if !e.transient && e.refused == "" && !e.at.Before(lastOKAt) {
-				lastOKAt = e.at
-			}
-		}
-		// Check if rate backoff is due
-		if resting, until := rateBackoffDue(s.Fleet, r.Name, lastOKAt, s.Now); resting {
-			out = append(out, RouteRest{Route: r.Name, At: s.Now, Until: until, Cause: RestProvider})
 		}
 	}
 	// a provider's refusal rests the provider, every route of it, over rule 3's on its routes
@@ -683,6 +665,11 @@ func restWrites(p *Plan, s *Snapshot, due []RouteRest, who string) {
 	for _, r := range rateBackoffRests {
 		was, had := s.Fleet.Prop(PropRateBackoff(r.Route))
 		p.Props = append(p.Props, PropWrite{Table: Fleet, Name: PropRateBackoff(r.Route), Value: stamp(r.Until), Was: was, WasAbsent: !had})
+		n := happened(NRouteRested, TierSubject(""), s.Now)
+		n.To, n.Who = s.Coordinator, who
+		n.What = fmt.Sprintf("route %s backed off until %s: its provider rate limited; the deal draws no work card on it until then; nova-sprint routes shows it, nova-sprint routes wake %s ends it",
+			r.Route, stamp(r.Until), r.Route)
+		p.Notes = append(p.Notes, n)
 	}
 }
 

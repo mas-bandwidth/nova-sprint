@@ -2042,13 +2042,13 @@ func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 	// write a rate-limited take record for backoff (never counted toward redealBound)
 	dealt, taken := takeStamps(c)
 	rec := ProviderTake{
-		Route:   c.F(FieldRoute),
-		Model:   c.F(FieldModel),
-		Member:  c.Row,
+		Route:    c.F(FieldRoute),
+		Model:    c.F(FieldModel),
+		Member:   c.Row,
 		Finished: stamp(s.Now),
-		Usage:   r.Usage,
-		Error:   set[FieldProviderError],
-		Taken:   taken,
+		Usage:    r.Usage,
+		Error:    set[FieldProviderError],
+		Taken:    taken,
 	}
 	num := c.Int(FieldRateReturns) + 1
 	set[FieldRateTake+strconv.Itoa(num)] = rec.String()
