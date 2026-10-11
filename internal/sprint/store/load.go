@@ -307,6 +307,8 @@ func (st *Store) shapes(ctx context.Context, stored []string) ([]ntable.Table, e
 // its existing retry (Load, LoadTries). A table of at most
 // ntable.LimitReadSetMembers records, or a backend that keeps no marks, reads
 // as it did.
+//
+// tla/LoadCache.tla Records
 func (st *Store) readInto(ctx context.Context, t *sprint.Table, ids []string, placed bool) error {
 	table := st.Names.Table(t.Name)
 	mark, marked := "", false
