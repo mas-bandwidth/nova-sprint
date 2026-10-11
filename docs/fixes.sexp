@@ -488,6 +488,15 @@
      catches a candidate before the swap."
     :origin "the coordinator, 2026-10-11, on v1.2.10 (00c54ba): server-refuses-to-run-on-a-store-missing-locked-columns.w1")
 
+   (fix "defaults-are-the-working-machine" :release "v1.2.11" :status "planned"
+    :title "Read cards default on: a fresh install asks every read at once"
+    :text "Read cards were on only when the work table's read_cards property said on, so a fresh store and
+     every store after a clear asked reads one per tick through the old readers table. ReadCardsOn now treats
+     an absent property, on or default as on, and off is the one value that turns them off (set --read-cards
+     off, which says it degrades the machine to one read per tick). The other settings' defaults are the
+     working machine and are said so."
+    :origin "the owner, 2026-10-11 (Smart defaults; Defaults should always be the sprint machine works): this card")
+
    (fix "tick-under-its-gate-at-load" :release "v1.2.9" :status "planned"
     :title "The deal builds no per-card route map, so the tick stays under its gate"
     :text "Drain and deal take 0.4 to 0.7 seconds at load, so the tick is over its one-second gate, and the

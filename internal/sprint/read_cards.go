@@ -25,19 +25,25 @@ import (
 // leaves review only by the existing rules. The model is tla/ReadCards.tla. With the setting
 // off, the readers table's ask and the friends' read ask, as before; they retire next release.
 
-// PropReadCards is the work table's property that turns read cards on: ReadCardsOnWord.
+// PropReadCards is the work table's property that turns read cards off: SwitchOff.
+// Absent, or ReadTierDefault, the sprint asks its reads as read cards (ReadCardsOn).
 const PropReadCards = "read_cards"
 
-// ReadCardsOnWord is the setting's on word; any other value is off.
+// ReadCardsOnWord is the setting's on word; SwitchOff turns read cards off. An absent
+// property or ReadTierDefault is on.
 const ReadCardsOnWord = "on"
 
-// ReadCardsOn says the sprint asks its reads as read cards (PropReadCards).
+// ReadCardsOn says the sprint asks its reads as read cards (PropReadCards): on when
+// the property is absent or says ReadTierDefault or ReadCardsOnWord (the working
+// default); SwitchOff is the one way to turn them off, and it degrades the machine
+// (reads are asked one per tick through the readers table, docs/SPEC-SPRINT.md
+// section 6, "A read is a consumer card").
 func (s *Snapshot) ReadCardsOn() bool {
 	if s == nil || s.Work == nil {
-		return false
+		return true
 	}
 	v, _ := s.Work.Prop(PropReadCards)
-	return v == ReadCardsOnWord
+	return v != SwitchOff
 }
 
 // FieldReadCard marks a read card the deal cut (read_cards.go), "1": a friend's read asked
