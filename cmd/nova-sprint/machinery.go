@@ -62,6 +62,14 @@ type outside struct {
 	// machineVersions is each machine's installed version against dev (fp-mach-01).
 	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)
 	novaTools       func(bin string) sprint.NovaToolsProbe
+	// doctorConfig reads nova-config's machine and loop rows (doctor_probe.go).
+	doctorConfig func(ctx context.Context) (doctorConfig, error)
+	// serverStarted is when the server listening at addr started, and how it was measured.
+	serverStarted func(ctx context.Context, addr string) (time.Time, string)
+	// declared is the nova-sprint build the seat runs, every member's declared build.
+	declared func(ctx context.Context) string
+	// probeMembers probes each member's host as its loop runs there (doctor_probe.go).
+	probeMembers func(ctx context.Context, machines []sprint.DoctorMachine, tools func(member string) []string, self string) map[string]sprint.MemberProbe
 }
 
 // realOutside is the check as it runs on a machine.
@@ -131,6 +139,10 @@ func (a *app) realOutside() outside {
 			h, _ := os.Hostname()
 			return strings.SplitN(h, ".", 2)[0]
 		},
+		doctorConfig:  a.readDoctorConfig,
+		serverStarted: a.serverStartedReal,
+		declared:      a.declaredReal,
+		probeMembers:  a.probeMembersReal,
 	}
 }
 
