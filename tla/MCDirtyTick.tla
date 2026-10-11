@@ -20,6 +20,7 @@ MCMOrder == <<"m1", "m2">>
 MCROrder == <<"r1", "r2">>
 MCSOrder == <<"s1", "s2">>
 MCWidth == [m \in {"m1", "m2"} |-> 1]
+MCWidth2 == [m \in {"m1", "m2"} |-> 2]
 MCHost == [r \in {"r1", "r2"} |-> IF r = "r1" THEN "m1" ELSE "m2"]
 
 InOrder == SelectSeq(MCCardOrder, LAMBDA c : c \in Cards)
@@ -28,9 +29,11 @@ Queues(w, r, g, f) == [t \in Tables |-> CASE t = "work" -> w [] t = "readers" ->
                                           [] t = "merge" -> g [] t = "fleet" -> f]
 NoReads == [c \in Cards |-> NoR]
 Empty == [m \in Machines |-> {}]
-Base == [col |-> [c \in Cards |-> "none"], rd |-> NoReads, mq |-> {}, up |-> Machines \cup Readers,
+Base == [col |-> [c \in Cards |-> "none"], rd |-> NoReads, askw |-> [c \in Cards |-> FALSE],
+         mq |-> {}, up |-> Machines \cup Readers,
          live |-> Machines \cup Readers, away |-> FALSE, misses |-> FALSE, hand |-> FALSE, lapse |-> TRUE,
-         mc |-> Empty, mr |-> Empty, q |-> Queues(Adds, <<>>, <<>>, <<>>), served |-> Cards]
+         mc |-> Empty, mr |-> Empty, q |-> Queues(Adds, <<>>, <<>>, <<>>), served |-> Cards,
+         heldStreams |-> {}]
 
 \* Every card added (its add queued), every machine up: the whole life.
 ScnBase == Base
@@ -39,10 +42,13 @@ ScnCold == [Base EXCEPT !.up = {}, !.live = {}]
 \* c1 reviewed on r1 (host m1), m1 down: a card waiting for a reader.
 ScnBlind == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.up = {}, !.live = {},
                          !.q = Queues(<<>>, <<E("ask", "c1", "-")>>, <<>>, <<>>)]
-\* c1 ready, c2 finished and asking for a read; one machine of width 1 that
-\* hosts the only reader.
+\* c1 ready, c2 in review waiting for a read (its read pending: askw); one
+\* machine of width 1 that hosts the only reader: the read takes the slot and
+\* c1 waits (reads before work). The witness "workfirst" deals c1 first and
+\* strands the read (ReadsBeforeWork).
 ScnWidth == [Base EXCEPT !.col = [c \in Cards |-> IF c = "c1" THEN "ready" ELSE "review"],
-                         !.q = Queues(<<>>, <<E("ask", "c2", "-")>>, <<>>, <<>>)]
+                         !.askw = [c \in Cards |-> c = "c2"],
+                         !.q = Queues(<<E("room", "-", "m1")>>, <<>>, <<>>, <<>>)]
 \* c1 merging, its merge recorded.
 ScnLand == [Base EXCEPT !.col = [c \in Cards |-> "merging"], !.mq = {"c1"},
                         !.q = Queues(<<>>, <<>>, <<E("merged", "c1", "-")>>, <<>>)]
@@ -78,6 +84,11 @@ ScnAccept == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.rd = [c \in Card
 \* Every card added, every machine up; no route serves c2's tier and it pins
 \* no model (THE ROUTE): c1 lives its life, c2 stays ready.
 ScnRoute == [Base EXCEPT !.served = Cards \ {"c2"}]
+
+\* THE HELD STREAM. c1 (s1) and c2 (s2) added, s1 held: c1 is dealt to no
+\* machine and no friend until unhold, c2 lives its life. The witness
+\* "dealheldstream" deals c1 anyway.
+ScnHeldStream == [Base EXCEPT !.heldStreams = {"s1"}]
 
 \* THE HOLD. c1 in review waiting for a read; the coordinator may hold m1
 \* (r1's machine): the ask asks r1 nothing and places the read on r2. No

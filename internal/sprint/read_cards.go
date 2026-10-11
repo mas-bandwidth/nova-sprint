@@ -912,6 +912,7 @@ func readCardsWaitingCount(s *Snapshot) int {
 // ready card). Its snapshot includes the cards it places and takes back, which the work of
 // the same deal is dealt on. With read cards off, nothing and the snapshot as it is.
 // tla/ReadCards.tla Deal
+// tla/DirtyTick.tla Room (ReadLoad: a read at half a slot, reads before work)
 func (s *Snapshot) withReadCards(seats []FriendSeat) (*Snapshot, Plan) {
 	if !s.ReadCardsOn() || s.Fleet == nil {
 		return s, Plan{}
