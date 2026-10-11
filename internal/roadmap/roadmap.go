@@ -544,6 +544,7 @@ func (s *Set) MarkDone(evidence string, ids ...string) error {
 // Note appends text to each entry's :text and, with a title, gives it that
 // title; the title it had is kept under :kept (earlier-title), never dropped.
 func (s *Set) Note(text, title string, ids ...string) error {
+	// tla/RoadmapEntry.tla Note
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(title) == "" {
 		return errors.New("--text and --title are empty; note wants words to append, a new title, or both")
 	}
@@ -606,6 +607,7 @@ func (s *Set) Pages() map[string]string {
 // stop between those two leaves the page stale, which Check names and
 // `nova-work roadmap render` mends.
 func (s *Set) Save() error {
+	// tla/RoadmapEntry.tla PullStart PullWrite
 	order := []*file{&s.road, &s.fix}
 	if s.first == &s.fix {
 		order = []*file{&s.fix, &s.road}

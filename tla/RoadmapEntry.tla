@@ -1,19 +1,22 @@
------------------------------ MODULE RoadmapEntry -----------------------------
+---------------------------- MODULE RoadmapEntry -----------------------------
 \* nova-work roadmap (cmd/nova-work/roadmap.go, internal/roadmap): the life of
 \* one entry of a repository's own work record, docs/roadmap.sexp (ROADMAP.md)
 \* and docs/fixes.sexp (FIXES.md). An entry is a roadmap item under a group
 \* (todo), a fix in a point release (open: planned or in-progress), or done: a
 \* roadmap item moved to the roadmap's :done list, or a fix whose status is done
-\* (or shipped, when its release is cut).
+\* (or shipped, when its release is cut). A scheduled note is a record, not
+\* work: it stands in the roadmap file with a :release that decode() never
+\* checks against the fixes file's releases (internal/roadmapdoc/roadmap.go).
 \*
 \* The state: where[e], the places whose file holds a record of e (a group or
 \* "donelist" in the roadmap file, a release in the fixes file); st[e], the
-\* entry's state; live, the groups and releases the files declare; shipped, the
-\* releases cut; added, the entries added and not removed; pend, a pull across
-\* the two files whose destination is written and whose source is not yet
-\* (<<>> when none); torn, the entries a crash left in both files. The outside:
-\* a hand edit declares a group or release with its first entry, a release is
-\* cut, and a verb can stop between its two file writes.
+\* entry's state; page[e], the places the rendered page still shows e (it lags
+\* where[e] between a file's data write and its page write); live, the groups
+\* and releases the files declare; shipped, the releases cut; added, the entries
+\* added and not removed; pend, a pull across the two files mid-Save; torn, the
+\* entries a crash left in both files. The outside: a hand edit declares a group
+\* or release with its first entry, a release is cut, and a verb can stop
+\* between writes.
 \*
 \* The design, Broken = {}:
 \*   Add      an absent id goes into a live group or an uncut release.
@@ -22,9 +25,12 @@
 \*            cut release.
 \*   Pull     a todo or open entry moves to another live group or uncut
 \*            release, never out of a cut one and never as the last of its
-\*            place. Within one file it is one write. Across the files the
-\*            destination is written first and the source second, so a stop
-\*            between them leaves the entry twice (torn), never nowhere.
+\*            place. Within one file it is one write. Across the files Save
+\*            writes the destination's file first, each file's data before its
+\*            page, four writes, so a stop between any two leaves the entry
+\*            twice (torn), never nowhere.
+\*   Note     a todo item or an open fix is retitled and its text appended in
+\*            place: its place and state do not change.
 \*   Done     a todo item moves to the roadmap's :done list (never the last of
 \*            its group); an open fix becomes done in place. Done is final.
 \*   Repair   a torn entry is cut back to one copy; every verb refuses while
@@ -38,16 +44,17 @@
 \*   "sourcefirst" a pull across the files writes the source first: NoLoss
 \*   "movedone"    pull takes a done entry: DoneFinal
 \*   "shippedmove" pull takes an entry out of a cut release: ShippedFrozen
+\*   "pagefirst"   a pull writes each file's page before its data: DataBeforePage
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Entries, Groups, Releases, Broken
+CONSTANTS Entries, Groups, Releases, Scheduled, Broken
 
-VARIABLES where, st, live, shipped, added, pend, torn
-vars == <<where, st, live, shipped, added, pend, torn>>
+VARIABLES where, st, page, live, shipped, added, pend, torn, title, text
+vars == <<where, st, page, live, shipped, added, pend, torn, title, text>>
 
 Parents == Groups \cup Releases
 Places == Parents \cup {"donelist"}
-States == {"absent", "todo", "open", "done"}
+States == {"absent", "todo", "open", "done", "scheduled"}
 
 \* the state an entry has at a place: an item under a group, a fix in a release
 Kind(p) == IF p \in Groups THEN "todo" ELSE "open"
@@ -59,15 +66,22 @@ Home(e) == CHOOSE p \in where[e] : TRUE
 TypeOK ==
     /\ where \in [Entries -> SUBSET Places]
     /\ st \in [Entries -> States]
+    /\ page \in [Entries -> SUBSET Places]
+    /\ title \in [Entries -> {0, 1}]
+    /\ text \in [Entries -> {0, 1}]
     /\ live \subseteq Parents
     /\ shipped \subseteq live \cap Releases
     /\ added \subseteq Entries
     /\ torn \subseteq Entries
-    /\ pend = <<>> \/ (pend[1] \in Entries /\ pend[2] \in Parents /\ pend[3] \in Parents)
+    /\ Scheduled \subseteq Entries
+    /\ pend = <<>> \/ (pend[1] \in Entries /\ pend[2] \in Parents /\ pend[3] \in Parents /\ pend[4] \in {1, 2, 3})
 
 Init ==
     /\ where = [e \in Entries |-> {}]
-    /\ st = [e \in Entries |-> "absent"]
+    /\ st = [e \in Entries |-> IF e \in Scheduled THEN "scheduled" ELSE "absent"]
+    /\ page = [e \in Entries |-> {}]
+    /\ title = [e \in Entries |-> 0]
+    /\ text = [e \in Entries |-> 0]
     /\ live = {}
     /\ shipped = {}
     /\ added = {}
@@ -75,7 +89,7 @@ Init ==
     /\ torn = {}
 
 \* every verb loads both files first, and the load refuses an id that stands
-\* twice; no verb runs while another's two writes are half done
+\* twice; no verb runs while another's Save is half done
 Quiet == pend = <<>> /\ torn = {}
 
 \* the last-entry guard: an entry may leave p only when p holds another
@@ -88,9 +102,10 @@ Declare(p, e) ==
     /\ st[e] = "absent"
     /\ where' = [where EXCEPT ![e] = {p}]
     /\ st' = [st EXCEPT ![e] = Kind(p)]
+    /\ page' = [page EXCEPT ![e] = {p}]
     /\ live' = live \cup {p}
     /\ added' = added \cup {e}
-    /\ UNCHANGED <<shipped, pend, torn>>
+    /\ UNCHANGED <<shipped, pend, torn, title, text>>
 
 Add(e, p) ==
     /\ Quiet
@@ -99,8 +114,9 @@ Add(e, p) ==
     /\ p \notin shipped
     /\ where' = [where EXCEPT ![e] = {p}]
     /\ st' = [st EXCEPT ![e] = Kind(p)]
+    /\ page' = [page EXCEPT ![e] = {p}]
     /\ added' = added \cup {e}
-    /\ UNCHANGED <<live, shipped, pend, torn>>
+    /\ UNCHANGED <<live, shipped, pend, torn, title, text>>
 
 Remove(e) ==
     /\ Quiet
@@ -109,8 +125,9 @@ Remove(e) ==
     /\ Leaves(Home(e))
     /\ where' = [where EXCEPT ![e] = {}]
     /\ st' = [st EXCEPT ![e] = "absent"]
+    /\ page' = [page EXCEPT ![e] = {}]
     /\ added' = added \ {e}
-    /\ UNCHANGED <<live, shipped, pend, torn>>
+    /\ UNCHANGED <<live, shipped, pend, torn, title, text>>
 
 \* the guards every pull shares
 CanPull(e, to) ==
@@ -130,30 +147,64 @@ PullWithin(e, to) ==
     /\ File(to) = File(Home(e))
     /\ where' = [where EXCEPT ![e] = {to}]
     /\ st' = [st EXCEPT ![e] = Kind(to)]
-    /\ UNCHANGED <<live, shipped, added, pend, torn>>
+    /\ page' = [page EXCEPT ![e] = {to}]
+    /\ UNCHANGED <<live, shipped, added, pend, torn, title, text>>
 
-\* across the files: the first of two writes
+\* Save's four writes across the files: add to the destination's data, add to
+\* its page, remove from the source's data, remove from its page. The code's
+\* order is the destination's file first, each file's data before its page.
+\* "sourcefirst" writes the source's file before the destination's (NoLoss
+\* breaks); "pagefirst" writes each file's page before its data (DataBeforePage
+\* breaks).
+Writes ==
+    IF "sourcefirst" \in Broken
+    THEN IF "pagefirst" \in Broken THEN <<4, 3, 2, 1>> ELSE <<3, 4, 1, 2>>
+    ELSE IF "pagefirst" \in Broken THEN <<2, 1, 4, 3>> ELSE <<1, 2, 3, 4>>
+
+\* write n of the four, by its number
+Write(n, e, from, to) ==
+    CASE n = 1 -> /\ where' = [where EXCEPT ![e] = where[e] \cup {to}]
+                  /\ UNCHANGED page
+      [] n = 2 -> /\ page' = [page EXCEPT ![e] = page[e] \cup {to}]
+                  /\ UNCHANGED where
+      [] n = 3 -> /\ where' = [where EXCEPT ![e] = where[e] \ {from}]
+                  /\ UNCHANGED page
+      [] n = 4 -> /\ page' = [page EXCEPT ![e] = page[e] \ {from}]
+                  /\ UNCHANGED where
+
+\* the first of the four writes
 PullStart(e, to) ==
     /\ CanPull(e, to)
     /\ File(to) # File(Home(e))
-    /\ where' = [where EXCEPT ![e] = IF "sourcefirst" \in Broken THEN {} ELSE {Home(e), to}]
-    /\ pend' = <<e, Home(e), to>>
-    /\ UNCHANGED <<st, live, shipped, added, torn>>
+    /\ LET from == Home(e)
+       IN /\ Write(Writes[1], e, from, to)
+          /\ pend' = <<e, from, to, 1>>
+    /\ UNCHANGED <<st, live, shipped, added, torn, title, text>>
 
-\* the second write
-PullEnd ==
-    /\ pend # <<>>
-    /\ where' = [where EXCEPT ![pend[1]] = {pend[3]}]
-    /\ st' = [st EXCEPT ![pend[1]] = Kind(pend[3])]
-    /\ pend' = <<>>
-    /\ UNCHANGED <<live, shipped, added, torn>>
+\* the second, third and fourth writes
+PullWrite ==
+    \/ \E e \in Entries, from \in Parents, to \in Parents :
+        /\ pend = <<e, from, to, 1>>
+        /\ Write(Writes[2], e, from, to)
+        /\ pend' = <<e, from, to, 2>>
+        /\ UNCHANGED <<st, live, shipped, added, torn, title, text>>
+    \/ \E e \in Entries, from \in Parents, to \in Parents :
+        /\ pend = <<e, from, to, 2>>
+        /\ Write(Writes[3], e, from, to)
+        /\ pend' = <<e, from, to, 3>>
+        /\ UNCHANGED <<st, live, shipped, added, torn, title, text>>
+    \/ \E e \in Entries, from \in Parents, to \in Parents :
+        /\ pend = <<e, from, to, 3>>
+        /\ Write(Writes[4], e, from, to)
+        /\ pend' = <<>>
+        /\ UNCHANGED <<st, live, shipped, added, torn, title, text>>
 
-\* the verb stops between its two writes: what is on disk stays
+\* the verb stops between writes: what is on disk stays
 Crash ==
     /\ pend # <<>>
     /\ pend' = <<>>
     /\ torn' = IF Cardinality(where[pend[1]]) > 1 THEN torn \cup {pend[1]} ELSE torn
-    /\ UNCHANGED <<where, st, live, shipped, added>>
+    /\ UNCHANGED <<where, st, page, live, shipped, added, title, text>>
 
 \* check names the id that stands twice; one copy is cut (by hand)
 Repair(e, p) ==
@@ -162,8 +213,9 @@ Repair(e, p) ==
     /\ p \in where[e]
     /\ where' = [where EXCEPT ![e] = {p}]
     /\ st' = [st EXCEPT ![e] = Kind(p)]
+    /\ page' = [page EXCEPT ![e] = {p}]
     /\ torn' = torn \ {e}
-    /\ UNCHANGED <<live, shipped, added, pend>>
+    /\ UNCHANGED <<live, shipped, added, pend, title, text>>
 
 Done(e) ==
     /\ Quiet
@@ -172,10 +224,23 @@ Done(e) ==
     /\ \/ /\ Home(e) \in Groups
           /\ Leaves(Home(e))
           /\ where' = [where EXCEPT ![e] = {"donelist"}]
+          /\ page' = [page EXCEPT ![e] = {"donelist"}]
        \/ /\ Home(e) \in Releases
-          /\ UNCHANGED where
+          /\ UNCHANGED <<where, page>>
     /\ st' = [st EXCEPT ![e] = "done"]
-    /\ UNCHANGED <<live, shipped, added, pend, torn>>
+    /\ UNCHANGED <<live, shipped, added, pend, torn, title, text>>
+
+\* note retitles a todo item or an open fix and appends to its text; its place
+\* and state stay (the code's Note, internal/roadmap/roadmap.go, calls entry()
+\* with no open() or release() guard; this card models the safe case: an entry
+\* that is still work, in a release not cut)
+Note(e) ==
+    /\ Quiet
+    /\ st[e] \in {"todo", "open"}
+    /\ Home(e) \notin shipped
+    /\ title' = [title EXCEPT ![e] = 1]
+    /\ text' = [text EXCEPT ![e] = 1]
+    /\ UNCHANGED <<where, st, page, live, shipped, added, pend, torn>>
 
 \* the outside: a release is cut
 Ship(r) ==
@@ -183,17 +248,18 @@ Ship(r) ==
     /\ r \in live \cap Releases
     /\ r \notin shipped
     /\ shipped' = shipped \cup {r}
-    /\ UNCHANGED <<where, st, live, added, pend, torn>>
+    /\ UNCHANGED <<where, st, page, live, added, pend, torn, title, text>>
 
 Next ==
     \/ \E p \in Parents, e \in Entries : Declare(p, e)
     \/ \E e \in Entries, p \in Parents : Add(e, p)
     \/ \E e \in Entries : Remove(e)
     \/ \E e \in Entries, p \in Parents : PullWithin(e, p) \/ PullStart(e, p)
-    \/ PullEnd
+    \/ PullWrite
     \/ Crash
     \/ \E e \in Entries, p \in Places : Repair(e, p)
     \/ \E e \in Entries : Done(e)
+    \/ \E e \in Entries : Note(e)
     \/ \E r \in Releases : Ship(r)
 
 Spec == Init /\ [][Next]_vars
@@ -204,11 +270,22 @@ Spec == Init /\ [][Next]_vars
 \* refuses "group holds no item" and "release holds no fix")
 ParentsHold == \A p \in live : Holding(p) # {}
 
-\* every record sits under a group or release the files declare
-ChildLinked == \A e \in Entries : \A p \in where[e] : p \in live \/ p = "donelist"
+\* every work record sits under a group or release the files declare; a
+\* scheduled note's :release is not checked (decode() checks an item's :group
+\* and a fix's :release only, internal/roadmapdoc/roadmap.go, fixes.go)
+ChildLinked == \A e \in Entries \ Scheduled : \A p \in where[e] : p \in live \/ p = "donelist"
 
 \* an entry added and not removed is in a file: no write order loses it
 NoLoss == \A e \in added : where[e] # {}
+
+\* within a file Save writes the data before the page: a file's page never
+\* shows the pull done that its data has not (dest) or its data not done that
+\* its page has (source)
+DataBeforePage ==
+    \A e \in Entries :
+        (pend # <<>> /\ pend[1] = e) =>
+            /\ (pend[3] \in page[e] => pend[3] \in where[e])
+            /\ (pend[2] \notin page[e] => pend[2] \notin where[e])
 
 \* at rest an entry is in one place; twice only mid-pull or after a stop that
 \* check names
