@@ -124,6 +124,11 @@ MCWorkImportBrokenNoReopen.cfg	MCWorkImport.tla	invariant	ExportRestores	ignore-
 MCWorkImportBrokenPartial.cfg	MCWorkImport.tla	invariant	TreeIsWhole	ignore-terminal	workimport	required	-
 MCWorkImportBrokenStale.cfg	MCWorkImport.tla	invariant	Lossless	ignore-terminal	workimport	required	-
 MCDirtyTick.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick	required	-
+MCDirtyTickConsumers.cfg	MCDirtyTickConsumers.tla	pass	-	ignore-terminal	dirtytick	required	-
+MCDirtyTickConsumersW1.cfg	MCDirtyTickConsumers.tla	action	ConsumersOut	ignore-terminal	dirtytick	required	-
+MCDirtyTickConsumersW2.cfg	MCDirtyTickConsumers.tla	action	ConsumersOut	ignore-terminal	dirtytick	required	-
+MCDirtyTickConsumersW3.cfg	MCDirtyTickConsumers.tla	action	ConsumersOut	ignore-terminal	dirtytick	required	-
+MCDirtyTickConsumersW4.cfg	MCDirtyTickConsumers.tla	action	ConsumersOut	ignore-terminal	dirtytick	required	-
 MCDirtyTickThree.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-three	required	-
 MCDirtyTickSent.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickFair.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-

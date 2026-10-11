@@ -753,8 +753,12 @@ Drain(t) ==
   /\ UNCHANGED <<live, miss, acts, ext, phase, pumps, wake, always>>
 
 \* The witness "twopumps": the work queue drained again inside the tick.
+\* The fix "consumersout" (the owner's design of 2026-10-01, ruled 2026-10-11:
+\* sub-ticks until the consumer queue is empty, bound 32) re-pumps the work
+\* table inside the settle loop, so a card a finish or a lapse left without a
+\* consumer is re-dealt or re-asked in the same tick.
 DrainWork ==
-  /\ Broken = "twopumps"
+  /\ (Broken = "twopumps" \/ "consumersout" \in Fixes)
   /\ phase \in Three \cup {"drain"}
   /\ Q["work"] # <<>>
   /\ LET S == Pump(Cur) IN Commit(S)
@@ -763,13 +767,28 @@ DrainWork ==
 
 TickEnd ==
   /\ phase = "drain"
-  /\ Broken = "defer" \/ \A t \in Three : Q[t] = <<>>
+  /\ Broken = "defer" \/ (\A t \in Three : Q[t] = <<>>
+                           /\ ("consumersout" \in Fixes => Q["work"] = <<>>))
   /\ IF addr > 0 \/ Broken = "always"
      THEN notes' = Min(notes + 1, 2) /\ wake' = addr
      ELSE UNCHANGED <<notes, wake>>
   /\ phase' = "idle" /\ act' = "TickEnd" /\ plc' = <<>>
   /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
                  mctr, rctr, sctr, live, miss, acts, ext, pumps, sub, addr,
+                 brk, dealt, always, CardVars>>
+
+\* THE SETTLE BOUND (the owner's design: sub-ticks until the consumer queue is
+\* empty, bound 32; internal/sprint/store/tick.go MaxSettle). Reaching it is a
+\* judgment, not a silent stall: the tick addresses the coordinator and ends.
+SettleBound ==
+  /\ phase = "drain"
+  /\ sub >= MaxSub
+  /\ \E t \in Tables : Q[t] # <<>>
+  /\ addr' = Min(addr + 1, 3)
+  /\ notes' = Min(notes + 1, 2) /\ wake' = Min(addr + 1, 3)
+  /\ phase' = "idle" /\ act' = "SettleBound" /\ plc' = <<>>
+  /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
+                 mctr, rctr, sctr, live, miss, acts, ext, pumps, sub,
                  brk, dealt, always, CardVars>>
 
 -----------------------------------------------------------------------------
@@ -905,7 +924,7 @@ Init ==
   /\ back = [t \in Tiers |-> FALSE] /\ fbk = [c \in Cards |-> {}]
   /\ rwk = [c \in Cards |-> 0] /\ rb = [c \in Cards |-> 0]
 
-TickNext == TickStart \/ PumpWork \/ DrainWork \/ TickEnd \/
+TickNext == TickStart \/ PumpWork \/ DrainWork \/ TickEnd \/ SettleBound \/
             \E t \in Three : Pass(t) \/ Drain(t)
 OutsideNext ==
   \/ \E c \in Cards : Add(c) \/ Merge(c) \/ \E v \in {"ok", "broken"} : Report(c, v)
@@ -1033,6 +1052,24 @@ EveryRowWithWorkMoves ==
   [][/\ act' = "PumpWork" => PumpDone'
      /\ act' = "TickEnd" => ReadersDone]_vars
 
+\* CONSUMERS OUT (the owner, 2026-10-11 ~10:40-11:00 AM ET: "after the tick,
+\* ALL producer cards should have consumer cards out. No exceptions."; his
+\* tick design of 2026-10-01: sub-ticks until the consumer queue is empty,
+\* bound 32). At the tick's end every producer card has its consumer out: a
+\* working card's attempt is held by a member the fleet table says is up; a
+\* review card's read is held by a reader up, unless it is judged stranded
+\* ("cannot ask") or its tier is one no route serves; and every ready card a
+\* route serves and a free up slot could take is dealt in that same tick.
+ConsumerOut(c) ==
+  /\ col[c] = "working" => \E m \in Machines : c \in mc[m] /\ stat[m] = "up"
+  /\ col[c] = "review" /\ ~okd[c] /\ ~bnd[c] /\ ~cna[c] /\ ~nrt[c] => rd[c] # NoR /\ stat[rd[c]] = "up"
+DealableLeft ==
+  \E c \in Cards : col[c] = "ready" /\ c \in Served /\ ~(ended[c] /\ rdl[c] >= MaxRedeals)
+                    /\ \E m \in Machines : stat[m] = "up" /\ RoomNow(m) > 0
+ConsumersOut ==
+  [][act' = "TickEnd" => /\ \A c \in Cards : ConsumerOut(c)
+                         /\ ~DealableLeft]_vars
+
 \* THE WAKE: once, at the tick's end, with the count, and never for nothing.
 OneWakePerTick == notes <= 1
 NoWakeIfNothing ==
@@ -1109,6 +1146,9 @@ ReworksBounded == \A c \in Cards : rb[c] <= MaxBoundReworks
 \* tick ends (liveness form).
 TickBounded == sub <= MaxSub
 Terminates == [](phase # "idle" => <>(phase = "idle"))
+\* Reaching the settle bound is a judgment: the tick cut by the bound
+\* addresses the coordinator (never a silent stall).
+SettleBoundJudged == [][act' = "SettleBound" => addr' > addr]_vars
 \* Work queued is pumped: the next tick comes.
 WorkNotStranded == (Q["work"] # <<>>) ~> (Q["work"] = <<>>)
 =============================================================================
