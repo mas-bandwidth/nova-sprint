@@ -171,6 +171,10 @@ func probeScript(member, seat string, tools []string) string {
 	fmt.Fprintf(&b, "S=%s; NS=$(PATH=\"$P\" command -v nova-secrets); SO=$(PATH=\"$P\" command -v sops)\n", bench.Quote(seat))
 	b.WriteString(`if [ -n "$NS" ] && [ -n "$SO" ]; then o=$("$NS" check --store "$HOME/nova-bench/secrets" --as "$S" --key "$HOME/.config/nova-secrets/$S.key" --sops "$SO" 2>&1); echo "secrets $? $(printf '%s' "$o" | tail -1)"; else echo "secrets 1 nova-secrets or sops is on no PATH entry of its loop"; fi` + "\n")
 	b.WriteString(`echo "version $(PATH="$P" nova-sprint version 2>/dev/null | head -1)"` + "\n")
+	// the kernel's link changes in the last hour (docs/SPEC-SPRINT.md, doctor: member-env; the
+	// card doctor-names-a-member-whose-link-flapped): one extended grep over a short journal
+	// window, never the whole journal, and nothing from nova-config quoted into it.
+	b.WriteString(`O=$(uname -s); if [ "$O" = Darwin ]; then echo "link - not measured on darwin"; elif command -v journalctl >/dev/null 2>&1; then J=$(journalctl -k -q --no-pager --since "-1h" 2>&1); rc=$?; if [ "$rc" -ne 0 ] && [ -z "$J" ]; then echo "link - journalctl exit $rc"; elif printf '%s' "$J" | grep -qiE 'insufficient permissions|not seeing messages'; then echo "link - journalctl cannot read the kernel journal"; else n=$(printf '%s\n' "$J" | grep -icE 'link is up|link is down|link up|link down|carrier lost|carrier acquired'); if [ "$n" -eq 0 ]; then echo "link 0 "; else last=$(printf '%s\n' "$J" | grep -iE 'link is up|link is down|link up|link down|carrier lost|carrier acquired' | tail -1 | cut -c1-160); echo "link $n $last"; fi; fi; else echo "link - journalctl absent"; fi` + "\n")
 	b.WriteString("echo " + probeEnd + "\n")
 	return b.String()
 }
@@ -188,12 +192,20 @@ func quotedWords(ws []string) string {
 // parseProbe reads a probe's lines into what it found.
 func parseProbe(p *sprint.MemberProbe, out []byte) {
 	p.Tools, p.Near, p.FreeKB = map[string]string{}, map[string]string{}, -1
+	p.LinkChanges = -1
 	sc := bufio.NewScanner(bytes.NewReader(out))
 	for sc.Scan() {
 		key, val, _ := strings.Cut(sc.Text(), " ")
 		switch key {
 		case probeEnd:
 			p.Complete = true
+		case "link":
+			first, rest, _ := strings.Cut(strings.TrimSpace(val), " ")
+			if first == "-" {
+				p.LinkChanges, p.LinkWhy = -1, probeClip(rest, 160)
+			} else if n, err := strconv.Atoi(first); err == nil {
+				p.LinkChanges, p.LinkLast = n, probeClip(rest, 160)
+			}
 		case "os":
 			p.OS = val
 		case "pathfrom":
@@ -248,7 +260,7 @@ func (a *app) probeMembersReal(ctx context.Context, machines []sprint.DoctorMach
 			if m.User != "" {
 				host = m.User + "@" + m.Name
 			}
-			p := sprint.MemberProbe{Member: m.Name, Host: host, FreeKB: -1}
+			p := sprint.MemberProbe{Member: m.Name, Host: host, FreeKB: -1, LinkChanges: -1}
 			script := probeScript(m.Name, m.Seat, tools(m.Name))
 			var stdout, stderr bytes.Buffer
 			var err error
