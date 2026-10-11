@@ -233,9 +233,10 @@ func TestNoPartBeginsAfterStop(t *testing.T) {
 	require.NotEqual(t, string(sprint.StreamStopped), s.StreamCtl("s3").F("state"), "after start: rv asked of %d, s3 %s", len(s.Readers.Of("rv")), s.StreamCtl("s3").F("state"))
 }
 
-// With fewer than two readers up the tick asks none and writes one judgment
-// for the sprint, whatever its wording: "none up" becoming "one up" writes
-// nothing again, and it closes when two are up.
+// A sprint with no reader row at all raises "review has no reader"
+// (NReviewNoReader), once, whatever its wording; a reader row added closes it
+// and the sprint with one reader up, fewer than a pro card's two, raises
+// "fewer than two readers up" (NFewReaders), once, until two are up.
 func TestFewReadersIsWrittenOncePerSprint(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -249,19 +250,29 @@ func TestFewReadersIsWrittenOncePerSprint(t *testing.T) {
 	h.machine()
 	h.work("m1")
 	h.machine()
-	got := len(h.openOf(sprint.NFewReaders))
-	require.Equal(t, 1, got, "fewer than two readers up: open %d, want 1 for the two primaries", got)
-	was := h.written(sprint.NFewReaders)
+	got := len(h.openOf(sprint.NReviewNoReader))
+	require.Equal(t, 1, got, "no reader at all: open %d, want 1 for the two primaries", got)
+	require.Empty(t, h.openOf(sprint.NFewReaders), "no reader at all: the judgment is review-has-no-reader, not fewer-than-two")
+	was := h.written(sprint.NReviewNoReader)
 	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-a"}))
 	h.beat()
 	h.tick(time.Second)
 	h.machine()
 	h.tick(time.Minute + time.Second)
 	h.machine()
-	n := h.written(sprint.NFewReaders)
-	open := len(h.openOf(sprint.NFewReaders))
-	require.Equal(t, was, n, "few readers written %d times (was %d), open %d, after one reader came", n, was, open)
-	require.Equal(t, 1, open, "few readers written %d times (was %d), open %d, after one reader came", n, was, open)
+	n := h.written(sprint.NReviewNoReader)
+	open := len(h.openOf(sprint.NReviewNoReader))
+	require.Equal(t, was, n, "review-has-no-reader written %d times (was %d), open %d, after one reader came", n, was, open)
+	require.Equal(t, 0, open, "review-has-no-reader open after one reader came: %d", open)
+	// one reader up is still fewer than the two a pro card needs
+	require.Len(t, h.openOf(sprint.NFewReaders), 1, "one reader up: fewer than two")
+	fewWas := h.written(sprint.NFewReaders)
+	h.tick(time.Minute + time.Second)
+	h.machine()
+	n = h.written(sprint.NFewReaders)
+	open = len(h.openOf(sprint.NFewReaders))
+	require.Equal(t, fewWas, n, "few readers written %d times (was %d), open %d, after one reader came", n, fewWas, open)
+	require.Equal(t, 1, open, "few readers written %d times (was %d), open %d, after one reader came", n, fewWas, open)
 	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-b"}))
 	h.beat()
 	h.tick(time.Second)

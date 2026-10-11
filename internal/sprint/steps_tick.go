@@ -134,6 +134,7 @@ var TickDecisions = map[string][]string{
 	NBound:             {"rework with a fix", "drop", "wait"},
 	NCannotAsk:         {"reader add", "rework", "drop", "wait"},
 	NFewReaders:        {"reader up", "reader add", "wait"},
+	NReviewNoReader:    {"reader add", "wait"}, // the readers table is empty (steps_review.go)
 	NNoMember:          {"fleet beat", "fleet up", "wait"},
 	NAdoptFailed:       {"fleet up <m>", "wait"},                     // named per member (fleet_back.go)
 	NStarving:          {"release", "wait"},                          // the first held wave's sentinel, never a single card
@@ -1429,7 +1430,16 @@ func TickAsk(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	var conds []cond
 	if few {
-		conds = append(conds, cond{typ: NFewReaders, streamLevel: true, what: fewReaders(s)})
+		if len(s.Readers.Rows()) == 0 {
+			// no reader row at all: there is no one to ask, never a silent idle
+			var waiting []string
+			for _, c := range cards {
+				waiting = append(waiting, c.ID)
+			}
+			conds = append(conds, ReviewNoReaderCond(s, waiting)...)
+		} else {
+			conds = append(conds, cond{typ: NFewReaders, streamLevel: true, what: fewReaders(s)})
+		}
 	}
 	// reads asked and not begun for the window: the readers are behind (readers_behind.go)
 	conds = append(conds, readersBehindCond(s)...)
@@ -1442,7 +1452,7 @@ func TickAsk(s *Snapshot, r TickReq) (Plan, int) {
 	}
 	conds = append(conds, cannotAskCond(s, p.Refused)...)
 	p.Refused = nil
-	due += notify(&p, s, conds, []string{NCannotAsk, NFewReaders, NReadersBehind, NRaiseReadTier, NBrokenReadsOutrun, NReaderBreaks}, r)
+	due += notify(&p, s, conds, []string{NCannotAsk, NFewReaders, NReadersBehind, NRaiseReadTier, NBrokenReadsOutrun, NReaderBreaks, NReviewNoReader}, r)
 	return p, due
 }
 
@@ -1776,6 +1786,7 @@ func condKey(typ, subject, card, what string) string {
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
 		NBaseCIRed,
 		NStopMemberDown, NStopPinWaits, NFriendStalled,
+		NReviewNoReader,
 		NNoFrontierRoom:
 		what = ""
 	case NReadyOver:
@@ -1949,9 +1960,9 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 			if !open[k] {
 				fresh = append(fresh, sub)
 			}
-			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || c.typ == NReadyOver || slices.Contains(StopTypes, c.typ)) {
+			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || c.typ == NReviewNoReader || c.typ == NReadyOver || slices.Contains(StopTypes, c.typ)) {
 				var primaries []string
-				if c.typ == NNoFrontierRoom || c.typ == NReadyOver {
+				if c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NReviewNoReader {
 					primaries = c.primaries // the cards it names, rewritten in place as they join or leave the cause
 				}
 				update(n, c.what, c.decisions, primaries) // the latest facts, in place

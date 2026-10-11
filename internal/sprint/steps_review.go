@@ -906,6 +906,10 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 		typ, why = NStranded, "the landing refused its head "+orDash(pr.F("head"))+" and nothing is open on it: rework it on the tip, or drop it"
 	case pr.F("result") == "failed":
 		typ, why = NStranded, "its work came back failed and nothing is open on it"
+	case reads == 0 && len(s.Readers.Rows()) == 0 && !(s.ReadCardsOn() && readCardsWanted(s, pr, nil) > 0):
+		// no read is out at its attempt and the readers table is empty: there is
+		// no reader to ask, so it is never a silent idle (NReviewNoReader)
+		typ, why = NReviewNoReader, reviewNoReaderWhy(pr, attempt)
 	case reads == 0 && len(before) == 0:
 		return Note{}, false
 	case reads == 0 && s.ReadCardsOn() && readCardsWanted(s, pr, nil) > 0:
@@ -930,6 +934,35 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 		return n, true
 	}
 	return strandedNote(s, pr, typ, why, st.who), true
+}
+
+// reviewNoReaderWhy is the text of NReviewNoReader: a primary in review at an
+// attempt with no read out, and no reader row to ask.
+func reviewNoReaderWhy(pr *Card, attempt int) string {
+	return "no read is out at attempt " + itoa(attempt) + " of " + pr.ID + " and the readers table is empty: there is no reader to ask; run: nova-sprint reader add <name>"
+}
+
+// ReviewNoReaderCond is the tick's one judgment that primaries in review have
+// no reader to ask (NReviewNoReader): the readers table is empty, so the ask
+// has no one for the primaries waiting on it. It names every primary waiting,
+// one judgment while it stands, so a card joining or leaving the cause
+// rewrites it in place, never a second judgment (TickAsk calls it where the
+// ask finds the empty table).
+func ReviewNoReaderCond(s *Snapshot, primaries []string) []cond {
+	var all []string
+	for _, id := range primaries {
+		pr := s.Work.Placed(id)
+		if pr == nil || pr.Col != Review {
+			continue
+		}
+		all = append(all, pr.ID)
+	}
+	if len(all) == 0 {
+		return nil
+	}
+	stream := s.Work.Placed(all[0]).Row
+	return []cond{{typ: NReviewNoReader, stream: stream, streamLevel: true, primaries: all,
+		what: NReviewNoReader + " for " + strings.Join(all, ", ") + ": the readers table is empty; run: nova-sprint reader add <name>"}}
 }
 
 // AcceptReq is the coordinator accepting primaries in review.

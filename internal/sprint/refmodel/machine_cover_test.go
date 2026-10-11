@@ -757,7 +757,7 @@ func TestMachineCoverClear(t *testing.T) {
 			assert.Empty(t, got.Streams, "the streams are the new epoch's own, empty")
 			assert.Equal(t, tc.s.Members, got.Members, "every member keeps its status")
 			assert.Equal(t, tc.s.Order, got.Order)
-			assert.Empty(t, got.Readers, "the readers are the new epoch's own, empty")
+			assert.Equal(t, tc.s.Readers, got.Readers, "the readers carry over a clear")
 			assert.Equal(t, tc.s.Coordinator, got.Coordinator, "the coordinator is kept")
 		})
 	}

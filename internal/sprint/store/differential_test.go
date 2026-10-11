@@ -109,6 +109,32 @@ var dKnown = []dKnownDiff{
 		}
 		return sigHas("another", "open.accept=yes/no", "primary.pair")(f)
 	}},
+	// MODEL behind. A clear keeps the readers (a-cleared-sprint-keeps-its-readers,
+	// SPEC-SPRINT section 13): the model keeps the reader rows too, but its ask
+	// round-robin then chooses a different reader for an attempt than the engine's
+	// readers-table ask index (PropAskIndex), so the reads asked and the round
+	// they left differ while every other table agrees. The model's ask is owed
+	// the engine's index; until it has it, the two differ on which reader an
+	// attempt's read goes to, never on whether a card in review has its reads.
+	{"MODEL the ask round chooses a different reader once a clear keeps the readers", func(f dFinding) bool {
+		if f.Kind != "state" || f.Seq[len(f.Seq)-1].Kind != "tick" {
+			return false
+		}
+		sawRound := false
+		for _, d := range f.Diffs {
+			switch d.Table {
+			case "read":
+			case "round":
+				if d.Field != "ask" {
+					return false
+				}
+				sawRound = true
+			default:
+				return false
+			}
+		}
+		return sawRound
+	}},
 }
 
 func dClassify(f dFinding) (string, bool) {
