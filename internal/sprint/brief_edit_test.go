@@ -118,6 +118,19 @@ func TestADependsOnlyBriefReportsTheBoundAndKeepsTheTier(t *testing.T) {
 	assert.Contains(t, says, "tier kept: frontier (the brief's line 1 says pro)")
 }
 
+func TestADependsOnlyBriefTierFlagOverridesTheText(t *testing.T) {
+	t.Parallel()
+	w := dependsOnlyBoundWorld(t)
+	// only the DEPENDS-ON: line changes (x -> x,y), so the depends-only path is
+	// taken, but --tier names a new tier: the depends-only path must write it over
+	// the recorded tier and the text's line 1, as the ordinary path does
+	// (docs/SPEC-SPRINT.md, the tier).
+	p := Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "a-1", Brief: "tier: pro\nDEPENDS-ON: x,y\n\nthe task", Needs: []string{"x", "y"}}}, Tier: "heavy", Who: "coordinator"})
+	require.Empty(t, p.Refused)
+	w.must(p)
+	assert.Equal(t, "heavy", w.s.Work.Placed("a-1").F(FieldTier), "--tier names the tier on the depends-only path")
+}
+
 func TestBriefKeepsARecordedTierAgainstTheText(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")

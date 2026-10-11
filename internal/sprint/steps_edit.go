@@ -123,18 +123,20 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			}
 			// the bound and the tier behave as on the ordinary path: a DEPENDS-ON-only
 			// edit never changes the task, so the bound count stands, and the tier is a
-			// card field kept against the text's line 1, each said on a NOTE line
-			// (docs/SPEC-SPRINT.md, the brief: the bound and the tier).
+			// card field kept against the text's line 1 unless --tier names one, each
+			// said on a NOTE line (docs/SPEC-SPRINT.md, the brief: the bound and the tier).
 			if c.Int("attempt") > 0 {
 				p.Said = append(p.Said, fmt.Sprintf("bound: same task (%d attempts stand)", c.Int("attempt")-c.Int(FieldBriefAttempt)))
 			}
-			if recorded := c.F(FieldTier); recorded != "" {
-				textTier, _ := cardhdr.ReadModel(b.Brief)
-				if textTier.Tier != recorded {
-					p.Said = append(p.Said, fmt.Sprintf("tier kept: %s (the brief's line 1 says %s)", recorded, orDash(textTier.Tier)))
+			if r.Tier == "" {
+				if recorded := c.F(FieldTier); recorded != "" {
+					textTier, _ := cardhdr.ReadModel(b.Brief)
+					if textTier.Tier != recorded {
+						p.Said = append(p.Said, fmt.Sprintf("tier kept: %s (the brief's line 1 says %s)", recorded, orDash(textTier.Tier)))
+					}
 				}
 			}
-			p = briefDepends(s, p, c, b.Brief, needs, proposed)
+			p = briefDepends(s, p, c, b.Brief, needs, r.Tier, proposed)
 			continue
 		}
 		// a card merging or landed is refused with what changes it instead:
@@ -695,8 +697,9 @@ func dependsOnly(old, brief string) bool {
 // since nothing moves it back and an accept would carry the need past it
 // (docs/SPEC-SPRINT.md section 9, rule 11; tla/SprintTables.tla Rule11 and its
 // reversed witness "reviewneeds"). The brief decision and the grade were over
-// the same task and stay.
-func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, proposed map[string][]string) Plan {
+// the same task and stay. tier, when non-empty, is the tier the edit sets
+// (--tier), written on the primary as the ordinary path writes it (FieldTier).
+func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, tier string, proposed map[string][]string) Plan {
 	for _, n := range needs {
 		nc := s.Work.Card(n)
 		switch {
@@ -722,6 +725,9 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, pr
 		return p
 	}
 	set, unset := map[string]string{"brief": brief}, []string(nil)
+	if tier != "" {
+		set[FieldTier] = tier
+	}
 	if len(needs) > 0 {
 		set["needs"] = strings.Join(needs, ",")
 	} else {
@@ -811,7 +817,7 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 	// returned to waiting or ready after an attempt (briefInPlace) through
 	// briefDepends, which refuses a ready card a need not landed.
 	if c.Col == Working || c.Col == Review {
-		q := briefDepends(s, p, c, brief, wants, nil)
+		q := briefDepends(s, p, c, brief, wants, "", nil)
 		answered(&q, s, r.Answers, r.Who)
 		return Lawful(q)
 	}
