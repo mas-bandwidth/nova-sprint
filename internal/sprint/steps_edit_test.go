@@ -301,7 +301,7 @@ func TestMoveIsRefusedIntoItsOwnStreamAndForASentinel(t *testing.T) {
 }
 
 // A ready card the destination would put behind a sentinel is refused by the
-// lifecycle: ready -> waiting is only the effect of inserting a sentinel.
+// lifecycle: ready -> waiting is only the effect of inserting a sentinel or a brief edit.
 func TestMoveBehindASentinelOfAReadyCardIsRefusedByTheLifecycle(t *testing.T) {
 	t.Parallel()
 	w := moveWorld(t)
@@ -309,7 +309,7 @@ func TestMoveBehindASentinelOfAReadyCardIsRefusedByTheLifecycle(t *testing.T) {
 	w.must(Add(w.s, AddReq{Stream: "c", IDs: []string{"c-stop"}, Sentinel: true, Who: "coordinator"}))
 	p := Lawful(MoveCards(w.s, MoveReq{IDs: []string{"a-1"}, Stream: "c", Who: "coordinator"}))
 	require.Len(t, p.Refused, 1)
-	assert.Contains(t, p.Refused[0].Why, "ready -> waiting only as the effect of inserting a sentinel")
+	assert.Contains(t, p.Refused[0].Why, "ready -> waiting only as the effect of inserting a sentinel, or a brief edit")
 	// in front of the stop it moves, ready
 	move(w, MoveReq{IDs: []string{"a-1"}, Stream: "c", Before: "c-stop"})
 	assert.Equal(t, Ready, w.s.Work.Placed("a-1").Col)

@@ -425,7 +425,7 @@ type MoveReq struct {
 // stream's sentinels, a reached sentinel behind them no longer reached, a
 // cycle of needs refused; a ready card the destination would put behind a
 // sentinel is refused by the lifecycle (Lawful: ready -> waiting is only the
-// effect of inserting a sentinel). A moved card is the same card moved, not a new one:
+// effect of inserting a sentinel or a brief edit giving it a need not landed). A moved card is the same card moved, not a new one:
 // its id, brief, needs and admission stay, and a need naming it still holds.
 func MoveCards(s *Snapshot, r MoveReq) Plan {
 	var p Plan

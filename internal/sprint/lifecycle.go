@@ -62,7 +62,7 @@ var Moves = []Move{
 	{Merging, Ready, "redo", Coordinator, "redo a conflicted card when no fleet member is up: start delegates it later"},
 	{Merging, Landed, "merge", Mechanical, "its batch, green on the stream branch, merged to the development branch"},
 	{Waiting, Landed, "release", Coordinator, "a sentinel reached, or with nothing before it, released by the coordinator (kind sentinel only)"},
-	{Ready, Waiting, "add", Mechanical, "a sentinel inserted in front of it (only as the effect of inserting a sentinel)"},
+	{Ready, Waiting, "add", Mechanical, "a sentinel inserted in front of it, or a brief edit gives it a need not landed"},
 }
 
 // Legal says from -> to is a move of the lifecycle.
@@ -245,7 +245,7 @@ func unlawful(u Unit, p *Plan) string {
 		case from == Waiting && to == Landed && (!p.releasing || !sentinel):
 			return "the lifecycle lands from waiting only a sentinel, and only by release"
 		case from == Ready && to == Waiting && !p.inserting && e.Set["needs"] == "":
-			return "the lifecycle moves ready -> waiting only as the effect of inserting a sentinel"
+			return "the lifecycle moves ready -> waiting only as the effect of inserting a sentinel, or a brief edit giving it a need not landed"
 		case sentinel && to != "" && to != Landed:
 			return "a sentinel moves only waiting -> landed, by release"
 		}

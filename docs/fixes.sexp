@@ -190,9 +190,11 @@
      an open state, or a remove of a landed card), ReadyToWaitingOnlyByInsertOrNeedsset, LandedIsFinal and
      NeedsLandFirst (a card leaves waiting for ready only with every need landed or waived), with two reversed
      witnesses: MCSprintTablesBrokenInsert (an add that moves ready -> waiting without inserting or a needs set)
-     and MCSprintTablesBrokenNeedless (a resolve that drops the needs check). The four cards that depend on it
-     add deal, take, finish and the fleet; reads and accept; merge and return; crash and repair."
-    :origin "card tla-sprint-tables-lifecycle-moves-and-needs.w7, 2026-10-11: v1.2.12 inventory item T4, the first of five cards; drift read at nova-sprint main 00c54ba2e")
+     and MCSprintTablesBrokenNeedless (a resolve that drops the needs check). lifecycle.go's add move and its
+     ready -> waiting refusal now name both causes (a sentinel inserted, or a brief edit giving it a need not
+     landed). The four cards that depend on it add deal, take, finish and the fleet; reads and accept; merge
+     and return; crash and repair."
+    :origin "card tla-sprint-tables-lifecycle-moves-and-needs.w9, 2026-10-11: v1.2.12 inventory item T4, the first of five cards; drift read at nova-sprint main 00c54ba2e")
    (fix "tla-sprint-tables-fleet-take-and-finish" :release "v1.2.12" :status "planned"
     :title "tla/SprintTables.tla adds the fleet side: member up or down and Start, Take, Finish, FleetDown, FleetUp"
     :text "Models only, no product change. tla/SprintTables.tla gains the fleet side of the work table from

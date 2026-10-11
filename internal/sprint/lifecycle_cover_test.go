@@ -54,7 +54,7 @@ func TestLifecycleCoverRejudgeHoldsEveryEntryToTheLifecycle(t *testing.T) {
 		{"a landing from waiting without release refuses", "", lifecycleCoverMove("sn", Waiting, Landed),
 			"the lifecycle lands from waiting only a sentinel, and only by release"},
 		{"ready -> waiting without add refuses", "release", lifecycleCoverMove("p2", Ready, Waiting),
-			"the lifecycle moves ready -> waiting only as the effect of inserting a sentinel"},
+			"the lifecycle moves ready -> waiting only as the effect of inserting a sentinel, or a brief edit giving it a need not landed"},
 		{"a move the lifecycle has none of refuses", "", lifecycleCoverMove("p2", Ready, Merging),
 			"the lifecycle has no move ready -> merging"},
 		{"a waiting -> ready with an unlanded need refuses", "", lifecycleCoverMove("p1", Waiting, Ready),
