@@ -1071,6 +1071,20 @@
     only; no product change."
    :origin "this card; the v1.2.12 inventory items T31 and section 5 (the land stage's gate-slot ring)")
 
+  (fix "tla-liveruns-settle-by-beat-keeps-a-held-report" :release "v1.2.12" :status "planned"
+   :title "LiveRuns models START's settle-by-beat, with a reversed witness for the stop-returns count"
+   :text "Models only, no product change. tla/LiveRuns.tla gains the rows that have beaten since the
+    STOP (beaten) and the server's settle on START's path (SettleByBeat): a STOP-owned card whose row
+    has beaten since the STOP and whose fresh live set no longer names it, running or held, is returned
+    to ready at gen+1 with its receipt, so START never waits on a member's own receipt
+    (machine_transition.go settleStopDebtByBeat, the fix at 2cc11a2). A sixth reversed witness,
+    settlebycount (MCLiveRunsBrokenSettleByCount.cfg), is the code before #87 for a machine lease: the
+    settle reads the row's stop-returns count instead of its live set, so a held report's card is
+    returned and its generation gone, failing NoReportLost. The design still passes every invariant
+    and the five existing witnesses still fail with their named properties."
+   :origin "this card, tla-liveruns-settle-by-beat-keeps-a-held-report-2.w2, 2026-10-11: the v1.2.12
+    plan's STOP-debt live-set case (nova-sprint #87), v1.2.12 inventory item T11 section 8 D")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,

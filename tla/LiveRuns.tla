@@ -32,6 +32,11 @@
 (* absent for Grace windows to ready at its next generation with its      *)
 (* receipt, RUNNING or STOPPED; a tick runs between two beat windows (the  *)
 (* tick is every second, a beat window 15 s): Beat waits for it.          *)
+(* A row that beats while the machine is STOPPED marks itself beaten       *)
+(* since the STOP (beaten); the server's settle on START's path            *)
+(* (SettleByBeat) returns every STOP-owned card whose row has beaten and   *)
+(* whose live set no longer names it, running or held, so START never      *)
+(* waits on a member's own receipt.                                        *)
 (*                                                                         *)
 (* Reversed witnesses (Broken):                                            *)
 (*   "stoppednoreconcile" the v1.2.5 tick: a STOPPED tick returns nothing  *)
@@ -51,6 +56,11 @@
 (*                        clear read the raw debt and refused until start  *)
 (*                        (the stale STOP of 2026-10-10 that this fix      *)
 (*                        removes).                                        *)
+(*   "settlebycount"      the code before #87 for a machine lease: the    *)
+(*                        beat settle reads the row's stop-returns count, *)
+(*                        not its live set, so a held report's card is    *)
+(*                        returned and its generation gone (breaks        *)
+(*                        NoReportLost);                                  *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -81,10 +91,11 @@ VARIABLES
   finished,  \* [Cards -> BOOLEAN]       a child of it finished with a report
   accepted,  \* [Cards -> BOOLEAN]       the machine took that report
   stoppedRet, \* BOOLEAN                 a STOPPED tick has returned a card (reachability)
-  silent     \* [Rows -> BOOLEAN]        the row's beats do not arrive (a partition, a hung
+  silent,    \* [Rows -> BOOLEAN]        the row's beats do not arrive (a partition, a hung
              \*                          beat, a store stall); its children run on
+  beaten     \* SUBSET Rows              the rows that have beaten since the STOP
 
-vars == <<col, row, gen, receipt, wk, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet, silent>>
+vars == <<col, row, gen, receipt, wk, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet, silent, beaten>>
 
 TypeOK ==
   /\ col \in [Cards -> Cols]
@@ -101,6 +112,7 @@ TypeOK ==
   /\ accepted \in [Cards -> BOOLEAN]
   /\ stoppedRet \in BOOLEAN
   /\ silent \in [Rows -> BOOLEAN]
+  /\ beaten \subseteq Rows
 
 Init ==
   /\ col = [c \in Cards |-> "ready"]
@@ -117,6 +129,7 @@ Init ==
   /\ accepted = [c \in Cards |-> FALSE]
   /\ stoppedRet = FALSE
   /\ silent = [r \in Rows |-> FALSE]
+  /\ beaten = {}
 
 ----------------------------------------------------------------------------
 (* Derived *)
@@ -170,13 +183,14 @@ Take(c) ==
   /\ wk' = [wk EXCEPT ![c] = "run"]
   /\ wgen' = [wgen EXCEPT ![c] = gen[c]]
   /\ absent' = [absent EXCEPT ![c] = 0]
-  /\ UNCHANGED <<row, gen, receipt, running, debt, ticked, finished, accepted, stoppedRet, silent>>
+  /\ UNCHANGED <<row, gen, receipt, running, debt, ticked, finished, accepted, stoppedRet, silent, beaten>>
 
 \* STOP: the machine captures every working card at its generation
 Stop ==
   /\ running
   /\ running' = FALSE
   /\ debt' = {<<c, gen[c]>> : c \in {d \in Cards : col[d] = "working"}}
+  /\ beaten' = {}
   /\ UNCHANGED <<col, row, gen, receipt, wk, wgen, absent, ticked, finished, accepted, stoppedRet, silent>>
 
 \* START (unsettledStopDebt): no card STOP-owned any more; the debt is cleared
@@ -185,7 +199,29 @@ Start ==
   /\ \A c \in Cards : ~BlocksStart(c)
   /\ running' = TRUE
   /\ debt' = {}
-  /\ UNCHANGED <<col, row, gen, receipt, wk, wgen, absent, ticked, finished, accepted, stoppedRet, silent>>
+  /\ UNCHANGED <<col, row, gen, receipt, wk, wgen, absent, ticked, finished, accepted, stoppedRet, silent, beaten>>
+
+\* the server's settle on START's path (settleStopDebtByBeat): a STOP-owned
+\* card whose row has beaten since the STOP and whose live set no longer names
+\* it, running or held, is returned to ready at gen+1 with its receipt, so
+\* START never waits on the member's own receipt. Broken "settlebycount" is
+\* the code before #87 for a machine lease: it reads the row's stop-returns
+\* count (no card of the row is cancelled) instead of the live set, so a held
+\* report's card is returned and its generation gone.
+SettleByBeat(c) ==
+  /\ ~running
+  /\ Owned(c)
+  /\ row[c] \in beaten
+  /\ IF "settlebycount" \in Broken
+       THEN \A d \in {x \in Cards : row[x] = row[c]} : wk[d] /= "cancelled"
+       ELSE ~Live(c)
+  /\ CanGen(c)
+  /\ col' = [col EXCEPT ![c] = "ready"]
+  /\ gen' = [gen EXCEPT ![c] = gen[c] + 1]
+  /\ receipt' = [receipt EXCEPT ![c] = gen[c]]
+  /\ absent' = [absent EXCEPT ![c] = 0]
+  /\ debt' = debt \ {<<c, gen[c]>>}
+  /\ UNCHANGED <<row, wk, wgen, running, ticked, finished, accepted, stoppedRet, silent, beaten>>
 
 \* a coordinator verb that moves a card (hold --return, give, take back,
 \* rebalance): never a STOP-owned card (stopDebtMutation refuses it whole);
@@ -194,7 +230,7 @@ CoordMove(c, r) ==
   /\ col[c] = "ready" /\ r /= row[c] /\ wk[c] = "none"
   /\ ~Owned(c)
   /\ row' = [row EXCEPT ![c] = r]
-  /\ UNCHANGED <<col, gen, receipt, wk, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet, silent>>
+  /\ UNCHANGED <<col, gen, receipt, wk, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet, silent, beaten>>
 
 \* the tick's reconcile (LiveReturns): every due card back to ready on its
 \* row at its next generation, with its receipt; RUNNING or STOPPED
@@ -209,7 +245,7 @@ Tick ==
        ELSE UNCHANGED <<col, gen, receipt, absent>>
   /\ stoppedRet' = (stoppedRet \/ (Returns /\ ~running /\ due /= {}))
   /\ debt' = IF Returns /\ TickSettles THEN debt \ {<<c, gen[c]>> : c \in due} ELSE debt
-  /\ UNCHANGED <<row, wk, wgen, running, finished, accepted, silent>>
+  /\ UNCHANGED <<row, wk, wgen, running, finished, accepted, silent, beaten>>
 
 \* one beat window of row r: each working card of r out of its live set
 \* counts one more window absent, each in it none; a tick ran since the last.
@@ -225,17 +261,18 @@ Beat(r) ==
                            THEN IF "staleasabsent" \in Broken /\ absent[c] <= Grace THEN absent[c] + 1 ELSE absent[c]
                            ELSE IF Live(c) THEN 0 ELSE IF absent[c] > Grace THEN absent[c] ELSE absent[c] + 1
                     ELSE absent[c]]
+  /\ beaten' = IF ~running /\ ~silent[r] THEN beaten \cup {r} ELSE beaten
   /\ UNCHANGED <<col, row, gen, receipt, wk, wgen, running, debt, finished, accepted, stoppedRet, silent>>
 
 \* the row's beats stop arriving, or arrive again; its children are untouched
 Silence(r) ==
   /\ ~silent[r]
   /\ silent' = [silent EXCEPT ![r] = TRUE]
-  /\ UNCHANGED <<col, row, gen, receipt, wk, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet>>
+  /\ UNCHANGED <<col, row, gen, receipt, wk, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet, beaten>>
 Speak(r) ==
   /\ silent[r]
   /\ silent' = [silent EXCEPT ![r] = FALSE]
-  /\ UNCHANGED <<col, row, gen, receipt, wk, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet>>
+  /\ UNCHANGED <<col, row, gen, receipt, wk, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet, beaten>>
 
 ----------------------------------------------------------------------------
 (* The worker *)
@@ -245,14 +282,14 @@ Speak(r) ==
 ChildDies(c) ==
   /\ wk[c] = "run"
   /\ wk' = [wk EXCEPT ![c] = "none"]
-  /\ UNCHANGED <<col, row, gen, receipt, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet, silent>>
+  /\ UNCHANGED <<col, row, gen, receipt, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet, silent, beaten>>
 
 \* the child finishes: its report waits in the outbox
 ChildFinishes(c) ==
   /\ wk[c] = "run"
   /\ wk' = [wk EXCEPT ![c] = "held"]
   /\ finished' = [finished EXCEPT ![c] = TRUE]
-  /\ UNCHANGED <<col, row, gen, receipt, wgen, absent, running, debt, ticked, accepted, stoppedRet, silent>>
+  /\ UNCHANGED <<col, row, gen, receipt, wgen, absent, running, debt, ticked, accepted, stoppedRet, silent, beaten>>
 
 \* the outbox sends the report: RUNNING and still working at its generation,
 \* the machine takes it; STOPPED, it is refused and kept (outbox.go: sent
@@ -263,19 +300,19 @@ Report(c) ==
         /\ col' = [col EXCEPT ![c] = "done"]
         /\ accepted' = [accepted EXCEPT ![c] = TRUE]
         /\ wk' = [wk EXCEPT ![c] = "none"]
-        /\ UNCHANGED <<row, gen, receipt, wgen, absent, running, debt, ticked, finished, stoppedRet, silent>>
+        /\ UNCHANGED <<row, gen, receipt, wgen, absent, running, debt, ticked, finished, stoppedRet, silent, beaten>>
      \/ /\ ~running /\ gen[c] = wgen[c]
         /\ UNCHANGED vars
      \/ /\ gen[c] /= wgen[c]
         /\ wk' = [wk EXCEPT ![c] = "none"]
-        /\ UNCHANGED <<col, row, gen, receipt, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet, silent>>
+        /\ UNCHANGED <<col, row, gen, receipt, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet, silent, beaten>>
 
 \* the worker sees the STOP: each child it runs is cancelled and owed a
 \* stop-return; a held report is kept (no stop-return for it)
 WorkerStops(c) ==
   /\ ~running /\ wk[c] = "run"
   /\ wk' = [wk EXCEPT ![c] = "cancelled"]
-  /\ UNCHANGED <<col, row, gen, receipt, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet, silent>>
+  /\ UNCHANGED <<col, row, gen, receipt, wgen, absent, running, debt, ticked, finished, accepted, stoppedRet, silent, beaten>>
 
 \* stop-return (StopReturn): the cancelled child ended; working -> ready at the
 \* next generation with the receipt; STOPPED only
@@ -291,7 +328,7 @@ StopReturn(c) ==
   /\ debt' = IF ReturnSettles /\ col[c] = "working" /\ gen[c] = wgen[c] /\ CanGen(c)
               THEN debt \ {<<c, gen[c]>>}
               ELSE debt
-  /\ UNCHANGED <<row, wgen, running, ticked, finished, accepted, stoppedRet, silent>>
+  /\ UNCHANGED <<row, wgen, running, ticked, finished, accepted, stoppedRet, silent, beaten>>
 
 ----------------------------------------------------------------------------
 
@@ -299,7 +336,7 @@ Next ==
   \/ Stop \/ Start \/ Tick
   \/ \E r \in Rows : Beat(r) \/ Silence(r) \/ Speak(r)
   \/ \E c \in Cards : Take(c) \/ ChildDies(c) \/ ChildFinishes(c) \/ Report(c)
-                      \/ WorkerStops(c) \/ StopReturn(c)
+                      \/ WorkerStops(c) \/ StopReturn(c) \/ SettleByBeat(c)
   \/ \E c \in Cards, r \in Rows : CoordMove(c, r)
 
 Spec == Init /\ [][Next]_vars
