@@ -660,7 +660,22 @@ to her, or until `unpin` releases it. A preference taken back from her is offere
 eligible friend, then to the fleet. While the machine runs, the take's work-table change waits
 for the pump (section 4), so the tick after the next deals it. `friend sync`
 writes a card taken back as `taken` in her queue file, so her daemon starts
-none of them. `friend down <friend>` and `hold <friend>` (with `--return` or
+none of them.
+
+**The seat hands a named card to a friend** (2026-10-11: the seat took back 32
+cards, the row went quiet, and the five it wanted there could not be put there;
+`friend give` was only the undo of `friend take`). `friend give <friend>
+<id>...` hands a named ready card to the friend's fleet row at once (the deal's
+own unit: the same work card `friend sync` delivers, its primary working on
+it), where the deal would otherwise draw the queue head, and says "<id>: handed
+to <friend>"; on a card taken back from her it clears `taken_from`, so the deal
+may deal it to her again, and the deal fills the rest. A card not ready, one
+whose tier her row does not serve, and one whose needs have not landed are
+refused, naming why. `friend take` says each mark it writes ("<id>: back to
+ready, not dealt to <friend> again until friend give") and counts them
+(`marked=<n>`) on its summary, so a quiet row is no mystery.
+
+`friend down <friend>` and `hold <friend>` (with `--return` or
 without) hold her: the tick deals her nothing, and held and down mean no
 begun cards (the owner, 2026-10-04, on a held friend still showing two working
 cards: "Notice how <friend> is held, but still has working cards? nonono."), so
