@@ -425,21 +425,22 @@ func RestsDue(s *Snapshot) []RouteRest {
 			}
 		}
 		if len(rateLimitedCards) > 0 {
-			// count ok takes (non rate-limited, non-transient) since last rate-limited backoff
-			okSinceRateLimit := 0
-			lastRateLimitBackoff := s.Now.Add(-RouteRateLimitBackoffCap)
+			// count consecutive rate-limited ends since last rest mark and since last ok take
+			consec := 0
 			for _, e := range ends[r.Name] {
-				if e.at.After(lastRateLimitBackoff) {
+				if e.at.After(last.At) { // only count after last rest mark
 					if e.rateLimited {
-						okSinceRateLimit = 0
+						consec++
 					} else if !e.transient {
-						okSinceRateLimit++
+						// non-transient, non rate-limited end resets consecutive count
+						consec = 0
 					}
 				}
 			}
-			// doubling backoff: 60s * 2^okSinceRateLimit, capped at 15m
+			// doubling backoff: 60s * 2^(consec-1), capped at 15m
+			// first rate-limited end (consec=1) = 60s, second (consec=2) = 120s, etc.
 			backoff := RouteRateLimitBackoffFor
-			for i := 0; i < okSinceRateLimit && backoff < RouteRateLimitBackoffCap; i++ {
+			for i := 1; i < consec && backoff < RouteRateLimitBackoffCap; i++ {
 				backoff *= 2
 			}
 			if backoff > RouteRateLimitBackoffCap {
