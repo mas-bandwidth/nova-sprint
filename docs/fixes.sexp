@@ -451,4 +451,21 @@
     brief refuse a card whose BASE is any other branch outside the promotion stream, exit 2, nothing
     written; the step holds the same rule against a racing write. With no base recorded, dev alone is
     refused as before, and the promotion stream keeps its mark."
-   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")))
+   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")
+
+   (fix "a-member-environment-fault-holds-it-and-pushes-the-seat" :release "v1.2.6" :status "planned"
+    :title "A member's environment fault holds it and pushes the seat"
+    :text "A finish failure whose cause is the member's environment -- a push refusal (no credential, auth,
+     unreachable remote), a missing tool or harness, a sandbox/wall refusal, a disk-full, or any class the
+     member reports as environment -- is the member's, never the card's or the model's. The first one
+     returns the card to ready untouched (the work card withdraws without an ended take, so no redeal is
+     spent, the attempt is unchanged, and it is never failed work), holds the member so the deal gives it
+     no new card, and raises one judgment pushed to the seat for the member, kept naming its current cause
+     and its remedy (one per member and cause: a later fault with a different cause is surfaced, never
+     left as the first cause's stale remedy; for a push refusal the remedy is the fleet push-credential
+     play with --limit <member>). The fault clears when the member's next card pushes, or when fleet up
+     runs the member's own probe (the push-credential probe, the harness check) and it passes; fleet up
+     refuses a member whose last environment fault is not cleared, and on a new member runs its own probe
+     before accepting width (init bootstraps by passing the probe). Modeled by tla/ProviderBudget.tla."
+    :origin "sprint card a-member-environment-fault-holds-it-and-pushes-the-seat; the owner, 2026-10-11Z:
+     the failure here is not noticing this until now")))
