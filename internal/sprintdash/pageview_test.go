@@ -23,8 +23,8 @@ import (
 // comment-only change; app.js's Work stream cell now shows the stream's display name, the
 // owner's ask of 2026-10-11): the page is that page, byte for byte (pageview.go).
 const (
-	liveIndexSHA256 = "4aee69bbf53c916ea43fce57de132cfb5b4f9679d8a4546988cf0778860fa140"
-	liveAppSHA256   = "f7723ec15c5f72dd01bc29825fd7bddcbd056c84fd249ead613adbe1c9e4d912"
+	liveIndexSHA256 = "9b0eaf0c2344c1fd517019fb35faef034764f16fc62d481b64f703e51703ff3c"
+	liveAppSHA256   = "decfeee9e7acb4e602e125ce2ace0cf757db4dd05d1ad3020d3367377c417c24"
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )

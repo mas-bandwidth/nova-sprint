@@ -82,7 +82,6 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-11 comment-only, no rendered byte changed (the owner's privacy is a hard rule in this public repository): "privacy: the page's comments name the owner as the owner"
 - 2026-10-11 the owner: "agree that the name becomes the key, and you add a small display name. good tidy feature. pls add."
 - 2026-10-11 the owner: "Please add sounds to the sprint dashboard. Whenever a card lands in the tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle."
-- 2026-10-11 the owner, of the sprint dashboard: "There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical."
 
 **The coin** (a note on the page, not a part of it: it has no panel of its own and adds none).
 The owner, 2026-10-11: "Whenever a card lands in the tick (1 or more), play a single gentle
