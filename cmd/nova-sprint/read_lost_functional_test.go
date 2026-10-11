@@ -82,9 +82,10 @@ func readsOn(t *testing.T, ta *testApp, primaries ...string) (working []*sprint.
 	return working, all
 }
 
-func TestAMemberProcessKilledOrRestartedLeavesNoGhostRead(t *testing.T) {
-	t.Parallel()
-	wall := time.Now()
+// readsOnM2 is a sprint whose two primaries (worked by m1) are each in review with their one
+// read dealt to m2, the one reader not their worker, and m2's first member process a.
+func readsOnM2(t *testing.T) (*testApp, *wallRunner, *member.Member, []*sprint.Card) {
+	t.Helper()
 	ta := newTestApp(t)
 	ta.live = []string{"m1"} // m2 beats only from its member process (its live set)
 	ta.a.tip = tipIs(t, landHead)
@@ -115,6 +116,13 @@ func TestAMemberProcessKilledOrRestartedLeavesNoGhostRead(t *testing.T) {
 		t.Log(ta.ok("log"))
 	}
 	require.Len(t, all, 2, "each primary's read dealt to m2, the one reader not its worker")
+	return ta, run, a, all
+}
+
+func TestAMemberProcessKilledOrRestartedLeavesNoGhostRead(t *testing.T) {
+	t.Parallel()
+	wall := time.Now()
+	ta, run, a, all := readsOnM2(t)
 	run.wall[all[0].ID] = true // its first child's stage fails, as b2's did
 
 	pass := func(m *member.Member) {
@@ -191,4 +199,39 @@ func TestAMemberProcessKilledOrRestartedLeavesNoGhostRead(t *testing.T) {
 	}
 	require.ElementsMatch(t, []string{"s1-1.r1.m2.g1", "s1-2.r1.m2.g1"}, again, "each read dealt again at its next generation: the lost member's reader is not spent")
 	t.Logf("wall time %s", time.Since(wall).Round(time.Millisecond))
+}
+
+// A member process killed with no replacement (SIGKILL: its children die with it, its beats
+// stop): a silent member is no evidence for the reconcile (a partition may still run its
+// children), so its reads come back by the down path, once MissedBeatsDown beat windows have
+// passed with no beat, never at the 60-minute read deadline, spending no reader.
+func TestAMemberKilledSilentGivesItsReadsBackByTheDownPath(t *testing.T) {
+	t.Parallel()
+	wall := time.Now()
+	ta, _, a, _ := readsOnM2(t)
+	_, err := a.Tick(ta.a.now())
+	require.NoError(t, err)
+	require.NoError(t, a.Beat())
+	ta.ok("tick")
+	working, _ := readsOn(t, ta, "s1-1", "s1-2")
+	require.Len(t, working, 2, "the member took both reads")
+
+	killed := ta.a.now() // a is gone: no pass, no beat from here
+	for ta.a.now().Sub(killed) <= sprint.ReadCardDeadline {
+		ta.mu.Lock()
+		ta.now = ta.now.Add(sprint.BeatDeadline / 3)
+		ta.mu.Unlock()
+		ta.ok("tick")
+		if working, _ = readsOn(t, ta, "s1-1", "s1-2"); len(working) == 0 {
+			break
+		}
+	}
+	require.Empty(t, working, "a killed member's reads leave it")
+	bound := sprint.MissedBeatsDown*sprint.BeatDeadline + sprint.BeatDeadline
+	require.LessOrEqual(t, ta.a.now().Sub(killed), bound, "back by the down path within its bound, never at the read deadline")
+	_, all := readsOn(t, ta, "s1-1", "s1-2")
+	for _, rc := range all {
+		require.NotContains(t, []string{"read", sprint.RetiredByReturned, sprint.RetiredByLate}, rc.F("retired_by"), "%s: a down member's read spends no one", rc.ID)
+	}
+	t.Logf("back after %s on the sprint clock; wall time %s", ta.a.now().Sub(killed), time.Since(wall).Round(time.Millisecond))
 }

@@ -31,15 +31,15 @@
 \* MCReadCardsLive and its witnesses, bounded to one attempt at the cfg's need by LiveBound in
 \* MCReadCards.tla; with Live FALSE the live actions are off and the space is the deal's alone): a child its member lost (Lose: a
 \* restart, a crash, a stage failure, or a take recorded with no child started). The
-\* member beats (Beat): its live set names a card while a child runs it, and gone counts the
-\* beats since one last did, to Grace + 1. The tick runs between two beats (TickEvery <
-\* BeatEvery), and its reconcile takes a working card the beats have not named for Grace
-\* windows back to the read deal (LiveReturn: lost, spending no one), so NamedOrWithinGrace
-\* holds and no read is a ghost past the grace (NoGhostRead). Two reversed witnesses:
+\* member beats (Beat, unguarded): its live set names a card while a child runs it, and gone
+\* counts the beats since one last did, to Grace + 1. The reconcile takes a working card the
+\* beats have not named for Grace windows back to the read deal (LiveReturn: lost, spending
+\* no one). Under LiveSpec (the beats and the reconcile keep going) no read stays a ghost:
+\* NoGhostRead, a liveness property. Two reversed witnesses break it, each alone:
 \* BugNamesHeld, a member whose live set names a read it runs no child for (pkg/member's
 \* stage retry before v1.2.14: the launch kept its held result, waiting for a packet the
-\* queue never sends), breaks NoGhostRead; BugNoLiveReturn, a reconcile that leaves a read
-\* card working (a read returned only at ReadCardDeadline), breaks NamedOrWithinGrace.
+\* queue never sends), and BugNoLiveReturn, a reconcile that leaves an unnamed read card
+\* working (returned only at ReadCardDeadline); Beat is the same in both.
 
 EXTENDS Naturals, FiniteSets
 
@@ -115,11 +115,10 @@ Close == \E c \in At(attempt), v \in {"ok", "broken"} : c.st = "working" /\ c.ru
 \* whenever it is working (a held launch with no child)
 Named(c) == c.run \/ BugNamesHeld
 \* the member beats: a card its live set names was seen now, any other working card one
-\* beat longer unnamed. The tick runs between two beats, so a card unnamed for Grace beats
-\* has been returned before the next (unless BugNoLiveReturn)
+\* beat longer unnamed (to Grace + 1). Unguarded: beats keep coming whether or not the
+\* reconcile has run, so only LiveReturn takes a ghost out
 Beat ==
   /\ Live
-  /\ BugNoLiveReturn \/ \A c \in cards : (c.st = "working" /\ ~Named(c)) => c.gone < Grace
   /\ cards' = {IF c.st = "working"
                 THEN [c EXCEPT !.gone = IF c.run THEN 0 ELSE IF c.gone > Grace THEN Grace + 1 ELSE c.gone + 1]
                 ELSE c : c \in cards}
@@ -169,6 +168,9 @@ Next == Deal \/ Take \/ Lose \/ Close \/ Return \/ Late \/ TakeBack \/ Beat \/ L
 
 Spec == Init /\ [][Next]_vars
 
+\* the live reads' spec: the member keeps beating and the tick keeps reconciling
+LiveSpec == Spec /\ WF_vars(Beat) /\ WF_vars(LiveReturn)
+
 \* one open read card per (attempt, reader)
 OneOpenPerReader == \A a \in 1..MaxAttempt, r \in Readers : Cardinality({c \in Mine(a, r) : c.st \in Open}) <= 1
 
@@ -191,10 +193,18 @@ MergingOnlyOnOks == pstate = "merging" => Cardinality(OkReaders(attempt)) >= Nee
 \* the open cards of an attempt past are retired: no read of a reworked attempt stays open
 NoOpenReadOfAnOldAttempt == \A c \in cards : c.att < attempt => c.st \notin Open
 
-\* a read working on a member is named by its latest beat, or within the grace
-NamedOrWithinGrace == \A c \in cards : (c.st = "working" /\ ~Named(c)) => c.gone <= Grace
-
-\* no read stays working with no child past the grace: a ghost read is returned
-NoGhostRead == \A c \in cards : (c.st = "working" /\ ~c.run) => c.gone <= Grace
+\* a read working on a member with no child running it eventually leaves working: the
+\* member's beats stop naming it and, past the grace, the reconcile takes it back to the
+\* deal (or a verdict, a return, a take-back or a rework ends it first). The rule as the
+\* server states it, "a read working on a member is named by its latest beat, or within the
+\* grace", is this same property while the beat tells the truth (Named = run); it is one
+\* property, not two, and its two reversed witnesses are the two ways to break it: the
+\* member's word (BugNamesHeld: the beat names a read no child runs) and the server's rule
+\* (BugNoLiveReturn: the reconcile leaves an unnamed read working)
+Key(c) == <<c.att, c.rd, c.gen>>
+Keys == (1..MaxAttempt) \X Readers \X (0..MaxGen)
+Ghost(k) == \E c \in cards : Key(c) = k /\ c.st = "working" /\ ~c.run
+LeftWorking(k) == ~\E c \in cards : Key(c) = k /\ c.st = "working"
+NoGhostRead == \A k \in Keys : Ghost(k) ~> LeftWorking(k)
 
 =============================================================================
