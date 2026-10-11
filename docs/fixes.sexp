@@ -277,7 +277,26 @@
      kept out and named in the report: refmodel's Accept demands two readers where the code allows one for flash
      and lacks the read-broken guard (v1.2.13 cleanups), and docs/SPEC-SPRINT.md section 3 calls accept mechanical
      (the tick) where lifecycle.go:57 names it Coordinator, so the module models the code."
-    :origin "this card; v1.2.12 inventory item T4, the third of five cards")
+     :origin "this card; v1.2.12 inventory item T4, the third of five cards")
+   (fix "tla-sprint-tables-merge-and-return" :release "v1.2.12" :status "planned"
+    :title "tla/SprintTables.tla adds the merge side: Rank, Return, MergeGreen, MergeStop, MergeRefused, MergeRed, Resume"
+    :text "Models only, no product change. tla/SprintTables.tla gains the merge side of the work table from
+     internal/sprint/refmodel/actions.go: each primary belongs to a stream, a stream is waiting, merging, stopped
+     (with a cause) or landed, and a primary in merge sits in a merge cell none, queued, merged, stuck or returned.
+     Rework moves review to working or ready; Return moves merging to review and leaves the card returned; Redo moves
+     merging to working or ready (the redo move, both rows); MergeGreen lands the queued batch and moves merging to
+     landed; MergeStop stops a stream on a conflict (the card stuck); MergeRefused sends the card back to review or
+     ready; MergeRed stops the stream on a red branch; Resume clears the cause and requeues the stuck cards; Rank
+     marks a card ranked first and is refused for a landed primary; Drop clears the merge cell as the card leaves
+     the table. StreamAfter (G4, a stream's state follows its merge cells and cause) and RankRefusesLanded (G6, a
+     landed primary is never ranked) are stated; the instance is split into two cfgs, the fleet and reads side
+     (MCSprintTables.cfg, MergeSide = FALSE) and the merge side (MCSprintTablesMerge.cfg, MergeSide = TRUE). Two new
+     reversed witnesses: MCSprintTablesBrokenLandunmerged (Broken \"landunmerged\", a card lands from review, breaking
+     MovesOnlyByTable) and MCSprintTablesBrokenReturnlost (Broken \"returnlost\", a card returned from merging is
+     dropped, breaking NoCardLostOrTwice). G3 (ExhaustNote) and F3 (a stopped stream's judgment and a skipped repair)
+     are left with the crash-and-repair card, and F4 and D6 (a cross-stream merge need and a stop on it) stay outside
+     the module."
+    :origin "card tla-sprint-tables-merge-and-return.w7, 2026-10-11: v1.2.12 inventory item T4, the fourth of five cards; drift read at nova-sprint main 00c54ba2e")
    (fix "tla-noroom-admission-by-probe" :release "v1.2.12" :status "planned"
     :title "NoRoom models the probe gate and the read return's taker"
     :text "Models only, no product change. tla/NoRoom.tla gains the probe gate: a member is known (accepted into the fleet) only on a passed probe (Accept, the caller's own word, trusted as the code does), and both the deal (Dealable) and the reader's ask (Off) read it, so no deal goes to a member the sprint does not know (NeverDealtUnknown) and a reader whose machine is not a fleet member belongs to no machine and is asked like any reader (steps_work.go fleetStepPlan, drain.go ReaderOwner). ReadReturn is guarded on a taker: a read asked of a held or draining machine's reader is taken back only when another reader can take it (readers.go sweepReads), so it stays otherwise, and ReadsReturn is restated under that guard with NeverReturnedWithoutATaker (a read is never taken back while no other reader can take it). Two reversed witnesses: Broken = \"probeblind\" deals to an unknown member (NeverDealtUnknown) and Broken = \"notaker\" takes a read back with no other reader (NeverReturnedWithoutATaker); the eight existing witnesses keep their results, and the noroom TLC records are refreshed."
