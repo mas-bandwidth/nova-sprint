@@ -434,12 +434,10 @@ func dealRingMemberDownAndLevel(t *testing.T, h *harness) {
 	n = s.Fleet.Count("m8", sprint.Ready)
 	require.Equal(t, 2, n, "m8 ready count: %d, want 2", n)
 
-	// 5. m1 beats again and comes up. Levelling (T4 / R7) triggers because m7/m8
-	// have 2 cards and m1 has 0 (differ by 2 > 1).
-	// Mean is 9/8 = 1. Only m1 is below the mean (0 < 1).
-	// Starting round the fleet from deal_index (23, past m8), m1 is the next member
-	// below the mean. So m1 receives a card from the longest queue, and
-	// deal_index advances past m1 to 24!
+	// 5. m1 beats again and comes up. No member holds more cards than its width
+	// (64): a card moves only off a member over its width, and only onto a free
+	// lane, so the level moves nothing (round.levelTo, nextLane; tla/Level.tla,
+	// NeverOffAFreeLane). m1 stays empty and the index stays put.
 	h.setLive(ringMembers...)
 	h.tick(time.Second)
 	h.machine()
@@ -448,10 +446,10 @@ func dealRingMemberDownAndLevel(t *testing.T, h *harness) {
 	st = s.MemberCtl("m1").F("status")
 	require.Equal(t, string(sprint.Up), st, "m1 status: %q, want up", st)
 	n = s.Fleet.Count("m1", sprint.Ready)
-	require.Equal(t, 1, n, "m1 ready count after levelling: %d, want 1", n)
+	require.Equal(t, 0, n, "m1 ready count after m1 came up: %d, want 0 (nothing over its width)", n)
 	dealAt, _ = s.Fleet.Prop(sprint.PropDealIndex)
-	if dealAt != "25" {
-		require.Failf(t, "", "deal_index after levelling: %q, want 25 (past %s)", dealAt, indexPast(ringMembers, dealAt))
+	if dealAt != "24" {
+		require.Failf(t, "", "deal_index after m1 came up: %q, want 24 (unchanged)", dealAt)
 	}
 }
 
