@@ -89,6 +89,7 @@ func TestEveryCoordinatorVerbIsTheCoordinators(t *testing.T) {
 		"twin":              "twin s1-1",
 		"brief":             "brief s1-1 --brief b",
 		"move":              "move s1-2 --stream s2",
+		"tier":              "tier s1-1 --set heavy --reason r",
 		"resume":            "resume --stream s1",
 		"land":              "land --dry-run",
 		"fleet up":          "fleet up m3",
