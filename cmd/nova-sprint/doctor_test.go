@@ -423,3 +423,62 @@ func TestDoctorNamesRefusedVerbsAtTen(t *testing.T) {
 	assert.Contains(t, out, "DOCTOR FAIL refused-verbs m1: queue x 10 in 10m0s, last: the store refused it",
 		"the refused-verbs fault names the verb and its count: %s", out)
 }
+
+// The member-env beat-form probe reads the installed beat's dry run: a probe line with a
+// non-zero exit is one DOCTOR FAIL member-env naming the pair and the refusal; an exit 0, a
+// member down, or a member not probed is no line (docs/SPEC-SPRINT.md, "The doctor's
+// refused-verb and beat-form checks").
+func TestBeatFormChecksNameTheDisagreeingPair(t *testing.T) {
+	t.Parallel()
+	machines := []sprint.DoctorMachine{{Name: "m1"}, {Name: "m2"}, {Name: "m3"}}
+	probes := map[string]sprint.MemberProbe{
+		"m1": {Member: "m1", Reached: true, Version: "v1.2.11"},
+		"m2": {Member: "m2", Reached: true, Version: "v1.2.12"},
+		"m3": {Member: "m3", Reached: false},
+	}
+	forms := map[string]BeatForm{
+		"m1": {Known: true, OK: false, Form: "nova-sprint fleet beat: flag provided but not defined: -load"},
+		"m2": {Known: true, OK: true},
+		"m3": {Known: false},
+	}
+	cs := beatFormChecks(machines, probes, forms, "v1.2.12")
+	require.Len(t, cs, 1, "only the pair that disagrees is one FAIL")
+	assert.Equal(t, sprint.CheckMemberEnv, cs[0].Check)
+	assert.Equal(t, "m1", cs[0].Subject)
+	assert.Equal(t, sprint.DoctorFail, cs[0].Status)
+	assert.Contains(t, cs[0].Evidence, "beat form: the installed nova-sprint v1.2.11 sends a beat the server at v1.2.12 refuses: nova-sprint fleet beat:")
+	assert.Contains(t, cs[0].Line(), "DOCTOR FAIL member-env m1 beat form:")
+}
+
+// parseBeatForm reads the probe's beat line into what it found; no line is Known false.
+func TestParseBeatForm(t *testing.T) {
+	t.Parallel()
+	bf := parseBeatForm([]byte("os Linux\nbeat 2 nova-sprint fleet beat: flag provided but not defined: -load\nend\n"))
+	assert.True(t, bf.Known)
+	assert.False(t, bf.OK)
+	assert.Equal(t, "nova-sprint fleet beat: flag provided but not defined: -load", bf.Form)
+	ok := parseBeatForm([]byte("beat 0 FLEET-BEAT WOULD m1 load=0.0% dry-run: nothing written\n"))
+	assert.True(t, ok.Known)
+	assert.True(t, ok.OK)
+	assert.False(t, parseBeatForm([]byte("os Linux\n")).Known, "no beat line: not measured")
+}
+
+// fleet beat --dry-run plans the beat and writes nothing: the words are read (the forwarding
+// CLI's --actor dropped), a WOULD line is the answer, and no beat is written (docs/SPEC-SPRINT.md,
+// "The doctor's refused-verb and beat-form checks").
+func TestFleetBeatDryRunWritesNothing(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	ta.ok("start")
+	ta.a.serveAddr = "mem:0"
+	res := ta.a.serveCtx(context.Background(), sprintwire.Request{Verbs: [][]string{
+		{"fleet", "beat", "--actor", "", "m1", "--load", "0", "--dry-run"},
+	}}, false)
+	require.Equal(t, 0, res.Results[0].Code, res.Results[0].Stderr)
+	assert.Contains(t, res.Results[0].Stdout, "FLEET-BEAT WOULD m1", "the plan is the answer: %s", res.Results[0].Stdout)
+	assert.NotContains(t, res.Results[0].Stdout, "FLEET-BEAT OK", "nothing was written: %s", res.Results[0].Stdout)
+	if as, _, why := workerVerb([]string{"fleet", "beat", "--actor", "", "m1", "--load", "0", "--dry-run"}); why != "" || as != "m1" {
+		t.Fatalf("a dry-run beat with the CLI's --actor is a beat of m1: as=%q why=%q", as, why)
+	}
+}

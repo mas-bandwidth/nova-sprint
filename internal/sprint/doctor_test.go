@@ -227,23 +227,6 @@ func TestDoctorMemberEnvFailsAMissingToolAndNoPushCredential(t *testing.T) {
 	assert.Contains(t, out, "DOCTOR DRIFT member-env m1 installed=v1.2.5 declared=v1.2.6")
 }
 
-// 5. A member whose installed build's beat form the server would refuse is one member-env FAIL
-// naming both versions and the form's own words: the version pair whose beat forms disagree is
-// a FAIL at adopt time (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form checks").
-func TestDoctorMemberEnvFailsABeatFormThatDisagrees(t *testing.T) {
-	t.Parallel()
-	w := doctorWorld(t)
-	in := healthyInput(w)
-	p := fullProbe("m1")
-	p.BeatKnown, p.BeatOK, p.BeatForm = true, false, "a beat wants --load"
-	in.Probes = map[string]MemberProbe{"m1": p}
-	cs := DoctorMemberEnv(in)
-	fails := failsOn(cs, CheckMemberEnv)
-	require.Len(t, fails, 1, lines(cs))
-	assert.Contains(t, fails[0].Line(),
-		"beat form: the installed nova-sprint v1.2.6 sends a beat the server at v1.2.6 refuses: a beat wants --load")
-}
-
 // 6. A head the landing refused, accepted again at the same head (the loop of epoch 16): FAIL.
 func TestDoctorLanderLoopFailsARefusedHeadAcceptedAgain(t *testing.T) {
 	t.Parallel()

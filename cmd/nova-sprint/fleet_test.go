@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -9,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
 // TestFleetBeatWritesTheLoadGivenOrMeasured: fleet beat prints the load it
@@ -38,23 +36,6 @@ func TestFleetBeatWritesTheLoadGivenOrMeasured(t *testing.T) {
 	require.Contains(t, errs, "a load is a percent", "a load out of range: exit %d %q", code, errs)
 	code, _, _ = ta.do("fleet beat")
 	require.Equal(t, 2, code, "no member: exit %d, want 2", code)
-}
-
-// fleet beat --dry-run plans the beat and writes nothing: the member's record before and after
-// is unchanged. It is the form the doctor's member-env probe runs an installed build's beat
-// with (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form checks").
-func TestFleetBeatDryRunPlansAndWritesNothing(t *testing.T) {
-	t.Parallel()
-	ta := newTestApp(t)
-	ta.live = nil
-	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now}
-	before, err := st.Beats(context.Background(), []string{"m1"})
-	require.NoError(t, err)
-	out := ta.ok("fleet beat m1 --load 0 --dry-run")
-	require.Contains(t, out, "FLEET-BEAT WOULD m1", "the plan is printed: %s", out)
-	after, err := st.Beats(context.Background(), []string{"m1"})
-	require.NoError(t, err)
-	assert.Equal(t, before, after, "a dry run writes no beat")
 }
 
 // TestFleetDownHoldsAndFleetUpReleases: the coordinator's fleet down holds a

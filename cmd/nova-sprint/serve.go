@@ -69,6 +69,12 @@ import (
 // worker's machine. A word the list does not name is refused naming it; why is "" when
 // the words are a beat.
 func fleetBeatWords(rest []string) (as, load, stop, live, noRoom string, draining bool, why string) {
+	// the forwarding CLI puts its caller's `--actor <name>` before the member (forward.go,
+	// ask): the server's own actor is the member, so it is read and dropped here, never
+	// mistaken for the member.
+	if len(rest) >= 2 && rest[0] == "--actor" {
+		rest = rest[2:]
+	}
 	if len(rest) < 1 {
 		return "", "", "", "", "", false, "a beat names its member first"
 	}
@@ -76,8 +82,8 @@ func fleetBeatWords(rest []string) (as, load, stop, live, noRoom string, drainin
 	loadSet, stopSet := false, false
 	for i := 0; i < len(words); i++ {
 		w := words[i]
-		if w == "--draining" {
-			draining = true
+		if w == "--draining" || w == "--dry-run" {
+			draining = draining || w == "--draining"
 			continue
 		}
 		var value string
@@ -322,6 +328,13 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			a.logRefused(argv, refusedWorker("", argv), 2, out.Results[i].Stderr)
 			continue
 		}
+		if isFleetBeatDryRun(argv) {
+			// the doctor's member-env probe: the form is read and a beat of it is planned, and
+			// nothing is written, so an installed build whose form the server would refuse
+			// answers here (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form checks").
+			out.Results[i] = sprintwire.Result{Code: 0, Stdout: fmt.Sprintf("FLEET-BEAT WOULD %s dry-run: nothing written\n", as)}
+			continue
+		}
 		switch lane {
 		case "beat":
 			beats++
@@ -382,6 +395,16 @@ func refusedVerb(argv []string) string {
 		return ""
 	}
 	return argv[0]
+}
+
+// isFleetBeatDryRun says a verb is a fleet beat carrying --dry-run: the doctor's member-env
+// probe, planned and answered without a write (docs/SPEC-SPRINT.md, "The doctor's
+// refused-verb and beat-form checks").
+func isFleetBeatDryRun(argv []string) bool {
+	if len(argv) < 2 || argv[0] != "fleet" || argv[1] != "beat" {
+		return false
+	}
+	return slices.Contains(argv[2:], "--dry-run")
 }
 
 // refusedVerbName is the verb word a refused verb is recorded by: a beat is its two words

@@ -307,6 +307,13 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 		in.Probes = o.probeMembers(ctx, members, tools, self)
 	}
 	checks := sprint.Doctor(in)
+	// The beat-form probe runs only where the doctor's own reaches do: a test gives its own
+	// outside, and only the real one reaches a member's host (docs/SPEC-SPRINT.md, "The
+	// doctor's refused-verb and beat-form checks").
+	if a.outside.serverAddr == nil && probe && in.Probes != nil {
+		forms := a.probeBeatForms(ctx, in.Machines, self)
+		checks = append(checks, beatFormChecks(in.Machines, in.Probes, forms, in.Declared)...)
+	}
 	if area == "" {
 		return checks, read.Refused, nil
 	}
