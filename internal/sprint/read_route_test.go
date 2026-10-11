@@ -151,3 +151,27 @@ func TestAReaderRefusedForNoRouteIsNotSweptAway(t *testing.T) {
 	assert.Equal(t, map[string]string{"reader-m1": ReaderUp, "reader-m2": ReaderUp}, w.s.ReaderStates, "the readers stay up")
 	assert.ElementsMatch(t, []string{"reader-m1", "reader-m2"}, w.s.UpReaders())
 }
+
+// A held friend's reader serves nothing: a friend and her reader row are one member to
+// the server, so a held friend's reader brings no model and serves no tier, whatever
+// its tiers cell names (docs/SPEC-SPRINT.md section 11, hold). Her reads are dealt no
+// new card, and the tier's route judgment no longer counts her.
+func TestAHeldFriendReaderDoesNotServe(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-m1", "reader-amy")
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+	// amy is a friend: the tick hands the snapshot her seat, held
+	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Held}}
+	w.s.ReaderStates = map[string]string{"reader-m1": ReaderUp, "reader-amy": ReaderUp}
+
+	assert.False(t, w.s.ownModelReader("reader-amy"), "a held friend's reader brings no model")
+	assert.False(t, w.s.readerServesTier("reader-amy", cardhdr.RouteFlash), "a held friend's reader serves no flash")
+	assert.False(t, w.s.readerServesTier("reader-amy", cardhdr.RoutePro), "a held friend's reader serves no pro")
+	assert.False(t, w.s.ownModelReaderUp(cardhdr.RoutePro), "a held friend's reader up counts for no tier's route judgment")
+
+	// unheld, the same reader brings her model and serves her tiers: the rule is the
+	// hold's, not her name's
+	w.s.Friends = []FriendSeat{{Name: "amy", Width: 1, Status: Up}}
+	assert.True(t, w.s.ownModelReader("reader-amy"), "a friend up's reader brings her own model")
+	assert.True(t, w.s.readerServesTier("reader-amy", cardhdr.RoutePro), "and serves her tier")
+}

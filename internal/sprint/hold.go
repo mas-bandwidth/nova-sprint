@@ -196,6 +196,13 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 			var fp Plan
 			fp, line = holdFriendCards(s, t.Name, r)
 			add(fp)
+			if r.Return {
+				rp, rline := takeBackFriendReaderReads(s, t.Name, r.Who)
+				add(rp)
+				if rline != "" {
+					line = joinSaid(line, rline)
+				}
+			}
 		}
 		p.Notes = append(p.Notes, holdNote(s, t, r, line))
 	}
@@ -384,4 +391,27 @@ func holdFriendCards(s *Snapshot, friend string, r HoldReq) (Plan, string) {
 		line += fmt.Sprintf("; carried the pushed head of %d: %s", len(carried), Preview(carried, ","))
 	}
 	return p, line
+}
+
+// takeBackFriendReaderReads returns a held friend's reader-row reads: reader-<friend>
+// (pkg/friend ReaderOf) is her reader row, and a friend and her reader row are one
+// member to the server, so a hold with --return takes back the reads asked of it too
+// (returnReads), where a reader up is free to read them (docs/SPEC-SPRINT.md section
+// 11, hold).
+func takeBackFriendReaderReads(s *Snapshot, friend, who string) (Plan, string) {
+	if s.Readers == nil {
+		return Plan{}, ""
+	}
+	return returnReads(s, ReaderPrefix+friend, who)
+}
+
+// joinSaid joins two lines one note says, either empty left out.
+func joinSaid(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	}
+	return a + "; " + b
 }
