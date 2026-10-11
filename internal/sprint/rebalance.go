@@ -123,7 +123,7 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 			prims = append(prims, pr)
 		}
 	}
-	ri := routeIndexesOf(s)
+	ri := routeIndexesOf(s) // tla/RouteIndex.tla Deal (the rebalance's routeOf draw)
 	declared := map[string]bool{}
 	for _, pr := range ladderOrder(dealOrder(s, prims)) {
 		g, wc := from[pr.ID], work[pr.ID]

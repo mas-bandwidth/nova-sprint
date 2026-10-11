@@ -776,6 +776,12 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		if StreamHeld(s, c.Row) || IsSentinel(c) {
 			continue
 		}
+		// a primary whose named needs have not landed is offered to no friend
+		// (docs/SPEC-SPRINT.md, needs and the deal; WaitsFor): the friends' deal hands
+		// it to no friend until its needs land, as the machines' deal does not
+		if len(WaitsFor(s, c, nil)) > 0 {
+			continue
+		}
 		if b := Bench(c); len(b) > 0 {
 			continue
 		}
@@ -791,6 +797,12 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	for _, c := range s.Work.Column(Ready) {
 		if StreamHeld(s, c.Row) {
 			continue // its stream is held (hold.go): dealt to no machine and no friend until unhold
+		}
+		// a primary whose named needs have not landed is dealt to no machine either
+		// (docs/SPEC-SPRINT.md, needs and the deal; WaitsFor): the dealt card, if any,
+		// is withdrawn in this tick (needsWithdrawals)
+		if len(WaitsFor(s, c, nil)) > 0 {
+			continue
 		}
 		if friendPlaced[c.ID] || OnlyFriend(c) && !PinReleased(s, c, r.Friends) {
 			continue
@@ -1018,6 +1030,11 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	}
 	// a ready card dealt on a route that rests now is withdrawn, never taken there
 	p.Units = append(p.Units, restWithdrawals(s, r.who())...)
+	// a ready work card on any row whose primary's named needs have not landed goes back
+	// to the pool at once (docs/SPEC-SPRINT.md, needs and the deal): withdrawn at a new
+	// generation, its attempt unchanged and no redeal spent, so no friend unheld with it
+	// takes it, and the note names the needs
+	p.Units = append(p.Units, needsWithdrawals(s, r.who())...)
 	restWrites(&p, s, rests, r.who())
 	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing}, r)
 	// a fault hold the machine placed clears itself here, beside the deal that
@@ -1030,6 +1047,49 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	// tla/DirtyTick.tla Stop
 	p.Stop = stop
 	return p, due
+}
+
+// needsWithdrawals is the tick's units that withdraw each ready work card on any row whose
+// primary's named needs have not landed (docs/SPEC-SPRINT.md, needs and the deal; WaitsFor,
+// steps_work.go): the work card goes back to the pool at once, at a new generation, its
+// attempt unchanged and no redeal spent, and the primary goes back to waiting for its needs,
+// so a friend unheld with such a card in her set never takes it. The note names the needs.
+func needsWithdrawals(s *Snapshot, who string) []Unit {
+	var out []Unit
+	for _, c := range s.Fleet.Column(Ready) {
+		if isRead(c) || c.F("kind") != "work" {
+			continue
+		}
+		pr := s.Work.Placed(c.F("primary"))
+		if pr == nil || (pr.Col != Ready && pr.Col != Working) {
+			continue
+		}
+		waits := NamedWaits(s, pr, nil)
+		if len(waits) == 0 {
+			continue
+		}
+		set := nextGen(c, "", s.Now)
+		set["withdrawn"] = stamp(s.Now)
+		set["untaken_since"] = stamp(s.Now)
+		set[FieldTakenBack] = "its needs " + strings.Join(waits, ",") + " have not landed"
+		// back to the pool: the dealt card leaves the fleet table at a new generation, its
+		// attempt unchanged and no redeal spent, and the primary waits for its needs again
+		// (a withdrawn card's primary would have to be ready, which rule 11 forbids while
+		// its needs are unlanded: check.go rule 2 and rule 11)
+		needs := pr.F("needs")
+		if needs == "" {
+			needs = strings.Join(waits, ",")
+		}
+		wset := map[string]string{"needs": needs}
+		u := Unit{Key: c.ID, Stream: c.F("stream"),
+			Changes: []Change{change(Fleet, removeEntry(c, set)), change(Work, moveEntry(pr, pr.Row, Waiting, wset))},
+			Moved:   fmt.Sprintf("%s %s:ready -> pool, %s:%s -> waiting (its needs %s have not landed)", c.ID, c.Row, pr.ID, pr.Col, strings.Join(waits, ","))}
+		n := happened(NTakenBack, pr.Row, s.Now, pr.ID)
+		n.Who, n.What = who, pr.ID+" needs "+strings.Join(waits, ",")+", not landed: not taken"
+		u.Notes = append(u.Notes, n)
+		out = append(out, u)
+	}
+	return out
 }
 
 // dealOrder is the one order the tick's deal offers ready cards in, to the friends

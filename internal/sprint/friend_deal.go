@@ -366,6 +366,7 @@ func withdrawnFrom(wc *Card) []string {
 // friendStarted says the friend has started the work card, by the store's own data: her
 // beat names it running (the card, its job or its primary), or it carries a progress stamp
 // (FieldProgress). The tick's level never moves a started card.
+// tla/FriendDealtReturn.tla Progress and Run (the model's take paths: Taken).
 func friendStarted(s *Snapshot, f FriendSeat, c *Card) bool {
 	if c.F(FieldProgress) != "" {
 		return true
@@ -623,6 +624,11 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 	declared := map[string]bool{}
 	for _, c := range cards {
 		if c.Col != Ready || IsSentinel(c) {
+			continue
+		}
+		// a primary whose named needs have not landed is dealt to no friend
+		// (docs/SPEC-SPRINT.md, needs and the deal; WaitsFor)
+		if len(WaitsFor(s, c, nil)) > 0 {
 			continue
 		}
 		// a card taken back from a friend (friend take) is placed again, never on her (FriendTake)

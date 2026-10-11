@@ -296,6 +296,7 @@ type ReleaseReq struct {
 // step. A sentinel with nothing before it (HasBefore), or whose waits are each
 // under way (notUnderWay), is released past them, waived on it
 // (nova-tools#5096 item c13).
+// tla/Holds.tla Release
 func Release(s *Snapshot, r ReleaseReq) Plan {
 	var p Plan
 	p.on(s)
@@ -472,6 +473,7 @@ type SentinelSetReq struct {
 // emptied), an id that is no sentinel waiting on the table, a need named twice, the
 // sentinel itself, needs that are no card on the table (every one named at once), the
 // needs it has already, and a cycle the new needs would close.
+// tla/Holds.tla SentinelSet
 func SentinelSet(s *Snapshot, r SentinelSetReq) Plan {
 	var p Plan
 	p.on(s)
