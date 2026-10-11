@@ -42,3 +42,51 @@ func TestReaderSetPrintsTiersAndRefusesABadTier(t *testing.T) {
 	assert.NotEqual(t, 0, code, errs)
 	assert.Contains(t, errs, "nothing was changed")
 }
+
+// TestReaderAddInheritsCommonFleetTier checks that a fleet reader added without --tiers
+// inherits the common fleet tier when all other fleet readers agree on it.
+func TestReaderAddInheritsCommonFleetTier(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-m1,reader-m2 --members m1")
+	ta.ok("reader set reader-m1 --tiers flash,pro,heavy")
+	ta.ok("reader set reader-m2 --tiers flash,pro,heavy")
+	ta.ok("reader add reader-m3")
+	var v struct {
+		Tables map[string]map[string]map[string]string
+	}
+	ta.json("where", &v)
+	assert.Equal(t, "flash,pro,heavy", v.Tables[sprint.Readers]["reader-m3"][sprint.ReaderTiers])
+}
+
+// TestReaderAddWhenFleetReadersDiffer stores empty cell with from=default message.
+func TestReaderAddWhenFleetReadersDiffer(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-m1,reader-m2 --members m1")
+	ta.ok("reader set reader-m1 --tiers flash,pro,heavy")
+	ta.ok("reader set reader-m2 --tiers flash,pro")
+	code, out, _ := ta.do("reader add reader-m3")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "from=default")
+	var v struct {
+		Tables map[string]map[string]map[string]string
+	}
+	ta.json("where", &v)
+	assert.Equal(t, "default", v.Tables[sprint.Readers]["reader-m3"][sprint.ReaderTiers])
+}
+
+// TestReaderAddWithExplicitTiers stores the explicit tier regardless of fleet state.
+func TestReaderAddWithExplicitTiers(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-m1,reader-m2 --members m1")
+	ta.ok("reader set reader-m1 --tiers flash,pro,heavy")
+	ta.ok("reader set reader-m2 --tiers flash,pro,heavy")
+	ta.ok("reader add reader-m3 --tiers flash")
+	var v struct {
+		Tables map[string]map[string]map[string]string
+	}
+	ta.json("where", &v)
+	assert.Equal(t, "flash", v.Tables[sprint.Readers]["reader-m3"][sprint.ReaderTiers])
+}

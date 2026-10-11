@@ -611,6 +611,34 @@ func DoctorReaders(in DoctorInput) (out []DoctorCheck) {
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: r, Status: DoctorDrift,
 				Evidence: fmt.Sprintf("state=%s: the reader row names %s, which is no machine of nova-config and no friend", cmp.Or(s.ReaderStates[r], ReaderDown), host), Remedy: "nova-sprint reader retire " + r})
 		}
+		// Warn fleet readers whose tiers differ from the fleet's common tiers.
+		if in.Snap.Readers != nil && in.Snap.Readers.Texts != nil {
+			// Collect tiers of all fleet readers.
+			fleetTiers := map[string]string{}
+			for _, r := range s.Readers.Rows() {
+				if _, ok := ReaderMachine(r); ok {
+					if t := s.Readers.Texts[r]; t != nil {
+						fleetTiers[r] = t[ReaderTiers]
+					}
+				}
+			}
+			// Compute common fleet tier.
+			tierList := []string{}
+			for _, t := range fleetTiers {
+				tierList = append(tierList, t)
+			}
+			commonTier := CommonFleetTier(tierList)
+			if commonTier != "" {
+				for r, t := range fleetTiers {
+					if t != commonTier {
+						word := ReaderTiersShown(t)
+						out = append(out, DoctorCheck{Area: area, Check: check, Subject: r, Status: DoctorWarn,
+							Evidence: fmt.Sprintf("tiers=%s: fleet reader at %s while fleet's tiers are %s", word, r, commonTier),
+							Remedy:   fmt.Sprintf("nova-sprint reader set %s --tiers %s", r, commonTier)})
+					}
+				}
+			}
+		}
 	}
 	ev := fmt.Sprintf("up=%d idle=%d stale=%d reads-waiting=%d (asked=%d marked=%d) judgments=%d", len(up), len(idleUp), len(staleUp), waiting, asked, marked, judged)
 	switch {
