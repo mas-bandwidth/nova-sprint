@@ -49,9 +49,15 @@ func TestTheMemberBeatPassesTheServer(t *testing.T) {
 		{"fleet", "beat", "m", "--stop-returns", "-1", "--load", "1"},
 		{"fleet", "beat", "m", "--stop-returns", "x", "--load", "1"},
 		{"fleet", "beat", "m", "--stop-returns", "1", "--load", "1", "--cores", "4"},
-		{"fleet", "beat", "m", "--load", "1", "--stop-returns", "1"},
 	} {
 		_, _, why = workerVerb(argv)
 		assert.NotEmpty(t, why, "refused: %v", argv)
 	}
+
+	// --load anywhere is a beat the server runs (serve_beat_test.go): the words
+	// stand in any order, and --load need not be last.
+	if as, _, why = workerVerb([]string{"fleet", "beat", "m", "--load", "1", "--stop-returns", "1"}); why != "" {
+		t.Fatalf("a beat's --load may stand anywhere: %s", why)
+	}
+	assert.Equal(t, "m", as)
 }

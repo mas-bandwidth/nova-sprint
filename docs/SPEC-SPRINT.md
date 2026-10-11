@@ -3010,6 +3010,18 @@ order the cards were dealt in, so a card brought to the front of its stream by
   CPU busy percent of all its cores, measured between beats; where that cannot
   be measured, the one-minute load average over the logical cores, capped at
   1000%. `--load <percent>` gives it instead.
+ - The beat's words are the member's, written once: `fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] --load <percent>`. The optional words may stand in any order and `--load` anywhere
+   among them; `--load` is required, because the server cannot measure another
+   machine. nova-tools pkg/member sends exactly this list (`Beat`, `drainArgs`,
+   `noRoomArgs`), and both repositories' tests pin it: nova-sprint's
+   `cmd/nova-sprint/serve_beat_test.go` and `internal/sprint/fleet_beat_test.go`,
+   nova-tools' `pkg/member/stop_test.go`. `--no-room <why>` is the member's word
+   that it starts no card and why (its free disk under its floor): while its beat
+   is fresh the deal gives it none (`NotQuiet`). `--draining` is its word that
+   the binary it runs was replaced under it: it takes no new card and stops when
+   its running cards end, which can be hours. Neither word takes the member down;
+   a server that refused them on the wire read a draining member down for the
+   length of its drain (the-server-beat-accepts-draining-and-no-room).
 - Every beat, the load given or measured, also reads the machine's open file
   descriptors (internal/hostload, files.go): the count and the system's limit
   (darwin: the sysctl `kern.num_files` and `kern.maxfiles`; Linux:
@@ -7340,7 +7352,9 @@ it`. `TestATickPastItsDeadlineIsAbandonedNotTheProcess`, `TestThreeWedgedTicksIn
 `TestTheTickDeadlineStretchesWithTheMedianWall`, `TestAFenceBusyTickRetriesBeforeFailing`.
 
 The server runs the workers' verbs only: `take`, `finish`, `progress`, `read` and `queue`, each beginning
-`<verb> --as <worker>` with one worker's name, `fleet beat <member> --load <percent>` and
+`<verb> --as <worker>` with one worker's name, `fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] --load <percent>`
+with the optional words in any order and `--load` anywhere among them (the words pkg/member
+sends; both repositories' tests pin them) and
 nothing more, `friend beat <friend>` with its report's flags (`--running`, `--working`, `--queue`, `--width`, `--load`), each once with its value, and nothing more, `friend cards <friend>` with `--json` at most and nothing more (a friend's daemon reading the cards held on her row, each with its brief), and `lane take` or `lane give` `<kind>
 --machine <m> --as <worker>` and nothing more (a take's `--wait` asks again from the worker's side). No later word of a verb, wherever it stands, is a flag named `as`, `redis` or
 `actor`: the server gives the store and the actor, and puts them before the worker's words. A
