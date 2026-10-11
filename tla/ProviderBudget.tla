@@ -17,8 +17,9 @@
 \* (none, or a cause); held[m], the member is held by it and is dealt nothing;
 \* judged[m], the environment judgment is open on the member; jcause[m], the
 \* cause the open judgment names; known[m], the member has been accepted into the
-\* fleet; probe[m], the member's own environment probe's last result (its
-\* push-credential probe and its harness check); card[m], where the member's card
+\* fleet; probe[m], the caller's own word for the member's environment probe (the
+\* --probe fleet up is given), which the model trusts as the code does; card[m],
+\* where the member's card
 \* is (ready: dealt and untaken, working: taken, pushed: its next card pushed,
 \* failed: a model or card failure); event, what the last step was.
 \*
@@ -32,14 +33,14 @@
 \*   Deal(m)         the deal gives m a card only while it is known and not held.
 \*   Push(m)         m's next card pushes: env[m] clears, held[m] FALSE, judged[m]
 \*                   FALSE, jcause[m] none. The fault clears itself.
-\*   ProbePass(m)    fleet up runs m's own probe and it passes: env[m] clears,
+\*   ProbePass(m)    fleet up is given the caller's word "passed": env[m] clears,
 \*                   held[m] FALSE, judged[m] FALSE. The remedy worked.
-\*   ProbeFail(m)    the probe fails: the fault stands and fleet up refuses.
-\*   ProbeNew(m,p)   a new member runs its own probe, p none (not run) or fail.
-\*   Boot(m)         init sets a member up: its probe passed by the machine's own
-\*                   setup (EnvProbePassed), so it is accepted.
-\*   Accept(m)       fleet up accepts a new member only when its own probe passed.
-\*   Refuse(m)       fleet up refuses a new member whose probe did not pass.
+\*   ProbeFail(m)    the word is not "passed": the fault stands, fleet up refuses.
+\*   ProbeNew(m,p)   a new member's probe is the caller's own word: TLC chooses p,
+\*                   none, pass or fail, and the model trusts it as the code does.
+\*   Boot(m)         init sets a member up: it passes --probe passed, so accepted.
+\*   Accept(m)       fleet up accepts a new member when the caller's word is pass.
+\*   Refuse(m)       fleet up refuses a new member whose word is not pass.
 \* Reversed witnesses:
 \*   "noenv"    a model failure holds the member: EnvOnlyByEnvironmentFinish
 \*   "nodeal"   the deal gives a held member a card: HeldDealtNothing
@@ -131,7 +132,7 @@ Push(m) ==
     /\ event' = "pushed"
     /\ UNCHANGED <<known, probe>>
 
-\* fleet up runs the member's own probe: a pass clears the fault, a failure
+\* fleet up is given the caller's word: a pass clears the fault, a failure
 \* leaves it and fleet up refuses
 ProbePass(m) ==
     /\ held[m]
@@ -142,7 +143,7 @@ ProbePass(m) ==
     /\ event' = "probe-pass"
     /\ UNCHANGED <<known, probe, card>>
 
-\* "clear": the broken rule lets a failed probe clear the fault
+\* "clear": the broken rule lets a failed word clear the fault
 ProbeFail(m) ==
     /\ held[m]
     /\ \/ "clear" \in Broken
@@ -155,11 +156,11 @@ ProbeFail(m) ==
     /\ event' = "probe-fail"
     /\ UNCHANGED <<known, probe, card>>
 
-\* a new member runs its own environment probe (the push-credential probe, the
-\* harness check): p none or fail, since a pass is Boot or Accept
+\* a new member's probe is the caller's own word: fleet up is given --probe and
+\* TLC chooses the word, none, pass or fail; the model trusts it as the code does
 ProbeNew(m, p) ==
     /\ ~known[m]
-    /\ p \in {"none", "fail"}
+    /\ p \in {"none", "pass", "fail"}
     /\ probe' = [probe EXCEPT ![m] = p]
     /\ event' = "probe-new"
     /\ UNCHANGED <<env, held, judged, jcause, known, card>>
@@ -172,7 +173,7 @@ Boot(m) ==
     /\ event' = "boot"
     /\ UNCHANGED <<env, held, judged, jcause, card>>
 
-\* fleet up accepts a new member only when its own probe passed; the "newup"
+\* fleet up accepts a new member only when the caller's word is pass; the "newup"
 \* witness accepts it with no probe or a failed one
 Accept(m) ==
     /\ ~known[m]
@@ -181,7 +182,7 @@ Accept(m) ==
     /\ event' = "accept"
     /\ UNCHANGED <<env, held, judged, jcause, probe, card>>
 
-\* fleet up refuses a new member whose own probe did not pass; nothing changes
+\* fleet up refuses a new member whose caller's word is not pass; nothing changes
 Refuse(m) ==
     /\ ~known[m]
     /\ probe[m] # "pass"
@@ -195,7 +196,7 @@ Next ==
     \/ \E m \in Members : Push(m)
     \/ \E m \in Members : ProbePass(m)
     \/ \E m \in Members : ProbeFail(m)
-    \/ \E m \in Members, p \in {"none", "fail"} : ProbeNew(m, p)
+    \/ \E m \in Members, p \in {"none", "pass", "fail"} : ProbeNew(m, p)
     \/ \E m \in Members : Boot(m)
     \/ \E m \in Members : Accept(m)
     \/ \E m \in Members : Refuse(m)
