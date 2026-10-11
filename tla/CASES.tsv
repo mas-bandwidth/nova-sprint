@@ -418,6 +418,7 @@ MCReadCards.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
 MCReadCardsBrokenIgnoreSpent.cfg	MCReadCards.tla	invariant	NeverTwiceAfterSpent	ignore-terminal	readcards	required	-
 MCReaderTiers.cfg	MCReaderTiers.tla	pass	-	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenHeld.cfg	MCReaderTiers.tla	invariant	NoReadToAHeldReader	ignore-terminal	readertiers	required	-
+MCReaderTiersBrokenEmptyReadsAll.cfg	MCReaderTiers.tla	invariant	NoReadOutsideTier	ignore-terminal	readertiers	required	-
 MCRateBudget.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
 MCRateBudgetLive.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
 MCRateBudgetProgress.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
