@@ -80,6 +80,19 @@ func (s *Snapshot) readerTiersStored(reader string) string {
 	return row[ReaderTiers]
 }
 
+// ReaderTiersStored is the reader's tiers cell, "" when the row names none
+// (every tier) or the table carries no texts.
+func ReaderTiersStored(t *Table, reader string) string {
+	if t == nil || t.Texts == nil {
+		return ""
+	}
+	row := t.Texts[reader]
+	if row == nil {
+		return ""
+	}
+	return row[ReaderTiers]
+}
+
 // readerReadsTier says the reader reads tier. An empty cell reads every tier.
 func (s *Snapshot) readerReadsTier(reader, tier string) bool {
 	stored := strings.TrimSpace(s.readerTiersStored(reader))
@@ -115,4 +128,27 @@ func returnedInTier(s *Snapshot, pr *Card, attempt int) []*Card {
 		}
 	}
 	return out
+}
+
+// CommonFleetTier returns the tiers that other fleet readers hold if they all
+// share the same non-empty tiers. It returns "" if no other fleet readers exist
+// or if their tiers differ. The caller should pass all fleet reader tiers (the
+// tiers cell for each reader whose name is reader-<machine> for some machine).
+func CommonFleetTier(otherTiers []string) string {
+	nonEmpty := []string{}
+	for _, t := range otherTiers {
+		if strings.TrimSpace(t) != "" {
+			nonEmpty = append(nonEmpty, t)
+		}
+	}
+	if len(nonEmpty) == 0 {
+		return ""
+	}
+	first := nonEmpty[0]
+	for _, t := range nonEmpty[1:] {
+		if t != first {
+			return ""
+		}
+	}
+	return first
 }
