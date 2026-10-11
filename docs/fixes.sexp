@@ -182,6 +182,10 @@
     :title "SprintRules Part judgments models the three judgment rules, with one reversed witness"
     :text "Models only, no product change. tla/SprintRules.tla gains Part \"judgments\" (internal/sprint judgment_rules.go ruleFriendTake, ruleReadLate, ruleHoldNeed): friend-take takes back a friend's card she has not started and the deal places it again never on her; read-late asks another reader once an attempt, the second late read of the attempt a mind's; hold-need waits for its HOLD's card and reworks the primary once it lands, a dropped card a mind's. Each rule's guard and answer is one action; a judgment is answered at most once and an answered judgment is never reopened by the same rule, stated as FriendKeepsStarted, AskedOnceAnAttempt and HoldNeedReworksOnlyLanded. One reversed witness, Broken = \"takestarted\" (MCSprintRulesJudgmentsBrokenTakeStarted), drops the friendStarted guard and takes back a card the friend started, breaking FriendKeepsStarted. judgment_rules.go cites the module in a comment line only; no other Go change."
     :origin "this card; v1.2.12 inventory item T36 (SprintRules last of four, the judgments the tick raises and the answers to them), drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+   (fix "tla-sprintrules-reads-and-answers-agree" :release "v1.2.12" :status "planned"
+    :title "SprintRules Part answers reworks a read-broken finding at the bound, and MaxWidens is the code's 3"
+    :text "Models only, no product change. tla/SprintRules.tla fixes three drifts against the code: MaxWidens is 3 (rules_read.go), RdFiles gains f4 so a fourth file outside PATHS reaches the cap; Part answers' AnReadBroken reworks a non-empty finding inside PATHS at the brief's bound (AnMindRework reworks and marks the finding fixed so it is not read again, as Part reads' RdMind does) instead of leaving it to a mind; and a late HOLD finishes an attempt the deadline failed, as a late LAND does (AnDeadlineHold, AnLateHold), a rework refusing a late report for the attempt it ended (AnRework clears anland and anhold). The new PartsAgree (the answers Part's verdict on a read-broken finding equals the reads Part's) is checked by the answers control and broken by the reversed witness Broken = \"answersmind\", which restores the old mind's answer. Two comments name the invariant RuleAttemptsBounded (RuleAnswersBounded does not exist): rules.go:25 and store/rule_answers_test.go:22; docs/SPEC-SPRINT.md:5815 still cites RuleAnswersBounded and is left, not in this card's PATHS. Left for v1.2.14: the code reworks the same finding inside PATHS on every attempt with no attempt bound (rules_read.go:99-113), which the model bounds only by never re-reading a fixed finding; Broken \"refind\" would break ReadAnswersBounded."
+    :origin "this card, tla-sprintrules-reads-and-answers-agree.w7, 2026-10-12: v1.2.12 inventory item T36 (SprintRules, COVERAGE: judgments is partial); drift read at nova-sprint main 00c54ba2e")
    (fix "tla-readertiers-empty-cell-reads-flash-only" :release "v1.2.12" :status "planned"
     :title "ReaderTiers reads an empty cell as flash only while routes exist, on four tiers, reads asked together"
     :text "Models only, no product change. tla/ReaderTiers.tla now reads an empty tiers cell as the code does (read_route.go readerServesTier): a fleet reader whose cell is empty reads flash alone while the store holds routes (a RoutesExist constant), every tier with none; a friend's reader (ownModelReader) reads its own model's tiers, an empty cell every tier, route or none; and a held friend's reader reads none. The tier set is four (flash, pro, heavy, frontier); Need is the value ReadsNeededIn returns (one for a flash card, two for a stronger tier, set by the instance); and Ask places a card's reads together, Need[c] of them, one each on a different free reader. Eligible no longer filters on the tier, so NoReadOutsideTier is a real check: the reversed witness MCReaderTiersBrokenEmptyReadsAll.cfg (BugEmptyReadsAll) has a fleet empty cell read every tier while routes exist and fails NoReadOutsideTier, and MCReaderTiersBrokenHeld.cfg (BugIgnoreHeld) has the held friend's reader read every tier unheld and fails NoReadToAHeldReader. readers.go freeReaders' doc comment now says an empty cell reads flash only while routes exist; readerServesTier, freeReaders, ReadsWanted and enoughReadersUp cite the module."
@@ -1412,6 +1416,11 @@
    :text "Models only, no product change. tla/StopReturn.tla pins a STOP lease by <<card, generation>> as the code does (stopOwned reads the return receipt, sfg = d.gen and gen > d.gen), so a returned card moves freely and a hold redeals it at gen+1; a return steps the generation and leaves the receipt, which survives a later move. START's guard is the code's (unsettledStopDebt): a receipt, or a held report named by the row's fresh live set, or a pre-upgrade record's live leases -- Broken \"preupgrade\" writes no stop-issued flag and no debt list at STOP, so START refuses while any live lease remains (MCStopReturnPreUpgrade). Readers-table leases are modelled: STOP captures the readers' reading column as it captures the fleet's working column (activeStopLeases), and a read returns reading -> asked at the next generation with its receipt (stopDebtReturned); a reader's own still-open read counts in the stop-returns count (the owner's lanes still owed), so a live reader lease is never settled by the beat -- it is returned by the owner's own stop-return (MCStopReturnReaders checks the reader model and its invariants, not the beat settle). The invariant NoStaleGenOwned says a lease never owns a card at a generation other than its current one, and the reversed witness MCStopReturnBrokenById (Broken = \"byid\") pins by id again so a card returned at gen+1 is still owned by the lease captured at gen and NoStaleGenOwned fails."
    :origin "this card; v1.2.12 inventory item T13, second of three")
 
+  (fix "tla-stopreturn-clear-cases" :release "v1.2.12" :status "planned"
+   :title "StopReturn clear stops first and refuses an advance over a live lease"
+   :text "Models only, no product change. Clear now takes STOP as its first step from RUNNING, then checks the current work/read leases before advancing, also on a retry while STOPPED. The split preserves a return receipt between STOP and the lease read. ClearEnabled checks reachability from RUNNING and STOPPED with no live lease; ClearNeverWithALiveLease records whether an advance crossed a live lease. MCStopReturnClear passes both; BrokenClearBlocked drops only the live-lease guard and fails ClearNeverWithALiveLease. All stopreturn cases pass inside 110 seconds, preserving the existing safety and liveness assertions. Readers-table leases, generation pinning and settle-by-beat are the pins/readers and settle-by-beat cards, already landed; a beat gone stale between the read and START remains a v1.2.14 candidate, not modelled."
+   :origin "this card, tla-stopreturn-clear-cases.w8, 2026-10-11: v1.2.12 inventory item T13, third of three; drift read at nova-sprint main 00c54ba2e")
+
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
@@ -1478,6 +1487,22 @@
     reversed witness, so none is added. tla/COVERAGE.tsv notes say the same, and the four groups
     (dealfill, level, retire-absent, timer) were rerun with TLC and merged into tla/RUNS.tsv."
    :origin "this card; v1.2.12 inventory item T36 (the deal/route/rules group), drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+  (fix "tla-ratebudget-renewal-is-best-effort" :release "v1.2.12" :status "planned"
+   :title "RateBudget's renewal is a best-effort step, and an aborted write releases its slot"
+   :text "tla/RateBudget.tla modelled the caller's lease renewal inside Tick, which renews every live
+    holder's lease atomically and cannot fail; the code renews best-effort every LeaseTTL/3 (budget
+    renew; the caller is nova-tools pkg/swarm/providerbudget.go, another repository, not in this card),
+    and a renewal not written lets the lease lapse while the request still runs. Renew is now a
+    separate step that may fail, and InFlightHeld and NeverOverConcurrent are stated while every renewal
+    inside its bound succeeds (a guard, not a fairness). After lost WATCH races the code answers a wait
+    and releases the slot; the model's aborted Write stayed slotted, so an aborted Write now releases its
+    slot (AbortedWriteReleasesSlot, an action property). MCRateBudgetBrokenNoRenew is the renew-failure
+    case, and MCRateBudgetBrokenKeepSlot is the pre-fix kept slot, which breaks AbortedWriteReleasesSlot.
+    pkg/ratebudget/ratebudget.go cites SlotReclaimed (not NoSlotLost); its test
+    pkg/ratebudget/ratebudget_test.go:148 still cites NoSlotLost (outside this card's PATHS, named here
+    instead), and internal/sprint/store/rate.go's BudgetTake comment names the slot first, as the code
+    does. Models only; no product change."
+   :origin "card tla-ratebudget-renewal-is-best-effort, 2026-10-11: v1.2.12 inventory item T36; drift read at nova-sprint main 00c54ba2e")
   (fix "tla-land-gate-ring" :release "v1.2.12" :status "planned"
    :title "The gate bench's hash ring modelled in tla/GateRing.tla"
    :text "tla/GateRing.tla models the land stage's gate-slot ring: two up benches, the start slot the
@@ -1490,6 +1515,22 @@
     the skip record) and localwhenremote (the fallback runs the gate here even when remote). Models
     only; no product change."
    :origin "this card; the v1.2.12 inventory items T31 and section 5 (the land stage's gate-slot ring)")
+
+  (fix "tla-landbisect-refusals-beyond-the-bench" :release "v1.2.12" :status "planned"
+   :title "LandBisect models the red batch's refusals beyond the bench"
+   :text "tla/LandBisect.tla (the bisect that blames a red batch's head) refused the batch only on a
+    bench fault, but the code's bisect also refuses when a tip was not recorded, a git diff or reset
+    failed, a gate was cancelled, or a remote bench never ran the gate, each blaming no head. The
+    module gains envfail and an Env action for those environment refusals, and RefusedOnlyByBench is
+    restated RefusedOnlyByBenchOrEnv (faulted \\/ envfail); BlameSound still holds. Env refuses at
+    every stage the code does: before the search probes (a missing tip, the initial diff), during it,
+    and after the search narrowed to one head (a failed final reset), so a one-head batch can be
+    refused too, and it never counts as a gate, so ProbesBounded keeps its meaning. A new reversed
+    witness, Broken \"envblames\" (MCLandBisectBrokenEnvBlames.cfg), lets an environment refusal blame
+    the head it was about to probe and fails BlameSound; MCLandBisectBrokenAnyLine still fails
+    RefusedOnlyByBenchOrEnv. landgo.go's ringGate, gateOn and benchFault gain comment lines citing the
+    module. Models only; no product change."
+   :origin "this card; v1.2.12 inventory item T19, drift read at nova-sprint main 00c54ba2e 2026-10-11")
 
   (fix "tlc-runs-inside-the-job-wall" :release "v1.2.12" :status "planned"
    :title "TLC runs inside the job wall"
