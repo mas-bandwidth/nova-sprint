@@ -680,6 +680,9 @@ function fitTables() {
       // class toggle sits between the reads and the live panel is never restyled by the measure
       copy = panel.cloneNode(true); copy.classList.remove("compact");
       copy.style.position = "absolute"; copy.style.top = "0"; copy.style.left = "-10000px"; copy.style.visibility = "hidden";
+      // the copy carries the panel's own width: an absolute box would otherwise shrink to fit its
+      // content and answer for a page no one sees (stella's hold, this card)
+      if (panel.offsetWidth) copy.style.width = panel.offsetWidth + "px";
       document.body.appendChild(copy); box = copy;
     } else {
       panel.classList.remove("compact");
@@ -687,34 +690,43 @@ function fitTables() {
     var over = overflow(box);
     if (copy) copy.remove();
     if (over) panel.classList.add("compact"); else panel.classList.remove("compact");
-  });
-  // an ellipsized name in the full form carries its full text on hover; the fit sets it, on the live rows
-  [].forEach.call(document.querySelectorAll("#streams .row .name, #fleet .row .name, #friends .row .name, #providers .row .name"), function (c) {
-    if (c.scrollWidth > c.clientWidth + 1) c.title = c.textContent;
+    // an ellipsized name in the full form carries its full text on hover; the fit sets it on the
+    // live rows, and the panel is already in hand (no document-wide query, no forced layout)
+    [].forEach.call(panel.querySelectorAll(".row .name"), function (c) {
+      if (c.scrollWidth > c.clientWidth + 1) c.title = c.textContent;
+    });
   });
 }
-// The fit key: each panel's row count plus the longest text of each column, from the data (never the
-// DOM), so render() fits only when the layout can have changed. Counts that grow the same width and
-// rows that do not arrive leave it alone; a new row or a longer name changes it.
+// The fit key: the text each panel's rows draw, from the data (never the DOM), so render() fits
+// only when the layout can have changed. It follows the rendered names, status and tags — a
+// stream's display name, its status pill and its tag line, a bud's label, a provider's state and
+// note — and folds every digit to one character, so a figure that keeps its width leaves the key
+// alone and a stable poll does no width measurement at all (stella's hold, this card). A new row,
+// a longer name or a new tag moves it.
+function shape(s) { return String(s == null ? "" : s).replace(/[0-9]/g, "#"); }
+function money0(c) { return c === null ? "-" : money(c); }
+function budKey(k, tab) {
+  var m = tab[k] || {};
+  return [shape(budLabel(k, tab)), shape(shownStatus(m.status)), shape(int(m.working)), shape(int(m.width)),
+    shape(int(m.done)), shape(int(m.ready)), shape(m.window || "")].join("\u0001");
+}
 function fitKey(d) {
-  var t = (d && d.tables) || {};
-  return ["work", "fleet", "friends", "providers"].map(function (name) {
-    var tab = t[name];
-    if (!tab || typeof tab !== "object") return name + ":0";
-    var rows = 0, lens = {};
-    Object.keys(tab).forEach(function (k) {
-      var row = tab[k];
-      if (!row || typeof row !== "object") return;
-      rows++;
-      Object.keys(row).forEach(function (c) {
-        var v = row[c];
-        if (v == null || (typeof v !== "string" && typeof v !== "number")) return;
-        var n = String(v).length;
-        if (lens[c] == null || n > lens[c]) lens[c] = n;
-      });
-    });
-    return name + ":" + rows + ":" + Object.keys(lens).sort().map(function (c) { return c + "=" + lens[c]; }).join(",");
-  }).join("|");
+  d = d || {};
+  var t = d.tables || {}, work = t.work || {}, merge = t.merge || {}, states = {}, arch = archivedSet(d);
+  (d.streams || []).forEach(function (s) { states[s.Stream] = s; });
+  var streams = streamOrder(d).filter(function (k) { return !arch[k]; }).map(function (k) {
+    var w = work[k] || {}, m = merge[k] || {}, s = states[k] || {}, c = {}, total = 0;
+    FLOW.forEach(function (st) { c[st] = int(w[st]); total += c[st]; });
+    var tags = []; if (int(m.stuck) > 0) tags.push(m.stuck + " stuck"); if (m.ci === "red") tags.push("ci red");
+    return [shape(s.Display || k), shape(streamStatus(s.State, c, total)[0]), shape(tags.join(" · ")),
+      shape(money0(cents(w.cost))), shape(c.landed), shape(total)].join("\u0001");
+  }).join("\n");
+  var buds = function (name) { var tab = t[name] || {}; return Object.keys(tab).map(function (k) { return budKey(k, tab); }).join("\n"); };
+  var providers = Object.keys(t.providers || {}).map(function (k) {
+    var p = t.providers[k] || {};
+    return [shape(k), shape(providerState(p.state)[0]), shape(money0(cents(p.balance))), shape(money0(cents(p.spend_hour))), shape(p.note || "")].join("\u0001");
+  }).join("\n");
+  return ["streams:" + streams, "fleet:" + buds("fleet"), "friends:" + buds("friends"), "providers:" + providers].join("|");
 }
 var lastFitKey = null;
 function fitIfChanged(d) {

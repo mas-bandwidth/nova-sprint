@@ -432,3 +432,58 @@ func TestRenderFitsOnlyWhenTheLayoutCanChange(t *testing.T) {
 	assert.Contains(t, app, "function fitKey(", "the fit key is computed from the data")
 	assert.Contains(t, app, `window.addEventListener("resize", fitTables)`, "the fit still runs on resize")
 }
+
+// TestTheOffscreenFitCopyKeepsThePanelWidth pins the owner's scroll fix (this card, stella's hold):
+// when a compact panel is measured, the full form is laid out on an off-screen copy. An absolutely
+// positioned copy shrinks to fit its content, so without the panel's own width it measures text
+// against the wrong box and the fit answers for a page no one sees. The copy carries the panel's
+// width, so the measure reads the layout the panel would have and the live panel is never touched.
+func TestTheOffscreenFitCopyKeepsThePanelWidth(t *testing.T) {
+	t.Parallel()
+	app := string(file("app.js"))
+	body, ok := functionBody(t, app, "fitTables")
+	require.True(t, ok, "app.js carries fitTables()")
+	assert.Contains(t, body, "cloneNode(true)", "a compact panel's full form is measured on a copy")
+	assert.Regexp(t, `copy\.style\.width\s*=\s*panel\.offsetWidth`, body,
+		"the copy is laid out at the panel's width, not the shrink-to-fit width of an absolute box")
+}
+
+// TestTheStreamsFitKeyFollowsTheRenderedText pins stella's hold (this card): the fit key follows
+// what the rows actually draw, from the data (never the DOM). A stream row draws its display name
+// (states[k].Display || k), its status pill and its tag line (archived, stuck, ci red), so the key
+// must carry those; a poll whose rows read the same text must not measure widths again. The figures
+// are keyed by their width, not their value (shape folds every digit to one character), so a count
+// that keeps its digits — the common poll — leaves the key alone.
+func TestTheStreamsFitKeyFollowsTheRenderedText(t *testing.T) {
+	t.Parallel()
+	app := string(file("app.js"))
+	body, ok := functionBody(t, app, "fitKey")
+	require.True(t, ok, "app.js carries fitKey(d)")
+	assert.Contains(t, body, ".Display", "the key follows a stream's rendered display name")
+	assert.Contains(t, body, "streamStatus(", "the key follows a stream's rendered status")
+	assert.Contains(t, body, `"ci red"`, "the key follows a stream's rendered tag line")
+	assert.Contains(t, app, "function shape(", "figures are keyed by their width, not their value")
+	assert.Regexp(t, `shape\(s\)\s*\{[^}]*replace\(/\[0-9\]/g`, app, "shape folds every digit to one character")
+	assert.NotContains(t, body, "querySelector", "the key is derived from the data, never the DOM")
+}
+
+// TestAStablePollDoesNotMeasureWidths pins stella's hold (this card): a poll whose table text has
+// not changed does no width measurement at all. fitIfChanged computes the key and returns before it
+// touches a panel; fitTables, the only place that reads scrollWidth, is reached from render() only
+// through it (and from load and resize).
+func TestAStablePollDoesNotMeasureWidths(t *testing.T) {
+	t.Parallel()
+	app := string(file("app.js"))
+	body, ok := functionBody(t, app, "fitIfChanged")
+	require.True(t, ok, "app.js carries fitIfChanged(d)")
+	assert.Regexp(t, `if\s*\(k === lastFitKey\)\s*return`, body,
+		"an unchanged key returns before any panel is measured")
+	assert.Contains(t, body, "fitTables()", "a changed key still fits")
+	fit, ok := functionBody(t, app, "fitTables")
+	require.True(t, ok, "app.js carries fitTables()")
+	assert.Contains(t, fit, "scrollWidth", "the width reads live in fitTables")
+	render, ok := functionBody(t, app, "render")
+	require.True(t, ok, "app.js carries render(d)")
+	assert.NotContains(t, render, "scrollWidth", "render itself reads no width")
+	assert.NotContains(t, render, "clientWidth", "render itself reads no clientWidth")
+}

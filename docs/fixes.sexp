@@ -214,15 +214,21 @@
      @property declaration and every var(--pulse) use are gone, and merging, review and working keep the
      same 2.4 s cycle and the same negative animation-delays (0, -2.25 s, -2.1 s), with .stopped and
      prefers-reduced-motion still stopping it. render() no longer calls fitTables() on every poll
-     (POLL_MS = 1000): the fit runs on load, on resize, and only when a panel's data-derived fit key (its
-     row count plus the longest text of each column, from the data, never the DOM) changes, and a compact
-     panel keeps its class while the full form is measured on an off-screen copy, so no class toggle sits
-     between the reads. page/index.html carries @keyframes pulse { 0%, 17%, 100% { opacity: 1; } 58.5% {
-     opacity: .55; } }; page/app.js carries fitKey, overflow, fitIfChanged and the copy-based fitTables.
-     Two new tests in internal/sprintdash/dashboard_test.go pin it: TestThePulseAnimatesOpacityOnTheCompositor
+     (POLL_MS = 1000): the fit runs on load, on resize, and only when a panel's data-derived fit key — the
+     text each row draws (a stream's display name, its status pill and its tag line; a bud's label; a
+     provider's state and note), with every digit folded to one character so a figure that keeps its width
+     leaves it — changes, so a stable poll whose rows read the same does no width measurement at all; and a
+     compact panel keeps its class while the full form is measured on an off-screen copy that carries the
+     panel's own width, so no class toggle sits between the reads and the copy lays out what the panel
+     would. page/index.html carries @keyframes pulse { 0%, 17%, 100% { opacity: 1; } 58.5% {
+     opacity: .55; } }; page/app.js carries fitKey, shape, budKey, overflow, fitIfChanged and the
+     copy-based fitTables.
+     New tests in internal/sprintdash/dashboard_test.go pin it: TestThePulseAnimatesOpacityOnTheCompositor
      refuses any @keyframes that animates a custom property, or, under an infinite animation, anything but
      opacity, transform or filter; TestRenderFitsOnlyWhenTheLayoutCanChange refuses an unconditional
-     fitTables() in render. No visual change."
+     fitTables() in render; TestTheOffscreenFitCopyKeepsThePanelWidth holds the copy to the panel's width;
+     TestTheStreamsFitKeyFollowsTheRenderedText holds the key to the rendered names, status and tags; and
+     TestAStablePollDoesNotMeasureWidths holds an unchanged poll out of the fit. No visual change."
     :origin "this card; the owner, 2026-10-11 ~19:35Z: \"There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical.\"")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"

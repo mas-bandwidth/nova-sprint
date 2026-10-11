@@ -24,7 +24,7 @@ import (
 // owner's ask of 2026-10-11): the page is that page, byte for byte (pageview.go).
 const (
 	liveIndexSHA256 = "4aee69bbf53c916ea43fce57de132cfb5b4f9679d8a4546988cf0778860fa140"
-	liveAppSHA256   = "3cc2883b0b75e04c818b5b4334f7e58f71e893b173b0a348f64de58ab37f1a56"
+	liveAppSHA256   = "19568bb723d195ff0c0ebd8dc351ee60fcbb70ae616aa385c70ddda8639f39c6"
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )
