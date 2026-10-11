@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // The rebalance at the start of every tick (TickStart; the owner, 2026-10-01:
@@ -212,5 +214,36 @@ func TestAReturnedReadMovedByTheRebalanceIsAFreshAsk(t *testing.T) {
 	assert.Empty(t, moved.F(FieldUsage))
 	for k := range moved.Fields {
 		assert.False(t, strings.HasPrefix(k, FieldReadTake), "no run of the reader it left: %s", k)
+	}
+}
+
+// The rebalance moves every movable card at once, not one per tick (the owner, 2026-10-11:
+// "Not one card at a time per-tick"): with 36 cards queued on one full unit and 40 idle
+// lanes across six others, one rebalance moves all 36, bounded only by the idle lanes. After
+// the tick no movable card is left queued on a full unit while an idle eligible lane exists
+// anywhere.
+func TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.s.Routes = []Route{
+		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
+		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "pr", Enabled: true},
+	}
+	w.s.Work.SetRows([]string{"s1"})
+	widths := map[string]int{"m1": 1, "m2": 7, "m3": 7, "m4": 7, "m5": 7, "m6": 6, "m7": 6}
+	for _, m := range []string{"m1", "m2", "m3", "m4", "m5", "m6", "m7"} {
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: widths[m]}))
+	}
+	rbPlace(w, "s1-0", cardhdr.RouteFlash, "m1", Working) // m1's one lane, working
+	const queued = 36
+	for i := 1; i <= queued; i++ {
+		rbPlace(w, fmt.Sprintf("s1-%d", i), cardhdr.RouteFlash, "m1", Ready)
+	}
+	require.Equal(t, queued, len(w.s.Fleet.Cell("m1", Ready)))
+	p := w.must(Rebalance(w.s, nil, "machine"))
+	assert.Len(t, rebalanced(p), queued, "one tick moves all 36, not one per tick")
+	assert.Equal(t, 0, len(w.s.Fleet.Cell("m1", Ready)), "no movable card is left queued on the full unit")
+	for _, m := range []string{"m2", "m3", "m4", "m5", "m6", "m7"} {
+		assert.LessOrEqual(t, len(w.s.Fleet.Cell(m, Ready)), widths[m], m)
 	}
 }
