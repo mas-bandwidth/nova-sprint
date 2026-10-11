@@ -62,7 +62,7 @@ func newReadCardsRig(t *testing.T, members ...string) *readCardsRig {
 	})
 	r.beat()
 	for _, m := range members {
-		r.must(store.FleetStep(sprint.FleetReq{Op: "up", Member: m, Width: 4}))
+		r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: 4}))
 	}
 	r.must(store.SetStep(sprint.SetReq{ReadCards: sprint.ReadCardsOnWord, Who: "coordinator"}))
 	_, _, _, err := r.st.SetMachine(r.ctx, true)

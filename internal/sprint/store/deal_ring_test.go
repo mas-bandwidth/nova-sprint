@@ -44,7 +44,7 @@ func (r ringTick) String() string {
 func ringFleet(h *harness) {
 	h.t.Helper()
 	for _, m := range ringMembers {
-		h.must(FleetStep(sprint.FleetReq{Op: "release", Member: m, Who: "tester"}))
+		h.must(FleetStep(sprint.FleetReq{Op: "release", Member: m, Who: "tester", Probe: sprint.EnvProbePassed}))
 	}
 	h.mu.Lock()
 	h.live = append([]string(nil), ringMembers...)

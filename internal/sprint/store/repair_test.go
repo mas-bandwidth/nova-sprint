@@ -46,7 +46,7 @@ func TestEverySubjectOfALargeJudgmentStaysOpen(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	// one member up: the sixty cards are one member's, finished in one step
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 60}))
 	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{Limit: 60}}))
 	var ids []string
@@ -180,7 +180,7 @@ func TestEveryVerbRunsAfterASkippingRepair(t *testing.T) {
 	require.NoError(t, err, "the verb after the cut: %+v %v", res, err)
 	require.Len(t, res.Repaired, 1, "the verb after the cut: %+v %v", res, err)
 	require.True(t, strings.HasSuffix(res.Repaired[0], RepairSkipped), "the verb after the cut: %+v %v", res, err)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m3"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", Count: 1}))
 	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"s2-1"}}}))
 	require.Equal(t, sprint.Working, h.state("s2-1"), "start after the repair: s2-1 is %s", h.state("s2-1"))

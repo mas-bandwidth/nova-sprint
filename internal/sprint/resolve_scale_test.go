@@ -12,7 +12,7 @@ import (
 // cards beside them: what the tick's resolve walks every tick.
 func resolveWorld(t testing.TB, n, open int) *Snapshot {
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: n}))
 	last := fmt.Sprintf("s1-%d", n)
 	w.must(Add(w.s, AddReq{Stream: "s2", Count: n, Needs: []string{last}}))

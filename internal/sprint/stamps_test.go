@@ -27,7 +27,7 @@ func TestCardsCarryTheirStamps(t *testing.T) {
 	require.Equal(t, Withdrawn, card.Col, "withdrawn: %s dealt %q", card.Col, card.F("dealt"))
 	require.Empty(t, card.F("dealt"), "withdrawn: %s dealt %q", card.Col, card.F("dealt"))
 	w.tick(time.Minute)
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 	require.Equal(t, stamp(w.s.Now), card.F("dealt"), "dealt again by start: %q", card.F("dealt"))
 	w.tick(time.Minute)

@@ -62,7 +62,7 @@ func TestFleetDownHoldsAndFleetUpReleases(t *testing.T) {
 	ta.json("where", &w)
 	row = w.Tables["fleet"]["m1"]
 	require.Equal(t, sprint.Up, row["status"], "m1 released: %v, want up at once", row)
-	ta.ok("fleet up m3")
+	ta.ok("fleet up m3 --probe passed")
 	ta.json("where", &w)
 	row = w.Tables["fleet"]["m3"]
 	require.Equal(t, sprint.Down, row["status"], "m3 never beat: %v, want down with no load", row)

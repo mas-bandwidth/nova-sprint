@@ -195,7 +195,7 @@ func TestAStoppedMachineMovesNothing(t *testing.T) {
 func TestAChainIsDealtWithinOneTickOfEachLanding(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"b"}, Needs: []string{"a"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"c"}, Needs: []string{"b"}}))
@@ -222,7 +222,7 @@ func TestAChainIsDealtWithinOneTickOfEachLanding(t *testing.T) {
 func TestACrossStreamNeedIsDealtWhenItLands(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"x"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"y"}, Needs: []string{"x"}}))
 	h.startMachine()
@@ -282,7 +282,7 @@ func TestTheDealingKeepsEveryReadyQueueShortInScoreOrder(t *testing.T) {
 	h := newHarness(t)
 	const width = 2
 	for _, m := range []string{"m1", "m2"} {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: m, Width: width}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: width}))
 	}
 	h.setup(10)
 	h.startMachine()
@@ -381,7 +381,7 @@ func TestAWaitedConditionIsClosedWhenItClears(t *testing.T) {
 			require.Fail(t, fmt.Sprintf("the inbox while waited: %+v", g))
 		}
 	}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.machine()
 	held := h.openOf(sprint.NNoMember)
 	require.Empty(t, held, "the condition cleared and the hold is kept: %+v", held)
@@ -424,7 +424,7 @@ func TestAStuckOperationIsReportedOnceByTheFirstWriterAfterRepair(t *testing.T) 
 	require.Equal(t, RepairFinished, rr[0].Done, "repair: %+v %v", rr, err)
 	n := len(h.openOf(sprint.NOpStuck))
 	require.Equal(t, 0, n, "written by the repair itself: %d", n)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m3"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m3"}))
 	open := h.openOf(sprint.NOpStuck)
 	require.Len(t, open, 1, "the stuck judgment: %+v", open)
 	require.Contains(t, open[0].Note.What, "(deal) was stuck 15m0s", "the stuck judgment: %+v", open)
@@ -448,7 +448,7 @@ func TestTheTickStopsAtASentinelUntilItIsReleased(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	require.NoError(t, h.m.SetCoordinator(h.ctx, "tester"))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 2}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"after"}}))
@@ -480,7 +480,7 @@ func TestTheLandingStepAndTheTickDoNothingTwice(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	require.NoError(t, h.m.SetCoordinator(h.ctx, "tester"))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"x"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
 	h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"y"}, Needs: []string{"x"}}))
@@ -527,7 +527,7 @@ func TestAFlappingMemberCannotHideALateCard(t *testing.T) {
 	h := newHarness(t)
 	h.live = []string{"m1"}
 	h.dealtMax(15 * time.Minute)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1}))
 	h.startMachine()
 	h.machine()
@@ -562,7 +562,7 @@ func TestAFlappingMemberIsLateFromTheFirstDealAndTheFirstTake(t *testing.T) {
 	h := newHarness(t)
 	h.live = []string{"m1"}
 	h.dealtMax(15 * time.Minute)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1}))
 	h.startMachine()
 	h.machine()
@@ -596,7 +596,7 @@ func TestAFlappingMemberIsLateFromTheFirstDealAndTheFirstTake(t *testing.T) {
 	// taken, then lapsing: late not finished two hours from the first take
 	h2 := newHarness(t)
 	h2.live = []string{"m1"}
-	h2.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h2.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h2.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1}))
 	h2.startMachine()
 	h2.machine()
@@ -636,8 +636,8 @@ func TestARedealtCardAfterATakeIsLateNotTaken(t *testing.T) {
 	h := newHarness(t)
 	h.dealtMax(15 * time.Minute)
 	h.live = []string{"m1", "m2"}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1}))
 	h.startMachine()
 	h.machine()
@@ -699,7 +699,7 @@ func TestARedealtCardAfterATakeIsLateNotTaken(t *testing.T) {
 func TestTwoLateReadsOfOnePrimaryAreTwoJudgments(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", IDs: []string{"p"}}))
 	h.startMachine()
 	h.machine()
@@ -735,7 +735,7 @@ func TestACardLateAtItsRedealDoesNotBlameTheNewMember(t *testing.T) {
 	h := newHarness(t)
 	h.live = []string{"m1"}
 	h.dealtMax(15 * time.Minute)
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1}))
 	h.startMachine()
 	h.machine() // dealt to m1

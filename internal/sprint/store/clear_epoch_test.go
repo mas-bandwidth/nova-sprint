@@ -273,7 +273,7 @@ func TestRowAddedDuringClearIsKept(t *testing.T) {
 	st.B = &advanceHook{Backend: h.m, do: func() {
 		for _, op := range []string{"up m3", "down m1"} {
 			f := strings.Fields(op)
-			_, err := other.Run(h.ctx, FleetStep(sprint.FleetReq{Op: f[0], Member: f[1]}))
+			_, err := other.Run(h.ctx, FleetStep(sprint.FleetReq{Op: f[0], Member: f[1], Probe: sprint.EnvProbePassed}))
 			assert.NoError(t, err)
 		}
 	}}

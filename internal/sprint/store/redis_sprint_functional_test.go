@@ -129,8 +129,8 @@ func TestRedisASprintToLandedByTicks(t *testing.T) {
 	t.Parallel()
 	h, _ := liveHarness(t)
 	require.NoError(t, h.st.B.SetCoordinator(h.ctx, "tester"))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"a"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"b"}, Needs: []string{"a"}}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
@@ -813,7 +813,7 @@ func TestRedisTheCoordinatorsRecords(t *testing.T) {
 	if err != nil || who != "tester" {
 		require.Fail(t, fmt.Sprintf("the coordinator: %q %v", who, err))
 	}
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1"}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
 	h.startMachine()
 	h.machine()

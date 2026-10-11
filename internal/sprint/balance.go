@@ -155,6 +155,32 @@ func Balance(s *Snapshot, r BalanceReq) Plan {
 	return p
 }
 
+// EnvProbePatch is the member's control card change for the result of its own environment
+// probe (fleet up --probe, FleetReq.Probe): a pass clears the last environment fault's
+// record and the hold it put on the member, so it serves again; a failure records the
+// probe's line (FieldEnvProbe) with the fault left in place, so fleet up refuses again. It
+// is the environment's analogue of the payment the balance poll sees ending a provider's
+// rest (tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+//
+// A passed probe clears only the machine's OWN environment hold (ctl marked HeldByEnv): a
+// coordinator's hold, the machine's fault hold (HeldByFault) and the sync's carry another
+// mark (or none), and their hold, reason and finish marker are left to them, so a person's
+// hold stays until a person lifts it.
+func EnvProbePatch(ctl *Card, probe string) (set map[string]string, unset []string) {
+	set = map[string]string{}
+	switch {
+	case probe == "":
+	case probe == EnvProbePassed:
+		unset = append(unset, FieldEnvFault, FieldEnvFaultReason, FieldEnvFaultAt, FieldEnvProbe)
+		if ctl != nil && ctl.F(FieldHeldBy) == HeldByEnv {
+			unset = append(unset, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish)
+		}
+	default:
+		set[FieldEnvProbe] = probe
+	}
+	return set, unset
+}
+
 // ProviderRow is one row of the providers table (where --json): the provider, its balance
 // as the poll last read it, the spend over the last hour, and its state: serving, or resting
 // until a time and why.

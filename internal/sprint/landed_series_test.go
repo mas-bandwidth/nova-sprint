@@ -28,7 +28,7 @@ import (
 func TestTheLandedSeriesCountsEachCardOnceByItsWorker(t *testing.T) {
 	t.Parallel()
 	r := newLandedRig(t)
-	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 2}))
+	r.must(store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
 	// The friend is absent for the machine card's deal: a friend up takes a
 	// flash card that names no one (friend deal runs before the fleet's).
 	r.beatMachines()

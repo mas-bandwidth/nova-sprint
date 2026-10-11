@@ -78,7 +78,7 @@ func TestEngineCoverAVerbPastTheGraceRefusesWithThePendingLine(t *testing.T) {
 	require.NotNil(t, pending, "the cut operation stays in the fence")
 
 	h.tick(2 * time.Minute) // past the grace: its writer is taken as gone
-	_, err = h.st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Member: "m9"}))
+	_, err = h.st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m9"}))
 	var pe *PendingError
 	require.ErrorAs(t, err, &pe, "a verb past the grace over an operation that cannot finish: %v", err)
 	assert.Equal(t, pending.ID, pe.Op, "the line names the operation held in the fence")

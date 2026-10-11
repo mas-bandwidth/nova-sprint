@@ -37,7 +37,7 @@ func crSprint(t *testing.T, seed uint64) *crWorld {
 	h := newHarness(t)
 	w := &crWorld{h: h, rng: rand.New(rand.NewPCG(seed, 7)), crossAge: map[string]int{}, readyToAccept: map[string]int{}}
 	for _, m := range crMembers {
-		h.must(FleetStep(sprint.FleetReq{Op: "up", Member: m}))
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 	}
 	// s1: a chain c1 <- c2 <- ... <- c6, then eight free
 	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"c1"}}))

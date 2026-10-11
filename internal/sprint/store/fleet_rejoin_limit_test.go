@@ -20,7 +20,7 @@ func TestFleetRejoinAcceptsInventoryPastOneReadSet(t *testing.T) {
 		t.Run(strconv.Itoa(count)+" members", func(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t)
-			h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 1}))
+			h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 1}))
 			h.must(FleetStep(sprint.FleetReq{
 				Op: "sync", Who: "tester", Sync: []sprint.SyncMember{{Name: "m2", Width: 1}}, Machines: []string{"m2"},
 			}))
