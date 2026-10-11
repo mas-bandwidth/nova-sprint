@@ -314,6 +314,23 @@
      tick writes nothing. Use one property for all."
     :origin "issue #5210")
 
+   (fix "tick-gate-model-read-once" :release "v1.2.9" :status "planned"
+    :title "The deal reads each brief's model once, so the tick stays under its gate"
+    :text "Drain and deal take 0.4 to 0.7 seconds at load, so the tick is over its one-second gate, and the
+     dominant cost is the deal's model read: cardhdr.ReadModel parses a ready card's brief (line 1 and the
+     header) with a regexp, and the tick resolves the same card's model lines again in every part that
+     reaches it (routeOf, the friends' dealTierOf, the ask's ReadsNeeded, the friends' friendReadTier and
+     the cap's capNextTier), so each ready primary's brief is parsed several times a tick. It now memoizes
+     the read by brief (route.go, modelOf), once a brief, wired through every call site the tick reaches
+     (route.go, friend_deal.go, friend_read.go, readers.go, lane_cap.go): the deal parses 20,000 ready
+     briefs once instead of once per pass, and the benchmark warms the memo once, as the tick does, then
+     measures the drain beside the deal (the drain is the pump's few dozen moves, the deal the tick's
+     dominant cost) and holds the wall under the one-second gate at load (TestTheTickDealReadsEachBriefOnceAtScale
+     holds the parse to one a brief, TestTickDrainAndDealUnderTheGateAtLoad times the drain and the deal on
+     the loaded store of 50,000 ready beside 50,000 done against the gate, and BenchmarkTickDealAtLoad and
+     BenchmarkTickDrainAtLoad measure the two walls)."
+    :origin "seat ledger v1.2.4-held-2026-10-10.md 5577 tick gate")
+
    (fix "hold-pinned-to-head-sha" :release "v1.2.9" :status "shipped"
     :title "A hold pinned to an older head is not a hold at the current head"
     :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
