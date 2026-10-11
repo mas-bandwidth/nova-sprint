@@ -1038,6 +1038,10 @@
    :title "verify compares the scope its tree was imported with, not the whole organization"
    :text "import --repo <org>/<name> now records the repositories it read as the work-tree's :scope, written only for a scoped import; a whole-organization tree stays byte for byte what it was, and a file without :scope reads as a whole-organization tree. verify with no --repo compares the tree's own scope (tla/WorkImport.tla's Verify already read the scope it imported), --repo narrows within it, and a --repo outside it is refused naming the scope before any GitHub call; verify --against does the same. Before, verify with no --repo read the whole organization and reported MISSING for every repository the scoped import left out."
    :origin "the card verify-defaults-to-the-trees-import-scope w2; the v1.2.12 inventory 2026-10-11 section 9 row D12 (code read at nova-sprint main 00c54ba)")
+  (fix "every-producer-card-has-its-consumer-out-after-the-tick" :release "v1.2.14" :status "planned"
+   :title "Every producer card has its consumer out after the tick"
+   :text "Adds ConsumersOut check at the end of every tick to assert that every producer card (working, fix, review) has its consumer out: an attempt held by an up member/friend for working/fix, or reads asked by up readers for review. Violations are reported as quiet judgments. Also reduces MaxSettle from 64 to 32 as per the owner's design, and changes settle bound handling to push a judgment instead of erroring the tick."
+   :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17; card every-producer-card-has-its-consumer-out-after-the-tick.w1")
   (fix "ready-over-reads-the-settled-rests" :release "v1.2.14" :status "planned"
    :title "The ready-over judgment reads the deal's settled rests"
    :text "A ready card whose tier is served only by a route resting at the tick's now raises the ready-over

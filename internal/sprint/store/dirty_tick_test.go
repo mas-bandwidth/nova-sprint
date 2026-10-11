@@ -200,14 +200,15 @@ func TestAMutuallyDirtyingTickSettles(t *testing.T) {
 		{Table: sprint.Merge, Parts: []sprint.TickPartDef{{Name: "to-fleet", Fn: ping(sprint.Fleet, 1<<30)}}},
 		{Table: sprint.Fleet, Parts: []sprint.TickPartDef{{Name: "to-merge", Fn: ping(sprint.Merge, 1<<30)}}},
 	}
-	_, err := g.st.Tick(g.ctx)
-	require.Error(t, err, "a tick that never settles: %v", err)
-	require.Contains(t, err.Error(), "did not settle", "a tick that never settles: %v", err)
-	require.Contains(t, err.Error(), sprint.Merge, "a tick that never settles: %v", err)
+	hb, err := g.st.Tick(g.ctx)
+	require.NoError(t, err, "a tick that reaches the settle bound pushes a judgment instead of erroring")
+	require.Len(t, hb.Quiet, 1, "a tick that reaches the settle bound pushes a judgment")
+	require.Contains(t, hb.Quiet[0].Why, "did not settle")
+	require.Contains(t, hb.Quiet[0].Why, sprint.Merge)
 	s := g.snap()
 	n := s.MemberCtl("m1").Int("ping") + s.StreamCtl("s1").Int("ping")
 	require.Equal(t, 2+MaxSettle, n, "%d updates wrote, want the first pass's 2 and the bound's %d", n, MaxSettle)
-	t.Logf("unsettled: %v", err)
+	t.Logf("unsettled with judgment: %v", hb.Quiet)
 }
 
 // The tick-end note (errata 3 amendment 8): one note a tick to the
