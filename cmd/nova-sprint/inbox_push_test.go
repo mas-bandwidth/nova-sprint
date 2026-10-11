@@ -28,8 +28,8 @@ func heldAndWaiting(t *testing.T) (*testApp, sprint.Group) {
 	ta.deal(2)
 	// ci red: a judgment a wait may hold (failed work holds its card and takes no wait,
 	// internal/sprint/wait_refused.go)
-	ta.ciRedOnce("s1-1", "1")
-	held := ta.group(sprint.NCIRed, "s1")
+	ta.timerOnce("look-again")
+	held := ta.group(sprint.NTimer, "")
 	ta.ok("wait " + held.ID + " --for 30m")
 	ta.ok("start")
 	return ta, held

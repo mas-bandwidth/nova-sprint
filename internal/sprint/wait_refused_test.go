@@ -29,7 +29,7 @@ func TestEveryKindThatHoldsACardRefusesWait(t *testing.T) {
 		assert.NotEmpty(t, refusal, "%s holds a card and must refuse wait", k)
 		assert.Contains(t, refusal, "holds its card", k)
 	}
-	assert.Len(t, WaitAllowedOnACard, 3, "the exceptions stay few: a new one is a decision")
+	assert.Len(t, WaitAllowedOnACard, 2, "the exceptions stay few: a new one is a decision")
 }
 
 // The inbox never offers a verb the kind refuses: no kind of WaitRefused lists wait among its
@@ -58,4 +58,18 @@ func TestAStoppedStreamCountsTheCardsItHolds(t *testing.T) {
 	stop := Note{Kind: Judgment, Type: NRed, Stream: "s1", StreamLevel: true, ID: "j-red"}
 	w.s.Open = append(w.s.Open, Open{Key: OpenKey(stop.ID, StreamSubject("s1")), Note: stop})
 	assert.Equal(t, 1, CardsHeldByJudgments(w.s), "the stopped stream holds its card in review")
+}
+
+// A stall that names a card holds it in place and refuses wait; a stall about a stream with
+// no card named holds nothing and still takes one. The inbox offers no wait on the first.
+func TestAStallRefusesWaitOnlyWhenItNamesACard(t *testing.T) {
+	t.Parallel()
+	card := Note{ID: "j1", Kind: Judgment, Type: NStalled, Stream: "s1", Primaries: []string{"s1-1"}, Decisions: Decisions[NStalled]}
+	assert.NotEmpty(t, WaitRefusal(card), "a stall that names a card holds it")
+	stream := Note{ID: "j2", Kind: Judgment, Type: NStalled, Stream: "s1", StreamLevel: true, Decisions: Decisions[NStalled]}
+	assert.Empty(t, WaitRefusal(stream), "a stall about a stream holds nothing")
+	g := Group{ID: "j1", Kind: Judgment, Type: NStalled, Stream: "s1", Size: 1, Notes: []string{"j1"}, Members: []string{"s1-1"}, Decisions: card.Decisions}
+	for _, c := range commands(g, card, "") {
+		assert.NotEqual(t, "wait", c.Decision, "the inbox offers no refused wait")
+	}
 }

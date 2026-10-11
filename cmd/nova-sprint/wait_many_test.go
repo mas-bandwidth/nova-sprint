@@ -13,7 +13,7 @@ import (
 // wait takes several notes, and a group (wait-many-notes-b.w1): on the twin,
 // wait n1,n2 --for 3h sets both, and --group with a size other than --expect
 // is refused and changes nothing. Each note is set or refused on its own line.
-// The judgments are CI reds: failed work holds its card and takes no wait
+// The judgments are timers: every judgment that holds a card takes no wait
 // (internal/sprint/wait_refused.go).
 func TestWaitTakesSeveralNotes(t *testing.T) {
 	t.Parallel()
@@ -21,12 +21,12 @@ func TestWaitTakesSeveralNotes(t *testing.T) {
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --stream s1 --count 3")
 	ta.deal(3)
-	ta.ciRedOnce("s1-1", "1")
-	first := ta.group(sprint.NCIRed, "s1")
+	ta.timerOnce("look-1")
+	first := ta.group(sprint.NTimer, "")
 	require.Equal(t, 1, first.Size, "one failure is a group of one: %+v", first)
 	require.Len(t, first.Notes, 1, "one failure is one note: %+v", first)
-	ta.ciRedOnce("s1-2", "2")
-	grown := ta.group(sprint.NCIRed, "s1")
+	ta.timerOnce("look-2")
+	grown := ta.group(sprint.NTimer, "")
 	require.Equal(t, first.ID, grown.ID, "the group grew under another id: %+v", grown)
 	require.Equal(t, 2, grown.Size, "the group grew under another size: %+v", grown)
 	require.Len(t, grown.Notes, 2, "two failures are two notes: %+v", grown)
@@ -38,7 +38,7 @@ func TestWaitTakesSeveralNotes(t *testing.T) {
 	require.Contains(t, errs, "REFUSED group "+grown.ID+": it has 2 now, not 1 as printed; nothing changed", "a grown group: %d\n%s%s", code, out, errs)
 	require.NotContains(t, out, "WAIT OK", "a grown group wrote a wait: %s", out)
 	require.NotContains(t, out, "MOVED", "a grown group moved a card: %s", out)
-	held := ta.group(sprint.NCIRed, "s1")
+	held := ta.group(sprint.NTimer, "")
 	require.Equal(t, grown.Notes, held.Notes, "a refused wait changed the notes")
 	require.Equal(t, 2, held.Size, "a refused wait changed the size")
 	require.False(t, held.Quiet, "a refused wait set a review")
@@ -49,7 +49,7 @@ func TestWaitTakesSeveralNotes(t *testing.T) {
 	require.Contains(t, out, "WAIT OK note="+grown.Notes[0]+" review=", "the note that exists was not set:\n%s", out)
 	require.NotContains(t, out, "WAIT OK note="+grown.Notes[1], "the note not named was set:\n%s", out)
 	require.Contains(t, errs, "WAIT REFUSED note=no-such-note:", "the missing note was not refused on its own line:\n%s", errs)
-	require.False(t, ta.group(sprint.NCIRed, "s1").Quiet, "the un-named note was set")
+	require.False(t, ta.group(sprint.NTimer, "").Quiet, "the un-named note was set")
 
 	// wait n1,n2 --for 3h sets both.
 	want := ta.a.now().Add(3 * time.Hour).UTC().Format(time.RFC3339)
@@ -64,13 +64,13 @@ func TestWaitTakesSeveralNotes(t *testing.T) {
 		"WAIT OK note=" + grown.Notes[0] + " review=" + want,
 		"WAIT OK note=" + grown.Notes[1] + " review=" + want,
 	}, oks, "both notes, each on its own line:\n%s", out)
-	quiet := ta.group(sprint.NCIRed, "s1")
+	quiet := ta.group(sprint.NTimer, "")
 	require.True(t, quiet.Quiet, "both notes set, the group is quiet: %+v", quiet)
 	require.Contains(t, ta.ok("inbox"), "quiet until=", "the inbox shows the review")
 
 	// the third failure changes the size; --expect of the old size changes nothing.
-	ta.ciRedOnce("s1-3", "3")
-	three := ta.group(sprint.NCIRed, "s1")
+	ta.timerOnce("look-3")
+	three := ta.group(sprint.NTimer, "")
 	require.Equal(t, grown.ID, three.ID, "the third failure opened another group: %+v", three)
 	require.Equal(t, 3, three.Size, "the third failure: %+v", three)
 	require.Len(t, three.Notes, 3, "the third failure: %+v", three)
@@ -79,7 +79,7 @@ func TestWaitTakesSeveralNotes(t *testing.T) {
 	require.Equal(t, 1, code, "a group of another size: %d\n%s%s", code, out, errs)
 	require.Contains(t, errs, "REFUSED group "+three.ID+": it has 3 now, not 2 as printed; nothing changed", "a group of another size: %d\n%s%s", code, out, errs)
 	require.NotContains(t, out, "WAIT OK", "a group of another size wrote a wait: %s", out)
-	still := ta.group(sprint.NCIRed, "s1")
+	still := ta.group(sprint.NTimer, "")
 	require.Equal(t, three.Notes, still.Notes, "a refused group wait changed the notes")
 	require.Equal(t, 3, still.Size, "a refused group wait changed the size")
 	require.False(t, still.Quiet, "a refused group wait set the new note")
@@ -91,5 +91,5 @@ func TestWaitTakesSeveralNotes(t *testing.T) {
 		require.Contains(t, out, "WAIT OK note="+id+" review="+want+"\n", "--group did not set %s:\n%s", id, out)
 	}
 	require.Contains(t, out, "GROUP "+three.ID+" acted on 3, the group had 3 when printed\n", "--group:\n%s", out)
-	require.True(t, ta.group(sprint.NCIRed, "s1").Quiet, "--group did not set every note")
+	require.True(t, ta.group(sprint.NTimer, "").Quiet, "--group did not set every note")
 }
