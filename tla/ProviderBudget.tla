@@ -59,7 +59,7 @@ VARIABLES env, held, judged, jcause, known, probe, card, event
 vars == <<env, held, judged, jcause, known, probe, card, event>>
 
 Events == Causes \cup {"model", "deal", "pushed", "probe-pass", "probe-fail",
-                      "probe-new", "boot", "accept", "refuse", "init"}
+                      "probe-new", "boot", "accept", "refuse", "init", "rejected"}
 
 TypeOK ==
     /\ env \in [Members -> {"none"} \cup Causes]
@@ -105,6 +105,15 @@ ModelFinish(m) ==
     /\ held' = [held EXCEPT ![m] = "noenv" \in Broken]
     /\ card' = [card EXCEPT ![m] = "failed"]
     /\ event' = "model"
+    /\ UNCHANGED <<env, judged, jcause, known, probe>>
+
+\* a card on m is refused by the branch (non-fast-forward, etc.): not the environment's,
+\* so nothing is held ("branchenv": the broken rule holds it anyway)
+BranchRefused(m) ==
+    /\ card[m] = "working"
+    /\ held' = [held EXCEPT ![m] = "branchenv" \in Broken]
+    /\ card' = [card EXCEPT ![m] = "failed"]
+    /\ event' = "rejected"
     /\ UNCHANGED <<env, judged, jcause, known, probe>>
 
 \* the deal gives a known, not-held member a card ("nodeal": a held one too)
@@ -192,6 +201,7 @@ Refuse(m) ==
 Next ==
     \/ \E m \in Members, c \in Causes : EnvFinish(m, c)
     \/ \E m \in Members : ModelFinish(m)
+    \/ \E m \in Members : BranchRefused(m)
     \/ \E m \in Members : Deal(m)
     \/ \E m \in Members : Push(m)
     \/ \E m \in Members : ProbePass(m)
@@ -236,5 +246,10 @@ NewMemberProbed ==
 \* the member has a cause while it is held
 HeldHasACause ==
     [][\A m \in Members : held[m] => env[m] # "none"]_vars
+
+\* a rejected push (branch refusal) never holds the member; this cites EnvFault's check
+\* for "[rejected]", "non-fast-forward", and "(fetch first)" (tla/ProviderBudget.tla)
+ARejectedPushIsNeverAFault ==
+    [][\A m \in Members : (event' = "rejected" /\ card[m] = "working" /\ card[m]' = "failed") => (env'[m] = env[m] /\ held'[m] = held[m])]_vars
 
 =============================================================================

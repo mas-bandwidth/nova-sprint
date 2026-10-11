@@ -28,6 +28,9 @@ func TestEnvFaultClassifiesAFinishReason(t *testing.T) {
 		{"a full disk", "write /tmp/x: no space left on device", EnvDisk},
 		{"red tests are the card's", "verdict not-done; TestFoo: boom", ""},
 		{"a provider failure is native's", "provider failure: class=rate-limited", ""},
+		{"a branch refusal with child's sandbox words", "push refused: ! 0123abc:refs/heads/sprint/x.w1.g2.e17 [rejected] (non-fast-forward); TestALaneRunsInsideItsWall: the lane's sandbox denied a write", ""},
+		{"a genuine sandbox in member's reason still counts", "push refused: fatal: unable to write: Operation not permitted; verdict ok", EnvSandbox},
+		{"child's wall words alone are not the member's", "verdict not-done; the child said it was blocked by the wall", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -68,6 +71,21 @@ func TestFleetUpRefusesANewMemberUntilItsProbePasses(t *testing.T) {
 	w.must(p)
 	assert.True(t, w.s.Fleet.HasRow("m9"), "the passed probe accepts the member")
 	assert.Equal(t, CtlID("m9"), w.s.MemberCtl("m9").ID)
+}
+
+// A branch refusal (non-fast-forward) with child text is not an environment fault: the
+// card is routed as failed work, the member is not held, and no environment judgment is
+// raised (tla/ProviderBudget.tla, ARejectedPushIsNeverAFault).
+func TestBranchRefusalIsNotAnEnvironmentFault(t *testing.T) {
+	t.Parallel()
+	w := envFaultWorld(t)
+	wc := w.s.Work.Card("s1-1").F("work")
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
+		Report: "push refused: ! 0123abc:refs/heads/sprint/x.w1.g2.e17 [rejected] (non-fast-forward); TestALaneRunsInsideItsWall: the lane's sandbox denied a write"}))
+	assert.False(t, w.s.EnvHeld("m1"), "a branch refusal does not hold the member")
+	assert.Equal(t, Review, w.state("s1-1"), "the card is routed as failed work")
+	assert.Empty(t, w.notesOf(NMemberEnvFault), "no environment judgment")
 }
 
 // A finish whose reason is an environment fault returns the card to ready untouched -- the
