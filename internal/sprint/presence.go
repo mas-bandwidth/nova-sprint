@@ -426,7 +426,10 @@ func presence(s *Snapshot, r TickReq) (Plan, int) {
 		case !r.Beats[m].Beaten():
 			why = "it has never beaten"
 		}
-		add(downPlan(s, FleetReq{Op: "down", Member: m, Who: r.who(), Live: receivers, Why: why}, receivers, rr, moves, q, widths))
+		// a member down because it stopped beating is the machine's down, held
+		// by the machine for the fault: the tick clears the mark itself once the
+		// member beats and finishes a card cleanly (faultClear)
+		add(downPlan(s, FleetReq{Op: "down", Member: m, Who: r.who(), Live: receivers, Why: why, HeldBy: HeldByFault}, receivers, rr, moves, q, widths))
 	}
 	for i, m := range ups[:n] {
 		// the first up levels the queues over every member up after the plan

@@ -437,4 +437,14 @@
      stay; a row with working cards drains then retires; a draining absent row keeps its reader until its
      row leaves; a failed read retires nothing; an offline machine with a record is untouched."
     :origin "the owner, 2026-10-11 ~01:00Z and ~01:05Z, after hetzner was renamed hetzner1 and its old fleet
-     row stayed held; this card; attempt 2")))
+     row stayed held; this card; attempt 2")
+
+   (fix "machine-fault-hold-clears-when-healthy" :release "v1.2.9" :status "shipped"
+    :title "A machine fault hold clears itself once the member is healthy"
+    :text "A hold the machine places for a failure (a harness fault, a failed take, or the member going
+     down) is marked held_by=fault and clears itself on the tick once the member beats and has finished a
+     card cleanly since the hold: the machine's down is its fault hold, presence writes the mark and its
+     stamp, and the tick lifts the mark on the clean finish, telling the seat. A hold a person made carries
+     no held_by mark and is never lifted by the machine. TLA+ model DealFill, properties FaultHoldClears
+     and PersonHoldStays, with two reversed witnesses."
+    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")))
