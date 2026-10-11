@@ -146,6 +146,7 @@ func fromCol(e ntable.BatchMemberEntry, pre *Snapshot) (string, bool) {
 
 // unmet is why a unit admits a primary ready, or moves one waiting -> ready,
 // with a need that has not landed and was not waived; "" when it does not.
+// tla/CardISA.tla Wait: a card is resolved to ready only when its operand holds.
 func unmet(u Unit, pre *Snapshot, landing map[string]bool) string {
 	for _, c := range u.Changes {
 		e := c.Entry
@@ -206,6 +207,9 @@ func waitingFrom(e ntable.BatchMemberEntry, pre *Snapshot) bool {
 }
 
 func unlawful(u Unit, p *Plan) string {
+	// tla/CardISA.tla IsaLandEvent: the release lands from waiting only a
+	// sentinel, and a sentinel moves only to landed; the other landing rows
+	// (merge) are the only path to landed.
 	for _, c := range u.Changes {
 		e := c.Entry
 		if c.Table == Work && e.Create != nil && e.Create.Col != Waiting && e.Create.Col != Ready {
