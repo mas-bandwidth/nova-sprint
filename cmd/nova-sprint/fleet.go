@@ -98,12 +98,16 @@ good: never asked, its queue no beat and reader false, until reader up brings
 it back.`) + "\n"
 }
 
+// fleet level is the hand verb that levels the members' ready queues and rebalances the
+// reads and the cards off full units (rebalance.go), what the tick would move.
+func init() { verbEffect["fleet level"] = "local write: levels the members' ready queues and rebalances the reads and the cards off full units (rebalance.go), what the tick would move; --dry-run writes nothing" }
+
 // fleetStep is the coordinator's fleet verb as a step: up releases a hold,
 // counts as a beat of the member, and brings it up at once when it is alive, and sets its
 // width when width is above zero, and drains it at a width of 0; level evens
 // the ready queues (fleet down is hold --return, hold.go).
 func (a *app) fleetStep(st *store.Store, op, member, who string, width int, drain bool, deadline int, deadlineOff bool, harnesses, probe string) store.Step {
-	r := sprint.FleetReq{Op: op, Member: member, Who: who, Width: width, Drain: drain, Deadline: deadline, DeadlineOff: deadlineOff, Harnesses: harnesses, Probe: probe}
+	r := sprint.FleetReq{Op: op, Member: member, Who: who, Width: width, Drain: drain, Deadline: deadline, DeadlineOff: deadlineOff, Harnesses: harnesses, Probe: probe, Rebalance: op == "level"}
 	switch op {
 	case "up":
 		r.Op = "release"
