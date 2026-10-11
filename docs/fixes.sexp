@@ -576,4 +576,16 @@
     is named on the line). The seat probes the ssh port of each such member's machine row at once under one
     3 s bound, with a beating member other than the seat's own machine as the control of its network: no
     control answer, no member excused."
-   :origin "v1.2.5 candidate list")))
+   :origin "v1.2.5 candidate list")
+
+  (fix "readers-behind-judgment-once" :release "v1.2.9" :status "planned"
+   :title "A standing judgment is one judgment, pushed once while it holds"
+   :text "A standing condition is one judgment, keyed by its type and subject, rewritten in place while
+    it holds and pushed again only when its own numbers move. The readers-are-behind judgment is keyed
+    by type and subject (condKey, NReadersBehind), but its rewrite test compared the whole line,
+    review's count included, and review moves every tick as cards flow through it: the tick rewrote and
+    pushed the one judgment every tick while the readers' numbers held (dogfood 2026-10-10: j407, j409,
+    j410 within a minute). notify now compares a material: for the readers behind, the readers' own
+    numbers, never review's count (MaterialWhat, readers_behind.go), so the judgment is pushed once when
+    it rises, again when the readers move, and not for review."
+   :origin "dogfood 2026-10-10 evening: fleet-only restart; j407, j409, j410 within a minute")))
