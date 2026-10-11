@@ -82,6 +82,34 @@ func laneLine(ctx context.Context, st *store.Store, as string, lane int, epoch u
 	return fmt.Sprintf("%s holds=%s@%d kind=%s job=%s", head, x.ID, gen, kind, job)
 }
 
+// namedLaneLine is the LANE line for a card a take by id moved (docs/SPEC-SPRINT.md, take):
+// the same shape as laneLine, named by the card rather than by the lane, so both forms of the
+// verb say what moved and what it holds the same way. It reads the card back from the row's
+// cells.
+func namedLaneLine(ctx context.Context, st *store.Store, as string, lane int, epoch uint64, id string) string {
+	head := fmt.Sprintf("LANE %s lane=%d epoch=%d", as, lane, epoch)
+	cs, err := laneCells(ctx, st, as)
+	if err != nil {
+		return head + " holds=? (the table did not read: " + err.Error() + ")"
+	}
+	for _, x := range cs {
+		if x.ID != id {
+			continue
+		}
+		gen := max(x.Int("gen"), 1)
+		job := sprint.StoredID(x.ID, epoch)
+		if gen > 1 {
+			job += ".g" + strconv.Itoa(gen)
+		}
+		kind := cmp.Or(x.F("kind"), "work")
+		if _, ok := sprint.ReaderMachine(as); ok {
+			kind = "read"
+		}
+		return fmt.Sprintf("%s holds=%s@%d kind=%s job=%s", head, x.ID, gen, kind, job)
+	}
+	return head + " holds=-"
+}
+
 // laneCells is where a lane of as holds its card: a reader's reading cell on the readers
 // table (reader-<name>), else a worker's working cell on the fleet table.
 func laneCells(ctx context.Context, st *store.Store, as string) ([]*sprint.Card, error) {

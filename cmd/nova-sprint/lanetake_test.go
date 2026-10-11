@@ -72,10 +72,11 @@ func TestAFriendsLaneTakesThroughTheServerAndTheServerSaysWhatItHolds(t *testing
 	assert.NotEqual(t, 0, code)
 	assert.Contains(t, out, "held by lane 1 of friend.amy, not lane 3")
 
-	// a lane's take names nothing else
+	// a lane's take that names a card is the by-id form: through the server it names the
+	// epoch its worker holds, as a take by id does (the by-id and by-lane forms are one move)
 	code, out = ta.served("take", "--as", "friend.amy", "--lane", "1", "s1-4.w1@1")
 	assert.NotEqual(t, 0, code)
-	assert.Contains(t, out, "names its member and its lane and nothing else")
+	assert.Contains(t, out, "names the epoch its worker holds")
 
 	// her finish by the server's ids: the lane holds nothing after it
 	code, out = ta.served("finish", "--as", "friend.amy", "s1-3.w1@1", "--head", landHead, "--report", "done", "--epoch", epoch, "--lane", "1")

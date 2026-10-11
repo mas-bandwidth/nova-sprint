@@ -67,6 +67,13 @@ with `go build -o /tmp/tlacheck ./tools/tlacheck`, or run it with
 made stale, and `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <runs>...` joins their records. Check the runner's help for
 your version, and record new results against the actual model inputs you ran.
 
+The same groups run on GitHub-hosted `ubuntu-latest` runners in
+[`.github/workflows/tlc.yml`](../.github/workflows/tlc.yml) (nightly, on
+`workflow_dispatch`, and on a pull request touching `tla/`, `pkg/tlc/` or
+`tools/tlacheck/`), which downloads the pinned tlaplus v1.7.4 release and
+checks it against [`tla2tools.sha256`](tla2tools.sha256) before
+`make tlc TLC_GROUP=<group> TLC_BUDGET=110`.
+
 Return to [Contributing](../CONTRIBUTING.md) for the ordinary build and test
 checks, or [the documentation index](../docs/README.md) for the user guides.
 
