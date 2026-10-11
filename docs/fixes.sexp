@@ -823,6 +823,14 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "fn-view-after-a-clear-draws-no-old-stream" :release "v1.2.12" :status "planned"
+   :title "The view after a clear draws no old stream"
+   :text "TestTheViewAfterAClearDrawsNoOldStream: a clear advances to an empty epoch, so the stored
+    view still draws the four tables, the fleet carrying its members over, and holds no row for the
+    streams a, b or c the old epoch held. A stream added after the clear is drawn again; the old
+    streams are not. A stream with no cards cannot be added: no verb adds one without a card."
+   :origin "the v1.2.12 inventory (tmp/v1.2.12-inventory-2026-10-11.md) card B4: TestTheViewShowsAStreamWithNoCards expected the old streams kept after a clear, which the blank-slate clear (0287638) left behind")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
