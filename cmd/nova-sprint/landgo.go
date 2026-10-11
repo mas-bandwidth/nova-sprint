@@ -426,8 +426,10 @@ func gateRunError(run []string, out string, err error) error {
 // stage is refused is left for the next slot of the ring; one refused twice in the pass is
 // passed over for the rest of it, said with the reason (bench.StageSkips). ran is false
 // when the gate did not run on a bench (the commit could not be pushed, no lane before ctx
-// ended, a bench not answering, every slot's stage refused): the caller runs it here, and
-// that is nobody's finding. A gate that ran records the ring's size and the slot for the
+// ended, a bench not answering, every slot's stage refused): with another member configured
+// (a non-empty host list implies it) the caller refuses the gate as a remote-bench
+// unavailability, else it runs the gate here, and either way that is nobody's finding. A
+// gate that ran records the ring's size and the slot for the
 // batch's LAND line (gateRing, gateSlot).
 func (l *lander) benchGate(ctx context.Context, hosts []string, dir string, runs [][]string, tests bool) (why string, ran bool) {
 	st, err := l.gateStage(ctx, dir)
@@ -449,7 +451,8 @@ func (l *lander) benchGate(ctx context.Context, hosts []string, dir string, runs
 }
 
 // ringGate asks the ring for a lane and runs the gate there, stepping to the next slot
-// when a bench's stage is refused (benchGate).
+// when a bench's stage is refused (benchGate). tla/GateRing.tla AskRun, AskRefused,
+// AskNoAnswer, Exhaust, Fallback.
 func (l *lander) ringGate(ctx context.Context, hosts []string, dir string, runs [][]string, tests bool, st *bench.MirrorStage) (string, bool) {
 	skips := l.stageSkips()
 	tried, said := map[string]bool{}, map[string]bool{}
