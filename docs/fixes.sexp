@@ -823,6 +823,19 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "store-two-run-loops-retries-a-busy-fence" :release "v1.2.12" :status "planned"
+   :title "Two run loops' busy fence is a retry in the two-loops test, not a failure"
+   :text "TestCRTwoRunLoopsAtOnce plays the outside world through run(step) while two tick loops run
+    on one sprint. Under their contention a verb can be told the store's documented retryable refusal,
+    *FenceBusyError (\"the sprint is busy ... nothing was changed; run the verb again\"), and the test
+    failed on it. That refusal is behaviour, not a defect. run(step) now retries the same step when
+    store.IsFenceBusy(err) is true, up to 20 tries, counting the retries per trial; it still counts
+    \"changed under the step\" exactly as before and still requires no error on every other failure. A
+    step still busy after the bound fails the test with its verb and the count: an outside verb starved
+    by two tick loops, a v1.2.14 candidate, never papered over by a larger bound. The trial's log line
+    also reports the busy retries."
+   :origin "the v1.2.12 plan (tmp/point-release-plan-v1.2.11-v1.2.12.md): TestCRTwoRunLoopsAtOnce flakes under contention (accepts \"changed under the step\" but not \"the sprint is busy\"; 1 in 4 full runs; seen on #89 CI run 38140844195)")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
