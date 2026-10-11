@@ -1600,10 +1600,10 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		switch kind {
 		case cardhdr.EndProvider:
-			if IsRateLimited(r.Report) && rateLimitedRoute(c) && c.Int(FieldRateReturns) < MaxRateReturns {
-				// a limited route's 429 that got through the member's budget and its retries:
-				// the card is returned untouched, at most MaxRateReturns times (rate_budget.go);
-				// an unlimited route's ends the take and counts toward its rest as before
+			if IsRateLimited(r.Report) && c.Int(FieldRateReturns) < MaxRateReturns {
+				// the provider rate-limited the take: returned untouched like a staging refusal
+				// (withdrawn without FieldTakeEnded, so no redeal spent); an unlimited route's
+				// rate-limited ends no longer reach takeEnded
 				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r))
 				continue
 			}

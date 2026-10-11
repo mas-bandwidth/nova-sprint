@@ -251,11 +251,9 @@ func Judge(r Result, pu Push) (fin Finish, why string) {
 		return FinishFailed, EndStaging + ": budget " + cmp.Or(r.Budget, "unverifiable: the usage source stopped answering")
 	case pu.Refused != "":
 		return FinishFailed, "push refused: " + pu.Refused
-	case r.End == EndProvider && r.Provider != "" && isRateLimited(r.Provider):
-		// the provider rate-limited the run: the kind and the provider's reason,
-		// regardless of shape (a shaped result with a pushed head is still the card's);
-		// the sprint deals the card again on a different route (rate limit is not the
-		// card's fault)
+	case r.End == EndProvider && r.Provider != "" && isRateLimited(r.Provider) && pu.Sha == "":
+		// the provider rate-limited the run without a pushed head: the kind and the provider's reason
+		// with a shaped result and a pushed head, this is the card's own finish
 		return FinishFailed, EndProvider + ": " + r.Provider
 	case r.End == EndProvider && r.Provider != "" && !r.Shaped:
 		// the provider failed the run and it left no result: the kind and the

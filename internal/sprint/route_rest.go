@@ -364,7 +364,7 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: numbers[i], at: at, taken: taken, transient: transient(t.Error), refused: refusal(t.Error)})
 		}
 		// read rate-limited takes (written by rateLimitedReturned in steps_work.go)
-		// only count those that weren't absorbed by the route's rate limit
+		// these are recorded independently of FieldTakeEnded and count toward backoff
 		for n := 1; n <= MaxRedeals+1; n++ {
 			v := c.F(FieldRateTake + itoa(n))
 			if v == "" {
@@ -376,11 +376,6 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 				continue
 			}
 			taken, _ := time.Parse(time.RFC3339, t.Taken)
-			// skip if this rate-limited end was absorbed on a limited route
-			// (card has FieldRateReturns set, meaning rateLimitedReturned was called)
-			if c.F(FieldRateReturns) != "" {
-				continue
-			}
 			out[t.Route] = append(out[t.Route], routeEnd{card: c.ID, take: n, at: at, taken: taken, rateLimited: true})
 		}
 		if c.Col != DoneOK && c.Col != DoneFailed {
@@ -398,7 +393,7 @@ func routeEnds(fleet *Table) map[string][]routeEnd {
 // RateLimitBackoffInitial, doubles per rate-limited end with no ok take in between, capped
 // at RateLimitBackoffCap. It reads FieldRateTake records and returns a RouteRest if backoff
 // is due. A backoff ends by itself at its time (never by coordinator action).
-func rateLimitBackoff(route string, ends map[string][]routeEnd) (RouteRest, bool) {
+func rateLimitBackoff(route string, ends map[string][]routeEnd, now time.Time) (RouteRest, bool) {
 	eList := ends[route]
 	// count consecutive rate-limited ends with no ok take in between
 	var rateLimitedEnds int
@@ -423,7 +418,7 @@ func rateLimitBackoff(route string, ends map[string][]routeEnd) (RouteRest, bool
 	// compute backoff: 60s * 2^(rateLimitedEnds-1), capped at 15 min
 	backoff := RateLimitBackoffInitial * time.Duration(1<<uint(rateLimitedEnds-1))
 	backoff = min(backoff, RateLimitBackoffCap)
-	return RouteRest{Route: route, At: time.Now(), Until: time.Now().Add(backoff), Cause: RateLimitBackoff}, true
+	return RouteRest{Route: route, At: now, Until: now.Add(backoff), Cause: RateLimitBackoff}, true
 }
 
 // RestsDue is the rests the rule writes now: each route of the store not resting at s.Now
@@ -461,9 +456,11 @@ func RestsDue(s *Snapshot) []RouteRest {
 	if len(cards) >= RouteRestAfter {
 		out = append(out, RouteRest{Route: r.Name, At: s.Now, Until: s.Now.Add(RouteRestFor), Cards: cards, Cause: RestProvider})
 	}
-	// compute rate-limited backoff for this route
-	if rest, ok := rateLimitBackoff(r.Name, ends); ok {
-		out = append(out, rest)
+	// compute rate-limited backoff for this route (only if not already resting)
+	if !had || !last.Resting(s.Now) {
+		if rest, ok := rateLimitBackoff(r.Name, ends, s.Now); ok {
+			out = append(out, rest)
+		}
 	}
 }
 	// a provider's refusal rests the provider, every route of it, over rule 3's on its routes
@@ -610,6 +607,10 @@ func restWrites(p *Plan, s *Snapshot, due []RouteRest, who string) {
 		}
 		p.Props = append(p.Props, PropWrite{Table: Fleet, Name: name, Value: rule3Text(merged), Was: was, WasAbsent: !had})
 		for _, r := range b.routes {
+			// Rate-limited backoff rests don't write a happened note (backoff is silent)
+			if r.Cause == RateLimitBackoff {
+				continue
+			}
 			tier := ""
 			for _, x := range s.Routes {
 				if x.Name == r.Route {

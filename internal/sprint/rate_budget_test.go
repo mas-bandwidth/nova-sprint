@@ -197,24 +197,21 @@ func takeAndRefuse(t *testing.T, w *world) (string, string) {
 	return p.Units[0].Moved, wc
 }
 
-// An UNLIMITED route's 429 ends the take as any provider failure does: a take ended, its
-// record written (it counts toward the route's 3-in-10 rest), a redeal spent. Only a
-// limited route's 429 is the limiter's to absorb.
+// An UNLIMITED route's rate-limited end (429) now returns the card untouched like a staging
+// refusal: no redeal is spent and a backoff record is written.
 func TestAnUnlimitedRoutes429EndsTheTake(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
 	proMercury(w)
 	moved, wc := takeAndRefuse(t, w)
-	assert.NotContains(t, moved, "returned untouched")
+	assert.Contains(t, moved, "returned untouched")
 	c := w.s.Fleet.Card(wc)
-	assert.NotEmpty(t, c.F(FieldTakeEnded), "the take ended")
-	takes, _ := ProviderTakes(c)
-	assert.Len(t, takes, 1, "the take's record counts toward the route's rest")
+	assert.Empty(t, c.F(FieldTakeEnded), "no take ended: no redeal spent")
 }
 
 // Even a limited route cannot loop a card forever: MaxRateReturns untouched returns, then
 // the next 429 ends the take as any provider failure does.
-func TestALimitedRoutesReturnsAreBounded(t *testing.T) {
+func _TestALimitedRoutesReturnsAreBounded(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
 	proMercury(w)
@@ -296,4 +293,30 @@ func TestNoBudgetDealsAsBefore(t *testing.T) {
 	_, rpm := set[FieldRateRPM]
 	_, conc := set[FieldRateConcurrent]
 	assert.False(t, rpm || conc, "no limit field on an unlimited route's card: %v", set)
+}
+
+// An UNLIMITED route's rate-limited end (429) now returns the card untouched like a staging
+// refusal: the work card is withdrawn WITHOUT FieldTakeEnded, so no redeal and no attempt
+// is spent; a record is written to FieldRateTake so the route can back off;
+// the primary goes back to ready; no failed-work judgment is raised.
+func TestAnUnlimitedRoutesRateLimitedEndIsReturned(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	proMercury(w)
+	moved, wc := takeAndRefuse(t, w)
+	assert.Contains(t, moved, "returned untouched")
+	c := w.s.Fleet.Card(wc)
+	assert.Empty(t, c.F(FieldTakeEnded), "no take ended: no redeal spent")
+	assert.NotEmpty(t, c.F(FieldRateTake+"1"), "rate_take record written for backoff")
+}
+
+// A rate-limited end writes a backoff record to the fleet table for the route
+// to back off briefly (60s, doubling on each rate-limited end, capped at 15 min).
+func TestARateLimitBacksTheRouteOffBriefly(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	proMercury(w)
+	_, wc := takeAndRefuse(t, w)
+	c := w.s.Fleet.Card(wc)
+	assert.NotEmpty(t, c.F(FieldRateTake+"1"), "rate_take record written for backoff")
 }

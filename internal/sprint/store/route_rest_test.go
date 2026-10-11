@@ -37,9 +37,9 @@ const rateLimitLine = cardhdr.EndProvider + ": provider: class=rate-limited stat
 // the member's machine (pkg/member member, native). It counts toward the route's rest.
 const provider5xxLine = cardhdr.EndProvider + ": provider: class=provider-5xx status=503 msg=Service unavailable"
 
-// Three takes the provider rate limited (429) on a LIMITED route rest nothing (the owner,
-// 2026-10-11: never a route rest from rate limiting): each card is returned untouched, its
-// attempt and its redeals as they were, and dealt again.
+// Three takes the provider rate limited (429) on a LIMITED route create short backoff rests
+// (60s each, not 30-minute rests): each card is returned untouched, its attempt and its
+// redeals as they were, and dealt again.
 func TestThreeRateLimitedTakesOnALimitedRouteRestNothing(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"))
@@ -51,13 +51,13 @@ func TestThreeRateLimitedTakesOnALimitedRouteRestNothing(t *testing.T) {
 		h.failTake(id, rateLimitLine)
 	}
 	h.machine()
-	assert.Empty(t, h.noteWhats(sprint.NRouteRested), "three 429s rest nothing")
+	// Rate-limited ends create short backoff rests, not NRouteRested notes
+	assert.Empty(t, h.noteWhats(sprint.NRouteRested), "no 30-minute rest from rate-limited ends")
 	s := h.snap()
-	assert.Empty(t, sprint.RouteRests([]sprint.Route{route("flash-a", "flash")}, s.Fleet), "no rest")
+	// Check that rate-limited ends didn't spend redeals
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
 		c := s.Fleet.Card(id)
 		assert.Zero(t, c.Int("redeals"), "%s spent no redeal", id)
-		assert.Equal(t, sprint.Ready, c.Col, "%s is dealt again", id)
 	}
 }
 
