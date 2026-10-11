@@ -122,6 +122,15 @@ func (s *Snapshot) noLauncher(c, ec *Card, tier string, up []string) string {
 	if ms, _ := s.launchersOf(ec, wc, pool); len(ms) > 0 {
 		return ""
 	}
+	// a member of the pool that refused the card's repository at staging for want of a
+	// bench mirror (stagingRepoWhy) is why the judgment is raised: the mirror, what to
+	// add and where, never unlaunchableWhy's generic harness sentence (the card: "the
+	// no-launcher judgment says so with that why"). The owner, 2026-10-11: "cards only
+	// may accrue per-fleet or friend, if there are not other machines/friends ready to
+	// do that work right now!"
+	if w := s.stagingRefusalWhy(ec, pool); w != "" {
+		return w
+	}
 	return s.unlaunchableWhy(c, tier, pool, refused)
 }
 

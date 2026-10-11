@@ -1038,6 +1038,13 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		next := func(card, wc *Card, of, refused []string) (string, string) {
 			ms, why := s.launchersOf(card, wc, of)
 			if len(ms) == 0 && len(of) > 0 && why != "" {
+				// a member of of that refused the card's repository at staging for want
+				// of a bench mirror is the refusal the coordinator reads, never the
+				// generic harness sentence (the card: "the no-launcher judgment says so
+				// with that why"; stagingRefusalWhy)
+				if w := s.stagingRefusalWhy(card, of); w != "" {
+					return "", w
+				}
 				_, tier, _, _ := s.routeOf(card, nil, nil, "")
 				return "", s.unlaunchableWhy(c, tier, of, refused)
 			}

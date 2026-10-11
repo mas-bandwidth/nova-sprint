@@ -164,3 +164,18 @@ func (s *Snapshot) stagingRepoWhy(member string, c *Card) string {
 	}
 	return member + " refused " + repo + " at staging at " + when + ": no bench mirror; add the mirror on " + member + " with the fleet play"
 }
+
+// stagingRefusalWhy is why the first member of pool that refused the primary c's repository
+// at staging for want of a bench mirror (stagingRepoWhy) cannot take it: the sentence the
+// deal's and the level's refusal says when no member is left, so the coordinator reads the
+// mirror, never the routes the member cannot launch. "" when no member of pool refused c's
+// repository that way. The owner, 2026-10-11: "cards only may accrue per-fleet or friend,
+// if there are not other machines/friends ready to do that work right now!"
+func (s *Snapshot) stagingRefusalWhy(c *Card, pool []string) string {
+	for _, m := range pool {
+		if w := s.stagingRepoWhy(m, c); w != "" {
+			return w
+		}
+	}
+	return ""
+}

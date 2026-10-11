@@ -107,6 +107,35 @@ func TestAMirrorRefusalEndsPastTheWindowOrAfterAnOk(t *testing.T) {
 	assert.Empty(t, why, "studio finished a nova-sprint card ok: the refusal ends at once")
 }
 
+// TestANoLauncherJudgmentNamesTheMirrorRefusal: studio alone up refused nova-sprint at
+// staging for want of a bench mirror, so no member the deal may give a new nova-sprint
+// primary can launch it. The no-launcher judgment (noLauncher, route.go) and the deal's
+// refusal (steps_work.go, next) must say the mirror sentence, never unlaunchableWhy's
+// generic harness sentence: the coordinator reads what to add and where.
+func TestANoLauncherJudgmentNamesTheMirrorRefusal(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "studio", Width: 4}))
+	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "m", Enabled: true, Deadline: 600}}
+	w.must(Add(w.s, AddReq{Stream: "ns", Count: 1, Repo: "https://github.com/mas-bandwidth/nova-sprint", Brief: "tier: flash\n"}))
+	w.s.Fleet.Put(&Card{ID: "ns-0.w1", Row: "studio", Col: Withdrawn, Fields: map[string]string{
+		"gen":                  "1",
+		FieldRepo:              "https://github.com/mas-bandwidth/nova-sprint",
+		FieldStagingTake + "1": ProviderTake{Member: "studio", Finished: t0.Add(-time.Minute).Format(time.RFC3339), Error: mirrorErr}.String(),
+	}})
+	why := w.s.noLauncher(nsPrimary("ns-1"), nsPrimary("ns-1"), cardhdr.RouteFlash, []string{"studio"})
+	require.NotEmpty(t, why, "no member is left: the judgment is raised")
+	assert.Contains(t, why, "studio refused mas-bandwidth/nova-sprint at staging")
+	assert.Contains(t, why, "no bench mirror")
+	assert.Contains(t, why, "add the mirror on studio with the fleet play")
+
+	p := Deal(w.s, DealReq{Sel: Sel{IDs: []string{"ns-1"}}})
+	require.NotEmpty(t, p.Refused, "the deal refuses the card")
+	assert.Contains(t, p.Refused[0].Why, "studio refused mas-bandwidth/nova-sprint at staging")
+	assert.Contains(t, p.Refused[0].Why, "no bench mirror")
+	assert.Contains(t, p.Refused[0].Why, "add the mirror on studio with the fleet play")
+}
+
 // TestAStagingRefusalOfAnotherCauseStaysPerCard: a staging refusal that names no bench
 // mirror (the pushed head missing, a disk floor) is not a repository capability.
 func TestAStagingRefusalOfAnotherCauseStaysPerCard(t *testing.T) {
