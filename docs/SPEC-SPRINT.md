@@ -5077,6 +5077,36 @@ follow-up card has the binding read the facts beside the ticks (never in one: a 
 holds a tick), with the test's `ReadDrift` (internal/sprint export_test.go) moved in as its
 reader, and record the whole-tree gate's last run at the base.
 
+### The base's CI after a landing
+
+On 2026-10-11 the base was red for eight landings and nothing told the seat: the lander's
+`the base is red` was its own narrow tree gate, `the base is red at its tip` above is judged
+from the whole-tree gate at the base's tip, and GitHub's check runs were read only by the
+release cut. So a red base after a landing is a fact the binding reads and the tick raises
+(internal/sprint base_ci.go, `TickBaseCI`, in the deadlines part beside the drift alarms):
+one judgment of **the base's CI is red after a landing** (`the base's CI is red after a
+landing`), one per red (repository, base), keyed by its type and subject `<repo>@<base>` and
+never by its line, so a new tip or a new failing check in the same red stretch rewrites
+nothing and pushes nothing. It names the repository, the base, the oldest red commit since
+the last green one (twelve digits), its failing checks, the tip now, and says the cards
+landing onto it land onto red, to fix it on the base first; its decisions are `act` and
+`wait` (`TickDecisions`). The judgment is written once when the red stretch starts, and
+closed when a fact for that (repository, base) is green; a (repository, base) the facts do
+not name keeps its open judgment, and a wait on it, as they stand (no fact is never a
+clear, as the drift alarms carry a drift the facts say nothing of). A new stretch (green,
+then red again) is a new judgment. There is no raise again: the coordinator's pass reminds
+of an open judgment as it does for any.
+
+The facts are the binding's: `TickReq.BaseCI`, a `sprint.BaseCIFacts` per repository and
+base (`Repo`, `Base`, `Tip` the newest landed commit whose check runs all completed, `Red`
+when any concluded a failure or timed out, `FirstRed` the oldest red commit since the last
+green one, and `Failed` the failing check names of `FirstRed`), read by the binding
+(the-server-reads-the-base-ci-after-a-landing) from the forge; this card reads none. The
+store passes them from its `BaseCI` func when set (internal/sprint/store), nil passing none.
+The episode machine is the pass's, tla/CoordinatorPass.tla, as the drift alarms' and the
+coordinator pass's are: no module of its own. The test is
+`TestARedBaseIsOneJudgmentPerRedStretch` (a twin store and a fake clock).
+
 ### Open files
 
 A sprint once ran its machine out of file descriptors, and only one coordinator's

@@ -86,6 +86,11 @@ type Store struct {
 	// friend stall part of the tick climbs her ladder to rung 1 or 2 (sprint.TickFriendStall,
 	// a bus message pushed to her daemon); nil sends nothing and the rung climbs the same.
 	WakeFriend func(friend string, rung int, d time.Duration) error
+	// BaseCI, when set (run and tick), is the tick's read of the base's CI after a
+	// landing (one per repository and base; sprint.TickBaseCI, base_ci.go): the facts
+	// the binding read, passed into the tick's TickReq. nil passes none, and no
+	// red-base judgment is raised or closed.
+	BaseCI func() []sprint.BaseCIFacts
 	// Inventory, when set (run and tick), is the tick's read of the machine records
 	// nova-config names (the same config read as fleet sync; sprint.TickRetireAbsent,
 	// fleet_retire.go): the names, and whether the read answered. A read that fails or
