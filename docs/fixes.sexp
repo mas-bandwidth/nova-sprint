@@ -823,6 +823,17 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-store-shadow-tick-and-holds" :release "v1.2.12" :status "planned"
+   :title "Store-package tests for ShadowTick and Holds"
+   :text "New store-package unit tests for the two reads that had no test of their own: Store.ShadowTick
+    (the tick --shadow plan and the server switch's canary print) and Store.Holds (the holds where --json
+    list). The shadow tests pin the RUNNING and STOPPED plans and that the store is unchanged, the
+    owed-restore and pending-operation refusals, the drain of a queued work table, the Reads of a waiting
+    primary, a busy store, and a custom Updates list. The holds tests pin the kind order with each reason
+    and who, a member's Return, and the dropping of an unreadable reader record and a friend's row. The
+    doc/code mismatch for a reader merely set away is left for v1.2.14."
+   :origin "this card")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
