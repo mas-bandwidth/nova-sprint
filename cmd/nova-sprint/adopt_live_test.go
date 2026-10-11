@@ -100,6 +100,7 @@ func TestLiveShowsWhatIsInstalled(t *testing.T) {
 	})
 	env := map[string]string{"HOME": home, "NOVA_SPRINT_REDIS": "s:1", "NOVA_SPRINT_REDIS_USER": "coordinator", "NOVA_SPRINT_REDIS_PASSWORD_ENV": "PW"}
 	a := newApp(func(k string) string { return env[k] })
+	a.goos = "darwin" // a launchd host: the agents directory refusal is darwin's
 	a.now = func() time.Time { return now }
 	liveRunnerOf.Store(a, fake)
 	t.Cleanup(func() { liveRunnerOf.Delete(a) })

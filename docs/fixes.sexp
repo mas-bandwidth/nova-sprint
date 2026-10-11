@@ -66,7 +66,11 @@
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator."))
  :items
- ((fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
+  ((fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
+    :title "The store package's own tests pin stats tidy and stats reset"
+    :text "Tests only, no product change. New tests in internal/sprint/store drive TidyStats and ResetStats through the unit tier's Mem store and assert on their results, on what StatsTidied and StatsReset read back, and on whether the store changed: a dry run counts and writes nothing; a fleet tidy moves history off the done cells and records the archive done; a second tidy within TidyAgainAfter is refused; a fresh tidy marker refuses a tidy or a reset while a stale one is taken as ended; routes alone moves nothing and streams clears the where record; a refused move keeps its archive failed and clears the marker; a reset writes its mark and clears the where record; operation ids replay, conflict and are refused by shape; a compare-and-set that keeps losing errors after its tries; and a tidy's kinds and archives are kept across a reset."
+    :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C5")
+   (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
    :origin "the split, layer L0; PR #28")
@@ -875,6 +879,35 @@
     RouteTable's in-package statement coverage goes from 0.0% of 163 to 99.4%. No product change."
    :origin "the owner, 2026-10-11: v1.2.12 tests and models only; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C1")
 
+  (fix "fn-dashboard-test-compares-the-page-data" :release "v1.2.12" :status "planned"
+   :title "The dashboard functional test reads where --json as the page serves it"
+   :text "TestDashboardServesThePageOnEveryListener compared each listener's /api/sprint tables against
+    raw where --json; since the page serves internal/sprintdash's pageData, which folds each stream's
+    stream_costs record (the tiers and in_flight fields) into the work rows, the two never matched.
+    The test now puts where --json through sprintdash.PageData at a fixed time before it unmarshals its
+    expectation, and compares tables and landed as before. No product or dashboard change."
+   :origin "this card")
+
+  (fix "store-two-run-loops-retries-a-busy-fence" :release "v1.2.12" :status "planned"
+   :title "The two-run-loops test retries the store's busy refusal"
+   :text "TestCRTwoRunLoopsAtOnce's outside world now retries a step when the store answers with its
+    documented retryable refusal (FenceBusyError, \"the sprint is busy ... nothing was changed; run the
+    verb again\"), up to 20 tries per step, counting the retries per trial; a verb still busy after the
+    bound fails the test with its verb and count, and goes in the report as a v1.2.14 candidate (an
+    outside verb starved by two tick loops), never papered over by a larger bound. Each trial logs its
+    busy retries so a run shows how often the fence was contended. \"changed under the step\" is still
+    counted and every other assertion (judgments once, width, two reads per attempt, h.clean) is
+    unchanged. Test-side only; no product change."
+   :origin "the v1.2.12 plan (tmp/point-release-plan-v1.2.11-v1.2.12.md, last lines); CI run 38140844195 on #89; this card store-two-run-loops-retries-a-busy-fence")
+
+  (fix "tla-coverage-rows-for-every-nova-sprint-module" :release "v1.2.12" :status "planned"
+   :title "tla/COVERAGE.tsv names every TLA+ module in the tree exactly once"
+   :text "Every module in tla/ (every X.tla whose name does not start with MC, SeatProof retired) is
+    named by exactly one row's module column, every row's status is what the drift reads found, and
+    every row that is not current names in owed_by the v1.2.12 card that owes it. Twenty-two rows are
+    added, nineteen are changed, and a row marked missing names module \"-\"."
+   :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
@@ -932,6 +965,29 @@
    :title "doctor reads nova-config from the caller's environment"
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
    :origin "this card")
+
+ (fix "land-clash-test-sets-git-identity-in-clones" :release "v1.2.11" :status "planned"
+   :title "The clash test sets a git identity in every clone it commits in"
+   :text "The clash test configured user.name and user.email in its first temporary repository only; the clones it makes do not inherit that config, so their commit failed with exit 128 on a machine without a global git identity. The test now sets GIT_AUTHOR_*/GIT_COMMITTER_* for the whole test, the way the package's other git-using tests set an identity."
+   :origin "this card")
+
+  (fix "live-reads-systemd-units-and-launch-daemons" :release "v1.2.11" :status "planned"
+   :title "live reads systemd units on Linux and LaunchDaemons on macOS"
+   :text "The live manifest read only ~/Library/LaunchAgents, so a Linux host refused with no agents directory and a loop installed as a system LaunchDaemon was never listed. live now reads the nova-loop-*.service systemd units of the user and system unit directories on Linux, each an interval agent when a .timer sits beside it, and, on macOS, the com.nova.* launchd daemons of /Library/LaunchDaemons too; each agent records its manager (launchd or systemd)."
+   :origin "this card")
+
+  (fix "hook-finds-the-server-itself" :release "v1.2.11" :status "planned"
+   :title "The hook and the coordinator's verbs find the server the seat's record names"
+   :text "app.server (cmd/nova-sprint/forward.go) read only NOVA_SPRINT_SERVER, so a seat
+    installed with `seat install --server <host:port>` still had to export the variable by
+    hand before `hook` or any coordinator verb would run; every other seat verb answered
+    'You must hook in first'. When the environment names no server, app.server now uses the
+    server the seat's record names (a.seatServer), in the same order seat check already used
+    (machinery.go). A process that is the server, or a verb given its own --redis, still
+    returns none. hook prints the server it used and where it came from
+    (server=<host:port> from=env | from=seat-record), and when neither source names one the
+    refusal names both and the commands that set one."
+   :origin "the seat, 2026-10-11 ~03:19Z: the seat hook proved only with NOVA_SPRINT_SERVER=127.0.0.1:6390 set by hand")
 
   (fix "a-refused-verb-is-logged-with-its-refusal" :release "v1.2.11" :status "planned"
    :title "A refused verb is written on the server's own log, with its refusal"

@@ -6377,7 +6377,7 @@ It prints one line per check and an exit code: 0 if all OK, 1 if any check is DO
 Each line has the format `MACHINERY <thing> OK|DOWN <facts> [remedy="<command>"]`.
 A summary line `MACHINERY OK n=<total>` or `MACHINERY DOWN n=<down> of=<total>` concludes the output.
 `--json` prints one JSON object with `at`, `lines`, `down`, `exit_code`, and `measures`.
-The server is NOVA_SPRINT_SERVER, else the server `seat install` recorded in the seat (`seat.json`), so an installed seat's check measures it and never says `NOVA_SPRINT_SERVER is not set`. When the seat names a nova-config seat profile, a line `MACHINERY config OK seat=<name> dsn=<dsn> password-env=<NAME> profile=<path>` says the row `nova-config --seat <name>` reads, or `MACHINERY config DOWN` with the reason and the remedy (`nova-sprint seat install --config-seat <name> --config-dsn <dsn> --config-password-env <NAME>`) when the row is gone or unreadable. A recorded server feeds the check and the push loop's unit only: a verb is still sent to the server when NOVA_SPRINT_SERVER is set, as before.
+The server is NOVA_SPRINT_SERVER, else the server `seat install` recorded in the seat (`seat.json`), so an installed seat's check measures it and never says `NOVA_SPRINT_SERVER is not set`. When the seat names a nova-config seat profile, a line `MACHINERY config OK seat=<name> dsn=<dsn> password-env=<NAME> profile=<path>` says the row `nova-config --seat <name>` reads, or `MACHINERY config DOWN` with the reason and the remedy (`nova-sprint seat install --config-seat <name> --config-dsn <dsn> --config-password-env <NAME>`) when the row is gone or unreadable. The recorded server also names the server the coordinator's verbs and `hook` use when NOVA_SPRINT_SERVER is unset: NOVA_SPRINT_SERVER wins when it is set, and otherwise a verb is sent to the recorded server and `hook` connects there.
 
 ### The seat's store login
 
@@ -7396,8 +7396,15 @@ with a card in hand (`nova-friend status`) and the `nova-friend install` argumen
 same agent from the installed nova-friend; a server (`nova-sprint run`) its `--listen`
 addresses. Its `processes` are every process of the host that runs a nova tool, each marked
 `holds` when it runs the bin directory's nova-sprint or its nova-swarm as a member (a bare name
-found on PATH, a link followed), and an agent whose process does so `holds` too. `--json` prints
-the manifest as one object.
+found on PATH, a link followed), and an agent whose process does so `holds` too. Three sources are
+read: the launchd agents directory (`--agents-dir`, else `NOVA_LAUNCH_AGENTS`, else
+`~/Library/LaunchAgents`, the agents-directory refusal above), the launchd daemons directory
+(`--daemons-dir`, default `/Library/LaunchDaemons`, a missing one is no daemons) with each daemon
+targeted `system/<label>` and read with `launchctl print system/<label>`, and, on Linux, the
+`nova-loop-*.service` systemd units of the user and system unit directories (`--user-units-dir`
+and `--system-units-dir`, a missing one is no loops, never a refusal), each an agent whose target
+is `user/<unit>` or `system/<unit>`, and every agent names the manager that runs it (`launchd` or
+`systemd`). `--json` prints the manifest as one object.
 
 The seat's adoption is a window, and no old server or member code ever meets the new schema or
 the new library. In order:
