@@ -1121,6 +1121,24 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-sprint-tables-lifecycle-moves-and-needs" :release "v1.2.12" :status "planned"
+   :title "tla/SprintTables.tla models the card lifecycle's six states and its moves"
+   :text "Models only, no product change. tla/SprintTables.tla is the card lifecycle (internal/sprint/lifecycle.go):
+    six states, waiting ready working review merging landed, landed final, and the Moves table as a set of
+    <<from, to>> pairs, one action per verb whose guard is Legal plus the plan's flags (releasing, inserting,
+    removing as nondeterministic flags), needs, waivers and sentinels; off the table (a drop) is not a state.
+    It proves TypeOK, NoNeedCycle (needs are acyclic, decided by a closure bounded by the card count, so a
+    cyclic NeedsOf is a violation and not a recursion without end) and OffIsFinal (a card that leaves the
+    table never comes back; only the \"never returns from off\" reading of the refmodel's NoCardLostOrTwice,
+    whose \"cut a second time\" half is deal's rule and not modelled here), and the action properties
+    MovesOnlyByTable (every change of cell is a Moves row, a drop from an open state, or a remove of a landed
+    card), ReadyToWaitingOnlyByInsert, LandedIsFinal and NeedsLandFirst (a card leaves waiting for ready only
+    with every need landed or waived), with two reversed witnesses: MCSprintTablesBrokenInsert (an add that
+    moves ready -> waiting without inserting) and MCSprintTablesBrokenNeedless (a resolve that drops the needs
+    check). The four cards that depend on it add deal, take, finish and the fleet; reads and accept; merge and
+    return; crash and repair."
+   :origin "card tla-sprint-tables-lifecycle-moves-and-needs.w4, 2026-10-11: v1.2.12 inventory item T4, at nova-sprint main 00c54ba2e")
+
   (fix "tla-serverlanes-control-line-tick-turn" :release "v1.2.12" :status "planned"
    :title "ServerLanes models the control line: batches by ticket and the tick's turn"
    :text "Model only, no product change. ServerLanes.tla held the server's one line as app.serial: a
