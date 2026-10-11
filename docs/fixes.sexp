@@ -395,6 +395,24 @@
      its RULES paragraph that contradicts its carried rules is a finding under any rule set."
     :origin "this pull request")
 
+   (fix "restore-tests-owed-from-split" :release "v1.2.6" :status "shipped"
+    :title "Restore the tests the repository split moved out of nova-tools"
+    :text "Four of the five doc-pin tests moved out of nova-tools restored in nova-sprint, each wired to the
+     behavior it pins: the coordinator rules (cmd/nova-sprint/handover_rules_test.go,
+     TestEveryCoordinatorRuleNamesVerbsThatExist, holds each rule of docs/SPRINT-COORDINATOR.md section 10
+     to nova-sprint's verb table and the verbs of the tools the runbook names), the processor doc
+     (cmd/nova-sprint/processor_doc_test.go, pinned to docs/PROCESSOR.md's mapping rows), the coordinator
+     tools register (cmd/nova-sprint/coordinator_tools_test.go,
+     TestEveryCoordinatorToolMapsToARealNovaVerb and TestEveryCoordinatorStopgapNamesTheVerbThatReplacesIt,
+     pinned to docs/COORDINATOR-TOOLS.md's table), and the handover now prints every rule by number
+     (cmd/nova-sprint/handover_rules.go, wired in seat.go, so TestHandoverPrintsEachRuleByNumber and
+     TestHandoverRulesAreTheRunbooks exercise the real path); the tick wall-clock gate CI job is restored
+     as .github/workflows/certification.yml, tick-gate (NOVA_SPRINT_GATE_STORE=1, -tags functional). The
+     seat play test (TestSeatPlayAdoptsInOrderAndRefusesEachHalfMove), the member and contract functional
+     tests and the eight contract cases that build nova-sprint still live in nova-tools, whose checkout and
+     self-hosted benches they read, and stay owed."
+    :origin "repository split cold reads (nova-tools PR #5571 and PR #5591)")
+
    (fix "per-landed-spend-on-landed" :release "v1.2.7" :status "shipped"
     :title "Per-landed cost uses spend on landed cards only; in-flight shown separately"
     :text "The per-landed figure now divides total spend on landed cards (including failed attempts

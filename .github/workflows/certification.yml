@@ -1,0 +1,37 @@
+# nova-sprint certification: the wall-clock gates that certify a release, cut
+# from nova-tools' certification.yml. These run only against a bench's store,
+# the tier the sprint's certification names (.github/workflows/certification.yml,
+# tick-gate); a bench is a self-hosted runner nova-sprint registers, so the job
+# below runs there and is never offered to a GitHub-hosted runner.
+name: Certification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cert-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tick-gate:
+    runs-on: [self-hosted, bench]
+    timeout-minutes: 30
+    env:
+      NOVA_CI: "1"
+      NOVA_SPRINT_GATE_STORE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      # The dirty-tick drive asserts every tick under one second of wall time
+      # only against a bench's store (NOVA_SPRINT_GATE_STORE=1); the runner's
+      # redis-server is on PATH from the bench image.
+      - name: tick-gate
+        run: go test -tags functional -count=1 -timeout 600s -run TestTheDirtyTickDriveOnAStore ./cmd/nova-sprint/
