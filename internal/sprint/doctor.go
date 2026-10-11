@@ -156,7 +156,7 @@ type DoctorInput struct {
 	ProbeErr string
 	// Declared is the nova-sprint build the seat runs: a member's installed one differs is drift.
 	Declared string
-	Push     PushM
+	Hook     HookM
 	Seat     SeatWaits
 }
 
@@ -1010,26 +1010,26 @@ func DoctorProviders(in DoctorInput) (out []DoctorCheck) {
 
 // ---- 9. seat ------------------------------------------------------------------------------
 
-// DoctorSeat is check 9: the seat's push loop proven within DoctorPushBound, and the judgments
-// past their deadline.
+// DoctorSeat is check 9: the seat's hook live and proven within DoctorPushBound, and the
+// judgments past their deadline.
 func DoctorSeat(in DoctorInput) (out []DoctorCheck) {
 	const area, check = AreaSeat, CheckSeat
 	now := time.Now()
 	if in.Snap != nil {
 		now = in.Snap.Now
 	}
-	switch p := in.Push; {
+	switch p := in.Hook; {
 	case !p.Measured:
-		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "push", Status: DoctorWarn, Evidence: "the push loop is not armed: no holder's push record", Remedy: "nova-sprint seat install"})
-	case p.Record.Proven.IsZero() || now.Sub(p.Record.Proven) > DoctorPushBound:
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "hook", Status: DoctorWarn, Evidence: "the hook is not armed: no holder's hook record", Remedy: "nova-sprint hook"})
+	case !HookLive(p.Record, p.Recorded, p.Holder, now):
 		age := "never"
 		if !p.Record.Proven.IsZero() {
 			age = now.Sub(p.Record.Proven).Round(time.Second).String() + " ago"
 		}
-		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "push", Status: DoctorFail,
-			Evidence: fmt.Sprintf("holder=%s proven=%s bound=%s %s", p.Holder, age, DoctorPushBound, cutText(PushWhy(p.Holder, p.Record, p.Recorded, now), 200)), Remedy: PushSetup(p.Holder, p.Record, p.Recorded)})
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "hook", Status: DoctorFail,
+			Evidence: fmt.Sprintf("holder=%s proven=%s bound=%s %s", p.Holder, age, DoctorPushBound, cutText(HookGate(p.Record, p.Recorded, p.Holder, now), 200)), Remedy: "nova-sprint hook"})
 	default:
-		out = append(out, okCheck(area, check, "push", fmt.Sprintf("holder=%s proven=%s ago", p.Holder, now.Sub(p.Record.Proven).Round(time.Second))))
+		out = append(out, okCheck(area, check, "hook", fmt.Sprintf("holder=%s proven=%s ago", p.Holder, now.Sub(p.Record.Proven).Round(time.Second))))
 	}
 	if in.Seat.Overdue > 0 {
 		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "judgments", Status: DoctorFail, Evidence: fmt.Sprintf("open=%d overdue=%d %s", in.Seat.Judgments, in.Seat.Overdue, in.Seat.Line(now)), Remedy: "nova-sprint inbox"})
