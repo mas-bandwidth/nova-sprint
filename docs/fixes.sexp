@@ -151,6 +151,24 @@
     :title "RoadmapEntry models Note and Save's four writes, and scheduled notes' unchecked :release"
     :text "Models only, no product change. tla/RoadmapEntry.tla gains a Note action (an open entry's title and text change in place, the place and the state unchanged) and models Save's four writes in the code's order -- destination data, destination page, source data, source page -- with a crash possible between any two and NoLoss still held. ChildLinked is restated over what decode() checks, with a Scheduled constant of notes whose :release is read and not checked: the fixes' items are checked (fixes.go:130-131) but the scheduled note's is not (roadmap.go:278). A reversed witness MCRoadmapEntryBrokenPageFirst writes each file's page before its data and fails the new PageNotAhead invariant; MCRoadmapEntryBrokenSourceFirst still fails NoLoss. Note on a done fix or a shipped release is not modelled: the code's Note (roadmap.go:546) edits both with no open or release guard, against the package doc's 'a release whose status is shipped is frozen' (roadmap.go:20-21), a v1.2.14 candidate named in the report."
     :origin "this card, tla-roadmapentry-note-and-four-write-save.w6, 2026-10-11: v1.2.12 inventory item T23; drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-sprint-tables-fleet-take-and-finish" :release "v1.2.12" :status "planned"
+    :title "tla/SprintTables.tla adds the fleet side: member up or down and Start, Take, Finish, FleetDown, FleetUp"
+    :text "Models only, no product change. tla/SprintTables.tla gains the fleet side of the work table from
+     internal/sprint/refmodel/actions.go: a member is up or down, and a working primary's work card sits on one
+     member's row in a place none, ready (dealt, not taken), working (taken), finished or withdrawn. Start deals a
+     ready primary's work card to an up member's row (a withdrawn card is dealt again); Take moves a dealt card to
+     working on an up member; Finish finishes a working card and moves its primary to review; FleetDown takes a
+     member down and deals its ready and working cards to the other up members or, with no member up, withdraws
+     them and returns their primaries to ready; FleetUp brings a member up. The primary's moves stay rows of the
+     lifecycle's Moves table, so MovesOnlyByTable still holds, and the new WorkingOnAnUpMember (a working card's
+     member is up) holds too. Three reversed witnesses: MCSprintTablesBrokenInsert (an add that moves ready ->
+     waiting without inserting), MCSprintTablesBrokenNeedless (a resolve that drops the needs check) and
+     MCSprintTablesBrokenDownkeeps (a fleet down that keeps a working card on the member that went down, breaking
+     WorkingOnAnUpMember). The round-robin order of the deal (NextMember) and the levelling of the ready queues
+     (T4, the Level action) are choices, not safety rules, and are left out. The refmodel's pending-operation
+     fence (D1: Free) is left out (the module has no pending operation), and F1, F3 and F4 are left to the reads
+     and accept, merge and return, and crash and repair cards."
+    :origin "card tla-sprint-tables-fleet-take-and-finish.w3, 2026-10-11: v1.2.12 inventory item T4, the second of five cards; drift read at nova-sprint main 00c54ba2e")
    (fix "tla-noroom-admission-by-probe" :release "v1.2.12" :status "planned"
     :title "NoRoom models the probe gate and the read return's taker"
     :text "Models only, no product change. tla/NoRoom.tla gains the probe gate: a member is known (accepted into the fleet) only on a passed probe (Accept, the caller's own word, trusted as the code does), and both the deal (Dealable) and the reader's ask (Off) read it, so no deal goes to a member the sprint does not know (NeverDealtUnknown) and a reader whose machine is not a fleet member belongs to no machine and is asked like any reader (steps_work.go fleetStepPlan, drain.go ReaderOwner). ReadReturn is guarded on a taker: a read asked of a held or draining machine's reader is taken back only when another reader can take it (readers.go sweepReads), so it stays otherwise, and ReadsReturn is restated under that guard with NeverReturnedWithoutATaker (a read is never taken back while no other reader can take it). Two reversed witnesses: Broken = \"probeblind\" deals to an unknown member (NeverDealtUnknown) and Broken = \"notaker\" takes a read back with no other reader (NeverReturnedWithoutATaker); the eight existing witnesses keep their results, and the noroom TLC records are refreshed."
