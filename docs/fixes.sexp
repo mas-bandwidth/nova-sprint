@@ -345,4 +345,20 @@
      does: three timeouts within OverloadWindow on her row friend.<name>, counted after her finishes'
      `friend <name> <VERDICT>: ` prefix, her width the roster's. Its remedy is her width in
      nova-config, applied by friend sync."
-    :origin "sprint card overload-alarm-covers-friends")))
+    :origin "sprint card overload-alarm-covers-friends")
+
+   (fix "doctor-checks-the-definition-of-done" :release "v1.2.7" :status "shipped"
+    :title "The doctor names every definition-of-done fault with its evidence"
+    :text "The read-only doctor joins the seat check's centralized machinery verdicts (the friends and
+     the fleet up, the loop ticking, the dashboard answering, and a dashboard whose served snapshot
+     is a second or more old) with the coordinator's automatic-stop ledger, section 9's always-true
+     rules, the deal dry with cards waiting and the seat's overdue waits, and prints one
+     evidence-bearing line per fault. It exits 0 when clean and 1 when red, and --json carries the
+     fault lines and the machinery evidence with the push proof redacted. Three faults the card
+     names are held for the dependencies that decide them, not judged here: working equals reality
+     (a card working whose row's beat names no live run) waits on land-ns54-working-is-live, whose
+     beat live set (RowWorkingKeys/LiveCountKeys) is not landed on main; the members' and friends'
+     at-width facts are that dependency's width fact, the seat check's fleet and friends lines
+     counting up/held/down alone; and the machine's own tick late (pushlate.go) is not joined, the
+     loop line holding only the LoopSilence bound."
+    :origin "this pull request")))
