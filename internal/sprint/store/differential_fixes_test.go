@@ -322,7 +322,8 @@ func TestTheRedealsAndTheLevelGoRoundAsTheModelDoes(t *testing.T) {
 		name    string
 		actions []dAction
 		card    string
-		want    string // the member round the fleet
+		want    string // the member round the fleet the card ends on
+		at      string // the member the deal's index is past ("" = want)
 	}{
 		// a1 on m1 and a2 on m2, the index past m2; a1 fails on m1: its rework
 		// goes to m3, where the shortest queue gives m1
@@ -333,7 +334,7 @@ func TestTheRedealsAndTheLevelGoRoundAsTheModelDoes(t *testing.T) {
 			dAction{Kind: "take", Member: "m1", Card: "a1.w1", Gen: 1},
 			dAction{Kind: "finish", Member: "m1", Card: "a1.w1", Gen: 1, OK: false},
 			dAction{Kind: "rework", IDs: []string{"a1"}}),
-			"a1.w2", "m3"},
+			"a1.w2", "m3", ""},
 		// a1..a3 on m1..m3, the index past m3; m2 takes its card and m3 goes
 		// down: a3 goes to m1, where the shortest queue gives m2
 		{"down", append(up("m1", "m2", "m3"),
@@ -342,11 +343,11 @@ func TestTheRedealsAndTheLevelGoRoundAsTheModelDoes(t *testing.T) {
 			dAction{Kind: "tick"},
 			dAction{Kind: "take", Member: "m2", Card: "a2.w1", Gen: 1},
 			dAction{Kind: "fleet", Op: "down", Member: "m3"}),
-			"a3.w1", "m1"},
+			"a3.w1", "m1", ""},
 		// a1..a6 dealt m1 m2 m3 m1 m2 m3, the index past m3; m2 and m3 take
-		// and finish all theirs: the backlogs (held less the width) are -62
-		// -64 -64, and the level moves m1's newest, a4, round the fleet from
-		// the index past m3 to m2 (m1 is the one it leaves)
+		// and finish all theirs: no member is over its width (64), so the
+		// level moves nothing and a4 stays on m1 (round.levelTo, nextLane;
+		// tla/Level.tla, NeverOffAFreeLane); the index stays past m3.
 		{"level", append(up("m1", "m2", "m3"),
 			dAction{Kind: "start"},
 			dAction{Kind: "add", Stream: "s1", IDs: []string{"a1", "a2", "a3", "a4", "a5", "a6"}},
@@ -360,7 +361,7 @@ func TestTheRedealsAndTheLevelGoRoundAsTheModelDoes(t *testing.T) {
 			dAction{Kind: "finish", Member: "m3", Card: "a3.w1", Gen: 1, OK: true},
 			dAction{Kind: "finish", Member: "m3", Card: "a6.w1", Gen: 1, OK: true},
 			dAction{Kind: "fleet", Op: "level"}),
-			"a4.w1", "m2"},
+			"a4.w1", "m1", "m3"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -375,7 +376,11 @@ func TestTheRedealsAndTheLevelGoRoundAsTheModelDoes(t *testing.T) {
 			s := h.observe()
 			w := s.Work[c.card]
 			require.Equal(t, c.want, w.Member, "%s is on %q, want %s: round the fleet from the index", c.card, w.Member, c.want)
-			require.Equal(t, c.want, indexPast(s.Order, s.DealLast), "the store's deal index is past %q, want %s: the placement moves it", s.DealLast, c.want)
+			at := c.at
+			if at == "" {
+				at = c.want
+			}
+			require.Equal(t, at, indexPast(s.Order, s.DealLast), "the store's deal index is past %q, want %s: the placement moves it", s.DealLast, at)
 		})
 	}
 }
