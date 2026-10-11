@@ -99,13 +99,35 @@ func TestALaneLandsWhileAnotherLanesCombinedGateBlocks(t *testing.T) {
 	heads["b1"] = r.cardIn(t, worker2, "b1", map[string]string{"b1.go": "package main\n\nfunc b1() {}\n"})
 	r.git(worker2, "push", "-q", "origin", "refs/heads/sprint/*:refs/heads/sprint/*")
 	r.queued(heads, "a0", "a1", "b1")
-	// the second gate of s1's worktree is the combined gate: it blocks until the other
-	// repo's push (the second push of the pass) has happened, or two seconds pass
+	// The order is made deterministic with the test seams, whatever the lanes' speed, so
+	// s1 always cuts on the pre-push base and re-merges onto s0's tip (its combined gate):
+	//   s1Cut closes when s1's cut reaches its base gate, after the fetch and cutBranch read
+	//     the base before s0's push; s0's push waits for it, so s1's baseSha is the
+	//     pre-push base (the reader of attempt 5 found this absent);
+	//   s2's phase 1 waits for s0's push, so the first push is s0's, then s2's;
+	//   s2's push waits for s1's combined gate to start, so the gate is held while the other
+	//     repo's lane pushes, and its push releases it.
 	var gates atomic.Int32
 	var released atomic.Bool
 	barrier := make(chan struct{})
 	var once sync.Once
 	var pushes atomic.Int32
+	s1Cut := make(chan struct{})
+	var cutOnce sync.Once
+	s0Pushed := make(chan struct{})
+	var s0Once sync.Once
+	started := make(chan struct{})
+	var startOnce sync.Once
+	r.a.beforeWait = func(stream, what string) {
+		switch {
+		case stream == "s1" && what == "gate":
+			cutOnce.Do(func() { close(s1Cut) })
+		case stream == "s2" && what == "slot":
+			<-s0Pushed
+		}
+	}
+	// the second gate of s1's worktree is the combined gate: it blocks until the other
+	// repo's push has happened, or two seconds pass
 	r.a.gateRan = func(dir string, _ bool) {
 		if !strings.HasSuffix(dir, "@s1") {
 			return
@@ -113,6 +135,7 @@ func TestALaneLandsWhileAnotherLanesCombinedGateBlocks(t *testing.T) {
 		if gates.Add(1) != 2 {
 			return
 		}
+		startOnce.Do(func() { close(started) })
 		select {
 		case <-barrier:
 			released.Store(true)
@@ -120,7 +143,12 @@ func TestALaneLandsWhileAnotherLanesCombinedGateBlocks(t *testing.T) {
 		}
 	}
 	r.a.beforePush = func(int) {
-		if pushes.Add(1) == 2 {
+		switch pushes.Add(1) {
+		case 1: // s0's push: hold it until s1 has cut on the pre-push base
+			<-s1Cut
+			s0Once.Do(func() { close(s0Pushed) })
+		case 2: // s2's push: hold it until s1's combined gate blocks, then release it
+			<-started
 			once.Do(func() { close(barrier) })
 		}
 	}
