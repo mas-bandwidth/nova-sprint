@@ -235,6 +235,23 @@
     :title "DirtyTickRead models Start, the run sequence, and the stale-run refusal"
     :text "Models only, no product change. tla/DirtyTickRead.tla gains a runseq variable and a Start action as the code has them: Stop and Start each take the fence (the generation steps), Start bumps runseq (machine_transition.go's RunSeq), and a part records the runseq it began under (tick.go's TickRunSeq) so its Commit requires it to be the current one (engine.go's StaleRun refusal). The new invariant NoStaleRunCommit holds that no part commits under a runseq other than the one current at its commit, and the reversed witness MCDirtyTickReadBrokenRunSeq (Broken \"runseq\" drops the runseq check from Commit) violates it; the four existing witnesses keep the property their rows name. The small instances drop MaxParts to two and add MaxStarts = 1 so each finishes in budget."
     :origin "this card, tla-dirtytickread-start-and-run-sequence-2.w4, 2026-10-11: v1.2.12 inventory item T9; drift read at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "a-brief-edit-keeps-the-cards-needs-tier-and-bound" :release "v1.2.12" :status "planned"
+    :title "A brief edit keeps the needs, tier and bound a verb set"
+    :text "A brief edit replaces the card's whole text, but the text dumped from the card is the
+     admission-time text: its DEPENDS-ON and line 1 tier are the ones the card was admitted with, not
+     the ones a verb set since, so an edit silently rewrote them. Three rules keep them, and a brief
+     NOTE names every property it kept against the text. The needs are the card's, not the text's: the
+     edit starts from the card's needs, maps a name its relink record re-pointed to its twin (the
+     relink record wins over the text's stale DEPENDS-ON, NOTEd `needs kept: <twin> (relinked from
+     <old> <time>)`), and adds only names the text holds that the card does not; a need the text drops
+     stays, unless `--needs-from-brief` takes the text whole. The tier is a card field (`tier`): a text
+     whose line 1 names another tier than the card's recorded one keeps the recorded one, NOTEd, unless
+     `--tier <t>` names one, and `nova-sprint tier <card> --set <t> --reason` sets it without a text
+     edit (refusing a TLA path at a tier below frontier as the lint does). The bound hashes the task,
+     not the text (the body and PATHS, NEW, SHARED, TEST and DONE-WHEN): an edit that changes only
+     DEPENDS-ON, ORDER, TLC-HOSTS, MERGE, TOOLCHAIN-HOSTS or the tier keeps the count (`bound: same
+     task (<n> attempts stand)`) and a new task resets it (`bound: new task (count reset)`)."
+    :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w7, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
