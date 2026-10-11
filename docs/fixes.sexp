@@ -1121,4 +1121,23 @@
     liveOf and LiveReturns keep their fresh-only reading. No model change."
    :origin "the coordinator 2026-10-11, added to v1.2.14 beside the v1.2.12 inventory's section 9 row
     D2 (a held finished report across STOP refused as stale); D2's first cause was fixed by
-    nova-sprint #87 (15c779c); this is what that fix left; code read at nova-sprint main 00c54ba")))
+    nova-sprint #87 (15c779c); this is what that fix left; code read at nova-sprint main 00c54ba")
+
+  (fix "card-lint-a-hold-owner-every-reader-accepts" :release "v1.2.14" :status "planned"
+   :title "Every held_by write names a hold mark, and each mark keeps the member off the deal"
+   :text "Tests only, no product change. internal/sprint/hold_marks_test.go holds a table of every
+    mark a member's held_by carries -- none (the coordinator's), the sync's, the machine's fault, the
+    adopt's and the environment's -- each written by its own writer (a fleet hold with its HeldBy,
+    presence's down for the fault, holdAdopting for the adopt, a finish whose report is an environment
+    fault for envFaulted) and cleared by its own release (fleet up, the sync's release, faultClear,
+    clearEnvFault, the adopt's finish). For each it pins the behaviour: the member is not up and dealt
+    no card by the deal or the level, a tick presence with a fresh beat leaves held and held_by as they
+    were, another mark's mark-scoped release leaves it held with its mark, and its own release clears
+    it. It then scans the package's non-test .go files for every held_by assignment (a name[FieldHeldBy]
+    = X and FieldHeldBy: X) and fails naming the value and its file:line when no table row names it, so
+    a new hold kind cannot ship without the table checked against it. The known-yes proof is
+    envFaulted's status line deleted: the environment row then fails at UpMembers."
+   :origin "this card, card-lint-a-hold-owner-every-reader-accepts.w1, from the reader finding on
+    a-member-environment-fault-holds-it-and-pushes-the-seatb attempt 5 (head 38c66ea7542f): the
+    environment hold was written with held_by=environment but the member's status was left Up, so the
+    level dealt to it and presence wrote held_by=fault over the mark")))
