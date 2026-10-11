@@ -450,6 +450,7 @@ MCProviderBudgetBrokenNoPush.cfg	MCProviderBudget.tla	action	FaultClearsOnPush	i
 MCProviderBudgetBrokenNoenv.cfg	MCProviderBudget.tla	action	EnvOnlyByEnvironmentFinish	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenNodeal.cfg	MCProviderBudget.tla	action	HeldDealtNothing	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenStale.cfg	MCProviderBudget.tla	action	JudgmentNamesTheCause	ignore-terminal	providerbudget	required	-
+MCProviderBudgetBrokenBranchEnv.cfg	MCProviderBudget.tla	action	ARejectedPushIsNeverAFault	ignore-terminal	providerbudget	required	-
 MCReadyOver.cfg	MCReadyOver.tla	pass	-	ignore-terminal	readyover	required	-
 MCReadyOverBrokenMerge.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-
 MCReadyOverBrokenSilent.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-
