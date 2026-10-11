@@ -879,4 +879,15 @@
 
   (fix "two-ci-flakes-text-file-busy-and-git-maintenance" :release "v1.2.10" :status "shipped"
    :title "Two CI flakes: exec'd stubs written under the fork lock, and git's auto maintenance off in tests"
-   :origin "PR #88")))
+   :origin "PR #88")
+
+  (fix "pagelock-stripper-hardening" :release "v1.2.14" :status "planned"
+   :title "The page lock's comment-only check reads HTML and JS as a browser renders them"
+   :text "The comment stripper behind a comment-only line's proof (RenderDigest) had four holes a
+    visible change could pass under it: an HTML comment was left as one space, a comment inside a
+    quoted attribute value was stripped as one, an inline script carrying a data-src attribute was
+    read as external, and a slash after a condition's ) hid a regex's // as a line comment. An HTML
+    comment now leaves nothing, a quoted attribute value stays part of its tag, src is matched as
+    its own attribute, and a slash after the ) that closes if, while or for's condition opens a
+    regex while any other ) whose line carries a comment's mark fails closed as code."
+   :origin "the cold reader of nova-sprint #85 (51591b6), 2026-10-11: the draft tmp/next-sprint-cards/pagelock-stripper-hardening.md")))
