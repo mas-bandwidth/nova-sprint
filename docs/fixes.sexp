@@ -1350,6 +1350,34 @@
    :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
     2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
     owner: \"this should be caught by card lint.\"")
+   (fix "a-read-is-never-asked-onto-a-resting-route" :release "v1.2.14" :status "planned"
+    :title "A read is never asked onto a resting route while another of its tier serves"
+    :text "readRouteOf (internal/sprint/route.go), which draws a read card's route from the
+     read tier's array, built its served set from every enabled route of the tier and left out
+     only avoid (the routes a read of the primary returned on), so it never asked whether a route
+     rests. The read-card ask could then put a read on a route resting for its 5xxs or its
+     provider's credit, and the next pass's readCardsTakeBack retired it as RetiredByRest because
+     cardRest said its route rests, while the ask put it back on the same route, so reads churned
+     ask, retire, ask for as long as the rest held even though another route of the tier could
+     serve. readRouteOf now leaves out the routes that rest at s.Now while another route of the
+     tier serves, adding them to the set preferFirst avoids and holding them only while another
+     entry remains drawable, so with every route of the read tier resting the ask draws the first
+     as it did before and the take-back still handles it (no new refusal, no new judgment).
+     readCardsAskFull settles the view's rests once with withRests() when it holds none, so no
+     read scans the fleet table and s.resting sees them (docs/SPEC-SPRINT.md section 6, the reads;
+     tla/RouteIndex.tla, THE READS). Red tests first in
+     internal/sprint/read_route_rest_test.go, on a pro primary whose read tier's array is pro-a,
+     pro-b: with pro-a resting (a 3-in-10 rule rest, and a provider credit rest from one refused
+     take) the read the ask creates carries pro-b's FieldRoute, never pro-a's; with both routes
+     resting the reads are still asked a route, as today. The rate-limit backoff variant of the
+     second case is owed once rate-limit-never-fails-the-card-v2 lands (the staged tree predates
+     it, so no backoff rest exists to write yet)."
+    :origin "this card, a-read-is-never-asked-onto-a-resting-route.w1, from the fourth cold read
+     of nova-sprint PR #86 (2026-10-11), an open non-blocking finding (readRouteOf ignores rests)
+     listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md; checked on PR #86's
+     head a1c51ee and on main 00c54ba, where readRouteOf is at route.go:813 and holds for every
+     rest, not only a backoff.")
+
   (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.14" :status "planned"
    :title "A rate limit stalls its route briefly; it never fails a card or rests it for 3-in-10"
    :text "A take a provider ends rate-limited (class=rate-limited) never fails the card, on any
