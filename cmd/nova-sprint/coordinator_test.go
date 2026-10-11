@@ -79,6 +79,7 @@ func TestEveryCoordinatorVerbIsTheCoordinators(t *testing.T) {
 		"return":            "return s1-1",
 		"redo":              "redo s1-2",
 		"drop":              "drop s1-1 --reason r",
+		"defer":             "defer s1-2 --repo-dir /tmp --reason r",
 		"unpin":             "unpin s1-1 --reason shared",
 		"priority":          "priority s1-1 --high --reason urgent",
 		"rank":              "rank s1-1 --first",
