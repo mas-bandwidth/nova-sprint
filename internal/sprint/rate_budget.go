@@ -208,6 +208,52 @@ func (s *Snapshot) withBudgets() *Snapshot {
 	return &n
 }
 
+// budgetWait is the wait of a ready card of tier whose every route that serves is at its
+// provider's concurrency budget: the deal never deals past a provider's budget, so the card
+// waits ready and is dealt when a slot frees, never an error and never a stall
+// (docs/SPEC-SPRINT.md section 8, No silent stops; rate_budget.go's header;
+// tla/RateBudget.tla, StalledIsGranted). "" when the tier has a route the deal can draw (a route
+// that serves and is not full), when no route of the tier serves, or when no provider of a
+// serving route has a budget. The words name the routes and their providers' counts, as the
+// deal's own refusal does (unservedWhy). The budgets are the held reading's (newHeld,
+// withBudgets), read once per reading, never once per card.
+func (s *Snapshot) budgetWait(tier string, members []string) string {
+	if s.budgets == nil || len(s.Routes) == 0 {
+		return ""
+	}
+	full := false
+	for _, r := range s.Routes {
+		if r.Tier != tier || !r.Enabled {
+			continue
+		}
+		if _, ok := s.resting(r.Name); ok {
+			continue // a resting route is not served; its provider is not this wait
+		}
+		can := false
+		for _, m := range members {
+			if s.Launches(m, r) {
+				can = true
+				break
+			}
+		}
+		if !can {
+			continue // a route no member up can launch is noLauncher's, not this wait
+		}
+		if isFull, _ := s.budgets.full(r.Provider); !isFull {
+			return "" // a serving route with a slot: the deal draws it
+		}
+		full = true
+	}
+	if !full {
+		return ""
+	}
+	_, _, words := s.unservedWhy(tier, "", true)
+	if len(words) == 0 {
+		return ""
+	}
+	return "waits for a slot of its provider's concurrency budget (" + strings.Join(words, "; ") + "): the deal deals it when one frees"
+}
+
 // full says the provider has no slot for one more card in this step, and the words.
 func (bp *budgetPlan) full(provider string) (bool, string) {
 	if bp == nil {
