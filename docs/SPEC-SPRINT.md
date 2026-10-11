@@ -3874,9 +3874,10 @@ reads close as `read --ok|--broken` closes them, and it leaves review only by th
   every read a primary in review still needs AT ONCE, before any work card of the same deal
   (blocker and critical work included: placing the reads within the ladder, after the work
   above reader, is owed):
-  ReadsNeeded (one for a flash card, two for a pro or heavy card) less the reads that stand at
-  its attempt (a read card placed, one retired with its verdict at the primary's head, and a
-  readers-table read asked the old way and begun). None while a read stands broken (its
+   ReadsNeeded (one for a flash card, two for a pro or heavy card, or the sprint's own count,
+   `set --reads 0|1|2|3`: `ReadsNeededIn`) less the reads that stand at
+   its attempt (a read card placed, one retired with its verdict at the primary's head, and a
+   readers-table read asked the old way and begun). None while a read stands broken (its
   judgment and the rework follow), none for failed work. Each read is a card,
   `<primary>.r<attempt>.<reader>` (kind `read`), created on its reader's fleet row in the step
   that cuts it, as a work card is cut and dealt in one step: in ready on a member's row, in
@@ -3896,10 +3897,24 @@ reads close as `read --ok|--broken` closes them, and it leaves review only by th
   tier (`reader set --tiers`, `readerServesTier`). Never the unit that worked the attempt, and
   never a unit that holds a read card of the attempt or closed one (`readSpent`: placed, or
   retired with a verdict, by `read`, `returned` or `late`), nor a machine whose reader row
-  holds a readers-table read of the attempt. A read the machine took back (its member down,
-  away or held, `hold --return`, a resting route, its primary moved: `retired_by` `away`,
-  `rest`, `primary`) spends nothing: its reader may be dealt the read again, under the next
-  generation of the id (`.g1`, `.g2`; `MaxReadGen`). A read goes to the cheapest reader
+   holds a readers-table read of the attempt. A read the machine took back (its member down,
+   away or held, `hold --return`, a resting route, its primary moved, the unstarted bound:
+   every `retired_by` but the ones in `spentBy`) spends nothing: its reader may be dealt the
+   read again at a fresh generation, as often as it is taken back. There is no cap: the id is
+   the generation after the highest the read index holds (`fleetReadIndex`; `readCardIDFor`,
+   `ReadCardGenIDs`), and `ReadCardExtras` names the identity the store must read from the same
+   rule, so no reader is ever refused "no id" (the owner, 2026-10-06: "I don't want any serial
+   reads again"). A read the reader itself ended with no verdict (`returned`, `late`) spends
+   it: the next read goes to another reader. The ask runs every tick: every primary in review
+   short of its reads is asked every read it still needs in the same tick, each to a different
+   unit that may read it (`mayReadCard`), and a read waits for room and nothing else. When
+   fewer units have room than reads wanted, the ones that can are dealt now and the rest are
+   asked again the next tick and the next until they are out. Waiting for room is no judgment,
+   no end state and no backoff (the primary's waiting mark, `FieldWaitingReader`, says why);
+   the cannot-ask judgment stays only for a read no unit up may ever read by capability
+   (`NoReaderMayRead`). The attempt gets exactly the reads the sprint's count says
+   (`set --reads 0|1|2|3`, `ReadsNeededIn`), each read cut once per need. A read goes to the
+   cheapest reader
   that may take it, friends and members alike: one with a free lane before every one with
   none (a read waits in a ready queue only when every reader that may take it is busy), then
   by tier distance (`readTierDistance`, against the read's tier before `readTierOf` lowers
