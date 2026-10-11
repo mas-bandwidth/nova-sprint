@@ -382,4 +382,10 @@
     :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
     :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
      fenced blocks. It should accept both."
-    :origin "issue #1994; issue #2302; issue #3470")))
+    :origin "issue #1994; issue #2302; issue #3470")
+
+   (fix "card-column-single-field" :release "v1.2.9" :status "planned"
+    :title "One column field every reader agrees on"
+    :text "Card output carries a single column field so a card's state is not confused with the state of
+     its need."
+    :origin "card moved out of the sprint (work record, 2026-10-04)")))
