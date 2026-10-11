@@ -382,4 +382,27 @@
     :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
     :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
      fenced blocks. It should accept both."
-    :origin "issue #1994; issue #2302; issue #3470")))
+    :origin "issue #1994; issue #2302; issue #3470")
+
+   (fix "fleet-sync-retires-a-renamed-machines-row" :release "v1.2.6" :status "shipped"
+    :title "The tick retires a fleet row whose machine is gone from the inventory"
+    :text "A rename (hetzner -> hetzner1) left the old fleet row held on the table forever, because
+     nothing ever removed a row: fleet sync adds and resizes only. The tick now reads the same machine
+     records fleet sync reads (nova-config, no new store) and, every tick and with no verb run by anyone,
+     retires a row whose record is absent (sprint.TickRetireAbsent, internal/sprint/fleet_retire.go): a row
+     with no record and no cards leaves the fleet table and the dashboard, its reader reader-<old> is
+     retired with the row and only once it leaves (the rows store.DropMembers deleted that tick), its stats
+     stay queryable under the old name, and one HAPPENED note records it; a row with no record that still
+     holds cards is held and its cards dealt away, retired on the first tick its set is empty; a config read
+     that fails retires nothing (never act on a missing read); a machine whose record exists but is offline
+     stays down. fleet sync --check already lists what the next tick would retire, as its remove drift for
+     an absent member with no card. Model tla/RetireAbsent.tla: RecordsKeepRows is the state invariant (a
+     recorded machine keeps its row) and FleetRowsMatchConfig and LiveRetire are the leads-to the tick's
+     fair reads and retirement make true; two reversed witnesses are declared, MCRetireAbsentBroken retiring
+     a recorded row on a failed read as the counterexample to RecordsKeepRows. The TLC pass is recorded in
+     tla/RUNS.tsv (MCRetireAbsent.cfg 2563 states, 468 distinct, exit 0; MCRetireAbsentBroken.cfg exit 12
+     on RecordsKeepRows). Tests: a record removed, a tick, and the row and reader are gone while the stats
+     stay; a row with working cards drains then retires; a draining absent row keeps its reader until its
+     row leaves; a failed read retires nothing; an offline machine with a record is untouched."
+    :origin "the owner, 2026-10-11 ~01:00Z and ~01:05Z, after hetzner was renamed hetzner1 and its old fleet
+     row stayed held; this card; attempt 2")))
