@@ -44,15 +44,18 @@ import (
 // eta is the minutes left (etaMinutes, or the view's held value), 0 when there
 // is no estimate. held is the cards no tick moves on its own (sprint.HeldBack:
 // behind a sentinel not released, or admitted held), shown apart as held=N
-// when there are any, and counted in the ETA.
-func summary(t ntable.Table, held, eta int64) string {
-	line := progress(t)
+// when there are any, and counted in the ETA. A sentinel is a stop the
+// coordinator releases, not work, so x/y, the percent and the ETA count work
+// cards only (sent, the sentinels by stream; docs/SPEC-SPRINT.md sections 1 and
+// 16).
+func summary(t ntable.Table, sent map[string]store.SentinelCounts, held, eta int64) string {
+	line := progress(t, sent)
 	if held > 0 {
 		line += fmt.Sprintf(" held=%d", held)
 	}
 	switch {
 	case sprintDone(t):
-		return doneLine(t)
+		return doneLine(t, sent)
 	case eta >= 24*60:
 		h := (eta + 59) / 60
 		return fmt.Sprintf("%s -> ETA %dd%dh", line, h/24, h%24)
@@ -64,13 +67,15 @@ func summary(t ntable.Table, held, eta int64) string {
 	return line + " -> ETA -"
 }
 
-// etaMinutes is the estimate of the minutes left, rounded up: every card not
-// landed on the table, held ones too, at rate cards an hour; 0 when there is
-// none (fewer than five landed in the epoch, an archived stream's counted, as
-// the rate counts them; nothing left; or no rate).
-func etaMinutes(t ntable.Table, rate float64) int64 {
-	landed, all := counts(t)
-	gone, _ := archivedCounts(t)
+// etaMinutes is the estimate of the minutes left, rounded up: every work card
+// not landed on the table, held ones too, at rate cards an hour; 0 when there
+// is none (fewer than five work cards landed in the epoch, an archived stream's
+// counted, as the rate counts them; nothing left; or no rate). A sentinel is
+// not work, so neither the cards left nor the five-landed floor counts one
+// (sent; docs/SPEC-SPRINT.md sections 1 and 16).
+func etaMinutes(t ntable.Table, sent map[string]store.SentinelCounts, rate float64) int64 {
+	landed, all := counts(t, sent)
+	gone, _ := archivedCounts(t, sent)
 	left := all - landed
 	if rate <= 0 || landed+gone < 5 || left <= 0 {
 		return 0
@@ -124,26 +129,29 @@ func (a *app) heldETA(now time.Time, k etaKey, m int64) int64 {
 
 // sprintDone is whether every primary has landed: every one on the table, or,
 // with none on the table, every stream archived (an archived stream holds only
-// landed cards; the tick archives every stream of a sprint done).
+// landed cards; the tick archives every stream of a sprint done). A sentinel
+// counts: the sprint is not done while one waits (docs/SPEC-SPRINT.md section
+// 16).
 func sprintDone(t ntable.Table) bool {
-	landed, all := counts(t)
-	_, gone := archivedCounts(t)
+	landed, all := counts(t, nil)
+	_, gone := archivedCounts(t, nil)
 	return landed == all && (all > 0 || gone > 0)
 }
 
 // doneLine is the headline of a sprint done, "N/N 100.0% done", over the
 // epoch's cards, the archived streams' too: with nothing left on the table
 // there is no progress to count, and the tick archives each stream of a sprint
-// done, so the table's alone would read 0/0.
-func doneLine(t ntable.Table) string {
-	landed, all := counts(t)
-	gl, ga := archivedCounts(t)
+// done, so the table's alone would read 0/0. Sentinels are left out (sent).
+func doneLine(t ntable.Table, sent map[string]store.SentinelCounts) string {
+	landed, all := counts(t, sent)
+	gl, ga := archivedCounts(t, sent)
 	return progressOf(landed+gl, all+ga) + " done"
 }
 
-// progress is landed / all primaries on the table and the percent: "3/10 30.0%".
-func progress(t ntable.Table) string {
-	return progressOf(counts(t))
+// progress is landed / all work primaries on the table and the percent:
+// "3/10 30.0%". Sentinels are left out (sent).
+func progress(t ntable.Table, sent map[string]store.SentinelCounts) string {
+	return progressOf(counts(t, sent))
 }
 
 func progressOf(landed, all int64) string {
@@ -154,16 +162,19 @@ func progressOf(landed, all int64) string {
 	return fmt.Sprintf("%d/%d %s", landed, all, pct)
 }
 
-// counts is the landed and all primaries of the work table's streams on the
-// table: an archived stream's row (archivedRow) is not counted (archivedCounts
-// counts those).
-func counts(t ntable.Table) (landed, all int64) {
-	return countRows(t, false)
+// counts is the landed and all work primaries of the work table's streams on
+// the table: an archived stream's row (archivedRow) is not counted
+// (archivedCounts counts those). A sentinel is a stop, not work, so sent's
+// per-stream sentinel counts are subtracted from the cells (docs/SPEC-SPRINT.md
+// sections 1 and 16).
+func counts(t ntable.Table, sent map[string]store.SentinelCounts) (landed, all int64) {
+	return countRows(t, false, sent)
 }
 
-// archivedCounts is the landed and all primaries of the archived streams.
-func archivedCounts(t ntable.Table) (landed, all int64) {
-	return countRows(t, true)
+// archivedCounts is the landed and all work primaries of the archived streams,
+// sentinels left out (sent).
+func archivedCounts(t ntable.Table, sent map[string]store.SentinelCounts) (landed, all int64) {
+	return countRows(t, true, sent)
 }
 
 // archivedRow is whether a work row is an archived stream's: hidden (stream
@@ -183,7 +194,7 @@ func archivedRow(t ntable.Table, r ntable.Row) bool {
 	return true
 }
 
-func countRows(t ntable.Table, archived bool) (landed, all int64) {
+func countRows(t ntable.Table, archived bool, sent map[string]store.SentinelCounts) (landed, all int64) {
 	j := t.Column(sprint.Landed)
 	for _, r := range t.Rows {
 		if archivedRow(t, r) != archived {
@@ -197,6 +208,11 @@ func countRows(t ntable.Table, archived bool) (landed, all int64) {
 			if k == j {
 				landed += r.Cells[k].Count
 			}
+		}
+		// the row's cells count its sentinels with the work: leave them out
+		if n := sent[r.Key]; n.All > 0 {
+			all -= int64(n.All)
+			landed -= int64(n.Landed)
 		}
 	}
 	return landed, all
@@ -752,10 +768,10 @@ type archivedView struct {
 
 // archivedOf is the work table's archived streams, nil with none: the rows the
 // table layer hides (row hide), counted in the folds and not drawn.
-func archivedOf(t ntable.Table) *archivedView {
+func archivedOf(t ntable.Table, sent map[string]store.SentinelCounts) *archivedView {
 	var a archivedView
 	var costs []string
-	a.Landed, a.Cards = archivedCounts(t)
+	a.Landed, a.Cards = archivedCounts(t, sent)
 	for _, r := range t.Rows {
 		if !archivedRow(t, r) {
 			continue
@@ -1232,16 +1248,17 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if v.Epoch == es.N {
 		v.Cleared = es.Cleared
 	}
-	v.Landed, v.All = counts(shapes[0])
-	v.Archived = archivedOf(shapes[0])
-	if v.Archived != nil {
-		v.ArchivedCards, v.ArchivedLanded = v.Archived.Cards, v.Archived.Landed
-	}
 	// the held cards and the landings of the hour from the tick's where
-	// record: no card is read (store.WhereFacts)
+	// record: no card is read (store.WhereFacts); its sentinel counts keep them
+	// out of x/y, the ETA and the rate (docs/SPEC-SPRINT.md sections 1 and 16)
 	facts, err := st.WhereFacts(ctx, shapes[0].Revision)
 	if err != nil {
 		return whereView{}, "", err
+	}
+	v.Landed, v.All = counts(shapes[0], facts.Sentinels)
+	v.Archived = archivedOf(shapes[0], facts.Sentinels)
+	if v.Archived != nil {
+		v.ArchivedCards, v.ArchivedLanded = v.Archived.Cards, v.Archived.Landed
 	}
 	if v.Archived != nil && facts.Streams != nil {
 		// the archived streams' whole spend from the record stream_costs carries, as the
@@ -1274,9 +1291,11 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if len(facts.StageTimes.All) > 0 {
 		v.StageTimes = &facts.StageTimes
 	}
-	// the rate is the epoch's landings, an archived stream's too: archiving lands nothing
+	// the rate is the epoch's work landings, an archived stream's too: a sentinel
+	// is not work, so its release is no landing the rate counts (archiving lands
+	// nothing)
 	rate := sprint.LandingRate(facts.Landed, v.Landed+v.ArchivedLanded, facts.Machine.Spans, facts.Machine.FirstStart(es.Cleared), now)
-	v.Summary = summary(shapes[0], v.Held, a.heldETA(now, etaKey{v.All + v.ArchivedCards, v.Held}, etaMinutes(shapes[0], rate)))
+	v.Summary = summary(shapes[0], facts.Sentinels, v.Held, a.heldETA(now, etaKey{v.All + v.ArchivedCards, v.Held}, etaMinutes(shapes[0], facts.Sentinels, rate)))
 	if v.Done = sprintDone(shapes[0]); v.Done {
 		// a sprint done: the headline is the epoch's, as the done line counts it
 		v.Landed, v.All = v.Landed+v.ArchivedLanded, v.All+v.ArchivedCards

@@ -1026,27 +1026,32 @@ func sprintLine(ctx context.Context, st *store.Store) string {
 		return ""
 	}
 	machine := st.MachineLine(ctx)
-	landed, all := counts(shapes[0])
+	// a sentinel is a stop the coordinator releases, not work, so the line counts
+	// work cards only, as where does (the record's sentinel counts; docs/SPEC-SPRINT.md
+	// sections 1 and 16)
+	facts, _ := st.WhereFacts(ctx, shapes[0].Revision)
+	sent := facts.Sentinels
+	landed, all := counts(shapes[0], sent)
 	full := sprintDone(shapes[0])
 	state := strings.TrimPrefix(machine, "machine: ")
 	switch {
 	case state == store.DoneState:
 		if full {
-			return store.Stopped + "  " + doneLine(shapes[0])
+			return store.Stopped + "  " + doneLine(shapes[0], sent)
 		}
-		return store.Stopped + "  " + progress(shapes[0])
+		return store.Stopped + "  " + progress(shapes[0], sent)
 	case strings.HasPrefix(state, "STOPPED"):
 		if all == 0 && landed == 0 {
 			return state
 		}
-		return state + "  " + progress(shapes[0])
+		return state + "  " + progress(shapes[0], sent)
 	case full:
-		return strings.TrimSpace(doneLine(shapes[0]) + tookSince(ctx, st) + "  " + machine)
+		return strings.TrimSpace(doneLine(shapes[0], sent) + tookSince(ctx, st) + "  " + machine)
 	}
-	// reads no cards: the rate is the whole sprint's average, over the epoch's
-	// landings, an archived stream's too (archiving lands nothing)
-	gone, _ := archivedCounts(shapes[0])
-	return strings.TrimSpace(summary(shapes[0], 0, etaMinutes(shapes[0], st.LandingRate(ctx, nil, landed+gone))) + "  " + machine)
+	// the rate is the epoch's work landings, an archived stream's too (archiving
+	// lands nothing), from the record's stamps: the same rate where shows
+	gone, _ := archivedCounts(shapes[0], sent)
+	return strings.TrimSpace(summary(shapes[0], sent, 0, etaMinutes(shapes[0], sent, st.LandingRate(ctx, facts.Landed, landed+gone))) + "  " + machine)
 }
 
 // tookSince is " in <duration>": the wall time from the machine's first start

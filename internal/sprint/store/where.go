@@ -37,6 +37,11 @@ type WhereRecord struct {
 	Held     int                   `json:"held"`
 	Landings []int64               `json:"landings,omitempty"`
 	Critical []sprint.CriticalCard `json:"critical,omitempty"` // the five heaviest (weight.go)
+	// Sentinels is each stream's sentinel primaries, all and landed, counted here
+	// from the cards: a sentinel is a stop the coordinator releases, not work, so
+	// where's x/y, the ETA and the landing rate leave them out (docs/SPEC-SPRINT.md
+	// sections 1 and 16). The work table's cells still count them.
+	Sentinels map[string]SentinelCounts `json:"sentinels,omitempty"`
 	// Tiers counts every card by its brief's tier, and Streams carries each stream's
 	// tiers, dollars per landed card and spend by tier (sprint.TierCosts, cost_view.go):
 	// counted here from the cards the tick reads, never by where from per-card reads.
@@ -85,16 +90,52 @@ type WhereRecord struct {
 	SeriesCounted bool             `json:"series_counted,omitempty"`
 }
 
+// SentinelCounts is one stream's sentinel primaries: All, every sentinel the
+// stream holds, and Landed, those released into landed (docs/SPEC-SPRINT.md
+// section 16). where subtracts them from the stream's cells.
+type SentinelCounts struct {
+	All    int `json:"all,omitempty"`
+	Landed int `json:"landed,omitempty"`
+}
+
+// sentinelCounts is each stream's sentinels among the snapshot's work cards, in
+// place (waiting, ready, working, review, merging, landed), all and landed:
+// carried in the where record so where counts no sentinel (docs/SPEC-SPRINT.md
+// sections 1 and 16). The work table's cells count them with the work.
+func sentinelCounts(s *sprint.Snapshot) map[string]SentinelCounts {
+	if s == nil || s.Work == nil {
+		return nil
+	}
+	out := map[string]SentinelCounts{}
+	for _, c := range s.Work.Column(sprint.States...) {
+		if !sprint.IsSentinel(c) {
+			continue
+		}
+		n := out[c.Row]
+		n.All++
+		if c.Col == sprint.Landed {
+			n.Landed++
+		}
+		out[c.Row] = n
+	}
+	return out
+}
+
 // whereOf is the where record of a snapshot holding every card of the work
 // table, at now, for the machine's STOPPED spans.
 func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 	var landed []time.Time
 	for _, c := range s.Work.Column(sprint.Landed) {
+		// a released sentinel is not work: its stamp is no landing the rate
+		// counts (docs/SPEC-SPRINT.md sections 1 and 16)
+		if sprint.IsSentinel(c) {
+			continue
+		}
 		if at, err := time.Parse(time.RFC3339, c.F("landed")); err == nil {
 			landed = append(landed, at)
 		}
 	}
-	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), Critical: sprint.Critical(s, 5),
+	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), Sentinels: sentinelCounts(s), Critical: sprint.Critical(s, 5),
 		Tiers: sprint.TierCounts(s), Streams: sprint.StreamTierCosts(s), StageTimes: sprint.CycleTimes(s, now), DealtFleet: sprint.FriendsDealtFleet(s),
 		ReadsWaiting: sprint.ReadsWaiting(s), Priorities: sprint.PriorityCounts(s), StreamPriorities: sprint.StreamPriorities(s),
 		ReadsWindow: sprint.ReadsWindowOf(s, m.StoppedBetween)}
@@ -348,6 +389,10 @@ type WhereFacts struct {
 	Held      int
 	Landed    []time.Time
 	Critical  []sprint.CriticalCard // the five heaviest, from the record (weight.go)
+	// Sentinels is the record's per-stream sentinel counts (WhereRecord.Sentinels),
+	// so where counts no sentinel in x/y, the ETA and the landing rate; nil without
+	// the record.
+	Sentinels map[string]SentinelCounts
 	// Tiers and Streams are the record's counts and costs by tier (cost_view.go); nil
 	// without the record.
 	Tiers   map[string]int
@@ -455,6 +500,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 		// a record counted from another stats record (a reset or a tidy since) is not taken
 		if ok && r.Epoch == st.epoch && r.Stats == stats.statsStamp(st.epoch) && (r.Rev == workRev || st.keptBy(r, f.Machine, f.Heartbeat)) {
 			f.Held, f.Critical, f.Tiers, f.Streams, f.StageTimes, f.DealtFleet = r.Held, r.Critical, r.Tiers, r.Streams, r.StageTimes, r.DealtFleet
+			f.Sentinels = r.Sentinels
 			f.CostCheck = r.CostCheck
 			f.ReadsWaiting, f.Priorities, f.StreamPriorities = r.ReadsWaiting, r.Priorities, r.StreamPriorities
 			f.ReadsWindow = r.ReadsWindow
@@ -510,6 +556,7 @@ func (st *Store) whereCosts(ctx context.Context, f *WhereFacts) error {
 	streams := sprint.StreamTierCosts(s)
 	check := sprint.CostCheckOf(s, streams)
 	f.Streams, f.CostCheck = st.streamsSince(s, streams, stats), &check
+	f.Sentinels = sentinelCounts(s)
 	return nil
 }
 
