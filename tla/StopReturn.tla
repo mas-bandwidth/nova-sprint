@@ -48,17 +48,16 @@
 (*                 beaten and whose job the beat shows gone still stays    *)
 (*                 owed until the owner's own receipt, so START waits on   *)
 (*                 it (AbsentJobSettles fails);                            *)
-(*  "clearblocked"    - clear reads the debt record, not the live state,   *)
-(*                 and refuses while any debt remains even when every      *)
-(*                 lease is returned, so a stop-returned lease blocks the  *)
-(*                 epoch advance (ClearEnabled fails);                     *)
+(*  "clearblocked"    - clear drops the live-lease guard and advances     *)
+(*                 while a working lease remains                          *)
+(*                 (ClearNeverWithALiveLease fails);                       *)
 (*  "omitlive"        - a fresh beat omits a live (running) child: its     *)
 (*                 live set names held reports only, so the settle returns *)
 (*                 a card whose child still runs, and START crosses it     *)
 (*                 (NoLiveChildAcrossStart fails).                         *)
 (*                                                                         *)
 (* Clear (docs/SPEC-SPRINT.md section 13, the blank-slate clear): once the *)
-(* machine is STOPPED and no card is still working (every lease returned   *)
+(* machine first stops; with no card still working (every lease returned  *)
 (* or its card no longer working), clear advances to a blank epoch: every  *)
 (* card ready at generation 1, no debt, no cancelled child remembered, no  *)
 (* beat or beaten owner carried. A clear that still owes a debt never      *)
@@ -69,7 +68,7 @@ EXTENDS Naturals, FiniteSets
 
 CONSTANTS Cards, Owners, MaxGen, Broken
 
-VARIABLES mach, row, col, gen, sfg, child, debt, old, beaten, held, live, settling
+VARIABLES mach, row, col, gen, sfg, child, debt, old, beaten, held, live, settling, clearLive
 
 \* old: the cards whose child was alive at the last STOP and has not been
 \* cancelled since (history, read by NoLiveChildAcrossStart alone)
@@ -78,7 +77,8 @@ VARIABLES mach, row, col, gen, sfg, child, debt, old, beaten, held, live, settli
 \* live: the owner's beat carries a live set (LiveKnown); an owner whose beat
 \* carries none reports a stop-returns count instead
 \* settling: the debts the server's unfenced read has decided to settle
-vars == <<mach, row, col, gen, sfg, child, debt, old, beaten, held, live, settling>>
+\* clearLive: a ghost recording whether an epoch advance crossed a working lease
+vars == <<mach, row, col, gen, sfg, child, debt, old, beaten, held, live, settling, clearLive>>
 
 Debt == [id: Cards, row: Owners, gen: 1..MaxGen]
 
@@ -95,6 +95,7 @@ TypeOK ==
     /\ held \subseteq Cards
     /\ live \in [Owners -> BOOLEAN]
     /\ settling \subseteq Debt
+    /\ clearLive \in BOOLEAN
 
 Init ==
     /\ mach = "run"
@@ -109,6 +110,7 @@ Init ==
     /\ held = {}
     /\ live \in [Owners -> BOOLEAN]
     /\ settling = {}
+    /\ clearLive = FALSE
 
 \* the owner's same-row, next-generation return receipt (stopDebtReturned)
 Receipt(d) ==
@@ -150,7 +152,7 @@ Take(c) ==
     /\ col' = [col EXCEPT ![c] = "working"]
     /\ child' = [child EXCEPT ![c] = gen[c]]
     /\ held' = held \ {c}
-    /\ UNCHANGED <<mach, row, gen, sfg, debt, old, beaten, live, settling>>
+    /\ UNCHANGED <<mach, row, gen, sfg, debt, old, beaten, live, settling, clearLive>>
 
 \* a child finishes while RUNNING: its report waits held, the card stays working
 ChildFinishes(c) ==
@@ -159,7 +161,7 @@ ChildFinishes(c) ==
     /\ child[c] = gen[c]
     /\ child' = [child EXCEPT ![c] = 0]
     /\ held' = held \cup {c}
-    /\ UNCHANGED <<mach, row, col, gen, sfg, debt, old, beaten, live, settling>>
+    /\ UNCHANGED <<mach, row, col, gen, sfg, debt, old, beaten, live, settling, clearLive>>
 
 \* the machine takes the held report while RUNNING: the card goes on at a new
 \* generation
@@ -172,7 +174,7 @@ ReportTaken(c) ==
     /\ gen' = [gen EXCEPT ![c] = gen[c] + 1]
     /\ child' = [child EXCEPT ![c] = 0]
     /\ held' = held \ {c}
-    /\ UNCHANGED <<mach, row, sfg, debt, old, beaten, live, settling>>
+    /\ UNCHANGED <<mach, row, sfg, debt, old, beaten, live, settling, clearLive>>
 
 \* STOP captures every working card as owed (activeStopLeases)
 Stop ==
@@ -181,7 +183,7 @@ Stop ==
     /\ debt' = {[id |-> c, row |-> row[c], gen |-> gen[c]] : c \in {x \in Cards : col[x] = "working"}}
     /\ old' = {c \in Cards : child[c] # 0}
     /\ beaten' = {}
-    /\ UNCHANGED <<row, col, gen, sfg, child, held, live, settling>>
+    /\ UNCHANGED <<row, col, gen, sfg, child, held, live, settling, clearLive>>
 
 \* the owner cancels its child (the store trusts its acknowledgement)
 Cancel(c) ==
@@ -189,7 +191,7 @@ Cancel(c) ==
     /\ child[c] # 0
     /\ child' = [child EXCEPT ![c] = 0]
     /\ old' = old \ {c}
-    /\ UNCHANGED <<mach, row, col, gen, sfg, debt, beaten, held, live, settling>>
+    /\ UNCHANGED <<mach, row, col, gen, sfg, debt, beaten, held, live, settling, clearLive>>
 
 \* the owner's beat: it names the jobs it runs and the reports it holds (the
 \* derived live set, or the stop-returns count where it carries no live set),
@@ -198,7 +200,7 @@ Cancel(c) ==
 \* beat shows gone stays gone.
 Beat(o) ==
     /\ beaten' = IF mach = "stop" THEN beaten \cup {o} ELSE beaten
-    /\ UNCHANGED <<mach, row, col, gen, sfg, child, debt, old, held, live, settling>>
+    /\ UNCHANGED <<mach, row, col, gen, sfg, child, debt, old, held, live, settling, clearLive>>
 
 \* stop-return --as <row> <c>@<gen>, after the observed cancellation
 Return(c) ==
@@ -211,7 +213,7 @@ Return(c) ==
     /\ sfg' = [sfg EXCEPT ![c] = gen[c]]
     /\ gen' = [gen EXCEPT ![c] = gen[c] + 1]
     /\ held' = held \ {c}
-    /\ UNCHANGED <<mach, row, child, debt, old, beaten, live, settling>>
+    /\ UNCHANGED <<mach, row, child, debt, old, beaten, live, settling, clearLive>>
 
 \* settleStopDebt: each receipted debt leaves the machine record
 Settle ==
@@ -223,7 +225,7 @@ Settle ==
          ELSE /\ \E d \in debt : Receipt(d)
               /\ debt' = {d \in debt : ~Receipt(d)}
     /\ settling' = settling \cap debt'
-    /\ UNCHANGED <<mach, row, col, gen, sfg, child, old, beaten, held, live>>
+    /\ UNCHANGED <<mach, row, col, gen, sfg, child, old, beaten, held, live, clearLive>>
 
 \* the server's beat-based settle, first of three steps: the unfenced read that
 \* decides the debts whose beat shows the job gone (settleStopDebtByBeat's read)
@@ -234,7 +236,7 @@ ReadSettle ==
         /\ JobGone(d)
         /\ d \notin settling
         /\ settling' = settling \cup {d}
-    /\ UNCHANGED <<mach, row, col, gen, sfg, child, debt, old, beaten, held, live>>
+    /\ UNCHANGED <<mach, row, col, gen, sfg, child, debt, old, beaten, held, live, clearLive>>
 
 \* the server's beat-based settle, second step: the stop-return (StopReturnStep)
 \* for a debt the read decided, with a recorded reason; the settle itself is the
@@ -250,7 +252,7 @@ SettleByBeat ==
         /\ sfg' = [sfg EXCEPT ![d.id] = d.gen]
         /\ gen' = [gen EXCEPT ![d.id] = d.gen + 1]
         /\ held' = held \ {d.id}
-    /\ UNCHANGED <<mach, row, child, debt, old, beaten, live, settling>>
+    /\ UNCHANGED <<mach, row, child, debt, old, beaten, live, settling, clearLive>>
 
 \* a coordinator hold (or fleet down) redeals a ready card no debt pins
 Hold(c, o) ==
@@ -260,7 +262,7 @@ Hold(c, o) ==
     /\ gen[c] < MaxGen
     /\ row' = [row EXCEPT ![c] = o]
     /\ gen' = [gen EXCEPT ![c] = gen[c] + 1]
-    /\ UNCHANGED <<mach, col, sfg, child, debt, old, beaten, held, live, settling>>
+    /\ UNCHANGED <<mach, col, sfg, child, debt, old, beaten, held, live, settling, clearLive>>
 
 \* START: every remaining debt has its receipt in place (unsettledStopDebt)
 Start ==
@@ -270,16 +272,16 @@ Start ==
     /\ debt' = {}
     /\ beaten' = {}
     /\ settling' = {}
-    /\ UNCHANGED <<row, col, gen, sfg, child, old, held, live>>
+    /\ UNCHANGED <<row, col, gen, sfg, child, old, held, live, clearLive>>
 
-\* clear: the blank-slate advance. The fixed guard reads the live state (no
-\* card working); the reversed witness "clearblocked" reads the debt record
-\* instead and blocks on a returned lease that has not settled yet.
-Clear ==
+\* clear.go first sets STOPPED, then reads the current work/read leases.
+\* Splitting those steps preserves a receipt between STOP and the lease read.
+\* The readers table is the separate pins/readers card's scope; col represents
+\* the working leases here. A retry while already STOPPED reads them again.
+ClearAdvance ==
     /\ mach = "stop"
-    /\ IF Broken = "clearblocked"
-         THEN debt = {}
-         ELSE \A c \in Cards : col[c] = "ready"
+    /\ (Broken = "clearblocked" \/ \A c \in Cards : col[c] = "ready")
+    /\ clearLive' = (\E c \in Cards : col[c] = "working")
     /\ col' = [c \in Cards |-> "ready"]
     /\ gen' = [c \in Cards |-> 1]
     /\ sfg' = [c \in Cards |-> 0]
@@ -290,6 +292,12 @@ Clear ==
     /\ held' = {}
     /\ settling' = {}
     /\ UNCHANGED <<mach, row, live>>
+
+\* From RUNNING, clear has the same first effect as STOP. With a live lease
+\* the second step is refused (stutters); after its receipt, clear can retry.
+Clear == Stop \/ ClearAdvance
+
+ClearNeverWithALiveLease == ~clearLive
 
 Next ==
     \/ Stop \/ Start \/ Settle \/ ReadSettle \/ SettleByBeat \/ Clear
@@ -324,9 +332,9 @@ AbsentJobSettles ==
     \A d \in Debt :
         JobGone(d) ~> (d \notin debt)
 
-(* A stop-returned lease never blocks clear: once the machine is stopped  *)
-(* and no card is still working, clear is enabled (the epoch advances, a  *)
+(* With no card still working, clear is enabled from RUNNING or STOPPED: *)
+(* STOP comes first when running; the advance ignores a returned lease's *)
 (* returned card's unsettled debt notwithstanding).                       *)
 ClearEnabled ==
-    (mach = "stop" /\ \A c \in Cards : col[c] = "ready") => ENABLED Clear
+    (\A c \in Cards : col[c] = "ready") => ENABLED Clear
 =============================================================================
