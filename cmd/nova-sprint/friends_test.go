@@ -123,12 +123,18 @@ func TestTheFriendsTableCountsTheFriendsSprintCards(t *testing.T) {
 	// and the tokens column sums it (docs/SPEC-SPRINT.md, a friend's usage)
 	outboxReport(t, root, "amy", "s1-1.w1", "# s1-1\n\n**Verdict:** LAND\nHead: "+landHead+"\nusage: in=1000000 out=150000 cache=50000\n\nThe change is pushed.\n")
 	ta.ok("friend sync --root " + root)
+	// the readers' verdicts move her finished LAND to ok, where it counts done
+	ta.ok("ask --limit 100")
+	ta.ok("read --as reader-a --ok --limit 100")
+	ta.ok("read --as reader-b --ok --limit 100")
+	ta.ok("tick")
 	assert.Equal(t, map[string]any{"ready": "0", "working": "1", "width": "8", "done": "1", "okpct": "100.0%", "redealt": "0", "status": "up", "active": "-", "tokens": "1.2M", "ok": "1", "failed": "0"}, amy(), "s1-1 done ok, its usage summed, s1-2 still working")
 
-	// amy reports s1-2 with no verdict word: finished failed, never ok, and no usage adds none
+	// amy reports s1-2 with no verdict word: the worker's failed word stays finished,
+	// never ok and never failed (no reader reads it), and no usage adds none
 	outboxReport(t, root, "amy", "s1-2.w1", "# s1-2\n\nAll green, nothing more.\n")
 	ta.ok("friend sync --root " + root)
-	assert.Equal(t, map[string]any{"ready": "0", "working": "0", "width": "8", "done": "2", "okpct": "50.0%", "redealt": "0", "status": "up", "active": "-", "tokens": "1.2M", "ok": "1", "failed": "1"}, amy(), "s1-2 done failed (no verdict), s1-1 done ok; its tokens stay")
+	assert.Equal(t, map[string]any{"ready": "0", "working": "0", "width": "8", "done": "1", "okpct": "100.0%", "redealt": "0", "status": "up", "active": "-", "tokens": "1.2M", "ok": "1", "failed": "0"}, amy(), "s1-2 stays finished (its worker's failed word, no reader read it); s1-1 done ok; its tokens stay")
 
 	var w whereView
 	ta.json("where", &w)
