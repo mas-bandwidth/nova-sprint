@@ -665,7 +665,7 @@ func Read(s *Snapshot, r ReadReq) Plan {
 				outside, spent := len(FilesOutsidePaths(pr.F("brief"), r.Finding)) > 0, ReadWidensSpent(pr)
 				bound := ""
 				if bb, ok := briefStopAt(s, at, c.Row, r.Finding); ok && (!outside || spent != "") {
-					bound = bb.String()
+					bound = bb.Why()
 				} else if outside && spent != "" {
 					bound = spent
 				}

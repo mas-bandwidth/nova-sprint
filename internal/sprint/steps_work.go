@@ -1733,7 +1733,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			// the attempt cap on one brief, whatever this attempt's failure: the brief is
 			// wrong, not the worker (brief_bound.go)
 			n := judgment(NBriefWrong, pr.Row, s.Now, 0, pr.ID) // its decisions alone: it is the repeat
-			n.Who, n.Attempt, n.What = who, attempt, bb.String()+"; attempt "+itoa(attempt)+" failed: "+r.Report
+			n.Who, n.Attempt, n.What = who, attempt, bb.Why()+"; attempt "+itoa(attempt)+" failed: "+r.Report
 			u.Notes = append(u.Notes, n)
 		} else if identical {
 			// the second identical failure (rule 2): the bound's judgment at once, in the words

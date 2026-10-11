@@ -50,7 +50,7 @@ func TestTheAttemptCapIsOneJudgmentWithEveryFindingAndTheSpend(t *testing.T) {
 	open := h.openOf(sprint.NBriefWrong)
 	require.Len(t, open, 1, "one judgment: the brief is wrong")
 	n := open[0].Note
-	assert.Equal(t, "s1-1: brief defect after 4 attempts, $3.00 spent; the brief is wrong, not the worker; findings: attempt 1: internal/f1.go:1: wrong in attempt 1; attempt 2: internal/f2.go:1: wrong in attempt 2; attempt 3: internal/f3.go:1: wrong in attempt 3; attempt 4: internal/f4.go:4: wrong in attempt 4; attempt 4 found: internal/f4.go:4: wrong in attempt 4", n.What)
+	assert.Equal(t, "s1-1: brief defect after 4 attempts, $3.00 spent; the brief is wrong, not the worker; findings: attempt 1: internal/f1.go:1: wrong in attempt 1; attempt 2: internal/f2.go:1: wrong in attempt 2; attempt 3: internal/f3.go:1: wrong in attempt 3; attempt 4: internal/f4.go:4: wrong in attempt 4; run: nova-sprint brief s1-1 --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop s1-1 --reason '<why>'; attempt 4 found: internal/f4.go:4: wrong in attempt 4", n.What)
 	assert.Equal(t, []string{"brief", "drop"}, n.Decisions)
 	assert.Empty(t, h.openOf(sprint.NReadBroken), "the cap's judgment, not the reader's")
 	refused := rework()
@@ -77,6 +77,8 @@ func TestFailedWorkReachesTheAttemptCapToo(t *testing.T) {
 	open := h.openOf(sprint.NBriefWrong)
 	require.Len(t, open, 1, "the second failure is the cap's judgment, with the cap at 2")
 	assert.Contains(t, open[0].Note.What, "s1-1: brief defect after 2 attempts, nothing priced; the brief is wrong, not the worker; findings: attempt 1: r; attempt 2: r")
+	assert.Contains(t, open[0].Note.What, "nova-sprint brief s1-1 --brief-file <path>", "the finish's cap judgment names the brief command")
+	assert.Contains(t, open[0].Note.What, "nova-sprint drop s1-1 --reason '<why>'", "and the drop command")
 	assert.Equal(t, []string{"brief", "drop"}, open[0].Note.Decisions)
 	assert.Empty(t, h.openOf(sprint.NWorkFailed))
 	h.clean("failed work at the cap")
