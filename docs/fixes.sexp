@@ -855,6 +855,19 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (fix "hook-stays-live-while-its-rechallenge-is-in-bound" :release "v1.2.14" :status "planned"
+   :title "A hook stays live while its re-challenge is in bound"
+   :text "The record's Live is the outstanding challenge's bound, not the proof's: the proof's plus
+    HookEvery + HookAnswerBound (15 minutes), moved on to a re-challenge's own bound, its send time plus
+    HookAnswerBound, when the server sends one (Rechallenge). The look runs every hookLook, so a
+    re-challenge can go out after HookEvery: before this fix the proof's Live lapsed first and a seat
+    answering in time was refused HookFirst while its challenge was still within bound. The look's
+    Rechallenge case writes the record's Live through readHook and writeHook under onLine; a write that
+    fails leaves the earlier, safe bound, says so on the server's SEAT HOOK line, and does not end the
+    subscription. The gate reads the outstanding challenge's deadline, matching tla/SeatHook.tla's Gate
+    and Rechallenge. Tests: TestARechallengedHookStaysLiveUntilItsOwnBound (red first on the unfixed
+    code: \"where: exit 1 / You must hook in first\")."
+   :origin "v1.2.12 inventory 2026-10-11, section 9 row D6; code read at nova-sprint main 00c54ba; this card")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
