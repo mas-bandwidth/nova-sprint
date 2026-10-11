@@ -17,7 +17,7 @@ import (
 // friend sync is a writer and a finisher of a friend's cards beside her daemon
 // (docs/SPEC-FRIEND.md, a reworked brief opens with the fix): a mismatch can raise a seat
 // judgment, but it does not rewrite the friend's reported verdict.
-func TestFriendSyncWritesTheReworkedBriefAndPreservesAnUnaddressedLand(t *testing.T) {
+func TestAKeywordMissIsAJudgmentNeverAHold(t *testing.T) {
 	t.Parallel()
 	const fix = "assert the queue bound under shuffle"
 	ta, _ := friendApp(t, "amy")
@@ -92,7 +92,7 @@ func TestFriendFinishKeepsAnUnaddressedLandAndRaisesASeatJudgment(t *testing.T) 
 	assert.False(t, r.Failed, "a card that asks no fix lands as before")
 }
 
-func TestAFriendsRedealBriefCarriesTheNewestPushedHead(t *testing.T) {
+func TestARedealCarriesTheNewestPushedHead(t *testing.T) {
 	const newest = "89abcdef0123456789abcdef0123456789abcdef"
 	p := sprint.Packet{Card: "s1-1.w6", Primary: "s1-1", Attempt: 6, Gen: 1, Branch: "sprint/s1-1.w6.g1.e0", BaseHead: newest, BaseAttempt: 5,
 		Brief: "s1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nCARRY: s1-1 attempt 4 head=" + landHead + "\nTHE TASK. continue"}
