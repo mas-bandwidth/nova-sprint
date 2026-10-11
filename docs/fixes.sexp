@@ -62,10 +62,12 @@
      the nova-roadmap extraction and the brief boilerplate moving into the card contract. Measured as
      lines per repository and package, product against test, from a baseline taken before the first
      pass.")
-   (release "v1.2.14" :status "planned" :date "2026-10-11"
-    :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
-     breaker on the review loop, and a red base pushed to the coordinator."))
-  :items
+    (release "v1.2.14" :status "planned" :date "2026-10-11"
+     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
+      breaker on the review loop, and a red base pushed to the coordinator.")
+    (release "v1.2.15" :status "planned" :date "2026-10-11"
+     :text "The next small product fixes, one concern each."))
+   :items
    ((fix "tla-liveruns-rows-with-no-live-set" :release "v1.2.12" :status "planned"
      :title "LiveRuns models the rows whose beat carries no live set and the take's one-pass lag"
      :text "Models only, no product change. tla/LiveRuns.tla gains a Legacy constant (the rows whose beat carries no live set, workers from before v1.2.6) and a live variable, the beat's live set as the member's last pass left it. The reconcile skips a Legacy row as the code does (liveStopped returns early, LiveReturns continues past a beat with no live set, LiveCountKeys counts every such card running), WorkingIsLive is restated over the other rows, and the new LegacyNeverReturned holds that no working card of a Legacy row is returned by the reconcile. Take no longer names its card in the live set at once: it is named at the member's next pass, and the reconcile waits the grace from the take. Two reversed witnesses: Broken \"legacyreturned\" reconciles a Legacy row as an empty set (breaks LegacyNeverReturned) and Broken \"nograce\" drops the grace from the take (breaks NoRunReturned). Every liveruns case runs with Legacy = {\"r2\"} so one row exercises the legacy path in each; every existing case keeps its declared result."
@@ -1893,4 +1895,25 @@
     cardgen.LedgerInPaths (the evidence ledgers and any path a repository's own catalog names as a
     ledger with a LEDGERS line in its AGENTS.md or nova.sexp, read at staging, included), and a
     malformed entry stops the stream with the conflict-kind ledger, never a rework."
-   :origin "this card, the-lander-merges-evidence-ledgers.w4; the owner, 2026-10-11 ~12:20-12:45 PM ET")))
+    :origin "this card, the-lander-merges-evidence-ledgers.w4; the owner, 2026-10-11 ~12:20-12:45 PM ET")
+
+  (fix "a-landing-pushes-each-repo-and-base-on-its-own-lane" :release "v1.2.15" :status "planned"
+   :title "A land pass pushes each repository and base on its own lane"
+   :text "A land pass merged and gated streams side by side (phase 1), then landed every
+    built batch from one serial loop across every repository and every base: while one
+    batch rebuilt and ran a combined tree gate (minutes), a built batch of another
+    repository or another base waited, and the same goroutine prepared each next job. Phase
+    2 now runs one landing lane per (clone, base): each lane is a goroutine with its own
+    ready list and its own pushed list, ordered by stream priority and landGrace exactly as
+    the one loop ordered them, and pushes its batches one at a time; different clones, and
+    different bases of one clone, share no ref and no tip, so their pushes run side by side
+    (serial within one base is the design and stays, tla/LandPass.tla). The job's prepare
+    runs in its own goroutine, the first cuts of one repository and base still in priority
+    order; fetchMu becomes one lock per clone directory, so two clones' fetches and worktree
+    writes go side by side while one clone's stay serial; failed and the queues are updated
+    under one mutex. The landing order within one base and every message are unchanged."
+   :origin "this card, a-landing-pushes-each-repo-and-base-on-its-own-lane.w1; the owner,
+    2026-10-11: \"What else is like serial reads, going out one at a time, when they could go
+    out at the same time in || ?\" and \"OK please log critical cards to fix all these serial
+    things that should be parallel (with good reason to be ||).\"; found by the seat's audit
+    child on nova-sprint main the same day (cmd/nova-sprint/landpass.go, THE LANDINGS, SERIAL)")))

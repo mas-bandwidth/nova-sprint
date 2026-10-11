@@ -155,6 +155,10 @@ type app struct {
 	// gateRan, when set (a test), runs before each tree gate land runs, with the directory
 	// gated and whether the tree tests run: the count of gates a pass makes (landpass.go).
 	gateRan func(dir string, tests bool)
+	// fetchHold, when set (a test), runs in fetched while the clone's own fetch lock is
+	// held, with the clone: a test sees two fetches of one clone serialize and two clones'
+	// go side by side (landpass.go).
+	fetchHold func(clone string)
 	// beforeWait, when set (a test), runs in a stream's phase-1 goroutine just before it
 	// waits for the chain, a width slot or another stream's gate of its base commit, with
 	// the stream and the wait (chain, slot, gate): a test orders who waits behind whom
