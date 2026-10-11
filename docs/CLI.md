@@ -85,8 +85,8 @@ nova-sprint priority <id>... | (<id>... | --stream <s>) (--blocker | --critical 
 nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint sentinel set <id> --needs <a,b>
 nova-sprint brief check <file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]
- nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t>] [--needs-from-brief] | --dir <dir> [--rules <file>] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]
- nova-sprint tier <card> --set <flash|pro|heavy|frontier> --reason <text>
+nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t>] [--needs-from-brief] | --dir <dir> [--rules <file>] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]
+nova-sprint tier <card> --set <flash|pro|heavy|frontier> --reason <text>
 nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who)... [--dry-run]
 nova-sprint twin <card> [--paths <extra,...>] [--needs <card,...>] [--before <card>] [--tier <t>] [--instruction <text>] [--carry]
 nova-sprint move <id>... --stream <s> [--before <id> | --after <id> | --score <n>]
@@ -172,8 +172,8 @@ nova-sprint cost reprice [--route <r>]... [--since <RFC3339>] [--dry-run] [--jso
 nova-sprint stats [--routes [--since <10m|RFC3339>]]
 nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
- nova-sprint clear --confirm sprint
- nova-sprint teardown --confirm sprint
+nova-sprint clear --confirm sprint
+nova-sprint teardown --confirm sprint
 ```
 
 A `brief` edit replaces the card's whole text, but the text dumped from the

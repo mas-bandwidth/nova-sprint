@@ -133,6 +133,25 @@ func TestAMetadataOnlyBriefKeepsTheBoundCount(t *testing.T) {
 	assert.Contains(t, strings.Join(p.Said, "\n"), "bound: same task (1 attempts stand)")
 }
 
+func TestBriefTierRefusesATLAPathBelowFrontier(t *testing.T) {
+	t.Parallel()
+	// a card whose PATHS name TLA+ model work is the frontier tier's: a re-tier
+	// to a tier below frontier is refused, as the lint's tla-is-frontier rule
+	// refuses it at add (nova-sprint tier <card> --set <t> --reason).
+	w := newWorld(t, "reader-a", "reader-b")
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "a TLA model tier: frontier\nPATHS: tla/Foo.tla\n\nthe model", Who: "coordinator"}))
+	p := Brief(w.s, BriefReq{ID: "a-1", Tier: "heavy", Who: "coordinator"})
+	require.Len(t, p.Refused, 1)
+	assert.Empty(t, p.Units)
+	assert.Contains(t, p.Refused[0].Why, "a tier below frontier is refused")
+
+	// frontier itself is accepted
+	p = Brief(w.s, BriefReq{ID: "a-1", Tier: "frontier", Who: "coordinator"})
+	require.Empty(t, p.Refused)
+	w.must(p)
+	assert.Equal(t, "frontier", w.s.Work.Placed("a-1").F(FieldTier))
+}
+
 func TestANewTaskBriefResetsTheBoundCount(t *testing.T) {
 	t.Parallel()
 	w := boundWorld(t)
