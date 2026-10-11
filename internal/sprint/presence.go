@@ -287,7 +287,7 @@ func MemberStatus(ctl *Card, b Beat, now time.Time) string {
 // PresenceStatus is the one rule of a fleet member's status at now: held while
 // the coordinator holds it (fleet down), else up while it has missed fewer
 // than MissedBeatsDown beat windows of BeatDeadline, else down (never beaten,
-// or lapsed).
+// or lapsed). // tla/DirtyTick.tla Hold
 func PresenceStatus(held bool, b Beat, now time.Time) string {
 	switch {
 	case held:
