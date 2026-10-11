@@ -241,8 +241,8 @@ func landed(s *sprint.Snapshot) int {
 // room is used up at once.
 func holesUp(h *harness, n int) {
 	h.t.Helper()
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 2}))
-	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m2", Width: 2}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 2}))
 	for _, st := range []string{"s1", "s2", "s3"} {
 		h.must(AddStep(sprint.AddReq{Stream: st, Count: n}))
 	}

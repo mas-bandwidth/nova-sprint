@@ -14,7 +14,7 @@ import (
 func TestAbstractTakesNoFriendRowForAMember(t *testing.T) {
 	t.Parallel()
 	w := newWorld("reader-a")
-	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Member: "m1"}))
+	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	w.s.Fleet.SetRows(append(w.s.Fleet.Rows(), sprint.FriendRow("amy")))
 	s := refmodel.Abstract(refmodel.Observed{Snap: w.s, Machine: refmodel.Running})
 	assert.Equal(t, map[string]string{"m1": refmodel.Up}, s.Members)

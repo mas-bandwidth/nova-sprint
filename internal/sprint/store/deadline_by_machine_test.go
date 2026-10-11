@@ -75,13 +75,13 @@ func TestADealtCardsDeadlineIsThreeTimesItsMembersMedianWall(t *testing.T) {
 	// the fleet row pins it, whatever the card's; default takes the pin off
 	const pinned = 45 * 60 // seconds, as fleet up --deadline 45m writes it
 	for _, m := range []string{"m1", "m2"} {
-		res := h.must(FleetStep(sprint.FleetReq{Op: "up", Member: m, Deadline: pinned}))
+		res := h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Deadline: pinned}))
 		assert.Contains(t, res.Moved[0], m+" up deadline=2700s (pinned)")
 	}
 	_, d, p = h.dealtDeadline("s1-7")
 	assert.Equal(t, 2700, d, "the pin, whatever the card's")
 	assert.Equal(t, 2700, p)
-	res := h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1", DeadlineOff: true}))
+	res := h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", DeadlineOff: true}))
 	assert.Contains(t, res.Moved[0], "the pin taken off")
 	assert.Empty(t, h.snap().MemberCtl("m1").F(sprint.FieldMemberDeadline))
 	assert.Equal(t, "2700", h.snap().MemberCtl("m2").F(sprint.FieldMemberDeadline), "m2's pin stays")

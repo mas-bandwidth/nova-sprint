@@ -105,7 +105,7 @@ func TestPresenceBringsAMemberUpWhenItBeatsAndLevelsTheQueues(t *testing.T) {
 	for _, id := range []string{"s1-1", "s1-2", "s1-3"} {
 		w.deal(t, id)
 	}
-	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "release", Member: "m2", Who: coordinator})) // added down until it beats
+	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "release", Member: "m2", Who: coordinator, Probe: sprint.EnvProbePassed})) // added down until it beats
 	got := refmodel.PresenceMoves(w.snapshot(w.fresh()), later(0))
 	expect(t, got,
 		"set fleet ctl-m2 since=2030-01-02T03:04:05Z,status=up",
@@ -302,7 +302,7 @@ func TestLevelMovesTheNewestFromTheLongestRoundTheFleet(t *testing.T) {
 	w.add(t, "s1", 2)
 	w.deal(t, "s1-1")
 	w.deal(t, "s1-2")
-	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "release", Member: "m2", Who: coordinator}))
+	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "release", Member: "m2", Who: coordinator, Probe: sprint.EnvProbePassed}))
 	ctl := w.s.MemberCtl("m2")
 	ctl.Fields["status"] = sprint.Up // up without the step that would level the queues
 	w.s.Fleet.Put(ctl)
@@ -365,7 +365,7 @@ func TestAcceptMovesAPrimaryWithTwoOkReadsToMergingAndTellsTheCoordinatorOnce(t 
 func TestAskTellsOnceWhenFewerThanTwoReadersAreFree(t *testing.T) {
 	t.Parallel()
 	w := newWorld("reader-a")
-	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Member: "m1", Who: coordinator}))
+	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Who: coordinator}))
 	w.add(t, "s1", 1)
 	w.deal(t, "s1-1")
 	w.take(t, "s1-1")

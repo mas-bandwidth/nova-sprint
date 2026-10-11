@@ -86,8 +86,8 @@ func newTierWorld(t *testing.T, all, all2 string) *world {
 	w := newWorld(t, "reader-flash", "reader-all", "reader-all2")
 	w.s.Readers.Texts = map[string]map[string]string{"reader-flash": {"tiers": "flash"}}
 	w.s.ReaderStates = map[string]string{"reader-flash": ReaderUp, "reader-all": all, "reader-all2": all2}
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	w.must(Add(w.s, AddReq{Brief: "tier: flash", Stream: "s1", IDs: []string{"flash-1"}}))
 	w.must(Add(w.s, AddReq{Brief: proBrief, Stream: "s1", IDs: []string{"pro-1"}}))
 	toReview(w, "flash-1", "pro-1")

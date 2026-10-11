@@ -416,3 +416,16 @@ func TestRoutesRestNeverReplacesARestThatHolds(t *testing.T) {
 	require.Len(t, p.Refused, 1)
 	assert.Contains(t, p.Refused[0].Why, "route flash-glm53-openrouter rests already until woken")
 }
+
+// EnvFaultRemedy names the coordinator action that clears each environment cause, the
+// shape routes rest gives a provider: a push refusal is the fleet push-credential play for
+// the member, and every remedy ends in the member's own probe (tla/ProviderBudget.tla,
+// FleetUpRefusesUncleared).
+func TestRouteRestCoverEnvFaultRemedy(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "run the fleet push-credential play with --limit m1, then fleet up m1 --probe passed", EnvFaultRemedy("m1", EnvPush))
+	assert.Contains(t, EnvFaultRemedy("m1", EnvHarness), "harness")
+	assert.Contains(t, EnvFaultRemedy("m1", EnvDisk), "free disk")
+	assert.Contains(t, EnvFaultRemedy("m1", EnvOther), "repair m1's environment")
+	assert.Equal(t, "fleet up m1 --probe passed", EnvProbeLine("m1"))
+}

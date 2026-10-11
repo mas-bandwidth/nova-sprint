@@ -59,7 +59,7 @@ func TestDealClosesTheJudgmentForNoMemberWhenAMemberIsUp(t *testing.T) {
 	ids := openIDs(w, sprint.NNoMember)
 	require.Len(t, ids, 1, "the fixture: %d judgments for no member", len(ids))
 	expect(t, refmodel.DealMoves(w.snapshot(nil), later(0))) // the judgment is open: nothing is raised again
-	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Member: "m1", Who: coordinator}))
+	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Who: coordinator}))
 	got := refmodel.DealMoves(w.snapshot(nil), later(0))
 	expect(t, got,
 		"move work s1-1 s1:ready>s1:working",
@@ -75,7 +75,7 @@ func TestDealClosesTheJudgmentForNoMemberWhenAMemberIsUp(t *testing.T) {
 func TestAskClosesTheJudgmentForTooFewReadersWhenAReaderIsAdded(t *testing.T) {
 	t.Parallel()
 	w := newWorld("reader-a")
-	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Member: "m1", Who: coordinator}))
+	w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Who: coordinator}))
 	w.add(t, "s1", 1)
 	w.deal(t, "s1-1")
 	w.take(t, "s1-1")
