@@ -27,7 +27,7 @@ func TestTheTickRaisesStarvingWhileReadyIsUnderTwiceTheWidth(t *testing.T) {
 	open := h.openOf(sprint.NStarving)
 	require.Len(t, open, 1, "the starving judgment")
 	n := open[0].Note
-	assert.Equal(t, "the fleet is starving: ready 3 is under twice the width 8; release a wave: nova-sprint release s2-gate --reason '<why>'", n.What)
+	assert.Equal(t, "the fleet is starving: ready 3 is under twice the width 8, working 0 of width 4; release a wave: nova-sprint release s2-gate --reason '<why>'", n.What)
 	assert.Equal(t, []string{"release", "wait"}, n.Decisions)
 	assert.Equal(t, []string{"s2-gate"}, n.Primaries, "the first held wave's sentinel")
 	cmds := h.commandsOf(sprint.NStarving)
@@ -38,7 +38,7 @@ func TestTheTickRaisesStarvingWhileReadyIsUnderTwiceTheWidth(t *testing.T) {
 	h.machine()
 	assert.Len(t, h.openOf(sprint.NStarving), 1, "raised once while it holds")
 	assert.Equal(t, 1, h.written(sprint.NStarving))
-	assert.Contains(t, h.openOf(sprint.NStarving)[0].Note.What, "ready 0 is under", "the count updates in place: the three were dealt")
+	assert.Contains(t, h.openOf(sprint.NStarving)[0].Note.What, "ready 0 is under twice the width 8, working 0 of width 4", "the count updates in place: the three were dealt")
 	h.must(ReleaseStep(sprint.ReleaseReq{IDs: []string{"s2-gate"}, Reason: "the wave", Coordinator: "tester", Who: "tester"}))
 	h.machine()
 	assert.Empty(t, h.openOf(sprint.NStarving), "no wave is held: nothing to offer")

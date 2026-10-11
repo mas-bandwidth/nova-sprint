@@ -17,7 +17,10 @@ type world struct {
 	t     testing.TB
 	s     *Snapshot
 	notes []Note
-	seq   int
+	// updates is every judgment a plan rewrote in place (Plan.Updates), in
+	// order: the stores rewrite the note by its id, and so does the world
+	updates []Note
+	seq     int
 }
 
 var t0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -65,6 +68,7 @@ func (w *world) do(p Plan) Plan {
 	}
 	w.closeAll(p.Closes)
 	w.note(p.Notes...)
+	w.update(p.Updates...)
 	// the table properties, each guarded on the value its plan read, as the
 	// table layer applies them (docs/SPEC-NOVA-TABLE.md, table properties)
 	for _, pw := range p.Props {
@@ -102,6 +106,21 @@ func (w *world) note(ns ...Note) {
 		if n.Kind == Judgment {
 			for _, sub := range n.Subjects() {
 				w.s.Open = append(w.s.Open, Open{Key: OpenKey(n.ID, sub), Note: n})
+			}
+		}
+	}
+}
+
+// update rewrites each open or acknowledged judgment in place by its id, as
+// the stores apply Plan.Updates.
+func (w *world) update(ns ...Note) {
+	for _, n := range ns {
+		w.updates = append(w.updates, n)
+		for _, os := range []*[]Open{&w.s.Open, &w.s.Acked} {
+			for i := range *os {
+				if (*os)[i].Note.ID == n.ID {
+					(*os)[i].Note = n
+				}
 			}
 		}
 	}

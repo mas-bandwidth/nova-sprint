@@ -41,12 +41,38 @@
 \* again: a read handed back is asked again on its own card or on a new one,
 \* each a deal of its own (internal/sprint Ask).
 \*
+\* THE MEMBER'S HARNESSES (fault 10, 2026-10-10: cards on heavy-opus-claude were
+\* dealt to four members that have no claude, and every
+\* launch was refused). Unlaunch is the routes the dealing member cannot launch:
+\* a route whose harness is headless (claude, codex, grok) that the member's
+\* control card does not name (fleet up --harnesses). The work deal and the
+\* redeal walk past such an entry as they walk past one that names no enabled
+\* route: it is never taken, however the exclusion of a redeal lapses, and the
+\* index moves past it; a card whose tier has no launchable entry is not dealt
+\* to that member (it waits for one that can). A read is drawn by the ask, not
+\* for a member, and is outside this rule.
+\*
+\* THE POOL AND ITS JUDGMENT (the cold reads of nova-sprint#51, 2026-10-10). The
+\* deal gives a card only to the members of its pool: its bench's (BenchOf: the
+\* members its BENCH line names, every member without one), less, for a card dealt
+\* again, the members that refused it at staging (Refused). MemberUnlaunch[m] is the
+\* routes member m cannot launch. A work card none of whose pool can launch an
+\* entry of its tier is stranded: the deal deals it nowhere (Deal and Redeal ask
+\* CanLaunchIn the pool), and the tick (TickJudge) judges it, the tier's one
+\* judgment (internal/sprint noLauncher over dealPool: StrandedIsJudged). The
+\* fault the reads found was the judgment asked over every member up rather than
+\* the pool: a bench card whose bench could not launch the route, while a member
+\* off its bench could, waited unjudged. tock marks the state just after a tick.
+\*
 \* Broken: "none" is the design; "random" takes any entry of the array (the
 \* weighted draw this replaces: RouteFair fails); "noadvance" is a redeal that
 \* takes the entry at the place without moving past the excluded one
 \* (ExcludedNeverDrawn fails); "readapart" is a read that takes the entry at
 \* the place and leaves the index where it is, a read kept apart from the
-\* tier's rotation (RouteIndexAdvancesOncePerCard fails).
+\* tier's rotation (RouteIndexAdvancesOncePerCard fails); "harnessblind" is the
+\* deal before fault 10, drawing the entry at the place whatever the member can
+\* launch (NeverUnlaunchable fails); "judgefleet" judges over every member up, not
+\* the card's pool (StrandedIsJudged fails).
 \*
 \* WHAT IS NOT MODELLED. Members, widths and the tick (DirtyTick.tla); an entry
 \* that names no enabled route (the deal skips it as it skips an excluded one,
@@ -56,11 +82,12 @@
 \* takes an entry does not change what the index does.
 EXTENDS Integers, Sequences, FiniteSets, TLC
 
-CONSTANTS Tiers, Arr, Cards, TierOf, Pinned, Reads, MaxRedeals, Broken
+CONSTANTS Tiers, Arr, Cards, TierOf, Pinned, Reads, MaxRedeals, Broken, Unlaunch,
+          Members, MemberUnlaunch, BenchOf, Refused
 
-VARIABLES ridx, st, route, drawn, rdl, deals, skipped, hist, last
+VARIABLES ridx, st, route, drawn, rdl, deals, skipped, hist, last, judged, tock
 
-vars == <<ridx, st, route, drawn, rdl, deals, skipped, hist, last>>
+vars == <<ridx, st, route, drawn, rdl, deals, skipped, hist, last, judged, tock>>
 
 Routes == UNION {{Arr[t][k] : k \in 1..Len(Arr[t])} : t \in Tiers}
 
@@ -76,10 +103,33 @@ Steps(t, i, ex) ==
          /\ At(t, i + s - 1) \notin ex
          /\ \A u \in 1..(s - 1) : At(t, i + u - 1) \in ex
 
+\* The routes a card's deal walks past whatever else: those the member cannot
+\* launch, for a work card (a read is the ask's).
+Blind(c) == IF c \in Reads THEN {} ELSE Unlaunch
+
+\* Whether tier t's array holds an entry outside ex.
+Open(t, ex) == \E k \in 1..Len(Arr[t]) : Arr[t][k] \notin ex
+
+\* The work cards: neither pinned nor a read.
+WorkCards == Cards \ (Pinned \cup Reads)
+
+\* The members the deal may give card c: its bench's, less those that refused it at
+\* staging while it is dealt again (internal/sprint dealPool).
+Pool(c) == BenchOf[c] \ (IF st[c] = "withdrawn" THEN Refused[c] ELSE {})
+
+\* Whether a member of P can launch an entry of c's tier.
+CanLaunchIn(c, P) == \E m \in P : Open(TierOf[c], MemberUnlaunch[m])
+
+\* A work card waiting to be dealt that no member of its pool can launch.
+Stranded(c) == c \in WorkCards /\ st[c] \in {"ready", "withdrawn"} /\ Pool(c) # {} /\ ~CanLaunchIn(c, Pool(c))
+
+\* The members the tick's judgment asks over (judgefleet: every member).
+JudgePool(c) == IF Broken = "judgefleet" THEN Members ELSE Pool(c)
+
 \* A pick: the card, the tier, the route, what it left out, whether an entry was
 \* not left out (the exclusion held), and the entries passed over by the rule.
 Pick(c, r, ex, by) == [c |-> c, t |-> TierOf[c], r |-> r, ex |-> ex,
-                       fresh |-> \E k \in 1..Len(Arr[TierOf[c]]) : Arr[TierOf[c]][k] \notin ex,
+                       fresh |-> Open(TierOf[c], ex \cup Blind(c)),
                        sk |-> by - 1]
 
 TypeOK ==
@@ -90,6 +140,8 @@ TypeOK ==
   /\ rdl \in [Cards -> 0..MaxRedeals]
   /\ deals \in [Tiers -> Nat]
   /\ skipped \in [Tiers -> Nat]
+  /\ judged \subseteq Cards
+  /\ tock \in BOOLEAN
 
 Init ==
   /\ ridx = [t \in Tiers |-> 0]
@@ -101,6 +153,8 @@ Init ==
   /\ skipped = [t \in Tiers |-> 0]
   /\ hist = [t \in Tiers |-> <<>>]
   /\ last = [c |-> "none", t |-> "none", r |-> "none", ex |-> {}, fresh |-> FALSE, sk |-> 0]
+  /\ judged = {}
+  /\ tock = FALSE
 
 \* Take route r for card c, the index moved by adv; by is the steps the rule says.
 Take(c, r, adv, by) ==
@@ -113,17 +167,26 @@ Take(c, r, adv, by) ==
   /\ hist' = [hist EXCEPT ![t] = Append(@, [r |-> r, sk |-> by > 1])]
   /\ last' = Pick(c, r, drawn[c], by)
 
-\* The deal of a ready card that pins no model: the entry at the place, one step.
+\* The deal of a ready card that pins no model: the entry at the place, one step,
+\* or the first from it the member can launch, the index moved past those walked.
 Deal(c) ==
+  LET t == TierOf[c]
+      s == Steps(t, ridx[t], Blind(c))
+  IN
   /\ c \notin Pinned
   /\ st[c] = "ready"
+  /\ Broken = "harnessblind" \/ Open(t, Blind(c))
+  /\ c \in Reads \/ CanLaunchIn(c, Pool(c))
   /\ st' = [st EXCEPT ![c] = "dealt"]
-  /\ UNCHANGED rdl
+  /\ tock' = FALSE
+  /\ UNCHANGED <<rdl, judged>>
   /\ IF Broken = "random"
-     THEN \E k \in 1..Len(Arr[TierOf[c]]) : Take(c, Arr[TierOf[c]][k], 1, 1)
+     THEN \E k \in 1..Len(Arr[t]) : Take(c, Arr[t][k], 1, 1)
      ELSE IF Broken = "readapart" /\ c \in Reads
-     THEN Take(c, At(TierOf[c], ridx[TierOf[c]]), 0, 1)
-     ELSE Take(c, At(TierOf[c], ridx[TierOf[c]]), 1, 1)
+     THEN Take(c, At(t, ridx[t]), 0, 1)
+     ELSE IF Broken = "harnessblind"
+     THEN Take(c, At(t, ridx[t]), 1, 1)
+     ELSE Take(c, At(t, ridx[t] + s - 1), s, s)
 
 \* A pinned card is dealt on its pin: the array and the index untouched.
 Pin(c) ==
@@ -131,7 +194,8 @@ Pin(c) ==
   /\ st[c] = "ready"
   /\ st' = [st EXCEPT ![c] = "dealt"]
   /\ route' = [route EXCEPT ![c] = "pin"]
-  /\ UNCHANGED <<ridx, drawn, rdl, deals, skipped, hist, last>>
+  /\ tock' = FALSE
+  /\ UNCHANGED <<ridx, drawn, rdl, deals, skipped, hist, last, judged>>
 
 \* The card's take ends without a finish (its member lost, the provider failed):
 \* withdrawn, to be dealt again, while its redeals are under the bound.
@@ -140,23 +204,41 @@ Withdraw(c) ==
   /\ st[c] = "dealt"
   /\ rdl[c] < MaxRedeals
   /\ st' = [st EXCEPT ![c] = "withdrawn"]
-  /\ UNCHANGED <<ridx, route, drawn, rdl, deals, skipped, hist, last>>
+  /\ tock' = FALSE
+  /\ UNCHANGED <<ridx, route, drawn, rdl, deals, skipped, hist, last, judged>>
 
 \* The redeal: the next entry from the place that is not left out, the index
-\* moved past it and every entry skipped.
+\* moved past it and every entry skipped. The routes already taken are left out
+\* while a launchable entry is not one of them (else that exclusion lapses); an
+\* entry the member cannot launch is never taken.
 Redeal(c) ==
   LET t == TierOf[c]
-      s == Steps(t, ridx[t], drawn[c])
+      ex == IF Open(t, drawn[c] \cup Blind(c)) THEN drawn[c] \cup Blind(c) ELSE Blind(c)
+      s == Steps(t, ridx[t], ex)
   IN
   /\ st[c] = "withdrawn"
+  /\ Broken = "harnessblind" \/ Open(t, Blind(c))
+  /\ CanLaunchIn(c, Pool(c))
   /\ st' = [st EXCEPT ![c] = "dealt"]
   /\ rdl' = [rdl EXCEPT ![c] = @ + 1]
+  /\ tock' = FALSE
+  /\ UNCHANGED judged
   /\ IF Broken = "noadvance"
      THEN Take(c, At(t, ridx[t]), 1, s)
+     ELSE IF Broken = "harnessblind"
+     THEN LET sb == Steps(t, ridx[t], drawn[c]) IN Take(c, At(t, ridx[t] + sb - 1), sb, sb)
      ELSE Take(c, At(t, ridx[t] + s - 1), s, s)
 
+\* The tick's judgment: every work card waiting to be dealt that no member of its
+\* pool can launch, the tier's one judgment (TickDeal; judgefleet: asked over every
+\* member).
+TickJudge ==
+  /\ judged' = {c \in WorkCards : st[c] \in {"ready", "withdrawn"} /\ JudgePool(c) # {} /\ ~CanLaunchIn(c, JudgePool(c))}
+  /\ tock' = TRUE
+  /\ UNCHANGED <<ridx, st, route, drawn, rdl, deals, skipped, hist, last>>
+
 \* A card that finishes is one that is not withdrawn again: no action of its own.
-Next == \E c \in Cards : Deal(c) \/ Pin(c) \/ Withdraw(c) \/ Redeal(c)
+Next == TickJudge \/ \E c \in Cards : Deal(c) \/ Pin(c) \/ Withdraw(c) \/ Redeal(c)
 
 Spec == Init /\ [][Next]_vars
 
@@ -182,6 +264,12 @@ PinNeverAdvances == [][\A c \in Pinned : (st[c] = "ready" /\ st'[c] = "dealt") =
 
 \* A redeal never takes a route left out while an entry of the array is not.
 ExcludedNeverDrawn == last.fresh => last.r \notin last.ex
+
+\* A work card is never dealt on a route its member cannot launch (fault 10).
+NeverUnlaunchable == last.c \notin Reads => last.r \notin Unlaunch
+
+\* Just after a tick, every stranded card is judged (the cold reads of nova-sprint#51).
+StrandedIsJudged == tock => \A c \in Cards : Stranded(c) => c \in judged
 
 \* Reachability (a reversed witness, written to be false where the design must
 \* reach): a redeal that passed over an entry it left out.

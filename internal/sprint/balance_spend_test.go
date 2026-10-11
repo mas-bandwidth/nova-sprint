@@ -366,3 +366,33 @@ func TestTheCoordinatorWakesAProviderRestForItsKey(t *testing.T) {
 	assert.False(t, woken.Open())
 	assert.Contains(t, woken.Why, "; ended: woken by rowan: the key was replaced")
 }
+
+// A balance poll never ends a provider's rest for its key: a balance read strictly higher
+// than the read before it is a payment for a credit rest (it ends), and no payment mends a
+// refused key (only routes wake does; tla/RouteRest.tla, AuthEndsOnlyWoken).
+func TestABalancePollCannotEndAKeyRest(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 10, 4, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		cause string
+		ends  bool
+	}{{RestAuth, false}, {RestCredit, true}} {
+		f := NewTable(Fleet)
+		f.SetProps(map[string]string{
+			PropProviderBalance("openrouter"): "10 2026-10-10T03:50:00Z 0 100",
+			PropProviderRest("openrouter"):    "2026-10-10T03:00:00Z open c9 " + tc.cause + " balance=10 provider openrouter refused card c9",
+		})
+		s := &Snapshot{Now: now, Fleet: f, Routes: nightRoutes, Coordinator: Coordinator}
+		rest := ProviderRests(f)["openrouter"]
+		require.Equal(t, tc.cause, rest.Cause)
+		require.True(t, rest.Resting(now))
+		p := Balance(s, BalanceReq{Reads: []ProviderRead{{Provider: "openrouter", Known: true, Balance: 500, HasUsed: true, Used: 100}}, Who: MachineActor})
+		require.Empty(t, p.Refused)
+		var wroteRest bool
+		for _, w := range p.Props {
+			wroteRest = wroteRest || w.Name == PropProviderRest("openrouter")
+		}
+		assert.Equal(t, tc.ends, wroteRest, "%s: a payment seen (balance 10 to 500)", tc.cause)
+		assert.Equal(t, tc.ends, len(p.Notes) == 1, "%s: the funded note", tc.cause)
+	}
+}

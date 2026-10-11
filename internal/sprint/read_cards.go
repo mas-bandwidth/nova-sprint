@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // A read is a consumer card (docs/SPEC-SPRINT.md section 6, "A read is a consumer card";
@@ -545,6 +547,13 @@ func ReadCardsWhy(s *Snapshot, seats []FriendSeat) []string {
 
 // readCardsAskWhy is readCardsAsk, and with why non-nil, ReadCardsWhy's lines.
 func readCardsAskWhy(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]string) (p Plan, waits map[string]string) {
+	return readCardsAskFull(s, seats, ri, why, nil)
+}
+
+// readCardsAskFull is readCardsAskWhy, and with full non-nil, for each primary that waits because
+// every unit that may read it is at its room, the names of those units (the frontier-room
+// judgment's cause, frontierRoomCondsOfWaits).
+func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]string, full map[string][]string) (p Plan, waits map[string]string) {
 	waits = map[string]string{}
 	if s == nil || s.Work == nil || s.Fleet == nil {
 		return p, waits
@@ -631,6 +640,13 @@ func readCardsAskWhy(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]st
 				waits[pr.ID] = NoReaderMayRead + ": no friend whose tiers reach its read tier, and no member whose reader row serves its tier, besides its own worker"
 			default:
 				waits[pr.ID] = "every reader up who may read it is at its room"
+				if full != nil {
+					for _, i := range may {
+						if units[i].half <= 0 {
+							full[pr.ID] = append(full[pr.ID], units[i].name)
+						}
+					}
+				}
 			}
 			if why != nil {
 				var refused []string
@@ -739,7 +755,8 @@ func fieldOf(c *Card, name string) string {
 // ask and fewer than two readers up close.
 func readCardsAskPart(s *Snapshot, r TickReq, seats []FriendSeat) (Plan, int) {
 	var p Plan
-	_, waits := readCardsAsk(s, seats, nil)
+	full := map[string][]string{}
+	_, waits := readCardsAskFull(s, seats, nil, nil, full)
 	for _, c := range s.Work.Column(Review) {
 		if _, wait := waits[c.ID]; !wait && c.F(FieldWaitingReader) != "" {
 			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, nil, FieldWaitingReader))},
@@ -759,8 +776,9 @@ func readCardsAskPart(s *Snapshot, r TickReq, seats []FriendSeat) (Plan, int) {
 	view := *s
 	view.Open = append(slices.Clone(s.Open), held...)
 	conds = append(conds, cannotAskCond(&view, refused)...)
+	conds = append(conds, frontierRoomCondsOfWaits(s, waits, full)...)
 	p.Closes = append(p.Closes, ended...)
-	due := notify(&p, s, conds, []string{NCannotAsk, NFewReaders, NReadersBehind, NRaiseReadTier, NBrokenReadsOutrun, NReaderBreaks}, r)
+	due := notify(&p, s, conds, []string{NCannotAsk, NFewReaders, NReadersBehind, NRaiseReadTier, NBrokenReadsOutrun, NReaderBreaks, NNoFrontierRoom}, r)
 	return p, due + len(waits)
 }
 
@@ -919,4 +937,25 @@ func readsWantZeroWhy(s *Snapshot, pr *Card, idx map[string][]*Card) string {
 		}
 	}
 	return "attempt=" + itoa(readAttempt(pr)) + " stands: " + strings.Join(out, "; ")
+}
+
+// frontierRoomCondsOfWaits is the frontier-room judgment of the read-card ask: a frontier read
+// that waits because every unit that may read it is at its room (full: those units), one
+// judgment naming each read and who is full, as the friend ask's does (frontierRoomJudgment).
+// A read no unit may read at all is cannot ask's (cannotAskEpisodes), judged by it, not here.
+func frontierRoomCondsOfWaits(s *Snapshot, waits map[string]string, full map[string][]string) []cond {
+	var judged, causes []string
+	for _, id := range slices.Sorted(maps.Keys(waits)) {
+		pr := s.Work.Placed(id)
+		if pr == nil || friendReadTier(s, pr) != cardhdr.RouteFrontier || strings.HasPrefix(waits[id], NoReaderMayRead) {
+			continue
+		}
+		why := "fewer units may read it than it wants"
+		if names := full[id]; len(names) > 0 {
+			why = strings.Join(slices.Sorted(slices.Values(names)), ", ") + " full"
+		}
+		judged = append(judged, id)
+		causes = append(causes, id+" waits: "+why)
+	}
+	return frontierRoomConds(judged, causes)
 }

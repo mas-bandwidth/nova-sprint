@@ -1321,6 +1321,16 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		given := reworkGiven(s, c)
 		set := map[string]string{"fix": fix, "finding": given["finding"], "why": given["why"], FieldFindingAttempt: c.F("attempt"),
 			"reworks": itoa(c.Int("reworks") + 1), "broken_reads": itoa(c.Int("broken_reads") + broken)}
+		// Budget exhaustion at second attempt escalates to next tier.
+		if c.F(FieldFailure) == "budget" && c.Int("attempt") == 2 {
+			tier, friend := escalation(s, c)
+			if friend {
+				set[FieldRuleTier] = WhoFriend
+			} else {
+				set[FieldRuleTier] = tier
+			}
+			set[FieldRuleFails] = "0"
+		}
 		// what this attempt found, kept for the cap's judgment (brief_bound.go, FieldFindings):
 		// its readers' finding, else the report of its failed work, else its bound's class
 		found := given["finding"]
@@ -1380,10 +1390,17 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		_, friend := FriendCard(c)
 		bench := Bench(c)
 		// no route serves its tier and a friend up does: the friends' deal's, never a machine's
-		_, _, toFriend, byFriend := s.routeOf(c, nil, nil)
+		_, _, toFriend, byFriend := s.routeOf(c, nil, nil, "")
 		if len(up) > 0 && !friend && !byFriend {
-			// a bench card's next attempt goes to a member of its bench alone (bench_deal.go)
-			m = rr.next(onlyBench(up, bench), q, room, reworkAvoid(s, c))
+			// a bench card's next attempt goes to a member of its bench alone (bench_deal.go),
+			// one that can launch a route of its tier (launchersOf)
+			ms, why := s.launchersOf(c, nil, onlyBench(up, bench))
+			if len(ms) == 0 && why != "" {
+				p.refuse(c.ID, why)
+				stays()
+				continue
+			}
+			m = rr.next(ms, q, room, reworkAvoid(s, c))
 		}
 		if m != "" {
 			var why string

@@ -147,6 +147,7 @@ var TickDecisions = map[string][]string{
 	NReadLate:       {"ask --another", "wait", "drop"},
 	NMergeLate:      {"merge --stream <s>", "look", "wait"},
 	NStalled:        {"look at the card", "wait"},
+	NNoFrontierRoom: {"reader add", "wait"},
 	// the backlog alarms (alarms.go): seen, or quiet for a while
 	NAlarmReview:  {"ack", "wait"},
 	NAlarmMerging: {"ack", "wait"},
@@ -407,19 +408,19 @@ func TickAccept(s *Snapshot, r TickReq) (Plan, int) {
 	return p, 0
 }
 
-// ShortReadsBack is the tick's pump sending every merging card short of its reads
-// (ReadsShort: fewer different readers' ok reads at its head than the count a card in
-// review needs, the setting raised or its tier's rule raised since its accept) back to
-// review: off its merge queue (its merge card to returned, as a return moves it), its
-// recorded count and readers cleared, never marked returned (AcceptHeld), so the ask asks
-// the read it lacks and the pump accepts it again on its reads. No judgment and no repair:
-// the read rule is mechanical. A card a change is queued for (s.Held) or whose merge card
-// is not queued or stuck waits for a later tick. tla/Land.tla, ShortBack and
-// NoLandWithoutReads.
+// ShortReadsBack is the tick's pump sending every merging or landed card short of its
+// reads (ReadsShort: fewer different readers' ok reads at its head than the count a card
+// needs, the setting raised or its tier's rule raised since its accept) back to review. A
+// merging card leaves its merge queue; a landed card leaves its merged record too. The
+// next reader part asks the missing read, and a later pump accepts the card again on its
+// reads. No judgment and no repair: the read rule is mechanical. A card a change is
+// queued for (s.Held), or whose merge card is not in a movable state, waits for a later
+// tick. This is the machine's after-the-fact repair of rule 6 (docs/SPEC-SPRINT.md
+// section 9, rule 6; tla/Land.tla, ShortBack and NoLandWithoutReads).
 func ShortReadsBack(s *Snapshot, who string) Plan {
 	var p Plan
 	leaving := map[string]bool{}
-	for _, c := range s.Work.Column(Merging) {
+	for _, c := range s.Work.Column(Merging, Landed) {
 		if IsSentinel(c) || s.Held[c.ID] || LandingMarked(s, c.ID) || PushedUnreportedMatches(s, c.ID) {
 			// a lander committed to landing it (marked before its push, MarkLanding), or it was
 			// pushed and not reported: the lander completes it, never review (tla/Land.tla
@@ -431,7 +432,10 @@ func ShortReadsBack(s *Snapshot, who string) Plan {
 			continue
 		}
 		m := s.Merge.Placed(c.ID)
-		if m != nil && m.Col != Queued && m.Col != Stuck {
+		if c.Col == Merging && m != nil && m.Col != Queued && m.Col != Stuck {
+			continue
+		}
+		if c.Col == Landed && m != nil && m.Col != Merged {
 			continue
 		}
 		u := Unit{Key: c.ID, Stream: c.Row}
@@ -769,14 +773,16 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		if IsSentinel(c) {
 			continue
 		}
-		if _, tier, why, byFriend := s.routeOf(escalating(s, c), nil, nil); byFriend {
+		ec := escalating(s, c)
+		if _, tier, why, byFriend := s.routeOf(ec, nil, nil, ""); byFriend {
 			// no route serves its tier and a friend up does: the friends' deal's, never a
-			// machine's (tierServed); withdrawn or taken back from every such friend, no worker
+			// machine's (tierServed); withdrawn or taken back from every such friend, or left by
+			// an empty run on her lane (cardLeft), no worker
 			// is left for it, and the tier's one judgment names it
 			if len(s.friendsFor(c, tier)) == 0 {
 				unserved[tier] = append(unserved[tier], c.ID)
 				if whyOf[tier] == "" {
-					whyOf[tier] = "no machine route serves tier " + tier + ", and every friend up who serves it had the card withdrawn or taken back, so no worker is left for it: bring up another friend whose row lists " + tier + ", enable a route of the tier, or drop the card"
+					whyOf[tier] = "no machine route serves tier " + tier + ", and every friend up who serves it had the card withdrawn or taken back, or ran it empty, so no worker is left for it: bring up another friend whose row lists " + tier + ", enable a route of the tier, or drop the card"
 				}
 			}
 			continue
@@ -786,6 +792,16 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 			// lint): one judgment per tier either way
 			unserved[tier] = append(unserved[tier], c.ID)
 			whyOf[tier] = why
+			continue
+		} else if lwhy := s.noLauncher(c, ec, tier, up); lwhy != "" {
+			// a route serves its tier and no member the deal may give it (its bench, less
+			// those that refused it at staging: dealPool) can launch one (Launches: no such
+			// member's control card names its harness): the tier's one judgment, naming the
+			// routes and fleet up --harnesses, never a quiet wait (fault 10)
+			unserved[tier] = append(unserved[tier], c.ID)
+			if whyOf[tier] == "" {
+				whyOf[tier] = lwhy
+			}
 			continue
 		}
 		if b := Bench(c); len(b) > 0 && len(onlyBench(up, b)) == 0 {
@@ -866,10 +882,14 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	if sentinel := heldWave(s); sentinel != nil && len(up) > 0 && !s.FleetOff() {
 		// ready is kept at twice the fleet's width (the owner, 2026-10-02: "Ready always
 		// full"; 2026-10-03: "BATCH EVERYTHING"): under it while a wave is held, the tick
-		// says so every tick and offers the wave, never a single card
-		width, n := 0, 0
+		// says so every tick and offers the wave, never a single card, with the numbers
+		// it is judged on — ready beside twice the width, working beside width
+		// (docs/SPEC-SPRINT.md section 5: a member holds up to DealAhead times its width,
+		// ready and working together) — so "release a wave" is said only with the numbers
+		width, working, n := 0, 0, 0
 		for _, m := range up {
 			width += s.Width(m)
+			working += s.Fleet.Count(m, Working)
 		}
 		for _, c := range s.Work.Column(Ready) {
 			if !IsSentinel(c) {
@@ -878,7 +898,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		}
 		if n < 2*width {
 			conds = append(conds, cond{typ: NStarving, streamLevel: true, primaries: []string{sentinel.ID},
-				what: fmt.Sprintf("the fleet is starving: ready %d is under twice the width %d; release a wave: nova-sprint release %s --reason '<why>'", n, 2*width, sentinel.ID)})
+				what: fmt.Sprintf("the fleet is starving: ready %d is under twice the width %d, working %d of width %d; release a wave: nova-sprint release %s --reason '<why>'", n, 2*width, working, width, sentinel.ID)})
 		}
 	}
 	if len(up) > 0 {
@@ -1511,7 +1531,8 @@ func condKey(typ, subject, card, what string) string {
 		NBrokenReadsOutrun, NReaderBreaks,
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
-		NStopMemberDown, NStopPinWaits, NFriendStalled:
+		NStopMemberDown, NStopPinWaits, NFriendStalled,
+		NNoFrontierRoom:
 		what = ""
 	case NCoordinatorBehind:
 		// one condition a level (stops.go, BehindLevel): its count and its ages change
@@ -1646,8 +1667,10 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 	}
 	holds := map[string]bool{}
 	updated := map[string]bool{}
-	update := func(n Note, what string, decisions []string) {
-		same := n.What == what && (len(decisions) == 0 || slices.Equal(n.Decisions, decisions))
+	update := func(n Note, what string, decisions, primaries []string) {
+		same := n.What == what &&
+			(len(decisions) == 0 || slices.Equal(n.Decisions, decisions)) &&
+			(len(primaries) == 0 || slices.Equal(n.Primaries, primaries))
 		if same || updated[n.ID] {
 			return
 		}
@@ -1655,6 +1678,10 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 		n.What = what
 		if len(decisions) > 0 {
 			n.Decisions = append([]string(nil), decisions...) // the latest facts name the latest remedies
+		}
+		if len(primaries) > 0 {
+			n.Primaries = append([]string(nil), primaries...)
+			n.Count = len(n.Primaries)
 		}
 		p.Updates = append(p.Updates, n)
 	}
@@ -1670,8 +1697,12 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 			if !open[k] {
 				fresh = append(fresh, sub)
 			}
-			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || slices.Contains(StopTypes, c.typ)) {
-				update(n, c.what, c.decisions) // the latest facts, in place
+			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || slices.Contains(StopTypes, c.typ)) {
+				var primaries []string
+				if c.typ == NNoFrontierRoom {
+					primaries = c.primaries // the reads it names, rewritten in place as they join or leave
+				}
+				update(n, c.what, c.decisions, primaries) // the latest facts, in place
 			}
 		}
 		if len(fresh) == 0 {
@@ -1703,7 +1734,7 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 					c = s.Readers.Placed(o.Note.Card)
 				}
 				what, _, _ := strings.Cut(o.Note.What, "; at ")
-				update(o.Note, what+"; at "+placeOf(c), nil)
+				update(o.Note, what+"; at "+placeOf(c), nil, nil)
 			}
 			continue
 		}

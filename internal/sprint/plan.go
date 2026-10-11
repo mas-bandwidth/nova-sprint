@@ -166,6 +166,129 @@ func (p Plan) Tables() []string {
 
 func (p *Plan) refuse(key, why string) { p.Refused = append(p.Refused, Refusal{key, why}) }
 
+// AddMarked admits an add's cards and stamps the new stream's control card with a
+// protected-branch mark in the one step (docs/SPEC-SPRINT.md section 7,
+// protected-bases-pb-b.w2; the fix promotion-mark-at-add, the seat ledger bug 14):
+// add --land-protected founds a point-release stream with its first card, so a card
+// cut on main or dev is admitted by the mark the step writes, with no sentinel and
+// no follow-up stream set. The mark is on the control card this step creates, not on
+// the snapshot Add plans from, so the protected bases are lifted from the request
+// (Add refuses a dev card in an unmarked stream, SprintBranchWhy), the mark scopes
+// them (markRefusals), and the control card records them again (FieldBase).
+func AddMarked(s *Snapshot, r AddReq, mark string) Plan {
+	plain, bases := liftProtectedBases(r)
+	p := Add(s, plain)
+	if len(p.Refused) > 0 {
+		return p
+	}
+	if why := markNewStream(&p, r.Stream, mark, bases); why != "" {
+		return Plan{Refused: []Refusal{{Key: r.Stream, Why: why}}}
+	}
+	if refused := markRefusals(s, []AddReq{r}, mark); len(refused) > 0 {
+		return Plan{Refused: refused}
+	}
+	return p
+}
+
+// liftProtectedBases is r with a protected branch lifted from each of its cards'
+// BASE, and the bases lifted, so AddMarked admits a card Add would refuse before
+// the mark is written (docs/SPEC-SPRINT.md section 7, the sprint branch). The
+// card's brief keeps its BASE line: the mark, not the field, is what admits it.
+func liftProtectedBases(r AddReq) (AddReq, []string) {
+	var lifted []string
+	lift := func(base string) string {
+		if !contains(ProtectedBranches, base) {
+			return base
+		}
+		if !contains(lifted, base) {
+			lifted = append(lifted, base)
+		}
+		return ""
+	}
+	r.Base = lift(r.Base)
+	if len(r.Cards) > 0 {
+		cards := make([]CardAdd, len(r.Cards))
+		copy(cards, r.Cards)
+		for i := range cards {
+			cards[i].Base = lift(cards[i].Base)
+		}
+		r.Cards = cards
+	}
+	return r, lifted
+}
+
+// markNewStream stamps a new stream's control-card creation with its protected
+// branch mark, and records the lifted bases on the same card (FieldBase), keeping
+// the mark atomic with the first card rather than requiring a sentinel.
+func markNewStream(p *Plan, stream, mark string, bases []string) string {
+	if mark == ReadTierDefault {
+		return "--land-protected wants repositories (owner/name, comma separated) or any for every repository"
+	}
+	if why := landProtectedWhy(mark); why != "" {
+		return why
+	}
+	for ui := range p.Units {
+		for ci := range p.Units[ui].Changes {
+			e := &p.Units[ui].Changes[ci].Entry
+			if e.ID != CtlID(stream) || e.Create == nil {
+				continue
+			}
+			if e.Set == nil {
+				e.Set = map[string]string{}
+			}
+			e.Set[FieldLandProtected] = mark
+			if len(bases) > 0 {
+				all := Split(e.Set[FieldBase])
+				for _, b := range bases {
+					if !contains(all, b) {
+						all = append(all, b)
+					}
+				}
+				sort.Strings(all)
+				e.Set[FieldBase] = strings.Join(all, ",")
+			}
+			return ""
+		}
+	}
+	return "--land-protected marks a new stream only"
+}
+
+// markRefusals keeps an explicit first-add mark scoped to its named repositories
+// (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2): a card cut on a
+// protected branch whose repository the mark does not name is refused, whole,
+// before the step writes.
+func markRefusals(s *Snapshot, rs []AddReq, mark string) []Refusal {
+	var out []Refusal
+	for _, r := range rs {
+		for i, id := range AddIDs(s, r) {
+			base, repo := r.Base, r.Repo
+			if len(r.Cards) > 0 && i < len(r.Cards) {
+				base, repo = r.Cards[i].Base, r.Cards[i].Repo
+			}
+			if !contains(ProtectedBranches, base) || markCoversRepository(mark, repo) {
+				continue
+			}
+			at := "repository " + repo
+			if repo == "" {
+				at = "its repository (the brief names no REPO: line)"
+			}
+			out = append(out, Refusal{Key: id, Why: fmt.Sprintf("card %s is cut on %s, a protected branch, and --land-protected %s does not mark %s", id, base, mark, at)})
+		}
+	}
+	return out
+}
+
+// markCoversRepository applies the stream's repository scope (docs/SPEC-SPRINT.md
+// section 7, protected-bases-pb-b.w2).
+func markCoversRepository(mark, repo string) bool {
+	for _, name := range strings.Split(mark, ",") {
+		if name == LandProtectedAny || repo != "" && repoKey(name) == repoKey(repo) {
+			return true
+		}
+	}
+	return false
+}
+
 // Entry builders.
 
 func u64(n uint64) string { return strconv.FormatUint(n, 10) }

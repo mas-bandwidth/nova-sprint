@@ -288,6 +288,12 @@ func (c *held) notes(ns []Note) {
 			for _, p := range n.Primaries {
 				c.tick[p] = "writes " + n.Type
 			}
+		case n.Type == NNoFrontierRoom:
+			// a stream-level judgment the friend ask writes for every frontier
+			// read no one may take: its primaries each get the "writes ..." line
+			for _, p := range n.Primaries {
+				c.tick[p] = "writes " + n.Type
+			}
 		case n.StreamLevel:
 			c.tickStream[n.Stream] = "writes " + n.Type
 		default:
@@ -484,10 +490,18 @@ func (c *held) judgment(pr *Card) string {
 		if tier, why := c.s.noRoute(pr); why != "" && tier != "" && len(c.judged[StreamSubject(TierSubject(tier))]) > 0 {
 			return "no route serves tier " + tier + "; open: " + strings.Join(c.judged[StreamSubject(TierSubject(tier))], ", ")
 		}
+		ec := escalating(c.s, pr)
+		_, tier, why, byFriend := c.s.routeOf(ec, nil, nil, "")
+		open := c.judged[StreamSubject(TierSubject(tier))]
 		// friends alone serve its tier and none up who serves it may be dealt it: the same
 		// judgment of the tier names it (TickDeal)
-		if _, tier, _, byFriend := c.s.routeOf(escalating(c.s, pr), nil, nil); byFriend && len(c.s.friendsFor(pr, tier)) == 0 && len(c.judged[StreamSubject(TierSubject(tier))]) > 0 {
-			return "no worker is left for it on tier " + tier + "; open: " + strings.Join(c.judged[StreamSubject(TierSubject(tier))], ", ")
+		if byFriend && len(c.s.friendsFor(pr, tier)) == 0 && len(open) > 0 {
+			return "no worker is left for it on tier " + tier + "; open: " + strings.Join(open, ", ")
+		}
+		// no member the deal may give it can launch a route of its tier (noLauncher over its
+		// pool): the same judgment of the tier names it (TickDeal)
+		if !byFriend && why == "" && tier != "" && len(open) > 0 && c.s.noLauncher(pr, ec, tier, c.s.UpMembers()) != "" {
+			return "no member the deal may give it can launch a route of tier " + tier + "; open: " + strings.Join(open, ", ")
 		}
 	}
 	if pr.Col == Ready && !IsSentinel(pr) && len(c.s.UpMembers()) == 0 {
@@ -501,6 +515,15 @@ func (c *held) judgment(pr *Card) string {
 		for _, j := range c.judged[StreamSubject("")] {
 			if strings.HasPrefix(j, NFewReaders) {
 				return "fewer than two readers are up; open: " + j
+			}
+		}
+	}
+	// a frontier read the ask left waiting for room: the one judgment that names it, open or
+	// acknowledged, and its cause (frontierRoomJudgment writes its text with "<id> waits: <cause>")
+	if c.waitsToBeAsked(pr) {
+		for _, o := range slices.Concat(c.s.Open, c.s.Acked) {
+			if o.Note.Type == NNoFrontierRoom && strings.Contains(o.Note.What, pr.ID+" waits: ") {
+				return "open: " + o.Note.What
 			}
 		}
 	}
@@ -589,13 +612,22 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 			// deals it to another member, so what holds it is its bench's beat and hold
 			return benchWaits(b), "", true
 		}
-		if _, tier, _, byFriend := s.routeOf(escalating(s, pr), nil, nil); byFriend {
+		ec := escalating(s, pr)
+		_, tier, rwhy, byFriend := s.routeOf(ec, nil, nil, "")
+		if byFriend {
 			// friends alone serve its tier (tierServed): the friends' deal's, never a
 			// machine's, so what holds it is their room, not the machines'
 			return c.friendWaits(pr, tier)
 		}
 		if len(up) == 0 {
 			return "no fleet member is up, and no judgment says so", "", false
+		}
+		if rwhy == "" {
+			if lwhy := s.noLauncher(pr, ec, tier, all); lwhy != "" {
+				// a route serves its tier and no member the deal may give it (its bench, less
+				// those that refused it at staging) can launch one: not the members' room
+				return lwhy + "; and no judgment says so", "", false
+			}
 		}
 		// The members' free places (each one's room, DealAhead times its width,
 		// less its ready and working cards, width.go) go to the ready primaries in the

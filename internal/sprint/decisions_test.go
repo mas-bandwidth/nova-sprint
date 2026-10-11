@@ -602,7 +602,7 @@ func TestAckAnswersOnlyTheTypesThatListIt(t *testing.T) {
 // judgment the coordinator's answer closes is none of them.
 func TestTickKeptList(t *testing.T) {
 	t.Parallel()
-	keeps := []string{NBound, NCannotAsk, NFewReaders, NNoMember, NStarving, NOverloaded, NAdoptFailed, NReadersBehind, NDevBehind, NRaiseReadTier, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NInvariant, NWorkLate, NReadLate, NMergeLate, NStalled, NRemindFailed,
+	keeps := []string{NBound, NCannotAsk, NFewReaders, NNoMember, NStarving, NOverloaded, NAdoptFailed, NReadersBehind, NDevBehind, NRaiseReadTier, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NInvariant, NWorkLate, NReadLate, NMergeLate, NStalled, NNoFrontierRoom, NRemindFailed,
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NStatus, NBrokenReadsOutrun, NReaderBreaks, NFriendSyncFailing,
 		NStopMemberDown, NStopPinWaits, NFriendStalled}
@@ -622,4 +622,20 @@ func TestTickKeptList(t *testing.T) {
 	} {
 		assert.False(t, TickKept(typ), "%q is tick kept", typ)
 	}
+}
+
+// The merge decision of a late stream prints ONE line, the verb a real store accepts, land (a
+// bare merge is refused there, nova-sprint#50): the answer path runs every printed line and the
+// ack refusal joins them with &&, so a second line (the twin's merge) would run after it.
+func TestTheMergeDecisionPrintsOneRunnableLandLine(t *testing.T) {
+	t.Parallel()
+	n := Note{ID: "n-1.1", Kind: Judgment, Type: NMergeLate, Stream: "s1", Primaries: []string{"s1-1"}, StreamLevel: true}
+	g := Group{ID: n.ID, Kind: Judgment, Type: NMergeLate, Stream: "s1", Size: 1, Notes: []string{n.ID}, Members: []string{"s1-1"}, Decisions: []string{"merge --stream s1"}}
+	var lines []string
+	for _, c := range commands(g, n, "dev-") {
+		if c.Decision == "merge --stream s1" {
+			lines = c.Lines
+		}
+	}
+	assert.Equal(t, []string{"nova-sprint land --stream s1"}, lines)
 }

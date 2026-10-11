@@ -14,12 +14,16 @@
    :text "The first release from this repository: nova-sprint, nova-card and nova-work, re-seeded from nova-tools.")
   (release "v1.2.4" :status "shipped" :date "2026-10-10"
    :text "One fix: the sprint store's function library is back at its v1.2.2 digest, so an adopt can load it.")
-  (release "v1.2.6" :status "planned"
-   :text "The fixes held during the split, the point-release candidates found on 2026-10-10, the owed
-    tests, and the sprint store cards that are point-release work. Each is re-applied or written in
-    this repository, then cut as one release."
-   :date "2026-10-10")
-  (release "v1.2.9" :status "planned" :date "2026-10-10"
+   (release "v1.2.6" :status "planned"
+    :text "The fixes held during the split, the point-release candidates found on 2026-10-10, the owed
+     tests, and the sprint store cards that are point-release work. Each is re-applied or written in
+     this repository, then cut as one release."
+    :date "2026-10-10")
+   (release "v1.2.7" :status "planned" :date "2026-10-10"
+    :text "The adopt can carry a change of the store's function library: its digest covers code, not
+     comments, the pre-window shadow tick passes when only the library differs, and the post-load check
+     refuses a library that is not the new build's.")
+   (release "v1.2.9" :status "planned" :date "2026-10-10"
    :text "Inbox push writes each judgment once without concurrent writers sharing a temporary path."))
  :items
  ((fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
@@ -30,6 +34,17 @@
    :title "Six Lua comment lines restored"
    :text "The function library's digest is its v1.2.2 value again, so the adopt's shadow tick accepts it."
    :origin "PR #33, head 1f403558d")
+  (fix "adopt-carries-a-lua-change" :release "v1.2.7" :status "shipped"
+   :title "The adopt can carry a change of the store's function library"
+   :text "libraryMatches judges the library by its code, not its bytes: luaCode keeps each string (quoted
+    or long) and each token, and turns every comment and run of blank space outside a string into one
+    space, so a library that differs only in comments or blank space matches (v1.2.3's adopt refused the
+    store over six comment lines). The shadow tick's pre-window check (libraryShadow) tolerates a library
+    whose code differs, saying \"library differs: loaded in the window\"; the post-load check
+    (libraryMatches) still refuses a store whose library is not the new build's, so a refusal restores
+    the old library. TLA+ model Adopt, property RefusedLeavesOld, with the reversed witness
+    MCAdoptBrokenKeepNew."
+   :origin "the seat ledger v1.2.4-held-2026-10-10.md (a v1.3 card moved to v1.2.7); this pull request")
   (fix "roadmap-and-fixes-as-data" :release "v1.2.6" :status "shipped"
    :title "ROADMAP.md and FIXES.md generated from s-expression data"
    :text "docs/roadmap.sexp and docs/fixes.sexp are the data; `make roadmap` writes both pages, and a test
@@ -93,6 +108,15 @@
    :origin "dogfood 2026-10-10: BRIEF FAILED and RETURN FAILED with no reason in text; the seat cold
     read of 2026-10-10 found that remedy appended to a read's no-such-card refusal")
 
+  (fix "deal-draws-launchable-route" :release "v1.2.6" :status "in-progress"
+   :title "A deal draws only a route its member can launch"
+   :text "The deal, the redeal, the escalation and the rebalance onto a machine draw only routes whose
+    harness the member can launch, and a move that keeps a card's route never goes to a member that
+    cannot launch it (tla/RouteIndex.tla, NeverUnlaunchable). DEPLOY STEP for the final adopt: a member
+    names no headless harness (claude, codex, grok) until `nova-sprint fleet up <member> --harnesses
+    <h,...>` runs, so it is dealt opencode routes only; after the adopt, run it for each member with
+    the headless harnesses on its PATH, or the deal draws no headless route for it."
+   :origin "nova-tools PR #5576, head 065bf6b73, re-applied in nova-sprint")
   (fix "lander-bench-fault-and-bisect" :release "v1.2.6" :status "in-progress"
    :title "The lander blames no head for a bench fault and bisects a red batch"
    :text "A bench fault blames no head, a red batch is bisected, and landings go as batches are built. The
@@ -116,6 +140,22 @@
     public mirror unit."
    :origin "nova-tools PR #5588, head 08f6af5a8")
 
+  (fix "operator-wording-bare-merge-and-key-rest" :release "v1.2.6" :status "planned"
+   :title "What an operator reads matches the bare-merge refusal and the key rest"
+   :text "A late-merge judgment prints land for a real store and the bare merge only as the twin's form; the
+    CLI, first-lap and test docs mark the bare merge twin-only (play is a twin tool); the spec and comments
+    say a key rest ends only by routes wake, never by funded or a payment, and a test shows a balance poll
+    cannot end one."
+   :origin "readers' notes on nova-sprint PR #49 and PR #50")
+  (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
+   :title "An empty run is its own harness fault"
+   :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
+    lane ran it empty, with a TLA+ model and witness. The failed rule writes her on both its early
+    returns too (the brief's bound and a brief defect), so the attempt that hits the cap after her
+    empty run names her even when it is left to a mind; the attempt cap's deal acts only on a
+    machine's card. Test: TestTheFailedRuleCarriesTheEmptyRunFriendOnItsEarlyReturns (reversed: a
+    cost-line fault leaves no one)."
+   :origin "nova-sprint #45; reader G BLOCK (the rule's early returns); nova-tools PR #5583, head e8fdaecc")
   (fix "done-at-base-is-brief-duplicate" :release "v1.2.6" :status "shipped"
    :title "A card already done at its base is a duplicate brief, not a worker failure"
    :text "Nothing to do because the base already contains the change is a brief defect, a duplicate of
@@ -128,13 +168,23 @@
     answers the card the lane holds or gives it one (a friend's take is her start, so the tick no
     longer puts it back ready), and says it on a LANE line. Progress, finish and read verdicts name
     the lane, a lane unheard for ten minutes is gone and its card bounces back ready, a reader's
-    lanes begin its reads, and stop-return is served as a worker's verb."
-   :origin "a one-shot friend host, 2026-10-10: took logged while the server showed the card ready, progress sent at epoch 0, every stop-return refused by the server")
+    lanes begin its reads, stop-return is served as a worker's verb, and the worker verb lists in
+    serve.go and coordinator.go are unified (take, finish, progress, read, queue, stop-return,
+    remind, fleet beat, friend beat, friend cards, lane take, lane give)."
+   :origin "a one-shot friend host, 2026-10-10: took logged while the server showed the card ready, progress sent at epoch 0, every stop-return refused by the server; verbs misaligned in serve and coordinator")
+
+  (fix "fleet-verbs-skip-member-under-disk-floor" :release "v1.2.6" :status "shipped"
+   :title "Fleet verbs give a member under its disk floor nothing"
+   :text "fleet up, down, hold and level, outside the tick, read the members' no-room words themselves,
+    so a manual level, an up's level or a down's redeal gives a member under its disk floor nothing;
+    the deal and read fix they follow already merged."
+   :origin "nova-tools PR #5578, head fcdbaa441, re-applied in nova-sprint")
 
   (fix "draining-member-clears-no-room" :release "v1.2.6" :status "shipped"
    :title "A draining member does not keep a stale no-room word"
-   :text "The room check runs after the drain return, so a draining member does not keep a stale no-room
-    word; the deal and read disk floor fix also gets its TLA+ reversed witness."
+   :text "The room check runs before the drain return, so a draining member's beat carries this tick's
+    no-room word, not a stale one (the member code in nova-tools, with its test, and the same lines in
+    this repository's copy); the deal and read disk floor fix also gets its TLA+ reversed witness."
    :origin "v1.2.5 candidate list; nova-tools PR #5569 follow-up")
 
   (fix "bench-tree-standalone" :release "v1.2.6" :status "shipped"
@@ -144,6 +194,30 @@
     it exists on the host. The tar copy refuses a worktree's .git file instead of carrying it over, so git
     no longer exits 128 on a fleet host with nothing saying why."
    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
+
+  (fix "live-library-uses-store-login" :release "v1.2.6" :status "shipped"
+   :title "live reads the store's function library through the seat login"
+   :text "live runs nova-redis fn check with the recorded seat login's user and the password read in
+    process, handing that password to the child's environment: on a store whose default user has NOAUTH
+    the library state is now read (loaded, wanted, match), not UNKNOWN. The test observes the delivered
+    password, so it is red until the child actually holds it."
+   :origin "dogfood 2026-10-10: live LIBRARY state=UNKNOWN; card live-library-check-uses-the-store-loginb.w1")
+
+  (fix "inbox-wait-survives-a-clear" :release "v1.2.6" :status "planned"
+   :title "The seat's push loop goes on at the epoch a clear leaves it"
+   :text "inbox --wait and --push re-read the sprint's active epoch when a clear advances it under the
+    loop: the look at the inbox is never refused MEMBEREPOCH by the epoch the clear left, the wait
+    ends at the clear as at a machine stop, the inbox reporting the clear's happened line, and the
+    seat's push loop keeps running, pushing the new epoch's judgments. A step in flight still holds
+    its epoch: a tick at a clear stops there."
+   :origin "the seat ledger v1.2.4-held-2026-10-10.md, bug 6")
+
+  (fix "frontier-read-judged-by-real-cause" :release "v1.2.6" :status "shipped"
+   :title "A frontier read no one may take is judged by its real cause"
+   :text "A frontier read the ask leaves waiting (the friend ask and the read-card ask alike) raises one
+    judgment naming each such read and who is full, or why no one may take it. It is written once,
+    rewritten in place when its facts change, never raised anew, and closed when the reads are asked."
+   :origin "this pull request; frontier reader judgment")
 
   (fix "worker-brief-never-rewrites-history" :release "v1.2.6" :status "planned"
    :title "The worker brief says never amend, rebase or reset onto origin"
@@ -164,6 +238,12 @@
     so the tick's shape is the model's."
    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")
 
+  (fix "promotion-mark-at-add" :release "v1.2.6" :status "planned"
+   :title "add can mark a new stream for protected branches"
+   :text "add --land-protected marks a new stream atomically with its first card, so a point-release
+    stream can admit a card based on main or dev without a sentinel card or a follow-up stream set."
+   :origin "the seat ledger bug 14")
+
   (fix "land-merges-the-roadmap-data" :release "v1.2.6" :status "shipped"
    :title "Land merges the roadmap data, not returns the card"
    :text "A head whose conflict is in docs/fixes.sexp or docs/roadmap.sexp, with or without FIXES.md and
@@ -181,6 +261,14 @@
      file. Use a unique temporary path per writer."
     :origin "issue #5160")
 
+   (fix "seat-judgment-repush" :release "v1.2.9" :status "planned"
+    :title "Judgments waiting on the seat are re-pushed each look"
+    :text "The seat push loop was only pushing judgments once because it cached the 'seen' file list
+     for all directories. When following the seat, cached seen prevents re-pushing judgments that are
+     still waiting on the seat. The fix modifies pushTarget to not cache seen for seat directories
+     (only for fixed directories), so judgments are re-pushed on every look while unanswered."
+    :origin "seat-only restart, 2026-10-10: fleet at 18 of 76, ten cards waiting on seat's judgment")
+
    (fix "rest-properties-cap" :release "v1.2.9" :status "planned"
     :title "Rested routes must not overflow the fleet table property cap"
     :text "Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the
@@ -190,4 +278,10 @@
    (fix "hold-pinned-to-head-sha" :release "v1.2.9" :status "shipped"
     :title "A hold pinned to an older head is not a hold at the current head"
     :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
-    :origin "issue #2710")))
+    :origin "issue #2710")
+
+   (fix "merge-approval-head-from-disposition" :release "v1.2.9" :status "planned"
+    :title "Approval at head is read from the disposition line"
+    :text "The review API commit id can differ from the head the reviewer read. Merge checks parse the head
+     named in the disposition and treat commit id as untrusted."
+    :origin "issue #2037")))

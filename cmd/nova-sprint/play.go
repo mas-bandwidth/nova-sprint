@@ -17,7 +17,8 @@ type appClock struct{ a *app }
 func (c appClock) Now() time.Time        { return c.a.now() }
 func (c appClock) Sleep(d time.Duration) { c.a.sleep(d) }
 
-// cmdPlay plays the world outside the table through this command's own verbs.
+// cmdPlay plays the world outside the table through this command's own verbs. It is for a
+// twin: its merge steps are bare merges, which a real store refuses (nova-sprint#50).
 func (a *app) cmdPlay(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("play")
 	seed := fs.Uint64("seed", 1, "the seed: the same seed plays the same run")
