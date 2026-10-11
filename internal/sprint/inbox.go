@@ -396,6 +396,10 @@ func NoteCommands(n Note, members []string) []Command {
 // answers; a decision about a stopped stream names the cards and resumes the
 // stream.
 func commands(g Group, first Note, prefix string) []Command {
+	if WaitRefusal(first) != "" {
+		// never offer a verb the judgment refuses (wait_refused.go): a stall that names a card
+		g.Decisions = slices.DeleteFunc(slices.Clone(g.Decisions), func(d string) bool { return d == "wait" || strings.HasPrefix(d, "wait ") })
+	}
 	const cmd = "nova-sprint "
 	grp := " --group " + g.ID + " --expect " + itoa(g.Size)
 	ans := " --answers " + strings.Join(g.Notes, ",")

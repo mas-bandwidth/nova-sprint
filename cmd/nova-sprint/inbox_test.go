@@ -41,12 +41,20 @@ func (ta *testApp) failOnce(member, card, report string) {
 	ta.ok("finish --as " + member + " " + card + " --failed --report '" + report + "'")
 }
 
-// ciRedOnce records the card's CI red, a judgment a wait may hold: failed work and a broken
-// read hold their card and take no wait (internal/sprint/wait_refused.go).
-func (ta *testApp) ciRedOnce(card, run string) {
+// timerOnce raises one timer judgment for the caller (remind, then the tick that finds it
+// due): a judgment a wait may hold, since it holds no card. Every judgment that holds a card
+// takes no wait (internal/sprint/wait_refused.go).
+func (ta *testApp) timerOnce(note string, actor ...string) {
 	ta.t.Helper()
-	ta.a.sleep(time.Second) // each notification at its own clock reading
-	ta.ok("ci " + card + " --red --run " + run)
+	as := ""
+	if len(actor) > 0 {
+		as = " --actor " + actor[0]
+	}
+	ta.ok("remind --in 1s --note " + note + as)
+	ta.mu.Lock()
+	ta.now = ta.now.Add(2 * time.Second)
+	ta.mu.Unlock()
+	ta.ok("tick" + as)
 }
 
 // I1: a group is named by an id that does not move when a newer group sorts

@@ -36,6 +36,7 @@ var WaitRefused = map[string]string{
 	NBriefDefect: "re-cut its brief, or drop it",
 	// a friend's report, a repair the store refused
 	NReportJudgment: "read the report and rework, accept or drop the card",
+	NCIRed:          "rework the card, return it, or drop it; ack it when the red is not the card's",
 	NRepairSkipped:  "look at the card and return, rework or drop it",
 	// waiting on a card that will not come
 	NBlocked:     "drop it, or ack it once its need is mended",
@@ -56,10 +57,17 @@ var WaitRefused = map[string]string{
 // still take a wait, each with why: the exceptions TestEveryKindThatHoldsACardRefusesWait
 // reads, kept as few as the code allows.
 var WaitAllowedOnACard = map[string]string{
-	NCIRed:   "CI's word on a head: the card's own read or failed-work judgment holds it, and CI runs again on its own",
-	NStalled: "the no-stall rule's judgment names its own subject (a card, a stream or the fleet) and re-raises it every pass",
+	// a stall that names a card holds it and is refused (WaitRefusedWhenItNamesACard)
+	NStalled: "a stall that names no card on the work table is a report about a stream or the fleet with nothing held; one that names a card refuses wait",
 	// a deliberate stop: "do more before going on" is the sentinel's own decision
 	NSentinelReached: "a sentinel is a stop the coordinator placed: doing more before going on is its own decision, and its release is a gated cut",
+}
+
+// WaitRefusedWhenItNamesACard is the kinds that refuse wait only when the judgment names a
+// card (its primaries): a stall holds the card it names in place until it is answered, while a
+// stall about a stream or the fleet holds nothing.
+var WaitRefusedWhenItNamesACard = map[string]string{
+	NStalled: "look at the card and rework, return or drop it",
 }
 
 // WaitRefusedKinds is WaitRefused's kinds in name order.
@@ -76,6 +84,9 @@ func WaitRefusedKinds() []string {
 // and what to run instead; "" when a wait may hold it (an informational kind).
 func WaitRefusal(n Note) string {
 	instead, ok := WaitRefused[n.Type]
+	if c, cardOnly := WaitRefusedWhenItNamesACard[n.Type]; !ok && cardOnly && !n.StreamLevel && !n.SprintLevel && len(n.Primaries) > 0 {
+		instead, ok = c, true
+	}
 	if !ok || n.Kind != Judgment {
 		return ""
 	}
@@ -110,7 +121,7 @@ func CardsHeldByJudgments(s *Snapshot) int {
 	seen := map[string]bool{}
 	for _, o := range s.Open {
 		n := o.Note
-		if _, ok := WaitRefused[n.Type]; !ok || n.Kind != Judgment {
+		if n.Kind != Judgment || WaitRefusal(n) == "" {
 			continue
 		}
 		for _, sub := range append(n.Subjects(), n.Primaries...) {

@@ -138,7 +138,7 @@ func TestWaitStillWorksOnAnAlarm(t *testing.T) {
 	held, err := h.waitOn(open[0].Note.ID)
 	require.NoError(t, err, "a wait on an alarm is allowed")
 	assert.True(t, held, "the alarm is held until its time")
-	for _, k := range []string{sprint.NNoMember, sprint.NAlarmReview, sprint.NAlarmFleet, sprint.NWorkLate, sprint.NCoordinatorBehind, sprint.NCIRed} {
+	for _, k := range []string{sprint.NNoMember, sprint.NAlarmReview, sprint.NAlarmFleet, sprint.NWorkLate, sprint.NCoordinatorBehind, sprint.NTimer} {
 		assert.Empty(t, sprint.WaitRefusal(sprint.Note{Kind: sprint.Judgment, Type: k, ID: "j"}), "%s takes a wait", k)
 	}
 }
