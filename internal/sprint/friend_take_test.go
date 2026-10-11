@@ -147,6 +147,9 @@ func TestTakeAllUnstartedSaysTheMarkItWrites(t *testing.T) {
 	assert.Contains(t, strings.Join(moved, "\n"),
 		"back to ready, not dealt to amy again until friend give",
 		"each taken card says the mark it writes")
+	assert.Equal(t, 2, strings.Count(strings.Join(moved, "\n"),
+		"back to ready, not dealt to amy again until friend give"),
+		"one line per card: both taken cards say the mark")
 	assert.Contains(t, strings.Join(p.Said, "\n"), "marked=2", "the summary counts the marked cards")
 }
 
@@ -185,6 +188,15 @@ func TestFriendGiveRefusesWhatItCannotHand(t *testing.T) {
 	p = FriendGive(w2.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
 	require.Len(t, p.Refused, 1)
 	assert.Contains(t, p.Refused[0].Why, "does not serve tier", "her row's tiers gate the hand")
+	assert.Empty(t, p.Units)
+
+	// a ready card whose stored need has not landed: refused, naming the need
+	w3 := friendWorld(t, friendBrief("friend"), friendBrief("friend"))
+	w3.s.Friends = []FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash"}}
+	w3.s.Work.Card("s1-1").Fields["needs"] = "s1-2"
+	p = FriendGive(w3.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "not landed", "a need not landed is not a hand")
 	assert.Empty(t, p.Units)
 }
 

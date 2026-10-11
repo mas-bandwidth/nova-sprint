@@ -254,11 +254,11 @@ func friendSeatOf(s *Snapshot, name string) (FriendSeat, bool) {
 
 // FriendGive is the seat's verb to a friend (docs/SPEC-SPRINT.md section 1, a friend's card
 // taken back): on a card taken back from her (friend take) it clears the mark of the friend
-// it was taken from (FieldTakenFrom), so the deal may deal it to her again, and hands the
-// same work card to her at once when the machine is RUNNING; on a ready card never taken
-// back it is the hand the deal could not be told to make: the card is dealt to the friend
-// named, not the queue head. A card not ready, one whose tier her row does not serve, or one
-// whose needs have not landed is refused, naming why; the rest are given, one refusal each.
+// it was taken from (FieldTakenFrom), so the deal may deal it to her again; on a ready card
+// never taken back it is the hand the deal could not be told to make: the card is dealt to
+// the friend named, not the queue head. A card not ready, one whose tier her row does not
+// serve, or one whose needs have not landed is refused, naming why; the rest are given, one
+// refusal each.
 func FriendGive(s *Snapshot, r FriendGiveReq) Plan {
 	var p Plan
 	row := FriendRow(r.Friend)
