@@ -22,6 +22,7 @@ func TestTLCWorkflowRunsOnHostedRunners(t *testing.T) {
 	require.NotEmpty(t, jobs, "tlc.yml names no jobs")
 
 	models := ""
+	groups := ""
 	for name, body := range jobs {
 		require.Contains(t, body, "runs-on: ubuntu-latest", "job %q does not run on ubuntu-latest", name)
 		require.NotContains(t, body, "self-hosted", "job %q names a self-hosted runner", name)
@@ -30,7 +31,16 @@ func TestTLCWorkflowRunsOnHostedRunners(t *testing.T) {
 		if strings.Contains(body, "make tlc ") {
 			models = body
 		}
+		if strings.Contains(body, "make tlc-test") {
+			groups = body
+		}
 	}
+	require.NotEmpty(t, groups, "no job runs make tlc-test")
+	// the schedule/dispatch branch must select every required group: make
+	// tlc-groups is the --stale set, which is empty on a current tree, so the
+	// nightly would run none of the cases.
+	require.Contains(t, groups, "tlacheck groups --root .", "the groups job never asks tlacheck for the required groups")
+	require.NotContains(t, groups, "make tlc-groups", "the groups job selects the stale set with make tlc-groups")
 	require.NotEmpty(t, models, "no job runs make tlc")
 	check := strings.Index(models, "tla/tla2tools.sha256")
 	run := strings.Index(models, "make tlc ")

@@ -47,7 +47,9 @@ jobs:
             groups=$(go run ./tools/tlacheck groups --root . --stale)
           else
             # schedule and workflow_dispatch run every required group
-            groups=$(make tlc-groups)
+            # (the Makefile's tlc-groups target is the --stale set, so ask
+            # tlacheck directly for every required group)
+            groups=$(go run ./tools/tlacheck groups --root .)
           fi
           echo "groups=${groups}" >> "${GITHUB_OUTPUT}"
           echo "groups to run: ${groups}"
