@@ -207,3 +207,35 @@ func TestTickIdleAlarmsOnceAnEpisodeAndClears(t *testing.T) {
 	said, _ = w.s.Fleet.Prop(PropIdleSaid)
 	assert.Empty(t, said, "the episode's idle_said is cleared")
 }
+
+// An episode that ends before IdleWindow, so its note was never pushed, ends
+// with no note: no NIdleCleared, and both properties are cleared (idle.go:277-281,
+// the !idle && since != "" arm with said == "").
+func TestTickIdleEndsAnEpisodeThatNeverSaidItsNote(t *testing.T) {
+	t.Parallel()
+	w := idleWorld(t, waitCard("w", "ghost"))
+	r := TickReq{IdleAlarm: true}
+
+	// the episode begins: idle_since written, no note yet
+	p, _ := TickIdle(w.s, r)
+	w.must(p)
+	since, ok := w.s.Fleet.Prop(PropIdleSince)
+	require.True(t, ok, "idle_since: %q", since)
+	assert.Empty(t, w.notesOf(NIdle))
+
+	// under the window the fleet works at its width again: the episode ends
+	// without ever having said its note
+	w.tick(time.Minute)
+	for _, m := range []string{"m1", "m2"} {
+		w.s.MemberCtl(m).Fields[FieldWidth] = "1"
+		w.s.Fleet.Put(&Card{ID: "busy-" + m, Row: m, Col: Working, Rev: 1, Fields: map[string]string{"kind": "work"}})
+	}
+	p, _ = TickIdle(w.s, r)
+	w.do(p)
+	assert.Empty(t, w.notesOf(NIdleCleared), "a note never said is not cleared")
+	assert.Empty(t, w.notesOf(NIdle))
+	since, _ = w.s.Fleet.Prop(PropIdleSince)
+	assert.Empty(t, since, "the episode's idle_since is cleared")
+	said, _ := w.s.Fleet.Prop(PropIdleSaid)
+	assert.Empty(t, said, "the episode's idle_said stayed unset")
+}
