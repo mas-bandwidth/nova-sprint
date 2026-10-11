@@ -861,6 +861,11 @@
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
    :origin "this card")
 
+ (fix "land-clash-test-sets-git-identity-in-clones" :release "v1.2.11" :status "planned"
+   :title "The clash test sets a git identity in every clone it commits in"
+   :text "The clash test configured user.name and user.email in its first temporary repository only; the clones it makes do not inherit that config, so their commit failed with exit 128 on a machine without a global git identity. The test now sets GIT_AUTHOR_*/GIT_COMMITTER_* for the whole test, the way the package's other git-using tests set an identity."
+   :origin "this card")
+
   (fix "no-deal-to-a-draining-member" :release "v1.2.10" :status "shipped"
    :title "No deal to a draining member; a held or draining machine's reader is asked nothing"
    :origin "PR #84")

@@ -120,6 +120,7 @@ Small bug fixes, one concern each, and no model change. They run as cards on v1.
 - **A stats tidy succeeds over a fleet of more than 64 rows** (planned). Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a property bound. From: card from the sprint store (2026-10-10).
 - **The worklang parser keeps the done field of a unit** (planned). Unit done reads a field the parser never keeps, so a done unit is never counted. The key is added and sibling skipped keys are checked, with a test. From: issue #3499.
 - **doctor reads nova-config from the caller's environment** (planned). doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials. From: this card.
+- **The clash test sets a git identity in every clone it commits in** (planned). The clash test configured user.name and user.email in its first temporary repository only; the clones it makes do not inherit that config, so their commit failed with exit 128 on a machine without a global git identity. The test now sets GIT_AUTHOR_*/GIT_COMMITTER_* for the whole test, the way the package's other git-using tests set an identity. From: this card.
 
 ## v1.2.12 (planned, 2026-10-11)
 
