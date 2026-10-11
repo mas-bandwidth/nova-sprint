@@ -739,6 +739,22 @@ func (a *app) hookSocket(name string) (string, error) {
 	return filepath.Join(dir, "hook-"+name+".sock"), nil
 }
 
+// serverSrc returns the server address and its source (env/seat-record), "" when none.
+func (a *app) serverSrc(name string, stdout, stderr io.Writer) (src, addr string) {
+	if addr := a.getenv(ServerEnv); addr != "" {
+		return "env", addr
+	}
+	if addr := a.seatServer(); addr != "" {
+		return "seat-record", addr
+	}
+	path, err := a.seatRecordPath()
+	if err != nil {
+		path = "<seat record>"
+	}
+	fmt.Fprintf(stderr, "no sprint server named: NOVA_SPRINT_SERVER is not set and the seat's record %s names none; run: export NOVA_SPRINT_SERVER=<host:port>, or record it: nova-sprint seat install --harness <name> --target <dir> --server <host:port>\n", oneline.Field(path))
+	return "", ""
+}
+
 // cmdHook is nova-sprint hook: with no flag, the seat's subscription, held until it ends;
 // with --prove or --ack, the session's word on it, carried by the running hook.
 func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
@@ -761,13 +777,13 @@ func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 	case *ack != 0:
 		return a.hookAsk(c.actor, hookMsg{T: "ack", ID: *ack}, stdout, stderr)
 	}
-	addr := a.getenv(ServerEnv)
-	if addr == "" {
-		return refuse(stderr, name, "the hook is a subscription the sprint's server holds: set "+ServerEnv+"=<host:port> (run --listen prints it); run: "+ServerEnv+"=127.0.0.1:<port> nova-sprint hook")
+	src, addr := a.serverSrc(c.actor, stdout, stderr)
+	if src == "" {
+		return 1
 	}
 	ctx, stop := a.notify(context.Background())
 	defer stop()
-	return a.hookHold(ctx, addr, c.actor, stdout, stderr)
+	return a.hookHold(ctx, addr, c.actor, src, stdout, stderr)
 }
 
 // cmdUnhook is nova-sprint unhook: the seat stops, over the running hook's connection;
@@ -881,7 +897,7 @@ func (r *hookRelay) answered(m hookMsg) bool {
 // socket for the session's lines opened, and every line from the server said on stdout,
 // one event per line for the Monitor. Exit 0 after unhook; 1 for any other end, which
 // the server records as gone.
-func (a *app) hookHold(ctx context.Context, addr, name string, stdout, stderr io.Writer) int {
+func (a *app) hookHold(ctx context.Context, addr, name, src string, stdout, stderr io.Writer) int {
 	const verb = "hook"
 	sock, err := a.hookSocket(name)
 	if err != nil {
@@ -959,7 +975,7 @@ func (a *app) hookHold(ctx context.Context, addr, name string, stdout, stderr io
 		}
 		if m.Req != "" && relay.answered(m) {
 			if m.T == "ok" && m.Of == "prove" {
-				fmt.Fprintf(stdout, "HOOK PROVEN name=%s live-until=%s: every coordinator command runs while the hook stays answered\n", oneline.Field(name), m.Live.UTC().Format(time.RFC3339))
+				fmt.Fprintf(stdout, "HOOK PROVEN name=%s live-until=%s server=%s from=%s: every coordinator command runs while the hook stays answered\n", oneline.Field(name), m.Live.UTC().Format(time.RFC3339), oneline.Field(addr), src)
 			}
 			if m.T == "ok" && m.Of == "unhook" {
 				unhooked = true

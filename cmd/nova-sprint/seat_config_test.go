@@ -148,3 +148,38 @@ func TestSeatInstallWritesTheConfigSeatProfile(t *testing.T) {
 	assert.Contains(t, out, "MACHINERY config DOWN seat=studio")
 	assert.Contains(t, out, `remedy="nova-sprint seat install --config-seat studio --config-dsn <dsn> --config-password-env <NAME>"`)
 }
+
+// TestHookFindsServerFromSeatRecord tests that hook and forwarded verbs use the server
+// from seat record when NOVA_SPRINT_SERVER is unset.
+func TestHookFindsServerFromSeatRecord(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config")
+	record := filepath.Join(cfg, "nova-sprint", "seat.json")
+
+	// Create login and seat record
+	require.NoError(t, os.MkdirAll(filepath.Join(cfg, "nova-sprint"), 0o700))
+	require.NoError(t, os.WriteFile(record, []byte(`{"server": "127.0.0.1:7399"}`+"\n"), 0o600))
+
+	// Set up app with no NOVA_SPRINT_SERVER in env
+	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": "coordinator", "XDG_CONFIG_HOME": cfg, "HOME": dir}
+	a := newApp(func(k string) string { return env[k] })
+	a.seatLoginOn()
+	a.home = func() (string, error) { return dir, nil }
+	a.executable = func() (string, error) { return "/opt/nova/bin/nova-sprint", nil }
+	a.seatLoad = func(goos, op, path string) error { return nil }
+
+	// Test server function without env var - should use seat record
+	serverAddr := a.server(nil)
+	assert.Equal(t, "127.0.0.1:7399", serverAddr)
+
+	// Test with env var set - should win over seat record
+	env[ServerEnv] = "127.0.0.1:8000"
+	serverAddr = a.server(nil)
+	assert.Equal(t, "127.0.0.1:8000", serverAddr)
+
+	// Clear env - should go back to seat record
+	delete(env, ServerEnv)
+	serverAddr = a.server(nil)
+	assert.Equal(t, "127.0.0.1:7399", serverAddr)
+}

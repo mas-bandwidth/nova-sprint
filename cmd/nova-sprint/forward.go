@@ -140,7 +140,10 @@ func (a *app) server(fs *flag.FlagSet) string {
 	if a.serveAddr != "" || (verbArgs{fs: fs}).given("redis") {
 		return ""
 	}
-	return a.getenv(ServerEnv)
+	if addr := a.getenv(ServerEnv); addr != "" {
+		return addr
+	}
+	return a.seatServer()
 }
 
 // forwarded sends the verb to the sprint's server when there is one and the server runs
