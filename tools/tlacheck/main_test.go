@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -152,6 +154,18 @@ func TestRunWithoutJavaRefusesAndStartsNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, tlc.RunsFile)); !os.IsNotExist(err) {
 		t.Fatalf("run started when java was absent (records written)")
+	}
+}
+
+// TestRunRefusesBadParallel pins the card's rule that --parallel is refused
+// with exit code exitRefused when it is below one or above half the CPUs.
+func TestRunRefusesBadParallel(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"0", strconv.Itoa(runtime.NumCPU()/2 + 1)} {
+		code, _, errs := cli("run", "--root", checkout(t), "--dir", dir, "--parallel", n)
+		if code != exitRefused {
+			t.Fatalf("run --parallel %s exited %d, want %d: %s", n, code, exitRefused, errs)
+		}
 	}
 }
 

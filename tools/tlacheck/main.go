@@ -34,7 +34,7 @@ verbs:
            print what a case reads, one path per line.
   run      [--root .] --dir <dir> [--jar <jar>] [--java <java>]
            [--group <group>] [--shards <n>] [--shard <i>] [--timeout <dur>]
-           [--workers <n>] [--manual]
+           [--workers <n>] [--parallel <n>] [--manual]
            run the selected cases with TLC and write <dir>/RUNS.tsv.
   merge    [--root .] [--keep <file>] [--out <file>] <runs>...
            merge run records into one complete records file, in plan order.
@@ -184,6 +184,7 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 	shard := fs.Int("shard", 0, "run this zero-based shard of the selection")
 	timeout := fs.Duration("timeout", 110*time.Second, "the whole suite's time limit")
 	workers := fs.Int("workers", 2, "TLC workers for a case expected to pass")
+	parallel := fs.Int("parallel", max(1, runtime.NumCPU()/4), "cases to run at once (default a quarter of the CPUs)")
 	manual := fs.Bool("manual", false, "an explicit bench experiment: mode=manual")
 	if err := fs.Parse(args); err != nil {
 		return exitRefused
@@ -193,6 +194,11 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 	}
 	if *dir == "" {
 		return refuse(stderr, "run", errors.New("--dir is required: the output directory of the run"))
+	}
+	// The parallelism is checked before anything else is resolved, so a bad
+	// value is refused without naming a bench that is not here.
+	if err := tlc.CheckParallel(*parallel, runtime.NumCPU()); err != nil {
+		return refuse(stderr, "run", err)
 	}
 	cases, err := tlc.LoadCases(*root)
 	if err != nil {
@@ -228,7 +234,7 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 	}
 	res, err := tlc.RunSuite(tlc.Options{
 		Root: *root, Cases: chosen, Jar: j, Java: javaPath, JavaVer: javaVer,
-		Out: *dir, Budget: *timeout, Workers: *workers, Manual: *manual,
+		Out: *dir, Budget: *timeout, Workers: *workers, Parallel: *parallel, Manual: *manual,
 		Platform: platform, CPUs: runtime.NumCPU(),
 		Selection: tlc.Selection{Group: *group, Shards: *shards, Shard: *shard},
 		OnCase: func(r tlc.Record) {

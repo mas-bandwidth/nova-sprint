@@ -8,6 +8,10 @@ TLC_JAR ?=
 TLC_OUT ?=
 TLC_GROUP ?=
 TLC_BUDGET ?= 110
+# TLC_PARALLEL is the number of cases run at once; when unset tlacheck takes its
+# default (a quarter of the bench's CPUs).
+TLC_PARALLEL ?=
+TLC_PARALLEL_FLAG = $(if $(TLC_PARALLEL),--parallel $(TLC_PARALLEL),)
 
 .PHONY: build vet test functional help roadmap tlc tlc-full tlc-groups tlc-test tlc-require
 
@@ -55,11 +59,11 @@ tlc-require:
 	@test -n "$(TLC_GROUP)" || { echo "make tlc needs TLC_GROUP (the group to run)" >&2; exit 2; }
 
 tlc: tlc-require
-	$(GO) run ./tools/tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s"
+	$(GO) run ./tools/tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s" $(TLC_PARALLEL_FLAG)
 
 tlc-full: tlc-require
 	@test "$(origin TLC_BUDGET)" = "command line" -o "$(origin TLC_BUDGET)" = "environment" || { echo "make tlc-full needs an explicit TLC_BUDGET (a manual run is unbounded by default)" >&2; exit 2; }
-	$(GO) run ./tools/tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s" --manual
+	$(GO) run ./tools/tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s" --manual $(TLC_PARALLEL_FLAG)
 
 tlc-groups:
 	$(GO) run ./tools/tlacheck groups --root . --stale

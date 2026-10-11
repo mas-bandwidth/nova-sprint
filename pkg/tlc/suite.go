@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
@@ -37,6 +38,17 @@ func CheckLimits(budget time.Duration, workers int, manual bool) error {
 	return nil
 }
 
+// CheckParallel refuses a case concurrency a bench may not use: fewer than one
+// case at once, or more than half the bench's CPUs. A case runs up to two TLC
+// workers, so half the CPUs leaves the bench room for its lanes. (card:
+// tlc-suite-runs-independent-cases-in-parallel, "bounded by the bench's CPUs")
+func CheckParallel(parallel, ncpu int) error {
+	if parallel < 1 || parallel > ncpu/2 {
+		return fmt.Errorf("parallel must be between 1 and %d (half of %d CPUs)", ncpu/2, ncpu)
+	}
+	return nil
+}
+
 // Options is one suite: the selected cases under one budget.
 type Options struct {
 	Root     string        // checkout root; the models are root/tla
@@ -47,6 +59,7 @@ type Options struct {
 	Out      string        // output directory: logs, RUNS.tsv and the private copy of the models
 	Budget   time.Duration // the whole suite's limit
 	Workers  int           // TLC workers for a case expected to pass; counterexample cases use one
+	Parallel int           // cases run at once; 0 means one (the card's serial fallback)
 	Manual   bool          // mode=manual in the records
 	Platform string        // the platform label recorded in the host column (Platform)
 	CPUs     int           // logical CPUs of the machine, recorded
@@ -181,7 +194,13 @@ func RunSuite(o Options) (Result, error) {
 		mode = "manual"
 	}
 	// What runs is the selection of the digested plan, never the caller's slice.
-	for _, c := range chosen {
+	// The cases are independent CPU-bound processes with a private copy of the
+	// models, a scratch dir and a log each, so up to Parallel run at once (the
+	// card's rule: "Run a suite's cases concurrently, bounded by the bench's
+	// CPUs"). Each case is exactly as the serial loop made it: its own
+	// MkdirTemp scratch, its own log, its own context bounded by the suite's
+	// deadline.
+	runOne := func(c Case) (Record, bool, error) {
 		started := clock()
 		log := filepath.Join(out, c.Config+".log")
 		code := ExitTimeout
@@ -191,12 +210,12 @@ func RunSuite(o Options) (Result, error) {
 		}
 		if remaining := deadline.Sub(started); remaining <= 0 {
 			if err := os.WriteFile(log, []byte("TLC suite budget exhausted before starting this case\n"), 0o644); err != nil {
-				return res, err
+				return Record{}, false, err
 			}
 		} else {
 			scratch, err := os.MkdirTemp(out, "tlc-")
 			if err != nil {
-				return res, err
+				return Record{}, false, err
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), remaining)
 			code = exec(ctx, Run{
@@ -215,11 +234,11 @@ func RunSuite(o Options) (Result, error) {
 		}
 		raw, err := os.ReadFile(log)
 		if err != nil {
-			return res, fmt.Errorf("cannot read %s: %v", log, err)
+			return Record{}, false, fmt.Errorf("cannot read %s: %v", log, err)
 		}
 		cfg, err := os.ReadFile(filepath.Join(res.Work, c.Config))
 		if err != nil {
-			return res, fmt.Errorf("cannot read the configuration %s: %v", c.Config, err)
+			return Record{}, false, fmt.Errorf("cannot read the configuration %s: %v", c.Config, err)
 		}
 		outcome := Parse(string(raw))
 		ok := Accepts(c, code, string(raw), string(cfg)) && outcome.HasStats()
@@ -233,15 +252,66 @@ func RunSuite(o Options) (Result, error) {
 		}
 		if !ok {
 			rec.Result = "FAIL"
-			res.Failed = true
 		}
-		res.Records = append(res.Records, rec)
-		if o.OnCase != nil {
-			o.OnCase(rec)
+		return rec, ok, nil
+	}
+	parallel := o.Parallel
+	if parallel < 1 {
+		parallel = 1
+	}
+	records := make([]Record, len(chosen))
+	var (
+		mu       sync.Mutex
+		failed   bool
+		firstErr error
+	)
+	// OnCase is called from one goroutine only, in finish order: the workers
+	// send their records to a channel and one goroutine drains it.
+	finish := make(chan Record)
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		for rec := range finish {
+			if o.OnCase != nil {
+				o.OnCase(rec)
+			}
 		}
-		if !clock().Before(deadline) {
-			break
-		}
+	}()
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, parallel)
+	for i, c := range chosen {
+		wg.Add(1)
+		slots <- struct{}{}
+		go func(i int, c Case) {
+			defer wg.Done()
+			defer func() { <-slots }()
+			rec, ok, err := runOne(c)
+			if err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
+				return
+			}
+			records[i] = rec
+			mu.Lock()
+			if !ok {
+				failed = true
+			}
+			mu.Unlock()
+			finish <- rec
+		}(i, c)
+	}
+	wg.Wait()
+	close(finish)
+	<-drained
+	if firstErr != nil {
+		return res, firstErr
+	}
+	res.Records = records
+	if failed {
+		res.Failed = true
 	}
 	after, err := SourceAt(o.Root)
 	if err != nil {
