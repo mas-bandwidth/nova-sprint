@@ -598,6 +598,7 @@ func (s *Snapshot) StreamCtl(stream string) *Card { return s.Merge.Placed(CtlID(
 func (s *Snapshot) MemberCtl(member string) *Card { return s.Fleet.Placed(CtlID(member)) }
 
 // UpMembers is the fleet members whose status is up, in row order.
+// tla/DirtyTick.tla NeverDealtToDraining (a held member is left out).
 func (s *Snapshot) UpMembers() []string {
 	var out []string
 	for _, m := range s.Members() {
