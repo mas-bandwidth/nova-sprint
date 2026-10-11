@@ -39,6 +39,24 @@ func TestParseProbeMissingJavaAndJarNotMeasured(t *testing.T) {
 	assert.Nil(t, p.SecretNames, "an unmeasured seat's names stay nil")
 }
 
+// probeScript reads the seat's whole name list: `nova-secrets names` bounds what it
+// prints by default (pkg/secrets/names.go emits a MORE line past the cut), so a member
+// whose seat holds more names than the default would report a route key it holds as
+// missing and the preflight would falsely FAIL. The probe asks for --max 0, as the
+// sibling reader cmd/nova-sprint/backup_out.go does, and marks the seat measured only
+// when the call exited 0: a nova-secrets that lacks the names verb prints "names -"
+// and the row stays not measured, naming it as a nova-tools candidate.
+func TestProbeScriptReadsTheWholeSeatAndGatesNamesOnExit(t *testing.T) {
+	t.Parallel()
+	script := probeScript("b1", "swarm-b1", []string{"git"})
+	assert.Contains(t, script, `names --store "$HOME/nova-bench/secrets" --as "$S" --max 0`,
+		"the whole seat is read: the default truncates its shown rows, so a route key past the cut would be a false FAIL")
+	assert.Contains(t, script, `rc=$?; if [ "$rc" -eq 0 ]; then`,
+		"a seat is marked measured only when the call exited 0")
+	assert.Contains(t, script, `echo "names -"`,
+		"a call that failed, or a nova-secrets without the names verb, is not measured")
+}
+
 // a seat that opens and holds no key is measured empty, never unmeasured, so a route
 // whose key it lacks is a FAIL and not the not-measured WARN.
 func TestParseProbeSeatHoldingNoKeyIsMeasuredEmpty(t *testing.T) {

@@ -177,9 +177,12 @@ func probeScript(member, seat string, tools []string) string {
 	// the key names the member's secrets seat holds, by name only and never a value
 	// (nova-secrets names reads the file without decrypting): its typed lines are passed
 	// through with a `name ` prefix and parseProbe reads the NAME rows with pkg/secrets,
-	// so neither drifts from the line names prints. "names -" is not measured; "names
-	// measured" marks a seat that answered, even when it holds no key.
-	b.WriteString(`if [ -n "$NS" ]; then o=$("$NS" names --store "$HOME/nova-bench/secrets" --as "$S" 2>/dev/null); printf '%s\n' "$o" | sed -n 's/^/name /p'; echo "names measured"; else echo "names -"; fi` + "\n")
+	// so neither drifts from the line names prints. The probe asks for the whole seat
+	// (--max 0), since names bounds what it prints by default and a route key past the
+	// cut would be read as absent; cmd/nova-sprint/backup_out.go reads a seat the same way.
+	// "names -" is not measured and marks a call that failed or a nova-secrets without the
+	// verb; "names measured" marks a seat that answered, even when it holds no key.
+	b.WriteString(`if [ -n "$NS" ]; then o=$("$NS" names --store "$HOME/nova-bench/secrets" --as "$S" --max 0 2>/dev/null); rc=$?; if [ "$rc" -eq 0 ]; then printf '%s\n' "$o" | sed -n 's/^/name /p'; echo "names measured"; else echo "names -"; fi; else echo "names -"; fi` + "\n")
 	b.WriteString(`echo "version $(PATH="$P" nova-sprint version 2>/dev/null | head -1)"` + "\n")
 	// the kernel's link changes in the last hour (docs/SPEC-SPRINT.md, doctor: member-env; the
 	// card doctor-names-a-member-whose-link-flapped): one extended grep over a short journal
