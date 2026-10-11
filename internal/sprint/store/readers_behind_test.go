@@ -21,6 +21,41 @@ func TestTheTickRaisesReadersBehindWhenReadsWaitTheWindow(t *testing.T) {
 	readersBehind(h, h.openOf, h.written)
 }
 
+// standingReadersBehind checks that a standing readers-behind condition updates in place: the
+// judgment is raised once and then rewritten in place on each tick while the facts hold, not
+// new judgments created for each tick.
+func standingReadersBehind(h *harness) {
+	t := h.t
+	h.beat()
+	for _, r := range []string{"reader-a", "reader-b", "reader-c"} {
+		require.NoError(t, h.st.SetReaderAway(h.ctx, r, true, "tester"))
+	}
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Member: "m1", Width: 6}))
+	h.must(FleetStep(sprint.FleetReq{Op: "hold", Member: "m2"}))
+	h.addReady("s1", 6, briefOf("flash", ""))
+	h.startMachine()
+	h.machine()
+	for i := 1; i <= 6; i++ {
+		id := "s1-" + string(rune('0'+i))
+		h.machine()
+		h.finishAttempt(id, false, "h"+id)
+	}
+	h.machine()
+	require.Len(t, h.snap().Readers.Cell("reader-m1", sprint.Asked), 6, "six reads asked of the one reader up, its width six")
+	h.must(ReadStep(sprint.ReadReq{As: "reader-m1", Begin: true, Sel: sprint.Sel{Limit: 2}, Who: "reader-m1"}))
+	h.machine()
+	h.tick(sprint.ReadersWindow)
+	h.machine()
+	require.Len(t, h.openOf(sprint.NReadersBehind), 1, "the behind judgment rises after the window")
+	initialWritten := h.written(sprint.NReadersBehind)
+	// Run several ticks with the same facts: the judgment should update in place, not be rewritten.
+	for i := 0; i < 5; i++ {
+		h.machine()
+	}
+	assert.Equal(t, initialWritten, h.written(sprint.NReadersBehind), "written once, not rewritten on stable facts")
+	assert.Len(t, h.openOf(sprint.NReadersBehind), 1, "still one open judgment")
+}
+
 // readersBehind drives the readers behind on a harness whose members m1 and m2 are up, with
 // a flash route and the reader reader-m1: open and written read the store's judgments (the
 // Mem's or the Redis's, readers_behind_functional_test.go).
@@ -82,4 +117,14 @@ func readersBehind(h *harness, open func(string) []sprint.Open, written func(str
 	_, late = sprint.ReadersBehind(h.snap())
 	assert.False(t, late)
 	h.clean("the readers caught up")
+}
+
+// TestStandingReadersBehindJudgment checks that a standing readers-behind condition
+// updates in place: the judgment is raised once and rewritten in place on each tick
+// while the facts hold, not a new judgment created for each tick.
+func TestStandingReadersBehindJudgment(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("flash-a", "flash"))
+	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-m1"}))
+	standingReadersBehind(h)
 }

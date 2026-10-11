@@ -280,6 +280,15 @@
     :text "The lander ignores a hold whose sha is not the PR head when a later line at the head clears it."
     :origin "issue #2710")
 
+   (fix "reader-behind-judgment-stable" :release "v1.2.7" :status "planned"
+    :title "The readers-are-behind judgment updates in place when the facts hold"
+    :text "A judgment that is raised when readers sit asked and not begun past the window should be rewritten
+     in place while its facts hold, not a new judgment created on each tick. The condKey function keys
+     NReadersBehind by type and subject alone, and the notify function updates the existing judgment
+     in place when the same condition holds across ticks. Tests verify that multiple ticks with stable
+     facts write the judgment only once."
+    :origin "dogfood 2026-10-10: j407, j409, j410 within a minute; TestStandingReadersBehindJudgment")
+
    (fix "merge-approval-head-from-disposition" :release "v1.2.9" :status "planned"
     :title "Approval at head is read from the disposition line"
     :text "The review API commit id can differ from the head the reviewer read. Merge checks parse the head
