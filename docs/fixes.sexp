@@ -1669,7 +1669,7 @@
    :origin "the card tick-watchdog-exit-never-waits-on-its-dump w2; nova-tools issue #5173, roadmap item tick-watchdog-bounded-diagnostics; code read at nova-sprint main 00c54ba")
   (fix "the-tick-gate-drives-pushed-landings-not-a-bare-merge" :release "v1.2.14" :status "planned"
    :title "The dirty tick gate drives pushed landings through the real CLI"
-   :text "The functional dirty-tick driver now gives its finished cards a real pushed head and records queued merge batches through the CLI's named --landed <id>@<head> path, with --repo and a fetched origin/main. It still executes one ordinary bare merge and asserts the real store's refusal, preserving the regression boundary; the full 3,000-card drive keeps its landing, distribution and settle checks and must finish in under a minute."
+   :text "The functional dirty-tick driver now gives its finished cards a real pushed head and records queued merge batches through the CLI's named --landed <id>@<head> path, with --repo and a fetched origin/main. It still executes one ordinary bare merge and asserts the real store's refusal, preserving the regression boundary; the 1,200-card behavioral drive spans more than two full fleet widths, keeps its landing, distribution and settle checks and the one-second tick bound, and must finish in under a minute. Both tiers use this same size; the former 3,000-card bulk-load coverage is no longer claimed."
    :origin "outside-sprint card the-tick-gate-drives-pushed-landings-not-a-bare-merge, 2026-10-11")
   (fix "stops-digest-counts-only-held-stops" :release "v1.2.14" :status "planned"
    :title "The stops digest counts only the stops still holding"

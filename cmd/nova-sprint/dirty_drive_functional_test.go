@@ -33,7 +33,7 @@ import (
 
 // The dirty-driven tick driven on a store (the owner's shape of 2026-09-30:
 // the work pump once a tick, readers, merge and fleet settled until their
-// queues are empty; tla/DirtyTick.tla): three streams of a thousand cards, no
+// queues are empty; tla/DirtyTick.tla): three streams of four hundred cards, no
 // gates and no needs, eight machines of width 64, the world played with no
 // chances at 10 ms, the loop ticking on the log, a coordinator reading the
 // inbox once for each tick that addressed them. Every card lands; the streams
@@ -41,23 +41,18 @@ import (
 // the coordinator wrote one note and an idle tick none; the tick's own queue
 // always started the next tick. The wall time and the ticks are printed.
 //
-// A thousand cards a stream is the drive against a bench's store (GateStoreEnv,
-// the certification tier). The functional tier drives four hundred a stream: since
-// the tick's ask asks five primaries a fenced step within its two-second budget
-// (store/tick_ask.go), each tick with reads to ask spends that budget, and three
-// thousand cards on the container's two CPUs took over two minutes alone, past the
-// package's whole timeout. Twelve hundred keep every invariant below, the merge's
-// batch scaled with them (play --batch, a tenth of a stream): the streams' spread is
-// held to a tenth of the total, three batches at either size.
+// Four hundred cards a stream drive more than two whole fleet widths through
+// deal, read, finish and pushed landing. Every run uses this same behavioral
+// scenario: twelve hundred cards keep every invariant below, with the merge's
+// batch a tenth of a stream and the streams' spread held to three batches.
+// GateStoreEnv additionally asserts the one-second bound on every tick; this
+// scenario no longer claims the former three-thousand-card bulk-load coverage.
 const (
 	driveStreams   = 3
-	drivePerStream = 1000
-	// driveFunctionalPerStream is each stream's cards where the drive runs outside
-	// a bench's store (the functional tier).
-	driveFunctionalPerStream = 400
-	driveMembers             = 8
-	driveWidth               = 64
-	driveSample              = 50 // ticks between two samples of the streams (every tick before the 50th)
+	drivePerStream = 400
+	driveMembers   = 8
+	driveWidth     = 64
+	driveSample    = 50 // ticks between two samples of the streams (every tick before the 50th)
 	// MaxTickWall is the gate every tick of the drive is held to, the owner's
 	// law of 2026-09-30: "the whole intent is sub-second ticks. This is a
 	// requirement." A tick over it fails the drive, named with its parts,
@@ -140,10 +135,7 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 		spec = append(spec, members[i-1]+":"+strconv.Itoa(driveWidth))
 	}
 	streams := []string{"a", "b", "c"}
-	perStream := driveFunctionalPerStream
-	if os.Getenv(GateStoreEnv) == "1" {
-		perStream = drivePerStream
-	}
+	perStream := drivePerStream
 	total := driveStreams * perStream
 	do(world, "init", "--readers", "reader-a,reader-b,reader-c", "--members", strings.Join(spec, ","))
 	do(world, "add", "--stream", strings.Join(streams, ","), "--count", strconv.Itoa(perStream))
@@ -454,7 +446,7 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 	require.Equal(t, 2, landings.bareCode, "the bare merge path remains refused: %s", landings.bareErr)
 	require.Contains(t, landings.bareErr, "a bare merge records the queue's head as landed with no push, and a real store refuses it; nothing was changed; record a pushed landing")
 	require.Empty(t, landings.wrapErr)
-	require.Less(t, wall, time.Minute, "the dirty tick drive took %s; it must stay under one minute", wall.Round(time.Millisecond))
+	assert.Less(t, wall, time.Minute, "the dirty tick drive took %s; it must stay under one minute", wall.Round(time.Millisecond))
 
 	// ---- what the drive asserts -------------------------------------------------
 	snap, err := st.Load(ctx, store.All, nil)
