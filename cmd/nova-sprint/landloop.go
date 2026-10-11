@@ -71,13 +71,14 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 	idle := err == nil && !queued
 	var lines []string
 	code := 0
+	var gate *hookGateError
 	switch {
 	case err != nil:
 		lines, code = []string{"LAND FAILED the merge queue could not be read: " + oneline.Err(err) + "; nothing was landed, and the next round tries again; run: nova-sprint where"}, 2
 	case queued && coordinator != "":
 		var out, errb bytes.Buffer
 		a.landLazy, a.landCtx = true, ctx
-		code = a.cmdLand(append([]string{"--redis", addr, "--actor", coordinator}, more...), &out, &errb)
+		code = a.land(append([]string{"--redis", addr, "--actor", coordinator}, more...), &out, &errb, &gate)
 		a.landLazy, a.landCtx = false, nil
 		// what landed (stdout's LAND lines, but its summary), and everything land said
 		// was wrong (stderr: a refused or failed batch, a refusal before any batch, the
@@ -92,6 +93,16 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 				lines = append(lines, line)
 			}
 		}
+	}
+	if gate != nil {
+		// The hook gate refused the landing before it acted on anything: the seat has
+		// not hooked in, as after a restart. That is a wait, not a fault of the pass,
+		// so the rollback window is not asked; the loop's next pass (LandEvery, the
+		// interval it already keeps) tries again, and each pass says it waits
+		// (docs/SPEC-SPRINT.md section 14; tla/ServerSwitch.tla LandHookRefused).
+		a.landFailed = ""
+		a.writeCycle(stdout, "LAND WAITS for the seat's hook: "+gate.why+"; nothing was landed, and the next pass tries again")
+		return code, idle
 	}
 	said := ""
 	if code != 0 {

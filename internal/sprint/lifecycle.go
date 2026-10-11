@@ -53,7 +53,8 @@ var Moves = []Move{
 	{Waiting, Ready, "resolve", Mechanical, "everything it needs has landed"},
 	{Ready, Working, "deal", Mechanical, "a work card is cut and dealt"},
 	{Working, Review, "finish", Mechanical, "its work card finished, ok or failed"},
-	{Working, Ready, "fleet down", Mechanical, "its work card was withdrawn because no fleet member is up, or, still ready, because its route rests"},
+	{Working, Ready, "fleet down", Mechanical, "its work card was withdrawn because no fleet member is up, or, still ready, because its route rests, or returned untouched (a rate limit, a staging refusal); never for needs not landed, which go working -> waiting"},
+	{Working, Waiting, "withdraw", Mechanical, "its needs have not landed: its dealt work card goes back to the pool, or its worker stopped on them (needsWithdrawals, needsStopReturned)"},
 	{Review, Merging, "accept", Coordinator, "the readers it needs said ok at this head (one for a flash card, two different for a pro card)"},
 	{Review, Working, "rework", Coordinator, "rework with a fix: the next attempt is delegated at once to an up member"},
 	{Review, Ready, "rework", Coordinator, "rework with a fix when no fleet member is up: start delegates it later"},
@@ -62,7 +63,7 @@ var Moves = []Move{
 	{Merging, Ready, "redo", Coordinator, "redo a conflicted card when no fleet member is up: start delegates it later"},
 	{Merging, Landed, "merge", Mechanical, "its batch, green on the stream branch, merged to the development branch"},
 	{Waiting, Landed, "release", Coordinator, "a sentinel reached, or with nothing before it, released by the coordinator (kind sentinel only)"},
-	{Ready, Waiting, "add", Mechanical, "a sentinel inserted in front of it (only as the effect of inserting a sentinel)"},
+	{Ready, Waiting, "add", Mechanical, "a sentinel inserted in front of it, or its needs have not landed (needsWaits; a brief edit's or needs set's need)"},
 }
 
 // Legal says from -> to is a move of the lifecycle.
@@ -246,6 +247,8 @@ func unlawful(u Unit, p *Plan) string {
 			return "the lifecycle lands from waiting only a sentinel, and only by release"
 		case from == Ready && to == Waiting && !p.inserting && e.Set["needs"] == "":
 			return "the lifecycle moves ready -> waiting only as the effect of inserting a sentinel"
+		case from == Working && to == Waiting && e.Set["needs"] == "":
+			return "the lifecycle moves working -> waiting only for needs not landed"
 		case sentinel && to != "" && to != Landed:
 			return "a sentinel moves only waiting -> landed, by release"
 		}
