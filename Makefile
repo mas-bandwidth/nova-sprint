@@ -1,7 +1,15 @@
 GO ?= go
 GOTEST_P ?= 4
 
-.PHONY: build vet test functional help roadmap
+# TLC runs only on a bench. TLC_JAR names the pinned tla2tools.jar, TLC_OUT the
+# run's output directory, TLC_GROUP the group to run and TLC_BUDGET its time
+# limit in seconds (tlc-full needs it named explicitly).
+TLC_JAR ?=
+TLC_OUT ?=
+TLC_GROUP ?=
+TLC_BUDGET ?= 110
+
+.PHONY: build vet test functional help roadmap tlc tlc-full tlc-groups tlc-test tlc-require
 
 help:
 	@echo "make build       go build ./..."
@@ -9,6 +17,10 @@ help:
 	@echo "make test        go vet ./... and go test -p GOTEST_P ./... (the unit tier)"
 	@echo "make functional  go test -tags functional ./... (needs redis-server on PATH)"
 	@echo "make roadmap     regenerate ROADMAP.md and FIXES.md from their sexp"
+	@echo "make tlc         run a group on a TLC bench: TLC_JAR, TLC_OUT and TLC_GROUP"
+	@echo "make tlc-full    run a manual group: TLC_JAR, TLC_OUT, TLC_GROUP and an explicit TLC_BUDGET"
+	@echo "make tlc-groups  print the groups with a case that has no current record"
+	@echo "make tlc-test    go test ./tools/tlacheck/ (the runner's own tests)"
 
 build:
 	$(GO) build ./...
@@ -35,3 +47,22 @@ functional:
 roadmap:
 	$(GO) run ./tools/roadmap --file docs/roadmap.sexp --out ROADMAP.md
 	$(GO) run ./tools/roadmap --kind fixes --file docs/fixes.sexp --out FIXES.md
+
+# tlc-require refuses (exit 2) unless TLC_JAR, TLC_OUT and TLC_GROUP are named.
+tlc-require:
+	@test -n "$(TLC_JAR)" || { echo "make tlc needs TLC_JAR (the TLC jar)" >&2; exit 2; }
+	@test -n "$(TLC_OUT)" || { echo "make tlc needs TLC_OUT (the run's output directory)" >&2; exit 2; }
+	@test -n "$(TLC_GROUP)" || { echo "make tlc needs TLC_GROUP (the group to run)" >&2; exit 2; }
+
+tlc: tlc-require
+	$(GO) run ./tools/tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s"
+
+tlc-full: tlc-require
+	@test "$(origin TLC_BUDGET)" = "command line" -o "$(origin TLC_BUDGET)" = "environment" || { echo "make tlc-full needs an explicit TLC_BUDGET (a manual run is unbounded by default)" >&2; exit 2; }
+	$(GO) run ./tools/tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s" --manual
+
+tlc-groups:
+	$(GO) run ./tools/tlacheck groups --root . --stale
+
+tlc-test:
+	$(NO_AUTO_MAINTENANCE) $(GO) test -count=1 ./tools/tlacheck/
