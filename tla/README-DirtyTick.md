@@ -63,7 +63,7 @@ The updates: readers take `ask` (from the pump), `rep` (a reader's report), `han
 | `ReadsStandOnReadersUp` | invariant | yes, only with `readerup` (W21, W22): a read is held only by a reader up; a reader away has its reads taken back by the update that applies it (asked again in the same update, at the card's attempt) and is placed none |
 | `OneWakePerTick`, `NoWakeIfNothing` | invariant, action | yes, and the note carries the tick's count |
 | `PlacementsRound` | action | yes: each placement is the candidate at the counter modulo the count (stated with `SelectSeq`, apart from the plan's `Rank`); each placement moves its counter by one; nothing else moves a counter |
-| `WidthRespected` | invariant | yes, only with `pendingroom` (G2) |
+| `HoldRespected` | invariant | yes, only with `pendingroom` (G2) |
 | `StreamFairness` | action | yes: two streams with a dealable card left after every pump so far are dealt within one of each other |
 | `TickBounded` | invariant | yes (at most 12 steps a tick), only with `seefleet` (G1); the longest tick in the full instance is 11 steps |
 | `Terminates` | temporal | yes on the small scenarios, only with `seefleet` (G1Live) |
@@ -85,7 +85,7 @@ Why the tick ends: only the pump writes the work table, and it runs once, so not
 Each is a counterexample TLC gave, checked by hand against the shape.
 
 - **G1: a placement that does not read the fleet's status never ends the tick.** Readers place a read on a reader whose host the fleet table has as down; the fleet refuses the `readon` and queues `unread`; readers place it again; forever (`TickBounded` in 115 states; `Terminates` in 140). The trace: c1 in review, its only reader's host m1 down; TickStart, PumpWork, Pass(readers) places the read on r1, then the fleet and the readers trade `readon` and `unread` until the step count passes 12. The repair (`seefleet`): every placement reads the candidates' status from the fleet table. The shape as stated says nothing about what a placement reads; the model says it must.
-- **G2: room read from a fleet table whose queue is not drained over-fills a machine.** The pump deals c1 to m1 (width 1), which queues `dealt` to the fleet; the readers pass comes before the fleet's and reads m1's load as 0, so it places c2's read on m1's reader; the fleet then applies both, and m1 holds 2 (`WidthRespected` in 8 states). The repair (`pendingroom`): a placement counts the placements already queued to the fleet, or only the fleet update places. This holds only if a read takes room on its host ("the readers dealing work might dirty the fleet table"); if reads take no room, there is no hole.
+- **G2: room read from a fleet table whose queue is not drained over-fills a machine.** The pump deals c1 to m1 (width 1), which queues `dealt` to the fleet; the readers pass comes before the fleet's and reads m1's load as 0, so it places c2's read on m1's reader; the fleet then applies both, and m1 holds 2 (`HoldRespected` in 8 states). The repair (`pendingroom`): a placement counts the placements already queued to the fleet, or only the fleet update places. This holds only if a read takes room on its host ("the readers dealing work might dirty the fleet table"); if reads take no room, there is no hole.
 - **G3: the rules of v2.1 write the work table in their own steps.** R10 as section 2.3 writes it (the next attempt dealt at once) is one such rule, and it breaks `WorkChangesOnlyInPump` in 4 states. So do R2 (a down member's cards returned), R8 and R9 (review to merging), R3 (release) and R6 (deal): under this shape each becomes an entry in the work queue, applied by the next pump.
 
 Two more points the witnesses show, which the shape must say:
@@ -106,10 +106,10 @@ Each witness turns on one broken rule (`Broken`); its control is the unbroken co
 | W1 | per-row tick: the pump deals one card | `EveryRowWithWorkMoves` | 5 |
 | W2 | a second work pump inside the tick | `WorkPumpedOnce` | 6 |
 | W3 | a queue left for the next tick (a deferred dirty bit) | `ThreeQueuesEmptyAtTickEnd` | 18 |
-| W4 | placement in name order | `PlacementsRound` | 31 |
+| W4 | placement in name order | `PlacementsRound` | 3 |
 | W5 | a wake per addressed card | `OneWakePerTick` | 3 |
 | W6 | the fleet deals from ready to a machine that came up | `WorkChangesOnlyInPump` | 10 |
-| W7, W7b | the counters reset every tick | `PlacementsRound`; with it alone, `StreamFairness` | 16, 31 |
+| W7, W7b | the counters reset every tick | `PlacementsRound`; with it alone, `StreamFairness` | 208, 279 |
 | W8 | merge writes landed into the work table | `WorkChangesOnlyInPump` | 5 |
 | W9 | the pump applies a broken entry twice | `NothingLost` | 23 |
 | W10 | the fleet drops a finish | `NothingLost` | 5 |
@@ -117,9 +117,9 @@ Each witness turns on one broken rule (`Broken`); its control is the unbroken co
 | W12 | only an outside entry starts a tick | `WorkNotStranded` | 21 |
 | W13 | readers and fleet queue an entry to each other on every run | `TickBounded` | 118 |
 | W14 | a note at every tick end | `NoWakeIfNothing` | 16 |
-| W15 | the deal ignores width | `WidthRespected` | 128 |
+| W15 | the deal ignores width | `HoldRespected` | 7 |
 | G1, G1Live | the shape without `seefleet` | `TickBounded`, `Terminates` | 115, 140 |
-| G2 | the shape without `pendingroom` | `WidthRespected` | 8 |
+| G2 | the shape without `pendingroom` | `HoldRespected` | 8 |
 | G3 | R10 as v2.1 writes it | `WorkChangesOnlyInPump` | 4 |
 | W16 | the pump accepts a card whose CI is red or that was returned | `AcceptHolds` | 427 |
 | W17 | every card a lapse returns counts a redeal, taken or not | `RedealsAreEndedTakes` | 127 |
@@ -129,9 +129,9 @@ Each witness turns on one broken rule (`Broken`); its control is the unbroken co
 | W22 | a reader that goes away keeps its reads (a read sat asked of it) | `ReadsStandOnReadersUp` | 66 |
 | W24 | a read returned is asked again and kept by its reader (the read that sat held for two hours) | `NothingLost` | 49 |
 | W25 | a read returned is counted as a read: the reader that returned it, the only one, is judged "cannot ask" with no re-ask | `JudgedOnlyAfterTheBound` | 25 |
-| W26 | a returned read is asked again in place with no bound (a reader that never launches returns it every few seconds for ever, no judgment) | `ReasksBounded` | 589 |
-| W27 | a card no reader may be asked of is left waiting with no judgment | `StrandingIsJudged` | 680 |
-| W28 | a read once returned is judged only when every reader is in `seen` of it: r1 returns it, is asked it again in place, its machine lapses, and the read waits with no reader up, silently | `StrandingIsJudged` | 2,295 |
+| W26 | a returned read is asked again in place with no bound (a reader that never launches returns it every few seconds for ever, no judgment) | `ReasksBounded` | 378 |
+| W27 | a card no reader may be asked of is left waiting with no judgment | `StrandingIsJudged` | 509 |
+| W28 | a read once returned is judged only when every reader is in `seen` of it: r1 returns it, is asked it again in place, its machine lapses, and the read waits with no reader up, silently | `StrandingIsJudged` | 604 |
 
 The control of W24: `MCDirtyTickHandBack` (a read r1 holds, r1 returns it, and it is asked of r2 in the same update: 3,835 states before `seen` and `hb`), with one outside event (`MaxActs = 1`) for the reason given below for `MCDirtyTickReaderAway`: with two, m1's lapse after r1's return queues an `unread` from the host's stale count of reads, which the code's reads (no host) have no counterpart of.
 
