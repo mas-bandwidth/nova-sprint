@@ -153,7 +153,7 @@ func TestATwiceRefusedBenchIsPassedOverForThePass(t *testing.T) {
 		return "", 0, nil
 	}
 	b.mu.Unlock()
-	runs := gateRuns(false, nil, nil)
+	runs := gateCmds(gateRuns(false, nil, nil))
 
 	l := &lander{a: r.a, st: st, gateKey: "s1"}
 	for i := 0; i < 3; i++ {
