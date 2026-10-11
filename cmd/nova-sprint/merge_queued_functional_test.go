@@ -87,10 +87,14 @@ func TestAMergeBeforeThePumpOnTheStore(t *testing.T) {
 	run("tick")
 	out = run("where")
 	require.Contains(t, out, "DONE", "after the pump:\n%s", out)
-	// the tick archives a stream when its last card lands, and the headline counts
-	// only the streams on the table (stream archive; the owner, 2026-10-06): the two
-	// landed cards are on the archived line, not in the work rows
-	require.Contains(t, out, "1 archived stream, 2 cards landed", "after the pump:\n%s", out)
+	// archiving is a manual request only (the owner, 2026-10-11; store/archive.go
+	// keepArchive), so the pump leaves the landed cards drawn and the coordinator
+	// archives the stream by hand: the two landed cards move to the archived line,
+	// and the headline counts only the streams on the table
+	out = run("stream archive s1")
+	require.Contains(t, out, "STREAM-ARCHIVE OK", "archive after the pump:\n%s", out)
+	out = run("where")
+	require.Contains(t, out, "1 archived stream, 2 cards landed", "after the archive:\n%s", out)
 	out = run("check")
 	require.Contains(t, out, "CHECK OK violations=0", "check after the pump:\n%s", out)
 }

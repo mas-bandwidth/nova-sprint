@@ -11,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
 )
 
@@ -22,6 +23,7 @@ func TestEveryProducerCard(t *testing.T) {
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	defer c.Close()
 	ctx := context.Background()
+	require.NoError(t, fn.Load(ctx, c))
 	require.NoError(t, c.Set(ctx, "nova:sprint:mode", "test", 0).Err())
 
 	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator"}

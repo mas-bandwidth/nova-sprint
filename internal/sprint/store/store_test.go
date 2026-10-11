@@ -50,7 +50,7 @@ func newHarness(t *testing.T) *harness {
 	// every part a tick plans on its twin is checked against a fresh read
 	h.st.CheckTwin = checkTwin
 	require.NoError(t, h.st.Init(h.ctx))
-	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
+	require.NoError(t, h.m.RowsAdd(h.ctx, h.st.Names.Table(sprint.Readers), []string{"reader-a", "reader-b", "reader-c"}))
 	// the harness acts as the sprint's coordinator: judgments are theirs
 	require.NoError(t, h.m.SetCoordinator(h.ctx, h.st.Actor))
 	h.beat()
@@ -124,7 +124,7 @@ func (h *harness) setup(n int) {
 	// (a no-op while they already exist): the blank-slate clear carries no
 	// reader row into the new epoch.
 	if pinned, err := h.st.pin(h.ctx); err == nil {
-		require.NoError(h.t, pinned.B.RowsAdd(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
+		require.NoError(h.t, pinned.B.RowsAdd(h.ctx, h.st.Names.Table(sprint.Readers), []string{"reader-a", "reader-b", "reader-c"}))
 	}
 	if err := h.st.BeatReaders(h.ctx); err != nil { // a reader asks for its queue: it is up
 		require.NoError(h.t, err)

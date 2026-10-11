@@ -72,6 +72,11 @@ type Config struct {
 	// call of each a tick; 0 is its whole queue. Every batch is cut at Most.
 	ReadLimit int
 	Ticks     int // stop after this many ticks; 0 is until every stream lands
+	// Simulated records every merge as a simulation (merge --simulated): a bare
+	// merge, with no push to name, which a real store refuses otherwise. Play
+	// sets it when the store it drives is not a twin, so the dirty-tick drive
+	// runs against a real store the same as a twin (nova-sprint#50).
+	Simulated bool
 	// Hold plays the facts' downs as the coordinator's hold (fleet down and
 	// fleet up); without it a member the facts take down falls silent (its
 	// machine stops beating), takes no work while it is down, and comes back
@@ -580,6 +585,9 @@ func (d *Driver) tick(tick int, c Config, w where) {
 			for _, x := range out.Suspects {
 				args = append(args, "--suspect", x)
 			}
+		}
+		if c.Simulated {
+			args = append(args, "--simulated")
 		}
 		d.run(false, append(args, held...)...)
 	}

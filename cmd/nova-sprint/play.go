@@ -73,7 +73,10 @@ func (a *app) cmdPlay(args []string, stdout, stderr io.Writer) int {
 	// the chances the source will draw with, printed once the loop may play
 	header := fmt.Sprintf("chances: %s red=%g seed=%d every=%s", facts.Drawn(), facts.Red, *seed, *every)
 	d := &driver.Driver{Run: a.run, Base: base, Facts: facts, Clock: appClock{a}, Out: stdout, Header: header,
-		Config: driver.Config{Every: *every, Batch: *batch, TakeLimit: *take, ReadLimit: *reads, Ticks: *ticks, Hold: *hold, Silent: silent}}
+		Config: driver.Config{Every: *every, Batch: *batch, TakeLimit: *take, ReadLimit: *reads, Ticks: *ticks, Hold: *hold, Silent: silent,
+			// a real store refuses an operator's bare merge (nova-sprint#50); play is a
+			// simulation, so it records its merges as such and drives a real store too
+			Simulated: !isTwin(strings.TrimSpace(c.redis))}}
 	why, err := d.Loop()
 	if err != nil {
 		fmt.Fprintf(stderr, "%s play: %s\n", prog, oneline.WithRemedy(err.Error(), prog+" play -h"))

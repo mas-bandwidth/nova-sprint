@@ -3227,6 +3227,7 @@ func (a *app) cmdMerge(args []string, stdout, stderr io.Writer) int {
 	batch := fs.Int("batch", 10, "the batch: the head n of the stream's queue (the lander's selection; to record a landing name the cards with --landed)")
 	var landed listFlag
 	fs.Var(&landed, "landed", "the record by name: <id>@<head> of each card pushed, again or comma separated; each must be merging in --stream at that head and the head an ancestor of --base-ref in --repo, or all are refused and nothing is written")
+	simulated := fs.Bool("simulated", false, "record a bare merge (no --landed, no fact) as a simulation: play drives a real store with it, where an operator's bare merge is refused (nova-sprint#50); not for a landing that is real")
 	repo := fs.String("repo", "", "with --landed: a clone whose --base-ref is fetched; git merge-base --is-ancestor runs there, once per card")
 	baseRef := fs.String("base-ref", "", "with --landed: the fetched tip of the base branch in --repo (origin/<base>)")
 	conflict := fs.String("conflict", "", "fact: this card of the batch did not merge; on its own head (a file conflict, the lander's checks, the tree gate its base passes, as --note and --conflict-kind say) it is reworked at the base's tip, or returned for the widen rule, and the stream goes on; otherwise the stream stops")
@@ -3274,7 +3275,7 @@ func (a *app) cmdMerge(args []string, stdout, stderr io.Writer) int {
 	// whose heads origin's base never held). A landing is recorded by name, each head an
 	// ancestor of the fetched base, or by land, which pushes first. Only the twin, which has
 	// no git, records a bare merge (nova-sprint help, trying it without a Redis).
-	if facts == 0 && len(pins) == 0 && !isTwin(strings.TrimSpace(c.redis)) {
+	if facts == 0 && len(pins) == 0 && !*simulated && !isTwin(strings.TrimSpace(c.redis)) {
 		return refuse(stderr, "merge", "a bare merge records the queue's head as landed with no push, and a real store refuses it; nothing was changed; record a pushed landing by name with --landed <id>@<head> --repo <dir> --base-ref origin/<base> (each head an ancestor of the base), or let land push and record it; run: nova-sprint land --stream "+*stream)
 	}
 	st, err := a.store(*c)
