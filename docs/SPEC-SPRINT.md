@@ -5269,8 +5269,8 @@ the work table's properties `alarm_review`, `alarm_merging`, `alarm_fleet` and `
 - merging above its alarm: more primaries merging than `--alarm-merging <n>`;
 - nothing ready while cards wait: with `--alarm-ready on`, no primary ready and one or
   more waiting;
-- the fleet works below its alarm: the members up working fewer work cards than
-  `--alarm-fleet <percent>` (1 to 100) of their width, while a primary is ready or
+- the fleet works below its alarm: the members up working fewer work cards (read cards
+  excluded) than `--alarm-fleet <percent>` (1 to 100) of their width, while a primary is ready or
   waiting.
 
 An alarm is an episode: one judgment of the sprint (no primaries) written when its

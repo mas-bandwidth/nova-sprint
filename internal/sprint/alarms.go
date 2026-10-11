@@ -91,7 +91,8 @@ func alarmFacts(s *Snapshot) map[string]string {
 	if pct, on := s.alarmSetting(PropAlarmFleet); on && ready+waiting > 0 && !s.FleetOff() {
 		working, width := 0, 0
 		for _, m := range s.UpMembers() {
-			working += s.Fleet.Count(m, Working)
+			work, _ := rowWorking(s, m)
+			working += work
 			width += s.Width(m)
 		}
 		if width > 0 && working*100 < pct*width {
