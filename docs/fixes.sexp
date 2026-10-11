@@ -1196,6 +1196,20 @@
     are made current."
    :origin "card tla-providerbudget-every-declared-witness-has-a-cfg, 2026-10-11: v1.2.12 inventory section 4, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-provider-funds" :release "v1.2.12" :status "planned"
+   :title "ProviderFunds models launch ordering, shared provider rests and judgments"
+   :text "Models only, no product change. ProviderFunds instantiates RouteRest for both providers,
+    with one enabled route each. Two outstanding takes retain their launch relation to the last rest end:
+    payment, funded and wake invalidate old launches, so a delayed refusal cannot rest the provider again.
+    Snapshot judgments implement credit/key precedence, suppression of low while resting, and clearing
+    when the rest ends. Balance reads never rest a provider; all out of credit stops the machine unless
+    a friend is up; START is the coordinator's. The four original stop/start properties remain, with
+    RefusalsAfterLastEnd and JudgmentsMatch. Reversed witnesses lowisout, nofriendexception and
+    stalerefusal violate LowNeverStops, NoFundsStopWhileFriendUp and RefusalsAfterLastEnd respectively.
+    Comment-only Go citations and the corrected AllOutOfCredit comment accompany current TLC records.
+    Exact balance/spend arithmetic, judgment prose/delivery and STOP debt remain outside this model."
+   :origin "card tla-provider-funds.w5, 2026-10-11: carries attempt 4 and repairs its three review findings")
+
   (fix "tla-whopreference-tiers-pins-and-takeback" :release "v1.2.12" :status "planned"
    :title "WhoPreference gates the deal on tiers, honours the preference order, the take-back memory and the pin release"
    :text "Models only, no product change. tla/WhoPreference.tla was read against internal/sprint/friend_deal.go, friend_take.go, rebalance.go and stops.go and drifted in four places, each brought to the code. The deal is now gated on tiers (friendTakes / the fleet's set): a flash card never reaches a friend whose tiers are pro alone, checked by the new invariant DealtAdmitted, which the unchanged model violates (plain, a flash card, dealt to friend b whose tiers are pro). The friends' choice is the code's preference order, an idle lane first then the most room then the first by name, not the fixed a-before-b. A card taken back from a friend is never dealt to her again (takenBack, the take's taken_from), checked by NeverBackToTheSameFriend. A hard pin is released past its bound while its friend is not up and is offered on as a named pin is (stops.go PinReleased), so OnlyToItsFriend holds only before the release. Two reversed witnesses: anytier drops the deal's tier gate (fails DealtAdmitted) and dealback redeals a taken-back card to the same friend (fails NeverBackToTheSameFriend). The rebalance's one-tier-up overflow and cheapest-first order (rebalance.go:143-188) are left out: a two-tier model has no tier above pro. friend_take.go and stops.go each gain one comment line citing the module."
