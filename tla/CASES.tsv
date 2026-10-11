@@ -442,3 +442,5 @@ MCReadyOverBrokenStale.cfg	MCReadyOver.tla	invariant	ClearsWhenDealt	ignore-term
 MCRateBackoff.cfg	MCRateBackoff.tla	pass	-	ignore-terminal	ratebackoff	required	-
 MCRateBackoffBrokenNoCap.cfg	MCRateBackoff.tla	invariant	BackoffBounded	ignore-terminal	ratebackoff	required	-
 MCRateBackoffBrokenSpend.cfg	MCRateBackoff.tla	invariant	RateLimitSpendsNoRedeal	ignore-terminal	ratebackoff	required	-
+MCAttemptsEpochs.cfg	MCAttemptsEpochs.tla	pass	-	ignore-terminal	attemptsepochs	required	-
+MCAttemptsEpochsBrokenNoepochcheck.cfg	MCAttemptsEpochs.tla	invariant	OldEpochWritesNothing	ignore-terminal	attemptsepochs	required	-
