@@ -855,6 +855,10 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (fix "ready-over-reads-the-settled-rests" :release "v1.2.14" :status "planned"
+   :title "The ready-over judgment reads the deal's settled rests"
+   :text "A card ready past ReadyMax whose tier is served only by a resting route raises the ready-over judgment and names the rest the deal sees: TickReadyOver settles the rests once (withRests) as the deal does, and routeWhys reads them from the settled snapshot rather than computing its own, the rests due this tick included, so a route the judgment names resting is exactly one the deal does not draw. A rest that has ended serves again and raises nothing."
+   :origin "the seat's v1.2.14 audit, 2026-10-11 (ready-over reading unsettled rests); this card")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
