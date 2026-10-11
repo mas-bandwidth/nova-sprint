@@ -122,7 +122,7 @@ func TestTheETAIsToEveryCardLandedHeldCardsIncluded(t *testing.T) {
 			assert.Equal(t, c.summary, summary(w, nil, held, etaMinutes(w, nil, rate)))
 		})
 	}
-	// at the 2 an hour the dashboard's tile showed, every card is 1,249.5 hours away
+	// at the 2 an hour the dashboard's tile showed, every card is 1,249.5 hours away.
 	assert.Equal(t, int64(74970), etaMinutes(w, nil, 2))
 	assert.Equal(t, "347/2846 12.2% held=2443 -> ETA 52d2h", summary(w, nil, held, etaMinutes(w, nil, 2)))
 }
