@@ -3,6 +3,7 @@ package sprint
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -285,4 +286,65 @@ func TestAPassedProbeClearsOnlyTheEnvironmentHold(t *testing.T) {
 	set, unset := EnvProbePatch(failed, "no push credential")
 	assert.Equal(t, "no push credential", set[FieldEnvProbe], "a failed probe is recorded")
 	assert.Empty(t, unset, "nothing clears on a failed probe")
+}
+
+// An environment fault takes the member off the up list at once: its status is held, not
+// up, so the level that evens the up members' queues deals it nothing. Without the status
+// write the member stays up and the level moves a ready card onto it
+// (tla/ProviderBudget.tla).
+func TestALevelAfterAnEnvironmentFaultDealsNothingToThatMember(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 1}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 1}))
+	w.s.Work.SetRows([]string{"s1"})
+	// m1 works one card; m2 holds three ready cards, so a level with m1 up would move
+	// m2's newest ready card onto it (three cards vs none is a gap above one)
+	putWorkCard(w, "s1-1", "m1", Working, 1, nil)
+	putWorkCard(w, "s1-2", "m2", Ready, 2, nil)
+	putWorkCard(w, "s1-3", "m2", Ready, 3, nil)
+	putWorkCard(w, "s1-4", "m2", Ready, 4, nil)
+
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: w.gens("s1-1.w1"), Failed: true,
+		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	require.True(t, w.s.EnvHeld("m1"))
+	assert.Equal(t, Held, w.s.MemberCtl("m1").F("status"), "the fault holds the member: %v", w.s.MemberCtl("m1").Fields)
+	assert.NotContains(t, w.s.UpMembers(), "m1", "a held member is not up")
+
+	p := FleetStep(w.s, FleetReq{Op: "level"})
+	w.must(p)
+	assert.Equal(t, 0, w.s.Fleet.Count("m1", Ready), "the held member takes no card from the level")
+	for _, u := range p.Units {
+		assert.NotContains(t, u.Moved, "-> m1", "no card moved onto the held member: %+v", p.Units)
+	}
+}
+
+// The environment fault's own clear releases the member: the tick's presence leaves a
+// held member alone (it is not re-marked as a down fault, which would keep the machine's
+// own environment hold from clearing), so its next card that pushes clears the fault and
+// the hold with it (tla/ProviderBudget.tla).
+func TestTheEnvironmentFaultsOwnClearReleasesTheMember(t *testing.T) {
+	t.Parallel()
+	w := envFaultWorld(t)
+	first := w.s.Work.Card("s1-1").F("work")
+	next := w.s.Work.Card("s1-2").F("work")
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{first, next}}, Gens: w.gens(first, next)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{first}}, Gens: w.gens(first), Failed: true,
+		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	require.True(t, w.s.EnvHeld("m1"))
+	assert.Equal(t, Held, w.s.MemberCtl("m1").F("status"))
+
+	// the tick's presence leaves the held member alone: it is not reclassified as a down
+	// fault, so its environment mark (HeldByEnv) stays the machine's own
+	w.tick(time.Second)
+	down, _ := presence(w.s, TickReq{Beats: freshBeats(w, "m1")})
+	assert.True(t, down.Empty(), "presence moved the environment-held member: %+v", down)
+	assert.Equal(t, HeldByEnv, w.s.MemberCtl("m1").F(FieldHeldBy), "the environment mark is not clobbered")
+
+	// the card already in flight pushes: the fault clears itself and releases the member
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{next}}, Gens: w.gens(next), Head: strings.Repeat("a", 40)}))
+	assert.False(t, w.s.EnvHeld("m1"), "the push cleared the fault")
+	assert.Empty(t, w.s.MemberCtl("m1").F("held"), "the member is released")
+	assert.Empty(t, w.s.MemberCtl("m1").F(FieldHeldBy), "and its environment mark is gone")
+	assert.Empty(t, w.openOn(MemberSubject("m1")), "and its judgment closed")
 }

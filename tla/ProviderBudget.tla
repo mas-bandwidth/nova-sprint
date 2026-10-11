@@ -57,7 +57,7 @@ CONSTANTS Members, Causes, Broken
 VARIABLES env, held, judged, jcause, known, probe, card, event
 vars == <<env, held, judged, jcause, known, probe, card, event>>
 
-Events == Causes \cup {"model", "deal", "push", "probe-pass", "probe-fail",
+Events == Causes \cup {"model", "deal", "pushed", "probe-pass", "probe-fail",
                       "probe-new", "boot", "accept", "refuse", "init"}
 
 TypeOK ==
@@ -128,7 +128,7 @@ Push(m) ==
           /\ judged' = [judged EXCEPT ![m] = FALSE]
           /\ jcause' = [jcause EXCEPT ![m] = "none"]
     /\ card' = [card EXCEPT ![m] = "pushed"]
-    /\ event' = "push"
+    /\ event' = "pushed"
     /\ UNCHANGED <<known, probe>>
 
 \* fleet up runs the member's own probe: a pass clears the fault, a failure
@@ -208,26 +208,29 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Next)
 EnvOnlyByEnvironmentFinish ==
     [][\A m \in Members : (~held[m] /\ held[m]') => event' \in Causes]_vars
 
-\* a held member is dealt nothing
+\* a held member is dealt nothing: card[m]' names which member was dealt (the
+\* deal event alone cannot)
 HeldDealtNothing ==
-    [][\A m \in Members : (held[m] /\ event' = "deal") => FALSE]_vars
+    [][\A m \in Members : (held[m] /\ card[m]' = "working") => FALSE]_vars
 
 \* one judgment per (member, cause): it names the member's current cause, so a
 \* second, different fault is surfaced, never left as a stale remedy
 JudgmentNamesTheCause ==
     [][\A m \in Members : judged[m] => jcause[m] = env[m]]_vars
 
-\* the member's next card that pushes clears the fault by itself
+\* the member's next card that pushes clears the fault by itself: card[m]' names
+\* which member pushed (the event alone cannot)
 FaultClearsOnPush ==
-    [][\A m \in Members : (event' = "push") => (env'[m] = "none" /\ held'[m] = FALSE)]_vars
+    [][\A m \in Members : (card[m]' = "pushed") => (env'[m] = "none" /\ held'[m] = FALSE)]_vars
 
 \* a held member is released only by a push or a probe that passes
 FleetUpRefusesUncleared ==
-    [][\A m \in Members : (held[m] /\ ~held[m]' /\ event' # "push") => event' = "probe-pass"]_vars
+    [][\A m \in Members : (held[m] /\ ~held[m]' /\ event' # "pushed") => event' = "probe-pass"]_vars
 
-\* a new member is accepted only when its own probe passed (init's Boot sets it)
+\* a new member is accepted only when its own probe passed (init's Boot sets it):
+\* read the next state's probe, since Boot sets probe' and known' together
 NewMemberProbed ==
-    [][\A m \in Members : (~known[m] /\ known[m]') => probe[m] = "pass"]_vars
+    [][\A m \in Members : (~known[m] /\ known[m]') => probe'[m] = "pass"]_vars
 
 \* the member has a cause while it is held
 HeldHasACause ==

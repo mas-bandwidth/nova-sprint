@@ -2186,6 +2186,12 @@ func envFaulted(s *Snapshot, c, pr *Card, r FinishReq, cause, who string, p *Pla
 			set["held"] = stamp(s.Now)
 			set[FieldHeldBy] = HeldByEnv
 			set[FieldHeldReason] = "environment fault: " + cause
+			// the hold takes the member off the up list at once, the way downPlan marks
+			// the other holds: UpMembers leaves it out, so the level and the deal give it
+			// no new card, and presence leaves a held member alone instead of re-marking
+			// it as a down fault that would keep its own clear from releasing it
+			// (tla/ProviderBudget.tla).
+			set["status"], set["since"] = Held, stamp(s.Now)
 			u.Changes = append(u.Changes, change(Fleet, setEntry(ctl, set, FieldHeldFinish)))
 		} else {
 			u.Changes = append(u.Changes, change(Fleet, setEntry(ctl, set)))
