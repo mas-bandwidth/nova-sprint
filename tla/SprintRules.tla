@@ -1,7 +1,7 @@
 ----------------------------- MODULE SprintRules -----------------------------
 \* The machine feeds itself (the coordinator, for the owner, 2026-10-04 at 1:36 PM: "I want this
 \* sort of oh no fleet is idle, do judgement, release more cards thing -- i want this
-\* more automated."). Six small state machines of nova-sprint, each its own Part, each
+\* more automated."). Seven small state machines of nova-sprint, each its own Part, each
 \* checked alone; docs/SPEC-SPRINT.md section 2 ("A card replaced by its twin") and
 \* section 8 ("Answered by rule", and the idle alarm in section 14), internal/sprint
 \* twins.go, rules.go and idle.go, cmd/nova-sprint landgo.go (the base gate).
@@ -36,6 +36,16 @@
 \*   worker's report is still on its way, and that report, arriving while no later attempt
 \*   has started, finishes the attempt. Every rework is one attempt more and starts from the
 \*   head the attempt before pushed (a head here is its attempt's number).
+\*
+\* Part "conflict": one card whose head the lander refused (internal/sprint rules.go,
+\*   ruleConflict, ruleRedo, ruleBrief; redo.go Return). The card is on a tier (flash, pro,
+\*   heavy; the failed and bound rules raised it, Part "rules"): the lander refuses its head
+\*   one of the ways RefusalWay places (a file conflict, files outside PATHS, the lander's
+\*   other checks, the tree gate, a merge clash) and the stream stops. The conflict rule
+\*   returns the card and sets its tier to flash (FieldTierNow flash), recording the way;
+\*   the redo reworks it on the current tip, one attempt more; the same way twice is a brief
+\*   defect, marked and held for a mind. A refusal the rule cannot place (a generated
+\*   ledger, a head origin does not hold) is a mind's, not modelled.
 \*
 \* Part "episodes": a hard pin released past its bound, the cannot-ask judgment once a
 \*   wait, and a rule's answer consumed by the attempt it started (its own comment and
@@ -74,6 +84,7 @@
 \*   "stale"      finish refuses the report of an attempt the deadline failed, and the card
 \*                goes round again: LateReportFinishes
 \*   "faultnobound" the harness rule reworks a card at its attempt bound: AnswerAttemptsBounded
+\*   "conflictkeeps" the conflict rule leaves the tier a failure raised it to: ConflictResetsToFlash
 
 EXTENDS Integers, FiniteSets
 
@@ -103,7 +114,8 @@ VARIABLES col, need, blocked, twin,               \* twins
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
           anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, \* answers
-          pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt \* episodes
+          pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
+          ctier, cst, crefused, cway, catt           \* conflict
 
 twinVars == <<col, need, blocked, twin>>
 ruleVars == <<tier, fails, st, attempts, envFails>>
@@ -113,12 +125,16 @@ gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
 anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless>>
 epVars == <<pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
-vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
+conflictVars == <<ctier, cst, crefused, cway, catt>>
+vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, conflictVars>>
 
 \* -- answers: a reader's findings ("empty" is a broken verdict that carries none), and the
 \* ways an attempt fails
 AnFindings == {"f1", "f2", "empty"}
 AnFails == {"harness", "hold", "other"}
+
+\* -- conflict: the ways RefusalWay places a refusal (rules.go)
+ConflictWays == {"conflict", "paths", "checks", "gate", "clash"}
 
 TypeOK ==
   /\ col \in [TwinIds -> Cols]
@@ -164,6 +180,9 @@ TypeOK ==
   /\ ast \in {"waits", "asked", "gone"} /\ aatt \in 1..Cap /\ areason \in {"noreader", "room"}
   /\ aopen \in BOOLEAN /\ aseen \in BOOLEAN /\ anotes \in 0..MaxClock
   /\ rcol \in {"review", "ready", "working"} /\ rans \in BOOLEAN /\ ratt \in 1..Cap
+  /\ ctier \in 1..3 /\ cst \in {"working", "refused", "returned", "brief", "done"}
+  /\ crefused \in ConflictWays \cup {None} /\ cway \in ConflictWays \cup {None}
+  /\ catt \in 1..Cap
 
 Init ==
   /\ col = [x \in TwinIds |-> CASE x = "o" -> "open" [] x = "t" -> "absent" [] OTHER -> "waiting"]
@@ -183,6 +202,7 @@ Init ==
   /\ pup = FALSE /\ pcol = "ready" /\ pwait = -1 /\ pign = FALSE /\ pdw = -1 /\ eclk = 0
   /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
   /\ rcol = "review" /\ rans = FALSE /\ ratt = 1
+  /\ ctier = 1 /\ cst = "working" /\ crefused = None /\ cway = None /\ catt = 1
 
 -----------------------------------------------------------------------------
 \* Part "twins".
@@ -309,7 +329,8 @@ RuleNext == WorkFails \/ WorkBounds \/ WorkLands \/ RuleFailed \/ RuleBound \/ M
 \* The rules make at most Cap attempts a tier on three tiers: they never loop.
 RuleAttemptsBounded == attempts <= 3 * Cap
 
-\* A rule never lowers a card's tier.
+\* No rule but the conflict rule lowers a card's tier: the failed and bound rules here
+\* only raise it (Part "conflict" is the one rule that resets a card to flash).
 LadderClimbs == [][tier' >= tier]_ruleVars
 
 \* Every failure or bound is answered: by rule below a friend's card, by a mind there.
@@ -618,6 +639,67 @@ LateReportFinishes == ~anlost
 AnAnswered == (anst \in {"broken", "failed", "bound"}) ~> (anst \notin {"broken", "failed", "bound"})
 
 -----------------------------------------------------------------------------
+\* Part "conflict": one card whose head the lander refused (internal/sprint rules.go
+\* ruleConflict, ruleRedo, ruleBrief; redo.go Return). The card is on a tier (flash, pro,
+\* heavy; the failed and bound rules raised it, Part "rules"): the lander refuses its head
+\* one of the ways RefusalWay places, and the stream stops on the conflict. The conflict
+\* rule returns the card and sets its tier to flash, recording the way (RuleConflictReturn);
+\* the redo reworks it on the current tip, one attempt more (RuleConflictRedo); the same
+\* way twice is a brief defect, marked and held for a mind (RuleConflictBrief). A refusal
+\* the rule cannot place (a generated ledger, a head origin does not hold) is a mind's,
+\* not modelled.
+
+\* the outside: the failed and bound rules raised the card a tier (Part "rules")
+Rise ==
+  /\ cst = "working" /\ ctier < 3
+  /\ ctier' = ctier + 1
+  /\ UNCHANGED <<cst, crefused, cway, catt>>
+
+\* the outside: the lander refuses the head the way w; the stream stops on the
+\* conflict, the card stuck in its merge
+Refuse(w) ==
+  /\ cst = "working" /\ w \in ConflictWays
+  /\ cst' = "refused" /\ cway' = w
+  /\ UNCHANGED <<ctier, crefused, catt>>
+
+\* the outside: the head lands, no conflict
+Lands ==
+  /\ cst = "working"
+  /\ cst' = "done"
+  /\ UNCHANGED <<ctier, crefused, cway, catt>>
+
+\* the conflict rule: the first refusal of a way returns the card and sets its tier to
+\* flash; the conflictkeeps defect leaves the tier the failure raised it to
+RuleConflictReturn ==
+  /\ cst = "refused" /\ crefused # cway
+  /\ ctier' = IF Broken = "conflictkeeps" THEN ctier ELSE 1
+  /\ crefused' = cway /\ cst' = "returned" /\ cway' = None
+  /\ UNCHANGED catt
+
+\* the conflict rule's brief-defect answer: the same way twice is the same finding twice,
+\* the brief is wrong, not the worker: marked, the stream held for a mind
+RuleConflictBrief ==
+  /\ cst = "refused" /\ crefused = cway
+  /\ cst' = "brief" /\ cway' = None
+  /\ UNCHANGED <<ctier, crefused, catt>>
+
+\* the redo: the returned card reworked on the current tip, one attempt more, on flash
+\* (where the return left it)
+RuleConflictRedo ==
+  /\ cst = "returned" /\ catt < Cap
+  /\ cst' = "working" /\ catt' = catt + 1
+  /\ UNCHANGED <<ctier, crefused, cway>>
+
+ConflictNext ==
+  \/ Rise \/ Lands
+  \/ \E w \in ConflictWays : Refuse(w)
+  \/ RuleConflictReturn \/ RuleConflictBrief \/ RuleConflictRedo
+
+\* The conflict rule's return resets the card to flash: whatever tier a failure left it
+\* on, a returned card is redone at flash.
+ConflictResetsToFlash == cst = "returned" => ctier = 1
+
+-----------------------------------------------------------------------------
 \* Part "episodes": three judgments' episodes the fault inventory of 2026-10-10 found broken
 \* (items 12, 22, 23), each a small machine; the tick (EpTick) is one step for all three, the
 \* outside moves between ticks. eclk is running time, one step a tick.
@@ -789,20 +871,21 @@ AnswerApplies == rans => rcol \in {"ready", "working"}
 -----------------------------------------------------------------------------
 
 Next ==
-  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
-  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
-  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars>>
-  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars>>
-  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars>>
-  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars>>
-  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars>>
-  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars>>
+  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, conflictVars>>
+  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, conflictVars>>
+  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, conflictVars>>
+  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, conflictVars>>
+  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, conflictVars>>
+  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, conflictVars>>
+  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, conflictVars>>
+  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, conflictVars>>
+  \/ Part = "conflict" /\ ConflictNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
 
 \* The rules and a mind act when they may; the outside is unfair.
 Fairness ==
-  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>)
-  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars>>)
-  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ AnMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars>>)
+  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, conflictVars>>)
+  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, conflictVars>>)
+  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ AnMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, conflictVars>>)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 
