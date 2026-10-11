@@ -12,32 +12,38 @@ import (
 
 // A read is a consumer card (docs/SPEC-SPRINT.md section 6, "A read is a consumer card";
 // the owner, 2026-10-06: "reads need to become a type of card"; "send out multiple consumer
-// cards in ||"; "Just remove the complexity. just deal it."). While the sprint's read_cards
-// setting is on (set --read-cards on), the tick's deal deals every read a primary in review
-// still needs AT ONCE, before its work cards, each a read card on the fleet table cut and
-// dealt in one step to a different reader: a friend whose roles name reader and whose tiers
-// hold the read's tier, or a member up whose reader row (reader-<m>) is neither held nor
-// retired and serves the tier; never the attempt's own worker, never a reader that holds or
-// closed a read of the attempt (a read the machine took back spends nothing). A read holds
+// cards in ||"; "Just remove the complexity. just deal it."). Read cards are on by default
+// (set --read-cards off is the one way to turn them off, and it degrades the machine to one
+// read per tick through the old readers table), so the tick's deal deals every read a primary
+// in review still needs AT ONCE, before its work cards, each a read card on the fleet table
+// cut and dealt in one step to a different reader: a friend whose roles name reader and whose
+// tiers hold the read's tier, or a member up whose reader row (reader-<m>) is neither held
+// nor retired and serves the tier; never the attempt's own worker, never a reader that holds
+// or closed a read of the attempt (a read the machine took back spends nothing). A read holds
 // half a slot of its unit's one width (halfLoad). Its tier is its primary's, its level
 // inherited (ReadPriority). The review is unchanged: a read card's verdict closes the read on
 // the primary as read --ok|--broken does (friendReadCloseUnit, readCardVerb), and the primary
 // leaves review only by the existing rules. The model is tla/ReadCards.tla. With the setting
 // off, the readers table's ask and the friends' read ask, as before; they retire next release.
 
-// PropReadCards is the work table's property that turns read cards on: ReadCardsOnWord.
+// PropReadCards is the work table's property that turns read cards on: ReadCardsOnWord,
+// on by default (absent, on or default); SwitchOff is the one value that turns them off.
 const PropReadCards = "read_cards"
 
-// ReadCardsOnWord is the setting's on word; any other value is off.
+// ReadCardsOnWord is the setting's on word; off is the one value that turns it off.
 const ReadCardsOnWord = "on"
 
-// ReadCardsOn says the sprint asks its reads as read cards (PropReadCards).
+// ReadCardsOn says the sprint asks its reads as read cards (PropReadCards). It is on
+// while the property is absent, on or default; off only when the property is set off,
+// the one way to turn it off (set --read-cards off): a store that never set it, and a
+// store after a clear, asks every read a primary in review needs at once as read cards,
+// never one per tick through the old readers table.
 func (s *Snapshot) ReadCardsOn() bool {
 	if s == nil || s.Work == nil {
 		return false
 	}
 	v, _ := s.Work.Prop(PropReadCards)
-	return v == ReadCardsOnWord
+	return v != SwitchOff
 }
 
 // FieldReadCard marks a read card the deal cut (read_cards.go), "1": a friend's read asked

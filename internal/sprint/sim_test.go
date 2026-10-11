@@ -30,6 +30,10 @@ func newWorld(t testing.TB, readers ...string) *world {
 	s := &Snapshot{Now: t0, Work: NewTable(Work), Readers: NewTable(Readers), Merge: NewTable(Merge), Fleet: NewTable(Fleet),
 		Coordinator: "coordinator", Actor: "coordinator"}
 	s.Readers.SetRows(append(s.Readers.Rows(), readers...))
+	// Read cards default on, but the in-memory world models the readers table's ask, so
+	// it opts out; a test of the default turns it on (readCardsWorld) or leaves the
+	// property absent (defaults_test.go).
+	s.Work.SetProp(PropReadCards, SwitchOff)
 	return &world{t: t, s: s}
 }
 

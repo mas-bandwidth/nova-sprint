@@ -22,6 +22,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 )
@@ -52,6 +54,15 @@ func newServerRig(t *testing.T, lines ...string) *serverRig {
 	r := &serverRig{t: t, a: a}
 	for _, l := range lines {
 		r.boss(l)
+	}
+	// Read cards default on; this rig pins the readers table's ask, which still
+	// works with read cards off.
+	if st, err := a.store(common{redis: "mem:" + file, actor: "boss"}); err == nil {
+		if s, lerr := st.Load(context.Background(), store.All, nil); lerr == nil {
+			res, err := st.Run(context.Background(), store.SetStep(sprint.SetReq{ReadCards: "off", Who: s.Coordinator}))
+			require.NoError(t, err)
+			require.Empty(t, res.Refused)
+		}
 	}
 	return r
 }

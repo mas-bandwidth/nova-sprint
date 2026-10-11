@@ -41,10 +41,15 @@ type testApp struct {
 	quiet map[string]bool
 	// queue is the merge queues land asks, a fake: no forge is asked
 	queue *heldQueue
+	// defaultReadCardsOff pins the readers table's ask for the legacy functional
+	// tests (read cards default on): after init, the harness sets read cards off, so a
+	// test of the default (defaults_first_install_test.go) turns this off.
+	defaultReadCardsOff bool
+	readCardsOffSet     bool
 }
 
 func newTestApp(t *testing.T) *testApp {
-	ta := &testApp{t: t, m: store.NewMem(), now: t0, live: []string{"m1", "m2"}}
+	ta := &testApp{t: t, m: store.NewMem(), now: t0, live: []string{"m1", "m2"}, defaultReadCardsOff: true}
 	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": "coordinator"}
 	ta.a = newApp(func(k string) string { return env[k] })
 	ta.a.now = func() time.Time { ta.mu.Lock(); defer ta.mu.Unlock(); return ta.now }
@@ -121,6 +126,16 @@ func (ta *testApp) do(line string) (int, string, string) {
 	var out, errb bytes.Buffer
 	ta.beat()
 	code := ta.a.run(ta.withEpoch(split(line)), &out, &errb)
+	if code == 0 && ta.defaultReadCardsOff && !ta.readCardsOffSet && split(line)[0] == "init" {
+		if st, err := ta.a.store(common{redis: "mem:0", actor: "coordinator"}); err == nil {
+			if s, lerr := st.Load(context.Background(), store.All, nil); lerr == nil {
+				ta.readCardsOffSet = true
+				res, err := st.Run(context.Background(), store.SetStep(sprint.SetReq{ReadCards: "off", Who: s.Coordinator}))
+				require.NoError(ta.t, err, "set --read-cards off: %+v", res.Refused)
+				require.Empty(ta.t, res.Refused, "set --read-cards off: %+v", res.Refused)
+			}
+		}
+	}
 	return code, out.String(), errb.String()
 }
 

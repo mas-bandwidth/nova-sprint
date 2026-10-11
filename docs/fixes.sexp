@@ -640,6 +640,15 @@
      these two forms. On a RUNNING machine, queued changes are now checked at the step before logging."
     :origin "epoch 16 stall, 2026-10-11 04:17:19Z to 04:54:23Z")
 
+   (fix "defaults-are-the-working-machine" :release "v1.2.11" :status "planned"
+    :title "Defaults leave the machine working: read cards default on"
+    :text "A fresh store, and every store after a clear, asked its reads one per tick through the old
+     readers table, because read cards were on only when the read_cards property said on. Read cards now
+     default on: an absent property, on or default is on, and set --read-cards off is the one way to
+     turn them off, which says it degrades the machine to one read per tick. The audit of the other
+     settings found each default right, and each is said so."
+    :origin "the owner, 2026-10-11 (TOOLING-FROM-THE-SEAT-2026-10-11.md item 24); this card")
+
    (fix "add-refuses-card-off-sprint-base" :release "v1.2.6" :status "shipped"
    :title "add and brief refuse a card cut off the sprint's base"
    :text "Once the coordinator records the sprint's base (set --base, the work table's sprint_base), add and

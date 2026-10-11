@@ -47,6 +47,11 @@ func newAlarmRig(t *testing.T) *alarmRig {
 	require.NoError(t, r.st.Init(r.ctx))
 	require.NoError(t, r.m.RowsAdd(r.ctx, "a-readers", []string{"reader-a", "reader-b"}))
 	require.NoError(t, r.m.SetCoordinator(r.ctx, "coordinator"))
+	// Read cards default on; this rig pins the readers table's ask, which still works
+	// with read cards off.
+	res, err := r.st.Run(r.ctx, store.SetStep(sprint.SetReq{ReadCards: "off", Who: "coordinator"}))
+	require.NoError(t, err)
+	require.Empty(t, res.Refused)
 	r.beat()
 	return r
 }
