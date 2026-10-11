@@ -158,8 +158,8 @@ func filesAt(t *testing.T, base string) map[string][]byte {
 // change with an ask of the owner's is held by the ask, not here.
 func TestACommentOnlyLineHoldsOnlyACommentChange(t *testing.T) {
 	t.Parallel()
-	js := "var u = \"http://x\"; // the owner's words\nvar r = s.replace(/[&<>\"']/g, f); /* a note */\nvar d = a / b; // c\n"
-	html := "<style>a{color:red} /* why */ b{content:\"/* kept */\"}</style><!-- note --><!--LOGO--><p>text</p><script>var x=1; // c\n</script>"
+	js := "var u = \"http://x\"; // the owner's words\nvar r = s.replace(/[&<>\"']/g, f); /* a note */\nvar d = a / b; // c\nif (x) /[//one]/.test(s)\nif (y) // note-one\nz = 1\n"
+	html := "<style>a{color:red} /* why */ b{content:\"/* kept */\"}</style><!-- note --><!--LOGO--><p>text</p><p>p<!--k-->q</p><a title=\"<!--z-->\">T</a><script>var x=1; // c\n</script><script data-src=\"x\">p<!--k2-->q</script>"
 	base := map[string][]byte{"page/app.js": []byte(js), "page/index.html": []byte(html), "pageview.go": []byte("package x")}
 	with := func(name, from, to string) map[string][]byte {
 		c := map[string][]byte{}
@@ -179,6 +179,8 @@ func TestACommentOnlyLineHoldsOnlyACommentChange(t *testing.T) {
 		"a css comment":        with("page/index.html", "why", "because"),
 		"an html comment":      with("page/index.html", "note", "other note"),
 		"an inline js comment": with("page/index.html", "// c", "// d"),
+		"an html comment between words": with("page/index.html", "p<!--k-->q", "p<!--m-->q"),
+		"a js comment after if":         with("page/app.js", "// note-one", "// note-two"),
 	} {
 		require.NoError(t, CommentOnlyHolds(a, co, base, c), "known yes: %s", name)
 	}
@@ -192,6 +194,10 @@ func TestACommentOnlyLineHoldsOnlyACommentChange(t *testing.T) {
 		"a fill slot":           with("page/index.html", "<!--LOGO-->", "<!--LOGO2-->"),
 		"inline js code":        with("page/index.html", "var x=1", "var x=2"),
 		"pageview.go":           with("pageview.go", "package x", "package y"),
+		"an html comment written as a space": with("page/index.html", "p<!--k-->q", "p q"),
+		"a comment in a quoted attribute":    with("page/index.html", "<!--z-->", "<!--q-->"),
+		"a data-src script body":             with("page/index.html", "p<!--k2-->q", "p q"),
+		"a regex after a control )":          with("page/app.js", "[//one]", "[//two]"),
 	} {
 		err := CommentOnlyHolds(a, co, base, c)
 		require.Error(t, err, "known no: %s under a comment-only line", name)

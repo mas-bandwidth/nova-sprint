@@ -876,6 +876,10 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+   (fix "pagelock-stripper-hardening" :release "v1.2.14" :status "planned"
+    :title "The page lock's comment-only check reads the page a browser renders"
+    :text "The stripper that proves a comment-only change renders nothing no longer mistakes four visible things for comments: an HTML text comment leaves nothing rather than a space; a comment opener inside a quoted attribute value is code; an inline script with a data-src attribute is read as JS; and a slash after a control if, while or for condition opens a regex, failing closed otherwise. The lock's header and the spec's The page lock state the comment-only form and that the card lint is ask-only."
+    :origin "this card")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
