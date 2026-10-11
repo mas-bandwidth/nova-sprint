@@ -432,6 +432,24 @@
      nova-config, applied by friend sync."
     :origin "sprint card overload-alarm-covers-friends")
 
+   (fix "restore-tests-owed-from-split" :release "v1.2.6" :status "in-progress"
+    :title "Restore the tests the repository split moved out of nova-tools"
+    :text "The four doc-pin tests moved out of nova-tools restored in nova-sprint, each wired to the behavior
+     it pins: the coordinator rules (cmd/nova-sprint/handover_rules_test.go,
+     TestEveryCoordinatorRuleNamesVerbsThatExist, holds each rule of docs/SPRINT-COORDINATOR.md section 10 to
+     nova-sprint's verb table and the verbs of the tools the runbook names), the processor doc
+     (cmd/nova-sprint/processor_doc_test.go, pinned to docs/PROCESSOR.md's mapping rows), and the coordinator
+     tools register and tool class (cmd/nova-sprint/coordinator_tools_test.go,
+     TestEveryCoordinatorToolMapsToARealNovaVerb and TestEveryCoordinatorStopgapNamesTheVerbThatReplacesIt,
+     pinned to docs/COORDINATOR-TOOLS.md's table). The handover now prints every rule by number
+     (cmd/nova-sprint/handover_rules.go, wired in seat.go, so TestHandoverPrintsEachRuleByNumber exercises
+     the real path; docs/SPEC-SPRINT.md's handover note names the numbered rules, not the old single waves
+     RULE line). The tick wall-clock gate job is restored too (.github/workflows/ci.yml, tick-gate: the dirty
+     tick drive against a real store with NOVA_SPRINT_GATE_STORE=1, every tick held to MaxTickWall). The seat
+     play test, the member and contract functional tests and the eight contract cases exercise nova-tools
+     code and stay in nova-tools; they are still owed there."
+    :origin "repository split cold reads (nova-tools PR #5571 and PR #5591); this card")
+
    (fix "doctor-checks-the-definition-of-done" :release "v1.2.7" :status "shipped"
     :title "The doctor names every definition-of-done fault with its evidence"
     :text "The read-only doctor joins the seat check's centralized machinery verdicts (the friends and
