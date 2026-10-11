@@ -983,6 +983,19 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-providerbudget-every-declared-witness-has-a-cfg" :release "v1.2.12" :status "planned"
+   :title "ProviderBudget reads the caller's own probe word, and every declared witness has a config"
+   :text "Models only, no product change. tla/ProviderBudget.tla's probe[m] becomes the caller's own word
+    (the --probe fleet up is given, cmd/nova-sprint/verbs.go:3286), which the model trusts as the code does:
+    TLC chooses it (ProbeNew(m, p) takes p over none, pass and fail) instead of the member's real result. The
+    three declared witnesses with no config gain one, each failing as its name says: MCProviderBudgetBrokenClear
+    (Broken = {\"clear\"}) violates FleetUpRefusesUncleared, MCProviderBudgetBrokenNoenv violates
+    EnvOnlyByEnvironmentFinish, and MCProviderBudgetBrokenNodeal violates HeldDealtNothing; each has its
+    CASES.tsv row. One comment-only change: internal/sprint/steps_work.go's new-member gate cites
+    tla/ProviderBudget.tla NewMemberProbed, not FleetUpRefusesUncleared. tla/RUNS.tsv and tla/COVERAGE.tsv
+    are made current."
+   :origin "card tla-providerbudget-every-declared-witness-has-a-cfg, 2026-10-11: v1.2.12 inventory section 4, at nova-sprint main 00c54ba2e")
+
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
