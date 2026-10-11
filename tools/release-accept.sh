@@ -66,9 +66,12 @@ want=$(printf '%s\n' $NAMES | sed '/^$/d' | sort -u | wc -l | tr -d ' ')
 run="^($(printf '%s\n' $NAMES | sed '/^$/d' | paste -sd '|' -))\$"
 
 # the owner's bound: under one minute ideally, two at most. The clock starts here, before
-# the build, and the whole run (the build and the tests) is killed when it passes BOUND:
-# bounded() runs a command under a watchdog that sends TERM at the deadline and KILL 5 s
-# later, to that command's PID only (it started it).
+# the build, and the whole run (the build and the tests) is killed when it passes BOUND.
+# bounded() starts the command in a process group of its own (setsid, or job control where
+# there is no setsid), so the test binaries go test starts and the redis-servers they start
+# are in that group with it; a watchdog sends the group TERM at the deadline and KILL 5 s
+# later. Every process in the group was started by this gate. On a kill it says what the
+# group held and what is left of it (left=0 is the proof nothing was orphaned).
 BOUND=120
 # a lower bound may be named, to prove the kill on a known case; never a higher one
 if [ -n "${RELEASE_ACCEPT_BOUND:-}" ] && [ "$RELEASE_ACCEPT_BOUND" -lt "$BOUND" ]; then
@@ -76,16 +79,30 @@ if [ -n "${RELEASE_ACCEPT_BOUND:-}" ] && [ "$RELEASE_ACCEPT_BOUND" -lt "$BOUND" 
 fi
 began=$(date +%s)
 deadline=$((began + BOUND))
+exec 3>&1 # the watchdog's line goes to the gate's own output, never the command's
 timed_out=0
 bounded() {
-	"$@" &
-	pid=$!
+	if command -v setsid >/dev/null 2>&1; then
+		setsid "$@" &
+		pid=$!
+	else
+		set -m
+		"$@" &
+		pid=$!
+		set +m
+	fi
+	pgid=$pid # setsid and job control both make the started command its group's leader
 	(
 		while kill -0 "$pid" 2>/dev/null; do
 			if [ "$(date +%s)" -ge "$deadline" ]; then
-				kill -TERM "$pid" 2>/dev/null
+				held=$(pgrep -g "$pgid" | wc -l | tr -d ' ')
+				redis=$(pgrep -g "$pgid" redis-server | wc -l | tr -d ' ')
+				kill -TERM "-$pgid" 2>/dev/null
 				sleep 5
-				kill -KILL "$pid" 2>/dev/null
+				kill -KILL "-$pgid" 2>/dev/null
+				sleep 1
+				left=$(pgrep -g "$pgid" | wc -l | tr -d ' ')
+				echo "RELEASE ACCEPT KILLED group=$pgid held=$held redis-servers=$redis left=$left" >&3
 				exit 0
 			fi
 			sleep 1
@@ -94,7 +111,6 @@ bounded() {
 	watchdog=$!
 	rc=0
 	wait "$pid" || rc=$?
-	kill "$watchdog" 2>/dev/null || true
 	wait "$watchdog" 2>/dev/null || true
 	if [ "$(date +%s)" -ge "$deadline" ]; then
 		timed_out=1
@@ -119,9 +135,11 @@ export GIT_CONFIG_PARAMETERS="'maintenance.auto'='false'"
 left=$((deadline - $(date +%s)))
 [ "$left" -gt 0 ] || over "before the tests"
 status=0
-# go test's own -timeout is what is left of the bound too, so a test binary stops itself
+# go test's own -timeout is set past the bound: the group kill is the bound. A test binary
+# that hits its own -timeout panics without its cleanups, which would leave the redis-servers
+# it started running outside any group this gate kills.
 # shellcheck disable=SC2086 # PKGS is a list of packages
-bounded $GO test -tags functional -count=1 -p "$P" -parallel "$P" -timeout "${left}s" -v -run "$run" $PKGS >"$work/out" 2>&1 || status=$?
+bounded $GO test -tags functional -count=1 -p "$P" -parallel "$P" -timeout "$((left + 60))s" -v -run "$run" $PKGS >"$work/out" 2>&1 || status=$?
 wall=$(($(date +%s) - began))
 [ "$timed_out" -eq 0 ] || over "the tests"
 
