@@ -5802,6 +5802,21 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   a member whose probe in the same run finds the cause in place is WARN "fixed since"),
   and **friends** (each friend's
   daemon beating, her proof, working against width and against her report, her hold and why).
+- **`doctor --preflight <candidate build>`** (the owner, 2026-10-11: "Also consider sprint doctor
+  in this process") is the release gate's frame, run before any server switch or adopt. It runs
+  the candidate's `version` and its `tick --shadow --json` against the store this doctor reads,
+  read-only as the switch runs it (`runShadow`, never a copy), and it holds the store's tables
+  against the candidate's TABLES.lock (the v1.2.10 server ran on a store whose fleet table lacked
+  a locked column). A locked-shape refusal is one FAIL row (area preflight, check schema, its
+  subject the candidate's version) whose evidence is the shadow's own error text whole, naming
+  each missing column and the exact nova-table commands that mend it, and whose remedy is to run
+  those commands on a STOPPED machine, or the adopt's schema step; any other shadow failure is a
+  FAIL row with its text, and a shadow that passes is one OK row naming the candidate's version.
+  The gate's later checks (members, their tools, keys, holds and version; mirrors; links; stable)
+  are WARN rows saying "not measured by this build" until their cards land, from one table each
+  later card fills in, so a preflight always says what it did not check. A switch or adopt runs
+  the frame first, so the coordinator has the same answer as the switch's own shadow, which
+  already refuses such a candidate; exit 1 on any FAIL, as doctor does.
 
 Left as they are, and listed: the route and provider rests (route_rest.go, provider_funds.go: a
 sibling card makes their decision the coordinator's); the stall ladder's take-back and down at
