@@ -41,15 +41,31 @@ func TestCRTwoRunLoopsAtOnce(t *testing.T) {
 		go loop(a)
 		go loop(b)
 		// the outside world, serially, in this goroutine; a verb told it was
-		// cut is counted (and checked below), not fatal
-		cut := 0
+		// cut is counted (and checked below), not fatal, and a verb told the
+		// sprint is busy (the store's documented retryable refusal, its fence
+		// moved by the two tick loops) is retried as it says to be
+		cut, busy := 0, 0
+		const busyTries = 20
 		run := func(step Step) {
-			if _, err := h.st.Run(h.ctx, step); err != nil {
+			for try := 1; ; try++ {
+				_, err := h.st.Run(h.ctx, step)
+				if err == nil {
+					return
+				}
 				if strings.Contains(err.Error(), "changed under the step") {
 					cut++
 					return
 				}
+				if IsFenceBusy(err) {
+					busy++
+					if try >= busyTries {
+						require.NoError(t, err, "%s: still busy after %d tries", step.Verb, busyTries)
+						return
+					}
+					continue
+				}
 				require.NoError(t, err, "%s: %v", step.Verb, err)
+				return
 			}
 		}
 		w.running = true
@@ -76,9 +92,11 @@ func TestCRTwoRunLoopsAtOnce(t *testing.T) {
 		}
 		h.clean(fmt.Sprintf("trial %d", trial))
 		assert.LessOrEqual(t, cut, 0, "trial %d: %d outside verbs were told \"cut ... changed under the step\" while two ticks ran (their operation was applied by a tick's Fenced finish)", trial, cut)
+		eg := ""
 		if len(errs) > 0 {
-			t.Logf("trial %d: %d tick errors, e.g. %s", trial, len(errs), errs[0])
+			eg = fmt.Sprintf(", e.g. %s", errs[0])
 		}
+		t.Logf("trial %d: %d tick errors%s; %d busy retries", trial, len(errs), eg, busy)
 		notes, _, _ := h.m.NotesSince(h.ctx, "", 100000)
 		seen := map[string]int{}
 		for _, n := range notes {
