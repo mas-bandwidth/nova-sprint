@@ -286,6 +286,14 @@
     BGSAVE-failure and timeout refusals are unchanged."
    :origin "pre-clear backup, 2026-10-10 (NOPERM on LASTSAVE)")
 
+  (fix "backup-out-restore-check-live-fleet" :release "v1.2.6" :status "planned"
+   :title "backup --out passes on a fleet that is beating"
+   :text "The restore check sets aside what a live member's beat rewrites while the dump is taken (the
+    fleet table's revision, a fleet row's place, load text and up or down status) and compares
+    everything else exactly, so a running fleet no longer fails the check; a held status, a missing
+    row or a changed card still does."
+   :origin "pre-clear backup, 2026-10-10 (8 fleet parts differed)")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
