@@ -16,7 +16,8 @@ import (
 // a case of the one engine (RuleAnswers, rules.go): it decides on the judgment's own facts,
 // its tick part applies one verb the house already has (friend take, ask --instead, rework),
 // every answer is recorded "answered by rule <name>", and its name in nova-config's
-// answer_rules_off turns it off alone (RuleOff).
+// answer_rules_off turns it off alone (RuleOff). The model is tla/SprintRules.tla,
+// Part "judgments" (StartedStaysHers, AskedOnceAnAttempt, WaitsUntilLanded).
 
 // The fields these rules write.
 const (
