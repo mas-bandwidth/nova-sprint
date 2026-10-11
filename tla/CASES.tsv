@@ -123,7 +123,7 @@ MCWorkImport.cfg	MCWorkImport.tla	pass	-	ignore-terminal	workimport	required	-
 MCWorkImportBrokenExternal.cfg	MCWorkImport.tla	invariant	ExternalStaysOpen	ignore-terminal	workimport	required	-
 MCWorkImportBrokenNoReceipt.cfg	MCWorkImport.tla	invariant	DestructiveOnlyWithReceipt	ignore-terminal	workimport	required	-
 MCWorkImportBrokenNoReopen.cfg	MCWorkImport.tla	invariant	ExportRestores	ignore-terminal	workimport	required	-
-MCWorkImportBrokenPartial.cfg	MCWorkImport.tla	invariant	TreeIsWhole	ignore-terminal	workimport	required	-
+MCWorkImportBrokenPartial.cfg	MCWorkImport.tla	invariant	TreeIsWholeForItsScope	ignore-terminal	workimport	required	-
 MCWorkImportBrokenStale.cfg	MCWorkImport.tla	invariant	Lossless	ignore-terminal	workimport	required	-
 MCDirtyTick.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick	required	-
 MCDirtyTickThree.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-three	required	-

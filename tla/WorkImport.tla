@@ -2,7 +2,9 @@
 \* nova-work v1: the states of an issue under import and of a repository's
 \* sync, from docs/SPEC-WORK-V1.md section 1 (the tree, layer 1) and
 \* section 1.7 (the modes above it, specified here and not built: the
-\* destructive close after import, the export that re-opens).
+\* destructive close after import, the export that re-opens, and the receipt
+\* that licenses the close -- all design-only: the code's verify prints facts
+\* and stores none).
 \*
 \* An issue's contents are abstracted to a version number: GitHub's copy
 \* moves on every outside edit (ExternalEdit), the tree holds the version it
@@ -21,17 +23,30 @@
 \*   idle -> importing -> imported -> verified -> closing -> exporting
 \*   imported -> importing (a verify found drift; import again)
 \*
+\* Import and Verify each take a scope, a subset of the repositories. The
+\* import writes only its scope's issues and records that scope in the tree
+\* (:scope, cmd/nova-work/import.go); the verify defaults to the tree's
+\* recorded scope and refuses a --repo outside it before any GitHub call
+\* (cmd/nova-work/verify.go). The verify then reads its scope fresh and
+\* compares it field for field: an issue of a repository the import did not
+\* read is missing from the tree (treeVer is None), so a verify whose scope
+\* is wider than the import's stays imported and never reports done. The
+\* refusal and that missing read guard the same property -- a verify never
+\* reports done outside the import's scope -- so VerifyNeverPassesOutsideItsScope
+\* has no single reversed witness: either guard alone still holds it.
+\*
 \* Broken = "none" is the design. Every other value is a reversed witness,
 \* one guard removed, and the invariant its comment names fails:
-\*   "noreceipt"  close without a verify receipt       -> DestructiveOnlyWithReceipt
+\*   "noreceipt"  close without a verify receipt        -> DestructiveOnlyWithReceipt
 \*   "stale"      close on a receipt older than an edit -> Lossless
 \*   "external"   close an external issue               -> ExternalStaysOpen
 \*   "noreopen"   export that does not re-open          -> ExportRestores
-\*   "partial"    write the tree before every issue is fetched -> TreeIsWhole
+\*   "partial"    write the tree before every issue of the scope is fetched
+\*                -> TreeIsWholeForItsScope
 
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Internal, External, MaxEdits, Broken
+CONSTANTS Internal, External, MaxEdits, Broken, Repos, repo, ImportScope, VerifyScope
 
 Issues == Internal \cup External
 None == 0 - 1   \* no version: not fetched, no receipt
@@ -42,7 +57,7 @@ VARIABLES
   fetched,      \* the version the running import read, or None
   treeVer,      \* the version the tree holds, or None
   treeOpen,     \* the state the tree holds
-  receipt,      \* the version a zero-difference verify saw, or None
+  receipt,      \* design-only: the version a zero-difference verify saw, or None
   closedByImport, \* closed on GitHub by the destructive mode
   closedVer,    \* ghost: GitHub's version when the import closed it
   closedWithReceipt, \* ghost: a receipt was held when it was closed
@@ -67,6 +82,8 @@ TypeOK ==
   /\ closedWithReceipt \in [Issues -> BOOLEAN]
   /\ phase \in [Issues -> Phases]
   /\ sync \in Syncs
+  /\ ImportScope \subseteq Repos
+  /\ VerifyScope \subseteq Repos
 
 Init ==
   /\ ghVer = [i \in Issues |-> 0]
@@ -88,47 +105,64 @@ ExternalEdit(i) ==
   /\ ghVer' = [ghVer EXCEPT ![i] = @ + 1]
   /\ UNCHANGED <<ghOpen, fetched, treeVer, treeOpen, receipt, closedByImport, closedVer, closedWithReceipt, phase, sync>>
 
-\* nova-work import begins a pass over the repository (non-destructive).
+\* nova-work import begins a pass over its scope (non-destructive); the
+\* issues outside the scope are left as they are.
 StartImport ==
   /\ sync \in {"idle", "imported"}
   /\ sync' = "importing"
-  /\ fetched' = [i \in Issues |-> None]
-  /\ phase' = [i \in Issues |-> IF phase[i] \in {"closed", "reopened"} THEN phase[i] ELSE "absent"]
-  /\ receipt' = [i \in Issues |-> None]
+  /\ fetched' = [i \in Issues |-> IF repo[i] \in ImportScope THEN None ELSE fetched[i]]
+  /\ phase' = [i \in Issues |-> IF repo[i] \in ImportScope /\ phase[i] \notin {"closed", "reopened"} THEN "absent" ELSE phase[i]]
+  /\ receipt' = [i \in Issues |-> IF repo[i] \in ImportScope THEN None ELSE receipt[i]]
   /\ UNCHANGED <<ghVer, ghOpen, treeVer, treeOpen, closedByImport, closedVer, closedWithReceipt>>
 
-\* workgh.Fetcher.Issues reads one issue's full contents.
+\* workgh.Fetcher.Issues reads one in-scope issue's full contents.
 Fetch(i) ==
   /\ sync = "importing"
   /\ phase[i] = "absent"
+  /\ repo[i] \in ImportScope
   /\ fetched' = [fetched EXCEPT ![i] = ghVer[i]]
   /\ phase' = [phase EXCEPT ![i] = "fetched"]
   /\ UNCHANGED <<ghVer, ghOpen, treeVer, treeOpen, receipt, closedByImport, closedVer, closedWithReceipt, sync>>
 
-\* nova-work import writes the tree once every issue is fetched and the
-\* encoded tree read back equals what was fetched (cmd/nova-work/import.go).
+\* nova-work import writes the tree once every issue of its scope is fetched
+\* and the encoded tree read back equals what was fetched; it records the
+\* scope in the tree (cmd/nova-work/import.go).
 WriteTree ==
   /\ sync = "importing"
-  /\ \/ \A i \in Issues : phase[i] \in {"fetched", "closed", "reopened"}
-     \/ Broken = "partial" /\ \E i \in Issues : phase[i] = "fetched"
-  /\ treeVer' = [i \in Issues |-> IF phase[i] = "fetched" THEN fetched[i] ELSE treeVer[i]]
-  /\ treeOpen' = [i \in Issues |-> IF phase[i] = "fetched" THEN ghOpen[i] ELSE treeOpen[i]]
-  /\ phase' = [i \in Issues |-> IF phase[i] = "fetched" THEN "intree" ELSE phase[i]]
+  /\ \/ \A i \in Issues : repo[i] \in ImportScope => phase[i] \in {"fetched", "closed", "reopened"}
+     \/ Broken = "partial" /\ \E i \in Issues : repo[i] \in ImportScope /\ phase[i] = "fetched"
+  /\ treeVer' = [i \in Issues |-> IF repo[i] \in ImportScope /\ phase[i] = "fetched" THEN fetched[i] ELSE treeVer[i]]
+  /\ treeOpen' = [i \in Issues |-> IF repo[i] \in ImportScope /\ phase[i] = "fetched" THEN ghOpen[i] ELSE treeOpen[i]]
+  /\ phase' = [i \in Issues |-> IF repo[i] \in ImportScope /\ phase[i] = "fetched" THEN "intree" ELSE phase[i]]
   /\ sync' = "imported"
   /\ UNCHANGED <<ghVer, ghOpen, fetched, receipt, closedByImport, closedVer, closedWithReceipt>>
 
-\* nova-work verify: a fresh read compared field for field. Zero
-\* differences over the repository is the receipt; any difference leaves
-\* the repository imported, to be imported again.
+\* The issues a verify compares: its scope, exactly. The code's verify builds
+\* fresh from the requested scope and Diff reads every repository of it, so an
+\* issue in the verify's scope but not the import's is missing from the tree
+\* (treeVer[i] is None, and None never equals a GitHub version): the
+\* comparison below fails for it and the verify stays imported.
+VerifyCompared(i) ==
+  repo[i] \in VerifyScope
+
+\* nova-work verify: a fresh read of its scope, compared field for field. A
+\* --repo outside the tree's recorded scope is refused before any GitHub call
+\* (cmd/nova-work/verify.go), so the verify's scope is always inside the
+\* import's; an out-of-scope issue would anyway read as missing and keep the
+\* repository imported. Zero differences over the scope is the receipt; any
+\* difference leaves the repository imported, to be imported again. The
+\* receipt the verify holds is design-only (the code's verify prints facts
+\* and stores none).
 Verify ==
   /\ sync \in {"imported", "verified"}
-  /\ \A i \in Issues : phase[i] \in {"intree", "mirrored"}
-  /\ IF \A i \in Issues : treeVer[i] = ghVer[i] /\ treeOpen[i] = ghOpen[i]
-       THEN /\ receipt' = [i \in Issues |-> ghVer[i]]
-            /\ phase' = [i \in Issues |-> "mirrored"]
+  /\ \A i \in Issues : repo[i] \in ImportScope => phase[i] \in {"intree", "mirrored"}
+  /\ VerifyScope \subseteq ImportScope
+  /\ IF \A i \in Issues : VerifyCompared(i) => treeVer[i] = ghVer[i] /\ treeOpen[i] = ghOpen[i]
+       THEN /\ receipt' = [i \in Issues |-> IF VerifyCompared(i) THEN ghVer[i] ELSE receipt[i]]
+            /\ phase' = [i \in Issues |-> IF VerifyCompared(i) THEN "mirrored" ELSE phase[i]]
             /\ sync' = "verified"
-       ELSE /\ receipt' = [i \in Issues |-> None]
-            /\ phase' = [i \in Issues |-> "intree"]
+       ELSE /\ receipt' = [i \in Issues |-> IF VerifyCompared(i) THEN None ELSE receipt[i]]
+            /\ phase' = [i \in Issues |-> IF VerifyCompared(i) THEN "intree" ELSE phase[i]]
             /\ sync' = "imported"
   /\ UNCHANGED <<ghVer, ghOpen, fetched, treeVer, treeOpen, closedByImport, closedVer, closedWithReceipt>>
 
@@ -174,9 +208,18 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(WriteTree) /\ WF_vars(Verify) /\ \A i \
 ----------------------------------------------------------------------------
 \* The invariants.
 
-\* A tree is written only whole: every issue of the repository is in it.
-TreeIsWhole ==
-  sync \in {"imported", "verified", "closing", "exporting"} => \A i \in Issues : treeVer[i] # None
+\* A tree is written only whole: every issue of the import's scope is in it.
+TreeIsWholeForItsScope ==
+  sync \in {"imported", "verified", "closing", "exporting"} => \A i \in Issues : repo[i] \in ImportScope => treeVer[i] # None
+
+\* A verify never reports done over a scope wider than the import's: a --repo
+\* outside the tree's recorded scope is refused before any read, and even a
+\* verify that slipped past the refusal would read the wider scope's issues as
+\* missing (treeVer = None) and stay imported. The refusal and the missing
+\* read guard this property together, so it holds for two reasons and has no
+\* single reversed witness.
+VerifyNeverPassesOutsideItsScope ==
+  sync = "verified" => VerifyScope \subseteq ImportScope
 
 \* Only a verify receipt licenses a close.
 DestructiveOnlyWithReceipt ==

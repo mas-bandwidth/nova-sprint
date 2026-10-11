@@ -1207,6 +1207,21 @@
     are not carried: this repository has neither."
    :origin "this card")
 
+  (fix "tla-workimport-scoped-verify" :release "v1.2.12" :status "planned"
+   :title "WorkImport models a scoped import and verify, recording the scope and refusing a wider verify"
+   :text "Models only, no product change. tla/WorkImport.tla's Import and Verify each take a scope, a
+    subset of the repositories: the import writes only its scope's issues and records that scope in
+    the tree (:scope), and the verify defaults to the tree's recorded scope, refuses a --repo outside
+    it before any GitHub call, and compares only its scope (an issue of a repository the import did not
+    read is missing from the tree), so a verify never reports done outside the import's scope.
+    TreeIsWhole is restated as TreeIsWholeForItsScope (the tree is whole for the import's scope), and
+    the new invariant VerifyNeverPassesOutsideItsScope states a wider verify never reports done. The
+    receipt and Close/Export are marked design-only in the header, as the code's verify prints facts
+    and stores none. Five reversed witnesses (noreceipt, stale, external, noreopen, partial);
+    VerifyNeverPassesOutsideItsScope has none: the refusal and the missing read guard it together, so
+    removing either alone still holds it. MCWorkImportBrokenPartial keeps its result."
+   :origin "this card, tla-workimport-scoped-verify.w4, 2026-10-11: v1.2.12 inventory item T22 and section 9 row D12; drift read at nova-sprint main 00c54ba2e")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
