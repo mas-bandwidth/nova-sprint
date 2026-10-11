@@ -8,7 +8,14 @@
   shipping or will ship. A point release carries fixes; new work is in ROADMAP.md. The one
   exception is v1.2.5, which also carries the roadmap machinery (the owner's scope for it), including the
   verb that defers cards to the roadmap. nova-tools' point
-  releases are in that repository's FIXES.md."
+  releases are in that repository's FIXES.md. The point releases after v1.2.10 (the owner, 2026-10-11): v1.2.11
+  small fixes, v1.2.12 tests and models only, v1.2.13 contraction, v1.2.14 the next small fixes, each
+  release's scope below. Point releases continue until only architectural items are open; those are
+  v1.3's re-architecture, and ROADMAP.md says how the two fit. An area stops taking point fixes when a fix
+  there is the same problem in another form, or would be its third fix: from then on it is
+  architectural, and its v1.3 item names the point fixes it replaces. Friend work is dogfooded within the
+  week once more friends are online: the current point release adopted, friends alone first, then
+  friends and fleet together, and each friend bug found becomes a point-release card."
  :releases
  ((release "v1.2.3" :status "shipped" :date "2026-10-10"
    :text "The first release from this repository: nova-sprint, nova-card and nova-work, re-seeded from nova-tools.")
@@ -24,7 +31,28 @@
      comments, the pre-window shadow tick passes when only the library differs, and the post-load check
      refuses a library that is not the new build's.")
    (release "v1.2.9" :status "planned" :date "2026-10-10"
-   :text "Inbox push writes each judgment once without concurrent writers sharing a temporary path."))
+   :text "Inbox push writes each judgment once without concurrent writers sharing a temporary path.")
+   (release "v1.2.11" :status "planned" :date "2026-10-11"
+    :text "Small bug fixes, one concern each, and no model change. They run as cards on v1.2.10 once it is
+     adopted, so the sprint dogfoods the release it just cut.")
+   (release "v1.2.12" :status "planned" :date "2026-10-11"
+    :text "Tests and models only, no product change. More unit and functional tests, and every TLA+ model
+     checked against the code it claims to model (its state, actions and invariants) and run again with
+     TLC on a bench; owed models and stale or timed-out records are made real. The new tests are written
+     against behaviour (the verbs, the store's steps, the wire, the TLA+ invariants), not internals, so
+     the same tests run unchanged against v1.3 and say whether it keeps the behaviour. TLC runs where the
+     cards run first. A real defect a new test finds is written as a v1.2.14 card, never fixed inside a
+     test card.")
+   (release "v1.2.13" :status "planned" :date "2026-10-11"
+    :text "Contraction: fewer lines, no behaviour change, with v1.2.12's tests and checked models as the net
+     under it. Passes in this order, one writer per package: remove dead and stale code; adopt the Go
+     standard library or established packages where they replace hand-rolled code; run go fix (and gopls
+     modernize) over all Go code; pull code the tools share into modules, then code the modules share
+     into modules; make each test minimal, on test frameworks and shared helper modules. Measured as
+     lines per repository and package, product against test, from a baseline taken before the first
+     pass.")
+   (release "v1.2.14" :status "planned" :date "2026-10-11"
+    :text "The next small fixes, one concern each, including the defects v1.2.12's tests find."))
  :items
  ((fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
@@ -152,7 +180,7 @@
     public mirror unit."
    :origin "nova-tools PR #5588, head 08f6af5a8")
 
-  (fix "operator-wording-bare-merge-and-key-rest" :release "v1.2.6" :status "planned"
+  (fix "operator-wording-bare-merge-and-key-rest" :release "v1.2.14" :status "planned"
    :title "What an operator reads matches the bare-merge refusal and the key rest"
    :text "A late-merge judgment prints land for a real store and the bare merge only as the twin's form; the
     CLI, first-lap and test docs mark the bare merge twin-only (play is a twin tool); the spec and comments
@@ -215,7 +243,7 @@
     password, so it is red until the child actually holds it."
    :origin "dogfood 2026-10-10: live LIBRARY state=UNKNOWN; card live-library-check-uses-the-store-loginb.w1")
 
-  (fix "inbox-wait-survives-a-clear" :release "v1.2.6" :status "planned"
+  (fix "inbox-wait-survives-a-clear" :release "v1.2.14" :status "planned"
    :title "The seat's push loop goes on at the epoch a clear leaves it"
    :text "inbox --wait and --push re-read the sprint's active epoch when a clear advances it under the
     loop: the look at the inbox is never refused MEMBEREPOCH by the epoch the clear left, the wait
@@ -293,7 +321,7 @@
     so the tick's shape is the model's."
    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")
 
-  (fix "promotion-mark-at-add" :release "v1.2.6" :status "planned"
+  (fix "promotion-mark-at-add" :release "v1.2.14" :status "planned"
    :title "add can mark a new stream for protected branches"
    :text "add --land-protected marks a new stream atomically with its first card, so a point-release
     stream can admit a card based on main or dev without a sentinel card or a follow-up stream set."
@@ -373,7 +401,7 @@
     BGSAVE-failure and timeout refusals are unchanged."
    :origin "pre-clear backup, 2026-10-10 (NOPERM on LASTSAVE)")
 
-  (fix "backup-out-restore-check-live-fleet" :release "v1.2.6" :status "planned"
+  (fix "backup-out-restore-check-live-fleet" :release "v1.2.14" :status "planned"
    :title "backup --out passes on a fleet that is beating"
    :text "The restore check sets aside what a live member's beat rewrites while the dump is taken (the
     fleet table's revision, a fleet row's place, load text and up or down status) and compares
@@ -391,7 +419,7 @@
     (cmd/nova-sprint/backup.go)."
    :origin "dogfood 2026-10-10 evening: fleet-only restart; pre-clear backup, 2026-10-10 (8 fleet parts differed)")
 
-   (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
+   (fix "inbox-push-write-once-race" :release "v1.2.11" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
      file. Use a unique temporary path per writer."
@@ -405,7 +433,7 @@
      (only for fixed directories), so judgments are re-pushed on every look while unanswered."
     :origin "seat-only restart, 2026-10-10: fleet at 18 of 76, ten cards waiting on seat's judgment")
 
-   (fix "rest-properties-cap" :release "v1.2.9" :status "planned"
+   (fix "rest-properties-cap" :release "v1.2.11" :status "planned"
     :title "Rested routes must not overflow the fleet table property cap"
     :text "Rule 3 writes one property per rested route, so the cap is reached at about 58 routes and the
      tick writes nothing. Use one property for all."
@@ -522,13 +550,13 @@
      is still visible and nothing is hidden. Stream table and sprint totals now agree."
     :origin "dogfood 2026-10-10: $7.74 per landed at 6 of 82; stream table $0.03 vs total $46.39")
 
-   (fix "swarm-lint-card-false-refusals" :release "v1.2.9" :status "planned"
+   (fix "swarm-lint-card-false-refusals" :release "v1.2.14" :status "planned"
     :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
     :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
      fenced blocks. It should accept both."
     :origin "issue #1994; issue #2302; issue #3470")
 
-   (fix "card-column-single-field" :release "v1.2.9" :status "planned"
+   (fix "card-column-single-field" :release "v1.2.14" :status "planned"
     :title "One column field every reader agrees on"
     :text "Card output carries a single column field so a card's state is not confused with the state of
      its need."
@@ -544,7 +572,7 @@
      and builder-only friends were asked reads."
     :origin "dogfood 2026-10-10 evening: fleet-only restart")
 
-   (fix "stats-tidy-large-fleet" :release "v1.2.9" :status "planned"
+   (fix "stats-tidy-large-fleet" :release "v1.2.11" :status "planned"
     :title "A stats tidy succeeds over a fleet of more than 64 rows"
     :text "Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a
      property bound."
@@ -573,7 +601,7 @@
     :origin "the owner, 2026-10-11 ~01:00Z and ~01:05Z, after hetzner was renamed hetzner1 and its old fleet
      row stayed held; this card; attempt 2")
 
-   (fix "worklang-done-field-parsed" :release "v1.2.9" :status "planned"
+   (fix "worklang-done-field-parsed" :release "v1.2.11" :status "planned"
     :title "The worklang parser keeps the done field of a unit"
     :text "Unit done reads a field the parser never keeps, so a done unit is never counted. The key is
      added and sibling skipped keys are checked, with a test."
@@ -774,4 +802,24 @@
     witness MCRouteRestBrokenBalance still failing. Tests TestReadDeepSeekBalance,
     TestALowBalanceAtTheThresholdRaisesOneJudgment and TestAnOutOfCreditTakeSpendsNoRedeal. The run
     loop's nova-secrets exec --only list must include DEEPSEEK_API_KEY for the poll to read it."
-   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry low-balance-pushes-the-seat-before-the-refusalc")))
+   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry low-balance-pushes-the-seat-before-the-refusalc")
+
+  (fix "v1-2-12-inventory" :release "v1.2.12" :status "planned"
+   :title "Inventory the tests and models before v1.2.12's first test card"
+   :text "Coverage per package, the functional tier's state, each TLA+ model against the code it claims
+    to model, and each RUNS.tsv record's age and result. The tests and model cards of v1.2.12 are cut
+    from it."
+   :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
+
+  (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
+   :title "Extract the roadmap tool into nova-roadmap"
+   :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
+    tools/roadmap and the nova-work roadmap verbs (about 3,100 lines with their tests), and in
+    nova-tools as internal/roadmap, internal/roadmap/sexp and tools/roadmap (about 1,300 lines with
+    their tests, about 930 without), with two diverging copies of the generator. Unify the s-expression format first; then one module and one CLI, nova-roadmap, living
+    in this repository (a module and cmd/nova-roadmap): it reads and writes the data, renders
+    ROADMAP.md and FIXES.md, and runs the sync check. Both repositories use it and delete their own
+    copies: this one its internal copies, nova-tools by importing nova-roadmap from this repository.
+    Net fewer lines. Its s-expressions stay importable later as a node by nova-work; that import is a
+    v1.3 item, not this one."
+   :origin "the owner, 2026-10-11: v1.2.13 contraction, pass 4 (shared code into modules); nova-roadmap lives in nova-sprint")))
