@@ -330,6 +330,7 @@ MCCoordinatorPassStop.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinat
 MCCoordinatorPassBrokenSilentStop.cfg	MCCoordinatorPass.tla	invariant	StopSignalled	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBehindEscalate.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenAckForever.cfg	MCCoordinatorPass.tla	invariant	EscalatedPastAck	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassBrokenWaitForever.cfg	MCCoordinatorPass.tla	invariant	WaitedRaisedAgainOnExpiry	ignore-terminal	coordinatorpass	required	-
 MCWhoPreference.cfg	MCWhoPreference.tla	pass	-	ignore-terminal	whopreference	required	-
 MCWhoPreferenceOnlyWrong.cfg	MCWhoPreference.tla	invariant	OnlyToItsFriend	ignore-terminal	whopreference	required	-
 MCWhoPreferenceRebalanceStarted.cfg	MCWhoPreference.tla	action	NoStartedCardMoves	ignore-terminal	whopreference	required	-
@@ -420,6 +421,7 @@ MCReadCards.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
 MCReadCardsBrokenIgnoreSpent.cfg	MCReadCards.tla	invariant	NeverTwiceAfterSpent	ignore-terminal	readcards	required	-
 MCReaderTiers.cfg	MCReaderTiers.tla	pass	-	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenHeld.cfg	MCReaderTiers.tla	invariant	NoReadToAHeldReader	ignore-terminal	readertiers	required	-
+MCReaderTiersBrokenEmptyReadsAll.cfg	MCReaderTiers.tla	invariant	NoReadOutsideTier	ignore-terminal	readertiers	required	-
 MCRateBudget.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
 MCRateBudgetLive.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
 MCRateBudgetProgress.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
