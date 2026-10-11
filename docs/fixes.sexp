@@ -199,6 +199,10 @@
     say a key rest ends only by routes wake, never by funded or a payment, and a test shows a balance poll
     cannot end one."
    :origin "readers' notes on nova-sprint PR #49 and PR #50")
+  (fix "lander-empty-commit-says-no-result-is-held" :release "v1.2.14" :status "planned"
+   :title "An empty commit the lander holds no result for reads as a missing result, not a claim"
+   :text "The lander's empty-commit refusal splits in two: a result that claims changes keeps 'empty commit: the result claims changes the diff does not show', and a card the lander holds no result for (the work card is absent or was tidied away) is refused with 'empty commit: the head changes nothing from the attempt's start, and the lander holds no result to say why'. Both findings return the card to review, through one helper (isEmptyCommitFinding), so a missing result is never accused of claiming changes it did not make."
+   :origin "this card")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
