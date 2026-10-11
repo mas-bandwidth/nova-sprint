@@ -52,13 +52,20 @@ counterexamples and measured results intact when improving their explanation.
 
 ## Run checks on a Linux bench
 
-The TLC runner remains in
-[Nova Tools](https://github.com/mas-bandwidth/nova-tools/tree/dev/tools/tlacheck).
-Build it there and use its `--root` option to point at this nova-sprint checkout.
-Put the built `tlacheck` on `PATH` before following the model guide's
-commands. Its source is not part of this repository. Check the runner's help
-for your version, and record new results against the actual model inputs
-you ran.
+TLC runs only on a bench. The runner is `tools/tlacheck` in this tree: build it
+with `go build -o /tmp/tlacheck ./tools/tlacheck`, or run it with
+`go run ./tools/tlacheck`. The Makefile wraps it:
+
+- `make tlc TLC_JAR=<jar> TLC_OUT=<dir> TLC_GROUP=<group>` runs one group,
+  writing its log and `RUNS.tsv` under `TLC_OUT`;
+- `make tlc-full TLC_BUDGET=<seconds> ...` runs a manual group, with `--manual`;
+- `make tlc-groups` prints the groups that hold a case with no current record;
+- `make tlc-test` runs the runner's own tests.
+
+`go run ./tools/tlacheck groups --root . --stale` names the groups a model edit
+made stale, and `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv
+--out tla/RUNS.tsv <runs>...` joins their records. Check the runner's help for
+your version, and record new results against the actual model inputs you ran.
 
 Return to [Contributing](../CONTRIBUTING.md) for the ordinary build and test
 checks, or [the documentation index](../docs/README.md) for the user guides.
