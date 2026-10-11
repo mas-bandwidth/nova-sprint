@@ -236,7 +236,7 @@
      TestAStablePollDoesNotMeasureWidths holds an unchanged poll out of the fit; and
      TestTheFitMeasuresAVisibleNaturalWidthCopy holds the copy to a visible natural form (both .compact
      and .folded off) and the fold button to a fresh fit. No visual change."
-    :origin "this card, attempt 4 (the-dashboard-scrolls-smoothly-under-the-pulse-and-the-poll.w4.g2.e17), 2026-10-11: a reader found attempt 3 measured the folded copy with .folded left on (its .scroll display:none, zero widths) and no fit on fold/unfold; the owner, 2026-10-11 ~19:35Z: \"There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical.\"")
+    :origin "this card, attempts 4 and 5 (the-dashboard-scrolls-smoothly-under-the-pulse-and-the-poll.w4/w5.g2.e17), 2026-10-11: a reader found attempt 3 measured the folded copy with .folded left on (its .scroll display:none, zero widths) and no fit on fold/unfold; attempt 5 carries that work unchanged, re-runs its tests red first against the un-fixed page, and lands this entry; the owner, 2026-10-11 ~19:35Z: \"There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical.\"")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
