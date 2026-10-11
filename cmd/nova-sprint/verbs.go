@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -445,7 +446,42 @@ func verbExample(name string) string {
 	return ""
 }
 
-func versionLine() string { return buildinfo.Line(prog, version) }
+func versionLine() string {
+	if extra := sourceCommitExtra(); extra != "" {
+		return buildinfo.Line(prog, version, extra)
+	}
+	return buildinfo.Line(prog, version)
+}
+
+// sourceCommitExtra is this binary's `commit=` extra, "" when the toolchain recorded no vcs
+// revision. It is what makes the version line name the full source commit even when field two
+// is a release tag (`-X main.version=v1.2.6`) or a module version rather than the vcs stamp,
+// so server switch can check the binary against the sprint base
+// (docs/SPEC-SPRINT.md section 14, "server-from-base-only-w-ns-bb.w1"); a build from an edited
+// tree carries `-dirty`, because a dirty build is not the commit it names.
+func sourceCommitExtra() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info == nil {
+		return ""
+	}
+	var revision string
+	var modified bool
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			revision = s.Value
+		case "vcs.modified":
+			modified = s.Value == "true"
+		}
+	}
+	if revision == "" {
+		return ""
+	}
+	if modified {
+		revision += "-dirty"
+	}
+	return "commit=" + revision
+}
 
 func helpCommand(path []string, stdout, stderr io.Writer) int {
 	if len(path) == 0 {
