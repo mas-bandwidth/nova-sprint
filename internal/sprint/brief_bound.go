@@ -228,6 +228,7 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 // does not deal (no such
 // friend up with room) is the deal's as before: at its redeal bound the tick raises the
 // cap's judgment, the findings of every attempt and the spend, decisions brief and drop.
+// tla/FriendEmptyRun.tla CapDeal.
 func AttemptCapDeal(s *Snapshot, r TickReq) Plan {
 	var p Plan
 	p.on(s)
