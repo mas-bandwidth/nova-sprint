@@ -482,3 +482,5 @@ MCHoldsLive.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
 MCServerSwitch.cfg	MCServerSwitch.tla	pass	-	ignore-terminal	serverswitch	required	-
 MCServerSwitchBrokenNodeadline.cfg	MCServerSwitch.tla	invariant	RollbackOnlyInWindow	ignore-terminal	serverswitch	required	-
 MCServerSwitchBrokenKeepstate.cfg	MCServerSwitch.tla	invariant	AtMostOneAutoRollbackPerSwitch	ignore-terminal	serverswitch	required	-
+MCHoldsBrokenResolveHeld.cfg	MCHolds.tla	invariant	HeldMovesOnlyByRelease	ignore-terminal	holds	required	-
+MCHoldsBrokenWorkerReleases.cfg	MCHolds.tla	invariant	OnlyCoordinatorReleases	ignore-terminal	holds	required	-
