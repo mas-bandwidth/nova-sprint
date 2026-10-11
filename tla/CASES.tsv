@@ -429,3 +429,7 @@ MCProviderBudget.cfg	MCProviderBudget.tla	pass	-	ignore-terminal	providerbudget	
 MCProviderBudgetBrokenNewMember.cfg	MCProviderBudget.tla	action	NewMemberProbed	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenNoPush.cfg	MCProviderBudget.tla	action	FaultClearsOnPush	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenStale.cfg	MCProviderBudget.tla	action	JudgmentNamesTheCause	ignore-terminal	providerbudget	required	-
+MCReadyOver.cfg	MCReadyOver.tla	pass	-	ignore-terminal	readyover	required	-
+MCReadyOverBrokenMerge.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-
+MCReadyOverBrokenSilent.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-
+MCReadyOverBrokenStale.cfg	MCReadyOver.tla	invariant	ClearsWhenDealt	ignore-terminal	readyover	required	-

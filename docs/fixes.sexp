@@ -731,4 +731,8 @@
     its /api/sprint."
    :origin "the owner, 2026-10-11 ~03:55Z: sentinel cards should not be counted when estimating time
     remaining or cards per hour; the seat, ~04:00Z: releasing cut sentinels made the tick archive their
-    streams")))
+    streams")
+  (fix "tlc-records-match-their-models" :release "v1.2.6" :status "planned"
+   :title "TLC records match their models"
+   :text "TLC records refreshed for 44 stale groups and plan rows added for MCProviderBudget and MCReadyOver; cardmachine still owed"
+   :origin "sprint card tlc-records-match-their-models; the seat ledger v1.2.4-held-2026-10-10.md RUNS.tsv drift")))
