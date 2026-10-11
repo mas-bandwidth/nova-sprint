@@ -88,6 +88,34 @@
     :title "The store package's own tests pin the shadow tick and the holds"
     :text "Tests only, no product change. New tests in internal/sprint/store drive Store.ShadowTick and Store.Holds through the unit tier's Mem store and assert on what a caller sees. ShadowTick: a running sprint with ready cards reports RUNNING with a deal part on the work table and a size the sum of its parts, and writes nothing; a STOPPED machine still plans; an epoch that owes its restore refuses and still owes it after; an operation left pending refuses (it repairs nothing) and is still pending after; queued work-table changes are planned as the drain part and the queue is not emptied; a primary waiting on reads is named in the plan's Reads; a store that moves on every read says the sprint is busy; and a custom Updates list leaves an empty part out, lists a due part with its due count, and a part that panics makes ShadowTick panic. Holds: a store with no sprint returns nil and no error; a held member, reader, friend and stream come back in kind order (members in fleet-table order, streams by name) each with its reason, and the list is empty after unhold; a member held with --return shows Return and without it none; an unreadable reader record is left out with no error and a friend's fleet row is not listed as a member. One defect the tests found (a reader set away with SetReaderAway alone, not held, is listed as held) is written as a v1.2.14 card, never fixed here."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C6")
+   (fix "tla-coverage-test-in-nova-sprint" :release "v1.2.12" :status "planned"
+    :title "nova-sprint's own test holds tla/COVERAGE.tsv to the models"
+    :text "Tests only, no product change. New internal/ci/tla_coverage_test.go (package ci, beside
+     moot_prs_test.go; testify is already in go.mod) holds tla/COVERAGE.tsv to the models. The header is
+     machine, code, module, status, owed_by, note, tab-separated. TestEveryStateMachineHasACurrentModel
+     reads ../../tla/COVERAGE.tsv and fails on each of: a machine empty or listed twice; a note empty or
+     a single dash; a status that is not current, partial, stale or missing; a code file (comma-separated,
+     a dash for none) that is not a regular file; a missing row that names a module or any other row that
+     names none; a named module with no tla/<Module>.tla; a current row whose owed_by is not a dash; and a
+     row that is not current whose owed_by does not match the shape of a card name. Its new check, which
+     the nova-tools test lacks, is that every tla/<X>.tla whose name does not start with MC is named by
+     exactly one row's module column: a module named by no row fails with tla/<X>.tla is named by no row of
+     tla/COVERAGE.tsv; add one, and a module named by two rows fails naming both. Each row is a subtest:
+     a row that is not current is skipped by its owed_by, never a pass; a current row passes only if each
+     module it names has at least one tla/CASES.tsv case whose expected is not pass (a reversed witness),
+     and every case of the module has a tla/RUNS.tsv record matched by config with result PASS and an
+     input_sha256 equal to pkg/tlc's fingerprint of the case now (tlc.SourceAt(root) then
+     Source.Fingerprint(config)); a case with no record fails unless its debt column is not a dash. The
+     checks are a function of a root and the rows, so fixtures under t.TempDir() call them without the
+     repository and pin a root whose tla/ holds A.tla and B.tla and a row naming only A (fails naming B),
+     a module named by two rows (fails naming both), and the eight bad-row shapes. nova-sprint's
+     COVERAGE.tsv was read by no test before this; nova-tools' test reads only nova-tools' own file. Red
+     tests were written first."
+    :origin "this card, tla-coverage-test-in-nova-sprint-after-seatproof.w1, from the coordinator on
+     2026-10-11; the gap checked at nova-sprint main 00c54ba2e: TestEveryStateMachineHasACurrentModel
+     lives only in nova-tools (internal/ci/tla_coverage_class_test.go) and reads nova-tools' own
+     tla/COVERAGE.tsv, while nova-sprint's is read by no test (internal/sprint/land_scope_test.go:121 only
+     names the path)")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
