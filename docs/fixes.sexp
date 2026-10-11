@@ -110,11 +110,10 @@
      repository and pin a root whose tla/ holds A.tla and B.tla and a row naming only A (fails naming B),
      a module named by two rows (fails naming both), and the eight bad-row shapes. nova-sprint's
      COVERAGE.tsv was read by no test before this; nova-tools' test reads only nova-tools' own file. Red
-     tests were written first. On this tree the new check caught one module with no row, tla/RateBackoff.tla
-     (the model the a-rate-limited-refusal-never-fails-the-cardc card added without a COVERAGE row), so a
-     rate-backoff row was added to tla/COVERAGE.tsv (partial, owed_by a-rate-limited-refusal-never-fails-the-cardc)
-     for the tree to be true; the rows card tla-coverage-rows-for-every-nova-sprint-module remains the
-     owner of the full COVERAGE pass."
+     tests were written first. On this tree the new check names one module with no row, tla/RateBackoff.tla
+     (the model the a-rate-limited-refusal-never-fails-the-cardc card added without a COVERAGE row); the row
+     that names it belongs to the rows card tla-coverage-rows-for-every-nova-sprint-module, so this card
+     lands after that one, and no row of tla/COVERAGE.tsv was added or edited here."
     :origin "this card, tla-coverage-test-in-nova-sprint-after-seatproof.w2, from the coordinator on
      2026-10-11; the gap checked at nova-sprint main 00c54ba2e: TestEveryStateMachineHasACurrentModel
      lives only in nova-tools (internal/ci/tla_coverage_class_test.go) and reads nova-tools' own

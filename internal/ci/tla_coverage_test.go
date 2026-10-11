@@ -292,27 +292,30 @@ func TestCoverageRefusesAModuleNamedTwice(t *testing.T) {
 // TestCoverageRefusesBadRows pins the eight shapes of a bad row: a missing row
 // with owed_by "-" or "", a stale or current row with the wrong owed_by, a
 // current row with no module, a code file that does not exist, a module with no
-// .tla file, and a status outside the four.
+// .tla file, and a status outside the four. Each fixture root holds only the
+// modules its row names, so the tree's own "named by no row" check cannot stand
+// in for the fault the case pins, and each case asserts the exact fault text.
 func TestCoverageRefusesBadRows(t *testing.T) {
 	cases := []struct {
 		name string
 		root []string
 		row  coverageRow
+		want string
 	}{
-		{"missing row owes no card", []string{"A"}, coverageRow{machine: "m", code: "-", module: "-", status: "missing", owedBy: "-", note: "n"}},
-		{"missing row owes empty", []string{"A"}, coverageRow{machine: "m", code: "-", module: "-", status: "missing", owedBy: "", note: "n"}},
-		{"stale row owes no card", []string{"A"}, coverageRow{machine: "m", code: "-", module: "A", status: "stale", owedBy: "-", note: "n"}},
-		{"current row owes a card", []string{"A"}, coverageRow{machine: "m", code: "-", module: "A", status: "current", owedBy: "some-card", note: "n"}},
-		{"current row names no module", []string{"A"}, coverageRow{machine: "m", code: "-", module: "-", status: "current", owedBy: "-", note: "n"}},
-		{"code file does not exist", []string{"A"}, coverageRow{machine: "m", code: "internal/nope.go", module: "A", status: "partial", owedBy: "some-card", note: "n"}},
-		{"module has no .tla", []string{"A"}, coverageRow{machine: "m", code: "-", module: "Ghost", status: "partial", owedBy: "some-card", note: "n"}},
-		{"status is not known", []string{"A"}, coverageRow{machine: "m", code: "-", module: "A", status: "done", owedBy: "some-card", note: "n"}},
+		{"missing row owes no card", nil, coverageRow{machine: "m", code: "-", module: "-", status: "missing", owedBy: "-", note: "n"}, `a missing row's owed_by "-" does not name a card`},
+		{"missing row owes empty", nil, coverageRow{machine: "m", code: "-", module: "-", status: "missing", owedBy: "", note: "n"}, `a missing row's owed_by "" does not name a card`},
+		{"stale row owes no card", []string{"A"}, coverageRow{machine: "m", code: "-", module: "A", status: "stale", owedBy: "-", note: "n"}, `a stale row's owed_by "-" does not name a card`},
+		{"current row owes a card", []string{"A"}, coverageRow{machine: "m", code: "-", module: "A", status: "current", owedBy: "some-card", note: "n"}, `a current row's owed_by is "some-card"; it must be -`},
+		{"current row names no module", nil, coverageRow{machine: "m", code: "-", module: "-", status: "current", owedBy: "-", note: "n"}, "row names no module (-)"},
+		{"code file does not exist", []string{"A"}, coverageRow{machine: "m", code: "internal/nope.go", module: "A", status: "partial", owedBy: "some-card", note: "n"}, `code file "internal/nope.go" is not a regular file`},
+		{"module has no .tla", nil, coverageRow{machine: "m", code: "-", module: "Ghost", status: "partial", owedBy: "some-card", note: "n"}, "module Ghost has no tla/Ghost.tla"},
+		{"status is not known", []string{"A"}, coverageRow{machine: "m", code: "-", module: "A", status: "done", owedBy: "some-card", note: "n"}, `status "done" is not one of current, partial, stale, missing`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			c.row.line = 1
-			problems := coverageProblems(fixtureRoot(t, c.root...), []coverageRow{c.row})
-			require.NotEmpty(t, problems, "row %+v was accepted", c.row)
+			problems := strings.Join(coverageProblems(fixtureRoot(t, c.root...), []coverageRow{c.row}), "\n")
+			require.Contains(t, problems, c.want, "row %+v did not raise its own fault", c.row)
 		})
 	}
 }
