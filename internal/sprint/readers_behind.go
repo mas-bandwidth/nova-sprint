@@ -140,8 +140,12 @@ func readersLoad(s *Snapshot) (b ReadersLag, late, full int) {
 	return b, late, full
 }
 
-// What is the judgment's line: review, the readers' reading beside their widths, and what
-// each needs.
+// What is the judgment's line: the readers' reading beside their widths, and what each
+// needs. The review count is not in it (docs/SPEC-SPRINT.md, "the readers are behind": one
+// for the sprint, updated in place every tick while it holds): review grows and shrinks
+// with cards that are no part of the readers-behind facts, so it would rewrite the text,
+// and the tick would push the same standing judgment again, on every tick that its queue
+// moved. The line changes only when the readers' own numbers do (notify, update).
 func (b ReadersLag) What() string {
 	reading, width := 0, 0
 	var parts []string
@@ -159,8 +163,8 @@ func (b ReadersLag) What() string {
 	}
 	// the window, never a wait: the text changes with the facts, not the clock, so the tick
 	// rewrites it only when the facts change (notify, update)
-	return fmt.Sprintf("the readers are behind: review %d, reads asked and not begun past %s; the readers read %d of width %d (%s)",
-		b.Review, ReadersWindow, reading, width, strings.Join(parts, "; "))
+	return fmt.Sprintf("the readers are behind: reads asked and not begun past %s; the readers read %d of width %d (%s)",
+		ReadersWindow, reading, width, strings.Join(parts, "; "))
 }
 
 // Decisions are the judgment's: reader up for each reader not up that holds reads, a
