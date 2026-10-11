@@ -6078,6 +6078,21 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   a member whose probe in the same run finds the cause in place is WARN "fixed since"),
   and **friends** (each friend's
   daemon beating, her proof, working against width and against her report, her hold and why).
+- **The doctor's refused-verb and beat-form checks** (the owner, 2026-10-11 ~18:35Z: "Run the
+  doctors. If the doctors don't catch it, update them so they do."; internal/sprint/refused_verbs.go):
+  a member whose beats the server refused is named by its cause, not only by the member-down stop.
+  From the server's own refused-verb record, keyed by epoch and never a member's log, the doctor
+  groups the refused verbs of the last 10 minutes (RefusedWindow) per member and per verb word and
+  faults **member-beat** at RefusedBeatBound (3) or more refused `fleet beat` verbs
+  (`DOCTOR FAIL member-beat <m>: N beats refused in 10m, last: <the refusal text>, argv: <what it sent> remedy=<the fix card or the adopt revert>`), before and independent of the member-down
+  stop, and **refused-verbs** at RefusedVerbBound (10) or more of any one verb word
+  (`DOCTOR FAIL refused-verbs <m>: <verb> x N in 10m, last: ...`), for every verb and not only
+  beat. And the doctor probes the form, not only the count: for each member up it runs the
+  member's installed `nova-sprint fleet beat <m> --load 0 --dry-run` through the member-env probe
+  (the path member-env already uses), and a pair whose beat forms disagree is one
+  `DOCTOR FAIL member-env <m> beat form: the installed nova-sprint <version> sends a beat the server at <version> refuses: <text>`. A version pair whose beat forms disagree is a doctor FAIL
+  at adopt time: an adopt of a build whose beat the server refuses is refused by the same check.
+  `fleet beat --dry-run` plans and writes nothing (cmd/nova-sprint).
 - **`doctor --preflight <candidate build>`** (the owner, 2026-10-11: "Also consider sprint doctor
   in this process") is the release gate's frame, run before any server switch or adopt. It runs
   the candidate's `version` and its `tick --shadow --json` against the store this doctor reads,
