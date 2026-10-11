@@ -331,4 +331,12 @@
      card at its brief's bound names brief --brief-file and the drop command, in the judgment's own text as
      a rework's refusal already said, so the coordinator runs the remedy as printed instead of guessing."
     :origin "dogfood 2026-10-10 evening: a fleet-only restart bounded several cards, and answering them took
-     four tries -- brief --tier, redo, rework, rework --group")))
+     four tries -- brief --tier, redo, rework, rework --group")
+
+   (fix "friend-card-carries-own-rules" :release "v1.2.6" :status "shipped"
+    :title "A friend card that carries its own RULES line is accepted at add"
+    :text "A friend is not a child: her card is not held for the child RULES paragraph, the rule- presence
+     checks of the card lint, when it carries its own RULES line, and a friend card with none is still
+     held to it, as a child's brief is. The step- scans hold a friend's card still: a line of it outside
+     its RULES paragraph that contradicts its carried rules is a finding under any rule set."
+    :origin "this pull request")))
