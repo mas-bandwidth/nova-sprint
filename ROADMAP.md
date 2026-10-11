@@ -9,7 +9,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
 - [The sprint machine](#the-sprint-machine) (206)
 - [Setup, release and operations](#setup-release-and-operations) (27)
-- [Docs, models and the repository](#docs-models-and-the-repository) (23)
+- [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (20)
 
 ## Lessons from Prime Agent's rewrite
@@ -2029,14 +2029,6 @@ A lease past its deadline reads as expired, may be extended once, and can escala
 Target: after v1.4
 
 From: issue #2338
-
-### The worklang parser keeps the done field of a unit
-
-Unit done reads a field the parser never keeps, so a done unit is never counted. The key is added and sibling skipped keys are checked, with a test.
-
-Target: v1.3
-
-From: issue #3499
 
 ### The reference model learns reads needed and tiers
 

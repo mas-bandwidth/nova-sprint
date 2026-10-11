@@ -388,4 +388,10 @@
     :title "One column field every reader agrees on"
     :text "Card output carries a single column field so a card's state is not confused with the state of
      its need."
-    :origin "card moved out of the sprint (work record, 2026-10-04)")))
+    :origin "card moved out of the sprint (work record, 2026-10-04)")
+
+   (fix "worklang-done-field-parsed" :release "v1.2.9" :status "planned"
+    :title "The worklang parser keeps the done field of a unit"
+    :text "Unit done reads a field the parser never keeps, so a done unit is never counted. The key is
+     added and sibling skipped keys are checked, with a test."
+    :origin "issue #3499")))
