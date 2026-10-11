@@ -22,6 +22,7 @@ func init() {
 // cmdRepair finishes the pending operation (if any) and returns rule-6 merging
 // cards to review (internal/sprint/check.go, Rule6Merging). When it can do
 // neither it refuses, naming the check that shows what is broken.
+// tla/Land.tla Repair
 func (a *app) cmdRepair(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("repair")
 	fs.BoolVar(&c.dry, "dry-run", false, "print each move repair would make and write nothing")
