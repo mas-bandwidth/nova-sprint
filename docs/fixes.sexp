@@ -117,6 +117,10 @@
     :title "tla/ReadCards.tla checked against the read cards code, first cases"
     :text "Tests and models only, no product change. tla/ReadCards.tla, which had no cfg and no CASES row and had never been checked, now does what the code does: MaxGen 2 (MaxReadGen: the plain id and .g1 and .g2), the needed count 0, 1 or 2 (ReadsNeededIn: the setting or the tier's rule), and the merging-short-of-reads return (ShortReadsBack). MCReadCards.cfg holds TypeOK, OneOpenPerReader, AtMostNeedStanding, NeverTheWorker, NeverTwiceAfterSpent, MergingOnlyOnOks and NoOpenReadOfAnOldAttempt; the reversed witness MCReadCardsBrokenIgnoreSpent.cfg (BugIgnoreSpent = TRUE) breaks NeverTwiceAfterSpent. Both cases run on a bench and pass."
     :origin "this card; v1.2.12 inventory item T15")
+   (fix "tla-holds-no-stall-liveness" :release "v1.2.12" :status "planned"
+    :title "The holds module models the no-stall rule and a card's liveness"
+    :text "Models only, no product change. tla/Holds.tla adds the no-stall rule (internal/sprint/held.go Unheld): a stop raises an open judgment on the stream (open), which the coordinator's answer (SayDid then Resume) or the tick's cross resume (TickResume) closes. NoSilentStall says every stopped stream has an open judgment or is the coordinator's hold (holder c, held.go judgment), and Progress, under fairness of the coordinator's answers and the machine's steps, says a card the coordinator does not hold eventually lands, is held, or is stopped with an open judgment (MCHoldsLive, checked in its own liveness config). The reversed witness MCHoldsBrokenSilentStop stops a stream with no judgment and fails NoSilentStall. The held card and member and the sentinel are still outside the module."
+    :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item T31")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
