@@ -1112,6 +1112,18 @@
     reversed witness, so none is added. tla/COVERAGE.tsv notes say the same, and the four groups
     (dealfill, level, retire-absent, timer) were rerun with TLC and merged into tla/RUNS.tsv."
    :origin "this card; v1.2.12 inventory item T36 (the deal/route/rules group), drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+  (fix "tla-routeindex-first-and-exclusions" :release "v1.2.12" :status "planned"
+   :title "RouteIndex models the first flag, the per-member harness draw and the field-routes exclusion"
+   :text "Models only, no product change. tla/RouteIndex.tla gains the First constant (a route with
+    first set is drawn before the others of its tier, route.go preferFirst) with the invariant
+    FirstPreferred and the reversed witness Broken \"nofirst\", which walks past the flag and fails it;
+    the per-member harness draw (the deal walks past the dealing member's MemberUnlaunch set, not one
+    global set, with NeverUnlaunchable checked per member and the harnessblind witness kept); and the
+    field-routes exclusion on a new attempt (the deal leaves out the primary's drawn routes as a redeal
+    does). The routeindex group is rerun with TLC and merged into tla/RUNS.tsv. A route that rests and
+    a provider at its concurrency budget left out of a draw, the coordinator rework's fallback draw, and
+    the read's avoid with its tier collapse are still outside the module (named in tla/COVERAGE.tsv)."
+   :origin "this card; v1.2.12 inventory item T36 (COVERAGE: routes is partial), drift read at nova-sprint main 00c54ba2e, 2026-10-11")
   (fix "tla-land-gate-ring" :release "v1.2.12" :status "planned"
    :title "The gate bench's hash ring modelled in tla/GateRing.tla"
    :text "tla/GateRing.tla models the land stage's gate-slot ring: two up benches, the start slot the

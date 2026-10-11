@@ -1,4 +1,4 @@
------------------------------ MODULE RouteIndex -----------------------------
+---------------------------- MODULE RouteIndex -----------------------------
 \* The deal's route choice (internal/sprint/route.go), written before it is
 \* built: the owner, 2026-10-01, "I want model routing to use the same uint64
 \* modulo -- all providers/models per-tier, should be an array with this same
@@ -23,13 +23,17 @@
 \*             last pick
 \*
 \* THE RULE (RouteIndexAdvancesOncePerCard, RouteFair, PinNeverAdvances,
-\* ExcludedNeverDrawn). A card of tier t that pins no model takes Arr[t] at the
-\* place ridx[t] mod Len(Arr[t]); its deal moves ridx[t] by one. A redeal leaves
-\* out the routes already taken for the card while an entry of the array is not
-\* one of them: it takes the first entry from the place that is not left out,
-\* and the index moves past every entry it skipped and the one it took. When
-\* every entry is left out the exclusion lapses and the entry at the place is
-\* taken. A pinned card bypasses the array and moves no index.
+\* ExcludedNeverDrawn, FirstPreferred). A card of tier t that pins no model
+\* takes Arr[t] at the place ridx[t] mod Len(Arr[t]); its deal moves ridx[t] by
+\* one. A route with its first flag set (First) is drawn before the others of
+\* its tier: the walk takes the first served entry whose first flag is set, and
+\* one without it only when no first entry remains drawable. A redeal leaves out
+\* the routes already taken for the card (drawn, the primary's FieldRoutes)
+\* while an entry of the array is not one of them: it takes the first entry from
+\* the place that is not left out, and the index moves past every entry it
+\* skipped and the one it took. When every entry is left out the exclusion
+\* lapses and the entry at the place is taken. A pinned card bypasses the array
+\* and moves no index.
 \*
 \* THE READS (2026-10-01, the owner: a read card carried no route and every
 \* reader loop was started by hand with its model). A read card (Reads) is
@@ -43,10 +47,11 @@
 \*
 \* THE MEMBER'S HARNESSES (fault 10, 2026-10-10: cards on heavy-opus-claude were
 \* dealt to four members that have no claude, and every
-\* launch was refused). Unlaunch is the routes the dealing member cannot launch:
+\* launch was refused). MemberUnlaunch[m] is the routes member m cannot launch:
 \* a route whose harness is headless (claude, codex, grok) that the member's
-\* control card does not name (fleet up --harnesses). The work deal and the
-\* redeal walk past such an entry as they walk past one that names no enabled
+\* control card does not name (fleet up --harnesses). The deal draws for one
+\* member's own harness set: the work deal and the redeal walk past an entry the
+\* dealing member cannot launch as they walk past one that names no enabled
 \* route: it is never taken, however the exclusion of a redeal lapses, and the
 \* index moves past it; a card whose tier has no launchable entry is not dealt
 \* to that member (it waits for one that can). A read is drawn by the ask, not
@@ -72,18 +77,21 @@
 \* tier's rotation (RouteIndexAdvancesOncePerCard fails); "harnessblind" is the
 \* deal before fault 10, drawing the entry at the place whatever the member can
 \* launch (NeverUnlaunchable fails); "judgefleet" judges over every member up, not
-\* the card's pool (StrandedIsJudged fails).
+\* the card's pool (StrandedIsJudged fails); "nofirst" is the walk that ignores
+\* the first flag (FirstPreferred fails).
 \*
 \* WHAT IS NOT MODELLED. Members, widths and the tick (DirtyTick.tla); an entry
 \* that names no enabled route (the deal skips it as it skips an excluded one,
 \* and the Go test pins it); the array changed between deals (config, read once
 \* a tick); a plan's dropped unit (round.go's rewrite, the member rule's). The
 \* cards of one tier are interchangeable (the instance's symmetry): which card
-\* takes an entry does not change what the index does.
+\* takes an entry does not change what the index does. A route that rests and a
+\* provider at its concurrency budget are left out of a draw, and the read's
+\* avoid, are not here.
 EXTENDS Integers, Sequences, FiniteSets, TLC
 
-CONSTANTS Tiers, Arr, Cards, TierOf, Pinned, Reads, MaxRedeals, Broken, Unlaunch,
-          Members, MemberUnlaunch, BenchOf, Refused
+CONSTANTS Tiers, Arr, Cards, TierOf, Pinned, Reads, MaxRedeals, Broken,
+          Members, MemberUnlaunch, BenchOf, Refused, First
 
 VARIABLES ridx, st, route, drawn, rdl, deals, skipped, hist, last, judged, tock
 
@@ -93,19 +101,6 @@ Routes == UNION {{Arr[t][k] : k \in 1..Len(Arr[t])} : t \in Tiers}
 
 \* The entry at the place of counter i in tier t's array.
 At(t, i) == Arr[t][(i % Len(Arr[t])) + 1]
-
-\* The steps a deal from counter i takes, leaving out ex: one more than the
-\* entries it passes over; 1 when every entry is left out (the exclusion lapses).
-Steps(t, i, ex) ==
-  IF \A k \in 1..Len(Arr[t]) : Arr[t][k] \in ex
-  THEN 1
-  ELSE CHOOSE s \in 1..Len(Arr[t]) :
-         /\ At(t, i + s - 1) \notin ex
-         /\ \A u \in 1..(s - 1) : At(t, i + u - 1) \in ex
-
-\* The routes a card's deal walks past whatever else: those the member cannot
-\* launch, for a work card (a read is the ask's).
-Blind(c) == IF c \in Reads THEN {} ELSE Unlaunch
 
 \* Whether tier t's array holds an entry outside ex.
 Open(t, ex) == \E k \in 1..Len(Arr[t]) : Arr[t][k] \notin ex
@@ -126,10 +121,61 @@ Stranded(c) == c \in WorkCards /\ st[c] \in {"ready", "withdrawn"} /\ Pool(c) # 
 \* The members the tick's judgment asks over (judgefleet: every member).
 JudgePool(c) == IF Broken = "judgefleet" THEN Members ELSE Pool(c)
 
-\* A pick: the card, the tier, the route, what it left out, whether an entry was
-\* not left out (the exclusion held), and the entries passed over by the rule.
-Pick(c, r, ex, by) == [c |-> c, t |-> TierOf[c], r |-> r, ex |-> ex,
-                       fresh |-> Open(TierOf[c], ex \cup Blind(c)),
+\* The routes a card's draw walks past whatever else: none for a read (the ask's),
+\* else the dealing member's unlaunchable set (the code draws for one member's
+\* harnesses, Launches; fault 10).
+Blind(c, m) == IF c \in Reads THEN {} ELSE MemberUnlaunch[m]
+
+\* The exclusion of a draw of card c to member m: the routes already taken
+\* (drawn, the primary's FieldRoutes) and m's unlaunchable set while an entry of
+\* the array is not one of them; else the unlaunchable set alone (the exclusion
+\* lapses, as when the tier has one route).
+Exclude(c, m) ==
+  LET t == TierOf[c]
+      blind == Blind(c, m)
+  IN IF Open(t, drawn[c] \cup blind) THEN drawn[c] \cup blind ELSE blind
+
+\* The steps a draw from counter i takes to the first entry of tier t's array
+\* whose first flag equals wantFirst, leaving out ex; 0 when none is.
+StepsFirst(t, i, ex, wantFirst) ==
+  LET hit(s) == /\ At(t, i + s - 1) \notin ex
+                /\ (At(t, i + s - 1) \in First) = wantFirst
+      miss(u) == At(t, i + u - 1) \in ex \/ (At(t, i + u - 1) \in First) # wantFirst
+  IN IF \E s \in 1..Len(Arr[t]) : hit(s)
+     THEN CHOOSE s \in 1..Len(Arr[t]) : hit(s) /\ \A u \in 1..(s - 1) : miss(u)
+     ELSE 0
+
+\* The steps a draw from counter i takes, leaving out ex, ignoring the first
+\* flag (the walk of a broken draw that ignores First): one more than the entries
+\* it passes over; 1 when every entry is left out (the exclusion lapses).
+Steps(t, i, ex) ==
+  IF \A k \in 1..Len(Arr[t]) : Arr[t][k] \in ex
+  THEN 1
+  ELSE CHOOSE s \in 1..Len(Arr[t]) :
+         /\ At(t, i + s - 1) \notin ex
+         /\ \A u \in 1..(s - 1) : At(t, i + u - 1) \in ex
+
+\* The steps preferFirst takes from counter i leaving out ex: the first entry
+\* whose first flag is set, else the first without it (a route with first set is
+\* drawn before the others of its tier, route.go preferFirst).
+Prefer(t, i, ex) ==
+  LET sf == StepsFirst(t, i, ex, TRUE)
+  IN IF sf > 0 THEN sf ELSE StepsFirst(t, i, ex, FALSE)
+
+\* The entry and the steps of one draw of card c to member m, by the rule
+\* (nofirst: the broken walk that ignores the first flag).
+Draw(c, m) ==
+  LET t == TierOf[c]
+      ex == Exclude(c, m)
+      s == IF Broken = "nofirst" THEN Steps(t, ridx[t], ex) ELSE Prefer(t, ridx[t], ex)
+  IN [r |-> At(t, ridx[t] + s - 1), s |-> s]
+
+\* A pick: the card, the tier, the route, the routes left out (the history), the
+\* member's unlaunchable set, whether an entry was not left out (the exclusion
+\* held), and the entries passed over by the rule.
+Pick(c, m, r, by) == [c |-> c, t |-> TierOf[c], r |-> r, ex |-> drawn[c],
+                       fresh |-> Open(TierOf[c], drawn[c] \cup Blind(c, m)),
+                       blind |-> Blind(c, m),
                        sk |-> by - 1]
 
 TypeOK ==
@@ -152,12 +198,13 @@ Init ==
   /\ deals = [t \in Tiers |-> 0]
   /\ skipped = [t \in Tiers |-> 0]
   /\ hist = [t \in Tiers |-> <<>>]
-  /\ last = [c |-> "none", t |-> "none", r |-> "none", ex |-> {}, fresh |-> FALSE, sk |-> 0]
+  /\ last = [c |-> "none", t |-> "none", r |-> "none", ex |-> {}, fresh |-> FALSE, blind |-> {}, sk |-> 0]
   /\ judged = {}
   /\ tock = FALSE
 
-\* Take route r for card c, the index moved by adv; by is the steps the rule says.
-Take(c, r, adv, by) ==
+\* Take route r for card c to member m, the index moved by adv; by is the steps
+\* the rule says.
+Take(c, m, r, adv, by) ==
   LET t == TierOf[c] IN
   /\ ridx' = [ridx EXCEPT ![t] = @ + adv]
   /\ route' = [route EXCEPT ![c] = r]
@@ -165,28 +212,32 @@ Take(c, r, adv, by) ==
   /\ deals' = [deals EXCEPT ![t] = @ + 1]
   /\ skipped' = [skipped EXCEPT ![t] = @ + (by - 1)]
   /\ hist' = [hist EXCEPT ![t] = Append(@, [r |-> r, sk |-> by > 1])]
-  /\ last' = Pick(c, r, drawn[c], by)
+  /\ last' = Pick(c, m, r, by)
 
-\* The deal of a ready card that pins no model: the entry at the place, one step,
-\* or the first from it the member can launch, the index moved past those walked.
+\* The design take of card c to member m: the entry preferFirst picks, the index
+\* moved by the steps the walk took.
+DesignTake(c, m) == LET d == Draw(c, m) IN Take(c, m, d.r, d.s, d.s)
+
+\* The deal of a ready card that pins no model, to a member of its pool: the
+\* entry at the place, one step, or the first from it the member can launch, the
+\* index moved past those walked.
 Deal(c) ==
   LET t == TierOf[c]
-      s == Steps(t, ridx[t], Blind(c))
+      dm == IF c \in Reads THEN Members ELSE Pool(c)
+      dealTo(m) ==
+        /\ Broken = "harnessblind" \/ Open(t, Blind(c, m))
+        /\ \/ Broken = "random" /\ \E k \in 1..Len(Arr[t]) : Take(c, m, Arr[t][k], 1, 1)
+           \/ Broken = "readapart" /\ c \in Reads /\ Take(c, m, At(t, ridx[t]), 0, 1)
+           \/ Broken = "harnessblind" /\ Take(c, m, At(t, ridx[t]), 1, 1)
+           \/ DesignTake(c, m)
   IN
   /\ c \notin Pinned
   /\ st[c] = "ready"
-  /\ Broken = "harnessblind" \/ Open(t, Blind(c))
   /\ c \in Reads \/ CanLaunchIn(c, Pool(c))
   /\ st' = [st EXCEPT ![c] = "dealt"]
   /\ tock' = FALSE
   /\ UNCHANGED <<rdl, judged>>
-  /\ IF Broken = "random"
-     THEN \E k \in 1..Len(Arr[t]) : Take(c, Arr[t][k], 1, 1)
-     ELSE IF Broken = "readapart" /\ c \in Reads
-     THEN Take(c, At(t, ridx[t]), 0, 1)
-     ELSE IF Broken = "harnessblind"
-     THEN Take(c, At(t, ridx[t]), 1, 1)
-     ELSE Take(c, At(t, ridx[t] + s - 1), s, s)
+  /\ \E m \in dm : dealTo(m)
 
 \* A pinned card is dealt on its pin: the array and the index untouched.
 Pin(c) ==
@@ -213,21 +264,23 @@ Withdraw(c) ==
 \* entry the member cannot launch is never taken.
 Redeal(c) ==
   LET t == TierOf[c]
-      ex == IF Open(t, drawn[c] \cup Blind(c)) THEN drawn[c] \cup Blind(c) ELSE Blind(c)
-      s == Steps(t, ridx[t], ex)
+      redealTo(m) ==
+        /\ Broken = "harnessblind" \/ Open(t, Blind(c, m))
+        /\ \/ Broken = "noadvance"
+              /\ LET s == Prefer(t, ridx[t], Exclude(c, m))
+                 IN Take(c, m, At(t, ridx[t]), 1, s)
+           \/ Broken = "harnessblind"
+              /\ LET sb == Steps(t, ridx[t], drawn[c])
+                 IN Take(c, m, At(t, ridx[t] + sb - 1), sb, sb)
+           \/ DesignTake(c, m)
   IN
   /\ st[c] = "withdrawn"
-  /\ Broken = "harnessblind" \/ Open(t, Blind(c))
   /\ CanLaunchIn(c, Pool(c))
   /\ st' = [st EXCEPT ![c] = "dealt"]
   /\ rdl' = [rdl EXCEPT ![c] = @ + 1]
   /\ tock' = FALSE
   /\ UNCHANGED judged
-  /\ IF Broken = "noadvance"
-     THEN Take(c, At(t, ridx[t]), 1, s)
-     ELSE IF Broken = "harnessblind"
-     THEN LET sb == Steps(t, ridx[t], drawn[c]) IN Take(c, At(t, ridx[t] + sb - 1), sb, sb)
-     ELSE Take(c, At(t, ridx[t] + s - 1), s, s)
+  /\ \E m \in Pool(c) : redealTo(m)
 
 \* The tick's judgment: every work card waiting to be dealt that no member of its
 \* pool can launch, the tier's one judgment (TickDeal; judgefleet: asked over every
@@ -249,7 +302,8 @@ RouteIndexAdvancesOncePerCard == \A t \in Tiers : ridx[t] = deals[t] + skipped[t
 
 \* Over any Len(Arr[t]) consecutive picks of a tier that passed over no entry,
 \* every entry of the array is taken exactly once: each route as many times as
-\* the array names it.
+\* the array names it. This holds when no route of the tier has its first flag
+\* set (a first route is always drawn before the others).
 Count(s, r) == Cardinality({j \in 1..Len(s) : s[j] = r})
 RouteFair ==
   \A t \in Tiers :
@@ -266,7 +320,19 @@ PinNeverAdvances == [][\A c \in Pinned : (st[c] = "ready" /\ st'[c] = "dealt") =
 ExcludedNeverDrawn == last.fresh => last.r \notin last.ex
 
 \* A work card is never dealt on a route its member cannot launch (fault 10).
-NeverUnlaunchable == last.c \notin Reads => last.r \notin Unlaunch
+NeverUnlaunchable == last.c \notin Reads => last.r \notin last.blind
+
+\* A draw that skipped a drawable first entry is impossible: the route taken has
+\* its first flag set, or no entry of the tier with the flag set is drawable
+\* (served and not left out).
+FirstPreferred ==
+  last.c \in Cards =>
+    LET t == last.t
+    IN last.r \in First
+       \/ ~\E k \in 1..Len(Arr[t]) :
+            /\ Arr[t][k] \in First
+            /\ Arr[t][k] \notin last.blind
+            /\ (~last.fresh \/ Arr[t][k] \notin last.ex)
 
 \* Just after a tick, every stranded card is judged (the cold reads of nova-sprint#51).
 StrandedIsJudged == tock => \A c \in Cards : Stranded(c) => c \in judged

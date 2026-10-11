@@ -209,6 +209,7 @@ func RouteTable(lines []Line, since time.Time) string {
 		}
 	}
 	tierOf := func(route string) string { return strings.SplitN(route, "-", 2)[0] }
+	// 1stT is the primary's first take on its tier, read off the routes the deal drew (tla/RouteIndex.tla, Deal).
 	firstOnTier := func(t *rtTake) bool {
 		for _, x := range byPrimary[t.primary] {
 			if x.end != "provider" && tierOf(x.u.route) == tierOf(t.u.route) && x.at.Before(t.at) {
