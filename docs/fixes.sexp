@@ -2008,4 +2008,14 @@
    :origin "this card, the-landing-gate-runs-its-classes-side-by-side.w2; the owner, 2026-10-11:
     \"What else is like serial reads, going out one at a time, when they could go out at the same
     time in || ?\" and \"log critical cards to fix all these serial things that should be
-    parallel\"; found by the seat's audit child on nova-sprint main")))
+    parallel\"; found by the seat's audit child on nova-sprint main")
+  (fix "tlc-suite-runs-independent-cases-in-parallel" :release "v1.2.15" :status "planned"
+   :title "Run independent TLC cases in a bounded parallel pool"
+   :text "RunSuite gives each selected case its own Java process, scratch and log while a bounded
+    worker pool runs independent cases concurrently. `--parallel` defaults to one quarter of the
+    bench CPUs and refuses widths above half; Makefile tlc and tlc-full pass TLC_PARALLEL when set.
+    Each result keeps its case wall time, records stay in plan order, and OnCase callbacks are
+    serialized in completion order. The shared 110 second suite deadline and budget-exhausted
+    records remain in force. The real land group passes at width one and the default width with
+    identical PASS/FAIL results."
+   :origin "this card, tlc-suite-runs-independent-cases-in-parallel.w1~17.g7, 2026-10-11")))
