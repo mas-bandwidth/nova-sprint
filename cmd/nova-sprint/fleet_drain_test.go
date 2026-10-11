@@ -7,11 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fleet up <m> --width 0 drains the member: no new deal reaches it, its untaken
-// ready cards are levelled away, and a working card finishes where it is, where
-// fleet down would deal it again (the comfort list of 2026-10-03, item 5: holding
-// a machine meant fleet down, which redeals its cards). A width is set again by
-// fleet up --width <n>.
+// fleet up <m> --width 0 drains the member: no new deal reaches it, its working
+// card finishes where it is, and its untaken ready card is levelled away only
+// onto a member with a free lane (the level never moves a card onto a member
+// with no free lane; round.levelTo, nextLane), where fleet down would deal it
+// again (the comfort list of 2026-10-03, item 5: holding a machine meant fleet
+// down, which redeals its cards). A width is set again by fleet up --width <n>.
 func TestFleetUpWidthZeroDrainsAMember(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -38,18 +39,25 @@ func TestFleetUpWidthZeroDrainsAMember(t *testing.T) {
 	assert.Contains(t, out, "MOVED m1 up width=0 (drains: no new deals, its working cards finish)")
 	ta.ok("tick")
 	ta.json("queue --as m1", &q)
-	if assert.Len(t, q.Cards, 1, "the working card stays, the untaken ready card is levelled away: %+v", q.Cards) {
-		assert.Equal(t, working, q.Cards[0].ID)
-		assert.Equal(t, "working", q.Cards[0].Col)
+	// m2 is at its width (held 4, width 4): it has no free lane, so the level
+	// moves the untaken ready card nowhere and it stays on m1 (a card moves only
+	// onto a member with a free lane; round.levelTo, nextLane).
+	assert.Len(t, q.Cards, 2, "the working card and the untaken ready card stay: m2 has no free lane: %+v", q.Cards)
+	stillWorking := false
+	for _, x := range q.Cards {
+		if x.ID == working && x.Col == "working" {
+			stillWorking = true
+		}
 	}
+	assert.True(t, stillWorking, "the working card stays on m1 and finishes where it is: %+v", q.Cards)
 	assert.Equal(t, 0, q.Width)
 	ta.json("queue --as m2", &q)
-	assert.Len(t, q.Cards, 5, "every card not working on m1 is on m2: %+v", q.Cards)
+	assert.Len(t, q.Cards, 4, "no card moved onto m2: it is at its width, so it has no free lane: %+v", q.Cards)
 
 	ta.ok("finish --as m1 " + working + "@1 --head 9f3c2e1 --report 'tests green'")
 	ta.ok("tick")
 	ta.json("queue --as m1", &q)
-	assert.Empty(t, q.Cards, "a drained member is dealt nothing")
+	assert.Len(t, q.Cards, 1, "a drained member is dealt nothing new: only its untaken ready card remains: %+v", q.Cards)
 
 	ta.ok("fleet up m1 --width 2")
 	ta.ok("tick")

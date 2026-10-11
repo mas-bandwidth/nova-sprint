@@ -105,8 +105,8 @@ func TestAMemberUpAndAMemberDownInTheSameTick(t *testing.T) {
 	h.clean("an up and a down in one tick")
 }
 
-// The level part evens every member's queue in the one tick: a member that
-// comes back to a fleet whose queues are full takes its share at once.
+// The level moves a card only off a member over its width: a fleet that comes
+// back to a member holding exactly its width takes nothing from it.
 func TestTheLevelEvensEveryQueueInOneTick(t *testing.T) {
 	t.Parallel()
 	h, ms := fleetOf(t, 8, 64)
@@ -121,8 +121,9 @@ func TestTheLevelEvensEveryQueueInOneTick(t *testing.T) {
 	h.tick(time.Second)
 	h.machine()
 	d = h.dealtTo()
-	for _, m := range ms {
-		require.Equal(t, 8, d[m], "after one tick with the fleet back: dealt %v, want eight each", d)
+	require.Equal(t, 64, d["m1"], "after one tick with the fleet back: dealt %v, m1 keeps every card (it holds exactly its width)", d)
+	for _, m := range ms[1:] {
+		require.Equal(t, 0, d[m], "after one tick with the fleet back: dealt %v, %s took nothing (nothing over a width)", d, m)
 	}
 	h.clean("the level in one tick")
 }
