@@ -305,6 +305,7 @@ func HeldToFinish(ctl *Card) bool { return ctl.F("held") != "" && ctl.F(FieldHel
 // reason, and with a hold the stream's work cards ready on members withdrawn (never
 // begun, so no redeal is spent), its working ones too with --return (docs/SPEC-SPRINT.md
 // section 11, hold).
+// tla/Holds.tla HoldStream
 func holdStream(s *Snapshot, stream string, r HoldReq) (Plan, string) {
 	var p Plan
 	ctl := s.StreamCtl(stream)
