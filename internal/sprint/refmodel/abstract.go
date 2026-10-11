@@ -85,16 +85,17 @@ func Abstract(o Observed) State {
 		}
 		a.Primaries[id] = p
 	}
-	// A primary ready or waiting whose card at its attempt field is done
-	// has that attempt behind it (a rework with no member up): its next
-	// card is the next attempt (the engine's attempt field names the last
-	// card cut).
+	// A primary ready or waiting whose card at its attempt field is done or
+	// finished has that attempt behind it (a rework with no member up): its
+	// next card is the next attempt (the engine's attempt field names the
+	// last card cut). A withdrawn card is the same attempt redealt, never
+	// the one behind it.
 	for id, p := range a.Primaries {
 		if p.State != Ready && p.State != Waiting {
 			continue
 		}
 		c := s.Fleet.Card(WC(id, p.Attempt))
-		if c != nil && c.Placed() && (c.Col == sprint.DoneOK || c.Col == sprint.DoneFailed || c.Col == sprint.DoneDefect) {
+		if c != nil && c.Placed() && (c.Col == sprint.DoneOK || c.Col == sprint.DoneFailed || c.Col == sprint.DoneDefect || c.Col == sprint.Finished) {
 			p.Attempt++
 			a.Primaries[id] = p
 		}
@@ -205,6 +206,7 @@ var types = map[string]string{
 	sprint.NSentinelReached: JReached,
 	sprint.NNoMember:        JNoMember,
 	sprint.NCannotAsk:       JCannotAsk,
+	sprint.NFewReaders:      JFewReaders,
 	sprint.NBound:           JBound,
 	sprint.NBriefWrong:      JBriefWrong,
 }

@@ -233,6 +233,18 @@ func (n *State) tickAsk(choice map[string][]string) error {
 	// in stream turns from the ask's stream index;
 	// Ask moves it past each primary's stream
 	review = n.streamTurns(review, n.AskStreamLast)
+	// Fewer than two readers up: the sprint's one judgment says so and no
+	// absent reader is asked (sprint.TickAsk, NFewReaders), as the tick's
+	// no-member judgment names the fleet.
+	j := Judgment{JFewReaders, "stream:"}
+	if len(n.Readers) < 2 && len(review) > 0 {
+		if !n.Acked[j] {
+			n.Open[j] = true
+		}
+		return nil
+	}
+	delete(n.Open, j)
+	delete(n.Acked, j)
 	// the finders' reads first (sprint.askFinders): each counted in its reader's
 	// load before the primary's own Ask places it (Reserved)
 	n.Reserved = map[string]int{}

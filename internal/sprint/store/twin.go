@@ -524,8 +524,17 @@ func (st *Store) wholeTable(ctx context.Context, tw *Twin, name string, shape nt
 // once (a fresh read reads them with its tables), and takes out the ones it
 // does not name.
 func (st *Store) showExtras(ctx context.Context, tw *Twin, s *sprint.Snapshot, load []string, extras func(*sprint.Snapshot) map[string][]string) error {
-	// The extras are named over the placed records (a fresh read names them
-	// before it reads any), which the kept ones shown do not change.
+	// The extras are named over the placed records alone (a fresh read names
+	// them before it reads any): take the kept records the last step showed
+	// off the tables first, so this read's extras name the same ids a fresh
+	// read does, then show the ones this step names again.
+	for _, table := range load {
+		t := tw.tables[table]
+		for id := range tw.shown[table] {
+			t.Drop(id)
+			delete(tw.shown[table], id)
+		}
+	}
 	want := map[string]map[string]bool{}
 	if extras != nil {
 		for table, ids := range extras(s) {
@@ -564,12 +573,6 @@ func (st *Store) showExtras(ctx context.Context, tw *Twin, s *sprint.Snapshot, l
 	}
 	for _, table := range load {
 		t := tw.tables[table]
-		for id := range tw.shown[table] {
-			if !want[table][id] {
-				t.Drop(id)
-				delete(tw.shown[table], id)
-			}
-		}
 		for id := range want[table] {
 			if c := tw.kept[table][id]; c != nil && tw.shown[table][id] != c {
 				t.Put(c)

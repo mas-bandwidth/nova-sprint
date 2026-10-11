@@ -128,24 +128,25 @@ const MaxRedeals = 3
 // StopNote) are failed, broken, reads, blocked, ci, skipped and the stopped
 // notes; the rest are the spec's (section 8 and section 14).
 const (
-	JFailed    = "failed"           // work came back failed
-	JBroken    = "broken"           // a reader found it broken
-	JReads     = "reads"            // reads exhausted
-	JStranded  = "stranded"         // stranded in review
-	JAccept    = "accept"           // ready to accept
-	JReturned  = "returned"         // returned to review
-	JBlocked   = "blocked"          // a primary is blocked on something dropped
-	JCI        = "ci"               // ci red
-	JSkipped   = "skipped"          // repair skipped changes
-	JConflict  = "stopped:conflict" // stream stopped: conflict on a card
-	JRed       = "stopped:red"      // stream stopped: stream branch red
-	JCross     = "stopped:cross"    // stream stopped: needs a card of another stream first
-	JRejected  = "stopped:rejected" // stream stopped: the merge queue rejected
-	JDone      = "done"             // the sprint is done
-	JReached   = "reached"          // sentinel reached
-	JNoMember  = "nomember"         // no fleet member is up (the tick's)
-	JCannotAsk = "cannotask"        // cannot ask (the tick's)
-	JBound     = "bound"            // a card reached its bound (the tick's)
+	JFailed     = "failed"           // work came back failed
+	JBroken     = "broken"           // a reader found it broken
+	JReads      = "reads"            // reads exhausted
+	JStranded   = "stranded"         // stranded in review
+	JAccept     = "accept"           // ready to accept
+	JReturned   = "returned"         // returned to review
+	JBlocked    = "blocked"          // a primary is blocked on something dropped
+	JCI         = "ci"               // ci red
+	JSkipped    = "skipped"          // repair skipped changes
+	JConflict   = "stopped:conflict" // stream stopped: conflict on a card
+	JRed        = "stopped:red"      // stream stopped: stream branch red
+	JCross      = "stopped:cross"    // stream stopped: needs a card of another stream first
+	JRejected   = "stopped:rejected" // stream stopped: the merge queue rejected
+	JDone       = "done"             // the sprint is done
+	JReached    = "reached"          // sentinel reached
+	JNoMember   = "nomember"         // no fleet member is up (the tick's)
+	JCannotAsk  = "cannotask"        // cannot ask (the tick's)
+	JBound      = "bound"            // a card reached its bound (the tick's)
+	JFewReaders = "fewreaders"       // fewer than two readers up (the tick's)
 )
 
 // JBriefWrong is a card at its brief's bound: the brief is wrong, not the worker (sprint's
