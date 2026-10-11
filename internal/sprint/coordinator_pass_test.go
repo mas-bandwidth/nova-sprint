@@ -419,6 +419,66 @@ func TestAnIdleUpFriendWhileCardsWaitElsewhereIsToldOnce(t *testing.T) {
 	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NFriendEmpty, ""))
 }
 
+// An empty-row episode the coordinator acknowledged stays one while the
+// conjunction holds: another card she could do changes the text a fresh
+// judgment would carry, but the acknowledged judgment's own text is the
+// episode's, so the pass writes no second judgment. The acknowledgement closes
+// when her row is not empty, and a new episode is judged past EmptyRowAfter
+// again (tla/CoordinatorPass.tla, OneJudgmentAnEpisode, Kind = "empty").
+func TestAnAckedEmptyRowIsOneEpisode(t *testing.T) {
+	t.Parallel()
+	r := newPassRig(t)
+	s := r.snap()
+	fc := s.Fleet.Card(s.Work.Card("f1-1").F("work"))
+	require.NotNil(t, fc)
+	holder, ok := sprint.FriendOfRow(fc.Row)
+	require.True(t, ok)
+	idle := map[string]string{"amy": "bob", "bob": "amy"}[holder]
+	row := sprint.FriendRow(idle)
+	empty := func() int {
+		return r.snap().Fleet.Count(row, sprint.Ready) + r.snap().Fleet.Count(row, sprint.Working)
+	}
+	require.Zero(t, empty(), "her row is empty")
+	fresh := func() { r.pongs[holder], r.pongs[idle] = r.clock(), r.clock() }
+
+	fresh()
+	r.tick(sprint.EmptyRowAfter + time.Second)
+	j := r.open(sprint.NFriendEmpty, row)
+	require.NotNil(t, j, "past EmptyRowAfter while a card she could do waits elsewhere")
+	require.Equal(t, 1, r.count(sprint.Judgment, sprint.NFriendEmpty, "friend "+idle), "told once")
+
+	// the coordinator acknowledges it; a second card she could do joins the wait
+	r.must(store.AckStep(sprint.AckReq{Notes: []string{j.ID}, Reason: "her steps are run", Who: "coordinator"}))
+	r.must(store.AddStep(sprint.AddReq{Stream: "f1", Cards: []sprint.CardAdd{{ID: "f1-2", Brief: friendsBrief("friend " + holder)}}}))
+	fresh()
+	r.tick(time.Second)
+	assert.Nil(t, r.open(sprint.NFriendEmpty, row), "an acknowledged empty row is not written again while it holds")
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NFriendEmpty, "friend "+idle), "one episode, one judgment")
+
+	// a card dealt to her fills the row: the conjunction clears and the ack closes
+	r.must(store.AddStep(sprint.AddReq{Stream: "f1", Cards: []sprint.CardAdd{{ID: "f1-3", Brief: friendsBrief("friend " + idle)}}}))
+	fresh()
+	r.tick(time.Second)
+	require.NotZero(t, empty(), "a card is dealt to her")
+	assert.Nil(t, r.open(sprint.NFriendEmpty, row), "her row is not empty: the judgment stays closed")
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NFriendEmpty, "friend "+idle))
+
+	// the card is finished and her row is empty again: a new episode is judged
+	r.startFriends()
+	s = r.snap()
+	wc := s.Fleet.Card(s.Work.Card("f1-3").F("work"))
+	require.NotNil(t, wc)
+	r.must(store.FinishStep(sprint.FinishReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: wc.Int("gen")}, Head: "abc", Who: wc.Row}))
+	require.Zero(t, empty(), "her row is empty again")
+	fresh()
+	r.tick(time.Second)
+	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NFriendEmpty, "friend "+idle), "the clock starts afresh")
+	fresh()
+	r.tick(sprint.EmptyRowAfter)
+	assert.Equal(t, 2, r.count(sprint.Judgment, sprint.NFriendEmpty, "friend "+idle), "a new episode past EmptyRowAfter")
+	assert.NotNil(t, r.open(sprint.NFriendEmpty, row), "the new judgment is open")
+}
+
 // A named pin the deal places on another friend's row is a judgment in that
 // step: why the pinned friend did not take it, and whose row holds the card.
 // The pass keeps that one note, raises it again in place, and closes it when
