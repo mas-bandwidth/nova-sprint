@@ -219,3 +219,32 @@ func TestStopDebtMachineLeaseStaysOwedWhileItOwesStopReturns(t *testing.T) {
 	require.True(t, running.Running(), "START passes once the machine stop-returns")
 	h.clean("machine lease stays owed")
 }
+
+// TestStopDebtMachineLeaseItsLiveSetNamesStaysOwed: a machine's beat that carries a
+// live set (v1.2.6, tla/LiveRuns.tla) names its jobs, so a lease its fresh live set
+// still names at the lease's generation stays owed though its stop-returns count is
+// zero, as a friend's named job does (tla/StopReturn.tla SettleByBeat, d.id \notin
+// beat); once its live set no longer names it, START settles it by the beat. Before
+// this the count alone was read, and a lease named running was returned and dealt
+// again under a live child.
+func TestStopDebtMachineLeaseItsLiveSetNamesStaysOwed(t *testing.T) {
+	t.Parallel()
+	h, row, wc := machineHoldingOneJob(t)
+	_, stopped, _, err := h.st.StopUntil(h.ctx, "operator stopped children", h.now.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, stopped.StopDebt, 1)
+	h.mu.Lock()
+	h.now = h.now.Add(time.Second)
+	h.mu.Unlock()
+	gen := max(wc.Int("gen"), 1)
+	h.liveBeat(row, sprint.LiveKey(wc.ID, gen)) // stop-returns 0, the job still named running
+	_, _, _, err = h.st.SetMachine(h.ctx, true)
+	require.ErrorContains(t, err, wc.ID, "a lease the machine's live set still names stays owed")
+	require.Equal(t, sprint.Working, h.snap().Fleet.Card(wc.ID).Col, "the named job is not returned")
+	h.liveBeat(row) // its live set names nothing now
+	_, running, _, err := h.st.SetMachine(h.ctx, true)
+	require.NoError(t, err, "START settles the lease once the live set no longer names it")
+	require.True(t, running.Running())
+	require.Equal(t, sprint.Ready, h.snap().Fleet.Card(wc.ID).Col)
+	h.clean("machine lease its live set names")
+}

@@ -271,10 +271,12 @@ func stopLeaseOwner(d StopLease) (owner string, friend bool) {
 // own stop-return receipt (tla/StopReturn.tla SettleByBeat). A friend's beat
 // names the jobs she runs (sprint.FriendBeatNamesJob): a lease whose job the
 // beat still names stays owed, and one the beat no longer names is settled. A
-// machine's beat names no job; its stop-returns count is its word how many its
-// lanes still owe (sprint.Beat.StopReturns), so a machine lease stays owed
-// while the count is above zero and is settled at zero, a reader machine's
-// readers-table lease the same. The card is returned with a recorded reason (a
+// machine's stop-returns count is its word how many its lanes still owe
+// (sprint.Beat.StopReturns), so a machine lease stays owed while the count is
+// above zero and is settled at zero, a reader machine's readers-table lease the
+// same; and a machine's beat that carries a live set names its jobs, so a fleet
+// lease its fresh live set names at the lease's generation, running or held,
+// stays owed whatever the count (sprint.LiveNamesAt). The card is returned with a recorded reason (a
 // stop-return whose after hook settles the lease off the machine record,
 // settleStopDebt). An owner that has not beaten since the STOP keeps its lease
 // owed and is reported to the seat in a judgment. It runs on START, before the
@@ -316,7 +318,13 @@ func (st *Store) settleStopDebtByBeat(ctx context.Context) error {
 				continue // the beat still names the job: it stays owed until the owner returns it
 			}
 		} else if b.StopReturns > 0 {
-			continue // a machine's beat names no job: its count above zero stays owed until it returns them
+			continue // its count above zero stays owed until it returns them
+		} else if d.Table == sprint.Fleet && sprint.LiveNamesAt(b, d.ID, d.Gen, st.now()) {
+			// a machine's beat that carries a live set (v1.2.6, tla/LiveRuns.tla) names its
+			// jobs: one it names running or held is not gone, so it stays owed as a friend's
+			// named job does; a held report is taken once the machine runs, at its generation
+			// (unsettledStopDebt), never returned and dealt again under it
+			continue
 		}
 		settle = append(settle, d)
 	}
