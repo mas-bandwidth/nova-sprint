@@ -43,13 +43,17 @@
 \*
 \* THE READS (2026-10-01, the owner: a read card carried no route and every
 \* reader loop was started by hand with its model). A read card (Reads) is
-\* drawn as a work card is, from the reader tier's array (TierOf names it: the
-\* sprint row's reader_tier in nova-config, pro by default) at the same index:
+\* drawn as a work card is, from the reader tier's array at the same index:
 \* the ask that creates it takes the entry at the place and moves the index by
-\* one, so the work deal and the reads of a tier share one rotation
-\* (RouteFair over every pick of the tier). A read is never withdrawn and dealt
-\* again: a read handed back is asked again on its own card or on a new one,
-\* each a deal of its own (internal/sprint Ask).
+\* one, so the work deal and the reads of a tier share one rotation (RouteFair
+\* over every pick of the tier). The tier is the primary's collapsed (readTierOf,
+\* ReadTier): a pro primary read on flash while pro is unrouted and flash is
+\* routed, a heavy primary on pro, a frontier primary on heavy. The routes the
+\* read of the primary returned on (Avoid[c]) are left out while another of the
+\* tier is served, as a redeal leaves out the routes already taken, and so is a
+\* resting route (Rested). A read is never withdrawn and dealt again: a read
+\* handed back is asked again on its own card or on a new one, each a deal of
+\* its own (internal/sprint Ask).
 \*
 \* THE MEMBER'S HARNESSES (fault 10, 2026-10-10: cards on heavy-opus-claude were
 \* dealt to four members that have no claude, and every
@@ -88,16 +92,18 @@
 \*
 \* WHAT IS NOT MODELLED. Members, widths and the tick (DirtyTick.tla); an entry
 \* that names no enabled route (the deal skips it as it skips an excluded one,
-\* and the Go test pins it); a resting route and a provider at its concurrency
-\* budget, which the deal skips as it skips an unserved one; the array changed
-\* between deals (config, read once a tick); a plan's dropped unit (round.go's
-\* rewrite, the member rule's). The cards of one tier are interchangeable (the
-\* instance's symmetry): which card takes an entry does not change what the
-\* index does.
+\* and the Go test pins it); a provider at its concurrency budget, which the
+\* deal skips as it skips a resting one, and the fallback that deals a
+\* coordinator's rework on a full provider anyway (route.go drawRoute's soft
+\* draw); the array changed between deals (config, read once a tick); a plan's
+\* dropped unit (round.go's rewrite, the member rule's). The cards of one tier
+\* are interchangeable (the instance's symmetry): which card takes an entry does
+\* not change what the index does.
 EXTENDS Integers, Sequences, FiniteSets, TLC
 
 CONSTANTS Tiers, Arr, Cards, TierOf, Pinned, Reads, MaxRedeals, Broken,
-          Members, MemberUnlaunch, BenchOf, Refused, First
+          Members, MemberUnlaunch, BenchOf, Refused, First, Rested, Avoid,
+          ReadTier
 
 VARIABLES ridx, st, route, drawn, rdl, deals, skipped, hist, last, judged, tock,
           memb
@@ -140,9 +146,18 @@ StepsFirst(t, i, ex) ==
 
 Steps(t, i, ex) == IF Broken = "nofirst" THEN StepsNoFirst(t, i, ex) ELSE StepsFirst(t, i, ex)
 
-\* The routes a deal of c to member m walks past whatever else: those m cannot
-\* launch, for a work card (a read is the ask's, drawn for no member).
-Blind(c, m) == IF c \in Reads THEN {} ELSE MemberUnlaunch[m]
+\* The tier a draw of c takes its array from: the primary's tier, collapsed for a
+\* read (readTierOf, ReadTier: pro to flash while pro is unrouted, heavy to pro).
+DrawTier(c) == IF c \in Reads THEN ReadTier[TierOf[c]] ELSE TierOf[c]
+
+\* The routes a draw of c walks past whatever else: those m cannot launch, for a
+\* work card (a read is the ask's, drawn for no member), and a resting route
+\* (Rested), which is skipped as an unserved one is.
+Blind(c, m) == Rested \cup (IF c \in Reads THEN {} ELSE MemberUnlaunch[m])
+
+\* The routes already taken for c that its next draw leaves out: the redeal's
+\* drawn set for a work card, the read's avoided routes (Avoid) for a read.
+LeftOut(c) == IF c \in Reads THEN Avoid[c] ELSE drawn[c]
 
 \* Whether tier t's array holds an entry outside ex.
 Open(t, ex) == \E k \in 1..Len(Arr[t]) : Arr[t][k] \notin ex
@@ -154,8 +169,9 @@ WorkCards == Cards \ (Pinned \cup Reads)
 \* staging while it is dealt again (internal/sprint dealPool).
 Pool(c) == BenchOf[c] \ (IF st[c] = "withdrawn" THEN Refused[c] ELSE {})
 
-\* Whether a member of P can launch an entry of c's tier.
-CanLaunchIn(c, P) == \E m \in P : Open(TierOf[c], MemberUnlaunch[m])
+\* Whether a member of P can launch an entry of c's tier (an entry that does not
+\* rest, and the member can launch).
+CanLaunchIn(c, P) == \E m \in P : Open(TierOf[c], MemberUnlaunch[m] \cup Rested)
 
 \* A work card waiting to be dealt that no member of its pool can launch.
 Stranded(c) == c \in WorkCards /\ st[c] \in {"ready", "withdrawn"} /\ Pool(c) # {} /\ ~CanLaunchIn(c, Pool(c))
@@ -165,8 +181,8 @@ JudgePool(c) == IF Broken = "judgefleet" THEN Members ELSE Pool(c)
 
 \* A pick: the card, the member, the tier, the route, what it left out, whether an
 \* entry was not left out (the exclusion held), and the entries passed over.
-Pick(c, r, ex, by, m) == [c |-> c, t |-> TierOf[c], r |-> r, ex |-> ex,
-                          fresh |-> Open(TierOf[c], ex \cup Blind(c, m)),
+Pick(c, r, ex, by, m) == [c |-> c, t |-> DrawTier(c), r |-> r, ex |-> ex,
+                          fresh |-> Open(DrawTier(c), ex \cup Blind(c, m)),
                           sk |-> by - 1,
                           m |-> m]
 
@@ -199,7 +215,7 @@ Init ==
 \* Take route r for card c dealt to member m, the index moved by adv; by is the
 \* steps the rule says.
 Take(c, m, r, adv, by) ==
-  LET t == TierOf[c] IN
+  LET t == DrawTier(c) IN
   /\ ridx' = [ridx EXCEPT ![t] = @ + adv]
   /\ route' = [route EXCEPT ![c] = r]
   /\ drawn' = [drawn EXCEPT ![c] = @ \cup {r}]
@@ -207,16 +223,17 @@ Take(c, m, r, adv, by) ==
   /\ skipped' = [skipped EXCEPT ![t] = @ + (by - 1)]
   /\ hist' = [hist EXCEPT ![t] = Append(@, [r |-> r, sk |-> by > 1])]
   /\ memb' = [memb EXCEPT ![c] = m]
-  /\ last' = Pick(c, r, drawn[c], by, m)
+  /\ last' = Pick(c, r, LeftOut(c), by, m)
 
 \* One deal of card c to member m (m = "none" for a read, the ask's): the entry
 \* at the place, or the first from it drawable for m, a first-set entry before
-\* the others (preferFirst); the routes already taken for the card (FieldRoutes)
-\* and those m cannot launch are left out while an entry remains.
+\* the others (preferFirst); the routes already taken for the card (FieldRoutes,
+\* or a read's avoided routes) and those m cannot launch or that rest are left out
+\* while an entry remains.
 DealTo(c, m) ==
-  LET t == TierOf[c]
+  LET t == DrawTier(c)
       b == Blind(c, m)
-      ex == IF Open(t, drawn[c] \cup b) THEN drawn[c] \cup b ELSE b
+      ex == IF Open(t, LeftOut(c) \cup b) THEN LeftOut(c) \cup b ELSE b
       s == Steps(t, ridx[t], ex)
   IN
   /\ st[c] = "ready"
@@ -263,11 +280,12 @@ Withdraw(c) ==
 \* One redeal of card c to member m: the next entry from the place that is not
 \* left out, the index moved past it and every entry skipped. The routes already
 \* taken are left out while a launchable entry is not one of them (else that
-\* exclusion lapses); an entry the member cannot launch is never taken.
+\* exclusion lapses); an entry the member cannot launch or that rests is never
+\* taken.
 RedealTo(c, m) ==
-  LET t == TierOf[c]
+  LET t == DrawTier(c)
       b == Blind(c, m)
-      ex == IF Open(t, drawn[c] \cup b) THEN drawn[c] \cup b ELSE b
+      ex == IF Open(t, LeftOut(c) \cup b) THEN LeftOut(c) \cup b ELSE b
       s == Steps(t, ridx[t], ex)
   IN
   /\ st[c] = "withdrawn"
