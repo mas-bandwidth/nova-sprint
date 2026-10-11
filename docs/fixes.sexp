@@ -215,6 +215,19 @@
     one writer; a write that fails keeps the earlier bound (the safe side) and says so on the
     server's line. Test: TestARechallengeKeepsTheHookLiveUntilItsOwnBound."
    :origin "v1.2.12 inventory 2026-10-11, section 9 row D6; code read at nova-sprint main 00c54ba")
+  (fix "brief-check-runs-the-add-checks-without-a-write" :release "v1.2.14" :status "planned"
+   :title "brief check runs every add check without a write"
+   :text "An add's refusals arrived one class at a time, so a brief writer learned of the next only after
+    fixing the last. The new read-only verb brief check runs every check add runs, in add's order, over
+    every brief, and collects every finding: the id, the size bound, shared PATHS, the card lint, the WHO,
+    base, TLA+ records, card checks, brief-base, paths-admit and sprint-base holds, then the add step's own
+    plan on one read-only snapshot. It prints one CHECK line a finding and a BRIEF CHECK files=<n>
+    findings=<m> line, --json prints the findings as one array, exits 0 with no finding, 1 with any, 2 for
+    usage or an unreadable file, and 3 when the store does not answer and the store-free checks found
+    nothing. Nothing is written and the brief decision is never asked. Tests: the twin store names two
+    findings of three briefs in one call and leaves its keys equal, the clean brief is exit 0, and a brief
+    over the size bound and a lint finding in one file are both said."
+   :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 2; the owner, 2026-10-11")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
