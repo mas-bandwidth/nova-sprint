@@ -457,7 +457,7 @@ func TestD3ARetriedFinishReturnsTheOriginal(t *testing.T) {
 	if !again.Replay || len(again.Moved) != len(first.Moved) || again.Op != first.Op {
 		require.Fail(t, fmt.Sprintf("retry: %+v, first %+v", again, first))
 	}
-	n := h.snap().Fleet.Count(m, sprint.DoneFailed)
+	n := h.snap().Fleet.Count(m, sprint.Finished)
 	require.Equal(t, 1, n, "failed counted %d times", n)
 	open, _ := h.m.OpenNotes(h.ctx)
 	require.Len(t, open, 1, "notified %d times", len(open))

@@ -29,9 +29,9 @@ import (
 
 // emptyFriends is the friends table with no friend: its header, one rule and
 // the footer, as every empty table is.
-const emptyFriends = "friends | ready | working | width | done | ok%  | status | active | tokens\n" +
-	"--------+-------+---------+-------+------+------+--------+--------+-------\n" +
-	"        |     0 |       0 |     0 |    0 | 0.0% |        |        |      0"
+const emptyFriends = "friends | ready | working | width | done | ok%  | redealt | status | active | tokens\n" +
+	"--------+-------+---------+-------+------+------+--------+--------+--------+-------\n" +
+	"        |     0 |       0 |     0 |    0 | 0.0% |      0 |        |        |      0"
 
 // friendApp is a test app with an initialised sprint whose friend sync reads the
 // friend rows of nova-config's in-memory store, each named in friends.

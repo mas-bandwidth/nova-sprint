@@ -45,6 +45,7 @@ const (
 	NStagingRefused = "a member refused a card at staging"    // dealt to another member
 	NRestWithdrawn  = "a card withdrawn from a resting route" // dealt again on one that serves
 	NFriendReturned = "a friend's card returned to ready"     // by friend reconcile: no report, and her queue says done or does not hold it
+	NFriendRedealt  = "a friend's card redealt past its deadline" // by friend redeal: work card redealt, primary back to ready
 	// The landing refused a card's head (it does not merge on the base's tip, or fails the tree
 	// gate the base passes): the card was reworked at the tip and its stream landed on
 	// (landRefused, redo.go). Addressed to the coordinator; nothing to answer.
