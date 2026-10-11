@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -226,4 +227,86 @@ func pageKeys[V any](m map[string]V) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// whereLanded is a where --json object with landed and archived_landed cards.
+func whereLanded(landed, archived int) []byte {
+	return []byte(`{"at":"2026-10-02T19:00:00Z","landed":` + itoa(landed) + `,"archived_landed":` + itoa(archived) + `,"all":100,"summary":"x","tables":{"work":{}}}`)
+}
+
+// The page's throughput is counted as the live server counts it (server.py sample_landed): where's
+// landed alone, null until ten minutes of samples, and an archive (landed falls, archived_landed
+// rises) starts the samples again, as on the live page; the pull routes keep the epoch's count,
+// which an archive does not restart.
+func TestThePageIsTheLivePageThroughput(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	landed, archived := 10, 0
+	r.next = func() ([]byte, error) { return whereLanded(landed, archived), nil }
+	page := func() (any, any) {
+		var v map[string]any
+		require.NoError(t, json.Unmarshal(get(t, r.s, "/api/sprint").Body.Bytes(), &v))
+		return v["throughput"], v["throughputMinutes"]
+	}
+	rate, minutes := page()
+	assert.Nil(t, rate, "one sample: no rate")
+	assert.InDelta(t, 0, minutes, 0)
+	r.advance(10 * time.Minute)
+	landed = 20
+	rate, minutes = page()
+	assert.InDelta(t, 60.0, rate, 0, "10 cards in 10 minutes: 60 an hour")
+	assert.InDelta(t, 10.0, minutes, 0)
+
+	// an archive: 5 landed cards move to the archived streams
+	r.advance(time.Minute)
+	landed, archived = 15, 5
+	rate, minutes = page()
+	assert.Nil(t, rate, "landed fell: the live page starts its samples again")
+	assert.InDelta(t, 0, minutes, 0)
+	assert.NotNil(t, r.pullAPI()["throughput"], "the pull routes count the epoch's landed, which did not fall")
+
+	for f, want := range map[float64]float64{0.25: 0.2, 0.75: 0.8, 2.25: 2.2, 59.96: 60.0, 1.0 / 3: 0.3} {
+		assert.InDelta(t, want, pyRound1(f), 0, "Python's round(%v, 1)", f)
+	}
+}
+
+// A puller pointed at a view that is not the page's (a pull listener's /api/sprint, its release
+// switch and fix marks) holds no copy: the read fails, saying so, and nothing of that view is
+// drawn; pointed at a page's listener it serves that page's copy as it came.
+func TestThePageIsTheLivePagePullerReadsOnlyAPage(t *testing.T) {
+	t.Parallel()
+	up := newRig(t)
+	up.next = func() ([]byte, error) { return twoReleases(8), nil }
+	up.s.Tick()
+	var mu sync.Mutex
+	serve := func(h http.Handler) *httptest.Server {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+			h.ServeHTTP(w, req)
+		}))
+		t.Cleanup(ts.Close)
+		return ts
+	}
+	pull, pageTS := serve(up.s.Pull()), serve(up.s)
+
+	p := newRig(t)
+	p.s.From = &Upstream{URL: pull.URL + "/api/sprint"}
+	p.s.Tick()
+	assert.Contains(t, p.log.String(), "the upstream dashboard answered a view that is not the page's")
+	var v map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(p.s.PageSnapshot(), &v))
+	assert.Equal(t, "false", string(v["ok"]))
+	assert.Equal(t, "null", string(v["data"]), "nothing of the pull view is drawn")
+
+	q := newRig(t)
+	q.s.From = &Upstream{URL: pageTS.URL + "/api/sprint"}
+	q.s.Tick()
+	mu.Lock()
+	var theirs map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(up.s.PageSnapshot(), &theirs))
+	mu.Unlock()
+	require.NoError(t, json.Unmarshal(q.s.PageSnapshot(), &v))
+	assert.Equal(t, "true", string(v["ok"]))
+	assert.JSONEq(t, string(theirs["data"]), string(v["data"]), "a page's copy, as it came")
 }

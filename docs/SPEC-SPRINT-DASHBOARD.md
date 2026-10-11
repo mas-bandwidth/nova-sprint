@@ -44,8 +44,10 @@ feed's two folds are made: each stream's `stream_costs` record is merged into it
 row, and each fleet row's `reads_working` and `working` gain the `reading` count of its machine's
 reader rows (`reader-<m>`, `reader-<m>-<n>`; the owner, 2026-10-11: "Remember that the reason we
 are in this mess is that you forgot to display the orange read cards."), so the orange read
-cells are lit and the lit cells number the row's working figure. A puller serves its upstream's
-copy as it came. The pull listeners' `/api/sprint` keeps its own view (the release switch and
+cells are lit and the lit cells number the row's working figure. `throughput` and
+`throughputMinutes` are counted as the reference server counts them: samples of the page copy's
+`landed` alone, started again when it falls (an archive). A puller serves its upstream's copy and
+throughput as they came, and an upstream that answers any other view is a failed read. The pull listeners' `/api/sprint` keeps its own view (the release switch and
 the fix marks) for the workers that read it. `internal/sprintdash/pageview.go` is this paragraph;
 `TestThePageIsTheLivePage*` hold it.
 

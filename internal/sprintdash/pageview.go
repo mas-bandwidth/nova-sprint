@@ -2,8 +2,10 @@ package sprintdash
 
 import (
 	"bytes"
+	"embed"
 	"encoding/json"
 	"math"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,7 +30,90 @@ import (
 // The dashboard reads where with --cards --rows --archived for its pull routes; what those
 // flags add (cards, merging, judgments, holds, lanes, rows, merge_row's oldest merging age, the
 // archived streams' rows of the work and merge tables) is taken off the page's copy, so the page is shown what the feed's plain
-// where --json shows it. A puller's copy is its upstream's page copy already, kept as it came.
+// where --json shows it. A puller's copy is its upstream's page copy already, kept as it came,
+// with its upstream's throughput; an upstream that answers any other view (a pull listener's,
+// with its release switch and fix marks) is a failed read (dashboard.go, read).
+//
+// The page's throughput is counted as the live server counts it (pageThroughput): the page
+// copy's landed alone, so an archive, which lowers it, starts the samples again, as on the live
+// page; the pull routes keep the epoch's count (dashboard.go, record).
+//
+// This file is the page: its files are embedded here, its handler (ServeHTTP) and its copy and
+// envelope are here, and the page lock (pagelock.go) holds this file with page/.
+
+// page is the page's files: the live page's own (the owner, 2026-10-11, of the page the
+// Python server serves at :7390: "this is what it is."), byte for byte: index.html, app.js,
+// the wordmark's face and its licence, and the robot tile logo at 192 and 384 px. The page
+// lock (pagelock.go) holds them: a change to any of them is red without the owner's ask.
+//
+//go:embed page/index.html page/app.js page/nunito-800.woff2 page/OFL.txt page/logo-robot-192.png page/logo-robot-384.png
+var page embed.FS
+
+// ServeHTTP answers every path the page uses; every answer is no-store.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h := w.Header()
+	h.Set("Cache-Control", "no-store, max-age=0")
+	h.Set("Pragma", "no-cache")
+	h.Set("Expires", "0")
+	switch r.URL.Path {
+	case "/", "/index.html":
+		s.send(w, "text/html; charset=utf-8", s.index())
+	case "/app.js":
+		s.send(w, "text/javascript; charset=utf-8", file("app.js"))
+	case "/nunito-800.woff2":
+		s.send(w, "font/woff2", file("nunito-800.woff2"))
+	case "/OFL.txt":
+		s.send(w, "text/plain; charset=utf-8", file("OFL.txt"))
+	case "/logo":
+		if body, err := s.logo(); err == nil {
+			s.send(w, logoType(s.Logo, body), body)
+		} else {
+			http.Error(w, "no logo", http.StatusNotFound)
+		}
+	case "/favicon.svg":
+		if vb, inner, ok := s.svgLogo(); ok {
+			s.send(w, "image/svg+xml", []byte(`<svg xmlns="`+svgNS+`" viewBox="`+vb+`" fill="currentColor">`+faviconStyle+inner+`</svg>`))
+		} else {
+			http.Error(w, "no svg logo", http.StatusNotFound)
+		}
+	case "/logo-tile-192.png", "/logo-tile-384.png":
+		// the live page's tile logo, embedded, when no --logo is given; else the --logo file
+		if s.Logo == "" {
+			s.send(w, "image/png", file(tileFile[r.URL.Path]))
+		} else if body, err := s.logo(); err == nil && !isSVG(s.Logo) {
+			s.send(w, logoType(s.Logo, body), body)
+		} else {
+			http.Error(w, "no raster logo", http.StatusNotFound)
+		}
+	case "/favicon.png", "/logo-icon.png", "/logo.webp", "/logo.png":
+		// the raster logo's routes a page or a bookmark may still name: each is the --logo file
+		if body, err := s.logo(); err == nil && !isSVG(s.Logo) {
+			s.send(w, logoType(s.Logo, body), body)
+		} else {
+			http.Error(w, "no raster logo", http.StatusNotFound)
+		}
+	case "/api/sprint":
+		// the page's envelope over the page's copy (pageview.go): every stream, no release
+		// switch, the keys the live page's server serves; a query is read by nothing
+		s.Refresh()
+		s.send(w, "application/json", s.PageSnapshot())
+	case "/events":
+		s.events(w, r, func(*sprintCopy) ([]byte, bool) { return s.PageSnapshot(), true })
+	case "/healthz":
+		s.healthz(w)
+	default:
+		http.Error(w, "not found", http.StatusNotFound)
+	}
+}
+
+// file is an embedded file of the page; every name asked for is embedded.
+func file(name string) []byte {
+	b, err := page.ReadFile("page/" + name)
+	if err != nil {
+		panic("dashboard: " + name + " is not embedded")
+	}
+	return b
+}
 
 // pageSnapshot is /api/sprint's body on the page's listeners, its keys the live server's.
 type pageSnapshot struct {
@@ -188,6 +273,59 @@ func numberText(f float64) string {
 	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
+// pageThroughput is the page's throughput, as the live server counts it (server.py
+// sample_landed): one sample of the page copy's landed (where's own, the archived streams' not
+// added) at each good read's end, kept for Window; a landed lower than the last starts the
+// samples again; the rate, cards an hour over the samples' span, is null until they span
+// MinSpan; both figures are rounded to one decimal as Python's round(x, 1) rounds them.
+type pageThroughput struct {
+	samples []sample
+	rate    *float64
+	minutes float64
+}
+
+// add samples landed at at.
+func (p *pageThroughput) add(at time.Time, landed int64) {
+	if n := len(p.samples); n > 0 && landed < p.samples[n-1].landed {
+		p.samples = p.samples[:0]
+	}
+	p.samples = append(p.samples, sample{at, landed})
+	drop := 0
+	for drop < len(p.samples) && at.Sub(p.samples[drop].at) > Window {
+		drop++
+	}
+	p.samples = p.samples[drop:]
+	span := at.Sub(p.samples[0].at)
+	p.minutes = pyRound1(span.Seconds() / 60)
+	p.rate = nil
+	if span >= MinSpan {
+		r := pyRound1(float64(landed-p.samples[0].landed) * 3600 / span.Seconds())
+		p.rate = &r
+	}
+}
+
+// pyRound1 is Python's round(f, 1): the nearest one-decimal value to f's exact binary value,
+// a tie to even.
+func pyRound1(f float64) float64 {
+	r, _ := strconv.ParseFloat(strconv.FormatFloat(f, 'f', 1, 64), 64) // ignored: FormatFloat writes a number
+	return r
+}
+
+// pageRecord keeps a good read as the page reads it (pageCopyOf) and samples its landed for the
+// page's throughput, under mu; a puller's is its upstream's page's (up), so the two pages agree.
+func (s *Server) pageRecord(body []byte, up *snapshot, end time.Time) {
+	s.page = pageCopyOf(body, up != nil, end)
+	if up != nil {
+		s.pageRate.rate, s.pageRate.minutes = up.Throughput, up.ThroughputMinutes
+		return
+	}
+	var v struct {
+		Landed json.RawMessage `json:"landed"`
+	}
+	_ = json.Unmarshal(s.page.data, &v) // ignored: a copy with no landed samples 0, as int(data.get("landed", 0))
+	s.pageRate.add(end, int64(cellNumber(v.Landed)))
+}
+
 // PageSnapshot is /api/sprint's body on the page's listeners now (pageSnapshot).
 func (s *Server) PageSnapshot() []byte {
 	build := s.Build()
@@ -195,7 +333,7 @@ func (s *Server) PageSnapshot() []byte {
 	defer s.mu.Unlock()
 	snap := pageSnapshot{
 		OK: s.snap.OK, AttemptAt: s.snap.AttemptAt, Error: s.snap.Error, ReadSeconds: s.snap.ReadSeconds,
-		MinInterval: s.Every.Seconds(), Throughput: s.snap.Throughput, ThroughputMinutes: s.snap.ThroughputMinutes, Build: build,
+		MinInterval: s.Every.Seconds(), Throughput: s.pageRate.rate, ThroughputMinutes: s.pageRate.minutes, Build: build,
 	}
 	if len(s.page.data) > 0 {
 		snap.Data, snap.FetchedAt, snap.DataAgeSeconds = s.page.data, s.page.at, s.page.age
