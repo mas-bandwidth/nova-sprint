@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
 )
 
 // LandRefusedFix is the fix of a card whose head the landing refused (landRefused): why, in
@@ -16,6 +18,39 @@ func LandRefusedFix(why string) string {
 // after (RefusalWay): two refusals the same way are the same finding, and the brief's bound
 // (AtBriefBound) stops the card at the second.
 const LandRefusedFinding = "the landing refused its head: "
+
+// FieldLandRefusedHead is the head the landing refused (landRefused), kept on the primary:
+// while it is still the primary's head, the head is not offered to accept again (an accept
+// of it queues the head the lander just refused, which it refuses again: the loop of
+// 2026-10-11, epoch 16), and reviewJudgment says what is open on it instead.
+const FieldLandRefusedHead = "land_refused_head"
+
+// LandRefusedAtHead says the landing refused the primary's current head.
+func LandRefusedAtHead(c *Card) bool {
+	h := c.F(FieldLandRefusedHead)
+	return h != "" && h == c.F("head")
+}
+
+// RoadmapLedgers are the roadmap's data and the pages generated from it: nearly every card
+// adds its entry to the data and regenerates its page, so two cards of one wave conflict
+// there for no fault of either brief (docs/fixes.sexp, land-merges-the-roadmap-data).
+var RoadmapLedgers = []string{"docs/fixes.sexp", "FIXES.md", "docs/roadmap.sexp", "ROADMAP.md"}
+
+// SharedLedger says p is a ledger every card may write and whose merge is the lander's:
+// the roadmap's data and pages (RoadmapLedgers), a class ledger (diffcheck.Ledger), an
+// AGENTS map, the keyed TLA+ tables and the tables lock (docs/SPEC-SPRINT.md section 7).
+func SharedLedger(p string) bool {
+	return slices.Contains(RoadmapLedgers, p) || diffcheck.Ledger(p) || diffcheck.AgentsMap(p) ||
+		p == "tla/CASES.tsv" || p == "tla/RUNS.tsv" || p == "internal/sprint/TABLES.lock"
+}
+
+// LedgerConflict says a landing's conflict is in shared ledgers only (paths, as the lander
+// left them unmerged; SharedLedger): the tip moved under the card in a file every card
+// writes, which is never a finding about the brief, so it never counts toward the brief's
+// bound and never marks a brief defect (landRefused).
+func LedgerConflict(paths []string) bool {
+	return len(paths) > 0 && !slices.ContainsFunc(paths, func(p string) bool { return !SharedLedger(p) })
+}
 
 // landRefused is the merge step's answer to a conflict fact on the card's own head: the
 // landing refused the head of pr, a card of the batch queued (m), one of the ways of
@@ -69,8 +104,20 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 		u.Moved = fmt.Sprintf("%s merging -> review (the landing refused its head: files outside its PATHS; off merge %s)", id, m.Col)
 		return review(j)
 	}
+	// any other way refused this head as it stands (a widen of PATHS, above, is what lets the
+	// same head through): it is never offered to accept again (reviewJudgment)
+	if h := pr.F("head"); h != "" {
+		set[FieldLandRefusedHead] = h
+	}
 	finding := LandRefusedFinding + way
-	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok {
+	// a conflict only in the shared ledgers is the tip moving under the card, never the
+	// brief: it is reworked at the tip whatever came before, and its finding is its own, so
+	// it seeds no same-refusal bound for a later file conflict either (LedgerConflict)
+	ledger := way == RefusedConflict && LedgerConflict(r.ConflictPaths)
+	if ledger {
+		finding = LandRefusedFinding + "a conflict in the shared ledgers only (" + strings.Join(r.ConflictPaths, ", ") + ")"
+	}
+	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok && !ledger {
 		j := judgment(NBriefWrong, r.Stream, s.Now, 0, id) // its decisions alone: it is the repeat
 		j.Who, j.Card, j.Attempt, j.What = r.Who, id, pr.Int("attempt"), cutText(bb.String()+"; "+refusal, MaxCardTextBytes)
 		u.Moved = fmt.Sprintf("%s merging -> review (the landing refused its head at its brief's bound; off merge %s)", id, m.Col)
