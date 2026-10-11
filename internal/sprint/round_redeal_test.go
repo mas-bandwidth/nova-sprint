@@ -109,7 +109,7 @@ func TestTheReworkAvoidsTheMemberThatFailedItWhileAnotherHasRoom(t *testing.T) {
 	for _, rework := range []reworkIt{stepRework} {
 		w := newWorld(t, "reader-a")
 		for _, m := range []string{"m1", "m2"} { // each at width 1: a room of DealAhead times it, 2 (width.go)
-			w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m, Width: 1}))
+			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 1}))
 		}
 		w.must(Add(w.s, AddReq{Stream: "s1", Count: 3}))
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})) // m1
@@ -149,7 +149,7 @@ func TestADownMembersCardsGoRoundTheFleet(t *testing.T) {
 	// fleet down (the verb, and presence's down)
 	w := newWorld(t, "reader-a")
 	for _, m := range members {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 6}))
 	for i := 1; i <= 6; i++ {
@@ -212,7 +212,7 @@ func TestTheLevelGoesRoundTheFleet(t *testing.T) {
 	// fleet level (the verb and T4)
 	w := newWorld(t, "reader-a")
 	for _, m := range members {
-		w.must(FleetStep(w.s, FleetReq{Op: "up", Member: m}))
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
 	for _, m := range members[1:] {
 		w.must(FleetStep(w.s, FleetReq{Op: "down", Member: m}))

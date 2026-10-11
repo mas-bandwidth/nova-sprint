@@ -102,8 +102,8 @@ it back.`) + "\n"
 // counts as a beat of the member, and brings it up at once when it is alive, and sets its
 // width when width is above zero, and drains it at a width of 0; level evens
 // the ready queues (fleet down is hold --return, hold.go).
-func (a *app) fleetStep(st *store.Store, op, member, who string, width int, drain bool, deadline int, deadlineOff bool, harnesses string) store.Step {
-	r := sprint.FleetReq{Op: op, Member: member, Who: who, Width: width, Drain: drain, Deadline: deadline, DeadlineOff: deadlineOff, Harnesses: harnesses}
+func (a *app) fleetStep(st *store.Store, op, member, who string, width int, drain bool, deadline int, deadlineOff bool, harnesses, probe string) store.Step {
+	r := sprint.FleetReq{Op: op, Member: member, Who: who, Width: width, Drain: drain, Deadline: deadline, DeadlineOff: deadlineOff, Harnesses: harnesses, Probe: probe}
 	switch op {
 	case "up":
 		r.Op = "release"
