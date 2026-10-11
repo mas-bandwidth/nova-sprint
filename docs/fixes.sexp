@@ -451,4 +451,14 @@
     brief refuse a card whose BASE is any other branch outside the promotion stream, exit 2, nothing
     written; the step holds the same rule against a racing write. With no base recorded, dev alone is
     refused as before, and the promotion stream keeps its mark."
-   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")))
+   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")
+
+  (fix "brief-on-a-working-card" :release "v1.2.6" :status "shipped"
+   :title "A brief replaces a working card's in place, for its next attempt"
+   :text "A card working takes a new brief in place, as one in review does (briefKept, docs/SPEC-SPRINT.md,
+    the brief verb): the brief is stored on the same card, its id, stream, score and needs kept and no
+    twin cut, and the record and the card's next attempt's why read <id> brief edited in place by <actor>
+    at attempt <n>: <what changed>, so the coordinator corrects a running card without waiting for
+    review. Only a merging or landed card keeps its brief, with what changes it instead (briefStarted).
+    The verb's help and docs/SPEC-SPRINT.md say so."
+   :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine; this card")))
