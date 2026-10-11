@@ -33,6 +33,10 @@ func (h *harness) noteWhats(typ string) []string {
 // it returns the card untouched (rate_budget.go; TestThreeRateLimitedTakesOnALimitedRouteRestNothing).
 const rateLimitLine = cardhdr.EndProvider + ": provider: class=rate-limited status=429 msg=Rate limit exceeded: free-models-per-min"
 
+// provider5xxLine is a member's report of a take the provider failed with a server error: on
+// the member's machine (pkg/member member, native). It counts toward the route's rest.
+const provider5xxLine = cardhdr.EndProvider + ": provider: class=provider-5xx status=503 msg=Service unavailable"
+
 // Three takes the provider rate limited (429) on a LIMITED route rest nothing (the owner,
 // 2026-10-11: never a route rest from rate limiting): each card is returned untouched, its
 // attempt and its redeals as they were, and dealt again.
@@ -58,10 +62,10 @@ func TestThreeRateLimitedTakesOnALimitedRouteRestNothing(t *testing.T) {
 }
 
 // A route rests only on a provider-typed failure (tla/RouteRest.tla): three takes on one route
-// the provider failed with a 429, of three cards, rest the route in the tick that sees the
-// third; the rest names the cards, no work card is drawn on it while it rests (a redeal
-// included, even when it is the tier's only route), and it ends by itself at RouteRestFor,
-// its window begun again. Two such takes in a window with ok ends rest nothing.
+// the provider failed with a server error, of three cards, rest the route in the tick that
+// sees the third; the rest names the cards, no work card is drawn on it while it rests (a
+// redeal included, even when it is the tier's only route), and it ends by itself at
+// RouteRestFor, its window begun again. Two such takes in a window with ok ends rest nothing.
 func TestARouteWhoseProviderFailsThreeTakesRests(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"))
@@ -69,15 +73,15 @@ func TestARouteWhoseProviderFailsThreeTakesRests(t *testing.T) {
 	h.startMachine()
 	h.machine()
 	for _, id := range []string{"s1-1.w1", "s1-2.w1"} {
-		h.failTake(id, rateLimitLine)
+		h.failTake(id, provider5xxLine)
 	}
 	h.machine()
-	assert.Empty(t, h.noteWhats(sprint.NRouteRested), "two 429s rest nothing")
+	assert.Empty(t, h.noteWhats(sprint.NRouteRested), "two 5xx rest nothing")
 	for _, id := range []string{"s1-1.w1", "s1-2.w1"} {
 		require.Equal(t, sprint.Ready, h.snap().Fleet.Card(id).Col, "%s is dealt again on the tier's one route", id)
 	}
 
-	h.failTake("s1-3.w1", rateLimitLine)
+	h.failTake("s1-3.w1", provider5xxLine)
 	h.machine()
 	s := h.snap()
 	rests := sprint.RouteRests([]sprint.Route{route("flash-a", "flash")}, s.Fleet)
@@ -154,7 +158,7 @@ func TestARestingRouteServesNoDealWhileAnotherServes(t *testing.T) {
 	}
 	require.Len(t, onA, 3, "the deal alternates the two routes")
 	for _, id := range onA {
-		h.failTake(id, rateLimitLine)
+		h.failTake(id, provider5xxLine)
 	}
 	h.addReady("s1", 4, briefOf("flash", ""))
 	h.machine()
@@ -208,7 +212,7 @@ func TestAHundredRoutesRestedByRule3StayUnderThePropertyCap(t *testing.T) {
 	for member, ids := range byMember {
 		h.must(TakeStep(sprint.TakeReq{As: member, Sel: sprint.Sel{IDs: ids}, Gens: gens, Who: member}))
 		h.must(FinishStep(sprint.FinishReq{As: member, Sel: sprint.Sel{IDs: ids}, Gens: gens, Failed: true,
-			Report: rateLimitLine, Usage: "wall=450.00s budget=1/1000", Who: member}))
+			Report: provider5xxLine, Usage: "wall=450.00s budget=1/1000", Who: member}))
 	}
 	h.machine()
 	s = h.snap()

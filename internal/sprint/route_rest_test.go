@@ -58,19 +58,20 @@ func TestRestsDueCountsTransientProviderFailuresNeverNoResults(t *testing.T) {
 		rest  string // the property's value before
 		cards []string
 	}{
-		{"three 429s", map[string]string{"c1": limited(1), "c2": limited(2), "c3": limited(3)}, nil, "", []string{"c1", "c2", "c3"}},
-		{"a 429, a 5xx and a timeout", map[string]string{"c1": limited(1), "c2": outage(2), "c3": slow(3)}, nil, "", []string{"c1", "c2", "c3"}},
+		{"three 5xx", map[string]string{"c1": outage(1), "c2": outage(2), "c3": outage(3)}, nil, "", []string{"c1", "c2", "c3"}},
+		{"a 5xx and a timeout", map[string]string{"c1": outage(1), "c2": slow(2), "c3": outage(3)}, nil, "", []string{"c1", "c2", "c3"}},
 		{"three no results never rest", map[string]string{"c1": noResult(1), "c2": noResult(2), "c3": noResult(3)}, nil, "", nil},
 		{"ten no results never rest", map[string]string{"c1": noResult(1), "c2": noResult(2), "c3": noResult(3), "c4": noResult(4), "c5": noResult(5), "c6": noResult(6), "c7": noResult(7), "c8": noResult(8), "c9": noResult(9), "c10": noResult(10)}, nil, "", nil},
-		{"a no result is not the provider's", map[string]string{"c1": limited(1), "c2": noResult(2), "c3": outage(3)}, nil, "", nil},
-		{"a failure of another class does not count", map[string]string{"c1": limited(1), "c2": other(2), "c3": outage(3)}, nil, "", nil},
-		{"two", map[string]string{"c1": limited(1), "c2": limited(2)}, oks(3, 5), "", nil},
-		{"three among ok ends, within ten", map[string]string{"c1": limited(1), "c2": outage(5), "c3": slow(9)}, oks(2, 3), "", []string{"c1", "c2", "c3"}},
-		{"the first slid out of the window", map[string]string{"c1": limited(1), "c2": limited(20), "c3": limited(21)}, oks(2, 9), "", nil},
-		{"ends before the last rest do not count", map[string]string{"c1": limited(1), "c2": limited(2), "c3": limited(40)}, nil, was(10, 30), nil},
-		{"resting now", map[string]string{"c1": limited(41), "c2": limited(42), "c3": limited(43)}, nil, was(40, 70), nil},
-		{"a rest ended, three after it", map[string]string{"c1": limited(31), "c2": limited(32), "c3": limited(33)}, nil, was(0, 30), []string{"c1", "c2", "c3"}},
+		{"a no result is not the provider's", map[string]string{"c1": noResult(1), "c2": noResult(2), "c3": outage(3)}, nil, "", nil},
+		{"a failure of another class does not count", map[string]string{"c1": other(1), "c2": other(2), "c3": outage(3)}, nil, "", nil},
+		{"two", map[string]string{"c1": outage(1), "c2": outage(2)}, oks(3, 5), "", nil},
+		{"three among ok ends, within ten", map[string]string{"c1": outage(1), "c2": slow(5), "c3": outage(9)}, oks(2, 3), "", []string{"c1", "c2", "c3"}},
+		{"the first slid out of the window", map[string]string{"c1": outage(1), "c2": outage(20), "c3": outage(21)}, oks(2, 9), "", nil},
+		{"ends before the last rest do not count", map[string]string{"c1": outage(1), "c2": outage(2), "c3": outage(40)}, nil, was(10, 30), nil},
+		{"resting now", map[string]string{"c1": outage(41), "c2": outage(42), "c3": outage(43)}, nil, was(40, 70), nil},
+		{"a rest ended, three after it", map[string]string{"c1": outage(31), "c2": outage(32), "c3": outage(33)}, nil, was(0, 30), []string{"c1", "c2", "c3"}},
 		{"a retired no-result rest holds nothing", map[string]string{"c1": noResult(41)}, nil, at(40) + " " + at(70) + " x,y,z", nil},
+		{"rate limit never rest", map[string]string{"c1": limited(1), "c2": limited(2), "c3": limited(3)}, nil, "", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -343,7 +344,7 @@ func TestARetiredRestKeepsItsMark(t *testing.T) {
 		return &Card{ID: id, Row: "m1", Col: DoneOK, Fields: map[string]string{FieldProviderTake + "1": take.String(), FieldRoute: "flash-glm53-openrouter", "finished": taken}}
 	}
 	limited := func(id, at string) *Card {
-		take := ProviderTake{Route: "flash-deepseek41-direct", Taken: at, Finished: at, Error: "provider: class=rate-limited status=429 msg=slow down"}
+		take := ProviderTake{Route: "flash-deepseek41-direct", Taken: at, Finished: at, Error: "provider: class=provider-5xx status=503 msg=service unavailable"}
 		return &Card{ID: id, Row: "m1", Col: Withdrawn, Fields: map[string]string{FieldProviderTake + "1": take.String()}}
 	}
 	open := "2026-10-10T01:54:32Z open - balance low on funds: provider openrouter balance $190.77"

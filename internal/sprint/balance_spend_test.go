@@ -180,9 +180,9 @@ func TestANoResultNeverRestsAndA429Does(t *testing.T) {
 			ended("c4", "flash-deepseek41-direct", 6, "no result: no RESULT.md shape"),
 			ended("c5", "flash-deepseek41-direct", 5, "no result: no RESULT.md shape"),
 		}, nil},
-		{"three 429s on the direct route", []*Card{
-			ended("c1", "flash-deepseek41-direct", 9, "provider: class=rate-limited status=429 msg=Rate limit reached"),
-			ended("c2", "flash-deepseek41-direct", 8, "provider: class=rate-limited status=429 msg=Rate limit reached"),
+		{"three 5xx on the direct route", []*Card{
+			ended("c1", "flash-deepseek41-direct", 9, "provider: class=provider-5xx status=503 msg=service unavailable"),
+			ended("c2", "flash-deepseek41-direct", 8, "provider: class=provider-5xx status=503 msg=service unavailable"),
 			ended("c3", "flash-deepseek41-direct", 7, "provider: class=provider-5xx status=502 msg=bad gateway"),
 		}, []RouteRest{{Route: "flash-deepseek41-direct", At: now, Until: now.Add(RouteRestFor), Cards: []string{"c1", "c2", "c3"}, Cause: RestProvider}}},
 	} {
@@ -203,7 +203,8 @@ func TestANoResultNeverRestsAndA429Does(t *testing.T) {
 			restWrites(&p, s, due, MachineActor)
 			require.Len(t, p.Notes, 1)
 			assert.Equal(t, NRouteRested, p.Notes[0].Type)
-			assert.Contains(t, p.Notes[0].What, "its provider failed 3 of its last 10 ended takes or fewer (a rate limit, a 5xx or a timeout: c1, c2, c3)")
+			assert.Contains(t, p.Notes[0].What, "provider failed 3 of its last 10 ended takes")
+			assert.Contains(t, p.Notes[0].What, "c1, c2, c3")
 		})
 	}
 }
