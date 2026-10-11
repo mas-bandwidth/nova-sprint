@@ -1016,6 +1016,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 	quiet := quietWhy(s, up)
 	up = notQuiet(s, up)
 	q, widths := memberLoads(s, up), memberWidths(s, up)
+	lanes := memberLanes(s, up)
 	for _, c := range chosen {
 		// its bench: the members its brief's BENCH line names, and the deal deals it to
 		// none other; with no member of it up it waits ready (bench_deal.go)
@@ -1048,7 +1049,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 				_, tier, _, _ := s.routeOf(card, nil, nil, "")
 				return "", s.unlaunchableWhy(c, tier, of, refused)
 			}
-			return rr.next(ms, q, widths, ""), roomWhy
+			return rr.nextFree(ms, q, lanes, widths, ""), roomWhy
 		}
 		if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil && wc.Col == Withdrawn {
 			if redealBound(wc) {
@@ -2927,6 +2928,7 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			Moved:   c.ID + " taken back: " + r.Member + " is " + r.Op})
 		return true
 	})
+	lanes := memberLanes(s, up)
 	withdrew := 0
 	for _, c := range cards {
 		taken := c.Col == Working
@@ -2937,7 +2939,7 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			// member at its width takes no more.
 			// a bench card goes to a member of its bench alone: with none of it up it is
 			// withdrawn, and waits ready for its bench (bench_deal.go)
-			if m := rr.next(onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c)), q, widths, ""); m != "" {
+			if m := rr.nextFree(onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c)), q, lanes, widths, ""); m != "" {
 				rr.moved(m)
 				moves[c.ID] = m
 				q[m]++
