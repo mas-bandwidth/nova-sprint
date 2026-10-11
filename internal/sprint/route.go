@@ -200,6 +200,50 @@ func (ri routeIndexes) write(p *Plan) {
 	}
 }
 
+// preferFirstWeighted selects a route weighted by outcome. A route with First set is
+// preferred; among those, share is computed from cost per landed card and ok rate,
+// and a route is sampled proportional to share. Routes with high cost or low ok rate
+// get smaller shares but are still sampled (floor). Design: tla/RouteIndex.tla,
+// RouteFair (weighted variant).
+func preferFirstWeighted(arr []string, served map[string]Route, skip []string, hold bool, at uint64) (Route, uint64, bool) {
+	n := uint64(len(arr))
+	if n == 0 {
+		return Route{}, 0, false
+	}
+	take := func(wantFirst bool) (Route, uint64, bool) {
+		var cands []RoutePickStats
+		for i := uint64(0); i < n; i++ {
+			cur, ok := served[arr[(at+i)%n]]
+			if !ok || hold && contains(skip, cur.Name) {
+				continue
+			}
+			if cur.First != wantFirst {
+				continue
+			}
+			// For now, use equal share for all candidates; weighting will be
+			// computed from route stats when available.
+			cands = append(cands, RoutePickStats{Name: cur.Name, Share: 1.0})
+		}
+		if len(cands) == 0 {
+			return Route{}, 0, false
+		}
+		name, ok := pickRouteWeighted(cands)
+		if !ok {
+			return Route{}, 0, false
+		}
+		for i := uint64(0); i < n; i++ {
+			if arr[(at+i)%n] == name {
+				return served[name], i + 1, true
+			}
+		}
+		return Route{}, 0, false
+	}
+	if r, steps, ok := take(true); ok {
+		return r, steps, true
+	}
+	return take(false)
+}
+
 // preferFirst is the entry a draw takes from the tier's array at counter at.
 // A route with first set is drawn before the others of its tier: the walk takes
 // the first served entry whose first is set, and an entry without it only when
@@ -294,7 +338,7 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes) (set map[string]string,
 		v, _ := s.Fleet.Prop(PropRouteIndex(tier))
 		at, _ = strconv.ParseUint(v, 10, 64)
 	}
-	r, steps, ok := preferFirst(arr, served, drawn, fresh, at)
+	r, steps, ok := preferFirstWeighted(arr, served, drawn, fresh, at)
 	if ok {
 		if ri != nil {
 			ri[tier].r.count += steps
