@@ -8,3 +8,4 @@
 2026-10-11 1c29f90cae6086b0aa4afa04f2ea73f7e150ebae4fdcb53c0172bcce7f1fc6f2 comment-only "privacy: the page's comments name the owner as the owner"
 2026-10-11 27346b048976877e930ce4b9cfd4549cfdd41de9115397ce6e00ef1b1beaef73 "agree that the name becomes the key, and you add a small display name. good tidy feature. pls add."
 2026-10-11 98a3bc8ca906481969097a8c14be74088abe2d7f93ba0dff7bc05d438a09bcb1 "Please add sounds to the sprint dashboard. Whenever a card lands in the tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle."
+2026-10-11 0197810f88b18e8bebfbbaaee9ec6257e85b5a47f7b2ac80bc6959f2c180f6aa "There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical."

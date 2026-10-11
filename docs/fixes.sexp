@@ -217,6 +217,38 @@
     :title "DirtyTickRead models Start, the run sequence, and the stale-run refusal"
     :text "Models only, no product change. tla/DirtyTickRead.tla gains a runseq variable and a Start action as the code has them: Stop and Start each take the fence (the generation steps), Start bumps runseq (machine_transition.go's RunSeq), and a part records the runseq it began under (tick.go's TickRunSeq) so its Commit requires it to be the current one (engine.go's StaleRun refusal). The new invariant NoStaleRunCommit holds that no part commits under a runseq other than the one current at its commit, and the reversed witness MCDirtyTickReadBrokenRunSeq (Broken \"runseq\" drops the runseq check from Commit) violates it; the four existing witnesses keep the property their rows name. The small instances drop MaxParts to two and add MaxStarts = 1 so each finishes in budget."
     :origin "this card, tla-dirtytickread-start-and-run-sequence-2.w4, 2026-10-11: v1.2.12 inventory item T9; drift read at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "the-dashboard-scrolls-smoothly-under-the-pulse-and-the-poll" :release "v1.2.12" :status "planned"
+    :title "The dashboard scrolls smoothly under a held Page Down while the sprint runs"
+    :text "The page's pulse and its per-poll layout fit no longer starve the browser's smooth scroll, and
+     the page shows exactly what it showed before. The top bar's pulse now animates opacity itself, a
+     property the compositor runs on its own thread, instead of a registered custom property --pulse,
+     which runs on the main thread and re-styled and repainted all 151 in-flight cells every frame; the
+     @property declaration and every var(--pulse) use are gone, and merging, review and working keep the
+     same 2.4 s cycle and the same negative animation-delays (0, -2.25 s, -2.1 s), with .stopped and
+     prefers-reduced-motion still stopping it. render() no longer calls fitTables() on every poll
+     (POLL_MS = 1000): the fit runs on load, on resize, and only when a panel's data-derived fit key — the
+     text each row draws (a stream's display name, its status pill and its tag line; a bud's label; a
+     provider's state and note), with every digit folded to one character so a figure that keeps its width
+     leaves it — changes, so a stable poll whose rows read the same does no width measurement at all; and a
+     compact panel keeps its class while the full form is measured on an off-screen copy that carries the
+     panel's own width, so no class toggle sits between the reads and the copy lays out what the panel
+     would. page/index.html carries @keyframes pulse { 0%, 17%, 100% { opacity: 1; } 58.5% {
+     opacity: .55; } }; page/app.js carries fitKey, shape, budKey, overflow, fitIfChanged and the
+     copy-based fitTables. The off-screen copy is measured with .folded taken off it too (the reader's
+     finding on attempt 3): a folded panel's .scroll is display:none, so its rows read zero widths and
+     could clear .compact on a live panel; the copy is made for every panel, folded or not, so an
+     originally noncompact folded panel is measured as it shows when open. And every fold or unfold
+     schedules a fresh fit after the toggle lands (page/app.js fitOnFold), so a panel measured hidden is
+     not left with a stale fit until a resize or a fit-key change.
+     New tests in internal/sprintdash/dashboard_test.go pin it: TestThePulseAnimatesOpacityOnTheCompositor
+     refuses any @keyframes that animates a custom property, or, under an infinite animation, anything but
+     opacity, transform or filter; TestRenderFitsOnlyWhenTheLayoutCanChange refuses an unconditional
+     fitTables() in render; TestTheOffscreenFitCopyKeepsThePanelWidth holds the copy to the panel's width;
+     TestTheStreamsFitKeyFollowsTheRenderedText holds the key to the rendered names, status and tags;
+     TestAStablePollDoesNotMeasureWidths holds an unchanged poll out of the fit; and
+     TestTheFitMeasuresAVisibleNaturalWidthCopy holds the copy to a visible natural form (both .compact
+     and .folded off) and the fold button to a fresh fit. No visual change."
+    :origin "this card, attempts 4 and 5 (the-dashboard-scrolls-smoothly-under-the-pulse-and-the-poll.w4/w5.g2.e17), 2026-10-11: a reader found attempt 3 measured the folded copy with .folded left on (its .scroll display:none, zero widths) and no fit on fold/unfold; attempt 5 carries that work unchanged, re-runs its tests red first against the un-fixed page, and lands this entry; the owner, 2026-10-11 ~19:35Z: \"There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical.\"")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
