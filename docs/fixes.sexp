@@ -971,6 +971,11 @@
    :text "The clash test configured user.name and user.email in its first temporary repository only; the clones it makes do not inherit that config, so their commit failed with exit 128 on a machine without a global git identity. The test now sets GIT_AUTHOR_*/GIT_COMMITTER_* for the whole test, the way the package's other git-using tests set an identity."
    :origin "this card")
 
+  (fix "live-reads-systemd-units-and-launch-daemons" :release "v1.2.11" :status "planned"
+   :title "live reads systemd units on Linux and LaunchDaemons on macOS"
+   :text "The live manifest read only ~/Library/LaunchAgents, so a Linux host refused with no agents directory and a loop installed as a system LaunchDaemon was never listed. live now reads the nova-loop-*.service systemd units of the user and system unit directories on Linux, each an interval agent when a .timer sits beside it, and, on macOS, the com.nova.* launchd daemons of /Library/LaunchDaemons too; each agent records its manager (launchd or systemd)."
+   :origin "this card")
+
   (fix "no-deal-to-a-draining-member" :release "v1.2.10" :status "shipped"
    :title "No deal to a draining member; a held or draining machine's reader is asked nothing"
    :origin "PR #84")

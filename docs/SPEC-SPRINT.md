@@ -7386,8 +7386,15 @@ with a card in hand (`nova-friend status`) and the `nova-friend install` argumen
 same agent from the installed nova-friend; a server (`nova-sprint run`) its `--listen`
 addresses. Its `processes` are every process of the host that runs a nova tool, each marked
 `holds` when it runs the bin directory's nova-sprint or its nova-swarm as a member (a bare name
-found on PATH, a link followed), and an agent whose process does so `holds` too. `--json` prints
-the manifest as one object.
+found on PATH, a link followed), and an agent whose process does so `holds` too. Three sources are
+read: the launchd agents directory (`--agents-dir`, else `NOVA_LAUNCH_AGENTS`, else
+`~/Library/LaunchAgents`, the agents-directory refusal above), the launchd daemons directory
+(`--daemons-dir`, default `/Library/LaunchDaemons`, a missing one is no daemons) with each daemon
+targeted `system/<label>` and read with `launchctl print system/<label>`, and, on Linux, the
+`nova-loop-*.service` systemd units of the user and system unit directories (`--user-units-dir`
+and `--system-units-dir`, a missing one is no loops, never a refusal), each an agent whose target
+is `user/<unit>` or `system/<unit>`, and every agent names the manager that runs it (`launchd` or
+`systemd`). `--json` prints the manifest as one object.
 
 The seat's adoption is a window, and no old server or member code ever meets the new schema or
 the new library. In order:
