@@ -2186,6 +2186,13 @@ func envFaulted(s *Snapshot, c, pr *Card, r FinishReq, cause, who string, p *Pla
 			set["held"] = stamp(s.Now)
 			set[FieldHeldBy] = HeldByEnv
 			set[FieldHeldReason] = "environment fault: " + cause
+			// the hold takes the member's status too, the way downPlan writes Down with a
+			// coordinator's hold: UpMembers then leaves the member out, so no deal or level
+			// reaches it, and presence reads it not-up and does not put its own fault hold
+			// (HeldByFault) over the environment's (tla/ProviderBudget.tla, HeldDealtNothing).
+			if ctl.F("status") != Held {
+				set["status"] = Held
+			}
 			u.Changes = append(u.Changes, change(Fleet, setEntry(ctl, set, FieldHeldFinish)))
 		} else {
 			u.Changes = append(u.Changes, change(Fleet, setEntry(ctl, set)))
@@ -2248,10 +2255,17 @@ func clearEnvFault(s *Snapshot, member string, u *Unit) {
 		return
 	}
 	unset := []string{FieldEnvFault, FieldEnvFaultReason, FieldEnvFaultAt}
+	var set map[string]string
 	if ctl.F(FieldHeldBy) == HeldByEnv {
 		unset = append(unset, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish)
+		// the environment's own hold took the member's status Held; releasing it puts the
+		// member back up, so UpMembers deals to it again (tla/ProviderBudget.tla,
+		// FaultClearsOnPush)
+		if ctl.F("status") == Held {
+			set = map[string]string{"status": Up, "since": stamp(s.Now)}
+		}
 	}
-	u.Changes = append(u.Changes, change(Fleet, setEntry(ctl, nil, unset...)))
+	u.Changes = append(u.Changes, change(Fleet, setEntry(ctl, set, unset...)))
 	sub := MemberSubject(member)
 	for _, o := range s.Open {
 		if o.Note.Type == NMemberEnvFault && o.Subject() == sub {

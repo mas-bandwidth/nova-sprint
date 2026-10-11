@@ -124,6 +124,64 @@ func TestAModelFailureDoesNotHoldTheMember(t *testing.T) {
 	assert.Empty(t, w.notesOf(NMemberEnvFault), "no environment judgment")
 }
 
+// An environment fault holds the member's STATUS, not only its held field, so the fleet's
+// up set never lists it: a level after the fault deals it no card, since level works on
+// UpMembers and the sweep sends a not-up member's cards away instead
+// (tla/ProviderBudget.tla, HeldDealtNothing).
+func TestAnEnvironmentFaultedMemberIsLevelledNoCard(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Width: 2, Probe: EnvProbePassed}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 2, Probe: EnvProbePassed}))
+	w.must(Add(w.s, AddReq{Stream: "s1", Count: 4}))
+	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 4}}))
+	var wc string
+	for _, id := range []string{"s1-1", "s1-2", "s1-3", "s1-4"} {
+		c := w.s.Work.Card(id)
+		if c == nil {
+			continue
+		}
+		if wk := w.s.Fleet.Card(c.F("work")); wk != nil && wk.Row == "m1" && wk.Col == Ready {
+			wc = c.F("work")
+			break
+		}
+	}
+	require.NotEmpty(t, wc, "m1 was dealt no ready card to fault")
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
+		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+
+	require.True(t, w.s.EnvHeld("m1"))
+	assert.Equal(t, Held, w.s.MemberCtl("m1").F("status"), "the fault holds the member's status: %v", w.s.MemberCtl("m1").Fields)
+	assert.NotContains(t, w.s.UpMembers(), "m1", "a held member is never up")
+
+	w.must(FleetStep(w.s, FleetReq{Op: "level", Who: MachineActor}))
+	assert.Zero(t, perMember(w.s)["m1"], "a level after the fault deals the held member no card")
+	assert.NotContains(t, w.s.UpMembers(), "m1")
+}
+
+// The member's own clear (its next card pushes) releases the hold it put on the member's
+// status: the fault's record and hold go, the status returns up, and the member serves
+// again (tla/ProviderBudget.tla, FaultClearsOnPush).
+func TestTheEnvironmentFaultClearReleasesTheMember(t *testing.T) {
+	t.Parallel()
+	w := envFaultWorld(t)
+	wc := w.s.Work.Card("s1-1").F("work")
+	next := w.s.Work.Card("s1-2").F("work")
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc, next}}, Gens: w.gens(wc, next)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
+		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	require.True(t, w.s.EnvHeld("m1"))
+	require.Equal(t, Held, w.s.MemberCtl("m1").F("status"), "the fault holds the status")
+	require.NotContains(t, w.s.UpMembers(), "m1")
+
+	// the member's card already in flight pushes: the clear releases the member
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{next}}, Gens: w.gens(next), Head: strings.Repeat("a", 40)}))
+	assert.False(t, w.s.EnvHeld("m1"), "the push cleared the fault")
+	assert.Equal(t, Up, w.s.MemberCtl("m1").F("status"), "the clear puts the member back up: %v", w.s.MemberCtl("m1").Fields)
+	assert.Contains(t, w.s.UpMembers(), "m1", "and it serves again")
+}
+
 // fleet up refuses a member whose last environment fault is not cleared until the member's
 // own probe passes, and accepting it clears the fault and its judgment
 // (tla/ProviderBudget.tla).

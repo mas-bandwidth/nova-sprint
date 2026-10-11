@@ -174,6 +174,12 @@ func EnvProbePatch(ctl *Card, probe string) (set map[string]string, unset []stri
 		unset = append(unset, FieldEnvFault, FieldEnvFaultReason, FieldEnvFaultAt, FieldEnvProbe)
 		if ctl != nil && ctl.F(FieldHeldBy) == HeldByEnv {
 			unset = append(unset, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish)
+			// the environment's own hold took the member's status Held; the passed probe
+			// releases it, so the member serves again (tla/ProviderBudget.tla,
+			// FleetUpRefusesUncleared)
+			if ctl.F("status") == Held {
+				set["status"] = Up
+			}
 		}
 	default:
 		set[FieldEnvProbe] = probe

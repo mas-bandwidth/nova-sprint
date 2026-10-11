@@ -208,18 +208,27 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Next)
 EnvOnlyByEnvironmentFinish ==
     [][\A m \in Members : (~held[m] /\ held[m]') => event' \in Causes]_vars
 
-\* a held member is dealt nothing
+\* a held member is dealt nothing: the card that goes ready -> working is the
+\* member the deal gave one (Deal is the only step that writes it), so the rule
+\* is asked of it alone, not of a member held while another member is dealt
+\* ("nodeal": the broken rule deals a held member one)
 HeldDealtNothing ==
-    [][\A m \in Members : (held[m] /\ event' = "deal") => FALSE]_vars
+    [][\A m \in Members : (held[m] /\ card[m] = "ready" /\ card'[m] = "working") => FALSE]_vars
 
 \* one judgment per (member, cause): it names the member's current cause, so a
 \* second, different fault is surfaced, never left as a stale remedy
 JudgmentNamesTheCause ==
     [][\A m \in Members : judged[m] => jcause[m] = env[m]]_vars
 
-\* the member's next card that pushes clears the fault by itself
+\* the member's next card that pushes clears the fault by itself: the card that
+\* becomes "pushed" is the member that pushed (Push is the only step that writes
+\* it), so the clear is asked of that member alone and not of one held at the
+\* same time; the push cause's event ("push" too) cannot fire it, since an
+\* environment finish leaves the card ready, never pushed
+\* ("nopush": the broken rule never clears it)
 FaultClearsOnPush ==
-    [][\A m \in Members : (event' = "push") => (env'[m] = "none" /\ held'[m] = FALSE)]_vars
+    [][\A m \in Members : (card[m] # "pushed" /\ card'[m] = "pushed") =>
+        (env'[m] = "none" /\ held'[m] = FALSE)]_vars
 
 \* a held member is released only by a push or a probe that passes
 FleetUpRefusesUncleared ==
@@ -227,7 +236,7 @@ FleetUpRefusesUncleared ==
 
 \* a new member is accepted only when its own probe passed (init's Boot sets it)
 NewMemberProbed ==
-    [][\A m \in Members : (~known[m] /\ known[m]') => probe[m] = "pass"]_vars
+    [][\A m \in Members : (~known[m] /\ known[m]') => probe'[m] = "pass"]_vars
 
 \* the member has a cause while it is held
 HeldHasACause ==
