@@ -339,6 +339,22 @@
     stream can admit a card based on main or dev without a sentinel card or a follow-up stream set."
    :origin "the seat ledger bug 14")
 
+   (fix "idle-cleared-says-working-only-when-it-works" :release "v1.2.14" :status "planned"
+    :title "An idle episode that ends with no width or no work says why, never working again"
+    :text "TickIdle ends an idle episode for four reasons and only one is a recovery. The fleet
+     working at half its width again (a) keeps NIdleCleared, \"working again\"; no card waits (b),
+     no width up -- every member down, held or drained (c) -- and the fleet's work switched off
+     (d) push a new happened type NIdleEnded, \"the fleet's idle episode ended\", naming the cause:
+     \"no card waits\", \"no width up: every member is down, held or drained (fleet up <member>
+     --width <n>)\", or \"the fleet's work is switched off (set --fleet on)\". Both properties are
+     cleared on every end as before. docs/SPEC-SPRINT.md section 14 says which end says what. The
+     episode machine is unchanged (AlarmOncePerEpisode, ClearFollowsAlarm), so tla/SprintRules.tla,
+     Part \"idle\", is not edited. TestAnIdleEpisodeEndedByNoWidthNeverSaysWorkingAgain (red on the
+     base), TestAnIdleEpisodeEndedByWorkSaysWorkingAgain, TestAnIdleEpisodeEndedByNoWaitingCardSaysTheCause,
+     TestAnIdleEpisodeEndedByTheFleetSwitchSaysTheCause."
+    :origin "the seat's v1.2.14 audit, 2026-10-11 (TickIdle says \"working again\" when width is 0),
+     checked against nova-sprint main 00c54ba; this card")
+
   (fix "stream-remove-removes-what-exists" :release "v1.2.6" :status "in-progress"
    :title "stream remove takes every stream that exists and names each that does not"
    :text "One name that is no row of the work or merge table no longer refuses the whole batch: stream
