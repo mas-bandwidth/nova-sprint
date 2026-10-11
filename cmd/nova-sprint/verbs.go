@@ -1791,6 +1791,17 @@ func modelLinesWhy(why string) string {
 	return "the brief's model lines: " + why + "; line 1 names `tier: flash|pro|heavy|frontier`, and a pinned card carries `model: <provider>/<model>` (with `tokens: <n>|unmetered` and `deadline: <seconds>`) under it"
 }
 
+// friendRulesHeadRE opens a RULES line, the head of the paragraph where a card carries its
+// own rules (pkg/swarm/lintchild.go's childRulesHeadRE, not exported).
+var friendRulesHeadRE = regexp.MustCompile(`(?m)^(?:#{1,6}[ \t]+)?RULES\b`)
+
+// friendOwnRules reports whether a brief is a friend's card that carries its own RULES
+// line (cardhdr.ReadWho; a friend's card, docs/SPEC-SPRINT.md section 1).
+func friendOwnRules(brief string) bool {
+	w, why := cardhdr.ReadWho(brief)
+	return why == "" && w.Friend && friendRulesHeadRE.MatchString(brief)
+}
+
 // lintBriefReads holds one brief to the card lint's child rules and to its
 // model lines: it returns the model-line why ("" when the lines read) and the
 // lint findings. The single-brief and many-brief paths both call it, so one
@@ -1805,6 +1816,18 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 		findings = swarm.LintCardChildByReference([]byte(brief), rs.rules)
 	} else {
 		findings = swarm.LintCardChildWith([]byte(brief), rs.rules)
+	}
+	if friendOwnRules(brief) {
+		// A FRIEND CARD THAT CARRIES ITS OWN RULES LINE IS ACCEPTED, not held for the child
+		// RULES paragraph: a friend is not a child, and her card carries its own rules
+		// (docs/SPEC-SPRINT.md section 1, a friend's card; rules by reference: a card that
+		// names no held file carries its own rules, as every card did before). The rule-
+		// checks are the child paragraph's presence checks (pkg/swarm/lintchild.go); the
+		// step- scans still hold her card, a line of it outside its RULES paragraph that
+		// contradicts its carried rules being a finding under any set.
+		findings = slices.DeleteFunc(findings, func(f swarm.CardHeaderFinding) bool {
+			return strings.HasPrefix(f.Check, "rule-")
+		})
 	}
 	// a tree card's steps are held too (pkg/cardtree; docs/SPEC-SPRINT.md, a card is
 	// a tree of steps): a flat brief has no such finding
