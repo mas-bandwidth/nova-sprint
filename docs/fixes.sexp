@@ -1891,6 +1891,29 @@
     PR #86 (2026-10-11), an open non-blocking finding: \"The backoff is hard to see: nova-sprint
     routes doesn't show it\"; listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md.
      Checked against main 00c54ba and PR #86's head a1c51ee.")
+  (fix "a-refused-rework-names-the-backoff" :release "v1.2.14" :status "planned"
+   :title "A refused rework or redo names the backoff, never a wait"
+   :text "A coordinator's rework or redo deals on the soft budgets (withSoftBudgets): on the soft
+    draw a full provider is dealt anyway, but a route backing off from a rate limit never is. When
+    every route of the tier backs off the draw fails and routeOf returned its waiting words
+    (\"every route of tier <t> ...: the card waits ready and is dealt when a slot frees or the
+    backoff ends\"), which Rework and Redo refuse the card with, telling the coordinator it waits
+    ready when in fact the rework did not happen and no deal resumes by itself. routeOf's full
+    branch now returns different words when the draw is soft (s.budgets != nil && s.budgets.soft):
+    every route of tier <t> that serves is backing off from a rate limit (<route> ..., until
+    <end>): a rework or redo is never dealt onto a backing-off route, so the card was not dealt;
+    give it again after that time. A deal (not soft) keeps the waiting words, since its card does
+    wait ready. Tests in internal/sprint/rate_backoff_rework_test.go:
+    TestAReworkOnABackedOffRouteIsRefusedNotToldItWaits and
+    TestARedoOnABackedOffRouteIsRefusedNotToldItWaits pin the refusal (no \"waits ready\", names the
+    backoff's end, says give it again); TestADealOnABackedOffRouteStillTellsTheCardItWaits pins the
+    deal's words; TestASoftReworkWithAFullProviderIsStillDealtOnIt pins that a soft rework with a
+    full provider and no backoff is still dealt on the full one (docs/SPEC-SPRINT.md section 5, the
+    deal; tla/RateBackoff.tla, BackoffEnds)."
+   :origin "this card, a-refused-rework-names-the-backoff (the third cold read of nova-sprint PR
+    #86, 2026-10-11): \"A refused rework or redo gets the misleading wording 'waits ready ...
+    backoff ends'\"; listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md, checked
+    against PR #86's head a1c51ee.")
   (fix "take-by-id-starts-the-card-as-a-lane-take-does" :release "v1.2.14" :status "planned"
    :title "take by id starts a friend's card as a lane take does"
    :text "The two forms of take did different things. take --as <friend> --lane <n> moved the card to
