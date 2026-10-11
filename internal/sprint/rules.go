@@ -22,7 +22,7 @@ import (
 // a brief that is wrong. Every rule can be turned off: run --answer-rules=false turns them all off, and
 // nova-config's sprint row answer_rules_off names the ones off (RulesOff). One pure function
 // decides (RuleAnswers); the tick's parts apply it (TickRules), and `rules` prints it. The
-// model is tla/SprintRules.tla (RuleAnswersBounded, LadderClimbs, WaitOnce).
+// model is tla/SprintRules.tla (RuleAttemptsBounded, LadderClimbs, WaitOnce).
 
 // The rules, by name: the names nova-config's answer_rules_off takes (config.AnswerRules).
 const (

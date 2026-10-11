@@ -1990,7 +1990,8 @@ func deadlineFailed(report string) bool {
 }
 
 // lateFinishWhy is why a late report is refused: only a LAND with its head or a HOLD (a
-// failed report that says the word) finishes a failed attempt. A FAIL, a provider failure, a
+// failed report that says the word) finishes a failed attempt (tla/SprintRules.tla AnLateLand
+// AnLateHold). A FAIL, a provider failure, a
 // take with no result, a staging refusal and a lane cap are the deadline's failure again, and
 // the very report the attempt failed on already is a retry of the finish that failed it
 // (store.TestARestartOnADumpWithoutTheResultsCannotAnswerTheRetry), not a late report.
