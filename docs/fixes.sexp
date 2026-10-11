@@ -265,8 +265,28 @@
      TestTheStreamsFitKeyFollowsTheRenderedText holds the key to the rendered names, status and tags;
      TestAStablePollDoesNotMeasureWidths holds an unchanged poll out of the fit; and
      TestTheFitMeasuresAVisibleNaturalWidthCopy holds the copy to a visible natural form (both .compact
-     and .folded off) and the fold button to a fresh fit. No visual change."
-    :origin "this card, attempts 4 through 7 (the-dashboard-scrolls-smoothly-under-the-pulse-and-the-poll.w4-w7.g2.e17), 2026-10-11: a reader found attempt 3 measured the folded copy with .folded left on (its .scroll display:none, zero widths) and no fit on fold/unfold; attempt 5 carries that work unchanged, and attempt 7 re-runs its tests red first against the un-fixed page (dashboard_test.go:391-404 and 429-432), then lands the work unchanged; the owner, 2026-10-11 ~19:35Z: \"There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical.\"")
+     and .folded off) and the fold button to a fresh fit.
+     The rest of the poll's layout work is gone too (the reader's finding on attempt 7, fixed in
+     attempt 8): moving fitTables out of the poll left other layout-forcing reads in render's path.
+     renderStreams read the landed header cell's offsetWidth after its own DOM writes, renderOverall
+     counted cells from the overall box's clientWidth, and renderTopStreams read the root font size
+     with getComputedStyle and the pie's clientWidth; each forced a synchronous layout once a
+     POLL_MS. page/app.js carries measureMetrics, which reads those widths once per layout — on load,
+     on resize (its listener registered before the renderers' resize listeners, so the cache is fresh
+     before they read it) and at the end of fitTables — and caches them, applying the streams landed
+     header's width itself; cellsThatFit takes the cached overall width, and the live read it keeps is
+     a first-render fallback only. The layout-forcing reads left in the render path are named with
+     why they must stay and their cost: fits reads scrollWidth and clientWidth so a tile can choose
+     among its shorter forms by its own live pixel width (one to three reads on the eta-at and
+     inflight-sub tiles a poll), and flash reads void t.offsetWidth to restart the 1.5 s flash
+     animation in place when the same figure changes again within its cycle (one reflow per changed
+     figure, and none at all from a poll whose values are unchanged, since every set helper returns
+     before it flashes). With no browser on the bench (bench b3 has node and no headless Chrome), no
+     requestAnimationFrame gap or long-animation-frame numbers are possible; RESULT.md says so
+     plainly, as the card allows. TestThePollReadsNoLayoutForWidths pins the cache (red first against
+     the un-fixed page: app.js carries measureMetrics()).
+     No visual change."
+    :origin "this card, attempts 4 through 8 (the-dashboard-scrolls-smoothly-under-the-pulse-and-the-poll.w4-w8.g2.e17), 2026-10-11: a reader found attempt 3 measured the folded copy with .folded left on (its .scroll display:none, zero widths) and no fit on fold/unfold; attempts 5 through 7 carry that work unchanged, attempt 7 re-runs its tests red first against the un-fixed page (dashboard_test.go:391-404 and 429-432); a reader found attempt 7 left per-poll layout-forcing reads in render's path and no browser measurement, so attempt 8 caches the widths in measureMetrics and names the reads that must stay in RESULT.md; the owner, 2026-10-11 ~19:35Z: \"There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical.\"")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
