@@ -57,6 +57,7 @@ func liveHarnessOn(t *testing.T, c *redis.Client, prefix string) *harness {
 	require.NoError(t, h.st.Init(h.ctx))
 	require.NoError(t, h.st.B.RowsAdd(h.ctx, names.Table(sprint.Readers), []string{"reader-a", "reader-b", "reader-c"}))
 	require.NoError(t, h.st.B.SetCoordinator(h.ctx, h.st.Actor))
+	h.readersTable() // the old readers table, as the unit tier's harness (store_test.go)
 	h.beat()
 	return h
 }
