@@ -270,6 +270,21 @@ ScnRefuse == [
 \* MaxReadReasks).
 MaxReasks == 2
 
+\* THE SETTLE LOOP (the owner, 2026-10-01: "sub-ticks until the consumer queue
+\* is empty, bound 32"). A producer card is a card in working or review (fix
+\* is working here: the model has one working column); its consumer is, for
+\* working, the machine up that holds its attempt, and for review, the reader
+\* up that holds its read. After the first pass and the drain of the three
+\* queues, a member that went down leaves its cards back to ready (the settle
+\* re-deal, below) and the settle loop re-deals them one sub-tick at a time
+\* until no producer card lacks its consumer and no dealable ready card is
+\* left; SettleBound caps the sub-ticks, and reaching the cap is a judgment,
+\* not a loop: the coordinator is told and the tick ends. The scenario turns
+\* the loop on (Fixes "settle"); without it a down member's cards are returned
+\* through the work queue for the next tick's pump (the 2026-09-30 shape).
+SettleBound == 32
+SettleOn == "settle" \in Fixes
+
 VARIABLES col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
           mctr, rctr, sctr, live, miss, acts, ext,
           phase, pumps, sub, addr, notes, wake, act, plc,
@@ -486,7 +501,7 @@ DealOne(S, cand) ==
 RECURSIVE Deal(_, _)
 Deal(S, cand) ==
   IF Dealable(S, cand) = {} \/ UpRoom(S) = {} THEN S
-  ELSE IF Broken = "perrow" THEN DealOne(S, cand)
+  ELSE IF Broken \in {"perrow", "onecard"} THEN DealOne(S, cand)
   ELSE Deal(DealOne(S, cand), cand)
 
 NoUpJudge(S, cand) ==
@@ -552,7 +567,8 @@ Cands(S, c) == AbleReaders(S) \ S.seen[c]
 Others(S, c) == Cands(S, c) \ {S.hb[c]}
 RECURSIVE PlaceReads(_)
 PlaceReads(S) ==
-  LET W == {c \in Cards : S.askw[c] /\ ~S.nrt[c] /\ Cands(S, c) # {}} IN
+  IF Broken = "readnext" THEN S
+  ELSE LET W == {c \in Cards : S.askw[c] /\ ~S.nrt[c] /\ Cands(S, c) # {}} IN
   IF W = {} THEN S
   ELSE LET c == Lowest(W)
            h == S.hb[c]
@@ -628,6 +644,15 @@ ReturnAll(S, cs) ==
 UnreadAll(S, cs) ==
   [S EXCEPT !.q["readers"] = @ \o [i \in 1..Cardinality(cs) |->
      E("unread", CHOOSE c \in cs : Cardinality({d \in cs : Idx(COrder, d) < Idx(COrder, c)}) = i - 1, "-")]]
+\* THE SETTLE RE-DEAL: a machine that went down leaves its cards back to ready,
+\* their take cleared and counted if it had ended, so the settle loop's sub-ticks
+\* deal them again in the same tick (the witness "noredeal" leaves them held by
+\* no one, the 2026-09-30 shape's work-queue return).
+SettleReturn(S, cs) ==
+  [S EXCEPT !.col = [c \in Cards |-> IF c \in cs THEN "ready" ELSE @[c]],
+            !.tk = [c \in Cards |-> IF c \in cs THEN FALSE ELSE @[c]],
+            !.ended = [c \in Cards |-> IF c \in cs /\ S.tk[c] THEN TRUE ELSE @[c]],
+            !.ends = [c \in Cards |-> IF c \in cs /\ S.tk[c] THEN Min(S.ends[c] + 1, MaxRedeals + 1) ELSE @[c]]]
 FleetDeals(S, m) ==
   IF Broken # "fleetdeals" THEN S
   ELSE LET D == {c \in Cards : S.col[c] = "ready"} IN
@@ -643,6 +668,13 @@ ApplyF(S, e) ==
          ELSE FleetDeals(RoomNews([S EXCEPT !.stat[m] = "up", !.noUp = FALSE], m), m)
     [] e.k = "lapse" ->
          IF S.stat[m] = "down" THEN S
+         ELSE IF SettleOn /\ Broken # "noredeal"
+         THEN \* the settle re-deal: the machine's cards back to ready, re-dealt
+              \* by the settle loop's sub-ticks in the same tick
+              LET S1 == UnreadAll(SettleReturn([S EXCEPT !.stat[m] = "down", !.mc[m] = {}, !.mr[m] = {}],
+                                                S.mc[m]), S.mr[m])
+                  S2 == IF S.mc[m] \cup S.mr[m] # {} THEN Address(S1) ELSE S1
+              IN IF \E d \in Cards : S2.askw[d] THEN Put(S2, "readers", E("room", "-", m)) ELSE S2
          ELSE LET S1 == UnreadAll(ReturnAll([S EXCEPT !.stat[m] = "down", !.mc[m] = {}, !.mr[m] = {}],
                                             S.mc[m]), S.mr[m])
                   S2 == IF S.mc[m] \cup S.mr[m] # {} THEN Address(S1) ELSE S1
@@ -657,6 +689,12 @@ ApplyF(S, e) ==
     [] e.k = "fin" ->
          IF c \notin S.mc[m] THEN S    \* a finish of a card since returned
          ELSE IF Broken = "drop" THEN RoomNews([S EXCEPT !.mc[m] = @ \ {c}, !.tk[c] = FALSE], m)
+         ELSE IF SettleOn
+         THEN \* the settle: the finished card goes to review and asks its read
+              \* now, in the same tick (ApplyW "finished" moved here), so no
+              \* producer card is left working with no holder at the tick's end
+              Put(RoomNews([S EXCEPT !.mc[m] = @ \ {c}, !.tk[c] = FALSE, !.col[c] = "review"], m),
+                  "readers", E("ask", c, "-"))
          ELSE RoomNews(Put([S EXCEPT !.mc[m] = @ \ {c}, !.tk[c] = FALSE], "work", E("finished", c, "-")), m)
     [] e.k = "readon" ->
          IF S.stat[m] = "up" THEN [S EXCEPT !.mr[m] = @ \cup {c}]
@@ -761,9 +799,43 @@ DrainWork ==
   /\ pumps' = Min(pumps + 1, 2) /\ act' = "DrainWork" /\ Step
   /\ UNCHANGED <<live, miss, acts, ext, phase, wake, always>>
 
+\* THE SETTLE LOOP's sub-tick (the owner, 2026-10-01): with "settle" on, one
+\* sub-tick re-deals one ready card whose tier a free slot serves, in the same
+\* tick, until no such card is left (the witness "onecard" deals one card at
+\* the pump; "settleonce" cuts the loop after one sub-tick).
+\* A ready card whose tier a free slot serves now (the deal would place it):
+\* the settle loop is not done while one remains.
+DealableNow ==
+  {c \in Cards : col[c] = "ready" /\ (c \in Served) /\ ~AtRB(Cur, c)
+                 /\ \E m \in Machines : stat[m] = "up" /\ Room(Cur, m) > 0}
+Settle ==
+  /\ SettleOn
+  /\ phase = "drain"
+  /\ DealableNow # {}
+  /\ Commit(DealOne(Cur, Cards))
+  /\ act' = "Settle" /\ Step
+  /\ UNCHANGED <<live, miss, acts, ext, phase, pumps, wake, always>>
+
+\* THE SETTLE BOUND REACHED (the owner, 2026-10-01): the settle loop has run
+\* SettleBound sub-ticks without emptying the consumer queue; that is a
+\* judgment, not a loop: the coordinator is told and the tick ends, leaving the
+\* stuck work to the next tick.
+SettleOver ==
+  /\ SettleOn
+  /\ phase = "drain"
+  /\ sub >= SettleBound
+  /\ /\ \E t \in Three : Q[t] # <<>>
+     \/ DealableNow # {}
+  /\ addr' = Min(addr + 1, 3) /\ notes' = Min(notes + 1, 2) /\ wake' = Min(addr + 1, 3)
+  /\ phase' = "idle" /\ act' = "SettleOver" /\ plc' = <<>>
+  /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
+                 mctr, rctr, sctr, live, miss, acts, ext, pumps, sub,
+                 brk, dealt, always, CardVars>>
+
 TickEnd ==
   /\ phase = "drain"
-  /\ Broken = "defer" \/ \A t \in Three : Q[t] = <<>>
+  /\ Broken = "defer" \/ (/\ \A t \in Three : Q[t] = <<>>
+                          /\ (SettleOn => DealableNow = {} \/ Broken = "settleonce"))
   /\ IF addr > 0 \/ Broken = "always"
      THEN notes' = Min(notes + 1, 2) /\ wake' = addr
      ELSE UNCHANGED <<notes, wake>>
@@ -905,7 +977,7 @@ Init ==
   /\ back = [t \in Tiers |-> FALSE] /\ fbk = [c \in Cards |-> {}]
   /\ rwk = [c \in Cards |-> 0] /\ rb = [c \in Cards |-> 0]
 
-TickNext == TickStart \/ PumpWork \/ DrainWork \/ TickEnd \/
+TickNext == TickStart \/ PumpWork \/ DrainWork \/ Settle \/ SettleOver \/ TickEnd \/
             \E t \in Three : Pass(t) \/ Drain(t)
 OutsideNext ==
   \/ \E c \in Cards : Add(c) \/ Merge(c) \/ \E v \in {"ok", "broken"} : Report(c, v)
@@ -955,6 +1027,25 @@ WorkQueueDrainedOnlyByPump ==
                           /\ SubSeq(Q'["work"], 1, Len(Q["work"])) = Q["work"]]_vars
 \* The tick ends only with the three queues empty.
 ThreeQueuesEmptyAtTickEnd == [][act' = "TickEnd" => \A t \in Three : Q'[t] = <<>>]_vars
+
+\* CONSUMERS OUT (the owner, 2026-10-01: "after the tick, ALL producer cards
+\* should have consumer cards out. No exceptions."). At the tick's end, after
+\* the settle loop, every producer card has its consumer out, and every ready
+\* card whose needs have landed (it is released) and whose tier a free slot
+\* serves is dealt in that same tick. A producer card is a card in working or
+\* review; its consumer is, for working, the machine up that holds its attempt,
+\* and for review, the reader up that holds its read (reads-needed is one: the
+\* model has one read per attempt). Checked at TickEnd (act' = "TickEnd"), not
+\* at SettleOver: reaching the settle bound is a judgment, the coordinator told,
+\* so the stuck work is its own exception.
+ConsumersOut ==
+  [][act' = "TickEnd" =>
+       /\ \A c \in Cards :
+            /\ col'[c] = "working" => \E m \in Machines : c \in mc'[m] /\ stat'[m] = "up"
+            /\ col'[c] = "review" => rd'[c] # NoR /\ stat'[rd'[c]] = "up"
+       /\ ~\E c \in Cards :
+            col'[c] = "ready" /\ (c \in Served) /\ ~(ended'[c] /\ rdl'[c] >= MaxRedeals)
+            /\ \E m \in Machines : stat'[m] = "up" /\ Width[m] > Cardinality(mc'[m]) + Cardinality(mr'[m])]_vars
 
 \* NOTHING LOST: every entry is applied exactly once. Stated as conservation:
 \* each card's token is in exactly one place, a table row or an entry on

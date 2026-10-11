@@ -1122,7 +1122,24 @@
   (fix "every-producer-card-has-its-consumer-out-after-the-tick" :release "v1.2.14" :status "planned"
    :title "Every producer card has its consumer out after the tick"
    :text "Adds ConsumersOut check at the end of every tick to assert that every producer card (working, fix, review) has its consumer out: an attempt held by an up member/friend for working/fix, or reads asked by up readers for review. Violations are reported as quiet judgments. Also reduces MaxSettle from 64 to 32 as per the owner's design, and changes settle bound handling to push a judgment instead of erroring the tick."
-   :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17; card every-producer-card-has-its-consumer-out-after-the-tick.w1")
+    :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17; card every-producer-card-has-its-consumer-out-after-the-tick.w1")
+  (fix "tla-dirtytick-consumers-out-at-the-tick-end" :release "v1.2.14" :status "planned"
+   :title "DirtyTick gains ConsumersOut and a settle loop bounded at 32"
+   :text "The TLA+ model beside every-producer-card-has-its-consumer-out-after-the-tick. DirtyTick.tla gains
+    ConsumersOut, checked at each tick's end (act' = TickEnd): every producer card (working or review; fix
+    is working, the model has one working column) has its consumer out -- a working card is held by a
+    machine up, a review card's read by a reader up (reads-needed is one) -- and no ready card whose needs
+    have landed and whose tier a free slot serves is left undealt in that tick. The settle loop, the owner's
+    design of 2026-10-01 (sub-ticks until the consumer queue is empty, bound 32), is modelled behind Fixes
+    \"settle\": a member that goes down leaves its cards back to ready and the settle loop re-deals them one
+    sub-tick at a time in the same tick, and a finish moves a card to review and asks its read in the same
+    tick, so no producer is left without its consumer at the tick's end; SettleBound is 32 and reaching it
+    is a judgment (SettleOver), not a loop. MCDirtyTickConsumers.tla and .cfg (width 2) hold the control, and
+    four reversed witnesses fail it: a deal of one card per tick (onecard), a settle loop cut after one
+    sub-tick (settleonce), a read asked in the next tick instead of this one (readnext), and a member-down
+    whose attempts are not re-dealt (noredeal)."
+   :origin "this card: tla-dirtytick-consumers-out-at-the-tick-end-2.w6, from the owner on epoch 17,
+    2026-10-11 (~10:40-11:00 AM ET)")
   (fix "ready-over-reads-the-settled-rests" :release "v1.2.14" :status "planned"
    :title "The ready-over judgment reads the deal's settled rests"
    :text "A ready card whose tier is served only by a route resting at the tick's now raises the ready-over
