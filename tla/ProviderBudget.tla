@@ -208,26 +208,29 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Next)
 EnvOnlyByEnvironmentFinish ==
     [][\A m \in Members : (~held[m] /\ held[m]') => event' \in Causes]_vars
 
-\* a held member is dealt nothing
+\* a held member is dealt nothing: its card never moves ready to working while
+\* it is held (the deal names the member by the card it moves, not by event)
 HeldDealtNothing ==
-    [][\A m \in Members : (held[m] /\ event' = "deal") => FALSE]_vars
+    [][\A m \in Members : (held[m] /\ card[m] = "ready" /\ card'[m] = "working") => FALSE]_vars
 
 \* one judgment per (member, cause): it names the member's current cause, so a
 \* second, different fault is surfaced, never left as a stale remedy
 JudgmentNamesTheCause ==
     [][\A m \in Members : judged[m] => jcause[m] = env[m]]_vars
 
-\* the member's next card that pushes clears the fault by itself
+\* the member's next card that pushes clears the fault by itself (the push names
+\* the member by its card, so a push-refusal cause of the same word is not a push)
 FaultClearsOnPush ==
-    [][\A m \in Members : (event' = "push") => (env'[m] = "none" /\ held'[m] = FALSE)]_vars
+    [][\A m \in Members : (card'[m] = "pushed") => (env'[m] = "none" /\ held'[m] = FALSE)]_vars
 
 \* a held member is released only by a push or a probe that passes
 FleetUpRefusesUncleared ==
     [][\A m \in Members : (held[m] /\ ~held[m]' /\ event' # "push") => event' = "probe-pass"]_vars
 
-\* a new member is accepted only when its own probe passed (init's Boot sets it)
+\* a new member is accepted only when its own probe passed (init's Boot sets probe'
+\* and known' together, so the property reads the primed probe)
 NewMemberProbed ==
-    [][\A m \in Members : (~known[m] /\ known[m]') => probe[m] = "pass"]_vars
+    [][\A m \in Members : (~known[m] /\ known[m]') => probe'[m] = "pass"]_vars
 
 \* the member has a cause while it is held
 HeldHasACause ==

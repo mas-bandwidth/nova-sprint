@@ -2186,6 +2186,9 @@ func envFaulted(s *Snapshot, c, pr *Card, r FinishReq, cause, who string, p *Pla
 			set["held"] = stamp(s.Now)
 			set[FieldHeldBy] = HeldByEnv
 			set[FieldHeldReason] = "environment fault: " + cause
+			// the member's status reads held, the way downPlan marks the other holds, so
+			// UpMembers leaves it out and presence leaves it alone (tla/ProviderBudget.tla)
+			set["status"], set["since"] = Held, stamp(s.Now)
 			u.Changes = append(u.Changes, change(Fleet, setEntry(ctl, set, FieldHeldFinish)))
 		} else {
 			u.Changes = append(u.Changes, change(Fleet, setEntry(ctl, set)))
@@ -2248,10 +2251,14 @@ func clearEnvFault(s *Snapshot, member string, u *Unit) {
 		return
 	}
 	unset := []string{FieldEnvFault, FieldEnvFaultReason, FieldEnvFaultAt}
+	set := map[string]string{}
 	if ctl.F(FieldHeldBy) == HeldByEnv {
 		unset = append(unset, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish)
+		// the fault's own hold set the member's status held: its clear restores up, so the
+		// member is served again (tla/ProviderBudget.tla)
+		set["status"], set["since"] = Up, stamp(s.Now)
 	}
-	u.Changes = append(u.Changes, change(Fleet, setEntry(ctl, nil, unset...)))
+	u.Changes = append(u.Changes, change(Fleet, setEntry(ctl, set, unset...)))
 	sub := MemberSubject(member)
 	for _, o := range s.Open {
 		if o.Note.Type == NMemberEnvFault && o.Subject() == sub {
@@ -2550,7 +2557,7 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			if envCleared {
 				// the passed probe clears the member's last environment fault with its hold
 				// (balance.go, EnvProbePatch; the environment's analogue of a payment)
-				pset, punset := EnvProbePatch(ctl, r.Probe)
+				pset, punset := EnvProbePatch(ctl, r.Probe, s.Now)
 				maps.Copy(set, pset)
 				unset = append(unset, punset...)
 			}

@@ -165,8 +165,9 @@ func Balance(s *Snapshot, r BalanceReq) Plan {
 // A passed probe clears only the machine's OWN environment hold (ctl marked HeldByEnv): a
 // coordinator's hold, the machine's fault hold (HeldByFault) and the sync's carry another
 // mark (or none), and their hold, reason and finish marker are left to them, so a person's
-// hold stays until a person lifts it.
-func EnvProbePatch(ctl *Card, probe string) (set map[string]string, unset []string) {
+// hold stays until a person lifts it. That own hold set the member's status held, so the
+// pass restores up at now (tla/ProviderBudget.tla).
+func EnvProbePatch(ctl *Card, probe string, now time.Time) (set map[string]string, unset []string) {
 	set = map[string]string{}
 	switch {
 	case probe == "":
@@ -174,6 +175,7 @@ func EnvProbePatch(ctl *Card, probe string) (set map[string]string, unset []stri
 		unset = append(unset, FieldEnvFault, FieldEnvFaultReason, FieldEnvFaultAt, FieldEnvProbe)
 		if ctl != nil && ctl.F(FieldHeldBy) == HeldByEnv {
 			unset = append(unset, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish)
+			set["status"], set["since"] = Up, stamp(now)
 		}
 	default:
 		set[FieldEnvProbe] = probe

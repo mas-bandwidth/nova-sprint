@@ -271,18 +271,77 @@ func TestAnEnvironmentFaultRecordsBesideACoordinatorsHold(t *testing.T) {
 func TestAPassedProbeClearsOnlyTheEnvironmentHold(t *testing.T) {
 	t.Parallel()
 	coord := &Card{Fields: map[string]string{"held": "then", FieldHeldReason: "looking"}}
-	_, unset := EnvProbePatch(coord, EnvProbePassed)
+	_, unset := EnvProbePatch(coord, EnvProbePassed, t0)
 	assert.Contains(t, unset, FieldEnvFault, "the fault's record goes")
 	assert.NotContains(t, unset, "held", "a coordinator's hold is not the probe's to clear")
 	assert.NotContains(t, unset, FieldHeldReason)
 
 	env := &Card{Fields: map[string]string{"held": "then", FieldHeldBy: HeldByEnv, FieldHeldReason: "environment fault: push"}}
-	_, unset = EnvProbePatch(env, EnvProbePassed)
+	set, unset := EnvProbePatch(env, EnvProbePassed, t0)
 	assert.Contains(t, unset, "held", "the machine's own environment hold goes with the fault")
 	assert.Contains(t, unset, FieldHeldBy)
+	assert.Equal(t, Up, set["status"], "the passed probe restores the member up")
 
 	failed := &Card{Fields: map[string]string{FieldHeldBy: HeldByEnv}}
-	set, unset := EnvProbePatch(failed, "no push credential")
+	set, unset = EnvProbePatch(failed, "no push credential", t0)
 	assert.Equal(t, "no push credential", set[FieldEnvProbe], "a failed probe is recorded")
 	assert.Empty(t, unset, "nothing clears on a failed probe")
+}
+
+// An environment fault writes the member's status held, the way downPlan marks the other
+// holds, so UpMembers leaves it out and the tick's level sends no ready card to it: the
+// member stays held and is dealt nothing (tla/ProviderBudget.tla).
+func TestALevelAfterAnEnvironmentFaultDealsNothingToThatMember(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	for _, m := range []string{"m1", "m2"} {
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 1}))
+	}
+	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 2}}))
+	ready := w.s.Fleet.Cell("m1", Ready)
+	require.NotEmpty(t, ready, "m1 has a ready card to fail at push")
+	wc := ready[0].ID
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
+		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	require.True(t, w.s.EnvHeld("m1"))
+	assert.Equal(t, Held, w.s.MemberCtl("m1").F("status"), "the fault writes the member's status held")
+	assert.NotContains(t, w.s.UpMembers(), "m1", "a held member is not up")
+	// m2 holds two ready cards over its width: a level would send one to m1 were m1 up
+	putWorkCard(w, "extra", "m2", Ready, 9, nil)
+	p := FleetStep(w.s, FleetReq{Op: "level"})
+	w.must(p)
+	assert.Empty(t, w.s.Fleet.Cell("m1", Ready), "the level dealt the held member a card")
+	assert.Empty(t, w.s.Fleet.Cell("m1", Working), "the held member holds no card")
+}
+
+// The clear of an environment fault releases the member: the fault writes the member's
+// status held, and its own clear -- its next card pushing, or fleet up with the passed
+// probe -- restores up, so the member is served again (tla/ProviderBudget.tla).
+func TestTheEnvironmentFaultsClearReleasesTheMemberUp(t *testing.T) {
+	t.Parallel()
+	// the member's next card pushes: the fault and its hold go, the member is up again
+	w := envFaultWorld(t)
+	wc := w.s.Work.Card("s1-1").F("work")
+	next := w.s.Work.Card("s1-2").F("work")
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc, next}}, Gens: w.gens(wc, next)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
+		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	require.Equal(t, Held, w.s.MemberCtl("m1").F("status"), "the fault holds the member")
+	require.NotContains(t, w.s.UpMembers(), "m1")
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{next}}, Gens: w.gens(next), Head: strings.Repeat("a", 40)}))
+	assert.Equal(t, Up, w.s.MemberCtl("m1").F("status"), "the push restored the member up")
+	assert.Contains(t, w.s.UpMembers(), "m1")
+
+	// fleet up with the passed probe releases it the same way
+	w = envFaultWorld(t)
+	wc = w.s.Work.Card("s1-1").F("work")
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true,
+		Report: "push refused: fatal: could not read Username for 'https://github.com': terminal prompts disabled"}))
+	require.Equal(t, Held, w.s.MemberCtl("m1").F("status"))
+	w.must(FleetStep(w.s, FleetReq{Op: "release", Member: "m1", Probe: EnvProbePassed}))
+	assert.Equal(t, Up, w.s.MemberCtl("m1").F("status"), "the passed probe restored the member up")
+	assert.Contains(t, w.s.UpMembers(), "m1")
 }
