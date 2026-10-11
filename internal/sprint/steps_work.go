@@ -2551,6 +2551,10 @@ type FleetReq struct {
 	// card stays on it after the hold's redeal (memberKeeps): the sync's
 	// removal of a member with no machine row.
 	Remove bool `json:",omitempty"`
+	// Rebalance, with level, runs the rebalance after the level (rebalance.go): the
+	// hand verb (fleet level) reports what the tick would move, reads included; the
+	// tick's level part does not, the rebalance is its own part after the deal.
+	Rebalance bool `json:",omitempty"`
 	// Reason, with hold, is the coordinator's reason, kept on the control card
 	// (FieldHeldReason) beside its held status (hold.go).
 	Reason string `json:",omitempty"`
@@ -2829,6 +2833,20 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 		// (drain.go): up is the members that do not drain
 		drainReturns(s, &p, r.Who)
 		level(s, &p, up, rr, moves, held)
+		// the rebalance is the level's read and full-unit pass (rebalance.go): the hand
+		// verb levels the members and rebalances the reads and the cards off full units
+		// alike, so what the tick would move is what the verb reports (the owner,
+		// 2026-10-11: "This should NOT be manual."). The tick's level part does not run it:
+		// the rebalance is its own part after the deal (TickRebalance).
+		if r.Rebalance {
+			rp := Rebalance(s, nil, r.Who)
+			p.Units = append(p.Units, rp.Units...)
+			p.Rows = append(p.Rows, rp.Rows...)
+			p.Props = append(p.Props, rp.Props...)
+			p.Notes = append(p.Notes, rp.Notes...)
+			p.Refused = append(p.Refused, rp.Refused...)
+			p.Said = append(p.Said, rp.Said...)
+		}
 	case "quiet":
 		return quietPlan(s, r)
 	case "sync":

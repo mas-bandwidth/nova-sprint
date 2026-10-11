@@ -1,0 +1,17 @@
+# go vet ./cmd/nova-sprint ./internal/sprint
+# exit 0 (no findings)
+
+# the card's STEP 4 gate names ./pkg/release/ ./cmd/nova-update/; this repo has no cmd/nova-update
+# (cmds: nova-sprint, nova-card, nova-work), so that path fails [setup failed] regardless of this change.
+$ go test -count=1 -timeout 600s ./pkg/release/ ./cmd/nova-update/
+?   	github.com/mas-bandwidth/nova-sprint/pkg/release	[no test files]
+FAIL	./cmd/nova-update [setup failed]  (stat .../cmd/nova-update: directory not found)
+
+# the tier gate actually run (this bench, nice -n 19, -count=1 -timeout 600s, GOFLAGS=-mod=readonly, NOVA_TEST_NO_HOST=1):
+$ go test -count=1 -timeout 600s ./internal/sprint/
+ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint	22.293s
+
+$ go test -count=1 -timeout 600s ./cmd/nova-sprint/
+--- FAIL: TestTheTwinSocketFitsAUnixSocketPath (0.00s)
+    backup_out_test.go:225: the throwaway redis-server's socket path is 334 bytes over the 100-byte Unix-socket limit (mkdir /tmp/nsb...: permission denied; the wall denies /tmp); set TMPDIR to a shorter directory
+FAIL (26.6s)  # environmental; backup_out_test.go is unchanged by this work
