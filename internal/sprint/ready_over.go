@@ -196,6 +196,7 @@ func readyOverConds(s *Snapshot, r TickReq) []cond {
 // part runs on the end part's own snapshot (TickDeadlines, steps_tick.go), which never
 // settles it itself. The judgment is the ready-over part, docs/SPEC-SPRINT.md section 8
 // (Notifications).
+// tla/ReadyOver.tla Raise
 func TickReadyOver(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	s, _ = s.withRests()
