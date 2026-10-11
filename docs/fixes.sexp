@@ -1020,6 +1020,16 @@
     on the snapshot the conditions are counted on, so the route the judgment names as resting is exactly one
     the deal does not draw; a rest whose time has ended is not named and the card is dealt."
    :origin "card ready-over-reads-the-settled-rests.w2; the seat's v1.2.14 audit, 2026-10-11")
+  (fix "ready-over-key-ignores-the-balance-amount" :release "v1.2.14" :status "planned"
+   :title "The ready-over judgment is keyed on the cause, never its figures"
+   :text "The ready-over judgment is one per (reason, tier), keyed by the reason the deal leaves the card
+    (condKey's NReadyOver case, readyOverWhy). The reason names figures that move while the cause stands --
+    a route's balance (out of budget (balance $x)) and a rest's end (resting until <stamp>) -- so as the
+    balance moved the key changed, notify closed the old judgment and wrote a second one: one cause, a second
+    push, and the coordinator's wait on the first lost. readyOverWhy now takes each moving figure out of the
+    key before keying, while the What keeps it, so the judgment is rewritten in place with the latest figures
+    and pushed once."
+   :origin "the coordinator, 2026-10-11 (v1.2.14 defect ready-over-key-ignores-the-balance-amount); checked against nova-sprint main 00c54ba")
   (fix "tick-watchdog-refuses-a-negative-deadline" :release "v1.2.14" :status "planned"
    :title "run refuses a negative --tick-deadline"
    :text "A negative --tick-deadline is refused right after the flags are parsed, through run's usual refuse helper, before the loop starts or a server listens; the refusal names the flag, the value and that 0 waits for ever. Before, tickDeadlineOf returned 0 for any least <= 0 and tickWithin waited for ever when d <= 0, so --tick-deadline -1s switched the watchdog off with nothing said. 0 still waits for ever and every positive value behaves as today."

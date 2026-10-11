@@ -4792,7 +4792,11 @@ internal/sprint/ready_over.go, the ready-over part `TickReadyOver` of TickDeadli
 reason names the tier and each route of it that serves no card and why (disabled, resting
 until paid, resting until woken, resting until its time, out of budget) with the remedy verb
 (routes wake, funded, fleet up, release), so cards that share a cause are one judgment, never
-one per card; it clears itself the tick the card is dealt. The rests it names are the deal's
+one per card; the key is the cause without its figures (`readyOverWhy`): a figure the cause
+names that moves while it stands -- a route's balance (`(balance $x)`) and a rest's end stamp
+(`resting until <stamp>`) -- is taken out of the key, so a balance or a rest that moves is the
+same judgment, rewritten in place, with the What keeping the latest figures. It clears itself
+the tick the card is dealt. The rests it names are the deal's
 settled rests: the ready-over part settles them once, as the deal does (`withRests`,
 route_rest.go), on the snapshot the conditions are counted on, so the route the judgment
 names as resting is exactly one the deal does not draw, the fleet's recorded rests and those
