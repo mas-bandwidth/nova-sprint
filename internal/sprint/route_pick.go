@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"fmt"
 	"math/rand"
 )
 
@@ -8,8 +9,8 @@ import (
 // Share falls as cost per landed card rises or ok rate falls, with a floor
 // so the route is still sampled. Returns the selected route, steps taken,
 // and whether selection succeeded.
-// Model: tla/RouteIndex.tla, RouteFair; design section in route.go preferFirst.
-func preferFirstWeighted(arr []string, served map[string]Route, skip []string, hold bool, at uint64, fleet *Table) (r Route, steps uint64, ok bool) {
+// Design section in route.go preferFirst.
+func preferFirstWeighted(arr []string, served map[string]Route, skip []string, hold bool, at uint64, stats map[string]RouteStat) (r Route, steps uint64, ok bool) {
 	// Two-pass walk like preferFirst: first pass for First routes, second for others.
 	// This preserves the First rule from route.go.
 	servedFirst := func(name string) bool {
@@ -22,17 +23,17 @@ func preferFirstWeighted(arr []string, served map[string]Route, skip []string, h
 	}
 
 	// First pass: try to pick a route with First set
-	if pick, steps, ok := preferFirstWithShares(arr, served, servedFirst, skip, hold, at, fleet); ok {
+	if pick, steps, ok := preferFirstWithShares(arr, served, servedFirst, skip, hold, at, stats); ok {
 		return pick, steps, true
 	}
 
 	// Second pass: pick from routes without First set
-	return preferFirstWithShares(arr, served, servedNonFirst, skip, hold, at, fleet)
+	return preferFirstWithShares(arr, served, servedNonFirst, skip, hold, at, stats)
 }
 
 // preferFirstWithShares is like preferFirst but uses weighted selection based on shares.
 // It counts array positions for index advancement, not filtered candidates.
-func preferFirstWithShares(arr []string, served map[string]Route, wantFirst func(string) bool, skip []string, hold bool, at uint64, fleet *Table) (r Route, steps uint64, ok bool) {
+func preferFirstWithShares(arr []string, served map[string]Route, wantFirst func(string) bool, skip []string, hold bool, at uint64, stats map[string]RouteStat) (r Route, steps uint64, ok bool) {
 	n := uint64(len(arr))
 	if n == 0 {
 		return Route{}, 0, false
@@ -59,8 +60,8 @@ func preferFirstWithShares(arr []string, served map[string]Route, wantFirst func
 		return Route{}, 0, false
 	}
 
-	// Compute shares for candidates
-	shares := computeRouteShares(candidates, fleet)
+	// Compute shares for candidates from precomputed stats
+	shares := computeRouteShares(candidates, stats)
 
 	// Check if all shares are equal (within tolerance)
 	allEqual := true
@@ -120,64 +121,98 @@ func preferFirstWithShares(arr []string, served map[string]Route, wantFirst func
 
 // computeRouteShares computes the share weight for each candidate route.
 // Share falls as cost per landed card rises or ok rate falls.
-func computeRouteShares(candidates []string, fleet *Table) []float64 {
+// This should be called once per tick, not per draw, to avoid O(ready x fleet) cost.
+func computeRouteShares(candidates []string, stats map[string]RouteStat) []float64 {
 	if len(candidates) == 0 {
 		return nil
 	}
 
-	// Use existing RouteStats function from route.go
-	allStats := RouteStats(nil, fleet)
-
 	shares := make([]float64, len(candidates))
 	for i, name := range candidates {
-		// Find stats for this route
-		var routeStats RouteStat
-		found := false
-		for _, st := range allStats {
-			if st.Route.Name == name {
-				routeStats = st
-				found = true
-				break
-			}
-		}
-
-		if !found {
+		if s, ok := stats[name]; ok {
+			shares[i] = routeShare(s, 0) // costPerLanded computed separately, 0 here
+		} else {
 			// No stats yet, give equal weight
 			shares[i] = 1.0
-		} else {
-			shares[i] = routeShare(routeStats)
 		}
 	}
 
 	return shares
 }
 
-// shareFloor is the minimum share a route can have (1%).
-const shareFloor = 0.01
+// routeStatsByName returns route stats indexed by route name from fleet.
+func routeStatsByName(fleet *Table) map[string]RouteStat {
+	allStats := RouteStats(nil, fleet)
+	out := make(map[string]RouteStat, len(allStats))
+	for _, st := range allStats {
+		out[st.Route.Name] = st
+	}
+	return out
+}
 
-// routeShare computes the share weight for a route based on its stats.
+// routeCostPerLanded computes the average cost per landed card for each route
+// from the fleet's landed cards (DoneOK). Returns map from route name to USD.
+func routeCostPerLanded(fleet *Table) map[string]float64 {
+	// Sum costs by route from landed cards
+	type costAccum struct {
+		totalUSD float64
+		count    int
+	}
+	routeCosts := make(map[string]*costAccum)
+
+	// Look at done OK cards in fleet
+	for _, c := range fleet.Column(DoneOK) {
+		route := c.F(FieldRoute)
+		if route == "" {
+			continue
+		}
+		// Parse the cost from the card's cost field (exact USD)
+		costStr := c.F(FieldCost)
+		if costStr == "" {
+			continue
+		}
+		// Simple parsing: strip $ and parse as float
+		if costStr[0] == '$' {
+			costStr = costStr[1:]
+		}
+		var costUSD float64
+		fmt.Sscanf(costStr, "%f", &costUSD)
+
+		if routeCosts[route] == nil {
+			routeCosts[route] = &costAccum{}
+		}
+		routeCosts[route].totalUSD += costUSD
+		routeCosts[route].count++
+	}
+
+	// Compute averages
+	result := make(map[string]float64, len(routeCosts))
+	for route, acc := range routeCosts {
+		if acc.count > 0 {
+			result[route] = acc.totalUSD / float64(acc.count)
+		}
+	}
+	return result
+}
+
+// shareFloor is the minimum share a route can have.
+// With 100 picks, floor=0.1 gives P(zero picks) = 1%, ensuring reliable sampling.
+const shareFloor = 0.1
+
+// routeShare computes the share weight for a route based on its stats and cost per landed.
 // The share falls as cost per landed card rises or ok rate falls.
 // A floor ensures the route is still sampled.
-// Design: from docs/SPEC-SPRINT.md deal section, RouteFair.
-func routeShare(stats RouteStat) float64 {
+// Design: docs/SPEC-SPRINT.md deal section.
+func routeShare(stats RouteStat, costPerLanded float64) float64 {
 	// Compute ok rate (0 if no attempts)
 	okRate := 0.0
 	if stats.Attempts > 0 {
 		okRate = float64(stats.OK) / float64(stats.Attempts)
 	}
 
-	// Compute cost per landed card from the stats
-	// Cost per landed = total cost / landed count
-	// We'll use the ratio of failed to ok as a proxy since we track ok/failed
-	// A route with many failed takes and few ok has high cost per landed
-	costFactor := 0.0
-	if stats.OK == 0 && stats.Failed > 0 {
-		// Zero landings means infinite cost per landed - penalize heavily
-		costFactor = 100.0
-	} else if stats.OK > 0 {
-		// Higher ratio of failed/ok means higher cost per landed
-		costFactor = float64(stats.Failed) / float64(stats.OK)
-	}
+	// Normalize cost per landed: costFactor = 1 when costPerLanded = $10, scales linearly
+	// A route that spends $30 per landed has costFactor = 3, share reduced by ~75%
+	costFactor := costPerLanded / 10.0
 
 	// Share combines ok rate and cost factor
 	// Higher ok rate = higher share, higher cost factor = lower share

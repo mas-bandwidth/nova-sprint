@@ -571,7 +571,7 @@ func (s *Snapshot) drawRoute(c, wc *Card, ri routeIndexes, member, tier string) 
 	} else if v, ok := s.Fleet.Prop(PropRouteIndex(tier)); ok {
 		at, _ = strconv.ParseUint(v, 10, 64)
 	}
-	r, steps, ok = preferFirstWeighted(arr, servedMap, drawn, fresh, at, s.Fleet)
+	r, steps, ok = preferFirstWeighted(arr, servedMap, drawn, fresh, at, s.routeStats)
 	if !ok && drawing && s.budgets != nil && s.budgets.soft {
 		// a coordinator's rework or redo is never refused for a full provider: with no route
 		// of room it is dealt on a full one anyway, and the take holds it ready until a slot
@@ -589,7 +589,7 @@ func (s *Snapshot) drawRoute(c, wc *Card, ri routeIndexes, member, tier string) 
 			_, isServed := soft(name)
 			fresh = fresh || isServed && !contains(drawn, name)
 		}
-		r, steps, ok = preferFirstWeighted(arr, softMap, drawn, fresh, at, s.Fleet)
+		r, steps, ok = preferFirstWeighted(arr, softMap, drawn, fresh, at, s.routeStats)
 	}
 	if !ok {
 		rested, unlaunchable, full = s.unservedWhy(tier, member, drawing)

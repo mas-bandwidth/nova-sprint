@@ -15,7 +15,7 @@ import (
 func TestRouteShareFallsWithCostPerLanded(t *testing.T) {
 	t.Parallel()
 	// flash-b has 20 attempts, 0 ok, 20 failed (high cost per landed = 0 landings)
-	// flash-a has 100 attempts, 100 ok (good ok rate)
+	// flash-a has 100 attempts, 100 ok with $10 cost per landed (good ok rate, reasonable cost)
 	fleet := NewTable(Fleet)
 	// Populate flash-b with failed takes
 	for i := 1; i <= 20; i++ {
@@ -25,11 +25,16 @@ func TestRouteShareFallsWithCostPerLanded(t *testing.T) {
 		}}
 		fleet.Put(c)
 	}
-	// Populate flash-a with successful takes
+	// Populate flash-a with successful takes (with costs to establish $10/landed)
 	for i := 1; i <= 100; i++ {
 		id := "s1-a" + itoa(i)
 		c := &Card{ID: id, Row: "m1", Col: DoneOK, Fields: map[string]string{
-			FieldRoute: "flash-a", "ok": "yes", "taken": "2030-01-02T03:04:05Z", "finished": "2030-01-02T03:04:10Z",
+			FieldRoute:     "flash-a",
+			"ok":           "yes",
+			"taken":        "2030-01-02T03:04:05Z",
+			"finished":     "2030-01-02T03:04:10Z",
+			FieldCost:      "$10.00",
+			FieldCostTotal: "$10.00",
 		}}
 		fleet.Put(c)
 	}
@@ -67,27 +72,34 @@ func TestRouteShareFallsWithCostPerLanded(t *testing.T) {
 	assert.Equal(t, 0, flashBStats.OK, "flash-b should have 0 OK")
 	assert.Equal(t, 20, flashBStats.Failed, "flash-b should have 20 failed")
 
+	// Compute cost per landed from the fleet
+	costPerLanded := routeCostPerLanded(s.Fleet)
+	// flash-a should have $10 cost per landed
+	assert.Equal(t, 10.0, costPerLanded["flash-a"], "flash-a should have $10 cost per landed")
+	// flash-b has no landed cards, so 0 cost
+	assert.Equal(t, 0.0, costPerLanded["flash-b"], "flash-b should have $0 cost per landed")
+
 	// Verify share calculation
-	flashAShare := routeShare(flashAStats)
-	flashBShare := routeShare(flashBStats)
+	flashAShare := routeShare(flashAStats, costPerLanded["flash-a"])
+	flashBShare := routeShare(flashBStats, costPerLanded["flash-b"])
 	// flash-a should have higher share than flash-b
 	assert.Greater(t, flashAShare, flashBShare, "flash-a share should be greater than flash-b share")
 	// flash-b should still have non-zero share due to floor
 	assert.Greater(t, flashBShare, 0.0, "flash-b share should be above zero due to floor")
 
-	// Test the weighted pick path by calling preferFirstWeighted directly
+	// Test the weighted pick path through computeRouteShares and preferFirstWeighted
 	arr := []string{"flash-a", "flash-b"}
 	served := map[string]Route{
 		"flash-a": {Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "a", Enabled: true},
 		"flash-b": {Name: "flash-b", Tier: cardhdr.RouteFlash, Provider: "q", Model: "b", Enabled: true},
 	}
-	s.Fleet.SetRows([]string{"m1"})
 
 	// Sample 100 picks and check distribution
+	routeStats := routeStatsByName(s.Fleet)
 	aCount := 0
 	bCount := 0
 	for i := 0; i < 100; i++ {
-		r, _, ok := preferFirstWeighted(arr, served, nil, false, 0, s.Fleet)
+		r, _, ok := preferFirstWeighted(arr, served, nil, false, 0, routeStats)
 		require.True(t, ok)
 		if r.Name == "flash-a" {
 			aCount++
