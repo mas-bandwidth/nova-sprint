@@ -176,6 +176,7 @@ func driftConds(s *Snapshot, r TickReq, f *DriftFacts) (conds []cond, unknown []
 // for each drift that starts, the open one raised again every PassEvery of running time
 // while it holds, and closed when it stops. A type the facts say nothing of keeps its open
 // judgment, and the coordinator's wait on it, as they are: no fact is never a clear.
+// tla/CoordinatorPass.tla Tick, CondUnknown (Kind = "drift"): carried, never closed.
 func TickDrift(s *Snapshot, r TickReq, f *DriftFacts) (Plan, int) {
 	var p Plan
 	conds, unknown := driftConds(s, r, f)
@@ -206,6 +207,7 @@ func TickDrift(s *Snapshot, r TickReq, f *DriftFacts) (Plan, int) {
 // with no push; one the facts said nothing of this tick is raised again as it was last
 // judged. The coordinator's wait closes the judgment and holds the drift (Wait, a condition
 // the tick keeps), so a waited drift is not open here and is not raised until its time.
+// tla/CoordinatorPass.tla Tick (Kind = "drift"): raised again on its last facts.
 func reraiseDrift(p *Plan, s *Snapshot, conds []cond, r TickReq) {
 	holding := map[string]cond{}
 	for _, c := range conds {
