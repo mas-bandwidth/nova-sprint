@@ -13,7 +13,11 @@
 \* a row whose record is gone but still holds cards is drained first and retired
 \* once its set is empty; a row whose record EXISTS but is offline stays down
 \* (down is not an error when actually down); a config read that fails retires
-\* nothing (never act on a missing read). The broken variant (MCRetireAbsentBroken)
+\* nothing (never act on a missing read), and an answered read that names no
+\* record retires nothing either (store/tick.go:1265-1272, fleet_retire.go:97):
+\* the code is stricter than the model, whose one read that retires nothing is
+\* the failed read (ReadFails) and whose answered read (ReadInv) always reads
+\* the records. The broken variant (MCRetireAbsentBroken)
 \* retires on a failed read: it takes off a row whose record still exists, a
 \* counterexample to RecordsKeepRows.
 \*

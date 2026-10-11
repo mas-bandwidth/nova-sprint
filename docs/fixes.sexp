@@ -1035,6 +1035,26 @@
     names the new test for the machine's. Tests only; no product change."
    :origin "this card; the v1.2.12 inventory card A2 and section 6 (three drain tests red at 04:16Z on 2026-10-11, the probe gate and #84, greened by 2623ab7 with no test of the composition)")
 
+  (fix "tla-matching-models-say-what-they-hold" :release "v1.2.12" :status "planned"
+   :title "The four matching models' headers say what their code does"
+   :text "Four TLA+ models whose actions already match their code had wrong headers and citations; the
+    headers are corrected and the code cited, and no model action or invariant changed (Timer's Set is
+    made strict, d > now, to match the code's due time strictly after now; no case's result changes).
+    DealFill: a fault is a presence down marked held_by=fault with fault_since, set by the beat-lapse
+    down alone and lifted by faultClear after a beat and an ok finish; a harness fault or a failed take
+    holds by HeldByEnv, and the one person value stands for the coordinator's, HeldBySync, HeldByAdopt
+    and HeldByEnv marks; faultCleanFinish compares second-resolution stamps, so a finish in the hold's
+    own second counts, which the model's ok reset forbids (an abstraction). Level: the callers are the
+    level op and fleet up's comeUp, not held.go, and the model's ref is StagingRefusers alone, an
+    abstraction of the code's avoid set (refusers plus bench plus notLaunching). RetireAbsent: the
+    fleet_retire.go citation called FleetRowsMatchConfig the invariant (it is a leads-to; RecordsKeepRows
+    is the invariant) and misspelled LiveRetire as LiveRets; an answered read that names no record
+    retires nothing, which the code is stricter about than the model's failed-read guard. Timer: the due
+    test counts running time and a due time must be strictly after now. Each module already had a
+    reversed witness, so none is added. tla/COVERAGE.tsv notes say the same, and the four groups
+    (dealfill, level, retire-absent, timer) were rerun with TLC and merged into tla/RUNS.tsv."
+   :origin "this card; v1.2.12 inventory item T36 (the deal/route/rules group), drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
