@@ -215,7 +215,7 @@ func archiveNonce() string {
 // --routes, and by --fleet or --friends, whose cards they count), the streams' bases and
 // the rows' plan; then the history-only finished cards leave the done cells of the
 // friends' or the machines' rows in one step (sprint.TidyDone; their records stay; each
-// tidied row's median run wall is carried, sprint.PropCarriedMedian); then the archive is
+// tidied row's median run wall is carried, sprint.PropCarriedMedians); then the archive is
 // written again with what moved and how the move ended, and the stats record names the
 // tidy. A move that fails leaves its archive, failed. Cards on any other cell, the work,
 // merge and readers tables, holds and judgments are untouched. A tidy within

@@ -408,4 +408,10 @@
      from before roles and keeps the pre-role behavior: it is dealt work and asked reads (friendHasRole).
      The dogfood of 2026-10-10 evening: a reader-only friend was dealt 16 work cards once it came up,
      and builder-only friends were asked reads."
-    :origin "dogfood 2026-10-10 evening: fleet-only restart")))
+    :origin "dogfood 2026-10-10 evening: fleet-only restart")
+
+   (fix "stats-tidy-large-fleet" :release "v1.2.9" :status "planned"
+    :title "A stats tidy succeeds over a fleet of more than 64 rows"
+    :text "Tidying stats works when the fleet table has more than sixty-four rows, instead of hitting a
+     property bound."
+    :origin "card from the sprint store (2026-10-10)")))
