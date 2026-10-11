@@ -844,6 +844,17 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-store-shadow-tick-and-holds" :release "v1.2.12" :status "planned"
+   :title "Store.ShadowTick and Store.Holds have their own package's tests"
+   :text "The two store reads a verb prints had no test in their own package: Store.ShadowTick
+    (tick.go:2041, the tick --shadow plan and the server switch's canary) and Store.Holds
+    (hold.go:121, the holds where --json lists). New behaviour tests in package store drive
+    both on the Mem store through newHarness and assert on the returned ShadowPlan and
+    []sprint.HoldView: the plan's state, parts, size, due, Reads and that the store is
+    unchanged; the holds' kinds, order, reason, by and Return. ShadowTick: 0.0% -> 84.9%;
+    Holds: 0.0% -> 83.9%. Tests only, no product change."
+   :origin "this card, cover-store-shadow-tick-and-holds.w3")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
