@@ -1029,6 +1029,11 @@
     are made current."
    :origin "card tla-providerbudget-every-declared-witness-has-a-cfg, 2026-10-11: v1.2.12 inventory section 4, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-frienddealtreturn-bound-pins-and-status" :release "v1.2.12" :status "planned"
+   :title "FriendDealtReturn carries a dealt age and a pin, counts a Running job as taken, and models the up check"
+   :text "Models only, no product change. tla/FriendDealtReturn.tla was read against internal/sprint/friend_deal.go friendDealtReturn and drifted in five places, each brought to the code. Each card now carries a dealt age (age) and a pin (PinnedTo), and Return hands back only the cards of an up friend that are past the dealt bound and not her hard pin; a job named on her beat (Running) counts as taken (friendHasTaken), and Return runs only for an up friend. DealtNoMoreHolds is restated as the code keeps it, an action property: no new deal to a marked friend, not \"she holds none\" (the code keeps a marked friend's pinned and not-yet-past cards). TakenNeverMarked (a friend who has taken is never marked dealt no more) is what BrokenReturn and BrokenReady now fail, and PinnedNeverReturned (a hard-pinned card is never returned) is checked by the new reversed witness MCFriendDealtReturnBrokenReturnpinned (BadReturn \"returnpinned\"), which hands back a hard-pinned card. The friendUnstartedLevel defect (friend_start.go:249) is not modelled: it is the v1.2.14 candidate. friend_deal.go friendStarted gains one comment line citing the module."
+   :origin "this card, tla-frienddealtreturn-bound-pins-and-status-2.w1, 2026-10-11: v1.2.12 inventory item T36, drift read at nova-sprint main 00c54ba2e")
+
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
