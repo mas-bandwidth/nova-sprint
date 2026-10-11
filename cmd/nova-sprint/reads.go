@@ -2679,11 +2679,26 @@ func (a *app) cmdCheck(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
+// restAt is the rest `routes` shows for one route at now: the fleet's rest for it
+// (sprint.RouteRests: the route's own or its provider's, whichever ends later) or a
+// rate-limit backoff that holds and ends later, whichever ends later, so a route backing
+// off from a rate limit never reads as serving while the deal draws nothing on it. A rest
+// that does not hold (a retired one) never hides a backoff (docs/SPEC-SPRINT.md, the routes
+// verb; tla/RateBackoff.tla).
+func restAt(rests, backs map[string]sprint.RouteRest, route string, now time.Time) (sprint.RouteRest, bool) {
+	r, has := rests[route]
+	if b, back := backs[route]; back && (!has || !r.Resting(now) || b.Until.After(r.Until)) {
+		return b, true
+	}
+	return r, has
+}
+
 // cmdRoutes is each route of the store with what its attempts did: the work
 // cards dealt on it, finished ok, failed, failed by the provider, and the mean
 // wall from take to finish, so a bad route shows (docs/SPEC-SPRINT.md, the
 // deal's route), and when its rest ends while it rests: its provider's failures,
-// a refusal, or the coordinator's routes rest (sprint.RouteRests).
+// a refusal, or the coordinator's routes rest (sprint.RouteRests), or a rate-limit
+// backoff that holds (sprint.RateBackoffsAt; tla/RateBackoff.tla).
 func (a *app) cmdRoutes(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("routes")
 	if pos, err := parse(fs, args); err != nil || len(pos) > 0 {
@@ -2704,8 +2719,9 @@ func (a *app) cmdRoutes(args []string, stdout, stderr io.Writer) int {
 	}
 	stats := sprint.RouteStats(rs, s.Fleet)
 	rests, balances := sprint.RouteRests(rs, s.Fleet), sprint.ProviderBalances(s.Fleet)
+	backs := sprint.RateBackoffsAt(s.Fleet, s.Now)
 	for i := range stats {
-		if r, ok := rests[stats[i].Route.Name]; ok && r.Resting(s.Now) {
+		if r, ok := restAt(rests, backs, stats[i].Route.Name, s.Now); ok && r.Resting(s.Now) {
 			stats[i].RestedUntil = r.Until.UTC().Format(time.RFC3339)
 			if r.Open() {
 				stats[i].RestedUntil = "open" // until paid (credit) or woken (a key, the coordinator's)
