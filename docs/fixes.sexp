@@ -756,4 +756,20 @@
     witness MCRouteRestBrokenBalance still failing. Tests TestReadDeepSeekBalance,
     TestALowBalanceAtTheThresholdRaisesOneJudgment and TestAnOutOfCreditTakeSpendsNoRedeal. The run
     loop's nova-secrets exec --only list must include DEEPSEEK_API_KEY for the poll to read it."
-   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry low-balance-pushes-the-seat-before-the-refusalc")))
+    :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry low-balance-pushes-the-seat-before-the-refusalc")
+
+  (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.6" :status "planned"
+   :title "A rate limit stalls its route briefly; it never fails a card or rests it for 3-in-10"
+   :text "A take a provider ends rate-limited (class=rate-limited) never fails the card: the card
+    returns unspent (no FieldTakeEnded, no redeal, no attempt) and the route backs off briefly, then
+    serves again by itself. The backoff is computed in RestsDue from the rate-limited take records
+    alone (RateTakes reads every rate_take_* field): k is the route's rate-limited ends since its last
+    ok end and last the latest one's time, so it ends at last + min(60s*2^(k-1), 15m) -- a fixed point
+    in time, never relative to now -- and one happened note is written, none while the same end holds,
+    never a judgment. A rate limit no longer counts toward the 3-in-10 transient rest (transient
+    excludes classRateLimited); a 5xx window still rests the route 30 minutes. member.Judge treats a
+    rate-limited run with no pushed head as a provider failure whatever its shape, while a shaped
+    result that pushed a head stays the card's own. TLA+ model RateBackoff, properties
+    RateLimitSpendsNoRedeal and BackoffBounded with the temporal BackoffEnds, reversed witnesses
+    MCRateBackoffBrokenSpend and MCRateBackoffBrokenNoCap."
+   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; nova-sprint docs/fixes.sexp entry a-rate-limited-refusal-never-fails-the-cardc")))
