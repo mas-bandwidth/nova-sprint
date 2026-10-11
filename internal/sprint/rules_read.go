@@ -93,12 +93,9 @@ func ruleReadBroken(s *Snapshot, a *RuleAnswer) {
 		left(a, spent)
 		return
 	}
-	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok && len(out) == 0 {
-		// a widened brief is the bound's remedy (the bound counts attempts from it), so only
-		// a finding inside PATHS is left at the bound
-		left(a, bb.String())
-		return
-	}
+	// a widened brief is the bound's remedy (the bound counts attempts from it), so only
+	// a finding outside PATHS past the widen cap is left at the bound; a finding inside PATHS
+	// at any bound is reworked with the finding as the fix
 	a.Card, a.fix = pr.ID, cutText(finding, MaxCardTextBytes)
 	if len(out) > 0 {
 		a.files = out

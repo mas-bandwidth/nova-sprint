@@ -654,6 +654,9 @@ func Read(s *Snapshot, r ReadReq) Plan {
 				broken[pr.ID]++
 				n := judgment(NReadBroken, pr.Row, s.Now, before, pr.ID)
 				n.Who, n.Attempt, n.What = c.Row, c.Int("attempt"), r.Finding
+				// a finding naming files outside PATHS is no bound while the card may be widened:
+				// the read-broken rule widens the brief in place by them, the bound's own remedy;
+				// past MaxReadWidens such a finding is the bound itself (rules_read.go)
 				// the card as this read leaves it: its spend counts this read's record
 				at := pr
 				if v := costs[pr.ID][FieldCostTotal]; v != "" {
@@ -662,19 +665,20 @@ func Read(s *Snapshot, r ReadReq) Plan {
 				// a finding naming files outside PATHS is no bound while the card may be widened:
 				// the read-broken rule widens the brief in place by them, the bound's own remedy;
 				// past MaxReadWidens such a finding is the bound itself (rules_read.go)
-				outside, spent := len(FilesOutsidePaths(pr.F("brief"), r.Finding)) > 0, ReadWidensSpent(pr)
+				outside := len(FilesOutsidePaths(pr.F("brief"), r.Finding)) > 0
+				spent := ReadWidensSpent(pr)
 				bound := ""
 				if bb, ok := briefStopAt(s, at, c.Row, r.Finding); ok && (!outside || spent != "") {
 					bound = bb.String()
 				} else if outside && spent != "" {
 					bound = spent
 				}
-				if bound != "" {
-					// the same finding as the attempts before (briefStopAt: the same reader class,
-					// file and line, two in a row by default), or too many attempts on one brief:
-					// the brief is wrong, not the worker, and the judgment offers brief and drop
-					// (brief_bound.go)
-					n = judgment(NBriefWrong, pr.Row, s.Now, 0, pr.ID) // its decisions alone: it is the repeat
+				// At the bound with a finding inside PATHS, NReadBroken is kept (not replaced with NBriefWrong)
+				// so the card gets reworked with the finding as the fix. NBriefWrong is only for
+				// non-broken bounds (the attempt cap when there's no broken finding).
+				if bound != "" && outside {
+					// at the bound with a finding outside PATHS past the cap, use NBriefWrong
+					n = judgment(NBriefWrong, pr.Row, s.Now, 0, pr.ID)
 					n.Who, n.Attempt, n.What = c.Row, c.Int("attempt"), bound+"; attempt "+c.F("attempt")+" found: "+firstSentence(r.Finding)
 				}
 				u.Notes = append(u.Notes, n)
@@ -1276,13 +1280,16 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 				continue
 			}
 		}
-		// the brief's bound: the same finding twice (briefStopAt), or too many attempts on one
-		// brief, and the brief is wrong, not the worker; a --fix changes the brief not at all,
+		// the brief's bound: the same finding twice (briefStopAt), or too many attempts on one brief,
+		// and the brief is wrong, not the worker; a --fix changes the brief not at all,
 		// so it does not lift it (brief_bound.go)
-		if bb, ok := briefStopAt(s, c, finderOf(s, c), brokenFindings(s, c)); ok {
-			p.refuse(c.ID, bb.Why())
-			stays()
-			continue
+		// A broken finding at the bound is still reworked with the finding as the fix.
+		if fb := brokenFindings(s, c); fb == "" {
+			if bb, ok := briefStopAt(s, c, finderOf(s, c), ""); ok {
+				p.refuse(c.ID, bb.Why())
+				stays()
+				continue
+			}
 		}
 		fix := r.Fix
 		if one.Fix != "" {
