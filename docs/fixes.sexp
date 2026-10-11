@@ -351,6 +351,22 @@
     stream can admit a card based on main or dev without a sentinel card or a follow-up stream set."
    :origin "the seat ledger bug 14")
 
+   (fix "idle-cleared-says-working-only-when-it-works" :release "v1.2.14" :status "planned"
+    :title "An idle episode that ends with no width or no work says why, never working again"
+    :text "TickIdle ends an idle episode for four reasons and only one is a recovery. The fleet
+     working at half its width again (a) keeps NIdleCleared, \"working again\"; no card waits (b),
+     no width up -- every member down, held or drained (c) -- and the fleet's work switched off
+     (d) push a new happened type NIdleEnded, \"the fleet's idle episode ended\", naming the cause:
+     \"no card waits\", \"no width up: every member is down, held or drained (fleet up <member>
+     --width <n>)\", or \"the fleet's work is switched off (set --fleet on)\". Both properties are
+     cleared on every end as before. docs/SPEC-SPRINT.md section 14 says which end says what. The
+     episode machine is unchanged (AlarmOncePerEpisode, ClearFollowsAlarm), so tla/SprintRules.tla,
+     Part \"idle\", is not edited. TestAnIdleEpisodeEndedByNoWidthNeverSaysWorkingAgain (red on the
+     base), TestAnIdleEpisodeEndedByWorkSaysWorkingAgain, TestAnIdleEpisodeEndedByNoWaitingCardSaysTheCause,
+     TestAnIdleEpisodeEndedByTheFleetSwitchSaysTheCause."
+    :origin "the seat's v1.2.14 audit, 2026-10-11 (TickIdle says \"working again\" when width is 0),
+     checked against nova-sprint main 00c54ba; this card")
+
   (fix "stream-remove-removes-what-exists" :release "v1.2.6" :status "in-progress"
    :title "stream remove takes every stream that exists and names each that does not"
    :text "One name that is no row of the work or merge table no longer refuses the whole batch: stream
@@ -868,6 +884,20 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-idle-trace-and-the-bound-rule" :release "v1.2.12" :status "planned"
+   :title "Cover the idle trace and the bound rule in their own package"
+   :text "internal/sprint's own tests never ran the idle alarm's words (TraceIdle, idle.go:90) or
+    its episode (TickIdle, idle.go:248), nor the bound rule (ruleBound, rules.go:337); their only
+    tests were in internal/sprint/store. Add idle_trace_behaviour_test.go and
+    rule_bound_behaviour_test.go: the idle note's drop-blocked, missing-need and cycle, held and
+    sentinel roots, a tier no route serves, a need on a stopped stream, a need an open judgment
+    holds, the nine-root truncation, plus the tick's one-note episode and its clear; and the bound
+    rule's answers through RuleAnswers with an open NBound judgment (off the table, not at a bound,
+    a budget failure raised a tier, a flash card at its real redeal bound raised a tier, a card
+    every member up refused at staging, heavy to a friend, the rule off). Tests and models only, no
+    product change."
+   :origin "this card, cover-idle-trace-and-the-bound-rule.w2")
+
   (fix "cover-route-table-stats-routes" :release "v1.2.12" :status "planned"
    :title "In-package behaviour tests for the stats route table"
    :text "RouteTable (internal/sprint/routetable.go:25), the table `nova-sprint stats --routes` prints
@@ -907,6 +937,40 @@
     every row that is not current names in owed_by the v1.2.12 card that owes it. Twenty-two rows are
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
+
+  (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
+   :title "Unit tests for the gc loop and backup --out's step refusals"
+   :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
+     failures were untested (its happy path and mid-dump cases were). gc_loop_behaviour_test.go drives
+     a.gcLoop in a testing/synctest bubble: nothing before gcLoopFirst, the first local run at it with
+     why=first and its class and summary lines prefixed, no second run within sprint.GCDue's hour though
+     the loop wakes every gcLoopEvery, an inventory that errors said once until it answers, and a
+     cancelled context ending the loop. backup_out_refusals_test.go breaks one field of backupOut a test:
+     --out a regular file, a source that gives no dump, xz and split failing, no throwaway store, a twin
+     whose restore holds other counts, no secret scan seat, a source with no state reader (the counts-only
+     integrity result and its README), and an existing empty --out replaced; each refusal leaves no --out
+     and no private work directory. Measured at main bf7bfe2: gcLoop 54 of 54 and backupOut.run 36 of 129
+     statements not run, unchanged at main 00c54ba; after: gcLoop 88.9% and run 77.5% covered."
+   :origin "the owner, 2026-10-11: v1.2.12 tests and models only; inventory section 8 item C7; card cover-gc-loop-and-backup-out-refusals.w2")
+
+  (fix "every-worker-verb-runs-as-its-worker" :release "v1.2.12" :status "planned"
+   :title "Every worker verb runs as its worker with no --actor"
+   :text "TestEveryWorkerVerbRunsAsItsWorkerWithNoActor drives every verb whose class is classWorker through its shortest valid line with no NOVA_SPRINT_ACTOR and no --actor, holding each is not refused for want of an actor and, where it writes, that the record names the worker the verb named. The rows come from verbClasses itself, so a worker verb added to the class table with no case fails the test with add a case for <verb>. remind, any actor's, is checked with --actor and refused without one; a worker verb that names no worker is refused and writes nothing."
+   :origin "the owner, 2026-10-11: the v1.2.12 tests; inventory section 8 item C14 and section 6 (the night's missing regression tests)")
+
+  (fix "ns-cmd-tests-under-a-minute-on-four-cores" :release "v1.2.12" :status "planned"
+   :title "cmd/nova-sprint's unit tests under a minute on four cores"
+   :text "cmd/nova-sprint's unit tests ran 70-115 s on CI's hosted four-core runner (run 38140543980
+     #88 114.7 s, run 38138910199 #87 70.1 s), over the one-minute bound. The wall time is the lander's
+     own real tree gate (go build, gofmt, go vet, go vet -tags functional, go test ./internal/docs/) in
+     landgo.go, not sleeps: the package injects its clock. Six land tests whose assertions are the
+     merges, the gate counts and the worktrees now stand the gate in for the bench with the package's
+     own gateBench seam, dropping the subprocesses with no assertion lost (gateRan runs before the
+     seam). The long-pole tests that pin the gate's findings (landbase_test.go, land_basegate_count_test.go,
+     base_gate_rule_test.go, land_go_test.go, the red-combined and bisect tests, the real-binary build)
+     keep the real gate and are left for the next pass, which must supply their gate result from a
+     content-aware fake while keeping the finding-text assertions."
+   :origin "the owner, 2026-10-11: v1.2.12 inventory card A10 (tmp/v1.2.12-inventory-2026-10-11.md)")
 
   (fix "tla-coverage-test-in-nova-sprint" :release "v1.2.12" :status "planned"
    :title "The CI test holds nova-sprint's tla/COVERAGE.tsv to its models"
@@ -955,6 +1019,10 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+   (fix "pagelock-stripper-hardening" :release "v1.2.14" :status "planned"
+    :title "The page lock's comment-only check reads the page a browser renders"
+    :text "The stripper that proves a comment-only change renders nothing no longer mistakes four visible things for comments: an HTML text comment leaves nothing rather than a space; a comment opener inside a quoted attribute value is code; an inline script with a data-src attribute is read as JS; and a slash after a control if, while or for condition opens a regex, failing closed otherwise. The lock's header and the spec's The page lock state the comment-only form and that the card lint is ask-only."
+    :origin "this card")
   (fix "verify-defaults-to-the-trees-import-scope" :release "v1.2.14" :status "planned"
    :title "verify compares the scope its tree was imported with, not the whole organization"
    :text "import --repo <org>/<name> now records the repositories it read as the work-tree's :scope, written only for a scoped import; a whole-organization tree stays byte for byte what it was, and a file without :scope reads as a whole-organization tree. verify with no --repo compares the tree's own scope (tla/WorkImport.tla's Verify already read the scope it imported), --repo narrows within it, and a --repo outside it is refused naming the scope before any GitHub call; verify --against does the same. Before, verify with no --repo read the whole organization and reported MISSING for every repository the scoped import left out."
@@ -975,11 +1043,57 @@
    :title "The stops digest counts only the stops still holding"
    :text "One plan could close a stop and at the same time send an NStopsDigest saying it still holds: notify closes the open NStopMemberDown judgment of a member up again, and stopsDigest then gathered its stops from the snapshot before the plan, counting and naming the stop just closed. stopsDigest now leaves out every judgment the same plan closes, matched by note id; with no stop left it writes neither the digest nor its clock."
    :origin "v1.2.12 inventory 2026-10-11, section 9 row D8; card stops-digest-counts-only-held-stops.w1, id given by the coordinator 2026-10-11 (code read at nova-sprint main 00c54ba)")
+  (fix "lander-empty-commit-says-no-result-is-held" :release "v1.2.14" :status "planned"
+   :title "The lander's empty-commit refusal says a result is missing when it holds none"
+   :text "The lander's empty-commit check refused an empty diff with no result to read (a nil work card: the fleet row absent or the work card tidied away) with the same finding as one whose result claimed changes, \"empty commit: the result claims changes the diff does not show\", naming a claim nothing made. It now returns emptyCommitNoResultFinding, \"empty commit: the head changes nothing from the attempt's start, and the lander holds no result to say why\", and both findings return the card to review through one helper, isEmptyCommitFinding."
+   :origin "this card: lander-empty-commit-says-no-result-is-held, from the v1.2.14 point-release plan and the roadmap item lander-empty-commit-handling")
+  (fix "a-fault-down-keeps-another-holds-mark" :release "v1.2.14" :status "planned"
+   :title "A machine's fault down keeps another's hold mark"
+   :text "When presence takes a member down for a missed beat, the machine writes its own fault hold (held_by=fault, fault_since) only on a member that carries no hold: a member the sync, the adopt, its environment or the coordinator already holds keeps its hold, its mark, its reason and its finish marker when it goes down, and still goes down. Overwriting the mark hid the hold from its own release, so a held member could no longer be released and the clear left a markless hold (tla/DealFill.tla FaultHold and PersonHoldStays; docs/SPEC-SPRINT.md section 5)."
+   :origin "the seat's audit, 2026-10-11 (a reader finding on card a-member-environment-fault-holds-it-and-pushes-the-seatb, attempt 5, head 38c66ea7542f); this card")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
    :origin "this card")
+
+ (fix "land-clash-test-sets-git-identity-in-clones" :release "v1.2.11" :status "planned"
+   :title "The clash test sets a git identity in every clone it commits in"
+   :text "The clash test configured user.name and user.email in its first temporary repository only; the clones it makes do not inherit that config, so their commit failed with exit 128 on a machine without a global git identity. The test now sets GIT_AUTHOR_*/GIT_COMMITTER_* for the whole test, the way the package's other git-using tests set an identity."
+   :origin "this card")
+
+  (fix "live-reads-systemd-units-and-launch-daemons" :release "v1.2.11" :status "planned"
+   :title "live reads systemd units on Linux and LaunchDaemons on macOS"
+   :text "The live manifest read only ~/Library/LaunchAgents, so a Linux host refused with no agents directory and a loop installed as a system LaunchDaemon was never listed. live now reads the nova-loop-*.service systemd units of the user and system unit directories on Linux, each an interval agent when a .timer sits beside it, and, on macOS, the com.nova.* launchd daemons of /Library/LaunchDaemons too; each agent records its manager (launchd or systemd)."
+   :origin "this card")
+
+  (fix "hook-finds-the-server-itself" :release "v1.2.11" :status "planned"
+   :title "The hook and the coordinator's verbs find the server the seat's record names"
+   :text "app.server (cmd/nova-sprint/forward.go) read only NOVA_SPRINT_SERVER, so a seat
+    installed with `seat install --server <host:port>` still had to export the variable by
+    hand before `hook` or any coordinator verb would run; every other seat verb answered
+    'You must hook in first'. When the environment names no server, app.server now uses the
+    server the seat's record names (a.seatServer), in the same order seat check already used
+    (machinery.go). A process that is the server, or a verb given its own --redis, still
+    returns none. hook prints the server it used and where it came from
+    (server=<host:port> from=env | from=seat-record), and when neither source names one the
+    refusal names both and the commands that set one."
+   :origin "the seat, 2026-10-11 ~03:19Z: the seat hook proved only with NOVA_SPRINT_SERVER=127.0.0.1:6390 set by hand")
+
+  (fix "a-refused-verb-is-logged-with-its-refusal" :release "v1.2.11" :status "planned"
+   :title "A refused verb is written on the server's own log, with its refusal"
+   :text "serveCtx now writes one SERVE REFUSED line for every verb it answers with a non-zero code,
+    whether the worker's verb (a refused finish), one the server does not run (exit 2) or a lane verb
+    (a friend's beat, a read): the verb word, the worker, the exit and the card argument when the verb
+    names one, with the verb's own first stderr line cut to 300 bytes, never the verb's whole argv or
+    its stdout. The same verb, worker, exit and first line repeated within a minute is written once,
+    and when it changes the line that follows says (repeated <n> times since <stamp>), so 40 minutes
+    of refused finishes from ten members is a few hundred lines and never one per verb. The SERVE
+    tally counts the refused verbs by verb word and its line says refused=<n>
+    refused-by=<verb>:<count>,...; no new verb. On the v1.2.10 server every done-path finish was
+    refused for about 40 minutes and the log held no line for a refused verb, so the refusal could
+    not be read."
+   :origin "this card; the owner, 2026-10-11: everything that has been hard work in this bisect and rollback, make it better with tools")
 
   (fix "no-deal-to-a-draining-member" :release "v1.2.10" :status "shipped"
    :title "No deal to a draining member; a held or draining machine's reader is asked nothing"
@@ -999,4 +1113,31 @@
 
   (fix "two-ci-flakes-text-file-busy-and-git-maintenance" :release "v1.2.10" :status "shipped"
    :title "Two CI flakes: exec'd stubs written under the fork lock, and git's auto maintenance off in tests"
-   :origin "PR #88")))
+   :origin "PR #88")
+
+  (fix "a-stats-reset-zeroes-the-unattributed-spend" :release "v1.2.14" :status "planned"
+   :title "A stats reset zeroes the unattributed spend"
+   :text "After nova-sprint stats reset every stream's spend counts from the mark, but the grand total
+    did not reach zero: the cost line's <other>, the largest TierCosts.Unreconciled on any stream's
+    record, is the sprint's UnreconciledSpend since the epoch's clear, never since the mark. ResetMark
+    now holds the sprint's unattributed spend at the mark (in cents) and streamsSince subtracts it on
+    every stream's record, the streams the mark does not know included, so the cost line, the dashboard's
+    cost tile and where --json's unreconciled count from the mark, never below zero. The mark line names
+    it beside the total."
+   :origin "the seat's v1.2.14 audit, 2026-10-11 (a stats reset does not zero the grand total spent),
+    checked against nova-sprint main 00c54ba; the owner's rule of 2026-10-09: a stats reset clears every
+    cost figure, the total spent, per card and per tier; this card a-stats-reset-zeroes-the-unattributed-spend")
+
+  (fix "stop-debt-stale-beat-loses-a-held-report" :release "v1.2.14" :status "planned"
+   :title "A stale post-STOP beat keeps its word for the settle"
+   :text "settleStopDebtByBeat read a machine's live set fresh-only (sprint.LiveNamesAt through
+    liveOf), so a machine that beat once after the STOP naming its held report and then went silent
+    past BeatDeadline had its lease settled at START: the card went back to ready at gen+1, was dealt
+    again, and the held report was refused as stale when it came. The owner's last beat since the STOP
+    now keeps its word fresh or stale (sprint.LiveNamedAt, no clock), as tla/StopReturn.tla
+    SettleByBeat reads it (d.id \\notin beat); tla/LiveRuns.tla's reversed witness \"staleasabsent\" is
+    exactly that wrong reading: a silent row's stale beat as an empty live set. LiveNamesAt, LiveHeldAt,
+    liveOf and LiveReturns keep their fresh-only reading. No model change."
+   :origin "the coordinator 2026-10-11, added to v1.2.14 beside the v1.2.12 inventory's section 9 row
+    D2 (a held finished report across STOP refused as stale); D2's first cause was fixed by
+    nova-sprint #87 (15c779c); this is what that fix left; code read at nova-sprint main 00c54ba")))
