@@ -983,6 +983,20 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-liveruns-settle-by-beat-keeps-a-held-report" :release "v1.2.12" :status "planned"
+   :title "tla/LiveRuns.tla models the STOP-debt settle-by-beat and its reversed witness"
+   :text "Models only, no product change. tla/LiveRuns.tla gains the server's beat-based settle on START's
+     path (settleStopDebtByBeat, the fix of nova-sprint #87, 2cc11a2): the new variable beaten (the rows
+     that have beaten since the STOP, empty at Init and Stop, added by Beat while stopped and not silent),
+     and the action SettleByBeat(c), which returns a STOP-owned card whose row has beaten and whose fresh
+     live set no longer names it at its generation, running or held (sprint.LiveNamesAt), to ready at gen+1
+     with its receipt, its debt entry settled off. The sixth reversed witness \"settlebycount\"
+     (tla/MCLiveRunsBrokenSettleByCount.cfg) reads the row's stop-returns count instead of its live set (no
+     card of the row owed a stop-return), the code before #87 for a machine lease, and fails NoReportLost:
+     a child finishes and its report is held, STOP, a beat with no cancelled child, the settle returns the
+     card, and the held report's generation is gone (TestAHeldReportCrossesTheStopAndIsTaken)."
+   :origin "this card; the v1.2.12 plan (tmp/point-release-plan-v1.2.11-v1.2.12.md, last line: the STOP-debt live-set case, nova-sprint #87, owes its TLC reversed witness)")
+
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
