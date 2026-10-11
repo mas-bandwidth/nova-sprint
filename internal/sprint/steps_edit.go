@@ -155,8 +155,8 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 	return Lawful(p)
 }
 
-// briefKept is why a primary keeps its brief: "" for a primary waiting, ready or in
-// review; a card working, merging or landed keeps it.
+// briefKept is why a primary keeps its brief: "" for a primary waiting, ready, in review, or working;
+// a card merging or landed keeps its brief.
 func briefKept(s *Snapshot, id string) string {
 	c := s.Work.Placed(id)
 	switch {
@@ -164,8 +164,8 @@ func briefKept(s *Snapshot, id string) string {
 		return "no primary " + id + " on the work table; nothing was changed"
 	case IsSentinel(c):
 		return id + " is a sentinel, not a primary; nothing was changed"
-	case c.Col != Waiting && c.Col != Ready && c.Col != Review:
-		return fmt.Sprintf("%s is %s: a card working, merging or landed keeps its brief; nothing was changed", id, c.Col)
+	case c.Col == Merging || c.Col == Landed:
+		return fmt.Sprintf("%s is %s: a card %s keeps its brief; nothing was changed", id, c.Col, c.Col)
 	}
 	return ""
 }
