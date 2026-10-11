@@ -484,6 +484,22 @@
     leave exactly three new cards; a brief the plan refuses at the write is held with its refusal and the
     others land; with every brief clean the exit is 0, as add without the flag."
    :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 1 (the owner, 2026-10-11: \"Whatever you are doing manually now, consider adding tool support for it to nova sprint.\")")
+  (fix "doctor-preflight-checks-member-prerequisites" :release "v1.2.14" :status "planned"
+   :title "doctor --preflight gates a member's prerequisites"
+   :text "The preflight's member check turns the member-env probe's facts into gate rows (area
+    preflight, check members, subject the member): FAIL for a MemberTools tool or a harness its
+    enabled routes launch the loop's PATH does not find, a push credential that does not
+    authenticate, a secrets seat that does not open, a provider key name its enabled routes read
+    that the seat does not hold (the route and the name both named, by name only and never a
+    value), and a member whose installed nova-sprint is older than the release before the
+    candidate's or newer than it; WARN for a host that does not answer, a probe the budget cut,
+    java or /opt/tla/tla2tools.jar absent, a home under the warn bound, and a member held or
+    draining. probeScript and parseProbe gain java with the TLA+ tools' jar and the key names the
+    seat holds (nova-secrets names, never a value). The member-env check without --preflight is
+    unchanged. Tests: a member missing go is FAIL; a route whose key name is absent is FAIL
+    naming both; java absent is WARN; a held member is WARN with its command; a member two
+    releases back is FAIL and one back OK."
+   :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 20; the owner, 2026-10-11")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
@@ -1429,6 +1445,23 @@
     are not carried: this repository has neither."
    :origin "this card")
 
+  (fix "tla-adopt-the-play-around-the-library" :release "v1.2.12" :status "planned"
+   :title "Adopt models the whole seat play, the one-way migration and PreCheck's refusals"
+   :text "Models only, no product change. tla/Adopt.tla now holds the seat play as a window, not only
+    the library swap. PreCheck (libraryShadow) gains its two refusals, both before the window and
+    changing nothing: a store that holds no function library, and a store the check cannot read. The
+    play's steps become five actions in order — Stop, Migrate, Swap, Reinstall, Restart — and the
+    migration is a one-way flag with a new invariant MigrationIsOneWay (once it has run, no refusal
+    rolls it back); RefusedLeavesOld still holds on every refusal path that checks the library. One
+    reversed witness is added, MCAdoptBrokenUndomigration (Broken = {\"undomigration\"}): the rescue
+    rolls the migration back, failing MigrationIsOneWay — the code's doc says the migration is never
+    undone, so a model where it is would be wrong. cmd/nova-sprint/adopt_play.go gains one comment
+    line on cmdAdoptPlay citing tla/Adopt.tla. tla/CASES.tsv, tla/RUNS.tsv and tla/COVERAGE.tsv are
+    made current. The three in-window refusal paths that exit 1 without checking that the old library
+    is back (adopt_play.go:236-246, :262-266, :247-249) and the rescue's failed_when: false in
+    fleet/tools.yml are left to their v1.2.14 fix cards, which bring the model."
+   :origin "this card, tla-adopt-the-play-around-the-library-2.w5, 2026-10-11: v1.2.12 inventory item T21 and section 9 (D13); drift read at nova-sprint main 00c54ba2e")
+
   (fix "tla-workimport-scoped-verify" :release "v1.2.12" :status "planned"
    :title "WorkImport models a scoped import and verify, and a wider verify never reports done"
    :text "Models only, no product change. tla/WorkImport.tla's Import and Verify each take a scope, a
@@ -1503,6 +1536,20 @@
    :title "The idle alarm is raised once an episode, with a test that drives the ticks"
    :text "TestTheIdleAlarmNamesTheRootsOnceAnEpisode (internal/sprint/store/idle_test.go) was red on main and red in every PR's CI: it still expected the older rule, where every end of an idle episode pushed the working-again note. b34ff36f chose the end note by cause (idleEnd): only the fleet working at half its width again says working again, and an episode that ends because no card waits pushes the fleet's idle episode ended, naming that (docs/SPEC-SPRINT.md section 14). The test now pins that rule. A new test, TestTheIdleAlarmIsRaisedOnceAnEpisodeNeverOncePerTick (internal/sprint/idle_test.go), drives 15-second ticks over an idle fleet and checks the count after every tick: none under the window, exactly one at the window and for the rest of the episode (never zero, never two), one working-again note when the fleet works, and exactly one more alarm in the next episode. The reversed witness for one alarm a tick already exists and passes as a witness: tla/MCSprintRulesIdleBrokenEveryTick.cfg (AlarmOncePerEpisode). The seat's flood of the fleet works below its alarm judgment (alarms.go, the alarm_fleet threshold) is a different alarm from the idle note: it is keyed by type alone, one judgment while it stands, and TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds holds it to one an episode on the twin store. The flood was not reproduced from the code at main, so the live cause is still open (a judgment closed or answered between ticks, or a server build older than main, are the candidates); it needs a read of the live judgment log, which this change does not touch."
    :origin "the owner and the seat, 2026-10-11: the idle alarm flooded the seat and the idle test was red on main")
+  (fix "friend-done-reflects-finishes" :release "v1.2.13" :status "planned"
+   :title "Done is every card a row completed, and the readers' verdict counts the reads the accept counts"
+   :text "Pull request 94. Friend stella's row read done 0 and ok% 0.0% while the log recorded her finishes
+    ok and their reads ok: the readers' verdict (TickVerdicts) read the readers table alone, keyed an ok by
+    the read's row and used the tier's read count, while the accept also counts the fleet table's read
+    cards, retired off their rows with their verdicts, by the reader, at the sprint's count. The accept and
+    the verdict now count from one function (standingReads). A row's done, a friend's or a member's, is
+    every card it completed, of every kind registered in sprint.DoneKinds (a work card the readers' verdict
+    moved to ok, a fix card likewise, a read card completed with a verdict, ok or broken; a returned read
+    completes nothing; a merge card is one more entry once merges are dealt cards), counted from the log
+    lines that complete them through the done record (store.keepDone, store.DoneSince), keyed by epoch and
+    counted from a stats reset's mark. ok% stays the work's measure, the readers' verdicts on the row's
+    work. tla/ReadVerdict.tla models the verdict against the accept."
+   :origin "the owner, 2026-10-11: \"The dashboard has to reflect the truth.\" and \"Done is every card completed.\"; root cause found by Stella")
   (fix "a-review-loop-has-a-circuit-breaker" :release "v1.2.14" :status "planned"
    :title "A review loop has a circuit breaker"
    :text "A card is escalated to the coordinator after 4 consecutive review rounds that each bring a new blocking finding, or after 6 substantive review rounds of any kind, instead of going round again."
@@ -1531,6 +1578,10 @@
    :title "Every producer card has its consumer out after the tick"
    :text "Adds ConsumersOut check at the end of every tick to assert that every producer card (working, fix, review) has its consumer out: an attempt held by an up member/friend for working/fix, or reads asked by up readers for review. Violations are reported as quiet judgments. Also reduces MaxSettle from 64 to 32 as per the owner's design, and changes settle bound handling to push a judgment instead of erroring the tick."
    :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17; card every-producer-card-has-its-consumer-out-after-the-tick.w1")
+   (fix "tla-dirtytick-consumers-out-at-the-tick-end" :release "v1.2.14" :status "planned"
+    :title "DirtyTick models ConsumersOut at each tick's end"
+    :text "tla/DirtyTick.tla gains ConsumersOut, an action property checked at each tick's end: every working card's attempt is held by a machine up, every review card's read is held by a reader up (unless judged stranded, no route, at its bound, or its read already said ok), and every ready card a route serves and a free up slot could take is dealt in the same tick. The fix \"consumersout\" re-pumps the work table in the settle loop (sub-ticks until the consumer queue is empty, bound MaxSub 32, reaching it a judgment SettleBoundJudged). tla/MCDirtyTickConsumers.tla and .cfg (width 2) check it, with four reversed witnesses (a deal of one card per tick, a settle loop cut after one sub-tick, a read asked in the next tick instead of this one, a member-down whose attempts are not re-dealt) that TLC must fail."
+    :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17; card tla-dirtytick-consumers-out-at-the-tick-end-2.w7; continued by card tla-dirtytick-consumers-out-at-the-tick-end-2.w9")
   (fix "ready-over-reads-the-settled-rests" :release "v1.2.14" :status "planned"
    :title "The ready-over judgment reads the deal's settled rests"
    :text "A ready card whose tier is served only by a route resting at the tick's now raises the ready-over

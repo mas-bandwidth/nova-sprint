@@ -173,9 +173,32 @@ is her width, the jobs she works at once: her nova-config friend row's `width`
 owner, 2026-10-02: "6/1 seems a bit wrong -- need to setup width for friends?
 Start at 8 for each?"), which friend sync writes to her row each pass (a row
 whose width is below 1 is refused, exit 1, nothing written), summed in the
-footer; `ok` and `failed` count her cards done; `done` is `sum(ok+failed)` and
-`ok%` is `pct(ok/ok+failed)`, pooled over the friends in the footer, the fleet
-table's own formulas.
+footer; `ok` and `failed` count her work cards the readers' verdicts moved
+there; `done` is every card she completed, of every kind (done and ok%, below),
+and `ok%` is `pct(ok/ok+failed)`, pooled over the friends in the footer, the
+fleet table's own formula: her work's measure, which her reads never move.
+
+Done and ok% (the owner, 2026-10-11: "Done is every card completed."; "The
+dashboard has to reflect the truth."). A row's `done`, a friend's or a member's,
+counts every card the row completed, of every kind a row is dealt, each kind by
+its own rule, registered in one list (`sprint.DoneKinds`, internal/sprint/done.go):
+a work card counts when the readers' verdict moves it to the row's ok cell (a
+`work` card at its first attempt, a `fix` card at a later one, the rework dealt
+with its fix); a read card counts when its reader completes it with a verdict,
+`--ok` or `--broken` (a read handed back with `--return`, taken back, or let
+pass its deadline completes nothing). A new kind (a merge card, once merges are
+dealt cards) is one more entry in that list and nothing else. Each kind is
+counted from the log line that completes the card (the card, the row that
+completed it, and when), never from the row's cells: a read card retires off its
+reader's row with its verdict, and a tidy moves done work off, and neither
+uncounts it. The tick keeps the done record with the where record, STOPPED or
+RUNNING (the completions of the epoch's log, read after a cursor; store.keepDone),
+and `where` counts from it (store.DoneSince), at most the tick in flight behind,
+as where's other records are; with no record of the epoch yet it reads the
+epoch's log. It is the epoch's: a clear starts it again. A stats reset counts done from its mark: the
+completions at or after it, so a reset shows `done 0` until the next completion.
+`ok%` stays the work's measure: the row's ok over its ok and failed cells (the
+readers' verdicts on its work), so reads never move it.
 
 A friend says she is there with `friend beat <friend>` (answered `FRIEND-BEAT OK
 <friend> at=<t> ... row_mode=<batch|one-shot> row_width=<n>`, her nova-config row
@@ -1283,11 +1306,13 @@ column where a work card withdrawn because no member was up is kept (the table
 layer never places a removed member again), and hidden `ok` and `failed`
 columns that hold a member's finished work cards, finished ok and finished
 failed, and a hidden `defect` column that holds those that ended on a brief
-defect (section 1, a brief defect), counted in neither. `done` and `ok%` are
-the table's own formulas over the `ok` and `failed` cells,
-computed at render and never written: `done:sum(ok+failed)` and
-`okpct:pct(ok/ok+failed):pooled:ok%` (the column `okpct`, labelled `ok%`). A
-member with no finished card shows `0` and `0.0%`; the footer pools ok% over
+defect (section 1, a brief defect), counted in neither. `ok%` is the table's
+own formula over the `ok` and `failed` cells, computed at render and never
+written: `okpct:pct(ok/ok+failed):pooled:ok%` (the column `okpct`, labelled
+`ok%`). `done` is every card the member completed, of every kind (section 1,
+done and ok%): the stored table's formula `done:sum(ok+failed)` is the shape's,
+and `where` draws the column from the done record in its place. A member with
+no finished card shows `0` and `0.0%`; the footer pools ok% over
 the members (every ok over every finished card, never a mean of the members'
 percentages). The text cells (ci, state, since, status, load) are display
 copies of the control cards, written after each step; the control cards are
@@ -3049,8 +3074,8 @@ order the cards were dealt in, so a card brought to the front of its stream by
   going down sends them, or withdrawn when none is up. The one exception is the
   coordinator's hold with no `--return` (section 11, hold): a member held to
   finish keeps its working cards (`held_finish` on its control card) until they
-  finish or their deadline judges them, and its ready cards go.- done and ok% are computed by the table from the member's `ok` and `failed`
-  cells.
+  finish or their deadline judges them, and its ready cards go.- ok% is computed by the table from the member's `ok` and `failed` cells; done
+  is every card the member completed, of every kind (section 1, done and ok%).
 - A fleet member says it is there by beating: `nova-sprint fleet beat
   <member>`, run on the machine every few seconds, writes its last beat time
   (to the second) and its load in one write of its own record, outside the
@@ -5944,9 +5969,19 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   each missing column and the exact nova-table commands that mend it, and whose remedy is to run
   those commands on a STOPPED machine, or the adopt's schema step; any other shadow failure is a
   FAIL row with its text, and a shadow that passes is one OK row naming the candidate's version.
-  The gate's later checks (members, their tools, keys, holds and version; mirrors; links; stable)
-  are WARN rows saying "not measured by this build" until their cards land, from one table each
-  later card fills in, so a preflight always says what it did not check. The links check is filled
+  The gate's later checks (mirrors, links and stable) are WARN rows saying "not measured by
+  this build" until their cards land, from one table each later card fills in, so a preflight
+  always says what it did not check. The member check is filled in when the preflight read the
+  members' probes and the sprint's facts beside them (area preflight, check members, its subject
+  the member): FAIL for a MemberTools tool or a harness its enabled routes launch the loop's PATH
+  does not find, a push credential that does not authenticate, a secrets seat that does not open,
+  a provider key name its enabled routes read that the seat does not hold (the route and the
+  name both named, by name only and never a value), and a member whose installed nova-sprint is
+  older than the release before the candidate's or newer than it; WARN for a host that does not
+  answer (a switch with a member away is allowed), a probe the budget cut, java or
+  /opt/tla/tla2tools.jar absent (only some benches run TLC, so the dealer keeps TLA+ cards off
+  them), a home under the warn bound, and a member held or draining; and a member whose every
+  prerequisite is in place is OK. The links check is filled
   in when the preflight read the members' probes: a member with DoctorLinkWarnChanges or more link
   changes in DoctorLinkWindow is one FAIL row (area preflight, check links), so a switch or adopt
   is refused while its link is flapping, and a member not measured stays a WARN there. A switch or adopt runs

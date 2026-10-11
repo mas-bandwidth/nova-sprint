@@ -131,6 +131,7 @@ func failedTask(output string) string {
 	return tasks[len(tasks)-1][1]
 }
 
+// cmdAdoptPlay runs the seat play tla/Adopt.tla models (Stop, Migrate, Swap, Reinstall, Restart, Rescue).
 func (a *app) cmdAdoptPlay(args []string, stdout, stderr io.Writer) int {
 	const name = "adopt"
 	fs, _ := a.verbSetup(name)

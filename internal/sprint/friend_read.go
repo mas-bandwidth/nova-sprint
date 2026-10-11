@@ -239,7 +239,34 @@ func attemptReadPrefix(pr *Card) string {
 // fleetReadLiveOf is friendReadLive over the fleet cards given (every card of the table,
 // or those of the primary a caller indexed once: fleetReadIndex).
 func fleetReadLiveOf(s *Snapshot, pr *Card, cards []*Card) (placed, okCards, broken []*Card) {
-	prefix := attemptReadPrefix(pr)
+	return fleetReadLiveAt(s, pr, max(pr.Int("attempt"), 1), cards)
+}
+
+// fleetReadsAt is friendReadLive at the attempt given: at the primary's current attempt it
+// is friendReadLive itself, and an earlier attempt's reads stand at that attempt's work head
+// (readHeadMatchesAt), the head they were asked at.
+func fleetReadsAt(s *Snapshot, pr *Card, attempt int) (placed, okCards, broken []*Card) {
+	if s == nil || s.Fleet == nil || pr == nil {
+		return nil, nil, nil
+	}
+	attempt = max(attempt, 1)
+	return fleetReadLiveAt(s, pr, attempt, s.Fleet.WithPrefix(pr.ID+".r"+itoa(attempt)+"."))
+}
+
+// readHeadMatchesAt is readHeadMatches at the attempt given: at the primary's current
+// attempt it is readHeadMatches; an earlier attempt's read matches that attempt's work head.
+func readHeadMatchesAt(s *Snapshot, pr *Card, attempt int, rc *Card) bool {
+	if pr == nil || max(attempt, 1) == max(pr.Int("attempt"), 1) {
+		return readHeadMatches(s, pr, rc)
+	}
+	h := rc.F("head")
+	_, _, work := attemptEnds(s, pr.ID, attempt)
+	return h != "" && work != "" && h == work
+}
+
+// fleetReadLiveAt is fleetReadLiveOf at the attempt given (fleetReadsAt).
+func fleetReadLiveAt(s *Snapshot, pr *Card, attempt int, cards []*Card) (placed, okCards, broken []*Card) {
+	prefix := pr.ID + ".r" + itoa(attempt) + "."
 	for _, c := range cards {
 		if c == nil || c.F("kind") != "read" || !strings.HasPrefix(c.ID, prefix) || c.Col == Withdrawn {
 			continue
@@ -256,7 +283,7 @@ func fleetReadLiveOf(s *Snapshot, pr *Card, cards []*Card) (placed, okCards, bro
 		}
 		switch c.F("verdict") {
 		case "ok":
-			if !readHeadMatches(s, pr, c) {
+			if !readHeadMatchesAt(s, pr, attempt, c) {
 				continue
 			}
 			syn := *c
@@ -270,7 +297,7 @@ func fleetReadLiveOf(s *Snapshot, pr *Card, cards []*Card) (placed, okCards, bro
 			// work head (readHeadMatches), is about work the card moved past, and
 			// a later read at the head stands in its place. A read that pins no
 			// head is not one pinned to an older one, and stands.
-			if h := c.F("head"); h != "" && !readHeadMatches(s, pr, c) {
+			if h := c.F("head"); h != "" && !readHeadMatchesAt(s, pr, attempt, c) {
 				continue
 			}
 			syn := *c

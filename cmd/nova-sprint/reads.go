@@ -1382,13 +1382,25 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 			return whereView{}, "", err
 		}
 	}
+	// every row's done: the cards it completed, of every kind, since the stats reset's mark,
+	// from the done record read with the where record (store.DoneOf, sprint.DoneKinds)
+	var doneSince time.Time
+	if facts.Reset != nil {
+		doneSince = facts.Reset.At
+	}
+	done, err := st.DoneOf(ctx, facts, doneSince)
+	if err != nil {
+		return whereView{}, "", err
+	}
 	for i, t := range shapes {
 		logical := sprint.ViewOrder[i]
 		if logical == sprint.Fleet {
 			// a friend's row holds her sprint cards: counted on the friends table, never a
 			// machine of the fleet table (sprint.FriendRow)
-			// done and ok% count from the stats reset's mark (sprint.ResetMark.FleetSince)
+			// ok% counts from the stats reset's mark (sprint.ResetMark.FleetSince), done the
+			// cards each row completed since it
 			t, friendCards = splitFriendRows(facts.Reset.FleetSince(t))
+			t = doneColumn(t, done, func(key string) string { return key })
 		}
 		if logical == sprint.Readers {
 			// each reader's width beside reading, derived from its fleet row
@@ -1485,7 +1497,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		}
 	}
 	v.Friends = friends
-	ft := a.friendsTable(friends, now)
+	ft := doneColumn(a.friendsTable(friends, now), done, sprint.FriendRow)
 	v.Tables[sprint.Friends] = map[string]map[string]any{}
 	for _, r := range ft.Rows {
 		cells := map[string]any{}
@@ -1704,6 +1716,33 @@ func liveCells(cells map[string]any, rowWorking map[string][]string, beats map[s
 	cells[string(sprint.Working)] = strconv.Itoa(run)
 	cells["held"] = strconv.Itoa(held)
 	cells["stale"] = strconv.Itoa(stale)
+}
+
+// doneColumn is the table t (the fleet table's machines, or the friends table) with its done
+// column the cards each row completed, of every kind (sprint.DoneCounts.Total over
+// sprint.DoneKinds), where the table's own formula sums its ok and failed cells: done is every
+// card a row completed (the owner, 2026-10-11: "Done is every card completed."), and ok%, the
+// readers' verdicts on its work, stays the formula over the ok and failed cells. rowOf is the
+// fleet row a table row's key names. Display only: the stored table is as it was.
+func doneColumn(t ntable.Table, done sprint.DoneCounts, rowOf func(key string) string) ntable.Table {
+	j := slices.IndexFunc(t.Columns, func(c ntable.Column) bool { return c.Name == string(sprint.Done) })
+	if j < 0 {
+		return t
+	}
+	cols := slices.Clone(t.Columns)
+	cols[j].Projection = ntable.Count
+	t.Columns = cols
+	rows := make([]ntable.Row, len(t.Rows))
+	for i, r := range t.Rows {
+		r.Cells = slices.Clone(r.Cells)
+		for len(r.Cells) <= j {
+			r.Cells = append(r.Cells, ntable.Cell{})
+		}
+		r.Cells[j] = ntable.Cell{Count: int64(done.Total(rowOf(r.Key)))}
+		rows[i] = r
+	}
+	t.Rows = rows
+	return t
 }
 
 // splitFriendRows is the fleet table without the friends' rows (sprint.FriendRow), and
