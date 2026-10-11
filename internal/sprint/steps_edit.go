@@ -65,7 +65,8 @@ type BriefReq struct {
 // as on a STOPPED one; a card merging or landed keeps its brief; a working card takes one for its next attempt. A running
 // machine's pump holds a card a queued change names until the change drains
 // (store.Step's Pump), so the brief is in place before the card can be dealt. The
-// card keeps its id, stream, score and needs; one an attempt was dealt for opens its
+// card keeps its id, stream and score; its needs follow the new brief's
+// DEPENDS-ON lines (a brief that names none clears them; steps_edit.go). One an attempt was dealt for opens its
 // next attempt (briefInPlace): a brief correction is never a twin (the owner,
 // 2026-10-06: "We gotta stop doing this twin shit. it's waste."). The command line
 // holds the brief to the card lint, and the store to its bound, as add's. A card
@@ -138,14 +139,18 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			unset = append(unset, FieldBench)
 		}
 		// the brief's needs are the DEPENDS-ON lines it carries (docs/SPEC-SPRINT.md,
-		// needs and the deal): the ordinary path writes them whenever the brief names
-		// them and they differ from the card's, and a ready card that gains a need not
-		// landed moves ready -> waiting with them, in this same unit (unmet and Lawful
-		// accept the move). A brief that names no need leaves the card's own.
+		// needs and the deal): the ordinary path writes them whenever they differ
+		// from the card's — a brief that drops its DEPENDS-ON clears them — and a
+		// ready card that gains a need not landed moves ready -> waiting with them,
+		// in this same unit (unmet and Lawful accept the move).
 		cur, want := Split(c.F("needs")), b.Needs
 		toWaiting := false
-		if len(want) > 0 && !sameNeeds(cur, want) {
-			set["needs"] = strings.Join(want, ",")
+		if !sameNeeds(cur, want) {
+			if len(want) > 0 {
+				set["needs"] = strings.Join(want, ",")
+			} else {
+				unset = append(unset, "needs")
+			}
 			if c.Col == Ready {
 				for _, n := range want {
 					if s.StateOf(n) != Landed {

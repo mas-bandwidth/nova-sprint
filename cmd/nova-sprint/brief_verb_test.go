@@ -29,8 +29,8 @@ func (ta *testApp) primary(id string) *sprint.Card {
 // should you be able to do to mutate a stopped sprint" / "I don't want you
 // manually hopping in and working around it and doing manual stuff."): a brief
 // that fails the card lint refused with nothing changed, replaced on a STOPPED
-// machine with the card's id, stream, score and needs kept, and refused once
-// the card is working.
+// machine with the card's id, stream and score kept and its needs following the
+// new brief (none here, so cleared), and refused once the card is working.
 func TestBriefReplacesAnUnstartedPrimarysBriefOnAStoppedSprint(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -62,7 +62,7 @@ func TestBriefReplacesAnUnstartedPrimarysBriefOnAStoppedSprint(t *testing.T) {
 	assert.Equal(t, before.Row, after.Row)
 	assert.Equal(t, before.Col, after.Col)
 	assert.Equal(t, before.Score, after.Score)
-	assert.Equal(t, "a-1", after.F("needs"))
+	assert.Equal(t, "", after.F("needs"), "the new brief names no need, so the edit clears the card's")
 
 	ta.ok("start")
 	out = ta.ok("brief a-1 --brief-file " + good)
@@ -101,22 +101,24 @@ func TestBriefReplacesWaitingBriefsWhileRunningAndByDir(t *testing.T) {
 	ta.ok("add --stream a a-3 --one --needs a-1 --brief-file " + writeBrief(t, "the old third"))
 	ta.deal(1)
 	ta.ok("start")
-	text := func(lead string) string { return strings.TrimSuffix(passingBrief(lead), "\n") }
+	needsText := func(lead, needs string) string { return strings.TrimSuffix(needsBrief(lead, needs), "\n") }
 
-	assert.Contains(t, ta.ok("brief a-2 --brief-file "+writeBrief(t, "the new second")), "a-2 brief replaced")
+	// the replacement brief names the need a-1, so the waiting card keeps waiting
+	// with that need: a brief that names none would clear it and let the deal take it
+	assert.Contains(t, ta.ok("brief a-2 --brief-file "+writeNeedsBrief(t, t.TempDir(), "a-2", "the new second", "a-1")), "a-2 brief replaced")
 	ta.ok("tick")
-	assert.Equal(t, text("the new second"), ta.primary("a-2").F("brief"))
+	assert.Equal(t, needsText("the new second", "a-1"), ta.primary("a-2").F("brief"))
 	assert.Equal(t, sprint.Waiting, ta.primary("a-2").Col)
 
 	dir := t.TempDir()
-	writeNeedsBrief(t, dir, "a-2", "the newer second", "")
-	writeNeedsBrief(t, dir, "a-3", "the new third", "")
+	writeNeedsBrief(t, dir, "a-2", "the newer second", "a-1")
+	writeNeedsBrief(t, dir, "a-3", "the new third", "a-1")
 	out := ta.ok("brief --dir " + dir)
 	assert.Contains(t, out, "BRIEF OK moved=2 refused=0")
 	assert.Contains(t, out, "a-3 brief replaced")
 	ta.ok("tick")
-	assert.Equal(t, text("the newer second"), ta.primary("a-2").F("brief"))
-	assert.Equal(t, text("the new third"), ta.primary("a-3").F("brief"))
+	assert.Equal(t, needsText("the newer second", "a-1"), ta.primary("a-2").F("brief"))
+	assert.Equal(t, needsText("the new third", "a-1"), ta.primary("a-3").F("brief"))
 
 	// a working card takes its brief for the next attempt: the call that names one writes BRIEF OK
 	writeNeedsBrief(t, dir, "a-1", "the new work", "")

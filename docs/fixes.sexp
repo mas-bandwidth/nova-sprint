@@ -1241,7 +1241,8 @@
      now carry DEPENDS-ON while every card kept zero needs and stayed ready; and dealPlan's eligibility
      checked stream held, friend pin and inState(c, Ready) only, no guard on needs, so a ready card with
      unlanded needs was dealt. Now the ordinary brief path writes the needs the new brief's DEPENDS-ON
-     names whenever they differ from the card's; a ready card that gains a need not landed moves ready ->
+     names whenever they differ from the card's, clearing them when the brief drops its DEPENDS-ON; a
+     ready card that gains a need not landed moves ready ->
      waiting in the same unit (the lifecycle accepts the move, ready -> waiting being no longer only a
      sentinel's effect when the edit records needs); dealPlan refuses a card with WaitsFor(s, c, nil)
      non-empty, and unmet judges every move to dealt (Working) against the card's stored needs, so Lawful
@@ -1250,10 +1251,11 @@
      internal/sprint/needs_guard_test.go (a ready card whose brief gains an unlanded need waits with its
      needs recorded; a waiting or ready card whose edit names landed needs stays or becomes ready; a ready
      card with an unlanded need built in the store is never dealt and the tick's invariant names it; an
-     edit with no needs change leaves them). The invariant a primary anywhere but waiting has every need
+     edit with no needs change leaves them; a brief that drops its DEPENDS-ON clears the card's needs).
+     The invariant a primary anywhere but waiting has every need
      landed already named such a card; this is the deal and the brief catching up (docs/SPEC-SPRINT.md,
      needs and the deal)."
-    :origin "this card, a-brief-edit-records-its-needs-and-the-deal-checks-them.w2, from the owner on
+    :origin "this card, a-brief-edit-records-its-needs-and-the-deal-checks-them.w3, from the owner on
      the live epoch 17, 2026-10-11 ~10:40-11:00 AM ET: 89 v1212 cards ran or sat ready before their
      DEPENDS-ON landed (four failed four attempts each); code read at nova-sprint main 1405d26; the
      owner: \"by definition this must not happen.\"")))

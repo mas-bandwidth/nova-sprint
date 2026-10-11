@@ -92,6 +92,24 @@ func TestAReadyCardWithAnUnlandedNeedIsNeverDealt(t *testing.T) {
 	assert.True(t, found, "the tick raises one judgment naming a-2 and its unlanded need a-1: %+v", tp.Notes)
 }
 
+// (v) a brief edit that drops its DEPENDS-ON clears the card's needs, rather
+// than keeping the stale ones: the ordinary path records the needs its brief
+// names, and a brief that names none leaves the card with none.
+func TestABriefEditDroppingANeedClearsIt(t *testing.T) {
+	t.Parallel()
+	w := needsWorld(t)
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-1"}, Brief: "two", Who: "coordinator"}))
+	require.Equal(t, Waiting, w.s.Work.Placed("a-2").Col, "a-2 starts waiting on a-1")
+	require.Equal(t, "a-1", w.s.Work.Placed("a-2").F("needs"))
+
+	w.must(Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "a-2", Brief: "two, reworded", Needs: nil}}, Who: "coordinator"}))
+
+	assert.Equal(t, "", w.s.Work.Placed("a-2").F("needs"), "the edit dropped its DEPENDS-ON: the needs are cleared, not kept stale")
+	w.place(w.s.Work, "a-1", "a", Landed)
+	w.must(Resolve(w.s, ResolveReq{Who: "coordinator"}))
+	assert.Equal(t, Ready, w.s.Work.Placed("a-2").Col, "with no needs left, the card becomes ready")
+}
+
 // (iv) the same edit with no DEPENDS-ON change leaves needs as they were.
 func TestABriefEditWithoutANeedsChangeLeavesThem(t *testing.T) {
 	t.Parallel()
