@@ -49,6 +49,33 @@ const (
 	NProviderRested = "a provider rested: its funds or its key"
 )
 
+// EnvFaultRemedy is the remedy a member's environment judgment names, by cause, in the words
+// the coordinator runs: a push refusal is the fleet push-credential play for that member, a
+// missing harness or tool is installed, a sandbox or wall is freed, a full disk is emptied,
+// and then fleet up runs the member's own probe and clears the fault (steps_work.go
+// envFaultNote; tla/ProviderBudget.tla). It is the coordinator-action shape routes rest
+// gives a provider (cmd/nova-sprint/routes_rest.go).
+func EnvFaultRemedy(member, cause string) string {
+	switch cause {
+	case EnvPush:
+		return "run the fleet push-credential play with --limit " + member + ", then " + EnvProbeLine(member)
+	case EnvHarness:
+		return "install the member's harness and run its harness check, then " + EnvProbeLine(member)
+	case EnvTool:
+		return "install the missing tool on " + member + ", then " + EnvProbeLine(member)
+	case EnvSandbox:
+		return "let the member's sandbox or wall run the card, then " + EnvProbeLine(member)
+	case EnvDisk:
+		return "free disk on " + member + ", then " + EnvProbeLine(member)
+	}
+	return "repair " + member + "'s environment, then " + EnvProbeLine(member)
+}
+
+// EnvProbeLine is the member's own environment probe the remedy names: the push-credential
+// probe and the harness check, run on the member, whose pass fleet up reads to clear the
+// fault (steps_work.go, FleetReq.Probe; tla/ProviderBudget.tla, FleetUpRefusesUncleared).
+func EnvProbeLine(member string) string { return "fleet up " + member + " --probe " + EnvProbePassed }
+
 // RouteRest is a rest: rule 3's of a route (Route, one line of PropRule3Rest) or a provider's
 // (Provider, PropProviderRest; read through RouteRests it names each route of the provider too): when
 // it began, when it ends (for a rest that has ended, when it ended), the cards whose takes

@@ -1136,7 +1136,7 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 	}
 	var memberNames []string
 	for _, m := range specs {
-		if code := a.runStep("fleet up", *c, st, a.fleetStep(st, "up", m.Name, c.actor, m.Width, false, 0, false, ""), steps, stderr); code != 0 {
+		if code := a.runStep("fleet up", *c, st, a.fleetStep(st, "up", m.Name, c.actor, m.Width, false, 0, false, "", ""), steps, stderr); code != 0 {
 			return code
 		}
 		memberNames = append(memberNames, m.Name)
@@ -3110,8 +3110,9 @@ func (a *app) cmdResume(args []string, stdout, stderr io.Writer) int {
 func (a *app) cmdFleet(op string, args []string, stdout, stderr io.Writer) int {
 	name := "fleet " + op
 	fs, c := a.verbSetup(name)
-	var width, deadline, harnesses *string
+	var width, deadline, harnesses, probe *string
 	if op == "up" {
+		probe = fs.String("probe", "", "the member's own environment probe's result -- its push-credential probe and its harness check, run on the member: `passed` when it passed, else the reason it failed. fleet up refuses a member whose last environment fault is not cleared until its probe passes, and runs it before accepting width for a member the sprint does not know; a pass clears the fault")
 		harnesses = fs.String("harnesses", "", "the headless harnesses on the member's PATH, a comma list of "+strings.Join(harness.Headless, ", ")+" (none clears them): the deal draws a route that runs under one only for a member that names it; default: as it is, none for a new member")
 		width = fs.String("width", "", fmt.Sprintf("the member's width: the most work cards it runs at once; the deal holds it at %d times that, ready and working; 1 to %d (default: as it is, %d for a new member); 0 drains the member: no new deals, its untaken ready cards are levelled away, its working cards finish (fleet down deals them again elsewhere)", sprint.DealAhead, sprint.MaxWidth, sprint.DefaultWidth))
 		deadline = fs.String("deadline", "", fmt.Sprintf("pin the deadline every card dealt to the member gets, a duration (45m, 2700s); default takes the pin off: each card's own deadline, or %d times the member's median run wall over its last %d ok attempts, whichever is larger", sprint.DeadlineK, sprint.DeadlineSamples))
@@ -3148,11 +3149,15 @@ func (a *app) cmdFleet(op string, args []string, stdout, stderr io.Writer) int {
 	if len(pos) == 1 {
 		member = pos[0]
 	}
+	pr := ""
+	if probe != nil {
+		pr = *probe
+	}
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	return a.runStep(name, *c, st, a.fleetStep(st, op, member, c.actor, w, drain, d, off, h), stdout, stderr)
+	return a.runStep(name, *c, st, a.fleetStep(st, op, member, c.actor, w, drain, d, off, h, pr), stdout, stderr)
 }
 
 func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
