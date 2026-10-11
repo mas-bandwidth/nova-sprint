@@ -40,6 +40,11 @@
 (* a pre-upgrade record (no stop-issued flag), no live lease at all; then  *)
 (* it clears the debt.                                                     *)
 (*                                                                         *)
+(* A pre-upgrade record (Broken "preupgrade": a machine STOPPED before     *)
+(* v1.2.6 has no durable stop-issued flag and no debt list) writes neither *)
+(* at STOP, so its live leases are the only authority: START refuses while *)
+(* any remains, and a live lease may be returned without a debt entry.     *)
+(*                                                                         *)
 (* Broken (reversed witnesses):                                            *)
 (*  "nosettle"        - the code before v1.2.6: the debt stays until       *)
 (*                 START and matches a card by id, so a returned card      *)
@@ -156,20 +161,23 @@ LiveNames(o, c) ==
     /\ IF Broken = "omitlive" THEN c \in held ELSE child[c] # 0 \/ c \in held
 
 \* the row's stop-returns count is above zero (sprint.Beat.StopReturns): some
-\* working card the owner still runs or holds a report for (a cancelled card
-\* is owed its own return and does not count)
+\* card in its active column the owner still runs or holds a report for (a
+\* cancelled card is owed its own return and does not count); a reader's read
+\* counts while it is reading
 StopReturnsOwed(o) ==
-    \E c \in Cards : row[c] = o /\ col[c] = "working" /\ (child[c] # 0 \/ c \in held)
+    \E c \in Cards : row[c] = o /\ col[c] = Active(c) /\ (c \in Readers \/ child[c] # 0 \/ c \in held)
 
 \* the settle's read: the owner has beaten since the STOP and its beat shows
 \* the job gone -- for a live-set beat the live set names it neither running
-\* nor held, for a count-only beat the stop-returns count is zero
+\* nor held, for a count-only beat the stop-returns count is zero. A reader's
+\* lease reads only the count (the code skips LiveNamedAt for a readers row).
 JobGone(d) ==
     /\ d.row \in beaten
-    /\ col[d.id] = "working"
+    /\ col[d.id] = Active(d.id)
     /\ gen[d.id] = d.gen
     /\ gen[d.id] < MaxGen
-    /\ IF live[d.row] THEN ~LiveNames(d.row, d.id) ELSE ~StopReturnsOwed(d.row)
+    /\ IF d.id \in Readers THEN ~StopReturnsOwed(d.row)
+       ELSE IF live[d.row] THEN ~LiveNames(d.row, d.id) ELSE ~StopReturnsOwed(d.row)
 
 \* the start reading of a debt entry whose child finished: the row's fresh
 \* live set names the card held at the captured generation (LiveHeldAt)
@@ -230,14 +238,19 @@ ReadDone(c) ==
     /\ UNCHANGED <<mach, row, gen, sfg, child, debt, old, beaten, held, live, settling, stopissued>>
 
 \* STOP captures every working card and every reading read as owed
-\* (activeStopLeases), and writes the durable flag
+\* (activeStopLeases). A post-upgrade STOP writes the durable flag and debt
+\* list; a pre-upgrade record (Broken "preupgrade") writes neither, so its
+\* live leases are the only authority and START refuses while any remains.
 Stop ==
     /\ mach = "run"
     /\ mach' = "stop"
-    /\ debt' = {[id |-> c, row |-> row[c], gen |-> gen[c]] : c \in {x \in Cards : LiveLease(x)}}
     /\ old' = {c \in Cards : child[c] # 0}
     /\ beaten' = {}
-    /\ stopissued' = TRUE
+    /\ IF Broken = "preupgrade"
+         THEN /\ stopissued' = FALSE
+              /\ debt' = {}
+         ELSE /\ stopissued' = TRUE
+              /\ debt' = {[id |-> c, row |-> row[c], gen |-> gen[c]] : c \in {x \in Cards : LiveLease(x)}}
     /\ UNCHANGED <<row, col, gen, sfg, child, held, live, settling>>
 
 \* the owner cancels its child (the store trusts its acknowledgement)
@@ -264,7 +277,8 @@ Return(c) ==
     /\ col[c] = Active(c)
     /\ child[c] = 0
     /\ gen[c] < MaxGen
-    /\ \E d \in debt : d.id = c /\ d.row = row[c] /\ d.gen = gen[c]
+    \* a pre-upgrade record has no debt list: any live lease may be returned
+    /\ stopissued => \E d \in debt : d.id = c /\ d.row = row[c] /\ d.gen = gen[c]
     /\ col' = [col EXCEPT ![c] = Idle(c)]
     /\ sfg' = [sfg EXCEPT ![c] = gen[c]]
     /\ gen' = [gen EXCEPT ![c] = gen[c] + 1]
@@ -303,10 +317,10 @@ SettleByBeat ==
     /\ Broken # "nosettlebybeat"
     /\ mach = "stop"
     /\ \E d \in settling :
-        /\ col[d.id] = "working"
+        /\ col[d.id] = Active(d.id)
         /\ gen[d.id] = d.gen
         /\ gen[d.id] < MaxGen
-        /\ col' = [col EXCEPT ![d.id] = "ready"]
+        /\ col' = [col EXCEPT ![d.id] = Idle(d.id)]
         /\ sfg' = [sfg EXCEPT ![d.id] = d.gen]
         /\ gen' = [gen EXCEPT ![d.id] = d.gen + 1]
         /\ held' = held \ {d.id}
