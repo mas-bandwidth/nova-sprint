@@ -155,7 +155,7 @@ type Base struct {
 
 // BaseOf is the one place that decides where the attempt after starts (tla/CardContract.tla,
 // RestagedAtLastPushedHead; docs/SPEC-CARD-CONTRACT.md layer 1): the head of the latest attempt
-// of attempts that finished ok at a full sha, whatever happened to the attempts after it. The
+// of attempts that actually pushed a full sha, whatever outcome was recorded afterward. The
 // packet and `card` both read it, so the display is what the packet hands out.
 func BaseOf(attempts []*Card) Base {
 	var b Base
@@ -167,10 +167,11 @@ func BaseOf(attempts []*Card) Base {
 	return b
 }
 
-// PushedHead is the head an attempt's work card finished ok at, "" when it finished failed, in
-// flight, or at no commit.
+// PushedHead is an attempt's recorded full commit head. A failed result may still have pushed
+// work before failing; outcome is not evidence that the push did not happen. Placeholders,
+// incomplete records, and in-flight attempts have no pushed head.
 func PushedHead(w *Card) string {
-	if w.F("ok") == "yes" && typedrec.IsFullSha(w.F("head")) {
+	if typedrec.IsFullSha(w.F("head")) {
 		return w.F("head")
 	}
 	return ""
