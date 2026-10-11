@@ -30,7 +30,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `LiveRuns` | Working means a live run: the beat's live set, the reconcile while RUNNING and STOPPED, the STOP debt's receipt, held reports. |
 | `Timer`, `LoadCache`, `StatsReset` | Timers, the load cache, and a stats reset. |
 | `AttemptsEpochs` | The epoch a clear advances: the restore marker, the per-epoch tables, a late writer refused, a second concurrent clear. |
-| `StopReturn` | STOP's captured owner leases, the owner's stop-return, its settle off the debt, and START. |
+| `StopReturn` | STOP's captured owner leases, the owner's stop-return, its settle off the debt, START, and clear's STOP followed by its live-lease check. `MCStopReturnClear` checks clear reachability and safety; `BrokenClearBlocked` drops the live-lease guard. Readers-table leases remain outside this clear card. |
 | `WorkImport` | Issue import and the specified work-tree modes. |
 | `RoadmapEntry` | An entry of a repository's roadmap and fixes files under nova-work roadmap: add, remove, pull, note, done, and Save's four writes (destination data, destination page, source data, source page), with scheduled notes whose `:release` is unchecked. |
 | `GateRing` | The land stage's gate bench ring: the hashed start slot, the per-pass skip record, a refusal stepping to the next slot, and the local fallback refused as a remote-bench unavailability. |

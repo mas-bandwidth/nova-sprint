@@ -1361,6 +1361,18 @@
    :text "Models only, no product change. tla/StopReturn.tla's SettleByBeat returned and settled in one step, read the beat as a set of running job ids, and carried a ghost guard (d.id \\notin old) the code cannot read. The beat now names the jobs it runs and the reports it holds at their generation (LiveNames, sprint.LiveNamedAt), and a beat that carries no live set reports a stop-returns count (StopReturnsOwed, sprint.Beat.StopReturns); the settle reads the count for a count-only beat and the live set otherwise, the ghost guard is gone, and the settle is the code's three steps -- ReadSettle (the unfenced read), SettleByBeat (the stop-return) and Settle (the settle) -- so NoLiveChildAcrossStart holds with a beat fresh at the read. The reversed witness MCStopReturnBrokenOmitLive (Broken \"omitlive\") lets a fresh beat omit a live (running) child, so the settle returns it and START crosses the live child, failing NoLiveChildAcrossStart. A beat gone stale between the read and START is the v1.2.14 card stop-debt-stale-beat-loses-a-held-report, not modelled here. internal/sprint/store/steps.go StopReturnStep gains one comment line citing the module. tla/RUNS.tsv and tla/COVERAGE.tsv are made current."
    :origin "card tla-stopreturn-settle-by-beat-as-the-code-reads, 2026-10-11: v1.2.12 inventory item T13, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-stopreturn-clear-cases" :release "v1.2.12" :status "planned"
+   :title "StopReturn clear stops first and refuses an advance over a live lease"
+   :text "Models only, no product change. Clear now takes STOP as its first step from RUNNING, then
+    checks the current working leases before advancing, also on a retry while STOPPED. The split
+    preserves a return receipt between STOP and the lease read. ClearEnabled checks reachability
+    from RUNNING and STOPPED with no working lease; ClearNeverWithALiveLease records whether an
+    advance crossed a working lease. MCStopReturnClear passes both; BrokenClearBlocked drops only
+    the live-lease guard and fails ClearNeverWithALiveLease. All seven stopreturn cases pass inside
+    110 seconds, preserving the existing safety and liveness assertions. Readers-table leases,
+    generation-pin changes and settle-by-beat changes remain separate cards."
+   :origin "this card, tla-stopreturn-clear-cases.w6, 2026-10-11: v1.2.12 inventory item T13; drift read at nova-sprint main 00c54ba2e")
+
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
