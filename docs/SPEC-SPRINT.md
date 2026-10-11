@@ -5944,9 +5944,19 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   each missing column and the exact nova-table commands that mend it, and whose remedy is to run
   those commands on a STOPPED machine, or the adopt's schema step; any other shadow failure is a
   FAIL row with its text, and a shadow that passes is one OK row naming the candidate's version.
-  The gate's later checks (members, their tools, keys, holds and version; mirrors; links; stable)
-  are WARN rows saying "not measured by this build" until their cards land, from one table each
-  later card fills in, so a preflight always says what it did not check. The links check is filled
+  The gate's later checks (mirrors, links and stable) are WARN rows saying "not measured by
+  this build" until their cards land, from one table each later card fills in, so a preflight
+  always says what it did not check. The member check is filled in when the preflight read the
+  members' probes and the sprint's facts beside them (area preflight, check members, its subject
+  the member): FAIL for a MemberTools tool or a harness its enabled routes launch the loop's PATH
+  does not find, a push credential that does not authenticate, a secrets seat that does not open,
+  a provider key name its enabled routes read that the seat does not hold (the route and the
+  name both named, by name only and never a value), and a member whose installed nova-sprint is
+  older than the release before the candidate's or newer than it; WARN for a host that does not
+  answer (a switch with a member away is allowed), a probe the budget cut, java or
+  /opt/tla/tla2tools.jar absent (only some benches run TLC, so the dealer keeps TLA+ cards off
+  them), a home under the warn bound, and a member held or draining; and a member whose every
+  prerequisite is in place is OK. The links check is filled
   in when the preflight read the members' probes: a member with DoctorLinkWarnChanges or more link
   changes in DoctorLinkWindow is one FAIL row (area preflight, check links), so a switch or adopt
   is refused while its link is flapping, and a member not measured stays a WARN there. A switch or adopt runs

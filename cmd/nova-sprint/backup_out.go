@@ -24,6 +24,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/safepath"
+	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
 	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 )
 
@@ -395,9 +396,8 @@ func (s backupScanner) sealedNames(ctx context.Context, stream func(io.Writer) e
 	}
 	var sealed []string
 	for _, l := range strings.Split(string(out), "\n") {
-		f := strings.Fields(l)
-		if len(f) == 4 && f[0] == "SECRETS" && f[1] == "NAME" && f[3] == "clear=false" {
-			sealed = append(sealed, strings.TrimPrefix(f[2], "key="))
+		if r, ok := secrets.ParseNameLine(l); ok && !r.Clear {
+			sealed = append(sealed, r.Name)
 		}
 	}
 	if len(sealed) == 0 {
