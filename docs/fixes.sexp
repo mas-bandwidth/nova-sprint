@@ -823,6 +823,14 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-idle-trace-and-the-bound-rule" :release "v1.2.12" :status "planned"
+   :title "Cover the idle trace and the bound rule in internal/sprint"
+   :text "Two new tests in internal/sprint drive the idle alarm's note and the bound rule's answer
+    through their public entries, TraceIdle and TickIdle, and RuleAnswers with an open NBound
+    judgment. TraceIdle's statement coverage rises from 0 to 78.7%, TickIdle's to 61.1%, and
+    ruleBound's from 0 to 75.0%. Tests only, no product change."
+   :origin "this card")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
