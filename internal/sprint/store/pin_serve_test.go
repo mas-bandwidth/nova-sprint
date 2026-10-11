@@ -234,6 +234,83 @@ func TestAPinRefusedOnEveryMemberStandsUnderOneJudgment(t *testing.T) {
 	assert.Equal(t, "m1", wc.Row)
 }
 
+// A member brought up again starts afresh, as tla/RouteIndex.tla's MemberUp resets its count:
+// three refusals make its rest stand, it comes up, one more refusal rests it for a time only,
+// never standing, so the card is dealt to it again once that rest ends.
+func TestAPinRefusalCountRestartsWhenTheMemberComesUp(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("flash-a", "flash"))
+	h.addReady("s1", 1, pinned("prov-flash-a/model-big"))
+	h.startMachine()
+	h.machine()
+	for range 40 {
+		if wc := h.snap().Fleet.Card("s1-1.w1"); wc.Col == sprint.Ready {
+			h.failTake("s1-1.w1", pinAuthLine)
+		} else {
+			h.tick(sprint.RouteRestFor)
+		}
+		h.machine()
+	}
+	require.Equal(t, "3", h.snap().Fleet.Card("s1-1.w1").F("pin_refusals_m1"), "m1's rest stands")
+	require.Contains(t, refusedWhys(h.run(DealStep(sprint.DealReq{}))), "until it is brought up again")
+
+	h.must(FleetStep(sprint.FleetReq{Op: "down", Member: "m1"}))
+	h.tick(time.Minute)
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: sprint.MaxWidth}))
+	h.machine()
+	wc := h.snap().Fleet.Card("s1-1.w1")
+	require.Equal(t, "m1", wc.Row, "dealt to m1 once it is up")
+	h.tick(time.Minute)
+	h.failTake("s1-1.w1", pinAuthLine)
+	assert.Equal(t, "1", h.snap().Fleet.Card("s1-1.w1").F("pin_refusals_m1"), "the count restarts after the member came up")
+	h.machine()
+	h.tick(sprint.RouteRestFor)
+	h.machine()
+	wc = h.snap().Fleet.Card("s1-1.w1")
+	assert.Equal(t, sprint.Ready, wc.Col, "one refusal after the up rests m1 for a time, never standing")
+	assert.Equal(t, "m1", wc.Row)
+}
+
+// Rests written while routes were held stay when every route is removed: the deal, the
+// withdrawal and the take ask the same rests, so the pin is neither dealt to a member a take
+// would refuse nor left there, and its one judgment names it (Stella's second read of #107).
+func TestRetainedPinRestsAfterTheRoutesGoNeverStrandAPin(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("flash-a", "flash"))
+	h.addReady("s1", 1, pinned("prov-flash-a/model-big"))
+	h.startMachine()
+	h.machine()
+	for range 40 {
+		if wc := h.snap().Fleet.Card("s1-1.w1"); wc.Col == sprint.Ready {
+			h.failTake("s1-1.w1", pinAuthLine)
+		} else {
+			h.tick(sprint.RouteRestFor)
+		}
+		h.machine()
+	}
+	require.Contains(t, refusedWhys(h.run(DealStep(sprint.DealReq{}))), "until it is brought up again", "both members' rests stand")
+
+	h.m.SetRoutes(nil) // every route removed: the rests stay in the fleet table
+	h.machine()
+	h.machine()
+	wc := h.snap().Fleet.Card("s1-1.w1")
+	assert.NotEqual(t, sprint.Ready, wc.Col, "never dealt to a member whose pins rest (a take would refuse it there for ever)")
+	open := h.openOf(sprint.NNoRoute)
+	require.Len(t, open, 1, "the pin's one judgment names it")
+	assert.Equal(t, "pin:prov-flash-a/model-big", open[0].Note.Stream)
+
+	// a member brought up again serves it, routes or none
+	h.must(FleetStep(sprint.FleetReq{Op: "down", Member: "m2"}))
+	h.tick(time.Minute)
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: sprint.MaxWidth}))
+	h.machine()
+	wc = h.snap().Fleet.Card("s1-1.w1")
+	assert.Equal(t, sprint.Ready, wc.Col)
+	assert.Equal(t, "m2", wc.Row)
+	h.must(TakeStep(sprint.TakeReq{As: "m2", Sel: sprint.Sel{Limit: 10}, Who: "m2"}))
+	assert.Equal(t, sprint.Working, h.snap().Fleet.Card("s1-1.w1").Col, "the take on m2 takes it")
+}
+
 // A pinned card already ready on a member whose pins of its provider now rest is never
 // taken there (a take by id is refused naming the pin), and the tick withdraws it, with no
 // redeal spent, for a member that serves it.

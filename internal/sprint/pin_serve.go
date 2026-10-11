@@ -27,9 +27,11 @@ import (
 //     such refusals the rest STANDS, with no clock, until the member is brought up again
 //     (its control card's since moves past the last refusal: the key play and fleet up).
 //
-// A store with no route at all knows nothing of keys: every pin is served there and a
-// refusal of one ends its take as any provider failure does (takeEnded: a redeal spent, the
-// redeal bound and its judgment end it), so a pin no member can serve never loops there.
+// A store with no route at all knows nothing of keys: a pin is served there by every member
+// whose pins do not rest (a rest written while routes were held stays, and binds the deal, the
+// withdrawal and the take alike), and a refusal of one ends its take as any provider failure
+// does (takeEnded: a redeal spent, the redeal bound and its judgment end it), so a pin no member
+// can serve never loops there and is never stranded when the routes change.
 //
 // The deal, the redeal, the rebalance and the level never place a pinned card on a member
 // that does not serve its pin (routeOf, routeServed, notLaunching); a take of one on a member
@@ -103,7 +105,10 @@ func pinRestKey(provider, member string) string { return provider + " " + member
 // pure function of the fleet table's pin take records (PinTakes) and the members' control
 // cards. The latest refusal rests that provider's pins on the member until RouteRestFor after
 // it; with MaxPinRefusals or more of them (over every work card) the rest stands with no end
-// until the member's control card's since is later than the latest refusal.
+// until the member is brought up again. A member brought up (its control card's since later
+// than a refusal) starts afresh, as tla/RouteIndex.tla's MemberUp resets prc: a record that
+// ended before its since counts nothing and rests nothing, and pinRefusedReturned restarts
+// the count of a record older than it.
 func (s *Snapshot) pinRestsOf() map[string]string {
 	out := map[string]string{}
 	if s.Fleet == nil {
@@ -118,8 +123,8 @@ func (s *Snapshot) pinRestsOf() map[string]string {
 		takes, counts := PinTakes(c)
 		for m, t := range takes {
 			at, err := time.Parse(time.RFC3339, t.Finished)
-			if err != nil || refusal(t.Error) == "" {
-				continue
+			if err != nil || refusal(t.Error) == "" || s.memberSince(m).After(at) {
+				continue // not a refusal, or the member was brought up after it: it counts nothing
 			}
 			if last == nil {
 				last, count = map[string]time.Time{}, map[string]int{}
@@ -140,12 +145,16 @@ func (s *Snapshot) pinRestsOf() map[string]string {
 		if count[k] < MaxPinRefusals {
 			continue
 		}
-		if since, err := time.Parse(time.RFC3339, s.MemberCtl(m).F("since")); err == nil && since.After(at) {
-			continue // brought up again since: the rest is over
-		}
 		out[k] = fmt.Sprintf("provider %s refused %s's key or credit on a pin %d times; its pins rest on %s until it is brought up again (fix the key, then fleet down and fleet up %s)", prov, m, count[k], m, m)
 	}
 	return out
+}
+
+// memberSince is when the member's control card says it last came up (its since), the zero
+// time when it says none.
+func (s *Snapshot) memberSince(member string) time.Time {
+	t, _ := time.Parse(time.RFC3339, s.MemberCtl(member).F("since"))
+	return t
 }
 
 // pinRests is the members' pin rests at s.Now: the ones a dealing step settled once
@@ -170,12 +179,18 @@ func (s *Snapshot) pinRestWhy(prov, member string) string {
 }
 
 // pinServedWhy is why member does not serve the pinned model, "" when it does (or member is
-// "", a check of the card alone, or the store holds no route: nothing is known of keys).
+// "", a check of the card alone). A store with no route knows nothing of keys, so it skips the
+// route check, but a rest the fleet table still holds (the provider's, or the member's pins,
+// from before the routes went) applies there as everywhere: the deal, the withdrawal and the
+// take ask the same rests, so no pinned card is dealt where a take refuses it.
 func (s *Snapshot) pinServedWhy(model, member string) string {
-	if member == "" || len(s.Routes) == 0 {
+	if member == "" {
 		return ""
 	}
 	prov := pinProvider(model)
+	if len(s.Routes) == 0 {
+		return s.pinRestWhy(prov, member)
+	}
 	keyed := false
 	for _, r := range s.Routes {
 		if r.Enabled && r.Provider == prov && !harness.IsHeadless(r.Harness) {
@@ -194,7 +209,7 @@ func (s *Snapshot) pinServedWhy(model, member string) string {
 // is not pinned, its pool is empty (its own hold or judgment), or a member serves it.
 func (s *Snapshot) pinUnservedWhy(c, ec *Card, up []string) string {
 	pin := pinOf(ec)
-	if pin == "" || len(s.Routes) == 0 {
+	if pin == "" {
 		return ""
 	}
 	pool, _, _ := s.dealPool(c, up)
@@ -209,7 +224,7 @@ func (s *Snapshot) pinUnservedWhy(c, ec *Card, up []string) string {
 		}
 		whys = append(whys, m+": "+w)
 	}
-	return "no worker can serve pin " + pin + " (" + strings.Join(dedupWhys(whys), "; ") + "): it waits ready and spends no redeal; give the fleet the provider's key and an enabled route of " + pinProvider(pin) + ", or brief it again on a route's tier"
+	return "no worker can serve pin " + pin + " (" + strings.Join(dedupWhys(whys), "; ") + "): it waits and spends no redeal; give the fleet the provider's key and an enabled route of " + pinProvider(pin) + ", or brief it again on a route's tier"
 }
 
 // dedupWhys folds members that share a why into one entry, in the order first seen.
@@ -252,7 +267,13 @@ func pinRefusedReturned(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 	dealt, taken := takeStamps(c)
 	set[FieldPinTake+c.Row] = ProviderTake{Route: RoutePin, Model: c.F(FieldModel), Member: c.Row,
 		Finished: stamp(s.Now), Error: line, Taken: taken}.String()
-	set[FieldPinRefusals+c.Row] = itoa(c.Int(FieldPinRefusals+c.Row) + 1)
+	// the count restarts when the member was brought up after the record's last refusal
+	// (tla/RouteIndex.tla, MemberUp resets prc): only refusals since it came up count
+	n := c.Int(FieldPinRefusals + c.Row)
+	if prev, err := time.Parse(time.RFC3339, parseTake(c.F(FieldPinTake+c.Row)).Finished); err != nil || s.memberSince(c.Row).After(prev) {
+		n = 0
+	}
+	set[FieldPinRefusals+c.Row] = itoa(n + 1)
 	prSet := map[string]string{}
 	addConsumer(pr, prSet, workConsumer(s, c, 0, EndPinUnserved, costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)))
 	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{

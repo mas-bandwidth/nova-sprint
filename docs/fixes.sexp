@@ -515,7 +515,8 @@
     redeal), no ok field (no fail mark, no ok% hit), its consumer end counted neither ok nor failed. Its
     record is one per member on the work card, latest wins, with a count: the refusal rests that provider's
     pins on the member for the route rest window, and after three refusals the rest stands, so the card
-    waits under one standing judgment that never reopens, until the member is brought up again. In a store
+    waits under one standing judgment that never reopens, until the member is brought up again, which
+    also restarts its count. In a store
     with no route nothing is known of keys: every pin is dealt and a refusal ends its take as any provider
     failure does, spending a redeal, so the redeal bound ends it. A late refusal (the deadline already
     ended the take) keeps the deadline's path, as every late report does. Tests:
