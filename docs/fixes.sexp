@@ -64,7 +64,8 @@
      pass.")
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
-     breaker on the review loop, and a red base pushed to the coordinator."))
+     breaker on the review loop, and a red base pushed to the coordinator.")
+   (release "v1.2.15" :status "planned" :text "The next small product fixes, one concern each."))
   :items
    ((fix "tla-liveruns-rows-with-no-live-set" :release "v1.2.12" :status "planned"
      :title "LiveRuns models the rows whose beat carries no live set and the take's one-pass lag"
@@ -1876,4 +1877,9 @@
     cardgen.LedgerInPaths (the evidence ledgers and any path a repository's own catalog names as a
     ledger with a LEDGERS line in its AGENTS.md or nova.sexp, read at staging, included), and a
     malformed entry stops the stream with the conflict-kind ledger, never a rework."
-   :origin "this card, the-lander-merges-evidence-ledgers.w4; the owner, 2026-10-11 ~12:20-12:45 PM ET")))
+   :origin "this card, the-lander-merges-evidence-ledgers.w4; the owner, 2026-10-11 ~12:20-12:45 PM ET")
+
+  (fix "tlc-suite-runs-independent-cases-in-parallel" :release "v1.2.15" :status "planned"
+   :title "A suite runs its independent cases in parallel, bounded by the bench's CPUs"
+   :text "pkg/tlc RunSuite ran a suite's selected cases one after the other (the for _, c := range chosen loop), each a separate java process capped at two TLC workers, so a suite used 2 of the bench's 16 to 64 CPUs and the groups that run near the 110 s budget (dirtytick-goals 95 s, dirtytick-small 94 s over 20 cases, readyover 92 s, dirtytick-witnesses 78 s over 34 cases, land 78 s over 23 cases) timed out and failed as 'budget exhausted before starting this case'. The cases are independent CPU-bound processes -- each reads its own private copy of the models, has its own MkdirTemp scratch and state dir, and writes its own log, with no store, branch or shared file contended -- so RunSuite now runs up to Parallel at once with a worker pool over the chosen indices, each case exactly as before (its own scratch, log and deadline-bounded context); batching is not the fix because TLC cannot check several configs in one JVM. Options gains Parallel int; tlacheck run gains --parallel <n>, default max(1, NumCPU/4), refused when below 1 or above NumCPU/2 (CheckParallel), and the Makefile's tlc and tlc-full pass $(TLC_PARALLEL) when set. res.Records stays in the chosen order whatever the finish order, OnCase is called from one goroutine in finish order, RUNS.tsv is written once at the end, the fingerprint checks are unchanged, and the record keeps its own wall Seconds (no new column). New tests in pkg/tlc/suite_test.go (a fake Executor, no java) pin the concurrency, the chosen order, the budget-exhausted log for cases started at or after the deadline, and that Parallel 1 reproduces the serial exec order; tools/tlacheck/main_test.go pins the refusals."
+   :origin "this card: tlc-suite-runs-independent-cases-in-parallel.w1, from the owner, 2026-10-11: \"What else is like serial reads, going out one at a time, when they could go out at the same time in || ?\" and \"OK please log critical cards to fix all these serial things that should be parallel (with good reason to be ||).\"; code read at nova-sprint main 0f80d0cd3, records in tla/RUNS.tsv")))
