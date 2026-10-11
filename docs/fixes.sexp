@@ -675,4 +675,13 @@
     cleared, and on a new member runs its own probe before accepting width (init bootstraps by passing
     the probe). Modeled by tla/ProviderBudget.tla."
    :origin "sprint card a-member-environment-fault-holds-it-and-pushes-the-seat; the owner, 2026-10-11Z:
-    the failure here is not noticing this until now; attempts 3 and 5")))
+    the failure here is not noticing this until now; attempts 3 and 5")
+  (fix "rate-limited-refusal-never-fails-the-cardc" :release "v1.2.6" :status "in-progress"
+   :title "rate-limited takes: route backoff, not rule-3 rest; member Judge checks Provider cause"
+   :text "Fix the rate-limited take handling so the provider's rate limit is never a card's failure and
+    never a long rest. transient() excludes rate-limited from counting toward the 3-in-10 rule-3 rest.
+    rateBackoffDue() computes brief route backoff (60s, doubling, max 15min) for routes with rate-limited
+    ends. restWrites() writes rate backoff to PropRateBackoff, separate from PropRule3Rest. member.Judge()
+    checks r.Provider for rate-limited cause, not r.Report, and requires no pushed head."
+   :origin "sprint card a-rate-limited-refusal-never-fails-the-cardc; owner, 2026-10-11")
+))
