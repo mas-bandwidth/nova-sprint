@@ -169,7 +169,12 @@ Next == ArriveAsk \/ ArriveFilter
      \/ (\E e \in LevelEvents : ClearLevel(e))
      \/ Rerun \/ Look \/ WakeBus \/ WakeLevel
 
-Spec == Init /\ [][Next]_vars /\ WF_vars(Rerun) /\ WF_vars(WakeBus) /\ WF_vars(WakeLevel)
+\* held reaches Window only through looks (a Look, a WakeBus or a WakeLevel,
+\* each of which bumps the level events it finds still set), so a look must be
+\* fair too: with WF_vars(Look), a blocked run that has nothing to wake keeps
+\* looking, and a level event raised and left raised is eventually a whole
+\* window old and due (LevelSeenWhileItHolds), unless it clears first.
+Spec == Init /\ [][Next]_vars /\ WF_vars(Rerun) /\ WF_vars(Look) /\ WF_vars(WakeBus) /\ WF_vars(WakeLevel)
 
 \* a bus event is woken at most once
 AtMostOnce == \A e \in BusEvents : fired[e] <= 1
