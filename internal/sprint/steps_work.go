@@ -944,6 +944,9 @@ type DealReq struct {
 // the next attempt's card is cut.
 func Deal(s *Snapshot, r DealReq) Plan {
 	s, _ = s.withRests() // the resting routes, read once (rule 3, route_rest.go)
+	// the providers' concurrency budgets, counted once: the draw falls back past a full
+	// provider's routes, and a card no route with room serves waits ready (rate_budget.go)
+	s = s.withBudgets()
 	rr, ri := dealRound(s), routeIndexesOf(s)
 	p, moves := dealPlan(s, r, rr, ri)
 	p = Lawful(p)
@@ -1372,6 +1375,9 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 	// from every stream alike, never one stream's lowest scores first. Its reads are taken
 	// before its work, a read being at reader priority (priority.go).
 	ready := takeTurns(s.Fleet.Cell(r.As, Ready), slices.Index(s.Members(), r.As))
+	// the providers' concurrency budgets, held at the one writer: the cards this take
+	// moves to working, by provider (rate_budget.go, takeBudgetWhy)
+	planned := map[string]int{}
 	if halves {
 		slices.SortStableFunc(ready, func(a, b *Card) int {
 			if isRead(a) == isRead(b) {
@@ -1410,10 +1416,15 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		if rest, ok := cardRest(s, c); ok {
 			return "its route " + c.F(FieldRoute) + " rests until " + rest.UntilSaid() + " (" + rest.Said() + "): the tick withdraws it and deals it again on a route that serves"
 		}
+		if byID && room < cost(c) {
+			return fmt.Sprintf("%s %s is at its width (%d working of %d): a card is taken when one is reported", worker, r.As, len(s.Fleet.Cell(r.As, Working)), width)
+		}
+		// a provider at its concurrency budget across the fleet: the card waits ready,
+		// never failed, and is taken when a slot frees (tla/RateBudget.tla, NeverOverConcurrent)
+		if why := takeBudgetWhy(s, c, planned); why != "" {
+			return why
+		}
 		if byID {
-			if room < cost(c) {
-				return fmt.Sprintf("%s %s is at its width (%d working of %d): a card is taken when one is reported", worker, r.As, len(s.Fleet.Cell(r.As, Working)), width)
-			}
 			room -= cost(c)
 		}
 		return ""
@@ -1574,7 +1585,16 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			continue
 		}
 		switch kind {
-		case cardhdr.EndProvider, cardhdr.EndNoResult:
+		case cardhdr.EndProvider:
+			if IsRateLimited(r.Report) {
+				// the provider's rate limit got through the member's budget and its retries:
+				// the card is returned untouched (rate_budget.go)
+				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r))
+				continue
+			}
+			p.Units = append(p.Units, takeEnded(s, c, pr, r, kind, used))
+			continue
+		case cardhdr.EndNoResult:
 			p.Units = append(p.Units, takeEnded(s, c, pr, r, kind, used))
 			continue
 		case cardhdr.EndStaging:
@@ -1957,6 +1977,32 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
 	}, Notes: notes, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s refused it at staging; %s working -> ready", c.ID, c.Int("gen")+1, c.Row, pr.ID)}
+}
+
+// rateLimitedReturned is the unit of a take the provider rate limited (IsRateLimited) that
+// the member's budget and its in-place retries did not absorb (an older member, or retries
+// out of the card's deadline). The card is returned UNTOUCHED, as a staging refusal is: the
+// work card is withdrawn WITHOUT FieldTakeEnded, so no redeal and no attempt is spent; no
+// take record is written, so it never counts toward the route's 3-in-10 rest; no judgment
+// is raised; and its primary goes back to ready, where the deal draws it again, falling
+// back past the route it was on while another of its tier serves (routeOf's exclusion) or
+// waiting for a slot (the owner, 2026-10-11: "the rate limited should just stall out
+// delay, not fail"; TestARateLimitedTakeReturnsTheCardUntouched). The provider's line stays
+// on the card for its reader; what the run cost is the producer's record, as a staging
+// refusal's is.
+func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq) Unit {
+	set := nextGen(c, "", s.Now)
+	set["withdrawn"] = stamp(s.Now)
+	set[FieldProviderError] = cutText(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(r.Report, cardhdr.EndProvider), ":")), MaxProviderErrorBytes)
+	prSet := map[string]string{}
+	if r.Usage != "" {
+		dealt, taken := takeStamps(c)
+		addConsumer(pr, prSet, workConsumer(s, c, 0, "rate limited", costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)))
+	}
+	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
+		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
+		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
+	}, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, the provider rate limited the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)}
 }
 
 // withdrawCard is the unit that withdraws work card c from its member, the one path of a

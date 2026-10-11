@@ -165,6 +165,10 @@ type ProviderRow struct {
 	SpendHour float64 `json:"spend_hour"`
 	State     string  `json:"state"`
 	Note      string  `json:"note,omitempty"` // why the balance is unknown
+	// Limit is the provider's global rate budgets (routes limit; rate_budget.go): its
+	// concurrency with the cards working on it, and each model's requests per minute;
+	// "" when it has none.
+	Limit string `json:"limit,omitempty"`
 }
 
 // ProviderRows is the providers table: a row for each provider the routes name, in name
@@ -213,6 +217,7 @@ func ProviderRows(routes []Route, fleet *Table, now time.Time) []ProviderRow {
 		case len(resting) > 0:
 			row.State = "serving; resting " + strings.Join(resting, ", ") + " until " + last.UntilSaid() + " (" + why + ")"
 		}
+		row.Limit = providerLimit(name, byProvider[name], fleet)
 		out = append(out, row)
 	}
 	return out

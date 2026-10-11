@@ -373,3 +373,9 @@ MCAdoptBrokenKeepNew.cfg	MCAdopt.tla	invariant	RefusedLeavesOld	ignore-terminal	
 MCSeatProof.cfg	MCSeatProof.tla	pass	-	ignore-terminal	seatproof	required	-
 MCSeatProofBrokenNoRenew.cfg	MCSeatProof.tla	action	BusySeatNeverLockedOut	ignore-terminal	seatproof	required	-
 MCSeatProofBrokenRenewDest.cfg	MCSeatProof.tla	action	CoordinatorNeverFabricates	ignore-terminal	seatproof	required	-
+MCRateBudget.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
+MCRateBudgetLive.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
+MCRateBudgetProgress.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
+MCRateBudgetBrokenRace.cfg	MCRateBudget.tla	invariant	NeverOverRate	ignore-terminal	ratebudget	required	-
+MCRateBudgetBrokenNoRenew.cfg	MCRateBudget.tla	invariant	NeverOverConcurrent	ignore-terminal	ratebudget	required	-
+MCRateBudgetBrokenNoExpiry.cfg	MCRateBudget.tla	temporal	SlotReclaimed	ignore-terminal	ratebudget	required	-
