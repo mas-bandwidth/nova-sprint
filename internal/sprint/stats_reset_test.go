@@ -169,6 +169,34 @@ func TestAStatsResetCountsEveryFigureFromItsMarkAndMovesNothing(t *testing.T) {
 	assert.Equal(t, "again", got.Reason)
 }
 
+// A stats reset zeroes the unattributed spend from its mark (the owner, 2026-10-09: "Clear
+// the total cost."): the provider's figure is the sprint's, on every stream's record, and a
+// stream the mark knows or not counts it from the mark, never below zero. A day's provider
+// figure raised after the mark reads as the spend since it.
+func TestAStatsResetZeroesTheUnattributedSpend(t *testing.T) {
+	t.Parallel()
+	r := newConflictRig(t)
+	r.landOnM1(3)
+	day := r.st.Now().UTC().Format(time.DateOnly)
+	// the provider counted $100.00 of the day beyond the sprint's records of it
+	r.must(store.CostReconcileStep(sprint.CostReconcileReq{Reads: []sprint.UsageRead{
+		{Provider: "prov-flash-a", Known: true, Day: day, Used: 100}}}))
+	before := r.resetView()
+	require.NotEmpty(t, before.facts.Streams["s1"].Unreconciled, "s1's unattributed spend before the reset")
+
+	_, err := r.st.ResetStats(r.ctx, store.ResetReq{Reason: "count from now"})
+	require.NoError(t, err)
+
+	now := r.resetView()
+	assert.Empty(t, now.facts.Streams["s1"].Unreconciled, "nothing unattributed since the mark")
+
+	// a dollar more at the provider since the mark reads as the one dollar since it
+	r.must(store.CostReconcileStep(sprint.CostReconcileReq{Reads: []sprint.UsageRead{
+		{Provider: "prov-flash-a", Known: true, Day: day, Used: 101}}}))
+	after := r.resetView()
+	assert.Equal(t, "$1.00", after.facts.Streams["s1"].Unreconciled, "the spend since the mark, never below zero")
+}
+
 // cents is a recorded exact amount as the where view shows money, rounded up to the cent.
 func cents(t *testing.T, usd string) string {
 	t.Helper()

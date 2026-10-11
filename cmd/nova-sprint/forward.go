@@ -133,14 +133,43 @@ func (v verbArgs) unserved() string {
 	return ""
 }
 
-// server is the sprint's server this process sends the verb's reads and writes to
-// (NOVA_SPRINT_SERVER), "" when the verb runs on a store here: no server named, this
-// process is the server, or the verb was given its own --redis (fs, as parsed).
+// server is the sprint's server this process sends the verb's reads and writes to:
+// NOVA_SPRINT_SERVER when it names one, else the server the seat's record names
+// (namedServer), "" when the verb runs on a store here: no server named, this process
+// is the server, or the verb was given its own --redis (fs, as parsed). (docs/SPEC-SPRINT.md,
+// "The server".)
 func (a *app) server(fs *flag.FlagSet) string {
 	if a.serveAddr != "" || (verbArgs{fs: fs}).given("redis") {
 		return ""
 	}
-	return a.getenv(ServerEnv)
+	addr, _ := a.namedServer()
+	return addr
+}
+
+// namedServer is the sprint's server this process knows of, and where it was named:
+// NOVA_SPRINT_SERVER first (from=env), else the server seat install recorded beside the
+// store login (from=seat-record, seatServer), "" when neither names one. This is the
+// order seat check measures the server in (machinery.go, seatCheck). (docs/SPEC-SPRINT.md,
+// "The server".)
+func (a *app) namedServer() (addr, from string) {
+	if v := a.getenv(ServerEnv); v != "" {
+		return v, "env"
+	}
+	if v := a.seatServer(); v != "" {
+		return v, "seat-record"
+	}
+	return "", ""
+}
+
+// noServerHint is the one line naming both places the sprint's server may be set and
+// the commands that set one, for a verb that needs the server and has none. It names
+// the seat's record file this machine reads. (docs/SPEC-SPRINT.md, "The server".)
+func (a *app) noServerHint() string {
+	path, err := a.seatRecordPath()
+	if err != nil {
+		path = seatRecordFile
+	}
+	return fmt.Sprintf("no sprint server named: %s is not set and the seat's record %s names none; run: export %s=<host:port>, or record it: nova-sprint seat install --harness <name> --target <dir> --server <host:port>", ServerEnv, path, ServerEnv)
 }
 
 // forwarded sends the verb to the sprint's server when there is one and the server runs

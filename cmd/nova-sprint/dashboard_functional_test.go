@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprintdash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -92,7 +93,8 @@ func TestDashboardServesThePageOnEveryListener(t *testing.T) {
 		assert.True(t, v.OK, string(body))
 		var got, exp map[string]any
 		require.NoError(t, json.Unmarshal(v.Data, &got))
-		require.NoError(t, json.Unmarshal([]byte(want), &exp))
+		paged := sprintdash.PageData([]byte(want), time.Unix(0, 0)) // the page's fold at a fixed clock
+		require.NoError(t, json.Unmarshal(paged, &exp))
 		delete(got, "at") // the clock is real here
 		delete(exp, "at")
 		assert.Equal(t, exp["tables"], got["tables"])

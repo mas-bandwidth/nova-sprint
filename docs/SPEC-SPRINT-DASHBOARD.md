@@ -67,10 +67,11 @@ CI's "page lock only grows" step (`TestThePageLockOnlyGrows` against the pull re
 when an old line of pagelock.txt is rewritten, dropped or moved. One change needs no ask: a comment-only
 line (`<date> <digest> comment-only "<reason>"`, its reason quoted here on a line of its date) for a change
 that touches comments alone. The same CI check holds it to that: the page's rendered form (every comment taken
-out of index.html, its CSS and inline scripts, and app.js) must digest the same at the base and the head. The card lint holds
-the same rule before a card is written: `add` and `brief` refuse a card whose PATHS: or NEW:
+out of index.html, its CSS and inline scripts, and app.js) must digest the same at the base and the head. The card lint
+(`dashboard-asked-for`, pkg/swarm/dashboardask.go) is ask-only: it refuses a card whose PATHS: or NEW:
 reaches the page's files, pageview.go or dashboard.go unless its SOURCE: line quotes the owner
-asking for that visible change, dated (`dashboard-asked-for`, pkg/swarm/dashboardask.go).
+asking for that visible change, dated. A card that reaches the page still quotes the owner's ask;
+the comment-only form exists only in the lock, and the lint knows nothing of it.
 
 - 2026-10-11 the owner, of the page the Python server serves at :7390: "this is what it is."
 - 2026-10-11 the owner: "Remember that the reason we are in this mess is that you forgot to display the orange read cards."
@@ -79,6 +80,7 @@ asking for that visible change, dated (`dashboard-asked-for`, pkg/swarm/dashboar
 - 2026-10-11 the owner: "sentinel cards should not be counted when we are estimating time remaining, or cards per-hour"
 - 2026-10-11 the owner: "Right now they are inflating the ETA"
 - 2026-10-11 comment-only, no rendered byte changed (the owner's privacy is a hard rule in this public repository): "privacy: the page's comments name the owner as the owner"
+- 2026-10-11 the owner: "agree that the name becomes the key, and you add a small display name. good tidy feature. pls add."
 
 ## Serving and publishing
 
@@ -218,6 +220,7 @@ from the owner edits one line here and nothing else moves.
 - Columns: stream | status | waiting | ready | working | review | fix | merging | landed | cost (headers exactly so, all lowercase). The "landed" header is centred over its "n / total" cell (the owner, 7:34 PM: "Landed column in work stream table, please horizontal center align the column header"); every other numeric header stays right-aligned. The status column with its pills stays (the owner, after the lock, 7:32 PM: "we just lost the nice state tabs in the workstream table. undo pls."); the sort by status stays; a thin rule separates the groups (landed, working, stopped, held).
 - Stream column capped (~220 px) and the Status column takes part in the even spread like the count columns, so the gap between the name and Status is as generous as the gap between any two count columns; names in full-strength text always (a label, never dimmed); the remaining width is
   spread evenly across the count columns (fixed table layout); Landed and Cost a little wider; gutters at least 40 px.
+- The stream cell shows the stream's display name (`stream set <s> --display <name>`; `point-fix-<release>` by default when a release is set), else its key; the row stays keyed, sorted and grouped by the key (the owner, 2026-10-11: "agree that the name becomes the key, and you add a small display name. good tidy feature. pls add.").
 - Rows sorted by status like the fleet table: landed first, then working, then stopped, then held; within a group by stream name. A row moves when its status changes (no animation).
 - Status pill in Work: landed (green), working (blue), held (amber), stopped (red); the subtitle keeps "<n> streams · <l> landed · <h> held". Zero counts muted grey.
 - Landed as "n / total" with the slash on one vertical line (left number right-aligned to it, total left of it), the

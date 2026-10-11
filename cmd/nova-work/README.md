@@ -34,18 +34,18 @@ line.
 
 ```text
 $ nova-work import --org $ORG --repo $ORG/$REPO --page-size 15 --dry-run
-IMPORT OK org=$ORG out=- repos=1 issues=20 comments=74 references=4 linked_prs=2 bytes=65206 sha256=492ee7e0aaeb987b3c8935a01dd5194bb8826f9742d20575d24d090d04fb4a71 calls=3 points=3 rest=0 seconds=0.0 gh=./gh dry_run=true
+IMPORT OK org=$ORG out=- repos=1 issues=20 comments=74 references=4 linked_prs=2 bytes=65241 sha256=4c73aa56b83994be50a4ea6da3bf8fb72735b1051d5c74ea320a60e6709dc938 calls=3 points=3 rest=0 seconds=0.0 gh=./gh dry_run=true
 IMPORT PLAN repos=1 issues=20 est_calls=3 max_calls=1500 page_size=15
 IMPORT REPO repo=$ORG/$REPO issues=20 comments=74 references=4 linked_prs=2 calls=2
 IMPORT NOTE the dry run read GitHub as the import does (calls=3, read-only) and wrote nothing
 
 $ nova-work import --org $ORG --repo $ORG/$REPO --page-size 15 --out ./tree.lisp
-IMPORT OK org=$ORG out=./tree.lisp repos=1 issues=20 comments=74 references=4 linked_prs=2 bytes=65206 sha256=492ee7e0aaeb987b3c8935a01dd5194bb8826f9742d20575d24d090d04fb4a71 calls=3 points=3 rest=0 seconds=0.0 gh=./gh
+IMPORT OK org=$ORG out=./tree.lisp repos=1 issues=20 comments=74 references=4 linked_prs=2 bytes=65241 sha256=4c73aa56b83994be50a4ea6da3bf8fb72735b1051d5c74ea320a60e6709dc938 calls=3 points=3 rest=0 seconds=0.0 gh=./gh
 IMPORT PLAN repos=1 issues=20 est_calls=3 max_calls=1500 page_size=15
 IMPORT REPO repo=$ORG/$REPO issues=20 comments=74 references=4 linked_prs=2 calls=2
 
 $ nova-work verify --tree ./tree.lisp --repo $ORG/$REPO --page-size 15
-VERIFY OK tree=./tree.lisp sha256=492ee7e0aaeb987b3c8935a01dd5194bb8826f9742d20575d24d090d04fb4a71 repos=1 issues=20 comments=74 calls=3 points=3 rest=0 seconds=0.0 differences=0 missing=0 extra=0 drift=0 gh=./gh
+VERIFY OK tree=./tree.lisp sha256=4c73aa56b83994be50a4ea6da3bf8fb72735b1051d5c74ea320a60e6709dc938 repos=1 issues=20 comments=74 calls=3 points=3 rest=0 seconds=0.0 differences=0 missing=0 extra=0 drift=0 gh=./gh
 ```
 
 ## Verbs

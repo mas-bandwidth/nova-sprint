@@ -35,6 +35,7 @@ func TestStatsResetVerbMarksShowsAndReplaces(t *testing.T) {
 
 	out = ta.ok("stats reset --reason 'count from now'")
 	assert.Contains(t, out, "STATS-RESET OK at=")
+	assert.Contains(t, out, "total=- unattributed=-", "the mark line names the unattributed spend beside the total at the mark")
 	assert.Contains(t, out, "reason=count from now")
 	assert.NotContains(t, out, "replaced=")
 	stats := ta.ok("stats")

@@ -248,3 +248,59 @@ func TestStopDebtMachineLeaseItsLiveSetNamesStaysOwed(t *testing.T) {
 	require.Equal(t, sprint.Ready, h.snap().Fleet.Card(wc.ID).Col)
 	h.clean("machine lease its live set names")
 }
+
+// TestStopDebtMachineLeaseStaleLiveSetStillNamesStaysOwed: the owner's last beat since the
+// STOP keeps its word for the settle, fresh or stale (tla/StopReturn.tla SettleByBeat, d.id
+// \notin beat). After a STOP nothing new is taken, so a post-STOP beat that names the card
+// running or held stays true until the owner beats again or returns it; a silent row's stale
+// beat is not an empty live set (tla/LiveRuns.tla "staleasabsent" is the reversed witness).
+// Before this the live set was read fresh-only (sprint.LiveNamesAt, liveOf), so a machine
+// that beat once after the STOP naming its held report then went silent past BeatDeadline
+// had its lease settled at START, the card dealt again at gen+1, and the held report refused
+// as stale when it came.
+func TestStopDebtMachineLeaseStaleLiveSetStillNamesStaysOwed(t *testing.T) {
+	t.Parallel()
+	h, row, wc := machineHoldingOneJob(t)
+	_, stopped, _, err := h.st.StopUntil(h.ctx, "operator stopped children", h.now.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, stopped.StopDebt, 1)
+	h.clock(time.Second)
+	gen := max(wc.Int("gen"), 1)
+	held := sprint.LiveKey(wc.ID, gen) + ":" + sprint.LiveHeld
+	h.liveBeat(row, held)                      // stop-returns 0, the finished report still held
+	h.clock(sprint.BeatDeadline + time.Second) // the machine goes silent: the beat is stale
+	_, _, _, err = h.st.SetMachine(h.ctx, true)
+	require.ErrorContains(t, err, wc.ID, "a stale post-STOP beat that names the held report keeps its lease owed")
+	require.Equal(t, sprint.Working, h.snap().Fleet.Card(wc.ID).Col, "the named job is not returned")
+	require.Equal(t, gen, max(h.snap().Fleet.Card(wc.ID).Int("gen"), 1), "the card stays at its generation")
+	// it speaks again, fresh, still naming the held report: START passes and the report is
+	// taken at its own generation
+	h.liveBeat(row, held)
+	_, running, _, err := h.st.SetMachine(h.ctx, true)
+	require.NoError(t, err, "a fresh beat that still names the held report does not hold the start back")
+	require.True(t, running.Running())
+	h.must(FinishStep(sprint.FinishReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: gen}}))
+	require.NotEqual(t, sprint.Working, h.snap().Fleet.Card(wc.ID).Col, "the held report is taken at its generation")
+	h.clean("machine stale live set still names")
+}
+
+// TestStopDebtMachineLeaseStaleLiveSetNotNamingSettles pins the other side: a stale
+// post-STOP beat whose live set does not name the card is no evidence it stays, so START
+// settles the lease by the beat as before (tla/StopReturn.tla SettleByBeat, d.id \notin
+// beat).
+func TestStopDebtMachineLeaseStaleLiveSetNotNamingSettles(t *testing.T) {
+	t.Parallel()
+	h, row, wc := machineHoldingOneJob(t)
+	_, stopped, _, err := h.st.StopUntil(h.ctx, "operator stopped children", h.now.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, stopped.StopDebt, 1)
+	h.clock(time.Second)
+	h.liveBeat(row) // stop-returns 0, the set names nothing
+	h.clock(sprint.BeatDeadline + time.Second)
+	_, running, _, err := h.st.SetMachine(h.ctx, true)
+	require.NoError(t, err, "a stale post-STOP beat that does not name the card settles its lease")
+	require.True(t, running.Running())
+	require.Empty(t, running.StopDebt)
+	require.Equal(t, sprint.Ready, h.snap().Fleet.Card(wc.ID).Col)
+	h.clean("machine stale live set not naming")
+}
