@@ -184,6 +184,7 @@ type RuleAnswer struct {
 	until time.Time
 	open  Open
 	paths *PathsProposal // the paths rule's proposal, its twin and brief
+	fleet string         // the failure class the fleet shares (sameFailure), "" when the card's own
 }
 
 // Answers says the answer acts: a rule answers it and the rule is on.
@@ -344,6 +345,9 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 			return
 		}
 		a.Act, a.Why = ActRework, why+": reworked on "+tier+" with its report as the fix, never parked ("+stay+")"
+		if same != "" {
+			a.fleet = pr.F(FieldFailure)
+		}
 		a.set = map[string]string{FieldRuleTier: tier, FieldRuleFails: itoa(min(fails, RuleAttemptCap-1))}
 		return
 	}
@@ -751,7 +755,61 @@ func TickRuleRework(s *Snapshot, r TickReq) (Plan, int) {
 	if len(ids) == 0 {
 		return Plan{}, 0
 	}
-	return Rework(s, ReworkReq{Sel: Sel{Only: ids}, PerCard: per, Who: r.who()}), 0
+	p := Rework(s, ReworkReq{Sel: Sel{Only: ids}, PerCard: per, Who: r.who()})
+	p.Notes = append(p.Notes, fleetFailureNotes(s, r, acting(s, r, ActRework))...)
+	return p, 0
+}
+
+// NFleetFailure is the one judgment of a failure the fleet shares (sameFailure: the same class on
+// RuleSameFailureCards or more cards), raised at once by the tick that first sees it, at the
+// cards' first failure: a broken toolchain, a member or a provider down is judged by a mind now,
+// while each card reworks itself on its tier to its bound meanwhile. It names the failure and
+// the cards, is sprint-level, takes no wait (wait_refused.go), and is acked once its cause is
+// mended; one is open per class at a time.
+const NFleetFailure = "the same failure on many cards: the fleet's, not the card's"
+
+// fleetFailureWhat opens the text of the judgment of the class.
+func fleetFailureWhat(class string) string { return "failure " + strconvQuote(class) + ": " }
+
+// strconvQuote is the class quoted for the judgment's text.
+func strconvQuote(s string) string { return fmt.Sprintf("%q", s) }
+
+// fleetFailureNotes is the judgment of each failure class the answers rework as the fleet's and
+// no open judgment names yet.
+func fleetFailureNotes(s *Snapshot, r TickReq, answers []RuleAnswer) []Note {
+	cards := map[string][]string{}
+	var classes []string
+	for _, a := range answers {
+		if a.fleet == "" {
+			continue
+		}
+		if _, ok := cards[a.fleet]; !ok {
+			classes = append(classes, a.fleet)
+		}
+		if !slices.Contains(cards[a.fleet], a.Card) {
+			cards[a.fleet] = append(cards[a.fleet], a.Card)
+		}
+	}
+	var out []Note
+	for _, class := range classes {
+		open := false
+		for _, o := range s.Open {
+			if o.Note.Kind == Judgment && o.Note.Type == NFleetFailure && strings.HasPrefix(o.Note.What, fleetFailureWhat(class)) {
+				open = true
+			}
+		}
+		if open {
+			continue
+		}
+		ids := cards[class]
+		slices.Sort(ids)
+		n := judgment(NFleetFailure, "", s.Now, 0)
+		n.SprintLevel, n.Who = true, r.who()
+		n.What = cutText(fmt.Sprintf("%sthe same failure on %d cards (%s): the fleet's, not the card's; each reworks itself on its tier to its bound meanwhile; mend the cause (the toolchain, a member, a route or a provider), then ack this",
+			fleetFailureWhat(class), len(ids), strings.Join(ids, ",")), MaxCardTextBytes)
+		out = append(out, n)
+	}
+	return out
 }
 
 // TickRuleLate answers the late work cards: a wait, a hold until the holder's own deadline,
