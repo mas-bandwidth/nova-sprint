@@ -772,7 +772,8 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		if IsSentinel(c) {
 			continue
 		}
-		if _, tier, why, byFriend := s.routeOf(escalating(s, c), nil, nil); byFriend {
+		ec := escalating(s, c)
+		if _, tier, why, byFriend := s.routeOf(ec, nil, nil, ""); byFriend {
 			// no route serves its tier and a friend up does: the friends' deal's, never a
 			// machine's (tierServed); withdrawn or taken back from every such friend, or left by
 			// an empty run on her lane (cardLeft), no worker
@@ -790,6 +791,16 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 			// lint): one judgment per tier either way
 			unserved[tier] = append(unserved[tier], c.ID)
 			whyOf[tier] = why
+			continue
+		} else if lwhy := s.noLauncher(c, ec, tier, up); lwhy != "" {
+			// a route serves its tier and no member the deal may give it (its bench, less
+			// those that refused it at staging: dealPool) can launch one (Launches: no such
+			// member's control card names its harness): the tier's one judgment, naming the
+			// routes and fleet up --harnesses, never a quiet wait (fault 10)
+			unserved[tier] = append(unserved[tier], c.ID)
+			if whyOf[tier] == "" {
+				whyOf[tier] = lwhy
+			}
 			continue
 		}
 		if b := Bench(c); len(b) > 0 && len(onlyBench(up, b)) == 0 {

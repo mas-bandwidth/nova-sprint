@@ -1000,13 +1000,23 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			p.refuse(c.ID, benchRefusal(bench))
 			continue
 		}
-		next := func() string { return rr.next(members, q, widths, "") }
 		roomWhy := noRoomWhy
 		if len(bench) > 0 {
 			roomWhy = benchRoom(bench)
 		}
 		if quiet != "" {
 			roomWhy += "; " + quiet
+		}
+		// the next member round the fleet that can launch a route of the card's tier
+		// (launchersOf): with none, why says which routes and harnesses it wants, and what
+		// its pool allows (unlaunchableWhy: a bench card runs on no other member)
+		next := func(card, wc *Card, of, refused []string) (string, string) {
+			ms, why := s.launchersOf(card, wc, of)
+			if len(ms) == 0 && len(of) > 0 && why != "" {
+				_, tier, _, _ := s.routeOf(card, nil, nil, "")
+				return "", s.unlaunchableWhy(c, tier, of, refused)
+			}
+			return rr.next(ms, q, widths, ""), roomWhy
 		}
 		if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil && wc.Col == Withdrawn {
 			if redealBound(wc) {
@@ -1023,9 +1033,9 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 					continue
 				}
 				// below its ceiling: the machine escalates it, a new attempt on the next tier
-				m := next()
+				m, none := next(withField(c, FieldTierNow, tier), nil, members, nil)
 				if m == "" {
-					p.refuse(c.ID, roomWhy)
+					p.refuse(c.ID, none)
 					continue
 				}
 				on, _ := CardTiers(c)
@@ -1044,22 +1054,23 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 				p.Units = append(p.Units, u)
 				continue
 			}
-			if _, _, why, _ := s.routeOf(c, nil, nil); why != "" {
+			if _, _, why, _ := s.routeOf(c, nil, nil, ""); why != "" {
 				p.refuse(c.ID, why) // a machine draws a route: a tier friends alone serve is theirs
 				continue
 			}
 			// a member that refused it at staging is not dealt it again (StagingRefusers)
-			m := next()
-			if refused := StagingRefusers(wc); len(refused) > 0 {
-				others := without(members, refused)
-				if len(others) == 0 {
+			of := members
+			refused := StagingRefusers(wc)
+			if len(refused) > 0 {
+				of = without(members, refused)
+				if len(of) == 0 {
 					p.refuse(c.ID, fmt.Sprintf("%s was refused at staging by every member up (%s): rework it with a fix, or drop it", wc.ID, strings.Join(refused, ", ")))
 					continue
 				}
-				m = rr.next(others, q, widths, "")
 			}
+			m, why := next(c, wc, of, refused)
 			if m == "" {
-				p.refuse(c.ID, roomWhy)
+				p.refuse(c.ID, why)
 				continue
 			}
 			u, why := redeal(s, c, wc, m, q, ri)
@@ -1072,13 +1083,13 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			p.Units = append(p.Units, u)
 			continue
 		}
-		if _, _, why, _ := s.routeOf(c, nil, nil); why != "" {
+		if _, _, why, _ := s.routeOf(c, nil, nil, ""); why != "" {
 			p.refuse(c.ID, why) // a machine draws a route: a tier friends alone serve is theirs
 			continue
 		}
-		m := next()
+		m, why := next(c, nil, members, nil)
 		if m == "" {
-			p.refuse(c.ID, roomWhy)
+			p.refuse(c.ID, why)
 			continue
 		}
 		u, why := deal(s, c, c.F("fix"), m, q, ri, nil, map[string]string{"finding": c.F("finding"), "why": c.F("why")})
@@ -1104,7 +1115,7 @@ func deal(s *Snapshot, c *Card, fix, m string, q map[string]int, ri routeIndexes
 	if s.Fleet.Card(card) != nil {
 		return Unit{}, "work card " + card + " exists already"
 	}
-	route, _, why, _ := s.routeOf(c, nil, ri)
+	route, _, why, _ := s.routeOf(c, nil, ri, m)
 	if why != "" {
 		return Unit{}, why
 	}
@@ -1177,7 +1188,7 @@ func escalate(s *Snapshot, c, prev *Card, tier, why, m string, q map[string]int,
 // (tla/DirtyTick.tla DealOne). Its route is the next at its tier's index that the
 // card was not dealt on (ri, moved past it and the entries skipped: route.go).
 func redeal(s *Snapshot, c, wc *Card, m string, q map[string]int, ri routeIndexes) (Unit, string) {
-	route, _, why, _ := s.routeOf(c, wc, ri)
+	route, _, why, _ := s.routeOf(c, wc, ri, m)
 	if why != "" {
 		return Unit{}, why
 	}
@@ -2007,6 +2018,10 @@ type FleetReq struct {
 	// release (deadline.go); DeadlineOff takes the pin off; neither leaves it as it is.
 	Deadline    int  `json:",omitempty"`
 	DeadlineOff bool `json:",omitempty"`
+	// Harnesses, set by up or release, is the headless harnesses the member's PATH holds
+	// (FieldHarnesses, route.go Launches): a comma list, HarnessesNone to clear them, ""
+	// to leave them as they are.
+	Harnesses string `json:",omitempty"`
 	// Sync, with Op sync, is every machine the inventory says is a member
 	// and its width (fleet_sync.go); Member is empty.
 	Sync []SyncMember `json:",omitempty"`
@@ -2091,6 +2106,29 @@ func headOf(p *Plan, member string, head []Change, n *Note, line string) {
 	}
 }
 
+// HarnessesNone is the fleet up --harnesses word that clears a member's headless
+// harnesses: it then runs opencode routes only.
+const HarnessesNone = "none"
+
+// harnessesValue is the control card's value of a --harnesses word: the names sorted and
+// each once, "" for HarnessesNone or "".
+func harnessesValue(words string) string {
+	if strings.TrimSpace(words) == HarnessesNone {
+		return ""
+	}
+	names := Split(words)
+	slices.Sort(names)
+	return strings.Join(slices.Compact(names), ",")
+}
+
+// cmpOrNone is a harnesses value as a line says it: HarnessesNone for "".
+func cmpOrNone(v string) string {
+	if v == "" {
+		return HarnessesNone
+	}
+	return v
+}
+
 // statusNote is the happened notification of a member's change of status.
 func statusNote(s *Snapshot, r FleetReq, typ, word string) *Note {
 	n := happened(typ, "", s.Now)
@@ -2111,6 +2149,10 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 		}
 		if r.Width < 0 || r.Width > MaxWidth {
 			p.refuse(r.Member, fmt.Sprintf("a width wants a whole number from 1 to %d", MaxWidth))
+			return p
+		}
+		if why := HarnessesWhy(r.Harnesses); why != "" {
+			p.refuse(r.Member, why)
 			return p
 		}
 		if !s.Fleet.HasRow(r.Member) {
@@ -2137,6 +2179,9 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			if r.Deadline > 0 {
 				fields[FieldMemberDeadline] = itoa(r.Deadline)
 			}
+			if h := harnessesValue(r.Harnesses); h != "" {
+				fields[FieldHarnesses] = h
+			}
 			head = append(head, change(Fleet, createEntry(CtlID(r.Member), r.Member, Ctl, 0, fields)))
 		default:
 			set := map[string]string{}
@@ -2153,6 +2198,13 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			}
 			if r.DeadlineOff && ctl.F(FieldMemberDeadline) != "" {
 				unset = append(unset, FieldMemberDeadline)
+			}
+			if h := harnessesValue(r.Harnesses); r.Harnesses != "" && ctl.F(FieldHarnesses) != h {
+				if h == "" {
+					unset = append(unset, FieldHarnesses)
+				} else {
+					set[FieldHarnesses] = h
+				}
 			}
 			if r.Op == "release" && ctl.F("held") != "" {
 				unset = append(unset, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish)
@@ -2175,6 +2227,9 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 		}
 		if r.DeadlineOff && ctl != nil && ctl.F(FieldMemberDeadline) != "" {
 			line += " deadline=the card's, or " + itoa(DeadlineK) + " times the member's median run wall (the pin taken off)"
+		}
+		if h := harnessesValue(r.Harnesses); r.Harnesses != "" && (ctl == nil || ctl.F(FieldHarnesses) != h) {
+			line += " harnesses=" + cmpOrNone(h)
 		}
 		if comeUp {
 			// a quiet member is levelled no card (fleet_quiet.go)
@@ -2304,7 +2359,7 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			// member at its width takes no more.
 			// a bench card goes to a member of its bench alone: with none of it up it is
 			// withdrawn, and waits ready for its bench (bench_deal.go)
-			if m := rr.next(onlyBench(without(up, StagingRefusers(c)), benchOfWork(s, c)), q, widths, ""); m != "" {
+			if m := rr.next(onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c)), q, widths, ""); m != "" {
 				rr.moved(m)
 				moves[c.ID] = m
 				q[m]++
@@ -2457,7 +2512,8 @@ func levelWith(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, h
 		for ; i >= 0 && to == ""; i-- {
 			// a bench card is never moved off its bench: the members its BENCH line does not
 			// name are avoided as a member that refused it at staging is (bench_deal.go)
-			to = target(rr, up, n, held, widths, long, append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...))
+			// nor a member that cannot launch its route (notLaunching: fault 10)
+			to = target(rr, up, n, held, widths, long, append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...))
 		}
 		if to == "" {
 			return
