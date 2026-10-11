@@ -1,0 +1,100 @@
+package ci
+
+import (
+	"os"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+// TestTLCWorkflowRunsOnHostedRunners pins .github/workflows/tlc.yml: the models
+// run on GitHub-hosted ubuntu-latest runners (nova-sprint is public, so the
+// fleet's self-hosted runners are not allowed), every job is bounded at five
+// minutes, the downloaded TLC jar is checked against tla/tla2tools.sha256
+// before make tlc runs, and make tlc is called with the 110-second budget.
+// The workflow is read as text: no YAML dependency is added.
+func TestTLCWorkflowRunsOnHostedRunners(t *testing.T) {
+	b, err := os.ReadFile("../../.github/workflows/tlc.yml")
+	require.NoError(t, err)
+	jobs := workflowJobs(t, string(b))
+	require.NotEmpty(t, jobs, "tlc.yml names no jobs")
+
+	models := ""
+	for name, body := range jobs {
+		require.Contains(t, body, "runs-on: ubuntu-latest", "job %q does not run on ubuntu-latest", name)
+		require.NotContains(t, body, "self-hosted", "job %q names a self-hosted runner", name)
+		minutes := jobTimeout(t, name, body)
+		require.LessOrEqual(t, minutes, 5, "job %q allows %d minutes, over the five-minute cap", name, minutes)
+		if strings.Contains(body, "make tlc ") {
+			models = body
+		}
+	}
+	require.NotEmpty(t, models, "no job runs make tlc")
+	check := strings.Index(models, "tla/tla2tools.sha256")
+	run := strings.Index(models, "make tlc ")
+	require.GreaterOrEqual(t, check, 0, "the models job never checks the jar against tla/tla2tools.sha256")
+	require.GreaterOrEqual(t, run, 0, "the models job never runs make tlc")
+	require.Less(t, check, run, "the models job runs make tlc before checking the jar against tla/tla2tools.sha256")
+	require.Contains(t, models, "TLC_BUDGET=110", "the models job does not run make tlc with TLC_BUDGET=110")
+}
+
+// workflowJobs splits the "jobs:" block of a workflow into each job's body by
+// its two-space-indented header.
+func workflowJobs(t *testing.T, text string) map[string]string {
+	t.Helper()
+	jobs := map[string]string{}
+	var body strings.Builder
+	name := ""
+	flush := func() {
+		if name != "" {
+			jobs[name] = body.String()
+		}
+		body.Reset()
+		name = ""
+	}
+	inJobs := false
+	for _, line := range strings.Split(text, "\n") {
+		switch {
+		case line == "jobs:":
+			inJobs = true
+		case !inJobs:
+		case line != "" && !strings.HasPrefix(line, " "):
+			flush()
+			inJobs = false
+		case strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "   "):
+			trimmed := strings.TrimPrefix(line, "  ")
+			if strings.HasSuffix(trimmed, ":") && !strings.ContainsAny(trimmed, " ") && !strings.Contains(trimmed, ": ") {
+				flush()
+				name = strings.TrimSuffix(trimmed, ":")
+			} else if name != "" {
+				body.WriteString(line)
+				body.WriteByte('\n')
+			}
+		default:
+			if name != "" {
+				body.WriteString(line)
+				body.WriteByte('\n')
+			}
+		}
+	}
+	flush()
+	return jobs
+}
+
+func jobTimeout(t *testing.T, name, body string) int {
+	t.Helper()
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "timeout-minutes:") {
+			continue
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(line, "timeout-minutes:"))
+		n, err := strconv.Atoi(value)
+		require.NoError(t, err, "job %q has a non-numeric timeout-minutes %q", name, value)
+		return n
+	}
+	require.Failf(t, "no timeout", "job %q has no timeout-minutes", name)
+	return 0
+}
