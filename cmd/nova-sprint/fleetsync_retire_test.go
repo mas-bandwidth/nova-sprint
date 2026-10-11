@@ -105,6 +105,7 @@ func TestTickDrainsThenRetiresARowWithCards(t *testing.T) {
 	inv.set("m1", 8)
 	inv.set("m2", 8)
 	ta.ok("fleet sync")
+	ta.probeUp("m1", "m2")
 	ta.ok("add --stream s1 --count 8")
 	ta.ok("start")
 	ta.ok("tick")

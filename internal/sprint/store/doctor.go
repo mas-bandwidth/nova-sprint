@@ -17,7 +17,12 @@ type DoctorRead struct {
 	Req         sprint.TickReq
 	ReaderBeats map[string]sprint.Beat
 	FriendBeats map[string]sprint.Beat
-	Stops       StopsRecord
+	// Refused is the server's refused-verb record of the sprint's current epoch: every verb
+	// the server answered with a non-zero code, with what it sent and the refusal. The doctor
+	// reads it, never a member's log (docs/SPEC-SPRINT.md, "The doctor's refused-verb and
+	// beat-form checks").
+	Refused []sprint.RefusedVerb
+	Stops   StopsRecord
 }
 
 // DoctorRead reads the sprint once for the doctor, as StopsNow reads it, and gives the snapshot
@@ -66,7 +71,65 @@ func (st *Store) DoctorRead(ctx context.Context) (DoctorRead, error) {
 	if out.FriendBeats, err = pinned.FriendBeats(ctx); err != nil {
 		return DoctorRead{}, err
 	}
+	if out.Refused, err = pinned.refusedVerbs(ctx); err != nil {
+		return DoctorRead{}, err
+	}
 	return out, nil
+}
+
+// keyRefusedRecord is the sprint's refused-verb record, keyed by epoch (the pinned backend's
+// own epoch scope): the server appends each refused verb, the doctor reads the window.
+const keyRefusedRecord = "refusedrecord"
+
+// RecordRefused appends one refused verb to the epoch's refused-verb record, pruning the
+// window (sprint.PruneRefused). It is the server's write, best effort: a record that does not
+// read or write is not written, and the refusal's answer is never held back by it. The record
+// is keyed by the sprint's current epoch, so a refusal of an old epoch is not counted again.
+func (st *Store) RecordRefused(ctx context.Context, r sprint.RefusedVerb) error {
+	pinned, err := st.pin(ctx)
+	if err != nil {
+		return err
+	}
+	kv, err := pinned.kv()
+	if err != nil {
+		return err
+	}
+	var rec sprint.RefusedRecord
+	if raw, ok, err := kv.GetKey(ctx, keyRefusedRecord); err != nil {
+		return err
+	} else if ok {
+		// ignored: an unreadable record starts again, as a first refusal does
+		_ = json.Unmarshal([]byte(raw), &rec)
+	}
+	if rec.Epoch != pinned.epoch {
+		rec = sprint.RefusedRecord{Epoch: pinned.epoch}
+	}
+	r.Epoch = pinned.epoch
+	rec.Verbs = append(rec.Verbs, r)
+	rec.Verbs = sprint.PruneRefused(rec.Verbs, pinned.now())
+	b, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	return kv.SetKey(ctx, keyRefusedRecord, string(b))
+}
+
+// refusedVerbs is the epoch's refused-verb record with its window pruned; nil when there is
+// none, it does not read, or it is another epoch's.
+func (st *Store) refusedVerbs(ctx context.Context) ([]sprint.RefusedVerb, error) {
+	kv, err := st.kv()
+	if err != nil {
+		return nil, nil // ignored: a store that keeps no machine records keeps no refusals
+	}
+	raw, ok, err := kv.GetKey(ctx, keyRefusedRecord)
+	if err != nil || !ok {
+		return nil, err
+	}
+	var rec sprint.RefusedRecord
+	if json.Unmarshal([]byte(raw), &rec) != nil || rec.Epoch != st.epoch {
+		return nil, nil
+	}
+	return sprint.PruneRefused(rec.Verbs, st.now()), nil
 }
 
 // readerBeats is the last beat of every reader row, in one exchange where the store can; a

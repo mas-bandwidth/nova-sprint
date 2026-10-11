@@ -269,9 +269,11 @@ MCSprintRulesTwinsBrokenSilent.cfg	MCSprintRules.tla	invariant	NoDanglingNeed	ig
 MCSprintRulesRules.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
 MCSprintRulesRulesBrokenNoCap.cfg	MCSprintRules.tla	invariant	RuleAttemptsBounded	ignore-terminal	sprintrules	required	-
 MCSprintRulesRulesBrokenDown.cfg	MCSprintRules.tla	action	LadderClimbs	ignore-terminal	sprintrules	required	-
+MCSprintRulesRulesBrokenUnservedTier.cfg	MCSprintRules.tla	action	EscalatesOnlyToServed	ignore-terminal	sprintrules	required	-
 MCSprintRulesLate.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
 MCSprintRulesLateBrokenWaitAlways.cfg	MCSprintRules.tla	invariant	WaitOnce	ignore-terminal	sprintrules	required	-
 MCSprintRulesLateBrokenReturnUnstamped.cfg	MCSprintRules.tla	invariant	NeverStampedNeverReturned	ignore-terminal	sprintrules	required	-
+MCSprintRulesLateBrokenReturnEarly.cfg	MCSprintRules.tla	invariant	HeldToItsOwnDeadline	ignore-terminal	sprintrules	required	-
 MCSprintRulesLateReachReturn.cfg	MCSprintRules.tla	invariant	NeverReturned	ignore-terminal	sprintrules	required	-
 MCSprintRulesReads.cfg	MCSprintRules.tla	pass	-	ignore-terminal	sprintrules	required	-
 MCSprintRulesReadsBrokenNoBound.cfg	MCSprintRules.tla	invariant	ReadAnswersBounded	ignore-terminal	sprintrules	required	-
@@ -328,12 +330,14 @@ MCReadsByRoomSequential.cfg	MCReadsByRoom.tla	pass	-	ignore-terminal	readsbyroom
 MCSprintTables.cfg	MCSprintTables.tla	pass	-	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenDownkeeps.cfg	MCSprintTables.tla	action	WorkingOnAnUpMember	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenInsert.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsertOrNeeds	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenLandunmerged.cfg	MCSprintTables.tla	action	MovesOnlyByTable	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenNeedless.cfg	MCSprintTables.tla	action	NeedsLandFirst	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenWithdrawready.cfg	MCSprintTables.tla	action	NeedsWithdrawalWaits	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenShortAccept.cfg	MCSprintTables.tla	invariant	AcceptHeld	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenAcceptBroken.cfg	MCSprintTables.tla	invariant	NeverAcceptBroken	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenNeedsAny.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsertOrNeeds	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenReviewNeeds.cfg	MCSprintTables.tla	invariant	Rule11	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenReturnlost.cfg	MCSprintTables.tla	action	NoCardLostOrTwice	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenDealUnmet.cfg	MCSprintTables.tla	action	NeedsHeldIntoWorking	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenCycle.cfg	MCSprintTables.tla	invariant	NoNeedCycle	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenOwnRead.cfg	MCSprintTables.tla	invariant	NeverReadByItsWorker	ignore-terminal	sprinttables	required	-
@@ -341,6 +345,7 @@ MCSprintTablesBrokenSkip.cfg	MCSprintTables.tla	action	MovesOnlyByTable	ignore-t
 MCSprintTablesBrokenUnland.cfg	MCSprintTables.tla	action	LandedIsFinal	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenComeback.cfg	MCSprintTables.tla	action	NoCardLostOrTwice	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenWithdrawMet.cfg	MCSprintTables.tla	action	WorkingToWaitingOnlyOnNeeds	ignore-terminal	sprinttables	required	-
+MCSprintTablesMerge.cfg	MCSprintTablesMerge.tla	pass	-	ignore-terminal	sprinttables	required	-
 MCStallLadder.cfg	MCStallLadder.tla	pass	-	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenBound.cfg	MCStallLadder.tla	invariant	NoCardHeldPastBound	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenRedeal.cfg	MCStallLadder.tla	invariant	NoStartedRedealt	ignore-terminal	stallladder	required	-
@@ -456,7 +461,10 @@ MCAdoptBrokenUndomigration.cfg	MCAdopt.tla	invariant	MigrationIsOneWay	ignore-te
 MCRetireAbsent.cfg	MCRetireAbsent.tla	pass	-	ignore-terminal	retire-absent	required	-
 MCRetireAbsentBroken.cfg	MCRetireAbsent.tla	invariant	RecordsKeepRows	ignore-terminal	retire-absent	required	-
 MCReadCards.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
+MCReadCardsLive.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
 MCReadCardsBrokenIgnoreSpent.cfg	MCReadCards.tla	invariant	NeverTwiceAfterSpent	ignore-terminal	readcards	required	-
+MCReadCardsBrokenNamesHeld.cfg	MCReadCards.tla	temporal	NoGhostRead	ignore-terminal	readcards	required	-
+MCReadCardsBrokenNoLiveReturn.cfg	MCReadCards.tla	temporal	NoGhostRead	ignore-terminal	readcards	required	-
 MCReadVerdict.cfg	MCReadVerdict.tla	pass	-	ignore-terminal	readverdict	required	-
 MCReadVerdictNeedOne.cfg	MCReadVerdict.tla	pass	-	ignore-terminal	readverdict	required	-
 MCReadVerdictBrokenReadersOnly.cfg	MCReadVerdict.tla	temporal	AcceptedWorkCountsOk	ignore-terminal	readverdict	required	-

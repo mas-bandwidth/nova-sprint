@@ -20,6 +20,7 @@ MCInitOf == [c \in MCCard |-> IF c = c1 THEN "ready" ELSE "waiting"]
 
 MCMember == {"m1", "m2"}
 MCInitUp == {"m1", "m2"}
+MCStreamOf == [c \in MCCard |-> "s1"]
 
 MCReader == {"r1", "r2", "r3"}
 MCFlash == {c1}

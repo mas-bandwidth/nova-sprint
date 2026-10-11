@@ -561,7 +561,7 @@ func FriendReadCloseChecked(s *Snapshot, name, primary, card, report string, mis
 // named (card, one of her identities, ReadCardGenIDs), or with none named the placed one of
 // them; nil when none is placed on her row.
 func friendReadCardOf(s *Snapshot, name, primary string, attempt int, card string) *Card {
-	ids := ReadCardGenIDs(primary, attempt, name)
+	ids := ReadCardGenIDs(primary, attempt, name, readNextGen(s.Fleet.Cards(), primary, attempt, name))
 	if card != "" {
 		if !slices.Contains(ids, card) {
 			return nil

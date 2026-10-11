@@ -729,14 +729,65 @@ func NamedWaits(s *Snapshot, c *Card, landing map[string]bool) []string {
 	return out
 }
 
-// NeedState is one need of a primary as it stands: the need's state (its
-// column, or off the table with its outcome), and whether it was waived.
+// NeedState is one need of a primary as it stands: the need's place as its
+// column, and whether it was waived.
 type NeedState struct {
-	ID       string `json:"id"`
+	ID string `json:"id"`
+	// Column is the need's place in the needs verb's words (NeedWord): its
+	// table column, "dropped" for a kept record whose outcome is dropped, or
+	// "absent" for no record at all (docs/SPEC-SPRINT.md section 11).
+	Column string `json:"column"`
+	// State is the need's raw state as it stands (its column, or off the table
+	// with its outcome): a deprecated alias of Column for one release, kept
+	// beside it as where --rows keeps state beside column (docs/SPEC-SPRINT.md
+	// section 11).
 	State    string `json:"state"`
 	Waived   bool   `json:"waived,omitempty"`
 	WaivedBy string `json:"waived_by,omitempty"` // who waived the primary's needs last, and when
 	WaivedAt string `json:"waived_at,omitempty"`
+}
+
+// The words a need's place is printed with when it no longer sits in a work
+// column: a kept record's outcome dropped, and no record at all
+// (docs/SPEC-SPRINT.md section 11).
+const (
+	DroppedWord = "dropped"
+	AbsentWord  = "absent"
+)
+
+// NeedWord is a need's place as the needs verb prints it: a column name,
+// dropped for a kept record whose outcome is dropped, that outcome for a
+// record kept with any other outcome, or absent for no record at all (NeedsOf
+// reads the record; StateOf and Card.Placed tell the three apart;
+// docs/SPEC-SPRINT.md section 11). It is the one function both the card and
+// needs readers call, so a card's state is not confused with its need's.
+func NeedWord(state string) string {
+	switch state {
+	case "not on the table":
+		return AbsentWord
+	}
+	if out, ok := offOutcome(state); ok {
+		if out == "dropped" {
+			return DroppedWord
+		}
+		return out
+	}
+	return state
+}
+
+// offOutcome is the outcome a kept record's state names: NeedsOf writes the
+// state "off the table (<outcome>)", false for a placed card's state, which is
+// a column name.
+func offOutcome(state string) (string, bool) {
+	rest, ok := strings.CutPrefix(state, "off the table (")
+	if !ok {
+		return "", false
+	}
+	out, ok := strings.CutSuffix(rest, ")")
+	if !ok {
+		return "", false
+	}
+	return out, true
 }
 
 // NeedsOf is each need of the primary with its state, and the primaries on
@@ -756,7 +807,7 @@ func NeedsOf(s *Snapshot, id string) (needs []NeedState, neededBy []string) {
 		} else if nc != nil {
 			st = "off the table (" + orDash(nc.F("outcome")) + ")"
 		}
-		ns := NeedState{ID: n, State: st, Waived: contains(Split(c.F("waived")), n)}
+		ns := NeedState{ID: n, Column: NeedWord(st), State: st, Waived: contains(Split(c.F("waived")), n)}
 		if ns.Waived {
 			ns.WaivedBy, ns.WaivedAt = c.F("waived_by"), c.F("waived_at")
 		}
@@ -2689,13 +2740,14 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 				return p
 			}
 			envCleared = true
-		} else if s.MemberCtl(r.Member) == nil && r.Probe != EnvProbePassed {
-			// a member the sprint does not know runs its own probe (the push-credential
-			// probe, the harness check) before its width is accepted: no probe or a failed
-			// one refuses it, so a machine joining without the push credential never gets
-			// width (the owner, 2026-10-11; tla/ProviderBudget.tla, NewMemberProbed).
-			// init bootstraps a fleet by passing EnvProbePassed for each member it sets up.
-			// tla/NoRoom.tla Accept: known only on a passed probe, the deal and the ask read it.
+		} else if (s.MemberCtl(r.Member) == nil || ProbeHeld(s.MemberCtl(r.Member))) && r.Probe != EnvProbePassed {
+			// a member the sprint does not know, or one the sync added held until
+			// its own probe passes, runs its own probe (the push-credential probe,
+			// the harness check) before its width is accepted: no probe or a failed
+			// one refuses it, so a machine joining without the push credential never
+			// gets width (the owner, 2026-10-11; tla/ProviderBudget.tla,
+			// NewMemberProbed). init bootstraps a fleet by passing EnvProbePassed for
+			// each member it sets up.
 			why := "its own probe has not passed: " + EnvProbeLine(r.Member)
 			if r.Probe != "" {
 				why = "its own probe failed (" + r.Probe + "): " + EnvFaultRemedy(r.Member, EnvOther)
@@ -2769,6 +2821,15 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 				if !comeUp {
 					line = r.Member + " released, down until it beats"
 				}
+			}
+			// a passed probe is the one path that lifts the sync's probe hold: a
+			// member the sync added comes up only with its own probe passed, and no
+			// other path clears the hold -- the fault clear lifts only HeldByFault
+			// and the sync's release only its own mark (docs/SPEC-SPRINT.md section
+			// 5, the fleet; tla/ProviderBudget.tla, NewMemberProbed). A release
+			// already clears it in the block above.
+			if ProbeHeld(ctl) && r.Probe == EnvProbePassed && r.Op != "release" {
+				unset = append(unset, "held", FieldHeldBy, FieldHeldReason)
 			}
 			if envCleared {
 				// the passed probe clears the member's last environment fault with its hold
@@ -2907,8 +2968,16 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 	case r.Op == "hold" && r.HeldBy == "":
 		// the coordinator holds a member that is already held (the sync's hold
 		// included): the hold is now the coordinator's, and the sync's mark
-		// goes, so the sync never releases it
-		unset = append(unset, FieldHeldBy, FieldFaultSince)
+		// goes, so the sync never releases it. A member the sync added held
+		// until its own probe passes keeps the probe's mark: no hold clears it,
+		// so fleet up still refuses it without --probe passed (held only by the
+		// fault clear and the passed probe; tla/ProviderBudget.tla,
+		// NewMemberProbed; docs/SPEC-SPRINT.md section 5, the fleet)
+		if ctl.F(FieldHeldBy) == HeldByProbe {
+			unset = append(unset, FieldFaultSince)
+		} else {
+			unset = append(unset, FieldHeldBy, FieldFaultSince)
+		}
 	case r.Op == "down" && r.HeldBy != "" && ctl.F("held") == "":
 		// the machine's down for a fault (presence): mark it held_by=fault and
 		// stamp when, so the tick clears the mark once the member is healthy
@@ -2931,7 +3000,7 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 		// later hold says them again, and a hold with neither clears both
 		if r.Reason != "" {
 			set[FieldHeldReason] = r.Reason
-		} else {
+		} else if ctl.F(FieldHeldBy) != HeldByProbe {
 			unset = append(unset, FieldHeldReason)
 		}
 		if r.Finish {
