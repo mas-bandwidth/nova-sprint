@@ -451,4 +451,13 @@
     brief refuse a card whose BASE is any other branch outside the promotion stream, exit 2, nothing
     written; the step holds the same rule against a racing write. With no base recorded, dev alone is
     refused as before, and the promotion stream keeps its mark."
-   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")))
+   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")
+
+  (fix "held-friend-reader-serves-nothing" :release "v1.2.6" :status "shipped"
+   :title "A held friend's reader serves nothing"
+   :text "docs/SPEC-SPRINT.md section 11 (hold): a friend and her reader row are one member to the
+    server. A held friend's reader row (reader-<friend>) serves nothing: ownModelReader and
+    readerServesTier both say so, no route judgment counts her up, and the TLA+ model ReaderTiers
+    carries the held reader beside its reversed witness. A hold with --return also takes back the
+    reads asked of her reader row, where a reader up is free to read them."
+   :origin "dogfood 2026-10-10 evening: fleet-only restart")))
