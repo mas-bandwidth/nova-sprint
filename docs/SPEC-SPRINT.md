@@ -4445,8 +4445,12 @@ gated alone again from the base, so the red head is blamed with the finding abov
 base's own gate and its cure stay serial for one base commit, in priority order for
 streams sharing its repository and base. Different bases can gate in parallel, so a
 blocked gate on one does not hold another; every
-fetch and every write of the clone's shared refs is one at a time. In the second phase the
-green batches land one at a time in priority order. If an earlier batch gate is still
+fetch and every write of the clone's shared refs is one at a time, per clone: two clones
+fetch and write side by side. In the second phase the green batches land in one landing
+lane per (clone, base): within one base they land one at a time in priority order, and
+lanes of different clones, or of different bases of one clone, land side by side (they
+share no ref and no tip), so a slow gate on one base holds no other base's landing. If an
+earlier batch gate is still
 waiting after `LandDeadline`, that batch is refused for this pass without blaming a card
 or counting a red base, and a ready later stream can land. Every wait a batch makes before
 its work watches that bound too: a batch abandoned while it waits for a width slot, for its
