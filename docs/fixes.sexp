@@ -1367,11 +1367,9 @@
      read scans the fleet table and s.resting sees them (docs/SPEC-SPRINT.md section 6, the reads;
      tla/RouteIndex.tla, THE READS). Red tests first in
      internal/sprint/read_route_rest_test.go, on a pro primary whose read tier's array is pro-a,
-     pro-b: with pro-a resting (a 3-in-10 rule rest, and a provider credit rest from one refused
-     take) the read the ask creates carries pro-b's FieldRoute, never pro-a's; with both routes
-     resting the reads are still asked a route, as today. The rate-limit backoff variant of the
-     second case is owed once rate-limit-never-fails-the-card-v2 lands (the staged tree predates
-     it, so no backoff rest exists to write yet)."
+     pro-b: with pro-a resting (a 3-in-10 rule rest, and a rate-limit backoff from one
+     rate-limited take record) the read the ask creates carries pro-b's FieldRoute, never
+     pro-a's; with both routes resting the reads are still asked a route, as today."
     :origin "this card, a-read-is-never-asked-onto-a-resting-route.w1, from the fourth cold read
      of nova-sprint PR #86 (2026-10-11), an open non-blocking finding (readRouteOf ignores rests)
      listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md; checked on PR #86's
