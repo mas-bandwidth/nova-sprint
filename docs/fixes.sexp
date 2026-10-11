@@ -823,6 +823,22 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
+   :title "Cover the gc loop and backup --out's refusals"
+   :text "Two machine loops had no test of their own behaviour (measured at nova-sprint main
+    bf7bfe2: cmd/nova-sprint/gc.go:236 gcLoop 54 of 54 statements not run; backup_out.go:104
+    backupOut.run 36 of 129 not run). gc_loop_behaviour_test.go drives gcLoop inside
+    testing/synctest.Test on the bubble's clock: nothing before gcLoopFirst; why=first's class
+    and summary lines at it and no removal detail; no second local run inside the hour though
+    the loop wakes every gcLoopEvery; the inventory failure said once until a round answers; and
+    a cancelled ctx ending it silently. backup_out_refusals_test.go breaks one field of a
+    working backupOut a test and asserts the returned error's words and that no --out and no
+    .nova-sprint-backup-* directory is left: --out a regular file; a dump that fails; xz or split
+    /bin/false; no throwaway store and a twin that restores other counts; no secret scan seat; a
+    source with no state reader (restore=integrity compared=counts and the README's warning); and
+    an empty --out replaced by a success. Tests only, no product change."
+   :origin "the coordinator, v1.2.12 card cover-gc-loop-and-backup-out-refusals.w1: tmp/v1.2.12-inventory-2026-10-11.md section 8 item C7")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
