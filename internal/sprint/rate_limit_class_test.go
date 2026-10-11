@@ -36,9 +36,9 @@ func TestIsRateLimitedByClass(t *testing.T) {
 
 // A provider's 5xx whose message mentions a rate limit spends its take, exactly as any
 // other provider failure does: FieldTakeEnded is set, the take leaves a FieldProviderTake
-// record and no rate return, so three such 5xxs in the window rest the route from now for
-// RouteRestFor with cause RestProvider (tla/RouteRest.tla; tla/RateBackoff.tla: the take
-// was the provider's, never the limiter's to absorb).
+// record and no rate_take_ record, so three such 5xxs in the window rest the route from now
+// for RouteRestFor with cause RestProvider (tla/RouteRest.tla; tla/RateBackoff.tla: the
+// take was the provider's, never the limiter's to absorb).
 func TestAFiveHundredMentioningARateLimitStillSpendsTheTake(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
@@ -56,7 +56,9 @@ func TestAFiveHundredMentioningARateLimitStillSpendsTheTake(t *testing.T) {
 		assert.NotEmpty(t, c.F(FieldTakeEnded), "take %d ended", i+1)
 		takes, _ := ProviderTakes(c)
 		assert.NotEmpty(t, takes, "take %d records its provider take", i+1)
-		assert.Empty(t, c.F(FieldRateReturns), "take %d is no rate return", i+1)
+		rates, _ := RateTakes(c)
+		assert.Empty(t, rates, "take %d is no rate take", i+1)
+		assert.Empty(t, c.F(FieldRateReturns), "take %d is no out-of-credit return", i+1)
 	}
 	due := RestsDue(w.s)
 	require.Len(t, due, 1, "three transient takes rest the route: %+v", due)
