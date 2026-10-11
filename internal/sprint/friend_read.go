@@ -140,7 +140,7 @@ func ParseFriendReadReport(report string) (verdict, finding, why string) {
 // card whose read tier is set to the one above (frontier) is frontier here;
 // readTierOf's own return is left as it is.
 func friendReadTier(s *Snapshot, pr *Card) string {
-	m, _ := cardhdr.ReadModel(pr.F("brief"))
+	m, _ := modelOf(pr)
 	t := cardTier(pr, m)
 	set := s.readTierSetting(pr.Row)
 	if set == "" {

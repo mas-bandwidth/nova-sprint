@@ -259,7 +259,7 @@ const FieldLeveled = "leveled"
 // machine"). The tier is the card's own, the tier it is on (cardTier: flash first,
 // then the tier it escalated to, or the tier a rework recorded).
 func ReadsNeeded(pr *Card) int {
-	m, _ := cardhdr.ReadModel(pr.F("brief"))
+	m, _ := modelOf(pr)
 	if cardTier(pr, m) == cardhdr.RouteFlash {
 		return 1
 	}
