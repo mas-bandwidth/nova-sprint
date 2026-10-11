@@ -33,6 +33,7 @@ invariant), and the unit tests below are green.
  :source "github"
  :org "<org>"
  :fetched "..."
+ :scope ("<org>/<repo>")
  :repos
  ((repo "<org>/<repo>"
    :url "https://github.com/<org>/<repo>"
@@ -65,6 +66,11 @@ The file is **canonical**: repositories sorted by name, issues by number, labels
 sorted, comments in creation order, references in timeline order, and every key of every record
 written every time in the order above. One tree has exactly one file, so the file's SHA-256 names
 the tree.
+
+- `:scope` names the repositories a scoped `import` read (`--repo`), sorted by name. It is written
+  only for a scoped import; a whole-organization tree omits it, so its file is byte for byte what it
+  always was, and a file without `:scope` reads as a whole-organization tree. `verify` compares the
+  scope the tree names (section 1.6).
 
 - A string is written with a backslash before every `"` and `\`, every other byte as it is; the
   reader takes the byte after a backslash literally, so every body survives byte for byte.
@@ -146,7 +152,9 @@ through a temporary file and a rename. The first line is `IMPORT OK` with the co
 the file's SHA-256, `calls=` (GraphQL calls), `points=` (what GitHub charged for them), `rest=0`
 and `gh=`; then `IMPORT PLAN` and one `IMPORT REPO` per repository. `--dry-run` does all of it,
 reading GitHub exactly as the import does (every issue, the same calls), and writes nothing; its
-last line is `IMPORT NOTE` saying so. `--json` prints the same result as one JSON object.
+last line is `IMPORT NOTE` saying so. A scoped import (`--repo`) records the repositories it read as
+the tree's `:scope` (section 1.2), so a later `verify` with no `--repo` compares that scope, not the
+whole organization; a whole-organization import writes no `:scope`. `--json` prints the same result as one JSON object.
 
 **verify** reads the tree, reads the same repositories from GitHub again, and compares them with
 `workfile.Diff`. Every difference is one line under `VERIFY FAIL ... differences=` (on stderr, as
@@ -165,9 +173,12 @@ EXTRA or MISSING), references and linked pull requests record by record, and a l
 differs is DRIFT on `comments-order`, `references-order` or `linked-prs-order`; labels and
 assignees are compared as the sequences the file holds. Want
 is GitHub's value, got the tree's; a value over 80 bytes or of more than one line is shown as its
-length and the head of its SHA-256, so a line never carries a body. With no `--repo` the scope is
-the tree's organization, both ways: every repository GitHub lists and every repository the tree
-holds. `--max` bounds the lines shown of each kind (default 20, 0 all, `VERIFY MORE` for the
+length and the head of its SHA-256, so a line never carries a body. With no `--repo` the default
+scope is the tree's own: the `:scope` a scoped import recorded, compared both ways (`tla/WorkImport.tla`'s
+`Verify` reads the scope it imported). A whole-organization tree has no `:scope`, so there the scope
+is the tree's organization, both ways: every repository GitHub lists and every repository the tree
+holds. `--repo` narrows within the tree's scope; a `--repo` outside it is refused, naming the scope,
+before any GitHub call. `--max` bounds the lines shown of each kind (default 20, 0 all, `VERIFY MORE` for the
 rest) and never the count. Zero differences
 prints `VERIFY OK ... differences=0` with the tree's SHA-256: that line is the receipt the
 destructive mode requires. An issue edited on GitHub after the import is DRIFT on `updated` and

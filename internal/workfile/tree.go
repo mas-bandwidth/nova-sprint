@@ -17,11 +17,15 @@ import (
 const Format = "v1"
 
 // Tree is the root: the source it was imported from, the organization, the
-// time the fetch began, and every repository imported, sorted by name.
+// time the fetch began, every repository imported (sorted by name), and, for
+// a scoped import, the repositories it was imported with. A tree with an
+// empty Scope is whole-organization, and verify compares every repository of
+// its organization (SPEC-WORK-V1 sections 1.2 and 1.6).
 type Tree struct {
 	Source  string // "github"
 	Org     string
-	Fetched string // RFC 3339, UTC
+	Fetched string   // RFC 3339, UTC
+	Scope   []string // the repositories of a scoped import, sorted; empty is whole-organization
 	Repos   []Repo
 }
 

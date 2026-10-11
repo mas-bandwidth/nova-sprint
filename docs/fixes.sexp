@@ -844,6 +844,17 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-route-table-stats-routes" :release "v1.2.12" :status "planned"
+   :title "In-package behaviour tests for the stats route table"
+   :text "RouteTable (internal/sprint/routetable.go:25), the table `nova-sprint stats --routes` prints
+    (docs/SPEC-SPRINT.md, the verb stats), gets tests from inside its own package in
+    internal/sprint/routetable_behaviour_test.go: the window (a finish before since is left out with its
+    provider takes, a deal, take or accept before it still counts), the ok/failed split and takes, the
+    no-route and no-usage rules, the provider no-result and the more-than-fifty storm, landed and 1stT,
+    wrong/reviewed, the money columns and the upper-median wall, and the FLASH (all) and PRO (all) rows.
+    RouteTable's in-package statement coverage goes from 0.0% of 163 to 99.4%. No product change."
+   :origin "the owner, 2026-10-11: v1.2.12 tests and models only; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C1")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
@@ -880,6 +891,10 @@
     :title "The page lock's comment-only check reads the page a browser renders"
     :text "The stripper that proves a comment-only change renders nothing no longer mistakes four visible things for comments: an HTML text comment leaves nothing rather than a space; a comment opener inside a quoted attribute value is code; an inline script with a data-src attribute is read as JS; and a slash after a control if, while or for condition opens a regex, failing closed otherwise. The lock's header and the spec's The page lock state the comment-only form and that the card lint is ask-only."
     :origin "this card")
+  (fix "verify-defaults-to-the-trees-import-scope" :release "v1.2.14" :status "planned"
+   :title "verify compares the scope its tree was imported with, not the whole organization"
+   :text "import --repo <org>/<name> now records the repositories it read as the work-tree's :scope, written only for a scoped import; a whole-organization tree stays byte for byte what it was, and a file without :scope reads as a whole-organization tree. verify with no --repo compares the tree's own scope (tla/WorkImport.tla's Verify already read the scope it imported), --repo narrows within it, and a --repo outside it is refused naming the scope before any GitHub call; verify --against does the same. Before, verify with no --repo read the whole organization and reported MISSING for every repository the scoped import left out."
+   :origin "the card verify-defaults-to-the-trees-import-scope w2; the v1.2.12 inventory 2026-10-11 section 9 row D12 (code read at nova-sprint main 00c54ba)")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
