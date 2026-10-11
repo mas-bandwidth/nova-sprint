@@ -73,11 +73,11 @@ func TestTheBalancePollRaisesALowBalanceAndRestsNothing(t *testing.T) {
 	assert.Empty(t, h.openOf(sprint.NProviderFunds), "not out of funds")
 	open := h.openOf(sprint.NProviderLow)
 	require.Len(t, open, 1)
-	assert.Contains(t, open[0].Note.What, "provider openrouter is low on funds: balance $40.00 at ")
+	assert.Contains(t, open[0].Note.What, "fund openrouter: balance $40.00 at ")
 	assert.Contains(t, open[0].Note.What, "spent $60.00 over the last hour")
 	assert.Contains(t, open[0].Note.What, "about 0.7 hours left")
 	assert.Contains(t, open[0].Note.What, "its routes or-a, or-b STILL SERVE")
-	assert.Equal(t, []string{"routes rest openrouter", "wait", "ack"}, open[0].Note.Decisions)
+	assert.Equal(t, []string{"fund openrouter", "funded openrouter", "routes rest openrouter", "wait", "ack"}, open[0].Note.Decisions)
 	assert.NotEmpty(t, h.onProvider(routes, "openrouter"), "work is still dealt on openrouter")
 
 	// the coordinator rests its routes: the judgment is answered
@@ -384,10 +384,10 @@ func TestABalanceAtZeroRestsNothing(t *testing.T) {
 	assert.Empty(t, h.openOf(sprint.NProviderLow), "an unknown balance judges nothing")
 
 	h.tick(sprint.BalancePollEvery)
-	h.poll(sprint.ProviderRead{Provider: "openrouter", Known: true, Balance: 0.30})
+	h.poll(sprint.ProviderRead{Provider: "openrouter", Known: true, Balance: 6.00})
 	h.machine()
 	assert.Empty(t, sprint.ProviderRests(h.snap().Fleet), "no rest")
-	assert.Empty(t, h.openOf(sprint.NProviderLow), "$0.30 is over an hour of no spend")
+	assert.Empty(t, h.openOf(sprint.NProviderLow), "$6.00 is over the low balance threshold")
 	h.clean("a balance at zero, then over it")
 }
 
