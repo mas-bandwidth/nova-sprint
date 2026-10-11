@@ -28,16 +28,24 @@ import (
 // PropReadCards is the work table's property that turns read cards on: ReadCardsOnWord.
 const PropReadCards = "read_cards"
 
-// ReadCardsOnWord is the setting's on word; any other value is off.
-const ReadCardsOnWord = "on"
+// ReadCardsOnWord is the setting's on word; ReadCardsOffWord the one word that turns it
+// off. An absent property, or ReadTierDefault, is on: read cards are the working machine
+// (docs/SPEC-SPRINT.md section 11, the settings), and only set --read-cards off degrades
+// the machine to the readers table's one read per tick.
+const (
+	ReadCardsOnWord  = "on"
+	ReadCardsOffWord = "off"
+)
 
-// ReadCardsOn says the sprint asks its reads as read cards (PropReadCards).
+// ReadCardsOn says the sprint asks its reads as read cards (PropReadCards). It is on
+// unless the property is set to the off word: an absent property, or ReadTierDefault, is
+// the working default (docs/SPEC-SPRINT.md section 11, the settings).
 func (s *Snapshot) ReadCardsOn() bool {
 	if s == nil || s.Work == nil {
-		return false
+		return true
 	}
 	v, _ := s.Work.Prop(PropReadCards)
-	return v == ReadCardsOnWord
+	return v != ReadCardsOffWord
 }
 
 // FieldReadCard marks a read card the deal cut (read_cards.go), "1": a friend's read asked
