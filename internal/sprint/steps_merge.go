@@ -708,6 +708,7 @@ type ResumeReq struct {
 // branch, a rejected batch) are resolved by the coordinator, who says what
 // was done; after a red branch saying it is required. It answers every
 // judgment open on the stream.
+// tla/Holds.tla Resume
 func Resume(s *Snapshot, r ResumeReq) Plan {
 	var p Plan
 	ctl := s.StreamCtl(r.Stream)

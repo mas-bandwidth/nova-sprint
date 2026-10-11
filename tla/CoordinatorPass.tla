@@ -14,6 +14,10 @@
 \*   open    the judgment is open (the tick's notify wrote it, and has not closed it).
 \*   acked   the coordinator acknowledged it (ack): kept on the subject as an
 \*           acknowledgement, never raised again, until the condition clears.
+\*   review  the running clock the coordinator's wait holds the condition to (-1
+\*           while none): the judgment is closed and the condition held until
+\*           then, and raised again when the time is reached and the condition
+\*           still holds (Wait).
 \*   first   the running clock it was written at (its At); -1 while none.
 \*   again   how many times it was raised again (its Before): the k-th raise again is
 \*           due k times Every after first.
@@ -71,6 +75,11 @@
 \*         the raises due, one push) once its next raise is due; when it does not hold,
 \*         the open judgment (or the acknowledgement) is closed and the episode ends.
 \*   Ack   the coordinator acknowledges an open judgment.
+\*   Wait  the coordinator holds an open judgment until a review time it chooses
+\*         (within the bound): the judgment is closed and the condition held; a
+\*         tick that finds the time reached and the condition still holding
+\*         raises it again, and one that finds the condition cleared closes the
+\*         hold.
 \* Reversed witnesses, each broken by one property:
 \*   "noreraise"  the judgment is raised once and never again (the tick's judgments before
 \*                the pass): PushedEveryWindow.
@@ -94,14 +103,16 @@
 \*                wait to a far review time) quiets the judgments late on the coordinator
 \*                for as long as any is late (2026-10-09: 111 judgments waiting, the oldest
 \*                51 hours): EscalatedPastAck.
+\*   "waitforever" the wait never expires its hold: a condition that still holds at its
+\*                review time is never raised again: WaitedRaisedAgainOnExpiry.
 EXTENDS Integers
 
 CONSTANTS Every, MaxClock, Broken, Kind
 
 VARIABLES holds, seen, open, acked, first, again, clk, written, pushes,
-          late, markAt, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl
+          late, markAt, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl, review
 vars == <<holds, seen, open, acked, first, again, clk, written, pushes,
-          late, markAt, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl>>
+          late, markAt, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl, review>>
 
 \* The escalation step: three windows (the code: BehindEscalateEvery, three PassEvery).
 EscEvery == 3 * Every
@@ -125,12 +136,14 @@ TypeOK ==
   /\ dealt \in BOOLEAN
   /\ stoppedAt \in (0..MaxClock) \cup {-1}
   /\ lvl \in 0..MaxClock
+  /\ review \in (0..MaxClock) \cup {-1}
 
 Init ==
   /\ holds = FALSE /\ seen = FALSE /\ open = FALSE /\ acked = FALSE
   /\ first = -1 /\ again = 0 /\ clk = 0 /\ written = 0 /\ pushes = 0
   /\ late = FALSE /\ markAt = -1 /\ lastPush = -1 /\ tickPushes = 0
   /\ watchAt = -1 /\ streak = 0 /\ dealt = FALSE /\ stoppedAt = -1 /\ lvl = 0
+  /\ review = -1
 
 \* The world: the friend's session answers or not, her cards finish or not, the
 \* coordinator answers the late judgments or not, the friend comes up or goes down, her
@@ -142,7 +155,7 @@ Flip ==
        ELSE holds' = ~holds /\ UNCHANGED late
   /\ stoppedAt' = IF Kind = "stop" /\ ~holds THEN clk ELSE -1
   /\ UNCHANGED <<seen, open, acked, first, again, clk, written, pushes, markAt, lastPush, tickPushes,
-                 watchAt, streak, dealt, lvl>>
+                 watchAt, streak, dealt, lvl, review>>
 
 \* Pin: the deal places the pinned card on another row and writes the judgment on that
 \* unit (friendDeal, pinIgnoredNote). The deal is a part of the tick, which leaves the
@@ -153,11 +166,23 @@ Deal ==
   /\ holds' = TRUE /\ seen' = TRUE
   /\ open' = TRUE /\ first' = clk /\ again' = 0 /\ dealt' = TRUE
   /\ written' = written + 1 /\ pushes' = pushes + 1
-  /\ UNCHANGED <<acked, clk, late, markAt, lastPush, tickPushes, watchAt, streak, stoppedAt, lvl>>
+  /\ UNCHANGED <<acked, clk, late, markAt, lastPush, tickPushes, watchAt, streak, stoppedAt, lvl, review>>
 
 \* The coordinator acknowledges the open judgment.
 Ack ==
   /\ open /\ ~acked
+  /\ open' = FALSE /\ acked' = TRUE
+  /\ UNCHANGED <<holds, seen, first, again, clk, written, pushes, late, markAt, lastPush, tickPushes,
+                 watchAt, streak, dealt, stoppedAt, lvl, review>>
+
+\* The coordinator holds the open judgment of a condition the tick keeps until a
+\* review time it chooses (Wait, steps_ack.go): the judgment is closed and the
+\* condition held; a tick whose pass finds the time reached and the condition
+\* still holding raises it again, and one that finds the condition cleared closes
+\* the hold.
+Wait ==
+  /\ open /\ ~acked /\ Kind # "stop" /\ clk < MaxClock
+  /\ review' \in (clk + 1)..MaxClock
   /\ open' = FALSE /\ acked' = TRUE
   /\ UNCHANGED <<holds, seen, first, again, clk, written, pushes, late, markAt, lastPush, tickPushes,
                  watchAt, streak, dealt, stoppedAt, lvl>>
@@ -195,13 +220,18 @@ Level ==
 \* pass never sees one.
 Escalate == Cond /\ (open \/ acked) /\ lvl # NextLevel /\ Broken # "ackforever"
 
-\* This tick's pass pushes: it raises the judgment, raises it at a new level, or raises it
-\* again.
+\* The coordinator's wait has run out: its review time is reached (the tick's now, clk + 1,
+\* is the write time).
+WaitOver == acked /\ review # -1 /\ clk + 1 >= review
+
+\* This tick's pass pushes: it raises the judgment, raises it at a new level, raises it
+\* again, or raises it afresh when a wait's review time is reached.
 PassPush ==
   /\ Cond
   /\ \/ ~open /\ ~acked
      \/ Escalate
      \/ open /\ (clk + 1 - first) \div Every > again /\ Broken # "noreraise"
+     \/ WaitOver /\ Broken # "waitforever"
 
 \* One tick: the overdue part's line, then the pass (TickCoordinatorPass: notify, then
 \* reraise).
@@ -224,29 +254,34 @@ Tick ==
               THEN \* raised: the judgment, once an episode
                    /\ open' = TRUE /\ first' = clk + 1 /\ again' = 0 /\ lvl' = NextLevel
                    /\ written' = written + 1 /\ pushes' = pushes + 1
-                   /\ UNCHANGED acked
+                   /\ UNCHANGED <<acked, review>>
             ELSE IF Escalate
               THEN \* a new level: the judgment (or acknowledgement) of the level before
                    \* closes and the new level's is raised, a new episode
                    /\ open' = TRUE /\ acked' = FALSE /\ first' = clk + 1 /\ again' = 0
-                   /\ lvl' = NextLevel /\ written' = 1 /\ pushes' = 1
+                   /\ lvl' = NextLevel /\ written' = 1 /\ pushes' = 1 /\ review' = -1
             ELSE IF open /\ (clk + 1 - first) \div Every > again /\ Broken # "noreraise"
               THEN \* raised again: in place, every raise due counted, one push
                    /\ again' = (clk + 1 - first) \div Every /\ pushes' = pushes + 1
                    /\ written' = IF Broken = "reopen" THEN written + 1 ELSE written
-                   /\ UNCHANGED <<open, acked, first, lvl>>
+                   /\ UNCHANGED <<open, acked, first, lvl, review>>
             ELSE IF open /\ dealt /\ Broken = "pinrekey"
               THEN \* the deal's note not known as the pass's: a second judgment
                    /\ written' = written + 1
-                   /\ UNCHANGED <<open, acked, first, again, pushes, lvl>>
-            ELSE UNCHANGED <<open, acked, first, again, written, pushes, lvl>>
+                   /\ UNCHANGED <<open, acked, first, again, pushes, lvl, review>>
+            ELSE IF WaitOver /\ Broken # "waitforever"
+              THEN \* the wait ran out and the condition still holds: raised again, a new
+                   \* episode
+                   /\ open' = TRUE /\ acked' = FALSE /\ first' = clk + 1 /\ again' = 0
+                   /\ review' = -1 /\ lvl' = NextLevel /\ written' = 1 /\ pushes' = 1
+            ELSE UNCHANGED <<open, acked, first, again, written, pushes, lvl, review>>
        ELSE IF Broken = "noclose"
-              THEN UNCHANGED <<open, acked, first, again, written, pushes, lvl>>
+              THEN UNCHANGED <<open, acked, first, again, written, pushes, lvl, review>>
             ELSE \* closed: the episode ends
                  /\ open' = FALSE /\ acked' = FALSE /\ first' = -1 /\ again' = 0
-                 /\ written' = 0 /\ pushes' = 0 /\ lvl' = 0
+                 /\ written' = 0 /\ pushes' = 0 /\ lvl' = 0 /\ review' = -1
 
-Next == Flip \/ Ack \/ Deal \/ Tick
+Next == Flip \/ Ack \/ Wait \/ Deal \/ Tick
 
 Spec == Init /\ [][Next]_vars
 
@@ -290,5 +325,9 @@ StopSignalled ==
 \* grows is pushed again however it was quieted.
 EscalatedPastAck ==
   (Kind = "behind" /\ (open \/ acked)) => lvl = Level
+
+\* A wait never outlasts its review time: once the clock reaches it the hold is closed, so a
+\* condition that still holds then is raised again.
+WaitedRaisedAgainOnExpiry == acked /\ review # -1 => clk < review
 
 =============================================================================

@@ -298,6 +298,7 @@ MCCardISALive.cfg	MCCardISA.tla	pass	-	ignore-terminal	cardisa	required	-
 MCCardISABrokenSecondLand.cfg	MCCardISA.tla	invariant	NoCardRetiresTwice	ignore-terminal	cardisa	required	-
 MCCardISABrokenOtherBase.cfg	MCCardISA.tla	invariant	RetiredHeadOnBase	ignore-terminal	cardisa	required	-
 MCCardISABrokenWaitFirst.cfg	MCCardISA.tla	invariant	WaitDispatchesOnlyWhenOperandHolds	ignore-terminal	cardisa	required	-
+MCCardISABrokenLandAnywhere.cfg	MCCardISA.tla	action	LandsOnlyByTable	ignore-terminal	cardisa	required	-
 MCReadsByRoom.cfg	MCReadsByRoom.tla	pass	-	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomBrokenAskBroken.cfg	MCReadsByRoomThree.tla	invariant	NoAskWhileBroken	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomBrokenPair.cfg	MCReadsByRoom.tla	invariant	OneAtATime	ignore-terminal	readsbyroom	required	-
@@ -306,6 +307,10 @@ MCReadsByRoomBrokenCount.cfg	MCReadsByRoom.tla	invariant	WidthRespected	ignore-t
 MCReadsByRoomBrokenNoFinder.cfg	MCReadsByRoomThree.tla	invariant	FinderFirst	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomBrokenTwoFinders.cfg	MCReadsByRoom.tla	invariant	OneBroken	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomSequential.cfg	MCReadsByRoom.tla	pass	-	ignore-terminal	readsbyroom	required	-
+MCSprintTables.cfg	MCSprintTables.tla	pass	-	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenDownkeeps.cfg	MCSprintTables.tla	action	WorkingOnAnUpMember	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenInsert.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsert	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenNeedless.cfg	MCSprintTables.tla	action	NeedsLandFirst	ignore-terminal	sprinttables	required	-
 MCStallLadder.cfg	MCStallLadder.tla	pass	-	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenBound.cfg	MCStallLadder.tla	invariant	NoCardHeldPastBound	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenRedeal.cfg	MCStallLadder.tla	invariant	NoStartedRedealt	ignore-terminal	stallladder	required	-
@@ -327,6 +332,7 @@ MCCoordinatorPassStop.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinat
 MCCoordinatorPassBrokenSilentStop.cfg	MCCoordinatorPass.tla	invariant	StopSignalled	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBehindEscalate.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenAckForever.cfg	MCCoordinatorPass.tla	invariant	EscalatedPastAck	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassBrokenWaitForever.cfg	MCCoordinatorPass.tla	invariant	WaitedRaisedAgainOnExpiry	ignore-terminal	coordinatorpass	required	-
 MCWhoPreference.cfg	MCWhoPreference.tla	pass	-	ignore-terminal	whopreference	required	-
 MCWhoPreferenceOnlyWrong.cfg	MCWhoPreference.tla	invariant	OnlyToItsFriend	ignore-terminal	whopreference	required	-
 MCWhoPreferenceRebalanceStarted.cfg	MCWhoPreference.tla	action	NoStartedCardMoves	ignore-terminal	whopreference	required	-
@@ -407,6 +413,8 @@ MCNoRoomBrokenReadBlind.cfg	MCNoRoom.tla	invariant	NeverAskedOfHeldOrDraining	ig
 MCNoRoomBrokenSilentDrain.cfg	MCNoRoom.tla	temporal	DealtReturns	ignore-terminal	noroom	required	-
 MCNoRoomBrokenNoReturn.cfg	MCNoRoom.tla	temporal	DealtReturns	ignore-terminal	noroom	required	-
 MCNoRoomBrokenNoReadReturn.cfg	MCNoRoom.tla	temporal	ReadsReturn	ignore-terminal	noroom	required	-
+MCNoRoomBrokenProbeBlind.cfg	MCNoRoom.tla	invariant	NeverDealtUnknown	ignore-terminal	noroom	required	-
+MCNoRoomBrokenNoTaker.cfg	MCNoRoom.tla	invariant	NeverReturnedWithoutATaker	ignore-terminal	noroom	required	-
 MCAdopt.cfg	MCAdopt.tla	pass	-	ignore-terminal	adopt	required	-
 MCAdoptBrokenKeepNew.cfg	MCAdopt.tla	invariant	RefusedLeavesOld	ignore-terminal	adopt	required	-
 MCRetireAbsent.cfg	MCRetireAbsent.tla	pass	-	ignore-terminal	retire-absent	required	-
@@ -415,6 +423,7 @@ MCReadCards.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
 MCReadCardsBrokenIgnoreSpent.cfg	MCReadCards.tla	invariant	NeverTwiceAfterSpent	ignore-terminal	readcards	required	-
 MCReaderTiers.cfg	MCReaderTiers.tla	pass	-	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenHeld.cfg	MCReaderTiers.tla	invariant	NoReadToAHeldReader	ignore-terminal	readertiers	required	-
+MCReaderTiersBrokenEmptyReadsAll.cfg	MCReaderTiers.tla	invariant	NoReadOutsideTier	ignore-terminal	readertiers	required	-
 MCRateBudget.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
 MCRateBudgetLive.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
 MCRateBudgetProgress.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
@@ -434,6 +443,7 @@ MCRoadmapEntryBrokenLastChild.cfg	MCRoadmapEntry.tla	invariant	ParentsHold	ignor
 MCRoadmapEntryBrokenSourceFirst.cfg	MCRoadmapEntry.tla	invariant	NoLoss	ignore-terminal	roadmapentry	required	-
 MCRoadmapEntryBrokenMoveDone.cfg	MCRoadmapEntry.tla	action	DoneFinal	ignore-terminal	roadmapentry	required	-
 MCRoadmapEntryBrokenShippedMove.cfg	MCRoadmapEntry.tla	action	ShippedFrozen	ignore-terminal	roadmapentry	required	-
+MCRoadmapEntryBrokenPageFirst.cfg	MCRoadmapEntry.tla	invariant	PageNotAhead	ignore-terminal	roadmapentry	required	-
 MCSeatHook.cfg	MCSeatHook.tla	pass	-	ignore-terminal	seathook	required	-
 MCSeatHookLive.cfg	MCSeatHook.tla	pass	-	ignore-terminal	seathook	required	-
 MCSeatHookBrokenNoStream.cfg	MCSeatHook.tla	invariant	ProofMeansRead	ignore-terminal	seathook	required	-
@@ -443,7 +453,9 @@ MCSeatHookBrokenNoAck.cfg	MCSeatHook.tla	invariant	AckedOrBlocking	ignore-termin
 MCSeatHookBrokenNoMiss.cfg	MCSeatHook.tla	invariant	CommandSafe	ignore-terminal	seathook	required	-
 MCSeatHookBrokenSilentDrop.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-terminal	seathook	required	-
 MCSeatHookBrokenStrictCadence.cfg	MCSeatHook.tla	temporal	HookStays	ignore-terminal	seathook	required	-
+MCSeatHookBrokenNoStartRewrite.cfg	MCSeatHook.tla	invariant	RecordTrue	ignore-terminal	seathook	required	-
 MCStopReturnBrokenNoSettleByBeat.cfg	MCStopReturn.tla	temporal	AbsentJobSettles	ignore-terminal	stopreturn	required	-
+MCStopReturnBrokenOmitLive.cfg	MCStopReturn.tla	invariant	NoLiveChildAcrossStart	ignore-terminal	stopreturn	required	-
 MCProviderBudget.cfg	MCProviderBudget.tla	pass	-	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenClear.cfg	MCProviderBudget.tla	action	FleetUpRefusesUncleared	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenNewMember.cfg	MCProviderBudget.tla	action	NewMemberProbed	ignore-terminal	providerbudget	required	-
@@ -451,6 +463,7 @@ MCProviderBudgetBrokenNoPush.cfg	MCProviderBudget.tla	action	FaultClearsOnPush	i
 MCProviderBudgetBrokenNoenv.cfg	MCProviderBudget.tla	action	EnvOnlyByEnvironmentFinish	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenNodeal.cfg	MCProviderBudget.tla	action	HeldDealtNothing	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenStale.cfg	MCProviderBudget.tla	action	JudgmentNamesTheCause	ignore-terminal	providerbudget	required	-
+MCProviderBudgetBrokenBranchEnv.cfg	MCProviderBudget.tla	action	ARejectedPushIsNeverAFault	ignore-terminal	providerbudget	required	-
 MCReadyOver.cfg	MCReadyOver.tla	pass	-	ignore-terminal	readyover	required	-
 MCReadyOverBrokenMerge.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-
 MCReadyOverBrokenSilent.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-
@@ -463,3 +476,6 @@ MCHolds.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
 MCHoldsBrokenResumeEarly.cfg	MCHolds.tla	action	CrossResumesAfterNeed	ignore-terminal	holds	required	-
 MCHoldsBrokenSilentStop.cfg	MCHolds.tla	invariant	NoSilentStall	ignore-terminal	holds	required	-
 MCHoldsLive.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
+MCServerSwitch.cfg	MCServerSwitch.tla	pass	-	ignore-terminal	serverswitch	required	-
+MCServerSwitchBrokenNodeadline.cfg	MCServerSwitch.tla	invariant	RollbackOnlyInWindow	ignore-terminal	serverswitch	required	-
+MCServerSwitchBrokenKeepstate.cfg	MCServerSwitch.tla	invariant	AtMostOneAutoRollbackPerSwitch	ignore-terminal	serverswitch	required	-

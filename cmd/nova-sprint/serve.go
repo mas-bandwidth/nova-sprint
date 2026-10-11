@@ -47,8 +47,9 @@ import (
 // workerVerb is the worker a verb of a batch acts as and how many words its
 // verb is, or why the server does not run it. A worker sends its own verbs only:
 // take, finish, read or queue, then --as and its name; or fleet beat, its name,
-// an optional --stop-returns and a whole number of at least 0, an optional --live and a
-// live set, --load and a number, and nothing more; or friend beat, its name, and its report's flags each with its value (friendBeatReport); or friend cards, its name, and --json at most. The name is one worker, never a list.
+// an optional --stop-returns and a whole number of at least 0, an optional --no-room and
+// why it starts no card, an optional --draining, an optional --live and a
+// live set, --load and a number, in any order with --load anywhere, and nothing more; or friend beat, its name, and its report's flags each with its value (friendBeatReport); or friend cards, its name, and --json at most. The name is one worker, never a list.
 // No later word, wherever it stands, is a flag named as, redis or actor: the
 // server gives the store and the actor (serve puts them before the worker's
 // words, where nothing the worker sent can take them as a value or end the
@@ -61,36 +62,69 @@ import (
 // the worker wants) are held to their shapes here, before the verb runs: a count, and card
 // ids (packetsWanted).
 
-// fleetBeatWords reads `fleet beat <member> [--stop-returns <n>] [--live <set>] --load
-// <percent>`. The member's beat always names the stop-returns it still owes, including zero,
-// a v1.2.6 member names its live set (sprint.ParseLive), and the wire puts --load last.
-// Anything else is refused.
-func fleetBeatWords(rest []string) (as, load, stop, live string, ok bool) {
-	if len(rest) < 3 || rest[len(rest)-2] != "--load" {
-		return "", "", "", "", false
+// fleetBeatWords reads `fleet beat <member> [--stop-returns <n>] [--no-room <why>]
+// [--draining] [--live <set>] --load <percent>`, the words nova-tools pkg/member sends
+// (member.Beat, drainArgs, noRoomArgs): the optional words may stand in any order and
+// --load anywhere among them. --load is required, because the server cannot measure the
+// worker's machine. A word the list does not name is refused naming it; why is "" when
+// the words are a beat.
+func fleetBeatWords(rest []string) (as, load, stop, live, noRoom string, draining bool, why string) {
+	if len(rest) < 1 {
+		return "", "", "", "", "", false, "a beat names its member first"
 	}
-	as, load = rest[0], rest[len(rest)-1]
-	mid := rest[1 : len(rest)-2]
-	if len(mid) >= 2 && mid[0] == "--stop-returns" {
-		stop, mid = mid[1], mid[2:]
-	}
-	if len(mid) >= 2 && mid[0] == "--live" {
-		live, mid = mid[1], mid[2:]
-		if live == "" {
-			return "", "", "", "", false
+	as, words := rest[0], rest[1:]
+	loadSet, stopSet := false, false
+	for i := 0; i < len(words); i++ {
+		w := words[i]
+		if w == "--draining" {
+			draining = true
+			continue
+		}
+		var value string
+		switch w {
+		case "--load", "--stop-returns", "--live", "--no-room":
+			if i+1 >= len(words) {
+				return "", "", "", "", "", false, "a beat's " + w + " wants its value"
+			}
+			value = words[i+1]
+			i++
+		default:
+			return "", "", "", "", "", false, "a beat takes no word " + oneline.Escape(w) + ": its words are `fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] --load <percent>` and nothing more"
+		}
+		switch w {
+		case "--load":
+			if loadSet {
+				return "", "", "", "", "", false, "a beat's --load is given once"
+			}
+			load, loadSet = value, true
+		case "--stop-returns":
+			if stopSet {
+				return "", "", "", "", "", false, "a beat's --stop-returns is given once"
+			}
+			stop, stopSet = value, true
+		case "--live":
+			if value == "" {
+				return "", "", "", "", "", false, "a beat's --live names a set"
+			}
+			live = value
+		case "--no-room":
+			noRoom = value
 		}
 	}
-	if len(mid) != 0 {
-		return "", "", "", "", false
+	if !loadSet {
+		return "", "", "", "", "", false, "a beat names its --load and nothing more measures the worker's machine"
 	}
-	return as, load, stop, live, true
+	return as, load, stop, live, noRoom, draining, ""
 }
 
 func workerVerb(argv []string) (as string, words int, why string) {
 	if len(argv) >= 2 && argv[0] == "fleet" && argv[1] == "beat" {
-		as, load, stop, live, ok := fleetBeatWords(argv[2:])
-		if !ok || !sprint.ValidID(as) {
-			return "", 0, "a beat sent to the server is `fleet beat <member> [--stop-returns <n>] [--live <set>] --load <percent>` and nothing more: the server cannot measure the worker's machine"
+		as, load, stop, live, _, _, why := fleetBeatWords(argv[2:])
+		if why != "" {
+			return "", 0, why
+		}
+		if !sprint.ValidID(as) {
+			return "", 0, "a beat's member is a name (letters, digits, _ and -), found " + oneline.Escape(as)
 		}
 		if live != "" {
 			if _, err := sprint.ParseLive(live); err != nil {
