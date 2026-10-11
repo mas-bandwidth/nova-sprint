@@ -44,7 +44,7 @@ func TestABrokenVerdictAtTheBriefBoundRecordsAndReturnsToWork(t *testing.T) {
 
 	pr = w.s.Work.Card("s1-1")
 	require.Equal(t, Broken, w.s.Readers.Card(rc.ID).Col, "the broken verdict stands")
-	require.Equal(t, NReadBroken, openTypes(w, "s1-1"), "the broken verdict records as a judgment")
+	require.Equal(t, NBriefWrong, openTypes(w, "s1-1"), "at the bound, the broken verdict is a brief defect")
 	require.False(t, acceptable(w.s, pr), "the broken verdict outweighs the fleet ok")
 	require.False(t, tickTakes(w, "s1-1"), "the tick does not accept it")
 	p := Accept(w.s, AcceptReq{Sel: Sel{IDs: []string{"s1-1"}}})

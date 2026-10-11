@@ -13,6 +13,18 @@ MCMemberUnlaunch == [m \in Members |-> IF m = "m1" THEN {"a", "b", "c"} ELSE {}]
 MCBenchOf == [c \in Cards |-> IF c \in BenchedCards THEN {"m1"} ELSE Members]
 MCRefused == [c \in Cards |-> IF c \in RefusedCards THEN {"m2"} ELSE {}]
 
+\* The design's resting routes, a card's avoided routes, and the read tier's
+\* collapse: none, none, and identity (a read draws from its primary's tier).
+MCRested == {}
+MCAvoid == [c \in Cards |-> {}]
+MCReadTier == [t \in Tiers |-> t]
+
+\* A case that exercises them (MCRouteIndexRead.cfg): b rests, the read c6 avoids
+\* a, and a pro primary's read is drawn on flash (readTierOf's collapse).
+MCRestedB == {"b"}
+MCAvoidA == [c \in Cards |-> IF c \in Reads THEN {"a"} ELSE {}]
+MCReadTierProFlash == [t \in Tiers |-> IF t = "pro" THEN "flash" ELSE t]
+
 MCArr == [t \in {"flash", "pro"} |-> IF t = "flash" THEN <<"a", "b", "c">> ELSE <<"d", "e", "e">>]
 MCTierOf == [c \in Cards |-> IF c \in ProCards THEN "pro" ELSE "flash"]
 \* a read card is no work card's twin: the reads are left out of the symmetry
