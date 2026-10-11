@@ -32,9 +32,6 @@
 \*                  (0: revision 0, the epoch's empty table, left by no event)
 \*   cep           the epoch the entry was read at: an entry of another epoch is
 \*                  not held (a load of the new epoch reads whole and keeps anew)
-\*   cmax          a ghost: the highest revision the cache has held the table at
-\*                  in its present hold (0 when it holds none): CacheNotRegressed
-\*                  says the held revision never falls below it
 \*
 \* A LOAD (l in Loaders, running at once).
 \*   "idle" -> Begin: the shapes, one exchange: the epoch (vep) and each table's
@@ -68,17 +65,16 @@
 \*   CacheIsHistory  a table the cache holds at the current epoch whose mark is
 \*                   still the store's event at its revision is the store's
 \*                   records at it
-\*   CacheNotRegressed while the cache holds a table at the current epoch its
-\*                   revision never falls from the highest it has held: the
-\*                   keep's revision guard (loadcache.go keepLoaded)
 \* Reversed witnesses (Broken): "catchup" (the catch-up misses the last write its
 \* stream names), "ahead" (a cache later than the shape used as it is),
 \* "nomark" (the mark is not checked), "noepochkey" (entries keyed by table alone:
-\* a load of the old epoch is served after a clear), "norevguard" (the keep's
-\* revision guard dropped: the cache regresses). Dropping the revision guard does
-\* not break LoadIsSnapshot -- the serve-time mark check is the correctness guard,
-\* the revision guard only keeps the newest read -- so the norevguard witness
-\* fails CacheNotRegressed, not LoadIsSnapshot.
+\* a load of the old epoch is served after a clear). The card's section (2) also
+\* names a "norevguard" witness -- the keep's revision guard dropped -- as a
+\* LoadIsSnapshot failure, but that expectation is unsatisfiable as modelled:
+\* dropping the revision guard lets the cache regress, yet the serve-time mark
+\* check (which "nomark" drops) still serves the right records, so no load takes
+\* a non-snapshot. The revision guard only keeps the newest read, an efficiency;
+\* there is no norevguard witness, and the card is not-done on that point.
 
 EXTENDS Naturals, Sequences, FiniteSets
 
@@ -87,14 +83,14 @@ CONSTANTS Tables, Keys, Vals, Loaders, MaxW, MaxLoads, MaxRollbacks, MaxClear, B
 ASSUME 0 \in Vals
 
 VARIABLES rec, rev, log, hist, wn, mk, rb, ep,
-          cv, crec, crev, cmark, cep, cmax,
+          cv, crec, crev, cmark, cep,
           pc, vrev, vep, cur, lmark,
           out, done, good, oep, loads
 
-vars == <<rec, rev, log, hist, wn, mk, rb, ep, cv, crec, crev, cmark, cep, cmax,
+vars == <<rec, rev, log, hist, wn, mk, rb, ep, cv, crec, crev, cmark, cep,
           pc, vrev, vep, cur, lmark, out, done, good, oep, loads>>
 storeVars == <<rec, rev, log, hist, wn, mk, rb, ep>>
-cacheVars == <<cv, crec, crev, cmark, cep, cmax>>
+cacheVars == <<cv, crec, crev, cmark, cep>>
 
 ZeroT == [k \in Keys |-> 0]
 
@@ -104,7 +100,7 @@ Init ==
   /\ wn = 0 /\ mk = 0 /\ rb = 0 /\ ep = 0
   /\ cv = [t \in Tables |-> FALSE] /\ crec = [t \in Tables |-> ZeroT]
   /\ crev = [t \in Tables |-> 0] /\ cmark = [t \in Tables |-> 0]
-  /\ cep = [t \in Tables |-> 0] /\ cmax = [t \in Tables |-> 0]
+  /\ cep = [t \in Tables |-> 0]
   /\ pc = [l \in Loaders |-> "idle"] /\ vrev = [l \in Loaders |-> [t \in Tables |-> 0]]
   /\ vep = [l \in Loaders |-> 0]
   /\ cur = [l \in Loaders |-> CHOOSE t \in Tables : TRUE]
@@ -167,7 +163,6 @@ Took(l, t, r, e) ==
 
 DropEntry(t) ==
   /\ cv' = [cv EXCEPT ![t] = FALSE]
-  /\ cmax' = [cmax EXCEPT ![t] = 0]
   /\ UNCHANGED <<crec, crev, cmark, cep, pc, out, done, good, oep>>
 
 \* the catch-up: held, atomic under the lock (loadcache.go placedFromCache and
@@ -188,7 +183,6 @@ Take(l, t) ==
             IN /\ crec' = [crec EXCEPT ![t] = r] /\ crev' = [crev EXCEPT ![t] = v]
                /\ cmark' = [cmark EXCEPT ![t] = MarkAt(t, v)]
                /\ cep' = [cep EXCEPT ![t] = vep[l]]
-               /\ cmax' = [cmax EXCEPT ![t] = v]
                /\ Took(l, t, r, vep[l])
                /\ UNCHANGED <<pc, cv, vrev, vep, cur, lmark, loads>>
      ELSE /\ pc' = [pc EXCEPT ![l] = "idle"]
@@ -235,20 +229,18 @@ Keep(l) ==
   /\ pc[l] = "keep" /\ vep[l] = ep
   /\ LET t == cur[l]
          v == vrev[l][t]
-     IN /\ IF cv[t] /\ cep[t] = vep[l] /\ crev[t] > v /\ Broken # "norevguard"
-            THEN UNCHANGED <<cv, crec, crev, cmark, cep, cmax>>
+     IN /\ IF cv[t] /\ cep[t] = vep[l] /\ crev[t] > v
+            THEN UNCHANGED <<cv, crec, crev, cmark, cep>>
             ELSE /\ cv' = [cv EXCEPT ![t] = TRUE]
                  /\ crec' = [crec EXCEPT ![t] = out[l][t]]
                  /\ crev' = [crev EXCEPT ![t] = v]
                  /\ cmark' = [cmark EXCEPT ![t] = lmark[l]]
                  /\ cep' = [cep EXCEPT ![t] = vep[l]]
-                 /\ cmax' = [cmax EXCEPT ![t] = IF cmax[t] > v THEN cmax[t] ELSE v]
        /\ pc' = [pc EXCEPT ![l] = "view"]
        /\ UNCHANGED <<storeVars, vrev, vep, cur, lmark, out, done, good, oep, loads>>
 
 Drop(t) ==
   /\ cv[t] /\ cv' = [cv EXCEPT ![t] = FALSE]
-  /\ cmax' = [cmax EXCEPT ![t] = 0]
   /\ UNCHANGED <<storeVars, crec, crev, cmark, cep, pc, vrev, vep, cur, lmark, out, done, good, oep, loads>>
 
 End(l) ==
@@ -294,7 +286,6 @@ Clear ==
   /\ rec' = [t \in Tables |-> ZeroT] /\ rev' = [t \in Tables |-> 0]
   /\ log' = [t \in Tables |-> <<>>] /\ hist' = [t \in Tables |-> <<ZeroT>>]
   /\ wn' = 0 /\ mk' = 0 /\ ep' = ep + 1
-  /\ cmax' = [t \in Tables |-> 0]
   /\ UNCHANGED <<rb, cv, crec, crev, cmark, cep, pc, vrev, vep, cur, lmark, out, done, good, oep, loads>>
 
 Next ==
@@ -327,11 +318,5 @@ LoadIsOfItsEpoch ==
 \* event at its revision is the store's records at it
 CacheIsHistory ==
   \A t \in Tables : (cv[t] /\ cep[t] = ep /\ MarkAt(t, crev[t]) = cmark[t]) => crec[t] = At(t, crev[t])
-
-\* while the cache holds a table at the current epoch its revision never falls
-\* from the highest it has held (the keep's revision guard keeps the newest
-\* read; the norevguard witness drops it and fails this)
-CacheNotRegressed ==
-  \A t \in Tables : cv[t] /\ cep[t] = ep => crev[t] = cmax[t]
 
 =============================================================================

@@ -1441,14 +1441,12 @@
     LoadIsOfItsEpoch holds that a load takes the records of the epoch it read. The reversed witnesses
     catchup, ahead and nomark keep their meanings (each fails LoadIsSnapshot), and noepochkey keys entries
     by table alone so a load of the old epoch is served after a clear (LoadIsOfItsEpoch). The card's
-    section (2) names the norevguard witness (the keep's revision check dropped) as a LoadIsSnapshot
-    failure, but that expectation is unsatisfiable as modelled: the revision guard only keeps the newest
-    read, an efficiency, while the serve-time mark check (which nomark drops) is the correctness guard, so
-    a cache that regresses still serves the right records. The witness therefore fails CacheNotRegressed,
-    a new invariant stating the revision guard's meaning, not LoadIsSnapshot; the conflict is raised here
-    rather than a different invariant being swapped in silently. The records read is one trip, not the
-    code's 1024-record chunks: that is the v1.2.14 candidate load-cache-mark-not-read-after-chunks, whose
-    fix card extends this model."
+    section (2) names a norevguard witness (the keep's revision check dropped) as a LoadIsSnapshot failure,
+    but that expectation is unsatisfiable as modelled: the revision guard only keeps the newest read, an
+    efficiency, while the serve-time mark check (which nomark drops) is the correctness guard, so a cache
+    that regresses still serves the right records. No such witness is modelled, and the card is not-done on
+    that point. The records read is one trip, not the code's 1024-record chunks: that is the v1.2.14
+    candidate load-cache-mark-not-read-after-chunks, whose fix card extends this model."
    :origin "this card")
 
   (fix "tlc-runs-inside-the-job-wall" :release "v1.2.12" :status "planned"
