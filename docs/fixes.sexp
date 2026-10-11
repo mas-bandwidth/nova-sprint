@@ -74,6 +74,20 @@
     :title "The store package's own tests pin the shadow tick and the holds"
     :text "Tests only, no product change. New tests in internal/sprint/store drive Store.ShadowTick and Store.Holds through the unit tier's Mem store and assert on what a caller sees. ShadowTick: a running sprint with ready cards reports RUNNING with a deal part on the work table and a size the sum of its parts, and writes nothing; a STOPPED machine still plans; an epoch that owes its restore refuses and still owes it after; an operation left pending refuses (it repairs nothing) and is still pending after; queued work-table changes are planned as the drain part and the queue is not emptied; a primary waiting on reads is named in the plan's Reads; a store that moves on every read says the sprint is busy; and a custom Updates list leaves an empty part out, lists a due part with its due count, and a part that panics makes ShadowTick panic. Holds: a store with no sprint returns nil and no error; a held member, reader, friend and stream come back in kind order (members in fleet-table order, streams by name) each with its reason, and the list is empty after unhold; a member held with --return shows Return and without it none; an unreadable reader record is left out with no error and a friend's fleet row is not listed as a member. One defect the tests found (a reader set away with SetReaderAway alone, not held, is listed as held) is written as a v1.2.14 card, never fixed here."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C6")
+   (fix "tla-sprint-tables-reads-and-accept" :release "v1.2.12" :status "planned"
+    :title "The SprintTables model holds the reads and the accept"
+    :text "Models only, no product change. tla/SprintTables.tla adds the read actions and the accept to the
+     sprint tables model, written from internal/sprint/refmodel/actions.go (Ask, AskAnother, ReadStart,
+     Read, Accept) with internal/sprint/readers.go ReadsNeededIn and internal/sprint/lifecycle.go Moves as
+     the reference: a card in review asks its reads of readers other than its worker, a read begins and
+     returns ok or broken, and accept moves it to merging when it has the reads its tier needs (one for a
+     flash card, two for a pro card). Invariants AcceptHeld (no primary enters merging short of its reads),
+     NeverReadByItsWorker and MovesOnlyByTable, with the reversed witness MCSprintTablesBrokenShortAccept
+     (an accept with one read fewer fails AcceptHeld). Drift kept out and named in the report: refmodel's
+     Accept demands two readers where the code allows one for flash (a v1.2.13 cleanup), and
+     docs/SPEC-SPRINT.md section 3 calls accept mechanical (the tick) where lifecycle.go:57 names it
+     Coordinator."
+    :origin "this card; v1.2.12 inventory item T4")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
