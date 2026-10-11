@@ -1,0 +1,2 @@
+# go vet ./cmd/nova-sprint ./internal/sprint
+# exit 0 (no findings)

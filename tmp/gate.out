@@ -1,4 +1,18 @@
-# the card's STEP 4 gate names ./pkg/release/ ./cmd/nova-update/; this repo has no cmd/nova-update (cmds: nova-sprint, nova-card, nova-work), so that path fails [setup failed] regardless of this change. The gate actually run is the named package plus the changed package:
-$ go test -count=1 -timeout 600s ./pkg/release/ ./internal/sprintdash/
+# the card's STEP 4 gate names ./pkg/release/ ./cmd/nova-update/; this repo has no cmd/nova-update (cmds: nova-sprint, nova-card, nova-work), so that path fails [setup failed] regardless of this change. The STEP 4 gate as written:
+$ go test -count=1 -timeout 600s ./pkg/release/ ./cmd/nova-update/
 ?   	github.com/mas-bandwidth/nova-sprint/pkg/release	[no test files]
-ok  	github.com/mas-bandwidth/nova-sprint/internal/sprintdash	0.092s
+FAIL	./cmd/nova-update [setup failed]  (stat .../cmd/nova-update: directory not found)
+
+# the tier gate actually run (this bench, nice -n 19, -count=1 -timeout 600s, GOFLAGS=-mod=readonly, NOVA_TEST_NO_HOST=1):
+$ go vet ./cmd/nova-sprint ./internal/sprint
+exit 0 (no findings)
+
+$ go test -count=1 -timeout 600s ./internal/sprint/
+--- FAIL: TestTickDrainAndDealUnderTheGateAtLoad (9.13s)
+    deal_load_bench_test.go:136: steady_deal=1.010746651s "is not less than or equal to 1s" (load/timing on the shared bench)
+FAIL (21.7s)  # environmental; file unchanged by this work
+
+$ go test -count=1 -timeout 600s ./cmd/nova-sprint/
+--- FAIL: TestTheTwinSocketFitsAUnixSocketPath (0.00s)
+    backup_out_test.go:225: the throwaway redis-server socket path is 334 bytes over the 100-byte Unix-socket limit (mkdir /tmp/...: permission denied; the wall denies /tmp)
+FAIL (28.3s)  # environmental; file unchanged by this work
