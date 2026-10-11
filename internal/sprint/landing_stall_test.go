@@ -92,6 +92,41 @@ func TestNoStallWithNothingWaiting(t *testing.T) {
 	assert.Empty(t, w.notesOf(NLandingStall), "nothing in review or merging: no stall")
 }
 
+func TestLandingStallClosesItsJudgmentWhenWaitingClears(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 4)
+	stallCard(w, "s1-1", Review)
+	w.s.Work.SetProp(PropLastLanding, stamp(w.s.Now.Add(-2*time.Minute)))
+	p, _ := TickLandingStall(w.s, TickReq{})
+	w.must(p)
+	require.Len(t, w.notesOf(NLandingStall), 1)
+	stallCard(w, "s1-1", Merged)
+	p, _ = TickLandingStall(w.s, TickReq{})
+	assert.Len(t, p.Closes, 1, "clearing the episode closes the standing judgment")
+	w.must(p)
+	_, open := openJudgmentOf(w.s, NLandingStall)
+	assert.False(t, open, "no stale landing-stall judgment remains open")
+}
+
+func TestLandingReadCountsCombineFleetAndLegacyConsumersOnce(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 4)
+	c := w.s.Work.Card("s1-1")
+	require.NotNil(t, c)
+	w.s.Readers.Put(&Card{ID: "legacy-jon", Row: "jon", Col: Asked, Fields: map[string]string{
+		"primary": c.ID, "reader": "jon", "attempt": "1", "head": "h1", "asked": stamp(w.s.Now.Add(-time.Minute)),
+	}})
+	w.s.Readers.Put(&Card{ID: "legacy-kim", Row: "kim", Col: Asked, Fields: map[string]string{
+		"primary": c.ID, "reader": "kim", "attempt": "1", "head": "h1", "asked": stamp(w.s.Now.Add(-2 * time.Minute)),
+	}})
+	w.s.Fleet.Put(&Card{ID: "read-jon", Row: "reader-jon", Col: Working, Fields: map[string]string{
+		"primary": c.ID, "reader": "jon", "attempt": "1", "head": "h1", FieldReadCard: "1", "asked": stamp(w.s.Now.Add(-time.Minute)),
+	}})
+	assert.Len(t, landingReadConsumers(w.s, c.ID), 2, "legacy and fleet views of the same read count once")
+	n := landingPush(w.s, "s1", "rowan", []*Card{c}, nil, w.s.Now)
+	assert.Contains(t, n.What, "reads 2")
+}
+
 func TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 4)

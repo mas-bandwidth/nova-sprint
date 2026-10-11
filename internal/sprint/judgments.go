@@ -79,10 +79,7 @@ const (
 func landingPush(s *Snapshot, stream, who string, landing []*Card, ledger map[string]LandingLedgerEntry, now time.Time) Note {
 	var lines []string
 	for _, c := range landing {
-		reads := 0
-		if s.Readers != nil {
-			reads = len(s.Readers.Of(c.ID))
-		}
+		reads := len(landingReadConsumers(s, c.ID))
 		title, text := c.F(LandingTitleField), c.F(LandingTextField)
 		if entry, ok := ledger[c.ID]; ok {
 			title, text = entry.Title, entry.Text
@@ -98,6 +95,34 @@ func landingPush(s *Snapshot, stream, who string, landing []*Card, ledger map[st
 	n.Who, n.To = who, s.Coordinator
 	n.What = strings.Join(lines, "\n")
 	return n
+}
+
+// landingReadConsumers combines the legacy readers table and fleet read cards
+// by their logical reader/primary/attempt/head identity. During migration a read
+// can briefly appear in both tables; count it once.
+func landingReadConsumers(s *Snapshot, primary string) map[string]time.Time {
+	consumers := map[string]time.Time{}
+	add := func(reader, attempt, head string, at time.Time) {
+		key := reader + "|" + attempt + "|" + head
+		if old, ok := consumers[key]; !ok || (!at.IsZero() && (old.IsZero() || at.Before(old))) {
+			consumers[key] = at
+		}
+	}
+	if s.Readers != nil {
+		for _, c := range s.Readers.Of(primary) {
+			if c.Col == Asked {
+				add(c.F("reader"), c.F("attempt"), c.F("head"), stampAt(c, "asked"))
+			}
+		}
+	}
+	if s.Fleet != nil {
+		for _, c := range s.Fleet.Of(primary) {
+			if c.F(FieldReadCard) != "" && (c.Col == Ready || c.Col == Working) {
+				add(c.F("reader"), c.F("attempt"), c.F("head"), stampAt(c, "asked"))
+			}
+		}
+	}
+	return consumers
 }
 
 // openJudgmentOf is the open judgment of a type, if one is open.
@@ -121,16 +146,18 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 		oldest time.Time
 	}
 	byReader := map[string]*readerOut{}
-	for _, c := range s.Readers.Column(Asked) {
-		rd := c.F("reader")
-		g := byReader[rd]
-		if g == nil {
-			g = &readerOut{}
-			byReader[rd] = g
-		}
-		g.n++
-		if at := stampAt(c, "asked"); !at.IsZero() && (g.oldest.IsZero() || at.Before(g.oldest)) {
-			g.oldest = at
+	for _, primary := range s.Work.Column(Review) {
+		for key, at := range landingReadConsumers(s, primary.ID) {
+			rd := strings.SplitN(key, "|", 2)[0]
+			g := byReader[rd]
+			if g == nil {
+				g = &readerOut{}
+				byReader[rd] = g
+			}
+			g.n++
+			if !at.IsZero() && (g.oldest.IsZero() || at.Before(g.oldest)) {
+				g.oldest = at
+			}
 		}
 	}
 	var readers []string
@@ -273,6 +300,9 @@ func TickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 			write(PropLandingStallSaid, stamp(s.Now))
 		}
 	case since != "":
+		if o, ok := openJudgmentOf(s, NLandingStall); ok {
+			p.Closes = append(p.Closes, o)
+		}
 		if said != "" && landedAgain {
 			took := ""
 			if d, ok := r.running(s.Now, since); ok {
