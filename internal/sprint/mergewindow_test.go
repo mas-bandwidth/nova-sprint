@@ -3,6 +3,7 @@ package sprint
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -134,7 +135,7 @@ func TestMergeWindowOpenPausesForItsDurationWithTheReason(t *testing.T) {
 		{"another actor", MergeWindowReq{For: "10m", Reason: "r", Who: "someone"}, []string{"is the coordinator's alone: coord"}},
 		{"no duration and no reason, named together", MergeWindowReq{Who: "coord"}, []string{"--for wants a duration above zero", "--reason wants"}},
 		{"a duration not above zero", MergeWindowReq{For: "-5m", Reason: "r", Who: "coord"}, []string{"--for wants a duration above zero (10m, 1h); found -5m"}},
-		{"a reason over the bound", MergeWindowReq{For: "10m", Reason: strings.Repeat("x", MaxCardTextBytes+1), Who: "coord"}, []string{"--reason is 8193 bytes, over the bound of 8192"}},
+		{"a reason over the bound", MergeWindowReq{For: "10m", Reason: strings.Repeat("x", MaxCardTextBytes+1), Who: "coord"}, []string{fmt.Sprintf("--reason is %d bytes, over the bound of %d", MaxCardTextBytes+1, MaxCardTextBytes)}},
 	} {
 		t.Run("refused whole: "+c.name, func(t *testing.T) {
 			t.Parallel()

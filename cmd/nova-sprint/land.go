@@ -2115,7 +2115,35 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 	if _, err := l.git(ctx, dir, "reset", "-q", "--hard", before); err != nil {
 		return "", "the batch branch could not be reset after " + c.id + " failed the lander's checks: " + firstLine("", err), ""
 	}
-	return "the head " + c.head + " of " + c.id + " fails the lander's checks: " + strings.Join(why, "; "), "", ""
+	return "the head " + c.head + " of " + c.id + " fails the lander's checks: " + boundedChecks(why, sprint.MaxCardTextBytes/2), "", ""
+}
+
+// boundedChecks is the lander's check findings joined for a card's note, within a bound
+// the merge verb accepts (half the card text bound, leaving room for the words the
+// rework wraps it in). A list that does not fit is never cut mid-line and never cut
+// silently: the note keeps the findings that fit whole and says how many it left out
+// and their size, and the whole list stays in the lander's own output (2026-10-11: a
+// 40 KiB note of stale-run findings, written uncut into a card's why, froze every
+// tick's drain for twenty minutes).
+func boundedChecks(why []string, bound int) string {
+	joined := strings.Join(why, "; ")
+	if len(joined) <= bound {
+		return joined
+	}
+	const tailRoom = 160
+	kept, n := 0, 0
+	for i, w := range why {
+		if n+len(w)+2 > bound-tailRoom {
+			break
+		}
+		n += len(w) + 2
+		kept = i + 1
+	}
+	tail := fmt.Sprintf("and %d more findings (%d bytes in all, over the %d-byte note bound): the whole list is in the lander's output", len(why)-kept, len(joined), bound)
+	if kept == 0 {
+		return tail
+	}
+	return strings.Join(why[:kept], "; ") + "; " + tail
 }
 
 // containsAny says s holds one of words.

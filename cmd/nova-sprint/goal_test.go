@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -61,7 +62,7 @@ func TestGoalSetRefusals(t *testing.T) {
 	dir := t.TempDir()
 	big := filepath.Join(dir, "big.txt")
 	ok := filepath.Join(dir, "ok.txt")
-	require.NoError(t, os.WriteFile(big, []byte(strings.Repeat("x", 8*1024+1)), 0o644))
+	require.NoError(t, os.WriteFile(big, []byte(strings.Repeat("x", store.MaxCardTextBytes+1)), 0o644))
 	require.NoError(t, os.WriteFile(ok, []byte("goal"), 0o644))
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	for _, line := range []string{

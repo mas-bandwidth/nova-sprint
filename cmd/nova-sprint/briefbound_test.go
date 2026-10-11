@@ -39,11 +39,11 @@ func briefOfSize(t *testing.T, n int) string {
 // bytes of advice: a brief of 12000 bytes is admitted whole, a brief of 16384 is the last
 // that is, and one more byte is refused, exit 1, nothing written, naming the field, its
 // size, the bound and the remedy. A longer file is read whole: the refusal names its real
-// size, never the front of it. The other text fields keep their 8 KiB (store.TextBound).
+// size, never the front of it. The other text fields take up to 64 KiB (store.TextBound), the table layer's cell bound.
 func TestAddTakesABriefUpToTheBriefBound(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, 16384, store.MaxBriefBytes)
-	require.Equal(t, 8192, store.TextBound("fix"))
+	require.Equal(t, 64<<10, store.TextBound("fix"))
 	require.LessOrEqual(t, store.MaxBriefBytes, ntable.LimitFieldValueBytes, "the table layer's cell bound holds a brief")
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")

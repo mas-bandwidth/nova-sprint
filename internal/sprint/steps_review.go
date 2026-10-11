@@ -1763,8 +1763,12 @@ func briefStopAt(s *Snapshot, c *Card, reader, finding string) (briefStop, bool)
 
 // MaxCardTextBytes bounds each text field a card carries, the brief excepted (the store
 // refuses a step that would write a longer one); a rework's own derived words (the finding,
-// why and the fix it takes from a finding) are cut to it, never refused for it.
-const MaxCardTextBytes = 8 << 10
+// why and the fix it takes from a finding) are cut to it, never refused for it. 64 KiB
+// since 2026-10-11: a landing's refusal note of 40 KiB written uncut into a card's why
+// was refused by the store on every tick, and the drain step being all-or-none, no card
+// in the sprint moved for twenty minutes; the note is now refused at the merge verb
+// (mergeStep) before it can poison a step.
+const MaxCardTextBytes = 64 << 10
 
 // cutText is s cut to at most n bytes, at a rune boundary, ending "..." when it was cut.
 func cutText(s string, n int) string {

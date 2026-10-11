@@ -386,6 +386,14 @@ func MergeStep(s *Snapshot, r MergeReq) Plan { return Lawful(mergeStep(s, r)) }
 func mergeStep(s *Snapshot, r MergeReq) Plan {
 	var p Plan
 	p.on(s)
+	// The note is written whole into the refused card's why (landRefused) and so into a
+	// tick step: a note over the card text bound is refused here, loudly, at its source,
+	// never cut and never carried into a step the store would refuse on every tick
+	// (2026-10-11: a 40 KiB lander note froze the drain for twenty minutes).
+	if len(r.Note) > MaxCardTextBytes {
+		p.refuse(r.Stream, fmt.Sprintf("--note is %d bytes, over the bound of %d bytes a card's text takes; nothing was changed: shorten it (say how many checks failed and where the full list is)", len(r.Note), MaxCardTextBytes))
+		return p
+	}
 	ctl := s.StreamCtl(r.Stream)
 	if ctl == nil {
 		p.refuse(r.Stream, "no such stream")
