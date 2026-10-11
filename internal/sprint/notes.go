@@ -50,6 +50,11 @@ const (
 	// machine is held or drains, and not taken, returned for the deal or the ask to give to
 	// another (drain.go). Addressed to the coordinator; nothing to answer.
 	NDrainReturned = "a card returned from a member that takes no work"
+	// A worker stopped because its card's named needs had not landed: the card was dealt
+	// before its needs landed, a coordination failure and never the worker's, so the work
+	// card is withdrawn untouched and the primary waits for its needs (needsStopReturned,
+	// steps_work.go; docs/SPEC-SPRINT.md, needs and the deal). Nothing to answer.
+	NNeedsUnlanded = "a card returned: dealt before its needs landed"
 	// The landing refused a card's head (it does not merge on the base's tip, or fails the tree
 	// gate the base passes): the card was reworked at the tip and its stream landed on
 	// (landRefused, redo.go). Addressed to the coordinator; nothing to answer.

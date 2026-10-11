@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
@@ -38,6 +39,18 @@ func (r NamesReport) Lines() (okLine string, nameLines []string, moreLine string
 	okLine = fmt.Sprintf("SECRETS NAMES OK as=%s keys=%d shown=%d sealed=%d clear=%d",
 		oneline.Field(r.As), r.Total, len(r.Rows), r.Sealed, r.Clear)
 	return okLine, nameLines, moreLine
+}
+
+// ParseNameLine reads one line of names' typed output: a NAME row's key name and whether
+// the store keeps it in the clear, false when the line is no NAME row. The backup's scan
+// (cmd/nova-sprint/backup_out.go) and the doctor's member probe (cmd/nova-sprint/doctor_probe.go)
+// both read a seat through it, so neither can drift from the line names prints.
+func ParseNameLine(line string) (NameRow, bool) {
+	f := strings.Fields(line)
+	if len(f) != 4 || f[0] != "SECRETS" || f[1] != "NAME" || !strings.HasPrefix(f[2], "key=") || !strings.HasPrefix(f[3], "clear=") {
+		return NameRow{}, false
+	}
+	return NameRow{Name: strings.TrimPrefix(f[2], "key="), Clear: f[3] == "clear=true"}, true
 }
 
 // RunNames reads <store>/<as>.yaml without decrypting and reports top-level key names.

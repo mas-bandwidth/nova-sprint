@@ -72,6 +72,11 @@
      :title "A card whose named needs have not landed is neither dealt nor taken"
      :text "One rule, three doors. A primary whose named needs have not all landed (WaitsFor, steps_work.go) was dealt to a friend, so on 2026-10-11 19:17-19:21Z a friend took six cards whose DEPENDS-ON needs had not landed, each raising a rule-11 invariant, and the take-back verb refused them as working. TickDeal's offer (steps_tick.go) now leaves out a card WaitsFor names needs for, as dealPlan's ready predicate does, and friendDealPass skips such a card too, so neither the ladder nor the attempt cap's deal hands it to a friend. A ready work card already dealt on any row, friend or member, whose primary's needs are not landed goes back to the pool at once in the tick's deal (needsWithdrawals): the work card leaves the fleet table at a new generation, its attempt unchanged and no redeal spent, the primary waits for its needs again, and the note names the needs; so a friend unheld with such a card in her set never takes it. takeOne refuses a card by id whose primary's needs are not landed (\"<id> needs <n,...>, not landed: not taken\") and a take by count passes over it. A take by id of a card already working on the same row at the generation named is a no-op, writing no record and no note, so the log shows one take, never one every 15 to 16 s. docs/SPEC-SPRINT.md (needs and the deal) states the rule for friends and takes."
      :origin "this card, a-take-refuses-a-card-whose-needs-have-not-landed.w2, 2026-10-11 ~19:25Z; the coordinator for the owner's \"Please log cards to fix this deal and rebalance. It's shit.\" (a friend took six cards whose needs had not landed; log --card schema-dart-msg2-batch repeated a friend:working -> a friend:ready every 15 to 16 s); code read at nova-sprint main af21db3b")
+    (fix "a-stop-on-unlanded-needs-is-a-coordination-failure" :release "v1.2.13" :status "planned"
+     :title "A worker's stop on needs that have not landed is a coordination failure, never the worker's; the needs withdrawal goes working -> waiting"
+     :text "Blocker. A worker that stops because its card's named needs have not landed was blamed: the finish read its HOLD (\"the base lacks ...\") as a brief defect, or as failed work. A failed finish whose primary has a named need (not waived) that has not landed at the finish (stoppedOnNeeds, needs_stop.go; the table's facts, never the report's words) is now a coordination failure, judged before the brief defect: the work card goes back to the pool at a new generation (no fail mark and no ok% hit on the worker's row, no redeal spent, counted neither ok nor failed in the route and model stats), the primary goes working -> waiting at once, and one happened note, \"a card returned: dealt before its needs landed\", names the needs and the report (needsStopReturned); no brief-defect, failed-work or invariant judgment is written. The next deal after the needs land cuts the next attempt: an attempt number is spent, never a redeal or a failure. A primary is returned this way at most MaxNeedsReturns (3) times (needs_returns); past that, and whenever every need has landed by the finish, the HOLD is judged as any other, so a stale base never loops unseen (the cold read's probe: twelve free rounds). No coordination-failure counter exists, so the stop is classed as not the worker's. The needs withdrawal of a dealt card (needsWithdrawals) moved its working primary working -> waiting with no lifecycle row, so the store refused it; the lifecycle now has that row (withdraw, its needs have not landed, carried by the move's needs field), and needsWaits moves a ready primary whose needs have not landed and whose work card is dealt nowhere ready -> waiting. tla/SprintTables.tla models both (NeedsWithdraw, NeedsWait; WorkingToWaitingOnlyOnNeeds, NeedsWithdrawalWaits, ReadyToWaitingOnlyByInsert widened to needs) with the reversed witness withdrawready (the withdrawal run working -> ready breaks NeedsWithdrawalWaits, rule 11). docs/SPEC-SPRINT.md (the lifecycle table; needs and the deal; a brief defect) states the rule. Tests: TestAStopOnUnlandedNeedsIsNotTheWorkers, TestACardWithdrawnForItsNeedsIsDealtWhenTheyLand, TestProbe96LandedNeedHoldLoopsUnbounded, TestProbe96UnrelatedNotLandedWordsSkipTheFailure, and the needs tests held to the lifecycle (lawfulDeal) and the end-of-tick check."
+     :origin "hand/take-and-deal-honour-needs (PR 96), 2026-10-11, after two cold reads (HOLD); the owner: \"Blocker bug to fix that please.\" (schema msg2/msg3 cards in every language dealt before their msg1 and t09/t10 needs landed; the worker stopped and the server blamed her); code read at nova-sprint main 93c84c63"
+     :kept (:priority "blocker"))
     (fix "tla-liveruns-rows-with-no-live-set" :release "v1.2.12" :status "planned"
      :title "LiveRuns models the rows whose beat carries no live set and the take's one-pass lag"
      :text "Models only, no product change. tla/LiveRuns.tla gains a Legacy constant (the rows whose beat carries no live set, workers from before v1.2.6) and a live variable, the beat's live set as the member's last pass left it. The reconcile skips a Legacy row as the code does (liveStopped returns early, LiveReturns continues past a beat with no live set, LiveCountKeys counts every such card running), WorkingIsLive is restated over the other rows, and the new LegacyNeverReturned holds that no working card of a Legacy row is returned by the reconcile. Take no longer names its card in the live set at once: it is named at the member's next pass, and the reconcile waits the grace from the take. Two reversed witnesses: Broken \"legacyreturned\" reconciles a Legacy row as an empty set (breaks LegacyNeverReturned) and Broken \"nograce\" drops the grace from the take (breaks NoRunReturned). Every liveruns case runs with Legacy = {\"r2\"} so one row exercises the legacy path in each; every existing case keeps its declared result."
@@ -483,6 +488,22 @@
     leave exactly three new cards; a brief the plan refuses at the write is held with its refusal and the
     others land; with every brief clean the exit is 0, as add without the flag."
    :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 1 (the owner, 2026-10-11: \"Whatever you are doing manually now, consider adding tool support for it to nova sprint.\")")
+  (fix "doctor-preflight-checks-member-prerequisites" :release "v1.2.14" :status "planned"
+   :title "doctor --preflight gates a member's prerequisites"
+   :text "The preflight's member check turns the member-env probe's facts into gate rows (area
+    preflight, check members, subject the member): FAIL for a MemberTools tool or a harness its
+    enabled routes launch the loop's PATH does not find, a push credential that does not
+    authenticate, a secrets seat that does not open, a provider key name its enabled routes read
+    that the seat does not hold (the route and the name both named, by name only and never a
+    value), and a member whose installed nova-sprint is older than the release before the
+    candidate's or newer than it; WARN for a host that does not answer, a probe the budget cut,
+    java or /opt/tla/tla2tools.jar absent, a home under the warn bound, and a member held or
+    draining. probeScript and parseProbe gain java with the TLA+ tools' jar and the key names the
+    seat holds (nova-secrets names, never a value). The member-env check without --preflight is
+    unchanged. Tests: a member missing go is FAIL; a route whose key name is absent is FAIL
+    naming both; java absent is WARN; a held member is WARN with its command; a member two
+    releases back is FAIL and one back OK."
+   :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 20; the owner, 2026-10-11")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
@@ -1498,6 +1519,20 @@
           :item-cards "1"
           :item-origin ""
           :earlier-title "Briefs carry the card contract by reference"))
+  (fix "friend-done-reflects-finishes" :release "v1.2.13" :status "planned"
+   :title "Done is every card a row completed, and the readers' verdict counts the reads the accept counts"
+   :text "Pull request 94. Friend stella's row read done 0 and ok% 0.0% while the log recorded her finishes
+    ok and their reads ok: the readers' verdict (TickVerdicts) read the readers table alone, keyed an ok by
+    the read's row and used the tier's read count, while the accept also counts the fleet table's read
+    cards, retired off their rows with their verdicts, by the reader, at the sprint's count. The accept and
+    the verdict now count from one function (standingReads). A row's done, a friend's or a member's, is
+    every card it completed, of every kind registered in sprint.DoneKinds (a work card the readers' verdict
+    moved to ok, a fix card likewise, a read card completed with a verdict, ok or broken; a returned read
+    completes nothing; a merge card is one more entry once merges are dealt cards), counted from the log
+    lines that complete them through the done record (store.keepDone, store.DoneSince), keyed by epoch and
+    counted from a stats reset's mark. ok% stays the work's measure, the readers' verdicts on the row's
+    work. tla/ReadVerdict.tla models the verdict against the accept."
+   :origin "the owner, 2026-10-11: \"The dashboard has to reflect the truth.\" and \"Done is every card completed.\"; root cause found by Stella")
   (fix "a-review-loop-has-a-circuit-breaker" :release "v1.2.14" :status "planned"
    :title "A review loop has a circuit breaker"
    :text "A card is escalated to the coordinator after 4 consecutive review rounds that each bring a new blocking finding, or after 6 substantive review rounds of any kind, instead of going round again."
@@ -2109,6 +2144,10 @@
     records remain in force. The real land group passes at width one and the default width with
     identical PASS/FAIL results."
    :origin "this card, tlc-suite-runs-independent-cases-in-parallel.w1~17.g7, 2026-10-11")
+  (fix "a-hook-gate-refusal-is-not-a-land-fault" :release "v1.2.13" :status "planned"
+   :title "A landing the hook gate refuses does not roll a switch back"
+   :text "BLOCKER. server switch --rollback --window 30m restarts the server, the restart ends the seat's hook (the seat hook record says state=gone, why=the server restarted), and the new server's first landing pass, run as the coordinator before the seat hooks in again, is refused by the hook gate (nova-sprint land REFUSED: You must hook in first: run nova-sprint hook). landOnce counted any nonzero exit of the landing as a land failure and asked CheckRollbackOnLandFailure, and the store's open refuses through refuse, exit 2, the code of a pass fault, so the v1.2.12 switch rolled itself back to v1.2.11 1.5 seconds after it began; every switch with --rollback met the race. The hook gate's refusal is now the typed error hookGateError (coordinator.go coordinatorGate; storeCtx returns it), land reports it to landOnce through the app.land seam (cmdLand is unchanged for the command line, exit 2 and the same words), and landOnce, on it, does not ask the rollback check: the window, the binary and the switch state stay as they were, the pass prints one line, LAND WAITS for the seat's hook: <the gate's sentence>; nothing was landed, and the next pass tries again, and the loop's next pass is LandEvery as before, so it neither spins nor waits longer. The refusal is found by errors.As, never by its words. Only a landing that was let through and failed counts toward the rollback. Tests in cmd/nova-sprint/landloop_hookgate_test.go: TestAHookGateRefusalInTheWindowIsNotARollback (three passes in the window refused by the gate: no SERVER ROLLBACK, the switch stands, the state file is kept, one waits line each pass, the card is still queued; then, the seat hooked in, a failing landing rolls back), TestARealLandFailureInTheWindowStillRollsBack and, in hookgate_error_test.go, TestTheHookGateRefusalIsATypedError. tla/ServerSwitch.tla gains hooked, SwitchRestart, SeatHooksIn and LandHookRefused, every landing outcome now guarded by hooked, the invariant NoRollbackOnAHookRefusal and the reversed witness hookfault (MCServerSwitchBrokenHookfault, which counts the refusal as a land fault and rolls the switch back), run with TLC on hetzner2. docs/SPEC-SPRINT.md section 14 states the rule where the switch and its window are described."
+   :origin "this card, a hand fix by the coordinator's child, 2026-10-11 ~21:00Z; the v1.2.12 switch (nova-sprint server switch --rollback --window 30m): SEAT HOOK state=gone why=the server restarted, then nova-sprint land REFUSED: You must hook in first, then SERVER ROLLBACK to v1.2.11 1.5 s later; code read at nova-sprint main f94ea09c (cmd/nova-sprint/landloop.go landOnce, internal/sprint/server_switch.go CheckRollbackOnLandFailure)")
 
   (fix "a-landing-pushes-each-repo-and-base-on-its-own-lane" :release "v1.2.15" :status "planned"
    :title "A land pass pushes each repository and base on its own lane"
