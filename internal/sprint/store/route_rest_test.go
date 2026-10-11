@@ -62,6 +62,7 @@ func TestThreeRateLimitedTakesOnALimitedRouteRestNothing(t *testing.T) {
 	assert.Contains(t, backoff, sprint.RestRateBackoff, "the backoff's line, beside the route's own")
 	h.machine()
 	assert.Len(t, h.noteWhats(sprint.NRouteRested), 1, "no second note while the same until holds")
+	assert.Empty(t, h.openOf(sprint.NNoRoute), "a backoff on the tier's one route is a stall, never a judgment")
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
 		c := s.Fleet.Card(id)
 		assert.Zero(t, c.Int("redeals"), "%s spent no redeal", id)
@@ -74,10 +75,11 @@ func TestThreeRateLimitedTakesOnALimitedRouteRestNothing(t *testing.T) {
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
 		assert.Equal(t, sprint.Ready, s.Fleet.Card(id).Col, "%s is dealt again once the backoff ends", id)
 	}
+	assert.Empty(t, h.openOf(sprint.NNoRoute), "no judgment after the backoff either")
 }
 
 // A route rests only on a provider-typed failure (tla/RouteRest.tla): three takes on one route
-// the provider failed with a 429, of three cards, rest the route in the tick that sees the
+// the provider failed with a 5xx, of three cards, rest the route in the tick that sees the
 // third; the rest names the cards, no work card is drawn on it while it rests (a redeal
 // included, even when it is the tier's only route), and it ends by itself at RouteRestFor,
 // its window begun again. Two such takes in a window with ok ends rest nothing.

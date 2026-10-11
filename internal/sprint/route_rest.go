@@ -16,7 +16,8 @@ import (
 // The tick counts the ended takes of each route over a sliding window, the last
 // RouteRestWindow takes on it that ended after its last rest began, and when
 // RouteRestAfter of them ended with a TRANSIENT provider failure (the provider's own line,
-// class rate-limited, provider-5xx or timeout: a 429, a 5xx, the provider not answering)
+// class provider-5xx or timeout: a 5xx, the provider not answering; a rate limit only backs
+// the route off briefly, below)
 // it rests the route for RouteRestFor (cause RestProvider): the rest is one line in the
 // fleet table's property rule3_rest_<provider>, one property per provider however many of
 // its routes rest, written in the deal's batch with a happened note to the coordinator
@@ -210,8 +211,8 @@ type RouteRest struct {
 	Why        string
 }
 
-// The causes of a rest: a route's transient provider failures (RestProvider: rate limit,
-// 5xx, timeout); a provider out of credit (a take it refused for want of credit); a take it
+// The causes of a rest: a route's transient provider failures (RestProvider: a
+// 5xx or a timeout; a rate limit's backoff is RestRateBackoff); a provider out of credit (a take it refused for want of credit); a take it
 // refused for its key; and the coordinator's word (RestCoordinator, routes rest). Only out
 // of credit counts toward stopping the sprint. RestNoResult (rule 3's, retired) and
 // RestBalance (a balance poll's, retired: a low balance is a judgment, never a rest) are
@@ -479,7 +480,7 @@ func restedRoutes(r RouteRest, routes []Route) []string {
 
 // routeEnd is one ended take on a route: the work card, when it ended, when it was taken
 // (its child launched; zero when its record holds none), whether the provider failed it
-// transiently (a rate limit, a 5xx, a timeout: transient), and the provider's line when the
+// transiently (a 5xx, a timeout: transient), and the provider's line when the
 // provider refused it for credit or for its key (refusal, provider_funds.go), "" otherwise.
 // A take that left no result is neither: it is the model's, never the provider's.
 type routeEnd struct {
@@ -739,7 +740,7 @@ func restWrites(p *Plan, s *Snapshot, due []RouteRest, who string) {
 				// one note, never a judgment: the backoff ends by itself
 				n.What = fmt.Sprintf("rate-limit backoff of %s on %s, until %s", r.Until.Sub(r.At), r.Route, stamp(r.Until))
 			} else {
-				n.What = fmt.Sprintf("route %s rested until %s: its provider failed %d of its last %d ended takes or fewer (a rate limit, a 5xx or a timeout: %s); the deal draws no work card on it until then; nova-sprint routes shows it, nova-sprint routes wake %s ends it",
+				n.What = fmt.Sprintf("route %s rested until %s: its provider failed %d of its last %d ended takes or fewer (a 5xx or a timeout: %s); the deal draws no work card on it until then; nova-sprint routes shows it, nova-sprint routes wake %s ends it",
 					r.Route, stamp(r.Until), len(r.Cards), RouteRestWindow, strings.Join(r.Cards, ", "), r.Route)
 			}
 			p.Notes = append(p.Notes, n)

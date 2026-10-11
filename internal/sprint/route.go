@@ -464,8 +464,9 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 		// every route of the tier that serves is at its provider's budget: the card waits
 		// ready, never an error, never an attempt spent, and the next deal draws it when a
 		// slot frees (the owner, 2026-10-11: "if nothing else is available, you wait and
-		// try again later")
-		return nil, tier, "every route of tier " + tier + " that serves is at its provider's concurrency budget (" + strings.Join(full, "; ") + "): the card waits ready and is dealt when a slot frees", false
+		// try again later"), and so does every route backing off from a rate limit
+		// (unservedWhy: a backoff ends by itself; tla/RateBackoff.tla)
+		return nil, tier, "every route of tier " + tier + " that serves is at its provider's concurrency budget or backing off from a rate limit (" + strings.Join(full, "; ") + "): the card waits ready and is dealt when a slot frees or the backoff ends", false
 	}
 	up, why := s.tierServed(tier, rested)
 	if len(up) == 0 && len(unlaunchable) > 0 {
@@ -568,7 +569,12 @@ func (s *Snapshot) drawRoute(c, wc *Card, ri routeIndexes, member, tier string) 
 		// a coordinator's rework or redo is never refused for a full provider: with no route
 		// of room it is dealt on a full one anyway, and the take holds it ready until a slot
 		// frees (takeBudgetWhy)
-		soft := func(name string) (Route, bool) { return s.servedRoute(tier, member, name, false) }
+		soft := func(name string) (Route, bool) {
+			if rest, ok := s.resting(name); ok && rest.Cause == RestRateBackoff {
+				return Route{}, false // a full provider is soft; a rate-limit backoff is not
+			}
+			return s.servedRoute(tier, member, name, false)
+		}
 		fresh = false
 		for _, name := range arr {
 			_, isServed := soft(name)
@@ -596,7 +602,11 @@ func (s *Snapshot) servedRoute(tier, member, name string, drawing bool) (Route, 
 		if r.Name != name || r.Tier != tier || !r.Enabled {
 			continue
 		}
-		if _, ok := s.resting(r.Name); ok {
+		if rest, ok := s.resting(r.Name); ok && (drawing || rest.Cause != RestRateBackoff) {
+			// a rate-limit backoff is a stall, never an unserved tier: the draw leaves the
+			// route out, a check of the tier does not, so a backoff is never a judgment, as a
+			// full provider is not (a-rate-limited-refusal-never-fails-the-cardc;
+			// tla/RateBackoff.tla)
 			return Route{}, false
 		}
 		if !s.Launches(member, r) {
@@ -623,6 +633,14 @@ func (s *Snapshot) unservedWhy(tier, member string, drawing bool) (rested, unlau
 			continue
 		}
 		if rest, ok := s.resting(r.Name); ok {
+			if rest.Cause == RestRateBackoff {
+				// a backoff waits as a full provider does: the card waits ready, never a
+				// judgment (servedRoute)
+				if drawing {
+					full = append(full, r.Name+" ("+rest.Said()+", until "+rest.UntilSaid()+")")
+				}
+				continue
+			}
 			rested = append(rested, r.Name+" until "+rest.UntilSaid()+": "+rest.Said())
 			continue
 		}

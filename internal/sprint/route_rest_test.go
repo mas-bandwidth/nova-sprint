@@ -11,7 +11,7 @@ import (
 
 // The rule's window (tla/RouteRest.tla): the last RouteRestWindow ended takes on a route
 // after its last rest began, in the order they ended. RouteRestAfter takes in it the
-// provider failed TRANSIENTLY (a rate limit, a 5xx, a timeout) rest the route from the clock
+// provider failed TRANSIENTLY (a 5xx, a timeout; never a rate limit) rest the route from the clock
 // for RouteRestFor; a take that ended with no result never counts (it is the model's output,
 // not the provider's: the card's attempt and the route's ok% carry it), nor does a provider
 // failure of another class, an older end, an end before the last rest or an ok end; a route
