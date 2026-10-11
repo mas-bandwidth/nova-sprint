@@ -3078,26 +3078,24 @@ func sweep(s *Snapshot, p *Plan, r FleetReq, up []string, rr *round, moves round
 	}
 }
 
-// level evens the up members' backlogs, once at the start of every tick.
-// A member's backlog is the work cards it holds,
-// ready and working, less its width: below zero it has free lanes its ready
-// cards do not fill, above zero it holds ready cards it cannot start. While the
-// largest backlog of a member with a ready card and the smallest of the members
-// below DealAhead times their width differ by more than one, the newest ready
-// card (the last in work order) of the largest that has a target moves to the
-// next member round the fleet below DealAhead times its width, at least two
-// below, at or below the mean backlog and no refuser of the card
-// (round.levelTo, errata 3 amendment 5: the levelling moves the deal's index
-// too). So no up member has free lanes and an empty ready column while another
-// holds ready cards it cannot start, a member that comes up takes its share at
-// once, and none is levelled past DealAhead times its width (width.go).
+// level moves a card off a member that cannot start it, once at the start of
+// every tick. A member's load is the work cards it holds, ready and working (a
+// read at half a slot). While a member over its width (its held more than its
+// width) has a ready card, its newest ready card (the last in work order) moves
+// to the next member round the fleet past the deal's index with a free lane
+// (held below its width) and no refuser, bench or launch exclusion of the card
+// (round.levelTo, nextLane). So a card moves only when its member cannot start
+// it, and only to a member that can (tla/Level.tla, NeverOffAFreeLane; the
+// owner, 2026-10-11 ~19:05-19:20Z: "cards only may accrue per-fleet or friend,
+// if there are not other machines/friends ready to do that work right now!").
+// A member at or below its width keeps every card dealt to it: it will take
+// them at its next pass.
 //
 // The call ends, by two guards, each enough alone (tla/Level.tla; the wedge of
-// 2026-10-02, nova-tools#5122, was a call that did not): every move lowers the
-// sum of squared backlogs by at least two (levelTo's gap), and a card it moved
-// is never one it moves again, so it makes at most as many moves as the fleet
-// had ready cards. A newest card whose only target is refused or one below
-// does not stop an older card that has one.
+// 2026-10-02, nova-tools#5122, was a call that did not): each move takes a
+// member above its width to one below it, so the sum of squared backlogs falls
+// by at least two, and a card it moved is never one it moves again, so it makes
+// at most as many moves as the fleet had ready cards.
 func level(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, held map[string]int) {
 	levelWith(s, p, up, rr, moves, held, (*round).levelTo)
 }
