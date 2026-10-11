@@ -626,6 +626,11 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		if c.Col != Ready || IsSentinel(c) {
 			continue
 		}
+		// a primary whose named needs have not landed is dealt to no friend
+		// (docs/SPEC-SPRINT.md, needs and the deal; WaitsFor)
+		if len(WaitsFor(s, c, nil)) > 0 {
+			continue
+		}
 		// a card taken back from a friend (friend take) is placed again, never on her (FriendTake)
 		wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt")))
 		if wc != nil && wc.Col != Withdrawn {

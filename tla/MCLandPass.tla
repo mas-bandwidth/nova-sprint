@@ -11,4 +11,9 @@ MCStreams == {s1, s2, s3}
 MCOrder == <<s1, s2, s3>>
 MCFiles == {"f1", "f2"}
 MCTouches == [s \in MCStreams |-> IF s = s3 THEN {"f2"} ELSE {"f1"}]
+MCHeads == {1, 2}
+\* The blame the bisection finds when a batch's tree is red: s1 blames head 2 (the prefix
+\* before it lands, head 2 reworked), s2 is refused with no head blamed (Unblamed), s3's
+\* tree tests read none of its files so it lands whole (Whole).
+MCBlame == [s \in MCStreams |-> IF s = s1 THEN 2 ELSE IF s = s2 THEN Unblamed ELSE Whole]
 =============================================================================
