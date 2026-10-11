@@ -15,8 +15,12 @@ import (
 // StreamClock is a stream's state, since (the last change of its state) and
 // progress (the last change of its state or of any of its counts).
 type StreamClock struct {
-	Stream   string
-	Release  string `json:",omitempty"`
+	Stream  string
+	Release string `json:",omitempty"`
+	// Display is the name the stream is shown by (sprint.StreamDisplay): its display
+	// name; else "point-fix-" plus its release when one is set; else its key. The key
+	// stays Stream (docs/SPEC-SPRINT-DASHBOARD.md, Work).
+	Display  string `json:",omitempty"`
 	State    string
 	Since    time.Time
 	Progress time.Time

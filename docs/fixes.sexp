@@ -574,6 +574,18 @@
      its need."
     :origin "card moved out of the sprint (work record, 2026-10-04)")
 
+   (fix "a-stream-has-a-display-name" :release "v1.2.14" :status "planned"
+    :title "A stream has a display name"
+    :text "A stream's key stays its name everywhere (the work and merge rows, the stream= fields, every
+     verb), and gains a human label: `stream set <s> --display <name>` records one line of printable
+     text, at most 60 bytes, on the stream's control card as its `display` field, cleared with `default`
+     or `none` like every other stream field. The dashboard's Work table and the streams listing show
+     the display name when set, else `point-fix-<release>` when the stream belongs to a release, else
+     the key (sprint.StreamDisplay); the streams verb prints it beside the release, StreamClock and
+     StreamRow carry it in `Display`, and a name over the bound or with a newline is refused whole,
+     nothing written."
+    :origin "the owner, 2026-10-11: \"agree that the name becomes the key, and you add a small display name. good tidy feature. pls add.\"")
+
    (fix "reader-only-friend-no-work" :release "v1.2.9" :status "shipped"
     :title "A reader-only friend is dealt no work card; a builder-only friend is asked no read"
     :text "The deal and the ask honour a friend's roles: a friend whose nova-config row's roles do not
