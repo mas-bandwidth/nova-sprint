@@ -256,8 +256,8 @@ func (r *round) member(up []string, q, room map[string]int, avoid string) string
 // first attempts and redeals and levelling alike, goes
 // round the fleet and moves the index): the first from the index that is up
 // and below its room, the avoid member only when no other has room; "" when
-// none has room (a card is never placed past a width: tla/DirtyTick.tla,
-// WidthRespected). It neither moves the index nor counts the card: the caller
+// none has room (a card is never placed past twice a width: tla/DirtyTick.tla,
+// HoldRespected). It neither moves the index nor counts the card: the caller
 // that places it moves the index past it (moved) and counts it (q).
 func (r *round) next(up []string, q, room map[string]int, avoid string) string {
 	return r.member(up, q, room, avoid)
