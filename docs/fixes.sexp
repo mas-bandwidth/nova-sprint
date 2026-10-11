@@ -823,6 +823,11 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-store-shadow-tick-and-holds" :release "v1.2.12" :status "planned"
+   :title "Unit coverage for the store's ShadowTick and Holds"
+   :text "New tests in internal/sprint/store, one behaviour each, pin the two reads verbs print that had no test of their own package: Store.ShadowTick (tick.go, the plan of tick --shadow and the server switch's canary print, docs/SPEC-SPRINT.md section 14) and Store.Holds (hold.go, the holds where --json lists, section 11). Tests and models only; no product change."
+   :origin "this card")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,

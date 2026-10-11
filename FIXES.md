@@ -126,6 +126,7 @@ Small bug fixes, one concern each, and no model change. They run as cards on v1.
 Tests and models only, no product change. More unit and functional tests, and every TLA+ model checked against the code it claims to model (its state, actions and invariants) and run again with TLC on a bench; owed models and stale or timed-out records are made real. The new tests are written against behaviour (the verbs, the store's steps, the wire, the TLA+ invariants), not internals, so the same tests run unchanged against v1.3 and say whether it keeps the behaviour. TLC runs where the cards run first. A real defect a new test finds is written as a v1.2.14 card, never fixed inside a test card.
 
 - **Inventory the tests and models before v1.2.12's first test card** (planned). Coverage per package, the functional tier's state, each TLA+ model against the code it claims to model, and each RUNS.tsv record's age and result. The tests and model cards of v1.2.12 are cut from it. From: the owner, 2026-10-11: the v1.2.12 scope (inventory first).
+- **Unit coverage for the store's ShadowTick and Holds** (planned). New tests in internal/sprint/store, one behaviour each, pin the two reads verbs print that had no test of their own package: Store.ShadowTick (tick.go, the plan of tick --shadow and the server switch's canary print, docs/SPEC-SPRINT.md section 14) and Store.Holds (hold.go, the holds where --json lists, section 11). Tests and models only; no product change. From: this card.
 
 ## v1.2.13 (planned, 2026-10-11)
 
