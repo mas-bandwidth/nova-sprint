@@ -499,6 +499,33 @@
     one writer; a write that fails keeps the earlier bound (the safe side) and says so on the
     server's line. Test: TestARechallengeKeepsTheHookLiveUntilItsOwnBound."
    :origin "v1.2.12 inventory 2026-10-11, section 9 row D6; code read at nova-sprint main 00c54ba")
+  (fix "reads-go-out-together-and-fill-free-lanes" :release "v1.2.14" :status "planned"
+   :title "Every read owed goes out in one tick, on the free lanes of the whole fleet"
+   :text "Blocker, hand-landed for the owner's \"Please fix the current sprint. It is moving so slow.\"
+    The read deal (readCardsAskFull, read_cards.go) already asked every read every primary in review
+    wants in one tick, with no per-tick cap and no serial ask; three things still held reads back. A
+    unit's free lanes counted only its working cards (rowWorking), so a member with a long ready queue
+    looked the most idle and a burst of reads piled onto it while others had free lanes: the free lanes
+    now count the queue, twice the width less twice the work cards and the read cards, ready and
+    working (rowLoad). The deal broke a tie by the most idle lanes, so the wide members took every read
+    of a burst and a narrow member none: it now rolls the persisted cursor (read_deal_index_<tier>) round
+    every unit with a free lane at the cheapest tier distance, never the most idle. A reader whose read
+    the machine took back three times (MaxReadGen 2) had no identity left and was refused \"no id\" for
+    the attempt: readCardIDFor and ReadCardExtras now take the generation after the highest the read
+    index holds, so a take-back never spends a reader. set --reads takes 3. cannotAskWhy says the rule.
+    tla/ReadCards.tla gains the step property DealsEveryOwedReadAtOnce (MCReadCards.cfg,
+    MCReadCardsAllAtOnce.cfg with Need 2) and the reversed witness BugOnePerTick
+    (MCReadCardsBrokenOnePerTick.cfg: one read a tick). docs/SPEC-SPRINT.md section 6 states the rule.
+    Tests: TestEveryReadACardNeedsIsAskedInOneTick, TestTheReadDealFillsEveryFreeLaneInOneTick,
+    TestReadsAndWorkShareLanesByHalfSlots, TestTheReadDealSkipsAMemberWithAQueue and
+    TestTheReadDealGivesNarrowMembersTheirTurn (internal/sprint/read_deal_free_lanes_test.go),
+    TestAnAttemptsReadsGoOutTogether and TestATakenBackReadIsAskedOfTheSameReaderAgain
+    (internal/sprint/read_cards_parallel_twin_test.go)."
+   :origin "hand/reads-go-out-together-and-fill-free-lanes, 2026-10-11, the coordinator for the owner;
+    it lands the sprint cards a-cards-reads-go-out-together-in-parallel (critical; attempt 1's head
+    aa876b3e carried) and the-read-deal-counts-the-queue-and-fills-free-lanes-first (blocker), both
+    dropped as hand-landed when it merges; code read at nova-sprint main ec3742e1"
+   :kept (:priority "blocker"))
   (fix "brief-check-runs-the-add-checks-without-a-write" :release "v1.2.14" :status "planned"
    :title "brief check runs every add check without a write"
    :text "An add's refusals arrived one class at a time, so a brief writer learned of the next only after
