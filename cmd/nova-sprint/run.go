@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -426,6 +427,17 @@ const exitReplaced = 3
 // fired every few minutes and each exit left the workers refused for 15 to 30 s.
 const TickDeadline = 10 * time.Second
 
+// TickStacksBound is how long the watchdog waits for its goroutine stacks to
+// reach stderr after it has acted. The stacks are written into memory first
+// (pprof's WriteTo into a bytes.Buffer cannot block), so a stderr nobody
+// drains (a full pipe under a supervisor, a blocked terminal) can never hold
+// up the cancel of a given-up tick or the exit of a wedged one: the buffer is
+// handed to stderr in a goroutine the watchdog waits on for at most this long,
+// and a dump not written by then is dropped. The clock is the app's own
+// injectable after (time.After in production, a test's own), so a test bounds
+// it with no wall clock.
+const TickStacksBound = 2 * time.Second
+
 // TickDeadlineCap is the most the deadline stretches to (unless --tick-deadline
 // asks for more), and tickWalls the ticks whose walls it is stretched by.
 const (
@@ -488,15 +500,49 @@ func (a *app) tickOf(ctx context.Context, st *store.Store) (store.TickResult, er
 	return st.Tick(ctx)
 }
 
+// stacksBuffer writes every goroutine's stack into memory and returns it:
+// pprof's WriteTo into a bytes.Buffer cannot block, so a stderr nobody drains
+// never holds up the watchdog that would otherwise write the stacks straight
+// to it (docs/SPEC-SPRINT.md section 14, The server, "The tick's deadline").
+func stacksBuffer() *bytes.Buffer {
+	var buf bytes.Buffer
+	// ignored: the stacks are a diagnosis; the deadline's own line says what
+	// happened
+	_ = pprof.Lookup("goroutine").WriteTo(&buf, 2)
+	return &buf
+}
+
+// writeStacks hands buf to stderr in a goroutine and waits for it at most
+// TickStacksBound, on the app's own clock: the watchdog is never held up by the
+// diagnosis it exists to bound. A dump not written within the bound is dropped,
+// and one stdout line says so (docs/SPEC-SPRINT.md section 14, The server,
+// "The tick's deadline").
+func (a *app) writeStacks(buf *bytes.Buffer, stdout, stderr io.Writer) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = buf.WriteTo(stderr)
+	}()
+	select {
+	case <-done:
+	case <-a.after(TickStacksBound):
+		fmt.Fprintf(stdout, "%s TICK STACKS the goroutine stacks were not written to stderr within %s: the dump is dropped and the watchdog does not wait on it\n",
+			a.now().Format("15:04:05"), TickStacksBound)
+	}
+}
+
 // tickWithin runs one tick, begun at began, on a context of its own, and waits
 // for it at most d (0 waits for ever, reading no clock). Past d it says so on
-// stdout, writes every goroutine's stack to stderr (the stack names the planner
-// the tick is in), cancels the tick's context, so its store calls end and a
-// write not yet sent is never sent, and returns over: the tick's plan is given up
-// and never written (a write already in flight is the store's fence's to finish
-// or repair). ended is closed when the tick's goroutine has returned: the caller
-// waits for it before the next tick (awaitGivenUp), for the goroutine shares the
-// loop's store and its twin.
+// stdout, writes every goroutine's stack (the stack names the planner the tick
+// is in), cancels the tick's context, so its store calls end and a write not yet
+// sent is never sent, and returns over: the tick's plan is given up and never
+// written (a write already in flight is the store's fence's to finish or
+// repair). The stacks are written into memory before the cancel and only then
+// handed to stderr, in a goroutine the watchdog waits on for at most
+// TickStacksBound: a stderr nobody drains can never hold up the cancel. ended is
+// closed when the tick's goroutine has returned: the caller waits for it before
+// the next tick (awaitGivenUp), for the goroutine shares the loop's store and
+// its twin.
 func (a *app) tickWithin(ctx context.Context, tick func(context.Context) (store.TickResult, error), d time.Duration, began time.Time, stdout, stderr io.Writer) (res store.TickResult, over bool, ended <-chan struct{}, err error) {
 	end := make(chan struct{})
 	if d <= 0 {
@@ -522,9 +568,14 @@ func (a *app) tickWithin(ctx context.Context, tick func(context.Context) (store.
 	case <-a.after(d):
 		fmt.Fprintf(stdout, "%s TICK DEADLINE the tick begun at %s did not end within %s: its plan is given up and the loop goes on to the next tick once it has stopped; the stacks follow on stderr\n",
 			a.now().Format("15:04:05"), began.Format("15:04:05"), d)
-		// ignored: the stacks are a diagnosis; the line above says what happened
-		_ = pprof.Lookup("goroutine").WriteTo(stderr, 2)
+		// the stacks go into memory (which cannot block) before the cancel, so
+		// a stderr nobody drains can never hold up the cancel or the return; the
+		// buffer goes to stderr after, in a goroutine waited on at most
+		// TickStacksBound (docs/SPEC-SPRINT.md section 14, The server, "The
+		// tick's deadline")
+		buf := stacksBuffer()
 		cancel()
+		a.writeStacks(buf, stdout, stderr)
 		return store.TickResult{}, true, end, nil
 	}
 }
@@ -534,8 +585,10 @@ func (a *app) tickWithin(ctx context.Context, tick func(context.Context) (store.
 // not stopped within a further deadline d is wedged: each further deadline it has
 // not stopped in counts one more on wedged, the wedged ticks in a row; a tick that
 // stops within the first further deadline is no wedge and starts the count again.
-// At TickWedgedToExit the process is wedged: it says so, writes the stacks again,
-// and returns false, and the caller exits exitTickDeadline. A cancel ends no store
+// At TickWedgedToExit the process is wedged: it says so, writes the stacks again
+// (into memory first, then to stderr in a goroutine waited on at most
+// TickStacksBound, so the exit is never held up by the diagnosis), and returns
+// false, and the caller exits exitTickDeadline. A cancel ends no store
 // call in flight at once (a read already sent runs to its ReadTimeout, 5 s), so a
 // tick that stops is given a whole further deadline to do it.
 func (a *app) awaitGivenUp(ended <-chan struct{}, d time.Duration, began time.Time, wedged *int, stdout, stderr io.Writer) bool {
@@ -552,8 +605,12 @@ func (a *app) awaitGivenUp(ended <-chan struct{}, d time.Duration, began time.Ti
 		if *wedged >= TickWedgedToExit {
 			fmt.Fprintf(stdout, "%s TICK WEDGED %d given-up ticks in a row did not stop within a further deadline (%s) of being cancelled, the last begun at %s: the process is wedged and run exits %d so its supervisor starts it again; the stacks follow on stderr\n",
 				a.now().Format("15:04:05"), *wedged, d, began.Format("15:04:05"), exitTickDeadline)
-			// ignored: the process is about to exit, and the line above says why
-			_ = pprof.Lookup("goroutine").WriteTo(stderr, 2)
+			// the stacks go into memory (which cannot block) and to stderr after,
+			// in a goroutine waited on at most TickStacksBound, so the exit below
+			// is never held up by the diagnosis (docs/SPEC-SPRINT.md section 14,
+			// The server, "The tick's deadline")
+			buf := stacksBuffer()
+			a.writeStacks(buf, stdout, stderr)
 			return false
 		}
 		select {
