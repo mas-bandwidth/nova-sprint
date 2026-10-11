@@ -1348,8 +1348,8 @@
     any of them, add admitted every card straight to ready, and cards were dealt before their dependencies
     landed."
    :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
-     2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
-     owner: \"this should be caught by card lint.\"")
+    2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
+    owner: \"this should be caught by card lint.\"")
 
   (fix "a-5xx-mentioning-rate-limit-still-rests" :release "v1.2.14" :status "planned"
    :title "A 5xx whose words mention a rate limit still spends the take and rests the route"

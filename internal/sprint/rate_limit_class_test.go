@@ -17,15 +17,15 @@ func TestIsRateLimitedByClass(t *testing.T) {
 	t.Parallel()
 	for line, want := range map[string]bool{
 		// class rate-limited, or a 429 under any class
-		"provider failure: provider: class=rate-limited status=429 msg=slow down":     true,
-		"provider failure: provider: class=other status=429 msg=slow down":            true,
-		"provider failure: provider: class=other status=400 msg=Too many requests":    true,
+		"provider failure: provider: class=rate-limited status=429 msg=slow down":  true,
+		"provider failure: provider: class=other status=429 msg=slow down":         true,
+		"provider failure: provider: class=other status=400 msg=Too many requests": true,
 		// no class parses: the words still answer
-		"provider failure: Too many requests, retry later":                            true,
+		"provider failure: Too many requests, retry later": true,
 		// a 5xx or a timeout whose msg mentions a rate limit is not one
 		"provider failure: provider: class=provider-5xx status=503 msg=upstream rate limit exceeded, retry later": false,
-		"provider failure: provider: class=provider-5xx status=503 msg=Too many requests upstream":               false,
-		"provider failure: provider: class=timeout status=- msg=rate limit exceeded upstream":                    false,
+		"provider failure: provider: class=provider-5xx status=503 msg=Too many requests upstream":                false,
+		"provider failure: provider: class=timeout status=- msg=rate limit exceeded upstream":                     false,
 		"provider failure: provider: class=timeout status=- msg=concurrency 9/12 exceeds your limit":              false,
 		// an out-of-credit refusal is never one, even on a 429
 		"provider failure: provider: class=out-of-credit status=429 msg=insufficient balance": false,
