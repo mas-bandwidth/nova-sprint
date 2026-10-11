@@ -398,4 +398,14 @@
     :title "One column field every reader agrees on"
     :text "Card output carries a single column field so a card's state is not confused with the state of
      its need."
-    :origin "card moved out of the sprint (work record, 2026-10-04)")))
+    :origin "card moved out of the sprint (work record, 2026-10-04)")
+
+   (fix "reader-only-friend-no-work" :release "v1.2.9" :status "shipped"
+    :title "A reader-only friend is dealt no work card; a builder-only friend is asked no read"
+    :text "The deal and the ask honour a friend's roles: a friend whose nova-config row's roles do not
+     name builder (RoleBuilder) is dealt no work card, and one whose roles do not name reader (RoleReader)
+     is asked no read, in the read-card ask and the friends' ask alike. A row with no role list is a row
+     from before roles and keeps the pre-role behavior: it is dealt work and asked reads (friendHasRole).
+     The dogfood of 2026-10-10 evening: a reader-only friend was dealt 16 work cards once it came up,
+     and builder-only friends were asked reads."
+    :origin "dogfood 2026-10-10 evening: fleet-only restart")))

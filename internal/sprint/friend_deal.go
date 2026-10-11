@@ -33,6 +33,19 @@ const FieldWho = "who"
 // WhoFriend is the who of a card dealt to any friend.
 const WhoFriend = "friend"
 
+// RoleBuilder is the role a friend's nova-config row names to be dealt work cards: a row
+// whose roles do not name it is dealt no work card (friendDealable; docs/SPEC-SPRINT.md
+// section 1, a friend's card). RoleReader, in read_cards.go, is the read cards' role.
+const RoleBuilder = "builder"
+
+// friendHasRole says the friend's role list names role. An empty list is a row from before
+// roles were configured (a legacy snapshot): it keeps the pre-role behavior, both for the
+// deal and for the ask (docs/SPEC-SPRINT.md section 1, a friend's card; section 6, Who
+// reads). A configured list is authoritative.
+func friendHasRole(f FriendSeat, role string) bool {
+	return len(f.Roles) == 0 || slices.Contains(f.Roles, role)
+}
+
 // friendRowPrefix begins every friend's fleet row: a dot, so no machine's name is one.
 const friendRowPrefix = "friend."
 
@@ -194,9 +207,12 @@ func friendTiers(f FriendSeat) []string {
 // marked her down (PropFriendStallDown: released only by her activity). On 2026-10-06 a
 // friend whose row read down, her lanes paused and her daemon beating, was dealt 18 cards
 // twice; a row that cannot work is filled by no deal. While the friends' work is off
-// (FriendsOff, nova-sprint set --friends off) no friend's row is.
+// (FriendsOff, nova-sprint set --friends off) no friend's row is. A friend whose roles do
+// not name builder (RoleBuilder) is dealt no work card: a reader-only row reads and builds
+// nothing (the dogfood of 2026-10-10 evening, a reader-only friend was dealt 16 work cards
+// once it came up).
 func friendDealable(s *Snapshot, f FriendSeat) bool {
-	return !s.FriendsOff() && friendCanRead(s, f)
+	return !s.FriendsOff() && friendCanRead(s, f) && friendHasRole(f, RoleBuilder)
 }
 
 // friendCanRead says the friend's row may be dealt a read card: friendDealable but for the
