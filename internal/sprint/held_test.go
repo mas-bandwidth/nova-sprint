@@ -350,6 +350,75 @@ func TestAStallOffersOnlyEnabledDecisions(t *testing.T) {
 	}
 }
 
+// budgetStallWorld is one ready heavy card, s1-1, and the members setup brings up with
+// room: one heavy route through inception that serves and one heavy route resting (so a
+// resting route is never the free one), inception's concurrency budget set to budget, and
+// one card of inception already working. A budget of 1 leaves the one serving route full;
+// a budget of 2 leaves it a slot.
+func budgetStallWorld(t *testing.T, budget string) *world {
+	t.Helper()
+	w := setup(t, 1)
+	w.s.Work.Card("s1-1").Fields[FieldTierNow] = cardhdr.RouteHeavy
+	w.s.Routes = []Route{
+		{Name: "heavy-inception", Tier: cardhdr.RouteHeavy, Provider: "inception", Model: "mercury-3", Enabled: true, Deadline: 600},
+		{Name: "heavy-other", Tier: cardhdr.RouteHeavy, Provider: "other", Model: "m", Enabled: true, Deadline: 600},
+	}
+	w.s.Tiers = map[string][]string{cardhdr.RouteHeavy: {"heavy-inception", "heavy-other"}}
+	rest := RouteRest{At: w.s.Now, Until: w.s.Now.Add(RouteRestFor), Cards: []string{"x"}, Cause: RestProvider}
+	w.s.Fleet.SetProps(map[string]string{
+		PropProviderConcurrency("inception"): budget,
+		PropRule3Rest("other"):               "heavy-other " + rest.value(),
+	})
+	inFlightOn(w.s, "d1", "m2", "heavy-inception", "inception/mercury-3", Working)
+	return w
+}
+
+// A ready card whose tier's every route that serves is at its provider's concurrency budget
+// waits for a slot, by design: the deal never deals past a provider's budget and deals the
+// card when one frees, never an error (docs/SPEC-SPRINT.md section 8, No silent stops;
+// rate_budget.go's header; tla/RateBudget.tla). Before the fix the no-stall rule counted the
+// members' room above the cards ahead and raised the stall, though nothing was wrong.
+func TestAReadyCardWhoseEveryRouteIsFullIsHeldNotStalled(t *testing.T) {
+	t.Parallel()
+	w := budgetStallWorld(t, "1")
+	hd := mustHold(t, running(w), "s1-1", HeldByWaiting)
+	require.Contains(t, hd.Why, "waits for a slot of its provider's concurrency budget", "%s", hd)
+	require.Contains(t, hd.Why, "heavy-inception (inception 1 of 1 in flight)", "%s", hd)
+	require.Contains(t, hd.Why, "the deal deals it when one frees", "%s", hd)
+	for _, f := range Unheld(running(w), w.s.Now) {
+		assert.NotEqual(t, "s1-1", f.Subject, "a card waiting for a slot is no stall: %s", f.Why)
+	}
+}
+
+// The known no: with a slot free (the budget raised to 2) but a real deal defect -- a card
+// of s1-1's next attempt exists already, so the deal refuses it -- the card is undealt and
+// the fix does not hide it: the same stall as before is still judged, so a genuine defect
+// is never mistaken for a wait on a slot.
+func TestAReadyCardWithASlotFreeAndUndealtIsStillStalled(t *testing.T) {
+	t.Parallel()
+	w := budgetStallWorld(t, "2")
+	w.s.Fleet.Put(&Card{ID: "s1-1.w1", Row: "m1", Col: Done, Score: 1, Rev: 1,
+		Fields: map[string]string{"kind": "work", "primary": "s1-1"}})
+	mustStall(t, running(w), "s1-1", "a member is below its room (DealAhead times its width), and nothing deals it")
+}
+
+// budgetWait reads what serves as the deal does: the tier's configured array, never every
+// enabled route of the store. An enabled heavy route on a provider with room that the array
+// leaves out is never drawn (tierArray, servedRoute; docs/SPEC-SPRINT.md section 5, the deal),
+// so the card still waits for a slot of the route the array names rather than being judged
+// stalled for it.
+func TestARouteOutsideTheTierArrayIsNotServed(t *testing.T) {
+	t.Parallel()
+	w := budgetStallWorld(t, "1")
+	// heavy-free is enabled on a provider with no budget, but the array names only
+	// heavy-inception and heavy-other: the deal never draws it.
+	w.s.Routes = append(w.s.Routes, Route{Name: "heavy-free", Tier: cardhdr.RouteHeavy, Provider: "free", Model: "m", Enabled: true, Deadline: 600})
+	hd := mustHold(t, running(w), "s1-1", HeldByWaiting)
+	require.Contains(t, hd.Why, "waits for a slot of its provider's concurrency budget", "%s", hd)
+	require.Contains(t, hd.Why, "heavy-inception (inception 1 of 1 in flight)", "%s", hd)
+	require.NotContains(t, hd.Why, "heavy-free", "a route the array leaves out is not the deal's: %s", hd)
+}
+
 // "Stopped with moves due" counts the asks the tick would make (reader
 // finding 6): a primary in review never asked at its attempt is a move due.
 func TestMovesDueCountsAsks(t *testing.T) {

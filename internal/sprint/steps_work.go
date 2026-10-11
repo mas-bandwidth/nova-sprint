@@ -1016,6 +1016,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 	quiet := quietWhy(s, up)
 	up = notQuiet(s, up)
 	q, widths := memberLoads(s, up), memberWidths(s, up)
+	lanes := memberLanes(s, up)
 	for _, c := range chosen {
 		// its bench: the members its brief's BENCH line names, and the deal deals it to
 		// none other; with no member of it up it waits ready (bench_deal.go)
@@ -1038,10 +1039,17 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		next := func(card, wc *Card, of, refused []string) (string, string) {
 			ms, why := s.launchersOf(card, wc, of)
 			if len(ms) == 0 && len(of) > 0 && why != "" {
+				// a member of of that refused the card's repository at staging for want
+				// of a bench mirror is the refusal the coordinator reads, never the
+				// generic harness sentence (the card: "the no-launcher judgment says so
+				// with that why"; stagingRefusalWhy)
+				if w := s.stagingRefusalWhy(card, of); w != "" {
+					return "", w
+				}
 				_, tier, _, _ := s.routeOf(card, nil, nil, "")
 				return "", s.unlaunchableWhy(c, tier, of, refused)
 			}
-			return rr.next(ms, q, widths, ""), roomWhy
+			return rr.nextFree(ms, q, lanes, widths, ""), roomWhy
 		}
 		if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil && wc.Col == Withdrawn {
 			if redealBound(wc) {
@@ -1710,6 +1718,21 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		if r.Failed && kind == "" && !late {
 			if cause := EnvFault(r.Report); cause != "" {
 				envFaulted(s, c, pr, r, cause, who, &p, envSeen)
+				continue
+			}
+		}
+		// A stop on needs that have not landed is a coordination failure, never the worker's
+		// and never a brief defect (docs/SPEC-SPRINT.md, needs and the deal; needs_stop.go):
+		// the card was dealt before its needs landed. The work card goes back to the pool (no
+		// fail mark, no ok% hit, no redeal spent) and the primary waits for its needs. Decided
+		// on the table's facts (NamedWaits at the finish), never on the report's words, and
+		// capped (MaxNeedsReturns). A late report is the deadline's failed attempt and takes
+		// none of this.
+		if r.Failed && kind == "" && !late {
+			if waits := stoppedOnNeeds(s, pr); len(waits) > 0 {
+				u := needsStopReturned(s, c, pr, r, waits, who)
+				friendNext(s, c, &u, p.Units)
+				p.Units = append(p.Units, u)
 				continue
 			}
 		}
@@ -2907,6 +2930,7 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			Moved:   c.ID + " taken back: " + r.Member + " is " + r.Op})
 		return true
 	})
+	lanes := memberLanes(s, up)
 	withdrew := 0
 	for _, c := range cards {
 		taken := c.Col == Working
@@ -2917,7 +2941,7 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			// member at its width takes no more.
 			// a bench card goes to a member of its bench alone: with none of it up it is
 			// withdrawn, and waits ready for its bench (bench_deal.go)
-			if m := rr.next(onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c)), q, widths, ""); m != "" {
+			if m := rr.nextFree(onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c)), q, lanes, widths, ""); m != "" {
 				rr.moved(m)
 				moves[c.ID] = m
 				q[m]++

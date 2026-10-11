@@ -111,21 +111,49 @@ func TestTheReworkAvoidsTheMemberThatFailedItWhileAnotherHasRoom(t *testing.T) {
 		for _, m := range []string{"m1", "m2"} { // each at width 1: a room of DealAhead times it, 2 (width.go)
 			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 1}))
 		}
-		w.must(Add(w.s, AddReq{Stream: "s1", Count: 3}))
+		w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})) // m1
 		w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1")}))
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: "red"}))
-		// m2 at its room: two ready cards, dealt past the index
-		w.s.Fleet.SetProps(map[string]string{PropDealIndex: "m1"})
-		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-2"}}}))
-		w.s.Fleet.SetProps(map[string]string{PropDealIndex: "m1"})
-		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-3"}}}))
+		// m2 at its room: two ready cards placed as a store holds them (the deal
+		// fills a member's free lane before another's room, so it would not deal
+		// both to m2 while m1's lane is free)
+		putWorkCard(w, "x1", "m2", Ready, 100, nil)
+		putWorkCard(w, "x2", "m2", Ready, 101, nil)
 		require.Equal(t, 2, w.s.Fleet.Count("m2", Ready), "m2 has %d ready, want 2", w.s.Fleet.Count("m2", Ready))
 		rework(w, "s1-1")
 		wc := w.s.Fleet.Card("s1-1.w2")
 		require.NotNil(t, wc, "s1-1's second attempt is %+v, want on m1: no other member has room", wc)
 		require.Equal(t, "m1", wc.Row, "s1-1's second attempt is %+v, want on m1: no other member has room", wc)
 	}
+}
+
+// A member with a free lane that refused the card at staging is skipped in both
+// scans: the redeal goes to a member with no free lane but room, never back to
+// the refuser (steps_work.go dealPlan's StagingRefusers; round.go nextFree).
+func TestTheDealSkipsAFreeLaneStagingRefuser(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a")
+	for _, m := range []string{"m1", "m2"} { // each at width 1: a room of DealAhead times it, 2
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 1}))
+	}
+	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
+	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})) // m1
+	wc := w.s.Fleet.Card("s1-1.w1")
+	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc.ID}}, Gens: gensOf(w.s, wc.ID)}))
+	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m2"}))
+	require.Equal(t, Withdrawn, w.s.Fleet.Card("s1-1.w1").Col, "no member up withdraws the card")
+	// m1 refused it at staging: the card must never go back to m1
+	wc = w.s.Fleet.Card("s1-1.w1")
+	wc.Fields[FieldStagingTake+itoa(wc.Int("gen"))] = ProviderTake{Member: "m1"}.String()
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
+	// m2 at its lane (full, but with room), m1 with a free lane: the redeal skips
+	// m1 in the lane scan (it refused) and goes to m2's room
+	putWorkCard(w, "x1", "m2", Ready, 100, nil)
+	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})) // redealt
+	require.Equal(t, "m2", w.s.Fleet.Card("s1-1.w1").Row, "s1-1 redealt to %s, want m2: m1 refused it at staging, its free lane is skipped", w.s.Fleet.Card("s1-1.w1").Row)
 }
 
 // A member that goes down has its cards dealt again round the fleet from the

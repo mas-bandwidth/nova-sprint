@@ -102,6 +102,12 @@ nova-sprint demo stop [--dir <dir>]
 nova-sprint fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] --load <percent>
 nova-sprint fleet up <member> [--width <n>]
 nova-sprint fleet down <member>
+nova-sprint hold <name>... --reason <text> [--return]
+
+A member that is up keeps taken cards and finishes them, including with `--return`; that
+flag hands back only its dealt, untaken cards. A member that is down also returns its dead
+working cards. `fleet down <member>` follows the same rule.
+
 nova-sprint fleet sync [--check] [--pg <dsn>]
 nova-sprint fleet level
 nova-sprint friend sync [--pg <dsn>] [--root <dir>] [--every <duration>]

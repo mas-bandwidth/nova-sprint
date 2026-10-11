@@ -263,6 +263,36 @@ func (r *round) next(up []string, q, room map[string]int, avoid string) string {
 	return r.member(up, q, room, avoid)
 }
 
+// nextFree is the member a card the deal places on the fleet goes to, free
+// lanes first (tla/WhoPreference.tla, DealFreeLanesFirst; the owner,
+// 2026-10-11 ~19:05-19:20Z: "cards only may accrue per-fleet or friend, if
+// there are not other machines/friends ready to do that work right now!"): in
+// two scans from the index, wrapping, first the members that hold fewer cards
+// (q) than their width (lanes; a member below its width has a lane free and
+// takes the card at once), and only when no member that may take the card has
+// one, the members that hold fewer than their room (DealAhead times their
+// width, memberWidths). The avoid member only when no other has either; "" when
+// none has a lane or room. q is memberLoads: a member's ready and working
+// cards, a read at half a slot. It neither moves the index nor counts the
+// card: the caller that places it moves the index past it (moved) and counts
+// it (q), so placements roll ((index++) % n) over the eligible set.
+func (r *round) nextFree(up []string, q, lanes, room map[string]int, avoid string) string {
+	isUp := make(map[string]bool, len(up))
+	for _, x := range up {
+		isUp[x] = true
+	}
+	lane := func(x string) bool { return isUp[x] && q[x] < lanes[x] }
+	open := func(x string) bool { return isUp[x] && q[x] < room[x] }
+	m := r.scan(func(x string) bool { return x != avoid && lane(x) })
+	if m == "" {
+		m = r.scan(func(x string) bool { return x != avoid && open(x) })
+	}
+	if m == "" && avoid != "" && (lane(avoid) || open(avoid)) {
+		m = avoid
+	}
+	return m
+}
+
 // levelTo is where the level moves the newest card of the longest queue, and
 // moves the index past it: the next member round the
 // fleet from the index that is below its room (held, the work cards it

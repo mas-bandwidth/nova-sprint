@@ -321,6 +321,9 @@ MCSprintTables.cfg	MCSprintTables.tla	pass	-	ignore-terminal	sprinttables	requir
 MCSprintTablesBrokenDownkeeps.cfg	MCSprintTables.tla	action	WorkingOnAnUpMember	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenInsert.cfg	MCSprintTables.tla	action	ReadyToWaitingOnlyByInsert	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenNeedless.cfg	MCSprintTables.tla	action	NeedsLandFirst	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenWithdrawready.cfg	MCSprintTables.tla	action	NeedsWithdrawalWaits	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenShortAccept.cfg	MCSprintTables.tla	invariant	AcceptHeld	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenAcceptBroken.cfg	MCSprintTables.tla	invariant	NeverAcceptBroken	ignore-terminal	sprinttables	required	-
 MCStallLadder.cfg	MCStallLadder.tla	pass	-	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenBound.cfg	MCStallLadder.tla	invariant	NoCardHeldPastBound	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenRedeal.cfg	MCStallLadder.tla	invariant	NoStartedRedealt	ignore-terminal	stallladder	required	-
@@ -343,6 +346,8 @@ MCCoordinatorPassBrokenSilentStop.cfg	MCCoordinatorPass.tla	invariant	StopSignal
 MCCoordinatorPassBehindEscalate.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenAckForever.cfg	MCCoordinatorPass.tla	invariant	EscalatedPastAck	ignore-terminal	coordinatorpass	required	-
 MCCoordinatorPassBrokenWaitForever.cfg	MCCoordinatorPass.tla	invariant	WaitedRaisedAgainOnExpiry	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassDrift.cfg	MCCoordinatorPass.tla	pass	-	ignore-terminal	coordinatorpass	required	-
+MCCoordinatorPassBrokenUnknownCloses.cfg	MCCoordinatorPass.tla	action	UnknownCarried	ignore-terminal	coordinatorpass	required	-
 MCWhoPreference.cfg	MCWhoPreference.tla	pass	-	ignore-terminal	whopreference	required	-
 MCWhoPreferenceOnlyWrong.cfg	MCWhoPreference.tla	invariant	OnlyToItsFriend	ignore-terminal	whopreference	required	-
 MCWhoPreferenceRebalanceStarted.cfg	MCWhoPreference.tla	action	NoStartedCardMoves	ignore-terminal	whopreference	required	-
@@ -497,6 +502,7 @@ MCHoldsLive.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
 MCServerSwitch.cfg	MCServerSwitch.tla	pass	-	ignore-terminal	serverswitch	required	-
 MCServerSwitchBrokenNodeadline.cfg	MCServerSwitch.tla	invariant	RollbackOnlyInWindow	ignore-terminal	serverswitch	required	-
 MCServerSwitchBrokenKeepstate.cfg	MCServerSwitch.tla	invariant	AtMostOneAutoRollbackPerSwitch	ignore-terminal	serverswitch	required	-
+MCServerSwitchBrokenHookfault.cfg	MCServerSwitch.tla	invariant	NoRollbackOnAHookRefusal	ignore-terminal	serverswitch	required	-
 MCHoldsBrokenResolveHeld.cfg	MCHolds.tla	invariant	HeldMovesOnlyByRelease	ignore-terminal	holds	required	-
 MCHoldsBrokenWorkerReleases.cfg	MCHolds.tla	invariant	OnlyCoordinatorReleases	ignore-terminal	holds	required	-
 MCAttemptsEpochs.cfg	MCAttemptsEpochs.tla	pass	-	ignore-terminal	attemptsepochs	required	-

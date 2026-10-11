@@ -55,11 +55,11 @@ tlc-require:
 	@test -n "$(TLC_GROUP)" || { echo "make tlc needs TLC_GROUP (the group to run)" >&2; exit 2; }
 
 tlc: tlc-require
-	$(GO) run ./tools/tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s"
+	$(GO) run ./tools/tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s" $(if $(TLC_PARALLEL),--parallel "$(TLC_PARALLEL)",)
 
 tlc-full: tlc-require
 	@test "$(origin TLC_BUDGET)" = "command line" -o "$(origin TLC_BUDGET)" = "environment" || { echo "make tlc-full needs an explicit TLC_BUDGET (a manual run is unbounded by default)" >&2; exit 2; }
-	$(GO) run ./tools/tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s" --manual
+	$(GO) run ./tools/tlacheck run --root . --jar "$(TLC_JAR)" --dir "$(TLC_OUT)" --group "$(TLC_GROUP)" --timeout "$(TLC_BUDGET)s" $(if $(TLC_PARALLEL),--parallel "$(TLC_PARALLEL)",) --manual
 
 tlc-groups:
 	$(GO) run ./tools/tlacheck groups --root . --stale

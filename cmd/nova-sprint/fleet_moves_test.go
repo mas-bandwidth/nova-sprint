@@ -19,7 +19,7 @@ func TestFleetDownAndUpSayWhereTheCardsWent(t *testing.T) {
 	ta.ok("add --stream s --count 5")
 	ta.deal(5) // each member holds two at width 1: m1 2, m2 2, m3 1
 	out := ta.ok("fleet down m1")
-	assert.Regexp(t, `; m1 held down; moved=1 to m3\(1\); stayed=1 withdrawn: s-\d\n`, out, "fleet down")
+	assert.Regexp(t, `; m1 held down; its working cards finish; moved=1 to m3\(1\); stayed=1 withdrawn: s-\d\n`, out, "fleet down")
 	out = ta.ok("fleet up m1")
 	assert.Regexp(t, `; m1 up; moved=1 to m1\(1\) from m[23]\(1\)\n`, out, "fleet up")
 }

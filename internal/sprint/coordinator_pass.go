@@ -259,6 +259,7 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 // overdue part's hold, NOverdue), so a late judgment is pushed at its deadline by the
 // overdue line and every PassEvery after by the pass, never twice in one tick. The
 // pass's own judgments are not counted: they are raised again on their own.
+// tla/CoordinatorPass.tla CondHolds, NextMarkAt: the oldest still counted falls when it closes.
 func behindConds(s *Snapshot, r TickReq) []cond {
 	marked := map[string]time.Time{} // judgment id: when the overdue part first named it
 	for _, o := range s.Acked {

@@ -164,9 +164,11 @@ function setCells(box, classes, columns, cellRem) {
   while (box.children.length > classes.length) box.lastChild.remove();
   classes.forEach(function (c, i) { setClass(box.children[i], c ? "cell " + c : "cell"); });
 }
-// How many cells fit across a box at MIN_CELL px each.
-function cellsThatFit(box) {
-  var w = box.clientWidth || 600;
+// How many cells fit across a box at MIN_CELL px each. `w` is a width measured at the last layout
+// (measureMetrics); the live read is a first-render fallback only, so a poll never forces a
+// synchronous layout just to count cells.
+function cellsThatFit(box, w) {
+  w = w || box.clientWidth || 600;
   return Math.max(1, Math.floor((w + GAP) / (MIN_CELL + GAP)));
 }
 // Cards per cell from 1, 2, 3, 4, 5, 10, 20, 25, 50, 100: the smallest that fits.
@@ -359,16 +361,36 @@ function renderStreams(d) {
   setHTML(tc[LANDED_AT], frac(sum.landed, all, digits));
   setText(tc[COST_AT], money(sum.cost));
   setText($("streams-sub"), keys.length + " streams · " + landedStreams + " landed · " + held + " held");
-  // the "landed" header is centred over its n / total cell: same width as the cell, text centred
-  var lw = tc[LANDED_AT].offsetWidth ? tc[LANDED_AT].offsetWidth + "px" : "";
-  if (lw && box._head.children[LANDED_AT].style.width !== lw) box._head.children[LANDED_AT].style.width = lw;
+  // the "landed" header is centred over its n / total cell: same width as the cell, text centred.
+  // The width is measured by measureMetrics at the last layout, not read here: a read after the
+  // writes above would force a synchronous layout on every poll (this card).
   return { sum: sum, all: all };
 }
+
+// Widths a poll needs, measured once per layout — load, resize and fit — instead of every POLL_MS:
+// reading clientWidth/offsetWidth/getComputedStyle forces a synchronous layout, and a page-wide
+// reflow once a second is what starved the browser's smooth scroll under a held Page Down (this
+// card; README's rule that the poll does no layout work). measureMetrics runs on load, on resize
+// (registered before the renderers' resize listeners, so it refreshes before they read the cache),
+// and at the end of fitTables, the one place a fit-key change lands. It also applies the streams
+// "landed" header's width, so renderStreams never reads the cell's offsetWidth after its writes.
+var METRICS = { rem: 0, pie: 0, overall: 0, landedW: 0 };
+function measureMetrics() {
+  METRICS.rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  var pie = $("pie"); if (pie) METRICS.pie = pie.clientWidth;
+  var ob = $("overall"); if (ob) METRICS.overall = ob.clientWidth;
+  var st = $("streams");
+  if (st && st._total && st._head) {
+    METRICS.landedW = st._total._c[LANDED_AT].offsetWidth;
+    if (METRICS.landedW) st._head.children[LANDED_AT].style.width = METRICS.landedW + "px";
+  }
+}
+window.addEventListener("resize", measureMetrics);
 
 var overallLast = null;
 function renderOverall(sum, all) {
   overallLast = { sum: sum, all: all };
-  var box = $("overall"), per = cardsPerCell(all, cellsThatFit(box)), n = Math.ceil(all / per);
+  var box = $("overall"), per = cardsPerCell(all, cellsThatFit(box, METRICS.overall)), n = Math.ceil(all / per);
   var share = allocate(sum, all, n), classes = [];
   STATES.forEach(function (st) { for (var i = 0; i < share[st]; i++) classes.push(st); });
   setCells(box, classes, n);
@@ -654,27 +676,98 @@ function setLive(since) {
 function setLiveHTML(e, s) { if (e.innerHTML !== s) e.innerHTML = s; }
 var DEBUG_FLASH = /(?:^|[?&])debug=flash(?:&|$)/.test(location.search), prevSig = null;
 // The full form of a table, unless any of its rows or cells would overflow: then the compact form.
-// Measured with the class removed and set again in the same task, so nothing flickers.
+// The fit follows README's rule that the poll does no layout work: it runs on load, on resize, and
+// from render() only when fitKey(d) changes, and it measures the full form without toggling .compact
+// on a live panel that keeps it (an off-screen copy is measured instead), so a held PageDown is
+// never starved by a style or layout pass once a second (the owner 2026-10-11: "weird slowness").
+function overflow(box) {
+  return [].some.call(box.querySelectorAll(".row"), function (r) {
+    if (r.scrollWidth > r.clientWidth + 1) return true;
+    // a number's flash tint bleeds 6 px into the gutter by design (.fv), so numbers get 7 px of slack
+    return [].some.call(r.children, function (c) {
+      var slack = (c.classList.contains("num") || c.classList.contains("frac")) ? 7 : 1;
+      // a name that does not fit is ellipsized (full text on hover), never a reason for the compact layout (the owner 11:50 AM)
+      if (c.classList.contains("name")) return false;
+      return c.offsetParent !== null && !c.classList.contains("cells") && c.scrollWidth > c.clientWidth + slack;
+    });
+  });
+}
 function fitTables() {
   ["streams", "fleet", "friends", "providers"].forEach(function (id) {
     var panel = document.querySelector(".panel." + id), head = panel && panel.querySelector(".row.head");
     if (!head) return;
-    panel.classList.remove("compact");
-    // every row, not only the header: a row's pill or name can be wider than its header
-    var over = [].some.call(panel.querySelectorAll(".row"), function (r) {
-      if (r.scrollWidth > r.clientWidth + 1) return true;
-      // a number's flash tint bleeds 6 px into the gutter by design (.fv), so numbers get 7 px of slack
-      return [].some.call(r.children, function (c) {
-        var slack = (c.classList.contains("num") || c.classList.contains("frac")) ? 7 : 1;
-        // a name that does not fit is ellipsized (full text on hover), never a reason for the compact layout (the owner 11:50 AM)
-        if (c.classList.contains("name")) { if (c.scrollWidth > c.clientWidth + 1) c.title = c.textContent; return false; }
-        return c.offsetParent !== null && !c.classList.contains("cells") && c.scrollWidth > c.clientWidth + slack;
-      });
+    // The full form is measured on an off-screen, visible, natural-width copy: neither .compact
+    // (the point of the measure) nor .folded. A folded panel's .scroll is display:none, so its
+    // rows read zero widths and would wrongly clear .compact on a live panel; taking both classes
+    // off the copy measures the layout the panel shows when it is open, folded or not, and never
+    // toggles a class on the live panel between the reads (the reader's fix, this card, attempt 4).
+    var copy = panel.cloneNode(true);
+    copy.classList.remove("compact"); copy.classList.remove("folded");
+    copy.style.position = "absolute"; copy.style.top = "0"; copy.style.left = "-10000px"; copy.style.visibility = "hidden";
+    // the copy carries the panel's own width: an absolute box would otherwise shrink to fit its
+    // content and answer for a page no one sees (stella's hold, this card)
+    if (panel.offsetWidth) copy.style.width = panel.offsetWidth + "px";
+    document.body.appendChild(copy);
+    var over = overflow(copy);
+    copy.remove();
+    if (over) panel.classList.add("compact"); else panel.classList.remove("compact");
+    // an ellipsized name in the full form carries its full text on hover; the fit sets it on the
+    // live rows, and the panel is already in hand (no document-wide query, no forced layout)
+    [].forEach.call(panel.querySelectorAll(".row .name"), function (c) {
+      if (c.scrollWidth > c.clientWidth + 1) c.title = c.textContent;
     });
-    if (over) panel.classList.add("compact");
   });
+  measureMetrics();
+}
+// A fold or unfold shows or hides a panel's scroll body (index.html: .panel.folded > .scroll),
+// so the layout can differ from the last fit. Re-measure after the toggle lands, so a panel the
+// fit measured hidden is fit again now that it shows (the reader's fix, this card, attempt 4);
+// without it a wrong .compact would persist until a resize or a fit-key change.
+function fitOnFold(e) {
+  var b = e.target && e.target.closest ? e.target.closest(".panel-head .fold") : null;
+  if (b) setTimeout(fitTables, 0);
+}
+window.addEventListener("click", fitOnFold);
+// The fit key: the text each panel's rows draw, from the data (never the DOM), so render() fits
+// only when the layout can have changed. It follows the rendered names, status and tags — a
+// stream's display name, its status pill and its tag line, a bud's label, a provider's state and
+// note — and folds every digit to one character, so a figure that keeps its width leaves the key
+// alone and a stable poll does no width measurement at all (stella's hold, this card). A new row,
+// a longer name or a new tag moves it.
+function shape(s) { return String(s == null ? "" : s).replace(/[0-9]/g, "#"); }
+function money0(c) { return c === null ? "-" : money(c); }
+function budKey(k, tab) {
+  var m = tab[k] || {};
+  return [shape(budLabel(k, tab)), shape(shownStatus(m.status)), shape(int(m.working)), shape(int(m.width)),
+    shape(int(m.done)), shape(int(m.ready)), shape(m.window || "")].join("\u0001");
+}
+function fitKey(d) {
+  d = d || {};
+  var t = d.tables || {}, work = t.work || {}, merge = t.merge || {}, states = {}, arch = archivedSet(d);
+  (d.streams || []).forEach(function (s) { states[s.Stream] = s; });
+  var streams = streamOrder(d).filter(function (k) { return !arch[k]; }).map(function (k) {
+    var w = work[k] || {}, m = merge[k] || {}, s = states[k] || {}, c = {}, total = 0;
+    FLOW.forEach(function (st) { c[st] = int(w[st]); total += c[st]; });
+    var tags = []; if (int(m.stuck) > 0) tags.push(m.stuck + " stuck"); if (m.ci === "red") tags.push("ci red");
+    return [shape(s.Display || k), shape(streamStatus(s.State, c, total)[0]), shape(tags.join(" · ")),
+      shape(money0(cents(w.cost))), shape(c.landed), shape(total)].join("\u0001");
+  }).join("\n");
+  var buds = function (name) { var tab = t[name] || {}; return Object.keys(tab).map(function (k) { return budKey(k, tab); }).join("\n"); };
+  var providers = Object.keys(t.providers || {}).map(function (k) {
+    var p = t.providers[k] || {};
+    return [shape(k), shape(providerState(p.state)[0]), shape(money0(cents(p.balance))), shape(money0(cents(p.spend_hour))), shape(p.note || "")].join("\u0001");
+  }).join("\n");
+  return ["streams:" + streams, "fleet:" + buds("fleet"), "friends:" + buds("friends"), "providers:" + providers].join("|");
+}
+var lastFitKey = null;
+function fitIfChanged(d) {
+  var k = fitKey(d);
+  if (k === lastFitKey) return; // the layout cannot have changed: no style or layout pass this poll
+  lastFitKey = k;
+  fitTables();
 }
 window.addEventListener("resize", fitTables);
+
 // Spend row (the owner 2026-10-04 10:15 AM): the pie of cards by tier and the ten most expensive streams.
 var TIERS = ["flash", "pro", "heavy", "frontier"], topN = 10, lastSpendData = null;
 window.addEventListener("resize", function () { if (lastSpendData) renderTopStreams(lastSpendData); });
@@ -771,9 +864,11 @@ function renderTopStreams(d) {
   rows.sort(function (a, b) { return b.cost - a.cost; });
   var cols = String(order.length + 1); // the tiers with spend, then total
   if (box.style.getPropertyValue("--tier-cols") !== cols) box.style.setProperty("--tier-cols", cols);
-  var pie = $("pie"), rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  // the root font size and the pie's width are measured once per layout (measureMetrics), never
+  // re-read on a poll: a computed-style or a width read forces a synchronous layout (this card)
+  var pw = METRICS.pie, rem = METRICS.rem || 16;
   var n = 10;
-  if (pie && pie.clientWidth) n = Math.max(3, Math.min(rows.length, Math.round((pie.clientWidth + 4 * rem - 4 * rem - 1 * rem) / (5 * rem))));
+  if (pw) n = Math.max(3, Math.min(rows.length, Math.round((pw + 4 * rem - 4 * rem - 1 * rem) / (5 * rem))));
   topN = n;
   // the rows are keyed by stream and patched in place like every other table's; the header and
   // each row grow or lose cells at the end when the tiers with spend change
@@ -857,7 +952,7 @@ function render(d) {
   renderProviders(d);
   if (SHOW_ALL) renderReaders(d);
   renderHero(d, s, ft);
-  fitTables();
+  fitIfChanged(d);
   if (DEBUG_FLASH) { // ?debug=flash: one line per refresh, same=1 when the rendered data did not change
     var sig = JSON.stringify([d.landed, d.all, d.summary, d.coordinator, d.epoch, d.machine, d.tables.work, d.tables.fleet, d.tables.friends || null,
       (d.streams || []).map(function (x) { return [x.Stream, x.State]; }), d.tables.merge]);
@@ -984,6 +1079,7 @@ setInterval(function () { if (stream && Date.now() - streamHeard > STREAM_SILENT
 // pills, the clock or the button after load.
 
 // theme: always dark (the owner 2026-10-04 2:21 PM: no light theme, no toggle)
+measureMetrics(); // the widths a poll reads, measured once here and once per fit, never per POLL_MS
 startPoll();
 connectStream();
 
