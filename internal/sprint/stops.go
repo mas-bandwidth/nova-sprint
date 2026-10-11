@@ -524,8 +524,17 @@ var stopKindOf = map[string]string{
 	NFriendStalled:  StopKindFriendStalled,
 }
 
-// stopsDigest writes the tick's digest of the stops still holding when one is due (above).
+// stopsDigest writes the tick's digest of the stops still holding when one is due (above). The
+// pass's notify (steps_tick.go) closes, in this same plan, every open stop judgment whose
+// condition no longer holds: a member that came back up, a stop the plan ended. Such a judgment
+// is not a stop that still holds (tla/CoordinatorPass.tla, Kind = "stop": PushedOnlyWhileRaised,
+// ClosedWhenCleared; docs/SPEC-SPRINT.md section 8, "The coordinator's pass"), so the digest
+// leaves it out even though the snapshot it reads is the one before the plan.
 func stopsDigest(p *Plan, s *Snapshot, r TickReq) {
+	closed := map[string]bool{}
+	for _, o := range p.Closes {
+		closed[o.Note.ID] = true
+	}
 	var clock *Open
 	for i, o := range s.Acked {
 		if o.Note.Type == NStopsDigestClock {
@@ -541,7 +550,7 @@ func stopsDigest(p *Plan, s *Snapshot, r TickReq) {
 	due := false
 	for _, o := range s.Open {
 		n := o.Note
-		if n.Kind != Judgment || !slices.Contains(StopTypes, n.Type) || seen[n.ID] {
+		if n.Kind != Judgment || !slices.Contains(StopTypes, n.Type) || seen[n.ID] || closed[n.ID] {
 			continue
 		}
 		seen[n.ID] = true

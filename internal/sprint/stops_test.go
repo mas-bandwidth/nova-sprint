@@ -146,6 +146,56 @@ func TestAMemberDownTheCoordinatorDidNotHoldIsRaisedAgainUntilItIsHeld(t *testin
 	assert.False(t, ok, "and the record no longer lists it")
 }
 
+// The digest counts only the stops that still hold (stops.go, stopsDigest; tla/CoordinatorPass.tla,
+// Kind = "stop": PushedOnlyWhileRaised, ClosedWhenCleared): a stop the same plan closes, because
+// the member came back up, must not be counted or named by the digest the tick writes in that same
+// plan, and when no stop is left the tick writes neither the digest nor its clock.
+func TestStopsDigestCountsOnlyTheStopsStillHolding(t *testing.T) {
+	t.Parallel()
+	r := newHoldRig(t, 2, 0)
+	r.tickBeating(time.Second, "m1", "m2")
+
+	// both stop beating: past the dwell each is a stop, and no digest has been written yet
+	r.tickBeating(time.Minute)
+	r.tickBeating(time.Minute)
+	r.tickBeating(90 * time.Second)
+	require.NotNil(t, r.openNote(sprint.NStopMemberDown, "m1"), "m1 down: a stop")
+	require.NotNil(t, r.openNote(sprint.NStopMemberDown, "m2"), "m2 down: a stop")
+	require.Equal(t, 0, r.countNotes(sprint.Happened, sprint.NStopsDigest, ""), "the stops are younger than PassEvery: no digest yet")
+
+	// m1 comes back up: the pass closes its judgment, and the digest, past PassEvery, is due in
+	// the same tick; it must count and name only the stop that still holds (m2)
+	r.tickBeating(sprint.PassEvery+time.Minute, "m1")
+	assert.Nil(t, r.openNote(sprint.NStopMemberDown, "m1"), "m1 is up: its stop closes")
+	require.NotNil(t, r.openNote(sprint.NStopMemberDown, "m2"), "m2 is still down: its stop holds")
+	digest := lastDigestNote(r)
+	require.NotNil(t, digest, "PassEvery has run: one digest is due")
+	assert.Contains(t, digest.What, "1 automatic stops still hold (1 member-down)", "the digest counts only the stop that still holds")
+	assert.Contains(t, digest.What, " m2 ", "the digest names the stop that still holds")
+	assert.NotContains(t, digest.What, " m1 ", "the digest never names the stop the same plan closes")
+
+	// both up: no stop holds, so the tick writes neither the digest nor its clock
+	digests := r.countNotes(sprint.Happened, sprint.NStopsDigest, "")
+	clocks := r.countNotes(sprint.Acknowledged, sprint.NStopsDigestClock, "")
+	r.tickBeating(sprint.PassEvery+time.Minute, "m1", "m2")
+	assert.Nil(t, r.openNote(sprint.NStopMemberDown, "m1"), "up: m1's judgment closes")
+	assert.Nil(t, r.openNote(sprint.NStopMemberDown, "m2"), "up: m2's judgment closes")
+	assert.Equal(t, digests, r.countNotes(sprint.Happened, sprint.NStopsDigest, ""), "no stop holds: no digest")
+	assert.Equal(t, clocks, r.countNotes(sprint.Acknowledged, sprint.NStopsDigestClock, ""), "and no new clock")
+}
+
+// lastDigestNote is the digest the tick wrote last, nil when it wrote none.
+func lastDigestNote(r *holdRig) *sprint.Note {
+	var out *sprint.Note
+	for _, n := range r.allNotes() {
+		if n.Kind == sprint.Happened && n.Type == sprint.NStopsDigest {
+			x := n
+			out = &x
+		}
+	}
+	return out
+}
+
 func TestACardPinnedToAFriendWhoIsNotUpIsRaisedUntilUnpinned(t *testing.T) {
 	t.Parallel()
 	r := newHoldRig(t, 0, 0)
