@@ -53,6 +53,8 @@ const (
 const (
 	FReady     = "ready"
 	FWorking   = "working"
+	FFinished  = "finished"
+	FRedealt   = "redealt"
 	FDone      = "done"
 	FWithdrawn = "withdrawn"
 	Gone       = ""
@@ -232,7 +234,7 @@ type WorkCard struct {
 	Primary string
 	Attempt int
 	Member  string
-	Place   string // FReady, FWorking, FDone, FWithdrawn, Gone
+	Place   string // FReady, FWorking, FFinished, FRedealt, FDone, FWithdrawn, Gone
 	Gen     int
 	OK      string // "", "ok" or "failed"
 	// Redeals is how many times the attempt was dealt again after a take of
@@ -762,6 +764,28 @@ func (s State) OkReaders(p string) []string {
 
 // Acceptable is SprintTables.tla Acceptable(p) (Broken = "none").
 func (s State) Acceptable(p string) bool { return len(s.OkReaders(p)) >= 2 }
+
+// workVerdict is the readers' verdict on the primary's attempt, as
+// sprint.readVerdict reads it: "failed" when a read found it broken, "ok"
+// when two different readers read it ok, "" while neither. The model's
+// readers read two at a time (ReadsNeeded is 2 for a pro card).
+func (s State) workVerdict(p string, attempt int) string {
+	ok := map[string]bool{}
+	for _, r := range s.Readers {
+		if c, exists := s.Reads[RC(p, attempt, r)]; exists && c.Place != Retired {
+			switch c.Verdict {
+			case "broken":
+				return "failed"
+			case "ok":
+				ok[r] = true
+			}
+		}
+	}
+	if len(ok) >= 2 {
+		return "ok"
+	}
+	return ""
+}
 
 // AskChoice is the readers the ask asks p of now (ReadsWanted), and whether the
 // first is the finder out of turn (sprint.finderFirst, sprint.askPicks): p's

@@ -33,6 +33,6 @@ func TestALateLandFinishesTheFailedAttemptOnTheStore(t *testing.T) {
 	assert.Equal(t, "ok", pr.F("result"), "the late LAND finishes the attempt")
 	assert.Equal(t, readHead, pr.F("head"))
 	assert.Equal(t, 1, pr.Int("attempt"), "no second attempt")
-	assert.Equal(t, sprint.DoneOK, s.Fleet.Card(wc.ID).Col)
+	assert.Equal(t, sprint.DoneFailed, s.Fleet.Card(wc.ID).Col, "a late report for a deadline-failed attempt stays failed")
 	assert.Empty(t, r.openOnCard(sprint.NWorkFailed, "r-1"), "the failed judgment is closed")
 }

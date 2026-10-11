@@ -50,6 +50,7 @@ func (r *conflictRig) landWithCost(stream string, ids ...string) {
 		r.must(store.AcceptStep(sprint.AcceptReq{Sel: sprint.Sel{IDs: []string{id}}}))
 	}
 	r.must(store.MergeStep(sprint.MergeReq{Stream: stream, Cards: ids}))
+	r.must(verdictsStep())
 }
 
 // ledger is what the record keeps of a stream: each landed card with its cost, and the
