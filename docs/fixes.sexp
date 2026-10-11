@@ -919,6 +919,10 @@
     on the snapshot the conditions are counted on, so the route the judgment names as resting is exactly one
     the deal does not draw; a rest whose time has ended is not named and the card is dealt."
    :origin "card ready-over-reads-the-settled-rests.w2; the seat's v1.2.14 audit, 2026-10-11")
+  (fix "tick-watchdog-refuses-a-negative-deadline" :release "v1.2.14" :status "planned"
+   :title "run refuses a negative --tick-deadline"
+   :text "A negative --tick-deadline is refused right after the flags are parsed, through run's usual refuse helper, before the loop starts or a server listens; the refusal names the flag, the value and that 0 waits for ever. Before, tickDeadlineOf returned 0 for any least <= 0 and tickWithin waited for ever when d <= 0, so --tick-deadline -1s switched the watchdog off with nothing said. 0 still waits for ever and every positive value behaves as today."
+   :origin "nova-tools#5173 (transferred here at the split), roadmap item tick-watchdog-bounded-diagnostics, its negative-deadline half; this card")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
