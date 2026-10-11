@@ -981,7 +981,12 @@
     named by exactly one row's module column, every row's status is what the drift reads found, and
     every row that is not current names in owed_by the v1.2.12 card that owes it. Twenty-two rows are
     added, nineteen are changed, and a row marked missing names module \"-\"."
-   :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
+    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
+
+  (fix "tla-sprintrules-judgment-rules-part" :release "v1.2.12" :status "planned"
+   :title "SprintRules models the judgment_rules.go rules in a Part \"judgments\""
+   :text "Models only, no product change. tla/SprintRules.tla gains Part \"judgments\": the three rules of internal/sprint/judgment_rules.go (friend-take, read-late, hold-need), each rule's guard and answer as one action, a judgment answered at most once and never reopened by the same rule, with the invariants StartedStaysHers, AskedOnceAnAttempt, WaitsUntilLanded and DroppedIsAMind. One reversed witness, MCSprintRulesJudgmentsBrokenTakeStarted, drops the friend-take guard that a friend who has started a card keeps it, and fails StartedStaysHers."
+   :origin "this card; v1.2.12 inventory item T36 (SprintRules, last of four: the judgments the tick raises, and the answers to them, are not in the module), read at nova-sprint main 00c54ba2e, 2026-10-11")
 
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
