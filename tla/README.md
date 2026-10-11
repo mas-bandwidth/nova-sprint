@@ -60,6 +60,11 @@ commands. Its source is not part of this repository. Check the runner's help
 for your version, and record new results against the actual model inputs
 you ran.
 
+The same checks run without a bench: `.github/workflows/tlc.yml`, on GitHub-hosted runners,
+downloads the pinned `tla2tools.jar` (its digest in `tla/tla2tools.sha256`, TLA+ Tools 2.0
+2024-08-08) and runs every required TLC group each night, the stale groups on a pull request
+that touches `tla/`, `pkg/tlc/` or `tools/tlacheck/`.
+
 Return to [Contributing](../CONTRIBUTING.md) for the ordinary build and test
 checks, or [the documentation index](../docs/README.md) for the user guides.
 
