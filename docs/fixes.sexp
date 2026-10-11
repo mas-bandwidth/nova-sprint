@@ -68,7 +68,24 @@
    (release "v1.2.15" :status "planned"
     :text "The next small product fixes, one concern each."))
   :items
-   ((fix "the-rebalance-levels-reads-every-tick-all-at-once" :release "v1.2.12" :status "planned"
+   ((fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
+     :title "A member fleet sync adds is held until its own probe passes"
+     :text "A member the inventory names and the fleet lacks was added down until it beats, so
+      presence's beat brought it up at its width and dealt it work without any probe: the gate in
+      fleetStepPlan (internal/sprint/steps_work.go) is keyed on the sprint not knowing the member
+      (MemberCtl nil), and the sync's add had already written the control card. The add now writes
+      the card held by the probe (HeldByProbe, internal/sprint/hold.go): its status derives held, so
+      presence never brings it up, FleetDrift writes nothing more for it, and HeldInInventory does
+      not name it as the coordinator's. fleetStepPlan refuses a probe-held member in the same new-member
+      words until --probe passed, which is the one path that lifts the hold (faultClear, the
+      sync's release and the coordinator's fleet down on an already-held member all leave it
+      alone; the coordinator's hold keeps the probe's mark rather than dropping it). cmd/nova-sprint
+      fleet sync reports the line to run for each
+      member it added (EnvProbeLine), and tla/ProviderBudget.tla gains the SyncAdd action (placed
+      held by the probe, not known) with its acceptance through a passed probe and the \"newup\"
+      witness, which now also makes a SyncAdd known with no probe and breaks NewMemberProbed."
+     :origin "this card; the seat's v1.2.14 audit 2026-10-11 (a sync-added member skips its probe), checked against nova-sprint main 00c54ba; the owner's rule of 2026-10-11 cited at steps_work.go near line 2526")
+    (fix "the-rebalance-levels-reads-every-tick-all-at-once" :release "v1.2.12" :status "planned"
      :title "The rebalance levels reads every tick, all at once"
      :text "The Rebalance (internal/sprint/rebalance.go) skipped every card whose kind was not work, so a member that was idle when a burst of reads was dealt sat with dozens of read cards queued while the rest of the fleet had idle lanes, and nothing moved them until it drained its own queue (the owner, 2026-10-11 ~18:50Z: \"it seems like we could possibly rebalance this a bit better\", \"Not one card at a time per-tick\", \"This should NOT be manual.\"; the same shape ~12:40Z). The rebalance now has a read pass: a read card queued ready on a unit whose lanes all work goes, in the same rebalance and the same tick, to a unit with an idle lane whose reader row serves the read's tier and that has not read the card at this attempt, as many as the idle lanes take (a read is half a slot); never back to a row it was rebalanced off (FieldRebalancedFrom), to a reader row that does not serve its tier, or to a reader that already read it; it keeps its attempt and is dealt again under the new reader's identity, the record on the row it left retired. All eligible cards move in one tick, never one per tick. The hand verb fleet level now runs the rebalance after the level (FleetReq Rebalance) and takes --dry-run, so it reports what the tick would move, reads included: on the 36-read shape its moved count is 36, not 0; the tick's level part is unchanged, the rebalance is its own part after the deal. The read-card dealer now keeps an epoch-scoped fleet cursor per read tier (read_deal_index_<tier>), persists it through TickDeal, and deals each read cheapest first (an idle lane, then the nearest served tier, then the most idle lanes) with the cursor breaking a tie; a reader that refused the read at staging is skipped, and ineligible, duplicate, and full readers are skipped. Tests TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick, TestTheRebalanceReadNeverMovesToAnIneligibleOrOldRow, TestTheRebalanceReadNeverMovesToAReaderThatAlreadyReadIt, and TestTheRebalanceReadNeverMovesBackToARowItWasRebalancedOff in internal/sprint/rebalance_reads_test.go, TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick and TestTheLevelVerbRebalancesTheReadsToo in internal/sprint/rebalance_test.go, plus cursor, refusal, and restart coverage in internal/sprint/deal_test.go (docs/SPEC-SPRINT.md section 1, the rebalance and read-card deal)."
      :origin "this card, the-rebalance-levels-reads-every-tick-all-at-once.w9, from the owner, 2026-10-11 ~18:50Z watching the fleet table (b3 held 36 ready behind 16 working, mini-m5 9 behind 16, while b1, b2, hetzner1, hetzner2, space, studio and vision had 2 to 9 idle lanes each), and the same shape ~12:40Z (\"ready cards are sitting dead on freddy while he's full, and they should be assigned elsewhere via rebalancing\").")
