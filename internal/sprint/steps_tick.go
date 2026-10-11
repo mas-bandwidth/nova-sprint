@@ -1744,7 +1744,10 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 	holds := map[string]bool{}
 	updated := map[string]bool{}
 	update := func(n Note, what string, decisions, primaries []string) {
-		same := n.What == what &&
+		// the material is what a standing judgment is rewritten for, its key being
+		// type and subject alone: the readers behind's own numbers, never review's
+		// count, which moves every tick (readers_behind.go, MaterialWhat)
+		same := MaterialWhat(n.Type, n.What) == MaterialWhat(n.Type, what) &&
 			(len(decisions) == 0 || slices.Equal(n.Decisions, decisions)) &&
 			(len(primaries) == 0 || slices.Equal(n.Primaries, primaries))
 		if same || updated[n.ID] {
