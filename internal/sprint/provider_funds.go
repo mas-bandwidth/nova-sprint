@@ -77,23 +77,27 @@ func outOfCredit(line string) bool {
 
 // The transient classes of a provider failure (pkg/swarm ProviderCause): a rate limit
 // (a 429, the provider's or upstream of it), the provider's own server error, and the
-// provider not answering in time. Each is the provider's, never the card's, so enough of
-// them on a route rest it (RestsDue); a take that ended with no result is none of them.
+// provider not answering in time. Each is the provider's, never the card's. Enough 5xxs and
+// timeouts on a route rest it (RestsDue, transient); a rate limit only backs the route off
+// briefly (rateBackoffs; tla/RateBackoff.tla); a take that ended with no result is none.
 const (
 	classRateLimited = "rate-limited"
 	class5xx         = "provider-5xx"
 	classTimeout     = "timeout"
 )
 
-// transient says a take's line is the provider's own transient failure (a rate limit, a
-// 5xx, a timeout), the line the member writes (`provider: class=<c> status=<n|-> msg=<m>`).
-// A no-result line is never one: its cause is the model's output, not the provider.
+// transient says a take's line is a provider failure the 3-in-10 rest counts (a 5xx, a
+// timeout), the line the member writes (`provider: class=<c> status=<n|-> msg=<m>`). A
+// no-result line is never one: its cause is the model's output, not the provider.
 func transient(line string) bool {
 	if IsNoResult(strings.TrimSpace(line)) {
 		return false
 	}
 	m := causeRE.FindStringSubmatch(strings.TrimSpace(line))
-	return m != nil && (m[1] == classRateLimited || m[1] == class5xx || m[1] == classTimeout)
+	// a rate limit never counts here: it stalls the route briefly from its own records
+	// (RestsDue, rateBackoffs), never toward the 3-in-10 rest (a-rate-limited-refusal-
+	// never-fails-the-cardc; tla/RateBackoff.tla)
+	return m != nil && (m[1] == class5xx || m[1] == classTimeout)
 }
 
 // IsRateLimited says a failed take's report is the provider's rate limit: class
