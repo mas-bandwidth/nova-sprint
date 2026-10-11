@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (209)
+- [The sprint machine](#the-sprint-machine) (208)
 - [Setup, release and operations](#setup-release-and-operations) (27)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (20)
@@ -1693,14 +1693,6 @@ Drive letter paths, more than eight globs, comma only paths, unknown kinds, and 
 Target: v1.3
 
 From: issue #1853; issue #1728; issue #2584; issue #2605; issue #2728
-
-### Card lint refuses valid cards: make gates and text inside fenced blocks
-
-Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside fenced blocks. It should accept both.
-
-Target: v1.3
-
-From: issue #1994; issue #2302; issue #3470
 
 ### A mechanical guard check as a review verb
 

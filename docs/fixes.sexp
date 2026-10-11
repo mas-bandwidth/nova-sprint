@@ -361,4 +361,10 @@
      at-width facts are that dependency's width fact, the seat check's fleet and friends lines
      counting up/held/down alone; and the machine's own tick late (pushlate.go) is not joined, the
      loop line holding only the LoopSilence bound."
-    :origin "this pull request")))
+    :origin "this pull request")
+
+   (fix "swarm-lint-card-false-refusals" :release "v1.2.9" :status "planned"
+    :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
+    :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
+     fenced blocks. It should accept both."
+    :origin "issue #1994; issue #2302; issue #3470")))
