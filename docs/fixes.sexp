@@ -244,6 +244,13 @@
     stream can admit a card based on main or dev without a sentinel card or a follow-up stream set."
    :origin "the seat ledger bug 14")
 
+  (fix "stream-remove-removes-what-exists" :release "v1.2.6" :status "in-progress"
+   :title "stream remove takes every stream that exists and names each that does not"
+   :text "One name that is no row of the work or merge table no longer refuses the whole batch: stream
+    remove takes off every named stream that may leave, reports each name that may not, and exits 1
+    only when nothing was removed or a removal failed."
+   :origin "the seat ledger v1.2.4-held-2026-10-10, bug 12; card stream-remove-removes-what-exists")
+
    (fix "inbox-push-write-once-race" :release "v1.2.9" :status "planned"
     :title "Inbox push cannot overwrite a published judgment"
     :text "Two overlapping clients share one temporary path, so a second write can change the published
