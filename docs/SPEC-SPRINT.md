@@ -4202,7 +4202,11 @@ refuses with it, one line per case: `tla/RUNS.tsv:<line> has no current run reco
 case <config> (group <group>) and the change edits <files>; run make tlc TLC_GROUP=<group>
 ...`, the line the case's stale row, or the one where a missing row is owed. A base's stale
 record is not the card's: a head that edits no model is not asked for one, and a tree with
-no `tla/CASES.tsv` is not checked. A generated card whose PATHS reach `tla/` runs the model
+no `tla/CASES.tsv` is not checked. A head that edits `tla/CASES.tsv` alone is checked the
+same way, and the lander holds the plan to the tree with tlacheck's own loader
+(`tlc.LoadCases`): a config with no row, a row whose config file is gone, or a row whose
+module is absent is refused on `tla/CASES.tsv`, its line naming each file in name order. A
+generated card whose PATHS reach `tla/` runs the model
 in its own STEP 4 gate and carries `tla/RUNS.tsv` on its PATHS line (docs/SPEC-CARD-CONTRACT.md
 section 6). The test is internal/sprint/land_records_test.go
 (`TestTheLanderWantsARunRecordForAnEditedModel`, on a real merge commit).

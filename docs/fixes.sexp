@@ -879,4 +879,12 @@
 
   (fix "two-ci-flakes-text-file-busy-and-git-maintenance" :release "v1.2.10" :status "shipped"
    :title "Two CI flakes: exec'd stubs written under the fork lock, and git's auto maintenance off in tests"
-   :origin "PR #88")))
+   :origin "PR #88")
+  (fix "a-landing-refuses-a-tla-cfg-the-case-plan-does-not-name" :release "v1.2.14" :status "planned"
+   :title "The lander refuses a tla/CASES.tsv that does not match the tree"
+   :text "recordsRefusals holds the merged tree to tlc.LoadCases, tlacheck's own loader, after it
+    parses the plan: a head that adds an MC*.cfg with no row, removes a row under a config that
+    stays, or leaves a row's module absent is refused on tla/CASES.tsv, not landed. The check runs
+    when the diff edits tla/CASES.tsv alone, and LoadCases names each file, in name order, after
+    its opening words."
+   :origin "the seat, 2026-10-11, epoch 16; a-landing-refuses-a-tla-cfg-the-case-plan-does-not-name.w1")))

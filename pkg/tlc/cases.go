@@ -26,27 +26,34 @@ func LoadCases(root string) ([]Case, error) {
 	if err != nil {
 		return nil, err
 	}
-	var actual, named []string
+	inTree := map[string]bool{}
 	for _, p := range cfgs {
-		actual = append(actual, filepath.Base(p))
+		inTree[filepath.Base(p)] = true
 	}
-	seen := map[string]bool{}
+	named := map[string]bool{}
 	for _, c := range cases {
-		named = append(named, c.Config)
-		if seen[c.Config] {
+		if named[c.Config] {
 			return nil, fmt.Errorf("%s must name every MC*.cfg exactly once: %s is named twice", CasesFile, c.Config)
 		}
-		seen[c.Config] = true
+		named[c.Config] = true
 	}
-	sort.Strings(actual)
-	sort.Strings(named)
-	if strings.Join(actual, "\n") != strings.Join(named, "\n") {
-		return nil, fmt.Errorf("%s must name every MC*.cfg exactly once", CasesFile)
+	var problems []string
+	for p := range inTree {
+		if !named[p] {
+			problems = append(problems, p+" is under tla/ but not in "+CasesFile)
+		}
 	}
 	for _, c := range cases {
-		if info, err := os.Stat(filepath.Join(dir, c.Module)); err != nil || !info.Mode().IsRegular() {
-			return nil, fmt.Errorf("missing instance module: %s", c.Module)
+		if !inTree[c.Config] {
+			problems = append(problems, c.Config+" is in "+CasesFile+" but has no file")
 		}
+		if info, err := os.Stat(filepath.Join(dir, c.Module)); err != nil || !info.Mode().IsRegular() {
+			problems = append(problems, c.Config+" names a module "+c.Module+" that has no file")
+		}
+	}
+	sort.Strings(problems)
+	if len(problems) > 0 {
+		return nil, fmt.Errorf("%s must name every MC*.cfg exactly once: %s", CasesFile, strings.Join(problems, "; "))
 	}
 	return cases, nil
 }

@@ -126,3 +126,52 @@ func TestTheLanderWantsARunRecordForAnEditedModel(t *testing.T) {
 		assert.Empty(t, refused)
 	})
 }
+
+// The lander holds the case plan to the tree (docs/SPEC-SPRINT.md section 7, the lander's
+// checks; tla/README.md): a head that adds an MC*.cfg with no tla/CASES.tsv row, or removes a
+// row under a config that stays, is refused on tla/CASES.tsv naming the file, the same check
+// tlacheck's loader makes; the same head with its row and a current record lands.
+func TestTheLanderHoldsTheCasePlanToTheTree(t *testing.T) {
+	t.Parallel()
+	base := with(recordsModels, map[string]string{"tla/RUNS.tsv": runsFor(t, recordsModels)})
+	foo := map[string]string{
+		"tla/MCFoo.cfg": "INIT Init\nNEXT Next\n",
+		"tla/MCFoo.tla": "---- MODULE MCFoo ----\nEXTENDS A\n====\n",
+	}
+	fooRow := "MCFoo.cfg\tMCFoo.tla\tpass\t-\tcheck\tgamma\trequired\t-\n"
+
+	t.Run("a config with no row is refused naming the file", func(t *testing.T) {
+		t.Parallel()
+		r := newMergeRig(t, base, foo)
+		_, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
+		require.NoError(t, err)
+		require.Len(t, refused, 1, "%v", refused)
+		assert.Equal(t, "tla/CASES.tsv", refused[0].File)
+		assert.Equal(t, 1, refused[0].Line)
+		assert.Contains(t, refused[0].What, "the case plan does not match the tree: ")
+		assert.Contains(t, refused[0].What, "MCFoo.cfg")
+	})
+	t.Run("a row removed under a config that stays is refused", func(t *testing.T) {
+		t.Parallel()
+		r := newMergeRig(t, base, map[string]string{"tla/CASES.tsv": "config\tmodule\texpected\tproperty\tdeadlock\tgroup\tgate\tdebt\n" +
+			"MCA.cfg\tMCA.tla\tpass\t-\tcheck\talpha\trequired\t-\n"})
+		_, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
+		require.NoError(t, err)
+		require.Len(t, refused, 1, "%v", refused)
+		assert.Equal(t, "tla/CASES.tsv", refused[0].File)
+		assert.Contains(t, refused[0].What, "MCB.cfg")
+	})
+	t.Run("the same head with its row and a current record lands", func(t *testing.T) {
+		t.Parallel()
+		planFoo := with(recordsModels, foo)
+		planFoo["tla/CASES.tsv"] = recordsModels["tla/CASES.tsv"] + fooRow
+		head := with(foo, map[string]string{
+			"tla/CASES.tsv": recordsModels["tla/CASES.tsv"] + fooRow,
+			"tla/RUNS.tsv":  runsFor(t, planFoo),
+		})
+		r := newMergeRig(t, base, head)
+		_, refused, err := sprint.RepairMerge(r.dir, r.git, r.before, nil)
+		require.NoError(t, err)
+		assert.Empty(t, refused)
+	})
+}

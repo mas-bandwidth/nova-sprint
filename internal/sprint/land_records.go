@@ -30,14 +30,18 @@ import (
 // fault.
 func recordsRefusals(dir, diff string) ([]DocFix, error) {
 	edited := map[string]bool{}
+	planEdited := false
 	for _, f := range diffcheck.Parse(diff) {
 		for _, p := range []string{f.Old, f.New} {
 			if modelFile(p) {
 				edited[p] = true
 			}
+			if p == "tla/"+tlc.CasesFile {
+				planEdited = true
+			}
 		}
 	}
-	if len(edited) == 0 {
+	if len(edited) == 0 && !planEdited {
 		return nil, nil
 	}
 	tla := filepath.Join(dir, "tla")
@@ -51,7 +55,24 @@ func recordsRefusals(dir, diff string) ([]DocFix, error) {
 	runsFile := "tla/" + tlc.RunsFile
 	cases, err := tlc.ParseCases(bytes.NewReader(plan))
 	if err != nil {
+		if len(edited) == 0 {
+			return nil, nil // a plan-only edit that is no plan leaves no model to hold
+		}
 		return []DocFix{{File: "tla/" + tlc.CasesFile, Line: 1, What: "cannot be read, so no edited model's run record can be checked: " + err.Error()}}, nil
+	}
+	// The plan is held to the tree with tlacheck's own loader (docs/SPEC-SPRINT.md section 7,
+	// the lander's checks; tla/README.md): a config with no row, a row with no config, or a row
+	// whose module is absent is the card's fault, the same one tlacheck refuses. A tree that
+	// holds no MC*.cfg declares no case for the plan to name, so it is not held (as one with no
+	// plan is not), which keeps a head that only appends to the plan's ledger from a check with
+	// nothing to hold it against.
+	if cfgs, err := filepath.Glob(filepath.Join(tla, "MC*.cfg")); err != nil {
+		return nil, err
+	} else if len(cfgs) > 0 {
+		if _, err := tlc.LoadCases(dir); err != nil {
+			return []DocFix{{File: "tla/" + tlc.CasesFile, Line: 1, What: "the case plan does not match the tree: " + err.Error() +
+				"; add the missing row (config, module, expected pass or the reversed witness's kind and property, deadlock, group, gate, debt) or take the file out, then run make tlc TLC_GROUP=<group> (tla/README.md)"}}, nil
+		}
 	}
 	runner, err := treeRunner(dir)
 	if err != nil {
