@@ -921,7 +921,8 @@
     :title "A report's stated verdict is never rewritten by keyword matching"
     :text "A miss against THE ONE THING LEFT may raise one seat judgment asking for the report to be read,
      but preserves the report's LAND and head and does not fail the worker. A redeal's CARRY line names
-     the newest successfully pushed head, replacing any stale carry in the brief."
+     the newest recorded pushed full SHA regardless of the attempt's outcome, replacing any stale
+     carry in the brief."
     :origin "this card; 2026-10-11; v1.2.11 bug fix")
 
   (fix "held-friend-reader-serves-nothing" :release "v1.2.6" :status "shipped"
