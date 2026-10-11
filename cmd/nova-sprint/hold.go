@@ -20,9 +20,10 @@ readers, friends and streams, one verb for the four, the coordinator's alone:
 a name held takes no new cards; what is dealt and not begun is handed back now
 (a member's ready cards dealt round the fleet, a reader's reads asked and not
 begun asked of another, a stream's ready work cards withdrawn); what is begun
-finishes, or with --return is handed back now too (a member's working cards
-dealt round the fleet, a reader's reads begun asked of another, a stream's
-working cards withdrawn to ready). A held friend keeps no card, with
+finishes, or with --return is handed back now too (a member that is up keeps its taken
+cards and hands back only its ready cards; a member that is down returns its dead working
+cards too; a reader's reads begun are asked of another, a stream's working cards are
+withdrawn to ready). A held friend keeps no card, with
 --return or without: every card on her row goes back to ready, begun or not, and
 a started one with a push carries its pushed head to the next taker. Its status reads held, the reason
 beside it (where --json --cards: holds; handover), and the hold is a line
@@ -69,7 +70,7 @@ func (a *app) cmdHoldKind(verb, kind string, release bool, args []string, stdout
 	reason := fs.String("reason", "", "why, in words: shown beside the held status and kept in the log; a hold wants one")
 	ret := false
 	if !release && kind != sprint.HoldFriend {
-		fs.BoolVar(&ret, "return", false, "hand back the work begun now too: a member's working cards dealt round the fleet, a reader's reads begun asked of another, a stream's working cards withdrawn to ready (default: what is begun finishes, but a held friend keeps no card either way)")
+		fs.BoolVar(&ret, "return", false, "hand back only a member's ready cards; when the member is down, its dead working cards too; hand back a reader's reads asked or begun or withdraw a stream's working cards (default: a member that is up keeps its taken cards and finishes them; what is begun finishes for other names, but a held friend keeps no card either way)")
 	}
 	dry := fs.Bool("dry-run", false, "check the names and the reason, print what would be held or released, and write nothing")
 	var repo listFlag
