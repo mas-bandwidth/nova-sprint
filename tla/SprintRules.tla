@@ -30,12 +30,13 @@
 \*   Window ticks, and the clear note when it recovers.
 \* Part "answers": one card's attempts under the three answers that took the seat's hand
 \*   loops (rules_read.go ruleReadBroken, harness_fault.go ruleHarness, steps_work.go
-\*   lateFinish): a broken read with a finding reworks the card with it, a broken read with
-\*   none is a mind's; work failed on a harness fault or a HOLD with findings is reworked with
-\*   the failure, any other failure is a mind's; a deadline fails an attempt while the
-\*   worker's report is still on its way, and that report, arriving while no later attempt
-\*   has started, finishes the attempt. Every rework is one attempt more and starts from the
-\*   head the attempt before pushed (a head here is its attempt's number).
+\*   lateFinish): a broken read with a finding reworks the card with it at any bound (a
+\*   finding is the fix, never read again), a broken read with none is a mind's; work failed
+\*   on a harness fault or a HOLD with findings is reworked with the failure, any other
+\*   failure is a mind's; a deadline fails an attempt while the worker's report (a LAND or a
+\*   HOLD) is still on its way, and that report, arriving while no later attempt has started,
+\*   finishes the attempt. Every rework is one attempt more and starts from the head the
+\*   attempt before pushed (a head here is its attempt's number).
 \*
 \* Part "episodes": a hard pin released past its bound, the cannot-ask judgment once a
 \*   wait, and a rule's answer consumed by the attempt it started (its own comment and
@@ -74,6 +75,8 @@
 \*   "stale"      finish refuses the report of an attempt the deadline failed, and the card
 \*                goes round again: LateReportFinishes
 \*   "faultnobound" the harness rule reworks a card at its attempt bound: AnswerAttemptsBounded
+\*   "answersmind" the read-broken rule leaves a finding at the bound for a mind instead of
+\*                reworking it: PartsAgree
 
 EXTENDS Integers, FiniteSets
 
@@ -88,11 +91,11 @@ Cols == {"absent", "waiting", "open", "landed", "dropped"}
 
 \* -- reads: the files a finding may name outside the card's first PATHS, and findings
 \* inside them (or naming no file)
-RdFiles == {"f1", "f2", "f3"}
+RdFiles == {"f1", "f2", "f3", "f4"}
 
 \* -- reads: the most times rules widen one card's PATHS in place (the code's
-\* MaxWidens; 2 here, so a third file outside PATHS reaches the cap)
-MaxWidens == 2
+\* MaxWidens; 3 here, so a fourth file outside PATHS reaches the cap)
+MaxWidens == 3
 RdFindings == RdFiles \cup {"in1", "in2"}
 
 \* -- every part's variables
@@ -102,7 +105,7 @@ VARIABLES col, need, blocked, twin,               \* twins
           rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, \* reads
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
-          anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, \* answers
+          anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anfixed, anhold, \* answers
           pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt \* episodes
 
 twinVars == <<col, need, blocked, twin>>
@@ -111,7 +114,7 @@ lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn>>
 rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed>>
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
-anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless>>
+anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anfixed, anhold>>
 epVars == <<pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
 vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
 
@@ -159,6 +162,8 @@ TypeOK ==
   /\ anfail \in AnFails \cup {None}
   /\ anlast \in AnFindings \cup {None}
   /\ anland \in BOOLEAN /\ anlost \in BOOLEAN /\ anfixless \in BOOLEAN
+  /\ anfixed \subseteq AnFindings
+  /\ anhold \in BOOLEAN
   /\ pup \in BOOLEAN /\ pcol \in {"ready", "mine", "away"} /\ pwait \in (0..MaxClock) \cup {-1}
   /\ pign \in BOOLEAN /\ pdw \in (0..MaxClock) \cup {-1} /\ eclk \in 0..MaxClock
   /\ ast \in {"waits", "asked", "gone"} /\ aatt \in 1..Cap /\ areason \in {"noreader", "room"}
@@ -180,6 +185,7 @@ Init ==
   /\ anst = "working" /\ anatt = 1 /\ anreworks = 0 /\ anhead = 0 /\ ancarry = 0
   /\ anfind = None /\ anfail = None /\ anlast = None
   /\ anland = FALSE /\ anlost = FALSE /\ anfixless = FALSE
+  /\ anfixed = {} /\ anhold = FALSE
   /\ pup = FALSE /\ pcol = "ready" /\ pwait = -1 /\ pign = FALSE /\ pdw = -1 /\ eclk = 0
   /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
   /\ rcol = "review" /\ rans = FALSE /\ ratt = 1
@@ -518,13 +524,16 @@ ReadAnswered == (rdst \in {"broken", "bound"}) ~> (rdst \notin {"broken", "bound
 \* Cap attempts on one brief
 AnAtBound(f) == (f # "empty" /\ f = anlast) \/ anatt >= Cap
 
-\* the outside: a reader finds the attempt broken with finding f (at the bound the read raises
-\* the brief's judgment instead); the attempt pushed its head
+\* the outside: a reader finds the attempt broken with finding f (a finding that is already the
+\* fix of a rework is never read again: anfixed); the attempt pushed its head. At the bound the
+\* read raises the brief's judgment instead, which the mind reworks (a finding inside PATHS at
+\* the bound is reworked, as Part reads' ReworkAtBound).
 AnReadBroken(f) ==
   /\ anst = "working"
+  /\ f \notin anfixed
   /\ anhead' = anatt /\ anfind' = f
   /\ anst' = IF f # "empty" /\ AnAtBound(f) THEN "bound" ELSE "broken"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfail, anlast, anland, anlost, anfixless>>
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfail, anlast, anland, anlost, anfixless, anfixed, anhold>>
 
 \* the outside: the attempt comes back failed the way k (at the attempt cap the finish raises
 \* the brief's judgment instead)
@@ -532,7 +541,7 @@ AnWorkFails(k) ==
   /\ anst = "working"
   /\ anhead' = anatt /\ anfail' = k
   /\ anst' = IF anatt >= Cap THEN "bound" ELSE "failed"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless>>
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anfixed, anhold>>
 
 \* the outside: the deadline fails the attempt (a harness fault) while the worker's LAND is
 \* still on its way
@@ -540,7 +549,15 @@ AnDeadline ==
   /\ anst = "working" /\ ~anland
   /\ anhead' = anatt /\ anfail' = "harness" /\ anland' = TRUE
   /\ anst' = IF anatt >= Cap THEN "bound" ELSE "failed"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anlost, anfixless>>
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anlost, anfixless, anfixed, anhold>>
+
+\* the outside: the deadline fails the attempt (a harness fault) while the worker's HOLD is
+\* still on its way
+AnDeadlineHold ==
+  /\ anst = "working" /\ ~anhold
+  /\ anhead' = anatt /\ anfail' = "harness" /\ anhold' = TRUE
+  /\ anst' = IF anatt >= Cap THEN "bound" ELSE "failed"
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anfixed>>
 
 \* the outside: the worker's late LAND arrives. While its attempt is failed and no later
 \* attempt has started, finish takes it: the attempt is done. Once a later attempt has
@@ -555,7 +572,20 @@ AnLateLand ==
               ELSE /\ anst' = "done" /\ anfail' = None
                    /\ UNCHANGED anlost
        ELSE UNCHANGED <<anst, anfail, anlost>>
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anfixless>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anfixless, anfixed, anhold>>
+
+\* the outside: the worker's late HOLD arrives; it finishes the attempt, as a late LAND does
+AnLateHold ==
+  /\ anhold
+  /\ anhold' = FALSE
+  /\ IF anst \in {"failed", "bound"}
+       THEN IF Broken = "stale"
+              THEN /\ anlost' = TRUE
+                   /\ UNCHANGED <<anst, anfail>>
+              ELSE /\ anst' = "done" /\ anfail' = None
+                   /\ UNCHANGED anlost
+       ELSE UNCHANGED <<anst, anfail, anlost>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anland, anfixless, anfixed>>
 
 \* a rework with fix f ("empty": no fix): one attempt more, from the head the attempt before
 \* pushed
@@ -566,14 +596,16 @@ AnRework(f) ==
   /\ ancarry' = IF Broken = "nocarry" THEN 0 ELSE anhead
   /\ anfixless' = (anfixless \/ f = "empty")
   /\ anst' = "working" /\ anfind' = None /\ anfail' = None
-  /\ UNCHANGED <<anhead, anland, anlost>>
+  /\ UNCHANGED <<anhead, anland, anlost, anhold>>
 
-\* the read-broken rule: a broken read with a finding reworks the card with it
+\* the read-broken rule: a broken read with a finding reworks the card with it, the finding
+\* its fix (never read again: anfixed)
 RuleAnBroken ==
   /\ anst = "broken"
   /\ anfind # "empty" \/ Broken = "nofinding"
   /\ AnRework(anfind)
   /\ anlast' = anfind
+  /\ anfixed' = anfixed \cup {anfind}
 
 \* the failed rule: a harness fault, or a HOLD with findings, reworks the card with the
 \* failure as its fix
@@ -583,17 +615,23 @@ RuleAnHarness ==
   /\ anfail \in {"harness", "hold"}
   /\ AnRework(anfail)
   /\ UNCHANGED anlast
+  /\ anfixed' = anfixed
 
-\* a mind: a broken read with no finding, a failure no class names, a card at its bound
+\* a mind: a broken read with no finding, a failure no class names, a card at its bound. At the
+\* bound a non-empty finding is reworked with the finding as its fix (never read again), as Part
+\* reads' RdMind: a broken verdict at the same head outweighs the bound; the answersmind defect
+\* judges it instead (PartsAgree).
 AnMind ==
   /\ \/ anst = "broken" /\ anfind = "empty"
      \/ anst = "failed" /\ anfail = "other"
      \/ anst = "bound"
-  /\ anst' = "judged"
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless>>
+  /\ IF anst = "bound" /\ anfind # None /\ Broken # "answersmind"
+       THEN /\ anst' = "working" /\ anfind' = None /\ anfixed' = anfixed \cup {anfind}
+       ELSE /\ anst' = "judged" /\ anfind' = anfind /\ anfixed' = anfixed
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfail, anlast, anland, anlost, anfixless, anhold>>
 
 AnNext ==
-  \/ AnDeadline \/ AnLateLand \/ RuleAnBroken \/ RuleAnHarness \/ AnMind
+  \/ AnDeadline \/ AnDeadlineHold \/ AnLateLand \/ AnLateHold \/ RuleAnBroken \/ RuleAnHarness \/ AnMind
   \/ \E f \in AnFindings : AnReadBroken(f)
   \/ \E k \in AnFails : AnWorkFails(k)
 
@@ -612,6 +650,10 @@ ReworkHasAFix == ~anfixless
 \* A report that arrives for an attempt the deadline failed, before a later attempt started,
 \* finishes it: it is never refused while it is the attempt's to finish.
 LateReportFinishes == ~anlost
+
+\* The answers part's verdict on a read-broken finding is the reads part's: a finding is
+\* reworked (its fix), never a mind's; the answersmind defect judges it at the bound instead.
+PartsAgree == anfind \in AnFindings \ {"empty"} => anst # "judged"
 
 \* Every broken read, failure and bound is answered: by rule where a rule answers, by a mind
 \* where none does.

@@ -19,7 +19,7 @@ import (
 // -- i want this more automated."). The mechanical judgments are answered by the tick, by
 // rule, without the coordinator, each recorded on the log and the card as "answered by rule
 // <name>"; a judgment that needs a mind stays one. On the mem twin, injected clock, no
-// socket; the model is tla/SprintRules.tla (RuleAnswersBounded, LadderClimbs).
+// socket; the model is tla/SprintRules.tla (RuleAttemptsBounded, LadderClimbs).
 
 // ruled is a harness whose machine answers by rule, with flash, pro and heavy routes.
 func ruled(t *testing.T) *harness {
