@@ -523,8 +523,21 @@ func (s *Snapshot) routeTier(c *Card) (tier, why string, byFriend, done bool, m 
 		// names (an unknown word too), else flash's
 		return tier, "its brief's model lines: " + bad, false, true, m
 	}
-	if tier == cardhdr.RouteFrontier && m.Pin == "" && len(s.Routes) > 0 {
-		return tier, "a frontier card waits for the coordinator: run it, or pin it with a model: <provider>/<model> line", false, true, m
+	if tier == cardhdr.RouteFrontier && m.Pin == "" {
+		// By design a frontier card is the friends' (docs/SPEC-SPRINT.md, tiers and
+		// routes): a friend up whose row lists frontier serves it as a route would
+		// (tierServed), and the friends' deal deals it. With no friend up and a store that
+		// holds routes, it waits for the coordinator; the refusal names the routes it
+		// looked at and the friends whose row lists frontier but who are held or down
+		// (2026-10-11: the coordinator's own friend row was up at width 8 with
+		// tiers=frontier while rework of 36 frontier cards was refused for want of a route).
+		up, why := s.tierServed(tier, nil)
+		if len(up) > 0 {
+			return tier, why, true, true, m
+		}
+		if len(s.Routes) > 0 {
+			return tier, "no route and no friend serves tier frontier; a frontier card waits for the coordinator: run it, or pin it with a model: <provider>/<model> line (" + why + ")", false, true, m
+		}
 	}
 	if !s.FleetTakes(tier) {
 		// the fleet's tiers leave it out (set --fleet-tiers): no machine draws it, whatever

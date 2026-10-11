@@ -10,14 +10,20 @@ EXTENDS Integers, FiniteSets
 \* reaches a friend reads it: the friends' deal (friend_deal.go cardLeft), the
 \* rebalance of an attempt a machine was dealt (steps_work.go deal copies the
 \* primary's friends_left onto the machine's work card; rebalance.go rebalanceTo
-\* reads cardLeft), and the attempt cap's default answer (brief_bound.go
+\* reads cardLeft), the attempt cap's default answer (brief_bound.go
 \* AttemptCapDeal, friend_deal.go friendWithFree), which deals a card at its
-\* brief's bound to a friend and pins it to her (briefGainsWho). A card that
-\* names its friend (WHO: friend <name>), or the cap pinned, is hers alone after
-\* a rework (ReworkPinned) and is never left. One card, two friends and one
-\* machine; attempts below Cap by the deals, from Cap to MaxAttempts by the cap's
-\* answer. 2026-10-09/10: a friend's opencode lanes ran 46 attempts empty and
-\* the rework dealt each straight back.
+\* brief's bound to a friend working on her row and pins it to her
+\* (briefGainsWho), and the four friend moves that read cardLeft too: the
+\* friends' level (friend_level.go friendLevel), the start bound's level
+\* (friend_start.go friendUnstartedLevel), the deal's reclaim (friend_deal.go
+\* reclaimUnit) and the coordinator's could-take (coordinator_pass.go
+\* friendCouldTake). The failed rule's answer also writes the friend on a brief
+\* defect, its other early return (harness_fault.go). A card that names its
+\* friend (WHO: friend <name>), or the cap pinned, is hers alone after a rework
+\* (ReworkPinned) and is never left. One card, two friends and one machine;
+\* attempts below Cap by the deals, from Cap to MaxAttempts by the cap's answer.
+\* 2026-10-09/10: a friend's opencode lanes ran 46 attempts empty and the rework
+\* dealt each straight back.
 \*
 \* BadNoLeft: the rule as it was, which left no one (the finish records none
 \* either: the oldest bug). BadMachineLeft: the rule leaves her, but the machine's
@@ -27,10 +33,12 @@ EXTENDS Integers, FiniteSets
 \* f41a84d). BadRuleLeft: the finish records none and the failed rule's answer
 \* records her only on a rework below the brief's bound, never on the early return
 \* at it (the cold reads of nova-sprint #45 at f8a45086; the reversed witness of
-\* the early-return write).
+\* the early-return write). BadLevelLeft: the four friend moves and the friends'
+\* deal that feeds them read only the work card's own friends_left (the deal did
+\* not copy the primary's onto it), so a friend the primary left is not seen.
 \* FleetCard: the card has no WHO line, so the cap's answer may deal it
 \* (AttemptCapDeal skips a friend's card); FALSE is a WHO: friend card.
-CONSTANTS MaxAttempts, Cap, Named, FleetCard, BadNoLeft, BadMachineLeft, BadCapLeft, BadRuleLeft
+CONSTANTS MaxAttempts, Cap, Named, FleetCard, BadNoLeft, BadMachineLeft, BadCapLeft, BadRuleLeft, BadLevelLeft, BriefDefect
 Friends == {"amy", "bob"}
 Machine == "m1"
 None == "none"
@@ -51,7 +59,7 @@ Deal(f) == /\ state = "ready" /\ attempt < Cap
            /\ f \notin left
            /\ (Named => f = "amy")
            /\ place' = f /\ state' = "queued" /\ attempt' = attempt + 1
-           /\ wleft' = left
+           /\ wleft' = IF BadLevelLeft THEN {} ELSE left
            /\ UNCHANGED <<left, pinned, emptyOn, emptyUnpinned, lastEmpty>>
 
 \* the machines' deal of an unnamed card: the work card carries the primary's
@@ -63,11 +71,11 @@ MachineDeal == /\ state = "ready" /\ attempt < Cap /\ ~Named /\ FleetCard
 
 \* the attempt cap's default answer: a card at its brief's bound (not a friend's
 \* card: AttemptCapDeal skips those) to a friend it has not left (BadCapLeft:
-\* any), pinned to her from then on
+\* any), created working on her row (brief_bound.go), pinned to her from then on
 CapDeal(f) == /\ state = "ready" /\ Cap <= attempt /\ attempt < MaxAttempts /\ ~Named /\ FleetCard
               /\ (pinned = None \/ f = pinned)
               /\ (BadCapLeft \/ f \notin left)
-              /\ place' = f /\ state' = "queued" /\ attempt' = attempt + 1
+              /\ place' = f /\ state' = "working" /\ attempt' = attempt + 1
               /\ pinned' = f /\ wleft' = left
               /\ UNCHANGED <<left, emptyOn, emptyUnpinned, lastEmpty>>
 
@@ -77,6 +85,15 @@ Rebalance(f) == /\ state = "queued" /\ place = Machine
                 /\ f \notin (IF BadMachineLeft THEN wleft ELSE wleft \cup left)
                 /\ place' = f
                 /\ UNCHANGED <<state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
+
+\* the four friend moves that read cardLeft (the work card's wleft and the
+\* primary's left) and move a ready attempt to a friend's lane: the friends'
+\* level, the start bound's level, the deal's reclaim and the coordinator's
+\* could-take (BadLevelLeft: the work card's own list alone)
+FriendMove(f) == /\ state = "queued" /\ place \in Friends /\ place /= f
+                 /\ f \notin (IF BadLevelLeft THEN wleft ELSE wleft \cup left)
+                 /\ place' = f
+                 /\ UNCHANGED <<state, attempt, left, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
 
 \* a lane takes the queued attempt
 Start == /\ state = "queued" /\ state' = "working"
@@ -105,17 +122,19 @@ MachineFail == /\ state = "working" /\ place = Machine
 
 \* the failed rule's answer: below the brief's bound a rework, at it the
 \* brief's judgment left to a mind (ruleHarness returns early; the card waits
-\* ready for the cap's answer). Its answer writes the friend an empty run leaves
-\* on both paths (the finish wrote her too: emptyRunFriend). BadNoLeft leaves her
-\* on neither; BadRuleLeft leaves her only on a rework below the bound, never on
-\* the early return (the reversed witness: the cap's answer may then pick her).
+\* ready for the cap's answer), and on a brief defect the same early return at
+\* any attempt (harness_fault.go). Its answer writes the friend an empty run
+\* leaves on every path (the finish wrote her too: emptyRunFriend). BadNoLeft
+\* leaves her on neither; BadRuleLeft leaves her only on a rework below the
+\* bound, never on an early return (the reversed witness: the cap's answer may
+\* then pick her); a brief defect's early return still carries her.
 Rework == /\ state = "review"
           /\ state' = "ready" /\ place' = None
-          /\ left' = IF lastEmpty /\ ~Named /\ pinned = None /\ ~BadNoLeft /\ (~BadRuleLeft \/ attempt < Cap)
+          /\ left' = IF lastEmpty /\ ~Named /\ pinned = None /\ ~BadNoLeft /\ (~BadRuleLeft \/ attempt < Cap \/ BriefDefect)
                      THEN left \cup {place} ELSE left
           /\ UNCHANGED <<attempt, wleft, pinned, emptyOn, emptyUnpinned, lastEmpty>>
 
-Next == \/ \E f \in Friends : Deal(f) \/ Rebalance(f) \/ CapDeal(f)
+Next == \/ \E f \in Friends : Deal(f) \/ Rebalance(f) \/ CapDeal(f) \/ FriendMove(f)
         \/ MachineDeal \/ Start
         \/ FinishOk \/ FinishEmpty \/ MachineFail \/ Rework
 Spec == Init /\ [][Next]_vars

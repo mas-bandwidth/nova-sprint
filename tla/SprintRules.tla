@@ -41,6 +41,11 @@
 \*   wait, and a rule's answer consumed by the attempt it started (its own comment and
 \*   reversed witnesses below, with the part).
 \*
+\* Part "judgments": the three rules that answer the judgments the tick raises
+\*   (judgment_rules.go ruleFriendTake, ruleReadLate, ruleHoldNeed): a friend's card she
+\*   has not started taken back and dealt again, a late read asked of another reader once
+\*   an attempt, and a HOLD that waits for its card and reworks the primary once it lands.
+\*
 \* Part "late" also has a reachability witness, MCSprintRulesLateReachReturn: the design
 \* still returns a card (gen > 0), so NeverReturned fails there.
 \*
@@ -74,6 +79,8 @@
 \*   "stale"      finish refuses the report of an attempt the deadline failed, and the card
 \*                goes round again: LateReportFinishes
 \*   "faultnobound" the harness rule reworks a card at its attempt bound: AnswerAttemptsBounded
+\*   "takestarted" the friend-take rule takes back a card the friend started:
+\*                FriendKeepsStarted
 
 EXTENDS Integers, FiniteSets
 
@@ -103,7 +110,8 @@ VARIABLES col, need, blocked, twin,               \* twins
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
           anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, \* answers
-          pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt \* episodes
+          pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
+          jf, jfstarted, jr, jrasked, jh, jhlanded \* judgments
 
 twinVars == <<col, need, blocked, twin>>
 ruleVars == <<tier, fails, st, attempts, envFails>>
@@ -113,7 +121,8 @@ gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
 anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless>>
 epVars == <<pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
-vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
+judgVars == <<jf, jfstarted, jr, jrasked, jh, jhlanded>>
+vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
 
 \* -- answers: a reader's findings ("empty" is a broken verdict that carries none), and the
 \* ways an attempt fails
@@ -164,6 +173,9 @@ TypeOK ==
   /\ ast \in {"waits", "asked", "gone"} /\ aatt \in 1..Cap /\ areason \in {"noreader", "room"}
   /\ aopen \in BOOLEAN /\ aseen \in BOOLEAN /\ anotes \in 0..MaxClock
   /\ rcol \in {"review", "ready", "working"} /\ rans \in BOOLEAN /\ ratt \in 1..Cap
+  /\ jf \in {"open", "taken"} /\ jfstarted \in BOOLEAN
+  /\ jr \in {"open", "asked", "mind"} /\ jrasked \in Nat
+  /\ jh \in {"waiting", "off", "reworked", "mind"} /\ jhlanded \in BOOLEAN
 
 Init ==
   /\ col = [x \in TwinIds |-> CASE x = "o" -> "open" [] x = "t" -> "absent" [] OTHER -> "waiting"]
@@ -183,6 +195,9 @@ Init ==
   /\ pup = FALSE /\ pcol = "ready" /\ pwait = -1 /\ pign = FALSE /\ pdw = -1 /\ eclk = 0
   /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
   /\ rcol = "review" /\ rans = FALSE /\ ratt = 1
+  /\ jf = "open" /\ jfstarted = FALSE
+  /\ jr = "open" /\ jrasked = 0
+  /\ jh = "waiting" /\ jhlanded = FALSE
 
 -----------------------------------------------------------------------------
 \* Part "twins".
@@ -787,22 +802,115 @@ CannotAskClosedWhenAsked == aopen => aseen
 AnswerApplies == rans => rcol \in {"ready", "working"}
 
 -----------------------------------------------------------------------------
+\* Part "judgments": the three rules that answer the judgments the tick raises
+\* (internal/sprint judgment_rules.go: ruleFriendTake, ruleReadLate, ruleHoldNeed).
+\* Each rule is one judgment, its guard decided on the judgment's own facts and its
+\* answer one verb the house already has. A judgment is answered at most once, and an
+\* answered judgment is never reopened by the same rule: each rule's answer is a
+\* terminal state the module never leaves.
+
+\* -- friend-take: a work card on a friend's row, dealt and never taken or working and
+\*    not finished. jf is the card, jfstarted that she started it (an outside event).
+\*    One she has not started the rule takes back to ready, and the deal places it
+\*    again, never on her ("taken" is the answer and the end). One she started stays
+\*    hers: friends keep the cards they started.
+
+\* the outside: she starts the card
+FriendStarts ==
+  /\ jf = "open" /\ ~jfstarted
+  /\ jfstarted' = TRUE
+  /\ UNCHANGED <<jf, jr, jrasked, jh, jhlanded>>
+
+\* the rule: take back the card she has not started; the "takestarted" witness drops the
+\* started guard and takes back the card she started
+RuleFriendTake ==
+  /\ jf = "open"
+  /\ IF Broken = "takestarted" THEN TRUE ELSE ~jfstarted
+  /\ jf' = "taken"
+  /\ UNCHANGED <<jfstarted, jr, jrasked, jh, jhlanded>>
+
+\* -- read-late: a read card past its deadline (asked and not begun, or begun and not
+\*    reported) of the primary's live attempt. jr is the read; the rule asks another
+\*    reader (ask --instead), once an attempt (jrasked); the second late read of the
+\*    attempt, and one no other reader can take, are a mind's.
+
+\* the rule: ask another reader, once an attempt
+RuleReadLate ==
+  /\ jr = "open" /\ jrasked = 0
+  /\ jr' = "asked" /\ jrasked' = 1
+  /\ UNCHANGED <<jf, jfstarted, jh, jhlanded>>
+
+\* a second late read of the attempt, and one no other reader can take, are a mind's
+ReadLateMind ==
+  /\ jr \in {"open", "asked"}
+  /\ jr' = "mind"
+  /\ UNCHANGED <<jf, jfstarted, jrasked, jh, jhlanded>>
+
+\* -- hold-need: work came back failed and its report HOLDs naming a card on the table
+\*    that has not landed. jh is the HOLD's card; while it waits the rule keeps the
+\*    judgment open (marked "waiting on <card>"); once the card lands (jhlanded) the rule
+\*    reworks the primary on the current tip; a card dropped since (jh = "off") is a
+\*    mind's.
+
+\* the outside: the card the HOLD names lands
+NeedLands ==
+  /\ jh = "waiting" /\ ~jhlanded
+  /\ jhlanded' = TRUE
+  /\ UNCHANGED <<jf, jfstarted, jr, jrasked, jh>>
+
+\* the outside: the card the HOLD names is dropped off the table
+NeedDropped ==
+  /\ jh = "waiting"
+  /\ jh' = "off"
+  /\ UNCHANGED <<jf, jfstarted, jr, jrasked, jhlanded>>
+
+\* the rule: once the card lands the primary is reworked on the current tip
+RuleHoldNeedRework ==
+  /\ jh = "waiting" /\ jhlanded
+  /\ jh' = "reworked"
+  /\ UNCHANGED <<jf, jfstarted, jr, jrasked, jhlanded>>
+
+\* the rule: a card dropped since is a mind's
+RuleHoldNeedMind ==
+  /\ jh = "off"
+  /\ jh' = "mind"
+  /\ UNCHANGED <<jf, jfstarted, jr, jrasked, jhlanded>>
+
+JudgNext ==
+  \/ FriendStarts \/ RuleFriendTake
+  \/ RuleReadLate \/ ReadLateMind
+  \/ NeedLands \/ NeedDropped \/ RuleHoldNeedRework \/ RuleHoldNeedMind
+
+\* One she started stays hers: the rule never takes back a card the friend started.
+FriendKeepsStarted == jfstarted => jf # "taken"
+
+\* The read-late rule asks another reader once an attempt: the second late read of the
+\* attempt is a mind's, never a second ask.
+AskedOnceAnAttempt == jrasked <= 1
+
+\* The hold-need rule reworks a card only once it has landed: a card dropped since is a
+\* mind's, never reworked.
+HoldNeedReworksOnlyLanded == jh = "reworked" => jhlanded
+
+-----------------------------------------------------------------------------
 
 Next ==
-  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
-  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
-  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars>>
-  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars>>
-  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars>>
-  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars>>
-  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars>>
-  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars>>
+  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
+  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
+  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>
+  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars>>
+  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars>>
+  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars>>
+  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars>>
+  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars>>
+  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
 
 \* The rules and a mind act when they may; the outside is unfair.
 Fairness ==
-  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>)
-  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars>>)
-  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ AnMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars>>)
+  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars>>)
+  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars>>)
+  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ AnMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars>>)
+  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 

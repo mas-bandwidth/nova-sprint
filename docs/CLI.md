@@ -56,7 +56,7 @@ refusals with reasons (`REFUSED`, on stderr), and the sprint's summary
 
 ```
 nova-sprint init [--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--rules <file>]
-nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]]
+nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--partial] [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]]
 nova-sprint quack --streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]
 nova-sprint release (<sentinel>... | <selector> [--dry-run]) --reason <text> [--answers <note>]
 nova-sprint release check [--json] [--streams <glob>] [--window <duration>] [--merge-p90 <duration>] [--check <name>]...
@@ -99,7 +99,7 @@ nova-sprint resume --stream <s> [--did <text>] [--answers <note>]
 nova-sprint backup (--out <dir> [--part-bytes <n>] [--secrets-store <dir> --secrets-as <seat> --secrets-key <path> --sops <path>] | --file <path> [--dry-run])
 nova-sprint demo load <backup.xz part>... [--sha256 <hex>] [--dir <dir>] [--xz <path>] [--redis-server <path>]
 nova-sprint demo stop [--dir <dir>]
-nova-sprint fleet beat <member> [--load <percent>] [--stop-returns <n>]
+nova-sprint fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] --load <percent>
 nova-sprint fleet up <member> [--width <n>]
 nova-sprint fleet down <member>
 nova-sprint fleet sync [--check] [--pg <dsn>]
@@ -454,6 +454,18 @@ remedy=<remedy>` line and each corrected header line a `LINT FIX card=<id> <line
 exit 2, nothing written. A base that cannot be read refuses with `MISSING: <what>`; a brief
 naming no `REPO:` or no `BASE:` is held only to the checks that need no tree
 ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 11, the brief checks).
+
+`add --partial`, with `--brief-dir` or a repeated `--brief-file`, runs every check over every
+brief and admits what passes instead of refusing the whole call. Every brief the checks find a
+fault in is held back, and so is every card that needs a held card through its `Needs:` or
+`DEPENDS-ON:` line or `--needs`, transitively. The add step's own plan is then run over the
+rest, and a card its refusal list names is held back the same way, with the cards that need it,
+the write planned again without them; the rounds are bounded by the number of cards, and
+nothing is written for a held card. It prints one `HELD <id>: <its first finding or refusal>`
+or `HELD <id>: needs <other>, held back` line per held card, then the add's own closing line for
+what it admitted, and exits 0 when every card was admitted, 1 when some were held and the rest
+written, and 2 when none could be admitted, or for a usage refusal: `--partial` is refused with
+ids, `--count`, `--sentinel` or `--land-protected`, since a marked first add is one step.
 
 ### install-canary-shadow-tick-r.w1: the shadow tick before a server swap
 

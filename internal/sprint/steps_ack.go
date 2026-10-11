@@ -336,6 +336,7 @@ type WaitReq struct {
 
 // Wait is the step of WaitReq; it is refused for a judgment the tick does not
 // keep (its review time is set instead) and for one not open.
+// tla/CoordinatorPass.tla Wait
 func Wait(s *Snapshot, r WaitReq) Plan {
 	var p Plan
 	if why := notCoordinator(s, r.Who, "wait"); why != "" {

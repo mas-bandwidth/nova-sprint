@@ -79,6 +79,7 @@ func HarnessFix(attempt, class, report string) string {
 // however many cards failed the same way, up to its brief's bound (then the brief's
 // judgment stands). Budget exhaustion follows the normal tier escalation path instead.
 // It says whether it answered a; a failure of neither kind is the failed rule's as before.
+// tla/FriendEmptyRun.tla Rework.
 func ruleHarness(s *Snapshot, a *RuleAnswer, pr *Card) bool {
 	report := workReport(s, pr)
 	if report == "" {

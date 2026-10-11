@@ -37,16 +37,16 @@ func TestTheServedFleetBeatTakesALiveSet(t *testing.T) {
 		{"fleet", "beat", "m1", "--stop-returns", "0", "--load", "1.5"},
 		{"fleet", "beat", "m1", "--stop-returns", "2", "--live", "a@1,b@2:held", "--load", "1.5"},
 		{"fleet", "beat", "m1", "--live", "-", "--load", "0"},
+		{"fleet", "beat", "m1", "--live", "a@1", "--stop-returns", "0", "--load", "1"},
+		{"fleet", "beat", "m1", "--load", "1", "--live", "a@1"},
 	} {
 		as, _, why := workerVerb(ok)
 		assert.Empty(t, why, "%v", ok)
 		assert.Equal(t, "m1", as)
 	}
 	for _, bad := range [][]string{
-		{"fleet", "beat", "m1", "--live", "a@1", "--stop-returns", "0", "--load", "1"},
 		{"fleet", "beat", "m1", "--live", "a", "--load", "1"},
 		{"fleet", "beat", "m1", "--live", "", "--load", "1"},
-		{"fleet", "beat", "m1", "--load", "1", "--live", "a@1"},
 	} {
 		_, _, why := workerVerb(bad)
 		assert.NotEmpty(t, why, "%v", bad)

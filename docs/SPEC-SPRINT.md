@@ -2474,7 +2474,9 @@ order the cards were dealt in, so a card brought to the front of its stream by
   none takes its enabled routes in name order. The deal (and a redeal, and a
   rework's next attempt) resolves the card at deal time: a pin is its route
   (`pin`) and moves no index; a store with no route deals as before (the member
-  runs its override); a frontier card with no pin is the coordinator's and is
+  runs its override); a frontier card with no pin is the friends' by design (a
+  friend up whose row lists frontier serves it as a route would, `tierServed`),
+  and with no such friend it is the coordinator's and is
   not dealt; otherwise the deal takes the array's entry at the tier's rolling
   index, the fleet table's `route_index_<tier>` (`route_index_flash`, `route_index_pro`, `route_index_heavy`), a uint64
   counter modulo the array's length as the member rule's `deal_index` is, and
@@ -2523,7 +2525,7 @@ order the cards were dealt in, so a card brought to the front of its stream by
   a card put on the table makes a new cell, never once a card dealt: the deal
   costs the cards it deals, not those times the member's history
   (`TestTheMedianWallIsMeasuredOnceACellAndAgainAfterAPut`; the tick gate under
-  load, `TestTheTickGateHoldsUnderLoad`). A tier is served by an enabled fleet route or by a friend up (not held, not down) whose row lists it, one check for every verb that validates a tier (`tierServed`; a tier friends alone serve is the friends' deal's, and a rework at it waits ready for them, `TestReworkAcceptsATierAFriendServes`). The sides' tiers bound both ways: `set --fleet-tiers <tiers|all>` and `set --friends-tiers <tiers|all>` (the work table's properties `fleet_tiers` and `friends_tiers`, flash, pro, heavy, frontier comma separated, default all) are the tiers each side may take, on top of each row's own tiers (a member's routes and reader row, a friend's row). The deal hands a machine only a work card whose tier is in the fleet's set (`routeOf`: a tier the set leaves out draws no route), and a friend only one whose tier is in the friends' set (`friendTakes`), for every friend deal, level and move; a read card is dealt by its read tier the same way, a friend still reading her tier or any below it and the one-tier-below rule reading only inside the set (the read tier and the tier read at both in it). A card pinned to a model is no exception (the set is the owner's switch, `TestAModelPinDoesNotOverrideTheFleetsTiers`), and a frontier card waits for the coordinator whatever the sets (`TestAFrontierCardsJudgmentIsUnchangedByTheFleetsTiers`). A card no side may take is not dealt and is named in its tier's one `no route serves the tier` judgment, which says the side's tiers; a card in review whose read tier no side may read is named in the same judgment (`TestFleetTiersLimitWhatTheFleetTakes`, `TestFriendsTiersLimitWhatFriendsTake`, `TestAReadCardNoSideMayTakeRaisesTheTiersJudgment`). While a side's tiers are set, `where` and `view coordinator` say both sides (`fleet: on, tiers flash  friends: on, tiers all`), `where --json` carries `fleet_tiers` and `friends_tiers` (`"all"` or the list) always and `view coordinator --json` a side's only when set (`TestTheTierSettingsAreSaidWhereTheCoordinatorLooks`). A card of such a tier withdrawn or taken back from every friend up who serves it has no worker left: the tick names it in its tier's one `no route serves the tier` judgment (`TestACardWithdrawnFromItsLastFriendRaisesOneJudgment`). A card no route serves stays ready: the deal refuses it naming the
+  load, `TestTheTickGateHoldsUnderLoad`). A tier is served by an enabled fleet route or by a friend up (not held, not down) whose row lists it, one check for every verb that validates a tier (`tierServed`; a tier friends alone serve is the friends' deal's, and a rework at it waits ready for them, `TestReworkAcceptsATierAFriendServes`). The sides' tiers bound both ways: `set --fleet-tiers <tiers|all>` and `set --friends-tiers <tiers|all>` (the work table's properties `fleet_tiers` and `friends_tiers`, flash, pro, heavy, frontier comma separated, default all) are the tiers each side may take, on top of each row's own tiers (a member's routes and reader row, a friend's row). The deal hands a machine only a work card whose tier is in the fleet's set (`routeOf`: a tier the set leaves out draws no route), and a friend only one whose tier is in the friends' set (`friendTakes`), for every friend deal, level and move; a read card is dealt by its read tier the same way, a friend still reading her tier or any below it and the one-tier-below rule reading only inside the set (the read tier and the tier read at both in it). A card pinned to a model is no exception (the set is the owner's switch, `TestAModelPinDoesNotOverrideTheFleetsTiers`), and a frontier card is the friends' by design: a friend up whose row lists frontier serves it however the sets stand (`tierServed`, `TestReworkAcceptsAFrontierTierAFriendServes`), and with no such friend it waits for the coordinator whatever the sets (`TestAFrontierCardsJudgmentIsUnchangedByTheFleetsTiers`). A card no side may take is not dealt and is named in its tier's one `no route serves the tier` judgment, which says the side's tiers; a card in review whose read tier no side may read is named in the same judgment (`TestFleetTiersLimitWhatTheFleetTakes`, `TestFriendsTiersLimitWhatFriendsTake`, `TestAReadCardNoSideMayTakeRaisesTheTiersJudgment`). While a side's tiers are set, `where` and `view coordinator` say both sides (`fleet: on, tiers flash  friends: on, tiers all`), `where --json` carries `fleet_tiers` and `friends_tiers` (`"all"` or the list) always and `view coordinator --json` a side's only when set (`TestTheTierSettingsAreSaidWhereTheCoordinatorLooks`). A card of such a tier withdrawn or taken back from every friend up who serves it has no worker left: the tick names it in its tier's one `no route serves the tier` judgment (`TestACardWithdrawnFromItsLastFriendRaisesOneJudgment`). A card no route serves stays ready: the deal refuses it naming the
   tier, and the tick writes one judgment, `no route serves the tier`, per tier
   (its subject `stream:tier:<tier>`, the primaries listed), never one per
   card, closed when the tier is served (tla/DirtyTick.tla, RouteGuard; witness
@@ -3008,6 +3010,18 @@ order the cards were dealt in, so a card brought to the front of its stream by
   CPU busy percent of all its cores, measured between beats; where that cannot
   be measured, the one-minute load average over the logical cores, capped at
   1000%. `--load <percent>` gives it instead.
+ - The beat's words are the member's, written once: `fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] --load <percent>`. The optional words may stand in any order and `--load` anywhere
+   among them; `--load` is required, because the server cannot measure another
+   machine. nova-tools pkg/member sends exactly this list (`Beat`, `drainArgs`,
+   `noRoomArgs`), and both repositories' tests pin it: nova-sprint's
+   `cmd/nova-sprint/serve_beat_test.go` and `internal/sprint/fleet_beat_test.go`,
+   nova-tools' `pkg/member/stop_test.go`. `--no-room <why>` is the member's word
+   that it starts no card and why (its free disk under its floor): while its beat
+   is fresh the deal gives it none (`NotQuiet`). `--draining` is its word that
+   the binary it runs was replaced under it: it takes no new card and stops when
+   its running cards end, which can be hours. Neither word takes the member down;
+   a server that refused them on the wire read a draining member down for the
+   length of its drain (the-server-beat-accepts-draining-and-no-room).
 - Every beat, the load given or measured, also reads the machine's open file
   descriptors (internal/hostload, files.go): the count and the system's limit
   (darwin: the sysctl `kern.num_files` and `kern.maxfiles`; Linux:
@@ -7338,7 +7352,9 @@ it`. `TestATickPastItsDeadlineIsAbandonedNotTheProcess`, `TestThreeWedgedTicksIn
 `TestTheTickDeadlineStretchesWithTheMedianWall`, `TestAFenceBusyTickRetriesBeforeFailing`.
 
 The server runs the workers' verbs only: `take`, `finish`, `progress`, `read` and `queue`, each beginning
-`<verb> --as <worker>` with one worker's name, `fleet beat <member> --load <percent>` and
+`<verb> --as <worker>` with one worker's name, `fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] --load <percent>`
+with the optional words in any order and `--load` anywhere among them (the words pkg/member
+sends; both repositories' tests pin them) and
 nothing more, `friend beat <friend>` with its report's flags (`--running`, `--working`, `--queue`, `--width`, `--load`), each once with its value, and nothing more, `friend cards <friend>` with `--json` at most and nothing more (a friend's daemon reading the cards held on her row, each with its brief), and `lane take` or `lane give` `<kind>
 --machine <m> --as <worker>` and nothing more (a take's `--wait` asks again from the worker's side). No later word of a verb, wherever it stands, is a flag named `as`, `redis` or
 `actor`: the server gives the store and the actor, and puts them before the worker's words. A

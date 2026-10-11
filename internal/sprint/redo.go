@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
+	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 )
 
 // LandRefusedFix is the fix of a card whose head the landing refused (landRefused): why, in
@@ -31,17 +31,12 @@ func LandRefusedAtHead(c *Card) bool {
 	return h != "" && h == c.F("head")
 }
 
-// RoadmapLedgers are the roadmap's data and the pages generated from it: nearly every card
-// adds its entry to the data and regenerates its page, so two cards of one wave conflict
-// there for no fault of either brief (docs/fixes.sexp, land-merges-the-roadmap-data).
-var RoadmapLedgers = []string{"docs/fixes.sexp", "FIXES.md", "docs/roadmap.sexp", "ROADMAP.md"}
-
-// SharedLedger says p is a ledger every card may write and whose merge is the lander's:
-// the roadmap's data and pages (RoadmapLedgers), a class ledger (diffcheck.Ledger), an
-// AGENTS map, the keyed TLA+ tables and the tables lock (docs/SPEC-SPRINT.md section 7).
+// SharedLedger says p is a ledger every card may write and whose merge is the lander's: the
+// one ledger set, cardgen.LedgerInPaths (docs/SPEC-LANDING.md), the roadmap's data and pages,
+// the evidence ledgers, the class ledgers, the AGENTS maps, the keyed TLA+ tables and the
+// tables lock. It is the one list, read here as the lander reads it.
 func SharedLedger(p string) bool {
-	return slices.Contains(RoadmapLedgers, p) || diffcheck.Ledger(p) || diffcheck.AgentsMap(p) ||
-		p == "tla/CASES.tsv" || p == "tla/RUNS.tsv" || p == "internal/sprint/TABLES.lock"
+	return cardgen.LedgerInPaths(p)
 }
 
 // LedgerConflict says a landing's conflict is in shared ledgers only (paths, as the lander

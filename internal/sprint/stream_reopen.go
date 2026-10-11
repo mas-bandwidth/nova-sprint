@@ -272,6 +272,7 @@ func planCreates(p Plan, id string) bool {
 
 // reopenAdd is the stop an add grows when it admits a card past a landed stop.
 // stopID set means this add already admitted that sentinel, and it is the stop.
+// tla/Holds.tla ReopenAdd
 func reopenAdd(p Plan, s *Snapshot, stream, who, stopID string, admitted []string, scores []float64, extra []string) Plan {
 	line := ""
 	if stopID == "" {

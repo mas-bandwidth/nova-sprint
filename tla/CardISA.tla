@@ -21,9 +21,14 @@
 (*     Replaced: CardMachine.Release. Also replaced, so a waiting card can  *)
 (*     never be dispatched around the operand: CardMachine.DealWork (the    *)
 (*     base deal reads waiting as well as ready, line 165) is here Deal,    *)
-(*     which deals a ready card alone; a waiting card becomes ready only    *)
-(*     through Wait. CardMachine.Land and LandEvent are IsaLand/            *)
-(*     IsaLandEvent, which also record the retire.                         *)
+(*     which deals a ready card alone; a non-wait card becomes ready only   *)
+(*     through Wait. A wait card is landed by its release (IsaLandEvent,    *)
+(*     which reads waiting alone, a wait kind and the released operand),    *)
+(*     never resolved and never dealt. CardMachine.Land and LandEvent are   *)
+(*     IsaLand/IsaLandEvent, which also record the retire, and CardMachine  *)
+(*     Verdict and EndWorkDone are here IsaVerdict/IsaEndWorkDone without   *)
+(*     their drop-to-landed and done-already-to-landed branches, which the  *)
+(*     lifecycle's Moves table does not have.                               *)
 (*                                                                         *)
 (*   - the per-kind results. A finish records the result the kind owes:     *)
 (*     think, script and merge a head and a verdict; verify a verdict;      *)
@@ -32,23 +37,28 @@
 (*                                                                         *)
 (* The card life itself is CardMachine's; the kinds' vocabulary and the     *)
 (* one wait kind are this module's. A reader counts the wait actions here   *)
-(* (one, Wait) against the paths it replaced (hold, sentinel, wave: three   *)
-(* in CardMachine plus the code it was read from).                         *)
+(* (one, Wait, over a non-wait card; a wait card's release is a landing)    *)
+(* against the paths it replaced (hold, sentinel, wave: three in            *)
+(* CardMachine plus the code it was read from).                            *)
 (*                                                                         *)
 (* What must always hold (TLC):                                            *)
 (*   NoCardRetiresTwice       no card lands twice                          *)
 (*   RetiredHeadOnBase        a landed card's head is an ancestor of its base *)
-(*   WaitDispatchesOnlyWhenOperandHolds  a card never leaves waiting for a  *)
-(*                            consumer before its operand holds            *)
-(* and on MCCardISALive, a wait whose operand comes to hold is dealt.       *)
+(*   LandsOnlyByTable         a card lands from merging, or from waiting a  *)
+(*                            wait card (the release)                      *)
+(*   WaitDispatchesOnlyWhenOperandHolds  a wait card lands only when its    *)
+(*                            operand holds                                *)
+(* and on MCCardISALive, a wait whose operand comes to hold is landed.      *)
 (*                                                                         *)
 (* Reversed witnesses (Broken, the same shape as CoordinatorWake):          *)
 (*   "doubleland"  a landed card is counted landed a second time           *)
 (*                 (breaks NoCardRetiresTwice)                             *)
 (*   "wrongbase"   a card lands with its head past its base, not on it     *)
 (*                 (breaks RetiredHeadOnBase)                              *)
-(*   "waitfirst"   Wait releases a card whose operand does not hold        *)
+(*   "waitfirst"   a wait card lands before its operand holds              *)
 (*                 (breaks WaitDispatchesOnlyWhenOperandHolds)             *)
+(*   "landanywhere"  the old landing set (waiting, ready or working)       *)
+(*                 (breaks LandsOnlyByTable)                               *)
 (*                                                                         *)
 (* LandTwoLevel (the merge-tree-proof branch, head                         *)
 (* 40e9dc34ea18f7362f3b1b914ac204fe48263ae7, tla/LandTwoLevel.tla) is the   *)
@@ -120,12 +130,15 @@ OperandHolds(c) ==
   ELSE IF o = "external" THEN external
   ELSE where[o] \in {"landed"} \/ (where[o] = "done" /\ ok[o] = "ok")
 
-\* Wait(c): the one wait action, replacing CardMachine.Release (the judged
-\* path's own release) and, as one action, the release of a held card and of
-\* a wave. One guard, OperandHolds.
+\* Wait(c): the resolve of a non-wait card, replacing CardMachine.Release (the
+\* judged path's own release) and, as one action, the release of a held card and
+\* of a wave. One guard, OperandHolds. A wait card is never resolved: its one
+\* move out of waiting is the release that lands it (IsaLandEvent), never a
+\* dispatch to ready.
 Wait(c) ==
   /\ where[c] = "waiting"
-  /\ (OperandHolds(c) \/ "waitfirst" \in Broken)
+  /\ Kind[c] /= "wait"
+  /\ OperandHolds(c)
   /\ where' = [where EXCEPT ![c] = "ready"]
   /\ UNCHANGED <<ok, copy, reads, pending, low, ncut, author, head, prHead, ci, cvars, up, ivars>>
 
@@ -183,10 +196,17 @@ IsaLand(c) ==
   /\ lands' = [lands EXCEPT ![c] = @ + 1]
   /\ UNCHANGED <<ok, copy, reads, pending, low, ncut, author, prHead, ci, cw, ck, cl, leased, up, released, external, base, verdict>>
 
-\* IsaLandEvent(c): CardMachine.LandEvent (a landing event for a card that is
-\* not merging), with the same retire record as IsaLand.
+\* IsaLandEvent(c): the release that lands a wait card. The code's lifecycle
+\* (internal/sprint/lifecycle.go) lands only from merging (the merge) or from a
+\* waiting sentinel by release, and a sentinel moves only to landed: a wait card
+\* is landed by its release and never dealt. "landanywhere" restores the old
+\* landing set (waiting, ready or working); "waitfirst" releases the wait card
+\* before its operand holds.
 IsaLandEvent(c) ==
-  /\ where[c] \in {"waiting", "ready", "working"}
+  /\ \/ /\ where[c] = "waiting" /\ Kind[c] = "wait"
+        /\ (released \/ "waitfirst" \in Broken)
+     \/ /\ "landanywhere" \in Broken
+        /\ where[c] \in {"waiting", "ready", "working"}
   /\ where' = [where EXCEPT ![c] = "landed"]
   /\ head' = [head EXCEPT ![c] = IF "wrongbase" \in Broken THEN base[c] + 1 ELSE base[c]]
   /\ lands' = [lands EXCEPT ![c] = @ + 1]
@@ -204,28 +224,64 @@ DoubleLand(c) ==
   /\ lands' = [lands EXCEPT ![c] = @ + 1]
   /\ UNCHANGED <<pvars, cvars, up, released, external, base, verdict>>
 
+\* IsaVerdict(c): CardMachine.Verdict without the drop-to-landed branch. The
+\* code's lifecycle has no review -> landed move (drop is off the table, not a
+\* state), so a card leaves review only to waiting, ready or working.
+IsaVerdict(c) ==
+  /\ where[c] = "review" /\ pending[c]
+  /\ pending' = [pending EXCEPT ![c] = FALSE]
+  /\ \/ /\ where' = [where EXCEPT ![c] = "waiting"]
+        /\ cw' = RetireReads(cw, c) /\ reads' = [reads EXCEPT ![c] = {}]
+        /\ copy' = [copy EXCEPT ![c] = NoCopy]
+        /\ UNCHANGED <<ncut, ck, cl>>
+     \/ /\ where' = [where EXCEPT ![c] = "ready"]
+        /\ cw' = RetireReads(cw, c) /\ reads' = [reads EXCEPT ![c] = {}]
+        /\ copy' = [copy EXCEPT ![c] = NoCopy]
+        /\ UNCHANGED <<ncut, ck, cl>>
+     \/ \E k \in Consumers :
+        /\ up[k] /\ CanCut(c)
+        /\ where' = [where EXCEPT ![c] = "working"]
+        /\ cw' = [RetireReads(cw, c) EXCEPT ![NextCopy(c)] = "ready"]
+        /\ ck' = CutCK(c, k) /\ cl' = CutCL(c, "work")
+        /\ reads' = [reads EXCEPT ![c] = {}]
+        /\ copy' = [copy EXCEPT ![c] = NextCopy(c)]
+        /\ ncut' = [ncut EXCEPT ![c] = @ + 1]
+  /\ UNCHANGED <<ok, low, author, head, prHead, ci, leased, up>>
+
+\* IsaEndWorkDone(i): CardMachine.EndWorkDone without the done-already-to-landed
+\* branch. The code's lifecycle has no working -> landed move, so a work copy
+\* that ends ok with no PR goes done/ok only.
+IsaEndWorkDone(i) ==
+  LET c == i[1] IN
+  /\ cw[i] = "working" /\ cl[i] = "work"
+  /\ cw' = Retire(cw, i, "ok")
+  /\ copy' = [copy EXCEPT ![c] = NoCopy]
+  /\ where' = [where EXCEPT ![c] = "done"] /\ ok' = [ok EXCEPT ![c] = "ok"]
+  /\ UNCHANGED <<reads, pending, low, ncut, author, head, prHead, ci, ck, cl, leased, up>>
+
 ----------------------------------------------------------------------------
 
 IsaNext ==
   \/ \E c \in Cards :
        Frame(Push(c)) \/ Wait(c) \/ Frame(CIWord(c)) \/ Frame(PRHeadMoves(c))
-       \/ Frame(Verdict(c)) \/ Frame(CancelPrimary(c))
+       \/ Frame(IsaVerdict(c)) \/ Frame(CancelPrimary(c))
        \/ IsaLand(c) \/ IsaLandEvent(c) \/ RecordResult(c) \/ DoubleLand(c)
   \/ \E c \in Cards, k \in Consumers : Deal(c, k) \/ Frame(DealRead(c, k))
   \/ \E i \in CopyId :
        Frame(Work(i)) \/ Frame(Beat(i)) \/ Frame(Lapse(i)) \/ Frame(Expire(i))
        \/ Frame(DownReady(i)) \/ Frame(GiveBack(i)) \/ Frame(EndFail(i))
-       \/ Frame(EndWorkPR(i)) \/ Frame(EndWorkDone(i)) \/ Frame(EndReadHigh(i))
+       \/ Frame(EndWorkPR(i)) \/ Frame(IsaEndWorkDone(i)) \/ Frame(EndReadHigh(i))
        \/ Frame(EndReadStale(i)) \/ Frame(EndReadLow(i)) \/ Frame(EndReadFail(i))
        \/ Frame(EndFixOK(i))
   \/ \E k \in Consumers : Frame(Down(k)) \/ Frame(Up(k))
   \/ CoordRelease \/ Extern
 
 \* Fairness as CardMachine's, on the actions this module uses: the duties and
-\* the workers, and the coordinator's release. The wait is strongly fair too,
-\* so a card whose operand holds is not starved of its release.
+\* the workers, and the coordinator's release. The resolve (Wait) and the
+\* release that lands a wait card (IsaLandEvent) are fair too, so a card whose
+\* operand holds is not starved of its release.
 IsaFairness ==
-  /\ \A c \in Cards : WF_avars(Wait(c))
+  /\ \A c \in Cards : WF_avars(Wait(c)) /\ WF_avars(IsaLandEvent(c))
   /\ WF_avars(CoordRelease) /\ WF_avars(Extern)
 
 IsaSpec == IsaInit /\ [][IsaNext]_avars /\ IsaFairness
@@ -240,13 +296,21 @@ NoCardRetiresTwice == \A c \in Cards : lands[c] <= 1
 \* head is at or behind the base, never past it
 RetiredHeadOnBase == \A c \in Cards : where[c] = "landed" => head[c] <= base[c]
 
-\* a wait card is never dispatched before its operand holds: once it has been
-\* released for a consumer (ready or working), its operand holds. The operands
-\* only grow, so a card released by Wait keeps the property. A card the
-\* coordinator cancels or a landing event walks out of waiting is not a
-\* dispatch, so it is not covered here.
+\* a card lands only by the table (internal/sprint/lifecycle.go Moves): from
+\* merging (the merge), or from waiting a wait card (the release). Review's
+\* drop and working's done-already are not Moves rows, so a card lands no
+\* other way.
+LandsOnlyByTable ==
+  [][\A c \in Cards : where'[c] = "landed" /\ where[c] # "landed" =>
+        where[c] = "merging" \/ (where[c] = "waiting" /\ Kind[c] = "wait")]_avars
+
+\* a wait card lands only when its operand holds: nothing dispatches a wait
+\* card (Wait resolves a non-wait card alone, Deal deals a ready card alone),
+\* so its one move out of waiting is the release that lands it, and that
+\* release holds the operand. The operands only grow, so a landed wait card
+\* keeps the property.
 WaitDispatchesOnlyWhenOperandHolds ==
-  \A c \in WaitCards : where[c] \in {"ready", "working"} => OperandHolds(c)
+  \A c \in WaitCards : where[c] = "landed" => OperandHolds(c)
 
 IsaSafety == /\ IsaTypeOK /\ Safety /\ NoCardRetiresTwice /\ RetiredHeadOnBase
               /\ WaitDispatchesOnlyWhenOperandHolds
