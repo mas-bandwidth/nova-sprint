@@ -75,15 +75,17 @@ const (
 	classTimeout     = "timeout"
 )
 
-// transient says a take's line is the provider's own transient failure (a rate limit, a
-// 5xx, a timeout), the line the member writes (`provider: class=<c> status=<n|-> msg=<m>`).
+// transient says a take's line is the provider's own transient failure (a 5xx or a
+// timeout), the line the member writes (`provider: class=<c> status=<n|-> msg=<m>`).
 // A no-result line is never one: its cause is the model's output, not the provider.
+// Rate-limited ends rest the route briefly (via rateBackoffDue) and do not count toward
+// the 3-in-10 rest (RestsDue).
 func transient(line string) bool {
 	if IsNoResult(strings.TrimSpace(line)) {
 		return false
 	}
 	m := causeRE.FindStringSubmatch(strings.TrimSpace(line))
-	return m != nil && (m[1] == classRateLimited || m[1] == class5xx || m[1] == classTimeout)
+	return m != nil && (m[1] == class5xx || m[1] == classTimeout)
 }
 
 // IsRateLimited says a failed take's report is the provider's rate limit: class
