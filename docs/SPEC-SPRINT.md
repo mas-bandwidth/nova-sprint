@@ -1476,19 +1476,27 @@ rebalance, always rebalance this way from now on."; `sprint.Rebalance`, `TickReb
 the model is tla/WhoPreference.tla `Rebalance`). The work table's update runs, in order:
 `drain`, `resolve`, `cap deal`, `deal`, `rebalance`, `accept`. The rebalance is its own part
 after the deal, so it reads the deal applied (every lane the deal could fill is filled, and
-the rows' counts are true without a second count of the plan). A work card dealt and not
-started (ready on its row: a friend has not started it, `friendStarted`; a member has not
-taken it) on a unit whose lanes all work (its working cards, reads at half a slot, at its
-width) goes to a unit of either side with an idle lane (its width less every card it holds,
-ready and working) that may take it: a friend dealable whose tiers and the friends' set hold
-the card's tier (`friendTakes`) and that it has not left (`friends_left`, `taken_from`); a
-member up, while the fleet's work is on, whose side's set holds the tier, with a route of
-the tier to draw (`routeOf`), and not one that refused it at staging; never a row it was
-rebalanced off (`rebalanced_from`). The cheapest unit first: the card's own tier (a member
-draws on its tier's routes; a friend whose highest tier is the card's), then one tier up as
-overflow, never more and never below (a pro card never reaches a flash unit); then the most
-idle lanes, then the name. Each card moves at most once a tick, in the deal's order, and the
-moves are bounded by the idle lanes. A started card, a hard pin, a pin honoured
+the rows' counts are true without a second count of the plan). A free lane is a half-lane no
+card on its row holds, ready or working (a work card two, a read one: `halfLoad`). A unit's
+excess is its ready cards beyond the halves its working cards leave free, taken from the end
+of the order it would start them in; every unit with excess is a source, friend or member,
+whether or not all its lanes work (the owner, 2026-10-11: "cards only may accrue per-fleet or
+friend, if there are not other machines/friends ready to do that work right now!";
+`NoQueuedCardWhileACapableLaneIsFree`, the model card tla-whopreference-free-lanes-first-and-taken-stays).
+A work card dealt and not started (ready on its row: a friend has not started it,
+`friendStarted`; a member has not taken it) that is in the excess goes to a unit of either
+side with a free lane for it that may take it: a friend dealable whose tiers and the friends'
+set hold the card's tier (`friendTakes`) and that it has not left (`friends_left`,
+`taken_from`); a member up, while the fleet's work is on, whose side's set holds the tier,
+with a route of the tier to draw (`routeOf`), and not one that refused it at staging; never a
+row it was rebalanced off (`rebalanced_from`). The three kinds move alike: a fix card is kind
+work (a rework attempt carrying the fix field, or a primary of priority fix) and moves as a
+work card does, its attempt and fix kept. The target is chosen round the units that may take
+it from the deal's rolling cursor (`deal_index`), moved past each target (`(index++) % n`):
+the card's own tier first (a member draws on its tier's routes; a friend whose highest tier
+is the card's), then one tier up as overflow, never more and never below (a pro card never
+reaches a flash unit), then the cursor, never the most-idle or name order. Each card moves at
+most once a tick, in the deal's order, and the moves are bounded by the free lanes. A started card, a hard pin, a pin honoured
 where it sits (its WHO names the friend it is on, or a model pin; a `WHO: friend` card on a
 friend's row goes to another friend, never a member), a bench card, a card of a
 held stream, a card a lane runs, and a card whose route rests never move. The card keeps its
@@ -1504,16 +1512,19 @@ say `rebalanced <card> from <row> to <unit>`
 
 **Reads are rebalanced too** (the owner, 2026-10-11: "it seems like we could possibly
 rebalance this a bit better", "Not one card at a time per-tick", "This should NOT be
-manual."; `sprint.Rebalance`'s read pass). A read card queued ready on a unit whose lanes
-all work (reads at half a slot) goes, in the same one tick and in the same pass, to a unit
-with an idle lane whose reader row serves the read's tier (`readRefusal`, `mayReadCard`) and
-which has not read the card at this attempt, as many as the idle lanes take (a read is half
-a slot). A read never goes back to a row it was rebalanced off (`rebalanced_from`), to a
-reader row that does not serve its tier, or to a reader that already read the card at the
-attempt; it keeps its attempt number and is dealt again under the new reader's identity, the
-record on the row it left retired. All eligible cards move in the one tick, never one per
-tick (`TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick`,
-`TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick`). The read-card deal keeps a
+manual."; `sprint.Rebalance`'s read pass). The excess read cards of a unit (its ready reads
+beyond the halves its working cards leave free, taken from the end of its start order) go, in
+the same one tick and in the same pass, to a unit with a free lane whose reader row serves
+the read's tier (`readRefusal`, `mayReadCard`) and which has not read the card at this
+attempt, as many as the free lanes take (a read is half a slot). A read never goes back to a
+row it was rebalanced off (`rebalanced_from`), to a reader row that does not serve its tier,
+or to a reader that already read the card at the attempt, never to the attempt's worker
+(`attemptUnit`) or a reader that spent it (`readSpent`); it keeps its attempt number and is
+dealt again under the new reader's identity, the record on the row it left retired. All
+eligible cards move in the one tick, never one per tick
+(`TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick`,
+`TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick`,
+`TestTheRebalanceMovesTheExcessOfAPartlyIdleUnit`). The read-card deal keeps a
 fleet-table cursor for each read tier (`read_deal_index_<tier>`), persisted with the dealt
 cards for the epoch: restart and switching read cards off and on keep its place; clear starts
 the next epoch at the first reader. Each read goes cheapest first: an idle lane before a busy
