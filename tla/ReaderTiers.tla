@@ -6,8 +6,10 @@
 \*
 \* A fleet reader whose tiers cell is empty reads flash alone while the store
 \* holds routes (read_route.go fleetReadsFlashOnly), and every tier with none
-\* (tierRouted: no route means every reader runs its own model). A reader whose
-\* cell names tiers reads those, and a held friend's reader reads none
+\* (tierRouted: no route means every reader runs its own model). A friend's
+\* reader brings its own model (ownModelReader) and reads its own model's tiers:
+\* an empty cell reads every tier, route or none (readerReadsTier). A reader
+\* whose cell names tiers reads those, and a held friend's reader reads none
 \* (docs/SPEC-SPRINT.md section 11, hold). The invariant: no read is ever asked
 \* of a reader outside the card's tier, read as the code reads it.
 \*
@@ -37,15 +39,23 @@ tierOf == [cf |-> "flash", cp |-> "pro"]
 readerTiers == [rf |-> {"flash"}, ra1 |-> {}, ra2 |-> {}, hra |-> {}]
 
 \* hra is a held friend's reader row (reader-<friend>): its tiers cell is empty,
-\* so unheld it reads as an empty cell; held, it reads none.
+\* so unheld it reads every tier (its own model); held, it reads none.
 heldReaders == {"hra"}
+
+\* hra brings its own model (ownModelReader), so unheld its empty cell reads
+\* every tier (readerReadsTier); the fleet's readers run their read's route, and
+\* the fleet empty-cell rule below is theirs alone.
+OwnModelReaders == {"hra"}
 
 Held(r) == r \in heldReaders /\ ~BugIgnoreHeld
 
 \* What the ask reads off the cell. BugEmptyReadsAll is the reversed witness:
-\* an empty cell that reads every tier even while the store holds routes.
+\* a fleet empty cell that reads every tier even while the store holds routes.
 Reads(r) ==
   IF Held(r) THEN {}
+  ELSE IF r \in OwnModelReaders THEN
+    IF readerTiers[r] = {} THEN AllTiers
+    ELSE readerTiers[r]
   ELSE IF readerTiers[r] = {} THEN
     IF BugEmptyReadsAll THEN AllTiers
     ELSE IF RoutesExist THEN {"flash"}
@@ -81,12 +91,16 @@ Spec == Init /\ [][Next]_asked
 
 \* The code's rule the invariant checks (read_route.go readerServesTier): a
 \* fleet reader whose cell is empty serves flash alone while the store holds
-\* routes, every tier with none; a reader whose cell names tiers serves those
-\* alone; a held reader serves nothing.
+\* routes, every tier with none; a friend's reader serves its own model's tiers,
+\* an empty cell every tier; a reader whose cell names tiers serves those alone;
+\* a held reader serves nothing.
 ServesTier(r, c) ==
   /\ ~Held(r)
-  /\ IF readerTiers[r] = {} THEN RoutesExist => (tierOf[c] = "flash")
-     ELSE tierOf[c] \in readerTiers[r]
+  /\ IF r \in OwnModelReaders THEN
+       IF readerTiers[r] = {} THEN TRUE
+       ELSE tierOf[c] \in readerTiers[r]
+     ELSE IF readerTiers[r] = {} THEN RoutesExist => (tierOf[c] = "flash")
+       ELSE tierOf[c] \in readerTiers[r]
 
 \* The ask never places a read of a card on a reader that does not serve the
 \* card's tier as the code reads the cell. It no longer holds by construction:
