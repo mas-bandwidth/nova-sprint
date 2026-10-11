@@ -125,7 +125,7 @@ const (
 
 // Decisions open to each judgment type.
 var Decisions = map[string][]string{
-	NReportJudgment:   {"read the report", "ack"},
+	NReportJudgment:    {"read the report", "ack"},
 	NReadyToAccept:     {"accept", "rework", "drop"},
 	NReturned:          {"rework", "accept", "drop"}, // accept only while its reads stand at its head
 	NWorkFailed:        {"rework with a fix", "drop"},
