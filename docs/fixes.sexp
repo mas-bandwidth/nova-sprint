@@ -85,6 +85,28 @@
       held by the probe, not known) with its acceptance through a passed probe and the \"newup\"
       witness, which now also makes a SyncAdd known with no probe and breaks NewMemberProbed."
      :origin "this card; the seat's v1.2.14 audit 2026-10-11 (a sync-added member skips its probe), checked against nova-sprint main 00c54ba; the owner's rule of 2026-10-11 cited at steps_work.go near line 2526")
+    (fix "a-doctor-reports-the-child-exit-code-rate-per-member" :release "v1.2.12" :status "planned"
+     :title "A member's environment exits are classified, rated and named"
+     :text "A child that ends 134 or 137, or that leaves no result at all (why=no-result), did not
+      judge the card: it is an environment event of the member, and it must not consume the card's
+      attempts or its reader. This lands the classifier the finish and the doctor read
+      (sprint.EnvExit, sprint.EnvironmentExit, internal/sprint/attempts.go: ended=environment
+      exit=<n> for 134/137 or any non-zero exit with no result), the last HarnessTailLines (40) of
+      the harness output the finish keeps on the card (sprint.HarnessTail), the doctor's rate
+      thresholds (sprint.EnvExitStatus: over EnvExitFailPct=10% with at least EnvExitMinN=10
+      children is FAIL, 3% to 10% WARN, below OK) and the member-env check line
+      (sprint.EnvExitCheck: DOCTOR FAIL member-env <m> child exits: <k> of <n> children in the last
+      hour ended 134/137 with no result (<rate>%), last: <first line of the harness tail>
+      remedy=nova-sprint card <id>). docs/SPEC-SPRINT.md, \"An environment exit\", states the rule.
+      Left for the follow-up: the finish wiring that records ended=environment exit=<n> and the
+      harness tail on the attempt and returns the card to ready without spending an attempt, and
+      the per-member stats --children histogram."
+     :origin "this card, a-doctor-reports-the-child-exit-code-rate-per-member.w1@1 epoch=17, 2026-10-11
+      ~18:25Z; the seat's read of the fleet's native logs: hetzner1 81 of 328 ended 134 and 21 137,
+      hetzner2 55/351 and 31, space 65/347 and 38, vision 68/289 and 25, b1 and b2 about 1 in 14,
+      mini-m5 none; every 134 the opencode harness aborting after Error: Unknown: ChildProcess.spawn
+      inside the landlock sandbox, logged why=no-result, the card's read or attempt coming back
+      no verdict or not-done")
     (fix "the-rebalance-levels-reads-every-tick-all-at-once" :release "v1.2.12" :status "planned"
      :title "The rebalance levels reads every tick, all at once"
      :text "The Rebalance (internal/sprint/rebalance.go) skipped every card whose kind was not work, so a member that was idle when a burst of reads was dealt sat with dozens of read cards queued while the rest of the fleet had idle lanes, and nothing moved them until it drained its own queue (the owner, 2026-10-11 ~18:50Z: \"it seems like we could possibly rebalance this a bit better\", \"Not one card at a time per-tick\", \"This should NOT be manual.\"; the same shape ~12:40Z). The rebalance now has a read pass: a read card queued ready on a unit whose lanes all work goes, in the same rebalance and the same tick, to a unit with an idle lane whose reader row serves the read's tier and that has not read the card at this attempt, as many as the idle lanes take (a read is half a slot); never back to a row it was rebalanced off (FieldRebalancedFrom), to a reader row that does not serve its tier, or to a reader that already read it; it keeps its attempt and is dealt again under the new reader's identity, the record on the row it left retired. All eligible cards move in one tick, never one per tick. The hand verb fleet level now runs the rebalance after the level (FleetReq Rebalance) and takes --dry-run, so it reports what the tick would move, reads included: on the 36-read shape its moved count is 36, not 0; the tick's level part is unchanged, the rebalance is its own part after the deal. The read-card dealer now keeps an epoch-scoped fleet cursor per read tier (read_deal_index_<tier>), persists it through TickDeal, and deals each read cheapest first (an idle lane, then the nearest served tier, then the most idle lanes) with the cursor breaking a tie; a reader that refused the read at staging is skipped, and ineligible, duplicate, and full readers are skipped. Tests TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick, TestTheRebalanceReadNeverMovesToAnIneligibleOrOldRow, TestTheRebalanceReadNeverMovesToAReaderThatAlreadyReadIt, and TestTheRebalanceReadNeverMovesBackToARowItWasRebalancedOff in internal/sprint/rebalance_reads_test.go, TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick and TestTheLevelVerbRebalancesTheReadsToo in internal/sprint/rebalance_test.go, plus cursor, refusal, and restart coverage in internal/sprint/deal_test.go (docs/SPEC-SPRINT.md section 1, the rebalance and read-card deal)."
