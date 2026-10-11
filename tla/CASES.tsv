@@ -367,3 +367,5 @@ MCNoRoom.cfg	MCNoRoom.tla	pass	-	ignore-terminal	noroom	required	-
 MCNoRoomBrokenDrainSkip.cfg	MCNoRoom.tla	invariant	WordIsThisTicks	ignore-terminal	noroom	required	-
 MCNoRoomBrokenFleetBlind.cfg	MCNoRoom.tla	invariant	NeverDealtUnderFloor	ignore-terminal	noroom	required	-
 MCNoRoomBrokenTickBlind.cfg	MCNoRoom.tla	invariant	NeverDealtUnderFloor	ignore-terminal	noroom	required	-
+MCAdopt.cfg	MCAdopt.tla	pass	-	ignore-terminal	adopt	required	-
+MCAdoptBrokenKeepNew.cfg	MCAdopt.tla	invariant	RefusedLeavesOld	ignore-terminal	adopt	required	-

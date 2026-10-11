@@ -20,6 +20,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -269,6 +270,10 @@ type app struct {
 	loginFile   func() (string, error)
 	loginSecret func(secrets.Login) (secrets.Secret, error)
 	dialStore   func(ctx context.Context, addr string, o redisconn.Options, getenv func(string) string, names sprint.Names) (store.Backend, error)
+	// shadow says this process is running `tick --shadow`, the adopt's
+	// pre-window shadow tick: its store open tolerates a library the window's
+	// fn load will replace (libraryCheck, tla/Adopt.tla PreCheck).
+	shadow bool
 }
 
 // controlLine is the server's one line of control (app.serial): a tick of the run
@@ -397,7 +402,7 @@ func (a *app) dialRedis(ctx context.Context, addr string, o redisconn.Options, g
 		if err != nil {
 			return nil, err
 		}
-		if err := libraryMatches(ctx, conn.Client(), addr); err != nil {
+		if err := a.libraryCheck(ctx, conn.Client(), addr); err != nil {
 			// ignored: a close on the failure path; the library mismatch error is the one returned
 			_ = conn.Close()
 			return nil, err
@@ -427,25 +432,169 @@ func openWith(ctx context.Context, o redisconn.Options, getenv func(string) stri
 	return redisconn.Open(ctx, o, getenv)
 }
 
-// libraryMatches refuses a store whose loaded table function library is not
-// this build's (one FUNCTION LIST, once per process and address): every write
-// through a library of another build would be refused or unreadable.
-func libraryMatches(ctx context.Context, c *redis.Client, addr string) error {
-	source, err := fn.Source()
+// libraryCheck is the store-open's library check: the post-load check
+// (libraryMatches) for every verb, and the pre-window check (libraryShadow)
+// for the shadow tick, which plans a tick read-only before the window's fn
+// load and must tolerate a library difference the window will load
+// (tla/Adopt.tla, PostCheck and PreCheck).
+func (a *app) libraryCheck(ctx context.Context, c *redis.Client, addr string) error {
+	if !a.shadow {
+		return libraryMatches(ctx, c, addr)
+	}
+	note, err := libraryShadow(ctx, c, addr)
 	if err != nil {
 		return err
 	}
-	code, found, err := fn.Loaded(ctx, c)
+	if note != "" {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", prog, note)
+	}
+	return nil
+}
+
+// libraryLoaded reads, once for either check, this build's embedded library
+// source and the store's loaded library code.
+func libraryLoaded(ctx context.Context, c *redis.Client) (source, code string, found bool, err error) {
+	source, err = fn.Source()
+	if err != nil {
+		return "", "", false, err
+	}
+	code, found, err = fn.Loaded(ctx, c)
+	return source, code, found, err
+}
+
+// libraryMatches is the adopt's post-load check (tla/Adopt.tla, PostCheck):
+// it refuses a store whose loaded table function library is not this build's
+// (one FUNCTION LIST, once per process and address) — every write through a
+// library of another build would be refused or unreadable, so a store whose
+// library is not the build the window just loaded is refused and the rescue
+// restores the old library. It judges the library by its code (librarySum),
+// not its bytes: a library that differs only in comments or blank space runs
+// the same functions, so it matches (v1.2.3's adopt refused the store over six
+// comment lines, PR #33). A change of code is refused, naming both sums as
+// nova-redis fn load and fn check print them, then the code sums it compared.
+func libraryMatches(ctx context.Context, c *redis.Client, addr string) error {
+	source, code, found, err := libraryLoaded(ctx, c)
 	if err != nil {
 		return err
 	}
 	switch {
 	case !found:
 		return fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --addr %s", addr, fn.Library, addr)
-	case fn.Sum(code) != fn.Sum(source):
-		return fmt.Errorf("the store at %s holds %s library %s, and this build is %s; run: nova-redis fn load --addr %s", addr, fn.Library, fn.Sum(code), fn.Sum(source), addr)
+	case librarySum(code) != librarySum(source):
+		return fmt.Errorf("the store at %s holds %s library %s, and this build is %s (their code: %s and %s); run: nova-redis fn load --addr %s", addr, fn.Library, fn.Sum(code), fn.Sum(source), librarySum(code), librarySum(source), addr)
 	}
 	return nil
+}
+
+// libraryShadow is the adopt's pre-window check (tla/Adopt.tla, PreCheck):
+// the shadow tick, run before the window's fn load, tolerates a store whose
+// loaded library's code differs from this build's — the window's fn load will
+// put this build's library on the store — and says so in one line; a store
+// that holds no library still refuses. The note is "" when the library
+// matches, "library differs: loaded in the window" when only it differs.
+func libraryShadow(ctx context.Context, c *redis.Client, addr string) (note string, err error) {
+	source, code, found, err := libraryLoaded(ctx, c)
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case !found:
+		return "", fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --addr %s", addr, fn.Library, addr)
+	case librarySum(code) != librarySum(source):
+		return "library differs: loaded in the window", nil
+	}
+	return "", nil
+}
+
+// librarySum is the digest libraryMatches and libraryShadow judge a library by:
+// fn.Sum of its code (luaCode), so two sources that differ only in comments or
+// blank space have one sum, and a change of any token or of any string's bytes
+// is a new one.
+func librarySum(source string) string { return fn.Sum(luaCode(source)) }
+
+// luaCode is the Lua source as its tokens, for the library's digest: each
+// comment ("--" to the end of its line, or a long comment "--[==[ ... ]==]" of
+// any level) and each run of blank space outside a string is one space between
+// tokens, none at either end; a string, quoted ('...' or "...", its escapes
+// included) or long ("[==[ ... ]==]" of any level), is copied byte for byte, so
+// a "--" inside one is its text. A string or long comment never closed runs to
+// the end of the source: Lua refuses to load such a source, and the digest of
+// any source is defined.
+func luaCode(src string) string {
+	var b strings.Builder
+	gap := false // blank space or a comment since the last byte written
+	put := func(s string) {
+		if gap && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		gap = false
+		b.WriteString(s)
+	}
+	for i := 0; i < len(src); {
+		switch c := src[i]; {
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f':
+			gap = true
+			i++
+		case strings.HasPrefix(src[i:], "--"):
+			gap = true
+			if n := longBracket(src[i+2:]); n > 0 {
+				i = longClose(src, i+2+n, n-2)
+				continue
+			}
+			if at := strings.IndexByte(src[i:], '\n'); at >= 0 {
+				i += at
+			} else {
+				i = len(src)
+			}
+		case c == '"' || c == '\'':
+			end := i + 1
+			for end < len(src) && src[end] != c {
+				if src[end] == '\\' {
+					end++ // the escaped byte is the string's, whatever it is
+				}
+				end++
+			}
+			end = min(end+1, len(src))
+			put(src[i:end])
+			i = end
+		case c == '[' && longBracket(src[i:]) > 0:
+			n := longBracket(src[i:])
+			end := longClose(src, i+n, n-2)
+			put(src[i:end])
+			i = end
+		default:
+			put(src[i : i+1])
+			i++
+		}
+	}
+	return b.String()
+}
+
+// longBracket is the length of the long bracket s opens ("[[", "[=[", "[==[",
+// and so on), or 0 when s opens none.
+func longBracket(s string) int {
+	if s == "" || s[0] != '[' {
+		return 0
+	}
+	n := 1
+	for n < len(s) && s[n] == '=' {
+		n++
+	}
+	if n < len(s) && s[n] == '[' {
+		return n + 1
+	}
+	return 0
+}
+
+// longClose is the index just past the close of a long bracket of the level
+// (its count of '='), searched from i: "]", level times "=", "]"; len(src) when
+// it never closes.
+func longClose(src string, i, level int) int {
+	closing := "]" + strings.Repeat("=", level) + "]"
+	if at := strings.Index(src[i:], closing); at >= 0 {
+		return i + at + len(closing)
+	}
+	return len(src)
 }
 
 // common is the flags every store verb takes.
@@ -599,6 +748,10 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 	if code, sent := a.forwarded(args, stdout, stderr); sent {
 		return code
 	}
+	// the shadow tick (server switch --dry-run runs the candidate's `tick
+	// --shadow`) opens its store read-only before the window's fn load: its
+	// library check tolerates a library the window will load (libraryCheck).
+	a.shadow = len(args) >= 2 && args[0] == "tick" && slices.Contains(args[1:], "--shadow")
 	for _, v := range verbs {
 		words := strings.Fields(v.name)
 		if len(args) >= len(words) && strings.Join(args[:len(words)], " ") == v.name {

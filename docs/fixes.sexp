@@ -14,12 +14,16 @@
    :text "The first release from this repository: nova-sprint, nova-card and nova-work, re-seeded from nova-tools.")
   (release "v1.2.4" :status "shipped" :date "2026-10-10"
    :text "One fix: the sprint store's function library is back at its v1.2.2 digest, so an adopt can load it.")
-  (release "v1.2.6" :status "planned"
-   :text "The fixes held during the split, the point-release candidates found on 2026-10-10, the owed
-    tests, and the sprint store cards that are point-release work. Each is re-applied or written in
-    this repository, then cut as one release."
-   :date "2026-10-10")
-  (release "v1.2.9" :status "planned" :date "2026-10-10"
+   (release "v1.2.6" :status "planned"
+    :text "The fixes held during the split, the point-release candidates found on 2026-10-10, the owed
+     tests, and the sprint store cards that are point-release work. Each is re-applied or written in
+     this repository, then cut as one release."
+    :date "2026-10-10")
+   (release "v1.2.7" :status "planned" :date "2026-10-10"
+    :text "The adopt can carry a change of the store's function library: its digest covers code, not
+     comments, the pre-window shadow tick passes when only the library differs, and the post-load check
+     refuses a library that is not the new build's.")
+   (release "v1.2.9" :status "planned" :date "2026-10-10"
    :text "Inbox push writes each judgment once without concurrent writers sharing a temporary path."))
  :items
  ((fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
@@ -30,6 +34,17 @@
    :title "Six Lua comment lines restored"
    :text "The function library's digest is its v1.2.2 value again, so the adopt's shadow tick accepts it."
    :origin "PR #33, head 1f403558d")
+  (fix "adopt-carries-a-lua-change" :release "v1.2.7" :status "shipped"
+   :title "The adopt can carry a change of the store's function library"
+   :text "libraryMatches judges the library by its code, not its bytes: luaCode keeps each string (quoted
+    or long) and each token, and turns every comment and run of blank space outside a string into one
+    space, so a library that differs only in comments or blank space matches (v1.2.3's adopt refused the
+    store over six comment lines). The shadow tick's pre-window check (libraryShadow) tolerates a library
+    whose code differs, saying \"library differs: loaded in the window\"; the post-load check
+    (libraryMatches) still refuses a store whose library is not the new build's, so a refusal restores
+    the old library. TLA+ model Adopt, property RefusedLeavesOld, with the reversed witness
+    MCAdoptBrokenKeepNew."
+   :origin "the seat ledger v1.2.4-held-2026-10-10.md (a v1.3 card moved to v1.2.7); this pull request")
   (fix "roadmap-and-fixes-as-data" :release "v1.2.6" :status "shipped"
    :title "ROADMAP.md and FIXES.md generated from s-expression data"
    :text "docs/roadmap.sexp and docs/fixes.sexp are the data; `make roadmap` writes both pages, and a test
