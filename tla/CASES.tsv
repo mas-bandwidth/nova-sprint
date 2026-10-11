@@ -499,3 +499,5 @@ MCHoldsBrokenResolveHeld.cfg	MCHolds.tla	invariant	HeldMovesOnlyByRelease	ignore
 MCHoldsBrokenWorkerReleases.cfg	MCHolds.tla	invariant	OnlyCoordinatorReleases	ignore-terminal	holds	required	-
 MCAttemptsEpochs.cfg	MCAttemptsEpochs.tla	pass	-	ignore-terminal	attemptsepochs	required	-
 MCAttemptsEpochsBrokenNoepochcheck.cfg	MCAttemptsEpochs.tla	invariant	OldEpochWritesNothing	ignore-terminal	attemptsepochs	required	-
+MCAttemptsEpochsBrokenKeepGen.cfg	MCAttemptsEpochs.tla	invariant	SuffixUnique	ignore-terminal	attemptsepochs	required	-
+MCAttemptsEpochsBrokenNoGenGuard.cfg	MCAttemptsEpochs.tla	invariant	StaleGenRefused	ignore-terminal	attemptsepochs	required	-
