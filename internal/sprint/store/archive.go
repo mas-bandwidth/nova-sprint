@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
@@ -20,9 +19,7 @@ type archiveRecord struct {
 	Kept []string `json:"kept,omitempty"`
 }
 
-// archiveNoteMax is how many streams one note of the tick's names: a tick that
-// archives more writes more notes, each stream named once.
-const archiveNoteMax = 20
+
 
 // ArchiveStreams hides the named streams' rows of the work and merge tables
 // (stream archive, sprint.StreamArchive): no card moves, so every landed card,
@@ -123,11 +120,9 @@ type ArchiveResult struct {
 // keepArchive is the tick's archive part, from the shapes of the work and
 // merge tables alone (no card is read): an archived stream that holds a card
 // not landed again (an add, a recut) is drawn again, whether the machine runs
-// or not; and while it runs, a drawn stream whose every card has landed and
-// behind which nothing waits (no card of it in any other column, no merge card
-// queued or stuck, no change queued for its row) is archived, unless the
-// coordinator brought it back by hand, and one happened note names each
-// stream it archived, once.
+// or not. Streams are archived only by the explicit stream archive command
+// (docs/SPEC-SPRINT.md section 16; the owner, 2026-10-11: archiving is a
+// manual request only).
 func (st *Store) keepArchive(ctx context.Context, running bool) (ArchiveResult, error) {
 	var res ArchiveResult
 	st, err := st.pin(ctx)
@@ -169,7 +164,6 @@ func (st *Store) keepArchive(ctx context.Context, running bool) (ArchiveResult, 
 		return res, err
 	}
 	kept := slices.Clone(rec.Kept)
-	var candidates []string
 	for _, r := range work.Rows {
 		landed, open := 0, 0
 		for k, c := range work.Columns {
@@ -184,28 +178,14 @@ func (st *Store) keepArchive(ctx context.Context, running bool) (ArchiveResult, 
 		}
 		switch {
 		case open > 0 || waits[r.Key]:
-			// work again: drawn, and archived by the tick once it lands
+			// work again: draw the stream (show it on the table again)
 			kept = slices.DeleteFunc(kept, func(k string) bool { return k == r.Key })
 			if r.Hidden {
 				res.Shown = append(res.Shown, r.Key)
 			}
 		case !running || r.Hidden || landed == 0 || slices.Contains(kept, r.Key):
 		default:
-			candidates = append(candidates, r.Key)
-		}
-	}
-	// A stream holding a sentinel is never archived by the tick: a sentinel is a
-	// stop the coordinator releases, not work, so releasing one never takes its
-	// stream off the table (docs/SPEC-SPRINT.md section 16; the owner, 2026-10-11:
-	// archiving is a manual request only). The stream leaves only on an explicit
-	// stream archive.
-	for _, key := range candidates {
-		stop, err := st.streamHasSentinel(ctx, key)
-		if err != nil {
-			return res, err
-		}
-		if !stop {
-			res.Archived = append(res.Archived, key)
+			// tick does not archive: streams are archived only by stream archive
 		}
 	}
 	if !slices.Equal(kept, rec.Kept) {
@@ -216,43 +196,7 @@ func (st *Store) keepArchive(ctx context.Context, running bool) (ArchiveResult, 
 	if err := st.hideStreams(ctx, res.Shown, false); err != nil {
 		return res, err
 	}
-	if err := st.hideStreams(ctx, res.Archived, true); err != nil {
-		return res, err
-	}
-	if len(res.Archived) == 0 {
-		return res, nil
-	}
-	// information, as the note of a stream landed is: addressed to no one, so the
-	// tick end does not wake the coordinator for it
-	var notes []sprint.Note
-	for part := range slices.Chunk(res.Archived, archiveNoteMax) {
-		notes = append(notes, sprint.Note{Kind: sprint.Happened, Type: sprint.NStreamArchived, Who: sprint.MachineActor,
-			What: fmt.Sprintf("every card of %s landed: archived, off the work and merge tables, its cards and costs kept", strings.Join(part, ", ")),
-			Hint: "nova-sprint where --json --archived; nova-sprint stream unarchive <stream>"})
-	}
-	_, err = st.Run(ctx, Step{Verb: "stream archive", Actor: sprint.MachineActor, Plan: func(s *sprint.Snapshot) sprint.Plan {
-		for i := range notes {
-			notes[i].At = s.Now
-		}
-		return sprint.Plan{Notes: notes}
-	}})
-	return res, err
-}
-
-// streamHasSentinel says the stream's row holds a sentinel among its landed
-// cards. The tick archives no stream that holds one: a released sentinel is not
-// work, so its release leaves the stream drawn (keepArchive).
-func (st *Store) streamHasSentinel(ctx context.Context, stream string) (bool, error) {
-	cards, err := st.ReadCells(ctx, sprint.Work, stream, sprint.Landed)
-	if err != nil {
-		return false, err
-	}
-	for _, c := range cards {
-		if sprint.IsSentinel(c) {
-			return true, nil
-		}
-	}
-	return false, nil
+	return res, nil
 }
 
 // cellCount is the count cell of the row's column, 0 when the table has none.

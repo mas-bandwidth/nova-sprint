@@ -26,9 +26,9 @@ func TestWhereCarriesTiersAndPerLandedCost(t *testing.T) {
 	}
 	ta.ok("start")
 	ta.landStream("s1", []string{"input=10 actual_usd=1 actual_by=harness", "input=10 actual_usd=2 actual_by=harness"}, []string{"", ""}, []string{"", ""})
-	ta.ok("tick") // the record is the tick's
+	ta.ok("stream archive s1") // s1 archived by the explicit verb
 	var v whereView
-	ta.json("where --archived", &v) // s1 landed whole: the tick archived it
+	ta.json("where --archived", &v)
 	assert.Equal(t, map[string]int{"pro": 2, "flash": 1}, v.Tiers, "every card by its brief's tier")
 	s1 := v.Tables["work"]["s1"]
 	assert.Equal(t, "$1.50", s1["per_landed"], "three dollars over two landed cards")

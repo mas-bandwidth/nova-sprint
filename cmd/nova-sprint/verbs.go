@@ -3568,9 +3568,8 @@ where --json --archived; the summary line and the drawn footers count only
 the streams on the table, and where --json carries archived_cards and
 archived_landed beside them; refused while a
 stream holds a card not landed, naming it, all or none. stream unarchive
-draws them again. The tick archives a stream itself when its last card lands
-and nothing waits behind it (one note names it), and draws an archived stream
-again when a card not landed is in it. stream set <s> --read-tier pro
+draws them again. Stream archive is the only way to archive a stream; the tick
+never archives streams itself. stream set <s> --read-tier pro
 puts the reads of the stream's cards on pro, over the sprint's read tier (set
 --read-tier); a read tier raises a card's reads and never lowers them below the
 card's own tier, and default takes the stream's off.`) + "\n"
