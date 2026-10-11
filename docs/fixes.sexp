@@ -91,10 +91,11 @@
      running server's read cards were off after a clear and 75 cards sat in review with 81 of 140 fleet
      slots idle. Read cards are now on by default (an absent property, on or default; off is the one way
      off), and so are the four backlog alarms at their working thresholds (review 40, ready on, merging
-     15, fleet 50 percent; default restores each). A design setting off or away from its working value
-     is pushed over the coordinator's hook as a WARNING naming the set that restores it, at every change,
-     and on every new hook (so after a server's start); while read cards are off, every card that enters
-     review is pushed as a warning too. The tests that exercise the old readers table set read cards off
+     15, fleet 50 percent; default restores each). A set that leaves a design setting off or away from
+     its working value writes a WARNING to the coordinator at once, naming the set that restores it;
+     while read cards are off, the tick writes one for every card that enters review, by card, attempt
+     and entry. Each is a stored note the hook pushes as a numbered PUSH and the inbox lists, and where
+     says the settings off (tla/SettingsWarn.tla). The tests that exercise the old readers table set read cards off
      explicitly; the next change deletes the off switches and moves them onto read cards."
     :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 24")
    (fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
