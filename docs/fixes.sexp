@@ -87,8 +87,10 @@
      card gets a read cut outside review and must violate ReadsInReview. The original over-budget instance moved to
      tla/cardmachine-bench/ (its timeout row removed from RUNS.tsv), and two stale comments in steps_review.go and
      friend_read.go cite EndReadStale now. CardMachine itself, CardISA and the running lifecycle (SprintTables) are
-     not touched."
-    :origin "this card: cardmachine-tlc-record-owed.w2, from draft tmp/next-sprint-cards/cardmachine-tlc-record-owed.md
+     not touched. The cardmachine group now has current records from a TLC bench (java 21.0.12.1, the pinned
+     tla2tools.jar, two workers): MCCardMachineSmall PASS in 1.8 s, MCCardMachineSmallLive PASS in 6.3 s, and
+     MCCardMachineBrokenReadsInReview violates ReadsInReview as expected in 1.0 s."
+    :origin "this card: cardmachine-tlc-record-owed.w3 (attempt 3; attempt 2 made the model change and owed the TLC run), from draft tmp/next-sprint-cards/cardmachine-tlc-record-owed.md
      (epoch 16: MCCardMachine.cfg timed out at the 110 s cap, and a --manual rerun at 1800 s timed out too) and the
      v1.2.12 inventory item T3 (at 300 s: 615,742 distinct states, 307,578 on the queue, both growing).")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
