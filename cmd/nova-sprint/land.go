@@ -2205,20 +2205,21 @@ func (l *lander) clone(ctx context.Context, repo string) (dir, why string) {
 		}
 		return l.repoDir, l.originIs(ctx, l.repoDir, repo)
 	}
+	// the land root is read and resolved under rootMu: two lanes of two clones prepare
+	// at once, and clone() is where a lane first reads it (landpass.go, prepare per job)
+	s := l.locks()
+	s.rootMu.Lock()
 	if l.root == "" {
-		s := l.locks()
-		s.rootMu.Lock()
-		if l.root == "" {
-			root, err := l.a.landRoot()
-			if err != nil {
-				s.rootMu.Unlock()
-				return "", "no directory to keep clones in (" + oneline.Err(err) + "); run: nova-sprint land --repo-dir <clone>"
-			}
-			l.root = root
+		root, err := l.a.landRoot()
+		if err != nil {
+			s.rootMu.Unlock()
+			return "", "no directory to keep clones in (" + oneline.Err(err) + "); run: nova-sprint land --repo-dir <clone>"
 		}
-		s.rootMu.Unlock()
+		l.root = root
 	}
-	dir = filepath.Join(l.root, repoDirName(repo))
+	root := l.root
+	s.rootMu.Unlock()
+	dir = filepath.Join(root, repoDirName(repo))
 	if l.dry {
 		return dir, ""
 	}
@@ -2230,8 +2231,8 @@ func (l *lander) clone(ctx context.Context, repo string) (dir, why string) {
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 		return dir, l.originIs(ctx, dir, repo)
 	}
-	if err := os.MkdirAll(l.root, 0o755); err != nil {
-		return "", "the land directory " + l.root + " could not be made: " + oneline.Err(err)
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return "", "the land directory " + root + " could not be made: " + oneline.Err(err)
 	}
 	// one branch, never every branch: the landing fetches the base and the heads it needs
 	// itself (build), and a clone of a card repository's thousands of branches was 80 s

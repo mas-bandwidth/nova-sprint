@@ -645,23 +645,22 @@ func (l *lander) buildFailed(ctx context.Context, j *landJob, why string) {
 // worktree. Every write of the clone's worktree list is under the fetch lock. The stale
 // worktrees the clone lists (directories gone) are pruned once a pass.
 func (l *lander) worktree(ctx context.Context, clone, stream, base string) (dir, why string) {
+	s := l.locks()
+	// the land root is read and resolved under rootMu: two lanes prepare at once, and
+	// this is where a lane reads it after clone() may have written it
+	s.rootMu.Lock()
 	root := l.root
 	if root == "" {
-		s := l.locks()
-		s.rootMu.Lock()
-		if l.root == "" {
-			if r, err := l.a.landRoot(); err != nil {
-				s.rootMu.Unlock()
-				return "", "no directory to keep the stream's worktree in (" + oneline.Err(err) + ")"
-			} else {
-				l.root = r
-			}
+		if r, err := l.a.landRoot(); err != nil {
+			s.rootMu.Unlock()
+			return "", "no directory to keep the stream's worktree in (" + oneline.Err(err) + ")"
+		} else {
+			l.root = r
+			root = r
 		}
-		root = l.root
-		s.rootMu.Unlock()
 	}
+	s.rootMu.Unlock()
 	dir = worktreeDir(root, clone, stream)
-	s := l.locks()
 	lock := s.fetchLock(clone)
 	lock.Lock()
 	defer lock.Unlock()

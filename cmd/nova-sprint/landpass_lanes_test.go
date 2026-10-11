@@ -139,6 +139,9 @@ func TestFetchesOfOneCloneSerializeAndTwoClonesGoSideBySide(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
 	l := &lander{a: r.a}
+	// the pass makes the shared locks once before its lanes start (land.go); do the same
+	// here, before the goroutines, so locks() is not raced on l.shared
+	l.locks()
 	// two clones: both enter the fetch lock at once
 	var mu sync.Mutex
 	in, most := 0, 0
