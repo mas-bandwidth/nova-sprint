@@ -271,3 +271,17 @@ file it wrote; verify names the same `sha256`, and when the two differ it says
 `differences=0` is the proof the tree holds what GitHub holds.
 
 
+## Release acceptance
+
+The following tests must pass for a release:
+
+- `cmd/nova-sprint/missing_need_functional_test.go` - Tests the three dependency rules:
+  - Drop of a needed card is refused naming its dependents
+  - Drop with --waive allows removing the need before dropping
+  - Accept refuses a card whose need has not landed
+  - Coordinator alerts within one second when a card has a missing need
+  - Needs set on merging card with missing need succeeds
+
+Run with: `go test -tags functional ./cmd/nova-sprint/... -run TestMissingNeedFunctional`
+
+

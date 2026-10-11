@@ -64,7 +64,8 @@
      pass.")
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
-     breaker on the review loop, and a red base pushed to the coordinator.")
+     breaker on the review loop, a red base pushed to the coordinator, and dependency checks that prevent
+     stranded cards when a needed card is dropped.")
    (release "v1.2.15" :status "planned"
     :text "The next small product fixes, one concern each."))
   :items
@@ -2305,6 +2306,21 @@
      things that should be parallel (with good reason to be ||).\"; found by the seat's audit
      child on nova-sprint main the same day (cmd/nova-sprint/landpass.go, THE LANDINGS, SERIAL);
      attempt 8 fixes the clone-creation key a reader found (land.go, clone)")
+  (fix "missing-need-dependency-checks" :release "v1.2.14" :status "planned"
+   :title "Dependency checks prevent stranded cards when a needed card is dropped"
+   :text "Three rules guard against dropped cards stranding dependents. (a) Drop of a card that any
+    unlanded card needs is refused naming each dependent, unless the call specifies --relink <new id>
+    (dependents now need the new card) or --waive (the need is removed from each dependent, recorded
+    with the reason). (b) The run loop checks every unlanded card's needs at least once per second of
+    running time, and a need naming a card that is absent pushes one judgment to the coordinator.
+    (c) Accept refuses a card whose need has not landed. The functional test
+    cmd/nova-sprint/missing_need_functional_test.go verifies these rules for cards in each state
+    (waiting, ready, working, review, merging), testing drop --one, drop --group, and store edits
+    that take a card off the table. The coordinator's hook stream receives the judgment within one
+    second of running time each time, naming the card and the missing need."
+   :origin "this card, every-need-names-a-live-card-checked-every-second.w1, from the owner,
+    2026-10-11 ~23:25Z: \"this must never happen again. We must have a process that checks all card
+    dependencies and if they don't exist, once per-second, you are alerted via push notification.\""
   (fix "lander-resolves-ledger-conflicts" :release "v1.2.13" :status "planned"
    :title "A landing whose every conflict is a shared ledger lands"
    :text "Measured over 60 minutes of the live sprint on 2026-10-11: about 300 landing refusals
