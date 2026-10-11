@@ -29,13 +29,14 @@ func (h *harness) noteWhats(typ string) []string {
 }
 
 // rateLimitLine is a member's report of a take the provider refused for its rate limit: on
-// an unlimited route it counts toward the route's rest; on a limited route (routes limit)
-// it returns the card untouched (rate_budget.go; TestThreeRateLimitedTakesOnALimitedRouteRestNothing).
+// any route it returns the card untouched and backs the route off briefly (rate_budget.go,
+// route_rest.go; TestThreeRateLimitedTakesOnALimitedRouteRestNothing).
 const rateLimitLine = cardhdr.EndProvider + ": provider: class=rate-limited status=429 msg=Rate limit exceeded: free-models-per-min"
 
-// Three takes the provider rate limited (429) on a LIMITED route rest nothing (the owner,
-// 2026-10-11: never a route rest from rate limiting): each card is returned untouched, its
-// attempt and its redeals as they were, and dealt again.
+// Three takes the provider rate limited (429) on a LIMITED route never rest the route for
+// 3-in-10 (the owner, 2026-10-11: never a route rest from rate limiting): each card is
+// returned untouched, its attempt and its redeals as they were, and the route backs off
+// briefly from the records, then serves again by itself.
 func TestThreeRateLimitedTakesOnALimitedRouteRestNothing(t *testing.T) {
 	t.Parallel()
 	h := routeHarness(t, route("flash-a", "flash"))
@@ -47,18 +48,40 @@ func TestThreeRateLimitedTakesOnALimitedRouteRestNothing(t *testing.T) {
 		h.failTake(id, rateLimitLine)
 	}
 	h.machine()
-	assert.Empty(t, h.noteWhats(sprint.NRouteRested), "three 429s rest nothing")
+	whats := h.noteWhats(sprint.NRouteRested)
+	require.Len(t, whats, 1, "one rate-limit backoff note")
+	assert.Contains(t, whats[0], "rate-limit backoff of 4m0s on flash-a", "three 429s with no ok between: 240s from the last")
 	s := h.snap()
-	assert.Empty(t, sprint.RouteRests([]sprint.Route{route("flash-a", "flash")}, s.Fleet), "no rest")
+	assert.Empty(t, sprint.RouteRests([]sprint.Route{route("flash-a", "flash")}, s.Fleet), "never the 3-in-10 rest")
+	backoff := ""
+	for name, v := range s.Fleet.Props() {
+		if strings.HasPrefix(name, sprint.PropRule3Rest("")) && strings.Contains(v, "flash-a+rate-backoff ") {
+			backoff = v
+		}
+	}
+	assert.Contains(t, backoff, sprint.RestRateBackoff, "the backoff's line, beside the route's own")
+	h.machine()
+	assert.Len(t, h.noteWhats(sprint.NRouteRested), 1, "no second note while the same until holds")
+	assert.Empty(t, h.openOf(sprint.NNoRoute), "a backoff on the tier's one route is a stall, never a judgment")
+	assert.Empty(t, h.openOf(sprint.NStalled), "a backoff is a wait that ends by itself, never stalled work")
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
 		c := s.Fleet.Card(id)
 		assert.Zero(t, c.Int("redeals"), "%s spent no redeal", id)
-		assert.Equal(t, sprint.Ready, c.Col, "%s is dealt again", id)
+		assert.Equal(t, sprint.Withdrawn, c.Col, "%s waits out the backoff", id)
 	}
+	// the backoff ends by itself; the cards are dealt again
+	h.tick(5 * time.Minute)
+	h.machine()
+	s = h.snap()
+	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
+		assert.Equal(t, sprint.Ready, s.Fleet.Card(id).Col, "%s is dealt again once the backoff ends", id)
+	}
+	assert.Empty(t, h.openOf(sprint.NNoRoute), "no judgment after the backoff either")
+	assert.Empty(t, h.openOf(sprint.NStalled), "no stalled-work judgment after the backoff either")
 }
 
 // A route rests only on a provider-typed failure (tla/RouteRest.tla): three takes on one route
-// the provider failed with a 429, of three cards, rest the route in the tick that sees the
+// the provider failed with a 5xx, of three cards, rest the route in the tick that sees the
 // third; the rest names the cards, no work card is drawn on it while it rests (a redeal
 // included, even when it is the tier's only route), and it ends by itself at RouteRestFor,
 // its window begun again. Two such takes in a window with ok ends rest nothing.
@@ -69,15 +92,15 @@ func TestARouteWhoseProviderFailsThreeTakesRests(t *testing.T) {
 	h.startMachine()
 	h.machine()
 	for _, id := range []string{"s1-1.w1", "s1-2.w1"} {
-		h.failTake(id, rateLimitLine)
+		h.failTake(id, outageLine)
 	}
 	h.machine()
-	assert.Empty(t, h.noteWhats(sprint.NRouteRested), "two 429s rest nothing")
+	assert.Empty(t, h.noteWhats(sprint.NRouteRested), "two 5xxs rest nothing")
 	for _, id := range []string{"s1-1.w1", "s1-2.w1"} {
 		require.Equal(t, sprint.Ready, h.snap().Fleet.Card(id).Col, "%s is dealt again on the tier's one route", id)
 	}
 
-	h.failTake("s1-3.w1", rateLimitLine)
+	h.failTake("s1-3.w1", outageLine)
 	h.machine()
 	s := h.snap()
 	rests := sprint.RouteRests([]sprint.Route{route("flash-a", "flash")}, s.Fleet)
@@ -154,7 +177,7 @@ func TestARestingRouteServesNoDealWhileAnotherServes(t *testing.T) {
 	}
 	require.Len(t, onA, 3, "the deal alternates the two routes")
 	for _, id := range onA {
-		h.failTake(id, rateLimitLine)
+		h.failTake(id, outageLine)
 	}
 	h.addReady("s1", 4, briefOf("flash", ""))
 	h.machine()
@@ -208,7 +231,7 @@ func TestAHundredRoutesRestedByRule3StayUnderThePropertyCap(t *testing.T) {
 	for member, ids := range byMember {
 		h.must(TakeStep(sprint.TakeReq{As: member, Sel: sprint.Sel{IDs: ids}, Gens: gens, Who: member}))
 		h.must(FinishStep(sprint.FinishReq{As: member, Sel: sprint.Sel{IDs: ids}, Gens: gens, Failed: true,
-			Report: rateLimitLine, Usage: "wall=450.00s budget=1/1000", Who: member}))
+			Report: outageLine, Usage: "wall=450.00s budget=1/1000", Who: member}))
 	}
 	h.machine()
 	s = h.snap()

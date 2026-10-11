@@ -1341,4 +1341,36 @@
     landed."
    :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
     2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
-    owner: \"this should be caught by card lint.\"")))
+    owner: \"this should be caught by card lint.\"")
+  (fix "a-rate-limited-refusal-never-fails-the-cardc" :release "v1.2.14" :status "planned"
+   :title "A rate limit stalls its route briefly; it never fails a card or rests it for 3-in-10"
+   :text "A take a provider ends rate-limited (class=rate-limited) never fails the card, on any
+    route and however many times: the card returns unspent (no FieldTakeEnded, no redeal, no
+    attempt, no failed-work judgment, none of the out-of-credit bound FieldRateReturns) and leaves a
+    rate_take_<n> record numbered after the last one the card holds, with no gap and no bound, so
+    RateTakes reads every one. The route backs off briefly, then serves again by itself: RestsDue
+    computes the backoff purely from those records, k being the route's rate-limited ends since its
+    last ok end (a take the worker finished ok, in the finished cell or past it; a failed finish
+    resets nothing) and last the latest one's time, ending at last + min(60s*2^(k-1), 15m) (RateBackoff)
+    -- a fixed point in time, never relative to now. Its line is kept beside the route's own rest in
+    the provider's rule3_rest_ property (<route>+rate-backoff), never over it, so it never moves the
+    3-in-10 window's mark, never blocks the coordinator's rest and is never woken; a backoff on every route of a tier makes the card
+    wait ready, as a provider at its concurrency budget does, never a no-route judgment, and the no-stall rule holds it on the backoff whenever a route of
+    the tier backs off and none can be drawn (never NStalled); the rebalance never moves a card
+    onto a machine with no route it can draw;
+    restWrites writes
+    it and one happened note (\"rate-limit backoff of <d> on <route>, until <t>\") once per end,
+    none while the same end holds, never a judgment, and drops a backoff line once its end has passed. A rate limit no longer counts toward the 3-in-10
+    transient rest (transient excludes classRateLimited); a 5xx window still rests the route 30
+    minutes, and is written over a backoff that holds. member.Judge treats a rate-limited run with no
+    pushed head as a provider failure whatever its shape, while a shaped result that pushed a head
+    stays the card's own. TLA+ model RateBackoff, properties RateLimitSpendsNoRedeal and
+    BackoffBounded with the temporal BackoffEnds, reversed witnesses MCRateBackoffBrokenSpend and
+    MCRateBackoffBrokenNoCap. Tests TestARateLimitedTakeReturnsTheCardUnspent,
+    TestARateLimitBacksTheRouteOffBriefly, TestARateLimitedRunIsAProviderFailure,
+    TestARateTakeIsNumberedAfterTheLastRateTake, TestARateBackoffNeverHoldsOffTheFiveHundredsRest
+    and TestARateBackoffIsWrittenAndNotedOncePerEnd. Landed by hand after 15 sprint attempts. The
+    no-stall rule and the rebalance test drawability with the deal's own budgets and the tier's array
+    (backoffWait): tests TestABackedOffTierWithTheOtherProviderFullIsAWaitNeverAStall and
+    TestABackedOffTierWithTheOtherRouteOutOfTheArrayIsAWaitNeverAStall."
+   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; the owner, 2026-10-11: \"the rate limited should just stall out delay, not fail\"; nova-sprint docs/fixes.sexp entry a-rate-limited-refusal-never-fails-the-cardc; nova-sprint card rate-limit-never-fails-the-card-v2")))
