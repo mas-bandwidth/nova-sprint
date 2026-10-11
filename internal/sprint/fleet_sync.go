@@ -178,11 +178,12 @@ func GoneHolding(s *Snapshot, want []SyncMember, machines []string) []string {
 }
 
 // HeldInInventory is the members of want the coordinator holds down (a hold
-// the sync made is not one): a sync leaves their hold, and says so.
+// the sync made, or the sync's probe hold on a member it just added, is not
+// one): a sync leaves their hold, and says so.
 func HeldInInventory(s *Snapshot, want []SyncMember) []string {
 	var out []string
 	for _, m := range want {
-		if ctl := s.MemberCtl(m.Name); ctl != nil && ctl.F("held") != "" && ctl.F(FieldHeldBy) != HeldBySync {
+		if ctl := s.MemberCtl(m.Name); ctl != nil && ctl.F("held") != "" && ctl.F(FieldHeldBy) != HeldBySync && ctl.F(FieldHeldBy) != HeldByProbe {
 			out = append(out, m.Name)
 		}
 	}
@@ -231,11 +232,18 @@ func fleetSyncPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			if !s.Fleet.HasRow(m) {
 				p.Rows = append(p.Rows, RowAdd{Fleet, m})
 			}
-			// down until it beats: presence brings it up, as for fleet up
-			fields := map[string]string{"kind": "member", "status": Down, "since": stamp(s.Now), FieldWidth: itoa(d.To)}
+			// a member new to the sprint is held until its own probe passes: the
+			// control card is written held by the probe, so presence's beat never
+			// brings it up and it is dealt no card; only fleet up <m> --probe passed
+			// lifts the hold (docs/SPEC-SPRINT.md section 5, the fleet;
+			// tla/ProviderBudget.tla, NewMemberProbed)
+			by := HeldByProbe
+			fields := map[string]string{"kind": "member", "status": Down, "since": stamp(s.Now), FieldWidth: itoa(d.To),
+				FieldHeld: stamp(s.Now), FieldHeldBy: by,
+				FieldHeldReason: "its own probe has not passed: " + EnvProbeLine(m)}
 			p.Units = append(p.Units, Unit{Key: CtlID(m),
 				Changes: []Change{change(Fleet, createEntry(CtlID(m), m, Ctl, 0, fields))},
-				Moved:   fmt.Sprintf("%s added, down until it beats width=%d", m, d.To)})
+				Moved:   fmt.Sprintf("%s added, held until its own probe passes (%s) width=%d", m, EnvProbeLine(m), d.To)})
 			continue
 		}
 		set := map[string]string{}
