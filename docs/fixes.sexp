@@ -1298,6 +1298,23 @@
     17: 89 v1212 briefs carried DEPENDS-ON: below the REPO:/BASE: sentence, briefNeeds read no needs from
     any of them, add admitted every card straight to ready, and cards were dealt before their dependencies
     landed."
-   :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
-    2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
-    owner: \"this should be caught by card lint.\"")))
+    :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
+     2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
+     owner: \"this should be caught by card lint.\"")
+   (fix "needs-set-repoints-a-cards-needs-in-place" :release "v1.2.14" :status "planned"
+    :title "needs set re-points a primary's needs in place"
+    :text "A card's needs were read once at add and could only be re-pointed by a brief edit or by
+     dropping the card and adding it again, a twin. `needs set <id>... (--needs <a,b> | --clear)
+     [--answers <notes>]`, the coordinator's alone, replaces the needs in one step (sprint.NeedsSet):
+     each need a primary on the table and not the card itself, each card's brief rewritten so its
+     DEPENDS-ON: line names the same needs, its id, stream, score and attempt kept. A ready card that
+     gains a need not landed waits; a waiting card whose new needs have all landed is ready, in the
+     same unit; a card dealt or working takes the new needs for its next attempt. Refused whole,
+     nothing written: a landed or dropped card, a sentinel, a need that is no primary on the table, a
+     need named twice, and --needs naming no card (use --clear). The brief edit and needs set write a
+     primary's needs through one function (needsWrite), and the lifecycle's needs rule judges a move
+     waiting -> ready that rewrites the needs against the needs it writes, so the one writer holds."
+    :origin "this card, needs-set-repoints-a-cards-needs-in-place.w1, from the owner on the live epoch
+     17, 2026-10-11 ~11:25 AM ET: ~100 frontier cards could not be re-pointed or reworked without
+     twins (\"I hate twins.\" / \"Twinning is the last refuge of the scoundrel. Fix your tools.\"); code
+     read at nova-sprint main 1405d26; seat tooling item 26")))
