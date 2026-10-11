@@ -103,6 +103,7 @@ func (r FriendTakeReq) takenBackWhy() string {
 // AllOrNothing one refusal takes none, each card that would have been taken refused too;
 // with All a started card stays (the caller, which read Started, says so). A working card taken frees her lane: her oldest ready card not taken
 // is taken into working in the same unit, as her finish takes it (friendNext).
+// tla/StallLadder.tla Tick: rung 4 takes back the cards she has not started.
 func FriendTake(s *Snapshot, r FriendTakeReq) Plan {
 	var p Plan
 	row := FriendRow(r.Friend)
