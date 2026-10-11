@@ -670,7 +670,7 @@ func Read(s *Snapshot, r ReadReq) Plan {
 				spent := WidensSpent(pr)
 				bound := ""
 				binder := ""
-				if bb, ok := briefStopAt(s, at, c.Row, r.Finding); ok && (!outside || spent != "") {
+				if bb, ok := briefStopAt(s, at, c.Row, r.Finding); ok {
 					bound = bb.String()
 				} else if outside && spent != "" {
 					bound = spent
@@ -678,15 +678,13 @@ func Read(s *Snapshot, r ReadReq) Plan {
 				if breaker, ok := ReviewBreaker(at, c.Row, r.Finding); ok {
 					binder = breaker
 				}
-				if (bound != "" && outside) || binder != "" {
+				if bound != "" || binder != "" {
 					// the same finding as the attempts before (briefStopAt: the same reader class,
 					// file and line, two in a row by default), or too many attempts on one brief,
 					// for a finding outside PATHS past the widen cap: the brief is wrong, not the
-					// worker, and the judgment offers brief and drop (brief_bound.go). A finding
-					// inside PATHS at the bound keeps NReadBroken: the card is still reworked with
-					// the finding, not left for the coordinator (rules_read.go; tla/SprintRules.tla,
-					// Part "reads": ReworkAtBound). The review circuit breaker also escalates to the
-					// coordinator after 4 consecutive rounds with new findings or 6 substantive rounds.
+					// worker, and the judgment offers brief and drop (brief_bound.go).
+					// The review circuit breaker also escalates to the coordinator after
+					// 4 consecutive rounds with new findings or 6 substantive rounds.
 					w := bound
 					if binder != "" {
 						w = binder

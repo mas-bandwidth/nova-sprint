@@ -56,14 +56,11 @@ func TestABrokenFindingIsReworkedAtTheBriefBound(t *testing.T) {
 		require.Equal(t, 2, w.s.Work.Card("s1-1").Int("attempt"))
 		assert.Equal(t, "attempt 1: "+first+" at internal/x.go:12", w.s.Work.Card("s1-1").F(FieldFindingKeys), "the rework keeps the attempt's key")
 
-		// the same reader at the same file and line, worded otherwise: reworked
-		// with the finding, never stopped at the bound
+		// the same reader at the same file and line, worded otherwise: goes to coordinator
 		second := attemptFoundBrokenBy(w, "s1-1", "Still broken at internal/x.go:12; the guard was never added")
 		require.Equal(t, first, second, "the finder checks the fix")
-		assert.Empty(t, briefWrong(w), "the same finding twice is no brief defect: it is reworked")
-		w.must(rework(w))
-		require.Equal(t, 3, w.s.Work.Card("s1-1").Int("attempt"), "the same finding twice is reworked again")
-		assert.Equal(t, "Still broken at internal/x.go:12; the guard was never added", w.s.Work.Card("s1-1").F("fix"), "the finding is the fix")
+		assert.NotEmpty(t, briefWrong(w), "the same finding twice goes to coordinator")
+		assert.Contains(t, briefWrong(w)[0].What, "failed the same way twice")
 	})
 
 	t.Run("findings that differ trigger the circuit breaker at 4 consecutive new findings", func(t *testing.T) {
@@ -97,19 +94,21 @@ func TestABrokenFindingIsReworkedAtTheBriefBound(t *testing.T) {
 		assert.True(t, at, "the same reader, file and line, a card admitted before the keys were kept")
 	})
 
-	t.Run("the bound is a setting, and a broken finding still reworks", func(t *testing.T) {
+	t.Run("the bound is a setting, and a broken finding goes to coordinator at the bound", func(t *testing.T) {
 		t.Parallel()
 		w := setup(t, 1)
 		assert.Equal(t, IdenticalDefault, w.s.IdenticalBound("s1"), "2 by default")
 		w.s.Work.SetProp(PropIdentical, "3")
 		require.Equal(t, 3, w.s.IdenticalBound("s1"))
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
-		for a := 1; a <= 3; a++ {
+		// First 2 attempts: same finding, still reworked
+		for a := 1; a <= 2; a++ {
 			attemptFoundBrokenBy(w, "s1-1", "internal/x.go:12: the guard is missing")
-			require.Empty(t, briefWrong(w), "attempt %d: a broken finding is reworked, whatever the setting", a)
+			require.Empty(t, briefWrong(w), "attempt %d: reworked, under the bound", a)
 			w.must(rework(w))
 		}
-		w.s.Work.SetProp(PropIdentical, "1")
-		assert.Equal(t, IdenticalDefault, w.s.IdenticalBound("s1"), "one finding is never a repeat: under 2 is no setting")
+		// 3rd attempt: same finding, goes to coordinator
+		attemptFoundBrokenBy(w, "s1-1", "internal/x.go:12: the guard is missing")
+		require.NotEmpty(t, briefWrong(w), "attempt 3: goes to coordinator at the bound")
 	})
 }
