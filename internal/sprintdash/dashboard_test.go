@@ -433,6 +433,30 @@ func TestRenderFitsOnlyWhenTheLayoutCanChange(t *testing.T) {
 	assert.Contains(t, app, `window.addEventListener("resize", fitTables)`, "the fit still runs on resize")
 }
 
+// TestTheFitMeasuresAVisibleNaturalWidthCopy pins the reader's fix (this card, attempt 4): the
+// off-screen copy is measured with both .compact and .folded removed. A folded panel's .scroll
+// is display:none (index.html: `.panel.folded > .scroll`), so its rows read zero widths and the
+// measure would wrongly clear .compact on a live panel; a folded panel's own class must never
+// steer the fit, and an originally noncompact folded panel must still be measured. And because a
+// fold button toggles .folded on a panel the last fit may have measured hidden, a fold or unfold
+// schedules a fresh fit rather than waiting for a resize or a change of the data-derived fit key.
+func TestTheFitMeasuresAVisibleNaturalWidthCopy(t *testing.T) {
+	t.Parallel()
+	app := string(file("app.js"))
+	html := string(file("index.html"))
+	fit, ok := functionBody(t, app, "fitTables")
+	require.True(t, ok, "app.js carries fitTables()")
+	assert.Regexp(t, `copy\.classList\.remove\("compact"\)`, fit, "the copy drops .compact (the full form is what is measured)")
+	assert.Regexp(t, `copy\.classList\.remove\("folded"\)`, fit, "the copy drops .folded, so its rows are visible to the measure")
+	assert.Contains(t, fit, "cloneNode(true)", "every panel is measured on a visible copy, folded or not")
+	assert.Contains(t, html, ".panel.folded > .scroll", "a folded panel hides its scroll body: the reason folded must come off the copy")
+
+	fold, ok := functionBody(t, app, "fitOnFold")
+	require.True(t, ok, "app.js carries fitOnFold(e)")
+	assert.Contains(t, fold, "setTimeout(fitTables", "a fold click schedules a fresh fit after the toggle lands")
+	assert.Contains(t, app, `addEventListener("click", fitOnFold)`, "every fold button is wired to it")
+}
+
 // TestTheOffscreenFitCopyKeepsThePanelWidth pins the owner's scroll fix (this card, stella's hold):
 // when a compact panel is measured, the full form is laid out on an off-screen copy. An absolutely
 // positioned copy shrinks to fit its content, so without the panel's own width it measures text

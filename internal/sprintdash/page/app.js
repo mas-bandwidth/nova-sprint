@@ -674,21 +674,20 @@ function fitTables() {
   ["streams", "fleet", "friends", "providers"].forEach(function (id) {
     var panel = document.querySelector(".panel." + id), head = panel && panel.querySelector(".row.head");
     if (!head) return;
-    var box = panel, copy = null;
-    if (panel.classList.contains("compact")) {
-      // a compact panel keeps its class: the full form is measured on an off-screen copy, so no
-      // class toggle sits between the reads and the live panel is never restyled by the measure
-      copy = panel.cloneNode(true); copy.classList.remove("compact");
-      copy.style.position = "absolute"; copy.style.top = "0"; copy.style.left = "-10000px"; copy.style.visibility = "hidden";
-      // the copy carries the panel's own width: an absolute box would otherwise shrink to fit its
-      // content and answer for a page no one sees (stella's hold, this card)
-      if (panel.offsetWidth) copy.style.width = panel.offsetWidth + "px";
-      document.body.appendChild(copy); box = copy;
-    } else {
-      panel.classList.remove("compact");
-    }
-    var over = overflow(box);
-    if (copy) copy.remove();
+    // The full form is measured on an off-screen, visible, natural-width copy: neither .compact
+    // (the point of the measure) nor .folded. A folded panel's .scroll is display:none, so its
+    // rows read zero widths and would wrongly clear .compact on a live panel; taking both classes
+    // off the copy measures the layout the panel shows when it is open, folded or not, and never
+    // toggles a class on the live panel between the reads (the reader's fix, this card, attempt 4).
+    var copy = panel.cloneNode(true);
+    copy.classList.remove("compact"); copy.classList.remove("folded");
+    copy.style.position = "absolute"; copy.style.top = "0"; copy.style.left = "-10000px"; copy.style.visibility = "hidden";
+    // the copy carries the panel's own width: an absolute box would otherwise shrink to fit its
+    // content and answer for a page no one sees (stella's hold, this card)
+    if (panel.offsetWidth) copy.style.width = panel.offsetWidth + "px";
+    document.body.appendChild(copy);
+    var over = overflow(copy);
+    copy.remove();
     if (over) panel.classList.add("compact"); else panel.classList.remove("compact");
     // an ellipsized name in the full form carries its full text on hover; the fit sets it on the
     // live rows, and the panel is already in hand (no document-wide query, no forced layout)
@@ -697,6 +696,15 @@ function fitTables() {
     });
   });
 }
+// A fold or unfold shows or hides a panel's scroll body (index.html: .panel.folded > .scroll),
+// so the layout can differ from the last fit. Re-measure after the toggle lands, so a panel the
+// fit measured hidden is fit again now that it shows (the reader's fix, this card, attempt 4);
+// without it a wrong .compact would persist until a resize or a fit-key change.
+function fitOnFold(e) {
+  var b = e.target && e.target.closest ? e.target.closest(".panel-head .fold") : null;
+  if (b) setTimeout(fitTables, 0);
+}
+window.addEventListener("click", fitOnFold);
 // The fit key: the text each panel's rows draw, from the data (never the DOM), so render() fits
 // only when the layout can have changed. It follows the rendered names, status and tags — a
 // stream's display name, its status pill and its tag line, a bud's label, a provider's state and

@@ -222,14 +222,21 @@
      panel's own width, so no class toggle sits between the reads and the copy lays out what the panel
      would. page/index.html carries @keyframes pulse { 0%, 17%, 100% { opacity: 1; } 58.5% {
      opacity: .55; } }; page/app.js carries fitKey, shape, budKey, overflow, fitIfChanged and the
-     copy-based fitTables.
+     copy-based fitTables. The off-screen copy is measured with .folded taken off it too (the reader's
+     finding on attempt 3): a folded panel's .scroll is display:none, so its rows read zero widths and
+     could clear .compact on a live panel; the copy is made for every panel, folded or not, so an
+     originally noncompact folded panel is measured as it shows when open. And every fold or unfold
+     schedules a fresh fit after the toggle lands (page/app.js fitOnFold), so a panel measured hidden is
+     not left with a stale fit until a resize or a fit-key change.
      New tests in internal/sprintdash/dashboard_test.go pin it: TestThePulseAnimatesOpacityOnTheCompositor
      refuses any @keyframes that animates a custom property, or, under an infinite animation, anything but
      opacity, transform or filter; TestRenderFitsOnlyWhenTheLayoutCanChange refuses an unconditional
      fitTables() in render; TestTheOffscreenFitCopyKeepsThePanelWidth holds the copy to the panel's width;
-     TestTheStreamsFitKeyFollowsTheRenderedText holds the key to the rendered names, status and tags; and
-     TestAStablePollDoesNotMeasureWidths holds an unchanged poll out of the fit. No visual change."
-    :origin "this card; the owner, 2026-10-11 ~19:35Z: \"There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical.\"")
+     TestTheStreamsFitKeyFollowsTheRenderedText holds the key to the rendered names, status and tags;
+     TestAStablePollDoesNotMeasureWidths holds an unchanged poll out of the fit; and
+     TestTheFitMeasuresAVisibleNaturalWidthCopy holds the copy to a visible natural form (both .compact
+     and .folded off) and the fold button to a fresh fit. No visual change."
+    :origin "this card, attempt 4 (the-dashboard-scrolls-smoothly-under-the-pulse-and-the-poll.w4.g2.e17), 2026-10-11: a reader found attempt 3 measured the folded copy with .folded left on (its .scroll display:none, zero widths) and no fit on fold/unfold; the owner, 2026-10-11 ~19:35Z: \"There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical.\"")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
