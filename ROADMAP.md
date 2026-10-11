@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work planned after v1.4. The re
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint machine](#the-sprint-machine) (210)
+- [The sprint machine](#the-sprint-machine) (209)
 - [Setup, release and operations](#setup-release-and-operations) (27)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (20)
@@ -213,14 +213,6 @@ The card verb reads the whole work table and log on each call; make a read use p
 Target: v1.3
 
 From: cards moved out of the sprint (work record, 2026-10-04)
-
-### Fix log --since for windows wider than 22 hours
-
-A wide --since window returns nothing; pin the window and return every event in it.
-
-Target: v1.3
-
-From: card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)
 
 ### One column field every reader agrees on
 
