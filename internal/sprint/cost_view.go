@@ -61,6 +61,9 @@ type TierCosts struct {
 	// Readers is each reader's spend on the stream's cards, by the reader that ran the read
 	// (readers_spend.go): ReaderSpendsOf sums it over the streams for the readers table.
 	Readers map[string]ReaderSpend `json:"readers,omitempty"`
+	// InFlight is the stream's spend on cards not yet landed: every take and read of
+	// cards in waiting, placed, or merging, dollars and cents rounded up; "-" when none.
+	InFlight string `json:"in_flight"`
 	// Unreconciled is the SPRINT's, the same on every stream's record: what the providers
 	// counted beyond the sprint's records since the epoch began (UnreconciledSpend,
 	// cost_reconcile.go), dollars and cents rounded up; "" when nothing is.
@@ -99,7 +102,7 @@ func StreamTierCosts(s *Snapshot) map[string]TierCosts {
 }
 
 func streamTierCosts(s *Snapshot, stream string) TierCosts {
-	t := TierCosts{Tiers: map[string]int{}, PerLanded: "-", CostByTier: map[string]string{}, ReadsToday: map[string]ReadDay{}, Readers: map[string]ReaderSpend{}}
+	t := TierCosts{Tiers: map[string]int{}, PerLanded: "-", InFlight: "-", CostByTier: map[string]string{}, ReadsToday: map[string]ReadDay{}, Readers: map[string]ReaderSpend{}}
 	byTier := map[string]*big.Rat{}
 	workCost, readCost := new(big.Rat), new(big.Rat)
 	pricedWork, pricedRead := false, false
@@ -109,7 +112,7 @@ func streamTierCosts(s *Snapshot, stream string) TierCosts {
 		routes[r.Name] = r
 	}
 	var landedCost []string
-	var allCost []string
+	var inFlightCost []string
 	landed := 0
 	for _, col := range States {
 		for _, c := range s.Work.Cell(stream, col) {
@@ -119,15 +122,20 @@ func streamTierCosts(s *Snapshot, stream string) TierCosts {
 			t.Tiers[TierWord(c)]++
 			if col == Landed {
 				landed++
-				if v := c.F(FieldCost); v != "" {
-					landedCost = append(landedCost, v)
+				tot := CardCostOf(c).Total
+				if tot.Charged != "" {
+					landedCost = append(landedCost, tot.Charged)
+				}
+			} else {
+				tot := CardCostOf(c).Total
+				if tot.Charged != "" {
+					inFlightCost = append(inFlightCost, tot.Charged)
 				}
 			}
 			// the card's whole record, whatever its column: every take and read behind it,
 			// the records past the list's bound included (FieldCostTotal)
 			tot := CardCostOf(c).Total
 			if tot.Charged != "" {
-				allCost = append(allCost, tot.Charged)
 			}
 			t.UnpricedRuns += tot.Records - tot.ChargedOf
 			listed := new(big.Rat)
@@ -177,6 +185,15 @@ func streamTierCosts(s *Snapshot, stream string) TierCosts {
 			t.PerLanded = cardcost.Cents(total.Quo(total, big.NewRat(int64(landed), 1)))
 		}
 	}
+	if sum, ok := cardcost.Sum(inFlightCost...); ok && len(inFlightCost) > 0 {
+		if total, err := amountOf(sum); err == nil && total != nil {
+			t.InFlight = cardcost.Cents(total)
+		}
+	}
+	// combine landed and in-flight costs for total
+	var allCost []string
+	allCost = append(allCost, landedCost...)
+	allCost = append(allCost, inFlightCost...)
 	if sum, ok := cardcost.Sum(allCost...); ok && len(allCost) > 0 {
 		if total, err := amountOf(sum); err == nil && total != nil {
 			t.TotalCost = cardcost.Cents(total)
