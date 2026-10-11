@@ -994,6 +994,10 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 	// every need has landed).
 	var held []*Card
 	for _, c := range chosen {
+		if c.F("needs") == "" {
+			held = append(held, c)
+			continue
+		}
 		if waits := WaitsFor(s, c, nil); len(waits) > 0 {
 			n := judgment(NBlocked, c.Row, s.Now, 0, c.ID)
 			n.What = c.ID + " needs " + Preview(waits, ",") + ", not landed: it is not dealt"
