@@ -478,4 +478,14 @@
     at attempt <n>: <what changed>, so the coordinator corrects a running card without waiting for
     review. Only a merging or landed card keeps its brief, with what changes it instead (briefStarted).
     The verb's help and docs/SPEC-SPRINT.md say so."
-   :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine; this card")))
+   :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine; this card")
+
+   (fix "machine-fault-hold-clears-when-healthy" :release "v1.2.9" :status "shipped"
+    :title "A machine fault hold clears itself once the member is healthy"
+    :text "A hold the machine places for a failure (a harness fault, a failed take, or the member going
+     down) is marked held_by=fault and clears itself on the tick once the member beats and has finished a
+     card cleanly since the hold: the machine's down is its fault hold, presence writes the mark and its
+     stamp, and the tick lifts the mark on the clean finish, telling the seat. A hold a person made carries
+     no held_by mark and is never lifted by the machine. TLA+ model DealFill, properties FaultHoldClears
+     and PersonHoldStays, with two reversed witnesses."
+    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")))

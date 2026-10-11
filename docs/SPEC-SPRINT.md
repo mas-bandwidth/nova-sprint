@@ -3019,6 +3019,12 @@ and it is the coordinator's decision, receipted.
   While STOPPED, beats are accepted and the fleet's cells show the derived
   status, but nothing is dealt; the first tick after `start` applies what
   changed.
+- A member down because it stopped beating is the machine's own hold for the
+  fault: its control card is marked `held_by=fault` with the stamp
+  `fault_since`, and the tick's deal clears the mark by itself once the member
+  beats again and has finished a card cleanly since that stamp (a probe card if
+  nothing else is dealt), telling the seat with one note. A hold the
+  coordinator made carries no `held_by` mark and stays until a person lifts it.
 - The status cell shows adopting, held, up or down. The load cell shows the highest load
   of the last 10 s with one decimal while the beat is fresh, and is empty
   otherwise, never a zero.
