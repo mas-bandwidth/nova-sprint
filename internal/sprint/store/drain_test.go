@@ -192,9 +192,10 @@ func TestAHeldMachinesReaderIsAskedNothingUntilItIsReleased(t *testing.T) {
 	assert.NotEmpty(t, readsOn(h.snap(), "reader-m1"), "released, its reader is asked again")
 }
 
-// A reader whose machine drains, or that drains itself, is asked nothing, and the reads asked
-// of it and not begun go back on the next tick to another reader, each a note to the
-// coordinator; a read begun finishes where it is.
+// A reader that drains itself (its own queue says so: ReaderBeatDraining) is asked nothing, and
+// the reads asked of it and not begun go back on the next tick to another reader, each a note to
+// the coordinator; a read begun finishes where it is. The reader whose machine drains is
+// TestAProbedMemberThatDrainsIsDealtNothingAndItsReaderIsAskedNothing.
 func TestADrainingReadersAskedReadsReturnToAnotherReader(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -227,6 +228,69 @@ func TestADrainingReadersAskedReadsReturnToAnotherReader(t *testing.T) {
 	notes := h.notesTo(sprint.NDrainReturned)
 	require.Len(t, notes, 1, "the return is a note to the coordinator")
 	assert.True(t, strings.Contains(notes[0].What, "reader-m1 takes no work"), notes[0].What)
+}
+
+// A member that passed its probe (flashSetup, EnvProbePassed), then drains, is dealt nothing,
+// and the reader on its machine (reader-m1) is asked nothing: what reader-m1 was asked and had
+// not begun goes back, and is asked of another reader (reader-a) once one is up. When its beat
+// no longer says it drains, the member is dealt again and reader-m1 is asked again. The model
+// is tla/NoRoom.tla (NeverDealtToDraining, DealtReturns, and the ask that asks a draining
+// machine's reader nothing).
+//
+// TestADrainingReadersAskedReadsReturnToAnotherReader runs the reader's own drain; this runs the
+// machine's.
+func TestAProbedMemberThatDrainsIsDealtNothingAndItsReaderIsAskedNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	flashSetup(t, h, 2)
+	h.machine()
+	h.work("m1")
+	h.work("m2")
+	h.machine() // the ask asks both reads of reader-m1, the one reader up
+	s := h.snap()
+	asked := readsOn(s, "reader-m1")
+	require.Len(t, asked, 2, "both reads asked of reader-m1 before the drain")
+	before := map[string]bool{}
+	for _, rc := range asked {
+		before[rc.F("asked")] = true
+	}
+
+	// m1's binary is replaced: it drains
+	h.live = []string{"m2"}
+	h.drainBeat("m1")
+
+	for range 2 {
+		h.tick(10 * time.Second)
+		h.drainBeat("m1")
+		h.machine()
+	}
+	s = h.snap()
+	assert.Empty(t, readyWork(s, "m1"), "a draining member is dealt nothing")
+	for _, rc := range readsOn(s, "reader-m1") {
+		assert.True(t, before[rc.F("asked")], "%s: reader-m1 is asked no read after the drain (asked %q, before %v)", rc.ID, rc.F("asked"), before)
+	}
+
+	// reader-a comes up: the reads waiting for review are asked of it
+	require.NoError(t, h.st.SetReaderAway(h.ctx, "reader-a", false, "tester"))
+	for range 2 {
+		h.tick(10 * time.Second)
+		h.drainBeat("m1")
+		h.machine()
+	}
+	s = h.snap()
+	assert.Empty(t, readsOn(s, "reader-m1"), "a draining machine's reader keeps no asked read")
+	assert.NotEmpty(t, readsOn(s, "reader-a"), "the reads waiting for review are asked of reader-a while m1 drains")
+
+	// the drain ends: m1 is dealt again and reader-m1 is asked again
+	h.live = []string{"m1", "m2"}
+	h.beat()
+	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 2}))
+	h.machine()
+	assert.NotEmpty(t, readyWork(h.snap(), "m1"), "a member that drains no more is dealt cards")
+	h.work("m1")
+	h.work("m2")
+	h.machine()
+	assert.NotEmpty(t, readsOn(h.snap(), "reader-m1"), "the machine no longer drains: its reader is asked again")
 }
 
 // ReaderOwner: reader-<m> and reader-<m>-<n> belong to fleet member m; a friend's reader and a
