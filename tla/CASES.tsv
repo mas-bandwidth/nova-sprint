@@ -435,3 +435,5 @@ MCReadyOverBrokenSilent.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal
 MCReadyOverBrokenStale.cfg	MCReadyOver.tla	invariant	ClearsWhenDealt	ignore-terminal	readyover	required	-
 MCHolds.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
 MCHoldsBrokenResumeEarly.cfg	MCHolds.tla	action	CrossResumesAfterNeed	ignore-terminal	holds	required	-
+MCHoldsBrokenSilentStop.cfg	MCHolds.tla	invariant	NoSilentStall	ignore-terminal	holds	required	-
+MCHoldsLive.cfg	MCHolds.tla	pass	-	ignore-terminal	holds	required	-
