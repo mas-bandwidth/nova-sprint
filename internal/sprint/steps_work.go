@@ -2689,13 +2689,14 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 				return p
 			}
 			envCleared = true
-		} else if s.MemberCtl(r.Member) == nil && r.Probe != EnvProbePassed {
-			// a member the sprint does not know runs its own probe (the push-credential
-			// probe, the harness check) before its width is accepted: no probe or a failed
-			// one refuses it, so a machine joining without the push credential never gets
-			// width (the owner, 2026-10-11; tla/ProviderBudget.tla, NewMemberProbed).
-			// init bootstraps a fleet by passing EnvProbePassed for each member it sets up.
-			// tla/NoRoom.tla Accept: known only on a passed probe, the deal and the ask read it.
+		} else if (s.MemberCtl(r.Member) == nil || ProbeHeld(s.MemberCtl(r.Member))) && r.Probe != EnvProbePassed {
+			// a member the sprint does not know, or one the sync added held until
+			// its own probe passes, runs its own probe (the push-credential probe,
+			// the harness check) before its width is accepted: no probe or a failed
+			// one refuses it, so a machine joining without the push credential never
+			// gets width (the owner, 2026-10-11; tla/ProviderBudget.tla,
+			// NewMemberProbed). init bootstraps a fleet by passing EnvProbePassed for
+			// each member it sets up.
 			why := "its own probe has not passed: " + EnvProbeLine(r.Member)
 			if r.Probe != "" {
 				why = "its own probe failed (" + r.Probe + "): " + EnvFaultRemedy(r.Member, EnvOther)
@@ -2769,6 +2770,15 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 				if !comeUp {
 					line = r.Member + " released, down until it beats"
 				}
+			}
+			// a passed probe is the one path that lifts the sync's probe hold: a
+			// member the sync added comes up only with its own probe passed, and no
+			// other path clears the hold -- the fault clear lifts only HeldByFault
+			// and the sync's release only its own mark (docs/SPEC-SPRINT.md section
+			// 5, the fleet; tla/ProviderBudget.tla, NewMemberProbed). A release
+			// already clears it in the block above.
+			if ProbeHeld(ctl) && r.Probe == EnvProbePassed && r.Op != "release" {
+				unset = append(unset, "held", FieldHeldBy, FieldHeldReason)
 			}
 			if envCleared {
 				// the passed probe clears the member's last environment fault with its hold
@@ -2907,8 +2917,16 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 	case r.Op == "hold" && r.HeldBy == "":
 		// the coordinator holds a member that is already held (the sync's hold
 		// included): the hold is now the coordinator's, and the sync's mark
-		// goes, so the sync never releases it
-		unset = append(unset, FieldHeldBy, FieldFaultSince)
+		// goes, so the sync never releases it. A member the sync added held
+		// until its own probe passes keeps the probe's mark: no hold clears it,
+		// so fleet up still refuses it without --probe passed (held only by the
+		// fault clear and the passed probe; tla/ProviderBudget.tla,
+		// NewMemberProbed; docs/SPEC-SPRINT.md section 5, the fleet)
+		if ctl.F(FieldHeldBy) == HeldByProbe {
+			unset = append(unset, FieldFaultSince)
+		} else {
+			unset = append(unset, FieldHeldBy, FieldFaultSince)
+		}
 	case r.Op == "down" && r.HeldBy != "" && ctl.F("held") == "":
 		// the machine's down for a fault (presence): mark it held_by=fault and
 		// stamp when, so the tick clears the mark once the member is healthy
@@ -2931,7 +2949,7 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 		// later hold says them again, and a hold with neither clears both
 		if r.Reason != "" {
 			set[FieldHeldReason] = r.Reason
-		} else {
+		} else if ctl.F(FieldHeldBy) != HeldByProbe {
 			unset = append(unset, FieldHeldReason)
 		}
 		if r.Finish {
