@@ -26,6 +26,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `Timer`, `LoadCache`, `StatsReset` | Timers, the load cache, and a stats reset. |
 | `StopReturn` | STOP's captured owner leases, the owner's stop-return, its settle off the debt, and START. |
 | `WorkImport` | Issue import and the specified work-tree modes. |
+| `RoadmapEntry` | An entry of a repository's roadmap and fixes files under nova-work roadmap: add, remove, pull, done. |
 
 The `.tla` files define the models. `MC*.tla` and `.cfg` files provide bounded
 instances. [CASES.tsv](CASES.tsv) lists the gated cases; [RUNS.tsv](RUNS.tsv)

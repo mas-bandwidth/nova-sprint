@@ -243,4 +243,14 @@
     :title "Approval at head is read from the disposition line"
     :text "The review API commit id can differ from the head the reviewer read. Merge checks parse the head
      named in the disposition and treat commit id as untrusted."
-    :origin "issue #2037")))
+    :origin "issue #2037")
+
+  (fix "nova-work-roadmap-verbs" :release "v1.2.6" :status "planned"
+   :title "nova-work roadmap check, list, add, remove, pull, done, note and render"
+   :text "Verbs over the roadmap s-expression files with byte-stable round trips; each writing verb
+    refuses a file that check rejects. Pulled into v1.2.6 by its own verb: the verbs edit docs/roadmap.sexp and docs/fixes.sexp and write both pages, locally, with no GitHub call per entry."
+   :origin "nova-sprint commit 8c87a4b (not carried by the re-seed, nova-sprint PR #28)"
+   :kept (:item-group "sprint"
+          :item-date "2026-10-10"
+          :item-release "after v1.4"
+          :earlier-title "nova-work roadmap check, add, remove, pull and note"))))
