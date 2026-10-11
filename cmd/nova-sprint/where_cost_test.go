@@ -114,7 +114,9 @@ func TestWhereReadsTheTableNotEveryCardAtThreeThousandCards(t *testing.T) {
 	t.Parallel()
 	ta := bigSprint(t)
 	byCards, cardCalls := ta.whereJSON()
-	require.Equal(t, int64(3000), byCards.All)
+	// the five streams' sentinels are stops, not work: all counts the 2,995 work
+	// cards only (docs/SPEC-SPRINT.md sections 1 and 16)
+	require.Equal(t, int64(2995), byCards.All)
 	require.Equal(t, int64(350), byCards.Landed)
 	require.Equal(t, int64(2500), byCards.Held)
 	require.Greater(t, cardCalls["readset"], 1, "no record yet: the waiting and landed cards are read: %v", cardCalls)

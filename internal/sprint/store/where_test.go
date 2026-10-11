@@ -36,8 +36,19 @@ func (h *harness) whereOfCards() WhereRecord {
 	require.NoError(h.t, err)
 	held, err := st.HeldBack(h.ctx)
 	require.NoError(h.t, err)
-	landed, err := st.LandedAt(h.ctx)
+	// the landings the record keeps are the work cards': a released sentinel is a
+	// stop, not work, so its stamp is left out (docs/SPEC-SPRINT.md sections 1 and 16)
+	s, err := st.Load(h.ctx, []string{sprint.Work}, nil)
 	require.NoError(h.t, err)
+	var landed []time.Time
+	for _, c := range s.Work.Column(sprint.Landed) {
+		if sprint.IsSentinel(c) {
+			continue
+		}
+		if at, err := time.Parse(time.RFC3339, c.F("landed")); err == nil {
+			landed = append(landed, at)
+		}
+	}
 	m, _, err := st.Machine(h.ctx)
 	require.NoError(h.t, err)
 	es, err := st.EpochNow(h.ctx)
@@ -130,7 +141,7 @@ func TestTheWhereRecordIsTheCardsAfterEveryTick(t *testing.T) {
 	}
 	h.machine()
 	final := holds("every card landed")
-	require.Equal(t, int(landedAll(h)), len(final.Landings), "every landing is inside the hour of running time: %v", final.Landings)
+	require.Equal(t, int(landedWork(h)), len(final.Landings), "every work landing is inside the hour of running time, the released sentinel's stamp left out: %v", final.Landings)
 
 	// every card landed, the machine stopped itself: two hours STOPPED are no
 	// running time, and the hour still holds every landing
@@ -164,12 +175,50 @@ func TestTheWhereRecordIsTheCardsAfterEveryTick(t *testing.T) {
 	}
 }
 
+// The where record's landings are the work cards' stamps: a released sentinel
+// is a stop, not work, so its own stamp is no landing the ETA's rate counts
+// (docs/SPEC-SPRINT.md sections 1 and 16).
+func TestTheWhereRecordLeavesSentinelsOutOfItsLandings(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
+	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1, Brief: proBrief}))
+	h.must(AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"gate"}, Sentinel: true}))
+	h.startMachine()
+	h.landThrough("s1", "s1-1")
+	h.must(ReleaseStep(sprint.ReleaseReq{IDs: []string{"gate"}, Reason: "the release is ready to cut", Coordinator: h.st.Actor, Who: h.st.Actor}))
+	h.machine()
+	rec, ok := h.whereRecord()
+	require.True(t, ok, "the tick wrote no record")
+	require.Len(t, rec.Landings, 1, "only the work card's landing, not the released sentinel's: %v", rec.Landings)
+	s := h.table()
+	at, err := time.Parse(time.RFC3339, s.Work.Card("s1-1").F("landed"))
+	require.NoError(t, err)
+	require.Equal(t, []int64{at.Unix()}, rec.Landings, "the work card's own stamp")
+}
+
 // landedAll is the primaries landed on the work table.
 func landedAll(h *harness) int64 {
 	var n int64
 	s := h.table()
 	for _, row := range s.Work.Rows() {
 		n += int64(s.Work.Count(row, sprint.Landed))
+	}
+	return n
+}
+
+// landedWork is the work primaries landed on the work table, sentinels left out:
+// a released sentinel is a stop, not work, so the where record keeps no stamp of
+// its landing (docs/SPEC-SPRINT.md sections 1 and 16).
+func landedWork(h *harness) int64 {
+	var n int64
+	s := h.table()
+	for _, row := range s.Work.Rows() {
+		for _, c := range s.Work.Cell(row, sprint.Landed) {
+			if !sprint.IsSentinel(c) {
+				n++
+			}
+		}
 	}
 	return n
 }

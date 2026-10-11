@@ -37,7 +37,7 @@ func TestTheSprintLineEstimatesItsETAFromTheCardsLeftAndTheLandingRate(t *testin
 		if in > 0 {
 			rate = float64(landed) / in.Hours()
 		}
-		return summary(w, 0, etaMinutes(w, rate))
+		return summary(w, nil, 0, etaMinutes(w, nil, rate))
 	}
 	// 250 of 1000 landed in 5 minutes is 3,000 an hour: the 750 left take 15 minutes
 	assert.Equal(t, "250/1000 25.0% -> ETA 15m", line(750, 250, 5*time.Minute))
@@ -54,7 +54,7 @@ func TestTheETAReadsDashUntilFiveCardsHaveLanded(t *testing.T) {
 	t.Parallel()
 	line := func(ready, landed int64) string {
 		w := etaWork(ready, landed)
-		return summary(w, 0, etaMinutes(w, float64(landed)*60))
+		return summary(w, nil, 0, etaMinutes(w, nil, float64(landed)*60))
 	}
 	assert.Equal(t, "4/10 40.0% -> ETA -", line(6, 4))
 	assert.Equal(t, "5/10 50.0% -> ETA 1m", line(5, 5))
@@ -119,12 +119,33 @@ func TestTheETAIsToEveryCardLandedHeldCardsIncluded(t *testing.T) {
 			}
 			rate := sprint.LandingRate(c.landed, 347, c.spans, start, now)
 			assert.InDelta(t, c.rate, rate, 1e-9)
-			assert.Equal(t, c.summary, summary(w, held, etaMinutes(w, rate)))
+			assert.Equal(t, c.summary, summary(w, nil, held, etaMinutes(w, nil, rate)))
 		})
 	}
-	// at the 2 an hour the dashboard's tile showed, every card is 1,249.5 hours away
-	assert.Equal(t, int64(74970), etaMinutes(w, 2))
-	assert.Equal(t, "347/2846 12.2% held=2443 -> ETA 52d2h", summary(w, held, etaMinutes(w, 2)))
+	// at the 2 an hour the dashboard's tile showed, every card is 1,249.5 hours away.
+	assert.Equal(t, int64(74970), etaMinutes(w, nil, 2))
+	assert.Equal(t, "347/2846 12.2% held=2443 -> ETA 52d2h", summary(w, nil, held, etaMinutes(w, nil, 2)))
+}
+
+// A sentinel is a stop the coordinator releases, not work (docs/SPEC-SPRINT.md
+// section 16): the sprint line's x/y, its percent and its ETA count work cards
+// only, and a released sentinel's stamp is no landing the rate counts.
+func TestTheETACountsWorkCardsNotSentinels(t *testing.T) {
+	t.Parallel()
+	// 13 primaries: 10 work (5 landed, 5 ready) and 3 sentinels (1 released into
+	// landed, 2 waiting): the raw cells read 6 landed of 13.
+	w := ntable.Table{
+		Columns: []ntable.Column{{Name: sprint.Waiting, Projection: ntable.Count}, {Name: sprint.Ready, Projection: ntable.Count}, {Name: sprint.Landed, Projection: ntable.Count}},
+		Rows:    []ntable.Row{{Key: "s1", Cells: []ntable.Cell{{Count: 2}, {Count: 5}, {Count: 6}}}},
+	}
+	sent := map[string]store.SentinelCounts{"s1": {All: 3, Landed: 1}}
+	assert.Equal(t, "5/10 50.0%", progress(w, sent), "the 3 sentinels leave x/y")
+	// the 5 work cards left at the work landings' rate: 5 an hour is 60m; with the
+	// sentinels counted it would be 7 left, 84m
+	assert.Equal(t, int64(60), etaMinutes(w, sent, 5), "the 5 work cards left, not 7")
+	assert.Equal(t, "5/10 50.0% -> ETA 1h0m", summary(w, sent, 0, etaMinutes(w, sent, 5)))
+	// without the record's sentinel counts the cells count them, as before
+	assert.Equal(t, "6/13 46.2%", progress(w, nil))
 }
 
 // where shows the held cards of the table on its header line and in --json, and the
@@ -139,7 +160,9 @@ func TestWhereShowsHeldCardsApart(t *testing.T) {
 	ta.ok("add --stream v c --one --actor lead")
 	ta.ok("add --stream v d --one --needs a --actor lead")
 	ta.ok("start --actor lead") // a STOPPED machine's header is STOPPED alone
-	assert.Contains(t, ta.ok("where"), "0/5 0.0% held=4 -> ETA -", "where's header")
+	// w's sentinel gate is a stop, not work: the header counts the 4 work cards,
+	// not the gate (docs/SPEC-SPRINT.md sections 1 and 16)
+	assert.Contains(t, ta.ok("where"), "0/4 0.0% held=4 -> ETA -", "where's header")
 	var w whereView
 	ta.json("where", &w)
 	assert.Equal(t, int64(4), w.Held, "where --json: %+v", w)

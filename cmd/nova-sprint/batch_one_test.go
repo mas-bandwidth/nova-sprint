@@ -39,7 +39,8 @@ func TestAddRefusesASingleCardWithoutOne(t *testing.T) {
 	ta.ok("add --stream s1 --brief-dir " + writeBriefDir(t, 3))
 	ta.ok("add --stream s1 --sentinel gate")
 	ta.json("where", &w)
-	assert.EqualValues(t, 11, w.All, "--one, --count, --brief-dir and a sentinel admit")
+	// the sentinel is a stop, not work: where's all counts the 10 work cards only
+	assert.EqualValues(t, 10, w.All, "--one, --count, --brief-dir and a sentinel admit; the sentinel is not work")
 	ta.clean()
 }
 

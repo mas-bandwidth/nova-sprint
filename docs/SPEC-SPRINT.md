@@ -1018,9 +1018,10 @@ the time until every card on the work table has landed (the owner, 2026-10-02,
 at a dashboard reading 347 of 2,846 landed, ETA 1h 36m, 2 cards an hour:
 "Please update the ETA on the sprint. It's OBVIOUSLY wrong." and "it's the ETA
 to all cards being done, not the cards that are in flight or not blocked"):
-the cards left are every primary neither landed nor dropped (waiting, held
+the cards left are every work primary neither landed nor dropped (waiting, held
 behind a sentinel or admitted held, ready, working, review, merging), at the
-landing rate. The held cards are shown apart as `held=N` and counted, so
+landing rate (a sentinel is a stop, not work, so it is left out of the summary
+counts, the ETA and the rate: section 16). The held cards are shown apart as `held=N` and counted, so
 loading a wave in waiting behind sentinels (the owner: "I'd like to really
 really load up the sprint in waiting, and stick sentinels in") lengthens the
 estimate by the wave; until 2026-10-02 they were left out (nova-tools#5096
@@ -7543,8 +7544,12 @@ would have. The same step moves what
 waited behind it, up to the next sentinel, to ready as one set, marks reached
 any sentinel now due, and always writes a notification that it landed. A need
 it names that is dropped blocks it like any waiting card; ack waives the need.
-It counts in the sprint line and in waiting and landed, and the sprint is not
-done while one waits. A ready primary whose work card was withdrawn (no member
+It is a stop, not work: the sprint line's x/y and percent, where's `landed` and
+`all` (and `archived_cards` and `archived_landed`), the ETA, its five-landed
+floor and the landing rate count work cards only, across the epoch's streams on
+the table and archived, and leave out a released sentinel's stamp (section 1);
+the work table's cells still count it, and the sprint is not done while one
+waits. A ready primary whose work card was withdrawn (no member
 up) stays ready when a sentinel is inserted in front of it: it has started,
 and is past the stop; check's bijection rule holds that the primary of a withdrawn card
 is ready.
