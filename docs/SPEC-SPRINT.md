@@ -6579,17 +6579,20 @@ stream, no archive, no table property. It writes one mark into the stats record
 when, by whom, why, the epoch, and the counters as they stand: each fleet row's `ok` and
 `failed` (the machines' rows and the friends' alike), each stream's landed cost and count
 (the control card's exact figure, as a tidy's base) and its spend as the where view shows
-it (`total_cost`, `work_cost`, `read_cost`, `cost_by_tier`), and the epoch's total. Every
+it (`total_cost`, `work_cost`, `read_cost`, `cost_by_tier`), the epoch's total, and the
+sprint's unattributed spend at the mark (`UnreconciledSpend`, one figure, the same on every
+stream's record). Every
 figure the mark covers is then shown as the epoch's less the mark's, never below zero
 (`sprint.MoneyLess`, `sprint.TierCostsSince`, `sprint.ResetMark.FleetSince`): a row's
 `done` and `ok%` (over the cards finished since), a stream's `cost` cell and `per landed`
 (the later of the reset and the last tidy of the streams gives the base), `stream_costs`
-in `where --json` (a tier with nothing since left out), and `stats` (from the later of the
+in `where --json` (a tier with nothing since left out), the sprint's unattributed spend
+(`unreconciled`, counted from the mark on every stream's record), and `stats` (from the later of the
 reset and the last tidy). `where --json` carries `stats_reset` (`at`, `by`, `reason`, and
 `landed`, the cards landed since over the headline's scope), and the dashboard's cost per
 card divides the cost tile by that `landed`. A figure the mark does not cover (a row or a
 stream it never knew, the cards by tier, the reads of the day, the unpriced runs, the
-reconciliation) reads as before. The tick counts the where record again after a reset,
+providers' reconcile records, `Reconciles`) reads as before. The tick counts the where record again after a reset,
 since a reset writes no table and so moves no revision; the mark is written, then the
 where record is emptied and the display cells mirrored, as after a tidy of the streams. The
 where record also carries the stamp of the stats record it was counted from (the last tidy
