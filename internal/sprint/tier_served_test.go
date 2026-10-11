@@ -140,3 +140,22 @@ func TestATierCheckIsOneFunction(t *testing.T) {
 		assert.True(t, calls[caller], "%s goes through tierServed", caller)
 	}
 }
+
+// A frontier card in review with a friend row up whose tiers list frontier is served by
+// that friend (docs/SPEC-SPRINT.md, tiers and routes): its rework moves review -> ready and
+// the friends' deal takes it, as a fleet tier's rework does when a friend serves it.
+func TestAFrontierCardAFriendServesRework(t *testing.T) {
+	w := setup(t, 1)
+	finished(w, "s1-1", true)
+	require.Equal(t, Review, w.state("s1-1"))
+	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true}}
+	w.s.Friends = []FriendSeat{{Name: "fay", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFrontier}}}
+	p := w.must(Rework(w.s, ReworkReq{Sel: Sel{IDs: []string{"s1-1"}}, Fix: "make it green", Tier: cardhdr.RouteFrontier}))
+	if len(p.Refused) > 0 {
+		t.Fatalf("refused: %s", p.Refused[0].Why)
+	}
+	require.Len(t, p.Units, 1)
+	if w.state("s1-1") != Ready {
+		t.Fatalf("state %s, want ready", w.state("s1-1"))
+	}
+}

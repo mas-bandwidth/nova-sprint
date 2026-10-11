@@ -523,7 +523,13 @@ func (s *Snapshot) routeTier(c *Card) (tier, why string, byFriend, done bool, m 
 		return tier, "its brief's model lines: " + bad, false, true, m
 	}
 	if tier == cardhdr.RouteFrontier && m.Pin == "" && len(s.Routes) > 0 {
-		return tier, "a frontier card waits for the coordinator: run it, or pin it with a model: <provider>/<model> line", false, true, m
+		// frontier is served by a friend by design (docs/SPEC-SPRINT.md, tiers and routes):
+		// a friend up whose row lists it takes the card, never a machine
+		up, why := s.tierServed(tier, nil)
+		if len(up) > 0 {
+			return tier, "", true, true, m
+		}
+		return tier, "no route and no friend serves tier frontier: " + why, false, true, m
 	}
 	if !s.FleetTakes(tier) {
 		// the fleet's tiers leave it out (set --fleet-tiers): no machine draws it, whatever
