@@ -296,11 +296,13 @@ MCCardISABrokenSecondLand.cfg	MCCardISA.tla	invariant	NoCardRetiresTwice	ignore-
 MCCardISABrokenOtherBase.cfg	MCCardISA.tla	invariant	RetiredHeadOnBase	ignore-terminal	cardisa	required	-
 MCCardISABrokenWaitFirst.cfg	MCCardISA.tla	invariant	WaitDispatchesOnlyWhenOperandHolds	ignore-terminal	cardisa	required	-
 MCReadsByRoom.cfg	MCReadsByRoom.tla	pass	-	ignore-terminal	readsbyroom	required	-
+MCReadsByRoomBrokenAskBroken.cfg	MCReadsByRoomThree.tla	invariant	NoAskWhileBroken	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomBrokenPair.cfg	MCReadsByRoom.tla	invariant	OneAtATime	ignore-terminal	readsbyroom	required	-
-MCReadsByRoomBrokenPairCost.cfg	MCReadsByRoom.tla	invariant	ReadsPerLanding	ignore-terminal	readsbyroom	required	-
+MCReadsByRoomBrokenPairCost.cfg	MCReadsByRoom.tla	pass	-	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomBrokenCount.cfg	MCReadsByRoom.tla	invariant	WidthRespected	ignore-terminal	readsbyroom	required	-
-MCReadsByRoomBrokenNoFinder.cfg	MCReadsByRoom.tla	invariant	FinderFirst	ignore-terminal	readsbyroom	required	-
+MCReadsByRoomBrokenNoFinder.cfg	MCReadsByRoomThree.tla	invariant	FinderFirst	ignore-terminal	readsbyroom	required	-
 MCReadsByRoomBrokenTwoFinders.cfg	MCReadsByRoom.tla	invariant	OneBroken	ignore-terminal	readsbyroom	required	-
+MCReadsByRoomSequential.cfg	MCReadsByRoom.tla	pass	-	ignore-terminal	readsbyroom	required	-
 MCStallLadder.cfg	MCStallLadder.tla	pass	-	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenBound.cfg	MCStallLadder.tla	invariant	NoCardHeldPastBound	ignore-terminal	stallladder	required	-
 MCStallLadderBrokenRedeal.cfg	MCStallLadder.tla	invariant	NoStartedRedealt	ignore-terminal	stallladder	required	-
@@ -434,3 +436,6 @@ MCReadyOver.cfg	MCReadyOver.tla	pass	-	ignore-terminal	readyover	required	-
 MCReadyOverBrokenMerge.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-
 MCReadyOverBrokenSilent.cfg	MCReadyOver.tla	temporal	OnePerCause	ignore-terminal	readyover	required	-
 MCReadyOverBrokenStale.cfg	MCReadyOver.tla	invariant	ClearsWhenDealt	ignore-terminal	readyover	required	-
+MCRateBackoff.cfg	MCRateBackoff.tla	pass	-	ignore-terminal	ratebackoff	required	-
+MCRateBackoffBrokenNoCap.cfg	MCRateBackoff.tla	invariant	BackoffBounded	ignore-terminal	ratebackoff	required	-
+MCRateBackoffBrokenSpend.cfg	MCRateBackoff.tla	invariant	RateLimitSpendsNoRedeal	ignore-terminal	ratebackoff	required	-

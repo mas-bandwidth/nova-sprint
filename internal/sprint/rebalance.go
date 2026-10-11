@@ -169,6 +169,12 @@ func rebalanceTo(s *Snapshot, units []*rebalanceUnit, g *rebalanceUnit, pr, wc *
 			if _, _, why, byFriend := s.routeOf(pr, wc, nil, u.name); why != "" || byFriend {
 				continue
 			}
+			if s.backoffWait(tier, []string{u.name}) != "" {
+				// the check of the tier counts a backed-off route as served, but the move's
+				// draw does not: never onto a machine with no route it can draw
+				// (a-rate-limited-refusal-never-fails-the-cardc; tla/RateBackoff.tla)
+				continue
+			}
 			if !g.friend && !s.Launches(u.name, Route{Harness: wc.F(FieldHarness)}) {
 				continue // machine to machine keeps its route: never to one that cannot launch it
 			}

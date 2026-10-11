@@ -3,6 +3,7 @@ package sprint
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/stretchr/testify/assert"
@@ -197,41 +198,126 @@ func takeAndRefuse(t *testing.T, w *world) (string, string) {
 	return p.Units[0].Moved, wc
 }
 
-// An UNLIMITED route's 429 ends the take as any provider failure does: a take ended, its
-// record written (it counts toward the route's 3-in-10 rest), a redeal spent. Only a
-// limited route's 429 is the limiter's to absorb.
-func TestAnUnlimitedRoutes429EndsTheTake(t *testing.T) {
+// A rate-limited take returns the card UNSPENT on the real path (Deal, Take, then Finish),
+// on a limited route and on an unlimited one alike, and however many times: withdrawn with
+// no take ended, no redeal, no attempt, no failed-work judgment, never counted toward the
+// out-of-credit bound (FieldRateReturns), each take leaving its own record numbered with no
+// gap (a-rate-limited-refusal-never-fails-the-cardc; tla/RateBackoff.tla,
+// RateLimitSpendsNoRedeal). On main an unlimited route's 429 ended the take and a limited
+// route's ended it past MaxRateReturns.
+func TestARateLimitedTakeReturnsTheCardUnspent(t *testing.T) {
 	t.Parallel()
-	w := setup(t, 1)
-	proMercury(w)
-	moved, wc := takeAndRefuse(t, w)
-	assert.NotContains(t, moved, "returned untouched")
-	c := w.s.Fleet.Card(wc)
-	assert.NotEmpty(t, c.F(FieldTakeEnded), "the take ended")
-	takes, _ := ProviderTakes(c)
-	assert.Len(t, takes, 1, "the take's record counts toward the route's rest")
+	for name, limited := range map[string]bool{"a limited route": true, "an unlimited route": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			w := setup(t, 1)
+			proMercury(w)
+			if limited {
+				w.s.Fleet.SetProps(map[string]string{PropModelRPM("inception/mercury-3"): "10"})
+			}
+			var wc string
+			for i := range MaxRateReturns + 2 {
+				w.tick(RateBackoffMax + time.Second) // past the route's brief rate-limit backoff
+				var moved string
+				moved, wc = takeAndRefuse(t, w)
+				assert.Contains(t, moved, "returned untouched", "return %d", i+1)
+			}
+			c := w.s.Fleet.Card(wc)
+			assert.Equal(t, Withdrawn, c.Col)
+			assert.Empty(t, c.F(FieldTakeEnded), "no take ended: no redeal spent")
+			assert.Zero(t, c.Int("redeals"), "no redeal")
+			assert.Zero(t, c.Int(FieldRateReturns), "a rate limit spends none of the out-of-credit bound")
+			takes, _ := ProviderTakes(c)
+			assert.Empty(t, takes, "no provider take: never counted toward the 3-in-10 rest")
+			rates, numbers := RateTakes(c)
+			require.Len(t, rates, MaxRateReturns+2, "every rate-limited take left its record")
+			for i, n := range numbers {
+				assert.Equal(t, i+1, n, "the records are numbered with no gap")
+				assert.Equal(t, "pro-mercury3", rates[i].Route)
+			}
+			assert.Equal(t, Ready, w.state("s1-1"), "the primary goes back to ready")
+			assert.Equal(t, 1, w.s.Work.Card("s1-1").Int("attempt"), "no attempt spent")
+			assert.Empty(t, w.notesOf(NWorkFailed), "no failed-work judgment")
+		})
+	}
 }
 
-// Even a limited route cannot loop a card forever: MaxRateReturns untouched returns, then
-// the next 429 ends the take as any provider failure does.
-func TestALimitedRoutesReturnsAreBounded(t *testing.T) {
+// The rate-limited take records are numbered after the last one the card holds, never by
+// the out-of-credit count: a card an out-of-credit refusal returned before still numbers its
+// first rate-limited take 1, so RateTakes reads it and the route backs off (keyed
+// rate_take_<FieldRateReturns+1>, the record left a gap RateTakes stopped at).
+func TestARateTakeIsNumberedAfterTheLastRateTake(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
 	proMercury(w)
 	w.s.Fleet.SetProps(map[string]string{PropModelRPM("inception/mercury-3"): "10"})
-	var wc string
-	for i := range MaxRateReturns {
-		var moved string
-		moved, wc = takeAndRefuse(t, w)
-		assert.Contains(t, moved, "returned untouched", "return %d", i+1)
-	}
+	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+	wc := w.s.Work.Card("s1-1").F("work")
+	w.s.Fleet.Card(wc).Fields[FieldRateReturns] = "2" // two out-of-credit returns before
+	member := w.s.Fleet.Card(wc).Row
+	w.must(Take(w.s, TakeReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+	w.must(Finish(w.s, FinishReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true, Report: tooMany}))
 	c := w.s.Fleet.Card(wc)
-	assert.Equal(t, MaxRateReturns, c.Int(FieldRateReturns))
-	assert.Empty(t, c.F(FieldTakeEnded), "no take ended in the returns")
-	assert.Equal(t, 1, w.s.Work.Card("s1-1").Int("attempt"), "the returns spent no attempt")
-	moved, wc := takeAndRefuse(t, w)
-	assert.NotContains(t, moved, "returned untouched", "the return past the bound ends the take")
-	assert.NotEmpty(t, w.s.Fleet.Card(wc).F(FieldTakeEnded))
+	rates, numbers := RateTakes(c)
+	require.Len(t, rates, 1, "the record is read")
+	assert.Equal(t, []int{1}, numbers)
+	assert.Equal(t, 2, c.Int(FieldRateReturns), "the rate limit spends none of the out-of-credit count")
+	_, resting := rateBackoffs(w.s.Fleet)["pro-mercury3"]
+	assert.True(t, resting, "the route backs off from the record")
+}
+
+// RateBackoff is the model's Backoff: 60s, doubling, capped at 15 minutes (tla/RateBackoff.tla).
+func TestRateBackoffDoublesToItsCap(t *testing.T) {
+	t.Parallel()
+	for k, want := range map[int]time.Duration{0: 0, 1: time.Minute, 2: 2 * time.Minute, 3: 4 * time.Minute,
+		4: 8 * time.Minute, 5: RateBackoffMax, 6: RateBackoffMax, 40: RateBackoffMax} {
+		assert.Equal(t, want, RateBackoff(k), "k=%d", k)
+	}
+}
+
+// A rate limit backs the route off briefly from its own records: 60s after the first 429,
+// 120s after a second with no ok between, back to 60s after an ok, and the route serves
+// again by itself once the clock passes the end (tla/RateBackoff.tla, BackoffEnds).
+func TestARateLimitBacksTheRouteOffBriefly(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 2)
+	proMercury(w)
+	w.s.Fleet.SetProps(map[string]string{PropModelRPM("inception/mercury-3"): "10"})
+	deal := func(id string) bool {
+		p := Deal(w.s, DealReq{Sel: Sel{IDs: []string{id}}})
+		if len(p.Refused) > 0 {
+			return false
+		}
+		w.do(p)
+		return true
+	}
+	finish := func(id string, failed bool) {
+		wc := w.s.Work.Card(id).F("work")
+		member := w.s.Fleet.Card(wc).Row
+		w.must(Take(w.s, TakeReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+		report := ""
+		if failed {
+			report = tooMany
+		}
+		w.must(Finish(w.s, FinishReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: failed, Report: report}))
+	}
+	require.True(t, deal("s1-1"))
+	finish("s1-1", true) // the first 429
+	assert.False(t, deal("s1-1"), "the route backs off 60s after the first 429")
+	w.tick(61 * time.Second)
+	assert.True(t, deal("s1-1"), "the route serves once the 60s backoff ends")
+	finish("s1-1", true) // a second 429, no ok between
+	assert.False(t, deal("s1-1"), "the second 429 backs the route off 120s")
+	w.tick(61 * time.Second)
+	assert.False(t, deal("s1-1"), "still resting before the 120s end")
+	w.tick(61 * time.Second)
+	assert.True(t, deal("s1-1"), "the route serves once the 120s backoff ends")
+	finish("s1-1", false) // an ok end resets the count
+	w.tick(time.Second)
+	require.True(t, deal("s1-2"))
+	finish("s1-2", true) // a 429 after an ok backs off 60s again
+	w.tick(61 * time.Second)
+	assert.True(t, deal("s1-2"), "a 429 after an ok backs off 60s, not 180s")
 }
 
 func TestIsRateLimited(t *testing.T) {
@@ -296,4 +382,23 @@ func TestNoBudgetDealsAsBefore(t *testing.T) {
 	_, rpm := set[FieldRateRPM]
 	_, conc := set[FieldRateConcurrent]
 	assert.False(t, rpm || conc, "no limit field on an unlimited route's card: %v", set)
+}
+
+// A ready card whose tier's every route backs off from a rate limit waits out a stall that
+// ends by itself: the no-stall rule holds it on the backoff, never stalled work and never a
+// judgment, and once the backoff ends the card is dealt again (tla/RateBackoff.tla,
+// BackoffEnds).
+func TestARateLimitBackoffIsAWaitNeverAStall(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	proMercury(w)
+	takeAndRefuse(t, w)
+	require.Equal(t, Ready, w.state("s1-1"))
+	for _, f := range Unheld(running(w), w.s.Now) {
+		assert.NotEqual(t, "s1-1", f.Subject, "a backoff is never stalled work: %s", f.Why)
+	}
+	hd := Holder(running(w), w.s.Now, "s1-1")
+	assert.Contains(t, hd.Why, "waits for the rate-limit backoff on pro-mercury3", "%s", hd)
+	w.tick(RateBackoffFor + time.Second)
+	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 }

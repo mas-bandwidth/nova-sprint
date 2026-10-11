@@ -405,11 +405,11 @@ func Finish(s State, m, c string, gen int, ok bool) (State, error) {
 
 // ------------------------------------------------------------------ readers
 
-// Ask is SprintTables.tla Ask(p) (line 375) with the reads asked one at a
-// time and by room (spec section 6; tla/ReadsByRoom.tla): a primary in
-// review whose work did not fail is dealt the reads it wants now
-// (ReadsWanted: its first read alone while none stands, the second once the
-// first came back ok, none while one is outstanding or found it broken) to
+// Ask is SprintTables.tla Ask(p) (line 375) with the reads asked together
+// and by room (spec section 6; tla/ReadsByRoom.tla, the interim rule of
+// 2026-10-06): a primary in review whose work did not fail is dealt the
+// reads it wants now (ReadsWanted: none while one found it broken, else the
+// reads it still needs, an outstanding read counted among them) to
 // the readers AskChoice names: the finder first on a rework's next attempt,
 // out of turn, the rolling index not moved for it; else the least loaded
 // readers (NextReaders, the engine's room for readers with no width), the

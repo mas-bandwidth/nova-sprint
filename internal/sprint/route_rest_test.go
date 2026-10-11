@@ -11,7 +11,7 @@ import (
 
 // The rule's window (tla/RouteRest.tla): the last RouteRestWindow ended takes on a route
 // after its last rest began, in the order they ended. RouteRestAfter takes in it the
-// provider failed TRANSIENTLY (a rate limit, a 5xx, a timeout) rest the route from the clock
+// provider failed TRANSIENTLY (a 5xx, a timeout; never a rate limit) rest the route from the clock
 // for RouteRestFor; a take that ended with no result never counts (it is the model's output,
 // not the provider's: the card's attempt and the route's ok% carry it), nor does a provider
 // failure of another class, an older end, an end before the last rest or an ok end; a route
@@ -58,18 +58,18 @@ func TestRestsDueCountsTransientProviderFailuresNeverNoResults(t *testing.T) {
 		rest  string // the property's value before
 		cards []string
 	}{
-		{"three 429s", map[string]string{"c1": limited(1), "c2": limited(2), "c3": limited(3)}, nil, "", []string{"c1", "c2", "c3"}},
-		{"a 429, a 5xx and a timeout", map[string]string{"c1": limited(1), "c2": outage(2), "c3": slow(3)}, nil, "", []string{"c1", "c2", "c3"}},
+		{"three 429s never rest the route for 3-in-10", map[string]string{"c1": limited(1), "c2": limited(2), "c3": limited(3)}, nil, "", nil},
+		{"a 429 beside a 5xx and a timeout leaves only two", map[string]string{"c1": limited(1), "c2": outage(2), "c3": slow(3)}, nil, "", nil},
 		{"three no results never rest", map[string]string{"c1": noResult(1), "c2": noResult(2), "c3": noResult(3)}, nil, "", nil},
 		{"ten no results never rest", map[string]string{"c1": noResult(1), "c2": noResult(2), "c3": noResult(3), "c4": noResult(4), "c5": noResult(5), "c6": noResult(6), "c7": noResult(7), "c8": noResult(8), "c9": noResult(9), "c10": noResult(10)}, nil, "", nil},
 		{"a no result is not the provider's", map[string]string{"c1": limited(1), "c2": noResult(2), "c3": outage(3)}, nil, "", nil},
 		{"a failure of another class does not count", map[string]string{"c1": limited(1), "c2": other(2), "c3": outage(3)}, nil, "", nil},
 		{"two", map[string]string{"c1": limited(1), "c2": limited(2)}, oks(3, 5), "", nil},
-		{"three among ok ends, within ten", map[string]string{"c1": limited(1), "c2": outage(5), "c3": slow(9)}, oks(2, 3), "", []string{"c1", "c2", "c3"}},
+		{"a 429 among ok ends and a 5xx and a timeout leaves two", map[string]string{"c1": limited(1), "c2": outage(5), "c3": slow(9)}, oks(2, 3), "", nil},
 		{"the first slid out of the window", map[string]string{"c1": limited(1), "c2": limited(20), "c3": limited(21)}, oks(2, 9), "", nil},
 		{"ends before the last rest do not count", map[string]string{"c1": limited(1), "c2": limited(2), "c3": limited(40)}, nil, was(10, 30), nil},
 		{"resting now", map[string]string{"c1": limited(41), "c2": limited(42), "c3": limited(43)}, nil, was(40, 70), nil},
-		{"a rest ended, three after it", map[string]string{"c1": limited(31), "c2": limited(32), "c3": limited(33)}, nil, was(0, 30), []string{"c1", "c2", "c3"}},
+		{"a rest ended, three 429s after it never rest the route", map[string]string{"c1": limited(31), "c2": limited(32), "c3": limited(33)}, nil, was(0, 30), nil},
 		{"a retired no-result rest holds nothing", map[string]string{"c1": noResult(41)}, nil, at(40) + " " + at(70) + " x,y,z", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -360,8 +360,8 @@ func TestARetiredRestKeepsItsMark(t *testing.T) {
 		{"a 402 launched after the balance rest began", map[string]string{PropProviderRest("openrouter"): open}, []*Card{refused("new1", "2026-10-10T05:30:00Z")}, []string{"provider"}},
 		{"429s before a retired no-result rest", map[string]string{PropRule3Rest("deepseek"): noResult},
 			[]*Card{limited("a1", "2026-10-10T03:00:00Z"), limited("a2", "2026-10-10T03:10:00Z"), limited("a3", "2026-10-10T03:20:00Z")}, nil},
-		{"429s after a retired no-result rest", map[string]string{PropRule3Rest("deepseek"): noResult},
-			[]*Card{limited("a1", "2026-10-10T05:00:00Z"), limited("a2", "2026-10-10T05:10:00Z"), limited("a3", "2026-10-10T05:20:00Z")}, []string{"flash-deepseek41-direct"}},
+		{"429s after a retired no-result rest never rest the route", map[string]string{PropRule3Rest("deepseek"): noResult},
+			[]*Card{limited("a1", "2026-10-10T05:00:00Z"), limited("a2", "2026-10-10T05:10:00Z"), limited("a3", "2026-10-10T05:20:00Z")}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -428,4 +428,96 @@ func TestRouteRestCoverEnvFaultRemedy(t *testing.T) {
 	assert.Contains(t, EnvFaultRemedy("m1", EnvDisk), "free disk")
 	assert.Contains(t, EnvFaultRemedy("m1", EnvOther), "repair m1's environment")
 	assert.Equal(t, "fleet up m1 --probe passed", EnvProbeLine("m1"))
+}
+
+// A rate-limit backoff never holds off or moves the 3-in-10 rest of 5xxs: three 5xxs rest
+// the route for RouteRestFor while a backoff holds (the longer rest is the one written), and
+// a backoff's line, kept beside the route's own (rateBackoffKey), is never the mark the
+// window counts after (tla/RateBackoff.tla beside tla/RouteRest.tla).
+func TestARateBackoffNeverHoldsOffTheFiveHundredsRest(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2030, 1, 2, 3, 0, 0, 0, time.UTC)
+	at := func(m int) string { return stamp(t0.Add(time.Duration(m) * time.Minute)) }
+	outage := func(m int) string {
+		return ProviderTake{Route: "a", Finished: at(m), Error: "provider: class=provider-5xx status=503 msg=upstream unavailable"}.String()
+	}
+	rated := func(m int) string {
+		return ProviderTake{Route: "a", Finished: at(m), Error: "provider: class=rate-limited status=429 msg=Too many requests"}.String()
+	}
+	fleet := func(fields map[string]map[string]string) *Table {
+		f := NewTable(Fleet)
+		f.SetRows([]string{"m1"})
+		for id, fs := range fields {
+			fs[FieldRoute] = "a"
+			f.Put(&Card{ID: id, Row: "m1", Col: Withdrawn, Fields: fs})
+		}
+		return f
+	}
+	routes := []Route{{Name: "a", Tier: "pro", Enabled: true}}
+
+	// three 5xxs and a 429 at once: the 30-minute rest, never only the backoff
+	s := &Snapshot{Now: t0.Add(10*time.Minute + 30*time.Second), Routes: routes, Fleet: fleet(map[string]map[string]string{
+		"c1": {FieldProviderTake + "1": outage(8)}, "c2": {FieldProviderTake + "1": outage(9)},
+		"c3": {FieldProviderTake + "1": outage(10)}, "r1": {FieldRateTake + "1": rated(10)},
+	})}
+	due := RestsDue(s)
+	require.Len(t, due, 1)
+	assert.Equal(t, RestProvider, due[0].Cause)
+	assert.Equal(t, s.Now.Add(RouteRestFor), due[0].Until)
+
+	// a backoff written between the 5xxs is not the window's mark: the third 5xx rests
+	s = &Snapshot{Now: t0.Add(20 * time.Minute), Routes: routes, Fleet: fleet(map[string]map[string]string{
+		"c1": {FieldProviderTake + "1": outage(5)}, "c2": {FieldProviderTake + "1": outage(6)},
+		"r1": {FieldRateTake + "1": rated(10)}, "c3": {FieldProviderTake + "1": outage(12)},
+	})}
+	back := rateBackoffs(s.Fleet)["a"]
+	require.Equal(t, t0.Add(11*time.Minute), back.Until, "60s after the one 429")
+	back.Route = "a" + rateBackoffKey
+	s.Fleet.SetProps(map[string]string{PropRule3Rest(""): "a" + rateBackoffKey + " " + back.value()})
+	assert.Empty(t, RouteRests(routes, s.Fleet), "a backoff's line is never the route's own rest")
+	due = RestsDue(s)
+	require.Len(t, due, 1)
+	assert.Equal(t, RestProvider, due[0].Cause)
+	assert.Equal(t, []string{"c1", "c2", "c3"}, due[0].Cards)
+}
+
+// A backoff is due on every step while it holds; restWrites writes its line and its one
+// happened note once, none while the same until holds, never a judgment, and a new end
+// (a later until) writes it and notes it again (tla/RateBackoff.tla).
+func TestARateBackoffIsWrittenAndNotedOncePerEnd(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2030, 1, 2, 3, 0, 0, 0, time.UTC)
+	rated := func(m int) string {
+		return ProviderTake{Route: "a", Finished: stamp(t0.Add(time.Duration(m) * time.Minute)), Error: "provider: class=rate-limited status=429 msg=Too many requests"}.String()
+	}
+	f := NewTable(Fleet)
+	f.SetRows([]string{"m1"})
+	f.Put(&Card{ID: "r1", Row: "m1", Col: Withdrawn, Fields: map[string]string{FieldRoute: "a", FieldRateTake + "1": rated(0)}})
+	s := &Snapshot{Now: t0.Add(30 * time.Second), Routes: []Route{{Name: "a", Tier: "pro", Enabled: true}}, Fleet: f, Coordinator: "seat"}
+	step := func() Plan {
+		var p Plan
+		restWrites(&p, s, RestsDue(s), "machine")
+		for _, w := range p.Props {
+			s.Fleet.SetProps(map[string]string{w.Name: w.Value})
+		}
+		return p
+	}
+	p := step()
+	require.Len(t, p.Notes, 1, "a new backoff writes one note")
+	assert.Equal(t, NRouteRested, p.Notes[0].Type)
+	assert.Equal(t, "rate-limit backoff of 1m0s on a, until "+stamp(t0.Add(time.Minute)), p.Notes[0].What)
+	assert.Equal(t, Happened, p.Notes[0].Kind, "never a judgment")
+	s.Now = s.Now.Add(10 * time.Second)
+	p = step()
+	assert.Empty(t, p.Notes, "none while the same until holds")
+	assert.Empty(t, p.Props, "nothing written again")
+	// a second 429 with no ok between: 120s from it, written and noted once more
+	f.Card("r1").Fields[FieldRateTake+"2"] = rated(1)
+	s.Now = t0.Add(70 * time.Second)
+	p = step()
+	require.Len(t, p.Notes, 1)
+	assert.Equal(t, "rate-limit backoff of 2m0s on a, until "+stamp(t0.Add(3*time.Minute)), p.Notes[0].What)
+	// past its end the route serves: nothing is due
+	s.Now = t0.Add(3 * time.Minute)
+	assert.Empty(t, RestsDue(s), "the backoff ended by itself")
 }
