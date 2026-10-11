@@ -541,4 +541,13 @@
     the read machine's fixed findings (rdfixed) bound the new rework at the brief's bound, and the
     reversed witness MCSprintRulesReadsBrokenBoundInside leaves an inside finding at the bound,
     violating ReworkAtBound."
-   :origin "dogfood 2026-10-10 evening: fleet-only restart")))
+   :origin "dogfood 2026-10-10 evening: fleet-only restart")
+
+  (fix "down-member-is-down-not-fault" :release "v1.2.6" :status "planned"
+   :title "A member whose host is offline is shown down, not as a fault"
+   :text "The seat check reports a member that does not beat on an offline host as down (offline=name, the
+    fleet line stays OK); DOWN when the host answers, or gives no clear no-answer (a name that does not resolve
+    is named on the line). The seat probes the ssh port of each such member's machine row at once under one
+    3 s bound, with a beating member other than the seat's own machine as the control of its network: no
+    control answer, no member excused."
+   :origin "v1.2.5 candidate list")))
