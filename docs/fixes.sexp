@@ -66,7 +66,30 @@
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator."))
  :items
-  ((fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
+  ((fix "the-rebalance-levels-reads-every-tick-all-at-once" :release "v1.2.12" :status "planned"
+    :title "The rebalance levels reads every tick, all at once"
+    :text "The Rebalance (internal/sprint/rebalance.go) skipped every card whose kind was not work,
+     so a member that was idle when a burst of reads was dealt sat with dozens of read cards queued
+     while the rest of the fleet had idle lanes, and nothing moved them until it drained its own queue
+     (the owner, 2026-10-11 ~18:50Z: \"it seems like we could possibly rebalance this a bit better\",
+     \"Not one card at a time per-tick\", \"This should NOT be manual.\"; the same shape ~12:40Z). The
+     rebalance now has a read pass: a read card queued ready on a unit whose lanes all work goes, in
+     the same rebalance and the same tick, to a unit with an idle lane whose reader row serves the
+     read's tier and that has not read the card at this attempt, as many as the idle lanes take (a
+     read is half a slot); never back to a row it was rebalanced off (FieldRebalancedFrom), to a
+     reader row that does not serve its tier, or to a reader that already read it; it keeps its
+     attempt and is dealt again under the new reader's identity, the record on the row it left
+     retired. All eligible cards move in one tick, never one per tick. Tests
+     TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick and
+     TestTheRebalanceReadNeverMovesToAnIneligibleOrOldRow in internal/sprint/rebalance_reads_test.go,
+     and TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick in
+     internal/sprint/rebalance_test.go (docs/SPEC-SPRINT.md section 1, the rebalance)."
+    :origin "this card, the-rebalance-levels-reads-every-tick-all-at-once.w1, from the owner,
+     2026-10-11 ~18:50Z watching the fleet table (b3 held 36 ready behind 16 working, mini-m5 9
+     behind 16, while b1, b2, hetzner1, hetzner2, space, studio and vision had 2 to 9 idle lanes
+     each), and the same shape ~12:40Z (\"ready cards are sitting dead on freddy while he's full,
+     and they should be assigned elsewhere via rebalancing\").")
+   (fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
     :title "The SeatProof model of the deleted push proof is retired"
     :text "tla/SeatProof.tla modelled the push proof (its header names PushPong, PushLive, PushWhy,
      renewSeatProof and a pushGate) with its instance MCSeatProof.tla and three configurations; none of
