@@ -1242,6 +1242,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	one := fs.Bool("one", false, "admit a single card (one positional id, --count 1 on one stream, or one --brief-file alone): refused without it, since cards are admitted in waves (--brief-dir, --count 2 or more, several --brief-file)")
 	replaces := fs.String("replaces", "", "the card this add admits is the twin of these `ids`, comma separated: it takes over every edge where a waiting card needs one of them (that card needs the twin instead, in the same place), each still on the table is dropped with the reason \"replaced by <the new id>\", and no blocked judgment is raised for it, in one step; a card dropped before is replaced too, and its blocked judgments are answered; one card only (it means --one), never a sentinel")
 	allowPersonal := fs.Bool("allow-personal-base", false, "admit cards whose brief's BASE: is a personal branch (<name>/* for the sprint's coordinator, its owner or a friends table row), by default refused naming the base and this flag: no sprint watches a personal branch's gate (docs/SPEC-SPRINT.md section 11, bases-view-r.w2)")
+	partial := fs.Bool("partial", false, "with --brief-dir or a repeated --brief-file: hold back every brief the checks find a fault in, and every card that needs a held card, and admit the rest in one store write; one HELD line per held card, then the add's closing line; exit 0 when every card was admitted, 1 when some were held and the rest written, 2 when none could be admitted; refused with ids, --count, --sentinel or --land-protected (a marked first add is one step)")
 	landProtected := fs.String("land-protected", "", "mark a new stream for protected branches while admitting its first card: repositories (owner/name, comma separated) or any")
 	held := fs.Bool("held", false, "admit the cards held: waiting, a sentinel never reached and no card dealt, nothing raised, until nova-sprint release <id> --reason <text>; a wave loads behind a held sentinel with nothing before it")
 	decideRecord := fs.String("decide-record", "", "the record `file` of the cards' brief decisions under JEV_API_KEY (default ~/nova-sprint/decide/brief.jsonl, the coordinator's root); each card stores it and its op, and land and drop attach the card's end there")
@@ -1267,6 +1268,26 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 		// a negative count admitted no card and opened the stream with an OK
 		return refuse(stderr, "add", fmt.Sprintf("--count wants the number of cards to admit, at least 1, got %d", *count))
 	}
+	if *partial {
+		// --partial names its cards by file, one per brief, and admits them in
+		// one write: a marked first add is one step, and a sentinel or a count
+		// names cards no brief file holds
+		if len(ids) > 0 {
+			return refuse(stderr, "add", "--partial takes no ids: the cards are the brief files, each id the file's name without .md")
+		}
+		if *count != 0 {
+			return refuse(stderr, "add", "--partial names the cards by file: give --brief-dir <dir> or a repeated --brief-file, not --count")
+		}
+		if *sentinel != "" {
+			return refuse(stderr, "add", "--partial admits no sentinel: a marked first add is one step")
+		}
+		if *landProtected != "" {
+			return refuse(stderr, "add", "--partial admits no marked first add: a marked first add is one step")
+		}
+		if *briefDir == "" && len(briefFiles) < 2 {
+			return refuse(stderr, "add", "--partial wants --brief-dir <dir> or a repeated --brief-file (a card per brief file)")
+		}
+	}
 	// The many-brief form: --brief-dir <dir>, or --brief-file given alone or
 	// again, names one brief file per card, its id the file's name. One
 	// --brief-file with ids, --count or --sentinel is the one brief for every
@@ -1290,7 +1311,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 		if *every != 0 || *last {
 			return refuse(stderr, "add", "--sentinel-every goes with --count, not a card per brief file")
 		}
-		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, *allowShared, *allowPersonal, *landProtected, *decideRecord, briefOps, sprint.Split(*replaces), c, stdout, stderr)
+		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, *allowShared, *allowPersonal, *landProtected, *decideRecord, *partial, briefOps, sprint.Split(*replaces), c, stdout, stderr)
 	}
 	if len(briefFiles) == 1 {
 		if *brief != "" {
@@ -1458,7 +1479,7 @@ func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) s
 // store write adds every card.
 // cmdAddMany admits per-file cards and supports the same atomic first-stream mark as add
 // (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2).
-func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, allowShared, allowPersonal bool, landProtected, decideRecord string, briefOps, replaces []string, c *common, stdout, stderr io.Writer) int {
+func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, allowShared, allowPersonal bool, landProtected, decideRecord string, partial bool, briefOps, replaces []string, c *common, stdout, stderr io.Writer) int {
 	if stream == "" {
 		return refuse(stderr, "add", "wants --stream and --brief-dir <dir> or --brief-file <file>...")
 	}
@@ -1494,6 +1515,10 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 			return refuse(stderr, "add", fmt.Sprintf("%s: the brief is %d bytes, over the %d bytes a brief may be; a brief is a child's whole brief; shorten it", path, len(briefText), store.MaxBriefBytes))
 		}
 		cards = append(cards, sprint.CardAdd{ID: id, Brief: briefText, Needs: uniquify(append(briefNeeds(briefText), extra...)), File: path, Base: swarm.ReadCardBase([]byte(briefText)).Ref, Repo: swarm.ReadCardBase([]byte(briefText)).Named})
+	}
+	if partial {
+		// add --partial holds what fails and admits the rest (add_partial.go)
+		return a.cmdAddPartial(addPartialReq{stream: stream, cards: cards, rules: rs, allowShared: allowShared, allowPersonal: allowPersonal, score: score, before: before, after: after, held: held, decideRecord: decideRecord, briefOps: briefOps, replaces: replaces, c: c}, stdout, stderr)
 	}
 	if !allowShared {
 		if why := sharedPaths(cards); why != "" {

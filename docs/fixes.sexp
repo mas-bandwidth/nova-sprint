@@ -291,6 +291,24 @@
     findings of three briefs in one call and leaves its keys equal, the clean brief is exit 0, and a brief
     over the size bound and a lint finding in one file are both said."
    :origin "tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 2; the owner, 2026-10-11")
+  (fix "add-partial-admits-what-passes" :release "v1.2.14" :status "planned"
+   :title "add --partial holds back what fails and admits the rest"
+   :text "add was all or none: one failing brief refused the whole call, so the coordinator looped add, read
+    the refusals, moved the refused files aside and added again. add --partial, with --brief-dir or a
+    repeated --brief-file only, runs brief check's collector over every brief, holds back every brief with a
+    finding and every card that needs a held card through its Needs: or DEPENDS-ON: line or --needs,
+    transitively, then runs the add step's own plan over the rest and holds back each card its Refused list
+    names with the cards that need it, planning the write again without them; the rounds are bounded by the
+    number of cards, and nothing is written for a held card. The rest are admitted in one store write, the
+    brief decision asked for them only. It prints one HELD <id>: <its first finding or refusal> or HELD
+    <id>: needs <other>, held back line per held card, then the add's closing line, and exits 0 when every
+    card was admitted, 1 when some were held and the rest written, and 2 when none could be admitted or for
+    usage. --partial is refused with ids, --count, --sentinel or --land-protected, since a marked first add
+    is one step. Without --partial add is all or none as before. Tests: five briefs, b2 with a PRIORITY add
+    refuses and b4 DEPENDS-ON b2, admit b1, b3 and b5, hold b2 and b4 with their two lines, exit 1, and
+    leave exactly three new cards; a brief the plan refuses at the write is held with its refusal and the
+    others land; with every brief clean the exit is 0, as add without the flag."
+   :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 1 (the owner, 2026-10-11: \"Whatever you are doing manually now, consider adding tool support for it to nova sprint.\")")
   (fix "empty-run-harness-fault" :release "v1.2.6" :status "in-progress"
    :title "An empty run is its own harness fault"
    :text "An empty run is classed as a harness fault, and a rework never returns to the friend AI whose
