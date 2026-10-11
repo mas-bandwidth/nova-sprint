@@ -771,6 +771,10 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		}
 		offer = append(offer, c)
 	}
+	// Compute route stats once per tick before any routeOf/drawRoute calls.
+	// This ensures all callers (DealByLadder, rebalance, etc.) read the same shares.
+	s.routeStats = routeStatsByName(s.Fleet)
+	s.routeCostPerLanded = routeCostPerLanded(s.Fleet)
 	// the ladder (priority.go, reads_priority.go): the cards above reader, then the friends'
 	// reads, asked and placed in this plan, then normal and low work in the room they leave
 	fp, seats, dealt, dealtWorking := friendDealByLadder(s, dealOrder(s, offer), r.Friends)
@@ -948,9 +952,6 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	if len(up) > 0 {
-		// Compute route stats once per tick to avoid O(ready x fleet) cost per draw
-		s.routeStats = routeStatsByName(s.Fleet)
-		s.routeCostPerLanded = routeCostPerLanded(s.Fleet)
 		room := widthRoom(s, up)
 		n := min(room, TickMaxDeal, len(ready))
 		due = min(room, len(ready)) - n
