@@ -1155,4 +1155,14 @@
     liveOf and LiveReturns keep their fresh-only reading. No model change."
    :origin "the coordinator 2026-10-11, added to v1.2.14 beside the v1.2.12 inventory's section 9 row
     D2 (a held finished report across STOP refused as stale); D2's first cause was fixed by
-    nova-sprint #87 (15c779c); this is what that fix left; code read at nova-sprint main 00c54ba")))
+    nova-sprint #87 (15c779c); this is what that fix left; code read at nova-sprint main 00c54ba")
+   (fix "fleet-up-probe-releases-an-environment-held-member" :release "v1.2.11" :status "planned"
+    :title "fleet up --probe passed releases a member held by an environment fault"
+    :text "fleet up --probe passed on a member held by an environment fault (held_by=environment) was
+     refused by the store's manifest check: the release path and EnvProbePatch each unset the hold's four
+     fields, so one entry named each twice. A field is now unset once per entry (unsetPresent keeps each
+     name once, in first-seen order), and fleet up's own unset of the hold is left to EnvProbePatch when
+     the passed probe clears the fault, so a coordinator's, the fault's or the sync's hold stays for a
+     person to lift (the probe never lifts a person's hold). tla/ProviderBudget.tla, FleetUpRefusesUncleared,
+     already said a passed probe clears the fault; this is the implementation catching up."
+    :origin "this card")))
