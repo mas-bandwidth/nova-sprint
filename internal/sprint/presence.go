@@ -8,15 +8,17 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
 )
 
-// A fleet member's presence (docs/SPEC-SPRINT.md, the fleet). A member says
+// A fleet member's presence (docs/SPEC-SPRINT.md section 5, the fleet; the
+// ordinary lapse is tla/DirtyTick.tla, Lapse). A member says
 // it is there by beating: nova-sprint fleet beat, run on the machine every
 // few seconds, writes its last beat time and its measured load. Its status is
 // derived, never typed: up until it has missed MissedBeatsDown beat windows
 // of BeatDeadline each in a row, down past that or when it has never beaten,
-// and held while the coordinator holds it down (fleet down; fleet up releases
-// the hold), whatever it beats. The tick applies a change of status with the
-// moves of fleet down and fleet up. The model is tla/DirtyTick.tla (Miss and
-// Lapse: a machine lapses only after MissedBeatsDown misses).
+// except that a last beat at HeavyLoadPercent or above enters a bounded loaded
+// interval before down. Its entry is the ordinary lapse boundary after that
+// beat, not the tick that happens to observe it; the loaded interval lasts
+// LoadedGrace. A hold is held whatever it beats. The tick applies a change of
+// status with the moves of fleet down and fleet up.
 
 const (
 	// BeatDeadline is how long a beat is fresh, and so the length of one beat
@@ -30,6 +32,12 @@ const (
 	// A beat between misses resets the count: it is derived from the last
 	// beat, never stored.
 	MissedBeatsDown = 3
+	// HeavyLoadPercent is the saturation point at which the last beat marks a
+	// member loaded rather than gone when its ordinary presence interval lapses.
+	HeavyLoadPercent = 90.0
+	// LoadedGrace is one more ordinary presence interval after a loaded member's
+	// derived entry time; it bounds how long stale load can keep a dead member up.
+	LoadedGrace = MissedBeatsDown * BeatDeadline
 	// LoadWindow is the span of beats whose highest load the load cell shows.
 	LoadWindow = 10 * time.Second
 	// FriendBeatEvery is how often a friend's daemon beats (friend beat). The
@@ -168,10 +176,29 @@ func (b Beat) Missed(now time.Time) int {
 	return int((now.Sub(b.At) - 1) / BeatDeadline)
 }
 
-// Alive says the member has beaten and has missed fewer than MissedBeatsDown
-// beat windows in a row: the rule of the model's Lapse.
+// LoadedSince is when the last beat's heavy-load evidence enters its extra
+// presence interval: the ordinary lapse boundary, whether or not a tick ran
+// there (docs/SPEC-SPRINT.md section 5; tla/DirtyTick.tla, Lapse).
+func (b Beat) LoadedSince() (time.Time, bool) {
+	if !b.Beaten() || b.Load < HeavyLoadPercent {
+		return time.Time{}, false
+	}
+	return b.At.Add(MissedBeatsDown * BeatDeadline), true
+}
+
+// Loaded says the member is in the bounded grace after its ordinary presence
+// boundary. The entry derives from the last beat, so repeated ticks cannot
+// restart its grace (docs/SPEC-SPRINT.md section 5; tla/DirtyTick.tla, Lapse).
+func (b Beat) Loaded(now time.Time) bool {
+	since, ok := b.LoadedSince()
+	return ok && now.After(since) && !now.After(since.Add(LoadedGrace))
+}
+
+// Alive says the member has missed fewer than MissedBeatsDown windows, or is
+// inside its bounded loaded interval (docs/SPEC-SPRINT.md section 5;
+// tla/DirtyTick.tla, Lapse).
 func (b Beat) Alive(now time.Time) bool {
-	return b.Beaten() && b.Missed(now) < MissedBeatsDown
+	return b.Beaten() && (b.Missed(now) < MissedBeatsDown || b.Loaded(now))
 }
 
 // NextBeat is the record after a beat at now with the load pct: the beat at
@@ -301,15 +328,19 @@ func ago(d time.Duration) string {
 }
 
 // LoadText is the load cell: the highest load of the last LoadWindow with
-// one decimal and a percent sign while the beat is fresh, else empty; and
-// beside it, while the machine's open file descriptors are over the member's
-// warn bound, "fds <count> warn" (or alarm, fd.go FilesText), so the fleet
-// table shows a machine running out of them before the alarm's judgment.
+// one decimal and a percent sign while the beat is fresh, else empty, except
+// that a stale heavy-load beat is retained and marked "loaded" for LoadedGrace
+// so the fleet distinguishes its grace from down. Beside it, while the
+// machine's open file descriptors are over the warn bound, it shows their
+// level (fd.go FilesText).
 func LoadText(b Beat, now time.Time) string {
-	if !b.Fresh(now) {
+	if !b.Fresh(now) && !b.Loaded(now) {
 		return ""
 	}
 	load := fmt.Sprintf("%.1f%%", b.Load)
+	if b.Loaded(now) {
+		load += " loaded"
+	}
 	if f := FilesText(b, now); f != "" {
 		load += " fds " + f
 	}
@@ -386,6 +417,9 @@ func presence(s *Snapshot, r TickReq) (Plan, int) {
 	q, widths := memberLoads(s, receivers), memberWidths(s, receivers)
 	for _, m := range downs {
 		why := "no beat for " + (MissedBeatsDown * BeatDeadline).String()
+		if r.Beats[m].Load >= HeavyLoadPercent && r.Beats[m].Beaten() {
+			why = "no beat for " + (MissedBeatsDown*BeatDeadline + LoadedGrace).String() + " after its loaded interval"
+		}
 		switch {
 		case s.MemberCtl(m).F("held") != "":
 			why = "held"
