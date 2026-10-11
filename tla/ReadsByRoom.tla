@@ -1,19 +1,23 @@
 ----------------------------- MODULE ReadsByRoom -----------------------------
-\* The ask of nova-sprint (docs/SPEC-SPRINT.md section 6, the reads, sequential
-\* and by room; internal/sprint readers.go ReadsWanted, finderFirst, askPicks;
-\* steps_review.go Ask; steps_tick.go TickAsk): two rules of 2026-10-03 and
-\* 2026-10-04 in one machine.
+\* The ask of nova-sprint (docs/SPEC-SPRINT.md section 6, the reads, by room;
+\* internal/sprint readers.go ReadsWanted, finderFirst, askPicks; steps_review.go
+\* Ask; steps_tick.go TickAsk): two rules in one machine.
 \*   - Reads by room: a reader reader-<m> runs at its machine m's width, and a
 \*     read is asked only of a reader with free room (asked and reading under
 \*     the width); a read no reader has room for waits (the night of
 \*     2026-10-03: reads levelled by count queued seven deep on the two narrow
 \*     machines while 31 reader slots sat idle).
-\*   - Reads one at a time: a card's first read is asked alone, nothing more
-\*     while it is outstanding, the rest it needs only once every read that
-\*     stands came back ok; a broken read goes to its rework with no second
-\*     read (the night of 2026-10-03: 4.2 reads a landing against a design of
-\*     two). The rework's next attempt asks its first read of the reader who
-\*     found the attempt before broken, when that reader has room.
+\*   - Rule = "parallel" (the code, the interim rule of 2026-10-06): a card's
+\*     reads are asked together, the rest it needs each attempt, an
+\*     outstanding read counted among those that stand; none once a read found
+\*     it broken (the judgment stands and a rework follows).
+\*   - Rule = "sequential" (the design, 2026-10-04): a card's first read is
+\*     asked alone, nothing more while it is outstanding, the rest it needs
+\*     only once every read that stands came back ok; a broken read goes to
+\*     its rework with no second read (the night of 2026-10-03: 4.2 reads a
+\*     landing against a design of two).
+\* The rework's next attempt asks its first read of the reader who found the
+\* attempt before broken, when that reader has room.
 \* Which reader with room is asked (the engine's greatest share of room, ties
 \* round the readers) is a free choice here: every property holds for every
 \* choice among the readers with room.
@@ -30,32 +34,42 @@
 \*   ff     FALSE once an attempt's first read was asked of another reader
 \*          while the finder was free with room (a ghost for FinderFirst)
 \*   fb     FALSE once an attempt found broken had an ok read (a ghost for
-\*          ReadsPerLanding: TRUE while the first read found each broken)
+\*          the sequential ReadsPerLanding: TRUE while the first read found
+\*          each broken)
+\*   ab     FALSE once a card asked a read while a read of the attempt stood
+\*          broken (a ghost for NoAskWhileBroken)
 \*
-\* BROKEN names the reversed witnesses: "pair" asks every read a card needs at
-\* once (the ask before 2026-10-04: OneAtATime and ReadsPerLanding fail);
-\* "count" asks readers whatever their room (the ask before 2026-10-03:
-\* WidthRespected fails); "nofinder" asks the rework's first read of any
-\* reader with room (FinderFirst fails).
+\* BROKEN names the reversed witnesses: "count" asks readers whatever their
+\* room (the ask before 2026-10-03: WidthRespected fails); "nofinder" asks the
+\* rework's first read of any reader with room (FinderFirst fails);
+\* "askbroken" asks more reads while one is broken (NoAskWhileBroken fails).
+\* The pair asked at once is no longer a mutation: Rule = "parallel" is the
+\* pair, and the sequential-rule invariants OneAtATime and OneBroken fail
+\* under it while the restated ReadsPerLanding holds.
 EXTENDS Integers, FiniteSets
 
-CONSTANTS Readers, Width, Cards, Need, MaxAttempts, Broken
+CONSTANTS Readers, Width, Cards, Need, MaxAttempts, Rule, Broken
 
 NoR == "none"
 ASSUME NoR \notin Readers
 
-VARIABLES rd, att, st, fnd, reads, brk, ff, fb
-vars == <<rd, att, st, fnd, reads, brk, ff, fb>>
+VARIABLES rd, att, st, fnd, reads, brk, ff, fb, ab
+vars == <<rd, att, st, fnd, reads, brk, ff, fb, ab>>
 
 Load(r) == Cardinality({c \in Cards : rd[c][r] = "asked"})
 Room(r) == Width[r] - Load(r)
 Has(c, v) == {r \in Readers : rd[c][r] = v}
 
-\* ReadsWanted: one while no read of the attempt stands, none while one is
-\* outstanding or found it broken, else the rest it needs.
+\* ReadsWanted: under Rule = "parallel" (the code's interim rule of
+\* 2026-10-06) a card's reads are asked together, the rest it needs with an
+\* outstanding read counted among those that stand, and none once a read found
+\* it broken; under Rule = "sequential" (the design) the first read is asked
+\* alone and the rest only once every read that stands came back ok.
 Wanted(c) ==
-  IF Has(c, "asked") # {} \/ Has(c, "broken") # {} THEN 0
-  ELSE IF Broken = "pair" \/ Has(c, "ok") # {} THEN Need[c] - Cardinality(Has(c, "ok"))
+  IF Has(c, "broken") # {} /\ Broken # "askbroken" THEN 0
+  ELSE IF Rule = "parallel" THEN Need[c] - Cardinality(Has(c, "asked") \cup Has(c, "ok"))
+  ELSE IF Has(c, "asked") # {} THEN 0
+  ELSE IF Has(c, "ok") # {} THEN Need[c] - Cardinality(Has(c, "ok"))
   ELSE 1
 
 \* The readers the ask may ask: no card at the attempt, with free room.
@@ -72,6 +86,7 @@ Init ==
   /\ brk = [c \in Cards |-> 0]
   /\ ff = [c \in Cards |-> TRUE]
   /\ fb = [c \in Cards |-> TRUE]
+  /\ ab = [c \in Cards |-> TRUE]
 
 \* askPicks: the reads wanted now, each of a different free reader with room,
 \* the finder first when it is owed.
@@ -84,20 +99,21 @@ Ask(c) ==
        /\ rd' = [rd EXCEPT ![c] = [r \in Readers |-> IF r \in S THEN "asked" ELSE @[r]]]
        /\ reads' = [reads EXCEPT ![c] = @ + Cardinality(S)]
        /\ ff' = [ff EXCEPT ![c] = @ /\ (FinderOwed(c) => fnd[c] \in S)]
+       /\ ab' = [ab EXCEPT ![c] = @ /\ Has(c, "broken") = {}]
   /\ UNCHANGED <<att, st, fnd, brk, fb>>
 
 Read(c, r) ==
   /\ rd[c][r] = "asked"
   /\ \E v \in {"ok", "broken"} : rd' = [rd EXCEPT ![c][r] = v]
-  /\ UNCHANGED <<att, st, fnd, reads, brk, ff, fb>>
+  /\ UNCHANGED <<att, st, fnd, reads, brk, ff, fb, ab>>
 
 \* Rework: the attempt found broken goes to the next, its outstanding reads
-\* retired; the broken read's reader is the finder. This model assumes no
-\* order among readers: one read at a time (no ask --another here) leaves an
-\* attempt at most one broken read (OneBroken), so the CHOOSE has one reader
-\* to choose. Where ask --another leaves two, the engine (sprint.finderOf) and
-\* the reference model (refmodel Rework) name the first in reader ROW order,
-\* never name order (TestTheFinderIsTheFirstBrokenReadInReaderRowOrder,
+\* retired; the broken read's reader is the finder. Under Rule = "sequential"
+\* one read at a time leaves an attempt at most one broken read (OneBroken),
+\* so the CHOOSE has one reader to choose; under Rule = "parallel" two reads
+\* asked together can both break, and the engine (sprint.finderOf) and the
+\* reference model (refmodel Rework) name the first in reader ROW order, never
+\* name order (TestTheFinderIsTheFirstBrokenReadInReaderRowOrder,
 \* TestReworkFinderIsTheFirstBrokenReadInReaderOrder).
 Rework(c) ==
   /\ st[c] = "review"
@@ -112,14 +128,14 @@ Rework(c) ==
           /\ UNCHANGED <<att, fnd>>
   /\ brk' = [brk EXCEPT ![c] = @ + 1]
   /\ fb' = [fb EXCEPT ![c] = @ /\ Has(c, "ok") = {}]
-  /\ UNCHANGED <<reads, ff>>
+  /\ UNCHANGED <<reads, ff, ab>>
 
 Accept(c) ==
   /\ st[c] = "review"
   /\ Cardinality(Has(c, "ok")) >= Need[c]
   /\ Has(c, "broken") = {}
   /\ st' = [st EXCEPT ![c] = "accepted"]
-  /\ UNCHANGED <<rd, att, fnd, reads, brk, ff, fb>>
+  /\ UNCHANGED <<rd, att, fnd, reads, brk, ff, fb, ab>>
 
 Next == \E c \in Cards : Ask(c) \/ Rework(c) \/ Accept(c) \/ \E r \in Readers : Read(c, r)
 
@@ -135,29 +151,41 @@ TypeOK ==
   /\ st \in [Cards -> {"review", "accepted", "out"}]
   /\ fnd \in [Cards -> Readers \cup {NoR}]
   /\ reads \in [Cards -> Nat] /\ brk \in [Cards -> Nat] /\ ff \in [Cards -> BOOLEAN]
-  /\ fb \in [Cards -> BOOLEAN]
+  /\ fb \in [Cards -> BOOLEAN] /\ ab \in [Cards -> BOOLEAN]
 
 \* Readers at their machine's width: no reader holds more reads than its width.
 WidthRespected == \A r \in Readers : Load(r) <= Width[r]
 
-\* One at a time: a card has at most one read outstanding.
+\* One at a time: a card has at most one read outstanding. It holds under
+\* Rule = "sequential"; the parallel rule asks a card's reads together.
 OneAtATime == \A c \in Cards : Cardinality(Has(c, "asked")) <= 1
 
 \* The finder is unique: an attempt has at most one broken read, so Rework's
-\* finder needs no order among readers here.
+\* finder needs no order among readers here. It holds under Rule = "sequential";
+\* the parallel rule's two reads can break together.
 OneBroken == \A c \in Cards : Cardinality(Has(c, "broken")) <= 1
 
-\* The measure: a card whose attempts found broken had no ok read (fb: the
-\* first read found each broken) cost, accepted, the reads it needs plus one
-\* for each attempt found broken (a pro card broken once: three, where the pair
-\* cost four), and out, one read a broken attempt.
+\* The measure, by rule. Parallel asks every read a card needs each attempt,
+\* so accepted reads Need * (broken attempts + 1) and out reads Need * broken
+\* attempts (a pro card broken once lands on four reads; the sequential rule
+\* asked three). Sequential asks one read a broken attempt (its first read
+\* found each broken, fb), so accepted reads Need + broken attempts and out
+\* reads one a broken attempt.
 ReadsPerLanding ==
-  \A c \in Cards : /\ (fb[c] /\ st[c] = "accepted") => reads[c] = Need[c] + brk[c]
-                   /\ (fb[c] /\ st[c] = "out") => reads[c] = brk[c]
+  IF Rule = "parallel"
+  THEN /\ \A c \in Cards : (st[c] = "accepted") => reads[c] = Need[c] * (brk[c] + 1)
+       /\ \A c \in Cards : (st[c] = "out") => reads[c] = Need[c] * brk[c]
+  ELSE /\ \A c \in Cards : (fb[c] /\ st[c] = "accepted") => reads[c] = Need[c] + brk[c]
+       /\ \A c \in Cards : (fb[c] /\ st[c] = "out") => reads[c] = brk[c]
 
 \* The finder checks the fix: a rework's first read goes to the reader who found
 \* the attempt before broken whenever that reader is free with room.
 FinderFirst == \A c \in Cards : ff[c]
+
+\* Never ask while broken: the ask places no read once a read of the attempt
+\* found it broken (ReadsWanted returns 0; the judgment stands and a rework
+\* follows).
+NoAskWhileBroken == \A c \in Cards : ab[c]
 
 \* Every card is accepted or out in the end: a read waiting for room is asked
 \* once a reader has room (the readers read, and the rework and accept run).
