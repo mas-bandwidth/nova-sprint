@@ -368,9 +368,10 @@ func Take(s State, m, c string, gen int) (State, error) {
 // Finish is SprintTables.tla Finish(m, c, g, v) (line 340), and
 // FinishRefused (line 364) when the generation is not live: accepted only
 // for the live generation in its member's working cell (D3); the card to
-// done, its primary to review at the head the card produced; failed opens
+// finished, its primary to review at the head the card produced; failed opens
 // the failed judgment. ok asks no reader: one path asks (the engine's commit 255180e2), the
-// machine's Ask, which asks round the readers.
+// machine's Ask, which asks round the readers. The readers' verdict then moves
+// the finished card to done, ok or failed (sprint.readVerdict; Tick's tickVerdicts).
 func Finish(s State, m, c string, gen int, ok bool) (State, error) {
 	if err := free(s); err != nil {
 		return s, err
@@ -380,7 +381,7 @@ func Finish(s State, m, c string, gen int, ok bool) (State, error) {
 		return s, refuse("FinishRefused: %s@%d is not live in %s's working cell", c, gen, m)
 	}
 	n := s.Clone()
-	w.Place = FDone
+	w.Place = FFinished
 	w.OK = "ok"
 	if !ok {
 		w.OK = "failed"

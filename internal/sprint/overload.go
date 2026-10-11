@@ -76,7 +76,7 @@ func MemberTimeouts(s *Snapshot, member string) []Timeout {
 		return t, err == nil && !t.Before(since) && !t.After(s.Now)
 	}
 	var out []Timeout
-	for _, c := range s.Fleet.Column(Ready, Working, Withdrawn, DoneFailed) {
+	for _, c := range s.Fleet.Column(Ready, Working, Withdrawn, DoneFailed, Finished) {
 		if takes, _ := StagingTakes(c); len(takes) > 0 {
 			for _, t := range takes {
 				if t.Member == member && TimeoutKind(t.Error) == TimeoutStaging {
@@ -86,7 +86,7 @@ func MemberTimeouts(s *Snapshot, member string) []Timeout {
 				}
 			}
 		}
-		if c.Col == DoneFailed && c.Row == member {
+		if (c.Col == DoneFailed || c.Col == Finished) && c.Row == member {
 			if kind := TimeoutKind(friendReportBody(member, c.F("report"))); kind != "" {
 				if at, ok := within(c.F("finished")); ok {
 					out = append(out, Timeout{Card: c.ID, Kind: kind, At: at})

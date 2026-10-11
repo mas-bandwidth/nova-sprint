@@ -154,14 +154,14 @@ func TestAHarnessFaultFailureReworksTheCardByRule(t *testing.T) {
 
 func TestFinishAcceptsAReportForAnAttemptTheDeadlineFailed(t *testing.T) {
 	t.Parallel()
-	t.Run("a LAND finishes the failed attempt ok", func(t *testing.T) {
+	t.Run("a late LAND records the head but the attempt stays failed", func(t *testing.T) {
 		t.Parallel()
 		w, _ := friendInReview(t, true, harnessFaults["lane died"])
 		require.Len(t, openOf(w, NWorkFailed, "s1-1"), 1)
 		p := w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Head: answerHead, Report: "friend amy LAND: done, the tests pass"}))
 		require.Len(t, p.Units, 1)
 		wc := w.s.Fleet.Card("s1-1.w1")
-		assert.Equal(t, DoneOK, wc.Col, "the attempt is finished ok")
+		assert.Equal(t, DoneFailed, wc.Col, "the deadline-failed attempt stays failed, never a fresh finish")
 		assert.Equal(t, answerHead, wc.F("head"))
 		pr := w.s.Work.Card("s1-1")
 		assert.Equal(t, Review, pr.Col)

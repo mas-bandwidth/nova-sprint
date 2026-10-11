@@ -9,20 +9,33 @@ import (
 )
 
 // The fleet table's done and ok% are the table's own formulas over the hidden
-// ok and failed cells: finish places a work card in one of them, and nothing
-// writes done or ok%. Three ok and one failed on m1 is 4 done and 75.0%; m2
-// with none is 0 and the known-empty 0.0%; the footer pools over the members
-// (3 of 4, 75.0%, not the mean 37.5%).
+// ok and failed cells: finish places a work card in finished, reader verdicts move it
+// to ok or failed. Three ok and one failed on m1 is 4 done and 75.0%; m2 with
+// none is 0 and the known-empty 0.0%; the footer pools over the members (3 of 4,
+// 75.0%, not the mean 37.5%).
 func TestFleetDoneAndOkPctAreTableFormulas(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --stream s1 --count 4")
-	ta.deal(4)
+	ta.ok("start")
+	ta.ok("tick")
 	ta.ok("take --as m1 --limit 4")
-	ta.ok("finish --as m1 s1-1.w1@1 s1-3.w1@1 s1-4.w1@1")
-	ta.ok("finish --as m1 s1-2.w1@1 --failed --report 'the tests went red'")
-	ta.ok("fleet up m2 --probe passed")
+	ta.ok("start")
+	ta.ok("tick")
+	ta.ok("take --as m1 --limit 4")
+	ta.ok("finish --as m1 s1-1.w1@1 s1-2.w1@1 s1-3.w1@1 s1-4.w1@1")
+	ta.ok("fleet up m2")
+	// Reader verdicts move the finished cards to ok/failed.
+	ta.ok("ask --limit 100")
+	ta.ok("read --as reader-a --ok --limit 100")
+	ta.ok("read --as reader-b --broken s1-2.r1.reader-b --finding 'internal/x.go:1: off by one'")
+	ta.ok("read --as reader-b --ok --limit 100")
+	ta.ok("tick")
+	ta.ok("ask --limit 100")
+	ta.ok("read --as reader-a --ok --limit 100")
+	ta.ok("read --as reader-b --ok --limit 100")
+	ta.ok("tick")
 	out := ta.ok("where")
 	i := strings.Index(out, "fleet |")
 	require.GreaterOrEqual(t, i, 0, "where has no fleet table:\n%s", out)
@@ -30,12 +43,12 @@ func TestFleetDoneAndOkPctAreTableFormulas(t *testing.T) {
 	if j := strings.Index(fleet, "\n\n"); j >= 0 {
 		fleet = fleet[:j+1]
 	}
-	want := "fleet | ready | working | width | done | ok%   | status | load\n" +
-		"------+-------+---------+-------+------+-------+--------+-----\n" +
-		"m1    |     0 |       0 |    64 |    4 | 75.0% | up     | 0.0%\n" +
-		"m2    |     0 |       0 |    64 |    0 | 0.0%  | up     | 0.0%\n" +
-		"------+-------+---------+-------+------+-------+--------+-----\n" +
-		"      |     0 |       0 |   128 |    4 | 75.0% |        |\n"
+	want := "fleet | ready | working | width | done | ok%   | redealt | status | load\n" +
+		"------+-------+---------+-------+------+-------+---------+--------+-----\n" +
+		"m1    |     0 |       0 |    64 |    4 | 75.0% |       0 | up     | 0.0%\n" +
+		"m2    |     0 |       0 |    64 |    0 | 0.0%  |       0 | up     | 0.0%\n" +
+		"------+-------+---------+-------+------+-------+---------+--------+-----\n" +
+		"      |     0 |       0 |   128 |    4 | 75.0% |       0 |        |\n"
 	require.Equal(t, want, fleet, "the fleet table")
 	var v whereView
 	require.NoError(t, json.Unmarshal([]byte(ta.ok("where --json")), &v))

@@ -78,7 +78,7 @@ func tell(run []sprint.Line) []storyLine {
 	for _, l := range run {
 		if l.Note == nil {
 			moved = true
-			if l.Table == sprint.Fleet && (strings.HasSuffix(l.To, ":"+sprint.DoneOK) || strings.HasSuffix(l.To, ":"+sprint.DoneFailed) || strings.HasSuffix(l.To, ":"+sprint.DoneDefect)) {
+			if l.Table == sprint.Fleet && (strings.HasSuffix(l.To, ":"+sprint.DoneOK) || strings.HasSuffix(l.To, ":"+sprint.DoneFailed) || strings.HasSuffix(l.To, ":"+sprint.DoneDefect) || strings.HasSuffix(l.To, ":"+sprint.Finished)) {
 				finished = true
 			}
 		}
@@ -242,6 +242,9 @@ func texts(a *app, about []sprint.Line) []storyText {
 			case sprint.Fleet:
 				who, _, _ = strings.Cut(l.From, ":")
 				verdict = col
+				if verdict == sprint.Finished {
+					verdict = sprint.FinishedAs(l) // the worker's own word: ok or failed
+				}
 			case sprint.Readers:
 				who, _, _ = strings.Cut(l.To, ":")
 				verdict = col
@@ -370,6 +373,8 @@ func outcome(l sprint.Line) string {
 	a := attemptOf(l)
 	switch {
 	case l.Note == nil && l.Table == sprint.Fleet && strings.HasSuffix(l.To, ":"+sprint.DoneFailed):
+		return "attempt " + a + " failed"
+	case l.Note == nil && l.Table == sprint.Fleet && sprint.FinishedAs(l) == sprint.DoneFailed:
 		return "attempt " + a + " failed"
 	case l.Note == nil && l.Table == sprint.Fleet && strings.HasSuffix(l.To, ":"+sprint.DoneDefect):
 		return "attempt " + a + " held on a brief defect"

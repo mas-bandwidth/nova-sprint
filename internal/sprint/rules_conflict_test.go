@@ -132,7 +132,15 @@ func (r *conflictRig) toMergingAt(id, head string) {
 		}
 	}
 	r.must(store.AcceptStep(sprint.AcceptReq{Sel: sprint.Sel{IDs: []string{id}}}))
+	r.must(verdictsStep())
 	require.Equal(r.t, sprint.Merging, r.snap().Work.Card(id).Col, id)
+}
+
+// verdictsStep applies the tick's verdicts part (sprint.TickVerdicts): the finished
+// work cards whose reads carry a verdict move to their ok or failed cell.
+func verdictsStep() store.Step {
+	var due int
+	return store.TickPartStep("verdicts", sprint.TickVerdicts, sprint.TickReq{}, nil, nil, &due)
 }
 
 // open is the open judgments of the type.
