@@ -7,6 +7,7 @@ import (
 	"math"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -107,6 +108,7 @@ type MemberProbe struct {
 	Member   string            `json:"member"`
 	Host     string            `json:"host"`
 	Reached  bool              `json:"reached"`
+	Complete bool              `json:"complete"` // its end line printed: a probe the budget cut judges nothing
 	Err      string            `json:"err,omitempty"`
 	OS       string            `json:"os,omitempty"`
 	PathFrom string            `json:"path_from,omitempty"` // "loop": the loop unit's PATH; "login": the login shell's
@@ -659,8 +661,12 @@ func DoctorLoopsRedial(in DoctorInput) (out []DoctorCheck) {
 		return in.Machines == nil || slices.ContainsFunc(in.Machines, func(m DoctorMachine) bool { return m.Name == host })
 	}
 	for _, m := range s.Members() {
-		if s.MemberCtl(m) == nil || !declared(m) {
+		ctl := s.MemberCtl(m)
+		if ctl == nil || !declared(m) {
 			continue // a row with no machine record is fleet-rows' FAIL, not a loop's
+		}
+		if ctl.F("held") != "" {
+			continue // downed or held by the coordinator (fleet down, sync, adopt): down is not an error when actually down
 		}
 		b, beaten := in.Req.Beats[m]
 		judge("member-"+m, m, b, beaten)
@@ -758,6 +764,10 @@ func DoctorMemberEnv(in DoctorInput) (out []DoctorCheck) {
 				st = DoctorFail // the deal gives it cards it cannot be asked about
 			}
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: st, Evidence: "host " + p.Host + " does not answer: " + p.Err, Remedy: "ssh " + p.Host + " true (or nova-sprint fleet down " + m + " while it is away)"})
+			continue
+		}
+		if !p.Complete {
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorWarn, Evidence: "host " + p.Host + " was not answered in full within the probe's budget: nothing is judged from a cut probe", Remedy: "nova-sprint doctor --area fleet (again, once the host answers in time)"})
 			continue
 		}
 		bad := 0
@@ -1032,8 +1042,11 @@ func DoctorSeat(in DoctorInput) (out []DoctorCheck) {
 // ---- 10. finish-failures ------------------------------------------------------------------
 
 // envClasses are the finish failures that are the member's environment, never the card's: a
-// tool missing from its PATH, a push refused or no credential, a launch refused at staging
-// (native refused), and a take that left no result (the night's b1-b3, whose sqlite3 was missing).
+// tool missing from its PATH, no push credential, native refused because its usage source does
+// not answer, and a take that left no result (the night's b1-b3, whose sqlite3 was missing). A
+// native refusal for anything else is the card's: "a denial the card's shell reported went
+// unread" (pkg/swarm ShellDenialReason) is the card's own shell, never the member (the cold read
+// of #79: one such line named healthy hetzner1, hetzner2 and space for a down).
 var envClasses = []string{"missing tool", "no credential", "native refused", "no result"}
 
 // strongEnv are the environment classes that name the member alone: a take that left no result
@@ -1050,8 +1063,12 @@ func FinishClass(line string) string {
 		return "missing tool"
 	case strings.Contains(l, "no-credential") || strings.Contains(l, "no credential") || strings.Contains(l, "could not read username") || strings.Contains(l, "authentication failed"):
 		return "no credential"
-	case strings.Contains(l, "native refused") || strings.Contains(l, "usage source"):
+	case strings.Contains(l, "a denial the card's shell reported"):
+		return "wall denial" // the card's shell met the wall: the card's (pkg/swarm ShellDenialReason)
+	case strings.Contains(l, "usage source"):
 		return "native refused"
+	case strings.Contains(l, "native refused"):
+		return "card refused" // native refused the card for its own reason, not its member's
 	case strings.Contains(l, "push refused") || strings.Contains(l, "push was refused"):
 		return "push refused"
 	case strings.HasPrefix(l, "staging refused") || strings.Contains(l, "refused at staging"):
@@ -1068,7 +1085,33 @@ func FinishClass(line string) string {
 }
 
 // memberFailure is one failure on a member in the window: its class, the card and its line.
-type memberFailure struct{ class, card, line string }
+type memberFailure struct {
+	class, card, line string
+	at                time.Time
+}
+
+// fixedNow says the member's probe, answered in full, now finds the cause of class in place:
+// every tool its cards need for a missing tool or native refusal, its push credential for no
+// credential. A failure of the hour before is then history, not the member's state.
+func fixedNow(s *Snapshot, p MemberProbe, probed bool, class string) bool {
+	if !probed || !p.Reached || !p.Complete {
+		return false
+	}
+	switch class {
+	case "missing tool":
+		for _, t := range append(slices.Clone(MemberTools), MemberHarnesses(s, p.Member)...) {
+			if p.Tools[t] == "" {
+				return false
+			}
+		}
+		return true
+	case "native refused":
+		return p.Tools[swarm.SQLiteBinary] != ""
+	case "no credential":
+		return p.PushOK
+	}
+	return false
+}
 
 // DoctorFinishFailures is check 10: the takes that ended failed on each machine member in the
 // last DoctorFinishWindow (provider and no-result takes, launches refused at staging, failed
@@ -1088,11 +1131,12 @@ func DoctorFinishFailures(in DoctorInput) (out []DoctorCheck) {
 		return err == nil && !t.Before(since)
 	}
 	by := map[string][]memberFailure{}
-	add := func(member, card, line string) {
+	addAt := func(member, card, line, at string) {
 		if member == "" || IsFriendRow(member) {
 			return
 		}
-		by[member] = append(by[member], memberFailure{class: FinishClass(line), card: card, line: line})
+		t, _ := time.Parse(time.RFC3339, at) // ignored: within read it already
+		by[member] = append(by[member], memberFailure{class: FinishClass(line), card: card, line: line, at: t})
 	}
 	for _, wc := range s.Fleet.Cards() {
 		if wc.F("kind") != "work" {
@@ -1101,17 +1145,17 @@ func DoctorFinishFailures(in DoctorInput) (out []DoctorCheck) {
 		takes, _ := ProviderTakes(wc)
 		for _, t := range takes {
 			if within(t.Finished) {
-				add(t.Member, wc.ID, t.Error)
+				addAt(t.Member, wc.ID, t.Error, t.Finished)
 			}
 		}
 		staged, _ := StagingTakes(wc)
 		for _, t := range staged {
 			if within(t.Finished) {
-				add(t.Member, wc.ID, "staging refused: "+t.Error)
+				addAt(t.Member, wc.ID, "staging refused: "+t.Error, t.Finished)
 			}
 		}
 		if wc.Placed() && wc.Col == DoneFailed && within(wc.F("finished")) {
-			add(wc.Row, wc.ID, cmp.Or(wc.F("report"), wc.F("why"), "failed"))
+			addAt(wc.Row, wc.ID, cmp.Or(wc.F("report"), wc.F("why"), "failed"), wc.F("finished"))
 		}
 	}
 	fleetWide := map[string][]string{}
@@ -1146,13 +1190,22 @@ func DoctorFinishFailures(in DoctorInput) (out []DoctorCheck) {
 		}
 		var cards []string
 		sample := ""
+		var last time.Time
 		for _, f := range fs {
 			if slices.Contains(strongEnv, f.class) || f.class == "no result" {
 				cards = append(cards, f.card)
 			}
 			if f.class == top {
 				sample = cmp.Or(sample, f.line)
+				last = latest(last, f.at)
 			}
+		}
+		ev := fmt.Sprintf("failures=%d in %s, %d of them its environment (%s), mostly %q: the member's, not the cards' (%s); e.g. %s", len(fs), DoctorFinishWindow, env, strings.Join(classes, " "), top, someIDs(slices.Compact(cards), 4), cutText(oneLine(sample), 200))
+		if p, probed := in.Probes[m]; fixedNow(s, p, probed, top) {
+			// the probe of this run finds the cause in place: the hour's failures are history
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorWarn,
+				Evidence: "fixed since " + sinceWord(s.Now, last) + " ago (its last " + strconv.Quote(top) + " failure at " + stamp(last) + "; this run's probe finds the cause in place): " + ev, Remedy: "-"})
+			continue
 		}
 		fleetWide[top] = append(fleetWide[top], m)
 		remedy := joinRemedy(m)
@@ -1160,7 +1213,7 @@ func DoctorFinishFailures(in DoctorInput) (out []DoctorCheck) {
 			remedy = "ansible-playbook fleet/push-credential.yml -l " + m + " (rowan-tools), then " + joinRemedy(m)
 		}
 		out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorFail,
-			Evidence: fmt.Sprintf("failures=%d in %s, %d of them its environment (%s), mostly %q: the member's, not the cards' (%s); e.g. %s", len(fs), DoctorFinishWindow, env, strings.Join(classes, " "), top, someIDs(slices.Compact(cards), 4), cutText(oneLine(sample), 200)),
+			Evidence: ev,
 			Remedy:   remedy + " (and nova-sprint fleet down " + m + " until it is fixed)"})
 	}
 	for _, c := range slices.Sorted(maps.Keys(fleetWide)) {

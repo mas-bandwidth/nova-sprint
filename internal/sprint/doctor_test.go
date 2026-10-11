@@ -34,7 +34,7 @@ func fullProbe(m string) MemberProbe {
 	for _, t := range append(MemberTools, OpenCode) {
 		tools[t] = "/usr/bin/" + t
 	}
-	return MemberProbe{Member: m, Host: "nova@" + m, Reached: true, OS: "Linux", PathFrom: "loop", Tools: tools, FreeKB: 100 << 20,
+	return MemberProbe{Member: m, Host: "nova@" + m, Reached: true, Complete: true, OS: "Linux", PathFrom: "loop", Tools: tools, FreeKB: 100 << 20,
 		Push: "PUSH-CREDENTIAL OK", PushOK: true, Secrets: "CHECK OK", SecretOK: true, Version: "v1.2.6"}
 }
 
@@ -181,6 +181,29 @@ func TestDoctorLoopsRedialFailsALoopThatDidNotDialAgain(t *testing.T) {
 	cs = DoctorLoopsRedial(in)
 	assert.Empty(t, failsOn(cs, CheckLoopsRedial), "a host that does not answer is down, not hung: %s", lines(cs))
 	assert.Equal(t, DoctorWarn, cs[0].Status, lines(cs))
+
+	// a member the coordinator downed or held is down on purpose: not a loop that did not dial
+	in.Probes = map[string]MemberProbe{"m1": fullProbe("m1")}
+	w.s.MemberCtl("m1").Fields["held"] = stamp(w.s.Now.Add(-time.Hour))
+	cs = DoctorLoopsRedial(in)
+	assert.Empty(t, failsOn(cs, CheckLoopsRedial), "a held member is down, not hung: %s", lines(cs))
+	for _, c := range cs {
+		assert.NotEqual(t, "member-m1", c.Subject, c.Line())
+	}
+}
+
+// A probe the budget cut (no end line) is not read as every tool, credential and seat missing:
+// one WARN, no FAIL.
+func TestDoctorMemberEnvACutProbeIsNotAFail(t *testing.T) {
+	t.Parallel()
+	w := doctorWorld(t)
+	in := healthyInput(w)
+	in.Probes = map[string]MemberProbe{"m1": {Member: "m1", Host: "nova@m1", Reached: true, OS: "Linux", PathFrom: "loop", Tools: map[string]string{"git": "/usr/bin/git"}, FreeKB: -1}}
+	cs := DoctorMemberEnv(in)
+	assert.Empty(t, failsOn(cs, CheckMemberEnv), lines(cs))
+	require.Len(t, cs, 1, lines(cs))
+	assert.Equal(t, DoctorWarn, cs[0].Status)
+	assert.Contains(t, cs[0].Evidence, "not answered in full")
 }
 
 // 5. A member whose loop's PATH has no sqlite3 and whose push credential does not authenticate
@@ -293,6 +316,8 @@ func TestDoctorFinishFailuresNamesTheMemberNotTheCard(t *testing.T) {
 	assert.ElementsMatch(t, []string{"b1", "b2", "fleet"}, subjects, lines(cs))
 	assert.Contains(t, lines(cs), "remedy=make -C fleet join HOST=b1")
 	assert.Equal(t, "missing tool", FinishClass("native refused: budget: sqlite3 is on no PATH entry of this bench"))
+	assert.Equal(t, "wall denial", FinishClass(wallDenial))
+	assert.Equal(t, "card refused", FinishClass("staging refused: native refused: the card's paths name a file outside its tree"))
 	assert.Equal(t, "native refused", FinishClass("staging refused: native refused: budget unverifiable: the usage source stopped answering"))
 	assert.Equal(t, "staging refused", FinishClass("staging refused: head 46cdb6 is in neither the mirror nor origin"))
 	assert.Equal(t, "push refused", FinishClass("push refused: the result's head \"(not committed)\" is not a sha"), "a push refused for the card's head is no environment")
@@ -320,4 +345,58 @@ func TestDoctorLineForm(t *testing.T) {
 	c := DoctorCheck{Check: CheckMemberEnv, Subject: "b 1", Status: DoctorFail, Evidence: "tool=sqlite3\nmissing", Remedy: "make -C fleet join HOST=b1"}
 	assert.Equal(t, "DOCTOR FAIL member-env b_1 tool=sqlite3 missing remedy=make -C fleet join HOST=b1", c.Line())
 	assert.Equal(t, "nova-config route add <name> --tier pro ...", remedyIn("no route: run nova-config route add <name> --tier pro ...; or pin the card", ""))
+}
+
+// wallDenial is the native refusal pkg/swarm's ShellDenialReason writes, as measured live on
+// hetzner1, hetzner2 and space on 2026-10-11: the card's own shell met the wall.
+const wallDenial = "staging refused: native refused a denial the card's shell reported went unread, so this run's disposition is refused rather than OK: step=gate rc=1 wall=nova-sandbox denied_path=/home/nova/.cache operation=unverified job=/home/nova/rowan-working/tmp/slots/x.w1/jobs/x.w1 line=\"mkdir: cannot create directory: Permission denied\""
+
+// A wall denial is the card's, never the member's: with it, the member's no-result takes stay
+// the route's or the card's, and the healthy member is not named for a down (the cold read of
+// #79: one such line named hetzner1, hetzner2 and space, 62% ok).
+func TestDoctorFinishFailuresAWallDenialIsTheCardsNotTheMember(t *testing.T) {
+	t.Parallel()
+	w := doctorWorld(t)
+	w.s.Fleet.SetRows(append(w.s.Fleet.Rows(), "hetzner2"))
+	at := stamp(w.s.Now.Add(-10 * time.Minute))
+	for i := range 6 {
+		f := map[string]string{"kind": "work", "gen": "2", "attempt": "1"}
+		if i == 0 {
+			f[FieldStagingTake+"1"] = ProviderTake{Route: "flash-oc", Member: "hetzner2", Finished: at, Error: strings.TrimPrefix(wallDenial, "staging refused: ")}.String()
+		}
+		f[FieldProviderTake+"1"] = ProviderTake{Route: "flash-oc", Member: "hetzner2", Finished: at, Error: "no result: no RESULT.md shape"}.String()
+		w.s.Fleet.Put(&Card{ID: WorkCardID("s1-"+itoa(i+1), 1), Row: "hetzner2", Col: Withdrawn, Fields: f})
+	}
+	cs := DoctorFinishFailures(healthyInput(w))
+	assert.Empty(t, failsOn(cs, CheckFinishFailures), "a wall denial names no member: %s", lines(cs))
+	assert.NotContains(t, lines(cs), "fleet down hetzner2", lines(cs))
+}
+
+// A member whose failures of the hour were its environment, and whose probe in this run finds
+// the cause in place, is WARN "fixed since", not a FAIL telling the seat to down it.
+func TestDoctorFinishFailuresAFixedCauseIsWarnNotFail(t *testing.T) {
+	t.Parallel()
+	w := doctorWorld(t)
+	w.s.Fleet.SetRows(append(w.s.Fleet.Rows(), "b1"))
+	at := stamp(w.s.Now.Add(-40 * time.Minute))
+	for i := range 4 {
+		f := map[string]string{"kind": "work", "gen": "2", "attempt": "1"}
+		f[FieldStagingTake+"1"] = ProviderTake{Route: "flash-oc", Member: "b1", Finished: at, Error: "native refused: budget: sqlite3 is on no PATH entry of this bench"}.String()
+		w.s.Fleet.Put(&Card{ID: WorkCardID("s1-"+itoa(i+1), 1), Row: "b1", Col: Withdrawn, Fields: f})
+	}
+	in := healthyInput(w)
+	cs := DoctorFinishFailures(in)
+	require.Len(t, failsOn(cs, CheckFinishFailures), 1, "unprobed, the hour's failures stand: %s", lines(cs))
+
+	in.Probes["b1"] = fullProbe("b1")
+	cs = DoctorFinishFailures(in)
+	assert.Empty(t, failsOn(cs, CheckFinishFailures), lines(cs))
+	require.Len(t, cs, 1, lines(cs))
+	assert.Equal(t, DoctorWarn, cs[0].Status)
+	assert.Contains(t, cs[0].Evidence, "fixed since 40m0s ago", cs[0].Line())
+
+	cut := fullProbe("b1")
+	cut.Complete = false
+	in.Probes["b1"] = cut
+	assert.Len(t, failsOn(DoctorFinishFailures(in), CheckFinishFailures), 1, "a cut probe proves nothing fixed")
 }

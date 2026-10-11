@@ -93,7 +93,7 @@ func (a *app) realOutside() outside {
 			return a.now().Sub(t), nil
 		},
 		listenerPID: func(port string) int {
-			cmd, cancel := subproc.Command(context.Background(), subproc.Tool, "lsof", "-nP", "-iTCP:"+port, "-sTCP:LISTEN", "-t")
+			cmd, cancel := subproc.CommandFor(context.Background(), 5*time.Second, "lsof", "-nP", "-iTCP:"+port, "-sTCP:LISTEN", "-t")
 			defer cancel()
 			out, err := cmd.Output()
 			if err != nil {

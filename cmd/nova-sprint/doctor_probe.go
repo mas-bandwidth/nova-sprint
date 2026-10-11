@@ -26,6 +26,17 @@ import (
 // does not answer inside it is down. The whole doctor stays under 15 s.
 const doctorProbeBudget = 10 * time.Second
 
+// doctorRunBudget bounds every reach of the doctor's checks past the store (doctorChecks), and
+// doctorToolBudget each local tool it runs (lsof, ps, nova-sprint version): under the run's
+// deadline, never the 60 s of a Tool, so the whole doctor stays under 15 s.
+const (
+	doctorRunBudget  = 12 * time.Second
+	doctorToolBudget = 3 * time.Second
+)
+
+// probeEnd is the probe's last line: a probe that does not print it was cut by the budget.
+const probeEnd = "end"
+
 // doctorPushURL is the repository the push credential probe authenticates against.
 const doctorPushURL = "https://github.com/mas-bandwidth/nova-sprint"
 
@@ -68,12 +79,14 @@ func (a *app) serverStartedReal(ctx context.Context, addr string) (time.Time, st
 	if err != nil {
 		return time.Time{}, "the server address " + addr + " has no port"
 	}
-	o := a.realOutside()
-	pid := o.listenerPID(port)
+	lsof, cancelLsof := subproc.CommandFor(ctx, doctorToolBudget, "lsof", "-nP", "-iTCP:"+port, "-sTCP:LISTEN", "-t")
+	defer cancelLsof()
+	lb, _ := lsof.Output() // ignored: no listener read is pid 0, said below
+	pid, _ := strconv.Atoi(strings.TrimSpace(strings.SplitN(string(lb), "\n", 2)[0]))
 	if pid == 0 {
 		return time.Time{}, "nothing on this host listens on " + addr
 	}
-	cmd, cancel := subproc.Command(ctx, subproc.Tool, "ps", "-o", "etime=", "-p", strconv.Itoa(pid))
+	cmd, cancel := subproc.CommandFor(ctx, doctorToolBudget, "ps", "-o", "etime=", "-p", strconv.Itoa(pid))
 	defer cancel()
 	b, err := cmd.Output()
 	if err != nil {
@@ -114,7 +127,7 @@ func parseEtime(s string) (time.Duration, bool) {
 // declaredReal is the nova-sprint build installed on the seat's PATH: the build the seat runs
 // and every member is declared to run (its version word).
 func (a *app) declaredReal(ctx context.Context) string {
-	cmd, cancel := subproc.Command(ctx, subproc.Tool, "nova-sprint", "version")
+	cmd, cancel := subproc.CommandFor(ctx, doctorToolBudget, "nova-sprint", "version")
 	defer cancel()
 	b, err := cmd.Output()
 	if err != nil {
@@ -140,7 +153,7 @@ func versionWord(line string) string {
 func probeScript(member, seat string, tools []string) string {
 	loop := "member-" + member
 	var b strings.Builder
-	fmt.Fprintf(&b, "L=%s; P=\n", loop)
+	fmt.Fprintf(&b, "L=%s; P=\n", bench.Quote(loop))
 	b.WriteString(`if command -v systemctl >/dev/null 2>&1; then P=$(systemctl --user show "nova-loop-$L.service" -p Environment --value 2>/dev/null | tr ' ' '\n' | sed -n 's/^PATH=//p' | head -1); fi` + "\n")
 	b.WriteString(`if [ -z "$P" ] && [ -f "$HOME/Library/LaunchAgents/com.nova.loop.$L.plist" ]; then P=$(/usr/bin/plutil -extract EnvironmentVariables.PATH raw -o - "$HOME/Library/LaunchAgents/com.nova.loop.$L.plist" 2>/dev/null); fi` + "\n")
 	b.WriteString(`F=loop; [ -n "$P" ] || { P=$PATH; F=login; }` + "\n")
@@ -149,7 +162,7 @@ func probeScript(member, seat string, tools []string) string {
 	b.WriteString(`G=; for d in "$HOME/sdk/bin" "$HOME/go/bin" $(printf '%s' "$P" | tr ':' ' '); do if [ -x "$d/go" ]; then G=$(readlink -f "$d/go" 2>/dev/null || echo "$d/go"); break; fi; done` + "\n")
 	b.WriteString(`[ -n "$G" ] && P="$(dirname "$G"):$P"; [ -d "$HOME/sdk/bin" ] && P="$HOME/sdk/bin:$P"` + "\n")
 	b.WriteString(`echo "os $(uname -s)"; echo "pathfrom $F"` + "\n")
-	fmt.Fprintf(&b, "for t in %s; do w=$(PATH=\"$P\" command -v \"$t\" 2>/dev/null); echo \"tool $t ${w:--}\"; done\n", strings.Join(tools, " "))
+	fmt.Fprintf(&b, "for t in %s; do w=$(PATH=\"$P\" command -v \"$t\" 2>/dev/null); echo \"tool $t ${w:--}\"; done\n", quotedWords(tools))
 	// the gates' toolchain and the pinned harness live beside PATH: found there, they are said where
 	b.WriteString(`if ! PATH="$P" command -v go >/dev/null 2>&1; then w=$(ls -d "$HOME"/sdk/go*/bin/go /usr/local/go/bin/go 2>/dev/null | tail -1); [ -n "$w" ] && echo "near go $w"; fi` + "\n")
 	b.WriteString(`if ! PATH="$P" command -v opencode >/dev/null 2>&1; then w=$(ls -d "$HOME"/nova-bench/harness-*/opencode 2>/dev/null | tail -1); [ -n "$w" ] && echo "tool opencode $w"; fi` + "\n")
@@ -158,7 +171,18 @@ func probeScript(member, seat string, tools []string) string {
 	fmt.Fprintf(&b, "S=%s; NS=$(PATH=\"$P\" command -v nova-secrets); SO=$(PATH=\"$P\" command -v sops)\n", bench.Quote(seat))
 	b.WriteString(`if [ -n "$NS" ] && [ -n "$SO" ]; then o=$("$NS" check --store "$HOME/nova-bench/secrets" --as "$S" --key "$HOME/.config/nova-secrets/$S.key" --sops "$SO" 2>&1); echo "secrets $? $(printf '%s' "$o" | tail -1)"; else echo "secrets 1 nova-secrets or sops is on no PATH entry of its loop"; fi` + "\n")
 	b.WriteString(`echo "version $(PATH="$P" nova-sprint version 2>/dev/null | head -1)"` + "\n")
+	b.WriteString("echo " + probeEnd + "\n")
 	return b.String()
+}
+
+// quotedWords is each word shell-quoted, space separated: a name from nova-config or a route
+// never becomes shell on a member's host.
+func quotedWords(ws []string) string {
+	q := make([]string, len(ws))
+	for i, w := range ws {
+		q[i] = bench.Quote(w)
+	}
+	return strings.Join(q, " ")
 }
 
 // parseProbe reads a probe's lines into what it found.
@@ -168,6 +192,8 @@ func parseProbe(p *sprint.MemberProbe, out []byte) {
 	for sc.Scan() {
 		key, val, _ := strings.Cut(sc.Text(), " ")
 		switch key {
+		case probeEnd:
+			p.Complete = true
 		case "os":
 			p.OS = val
 		case "pathfrom":

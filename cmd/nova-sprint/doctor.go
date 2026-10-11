@@ -225,6 +225,9 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 	if err != nil {
 		return nil, err
 	}
+	// every reach past the store under the run's deadline (doctorRunBudget)
+	ctx, cancel := context.WithTimeout(ctx, doctorRunBudget)
+	defer cancel()
 	o := a.outside
 	if o.serverAddr == nil {
 		o = a.realOutside()

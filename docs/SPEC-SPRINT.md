@@ -5697,7 +5697,8 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   FAIL at 0 with ready cards, WARN at 1), **readers** (each reader's beat, reading against width,
   reads waiting while every reader is idle or hung), **loops-redial** (a member or reader whose
   last beat is older than the server's start plus 60 s; a host that does not answer is down,
-  WARN), **member-env** (probed over ssh as the fleet reaches each member, on the PATH its cards
+  WARN, and a member the coordinator downed or held is skipped; a probe cut by its budget is
+  WARN, never read as tools missing), **member-env** (probed over ssh as the fleet reaches each member, on the PATH its cards
   run with: its loop unit's PATH with the bench's toolchain ahead of it as native adds it
   (pkg/swarm `BenchPath`), never the login shell's: every tool of `MemberTools`, sqlite3 among
   them, and the harnesses of its routes; the push
@@ -5707,9 +5708,11 @@ seat, the oldest 51 hours. Every automatic stop is now a signal to the seat whil
   record is gone is FAIL; fleet sync's other drift is DRIFT), **providers** (each resting
   provider, its balance and the routes it takes), **seat** (the push loop proven within 15
   minutes; judgments overdue), **finish-failures** (a member whose takes in the last hour end
-  mostly on its environment: a missing tool, no push credential, native refused, and a take with
-  no result on a member that has one of those too; named once per member and once for the fleet;
-  a push refused for the card's own head and a staging refusal of the card's head are the card's),
+  mostly on its environment: a missing tool, no push credential, native refused because its
+  usage source does not answer, and a take with no result on a member that has one of those
+  too; named once per member and once for the fleet; a push refused for the card's own head, a
+  staging refusal of the card's head and a wall denial the card's shell reported are the card's;
+  a member whose probe in the same run finds the cause in place is WARN "fixed since"),
   and **friends** (each friend's
   daemon beating, her proof, working against width and against her report, her hold and why).
 

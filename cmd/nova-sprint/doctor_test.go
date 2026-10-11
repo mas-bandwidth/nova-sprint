@@ -184,7 +184,7 @@ func doctorOutside(ta *testApp, machines []string, probe func(m string) sprint.M
 	o.probeMembers = func(_ context.Context, ms []sprint.DoctorMachine, tools func(string) []string, _ string) map[string]sprint.MemberProbe {
 		out := map[string]sprint.MemberProbe{}
 		for _, m := range ms {
-			p := sprint.MemberProbe{Member: m.Name, Host: "nova@" + m.Name, Reached: true, OS: "Linux", PathFrom: "loop", Tools: map[string]string{}, FreeKB: 100 << 20,
+			p := sprint.MemberProbe{Member: m.Name, Host: "nova@" + m.Name, Reached: true, Complete: true, OS: "Linux", PathFrom: "loop", Tools: map[string]string{}, FreeKB: 100 << 20,
 				Push: "PUSH-CREDENTIAL OK", PushOK: true, Secrets: "CHECK OK", SecretOK: true, Version: "v1.2.6"}
 			for _, t := range tools(m.Name) {
 				p.Tools[t] = "/usr/bin/" + t
@@ -212,7 +212,7 @@ func TestDoctorAreaFleetNamesAStaleRowAndAMemberMissingATool(t *testing.T) {
 	ta.ok("start")
 	ta.ok("tick")
 	ta.a.outside = doctorOutside(ta, []string{"m1"}, func(m string) sprint.MemberProbe {
-		p := sprint.MemberProbe{Member: m, Host: "nova@" + m, Reached: true, OS: "Linux", PathFrom: "loop", Tools: map[string]string{}, FreeKB: 100 << 20,
+		p := sprint.MemberProbe{Member: m, Host: "nova@" + m, Reached: true, Complete: true, OS: "Linux", PathFrom: "loop", Tools: map[string]string{}, FreeKB: 100 << 20,
 			Push: "PUSH-CREDENTIAL FAIL reason=no-credential", Secrets: "CHECK OK", SecretOK: true, Version: "v1.2.6"}
 		for _, t := range append(slices.Clone(sprint.MemberTools), sprint.OpenCode) {
 			if t != "sqlite3" {
@@ -276,7 +276,11 @@ func TestDoctorRefusesAnUnknownArea(t *testing.T) {
 func TestDoctorProbeParsesItsLines(t *testing.T) {
 	t.Parallel()
 	var p sprint.MemberProbe
-	parseProbe(&p, []byte("os Linux\npathfrom loop\ntool git /usr/bin/git\ntool sqlite3 -\ntool go -\nnear go /home/nova/sdk/go1.26.6/bin/go\nfree 900000000\npush PUSH-CREDENTIAL OK seat=swarm-b1\nsecrets 0 CHECK OK\nversion nova-sprint v1.2.6 linux/amd64 go1.26.6\n"))
+	parseProbe(&p, []byte("os Linux\npathfrom loop\ntool git /usr/bin/git\ntool sqlite3 -\ntool go -\nnear go /home/nova/sdk/go1.26.6/bin/go\nfree 900000000\npush PUSH-CREDENTIAL OK seat=swarm-b1\nsecrets 0 CHECK OK\nversion nova-sprint v1.2.6 linux/amd64 go1.26.6\nend\n"))
+	assert.True(t, p.Complete, "the end line: answered in full")
+	var cut sprint.MemberProbe
+	parseProbe(&cut, []byte("os Linux\npathfrom loop\ntool git /usr/bin/git\n"))
+	assert.False(t, cut.Complete, "no end line: cut by the budget")
 	assert.Equal(t, "Linux", p.OS)
 	assert.Equal(t, "/usr/bin/git", p.Tools["git"])
 	assert.Equal(t, "", p.Tools["sqlite3"])
@@ -297,4 +301,8 @@ func TestDoctorProbeParsesItsLines(t *testing.T) {
 	assert.Contains(t, script, "nova-loop-$L.service", "the loop unit's PATH, not the login shell's")
 	assert.Contains(t, script, "nova-push-credential\" probe "+doctorPushURL)
 	assert.NotContains(t, script, "exec ", "the probe runs nothing but reads")
+	assert.True(t, strings.HasSuffix(script, "echo "+probeEnd+"\n"), "the end line is the script's last")
+	odd := probeScript("b1;id", "swarm-b1", []string{"git;id"})
+	assert.Contains(t, odd, "L='member-b1;id'", "the member's name is quoted")
+	assert.Contains(t, odd, "for t in 'git;id';", "each tool's name is quoted")
 }
