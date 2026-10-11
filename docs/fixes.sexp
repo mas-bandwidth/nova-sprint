@@ -1905,7 +1905,7 @@
     concurrently, waits the stage and reports the first red in class order (not finish order),
     and the bench gate runs each stage's runs as background jobs and prints them in class order.
     The report order is the class order."
-   :origin "this card, the-landing-gate-runs-its-classes-side-by-side.w1; the owner, 2026-10-11:
+   :origin "this card, the-landing-gate-runs-its-classes-side-by-side.w2; the owner, 2026-10-11:
     \"What else is like serial reads, going out one at a time, when they could go out at the same
     time in || ?\" and \"log critical cards to fix all these serial things that should be
     parallel\"; found by the seat's audit child on nova-sprint main")))
