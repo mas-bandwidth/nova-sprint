@@ -823,6 +823,18 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "store-two-run-loops-retries-a-busy-fence" :release "v1.2.12" :status "planned"
+   :title "The two-run-loops test retries the store's busy refusal"
+   :text "TestCRTwoRunLoopsAtOnce's outside world now retries a step when the store answers with its
+    documented retryable refusal (FenceBusyError, \"the sprint is busy ... nothing was changed; run the
+    verb again\"), up to 20 tries per step, counting the retries per trial; a verb still busy after the
+    bound fails the test with its verb and count, and goes in the report as a v1.2.14 candidate (an
+    outside verb starved by two tick loops), never papered over by a larger bound. Each trial logs its
+    busy retries so a run shows how often the fence was contended. \"changed under the step\" is still
+    counted and every other assertion (judgments once, width, two reads per attempt, h.clean) is
+    unchanged. Test-side only; no product change."
+   :origin "the v1.2.12 plan (tmp/point-release-plan-v1.2.11-v1.2.12.md, last lines); CI run 38140844195 on #89; this card store-two-run-loops-retries-a-busy-fence")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
