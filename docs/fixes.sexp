@@ -927,6 +927,23 @@
     expectation, and compares tables and landed as before. No product or dashboard change."
    :origin "this card")
 
+  (fix "cover-deal-plan-refusals-and-redeals" :release "v1.2.12" :status "planned"
+   :title "In-package behaviour tests for the deal's plan, refusals and redeals"
+   :text "Deal (internal/sprint/steps_work.go:954; its doc comment is the contract) gets tests in
+    internal/sprint/deal_plan_behaviour_test.go driving Deal and asserting on the plan's units and each
+    refusal's text: the fleet's work off refuses every chosen card with \"run: nova-sprint set --fleet on\";
+    every up member env-held refuses \"no fleet member is up\"; a BENCH card whose bench is down or at its
+    room is refused with the bench's words; one member quiet and the other at its room refuses with the
+    room words then \"; quiet: <m> until <t>\"; a withdrawn card is redealt at generation+1 with its attempt
+    unchanged, never to a member StagingRefusers names; a withdrawn card every up member refused at staging
+    is refused naming them; a withdrawn card at its redeal bound below its ceiling escalates to the next
+    tier, its why naming the bound and redeals, and at its ceiling is refused with its bound and
+    \": rework it with a fix, or drop it\"; four cards over two members of width 1 are dealt round the fleet
+    never past DealAhead times a width. dealPlan's statement coverage goes from 65.0% to 86.4%. A real
+    defect was found and is a v1.2.14 candidate: Deal panics when every up member is quiet or out of room
+    (benchRefusal indexes bench[0] of an empty bench). No product change."
+   :origin "this card")
+
   (fix "store-two-run-loops-retries-a-busy-fence" :release "v1.2.12" :status "planned"
    :title "The two-run-loops test retries the store's busy refusal"
    :text "TestCRTwoRunLoopsAtOnce's outside world now retries a step when the store answers with its
@@ -979,7 +996,7 @@
      base_gate_rule_test.go, land_go_test.go, the red-combined and bisect tests, the real-binary build)
      keep the real gate and are left for the next pass, which must supply their gate result from a
      content-aware fake while keeping the finding-text assertions."
-   :origin "the owner, 2026-10-11: v1.2.12 inventory card A10 (tmp/v1.2.12-inventory-2026-10-11.md)")
+    :origin "the owner, 2026-10-11: v1.2.12 inventory card A10 (tmp/v1.2.12-inventory-2026-10-11.md)")
 
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
