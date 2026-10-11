@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -418,6 +419,94 @@ func TestTheTickDeadlineStretchesWithTheMedianWall(t *testing.T) {
 		}
 	}
 	assert.Equal(t, []string{"deadline=10s", "deadline=24s", "deadline=24s"}, deadlines, out.String())
+}
+
+// A tick past its deadline whose stderr never drains is still cancelled and
+// tickWithin still returns over: the watchdog never waits on the diagnosis it
+// exists to bound. The stacks are written into memory (which cannot block)
+// before the cancel, and only then handed to stderr in a goroutine the watchdog
+// waits on at most TickStacksBound. The pipe's read end is never read, so every
+// write to it blocks for ever; the test's own timer fails a red run rather than
+// hangs. (docs/SPEC-SPRINT.md section 14, The server, "The tick's deadline".)
+func TestATickPastItsDeadlineWithAStderrThatNeverDrainsIsStillCancelled(t *testing.T) {
+	t.Parallel()
+	a := newApp(func(string) string { return "" })
+	a.now = func() time.Time { return time.Date(2026, 10, 11, 12, 0, 0, 0, time.Local) }
+	a.after = func(time.Duration) <-chan time.Time {
+		fired := make(chan time.Time, 1)
+		fired <- a.now()
+		return fired
+	}
+	r, w := io.Pipe() // the read end is never read: every write to the pipe blocks for ever
+	defer r.Close()
+	defer w.Close()
+	var out bytes.Buffer
+	cancelled := make(chan struct{})
+	stopped := make(chan struct{})
+	over := make(chan bool, 1)
+	go func() {
+		_, got, _, err := a.tickWithin(context.Background(), func(ctx context.Context) (store.TickResult, error) {
+			<-ctx.Done()
+			close(cancelled)
+			<-stopped // a plan that does not end of itself
+			return store.TickResult{}, nil
+		}, TickDeadline, a.now(), &out, w)
+		assert.NoError(t, err)
+		over <- got
+	}()
+	select {
+	case <-cancelled:
+	case <-time.After(5 * time.Second):
+		close(stopped)
+		t.Fatal("the tick's context was never cancelled: the watchdog waited on a stderr that never drains")
+	}
+	select {
+	case got := <-over:
+		assert.True(t, got, "tickWithin returns over")
+	case <-time.After(5 * time.Second):
+		close(stopped)
+		t.Fatal("tickWithin never returned: the watchdog waited on its own dump")
+	}
+	assert.Contains(t, out.String(), " TICK DEADLINE the tick begun at ")
+	assert.Contains(t, out.String(), " TICK STACKS the goroutine stacks were not written to stderr within ")
+	close(stopped)
+}
+
+// Three wedged ticks in a row still exit 4 when stderr never drains: the wedged
+// process is never held up by the stacks printed on the way out. The pipe's read
+// end is never read; the test's own timer fails a red run rather than hangs.
+// (docs/SPEC-SPRINT.md section 14, The server, "The tick's deadline".)
+func TestThreeWedgedTicksWithAStderrThatNeverDrainsExitFour(t *testing.T) {
+	t.Parallel()
+	l := newDeadlineLoop(t)
+	s := newAfterScript("deadline", "further", "further", "further")
+	l.ta.a.after = s.after
+	never := make(chan struct{})
+	defer close(never)
+	l.ta.a.tickFn = func(ctx context.Context, _ *store.Store) (store.TickResult, error) {
+		l.tick()
+		s.fire <- time.Time{}
+		<-never // deaf to its context: a plan that never ends
+		return store.TickResult{}, nil
+	}
+	r, w := io.Pipe() // the read end is never read: every write to the pipe blocks for ever
+	defer r.Close()
+	defer w.Close()
+	var out bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		assert.False(t, l.ta.a.runLoop(context.Background(), l.st, 20, 10, &out, w))
+	}()
+	select {
+	case <-done:
+	case <-time.After(8 * time.Second):
+		t.Fatal("the wedged process never exited: the watchdog waited on a stderr that never drains")
+	}
+	assert.Equal(t, []int{exitTickDeadline}, l.exits)
+	assert.Equal(t, 1, l.calls, "no tick begins beside the one given up")
+	assert.Contains(t, out.String(), " TICK WEDGED 3 given-up ticks in a row")
+	assert.Contains(t, out.String(), " TICK STACKS the goroutine stacks were not written to stderr within ")
 }
 
 // runOnce runs `run` with args as the app's dispatch does, ending the loop after

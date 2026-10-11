@@ -7194,8 +7194,14 @@ an overrun also lifts the deadline: after a tick given up at deadline d, every d
 least 3 x d (at most `TickDeadlineCap`, or `--tick-deadline` when that is more) until a tick
 ends within `--tick-deadline` again. Ticks of 100 ms that become ticks of 12 s give up one
 tick, at 10 s, and every slow tick after has 30 s. Past the deadline the loop prints `TICK
-DEADLINE the tick begun at <t> did not end within <d>`, writes every goroutine's stack to
-stderr, and cancels the tick's context: its plan is never written, and its store calls after
+DEADLINE the tick begun at <t> did not end within <d>`, writes every goroutine's stack into
+memory first (`pprof`'s `WriteTo` into a `bytes.Buffer`, which cannot block), cancels the
+tick's context, and only then hands the buffer to stderr in a goroutine it waits on for at most
+`TickStacksBound` (2 s): the diagnosis an overrun prints never holds up the cancel, and a
+stderr nobody drains (a full pipe under a supervisor, a blocked terminal) cannot delay it, so
+the given-up tick always ends. A dump not written within the bound is dropped, and one `TICK
+STACKS` line on stdout says so. The cancel ends the plan: it is never
+written, and its store calls after
 the cancel are never sent (a write already in flight is the fence's to finish or repair). A
 cancel does not end a store call already in flight at once: a read sent to Redis runs until its
 reply or its `ReadTimeout` (5 s, internal/redisconn), so a tick given up can take seconds to
@@ -7211,7 +7217,9 @@ that has not stopped within a further deadline is wedged (`TICK DEADLINE ... has
 within a further <d>: a wedged tick, <k> in a row`), and each further deadline it has not
 stopped in counts one more. At three wedged in a row (`TickWedgedToExit`) the process is
 wedged: `TICK WEDGED 3 given-up ticks in a row did not stop within a further deadline`, the
-stacks again, and run exits 4 so its supervisor starts it again; a tick that ends in time, or a
+stacks again (into memory first, then to stderr under `TickStacksBound`, so the diagnosis
+never holds up the exit, as at the deadline above), and run exits 4 so its supervisor starts it
+again; a tick that ends in time, or a
 given-up tick that stops within its further deadline, starts the count again. Run exits
 otherwise only on a signal (a failed tick, a store that does not answer included, is printed
 and tried again with the backoff). On 2026-10-06, under load (load 30 on 32 cores, store round

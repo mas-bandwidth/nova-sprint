@@ -236,7 +236,11 @@ type app struct {
 	// run past it (os.Exit unless a test sets it).
 	tickDeadline time.Duration
 	after        func(time.Duration) <-chan time.Time
-	exit         func(code int)
+	// afterStacks is the clock the watchdog waits on for its bounded stderr
+	// write (TickStacksBound): time.After unless a test sets it, so a test
+	// bounds the wait with its own clock and no wall clock.
+	afterStacks func(time.Duration) <-chan time.Time
+	exit        func(code int)
 	// tickFn, when set (a test), is the run loop's tick of its store: nil is
 	// store.Store.Tick.
 	tickFn func(ctx context.Context, st *store.Store) (store.TickResult, error)
@@ -345,7 +349,7 @@ func (l *controlLine) LockCtx(ctx context.Context) error {
 }
 
 func newApp(getenv func(string) string) *app {
-	a := &app{getenv: getenv, now: time.Now, sleep: time.Sleep, after: time.After, exit: os.Exit, conns: map[string]*redisconn.Conn{}, cached: map[string]store.Backend{}, meter: hostload.Local(), notify: interruptContext, screen: screenSize}
+	a := &app{getenv: getenv, now: time.Now, sleep: time.Sleep, after: time.After, afterStacks: time.After, exit: os.Exit, conns: map[string]*redisconn.Conn{}, cached: map[string]store.Backend{}, meter: hostload.Local(), notify: interruptContext, screen: screenSize}
 	a.backend = a.redisBackend
 	a.inventory = a.readInventory
 	a.friends = a.readFriends

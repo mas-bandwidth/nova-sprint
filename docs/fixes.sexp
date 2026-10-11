@@ -1024,6 +1024,10 @@
    :title "run refuses a negative --tick-deadline"
    :text "A negative --tick-deadline is refused right after the flags are parsed, through run's usual refuse helper, before the loop starts or a server listens; the refusal names the flag, the value and that 0 waits for ever. Before, tickDeadlineOf returned 0 for any least <= 0 and tickWithin waited for ever when d <= 0, so --tick-deadline -1s switched the watchdog off with nothing said. 0 still waits for ever and every positive value behaves as today."
    :origin "nova-tools#5173 (transferred here at the split), roadmap item tick-watchdog-bounded-diagnostics, its negative-deadline half; this card")
+  (fix "tick-watchdog-exit-never-waits-on-its-dump" :release "v1.2.14" :status "planned"
+   :title "The tick watchdog never waits on its own dump"
+   :text "An overrun's goroutine stacks are written into memory first (pprof's WriteTo into a bytes.Buffer, which cannot block), then the watchdog acts (the tick's cancel, or the wedged exit), and only then hands the buffer to stderr in a goroutine it waits on at most TickStacksBound (2 s); a stderr nobody drains (a full pipe under a supervisor, a blocked terminal) can no longer hold up the cancel or the exit, and a dump not written within the bound is dropped with one TICK STACKS line saying so."
+   :origin "the card tick-watchdog-exit-never-waits-on-its-dump w2; nova-tools issue #5173, roadmap item tick-watchdog-bounded-diagnostics; code read at nova-sprint main 00c54ba")
   (fix "stops-digest-counts-only-held-stops" :release "v1.2.14" :status "planned"
    :title "The stops digest counts only the stops still holding"
    :text "One plan could close a stop and at the same time send an NStopsDigest saying it still holds: notify closes the open NStopMemberDown judgment of a member up again, and stopsDigest then gathered its stops from the snapshot before the plan, counting and naming the stop just closed. stopsDigest now leaves out every judgment the same plan closes, matched by note id; with no stop left it writes neither the digest nor its clock."
