@@ -1300,4 +1300,9 @@
     landed."
    :origin "this card: card-lint-refuses-a-header-key-below-the-prose, from the owner on epoch 17,
     2026-10-11 (~10:40-11:00 AM ET); code read by the seat's reader at nova-sprint main 1405d26; the
-    owner: \"this should be caught by card lint.\"")))
+    owner: \"this should be caught by card lint.\"")
+
+  (fix "tla-sprint-tables-crash-and-repair" :release "v1.2.12" :status "planned"
+   :title "SprintTables adds the CI observations, ack, crash and repair, with a half-step witness"
+   :text "The reference model (internal/sprint/refmodel) holds CiRed, CiGreen, Ack, Crash and Repair; the module tla/SprintTables.tla names them and proves NoCardLostOrTwice and every earlier invariant hold across a crash at any step (a step's writes are all or nothing), with a reversed witness: a broken half-step leaves half a step's writes and fails NoCardLostOrTwice. The reference model's line-number citations are replaced with action names."
+   :origin "card tla-sprint-tables-crash-and-repair, 2026-10-11: v1.2.12 inventory item T4, code read at nova-sprint main 00c54ba2e")))
