@@ -24,7 +24,7 @@ func TestReadCellsReadsOnlyTheNamedCells(t *testing.T) {
 
 	whole, err := h.st.Load(h.ctx, []string{sprint.Fleet}, nil)
 	require.NoError(t, err)
-	require.NotEmpty(t, whole.Fleet.Cell("m1", sprint.DoneOK), "the member finished cards: its ok cell holds them")
+	require.NotEmpty(t, whole.Fleet.Cell("m1", sprint.Finished), "the member finished cards: its finished cell holds them")
 	cols := []string{sprint.Ready, sprint.Working, sprint.Ctl}
 	var want []string
 	for _, col := range cols {

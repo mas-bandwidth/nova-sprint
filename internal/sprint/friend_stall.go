@@ -405,7 +405,7 @@ func FriendWorked(s *Snapshot, f string, w FriendWork) (time.Time, string) {
 		return at, what
 	}
 	row := FriendRow(f)
-	for _, c := range append(append([]*Card(nil), s.Fleet.Cell(row, DoneOK)...), s.Fleet.Cell(row, DoneFailed)...) {
+	for _, c := range append(append(append([]*Card(nil), s.Fleet.Cell(row, Finished)...), s.Fleet.Cell(row, DoneOK)...), s.Fleet.Cell(row, DoneFailed)...) {
 		see(stampAt(c, "finished"), "finish")
 	}
 	for _, col := range []string{Ready, Working, DoneOK, DoneFailed} {
