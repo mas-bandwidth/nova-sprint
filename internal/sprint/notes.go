@@ -131,7 +131,7 @@ var Decisions = map[string][]string{
 	NWorkFailed:        {"rework with a fix", "drop"},
 	NBriefDefect:       {DecisionRecut, "drop"}, // never a redeal of the brief as cut
 	NReadBroken:        {"rework with the finding", "ask another reader", "drop"},
-	NBriefWrong:        {"brief", "drop"}, // never rework: a --fix changes the brief not at all (brief_bound.go)
+	NBriefWrong:        {DecisionReworkCarry, "brief", "drop"}, // rework --carry first, then the re-cut; a plain --fix changes the brief not at all (brief_bound.go)
 	NConflict:          {"resolve and resume", "rework", "drop"},
 	NRed:               {"take the suspect off and resume", "rework the suspect"},
 	NCross:             {"rank that card first", "wait", "look at both", "return", "drop"},
@@ -366,3 +366,8 @@ func (n Note) Bound() Note {
 // again from the stream's generator, with what the worker found, as a new card; a redeal of
 // the same brief would hold the same way (docs/SPEC-SPRINT.md section 1, a brief defect).
 const DecisionRecut = "re-cut the brief"
+
+// DecisionReworkCarry is the decision a card at its bound offers first: rework --carry keeps
+// the brief, records the card's last pushed head as its carry and opens the next attempt from
+// it, rather than re-cutting the brief or dropping the card (brief_bound.go, rework_carry.go).
+const DecisionReworkCarry = "rework --carry"

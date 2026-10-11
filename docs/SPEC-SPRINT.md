@@ -1932,20 +1932,41 @@ on it closes. With no such friend up with room the card is the deal's as before:
 redeal bound it is not dealt again and the tick raises the cap's judgment above (brief
 and drop), which closes once a friend takes it; below its bound its attempt is dealt
 again to a machine. The tick reads the friends' seats when a friend's card or a card
-past its cap is ready. Then `rework` is refused, nothing written, one line: `<id> has failed the
+past its cap is ready. Then plain `rework` is refused, nothing written, one line: `<id> has failed the
 same way twice (attempts <n> and <m>: <the finding's first sentence>); the brief is
-wrong, not the worker; run: nova-sprint brief <id> --brief-file <path> (the brief
+wrong, not the worker; run: nova-sprint rework <id> --carry --fix '<what changes>' (keeps
+the brief, its latest pushed head as its carry, its next attempt from it, the bound reset),
+or nova-sprint brief <id> --brief-file <path> (the brief
 corrected in place, its next attempt from its last pushed head), or nova-sprint drop <id>
---reason '<why>'` (or the cap's line, then the same `run:`); a `--fix` changes the brief not
+--reason '<why>'` (or the cap's line, then the same `run:`); a plain `--fix` changes the brief not
 at all, so it lifts nothing; a replaced brief resets the count
 (`TestReworkRefusesACardWhoseLastTwoFindingsMatch`). The judgment raised for such a
 card is "a card has reached its bound: the brief is wrong, not the worker", in place of
 "a reader found it broken" at the read and of "work came back failed" at the finish; it
-names the two findings and their attempts, and its decisions are brief and drop, never
-rework (`TestTheBoundJudgmentNamesTheBriefNotTheWorker`); the tick's "a card reached its
+names the two findings and their attempts, and its decisions are `rework --carry`, then brief
+and drop, never a plain rework (`TestTheBoundJudgmentNamesTheBriefNotTheWorker`,
+`TestTheBoundJudgmentPrintsTheCarryLineFirst`); the tick's "a card reached its
 bound" on a card past the count says the same and offers the same. `answer` applies
 only a verb the judgment prints, so it cannot rework such a card
 (`TestTheAnswerPathCannotReworkACardAtTheBriefBound`), and the verb refuses it besides.
+
+**`rework --carry`** (`TestABoundGroupIsReworkedFromEachCardsLastHead`, the owner,
+2026-10-11: "seems like that should have been a tool/verb"): the one verb that answers a
+bound judgment and a coordination brief-defect judgment. `nova-sprint rework --group <id>
+--expect <n> --carry --fix '<note>' [--answers ...]` takes each card of the group and keeps
+its brief, writes its latest pushed head (`sprint.BaseOf`, the same `CARRY: <card> attempt
+<n> head=<sha>` form `brief --widen` writes) as its carry, takes `--fix` as its next
+attempt's fix, resets the brief's bound (`brief_attempt`) and opens its next attempt, in
+place, as a brief edit does (`sprint.Brief`, `briefInPlace`): the same id, no twin. A card
+none of whose attempts pushed a full head cannot be carried: it refuses the whole step, by
+name (`<id> has no pushed head`), and nothing is written. `--carry` on a card whose brief
+defect is the coordination cause (its worker's report said it was dealt before its
+`DEPENDS-ON:` or `ORDER` prerequisites landed, `sprint.BriefDefectCoordination`) answers it
+once those needs have landed, its brief unchanged apart from the carry; while a need is
+still unlanded the step is refused, naming it
+(`TestACarryAnswersACoordinationBriefDefectOnceItsNeedsHaveLanded`). Plain `rework` refuses
+such a card ("a rework deals the same brief again; re-cut the brief"), which left the seat
+dumping and re-briefing each card by hand (2026-10-11).
 
 **The bound is two identical findings** (the card the-bound-is-two-identical-findings,
 after the night of 2026-10-05, when cards with the fix first in their brief still ran three
