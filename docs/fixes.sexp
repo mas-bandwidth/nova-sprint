@@ -1492,4 +1492,26 @@
    :origin "this card: doctor-warns-while-a-tier-backs-off; the third cold read of nova-sprint PR
     #86, 2026-10-11, an open non-blocking finding: \"Doctor reports FAIL while every route of a
     tier backs off\"; listed in the rate-limit-never-fails-the-card-v2 card; checked against
-    nova-sprint main 00c54ba and PR #86's head a1c51ee")))
+    nova-sprint main 00c54ba and PR #86's head a1c51ee")
+  (fix "routes-shows-a-rate-limit-backoff" :release "v1.2.14" :status "planned"
+   :title "routes shows a route backing off from a rate limit"
+   :text "`nova-sprint routes` printed rested_until=- for a route backing off from a rate limit, so
+    a held route read as serving while the deal drew nothing on it. After
+    rate-limit-never-fails-the-card-v2, RouteRests reads rule3Rests, which drops every
+    <route>+rate-backoff line on purpose (the backoff line is restWrites' alone), so the route's
+    backoff, computed by the unexported rateBackoffs and held while now is before its Until, never
+    reached the verb. A new exported read in internal/sprint/rate_backoff_view.go,
+    RateBackoffsAt(fleet, now), returns the backoffs rateBackoffs computes that hold at now and
+    nothing else, so the deal's path is unchanged. cmdRoutes merges it into its rests (cmd/nova-sprint/
+    reads.go, cmdRoutes and restAt): a route resting for its 5xxs or its provider's credit prints as
+    today, and when a rest and a backoff both hold the one that ends later is shown, as RouteRests
+    already picks between a route's rest and its provider's. --json's rested_for begins
+    \"rate-backoff: \". Tests TestRoutesShowsARateLimitBackoff (a withdrawn card holding one
+    FieldRateTake record prints the backoff's end in the ROUTE line and in --json, and both show -
+    once the clock passes the end) and TestRestAtShowsTheRestThatEndsLater, in
+    cmd/nova-sprint/routes_backoff_test.go (docs/SPEC-SPRINT.md, the routes verb; tla/RateBackoff.tla,
+    BackoffEnds)."
+   :origin "this card, routes-shows-a-rate-limit-backoff.w2, from the first cold read of nova-sprint
+    PR #86 (2026-10-11), an open non-blocking finding: \"The backoff is hard to see: nova-sprint
+    routes doesn't show it\"; listed in tmp/next-sprint-cards/rate-limit-never-fails-the-card-v2.md.
+    Checked against main 00c54ba and PR #86's head a1c51ee.")))
