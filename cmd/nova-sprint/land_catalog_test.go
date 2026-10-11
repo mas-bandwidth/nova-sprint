@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
 )
 
 // catalogBase is a catalog with one existing row. A card that adds a package appends
@@ -291,7 +292,7 @@ func TestAFailedRemapLeavesTheCloneClean(t *testing.T) {
 	r.queued(heads, "s1-1", "s1-2")
 	hook := filepath.Join(r.clone, ".git", "hooks", "pre-commit")
 	require.NoError(t, os.MkdirAll(filepath.Dir(hook), 0o755))
-	require.NoError(t, os.WriteFile(hook, []byte("#!/bin/sh\necho the amend is refused by the test >&2\nexit 1\n"), 0o755))
+	require.NoError(t, testbin.WriteExecutable(hook, []byte("#!/bin/sh\necho the amend is refused by the test >&2\nexit 1\n"), 0o755))
 	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
 	require.NotEqual(t, 0, code, out+errs)
 	assert.Contains(t, out+errs, "could not be amended with its regenerated map")

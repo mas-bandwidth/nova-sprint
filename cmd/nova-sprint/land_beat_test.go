@@ -18,6 +18,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
 )
 
 // beatBuf is the land loop's stdout. The test reads it from another goroutine.
@@ -279,7 +280,7 @@ func TestTheLandLoopRefusesWhenTheBenchDoesNotAnswer(t *testing.T) {
 	r.queued(heads, "s1-1")
 	bin := t.TempDir()
 	marker := filepath.Join(bin, "local-go-ran")
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "go"), []byte("#!/bin/sh\nprintf ran > \"$GATE_MARKER\"\nexit 1\n"), 0o755))
+	require.NoError(t, testbin.WriteExecutable(filepath.Join(bin, "go"), []byte("#!/bin/sh\nprintf ran > \"$GATE_MARKER\"\nexit 1\n"), 0o755))
 	r.a.gitEnv = append(r.env, "PATH="+bin+":"+os.Getenv("PATH"), "GATE_MARKER="+marker, "GOCACHE="+t.TempDir())
 	r.ok("fleet beat vision --load 1 --cores 8")
 	r.ok("fleet up vision --probe passed")
