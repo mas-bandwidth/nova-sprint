@@ -1432,6 +1432,25 @@
     only; no product change."
    :origin "this card; the v1.2.12 inventory items T31 and section 5 (the land stage's gate-slot ring)")
 
+  (fix "tla-loadcache-separate-trips-and-epoch-keys" :release "v1.2.12" :status "planned"
+   :title "LoadCache splits the not-held take into its trips and keys entries by epoch"
+   :text "Models only, no product change. tla/LoadCache.tla splits the not-held Take into its trips (mark,
+    ids, records, keep), each its own step outside the lock, with the keep's revision guard; the catch-up
+    stays atomic under the lock, and the entries are keyed by <<table, epoch>> with an outside Clear that
+    advances the epoch once. LoadIsSnapshot holds with the records read as one trip, and the new
+    LoadIsOfItsEpoch holds that a load takes the records of the epoch it read. The reversed witnesses
+    catchup, ahead and nomark keep their meanings (each fails LoadIsSnapshot), and noepochkey keys entries
+    by table alone so a load of the old epoch is served after a clear (LoadIsOfItsEpoch). The card's
+    section (2) names the norevguard witness (the keep's revision check dropped) as a LoadIsSnapshot
+    failure, but that expectation is unsatisfiable as modelled: the revision guard only keeps the newest
+    read, an efficiency, while the serve-time mark check (which nomark drops) is the correctness guard, so
+    a cache that regresses still serves the right records. The witness therefore fails CacheNotRegressed,
+    a new invariant stating the revision guard's meaning, not LoadIsSnapshot; the conflict is raised here
+    rather than a different invariant being swapped in silently. The records read is one trip, not the
+    code's 1024-record chunks: that is the v1.2.14 candidate load-cache-mark-not-read-after-chunks, whose
+    fix card extends this model."
+   :origin "this card")
+
   (fix "tlc-runs-inside-the-job-wall" :release "v1.2.12" :status "planned"
    :title "TLC runs inside the job wall"
    :text "tools/tlacheck is built in this repository on this tree's pkg/tlc, with the groups
