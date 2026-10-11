@@ -74,22 +74,13 @@ func (a *app) cmdCoordinator(args []string, stdout, stderr io.Writer) int {
 	if why := sprint.NotSeat(holder, req); why != "" {
 		return refuse(stderr, "coordinator", why)
 	}
-	// the seat goes only to a session the push loop has reached (pushproof.go)
-	if why, err := pushGate(ctx, st, req.To, a.now()); err != nil {
-		return a.readFailed("coordinator", err, stderr)
-	} else if why != "" {
-		return refuse(stderr, "coordinator", why)
-	}
+	// the new holder hooks in before any of its commands runs (hook.go): the seat moves
+	// to it, and every coordinator command of its waits for its hook
 	how := "given"
 	if req.Take {
 		how = "taken approved_by=" + oneline.Field(req.ApprovedBy)
 	}
 	said := fmt.Sprintf("holder=%s from=%s by=%s %s", oneline.Field(req.To), oneline.Field(holder), oneline.Field(c.actor), how)
-	if push, err := pushSaid(ctx, st, req.To, a.now()); err != nil {
-		return a.readFailed("coordinator", err, stderr)
-	} else if push != "" {
-		said += " " + push
-	}
 	if *dry {
 		fmt.Fprintf(stdout, "COORDINATOR DRY-RUN %s; nothing was changed\n", said)
 		return 0
@@ -588,8 +579,8 @@ func (p *pushTarget) follow(holder string, first bool, stdout, stderr io.Writer)
 // (seat-key-follows-record.w2).
 func (a *app) cmdSeat(args []string, stdout, stderr io.Writer) int {
 	// seat login and seat logout are the seat's store login, kept on this machine and
-	// never in the store (storelogin.go); seat push and seat pong are the seat's push
-	// proof (pushproof.go)
+	// never in the store (storelogin.go); seat push is the seat's push target
+	// (pushproof.go)
 	if len(args) > 0 {
 		switch args[0] {
 		case "login":
@@ -598,8 +589,6 @@ func (a *app) cmdSeat(args []string, stdout, stderr io.Writer) int {
 			return a.cmdSeatLogout(args[1:], stdout, stderr)
 		case "push":
 			return a.cmdSeatPush(args[1:], stdout, stderr)
-		case "pong":
-			return a.cmdSeatPong(args[1:], stdout, stderr)
 		}
 	}
 	fs, c := a.verbSetup("seat")

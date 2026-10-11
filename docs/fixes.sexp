@@ -48,6 +48,18 @@
     MCLandBrokenNoCheckReads and MCLandBrokenBounceMarked."
    :origin "the Studio sprint, epoch 16, 2026-10-10: rule 6 raised on cards merging with one read of two, and two landed on one read")
 
+  (fix "the-coordinator-hooks-in" :release "v1.2.6" :status "shipped"
+   :title "The coordinator must hook in, and prove it, before any command runs"
+   :text "nova-sprint hook holds the seat's subscription on the server, which streams every judgment and
+    push with an id and a challenge; the hook counts once the session answers the challenge over the same
+    connection, and again every 10 minutes. Every command run as the coordinator fails with exactly 'You
+    must hook in first: run nova-sprint hook' until then, and names a push left unacknowledged past 10
+    minutes; there is no override. unhook records the seat away, a drop records it gone at once, and each
+    is pushed to the owner. seat watch, the PROOF files and seat pong are gone. tla/SeatHook.tla:
+    CommandSafe, AckedOrBlocking, ProofMeansRead, ProvenIsSubscribed, RecordTrue, KeepsHook, HookStays,
+    with seven reversed witnesses. Supersedes the v1.2.8 card the-coordinator-must-hook-in."
+   :origin "the owner, 2026-10-10 ~22:55Z: about 1,200 pushes went unread for hours while the seat answered PROOF files by hand")
+
   (fix "provider-key-refusal-rests-until-woken" :release "v1.2.6" :status "shipped"
    :title "A provider that refuses its key rests until woken, never for a time"
    :text "A route whose provider refuses the key rests until routes wake, never for a time, and the rest
