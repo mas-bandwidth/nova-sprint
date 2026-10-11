@@ -45,7 +45,7 @@
 \*
 \* Invariants: TypeOK, NoNeedCycle, NoCardLostOrTwice, and the action
 \* properties MovesOnlyByTable (every change of cell is a Moves row, a drop
-\* from an open state, or a remove of a landed card), ReadyToWaitingOnlyByInsert,
+\* from an open state, or a remove of a landed card), ReadyToWaitingOnlyByInsertOrNeedsset,
 \* LandedIsFinal, NeedsLandFirst and WorkingOnAnUpMember (a card in a member's
 \* working cell sits on an up member).
 \*
@@ -60,7 +60,8 @@
 \* return, and crash and repair.
 \*
 \* Reversed witnesses (Broken):
-\*   "insert"    the add move runs ready -> waiting without inserting.
+\*   "insert"    the add move runs ready -> waiting without inserting and
+\*               without a needs set.
 \*   "needless"  resolve drops the needs check, so a card with an unmet need
 \*               still moves waiting -> ready.
 \*   "downkeeps" fleet down leaves a working card on the member that went down.
@@ -112,9 +113,11 @@ IsOpen(s) == s \in {"waiting", "ready", "working", "review", "merging"}
 IsSentinel(c) == c \in Sentinels
 
 \* The step's plan flags (lifecycle.go Plan): releasing lands a sentinel,
-\* inserting moves a primary ready -> waiting, removing takes a landed primary
-\* off the table. Each is a nondeterministic choice of the plan the step runs.
-Flags == [releasing : BOOLEAN, inserting : BOOLEAN, removing : BOOLEAN]
+\* inserting moves a primary ready -> waiting, needsset rewrites a primary's
+\* needs (which may move a ready primary back to waiting), and removing takes a
+\* landed primary off the table. Each is a nondeterministic choice of the plan
+\* the step runs.
+Flags == [releasing : BOOLEAN, inserting : BOOLEAN, removing : BOOLEAN, needsset : BOOLEAN]
 
 VARIABLES state, waived, flags, members, wplace, wmember
 
@@ -165,7 +168,7 @@ Init ==
   /\ state = InitOf
   /\ \A c \in Sentinels : state[c] = "waiting"
   /\ waived = [c \in Card |-> {}]
-  /\ flags = [releasing |-> FALSE, inserting |-> FALSE, removing |-> FALSE]
+  /\ flags = [releasing |-> FALSE, inserting |-> FALSE, removing |-> FALSE, needsset |-> FALSE]
   /\ members = [m \in Member |-> IF m \in InitUp THEN "up" ELSE "down"]
   /\ wplace = [c \in Card |-> "none"]
   /\ wmember = [c \in Card |-> CHOOSE m \in Member : TRUE]
@@ -292,12 +295,14 @@ Release ==
     /\ flags.releasing
     /\ Move(c, "landed")
 
-\* add: ready -> waiting, only as the effect of inserting a sentinel in front.
-\* The reversed witness "insert" lets it run without inserting.
+\* add: ready -> waiting, as the effect of inserting a sentinel in front, or of
+\* rewriting the card's needs (needs set, steps_edit.go): a ready card that
+\* gains a need not landed moves back to waiting. The reversed witness "insert"
+\* lets it run without inserting and without a needs set.
 AddMove ==
   \E c \in Card :
     /\ state[c] = "ready"
-    /\ \/ Broken = "insert" \/ flags.inserting
+    /\ \/ Broken = "insert" \/ flags.inserting \/ flags.needsset
     /\ Move(c, "waiting")
 
 \* drop: off the table, from an open state; a landed primary leaves only by the
@@ -350,11 +355,12 @@ MovesOnlyByTable ==
     \/ /\ state'[c] = "off"
        /\ (IsOpen(state[c]) \/ flags.removing)]_vars
 
-\* ReadyToWaitingOnlyByInsert: a primary moves ready -> waiting only as the
-\* effect of inserting a sentinel in front of it.
-ReadyToWaitingOnlyByInsert ==
+\* ReadyToWaitingOnlyByInsertOrNeedsset: a primary moves ready -> waiting only
+\* as the effect of inserting a sentinel in front of it, or of rewriting its
+\* needs (needs set, steps_edit.go: a ready card that gains a need not landed).
+ReadyToWaitingOnlyByInsertOrNeedsset ==
   [][\A c \in Card :
-    state[c] = "ready" /\ state'[c] = "waiting" => flags.inserting]_vars
+    state[c] = "ready" /\ state'[c] = "waiting" => flags.inserting \/ flags.needsset]_vars
 
 \* LandedIsFinal: a landed primary stays landed; only a remove takes it off
 \* the table, and it never moves to another state.
