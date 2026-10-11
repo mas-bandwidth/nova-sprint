@@ -52,7 +52,9 @@ func TestReaderAddInheritsCommonFleetTier(t *testing.T) {
 	ta.ok("reader set reader-m1 --tiers flash,pro,heavy")
 	ta.ok("reader set reader-m2 --tiers flash,pro,heavy")
 	ta.ok("reader add reader-m3")
-	var v struct { Tables map[string]map[string]map[string]string }
+	var v struct {
+		Tables map[string]map[string]map[string]string
+	}
 	ta.json("where", &v)
 	assert.Equal(t, "flash,pro,heavy", v.Tables[sprint.Readers]["reader-m3"][sprint.ReaderTiers])
 }
@@ -67,7 +69,9 @@ func TestReaderAddWhenFleetReadersDiffer(t *testing.T) {
 	code, out, _ := ta.do("reader add reader-m3")
 	assert.Equal(t, 0, code)
 	assert.Contains(t, out, "from=default")
-	var v struct { Tables map[string]map[string]map[string]string }
+	var v struct {
+		Tables map[string]map[string]map[string]string
+	}
 	ta.json("where", &v)
 	assert.Equal(t, "default", v.Tables[sprint.Readers]["reader-m3"][sprint.ReaderTiers])
 }
@@ -80,7 +84,9 @@ func TestReaderAddWithExplicitTiers(t *testing.T) {
 	ta.ok("reader set reader-m1 --tiers flash,pro,heavy")
 	ta.ok("reader set reader-m2 --tiers flash,pro,heavy")
 	ta.ok("reader add reader-m3 --tiers flash")
-	var v struct { Tables map[string]map[string]map[string]string }
+	var v struct {
+		Tables map[string]map[string]map[string]string
+	}
 	ta.json("where", &v)
 	assert.Equal(t, "flash", v.Tables[sprint.Readers]["reader-m3"][sprint.ReaderTiers])
 }

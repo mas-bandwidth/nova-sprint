@@ -634,7 +634,7 @@ func DoctorReaders(in DoctorInput) (out []DoctorCheck) {
 						word := ReaderTiersShown(t)
 						out = append(out, DoctorCheck{Area: area, Check: check, Subject: r, Status: DoctorWarn,
 							Evidence: fmt.Sprintf("tiers=%s: fleet reader at %s while fleet's tiers are %s", word, r, commonTier),
-							Remedy: fmt.Sprintf("nova-sprint reader set %s --tiers %s", r, commonTier)})
+							Remedy:   fmt.Sprintf("nova-sprint reader set %s --tiers %s", r, commonTier)})
 					}
 				}
 			}
