@@ -351,6 +351,22 @@
     stream can admit a card based on main or dev without a sentinel card or a follow-up stream set."
    :origin "the seat ledger bug 14")
 
+   (fix "idle-cleared-says-working-only-when-it-works" :release "v1.2.14" :status "planned"
+    :title "An idle episode that ends with no width or no work says why, never working again"
+    :text "TickIdle ends an idle episode for four reasons and only one is a recovery. The fleet
+     working at half its width again (a) keeps NIdleCleared, \"working again\"; no card waits (b),
+     no width up -- every member down, held or drained (c) -- and the fleet's work switched off
+     (d) push a new happened type NIdleEnded, \"the fleet's idle episode ended\", naming the cause:
+     \"no card waits\", \"no width up: every member is down, held or drained (fleet up <member>
+     --width <n>)\", or \"the fleet's work is switched off (set --fleet on)\". Both properties are
+     cleared on every end as before. docs/SPEC-SPRINT.md section 14 says which end says what. The
+     episode machine is unchanged (AlarmOncePerEpisode, ClearFollowsAlarm), so tla/SprintRules.tla,
+     Part \"idle\", is not edited. TestAnIdleEpisodeEndedByNoWidthNeverSaysWorkingAgain (red on the
+     base), TestAnIdleEpisodeEndedByWorkSaysWorkingAgain, TestAnIdleEpisodeEndedByNoWaitingCardSaysTheCause,
+     TestAnIdleEpisodeEndedByTheFleetSwitchSaysTheCause."
+    :origin "the seat's v1.2.14 audit, 2026-10-11 (TickIdle says \"working again\" when width is 0),
+     checked against nova-sprint main 00c54ba; this card")
+
   (fix "stream-remove-removes-what-exists" :release "v1.2.6" :status "in-progress"
    :title "stream remove takes every stream that exists and names each that does not"
    :text "One name that is no row of the work or merge table no longer refuses the whole batch: stream
@@ -988,6 +1004,10 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+   (fix "pagelock-stripper-hardening" :release "v1.2.14" :status "planned"
+    :title "The page lock's comment-only check reads the page a browser renders"
+    :text "The stripper that proves a comment-only change renders nothing no longer mistakes four visible things for comments: an HTML text comment leaves nothing rather than a space; a comment opener inside a quoted attribute value is code; an inline script with a data-src attribute is read as JS; and a slash after a control if, while or for condition opens a regex, failing closed otherwise. The lock's header and the spec's The page lock state the comment-only form and that the card lint is ask-only."
+    :origin "this card")
   (fix "verify-defaults-to-the-trees-import-scope" :release "v1.2.14" :status "planned"
    :title "verify compares the scope its tree was imported with, not the whole organization"
    :text "import --repo <org>/<name> now records the repositories it read as the work-tree's :scope, written only for a scoped import; a whole-organization tree stays byte for byte what it was, and a file without :scope reads as a whole-organization tree. verify with no --repo compares the tree's own scope (tla/WorkImport.tla's Verify already read the scope it imported), --repo narrows within it, and a --repo outside it is refused naming the scope before any GitHub call; verify --against does the same. Before, verify with no --repo read the whole organization and reported MISSING for every repository the scoped import left out."
@@ -1008,6 +1028,10 @@
    :title "The stops digest counts only the stops still holding"
    :text "One plan could close a stop and at the same time send an NStopsDigest saying it still holds: notify closes the open NStopMemberDown judgment of a member up again, and stopsDigest then gathered its stops from the snapshot before the plan, counting and naming the stop just closed. stopsDigest now leaves out every judgment the same plan closes, matched by note id; with no stop left it writes neither the digest nor its clock."
    :origin "v1.2.12 inventory 2026-10-11, section 9 row D8; card stops-digest-counts-only-held-stops.w1, id given by the coordinator 2026-10-11 (code read at nova-sprint main 00c54ba)")
+  (fix "lander-empty-commit-says-no-result-is-held" :release "v1.2.14" :status "planned"
+   :title "The lander's empty-commit refusal says a result is missing when it holds none"
+   :text "The lander's empty-commit check refused an empty diff with no result to read (a nil work card: the fleet row absent or the work card tidied away) with the same finding as one whose result claimed changes, \"empty commit: the result claims changes the diff does not show\", naming a claim nothing made. It now returns emptyCommitNoResultFinding, \"empty commit: the head changes nothing from the attempt's start, and the lander holds no result to say why\", and both findings return the card to review through one helper, isEmptyCommitFinding."
+   :origin "this card: lander-empty-commit-says-no-result-is-held, from the v1.2.14 point-release plan and the roadmap item lander-empty-commit-handling")
 
   (fix "version-features-answers-what-a-build-has" :release "v1.2.14" :status "planned"
     :title "The version verb says which fixes a build carries"
@@ -1066,4 +1090,17 @@
 
   (fix "two-ci-flakes-text-file-busy-and-git-maintenance" :release "v1.2.10" :status "shipped"
    :title "Two CI flakes: exec'd stubs written under the fork lock, and git's auto maintenance off in tests"
-   :origin "PR #88")))
+   :origin "PR #88")
+
+  (fix "a-stats-reset-zeroes-the-unattributed-spend" :release "v1.2.14" :status "planned"
+   :title "A stats reset zeroes the unattributed spend"
+   :text "After nova-sprint stats reset every stream's spend counts from the mark, but the grand total
+    did not reach zero: the cost line's <other>, the largest TierCosts.Unreconciled on any stream's
+    record, is the sprint's UnreconciledSpend since the epoch's clear, never since the mark. ResetMark
+    now holds the sprint's unattributed spend at the mark (in cents) and streamsSince subtracts it on
+    every stream's record, the streams the mark does not know included, so the cost line, the dashboard's
+    cost tile and where --json's unreconciled count from the mark, never below zero. The mark line names
+    it beside the total."
+   :origin "the seat's v1.2.14 audit, 2026-10-11 (a stats reset does not zero the grand total spent),
+    checked against nova-sprint main 00c54ba; the owner's rule of 2026-10-09: a stats reset clears every
+    cost figure, the total spent, per card and per tier; this card a-stats-reset-zeroes-the-unattributed-spend")))

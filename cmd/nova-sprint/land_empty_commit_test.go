@@ -17,6 +17,7 @@ func TestLandRefusesAnEmptyCommitThatClaimsChanges(t *testing.T) {
 	t.Parallel()
 
 	const wantFinding = "empty commit: the result claims changes the diff does not show"
+	const wantNoResultFinding = "empty commit: the head changes nothing from the attempt's start, and the lander holds no result to say why"
 
 	t.Run("empty diff with claiming result refuses", func(t *testing.T) {
 		t.Parallel()
@@ -43,10 +44,6 @@ func TestLandRefusesAnEmptyCommitThatClaimsChanges(t *testing.T) {
 			{
 				name:   "nothing-to-do in prose beside a step sha",
 				result: "STEP 1. Commit 2d720d219ff5\nthere was nothing to do after that\n",
-			},
-			{
-				name:   "no result text at all fails closed",
-				result: "",
 			},
 			{
 				name:   "non-empty diff stat table row",
@@ -102,7 +99,32 @@ func TestLandRefusesAnEmptyCommitThatClaimsChanges(t *testing.T) {
 		assert.Empty(t, checkEmptyCommit(true, claimText(generic)), "generic report does not claim changes")
 		none := &sprint.Card{Fields: map[string]string{"ok": "yes", "head": "2d720d219ff5", "report": "nothing to do: the card was right"}}
 		assert.Empty(t, checkEmptyCommit(true, claimText(none)))
-		assert.Equal(t, wantFinding, checkEmptyCommit(true, claimText(nil)), "no work card fails closed")
+		assert.Equal(t, wantNoResultFinding, checkEmptyCommit(true, claimText(nil)), "no work card fails closed")
+	})
+
+	t.Run("empty diff with no result held refuses as a missing result", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name   string
+			result string
+		}{
+			{name: "no result text at all", result: ""},
+			{name: "no work card", result: claimText(nil)},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				got := checkEmptyCommit(true, tc.result)
+				assert.Equal(t, wantNoResultFinding, got, "no result is held, not a claim")
+				assert.NotContains(t, got, "the result claims changes")
+			})
+		}
+	})
+
+	t.Run("both empty-commit findings return the card to review", func(t *testing.T) {
+		t.Parallel()
+		assert.True(t, isEmptyCommitFinding(emptyCommitFinding))
+		assert.True(t, isEmptyCommitFinding(emptyCommitNoResultFinding))
+		assert.False(t, isEmptyCommitFinding("the documents could not be repaired"))
 	})
 
 	t.Run("non-empty diff passes", func(t *testing.T) {

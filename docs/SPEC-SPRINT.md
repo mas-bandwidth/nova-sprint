@@ -4110,7 +4110,12 @@ review called wrong for a fragment, and no other; over the land merges of 215 of
 them it finds those four and one more, diaryr-37, a lead-in left without its end
 the review passed. On those land merges the PATHS rule flags negd-42 and three
 cards of its shape (negd-17, -32, -41: a file the card edited after a name card
-renamed it from the name its PATHS gives), which the review passed. A head that fails is taken off
+renamed it from the name its PATHS gives), which the review passed. An empty commit is
+read against the result the lander holds (`claimText`): an empty diff whose result claims
+changes (a verdict of ok, a step line with a commit sha, a non-empty diff stat) is refused
+as a claim the diff does not show, while an empty diff for which the lander holds no result
+at all (the fleet row is absent, or the work card was tidied away) is refused as a missing
+result, its finding naming that nothing is held to say why. A head that fails is taken off
 the batch branch and ends the batch as a head in conflict does: the conflict fact
 on it names every failure, `<file>:<line>` and the rule.
 
@@ -6592,17 +6597,20 @@ stream, no archive, no table property. It writes one mark into the stats record
 when, by whom, why, the epoch, and the counters as they stand: each fleet row's `ok` and
 `failed` (the machines' rows and the friends' alike), each stream's landed cost and count
 (the control card's exact figure, as a tidy's base) and its spend as the where view shows
-it (`total_cost`, `work_cost`, `read_cost`, `cost_by_tier`), and the epoch's total. Every
+it (`total_cost`, `work_cost`, `read_cost`, `cost_by_tier`), the epoch's total, and the
+sprint's unattributed spend at the mark (`UnreconciledSpend`, one figure, the same on every
+stream's record). Every
 figure the mark covers is then shown as the epoch's less the mark's, never below zero
 (`sprint.MoneyLess`, `sprint.TierCostsSince`, `sprint.ResetMark.FleetSince`): a row's
 `done` and `ok%` (over the cards finished since), a stream's `cost` cell and `per landed`
 (the later of the reset and the last tidy of the streams gives the base), `stream_costs`
-in `where --json` (a tier with nothing since left out), and `stats` (from the later of the
+in `where --json` (a tier with nothing since left out), the sprint's unattributed spend
+(`unreconciled`, counted from the mark on every stream's record), and `stats` (from the later of the
 reset and the last tidy). `where --json` carries `stats_reset` (`at`, `by`, `reason`, and
 `landed`, the cards landed since over the headline's scope), and the dashboard's cost per
 card divides the cost tile by that `landed`. A figure the mark does not cover (a row or a
 stream it never knew, the cards by tier, the reads of the day, the unpriced runs, the
-reconciliation) reads as before. The tick counts the where record again after a reset,
+providers' reconcile records, `Reconciles`) reads as before. The tick counts the where record again after a reset,
 since a reset writes no table and so moves no revision; the mark is written, then the
 where record is emptied and the display cells mirrored, as after a tidy of the streams. The
 where record also carries the stamp of the stats record it was counted from (the last tidy
@@ -7097,12 +7105,16 @@ kind that needs a person first: a need dropped (`<n> behind <k> drop-blocked jud
 <age>)`), a need missing, a card in flight held by an open judgment (`<n> behind <card>
 (<judgment type>, <age>)`), a sentinel held or reached and not released, a held card, a stream
 stopped, a tier no route serves, else work in flight; grouped and named by the cards behind
-each, the most first, at most `IdleRoots` (8). When the fleet works at half its width again,
-or no primary waits, the episode ends: both properties are cleared, and when its note was
-pushed a second note says `the fleet is working again` with how long it lasted. One note an
-episode, a clear only after a note (tla/SprintRules.tla, `AlarmOncePerEpisode`,
-`ClearFollowsAlarm`; `TestTheIdleAlarmNamesTheRootsOnceAnEpisode`,
-`TestTheIdleTraceNamesACardAtItsBound`).
+each, the most first, at most `IdleRoots` (8). The episode ends when idle no longer holds,
+and the end's note is chosen by cause (`sprint.idleEnd`). Only the fleet working at half its
+width again is a recovery: both properties are cleared and, when its note was pushed, a
+second note says `the fleet is working again` with how long it lasted. No card waiting, no
+width up (every member down, held or drained), and the fleet's work switched off (`set --fleet off`) end the episode too -- both properties cleared the same way -- and, when its
+note was pushed, one note says `the fleet's idle episode ended` naming the cause: `no card waits`, `no width up: every member is down, held or drained (fleet up <member> --width <n>)`, or `the fleet's work is switched off (set --fleet on)`. One note an episode, a clear
+only after a note (tla/SprintRules.tla, `AlarmOncePerEpisode`, `ClearFollowsAlarm`; the end's
+note chosen by cause leaves the episode machine unchanged, so the model is not edited;
+`TestTheIdleAlarmNamesTheRootsOnceAnEpisode`, `TestTheIdleTraceNamesACardAtItsBound`,
+`TestAnIdleEpisodeEndedByNoWidthNeverSaysWorkingAgain`).
 
 **STOP assignment alerts.** Each tick observes canonical fleet Working and reader
 Reading assignments under the operation fence, including legacy STOP records
