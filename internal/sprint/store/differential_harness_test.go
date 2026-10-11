@@ -275,6 +275,31 @@ func (d dStopLease) action() dAction {
 	return dAction{Kind: "stop-return", Op: d.table, Member: d.row, Card: d.card, Gen: d.gen}
 }
 
+// settleBeat mirrors the engine's settleStopDebtByBeat on a START: the members
+// beat every action with no stop-returns owed, so a fleet machine lease whose
+// owner has beaten since the STOP is returned and leaves the debt. A
+// readers-table lease names a reader (r1..r3), no machine, so it stays owed
+// and is reported, never settled here.
+func (h *dHarness) settleBeat(s refmodel.State) refmodel.State {
+	if len(h.stopDebt) == 0 {
+		return s
+	}
+	n := s.Clone()
+	for id, debt := range h.stopDebt {
+		if debt.table != sprint.Fleet {
+			continue
+		}
+		c, ok := n.Work[id]
+		if !ok {
+			continue
+		}
+		c.Place, c.Gen = refmodel.FReady, c.Gen+1
+		n.Work[id] = c
+		delete(h.stopDebt, id)
+	}
+	return n
+}
+
 func (h *dHarness) activeStopLeases(s refmodel.State) map[string]dStopLease {
 	owed := map[string]dStopLease{}
 	for id, c := range s.Work {
@@ -699,6 +724,7 @@ func (h *dHarness) modelStep(a dAction, pre, post refmodel.State) (refmodel.Stat
 		}
 	case "start", "stop":
 		if a.Kind == "start" {
+			s = h.settleBeat(s)
 			if len(h.stopDebt) > 0 {
 				return s, fmt.Errorf("STOP-owned work/read jobs lack same-owner cancellation receipts")
 			}
