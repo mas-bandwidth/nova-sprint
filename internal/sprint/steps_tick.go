@@ -971,7 +971,6 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	}
 	p.Rows, p.Units, p.Refused = append(p.Rows, fp.Rows...), append(p.Units, fp.Units...), append(p.Refused, fp.Refused...)
 	p.Props = append(p.Props, fp.Props...)
-	p.Props = append(p.Props, reads.Props...)
 	for _, row := range reads.Rows {
 		if !slices.Contains(p.Rows, row) {
 			p.Rows = append(p.Rows, row)

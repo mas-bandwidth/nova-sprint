@@ -81,25 +81,23 @@
      read is half a slot); never back to a row it was rebalanced off (FieldRebalancedFrom), to a
      reader row that does not serve its tier, or to a reader that already read it; it keeps its
      attempt and is dealt again under the new reader's identity, the record on the row it left
-     retired. All eligible cards move in one tick, never one per tick. The hand verb fleet level now
-     runs the rebalance after the level (FleetReq Rebalance) and takes --dry-run, so it reports what
-     the tick would move, reads included: on the 36-read shape its moved count is 36, not 0; the
-     tick's level part is unchanged, the rebalance is its own part after the deal. The read-card
-     dealer now keeps an epoch-scoped fleet cursor per read tier, persists it through TickDeal, and
-     deals each read around the strict ring, preferring the closest served tier while taking idle
-     lanes before queued capacity; ineligible, refused, duplicate, and full readers are skipped.
-     Tests TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick and
+     retired. All eligible cards move in one tick, never one per tick. The read-card deal keeps a
+     persisted, epoch-scoped fleet-table cursor per read tier (read_deal_index_<tier>,
+     PropReadDealIndex, readDealRound in internal/sprint/deal.go), a counter over the eligible units
+     that advances with each placement and is never reset by a restart or a switch. Tests
+     TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick,
+     TestTheRebalanceDoesNotOverfillAReaderAfterMovingWork,
+     TestTheRebalanceUsesTheRemainingHalfSlotAfterAQueuedRead,
+     TestTheRebalanceKeepsAReadQueueWhenItsDonorHasHalfALaneFree and
      TestTheRebalanceReadNeverMovesToAnIneligibleOrOldRow in internal/sprint/rebalance_reads_test.go,
-     TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick and
-     TestTheLevelVerbRebalancesTheReadsToo in internal/sprint/rebalance_test.go, plus cursor,
-     refusal, and restart coverage in internal/sprint/read_cards_test.go,
-     internal/sprint/read_cards_twin_test.go, and internal/sprint/deal_test.go (docs/SPEC-SPRINT.md
-     section 1, the rebalance and read-card deal)."
-    :origin "this card, the-rebalance-levels-reads-every-tick-all-at-once.w3, from the owner,
-     2026-10-11 ~18:50Z watching the fleet table (b3 held 36 ready behind 16 working, mini-m5 9
-     behind 16, while b1, b2, hetzner1, hetzner2, space, studio and vision had 2 to 9 idle lanes
-     each), and the same shape ~12:40Z (\"ready cards are sitting dead on freddy while he's full,
-     and they should be assigned elsewhere via rebalancing\").")
+     TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick in internal/sprint/rebalance_test.go,
+     and TestReadDealRoundKeepsAnIndependentTierCursor in internal/sprint/deal_test.go
+     (docs/SPEC-SPRINT.md section 1, the rebalance and read-card deal)."
+     :origin "this card, the-rebalance-levels-reads-every-tick-all-at-once.w5, from the owner,
+      2026-10-11 ~18:50Z watching the fleet table (b3 held 36 ready behind 16 working, mini-m5 9
+      behind 16, while b1, b2, hetzner1, hetzner2, space, studio and vision had 2 to 9 idle lanes
+      each), and the same shape ~12:40Z (\"ready cards are sitting dead on freddy while he's full,
+      and they should be assigned elsewhere via rebalancing\").")
    (fix "tla-liveruns-rows-with-no-live-set" :release "v1.2.12" :status "planned"
      :title "LiveRuns models the rows whose beat carries no live set and the take's one-pass lag"
      :text "Models only, no product change. tla/LiveRuns.tla gains a Legacy constant (the rows whose beat carries no live set, workers from before v1.2.6) and a live variable, the beat's live set as the member's last pass left it. The reconcile skips a Legacy row as the code does (liveStopped returns early, LiveReturns continues past a beat with no live set, LiveCountKeys counts every such card running), WorkingIsLive is restated over the other rows, and the new LegacyNeverReturned holds that no working card of a Legacy row is returned by the reconcile. Take no longer names its card in the live set at once: it is named at the member's next pass, and the reconcile waits the grace from the take. Two reversed witnesses: Broken \"legacyreturned\" reconciles a Legacy row as an empty set (breaks LegacyNeverReturned) and Broken \"nograce\" drops the grace from the take (breaks NoRunReturned). Every liveruns case runs with Legacy = {\"r2\"} so one row exercises the legacy path in each; every existing case keeps its declared result."
