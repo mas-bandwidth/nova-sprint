@@ -891,6 +891,14 @@
    :title "verify compares the scope its tree was imported with, not the whole organization"
    :text "import --repo <org>/<name> now records the repositories it read as the work-tree's :scope, written only for a scoped import; a whole-organization tree stays byte for byte what it was, and a file without :scope reads as a whole-organization tree. verify with no --repo compares the tree's own scope (tla/WorkImport.tla's Verify already read the scope it imported), --repo narrows within it, and a --repo outside it is refused naming the scope before any GitHub call; verify --against does the same. Before, verify with no --repo read the whole organization and reported MISSING for every repository the scoped import left out."
    :origin "the card verify-defaults-to-the-trees-import-scope w2; the v1.2.12 inventory 2026-10-11 section 9 row D12 (code read at nova-sprint main 00c54ba)")
+  (fix "ready-over-reads-the-settled-rests" :release "v1.2.14" :status "planned"
+   :title "The ready-over judgment reads the deal's settled rests"
+   :text "A ready card whose tier is served only by a route resting at the tick's now raises the ready-over
+    judgment (a ready card is not dealt), naming the resting route, whether the provider's recorded rest or
+    one the rule rests this tick. The ready-over part settles the rests once as the deal does (withRests),
+    on the snapshot the conditions are counted on, so the route the judgment names as resting is exactly one
+    the deal does not draw; a rest whose time has ended is not named and the card is dealt."
+   :origin "card ready-over-reads-the-settled-rests.w2; the seat's v1.2.14 audit, 2026-10-11")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"

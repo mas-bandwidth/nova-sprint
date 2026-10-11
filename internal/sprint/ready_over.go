@@ -36,10 +36,12 @@ func init() {
 
 // routeWhys names each route of the tier that serves no card now, with why: disabled,
 // resting until paid, resting until woken, resting until its time, or out of budget (its
-// provider's balance at or under zero). A route that serves is not named. The model is
-// tla/ReadyOver.tla, OutOfBudget.
+// provider's balance at or under zero). A route that serves is not named. The rest a route
+// is named for is the deal's own settled rest (withRests, route_rest.go), the rests due
+// this tick included, so the route the judgment names as resting is exactly one the deal
+// does not draw; it is never recomputed here. The model is tla/ReadyOver.tla, OutOfBudget;
+// the judgment is the ready-over part, docs/SPEC-SPRINT.md section 8 (Notifications).
 func (s *Snapshot) routeWhys(tier string) []string {
-	rests := RouteRests(s.Routes, s.Fleet)
 	balances := ProviderBalances(s.Fleet)
 	var out []string
 	for _, r := range s.Routes {
@@ -50,7 +52,7 @@ func (s *Snapshot) routeWhys(tier string) []string {
 			out = append(out, r.Name+": disabled")
 			continue
 		}
-		if rest, ok := rests[r.Name]; ok && rest.Resting(s.Now) {
+		if rest, ok := s.resting(r.Name); ok {
 			out = append(out, r.Name+": resting until "+rest.UntilSaid()+": "+rest.Said())
 			continue
 		}
@@ -188,8 +190,14 @@ func readyOverConds(s *Snapshot, r TickReq) []cond {
 // TickReadyOver is the ready-over part: one judgment per (reason, tier) of the cards that
 // sat in ready past the sprint's ready bound (ReadyMax), naming the tier, each route that
 // does not serve it and why, and the remedy verb. It clears itself the tick the card is
-// dealt.
+// dealt. The rests are settled once, as the deal settles them (withRests, route_rest.go),
+// on the snapshot the conditions are counted on, so the reason the judgment names is the
+// deal's own (the rests it would not draw, those due this tick included); the ready-over
+// part runs on the end part's own snapshot (TickDeadlines, steps_tick.go), which never
+// settles it itself. The judgment is the ready-over part, docs/SPEC-SPRINT.md section 8
+// (Notifications).
 func TickReadyOver(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
+	s, _ = s.withRests()
 	return p, notify(&p, s, readyOverConds(s, r), []string{NReadyOver}, r)
 }

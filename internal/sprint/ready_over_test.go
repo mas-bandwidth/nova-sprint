@@ -29,6 +29,42 @@ func TestAReadyCardPastItsBoundWithNoRouteRaisesTheJudgment(t *testing.T) {
 	assert.Contains(t, ns[0].What, "pro-a: disabled", "the routes are listed with why")
 }
 
+// A card ready past its bound whose tier is served only by a resting route raises the
+// judgment, and the route it names as resting is one the deal does not draw: the rests are
+// the deal's settled rests (ready_over.go, withRests), the ones due this tick included
+// (tla/ReadyOver.tla, OnePerCause: a card blocked only by rests is judged).
+func TestAReadyCardBehindARestingRouteRaisesTheJudgment(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	w.s.Routes = []Route{{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true}}
+	w.s.Fleet.SetProp(PropProviderRest("p"), RouteRest{At: w.s.Now.Add(-time.Hour), Until: OpenUntil, Cause: RestAuth, Cards: []string{"x"}}.value())
+	w.tick(61 * time.Second)
+	// the deal does not draw the resting route: the card stays ready
+	d, _ := TickDeal(w.s, TickReq{})
+	w.do(d)
+	require.Equal(t, Ready, w.state("s1-1"), "the deal drew a card whose only route rests")
+	p, _ := TickReadyOver(w.s, TickReq{})
+	require.NotEmpty(t, p.Notes, "a card ready past its bound behind a resting route raises nothing")
+	w.do(p)
+	ns := w.notesOf(NReadyOver)
+	require.Len(t, ns, 1, "one judgment, not %d: %v", len(ns), ns)
+	assert.Equal(t, []string{"s1-1"}, ns[0].Primaries)
+	assert.Contains(t, ns[0].What, "pro-a: resting until woken", "the judgment names the rest the deal settled")
+}
+
+// A rest that ended before now is not the deal's: the route serves again and the deal deals
+// the card, so the ready-over part names no route and raises nothing (ready_over.go,
+// withRests: only the rests Resting at s.Now are settled).
+func TestAReadyCardBehindARestThatEndedIsNotJudged(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	w.s.Routes = []Route{{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true}}
+	w.s.Fleet.SetProp(PropProviderRest("p"), RouteRest{At: w.s.Now.Add(-2 * time.Hour), Until: w.s.Now.Add(-time.Hour), Cause: RestAuth, Cards: []string{"x"}}.value())
+	w.tick(61 * time.Second)
+	p, _ := TickReadyOver(w.s, TickReq{})
+	assert.Empty(t, p.Notes, "a rest that ended before now is not the deal's: the route serves and the card is dealt")
+}
+
 func TestTwoCardsWithTheSameCauseRaiseOneJudgment(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 2)
