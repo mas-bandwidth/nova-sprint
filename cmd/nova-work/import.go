@@ -49,8 +49,9 @@ func checkImport(c *tool.Call) {
 
 // importTree is layer 1's import (SPEC-WORK-V1 section 1.5): read-only,
 // non-destructive, every issue of every repository in scope, checked
-// through the file before it is written. tla/WorkImport.tla's Fetch and
-// WriteTree actions. A dry run reads all the same and writes nothing.
+// through the file before it is written. tla/WorkImport.tla's StartImport,
+// Fetch and WriteTree actions. A dry run reads all the same and writes
+// nothing.
 // --fixture reads recorded GraphQL pages (call-NN.json) through
 // workgh.Replay instead of gh (SPEC-WORK-V1 section 1.6).
 func (g github) importTree(c *tool.Call) *tool.Out {
