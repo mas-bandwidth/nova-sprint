@@ -30,7 +30,8 @@ type ClearResult struct {
 // the epoch once. All sprint state is keyed by epoch, so the new epoch starts
 // empty without restoring any of the old shape (the blank-slate clear design).
 // Nothing is deleted; the old epoch stays readable (At), and its writers are
-// refused as stale. The new epoch gets only its own STOPPED announcement.
+// refused as stale. The new epoch gets only its own STOPPED announcement
+// (tla/AttemptsEpochs.tla Clear).
 // tla/DirtyTickRead.tla Clear.
 func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 	var res ClearResult
