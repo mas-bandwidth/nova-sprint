@@ -312,6 +312,7 @@ func ReadsNeededIn(s *Snapshot, pr *Card) int {
 // before this (friendReadAsk); under the interim rule (reads asked together) a read she
 // holds at the attempt, outstanding or ok, counts toward what it needs, so a heavy
 // friend and one fleet reader of pro are its two readers.
+// tla/ReaderTiers.tla Refuse
 func enoughReadersUp(s *Snapshot, pr *Card) bool {
 	// the fast path: no states, no tiers cell, the tier routed, and no fleet reader held to
 	// flash by its empty cell for a read above flash (fleetReadsFlashOnly)
@@ -514,14 +515,16 @@ func ReadCardForAsk(s *Snapshot, primary string, attempt int, reader string) (id
 }
 
 // freeReaders is the readers the ask may ask the primary's attempt of: up,
-// serving the primary's tier (readerServesTier; an empty tiers cell reads every
-// tier, and a fleet reader serves only a tier it can draw a route of), with no
+// serving the primary's tier (readerServesTier; an empty tiers cell on a fleet
+// reader reads flash only while the store holds routes (read_route.go:87) and
+// every tier with none, and on a friend's reader every tier), with no
 // read card of it at the attempt, placed or retired with a verdict (a reader
 // with one has read it). When a card retired without a verdict exists with the
 // plain identity and no second card exists yet, the reader is eligible to be
 // re-asked under second identity .g1 (ReadCardForAsk): an away-retired card and
 // a refused card (RetiredByRefused) alike. The next attempt is read on new
 // cards, by every reader of the tier.
+// tla/ReaderTiers.tla Ask
 func (s *Snapshot) freeReaders(pr *Card, attempt int) []string {
 	tier := s.readTierOf(pr)
 	var out []string
@@ -550,6 +553,7 @@ func (s *Snapshot) freeReaders(pr *Card, attempt int) []string {
 // them (friendReadLive): placed or ok, it counts toward ReadsNeeded; broken, no second
 // read is asked (docs/SPEC-SPRINT.md, a read asked of any unit with room at
 // or above the read tier).
+// tla/ReaderTiers.tla Ask
 func ReadsWanted(s *Snapshot, pr *Card) int {
 	if readBranchMissingOpen(s, pr) {
 		return 0 // its branch is not on origin: the seat's judgment holds it (read_missing.go)

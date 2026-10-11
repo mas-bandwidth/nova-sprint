@@ -1,6 +1,7 @@
----------------------------- MODULE MCReaderTiers ----------------------------
-\* The instances of ReaderTiers.tla (tla/CASES.tsv, group readertiers): one flash
-\* reader (rf), two readers of every tier (ra1, ra2) and a held friend's reader
-\* row (hra), one flash card and one pro card (two reads).
+---------------------------- MODULE MCReaderTiers -----------------------------
+\* The instances of ReaderTiers.tla (tla/CASES.tsv, group readertiers): a fleet
+\* reader with an explicit flash cell (rf), a fleet reader with an empty cell
+\* (re), a friend's reader with an empty cell (ra), a held friend's reader row
+\* (hra), and one card on each tier (cf, cp, ch, cfz).
 EXTENDS ReaderTiers
 =============================================================================

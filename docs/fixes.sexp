@@ -74,6 +74,18 @@
     :title "The store package's own tests pin the shadow tick and the holds"
     :text "Tests only, no product change. New tests in internal/sprint/store drive Store.ShadowTick and Store.Holds through the unit tier's Mem store and assert on what a caller sees. ShadowTick: a running sprint with ready cards reports RUNNING with a deal part on the work table and a size the sum of its parts, and writes nothing; a STOPPED machine still plans; an epoch that owes its restore refuses and still owes it after; an operation left pending refuses (it repairs nothing) and is still pending after; queued work-table changes are planned as the drain part and the queue is not emptied; a primary waiting on reads is named in the plan's Reads; a store that moves on every read says the sprint is busy; and a custom Updates list leaves an empty part out, lists a due part with its due count, and a part that panics makes ShadowTick panic. Holds: a store with no sprint returns nil and no error; a held member, reader, friend and stream come back in kind order (members in fleet-table order, streams by name) each with its reason, and the list is empty after unhold; a member held with --return shows Return and without it none; an unreadable reader record is left out with no error and a friend's fleet row is not listed as a member. One defect the tests found (a reader set away with SetReaderAway alone, not held, is listed as held) is written as a v1.2.14 card, never fixed here."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C6")
+   (fix "tla-readertiers-empty-cell-reads-flash-only" :release "v1.2.12" :status "planned"
+    :title "The ReaderTiers model matches read_route.go's empty tiers cell"
+    :text "Models only, no product change. ReaderTiers.tla is read as the drift of 2026-10-11 against
+    read_route.go and readers.go: a fleet reader with an empty tiers cell reads flash only while the
+    store holds routes and every tier with none (fleetReadsFlashOnly), a friend's reader with an empty
+    cell reads every tier, and a held friend's reader serves nothing; the model now has the four tiers
+    (flash, pro, heavy, frontier), Need from ReadsNeededIn's values, and the ask places the card's
+    reads together (ReadsWanted). Eligible no longer filters on tier, so NoReadOutsideTier checks the
+    correct rule; the reversed witness MCReaderTiersBrokenEmptyReadsAll removes the fleetReadsFlashOnly
+    guard and fails NoReadOutsideTier. The freeReaders doc comment now says flash only while routes
+    exist."
+    :origin "this card, tla-readertiers-empty-cell-reads-flash-only.w1")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
