@@ -157,7 +157,9 @@ func notLaunching(s *Snapshot, up []string, c *Card) []string {
 	r := Route{Harness: c.F(FieldHarness)}
 	var out []string
 	for _, m := range up {
-		if !s.Launches(m, r) {
+		if !s.Launches(m, r) || s.stagingRepoWhy(m, c) != "" {
+			// a member that refused the card's repository at staging for want of a bench
+			// mirror (stagingRepoWhy) is avoided as one that cannot launch its route is
 			out = append(out, m)
 		}
 	}
@@ -437,6 +439,9 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 	if done {
 		return nil, tier, why, byFriend
 	}
+	if w := s.stagingRepoWhy(member, c); w != "" {
+		return nil, tier, w, false
+	}
 	if m.Pin != "" {
 		return map[string]string{FieldRoute: RoutePin, FieldModel: m.Pin, FieldTokens: m.Tokens, FieldUSD: "", FieldDeadline: strconv.Itoa(m.Deadline)}, "", "", false
 	}
@@ -486,6 +491,9 @@ func (s *Snapshot) routeServed(c, wc *Card, member string) (tier, why string, by
 	tier, why, byFriend, done, m := s.routeTier(c)
 	if done {
 		return tier, why, byFriend
+	}
+	if w := s.stagingRepoWhy(member, c); w != "" {
+		return tier, w, false
 	}
 	if m.Pin != "" {
 		return "", "", false // a pinned card runs on its pin: served
