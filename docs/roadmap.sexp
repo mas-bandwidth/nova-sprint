@@ -4,11 +4,20 @@
 ; The shape is in internal/roadmapdoc's package comment.
 (roadmap "v1"
  :title "nova-sprint roadmap"
- :text "This is the nova-sprint, nova-card and nova-work work planned after v1.4. The release ladder is
-  fixed (the owner, 2026-10-09): v1.2.1 is small fixes; v1.3 is larger fixes, and fixes only; v1.4 is
-  v1.3 plus unit tests, cleanup, dead code, adoption of the standard library and modules, and test
-  refactors. Then the line stops, and anything outside the ladder is recorded here instead of being
-  worked. These items were the sprint half of nova-tools' roadmap and moved here with the split, with the
+ :text "This is the nova-sprint, nova-card and nova-work work after the point releases. The release plan
+  (the owner, 2026-10-11) replaces the ladder of 2026-10-09. The v1.2.x point releases come first and
+  are cut in turn: v1.2.10 (being cut), v1.2.11 small fixes, v1.2.12 tests and models only, v1.2.13
+  contraction (fewer lines, no behaviour change), v1.2.14 the next small fixes; FIXES.md holds each
+  one's scope and fixes, and an item below whose target is a v1.2.x release is waiting for its card.
+  The aim is v1.2.x working pretty well, so it is the reference for intended behaviour: v1.3, unstable,
+  is the re-architecture (the client/server conversion, then each layer secured from the bottom), built
+  by the sprint running on v1.2.x and checked against it, rather than a blind rewrite; like getting a
+  compiler self-hosting, then using it to build a better compiler. v1.4 is the stable release of v1.3,
+  architecturally correct top to bottom. Point releases continue until only architectural items are
+  open: an area stops taking point fixes when a fix there is the same problem in another form, or would
+  be its third, and each v1.3 architectural item names the point fixes it replaces. Friend work is
+  dogfooded within the week, once more friends are online: friends alone, then friends and fleet
+  together, each friend bug a point-release card. These items were the sprint half of nova-tools' roadmap and moved here with the split, with the
   sprint's docs and models; nova-tools' ROADMAP.md holds the rest. Point-release work is in FIXES.md, not here. Each item says what it is and why it
   waits. Where the code already has part of an item, the item says what exists and covers only the gap."
 
@@ -141,13 +150,6 @@
    :why "A new verb."
    :cards 1
    :date "2026-10-09")
-  (item "briefs-by-reference" :group "sprint" :area "nova-card"
-   :title "Briefs carry the card contract by reference"
-   :text "A brief names the card contract instead of carrying its text, so briefs are shorter and the
-    contract has one copy."
-   :why "A format change."
-   :cards 1
-   :date "2026-10-09")
   (item "friends-token-cost-category" :group "sprint" :area "nova-sprint"
    :title "A cost category for friend work, in tokens"
    :text "Friend work counted in tokens as its own cost category beside the tiers, so subscription work
@@ -215,7 +217,7 @@
     generator and the template say that GOCACHE is the shared warm cache, and that a card past its
     deadline is judged by the coordinator."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.2.14"
    :origin "cards moved out of the sprint (work record, 2026-10-04)")
   (item "card-ledger-plan-single-wave" :group "sprint"
    :title "Plan a ledger of cards in one wave"
@@ -229,7 +231,7 @@
    :text "The usage block of nova-card generate lists the same example line in the flow section and again
     as the example. The help renderer prints it once."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.2.14"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "card-view-by-tier" :group "sprint"
    :title "View cards in review by tier"
@@ -264,7 +266,7 @@
    :text "The lander does not fail or mislead when a card produces an empty commit; this is pinned by unit
     and functional tests."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.2.14"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "friends-table-presence-from-tools" :group "friends"
    :title "Friends table reads presence owned by nova-tools"
@@ -727,7 +729,7 @@
    :title "Staticcheck clean in the sprint reference model"
    :text "Remove unused variables so staticcheck is clean in the reference model package."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.2.12"
    :origin "PR #5335")
   (item "where-costs-by-tier-and-late-tick" :group "sprint"
    :title "where --costs carries tiers and cost by tier; a late tick reads running"
@@ -818,7 +820,7 @@
    :text "A health proof with a time ahead of the server clock is refused, so a friend cannot be kept up
     by a future date. The proof order check then stays sound."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.2.14"
    :origin "nova-sprint PR #2")
   (item "role-views-for-models" :group "sprint"
    :title "Role views for a model: view coordinator, view worker, and a view API"
@@ -860,7 +862,7 @@
    :text "Moving the coordinator seat also updates the config sprint row and the stored coordinator role.
     A later config apply then does not write the old holder back."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.2.14"
    :origin "nova-sprint issue #42")
   (item "sprint-failed-card-fast-and-raised" :group "sprint"
    :title "A failed card is known in seconds and raised, not redealt"
@@ -1248,13 +1250,13 @@
    :text "The helper returns whatever Redis is first on the path. It should pin the version and fail on a
     mismatch, like the shared helper."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.2.12"
    :origin "issue #5172")
   (item "tick-watchdog-bounded-diagnostics" :group "sprint"
    :title "The tick watchdog bounds diagnostics and refuses negative deadlines"
    :text "Watchdog exit must not wait on diagnostics that can block. A negative deadline is refused."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.2.14"
    :origin "issue #5173")
   (item "sprint-cost-rules" :group "sprint"
    :title "Cost rules: flash first, escalate repeats, rest failing routes"
@@ -1734,7 +1736,7 @@
    :text "Admission lint, recut and rework refuse a repo line that is not owner/name, and the tier writer
     stamps only the result line."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.2.14"
    :origin "card from the sprint store (2026-10-10)")
   (item "tidy-tombstone-for-landed-cards" :group "sprint"
    :title "Tidy leaves a tombstone for every landed card"
@@ -2077,4 +2079,22 @@
     confidence lowers or flags the verdict."
    :date "2026-10-10"
    :release "v1.3"
-   :origin "issue #3393")))
+   :origin "issue #3393")
+  (item "a-plan-gate-before-code" :group "sprint" :date "2026-10-11"
+   :title "A plan gate before code"
+   :text "A card above a size bound writes a plan first, and a reader reviews the plan before implementation starts. The design agreed with the owner on 2026-10-11 has two levels. Inside a card, working splits into planning, then a plan read, then implementing: the plan is committed to the card's branch as PLAN.md, and implementing is a second take on the same branch, so a one-shot child starts from the file, not from memory; a refused plan is a re-plan take. Above cards, a plan node turns a roadmap entry into cards with their dependencies (its scope, the cards, their DEPENDS lines and a read), feeds a stream, holds the cap of about 10 unadmitted drafts, and is what nova-work later imports as a node. Both levels are modelled in TLA+ with the card machine before either is built."
+   :why "A new machine stage, not a fix."
+   :release "v1.3"
+   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (item "a-review-audit" :group "sprint" :date "2026-10-11"
+   :title "A review audit"
+   :text "The last gate checks the reads instead of adding another read: that each reader had the repository, ran the tests, and cited lines."
+   :why "A new gate, not a fix."
+   :release "v1.3"
+   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (item "a-precedent-log" :group "sprint" :date "2026-10-11"
+   :title "A precedent log"
+   :text "An append-only log of the coordinator's decisions, which the machine reads before it raises a judgment, so a question already settled is not asked again."
+   :why "New capability."
+   :release "v1.3"
+   :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")))
