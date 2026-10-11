@@ -1470,6 +1470,10 @@
    :title "Every producer card has its consumer out after the tick"
    :text "Adds ConsumersOut check at the end of every tick to assert that every producer card (working, fix, review) has its consumer out: an attempt held by an up member/friend for working/fix, or reads asked by up readers for review. Violations are reported as quiet judgments. Also reduces MaxSettle from 64 to 32 as per the owner's design, and changes settle bound handling to push a judgment instead of erroring the tick."
    :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17; card every-producer-card-has-its-consumer-out-after-the-tick.w1")
+   (fix "tla-dirtytick-consumers-out-at-the-tick-end" :release "v1.2.14" :status "planned"
+    :title "DirtyTick models ConsumersOut at each tick's end"
+    :text "tla/DirtyTick.tla gains ConsumersOut, an action property checked at each tick's end: every working card's attempt is held by a machine up, every review card's read is held by a reader up (unless judged stranded, no route, at its bound, or its read already said ok), and every ready card a route serves and a free up slot could take is dealt in the same tick. The fix \"consumersout\" re-pumps the work table in the settle loop (sub-ticks until the consumer queue is empty, bound MaxSub 32, reaching it a judgment SettleBoundJudged). tla/MCDirtyTickConsumers.tla and .cfg (width 2) check it, with four reversed witnesses (a deal of one card per tick, a settle loop cut after one sub-tick, a read asked in the next tick instead of this one, a member-down whose attempts are not re-dealt) that TLC must fail."
+    :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17; card tla-dirtytick-consumers-out-at-the-tick-end-2.w7; continued by card tla-dirtytick-consumers-out-at-the-tick-end-2.w9")
   (fix "ready-over-reads-the-settled-rests" :release "v1.2.14" :status "planned"
    :title "The ready-over judgment reads the deal's settled rests"
    :text "A ready card whose tier is served only by a route resting at the tick's now raises the ready-over
