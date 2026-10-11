@@ -829,7 +829,7 @@ type ProgressReq struct {
 // works (docs/SPEC-SPRINT.md section 8, the rules table's row late; tla/SprintRules.tla,
 // Stamp): the late rule's sign that the card moves. Only the holder stamps: a card that is
 // not working, one held by another row than As, and one named at a generation that is not
-// its live one are refused, and nothing else of the card changes.
+// its live one are refused, and nothing else of the card changes (tla/AttemptsEpochs.tla Report).
 func Progress(s *Snapshot, r ProgressReq) Plan {
 	var p Plan
 	if r.As == "" || len(r.Sel.IDs) == 0 {
