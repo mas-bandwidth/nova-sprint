@@ -983,6 +983,18 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-whopreference-tiers-pins-and-takeback" :release "v1.2.12" :status "planned"
+   :title "tla/WhoPreference.tla gates the deal on tiers, the preference order, the take-back memory and the released pin"
+   :text "The model is brought to the code where it had drifted: the deal is gated on the worker's tier set
+    (Admits), a card with a named friend goes to her first and the rest go by the code's preference
+    (an idle lane, then room, then name), a card taken back from a friend is recorded and never dealt to
+    her again, and a hard pin released past its bound (stops.go PinReleased) becomes a preference while
+    OnlyToItsFriend holds only while the pin is not released. Two reversed witnesses: Broken \"anytier\"
+    drops the tier gate and fails the new DealtAdmitted; Broken \"dealback\" redeals a taken-back card to
+    the same friend and fails the new NeverBackToTheSameFriend. The rebalance's one-tier-up overflow and
+    cheapest-first order do not fit the two tiers and are not modelled."
+   :origin "this card tla-whopreference-tiers-pins-and-takeback; v1.2.12 inventory item T36; drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
