@@ -983,6 +983,22 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-roadmapentry-note-and-four-write-save" :release "v1.2.12" :status "planned"
+   :title "RoadmapEntry models Note and Save's four writes"
+   :text "Models only, no product change. RoadmapEntry (tla/RoadmapEntry.tla) gains Note (an open
+    entry's title and text change and its place does not) and Save's four writes across the two files in
+    the code's order (destination data, destination page, source data, source page; internal/roadmap
+    roadmap.go:608-624), with a stop possible between any two and NoLoss still held. ChildLinked is
+    restated over the items decode() checks (a fix's :release names a (release ...) record,
+    internal/roadmapdoc/fixes.go:130-131) and leaves out the constant set of scheduled notes whose
+    :release decode() never checks, which Schedule records. Five reversed witnesses: lastchild,
+    sourcefirst, movedone, shippedmove and the new pagefirst (a file's page written before its data,
+    caught by PageAfterData). The unguarded Note of a done fix or a shipped release (roadmap.go:546-577,
+    against the package doc at roadmap.go:20-21) is outside this module and named a v1.2.14 candidate.
+    The TLC records are owed: the attempt's machine had no tla2tools.jar, so no case has a current PASS
+    record and the tla/COVERAGE.tsv row stays partial."
+   :origin "this card; v1.2.12 inventory item T23; drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+
   (fix "cover-gc-loop-and-backup-out-refusals" :release "v1.2.12" :status "planned"
    :title "Unit tests for the gc loop and backup --out's step refusals"
    :text "cmd/nova-sprint's gcLoop (gc.go) had no test of its own behaviour, and backupOut.run's step
