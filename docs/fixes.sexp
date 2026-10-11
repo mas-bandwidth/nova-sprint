@@ -255,6 +255,58 @@
     :title "DirtyTickRead models Start, the run sequence, and the stale-run refusal"
     :text "Models only, no product change. tla/DirtyTickRead.tla gains a runseq variable and a Start action as the code has them: Stop and Start each take the fence (the generation steps), Start bumps runseq (machine_transition.go's RunSeq), and a part records the runseq it began under (tick.go's TickRunSeq) so its Commit requires it to be the current one (engine.go's StaleRun refusal). The new invariant NoStaleRunCommit holds that no part commits under a runseq other than the one current at its commit, and the reversed witness MCDirtyTickReadBrokenRunSeq (Broken \"runseq\" drops the runseq check from Commit) violates it; the four existing witnesses keep the property their rows name. The small instances drop MaxParts to two and add MaxStarts = 1 so each finishes in budget."
     :origin "this card, tla-dirtytickread-start-and-run-sequence-2.w4, 2026-10-11: v1.2.12 inventory item T9; drift read at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "the-dashboard-scrolls-smoothly-under-the-pulse-and-the-poll" :release "v1.2.12" :status "planned"
+    :title "The dashboard scrolls smoothly under a held Page Down while the sprint runs"
+    :text "The page's pulse and its per-poll layout fit no longer starve the browser's smooth scroll, and
+     the page shows exactly what it showed before. The top bar's pulse now animates opacity itself, a
+     property the compositor runs on its own thread, instead of a registered custom property --pulse,
+     which runs on the main thread and re-styled and repainted all 151 in-flight cells every frame; the
+     @property declaration and every var(--pulse) use are gone, and merging, review and working keep the
+     same 2.4 s cycle and the same negative animation-delays (0, -2.25 s, -2.1 s), with .stopped and
+     prefers-reduced-motion still stopping it. render() no longer calls fitTables() on every poll
+     (POLL_MS = 1000): the fit runs on load, on resize, and only when a panel's data-derived fit key — the
+     text each row draws (a stream's display name, its status pill and its tag line; a bud's label; a
+     provider's state and note), with every digit folded to one character so a figure that keeps its width
+     leaves it — changes, so a stable poll whose rows read the same does no width measurement at all; and a
+     compact panel keeps its class while the full form is measured on an off-screen copy that carries the
+     panel's own width, so no class toggle sits between the reads and the copy lays out what the panel
+     would. page/index.html carries @keyframes pulse { 0%, 17%, 100% { opacity: 1; } 58.5% {
+     opacity: .55; } }; page/app.js carries fitKey, shape, budKey, overflow, fitIfChanged and the
+     copy-based fitTables. The off-screen copy is measured with .folded taken off it too (the reader's
+     finding on attempt 3): a folded panel's .scroll is display:none, so its rows read zero widths and
+     could clear .compact on a live panel; the copy is made for every panel, folded or not, so an
+     originally noncompact folded panel is measured as it shows when open. And every fold or unfold
+     schedules a fresh fit after the toggle lands (page/app.js fitOnFold), so a panel measured hidden is
+     not left with a stale fit until a resize or a fit-key change.
+     New tests in internal/sprintdash/dashboard_test.go pin it: TestThePulseAnimatesOpacityOnTheCompositor
+     refuses any @keyframes that animates a custom property, or, under an infinite animation, anything but
+     opacity, transform or filter; TestRenderFitsOnlyWhenTheLayoutCanChange refuses an unconditional
+     fitTables() in render; TestTheOffscreenFitCopyKeepsThePanelWidth holds the copy to the panel's width;
+     TestTheStreamsFitKeyFollowsTheRenderedText holds the key to the rendered names, status and tags;
+     TestAStablePollDoesNotMeasureWidths holds an unchanged poll out of the fit; and
+     TestTheFitMeasuresAVisibleNaturalWidthCopy holds the copy to a visible natural form (both .compact
+     and .folded off) and the fold button to a fresh fit.
+     The rest of the poll's layout work is gone too (the reader's finding on attempt 7, fixed in
+     attempt 8): moving fitTables out of the poll left other layout-forcing reads in render's path.
+     renderStreams read the landed header cell's offsetWidth after its own DOM writes, renderOverall
+     counted cells from the overall box's clientWidth, and renderTopStreams read the root font size
+     with getComputedStyle and the pie's clientWidth; each forced a synchronous layout once a
+     POLL_MS. page/app.js carries measureMetrics, which reads those widths once per layout — on load,
+     on resize (its listener registered before the renderers' resize listeners, so the cache is fresh
+     before they read it) and at the end of fitTables — and caches them, applying the streams landed
+     header's width itself; cellsThatFit takes the cached overall width, and the live read it keeps is
+     a first-render fallback only. The layout-forcing reads left in the render path are named with
+     why they must stay and their cost: fits reads scrollWidth and clientWidth so a tile can choose
+     among its shorter forms by its own live pixel width (one to three reads on the eta-at and
+     inflight-sub tiles a poll), and flash reads void t.offsetWidth to restart the 1.5 s flash
+     animation in place when the same figure changes again within its cycle (one reflow per changed
+     figure, and none at all from a poll whose values are unchanged, since every set helper returns
+     before it flashes). With no browser on the bench (bench b3 has node and no headless Chrome), no
+     requestAnimationFrame gap or long-animation-frame numbers are possible; RESULT.md says so
+     plainly, as the card allows. TestThePollReadsNoLayoutForWidths pins the cache (red first against
+     the un-fixed page: app.js carries measureMetrics()).
+     No visual change."
+    :origin "this card, attempts 4 through 8 (the-dashboard-scrolls-smoothly-under-the-pulse-and-the-poll.w4-w8.g2.e17), 2026-10-11: a reader found attempt 3 measured the folded copy with .folded left on (its .scroll display:none, zero widths) and no fit on fold/unfold; attempts 5 through 7 carry that work unchanged, attempt 7 re-runs its tests red first against the un-fixed page (dashboard_test.go:391-404 and 429-432); a reader found attempt 7 left per-poll layout-forcing reads in render's path and no browser measurement, so attempt 8 caches the widths in measureMetrics and names the reads that must stay in RESULT.md; the owner, 2026-10-11 ~19:35Z: \"There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical.\"")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
@@ -2056,4 +2108,32 @@
   (fix "a-hook-gate-refusal-is-not-a-land-fault" :release "v1.2.13" :status "planned"
    :title "A landing the hook gate refuses does not roll a switch back"
    :text "BLOCKER. server switch --rollback --window 30m restarts the server, the restart ends the seat's hook (the seat hook record says state=gone, why=the server restarted), and the new server's first landing pass, run as the coordinator before the seat hooks in again, is refused by the hook gate (nova-sprint land REFUSED: You must hook in first: run nova-sprint hook). landOnce counted any nonzero exit of the landing as a land failure and asked CheckRollbackOnLandFailure, and the store's open refuses through refuse, exit 2, the code of a pass fault, so the v1.2.12 switch rolled itself back to v1.2.11 1.5 seconds after it began; every switch with --rollback met the race. The hook gate's refusal is now the typed error hookGateError (coordinator.go coordinatorGate; storeCtx returns it), land reports it to landOnce through the app.land seam (cmdLand is unchanged for the command line, exit 2 and the same words), and landOnce, on it, does not ask the rollback check: the window, the binary and the switch state stay as they were, the pass prints one line, LAND WAITS for the seat's hook: <the gate's sentence>; nothing was landed, and the next pass tries again, and the loop's next pass is LandEvery as before, so it neither spins nor waits longer. The refusal is found by errors.As, never by its words. Only a landing that was let through and failed counts toward the rollback. Tests in cmd/nova-sprint/landloop_hookgate_test.go: TestAHookGateRefusalInTheWindowIsNotARollback (three passes in the window refused by the gate: no SERVER ROLLBACK, the switch stands, the state file is kept, one waits line each pass, the card is still queued; then, the seat hooked in, a failing landing rolls back), TestARealLandFailureInTheWindowStillRollsBack and, in hookgate_error_test.go, TestTheHookGateRefusalIsATypedError. tla/ServerSwitch.tla gains hooked, SwitchRestart, SeatHooksIn and LandHookRefused, every landing outcome now guarded by hooked, the invariant NoRollbackOnAHookRefusal and the reversed witness hookfault (MCServerSwitchBrokenHookfault, which counts the refusal as a land fault and rolls the switch back), run with TLC on hetzner2. docs/SPEC-SPRINT.md section 14 states the rule where the switch and its window are described."
-   :origin "this card, a hand fix by the coordinator's child, 2026-10-11 ~21:00Z; the v1.2.12 switch (nova-sprint server switch --rollback --window 30m): SEAT HOOK state=gone why=the server restarted, then nova-sprint land REFUSED: You must hook in first, then SERVER ROLLBACK to v1.2.11 1.5 s later; code read at nova-sprint main f94ea09c (cmd/nova-sprint/landloop.go landOnce, internal/sprint/server_switch.go CheckRollbackOnLandFailure)")))
+   :origin "this card, a hand fix by the coordinator's child, 2026-10-11 ~21:00Z; the v1.2.12 switch (nova-sprint server switch --rollback --window 30m): SEAT HOOK state=gone why=the server restarted, then nova-sprint land REFUSED: You must hook in first, then SERVER ROLLBACK to v1.2.11 1.5 s later; code read at nova-sprint main f94ea09c (cmd/nova-sprint/landloop.go landOnce, internal/sprint/server_switch.go CheckRollbackOnLandFailure)")
+
+  (fix "a-landing-pushes-each-repo-and-base-on-its-own-lane" :release "v1.2.15" :status "planned"
+   :title "A land pass pushes each repository and base on its own lane"
+   :text "A land pass merged and gated streams side by side (phase 1), then landed every
+    built batch from one serial loop across every repository and every base: while one
+    batch rebuilt and ran a combined tree gate (minutes), a built batch of another
+    repository or another base waited, and the same goroutine prepared each next job. Phase
+    2 now runs one landing lane per (clone, base): each lane is a goroutine with its own
+    ready list and its own pushed list, ordered by stream priority and landGrace exactly as
+    the one loop ordered them, and pushes its batches one at a time; different clones, and
+    different bases of one clone, share no ref and no tip, so their pushes run side by side
+    (serial within one base is the design and stays, tla/LandPass.tla). The job's prepare
+    runs in its own goroutine, the first cuts of one repository and base still in priority
+     order; the fetch lock becomes one lock per clone, keyed on the clone's own directory
+     (fetchKey, the parent of its common git dir), so a fetch in a stream's worktree takes
+     the same lock as the clone's own worktree writes: two clones' fetches and worktree
+     writes go side by side while one clone's stay serial; failed and the queues are updated
+     under one mutex. The key is stable across the clone's own creation (it was the directory
+     before `git clone` made it and the common git dir after, so two lanes of one repository
+     could take two locks and prepare a half-made clone; attempt 8 keys on the clone
+     directory, the common git dir's parent). The landing
+     order within one base and every message are unchanged."
+    :origin "this card, a-landing-pushes-each-repo-and-base-on-its-own-lane.w5; the owner,
+     2026-10-11: \"What else is like serial reads, going out one at a time, when they could go
+     out at the same time in || ?\" and \"OK please log critical cards to fix all these serial
+     things that should be parallel (with good reason to be ||).\"; found by the seat's audit
+     child on nova-sprint main the same day (cmd/nova-sprint/landpass.go, THE LANDINGS, SERIAL);
+     attempt 8 fixes the clone-creation key a reader found (land.go, clone)")))
