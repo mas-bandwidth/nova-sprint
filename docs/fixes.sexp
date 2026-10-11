@@ -900,4 +900,14 @@
 
   (fix "two-ci-flakes-text-file-busy-and-git-maintenance" :release "v1.2.10" :status "shipped"
    :title "Two CI flakes: exec'd stubs written under the fork lock, and git's auto maintenance off in tests"
-   :origin "PR #88")))
+   :origin "PR #88")
+   (fix "fleet-up-probe-releases-an-environment-held-member" :release "v1.2.11" :status "planned"
+    :title "fleet up --probe passed releases a member held by an environment fault"
+    :text "fleet up --probe passed on a member held by an environment fault (held_by=environment) was
+     refused by the store's manifest check: the release path and EnvProbePatch each unset the hold's four
+     fields, so one entry named each twice. A field is now unset once per entry (unsetPresent keeps each
+     name once, in first-seen order), and fleet up's own unset of the hold is left to EnvProbePatch when
+     the passed probe clears the fault, so a coordinator's, the fault's or the sync's hold stays for a
+     person to lift (the probe never lifts a person's hold). tla/ProviderBudget.tla, FleetUpRefusesUncleared,
+     already said a passed probe clears the fault; this is the implementation catching up."
+    :origin "this card")))
