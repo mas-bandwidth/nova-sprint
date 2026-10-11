@@ -7175,8 +7175,9 @@ The coordinator's verbs go to the server too. The server listens a second time o
 loopback address at the same port, and there it runs any verb of the command but the ones it
 runs for nobody: itself (`run`, `tick`), `land` and `play`, which work outside the store for
 seconds or minutes, `fleet sync` and `friend sync`, which read the config store with their
-caller's own credentials, and `friend clean`, `friend reconcile` and `gc`, which work on the directories of the machine they
-run on, nor a read that waits for the sprint to move (`where --watch`, `inbox --wait`): the
+caller's own credentials, `friend clean`, `friend reconcile` and `gc`, which work on the directories of the machine they
+run on, `doctor`, which reads the config store with its caller's credentials, and `dashboard`, which
+serves a page until it is interrupted and reads through the server, nor a read that waits for the sprint to move (`where --watch`, `inbox --wait`): the
 server moves the sprint on the one line of control such a verb would hold. With
 `NOVA_SPRINT_SERVER=<host:port>` set (the loopback address `run --listen` prints), every verb the
 server runs, the reads included, is not run where it is typed: its arguments are sent to the
