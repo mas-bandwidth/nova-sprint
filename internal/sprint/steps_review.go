@@ -312,7 +312,7 @@ func Ask(s *Snapshot, r AskReq) Plan {
 			u.Moved += "; its read taken back from " + instead + " (instead)"
 		}
 		if another {
-			u.Closes = closesFor(s.Open, []string{NReadBroken, NBriefWrong, NReadsExhausted, NStranded, NStalled}, c.ID)
+			u.Closes = closesFor(s.Open, []string{NBriefWrong, NReadsExhausted, NStranded, NStalled}, c.ID)
 		} else {
 			u.Closes = closesFor(s.Open, []string{NStranded, NStalled}, c.ID)
 		}
@@ -788,7 +788,7 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 	}
 	attempt := pr.Int("attempt")
 	oks := map[string]bool{}
-	outstanding, broken, reads := false, false, 0
+	outstanding, reads := false, 0
 	for _, r := range s.Readers.Rows() {
 		for _, id := range ReadCardIDs(pr.ID, attempt, r) {
 			c := s.Readers.Placed(id)
@@ -812,12 +812,10 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 				continue
 			}
 			reads++
-			switch {
-			case col == Asked || col == Reading:
-				outstanding = true
-			case col == Broken:
-				broken = true
-			case col == OK && c.F("head") == pr.F("head") && ReadCardAgrees(c):
+		switch {
+		case col == Asked || col == Reading:
+			outstanding = true
+		case col == OK && c.F("head") == pr.F("head") && ReadCardAgrees(c):
 				oks[r] = true
 			}
 			break
@@ -841,8 +839,6 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 		switch {
 		case col == Asked || col == Reading || col == Working || col == Ready:
 			outstanding = true
-		case col == Broken:
-			broken = true
 		case col == OK && friendReadAgrees(c) && readHeadMatches(s, pr, c):
 			oks[c.F("reader")] = true
 		}
@@ -864,7 +860,11 @@ func reviewJudgment(s *Snapshot, pr *Card, st reviewStep) (Note, bool) {
 	}
 	var typ, why string
 	switch {
-	case len(oks) >= ReadsNeededIn(s, pr) && !broken:
+	case open[NReadBroken]:
+		// a broken read at the head outweighs any number of oks (docs/SPEC-SPRINT.md section 8,
+		// read-broken rule): the card goes back to work with the finding
+		return Note{}, false
+	case len(oks) >= ReadsNeededIn(s, pr) && !open[NReadBroken]:
 		if offers || AcceptHeld(pr) == "" {
 			// the tick's pump accepts it, RUNNING or STOPPED (at the first pump after
 			// start): "accept is mechanical", and a hand step is a missing instruction

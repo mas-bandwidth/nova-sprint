@@ -701,9 +701,8 @@ func TestReturnAnswersCIRed(t *testing.T) {
 	}
 }
 
-// The model's "readsexhausted": both readers broken, ask another answers
-// both judgments, the third says ok: one ok, nothing outstanding, no open
-// judgment on the primary.
+// Both readers broken, ask another, third says ok: one ok, nothing outstanding,
+// but NReadBroken remains open - a broken verdict at the head outweighs any oks.
 func TestReadsExhaustedIsAJudgment(t *testing.T) {
 	t.Parallel()
 	p := newProbe(t)
@@ -719,7 +718,7 @@ func TestReadsExhaustedIsAJudgment(t *testing.T) {
 		}
 	}
 	o := p.openOn("s1-1")
-	if len(o) != 1 || o[0].Note.Type != sprint.NReadsExhausted {
+	if len(o) != 1 || o[0].Note.Type != sprint.NReadBroken {
 		assert.Fail(t, fmt.Sprintf("s1-1 sits in review with one ok, nothing outstanding, and open judgments %v", o))
 	}
 }
