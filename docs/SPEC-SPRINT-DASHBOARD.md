@@ -67,10 +67,11 @@ CI's "page lock only grows" step (`TestThePageLockOnlyGrows` against the pull re
 when an old line of pagelock.txt is rewritten, dropped or moved. One change needs no ask: a comment-only
 line (`<date> <digest> comment-only "<reason>"`, its reason quoted here on a line of its date) for a change
 that touches comments alone. The same CI check holds it to that: the page's rendered form (every comment taken
-out of index.html, its CSS and inline scripts, and app.js) must digest the same at the base and the head. The card lint holds
-the same rule before a card is written: `add` and `brief` refuse a card whose PATHS: or NEW:
+out of index.html, its CSS and inline scripts, and app.js) must digest the same at the base and the head. The card lint
+(`dashboard-asked-for`, pkg/swarm/dashboardask.go) is ask-only: it refuses a card whose PATHS: or NEW:
 reaches the page's files, pageview.go or dashboard.go unless its SOURCE: line quotes the owner
-asking for that visible change, dated (`dashboard-asked-for`, pkg/swarm/dashboardask.go).
+asking for that visible change, dated. A card that reaches the page still quotes the owner's ask;
+the comment-only form exists only in the lock, and the lint knows nothing of it.
 
 - 2026-10-11 the owner, of the page the Python server serves at :7390: "this is what it is."
 - 2026-10-11 the owner: "Remember that the reason we are in this mess is that you forgot to display the orange read cards."
