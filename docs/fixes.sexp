@@ -259,7 +259,7 @@
    (fix "tla-dirtytickread-start-and-run-sequence-2" :release "v1.2.12" :status "planned"
     :title "DirtyTickRead models Start, the run sequence, and the stale-run refusal"
     :text "Models only, no product change. tla/DirtyTickRead.tla gains a runseq variable and a Start action as the code has them: Stop and Start each take the fence (the generation steps), Start bumps runseq (machine_transition.go's RunSeq), and a part records the runseq it began under (tick.go's TickRunSeq) so its Commit requires it to be the current one (engine.go's StaleRun refusal). The new invariant NoStaleRunCommit holds that no part commits under a runseq other than the one current at its commit, and the reversed witness MCDirtyTickReadBrokenRunSeq (Broken \"runseq\" drops the runseq check from Commit) violates it; the four existing witnesses keep the property their rows name. The small instances drop MaxParts to two and add MaxStarts = 1 so each finishes in budget."
-     :origin "this card, tla-dirtytickread-start-and-run-sequence-2.w4, 2026-10-11: v1.2.12 inventory item T9; drift read at nova-sprint main 00c54ba2e 2026-10-11")
+    :origin "this card, tla-dirtytickread-start-and-run-sequence-2.w4, 2026-10-11: v1.2.12 inventory item T9; drift read at nova-sprint main 00c54ba2e 2026-10-11")
    (fix "tla-land-repair-guards" :release "v1.2.12" :status "planned"
     :title "Land's Repair skips sentinels, held and pushed-unreported cards, and PushedNeverSentBack covers Repair"
     :text "Models only, no product change. tla/Land.tla Repair checked only ~Marked, where the code's repair
