@@ -1306,6 +1306,11 @@
     words sent."
    :origin "this card; the seat's child 2026-10-11 ~18:45Z, reading superman's and batman's member logs after the v1.2.11 adopt")
 
+  (fix "tla-seathealth-deleted-health-and-evidence" :release "v1.2.12" :status "planned"
+   :title "SeatHealth models the health delete, the rung-5 write, and the beat proof"
+   :text "Models only, no product change. tla/SeatHealth.tla was read against internal/sprint/friend_health.go, friend_stall.go and presence.go and drifted in four places, each brought to the code. A friend's health row can be deleted (Clear: friend health --clear, or the stall ladder's rung-5 release), so the row holds no proof to compare and an older proof is then accepted; ProofNeverGoesBack is restated to hold while the row exists. Rung 5 writes the row outside NotHealth (Rung5Down) with Seen = now and the current generation. FriendEvidence makes her up on her beat's proof (Prove) on a fresh beat and never counts a raw beat, and the code's three evidence windows (pong 10 m, proof 15 m, finish 30 m) are one DownAfter. OldSeatNeverUp is restated over the observation's word alone (the beat proof is not the seat's). A seventh reversed witness MCSeatHealthBrokenClearKeepsRow (Broken \"clearkeepsrow\") deletes the proof but keeps the row observed, then takes an older proof, failing the restated ProofNeverGoesBack; the six existing witnesses keep their results. presence.go and friend_stall.go each gain one comment line citing the module; tla/RUNS.tsv is merged and tla/COVERAGE.tsv notes her beat's down word and a finished card are still outside."
+   :origin "card tla-seathealth-deleted-health-and-evidence, 2026-10-11: v1.2.12 inventory item T27 and section 9 (D10), at nova-sprint main 00c54ba2e")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
