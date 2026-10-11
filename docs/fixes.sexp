@@ -864,6 +864,20 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "cover-idle-trace-and-the-bound-rule" :release "v1.2.12" :status "planned"
+   :title "Cover the idle trace and the bound rule in their own package"
+   :text "internal/sprint's own tests never ran the idle alarm's words (TraceIdle, idle.go:90) or
+    its episode (TickIdle, idle.go:248), nor the bound rule (ruleBound, rules.go:337); their only
+    tests were in internal/sprint/store. Add idle_trace_behaviour_test.go and
+    rule_bound_behaviour_test.go: the idle note's drop-blocked, missing-need and cycle, held and
+    sentinel roots, a tier no route serves, a need on a stopped stream, a need an open judgment
+    holds, the nine-root truncation, plus the tick's one-note episode and its clear; and the bound
+    rule's answers through RuleAnswers with an open NBound judgment (off the table, not at a bound,
+    a budget failure raised a tier, a flash card at its real redeal bound raised a tier, a card
+    every member up refused at staging, heavy to a friend, the rule off). Tests and models only, no
+    product change."
+   :origin "this card, cover-idle-trace-and-the-bound-rule.w2")
+
   (fix "cover-route-table-stats-routes" :release "v1.2.12" :status "planned"
    :title "In-package behaviour tests for the stats route table"
    :text "RouteTable (internal/sprint/routetable.go:25), the table `nova-sprint stats --routes` prints
