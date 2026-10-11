@@ -144,7 +144,8 @@ func TestALowBalanceIsAJudgmentNeverARest(t *testing.T) {
 	c := conds[0]
 	assert.Equal(t, NProviderLow, c.typ)
 	assert.Equal(t, ProviderSubject("openrouter"), c.stream)
-	assert.Equal(t, []string{"routes rest openrouter", "wait", "ack"}, c.decisions)
+	assert.Equal(t, []string{"fund openrouter", "funded openrouter", "routes rest openrouter", "wait", "ack"}, c.decisions)
+	assert.True(t, strings.HasPrefix(c.what, "fund openrouter"), "the words lead with fund <provider>: %q", c.what)
 	for _, want := range []string{
 		"balance $162.20 at 2026-10-10T02:04:43Z",
 		"spent $201.07 over the last hour",
@@ -395,4 +396,31 @@ func TestABalancePollCannotEndAKeyRest(t *testing.T) {
 		assert.Equal(t, tc.ends, wroteRest, "%s: a payment seen (balance 10 to 500)", tc.cause)
 		assert.Equal(t, tc.ends, len(p.Notes) == 1, "%s: the funded note", tc.cause)
 	}
+}
+
+// TestALowBalanceAtTheThresholdRaisesOneJudgment pins the low balance threshold: a balance
+// at or under the threshold (low_balance_usd, default $5) raises NProviderLow, one judgment
+// per provider, its routes still serve, and no provider rest is written.
+func TestALowBalanceAtTheThresholdRaisesOneJudgment(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 10, 3, 0, 0, 0, time.UTC)
+	work := nightWork(t, nightRest)
+	f := NewTable(Fleet)
+	s := &Snapshot{Now: now, Fleet: f, Work: work, Routes: nightRoutes, Coordinator: Coordinator}
+	// $4.99 against a $5 threshold with no spend in the last hour
+	p := Balance(s, BalanceReq{Reads: []ProviderRead{{Provider: "openrouter", Known: true, Balance: 4.99}}, Who: MachineActor})
+	require.Len(t, p.Props, 1, "the balance only: a low balance at the threshold rests nothing")
+	f.SetProp(p.Props[0].Name, p.Props[0].Value)
+	assert.Empty(t, RestsDue(s), "the tick rests nothing for a low balance at the threshold")
+	ws, _ := s.withRests()
+	conds, stop := providerConds(ws)
+	assert.Empty(t, stop, "a low balance never stops the sprint")
+	require.Len(t, conds, 1, "one judgment of the provider")
+	c := conds[0]
+	assert.Equal(t, NProviderLow, c.typ)
+	assert.Equal(t, ProviderSubject("openrouter"), c.stream)
+	assert.True(t, strings.HasPrefix(c.what, "fund openrouter"), "the words lead with fund <provider>: %q", c.what)
+	assert.Contains(t, c.decisions, "funded openrouter")
+	assert.Contains(t, c.what, "STILL SERVE")
+	assert.Contains(t, c.what, "routes rest openrouter")
 }

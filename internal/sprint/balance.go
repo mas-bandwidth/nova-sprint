@@ -63,8 +63,12 @@ func paid(rest RouteRest, was, b ProviderBalance) bool {
 }
 
 // Low says a balance calls for the coordinator's judgment: at or under zero, or not over
-// one hour of the spend. It rests nothing (providerConds).
-func (b ProviderBalance) Low() bool { return b.Known && b.Balance <= max(0, b.SpendHour) }
+// one hour of the spend, or at or under the low balance threshold (low_balance_usd). It
+// rests nothing (providerConds): the owner, 2026-10-10, "it should raise it to you as a
+// thing to do, but not do it automatically" (tla/RouteRest.tla).
+func (b ProviderBalance) Low(threshold float64) bool {
+	return b.Known && (b.Balance <= max(0, b.SpendHour) || b.Balance <= threshold)
+}
 
 // HoursLeft is how long the balance lasts at the spend an hour; ok is false with no spend
 // measured (or no balance known).
