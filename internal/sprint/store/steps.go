@@ -133,6 +133,7 @@ func ReadStep(r sprint.ReadReq) Step {
 
 // StopReturnStep is an owner's acknowledgement after its process was cancelled.
 // It preserves the card's placement and attempt, returning it to that owner.
+// tla/StopReturn.tla Return
 func StopReturnStep(r sprint.StopReturnReq) Step {
 	return Step{Named: true, Args: ArgsOf(r), Verb: "stop-return", Load: tables(sprint.Fleet, sprint.Readers),
 		Extras: func(s *sprint.Snapshot) map[string][]string {

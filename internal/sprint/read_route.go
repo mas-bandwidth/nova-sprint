@@ -83,6 +83,8 @@ func (s *Snapshot) tierRouted(tier string) bool {
 // whose row names no tier reads flash alone (fleetReadsFlashOnly): the owner,
 // 2026-10-06, "I'm ok with flash readers on fleet but not pro"; its row names pro or
 // above (reader set --tiers) to read them.
+//
+// tla/ReaderTiers.tla Reads
 func (s *Snapshot) readerServesTier(reader, tier string) bool {
 	if tier != cardhdr.RouteFlash && s.fleetReadsFlashOnly(reader) {
 		return false
