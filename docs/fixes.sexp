@@ -82,13 +82,17 @@
      retired. All eligible cards move in one tick, never one per tick. The hand verb fleet level now
      runs the rebalance after the level (FleetReq Rebalance) and takes --dry-run, so it reports what
      the tick would move, reads included: on the 36-read shape its moved count is 36, not 0; the
-     tick's level part is unchanged, the rebalance is its own part after the deal. Tests
-     TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick and
+     tick's level part is unchanged, the rebalance is its own part after the deal. The read-card
+     dealer now keeps an epoch-scoped fleet cursor per read tier, persists it through TickDeal, and
+     deals each read around the strict ring, preferring the closest served tier while taking idle
+     lanes before queued capacity; ineligible, refused, duplicate, and full readers are skipped.
+     Tests TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick and
      TestTheRebalanceReadNeverMovesToAnIneligibleOrOldRow in internal/sprint/rebalance_reads_test.go,
      TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick and
-     TestTheLevelVerbRebalancesTheReadsToo in internal/sprint/rebalance_test.go (docs/SPEC-SPRINT.md
-     section 1, the rebalance). The deal's round-robin cursor per tier set and its spread rule are a
-     later pass, not in this fix."
+     TestTheLevelVerbRebalancesTheReadsToo in internal/sprint/rebalance_test.go, plus cursor,
+     refusal, and restart coverage in internal/sprint/read_cards_test.go,
+     internal/sprint/read_cards_twin_test.go, and internal/sprint/deal_test.go (docs/SPEC-SPRINT.md
+     section 1, the rebalance and read-card deal)."
     :origin "this card, the-rebalance-levels-reads-every-tick-all-at-once.w3, from the owner,
      2026-10-11 ~18:50Z watching the fleet table (b3 held 36 ready behind 16 working, mini-m5 9
      behind 16, while b1, b2, hetzner1, hetzner2, space, studio and vision had 2 to 9 idle lanes
