@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -137,6 +138,33 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		} else {
 			unset = append(unset, FieldBench)
 		}
+		// The brief's DEPENDS-ON: line names the card's needs: the ordinary
+		// edit records them whenever they differ from what the card holds
+		// (docs/SPEC-SPRINT.md, a brief edit records the needs its DEPENDS-ON
+		// names). A card waiting or ready that gains a need not landed moves
+		// waiting in the same unit, so the deal never deals it before its need
+		// (docs/SPEC-SPRINT.md, a card is dealt only when every need has
+		// landed); a card dealt or working keeps its attempt and the needs
+		// apply from its next deal (briefInPlace, below).
+		to := c.Col
+		if len(b.Needs) > 0 && !sameNeeds(Split(c.F("needs")), b.Needs) {
+			set["needs"] = strings.Join(b.Needs, ",")
+			if c.Col == Waiting || c.Col == Ready {
+				after := &Card{ID: c.ID, Row: c.Row, Col: c.Col, Score: c.Score, Fields: map[string]string{}}
+				maps.Copy(after.Fields, c.Fields)
+				for k, v := range set {
+					after.Fields[k] = v
+				}
+				for _, k := range unset {
+					delete(after.Fields, k)
+				}
+				if len(WaitsFor(s, after, nil)) > 0 {
+					to = Waiting
+				} else {
+					to = Ready
+				}
+			}
+		}
 		if c.Int("attempt") > 0 {
 			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who)
 			if orphan {
@@ -145,8 +173,18 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			p.Units = append(p.Units, u)
 			continue
 		}
-		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, unset...))},
-			Moved: fmt.Sprintf("%s brief replaced (%d bytes) stream=%s %s", c.ID, len(b.Brief), c.Row, c.Col)})
+		u := Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, unset...))},
+			Moved: fmt.Sprintf("%s brief replaced (%d bytes) stream=%s %s", c.ID, len(b.Brief), c.Row, c.Col)}
+		if to != c.Col {
+			// a ready card that gained a need not landed waits: the brief edit
+			// is the lawful move ready -> waiting here (lifecycle.go)
+			if to == Waiting {
+				p.inserting = true
+			}
+			u.Changes = []Change{change(Work, moveEntry(c, c.Row, to, set, unset...))}
+			u.Moved = fmt.Sprintf("%s brief replaced (%d bytes) stream=%s %s -> %s", c.ID, len(b.Brief), c.Row, c.Col, to)
+		}
+		p.Units = append(p.Units, u)
 	}
 	if len(orphans) > 0 {
 		settle(&p, s, r.Who, orphans, nil)
@@ -435,6 +473,19 @@ func MoveCards(s *Snapshot, r MoveReq) Plan {
 		p.Units = append(p.Units, u)
 	}
 	return p
+}
+
+// sameNeeds says two lists of needs hold the same ids, in any order.
+func sameNeeds(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for _, x := range a {
+		if !contains(b, x) {
+			return false
+		}
+	}
+	return true
 }
 
 // dependsOnly says two briefs differ in their DEPENDS-ON: line alone: the same

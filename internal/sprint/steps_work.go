@@ -974,6 +974,7 @@ const noRoomWhy = "every up fleet member is at its room (DealAhead times its wid
 
 func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMoves) {
 	var p Plan
+	p.on(s) // the needs rule judges every move to working against this state
 	moves := roundMoves{}
 	ready := func(c *Card) string {
 		if StreamHeld(s, c.Row) {
@@ -985,6 +986,23 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		return inState(c, Ready)
 	}
 	chosen := pick(&p, r.Sel, eligibleTurns(s.Work.Column(Ready), ready, streamRound(s, PropStreamIndex)), rowOf, ready, s.primaryCard)
+	// A ready card with a need that has not landed is dealt nothing: the needs
+	// rule holds every deal (Lawful, unmet), and this guard keeps the deal
+	// from cutting a work card for it at all. A row like this is a violation
+	// no verb builds (Check rule 11); the tick raises one judgment naming it
+	// and its unlanded needs (docs/SPEC-SPRINT.md, a card is dealt only when
+	// every need has landed).
+	var held []*Card
+	for _, c := range chosen {
+		if waits := WaitsFor(s, c, nil); len(waits) > 0 {
+			n := judgment(NBlocked, c.Row, s.Now, 0, c.ID)
+			n.What = c.ID + " needs " + Preview(waits, ",") + ", not landed: it is not dealt"
+			p.Notes = append(p.Notes, n)
+			continue
+		}
+		held = append(held, c)
+	}
+	chosen = held
 	up := s.UpMembers()
 	// a member held by an uncleared environment fault is dealt nothing: the fault holds it
 	// until its probe passes or its next card pushes (envFaulted, tla/ProviderBudget.tla)

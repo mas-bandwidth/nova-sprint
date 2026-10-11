@@ -2323,7 +2323,7 @@ outcome and reason are kept.
 | move | cause | class |
 |---|---|---|
 | waiting -> ready | everything it needs has landed or was waived | mechanical |
-| ready -> working | deal: the machine's tick cuts and deals a work card | mechanical |
+| ready -> working | deal: the machine's tick cuts and deals a work card; only when every need has landed or was waived | mechanical |
 | working -> review | its work card finished, ok or failed | mechanical; failed notifies for judgment |
 | working -> ready | its work card was withdrawn because no fleet member is up, or, still ready, because its route rests (its note names the route and the reason) | mechanical, notifies |
 | review -> merging | accept: the readers it needs said ok at this head (one for a flash card, two different readers for a pro card; section 6) | mechanical (the tick), unless its CI is red at its head or it was returned to review at its attempt; the coordinator's verb takes those; refused without them |
@@ -2342,9 +2342,14 @@ step built it: a primary is admitted waiting or ready, moves only by a row of
 the table, and leaves only from an open state; a unit that does not is refused,
 naming the move. A step refused whole writes nothing, not even the rows of a
 stream it would have declared. A primary leaves waiting only when every need has landed or
-was waived: a step that may move a primary to ready builds its plan on the
+was waived, and a card is dealt only when every need has landed: a step that
+may move a primary to ready or to working builds its plan on the
 snapshot it read, and the lifecycle judges the needs against it; a plan
-without it moves nothing waiting to ready. The lifecycle is judged first on
+without it moves nothing waiting to ready or ready to working. A brief edit
+records the needs its `Needs:` or `DEPENDS-ON:` line names whenever they differ
+from the card's: a waiting card whose needs have all landed becomes ready, and a
+ready card that gains a need not landed moves waiting in the same unit, so the
+deal never deals it before its need (`sprint.Brief`, `dealPlan`). The lifecycle is judged first on
 every unit of a plan; the needs rule is then judged against the landings of
 the units the lifecycle kept only, so a landing the lifecycle refuses
 satisfies no need. A work-table move whose expectation names no place is

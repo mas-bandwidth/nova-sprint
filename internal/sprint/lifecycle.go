@@ -168,6 +168,19 @@ func unmet(u Unit, pre *Snapshot, landing map[string]bool) string {
 			pc := pre.Work.Card(e.ID)
 			needs, waived = Split(pc.F("needs")), append(Split(pc.F("waived")), Split(e.Set["waived"])...)
 			needs = append(needs, PositionWaits(pre, pc, landing)...)
+		case e.Move != nil && e.Move.Col == Working:
+			// a move to working is a deal: every need must have landed, whatever
+			// path asked for it (docs/SPEC-SPRINT.md, a card is dealt only when
+			// every need has landed). A plan that carries no pre-state cannot be
+			// judged here; the deal's own guard holds it (dealPlan)
+			if pre == nil {
+				continue
+			}
+			pc := pre.Work.Card(e.ID)
+			if pc == nil {
+				continue
+			}
+			needs, waived = Split(pc.F("needs")), Split(pc.F("waived"))
 		default:
 			continue
 		}

@@ -1155,4 +1155,20 @@
     liveOf and LiveReturns keep their fresh-only reading. No model change."
    :origin "the coordinator 2026-10-11, added to v1.2.14 beside the v1.2.12 inventory's section 9 row
     D2 (a held finished report across STOP refused as stale); D2's first cause was fixed by
-    nova-sprint #87 (15c779c); this is what that fix left; code read at nova-sprint main 00c54ba")))
+    nova-sprint #87 (15c779c); this is what that fix left; code read at nova-sprint main 00c54ba")
+
+  (fix "a-brief-edit-records-its-needs-and-the-deal-checks-them" :release "v1.2.14" :status "planned"
+   :title "A brief edit records its needs and the deal checks them"
+   :text "A card is dealt only when every need has landed, and a brief edit records the needs its
+    Needs: or DEPENDS-ON: line names. Before, a brief edit on any other change than the DEPENDS-ON:
+    line alone wrote the brief and dropped the parsed needs, so brief --dir on 2026-10-11 moved 85
+    briefs that carried DEPENDS-ON while every card kept zero needs and stayed ready; and the deal's
+    eligibility checked only stream held, friend pin and ready, so a ready card with unlanded needs
+    was dealt. The ordinary brief path now writes the needs whenever they differ from the card's and
+    moves a ready card that gains an unlanded need to waiting in the same unit; dealPlan refuses a
+    card whose WaitsFor is not empty and unmet judges every move to working, so Lawful refuses dealing
+    a card whose needs have not landed whatever path asks; a corrupt ready row raises one judgment
+    naming the card and its unlanded needs. docs/SPEC-SPRINT.md section 3 says both rules."
+   :origin "the owner, 2026-10-11 ~10:40-11:00 AM ET, on the live epoch 17: 89 v1212 cards ran or sat
+    ready before their DEPENDS-ON landed (four failed four attempts each); the owner: \"by definition
+    this must not happen.\"; this card a-brief-edit-records-its-needs-and-the-deal-checks-them")))
