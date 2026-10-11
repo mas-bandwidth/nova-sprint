@@ -376,4 +376,10 @@
      checks of the card lint, when it carries its own RULES line, and a friend card with none is still
      held to it, as a child's brief is. The step- scans hold a friend's card still: a line of it outside
      its RULES paragraph that contradicts its carried rules is a finding under any rule set."
-    :origin "this pull request")))
+    :origin "this pull request")
+
+   (fix "swarm-lint-card-false-refusals" :release "v1.2.9" :status "planned"
+    :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
+    :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
+     fenced blocks. It should accept both."
+    :origin "issue #1994; issue #2302; issue #3470")))

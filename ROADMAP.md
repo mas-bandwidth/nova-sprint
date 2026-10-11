@@ -1686,14 +1686,6 @@ Target: v1.3
 
 From: issue #1853; issue #1728; issue #2584; issue #2605; issue #2728
 
-### Card lint refuses valid cards: make gates and text inside fenced blocks
-
-Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside fenced blocks. It should accept both.
-
-Target: v1.3
-
-From: issue #1994; issue #2302; issue #3470
-
 ### A mechanical guard check as a review verb
 
 The unguarded verdict came from a model and was wrong about a third of the time. A verb reverts non-test files, runs the named tests and reports mechanically.

@@ -9,8 +9,11 @@ import (
 // parent path that reaches the worktree, scratch files, or notes from outside the job.
 //
 // The check reads card text, so it reports parent paths when they are command arguments or
-// destinations, including inside fenced commands. It ignores paths quoted as prose, inline
-// code, markdown link targets, or command-output ellipses because those paths are not walked.
+// destinations. It ignores paths quoted inside a fenced code block, as prose, inline code,
+// markdown link targets, or command-output ellipses because those paths are not walked: a
+// fenced block is a program or an example the card shows, not a line it runs. The rule is
+// the card lint's no-parent-path (docs/SPEC-SPRINT.md section 11, add, the card lint's
+// child rules; docs/SPEC-CARD-CONTRACT.md, the card's frame).
 
 // cardWalkParentRE is a parent path handed to a command that walks it. The command word is
 // anchored so `cp` in `cpu` and `rm` in `confirm` are not commands.
@@ -41,12 +44,13 @@ func CardParentPaths(lines []string) []int {
 			inFence = !inFence
 			continue
 		}
-		// A walk is a walk wherever it is written, fence or no fence, backticks or none.
-		if cardWalkParentRE.MatchString(l) || cardWriteParentRE.MatchString(l) {
-			out = append(out, i+1)
+		if inFence {
+			// A fenced block is the card quoting text, not walking it: the same
+			// rule CardParentPathWanted states, a fenced block is not this drift.
 			continue
 		}
-		if inFence {
+		if cardWalkParentRE.MatchString(l) || cardWriteParentRE.MatchString(l) {
+			out = append(out, i+1)
 			continue
 		}
 		if strings.Contains(cardInstructionText(l), "../") {
