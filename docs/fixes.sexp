@@ -331,4 +331,12 @@
      card at its brief's bound names brief --brief-file and the drop command, in the judgment's own text as
      a rework's refusal already said, so the coordinator runs the remedy as printed instead of guessing."
     :origin "dogfood 2026-10-10 evening: a fleet-only restart bounded several cards, and answering them took
-     four tries -- brief --tier, redo, rework, rework --group")))
+     four tries -- brief --tier, redo, rework, rework --group")
+
+   (fix "overload-alarm-covers-friends" :release "v1.2.6" :status "shipped"
+    :title "The overload alarm covers friends too"
+    :text "A friend up whose cards keep ending on a timeout raises the overload judgment as a member
+     does: three timeouts within OverloadWindow on her row friend.<name>, counted after her finishes'
+     `friend <name> <VERDICT>: ` prefix, her width the roster's. Its remedy is her width in
+     nova-config, applied by friend sync."
+    :origin "sprint card overload-alarm-covers-friends")))
