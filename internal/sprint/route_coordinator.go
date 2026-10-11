@@ -20,7 +20,8 @@ import (
 //     one, and the seat never says funded to lift a rest no payment ended.
 //
 // Each writes one property, guarded on the value read, with a happened note to the
-// coordinator (tla/RouteRest.tla, CoordinatorRest and CoordinatorWake).
+// coordinator (tla/RouteRest.tla, RestProvider, RestProviderOpen, RestRoute and RestRouteOpen
+// rest; WakeProvider and WakeRoute wake).
 
 // NRouteWoken is the happened note of a rest the coordinator ended (routes wake), and
 // NRouteRestedByCoordinator of one the coordinator began (routes rest).

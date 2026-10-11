@@ -130,6 +130,7 @@ func IsRateLimited(report string) bool {
 // then routes wake); the rest names the take's card, its route and the
 // provider's words, and keeps the balance the poll last read (the mark a payment is seen
 // against, balance.go).
+// tla/RouteRest.tla TakeEnds
 func providerRestsDue(s *Snapshot, rests map[string]RouteRest, ends map[string][]routeEnd) []RouteRest {
 	newest := map[string]routeEnd{}
 	on := map[string]string{}
