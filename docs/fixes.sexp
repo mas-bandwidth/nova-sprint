@@ -996,7 +996,7 @@
      base_gate_rule_test.go, land_go_test.go, the red-combined and bisect tests, the real-binary build)
      keep the real gate and are left for the next pass, which must supply their gate result from a
      content-aware fake while keeping the finding-text assertions."
-    :origin "the owner, 2026-10-11: v1.2.12 inventory card A10 (tmp/v1.2.12-inventory-2026-10-11.md)")
+   :origin "the owner, 2026-10-11: v1.2.12 inventory card A10 (tmp/v1.2.12-inventory-2026-10-11.md)")
 
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
