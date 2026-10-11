@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
@@ -39,6 +40,54 @@ var (
 	classFailRE    = regexp.MustCompile(`--- FAIL: (Test[A-Za-z0-9_]*)`)
 	classFailPkgRE = regexp.MustCompile(`FAIL(?:\s|\\x09)+[^\s|]+/(internal/(?:ci|docs))\b`)
 )
+
+// UnitPackages names the unit packages a head's merge could break, from the go.mod
+// module path and the files the merge changed. For module github.com/mas-bandwidth/nova-sprint:
+// a changed .go file or testdata under internal/sprint/ or cmd/nova-sprint/ gives both
+// ./internal/sprint/... and ./cmd/nova-sprint/... (cmd imports internal, so either side can
+// break the other's tests); a changed .go file elsewhere gives its own package directory
+// ./<dir>/. For any other module (nova-tools): the package directory of each changed .go
+// file or testdata, deduplicated and sorted; reverse dependencies are not in this card.
+// Docs, ledgers and other non-Go files give none.
+func UnitPackages(module string, changed []string) []string {
+	seen := map[string]bool{}
+	var pkgs []string
+
+	for _, f := range changed {
+		isGoFile := strings.HasSuffix(f, ".go")
+		isTestData := strings.HasSuffix(f, "testdata") || strings.Contains(f, "/testdata/")
+		if !isGoFile && !isTestData {
+			continue
+		}
+		dir := filepath.Dir(f)
+		if dir == "." || dir == "testdata" {
+			continue
+		}
+		switch module {
+		case "github.com/mas-bandwidth/nova-sprint":
+			if strings.HasPrefix(dir, "internal/sprint") || strings.HasPrefix(dir, "cmd/nova-sprint") {
+				for _, p := range []string{"internal/sprint", "cmd/nova-sprint"} {
+					if !seen[p] {
+						seen[p] = true
+						pkgs = append(pkgs, p)
+					}
+				}
+			} else {
+				if !seen[dir] {
+					seen[dir] = true
+					pkgs = append(pkgs, dir)
+				}
+			}
+		default:
+			if !seen[dir] {
+				seen[dir] = true
+				pkgs = append(pkgs, dir)
+			}
+		}
+	}
+	slices.Sort(pkgs)
+	return pkgs
+}
 
 // ClassGateWhy names the first red run with the repair card the generator
 // stamps for it. The existing base-gate rule stores this on its one judgment.

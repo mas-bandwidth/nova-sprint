@@ -163,7 +163,8 @@ func treeTested(p string) bool {
 // gateRuns is SPEC-SPRINT's base class suite (sprint.BaseClasses), preserving the build
 // first, then formatting, vet and the functional-tier vet. Analyzer classes and the tree
 // tests need their packages (have: the ones the clone holds) and run only when tests is asked.
-func gateRuns(tests bool, have []string) [][]string {
+// unitPkgs are unit test packages from changed files; when non-empty, a go test run is appended.
+func gateRuns(tests bool, have []string, unitPkgs []string) [][]string {
 	var runs [][]string
 	for _, class := range sprint.BaseClasses {
 		if class.Name == "class-tests" {
@@ -180,6 +181,13 @@ func gateRuns(tests bool, have []string) [][]string {
 			continue
 		}
 		runs = append(runs, slices.Clone(class.Run))
+	}
+	if len(unitPkgs) > 0 {
+		run := []string{"go", "test", "-count=1", "-timeout", "120s", "-skip", "^TestTickDrainAndDealUnderTheGateAtLoad$"}
+		for _, p := range unitPkgs {
+			run = append(run, "./"+p+"/")
+		}
+		runs = append(runs, run)
 	}
 	return runs
 }
@@ -237,7 +245,7 @@ func (l *lander) treeGateBase(ctx context.Context, dir, baseSha string, branch .
 		return f.said(), false
 	}
 	s.gateMu.Unlock()
-	why = l.treeGate(ctx, dir, true)
+	why = l.treeGate(ctx, dir, true, nil)
 	if err := ctx.Err(); err != nil {
 		return err.Error(), false // an abandoned gate never counts as a red base
 	}
@@ -339,8 +347,9 @@ func treePackages(dir string) []string {
 // stream hashes to (benchRing, landring.go), as one bench run (benchGate). A configured
 // remote bench that cannot run the gate refuses it; it does not run Go on this machine.
 // A land command on its own, or a loop with no remote bench configured, runs here
-// (goRun). The ledgers' update runs stay here.
-func (l *lander) treeGate(ctx context.Context, dir string, tests bool) string {
+// (goRun). The ledgers' update runs stay here. changedFiles are unit test packages from
+// changed files; when non-empty and a remote bench is not available, the unit tests are skipped.
+func (l *lander) treeGate(ctx context.Context, dir string, tests bool, changedFiles []string) string {
 	if err := ctx.Err(); err != nil {
 		return err.Error()
 	}
@@ -353,7 +362,9 @@ func (l *lander) treeGate(ctx context.Context, dir string, tests bool) string {
 	if err := ctx.Err(); err != nil {
 		return err.Error()
 	}
-	runs := gateRuns(tests, treePackages(dir))
+	have := treePackages(dir)
+	unitPkgs := sprint.UnitPackages("github.com/mas-bandwidth/nova-sprint", changedFiles)
+	runs := gateRuns(tests, have, unitPkgs)
 	hosts, inLoop, remote := l.gateBenches(ctx)
 	// A test's gateBench seam stands in for the bench when no fleet member is up
 	// (the class-gate regression: a fake runner, no socket, no beat to keep fresh).
@@ -962,7 +973,8 @@ func (l *lander) gateCard(ctx context.Context, dir string, c landCard, before st
 	if err != nil {
 		return "", "the files the merge of " + c.id + " changed could not be listed: " + firstLine("", err)
 	}
-	why := l.treeGate(ctx, dir, slices.ContainsFunc(strings.Split(changed, "\n"), treeTested))
+	changedFiles := strings.Split(changed, "\n")
+	why := l.treeGate(ctx, dir, slices.ContainsFunc(changedFiles, treeTested), changedFiles)
 	if wait := gateWaitWhy(ctx); wait != "" {
 		return "", wait // cancellation says nothing about the card
 	}
@@ -1015,7 +1027,7 @@ func (l *lander) cureBase(ctx context.Context, dir, stream string, cards []landC
 			return card, env
 		},
 		Gate: func(ctx context.Context, dir string) string {
-			gate := l.treeGate(ctx, dir, true)
+			gate := l.treeGate(ctx, dir, true, nil)
 			benchUnavailable = benchUnavailable || gate == benchGateUnavailableWhy
 			return gate
 		},

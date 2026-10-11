@@ -33,9 +33,9 @@ func TestTreeGateWords(t *testing.T) {
 		{"go", "vet", "./..."},
 		{"go", "vet", "-tags", "functional", "./..."},
 	}
-	assert.Equal(t, basics, gateRuns(false, []string{"internal/docs"}))
-	assert.Equal(t, basics, gateRuns(true, nil))
-	runs := gateRuns(true, []string{"internal/docs", "internal/ci"})
+	assert.Equal(t, basics, gateRuns(false, []string{"internal/docs"}, nil))
+	assert.Equal(t, basics, gateRuns(true, nil, nil))
+	runs := gateRuns(true, []string{"internal/docs", "internal/ci"}, nil)
 	assert.Equal(t, basics, runs[:4])
 	require.Len(t, runs, 8)
 	for i, test := range []string{"^TestStaticcheckFindings$", "^TestUncheckedErrors$", "^TestDeadCode$"} {
