@@ -87,7 +87,8 @@ at once. nova-sprint unpin <id>... --reason <text> removes an
 unstarted card's stored WHO choice without editing its brief; --stream <s>
 selects a stream, and --dry-run only previews it. Work assigned to a friend
 uses her fleet row friend.<name>; presence never takes it back. friend take
-takes back what she has not started, and friend down takes back every card.
+takes back and marks what she has not started, and friend down takes back every card.
+The seat hands a named ready card to a friend with friend give; the deal fills the rest.
 friend sync writes it as <friend>-working/inbox/<job>/BRIEF.md, the job
 directory <card> at epoch 0 and <card>~<epoch> after a clear (its STATUS line
 names the card, the branch to push and the report), and finishes it from

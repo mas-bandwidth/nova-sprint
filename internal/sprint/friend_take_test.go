@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -126,5 +127,90 @@ func TestATakenCardIsDealtAgainToAnotherFriend(t *testing.T) {
 	assert.Equal(t, "s1-2.w1", w.s.Primary("s1-2").F("work"))
 	assert.Equal(t, "1", w.s.Primary("s1-2").F("attempt"))
 	assert.Nil(t, w.s.Fleet.Card("s1-2.w2"), "no second attempt")
+	assert.Empty(t, Check(w.s, nil))
+}
+
+// friend take --all-unstarted says the mark it writes (docs/SPEC-SPRINT.md section 1, a
+// friend's card taken back): each card taken says it is back to ready and not dealt to her
+// again until friend give, and the plan's summary counts them (marked=<n>), so the seat is
+// told why her row goes quiet instead of only FRIEND-TAKE OK moved=<n>.
+func TestTakeAllUnstartedSaysTheMarkItWrites(t *testing.T) {
+	t.Parallel()
+	w := takeWorld(t)
+	p := FriendTake(w.s, FriendTakeReq{Friend: "amy", All: true, Who: "rowan"})
+	require.Empty(t, p.Refused)
+	require.Len(t, p.Units, 2)
+	var moved []string
+	for _, u := range p.Units {
+		moved = append(moved, u.Moved)
+	}
+	assert.Contains(t, strings.Join(moved, "\n"),
+		"back to ready, not dealt to amy again until friend give",
+		"each taken card says the mark it writes")
+	assert.Equal(t, 2, strings.Count(strings.Join(moved, "\n"),
+		"back to ready, not dealt to amy again until friend give"),
+		"one line per card: both taken cards say the mark")
+	assert.Contains(t, strings.Join(p.Said, "\n"), "marked=2", "the summary counts the marked cards")
+}
+
+// friend give is the seat's hand (docs/SPEC-SPRINT.md section 1, a friend's card taken
+// back): on a named ready card never taken back it hands the card to that friend at once,
+// rather than leave the deal to draw it for whoever it chooses.
+func TestFriendGiveHandsANamedReadyCardToTheFriend(t *testing.T) {
+	t.Parallel()
+	w := friendWorld(t, friendBrief("friend"))
+	w.s.Friends = []FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash"}}
+	p := FriendGive(w.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}, Who: "rowan"})
+	require.Empty(t, p.Refused, "a ready card is a hand")
+	require.Len(t, p.Units, 1)
+	assert.Contains(t, p.Units[0].Moved, "handed to amy")
+	assert.Contains(t, strings.Join(p.Said, "\n"), "s1-1: handed to amy")
+	w.must(p)
+	require.NotNil(t, w.s.Fleet.Card("s1-1.w1"))
+	assert.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").Row, "on her row at once")
+	assert.Equal(t, Ready, w.s.Fleet.Card("s1-1.w1").Col)
+	assert.Equal(t, Working, w.s.StateOf("s1-1"))
+	assert.Empty(t, Check(w.s, nil))
+}
+
+// friend give refuses a card that is not ready, one that her row's tiers do not serve, and
+// one whose needs have not landed, each naming why (docs/SPEC-SPRINT.md section 1, a
+// friend's card).
+func TestFriendGiveRefusesWhatItCannotHand(t *testing.T) {
+	t.Parallel()
+	w := takeWorld(t)
+	p := FriendGive(w.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "not ready or waiting", "a working card is not a hand")
+
+	w2 := friendWorld(t, friendBrief("friend"))
+	w2.s.Friends = []FriendSeat{{Name: "amy", Width: 2, Status: Up, Tiers: []string{"pro"}}}
+	p = FriendGive(w2.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "does not serve tier", "her row's tiers gate the hand")
+	assert.Empty(t, p.Units)
+
+	// a ready card whose stored need has not landed: refused, naming the need
+	w3 := friendWorld(t, friendBrief("friend"), friendBrief("friend"))
+	w3.s.Friends = []FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash"}}
+	w3.s.Work.Card("s1-1").Fields["needs"] = "s1-2"
+	p = FriendGive(w3.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}})
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "not landed", "a need not landed is not a hand")
+	assert.Empty(t, p.Units)
+}
+
+// friend give on a card taken back clears the mark as it did (docs/SPEC-SPRINT.md section
+// 1, a friend's card taken back), and the deal fills the rest.
+func TestFriendGiveOnATakenCardClearsTheMark(t *testing.T) {
+	t.Parallel()
+	w := takeWorld(t)
+	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{"s1-1"}, Who: "rowan"}))
+	require.Equal(t, FriendRow("amy"), w.s.Fleet.Card("s1-1.w1").F(FieldTakenFrom))
+	p := FriendGive(w.s, FriendGiveReq{Friend: "amy", IDs: []string{"s1-1"}, Who: "rowan"})
+	require.Empty(t, p.Refused)
+	w.must(p)
+	assert.Empty(t, w.s.Fleet.Card("s1-1.w1").F(FieldTakenFrom), "the take's mark is cleared")
+	assert.Contains(t, p.Units[0].Moved, "may be dealt to amy again")
 	assert.Empty(t, Check(w.s, nil))
 }

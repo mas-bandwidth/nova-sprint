@@ -86,6 +86,15 @@ what it lacks; `HOLD` and `FAIL` come back failed to the coordinator with the
 paragraph. A sprint card is not counted among the
 inbox's jobs: the friends table counts it from the sprint.
 
+The coordinator puts a card on a friend's row two ways: the deal fills the
+rest from the ready queue, and `nova-sprint friend give <friend> <id>` hands a
+named ready card to her at once (the same work card `friend sync` delivers),
+so the seat need not wait for the deal to draw it for whoever it chooses.
+`friend take <friend> <id>` takes a card of hers she has not started back to
+ready and marks it not to be dealt to her again; each taken card says so and
+the summary counts them, and `friend give` clears the mark or hands the card
+back (docs/SPEC-SPRINT.md section 1, the seat hands a named card to a friend).
+
 A friend pulls her own view of the sprint whenever she wants it with one curl, `curl -s
 http://<tailnet address>:<port>/friend/<name>` (the coordinator's dashboard pull port,
 `7395` by default; `/api/friend/<name>` is the same as JSON), and reads the sprint line,
