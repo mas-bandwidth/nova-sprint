@@ -844,6 +844,21 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "tla-coverage-test-in-nova-sprint" :release "v1.2.12" :status "planned"
+   :title "A test holds tla/COVERAGE.tsv to nova-sprint's models"
+   :text "internal/ci/tla_coverage_test.go holds tla/COVERAGE.tsv to the tree. Every row is well formed:
+    the machine is named once; the note is not empty or -; the status is one of current, partial, stale
+    or missing; each code file named is a regular file; a missing row names no module and a row that
+    names one is not missing; every named module has tla/<Module>.tla; only a current row has owed_by -
+    and every other row's owed_by names a card. Every tla/<X>.tla whose name does not start with MC is
+    named by exactly one row's module column, the check the nova-tools half lacked: a model named by no
+    row fails naming the file and the remedy, and one named by two rows fails naming both. For each row
+    a subtest runs: a row that is not current skips and names its owed_by; a current row's module needs
+    at least one reversed witness (a tla/CASES.tsv case whose expected is not pass) and, for every case
+    it declares, a tla/RUNS.tsv record that passed whose input_sha256 is pkg/tlc's fingerprint of the
+    case now. Fixture roots under t.TempDir cover each refusal without the repository."
+   :origin "this card")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
