@@ -42,6 +42,11 @@ type BriefCard struct {
 	ID, Brief string
 	Rules     string   // the held rules file the new brief is held to by reference (FieldRules), "" when it carries its own
 	Needs     []string // the new brief's needs, as add reads its DEPENDS-ON: line (briefNeeds): a change to that line alone is taken in any state
+	// NeedsFromBrief takes the card's needs wholly from the text's DEPENDS-ON: line,
+	// dropping any the text does not name. By default a brief edit keeps the card's
+	// needs the text drops, and the last relink record (FieldRelinked) wins over an
+	// old id the text still names: a text adds a need, never a twin's edge back.
+	NeedsFromBrief bool
 }
 
 // BriefReq replaces the briefs of primaries that have not started: one card
@@ -52,6 +57,7 @@ type BriefReq struct {
 	ID, Brief, Who string
 	Rules          string   // the held rules file, when Cards is empty and Brief is set
 	Needs          []string // the new brief's needs, when Cards is empty and Brief is set
+	NeedsFromBrief bool     // when Cards is empty: take the needs wholly from the text (BriefCard.NeedsFromBrief)
 	Answers        []string // the judgments the edit answers (--answers): each must be one it closes
 	// Tier, with no Brief, re-tiers the card (nova-sprint brief --tier): the tier every
 	// later deal of the card draws its route from, written on the primary as FieldTier
@@ -79,7 +85,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 	}
 	cards := r.Cards
 	if len(cards) == 0 {
-		cards = []BriefCard{{ID: r.ID, Brief: r.Brief, Rules: r.Rules, Needs: r.Needs}}
+		cards = []BriefCard{{ID: r.ID, Brief: r.Brief, Rules: r.Rules, Needs: r.Needs, NeedsFromBrief: r.NeedsFromBrief}}
 	}
 	seen, orphans := map[string]bool{}, map[string]bool{}
 	for _, b := range cards {
@@ -91,7 +97,14 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// a DEPENDS-ON line alone is taken in any state, the machine running or the card dealt
 		if c != nil && !IsSentinel(c) && dependsOnly(c.F("brief"), b.Brief) {
 			seen[b.ID] = true
-			p = briefDepends(s, p, c, b.Brief, b.Needs)
+			briefText, needs := b.Brief, b.Needs
+			if !r.NeedsFromBrief && !b.NeedsFromBrief {
+				if kept, note := keepNeeds(c, Split(c.F("needs")), b.Needs); note != "" {
+					needs = kept
+					p.Said = append(p.Said, note)
+				}
+			}
+			p = briefDepends(s, p, c, briefText, needs)
 			continue
 		}
 		// a card merging or landed is refused with what changes it instead:
@@ -115,7 +128,20 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// replaced brief is no longer the one its brief decision was asked over, so the card
 		// names that decision no more
 		// the brief's bound counts attempts from here (brief_bound.go)
-		set, unset := map[string]string{"brief": b.Brief, FieldBriefAttempt: c.F("attempt")}, []string{FieldGrade, FieldBriefOp, FieldBriefRecord}
+		// by default a brief edit keeps the card's needs the text drops and lets the last
+		// relink record win over an old id the text still names (keepNeeds): the bound's
+		// header says the task's needs are a field, not the text's line alone
+		briefText := b.Brief
+		cur, textWant := Split(c.F("needs")), b.Needs
+		want := textWant
+			if !r.NeedsFromBrief && !b.NeedsFromBrief {
+				var note string
+				want, note = keepNeeds(c, cur, textWant)
+				if note != "" {
+					p.Said = append(p.Said, note)
+				}
+			}
+		set, unset := map[string]string{"brief": briefText, FieldBriefAttempt: c.F("attempt")}, []string{FieldGrade, FieldBriefOp, FieldBriefRecord}
 		if b.Rules != "" {
 			set[FieldRules] = b.Rules
 		} else {
@@ -143,7 +169,6 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// from the card's — a brief that drops its DEPENDS-ON clears them — and a
 		// ready card that gains a need not landed moves ready -> waiting with them,
 		// in this same unit (unmet and Lawful accept the move).
-		cur, want := Split(c.F("needs")), b.Needs
 		toWaiting := false
 		if !sameNeeds(cur, want) {
 			if len(want) > 0 {
@@ -160,7 +185,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			}
 		}
 		if c.Int("attempt") > 0 {
-			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who, toWaiting)
+			u, orphan := briefInPlace(s, c, briefText, set, unset, r.Who, toWaiting)
 			if orphan {
 				orphans[c.ID] = true
 			}
@@ -301,6 +326,58 @@ func sameNeeds(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// relinkRecord reads a card's last relink record (FieldRelinked), "<old,...> -> <new>
+// <stamp> by <who>", as the old ids, the id they were re-pointed to, and the stamp.
+func relinkRecord(c *Card) (olds []string, to, when string) {
+	rec := c.F(FieldRelinked)
+	if rec == "" {
+		return nil, "", ""
+	}
+	left, right, ok := strings.Cut(rec, " -> ")
+	if !ok {
+		return nil, "", ""
+	}
+	fields := strings.Fields(right)
+	if len(fields) == 0 {
+		return nil, "", ""
+	}
+	if len(fields) > 1 {
+		when = fields[1]
+	}
+	return Split(left), fields[0], when
+}
+
+// keepNeeds is a card's needs after a brief edit that does not take them wholly
+// from the text: the card's own needs, with each old id the text still names
+// replaced by the id its last relink record points to (the record wins over the
+// text: a brief dumped from the card carries the admission-time DEPENDS-ON, not
+// the relinked one), plus every need the text names that the card does not have —
+// a text adds a need, it does not drop one. The second return is the NOTE line
+// naming what was kept against the text ("" when nothing was).
+func keepNeeds(c *Card, cur, want []string) ([]string, string) {
+	olds, to, when := relinkRecord(c)
+	out := append([]string(nil), cur...)
+	have := map[string]bool{}
+	for _, n := range out {
+		have[n] = true
+	}
+	note := ""
+	for _, n := range want {
+		orig := n
+		if to != "" && contains(olds, n) {
+			n, note = to, "needs kept: "+to+" (relinked from "+orig+" "+when+")"
+		}
+		if !have[n] {
+			out = append(out, n)
+			have[n] = true
+		}
+	}
+	if note == "" && !sameNeeds(out, want) {
+		note = "needs kept: " + strings.Join(out, ",")
+	}
+	return out, note
 }
 
 // linesNotIn is the lines of a, trimmed, that b does not hold, each counted as often as b

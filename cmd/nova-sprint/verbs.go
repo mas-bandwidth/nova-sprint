@@ -2887,6 +2887,7 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&s.group, "group", "", "the members of the inbox group of this id (the id or alias inbox prints): a group of one takes --brief or --brief-file, a group of several --dir")
 	fs.IntVar(&s.expect, "expect", 0, "with --group: the group's size as inbox printed it; a group of another size now is refused and nothing changes")
 	ans := fs.String("answers", "", answersWords)
+	needsFromBrief := fs.Bool("needs-from-brief", false, "take the card's needs wholly from the new text's DEPENDS-ON: line, dropping any need the text does not name; by default a brief edit keeps the needs the text drops and the last relink record wins over an old id the text still names (a text adds a need, never a twin's edge back)")
 	ids, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "brief", err.Error())
@@ -2974,7 +2975,7 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 	if code != 0 {
 		return code
 	}
-	return a.replaceBriefs([]sprint.CardAdd{{ID: ids[0], Brief: *brief}}, answers(*ans), rs, c, st, stdout, stderr)
+	return a.replaceBriefs([]sprint.CardAdd{{ID: ids[0], Brief: *brief}}, *needsFromBrief, answers(*ans), rs, c, st, stdout, stderr)
 }
 
 // briefWiden is brief <id> --widen: the card's brief with its PATHS widened by its latest
@@ -2997,7 +2998,7 @@ func (a *app) briefWiden(id, repoDir string, ans []string, c *common, stdout, st
 		return code
 	}
 	c.says = append(c.says, fmt.Sprintf("NEXT %s attempt %d starts from attempt %d head=%s", id, w.carry.Attempt+1, w.carry.Attempt, w.carry.Head))
-	return a.replaceBriefs([]sprint.CardAdd{{ID: id, Brief: w.brief}}, ans, rs, c, st, stdout, stderr)
+	return a.replaceBriefs([]sprint.CardAdd{{ID: id, Brief: w.brief}}, false, ans, rs, c, st, stdout, stderr)
 }
 
 // cmdBriefDir is brief --dir (docs/SPEC-SPRINT.md, the brief verb): one brief
@@ -3053,7 +3054,7 @@ func (a *app) cmdBriefDir(dir, rules string, members, ans []string, c *common, s
 	if code := lintBriefFiles("brief", cards, rs, c.max, stderr); code != 0 {
 		return code
 	}
-	return a.replaceBriefs(cards, ans, rs, c, st, stdout, stderr)
+	return a.replaceBriefs(cards, false, ans, rs, c, st, stdout, stderr)
 }
 
 // orNone is the ids comma separated, "none" for none.
@@ -3067,7 +3068,7 @@ func orNone(ids []string) string {
 // replaceBriefs is brief's write, one step for every card (sprint.Brief): each
 // brief's WHO line held to the friends table (holdWho), each card naming the
 // rules the member injects into it (cardRules); ans the judgments it answers.
-func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c *common, st *store.Store, stdout, stderr io.Writer) int {
+func (a *app) replaceBriefs(cards []sprint.CardAdd, needsFromBrief bool, ans []string, rs ruleSet, c *common, st *store.Store, stdout, stderr io.Writer) int {
 	if st == nil { // --rules named the rule set: briefRules opened no store
 		var err error
 		if st, err = a.store(*c); err != nil {
@@ -3091,7 +3092,7 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 		if info, err := st.CardOf(context.Background(), cd.ID); err == nil && info.Primary != nil {
 			streams[i] = info.Primary.F("stream")
 		}
-		req.Cards = append(req.Cards, sprint.BriefCard{ID: cd.ID, Brief: cd.Brief, Rules: cardRules(cd.Brief, rs).held, Needs: uniquify(briefNeeds(cd.Brief))})
+		req.Cards = append(req.Cards, sprint.BriefCard{ID: cd.ID, Brief: cd.Brief, Rules: cardRules(cd.Brief, rs).held, Needs: uniquify(briefNeeds(cd.Brief)), NeedsFromBrief: needsFromBrief})
 		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
 	}
 	if code := a.holdWho("brief", st, stderr, streams, texts...); code != 0 {
