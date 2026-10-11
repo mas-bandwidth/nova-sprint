@@ -879,4 +879,14 @@
 
   (fix "two-ci-flakes-text-file-busy-and-git-maintenance" :release "v1.2.10" :status "shipped"
    :title "Two CI flakes: exec'd stubs written under the fork lock, and git's auto maintenance off in tests"
-   :origin "PR #88")))
+   :origin "PR #88")
+
+  (fix "land-clash-test-sets-git-identity-in-clones" :release "v1.2.11" :status "planned"
+   :title "The land-clash test commits with the shared git identity in every clone"
+   :text "TestTwoGreenHeadsRedTogetherRefuseTheSecondAsAClash set user.name and user.email in its first
+    temporary repository only, so the clones it makes did not inherit them and their commits failed with
+    exit 128 (\"unable to auto-detect email address\") on any machine without a global git identity. The
+    test's runCmd and runGit helpers now pass the shared test identity from pkg/testgit in the command's
+    environment, so every repository and clone commits with an identity the same way as the package's
+    other git-using tests do. The test's assertions are unchanged."
+   :origin "the coordinator, 2026-10-11: main red since 8a812a5, CI run 38142269029; this card")))
