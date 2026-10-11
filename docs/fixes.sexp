@@ -1317,7 +1317,22 @@
   (fix "tla-seathealth-deleted-health-and-evidence" :release "v1.2.12" :status "planned"
    :title "SeatHealth models the health delete, the rung-5 write, and the beat proof"
    :text "Models only, no product change. tla/SeatHealth.tla was read against internal/sprint/friend_health.go, friend_stall.go and presence.go and drifted in four places, each brought to the code. A friend's health row can be deleted (Clear: friend health --clear, or the stall ladder's rung-5 release), so the row holds no proof to compare and an older proof is then accepted; ProofNeverGoesBack is restated to hold while the row exists. Rung 5 writes the row outside NotHealth (Rung5Down) with Seen = now and the current generation. FriendEvidence makes her up on her beat's proof (Prove) on a fresh beat and never counts a raw beat, and the code's three evidence windows (pong 10 m, proof 15 m, finish 30 m) are one DownAfter. OldSeatNeverUp is restated over the observation's word alone (the beat proof is not the seat's). A seventh reversed witness MCSeatHealthBrokenClearKeepsRow (Broken \"clearkeepsrow\") deletes the proof but keeps the row observed, then takes an older proof, failing the restated ProofNeverGoesBack; the six existing witnesses keep their results. presence.go and friend_stall.go each gain one comment line citing the module; tla/RUNS.tsv is merged and tla/COVERAGE.tsv notes her beat's down word and a finished card are still outside."
-   :origin "card tla-seathealth-deleted-health-and-evidence, 2026-10-11: v1.2.12 inventory item T27 and section 9 (D10), at nova-sprint main 00c54ba2e")
+    :origin "card tla-seathealth-deleted-health-and-evidence, 2026-10-11: v1.2.12 inventory item T27 and section 9 (D10), at nova-sprint main 00c54ba2e")
+
+  (fix "tla-dirtytick-deal-order-and-skips" :release "v1.2.12" :status "planned"
+   :title "DirtyTick models the deal's held-stream skip"
+   :text "DirtyTick's Deal now skips a held stream's ready cards, to a machine and a friend alike
+    (a Scn.heldStreams set, empty in every existing configuration; internal/sprint/hold.go StreamHeld,
+    steps_tick.go:776,792 and steps_work.go:980), with the invariant HeldStreamNotDealt (shaped like
+    RouteGuard) and the reversed witness dealheldstream: MCDirtyTickHeldStream.cfg passes and
+    MCDirtyTickBrokenDealHeldStream.cfg fails HeldStreamNotDealt. The deal's reads-before-work order and
+    the read card's half slot (steps_tick.go:762-764 withReadCards, read_cards.go halfLoad) are the
+    read-cards machine's (tla/ReadCards.tla) and stay outside the module, whose reads are the readers
+    table's. The deal's friends-first ladder (tla/WhoPreference.tla), bench pool and staging refusers
+    (tla/RouteIndex.tla Pool), friend-dealt return (tla/FriendDealtReturn.tla) and fault-hold clear
+    (tla/DealFill.tla FaultHoldClears) are cited to their modules in the model's comments. Models only,
+    no product change. The eight dirtytick groups were rerun with TLC and merged into tla/RUNS.tsv."
+   :origin "v1.2.12 inventory item T7, second half; card tla-dirtytick-deal-order-and-skips.w6")
 
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
