@@ -17,7 +17,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `DirtyTickRead` | Reader handoffs within the tick. |
 | `ReadsByRoom`, `ReaderTiers`, `ReadCards` | Where a read is asked, on which tier, and how a read card is loaded. |
 | `RouteIndex`, `RouteRest` | Route selection, its counters, and resting a route. |
-| `NoRoom` | A member's no-room word (the disk floor), a draining member's included, and the deal and fleet verbs that give such a member nothing. |
+| `NoRoom` | A member's no-room word (the disk floor) and its drain (its binary replaced), the deal and fleet verbs that give such a member nothing, the return of what a draining member was dealt and has not taken, and the ask that asks a held or draining machine's reader nothing. |
 | `RetireAbsent` | The tick retires a fleet row whose machine record is gone from the inventory (a rename), drains it while it still holds cards, and retires nothing on a failed config read. |
 | `Level`, `WhoPreference` | Distribution of queued work across available capacity, and the rebalance. |
 | `Land`, `LandPass`, `LatePush` | The landing protocol, the land pass over streams, and a late push. |

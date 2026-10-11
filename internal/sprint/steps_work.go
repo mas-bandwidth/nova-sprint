@@ -2612,6 +2612,9 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 		up := notQuiet(s, s.UpMembers())
 		held := memberLoads(s, up)
 		sweep(s, &p, r, up, rr, moves, held)
+		// what a member that drains was dealt and has not taken goes back for the deal
+		// (drain.go): up is the members that do not drain
+		drainReturns(s, &p, r.Who)
 		level(s, &p, up, rr, moves, held)
 	case "quiet":
 		return quietPlan(s, r)

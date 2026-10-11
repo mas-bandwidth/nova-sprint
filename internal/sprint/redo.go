@@ -234,7 +234,7 @@ func Redo(s *Snapshot, r RedoReq) Plan {
 		return p
 	}
 
-	up := s.UpMembers()
+	up := notQuiet(s, s.UpMembers()) // a member quiet, under its floor or draining is dealt nothing (drain.go)
 	q, room := memberLoads(s, up), memberWidths(s, up)
 	// a redo falls back past a full provider, and is dealt on one when none has room
 	s = s.withSoftBudgets()

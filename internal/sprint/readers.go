@@ -673,7 +673,7 @@ func sweepReads(s *Snapshot, p *Plan) {
 		}
 		tier := s.readTierOf(pr)
 		for _, rd := range up {
-			if !s.readerServesTier(rd, tier) {
+			if !s.readerServesTier(rd, tier) || s.readerOff(rd) != "" {
 				continue
 			}
 			if _, ok := ReadCardForAsk(s, c.F("primary"), c.Int("attempt"), rd); ok {
@@ -684,6 +684,23 @@ func sweepReads(s *Snapshot, p *Plan) {
 	}
 	for _, rd := range s.Readers.Rows() {
 		if s.ReaderIsUp(rd) {
+			if why := s.readerOff(rd); why != "" {
+				// up, and it takes no work: it drains, or its machine is held or drains
+				// (drain.go). Its reads asked and not begun go back for the ask to ask of
+				// another reader; a read begun finishes where it is.
+				asked := append([]*Card{}, s.Readers.Cell(rd, Asked)...)
+				SortCards(asked)
+				for _, c := range asked {
+					if !taker(c) {
+						continue
+					}
+					what := fmt.Sprintf("%s %s:asked -> taken back (%s takes no work: %s); the ask asks it of another reader", c.ID, rd, rd, why)
+					p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"),
+						Changes: []Change{change(Readers, removeEntry(c, map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByAway}))},
+						Notes:   []Note{drainNote(s, happened(NDrainReturned, c.F("stream"), s.Now, c.F("primary")), MachineActor, what)},
+						Moved:   what})
+				}
+			}
 			continue
 		}
 		cards := append([]*Card{}, s.Readers.Cell(rd, Asked)...)
@@ -774,9 +791,10 @@ func (s *Snapshot) readerRooms(readers []string) map[string]readerRoom {
 	for _, rd := range readers {
 		w := s.ReaderWidth(rd)
 		free := w - s.readerLoad(rd)
-		if s.NoRoom[rd] != "" && free > 0 {
-			// its beat says it starts no read (its disk under its floor): no free room, so
-			// it is asked nothing until its beat says it starts reads again
+		if (s.NoRoom[rd] != "" || s.readerOff(rd) != "") && free > 0 {
+			// its beat says it starts no read (its disk under its floor, or it drains), or its
+			// machine is held or drains (readerOff, drain.go): no free room, so it is asked
+			// nothing until its beat says it starts reads again and its machine takes work
 			free = 0
 		}
 		room[rd] = readerRoom{width: w, free: free}
@@ -809,7 +827,9 @@ func (s *Snapshot) readerRooms(readers []string) map[string]readerRoom {
 // back first. Each move takes a read off a queue, so the level ends.
 func levelReads(s *Snapshot, p *Plan) {
 	sweepReads(s, p)
-	up := s.UpReaders()
+	// a reader that takes no work (readerOff: it drains, or its machine is held or drains) is
+	// neither a source nor a target: sweepReads took its reads asked back
+	up := slices.DeleteFunc(s.UpReaders(), func(rd string) bool { return s.readerOff(rd) != "" })
 	if len(up) < 2 {
 		return
 	}

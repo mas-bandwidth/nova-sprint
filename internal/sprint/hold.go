@@ -201,7 +201,8 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 	// moves it (round.go), as a fleet step's does
 	rr := dealRoundWith(s, members...)
 	moves := roundMoves{}
-	up := without(s.UpMembers(), members)
+	// a member quiet, under its floor or draining is given nothing (notQuiet; drain.go)
+	up := notQuiet(s, without(s.UpMembers(), members))
 	q, widths := memberLoads(s, up), memberWidths(s, up)
 	for _, t := range targets {
 		var line string
