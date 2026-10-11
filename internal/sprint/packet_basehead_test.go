@@ -33,7 +33,7 @@ func TestALaterAttemptStartsFromTheLastPushedHeadOfAnyEarlierAttempt(t *testing.
 		{"the same, the cards in the other order", []*Card{attemptCard("2", "no", ""), attemptCard("1", "yes", shaA)}, 1, shaA},
 		{"attempts 1 and 2 both pushed", []*Card{attemptCard("1", "yes", shaA), attemptCard("2", "yes", shaB)}, 2, shaB},
 		{"attempt 2 pushed, attempt 3 finished at no commit", []*Card{attemptCard("1", "no", ""), attemptCard("2", "yes", shaB), attemptCard("3", "yes", "p1.w3")}, 2, shaB},
-		{"a failed attempt's head is not a pushed one", []*Card{attemptCard("1", "yes", shaA), attemptCard("2", "no", shaB)}, 1, shaA},
+		{"a failed latest attempt still retains its pushed head", []*Card{attemptCard("1", "yes", shaA), attemptCard("2", "no", shaB)}, 2, shaB},
 		{"no attempt pushed", []*Card{attemptCard("1", "no", ""), attemptCard("2", "yes", "p1.w2")}, 0, ""},
 		{"an attempt still in flight", []*Card{attemptCard("1", "", "")}, 0, ""},
 		{"no earlier attempt", nil, 0, ""},
