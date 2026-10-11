@@ -73,6 +73,7 @@ var verbEffect = map[string]string{
 	"seat uninstall":    "local write: unloads the push loop's unit and removes its file from --dir; --dry-run names the unit and unloads and removes nothing",
 	"machinery":         "inspection: checks server, store, loop, beats, readers, dashboard, installed versions, merge queue, writes nothing",
 	"needs":             "inspection: reads the waiting cards, writes nothing",
+	"needs set":         "local write: replaces the named primaries' needs in the sprint's store, rewriting each brief's DEPENDS-ON: line to match",
 	"streams":           "inspection: reads the work and merge tables once and prints each stream with the repositories and bases its cards record, its release, its open and landed counts, and with --cards every card's id, state, tier, title and needs; writes nothing",
 	"held":              "inspection: reads the held cards of the table, writes nothing",
 	"sentinels":         "inspection: reads the sentinels and what each waits on, writes nothing",
@@ -249,6 +250,27 @@ const briefExampleCard = "RESULT: <label> sha=<sha12>\n" +
 // cardHelpWords is the brief example shown in help add and help brief.
 const cardHelpWords = "a brief is held to the card lint (nova-swarm template --name card):\n\n" + briefExampleCard
 
+// needsSetWords is needs set's -h paragraph.
+var needsSetWords = strings.TrimSpace(`
+needs set <id>... (--needs <a,b> | --clear) replaces the named primaries'
+needs in one step, the coordinator's alone. Each need is a primary on the
+table, and each card's brief is rewritten so its DEPENDS-ON: line names the
+same needs. A ready card that gains a need not landed waits; a waiting card
+whose new needs have all landed is ready, in the same unit; a card dealt or
+working takes the new needs for its next attempt and keeps its attempt.
+Refused whole, nothing written, for a landed or dropped card, a sentinel, a
+need that is no primary on the table, the card itself, and --needs naming no
+card (use --clear). Before this verb a card's needs changed only by a brief
+edit or by dropping and adding the card again.
+`)
+
+// needsProse is needs' -h paragraph naming its write beside it.
+const needsProse = `needs prints the dependency graph of the waiting cards, writes nothing.
+needs set <id>... (--needs <a,b> | --clear) replaces a primary's needs in
+place, the coordinator's alone; every card's needs are set at add, by a brief
+edit, or by needs set, and nowhere else.
+`
+
 // verbProse is the explanation a verb's -h carries past its flags. The banner
 // still carries the inbox walkthrough and the friends section on their own.
 func verbProse(name string) string {
@@ -261,6 +283,10 @@ func verbProse(name string) string {
 		return releaseHoldWords
 	case "sentinel set":
 		return sentinelSetWords + "\n"
+	case "needs set":
+		return needsSetWords + "\n"
+	case "needs":
+		return needsProse + "\n"
 	case "friend beat", "friend down", "friend up", "friend health":
 		return friendVerbWords(name)
 	case "friend take":

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
@@ -17,8 +19,12 @@ import (
 // The needs verb is a read (docs/SPEC-SPRINT.md section 11): it changes
 // nothing and needs no actor, and it prints the dependency graph of the
 // waiting cards. The class is kept here, beside the verb, since the verb
-// table registers the verb and needs.go adds its class.
-func init() { verbClasses["needs"] = classRead }
+// table registers the verb and needs.go adds its class. needs set is the
+// coordinator's write beside it (docs/SPEC-SPRINT.md, needs).
+func init() {
+	verbClasses["needs"] = classRead
+	verbClasses["needs set"] = classCoordinator
+}
 
 // needLine is one unmet need with its own column, distinct from the waiting
 // card's column (docs/SPEC-SPRINT.md section 11). Off-table needs name their
@@ -415,4 +421,41 @@ func needsMoreText(b *strings.Builder, kind, scope string, more *needsMore) {
 		fmt.Fprintf(b, "MORE kind=%s%s shown=%d total=%d omitted=%d first_hidden=%s run: %s\n",
 			kind, scope, more.Shown, more.Total, more.Omitted, oneline.Field(more.FirstHidden), more.Command)
 	}
+}
+
+// cmdNeedsSet replaces primaries' needs in place (nova-sprint needs set; docs/SPEC-SPRINT.md,
+// needs): --needs names the new needs, or --clear empties them, and each card's brief is
+// rewritten so its DEPENDS-ON: line names the same needs. The card keeps its id, stream,
+// score and attempt: a ready card that gains a need not landed waits, a waiting card whose
+// new needs have all landed is ready, and a card dealt or working takes the new needs for
+// its next attempt. A card landed or dropped, a sentinel, and a need that is no primary on
+// the table are refused, exit 1, nothing written (sprint.NeedsSet). The coordinator's alone.
+func (a *app) cmdNeedsSet(args []string, stdout, stderr io.Writer) int {
+	fs, c := a.verbSetup("needs set")
+	needs := fs.String("needs", "", "the new needs, comma separated, in place of the ones the cards have: each a primary on the table")
+	clear := fs.Bool("clear", false, "empty the cards' needs; not with --needs")
+	ans := fs.String("answers", "", answersWords)
+	pos, err := parse(fs, args)
+	if err != nil {
+		return refuse(stderr, "needs set", err.Error())
+	}
+	given := false
+	fs.Visit(func(f *flag.Flag) { given = given || f.Name == "needs" })
+	switch {
+	case len(pos) == 0:
+		return refuse(stderr, "needs set", "wants <id>... (--needs <a,b> | --clear): the cards and their new needs")
+	case *clear == given:
+		return refuse(stderr, "needs set", "wants one of --needs <a,b> or --clear; nothing was changed")
+	case given && len(sprint.Split(*needs)) == 0:
+		return refuse(stderr, "needs set", "--needs names no card: use --clear to empty the needs")
+	}
+	st, err := a.store(*c)
+	if err != nil {
+		return refuse(stderr, "needs set", err.Error())
+	}
+	req := sprint.NeedsSetReq{IDs: pos, Clear: *clear, Who: c.actor, Answers: answers(*ans)}
+	if given {
+		req.Needs = sprint.Split(*needs)
+	}
+	return a.runStep("needs set", *c, st, store.NeedsSetStep(req), stdout, stderr)
 }

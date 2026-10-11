@@ -85,6 +85,7 @@ func TestEveryCoordinatorVerbIsTheCoordinators(t *testing.T) {
 		"rank":              "rank s1-1 --first",
 		"relink":            "relink s1-1 s1-2",
 		"sentinel set":      "sentinel set s1-stop --needs s1-2",
+		"needs set":         "needs set s1-1 --clear",
 		"recut":             "recut s1-1 --tier heavy",
 		"twin":              "twin s1-1",
 		"brief":             "brief s1-1 --brief b",

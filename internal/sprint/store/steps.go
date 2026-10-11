@@ -197,6 +197,19 @@ func BriefStep(r sprint.BriefReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Brief(s, r) }}
 }
 
+// NeedsSetStep is the coordinator replacing primaries' needs in place
+// (sprint.NeedsSet). It reads the work table and the records of the needs
+// named, placed or not, so a refusal names what became of a need off the table;
+// the step names its cards, so it applies all or none. It rewrites each card's
+// brief so its DEPENDS-ON: line names the same needs.
+func NeedsSetStep(r sprint.NeedsSetReq) Step {
+	ids := append([]string(nil), r.IDs...)
+	ids = append(ids, r.Needs...)
+	return Step{Answers: r.Answers, Named: true, Args: ArgsOf(r), Verb: "needs set", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge), Mirrors: true,
+		Extras: func(*sprint.Snapshot) map[string][]string { return map[string][]string{sprint.Work: ids} },
+		Plan:   func(s *sprint.Snapshot) sprint.Plan { return sprint.NeedsSet(s, r) }}
+}
+
 // MoveStep is the coordinator moving unstarted primaries to another stream,
 // on a STOPPED machine (sprint.MoveCards): it reads what add reads, the moved
 // cards' needs, placed or not, and the destination's control card.

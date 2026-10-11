@@ -143,22 +143,12 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// from the card's — a brief that drops its DEPENDS-ON clears them — and a
 		// ready card that gains a need not landed moves ready -> waiting with them,
 		// in this same unit (unmet and Lawful accept the move).
-		cur, want := Split(c.F("needs")), b.Needs
-		toWaiting := false
-		if !sameNeeds(cur, want) {
-			if len(want) > 0 {
-				set["needs"] = strings.Join(want, ",")
-			} else {
-				unset = append(unset, "needs")
-			}
-			if c.Col == Ready {
-				for _, n := range want {
-					if s.StateOf(n) != Landed {
-						toWaiting = true
-					}
-				}
-			}
+		want := b.Needs
+		ns, nu, toWaiting := needsWrite(s, c, want)
+		for k, v := range ns {
+			set[k] = v
 		}
+		unset = append(unset, nu...)
 		if c.Int("attempt") > 0 {
 			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who, toWaiting)
 			if orphan {
@@ -539,4 +529,195 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string) Pl
 	p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, unset...))},
 		Moved: fmt.Sprintf("%s DEPENDS-ON replaced: needs %s (%d bytes) stream=%s %s", c.ID, orDash(set["needs"]), len(brief), c.Row, c.Col)})
 	return p
+}
+
+// needsWrite is how a card's needs change to want: the entries that set or
+// clear the field, and whether a ready card that gains a need not landed waits.
+// One function writes a primary's needs, the ordinary brief edit and needs set
+// alike (docs/SPEC-SPRINT.md, needs and the deal).
+func needsWrite(s *Snapshot, c *Card, want []string) (set map[string]string, unset []string, toWaiting bool) {
+	if sameNeeds(Split(c.F("needs")), want) {
+		return nil, nil, false
+	}
+	set = map[string]string{}
+	if len(want) > 0 {
+		set["needs"] = strings.Join(want, ",")
+	} else {
+		unset = append(unset, "needs")
+	}
+	if c.Col == Ready {
+		for _, n := range want {
+			if s.StateOf(n) != Landed {
+				toWaiting = true
+			}
+		}
+	}
+	return set, unset, toWaiting
+}
+
+// allLanded says every need named has landed.
+func allLanded(s *Snapshot, want []string) bool {
+	for _, n := range want {
+		if s.StateOf(n) != Landed {
+			return false
+		}
+	}
+	return true
+}
+
+// needsLine rewrites the one header line a brief names its needs on — its first
+// Needs: line, else its DEPENDS-ON: line — to name ids, every other line left as
+// it is: the brief and the card's needs never disagree, so card <id> shows the
+// truth (docs/SPEC-SPRINT.md, needs). No such line and no ids leaves the brief
+// as it is; no such line with ids gains a DEPENDS-ON: line after the header run.
+func needsLine(brief string, ids []string) string {
+	if brief == "" {
+		if len(ids) == 0 {
+			return ""
+		}
+		return "DEPENDS-ON: " + strings.Join(ids, ", ")
+	}
+	lines := strings.Split(brief, "\n")
+	at := -1
+	for i, l := range lines {
+		key, _, ok := cardhdr.KeyValue(l)
+		if !ok {
+			continue
+		}
+		if key == "Needs" {
+			at = i
+			break
+		}
+		if key == "DEPENDS-ON" && at < 0 {
+			at = i
+		}
+	}
+	if at < 0 {
+		if len(ids) == 0 {
+			return brief
+		}
+		ins := headerEnd(lines)
+		out := append([]string(nil), lines[:ins]...)
+		out = append(out, "DEPENDS-ON: "+strings.Join(ids, ", "))
+		out = append(out, lines[ins:]...)
+		return strings.Join(out, "\n")
+	}
+	if len(ids) == 0 {
+		return strings.Join(append(append([]string(nil), lines[:at]...), lines[at+1:]...), "\n")
+	}
+	lines[at] = "DEPENDS-ON: " + strings.Join(ids, ", ")
+	return strings.Join(lines, "\n")
+}
+
+// headerEnd is where a brief's header run ends: just after its last KEY: value
+// line (blank lines skipped), line 1 being the contract line (docs/SPEC-SPRINT.md,
+// the card header).
+func headerEnd(lines []string) int {
+	last := 1
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		if _, _, ok := cardhdr.KeyValue(lines[i]); !ok {
+			break
+		}
+		last = i + 1
+	}
+	return last
+}
+
+// NeedsSetReq replaces primaries' needs (needs set <id>... (--needs <a,b> | --clear)).
+type NeedsSetReq struct {
+	IDs     []string
+	Needs   []string // the needs in place of the ones the cards have
+	Clear   bool     // empty the cards' needs (--clear)
+	Who     string
+	Answers []string
+}
+
+// NeedsSet replaces primaries' needs in place (nova-sprint needs set; docs/SPEC-SPRINT.md,
+// needs): each a primary waiting, ready or dealt, the machine running or not. A
+// ready card that gains a need not landed waits; a waiting card whose new needs
+// have all landed is ready, in the same unit; a card dealt or working takes the
+// new needs for its next attempt and keeps its attempt. Each card's brief is
+// rewritten so its DEPENDS-ON: line names the same needs, so the brief and the
+// needs never disagree (needsLine). Refused whole, nothing written (the step
+// names its cards): an absent, dropped, sentinel or landed card; a need that is
+// no primary on the table, the card itself, or named twice. The coordinator's
+// alone. Before this verb a card's needs changed only by a brief edit or by
+// dropping and adding the card again.
+func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
+	var p Plan
+	p.on(s)
+	want := r.Needs
+	if r.Clear {
+		want = nil
+	}
+	seen := map[string]bool{}
+	for _, id := range r.IDs {
+		if seen[id] {
+			p.refuse(id, id+" is named twice; nothing was changed")
+			continue
+		}
+		seen[id] = true
+		c := s.Work.Placed(id)
+		switch {
+		case c == nil:
+			if rec := s.Work.Card(id); rec != nil && !rec.Placed() {
+				p.refuse(id, id+" is off the table ("+orDash(rec.F("outcome"))+"): its needs are set only while it is on the table; nothing was changed")
+			} else {
+				p.refuse(id, "no primary "+id+" on the work table; nothing was changed")
+			}
+			continue
+		case IsSentinel(c):
+			p.refuse(id, id+" is a sentinel, not a primary: its needs change with nova-sprint sentinel set; nothing was changed")
+			continue
+		case c.Col == Landed:
+			p.refuse(id, id+" is landed: a card landed keeps its needs; nothing was changed")
+			continue
+		}
+		var bad []string
+		needed := map[string]bool{}
+		for _, n := range want {
+			switch {
+			case n == c.ID:
+				bad = append(bad, n+" is the card itself")
+			case needed[n]:
+				bad = append(bad, n+" is named twice")
+			case s.Work.Placed(n) == nil:
+				bad = append(bad, n+", which is no primary on the table")
+			}
+			needed[n] = true
+		}
+		if len(bad) > 0 {
+			p.refuse(id, "needs set names "+strings.Join(bad, "; ")+"; nothing was changed")
+			continue
+		}
+		set, unset, toWaiting := needsWrite(s, c, want)
+		if brief := needsLine(c.F("brief"), want); brief != c.F("brief") {
+			if set == nil {
+				set = map[string]string{}
+			}
+			set["brief"] = brief
+		}
+		toReady := c.Col == Waiting && allLanded(s, want)
+		now := orDash(strings.Join(want, ","))
+		if set == nil && unset == nil && !toReady {
+			p.refuse(id, id+" needs "+now+" already; nothing was changed")
+			continue
+		}
+		switch {
+		case toWaiting:
+			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Waiting, set, unset...))},
+				Moved: fmt.Sprintf("%s needs %s; ready -> waiting", c.ID, now)})
+		case toReady:
+			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Ready, set, unset...))},
+				Moved: fmt.Sprintf("%s needs %s; waiting -> ready", c.ID, now)})
+		default:
+			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, unset...))},
+				Moved: fmt.Sprintf("%s needs -> %s stream=%s %s", c.ID, now, c.Row, c.Col)})
+		}
+	}
+	answered(&p, s, r.Answers, r.Who)
+	return Lawful(p)
 }

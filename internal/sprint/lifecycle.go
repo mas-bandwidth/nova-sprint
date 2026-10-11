@@ -166,7 +166,18 @@ func unmet(u Unit, pre *Snapshot, landing map[string]bool) string {
 				return "a move waiting -> ready is judged against the step's pre-state, and this plan carries none"
 			}
 			pc := pre.Work.Card(e.ID)
-			needs, waived = Split(pc.F("needs")), append(Split(pc.F("waived")), Split(e.Set["waived"])...)
+			// a unit that rewrites the card's needs is judged against the needs
+			// it writes, not the ones it is leaving behind: a waiting card
+			// re-pointed at landed needs is ready in the same unit (needs set;
+			// docs/SPEC-SPRINT.md, needs)
+			switch {
+			case e.Set["needs"] != "":
+				needs, waived = Split(e.Set["needs"]), Split(pc.F("waived"))
+			case slices.Contains(e.Unset, "needs"):
+				needs, waived = nil, Split(pc.F("waived"))
+			default:
+				needs, waived = Split(pc.F("needs")), append(Split(pc.F("waived")), Split(e.Set["waived"])...)
+			}
 			needs = append(needs, PositionWaits(pre, pc, landing)...)
 		case e.Move != nil && e.Move.Col == Working:
 			// a card is dealt only when every need has landed (docs/SPEC-SPRINT.md,
