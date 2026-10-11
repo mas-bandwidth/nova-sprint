@@ -173,7 +173,7 @@ const RoleReader = "reader"
 func readUnitsOf(s *Snapshot, seats []FriendSeat) []readUnit {
 	var out []readUnit
 	for _, f := range seats {
-		if !friendCanRead(s, f) || !slices.Contains(f.Roles, RoleReader) {
+		if !friendCanRead(s, f) || !friendHasRole(f, RoleReader) {
 			continue
 		}
 		g := f
@@ -584,7 +584,7 @@ func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]s
 			us = append(us, u.name+" half="+itoa(u.half)+" idle="+itoa(u.idle))
 		}
 		for _, f := range seats {
-			if slices.Contains(f.Roles, RoleReader) && !friendCanRead(view, f) {
+			if friendHasRole(f, RoleReader) && !friendCanRead(view, f) {
 				out = append(out, f.Name+" ("+f.Status+")")
 			}
 		}
