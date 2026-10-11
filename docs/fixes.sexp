@@ -1377,4 +1377,18 @@
     no-stall rule and the rebalance test drawability with the deal's own budgets and the tier's array
     (backoffWait): tests TestABackedOffTierWithTheOtherProviderFullIsAWaitNeverAStall and
     TestABackedOffTierWithTheOtherRouteOutOfTheArrayIsAWaitNeverAStall."
-   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; the owner, 2026-10-11: \"the rate limited should just stall out delay, not fail\"; nova-sprint docs/fixes.sexp entry a-rate-limited-refusal-never-fails-the-cardc; nova-sprint card rate-limit-never-fails-the-card-v2")))
+   :origin "the owner, 2026-10-11 ~00:20Z, after the fleet stalled (35 ready, 7 up, 0 working, every pro/heavy route resting): \"How can we fix it so this doesn't happen moving forward\"; the owner, 2026-10-11: \"the rate limited should just stall out delay, not fail\"; nova-sprint docs/fixes.sexp entry a-rate-limited-refusal-never-fails-the-cardc; nova-sprint card rate-limit-never-fails-the-card-v2")
+   (fix "a-backoff-withdrawal-writes-no-note-per-card" :release "v1.2.14" :status "planned"
+    :title "A rate-limit backoff withdrawal writes no note per card"
+    :text "A rate-limit backoff is a rest the deal withdraws the ready cards it holds from
+     (restWithdrawals, Cause RestRateBackoff), but the backoff already notes itself once per new
+     end (restWrites, the one happened note \"rate-limit backoff of <d> on <route>, until <t>\").
+     The withdrawal added one NRestWithdrawn note per card, so one backoff on a route with N ready
+     cards drowned its own note under N more. restWithdrawals now drops the NRestWithdrawn note
+     from the unit it builds when the rest's cause is RestRateBackoff (filtering the unit's Notes);
+     the withdrawal, its Moved words and its unspent redeal are unchanged, and a 5xx rest still
+     notes each withdrawn card as before (tla/RateBackoff.tla; docs/SPEC-SPRINT.md section 5, the
+     deal). Tests TestABackoffWithdrawalWritesNoNotePerCard and
+     TestAFiveHundredsRestWithdrawalStillNotesEachCard."
+    :origin "follow-up 4 of tmp/next-sprint-cards/rate-limit-followups.md, the second cold read of
+     nova-sprint PR #86, 2026-10-11; checked against PR #86's head a1c51ee and main 00c54ba")))
