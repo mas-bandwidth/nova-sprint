@@ -1197,6 +1197,18 @@
     unchanged. Test-side only; no product change."
    :origin "the v1.2.12 plan (tmp/point-release-plan-v1.2.11-v1.2.12.md, last lines); CI run 38140844195 on #89; this card store-two-run-loops-retries-a-busy-fence")
 
+  (fix "tla-stopreturn-clear-cases" :release "v1.2.12" :status "planned"
+   :title "StopReturn clear stops first and refuses an advance over a live lease"
+   :text "Models only, no product change. Clear now takes STOP as its first step from RUNNING, then
+    checks the current working leases before advancing, also on a retry while STOPPED. The split
+    preserves a return receipt between STOP and the lease read. ClearEnabled checks reachability
+    from RUNNING and STOPPED with no working lease; ClearNeverWithALiveLease records whether an
+    advance crossed a working lease. MCStopReturnClear passes both; BrokenClearBlocked drops only
+    the live-lease guard and fails ClearNeverWithALiveLease. All seven stopreturn cases pass inside
+    110 seconds, preserving the existing safety and liveness assertions. Readers-table leases,
+    generation-pin changes and settle-by-beat changes remain separate cards."
+   :origin "this card, tla-stopreturn-clear-cases.w4, 2026-10-11: v1.2.12 inventory item T13; carry attempt 2 redone on current main")
+
   (fix "tla-coverage-rows-for-every-nova-sprint-module" :release "v1.2.12" :status "planned"
    :title "tla/COVERAGE.tsv names every TLA+ module in the tree exactly once"
    :text "Every module in tla/ (every X.tla whose name does not start with MC, SeatProof retired) is
