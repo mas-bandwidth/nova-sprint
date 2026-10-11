@@ -2246,10 +2246,20 @@ var envFaultClasses = []struct {
 }
 
 // EnvFault classifies a failed finish's reason as an environment fault: its cause (EnvPush,
-// EnvHarness, EnvTool, EnvSandbox, EnvDisk), or "" when it is none.
+// EnvHarness, EnvTool, EnvSandbox, EnvDisk), or "" when it is none. The reason is the text
+// before the first "; " (the member's own explanation); child text after it is ignored.
+// A reason that carries "[rejected]", "non-fast-forward", or "(fetch first)" is a branch
+// refusal, never an environment fault (tla/ProviderBudget.tla, ARejectedPushIsNeverAFault).
 func EnvFault(report string) string {
+	reason := report
+	if i := strings.Index(report, "; "); i >= 0 {
+		reason = report[:i]
+	}
+	if strings.Contains(reason, "[rejected]") || strings.Contains(reason, "non-fast-forward") || strings.Contains(reason, "(fetch first)") {
+		return ""
+	}
 	for _, c := range envFaultClasses {
-		if c.re.MatchString(report) {
+		if c.re.MatchString(reason) {
 			return c.cause
 		}
 	}
