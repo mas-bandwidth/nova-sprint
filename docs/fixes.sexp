@@ -1473,4 +1473,23 @@
    :origin "this card: doctor-warns-while-a-tier-backs-off; the third cold read of nova-sprint PR
     #86, 2026-10-11, an open non-blocking finding: \"Doctor reports FAIL while every route of a
     tier backs off\"; listed in the rate-limit-never-fails-the-card-v2 card; checked against
-    nova-sprint main 00c54ba and PR #86's head a1c51ee")))
+    nova-sprint main 00c54ba and PR #86's head a1c51ee")
+  (fix "take-by-id-starts-the-card-as-a-lane-take-does" :release "v1.2.14" :status "planned"
+   :title "take by id starts a friend's card as a lane take does"
+   :text "The two forms of take did different things. take --as <friend> --lane <n> moved the card to
+    working through the lane's move (laneSet), so it carried the lane and, on a friend's row, her start
+    (friendStartSet) and the tick left it working. take --as <friend> <card>@<gen> by id moved it with
+    friendTaken instead, which set no start, so the next tick put it back ready (friendUnstartedWorking)
+    and her progress was refused \"not working\"; a lane take then re-dealt the card at a new generation
+    and her finish was refused stale. The by-id take now goes through the lane's move too
+    (sprint.NamedLaneTake, TakeReq.LaneByID): each named card is taken by takeOne -- so every guard a
+    take by count holds holds for it too (the row's seat and width, the card's live generation, its
+    route rest and the providers' fleet-wide concurrency budget) -- and is then stamped as a lane's take
+    stamps the card it is given (laneSet: the lane when --lane <n> names one, the row's lane heard from
+    now, and on a friend's row her start), so both forms of the verb write working, holder, lane and
+    generation the same way. A member's by-id take is unchanged and names no lane. TAKE-BY-ID says a
+    LANE line per card as the lane's take does. On 2026-10-11 the seat lost two takes and one finish to
+    this."
+   :origin "this card: take-by-id-starts-the-card-as-a-lane-take-does.w2, from the owner,
+    2026-10-11 ~11:15-11:40 AM ET (\"How can we distribute work to friends, if you can't even
+    distribute it to yourself?\"); code read at nova-sprint main 1405d26")))
