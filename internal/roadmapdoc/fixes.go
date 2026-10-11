@@ -19,10 +19,14 @@ const FixesFormat = "v1"
 //	 :title "<page title>"
 //	 :text "<the page's opening paragraph>"
 //	 :releases ((release "<vX.Y.Z>" :status "shipped|in-progress|planned" :text "..." [:date "YYYY-MM-DD"]) ...)
-//	 :items ((fix "<id>" :release "<vX.Y.Z>" :title "..." :origin "..." :status "shipped|in-progress|planned"
-//	          [:text "..."]) ...))
+//	 :items ((fix "<id>" :release "<vX.Y.Z>" :title "..." :origin "..." :status "planned|in-progress|done|shipped"
+//	          [:text "..."] [:kept (:<key> "<value>" ...)]) ...))
 //
-// Every fix names a release the file declares, and every release holds a fix.
+// Every fix names a release the file declares, and every release holds a fix. A
+// fix's status is planned, in-progress, done (landed, with its evidence in its
+// text, before its release is cut) or shipped; a release's is planned,
+// in-progress or shipped. nova-work roadmap edits the file (internal/roadmap);
+// :kept is as in the roadmap (the fields a move carried), and is not rendered.
 
 // Fixes is a decoded fixes file.
 type Fixes struct {
@@ -40,9 +44,14 @@ type Release struct {
 // a commit or a ledger line) and how far it has got.
 type Fix struct {
 	ID, Release, Title, Text, Origin, Status string
+	Kept                                     []Pair
 }
 
 var statuses = map[string]bool{"shipped": true, "in-progress": true, "planned": true}
+
+// fixStatuses adds done to a fix's statuses: a fix that has landed, with its
+// evidence, in a release not yet cut.
+var fixStatuses = map[string]bool{"shipped": true, "in-progress": true, "planned": true, "done": true}
 
 // DecodeFixes reads one fixes file and returns it, or every shape problem of the
 // file together in one error.
@@ -67,6 +76,14 @@ func (d *decoder) status(at string, vals map[string]worklang.Form) string {
 	v := d.str(at, vals, "status")
 	if v != "" && !statuses[v] {
 		d.fail(at, ":status %q wants shipped, in-progress or planned", v)
+	}
+	return v
+}
+
+func (d *decoder) fixStatus(at string, vals map[string]worklang.Form) string {
+	v := d.str(at, vals, "status")
+	if v != "" && !fixStatuses[v] {
+		d.fail(at, ":status %q wants planned, in-progress, done or shipped", v)
 	}
 	return v
 }
@@ -103,13 +120,13 @@ func (d *decoder) fixes(top worklang.Form) *Fixes {
 	used := map[string]bool{}
 	for i, f := range d.list("top", vals, "items") {
 		at := fmt.Sprintf(":items[%d]", i)
-		id, v, ok := d.record(at, f, "fix", true, []string{"release", "title", "origin", "status"}, []string{"text"})
+		id, v, ok := d.record(at, f, "fix", true, []string{"release", "title", "origin", "status"}, []string{"text", "kept"})
 		if !ok {
 			continue
 		}
 		seen(at, id)
 		it := Fix{ID: id, Release: d.str(at, v, "release"), Title: d.str(at, v, "title"), Text: d.str(at, v, "text"),
-			Origin: d.str(at, v, "origin"), Status: d.status(at, v)}
+			Origin: d.str(at, v, "origin"), Status: d.fixStatus(at, v), Kept: d.kept(at, v)}
 		if it.Release != "" && !releases[it.Release] {
 			d.fail(at, ":release %q names no (release ...) record", it.Release)
 		}
