@@ -1660,7 +1660,7 @@ func (l *lander) mergeCards(ctx context.Context, dir, stream string, cards []lan
 		case env != "":
 			return nil, failed, env + "; no card is blamed and nothing was pushed or reported"
 		case refused != "":
-			return merged, conflictCard{landCard: *card, why: refused, kind: l.conflictKind, paths: l.conflictPaths, emptyCommit: refused == emptyCommitFinding}, ""
+			return merged, conflictCard{landCard: *card, why: refused, kind: l.conflictKind, paths: l.conflictPaths, emptyCommit: isEmptyCommitFinding(refused)}, ""
 		}
 		merged = append(merged, card.id)
 	}
@@ -1933,6 +1933,20 @@ func (l *lander) ledgers() []landLedger {
 // start is empty while the result claims changes. It is the return reason, whole.
 const emptyCommitFinding = "empty commit: the result claims changes the diff does not show"
 
+// emptyCommitNoResultFinding is the refusal when the head diff from the attempt's start
+// is empty and the lander holds no result at all for the card (the work card is absent or
+// was tidied away): nothing claimed changes, so the finding says no result is held. It is
+// the return reason, whole.
+const emptyCommitNoResultFinding = "empty commit: the head changes nothing from the attempt's start, and the lander holds no result to say why"
+
+// isEmptyCommitFinding says whether a refusal is one of the lander's empty-commit
+// findings, from a claim (emptyCommitFinding) or from a missing result
+// (emptyCommitNoResultFinding): both return the card to review as an empty commit
+// (docs/SPEC-SPRINT.md section 7, the lander's checks).
+func isEmptyCommitFinding(refused string) bool {
+	return refused == emptyCommitFinding || refused == emptyCommitNoResultFinding
+}
+
 var (
 	verdictOkRE = regexp.MustCompile(`(?im)^\s*verdict:\s*ok\b`)
 	// nothingRE is a result line that says the child found nothing to do: the verdict
@@ -1977,12 +1991,16 @@ func claimText(wc *sprint.Card) string {
 // or a diff stat that is not empty) is refused with emptyCommitFinding. A result that
 // claims nothing (a nothing-to-do verdict or report line, every step -) passes. A result
 // the lander does not hold cannot be told to claim nothing, so an empty diff with no
-// result text is refused too. A non-empty diff passes.
+// result text is refused with emptyCommitNoResultFinding, which says no result is held
+// instead of accusing the missing result of claiming changes. A non-empty diff passes.
 func checkEmptyCommit(emptyDiff bool, resultText string) string {
 	if !emptyDiff {
 		return ""
 	}
-	if strings.TrimSpace(resultText) == "" || verdictOkRE.MatchString(resultText) {
+	if strings.TrimSpace(resultText) == "" {
+		return emptyCommitNoResultFinding
+	}
+	if verdictOkRE.MatchString(resultText) {
 		return emptyCommitFinding
 	}
 	if nothingRE.MatchString(resultText) {

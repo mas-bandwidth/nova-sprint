@@ -4109,7 +4109,15 @@ review called wrong for a fragment, and no other; over the land merges of 215 of
 them it finds those four and one more, diaryr-37, a lead-in left without its end
 the review passed. On those land merges the PATHS rule flags negd-42 and three
 cards of its shape (negd-17, -32, -41: a file the card edited after a name card
-renamed it from the name its PATHS gives), which the review passed. A head that fails is taken off
+renamed it from the name its PATHS gives), which the review passed. An empty
+commit, a head whose diff from the attempt's start commit is empty, is refused with
+`empty commit: the result claims changes the diff does not show` when the attempt's
+recorded result claims changes (a verdict of ok, a step line with a commit sha, or a
+non-empty diff stat), so the refusal reads as a claim. It is refused with `empty commit:
+the head changes nothing from the attempt's start, and the lander holds no result to say
+why` when the lander holds no result for the card at all (the work card is absent or was
+tidied away), so the refusal reads as a missing result and does not accuse one of claiming
+changes. A head that fails is taken off
 the batch branch and ends the batch as a head in conflict does: the conflict fact
 on it names every failure, `<file>:<line>` and the rule.
 

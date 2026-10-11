@@ -11,18 +11,24 @@ import (
 // TestLandRefusesAnEmptyCommitThatClaimsChanges tests that checkEmptyCommit refuses
 // an empty commit whose RESULT.md claims changes (docs/SPEC-SPRINT.md section 7, the lander's
 // checks): given an empty diff and a claiming RESULT.md it refuses with the finding
-// "empty commit: the result claims changes the diff does not show", given an empty diff
-// and a nothing-to-do result it passes, and given a non-empty diff it passes.
+// "empty commit: the result claims changes the diff does not show"; given an empty diff
+// and a missing result (no work card, blank result text) it refuses with the finding
+// "empty commit: the head changes nothing from the attempt's start, and the lander holds
+// no result to say why", so a card the lander holds no result for is not accused of
+// claiming changes; given an empty diff and a nothing-to-do result it passes, and given a
+// non-empty diff it passes.
 func TestLandRefusesAnEmptyCommitThatClaimsChanges(t *testing.T) {
 	t.Parallel()
 
 	const wantFinding = "empty commit: the result claims changes the diff does not show"
+	const wantNoResultFinding = "empty commit: the head changes nothing from the attempt's start, and the lander holds no result to say why"
 
 	t.Run("empty diff with claiming result refuses", func(t *testing.T) {
 		t.Parallel()
 		for _, tc := range []struct {
 			name   string
 			result string
+			want   string
 		}{
 			{
 				name:   "verdict ok",
@@ -47,6 +53,7 @@ func TestLandRefusesAnEmptyCommitThatClaimsChanges(t *testing.T) {
 			{
 				name:   "no result text at all fails closed",
 				result: "",
+				want:   wantNoResultFinding,
 			},
 			{
 				name:   "non-empty diff stat table row",
@@ -56,7 +63,14 @@ func TestLandRefusesAnEmptyCommitThatClaimsChanges(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
 				got := checkEmptyCommit(true, tc.result)
-				assert.Equal(t, wantFinding, got)
+				want := tc.want
+				if want == "" {
+					want = wantFinding
+				}
+				assert.Equal(t, want, got)
+				if tc.want == wantNoResultFinding {
+					assert.NotContains(t, got, "the result claims changes")
+				}
 			})
 		}
 	})
@@ -102,7 +116,17 @@ func TestLandRefusesAnEmptyCommitThatClaimsChanges(t *testing.T) {
 		assert.Empty(t, checkEmptyCommit(true, claimText(generic)), "generic report does not claim changes")
 		none := &sprint.Card{Fields: map[string]string{"ok": "yes", "head": "2d720d219ff5", "report": "nothing to do: the card was right"}}
 		assert.Empty(t, checkEmptyCommit(true, claimText(none)))
-		assert.Equal(t, wantFinding, checkEmptyCommit(true, claimText(nil)), "no work card fails closed")
+		got := checkEmptyCommit(true, claimText(nil))
+		assert.Equal(t, wantNoResultFinding, got, "no work card fails closed")
+		assert.NotContains(t, got, "the result claims changes")
+	})
+
+	t.Run("both empty-commit findings return the card to review", func(t *testing.T) {
+		t.Parallel()
+		assert.True(t, isEmptyCommitFinding(emptyCommitFinding), "a claiming result is an empty-commit finding")
+		assert.True(t, isEmptyCommitFinding(emptyCommitNoResultFinding), "a missing result is an empty-commit finding")
+		assert.NotEqual(t, emptyCommitFinding, emptyCommitNoResultFinding, "the two findings read differently")
+		assert.False(t, isEmptyCommitFinding("some other refusal"), "a refusal that is not an empty commit is not one")
 	})
 
 	t.Run("non-empty diff passes", func(t *testing.T) {
