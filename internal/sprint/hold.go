@@ -79,9 +79,8 @@ type HoldReq struct {
 	// Friends is the friend roster's names (nova-config's friend rows): the snapshot
 	// holds no table of them.
 	Friends []string `json:",omitempty"`
-	// Alive is the members whose beat is alive now: one comes up at once, and a live member keeps taken cards on hold.
-	Alive     []string `json:",omitempty"`
-	BeatsRead bool     `json:"-"`
+	// Alive, with Release, is the members whose beat is alive now: one comes up at once.
+	Alive []string `json:",omitempty"`
 	// Started is the work cards the friends held have started, as friend down reads them
 	// (a push on the branch at its tip, her beat naming it running), each with its why: the
 	// hold takes them too, and a push's head is carried (FriendTake). It is read state, so
@@ -174,8 +173,9 @@ func holdElsewhere(n string, kinds []string, release bool) string {
 // resolved first (HoldTargets), all or none; then each kind's part, and a happened
 // note per name, the reason in it, so the log holds every hold and release. A dealt
 // card moves freely; only a taken card is its worker's and is never pulled back (the
-// owner, 2026-10-09). tla/WhoPreference.tla's NoStartedCardMoves states that rule for
-// started cards.
+// owner, 2026-10-09; NoTakenCardReturned): an up member's hold --return hands back its
+// ready cards alone, and its working cards stay at their generation and finish.
+// tla/WhoPreference.tla's NoStartedCardMoves states that rule for started cards.
 func HoldNames(s *Snapshot, r HoldReq) Plan {
 	targets, refused := HoldTargets(s, r)
 	if len(r.Names) == 0 {
@@ -215,7 +215,10 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 			add(fleetStepPlan(s, FleetReq{Op: "release", Member: t.Name, Who: r.Who, Fresh: slices.Contains(r.Alive, t.Name), Why: r.Reason}, rr, moves))
 		case t.Kind == HoldMember:
 			ctl := s.MemberCtl(t.Name)
-			upNow := ctl != nil && (slices.Contains(r.Alive, t.Name) || (!r.BeatsRead && ctl.F("status") == Up))
+			// a member is up when its status is up; a member already marked to finish
+			// (FieldHeldFinish, a prior hold) keeps that, so a repeat hold never pulls
+			// back a card it already let finish (the owner, 2026-10-09)
+			upNow := ctl != nil && (ctl.F("status") == Up || ctl.F(FieldHeldFinish) != "")
 			taken := s.Fleet.Cell(t.Name, Working)
 			finish := !r.Return || upNow
 			if r.Return && upNow {

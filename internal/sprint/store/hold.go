@@ -42,7 +42,8 @@ func (st *Store) Hold(ctx context.Context, r sprint.HoldReq) (Result, error) {
 }
 
 // HoldReqOf is the request with what the step reads outside the tables: the friend
-// roster names (the names a friend hold may name) and current member beat evidence.
+// roster's names (the names a friend's hold may name) and, for an unhold, the names whose
+// beat is alive now (a member alive comes up at once).
 func (st *Store) HoldReqOf(ctx context.Context, r sprint.HoldReq) (sprint.HoldReq, error) {
 	roster, _, err := st.roster(ctx)
 	if err != nil {
@@ -50,14 +51,15 @@ func (st *Store) HoldReqOf(ctx context.Context, r sprint.HoldReq) (sprint.HoldRe
 	}
 	r.Friends = slices.Sorted(maps.Keys(roster))
 	r.Alive = nil
-	beats, err := st.Beats(ctx, r.Names)
-	if err != nil {
-		return r, err
-	}
-	r.BeatsRead = true
-	for _, n := range r.Names {
-		if beats[n].Alive(st.now()) {
-			r.Alive = append(r.Alive, n)
+	if r.Release {
+		beats, err := st.Beats(ctx, r.Names)
+		if err != nil {
+			return r, err
+		}
+		for _, n := range r.Names {
+			if beats[n].Alive(st.now()) {
+				r.Alive = append(r.Alive, n)
+			}
 		}
 	}
 	return r, nil
