@@ -532,7 +532,9 @@ function renderProviders(d) {
     setPill(r.pill, st[0], st[1], st[0] + (p.balance_at ? " · balance at " + p.balance_at : ""));
     setText(r.bal, bal === null ? "-" : money(bal)); setClass(r.bal, "num" + (bal === null ? " zero" : ""));
     setText(r.spend, sp === null ? "-" : money(sp)); setClass(r.spend, "num" + (sp === null ? " zero" : ""));
-    setText(r.note, p.note || ""); setTitle(r.note, p.note || "");
+    // the provider's global rate budgets (routes limit) beside the note
+    var note = [p.limit, p.note].filter(function (x) { return x; }).join(" · ");
+    setText(r.note, note); setTitle(r.note, note);
   });
   setText($("providers-sub"), ["up", "resting", "out of credit", "unknown"].filter(function (x) { return counts[x]; })
     .map(function (x) { return counts[x] + " " + x; }).join(" · "));

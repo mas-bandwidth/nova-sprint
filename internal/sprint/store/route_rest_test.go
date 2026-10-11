@@ -28,8 +28,36 @@ func (h *harness) noteWhats(typ string) []string {
 	return out
 }
 
-// rateLimitLine is a member's report of a take the provider refused for its rate limit.
-const rateLimitLine = cardhdr.EndProvider + ": provider: class=rate-limited status=429 msg=Rate limit exceeded: free-models-per-min"
+// rateLimitLine is a member's report of a take the provider failed transiently: a 5xx. A 429
+// (the provider's rate limit) returns the card untouched and never counts toward a rest
+// (rate_budget.go; TestThreeRateLimitedTakesRestNothing).
+const rateLimitLine = cardhdr.EndProvider + ": provider: class=provider-5xx status=503 msg=upstream unavailable"
+
+// tooManyLine is a member's report of a take the provider refused for its rate limit.
+const tooManyLine = cardhdr.EndProvider + ": provider: class=rate-limited status=429 msg=Rate limit exceeded: free-models-per-min"
+
+// Three takes the provider rate limited (429) rest nothing (the owner, 2026-10-11: never a
+// route rest from rate limiting): each card is returned untouched, its attempt and its
+// redeals as they were, and dealt again.
+func TestThreeRateLimitedTakesRestNothing(t *testing.T) {
+	t.Parallel()
+	h := routeHarness(t, route("flash-a", "flash"))
+	h.addReady("s1", 4, briefOf("flash", ""))
+	h.startMachine()
+	h.machine()
+	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
+		h.failTake(id, tooManyLine)
+	}
+	h.machine()
+	assert.Empty(t, h.noteWhats(sprint.NRouteRested), "three 429s rest nothing")
+	s := h.snap()
+	assert.Empty(t, sprint.RouteRests([]sprint.Route{route("flash-a", "flash")}, s.Fleet), "no rest")
+	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
+		c := s.Fleet.Card(id)
+		assert.Zero(t, c.Int("redeals"), "%s spent no redeal", id)
+		assert.Equal(t, sprint.Ready, c.Col, "%s is dealt again", id)
+	}
+}
 
 // A route rests only on a provider-typed failure (tla/RouteRest.tla): three takes on one route
 // the provider failed with a 429, of three cards, rest the route in the tick that sees the
@@ -46,7 +74,7 @@ func TestARouteWhoseProviderFailsThreeTakesRests(t *testing.T) {
 		h.failTake(id, rateLimitLine)
 	}
 	h.machine()
-	assert.Empty(t, h.noteWhats(sprint.NRouteRested), "two 429s rest nothing")
+	assert.Empty(t, h.noteWhats(sprint.NRouteRested), "two 5xx rest nothing")
 	for _, id := range []string{"s1-1.w1", "s1-2.w1"} {
 		require.Equal(t, sprint.Ready, h.snap().Fleet.Card(id).Col, "%s is dealt again on the tier's one route", id)
 	}

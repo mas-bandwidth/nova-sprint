@@ -270,6 +270,13 @@ func RouteWakeStep(r sprint.RouteWakeReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.WakeRoutes(s, r) }}
 }
 
+// RouteLimitStep is routes limit: a model's requests per minute or a provider's concurrency
+// set in the fleet table's properties (sprint.SetRouteLimit).
+func RouteLimitStep(r sprint.RouteLimitReq) Step {
+	return Step{Named: true, Args: ArgsOf(r), Verb: "routes limit", Load: tables(sprint.Fleet), Routes: true,
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.SetRouteLimit(s, r) }}
+}
+
 // CostReconcileStep is one cost reconciliation (sprint.CostReconcile): each provider's own
 // count of a UTC day beside the sprint's records of it, read from the work table and the
 // routes, written to the fleet table's record, and the provider's one gap judgment.
