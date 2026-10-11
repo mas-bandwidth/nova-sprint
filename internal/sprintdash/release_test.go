@@ -80,7 +80,7 @@ func fieldOf(list any, key string) []string {
 	return out
 }
 
-// The page shows the streams of one release: by default the current one, the earliest
+// The pull routes' /api/sprint shows the streams of one release (the page's shows every stream: pageview.go): by default the current one, the earliest
 // with cards left (today v1.0.0); ?release= switches to another or to all. The summary
 // line, the work table, the critical path and the costs follow the release; the fleet is
 // the sprint's. Once v1.0.0 has nothing left, v1.1.0 is the current one.
@@ -89,7 +89,7 @@ func TestTheDashboardShowsOnlyTheCurrentReleasesStreams(t *testing.T) {
 	r := newRig(t)
 	r.next = func() ([]byte, error) { return twoReleases(8), nil }
 
-	snap, d := apiOf(t, r.s, "/api/sprint")
+	snap, d := apiOf(t, r.s.Pull(), "/api/sprint")
 	assert.Equal(t, "v1.0.0", snap.Release, "the default is the current release")
 	assert.Equal(t, "v1.0.0", snap.Current)
 	assert.Equal(t, []string{"v1.0.0", "v1.1.0"}, snap.Releases)
@@ -113,7 +113,7 @@ func TestTheDashboardShowsOnlyTheCurrentReleasesStreams(t *testing.T) {
 	assert.Equal(t, "12/20 60.0% -> ETA 1h41m", d["summary"])
 	assert.NotContains(t, d, "held", "held is the sprint's count, never a release's")
 
-	snap, d = apiOf(t, r.s, "/api/sprint?release=v1.1.0")
+	snap, d = apiOf(t, r.s.Pull(), "/api/sprint?release=v1.1.0")
 	assert.Equal(t, "v1.1.0", snap.Release)
 	assert.Equal(t, "v1.0.0", snap.Current)
 	assert.Equal(t, []string{"comfort", "jev"}, keysOf(d["tables"].(map[string]any)["work"]))
@@ -121,11 +121,11 @@ func TestTheDashboardShowsOnlyTheCurrentReleasesStreams(t *testing.T) {
 	assert.Equal(t, []string{"jev-a"}, fieldOf(d["critical"], "id"))
 	assert.Equal(t, "38/289 13.1% -> ETA 2d5h", d["summary"])
 
-	snap, d = apiOf(t, r.s, "/api/sprint?release=all")
+	snap, d = apiOf(t, r.s.Pull(), "/api/sprint?release=all")
 	assert.Equal(t, "all", snap.Release)
 	assert.Nil(t, snap.ReleaseStreams)
 	assert.Len(t, keysOf(d["tables"].(map[string]any)["work"]), 5, "all is every stream, labelled or not")
-	_, d = apiOf(t, r.s, "/api/sprint?release=all")
+	_, d = apiOf(t, r.s.Pull(), "/api/sprint?release=all")
 	assert.Equal(t, []string{"v1-a", "jev-a", "v1-c", "v1-b", "lost"}, fieldOf(d["critical"], "id"), "all is the whole critical path")
 	assert.NotContains(t, d, "rows")
 	var want map[string]any
@@ -135,7 +135,7 @@ func TestTheDashboardShowsOnlyTheCurrentReleasesStreams(t *testing.T) {
 	delete(d, "critical")
 	assert.Equal(t, want, d, "all is the copy as where printed it, its critical cards placed")
 
-	snap, _ = apiOf(t, r.s, "/api/sprint?release=v9.9.9")
+	snap, _ = apiOf(t, r.s.Pull(), "/api/sprint?release=v9.9.9")
 	assert.Equal(t, "v1.0.0", snap.Release, "a release no stream carries shows the current one")
 
 	// the pull routes' /api/sprint takes the same switch
@@ -155,7 +155,7 @@ func TestTheDashboardShowsOnlyTheCurrentReleasesStreams(t *testing.T) {
 	r.next = func() ([]byte, error) {
 		return []byte(strings.Replace(string(twoReleases(3)), `"v1.0.0":3`, `"v1.0.0":0`, 1)), nil
 	}
-	snap, _ = apiOf(t, r.s, "/api/sprint")
+	snap, _ = apiOf(t, r.s.Pull(), "/api/sprint")
 	assert.Equal(t, "v1.1.0", snap.Current)
 	assert.Equal(t, "v1.1.0", snap.Release)
 }
@@ -168,7 +168,7 @@ func TestReleaseTotalIncludesCachedFix(t *testing.T) {
 	body := strings.Replace(string(twoReleases(8)), `"working":"1","review":"0"`, `"working":"0","review":"0","fix":"1"`, 1)
 	r.next = func() ([]byte, error) { return []byte(body), nil }
 
-	_, d := apiOf(t, r.s, "/api/sprint?release=v1.0.0")
+	_, d := apiOf(t, r.s.Pull(), "/api/sprint?release=v1.0.0")
 	assert.InDelta(t, 20, d["all"], 0, "a fix card remains in the selected release's total")
 	assert.InDelta(t, 12, d["landed"], 0)
 	assert.Equal(t, "12/20 60.0% -> ETA 1h41m", d["summary"])
@@ -183,7 +183,7 @@ func TestTheDashboardShowsAnUnlabelledSprintWhole(t *testing.T) {
 	body := strings.Replace(strings.Replace(string(twoReleases(8)), `"Release":"v1.0.0",`, "", -1), `"Release":"v1.1.0",`, "", -1)
 	body = strings.Replace(body, `,`+twoReleasesRows, "", 1)
 	r.next = func() ([]byte, error) { return []byte(body), nil }
-	snap, _ := apiOf(t, r.s, "/api/sprint")
+	snap, _ := apiOf(t, r.s.Pull(), "/api/sprint")
 	assert.Equal(t, "all", snap.Release)
 	assert.Empty(t, snap.Releases)
 	assert.JSONEq(t, body, string(snap.Data))

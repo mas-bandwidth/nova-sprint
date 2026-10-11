@@ -263,8 +263,8 @@ func TestDashboardServesThePageNoStore(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, get("/logo").Code, "no --logo: no logo")
 	page := get("/").Body.String()
 	assert.Contains(t, page, `src="app.js?v=`+r.s.Build()+`"`)
-	assert.NotContains(t, page, `id="logo"`, "no --logo: the slot renders nothing")
-	assert.NotContains(t, page, `rel="icon"`)
+	assert.Contains(t, page, `<img id="logo" class="logo-tile" src="/logo-tile-192.png?v=`+r.s.Build()+`"`, "no --logo: the live page's robot tile")
+	assert.Contains(t, page, `<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png?v=`+r.s.Build()+`">`)
 	assert.Equal(t, r.s.Build(), r.api()["build"])
 }
 

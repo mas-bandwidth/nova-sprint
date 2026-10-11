@@ -44,7 +44,7 @@ func (a *app) cmdDashboard(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("dashboard")
 	listen := fs.String("listen", DashboardListen, "serve the page on each `address:port` of a comma-separated list, one listener each and one cached copy of the sprint: loopback, or this machine's address on the fleet's private network (the tailnet); 0.0.0.0, :: and public addresses are refused; default "+DashboardListen+"; none: no page")
 	pull := fs.String("pull", DashboardPull, "serve the pull routes (/friend/<name>, /machine/<name>, their /api/ JSON and /events/ stream forms, /team and /api/team, /api/sprint, /events) on each `address:port` of a comma-separated list, the same addresses --listen takes, from the same cached copy, read-only; default "+DashboardPull+"; none: no pull routes; an http:// or https:// URL of another dashboard: be its puller, reading its /api/sprint once per --every in place of the sprint and serving the page alone (the public copy)")
-	logo := fs.String("logo", "", "an image `file` served as the page's logo and favicon; none: the logo slot renders nothing")
+	logo := fs.String("logo", "", "an image `file` served as the page's logo and favicon in place of the live page's robot tile, embedded; none: the robot tile")
 	every := fs.Duration("every", time.Second, "read the sprint at most once per this `duration`, above 0")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
