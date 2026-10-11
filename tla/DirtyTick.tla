@@ -225,9 +225,10 @@
 \* readers update, not a dealt card; the read card's own life (dealt, taken,
 \* closed, returned, late) is tla/ReadCards.tla's. The read card's half slot
 \* (ReadCost "half", read_cards.go halfLoad) and the reads-before-work order
-\* ARE modelled here: a read holds half a slot (ReadLoad, Room), so the reads
-\* the readers update places are counted at half a slot before the next
-\* pump's work deal fills the room they leave.
+\* ARE modelled here: a read holds half a slot (ReadLoad, Room), and the pump
+\* places its pending reads (PlaceReads) before its deal, so a read takes its
+\* half slot before any work card fills the room it leaves. The witness
+\* "workfirst" deals first and places the reads after (ReadsBeforeWork).
 EXTENDS Integers, Sequences, FiniteSets, TLC
 
 CONSTANTS
@@ -293,7 +294,8 @@ ScnRefuse == [
   mr |-> [m \in Machines |-> IF m = "m1" THEN {"c1"} ELSE {}],
   q |-> [t \in Tables |-> <<>>],
   served |-> Cards,
-  heldStreams |-> {}
+  heldStreams |-> {},
+  askw |-> [c \in Cards |-> FALSE]
 ]
 \* The in-place re-asks of a returned read at its attempt (internal/sprint
 \* MaxReadReasks).
@@ -503,9 +505,9 @@ Release(S, C) ==
 \* THE DEAL'S ORDER AND SKIPS (the code's TickDeal, internal/sprint/steps_tick.go):
 \*   reads first (steps_tick.go:764 withReadCards: a read card is dealt
 \*   before any work card, at half a slot, read_cards.go:153 halfLoad) --
-\*   modelled here: a read holds half a slot (ReadLoad, Room), so the reads
-\*   the readers update places are counted at half a slot before this pump's
-\*   work deal fills the room they leave;
+\*   modelled here: the pump places its pending reads (PlaceReads) before
+\*   the deal, each reserving its half slot (ReadLoad, Room), so the work
+\*   deal fills only the room the reads leave;
 \*   friends first by the ladder (steps_tick.go:792; tla/WhoPreference.tla
 \*   checks the selection, not the room);
 \*   a held stream skipped (steps_tick.go:776,798 and steps_work.go:980 the
@@ -598,9 +600,14 @@ ApplyR(S, e) ==
 
 \* A reader off: its machine is held or drains (internal/sprint readerOff).
 Off(S, m) == S.stat[m] = "held" \/ S.drain[m]
+\* A reader whose going away is already queued this tick is not asked: the pump
+\* places reads before the readers update applies the away, and a read placed on
+\* a reader about to go away would be taken back in the same tick.
+RaAway(S, r) == \E i \in 1..Len(S.q["readers"]) : S.q["readers"][i].k = "raway" /\ S.q["readers"][i].x = r
 AbleReaders(S) == {r \in Readers : ("seefleet" \in Fixes => S.stat[Host[r]] = "up") /\
                                     ("readerup" \in Fixes => S.stat[r] = "up") /\
                                     ~Off(S, Host[r]) /\
+                                    ~RaAway(S, r) /\
                                     Room(S, Host[r]) > 0}
 \* The readers c may be asked of now: able, and not in seen[c] (A RETURN IS
 \* NOT A READ); Others leaves out the reader that returned it.
@@ -741,8 +748,14 @@ Pump(S0) ==
       S2 == LandSents(S1, C)
       C2 == IF Broken = "onread" THEN S0.col ELSE S2.col
       S3 == Release(S2, C2)
+      \* reads before work (steps_tick.go withReadCards): the pending reads take
+      \* their half slot (ReadLoad, Room) before the deal fills the room they
+      \* leave; the witness "workfirst" deals first and places the reads after
+      \* (ReadsBeforeWork).
+      S3r == PlaceReads(S3)
       cand == IF Broken = "onread" THEN {c \in Cards : S0.col[c] = "ready"} ELSE Cards
-      S4 == Deal(S3, cand)
+      S4 == IF Broken = "workfirst" THEN PlaceReads(Deal(S3, cand))
+            ELSE Deal(S3r, cand)
   IN AcceptAll(NoUpJudge(S4, cand))
 
 -----------------------------------------------------------------------------
@@ -998,7 +1011,7 @@ Stop ==
 -----------------------------------------------------------------------------
 Init ==
   /\ col = Scn.col /\ att = [c \in Cards |-> 1] /\ bnd = [c \in Cards |-> FALSE]
-  /\ rd = Scn.rd /\ askw = [c \in Cards |-> FALSE] /\ mq = Scn.mq
+  /\ rd = Scn.rd /\ askw = Scn.askw /\ mq = Scn.mq
   /\ stat = [m \in Machines \cup Readers |-> IF m \in Scn.up THEN "up" ELSE "down"]
   /\ mc = Scn.mc /\ mr = Scn.mr /\ noUp = FALSE /\ Q = Scn.q
   /\ drain = [m \in Machines |-> FALSE] /\ run = "running"
@@ -1184,6 +1197,13 @@ HeldStreamNotDealt == \A c \in Cards : StreamOf[c] \in HeldStreams => col[c] \in
 \* WIDTH: a machine never holds more cards and reads than its width, a read
 \* at half a slot (ReadLoad).
 WidthRespected == \A m \in Machines : Cardinality(mc[m]) + ReadLoad(mr[m]) <= Width[m]
+
+\* READS BEFORE WORK: in the pump, every read the pump places (a reader
+\* placement) precedes every work card it deals (a machine placement). The
+\* witness "workfirst" deals first and places the reads after (W32).
+ReadsBeforeWork ==
+  [][act' = "PumpWork" =>
+       \A p, q \in 1..Len(plc') : plc'[p].k = "r" /\ plc'[q].k = "m" => p < q]_vars
 
 \* NEVER DEALT TO DRAINING: no deal goes to a member that drains (the beat's
 \* drain word, notQuiet; tla/NoRoom.tla NeverDealtToDraining). The witness
