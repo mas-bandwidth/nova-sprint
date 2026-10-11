@@ -373,3 +373,6 @@ MCAdoptBrokenKeepNew.cfg	MCAdopt.tla	invariant	RefusedLeavesOld	ignore-terminal	
 MCSeatProof.cfg	MCSeatProof.tla	pass	-	ignore-terminal	seatproof	required	-
 MCSeatProofBrokenNoRenew.cfg	MCSeatProof.tla	action	BusySeatNeverLockedOut	ignore-terminal	seatproof	required	-
 MCSeatProofBrokenRenewDest.cfg	MCSeatProof.tla	action	CoordinatorNeverFabricates	ignore-terminal	seatproof	required	-
+MCDealFill.cfg	MCDealFill.tla	pass	-	ignore-terminal	dealfill	required	-
+MCDealFillBrokenNoAutoclear.cfg	MCDealFill.tla	temporal	FaultHoldClears	ignore-terminal	dealfill	required	-
+MCDealFillBrokenClearPerson.cfg	MCDealFill.tla	temporal	PersonHoldStays	ignore-terminal	dealfill	required	-

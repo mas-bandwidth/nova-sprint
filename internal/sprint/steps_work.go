@@ -2303,14 +2303,26 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 		// mark left by an earlier hold is cleared
 		if r.HeldBy != "" {
 			set[FieldHeldBy] = r.HeldBy
+			if r.HeldBy == HeldByFault {
+				set[FieldFaultSince] = stamp(s.Now)
+			}
 		} else {
-			unset = append(unset, FieldHeldBy)
+			unset = append(unset, FieldHeldBy, FieldFaultSince)
 		}
 	case r.Op == "hold" && r.HeldBy == "":
 		// the coordinator holds a member that is already held (the sync's hold
 		// included): the hold is now the coordinator's, and the sync's mark
 		// goes, so the sync never releases it
-		unset = append(unset, FieldHeldBy)
+		unset = append(unset, FieldHeldBy, FieldFaultSince)
+	case r.Op == "down" && r.HeldBy != "":
+		// the machine's down for a fault (presence): mark it held_by=fault and
+		// stamp when, so the tick clears the mark once the member is healthy
+		// again and finishes a card cleanly (faultClear). A plain down carries
+		// no mark, and the member's status stays down until it beats.
+		set[FieldHeldBy] = r.HeldBy
+		if r.HeldBy == HeldByFault {
+			set[FieldFaultSince] = stamp(s.Now)
+		}
 	}
 	if r.Op == "hold" {
 		// the coordinator's reason and whether working cards finish (hold.go): a
