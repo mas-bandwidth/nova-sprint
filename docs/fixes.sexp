@@ -96,6 +96,24 @@
     :title "The TLC cases run on GitHub-hosted runners from a pinned-jar workflow"
     :text "CI only, no product change. The 434 TLC cases in tla/ ran only when someone ran them by hand on a bench; tla/tla2tools.sha256 now pins the jar every tla/RUNS.tsv record names (sha256 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88, the tlaplus v1.7.4 release), and .github/workflows/tlc.yml runs the models on GitHub-hosted ubuntu-latest runners -- nova-sprint is public, so never self-hosted -- nightly by one cron, on workflow_dispatch, and on a pull request touching tla/**, pkg/tlc/** or tools/tlacheck/**. A groups job runs make tlc-test and prints the groups to run (every required group on schedule and dispatch via tlacheck groups --root ., the stale ones on a pull request via tlacheck groups --root . --stale; an empty list ends the workflow green); a models job depends on it, runs a four-wide fail-fast-false matrix over those groups, uses the runner image's own JDK 21 (no setup-java action), downloads the jar from the tlaplus release and refuses it, exit 2 naming both digests, unless sha256sum matches tla/tla2tools.sha256, then runs make tlc TLC_BUDGET=110 and uploads the run directory as a 14-day artifact. It never writes tla/RUNS.tsv into the repository; records still land through cards. New test internal/ci/tlc_workflow_test.go pins the hosted runner, the five-minute timeout, the digest check before make tlc and the 110-second budget. The workflow is unproven until its first run on the forge."
     :origin "this card, nova-sprint-ci-runs-tlc-on-hosted-runners-after-the-wall.w1, 2026-10-11: v1.2.12 inventory item T30 and note 3; checked at nova-sprint main 00c54ba2e")
+   (fix "tla-land-repair-guards" :release "v1.2.12" :status "planned"
+    :title "Land's Repair skips sentinels, held and pushed-unreported cards, and PushedNeverSentBack covers Repair"
+    :text "Models only, no product change. tla/Land.tla Repair checked only ~Marked, where the code's repair
+     also skips a sentinel (check.go Rule6Merging: IsSentinel), a card a change is queued for (s.Held) and
+     one pushed and not reported (PushedUnreportedMatches), and PushedNeverSentBack constrained only
+     ShortBack, so Repair's ~Marked guard was checked by no property. Repair now skips sentinels and held
+     cards too (Sentinels and HeldCards, empty in this module: a sentinel is released to landed, never
+     merged, and Land holds no change queue), and the mark stands from the check through the push, the
+     report and a crash between them, so ~Marked also skips the pushed-unreported card. PushedNeverSentBack
+     is extended from ShortBack to ShortBack \\/ Repair. Broken \"repairmarked\" drops ~Marked from Repair and
+     fails the extended PushedNeverSentBack (Accept, Read, Build, Check, Push, SetReads, Repair), the
+     reversed witness; its configuration is MCLandBrokenRepairMarked.cfg with a CASES.tsv row. Broken
+     \"norepair\" still passes (ReachRepair holds: nothing repairs), so MCLandBrokenNoRepair's row is left as
+     it is. A comment line on cmdRepair (cmd/nova-sprint/repair.go) cites tla/Land.tla Repair. Left for
+     v1.2.14: repair is not atomic (Rule6Merging reads a snapshot and never re-checks LandingMarked, so a
+     card marked and pushed after the snapshot can be sent back to review), and the pending fenced
+     operation finish (repair.go:70; COVERAGE row pending-fenced-op, missing)."
+    :origin "this card, tla-land-repair-guards.w4, 2026-10-11: v1.2.12 inventory item T20; drift read at nova-sprint main 00c54ba2e 2026-10-11")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
