@@ -25,7 +25,7 @@ const (
 func scenarios() []sample {
 	var out []sample
 	for seed := uint64(0); seed < scenarioSeeds; seed++ {
-		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendStalls, aCardPastItsCap, aMemberWithFreeLanes, aQueuedCardOnAFullFriend, aFriendCardPastItsDeadlineRedealt} {
+		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendStalls, aCardPastItsCap, aMemberWithFreeLanes, aQueuedCardOnAFullFriend, aFriendCardPastItsDeadlineRedealt, aWaitingCardResolvesWhenItsNeedLands} {
 			out = append(out, run(newWalk(scenarioBase+seed))...)
 		}
 	}
@@ -318,4 +318,27 @@ func aFriendCardPastItsDeadlineRedealt(k *walk) []sample {
 	out := []sample{k.sample()}
 	k.runPart(sprint.PartFriendRedeal)
 	return out
+}
+
+// aWaitingCardResolvesWhenItsNeedLands admits a primary needing another of the
+// stream and lands the need by hand (no merge step, so the resolveAfter trigger
+// is not run): the resolve part moves the waiting primary to ready on the next
+// tick (sprint.TickResolve). The walks' needs seldom land in time, so the duty
+// is exercised here directly.
+func aWaitingCardResolvesWhenItsNeedLands(k *walk) []sample {
+	need := k.addTo(k.streams[0])
+	if need == "" {
+		return nil
+	}
+	waiter := k.addTo(k.streams[0], need)
+	if waiter == "" {
+		return nil
+	}
+	c := k.s.Work.Card(need)
+	c.Col = sprint.Landed
+	c.Rev++
+	k.s.Work.Put(c)
+	out := []sample{k.sample()}
+	k.runPart("resolve")
+	return append(out, k.sample())
 }
