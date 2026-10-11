@@ -87,6 +87,37 @@ func TestABriefChangingOnlyDependsKeepsARelinkedNeed(t *testing.T) {
 	assert.Contains(t, strings.Join(p.Said, "\n"), "needs kept: a-2 (relinked from a-1 2030-01-02T03:04:05Z)")
 }
 
+// dependsOnlyBoundWorld is a card dealt at attempt 2 whose brief last changed at
+// attempt 1, with a recorded tier and a DEPENDS-ON line: a DEPENDS-ON-only edit
+// is the depends-only path, which must report the bound and the kept tier as the
+// ordinary path does (docs/SPEC-SPRINT.md, the brief).
+func dependsOnlyBoundWorld(t *testing.T) *world {
+	t.Helper()
+	w := newWorld(t, "reader-a", "reader-b")
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"x"}, Brief: "x", Who: "coordinator"}))
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"y"}, Brief: "y", Who: "coordinator"}))
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Needs: []string{"x"}, Brief: "tier: pro\nDEPENDS-ON: x\n\nthe task", Who: "coordinator"}))
+	w.place(w.s.Work, "a-1", "a", Working)
+	w.s.Work.Placed("a-1").Fields["attempt"] = "2"
+	w.s.Work.Placed("a-1").Fields[FieldBriefAttempt] = "1"
+	w.s.Work.Placed("a-1").Fields[FieldTier] = "frontier"
+	return w
+}
+
+func TestADependsOnlyBriefReportsTheBoundAndKeepsTheTier(t *testing.T) {
+	t.Parallel()
+	w := dependsOnlyBoundWorld(t)
+	// only the DEPENDS-ON: line changes (x -> x,y), so the task is the same and
+	// the recorded tier still disagrees with the text's line 1: the depends-only
+	// path must say both, as the ordinary path does.
+	p := Brief(w.s, briefOf("a-1", "tier: pro\nDEPENDS-ON: x,y\n\nthe task", "x,y"))
+	require.Empty(t, p.Refused)
+	w.must(p)
+	says := strings.Join(p.Said, "\n")
+	assert.Contains(t, says, "bound: same task (1 attempts stand)")
+	assert.Contains(t, says, "tier kept: frontier (the brief's line 1 says pro)")
+}
+
 func TestBriefKeepsARecordedTierAgainstTheText(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")

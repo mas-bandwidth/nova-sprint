@@ -121,6 +121,19 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 				needs, notes = briefNeedsKept(Split(c.F("needs")), b.Needs, c.F(FieldRelinked))
 				p.Said = append(p.Said, notes...)
 			}
+			// the bound and the tier behave as on the ordinary path: a DEPENDS-ON-only
+			// edit never changes the task, so the bound count stands, and the tier is a
+			// card field kept against the text's line 1, each said on a NOTE line
+			// (docs/SPEC-SPRINT.md, the brief: the bound and the tier).
+			if c.Int("attempt") > 0 {
+				p.Said = append(p.Said, fmt.Sprintf("bound: same task (%d attempts stand)", c.Int("attempt")-c.Int(FieldBriefAttempt)))
+			}
+			if recorded := c.F(FieldTier); recorded != "" {
+				textTier, _ := cardhdr.ReadModel(b.Brief)
+				if textTier.Tier != recorded {
+					p.Said = append(p.Said, fmt.Sprintf("tier kept: %s (the brief's line 1 says %s)", recorded, orDash(textTier.Tier)))
+				}
+			}
 			p = briefDepends(s, p, c, b.Brief, needs, proposed)
 			continue
 		}
