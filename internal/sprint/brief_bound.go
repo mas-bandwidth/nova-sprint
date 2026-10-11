@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
@@ -52,6 +53,8 @@ const (
 	FieldAttempts   = "attempts"
 	AttemptsDefault = 4
 	AttemptsMax     = 100
+	ReviewBreakerNew      = 4
+	ReviewBreakerRounds   = 6
 )
 
 // AttemptsCap is how many attempts one brief may run in the stream: the stream's
@@ -298,4 +301,118 @@ func capJudgments(s *Snapshot, id string) []Open {
 func briefGainsWho(brief, name string) string {
 	line, rest, _ := strings.Cut(brief, "\n")
 	return cutText(line+"\nWHO: friend "+name+"\n"+rest, MaxCardTextBytes)
+}
+
+// ReviewBreaker checks if the review circuit breaker should trip based on the
+// current card state and the latest reading's finding. It returns a message
+// describing why the breaker tripped and whether it did trip.
+//
+// The circuit breaker tracks:
+// - consecutive: runs of attempts ending at current, each read broken with a different key
+// - substantive: attempts since brief last changed that had findings
+//
+// It trips at consecutive >= ReviewBreakerNew (4) or substantive >= ReviewBreakerRounds (6).
+func ReviewBreaker(c *Card, reader, finding string) (string, bool) {
+	briefAt := c.Int(FieldBriefAttempt)
+
+	// Parse existing findings
+	keys := strings.Split(c.F(FieldFindingKeys), "\n")
+	findings := strings.Split(c.F(FieldFindings), "\n")
+
+	consecutive := 0
+	consecutiveKey := ""
+	substantive := 0
+
+	// Count substantive (findings since brief last changed)
+	for _, line := range findings {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Format is "attempt N: finding text"
+		attemptPrefix, _, ok := strings.Cut(line, ": ")
+		if !ok {
+			continue
+		}
+		if !strings.HasPrefix(attemptPrefix, "attempt ") {
+			continue
+		}
+		attemptNumStr := strings.TrimPrefix(attemptPrefix, "attempt ")
+		attemptNum, err := strconv.Atoi(attemptNumStr)
+		if err != nil || attemptNum <= briefAt {
+			continue
+		}
+		substantive++
+	}
+
+	// Count consecutive (distinct keys ending at current attempt)
+	var attemptKeys []string
+	for _, line := range keys {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		attemptPrefix, key, ok := strings.Cut(line, ": ")
+		if !ok {
+			continue
+		}
+		if !strings.HasPrefix(attemptPrefix, "attempt ") {
+			continue
+		}
+		attemptNumStr := strings.TrimPrefix(attemptPrefix, "attempt ")
+		attemptNum, err := strconv.Atoi(attemptNumStr)
+		if err != nil || attemptNum <= briefAt {
+			continue
+		}
+		attemptKeys = append(attemptKeys, key)
+	}
+
+	// Build consecutive count from oldest to newest
+	for _, key := range attemptKeys {
+		if consecutive == 0 {
+			consecutive = 1
+			consecutiveKey = key
+			continue
+		}
+		if key != consecutiveKey {
+			consecutive++
+			consecutiveKey = key
+		}
+	}
+
+	// Add current finding if it exists
+	if finding != "" {
+		currentKey := FindingKey(reader, finding)
+		if consecutive == 0 || currentKey != consecutiveKey {
+			consecutive++
+			consecutiveKey = currentKey
+		}
+		substantive++
+	}
+
+	if consecutive >= ReviewBreakerNew || substantive >= ReviewBreakerRounds {
+		var foundKeys []string
+		for _, line := range keys {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			_, key, ok := strings.Cut(line, ": ")
+			if !ok || key == "" {
+				continue
+			}
+			foundKeys = append(foundKeys, key)
+		}
+		if finding != "" {
+			foundKeys = append(foundKeys, FindingKey(reader, finding))
+		}
+		if len(foundKeys) > 10 {
+			foundKeys = foundKeys[:10]
+		}
+		line := fmt.Sprintf("%s: review circuit breaker: %d rounds in a row with new blocking findings (bound %d), %d rounds with findings since its brief last changed (bound %d); the coordinator decides; findings: %s",
+			c.ID, consecutive, ReviewBreakerNew, substantive, ReviewBreakerRounds, strings.Join(foundKeys, ", "))
+		return line, true
+	}
+
+	return "", false
 }

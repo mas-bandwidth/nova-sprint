@@ -669,21 +669,30 @@ func Read(s *Snapshot, r ReadReq) Plan {
 				outside := len(FilesOutsidePaths(pr.F("brief"), r.Finding)) > 0
 				spent := WidensSpent(pr)
 				bound := ""
+				binder := ""
 				if bb, ok := briefStopAt(s, at, c.Row, r.Finding); ok && (!outside || spent != "") {
 					bound = bb.String()
 				} else if outside && spent != "" {
 					bound = spent
 				}
-				if bound != "" && outside {
+				if breaker, ok := ReviewBreaker(at, c.Row, r.Finding); ok {
+					binder = breaker
+				}
+				if (bound != "" && outside) || binder != "" {
 					// the same finding as the attempts before (briefStopAt: the same reader class,
 					// file and line, two in a row by default), or too many attempts on one brief,
 					// for a finding outside PATHS past the widen cap: the brief is wrong, not the
 					// worker, and the judgment offers brief and drop (brief_bound.go). A finding
 					// inside PATHS at the bound keeps NReadBroken: the card is still reworked with
 					// the finding, not left for the coordinator (rules_read.go; tla/SprintRules.tla,
-					// Part "reads": ReworkAtBound)
+					// Part "reads": ReworkAtBound). The review circuit breaker also escalates to the
+					// coordinator after 4 consecutive rounds with new findings or 6 substantive rounds.
+					w := bound
+					if binder != "" {
+						w = binder
+					}
 					n = judgment(NBriefWrong, pr.Row, s.Now, 0, pr.ID) // its decisions alone: it is the repeat
-					n.Who, n.Attempt, n.What = c.Row, c.Int("attempt"), bound+"; attempt "+c.F("attempt")+" found: "+firstSentence(r.Finding)
+					n.Who, n.Attempt, n.What = c.Row, c.Int("attempt"), w+"; attempt "+c.F("attempt")+" found: "+firstSentence(r.Finding)
 				}
 				u.Notes = append(u.Notes, n)
 			}
@@ -1311,10 +1320,16 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// so it does not lift it (brief_bound.go). A broken finding at the bound is still
 		// reworked with the finding as the fix: the broken verdict outweighs the bound
 		// (tla/SprintRules.tla, Part "reads": ReworkAtBound), so only a non-broken bound (a
-		// failure's attempt cap) refuses.
+		// failure's attempt cap) refuses. The review circuit breaker also refuses rework after
+		// 4 consecutive rounds with new findings or 6 substantive rounds.
 		if fb := brokenFindings(s, c); fb == "" {
 			if bb, ok := briefStopAt(s, c, finderOf(s, c), ""); ok {
 				p.refuse(c.ID, bb.Why())
+				stays()
+				continue
+			}
+			if _, ok := ReviewBreaker(c, finderOf(s, c), ""); ok {
+				p.refuse(c.ID, "card is at the review circuit breaker; brief edit resets the count")
 				stays()
 				continue
 			}
