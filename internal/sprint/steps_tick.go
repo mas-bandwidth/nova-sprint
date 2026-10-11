@@ -75,6 +75,12 @@ const (
 	FieldProviderTake  = "provider_take_" // + the take's number, redeals + 1 when it ended
 )
 
+// FieldRateTake is the record of a rate-limited take on a limited route. A rate-limited
+// take is returned untouched (no redeal spent, no attempt spent) and its record is kept
+// so the route can back off briefly (60s, doubling, capped at 15min) without counting
+// toward the route's 3-in-10 transient failure rest.
+const FieldRateTake = "rate_take_"
+
 // FieldStagingTake is the record of a launch its member refused at staging, keyed by the
 // generation refused (ProviderTake's shape: the route, the member, when, the reason). A
 // staging refusal spends none of the redeal bound: its own bound is the fleet, each member

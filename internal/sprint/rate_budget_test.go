@@ -212,26 +212,23 @@ func TestAnUnlimitedRoutes429EndsTheTake(t *testing.T) {
 	assert.Len(t, takes, 1, "the take's record counts toward the route's rest")
 }
 
-// Even a limited route cannot loop a card forever: MaxRateReturns untouched returns, then
-// the next 429 ends the take as any provider failure does.
-func TestALimitedRoutesReturnsAreBounded(t *testing.T) {
+// A rate-limited take on a limited route is always returned untouched: no redeal spent,
+// no attempt spent, the route backs off briefly. The card never fails due to rate limiting.
+func TestARateLimitedTakeAlwaysReturnsUnspent(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
 	proMercury(w)
 	w.s.Fleet.SetProps(map[string]string{PropModelRPM("inception/mercury-3"): "10"})
 	var wc string
-	for i := range MaxRateReturns {
+	for i := range MaxRateReturns + 2 {
 		var moved string
 		moved, wc = takeAndRefuse(t, w)
 		assert.Contains(t, moved, "returned untouched", "return %d", i+1)
 	}
 	c := w.s.Fleet.Card(wc)
-	assert.Equal(t, MaxRateReturns, c.Int(FieldRateReturns))
-	assert.Empty(t, c.F(FieldTakeEnded), "no take ended in the returns")
-	assert.Equal(t, 1, w.s.Work.Card("s1-1").Int("attempt"), "the returns spent no attempt")
-	moved, wc := takeAndRefuse(t, w)
-	assert.NotContains(t, moved, "returned untouched", "the return past the bound ends the take")
-	assert.NotEmpty(t, w.s.Fleet.Card(wc).F(FieldTakeEnded))
+	assert.Equal(t, MaxRateReturns+2, c.Int(FieldRateReturns))
+	assert.Empty(t, c.F(FieldTakeEnded), "no take ended after any number of rate returns")
+	assert.Equal(t, 1, w.s.Work.Card("s1-1").Int("attempt"), "rate returns never spend an attempt")
 }
 
 func TestIsRateLimited(t *testing.T) {

@@ -208,7 +208,7 @@ func TestAHundredRoutesRestedByRule3StayUnderThePropertyCap(t *testing.T) {
 	for member, ids := range byMember {
 		h.must(TakeStep(sprint.TakeReq{As: member, Sel: sprint.Sel{IDs: ids}, Gens: gens, Who: member}))
 		h.must(FinishStep(sprint.FinishReq{As: member, Sel: sprint.Sel{IDs: ids}, Gens: gens, Failed: true,
-			Report: rateLimitLine, Usage: "wall=450.00s budget=1/1000", Who: member}))
+			Report: cardhdr.EndProvider + ": provider: class=provider-5xx status=503 msg=upstream unavailable", Usage: "wall=450.00s budget=1/1000", Who: member}))
 	}
 	h.machine()
 	s = h.snap()
