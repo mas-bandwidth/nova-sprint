@@ -267,7 +267,7 @@ func TestStopDebtMachineLeaseStaleLiveSetStillNamesStaysOwed(t *testing.T) {
 	h.clock(time.Second)
 	gen := max(wc.Int("gen"), 1)
 	held := sprint.LiveKey(wc.ID, gen) + ":" + sprint.LiveHeld
-	h.liveBeat(row, held) // stop-returns 0, the finished report still held
+	h.liveBeat(row, held)                      // stop-returns 0, the finished report still held
 	h.clock(sprint.BeatDeadline + time.Second) // the machine goes silent: the beat is stale
 	_, _, _, err = h.st.SetMachine(h.ctx, true)
 	require.ErrorContains(t, err, wc.ID, "a stale post-STOP beat that names the held report keeps its lease owed")
