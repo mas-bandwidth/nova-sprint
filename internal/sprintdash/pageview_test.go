@@ -190,7 +190,7 @@ func TestThePageIsTheLivePageData(t *testing.T) {
 		assert.NotContains(t, d, k)
 	}
 	assert.NotContains(t, d, "fix", "no fix mark of the view's own")
-	assert.JSONEq(t, `{"merging":1,"oldest_merging_min":null}`, string(d["merge_row"]), "the oldest merging age is --cards' alone")
+	assert.JSONEq(t, `{"merging":1,"oldest_merging_min":7}`, string(d["merge_row"]), "merge_row as where --rows prints it, as the live feed reads it")
 	var tables struct {
 		Work  map[string]map[string]any `json:"work"`
 		Merge map[string]any            `json:"merge"`
@@ -215,7 +215,7 @@ func TestThePageIsTheLivePageData(t *testing.T) {
 // A puller's copy is its upstream's page copy, served as it came: folded once, never twice.
 func TestThePageIsTheLivePageOnAPuller(t *testing.T) {
 	t.Parallel()
-	once := pageData(json.RawMessage(fleetReads))
+	once := pageData(json.RawMessage(fleetReads), time.Date(2026, 10, 11, 3, 23, 1, 0, time.UTC))
 	c := pageCopyOf(once, true, time.Date(2026, 10, 11, 3, 23, 1, 0, time.UTC))
 	assert.JSONEq(t, string(once), string(c.data))
 }
@@ -309,4 +309,44 @@ func TestThePageIsTheLivePagePullerReadsOnlyAPage(t *testing.T) {
 	require.NoError(t, json.Unmarshal(q.s.PageSnapshot(), &v))
 	assert.Equal(t, "true", string(v["ok"]))
 	assert.JSONEq(t, string(theirs["data"]), string(v["data"]), "a page's copy, as it came")
+}
+
+// Sentinels are not work (the owner, 2026-10-11: "sentinel cards should not be counted when we
+// are estimating time remaining, or cards per-hour"): the page's landed, all and summary are the
+// live feed's second jq's, case for case. testdata/sentinel_fold.json holds the cases with the
+// jq's own answers, made by running that jq with its now pinned: the last hour's landings, an
+// offset clear the jq does not read, a days-long ETA, a summary of another shape.
+func TestThePageIsTheLivePageSentinelsAreNotWork(t *testing.T) {
+	t.Parallel()
+	b, err := os.ReadFile("testdata/sentinel_fold.json")
+	require.NoError(t, err)
+	var f struct {
+		Now   time.Time `json:"now"`
+		Cases map[string]struct {
+			Input json.RawMessage `json:"input"`
+			Want  struct {
+				Landed  int    `json:"landed"`
+				All     int    `json:"all"`
+				Summary string `json:"summary"`
+			} `json:"want"`
+		} `json:"cases"`
+	}
+	require.NoError(t, json.Unmarshal(b, &f))
+	require.Len(t, f.Cases, 4)
+	for name, c := range f.Cases {
+		var got struct {
+			Landed  int             `json:"landed"`
+			All     int             `json:"all"`
+			Summary string          `json:"summary"`
+			Rows    json.RawMessage `json:"rows"`
+		}
+		require.NoError(t, json.Unmarshal(PageData(c.Input, f.Now), &got), name)
+		assert.Equal(t, c.Want.Landed, got.Landed, "%s: landed", name)
+		assert.Equal(t, c.Want.All, got.All, "%s: all", name)
+		assert.Equal(t, c.Want.Summary, got.Summary, "%s: summary", name)
+		assert.Nil(t, got.Rows, "%s: the rows are dropped", name)
+	}
+	// no rows: as where printed it
+	plain := `{"landed":3,"all":5,"summary":"3/5 60.0% -> ETA 1h0m","tables":{"work":{}}}`
+	assert.JSONEq(t, plain, string(PageData([]byte(plain), f.Now)))
 }

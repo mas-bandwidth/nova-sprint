@@ -16,14 +16,14 @@ import (
 )
 
 // The dashboard reads the sprint in this process exactly as where --json --cards prints it, and
-// serves the page that object as plain where --json prints it, with the live feed's folds
-// (sprintdash.PageData): what --cards, --rows and --archived add is taken off, exactly.
+// serves the page that object as the live feed reads it, where --json --archived --rows with the
+// feed's folds (sprintdash.PageData): what --cards adds is taken off, exactly.
 func TestDashboardReadsTheSprintAsWhereJSONDoes(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a --members m1,m2")
 	ta.ok("add --stream s1 --count 3")
-	want := string(sprintdash.PageData([]byte(ta.ok("where --json"))))
+	want := string(sprintdash.PageData([]byte(ta.ok("where --json --archived --rows")), ta.a.now()))
 	got, err := ta.a.whereJSON("", false)
 	require.NoError(t, err)
 	assert.JSONEq(t, ta.ok("where --json --cards --rows"), string(got), "the rows place the critical cards (sprintdash.placed)")

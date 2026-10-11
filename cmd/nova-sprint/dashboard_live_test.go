@@ -81,8 +81,8 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &p))
 		return string(v.Data), p.Stale
 	}
-	// the page's data is plain where --json with the live feed's folds
-	pageOf := func(where string) string { return string(sprintdash.PageData([]byte(where))) }
+	// the page's data is where --json --archived --rows with the live feed's folds
+	pageOf := func(where string) string { return string(sprintdash.PageData([]byte(where), clock())) }
 
 	// a read a second with no page open, each sent to the live server as where --json
 	// --cards --rows (the rows place the critical path and are not served)
@@ -92,7 +92,7 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 	assert.Equal(t, 5, reads(), "one read a second, whoever is looking")
 	assert.Equal(t, []string{"where", "--actor", "boss", "--json", "--cards", "--rows", "--archived"}, sent[0])
 	data, stale := api()
-	assert.JSONEq(t, pageOf(r.boss("nova-sprint where --json")), data, "the page's data is the live server's own")
+	assert.JSONEq(t, pageOf(r.boss("nova-sprint where --json --archived --rows")), data, "the page's data is the live server's own")
 	assert.False(t, stale)
 	for range 3 {
 		api()
@@ -103,7 +103,7 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 	r.boss("nova-sprint add --stream s2 --count 2")
 	second()
 	data, _ = api()
-	assert.JSONEq(t, pageOf(r.boss("nova-sprint where --json")), data)
+	assert.JSONEq(t, pageOf(r.boss("nova-sprint where --json --archived --rows")), data)
 	assert.Contains(t, data, `"all":5`)
 	good := data
 
@@ -135,7 +135,7 @@ func TestTheDashboardServesTheLiveServersDataOncePerSecond(t *testing.T) {
 	second()
 	assert.Equal(t, 1, strings.Count(log.String(), "FRESH again"), log.String())
 	data, stale = api()
-	assert.JSONEq(t, pageOf(r.boss("nova-sprint where --json")), data)
+	assert.JSONEq(t, pageOf(r.boss("nova-sprint where --json --archived --rows")), data)
 	assert.False(t, stale)
 	code, _ = get("/healthz")
 	assert.Equal(t, http.StatusOK, code)

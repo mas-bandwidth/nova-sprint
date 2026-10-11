@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"regexp"
@@ -16,8 +17,9 @@ import (
 // "this is what it is."): /api/sprint on the page's listeners is the envelope that server
 // serves (dashboard/server.py: ok, data, fetchedAt, dataAgeSeconds, attemptAt, error,
 // readSeconds, minInterval, throughput, throughputMinutes, build), and its data is where
-// --json as that server's feed prints it (dashboard/bin/ns.sh): every stream, no release
-// switch and no view of its own, with the feed's two folds and nothing else:
+// --json --archived --rows as that server's feed prints it (dashboard/bin/ns.sh): every
+// stream, no release switch and no view of its own, with the feed's three folds and nothing
+// else:
 //
 //   - each stream's stream_costs record is merged into its row of tables.work, the record's
 //     fields over the row's (the feed's jq: .tables.work |= with_entries(.value += $sc[.key]));
@@ -25,14 +27,16 @@ import (
 //     reader rows, reader-<m> and reader-<m>-<n> (the owner, 2026-10-11: "you forgot to
 //     display the orange read cards"; reads run on reader rows, so a fleet row's own
 //     reads_working reads 0 while its machine reads), so the page's orange read cells are lit
-//     and the lit cells number the row's working figure, as app.js draws them.
+//     and the lit cells number the row's working figure, as app.js draws them;
+//   - landed, all and the summary's x/y and ETA are counted over the work cards alone, never
+//     the sentinels (foldSentinels, the feed's second jq), and the rows and the archived
+//     streams' rows of the work and merge tables are taken out again.
 //
-// The dashboard reads where with --cards --rows --archived for its pull routes; what those
-// flags add (cards, merging, judgments, holds, lanes, rows, merge_row's oldest merging age, the
-// archived streams' rows of the work and merge tables) is taken off the page's copy, so the page is shown what the feed's plain
-// where --json shows it. A puller's copy is its upstream's page copy already, kept as it came,
-// with its upstream's throughput; an upstream that answers any other view (a pull listener's,
-// with its release switch and fix marks) is a failed read (dashboard.go, read).
+// The dashboard reads where with --cards --rows --archived for its pull routes; what --cards
+// adds (cards, merging, judgments, holds, lanes) is taken off the page's copy, so the page is
+// shown what the feed's where shows it. A puller's copy is its upstream's page copy already,
+// kept as it came, with its upstream's throughput; an upstream that answers any other view (a
+// pull listener's, with its release switch and fix marks) is a failed read (dashboard.go, read).
 //
 // The page's throughput is counted as the live server counts it (pageThroughput): the page
 // copy's landed alone, so an archive, which lowers it, starts the samples again, as on the live
@@ -138,7 +142,8 @@ type pageCopy struct {
 	age  *float64
 }
 
-// pageOnly is what where --json --cards --rows adds to where --json: taken off the page's copy.
+// pageOnly is what --cards adds to the feed's where --json --archived --rows, and the rows the
+// feed's jq drops: taken off the page's copy.
 var pageOnly = []string{"cards", "merging", "judgments", "holds", "lanes", "rows"}
 
 // readerRow reads a reader row's machine off its name: reader-<m> or reader-<m>-<n>.
@@ -149,7 +154,7 @@ var readerRow = regexp.MustCompile(`^reader-(.+?)(-[0-9]+)?$`)
 func pageCopyOf(body []byte, pulled bool, end time.Time) pageCopy {
 	data := append(json.RawMessage(nil), body...)
 	if !pulled {
-		data = pageData(data)
+		data = pageData(data, end)
 	}
 	c := pageCopy{data: data}
 	var v struct {
@@ -167,27 +172,19 @@ func pageCopyOf(body []byte, pulled bool, end time.Time) pageCopy {
 }
 
 // PageData is a where --json body (with --cards, --rows, --archived or none) as the page's
-// copy (pageData).
-func PageData(body []byte) []byte { return pageData(body) }
+// copy at now (pageData).
+func PageData(body []byte, now time.Time) []byte { return pageData(body, now) }
 
-// pageData is where --json --cards --rows --archived's body as the feed's where --json with
-// its folds (above); body itself when it is no JSON object.
-func pageData(body json.RawMessage) json.RawMessage {
+// pageData is where --json --cards --rows --archived's body, read at now, as the feed's where
+// --json --archived --rows with its folds (above); body itself when it is no JSON object.
+func pageData(body json.RawMessage, now time.Time) json.RawMessage {
 	var top map[string]json.RawMessage
 	if json.Unmarshal(body, &top) != nil || top == nil {
 		return body
 	}
+	foldSentinels(top, now)
 	for _, k := range pageOnly {
 		delete(top, k)
-	}
-	// merge_row's oldest merging card's age is read with --cards or --rows alone: plain where
-	// --json carries null there
-	var mergeRow map[string]json.RawMessage
-	if json.Unmarshal(top["merge_row"], &mergeRow) == nil && mergeRow != nil {
-		if _, has := mergeRow["oldest_merging_min"]; has {
-			mergeRow["oldest_merging_min"] = json.RawMessage("null")
-			top["merge_row"] = mustJSON(mergeRow)
-		}
 	}
 	var tables map[string]map[string]map[string]json.RawMessage
 	if json.Unmarshal(top["tables"], &tables) != nil || tables == nil {
@@ -373,4 +370,111 @@ func (s *Server) index() []byte {
 	html = strings.ReplaceAll(html, "<!--LOGO-->", slot)
 	html = strings.ReplaceAll(html, "<!--FAVICON-->", icon)
 	return []byte(html)
+}
+
+// Sentinels are not work (the owner, 2026-10-11: "sentinel cards should not be counted when we
+// are estimating time remaining, or cards per-hour"; "Right now they are inflating the ETA"):
+// the live feed (bin/ns.sh, its second jq) counts the page's x/y and ETA over the work cards
+// alone, and foldSentinels is that jq, line for line. Over every primary of where --json
+// --archived --rows's rows whose kind is not sentinel: all is their count and landed those in
+// the landed column; the rate is the landings of the last hour (from the epoch's clear when
+// that is later) when five or more, else landed over the time since the clear; the ETA is the
+// cards left at that rate, rounded up, "-" when the rate is none, fewer than five have landed
+// or none is left; the summary's x/y, percent and ETA are rewritten when the summary has
+// where's shape, its held= kept; landed and all are set; and the archived streams' rows of
+// the work and merge tables go. Times are read as the feed's jq reads them (jqTime). Nothing
+// changes without rows. landed is what the page's throughput samples, so it counts work
+// landings only.
+
+// summaryShape is where's summary line: x/y, percent, held=, ETA.
+var summaryShape = regexp.MustCompile(`^[0-9]+/[0-9]+ [0-9.]+%(( held=[0-9]+)?) -> ETA [^ ]+$`)
+
+// jqFraction is the fraction of seconds the feed's jq cuts before it reads a time.
+var jqFraction = regexp.MustCompile(`\.[0-9]+`)
+
+// jqTime is a time as the feed's jq reads it (sub("\\.[0-9]+"; "") | fromdateiso8601): the first
+// run of a point and digits cut, then exactly YYYY-MM-DDTHH:MM:SSZ, in seconds; false when it does
+// not read so (an offset other than Z, or no time).
+func jqTime(s string) (float64, bool) {
+	cut := jqFraction.FindStringIndex(s)
+	if cut != nil {
+		s = s[:cut[0]] + s[cut[1]:]
+	}
+	t, err := time.Parse("2006-01-02T15:04:05Z", s)
+	if err != nil {
+		return 0, false
+	}
+	return float64(t.Unix()), true
+}
+
+// foldSentinels is the feed's second jq over top at now (above).
+func foldSentinels(top map[string]json.RawMessage, now time.Time) {
+	var rows []struct {
+		Column string         `json:"column"`
+		Fields map[string]any `json:"fields"`
+	}
+	if raw, ok := top["rows"]; !ok || json.Unmarshal(raw, &rows) != nil || rows == nil {
+		return // (.rows | type) != "array": as where printed it
+	}
+	nowS := float64(now.UnixNano()) / 1e9
+	all, landed := 0, 0
+	var landedAt []string
+	for _, r := range rows {
+		if kind, _ := r.Fields["kind"].(string); kind == "sentinel" {
+			continue
+		}
+		all++
+		if r.Column == "landed" {
+			landed++
+			at, _ := r.Fields["landed"].(string) // a field of another shape reads as none
+			landedAt = append(landedAt, at)
+		}
+	}
+	var cleared string
+	_ = json.Unmarshal(top["cleared"], &cleared) // ignored: no clear reads as now, as the jq's // $now
+	first, ok := jqTime(cleared)
+	if !ok {
+		first = nowS
+	}
+	from := math.Max(nowS-3600, first)
+	n := 0
+	for _, at := range landedAt {
+		if t, ok := jqTime(at); ok && t > from && t <= nowS {
+			n++
+		}
+	}
+	rate := 0.0
+	switch {
+	case n >= 5 && nowS > from:
+		rate = float64(n) * 3600 / (nowS - from)
+	case landed > 0 && nowS > first:
+		rate = float64(landed) * 3600 / (nowS - first)
+	}
+	left := all - landed
+	eta := 0.0
+	if !(rate <= 0 || landed < 5 || left <= 0) {
+		eta = math.Ceil(float64(left) * 60 / rate)
+	}
+	etaw := "-"
+	switch {
+	case eta >= 1440:
+		h := math.Floor((eta + 59) / 60)
+		etaw = fmt.Sprintf("%dd%dh", int64(math.Floor(h/24)), int64(h)%24)
+	case eta >= 60:
+		etaw = fmt.Sprintf("%dh%dm", int64(math.Floor(eta/60)), int64(eta)%60)
+	case eta > 0:
+		etaw = fmt.Sprintf("%dm", int64(eta))
+	}
+	pct := "0.0%"
+	if all > 0 {
+		r := int64(math.Floor(1000*float64(landed)/float64(all) + 0.5))
+		pct = fmt.Sprintf("%d.%d%%", r/10, r%10)
+	}
+	var summary string
+	if json.Unmarshal(top["summary"], &summary) == nil {
+		if m := summaryShape.FindStringSubmatch(summary); m != nil {
+			top["summary"] = mustJSON(fmt.Sprintf("%d/%d %s%s -> ETA %s", landed, all, pct, m[1], etaw))
+		}
+	}
+	top["landed"], top["all"] = mustJSON(landed), mustJSON(all)
 }

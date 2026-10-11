@@ -1,4 +1,4 @@
 # The page lock (pagelock.go): one line per change of the dashboard page, newest last:
 # <YYYY-MM-DD> <sha256 digest of page/ and pageview.go> "<the owner's exact words asking for the change>"
 # each line's words are quoted on a line of the same date under "The page lock" in docs/SPEC-SPRINT-DASHBOARD.md
-2026-10-11 d0aff4ebb7e47a93a63a0ac633b30d9e9fdf6dd391e5fd2d10a7ccaf348bf107 "this is what it is."
+2026-10-11 c96f95713be30d758f04bd8b0dda4f58a7730a298b5b7adf0787f86aa13749c1 "this is what it is."

@@ -37,14 +37,17 @@ finished ones too), no seat pill, no row, tag, tooltip or figure of the Go page'
 `/api/sprint` and `/events` on the page's listeners serve the reference server's envelope and no
 other key: `ok`, `data`, `fetchedAt` (the data's own `at`), `dataAgeSeconds`, `attemptAt`, `error`,
 `readSeconds`, `minInterval`, `throughput`, `throughputMinutes`, `build`; a query names nothing.
-`data` is `where --json` as the reference's feed prints it: what `--cards`, `--rows` and
-`--archived` add for the pull routes (`cards`, `merging`, `judgments`, `holds`, `lanes`, `rows`,
-`merge_row.oldest_merging_min`, the archived streams' rows of the work and merge tables) is taken off, no fix marks are added, and the
-feed's two folds are made: each stream's `stream_costs` record is merged into its `tables.work`
-row, and each fleet row's `reads_working` and `working` gain the `reading` count of its machine's
-reader rows (`reader-<m>`, `reader-<m>-<n>`; the owner, 2026-10-11: "Remember that the reason we
-are in this mess is that you forgot to display the orange read cards."), so the orange read
-cells are lit and the lit cells number the row's working figure. `throughput` and
+`data` is `where --json --archived --rows` as the reference's feed prints it: what `--cards` adds
+for the pull routes (`cards`, `merging`, `judgments`, `holds`, `lanes`) is taken off, no fix
+marks are added, and the feed's three folds are made: each stream's `stream_costs` record is
+merged into its `tables.work` row; each fleet row's `reads_working` and `working` gain the
+`reading` count of its machine's reader rows (`reader-<m>`, `reader-<m>-<n>`; the owner,
+2026-10-11: "Remember that the reason we are in this mess is that you forgot to display the
+orange read cards."), so the orange read cells are lit and the lit cells number the row's
+working figure; and `landed`, `all` and the summary's x/y and ETA are counted over the work cards
+alone, never the sentinels (the owner, 2026-10-11: "sentinel cards should not be counted when we
+are estimating time remaining, or cards per-hour"), the rows and the archived streams' rows of
+the work and merge tables then taken out. `throughput` and
 `throughputMinutes` are counted as the reference server counts them: samples of the page copy's
 `landed` alone, started again when it falls (an archive). A puller serves its upstream's copy and
 throughput as they came, and an upstream that answers any other view is a failed read. The pull listeners' `/api/sprint` keeps its own view (the release switch and
@@ -68,6 +71,8 @@ asking for that visible change, dated (`dashboard-asked-for`, pkg/swarm/dashboar
 - 2026-10-11 the owner: "Remember that the reason we are in this mess is that you forgot to display the orange read cards."
 - 2026-10-11 the owner: "don't add things to the dashboard unless I ask for them"
 - 2026-10-11 the owner: "NEVER REMOVE THINGS FROM THE DASHBOARD UNLESS I ASK"
+- 2026-10-11 the owner: "sentinel cards should not be counted when we are estimating time remaining, or cards per-hour"
+- 2026-10-11 the owner: "Right now they are inflating the ETA"
 
 ## Serving and publishing
 
