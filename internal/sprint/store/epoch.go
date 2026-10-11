@@ -184,6 +184,13 @@ func (st *Store) Wait(ctx context.Context, noteID string, at time.Time) (res Res
 		// a judgment that holds a card from progressing takes no wait, neither a hold nor a
 		// review time: a wait would park the card (sprint.WaitRefused, wait_refused.go)
 		if why := sprint.WaitRefusal(o.Note); why != "" {
+			coordinator, err := st.B.Coordinator(ctx)
+			if err != nil {
+				return res, false, err
+			}
+			if not := sprint.NotCoordinator(coordinator, st.Actor, "wait"); not != "" {
+				return res, false, errors.New(not) // the coordinator's verb first
+			}
 			return res, false, errors.New(why)
 		}
 		if o.Note.Kind == sprint.Judgment && sprint.TickKept(o.Note.Type) {

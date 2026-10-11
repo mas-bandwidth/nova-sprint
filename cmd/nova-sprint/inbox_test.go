@@ -50,10 +50,12 @@ func (ta *testApp) timerOnce(note string, actor ...string) {
 	if len(actor) > 0 {
 		as = " --actor " + actor[0]
 	}
-	ta.ok("remind --in 1s --note " + note + as)
+	ta.a.sleep(time.Second) // each notification at its own clock reading
 	ta.mu.Lock()
-	ta.now = ta.now.Add(2 * time.Second)
+	at := ta.now.UTC().Format(time.RFC3339)
 	ta.mu.Unlock()
+	// due at once: a timer's time is running time, which a STOPPED machine does not spend
+	ta.ok("remind --at " + at + " --note " + note + as)
 	ta.ok("tick" + as)
 }
 

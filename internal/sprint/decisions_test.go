@@ -559,6 +559,10 @@ func TestEveryDecisionPrintsItsCommands(t *testing.T) {
 				}
 			}
 			for _, d := range ds {
+				if (d == "wait" || strings.HasPrefix(d, "wait ")) && WaitRefusal(n) != "" {
+					assert.False(t, got[d], "%s: the inbox offers a wait the judgment refuses", typ)
+					continue
+				}
 				assert.True(t, got[d], "%s: the decision %q prints no command", typ, d)
 			}
 		}
