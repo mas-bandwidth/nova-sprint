@@ -781,12 +781,13 @@ type conflictCard struct {
 	// ConflictKind: the conflict rule redoes a file conflict on the tip).
 	kind        string
 	paths       []string
-	emptyCommit bool // the refusal is an empty commit that claims changes: return the card to review, do not stop the stream on a conflict
+	emptyCommit bool // the refusal is an empty commit (isEmptyCommitFinding): return the card to review, do not stop the stream on a conflict
 }
 
 // returnCard returns one card to review when its landing was refused because the
-// head's diff from the attempt's start is empty while the result claims changes
-// (docs/SPEC-SPRINT.md section 7, the lander's checks). The finding is the return
+// head's diff from the attempt's start is empty: while the result claims changes, or
+// while the lander holds no result to say why (isEmptyCommitFinding;
+// docs/SPEC-SPRINT.md section 7, the lander's checks). The finding is the return
 // reason. A conflict is not recorded and the stream is not stopped: the card goes
 // back to review for the coordinator.
 func (l *lander) returnCard(stream string, f conflictCard) bool {
@@ -1660,7 +1661,7 @@ func (l *lander) mergeCards(ctx context.Context, dir, stream string, cards []lan
 		case env != "":
 			return nil, failed, env + "; no card is blamed and nothing was pushed or reported"
 		case refused != "":
-			return merged, conflictCard{landCard: *card, why: refused, kind: l.conflictKind, paths: l.conflictPaths, emptyCommit: refused == emptyCommitFinding}, ""
+			return merged, conflictCard{landCard: *card, why: refused, kind: l.conflictKind, paths: l.conflictPaths, emptyCommit: isEmptyCommitFinding(refused)}, ""
 		}
 		merged = append(merged, card.id)
 	}
@@ -1933,6 +1934,20 @@ func (l *lander) ledgers() []landLedger {
 // start is empty while the result claims changes. It is the return reason, whole.
 const emptyCommitFinding = "empty commit: the result claims changes the diff does not show"
 
+// emptyCommitNoResultFinding is the refusal when a landing's head diff from the
+// attempt's start is empty and the lander holds no result to read for the card at all:
+// the fleet row is absent or the work card was tidied away, so nothing claimed
+// anything. It is the return reason, whole.
+const emptyCommitNoResultFinding = "empty commit: the head changes nothing from the attempt's start, and the lander holds no result to say why"
+
+// isEmptyCommitFinding says a refusal is one of the empty-commit findings: the head
+// changes nothing from the attempt's start while the result claims changes, or while
+// the lander holds no result to say why. Both return the card to review
+// (conflictCard.emptyCommit; docs/SPEC-SPRINT.md section 7, the lander's checks).
+func isEmptyCommitFinding(why string) bool {
+	return why == emptyCommitFinding || why == emptyCommitNoResultFinding
+}
+
 var (
 	verdictOkRE = regexp.MustCompile(`(?im)^\s*verdict:\s*ok\b`)
 	// nothingRE is a result line that says the child found nothing to do: the verdict
@@ -1976,13 +1991,18 @@ func claimText(wc *sprint.Card) string {
 // diff with a result that claims changes (a verdict of ok, a step line with a commit sha,
 // or a diff stat that is not empty) is refused with emptyCommitFinding. A result that
 // claims nothing (a nothing-to-do verdict or report line, every step -) passes. A result
-// the lander does not hold cannot be told to claim nothing, so an empty diff with no
-// result text is refused too. A non-empty diff passes.
+// the lander does not hold (resultText blank: a nil work card, the fleet row absent or
+// tidied away) cannot be told to claim nothing, so an empty diff with no result text is
+// refused too, with emptyCommitNoResultFinding: it says no result is held, not that the
+// result claimed changes it did not make. A non-empty diff passes.
 func checkEmptyCommit(emptyDiff bool, resultText string) string {
 	if !emptyDiff {
 		return ""
 	}
-	if strings.TrimSpace(resultText) == "" || verdictOkRE.MatchString(resultText) {
+	if strings.TrimSpace(resultText) == "" {
+		return emptyCommitNoResultFinding
+	}
+	if verdictOkRE.MatchString(resultText) {
 		return emptyCommitFinding
 	}
 	if nothingRE.MatchString(resultText) {

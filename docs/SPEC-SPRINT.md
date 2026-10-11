@@ -4110,7 +4110,12 @@ review called wrong for a fragment, and no other; over the land merges of 215 of
 them it finds those four and one more, diaryr-37, a lead-in left without its end
 the review passed. On those land merges the PATHS rule flags negd-42 and three
 cards of its shape (negd-17, -32, -41: a file the card edited after a name card
-renamed it from the name its PATHS gives), which the review passed. A head that fails is taken off
+renamed it from the name its PATHS gives), which the review passed. An empty commit is
+read against the result the lander holds (`claimText`): an empty diff whose result claims
+changes (a verdict of ok, a step line with a commit sha, a non-empty diff stat) is refused
+as a claim the diff does not show, while an empty diff for which the lander holds no result
+at all (the fleet row is absent, or the work card was tidied away) is refused as a missing
+result, its finding naming that nothing is held to say why. A head that fails is taken off
 the batch branch and ends the batch as a head in conflict does: the conflict fact
 on it names every failure, `<file>:<line>` and the rule.
 
