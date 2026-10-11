@@ -2222,6 +2222,11 @@ func (l *lander) clone(ctx context.Context, repo string) (dir, why string) {
 	if l.dry {
 		return dir, ""
 	}
+	// the clone is made once per repository: two lanes of one clone (two bases) prepare
+	// at once, so its creation is under its own fetch lock too
+	lock := l.locks().fetchLock(dir)
+	lock.Lock()
+	defer lock.Unlock()
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 		return dir, l.originIs(ctx, dir, repo)
 	}
