@@ -108,8 +108,8 @@ func transient(line string) bool {
 // and the word fallback is skipped: such a take is the provider's own failure and spends
 // its take, so three of them rest the route (docs/SPEC-SPRINT.md section 5;
 // tla/RateBackoff.tla; tla/RouteRest.tla, RestProvider), never the brief backoff a word
-// match would read. A line with no parsed
-// class, or with another class, keeps the word fallback. An out-of-credit or key refusal
+// match would read. A line with no parsed class, or with another class, keeps the word
+// fallback. An out-of-credit or key refusal
 // is never one: it ends the take as before.
 func IsRateLimited(report string) bool {
 	line := strings.TrimSpace(report)
