@@ -30,7 +30,8 @@ NoReads == [c \in Cards |-> NoR]
 Empty == [m \in Machines |-> {}]
 Base == [col |-> [c \in Cards |-> "none"], rd |-> NoReads, mq |-> {}, up |-> Machines \cup Readers,
          live |-> Machines \cup Readers, away |-> FALSE, misses |-> FALSE, hand |-> FALSE, lapse |-> TRUE,
-         mc |-> Empty, mr |-> Empty, q |-> Queues(Adds, <<>>, <<>>, <<>>), served |-> Cards]
+         mc |-> Empty, mr |-> Empty, q |-> Queues(Adds, <<>>, <<>>, <<>>), served |-> Cards,
+         heldStreams |-> {}]
 
 \* Every card added (its add queued), every machine up: the whole life.
 ScnBase == Base
@@ -78,6 +79,11 @@ ScnAccept == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.rd = [c \in Card
 \* Every card added, every machine up; no route serves c2's tier and it pins
 \* no model (THE ROUTE): c1 lives its life, c2 stays ready.
 ScnRoute == [Base EXCEPT !.served = Cards \ {"c2"}]
+
+\* THE HELD STREAM. c1 (s1) and c2 (s2) added, s1 held: c1 is dealt to no
+\* machine and no friend until unhold, c2 lives its life. The witness
+\* "dealheldstream" deals c1 anyway.
+ScnHeldStream == [Base EXCEPT !.heldStreams = {"s1"}]
 
 \* THE HOLD. c1 in review waiting for a read; the coordinator may hold m1
 \* (r1's machine): the ask asks r1 nothing and places the read on r2. No

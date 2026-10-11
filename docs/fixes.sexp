@@ -1199,6 +1199,21 @@
     are not carried: this repository has neither."
    :origin "this card")
 
+  (fix "tla-dirtytick-deal-order-and-skips" :release "v1.2.12" :status "planned"
+   :title "DirtyTick models the deal's held-stream skip"
+   :text "DirtyTick's Deal now skips a held stream's ready cards, to a machine and a friend alike
+    (a Scn.heldStreams set, empty in every existing configuration; internal/sprint/hold.go StreamHeld,
+    steps_tick.go:776,792 and steps_work.go:980), with the invariant HeldStreamNotDealt (shaped like
+    RouteGuard) and the reversed witness dealheldstream: MCDirtyTickHeldStream.cfg passes and
+    MCDirtyTickBrokenDealHeldStream.cfg fails HeldStreamNotDealt. The deal's reads-before-work order and
+    the read card's half slot (steps_tick.go:762-764 withReadCards, read_cards.go halfLoad) are the
+    read-cards machine's (tla/ReadCards.tla) and stay outside the module, whose reads are the readers
+    table's. The deal's friends-first ladder (tla/WhoPreference.tla), bench pool and staging refusers
+    (tla/RouteIndex.tla Pool), friend-dealt return (tla/FriendDealtReturn.tla) and fault-hold clear
+    (tla/DealFill.tla FaultHoldClears) are cited to their modules in the model's comments. Models only,
+    no product change. The eight dirtytick groups were rerun with TLC and merged into tla/RUNS.tsv."
+   :origin "v1.2.12 inventory item T7, second half; card tla-dirtytick-deal-order-and-skips.w5")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
