@@ -45,7 +45,7 @@ func (e *ClearedError) Error() string {
 
 // pin is the store pinned to the sprint's current epoch; a pinned store is
 // itself. A restore the epoch still owes (a clear cut between its advance and
-// its restore) is performed first.
+// its restore) is performed first (tla/AttemptsEpochs.tla Restore).
 func (st *Store) pin(ctx context.Context) (*Store, error) {
 	c, es, err := st.pinOnly(ctx)
 	if err != nil || c == st || !es.Owed {
