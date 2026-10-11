@@ -49,7 +49,7 @@ func TestFriendSyncWritesTheReworkedBriefAndPreservesAnUnaddressedLand(t *testin
 	assert.True(t, strings.HasPrefix(lines[0], "STATUS: nova-sprint card s1-1.w2, epoch 0, attempt 2; "), lines[0])
 	assert.Equal(t, friend.OneThingLeft+fix, lines[1], "the first line after STATUS is the fix")
 	assert.True(t, strings.HasPrefix(lines[2], friend.ReaderFoundLabel), lines[2])
-	assert.True(t, strings.HasPrefix(lines[3], "The carried work: nothing carried: no attempt before this one pushed work; start sprint/s1-1.w2."), "the brief says what is carried, onto which branch: %s", lines[3])
+	assert.Contains(t, lines[3], "The carried work: attempt 1's head "+landHead+", carried onto sprint/s1-1.w2.g1.e0", "the failed result still recorded the pushed head, which the next attempt must carry")
 	assert.Contains(t, string(text), "\nSTOP: "+fix+"\n", "the STOP is the fix alone")
 	assert.NotContains(t, string(text), "STOP: the whole card is done")
 	assert.NotContains(t, string(text), "The coordinator asks:", "the fix is said once, first")

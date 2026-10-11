@@ -28,7 +28,11 @@ func TestASeatJudgmentDoesNotRewriteAFriendsSuccessfulFinish(t *testing.T) {
 	assert.Zero(t, h.snap().Fleet.Count(wc.Row, sprint.DoneFailed), "a seat judgment is not worker failure")
 	judgments := h.openOf(sprint.NReportJudgment)
 	require.Len(t, judgments, 1)
-	assert.Equal(t, []string{"read the report"}, judgments[0].Note.Decisions)
+	assert.Equal(t, []string{"read the report", "ack"}, judgments[0].Note.Decisions)
 	assert.Equal(t, "the report needs a read", judgments[0].Note.What)
+	// `read the report`'s generated second command is `ack <note>`. It must be an
+	// executable resolution after the coordinator has read the report.
+	h.must(AckStep(sprint.AckReq{Notes: []string{judgments[0].Note.ID}, Reason: "report read; LAND is preserved"}))
+	assert.Empty(t, h.openOf(sprint.NReportJudgment))
 	h.clean("a report judgment beside successful work")
 }
