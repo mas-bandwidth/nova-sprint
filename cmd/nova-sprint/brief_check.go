@@ -96,16 +96,7 @@ func (a *app) cmdBriefCheck(args []string, stdout, stderr io.Writer) int {
 		}
 		// an empty file is linted, and the lint says it once, naming the file
 		briefText := strings.TrimSuffix(text, "\n")
-		if why := reservedCardID(id); why != "" {
-			findings = append(findings, briefFinding{File: p, ID: id, Check: "id", Why: why, order: chkID})
-		} else if !sprint.ValidID(id) {
-			findings = append(findings, briefFinding{File: p, ID: id, Check: "id",
-				Why: fmt.Sprintf("%q is not a card id (letters, digits, _ and -): the id is the file's base name without .md", id), order: chkID})
-		}
-		if len(briefText) > store.MaxBriefBytes {
-			findings = append(findings, briefFinding{File: p, ID: id, Check: "size",
-				Why: fmt.Sprintf("the brief is %d bytes, over the %d bytes a brief may be", len(briefText), store.MaxBriefBytes), order: chkSize})
-		}
+		findings = append(findings, briefIDSizeFindings(p, id, briefText)...)
 		cb := swarm.ReadCardBase([]byte(briefText))
 		items = append(items, briefItem{file: p, id: id, text: briefText, card: sprint.CardAdd{
 			ID: id, Brief: briefText, Needs: uniquify(briefNeeds(briefText)), File: p,
@@ -184,6 +175,25 @@ func (a *app) cmdBriefCheck(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// briefIDSizeFindings is add's first two per-brief checks, the id its file
+// names and the size bound, collected rather than refused: brief check and add
+// --partial both hold a brief these fault, so they share the one collector and
+// not a second copy (docs/CLI.md; docs/SPEC-SPRINT.md section 7, the add).
+func briefIDSizeFindings(file, id, briefText string) []briefFinding {
+	var out []briefFinding
+	if why := reservedCardID(id); why != "" {
+		out = append(out, briefFinding{File: file, ID: id, Check: "id", Why: why, order: chkID})
+	} else if !sprint.ValidID(id) {
+		out = append(out, briefFinding{File: file, ID: id, Check: "id",
+			Why: fmt.Sprintf("%q is not a card id (letters, digits, _ and -): the id is the file's base name without .md", id), order: chkID})
+	}
+	if len(briefText) > store.MaxBriefBytes {
+		out = append(out, briefFinding{File: file, ID: id, Check: "size",
+			Why: fmt.Sprintf("the brief is %d bytes, over the %d bytes a brief may be", len(briefText), store.MaxBriefBytes), order: chkSize})
+	}
+	return out
 }
 
 // briefStoreFreeChecks runs the checks that need no store: the TLA+ records
