@@ -220,13 +220,15 @@ func TestHoldTakesNoNewCardsAndUnholdResumesForMembersFriendsAndStreams(t *testi
 			"member m1 released from its hold: the cleaner is fixed",
 		}, r.holdLines(), "the log holds the hold and its release, the reason in each")
 
-		// --return: the work begun is handed back now
+		// --return leaves taken work with a live member and hands back its ready cards.
 		taken := r.takeOne("m2")
+		takenGen := r.snap().Fleet.Card(taken).Int("gen")
 		r.hold(sprint.HoldReq{Names: []string{"m2"}, Reason: "drain it", Return: true})
 		s = r.snap()
-		assert.Empty(t, onRow(s, "m2", "s1", sprint.Ready, sprint.Working), "--return deals its working cards round the fleet too")
+		assert.Equal(t, []string{taken}, onRow(s, "m2", "s1", sprint.Working), "--return leaves a live member's taken card to finish")
 		wc := s.Fleet.Card(taken)
-		assert.NotEqual(t, "m2:"+sprint.Working, wc.Row+":"+wc.Col, "%s handed back: dealt to a member up, or withdrawn", taken)
+		assert.Equal(t, "m2:"+sprint.Working, wc.Row+":"+wc.Col, "%s stays with its live worker", taken)
+		assert.Equal(t, takenGen, wc.Int("gen"), "%s keeps its generation", taken)
 	})
 	t.Run("stream", func(t *testing.T) {
 		t.Parallel()

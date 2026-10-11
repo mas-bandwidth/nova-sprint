@@ -82,7 +82,7 @@ func TestHoldsReturnFlagShowsWhetherTheHoldHandedBackWork(t *testing.T) {
 	}
 	require.Contains(t, byName, "m1")
 	require.Contains(t, byName, "m2")
-	assert.True(t, byName["m1"].Return, "a hold with --return shows Return")
+	assert.False(t, byName["m1"].Return, "an up member with no working cards has nothing begun to return")
 	assert.False(t, byName["m2"].Return, "a hold without --return shows no Return")
 }
 

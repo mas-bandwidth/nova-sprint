@@ -62,9 +62,9 @@ type HoldReq struct {
 	Names []string
 	// Release is unhold: each name's hold is cleared.
 	Release bool
-	// Return hands back what each name holds begun, now: a member's working cards dealt
-	// round the fleet, a reader's reads begun asked of another, a friend's cards and a
-	// stream's working cards withdrawn to ready. Without it they finish.
+	// Return hands back what each name holds begun, now. An up fleet member keeps its
+	// taken cards and finishes them even with Return; a down member's working cards are
+	// dead runs and are handed back. Readers and streams keep their existing rules.
 	Return bool
 	// Kind, when set, is the one kind the names may name (the old verbs, fleet down,
 	// reader away and friend down, alias hold for theirs): a name of another kind, or
@@ -171,7 +171,11 @@ func holdElsewhere(n string, kinds []string, release bool) string {
 
 // HoldNames is hold and unhold as one step (docs/SPEC-SPRINT.md section 11): every name
 // resolved first (HoldTargets), all or none; then each kind's part, and a happened
-// note per name, the reason in it, so the log holds every hold and release.
+// note per name, the reason in it, so the log holds every hold and release. A dealt
+// card moves freely; only a taken card is its worker's and is never pulled back (the
+// owner, 2026-10-09; NoTakenCardReturned): an up member's hold --return hands back its
+// ready cards alone, and its working cards stay at their generation and finish.
+// tla/WhoPreference.tla's NoStartedCardMoves states that rule for started cards.
 func HoldNames(s *Snapshot, r HoldReq) Plan {
 	targets, refused := HoldTargets(s, r)
 	if len(r.Names) == 0 {
@@ -210,7 +214,24 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 		case t.Kind == HoldMember && r.Release:
 			add(fleetStepPlan(s, FleetReq{Op: "release", Member: t.Name, Who: r.Who, Fresh: slices.Contains(r.Alive, t.Name), Why: r.Reason}, rr, moves))
 		case t.Kind == HoldMember:
-			add(downPlan(s, FleetReq{Op: "hold", Member: t.Name, Who: r.Who, Why: holdWhy(r), Reason: r.Reason, HeldBy: r.HeldBy, Finish: !r.Return, keep: keep}, up, rr, moves, q, widths))
+			ctl := s.MemberCtl(t.Name)
+			// a member is up when its status is up; a member already marked to finish
+			// (FieldHeldFinish, a prior hold) keeps that, so a repeat hold never pulls
+			// back a card it already let finish (the owner, 2026-10-09)
+			upNow := ctl != nil && (ctl.F("status") == Up || ctl.F(FieldHeldFinish) != "")
+			taken := s.Fleet.Cell(t.Name, Working)
+			finish := !r.Return || upNow
+			if r.Return && upNow {
+				if len(taken) > 0 {
+					ids := make([]string, 0, len(taken))
+					for _, c := range taken {
+						ids = append(ids, c.ID)
+					}
+					slices.Sort(ids)
+					line = fmt.Sprintf("--return: %d taken cards stay with their worker and finish: %s", len(ids), strings.Join(ids, ","))
+				}
+			}
+			add(downPlan(s, FleetReq{Op: "hold", Member: t.Name, Who: r.Who, Why: holdWhy(r), Reason: r.Reason, HeldBy: r.HeldBy, Finish: finish, keep: keep}, up, rr, moves, q, widths))
 		case t.Kind == HoldStream:
 			var sp Plan
 			sp, line = holdStream(s, t.Name, r)
@@ -265,6 +286,8 @@ func holdNote(s *Snapshot, t HoldTarget, r HoldReq, line string) Note {
 	}
 	if !r.Release {
 		switch {
+		case r.Return && t.Kind == HoldMember && line != "":
+			n.What += "; --return hands back only what was dealt and not taken"
 		case r.Return:
 			n.What += "; --return: its work begun is handed back now"
 		case t.Kind == HoldFriend:
