@@ -937,6 +937,11 @@
     statements not run, unchanged at main 00c54ba; after: gcLoop 88.9% and run 77.5% covered."
    :origin "the owner, 2026-10-11: v1.2.12 tests and models only; inventory section 8 item C7; card cover-gc-loop-and-backup-out-refusals.w2")
 
+  (fix "every-worker-verb-runs-as-its-worker" :release "v1.2.12" :status "planned"
+   :title "Every worker verb runs as its worker with no --actor"
+   :text "TestEveryWorkerVerbRunsAsItsWorkerWithNoActor drives every verb whose class is classWorker through its shortest valid line with no NOVA_SPRINT_ACTOR and no --actor, holding each is not refused for want of an actor and, where it writes, that the record names the worker the verb named. The rows come from verbClasses itself, so a worker verb added to the class table with no case fails the test with add a case for <verb>. remind, any actor's, is checked with --actor and refused without one; a worker verb that names no worker is refused and writes nothing."
+   :origin "the owner, 2026-10-11: the v1.2.12 tests; inventory section 8 item C14 and section 6 (the night's missing regression tests)")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
