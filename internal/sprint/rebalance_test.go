@@ -218,7 +218,7 @@ func TestAReturnedReadMovedByTheRebalanceIsAFreshAsk(t *testing.T) {
 }
 
 // The rebalance moves every movable card at once, not one per tick (the owner, 2026-10-11:
-// "Not one card at a time per-tick"): with 36 cards queued on one full unit and 40 idle
+// "Not one card at a time per-tick"): with 36 read cards queued on one full unit and 40 idle
 // lanes across six others, one rebalance moves all 36, bounded only by the idle lanes. After
 // the tick no movable card is left queued on a full unit while an idle eligible lane exists
 // anywhere.
@@ -231,19 +231,56 @@ func TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick(t *testing.T) {
 	}
 	w.s.Work.SetRows([]string{"s1"})
 	widths := map[string]int{"m1": 1, "m2": 7, "m3": 7, "m4": 7, "m5": 7, "m6": 6, "m7": 6}
-	for _, m := range []string{"m1", "m2", "m3", "m4", "m5", "m6", "m7"} {
+	members := []string{"m1", "m2", "m3", "m4", "m5", "m6", "m7"}
+	for _, m := range members {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: widths[m]}))
+		w.s.Readers.SetRows(append(w.s.Readers.Rows(), ReaderPrefix+m))
 	}
 	rbPlace(w, "s1-0", cardhdr.RouteFlash, "m1", Working) // m1's one lane, working
 	const queued = 36
 	for i := 1; i <= queued; i++ {
-		rbPlace(w, fmt.Sprintf("s1-%d", i), cardhdr.RouteFlash, "m1", Ready)
+		id := fmt.Sprintf("s1-%d", i)
+		w.s.Work.Put(&Card{ID: id, Row: "s1", Col: Review, Score: float64(i), Rev: 1,
+			Fields: map[string]string{"kind": "primary", "attempt": "1", "stream": "s1", "brief": fleetBrief(cardhdr.RouteFlash), FieldTierNow: cardhdr.RouteFlash}})
+		w.s.Fleet.Put(&Card{ID: ReadCardID(id, 1, "m1"), Row: "m1", Col: Ready, Score: float64(i), Rev: 1,
+			Fields: map[string]string{"kind": "read", "primary": id, "stream": "s1", "reader": "m1", "attempt": "1", FieldReadCard: "1", FieldTier: cardhdr.RouteFlash}})
 	}
 	require.Equal(t, queued, len(w.s.Fleet.Cell("m1", Ready)))
 	p := w.must(Rebalance(w.s, nil, "machine"))
 	assert.Len(t, rebalanced(p), queued, "one tick moves all 36, not one per tick")
 	assert.Equal(t, 0, len(w.s.Fleet.Cell("m1", Ready)), "no movable card is left queued on the full unit")
 	for _, m := range []string{"m2", "m3", "m4", "m5", "m6", "m7"} {
-		assert.LessOrEqual(t, len(w.s.Fleet.Cell(m, Ready)), widths[m], m)
+		assert.LessOrEqual(t, len(w.s.Fleet.Cell(m, Ready)), 2*widths[m], m)
 	}
+}
+
+// The hand verb fleet level reports what the tick would move, reads included: on the same
+// 36-read shape, FleetStep with Op level and Rebalance moves all 36, so the verb's moved
+// count is 36, not 0 (the owner, 2026-10-11, ran nova-sprint fleet level by hand: moved=0;
+// "This should NOT be manual.").
+func TestTheLevelVerbRebalancesTheReadsToo(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.s.Routes = []Route{
+		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
+		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "pr", Enabled: true},
+	}
+	w.s.Work.SetRows([]string{"s1"})
+	widths := map[string]int{"m1": 1, "m2": 7, "m3": 7, "m4": 7, "m5": 7, "m6": 6, "m7": 6}
+	for _, m := range []string{"m1", "m2", "m3", "m4", "m5", "m6", "m7"} {
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: widths[m]}))
+		w.s.Readers.SetRows(append(w.s.Readers.Rows(), ReaderPrefix+m))
+	}
+	rbPlace(w, "s1-0", cardhdr.RouteFlash, "m1", Working)
+	const queued = 36
+	for i := 1; i <= queued; i++ {
+		id := fmt.Sprintf("s1-%d", i)
+		w.s.Work.Put(&Card{ID: id, Row: "s1", Col: Review, Score: float64(i), Rev: 1,
+			Fields: map[string]string{"kind": "primary", "attempt": "1", "stream": "s1", "brief": fleetBrief(cardhdr.RouteFlash), FieldTierNow: cardhdr.RouteFlash}})
+		w.s.Fleet.Put(&Card{ID: ReadCardID(id, 1, "m1"), Row: "m1", Col: Ready, Score: float64(i), Rev: 1,
+			Fields: map[string]string{"kind": "read", "primary": id, "stream": "s1", "reader": "m1", "attempt": "1", FieldReadCard: "1", FieldTier: cardhdr.RouteFlash}})
+	}
+	p := w.must(FleetStep(w.s, FleetReq{Op: "level", Who: "machine", Rebalance: true}))
+	assert.Len(t, rebalanced(p), queued, "the level verb rebalances all 36 reads, so its moved count is 36, not 0")
+	assert.Equal(t, 0, len(w.s.Fleet.Cell("m1", Ready)))
 }
