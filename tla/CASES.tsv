@@ -369,3 +369,5 @@ MCNoRoomBrokenFleetBlind.cfg	MCNoRoom.tla	invariant	NeverDealtUnderFloor	ignore-
 MCNoRoomBrokenTickBlind.cfg	MCNoRoom.tla	invariant	NeverDealtUnderFloor	ignore-terminal	noroom	required	-
 MCAdopt.cfg	MCAdopt.tla	pass	-	ignore-terminal	adopt	required	-
 MCAdoptBrokenKeepNew.cfg	MCAdopt.tla	invariant	RefusedLeavesOld	ignore-terminal	adopt	required	-
+MCDealFill.cfg	MCDealFill.tla	pass	-	ignore-terminal	dealfill	required	-
+MCDealFillBrokenGate.cfg	MCDealFill.tla	invariant	DealtNoMoreHolds	ignore-terminal	dealfill	required	-
