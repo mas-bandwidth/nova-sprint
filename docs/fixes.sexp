@@ -942,6 +942,20 @@
    :text "TestEveryWorkerVerbRunsAsItsWorkerWithNoActor drives every verb whose class is classWorker through its shortest valid line with no NOVA_SPRINT_ACTOR and no --actor, holding each is not refused for want of an actor and, where it writes, that the record names the worker the verb named. The rows come from verbClasses itself, so a worker verb added to the class table with no case fails the test with add a case for <verb>. remind, any actor's, is checked with --actor and refused without one; a worker verb that names no worker is refused and writes nothing."
    :origin "the owner, 2026-10-11: the v1.2.12 tests; inventory section 8 item C14 and section 6 (the night's missing regression tests)")
 
+  (fix "ns-cmd-tests-under-a-minute-on-four-cores" :release "v1.2.12" :status "planned"
+   :title "cmd/nova-sprint's unit tests under a minute on four cores"
+   :text "cmd/nova-sprint's unit tests ran 70-115 s on CI's hosted four-core runner (run 38140543980
+     #88 114.7 s, run 38138910199 #87 70.1 s), over the one-minute bound. The wall time is the lander's
+     own real tree gate (go build, gofmt, go vet, go vet -tags functional, go test ./internal/docs/) in
+     landgo.go, not sleeps: the package injects its clock. Six land tests whose assertions are the
+     merges, the gate counts and the worktrees now stand the gate in for the bench with the package's
+     own gateBench seam, dropping the subprocesses with no assertion lost (gateRan runs before the
+     seam). The long-pole tests that pin the gate's findings (landbase_test.go, land_basegate_count_test.go,
+     base_gate_rule_test.go, land_go_test.go, the red-combined and bisect tests, the real-binary build)
+     keep the real gate and are left for the next pass, which must supply their gate result from a
+     content-aware fake while keeping the finding-text assertions."
+   :origin "the owner, 2026-10-11: v1.2.12 inventory card A10 (tmp/v1.2.12-inventory-2026-10-11.md)")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
