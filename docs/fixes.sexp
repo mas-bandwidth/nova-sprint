@@ -2132,4 +2132,19 @@
      out at the same time in || ?\" and \"OK please log critical cards to fix all these serial
      things that should be parallel (with good reason to be ||).\"; found by the seat's audit
      child on nova-sprint main the same day (cmd/nova-sprint/landpass.go, THE LANDINGS, SERIAL);
-     attempt 8 fixes the clone-creation key a reader found (land.go, clone)")))
+     attempt 8 fixes the clone-creation key a reader found (land.go, clone)")
+  (fix "lander-resolves-ledger-conflicts" :release "v1.2.13" :status "planned"
+   :title "A landing whose every conflict is a shared ledger lands"
+   :text "Measured over 60 minutes of the live sprint on 2026-10-11: about 300 landing refusals
+    against about 35 landings, most of them conflicts in the shared ledgers alone (docs/fixes.sexp,
+    FIXES.md, tla/COVERAGE.tsv, tla/RUNS.tsv, tla/CASES.tsv, and the schema repository's
+    docs/roadmap-evidence/fixed-<leg>.sexp). The lander now resolves a merge whose every conflicted
+    path is in the one ledger set (cardgen.LedgerInPaths, which now names tla/COVERAGE.tsv): the keyed
+    tables by their first column against the base (COVERAGE by machine, as RUNS and CASES by config),
+    the roadmap data and the evidence ledgers by line and otherwise form by form (a fix by its id, a
+    release block by its name, an evidence ledger as append-only history, every distinct form kept, including the schema
+    repository's bare one-form-a-line ledgers the evidence decoder refused as trailing bytes), FIXES.md regenerated from
+    the merged data. One id both sides change differently is refused naming it, and a code conflict is
+    refused as before. tla/LandLedgers.tla holds CodeConflictNeverLands with three reversed
+    witnesses."
+   :origin "hand-landed by a child of the seat, 2026-10-11, from the live land log's refusals")))

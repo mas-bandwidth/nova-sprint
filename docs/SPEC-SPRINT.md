@@ -4534,6 +4534,30 @@ way. Any unmerged path outside the family is refused as any conflict is. The
 landing writes the resolution on the card's merge card (`note`), and the
 card's timeline tells it on the line of its merge.
 
+**The shared ledgers land (lander-resolves-ledger-conflicts, v1.2.13).** The shared
+ledgers are one declared set, `cardgen.LedgerInPaths` (the roadmap data and pages, the
+evidence ledgers `docs/roadmap-evidence/*.sexp`, the keyed TLA+ tables `tla/CASES.tsv`,
+`tla/RUNS.tsv` and `tla/COVERAGE.tsv`, the tables lock, the catalog and the maps), and
+`sprint.LedgerConflict` reads the same set. A merge whose every unmerged path is a shared
+ledger is resolved by the lander and lands; it is never refused for the tip having moved
+under the card. Measured on 2026-10-11, 60 minutes of the live sprint: about 300 landing
+refusals against about 35 landings, most of them conflicts in these files alone. Each
+ledger merges by its own key against the merge base, the tip's text first and the card's
+added entries after it: the keyed tables by their first column (`config`, or `machine`
+for `tla/COVERAGE.tsv`), the header kept once, a row both sides hold alike kept once
+(the lander's own resolution of the run records, `resolveTableByConfig`); the roadmap
+data and the evidence ledgers line by line where each side only adds or removes whole
+lines, and otherwise form by form (`land_forms.go`): a `(fix "<id>" ...)` form by its id,
+a `(release "<id>" ...)` block by its name, a `(:id "<id>" ...)` evidence form by its id
+(the schema repository's ledgers are bare forms, one a line, with no wrapping form), an
+exact duplicate kept once. `FIXES.md` and `ROADMAP.md` are never merged as text: they are
+regenerated from the merged data by `make roadmap`'s generator. One id both sides add or
+change differently is a real conflict and is refused, naming it. The merged text is read
+back and must hold exactly the entries the merge wants and decode as the generator reads
+it; else it is refused with the reason. A conflict in any path outside the set (code, a
+spec, a README) is refused exactly as before: a code conflict is never resolved
+(`tla/LandLedgers.tla`, `CodeConflictNeverLands`).
+
 **land-e12-catalog-rows.** A card that adds a directory (a file under a
 directory that holds no tracked file before the merge) that its PATHS name
 owns the catalog row that directory costs and the maps `make map` writes.

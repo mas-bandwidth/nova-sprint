@@ -26,7 +26,7 @@ var alwaysInPathsFiles = []string{"tla/RUNS.tsv", "tla/CASES.tsv", "internal/doc
 // is the evidence ledgers (EvidenceLedger), matched by glob, not named here.
 var ledgerInPathsFiles = []string{
 	"docs/fixes.sexp", "FIXES.md", "docs/roadmap.sexp", "ROADMAP.md",
-	"tla/CASES.tsv", "tla/RUNS.tsv", "internal/sprint/TABLES.lock", "internal/docs/catalog.go",
+	"tla/CASES.tsv", "tla/RUNS.tsv", "tla/COVERAGE.tsv", "internal/sprint/TABLES.lock", "internal/docs/catalog.go",
 }
 
 // EvidenceLedger says p is an evidence ledger the lander merges entry by entry: a

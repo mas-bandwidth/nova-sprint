@@ -4,8 +4,8 @@ package main
 // (docs/SPEC-SPRINT.md section 7, append-only records, keyed run records and the tables lock).
 // Truly append-only records only ever gain rows and keep merge=union in .gitattributes;
 // repeated rows are dropped after the merge.
-// Keyed TLA+ tables (tla/CASES.tsv and tla/RUNS.tsv) are keyed by their config column and
-// resolved by config against the merge base, never by line and never merge=union:
+// Keyed TLA+ tables (tla/CASES.tsv and tla/RUNS.tsv by config, tla/COVERAGE.tsv by machine)
+// are keyed by their first column and resolved by that key against the merge base, never by line and never merge=union:
 // a config only one side changed takes that side, a config both sides changed alike is one row,
 // a RUNS.tsv config both sides reran keeps the row with the later started_utc,
 // a CASES.tsv config both sides changed differently is refused naming the config,
@@ -39,8 +39,16 @@ const casesFile = "tla/CASES.tsv"
 // runsFile is the keyed TLA+ run records (keyed by case config).
 const runsFile = "tla/RUNS.tsv"
 
+// coverageFile is the keyed TLA+ coverage table (keyed by machine): a card that models a
+// machine adds or updates its row, so two cards conflict at the table's end
+// (docs/SPEC-SPRINT.md section 7, the shared ledgers).
+const coverageFile = "tla/COVERAGE.tsv"
+
+// keyedHeaders is each keyed table's header line, by its first column.
+var keyedHeaders = map[string]string{casesFile: "config\t", runsFile: "config\t", coverageFile: "machine\t"}
+
 func appendOnly(p string) bool   { return slices.Contains(appendOnlyRecords, p) }
-func isKeyedTable(p string) bool { return p == casesFile || p == runsFile }
+func isKeyedTable(p string) bool { _, ok := keyedHeaders[p]; return ok }
 func isRecordOrLock(p string) bool {
 	return isKeyedTable(p) || p == tablesLockFile || appendOnly(p)
 }
@@ -156,7 +164,7 @@ func resolveTableByConfig(path string, base, ours, theirs []byte) (out []byte, n
 	var startedIdx int = -1
 
 	checkHeader := func(lines []string) (head string, rest []string) {
-		if len(lines) > 0 && strings.HasPrefix(lines[0], "config\t") {
+		if len(lines) > 0 && strings.HasPrefix(lines[0], keyedHeaders[path]) {
 			return lines[0], lines[1:]
 		}
 		return "", lines
@@ -353,6 +361,10 @@ func resolveRunsByConfig(base, ours, theirs []byte) ([]byte, int, int, error) {
 	return resolveTableByConfig(runsFile, base, ours, theirs)
 }
 
+func resolveCoverageByMachine(base, ours, theirs []byte) ([]byte, int, int, error) {
+	return resolveTableByConfig(coverageFile, base, ours, theirs)
+}
+
 // renderTablesLock is the lock's body as schema.go has it now (the same text
 // internal/sprint's TestSprintTablesAreLocked renders): one line per column, then the view
 // order, default and --all.
@@ -458,6 +470,13 @@ func (l *lander) resolveRecords(ctx context.Context, dir string, paths []string)
 				return nil, nil, "", "its keyed record " + p + " conflicts and cannot be resolved: " + err.Error(), ""
 			}
 			lines = append(lines, fmt.Sprintf("record %s: resolved by config (+%d tip, +%d card)", p, nOurs, nTheirs))
+		case coverageFile:
+			var nOurs, nTheirs int
+			var err error
+			if out, nOurs, nTheirs, err = resolveCoverageByMachine(sides[0], sides[1], sides[2]); err != nil {
+				return nil, nil, "", "its keyed record " + p + " conflicts and cannot be resolved: " + err.Error(), ""
+			}
+			lines = append(lines, fmt.Sprintf("record %s: resolved by machine (+%d tip, +%d card)", p, nOurs, nTheirs))
 		default:
 			var nOurs, nTheirs int
 			var err error
@@ -514,7 +533,7 @@ func (l *lander) dedupeMerge(ctx context.Context, dir, before string, c landCard
 			rlines, _ := unionLines(b)
 			seen := map[string]bool{}
 			for _, lstr := range rlines {
-				if strings.HasPrefix(lstr, "config\t") || strings.TrimSpace(lstr) == "" {
+				if strings.HasPrefix(lstr, keyedHeaders[p]) || strings.TrimSpace(lstr) == "" {
 					continue
 				}
 				k := configKey(lstr)
