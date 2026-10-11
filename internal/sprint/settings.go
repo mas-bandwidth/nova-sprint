@@ -350,7 +350,7 @@ type SetReq struct {
 	FleetTiers   string `json:",omitempty"`
 	FriendsTiers string `json:",omitempty"`
 	// ReadCards turns read cards on or off (PropReadCards, read_cards.go): on, off, or
-	// default (off).
+	// default (on).
 	ReadCards string `json:",omitempty"`
 	// Reads is the reads every card in review needs (PropReadsNeeded): 0, 1, 2, or
 	// default (each card's own rule, ReadsNeeded).
@@ -478,7 +478,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 	}
 	if r.ReadCards != "" {
 		if r.ReadCards != ReadCardsOnWord && r.ReadCards != "off" && r.ReadCards != ReadTierDefault {
-			why = append(why, "--read-cards wants on, off or "+ReadTierDefault+" (off); found "+r.ReadCards)
+			why = append(why, "--read-cards wants on, off or "+ReadTierDefault+" (on); found "+r.ReadCards)
 		}
 		if len(r.Streams) > 0 {
 			why = append(why, "--read-cards is the sprint's, not a stream's: nova-sprint set --read-cards "+r.ReadCards)
@@ -691,7 +691,7 @@ func orDefault(v, name string) string {
 	case name == PropDriftHours:
 		return fmt.Sprintf("default (%d hours)", DriftHoursDefault)
 	case name == PropReadCards:
-		return "default (off: the readers table asks)"
+		return "default (on: the deal asks every read at once)"
 	case name == PropReadsNeeded:
 		return "default (one for a flash card, two above)"
 	}

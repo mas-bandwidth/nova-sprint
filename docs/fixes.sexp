@@ -65,8 +65,17 @@
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator."))
- :items
-  ((fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
+  :items
+   ((fix "defaults-are-the-working-machine" :release "v1.2.11" :status "planned"
+    :title "Smart defaults: read cards are on out of the box"
+    :text "A fresh store, and every store after a clear, asked its reads one per tick through the old
+     readers table: read cards were on only when the read_cards property said on. The default is now on
+     (an absent property, on or default; off is the one way to turn it off, and it says it degrades the
+     machine to one read per tick), so a first install asks every read a card in review needs in the one
+     tick, and the deal fills each member to its width, with no set run. The other settings' defaults are
+     the working machine and are said so."
+    :origin "this card; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md item 24")
+   (fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
     :title "The SeatProof model of the deleted push proof is retired"
     :text "tla/SeatProof.tla modelled the push proof (its header names PushPong, PushLive, PushWhy,
      renewSeatProof and a pushGate) with its instance MCSeatProof.tla and three configurations; none of
