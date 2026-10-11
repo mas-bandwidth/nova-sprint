@@ -19,8 +19,6 @@ type archiveRecord struct {
 	Kept []string `json:"kept,omitempty"`
 }
 
-
-
 // ArchiveStreams hides the named streams' rows of the work and merge tables
 // (stream archive, sprint.StreamArchive): no card moves, so every landed card,
 // its cost and its landing stay in the tables, their folds and every record

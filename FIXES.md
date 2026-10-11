@@ -116,3 +116,4 @@ Inbox push writes each judgment once without concurrent writers sharing a tempor
 Small bug fixes after v1.2.10, one concern each.
 
 - **doctor reads nova-config from the caller's environment** (planned). doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials. From: this card.
+- **the tick never archives streams; only stream archive does** (planned). The tick's keepArchive function no longer archives streams whose every card lands. Streams are archived only by the explicit stream archive command, as the owner requested on 2026-10-11. From: this card.

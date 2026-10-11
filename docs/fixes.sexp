@@ -780,4 +780,8 @@
   (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
    :text "doctor now runs where it is typed, not on the sprint server, so its nova-config read uses the caller's NOVA_PG_DSN and NOVA_PG_PASSWORD_ENV. This matches the behavior of fleet sync and friend sync, which also read the config store with their caller's credentials."
+   :origin "this card")
+  (fix "release-never-archives-a-stream" :release "v1.2.11" :status "planned"
+   :title "the tick never archives streams; only stream archive does"
+   :text "The tick's keepArchive function no longer archives streams whose every card lands. Streams are archived only by the explicit stream archive command, as the owner requested on 2026-10-11."
    :origin "this card")))
