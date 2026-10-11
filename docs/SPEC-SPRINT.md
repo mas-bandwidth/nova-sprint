@@ -5825,43 +5825,39 @@ happen again"). Two rules make it so, the tool and not the seat's discipline:
 - **A wait can no longer park a card.** `wait` is refused, naming the action instead, on every
   judgment that holds a card from progressing; the one table is `sprint.WaitRefused`
   (internal/sprint/wait_refused.go), checked by the kind's name in both of wait's paths (the
-  tick-kept hold and the review time):
-
-  | kind | instead of a wait |
-  |---|---|
-  | work came back failed | rework (the tick does it below the bound), drop, or brief |
-  | a reader found it broken | rework with the finding (the tick does it below the bound), drop, or brief |
-  | returned to review (merge stopped) | rework, accept, or drop |
-  | stream stopped: conflict on a card | resolve and resume, rework, or drop |
-  | stream stopped: stream branch red | return the suspect and resume, rework, or drop |
-  | stream stopped: needs a card of another stream first | land the card it needs and resume, or drop |
-  | stream stopped: the merge queue rejected | rework or drop, and resume |
-  | stream stopped: the base fails its tree gate | mend the base (`base-gate` resumes it), or drop |
-
-  `wait` stays the answer to the informational kinds: the alarms, the status and presence
-  conditions the tick keeps, a lateness, and the bound's judgments, where the brief is a
-  mind's (`TestWaitIsRefusedOnACardHoldingJudgment`, `TestWaitStillWorksOnAnAlarm`).
+  tick-kept hold and the review time), and no kind in it offers `wait` among its decisions
+  (`NCross` and `NBaseRed` no longer do, `NBound` no longer does):
+  work came back failed, a reader found it broken, ready to accept, reads exhausted, stranded in
+  review, a card reached its bound, the brief is wrong, a brief defect, blocked on something
+  dropped or missing, a friend's report needs a read, repair skipped, returned to review (merge
+  stopped), the five stream-stopped kinds, sentinel reached, and the fleet's failure (below).
+  Two kinds a rework discharges still take a wait, each with why (`sprint.WaitAllowedOnACard`):
+  ci red (CI's word on a head, the card's own judgment holds it) and stalled (the no-stall
+  rule's judgment names its own subject and re-raises every pass). `wait` stays the answer to
+  the informational kinds: the alarms, the status and presence conditions the tick keeps, a
+  lateness (`TestWaitIsRefusedOnACardHoldingJudgment`, `TestEveryKindThatHoldsACardRefusesWait`,
+  `TestNoJudgmentOffersADecisionItsVerbRefuses`, `TestWaitByGroupIsRefusedOnFailedWork`,
+  `TestWaitByAliasIsRefusedOnFailedWork`, `TestWaitStillWorksOnAnAlarm`).
+- **The fleet's failure is judged at once.** When `RuleSameFailureCards` or more cards first
+  fail the same way, the tick that reworks them raises one sprint-level judgment, `the same
+  failure on many cards: the fleet's, not the card's`, naming the failure and the cards, at
+  their first failure, never per card; it takes no wait, is acked once its cause is mended, and
+  is not raised again for that failure while it is open (`TestASharedFailureIsOneFleetJudgmentAtOnce`).
+  A brief that pins its model or the frontier tier is reworked on its tier the same way
+  (`TestAPinnedModelFailureReworksOnItsTier`, `TestAFrontierTierFailureReworksOnItsTier`).
 
 The push `judgments wait on the coordinator past their deadline` also names the cards the open
 judgments hold now (`<n> cards held by open judgments`, `sprint.CardsHeldByJudgments`: the
-subjects on the work table of the open judgments above and of the bound's), so a sprint that
-crawls on the seat says so in the push. The model is tla/SprintRules.tla, Part "answers":
-`FailedWithAFindingNeverParked` (failed work, and a broken read with a finding, below the bound
-is reworked or finished, never held on the seat), with the reversed witnesses
-`MCSprintRulesAnswersBrokenParkFailed` (failed work left to the seat breaks it) and
-`MCSprintRulesAnswersReachSeatParks` (the seat may still park a card past the bound). `run` and `tick` answer
-by rule unless `--answer-rules=false` (a `tick` by hand only with `--answer-rules`); nova-config's sprint row `answer_rules_off` (a list of
-`base-gate, bound, brief-defect, conflict, failed, friend-take, hold-need, late, read-broken,
-read-late`, applied to `sprint:answer_rules_off` and read with the routes) turns single
-rules off (`TestEachRuleHasAnOffSwitch`, `TestAMechanicalJudgmentIsAnsweredByItsRule`);
-`widen` is turned off by that key too, though nova-config's enum does not list it yet.
-`view coordinator` counts what the rules saved the seat: its summary line ends `| rules
-<n>/h`, and its counts carry `rules`, the cards a rule answered in the last hour by the
-`rule_answer` each move writes (`sprint.RuleAnsweredWithin`; a card answered twice in the
-hour counts once). The tests are internal/sprint/store/rule_answers_test.go, internal/sprint/rules_read_test.go,
-internal/sprint/judgment_rules_test.go, internal/sprint/widen_test.go,
-internal/sprint/rules_conflict_test.go and cmd/nova-sprint/base_gate_rule_test.go; the model is tla/SprintRules.tla (`RuleAnswersBounded`,
-`LadderClimbs`, `WaitOnce`, `BaseStopsOnThird`, `ReadAnswersBounded`, `WidensWiden`, `OutsideNeverBound`).
+cards on the work table an open judgment of the table names, and the cards in review and
+merging of a stream a stream-level one stops; `TestAStoppedStreamCountsTheCardsItHolds`). The
+model is tla/SprintRules.tla, Part "answers": `FailedWithAFindingNeverParked` (failed work with
+a report, and a broken read with a finding, below the bound is reworked or finished, never held
+on the seat) and `IdenticalIsBound` (the second identical failure is the bound's, never a rework
+on its tier), with the reversed witnesses `MCSprintRulesAnswersBrokenParkFailed` (failed work
+left to the seat), `MCSprintRulesAnswersBrokenNoReportRework` (failed work with no report
+reworked with no fix, `ReworkHasAFix`), `MCSprintRulesAnswersBrokenIdenticalRework` (the second
+identical failure reworked on its tier) and `MCSprintRulesAnswersReachMindJudges` (a mind still
+answers a card past the bound or with nothing to take as a fix).
 
 #### A broken read with a finding reworks the card
 
