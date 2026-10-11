@@ -7401,7 +7401,9 @@ no shadow. Tested on the twin store with this binary as a working candidate and 
 candidates that error, panic, hang past the deadline and print no plan
 (`TestServerSwitchRunsAShadowTickAndRefusesABrokenBinary`), the store byte for byte unchanged
 by a shadow (`TestShadowTickPlansOnTheStoreAndWritesNothing`), and every write of the read-only
-store refused (`TestShadowTickStoreRefusesEveryWrite`).
+store refused (`TestShadowTickStoreRefusesEveryWrite`). run and the shadow tick also
+refuse a store whose tables lack a column of `internal/sprint/TABLES.lock`, before either
+starts or plans, and the refusal names the `nova-table` commands that mend it.
 
 #### Adopting a build
 
