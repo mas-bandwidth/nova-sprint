@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -41,6 +42,7 @@ type DevLag struct {
 	Branch string
 	At     time.Time
 	Sha    string
+	Cards  []string
 }
 
 // Promotion is the last promotion the store records: when and the sha; ok false when none.
@@ -59,6 +61,8 @@ func Promotion(s *Snapshot) (at time.Time, sha string, ok bool) {
 
 // LandedSince is the primaries (sentinels aside) landed after the last promotion, oldest
 // first by their landing stamp, and the branch the most of them name as their base.
+// Cards whose base is a protected branch (dev, main) are excluded since they landed
+// directly onto the line and are held by their base (docs/SPEC-SPRINT.md section 7).
 func LandedSince(s *Snapshot) (cards []*Card, branch string) {
 	if s.Work == nil {
 		return nil, ""
@@ -74,8 +78,12 @@ func LandedSince(s *Snapshot) (cards []*Card, branch string) {
 		if err != nil || !t.After(at) {
 			continue
 		}
+		b := c.F("base")
+		if slices.Contains(ProtectedBranches, b) {
+			continue
+		}
 		cards = append(cards, c)
-		if b := c.F("base"); b != "" {
+		if b != "" {
 			bases[b]++
 		}
 		if oldest.IsZero() || t.Before(oldest) {
@@ -100,7 +108,9 @@ func DevBehind(s *Snapshot) (DevLag, bool) {
 		return DevLag{}, false
 	}
 	oldest := s.Now
+	var cardIDs []string
 	for _, c := range cards {
+		cardIDs = append(cardIDs, c.F("primary"))
 		if t, err := time.Parse(time.RFC3339, c.F("landed")); err == nil && t.Before(oldest) {
 			oldest = t
 		}
@@ -108,7 +118,7 @@ func DevBehind(s *Snapshot) (DevLag, bool) {
 	if len(cards) < PromoteCards && s.Now.Sub(oldest) < PromoteAge {
 		return DevLag{}, false
 	}
-	d := DevLag{Count: len(cards), Branch: branch}
+	d := DevLag{Count: len(cards), Branch: branch, Cards: cardIDs}
 	d.At, d.Sha, _ = Promotion(s)
 	return d, true
 }
@@ -119,6 +129,19 @@ func (d DevLag) What() string {
 	last := "no promotion recorded"
 	if !d.At.IsZero() {
 		last = "the last promotion at " + d.At.UTC().Format(time.RFC3339) + " (" + orDash(d.Sha) + ")"
+	}
+	// List cards by name (up to 10, then "and <n> more")
+	var cardList string
+	if len(d.Cards) > 0 {
+		if len(d.Cards) <= 10 {
+			cardList = strings.Join(d.Cards, ", ")
+		} else {
+			cardList = strings.Join(d.Cards[:10], ", ") + ", and " + fmt.Sprint(len(d.Cards)-10) + " more"
+		}
+	}
+	if cardList != "" {
+		return fmt.Sprintf("dev is behind: %d cards landed on %s since %s: %s; promote: merge origin/dev into the sprint branch, open the PR to dev, run the functional tier, queue it; then: nova-sprint promoted --sha <merge sha>",
+			d.Count, d.Branch, last, cardList)
 	}
 	return fmt.Sprintf("dev is behind: %d cards landed on %s since %s; promote: merge origin/dev into the sprint branch, open the PR to dev, run the functional tier, queue it; then: nova-sprint promoted --sha <merge sha>",
 		d.Count, d.Branch, last)

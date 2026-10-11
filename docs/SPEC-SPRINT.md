@@ -4066,17 +4066,20 @@ merges to dev are dirty, and should be done"; "We must merge into dev continuall
 in bursts"). The tick counts the primaries landed (sentinels aside, by their `landed` stamp)
 since the last promotion the store records (`promoted_at`, `promoted_sha`, the work table's
 properties, written by `nova-sprint promoted --sha <merge sha>` (with `--returned <ids>`, the landed cards dev or an audit returned, each marked for the read tier's escalation, section 6), the coordinator's; none
-recorded counts every landing), and raises the judgment "dev is behind" when the count
-reaches 25 (`sprint.PromoteCards`) or the oldest of them landed 30 minutes ago
-(`sprint.PromoteAge`), whichever comes first (`sprint.DevBehind`, internal/sprint/promotion.go,
-one pure decision): `dev is behind: <n> cards landed on <branch> since the last promotion at
-<time> (<sha>); promote: merge origin/dev into the sprint branch, open the PR to dev, run the
-functional tier, queue it; then: nova-sprint promoted --sha <merge sha>` (the branch is the
-base the most of them name; with no promotion recorded, `since no promotion recorded`),
-decisions promoted and wait 30m, updated in place while it holds and closed when `promoted`
-is recorded; `promoted --answers <note>` is held as every answer is (`answered`): an answer
-naming no open judgment refuses the whole step, nothing written
-(`TestTheTickRaisesDevBehindAtTwentyFiveLandingsOrThirtyMinutes`, `TestPromotedHoldsItsAnswers`).
+recorded counts every landing). Cards whose base is a protected branch (`dev` or `main`,
+docs/SPEC-SPRINT.md section 7, `sprint.ProtectedBranches`) are excluded since they landed
+directly onto the line and are held by their base. The tick raises the judgment "dev is
+behind" when the count reaches 25 (`sprint.PromoteCards`) or the oldest of them landed 30
+minutes ago (`sprint.PromoteAge`), whichever comes first (`sprint.DevBehind`,
+internal/sprint/promotion.go, one pure decision): `dev is behind: <n> cards landed on
+<branch> since <the last promotion at <time> (<sha>) or no promotion recorded>: <card names
+up to ten, then "and <n> more">; promote: merge origin/dev into the sprint branch, open the
+PR to dev, run the functional tier, queue it; then: nova-sprint promoted --sha <merge sha>`
+(the branch is the base the most of them name), decisions promoted and wait 30m, updated in
+place while it holds and closed when `promoted` is recorded; `promoted --answers <note>` is
+held as every answer is (`answered`): an answer naming no open judgment refuses the whole
+step, nothing written (`TestTheTickRaisesDevBehindAtTwentyFiveLandingsOrThirtyMinutes`,
+`TestPromotedHoldsItsAnswers`).
 
 **Dev sync every cycle.** On 2026-10-04 the base and the development branch drifted for an
 afternoon while hundreds of cards landed on each; folding them took 105 conflicts and an evening
