@@ -168,6 +168,14 @@ func unmet(u Unit, pre *Snapshot, landing map[string]bool) string {
 			}
 			pc := pre.Work.Card(e.ID)
 			needs, waived = Split(pc.F("needs")), append(Split(pc.F("waived")), Split(e.Set["waived"])...)
+			// a unit that rewrites the card's needs and moves it ready in one
+			// step (needs set, steps_edit.go) is judged by the new needs, not
+			// the ones the pre-state holds.
+			if v, ok := e.Set["needs"]; ok {
+				needs = Split(v)
+			} else if slices.Contains(e.Unset, "needs") {
+				needs = nil
+			}
 			needs = append(needs, PositionWaits(pre, pc, landing)...)
 		case e.Move != nil && e.Move.Col == Working:
 			// a card is dealt only when every need has landed (docs/SPEC-SPRINT.md,
