@@ -259,6 +259,26 @@ func LiveNamesAt(b Beat, id string, gen int, now time.Time) bool {
 	return ok && e.Gen == max(gen, 1)
 }
 
+// LiveNamedAt says the beat carries a live set and it names the card at gen, running or
+// held, whether or not that beat is fresh: the owner's last beat since the STOP keeps its
+// word for the settle (Store.settleStopDebtByBeat; tla/StopReturn.tla SettleByBeat, d.id
+// \notin beat). After a STOP nothing new is taken, so a post-STOP beat that named the card
+// stays true until the owner beats again or returns it; a stale beat read as an empty live
+// set is the reversed witness (tla/LiveRuns.tla "staleasabsent"). A beat that carries no
+// live set names nothing, and its count is read as before; the reconcile keeps the fresh-only
+// reading (liveOf, LiveNamesAt).
+func LiveNamedAt(b Beat, id string, gen int) bool {
+	if !b.LiveKnown {
+		return false
+	}
+	for _, e := range b.LiveEntries() {
+		if e.ID == id && e.Gen == max(gen, 1) {
+			return true
+		}
+	}
+	return false
+}
+
 // LiveReturnVerb is the reconcile's step verb: the one writer's own return, which a STOP
 // debt does not refuse (it is the owner's receipt, read off its beats).
 const LiveReturnVerb = "live return"

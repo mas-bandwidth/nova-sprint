@@ -1092,4 +1092,18 @@
     it beside the total."
    :origin "the seat's v1.2.14 audit, 2026-10-11 (a stats reset does not zero the grand total spent),
     checked against nova-sprint main 00c54ba; the owner's rule of 2026-10-09: a stats reset clears every
-    cost figure, the total spent, per card and per tier; this card a-stats-reset-zeroes-the-unattributed-spend")))
+    cost figure, the total spent, per card and per tier; this card a-stats-reset-zeroes-the-unattributed-spend")
+
+  (fix "stop-debt-stale-beat-loses-a-held-report" :release "v1.2.14" :status "planned"
+   :title "A stale post-STOP beat keeps its word for the settle"
+   :text "settleStopDebtByBeat read a machine's live set fresh-only (sprint.LiveNamesAt through
+    liveOf), so a machine that beat once after the STOP naming its held report and then went silent
+    past BeatDeadline had its lease settled at START: the card went back to ready at gen+1, was dealt
+    again, and the held report was refused as stale when it came. The owner's last beat since the STOP
+    now keeps its word fresh or stale (sprint.LiveNamedAt, no clock), as tla/StopReturn.tla
+    SettleByBeat reads it (d.id \\notin beat); tla/LiveRuns.tla's reversed witness \"staleasabsent\" is
+    exactly that wrong reading: a silent row's stale beat as an empty live set. LiveNamesAt, LiveHeldAt,
+    liveOf and LiveReturns keep their fresh-only reading. No model change."
+   :origin "the coordinator 2026-10-11, added to v1.2.14 beside the v1.2.12 inventory's section 9 row
+    D2 (a held finished report across STOP refused as stale); D2's first cause was fixed by
+    nova-sprint #87 (15c779c); this is what that fix left; code read at nova-sprint main 00c54ba")))

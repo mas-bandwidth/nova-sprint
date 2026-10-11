@@ -275,8 +275,10 @@ func stopLeaseOwner(d StopLease) (owner string, friend bool) {
 // (sprint.Beat.StopReturns), so a machine lease stays owed while the count is
 // above zero and is settled at zero, a reader machine's readers-table lease the
 // same; and a machine's beat that carries a live set names its jobs, so a fleet
-// lease its fresh live set names at the lease's generation, running or held,
-// stays owed whatever the count (sprint.LiveNamesAt). The card is returned with a recorded reason (a
+// lease its last beat since the STOP names at the lease's generation, running or
+// held, stays owed whatever the count, fresh or stale (sprint.LiveNamedAt: after a
+// STOP nothing new is taken, so the last word holds; tla/LiveRuns.tla "staleasabsent"
+// is its reversed witness). The card is returned with a recorded reason (a
 // stop-return whose after hook settles the lease off the machine record,
 // settleStopDebt). An owner that has not beaten since the STOP keeps its lease
 // owed and is reported to the seat in a judgment. It runs on START, before the
@@ -319,11 +321,13 @@ func (st *Store) settleStopDebtByBeat(ctx context.Context) error {
 			}
 		} else if b.StopReturns > 0 {
 			continue // its count above zero stays owed until it returns them
-		} else if d.Table == sprint.Fleet && sprint.LiveNamesAt(b, d.ID, d.Gen, st.now()) {
+		} else if d.Table == sprint.Fleet && sprint.LiveNamedAt(b, d.ID, d.Gen) {
 			// a machine's beat that carries a live set (v1.2.6, tla/LiveRuns.tla) names its
 			// jobs: one it names running or held is not gone, so it stays owed as a friend's
-			// named job does; a held report is taken once the machine runs, at its generation
-			// (unsettledStopDebt), never returned and dealt again under it
+			// named job does; the owner's last beat since the STOP keeps that word fresh or
+			// stale (tla/LiveRuns.tla "staleasabsent" is the reversed witness), and a held
+			// report is taken once the machine runs, at its generation (unsettledStopDebt),
+			// never returned and dealt again under it
 			continue
 		}
 		settle = append(settle, d)
