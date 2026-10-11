@@ -382,4 +382,14 @@
     :title "Card lint refuses valid cards: make gates and text inside fenced blocks"
     :text "Card lint rejects make-driven gates and flags parent paths or absolute paths quoted inside
      fenced blocks. It should accept both."
-    :origin "issue #1994; issue #2302; issue #3470")))
+    :origin "issue #1994; issue #2302; issue #3470")
+
+   (fix "reader-only-friend-no-work" :release "v1.2.9" :status "shipped"
+    :title "A reader-only friend is dealt no work card; a builder-only friend is asked no read"
+    :text "The deal and the ask honour a friend's roles: a friend whose nova-config row's roles do not
+     name builder (RoleBuilder) is dealt no work card, and one whose roles do not name reader (RoleReader)
+     is asked no read, in the read-card ask and the friends' ask alike. A row with no role list is a row
+     from before roles and keeps the pre-role behavior: it is dealt work and asked reads (friendHasRole).
+     The dogfood of 2026-10-10 evening: a reader-only friend was dealt 16 work cards once it came up,
+     and builder-only friends were asked reads."
+    :origin "dogfood 2026-10-10 evening: fleet-only restart")))
