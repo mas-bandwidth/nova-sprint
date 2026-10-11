@@ -451,4 +451,12 @@
     brief refuse a card whose BASE is any other branch outside the promotion stream, exit 2, nothing
     written; the step holds the same rule against a racing write. With no base recorded, dev alone is
     refused as before, and the promotion stream keeps its mark."
-   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")))
+   :origin "the one-base rule; found 2026-10-04, cards folded back onto the base by hand through 17 conflicts")
+
+   (fix "broken-verdict-always-records" :release "v1.2.6" :status "shipped"
+    :title "A broken verdict at the same head always records"
+    :text "Every reader, the coordinator included, records broken on a card in review at any bound: a
+     broken verdict at the same head outweighs any number of oks, so accept never queues the head a
+     reader found broken, ask --another never answers it, and the card goes back to work with the
+     finding (reworked or widened in place) rather than accepted on a fleet ok."
+    :origin "dogfood 2026-10-10 evening: fleet-only restart")))
