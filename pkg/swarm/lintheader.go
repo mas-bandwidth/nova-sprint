@@ -266,8 +266,8 @@ func LintHeaderStranded(raw []byte) []CardHeaderFinding {
 	for _, k := range slices.Sorted(maps.Keys(stranded)) {
 		line := stranded[k]
 		out = append(out, CardHeaderFinding{
-			Check: "stranded-key",
-			Line:  line,
+			Check:   "stranded-key",
+			Line:    line,
 			Excerpt: fmt.Sprintf("%s: on line %d is below the header block and is not read: the header is the unbroken run of `KEY: value` lines directly under the contract line; a header key below the first prose line is refused, never ignored", k, line),
 		})
 	}
