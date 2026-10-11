@@ -41,18 +41,12 @@
 \*   AddMove        ready   -> waiting  add inserts a sentinel in front
 \*   NeedsSet       ready   -> waiting | waiting -> ready | in place
 \*                                      needs set, a brief edit's DEPENDS-ON
-\*   NeedsWait      ready   -> waiting  the tick's needs withdrawal of a ready
-\*                                      primary (needsWithdrawals; #96 adds
-\*                                      needsWaits, the same move)
+\*   NeedsWait      ready   -> waiting  the tick's needsWaits (PR #96)
 \*   Waive          waiting -> ready | in place   a waiver (the ack of a
 \*                                      dropped or missing need)
 \*   Drop           open -> off          drop, defer; a landed card by remove
-\* Pending PR #96 (behind the constant Pending96):
-\*   NeedsWithdraw  working -> waiting  a dealt card whose needs have not
-\*                                      landed goes back to the pool. On main
-\*                                      the store refuses it: needsWithdrawals
-\*                                      plans it for a working primary and the
-\*                                      lifecycle refuses the whole unit.
+\*   NeedsWithdraw  working -> waiting  needsWithdrawals, needsStopReturned
+\*                                      (PR #96): its needs have not landed
 \* Admission (add, a stream's reopen) is the initial state: a primary is
 \* admitted waiting or ready, a sentinel waiting.
 \*
@@ -84,16 +78,20 @@
 \*                   and reading read cards retire.
 \*
 \* THE RULES. Invariants: TypeOK, NoNeedCycle, Rule11 (docs/SPEC-SPRINT.md
-\* section 9, rule 11: a primary anywhere but waiting has every named need
-\* landed or waived), AcceptHeld (no primary enters merging short of its
+\* section 9, rule 11, for the states nothing moves back to waiting: a primary
+\* in review, merging or landed has every named need landed or waived; a ready
+\* or working card that gains a need not landed is moved to waiting by the
+\* tick, NeedsWait and NeedsWithdraw, held by NeedsWithdrawalWaits), AcceptHeld (no primary enters merging short of its
 \* reads), NeverAcceptBroken (no primary enters merging with a broken read at
 \* its head) and NeverReadByItsWorker (a read is never asked of the reader that
 \* worked the card). Action properties: NoCardLostOrTwice, MovesOnlyByTable
 \* (every change of cell is a lawful move, a drop from an open state, or a
 \* remove of a landed card), ReadyToWaitingOnlyByInsertOrNeeds, LandedIsFinal,
 \* NeedsLandFirst (waiting -> ready only with every need landed or waived),
-\* NeedsHeldIntoReady (no move into ready or working with a need not landed),
-\* WorkingToWaitingOnlyOnNeeds and WorkingOnAnUpMember.
+\* NeedsHeldIntoWorking (no deal, rework or redo into working with a need not
+\* landed), WorkingToWaitingOnlyOnNeeds, NeedsWithdrawalWaits (PR #96: a
+\* working card withdrawn on its needs ends waiting, never ready) and
+\* WorkingOnAnUpMember.
 \*
 \* Refmodel invariants not stated here. The pending-operation fence (D1: Free)
 \* is left out: this module has no pending operation, a step is one atomic
@@ -109,10 +107,11 @@
 \*                  need landed, as lifecycle.go admitted before this card
 \*                  (any needs field) (ReadyToWaitingOnlyByInsertOrNeeds).
 \*   "needless"     resolve drops the needs check (NeedsLandFirst).
-\*   "workingneeds" a needs rewrite gives a working or review card a need not
-\*                  landed, as briefDepends admitted before this card; the
-\*                  card is then withdrawn or reworked to ready with it
-\*                  (Rule11; NeedsHeldIntoReady).
+\*   "reviewneeds"  a needs rewrite gives a card in review a need not landed,
+\*                  as briefDepends admitted before this card (Rule11).
+\*   "dealunmet"    the deal drops the needs check (NeedsHeldIntoWorking).
+\*   "withdrawready" PR #96's: the needs withdrawal runs working -> ready
+\*                  (NeedsWithdrawalWaits).
 \*   "cycle"        a needs rewrite skips the cycle check (NoNeedCycle).
 \*   "downkeeps"    fleet down leaves a working card on the member that went
 \*                  down (WorkingOnAnUpMember).
@@ -126,8 +125,8 @@
 \*                  as ShortReadsBack planned before this card
 \*                  (LandedIsFinal).
 \*   "comeback"     a dropped card is admitted again (NoCardLostOrTwice).
-\*   "withdrawmet"  with Pending96, a working card whose needs have all landed
-\*                  is withdrawn to waiting (WorkingToWaitingOnlyOnNeeds).
+\*   "withdrawmet"  a working card whose needs have all landed is withdrawn
+\*                  to waiting (WorkingToWaitingOnlyOnNeeds).
 \* TypeOK has no witness: it is the shape of the variables, not a rule.
 EXTENDS Naturals, FiniteSets
 
@@ -144,7 +143,6 @@ CONSTANTS
   MemberReader, \* the reader on each member (readers == workers per machine)
   Rewrites,     \* the needs rewrites NeedsSet may write: pairs <<card, needs>>
                 \* (the instance's choice; the code takes any set of cards)
-  Pending96,    \* TRUE: the moves PR #96 adds (working -> waiting) are lawful
   Broken        \* "none", or the one reversed witness to break
 
 States == {"waiting", "ready", "working", "review", "merging", "landed"}
@@ -173,14 +171,10 @@ Moves ==
     <<"merging", "ready">>,
     <<"merging", "landed">>,
     <<"waiting", "landed">>,
-    <<"ready", "waiting">> }
+    <<"ready", "waiting">>,
+    <<"working", "waiting">> }
 
-\* The move PR #96 adds: a dealt card whose needs have not landed waits again.
-Moves96 == {<<"working", "waiting">>}
-
-LawfulMoves == IF Pending96 THEN Moves \cup Moves96 ELSE Moves
-
-Legal(from, to) == <<from, to>> \in LawfulMoves
+Legal(from, to) == <<from, to>> \in Moves
 
 \* IsOpen: a primary in s has not landed, so drop may take it off the table.
 IsOpen(s) == s \in {"waiting", "ready", "working", "review", "merging"}
@@ -331,7 +325,7 @@ Start ==
   \E c \in Card, m \in Member :
     /\ ~IsSentinel(c)
     /\ state[c] = "ready"
-    /\ NeedsMet(c)
+    /\ Broken = "dealunmet" \/ NeedsMet(c)
     /\ wplace[c] \in {"none", "withdrawn"}
     /\ members[m] = "up"
     /\ state' = [state EXCEPT ![c] = "working"]
@@ -347,6 +341,7 @@ Take ==
     /\ state[c] = "working"
     /\ wplace[c] = "ready"
     /\ members[wmember[c]] = "up"
+    /\ NeedsMet(c)
     /\ wplace' = [wplace EXCEPT ![c] = "working"]
     /\ UNCHANGED <<state, needs, waived, everLanded, members, wmember, rplace>>
     /\ flags' = NoFlags
@@ -534,10 +529,12 @@ AddMove ==
 \* on the table, never the card itself, never closing a cycle. A ready card
 \* that gains a need not landed moves ready -> waiting; a waiting card whose
 \* new needs have all landed moves waiting -> ready (refused while its place in
-\* line still blocks it); a working or review card takes only needs that have
-\* landed (rule 11). The reversed witnesses: "workingneeds" lets a working or
-\* review card take a need not landed, "needsany" moves a ready card to waiting
-\* with every need landed, "cycle" skips the cycle check.
+\* line still blocks it); a working card takes it in place and the tick then
+\* withdraws it to waiting (NeedsWithdraw, PR #96); a card in review takes only
+\* needs that have landed (briefDepends; rule 11). Every rewrite is held to the
+\* cycle check add makes (steps_edit.go needsCycle). The reversed witnesses:
+\* "reviewneeds" lets a review card take a need not landed, "needsany" moves a
+\* ready card to waiting with every need landed, "cycle" skips the cycle check.
 NeedsSet ==
   \E rw \in Rewrites :
    LET c == rw[1]
@@ -550,8 +547,14 @@ NeedsSet ==
     /\ \A d \in N : state[d] # "off"
     /\ Broken = "cycle" \/ \A d \in N : c \notin ReachN(d)
     /\ needs' = [needs EXCEPT ![c] = N]
-    /\ \/ /\ state[c] \in {"working", "review"}
-          /\ Broken = "workingneeds" \/ MetWith(c, N)
+    /\ \/ /\ state[c] = "working"
+          \* dealt, not taken: the tick withdraws it (NeedsWithdraw). A taken
+          \* card given a need not landed can finish ok before the tick and
+          \* reach review with it; that gap is open (PR #103 body), not modelled
+          /\ wplace[c] = "ready" \/ MetWith(c, N)
+          /\ state' = state
+       \/ /\ state[c] = "review"
+          /\ Broken = "reviewneeds" \/ MetWith(c, N)
           /\ state' = state
        \/ /\ state[c] = "ready"
           /\ MetWith(c, N)
@@ -570,32 +573,33 @@ NeedsSet ==
     /\ UNCHANGED <<waived, everLanded, members, wplace, wmember, rplace>>
     /\ flags' = NoFlags
 
-\* NeedsWait: the tick's needs withdrawal of a ready primary whose named needs
-\* have not landed: ready -> waiting (needsWithdrawals on a ready primary; PR
-\* #96's needsWaits pass is the same move). Under Rule11 it is never enabled.
+\* NeedsWait (steps_tick.go needsWaits, PR #96): a ready primary whose named
+\* needs are not all landed or waived, and whose work card is dealt nowhere,
+\* waits again: ready -> waiting.
 NeedsWait ==
   \E c \in Card :
     /\ ~IsSentinel(c)
     /\ state[c] = "ready"
     /\ ~NeedsMet(c)
+    /\ wplace[c] \notin {"ready", "working"}
     /\ Move(c, "waiting")
 
-\* NeedsWithdraw (pending PR #96): a dealt, untaken card whose needs have not
-\* landed goes back to the pool and its primary waits: working -> waiting. On
-\* main the store refuses this unit, so it is no step (Pending96 = FALSE).
-\* lifecycle.go judges it by the card's own named needs in the pre-state
-\* (namedNeedsOpen), never by the needs the entry writes. The reversed witness
-\* "withdrawmet" withdraws a card whose needs have all landed.
+\* NeedsWithdraw (steps_tick.go needsWithdrawals, needs_stop.go
+\* needsStopReturned, PR #96): a working primary whose named needs are not all
+\* landed or waived goes straight to waiting, its work card (dealt or taken)
+\* back to the pool. lifecycle.go judges the move by the card's own named needs
+\* in the pre-state (namedNeedsOpen), never by the needs the entry writes. The
+\* reversed witnesses: "withdrawmet" withdraws a card whose needs have all
+\* landed, "withdrawready" (#96's) runs it working -> ready instead.
 NeedsWithdraw ==
-  /\ Pending96
-  /\ \E c \in Card :
-       /\ state[c] = "working"
-       /\ wplace[c] = "ready"
-       /\ Broken = "withdrawmet" \/ ~NeedsMet(c)
-       /\ state' = [state EXCEPT ![c] = "waiting"]
-       /\ wplace' = [wplace EXCEPT ![c] = "none"]
-       /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace>>
-       /\ flags' = NoFlags
+  \E c \in Card :
+    /\ state[c] = "working"
+    /\ Broken = "withdrawmet" \/ ~NeedsMet(c)
+    /\ wplace[c] \in {"ready", "working"}
+    /\ state' = [state EXCEPT ![c] = IF Broken = "withdrawready" THEN "ready" ELSE "waiting"]
+    /\ wplace' = [wplace EXCEPT ![c] = "none"]
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace>>
+    /\ flags' = NoFlags
 
 \* drop: off the table, from an open state, never a card another open card
 \* still needs (drop refuses it without its cascade; defer is drop from
@@ -646,11 +650,13 @@ Spec == Init /\ [][Next]_vars
 \* NoNeedCycle: no card's needs, followed transitively, come back to it.
 NoNeedCycle == \A c \in Card : c \notin UNION {ReachN(n) : n \in needs[c]}
 
-\* Rule11 (docs/SPEC-SPRINT.md section 9, rule 11; check.go): a primary
-\* anywhere but waiting has every need landed or waived.
+\* Rule11 (docs/SPEC-SPRINT.md section 9, rule 11; check.go): a primary past
+\* working (review, merging, landed) has every need landed or waived. A ready
+\* or working card may hold a need not landed between a needs rewrite and the
+\* tick that moves it back to waiting (NeedsWait, NeedsWithdraw).
 Rule11 ==
   \A c \in Card \ Sentinels :
-    state[c] \in {"ready", "working", "review", "merging", "landed"} => NeedsMet(c)
+    state[c] \in {"review", "merging", "landed"} => NeedsMet(c)
 
 \* NoCardLostOrTwice: a card that leaves the table (a drop or a remove) never
 \* comes back; its record is kept, unplaced, and no card is admitted twice.
@@ -684,13 +690,24 @@ NeedsLandFirst ==
   [][\A c \in Card :
     state[c] = "waiting" /\ state'[c] = "ready" => (NeedsMet(c))']_vars
 
-\* NeedsHeldIntoReady: no primary moves into ready or into working (from any
-\* state: a withdrawal, a rework, a redo, a deal) with a need not landed; the
-\* reversed witness is a working card given a need not landed and then
-\* withdrawn to ready.
-NeedsHeldIntoReady ==
-  [][\A c \in Card \ Sentinels : \A s \in {"ready", "working"} :
-    state'[c] = s /\ state[c] # s => (NeedsMet(c))']_vars
+\* NeedsHeldIntoWorking: no primary moves into working (a deal, a rework or a
+\* redo delegated at once) with a need not landed (unmet, lifecycle.go: the
+\* lifecycle refuses every move to working whose card's needs have not landed).
+NeedsHeldIntoWorking ==
+  [][\A c \in Card \ Sentinels :
+    state'[c] = "working" /\ state[c] # "working" => (NeedsMet(c))']_vars
+
+\* NeedsWithdrawalWaits (PR #96; rule 11, check.go, for the withdrawal): a
+\* working card whose needs are not all landed or waived and whose dealt work
+\* card goes back to the pool ends the step waiting, never ready or working.
+NeedsWithdrawalWaits ==
+  [][\A c \in Card :
+    /\ state[c] = "working"
+    /\ ~NeedsMet(c)
+    /\ wplace[c] \in {"ready", "working"}
+    /\ wplace'[c] = "none"
+    /\ state'[c] # "off"
+    => state'[c] = "waiting"]_vars
 
 \* WorkingToWaitingOnlyOnNeeds: PR #96's move takes a working card back to
 \* waiting only when its named needs, as the step found them, have not landed.

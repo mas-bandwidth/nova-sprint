@@ -54,8 +54,7 @@ func TestLawfulReadyToWaitingNeedsANeedNotLanded(t *testing.T) {
 // the pre-state, never by the needs the entry writes: a manifest that writes a
 // need not landed cannot move a working card whose needs have all landed
 // (tla/SprintTables.tla WorkingToWaitingOnlyOnNeeds, witness "withdrawmet").
-// With a named need not landed the guard passes, and on main the lifecycle
-// still has no such move (its row comes with #96).
+// With a named need not landed the move is kept.
 func TestLawfulWorkingToWaitingNeedsTheCardsOwnNeedNotLanded(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 2)
@@ -75,9 +74,8 @@ func TestLawfulWorkingToWaitingNeedsTheCardsOwnNeedNotLanded(t *testing.T) {
 	require.Contains(t, p.Refused[0].Why, "working -> waiting only when the card's named needs have not landed")
 	s11.Fields["needs"] = "s1-2,n" // its own need n has not landed
 	p = back()
-	require.Len(t, p.Refused, 1)
-	require.NotContains(t, p.Refused[0].Why, "named needs have not landed", "the needs guard passes: %+v", p)
-	require.Contains(t, p.Refused[0].Why, "no move working -> waiting", "main has no row for #96's move yet: %+v", p)
+	require.Empty(t, p.Refused, "a working card whose own need has not landed waits again: %+v", p)
+	require.Len(t, p.Units, 1)
 }
 
 // A work-table move whose expectation names no place is judged from the

@@ -727,9 +727,12 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 			return nil, err
 		}
 	}
-	if why, err := coordinatorOnly(ctx, st, c); err != nil || why != "" {
+	if why, byHook, err := coordinatorGate(ctx, st, c); err != nil || why != "" {
 		if err == nil {
 			err = errors.New(why)
+			if byHook {
+				err = &hookGateError{why: why}
+			}
 		}
 		return nil, err
 	}

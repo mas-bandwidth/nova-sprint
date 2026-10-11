@@ -54,6 +54,7 @@ var Moves = []Move{
 	{Ready, Working, "deal", Mechanical, "a work card is cut and dealt"},
 	{Working, Review, "finish", Mechanical, "its work card finished, ok or failed"},
 	{Working, Ready, "withdraw", Mechanical, "its work card was withdrawn, its attempt unchanged: no fleet member is up (fleet down), its route rests, its take ended or its staging was refused, its provider rate-limited it, its lane cap redealt it, its friend returned it, or a finished friend card is redealt"},
+	{Working, Waiting, "withdraw", Mechanical, "its needs have not landed: its dealt work card goes back to the pool, or its worker stopped on them (needsWithdrawals, needsStopReturned)"},
 	{Review, Merging, "accept", Coordinator, "the readers it needs said ok at this head (one for a flash card, two different for a pro card)"},
 	{Review, Working, "rework", Coordinator, "rework with a fix: the next attempt is delegated at once to an up member"},
 	{Review, Ready, "rework", Coordinator, "rework with a fix when no fleet member is up: start delegates it later"},
@@ -62,16 +63,14 @@ var Moves = []Move{
 	{Merging, Ready, "redo", Coordinator, "redo a conflicted card when no fleet member is up: start delegates it later"},
 	{Merging, Landed, "merge", Mechanical, "its batch, green on the stream branch, merged to the development branch"},
 	{Waiting, Landed, "release", Coordinator, "a sentinel reached, or with nothing before it, released by the coordinator (kind sentinel only)"},
-	{Ready, Waiting, "add", Mechanical, "a sentinel inserted in front of it, or its named needs now hold one not landed: a brief edit's DEPENDS-ON, needs set, or the tick's needs withdrawal"},
+	{Ready, Waiting, "add", Mechanical, "a sentinel inserted in front of it, or its named needs now hold one not landed: a brief edit's DEPENDS-ON, needs set, or the tick's needs withdrawal and needsWaits"},
 }
 
 // The lifecycle's rows are the moves the code makes, and the model's actions are
 // the same moves (tla/SprintTables.tla; docs/SPEC-SPRINT.md section 3, the
-// inventory). Two moves are pending PR #96 and are not rows here: working ->
-// waiting (a dealt card whose needs have not landed, needsWithdrawals) and the
-// tick's ready -> waiting pass for a ready card with a need not landed (needsWaits;
-// the needs row above already admits it). The model carries them behind its
-// Pending96 constant.
+// inventory). working -> waiting (needsWithdrawals, needsStopReturned) and the
+// tick's ready -> waiting pass (needsWaits) are judged by the card's needs:
+// unlawful holds each to a named need not landed.
 
 // Legal says from -> to is a move of the lifecycle.
 func Legal(from, to State) bool {

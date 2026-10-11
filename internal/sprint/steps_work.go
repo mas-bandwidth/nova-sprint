@@ -1628,6 +1628,9 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		s.Friends = r.Friends
 	}
 	var p Plan
+	// a stop on needs not landed moves working -> waiting, judged by the card's named needs
+	// in the pre-state (lifecycle.go namedNeedsOpen)
+	p.on(s)
 	if !named(r.Sel) && r.As == "" {
 		p.refuse("finish", "a finish by selection names its member: --as <member>; better, name each card: finish <card>@<gen>")
 		return p
@@ -1718,6 +1721,21 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		if r.Failed && kind == "" && !late {
 			if cause := EnvFault(r.Report); cause != "" {
 				envFaulted(s, c, pr, r, cause, who, &p, envSeen)
+				continue
+			}
+		}
+		// A stop on needs that have not landed is a coordination failure, never the worker's
+		// and never a brief defect (docs/SPEC-SPRINT.md, needs and the deal; needs_stop.go):
+		// the card was dealt before its needs landed. The work card goes back to the pool (no
+		// fail mark, no ok% hit, no redeal spent) and the primary waits for its needs. Decided
+		// on the table's facts (NamedWaits at the finish), never on the report's words, and
+		// capped (MaxNeedsReturns). A late report is the deadline's failed attempt and takes
+		// none of this.
+		if r.Failed && kind == "" && !late {
+			if waits := stoppedOnNeeds(s, pr); len(waits) > 0 {
+				u := needsStopReturned(s, c, pr, r, waits, who)
+				friendNext(s, c, &u, p.Units)
+				p.Units = append(p.Units, u)
 				continue
 			}
 		}

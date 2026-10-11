@@ -51,7 +51,9 @@ func TestTheFriendsDealNeverDealsACardWithUnlandedNeeds(t *testing.T) {
 			}
 		}
 	}
-	require.Equal(t, Ready, w.s.StateOf("s1-1"), "the undealt primary stays ready")
+	// rule 11 (check.go): a primary anywhere but waiting has every need landed, so the
+	// undealt primary goes back to waiting for its needs (needsWaits)
+	require.Equal(t, Waiting, w.s.StateOf("s1-1"), "the undealt primary waits for its needs")
 }
 
 // (2) A card already on a friend's ready cell whose needs have not landed goes back to the
@@ -59,13 +61,9 @@ func TestTheFriendsDealNeverDealsACardWithUnlandedNeeds(t *testing.T) {
 // is raised.
 func TestADealtThenUnheldFriendDoesNotTakeACardWithUnlandedNeeds(t *testing.T) {
 	t.Parallel()
-	// The withdrawal moves the dealt primary working -> waiting, which is no move of
-	// the lifecycle on main: the live store refuses the whole unit, and this test
-	// passed only because the world skipped the store's lawful-move check. PR #96
-	// adds the move (tla/SprintTables.tla, Pending96); the test runs again once it
-	// lands. The fixture's needs are written past the verbs, which refuse a need not
-	// landed on a dealt card (rule 11, briefDepends).
-	t.Skip("pending #96: working -> waiting is refused by the store's lifecycle on main")
+	// The withdrawal moves the dealt primary working -> waiting (PR #96's move), held
+	// by the world to the store's lawful-move check: the card's own named needs in the
+	// pre-state have not landed (lifecycle.go namedNeedsOpen).
 	w := friendWorld(t, fleetBrief("flash"))
 	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
 	w.s.Friends = []FriendSeat{amy}
@@ -76,8 +74,9 @@ func TestADealtThenUnheldFriendDoesNotTakeACardWithUnlandedNeeds(t *testing.T) {
 
 	// its two needs have not landed
 	setNeeds(w.s, "s1-1", "n1", "n2")
-	// the next tick withdraws the ready card off her row
-	dealWith(w, amy)
+	// the next tick withdraws the ready card off her row, every move a row of the lifecycle
+	// as the store holds it (a dealt primary is working: working -> waiting at once)
+	lawfulDeal(w, amy)
 	require.False(t, w.s.Fleet.Card("s1-1.w1").Placed(), "the dealt card leaves the fleet table")
 	require.Equal(t, Waiting, w.s.StateOf("s1-1"), "the primary waits for its needs again")
 	require.Equal(t, 0, w.s.Fleet.Count(FriendRow("amy"), Ready), "the friend's ready cell is empty")
