@@ -1473,4 +1473,27 @@
    :origin "this card: doctor-warns-while-a-tier-backs-off; the third cold read of nova-sprint PR
     #86, 2026-10-11, an open non-blocking finding: \"Doctor reports FAIL while every route of a
     tier backs off\"; listed in the rate-limit-never-fails-the-card-v2 card; checked against
-    nova-sprint main 00c54ba and PR #86's head a1c51ee")))
+    nova-sprint main 00c54ba and PR #86's head a1c51ee")
+   (fix "doctor-names-a-member-whose-link-flapped" :release "v1.2.14" :status "planned"
+    :title "Doctor names a member whose link flapped in the last hour"
+    :text "On 2026-10-11 the coordinator found by hand, in b1's and b3's kernel journals, that
+     their network links had gone down and up, and no check named it. The member probe now reads
+     one more fact before its end marker (cmd/nova-sprint/doctor_probe.go): on Linux the kernel's
+     link changes in DoctorLinkWindow (one hour), journalctl -k -q --no-pager --since \"-1h\"
+     filtered by one extended case-insensitive grep for the drivers' link words (Link is Up, Link
+     is Down, link up, link down, carrier lost, carrier acquired), printed as \"link <count> <the
+     last such line, cut to 160 bytes>\", and on Darwin \"link - not measured on darwin\"; when
+     journalctl is absent or cannot read the kernel journal (no lines and a non-zero exit, or the
+     insufficient-permissions line) it prints \"link - <why>\". parseProbe reads it into
+     MemberProbe (LinkChanges, -1 when not measured; LinkLast; LinkWhy), and DoctorMemberEnv gives
+     a member whose link counted DoctorLinkWarnChanges or more changes in the window one WARN,
+     never a FAIL, naming the member, the count, the last line and the remedy. doctor --preflight
+     replaces its links WARN with the same fact as a gate: a member with that many changes is one
+     FAIL row (area preflight, check links), so a switch or adopt is refused while a member's link
+     flaps, and a member not measured stays a WARN. No secret is printed and the journal window is
+     short, never the whole journal. Tests TestProbeScriptHasTheLinkFactAndQuotesNothingFromConfig
+     and TestParseProbeReadsTheLinkFact (cmd/nova-sprint/doctor_probe_link_test.go),
+     TestDoctorMemberEnvWarnsOnAFlappingLink and TestDoctorMemberEnvQuietOnOneOrNoLinkFact
+     (internal/sprint/doctor_link_test.go); no test runs ssh or journalctl. docs/SPEC-SPRINT.md,
+     the doctor's member-env check and the preflight, says the link fact and its bound."
+    :origin "this card: doctor-names-a-member-whose-link-flapped.w1; tmp/next-sprint-cards/TOOLING-FROM-THE-SEAT-2026-10-11.md items 7 and 20 (the owner, 2026-10-11: \"Whatever you are doing manually now, consider adding tool support for it to nova sprint.\"); the coordinator found by hand, in b1's and b3's kernel journals, that their links had gone down and up")))

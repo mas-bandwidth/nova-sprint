@@ -2,6 +2,8 @@ package sprint
 
 import (
 	"cmp"
+	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -26,6 +28,7 @@ const AreaPreflight = "preflight"
 const (
 	CheckPreflightVersion = "version"
 	CheckPreflightSchema  = "schema"
+	CheckPreflightLinks   = "links"
 )
 
 // preflightLockedShapeMark is the mark a locked-shape refusal carries
@@ -50,6 +53,9 @@ type PreflightInput struct {
 	// the columns and the nova-table commands.
 	ShadowCode int
 	ShadowText string
+	// Probes is each member's host probe, the link fact read (DoctorMemberEnv); nil when the
+	// preflight read no host, and the links check then stays a WARN saying it was not measured.
+	Probes map[string]MemberProbe
 }
 
 // DoctorPreflight is the release gate's frame over one read: the candidate's version,
@@ -58,8 +64,45 @@ type PreflightInput struct {
 func DoctorPreflight(in PreflightInput) []DoctorCheck {
 	out := []DoctorCheck{preflightVersionRow(in), preflightSchemaRow(in)}
 	for _, later := range preflightLaterChecks {
+		if later.check == CheckPreflightLinks && in.Probes != nil {
+			out = append(out, preflightLinkRows(in.Probes)...)
+			continue
+		}
 		out = append(out, DoctorCheck{Area: AreaPreflight, Check: later.check, Subject: "-", Status: DoctorWarn,
 			Evidence: "not measured by this build: " + later.card, Remedy: "-"})
+	}
+	return out
+}
+
+// preflightLinkRows is the links check as a gate (docs/SPEC-SPRINT.md, doctor: member-env and
+// the preflight; the card doctor-names-a-member-whose-link-flapped): a member whose probe counted
+// DoctorLinkWarnChanges or more link changes in the window is one FAIL row, so a switch or adopt
+// is refused while its link is flapping; a member not measured stays a WARN there; and a fleet
+// whose links are all steady or quiet is one OK row.
+func preflightLinkRows(probes map[string]MemberProbe) []DoctorCheck {
+	names := make([]string, 0, len(probes))
+	for m := range probes {
+		names = append(names, m)
+	}
+	sort.Strings(names)
+	var out []DoctorCheck
+	flapping := false
+	for _, m := range names {
+		p := probes[m]
+		switch {
+		case p.LinkChanges < 0:
+			why := cmp.Or(p.LinkWhy, "not measured")
+			out = append(out, DoctorCheck{Area: AreaPreflight, Check: CheckPreflightLinks, Subject: m, Status: DoctorWarn,
+				Evidence: "links not measured on " + m + ": " + why, Remedy: "-"})
+		case p.LinkChanges >= DoctorLinkWarnChanges:
+			flapping = true
+			out = append(out, DoctorCheck{Area: AreaPreflight, Check: CheckPreflightLinks, Subject: m, Status: DoctorFail,
+				Evidence: fmt.Sprintf("%d link changes in the last 1h, the last: %s", p.LinkChanges, p.LinkLast),
+				Remedy:   "check " + m + "'s cable and switch port; on the host: journalctl -k --since -1h | grep -iE 'link (is )?(up|down)|carrier'"})
+		}
+	}
+	if !flapping && len(out) == 0 {
+		out = append(out, okCheck(AreaPreflight, CheckPreflightLinks, "-", "every member's link is steady in the last 1h"))
 	}
 	return out
 }

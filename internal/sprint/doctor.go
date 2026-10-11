@@ -123,6 +123,13 @@ type MemberProbe struct {
 	Secrets  string            `json:"secrets,omitempty"` // nova-secrets check's last line
 	SecretOK bool              `json:"secrets_ok"`
 	Version  string            `json:"version,omitempty"`
+	// LinkChanges is the kernel's link changes in DoctorLinkWindow: how many the probe counted,
+	// 0 when it counted none, -1 when it did not measure (Darwin, no journalctl, or the journal
+	// unreadable). LinkLast is the last such kernel line, clipped; LinkWhy says why a count of -1
+	// was not measured.
+	LinkChanges int    `json:"link_changes"`
+	LinkLast    string `json:"link_last,omitempty"`
+	LinkWhy     string `json:"link_why,omitempty"`
 }
 
 // MemberTools is every program a member's loop runs a card with, which its loop's PATH must
@@ -181,6 +188,12 @@ const (
 	// DoctorDiskWarnKB and DoctorDiskFailKB are a member home's free space bounds.
 	DoctorDiskWarnKB = 20 << 20
 	DoctorDiskFailKB = 5 << 20
+	// DoctorLinkWindow is how far back a member's probe reads the kernel's link changes, and
+	// DoctorLinkWarnChanges is how many in that window name a flapping link (one change is a
+	// single up at boot, which is normal). Two or more are one WARN from DoctorMemberEnv and one
+	// FAIL row from doctor --preflight; the bound is the card doctor-names-a-member-whose-link-flapped.
+	DoctorLinkWindow      = time.Hour
+	DoctorLinkWarnChanges = 2
 )
 
 // Doctor is every check of the doctor over one read, in area order.
@@ -910,6 +923,12 @@ func DoctorMemberEnv(in DoctorInput) (out []DoctorCheck) {
 		if in.Declared != "" && p.Version != "" && p.Version != in.Declared {
 			bad++
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorDrift, Evidence: "installed=" + p.Version + " declared=" + in.Declared, Remedy: joinRemedy(m)})
+		}
+		if p.LinkChanges >= DoctorLinkWarnChanges {
+			bad++
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: m, Status: DoctorWarn,
+				Evidence: fmt.Sprintf("%d link changes in the last 1h, the last: %s", p.LinkChanges, p.LinkLast),
+				Remedy:   "check " + m + "'s cable and switch port; on the host: journalctl -k --since -1h | grep -iE 'link (is )?(up|down)|carrier'"})
 		}
 		if bad == 0 {
 			fine++
