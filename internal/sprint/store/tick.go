@@ -188,7 +188,7 @@ func (m Machine) Running() bool { return m.State == Running }
 
 // stopRevoked includes older machine records written before StopIssued was
 // persisted, so a restarted binary still fences their stopped runs
-// (tla/StopReturn.tla Stop and Report).
+// (tla/StopFence.tla Stop and Report).
 func (m Machine) stopRevoked() bool {
 	return !m.Running() && (m.StopIssued || m.RunSeq > 0 || m.Reason != "" || m.Cause != "" || len(m.StopDebt) > 0)
 }
