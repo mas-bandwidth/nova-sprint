@@ -1061,6 +1061,21 @@
     refusal names both and the commands that set one."
    :origin "the seat, 2026-10-11 ~03:19Z: the seat hook proved only with NOVA_SPRINT_SERVER=127.0.0.1:6390 set by hand")
 
+  (fix "a-refused-verb-is-logged-with-its-refusal" :release "v1.2.11" :status "planned"
+   :title "A refused verb is written on the server's own log, with its refusal"
+   :text "serveCtx now writes one SERVE REFUSED line for every verb it answers with a non-zero code,
+    whether the worker's verb (a refused finish), one the server does not run (exit 2) or a lane verb
+    (a friend's beat, a read): the verb word, the worker, the exit and the card argument when the verb
+    names one, with the verb's own first stderr line cut to 300 bytes, never the verb's whole argv or
+    its stdout. The same verb, worker, exit and first line repeated within a minute is written once,
+    and when it changes the line that follows says (repeated <n> times since <stamp>), so 40 minutes
+    of refused finishes from ten members is a few hundred lines and never one per verb. The SERVE
+    tally counts the refused verbs by verb word and its line says refused=<n>
+    refused-by=<verb>:<count>,...; no new verb. On the v1.2.10 server every done-path finish was
+    refused for about 40 minutes and the log held no line for a refused verb, so the refusal could
+    not be read."
+   :origin "this card; the owner, 2026-10-11: everything that has been hard work in this bisect and rollback, make it better with tools")
+
   (fix "no-deal-to-a-draining-member" :release "v1.2.10" :status "shipped"
    :title "No deal to a draining member; a held or draining machine's reader is asked nothing"
    :origin "PR #84")
