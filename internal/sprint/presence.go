@@ -485,7 +485,8 @@ func presence(s *Snapshot, r TickReq) (Plan, int) {
 		}
 		// a member down because it stopped beating is the machine's down, held
 		// by the machine for the fault: the tick clears the mark itself once the
-		// member beats and finishes a card cleanly (faultClear)
+		// member beats and finishes a card cleanly (faultClear;
+		// tla/DealFill.tla FaultHold)
 		add(downPlan(s, FleetReq{Op: "down", Member: m, Who: r.who(), Live: receivers, Why: why, HeldBy: HeldByFault}, receivers, rr, moves, q, widths))
 	}
 	for i, m := range ups[:n] {
