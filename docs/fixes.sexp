@@ -1158,6 +1158,22 @@
     are made current."
    :origin "card tla-providerbudget-every-declared-witness-has-a-cfg, 2026-10-11: v1.2.12 inventory section 4, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-provider-funds" :release "v1.2.12" :status "planned"
+   :title "ProviderFunds models the provider's rest, the all-out stop and the friend exception"
+   :text "Models only, no product change. tla/ProviderFunds.tla EXTENDS RouteRest and reuses its rest rules
+    for a first provider, adds a second, and models the provider funds machine: a take refused for credit or its
+    key rests the provider (only a take launched after the last rest ended counts), a balance poll never rests
+    and ends a refused credit rest on a payment seen, funded and routes wake end rests, and every provider out
+    of credit stops the machine unless a friend is up; START is the coordinator's. Four invariants
+    (LowNeverStops, NoFundsStopWhileFriendUp, StartIsTheCoordinators, StopOnlyWhenAllOut) and two reversed
+    witnesses: MCProviderFundsBrokenLowIsOut (Broken = {\"lowisout\"}, Out() counts a low balance, fails
+    LowNeverStops) and MCProviderFundsBrokenNoFriendException (Broken = {\"nofriendexception\"}, drops
+    friendsKeepRunning, fails NoFundsStopWhileFriendUp), each with its CASES.tsv row. Comment-only Go changes:
+    internal/sprint/provider_funds.go cites tla/ProviderFunds.tla on providerRestsDue, AllOutOfCredit, Funded
+    and friendsKeepRunning, and AllOutOfCredit's comment no longer says a balance at or under zero is out
+    (Out and Retired exclude balance rests). tla/RUNS.tsv and tla/COVERAGE.tsv are made current."
+   :origin "this card, tla-provider-funds.w4, 2026-10-11: v1.2.12 inventory items T31 and section 5, at nova-sprint main 00c54ba2e")
+
   (fix "tla-whopreference-tiers-pins-and-takeback" :release "v1.2.12" :status "planned"
    :title "WhoPreference gates the deal on tiers, honours the preference order, the take-back memory and the pin release"
    :text "Models only, no product change. tla/WhoPreference.tla was read against internal/sprint/friend_deal.go, friend_take.go, rebalance.go and stops.go and drifted in four places, each brought to the code. The deal is now gated on tiers (friendTakes / the fleet's set): a flash card never reaches a friend whose tiers are pro alone, checked by the new invariant DealtAdmitted, which the unchanged model violates (plain, a flash card, dealt to friend b whose tiers are pro). The friends' choice is the code's preference order, an idle lane first then the most room then the first by name, not the fixed a-before-b. A card taken back from a friend is never dealt to her again (takenBack, the take's taken_from), checked by NeverBackToTheSameFriend. A hard pin is released past its bound while its friend is not up and is offered on as a named pin is (stops.go PinReleased), so OnlyToItsFriend holds only before the release. Two reversed witnesses: anytier drops the deal's tier gate (fails DealtAdmitted) and dealback redeals a taken-back card to the same friend (fails NeverBackToTheSameFriend). The rebalance's one-tier-up overflow and cheapest-first order (rebalance.go:143-188) are left out: a two-tier model has no tier above pro. friend_take.go and stops.go each gain one comment line citing the module."
