@@ -1129,6 +1129,19 @@
     added, nineteen are changed, and a row marked missing names module \"-\"."
    :origin "card tla-coverage-rows-for-every-nova-sprint-module, 2026-10-11: v1.2.12 inventory items T29 and section 5, at nova-sprint main 00c54ba2e")
 
+  (fix "tla-coordinatorwake-batch-and-level-events" :release "v1.2.12" :status "planned"
+   :title "CoordinatorWake models the batched wake, the filtered message and the level events"
+   :text "Models only, no product change. tla/CoordinatorWake.tla now models the batched wake (one wake
+    fires every bus ask the look read, naming three and counting the rest), the filtered message that
+    moves the cursor without a line, and the level events (a judgment, a stop, a friend down) that set
+    and clear between looks, so NoLapse holds for bus events alone and the new LevelSeenWhileItHolds
+    says a level event that holds a whole window wakes a run unless it clears first. The reversed
+    witness MCCoordinatorWakeBrokenBatchDrops (Broken \"batchdrops\") fires only the first ask of a batch
+    and writes the cursor past the rest, failing NoLapse; the two existing witnesses (nocursor, skip)
+    keep their results. watchwake.go's comments now say bus events, and that a judgment raised and closed
+    inside --judgment-every may never wake. Four cases pass on a bench."
+   :origin "this card, tla-coordinatorwake-batch-and-level-events-2.w4, 2026-10-11: v1.2.12 inventory item T25; drift read at nova-sprint main 00c54ba2e, 2026-10-11")
+
   (fix "tla-serverlanes-control-line-tick-turn" :release "v1.2.12" :status "planned"
    :title "ServerLanes models the control line: batches by ticket and the tick's turn"
    :text "Model only, no product change. ServerLanes.tla held the server's one line as app.serial: a
