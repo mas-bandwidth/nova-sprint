@@ -172,6 +172,14 @@
     no longer exits 128 on a fleet host with nothing saying why."
    :origin "lander fault 5579, space git exit 128 (held-PR ledger row 5579)")
 
+  (fix "live-library-uses-store-login" :release "v1.2.6" :status "shipped"
+   :title "live reads the store's function library through the seat login"
+   :text "live runs nova-redis fn check with the recorded seat login's user and the password read in
+    process, handing that password to the child's environment: on a store whose default user has NOAUTH
+    the library state is now read (loaded, wanted, match), not UNKNOWN. The test observes the delivered
+    password, so it is red until the child actually holds it."
+   :origin "dogfood 2026-10-10: live LIBRARY state=UNKNOWN; card live-library-check-uses-the-store-loginb.w1")
+
   (fix "inbox-wait-survives-a-clear" :release "v1.2.6" :status "planned"
    :title "The seat's push loop goes on at the epoch a clear leaves it"
    :text "inbox --wait and --push re-read the sprint's active epoch when a clear advances it under the
