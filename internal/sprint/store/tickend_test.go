@@ -74,6 +74,7 @@ func TestTheTickEndMarkStartsAgainAfterAClear(t *testing.T) {
 	_, err := h.st.Clear(h.ctx)
 	require.NoError(t, err)
 	h.setup(1)
+	h.readdReaders()
 	var ids []string
 	for _, c := range h.snap().Work.Cards() {
 		ids = append(ids, c.ID)

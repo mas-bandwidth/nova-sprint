@@ -273,6 +273,13 @@
     roadmap data with each whole brief, and drops them from the store; --expect checks the count."
    :origin "this pull request")
 
+  (fix "clear-is-a-blank-slate" :release "v1.2.6" :status "in-progress"
+   :title "Clear starts a blank epoch and reports only live leases"
+   :text "Clear lists every live card generation and owner row it refuses on; a returned or nonworking
+    lease does not block. A successful clear advances to an empty epoch instead of restoring old
+    streams, work and merge rows."
+   :origin "seat ledger v1.2.4-held-2026-10-10, bugs 2, 4 and 11")
+
   (fix "cut-sentinel-releases-itself" :release "v1.2.6" :status "shipped"
    :title "A cut sentinel releases itself on the tick, and pushes the seat that the release is ready to cut"
    :text "A sentinel that names its needs (a cut: a stream's reopen stop, a release sentinel) is released by

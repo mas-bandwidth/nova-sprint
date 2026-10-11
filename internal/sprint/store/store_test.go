@@ -138,6 +138,28 @@ func (h *harness) setup(n int) {
 	h.clean("setup")
 }
 
+// bringUpFleet puts the harness's two members back up at the current epoch: a
+// clear's blank epoch has no fleet rows, so a test that keeps running work
+// after a clear brings its members up again (blank-slate clear, no shape
+// restore).
+func (h *harness) bringUpFleet() {
+	h.t.Helper()
+	for _, m := range []string{"m1", "m2"} {
+		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: sprint.DefaultWidth}))
+	}
+}
+
+// readdReaders puts the harness's three readers back at the current epoch: a
+// clear's blank epoch has no reader rows, so a test that keeps reading after a
+// clear adds its readers again.
+func (h *harness) readdReaders() {
+	h.t.Helper()
+	pinned, err := h.st.pin(h.ctx)
+	require.NoError(h.t, err)
+	require.NoError(h.t, pinned.B.RowsAdd(h.ctx, h.st.Names.Table(sprint.Readers), []string{"reader-a", "reader-b", "reader-c"}))
+	require.NoError(h.t, h.st.BeatReaders(h.ctx))
+}
+
 // through drives primaries to merging queued.
 func (h *harness) through(ids ...string) {
 	h.t.Helper()
