@@ -60,6 +60,8 @@ commands. Its source is not part of this repository. Check the runner's help
 for your version, and record new results against the actual model inputs
 you ran.
 
+`.github/workflows/tlc.yml` runs the gated cases on GitHub-hosted runners against the jar `tla/tla2tools.sha256` pins (tla2tools.jar v1.7.4).
+
 Return to [Contributing](../CONTRIBUTING.md) for the ordinary build and test
 checks, or [the documentation index](../docs/README.md) for the user guides.
 

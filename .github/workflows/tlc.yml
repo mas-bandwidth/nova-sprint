@@ -1,0 +1,94 @@
+# nova-sprint TLC: the models' checks, on GitHub-hosted runners. nova-sprint is a
+# public repository, so the fleet's own runners are not allowed here. The
+# TLC cases run against the same pinned tla2tools.jar the record machines hold
+# (tla/tla2tools.sha256, the digest every tla/RUNS.tsv record names). The workflow
+# never writes tla/RUNS.tsv into the repository: records still land through cards.
+name: TLC
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "tla/**"
+      - "pkg/tlc/**"
+      - "tools/tlacheck/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tlc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # groups decides which groups the models job runs: on the nightly schedule and on
+  # dispatch it runs every required group, on a pull request only the stale ones. An
+  # empty list ends the workflow green (the models matrix expands to no job).
+  groups:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      groups: ${{ steps.pick.outputs.groups }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: tlc tests
+        run: make tlc-test
+      - name: pick the groups to run
+        id: pick
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            groups="$(go run ./tools/tlacheck groups --root . --stale)"
+          else
+            groups="$(make tlc-groups)"
+          fi
+          json="$(printf '%s\n' "$groups" | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+          echo "groups=$json" >> "$GITHUB_OUTPUT"
+
+  # models runs each group as its own job, at most four at once. The jar is the
+  # tlaplus project's GitHub release of the version tla/tla2tools.sha256 pins; the
+  # download step refuses (exit 2, naming both digests) unless the downloaded jar's
+  # sha256 matches the pinned one. java is the runner image's own JDK 21, put on PATH;
+  # no setup-java action. A group that needs more than the 110 s budget on a hosted
+  # runner is a red job to report, never a larger budget.
+  models:
+    needs: groups
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        group: ${{ fromJSON(needs.groups.outputs.groups) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: JDK 21 on PATH
+        run: echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
+      - name: download tla2tools.jar and check its digest
+        run: |
+          curl -fL --retry 3 -o "$RUNNER_TEMP/tla2tools.jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+          expected="$(awk '{print $1}' tla/tla2tools.sha256)"
+          actual="$(sha256sum "$RUNNER_TEMP/tla2tools.jar" | awk '{print $1}')"
+          if [ "$actual" != "$expected" ]; then
+            echo "tla2tools.jar digest mismatch: tla/tla2tools.sha256 pins $expected, the downloaded jar is $actual" >&2
+            exit 2
+          fi
+      - name: run the group
+        run: |
+          make tlc TLC_JAR="$RUNNER_TEMP/tla2tools.jar" \
+            TLC_GROUP="${{ matrix.group }}" \
+            TLC_OUT="$RUNNER_TEMP/tlc-${{ matrix.group }}" \
+            TLC_BUDGET=110
+      - name: upload the run directory
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tlc-${{ matrix.group }}
+          path: ${{ runner.temp }}/tlc-${{ matrix.group }}
+          retention-days: 14
+          if-no-files-found: ignore

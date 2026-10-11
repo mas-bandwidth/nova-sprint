@@ -844,6 +844,18 @@
     from it."
    :origin "the owner, 2026-10-11: the v1.2.12 scope (inventory first)")
 
+  (fix "nova-sprint-ci-runs-tlc-on-hosted-runners" :release "v1.2.12" :status "planned"
+   :title "TLC runs in CI on GitHub-hosted runners, against the pinned jar"
+   :text "The 434 TLC cases run only when someone runs them by hand on a bench. .github/workflows/tlc.yml
+    runs them on GitHub-hosted ubuntu-latest runners (a public repository: never a self-hosted runner,
+    never a desktop) against the same pinned tla2tools.jar the record machines hold: the groups job runs
+    make tlc-test and picks the groups (every required group on schedule and dispatch, only the stale
+    ones on a pull request, an empty list ending green), and the models job runs each group with the
+    runner's own JDK 21, downloads the tlaplus release's tla2tools.jar and refuses unless its sha256
+    matches tla/tla2tools.sha256, then runs make tlc with TLC_BUDGET=110, uploading the run directory as
+    an artifact. The job never writes tla/RUNS.tsv: records still land through cards."
+   :origin "v1.2.12 inventory item T30 and note 3; this card")
+
   (fix "roadmap-tool-becomes-nova-roadmap" :release "v1.2.13" :status "planned"
    :title "Extract the roadmap tool into nova-roadmap"
    :text "The roadmap and fixes code exists twice: here as internal/roadmap, internal/roadmapdoc,
