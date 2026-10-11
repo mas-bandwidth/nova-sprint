@@ -59,6 +59,7 @@ func headlineTwoStreams(t *testing.T) *testApp {
 	}
 	ta.ok("start")
 	ta.landStream("s1", []string{"input=10 actual_usd=1 actual_by=harness", "input=10 actual_usd=2 actual_by=harness"}, []string{"", ""}, []string{"", ""})
+	ta.ok("stream archive s1")
 	return ta
 }
 
@@ -71,10 +72,12 @@ func headlineTwoStreams(t *testing.T) *testApp {
 func TestTheHeadlineCountsOnlyStreamsOnTheTable(t *testing.T) {
 	t.Parallel()
 	ta := headlineTwoStreams(t)
+	// archive s1 explicitly since the tick never archives
+	ta.ok("stream archive s1")
 
 	var v whereView
 	ta.json("where", &v)
-	require.NotNil(t, v.Archived, "the tick archived s1 as its last card landed")
+	require.NotNil(t, v.Archived, "s1 archived by stream archive")
 	require.Equal(t, []string{"s1"}, v.Archived.Streams)
 	assert.Equal(t, int64(0), v.Landed, "the archived stream's landed cards leave the headline")
 	assert.Equal(t, int64(3), v.All, "only s2's three cards are on the table")
@@ -152,10 +155,12 @@ func TestTheETAGuardAndHoldSeeTheEpochsLandings(t *testing.T) {
 	five := []string{"", "", "", "", ""}
 	ta.landStream("s1", five, five, five)
 	ta.a.sleep(30 * time.Minute) // a rate: five landed over half an hour of running
+	// archive s1 explicitly since the tick never archives
+	ta.ok("stream archive s1")
 
 	var v whereView
 	ta.json("where", &v)
-	require.NotNil(t, v.Archived, "the tick archived s1 as its last card landed")
+	require.NotNil(t, v.Archived, "s1 archived by stream archive")
 	require.Equal(t, [2]int64{0, 3}, [2]int64{v.Landed, v.All})
 	assert.True(t, strings.HasPrefix(v.Summary, "0/3 0.0% held=3 -> ETA "), v.Summary)
 	assert.NotContains(t, v.Summary, "ETA -", "five landed in the epoch: the rate is known")
@@ -243,7 +248,7 @@ func TestASprintDoneReadsTheSameEverywhere(t *testing.T) {
 	out := ta.ok("tick")
 	var v whereView
 	ta.json("where", &v)
-	require.NotNil(t, v.Archived, "the tick archived every stream of the sprint done")
+	require.Nil(t, v.Archived, "the tick never archives")
 	assert.True(t, v.Done)
 	assert.Equal(t, [2]int64{2, 2}, [2]int64{v.Landed, v.All}, "done: the epoch's cards")
 	assert.Equal(t, "2/2 100.0% done", v.Summary)

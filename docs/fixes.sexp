@@ -613,11 +613,19 @@
     :origin "the owner, 2026-10-11 ~01:00Z and ~01:05Z, after hetzner was renamed hetzner1 and its old fleet
      row stayed held; this card; attempt 2")
 
-   (fix "worklang-done-field-parsed" :release "v1.2.11" :status "planned"
-    :title "The worklang parser keeps the done field of a unit"
-    :text "Unit done reads a field the parser never keeps, so a done unit is never counted. The key is
-     added and sibling skipped keys are checked, with a test."
-    :origin "issue #3499")
+    (fix "worklang-done-field-parsed" :release "v1.2.11" :status "planned"
+     :title "The worklang parser keeps the done field of a unit"
+     :text "Unit done reads a field the parser never keeps, so a done unit is never counted. The key is
+      added and sibling skipped keys are checked, with a test."
+     :origin "issue #3499")
+
+   (fix "release-never-archives-a-stream" :release "v1.2.11" :status "planned"
+    :title "The tick never archives streams; stream archive is the only way"
+    :text "Streams leave the work and merge tables only through the explicit nova-sprint stream archive
+     command. The tick no longer archives streams whose every card lands, which took them off the
+     table and dashboard without anyone asking. keepArchive only draws again an archived stream that
+     takes a new card."
+    :origin "the owner, 2026-10-11 ~04:05Z; this card")
 
    (fix "brief-file-over-the-bound-is-refused" :release "v1.2.11" :status "planned"
     :title "Brief over the bound is refused with exit 2"
@@ -626,7 +634,7 @@
      these two forms. On a RUNNING machine, queued changes are now checked at the step before logging."
     :origin "epoch 16 stall, 2026-10-11 04:17:19Z to 04:54:23Z")
 
-  (fix "add-refuses-card-off-sprint-base" :release "v1.2.6" :status "shipped"
+   (fix "add-refuses-card-off-sprint-base" :release "v1.2.6" :status "shipped"
    :title "add and brief refuse a card cut off the sprint's base"
    :text "Once the coordinator records the sprint's base (set --base, the work table's sprint_base), add and
     brief refuse a card whose BASE is any other branch outside the promotion stream, exit 2, nothing

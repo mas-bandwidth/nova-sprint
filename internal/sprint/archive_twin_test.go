@@ -172,22 +172,18 @@ func TestArchiveKeepsEveryLandedCardAndItsCost(t *testing.T) {
 	require.Empty(t, refused)
 	assert.True(t, r.snap().Work.Hidden("s1"))
 
-	// the tick archives a stream itself when its last card lands, and names it once
+	// the tick never archives: stream archive is the only way to archive
 	r.landWithCost("s2", "s2-1")
 	r.tick()
 	r.tick()
 	s = r.snap()
-	assert.True(t, s.Work.Hidden("s2"), "the tick archived s2")
+	assert.False(t, s.Work.Hidden("s2"), "the tick never archives: s2 stays drawn")
 	assert.Equal(t, sprint.Landed, s.Work.Card("s2-1").Col)
-	assert.NotEmpty(t, ledger(s, "s2")["s2-1"])
-	notes := r.archivedNotes()
-	require.Len(t, notes, 1, "one note, once")
-	assert.Contains(t, notes[0], "s2")
-	assert.NotContains(t, notes[0], "s1")
+	assert.Empty(t, r.archivedNotes(), "tick writes no archived notes")
 	got, gotFooter = r.drawn()
-	assert.Empty(t, got)
-	assert.NotEqual(t, footer, gotFooter, "s2's landing counts in the footer")
-	r.clean("archived by the tick")
+	assert.Equal(t, []string{"s2"}, got, "s2 still drawn")
+	assert.NotEqual(t, footer, gotFooter, "footer counts s2's landing")
+	r.clean("tick never archives")
 
 	// a card added to an archived stream draws it again
 	r.must(store.AddStep(sprint.AddReq{Stream: "s2", Count: 1, Brief: "c: more (s2) tier: flash\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"}))

@@ -49,7 +49,8 @@ func TestStreamArchiveTakesALandedStreamOffTheTable(t *testing.T) {
 	}
 	ta.ok("start")
 	ta.landStream("s1", []string{"input=10 actual_usd=1 actual_by=harness", "input=10 actual_usd=2 actual_by=harness"}, []string{"", ""}, []string{"", ""})
-	// the tick archived s1 as its last card landed; brought back by hand, it stays
+	// archive s1 explicitly since the tick never archives
+	ta.ok("stream archive s1")
 	ta.ok("stream unarchive s1")
 	ta.ok("tick")
 	var before whereView

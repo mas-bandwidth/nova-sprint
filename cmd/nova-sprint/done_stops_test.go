@@ -52,6 +52,10 @@ func TestADoneSprintStopsItsMachineAndTellsTheCoordinator(t *testing.T) {
 		require.Contains(t, out, want, "the done tick lacks %q", want)
 	}
 	require.Equal(t, "DONE", ta.viewLine(), "the view")
+	// archive streams explicitly since the tick never archives
+	ta.ok("stream archive s1")
+	ta.ok("stream archive s2")
+	ta.ok("stream archive s3")
 	where := ta.ok("where")
 	require.Contains(t, where, "SPRINT TABLE  coordinator coordinator\n\nDONE\n", "where's header")
 	inbox := ta.ok("inbox")

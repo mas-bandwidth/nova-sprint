@@ -257,12 +257,13 @@ func TestTheCommandDrivesAStreamToLanded(t *testing.T) {
 	// the landings are queued for the next tick's pump, which drains them, and
 	// the tick's done part stops the machine of a sprint that is done
 	ta.ok("tick")
+	ta.ok("stream archive s1") // the tick never archives, so we archive explicitly
 	out = ta.ok("where --all")
 	for _, want := range []string{"SPRINT TABLE", "DONE", "work ", "merge ", "friends ", "fleet "} {
 		assert.Contains(t, out, want, "where lacks %q", want)
 	}
 	var w whereView
-	ta.json("where --archived", &w) // the tick archived s1 as its last card landed
+	ta.json("where --archived", &w)
 	require.True(t, w.Done, "where --json: %+v", w)
 	require.Equal(t, [2]int64{4, 4}, [2]int64{w.Landed, w.All}, "a sprint done counts the epoch's cards: %+v", w)
 	require.Equal(t, [2]int64{4, 4}, [2]int64{w.ArchivedLanded, w.ArchivedCards}, "where --json: %+v", w)
