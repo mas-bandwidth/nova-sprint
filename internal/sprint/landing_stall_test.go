@@ -113,6 +113,7 @@ func TestLandingReadCountsCombineFleetAndLegacyConsumersOnce(t *testing.T) {
 	w := setup(t, 4)
 	c := w.s.Work.Card("s1-1")
 	require.NotNil(t, c)
+	c.Fields["attempt"], c.Fields["head"] = "1", "h1"
 	w.s.Readers.Put(&Card{ID: "legacy-jon", Row: "jon", Col: Asked, Fields: map[string]string{
 		"primary": c.ID, "reader": "jon", "attempt": "1", "head": "h1", "asked": stamp(w.s.Now.Add(-time.Minute)),
 	}})
@@ -132,6 +133,7 @@ func TestLandingPushCountsCompletedFleetReadsAndBegunLegacyReads(t *testing.T) {
 	w := setup(t, 4)
 	c := w.s.Work.Card("s1-1")
 	require.NotNil(t, c)
+	c.Fields["attempt"], c.Fields["head"] = "1", "h1"
 	w.s.Readers.Put(&Card{ID: "reading-jon", Row: "jon", Col: Reading, Fields: map[string]string{
 		"primary": c.ID, "reader": "jon", "attempt": "1", "head": "h1", "asked": stamp(w.s.Now.Add(-time.Minute)),
 	}})
@@ -148,6 +150,19 @@ func TestLandingPushCountsCompletedFleetReadsAndBegunLegacyReads(t *testing.T) {
 	assert.Len(t, landingReadConsumers(w.s, c.ID, false), 1, "only the begun legacy read remains outstanding")
 	n := landingPush(w.s, "s1", "rowan", []*Card{c}, nil, w.s.Now)
 	assert.Contains(t, n.What, "reads 3")
+}
+
+func TestLandingReadHistoryDeduplicatesOnlyTheSameAttemptAndHead(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 4)
+	c := w.s.Work.Card("s1-1")
+	require.NotNil(t, c)
+	c.Fields["attempt"], c.Fields["head"] = "2", "current"
+	c.Fields[FieldLandingReadHistory] = "[{\"reader\":\"amy\",\"attempt\":1,\"head\":\"current\"},{\"reader\":\"amy\",\"attempt\":2,\"head\":\"old\"},{\"reader\":\"amy\",\"attempt\":2,\"head\":\"current\"}]"
+	w.s.Fleet.Put(&Card{ID: "read-amy", Row: "friend.amy", Col: Working, Fields: map[string]string{
+		"kind": "read", "primary": c.ID, "reader": "amy", "attempt": "2", "head": "current", FieldReadCard: "1",
+	}})
+	assert.Len(t, landingReadConsumers(w.s, c.ID, true), 1, "same consumer dedupes, stale attempts and heads do not count")
 }
 
 func TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall(t *testing.T) {

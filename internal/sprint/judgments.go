@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -68,6 +69,9 @@ const NLanding = "landed"
 const (
 	LandingTitleField = "title"
 	LandingTextField  = "text"
+	// FieldLandingReadHistory persists completed read-card identities on the
+	// primary because fleet read verdicts retire their producer cards.
+	FieldLandingReadHistory = "landing_read_history"
 )
 
 // landingPush is the coordinator's push for a batch of landings
@@ -97,32 +101,108 @@ func landingPush(s *Snapshot, stream, who string, landing []*Card, ledger map[st
 	return n
 }
 
+type landingReadIdentity struct {
+	Reader  string `json:"reader"`
+	Attempt int    `json:"attempt"`
+	Head    string `json:"head"`
+	Verdict string `json:"verdict"`
+}
+
+func landingReadKey(reader string, attempt int, head string) string {
+	return fmt.Sprintf("%s|%d|%s", reader, attempt, head)
+}
+
+// landingReadHistory appends a verdict's consumer identity to the primary's
+// retained history (docs/SPEC-SPRINT.md, judgments: every landing push carries
+// its read count). The identity makes replays and duplicate views one read, while
+// attempt and head keep an old review from counting on a new one.
+func landingReadHistory(pr, rc *Card, verdict string) string {
+	var history []landingReadIdentity
+	_ = json.Unmarshal([]byte(pr.F(FieldLandingReadHistory)), &history)
+	id := landingReadIdentity{Reader: rc.F("reader"), Attempt: rc.Int("attempt"), Head: rc.F("head"), Verdict: verdict}
+	if id.Attempt == 0 {
+		id.Attempt = 1
+	}
+	attempt := pr.Int("attempt")
+	if attempt == 0 {
+		attempt = 1
+	}
+	// Retain just this primary's current review epoch, so history stays bounded
+	// across rework and a stale report cannot inflate a later landing.
+	current := history[:0]
+	for _, old := range history {
+		if old.Attempt == attempt && old.Head == pr.F("head") {
+			current = append(current, old)
+		}
+	}
+	history = current
+	key := landingReadKey(id.Reader, id.Attempt, id.Head)
+	for _, old := range history {
+		if landingReadKey(old.Reader, old.Attempt, old.Head) == key {
+			b, _ := json.Marshal(history)
+			return string(b)
+		}
+	}
+	history = append(history, id)
+	b, _ := json.Marshal(history)
+	return string(b)
+}
+
 // landingReadConsumers combines the legacy readers table and fleet read cards
 // by their logical reader/primary/attempt/head identity. During migration a read
 // can briefly appear in both tables; count it once.
 func landingReadConsumers(s *Snapshot, primary string, includeCompleted bool) map[string]time.Time {
 	consumers := map[string]time.Time{}
-	add := func(reader, attempt, head string, at time.Time) {
-		key := reader + "|" + attempt + "|" + head
+	pr := s.Work.Card(primary)
+	if pr == nil {
+		return consumers
+	}
+	attempt := pr.Int("attempt")
+	if attempt == 0 {
+		attempt = 1
+	}
+	readHead := pr.F("head")
+	add := func(reader string, readAttempt int, head string, at time.Time) {
+		if readAttempt == 0 {
+			readAttempt = 1
+		}
+		if readAttempt != attempt || head != readHead {
+			return
+		}
+		key := landingReadKey(reader, readAttempt, head)
 		if old, ok := consumers[key]; !ok || (!at.IsZero() && (old.IsZero() || at.Before(old))) {
 			consumers[key] = at
 		}
 	}
+	if includeCompleted && pr.F(FieldLandingReadHistory) != "" {
+		var history []landingReadIdentity
+		if json.Unmarshal([]byte(pr.F(FieldLandingReadHistory)), &history) == nil {
+			for _, id := range history {
+				add(id.Reader, id.Attempt, id.Head, time.Time{})
+			}
+		}
+	}
 	if s.Readers != nil {
-		for _, c := range s.Readers.Of(primary) {
+		for _, c := range s.Readers.Cards() {
+			if c.F("primary") != primary {
+				continue
+			}
 			active := c.Col == Asked || c.Col == Reading
 			completed := c.Col == OK || c.Col == Broken
 			if active || (includeCompleted && completed) {
-				add(c.F("reader"), c.F("attempt"), c.F("head"), stampAt(c, "asked"))
+				add(c.F("reader"), c.Int("attempt"), c.F("head"), stampAt(c, "asked"))
 			}
 		}
 	}
 	if s.Fleet != nil {
-		for _, c := range s.Fleet.Of(primary) {
+		for _, c := range s.Fleet.Cards() {
+			if c.F("primary") != primary {
+				continue
+			}
 			active := c.F(FieldReadCard) != "" && (c.Col == Ready || c.Col == Working)
 			completed := c.F(FieldReadCard) != "" && (c.Col == DoneOK || c.Col == DoneFailed)
 			if active || (includeCompleted && completed) {
-				add(c.F("reader"), c.F("attempt"), c.F("head"), stampAt(c, "asked"))
+				add(c.F("reader"), c.Int("attempt"), c.F("head"), stampAt(c, "asked"))
 			}
 		}
 	}
