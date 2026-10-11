@@ -166,7 +166,26 @@
    (fix "tla-server-switch-rollback-window" :release "v1.2.12" :status "planned"
     :title "ServerSwitch models the server switch and its rollback window, with two reversed witnesses"
     :text "Models only, no product change. tla/ServerSwitch.tla models the server switch (internal/sprint/server_switch.go ServerSwitch, ServerRollback, CheckRollbackOnLandFailure): at most two switches, a rollback window of two, a clock to four, a land that is ok, refused or failed, and a crash between the copy and the state write. ServerSwitch backs the target up to <target>.prev (only when a target exists) and copies the candidate over the target, then writes <target>.switch.json when rollback is on; a land pass fault (exit 2) in the window rolls the previous binary back to the target and removes the state, past the deadline the state is removed and the switch is permanent, and a refusal (exit 1) never rolls back. Three invariants: TargetIsAKnownBinary (the target is always a known binary or absent), RollbackOnlyInWindow, and AtMostOneAutoRollbackPerSwitch; two reversed witnesses: nodeadline skips the deadline check and fails RollbackOnlyInWindow, keepstate keeps the state after a rollback and fails AtMostOneAutoRollbackPerSwitch. Two facts of the code are modelled and named: a second switch inside the window overwrites <target>.prev with the first candidate, and a switch with no prior target leaves a state whose Previous file is missing, so every failure inside the window errors."
-    :origin "this card, tla-server-switch-rollback-window.w5, 2026-10-11: v1.2.12 inventory items T31 and section 5, and D11; survey at nova-sprint main 00c54ba2e 2026-10-11")
+     :origin "this card, tla-server-switch-rollback-window.w5, 2026-10-11: v1.2.12 inventory items T31 and section 5, and D11; survey at nova-sprint main 00c54ba2e 2026-10-11")
+   (fix "the-dashboard-scrolls-smoothly-under-the-pulse-and-the-poll" :release "v1.2.12" :status "planned"
+    :title "The dashboard scrolls smoothly under a held Page Down while the sprint runs"
+    :text "The page's pulse and its per-poll layout fit no longer starve the browser's smooth scroll, and
+     the page shows exactly what it showed before. The top bar's pulse now animates opacity itself, a
+     property the compositor runs on its own thread, instead of a registered custom property --pulse,
+     which runs on the main thread and re-styled and repainted all 151 in-flight cells every frame; the
+     @property declaration and every var(--pulse) use are gone, and merging, review and working keep the
+     same 2.4 s cycle and the same negative animation-delays (0, -2.25 s, -2.1 s), with .stopped and
+     prefers-reduced-motion still stopping it. render() no longer calls fitTables() on every poll
+     (POLL_MS = 1000): the fit runs on load, on resize, and only when a panel's data-derived fit key (its
+     row count plus the longest text of each column, from the data, never the DOM) changes, and a compact
+     panel keeps its class while the full form is measured on an off-screen copy, so no class toggle sits
+     between the reads. page/index.html carries @keyframes pulse { 0%, 17%, 100% { opacity: 1; } 58.5% {
+     opacity: .55; } }; page/app.js carries fitKey, overflow, fitIfChanged and the copy-based fitTables.
+     Two new tests in internal/sprintdash/dashboard_test.go pin it: TestThePulseAnimatesOpacityOnTheCompositor
+     refuses any @keyframes that animates a custom property, or, under an infinite animation, anything but
+     opacity, transform or filter; TestRenderFitsOnlyWhenTheLayoutCanChange refuses an unconditional
+     fitTables() in render. No visual change."
+    :origin "this card; the owner, 2026-10-11 ~19:35Z: \"There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical.\"")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
