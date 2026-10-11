@@ -65,8 +65,20 @@
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator."))
- :items
-  ((fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
+  :items
+   ((fix "tla-liveruns-rows-with-no-live-set" :release "v1.2.12" :status "planned"
+     :title "LiveRuns models a legacy row whose beat carries no live set"
+     :text "Model only, no product change. tla/LiveRuns.tla adds the constant Legacy (a row whose
+      worker's beat carries no live set, a worker from before v1.2.6): the reconcile skips such a row
+      as LiveReturns and liveStopped do (Reconciled), WorkingIsLive is restated over the other rows,
+      and a new invariant LegacyNeverReturned says no working card of a legacy row is returned by the
+      reconcile. The live set is the one the member's last pass left (a new named variable): Take names
+      the card only at the next pass (Beat commits it), and the reconcile waits the grace from the
+      take, so a just-taken card is not returned. Two reversed witnesses: Broken \"legacyreturned\"
+      reconciles a legacy row as if its set were empty (fails LegacyNeverReturned); Broken \"nograce\"
+      drops the grace (fails NoRunReturned). Every existing case keeps its declared result."
+     :origin "v1.2.12 inventory item T12; this card tla-liveruns-rows-with-no-live-set")
+    (fix "cover-store-stats-tidy-and-reset" :release "v1.2.12" :status "planned"
     :title "The store package's own tests pin stats tidy and stats reset"
     :text "Tests only, no product change. New tests in internal/sprint/store drive TidyStats and ResetStats through the unit tier's Mem store and assert on their results, on what StatsTidied and StatsReset read back, and on whether the store changed: a dry run counts and writes nothing; a fleet tidy moves history off the done cells and records the archive done; a second tidy within TidyAgainAfter is refused; a fresh tidy marker refuses a tidy or a reset while a stale one is taken as ended; routes alone moves nothing and streams clears the where record; a refused move keeps its archive failed and clears the marker; a reset writes its mark and clears the where record; operation ids replay, conflict and are refused by shape; a compare-and-set that keeps losing errors after its tries; and a tidy's kinds and archives are kept across a reset."
     :origin "this card; tmp/v1.2.12-inventory-2026-10-11.md section 8 item C5")
