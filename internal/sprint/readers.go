@@ -661,6 +661,7 @@ func askPicks(rr *round, finder string, want int, free []string, room map[string
 // attempt): it is judged while its reader is away and read when the reader is
 // back (read_return_test.go). A snapshot with no reader states holds every
 // reader up: nothing moves.
+// tla/NoRoom.tla ReadReturn
 func sweepReads(s *Snapshot, p *Plan) {
 	up := s.UpReaders()
 	if s.ReaderStates == nil || len(up) == 0 {

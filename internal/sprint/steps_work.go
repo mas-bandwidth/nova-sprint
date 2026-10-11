@@ -2551,6 +2551,7 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			// one refuses it, so a machine joining without the push credential never gets
 			// width (the owner, 2026-10-11; tla/ProviderBudget.tla, FleetUpRefusesUncleared).
 			// init bootstraps a fleet by passing EnvProbePassed for each member it sets up.
+			// tla/NoRoom.tla Accept
 			why := "its own probe has not passed: " + EnvProbeLine(r.Member)
 			if r.Probe != "" {
 				why = "its own probe failed (" + r.Probe + "): " + EnvFaultRemedy(r.Member, EnvOther)

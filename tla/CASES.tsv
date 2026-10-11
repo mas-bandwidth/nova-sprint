@@ -394,6 +394,8 @@ MCNoRoomBrokenReadBlind.cfg	MCNoRoom.tla	invariant	NeverAskedOfHeldOrDraining	ig
 MCNoRoomBrokenSilentDrain.cfg	MCNoRoom.tla	temporal	DealtReturns	ignore-terminal	noroom	required	-
 MCNoRoomBrokenNoReturn.cfg	MCNoRoom.tla	temporal	DealtReturns	ignore-terminal	noroom	required	-
 MCNoRoomBrokenNoReadReturn.cfg	MCNoRoom.tla	temporal	ReadsReturn	ignore-terminal	noroom	required	-
+MCNoRoomBrokenProbeBlind.cfg	MCNoRoom.tla	invariant	NeverDealtUnknown	ignore-terminal	noroom	required	-
+MCNoRoomBrokenNoTaker.cfg	MCNoRoom.tla	temporal	ReadsReturn	ignore-terminal	noroom	required	-
 MCAdopt.cfg	MCAdopt.tla	pass	-	ignore-terminal	adopt	required	-
 MCAdoptBrokenKeepNew.cfg	MCAdopt.tla	invariant	RefusedLeavesOld	ignore-terminal	adopt	required	-
 MCRetireAbsent.cfg	MCRetireAbsent.tla	pass	-	ignore-terminal	retire-absent	required	-

@@ -66,7 +66,11 @@
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator."))
  :items
-  ((fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
+  ((fix "tla-noroom-admission-by-probe" :release "v1.2.12" :status "planned"
+    :title "NoRoom models admission by probe and the read return's taker"
+    :text "Model only, no product change. tla/NoRoom.tla now holds admission: known[m] with Accept(m) on a passed probe, required by Dealable and by the reader's Ask, so a member the sprint does not know is dealt nothing and its reader belongs to no machine (NeverDealtUnknown). ReadReturn is guarded on a taker (sweepReads takes a read back only when another reader can take it), and ReadsReturn is restated under it. Two new reversed witnesses: probeblind deals to an unknown member (NeverDealtUnknown) and notaker takes a read back with no other reader (ReadsReturn); the eight existing witnesses keep their results. The RUNS.tsv records for the changed model are owed (tlacheck is not in this tree yet)."
+    :origin "this card (tla-noroom-admission-by-probe.w2); source v1.2.12 inventory item T28")
+   (fix "tla-retire-seatproof" :release "v1.2.12" :status "planned"
     :title "The SeatProof model of the deleted push proof is retired"
     :text "tla/SeatProof.tla modelled the push proof (its header names PushPong, PushLive, PushWhy,
      renewSeatProof and a pushGate) with its instance MCSeatProof.tla and three configurations; none of
