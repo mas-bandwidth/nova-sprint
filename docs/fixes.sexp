@@ -137,6 +137,10 @@
     :title "ReadyOver raises only past ReadyMax, one judgment per cause, each held card its own"
     :text "Models only, no product change. tla/ReadyOver.tla was read against internal/sprint/ready_over.go and drifted in four places, each brought to the code. ready is split from past (a card is ready-over only after it sits past ReadyMax), each held card and each bad brief is its own cause (the card's id is in the sentence), and the causes readyWhy names that the model lacked are added: a held stream, friends alone, no launcher and no free width, plus a timed rest (until its time) beside paid and woken. OnePerCause and ClearsWhenDealt still hold. A new invariant RaisedOnlyPastReadyMax (a raise writes a judgment only for a card past the bound) is checked by the reversed witness MCReadyOverBrokenNobound (Broken \"nobound\"): a raise before the bound fails it. ready_over.go gains one comment line citing the module."
     :origin "card tla-readyover-causes-and-bound, 2026-10-11: v1.2.12 inventory item T36, drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-routerest-open-coordinator-rests" :release "v1.2.12" :status "planned"
+    :title "RouteRest models the open coordinator rest, a take in flight, and the window reset on a provider rest"
+    :text "Model only, no product change. RouteRest's coordinator rest splits into timed and open (the open one ends only by wake, never by the clock: CoordOpenEndsOnlyWoken); a take in flight across a rest whose refusal was launched before the provider's mark is ignored, and a route-only wake moves no mark so the take stays fresh; and a route's window of ended takes restarts on the provider's rest as well as its own. One reversed witness, MCRouteRestBrokenCoordClock, lets the clock end an open coordinator rest and fails CoordOpenEndsOnlyWoken."
+    :origin "this card; v1.2.12 inventory item T36")
    (fix "reseed-from-nova-tools" :release "v1.2.3" :status "shipped"
    :title "The sprint tools re-seeded from nova-tools"
    :text "The three commands, their packages, models and docs, at nova-tools dev, under the re-seed recipe."
