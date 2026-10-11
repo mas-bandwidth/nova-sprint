@@ -80,6 +80,15 @@
     reversed witnesses."
    :origin "the seat, 2026-10-10: hold alex and hold emma refused after their stop-returns")
 
+  (fix "working-is-a-live-run" :release "v1.2.6" :status "shipped"
+   :title "Working means a live run, RUNNING or STOPPED; a returned card is no longer STOP-owned"
+   :text "A worker's beat carries its live set (fleet beat and friend beat --live), and the tick returns a
+    working card its row's live set has not named for 60 s to ready, while running and while stopped; the
+    dashboard's working cell counts live runs. A stop-returned card is no longer STOP-owned, so a hold
+    of its row is not refused before start, and a report refused for the stop is kept and taken after.
+    Modelled in tla/LiveRuns.tla."
+   :origin "the STOPPED sprint of 2026-10-10: 59 stale takes, and the hold of friend.zhi refused; nova-sprint PR #54")
+
   (fix "a-refusal-always-says-why" :release "v1.2.6" :status "shipped"
    :title "Every refusal says why, and what to run instead, in the text output"
    :text "A step's refused card prints its reason and its remedy in the default text output, as --json's

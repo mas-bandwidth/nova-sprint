@@ -14,6 +14,7 @@ import (
 // (with the fleet's update), and the reminders. The machine's repair of an operation the fence holds is not one:
 // it decides nothing from the tables (Decide's doc says what is left out).
 const (
+	DutyLive        = "live"         // a working card its row's live set has not named for the grace goes back ready (v1.2.6)
 	DutyStrangers   = "strangers"    // tell of a machine that beats and is no member
 	DutyPresence    = "presence"     // a member's status follows its beats
 	DutyFriendStall = "friend-stall" // a friend holding cards with no sign of life climbs the stall ladder
@@ -35,7 +36,7 @@ const (
 
 // dutyNames is the duties' names in the tick's order, which the canonical order
 // of moves follows. Duties lists the same names, and a test holds them equal.
-var dutyNames = []string{DutyLevel, DutyLevelReads, DutyResolve, DutyCapDeal, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
+var dutyNames = []string{DutyLive, DutyLevel, DutyLevelReads, DutyResolve, DutyCapDeal, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
 
 // Duty is one duty of the tick: its name and the function that decides it.
 type Duty struct {
@@ -48,6 +49,7 @@ type Duty struct {
 
 // Duties is every duty of today's tick in the order the machine runs them.
 var Duties = []Duty{
+	{DutyLive, LiveMoves},
 	{DutyLevel, LevelMoves},
 	{DutyLevelReads, LevelReadsMoves},
 	{DutyResolve, ResolveMoves},
@@ -94,6 +96,11 @@ func Decide(s Snapshot, now time.Time) []Move {
 	}
 	return sortMoves(out)
 }
+
+// LiveMoves is the reconcile at the tick's start (v1.2.6; tla/LiveRuns.tla Tick): each card
+// working on a fleet row whose beat carries a live set that has not named it at its
+// generation for sprint.LiveGrace goes back ready on its row at its next generation.
+func LiveMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyLive) }
 
 // StrangerMoves is the notifications the coordinator is owed of the machines
 // that beat and are no member of the fleet: told once each.
@@ -198,6 +205,7 @@ type dutyOn struct {
 // silence.
 func decisions() []dutyOn {
 	return []dutyOn{
+		{DutyLive, partOn(DutyLive)},
 		{DutyLevel, partOn(DutyLevel)},
 		{DutyLevelReads, partOn(DutyLevelReads)},
 		{DutyResolve, partOn(DutyResolve)},

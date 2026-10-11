@@ -497,6 +497,9 @@ type Member struct {
 	// the beat, which carries it (--no-room) so the deal and the read ask pass this member
 	// by while it starts no card
 	noRoomWhy atomic.Pointer[string]
+	// live is the live set of the cards the last pass ended holding (liveWords), for the
+	// work member's beat (--live): the sprint's evidence for working
+	live atomic.Pointer[string]
 
 	// the beat's own clock (BeatLoop): beatMu guards beaten; progress is when the work pass
 	// last advanced, in unix nanoseconds
@@ -746,6 +749,11 @@ func (m *Member) Beat() error {
 	var total uint64
 	if !m.cfg.Reader {
 		args = []string{"fleet", "beat", m.cfg.As, "--stop-returns", strconv.Itoa(m.OwedStopReturns())}
+		if live := m.live.Load(); live != nil {
+			// the live set the last pass left (liveWords); none before the first pass, which
+			// leaves the row as it is rather than calling every card on it gone
+			args = append(args, "--live", *live)
+		}
 		args = append(args, m.noRoomArgs()...)
 		if m.cfg.Meter != nil {
 			var pct float64
@@ -1155,6 +1163,14 @@ func (m *Member) reportOne(id string, l launch, now time.Time, qPacket *Packet, 
 		noAnswer(args[0]+" "+id, out)
 		return false
 	}
+	if code == 1 && stoppedRefusal(out) {
+		// the machine STOPPED under the report: it is kept, held (liveWords names it so,
+		// and start reads the card as the report's), and sent again at the same generation
+		// once the machine runs; forgotten here it was lost (v1.2.6, tla/LiveRuns.tla
+		// NoReportLost)
+		fmt.Fprintf(m.out, "NOTE %s %s kept: the machine is STOPPED; it is reported again when it runs\n", args[0], id)
+		return false
+	}
 	m.forget(id, !m.reads(l) && !ok) // refused (1) too: the card is no longer ours to report
 	return true
 }
@@ -1504,6 +1520,13 @@ func (m *Member) machineStop(q queueOut, byID map[string]queueCard, now time.Tim
 			if l.busy || l.child == nil || l.stopped {
 				continue // its start is in flight: the next pass stops it
 			}
+			if l.res != nil || l.child.Done() {
+				// its child has ended: nothing runs to cancel, and its report is held, to be
+				// sent at the same generation once the machine runs (liveWords names it held,
+				// and start reads the card as the report's); a stop-return here lost it
+				// (v1.2.6, tla/LiveRuns.tla NoReportLost)
+				continue
+			}
 			if s, ok := l.child.(Stopper); ok {
 				l.stopPid = s.Stop()
 			}
@@ -1766,6 +1789,34 @@ func (m *Member) haveWords() string {
 	sort.Strings(have)
 	words := strings.Join(have, ",")
 	m.have.Store(&words)
+	m.liveWords()
+	return words
+}
+
+// liveWords is the member's live set as its beat carries it (fleet beat --live; v1.2.6,
+// tla/LiveRuns.tla): every launch it holds, from its start until its card is reported or
+// handed back, as <card>@<gen>, and as <card>@<gen>:held once its child's end is collected
+// and its report not yet taken (a finish refused while the machine is STOPPED keeps it so,
+// and the report is taken at the same generation once it runs). A spent launch holds none.
+// Remembered for the beat (Beat), which runs on its own goroutine.
+func (m *Member) liveWords() string {
+	live := make([]string, 0, len(m.running))
+	for id, l := range m.running {
+		if l.spent {
+			continue
+		}
+		w := id + "@" + strconv.Itoa(max(l.gen, 1))
+		if !l.stopped && (l.res != nil || l.child != nil && l.child.Done()) {
+			w += ":held"
+		}
+		live = append(live, w)
+	}
+	sort.Strings(live)
+	words := strings.Join(live, ",")
+	if words == "" {
+		words = "-" // the empty set (sprint.LiveNone)
+	}
+	m.live.Store(&words)
 	return words
 }
 
@@ -2415,4 +2466,11 @@ func IsReadCardID(id string) bool {
 	}
 	n, err := strconv.Atoi(strings.TrimPrefix(parts[1], "r"))
 	return strings.HasPrefix(parts[1], "r") && err == nil && n >= 1
+}
+
+// stoppedRefusal says a refused report was refused for the machine's STOP alone (the
+// store's "the machine is STOPPED: a late work or read report cannot finish"): the report
+// stands, and is sent again once the machine runs.
+func stoppedRefusal(out []byte) bool {
+	return bytes.Contains(out, []byte("the machine is STOPPED"))
 }

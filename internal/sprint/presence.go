@@ -95,6 +95,16 @@ type Beat struct {
 	// starts cards. While its beat is fresh the deal gives it no card and the ask asks it no
 	// read (NoRoomNow), so a card is not dealt to a machine that hands it straight back.
 	NoRoom string `json:"no_room,omitempty"`
+	// Live is the worker's live set as this beat carried it (fleet beat --live, friend beat
+	// --live; live.go): <card>@<gen> for each child it runs, <card>@<gen>:held for each
+	// finished report its outbox holds. LiveKnown says the beat carried one (an empty set
+	// included); a beat without it (a worker from before v1.2.6) carries none, and its row
+	// is not reconciled. LiveSince is when the beats began carrying one, and LiveSeen each
+	// entry's last sighting, both kept by the store from beat to beat.
+	Live      []string             `json:"live,omitempty"`
+	LiveKnown bool                 `json:"live_known,omitempty"`
+	LiveSince time.Time            `json:"live_since,omitzero"`
+	LiveSeen  map[string]time.Time `json:"live_seen,omitempty"`
 }
 
 // NoRoomNow is the word of a beat fresh at now that its member or reader starts no card,

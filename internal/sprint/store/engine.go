@@ -664,8 +664,13 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		if len(held) > 0 {
 			plan = sprint.LeaveQueued(plan, held)
 		}
-		if step.Verb != "stop-return" {
-			debt := fence.StopDebt
+		// stop-return and the reconcile are the owner's receipts (the second read off its
+		// beats, live.go): a debt does not refuse them
+		if step.Verb != "stop-return" && step.Verb != sprint.LiveReturnVerb {
+			// a debt entry owns its card only while the card is still working at the
+			// captured generation (stopOwned; tla/LiveRuns.tla StopMarkerIsWorking): a
+			// returned card moves freely (hold, give) before start
+			debt := owedDebt(snap, fence.StopDebt)
 			if fence.StopRevoked && !fence.StopIssued {
 				// A pre-upgrade STOP has no durable debt list. Its live leases
 				// remain protected until their owners return them.

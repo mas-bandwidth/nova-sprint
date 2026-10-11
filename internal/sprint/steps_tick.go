@@ -292,7 +292,15 @@ const (
 // width) and the readers' (asked reads from a reader with a backlog to one
 // idle), each one batch. It runs once a tick: a table written again later in
 // the tick is updated by its update, never levelled again.
-var TickStart = []TickPartDef{{PartLevel, TickLevel}, {PartLevelReads, TickLevelReads}}
+var TickStart = []TickPartDef{{PartLive, TickLive}, {PartLevel, TickLevel}, {PartLevelReads, TickLevelReads}}
+
+// PartLive is the reconcile's part: working against the rows' live sets (live.go), first,
+// so the level and the deal plan on what really runs. A STOPPED machine runs it too, alone
+// (Store.Tick's STOPPED branch).
+const PartLive = "live"
+
+// TickLive is the reconcile on a running machine (LiveReturns; tla/LiveRuns.tla Tick).
+func TickLive(s *Snapshot, r TickReq) (Plan, int) { return LiveReturns(s, r.Beats, false), 0 }
 
 // TickEnd is the tick's end, once the tables are settled: what is always
 // true held, the deadlines (with the backlog alarms, alarms.go), the overdue

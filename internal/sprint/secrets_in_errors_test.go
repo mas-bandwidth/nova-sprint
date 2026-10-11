@@ -42,6 +42,7 @@ var sprintSecretOpeners = map[string]any{
 	"internal/sprint.ParseDeadline":         sprint.ParseDeadline,
 	"internal/sprint.ParseFriendReadReport": sprint.ParseFriendReadReport,
 	"internal/sprint.ParseLaneCap":          sprint.ParseLaneCap,
+	"internal/sprint.ParseLive":             sprint.ParseLive,
 	"internal/sprint.ParseMembers":          sprint.ParseMembers,
 	"internal/sprint.ParseReadCard":         sprint.ParseReadCard,
 	"internal/sprint.ParseReaderTiers":      sprint.ParseReaderTiers,
