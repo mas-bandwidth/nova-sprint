@@ -66,15 +66,20 @@ func TestABrokenFindingIsReworkedAtTheBriefBound(t *testing.T) {
 		assert.Equal(t, "Still broken at internal/x.go:12; the guard was never added", w.s.Work.Card("s1-1").F("fix"), "the finding is the fix")
 	})
 
-	t.Run("findings that differ past the attempt cap are still reworked", func(t *testing.T) {
+	t.Run("findings that differ trigger the circuit breaker at 4 consecutive new findings", func(t *testing.T) {
 		t.Parallel()
 		w := setup(t, 1)
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
-		for a := 1; a <= AttemptsDefault+1; a++ {
+		// First 3 attempts with different findings should be reworked
+		for a := 1; a < AttemptsDefault; a++ {
 			attemptFoundBrokenBy(w, "s1-1", "internal/x.go:"+itoa(10+a)+": wrong")
-			require.Empty(t, briefWrong(w), "attempt %d: a broken finding is reworked, not stopped at the cap", a)
+			require.Empty(t, briefWrong(w), "attempt %d: a broken finding is reworked", a)
 			w.must(rework(w))
 		}
+		// The 4th consecutive new finding triggers the circuit breaker
+		attemptFoundBrokenBy(w, "s1-1", "internal/x.go:"+itoa(10+AttemptsDefault)+": wrong")
+		require.NotEmpty(t, briefWrong(w), "attempt 4: circuit breaker trips after 4 consecutive new findings")
+		assert.Contains(t, briefWrong(w)[0].What, "review circuit breaker", "NBriefWrong should mention the circuit breaker")
 	})
 
 	t.Run("another reader class at the same line is another finding", func(t *testing.T) {
