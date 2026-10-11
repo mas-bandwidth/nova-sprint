@@ -51,8 +51,9 @@ func TickRebalance(s *Snapshot, r TickReq) (Plan, int) {
 // Rebalance moves each work card dealt and not started (ready on its row: a friend has not
 // started it, friendStarted; a member has not taken it), queued on a unit whose lanes all
 // work, to a unit with an idle lane that may take it, one move a card, at most the idle
-// lanes. A card stays when it is a read, a sentinel's, of a held stream, a bench card, a
-// hard pin (OnlyFriend), a pin honoured where it sits (its WHO names the friend it is on, or
+// lanes. Read cards use the same full-to-idle rule in rebalanceReads. A work card stays when
+// it is a sentinel's, of a held stream, a bench card, a hard pin (OnlyFriend), a pin honoured
+// where it sits (its WHO names the friend it is on, or
 // a model pin on a member; a WHO: friend card on a friend's row goes to no member), run by a lane (laneRunsIt), or its route rests. A friend may take
 // it when she is dealable, her tiers and the friends' set hold its tier (friendTakes) and it
 // has not left her (friendsLeft); a member up, while the fleet's work is on, when the fleet's

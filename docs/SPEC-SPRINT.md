@@ -1482,10 +1482,16 @@ reader row that does not serve its tier, or to a reader that already read the ca
 attempt; it keeps its attempt number and is dealt again under the new reader's identity, the
 record on the row it left retired. All eligible cards move in the one tick, never one per
 tick (`TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick`,
-`TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick`). The read-card deal spreads a
-burst of reads across the members whose reader rows serve the tier in proportion to their
-idle lanes, never more than a member's room (`DealAhead` times its width, reads at half a
-slot) onto one member while another eligible member has room.
+`TestTheRebalanceMovesAllTheCardsInOneTickNeverOnePerTick`). The read-card deal keeps a
+fleet-table cursor for each read tier (`read_deal_index_<tier>`), persisted with the dealt
+cards for the epoch: restart and switching read cards off and on keep its place; clear starts
+the next epoch at the first reader. Each read goes to the next eligible unit after the
+cursor, advancing past units that are down, do not serve the tier, have no room, refused the
+read at staging, or already read that primary at the attempt. The deal spreads a burst over
+the eligible units in cursor order and never exceeds a unit's room (`DealAhead` times its
+width, reads at half a slot); a full unit is skipped while another has room
+(`TestReadCardDealUsesAPersistedRoundRobinCursor`,
+`TestReadCardDealSkipsAReaderWhoseReadWasRefusedAtStaging`).
 
 ### one-lane-per-card.w1: one lane per card
 
