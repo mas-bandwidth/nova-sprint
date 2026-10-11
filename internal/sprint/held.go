@@ -50,6 +50,7 @@ type CardWait struct {
 
 // WaitOf is the one reading of why a card is not moving: release, its line, or
 // the cards it names and its place in line.
+// tla/Holds.tla WaitOf
 func WaitOf(s *Snapshot, c *Card) CardWait {
 	switch {
 	case c == nil:
