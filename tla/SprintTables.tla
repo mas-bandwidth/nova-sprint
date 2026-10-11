@@ -1,39 +1,64 @@
 -------------------------------- MODULE SprintTables ----------------------------
-\* The card lifecycle of nova-sprint (docs/SPEC-SPRINT.md section 3;
-\* internal/sprint/lifecycle.go), the fleet side of the work table
-\* (internal/sprint/refmodel/actions.go Start, Take, Finish, FleetDown,
-\* FleetUp) and the reads and the accept (refmodel actions.go Ask, AskAnother,
-\* ReadStart, Read, Accept, held to the code's ReadsNeededIn). A primary's six
-\* states and the legal moves between them, in one table, plus the fleet (each
-\* member up or down, a working primary's work card on one member's row in a
-\* place none, ready, working, finished or withdrawn) and the readers (a read
-\* card on one reader's row in a place none, asked, reading, ok or broken).
+\* The card lifecycle of nova-sprint (docs/SPEC-SPRINT.md section 3, the
+\* lifecycle and its inventory of moves; internal/sprint/lifecycle.go Moves and
+\* Lawful), the fleet side of the work table (internal/sprint/refmodel
+\* actions.go Start, Take, Finish, FleetDown, FleetUp) and the reads and the
+\* accept (refmodel actions.go Ask, AskAnother, ReadStart, Read, Accept, held
+\* to the code's ReadsNeededIn). A primary's six states and the lawful moves
+\* between them, in one table, plus its named needs (a variable: needs set and
+\* a brief edit's DEPENDS-ON rewrite them), the fleet (each member up or down, a
+\* working primary's work card on one member's row in a place none, ready,
+\* working, finished or withdrawn) and the readers (a read card on one
+\* reader's row in a place none, asked, reading, ok or broken).
 \*
 \* A primary's state is the work-table column it is placed in. The six states
 \* are waiting, ready, working, review, merging, landed; landed is final. Off
 \* the table (a drop) is not a state: a primary that stops any other way than
 \* landing leaves the table with its record, outcome and reason kept, unplaced.
+\* A landed card that a remove takes off the table keeps its outcome: its
+\* dependents still count it landed (everLanded).
 \*
-\* Moves, one per verb (lifecycle.go Moves):
-\*   resolve      waiting -> ready    (everything it needs has landed)
-\*   start        ready   -> working  (a work card is cut and dealt)
-\*   finish       working -> review
-\*   fleet down   working -> ready
-\*   accept       review  -> merging
-\*   rework       review  -> working   (a member is up)
-\*   rework       review  -> ready     (no member is up)
-\*   return       merging -> review
-\*   redo         merging -> working   (a member is up)
-\*   redo         merging -> ready     (no member is up)
-\*   merge        merging -> landed
-\*   release      waiting -> landed    (a sentinel only)
-\*   add          ready   -> waiting   (a sentinel inserted in front)
-\* Off the table (drop) is legal from every open state.
+\* THE INVENTORY. Every place the code writes a primary's column is one of
+\* these actions (docs/SPEC-SPRINT.md section 3 lists each code site):
+\*   Resolve        waiting -> ready    resolve, the tick's resolve, a waiting
+\*                                      card's release of its hold (releaseHeld)
+\*   Start          ready   -> working  the deal and redeal, machines and friends
+\*   Finish         working -> review   finish
+\*   Withdraw       working -> ready    the work card withdrawn: route rests,
+\*                                      take ended, staging refused, rate
+\*                                      limited, lane cap, friend return,
+\*                                      friend redeal, finish to ready
+\*   FleetDown      working -> ready    no member is up (or the card moves to
+\*                                      another up member, primary working)
+\*   Accept         review  -> merging  accept, the tick's accept
+\*   Rework         review  -> working | ready   rework, a brief edited in
+\*                                      place on a card in review
+\*   Return         merging -> review   return, the tick's short-reads pass,
+\*                                      a refused landing
+\*   Redo           merging -> working | ready   redo, a refused landing
+\*   Merge          merging -> landed   the lander's merge
+\*   Release        waiting -> landed   release of a sentinel (verb or tick)
+\*   AddMove        ready   -> waiting  add inserts a sentinel in front
+\*   NeedsSet       ready   -> waiting | waiting -> ready | in place
+\*                                      needs set, a brief edit's DEPENDS-ON
+\*   NeedsWait      ready   -> waiting  the tick's needs withdrawal of a ready
+\*                                      primary (needsWithdrawals; #96 adds
+\*                                      needsWaits, the same move)
+\*   Waive          waiting -> ready | in place   a waiver (the ack of a
+\*                                      dropped or missing need)
+\*   Drop           open -> off          drop, defer; a landed card by remove
+\* Pending PR #96 (behind the constant Pending96):
+\*   NeedsWithdraw  working -> waiting  a dealt card whose needs have not
+\*                                      landed goes back to the pool. On main
+\*                                      the store refuses it: needsWithdrawals
+\*                                      plans it for a working primary and the
+\*                                      lifecycle refuses the whole unit.
+\* Admission (add, a stream's reopen) is the initial state: a primary is
+\* admitted waiting or ready, a sentinel waiting.
 \*
 \* The fleet side (refmodel actions.go) follows the code:
-\*   Start(p, m)     the deal: a ready primary's work card is dealt to an up
-\*                   member's row (place ready); a withdrawn card is dealt
-\*                   again at a new generation.
+\*   Start(p, m)     the deal: a ready primary whose needs have landed has its
+\*                   work card dealt to an up member's row (place ready).
 \*   Take(c)         the worker on an up member moves a dealt (ready) card to
 \*                   working.
 \*   Finish(c)       the working card finishes; its primary goes to review.
@@ -48,8 +73,7 @@
 \* The reads and the accept (refmodel actions.go, held to readers.go
 \* ReadsNeededIn; lifecycle.go Moves names accept Coordinator):
 \*   Ask(c)          a primary in review asks one more read of a reader other
-\*                   than its worker (ReadersWanted: one for a flash card, two
-\*                   for a pro card).
+\*                   than its worker (one for a flash card, two for a pro card).
 \*   AskAnother(c)   one more reader for a primary already asked, answering a
 \*                   broken read or reads exhausted.
 \*   ReadStart(r)    the reader moves its own asked read to reading.
@@ -59,41 +83,56 @@
 \*                   needs and no broken read stands at its head; its asked
 \*                   and reading read cards retire.
 \*
-\* Invariants: TypeOK, NoNeedCycle, NoCardLostOrTwice, and the action
-\* properties MovesOnlyByTable (every change of cell is a Moves row, a drop
-\* from an open state, or a remove of a landed card), ReadyToWaitingOnlyByInsert,
-\* LandedIsFinal, NeedsLandFirst and WorkingOnAnUpMember (a card in a member's
-\* working cell sits on an up member), plus AcceptHeld (no primary enters
-\* merging short of its reads), NeverAcceptBroken (no primary enters merging
-\* with a broken read at its head) and NeverReadByItsWorker (a read is never
-\* asked of the reader that worked the card).
+\* THE RULES. Invariants: TypeOK, NoNeedCycle, Rule11 (docs/SPEC-SPRINT.md
+\* section 9, rule 11: a primary anywhere but waiting has every named need
+\* landed or waived), AcceptHeld (no primary enters merging short of its
+\* reads), NeverAcceptBroken (no primary enters merging with a broken read at
+\* its head) and NeverReadByItsWorker (a read is never asked of the reader that
+\* worked the card). Action properties: NoCardLostOrTwice, MovesOnlyByTable
+\* (every change of cell is a lawful move, a drop from an open state, or a
+\* remove of a landed card), ReadyToWaitingOnlyByInsertOrNeeds, LandedIsFinal,
+\* NeedsLandFirst (waiting -> ready only with every need landed or waived),
+\* NeedsHeldIntoReady (no move into ready or working with a need not landed)
+\* and WorkingOnAnUpMember.
 \*
-\* Refmodel invariants not stated here. The pending-operation fence (D1: Free,
-\* actions.go free, the refusal "operation %s is pending (D1: Free)" that
-\* guards every one of these actions at actions.go:300, 352, 376, 1071, 1122)
+\* Refmodel invariants not stated here. The pending-operation fence (D1: Free)
 \* is left out: this module has no pending operation, a step is one atomic
 \* move, so there is nothing for the fence to fence. F3 (a stopped stream's
 \* judgment and a skipped repair) and F4 (a merge need placed, in another
-\* stream and not landed) are left out too: they belong to the cards that add
-\* merge and return, and crash and repair.
+\* stream and not landed) are left out too: they belong to the merge and
+\* crash-repair cards.
 \*
-\* Reversed witnesses (Broken):
-\*   "insert"     the add move runs ready -> waiting without inserting.
-\*   "needless"   resolve drops the needs check, so a card with an unmet need
-\*                still moves waiting -> ready.
-\*   "downkeeps"  fleet down leaves a working card on the member that went down.
-\*   "shortaccept" the accept drops the read guard and accepts with one read
-\*                fewer than the tier needs (AcceptHeld fails).
-\*   "acceptbroken" the accept drops the no-broken guard and accepts with a
-\*                broken read at the head (NeverAcceptBroken fails).
-\*
-\* Not modelled here (other cards): merge and return, crash and repair.
+\* Reversed witnesses (Broken), one per rule, each a cfg that must fail:
+\*   "insert"       the add move runs ready -> waiting without inserting
+\*                  (ReadyToWaitingOnlyByInsertOrNeeds).
+\*   "needsany"     a needs rewrite moves a ready card to waiting with every
+\*                  need landed, as lifecycle.go admitted before this card
+\*                  (any needs field) (ReadyToWaitingOnlyByInsertOrNeeds).
+\*   "needless"     resolve drops the needs check (NeedsLandFirst).
+\*   "workingneeds" a needs rewrite gives a working or review card a need not
+\*                  landed, as briefDepends admitted before this card; the
+\*                  card is then withdrawn or reworked to ready with it
+\*                  (Rule11; NeedsHeldIntoReady).
+\*   "cycle"        a needs rewrite skips the cycle check (NoNeedCycle).
+\*   "downkeeps"    fleet down leaves a working card on the member that went
+\*                  down (WorkingOnAnUpMember).
+\*   "shortaccept"  the accept drops the read guard (AcceptHeld).
+\*   "acceptbroken" the accept drops the no-broken guard (NeverAcceptBroken).
+\*   "ownread"      a read is asked of the card's own worker
+\*                  (NeverReadByItsWorker).
+\*   "skip"         the merge lands a card straight from review
+\*                  (MovesOnlyByTable).
+\*   "unland"       the short-reads pass sends a landed card back to review,
+\*                  as ShortReadsBack planned before this card
+\*                  (LandedIsFinal).
+\*   "comeback"     a dropped card is admitted again (NoCardLostOrTwice).
+\* TypeOK has no witness: it is the shape of the variables, not a rule.
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS
   Card,         \* the card ids
   Sentinels,    \* the sentinel ids, a subset of Card
-  NeedsOf,      \* NeedsOf[c] is c's stored needs, a subset of Card
+  NeedsOf,      \* NeedsOf[c] is c's needs at admission, a subset of Card
   Score,        \* Score[c] is c's place in line, a distinct number
   InitOf,       \* InitOf[c] is c's cell at the start: waiting or ready
   Member,       \* the fleet's member ids
@@ -101,6 +140,9 @@ CONSTANTS
   Reader,       \* the readers: one per fleet member (MemberReader) plus friends
   Flash,        \* the flash-tier primaries, a subset of Card (the rest are pro)
   MemberReader, \* the reader on each member (readers == workers per machine)
+  Rewrites,     \* the needs rewrites NeedsSet may write: pairs <<card, needs>>
+                \* (the instance's choice; the code takes any set of cards)
+  Pending96,    \* TRUE: the moves PR #96 adds (working -> waiting) are lawful
   Broken        \* "none", or the one reversed witness to break
 
 States == {"waiting", "ready", "working", "review", "merging", "landed"}
@@ -115,7 +157,7 @@ MStatus == {"up", "down"}
 \* A read card's cell on a reader's row (refmodel state.go ReadCard.Place).
 RPlaces == {"none", "asked", "reading", "ok", "broken"}
 
-\* The lifecycle: every legal move, and nothing else (lifecycle.go Moves).
+\* The lifecycle: every lawful move, and nothing else (lifecycle.go Moves).
 Moves ==
   { <<"waiting", "ready">>,
     <<"ready", "working">>,
@@ -131,25 +173,37 @@ Moves ==
     <<"waiting", "landed">>,
     <<"ready", "waiting">> }
 
-Legal(from, to) == <<from, to>> \in Moves
+\* The move PR #96 adds: a dealt card whose needs have not landed waits again.
+Moves96 == {<<"working", "waiting">>}
+
+LawfulMoves == IF Pending96 THEN Moves \cup Moves96 ELSE Moves
+
+Legal(from, to) == <<from, to>> \in LawfulMoves
 
 \* IsOpen: a primary in s has not landed, so drop may take it off the table.
 IsOpen(s) == s \in {"waiting", "ready", "working", "review", "merging"}
 
 IsSentinel(c) == c \in Sentinels
 
-\* The step's plan flags (lifecycle.go Plan): releasing lands a sentinel,
+\* The plan flags of the step just taken (lifecycle.go Plan): releasing lands a sentinel,
 \* inserting moves a primary ready -> waiting, removing takes a landed primary
 \* off the table. Each is a nondeterministic choice of the plan the step runs.
 Flags == [releasing : BOOLEAN, inserting : BOOLEAN, removing : BOOLEAN]
 
-VARIABLES state, waived, flags, members, wplace, wmember, rplace
+\* An ordinary step's plan: no flag. Release, the add that inserts a sentinel and
+\* the remove set their own flag on the step they take (flags', read by the
+\* rules), so a flag is the plan of that step and never a state carried on.
+NoFlags == [releasing |-> FALSE, inserting |-> FALSE, removing |-> FALSE]
 
-vars == <<state, waived, flags, members, wplace, wmember, rplace>>
+VARIABLES state, needs, waived, everLanded, flags, members, wplace, wmember, rplace
+
+vars == <<state, needs, waived, everLanded, flags, members, wplace, wmember, rplace>>
 
 TypeOK ==
   /\ state \in [Card -> Cells]
+  /\ needs \in [Card -> SUBSET Card]
   /\ waived \in [Card -> SUBSET Card]
+  /\ everLanded \in SUBSET Card
   /\ flags \in Flags
   /\ members \in [Member -> MStatus]
   /\ wplace \in [Card -> WPlaces]
@@ -182,58 +236,69 @@ PositionWaits(c) ==
   THEN {d \in Card : Score[d] < Score[c] /\ state[d] \in States \ {"landed", "off"}}
   ELSE IF state[c] = "waiting" THEN StopBefore(c) ELSE {}
 
-\* NeedsMet (unmet, lifecycle.go): every stored need has landed or was waived.
-NeedsMet(c) ==
-  \A n \in NeedsOf[c] : state[n] = "landed" \/ n \in waived[c]
+\* A need is met once it has landed (a removed landed card keeps its outcome)
+\* or was waived (NamedWaits, steps_work.go; unmet, lifecycle.go).
+MetWith(c, N) == \A n \in N : n \in everLanded \/ n \in waived[c]
+NeedsMet(c) == MetWith(c, needs[c])
 
 \* Nothing in line before c still blocks it.
 PositionClear(c) == \A q \in PositionWaits(c) : state[q] = "landed"
 
+\* What c's needs reach, followed transitively (bounded by the card count, so a
+\* cycle a reversed witness makes still terminates).
+ReachN(c) ==
+  LET RECURSIVE R(_, _)
+      R(S, k) == IF k = 0 THEN S ELSE R(S \cup UNION {needs[x] : x \in S}, k - 1)
+  IN R({c}, Cardinality(Card))
+
+\* Needed(c): a primary still on the table that has not landed names c as a
+\* need it has not waived (drop refuses a needed card without its cascade).
+Needed(c) ==
+  \E d \in Card \ {c} : IsOpen(state[d]) /\ c \in needs[d] /\ c \notin waived[d]
+
 Init ==
   /\ state = InitOf
   /\ \A c \in Sentinels : state[c] = "waiting"
+  /\ needs = NeedsOf
   /\ waived = [c \in Card |-> {}]
-  /\ flags = [releasing |-> FALSE, inserting |-> FALSE, removing |-> FALSE]
+  /\ everLanded = {}
+  /\ flags = NoFlags
   /\ members = [m \in Member |-> IF m \in InitUp THEN "up" ELSE "down"]
   /\ wplace = [c \in Card |-> "none"]
   /\ wmember = [c \in Card |-> CHOOSE m \in Member : TRUE]
   /\ rplace = [c \in Card |-> [r \in Reader |-> "none"]]
 
 \* The effect of one move: c to its new cell; the fleet is untouched and the
-\* step's flags are chosen freely.
+\* step carries no plan flag.
 Move(c, to) ==
   /\ state' = [state EXCEPT ![c] = to]
-  /\ rplace' = rplace
-  /\ UNCHANGED <<waived, members, wplace, wmember>>
-  /\ flags' \in Flags
+  /\ everLanded' = IF to = "landed" THEN everLanded \cup {c} ELSE everLanded
+  /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace>>
+  /\ flags' = NoFlags
 
 \* ------------------------------------------------------------ the reads
 
 \* Needs (readers.go ReadsNeeded, the tier rule of ReadsNeededIn): how many
 \* different readers' ok reads at its head make the primary acceptable: one
-\* for a flash card, two for a pro card. The sprint's setting override
-\* (nova-sprint set --reads) and a landed card's pinned count are outside this
-\* cut (reads and accept under the tier's rule).
-Needs(c) == IF c \in Flash THEN 1 ELSE 2
+\* for a flash card, two for a pro card.
+ReadsNeeded(c) == IF c \in Flash THEN 1 ELSE 2
 
 \* The worker of a primary is the reader of the machine that worked its card
-\* (reader-<m>, one reader per fleet member): its read is never asked of its
-\* own worker (NeverReadByItsWorker).
+\* (reader-<m>, one reader per fleet member).
 Worker(c) == MemberReader[wmember[c]]
 
-\* The primary's live read cards (any cell but none) and the readers whose read
-\* of it is ok at its head.
 LiveReads(c) == {r \in Reader : rplace[c][r] # "none"}
 OkReaders(c) == {r \in Reader : rplace[c][r] = "ok"}
 BrokenRead(c) == \E r \in Reader : rplace[c][r] = "broken"
 
 \* A reader the primary can still be asked of: another reader, not its worker,
-\* with no read card of the primary cut yet.
-FreshReader(c) == Reader \ ({Worker(c)} \cup LiveReads(c))
+\* with no read card of the primary cut yet. The reversed witness "ownread"
+\* lets the worker be asked.
+FreshReader(c) ==
+  IF Broken = "ownread" THEN Reader \ LiveReads(c)
+  ELSE Reader \ ({Worker(c)} \cup LiveReads(c))
 
-\* Acceptable (readers.go): as many different readers as it needs have an ok
-\* read at its head.
-Acceptable(c) == Cardinality(OkReaders(c)) >= Needs(c)
+Acceptable(c) == Cardinality(OkReaders(c)) >= ReadsNeeded(c)
 
 \* ClearReads: the primary's read cards retire (a new attempt), all to none.
 ClearReads(c) == rplace' = [rplace EXCEPT ![c] = [r \in Reader |-> "none"]]
@@ -256,39 +321,36 @@ Resolve ==
     /\ \/ Broken = "needless" \/ NeedsMet(c)
     /\ Move(c, "ready")
 
-\* Start (refmodel Start, actions.go line 299): the deal. ready -> working; the
-\* work card is dealt to an up member's row (place ready). A withdrawn card is
-\* dealt again (a redeal); a card never dealt is cut now. The deal takes any up
-\* member (the round-robin NextMember is a choice, not a safety rule).
+\* Start (refmodel Start; steps_work.go deal and redeal, friend_deal.go): the
+\* deal. ready -> working; the work card is dealt to an up member's row (place
+\* ready). Lawful's needs rule refuses every move to working whose card's
+\* needs have not landed (unmet, lifecycle.go).
 Start ==
   \E c \in Card, m \in Member :
     /\ ~IsSentinel(c)
     /\ state[c] = "ready"
+    /\ NeedsMet(c)
     /\ wplace[c] \in {"none", "withdrawn"}
     /\ members[m] = "up"
     /\ state' = [state EXCEPT ![c] = "working"]
     /\ wplace' = [wplace EXCEPT ![c] = "ready"]
     /\ wmember' = [wmember EXCEPT ![c] = m]
-    /\ rplace' = rplace
-    /\ UNCHANGED <<waived, members>>
-    /\ flags' \in Flags
+    /\ UNCHANGED <<needs, waived, everLanded, members, rplace>>
+    /\ flags' = NoFlags
 
-\* Take (refmodel Take, actions.go line 351): the worker on an up member moves
-\* a dealt (ready) work card to working. The primary's state does not change.
-\* The take names the live generation (F2): a stale take is a refusal, so the
-\* model has no step for it and no separate invariant to state.
+\* Take (refmodel Take): the worker on an up member moves a dealt (ready) work
+\* card to working. The primary's state does not change.
 Take ==
   \E c \in Card :
     /\ state[c] = "working"
     /\ wplace[c] = "ready"
     /\ members[wmember[c]] = "up"
     /\ wplace' = [wplace EXCEPT ![c] = "working"]
-    /\ UNCHANGED <<state, waived, members, wmember, rplace>>
-    /\ flags' \in Flags
+    /\ UNCHANGED <<state, needs, waived, everLanded, members, wmember, rplace>>
+    /\ flags' = NoFlags
 
-\* Finish (refmodel Finish, actions.go line 375): working -> review; the work
-\* card finishes in its member's working cell. Accepted only for the live
-\* generation in the member's working cell (D3): a stale finish is a refusal.
+\* Finish (refmodel Finish): working -> review; the work card finishes in its
+\* member's working cell.
 Finish ==
   \E c \in Card :
     /\ state[c] = "working"
@@ -296,14 +358,27 @@ Finish ==
     /\ members[wmember[c]] = "up"
     /\ state' = [state EXCEPT ![c] = "review"]
     /\ wplace' = [wplace EXCEPT ![c] = "finished"]
-    /\ UNCHANGED <<waived, members, wmember, rplace>>
-    /\ flags' \in Flags
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace>>
+    /\ flags' = NoFlags
 
-\* FleetDown (refmodel FleetDown, actions.go line 1070): the member goes down;
-\* its ready and working cards are dealt to the other up members (place ready,
-\* their primaries stay working), or, with no member up, withdrawn (their
-\* primaries return to ready). The reversed witness "downkeeps" leaves a
-\* working card on the member that went down.
+\* Withdraw: working -> ready, the work card withdrawn with its attempt
+\* unchanged, for every cause but fleet down (withdrawUnit and the route rest,
+\* takeEnded, stagingRefused, rateLimitedReturned, capRedeal, FriendReturn,
+\* TickFriendRedeal, finishPlan's return to ready).
+Withdraw ==
+  \E c \in Card :
+    /\ state[c] = "working"
+    /\ wplace[c] \in {"ready", "working", "finished"}
+    /\ state' = [state EXCEPT ![c] = "ready"]
+    /\ wplace' = [wplace EXCEPT ![c] = "withdrawn"]
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace>>
+    /\ flags' = NoFlags
+
+\* FleetDown (refmodel FleetDown): the member goes down; its ready and working
+\* cards are dealt to the other up members (place ready, their primaries stay
+\* working), or, with no member up, withdrawn (their primaries return to
+\* ready). The reversed witness "downkeeps" leaves a working card on the member
+\* that went down.
 FleetDown ==
   \E m \in Up :
     /\ members' = [members EXCEPT ![m] = "down"]
@@ -318,226 +393,314 @@ FleetDown ==
           /\ state' = [c \in Card |-> IF c \in HeldOn(m) THEN "ready" ELSE state[c]]
           /\ wplace' = [c \in Card |-> IF c \in HeldOn(m) THEN "withdrawn" ELSE wplace[c]]
           /\ wmember' = wmember
-    /\ UNCHANGED <<waived, rplace>>
-    /\ flags' \in Flags
+    /\ UNCHANGED <<needs, waived, everLanded, rplace>>
+    /\ flags' = NoFlags
 
-\* FleetUp (refmodel FleetUp, actions.go line 1121): the member comes up. The
-\* levelling of the ready queues (T4, the Level action) is not modelled.
+\* FleetUp (refmodel FleetUp): the member comes up.
 FleetUp ==
   \E m \in Member :
     /\ members[m] = "down"
     /\ members' = [members EXCEPT ![m] = "up"]
-    /\ UNCHANGED <<state, waived, wplace, wmember, rplace>>
-    /\ flags' \in Flags
+    /\ UNCHANGED <<state, needs, waived, everLanded, wplace, wmember, rplace>>
+    /\ flags' = NoFlags
 
-\* Ask (refmodel Ask, actions.go line 420): the primary in review asks one more
-\* read of a reader other than its worker, distinct from the readers already
-\* standing. Refused with fewer than two readers; never once a read found it
-\* broken (the rework asks next).
+\* Ask (refmodel Ask): the primary in review asks one more read of a reader
+\* other than its worker, distinct from the readers already standing.
 Ask ==
   \E c \in Card :
     /\ ~IsSentinel(c)
     /\ state[c] = "review"
     /\ ~BrokenRead(c)
     /\ Cardinality(Reader) >= 2
-    /\ Cardinality(LiveReads(c)) < Needs(c)
+    /\ Cardinality(LiveReads(c)) < ReadsNeeded(c)
     /\ \E r \in FreshReader(c) :
          /\ rplace' = [rplace EXCEPT ![c][r] = "asked"]
-         /\ UNCHANGED <<state, waived, members, wplace, wmember>>
-    /\ flags' \in Flags
+         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember>>
+    /\ flags' = NoFlags
 
-\* AskAnother (refmodel AskAnother, actions.go line 480): one more reader for a
-\* primary already asked, answering a broken read or reads exhausted.
+\* AskAnother (refmodel AskAnother): one more reader for a primary already
+\* asked, answering a broken read or reads exhausted.
 AskAnother ==
   \E c \in Card :
     /\ ~IsSentinel(c)
     /\ state[c] = "review"
     /\ LiveReads(c) # {}
-    /\ (BrokenRead(c) \/ Cardinality(LiveReads(c)) >= Needs(c))
+    /\ (BrokenRead(c) \/ Cardinality(LiveReads(c)) >= ReadsNeeded(c))
     /\ \E r \in FreshReader(c) :
          /\ rplace' = [rplace EXCEPT ![c][r] = "asked"]
-         /\ UNCHANGED <<state, waived, members, wplace, wmember>>
-    /\ flags' \in Flags
+         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember>>
+    /\ flags' = NoFlags
 
-\* ReadStart (refmodel ReadStart, actions.go line 514): the reader moves its own
-\* asked read to reading.
+\* ReadStart (refmodel ReadStart): the reader moves its own asked read to
+\* reading.
 ReadStart ==
   \E r \in Reader :
-    /\ \E c \in Card : rplace[c][r] = "asked"
     /\ \E c \in Card :
          /\ rplace[c][r] = "asked"
          /\ rplace' = [rplace EXCEPT ![c][r] = "reading"]
-         /\ UNCHANGED <<state, waived, members, wplace, wmember>>
-    /\ flags' \in Flags
+         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember>>
+    /\ flags' = NoFlags
 
-\* Read (refmodel Read, actions.go line 536): the reader records ok or broken.
-\* A report on a read still asked is the begin and the report in one step.
+\* Read (refmodel Read): the reader records ok or broken.
 Read ==
   \E r \in Reader :
-    /\ \E c \in Card : rplace[c][r] \in {"asked", "reading"}
     /\ \E c \in Card, v \in {"ok", "broken"} :
          /\ rplace[c][r] \in {"asked", "reading"}
          /\ rplace' = [rplace EXCEPT ![c][r] = v]
-         /\ UNCHANGED <<state, waived, members, wplace, wmember>>
-    /\ flags' \in Flags
+         /\ UNCHANGED <<state, needs, waived, everLanded, members, wplace, wmember>>
+    /\ flags' = NoFlags
 
-\* accept: review -> merging when the primary has the reads its tier needs
-\* (refmodel Accept, actions.go line 593, held to ReadsNeededIn: one for a
-\* flash card, two for a pro card) and no broken read stands at its head
-\* (steps_review.go hasBrokenAtHead: a broken verdict at the same head
-\* outweighs any number of oks; NeverAcceptBroken). Named, one primary at a
-\* time, all or nothing (D4); its asked and reading read cards retire (F1).
-\* The reversed witnesses: "shortaccept" drops the read guard and accepts with
-\* one read fewer, and "acceptbroken" drops the no-broken guard and accepts
-\* with a broken read at the head.
+\* accept: review -> merging when the primary has the reads its tier needs and
+\* no broken read stands at its head (steps_review.go Accept, TickAccept).
 Accept ==
   \E c \in Card :
     /\ ~IsSentinel(c)
     /\ state[c] = "review"
-    /\ \/ /\ \/ Acceptable(c)
-             \/ /\ Broken = "shortaccept"
-                /\ Cardinality(OkReaders(c)) >= Needs(c) - 1
-          /\ \/ Broken = "acceptbroken" \/ ~BrokenRead(c)
+    /\ \/ Acceptable(c)
+       \/ /\ Broken = "shortaccept"
+          /\ Cardinality(OkReaders(c)) >= ReadsNeeded(c) - 1
+    /\ Broken = "acceptbroken" \/ ~BrokenRead(c)
     /\ state' = [state EXCEPT ![c] = "merging"]
     /\ RetireOutstanding(c)
-    /\ UNCHANGED <<waived, members, wplace, wmember>>
-    /\ flags' \in Flags
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember>>
+    /\ flags' = NoFlags
 
-\* rework: review -> working (a member is up) or review -> ready (none is up);
-\* the primary's read cards retire (a new attempt).
-Rework ==
+\* NextAttempt(c, from): rework and redo (and a brief edited in place on a card
+\* in review): the next attempt is dealt at once to an up member (to working,
+\* the needs rule held as at any deal), or the card goes to ready and the deal
+\* cuts it later; the old work card is retired and the read cards retire.
+NextAttempt(c, from) ==
+  /\ state[c] = from
+  /\ \/ \E m \in Up :
+          /\ NeedsMet(c)
+          /\ state' = [state EXCEPT ![c] = "working"]
+          /\ wplace' = [wplace EXCEPT ![c] = "ready"]
+          /\ wmember' = [wmember EXCEPT ![c] = m]
+     \/ /\ state' = [state EXCEPT ![c] = "ready"]
+        /\ wplace' = [wplace EXCEPT ![c] = "none"]
+        /\ wmember' = wmember
+  /\ ClearReads(c)
+  /\ UNCHANGED <<needs, waived, everLanded, members>>
+  /\ flags' = NoFlags
+
+\* rework: review -> working (a member is up) or review -> ready.
+Rework == \E c \in Card : ~IsSentinel(c) /\ NextAttempt(c, "review")
+
+\* return: merging -> review (return, the tick's short-reads pass, a refused
+\* landing). The read cards at the attempt stand. The reversed witness
+\* "unland" takes a landed card back too, as ShortReadsBack planned before
+\* this card (the store refused it).
+Return ==
   \E c \in Card :
-    /\ state[c] = "review"
-    /\ \/ state' = [state EXCEPT ![c] = "working"]
-       \/ state' = [state EXCEPT ![c] = "ready"]
-    /\ ClearReads(c)
-    /\ UNCHANGED <<waived, members, wplace, wmember>>
-    /\ flags' \in Flags
+    /\ \/ state[c] = "merging"
+       \/ Broken = "unland" /\ state[c] = "landed" /\ ~IsSentinel(c)
+    /\ Move(c, "review")
 
-\* return: merging -> review. The read cards at the attempt stand (the refmodel's
-\* Return does not retire them); the machine's hold on a returned card is out of
-\* this cut.
-Return == \E c \in Card : state[c] = "merging" /\ Move(c, "review")
+\* redo: merging -> working (a member is up) or merging -> ready.
+Redo == \E c \in Card : ~IsSentinel(c) /\ NextAttempt(c, "merging")
 
-\* redo: merging -> working (a member is up) or merging -> ready (none is up);
-\* the read cards retire (a new attempt).
-Redo ==
+\* merge: merging -> landed. The reversed witness "skip" lands a card straight
+\* from review.
+Merge ==
   \E c \in Card :
-    /\ state[c] = "merging"
-    /\ \/ state' = [state EXCEPT ![c] = "working"]
-       \/ state' = [state EXCEPT ![c] = "ready"]
-    /\ ClearReads(c)
-    /\ UNCHANGED <<waived, members, wplace, wmember>>
-    /\ flags' \in Flags
-
-\* merge: merging -> landed.
-Merge == \E c \in Card : state[c] = "merging" /\ Move(c, "landed")
+    /\ \/ state[c] = "merging"
+       \/ Broken = "skip" /\ state[c] = "review"
+    /\ Move(c, "landed")
 
 \* release: waiting -> landed, a sentinel only, and only by the plan's release.
 Release ==
   \E c \in Card :
     /\ IsSentinel(c)
     /\ state[c] = "waiting"
-    /\ flags.releasing
-    /\ Move(c, "landed")
+    /\ state' = [state EXCEPT ![c] = "landed"]
+    /\ everLanded' = everLanded \cup {c}
+    /\ UNCHANGED <<needs, waived, members, wplace, wmember, rplace>>
+    /\ flags' = [NoFlags EXCEPT !.releasing = TRUE]
 
-\* add: ready -> waiting, only as the effect of inserting a sentinel in front.
-\* The reversed witness "insert" lets it run without inserting.
+\* add: ready -> waiting as the effect of inserting a sentinel in front. The
+\* reversed witness "insert" lets it run without inserting.
 AddMove ==
   \E c \in Card :
+    /\ ~IsSentinel(c)
     /\ state[c] = "ready"
-    /\ \/ Broken = "insert" \/ flags.inserting
+    /\ state' = [state EXCEPT ![c] = "waiting"]
+    /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace>>
+    /\ flags' = [NoFlags EXCEPT !.inserting = (Broken # "insert")]
+
+\* NeedsSet: needs set, and a brief edit's DEPENDS-ON (steps_edit.go NeedsSet,
+\* Brief, briefInPlace, briefDepends): a primary's needs become N, each a card
+\* on the table, never the card itself, never closing a cycle. A ready card
+\* that gains a need not landed moves ready -> waiting; a waiting card whose
+\* new needs have all landed moves waiting -> ready (refused while its place in
+\* line still blocks it); a working or review card takes only needs that have
+\* landed (rule 11). The reversed witnesses: "workingneeds" lets a working or
+\* review card take a need not landed, "needsany" moves a ready card to waiting
+\* with every need landed, "cycle" skips the cycle check.
+NeedsSet ==
+  \E rw \in Rewrites :
+   LET c == rw[1]
+       N == rw[2]
+   IN
+    /\ ~IsSentinel(c)
+    /\ c \notin N
+    /\ state[c] \in {"waiting", "ready", "working", "review"}
+    /\ N # needs[c]
+    /\ \A d \in N : state[d] # "off"
+    /\ Broken = "cycle" \/ \A d \in N : c \notin ReachN(d)
+    /\ needs' = [needs EXCEPT ![c] = N]
+    /\ \/ /\ state[c] \in {"working", "review"}
+          /\ Broken = "workingneeds" \/ MetWith(c, N)
+          /\ state' = state
+       \/ /\ state[c] = "ready"
+          /\ MetWith(c, N)
+          /\ \/ state' = state
+             \/ Broken = "needsany" /\ N # {} /\ state' = [state EXCEPT ![c] = "waiting"]
+       \/ /\ state[c] = "ready"
+          /\ ~MetWith(c, N)
+          /\ state' = [state EXCEPT ![c] = "waiting"]
+       \/ /\ state[c] = "waiting"
+          /\ MetWith(c, N)
+          /\ PositionClear(c)
+          /\ state' = [state EXCEPT ![c] = "ready"]
+       \/ /\ state[c] = "waiting"
+          /\ ~MetWith(c, N)
+          /\ state' = state
+    /\ UNCHANGED <<waived, everLanded, members, wplace, wmember, rplace>>
+    /\ flags' = NoFlags
+
+\* NeedsWait: the tick's needs withdrawal of a ready primary whose named needs
+\* have not landed: ready -> waiting (needsWithdrawals on a ready primary; PR
+\* #96's needsWaits pass is the same move). Under Rule11 it is never enabled.
+NeedsWait ==
+  \E c \in Card :
+    /\ ~IsSentinel(c)
+    /\ state[c] = "ready"
+    /\ ~NeedsMet(c)
     /\ Move(c, "waiting")
 
-\* drop: off the table, from an open state; a landed primary leaves only by the
-\* plan's remove. The primary's work card leaves the fleet with it.
+\* NeedsWithdraw (pending PR #96): a dealt, untaken card whose needs have not
+\* landed goes back to the pool and its primary waits: working -> waiting. On
+\* main the store refuses this unit, so it is no step (Pending96 = FALSE).
+NeedsWithdraw ==
+  /\ Pending96
+  /\ \E c \in Card :
+       /\ state[c] = "working"
+       /\ wplace[c] = "ready"
+       /\ ~NeedsMet(c)
+       /\ state' = [state EXCEPT ![c] = "waiting"]
+       /\ wplace' = [wplace EXCEPT ![c] = "none"]
+       /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace>>
+       /\ flags' = NoFlags
+
+\* drop: off the table, from an open state, never a card another open card
+\* still needs (drop refuses it without its cascade; defer is drop from
+\* waiting); a landed primary leaves only by the plan's remove. The primary's
+\* work card leaves the fleet with it.
 Drop ==
   \E c \in Card :
-    /\ state[c] \in States
-    /\ IsOpen(state[c]) \/ flags.removing
+    /\ \/ IsOpen(state[c]) /\ ~Needed(c)
+       \/ state[c] = "landed"
     /\ state' = [state EXCEPT ![c] = "off"]
     /\ wplace' = [wplace EXCEPT ![c] = "none"]
     /\ ClearReads(c)
-    /\ UNCHANGED <<waived, members, wmember>>
-    /\ flags' \in Flags
+    /\ UNCHANGED <<needs, waived, everLanded, members, wmember>>
+    /\ flags' = [NoFlags EXCEPT !.removing = (state[c] = "landed")]
 
-\* waive: the coordinator waives a need; a waived need counts as met.
+\* The reversed witness "comeback": a dropped card is admitted again.
+Comeback ==
+  /\ Broken = "comeback"
+  /\ \E c \in Card : state[c] = "off" /\ Move(c, "waiting")
+
+\* waive: the coordinator waives a need; a waived need counts as met. The ack
+\* moves a waiting card ready in the same step when nothing else holds it
+\* (steps_ack.go waive).
 Waive ==
   \E c \in Card :
-    \E n \in NeedsOf[c] :
+    \E n \in needs[c] \ waived[c] :
       /\ waived' = [waived EXCEPT ![c] = waived[c] \cup {n}]
-      /\ UNCHANGED <<state, members, wplace, wmember, rplace>>
-      /\ flags' \in Flags
+      /\ \/ state' = state
+         \/ /\ ~IsSentinel(c)
+            /\ state[c] = "waiting"
+            /\ PositionClear(c)
+            /\ \A x \in needs[c] : x \in everLanded \/ x \in waived'[c]
+            /\ state' = [state EXCEPT ![c] = "ready"]
+      /\ UNCHANGED <<needs, everLanded, members, wplace, wmember, rplace>>
+      /\ flags' = NoFlags
 
 Next ==
-  \/ Resolve \/ Start \/ Take \/ Finish \/ FleetDown \/ FleetUp
+  \/ Resolve \/ Start \/ Take \/ Finish \/ Withdraw \/ FleetDown \/ FleetUp
   \/ Ask \/ AskAnother \/ ReadStart \/ Read
   \/ Accept \/ Rework \/ Return \/ Redo \/ Merge \/ Release \/ AddMove
-  \/ Drop \/ Waive
+  \/ NeedsSet \/ NeedsWait \/ NeedsWithdraw
+  \/ Drop \/ Comeback \/ Waive
 
 Spec == Init /\ [][Next]_vars
 
 \* ------------------------------------------------------------- the rules
 
 \* NoNeedCycle: no card's needs, followed transitively, come back to it.
-Reach(c) ==
-  LET RECURSIVE Desc(_)
-      Desc(x) == {x} \cup UNION {Desc(n) : n \in NeedsOf[x]}
-  IN Desc(c)
+NoNeedCycle == \A c \in Card : c \notin UNION {ReachN(n) : n \in needs[c]}
 
-NoNeedCycle == \A c \in Card : c \notin (Reach(c) \ {c})
+\* Rule11 (docs/SPEC-SPRINT.md section 9, rule 11; check.go): a primary
+\* anywhere but waiting has every need landed or waived.
+Rule11 ==
+  \A c \in Card \ Sentinels :
+    state[c] \in {"ready", "working", "review", "merging", "landed"} => NeedsMet(c)
 
 \* NoCardLostOrTwice: a card that leaves the table (a drop or a remove) never
 \* comes back; its record is kept, unplaced, and no card is admitted twice.
 NoCardLostOrTwice ==
   [][\A c \in Card : state[c] = "off" => state'[c] = "off"]_vars
 
-\* MovesOnlyByTable: every change of cell is a row of Moves, a drop from an
+\* MovesOnlyByTable: every change of cell is a lawful move, a drop from an
 \* open state, or a remove of a landed card.
 MovesOnlyByTable ==
   [][\A c \in Card :
     \/ state'[c] = state[c]
-    \/ <<state[c], state'[c]>> \in Moves
+    \/ Legal(state[c], state'[c])
     \/ /\ state'[c] = "off"
-       /\ (IsOpen(state[c]) \/ flags.removing)]_vars
+       /\ (IsOpen(state[c]) \/ flags'.removing)]_vars
 
-\* ReadyToWaitingOnlyByInsert: a primary moves ready -> waiting only as the
-\* effect of inserting a sentinel in front of it.
-ReadyToWaitingOnlyByInsert ==
+\* ReadyToWaitingOnlyByInsertOrNeeds: a primary moves ready -> waiting only as
+\* the effect of inserting a sentinel in front of it, or with a named need
+\* that has not landed (lifecycle.go needsOpen).
+ReadyToWaitingOnlyByInsertOrNeeds ==
   [][\A c \in Card :
-    state[c] = "ready" /\ state'[c] = "waiting" => flags.inserting]_vars
+    state[c] = "ready" /\ state'[c] = "waiting" => flags'.inserting \/ ~((NeedsMet(c))')]_vars
 
 \* LandedIsFinal: a landed primary stays landed; only a remove takes it off
 \* the table, and it never moves to another state.
 LandedIsFinal ==
   [][\A c \in Card : state[c] = "landed" => state'[c] \in {"landed", "off"}]_vars
 
-\* NeedsLandFirst: a card leaves waiting for ready only with every need landed
-\* or waived.
+\* NeedsLandFirst: a card leaves waiting for ready only with every need (as
+\* the step leaves them) landed or waived.
 NeedsLandFirst ==
   [][\A c \in Card :
-    state[c] = "waiting" /\ state'[c] = "ready" => NeedsMet(c)]_vars
+    state[c] = "waiting" /\ state'[c] = "ready" => (NeedsMet(c))']_vars
 
-\* WorkingOnAnUpMember: a card in a member's working cell sits on an up member
-\* (a member that goes down keeps no working card; a take moves a ready card to
-\* working only on an up member).
+\* NeedsHeldIntoReady: no primary moves into ready or into working (from any
+\* state: a withdrawal, a rework, a redo, a deal) with a need not landed; the
+\* reversed witness is a working card given a need not landed and then
+\* withdrawn to ready.
+NeedsHeldIntoReady ==
+  [][\A c \in Card \ Sentinels : \A s \in {"ready", "working"} :
+    state'[c] = s /\ state[c] # s => (NeedsMet(c))']_vars
+
+\* WorkingOnAnUpMember: a card in a member's working cell sits on an up member.
 WorkingOnAnUpMember ==
   [][\A c \in Card :
     wplace[c] = "working" => members[wmember[c]] = "up"]_vars
 
-\* AcceptHeld: the accept holds to the reads: no primary enters merging without
-\* ok read cards from as many different readers at its head as its tier needs
-\* (readers.go ReadsNeededIn).
+\* AcceptHeld: no primary enters merging without ok read cards from as many
+\* different readers at its head as its tier needs.
 AcceptHeld == \A c \in Card : state[c] = "merging" => Acceptable(c)
 
-\* NeverAcceptBroken: the accept never queues a head a reader found broken
-\* (readers.go hasBrokenAtHead, docs/SPEC-SPRINT.md section 8, the read-broken
-\* rule): no primary enters merging with a broken read standing at its head.
+\* NeverAcceptBroken: no primary enters merging with a broken read standing at
+\* its head.
 NeverAcceptBroken == \A c \in Card : state[c] = "merging" => ~BrokenRead(c)
 
-\* NeverReadByItsWorker: a primary's read is never asked of its own worker
-\* (readers.go: the reader ran the program itself; a read is asked of readers
-\* other than its worker).
+\* NeverReadByItsWorker: a primary's read is never asked of its own worker.
 NeverReadByItsWorker ==
   \A c \in Card, r \in Reader : rplace[c][r] # "none" => r # Worker(c)
 

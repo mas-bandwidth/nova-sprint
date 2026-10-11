@@ -145,6 +145,22 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// in this same unit (unmet and Lawful accept the move).
 		cur, want := Split(c.F("needs")), b.Needs
 		toWaiting := false
+		if !sameNeeds(cur, want) && (c.Col == Working || c.Col == Review) {
+			// a card working or in review takes no need that has not landed
+			// (docs/SPEC-SPRINT.md section 9, rule 11): it has no move back to
+			// waiting, and a rework would take it to ready with the need unlanded
+			// (tla/SprintTables.tla NeedsHeldIntoReady, witness "workingneeds")
+			var open []string
+			for _, n := range want {
+				if !contains(cur, n) && s.StateOf(n) != Landed {
+					open = append(open, n)
+				}
+			}
+			if len(open) > 0 {
+				p.refuse(c.ID, fmt.Sprintf("%s is %s and its DEPENDS-ON names %s, not landed: a card past waiting has every need landed (rule 11); nothing was changed; name it once it lands", c.ID, c.Col, strings.Join(open, ",")))
+				continue
+			}
+		}
 		if !sameNeeds(cur, want) {
 			if len(want) > 0 {
 				set["needs"] = strings.Join(want, ",")
@@ -511,10 +527,13 @@ func dependsOnly(old, brief string) bool {
 // state, on a RUNNING machine and for a card dealt (it applies to the next
 // attempt), since re-pointing a card's needs after a drop is not a change of
 // its task (the comfort list of 2026-10-03, item 2). The card's needs become
-// the line's: each a primary on the table, not the card itself; a ready card
-// takes no need that has not landed (the deal would run it first: ready ->
-// waiting is only a sentinel's effect, lifecycle.go). The brief decision and
-// the grade were over the same task and stay.
+// the line's: each a primary on the table, not the card itself; a card past
+// waiting (ready, working, in review) takes no need that has not landed:
+// docs/SPEC-SPRINT.md section 9, rule 11, a primary anywhere but waiting has
+// every need landed or waived (tla/SprintTables.tla Rule11 and its reversed
+// witness "workingneeds": a working card given a need not landed is withdrawn
+// back to ready with it). The brief decision and the grade were over the same
+// task and stay.
 func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string) Plan {
 	for _, n := range needs {
 		nc := s.Work.Card(n)
@@ -527,6 +546,9 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string) Pl
 			return p
 		case c.Col == string(Ready) && nc.Col != string(Landed):
 			p.refuse(c.ID, fmt.Sprintf("%s is ready and DEPENDS-ON names %s (%s), not landed: a ready card would be dealt before its need; nothing was changed; run: nova-sprint drop %s --reason '<why>', then nova-sprint add --stream %s %s --brief-file <path>", c.ID, n, nc.Col, c.ID, c.Row, c.ID))
+			return p
+		case c.Col != string(Waiting) && nc.Col != string(Landed):
+			p.refuse(c.ID, fmt.Sprintf("%s is %s and DEPENDS-ON names %s (%s), not landed: a card past waiting has every need landed (rule 11); nothing was changed; name %s once it lands, or after %s is back in waiting", c.ID, c.Col, n, nc.Col, n, c.ID))
 			return p
 		}
 	}
@@ -558,8 +580,9 @@ type NeedsSetReq struct {
 // (steps_edit.go, Brief and briefDepends): it rewrites the brief's needs line so
 // card <id> shows the truth, and moves the card by the lifecycle: a ready card
 // that gains a need not landed moves ready -> waiting, a waiting card whose new
-// needs have all landed moves waiting -> ready, and a card dealt or working
-// keeps its attempt with the new needs applying from its next deal. A landed or
+// needs have all landed moves waiting -> ready, and a card dealt, working or in
+// review keeps its attempt and takes new needs only when each has landed (rule
+// 11, briefDepends). A landed or
 // off-table card, a sentinel, and a need that is no primary on the table (named
 // whole) are refused, nothing written. Coordinator-only (docs/SPEC-SPRINT.md,
 // needs). It is the one writer of a primary's needs, with the brief edit.

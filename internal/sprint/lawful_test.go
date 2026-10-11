@@ -26,6 +26,30 @@ func TestLawfulRefusedLandingSatisfiesNoNeed(t *testing.T) {
 	require.Contains(t, p.Refused[1].Why, "b needs s1-1", "a refused landing lent to a waiter: %+v", p)
 }
 
+// ready -> waiting carries its cause (docs/SPEC-SPRINT.md section 3): a
+// sentinel inserted, or a named need not landed. Needs that have all landed
+// move nothing back to waiting (tla/SprintTables.tla
+// ReadyToWaitingOnlyByInsertOrNeeds, witness "needsany").
+func TestLawfulReadyToWaitingNeedsANeedNotLanded(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 2) // s1-1 and s1-2 ready
+	w.place(w.s.Work, "s1-2", "s1", Landed)
+	s11 := w.s.Work.Card("s1-1")
+	back := func(needs string) Plan {
+		p := Plan{Units: []Unit{{Key: "s1-1", Changes: []Change{change(Work, moveEntry(s11, s11.Row, Waiting, map[string]string{"needs": needs}))}}}}
+		p.on(w.s)
+		return Lawful(p)
+	}
+	p := back("s1-2")
+	require.Empty(t, p.Units, "a need landed moved a ready card back: %+v", p)
+	require.Len(t, p.Refused, 1)
+	require.Contains(t, p.Refused[0].Why, "ready -> waiting only")
+	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"n"}}))
+	p = back("s1-2,n")
+	require.Len(t, p.Units, 1, "a need not landed moves it back: %+v", p)
+	require.Empty(t, p.Refused)
+}
+
 // A work-table move whose expectation names no place is judged from the
 // pre-state; one the pre-state does not hold is refused.
 func TestLawfulMoveWithoutPlace(t *testing.T) {

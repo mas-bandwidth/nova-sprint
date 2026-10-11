@@ -9,11 +9,11 @@ import (
 
 // A brief that differs in its DEPENDS-ON: line alone is taken on a RUNNING
 // machine (applied by the next tick, as every work-table change is while it
-// runs) and for a card dealt, its needs re-pointed (the comfort list of
-// 2026-10-03, item 2: re-pointing six dependants after a drop meant stop, six
-// briefs, start); a waiting card's whole brief is replaced while the machine
-// runs, and a dealt card's whole brief is still refused; a need that is no primary
-// on the table, the card itself, or one not landed for a ready card is refused.
+// runs), its needs re-pointed (the comfort list of 2026-10-03, item 2:
+// re-pointing six dependants after a drop meant stop, six briefs, start); a
+// waiting card's whole brief is replaced while the machine runs; a need that is
+// no primary on the table, the card itself, or one not landed for a card past
+// waiting (ready or dealt; rule 11) is refused.
 func TestBriefDependsOnOnlyChangeIsTakenInAnyState(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
@@ -53,14 +53,19 @@ func TestBriefDependsOnOnlyChangeIsTakenInAnyState(t *testing.T) {
 	assert.Equal(t, "a-3", ta.primary("a-2").F("needs"))
 	assert.Equal(t, "waiting", ta.primary("a-2").Col)
 
-	// a card dealt: the change applies to its next attempt, the needs follow
+	// a card dealt takes no need that has not landed (docs/SPEC-SPRINT.md section 9,
+	// rule 11: a primary anywhere but waiting has every need landed or waived), by a
+	// DEPENDS-ON change alone or by a whole brief: nothing is changed
 	require.Equal(t, "working", ta.primary("a-1").Col, "the tick dealt a-1")
-	out = ta.ok("brief a-1 --brief-file " + writeHeaderBrief(t, t.TempDir(), "a-1", "a-3", "internal/a1.go"))
-	assert.Contains(t, out, "MOVED a-1 DEPENDS-ON replaced: needs a-3 ")
-	ta.ok("tick")
-	assert.Equal(t, "a-3", ta.primary("a-1").F("needs"))
-	assert.Contains(t, ta.primary("a-1").F("brief"), "DEPENDS-ON: a-3\n")
+	for _, paths := range []string{"internal/a1.go", "internal/other.go"} {
+		code, _, errs := ta.do("brief a-1 --brief-file " + writeHeaderBrief(t, t.TempDir(), "a-1", "a-3", paths))
+		assert.Equal(t, 1, code, paths)
+		assert.Contains(t, errs, "rule 11", paths)
+		assert.Contains(t, errs, "nothing was changed", paths)
+	}
+	assert.Equal(t, "", ta.primary("a-1").F("needs"))
 	assert.Equal(t, "working", ta.primary("a-1").Col)
-	out = ta.ok("brief a-1 --brief-file " + writeHeaderBrief(t, t.TempDir(), "a-1", "a-3", "internal/other.go"))
+	// its whole brief with no new need is edited in place
+	out = ta.ok("brief a-1 --brief-file " + writeHeaderBrief(t, t.TempDir(), "a-1", "-", "internal/other.go"))
 	assert.Contains(t, out, "a-1 brief edited in place")
 }

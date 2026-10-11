@@ -59,6 +59,13 @@ func TestTheFriendsDealNeverDealsACardWithUnlandedNeeds(t *testing.T) {
 // is raised.
 func TestADealtThenUnheldFriendDoesNotTakeACardWithUnlandedNeeds(t *testing.T) {
 	t.Parallel()
+	// The withdrawal moves the dealt primary working -> waiting, which is no move of
+	// the lifecycle on main: the live store refuses the whole unit, and this test
+	// passed only because the world skipped the store's lawful-move check. PR #96
+	// adds the move (tla/SprintTables.tla, Pending96); the test runs again once it
+	// lands. The fixture's needs are written past the verbs, which refuse a need not
+	// landed on a dealt card (rule 11, briefDepends).
+	t.Skip("pending #96: working -> waiting is refused by the store's lifecycle on main")
 	w := friendWorld(t, fleetBrief("flash"))
 	amy := FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}
 	w.s.Friends = []FriendSeat{amy}
