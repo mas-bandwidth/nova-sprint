@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
 )
 
 // baseTwin is a twin of the server's repository: origin (bare) with main, the sprint base,
@@ -126,7 +127,7 @@ func TestSwitchFromBaseRefusesOffBaseAndRecordsTheBase(t *testing.T) {
 
 	stamped := func(name, commit string) string {
 		p := filepath.Join(dir, name)
-		require.NoError(t, os.WriteFile(p, []byte("#!/bin/sh\necho '"+lineAt(commit)+"'\n"), 0o755))
+		require.NoError(t, testbin.WriteExecutable(p, []byte("#!/bin/sh\necho '"+lineAt(commit)+"'\n"), 0o755))
 		return p
 	}
 

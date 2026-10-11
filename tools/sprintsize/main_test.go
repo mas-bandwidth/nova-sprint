@@ -7,13 +7,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
 )
 
 // fakeBin is a nova-sprint that exits with code.
 func fakeBin(t *testing.T, code string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "nova-sprint")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit "+code+"\n"), 0o755); err != nil {
+	if err := testbin.WriteExecutable(path, []byte("#!/bin/sh\nexit "+code+"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return path

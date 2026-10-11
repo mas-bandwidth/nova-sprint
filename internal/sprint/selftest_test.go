@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -58,7 +59,7 @@ func TestSelftestLandLandsACannedCardAndSwitchRollsBack(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		brokenBin := filepath.Join(dir, "broken-lander.sh")
-		require.NoError(t, os.WriteFile(brokenBin, []byte("#!/bin/sh\nexit 1\n"), 0o755))
+		require.NoError(t, testbin.WriteExecutable(brokenBin, []byte("#!/bin/sh\nexit 1\n"), 0o755))
 
 		err := SelftestLand(ctx,
 			WithSelftestScratch(filepath.Join(dir, "scratch")),
@@ -72,7 +73,7 @@ func TestSelftestLandLandsACannedCardAndSwitchRollsBack(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		noopBin := filepath.Join(dir, "noop-lander.sh")
-		require.NoError(t, os.WriteFile(noopBin, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+		require.NoError(t, testbin.WriteExecutable(noopBin, []byte("#!/bin/sh\nexit 0\n"), 0o755))
 
 		err := SelftestLand(ctx,
 			WithSelftestScratch(filepath.Join(dir, "scratch")),

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +35,7 @@ func TestSelftestLandRunsAndFailsOnBrokenLander(t *testing.T) {
 	// Create a mock "broken" binary script
 	dir := t.TempDir()
 	brokenBin := filepath.Join(dir, "broken-lander.sh")
-	require.NoError(t, os.WriteFile(brokenBin, []byte("#!/bin/sh\nexit 1\n"), 0o755))
+	require.NoError(t, testbin.WriteExecutable(brokenBin, []byte("#!/bin/sh\nexit 1\n"), 0o755))
 
 	code, _, errs := ta.do("selftest land --binary " + brokenBin)
 	assert.Equal(t, 1, code)
@@ -47,7 +48,7 @@ func TestSelftestLandRunsAndFailsOnNoopBinary(t *testing.T) {
 
 	dir := t.TempDir()
 	noopBin := filepath.Join(dir, "noop-lander.sh")
-	require.NoError(t, os.WriteFile(noopBin, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+	require.NoError(t, testbin.WriteExecutable(noopBin, []byte("#!/bin/sh\nexit 0\n"), 0o755))
 
 	code, _, errs := ta.do("selftest land --binary " + noopBin)
 	assert.Equal(t, 1, code)
