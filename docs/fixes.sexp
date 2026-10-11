@@ -855,6 +855,10 @@
    :title "A red base is pushed to the coordinator"
    :text "When the base a card lands onto is red, the machine pushes the coordinator a judgment naming the base and its red run. This is the push half of card a-landing-never-goes-onto-a-red-base; the landing gate itself stays in v1.3."
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
+  (fix "an-acked-empty-row-is-one-episode" :release "v1.2.14" :status "planned"
+   :title "An acknowledged empty row is one episode"
+   :text "emptyConds takes an empty-row episode's text from the judgment the coordinator holds (s.Acked) as well as from an open one, so an acknowledged or waited NFriendEmpty judgment is not raised again while its conjunction holds though the cards it names move; the acknowledgement closes when her row is not empty, and a conjunction that holds again past EmptyRowAfter is a new episode. tla/CoordinatorPass.tla (Kind = \"empty\", OneJudgmentAnEpisode) needs no change; the code keeps it."
+   :origin "v1.2.12 inventory 2026-10-11, section 9 row D9 (CoordinatorPass: ack an NFriendEmpty, add a ready card, tick: a second judgment while the condition never cleared); code read at nova-sprint main 00c54ba")
 
 (fix "doctor-reads-nova-config-through-the-seat-wrapper" :release "v1.2.11" :status "planned"
    :title "doctor reads nova-config from the caller's environment"
