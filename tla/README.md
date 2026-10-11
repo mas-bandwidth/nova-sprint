@@ -22,6 +22,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `Level`, `WhoPreference` | Distribution of queued work across available capacity, and the rebalance. |
 | `Land`, `LandPass`, `LatePush` | The landing protocol, the land pass over streams, and a late push. |
 | `CardISA` (over `CardMachine`) | The card instruction set; `CardMachine` is the model of nova-tools' deleted Lua card machine, kept for `CardISA` which `EXTENDS` it. |
+| `Holds` | A held card, a sentinel and its release, and a stream's hold, stop, resume and reopen. |
 | `CoordinatorPass`, `CoordinatorWake` | The coordinator's pass and its wake. |
 | `SprintRules`, `StallLadder` | The rules that answer failures, and a stalled friend's ladder. |
 | `SeatHealth`, `ServerLanes` | The seat's generation and a friend's health; the server's lanes. |
