@@ -41,6 +41,12 @@
 \*   wait, and a rule's answer consumed by the attempt it started (its own comment and
 \*   reversed witnesses below, with the part).
 \*
+\* Part "conflict": a card under the conflict rule (rules.go ruleConflict, ruleRedo): a
+\*   stream stopped on a conflict, the card returned to be redone on the current tip at
+\*   flash (the conflict rule's reset to flash, FieldTierNow RouteFlash), the same refusal
+\*   twice a brief defect (the card marked, the stream held for a mind), and the redo of
+\*   the returned card (ruleRedo), one attempt more on the tip at flash.
+\*
 \* Part "late" also has a reachability witness, MCSprintRulesLateReachReturn: the design
 \* still returns a card (gen > 0), so NeverReturned fails there.
 \*
@@ -74,6 +80,8 @@
 \*   "stale"      finish refuses the report of an attempt the deadline failed, and the card
 \*                goes round again: LateReportFinishes
 \*   "faultnobound" the harness rule reworks a card at its attempt bound: AnswerAttemptsBounded
+\*   "conflictkeeps" the conflict rule returns the card on the tier it was on, not flash:
+\*                ConflictResetsToFlash
 
 EXTENDS Integers, FiniteSets
 
@@ -103,7 +111,8 @@ VARIABLES col, need, blocked, twin,               \* twins
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
           anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, \* answers
-          pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt \* episodes
+          pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
+          ctier, cstream, ccol, cway, crefused, catt          \* conflict
 
 twinVars == <<col, need, blocked, twin>>
 ruleVars == <<tier, fails, st, attempts, envFails>>
@@ -113,7 +122,8 @@ gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
 anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless>>
 epVars == <<pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
-vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
+cVars == <<ctier, cstream, ccol, cway, crefused, catt>>
+vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, cVars>>
 
 \* -- answers: a reader's findings ("empty" is a broken verdict that carries none), and the
 \* ways an attempt fails
@@ -164,6 +174,12 @@ TypeOK ==
   /\ ast \in {"waits", "asked", "gone"} /\ aatt \in 1..Cap /\ areason \in {"noreader", "room"}
   /\ aopen \in BOOLEAN /\ aseen \in BOOLEAN /\ anotes \in 0..MaxClock
   /\ rcol \in {"review", "ready", "working"} /\ rans \in BOOLEAN /\ ratt \in 1..Cap
+  /\ ctier \in 1..3
+  /\ cstream \in {"open", "stopped"}
+  /\ ccol \in {"working", "stuck", "review", "ready", "done", "marked"}
+  /\ cway \in {"conflict", "paths", "checks", "gate"}
+  /\ crefused \in {"", "conflict", "paths", "checks", "gate"}
+  /\ catt \in Nat
 
 Init ==
   /\ col = [x \in TwinIds |-> CASE x = "o" -> "open" [] x = "t" -> "absent" [] OTHER -> "waiting"]
@@ -183,6 +199,7 @@ Init ==
   /\ pup = FALSE /\ pcol = "ready" /\ pwait = -1 /\ pign = FALSE /\ pdw = -1 /\ eclk = 0
   /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
   /\ rcol = "review" /\ rans = FALSE /\ ratt = 1
+  /\ ctier = 2 /\ cstream = "open" /\ ccol = "working" /\ cway = "conflict" /\ crefused = "" /\ catt = 1
 
 -----------------------------------------------------------------------------
 \* Part "twins".
@@ -309,7 +326,7 @@ RuleNext == WorkFails \/ WorkBounds \/ WorkLands \/ RuleFailed \/ RuleBound \/ M
 \* The rules make at most Cap attempts a tier on three tiers: they never loop.
 RuleAttemptsBounded == attempts <= 3 * Cap
 
-\* A rule never lowers a card's tier.
+\* No rule but the conflict rule lowers a card's tier (Part "conflict" resets it to flash).
 LadderClimbs == [][tier' >= tier]_ruleVars
 
 \* Every failure or bound is answered: by rule below a friend's card, by a mind there.
@@ -787,22 +804,92 @@ CannotAskClosedWhenAsked == aopen => aseen
 AnswerApplies == rans => rcol \in {"ready", "working"}
 
 -----------------------------------------------------------------------------
+\* Part "conflict": a card under the conflict rule (internal/sprint rules.go,
+\* ruleConflict, ruleRedo). ctier is the card's tier on the route ladder (1 flash, 2 pro,
+\* 3 heavy; a friend's card is a mind's, not this part). The stream stops on a conflict
+\* (the outside), the conflict rule returns the card to be redone on the current tip at
+\* flash, and ruleRedo reworks it one attempt more; the same refusal twice is a brief
+\* defect.
+
+\* the outside: the failed and bound rules climb the ladder while the card works (Part
+\* "rules"); the conflict part reads the tier as given
+Escalate ==
+  /\ ccol = "working" /\ ctier < 3
+  /\ ctier' = ctier + 1
+  /\ UNCHANGED <<cstream, ccol, cway, crefused, catt>>
+
+\* the outside: the lander refuses the card's head, the stream stops on a conflict, and
+\* the card is stuck in the merge table, the refusal placed as cway
+ConflictStop ==
+  /\ cstream = "open" /\ ccol = "working"
+  /\ cstream' = "stopped" /\ ccol' = "stuck"
+  /\ cway' \in {"conflict", "paths", "checks", "gate"}
+  /\ UNCHANGED <<ctier, crefused, catt>>
+
+\* the outside: the attempt lands
+Lands ==
+  /\ ccol = "working"
+  /\ ccol' = "done"
+  /\ UNCHANGED <<ctier, cstream, cway, crefused, catt>>
+
+\* the conflict rule: a card stuck on a conflict is returned to be redone on the current
+\* tip at flash (FieldTierNow RouteFlash), unless the same refusal twice, which is a brief
+\* defect (the card marked, the stream held for a mind)
+ConflictReturn ==
+  /\ cstream = "stopped" /\ ccol = "stuck"
+  /\ IF crefused = cway /\ crefused # ""
+       THEN /\ ccol' = "marked"
+            /\ UNCHANGED <<ctier, crefused, catt, cway>>
+       ELSE /\ ccol' = "review"
+            /\ ctier' = IF Broken = "conflictkeeps" THEN ctier ELSE 1
+            /\ crefused' = cway
+            /\ UNCHANGED <<catt, cway>>
+  /\ UNCHANGED cstream
+
+\* the conflict rule's resume: the card is out of the stream, so the stream goes on
+ConflictResume ==
+  /\ cstream = "stopped" /\ ccol = "review"
+  /\ cstream' = "open"
+  /\ UNCHANGED <<ctier, ccol, cway, crefused, catt>>
+
+\* the conflict rule's redo (ruleRedo): the returned card, in review at that attempt, is
+\* reworked with the fix on the current tip, one attempt more, at flash
+ConflictRedo ==
+  /\ ccol = "review" /\ catt < Cap
+  /\ ccol' = "ready" /\ catt' = catt + 1
+  /\ UNCHANGED <<ctier, cstream, cway, crefused>>
+
+\* the outside: the redone card is dealt and works again
+WorkAgain ==
+  /\ ccol = "ready"
+  /\ ccol' = "working"
+  /\ UNCHANGED <<ctier, cstream, cway, crefused, catt>>
+
+ConflictNext ==
+  \/ Escalate \/ ConflictStop \/ Lands
+  \/ ConflictReturn \/ ConflictResume \/ ConflictRedo \/ WorkAgain
+
+\* The conflict rule returns a card only at flash: its reset to flash (FieldTierNow).
+ConflictResetsToFlash == ccol = "review" => ctier = 1
+
+-----------------------------------------------------------------------------
 
 Next ==
-  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
-  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
-  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars>>
-  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars>>
-  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars>>
-  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars>>
-  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars>>
-  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars>>
+  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, cVars>>
+  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, cVars>>
+  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, cVars>>
+  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, cVars>>
+  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, cVars>>
+  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, cVars>>
+  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, cVars>>
+  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, cVars>>
+  \/ Part = "conflict" /\ ConflictNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>
 
 \* The rules and a mind act when they may; the outside is unfair.
 Fairness ==
-  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars>>)
-  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars>>)
-  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ AnMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars>>)
+  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, cVars>>)
+  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, cVars>>)
+  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ AnMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, cVars>>)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 
