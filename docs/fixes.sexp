@@ -89,6 +89,45 @@
      :title "A judgment that holds a card is answered by the machine when it has a safe default, and escalates to the seat and the owner when it does not"
      :text "Blocker. At 2026-10-12 00:06Z eleven card-holding judgments had sat unanswered 5 to 169 minutes while the seat was busy elsewhere and its hook kept lapsing. (a) The safe defaults run without the seat: a card whose required reads have all passed is accepted by the tick, also after a return whose one cause is mechanical (returned_for: repair's rule-6 return for a missing read, and a return answered by needs set while the card is back in review); a stream set to seat-accept (stream set --seat-accept on) keeps the hand step, the tick raising ready to accept once; a hard pin to a friend held or down is released at DeadlineJudgment of running time (PinReleaseBound, an hour before; the tick records the release, so a stopped machine releases nothing on resume); and a ready card no route serves is raised, past its judgment's deadline, to the nearest tier above its own that a route or a friend up serves (rule no-route, a note naming both tiers), never down, so never flash for heavy, and never over a pinned tier. (b) Every other card-holding judgment (a kind of sprint.WaitRefused, the one table) is raised again at each deadline it passes unanswered, and one sprint-level judgment, the seat is not answering, names every card held and for how long, is raised again every PassEvery, is sent by the server to the owner on the bus as well as the hook (marked told only once sent, retried under one bus token, so never twice), refuses wait and ack, and closes when the judgments it names are answered. The refmodel's AcceptHeld mirrors returned_for. TLA+ owed to the v1.2.16 pass (tla/SprintRules.tla): a liveness property that every card-holding judgment is answered or escalated within its deadline, with the old unbounded wait as its reversed witness. Tests: TestATwoReadsPassedCardIsMergingAfterOneTickWithNoSeatVerb, TestACardReturnedForItsNeedsIsMergingAfterOneTick, TestASeatAcceptStreamKeepsItsCardForTheSeat, TestACardReturnedByTheSeatStaysForTheSeat (cmd/nova-sprint/seat_answers_test.go), TestAHardPinToAHeldFriendIsReleasedAtItsDeadline, TestAPinIsNotReleasedByTheTimeTheMachineWasStopped (internal/sprint/seat_answers_test.go), TestABoundJudgmentUnansweredRaisesTheSeatNotAnsweringOnce (internal/sprint/store/seat_silent_bound_test.go), TestATierNoRouteServesIsRaisedToTheNearestServedTierAtItsDeadline, TestAHeavyCardNoRouteServesIsNeverReTieredToFlash, TestAPinnedCardNoRouteServesStaysOnItsPinnedTier (internal/sprint/seat_answers_rule_test.go), TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken, TestARestartedServerTellsTheOwnerOfARaiseOnce, TestASeatSilentRaiseNoLongerOpenIsForgotten (cmd/nova-sprint/seat_silent_test.go), and the functional TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore (cmd/nova-sprint/unanswered_judgment_functional_test.go)."
      :origin "this card, from the owner, 2026-10-12 ~00:08Z: \"This must never happen again. Fix it. Add unit and/or functional tests so this never happens again, and then add to the next point release.\"; hand-landed outside the sprint at nova-sprint main 3e659a3a")
+    (fix "a-doctor-reports-the-child-exit-code-rate-per-member" :release "v1.2.14" :status "planned"
+     :title "A member's environment exits are recorded, a 134 or 137 spends nothing, and the doctor names their rate"
+     :text "A child that ends 134 or 137, or that leaves no result (why=no-result) at any exit,
+      did not judge the card: it is an environment event of the member, recorded and counted as
+      one, and at 134 or 137 it no longer consumes the card's attempts or its readers. sprint.EnvExit (internal/sprint/attempts.go)
+      is the one classifier; the finish carries the child's exit and harness output (--exit,
+      --harness) and so does a read's return. A work card's environment exit at 134 or 137 is
+      recorded ended=environment exit=<n>, withdrawn without take_ended, so the deal deals the
+      same work card again at the same attempt with no redeal spent, the member not held; a
+      no-result at another exit is recorded and counted the same way but stays the ended take
+      the owner's rules make it (redeal counted, rule 2, flash first); a member's read returned
+      at 134 or 137 is retired by environment, not in spentBy, so the member may read it again.
+      A 134 or 137 is bounded per card per attempt: the work card records each by member and code
+      (env_exit_history), and at EnvExitCardCap (3) the card is dealt no more and the tick raises
+      one bound judgment, a kind wait refuses, naming the card, the members and the codes, until
+      the seat reworks or drops it; the attempt cap's default answer deals such a card no next
+      attempt. A read identity is bounded the same way (env_exit_reads on the primary, EnvReadCap
+      3: the read retired as returned, spending its reader, and one bound judgment). Only a
+      134/137 spends nothing: a no-result routed by a decision over its bar is that decision's.
+      The doctor's k counts the 134/137s, as its line says. The last 40
+      lines of the harness output (at most 16 KiB) ride the run's card and its primary, and the
+      take's or run's consumer record on the primary ends environment exit=<n>. The doctor counts
+      each member's children over the last hour from those attempt records on the epoch's cards
+      (sprint.EnvExitChildren) and prints DOCTOR FAIL member-env <m> child exits: <k> of <n>
+      children in the last hour ended 134/137 with no result (<rate>%), last: <first tail line>
+      remedy=nova-sprint card <id> over 10% with n >= 10, WARN from 3% to 10%, OK below;
+      nova-sprint stats --children prints the per-member exit-code histogram. Hand-landed after
+      the fleet's four attempts: attempt 3's classifier wanted a non-zero exit for the no-result
+      case, which the card does not, and attempt 4 ended with no commit. Owed: the member
+      passing --exit and --harness from its child (nova-tools), and the TLA+ models (DirtyTick
+      BoundClasses, AttemptsEpochs TakeEnds) gaining the 134/137 exit and its cap (v1.2.16). docs/SPEC-SPRINT.md, An
+      environment exit, states the rule; functional TestAnEnvironmentExitOnARealStore drives it
+      on a real store."
+     :origin "this card, a-doctor-reports-the-child-exit-code-rate-per-member, epoch 17, 2026-10-11
+      ~18:25Z; the seat's read of the fleet's native logs: hetzner1 81 of 328 ended 134 and 21 137,
+      hetzner2 55/351 and 31, space 65/347 and 38, vision 68/289 and 25, b1 and b2 about 1 in 14,
+      mini-m5 none; every 134 the opencode harness aborting after Error: Unknown: ChildProcess.spawn
+      inside the landlock sandbox, logged why=no-result, the card's read or attempt coming back
+      no verdict or not-done; hand-landed by the seat's child after the card reached its bound")
     (fix "a-moved-card-stops-its-old-run" :release "v1.2.14" :status "planned"
      :title "When a card moves, the old member stops the old generation within one beat"
      :text "When a card moves via rebalance/level/redeal to a new member, the old member stops old runs within one beat; server answers stop for runs not held at that generation. cmd/nova-sprint/moved_card_stops_functional_test.go tests this. docs/TESTS.md Release acceptance lists all tests."

@@ -7176,6 +7176,109 @@ stream costs, and `stats_since=` on the sum, are owed in cmd/nova-sprint/reads.g
 `total_cost`, `cost_by_tier`, `work_cost` and `read_cost` in `where --json` stay the
 epoch's.
 
+### An environment exit
+
+A child that ends 134 or 137, or that leaves no result at all (`why=no-result`: a report that
+begins `no result:`) at ANY exit, 0 included, did not judge the card: it is an environment
+event of the member (on 2026-10-11 the opencode harness aborted under the landlock sandbox with
+`Error: Unknown: ChildProcess.spawn (...)` and exit 134 or 137 on one child in four to fourteen,
+and every card it touched came back `no verdict` or `not-done`). The member passes the child's
+exit and its harness output on the finish (`finish --failed --exit <n> --harness <text>`,
+`FinishReq.Exit`, `FinishReq.Harness`) and on a read's return (`read --return <card> --reason
+<text> --exit <n> --harness <text>`, `ReadReq.Exit`, `ReadReq.Harness`); `sprint.EnvExit`
+(internal/sprint/attempts.go) is the one classifier.
+
+- A work card's environment exit at 134 or 137 (`HardEnvExit`: the harness died; `envExited`,
+  steps_work.go) is recorded on the attempt as `ended=environment exit=<n>` (`FieldEnvExit`),
+  never failed and never broken, and spends nothing: the work card is withdrawn WITHOUT
+  `take_ended`, so the next deal deals the same work card again (redeal) at the SAME attempt
+  number and spends none of the redeal bound; the primary goes back to ready with its attempt,
+  failed count and result untouched; the member is not held. The take's consumer record on the
+  primary (cost.go) ends `environment exit=<n>`.
+- A no-result child at another exit (0 included: a model that wrote nothing exits 0 too) is an
+  environment exit as well, recorded and counted as one, but its take is still the ended take
+  the owner's rules for a take that left no result make it (`takeEnded`: back to ready at the
+  same attempt, never failed work, redealt counting the take, 2026-10-01; rule 2, the second
+  identical end is the bound, 2026-10-02; flash first escalates, 2026-10-03). It carries
+  `ended=environment exit=<n>` and the tail, and its consumer record ends `no result
+  environment exit=<n>`. A decided no-result (nova-decide's class, not the report's words) is
+  no environment exit.
+- A read's environment exit at 134 or 137 is no verdict and spends no reader: on a member's row
+  the read card is retired by `environment` (`RetiredByEnvironment`, not in `spentBy`), so the
+  member may be dealt the read again at a fresh generation; on the readers table the read goes
+  back to asked without counting a re-ask. The run's consumer record ends `environment
+  exit=<n>`. A read returned at another exit spends its reader as before. A read identity (one
+  reader's read of one attempt, every generation) is bounded the same way as a work card: the
+  primary records each such exit (`env_exit_reads`, `FieldEnvExitReads`, `<attempt>:<reader>=<exit>`),
+  and the one that reaches `EnvReadCap` (3) retires the read as a return of the reader's own
+  (`returned`, which spends it, so the read is dealt to that reader no more) and raises one
+  bound judgment on the primary: `<read card>: <reader>'s read of attempt <n> ended on the
+  environment 3 times (the cap is 3) and is not dealt to <reader> again: exits ...`.
+- Only a 134 or 137 spends nothing (`HardEnvExit`). A no-result whose finish carries an
+  attempt decision over its bar is routed by the decision (`finishKind`), never as an
+  environment exit.
+- Either keeps the last `HarnessTailLines` (40) lines of the harness output, at most
+  `HarnessTailBytes` (16 KiB, its end kept), on the run's card and on its primary
+  (`FieldHarnessTail`, `harness_tail`), so the cause is on the card a reader reads
+  (`sprint.EnvironmentExitRecord`, `sprint.HarnessTail`). A friend's row is no member's
+  environment: her finishes and returns are judged as before.
+
+The doctor counts each member's children over the last hour from the attempt records keyed by
+the epoch: every take's and read run's consumer record on the epoch's primaries, by who ran
+it, how it ended and when (`sprint.EnvExitChildren`; a launch refused at staging ran no child
+and is not counted). `<k>` is the children that ended 134 or 137, exactly as the line says; a
+no-result at another exit is recorded as an environment exit and shows in the histogram's
+bucket of its code, not in `<k>`. For a member with at least `EnvExitMinN` (10) children it prints one
+`member-env` line (`sprint.EnvExitStatus`, `sprint.EnvExitCheck`):
+
+    DOCTOR FAIL member-env <m> child exits: <k> of <n> children in the last hour ended 134/137 with no result (<rate>%), last: <first line of the harness tail> remedy=nova-sprint card <id>
+
+FAIL when the rate is over `EnvExitFailPct` (10%), WARN from `EnvExitWarnPct` (3%) to 10%, OK
+below (an OK names no card); a member under the floor gets no line. `<id>` is the primary of
+the member's latest environment exit and `last:` the first line of its tail. `nova-sprint
+stats --children` prints the same counts as a per-member histogram of child exit codes for the
+window, read from the store, with no ssh:
+
+    CHILD <m> children=<n> env=<k> rate=<pct>% exit_<code>=<count>... other=<n-k> status=<FAIL|WARN|OK> last: <line>
+
+(`CHILDREN none in the last hour` when no child ended; `env=` is `<k>`, the `exit_<code>`
+buckets every environment exit).
+
+A 134 or 137 spends nothing, so it is bounded on its own: the work card records each one by
+member and code (`env_exit_history`, `FieldEnvExitHistory`, `<member>=<exit>,...`), and the
+work card is the attempt's, so the count is per card per attempt. At `EnvExitCardCap` (3) the
+card is dealt no more, to no machine and offered to no friend (`AtEnvExitBound`), the deal
+verb refuses it, and the tick holds it with one bound judgment (`a card reached its bound`, a
+kind wait refuses: wait_refused.go), raised once while it holds:
+
+    <card>.w<n>: attempt <n>'s child ended on the member's environment 3 times (the cap is 3) and is not dealt again: members <m>, ...; exits <code>, ...; last: <first tail line>; rework it with a fix or drop it; its history: nova-sprint card <id>
+
+`rework <card> --fix <text>` takes such a card from ready, as it takes one at its redeal
+bound: it retires the held work card (no failure is recorded: the environment ended it) and
+closes the judgment, and the rework's new attempt starts with none. The attempt cap's default answer (`AttemptCapDeal`,
+brief_bound.go) leaves such a card alone too: a friend newly up with room deals it no next
+attempt. The doctor's member-env FAIL stays the fleet-wide view. Not in this rule: the cause of the spawn failure under the
+wall (a-harness-spawn-failure-under-the-wall-is-diagnosed), and the member passing `--exit`
+and `--harness` from its child (until it does, a member's no-result finish is recorded at
+exit 0 with no tail, an ended take as before), and the TLA+ models (tla/DirtyTick.tla
+`BoundClasses`, tla/AttemptsEpochs.tla `TakeEnds`) gaining the 134/137 exit and its cap: owed
+(v1.2.16). Tests: `TestEnvExitClassifiesTheMemberEnvironmentExit`,
+`TestEnvironmentExitNamesTheCode`, `TestHarnessTailKeepsTheLastFortyLines`,
+`TestEnvironmentExitRecordCarriesTheEndedWordAndTail`, `TestEnvExitRateThresholds`,
+`TestEnvExitCheckNamesTheRateAndTheCard`, `TestFinishRecordsAnEnvironmentExitOnTheAttempt`,
+`TestFinishWithACleanEndOrAVerdictIsNeverAnEnvironmentExit`,
+`TestANoResultTakeIsAnEnvironmentExitAndStillAnEndedTake`,
+`TestAReadsEnvironmentExitSpendsNoReader`, `TestEnvExitChildrenCountsTheMemberEnvironmentExits`,
+`TestTheDealRefusesACardAtTheEnvironmentExitCap`, `TestADecidedNothingToDoIsNeverAnEnvironmentExit`,
+`TestAReadsEnvironmentExitsAreCappedAndJudgedOnce`, `TestAReadersTableReadsEnvironmentExitsAreCapped`,
+`TestTheAttemptCapDealLeavesACardAtTheEnvironmentExitCap` (brief_bound_test.go)
+(internal/sprint/attempts_test.go); `TestDoctorNamesTheMemberEnvExitRate`,
+`TestDoctorNamesTheMemberEnvExitWarn`, `TestAnEnvironmentExitGoesBackToReadyAtTheSameAttempt`,
+`TestStatsChildrenPrintsThePerMemberExitHistogram`,
+`TestThreeEnvironmentExitsRaiseTheBoundOnceAndStopTheRedeal`,
+`TestAReworkResetsTheEnvironmentExitCount` (cmd/nova-sprint/doctor_test.go); functional
+`TestAnEnvironmentExitOnARealStore` (cmd/nova-sprint/envexit_functional_test.go).
+
 ### release-check-frame
 
 `release check [--json] [--streams <glob>] [--check <name>]...` is a read-class verb (the owner, 2026-10-04: a release ships when the tool says so, not when someone feels it is done): it runs the registry of release checks (`sprint.ReleaseChecks`, internal/sprint/releasecheck.go) over the store's log and the sprint's settings and writes nothing. Each check is a pure function over `sprint.ReleaseFacts` (the clock, the log, the dealt bound; later checks add git facts), prints `RELEASE CHECK <name> ok|fail <evidence>`, and on a fail the evidence names what to look at; then one summary line, `RELEASE OK checks=<n>` or `RELEASE NOT READY failed=<n>`; exit 0 every check passed, 1 a check failed, 2 usage or a store that did not answer. `--json` prints the one report object (`results`, `checks`, `failed`, `ready`, `summary`); `--streams` keeps the log of the streams the glob names; `--check` runs only the named checks. `release check` is its own verb beside `release <id> --reason`, which still releases a held card or sentinel; `add` refuses a card whose id is `check`, naming the reason. The first check, `no-stuck-friend`, fails when a friend was stuck at any moment of the last 4 hours, stuck being the deadline rule's own lateness (`WorkDeadline`): a working card held past its deadline (its own `friend_deadline`, else `DeadlineUnfinished`, from its first take), or a card dealt to it and not taken past the dealt bound. No other definition of a stuck friend exists on this tree (the where table carries none), so this is the one, and any later count of stuck friends reuses `sprint.NoStuckFriend`'s spans. Tests: `TestReleaseCheckFailsWhileAFriendWasStuckInTheLastFourHours`, `TestTheReleaseReportSaysOKOrNotReadyByTheChecksRun`, `TestEveryReleaseCheckStatesItsBar`, `TestReleaseStreamsFilterKeepsTheStreamsTheGlobNames`.
