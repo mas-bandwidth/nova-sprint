@@ -5,7 +5,7 @@
 
 **nova-sprint** puts a fleet of AI workers to work on your backlog. Different
 models, many machines, and a system that moves cards from **ready to landed**
-automatically—through implementation, review, checks, and merging.
+automatically - through implementation, review, checks, and merging.
 
 [Get started](docs/GETTING-STARTED.md) · [See the live dashboard](http://69.67.149.151/)
 
@@ -32,22 +32,19 @@ Cards move through the dashboard automatically:
 A card waits for its prerequisites, takes an available lane, and goes
 through implementation, independent review, checks, and landing. Findings
 go back for rework. Gates and decisions that need attention remain visible.
-“Landed” means the change reached the integration branch—not just that a
-worker finished typing.
+“Landed” means the change reached the integration branch.
 
 The dashboard shows work streams, fleet capacity, progress, costs, and
-estimated finish time. Follow a card or watch the whole fleet make laps.
+estimated finish time.
 
 ## Start with one lane. Then go wider.
 
 Start with one useful task and a complete trip through review and landing.
 Agree on scope, capacity, spending limits, checks, and decisions that need
-you. Then give the fleet the next batch. Keep working alongside it, or
-leave it with a plan to continue while you are away.
+you. Then give the fleet the next batch. Keep working alongside it, or... 
+just come back in the morning.
 
-Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
-
-**Free and open source forever.**
+Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools). _Free and open source forever._
 
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
