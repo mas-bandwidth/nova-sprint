@@ -379,9 +379,10 @@ func statusText(s *Snapshot, r TickReq, row statusRow, prev, next statusSeen, ge
 		return memberText(s, row, prev, next, at)
 	}
 	f := row.name
+	p := snapshotFriendPronouns(s, f)
 	head := fmt.Sprintf("friend %s is %s (was %s) at %s, transition %d", f, row.word, prev.Word, at, next.N)
 	if generation {
-		head = fmt.Sprintf("friend %s's daemon started again at %s (its start before: %s), she is %s, at %s, transition %d",
+		head = fmt.Sprintf("friend %s's daemon started again at %s (its start before: %s); status %s at %s, transition %d",
 			f, stamp(next.Started), stamp(prev.Started), row.word, at, next.N)
 	}
 	coord := coordinatorName(s)
@@ -390,15 +391,15 @@ func statusText(s *Snapshot, r TickReq, row statusRow, prev, next statusSeen, ge
 	switch row.word {
 	case Up:
 		steps, done := friendSteps(s, r, row)
-		return head + ", on " + orDash(row.friend.Evidence) + "; bring her up in four steps: " + steps, done
+		return head + ", on " + orDash(row.friend.Evidence) + "; " + p.Say("bring {them} up in four steps: ") + steps, done
 	case Held:
-		return head + ": the coordinator's hold (" + orDash(row.friend.Why) + "); her started cards finish, the rest went back to ready; release: nova-sprint unhold " + f, true
+		return head + ": the coordinator's hold (" + orDash(row.friend.Why) + "); " + p.Say("{their} started cards finish, the rest went back to ready") + "; release: nova-sprint unhold " + f, true
 	}
 	what := head + ": " + orDash(row.friend.Evidence)
 	if row.friend.DaemonOnly {
-		what += "; her daemon answers and her session does not"
+		what += "; " + p.Say("{their} daemon answers and {their} session does not")
 	}
-	what += "; " + lastBeat(row.beat, s.Now) + "; wake her: " + wake + "; if her daemon is gone, on her machine: " + restart + "; or hold her: nova-sprint hold " + f + " --reason <text>"
+	what += "; " + lastBeat(row.beat, s.Now) + "; " + p.Say("wake {them}: ") + wake + "; " + p.Say("if {their} daemon is gone, on {their} machine: ") + restart + "; " + p.Say("or hold {them}: ") + "nova-sprint hold " + f + " --reason <text>"
 	return what, false
 }
 
@@ -406,6 +407,7 @@ func statusText(s *Snapshot, r TickReq, row statusRow, prev, next statusSeen, ge
 // already did, and whether all four are done.
 func friendSteps(s *Snapshot, r TickReq, row statusRow) (string, bool) {
 	f, seat := row.name, row.friend
+	p := snapshotFriendPronouns(s, f)
 	var rep FriendReport
 	if seat.Beat.Friend != nil {
 		rep = *seat.Beat.Friend
@@ -426,7 +428,7 @@ func friendSteps(s *Snapshot, r TickReq, row statusRow) (string, bool) {
 		installed = "a build it did not report"
 	}
 	match := BuildMatch(rep.Build, seat.Current)
-	text := fmt.Sprintf("update: her daemon runs %s, the current build is %s", installed, orDash(seat.Current))
+	text := p.Sprintf("update: {their} daemon runs %s, the current build is %s", installed, orDash(seat.Current))
 	if match == BuildUnknown && rep.Build != "" && seat.Current != "" {
 		text += ": an unstamped build cannot be compared"
 	}
@@ -437,14 +439,14 @@ func friendSteps(s *Snapshot, r TickReq, row statusRow) (string, bool) {
 	// 2. check: what her daemon reported of itself, and her session's evidence. No beat word
 	// reports a harness check yet, so the step is the coordinator's: nova-friend check.
 	present := !rep.Present.IsZero() && !rep.Started.IsZero() && !rep.Present.Before(rep.Started)
-	text = fmt.Sprintf("check: daemon %s, %s, presence %s; run: nova-friend check %s and read its CHECK DAEMON, CHECK HARNESS and presence lines",
+	text = p.Sprintf("check: daemon %s, %s, presence %s; run: nova-friend check %s and read its CHECK DAEMON, CHECK HARNESS and presence lines",
 		beatWord(seat.Beat, s.Now), daemonWord(rep), orDash(seat.Evidence), f)
 	step(text, false)
-	// 3. snap to present: the note her daemon sent on its start
+	// 3. snap to present: the note the daemon sent on its start
 	if present {
-		text = "snap to present: her daemon sent the present on its start at " + stamp(rep.Present)
+		text = p.Say("snap to present: {their} daemon sent the present on its start at ") + stamp(rep.Present)
 	} else {
-		text = "snap to present: her daemon sent no present since its start; run: " + presentSend(f, s.Now)
+		text = p.Say("snap to present: {their} daemon sent no present since its start; run: ") + presentSend(f, s.Now)
 	}
 	step(text, present)
 	// 4. into the sprint: not held, the server's evidence, a take within TakeWithin
@@ -481,8 +483,8 @@ func flappingText(s *Snapshot, row statusRow, rec statusSeen) string {
 			m, at, row.word, StatusDwell, lastBeat(row.beat, s.Now), s.Width(m), m, m, m)
 	} else {
 		f := row.name
-		what = fmt.Sprintf("friend %s is flapping at %s: she is %s and keeps leaving it for less than %s, so no transition counts; on %s; %s; "+
-			"wake her: nova-friend ping --as %s --to %s --wake; or hold her: nova-sprint hold %s --reason <text>",
+		what = snapshotFriendPronouns(s, f).Sprintf("friend %s's status is flapping at %s: status %s keeps changing for less than %s, so no transition counts; on %s; %s; "+
+			"wake {them}: nova-friend ping --as %s --to %s --wake; or hold {them}: nova-sprint hold %s --reason <text>",
 			f, at, row.word, StatusDwell, orDash(row.friend.Evidence), lastBeat(row.beat, s.Now), coordinatorName(s), f, f)
 	}
 	return withFlaps(what, rec)
@@ -508,9 +510,9 @@ func memberText(s *Snapshot, row statusRow, prev, next statusSeen, at string) (s
 // lastBeat names the row's last beat and its age, with the beat windows missed.
 func lastBeat(b Beat, now time.Time) string {
 	if !b.Beaten() {
-		return "it has never beaten"
+		return "never beaten"
 	}
-	text := "its last beat " + stamp(b.At) + " (" + ago(now.Sub(b.At))
+	text := "last beat " + stamp(b.At) + " (" + ago(now.Sub(b.At))
 	if k := b.Missed(now); k > 0 {
 		text += fmt.Sprintf(", %d beat windows of %s missed", k, BeatDeadline)
 	}
@@ -531,9 +533,9 @@ func beatWord(b Beat, now time.Time) string {
 // and that no harness check is reported (no beat word carries one yet).
 func daemonWord(rep FriendReport) string {
 	if rep.Started.IsZero() {
-		return "her daemon reported no start; no harness check reported"
+		return "daemon reported no start; no harness check reported"
 	}
-	return "her daemon started at " + stamp(rep.Started) + " and has beat since; no harness check reported"
+	return "daemon started at " + stamp(rep.Started) + " and has beat since; no harness check reported"
 }
 
 // presentSend is the nova-bus line that sends her the present by hand.

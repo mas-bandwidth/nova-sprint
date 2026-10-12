@@ -37,12 +37,16 @@ type transitionRig struct {
 var transitionT0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
 
 func newTransitionRig(t *testing.T) *transitionRig {
+	return newTransitionRigWithPronouns(t, "")
+}
+
+func newTransitionRigWithPronouns(t *testing.T, pronouns string) *transitionRig {
 	t.Helper()
 	r := &transitionRig{t: t, m: store.NewMem(), ctx: context.Background(), now: transitionT0, member: true}
 	r.st = r.open()
 	require.NoError(t, r.st.Init(r.ctx))
 	require.NoError(t, r.m.SetCoordinator(r.ctx, "coordinator"))
-	_, _, _, err := r.st.SyncFriends(r.ctx, []store.FriendSpec{{Name: "amy", Width: 2, Class: "pro"}})
+	_, _, _, err := r.st.SyncFriends(r.ctx, []store.FriendSpec{{Name: "amy", Width: 2, Class: "pro", Pronouns: pronouns}})
 	require.NoError(t, err)
 	r.beat()
 	res, err := r.st.Run(r.ctx, store.FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
@@ -170,10 +174,10 @@ func TestAFriendComingUpPushesTheFourStepsToTheSeat(t *testing.T) {
 	n := notes[0]
 	assert.Equal(t, sprint.Judgment, n.Kind, "a judgment, pushed to the seat inbox as every judgment is")
 	at := r.st.Now().UTC().Format(time.RFC3339)
-	assert.Equal(t, "friend amy is up (was down) at "+at+", transition 1, on session pong 0s ago; bring her up in four steps: "+
-		"1 update: her daemon runs "+current+", the current build is "+current+": an unstamped build cannot be compared; run: nova-update, then launchctl kickstart -k gui/$(id -u)/com.nova.friend-amy (to do); "+
-		"2 check: daemon beating (0s ago), her daemon started at "+start.Format(time.RFC3339)+" and has beat since; no harness check reported, presence session pong 0s ago; run: nova-friend check amy and read its CHECK DAEMON, CHECK HARNESS and presence lines (to do); "+
-		"3 snap to present: her daemon sent the present on its start at "+start.Format(time.RFC3339)+" (done); "+
+	assert.Equal(t, "friend amy is up (was down) at "+at+", transition 1, on session pong 0s ago; bring them up in four steps: "+
+		"1 update: their daemon runs "+current+", the current build is "+current+": an unstamped build cannot be compared; run: nova-update, then launchctl kickstart -k gui/$(id -u)/com.nova.friend-amy (to do); "+
+		"2 check: daemon beating (0s ago), daemon started at "+start.Format(time.RFC3339)+" and has beat since; no harness check reported, presence session pong 0s ago; run: nova-friend check amy and read its CHECK DAEMON, CHECK HARNESS and presence lines (to do); "+
+		"3 snap to present: their daemon sent the present on its start at "+start.Format(time.RFC3339)+" (done); "+
 		"4 into the sprint: not held, evidence session pong 0s ago, no take within 10m0s; run: nova-sprint where, and nova-friend ping --as coordinator --to amy --wake (to do)",
 		n.What)
 	assert.Equal(t, []string{"ack", "wait"}, n.Decisions, "the verbs are in the text; ack or wait answers it")
@@ -191,8 +195,34 @@ func TestAFriendComingUpPushesTheFourStepsToTheSeat(t *testing.T) {
 	r2.tick(0)
 	notes = r2.statusNotes(row)
 	require.Len(t, notes, 1)
-	assert.Contains(t, notes[0].What, "1 update: her daemon runs 2030-01-01T00:00:00Z-0123456789ab, the current build is "+current)
-	assert.Contains(t, notes[0].What, "3 snap to present: her daemon sent no present since its start; run: nova-bus send --to amy")
+	assert.Contains(t, notes[0].What, "1 update: their daemon runs 2030-01-01T00:00:00Z-0123456789ab, the current build is "+current)
+	assert.Contains(t, notes[0].What, "3 snap to present: their daemon sent no present since its start; run: nova-bus send --to amy")
+}
+
+func TestStatusJudgmentUsesConfiguredFriendPronouns(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		set, bring, possessive string
+	}{
+		{"she/her", "bring her up", "her daemon"},
+		{"he/him", "bring him up", "his daemon"},
+		{"they/them", "bring them up", "their daemon"},
+		{"", "bring them up", "their daemon"},
+		{"unknown", "bring them up", "their daemon"},
+	} {
+		t.Run(tc.set, func(t *testing.T) {
+			r := newTransitionRigWithPronouns(t, tc.set)
+			row := sprint.FriendRow("amy")
+			r.tick(time.Second)
+			start := r.st.Now()
+			r.up(buildinfo.Version(""), start)
+			notes := r.statusNotes(row)
+			require.Len(t, notes, 1)
+			assert.Contains(t, notes[0].What, tc.bring)
+			assert.Contains(t, notes[0].What, "update: "+tc.possessive+" runs")
+			assert.Contains(t, notes[0].What, "snap to present: "+tc.possessive+" sent")
+		})
+	}
 }
 
 // Two builds compare by their revision; an unstamped devel build is never the same as any.
@@ -308,7 +338,7 @@ func TestAFleetMemberGoingDownNamesItsLastBeat(t *testing.T) {
 	notes := r.statusNotes("m1")
 	require.Len(t, notes, 1)
 	at := r.st.Now().UTC().Format(time.RFC3339)
-	assert.Equal(t, "fleet member m1 is down (was up) at "+at+", transition 1: its last beat "+last+" (2m46s ago, 11 beat windows of 15s missed), width 2; "+
+	assert.Equal(t, "fleet member m1 is down (was up) at "+at+", transition 1: last beat "+last+" (2m46s ago, 11 beat windows of 15s missed), width 2; "+
 		"its unfinished cards were dealt round the members up; bring it back: its beat on m1 (nova-sprint fleet beat m1) has stopped, start its member loop again; "+
 		"or hold it: nova-sprint hold m1 --reason <text>", notes[0].What)
 	assert.Equal(t, sprint.Judgment, notes[0].Kind)
@@ -324,7 +354,7 @@ func TestAFleetMemberGoingDownNamesItsLastBeat(t *testing.T) {
 	notes2 := r.statusNotes("m1")
 	require.Len(t, notes2, 1)
 	assert.Equal(t, notes[0].ID, notes2[0].ID)
-	assert.True(t, strings.HasPrefix(notes2[0].What, "fleet member m1 is up (was down) at "+r.st.Now().UTC().Format(time.RFC3339)+", transition 2: its last beat "), notes2[0].What)
+	assert.True(t, strings.HasPrefix(notes2[0].What, "fleet member m1 is up (was down) at "+r.st.Now().UTC().Format(time.RFC3339)+", transition 2: last beat "), notes2[0].What)
 	assert.Contains(t, notes2[0].What, "width 2; the tick deals it cards from now")
 }
 
@@ -453,7 +483,7 @@ func TestAFriendFlappingWithNoJudgmentOpenRaisesFlappingOnce(t *testing.T) {
 		}
 	}
 	require.Len(t, flapping, 1)
-	assert.True(t, strings.HasPrefix(flapping[0].What, "friend amy is flapping at "), flapping[0].What)
+	assert.True(t, strings.HasPrefix(flapping[0].What, "friend amy's status is flapping at "), flapping[0].What)
 	assert.Contains(t, flapping[0].What, "; flapped 6 times since "+flapsFrom+" (each back inside 2m0s)")
 	_, changes := r.pushes(row)
 	assert.Zero(t, changes, "the count rewritten in place, no push")

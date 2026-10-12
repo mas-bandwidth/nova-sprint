@@ -124,7 +124,7 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 							"since":  stamp(s.Now),
 						})),
 					},
-					Moved: fmt.Sprintf("friend %s up: released by her activity", f),
+					Moved: snapshotFriendPronouns(s, f).Sprintf("friend %s up: released by {their} activity", f),
 				})
 			}
 			hn := happened(NFriendStall, "", s.Now)
@@ -248,11 +248,11 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 					if r.Beats != nil {
 						if b, ok := r.Beats[f]; ok && b.Friend != nil {
 							for _, run := range b.Friend.Running {
-								started[run] = "her beat names it running"
+								started[run] = snapshotFriendPronouns(s, f).Say("{their} beat names it running")
 							}
 						} else if b, ok := r.Beats[row]; ok && b.Friend != nil {
 							for _, run := range b.Friend.Running {
-								started[run] = "her beat names it running"
+								started[run] = snapshotFriendPronouns(s, f).Say("{their} beat names it running")
 							}
 						}
 					}
@@ -261,7 +261,7 @@ func TickFriendStall(s *Snapshot, r TickReq) (Plan, int) {
 						case c.F(FieldProgress) != "":
 							started[c.ID] = "progress was stamped on it"
 						case c.F(FieldReported) != "":
-							started[c.ID] = "a report of hers was written on it"
+							started[c.ID] = snapshotFriendPronouns(s, f).Say("a report by {them} was written on it")
 						}
 					}
 					takePlan := FriendTake(s, FriendTakeReq{

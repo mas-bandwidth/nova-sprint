@@ -115,9 +115,9 @@ type NotStageable struct {
 func (n *NotStageable) Error() string {
 	if n.Card == "" {
 		if n.Job != "" {
-			return fmt.Sprintf("her account cannot reach %s (staging %s/%s): %s", n.Repo, JobsDir, n.Job, n.Why)
+			return fmt.Sprintf("the friend's account cannot reach %s (staging %s/%s): %s", n.Repo, JobsDir, n.Job, n.Why)
 		}
-		return fmt.Sprintf("her account cannot reach %s: %s", n.Repo, n.Why)
+		return fmt.Sprintf("the friend's account cannot reach %s: %s", n.Repo, n.Why)
 	}
 	return fmt.Sprintf("card %s cannot be staged from %s: %s", n.Card, n.Repo, n.Why)
 }

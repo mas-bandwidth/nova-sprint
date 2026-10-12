@@ -306,7 +306,7 @@ func TestTheDealSkipsADownRowAndHonoursTheWhoPin(t *testing.T) {
 	}
 	require.Len(t, ignored, 1, "one judgment, on the card whose friend is not up")
 	assert.Contains(t, ignored[0].What, "s1-2")
-	assert.Contains(t, ignored[0].What, "bob did not take it because she is not up")
+	assert.Contains(t, ignored[0].What, "bob did not take it because friend is not up")
 	for _, id := range []string{"s1-3.w1", "s1-4.w1"} {
 		c := w.s.Fleet.Card(id)
 		require.NotNil(t, c, id)

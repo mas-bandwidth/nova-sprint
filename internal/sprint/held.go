@@ -618,7 +618,7 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 			name, _ := FriendCard(pr)
 			if wc := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt"))); wc != nil && wc.Col == Withdrawn {
 				if from, _ := FriendOfRow(wc.F(FieldTakenFrom)); from != "" && from == name {
-					return "waits for only friend " + name + ", and it was taken back from her: give it back to her (nova-sprint friend give), unpin it (nova-sprint unpin), brief it for another friend, or drop it", "", true
+					return "waits for only friend " + name + ", and it was taken back: give it back (nova-sprint friend give), unpin it (nova-sprint unpin), brief it for another friend, or drop it", "", true
 				}
 			}
 			return "waits for only friend " + name, "", true
@@ -716,7 +716,7 @@ func (c *held) friendWaits(pr *Card, tier string) (string, string, bool) {
 		wc = w
 	}
 	if f := laneRunsIt(s, s.Friends, pr, wc); f != "" {
-		return "a lane of friend " + f + " still runs it: placed on no row until her beat stops naming it", "", true
+		return "a lane of friend " + f + " still runs it: placed on no row until that friend's beat stops naming it", "", true
 	}
 	room := 0
 	for _, f := range fs {
@@ -725,9 +725,9 @@ func (c *held) friendWaits(pr *Card, tier string) (string, string, bool) {
 	}
 	ahead := c.dealTurn(pr.ID)
 	if ahead < room {
-		return "a friend serving its tier is below her room (DealAhead times her width), and nothing deals it", "", false
+		return "a friend serving its tier is below the available room (DealAhead times the friend's width), and nothing deals it", "", false
 	}
-	return fmt.Sprintf("waits for a friend serving tier %s below her room (DealAhead times her width): %d free, %d ready ahead of it", tier, room, ahead), "", true
+	return fmt.Sprintf("waits for a friend serving tier %s below available room (DealAhead times the friend's width): %d free, %d ready ahead of it", tier, room, ahead), "", true
 }
 
 // overdueUnmarked is every judgment past its due time that no overdue mark

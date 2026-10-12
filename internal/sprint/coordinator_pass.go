@@ -188,7 +188,7 @@ func deafConds(s *Snapshot, r TickReq) []cond {
 			continue
 		}
 		out = append(out, cond{typ: NFriendDeaf, primaries: []string{FriendRow(f)},
-			what: fmt.Sprintf("friend %s: her session's last pong was %s ago (at %s), past %s; wake her: nova-friend ping --as <coordinator> --to %s --wake, then the debug steps of docs/SPEC-FRIEND.md (Presence, The harness check)",
+			what: friendPronouns(r.Friends, f).Sprintf("friend %s: {their} session's last pong was %s ago (at %s), past %s; wake {them}: nova-friend ping --as <coordinator> --to %s --wake, then the debug steps of docs/SPEC-FRIEND.md (Presence, The harness check)",
 				f, age.Round(time.Second), stamp(ss.Pong), FriendDeafAfter, f),
 			decisions: []string{"nova-friend ping --as <coordinator> --to " + f + " --wake", "debug: docs/SPEC-FRIEND.md, The harness check", "friend down " + f + " --reason deaf", "ack", "wait"}})
 	}
@@ -246,10 +246,10 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 		finish := "no finish yet"
 		if !last.IsZero() {
 			lastAge, _ := r.running(s.Now, stamp(last))
-			finish = fmt.Sprintf("her last finish %s ago (at %s)", lastAge.Round(time.Second), stamp(last))
+			finish = snapshotFriendPronouns(s, f).Sprintf("{their} last finish %s ago (at %s)", lastAge.Round(time.Second), stamp(last))
 		}
 		out = append(out, cond{typ: NFriendIdle, primaries: []string{row},
-			what: fmt.Sprintf("friend %s holds %d working (%s) and finished none in %s: %s; check in on her: nova-friend ping --as <coordinator> --to %s --wake",
+			what: snapshotFriendPronouns(s, f).Sprintf("friend %s holds %d working (%s) and finished none in %s: %s; check in on {them}: nova-friend ping --as <coordinator> --to %s --wake",
 				f, len(ids), Preview(ids, ", "), window, finish, f),
 			decisions: []string{"nova-friend ping --as <coordinator> --to " + f + " --wake", "friend take " + f + " --all-unstarted", "friend down " + f + " --reason idle", "ack", "wait"}})
 	}
@@ -542,7 +542,7 @@ func emptyRowWhat(name string, cards []idleWait) string {
 	for i, c := range cards {
 		phrases[i] = c.phrase
 	}
-	return fmt.Sprintf("friend %s has had an empty row for %s while %d cards she could do sit elsewhere: %s; deal them to her, friend take the other row, or keep",
+	return fmt.Sprintf("friend %s has had an empty row for %s while %d cards that friend could take sit elsewhere: %s; deal them to that friend, friend take the other row, or keep",
 		name, EmptyRowAfter, len(phrases), strings.Join(phrases, ", "))
 }
 
@@ -640,21 +640,21 @@ func pinSkipWhy(s *Snapshot, seats []FriendSeat, pinned string, left []string, t
 	}
 	switch {
 	case !found || seat.Status == Down || seat.Status == "":
-		return "she is not up"
+		return "friend is not up"
 	case seat.Status == Held:
-		return "she is held"
+		return "friend is held"
 	case seat.Status != Up:
-		return "she is not up"
+		return "friend is not up"
 	case slices.Contains(left, pinned):
-		return "it has left her"
+		return "the card has left the friend"
 	case !s.FriendsTake(tier):
 		return "the friends' tiers leave out " + tier
 	case !friendTakes(s, seat, tier):
-		return "her tiers do not hold " + tier
+		return snapshotFriendPronouns(s, pinned).Say("{their} tiers do not hold ") + tier
 	case free[pinned] <= 0:
-		return "she has no room"
+		return "friend has no room"
 	default:
-		return "she did not take it"
+		return "friend did not take it"
 	}
 }
 

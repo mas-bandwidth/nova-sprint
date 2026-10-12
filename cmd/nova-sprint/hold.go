@@ -24,7 +24,7 @@ finishes, or with --return is handed back now too (a member that is up keeps its
 cards and hands back only its ready cards; a member that is down returns its dead working
 cards too; a reader's reads begun are asked of another, a stream's working cards are
 withdrawn to ready). A held friend keeps no card, with
---return or without: every card on her row goes back to ready, begun or not, and
+--return or without: every card on the friend's row goes back to ready, begun or not, and
 a started one with a push carries its pushed head to the next taker. Its status reads held, the reason
 beside it (where --json --cards: holds; handover), and the hold is a line
 of the log.

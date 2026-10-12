@@ -34,7 +34,7 @@ func TestFriendBeatDownUntilCarriesTheReasonAndTheUntil(t *testing.T) {
 	assert.Equal(t, until, f.Report.Until.Format(time.RFC3339))
 	assert.Equal(t, "limit", f.Report.Reason)
 	presence := sprint.FriendPresence{Beat: sprint.Beat{At: ta.a.now(), Friend: f.Report}}
-	assert.Equal(t, "her beat says down until "+until+": limit", sprint.FriendDownWhy(presence, ta.a.now()))
+	assert.Equal(t, "beat says down until "+until+": limit", sprint.FriendDownWhy(presence, ta.a.now()))
 
 	ta.ok("friend beat amy")
 	assert.Equal(t, sprint.Up, whereFriends(ta)["amy"].Status, "a beat without --until withdraws the word: her session's pong has her up again")
@@ -44,5 +44,5 @@ func TestFriendBeatDownUntilCarriesTheReasonAndTheUntil(t *testing.T) {
 	assert.Contains(t, errs, "--until wants an RFC3339 time")
 	code, _, errs = ta.do("friend beat amy --reason limit")
 	assert.Equal(t, 2, code)
-	assert.Contains(t, errs, "--reason says why she is down, and wants --until")
+	assert.Contains(t, errs, "--reason says why the friend is down, and wants --until")
 }

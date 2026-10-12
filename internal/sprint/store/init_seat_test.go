@@ -96,7 +96,7 @@ func TestInitOverAKeylessStoreRecordsTheSeatMove(t *testing.T) {
 
 	row := h.friendRow("f")
 	assert.Equal(t, sprint.Down, row.Status, "A's observation lapses under B")
-	assert.Contains(t, row.Evidence, "no wake ping answered by her session")
+	assert.Contains(t, row.Evidence, "no wake ping answered")
 
 	// the move is logged with its note, as the seat's own step does
 	var seatLines []string

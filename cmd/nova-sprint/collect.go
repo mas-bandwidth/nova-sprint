@@ -31,7 +31,7 @@ func init() {
 	// it reads the friends' working directories on the machine it is typed on
 	notServed = append(notServed, "collect")
 	verbExit["collect"] = "exit codes: 0 done (each card on its line, a refused or left one among them, read again by the next collect), 1 refused (a friend not on the roster), 2 usage or a store that did not answer, 3 the config could not be read or holds no friend row"
-	verbEffect["collect"] = "store write: finishes each working card of the friends' rows that a report in any friend's outbox (or, with --dead-lanes, her runner's END with no report) finishes, as her row; reads the friends' working directories and writes nothing there, and reads origin's tip (one git ls-remote) for each LAND; --dry-run writes nothing and reads no tip"
+	verbEffect["collect"] = "store write: finishes each working card of the friends' rows that a report in any friend's outbox (or, with --dead-lanes, the friend's runner's END with no report) finishes, as the friend's row; reads the friends' working directories and writes nothing there, and reads origin's tip (one git ls-remote) for each LAND; --dry-run writes nothing and reads no tip"
 }
 
 // runnerLogCap bounds the runner log collect reads: its last runnerLogCap bytes.
@@ -73,7 +73,7 @@ func (a *app) cmdCollect(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup(name)
 	pg := fs.String("pg", "", "the config store, Postgres postgres://user@host:port/db with no password (else NOVA_PG_DSN), as friend sync reads the roster from it")
 	root := fs.String("root", "", "the directory the friends' working directories are under, <root>/<friend>-working (else HOME); collect reads every friend's outbox there and writes nothing in it")
-	dead := fs.Bool("dead-lanes", false, "also finish failed each working card with no report whose friend's runner ENDed its job with report=no (runner.log in her working directory or beside it), so the card is dealt again")
+	dead := fs.Bool("dead-lanes", false, "also finish failed each working card with no report whose friend's runner ENDed its job with report=no (runner.log in the friend's working directory or beside it), so the card is dealt again")
 	dry := fs.Bool("dry-run", false, "print what would be finished; finish nothing and read no tip")
 	pos, err := parse(fs, args)
 	if err != nil {
@@ -259,7 +259,7 @@ func (a *app) friendFinishStep(ctx context.Context, st *store.Store, name string
 	// her row reads up on it for sprint.FriendFinishWindow (docs/SPEC-FRIEND.md, "Presence is
 	// her session's evidence"); a record not written costs her that, never the finish
 	if err := st.FriendFinished(ctx, name, a.now()); err != nil {
-		say(fmt.Sprintf("COLLECT %s NOTE the finish is not recorded as her evidence: %s", p.Card, oneline.Escape(err.Error())))
+		say(fmt.Sprintf("COLLECT %s NOTE the finish is not recorded as the friend's evidence: %s", p.Card, oneline.Escape(err.Error())))
 	}
 	return "", nil
 }

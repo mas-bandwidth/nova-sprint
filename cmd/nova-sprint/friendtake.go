@@ -11,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-sprint/pkg/pronouns"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
@@ -23,7 +24,7 @@ import (
 // is a function of the tables and that set.
 
 // friendTakeWords is what friend take says on -h.
-const friendTakeWords = "friend take takes back and marks cards dealt to the friend that she has not started: each goes back to ready, withdrawn from her row (no failure, no bound spent: the card records \"taken back by the coordinator: <reason>\"), and the next tick deals the same card at its next generation to another friend up with room, never back to her until friend give (a friend's card is never a machine's); each card taken is said as \"<id>: back to ready, not dealt to <friend> again until friend give\" and the summary counts them (marked=<n>); a card whose WHO line pins her waits until it is given back to her (friend give), briefed for another friend or dropped. A card is refused, one REFUSED line each, when it is not dealt to that friend or when she has started it: a push on its branch, her beat naming it running (friend beat --running), or finished (in review or later); the others named are taken, and the exit is 1 when any is refused. --all-or-nothing takes none when one is refused. --all-unstarted takes every card of hers she has not started and says the ones she keeps. A working card taken frees her lane, and her oldest ready card is taken into working at once. friend sync marks a card taken back as taken in her queue file.\n"
+const friendTakeWords = "friend take takes back and marks unstarted cards dealt to the friend: each goes back to ready, withdrawn from the friend's row (no failure, no bound spent: the card records \"taken back by the coordinator: <reason>\"), and the next tick deals the same card at its next generation to another friend up with room, never back to the friend until friend give (a friend's card is never a machine's); each card taken is said as \"<id>: back to ready, not dealt to <friend> again until friend give\" and the summary counts them (marked=<n>); a card whose WHO line pins the friend waits until it is given back to the friend (friend give), briefed for another friend or dropped. A card is refused, one REFUSED line each, when it is not dealt to that friend or when the friend has started it: a push on its branch, the friend's beat naming it running (friend beat --running), or finished (in review or later); the others named are taken, and the exit is 1 when any is refused. --all-or-nothing takes none when one is refused. --all-unstarted takes every unstarted card held by the friend and says the ones the friend keeps. A working card taken frees the friend's lane, and the friend's oldest ready card is taken into working at once. friend sync marks a card taken back as taken in the friend's queue file.\n"
 
 // friendStarted is the friend's cards she has started, each with its why: every work card
 // ready or working on her row that her last beat names running (by its id, its job or its
@@ -38,6 +39,11 @@ func (a *app) friendStarted(ctx context.Context, st *store.Store, friend string)
 	if err != nil {
 		return nil, err
 	}
+	spec, err := st.FriendSpecOf(ctx, friend)
+	if err != nil {
+		return nil, err
+	}
+	pro, _ := pronouns.ParsePronouns(spec.Pronouns)
 	var running []string
 	if b.Friend != nil {
 		running = b.Friend.Running
@@ -49,7 +55,7 @@ func (a *app) friendStarted(ctx context.Context, st *store.Store, friend string)
 	out := map[string]string{}
 	for _, p := range packets {
 		if slices.Contains(running, p.Card) || slices.Contains(running, friendJobOf(p)) || slices.Contains(running, p.Primary) {
-			out[p.Card] = "her beat names it running"
+			out[p.Card] = pro.Say("{their} beat names it running")
 			continue
 		}
 		repo := swarm.ReadCardBase([]byte(p.Brief)).Repo
@@ -81,7 +87,7 @@ func (a *app) cmdFriendTake(args []string, stdout, stderr io.Writer) int {
 	const name = "friend take"
 	fs, c := a.verbSetup(name)
 	reason := fs.String("reason", "", "why the cards are taken back, kept on each card (\"taken back by the coordinator: <reason>\")")
-	all := fs.Bool("all-unstarted", false, "take every card of hers she has not started, naming no card")
+	all := fs.Bool("all-unstarted", false, "take every unstarted card held by the friend, naming no card")
 	dry := fs.Bool("dry-run", false, "say which cards would be taken back and write nothing")
 	allOrNothing := fs.Bool("all-or-nothing", false, "take none of the cards named when any one is refused")
 	pos, err := parse(fs, args)
@@ -128,7 +134,7 @@ func (a *app) cmdFriendTake(args []string, stdout, stderr io.Writer) int {
 }
 
 // friendGiveWords is what friend give says on -h.
-const friendGiveWords = "friend give hands or unmarks: on a ready card never taken back it hands the card to the friend named, dealt to her fleet row at once (the same work card friend sync delivers), where the deal would otherwise draw the queue head; on a card taken back from her (friend take) it clears the mark of the friend it was taken from, so the next deal may deal it to her again, and a card whose WHO line pins her, which waits for no one else, is dealt to her. A card not ready, one whose tier her row does not serve, and one whose needs have not landed are refused, one REFUSED line each, as is a card never taken back and already dealt; the others named are handed, and the exit is 1 when any is refused. Each card says \"<id>: handed to <friend>\", and one unmarked says MOVED <card> may be dealt to <friend> again (<reason>).\n"
+const friendGiveWords = "friend give hands or unmarks: on a ready card never taken back it hands the card to the friend named, dealt to the friend's fleet row at once (the same work card friend sync delivers), where the deal would otherwise draw the queue head; on a card taken back from the friend (friend take) it clears the mark of the friend it was taken from, so the next deal may deal it to the friend again, and a card whose WHO line pins the friend, which waits for no one else, is dealt to the friend. A card not ready, one whose tier the friend's row does not serve, and one whose needs have not landed are refused, one REFUSED line each, as is a card never taken back and already dealt; the others named are handed, and the exit is 1 when any is refused. Each card says \"<id>: handed to <friend>\", and one unmarked says MOVED <card> may be dealt to <friend> again (<reason>).\n"
 
 func (a *app) cmdFriendGive(args []string, stdout, stderr io.Writer) int {
 	const name = "friend give"
@@ -163,7 +169,7 @@ func (a *app) cmdFriendGive(args []string, stdout, stderr io.Writer) int {
 }
 
 // friendLevelWords is what friend level says on -h.
-const friendLevelWords = "friend level evens the friends' ready queues as fleet level evens the members': among the friends up of one class (the tiers her nova-config row says she can do), while one has two more cards over her width than another below her room (twice her width, in batch and one-shot mode alike), the newest card of the first moves to the second at its next generation, into working when she has a lane free. Only a card for any friend (WHO: friend) that is ready on her row and that she has not started (a push on its branch, her beat naming it running) moves; a card naming her and a working card stay. The MOVED line says moved=N to <friend>(n) from <friend>(n). friend sync delivers a moved card as a new job and marks it taken in the queue file of the friend it left.\n"
+const friendLevelWords = "friend level evens the friends' ready queues as fleet level evens the members': among the friends up of one class (the tiers the friend's nova-config row says the friend can do), while one has two more cards over the friend's width than another below the friend's room (twice the friend's width, in batch and one-shot mode alike), the newest card of the first moves to the second at its next generation, into working when the friend has a lane free. Only a card for any friend (WHO: friend) that is ready on the friend's row and that the friend has not started (a push on its branch, the friend's beat naming it running) moves; a card naming the friend and a working card stay. The MOVED line says moved=N to <friend>(n) from <friend>(n). friend sync delivers a moved card as a new job and marks it taken in the queue file of the friend it left.\n"
 
 func (a *app) cmdFriendLevel(args []string, stdout, stderr io.Writer) int {
 	const name = "friend level"
@@ -187,7 +193,7 @@ func (a *app) cmdFriendLevel(args []string, stdout, stderr io.Writer) int {
 	}
 	r := sprint.FriendLevelReq{Started: map[string]string{}, Who: c.actor}
 	for _, f := range rows {
-		r.Seats = append(r.Seats, sprint.FriendSeat{Name: f.Name, Width: f.Width, Status: f.Status, Class: f.Class, Mode: f.Mode})
+		r.Seats = append(r.Seats, sprint.FriendSeat{Name: f.Name, Pronouns: f.Pronouns, Width: f.Width, Status: f.Status, Class: f.Class, Mode: f.Mode})
 		if f.Status != sprint.Up {
 			continue
 		}

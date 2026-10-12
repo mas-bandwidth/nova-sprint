@@ -82,7 +82,7 @@ func friendStartUnits(s *Snapshot, seats []FriendSeat) (units []Unit, started ma
 			}
 			set, unset := friendStartSet(s, c, f.Name)
 			units = append(units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, moveEntry(c, row, Working, set, unset...))},
-				Moved: fmt.Sprintf("%s %s:ready -> working (started: her beat names it running)", c.ID, row)})
+				Moved: friendPronouns(seats, f.Name).Sprintf("%s %s:ready -> working (started: {their} beat names it running)", c.ID, row)})
 			started[f.Name]++
 		}
 	}
@@ -113,7 +113,7 @@ func friendUnstartedWorking(s *Snapshot, seats []FriendSeat) (units []Unit, prop
 			if friendStarted(s, f, c) {
 				set, unset := friendStartSet(s, c, f.Name)
 				units = append(units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, setEntry(c, set, unset...))},
-					Moved: fmt.Sprintf("%s %s:working started (her beat names it running)", c.ID, row)})
+					Moved: friendPronouns(seats, f.Name).Sprintf("%s %s:working started ({their} beat names it running)", c.ID, row)})
 				if !cleared[f.Name] {
 					cleared[f.Name] = true
 					props = append(props, friendTakenClear(s, f)...)
@@ -125,7 +125,7 @@ func friendUnstartedWorking(s *Snapshot, seats []FriendSeat) (units []Unit, prop
 				unset = append(unset, "first_taken") // no friend has started it: its first take was no start
 			}
 			units = append(units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, moveEntry(c, row, Ready, map[string]string{"untaken_since": stamp(s.Now)}, unset...))},
-				Moved: fmt.Sprintf("%s %s:working -> ready (working with no start of hers: it waits ready until she starts it)", c.ID, row)})
+				Moved: friendPronouns(seats, f.Name).Sprintf("%s %s:working -> ready (working with no start by {them}: it waits ready until a start)", c.ID, row)})
 		}
 	}
 	return units, props

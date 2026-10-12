@@ -2364,7 +2364,7 @@ func groupLine(g sprint.Group, now time.Time) string {
 		mark = "!"
 	}
 	kind := strings.ToUpper(g.Kind)
-	l := fmt.Sprintf("%s %s %s %s", kind, g.ID, mark, g.Type)
+	l := fmt.Sprintf("%s %s %s %s", kind, g.ID, mark, sprint.NoteTypeText(g.Type))
 	if g.Behind >= sprint.CriticalBehind {
 		l = fmt.Sprintf("CRITICAL %d behind: %s", g.Behind, l) // the cards that wait on it (weight.go)
 	}
@@ -2630,7 +2630,7 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "NEEDED-BY %s\n", oneline.Escape(n))
 	}
 	for _, o := range v.Open {
-		fmt.Fprintf(stdout, "OPEN %s %s -> %s\n", oneline.Escape(o.Note.ID), oneline.Escape(o.Note.Type), oneline.Escape(strings.Join(o.Note.Decisions, " | ")))
+		fmt.Fprintf(stdout, "OPEN %s %s -> %s\n", oneline.Escape(o.Note.ID), oneline.Escape(sprint.NoteTypeText(o.Note.Type)), oneline.Escape(strings.Join(o.Note.Decisions, " | ")))
 	}
 	if held != nil {
 		fmt.Fprintf(stdout, "HELD %s\n", oneline.Escape(held.String()))

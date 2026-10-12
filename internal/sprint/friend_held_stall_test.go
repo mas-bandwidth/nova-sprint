@@ -49,7 +49,7 @@ func TestAFriendHeldCardIsNotAStall(t *testing.T) {
 		require.Equal(t, Ready, w.state("s1-3"))
 		require.Positive(t, widthRoom(w.s, w.s.UpMembers()), "the machines have room")
 		hd := mustHold(t, running(w), "s1-3", HeldByWaiting)
-		assert.Contains(t, hd.Why, "waits for a friend serving tier pro below her room")
+		assert.Contains(t, hd.Why, "waits for a friend serving tier pro below available room")
 	})
 	t.Run("stella with room: the next tick deals it; a deal that does not is a stall", func(t *testing.T) {
 		t.Parallel()
@@ -63,7 +63,7 @@ func TestAFriendHeldCardIsNotAStall(t *testing.T) {
 		delete(c.tick, "s1-3")
 		hd := c.hold("s1-3")
 		require.True(t, hd.Stalled(), "%s", hd)
-		assert.Contains(t, hd.Why, "a friend serving its tier is below her room")
+		assert.Contains(t, hd.Why, "a friend serving its tier is below the available room")
 	})
 }
 

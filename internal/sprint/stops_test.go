@@ -213,7 +213,7 @@ func TestACardPinnedToAFriendWhoIsNotUpIsRaisedUntilUnpinned(t *testing.T) {
 
 	j := r.openNote(sprint.NStopPinWaits, "p1-1")
 	require.NotNil(t, j, "a pin waiting on a friend who is not up is a judgment")
-	assert.Contains(t, j.What, "p1-1 is pinned to friend amy alone and waits: she is held; effect: ")
+	assert.Contains(t, j.What, "p1-1 is pinned to friend amy alone and waits: friend status is held; effect: ")
 	assert.Contains(t, j.What, "undo: nova-sprint unpin p1-1")
 	_, ok := r.keptStop(sprint.StopKindPinWaits, "p1-1")
 	assert.True(t, ok, "the stops record lists it")
@@ -250,7 +250,7 @@ func TestAHardPinToAFriendNotUpPastItsBoundIsOfferedOn(t *testing.T) {
 	r.tickBeating(sprint.PassEvery, "m1", "m2")
 	j := r.openNote(sprint.NPinIgnored, "p1-1")
 	require.NotNil(t, j, "dealt away from her, the pin-ignored judgment")
-	assert.Contains(t, j.What, "amy did not take it because she is held")
+	assert.Contains(t, j.What, "amy did not take it because friend is held")
 	assert.Nil(t, r.openNote(sprint.NStopPinWaits, "p1-1"), "it waits on her no more: the stop closes")
 }
 

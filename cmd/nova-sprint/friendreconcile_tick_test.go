@@ -67,7 +67,7 @@ func TestRunReconcilesFriendsEveryTick(t *testing.T) {
 		writeTestQueueFile(t, ta, root, "amy", `{"tasks":[]}`)
 		out := runTicks(t, ta, 1)
 		for _, id := range []string{"s1-1", "s1-2", "s1-3", "s1-4"} {
-			assert.Contains(t, out, "FRIEND-RECONCILE RETURNED friend=amy card="+id+".w1: her QUEUE.json, written at", id)
+			assert.Contains(t, out, "FRIEND-RECONCILE RETURNED friend=amy card="+id+".w1: the friend's QUEUE.json, written at", id)
 		}
 		assert.Contains(t, ta.ok("inbox"), "a friend's card returned to ready", "each return is pushed to the coordinator")
 		out += runTicks(t, ta, 2)
@@ -109,12 +109,12 @@ func TestRunReconcilesFriendsEveryTick(t *testing.T) {
 		// she holds it queued: kept, while her row says working
 		writeTestQueueFile(t, ta, root, "amy", `{"tasks":[{"id":"s1-1.w1","state":"queued"}]}`)
 		out := runTicks(t, ta, 3)
-		assert.Equal(t, 1, strings.Count(out, "friend amy disagrees with her QUEUE.json: her row working=1, her QUEUE.json working=0"), out)
-		assert.Contains(t, ta.ok("inbox"), "a friend's row disagrees with her QUEUE.json")
+		assert.Equal(t, 1, strings.Count(out, "friend amy disagrees with the friend's QUEUE.json: row working=1, QUEUE.json working=0"), out)
+		assert.Contains(t, ta.ok("inbox"), "a friend's row disagrees with the friend's QUEUE.json")
 		assert.NotContains(t, runTicks(t, ta, 2), "disagrees", "a loop started again finds the episode said on the fleet table")
 		writeTestQueueFile(t, ta, root, "amy", `{"tasks":[{"id":"s1-1.w1","state":"working"}]}`)
 		out = runTicks(t, ta, 2)
-		assert.Equal(t, 1, strings.Count(out, "friend amy agrees with her QUEUE.json again"), out)
+		assert.Equal(t, 1, strings.Count(out, "friend amy agrees with the friend's QUEUE.json again"), out)
 		assert.Equal(t, sprint.Working, primary(ta, "s1-1").Primary.Col, "a disagreement is said, never acted on")
 	})
 }

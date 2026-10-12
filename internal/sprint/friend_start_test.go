@@ -84,7 +84,7 @@ func TestAFriendCardIsWorkingOnlyOnceTheFriendStartsIt(t *testing.T) {
 	assert.Equal(t, stamp(started), wc.F("first_taken"))
 	assert.Equal(t, "1", wc.F(FieldStarted))
 	assert.Empty(t, wc.F("untaken_since"))
-	assert.Contains(t, movedLines(p), "s1-2.w1 friend.amy:ready -> working (started: her beat names it running)")
+	assert.Contains(t, movedLines(p), "s1-2.w1 friend.amy:ready -> working (started: their beat names it running)")
 
 	// friend sync reads s1-3.w1's job begun: its start receipt moves it to working now
 	w.tick(time.Minute)
@@ -120,7 +120,7 @@ func TestAFriendCardIsWorkingOnlyOnceTheFriendStartsIt(t *testing.T) {
 	assert.Empty(t, wc.F("first_taken"))
 	assert.Empty(t, wc.F(FieldFriendDeadline))
 	assert.Equal(t, stamp(back), wc.F("untaken_since"), "its start bound runs from its return to ready")
-	assert.Contains(t, movedLines(p), "s1-1.w1 friend.bob:working -> ready (working with no start of hers: it waits ready until she starts it)")
+	assert.Contains(t, movedLines(p), "s1-1.w1 friend.bob:working -> ready (working with no start by them: it waits ready until a start)")
 	assert.Equal(t, 2, w.s.Fleet.Count(amy, Working), "her started cards stay working")
 	assert.Equal(t, 0, w.s.Fleet.Count(amy, Ready))
 

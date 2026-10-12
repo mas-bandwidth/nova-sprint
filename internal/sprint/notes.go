@@ -85,7 +85,7 @@ const (
 	// seat"): given by its holder or the owner, or taken with the owner's name,
 	// which is addressed to the holder it was taken from.
 	NSeat           = "seat"
-	NFriendNotWoken = "a friend was not told of her card" // friend sync delivered it, and the bus message to her failed
+	NFriendNotWoken = "a friend was not told of her card" // friend sync delivered it, and the bus message failed
 	NSeatTaken      = "seat TAKEN"
 
 	NReadyToAccept   = "ready to accept"    // the readers it needs said ok at its head (ReadsNeeded)
@@ -374,3 +374,21 @@ func (n Note) Bound() Note {
 // again from the stream's generator, with what the worker found, as a new card; a redeal of
 // the same brief would hold the same way (docs/SPEC-SPRINT.md section 1, a brief defect).
 const DecisionRecut = "re-cut the brief"
+
+// NoteTypeText is a human label for the four historical friend note identifiers.
+// Note.Type itself remains unchanged so stored judgments and API consumers keep
+// matching their existing identifiers, release ages and acknowledgments.
+func NoteTypeText(typ string) string {
+	switch typ {
+	case NStopPinWaits:
+		return "a card pinned to one friend waits while the friend is not up"
+	case NFriendNotWoken:
+		return "a friend was not told of a card"
+	case NFriendDisagrees:
+		return "a friend's row disagrees with the friend's QUEUE.json"
+	case NFriendAgrees:
+		return "a friend's row agrees with the friend's QUEUE.json again"
+	default:
+		return typ
+	}
+}
