@@ -134,7 +134,9 @@ func friendStart(p sprint.Packet) string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "This attempt starts from the current tip of %s on origin, never from an older base: fetch it and start your branch there.", base)
-	if p.BaseHead != "" {
+	if p.BaseHead != "" && p.BaseAttempt == p.Attempt {
+		fmt.Fprintf(&b, " Carry the captured work of an earlier generation of this attempt onto your distinct branch: its immutable head is %s; fetch that commit and preserve its work where it applies, and redo any conflicts.", p.BaseHead)
+	} else if p.BaseHead != "" {
 		fmt.Fprintf(&b, " Carry the work of attempt %d onto it yourself: its head, %s, is the last pushed by any attempt before this one (`git diff %s...%s` shows that work); where it does not apply cleanly, redo it.", p.BaseAttempt, p.BaseHead, ref, p.BaseHead)
 	} else {
 		b.WriteString(" No attempt before this one pushed work to carry.")

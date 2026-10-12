@@ -58,6 +58,9 @@ func newTestApp(t *testing.T) *testApp {
 	ta.a.hookSock = shortSock(t)
 	// a broken read's branch is checked against origin only by a test that gives a tip
 	ta.a.readTip, ta.a.readHeads = nil, nil
+	// Unit fixtures open no remote connection. Recovery witnesses supply
+	// exact head evidence explicitly; nil is unavailable, never empty success.
+	ta.a.recoveryTips = nil
 	// the friends' bus: every message sent is kept, none goes anywhere
 	ta.a.bus = func(_ context.Context, m bus.Message, _ func(string)) error {
 		ta.mu.Lock()

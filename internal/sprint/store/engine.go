@@ -96,6 +96,10 @@ type Store struct {
 	// fleet_retire.go): the names, and whether the read answered. A read that fails or
 	// holds no row retires nothing (never act on a missing read). nil retires nothing.
 	Inventory func(ctx context.Context) (machines []string, ok bool)
+	// RecoveryHeads reads revoked generations' branches without mutating them.
+	// The binding batches requests under one time budget. A nil callback is
+	// missing evidence, never proof that no branch was pushed.
+	RecoveryHeads func(context.Context, []sprint.RecoveryHeadRequest) []sprint.RecoveryHead
 	// Stats is what the store's reads cost (stats.go); nil is made on the
 	// first tick. Its pinned copies share it.
 	Stats *Stats
@@ -220,6 +224,12 @@ type Step struct {
 	// Friends says the step consults the friends roster (finish, for friendNext
 	// delivery mode): it plans with the friend seats (sprint.Snapshot.Friends).
 	Friends bool
+	// RecoveryFriends captures stable presence keys and guards their exact
+	// values at the transaction reserving the recovery operation.
+	RecoveryFriends bool
+	// RecoveryReadUntil is one absolute budget shared by every retry of a
+	// head-resolution part, rather than a new remote-read budget per attempt.
+	RecoveryReadUntil time.Time
 	// FriendText loads only pronoun metadata; unlike Friends it changes no
 	// behavioral seat lookup, keeping manual verb routing and admission intact.
 	FriendText bool
@@ -690,7 +700,17 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				return res, err
 			}
 		}
-		if step.Friends {
+		var keyGuards []KeyGuard
+		if step.RecoveryFriends {
+			seats, guards, stable, err := st.recoveryFriends(ctx, snap)
+			if err != nil {
+				return res, err
+			}
+			if !stable {
+				continue
+			}
+			snap.Friends, keyGuards = seats, guards
+		} else if step.Friends {
 			seats, err := st.FriendSeats(ctx, snap.Now)
 			if err != nil {
 				return res, err
@@ -706,6 +726,11 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			for _, spec := range specs {
 				snap.FriendTextPronouns[spec.Name] = spec.Pronouns
 			}
+		}
+		if !step.RecoveryReadUntil.IsZero() && st.RecoveryHeads != nil {
+			headCtx, cancel := context.WithDeadline(ctx, step.RecoveryReadUntil)
+			snap.RecoveryHeads = st.RecoveryHeads(headCtx, sprint.RecoveryHeadRequests(snap))
+			cancel()
 		}
 		// Every plan is held to the lifecycle here, whatever step built it.
 		plan := sprint.Applied(snap, step.Plan(snap))
@@ -774,6 +799,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		if isStuck {
 			op.Stuck = stuck.Op
 		}
+		op.KeyGuards = keyGuards
 		op.Queue = queued
 		if why := unwritableQueued(op.Queue); why != "" {
 			return refuseWhole(res, plan, why)

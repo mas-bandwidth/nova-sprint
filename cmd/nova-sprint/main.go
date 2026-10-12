@@ -88,8 +88,9 @@ type app struct {
 	// readTip and readHeads are the server's check of a broken read's branch at its close
 	// (readMissing): origin's tip of the branch the read named, and origin's branches of the
 	// work card by pattern. nil checks nothing: tests open no socket unless they give one.
-	readTip   tipFn
-	readHeads headsFn
+	readTip      tipFn
+	readHeads    headsFn
+	recoveryTips recoveryTipsFn
 	// bus sends one message on the friends' bus (pkg/bus; friend sync wakes a
 	// friend's daemon with it when it delivers her a card): tests give a recorder
 	// and open no socket.
@@ -375,6 +376,7 @@ func newApp(getenv func(string) string) *app {
 	a.inventory = a.readInventory
 	a.friends = a.readFriends
 	a.tip = a.branchTip
+	a.recoveryTips = a.recoveryBranchTips
 	a.readTip, a.readHeads = a.branchTip, a.branchHeads
 	a.bus = a.sendBus
 	a.busOpen = a.openBus
@@ -714,6 +716,7 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	}
 	// a twin is ticked by hand: no machine runs between its commands (twin.go)
 	st := &store.Store{B: b, Names: names, Actor: c.actor, Now: a.now, NewID: store.NewID, Sleep: a.sleep, CheckTwin: a.checkTwin, ByHand: a.twinOpen(c.redis)}
+	st.RecoveryHeads = a.recoveryHeads
 	// every verb this process runs on the store reads through one twin: a
 	// verb after the first reads only what changed (store/twin.go)
 	a.readTwinsMu.Lock()

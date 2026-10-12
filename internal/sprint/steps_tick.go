@@ -208,6 +208,9 @@ type TickReq struct {
 	// levels them after its deal (FriendLevel). nil is none: every card is the fleet's
 	// but a hard pin, which waits ready, and no friend is levelled.
 	Friends []FriendSeat
+	// RecoveryHeads are successful or failed reads of revoked generations' branches.
+	// Missing evidence keeps a revoked card pending and prohibits a new take.
+	RecoveryHeads []RecoveryHead
 	// AnswerRules says the tick answers the mechanical judgments by rule (rules.go; run
 	// --answer-rules); false leaves every judgment to the coordinator.
 	AnswerRules bool
@@ -341,15 +344,16 @@ const (
 	PartLevelReads = "level reads"
 )
 
-// TickStart is the tick's start, once, before any table's update: the fleet's level
+// TickStart first revokes Down leases, then reconciles live runs and resolves
+// recovery head debt, before any table's update and the fleet's level
 // (ready cards from a member that
 // cannot start them to one with free lanes, never past DealAhead times a
 // width) and the readers' (asked reads from a reader with a backlog to one
 // idle), each one batch. It runs once a tick: a table written again later in
 // the tick is updated by its update, never levelled again.
-var TickStart = []TickPartDef{{PartLive, TickLive}, {PartLevel, TickLevel}, {PartLevelReads, TickLevelReads}}
+var TickStart = []TickPartDef{{PartFriendRecover, TickFriendRecover}, {PartLive, TickLive}, {PartRecoveryHeads, TickRecoveryHeads}, {PartLevel, TickLevel}, {PartLevelReads, TickLevelReads}}
 
-// PartLive is the reconcile's part: working against the rows' live sets (live.go), first,
+// PartLive reconciles the rows' live sets after Down lease revocation,
 // so the level and the deal plan on what really runs. A STOPPED machine runs it too, alone
 // (Store.Tick's STOPPED branch).
 const PartLive = "live"
@@ -856,6 +860,9 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	// A hard pin that no friend takes stays out of the fleet below.
 	var offer []*Card
 	for _, c := range s.Work.Column(Ready) {
+		if recoveryDebt(s, c) != "" {
+			continue
+		}
 		if StreamHeld(s, c.Row) || IsSentinel(c) {
 			continue
 		}
@@ -884,6 +891,9 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		friendPlaced[u.Key] = true
 	}
 	for _, c := range s.Work.Column(Ready) {
+		if recoveryDebt(s, c) != "" {
+			continue
+		}
 		if StreamHeld(s, c.Row) {
 			continue // its stream is held (hold.go): dealt to no machine and no friend until unhold
 		}

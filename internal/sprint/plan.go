@@ -569,7 +569,7 @@ func otherEpochAnswer(s *Snapshot, id string, e uint64) string {
 // lifecycle (Lawful) and to one judgment per cause (OnePerCause), on the
 // state the step read.
 func Applied(s *Snapshot, p Plan) Plan {
-	return OnePerCause(s, recordConsumerTransitions(s, Lawful(p)))
+	return OnePerCause(s, recordConsumerTransitions(s, Lawful(recoveryAdmissions(s, p))))
 }
 
 // OnePerCause keeps a judgment open once per card and cause: a note of a

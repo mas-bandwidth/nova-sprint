@@ -985,7 +985,7 @@ func (m *Mem) Acquire(_ context.Context, gen uint64, op OpRecord) (bool, error) 
 	if err := m.fail("acquire"); err != nil {
 		return false, err
 	}
-	if l.fence != nil || l.gen != gen || m.epoch != m.epochN {
+	if l.fence != nil || l.gen != gen || m.epoch != m.epochN || !m.keyGuardsMatch(op.KeyGuards) {
 		return false, nil
 	}
 	body, err := json.Marshal(op)
