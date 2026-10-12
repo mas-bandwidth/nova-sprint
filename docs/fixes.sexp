@@ -3002,6 +3002,21 @@
     :origin "this card, tla-loadcache-trips-and-epoch-keys.w5, replacing the dropped card
      tla-loadcache-separate-trips-and-epoch-keys; the v1.2.16 pass (the owner, 2026-10-11 ~23:55Z: are all
      the TLA models up to date and checked, or this pass runs in v1.2.16)")
+   (fix "tla-routerest-open-coordinator-rest-ends-only-woken" :release "v1.2.16" :status "planned"
+    :title "RouteRest models the coordinator's open rest, a take in flight, and the window reset on a provider rest"
+    :text "tla/RouteRest.tla now matches internal/sprint/route_rest.go, route_coordinator.go and
+     provider_funds.go: the coordinator's rest is split into a timed rest (coord) and an open one (coordopen,
+     routes rest with no --until) that ends only by wake, the property CoordOpenEndsOnlyWoken with its
+     reversed witness MCRouteRestBrokenCoordClock (ExpireProvider ends an open coordinator rest); a take in
+     flight across a rest ends refused and is ignored when it was launched before the rest's mark (Launch,
+     Refuse, providerRestsDue e.taken.After(last.Mark())); and the window resets on a provider's rest as
+     well as a route's own. The take in flight is the window's flight field, beside its ends, so ProviderFunds
+     (which instantiates RouteRest) needs no change and its cases stay green. The TLC pass is green: the
+     routerest and providerfunds groups run on this bench, every case reaches its declared result, and
+     go run ./tools/tlacheck groups --root . --stale prints []."
+    :origin "this card, tla-routerest-open-coordinator-rest-ends-only-woken.w7, attempt 7, split at admission
+     from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA
+     models up to date and checked, or this pass runs in v1.2.16)")
    (fix "dev-is-behind-counts-only-cards-landed-on-a-sprint-branch" :release "v1.2.14" :status "planned"
     :title "dev is behind counts only cards landed on a sprint branch, named by id when primary is empty"
     :text "The dev is behind judgment counted every landed card whose base field was empty, and named
