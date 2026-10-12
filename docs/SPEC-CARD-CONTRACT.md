@@ -32,6 +32,13 @@ non-ledger overlap without an edge, writing nothing. `nova-sprint add --plan <di
 the table and exits 0 without admitting, for a seat that wants to read the overlaps first
 (see [SPRINT-COORDINATOR.md](SPRINT-COORDINATOR.md), the plan review).
 
+## The RESULT-line tier
+
+A brief's RESULT line (`RESULT: <id> sha=<sha12> tier: <t>`) names the tier the card is
+stored with and dealt on. The tier is read by the lint and the store; a card brief whose
+line 1 names no tier is refused by the lint with a tier-line finding. `brief --tier`
+still changes it later, with `--reason` as today.
+
 ## The SIBLINGS header
 
 A brief that names a sibling path (`../<name>`, a sibling repository by name) in its
