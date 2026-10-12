@@ -207,10 +207,8 @@ func (a *app) partialFindings(st *store.Store, items []briefItem, stream string,
 	for _, it := range items {
 		findings = append(findings, briefIDSizeFindings(it.file, it.id, it.text)...)
 	}
-	if !allowShared {
-		if why := sharedPaths(briefCardsOf(items)); why != "" {
-			findings = append(findings, briefFinding{File: items[0].file, ID: items[0].id, Check: "shared-paths", Why: why, order: chkShared})
-		}
+	if why := sharedPaths(briefCardsOf(items)); why != "" {
+		findings = append(findings, briefFinding{File: items[0].file, ID: items[0].id, Check: "shared-paths", Why: why, order: chkShared})
 	}
 	for _, it := range items {
 		var lintBuf bytes.Buffer

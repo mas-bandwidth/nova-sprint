@@ -1,0 +1,187 @@
+// Package cardgen.
+package cardgen
+
+import (
+	"fmt"
+	"strings"
+	"unicode"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+)
+
+// CardPlan is one card of a plan under review: its id and its brief text. The
+// shared-path rule (docs/SPEC-CARD-CONTRACT.md) reads only the brief's typed
+// header lines, so a plan is a text-only description of the cards, pure and
+// store-free like the rest of cardgen.
+type CardPlan struct {
+	ID    string
+	Brief string
+}
+
+// SharedPathRow is one path two or more cards of a plan name together in their
+// PATHS lines. Ledger says a lander-owned ledger covers the path (LedgerInPaths),
+// so the lander merges it and the cards do not collide. Edge says a needs edge
+// chains the pair, so the later card lands at the earlier's tip. A row that is
+// neither ledger nor edge is a refusal: the two cards would edit the file at once.
+type SharedPathRow struct {
+	Path   string
+	Cards  []string
+	Ledger bool
+	Edge   bool
+}
+
+// SharedPathRows is the overlap table of a plan: one row per path named in PATHS
+// by two or more of the plan's cards, in first-named order, each with the cards
+// that name it, whether a lander-owned ledger covers it, and whether a needs edge
+// chains the cards (docs/SPEC-CARD-CONTRACT.md, the shared-path rule).
+func SharedPathRows(cards []CardPlan) []SharedPathRow {
+	byPath := map[string][]string{}
+	var order []string
+	for _, c := range cards {
+		for _, p := range headerPaths(c.Brief, "PATHS") {
+			if !containsString(byPath[p], c.ID) {
+				byPath[p] = append(byPath[p], c.ID)
+			}
+			if len(byPath[p]) == 1 {
+				order = append(order, p)
+			}
+		}
+	}
+	needs := map[string][]string{}
+	for _, c := range cards {
+		needs[c.ID] = briefNeeds(c.Brief)
+	}
+	var rows []SharedPathRow
+	for _, p := range order {
+		ids := byPath[p]
+		if len(ids) < 2 {
+			continue
+		}
+		rows = append(rows, SharedPathRow{
+			Path:   p,
+			Cards:  append([]string(nil), ids...),
+			Ledger: LedgerInPaths(p),
+			Edge:   anyEdge(needs, ids),
+		})
+	}
+	return rows
+}
+
+// anyEdge says a needs edge chains two of the cards: one reaches the other
+// through the needs of the plan's cards.
+func anyEdge(needs map[string][]string, ids []string) bool {
+	var reaches func(a, b string, seen map[string]bool) bool
+	reaches = func(a, b string, seen map[string]bool) bool {
+		if seen[a] {
+			return false
+		}
+		seen[a] = true
+		for _, n := range needs[a] {
+			if n == b || reaches(n, b, seen) {
+				return true
+			}
+		}
+		return false
+	}
+	for i := range ids {
+		for _, b := range ids[i+1:] {
+			if reaches(ids[i], b, map[string]bool{}) || reaches(b, ids[i], map[string]bool{}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Review is a plan review of a set of cards, for a seat reading the plan before it
+// admits a stream (docs/SPRINT-COORDINATOR.md, the plan review; docs/SPEC-CARD-CONTRACT.md,
+// the shared-path rule): the overlap table (Table) and the first non-ledger overlap
+// without an edge (RefuseOverlaps), "" when the plan is clean. The table prints every
+// overlap; the refusal names both cards and the path and is what the add refuses on.
+func Review(cards []CardPlan) (table, refusal string) {
+	rows := SharedPathRows(cards)
+	return Table(rows), RefuseOverlaps(rows)
+}
+
+// RefuseOverlaps is the first non-ledger overlap without an edge, "" when there
+// is none: the brief the add refuses on, naming both cards and the path.
+func RefuseOverlaps(rows []SharedPathRow) string {
+	for _, r := range rows {
+		if r.Ledger || r.Edge {
+			continue
+		}
+		return fmt.Sprintf("%s is named in PATHS by %s and %s, and neither needs the other", r.Path, r.Cards[0], r.Cards[1])
+	}
+	return ""
+}
+
+// Table renders the overlap table for a plan review: one line per overlap with
+// the path, the cards, ledger or not, and the edge if any.
+func Table(rows []SharedPathRow) string {
+	var b strings.Builder
+	for _, r := range rows {
+		ledger := "ledger"
+		if !r.Ledger {
+			ledger = "not-ledger"
+		}
+		edge := "no-edge"
+		if r.Edge {
+			edge = "edge"
+		}
+		fmt.Fprintf(&b, "%s  %s  %s  %s\n", r.Path, strings.Join(r.Cards, ","), ledger, edge)
+	}
+	return b.String()
+}
+
+// briefNeeds is the needs a brief names: the first `Needs:` header line, else
+// the DEPENDS-ON: line, its ids comma separated, each cut at an opening
+// parenthesis. "none" or "-" (also after the cut), an owner/repo#n reference,
+// or no such line is no needs.
+func briefNeeds(brief string) []string {
+	value, found := "", false
+	for _, line := range strings.Split(brief, "\n") {
+		if key, v, ok := cardhdr.KeyValue(line); ok && key == "Needs" {
+			value, found = v, true
+			break
+		}
+	}
+	if !found {
+		value, _ = swarm.CardHeaderValue([]byte(brief), "DEPENDS-ON")
+	}
+	var out []string
+	for _, id := range strings.Split(value, ",") {
+		if cut, _, ok := strings.Cut(id, "("); ok {
+			id = cut
+		}
+		switch id = strings.TrimSpace(id); {
+		case id == "", id == "-", id == "none", strings.Contains(id, "#"):
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
+// headerPaths is the files a brief's typed header line names (PATHS:, SHARED:),
+// commas or blanks between them; none and - name no file.
+func headerPaths(brief, key string) []string {
+	value, _ := swarm.CardHeaderValue([]byte(brief), key)
+	var out []string
+	for _, p := range strings.FieldsFunc(value, func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
+		if p != "none" && p != "-" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// containsString says xs contains s.
+func containsString(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}

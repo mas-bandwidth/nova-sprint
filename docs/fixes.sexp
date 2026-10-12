@@ -2441,7 +2441,30 @@
     no longer says a balance at or under zero counts as out (Retired excludes such a rest). Exact balance and
     spend arithmetic, the judgments' words and the STOP debt (StopReturn) stay outside the module."
    :origin "card tla-provider-funds, hand-landed 2026-10-11 outside the sprint by a child of the seat from its attempt 6 head af86f02b (attempt 5, 2d4160c2, carried); v1.2.12 inventory item T31 and section 5")
-  (fix "the-landing-gate-runs-its-classes-side-by-side" :release "v1.2.15" :status "planned"
+   (fix "a-shared-non-ledger-path-is-refused-at-admission" :release "v1.2.15" :status "planned"
+    :title "Two cards sharing a path no lander-owned ledger covers are refused at admission"
+     :text "Card lint refused two admitted cards sharing a path without a needs edge, and offered
+     --allow-shared-paths. On 2026-10-11 the seat admitted nine schema streams with that flag; every
+     card of a leg edits docs/roadmap-evidence/fixed-<leg>.sexp, so each landing made the next head
+     conflict and the lander reworked it at the tip: one attempt and one read lost per landing, for
+     about 120 cards. The owner: \"we need to discover this earlier with card lint ... or some sort
+     of plan review\". --allow-shared-paths is removed from add; a brief that lists such a path on a
+     SHARED: line is refused the same way. The shared-path rule (docs/SPEC-CARD-CONTRACT.md) admits
+     only two forms: a ledger the lander merges (cardgen.LedgerInPaths, the lander's ledger list, and
+     the docs/roadmap-evidence/*.sexp evidence ledgers), or a needs edge between the cards (the second
+     lands after the first, staged at its tip). The plan review (internal/cardgen/plan_review.go)
+     lints a set as a plan before any card is written: it prints the overlap table (path, cards, ledger
+     or not, edge if any) and refuses the whole set on the first non-ledger overlap without an edge,
+     writing nothing; nova-sprint add --plan <dir> prints the table and exits 0 without admitting.
+     Tests (red first): internal/cardgen/lint_test.go and internal/cardgen/plan_review_test.go pin the
+     refusal, the SHARED: refusal, the needs edge and the ledger admissions. Attempt 5 fixes the plan
+     review's ledger test: it used cardgen.AlwaysInPaths (true for every *_test.go and testdata file)
+     and so admitted two cards sharing a test file with no needs edge; it now uses cardgen.LedgerInPaths,
+     and TestSharedPathRuleRefusesTestFileOverlap pins the refusal."
+    :origin "this card, a-shared-non-ledger-path-is-refused-at-admission.w5, from the owner's
+    2026-10-11 brief (\"we need to discover this earlier with card lint\") and the seat's record of the
+     day")
+   (fix "the-landing-gate-runs-its-classes-side-by-side" :release "v1.2.15" :status "planned"
    :title "The landing gate runs its classes side by side"
    :text "Every landing gate ran sprint.BaseClasses one class after another: build, gofmt, vet,
     vet -tags functional, then three separate `go test` processes for the internal/ci analyzer
