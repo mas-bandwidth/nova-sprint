@@ -11,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // Paths admission (docs/SPEC-CARD-CONTRACT.md, what admission verifies; docs/SPEC-SPRINT.md
@@ -55,6 +56,9 @@ func PathsAdmission(brief string, tree AdmissionTree) []string {
 	paths := admitList(h["PATHS"])
 	if len(paths) == 0 || strings.TrimSpace(h["REPO"]) == "" || strings.TrimSpace(h["BASE"]) == "" {
 		return nil
+	}
+	if why := swarm.PathsReadRefusal(h["PATHS"]); why != "" {
+		return []string{why}
 	}
 	at := tree.At
 	if at == "" {

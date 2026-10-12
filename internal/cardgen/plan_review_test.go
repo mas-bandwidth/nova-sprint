@@ -189,3 +189,15 @@ func TestReviewFirstNamedPathOrderIncludesUnresolvedCards(t *testing.T) {
 	assert.Equal(t, []string{"unknown", "fix-a"}, rows[0].Cards)
 	assert.Contains(t, RefuseOverlaps(rows), "p.go is named in PATHS")
 }
+
+func TestReviewPathsReadMarkerKeepsOverlap(t *testing.T) {
+	t.Parallel()
+	rows := SharedPathRows([]CardPlan{
+		{ID: "a", Brief: "RESULT: a\nREPO: owner/repo\nPATHS: src/x.go (read)\n"},
+		{ID: "b", Brief: "RESULT: b\nREPO: owner/repo\nPATHS: src/x.go\n"},
+	})
+	require.Len(t, rows, 1)
+	assert.Equal(t, "src/x.go", rows[0].Path)
+	assert.Equal(t, []string{"a", "b"}, rows[0].Cards)
+	assert.NotEmpty(t, RefuseOverlaps(rows))
+}

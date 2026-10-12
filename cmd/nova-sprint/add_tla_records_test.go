@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,4 +71,13 @@ func TestAddRefusesATlaEditWithoutARecordsRefresh(t *testing.T) {
 	assert.Contains(t, errs, "w2", "the refusal names the card")
 	assert.Contains(t, errs, "tlacheck merge --keep tla/RUNS.tsv")
 	assert.NotContains(t, out, "MOVED", "one model edit refuses the whole call")
+}
+
+func TestTlaPathsReadMarkerKeepsRecordsGate(t *testing.T) {
+	t.Parallel()
+	var stderr bytes.Buffer
+	code := holdTlaRecords("add", &stderr, briefCheck{id: "c", brief: "RESULT: c tier: frontier\nPATHS: tla/Foo.tla (read), b.go\n\nTHE TASK. Read the model.\n"})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr.String(), "tla/Foo.tla")
+	assert.Contains(t, stderr.String(), "tlacheck merge --keep tla/RUNS.tsv")
 }

@@ -242,3 +242,32 @@ func TestAddReadsTheBriefsModelLines(t *testing.T) {
 		assert.Contains(t, errs, want, lead)
 	}
 }
+
+func TestAddRefusesPathsReadMarkerWithoutWriting(t *testing.T) {
+	t.Parallel()
+	for _, paths := range []string{"a.go (read), b.go", "(read)"} {
+		t.Run(paths, func(t *testing.T) {
+			t.Parallel()
+			ta := newTestApp(t)
+			ta.ok("init --readers reader-a,reader-b --members m1")
+			before := ta.applies()
+			file := writeBrief(t, "RESULT: c sha=0123456789ab tier: pro\nKIND: read\nPATHS: "+paths+"\nTEST: none fixture\nSTART: none\nSTOP: report\n\nTHE TASK. Read the fixture.")
+			code, out, errs := ta.do("add --stream s1 --count 1 --one --brief-file " + file)
+			assert.Equal(t, 2, code, errs)
+			assert.Contains(t, errs, "PATHS entry")
+			assert.Contains(t, errs, "(read)")
+			assert.Contains(t, errs, "START")
+			assert.NotContains(t, out, "MOVED")
+			assert.Equal(t, before, ta.applies(), "the refused add must not write")
+		})
+	}
+	t.Run("corrected START read is admitted", func(t *testing.T) {
+		t.Parallel()
+		ta := newTestApp(t)
+		ta.ok("init --readers reader-a,reader-b --members m1")
+		file := writeBrief(t, "RESULT: c sha=0123456789ab tier: pro\nKIND: read\nPATHS: none\nTEST: none fixture\nSTART: a.go (read)\nSTOP: report\n\nTHE TASK. Read the fixture.")
+		code, out, errs := ta.do("add --stream s1 --count 1 --one --brief-file " + file)
+		assert.Equal(t, 0, code, errs)
+		assert.Contains(t, out, "MOVED")
+	})
+}
