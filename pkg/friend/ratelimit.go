@@ -266,7 +266,7 @@ func (g *LaneGovernor) Hold(reason string) bool {
 // RateJudgmentText is what the coordinator is told when a friend's lane cap
 // was lowered RateJudgeAfter times within RateJudgeWithin: one judgment.
 func RateJudgmentText(friend string, cap, width int, reason string) (subject, body string) {
- return rateJudgmentText(friend, DefaultPronouns, cap, width, reason)
+	return rateJudgmentText(friend, DefaultPronouns, cap, width, reason)
 }
 
 func rateJudgmentText(friend string, p Pronouns, cap, width int, reason string) (subject, body string) {
@@ -279,7 +279,7 @@ func rateJudgmentText(friend string, p Pronouns, cap, width int, reason string) 
 // FundsJudgmentText is what the coordinator is told when a friend's
 // provider is out of funds: one judgment.
 func FundsJudgmentText(friend, reason string) (subject, body string) {
- return fundsJudgmentText(friend, DefaultPronouns, reason)
+	return fundsJudgmentText(friend, DefaultPronouns, reason)
 }
 
 func fundsJudgmentText(friend string, p Pronouns, reason string) (subject, body string) {

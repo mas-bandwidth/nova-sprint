@@ -463,7 +463,7 @@ func (w *FaultWatch) Observe(fault string, now time.Time) (until time.Time, down
 // fault FaultRepeats times within FaultWithin: the subject and the body, naming the reason the
 // row is down with and until when.
 func FaultDownText(friend, reason string, until time.Time) (subject, body string) {
- return faultDownText(friend, DefaultPronouns, reason, until)
+	return faultDownText(friend, DefaultPronouns, reason, until)
 }
 
 func faultDownText(friend string, p Pronouns, reason string, until time.Time) (subject, body string) {
