@@ -5,7 +5,7 @@
 
 ## What is it?
 
-**nova-sprint** puts a fleet of AI models to work across a fleet of machines.
+**nova-sprint** puts different AI models to work across a fleet of machines.
 
 ## More lanes. Finish faster.
 
