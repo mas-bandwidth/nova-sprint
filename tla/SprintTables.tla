@@ -193,6 +193,8 @@
 \*   "comeback"     a dropped card is admitted again (NoCardLostOrTwice).
 \*   "withdrawmet"  a working card whose needs have all landed is withdrawn
 \*                  to waiting (WorkingToWaitingOnlyOnNeeds).
+\*   "finishunmet"  a finish drops the needs guard: a taken card given a need
+\*                  not landed finishes to review with it (Rule11).
 \*   "halfstep"     the fence is dropped, so a crash leaves a step half-written
 \*                  (its fleet writes committed, its work-table write pending)
 \*                  and other actions may act on the half-written table; a
@@ -513,13 +515,18 @@ Take ==
     /\ flags' = NoFlags
 
 \* Finish (refmodel Finish): working -> review; the work card finishes in its
-\* member's working cell.
+\* member's working cell. A finish of a card whose named needs have not landed
+\* is a coordination failure (needs_stop.go), taken whatever the worker
+\* reports: it goes to waiting, not review (NeedsWithdraw), so Rule11 holds. The
+\* reversed witness "finishunmet" drops the guard and lets a taken card given a
+\* need not landed reach review with it.
 Finish ==
   \E c \in Card :
     /\ FenceOK
     /\ state[c] = "working"
     /\ wplace[c] = "working"
     /\ members[wmember[c]] = "up"
+    /\ Broken = "finishunmet" \/ NeedsMet(c)
     /\ state' = [state EXCEPT ![c] = "review"]
     /\ wplace' = [wplace EXCEPT ![c] = "finished"]
     /\ UNCHANGED <<needs, waived, everLanded, members, wmember, rplace, mg, sstream, scause, ranked, ci>>
@@ -872,12 +879,15 @@ AddMove ==
 \* on the table, never the card itself, never closing a cycle. A ready card
 \* that gains a need not landed moves ready -> waiting; a waiting card whose
 \* new needs have all landed moves waiting -> ready (refused while its place in
-\* line still blocks it); a working card takes it in place and the tick then
-\* withdraws it to waiting (NeedsWithdraw, PR #96); a card in review takes only
-\* needs that have landed (briefDepends; rule 11). Every rewrite is held to the
-\* cycle check add makes (steps_edit.go needsCycle). The reversed witnesses:
-\* "reviewneeds" lets a review card take a need not landed, "needsany" moves a
-\* ready card to waiting with every need landed, "cycle" skips the cycle check.
+\* line still blocks it); a working card, dealt or taken, takes it in place and
+\* the tick then withdraws it to waiting (NeedsWithdraw, PR #96), and a taken
+\* card's finish holds NeedsMet (Finish, PR #103), so no primary reaches review
+\* with a need not landed; a card in review takes only needs that have landed
+\* (briefDepends; rule 11). Every rewrite is held to the cycle check add makes
+\* (steps_edit.go needsCycle). The reversed witnesses: "reviewneeds" lets a
+\* review card take a need not landed, "needsany" moves a ready card to waiting
+\* with every need landed, "cycle" skips the cycle check, "finishunmet" lets a
+\* finish drop the needs guard.
 NeedsSet ==
   \E rw \in Rewrites :
    LET c == rw[1]
@@ -892,10 +902,10 @@ NeedsSet ==
     /\ Broken = "cycle" \/ \A d \in N : c \notin ReachN(d)
     /\ needs' = [needs EXCEPT ![c] = N]
     /\ \/ /\ state[c] = "working"
-          \* dealt, not taken: the tick withdraws it (NeedsWithdraw). A taken
-          \* card given a need not landed can finish ok before the tick and
-          \* reach review with it; that gap is open (PR #103 body), not modelled
-          /\ wplace[c] = "ready" \/ MetWith(c, N)
+          \* a working card, dealt or taken, takes a new need in place; the tick
+          \* withdraws it (NeedsWithdraw), and a taken card's finish holds
+          \* NeedsMet (Finish), so no primary reaches review with a need not
+          \* landed (PR #103)
           /\ state' = state
        \/ /\ state[c] = "review"
           /\ Broken = "reviewneeds" \/ MetWith(c, N)

@@ -2468,7 +2468,7 @@ outcome and reason are kept.
 | ready -> working | deal: the system's tick cuts and deals a work card | mechanical |
 | working -> review | its work card finished, ok or failed | mechanical; failed notifies for judgment |
 | working -> ready | its work card was withdrawn, its attempt unchanged: no fleet member is up, its route rests (its note names the route and the reason), its take ended or its staging was refused, its provider rate-limited it, its lane cap redealt it, its friend returned it, or a finished friend card is redealt | mechanical, notifies |
-| working -> waiting | withdraw: its needs have not landed; its dealt work card goes back to the pool (needsWithdrawals), or its worker stopped on them (needsStopReturned) | mechanical, notifies |
+| working -> waiting | withdraw: its needs have not landed; its dealt work card goes back to the pool (needsWithdrawals), or its finish arrives while they have not landed (needsStopReturned), whatever the worker reports | mechanical, notifies |
 | review -> merging | accept: the readers it needs said ok at this head (one for a flash card, two different readers for a pro card; section 6) | mechanical (the tick), unless its CI is red at its head or it was returned to review at its attempt; the coordinator's verb takes those; refused without them |
 | review -> working | rework with a fix: the next attempt is delegated at once | the coordinator's verb |
 | review -> ready | rework with a fix when no fleet member is up or none is below its width; the tick deals it when one has room | the coordinator's verb |
@@ -2512,7 +2512,7 @@ in the same change. Lawful says whether the store's check (`Lawful`,
 | ready -> waiting | a sentinel inserted in front | `steps_sentinel.go` mod.change (add) | AddMove | yes, inserting |
 | ready -> waiting | a brief edit or `needs set` names a need not landed | `steps_edit.go` Brief, briefInPlace, NeedsSet | NeedsSet | yes, a need open |
 | ready -> waiting | the tick's needs pass, its work card dealt nowhere | `steps_tick.go` needsWaits | NeedsWait | yes, a need open |
-| working -> waiting | a dealt card whose needs have not landed goes back to the pool; a worker stopped on needs not landed | `steps_tick.go` needsWithdrawals; `needs_stop.go` needsStopReturned | NeedsWithdraw | yes, only when the card's own named needs in the pre-state have not landed (never by the needs the entry writes) |
+| working -> waiting | a dealt card whose needs have not landed goes back to the pool; a finish whose needs have not landed, whatever the worker reports | `steps_tick.go` needsWithdrawals; `needs_stop.go` needsStopReturned | NeedsWithdraw | yes, only when the card's own named needs in the pre-state have not landed (never by the needs the entry writes) |
 | landed -> review | the short-reads pass on a landed card | `steps_tick.go` ShortReadsBack (before v1.2.13) | none (witness "unland") | no: landed is final; the pass now offers merging cards only |
 | open -> off | drop, defer | `steps_review.go` Drop; `defer.go` Defer | Drop | yes, never a needed card |
 | landed -> off | remove | a removing plan | Drop | yes, removing |
@@ -2521,10 +2521,10 @@ in the same change. Lawful says whether the store's check (`Lawful`,
 
 A card's needs never hold one not landed past working (section 9, rule 11): a
 ready card that gains one moves to waiting; a dealt card that gains one goes
-working -> waiting at the tick (needsWithdrawals); a card in review is refused
-one, since nothing moves it back. A needs rewrite that would close a cycle is
-refused, as add's is. Open: a taken card given a need not landed can finish ok
-before the tick withdraws it, and reach review with it.
+working -> waiting at the tick (needsWithdrawals); a taken card given one goes
+working -> waiting at its finish, whatever the worker reports (the needs-stop
+path, needsStopReturned); a card in review is refused one, since nothing moves
+it back. A needs rewrite that would close a cycle is refused, as add's is.
 
 The store holds every step's plan to this table before it applies it, whatever
 step built it: a primary is admitted waiting or ready, moves only by a row of
@@ -2547,9 +2547,10 @@ unheld with such a card in her set never takes it. A take refuses a card whose
 primary's needs have not landed by id (`<id> needs <n,...>, not landed: not taken`) and passes over it by count (takeOne). A take by id of a card already
 working on the same row at the generation named is a no-op: it writes nothing
 and records nothing, so the log shows one take, never one every tick. A worker
-that stops because its card's needs have not landed is a coordination failure,
-never the worker's and never a brief defect. It is decided on the table's facts
-alone: a failed finish whose primary has a named need (not waived) that has not
+whose finish arrives while its card's needs have not landed is a coordination
+failure, never the worker's and never a brief defect, whatever the worker
+reports (ok or failed). It is decided on the table's facts
+alone: a finish whose primary has a named need (not waived) that has not
 landed at the finish, never on the report's words. Such a finish sends the work
 card back to the pool at a new generation, as the withdrawal above does (no fail
 mark, no `ok%` hit on the worker's row, no redeal spent, and the route's and
@@ -2565,7 +2566,8 @@ other (the brief-defect and hold rules). A ready primary whose needs have not
 landed and whose work card is dealt nowhere moves ready -> waiting in the tick's
 deal (needsWaits). The moves are modelled in tla/SprintTables.tla (NeedsWithdraw,
 NeedsWait; WorkingToWaitingOnlyOnNeeds, NeedsWithdrawalWaits and its reversed
-witness `withdrawready`). A card's needs are set at add, by a brief
+witness `withdrawready`; Finish's NeedsMet guard and its reversed witness
+`finishunmet`). A card's needs are set at add, by a brief
 edit's `DEPENDS-ON:` lines, or by `needs set` (`needs set <id> (--needs <a,b> | --clear)`, the coordinator's alone, section 11), and nowhere else: `needs set`
 rewrites the brief's needs line and moves the card by this table, so a card
 admitted with the wrong needs is corrected in place, never by a twin. A brief

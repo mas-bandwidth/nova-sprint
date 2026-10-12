@@ -5,24 +5,24 @@ import (
 	"strings"
 )
 
-// A STOP ON NEEDS THAT HAVE NOT LANDED IS A COORDINATION FAILURE (docs/SPEC-SPRINT.md, needs
-// and the deal; the owner, 2026-10-11: "Blocker bug to fix that please."). A card whose
+// A FINISH WHOSE NAMED NEEDS HAVE NOT LANDED IS A COORDINATION FAILURE (docs/SPEC-SPRINT.md,
+// needs and the deal; the owner, 2026-10-11: "Blocker bug to fix that please."). A card whose
 // named needs have not landed is neither dealt nor taken (TickDeal, friendDealPass,
 // needsWithdrawals, takeOne); one that reached a worker anyway (dealt before the rule, or
-// given a need after its take) and whose failed finish arrives while a named need has still
-// not landed is the coordination's failure, never the worker's and never the brief's: no
-// brief defect, no failed work, no fail mark and no ok% hit on the worker's row, no redeal
-// spent. It is decided on the table's facts alone (NamedWaits at the finish), never on the
-// report's words: once every need has landed a HOLD is judged as any other (the brief-defect
-// and hold rules). No counter of coordination failures exists, so the stop is classed as not
-// the worker's: the work card goes back to the pool and the primary waits for its needs
-// (working -> waiting), with one happened note, NNeedsUnlanded, naming the needs. The next
-// deal cuts the primary's next attempt: an attempt number is spent, but no redeal and no
-// failure. A primary returned this way MaxNeedsReturns times is judged as any other failure
-// from then on, so no loop runs unseen.
+// given a need after its take) whose finish arrives while a named need has still not landed
+// is the coordination's failure, whatever the worker reports (ok or failed), never the
+// worker's and never the brief's: no brief defect, no failed work, no fail mark and no ok%
+// hit on the worker's row, no redeal spent. It is decided on the table's facts alone
+// (NamedWaits at the finish), never on the report's words: once every need has landed a HOLD
+// is judged as any other (the brief-defect and hold rules). No counter of coordination
+// failures exists, so the stop is classed as not the worker's: the work card goes back to the
+// pool and the primary waits for its needs (working -> waiting), with one happened note,
+// NNeedsUnlanded, naming the needs. The next deal cuts the primary's next attempt: an attempt
+// number is spent, but no redeal and no failure. A primary returned this way MaxNeedsReturns
+// times is judged as any other failure from then on, so no loop runs unseen.
 
-// MaxNeedsReturns is how many failed finishes of one primary are returned as stops on
-// unlanded needs (FieldNeedsReturns); past it the finish is judged as any other.
+// MaxNeedsReturns is how many finishes of one primary are returned as stops on unlanded
+// needs (FieldNeedsReturns); past it the finish is judged as any other.
 const MaxNeedsReturns = 3
 
 // FieldNeedsReturns is the primary's count of finishes returned as stops on unlanded needs.
@@ -32,10 +32,10 @@ const FieldNeedsReturns = "needs_returns"
 // neither ok nor failed by the route and model stats (stats.go).
 const EndNeedsUnlanded = "needs not landed"
 
-// stoppedOnNeeds is the needs a failed finish of the primary's work card stopped on: its
-// named needs that have not landed at the finish (NamedWaits), while the primary has been
-// returned fewer than MaxNeedsReturns times. nil when there are none, or past the cap: the
-// failure is judged as any other.
+// stoppedOnNeeds is the needs a finish of the primary's work card stopped on, whatever the
+// worker reports: its named needs that have not landed at the finish (NamedWaits), while the
+// primary has been returned fewer than MaxNeedsReturns times. nil when there are none, or
+// past the cap: the finish is judged as any other.
 func stoppedOnNeeds(s *Snapshot, pr *Card) []string {
 	if pr == nil || pr.Int(FieldNeedsReturns) >= MaxNeedsReturns {
 		return nil
@@ -43,13 +43,14 @@ func stoppedOnNeeds(s *Snapshot, pr *Card) []string {
 	return NamedWaits(s, pr, nil)
 }
 
-// needsStopReturned is the unit of a failed finish that stopped on needs that have not
-// landed (stoppedOnNeeds; docs/SPEC-SPRINT.md, needs and the deal): the work card goes back
-// to the pool as needsWithdrawals sends it (it leaves the fleet table at a new generation),
-// WITHOUT FieldTakeEnded, so no redeal is spent and it ends in neither done cell (no fail
-// mark, no ok% hit), and the primary goes working -> waiting with its needs (lifecycle.go,
-// the move for needs not landed). The next deal cuts its next attempt. The happened note
-// names the needs and the worker's report; there is nothing for the seat to answer.
+// needsStopReturned is the unit of a finish whose named needs have not landed (stoppedOnNeeds;
+// docs/SPEC-SPRINT.md, needs and the deal), whatever the worker reports: the work card goes
+// back to the pool as needsWithdrawals sends it (it leaves the fleet table at a new
+// generation), WITHOUT FieldTakeEnded, so no redeal is spent and it ends in neither done cell
+// (no fail mark, no ok% hit), and the primary goes working -> waiting with its needs
+// (lifecycle.go, the move for needs not landed). The next deal cuts its next attempt. The
+// happened note names the needs and the worker's report; there is nothing for the seat to
+// answer.
 func needsStopReturned(s *Snapshot, c, pr *Card, r FinishReq, waits []string, who string) Unit {
 	needs := strings.Join(waits, ",")
 	set := nextGen(c, "", s.Now)
