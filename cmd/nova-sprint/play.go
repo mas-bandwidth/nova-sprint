@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/driver"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
@@ -75,15 +73,7 @@ func (a *app) cmdPlay(args []string, stdout, stderr io.Writer) int {
 	// the chances the source will draw with, printed once the loop may play
 	header := fmt.Sprintf("chances: %s red=%g seed=%d every=%s", facts.Drawn(), facts.Red, *seed, *every)
 	d := &driver.Driver{Run: a.run, Base: base, Facts: facts, Clock: appClock{a}, Out: stdout, Header: header,
-		Config: driver.Config{Every: *every, Batch: *batch, TakeLimit: *take, ReadLimit: *reads, Ticks: *ticks, Hold: *hold, Silent: silent},
-		MergeStep: func(s string, b int, w string, out, stderr io.Writer) int {
-			_, c := a.verbSetup("merge")
-			st, storeErr := a.store(*c)
-			if storeErr != nil {
-				return 1
-			}
-			return a.runStep("merge", *c, st, store.MergeStep(sprint.MergeReq{Stream: s, Batch: b, Who: c.actor}), out, stderr)
-		}}
+		Config: driver.Config{Every: *every, Batch: *batch, TakeLimit: *take, ReadLimit: *reads, Ticks: *ticks, Hold: *hold, Silent: silent}}
 	why, err := d.Loop()
 	if err != nil {
 		fmt.Fprintf(stderr, "%s play: %s\n", prog, oneline.WithRemedy(err.Error(), prog+" play -h"))

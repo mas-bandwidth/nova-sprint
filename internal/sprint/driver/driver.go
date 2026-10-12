@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"os"
+	"os/exec"
 	"slices"
 	"sort"
 	"strconv"
@@ -92,13 +94,12 @@ type Silence struct {
 // every verb it runs gets (the store), and they are printed
 // with each command line so the line can be typed by hand.
 type Driver struct {
-	Run       func(args []string, stdout, stderr io.Writer) int
-	Base      []string
-	Facts     Facts
-	Clock     Clock
-	Out       io.Writer
-	Config    Config
-	MergeStep func(stream string, batch int, who string, stdout, stderr io.Writer) int
+	Run    func(args []string, stdout, stderr io.Writer) int
+	Base   []string
+	Facts  Facts
+	Clock  Clock
+	Out    io.Writer
+	Config Config
 	// Header is a line Loop prints once, before its first tick, when it has
 	// read that it may play; a Loop that refuses to play prints nothing.
 	Header string
@@ -111,6 +112,12 @@ type Driver struct {
 	// the sprint left it: the driver stops, running nothing more.
 	held    uint64
 	cleared bool
+	// forge is the driver's own git repository, made lazily the first time a
+	// green merge records a landing by name: dir is the clone the merge verb's
+	// --repo reads, and sha the base commit every card's head is a ref to, so
+	// git merge-base --is-ancestor <head> origin/main holds there.
+	forge    string
+	forgeSHA string
 }
 
 // clearedMark is how a verb holding an epoch the sprint has left says so.
@@ -228,9 +235,10 @@ type where struct {
 
 type queue struct {
 	Cards []struct {
-		ID  string `json:"id"`
-		Col string `json:"col"`
-		Gen int    `json:"gen"`
+		ID   string `json:"id"`
+		Col  string `json:"col"`
+		Gen  int    `json:"gen"`
+		Head string `json:"head"`
 	} `json:"cards"`
 }
 
@@ -269,6 +277,7 @@ func orDash(s string) string {
 // Loop plays until every stream has landed (exit 0), or until Ticks ticks.
 // It returns the reason it stopped.
 func (d *Driver) Loop() (string, error) {
+	defer d.closeForge()
 	c := d.Config
 	if c.Batch <= 0 {
 		c.Batch = 100
@@ -533,17 +542,21 @@ func (d *Driver) tick(tick int, c Config, w where) {
 		streams = append(streams, s.Stream)
 	}
 	sort.Strings(streams)
-	queued := func(s string) []string {
+	queued := func(s string) ([]string, map[string]string) {
 		var out []string
+		heads := map[string]string{}
 		var q queue
 		if d.read(&q, "queue", "--stream", s) {
 			for _, card := range q.Cards {
 				if card.Col == "queued" {
 					out = append(out, card.ID)
+					if card.Head != "" {
+						heads[card.ID] = card.Head
+					}
 				}
 			}
 		}
-		return out
+		return out, heads
 	}
 	for _, s := range streams {
 		st := merge[s]["state"]
@@ -551,8 +564,9 @@ func (d *Driver) tick(tick int, c Config, w where) {
 			continue
 		}
 		var batch []string
+		var heads map[string]string
 		if atoi(cell(merge[s]["queued"])) > 0 {
-			batch = queued(s)
+			batch, heads = queued(s)
 		}
 		if len(batch) == 0 {
 			continue // a merge step wants something queued
@@ -564,37 +578,116 @@ func (d *Driver) tick(tick int, c Config, w where) {
 			var out []string
 			for _, o := range streams {
 				if o != s && merge[o]["state"] != "landed" {
-					out = append(out, queued(o)...)
+					ids, _ := queued(o)
+					out = append(out, ids...)
 				}
 			}
 			return out
 		}
+		args := []string{"merge", "--stream", s, "--batch", strconv.Itoa(c.Batch)}
 		out := d.Facts.Merge(s, batch, others)
 		switch {
 		case out.Conflict != "":
-			args := []string{"merge", "--stream", s, "--batch", strconv.Itoa(c.Batch), "--conflict", out.Conflict}
-			d.run(false, append(args, held...)...)
+			args = append(args, "--conflict", out.Conflict)
 		case out.Cross != "":
-			args := []string{"merge", "--stream", s, "--batch", strconv.Itoa(c.Batch), "--cross", out.Cross}
-			d.run(false, append(args, held...)...)
+			args = append(args, "--cross", out.Cross)
 		case out.Red:
-			args := []string{"merge", "--stream", s, "--batch", strconv.Itoa(c.Batch), "--red"}
+			args = append(args, "--red")
 			for _, x := range out.Suspects {
 				args = append(args, "--suspect", x)
 			}
-			d.run(false, append(args, held...)...)
 		default:
-			if d.MergeStep != nil {
-				var b bytes.Buffer
-				code := d.MergeStep(s, c.Batch, "", &b, &b)
-				if code != 0 {
-					continue
-				}
-			} else {
-				args := []string{"merge", "--stream", s, "--batch", strconv.Itoa(c.Batch)}
-				d.run(false, append(args, held...)...)
-			}
+			// a green batch records its landings by name, the form a real store
+			// accepts (docs/SPEC-SPRINT.md section 8); a batch whose cards carry
+			// no head (a twin's world) stays a bare merge, which a twin allows and
+			// a real store refuses, the refusal reported by this run.
+			d.landingPins(&args, batch, heads)
 		}
+		d.run(false, append(args, held...)...)
+	}
+}
+
+// landingPins appends the record-by-name flags of a green batch to args:
+// merge --landed <id>@<head> ... --repo <dir> --base-ref origin/<base>, each
+// card's head a ref the driver's own forge holds at the base commit, so the
+// merge verb's one git merge-base --is-ancestor per card holds there. A card
+// whose head the queue did not name, or a forge that cannot be made, leaves
+// args as the bare merge.
+func (d *Driver) landingPins(args *[]string, batch []string, heads map[string]string) {
+	for _, id := range batch {
+		if heads[id] == "" {
+			return
+		}
+	}
+	dir, sha := d.landingForge()
+	if dir == "" {
+		return
+	}
+	var pins []string
+	for _, id := range batch {
+		if !d.tagHead(dir, sha, heads[id]) {
+			return
+		}
+		pins = append(pins, "--landed", id+"@"+heads[id])
+	}
+	*args = append(*args, pins...)
+	*args = append(*args, "--repo", dir, "--base-ref", "origin/main")
+}
+
+// landingForge makes, once, the driver's own git repository: a base commit on
+// its default branch and the ref origin/main at it. merge --landed checks each
+// card's head (a ref tagHead makes) against origin/main there. It returns the
+// clone dir and the base commit; "" when the forge cannot be made (no git), so
+// a green batch then records a bare merge, which a real store refuses and the
+// run reports.
+func (d *Driver) landingForge() (string, string) {
+	if d.forge != "" {
+		return d.forge, d.forgeSHA
+	}
+	dir, err := os.MkdirTemp("", "nova-sprint-driver-*")
+	if err != nil {
+		return "", ""
+	}
+	run := func(args ...string) bool {
+		return exec.Command("git", append([]string{"-C", dir}, args...)...).Run() == nil
+	}
+	out := func(args ...string) (string, bool) {
+		b, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
+		return strings.TrimSpace(string(b)), err == nil
+	}
+	fail := func() (string, string) {
+		os.RemoveAll(dir)
+		return "", ""
+	}
+	if !run("init", "-q") {
+		return fail()
+	}
+	if !run("-c", "user.email=nova-sprint-driver@example.invalid", "-c", "user.name=nova-sprint driver", "commit", "-q", "--allow-empty", "-m", "base") {
+		return fail()
+	}
+	sha, ok := out("rev-parse", "HEAD")
+	if !ok || sha == "" {
+		return fail()
+	}
+	if !run("update-ref", "refs/remotes/origin/main", sha) {
+		return fail()
+	}
+	d.forge, d.forgeSHA = dir, sha
+	return dir, sha
+}
+
+// tagHead records head as a ref of the forge at the base commit, so the merge
+// verb's git merge-base --is-ancestor <head> origin/main holds there.
+func (d *Driver) tagHead(dir, sha, head string) bool {
+	return exec.Command("git", "-C", dir, "update-ref", "refs/tags/"+head, sha).Run() == nil
+}
+
+// closeForge removes the driver's own forge, made when a green merge recorded
+// a landing by name.
+func (d *Driver) closeForge() {
+	if d.forge != "" {
+		os.RemoveAll(d.forge)
+		d.forge, d.forgeSHA = "", ""
 	}
 }
 
