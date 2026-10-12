@@ -282,9 +282,11 @@ with no read out and no open judgment is a ConsumersOut violation at `TickCheck`
   variable from the machine),
   `cmd/nova-sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_functional_test.go`:
   `TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore`. It runs the verbs to
-  the card in review, withdraws one read by a hold and ends another with no
-  verdict, and asserts `check` reports the gap before the tick, the next tick's
-  ask places a new read, and `ask` and `ask --another` agree.
+  put the card in review at attempt 2, withdraws the attempt-1 read by a hold
+  and ends the attempt-2 read with no verdict, and asserts `ask` and
+  `ask --another` agree (neither refusal is given) and the next tick's ask
+  re-asks the attempt of another reader. The consumers-out gap it leaves is the
+  tick's postcondition the unit test asserts directly (ConsumersOut).
 
 ### A brief edit keeps the needs, tier and bound (v1.2.14)
 
