@@ -85,6 +85,45 @@
       held by the probe, not known) with its acceptance through a passed probe and the \"newup\"
       witness, which now also makes a SyncAdd known with no probe and breaks NewMemberProbed."
      :origin "this card; the seat's v1.2.14 audit 2026-10-11 (a sync-added member skips its probe), checked against nova-sprint main 00c54ba; the owner's rule of 2026-10-11 cited at steps_work.go near line 2526")
+    (fix "a-doctor-reports-the-child-exit-code-rate-per-member" :release "v1.2.14" :status "planned"
+     :title "A member's environment exits are recorded, a 134 or 137 spends nothing, and the doctor names their rate"
+     :text "A child that ends 134 or 137, or that leaves no result (why=no-result) at any exit,
+      did not judge the card: it is an environment event of the member, recorded and counted as
+      one, and at 134 or 137 it no longer consumes the card's attempts or its readers. sprint.EnvExit (internal/sprint/attempts.go)
+      is the one classifier; the finish carries the child's exit and harness output (--exit,
+      --harness) and so does a read's return. A work card's environment exit at 134 or 137 is
+      recorded ended=environment exit=<n>, withdrawn without take_ended, so the deal deals the
+      same work card again at the same attempt with no redeal spent, the member not held; a
+      no-result at another exit is recorded and counted the same way but stays the ended take
+      the owner's rules make it (redeal counted, rule 2, flash first); a member's read returned
+      at 134 or 137 is retired by environment, not in spentBy, so the member may read it again.
+      A 134 or 137 is bounded per card per attempt: the work card records each by member and code
+      (env_exit_history), and at EnvExitCardCap (3) the card is dealt no more and the tick raises
+      one bound judgment, a kind wait refuses, naming the card, the members and the codes, until
+      the seat reworks or drops it; the attempt cap's default answer deals such a card no next
+      attempt. A read identity is bounded the same way (env_exit_reads on the primary, EnvReadCap
+      3: the read retired as returned, spending its reader, and one bound judgment). Only a
+      134/137 spends nothing: a no-result routed by a decision over its bar is that decision's.
+      The doctor's k counts the 134/137s, as its line says. The last 40
+      lines of the harness output (at most 16 KiB) ride the run's card and its primary, and the
+      take's or run's consumer record on the primary ends environment exit=<n>. The doctor counts
+      each member's children over the last hour from those attempt records on the epoch's cards
+      (sprint.EnvExitChildren) and prints DOCTOR FAIL member-env <m> child exits: <k> of <n>
+      children in the last hour ended 134/137 with no result (<rate>%), last: <first tail line>
+      remedy=nova-sprint card <id> over 10% with n >= 10, WARN from 3% to 10%, OK below;
+      nova-sprint stats --children prints the per-member exit-code histogram. Hand-landed after
+      the fleet's four attempts: attempt 3's classifier wanted a non-zero exit for the no-result
+      case, which the card does not, and attempt 4 ended with no commit. Owed: the member
+      passing --exit and --harness from its child (nova-tools), and the TLA+ models (DirtyTick
+      BoundClasses, AttemptsEpochs TakeEnds) gaining the 134/137 exit and its cap (v1.2.16). docs/SPEC-SPRINT.md, An
+      environment exit, states the rule; functional TestAnEnvironmentExitOnARealStore drives it
+      on a real store."
+     :origin "this card, a-doctor-reports-the-child-exit-code-rate-per-member, epoch 17, 2026-10-11
+      ~18:25Z; the seat's read of the fleet's native logs: hetzner1 81 of 328 ended 134 and 21 137,
+      hetzner2 55/351 and 31, space 65/347 and 38, vision 68/289 and 25, b1 and b2 about 1 in 14,
+      mini-m5 none; every 134 the opencode harness aborting after Error: Unknown: ChildProcess.spawn
+      inside the landlock sandbox, logged why=no-result, the card's read or attempt coming back
+      no verdict or not-done; hand-landed by the seat's child after the card reached its bound")
     (fix "a-moved-card-stops-its-old-run" :release "v1.2.14" :status "planned"
      :title "When a card moves, the old member stops the old generation within one beat"
      :text "When a card moves via rebalance/level/redeal to a new member, the old member stops old runs within one beat; server answers stop for runs not held at that generation. cmd/nova-sprint/moved_card_stops_functional_test.go tests this. docs/TESTS.md Release acceptance lists all tests."
