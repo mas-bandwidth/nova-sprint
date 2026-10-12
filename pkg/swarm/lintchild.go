@@ -82,6 +82,7 @@ var DefaultChildRules = []ChildRule{
 	{"no-kill", "Never kill a process you did not start.", DefaultRulesSource},
 	{"no-server", "Never start a server on this machine.", DefaultRulesSource},
 	{"no-rm-rf", "No `rm -rf` outside the job directory.", DefaultRulesSource},
+	{"scratch-under-tmpdir", "Write scratch files only under $TMPDIR, inside the job directory; never under /tmp.", DefaultRulesSource},
 	{"report-not-done", "Report what was not done.", DefaultRulesSource},
 }
 

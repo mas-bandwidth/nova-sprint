@@ -236,6 +236,7 @@ const briefExampleCard = "RESULT: <label> sha=<sha12>\n" +
 	"Never kill a process you did not start.\n" +
 	"Never start a server on this machine.\n" +
 	"No `rm -rf` outside the job directory.\n" +
+	"Write scratch files only under $TMPDIR, inside the job directory; never under /tmp.\n" +
 	"Report what was not done.\n" +
 	"\n" +
 	"THE TASK. <What is wrong or wanted, in a paragraph a stranger can act on, and the file or package the work lives in: internal/<package>/<file>.go. Name the worktree path, the branch, the base branch, and every file you may touch.>\n" +
