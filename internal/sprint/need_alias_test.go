@@ -96,6 +96,37 @@ func TestAnAddNamingAnAliasStoresTheSuccessor(t *testing.T) {
 	require.Equal(t, "twin", w.s.Work.Card("b").F("needs"), "the stored need is the successor, never the old id")
 }
 
+// Rule 11 (and every needs check) resolves needs through the alias map, so a
+// need whose alias target has landed is met (item 3): a merging card needing the
+// dropped id -- its successor landed -- raises no judgment after a tick, the
+// fourteen-card state of 2026-10-11.
+func TestRuleElevenResolvesANeedThroughTheAlias(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1) // s1-1 ready
+	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"twin"}}))
+	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}}))
+	require.Equal(t, Waiting, w.state("b"), "b waits on s1-1")
+
+	// the successor lands, then the dropped card aliases it: b's stored need is
+	// still s1-1, resolved to twin, which has landed.
+	accepted(w, "twin")
+	w.must(MergeStep(w.s, MergeReq{Stream: "s2"}))
+	require.Equal(t, Landed, w.state("twin"), "the successor landed")
+	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-1"}}, Reason: "recut", ReplacedBy: "twin", Who: "coordinator"}))
+
+	// b resolves to ready, is accepted, and lands in merging: its need s1-1
+	// resolves to the landed twin, so rule 11 names nothing and the tick holds
+	// no judgment on it.
+	w.must(Resolve(w.s, ResolveReq{}))
+	require.Equal(t, Ready, w.state("b"), "b resolves once the alias target lands")
+	accepted(w, "b")
+	require.Equal(t, Merging, w.state("b"), "b is merging with the successor landed")
+	require.Empty(t, NamedWaits(w.s, w.s.Work.Card("b"), nil), "a need whose alias target has landed is met")
+	for _, v := range Check(w.s, nil) {
+		require.NotEqual(t, 11, v.Rule, "rule 11 holds b, but the alias target landed: %v", v)
+	}
+}
+
 func joined(ss []string) string {
 	out := ""
 	for _, s := range ss {
