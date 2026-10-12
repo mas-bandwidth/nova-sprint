@@ -2537,4 +2537,17 @@
     internal/sprint/brief_edit_test.go (red first) and the functional
     TestABriefEditKeepsARelinkedNeedOnTheStore (relink, then brief --brief-file with the stale
     DEPENDS-ON, on a real store)."
-   :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")))
+   :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")
+  (fix "card-lint-a-called-verb-exists" :release "v1.2.6" :status "planned"
+   :title "The lander refuses a changed line that runs a repository tool with a verb the tool does not register"
+   :text "A card whose change adds or edits a line that runs one of the repository's own tools with a
+    verb (nova-friend <verb>, nova-swarm <verb>, nova-sprint <verb>, nova-config <verb> in a play, a
+    workflow, a script or a doc command block) must call a verb the tool registers at the head; a
+    missing verb refuses the head naming the file, the line and the tool's known verbs. Found by a
+    read: nova-tools head bb01282b62 added `nova-friend acceptance` to fleet/seat-friend.yml while
+    cmd/nova-friend had no acceptance verb (the verb first appears at 2f8cb9126c). The check scans
+    the changed lines for the repository's own tools and holds each call to the tool's verb table at
+    the head; proof: the fixture of bb01282b62's fleet/seat-friend.yml against that head's
+    cmd/nova-friend verb table is refused, the same line where the verb is registered passes, and a
+    line naming a verb of another tool or a shell built-in is not checked."
+   :origin "this card, card-lint-a-called-verb-exists.w1.g2.e19, finished in its own worktree on sprint/card-lint-a-called-verb-exists.w1.g2.e19")))

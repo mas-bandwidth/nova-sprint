@@ -2146,6 +2146,20 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 		}
 		why = append(why, f.String()+" (E4)")
 	}
+	// A changed line that runs one of the repository's own tools with a verb must call a
+	// verb the tool registers at the head (E6, docs/SPEC-SPRINT.md section 7): a missing
+	// verb refuses the head naming the file, the line and the tool's known verbs. Of the
+	// tools the check covers, nova-sprint is the one in this repository; a call of a tool
+	// the repository does not hold (nova-friend, nova-swarm, nova-config) or a shell
+	// built-in is not checked.
+	for _, f := range calledVerbs(diff, func(tool string) []string {
+		if tool == "sprint" {
+			return verbNames()
+		}
+		return nil
+	}) {
+		why = append(why, f.String()+" (E6)")
+	}
 	// The attempt's start: an earlier attempt's pushed head when the card has one,
 	// else where this head left the base. A git error (an unknown sha) leaves the diff
 	// unjudged, so this check skips and the other checks stand (docs/SPEC-SPRINT.md
