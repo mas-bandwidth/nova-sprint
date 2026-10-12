@@ -248,6 +248,35 @@ func TestAskInsteadTakesBackAFleetReadCard(t *testing.T) {
 	})
 }
 
+// TestAFriendDealtReadIsAGhostByHerOwnBeat pins the friend-row beat resolution of
+// readCardGhost: a friend's beat is kept under her own name, not her row (Store.fleetBeats,
+// RowBeat), so a friend-dealt read card working on friend.<name> is read as a ghost by her
+// beat exactly as a member's is. Before this, readCardGhost keyed the beat on c.Row only, so
+// every friend read was read as live (docs/SPEC-SPRINT.md section 6, the reads).
+func TestAFriendDealtReadIsAGhostByHerOwnBeat(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "rd1", "rd2")
+	putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "m1", 1)
+	rc := &Card{ID: ReadCardID("s1-1", 1, "fr1"), Row: FriendRow("fr1"), Col: Working, Rev: 1, Fields: map[string]string{
+		"kind": "read", "primary": "s1-1", "reader": "fr1", "attempt": "1", "stream": "s1", "head": "head-s1-1", "gen": "1", FieldReadCard: "1"}}
+	w.s.Fleet.Put(rc)
+	gen := max(rc.Int("gen"), 1)
+	// the friend's beat, kept under her name "fr1", names nothing since before LiveGrace
+	b := memberBeat(Beat{}, w.s.Now, LiveKey(rc.ID, gen))
+	w.tick(LiveGrace + time.Second)
+	b = memberBeat(b, w.s.Now)
+	w.s.Beats = map[string]Beat{"fr1": b}
+	ghost, why := readCardGhost(w.s, rc)
+	require.True(t, ghost, "a friend read is a ghost by her own beat: %s", why)
+	var state string
+	for _, ro := range ReadsOut(w.s, w.s.Work.Card("s1-1")) {
+		if ro.Card.ID == rc.ID {
+			state = ro.State
+		}
+	}
+	require.Equal(t, ReadGhost, state, "ReadsOut marks the friend ghost, never live")
+}
+
 // TestDoctorCountsFleetReadCards pins the doctor's readers check counting the fleet read
 // cards the readers-table check cannot see (docs/SPEC-SPRINT.md section 6, the reads): a
 // read card working on a row whose fresh beat has not named it for LiveGrace is a ghost,

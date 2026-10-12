@@ -478,6 +478,14 @@ func readCardGhost(s *Snapshot, c *Card) (bool, string) {
 	}
 	b, ok := s.Beats[c.Row]
 	if !ok {
+		// a friend row's beat is kept under her name, not her row (Store.fleetBeats,
+		// RowBeat): resolve it so a friend-dealt read card is read as a ghost by its
+		// own beat, as a member's is.
+		if f, fok := FriendOfRow(c.Row); fok {
+			b, ok = s.Beats[f]
+		}
+	}
+	if !ok {
 		return false, ""
 	}
 	live := liveOf(b, s.Now)
