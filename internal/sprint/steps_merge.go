@@ -60,6 +60,9 @@ type MergeReq struct {
 	DeadBase string `json:",omitempty"`
 	Note     string
 	Who      string
+	// LedgerEntries is the fixes ledger metadata read from each landed card's head by
+	// the lander. The happened landing push carries the entry without another read.
+	LedgerEntries map[string]LandingLedgerEntry `json:",omitempty"`
 	// Resolved is, by card, what its landing did beyond merging its head (docs/SPEC-SPRINT.md
 	// section 7: the generated ledgers regenerated at the merge); written on its merge card
 	// as it lands, its note on the card's timeline.
@@ -73,6 +76,13 @@ type LandedPin struct {
 	ID     string
 	Head   string
 	InBase bool
+}
+
+// LandingLedgerEntry is the title and text the landing event pushes to the coordinator.
+type LandingLedgerEntry struct {
+	Title string `json:"title,omitempty"`
+	Text  string `json:"text,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
 // landedRefusals is why each pin of a record by name is refused, in the pins' order: a card
@@ -510,6 +520,16 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		ctlSet["state"], ctlSet["since"], ctlSet["cause"] = StreamStopped, now, cause
 		j := judgment(typ, r.Stream, s.Now, before, primaries...)
 		j.StreamLevel, j.Who, j.What = true, r.Who, r.Note
+		// the lander's last refusal (judgments.go): the card and the reason, for
+		// the landing-stall alarm's breakdown.
+		if len(primaries) > 0 {
+			reason := r.Note
+			if reason == "" {
+				reason = cause
+			}
+			was, had := s.Work.Prop(PropLandRefusal)
+			p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLandRefusal, Value: cutText(strings.Join(primaries, ",")+": "+reason, MaxCardTextBytes), Was: was, WasAbsent: !had})
+		}
 		return Unit{Key: ctl.ID, Stream: r.Stream, Changes: []Change{change(Merge, setEntry(ctl, ctlSet, append(unset, baseGateCount...)...))}, Notes: append(notes, j)}
 	}
 	switch {
@@ -530,6 +550,10 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 				p.refuse(r.Conflict, "queued in merge but not merging in work ("+placeWord(orEmpty(pr, r.Conflict))+"); run: nova-sprint check")
 				return p
 			}
+			// the lander's last refusal (judgments.go): the card and the reason,
+			// cut to the field bound so a note at the bound still writes.
+			was, had := s.Work.Prop(PropLandRefusal)
+			p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLandRefusal, Value: cutText(r.Conflict+": "+orDash(r.Note), MaxCardTextBytes), Was: was, WasAbsent: !had})
 			p.Units = append(p.Units, landRefused(s, r, way, state, ctl, ctlSet, notes, pr, m))
 			break
 		}
@@ -610,13 +634,16 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		// stream's control change and its notes ride on the first card that
 		// lands, and the batch note lists only the cards that landed.
 		var landing []*Card
+		var landingWork []*Card
 		var landed []string
 		for _, c := range batch {
-			if pr := s.Work.Placed(c.ID); pr == nil || pr.Col != Merging {
+			pr := s.Work.Placed(c.ID)
+			if pr == nil || pr.Col != Merging {
 				p.refuse(c.ID, "queued in merge but not merging in work ("+placeWord(orEmpty(pr, c.ID))+"); run: nova-sprint check")
 				continue
 			}
 			landing = append(landing, c)
+			landingWork = append(landingWork, pr)
 			landed = append(landed, c.ID)
 		}
 		if len(landing) == 0 {
@@ -676,11 +703,17 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		b := happened(NBatchLanded, r.Stream, s.Now, landed...)
 		b.Who, b.What = r.Who, "ci green"
 		last.Notes = append(last.Notes, b)
+		last.Notes = append(last.Notes, landingPush(s, r.Stream, r.Who, landingWork, r.LedgerEntries, s.Now))
 		if ctlSet["state"] == StreamLanded {
 			l := happened(NStreamLanded, r.Stream, s.Now)
 			l.Who = r.Who
 			last.Notes = append(last.Notes, l)
 		}
+		// The landing-stall facts (judgments.go): the work table's stamp of the
+		// last landing, to the nanosecond, so the tick's landing-stall alarm
+		// measures from here and orders it against its episode's start.
+		was, had := s.Work.Prop(PropLastLanding)
+		p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLastLanding, Value: landingStamp(s.Now), Was: was, WasAbsent: !had})
 		lands := map[string]bool{}
 		for _, id := range landed {
 			lands[id] = true

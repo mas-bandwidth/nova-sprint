@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -86,7 +87,7 @@ func TestRebalanceMovesAFlashCardOffAFullFriendToAnIdleMember(t *testing.T) {
 
 	w, wc := setup()
 	p := w.must(Rebalance(w.s, []FriendSeat{amy}, "machine"))
-	require.Equal(t, []string{"rebalanced s1-2.w1 from friend.amy to m1 gen=2 (its lanes all work; an idle lane takes it)"}, rebalanced(p))
+	require.Equal(t, []string{"rebalanced s1-2.w1 from friend.amy to m1 gen=2 (its excess; a free lane takes it)"}, rebalanced(p))
 	got := w.s.Fleet.Card(wc.ID)
 	assert.Equal(t, "m1", got.Row)
 	assert.Equal(t, Ready, got.Col)
@@ -186,6 +187,165 @@ func TestRebalanceNeverMovesACardToAUnitItLeft(t *testing.T) {
 	rbPlace(w, "s1-1", cardhdr.RouteFlash, "m1", Working)
 	rbPlace(w, "s1-2", cardhdr.RouteFlash, "m1", Ready, FieldRebalancedFrom, "m2")
 	assert.Empty(t, rebalanced(Rebalance(w.s, nil, "machine")), "rebalanced off m2")
+}
+
+// A partly-idle unit is a source too: a unit whose lanes do not all work keeps its own
+// start, but its ready work beyond the halves its working cards leave free (its excess)
+// moves off it, never the whole queue held back. This is the source rule the old
+// rebalance.go:103 `g.working < g.width` gate skipped.
+func TestTheRebalanceMovesTheExcessWorkOfAPartlyIdleUnit(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 4}))
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 4}))
+	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true}}
+	w.s.Work.SetRows([]string{"s1"})
+	for i := 1; i <= 2; i++ { // m1's two lanes work, two are free: its excess is two of the four
+		rbPlace(w, fmt.Sprintf("s1-w%d", i), cardhdr.RouteFlash, "m1", Working)
+	}
+	for i := 1; i <= 4; i++ {
+		rbPlace(w, fmt.Sprintf("s1-q%d", i), cardhdr.RouteFlash, "m1", Ready)
+	}
+	p := w.must(Rebalance(w.s, nil, "machine"))
+	assert.Len(t, rebalanced(p), 2, "the two excess work cards move off the partly-idle unit")
+	assert.Equal(t, 2, w.s.Fleet.Count("m1", Ready), "m1 keeps only its two free lanes' worth of ready work")
+	assert.Equal(t, 2, w.s.Fleet.Count("m2", Ready), "m2, with free lanes, took the excess")
+}
+
+// A unit with work, read and fix cards ready beyond its free lanes moves each kind to a
+// unit with a free lane, none held back: a fix card (a rework attempt carrying the fix
+// field, or a primary of priority fix) moves as a work card does, its attempt and fix kept;
+// a read whose only unit with a free lane is its worker stays.
+func TestTheRebalanceMovesWorkReadsAndFixAlike(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	for _, m := range []string{"m1", "m2", "m3"} {
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 8}))
+	}
+	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
+		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "pr", Enabled: true}}
+	w.s.Work.SetRows([]string{"s1"})
+	w.s.Readers.SetRows([]string{ReaderPrefix + "m2", ReaderPrefix + "m3"})
+	for i := 1; i <= 8; i++ { // m1's eight lanes all work: free halves 0, every ready card excess
+		rbPlace(w, fmt.Sprintf("s1-w%d", i), cardhdr.RouteFlash, "m1", Working)
+	}
+	for i := 1; i <= 4; i++ {
+		rbPlace(w, fmt.Sprintf("s1-r%d", i), cardhdr.RouteFlash, "m1", Ready)
+	}
+	for i := 1; i <= 4; i++ {
+		id := fmt.Sprintf("s1-q%d", i)
+		w.s.Work.Put(&Card{ID: id, Row: "s1", Col: Review, Score: float64(i), Rev: 1,
+			Fields: map[string]string{"kind": "primary", "attempt": "1", "stream": "s1", "brief": fleetBrief(cardhdr.RouteFlash), FieldTierNow: cardhdr.RouteFlash}})
+		w.s.Fleet.Put(&Card{ID: ReadCardID(id, 1, "m1"), Row: "m1", Col: Ready, Score: float64(i), Rev: 1,
+			Fields: map[string]string{"kind": "read", "primary": id, "stream": "s1", "reader": "m1", "attempt": "1", FieldReadCard: "1", FieldTier: cardhdr.RouteFlash}})
+	}
+	w.s.Work.Put(&Card{ID: "s1-f1", Row: "s1", Col: Working, Score: 20, Rev: 1,
+		Fields: map[string]string{"kind": "primary", "attempt": "2", "stream": "s1", "brief": fleetBrief(cardhdr.RouteFlash), FieldTierNow: cardhdr.RouteFlash, "work": "s1-f1.w2"}})
+	w.s.Fleet.Put(&Card{ID: "s1-f1.w2", Row: "m1", Col: Ready, Score: 20, Rev: 1,
+		Fields: map[string]string{"kind": "work", "primary": "s1-f1", "stream": "s1", "attempt": "2", "gen": "1", "member": "m1", "fix": "rebase it"}})
+	w.s.Work.Put(&Card{ID: "s1-f2", Row: "s1", Col: Working, Score: 21, Rev: 1,
+		Fields: map[string]string{"kind": "primary", "attempt": "1", "stream": "s1", "brief": fleetBrief(cardhdr.RouteFlash), FieldTierNow: cardhdr.RouteFlash, FieldPriority: PriorityFix, "work": "s1-f2.w1"}})
+	w.s.Fleet.Put(&Card{ID: "s1-f2.w1", Row: "m1", Col: Ready, Score: 21, Rev: 1,
+		Fields: map[string]string{"kind": "work", "primary": "s1-f2", "stream": "s1", "attempt": "1", "gen": "1", "member": "m1", FieldPriority: PriorityFix}})
+
+	p := w.must(Rebalance(w.s, nil, "machine"))
+	assert.NotEmpty(t, rebalanced(p), "work, reads and fix all move")
+	fix := w.s.Fleet.Card("s1-f1.w2")
+	require.NotNil(t, fix, "the rework fix card still stands")
+	assert.NotEqual(t, "m1", fix.Row, "the rework fix card moved off m1")
+	assert.Equal(t, "2", fix.F("attempt"), "the rework fix card keeps its attempt")
+	assert.Equal(t, "rebase it", fix.F("fix"), "the rework fix card keeps its fix")
+	prio := w.s.Fleet.Card("s1-f2.w1")
+	require.NotNil(t, prio, "the priority-fix card still stands")
+	assert.NotEqual(t, "m1", prio.Row, "the priority-fix card moved off m1")
+	assert.Equal(t, PriorityFix, prio.F(FieldPriority), "the priority-fix card keeps its priority")
+
+	// a read whose only unit with a free lane is its worker stays: m2 worked the attempt and
+	// is the only unit with a free lane, so the read never moves (mayReadCard: never the
+	// attempt's worker, attemptUnit).
+	w = newWorld(t)
+	for _, m := range []string{"m1", "m2"} {
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 2}))
+	}
+	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
+		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "pr", Enabled: true}}
+	w.s.Work.SetRows([]string{"s1"})
+	w.s.Readers.SetRows([]string{ReaderPrefix + "m2"})
+	rbPlace(w, "s1-a1", cardhdr.RouteFlash, "m1", Working)
+	rbPlace(w, "s1-a2", cardhdr.RouteFlash, "m1", Working) // m1's two lanes work: no free half
+	stay := "s1-stay"
+	w.s.Work.Put(&Card{ID: stay, Row: "s1", Col: Review, Score: 30, Rev: 1,
+		Fields: map[string]string{"kind": "primary", "attempt": "1", "stream": "s1", "brief": fleetBrief(cardhdr.RouteFlash), FieldTierNow: cardhdr.RouteFlash}})
+	w.s.Fleet.Put(&Card{ID: WorkCardID(stay, 1), Row: "m2", Col: Working, Score: 30, Rev: 1,
+		Fields: map[string]string{"kind": "work", "primary": stay, "stream": "s1", "attempt": "1", "gen": "1", "member": "m2"}})
+	w.s.Fleet.Put(&Card{ID: ReadCardID(stay, 1, "m1"), Row: "m1", Col: Ready, Score: 30, Rev: 1,
+		Fields: map[string]string{"kind": "read", "primary": stay, "stream": "s1", "reader": "m1", "attempt": "1", FieldReadCard: "1", FieldTier: cardhdr.RouteFlash}})
+	assert.Empty(t, rebalanced(w.must(Rebalance(w.s, nil, "machine"))),
+		"the read stays: m2, the only unit with a free lane, worked the attempt")
+	require.True(t, w.s.Fleet.Card(ReadCardID(stay, 1, "m1")).Placed(), "the read stays on m1")
+	require.Nil(t, w.s.Fleet.Card(ReadCardID(stay, 1, "m2")), "never to its worker")
+}
+
+// Eight excess cards on a full fifth member round four idle members: two land on each, never
+// all on the first by name; the next tick's first move goes to the member after the last one
+// used (the cursor's place), never the first by name.
+func TestTheRebalanceRollsItsTargets(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	for _, m := range []string{"m1", "m2", "m3", "m4"} {
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 4}))
+	}
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m5", Width: 8}))
+	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true}}
+	w.s.Work.SetRows([]string{"s1"})
+	for i := 1; i <= 8; i++ {
+		rbPlace(w, fmt.Sprintf("s1-%d", i), cardhdr.RouteFlash, "m5", Working)
+	}
+	for i := 9; i <= 16; i++ {
+		rbPlace(w, fmt.Sprintf("s1-%d", i), cardhdr.RouteFlash, "m5", Ready)
+	}
+	// the cursor starts one past the first by name, so after the roll over the four equal
+	// members the member after the last one used is m2, not the first by name.
+	w.s.Fleet.SetProps(map[string]string{PropDealIndex: "1"})
+	w.must(Rebalance(w.s, nil, "machine"))
+	for _, m := range []string{"m1", "m2", "m3", "m4"} {
+		assert.Equal(t, 2, w.s.Fleet.Count(m, Ready), "%s takes two, never all on the first by name", m)
+	}
+	assert.Equal(t, 0, w.s.Fleet.Count("m5", Ready), "the fifth holds no excess after the roll")
+
+	rbPlace(w, "s1-17", cardhdr.RouteFlash, "m5", Ready)
+	w.must(Rebalance(w.s, nil, "machine"))
+	assert.Equal(t, 3, w.s.Fleet.Count("m2", Ready), "the next tick's first move goes to m2, the member after the last one used, never the first by name")
+	assert.Equal(t, 2, w.s.Fleet.Count("m1", Ready), "m1, the first by name, is not hit again out of turn")
+	assert.Equal(t, 0, w.s.Fleet.Count("m5", Ready), "the fifth holds no excess after the next tick")
+}
+
+// A read card in Working (taken) never moves, even beside queued excess.
+func TestTheRebalanceNeverMovesAStartedRead(t *testing.T) {
+	t.Parallel()
+	w := readQueueWorld(t, 2)
+	id := "s1-9"
+	w.s.Work.Put(&Card{ID: id, Row: "s1", Col: Review, Score: 9, Rev: 1,
+		Fields: map[string]string{"kind": "primary", "attempt": "1", "stream": "s1", "brief": fleetBrief(cardhdr.RouteFlash), FieldTierNow: cardhdr.RouteFlash}})
+	w.s.Fleet.Put(&Card{ID: ReadCardID(id, 1, "m1"), Row: "m1", Col: Working, Score: 9, Rev: 1,
+		Fields: map[string]string{"kind": "read", "primary": id, "stream": "s1", "reader": "m1", "attempt": "1", FieldReadCard: "1", FieldTier: cardhdr.RouteFlash}})
+	w.must(Rebalance(w.s, nil, "machine"))
+	c := w.s.Fleet.Card(ReadCardID(id, 1, "m1"))
+	require.True(t, c.Placed(), "the working read is never moved")
+	assert.Equal(t, Working, c.Col)
+	assert.Equal(t, "m1", c.Row)
+}
+
+// The rebalance runs every tick, with no setting that turns it off: the work table's update
+// names it after the deal, unconditionally.
+func TestTheRebalanceRunsEveryTickWithNoSetting(t *testing.T) {
+	t.Parallel()
+	var names []string
+	for _, p := range TickTables[0].Parts {
+		names = append(names, p.Name)
+	}
+	require.Contains(t, names, PartRebalance, "the rebalance is the work table's part every tick")
+	require.Equal(t, "deal", names[slices.Index(names, PartRebalance)-1], "it runs after the deal, no setting in between")
 }
 
 // Two queued cards and one idle lane: one moves.

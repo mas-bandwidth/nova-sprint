@@ -802,3 +802,20 @@ func TestLandRefusesAProtectedBaseUntilTheStreamIsMarked(t *testing.T) {
 	assert.Contains(t, r.ok("land --repo-dir "+r.clone+" --base main"), "LAND OK stream=s1 cards=1 base=main")
 	assert.Equal(t, []string{"land s1-1 (sprint stream s1)", "base"}, r.mainLog())
 }
+
+func TestLandingPushReadsTheCardLedgerEntryAtTheLandedHead(t *testing.T) {
+	t.Parallel()
+	r := newLandRig(t)
+	r.git(r.worker, "switch", "-q", "--no-track", "-c", "sprint/s1-1", "refs/remotes/origin/main")
+	require.NoError(t, os.MkdirAll(filepath.Join(r.worker, "docs"), 0o700))
+	ledger := `(fixes "v1"
+ :title "Fixes"
+ :text "Release fixes"
+ :releases ((release "v1.2.14" :status "planned" :text "Next release"))
+ :items ((fix "s1-1" :release "v1.2.14" :title "The ledger title" :text "The ledger text" :origin "card s1-1" :status "planned")))`
+	head := r.commit("docs/fixes.sexp", ledger, "add ledger record")
+	l := &lander{a: r.a, repoDir: r.worker}
+	got, err := l.landingLedgerEntry(context.Background(), head, "s1-1")
+	require.NoError(t, err)
+	assert.Equal(t, sprint.LandingLedgerEntry{Title: "The ledger title", Text: "The ledger text"}, got)
+}

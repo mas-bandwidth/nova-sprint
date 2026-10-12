@@ -751,6 +751,7 @@ func TickResume(s *Snapshot, r TickReq) (Plan, int) {
 // the fleet has room for goes in the one plan, one step, up to TickMaxDeal;
 // a withdrawn card is dealt again at a new generation. With no member up and primaries waiting to be dealt, the
 // coordinator is told once (N3), and the judgment closes when a member is up.
+// tla/DirtyTick.tla Pump (reads before work, ReadsBeforeWork) and Dealable (HeldStreamNotDealt).
 func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	// the routes resting now, and those the no-result rule rests in this tick (rule 3,
 	// route_rest.go): no card of this tick is drawn on one, and the new rests are written
@@ -1627,7 +1628,15 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	// the base's CI after a landing, on a plan of its own the same way (base_ci.go)
 	b, baseCIDue := TickBaseCI(s, r)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, b.Notes...), append(p.Closes, b.Closes...), append(p.Updates, b.Updates...)
-	return p, due + readyDue + alarmsDue + driftDue + baseCIDue
+	// the landing-stall alarm (judgments.go), on a plan of its own the same way:
+	// raised once at the tick end while cards wait in review or merging and no
+	// card has landed for the bound, re-raised each bound, and cleared on the
+	// next landing. It runs here, in the deadlines part, so it is watched
+	// whether or not the idle alarm is on.
+	ls, stallDue := TickLandingStall(s, r)
+	p.Notes, p.Closes, p.Updates, p.Props = append(p.Notes, ls.Notes...), append(p.Closes, ls.Closes...), append(p.Updates, ls.Updates...), append(p.Props, ls.Props...)
+	p.Units = append(p.Units, ls.Units...)
+	return p, due + readyDue + alarmsDue + driftDue + baseCIDue + stallDue
 }
 
 // TickOverdue marks each open judgment overdue once, when it passes its due
