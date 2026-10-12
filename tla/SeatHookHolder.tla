@@ -74,11 +74,12 @@ Forbidden ==
     /\ \/ (rec.state = "away" /\ "rearmaway" \notin Broken)
        \/ (rec.state = "gone" /\ why = "miss" /\ "rearmmissed" \notin Broken)
 
-\* The loop wants a connection: down, none open, and the record not forbidding
-\* one ("norearm": only on the seat's word).
-Wants ==
-    /\ loop = "down" /\ sub = "none" /\ ~Forbidden
-    /\ ("norearm" \notin Broken \/ word)
+\* A connection is due: the loop is down, none is open, and the record does not
+\* forbid one. The loop wants one when it is due ("norearm": only on the seat's
+\* word, so a dropped hook stays down until the seat speaks).
+Due == loop = "down" /\ sub = "none" /\ ~Forbidden
+
+Wants == Due /\ ("norearm" \notin Broken \/ word)
 
 \* The loop opens a connection (Hook: a fresh subscription, its challenge sent):
 \* its hold is held, the seat's word spent, the challenge not yet delivered.
@@ -225,7 +226,7 @@ MissStands == ~armMissed
 
 \* A lost connection is re-armed within one beat: the loop is never down and
 \* wanting for two ticks.
-ReArmWithinBeat == (Wants /\ issued < MaxChallenges) => waited <= 1
+ReArmWithinBeat == (Due /\ issued < MaxChallenges) => waited <= 1
 
 \* The loop acknowledges only what it has written into the inbox.
 AckMeansWritten == acked \subseteq inbox
