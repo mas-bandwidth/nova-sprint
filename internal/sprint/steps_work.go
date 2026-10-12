@@ -1985,6 +1985,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			}
 		}
 		identical := false
+		harnessAt := ""
 		if r.Failed && !passed && defect == "" {
 			set["failed"] = itoa(pr.Int("failed") + 1)
 			if late {
@@ -1993,6 +1994,16 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			// rule 2: the attempt before failed the same way, so this is the bound's (failure.go);
 			// a decided class is the class when the decision routed the finish
 			identical = failureSet(pr, pr.Int("attempt"), r.Report, class, cardTierOf(pr), set)
+			// THE HARNESS-FAULT BOUND (HarnessFaultBounded): a harness fault is reworked on the
+			// same tier at most once per card. A failed finish of the same harness-fault class as
+			// the rework before (FieldHarnessClass, carried by it) is the second: it is never
+			// reworked again, and raises the NHarnessFault judgment, not the generic bound.
+			if h := HarnessFault(r.Report); h != "" && h == pr.F(FieldHarnessClass) {
+				harnessAt = h
+				identical = false             // the harness bound is the more specific one: no generic bound, no escalation
+				delete(set, FieldIdenticalAt) // failureSet wrote it: the harness bound, not the generic one, holds the card
+				set[FieldHarnessAt] = itoa(pr.Int("attempt"))
+			}
 			set[FieldLastFinish] = pr.F("attempt") + ":failed"
 		} else {
 			set[FieldLastFinish] = pr.F("attempt") + ":ok" // a pass, a late LAND, a defect: no failure recorded
@@ -2095,6 +2106,13 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			// wrong, not the worker (brief_bound.go)
 			n := judgment(NBriefWrong, pr.Row, s.Now, 0, pr.ID) // its decisions alone: it is the repeat
 			n.Who, n.Attempt, n.What = who, attempt, bb.Why()+"; attempt "+itoa(attempt)+" failed: "+r.Report
+			u.Notes = append(u.Notes, n)
+		} else if harnessAt != "" {
+			// the second identical harness fault (HarnessFaultBounded): the harness-fault
+			// judgment at once, never a third rework on the same tier; the card waits for it
+			n := Note{Kind: Judgment, Type: NHarnessFault, Stream: pr.Row, Primaries: []string{pr.ID}, Count: 1, At: s.Now, Who: who, Marked: true,
+				Card: c.ID, Attempt: attempt, What: harnessBoundWhat(c.ID, attempt, harnessAt, c.Row, r.Report, pr.ID),
+				Decisions: append([]string(nil), Decisions[NHarnessFault]...)}
 			u.Notes = append(u.Notes, n)
 		} else if identical {
 			// the second identical failure (rule 2): the bound's judgment at once, in the words

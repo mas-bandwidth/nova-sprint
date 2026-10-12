@@ -580,6 +580,15 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 			} else {
 				add(d, cmd+"brief"+subj+" --brief-file '<the corrected brief>'"+subjAns)
 			}
+		case d == "rebrief":
+			// a harness fault repeated (harness_fault.go): the brief told the child what the
+			// push gate refuses; corrected in place, the card's next attempt, as brief does. A
+			// group of several takes one file a card under a directory, as brief does.
+			if subj == grp && g.Size > 1 {
+				add(d, cmd+"brief"+grp+" --dir '<a directory of the re-cut briefs, <id>.md a card>'"+ans)
+			} else {
+				add(d, cmd+"brief"+subj+" --brief-file '<the re-cut brief>'"+subjAns)
+			}
 		case d == DecisionRecut:
 			// a brief defect (brief_defect.go): the card as cut is dropped and its brief cut again,
 			// as a new card, from what the worker found; never a redeal of the same brief

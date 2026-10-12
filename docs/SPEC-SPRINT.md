@@ -6100,7 +6100,7 @@ rules` prints the same answers, read-only: one `RULE` line per judgment and subj
 
 | rule | judgment | answer |
 |---|---|---|
-| `failed` | work came back failed (a take with no result is redealt by the system, section 5, and reaches here as its bound) | a harness fault (`sprint.HarnessFault`) or a HOLD with findings (`sprint.HoldFindings`) is reworked at once on its tier with the failure as its fix, a friend's card too, below its brief's bound (below); any other failure: the next attempt (rework, the report its fix) on the next route of its tier, the routes it drew left out; the `RuleAttemptCap`-th (2) failure on one tier (`rule_tier`, `rule_fails` on the primary) a new attempt one tier up (`rework --tier`: flash to pro to heavy, the first tier above that a route serves); past heavy, a friend's card (`who=friend`: the friends' deal gives it to a friend up with room) |
+| `failed` | work came back failed (a take with no result is redealt by the system, section 5, and reaches here as its bound) | a harness fault (`sprint.HarnessFault`) or a HOLD with findings (`sprint.HoldFindings`) is reworked at once on its tier with the failure as its fix, a friend's card too, below its brief's bound (below), a harness fault at most once a card (the second identical harness fault raises `the same harness fault`, below); any other failure: the next attempt (rework, the report its fix) on the next route of its tier, the routes it drew left out; the `RuleAttemptCap`-th (2) failure on one tier (`rule_tier`, `rule_fails` on the primary) a new attempt one tier up (`rework --tier`: flash to pro to heavy, the first tier above that a route serves); past heavy, a friend's card (`who=friend`: the friends' deal gives it to a friend up with room) |
 | `bound` | a card reached its bound (its redeal bound at its ceiling, or the second identical failure) | a new attempt one tier up, as `failed`'s climb; past heavy, a friend's card. A card every member up refused at staging, or at its brief's bound, is left |
 | `late` | a work card is past its deadline | with progress in the last 10 minutes (the work card's `progress` stamp: the server's time of its holder's last `progress` verb, which the member sends every 3 minutes while its child prints and the friend daemon while a lane's turn on the card prints; a stamp from before the card's take is another holder's and counts as none) a wait of 30 minutes, once a generation (`rule_waited`). The default is wait only: a working card whose holder has stamped no progress since its take is held 30 minutes at a time and never returned by this rule, so a member that does not stamp never loses an honest long child to it (`tla/SprintRules.tla`, `NeverStampedNeverReturned`). A card whose holder stamped and then went silent past the 10 minutes, or whose one wait is spent, is returned and dealt again once its holder has had its own whole deadline (withdrawn, the take ended: it spends a redeal, so a card late again and again reaches its bound and climbs); a card just dealt again is held until its holder's own deadline. Each answer keeps a hold on the condition until the time it names, and the tick raises it again then if it still holds. A card on a friend's row is `friend-take`'s |
 | `friend-take` | a work card is past its deadline, on a friend's row (dealt and never taken, or working and not finished) | one she has not started (no `progress` stamp, and her beat names neither the card, its job nor its primary running: `friendStarted`) is taken back to ready (`friend take`, `rule take`; `taken_from` her row) and the next tick's deal places it again, never on her. One she started stays hers (a friend keeps the cards she started); a card pinned to her alone (`WHO: only friend`), a brief defect, and a card of a friend the tick holds no seat of are left. A card taken back and dealt to the next friend is measured from her own deal (the later of `dealt` and `untaken_since`, as the start bound measures it), never from the take-back or the time it waited withdrawn, and a never-taken judgment raised before her deal (while the card sat withdrawn, past the dealt bound of no friend) closes on her deal (`LateStands`: the clock it was measured by started before the note), so the rule has nothing to answer against her on the first friend's clock; her own bound raises its own judgment (2026-10-08: one card, seven generations in thirty minutes, the first take-back two seconds after the deal; `TestACardTakenBackFromOneFriendGetsTheNextFriendsOwnBound`) |
@@ -6148,7 +6148,8 @@ happen again"). Two rules make it so, the tool and not the seat's discipline:
   work came back failed, a reader found it broken, ready to accept, reads exhausted, stranded in
   review, a card reached its bound, the brief is wrong, a brief defect, blocked on something
   dropped or missing, a friend's report needs a read, repair skipped, returned to review (merge
-  stopped), ci red, the five stream-stopped kinds, the fleet's failure (below), and a stall that
+  stopped), ci red, the five stream-stopped kinds, the fleet's failure (below), the same harness
+  fault, and a stall that
   names a card (`sprint.WaitRefusedWhenItNamesACard`: it holds the card in place), cannot ask, the
   base branch is gone, a read branch missing, no route serves the tier, a ready card is not dealt,
   and a merging card names a base not on origin. The kinds that hold a card are derived from the
@@ -6187,10 +6188,14 @@ merging of a stream a stream-level one stops; `TestAStoppedStreamCountsTheCardsI
 model is tla/SprintRules.tla, Part "answers": `FailedWithAFindingNeverParked` (failed work with
 a report, and a broken read with a finding, below the bound is reworked or finished, never held
 on the seat) and `IdenticalIsBound` (the second identical failure is the bound's, never a rework
-on its tier), with the reversed witnesses `MCSprintRulesAnswersBrokenParkFailed` (failed work
+on its tier), and `HarnessFaultBounded` (a harness fault is reworked on its tier at most once a
+card: the second identical one raises the judgment, never a third redeal), with the reversed
+witnesses `MCSprintRulesAnswersBrokenParkFailed` (failed work
 left to the seat), `MCSprintRulesAnswersBrokenNoReportRework` (failed work with no report
 reworked with no fix, `ReworkHasAFix`), `MCSprintRulesAnswersBrokenIdenticalRework` (the second
-identical failure reworked on its tier) and `MCSprintRulesAnswersReachMindJudges` (a mind still
+identical failure reworked on its tier), `MCSprintRulesAnswersBrokenHarnessRedeal` (the second
+identical harness fault reworked a third time, `HarnessFaultBounded`) and
+`MCSprintRulesAnswersReachMindJudges` (a mind still
 answers a card past the bound or with nothing to take as a fix).
 
 #### A broken read with a finding reworks the card
@@ -6218,7 +6223,19 @@ verdict PENDING or none; a report that begins with its `Cost:` line; a provider'
 deadline or a lane cap with no result; no `RESULT.md`. A HOLD whose report names a file and
 line (`sprint.HoldFindings`) is reworked with its report, the findings, as the fix. A harness
 fault is not the fleet's either: many cards failing the same way are each reworked, never
-left as a shared failure, since the rework stays on the tier. A card at its attempt bound
+left as a shared failure, since the rework stays on the tier. A harness fault is reworked on
+the same tier at most once a card: the second identical harness fault on one card, or the same
+harness-fault class on `RuleSameFailureCards` (3) cards within `HarnessFaultWindow` (30
+minutes), raises one `the same harness fault` judgment, the fleet's one grouped judgment
+naming the class, the cards, the members and the first refusal line; the card waits for it and
+is not redealt, so the failure is never retried blind on the same tier (tla/SprintRules.tla,
+Part "answers": `HarnessFaultBounded`, reversed witness `MCSprintRulesAnswersBrokenHarnessRedeal`,
+and `HarnessFleetHeld` (the fleet's one grouped judgment holds every card it names, never
+redealing it), reversed witness `MCSprintRulesAnswersBrokenGroupRedeal`;
+`TestARepeatedHarnessFaultIsDealtTwiceNotThriceAndRaisesTheJudgment`,
+`TestThreeCardsWithTheSameHarnessFaultRaiseOneGroupedJudgment`,
+`TestAnsweringTheGroupedHarnessFaultReleasesTheCardItAnswers`,
+`TestAHarnessFaultFollowedByAnOkTakeRaisesNothing`). A card at its attempt bound
 keeps the `the brief is wrong` judgment, a brief defect stays a person's, and a HOLD naming a
 card that has not landed is `hold-need`'s. A failure outside every class stays the judgment
 `work came back failed` (`TestAHarnessFaultFailureReworksTheCardByRule`).

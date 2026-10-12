@@ -130,6 +130,7 @@ var Decisions = map[string][]string{
 	NReadyToAccept:     {"accept", "rework", "drop"},
 	NReturned:          {"rework", "accept", "drop"}, // accept only while its reads stand at its head
 	NWorkFailed:        {"rework with a fix", "drop"},
+	NHarnessFault:      {"rebrief", "drop"},     // the same harness fault twice, or on many cards: the card waits, never redealt
 	NBriefDefect:       {DecisionRecut, "drop"}, // never a redeal of the brief as cut
 	NReadBroken:        {"rework with the finding", "ask another reader", "drop"},
 	NBriefWrong:        {"brief", "drop"}, // never rework: a --fix changes the brief not at all (brief_bound.go)

@@ -779,6 +779,11 @@ func strconvQuote(s string) string { return fmt.Sprintf("%q", s) }
 // recorded failure (its last finish failed that way).
 const RuleFleetWindow = time.Hour
 
+// HarnessFaultWindow is how far back, in running time, the fleet-wide harness-fault judgment
+// counts a card's harness fault: the same harness-fault class on RuleSameFailureCards cards
+// within it raises one grouped judgment (HarnessFaultBounded).
+const HarnessFaultWindow = 30 * time.Minute
+
 // TickFleetFailure raises NFleetFailure for each failure class that RuleSameFailureCards or more
 // cards recorded within RuleFleetWindow of running time, in any column but landed (each card's
 // recorded failure, FieldFailure, and its last finish, FieldFinishedAt), and no open judgment
@@ -791,6 +796,12 @@ func TickFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 	for _, c := range s.Work.Column(Waiting, Ready, Working, Review, Merging) {
 		class := c.F(FieldFailure)
 		if class == "" || !lastFinishFailed(c) {
+			continue
+		}
+		// a harness fault is never the fleet's generic failure: it is the harness's, reworked on
+		// its tier and judged by TickHarnessFleet when the same class repeats (docs/SPEC-SPRINT.md
+		// section 8, a harness-fault failure reworks the card).
+		if HarnessFault(workReport(s, c)) != "" {
 			continue
 		}
 		if d, ok := r.running(s.Now, c.F(FieldFinishedAt)); !ok || d > RuleFleetWindow {
@@ -815,6 +826,70 @@ func TickFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 		p.Notes = append(p.Notes, n)
 	}
 	return p, 0
+}
+
+// TickHarnessFleet raises the one grouped NHarnessFault judgment of a harness-fault class that
+// RuleSameFailureCards or more cards hold within HarnessFaultWindow: the fleet's, one judgment,
+// not one per card (the per-card second identical one is written by Finish, steps_work.go).
+func TickHarnessFleet(s *Snapshot, r TickReq) (Plan, int) {
+	var p Plan
+	byClass := map[string][]string{}
+	member := map[string]string{}
+	first := map[string]string{}
+	for _, c := range s.Work.Column(Waiting, Ready, Working, Review, Merging) {
+		if !lastFinishFailed(c) {
+			continue
+		}
+		h := HarnessFault(workReport(s, c))
+		if h == "" {
+			continue
+		}
+		if d, ok := r.running(s.Now, c.F(FieldFinishedAt)); !ok || d > HarnessFaultWindow {
+			continue
+		}
+		byClass[h] = append(byClass[h], c.ID)
+		if member[c.ID] == "" {
+			if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil {
+				member[c.ID] = wc.Row
+			}
+		}
+		if first[c.ID] == "" {
+			first[c.ID] = workReport(s, c)
+		}
+	}
+	for _, class := range slices.Sorted(maps.Keys(byClass)) {
+		ids := byClass[class]
+		if len(ids) < RuleSameFailureCards || harnessFleetOpen(s, class) {
+			continue
+		}
+		slices.Sort(ids)
+		var ms []string
+		seenM := map[string]bool{}
+		for _, id := range ids {
+			if m := member[id]; m != "" && !seenM[m] {
+				ms = append(ms, m)
+				seenM[m] = true
+			}
+		}
+		// the fleet's one grouped judgment: it names every card it holds as a primary, so each
+		// card waits for it and is not redealt until it is answered (brief or drop).
+		n := judgment(NHarnessFault, "", s.Now, 0, ids...)
+		n.Who = r.who()
+		n.What = cutText(fmt.Sprintf("%sthe same harness fault on %d cards (%s) within %s on %s; the first refusal: %s; rebrief them, or drop them",
+			fleetFailureWhat(class), len(ids), strings.Join(ids, ","), HarnessFaultWindow, strings.Join(ms, ","), cutText(first[ids[0]], MaxProviderErrorBytes)), MaxCardTextBytes)
+		p.Notes = append(p.Notes, n)
+	}
+	return p, 0
+}
+
+// harnessFleetOpen says an open NHarnessFault judgment names the class's failure.
+func harnessFleetOpen(s *Snapshot, class string) bool {
+	for _, o := range s.Open {
+		if o.Note.Kind == Judgment && o.Note.Type == NHarnessFault && strings.HasPrefix(o.Note.What, fleetFailureWhat(class)) {
+			return true
+		}
+	}
+	return false
 }
 
 // lastFinishFailed says the card's last finish is the failure it records: its last finish
