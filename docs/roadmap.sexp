@@ -148,29 +148,46 @@
     (coordinator-push-wake-adapters). The sprint reads presence from the comms module
     (the-comms-module-holds-presence-capability-and-timers, nova-tools roadmap) and the wake
     capability from nova-wake's record; the nova-tools items friend-presence-from-the-session and
-    friend-daemon-liveness retire with the old comms paths. Its tests are comms-test-plan. Lands
-    only after the v1.3 test plan (v1-3-test-plan). Done when: the friends table shows up, blocked,
-    asleep and down from the comms presence record alone, with no beat loop of the sprint's own,
-    pinned by a functional test on a real Redis."
+    friend-daemon-liveness retire with the old comms paths. The states are the owner's three, working
+    (with a blocked flag), asleep and down, plus the freshness fields the record carries: session
+    generation, sequence, age, expiry and reach; an expired proof reads unknown, never an inferred
+    down (docs/SPEC-COMMS.md 3.2 and 6.2, nova-tools; friend-down-detection says what turns unknown
+    into down). Its tests are comms-test-plan. Lands only after the v1.3 test plan (v1-3-test-plan).
+    Done when: the friends table shows working, working blocked, asleep, down and unknown with sgen,
+    seq, age, expiry and reach from the comms presence record alone, with no beat loop of the sprint's
+    own and no field named alive, up or live, a planted expired proof reading unknown and never down,
+    pinned by a functional test on a real Redis and a class test on the column names."
    :date "2026-10-10"
    :release "v1.3"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "friend-down-detection" :group "v13-comms"
    :title "Detect a friend AI that is unreachable or out of credits and route around it"
-   :text "A friend counts as down when it cannot be reached or cannot work because credits ran out. The
-    state is detected mechanically and its work is routed elsewhere.
+   :text "A friend counts as down when she cannot work: her session said so (a provider refusal, a
+    limit, an empty balance, said once with its cause and end) or a judgment said so. Down is a word
+    written, never inferred: a lapsed presence proof is a stale proof, not absence (docs/SPEC-COMMS.md
+    3.2, in nova-tools), and the sweep (nova-wake check, every DetectEvery, 10 min) marks it reach
+    unknown, which the friends table shows as unknown with the proof's age. What turns unknown into down
+    is a judgment with its evidence: the tick raises one to the seat when a friend's reach has read
+    unknown for UnknownRaisesAfter (a setting, default 2 x PresenceTTL = 20 min, proposed), and the
+    seat's answer (down with cause and end, or hold) is the word the table shows. Her work is routed
+    around her once the word is down.
     Absorbs (de-duplicated 2026-10-12): A held or down friend returns its cards to ready
     (held-friend-returns-dealt-and-started-cards); A broken session or a limit means down
     (friend-broken-session-and-limits-mean-down, nova-tools roadmap); Friends and machines noticed
     back up and made current (friend-back-up-detection-and-adopt, nova-tools roadmap); A broken
     friend session renews itself (friend-session-auto-recovery, nova-tools roadmap). A refusal, a
-    limit or an empty balance is said once and reads down; a hold or down carries its cause and end;
-    a returning friend adopts first (the adopt half is adoption-pipeline-automated, nova-tools
-    roadmap); a down friend's cards bounce back at the tick; a partner who goes down is pushed to
-    the other. Lands only after the v1.3 test plan (v1-3-test-plan). Done when: a friend whose
-    presence lapses or whose provider refuses reads down within one tick, her dealt and started
-    cards return to ready, and one judgment is raised, pinned by a functional test with a planted
-    refusal."
+    limit or an empty balance is said once by the session and reads down; a hold or down carries its
+    cause and end; a returning friend (a fresh report with a newer session generation) adopts first
+    (the adopt half is adoption-pipeline-automated, nova-tools roadmap); a down friend's dealt and
+    started cards bounce back to ready at the tick; a partner who goes down is pushed to the other.
+    Its tests are comms-test-plan. Lands only after the v1.3 test plan (v1-3-test-plan). Done when:
+    a friend whose provider refuses (planted) reads down within one tick (TickEvery, 1 s) of her
+    session's word, her dealt and started cards return to ready in that tick, and one judgment is
+    raised; a friend whose presence proof merely lapses reads unknown after PresenceTTL plus
+    DetectEvery and never down, her cards stay dealt, and the judgment is raised at UnknownRaisesAfter
+    (20 min) with the proof's age as its evidence, the table reading down only after the seat's answer;
+    and a class test finds no code path that writes down from an expiry; all pinned by functional tests
+    on a real Redis with a fake clock."
    :date "2026-10-10"
    :release "v1.3"
    :origin "issue #3185")
@@ -191,13 +208,20 @@
    :origin "the bus-presence store cards of 2026-10-11, from the owner's direction: nova-hook is the one way in")
   (item "a-seat-wait-survives-a-reconnect-and-a-restart" :group "v13-comms" :area "nova-sprint"
    :title "A seat wait survives a reconnect and a restart"
-   :text "The seat's wait is a client of the comms module's timers and listener: a store reconnect or a
-    server restart during a wait neither loses the push nor ends the wait early, and the wait resumes from
-    the drain cursor the comms link holds. The sprint's own timers are the comms module's.
+   :text "The seat's wait is a client of the comms module's timers and listener (docs/SPEC-COMMS.md 5,
+    7, nova-tools): a push is never lost across a reconnect or a restart, because it sits in the seat's
+    own pending list until the seat's nova-bus ack, and the drain of the next listener generation
+    delivers it first (5.1; no cursor is stored, the pending list is the record). A reconnect of the
+    client resumes by that drain. A store restart fences the wait as it fences every listener (7): the
+    waiting process is refused incarnation restarted at its next call, prints store-restarted and exits,
+    and the live seat's re-run of the line drains the push it was waiting for; nothing resumes an old
+    generation. The sprint's own timers are the comms module's.
     Absorbs (de-duplicated 2026-10-12): Timers on the sprint system that wake an actor at a chosen
-    time (sprint-timers). Lands only after the v1.3 test plan (v1-3-test-plan). Done when: a seat
-    wait outlives a store reconnect and a server restart on the bench and returns the push it was
-    waiting for, pinned by a functional test that restarts the server mid-wait."
+    time (sprint-timers). Lands only after the v1.3 test plan (v1-3-test-plan). Done when: on the
+    bench, a push sent during a client reconnect and one sent during a server restart are each returned
+    by the seat's wait, the first by the resumed wait and the second by the re-run after one
+    store-restarted line, with zero pushes lost over 100 of each and no renewal by the old process
+    after the restart, pinned by a functional test that restarts the store mid-wait."
    :date "2026-10-12"
    :release "v1.3"
    :origin "the freeze triage draft of 2026-10-12")
@@ -382,9 +406,17 @@
   (item "server-beats-and-reads-off-the-line" :group "v13-server"
    :title "Server beats and reads run off the control line; a gone caller is never run"
    :text "Verbs that only read or beat must not queue behind the single line of control, and a verb whose
-    caller is gone is dropped.
-    Lands only after the v1.3 test plan (v1-3-test-plan). Done when: beats and reads travel off the
-    control line and a gone caller is dropped within its bound, pinned by a functional test."
+    caller is gone is dropped. What exists (cmd/nova-sprint/servelanes.go, tla/ServerLanes.tla): a beat
+    lane and a read lane beside the line, a gone caller's ticket served and handed back with its verb
+    never run (GoneNeverRuns). The gap is the bar and its proof under load: the bound a gone caller is
+    dropped within is the caller's own deadline, BeatDeadline (15 s today) for a beat and the verb's
+    deadline for the rest, and a verb off the line answers while the line is held.
+    Lands only after the v1.3 test plan (v1-3-test-plan). Done when: while a planted batch holds the
+    control line for 5 s, 140 friend beats and 20 reads each answer under 100 ms at p99 on the bench; a
+    caller that disconnects while its verb waits for the line is served gone, never run, no later than
+    BeatDeadline (15 s) after it went, with gone counted on the SERVE line; and ServerLanes' GoneNeverRuns,
+    BeatNeverWaitsForTheLine and ReadWaitsOnlyForReads hold with their reversed witnesses failing as
+    declared, all pinned by a functional test on a real Redis."
    :date "2026-10-10"
    :release "v1.3"
    :origin "PR #5325")
@@ -411,8 +443,12 @@
    :title "A down machine must never hang the dealer, sampler or harvest"
    :text "Every remote call has a timeout and each host is isolated, so a dead machine and stale
     connection sockets cannot freeze the loops.
-    Lands only after the v1.3 test plan (v1-3-test-plan). Done when: a planted unreachable member
-    delays no tick past its bound and other hosts are unaffected, pinned by a functional test."
+    Lands only after the v1.3 test plan (v1-3-test-plan). Done when: with one planted unreachable
+    member (a black-holed address, connect never answered) and one with a stale socket, every tick of a
+    100-tick run finishes under MaxTickWall (the tick gate of the functional drive, 1 s) at CI load,
+    every other member's beat is answered under 100 ms at
+    p99, and the dealer, sampler and harvest each log the dead host once with its timeout (the remote
+    call deadline, a named setting) and move on, pinned by a functional test on a real Redis."
    :date "2026-10-10"
    :release "v1.3"
    :origin "issue #2009")
@@ -427,10 +463,21 @@
   (item "sprint-server-memory-wedge" :group "v13-server"
    :title "The sprint server does not grow without bound or stop answering"
    :text "The server once reached a very large resident size and stopped answering verbs while the fleet
-    stalled behind it. Memory is bounded and a watchdog restarts a wedged server.
-    Lands only after the v1.3 test plan (v1-3-test-plan). Done when: server memory stays bounded
-    over a day at load and a planted wedge is restarted by the watchdog within its bound, on the
-    bench."
+    stalled behind it. Memory is bounded and a watchdog restarts a wedged server. What exists: the tick
+    watchdog of run (--tick-deadline, TickDeadline 10 s by default, stretched to three times the median
+    of the last 20 ticks up to TickDeadlineCap; past it the stacks are printed and the tick given up;
+    three wedged ticks in a row exit 4 for the supervisor to restart the loop). The gap: a memory ceiling
+    the server reads, ServerMemoryCeiling (a setting, default 2 GiB, proposed), past which the server
+    prints its heap profile and exits for the supervisor, and the measured proof of both at the load the
+    plan names.
+    Lands only after the v1.3 test plan (v1-3-test-plan). Done when: under the load drag (3,000 cards,
+    a 140-width fleet, 200 reads) for 24 hours on the bench the server's resident size, sampled every
+    minute, stays under ServerMemoryCeiling (2 GiB) and its hour-24 value is within 10 percent of its
+    hour-1 value, recorded with the run; a planted wedge (a tick that never returns) is given up at the
+    tick deadline (10 s at the drag's median) with its stacks printed, and three in a row exit 4 and are
+    restarted by the supervisor, the restarted server answering a verb within 5 s of the exit; a planted
+    leak crossing the ceiling exits with its profile within one minute of crossing; all pinned by
+    functional tests with a fake clock, the 24-hour number by the bench run."
    :date "2026-10-10"
    :release "v1.3"
    :origin "nova-sprint issue #38")
@@ -1263,10 +1310,21 @@
     this is why the roadmap is a part of nova-sprint, it is all holistically the same thing. So the
     roadmap tool and its doctor are nova-sprint verbs, and the sprint reads the sexp directly when it
     cuts cards; nova-tools runs these verbs on its own ledgers until the fold. The data: the sexp is the
-    single source (the pages are generated, never edited) and is written only through the verbs (defer,
-    import, generate, and an edit verb if one is needed), never by hand in the normal flow; the doctor
-    runs in CI on every change to the sexp and at every import and defer, so a write that leaves the
-    roadmap inconsistent is refused, not committed. The verbs: roadmap doctor checks the sexp itself
+    single source (the pages are generated, never edited) and is written only through the verbs, never
+    by hand in the normal flow. The rule every writer keeps, before every write: each mutating entry
+    point validates the prospective whole ledger (both files, as they would be after the write) with the
+    doctor before anything is committed, and on any finding refuses whole with the DOCTOR lines, nothing
+    written to either file; CI is the second line, which catches a hand edit, never the first, because a
+    bad write caught in CI is later than the writer's own refusal. The mutating entry points, every one
+    under that rule: the nova-work roadmap verbs that exist today (add, remove, pull, done, note, which
+    write through one Save), the sprint's defer (today cmd/nova-sprint/defer.go splices text into
+    docs/roadmap.sexp with no decode and no doctor: that path is replaced by the validated one), defer
+    --stream, import, generate (make roadmap in both repositories, and the page write of every verb), the
+    edit verb if one is built, and any verb added later; a class test finds no write of either ledger
+    file or its pages outside the one validated write path, and a mutation fixture per verb (generate
+    and edit included) shows a rule-breaking change refused with one DOCTOR line and both files
+    byte-identical after. The doctor also runs in CI on every change to the sexp. The verbs: roadmap
+    doctor checks the sexp itself
     (every dependency, a :depends key or a DEPENDS-ON line in a card draft, names an entry that exists
     and is not later in release order than the dependent, with no cycle and nothing dangling; every
     :release is one of the four values; every v1.3 entry has its Done-when sentence; every entry with a
@@ -1281,25 +1339,43 @@
     print the same DOCTOR lines. defer pushes a card out of the sprint into a roadmap entry at a named
     release, carrying its brief, needs, last pushed head and reason, so nothing is lost and it can be
     imported again; it replaces the hand-parking of dropped cards under tmp/next-sprint-cards. defer
-    --stream <s> --release <r> defers a whole work stream atomically, in one verb: (1) it stops every
-    in-flight attempt of the stream (working lanes told to stop within one beat, as a moved card's old run
-    is; reads returned; nothing redealt), recording each card's last pushed head as its carry; (2) it
-    moves every unlanded card into roadmap entries with brief, needs re-pointed to the deferred ids, carry
-    head, the stream's branch name and release; (3) it removes the stream from the current sprint
-    (archives its control card; the branch stays in git). All or nothing: the store side is one Lua step
-    after the stops are confirmed, the sexp write is refused whole if the doctor fails, and a failure at
-    any step rolls the sprint back to before, the cards back on the table in their prior states. A later
-    import --stream <s> restores the whole set with its internal dependency order intact.
+    --stream <s> --release <r> defers a whole work stream in one verb, all or nothing for the two
+    durable systems it writes (the store and the ledger file), with the one irreversible step named as
+    such: stopping an attempt kills a process, and restoring a card's prior table state does not restart
+    it, so the protocol is fenced prepare, commit and recovery rather than one Lua step for two systems.
+    Prepare: the verb takes a fence (a deferring record for the stream in the store, with a token; a
+    second defer of the stream is refused by it), runs the doctor on the prospective whole ledger and
+    writes the new sexp to a staging file beside the real one (refused whole here, nothing stopped, if
+    the doctor fails), then tells every working lane of the stream to stop (within one beat, as a moved
+    card's old run is), returns its reads and redeals nothing, recording each card's last pushed head as
+    its carry; a stop that does not confirm within the beat plus a tick leaves the fence in place, the
+    stopped attempts recorded as stopped, and the verb exits with the fence named, nothing moved. Commit:
+    one Lua step, under the fence token, moves every unlanded card into its deferred record (brief,
+    needs re-pointed to the deferred ids, carry head, the stream's branch name and release) and archives
+    the stream's control card (the branch stays in git); then the staged sexp is renamed into place and
+    the pages regenerated; then the fence is cleared. Recovery, on the next verb or tick that finds a
+    fence: a fence with no commit is rolled back (the cards back on the table in their prior states, with
+    each stopped attempt recorded as stopped, never silently restarted); a fence with the commit done and
+    the file not yet published publishes the staged file; a fence with the file published and not yet
+    cleared is cleared. A later import --stream <s> restores the whole set with its internal dependency
+    order intact.
     Lands only after the v1.3 test plan (v1-3-test-plan). Done when: a seeded broken roadmap (a dangling
     dependency, a cycle, a bad release, a missing Done-when, a lint-failing draft, a stale generated page,
     a missing landing entry) produces one finding each and the real roadmaps produce none; importing a
     roadmap entry with a dependency that no longer exists is refused with the entry and the missing id
-    named, never admitted; a hand edit that breaks a rule is caught by CI with one DOCTOR line; a
-    dropped card round-trips defer then import with brief, needs and carry head intact; and a stream of
-    N cards with chained needs and two carry heads round-trips defer then import with nothing lost and
-    no partial state observable in between, a failure mid-way leaving the sprint and the roadmap exactly
-    as before; and a stream with one working card and one in review defers in one verb, the worker's lane
-    stopped within a beat, the carry head recorded, the stream gone from where, and import restoring it."
+    named, never admitted; every mutating verb (add, remove, pull, done, note, defer, defer --stream,
+    import, generate, edit) run against its mutation fixture with a rule-breaking change is refused with
+    one DOCTOR line and leaves both ledger files and their pages byte-identical, and a class test finds no
+    ledger write outside the validated path; a hand edit that breaks a rule is caught by CI with one
+    DOCTOR line; a dropped card round-trips defer then import with brief, needs and carry head intact; a
+    stream of N cards with chained needs and two carry heads round-trips defer then import with nothing
+    lost and no partial state observable in between; a crash injected at each of the three points (after
+    the stops and before the Lua step, after the Lua step and before the file is published, after the
+    file and before the fence clears) leaves the sprint and the roadmap in the before-state or the
+    after-state and never a mix after recovery, the before-state showing each stopped attempt recorded as
+    stopped and not restarted, pinned by one functional test per point; and a stream with one working
+    card and one in review defers in one verb, the worker's lane stopped within a beat, the carry head
+    recorded, the stream gone from where, and import restoring it."
    :why "The owner, 2026-10-12: roadmap imports into the sprint arrive with dependencies that no longer exist; the data must be correct; whole streams must defer atomically."
    :date "2026-10-12"
    :release "v1.3"
@@ -1495,10 +1571,19 @@
   (item "chaos-suites" :group "v13-models" :area "nova-sprint"
    :title "Friend and sprint chaos suites"
    :text "Faults injected on purpose into friends and into the sprint system, each required to show
-    and to recover within its bound.
+    and to recover within the bound its own entry names; the suite carries no bound of its own, it reads
+    each from the settings table and fails when one is missed.
     Late in v1.3; stall-and-stuck-classes-of-2026-10-11-clipped-in (fixes v1.2.15) and the mock-seat
-    e2e suite are build gates beside it. Lands only after the v1.3 test plan (v1-3-test-plan). Done when: each injected fault (a killed lane, a lost store reply, a down friend, a slow tick)
-    recovers within its bound on the bench and the suite is red when a bound is missed, recorded."
+    e2e suite are build gates beside it. Lands only after the v1.3 test plan (v1-3-test-plan). Done
+    when: each injected fault recovers within its named bound on the bench and the suite is red when a
+    bound is missed, recorded: a killed lane's card is back on the table within one beat (BeatEvery,
+    1 s) plus one tick (TickEvery, 1 s); a lost store reply is refused or retried by the client within
+    its deadline and the operation's record is unchanged (one round trip, no partial write); a friend
+    whose session says down has her cards back in ready within one tick and a friend whose proof lapses
+    reads unknown and never down (friend-down-detection); a slow tick is given up at the tick deadline
+    (TickDeadline, 10 s) and the next tick starts on time; a listener killed mid-wait has its link
+    lapsed within ProofTTL (90 s) and its pending push delivered by the next drain; each with a reversed
+    fixture that misses the bound and turns the suite red."
    :why "New test capability beyond the v1.4 quality list."
    :cards 2
    :date "2026-10-09"
@@ -1611,9 +1696,16 @@
   (item "new-alarms" :group "v13-observe" :area "nova-sprint"
    :title "Two new alarms"
    :text "An alarm when the store's latency passes its bound, and one when a test process is left
-    running on a fleet machine.
-    Lands only after the v1.3 test plan (v1-3-test-plan). Done when: a store latency past its bound
-    and a test process left running each raise an alarm within a tick, pinned by tests."
+    running on a fleet machine. The latency bound is a setting, StoreLatencyAlarm (default 200 ms,
+    proposed: the perf gate already holds a where read under 200 ms of wall on the in-memory store,
+    docs/SPEC-SPRINT.md), measured as the tick's store round trip p99 over the last TickEvery window; a
+    test process is one whose command line matches the test runner's pattern and whose age passes
+    TestProcessAge (default 10 min, proposed) as the machine's beat reports it.
+    Lands only after the v1.3 test plan (v1-3-test-plan). Done when: a planted store delay of 250 ms
+    raises the latency alarm within one tick (TickEvery, 1 s) and one of 150 ms raises none; a planted
+    test process 11 minutes old on a bench member raises the second alarm at the next beat and one 9
+    minutes old raises none; each alarm is said once and cleared once when the cause ends; pinned by
+    functional tests with a fake clock."
    :why "New capability."
    :cards 2
    :date "2026-10-09"
