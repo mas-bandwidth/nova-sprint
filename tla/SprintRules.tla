@@ -327,6 +327,13 @@ NoBlockedForReplaced ==
 NoDanglingNeed ==
   \A d \in Waiters : col[d] = "waiting" => \A x \in need[d] : col[x] = "dropped" => x \in blocked[d]
 
+\* The alias (twin[x]) is the successor a dropped card was replaced by (the code's
+\* FieldReplacedBy): once it is recorded, no card still on the table -- waiting or open,
+\* whatever its column -- names the dropped id as a live need. The alias takes every edge,
+\* so a brief edit or a relink can never bring the old id back.
+NoLiveNeedNamesADroppedId ==
+  \A x \in TwinIds : twin[x] # None => \A d \in TwinIds : col[d] # "landed" => x \notin need[d]
+
 -----------------------------------------------------------------------------
 \* Part "rules": one card's attempts.
 
