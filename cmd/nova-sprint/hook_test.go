@@ -141,12 +141,17 @@ func (ta *testApp) hookRecord() (rec sprint.HookRecord, ok bool) {
 // to the breadcrumb).
 func (ta *testApp) refusedFirst(line, want string) {
 	ta.t.Helper()
-	before := ta.applies()
-	code, out, errs := ta.doLined(line)
-	require.Equal(ta.t, 1, code, "%s: exit %d\n%s%s", line, code, out, errs)
-	require.True(ta.t, strings.HasPrefix(errs, want) && strings.Count(errs, "\n") == 1 && strings.HasSuffix(errs, "\n"), "%s: %q", line, errs)
-	require.Empty(ta.t, out, line)
-	require.Equal(ta.t, before, ta.applies(), "%s was refused and wrote", line)
+	// Hook-server work writes the Calls map on this same line. Keep both reads
+	// and the command in one turn, so neither a map race nor another turn's write
+	// can be attributed to this refusal.
+	ta.lined(func() {
+		before := ta.applies()
+		code, out, errs := ta.do(line)
+		require.Equal(ta.t, 1, code, "%s: exit %d\n%s%s", line, code, out, errs)
+		require.True(ta.t, strings.HasPrefix(errs, want) && strings.Count(errs, "\n") == 1 && strings.HasSuffix(errs, "\n"), "%s: %q", line, errs)
+		require.Empty(ta.t, out, line)
+		require.Equal(ta.t, before, ta.applies(), "%s was refused and wrote", line)
+	})
 }
 
 // hookClient is the session's end of a subscription the test runs on a pipe.
