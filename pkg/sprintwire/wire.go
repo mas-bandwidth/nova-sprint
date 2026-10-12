@@ -46,7 +46,7 @@ type Result struct {
 	Stdout  string `json:"stdout"`
 	Stderr  string `json:"stderr"`
 	Outcome string `json:"outcome,omitempty"` // accepted | refused | unknown
-	Changed string `json:"changed,omitempty"`  // yes | no | unknown
+	Changed string `json:"changed,omitempty"` // yes | no | unknown
 }
 
 // Response is the answers, one a verb, in the request's order.
@@ -99,8 +99,8 @@ func (c Client) Do(ctx context.Context, verbs ...[]string) ([]Result, error) {
 			Code    *int    `json:"code"`
 			Stdout  *string `json:"stdout"`
 			Stderr  *string `json:"stderr"`
-			Outcome string   `json:"outcome"`
-			Changed string   `json:"changed"`
+			Outcome string  `json:"outcome"`
+			Changed string  `json:"changed"`
 		} `json:"results"`
 	}
 	if err := json.Unmarshal(raw, &got); err != nil || len(got.Results) != len(verbs) {
