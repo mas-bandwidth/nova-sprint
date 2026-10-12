@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,7 +20,7 @@ func TestTheHookGateRefusalIsATypedError(t *testing.T) {
 	require.Error(t, err)
 	var h *hookGateError
 	require.True(t, errors.As(err, &h), "the gate's refusal is a hookGateError: %v", err)
-	assert.Equal(t, sprint.HookFirst, h.Error())
+	assert.True(t, strings.HasPrefix(h.Error(), sprint.HookFirst), "the refusal is the one line: %q", h.Error())
 
 	r.hookLive(t)
 	_, err = r.a.store(common{verb: "land", redis: "mem:0", actor: r.seat})

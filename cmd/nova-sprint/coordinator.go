@@ -80,10 +80,11 @@ func needsActor(c common) string {
 // init names the coordinator (--coordinator, else the actor); every later
 // coordinator verb, init included, is that actor's alone. A store with no
 // coordinator takes init and teardown only. Every command run as the
-// coordinator waits for the seat's live, proven hook (hookedIn; hook.go): the
-// first init, on a store with no coordinator, only names the seat.
-func coordinatorOnly(ctx context.Context, st *store.Store, c common) (string, error) {
-	why, _, err := coordinatorGate(ctx, st, c)
+// coordinator, and every worker verb a worker friend runs, waits for its caller's two
+// pushes live and proven (hookedIn; hook.go): the first init, on a store with no
+// coordinator, only names the seat.
+func (a *app) coordinatorOnly(ctx context.Context, st *store.Store, c common) (string, error) {
+	why, _, err := a.coordinatorGate(ctx, st, c)
 	return why, err
 }
 
@@ -98,14 +99,14 @@ type hookGateError struct{ why string }
 func (e *hookGateError) Error() string { return e.why }
 
 // coordinatorGate is coordinatorOnly, saying also whether the refusal is the hook gate's.
-func coordinatorGate(ctx context.Context, st *store.Store, c common) (why string, byHook bool, err error) {
+func (a *app) coordinatorGate(ctx context.Context, st *store.Store, c common) (why string, byHook bool, err error) {
 	if verbClasses[c.verb] == classCoordinator {
 		why, err := coordinatorsAlone(ctx, st, c)
 		if err != nil || why != "" {
 			return why, false, err
 		}
 	}
-	why, err = hookedIn(ctx, st, c)
+	why, err = a.hookedIn(ctx, st, c, hookExempt[c.verb])
 	return why, err == nil && why != "", err
 }
 
