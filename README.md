@@ -35,9 +35,9 @@ go back for rework.
 The dashboard shows work streams, fleet capacity, progress, costs, and
 estimated finish time. 
 
-<img width="1171" height="1136" alt="image" src="https://github.com/user-attachments/assets/45ef3531-3652-4b6b-b905-9fb5c8dfccd3" />
+<img width="2068" height="1151" alt="image" src="https://github.com/user-attachments/assets/eb290d6e-ee24-4b19-b908-93b10535b025" />
 
-[See live demo](http://69.67.149.151/)
+[See a live demo](http://69.67.149.151/)
 
 ## Start with one lane. Then go wider.
 
