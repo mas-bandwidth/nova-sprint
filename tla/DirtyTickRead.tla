@@ -137,7 +137,8 @@
 \*                    writes only after it repinned to the epoch the sprint is
 \*                    at
 \*   StartsWorkNotAfterStop     no StartsWork part commits once StopRevoked
-\*   HeldEpochIsTheWrite        no part that holds an epoch writes at another
+\*   HeldEpochIsTheWrite        no part that holds an epoch writes from a store
+\*                    pinned to another epoch
 \*   StoppedStepDrainsFirst     no worker part commits on a STOPPED machine
 \*                    while its queue holds changes
 \*
@@ -353,7 +354,7 @@ Commit(t, k, v) ==
                                 /\ stale' = (stale \/ (pkind = "plain" /\ runseq # vrunseq))
                                 /\ wroteOldEpoch' = (wroteOldEpoch \/ (vepoch # epoch))
                                 /\ wroteAfterStop' = (wroteAfterStop \/ (pkind = "start" /\ stopRevoked))
-                                /\ wroteOffHeld' = (wroteOffHeld \/ (vpinned /\ vheld # epoch))
+                                /\ wroteOffHeld' = (wroteOffHeld \/ (vpinned /\ vheld # vepoch))
                                 /\ wroteOverQueue' = (wroteOverQueue \/ (pkind # "plain" /\ ~running /\ queued > 0))
                            ELSE \* the run moved under the part: its commit is
                                 \* refused (StaleRun), it writes nothing, and the
@@ -522,10 +523,12 @@ OldEpochPartWritesNothing == ~wroteOldEpoch
 \* No StartsWork part commits once a stop revoked it: the fence refuses it.
 StartsWorkNotAfterStop == ~wroteAfterStop
 
-\* No part that holds an epoch writes at any epoch but the one it holds: a
-\* step that names an epoch a clear had already left before its store was
-\* pinned (a stale --epoch, or a tick's at) is refused, never written at the
-\* epoch its store pinned.
+\* No part that holds an epoch writes from a store pinned to another: a step
+\* that names an epoch a clear had already left before its store was pinned
+\* (a stale --epoch, or a tick's at) is refused at its first read, never
+\* written at the epoch its store pinned. The flag is the first read's
+\* comparison (vheld against vepoch); a clear after that read is
+\* OldEpochPartWritesNothing's alone.
 HeldEpochIsTheWrite == ~wroteOffHeld
 
 \* No worker part commits on a STOPPED machine while its queue holds changes:
