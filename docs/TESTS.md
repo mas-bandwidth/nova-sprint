@@ -269,6 +269,21 @@ brief verb and the bound).
   with `--reason` accepted; reason visible on the card).
 
 
+### One definition of what a PATHS entry covers (v1.2.13)
+
+A directory `PATHS` entry (trailing `/`) covers every file under it, a glob
+covers its matches at the head, and a literal names one file that may be new;
+the lander's E12 check, the add and brief checks and the card lint read that one
+`diffcheck.Covers` (docs/SPEC-SPRINT.md section 7, the lander's checks; section
+11, the brief checks). A head refused by E12 names, for each file, the entry it
+was expected to match.
+
+- Functional, `cmd/nova-sprint/pathcover_test.go`:
+  `TestLanderAcceptsNewFileUnderDirectoryPaths`: a card whose brief names
+  `pkg/thing/` and whose head adds `pkg/thing/new.go` is admitted and lands,
+  where before the directory entry covered nothing and the head was refused E12.
+
+
 ### Every streaming verb flushes every line
 
 A seat's monitor sees a streaming verb's lines the moment they are written:

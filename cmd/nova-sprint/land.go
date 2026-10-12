@@ -2137,7 +2137,17 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 	// ordinary scope amendments remain recorded and unrelated source stays refused.
 	amended, out := sprint.LandScope(c.paths, diff, beforePaths)
 	if len(out) > 0 {
-		why = append(why, "it changes files outside its PATHS (E12): "+strings.Join(out, ", "))
+		parts := make([]string, 0, len(out))
+		for _, f := range out {
+			// SPEC-SPRINT section 7, the lander's checks: a refusal names the file and the
+			// PATHS entry it expected to match, so a narrow line is corrected in one edit.
+			if e := diffcheck.ExpectedEntry(c.paths, f); e != "" {
+				parts = append(parts, f+" (expected to match PATHS entry "+e+")")
+				continue
+			}
+			parts = append(parts, f)
+		}
+		why = append(why, "it changes files outside its PATHS (E12): "+strings.Join(parts, ", "))
 	}
 	for _, f := range diffcheck.Fragments(diff) {
 		// a document's backquotes are the repair's to judge, a prose file's no one's
