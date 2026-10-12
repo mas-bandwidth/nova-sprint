@@ -55,3 +55,34 @@ func TestInboxAliasesNameJudgmentsAndTheVerbsTakeThem(t *testing.T) {
 	assert.False(t, hasGroup(ta.inboxGroups(), sprint.NTimer), "the alias answered the second")
 	ta.clean()
 }
+
+// TestAliasResolutionAfterClear verifies that j<n> aliases resolve to the
+// current epoch's judgments after a clear advances the epoch.
+func TestAliasResolutionAfterClear(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("add --stream s1 --count 2")
+	ta.deal(2)
+	ta.ok("take --as m1 --limit 2")
+	ta.ok("finish --as m1 s1-1.w1@1 --failed --report 'red'")
+	g := ta.group(sprint.NWorkFailed, "s1")
+	require.NotEmpty(t, g.Alias)
+	oldAlias := g.Alias
+	oldNote := g.Notes[0]
+
+	// clear advances the epoch - s1-2 is still owned by m1
+	ta.clearWithReturns(0, "m1", "s1-2.w1@1")
+
+	// an old judgment's alias after clear is refused with epoch message
+	code, _, errs := ta.do("rework s1-1 --fix 'x' --answers " + oldAlias)
+	assert.NotEqual(t, 0, code, "old alias after clear: %s", errs)
+	assert.Contains(t, errs, "epoch")
+
+	// the old note id after clear is also refused
+	code, _, errs = ta.do("rework s1-1 --fix 'x' --answers " + oldNote)
+	assert.NotEqual(t, 0, code, "old note after clear: %s", errs)
+	assert.Contains(t, errs, "epoch")
+
+	ta.clean()
+}
