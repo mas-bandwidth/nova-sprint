@@ -253,7 +253,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			}
 		}
 		if c.Int("attempt") > 0 {
-			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who, toWaiting)
+			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who, toWaiting, r.Reason)
 			if orphan {
 				orphans[c.ID] = true
 			}
@@ -308,7 +308,7 @@ func briefKept(s *Snapshot, id string) string {
 // is reset, since it counts attempts under one brief (FieldBriefAttempt, in set); the
 // rework's fix is the old brief's and is dropped; and the record, the next attempt's
 // why, says who edited it, at which attempt, and what changed (briefChange).
-func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, unset []string, who string, toWaiting bool) (u Unit, orphan bool) {
+func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, unset []string, who string, toWaiting bool, reason string) (u Unit, orphan bool) {
 	if c.F(FieldBriefDefect) != "" {
 		reworkPriority(s, c, set)
 		unset = append(unset, FieldBriefDefect)
@@ -363,6 +363,9 @@ func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, uns
 	}
 	u = Unit{Key: c.ID, Stream: c.Row, Changes: changes, Closes: closesFor(s.Open, ReworkResolves, c.ID),
 		Moved: fmt.Sprintf("%s %s; %s -> %s, attempt %d next, from its last pushed head; %d cards retired", c.ID, said, c.Col, to, n+1, len(changes)-1)}
+	if reason != "" {
+		u.Moved += "; reason: " + reason
+	}
 	if orphan {
 		u.Moved += "; its orphan merge card off " + s.Merge.Placed(c.ID).Col
 	}

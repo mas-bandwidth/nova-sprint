@@ -2907,7 +2907,7 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 		if why == "" {
 			return refuse(stderr, "brief", "--reason <why> is required when re-tiering")
 		}
-		if *brief == "" && *briefFile == "" {
+		if *brief == "" && *briefFile == "" && *widen == false {
 			st, err := a.store(*c)
 			if err != nil {
 				return refuse(stderr, "brief", err.Error())
