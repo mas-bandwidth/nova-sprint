@@ -155,6 +155,19 @@ ScnLanes == [Base EXCEPT !.col = [c \in Cards |-> "working"],
                         !.mc = [m \in Machines |-> IF m = "m1" THEN {"c1", "c2"} ELSE {}],
                         !.q = Queues(<<>>, <<>>, <<>>, <<>>)]
 
+\* THE TICK'S START (DirtyTick.tla StartPhase). m1 holds c1 and c2 dealt and not
+\* taken (its two slots: DealAhead times width 1), m2 none; r2 (host m2) holds
+\* the reads of c3 and c4 (read cards: half a slot each, rounded up, one); a
+\* room entry starts a tick. The fleet's level moves a card to m2, then the
+\* readers' level moves a read to r1 (m1 has a slot free again). With liverun,
+\* a taken card that no live set names may return at a tick's start.
+ScnStart == [liverun |-> TRUE, lapse |-> FALSE, finish |-> FALSE, readCost |-> "half"] @@
+            [Base EXCEPT !.col = [c \in Cards |-> IF c \in {"c1", "c2"} THEN "working" ELSE "review"],
+                         !.rd = [c \in Cards |-> IF c \in {"c3", "c4"} THEN "r2" ELSE NoR],
+                         !.mc = [m \in Machines |-> IF m = "m1" THEN {"c1", "c2"} ELSE {}],
+                         !.mr = [m \in Machines |-> IF m = "m2" THEN {"c3", "c4"} ELSE {}],
+                         !.q = Queues(<<E("room", "-", "m1")>>, <<>>, <<>>, <<>>)]
+
 \* THE BOUND ACROSS ATTEMPTS. c1 dealt to m1 and not taken; its worker may take
 \* it and its machine lapse and beat again, so an attempt reaches its redeal
 \* bound, and the coordinator may rework it there, naming a class and a tier;

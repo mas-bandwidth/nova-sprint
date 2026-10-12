@@ -338,6 +338,7 @@ const (
 // width) and the readers' (asked reads from a reader with a backlog to one
 // idle), each one batch. It runs once a tick: a table written again later in
 // the tick is updated by its update, never levelled again.
+// tla/DirtyTick.tla StartPhase
 var TickStart = []TickPartDef{{PartLive, TickLive}, {PartLevel, TickLevel}, {PartLevelReads, TickLevelReads}}
 
 // PartLive is the reconcile's part: working against the rows' live sets (live.go), first,

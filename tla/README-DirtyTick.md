@@ -37,6 +37,7 @@
 | action | what it is |
 |---|---|
 | `TickStart` | a tick begins when some queue is not empty (the loop wakes on the log) |
+| `StartLive`, `StartLevel`, `StartLevelReads` (`StartPhase`) | the tick's start, once a tick, in order, before the pump (steps_tick.go `TickStart`): the live reconcile, composed from `LiveRuns.tla` (a taken card no live set names may return as a lapse returns it, only where the scenario turns `Scn.liverun` on, an outside event counted in `MaxActs`); the fleet's level, cited from `Level.tla` (a card dealt and not taken moves to an up member whose backlog is at least two below, within its room: one move a tick); the readers' level, modelled here from readers.go `levelReads` (with two readers up or more, a read asked and not begun moves from a reader whose load is at least two above another's, within that machine's room, never to a reader in its `seen`: one move a tick). A part with nothing to do is passed over (`AfterLive`, `AfterLevel`): its plan would write nothing |
 | `PumpWork` | the work table's one update: apply the queue in order; land every sentinel with every card before it landed; release every waiting card with no unlanded sentinel before it; deal: streams take turns by the stream counter over the streams with a dealable card, the lowest position within the stream, the machine by the machine counter over the up machines with room; "no fleet member is up" when cards are dealable and none is |
 | `Pass(t)` | the first pass's update of readers, merge, fleet, in turn |
 | `Drain(t)` | a queue of readers, merge or fleet not empty, drained at once |
@@ -64,6 +65,8 @@ The updates: readers take `ask` (from the pump), `rep` (a reader's report), `han
 | `OneWakePerTick`, `NoWakeIfNothing` | invariant, action | yes, and the note carries the tick's count |
 | `PlacementsRound` | action | yes: each placement is the candidate at the counter modulo the count (stated with `SelectSeq`, apart from the plan's `Rank`); each placement moves its counter by one; nothing else moves a counter |
 | `HoldRespected` | invariant | yes, only with `pendingroom` (G2) |
+| `LanesRespected` | invariant | yes: the cards taken at a member are at most its width; the lane is acquired when the fleet applies the take (steps_work.go `takeOne` holds the width at the one writer), and a take past the width is refused, the card left dealt |
+| `StartOncePerTick` | action | yes: the live reconcile, the fleet's level and the readers' level each run once a tick, in that order, and the pump only after them |
 | `StreamFairness` | action | yes: two streams with a dealable card left after every pump so far are dealt within one of each other |
 | `TickBounded` | invariant | yes (at most 12 steps a tick), only with `seefleet` (G1); the longest tick in the full instance is 11 steps |
 | `Terminates` | temporal | yes on the small scenarios, only with `seefleet` (G1Live) |
@@ -123,17 +126,23 @@ Each witness turns on one broken rule (`Broken`); its control is the unbroken co
 | G3 | R10 as v2.1 writes it | `WorkChangesOnlyInPump` | 4 |
 | W16 | the pump accepts a card whose CI is red or that was returned | `AcceptHolds` | 427 |
 | W17 | every card a lapse returns counts a redeal, taken or not | `RedealsAreEndedTakes` | 127 |
-| W18 | the deal places a card whose take ended at the bound | `RedealBoundHolds` | 15,820 |
+| W18 | the deal places a card whose take ended at the bound | `RedealBoundHolds` | 16,771 |
 | W19 | a CI result for an older head overwrites the record of the card's head | `AcceptHolds` | 570 |
-| W21 | the ask has no guard on the reader being up: a read is placed on a reader away (the readers row with no reader process) | `ReadsStandOnReadersUp` | 30 |
-| W22 | a reader that goes away keeps its reads (a read sat asked of it) | `ReadsStandOnReadersUp` | 66 |
-| W24 | a read returned is asked again and kept by its reader (the read that sat held for two hours) | `NothingLost` | 49 |
+| W21 | the ask has no guard on the reader being up: a read is placed on a reader away (the readers row with no reader process) | `ReadsStandOnReadersUp` | 24 |
+| W22 | a reader that goes away keeps its reads (a read sat asked of it) | `ReadsStandOnReadersUp` | 60 |
+| W24 | a read returned is asked again and kept by its reader (the read that sat held for two hours) | `NothingLost` | 25 |
 | W25 | a read returned is counted as a read: the reader that returned it, the only one, is judged "cannot ask" with no re-ask | `JudgedOnlyAfterTheBound` | 25 |
 | W26 | a returned read is asked again in place with no bound (a reader that never launches returns it every few seconds for ever, no judgment) | `ReasksBounded` | 378 |
 | W27 | a card no reader may be asked of is left waiting with no judgment | `StrandingIsJudged` | 509 |
 | W28 | a read once returned is judged only when every reader is in `seen` of it: r1 returns it, is asked it again in place, its machine lapses, and the read waits with no reader up, silently | `StrandingIsJudged` | 604 |
+| floorreads | the read-cards room rounds the reads down | `HoldRespected` | 428 |
+| nolanes | the take has no lane guard | `LanesRespected` | 347 |
+| levelagain | the fleet's level runs again inside a drain | `StartOncePerTick` | 7 |
 | BrokenDealHeldStream | the deal ignores a held stream (`dealheldstream`): c1 of the held s1 is dealt | `HeldStreamNotDealt` | see `RUNS.tsv` |
 | BrokenWorkFirst | under ReadCost "half", the deal before the reads (`workfirst`): c1 is dealt, then c2's pending read placed | `ReadsBeforeWork` | see `RUNS.tsv` |
+
+The control of the tick's start: `MCDirtyTickStart` (ScnStart: m1 holds two cards dealt and not taken, r2 on m2 the reads of two cards; the level moves a card to m2 and the readers' level a read to r1 in the first tick's start; takes on, one outside event, the live reconcile on: 227,691 states).
+
 The deal's order and skips (2026-10-11, the code's `TickDeal`): a held stream's cards are dealt nowhere until unhold (`HeldStreams`, the scenario's `heldStreams`; `HeldStreamNotDealt`, shaped like `RouteGuard`; control `MCDirtyTickHeldStream`), and under ReadCost "half" (read cards on; the scenario's `readCost`) the pump places the reads pending at it before its deal, a read at half a slot (`Load`, `Room`, `ReadFits`; `ReadsBeforeWork`; control `MCDirtyTickReadsFirst`, one machine of width 2: the read first, then c1 in the room it leaves). Both are off unless the scenario turns them on, so every earlier configuration keeps its state space. Friends first, the bench and staging skips, the friend-dealt return and the fault-hold clear are other modules' (`WhoPreference`, `RouteIndex`, `FriendDealtReturn`, `DealFill`); the module's header says where in the code each is.
 
 The control of W24: `MCDirtyTickHandBack` (a read r1 holds, r1 returns it, and it is asked of r2 in the same update: 3,835 states before `seen` and `hb`), with one outside event (`MaxActs = 1`) for the reason given below for `MCDirtyTickReaderAway`: with two, m1's lapse after r1's return queues an `unread` from the host's stale count of reads, which the code's reads (no host) have no counterpart of.
