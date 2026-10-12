@@ -7527,7 +7527,10 @@ oldest alias; a review where every card waits on the coordinator is named the se
 as such), the accepted and not merged (count, with each stream's merge state), the lander's
 last refusal (card and reason) and the base's red CI (the check). A sprint with nothing in
 review or merging raises none. The episode clears on the next landing, with the happened
-`landing again after <d>` and both properties empty. The model is its own card,
+`landing again after <d>` (from the episode's start to the landing) and both properties
+empty; a landing the tick sees only once the stall holds again still ends the old episode
+first, and the stall after it is a new one. A plan that only writes the episode's stamps
+carries a unit of its own, since the store's tick passes over an empty plan. The model is its own card,
 `tla-sprintrules-landing-stall-liveness`.
 
 Every landing is also pushed to the coordinator as it happens (`sprint.landingPush`, the

@@ -224,6 +224,43 @@ release acceptance (`make release-accept`).
   sprint's clock; neither starts an OS process.
 
 
+### The landing stall (v1.2.14)
+
+Cards that wait in review or merging with no landing for the bound (one
+minute, `set --landing-stall-bound`) raise one "landing stalled" judgment to
+the coordinator with its breakdown, re-raised each bound and cleared by the
+next landing with "landing again after <d>"; every landing is pushed to the
+coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
+
+- Unit, `internal/sprint/landing_stall_test.go`:
+  `TestLandingStallIsJudgedWhenCardsWaitAndNothingLands`,
+  `TestLandingStallNamesTheRedCI`, `TestLandingStallIsReRaisedEachBound`,
+  `TestLandingStallClearsOnTheNextLanding`, `TestNoStallWithNothingWaiting`,
+  `TestLandingStallClosesItsJudgmentWhenWaitingClears`,
+  `TestLandingReadCountsCombineFleetAndLegacyConsumersOnce`,
+  `TestLandingReadCountsAnActiveUnmarkedFleetRead`,
+  `TestLandingPushCountsCompletedFleetReadsAndBegunLegacyReads`,
+  `TestLandingReadHistoryDeduplicatesOnlyTheSameAttemptAndHead`,
+  `TestAStallOfCardsOnTheCoordinatorIsNamedTheSeatsStall`,
+  `TestEveryLandingIsPushedToTheCoordinator`,
+  `TestMergeWritesTheLandingStallFacts`, `TestMergeWritesTheLandersLastRefusal`,
+  `TestTickDeadlinesRaisesTheLandingStall`,
+  `TestLandingStallStartsBeforeTheFirstLanding`,
+  `TestLandingStallSurvivesTicksShorterThanTheBound`,
+  `TestLandingStallBoundIsSettable`,
+  `TestALandingSeenLateEndsTheOldStallBeforeANewOne`,
+  `TestALandingPushOfLongLedgerTextsStaysInsideTheFieldBound`,
+  `TestALandingStallStampAloneIsAPlanTheTickWrites`.
+- Unit, `internal/sprint/store/landing_stall_reads_test.go`:
+  `TestLandingPushCountsFinishedFriendReadsAfterAccept`,
+  `TestLandingPushCountsActiveFriendReadsWithReadCardsOff`.
+- Unit, `cmd/nova-sprint/land_test.go`:
+  `TestLandingPushReadsTheCardLedgerEntryAtTheLandedHead`.
+- Functional (`-tags functional`), `cmd/nova-sprint/landing_stall_functional_test.go`:
+  `TestALandingStallIsJudgedAndClearedByALandingOnTheStore`, on a private
+  redis-server with the machine's own clock and a one-second bound: the stall
+  is raised to the coordinator, and the landing pushes "landed" and closes it.
+
 ## nova-card
 
 Fixture: `cmd/nova-card/testdata/findings.tsv`, a reader's findings on two

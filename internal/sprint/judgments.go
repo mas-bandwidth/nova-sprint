@@ -63,6 +63,9 @@ func (s *Snapshot) landingStallBound() time.Duration {
 // keep on top of things".
 const NLanding = "landed"
 
+// landingLineBytes bounds the ledger :title and :text each landing line carries.
+const landingLineBytes = 600
+
 // LandingTitleField and LandingTextField are the fields the member writes its
 // ledger entry's one-line :title and :text on: what the coordinator reads in
 // the landing push without opening the ledger.
@@ -92,12 +95,14 @@ func landingPush(s *Snapshot, stream, who string, landing []*Card, ledger map[st
 			}
 		}
 		lines = append(lines, fmt.Sprintf("landed %s (stream %s, head %s) %s %s; attempts %d, reads %d",
-			c.ID, stream, orDash(shortSHA(c.F("head"))), oneLine(title), oneLine(text),
+			c.ID, stream, orDash(shortSHA(c.F("head"))), cutText(oneLine(title), landingLineBytes), cutText(oneLine(text), landingLineBytes),
 			c.Int("attempt"), reads))
 	}
 	n := happened(NLanding, stream, now)
 	n.Who, n.To = who, s.Coordinator
-	n.What = strings.Join(lines, "\n")
+	// a batch of long ledger texts stays one note inside the field bound: a
+	// landing push over it would refuse the landing it reports
+	n.What = cutText(strings.Join(lines, "\n"), MaxCardTextBytes)
 	return n
 }
 
@@ -333,6 +338,8 @@ func TickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 	review, merging := len(s.Work.Column(Review)), len(s.Work.Column(Merging))
 	waiting := review + merging
 	last, hasLast := s.Work.Prop(PropLastLanding)
+	hasLast = hasLast && last != ""
+	landing := last // the real last landing, before the no-landing case borrows since
 	since, _ := s.Work.Prop(PropLandingStallSince)
 	said, _ := s.Work.Prop(PropLandingStallSaid)
 	write := func(name, value string) {
@@ -346,7 +353,7 @@ func TickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 	// episode. Later ticks measure its running-time age just like a landing stamp.
 	if waiting > 0 && !hasLast && since == "" {
 		write(PropLandingStallSince, stamp(s.Now))
-		return p, 0
+		return landingStallKept(p, fmt.Sprintf("landing-stall watch begins: %d review, %d merging, no landing yet", review, merging)), 0
 	}
 	if waiting > 0 && !hasLast {
 		last, hasLast = since, true
@@ -358,8 +365,35 @@ func TickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 			stalled = true
 		}
 	}
-	landedAgain := hasLast && since != "" && last > since
+	// a landing at or after the episode's start breaks it (stamps are RFC3339
+	// UTC to the second, so a landing in the episode's first second counts)
+	landedAgain := landing != "" && since != "" && landing >= since
 	switch {
+	// The episode is cleared only when the condition is actually gone: nothing
+	// is waiting, or a landing happened since it began. "The bound has not
+	// elapsed yet" is not a clear -- keep since/said so the no-prior-landing
+	// path keeps measuring the running-time age instead of restarting every
+	// tick whose cadence is shorter than the bound. A landing is taken before a
+	// stall that still holds after it, so the old episode says "landing again"
+	// and a new one begins at the next tick.
+	case since != "" && (waiting == 0 || landedAgain):
+		if o, ok := openJudgmentOf(s, NLandingStall); ok {
+			p.Closes = append(p.Closes, o)
+		}
+		if said != "" && landedAgain {
+			took := ""
+			if at, err := time.Parse(time.RFC3339, landing); err == nil {
+				if d, ok := r.running(at, since); ok && d >= 0 {
+					took = " after " + d.Round(time.Second).String()
+				}
+			}
+			n := happened(NLandingAgain, "", s.Now)
+			n.What = "landing again" + took
+			n.Who, n.To = r.who(), s.Coordinator
+			p.Notes = append(p.Notes, n)
+		}
+		write(PropLandingStallSince, "")
+		write(PropLandingStallSaid, "")
 	case stalled:
 		if since == "" {
 			write(PropLandingStallSince, stamp(s.Now))
@@ -383,27 +417,22 @@ func TickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 			p.Units = append(p.Units, Unit{Key: PartLandingStall, Moved: fmt.Sprintf("landing stalled: %d review, %d merging, no landing in %s", review, merging, age.Round(time.Second))})
 			write(PropLandingStallSaid, stamp(s.Now))
 		}
-	// The episode is cleared only when the condition is actually gone: nothing
-	// is waiting, or a landing happened since it began. "The bound has not
-	// elapsed yet" is not a clear -- keep since/said so the no-prior-landing
-	// path keeps measuring the running-time age instead of restarting every
-	// tick whose cadence is shorter than the bound.
-	case since != "" && (waiting == 0 || landedAgain):
-		if o, ok := openJudgmentOf(s, NLandingStall); ok {
-			p.Closes = append(p.Closes, o)
-		}
-		if said != "" && landedAgain {
-			took := ""
-			if d, ok := r.running(s.Now, since); ok {
-				took = " after " + d.Round(time.Second).String()
-			}
-			n := happened(NLandingAgain, "", s.Now)
-			n.What = "landing again" + took
-			n.Who, n.To = r.who(), s.Coordinator
-			p.Notes = append(p.Notes, n)
-		}
-		write(PropLandingStallSince, "")
-		write(PropLandingStallSaid, "")
 	}
-	return p, 0
+	ends := "landing-stall watch ends: nothing waits"
+	if landedAgain {
+		ends = "landing-stall watch ends: a card landed"
+	}
+	return landingStallKept(p, ends), 0
+}
+
+// landingStallKept gives a plan that writes only the episode's stamps a unit of
+// its own (docs/SPEC-SPRINT.md, the judgments section): the store's tick passes
+// over a part whose plan is Empty, which counts no property write, so without
+// the unit the episode's first stamp (a sprint that has not yet landed) or its
+// clear would never be written and the stall would never be raised.
+func landingStallKept(p Plan, moved string) Plan {
+	if len(p.Props) > 0 && p.Empty() {
+		p.Units = append(p.Units, Unit{Key: PartLandingStall, Moved: moved})
+	}
+	return p
 }
