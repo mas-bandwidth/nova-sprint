@@ -116,3 +116,29 @@ func TestTheLevelTargetsRollTheIndex(t *testing.T) {
 	w.must(p)
 	assert.Equal(t, map[string]int{"a": 6, "b": 4, "c": 4, "d": 4, "e": 4, "f": 4}, perMember(w.s))
 }
+
+// A source none of whose cards has a target does not end the level: the most
+// over member (width 2, two working and three ready, every ready card refused at
+// staging by the one member with a free lane) gives nothing, and the less over
+// member (width 2, two working and one ready) gives its card to that free lane.
+// Exactly that card moves (tla/Level.tla ChoiceFree, NoExcessWhileALaneIsFree,
+// which land with #127). Before, the call ended at the first source it chose.
+func TestTheLevelSkipsASourceWithNoMovableCard(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a")
+	upWidths(t, w, memberWidth{"over", 2}, memberWidth{"less", 2}, memberWidth{"free", 4})
+	for i := 0; i < 2; i++ {
+		putWorkCard(w, fmt.Sprintf("over-working-%d", i), "over", Working, float64(i), nil)
+		putWorkCard(w, fmt.Sprintf("less-working-%d", i), "less", Working, float64(10+i), nil)
+	}
+	for i := 0; i < 3; i++ {
+		putWorkCard(w, fmt.Sprintf("over-ready-%d", i), "over", Ready, float64(20+i), refusedBy("free"))
+	}
+	putWorkCard(w, "less-ready", "less", Ready, 30, nil)
+	putWorkCard(w, "free-working", "free", Working, 40, nil)
+	p := FleetStep(w.s, FleetReq{Op: "level", Who: MachineActor})
+	levelHolds(t, w.s, p)
+	require.Equal(t, []string{"less-ready.w1 less:ready -> free:ready gen=3"}, movedLines(p), "the level ended at a source with no movable card")
+	w.must(p)
+	assert.Equal(t, map[string]int{"over": 5, "less": 2, "free": 2}, perMember(w.s))
+}

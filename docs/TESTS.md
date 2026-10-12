@@ -314,14 +314,18 @@ card dealt to it.
 - Unit, `internal/sprint/level_free_lanes_test.go`:
   `TestTheLevelLeavesADealtCardOnAnIdleMember`,
   `TestTheLevelMovesTheExcessOntoFreeLanesOnly`,
-  `TestTheLevelTargetsRollTheIndex`.
+  `TestTheLevelTargetsRollTheIndex`,
+  `TestTheLevelSkipsASourceWithNoMovableCard` (the most-over source's cards
+  are all refused, a less-over source's card moves onto the free lane).
 - Unit, re-pinned from the mean rule: `internal/sprint/level_progress_test.go`
   `TestLevelTargetPicksAFreeLane`, `TestLevelStopsWhenNoFreeLaneRemains`;
   `internal/sprint/level_terminates_test.go`
   `TestLevelLeavesTheWedgeWhenNoLaneIsFree`,
   `TestLevelEndsWithNoFreeLaneWithinTheReadyCount`, `TestLevelMovesNoCardTwice`;
   `internal/sprint/refmodel/level_refuser_test.go`
-  `TestLevelRefuserTheEngineAndTheModelAgree`;
+  `TestLevelRefuserTheEngineAndTheModelAgree`,
+  `TestLevelSkipsASourceWithNoMovableCardTheEngineAndTheModelAgree` (the
+  engine's moves on that shape, at the model's width, are the model's own);
   `internal/sprint/refmodel/fleet_down_level_test.go`
   `TestFleetDownAndLevelGoRoundTheFleet`.
 - Functional (`-tags functional`), `cmd/nova-sprint/start_level_functional_test.go`:

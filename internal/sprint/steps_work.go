@@ -3150,7 +3150,9 @@ func sweep(s *Snapshot, p *Plan, r FleetReq, up []string, rr *round, moves round
 // nova-tools#5122, was a call that did not): each move takes a member above
 // its width to one below it, so the sum of squared backlogs falls, and a card
 // it moved is never one it moves again (tla/Level.tla, MovesBounded), so it makes
-// at most as many moves as the fleet had ready cards.
+// at most as many moves as the fleet had ready cards. A source none of whose
+// cards has a target is passed over and never chosen again in the call, so the
+// passes that move nothing are at most the up members.
 func level(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, held map[string]int) {
 	levelWith(s, p, up, rr, moves, held, (*round).levelTo)
 }
@@ -3174,19 +3176,26 @@ func levelWith(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, h
 		// a read card is its reader's: the level moves work cards alone (read_cards.go)
 		queues[m] = slices.DeleteFunc(append([]*Card{}, s.Fleet.Cell(m, Ready)...), isRead)
 	}
+	// stuck is the sources none of whose ready cards has a target: every card
+	// refused, benched or unlaunchable on every member with a free lane. Lanes
+	// only fill as the call moves cards, so a source stuck once stays stuck,
+	// and the call tries the next most-over source rather than ending
+	// (tla/Level.tla ChoiceFree, NoExcessWhileALaneIsFree and SelectionComplete,
+	// which land with #127).
+	stuck := map[string]bool{}
 	for {
-		// the source is a member whose cards held (ready and working, a read at
-		// half a slot) exceed its lanes, so it holds a card it cannot start, and
-		// that has a ready card to give; it gives at most its excess (once its
-		// held reaches its lanes it is no source again), its newest ready cards
-		// first. A member at or below its lanes keeps every card dealt to it: it
-		// will take them at its next pass.
+		// the source is the most-over member whose cards held (ready and
+		// working, a read at half a slot) exceed its lanes, so it holds a card it
+		// cannot start, and that has a ready card to give and is not stuck; it
+		// gives at most its excess (once its held reaches its lanes it is no
+		// source again), its newest ready cards first. A member at or below its
+		// lanes keeps every card dealt to it: it will take them at its next pass.
 		long, n := "", map[string]int{}
 		for _, m := range up {
 			n[m] = held[m] - lanes[m]
 		}
 		for _, m := range up {
-			if len(queues[m]) > 0 && held[m] > lanes[m] && (long == "" || n[m] > n[long]) {
+			if !stuck[m] && len(queues[m]) > 0 && held[m] > lanes[m] && (long == "" || n[m] > n[long]) {
 				long = m
 			}
 		}
@@ -3205,7 +3214,10 @@ func levelWith(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, h
 			to = target(rr, up, n, held, lanes, long, append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...))
 		}
 		if to == "" {
-			return
+			// no card of this source has a target: a less-over source may still
+			// have one, so the call goes on without this one
+			stuck[long] = true
+			continue
 		}
 		i++
 		held[long]--

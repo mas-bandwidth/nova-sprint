@@ -1233,30 +1233,36 @@ func (n State) levelMove(moved map[string]string) (string, string) {
 		return ids
 	}
 	// the source is a member over its width (it holds a ready card it cannot
-	// start) with a ready card to give; the most over first.
-	hi := ""
-	for _, x := range up {
-		if len(queue(x)) > 0 && n.Held(x) > Width && (hi == "" || n.Backlog(x) > n.Backlog(hi)) {
-			hi = x
-		}
-	}
-	if hi == "" {
-		return "", ""
-	}
-	for _, id := range queue(hi) {
-		// the target is the next member round the fleet past DealLast with a
-		// free lane (held below its Width), no refuser of the card.
-		var free []string
+	// start) with a ready card to give; the most over first. A source none of
+	// whose cards has a target is passed over for the next most over, and the
+	// level is done only when no source has a card some member can take
+	// (tla/Level.tla ChoiceFree, which lands with #127).
+	stuck := map[string]bool{}
+	for {
+		hi := ""
 		for _, x := range up {
-			if n.Held(x) < Width && !slices.Contains(n.Work[id].Refusers, x) {
-				free = append(free, x)
+			if !stuck[x] && len(queue(x)) > 0 && n.Held(x) > Width && (hi == "" || n.Backlog(x) > n.Backlog(hi)) {
+				hi = x
 			}
 		}
-		if to := n.NextMember(free); to != "" {
-			return id, to
+		if hi == "" {
+			return "", ""
 		}
+		for _, id := range queue(hi) {
+			// the target is the next member round the fleet past DealLast with a
+			// free lane (held below its Width), no refuser of the card.
+			var free []string
+			for _, x := range up {
+				if n.Held(x) < Width && !slices.Contains(n.Work[id].Refusers, x) {
+					free = append(free, x)
+				}
+			}
+			if to := n.NextMember(free); to != "" {
+				return id, to
+			}
+		}
+		stuck[hi] = true
 	}
-	return "", ""
 }
 
 // ReaderLoad is a reader's reads asked and reading.

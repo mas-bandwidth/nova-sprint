@@ -3173,7 +3173,9 @@ order the cards were dealt in, so a card brought to the front of its stream by
   next member round the fleet past the deal's index with a free lane (held
   below its width, so it takes the card at its next pass and starts it at
   once), no refuser, bench or launch exclusion of the card; the source gives at
-  most its excess, its newest ready cards first, and a member at or below its
+  most its excess, its newest ready cards first; a source none of whose cards
+  has a target is passed over for the next most-over source, and the level
+  ends only when no source has a card some member can take; and a member at or below its
   width keeps every card dealt to it. The mean rule and the gap of two are gone
   (round.levelTo, nextLane; tla/Level.tla NeverOffAFreeLane (lands with #127); the owner,
   2026-10-11 ~19:05-19:20Z: "cards only may accrue per-fleet or friend, if

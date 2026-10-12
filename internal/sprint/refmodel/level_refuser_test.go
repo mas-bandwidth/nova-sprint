@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
 )
 
@@ -52,4 +53,56 @@ func TestLevelRefuserTheEngineAndTheModelAgree(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, moved, "one card moves: A was one over its width")
+}
+
+// The engine and the model agree when the most-over source has no movable
+// card: over (width 64) holds 64 working and 3 ready, each refused at staging
+// by free; less holds 64 working and 1 ready; free holds none. The engine's
+// level skips over and moves less's card to free, and the model, given the
+// engine's choice, takes it as its own (Level refuses a choice its round did
+// not make). tla/Level.tla ChoiceFree, which lands with #127.
+func TestLevelSkipsASourceWithNoMovableCardTheEngineAndTheModelAgree(t *testing.T) {
+	t.Parallel()
+	w := newWorld("reader-a")
+	for _, m := range []string{"over", "less", "free"} {
+		w.must(t, sprint.FleetStep(w.s, sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: refmodel.Width, Who: coordinator}))
+	}
+	score := 1.0
+	put := func(id, member, col string, refuser string) {
+		fields := map[string]string{"kind": "work", "primary": id, "stream": "s1", "attempt": "1", "gen": "2", "member": member,
+			"dealt": "2026-09-30T00:00:00Z", "untaken_since": "2026-09-30T00:00:00Z", "redeals": "0"}
+		if refuser != "" {
+			fields[sprint.FieldStagingTake+"1"] = sprint.ProviderTake{Member: refuser}.String()
+		}
+		w.s.Fleet.Put(&sprint.Card{ID: id + ".w1", Row: member, Col: col, Score: score, Rev: 1, Fields: fields})
+		w.s.Work.Put(&sprint.Card{ID: id, Row: "s1", Col: sprint.Working, Score: score, Rev: 1,
+			Fields: map[string]string{"kind": "primary", "attempt": "1", "stream": "s1", "work": id + ".w1"}})
+		score++
+	}
+	for i := 0; i < refmodel.Width; i++ {
+		put(fmt.Sprintf("over-w%02d", i), "over", sprint.Working, "")
+		put(fmt.Sprintf("less-w%02d", i), "less", sprint.Working, "")
+	}
+	for i := 0; i < 3; i++ {
+		put(fmt.Sprintf("over-r%d", i), "over", sprint.Ready, "free")
+	}
+	put("less-r", "less", sprint.Ready, "")
+	before := refmodel.Abstract(refmodel.Observed{Snap: w.s, Machine: refmodel.Running})
+
+	p := sprint.FleetStep(w.s, sprint.FleetReq{Op: "level", Who: sprint.MachineActor})
+	moves := map[string]string{}
+	for _, u := range p.Units {
+		for _, ch := range u.Changes {
+			if ch.Entry.Move != nil {
+				moves[u.Key] = ch.Entry.Move.Row
+			}
+		}
+	}
+	require.Equal(t, map[string]string{"less-r.w1": "free"}, moves, "the engine's level")
+	after, err := refmodel.Level(before, moves)
+	require.NoError(t, err, "the model refuses the engine's choice")
+	assert.Equal(t, "free", after.Work["less-r.w1"].Member)
+	for i := 0; i < 3; i++ {
+		assert.Equal(t, "over", after.Work[fmt.Sprintf("over-r%d.w1", i)].Member, "a refused card stays")
+	}
 }
