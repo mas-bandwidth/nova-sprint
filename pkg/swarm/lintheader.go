@@ -96,7 +96,7 @@ type CardHeaderFinding struct {
 // StopNamedRemedy below, merged into `cmd/nova-swarm/lint.go`'s cardLintRemedies.
 var CardHeaderRemedies = map[string]string{
 	"kind-declared":  "the card carries `KIND: <kind>` as the first typed line under the contract line, and the kind is one the pool's kinds list names; the cutter writes it from the pool row and a model never does; a declared kind whose row names no instruction kind is this finding too: name the instruction kind on that row of the one kinds list",
-	"paths-declared": "the card carries `PATHS: <glob>[, <glob>...]`, repository-relative, every glob holding at least one literal segment and none of them climbing with `..`; a card that changes nothing says `PATHS: none`",
+	"paths-declared": "the card carries `PATHS: <glob>[, <glob>...]`, repository-relative, every glob holding at least one literal segment and none of them climbing with `..`; a card that changes nothing says `PATHS: none`; " + PathsReadRemedy,
 	"test-named":     "the card carries `TEST: [-tags <tags>] <package> <TestName>` -- the package repository-relative and the name a Go test name -- or `TEST: none <why>` where the kind declares no gate",
 	"paused":         "the coordinator paused this kind, so `cut` cuts no card of it and a card launched before the pause is `ACCEPT ABSTAIN reason=paused` at harvest; the remedy is not a rerun but `nova-pulse trust --set trial --queue <dir> --kind <kind> --who <name> --reason <text>`",
 }
@@ -420,12 +420,15 @@ func lintCardHeader(raw []byte, trust TrustState, required bool, instructionOf f
 
 	// 2. PATHS: is declared, and every glob is one the gate could use.
 	paths := h["PATHS"]
+	readWhy := PathsReadRefusal(paths.value)
 	switch {
 	case !paths.found && stranded["PATHS"] > 0:
 	case !paths.found:
 		add("paths-declared", 1, "no PATHS: line under the contract line")
 	case paths.value == "":
 		add("paths-declared", paths.line, "PATHS: with no globs after it; a card that changes nothing says `PATHS: none`")
+	case readWhy != "":
+		add("paths-declared", paths.line, readWhy)
 	case paths.value != "none":
 		// AN EMPTY ENTRY IS NOT A SKIPPABLE ONE. In `PATHS: , , ` each empty
 		// entry is a finding, not a value skipped past: the line declares no glob and

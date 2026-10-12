@@ -19,6 +19,7 @@ func TestTheReadVerbChecksABrokenReadsBranchOnOrigin(t *testing.T) {
 	const head = "0123456789abcdef0123456789abcdef01234567"
 	r := newServerRig(t,
 		"nova-sprint init --readers reader-m2 --members m1:1,m2:1",
+		"nova-sprint set --read-cards off",
 		"nova-sprint add --one --stream s1 --count 1 --brief-file "+writeBrief(t, "tier: flash\nREPO: mas-bandwidth/nova-tools"),
 		"nova-sprint start",
 		"nova-sprint tick",

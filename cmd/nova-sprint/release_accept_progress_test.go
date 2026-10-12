@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,12 +19,18 @@ import (
 // read, and the machine's land pass lands every card on origin.
 //
 // It proves "defaults are the working machine": a clear keeps the readers (as it keeps the
-// fleet's members and the sprint's settings), so the same readers init added are still there
-// to be asked after the clear, and no seat verb has to re-add them.
+// fleet's members), while clear restores the default read-card mode. Native member-reader
+// roles remain available after clear, and no seat verb has to re-add them.
 func TestReleaseAcceptAClearedSprintLandsWithNoSeatAction(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
+	r.ok("init --readers reader-m1,reader-m2 --members m1,m2")
 	r.ok("clear --confirm sprint")
+	st, err := r.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(t, err)
+	snap, err := st.Load(context.Background(), store.All, nil)
+	require.NoError(t, err)
+	require.True(t, snap.ReadCardsOn(), "clear restores native read-card defaults")
 	r.ok("add --stream s1 --count 2")
 	heads := map[string]string{
 		"s1-1": r.head("s1-1", "main", "a.txt", "a\n"),
@@ -68,9 +75,6 @@ func TestReleaseAcceptAClearedSprintLandsWithNoSeatAction(t *testing.T) {
 				require.True(t, ok, "a packet for a card the test did not add: %+v", p)
 				r.ok("finish --as " + m + " " + card + " --head " + head)
 			}
-		}
-		for _, reader := range []string{"reader-a", "reader-b"} {
-			r.do("read --as " + reader + " --ok --max 100") // nothing asked of a reader is no failure
 		}
 		r.ok("tick")
 		r.a.landOnce(context.Background(), "mem:0", more, &bytes.Buffer{})

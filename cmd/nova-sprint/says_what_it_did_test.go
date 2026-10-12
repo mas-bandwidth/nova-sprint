@@ -3,7 +3,9 @@ package main
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,7 +21,10 @@ func TestAVerbSaysWhatTheMovesDoNot(t *testing.T) {
 	init := ta.ok("init --readers reader-a,reader-b --members m1:2,m2")
 	assert.Contains(t, init, "INIT OK tables=work,readers,merge,fleet view=sprint readers=reader-a,reader-b\n")
 	assert.NotContains(t, init, "NOTE a twin", "a store that is not a twin")
-	ta.ok("fleet down m2")
+	ta.mu.Lock()
+	ta.live = []string{"m1"} // m2 is genuinely unbeat, not held
+	ta.now = ta.now.Add(sprint.MissedBeatsDown*sprint.BeatDeadline + time.Second)
+	ta.mu.Unlock()
 
 	add := ta.ok("add --stream s1 --count 5")
 	assert.Contains(t, add, "ADD OK stream=s1 cards=5 before=- moved=5 refused=0 notes=0 op=")
@@ -55,6 +60,21 @@ func TestATakeSaysAnEmptyReadyQueue(t *testing.T) {
 	ta.ok("add --stream s1 --count 1 --one")
 	ta.ok("tick")
 	assert.NotContains(t, ta.ok("take --as m1"), "NOTE m1", "a take of all it asked")
+}
+
+func TestATakeNoteNamesAHeldMemberAndReason(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1:2")
+	ta.ok("add --stream s1 --count 1 --one")
+	ta.ok("start")
+	ta.ok("tick")
+	ta.ok("fleet hold m1 --reason 'maintenance\nwindow'")
+
+	take := ta.ok("take --as m1")
+	assert.Contains(t, take, "TAKE OK moved=0 ", "the held member takes no card")
+	assert.Contains(t, take, "\nNOTE m1 took 0 of the 1 asked: it is held (maintenance\\x0awindow), and only a member up takes\n")
+	assert.NotContains(t, take, "it is down", "the note names the hold instead of raw status")
 }
 
 // On a twin init says a member it adds is up after the next tick, which is

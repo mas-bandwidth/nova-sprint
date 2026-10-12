@@ -335,7 +335,8 @@ func setWords(set map[string]string) string {
 }
 
 func renderNote(l Line) string {
-	n := l.Note
+	n := *l.Note
+	n.Type = NoteTypeText(n.Type)
 	who := byWhom(n.Who)
 	if l.Verb == "updated" {
 		return "judgment updated: " + n.Type + ": " + n.What

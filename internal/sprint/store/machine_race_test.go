@@ -58,6 +58,7 @@ func (x *injector) Release(ctx context.Context, op OpRecord, commit bool) error 
 // resume), s3 "w" waiting on b (the resolve).
 func raceScene(t *testing.T) *harness {
 	h := newHarness(t)
+	h.readersTable() // the scene contains an unasked legacy readers-table review
 	for _, m := range []string{"m1", "m2"} {
 		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m}))
 	}

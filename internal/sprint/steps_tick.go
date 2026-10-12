@@ -1712,13 +1712,19 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	// first deal since its last take, not finished from the attempt's first
 	// take. On a machine's row no redeal or withdrawal rewrites either: a
 	// member whose beat lapses again and again cannot reset them, and the
-	// time a card spends withdrawn counts. The one exception is a friend's
+	// time a card spends withdrawn counts while its primary is ready or
+	// working. The one exception is a friend's
 	// card dealt again after a take-back: it is measured from her own deal,
 	// and a never-taken judgment raised before that deal (while it sat
 	// withdrawn) closes on it (LateStands).
 	for _, c := range s.Fleet.Column(Ready, Working, Withdrawn) {
 		if c.Col == Withdrawn && c.F("kind") == "read" {
 			continue // a read withdrawn is history: its primary is asked again (friendReadLive)
+		}
+		if c.Col == Withdrawn {
+			if st := s.StateOf(c.F("primary")); st != Ready && st != Working {
+				continue // no live work attempt remains to owe this deadline
+			}
 		}
 		if IsFriendRow(c.Row) {
 			// a friend's card past its deadline is redealt (TickFriendRedeal), never a late
@@ -2025,6 +2031,11 @@ func LateStands(s *Snapshot, n Note) bool {
 		c := s.Fleet.Placed(n.Card)
 		if c == nil {
 			return false
+		}
+		if c.Col == Withdrawn {
+			if st := s.StateOf(c.F("primary")); st != Ready && st != Working {
+				return false // the attempt no longer has a live work deadline
+			}
 		}
 		if kind == WordNeverTaken || kind == "not taken" { // "not taken": raised before the dealt bound
 			if c.Col != Ready && c.Col != Withdrawn {

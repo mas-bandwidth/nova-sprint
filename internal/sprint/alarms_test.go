@@ -47,6 +47,7 @@ func newAlarmRig(t *testing.T) *alarmRig {
 	require.NoError(t, r.st.Init(r.ctx))
 	require.NoError(t, r.m.RowsAdd(r.ctx, "a-readers", []string{"reader-a", "reader-b"}))
 	require.NoError(t, r.m.SetCoordinator(r.ctx, "coordinator"))
+	r.must(store.SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: "coordinator"})) // standalone reader fixture
 	r.beat()
 	return r
 }

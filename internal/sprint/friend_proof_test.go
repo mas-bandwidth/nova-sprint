@@ -367,7 +367,7 @@ func TestAnAnsweredCheckIsProvedToTheServerByTheDaemon(t *testing.T) {
 		assert.True(t, sent.Equal(proof), "the status says the proof the server took")
 		assert.Equal(t, sprint.Up, kept[0], "a session that answers every ProveEvery stays proved: %s", kept[1])
 		assert.Equal(t, sprint.Down, fell[0])
-		assert.Contains(t, fell[1], "her beat says down until")
+		assert.Contains(t, fell[1], "beat says down until")
 		assert.Contains(t, fell[1], friend.NoSessionAnswer+" to session check n3 within 5m0s", "down with the reason and the nonce")
 		assert.Equal(t, sprint.Up, back[0], "the next answer is proved again: %s", back[1])
 		assert.Equal(t, []string{"n1", "n2", "n3"}, checks(r.h.got()))

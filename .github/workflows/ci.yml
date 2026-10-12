@@ -66,6 +66,9 @@ jobs:
             git fetch --no-tags --depth=1 origin "${{ github.event.before }}"
           fi
           PAGELOCK_BASE=FETCH_HEAD go test -count=1 -run 'TestThePageLockOnlyGrows' ./internal/sprintdash/
+          # the unit-test rule's allowance (internal/ci/unit_rule_allowed.txt) only shrinks
+          # against the same base: a new allowance line is red
+          UNIT_RULE_BASE=FETCH_HEAD go test -count=1 -run 'TestTheUnitRuleAllowanceOnlyShrinks' ./internal/ci/
 
   # functional is the functional tier, run per pull request and push to main on
   # ubuntu-latest: redis-server is installed as the store the tests spawn their

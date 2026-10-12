@@ -54,7 +54,7 @@ func retierTakeBacks(s *Snapshot, seats []FriendSeat, who string, started map[st
 			continue
 		}
 		slices.Sort(ids)
-		why := "re-tiered: her tiers do not hold " + joinSorted(tiers)
+		why := snapshotFriendPronouns(s, f.Name).Say("re-tiered: {their} tiers do not hold ") + joinSorted(tiers)
 		q := FriendTake(s, FriendTakeReq{Friend: f.Name, IDs: ids, Reason: why, Started: started, Who: who})
 		p.Units, p.Refused = append(p.Units, q.Units...), append(p.Refused, q.Refused...)
 	}

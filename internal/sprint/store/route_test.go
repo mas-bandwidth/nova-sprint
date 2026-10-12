@@ -31,6 +31,7 @@ func briefOf(tier, extra string) string {
 // routeHarness is the harness with its two members up and the store's routes.
 func routeHarness(t *testing.T, routes ...sprint.Route) *harness {
 	h := newHarness(t)
+	h.readersTable() // explicit legacy reader-table fixture
 	// wide members: a test deals hundreds of cards, and the deal holds a member to its width
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: sprint.MaxWidth}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: sprint.MaxWidth}))

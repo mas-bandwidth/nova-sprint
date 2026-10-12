@@ -79,6 +79,7 @@ func TestLandCommitIdentityOnARealStore(t *testing.T) {
 	git(worker, "push", "-q", "origin", "refs/heads/sprint/s1-1:refs/heads/sprint/s1-1")
 
 	run("init --readers reader-a,reader-b --members m1")
+	run("set --read-cards off") // this landing fixture consumes standalone legacy readers
 	run("add --stream s1 --count 1 --one")
 	run("fleet beat m1")
 	run("start")
@@ -99,5 +100,5 @@ func TestLandCommitIdentityOnARealStore(t *testing.T) {
 	// The landing commit's author and committer are the configured identity, not the planted
 	// global config and not the worker's.
 	got := git(remote, "log", "-1", "--format=%an <%ae>|%cn <%ce>", "main")
-	require.Equal(t, "nova-sprint <nova-sprint@mas-bandwidth.com>|nova-sprint <nova-sprint@mas-bandwidth.com>", got)
+	require.Equal(t, "nova-sprint <nova-sprint@example.invalid>|nova-sprint <nova-sprint@example.invalid>", got)
 }

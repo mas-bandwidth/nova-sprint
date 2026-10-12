@@ -55,6 +55,11 @@ func newLandRigAs(t *testing.T, actor string) *landRig {
 		"GIT_AUTHOR_NAME=lander", "GIT_AUTHOR_EMAIL=lander@example.invalid", "GIT_COMMITTER_NAME=lander", "GIT_COMMITTER_EMAIL=lander@example.invalid")
 	r.remote, r.worker, r.clone = filepath.Join(r.dir, "remote.git"), filepath.Join(r.dir, "worker"), filepath.Join(r.dir, "clone")
 	r.git("", "init", "-q", "--bare", "-b", "main", r.remote)
+	// A local push drops GIT_CONFIG_PARAMETERS before starting receive-pack, so
+	// the caller's maintenance.auto=false does not reach this bare repository.
+	// Disable receive-pack's automatic maintenance at its source, before the
+	// first push, so no detached writer outlives this fixture's TempDir.
+	r.git(r.remote, "config", "receive.autogc", "false")
 	r.git("", "clone", "-q", r.remote, r.worker)
 	r.commit("README", "base\n", "base")
 	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")

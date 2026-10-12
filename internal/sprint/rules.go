@@ -272,7 +272,7 @@ func up(s *Snapshot, a *RuleAnswer, pr *Card, why string) {
 // brief defect, a model the brief pins; "" when none.
 func mindCard(pr *Card) string {
 	if _, f := FriendCard(pr); f {
-		return "a friend's card: her work needs a mind"
+		return "a friend's card: this work needs a mind"
 	}
 	if pr.F(FieldBriefDefect) != "" {
 		return "a brief defect: its brief needs a mind"

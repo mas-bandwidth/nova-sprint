@@ -39,6 +39,7 @@ type seatSilentTold struct {
 // seatSilentToken is the bus token of one raise of the judgment: the sprint (its key
 // prefix), its epoch, the judgment's id and the raise, so the same raise is the same send
 // across retries and restarts, and a raise of another sprint or epoch is another.
+// tla/SprintRules.tla PutMsg
 func seatSilentToken(prefix string, epoch uint64, id string, raise int) string {
 	clean := func(s string) string {
 		return strings.Map(func(r rune) rune {
@@ -57,6 +58,7 @@ func seatSilentToken(prefix string, epoch uint64, id string, raise int) string {
 
 // tellSeatSilent sends each raise of NSeatSilent not yet told to the sprint's owner on the
 // bus, and says it on the server's log; a sprint with no owner is said on the log alone.
+// tla/SprintRules.tla SendOK
 func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	now := a.now()
 	a.seatSilent.mu.Lock()

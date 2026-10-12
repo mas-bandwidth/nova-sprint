@@ -50,6 +50,8 @@ func TestIdentitiesRoundTrip(t *testing.T) {
 // setup is two up members, three readers and n primaries in stream s1.
 func setup(t *testing.T, n int) *world {
 	w := newWorld(t, "reader-a", "reader-b", "reader-c")
+	// This lifecycle rig reads through the standalone legacy readers table.
+	w.readersTable()
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	w.must(Add(w.s, AddReq{Brief: proBrief, Stream: "s1", Count: n}))

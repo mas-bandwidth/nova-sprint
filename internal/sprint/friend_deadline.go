@@ -135,12 +135,12 @@ func LiveLane(s *Snapshot, r TickReq, c *Card) (LaneRun, bool) {
 	for _, key := range []string{friend, c.Row} {
 		if b, ok := r.Beats[key]; ok && b.Friend != nil && why == "" && fresh(b.At) &&
 			friendStarted(s, FriendSeat{Running: b.Friend.Running}, withField(c, FieldProgress, "")) {
-			why = "her beat names it running"
+			why = "the friend's beat names it running"
 		}
 	}
 	for _, f := range r.Friends {
 		if why == "" && f.Name == friend && (f.Beat.At.IsZero() || fresh(f.Beat.At)) && friendStarted(s, FriendSeat{Running: f.Running}, withField(c, FieldProgress, "")) {
-			why = "her daemon's lane holds it"
+			why = "the friend's daemon lane holds it"
 		}
 	}
 	if why == "" {

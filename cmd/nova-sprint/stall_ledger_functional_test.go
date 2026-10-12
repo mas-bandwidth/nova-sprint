@@ -45,6 +45,7 @@ func newLandRigOnTheStore(t *testing.T) *landRig {
 	r.a.gitEnv = r.env
 	r.a.landRoot = func() (string, error) { return filepath.Join(r.dir, "land"), nil }
 	r.ok("init --readers reader-a,reader-b --members m1")
+	r.ok("set --read-cards off") // this ledger fixture consumes standalone legacy readers
 	r.ok("fleet beat m1 --load 0")
 	r.ok("fleet up m1") // up on a stopped machine, as the mem twin's beat leaves it
 	// A route and the sprint row's git_identity, as nova-config's apply writes them: the

@@ -275,7 +275,15 @@ func newPropRun(cfg propConfig) (*propRun, error) {
 	if err := r.m.RowsAdd(r.ctx, "p-readers", cfg.readers); err != nil {
 		return nil, err
 	}
-	return r, r.m.SetCoordinator(r.ctx, "coord")
+	if err := r.m.SetCoordinator(r.ctx, "coord"); err != nil {
+		return nil, err
+	}
+	// This property rig drives the legacy readers-table actions.
+	res, err := r.st.Run(r.ctx, SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, Who: "coord"}))
+	if err == nil && len(res.Refused) > 0 {
+		err = fmt.Errorf("legacy read setting refused: %v", res.Refused)
+	}
+	return r, err
 }
 
 func (r *propRun) say(format string, args ...any) {

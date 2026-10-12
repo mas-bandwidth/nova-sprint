@@ -283,6 +283,7 @@ func TestCROneReaderThenTwo(t *testing.T) {
 	h.st = &Store{B: h.m, Names: sprint.Names{Prefix: "t-"}, Actor: "tester",
 		Now: func() time.Time { h.mu.Lock(); defer h.mu.Unlock(); return h.now }, NewID: func() string { n++; return fmt.Sprint(n) }, Sleep: func(time.Duration) {}}
 	require.NoError(t, h.st.Init(h.ctx))
+	h.readersTable() // this probe adds standalone legacy readers
 	h.beat()
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 3}))

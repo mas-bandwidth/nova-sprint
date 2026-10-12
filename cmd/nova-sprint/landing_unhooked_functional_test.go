@@ -51,7 +51,7 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	dir := t.TempDir()
 	remote, worker, clone := filepath.Join(dir, "remote.git"), filepath.Join(dir, "worker"), filepath.Join(dir, "clone")
 	g := func(wd string, args ...string) string {
-		res, err := gitrun.Run(context.Background(), gitrun.Options{C: wd, Env: []string{"GIT_AUTHOR_NAME=nova-sprint", "GIT_AUTHOR_EMAIL=nova-sprint@mas-bandwidth.com", "GIT_COMMITTER_NAME=nova-sprint", "GIT_COMMITTER_EMAIL=nova-sprint@mas-bandwidth.com"}, OwnRepo: wd != ""}, args...)
+		res, err := gitrun.Run(context.Background(), gitrun.Options{C: wd, Env: []string{"GIT_AUTHOR_NAME=nova-sprint", "GIT_AUTHOR_EMAIL=nova-sprint@example.invalid", "GIT_COMMITTER_NAME=nova-sprint", "GIT_COMMITTER_EMAIL=nova-sprint@example.invalid"}, OwnRepo: wd != ""}, args...)
 		require.NoError(t, err, "git %v: %s", args, res.Stderr)
 		return strings.TrimSpace(string(res.Stdout))
 	}
@@ -82,7 +82,8 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	g(worker, "push", "-q", "origin", "refs/heads/sprint/s1-1:refs/heads/sprint/s1-1")
 
 	for _, l := range []string{
-		"init --readers reader-a,reader-b --members m1",
+		"init --readers reader-a,reader-b --members m1", "set --read-cards off", // this script consumes standalone legacy readers
+
 		"add --stream s1 --count 1 --one",
 		"fleet beat m1", "start", "tick", "tick",
 		"take --as m1 --limit 5 --epoch 0", "finish --as m1 s1-1.w1@1 --head " + head + " --epoch 0",

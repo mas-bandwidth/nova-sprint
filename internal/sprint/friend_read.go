@@ -949,7 +949,7 @@ func waitingForReader(p *Plan, s *Snapshot, friends []*Card) map[string]string {
 	}
 	waits := map[string]string{}
 	for _, c := range friends {
-		waits[c.ID] = "every friend at or above its read tier who may read it is at her room, and no paid reader has room"
+		waits[c.ID] = "every friend at or above its read tier who may read it is at capacity, and no paid reader has room"
 	}
 	for _, c := range s.Work.Column(Review) {
 		if _, ok := waits[c.ID]; ok {

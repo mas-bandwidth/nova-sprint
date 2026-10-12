@@ -77,7 +77,7 @@ func TestReworkAtTipCarriesTheConfiguredIdentity(t *testing.T) {
 	// rework-at-tip commit can name it.
 	clone := filepath.Join(root, "clone")
 	stageTestGit(t, root, "clone", "-q", bare, clone)
-	identity := config.GitIdentity{Name: "nova-sprint", Email: "nova-sprint@mas-bandwidth.com"}
+	identity := config.GitIdentity{Name: "nova-sprint", Email: "nova-sprint@example.invalid"}
 	var fetchTime, checkoutTime time.Duration
 	carry, what, out, err := restageAtTip(context.Background(), stageGit, clone, "sprint/card", "base",
 		Rework{Prev: prev, From: 1}, identity.Env(), &fetchTime, &checkoutTime)
@@ -86,7 +86,7 @@ func TestReworkAtTipCarriesTheConfiguredIdentity(t *testing.T) {
 	require.Equal(t, cardcontract.CarryOK, carry.State)
 
 	got := stageTestGit(t, clone, "log", "-1", "--format=%an <%ae>|%cn <%ce>")
-	require.Equal(t, "nova-sprint <nova-sprint@mas-bandwidth.com>|nova-sprint <nova-sprint@mas-bandwidth.com>", got)
+	require.Equal(t, "nova-sprint <nova-sprint@example.invalid>|nova-sprint <nova-sprint@example.invalid>", got)
 }
 
 // TestStageJobCloneCarriesTheConfiguredIdentity proves the live launcher entry points
@@ -125,15 +125,15 @@ func TestStageJobCloneCarriesTheConfiguredIdentity(t *testing.T) {
 	require.NoError(t, StageJobAs(pool, job, work, config.DefaultGitIdentity))
 
 	require.Equal(t, "nova-sprint", stageTestGit(t, work, "config", "user.name"))
-	require.Equal(t, "nova-sprint@mas-bandwidth.com", stageTestGit(t, work, "config", "user.email"))
+	require.Equal(t, "nova-sprint@example.invalid", stageTestGit(t, work, "config", "user.email"))
 
 	require.NoError(t, StageCloneIdentityAs(work, StagingIdentity{Owner: "owner", Name: "bob", Email: "bob@example.com"}, config.DefaultGitIdentity))
 	require.Equal(t, "nova-sprint", stageTestGit(t, work, "config", "user.name"))
-	require.Equal(t, "nova-sprint@mas-bandwidth.com", stageTestGit(t, work, "config", "user.email"))
+	require.Equal(t, "nova-sprint@example.invalid", stageTestGit(t, work, "config", "user.email"))
 
 	require.NoError(t, StageJob(pool, job, work))
 	require.Equal(t, "nova-sprint", stageTestGit(t, work, "config", "user.name"))
-	require.Equal(t, "nova-sprint@mas-bandwidth.com", stageTestGit(t, work, "config", "user.email"))
+	require.Equal(t, "nova-sprint@example.invalid", stageTestGit(t, work, "config", "user.email"))
 }
 
 // TestStageCardReworkCarriesTheConfiguredIdentity proves the live staging entry point
@@ -190,9 +190,9 @@ func TestStageCardReworkCarriesTheConfiguredIdentity(t *testing.T) {
 	require.True(t, res.Staged)
 
 	require.Equal(t, "nova-sprint", stageTestGit(t, clone, "config", "user.name"))
-	require.Equal(t, "nova-sprint@mas-bandwidth.com", stageTestGit(t, clone, "config", "user.email"))
+	require.Equal(t, "nova-sprint@example.invalid", stageTestGit(t, clone, "config", "user.email"))
 	require.NotNil(t, res.Carry)
 	require.Equal(t, cardcontract.CarryOK, res.Carry.State)
 	got := stageTestGit(t, clone, "log", "-1", "--format=%an <%ae>|%cn <%ce>", res.Carry.Staged)
-	require.Equal(t, "nova-sprint <nova-sprint@mas-bandwidth.com>|nova-sprint <nova-sprint@mas-bandwidth.com>", got)
+	require.Equal(t, "nova-sprint <nova-sprint@example.invalid>|nova-sprint <nova-sprint@example.invalid>", got)
 }

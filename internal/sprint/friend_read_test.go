@@ -30,6 +30,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 	t.Run("tick", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
+		w.readersTable() // these asks use the standalone legacy producer
 		dir := t.TempDir()
 		putReview(w, "s1-1", body, 2, 1, primHead)
 		putAttemptWork(w, "s1-1", 1, "sprint/old", start, "yes")
@@ -67,6 +68,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 	t.Run("pro beside frontier", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
+		w.readersTable() // these asks use the standalone legacy producer
 		putReview(w, "s1-1", body, 1, 1, primHead)
 		putReview(w, "s1-2", "s1-2: other (s1) tier: pro\n", 1, 2, "pro-head")
 		askReaders(t, w, []FriendSeat{frontierSeat("amy", 2, Up, t.TempDir())})
@@ -84,6 +86,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 	t.Run("heavy read tier frontier", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
+		w.readersTable() // these asks use the standalone legacy producer
 		putReview(w, "s1-h", "s1-h: heavy (s1) tier: heavy\n\nAS A READ\nheavy body\n", 1, 1, primHead)
 		w.s.Work.SetProp(PropReadTier, cardhdr.RouteFrontier)
 		require.Equal(t, "pro", w.s.readTierOf(w.s.Work.Card("s1-h"))) // heavy is read on pro (the interim rule); the friend is asked the tier before it
@@ -100,6 +103,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 	t.Run("width", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
+		w.readersTable() // these asks use the standalone legacy producer
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
 			putReview(w, id, id+": work (s1) tier: frontier\n", 1, float64(i+1), primHead)
 		}
@@ -116,6 +120,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 	t.Run("one-shot mode", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
+		w.readersTable() // these asks use the standalone legacy producer
 		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
 			putReview(w, id, id+": work (s1) tier: frontier\n", 1, float64(i+1), primHead)
 		}
@@ -133,6 +138,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 	t.Run("most free", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
+		w.readersTable() // these asks use the standalone legacy producer
 		putReview(w, "s1-1", "s1-1: work (s1) tier: frontier\n", 1, 1, primHead)
 		putReview(w, "s1-2", "s1-2: work (s1) tier: frontier\n", 1, 2, primHead)
 		askReaders(t, w, []FriendSeat{frontierSeat("amy", 1, Up, ""), frontierSeat("bob", 1, Up, "")})
@@ -143,6 +149,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 	t.Run("none up", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
+		w.readersTable() // these asks use the standalone legacy producer
 		dir := t.TempDir()
 		putReview(w, "s1-1", "s1-1: work (s1) tier: frontier\n", 1, 1, primHead)
 		putReview(w, "s1-2", "s1-2: work (s1) tier: frontier\n", 1, 2, primHead)
@@ -157,6 +164,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 	t.Run("below the tier", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
+		w.readersTable() // these asks use the standalone legacy producer
 		putReview(w, "s1-1", "s1-1: work (s1) tier: pro\n", 1, 1, primHead)
 		askReaders(t, w, []FriendSeat{{Name: "amy", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFlash}, Dir: t.TempDir()}})
 		require.Nil(t, w.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")), "a flash friend is below a pro read")
@@ -166,6 +174,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 	t.Run("land", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
+		w.readersTable() // these asks use the standalone legacy producer
 		putReview(w, "s1-1", body, 2, 1, primHead)
 		putAttemptWork(w, "s1-1", 1, "sprint/old", start, "yes")
 		putAttemptWork(w, "s1-1", 2, branch, workHead, "")
@@ -186,6 +195,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 	t.Run("stale outbox generation", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
+		w.readersTable() // these asks use the standalone legacy producer
 		putReview(w, "s1-1", body, 2, 1, primHead)
 		askReaders(t, w, []FriendSeat{frontierSeat("amy", 2, Up, t.TempDir())})
 		rc := w.s.Fleet.Card(ReadCardID("s1-1", 2, "amy"))
@@ -200,6 +210,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 	t.Run("hold", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
+		w.readersTable() // these asks use the standalone legacy producer
 		putReview(w, "s1-1", body, 2, 1, primHead)
 		askReaders(t, w, []FriendSeat{frontierSeat("amy", 2, Up, t.TempDir())})
 		id := ReadCardID("s1-1", 2, "amy")

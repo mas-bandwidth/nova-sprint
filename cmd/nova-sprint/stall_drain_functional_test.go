@@ -26,6 +26,7 @@ func TestStallAnOverBoundMergeNoteNeverPoisonsTheDrain(t *testing.T) {
 	t.Parallel()
 	r := newStallRig(t)
 	r.do("init", "--readers", "reader-a,reader-b", "--members", "m1:4")
+	r.do("set", "--read-cards", "off") // this stall fixture consumes standalone legacy readers
 	r.do("add", "--stream", "s1", "--count", "3")
 	r.beat("m1")
 	r.do("start")
@@ -76,6 +77,7 @@ func TestStallAnOverBoundBriefNeverPoisonsTheDrain(t *testing.T) {
 	t.Parallel()
 	r := newStallRig(t)
 	r.do("init", "--readers", "reader-a,reader-b", "--members", "m1:4")
+	r.do("set", "--read-cards", "off") // this stall fixture consumes standalone legacy readers
 	r.do("add", "--stream", "s1", "--count", "3")
 	r.beat("m1")
 	r.do("start")

@@ -110,6 +110,8 @@ func TestTheTickAsksTwoReadersAndSaysWhenItCannot(t *testing.T) {
 	h2.m = NewMem()
 	h2.st.B = h2.m
 	require.NoError(t, h2.st.Init(h2.ctx))
+	require.NoError(t, h2.m.SetCoordinator(h2.ctx, h2.st.Actor))
+	h2.readersTable()
 	require.NoError(t, h2.m.RowsAdd(h2.ctx, "t-readers", []string{"reader-a"}))
 	h2.beat()
 	h2.beat()
@@ -245,6 +247,69 @@ func TestNoMemberUpIsOneJudgmentUntilAMemberIsUp(t *testing.T) {
 	require.Equal(t, sprint.Working, h.state("s1-1"), "after a member came up: open %d, s1-1 %s", len(h.openOf(sprint.NNoMember)), h.state("s1-1"))
 }
 
+// A withdrawn attempt's deadline stops standing after its primary waits on
+// an unlanded need. A primary still ready keeps the same redeal clock and note.
+func TestWithdrawnWorkDeadlineClosesWhenItsPrimaryWaitsOnANeed(t *testing.T) {
+	t.Parallel()
+	for _, taken := range []bool{false, true} {
+		for _, waiting := range []bool{false, true} {
+			name := fmt.Sprintf("taken=%t/waiting=%t", taken, waiting)
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				h := newHarness(t)
+				h.setup(1)
+				h.dealtMax(15 * time.Minute)
+				h.startMachine()
+				h.machine()
+				card := h.snap().Fleet.Placed("s1-1.w1")
+				require.NotNil(t, card)
+				limit := 15 * time.Minute
+				if taken {
+					h.must(TakeStep(sprint.TakeReq{As: card.Row, Sel: sprint.Sel{IDs: []string{card.ID}}, Gens: map[string]int{card.ID: card.Int("gen")}}))
+					limit = sprint.DeadlineUnfinished
+				}
+				h.tick(limit + time.Minute)
+				h.machine()
+				late := h.openOf(sprint.NWorkLate)
+				require.Len(t, late, 1, "the actual attempt's deadline judgment is already open")
+				oldID := late[0].Note.ID
+				written := h.written(sprint.NWorkLate)
+
+				h.must(FleetStep(sprint.FleetReq{Op: "down", Member: "m1"}))
+				h.must(FleetStep(sprint.FleetReq{Op: "down", Member: "m2"}))
+				h.live = nil
+				require.Equal(t, sprint.Withdrawn, h.snap().Fleet.Placed(card.ID).Col)
+				require.Equal(t, sprint.Ready, h.state("s1-1"))
+				if waiting {
+					h.must(AddStep(sprint.AddReq{Stream: "s2", IDs: []string{"need"}}))
+					r := sprint.NeedsSetReq{ID: "s1-1", Needs: []string{"need"}, Who: h.st.Actor}
+					// The production needs-set step is built by cmd/nova-sprint/needs.go.
+					h.must(Step{Named: true, Args: ArgsOf(r), Verb: "needs set", Load: tables(sprint.Work),
+						Extras: func(*sprint.Snapshot) map[string][]string {
+							return map[string][]string{sprint.Work: append([]string{r.ID}, r.Needs...)}
+						},
+						Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.NeedsSetLive(s, r) }})
+					require.Equal(t, sprint.Waiting, h.state("s1-1"))
+					require.Equal(t, sprint.Ready, h.state("need"), "a real named need has not landed")
+				}
+				require.Equal(t, sprint.Withdrawn, h.snap().Fleet.Placed(card.ID).Col, "the needs edit retains the withdrawn attempt")
+				for i := 0; i < 2; i++ {
+					h.tick(time.Minute)
+					h.machine()
+					late = h.openOf(sprint.NWorkLate)
+					if waiting {
+						require.Empty(t, late, "the existing judgment closes after the primary leaves the live attempt path")
+					} else {
+						require.Len(t, late, 1, "ready still owes the withdrawn attempt's deadline")
+						require.Equal(t, oldID, late[0].Note.ID, "the original redeal clock keeps its judgment")
+					}
+					require.Equal(t, written, h.written(sprint.NWorkLate), "no replacement or repeated lateness judgment")
+				}
+			})
+		}
+	}
+}
+
 func TestDeadlinesCountRunningTimeAndNotifyOnce(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -364,6 +429,7 @@ func TestOwnerWorkWaitsForStartWhileCoordinatorCanLandStopped(t *testing.T) {
 // three rounds from that round (0 never), while the outside actors go on.
 func sprintOf(t *testing.T, n, stopAt int) *harness {
 	h := newHarness(t)
+	h.readersTable() // explicit legacy reader-table fixture
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	for _, s := range []string{"s1", "s2", "s3"} {

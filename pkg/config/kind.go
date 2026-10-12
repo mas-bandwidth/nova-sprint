@@ -215,6 +215,19 @@ const (
 	DefaultFriendMode = FriendModeBatch
 )
 
+// FriendPronounSets are the friend row's explicit pronoun choices, matching nova-config.
+var FriendPronounSets = []string{"she/her", "he/him", "they/them"}
+
+const DefaultFriendPronouns = "they/them"
+
+// FriendPronouns reads the stored choice, defaulting only an unstated value.
+func FriendPronouns(r Row) string {
+	if p := r.Fields["pronouns"]; p != "" {
+		return p
+	}
+	return DefaultFriendPronouns
+}
+
 // FriendMode is a friend row's delivery mode: its mode field,
 // DefaultFriendMode when the row has none.
 func FriendMode(r Row) string {
@@ -251,7 +264,7 @@ func FriendTokenCap(r Row) int64 {
 // validation is absent and skipped.
 func checkFriend(r Row) error {
 	if w, ok := r.Fields["width"]; ok && w != "" && r.Int("width") < 1 {
-		return fmt.Errorf("friend %s has width %s; a friend's width is the jobs she works at once, at least 1: want --width <n> with n >= 1", r.Name, w)
+		return fmt.Errorf("friend %s has width %s; a friend's width is the jobs the friend works at once, at least 1: want --width <n> with n >= 1", r.Name, w)
 	}
 	if d := r.Fields["config_dir"]; d != "" && !filepath.IsAbs(d) {
 		return fmt.Errorf("friend %s has config_dir %q; CLAUDE_CONFIG_DIR is read as given, never expanded: want --config_dir <an absolute path>", r.Name, d)
@@ -352,8 +365,8 @@ const MaxAttemptsCeiling = 100
 const FieldGitIdentity = "git_identity"
 
 // DefaultGitIdentity is the identity the sprint machine commits as when the sprint row
-// names none: nova-sprint <nova-sprint@mas-bandwidth.com>.
-const DefaultGitIdentity = "nova-sprint <nova-sprint@mas-bandwidth.com>"
+// names none: nova-sprint <nova-sprint@example.invalid>.
+const DefaultGitIdentity = "nova-sprint <nova-sprint@example.invalid>"
 
 // GitIdentity is one parsed identity: the name and email of "Name <email>".
 type GitIdentity struct {
@@ -511,23 +524,24 @@ var Kinds = []*Kind{
 		Check: checkFleet,
 	},
 	{
-		// A friend's row is what someone decides for her: how wide, which tiers
-		// and which roles. Where she runs, her harness and her logins are
-		// runtime data a friend would just know, reported by her own presence
+		// A friend's row is what someone decides for the friend: how wide, which tiers
+		// and which roles. Where the friend runs, the harness and logins are
+		// runtime data a friend would just know, reported by the friend's own presence
 		// rather than stored in configuration.
 		Name:  KindFriend,
 		Table: "friends",
-		Doc:   "an AI friend: her slots, which tiers she can do, her roles, and her width, the jobs she works at once, her delivery mode, the config directory her claude lanes run with, the per-card token cap her one-shot lanes hold a card at, and the optional streams and kinds restrictions on the work she may be dealt",
+		Doc:   "an AI friend: the friend's slots, tiers, roles and width, the jobs the friend works at once, delivery mode, the config directory claude lanes run with, the per-card token cap one-shot lanes hold a card at, and the optional streams and kinds restrictions on the work the friend may be dealt",
 		Fields: []Field{
-			{Name: "slots", Type: TypeInt, Required: true, Help: "her desired slots, under the ceiling of the machine her beat reports; no machine's width"},
-			{Name: "tiers", Type: TypeList, Enum: Tiers, Required: true, Help: "which tiers she can do: comma list of " + strings.Join(Tiers, ", ")},
+			{Name: "slots", Type: TypeInt, Required: true, Help: "the friend's desired slots, under the ceiling of the machine the beat reports; no machine's width"},
+			{Name: "tiers", Type: TypeList, Enum: Tiers, Required: true, Help: "which tiers the friend can do: comma list of " + strings.Join(Tiers, ", ")},
 			{Name: "roles", Type: TypeList, Enum: FriendRoles, Help: "comma list of " + strings.Join(FriendRoles, ", ") + " (who coordinates is the sprint row's)"},
-			{Name: "width", Type: TypeInt, Default: strconv.Itoa(DefaultFriendWidth), Help: "the jobs she works at once, the width nova-sprint friend sync sets on her friends row; at least 1, " + strconv.Itoa(DefaultFriendWidth) + " by default"},
-			{Name: "mode", Type: TypeEnum, Enum: FriendModes, Default: DefaultFriendMode, Help: "how her daemon hands her work: batch (the default: every waiting message in one turn) or one-shot (width lanes, each its own session, handed one card per turn)"},
-			{Name: "config_dir", Type: TypeText, Nullable: true, Help: "the absolute directory a claude one-shot lane runs with as CLAUDE_CONFIG_DIR, her account's login and settings; unset (the default, or --config_dir '') for any other harness; nova-friend run refuses a claude friend in one-shot mode without it"},
+			{Name: "width", Type: TypeInt, Default: strconv.Itoa(DefaultFriendWidth), Help: "the jobs the friend works at once, the width nova-sprint friend sync sets on the friends row; at least 1, " + strconv.Itoa(DefaultFriendWidth) + " by default"},
+			{Name: "mode", Type: TypeEnum, Enum: FriendModes, Default: DefaultFriendMode, Help: "how the friend's daemon hands the friend work: batch (the default: every waiting message in one turn) or one-shot (width lanes, each its own session, handed one card per turn)"},
+			{Name: "config_dir", Type: TypeText, Nullable: true, Help: "the absolute directory a claude one-shot lane runs with as CLAUDE_CONFIG_DIR, the friend's account login and settings; unset (the default, or --config_dir '') for any other harness; nova-friend run refuses a claude friend in one-shot mode without it"},
 			{Name: "token_cap", Type: TypeInt, Default: strconv.FormatInt(DefaultFriendTokenCap, 10), Help: "tokens one card may spend (input, cached input, output and reasoning summed) before a one-shot lane stops its own run and holds the card; " + strconv.FormatInt(DefaultFriendTokenCap, 10) + " by default, and 0 is no cap"},
 			{Name: "streams", Type: TypeText, Help: "optional comma-separated glob patterns over stream names this friend may be dealt work on; empty means any stream"},
 			{Name: "kinds", Type: TypeNames, Help: "optional comma-separated card KIND values this friend may be dealt; empty means any kind"},
+			{Name: "pronouns", Type: TypeEnum, Enum: FriendPronounSets, Default: DefaultFriendPronouns, Help: "the friend's explicit pronouns: " + strings.Join(FriendPronounSets, ", ") + "; they/them when unstated"},
 		},
 		Check: checkFriend,
 		ApplyOrder: func(r Row) int {
@@ -555,7 +569,7 @@ var Kinds = []*Kind{
 			{Name: FieldDecideGatePreexisting, Type: TypeDecimal, Default: "", Help: "the gate decision's pre-existing bar: a work card's failing test whose p(pre-existing) is at or above it is reported `pre-existing: <test>`, the base's or the member's and never the card's; a probability; empty (the default) reclassifies nothing; 0.8 is the starting point, though at 0.8 24 of the calibration's 39 flaky failures would have been reported pre-existing"},
 			{Name: FieldDecideJudgment, Type: TypeDecimal, Help: "the judgment bar: nova-sprint answer applies the verb the judgment decision chose when its probability is at or above it, and lists it for the coordinator below it; a probability; empty (the default) applies nothing: every decision is recorded and what a bar would apply is listed; 0.8 is a starting point measured on 100 of the coordinator's own judgments (docs/SPEC-NOVA-DECIDE.md section 13), not an independent calibration"},
 			{Name: FieldDecideBriefBar, Type: TypeDecimal, Help: "the brief bar: nova-sprint add asks the brief decision of each card and refuses a card whose p(converges) is under it, naming the questions it failed; a probability; empty (the default) asks and reports only. The decision is uncalibrated (AUC 0.600 on 234 review labels, docs/SPEC-NOVA-DECIDE.md section 14): leave it empty until calibrate on the brief record's own outcomes supports a bar"},
-			{Name: FieldAnswerRulesOff, Type: TypeList, Enum: AnswerRules, Help: "the rules the machine does not answer judgments by: comma list of " + strings.Join(AnswerRules, ", ") + "; empty (the default) answers by every rule: failed and no-result work redealt then raised a tier, a card at its bound raised a tier (heavy to a friend), a late card waited once or returned and redealt, a conflict in a file no ledger owns returned, redone on the tip and resumed, the same finding twice marked a brief defect, the base tree gate retried before a stream stops, a friend's card she has not started past its bound taken back and dealt again, failed work whose report HOLDs for a card not landed waiting for it, a reader's first finding reworked as the fix, and a late read asked of another reader once an attempt (docs/SPEC-SPRINT.md section 8, answered by rule)"},
+			{Name: FieldAnswerRulesOff, Type: TypeList, Enum: AnswerRules, Help: "the rules the machine does not answer judgments by: comma list of " + strings.Join(AnswerRules, ", ") + "; empty (the default) answers by every rule: failed and no-result work redealt then raised a tier, a card at its bound raised a tier (heavy to a friend), a late card waited once or returned and redealt, a conflict in a file no ledger owns returned, redone on the tip and resumed, the same finding twice marked a brief defect, the base tree gate retried before a stream stops, a friend's unstarted card past its bound taken back and dealt again, failed work whose report HOLDs for a card not landed waiting for it, a reader's first finding reworked as the fix, and a late read asked of another reader once an attempt (docs/SPEC-SPRINT.md section 8, answered by rule)"},
 			{Name: FieldGitIdentity, Type: TypeText, Default: DefaultGitIdentity, Help: "the author and committer every commit the sprint machine makes carries, as 'Name <email>'; the landing refuses to commit when it is empty, and doctor fails when its email equals the host's global user.email; " + DefaultGitIdentity + " (the default)"},
 			{Name: FieldMaxAttempts, Type: TypeInt, Default: strconv.Itoa(DefaultMaxAttempts), Help: fmt.Sprintf("the attempt bound: how many attempts one card runs, every attempt counted whatever ended it, before the sprint stops dealing it and raises one judgment to the coordinator, who decides (brief, rework --tier, rework --carry, drop) and so opens a fresh window of as many attempts; a whole number from 1 to %d; %d (the default); a stream's own nova-sprint stream set <s> --attempts <n> still overrides it for that stream", MaxAttemptsCeiling, DefaultMaxAttempts)},
 		},

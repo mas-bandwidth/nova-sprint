@@ -242,3 +242,34 @@ func TestAdmissionRefusesABriefWhosePathsDoNotHoldWhatItNames(t *testing.T) {
 		assert.Empty(t, w2.notesOf(NBriefDefect))
 	})
 }
+
+func TestAdmissionPathsReadMarker(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, paths, start, missing, entry string }{
+		{"marked file", "a.go (read), b.go", "", "", "a.go (read)"},
+		{"standalone marker", "(read)", "", "", "(read)"},
+		{"syntax precedes missing tree", "a.go (read)", "", "fixture tree unavailable", "a.go (read)"},
+		{"plain scope", "a.go, b.go", "", "", ""},
+		{"START read scope", "b.go", "a.go (read)", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tree := AdmissionTree{Files: []string{"a.go", "b.go"}, Missing: tc.missing,
+				Hold: func(string) ([]string, error) {
+					t.Fatal("no holder lookup is needed for this fixture")
+					return nil, nil
+				}}
+			brief := "RESULT: c tier: pro\nREPO: owner/repo\nBASE: sprint/s\nPATHS: " + tc.paths + "\nSTART: " + tc.start + "\nTEST: none fixture\n\nTHE TASK. Read the fixture.\n"
+			got := PathsAdmission(brief, tree)
+			if tc.entry == "" {
+				assert.Empty(t, got)
+				return
+			}
+			require.Len(t, got, 1)
+			assert.Contains(t, got[0], tc.entry)
+			assert.Contains(t, got[0], "START")
+			assert.NotContains(t, got[0], "MISSING:")
+			assert.NotContains(t, got[0], "names nothing")
+		})
+	}
+}

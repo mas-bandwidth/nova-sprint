@@ -55,7 +55,7 @@ func TestHoldingAFriendReturnsItsStartedCards(t *testing.T) {
 	}
 	lines := r.holdLines()
 	require.NotEmpty(t, lines)
-	assert.Contains(t, lines[len(lines)-1], "friend amy held: out of credits; every card she holds, begun or not, is handed back now")
+	assert.Contains(t, lines[len(lines)-1], "friend amy held: out of credits; every held card, begun or not, is handed back now")
 	assert.Contains(t, lines[len(lines)-1], "withdrew 3")
 	assert.Contains(t, lines[len(lines)-1], "carried the pushed head of 1: "+pushed)
 	assert.Contains(t, logWhat(t, r), "the next generation starts from its pushed head "+sha+" (gen "+gen+")")

@@ -13,6 +13,7 @@ import (
 func TestAReadOfAPrimaryNamesTheReadCard(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
+	ta.oldReaders = true // this test intentionally exercises the legacy readers table
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --stream s1 --count 1 --one --brief-file " + proBriefFile(t))
 	ta.ok("start")

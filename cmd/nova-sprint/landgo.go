@@ -253,6 +253,10 @@ func gateRuns(tests bool, have []string, unitPkgs []string) []gateStage {
 	if len(unitPkgs) > 0 {
 		run := []string{"go", "test", "-count=1", "-timeout", "120s", "-skip", "^TestTickDrainAndDealUnderTheGateAtLoad$"}
 		for _, p := range unitPkgs {
+			if p == "..." {
+				run = append(run, "./...")
+				continue
+			}
 			run = append(run, "./"+p+"/")
 		}
 		st := stageFor(&stages, 2)

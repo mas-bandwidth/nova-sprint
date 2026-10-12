@@ -19,6 +19,7 @@ import (
 // TickAsk) once, applies its plan, and returns it with its due count.
 func tickAsk(t *testing.T, w *world, seats []FriendSeat) (Plan, int) {
 	t.Helper()
+	w.readersTable() // this helper runs the standalone readers ask part
 	var fn TickPartFn
 	for _, u := range TickTables {
 		for _, part := range u.Parts {

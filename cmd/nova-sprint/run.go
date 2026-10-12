@@ -294,6 +294,7 @@ func (a *app) printTick(res store.TickResult, err error, max int, stdout, stderr
 }
 
 func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
+	stdout = newRunOutput(stdout)
 	var profile, listen, decideDir, keyNames string
 	var profileTicks int
 	var land bool
@@ -386,9 +387,20 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 		go a.landLoop(context.Background(), c.redis, stdout)
 	}
 	// the providers' balances, read outside every tick (balance.go)
-	go a.balanceLoop(context.Background(), st, stdout)
+	pollCtx, stopPolls := context.WithCancel(context.Background())
+	balanceDone := make(chan struct{})
+	go func() {
+		defer close(balanceDone)
+		a.balanceLoop(pollCtx, st, stdout)
+	}()
+	defer func() {
+		stopPolls()
+		// Finish the balance poll's last line before run returns, rather than
+		// leaving it on its store and output after a replaced binary stopped run.
+		<-balanceDone
+	}()
 	// the store round trip, timed every 10 s for where (store-latency-row-r.w2)
-	go a.storeRTTLoop(context.Background(), st)
+	go a.storeRTTLoop(pollCtx, st)
 	if decideDir != "" {
 		var b decide.Backend
 		if key := a.getenv(decide.JevSecret); key != "" {

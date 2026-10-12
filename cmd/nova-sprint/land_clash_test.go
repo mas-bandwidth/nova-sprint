@@ -109,20 +109,12 @@ func TestAHeldReportCrossesTheStopAndIsTaken(t *testing.T) {
 	// Get changed files from Y against base
 	changed := runGit(t, tmpDir, "diff", "--name-only", baseSha, "HEAD")
 
-	// Test UnitPackages - Y's changes should give internal/sprint packages
+	// Shared production changes gate the whole tree, including the clashing package.
 	changedFiles := strings.Split(changed, "\n")
 	unitPkgs := sprint.UnitPackages("github.com/mas-bandwidth/nova-sprint", changedFiles)
 
-	// Verify internal/sprint package is in unitPkgs
-	found := false
-	for _, p := range unitPkgs {
-		if p == "internal/sprint" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected internal/sprint in unitPkgs, got %v", unitPkgs)
+	if len(unitPkgs) != 1 || unitPkgs[0] != "..." {
+		t.Errorf("expected the whole tree in unitPkgs, got %v", unitPkgs)
 	}
 
 	// Try running tests with Y's changes applied

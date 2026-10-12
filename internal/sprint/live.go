@@ -364,7 +364,7 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 // It is the same plan the run loop's friend reconcile applies, run here by the tick because
 // a friend who stopped beating cannot hand her own cards back.
 func friendStoppedReturn(s *Snapshot, p Plan, f, row string, b Beat) Plan {
-	why := "her daemon stopped beating " + ago(s.Now.Sub(b.At))
+	why := "daemon stopped beating " + ago(s.Now.Sub(b.At))
 	working := slices.Clone(s.Fleet.Cell(row, Working))
 	SortCards(working)
 	var back []FriendReturnCard

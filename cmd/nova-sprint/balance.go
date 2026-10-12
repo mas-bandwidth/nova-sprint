@@ -63,7 +63,9 @@ func (a *app) pollBalances(ctx context.Context, st *store.Store, stdout io.Write
 			said = append(said, p+"=unknown")
 		}
 	}
-	a.serial.Lock()
+	if err := a.serial.LockCtx(ctx); err != nil {
+		return // the run ended while this poll waited for the control line
+	}
 	res, err := st.Run(ctx, store.BalanceStep(sprint.BalanceReq{Reads: reads, Who: sprint.MachineActor}))
 	a.serial.Unlock()
 	if err != nil {

@@ -34,6 +34,9 @@ func newWorld(t testing.TB, readers ...string) *world {
 	return &world{t: t, s: s}
 }
 
+// readersTable explicitly selects the standalone legacy-reader producer for a fixture.
+func (w *world) readersTable() { w.s.Work.SetProp(PropReadCards, SwitchOff) }
+
 func (w *world) tick(d time.Duration) { w.s.Now = w.s.Now.Add(d) }
 
 // do applies a plan and fails on any refusal unless allowed. The plan is held

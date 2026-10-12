@@ -240,6 +240,8 @@ func landed(s *sprint.Snapshot) int {
 // machine running: the fleet of the holes' scenarios, small enough that its
 // room is used up at once.
 func holesUp(h *harness, n int) {
+	h.readersTable() // this fixture consumes standalone readers
+
 	h.t.Helper()
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 2}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2", Width: 2}))

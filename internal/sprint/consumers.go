@@ -328,10 +328,16 @@ func recordConsumerTransitions(s *Snapshot, p Plan) Plan {
 		for j := range p.Units[i].Changes {
 			ch := &p.Units[i].Changes[j]
 			if ch.Table == Work && ch.Entry.ID == primary {
-				if ch.Entry.Set == nil {
-					ch.Entry.Set = map[string]string{}
-				}
-				maps.Copy(ch.Entry.Set, set)
+				// The record goes into a map this plan owns, never into the one
+				// the change arrived with: a drained change keeps the queued
+				// entry's own Set map (Drain copies the entry, not its maps, and
+				// the backing hands every reader of the queue the same entry), so
+				// writing it here wrote the backing's map under another run
+				// loop's read of it (consumers_race_test.go).
+				merged := make(map[string]string, len(ch.Entry.Set)+len(set))
+				maps.Copy(merged, ch.Entry.Set)
+				maps.Copy(merged, set)
+				ch.Entry.Set = merged
 				attached = true
 				break
 			}

@@ -57,6 +57,22 @@ func newHarness(t *testing.T) *harness {
 	return h
 }
 
+// readersTable opts a fixture into its standalone legacy-reader flow.
+// The generic harness stays propertyless so default behavior remains testable.
+func (h *harness) readersTable() {
+	h.t.Helper()
+	s := h.snap()
+	if v, ok := s.Work.Prop(sprint.PropReadCards); ok && v == sprint.SwitchOff {
+		return
+	}
+	pinned, err := h.st.pin(h.ctx)
+	require.NoError(h.t, err)
+	_, err = pinned.B.Apply(h.ctx, ntable.BatchManifest{Schema: 1, Table: pinned.Names.Table(sprint.Work), Epoch: fmt.Sprint(pinned.epoch),
+		ExpectedTableRevision: fmt.Sprint(s.Work.Revision), OperationID: fmt.Sprintf("legacy-read-mode-%d", s.Work.Revision),
+		Members: []ntable.BatchMemberEntry{}, Props: map[string]string{sprint.PropReadCards: sprint.SwitchOff}})
+	require.NoError(h.t, err)
+}
+
 func (h *harness) tick(d time.Duration) { h.mu.Lock(); h.now = h.now.Add(d); h.mu.Unlock(); h.beat() }
 
 // beat is one beat of every live member, at load 0, and of every reader (the
@@ -136,6 +152,7 @@ func (h *harness) readers() {
 
 // setupBrief is setup with the given brief for the n primaries.
 func (h *harness) setupBrief(n int, brief string) {
+	h.readersTable() // this lifecycle setup consumes the old reader-a/b/c table
 	h.t.Helper()
 	// a clear leaves the new epoch blank, so its readers are added fresh here
 	// (a no-op while they already exist): the blank-slate clear carries no
