@@ -772,8 +772,6 @@ func strconvQuote(s string) string { return fmt.Sprintf("%q", s) }
 // recorded failure (its last finish failed that way).
 const RuleFleetWindow = time.Hour
 
-// PartFleetFailure is the tick part that raises the fleet's failure.
-const PartFleetFailure = "fleet failure" // not a rule part: it runs with the rules off (TickEndWith)
 
 // TickFleetFailure raises NFleetFailure for each failure class that RuleSameFailureCards or more
 // cards recorded within RuleFleetWindow of running time, in any column but landed (each card's

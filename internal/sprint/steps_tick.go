@@ -369,6 +369,9 @@ var TickEnd = []TickPartDef{
 // runs before the rule rework, which reworks nothing the widen rule leaves to a mind.
 func TickEndWith(rules, idle bool) []TickPartDef {
 	out := append([]TickPartDef(nil), TickEnd[:2]...)
+	// the fleet's failure is a judgment, not a rule answer: raised in the deadlines part, with the
+	// rules on or off, and in no step of its own (rules.go TickFleetFailure)
+	out[1].Fn = tickDeadlinesAndFleetFailure
 	if rules {
 		for _, p := range TickRules {
 			if p.Name == PartRuleRework {
@@ -378,12 +381,19 @@ func TickEndWith(rules, idle bool) []TickPartDef {
 			out = append(out, p)
 		}
 	}
-	// the fleet's failure is a judgment, not a rule answer: raised with the rules off too
-	out = append(out, TickPartDef{PartFleetFailure, TickFleetFailure}, TickEnd[2])
+	out = append(out, TickEnd[2])
 	if idle {
 		out = append(out, TickPartDef{PartIdle, TickIdle})
 	}
 	return append(out, TickEnd[3:]...)
+}
+
+// tickDeadlinesAndFleetFailure is the deadlines part with the fleet's failure judged in it.
+func tickDeadlinesAndFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
+	p, n := TickDeadlines(s, r)
+	q, _ := TickFleetFailure(s, r)
+	p.Notes = append(p.Notes, q.Notes...)
+	return p, n
 }
 
 // TickParts is every part with a planner in the order a tick first runs them:
