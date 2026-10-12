@@ -89,12 +89,13 @@ func TestReworkAtTipCarriesTheConfiguredIdentity(t *testing.T) {
 	require.Equal(t, "nova-sprint <nova-sprint@mas-bandwidth.com>|nova-sprint <nova-sprint@mas-bandwidth.com>", got)
 }
 
-// TestStageJobCloneCarriesTheConfiguredIdentity proves the live launcher entry point
-// (StageJobAs) writes the sprint row's git_identity into the worker's clone's local git
-// config at clone time — not the pool's identity and not the host's global config — so a
-// commit the worker makes in the clone carries the configured identity
+// TestStageJobCloneCarriesTheConfiguredIdentity proves the live launcher entry points
+// (StageJob, StageCloneIdentity and their As variants) write the machine's identity into
+// the worker's clone's local git config at clone time — not the pool's owner and not the
+// host's global config — so a commit the worker makes in the clone carries the machine
 // (docs/SPEC-SPRINT.md, the machine's commit identity). StageCloneIdentityAs is the step
-// that writes the local config; StageJobAs is the launcher's staging that calls it.
+// that writes the local config; StageJobAs is the launcher's staging that calls it, and
+// StageJob is the live wrapper that passes the machine's own default.
 func TestStageJobCloneCarriesTheConfiguredIdentity(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
@@ -131,5 +132,67 @@ func TestStageJobCloneCarriesTheConfiguredIdentity(t *testing.T) {
 	require.Equal(t, "nova-sprint@mas-bandwidth.com", stageTestGit(t, work, "config", "user.email"))
 
 	require.NoError(t, StageJob(pool, job, work))
-	require.Equal(t, "bob", stageTestGit(t, work, "config", "user.name"))
+	require.Equal(t, "nova-sprint", stageTestGit(t, work, "config", "user.name"))
+	require.Equal(t, "nova-sprint@mas-bandwidth.com", stageTestGit(t, work, "config", "user.email"))
+}
+
+// TestStageCardReworkCarriesTheConfiguredIdentity proves the live staging entry point
+// (StageCard) writes the machine's default identity into the clone's local config and that
+// the rework-at-tip carry commit it stages carries the machine — even when the host's global
+// config names the owner and no identity is passed (StageOptions.GitIdentity empty, so the
+// machine's own default applies). This is the live path a launcher triggers, not restageAtTip
+// or a *As variant alone (docs/SPEC-SPRINT.md, the machine's commit identity).
+func TestStageCardReworkCarriesTheConfiguredIdentity(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	require.NoError(t, os.Mkdir(home, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".gitconfig"),
+		[]byte("[user]\n\tname = Owner\n\temail = owner@example.com\n"), 0o600))
+	t.Setenv("HOME", home)
+	t.Setenv("GIT_AUTHOR_NAME", "owner")
+	t.Setenv("GIT_AUTHOR_EMAIL", "owner@example.com")
+	t.Setenv("GIT_COMMITTER_NAME", "owner")
+	t.Setenv("GIT_COMMITTER_EMAIL", "owner@example.com")
+
+	remote := filepath.Join(root, "origin.git")
+	work := filepath.Join(root, "work")
+	require.NoError(t, os.Mkdir(work, 0o755))
+	stageTestGit(t, "", "init", "-q", "--bare", "-b", "main", remote)
+	stageTestGit(t, work, "init", "-q", "-b", "main")
+	stageTestGit(t, work, "remote", "add", "origin", remote)
+	require.NoError(t, os.WriteFile(filepath.Join(work, "base"), []byte("base\n"), 0o600))
+	stageTestGit(t, work, "add", "base")
+	stageTestGit(t, work, "commit", "-q", "-m", "base")
+	stageTestGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/main")
+
+	stageTestGit(t, work, "switch", "-q", "-c", "feat")
+	require.NoError(t, os.WriteFile(filepath.Join(work, "carried"), []byte("carried\n"), 0o600))
+	stageTestGit(t, work, "add", "carried")
+	stageTestGit(t, work, "commit", "-q", "-m", "the work of attempt 1")
+	prev := stageTestGit(t, work, "rev-parse", "HEAD")
+	stageTestGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/feat")
+
+	stageTestGit(t, work, "switch", "-q", "main")
+	require.NoError(t, os.WriteFile(filepath.Join(work, "tip"), []byte("tip\n"), 0o600))
+	stageTestGit(t, work, "add", "tip")
+	stageTestGit(t, work, "commit", "-q", "-m", "the base moved")
+	stageTestGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/main")
+
+	clone := filepath.Join(root, "clone")
+	res, err := StageCard(StageOptions{
+		Card:      nil,
+		Base:      &CardBase{Repo: remote, Ref: "main"},
+		TargetDir: clone,
+		JobDir:    filepath.Join(root, "job"),
+		Rework:    &Rework{Prev: prev, From: 1},
+	})
+	require.NoError(t, err)
+	require.True(t, res.Staged)
+
+	require.Equal(t, "nova-sprint", stageTestGit(t, clone, "config", "user.name"))
+	require.Equal(t, "nova-sprint@mas-bandwidth.com", stageTestGit(t, clone, "config", "user.email"))
+	require.NotNil(t, res.Carry)
+	require.Equal(t, cardcontract.CarryOK, res.Carry.State)
+	got := stageTestGit(t, clone, "log", "-1", "--format=%an <%ae>|%cn <%ce>", res.Carry.Staged)
+	require.Equal(t, "nova-sprint <nova-sprint@mas-bandwidth.com>|nova-sprint <nova-sprint@mas-bandwidth.com>", got)
 }

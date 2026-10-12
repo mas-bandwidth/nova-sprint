@@ -531,9 +531,12 @@ fails when its email equals the host's global `user.email`
   `TestReworkAtTipCarriesTheConfiguredIdentity`: the rework-at-tip commit
   (`restageAtTip`) carries the configured identity even when the host's global
   git config and environment name the owner; `TestStageJobCloneCarriesTheConfiguredIdentity`:
-  the live launcher entry points `StageJobAs`/`StageCloneIdentityAs` write the
-  configured identity into the worker's clone's local git config at clone time;
-  `StageJob` (the pool identity) still writes the pool's when none is given.
+  the live launcher entry points `StageJob`/`StageCloneIdentity` (and their
+  `As` variants) write the machine's identity into the worker's clone's local
+  git config at clone time, never the pool's owner; `TestStageCardReworkCarriesTheConfiguredIdentity`:
+  the live `StageCard` entry point writes the machine's default identity into the
+  clone's local config and the rework-at-tip carry commit carries it, even when
+  the host's global config names the owner.
 - Functional (`-tags functional`), `cmd/nova-sprint/land_identity_functional_test.go`:
   `TestLandCommitIdentityOnARealStore` (a real landing on a private store, explicit
   `--redis`, scrubbed env with a planted global git config, reads

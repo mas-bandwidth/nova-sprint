@@ -119,12 +119,13 @@ func StagingGitEnv(id StagingIdentity) []string {
 	return env
 }
 
-// StageCloneIdentity writes the pool's identity into the job clone's LOCAL
-// git config, so the commit the worker makes carries the pool's name whatever
-// the bench's config held. The write itself runs with the bench config
+// StageCloneIdentity writes the machine's identity into the job clone's LOCAL
+// git config, so the commit the worker makes carries the machine's name
+// (config.DefaultGitIdentity, the sprint row's git_identity default), never the
+// pool's owner or the bench's config. The write itself runs with the bench config
 // blanked, so a hostile bench config cannot redirect where local lands.
 func StageCloneIdentity(repoDir string, id StagingIdentity) error {
-	return StageCloneIdentityAs(repoDir, id, "")
+	return StageCloneIdentityAs(repoDir, id, config.DefaultGitIdentity)
 }
 
 // StageCloneIdentityAs is StageCloneIdentity with the sprint row's machine identity
@@ -132,7 +133,9 @@ func StageCloneIdentity(repoDir string, id StagingIdentity) error {
 // local author and committer, so the worker's clone commits as the machine; empty falls
 // back to the pool's identity. A launcher that reads the sprint row passes it, so a
 // rework-at-tip commit in the clone carries the configured identity, never the owner's
-// (docs/SPEC-SPRINT.md, the machine's commit identity).
+// (docs/SPEC-SPRINT.md, the machine's commit identity). The live wrapper StageCloneIdentity
+// passes the machine's own default (config.DefaultGitIdentity), so a clone staged by the
+// launcher carries the machine, never the pool's owner.
 func StageCloneIdentityAs(repoDir string, id StagingIdentity, gitIdentity string) error {
 	name, email := id.Name, id.Email
 	if parsed, ok := config.ParseGitIdentity(gitIdentity); ok {
@@ -213,20 +216,24 @@ func escapes(p, root string) bool {
 	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// StageJob is the launcher's staging: the pool's identity, the clone's local
-// git config, and the no-way-out check, in that order. A pool with no
-// identity row is refused before anything is written; a tree with a way out
-// is refused by path. repoDir is the job clone and may be empty where the
-// worker has not cloned yet.
+// StageJob is the launcher's staging: the machine's identity, the clone's local
+// git config, and the no-way-out check, in that order. The clone's local config
+// is set to the machine's identity (config.DefaultGitIdentity, the sprint row's
+// git_identity default), never the pool's owner, so a commit the worker makes in
+// the clone carries the machine. A pool with no identity row is refused before
+// anything is written; a tree with a way out is refused by path. repoDir is the
+// job clone and may be empty where the worker has not cloned yet.
 func StageJob(poolDir, jobRoot, repoDir string) error {
-	return StageJobAs(poolDir, jobRoot, repoDir, "")
+	return StageJobAs(poolDir, jobRoot, repoDir, config.DefaultGitIdentity)
 }
 
 // StageJobAs is StageJob with the sprint row's machine identity (gitIdentity, "Name
 // <email>", the sprint's git_identity): the clone's local config is set from it, so every
 // commit the machine makes in the clone (a rework-at-tip carry included) carries the
 // configured identity. Empty falls back to the pool's identity. A launcher that knows the
-// sprint row passes it (docs/SPEC-SPRINT.md, the machine's commit identity).
+// sprint row passes it (docs/SPEC-SPRINT.md, the machine's commit identity). The live
+// wrapper StageJob passes the machine's own default (config.DefaultGitIdentity), so a clone
+// staged by the launcher carries the machine, never the pool's owner.
 func StageJobAs(poolDir, jobRoot, repoDir, gitIdentity string) error {
 	id, err := LoadPoolIdentity(poolDir)
 	if err != nil {
