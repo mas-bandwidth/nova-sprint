@@ -3,11 +3,14 @@
 This is the working direction from October 11, 2026. The visual is a candidate
 under active iteration, not a final approved replacement.
 
-![nova-sprint: a runner in Los Angeles afternoon light, with starting blocks and horizontal track lanes.](la-runner-candidate.png)
+![Nova Sprint: a determined white-and-blue robot pushing off in the starting blocks lane.](layered/composite.png)
+
+The current candidate uses [separate background, robot and shadow layers](layered/README.md).
+The earlier [Los Angeles human runner](la-runner-candidate.png) remains available.
 
 ## Product positioning
 
-**Run wide. Finish faster. Multiple models. Many machines.**
+**Finish faster. Multiple models. Many machines.**
 
 nova-sprint supplements the way you already work with AIs. When you have a
 batch of work to offload, it runs workers across your fleet, using different
@@ -20,18 +23,16 @@ current branding focus. Their earlier story and artwork remain recoverable.
 
 ## Visual direction
 
-Youthful, capable and expressive, with a Los Angeles practice-track atmosphere.
-An original photorealistic young adult Asian woman sprints right in a cobalt
-T-shirt and lightweight grey sweatpants. The palette combines a lavender track,
-a sun-faded yellow wall, blue lettering and a lime accent. Real starting blocks
-sit behind the runner beneath the wordmark; track lines run horizontally.
+The latest direction returns to the Nova product family: rounded navy/blue
+wordmark with a golden star above the headline, warm light, a blue track, and a
+cute white-and-blue male robot in orange shoes. His face has only two diagonal
+cyan eye strokes. He looks ahead in his direction of travel and drives from the
+rear foot. The robot and its shadow are composited into the center of the
+starting blocks' lane; the full scene is not regenerated after placement.
 
-The generated image is copied byte for byte from the built-in OpenAI image
-generator output. It was developed through original generation and successive
-edits on October 11, 2026. The user-supplied sprint photograph informed the early
-pose exploration; the current runner is a newly generated fictional character.
-The most recent edit requested more slender legs, sweatpants and a Los Angeles
-setting. No claim of final visual approval is made here.
+Glenn removed “Run wide.” and the earlier “Offload work. From start to finish.”
+line. Those lines should not return to the banner. The underlying positioning
+remains batch offload across fleet workers alongside existing AI workflows.
 
 ## Earlier branding
 

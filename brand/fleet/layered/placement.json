@@ -1,0 +1,24 @@
+{
+  "lane_boundaries_y": [
+    761,
+    802
+  ],
+  "lane_center_y": 782,
+  "rear_toe_contact": [
+    914.5,
+    782
+  ],
+  "robot_top_left": [
+    820,
+    133
+  ],
+  "robot_size": [
+    655,
+    650
+  ],
+  "unchanged_pixels_outside_layers": true,
+  "sources_sha256": {
+    "background.png": "eb69847c382bd7b9a5a1c10ef080fba8f27018ce7deed75903c989b5231c7e29",
+    "robot-source.png": "625b9bbd21a27258a04386a769df210c74a7b96f1e650df1c7b4d95beb0569a0"
+  }
+}
