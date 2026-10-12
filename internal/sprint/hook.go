@@ -67,6 +67,7 @@ type HookRecord struct {
 	Unacked int       `json:"unacked,omitempty"`
 	Oldest  *HookItem `json:"oldest,omitempty"`
 	Acked   []string  `json:"acked,omitempty"`
+	PushSeq uint64    `json:"push_seq,omitempty"`
 }
 
 // HookLive says the record holds a live, proven hook for name at now: hooked, proven
@@ -96,7 +97,7 @@ func HookGate(rec HookRecord, ok bool, name string, now time.Time) string {
 // HookUnacked is the line a coordinator command fails with while a delivered push is
 // unacknowledged past its bound: the push by its id and what it is, and the answer.
 func HookUnacked(o HookItem, unacked int) string {
-	return fmt.Sprintf("You must acknowledge push %d first (%s, delivered %s, unacknowledged past %s; %d unacknowledged): read it in the hook's stream, then run: nova-sprint hook --ack %d",
+	return fmt.Sprintf("You must acknowledge push %d first (%s, delivered %s, unacknowledged past %s; %d unacknowledged): read it in the hook's stream, then run: nova-sprint hook --ack %d --session <token>",
 		o.ID, o.What, o.At.UTC().Format(time.RFC3339), HookAckBound, unacked, o.ID)
 }
 

@@ -38,7 +38,7 @@ import (
 // a Monitor: one connection to the server's loopback listener, upgraded from HTTP to a
 // stream of lines, over which the server sends a challenge and every judgment and push,
 // each with an id. The session answers through the same connection: `hook --prove
-// <challenge>` and `hook --ack <id>` hand their word to the hook process over a socket
+// <challenge>` and `hook --ack <id> --session <token>` hand their word to the hook process over a socket
 // of this machine, and the hook process writes it on the connection; `unhook` ends it
 // the same way. The hook process holds nothing the server decides on: it carries lines.
 
@@ -420,6 +420,10 @@ func (s *hookSession) start(ctx context.Context) error {
 			old.Acked = nil
 		}
 		s.epoch = epoch.N
+		// Push IDs are wire-level cumulative ACKs. They must never be reused across
+		// sessions or epochs: a delayed ACK from an old stream could otherwise clear
+		// a newly replayed push with the same number.
+		s.seq = old.PushSeq
 		s.acked = keySet(old.Acked)
 		old.Name, old.Epoch, old.Session, old.State, old.Since = s.name, epoch.N, s.id, sprint.HookHooked, now
 		old.Proven, old.Live, old.Why, old.Unacked, old.Oldest = time.Time{}, time.Time{}, "", 0, nil
@@ -512,7 +516,7 @@ func (s *hookSession) read(ctx context.Context) string {
 		case "prove":
 			s.answer(m, s.prove(ctx, m.Challenge))
 		case "ack":
-			s.answer(m, s.ack(ctx, m.ID))
+			s.answer(m, s.ack(ctx, m.ID, m.Session))
 		case "unhook":
 			s.end(ctx, sprint.HookAway, "nova-sprint unhook")
 			_ = s.send(hookMsg{T: "ok", Of: "unhook", Req: m.Req, Name: s.name}) // ignored: the end is recorded
@@ -573,7 +577,10 @@ func (s *hookSession) prove(ctx context.Context, c string) hookMsg {
 
 // ack takes the session's acknowledgement of every push delivered up to id (SeatHook.tla,
 // Ack); the record then names the oldest still open.
-func (s *hookSession) ack(ctx context.Context, id uint64) hookMsg {
+func (s *hookSession) ack(ctx context.Context, id uint64, session string) hookMsg {
+	if session == "" || session != s.id {
+		return hookMsg{T: "refused", Why: "this acknowledgement belongs to another hook session; copy the session token from the PUSH line"}
+	}
 	var rec sprint.HookRecord
 	var why string
 	err := s.a.onLine(ctx, func(st *store.Store) error {
@@ -623,6 +630,7 @@ func (s *hookSession) recordLocked(ctx context.Context, st *store.Store) (sprint
 		return sprint.HookRecord{}, errors.New("the record is another hook's")
 	}
 	r.Epoch = s.epoch
+	r.PushSeq = s.seq
 	r.Unacked, r.Oldest = len(s.open), nil
 	if len(s.open) > 0 {
 		o := s.open[0]
@@ -754,9 +762,14 @@ func (s *hookSession) look(ctx context.Context) {
 			if !fresh {
 				continue
 			}
+			if s.seq == ^uint64(0) {
+				s.seq, s.open, s.sent, s.acked, s.epoch = seqBefore, openBefore, sentBefore, ackedBefore, epochBefore
+				pushes = nil
+				return errors.New("the hook push sequence is exhausted; no push was sent")
+			}
 			s.seq++
 			s.open = append(s.open, sprint.HookItem{ID: s.seq, What: g.ID, At: now, Keys: append([]string(nil), keys...)})
-			pushes = append(pushes, hookMsg{T: "push", ID: s.seq, What: g.ID, Text: groupText(g, now, false)})
+			pushes = append(pushes, hookMsg{T: "push", ID: s.seq, Session: s.id, What: g.ID, Text: groupText(g, now, false)})
 		}
 		for k := range s.acked {
 			if !active[k] {
@@ -945,12 +958,13 @@ func (a *app) hookSocket(name string) (string, error) {
 }
 
 // cmdHook is nova-sprint hook: with no flag, the seat's subscription, held until it ends;
-// with --prove or --ack, the session's word on it, carried by the running hook.
+// with --prove or --ack and --session, the session's word on it, carried by the running hook.
 func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 	const name = "hook"
 	fs, c := a.verbSetup(name)
 	prove := fs.String("prove", "", "the challenge the hook's stream showed (HOOK CHALLENGE <c>): the session's answer, carried over the running hook's connection; the hook counts once the server takes it")
 	ack := fs.Uint64("ack", 0, "acknowledge every push the hook's stream showed up to this id (PUSH <id>), over the running hook's connection")
+	session := fs.String("session", "", "the session token printed on the PUSH line being acknowledged")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, name, argErr("takes no words ", err, pos...))
@@ -961,10 +975,15 @@ func (a *app) cmdHook(args []string, stdout, stderr io.Writer) int {
 	switch {
 	case *prove != "" && *ack != 0:
 		return refuse(stderr, name, "--prove and --ack are one at a time")
+	case *session != "" && *ack == 0:
+		return refuse(stderr, name, "--session is only used with --ack")
 	case *prove != "":
 		return a.hookAsk(c.actor, hookMsg{T: "prove", Challenge: strings.TrimSpace(*prove)}, stdout, stderr)
 	case *ack != 0:
-		return a.hookAsk(c.actor, hookMsg{T: "ack", ID: *ack}, stdout, stderr)
+		if *session == "" {
+			return refuse(stderr, name, "hook --ack requires --session <token> from the PUSH line; nothing was changed")
+		}
+		return a.hookAsk(c.actor, hookMsg{T: "ack", ID: *ack, Session: *session}, stdout, stderr)
 	}
 	// the sprint's server the environment names, else the seat's record: the same order
 	// the coordinator's verbs use (forward.go, namedServer). (docs/SPEC-SPRINT.md, "The server".)
@@ -1195,7 +1214,7 @@ func hookSay(w io.Writer, name, addr, from string, m hookMsg) {
 		fmt.Fprintf(w, "HOOK CHALLENGE %s: answer now, before anything else: nova-sprint hook --prove %s --actor %s\n", m.Challenge, m.Challenge, oneline.Field(name))
 	case "push":
 		var b strings.Builder
-		fmt.Fprintf(&b, "PUSH %d %s: read it, then acknowledge: nova-sprint hook --ack %d --actor %s\n", m.ID, oneline.Field(m.What), m.ID, oneline.Field(name))
+		fmt.Fprintf(&b, "PUSH %d %s session=%s: read it, then acknowledge: nova-sprint hook --ack %d --session %s --actor %s\n", m.ID, oneline.Field(m.What), oneline.Field(m.Session), m.ID, oneline.Field(m.Session), oneline.Field(name))
 		for _, l := range strings.Split(strings.TrimRight(m.Text, "\n"), "\n") {
 			b.WriteString("  " + l + "\n")
 		}

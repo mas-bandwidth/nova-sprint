@@ -46,12 +46,15 @@ line the inbox prints for it, filled in; `nova-sprint inbox --open <id>` shows t
   `You must hook in first: run nova-sprint hook` until the seat holds a live, proven hook. From inside the session:
 
   1. Run as a Monitor (with `NOVA_SPRINT_SERVER` set): `nova-sprint hook --actor $NOVA_SPRINT_ACTOR`. Each line it
-     prints is one event: `HOOK CHALLENGE <c>`, `PUSH <id> <group>` with its text, `HOOK BYE`, `HOOK DROPPED`.
+     prints is one event: `HOOK CHALLENGE <c>`, `PUSH <id> <judgment> session=<token>` with its text and session-bound acknowledgement command, `HOOK BYE`, `HOOK DROPPED`.
   2. Answer each `HOOK CHALLENGE <c>` at once: `nova-sprint hook --prove <c> --actor $NOVA_SPRINT_ACTOR`. The server
      challenges again every 10 minutes; an answer later than 5 minutes unhooks the seat (recorded gone, the owner
      told).
-  3. Read each `PUSH <id>` and acknowledge it: `nova-sprint hook --ack <id> --actor $NOVA_SPRINT_ACTOR` (every id up
-     to it). A push unacknowledged for 10 minutes refuses every coordinator command, naming it.
+  3. Read each `PUSH <id> <judgment> session=<token>` and run the acknowledgement command shown there, for example
+     `nova-sprint hook --ack <id> --session <token> --actor $NOVA_SPRINT_ACTOR` (every id up to it). The token is
+     specific to that live hook session. If the hook reconnects, read the replayed push line and use its current
+     token; a missing or stale token refuses without acknowledging anything. Numeric-only ACKs from older clients
+     are refused. A push unacknowledged for 10 minutes refuses every coordinator command, naming it.
   4. When you stop: `nova-sprint unhook --actor $NOVA_SPRINT_ACTOR` (recorded away, the owner told).
 - Not served, and run where typed with credentials of their own: `run`, `tick`, `land`, `play`, `fleet sync`,
   `friend sync`, and any verb given its own `--redis`. `fleet sync` and `friend sync` read the config store, so

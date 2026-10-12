@@ -30,6 +30,7 @@ type reconnectHTTPHook struct {
 	mu      sync.Mutex
 	n       int
 	pending []hookMsg
+	session string
 }
 
 func openReconnectHTTPHook(t *testing.T, addr, name string) *reconnectHTTPHook {
@@ -64,12 +65,18 @@ func (c *reconnectHTTPHook) next(t *testing.T, typ string) hookMsg {
 		m := c.pending[0]
 		c.pending = c.pending[1:]
 		require.Equal(t, typ, m.T, "%+v", m)
+		if m.T == "hello" {
+			c.session = m.Session
+		}
 		return m
 	}
 	select {
 	case m, ok := <-c.lines:
 		require.True(t, ok, "HTTP hook closed while waiting for %s", typ)
 		require.Equal(t, typ, m.T, "%+v", m)
+		if m.T == "hello" {
+			c.session = m.Session
+		}
 		return m
 	case <-time.After(5 * time.Second):
 		t.Fatalf("HTTP hook did not send %s", typ)
@@ -81,6 +88,9 @@ func (c *reconnectHTTPHook) send(t *testing.T, m hookMsg) hookMsg {
 	t.Helper()
 	c.mu.Lock()
 	c.n++
+	if m.T == "ack" && m.Session == "" {
+		m.Session = c.session
+	}
 	m.Req = fmt.Sprintf("reconnect-%d", c.n)
 	b, err := json.Marshal(m)
 	require.NoError(t, err)
@@ -208,6 +218,15 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 		r, ok, e := readHook(ctx, st)
 		return e == nil && ok && r.State == sprint.HookGone
 	}, 3*time.Second, 10*time.Millisecond)
+	// Simulate a record written before push_seq existed. On restart, the wire ID
+	// intentionally overlaps the old stream's first ID; the session token must
+	// still prevent its delayed ACK from clearing this fresh obligation.
+	legacy, ok, err := readHook(ctx, st)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Greater(t, legacy.PushSeq, uint64(0))
+	legacy.PushSeq = 0 // omitempty serializes the same shape as a pre-upgrade record
+	require.NoError(t, writeHook(ctx, st, legacy))
 	srv.Close()
 	app.close()
 
@@ -238,9 +257,12 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 	}, 3*time.Second, 10*time.Millisecond)
 	replayed := second.next(t, "push")
 	require.Equal(t, pending, replayed.What)
+	require.Equal(t, ids[acked], replayed.ID, "legacy record has no high-water mark, so session binding handles the numeric overlap")
 	second.requireNoFrame(t, 150*time.Millisecond)
 	require.NotEqual(t, acked, replayed.What)
 	require.NotEqual(t, held, replayed.What)
+	stale := second.send(t, hookMsg{T: "ack", ID: replayed.ID, Session: first.session})
+	require.Equal(t, "refused", stale.T, "the prior connection's session token cannot acknowledge a replay")
 	require.Equal(t, "ok", second.send(t, hookMsg{T: "ack", ID: replayed.ID}).T)
 	// Once the persisted sibling's review time arrives, its delivery generation
 	// becomes eligible even though the earlier sibling in the same group was

@@ -88,10 +88,11 @@ func (ta *testApp) refusedFirst(line, want string) {
 
 // hookClient is the session's end of a subscription the test runs on a pipe.
 type hookClient struct {
-	t     *testing.T
-	conn  net.Conn
-	lines chan hookMsg
-	n     int
+	t       *testing.T
+	conn    net.Conn
+	lines   chan hookMsg
+	n       int
+	session string
 }
 
 func (ta *testApp) hookOn(name string) *hookClient {
@@ -104,6 +105,9 @@ func (ta *testApp) hookOn(name string) *hookClient {
 		for sc.Scan() {
 			var m hookMsg
 			if json.Unmarshal(sc.Bytes(), &m) == nil {
+				if m.T == "hello" {
+					c.session = m.Session
+				}
 				c.lines <- m
 			}
 		}
@@ -130,6 +134,13 @@ func (c *hookClient) next(t string) hookMsg {
 
 // say sends one of the session's lines and returns the server's answer.
 func (c *hookClient) say(m hookMsg) hookMsg {
+	if m.T == "ack" && m.Session == "" {
+		m.Session = c.session
+	}
+	return c.sayRaw(m)
+}
+
+func (c *hookClient) sayRaw(m hookMsg) hookMsg {
 	c.t.Helper()
 	c.n++
 	m.Req = "q" + string(rune('a'+c.n))
@@ -215,9 +226,12 @@ func TestEveryCoordinatorCommandFailsUntilHookedIn(t *testing.T) {
 	env["NOVA_SPRINT_ACTOR"] = name
 
 	// the hook's own verbs are never refused by the gate
-	code, _, errs = ta.doLined("hook --ack 1")
+	code, _, errs = ta.doLined("hook --ack 1 --session old-session --actor " + name)
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "no hook is running on this machine for "+name)
+	code, _, errs = ta.doLined("hook --ack 1 --actor " + name)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errs, "requires --session <token>")
 	code, _, errs = ta.doLined("unhook")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "no hook is running on this machine for "+name)
@@ -704,8 +718,10 @@ func TestAReconnectReplaysOnlyUnackedPushesInMemory(t *testing.T) {
 	require.NotNil(t, s)
 	s.look(context.Background())
 	initial := collectHookPushes(first)
+	require.NotEmpty(t, first.session)
 	ids := map[string]uint64{}
 	for _, p := range initial {
+		assert.Equal(t, first.session, p.Session, "the PUSH carries the token needed to bind its ACK")
 		ids[p.What] = p.ID
 	}
 	require.Contains(t, ids, acked.ID, "the acknowledged candidate was delivered")
@@ -716,7 +732,12 @@ func TestAReconnectReplaysOnlyUnackedPushesInMemory(t *testing.T) {
 		initialWhat = append(initialWhat, what)
 	}
 	assert.ElementsMatch(t, []string{acked.ID, pending.ID, held.ID}, initialWhat, "the fixture has only the three intended pushes")
-	require.Equal(t, "ok", first.say(hookMsg{T: "ack", ID: ids[acked.ID]}).T, "acknowledge the first push only")
+	r := first.sayRaw(hookMsg{T: "ack", ID: ids[acked.ID]})
+	require.Equal(t, "refused", r.T, "a missing session token cannot acknowledge even on the current stream")
+	rec, ok := ta.hookRecord()
+	require.True(t, ok)
+	assert.Equal(t, 3, rec.Unacked, "a missing session token leaves every push open")
+	require.Equal(t, "ok", first.say(hookMsg{T: "ack", ID: ids[acked.ID]}).T, "acknowledge the first push only with its session token")
 
 	second := ta.hookOn(name)
 	second.next("hello")
@@ -727,12 +748,83 @@ func TestAReconnectReplaysOnlyUnackedPushesInMemory(t *testing.T) {
 	s.look(context.Background())
 	replayed := collectHookPushes(second)
 	require.Len(t, replayed, 2, "only open, unacknowledged groups are replayed: %+v", replayed)
+	for _, push := range replayed {
+		assert.Equal(t, second.session, push.Session)
+	}
 	var replayedWhat []string
 	for _, push := range replayed {
 		replayedWhat = append(replayedWhat, push.What)
 	}
 	assert.ElementsMatch(t, []string{pending.ID, held.ID}, replayedWhat)
 	assert.NotContains(t, replayedWhat, acked.ID, "the acknowledged group is not replayed")
+	var initialMax, replayMax uint64
+	for _, id := range ids {
+		if id > initialMax {
+			initialMax = id
+		}
+	}
+	for _, push := range replayed {
+		assert.Greater(t, push.ID, initialMax, "replayed pushes use IDs above every push from the old session")
+		if push.ID > replayMax {
+			replayMax = push.ID
+		}
+	}
+	// A delayed cumulative ACK from the old stream must not clear freshly replayed
+	// pushes. The old pending ID was valid in that stream, but the replay has new IDs.
+	r = second.say(hookMsg{T: "ack", ID: ids[pending.ID], Session: first.session})
+	require.Equal(t, "refused", r.T, "an old-session token cannot acknowledge replayed pushes")
+	rec, ok = ta.hookRecord()
+	require.True(t, ok)
+	assert.Equal(t, 2, rec.Unacked, "the old-session ACK leaves both new deliveries pending")
+	assert.NotContains(t, rec.Acked, noteKey(pending.ID), "the stale ACK did not durably acknowledge the replay")
+	assert.Equal(t, replayMax, rec.PushSeq, "the push high-water mark is persisted with the pending deliveries")
+
+	// A server restart also restores the high-water mark, not a zeroed session-local
+	// counter. Replayed notes get IDs above the entire preceding session, and its last
+	// delayed ACK remains harmless.
+	require.NoError(t, second.conn.Close())
+	ta.waitHook(sprint.HookGone)
+	ta.restartTestServer()
+	third := ta.hookOn(name)
+	third.next("hello")
+	challenge = third.next("challenge").Challenge
+	require.Equal(t, "ok", third.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	s = ta.hookSession()
+	require.NotNil(t, s)
+	s.look(context.Background())
+	replayedAfterRestart := collectHookPushes(third)
+	require.Len(t, replayedAfterRestart, 2)
+	for _, push := range replayedAfterRestart {
+		assert.Greater(t, push.ID, replayMax, "restart replay uses IDs above the prior server's high-water mark")
+	}
+	r = third.say(hookMsg{T: "ack", ID: replayMax, Session: second.session})
+	require.Equal(t, "refused", r.T, "a pre-restart session token cannot acknowledge current pushes")
+	rec, ok = ta.hookRecord()
+	require.True(t, ok)
+	assert.Equal(t, 2, rec.Unacked, "the pre-restart ACK cannot clear post-restart pushes")
+	var latest uint64
+	for _, push := range replayedAfterRestart {
+		if push.ID > latest {
+			latest = push.ID
+		}
+	}
+	assert.Equal(t, latest, rec.PushSeq, "the restarted server persists the new high-water mark")
+	require.NoError(t, third.conn.Close())
+	ta.waitHook(sprint.HookGone)
+	st, err := ta.a.store(common{redis: "mem:0", actor: name})
+	require.NoError(t, err)
+	cleared, err := st.Clear(context.Background())
+	require.NoError(t, err)
+	require.Greater(t, cleared.To, rec.Epoch, "the fixture advanced the sprint epoch")
+	ta.restartTestServer()
+	fourth := ta.hookOn(name)
+	fourth.next("hello")
+	challenge = fourth.next("challenge").Challenge
+	require.Equal(t, "ok", fourth.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	s = ta.hookSession()
+	require.NotNil(t, s)
+	assert.Equal(t, cleared.To, s.epoch, "the new session adopted the new epoch")
+	assert.Equal(t, latest, s.seq, "the push high-water mark survives an epoch change")
 }
 
 func TestHookAckWriteFailureLeavesThePushPending(t *testing.T) {

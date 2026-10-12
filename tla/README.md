@@ -27,7 +27,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `CoordinatorPass`, `CoordinatorWake` | The coordinator's pass and its wake. |
 | `SprintRules`, `StallLadder` | The rules that answer failures, and a stalled friend's ladder. |
 | `SeatHealth`, `ServerLanes` | The seat's generation and a friend's health; the server's lanes. |
-| `SeatHook` | The coordinator's hook: the server's subscription, its challenge and cadence, the record's Live from the proof and a re-challenge's own bound (so the gate can refuse up to one look period early), the pushes and their acknowledgement, a drop, unhook, the next server's start rewriting a dead server's record gone, and the gate every coordinator command passes. |
+| [SeatHook](README-SeatHook.md) | Durable scoped ACKs, reconnect/restart replay, held-to-due delivery, cumulative monotone push IDs and failed-write rollback, plus the coordinator's hook: the server's subscription, its challenge and cadence, the record's Live from the proof and a re-challenge's own bound (so the gate can refuse up to one look period early), the pushes and their acknowledgement, a drop, unhook, the next server's start rewriting a dead server's record gone, and the gate every coordinator command passes. |
 | `LiveRuns` | Working means a live run: the beat's live set, the reconcile while RUNNING and STOPPED, the STOP debt's receipt, held reports. |
 | `Timer`, `LoadCache`, `StatsReset` | Timers, the load cache, and a stats reset. |
 | `AttemptsEpochs` | The epoch a clear advances and a card's attempt, generation and redeals: the restore marker, the per-epoch tables, a late writer refused, a second concurrent clear, the deal and redeal, the stale-generation guard, and the branch per launch. |
