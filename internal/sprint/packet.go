@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
 )
 
@@ -235,6 +236,15 @@ func PacketOf(prefix string, epoch uint64, c, primary *Card, earlier []*Card, wo
 		}
 		b := BaseOf(earlier)
 		p.BaseHead, p.BaseAttempt = b.Head, b.Attempt
+		// A card that finishes an open PR carries its head in the brief's CARRY: line, which
+		// `brief --widen` already writes: with no pushed head of this card's own (BaseOf
+		// found none), the slot stages from that head, never from the base alone. The base
+		// is still merged in by the worker (member.Carried reads the same line at launch).
+		if p.BaseHead == "" && p.Brief != "" {
+			if c, ok := member.CarryOf(p.Brief); ok {
+				p.BaseHead, p.BaseAttempt = c.Head, c.Attempt
+			}
+		}
 		return p
 	}
 	p.DecideBounce, p.DecideReview = c.F(FieldDecideBounce), c.F(FieldDecideReview)

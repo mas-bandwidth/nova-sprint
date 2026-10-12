@@ -34,7 +34,10 @@ func (a *app) holdBriefBase(verbName string, st *store.Store, allowPersonal bool
 	var cards []briefCheck
 	friendNeeded := false
 	for _, b := range briefs {
-		if _, ok := swarm.CardHeaderValue([]byte(b.brief), "PATHS"); !ok {
+		_, hasPaths := swarm.CardHeaderValue([]byte(b.brief), "PATHS")
+		// a finish-PR card is held here even with no PATHS: line: its CARRY: line is the
+		// card's whole staging (LintBrief's pr-carry check)
+		if !hasPaths && !swarm.NamesAFinishPR([]byte(b.brief)) {
 			continue
 		}
 		cards = append(cards, b)
