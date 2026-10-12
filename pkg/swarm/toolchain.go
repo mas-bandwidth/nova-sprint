@@ -1,15 +1,5 @@
 package swarm
 
-import (
-	"maps"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
-	"slices"
-	"strings"
-)
-
 // The bench toolchain roots are the directories the wall grants to toolchain processes.
 //
 // The wall and the provisioning standard share one list of roots, so a card's toolchain runs. The
@@ -91,7 +81,6 @@ type ToolchainRoot struct {
 }
 
 // Home says whether this root is found under a bench home rather than at an absolute path.
-func (r ToolchainRoot) Home() bool { return !strings.HasPrefix(r.Name, "/") }
 
 // toolchainRoots is the standard's toolchain directories PER GOOS, one list with two kinds.
 //
@@ -169,30 +158,13 @@ var toolchainRoots = map[string][]ToolchainRoot{
 // paths" but "granted HOW". An OS the list does not speak for names nothing at all, which is
 // the behaviour of every run before the roots existed and never a guess at another OS's
 // layout. A copy, so no caller can edit the one source by holding it.
-func ToolchainRootList(goos string) []ToolchainRoot {
-	decl := toolchainRoots[goos]
-	out := make([]ToolchainRoot, len(decl))
-	copy(out, decl)
-	return out
-}
 
 // ToolchainRootNames is the same list as names, in slash form: the provisioning standard's
 // side of the agreement, which is about what a bench HAS rather than about how the wall
 // grants it, and what the class test compares against.
-func ToolchainRootNames(goos string) []string {
-	decl := toolchainRoots[goos]
-	out := make([]string, 0, len(decl))
-	for _, r := range decl {
-		out = append(out, r.Name)
-	}
-	return out
-}
 
 // ToolchainRootOSes is every operating system the one list speaks for, sorted, so the class
 // test walks the declaration itself rather than a list of its own that could fall behind it.
-func ToolchainRootOSes() []string {
-	return slices.Sorted(maps.Keys(toolchainRoots))
-}
 
 // ToolchainRoots is the wall's side: this machine's list, absolute, carrying each root's
 // kind, and SKIPPED IF ABSENT. Absent is the machine's shape and not the caller's mistake --
@@ -206,46 +178,11 @@ func ToolchainRootOSes() []string {
 // checked against the resolved target on both bodies: `/opt/homebrew/opt/openjdk` is itself
 // a symlink into the Cellar, and granting the link would name a tree the card's `java` is
 // not under.
-func ToolchainRoots(goos, home string) []ToolchainRoot {
-	var out []ToolchainRoot
-	for _, r := range toolchainRoots[goos] {
-		path, ok := toolchainRootPath(r, home)
-		if !ok {
-			continue
-		}
-		r.Path = path
-		out = append(out, r)
-	}
-	return out
-}
 
 // toolchainRootPath resolves one declaration on this machine, or says the root is not here.
-func toolchainRootPath(r ToolchainRoot, home string) (string, bool) {
-	path := r.Name
-	switch {
-	case r.Home():
-		if home == "" {
-			return "", false
-		}
-		path = filepath.Join(home, filepath.FromSlash(r.Name))
-	case r.Tool != "":
-		// The version under the prefix belongs to the machine: read it off the launcher the
-		// bench's own PATH finds, the way `readlink -f "$(command -v go)"` does.
-		v, ok := toolchainVersionDir(r.Name, r.Tool, exec.LookPath)
-		if !ok {
-			return "", false
-		}
-		path = v
-	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return "", false
-	}
-	if fi, err := os.Stat(resolved); err != nil || !fi.IsDir() {
-		return "", false
-	}
-	return resolved, true
-}
+
+// The version under the prefix belongs to the machine: read it off the launcher the
+// bench's own PATH finds, the way `readlink -f "$(command -v go)"` does.
 
 // toolchainVersionDir is `readlink -f "$(command -v <tool>)"` reduced to the one directory
 // directly under prefix: /opt/homebrew/Cellar/go plus `go` is /opt/homebrew/Cellar/go/1.27.1,
@@ -256,32 +193,10 @@ func toolchainRootPath(r ToolchainRoot, home string) (string, bool) {
 // lookPath is how the launcher is found: exec.LookPath in the binary, and a test's own
 // lookup over a directory of its own in a test -- the per-test seam the serial-tests
 // ledger names ("a field on the value under test"), in place of t.Setenv("PATH", dir).
-func toolchainVersionDir(prefix, tool string, lookPath func(string) (string, error)) (string, bool) {
-	launcher, err := lookPath(tool)
-	if err != nil {
-		return "", false
-	}
-	real, err := filepath.EvalSymlinks(launcher)
-	if err != nil {
-		return "", false
-	}
-	// BOTH SIDES RESOLVED, or the comparison is between two spellings of one directory: on a
-	// Mac /var is a symlink to /private/var, so a resolved launcher under a prefix spelled
-	// the other way would look like a tool from somewhere else entirely.
-	base := prefix
-	if resolved, err := filepath.EvalSymlinks(prefix); err == nil {
-		base = resolved
-	}
-	rest, under := strings.CutPrefix(filepath.ToSlash(real), filepath.ToSlash(base)+"/")
-	if !under {
-		return "", false
-	}
-	version, _, _ := strings.Cut(rest, "/")
-	if version == "" {
-		return "", false
-	}
-	return filepath.Join(filepath.FromSlash(base), version), true
-}
+
+// BOTH SIDES RESOLVED, or the comparison is between two spellings of one directory: on a
+// Mac /var is a symlink to /private/var, so a resolved launcher under a prefix spelled
+// the other way would look like a tool from somewhere else entirely.
 
 // THE BENCH'S TOOLCHAIN ON THE CHILD'S PATH (the mechanical sprint, 2026-10-02; the fleet
 // tooling probe, 2026-10-04). Granting the sdk tree made the bench's toolchain EXECUTABLE
@@ -310,22 +225,6 @@ const goPathBin = "go/bin"
 // BenchToolBins is the `bin` of each home root the wall grants EXECUTE on, under home and in
 // the list's order, skipped if absent: on a provisioned bench `~/sdk/bin`, the standard's
 // links to every sdk tool. It reads the filesystem only and runs nothing.
-func BenchToolBins(goos, home string) []string {
-	var out []string
-	if home == "" {
-		return nil
-	}
-	for _, r := range toolchainRoots[goos] {
-		if !r.Exec || !r.Home() {
-			continue
-		}
-		dir := filepath.Join(home, filepath.FromSlash(r.Name), "bin")
-		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-			out = append(out, dir)
-		}
-	}
-	return out
-}
 
 // BenchGoBin is the directory of the Go the bench's card environment runs: the first `go`
 // in BenchToolBins, then GOPATH/bin under home, then pathEnv, resolved through its symlinks
@@ -333,45 +232,11 @@ func BenchToolBins(goos, home string) []string {
 // else -- or "" when the bench has none. A `go` that resolves outside every root the wall
 // executes is the standard's drift to report (tools/benchstandard, the wall check), not a
 // root to widen here. It reads the filesystem only and runs nothing.
-func BenchGoBin(goos, home, pathEnv string) string {
-	dirs := BenchToolBins(goos, home)
-	if home != "" {
-		dirs = append(dirs, filepath.Join(home, filepath.FromSlash(goPathBin)))
-	}
-	dirs = append(dirs, filepath.SplitList(pathEnv)...)
-	name := "go"
-	if runtime.GOOS == "windows" {
-		name = "go.exe"
-	}
-	for _, d := range dirs {
-		if !filepath.IsAbs(d) {
-			continue
-		}
-		real, err := filepath.EvalSymlinks(filepath.Join(d, name))
-		if err != nil {
-			continue
-		}
-		fi, err := os.Stat(real)
-		if err != nil || !fi.Mode().IsRegular() || (runtime.GOOS != "windows" && fi.Mode().Perm()&0o111 == 0) {
-			continue
-		}
-		return filepath.Dir(real)
-	}
-	return ""
-}
 
 // BenchPath is what native puts on a card's PATH ahead of the member's own, in order:
 // BenchToolBins, then BenchGoBin when the bench has a Go (`gofmt` lives beside `go` in
 // GOROOT/bin, and `~/sdk/bin` may link `go` alone). Empty names nothing and leaves the
 // child's PATH as it was.
-func BenchPath(goos, home, pathEnv string) []string {
-	out := BenchToolBins(goos, home)
-	if goBin := BenchGoBin(goos, home, pathEnv); goBin != "" {
-		out = append(out, goBin)
-	}
-	return out
-}
 
 // ThisOS is the operating system whose list the wall is built from: this process's own,
 // because the wall contains a card on THIS bench.
-func ThisOS() string { return runtime.GOOS }

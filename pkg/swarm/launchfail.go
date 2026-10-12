@@ -35,25 +35,10 @@ var launchFailureRE = regexp.MustCompile(`(?i)unexpected server error|internal s
 var providerRefRE = regexp.MustCompile(`ref=([A-Za-z0-9_.:/-]+)`)
 
 // LaunchGrace is the worker description's own, or the default where it names none.
-func LaunchGrace(w Worker) time.Duration {
-	if d, err := time.ParseDuration(strings.TrimSpace(w.LaunchGrace)); err == nil && d > 0 {
-		return d
-	}
-	return DefaultLaunchGrace
-}
 
 // ProviderLaunchFailure says whether an output tail is a provider server error, and returns
 // the provider's ref where the tail carries one. It is the ONE classifier: `run`'s
 // supervisor, the dispatcher's finish and the native runner all ask it the same question.
-func ProviderLaunchFailure(raw []byte) (ref string, ok bool) {
-	if !launchFailureRE.Match(raw) {
-		return "", false
-	}
-	if m := providerRefRE.FindSubmatch(raw); m != nil {
-		return string(m[1]), true
-	}
-	return "", true
-}
 
 // ProviderRetryDelay is the wait before the retry of a launch that just failed: 5-20s
 // jittered after the first fast failure, 30-60s after the second. The jitter keeps a fleet
