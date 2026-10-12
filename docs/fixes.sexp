@@ -96,7 +96,11 @@
       same work card again at the same attempt with no redeal spent, the member not held; a
       no-result at another exit is recorded and counted the same way but stays the ended take
       the owner's rules make it (redeal counted, rule 2, flash first); a member's read returned
-      at 134 or 137 is retired by environment, not in spentBy, so the member may read it again; the last 40
+      at 134 or 137 is retired by environment, not in spentBy, so the member may read it again.
+      A 134 or 137 is bounded per card per attempt: the work card records each by member and code
+      (env_exit_history), and at EnvExitCardCap (3) the card is dealt no more and the tick raises
+      one bound judgment, a kind wait refuses, naming the card, the members and the codes, until
+      the seat reworks or drops it. The last 40
       lines of the harness output (at most 16 KiB) ride the run's card and its primary, and the
       take's or run's consumer record on the primary ends environment exit=<n>. The doctor counts
       each member's children over the last hour from those attempt records on the epoch's cards
@@ -106,8 +110,8 @@
       nova-sprint stats --children prints the per-member exit-code histogram. Hand-landed after
       the fleet's four attempts: attempt 3's classifier wanted a non-zero exit for the no-result
       case, which the card does not, and attempt 4 ended with no commit. Owed: the member
-      passing --exit and --harness from its child, and the TLA+ models (DirtyTick BoundClasses,
-      AttemptsEpochs) gaining the 134/137 exit that spends nothing. docs/SPEC-SPRINT.md, An
+      passing --exit and --harness from its child (nova-tools), and the TLA+ models (DirtyTick
+      BoundClasses, AttemptsEpochs TakeEnds) gaining the 134/137 exit and its cap (v1.2.16). docs/SPEC-SPRINT.md, An
       environment exit, states the rule; functional TestAnEnvironmentExitOnARealStore drives it
       on a real store."
      :origin "this card, a-doctor-reports-the-child-exit-code-rate-per-member, epoch 17, 2026-10-11
