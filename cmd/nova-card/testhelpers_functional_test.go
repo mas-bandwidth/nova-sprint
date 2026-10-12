@@ -59,9 +59,9 @@ type builtSprint struct {
 // newBuiltSprint builds the real nova-sprint binary, starts the test's own Redis
 // (with the function library loaded), and makes the helper: an environment with
 // no NOVA_* variable from the machine, a home and config directory of the test's
-// own, and a short cache directory, so the seat record is the test's, the hook's
-// unix socket fits the platform's path limit (hookSocket puts it under the cache
-// dir), and there is no named server. One store serves the whole test.
+// own, and a cache directory short enough for the hook's unix socket (hookSocket
+// puts it at <cache>/nova-sprint/hook-<actor>.sock), so the seat record is the
+// test's and there is no named server. One store serves the whole test.
 func newBuiltSprint(t *testing.T) *builtSprint {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "nova-sprint")
@@ -80,9 +80,7 @@ func newBuiltSprint(t *testing.T) *builtSprint {
 	t.Cleanup(func() { _ = rc.Close() })
 	require.NoError(t, fn.Load(context.Background(), rc))
 	home := t.TempDir()
-	cache, err := os.MkdirTemp("", "nsc")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(cache) })
+	cache := shortCache(t)
 	env := append(withoutNOVA(goenv.Clean(os.Environ())),
 		"NOVA_SPRINT_REDIS="+store,
 		"NOVA_SPRINT_ACTOR=coordinator",
@@ -144,6 +142,51 @@ func (s *builtSprint) hook(addr string) *syncedBuf {
 	require.NoError(s.t, hook.Start())
 	s.t.Cleanup(func() { _ = hook.Process.Kill(); _ = hook.Wait() })
 	return buf
+}
+
+// shortCache is the cache directory handed to the built binary: short enough that
+// the hook's unix socket (<cache>/nova-sprint/hook-<actor>.sock) stays under the
+// platform's path limit, wherever the checkout sits. os.TempDir (=$TMPDIR) is deep
+// on this sandbox and overflows a unix socket's path, and /tmp, /dev/shm and
+// /var/tmp are not writable here, so the directory is made under the first short
+// writable base that holds the socket: /tmp, then the GOCACHE directory's parent,
+// then os.TempDir, each checked before it is used. The bound is twinSocketMax, the
+// codebase's conservative unix-socket path limit (macOS holds fewer than Linux).
+func shortCache(t *testing.T) string {
+	t.Helper()
+	for _, base := range []string{"/tmp", gocacheParent(), os.TempDir()} {
+		if base == "" {
+			continue
+		}
+		dir, err := os.MkdirTemp(base, "nsc")
+		if err != nil {
+			continue
+		}
+		sock := filepath.Join(dir, "nova-sprint", "hook-coordinator.sock")
+		if !filepath.IsAbs(dir) || len(sock) > 100 {
+			_ = os.RemoveAll(dir)
+			continue
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
+		return dir
+	}
+	t.Fatal("no directory short enough for the hook's unix socket could be made")
+	return ""
+}
+
+// gocacheParent is the directory that holds the build cache (os.Getenv("GOCACHE")),
+// the one short writable location on this sandbox, or "" when it is unset or not
+// absolute.
+func gocacheParent() string {
+	dir := os.Getenv("GOCACHE")
+	if dir == "" {
+		return ""
+	}
+	parent := filepath.Dir(dir)
+	if !filepath.IsAbs(parent) {
+		return ""
+	}
+	return parent
 }
 
 // withoutNOVA is the environment minus every NOVA_* variable: no variable from
