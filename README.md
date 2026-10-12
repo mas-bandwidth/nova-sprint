@@ -19,7 +19,7 @@ across the same fleet, each taking a bounded assignment.
 The **fleet** is the set of machines providing capacity. **Workers** carry
 out the assignments. A machine's **width** sets how many work assignments
 it can run at once. Think of those slots as lanes: when one opens up,
-the system runs the next card in it.
+the system runs the next card on it.
 
 More lanes help when the work is independent. Dependencies have to land first.
 
