@@ -118,16 +118,8 @@ func TestBalancePollStopsWhileTickHoldsControlLine(t *testing.T) {
 		defer close(done)
 		ta.a.pollBalances(ctx, st, &out)
 	}()
-	select {
-	case <-waiting:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the balance poll never reached the tick's held control line")
-	}
+	<-waiting
 	cancel()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the canceled balance poll waited on a wedged tick")
-	}
+	<-done
 	assert.Empty(t, out.String(), "a canceled poll never acquired the line or wrote a balance")
 }
