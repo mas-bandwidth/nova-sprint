@@ -287,7 +287,8 @@ coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
   `TestALandingStallStampAloneIsAPlanTheTickWrites`,
   `TestALandingPushOfAHundredCardsKeepsEveryCardsLine`,
   `TestLandingLinesNameEveryCardWhenTheFactsAloneOverflow`,
-  `TestASubSecondBoundNeverTakesTheLastLandingForANewOne`.
+  `TestASubSecondBoundNeverTakesTheLastLandingForANewOne`,
+  `TestALandingOverflowOfIDsPastTheBoundCountsAllAndCutsNoID`.
 - Unit, `internal/sprint/store/landing_stall_reads_test.go`:
   `TestLandingPushCountsFinishedFriendReadsAfterAccept`,
   `TestLandingPushCountsActiveFriendReadsWithReadCardsOff`.

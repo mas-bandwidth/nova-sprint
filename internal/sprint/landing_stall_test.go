@@ -483,3 +483,38 @@ func TestASubSecondBoundNeverTakesTheLastLandingForANewOne(t *testing.T) {
 	_, open := openJudgmentOf(w.s, NLandingStall)
 	assert.True(t, open, "the stall judgment stays open")
 }
+
+// When the left-out ids alone pass the bound (700 long ids, no ledger text),
+// the overflow line still counts every card left out, lists only whole ids, and
+// says the list is partial: no id is cut partway (Stella's read of #117).
+func TestALandingOverflowOfIDsPastTheBoundCountsAllAndCutsNoID(t *testing.T) {
+	t.Parallel()
+	var lines []landingLine
+	ids := map[string]bool{}
+	for i := 1; i <= 700; i++ {
+		id := fmt.Sprintf("s9-%03d-%s", i, strings.Repeat("generated-id-", 15))
+		ids[id] = true
+		lines = append(lines, landingLine{id: id, stream: "s9", head: "abcdef0123", attempts: 1})
+	}
+	got := landingLines(lines, MaxCardTextBytes)
+	require.LessOrEqual(t, len(got), MaxCardTextBytes, "the push is inside the field bound")
+	kept, last := 0, ""
+	for _, line := range strings.Split(got, "\n") {
+		if strings.HasPrefix(line, "landed ") {
+			kept++
+		}
+		last = line
+	}
+	var left, named int
+	_, err := fmt.Sscanf(last, "... and %d more landed (partial list, %d named):", &left, &named)
+	require.NoError(t, err, "the last line counts the cards left out and says the list is partial: %.200q", last)
+	assert.Equal(t, 700, kept+left, "every landed card is a line or counted on the overflow line")
+	tokens := 0
+	for _, f := range strings.Fields(strings.NewReplacer("(", " ", ")", " ", ",", " ").Replace(got)) {
+		if strings.HasPrefix(f, "s9-") {
+			tokens++
+			assert.True(t, ids[f], "an id cut partway: %.80q", f)
+		}
+	}
+	assert.Equal(t, kept+named, tokens, "the named count is the ids listed")
+}

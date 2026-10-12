@@ -7560,8 +7560,10 @@ the landed head and carried onto the merge event), and the attempts and reads it
 is one push with one line per card, addressed to the coordinator and needing no ack beyond
 the hook's. The push stays inside the field bound and every landed card keeps its line: the
 ledger texts share what the lines' facts leave (each at most 600 bytes), and only when the
-facts alone overflow are the lines that fit kept and the rest named "... and N more landed:
-<ids>". The landing and episode stamps are RFC3339 to the nanosecond and compared as times,
+facts alone overflow are the lines that fit kept and the rest counted on the last line,
+"... and N more landed: <ids>". The count is always whole; the ids are whole and as many as
+the bound leaves, and when they do not all fit (ids that alone pass 64 KiB) the line says so,
+"(partial list, M named)": no id is cut partway. The landing and episode stamps are RFC3339 to the nanosecond and compared as times,
 so a sub-second bound orders a landing against the episode it came before. The owner, 2026-10-11: "you should also get this push notification, so you as
 coordinator can read the card that landed and keep on top of things".
 

@@ -144,11 +144,15 @@ func cutTo(s string, n int) string {
 	return cutText(s, n)
 }
 
-// landingLines is the push's text within bound bytes, every card's id on it
-// (docs/SPEC-SPRINT.md, the judgments section): the ledger texts get an equal
-// share of what the lines' facts leave, at most landingLineBytes each; when even
-// the facts do not fit, the lines that fit are kept and the rest are named by id
-// on the last line.
+// landingLines is the push's text within bound bytes (docs/SPEC-SPRINT.md, the
+// judgments section): the ledger texts get an equal share of what the lines'
+// facts leave, at most landingLineBytes each, so every card keeps its line.
+// When even the facts do not fit, the lines that fit are kept and the last line
+// counts every card left out, always in full: "... and N more landed: <ids>".
+// Its ids are whole and as many as fit; when they do not all fit (ids that
+// alone pass the bound) the line says so, "... and N more landed (partial list,
+// M named): <ids>", and the count still names how many landed. The limit is the
+// bound: no id is ever cut partway.
 func landingLines(lines []landingLine, bound int) string {
 	if len(lines) == 0 {
 		return ""
@@ -167,23 +171,62 @@ func landingLines(lines []landingLine, bound int) string {
 			return what
 		}
 	}
+	// room always kept for the overflow line's count, at its longest
+	reserve := len(landingOverflowHead(len(lines), len(lines), true))
 	var kept []string
 	used := 0
-	for i, l := range lines {
-		rest := make([]string, 0, len(lines)-i)
-		for _, r := range lines[i:] {
-			rest = append(rest, r.id)
-		}
-		tail := fmt.Sprintf("... and %d more landed: %s", len(rest), strings.Join(rest, " "))
-		line := l.with(0)
-		if used+len(line)+1+len(tail) > bound {
-			kept = append(kept, tail)
-			return cutText(strings.Join(kept, "\n"), bound)
+	i := 0
+	for ; i < len(lines); i++ {
+		line := lines[i].with(0)
+		if used+len(line)+1+reserve > bound {
+			break
 		}
 		kept = append(kept, line)
 		used += len(line) + 1
 	}
-	return strings.Join(kept, "\n")
+	if i == len(lines) {
+		return strings.Join(kept, "\n")
+	}
+	return strings.Join(append(kept, landingOverflow(lines[i:], bound-used)), "\n")
+}
+
+// landingOverflowHead is the overflow line's count: n cards left out of the
+// push, named of them when the list is partial.
+func landingOverflowHead(n, named int, partial bool) string {
+	if partial {
+		return fmt.Sprintf("... and %d more landed (partial list, %d named):", n, named)
+	}
+	return fmt.Sprintf("... and %d more landed:", n)
+}
+
+// landingOverflow is the overflow line within room bytes: the count of the cards
+// left out in full, then their whole ids, as many as fit.
+func landingOverflow(rest []landingLine, room int) string {
+	if line := landingOverflowHead(len(rest), len(rest), false) + " " + landingIDs(rest); len(line) <= room {
+		return line
+	}
+	named, used := 0, len(landingOverflowHead(len(rest), len(rest), true))
+	for _, r := range rest {
+		if used+1+len(r.id) > room {
+			break
+		}
+		used += 1 + len(r.id)
+		named++
+	}
+	out := landingOverflowHead(len(rest), named, true)
+	if named > 0 {
+		out += " " + landingIDs(rest[:named])
+	}
+	return out
+}
+
+// landingIDs is the lines' card ids, space separated.
+func landingIDs(lines []landingLine) string {
+	ids := make([]string, len(lines))
+	for i, l := range lines {
+		ids[i] = l.id
+	}
+	return strings.Join(ids, " ")
 }
 
 type landingReadIdentity struct {

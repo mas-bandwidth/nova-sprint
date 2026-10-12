@@ -819,7 +819,8 @@
     record's is, the reference model carries the landing-stall properties (refmodel.CarriedProps),
     and the differential test names the stall judgment the engine's until the model card lands. A
     batch push shares the bound among its ledger texts so every landed card keeps its line (a cut
-    of the joined note dropped the lines past 64 KiB), and the landing and episode stamps are
+    of the joined note dropped the lines past 64 KiB; past the facts the last line counts every card
+    left out and lists whole ids only, saying when the list is partial), and the landing and episode stamps are
     nanosecond RFC3339 compared as times, so a sub-second bound never takes the last landing for a
     new one. The functional test names its private store with --redis on every verb and fails on
     any forward to a sprint server. The
