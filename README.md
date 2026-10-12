@@ -5,7 +5,9 @@
 
 ## What is it?
 
-**nova-sprint** puts multiple AI models to work across a fleet of machines. If you like this, [please support our work](https://www.patreon.com/MasBandwidth/membership).
+**nova-sprint** puts multiple AI models to work across a fleet of machines so you can get work done faster. 
+
+If you like this, [please support our work](https://www.patreon.com/MasBandwidth/membership).
 
 ## More lanes. Finish faster.
 
