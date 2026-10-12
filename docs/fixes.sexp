@@ -66,7 +66,9 @@
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator.")
    (release "v1.2.15" :status "planned"
-    :text "The next small product fixes, one concern each."))
+    :text "The next small product fixes, one concern each.")
+   (release "v1.2.16" :status "planned"
+    :text "Every TLA+ model checked against the code."))
   :items
    ((fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
      :title "A member fleet sync adds is held until its own probe passes"
@@ -2683,4 +2685,16 @@
    :origin "this card, a-judgment-outlived-by-its-card-closes-itself.w1~19, 2026-10-12; the seat:
     j127 (a brief defect on a-cut-ignores-the-previous-tags-cancelled-release-run) stayed open
     after its card was re-briefed and moved on to attempt 5 in review, ack and brief --answers
-    both refused, only wait quieting it")))
+    both refused, only wait quieting it")
+  (fix "tla-pass-nova-sprint-coverage-rows-1-to-26" :release "v1.2.16" :status "planned"
+   :title "Every TLA+ model checked against the code: COVERAGE.tsv rows 1 to 26"
+   :text "The v1.2.16 pass over tla/COVERAGE.tsv rows 1 to 26 (card-lifecycle to fault-hold-clear).
+    Each module's actions and properties are checked against the code its row cites at file:line on
+    main; every CASES.tsv config of those modules runs under TLC to its declared result and every
+    reversed witness still fails its named property; and each 2026-10-11 fix to these machines carries
+    its property and a reversed witness or the row's note names it a gap. Rows owed to cards already on
+    the table stay theirs (named, not redone); a missing rule is a gap for a new card, not a rewrite.
+    The TLC check is green on a Linux bench: every CASES.tsv config of these modules has a current
+    tla/RUNS.tsv record (go run ./tools/tlacheck groups --root . --stale prints []), and the
+    frienddealtreturn group re-ran to its five declared PASS results under the pinned tla2tools.jar."
+   :origin "this card, tla-pass-nova-sprint-coverage-rows-1-to-26.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")))
