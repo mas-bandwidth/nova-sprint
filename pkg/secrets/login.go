@@ -155,30 +155,3 @@ func readUnitKeys(u UnitKeyLogin, open func(storeDir, asName, keyPath, sopsPath 
 	}
 	return out, nil
 }
-
-// RouteKey is the one name of names a route needs. The provider of model
-// (provider/model, the slash optional) wants <PROVIDER>_API_KEY when that name
-// is listed. Otherwise the only listed name is the route's key. The decision
-// key is never a route key. "" when none of that is so: more than one name and
-// none is the route's, which is not the whole set.
-func RouteKey(model string, names []string) string {
-	provider, _, _ := strings.Cut(strings.TrimSpace(model), "/")
-	want := strings.ToUpper(provider) + "_API_KEY"
-	var rest []string
-	seen := map[string]bool{}
-	for _, n := range names {
-		n = strings.TrimSpace(n)
-		if n == "" || n == DecisionKey || seen[n] {
-			continue
-		}
-		seen[n] = true
-		if n == want {
-			return n
-		}
-		rest = append(rest, n)
-	}
-	if len(rest) == 1 {
-		return rest[0]
-	}
-	return ""
-}
