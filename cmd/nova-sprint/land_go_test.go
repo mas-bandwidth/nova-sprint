@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -61,6 +63,36 @@ func TestTreeGateWords(t *testing.T) {
 		gateWhy([]string{"go", "vet", "./..."}, errors.New("exit status 1"), "# example.com/m\n./bad.go:5:2: Printf format %d has arg \"s\" of wrong type string\n\n"))
 	long := gateWhy([]string{"go", "build", "./..."}, errors.New("exit status 2"), strings.Repeat("x", 2000))
 	assert.Less(t, len(long), 1600, "the output is capped")
+}
+
+// The selector and command builder agree on the whole-tree package pattern,
+// while test-only changes retain their package scope even without class tests.
+func TestChangedPackagesGateWords(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		changed []string
+		want    []string
+	}{
+		{name: "shared source", changed: []string{"pkg/hygiene/data.go"}, want: []string{"./..."}},
+		{name: "deleted shared input", changed: []string{"pkg/hygiene/stray.txt"}, want: []string{"./..."}},
+		{name: "shared input and command", changed: []string{"cmd/nova-sprint/main.go", "pkg/hygiene/stray.txt"}, want: []string{"./..."}},
+		{name: "package test", changed: []string{"pkg/hygiene/data_test.go"}, want: []string{"./pkg/hygiene/"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			pkgs := sprint.UnitPackages("github.com/mas-bandwidth/nova-sprint", tc.changed)
+			for _, tests := range []bool{false, true} {
+				have := []string{"internal/docs", "internal/ci"}
+				before := gateCmds(gateRuns(tests, have, nil))
+				got := gateCmds(gateRuns(tests, have, pkgs))
+				require.Len(t, got, len(before)+1)
+				assert.Equal(t, before, got[:len(before)])
+				want := append([]string{"go", "test", "-count=1", "-timeout", "120s", "-skip", "^TestTickDrainAndDealUnderTheGateAtLoad$"}, tc.want...)
+				assert.Equal(t, want, got[len(before)], "class tests enabled: %v", tests)
+			}
+		})
+	}
 }
 
 // goModule is the tree gate's rig: a Go module whose main package builds and vets, with
