@@ -285,8 +285,11 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 		"No `rm -rf` outside the job directory.\nReport what was not done.\n"), 0o600))
 	r.do("add --stream s5 --count 1 --one --brief-file " + pro)
 	r.do("add --stream s6 --count 1 --one")
-	r.do("brief s6-1 --tier pro")
-
+	r.do("brief s6-1 --tier pro --reason 'coordinator tier change'")
+	// check that re-tier without --reason is refused
+	var out, errb bytes.Buffer
+	code := r.a.run(append(split("brief s6-1 --tier heavy"), "--redis", r.addr), &out, &errb)
+	require.Equal(t, 2, code, "re-tier without --reason should be refused: %s", errb.String())
 	s := r.hookIn()
 	r.do("start")
 	// the seat says nothing from here on
