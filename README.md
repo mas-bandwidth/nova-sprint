@@ -3,13 +3,12 @@
   <img alt="Nova Sprint. Finish faster. Multiple models. Many machines. A white-and-blue robot in orange shoes sprints along a blue track." src="brand/fleet/banner-day.png">
 </picture>
 
-**nova-sprint** puts a fleet of AI workers to work on your backlog.
-Multiple models, many machines. The system moves cards from **ready to landed**
-automatically, through implementation, review, checks, and merging.
+## What is it?
 
-[Get started](docs/GETTING-STARTED.md) · [See the live dashboard](http://69.67.149.151/)
+**nova-sprint** puts a fleet of AI workers to work across different models and machines,
+with a system that automatically advances cards from **ready to landed** - through implementation, review, and merging.
 
-## More lanes. More work moving.
+## More lanes. Finish faster.
 
 Speed comes from **width**: independent work running at the same time.
 One worker can implement an API while another updates the client and a
@@ -21,7 +20,7 @@ out the assignments. A machine's **width** sets how many work assignments
 it can run at once. Think of those slots as lanes: when one opens up,
 the system starts the next ready card.
 
-Dependencies still have to land first.
+More lanes help when the work is independent. Dependencies have to land first.
 
 ## Follow a card all the way home
 
@@ -31,11 +30,10 @@ Cards move through the system automatically:
 
 A card waits for its prerequisites, takes an available lane, and goes
 through implementation, independent review, checks, and landing. Findings
-go back for rework. Gates and decisions that need attention remain visible.
-“Landed” means the change reached the integration branch.
+go back for rework. Gates and decisions remain yours.
 
 The dashboard shows work streams, fleet capacity, progress, costs, and
-estimated finish time.
+estimated finish time. [See live demo](http://69.67.149.151/)
 
 ## Start with one lane. Then go wider.
 
