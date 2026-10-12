@@ -2637,7 +2637,16 @@ func takeShort(ctx context.Context, st *store.Store, res store.Result, members [
 			out = append(out, head+"it is no member of the fleet table (members: "+orDashStr(strings.Join(s.Members(), ","), "none")+"); run: nova-sprint fleet up "+m+" --width <n>")
 			continue
 		}
-		switch status := s.MemberCtl(m).F("status"); {
+		ctl := s.MemberCtl(m)
+		if ctl.F("held") != "" {
+			status := "held"
+			if reason := oneline.Escape(ctl.F(sprint.FieldHeldReason)); reason != "" {
+				status += " (" + reason + ")"
+			}
+			out = append(out, head+"it is "+status+", and only a member up takes")
+			continue
+		}
+		switch status := ctl.F("status"); {
 		case status != sprint.Up:
 			out = append(out, head+"it is "+orDashStr(status, "-")+", and only a member up takes")
 		case len(working) >= s.Width(m):
