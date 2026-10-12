@@ -7,8 +7,6 @@
 
 **nova-sprint** puts multiple AI models to work across a fleet of machines so you can get work done faster. 
 
-If you like this, [please support our work](https://www.patreon.com/MasBandwidth/membership).
-
 ## More lanes. Finish faster.
 
 Speed comes from **width**: independent work running at the same time.
@@ -44,6 +42,8 @@ Start with one useful task and a complete trip through review and landing.
 Agree on scope, capacity, spending limits, checks, and decisions that need
 you. Then give the fleet the next batch. Keep working alongside it... 
 or just come back in the morning.
+
+If you like this, [please support our work](https://www.patreon.com/MasBandwidth/membership).
 
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
