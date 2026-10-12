@@ -55,8 +55,6 @@ func TestHookFlushesAfterChallengeOnTheStore(t *testing.T) {
 			return home
 		case "XDG_CONFIG_HOME":
 			return filepath.Join(home, ".config")
-		case busRedisEnv:
-			return addr
 		}
 		return ""
 	}
