@@ -2,7 +2,6 @@ package friend
 
 import (
 	"cmp"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -80,8 +79,6 @@ var ErrNotDue = errors.New("not due")
 // a server that did not answer: a refused friend cards is a server that does not serve it yet.
 type Refused struct{ Why string }
 
-func (r *Refused) Error() string { return r.Why }
-
 // ServedBy is the card that adds friend cards to the sprint server: a daemon whose server
 // refuses the verb names it, so whoever reads the line knows which server change is missing.
 const ServedBy = "daemon-writes-every-taken-card3"
@@ -100,9 +97,6 @@ type HeldAnswer struct {
 	Friend string     `json:"friend"`
 	Cards  []HeldCard `json:"cards"`
 }
-
-// FriendCardsArgv is the worker verb the daemon sends the sprint server for her held cards.
-func FriendCardsArgv(friend string) []string { return []string{"friend", "cards", friend, "--json"} }
 
 // ParseHeld reads the server's answer to FriendCardsArgv: its one JSON line, for this friend.
 func ParseHeld(friend, out string) ([]HeldCard, error) {
@@ -434,53 +428,6 @@ func (d *Daemon) heldFrom() ([]string, bool) {
 	return d.heldIDs, true
 }
 
-// HeldVia is the daemon's Held over the sprint server: friend cards <friend> (ask), its
-// answer read by ParseHeld, which carries each card's brief. While the server refuses that
-// verb (a server that does not serve it yet: Refused), the worker view (view, GET
-// /api/view/worker?as=<friend>) says which work cards are on her row and the job each is
-// delivered as, with no brief: her inbox is counted against it and a job whose work card
-// left is retired, and a held card with no BRIEF.md is said missing and not written. The
-// view is read once a ViewEvery (ErrNotDue between), and friend cards asked again once a
-// ServedEvery, each refusal said in the Row's Note; with view nil a refusal is NotServed,
-// once a ServedEvery (ErrNotDue between); an ask the server did not answer is its error.
-func HeldVia(friend string, ask func(ctx context.Context, argv []string) (string, error), view func(ctx context.Context) (string, error), now func() time.Time) func(context.Context) (Row, error) {
-	var refusedAt, viewAt time.Time
-	return func(ctx context.Context) (Row, error) {
-		at := now()
-		note := ""
-		if refusedAt.IsZero() || at.Sub(refusedAt) >= ServedEvery {
-			out, err := ask(ctx, FriendCardsArgv(friend))
-			var refused *Refused
-			switch {
-			case err == nil:
-				refusedAt = time.Time{}
-				cards, err := ParseHeld(friend, out)
-				return Row{Cards: cards, Reads: true, From: FromCards}, err
-			case !errors.As(err, &refused):
-				return Row{}, err
-			}
-			refusedAt, viewAt = at, time.Time{}
-			ns := &NotServed{Why: refused.Why}
-			if view == nil {
-				return Row{}, ns
-			}
-			note = ns.Error() + "; her row is read from the worker view, counted and retired"
-		} else if view == nil {
-			return Row{}, ErrNotDue
-		}
-		if !viewAt.IsZero() && at.Sub(viewAt) < ViewEvery {
-			return Row{}, ErrNotDue
-		}
-		viewAt = at
-		out, err := view(ctx)
-		if err != nil {
-			return Row{}, fmt.Errorf("friend cards is not served (card %s adds it), and the worker view did not answer: %w", ServedBy, err)
-		}
-		cards, err := ParseView(friend, out)
-		return Row{Cards: cards, From: FromView, Note: note}, err
-	}
-}
-
 // ViewWhy is why a card the worker view names has no brief written for it.
 const ViewWhy = "the server does not serve friend cards, and the worker view names the card and its job with no brief"
 
@@ -496,26 +443,4 @@ type workerView struct {
 		St    string `json:"st"`
 		Brief string `json:"brief"`
 	} `json:"cards"`
-}
-
-// ParseView reads the worker view's answer for this friend: each work card on her row, its job
-// the inbox directory its brief path names, and no brief (Why says so).
-func ParseView(friend, out string) ([]HeldCard, error) {
-	var v workerView
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &v); err != nil {
-		return nil, fmt.Errorf("the worker view is not JSON: %v", err)
-	}
-	if v.View != "worker" || v.As != friend || v.Kind != "friend" {
-		return nil, fmt.Errorf("the worker view is %s %q's (%s), not friend %q's", cmp.Or(v.View, "-"), v.As, cmp.Or(v.Kind, "-"), friend)
-	}
-	cards := make([]HeldCard, 0, len(v.Cards))
-	for _, c := range v.Cards {
-		dir, file := path.Split(c.Brief)
-		job := path.Base(dir)
-		if file != "BRIEF.md" || path.Base(path.Dir(path.Clean(dir))) != "inbox" {
-			return nil, fmt.Errorf("the worker view gives card %s a brief that is no inbox/<job>/BRIEF.md: %q", c.ID, c.Brief)
-		}
-		cards = append(cards, HeldCard{Card: c.ID, Job: job, Col: c.St, Why: ViewWhy})
-	}
-	return cards, nil
 }

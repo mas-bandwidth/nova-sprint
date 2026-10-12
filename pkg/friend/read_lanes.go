@@ -48,19 +48,6 @@ var ReadModels = map[string]string{
 	"flash":    "claude-haiku-4-5-20251001",
 }
 
-// ParseReadSlots reads the friend's read slots off her beat's answer (row_read_slots=<n>,
-// beside row_mode and row_width); ok is false when the answer carries none.
-func ParseReadSlots(answer string) (n int, ok bool) {
-	for _, w := range strings.Fields(answer) {
-		if v, found := strings.CutPrefix(w, "row_read_slots="); found {
-			if k, err := strconv.Atoi(v); err == nil && k >= 0 {
-				n, ok = k, true
-			}
-		}
-	}
-	return n, ok
-}
-
 // ReadPacket is what the reader queue says of one asked read.
 type ReadPacket struct {
 	Tier       string `json:"tier"`

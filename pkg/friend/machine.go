@@ -170,15 +170,6 @@ func PingText(seat string, since time.Time, nonce string) string {
 // its own in the ping's body.
 const WakeMark = "wake=1"
 
-// WakePingText is a wake check as the coordinator sends it: the ping, and
-// WakeMark. The daemon answers it at once as any ping and, the session being
-// free, pushes the pong line in as its own turn, so the session is asked
-// even with no message waiting (docs/SPEC-FRIEND.md, session-pong.w1;
-// tla/Friend.tla, WakeTurn).
-func WakePingText(seat string, since time.Time, nonce string) string {
-	return PingText(seat, since, nonce) + "\n" + WakeMark
-}
-
 // IsWake says whether a ping's text asks for a wake check: one of its lines
 // is WakeMark (docs/SPEC-FRIEND.md, session-pong.w1).
 func IsWake(text string) bool {
