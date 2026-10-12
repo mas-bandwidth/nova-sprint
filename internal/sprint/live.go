@@ -26,6 +26,11 @@ const (
 	// machine returns it: four beat windows of a member's beat (BeatDeadline), sixty of a
 	// friend's, and longer than a take's first beat takes to name it.
 	LiveGrace = 60 * time.Second
+	// HeldGrace is how long a working read card may be named held by its row's fresh beat
+	// before the machine returns it to the read deal: the member's child ended and its
+	// report was not taken, so no one reads it. At most twice LiveGrace (docs/SPEC-SPRINT.md
+	// section 6, the reads).
+	HeldGrace = 2 * LiveGrace
 	// LiveHeld marks a live-set entry whose child finished and whose report is held.
 	LiveHeld = "held"
 	// LiveNone is the live set with nothing in it, as a beat's --live says it.
@@ -288,6 +293,7 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 	if s == nil || s.Fleet == nil {
 		return p
 	}
+	ghosted := map[string][]string{} // the primary's ghosts retired lost this tick, for the judgment below
 	for _, row := range s.Fleet.Rows() {
 		b := RowBeat(beats, row)
 		// a friend who has stopped beating is down: her daemon alone runs her lanes,
@@ -311,7 +317,28 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 		working := slices.Clone(s.Fleet.Cell(row, Working))
 		SortCards(working)
 		for _, c := range working {
-			if _, ok := live.names(c); ok {
+			if e, ok := live.names(c); ok {
+				if !e.Held || !isRead(c) {
+					continue // running, or a held work card (its report waits): alive
+				}
+				// a read card its row's beat names held: its child ended and its report was not
+				// taken, so no one reads it (docs/SPEC-SPRINT.md section 6, the reads). Past
+				// HeldGrace it is a ghost, retired lost and dealt again, as a read not named is
+				// below (tla-readcards-review-has-a-live-read-or-a-judgment).
+				gen := max(c.Int("gen"), 1)
+				if c.F("held_since") == "" {
+					p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"),
+						Changes: []Change{change(Fleet, setEntry(c, map[string]string{"held_since": stamp(s.Now)}))},
+						Moved:   fmt.Sprintf("%s held on %s (its report waits)", c.ID, row)})
+					continue
+				}
+				held := stampAt(c, "held_since")
+				if s.Now.Sub(held) <= HeldGrace {
+					continue
+				}
+				why := fmt.Sprintf("held: %s's beats name %s held for %s", row, LiveKey(c.ID, gen), s.Now.Sub(held).Truncate(time.Second))
+				p.Units = append(p.Units, readLostUnit(s, c, gen, why, stopped))
+				ghosted[c.F("primary")] = append(ghosted[c.F("primary")], c.ID+" on "+orDash(c.F("reader"))+" ("+why+")")
 				continue
 			}
 			gen := max(c.Int("gen"), 1)
@@ -334,6 +361,7 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 				// deal picks, this one included (v1.2.14, a-member-hands-back-a-read-it-is-not-
 				// running; tla/ReadCards.tla LiveReturn, NamedOrWithinGrace)
 				p.Units = append(p.Units, readLostUnit(s, c, gen, why, stopped))
+				ghosted[c.F("primary")] = append(ghosted[c.F("primary")], c.ID+" on "+orDash(c.F("reader"))+" ("+why+")")
 				continue
 			}
 			set := map[string]string{
@@ -351,6 +379,29 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"),
 				Changes: []Change{change(Fleet, moveEntry(c, c.Row, Ready, set, unset...))},
 				Moved:   fmt.Sprintf("%s working -> ready on %s gen=%d (%s)", c.ID, row, gen+1, why)})
+		}
+	}
+	// The second ghost at one primary's attempt pushes one judgment (docs/SPEC-SPRINT.md
+	// section 6, the reads; tla-readcards-review-has-a-live-read-or-a-judgment): count the
+	// read cards retired lost at each primary's current attempt, and judge the ones with two
+	// or more, once, naming each card, row and reason. The judgment is an alarm, never a hold:
+	// the deal asks the read again whatever its member's beats say.
+	if s.Work != nil && s.Fleet != nil {
+		for _, pr := range s.Work.Column(Review) {
+			attempt := max(pr.Int("attempt"), 1)
+			var lost []string
+			for _, c := range s.Fleet.WithPrefix(pr.ID+".r"+itoa(attempt)+".") {
+				if isRead(c) && c.F("retired_by") == RetiredByLost {
+					lost = append(lost, c.ID+" on "+orDash(c.F("reader"))+" ("+orDash(c.F("lost_reason"))+")")
+				}
+			}
+			lost = append(lost, ghosted[pr.ID]...)
+			if len(lost) < 2 || openLostTwice(s, pr.ID) {
+				continue
+			}
+			n := judgment(NLostTwice, pr.Row, s.Now, 0, pr.ID)
+			n.What = "a read was lost twice at attempt " + itoa(attempt) + ": " + strings.Join(lost, "; ")
+			p.Notes = append(p.Notes, n)
 		}
 	}
 	return p
@@ -385,6 +436,17 @@ func friendStoppedReturn(s *Snapshot, p Plan, f, row string, b Beat) Plan {
 	return p
 }
 
+// openLostTwice says the primary already has the lost-twice judgment open on it: the
+// judgment is raised once while it stands, never anew each tick.
+func openLostTwice(s *Snapshot, id string) bool {
+	for _, o := range s.Open {
+		if o.Note.Type == NLostTwice && o.Subject() == id {
+			return true
+		}
+	}
+	return false
+}
+
 // readLostUnit is the reconcile's return of a read card its row's live set has not named for
 // LiveGrace: the card leaves the fleet table retired lost (RetiredByLost: not a spent reader,
 // not a failure), its generation and why kept on the record, and while STOPPED the return is
@@ -401,4 +463,63 @@ func readLostUnit(s *Snapshot, c *Card, gen int, why string, stopped bool) Unit 
 	return Unit{Key: c.ID, Stream: c.F("stream"),
 		Changes: []Change{change(Fleet, removeEntry(c, set))},
 		Moved:   fmt.Sprintf("%s working -> the read deal off %s (%s)", c.ID, c.Row, why)}
+}
+
+// readCardGhost says a read card working on a fleet row is a ghost (no child of its row runs
+// it) and why, reading the row's own beat (s.Beats, the tick's; docs/SPEC-SPRINT.md section 6,
+// the reads; tla-readcards-review-has-a-live-read-or-a-judgment models the bound). A ghost is:
+// the row's fresh beat names it held for more than HeldGrace (its child ended and its report
+// was not taken), or has not named it for LiveGrace (as LiveReturns returns it), or the row is
+// down, stale or held (its beat carries no fresh live set). A row whose beat is unknown names
+// nothing: the read is not a ghost on that evidence alone.
+func readCardGhost(s *Snapshot, c *Card) (bool, string) {
+	if s == nil || c == nil || c.Row == "" {
+		return false, ""
+	}
+	b, ok := s.Beats[c.Row]
+	if !ok {
+		return false, ""
+	}
+	live := liveOf(b, s.Now)
+	gen := max(c.Int("gen"), 1)
+	if !live.known || !b.Fresh(s.Now) {
+		// a stale beat, or one that carries no live set, names nothing live: the row is
+		// down, stale or held (docs/SPEC-SPRINT.md section 6, the reads)
+		return true, fmt.Sprintf("%s's beat names nothing live (stale, down or held)", c.Row)
+	}
+	if e, named := live.names(c); named {
+		_ = e
+		return false, "" // named running or held: the read is alive (its report waits)
+	}
+	// not named at all: within LiveGrace the read may still be running; past it, a ghost
+	since := b.LiveSince
+	for _, t := range []time.Time{stampAt(c, "taken"), stampAt(c, "dealt"), b.LiveSeen[LiveKey(c.ID, gen)]} {
+		if t.After(since) {
+			since = t
+		}
+	}
+	if since.IsZero() || s.Now.Sub(since) <= LiveGrace {
+		return false, ""
+	}
+	return true, fmt.Sprintf("%s's beats have not named %s for %s", c.Row, LiveKey(c.ID, gen), s.Now.Sub(since).Truncate(time.Second))
+}
+
+// hasOpenJudgmentOn says a primary has an open judgment or an acknowledged
+// condition on it: the doctor's readers check holds a primary open on
+// something rather than silent (docs/SPEC-SPRINT.md section 6, the reads).
+func hasOpenJudgmentOn(s *Snapshot, id string) bool {
+	if s == nil {
+		return false
+	}
+	for _, o := range s.Open {
+		if o.Subject() == id {
+			return true
+		}
+	}
+	for _, o := range s.Acked {
+		if o.Subject() == id {
+			return true
+		}
+	}
+	return false
 }

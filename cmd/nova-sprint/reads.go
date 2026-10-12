@@ -2494,6 +2494,61 @@ type cardView struct {
 	Texts    []storyText `json:"texts"`
 }
 
+// cardReadCard prints a read card's place and its primary's story (docs/SPEC-SPRINT.md
+// section 6, the reads; `card <primary>.r<n>.<reader>[.g<n>]`): the read card is a fleet or
+// readers-table record, never a primary, so `card` names its place and falls through to the
+// primary's own story instead of "no primary".
+func (a *app) cardReadCard(stdout, stderr io.Writer, c *common, id, primary string) int {
+	st, err := a.storeAt(*c, -1)
+	if err != nil {
+		return refuse(stderr, "card", err.Error())
+	}
+	ctx := context.Background()
+	place := ""
+	for _, table := range []string{sprint.Fleet, sprint.Readers} {
+		cs, err := st.Records(ctx, table, []string{id})
+		if err != nil {
+			return a.readFailed("card", err, stderr)
+		}
+		if len(cs) == 0 {
+			continue
+		}
+		rc := cs[0]
+		if rc.Placed() {
+			place = table + " " + rc.Row + ":" + rc.Col
+		} else if by := rc.F("retired_by"); by != "" {
+			place = table + " retired by " + by
+		} else {
+			place = table
+		}
+		break
+	}
+	if place == "" {
+		place = "no record"
+	}
+	v, err := st.CardHeld(ctx, primary)
+	if err != nil {
+		return a.readFailed("card", err, stderr)
+	}
+	if v.Primary == nil {
+		fmt.Fprintf(stderr, "%s card: read card %s has no primary %s; run: nova-sprint where\n", prog, oneline.Escape(id), oneline.Escape(primary))
+		return 1
+	}
+	fmt.Fprintf(stdout, "READ CARD %s is %s of %s\n", oneline.Escape(id), place, oneline.Escape(primary))
+	lines, err := st.CardLog(ctx, primary)
+	if err != nil {
+		return a.readFailed("card", err, stderr)
+	}
+	events, texts := a.story(v, lines)
+	pplace := ""
+	if v.Primary.Placed() {
+		pplace = linePlace(v.Primary, v.Column)
+	}
+	a.printStory(stdout, v, events, texts, v.Hold, pplace)
+	fmt.Fprintf(stdout, "CARD OK id=%s read_card=%s\n", oneline.Escape(primary), oneline.Escape(id))
+	return 0
+}
+
 func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("card")
 	atEpoch := fs.Int64("at-epoch", -1, "the primary as it was at an earlier epoch (before a clear)")
@@ -2535,6 +2590,9 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 		return a.readFailed("card", err, stderr)
 	}
 	if v.Primary == nil {
+		if p, _, _, ok := sprint.ParseReadCard(id); ok {
+			return a.cardReadCard(stdout, stderr, c, id, p)
+		}
 		fmt.Fprintf(stderr, "%s card: no primary %s; run: nova-sprint where\n", prog, oneline.Escape(id))
 		return 1
 	}
