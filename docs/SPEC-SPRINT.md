@@ -3542,6 +3542,29 @@ to their own tier; a taken card keeps its run. A card the seat pinned (`tier --s
 
 ## 6. The readers
 
+- **One read predicate (v1.2.15, a-dealt-read-is-held-or-returned-and-ask-agrees-with-itself).**
+  `ReadsOut` (`internal/sprint/readers.go`) is the one predicate for a primary's reads at its
+  current attempt: the readers table's live reads and the fleet read cards (a member's or a
+  friend's), each marked live, ghost or closed with its verdict; `ask`, `ask --another`,
+  `ask --instead`, `ReadsWanted`, `readCardsWanted`/`readCardsStanding`, `heavyRead` and the
+  doctor's readers check all rest on it. A read card working on a row whose fresh beat has not
+  named it for `LiveGrace`, or whose row is down, stale or held, reads as a ghost and does not
+  stand. A broken verdict whose finding is empty or whitespace is no verdict: the read returns
+  it. The doctor's readers check counts the fleet read cards and FAILs on a ghost, naming the
+  cards; `card <primary>.r<n>.<reader>[.g<n>]` prints the read card's place and its primary's
+  story. A dealt read is held or returned every tick, never only at deal time: a read card
+  working on a row whose fresh beat names it held for more than `HeldGrace` (at most twice
+  `LiveGrace`) is a ghost too, retired lost (spending no one) and dealt again in the same
+  tick's deal; the second ghost at one primary's attempt pushes one judgment ("a read was
+  lost twice") naming each card, row and reason. The tick's postcondition
+  (`sprint.ConsumersOut`, internal/sprint/consumers_out.go) is the same invariant: a primary
+  in review has a live read held by a row whose queue lists it, or the ok reads it needs, or
+  an open judgment on it — read through `ReadsOut`, so a fleet read card holds its primary —
+  and a primary working has its own work card working on an up row or a judgment; a breach
+  names the card. The twin is
+  `tla-readcards-review-has-a-live-read-or-a-judgment`, which models the bound as
+  `ReviewHasLiveReadOrJudgment`.
+
 - **The interim rules of 2026-10-06, until read cards** (the owner, 7:25 PM ET: "fix it
   now, to work around it"; the read-cards change (PR 5392) replaces
   the ask, and these rules with it):
