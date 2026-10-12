@@ -175,8 +175,14 @@ func TestACoordinationEndLeavesOkPctAloneAndAWorkerEndMovesIt(t *testing.T) {
 	ta.ok("tick")
 	assertRowOkPct(t, ta, "m1", "100.0%")
 
-	// a coordination end on a third card leaves the ok% alone
+	// a coordination end on a third card leaves the ok% alone: it is withdrawn, never
+	// failed work waiting on a reader's verdict, so it never enters the ok or failed cells
+	// the row's ok% (pct(ok/ok+failed)) is computed over.
 	ta.ok("finish --as m1 s1-3.w1@1 --failed --report 'the lane failed: no rustc on PATH' --usage '" + providerUsage + "'")
+	var c3 cardView
+	ta.json("card s1-3", &c3)
+	require.Len(t, c3.Work, 1, "one work card")
+	require.Equal(t, sprint.Withdrawn, c3.Work[0].Col, "a coordination end is withdrawn, never failed work")
 	assertRowOkPct(t, ta, "m1", "100.0%")
 
 	// a worker's own end moves the ok%: its ok work read broken lowers the row's ok%
