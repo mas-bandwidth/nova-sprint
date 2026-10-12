@@ -2342,6 +2342,10 @@
    :title "The fleet alarm and idle count measure working work cards only"
    :text "Both the fleet backlog alarm and FleetWorking now count the work cards on up members, excluding working read cards. Before, a reader card could carry the alarm numerator across its 50% threshold and clear the work alarm, then start another episode when the read ended, while work stayed below threshold. TestTheFleetAlarmIgnoresReadsCrossingTheThreshold and TestTheIdleFleetCountsWorkNotReads pin both directions; TestBacklogAlarmsPushOncePerEpisodeFromConfigThresholds still proves that real work crossing the threshold clears once."
    :origin "this hand fix, 2026-10-11; source defect reviewed at nova-sprint main c28d55fccdadbe80f89bbb2efb1ae99d548ace2a; scoped card the-fleet-alarm-counts-working-work-cards-only")
+  (fix "the-seat-hook-stays-live-while-its-stream-is-connected" :release "v1.2.14" :status "planned"
+   :title "The hook stays live while the seat is active on the stream"
+   :text "The hook lapses ~15 minutes after each prove when the seat stays active on the stream (sending acks, answers, or keepalives). The fix: any seat activity on the hook stream extends the record\'s `Live` by HookAnswerBound (5 minutes) from now, so a hooked seat acting once a minute for 40 minutes never lapses. When silent past the bound, it lapses once with one judgment, no replay storm. Tests: TestConnectedSeatThatActsNeverLapses, TestSilentSeatLapsesOnceAndSaysSo, TestLiveHookFunctional (cmd/nova-sprint/hook_live_functional_test.go)."
+   :origin "the seat, 2026-10-11/12, measured on the live server: the hook drops ~15 minutes after each prove; the owner, 2026-10-12: "This must never happen again"; code read at nova-sprint main")
   (fix "the-landing-gate-runs-its-classes-side-by-side" :release "v1.2.15" :status "planned"
    :title "The landing gate runs its classes side by side"
    :text "Every landing gate ran sprint.BaseClasses one class after another: build, gofmt, vet,

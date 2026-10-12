@@ -536,7 +536,29 @@ func (s *hookSession) ack(ctx context.Context, id uint64) hookMsg {
 	}
 	s.open = slices.DeleteFunc(s.open, func(it sprint.HookItem) bool { return it.ID <= id })
 	s.mu.Unlock()
-	rec, err := s.record(ctx)
+	// Activity on the hook stream extends live-until.
+	var rec sprint.HookRecord
+	err := s.a.onLine(ctx, func(st *store.Store) error {
+		r, _, err := readHook(ctx, st)
+		if err != nil {
+			return err
+		}
+		if r.Session != s.id {
+			return errors.New("the record is another hook's")
+		}
+		if r.Live.Before(s.a.now().Add(sprint.HookAnswerBound)) {
+			r.Live = s.a.now().Add(sprint.HookAnswerBound)
+		}
+		s.mu.Lock()
+		r.Unacked, r.Oldest = len(s.open), nil
+		if len(s.open) > 0 {
+			o := s.open[0]
+			r.Oldest = &o
+		}
+		s.mu.Unlock()
+		rec = r
+		return writeHook(ctx, st, r)
+	})
 	if err != nil {
 		return hookMsg{T: "refused", Why: "the acknowledgement could not be recorded: " + err.Error()}
 	}
