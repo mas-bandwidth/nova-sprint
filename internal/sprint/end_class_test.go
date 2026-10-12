@@ -64,3 +64,66 @@ func TestCoordinationCausesNameThemselves(t *testing.T) {
 	assert.Equal(t, "worker", string(EndWorker))
 	assert.Equal(t, "unknown", string(CauseUnknown))
 }
+
+// The coordination-failure counter accumulates each coordination end by cause and by the
+// member or friend who suffered it, per epoch, and never counts a worker's own end (the
+// owner, 2026-10-11: "failures not attributable to the model, are supposed to accumulate
+// to a counter for coordination failures.").
+func TestCoordinationCounterAccumulatesByCauseAndWho(t *testing.T) {
+	t.Parallel()
+	c := NewCoordinationCounter(19)
+	// a worker's own end is never a coordination failure
+	if class, _ := c.Record("not-done", "verdict not-done; pushed=abc to b", "hetzner2"); class != EndWorker {
+		t.Fatalf("a pushed not-done is the worker's")
+	}
+	if c.Total != 0 || c.WhoTotal("hetzner2") != 0 {
+		t.Fatalf("a worker end must not move the coordination counter")
+	}
+	c.Record("not-done", "usage limit reached", "hetzner2")
+	c.Record("not-done", "weekly usage limit reached", "hetzner2")
+	c.Record("failed", "no rustc on PATH", "friend-a")
+	c.Record("not-done", "something never seen", "friend-a")
+	assert.Equal(t, 19, int(c.Epoch), "the counter is per epoch")
+	assert.Equal(t, 4, c.Total, "total")
+	assert.Equal(t, 2, c.CauseTotal(CauseProviderLimit), "by cause")
+	assert.Equal(t, 1, c.CauseTotal(CauseMissingTool), "by cause")
+	assert.Equal(t, 1, c.CauseTotal(CauseUnknown), "unknown is coordination, counted")
+	assert.Equal(t, 2, c.WhoTotal("hetzner2"), "per member")
+	assert.Equal(t, 2, c.WhoTotal("friend-a"), "per friend")
+	assert.Equal(t, 0, c.WhoTotal("stranger"), "no end, no count")
+}
+
+// The counter prints one deterministic line for the dashboard, causes in a settled order,
+// for the table under the fleet and friends (the owner asked for it there).
+func TestCoordinationCounterLine(t *testing.T) {
+	t.Parallel()
+	c := NewCoordinationCounter(19)
+	c.Record("not-done", "TLC owed on a bench without the jar", "hetzner2")
+	c.Record("not-done", "usage limit reached", "hetzner2")
+	c.Record("not-done", "usage limit reached", "friend-a")
+	assert.Equal(t,
+		"coordination failures: 3 total (missing bench tool or jar: 1; provider or account limit: 2)",
+		c.Line())
+}
+
+// A coordination end pushed to the coordinator's hook is exactly the ends the counter
+// keeps: ClassEnd says coordination, the counter records it, and the hook word carries the
+// cause so the seat can fix it.
+func TestCoordinationCounterOnlyRecordsCoordination(t *testing.T) {
+	t.Parallel()
+	c := NewCoordinationCounter(19)
+	class, cause := c.Record("not-done", "harness exited after 2s with no RESULT: crash before the first turn", "hetzner2")
+	assert.Equal(t, EndCoordination, class)
+	assert.Equal(t, CauseHarnessCrash, cause)
+	assert.Equal(t, 1, c.Total)
+	assert.Equal(t, 1, c.CauseTotal(CauseHarnessCrash))
+}
+
+// A counter is per epoch: records of another epoch never leak into this one (a fresh
+// counter starts at zero however many the sprint has seen).
+func TestCoordinationCounterPerEpoch(t *testing.T) {
+	t.Parallel()
+	c := NewCoordinationCounter(20)
+	assert.Equal(t, 0, c.Total, "a fresh epoch starts at zero")
+	assert.Equal(t, 20, int(c.Epoch))
+}
