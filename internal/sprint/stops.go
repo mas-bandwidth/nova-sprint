@@ -296,7 +296,7 @@ const PinReleaseBound = DeadlineJudgment
 // PinReleaseBound of running time after the stop, with no extension. The
 // fault inventory of 2026-10-10: 21 cards pinned to held friends waited 9 h and
 // more, and 5 behind them. Seats nil (the friends not read) releases nothing.
-// tla/WhoPreference.tla Release.
+// tla/WhoPreference.tla Release; tla/SprintRules.tla PinReleased.
 func PinReleased(s *Snapshot, c *Card, seats []FriendSeat) bool {
 	if s == nil || c == nil || seats == nil || !OnlyFriend(c) {
 		return false
