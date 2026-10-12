@@ -21,15 +21,22 @@ import (
 // DEPENDS-ON-only edit that names a new card c adds it beside the kept twin; and
 // on a card dealt, a DEPENDS-ON-only edit leaves the bound standing and says
 // `bound: same task (<n> attempts stand)`. The store is the test's own redis,
-// named explicitly, and the app reads no variable of the process environment.
+// named with --redis on every verb, and the app reads no variable of the process
+// environment: HOME and XDG_CONFIG_HOME are the test's temporary directories.
 func TestABriefEditKeepsARelinkedNeedOnTheStore(t *testing.T) {
 	t.Parallel()
 	addr := testutil.Start(t)
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	defer c.Close()
 	require.NoError(t, fn.Load(context.Background(), c))
-	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator"}
+	// a scrubbed env: the app reads only these names (no NOVA_* but the actor), its
+	// home and config directory are the test's own, and every verb names its store
+	// with --redis, so no seat record or server on the host can take a verb
+	// (forward.go: a verb given its own --redis runs here)
+	home := t.TempDir()
+	env := map[string]string{"NOVA_SPRINT_ACTOR": "coordinator", "HOME": home, "XDG_CONFIG_HOME": t.TempDir()}
 	a := newApp(func(k string) string { return env[k] })
+	a.home = func() (string, error) { return home, nil }
 	defer a.close()
 	run := func(args ...string) string {
 		t.Helper()

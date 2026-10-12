@@ -245,9 +245,13 @@ brief verb and the bound).
   `TestABriefBatchHoldsTheKeptNeedsToTheCycleCheck`,
   `TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced`,
   `TestABriefTierFlagRefusesATLAPathBelowFrontier`.
+- Unit, `cmd/nova-sprint/tier_verb_test.go`:
+  `TestTierRefusesAReTierWithoutAReason` (`tier --set` with no, an empty or a
+  blank `--reason` is refused and writes nothing).
 - Functional (`-tags functional`), `cmd/nova-sprint/brief_edit_functional_test.go`:
   `TestABriefEditKeepsARelinkedNeedOnTheStore` (a relink, then `brief
-  --brief-file` with the stale DEPENDS-ON on the test's own redis: the need kept
+  --brief-file` with the stale DEPENDS-ON on the test's own redis, `--redis` on
+  every verb, HOME and XDG_CONFIG_HOME the test's own: the need kept
   and its NOTE, a new need added beside it, and `bound: same task` on a card
   dealt).
 

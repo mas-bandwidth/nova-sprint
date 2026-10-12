@@ -3183,11 +3183,17 @@ func (a *app) cmdTier(args []string, stdout, stderr io.Writer) int {
 	if !cardhdr.IsRoute(*set) {
 		return refuse(stderr, "tier", "--set wants "+cardhdr.RouteList+", found "+oneline.Escape(*set))
 	}
+	// the reason is required (docs/SPEC-SPRINT.md section 11, the tier verb): a pin
+	// with no why cannot be judged later, so none, empty or blanks is refused
+	why := strings.TrimSpace(*reason)
+	if why == "" {
+		return refuse(stderr, "tier", "--reason <why> is required: the reason is recorded with the pin; nothing was changed")
+	}
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, "tier", err.Error())
 	}
-	return a.runStep("tier", *c, st, store.BriefStep(sprint.BriefReq{ID: pos[0], Tier: *set, Reason: *reason, Who: c.actor}), stdout, stderr)
+	return a.runStep("tier", *c, st, store.BriefStep(sprint.BriefReq{ID: pos[0], Tier: *set, Reason: why, Who: c.actor}), stdout, stderr)
 }
 
 // cmdMove moves unstarted primaries to another stream (changing a stopped
