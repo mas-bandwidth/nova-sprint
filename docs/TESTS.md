@@ -277,6 +277,14 @@ with no read out and no open judgment is a ConsumersOut violation at `TickCheck`
 
 - Unit, `internal/sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_test.go`:
   `TestACardInReviewAlwaysHasAReadTheAskCanReach`.
+- Functional (`-tags functional`), on a private store (explicit `--redis`, a
+  scrubbed env whose HOME and XDG_CONFIG_HOME are the test's own, no `NOVA_*`
+  variable from the machine),
+  `cmd/nova-sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_functional_test.go`:
+  `TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore`. It runs the verbs to
+  the card in review, withdraws one read by a hold and ends another with no
+  verdict, and asserts `check` reports the gap before the tick, the next tick's
+  ask places a new read, and `ask` and `ask --another` agree.
 
 ### A brief edit keeps the needs, tier and bound (v1.2.14)
 
