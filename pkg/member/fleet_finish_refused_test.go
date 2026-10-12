@@ -89,6 +89,27 @@ func TestStopKeepsRefusedPushedFinishForRetry(t *testing.T) {
 	assert.Equal(t, []string{"c1"}, g.r.started(), "the pushed generation is never run again")
 }
 
+// A clear can reuse the same card ID and generation in a new epoch. The old pushed
+// finish no longer owns that claim, so it must not suppress the new run or be replayed.
+func TestRefusedFinishDoesNotHoldReusedGenerationAfterEpochMoves(t *testing.T) {
+	t.Parallel()
+	pu := &fakePusher{def: Push{Sha: fullSha}}
+	g, _ := pushRig(t, pu, Result{Ran: true, OK: true, Shaped: true, Verdict: "ok", Head: "0123456", Report: "landed"})
+	g.s.set("finish", 1, "REFUSED finish: no such column")
+	_, err := g.m.Tick(time.Unix(0, 0))
+	require.NoError(t, err)
+	require.Contains(t, g.m.finishRefused, "c1")
+	newClaim := pk("c1")
+	newClaim.Epoch = 8
+	g.s.set("queue", 0, queueJSON(t, 8, working("c1", 1, &newClaim)))
+	g.s.set("finish", 0, "")
+	_, err = g.m.Tick(time.Unix(30, 0))
+	require.NoError(t, err)
+	assert.NotContains(t, g.m.finishRefused, "c1")
+	assert.Equal(t, []string{"c1", "c1"}, g.r.started(), "the new epoch's run starts")
+	assert.Len(t, g.s.lines("finish"), 1, "the old epoch's finish is not retried")
+}
+
 // The same refusal FinishRefusedMax times hands the card back with stop-return instead of
 // running it: its run is refused, so the store must deal it again at the next generation.
 func TestTheSameRefusalHandsTheCardBackAfterFinishRefusedMax(t *testing.T) {

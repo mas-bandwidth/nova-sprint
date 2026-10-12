@@ -1476,7 +1476,7 @@ func (m *Member) applyReport(id string, l launch, ro *reportOut) int {
 		text := oneLine(strings.TrimSpace(string(ro.out)))
 		fmt.Fprintf(m.out, "NOTE %s %s refused: %s\n", ro.verb, id, text)
 		if !ro.reads && ro.pushedHead != "" {
-			m.rememberFinish(id, l.gen, ro.pushedHead, ro.args, text, ro.now)
+			m.rememberFinish(id, l.gen, l.epoch, ro.pushedHead, ro.args, text, ro.now)
 		}
 	}
 	if ro.reads {
@@ -1662,7 +1662,7 @@ func (m *Member) recoverWorking(ids []string, byID map[string]queueCard, wasOurs
 			delete(m.handedBack, id)
 		}
 		if rf, held := m.finishRefused[id]; held {
-			if _, gen, _ := m.claim(c); gen == rf.gen {
+			if epoch, gen, _ := m.claim(c); epoch == rf.epoch && gen == rf.gen {
 				// a pushed generation whose finish the store refused is never run again: its
 				// finish is sent again (retryFinishes; launch.push: never pushed again)
 				fmt.Fprintf(m.out, "recover %s held: generation %d pushed %s; its finish is sent again, never the run\n", id, rf.gen, rf.head)
@@ -1916,6 +1916,7 @@ const finishRefusedRetryMax = 8 * time.Minute
 // count how many times in a row that same text came back, due when it is sent next.
 type refusedFinish struct {
 	gen   int
+	epoch uint64
 	head  string
 	args  []string
 	text  string
@@ -2000,7 +2001,7 @@ func (m *Member) machineStop(q queueOut, byID map[string]queueCard, now time.Tim
 			if gen <= 0 {
 				continue
 			}
-			if rf, held := m.finishRefused[id]; held && rf.gen == gen {
+			if rf, held := m.finishRefused[id]; held && rf.gen == gen && rf.epoch == epoch {
 				// The child completed and pushed before its finish was refused. It has no
 				// running lane, but its held finish still owns this generation.
 				continue
@@ -2083,14 +2084,14 @@ func (m *Member) stopReturn(id string, gen int, epoch uint64, pid int, now time.
 // finish again and never runs the card at that generation (launch.push: a finish is reported
 // again, never pushed again; docs/SPEC-CARD-CONTRACT.md, the member's finish). A refusal whose
 // text is the same as the last counts up; a different one starts the count again at 1.
-func (m *Member) rememberFinish(id string, gen int, head string, args []string, text string, now time.Time) {
-	if old, ok := m.finishRefused[id]; ok && old.gen == gen && old.text == text {
+func (m *Member) rememberFinish(id string, gen int, epoch uint64, head string, args []string, text string, now time.Time) {
+	if old, ok := m.finishRefused[id]; ok && old.gen == gen && old.epoch == epoch && old.text == text {
 		old.args = slices.Clone(args)
 		old.count++
 		old.due = now.Add(finishBackoff(old.count))
 		return
 	}
-	m.finishRefused[id] = &refusedFinish{gen: gen, head: head, args: slices.Clone(args), text: text, count: 1, due: now.Add(finishBackoff(1))}
+	m.finishRefused[id] = &refusedFinish{gen: gen, epoch: epoch, head: head, args: slices.Clone(args), text: text, count: 1, due: now.Add(finishBackoff(1))}
 }
 
 // retryFinishes sends each remembered refused finish that is due again, byte for byte the same
@@ -2166,7 +2167,7 @@ func (m *Member) pruneFinishRefused(byID map[string]queueCard) {
 			delete(m.finishRefused, id)
 			continue
 		}
-		if _, gen, _ := m.claim(c); gen != rf.gen {
+		if epoch, gen, _ := m.claim(c); epoch != rf.epoch || gen != rf.gen {
 			delete(m.finishRefused, id)
 		}
 	}
