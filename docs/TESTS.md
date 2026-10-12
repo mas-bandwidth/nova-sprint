@@ -581,6 +581,25 @@ from it; `cmd/nova-sprint/reads.go groupText`).
   with a tiny `--deadline`, the inbox (and the hook's rendering of the same group) offers no
   wait and names the action.
 
+### Every producer card has its consumer out (v1.2.14, redone)
+
+After every tick, every producer card (working, review) has its consumer out: a working card
+a live attempt on a member (or up friend) at its current generation, a review card a read out
+for it — by card, never "any read" — or an open judgment that names it and is refused wait
+(docs/SPEC-SPRINT.md, "The tick postconditions"). A missing consumer raises one judgment
+naming the card and what is missing, at that tick.
+
+- Unit, `internal/sprint/consumers_out_test.go`:
+  `TestConsumersOutWorkingCardWithNoAttempt` (a working card whose work field names no live
+  attempt), `TestConsumersOutReviewCardWhoseReadsAreAllForOtherCards` (the readers table holds
+  cards, none a read out for this card), `TestConsumersOutReviewCardWithNoReadAndNoJudgment`
+  (no read and no open judgment naming it), and
+  `TestConsumersOutDoesNotFlagCardsWhoseConsumersAreOut` (the cards whose consumers are out
+  raise nothing).
+- Functional (`-tags functional`), `cmd/nova-sprint/consumers_functional_test.go`:
+  `TestEveryProducerCard`: a real store with a review card, its readers table emptied; one
+  tick raises the consumers-out judgment naming the card.
+
 ### The machine's commit identity
 
 Every commit the sprint machine makes carries the sprint row's `git_identity`
@@ -648,6 +667,7 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken`, `TestARestartedServerTellsTheOwnerOfARaiseOnce`, `TestASeatSilentRaiseNoLongerOpenIsForgotten` (`cmd/nova-sprint/seat_silent_test.go`): the owner's bus message is marked told only once sent, retried under one token, sent once across a restart, and the marks pruned to the open raises.
 - `TestAHeavyCardIsDealtOnAHeavyRouteOnAStore` (functional, `cmd/nova-sprint/tier_line_functional_test.go`): a real store with a flash and a heavy route; a card whose RESULT line says tier: heavy is admitted saying tier=heavy and its first deal draws the heavy route.
 - `TestTheTierLineIsReadOrRefusedByOneRuleInBothForms` (`internal/card/tier_line_test.go`), `TestTheTierOnLineOneIsReadInBothForms`, `TestAddStoresTheTierLineOneNamesOrItsStreamsDefault`, `TestAHeavyCardsFirstDealDrawsAHeavyRoute`, `TestABriefWhoseLineOneNamesAStrongerTierRaisesItsTierNow` (`internal/sprint/tier_line_test.go`) and `TestAddPrintsTheTierEachCardIsStoredWith`, `TestBriefPrintsTheTierTheCardIsDealtOn` (`cmd/nova-sprint/tier_line_test.go`): the tier line, read or refused by one rule in both forms, a stream's default, printed by add and brief, a stronger re-brief raising tier_now, dealt on.
+- `TestConsumersOutWorkingCardWithNoAttempt`, `TestConsumersOutReviewCardWhoseReadsAreAllForOtherCards`, `TestConsumersOutReviewCardWithNoReadAndNoJudgment` (`internal/sprint/consumers_out_test.go`) and `TestEveryProducerCard` (functional, `cmd/nova-sprint/consumers_functional_test.go`): the consumers-out postcondition — a working card with no live attempt, a review card whose reads are all for other cards, and a review card with no read and no open judgment each raise one judgment naming the card, and a real store whose readers table is emptied raises it within one tick.
 
 ## A finish-PR card starts from the PR's own head
 

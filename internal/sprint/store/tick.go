@@ -1148,51 +1148,22 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	// done part, once the tables are settled.
 	t.res.Order = append(t.res.Order, "end")
 	// 4b. ConsumersOut postcondition: after every tick, every producer card (working,
-	// fix, review) has its consumer out (docs/SPEC-SPRINT.md, The tick section).
-	for _, c := range snap.Work.Cards() {
-		if c.Col != "working" && c.Col != "fix" && c.Col != "review" {
-			continue
-		}
-		var violation, reason string
-		if c.Col == "working" || c.Col == "fix" {
-			// Check for attempt held by up member/friend
-			// A card in working/fix should have a consumer if it has been assigned
-			// (has the field_set field or is in a friend's running list)
-			primary := c.F("primary")
-			if primary != "" {
-				// This card has been assigned an attempt - check if held by up member/friend
-				hasAttemptUp := false
-				// Check if held by up member
-				for _, m := range snap.Fleet.Cards() {
-					if m.Col == "working" && m.ID != "" {
-						hasAttemptUp = true
-						break
-					}
-				}
-				if !hasAttemptUp {
-					// Check if held by up friend
-					for _, f := range snap.Friends {
-						if f.Status == "up" && len(f.Running) > 0 {
-							hasAttemptUp = true
-							break
-						}
-					}
-				}
-				if !hasAttemptUp {
-					violation = "no consumer"
-					reason = "no attempt held by up member/friend"
-				}
-			}
-		}
-		if c.Col == "review" {
-			// Check for reads asked
-			if snap.Readers.Cards() == nil || len(snap.Readers.Cards()) == 0 {
-				violation = "no consumer"
-				reason = "no reads asked"
-			}
-		}
-		if violation != "" {
-			t.res.Quiet = append(t.res.Quiet, sprint.LaneQuiet{Type: "consumers-out", Subject: c.ID, Why: reason})
+	// review) has its consumer out (docs/SPEC-SPRINT.md, "The tick postconditions").
+	// A missing consumer raises one judgment naming the card and what is missing,
+	// at that tick. It is judged on the tables the tick's own writes left them,
+	// with the friends read once for the tick.
+	settled := t.st.peek(t.twin, false)
+	if settled == nil {
+		settled = snap
+	}
+	if settled.Friends == nil {
+		view := *settled
+		view.Friends = req.Friends
+		settled = &view
+	}
+	for _, q := range sprint.ConsumersOut(settled) {
+		if !slices.ContainsFunc(t.res.Quiet, func(x sprint.LaneQuiet) bool { return x.Type == q.Type && x.Subject == q.Subject }) {
+			t.res.Quiet = append(t.res.Quiet, q)
 		}
 	}
 	// the machine's own answers, when the loop gives them: the rule parts and the idle alarm
