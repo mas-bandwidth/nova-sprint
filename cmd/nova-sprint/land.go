@@ -354,6 +354,9 @@ type lander struct {
 	// baseFix is the land log's line for the last build's base fix, reported with the batch
 	// (NOTE) and then cleared
 	baseFix string
+	// followed is the last cut's note that the stream branch was fast-forwarded to its
+	// trunk before the cut (followTrunk), reported with the batch (NOTE) and then cleared
+	followed string
 	// baseCount says the last build ran the base's gate under the rule and it was red, baseWhy
 	// its finding: the refusal is counted in the store (baseRefused), never only in this
 	// process, which a hand land starts empty every run and the server every start
@@ -388,13 +391,19 @@ type lander struct {
 	shared   *landShared
 }
 
-// keep appends a batch, carrying the tree gate's bench and wall when one ran.
+// keep appends a batch, carrying the tree gate's bench and wall when one ran, and the
+// note that the stream branch followed its trunk before the cut (followTrunk): the
+// follow happened whether the batch then landed or was refused, so its NOTE rides on
+// whichever line the batch ends with, once.
 func (l *lander) keep(b landBatch) {
 	if b.Bench == "" && l.gateHost != "" {
 		b.Bench, b.Wall = l.gateHost, l.gateWall.Seconds()
 		b.Ring, b.Slot = l.gateRing, l.gateSlot
 	}
 	l.gateHost, l.gateWall, l.gateRing, l.gateSlot = "", 0, 0, 0
+	if l.followed != "" {
+		b.Also, l.followed = append(b.Also, l.followed), ""
+	}
 	l.out = append(l.out, b)
 }
 
@@ -1638,6 +1647,11 @@ func (l *lander) cut(ctx context.Context, dir, stream string, cards []landCard, 
 		l.baseAbsent = containsAny(err.Error(), notOnOrigin)
 		return landCut{}, "the fetch of origin in " + dir + " failed: " + firstLine("", err)
 	}
+	// a stream branch with no commits of its own follows its trunk before the first
+	// batch is cut from it (followTrunk); its fetches and push count as fetch time
+	start = time.Now()
+	l.followed = l.followTrunk(ctx, dir, base)
+	since(&t.Fetch, start)
 	l.stage("merge", "git merge")
 	start = time.Now()
 	defer since(&t.Merge, start)
@@ -1671,6 +1685,68 @@ func (l *lander) cutBranch(ctx context.Context, dir, stream, base string) (strin
 		return "", "the branch " + stream + " could not be reset to the base " + base + " in " + dir + ": " + firstLine("", err)
 	}
 	return sha, ""
+}
+
+// followTrunk brings a stream branch with no commits of its own up to its trunk before
+// the batch is cut from it: the lander's note for the batch, "" when nothing moved. A
+// stream branch is cut from a trunk (dev or main, sprint.ProtectedBranches) and falls
+// behind as the trunk moves; a card staged on the newer trunk then carries the trunk's
+// commits relative to the branch, and the scope check counted their files as the card's
+// (E12: changes files outside its PATHS), refusing correct heads (2026-10-12: the seat
+// fast-forwarded five stream branches by hand in one night). The rule: a stream branch
+// with no commits of its own IS its trunk. The branch's fetched tip (origin/<base>) is
+// measured against each trunk origin holds; when it is a strict ancestor of one, the
+// branch has nothing the trunk lacks, and it is pushed to that trunk's tip: a plain
+// push, which git accepts only as a fast-forward (never --force), so a branch that moved
+// under the lander is left as it is and the batch cuts from the tip the fetch found. Of
+// two trunks the branch is behind, the nearer (fewer commits ahead) is its trunk: a
+// branch cut from main follows main, not a dev that is main and more. A branch with a
+// commit of its own, a trunk itself, or one level with its trunk is never moved. A trunk
+// origin does not hold is skipped.
+func (l *lander) followTrunk(ctx context.Context, dir, base string) string {
+	if slices.Contains(sprint.ProtectedBranches, base) {
+		return ""
+	}
+	tip, err := l.git(ctx, dir, "rev-parse", "--verify", "refs/remotes/origin/"+base+"^{commit}")
+	if err != nil {
+		return ""
+	}
+	trunk, trunkSha, behind := "", "", -1
+	for _, t := range sprint.ProtectedBranches {
+		if _, err := l.fetched(ctx, dir, "fetch", "--no-tags", "origin", "+refs/heads/"+t+":refs/remotes/origin/"+t); err != nil {
+			continue // origin holds no such trunk
+		}
+		sha, err := l.git(ctx, dir, "rev-parse", "--verify", "refs/remotes/origin/"+t+"^{commit}")
+		if err != nil || sha == tip {
+			continue
+		}
+		if _, err := l.git(ctx, dir, "merge-base", "--is-ancestor", tip, sha); err != nil {
+			continue // the branch has commits of its own (exit 1), or is no relation
+		}
+		out, err := l.git(ctx, dir, "rev-list", "--count", tip+".."+sha)
+		if err != nil {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(out))
+		if err != nil {
+			continue
+		}
+		if behind < 0 || n < behind {
+			trunk, trunkSha, behind = t, sha, n
+		}
+	}
+	if trunk == "" {
+		return ""
+	}
+	if _, err := l.fetched(ctx, dir, "push", "--porcelain", "origin", trunkSha+":refs/heads/"+base); err != nil {
+		// the branch moved under the lander (the push is a fast-forward or nothing):
+		// the batch cuts from the tip the fetch found, as before
+		return ""
+	}
+	// the pushed tip is the base's tip for this cut: a push updates the remote-tracking
+	// ref as a side effect of the clone's refspecs, and this makes it so whatever they say
+	_, _ = l.fetched(ctx, dir, "update-ref", "refs/remotes/origin/"+base, trunkSha)
+	return fmt.Sprintf("the stream branch %s had no commits of its own and was fast-forwarded to %s (%s, %d commit(s) behind) before the batch was cut", base, trunk, trunkSha[:12], behind)
 }
 
 // mergeCards merges the cards' heads onto the batch branch cut (cut), from the first after

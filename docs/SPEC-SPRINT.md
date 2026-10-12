@@ -6862,10 +6862,15 @@ given `--epoch` is held to it like any other actor.
 
 `stream set <s>... --base <branch>` moves a stream off a base that is gone,
 merged or red: for each named stream it rewrites the `BASE:` line of every card
-not yet dealt (its attempt is 0) and of every card queued to merge (its merge
-card is in the queue), each a change of the work table the store writes, with the
-brief revision the replacement is (`brief_attempt`, as `brief` records one). A
-card dealt and working keeps its base and is listed. It is refused whole,
+not yet landed, whatever its column (waiting, ready, dealt, working, review or
+merging), each a change of the work table the store writes, with the brief
+revision the replacement is (`brief_attempt`, as `brief` records one). A stream's
+branch is the one landing target of every card in it, and the lander merges a
+card onto the card's own `BASE:`, so no column is left behind (2026-10-12: two
+cards in review and merging kept `BASE: main` after a re-point and landed on
+main). A working card takes the new base for its next attempt; a card in review
+or merging keeps its head, which the lander checks against the new base when it
+lands, and is never re-dealt for the re-point alone. It is refused whole,
 writing nothing, when origin holds no branch of the name, or when a card's
 `PATHS:` name something absent at its tip: the check `add` runs, held over each
 brief the rewrite would carry at the new base. The cards are

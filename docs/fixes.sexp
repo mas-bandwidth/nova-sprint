@@ -3273,4 +3273,66 @@
     (fix "the-card-in-review-store-test-beats-its-member-before-the-deal" :release "v1.2.14" :status "planned"
     :title "The store test for a review card beats its member before the deal"
     :text "TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore ran start, tick, tick, take, finish without ever beating m1, so m1 never came up, nothing was dealt, and finish refused s1-1.w1 as not on the table; it now beats m1 before start, queues its readers up so the tick asks the read, and asserts the card is working before the take."
-    :origin "the coordinator, 2026-10-12")))
+    :origin "the coordinator, 2026-10-12")
+   (fix "brief-set-base-takes-a-card-in-review" :release "v1.2.15" :status "planned"
+    :title "brief --set-base by selector takes a card in review; the step loads every table the in-place edit reads"
+    :text "Blocker. nova-sprint brief --ids-file <f> --set-base <b> (and brief --stream <s> --set-base <b>, and a
+     --dry-run of either) panicked whenever the selection held a card an attempt was dealt for (working or in
+     review): the plan dereferenced a nil *Table in sprint.(*Table).index, recovered and re-panicked by
+     main.recoverHelp. A card with an attempt is edited in place (sprint.Brief, briefInPlace, steps_edit.go),
+     and that plan reads its attempt's work card (the fleet table), its open reads (the readers table,
+     brokenFindings calls s.Readers.Of unguarded) and its merge card (the merge table). The selector step
+     built its load as the work table alone (cmd/nova-sprint/select.go, cmdBriefSel), while brief <id>
+     (store.BriefStep) loads all four. brief by selector now loads store.All and syncs the mirrors, as brief
+     <id> does, so a waiting, a working and a review card all take the BASE: rewrite and no table the
+     selector did not load is read nil. Tests: TestBriefSetBaseByIDsFileMovesEverySelectedCardsBase and
+     TestBriefSetBaseByStreamMovesEverySelectedCardsBase (cmd/nova-sprint/brief_set_base_review_test.go),
+     each over a waiting, a working and a review card, with and without --dry-run, red with the reported
+     panic before and green after."
+    :origin "hand-landed by a child of the seat, 2026-10-12, for the owner's ask that v1.2.15 be done directly; from the coordinator, 2026-10-12 ~10:30Z, server v1.2.13: brief --ids-file --set-base panicked on a nil *Table whenever the selection held a card in review; five cards in review could not be moved off BASE: main/dev and one of them landed on main")
+   (fix "stream-set-base-reaches-every-unlanded-card" :release "v1.2.15" :status "planned"
+    :title "stream set --base re-points every unlanded card of the stream, whatever its column"
+    :text "Blocker. stream set <s> --base <b> rewrote the BASE: line of the stream's cards not yet dealt and of
+     those queued to merge alone; a card dealt and working, in review, or merging but not yet queued kept its
+     base. The lander merges a card onto the card's own BASE:, not the stream's, so a card left behind in
+     review landed straight onto main (2026-10-12, epoch 19: two cards of a stream re-pointed to
+     sprint/v1214b kept BASE: main and landed on main at 09:43Z and 09:56Z). Now streamSetBaseCards
+     (internal/sprint/streams.go) is every primary of the stream not yet landed: waiting, ready, dealt,
+     working, review and merging; a sentinel and a landed card keep their base. A working card takes the
+     new base for its next attempt and keeps its current attempt's head: briefOnBase rewrites the BASE line
+     alone, so a CARRY: line naming the pushed head the next attempt starts from is untouched; a card in
+     review or merging keeps its head and place, and the lander checks it against the new base when it
+     lands; no card is re-dealt for the re-point alone. The verb's check (StreamSetBaseChecks, held to the
+     base by add's PATHS check) covers the same cards, and the binding of the write to the checked
+     candidates (baseChecksHeld) is unchanged: a card added, landed or revised between the check and the
+     step still refuses the step whole. One NOTE line per card moved, naming both bases and the card's
+     column. docs/SPEC-SPRINT.md section 11 (stream set --base) and the verb's help say so. Tests:
+     TestStreamSetBaseRepointsEveryUnlandedCard (one card in each of the six states; the landed one is
+     kept, the working one's CARRY: line is kept), TestStreamSetBaseChecksTheRewrittenBriefs and
+     TestStreamSetBaseRefusesWhenTheCheckedCardsMoved (a card dealt after the check is still re-pointed; a
+     card landed after it refuses the step) in internal/sprint/stream_set_base_test.go, red before and green
+     after."
+    :origin "hand-landed by a child of the seat, 2026-10-12, for the owner's ask that v1.2.15 be done directly; from the coordinator, 2026-10-12, epoch 19, server v1.2.13: stream set v1214b --base sprint/v1214b rewrote the waiting cards only, and two cards in review and merging landed on nova-sprint main; the owner: lock in fixes with tests so this does not happen again, fewer scripts, more Go")
+   (fix "an-empty-stream-branch-follows-its-trunk" :release "v1.2.15" :status "planned"
+    :title "A stream branch with no commits of its own follows its trunk before the batch is cut"
+    :text "Blocker. A stream branch is cut from its trunk (dev or main) and falls behind as the trunk moves. A
+     card staged on the newer trunk then carries the trunk's commits relative to the stream branch, and the
+     lander's scope check counted their files as the card's (E12: changes files outside its PATHS), refusing
+     correct heads; the seat fast-forwarded five stream branches by hand in one night. The rule: a stream
+     branch with no commits of its own is its trunk. Before the batch is cut (cmd/nova-sprint/land.go, cut,
+     followTrunk), the lander measures the fetched tip of the base against each trunk origin holds
+     (sprint.ProtectedBranches, each fetched on its own; a trunk origin lacks is skipped): when the tip is a
+     strict ancestor of a trunk, the branch has nothing the trunk lacks, and it is pushed to that trunk's tip
+     with a plain push, which git takes only as a fast-forward (never --force), so a branch that moved under
+     the lander is left as it is and the batch cuts from the tip the fetch found. Of two trunks the branch
+     is behind, the nearer (fewer commits ahead) is its trunk: a branch cut from main follows main, not a
+     dev that is main and more. A branch with a commit of its own, a trunk itself, or one level with its
+     trunk is never moved; a dry run never reaches the cut. The follow is said on one NOTE line under the
+     batch's LAND line, naming the branch, the trunk, its tip and how far behind the branch was, and its
+     time counts as fetch time. Tests (cmd/nova-sprint/stream_branch_follow_test.go, on a real git remote):
+     TestAnEmptyStreamBranchFollowsItsTrunkBeforeTheFirstLand (the stream branch cut from main, main
+     moved three commits, a card staged on the new main touching only its PATHS lands on the followed
+     branch with no E12 and one NOTE; a card touching a file outside its PATHS is still refused, naming
+     that file and none of the trunk's) and TestAStreamBranchWithItsOwnCommitsIsNotMovedToItsTrunk, red
+     before and green after."
+    :origin "hand-landed by a child of the seat, 2026-10-12, for the owner's ask that v1.2.15 be done directly; from the coordinator, 2026-10-12, epoch 19: the lander refused correct heads with E12 after their stream branches fell behind main (pkg-subproc-is-its-own-module, the TLC wall card's attempt 5), and the seat fast-forwarded nova-tools sprint/comfort, sprint/cleanup, sprint/v1214-blocker and nova-sprint sprint/v1214b by hand with gh api -X PATCH .../git/refs five times in one night")))

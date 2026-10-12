@@ -235,7 +235,7 @@ type landJob struct {
 func (l *lander) fork(stream string) *lander {
 	f := *l
 	f.out, f.toScore, f.toCost = nil, nil, nil
-	f.ledgerLog, f.recLog, f.recNote, f.baseFix = nil, nil, "", ""
+	f.ledgerLog, f.recLog, f.recNote, f.baseFix, f.followed = nil, nil, "", "", ""
 	f.conflictKind, f.conflictPaths, f.cardTips = "", nil, nil
 	f.baseStop, f.baseCount, f.baseWhy = false, false, ""
 	f.gateHost, f.gateWall = "", 0
@@ -673,7 +673,8 @@ func (l *lander) prepareCut(ctx context.Context, j *landJob) {
 }
 
 // buildNotes moves a build's notes onto the batch: the ledgers it resolved, the base fix it
-// landed first, and the cards' order after a cure.
+// landed first, and the cards' order after a cure. The stream branch's follow of its trunk
+// (followTrunk) rides on whatever line the batch ends with, kept or refused (keep).
 func (l *lander) buildNotes(j *landJob) {
 	j.b.Also, l.ledgerLog = append(j.b.Also, l.ledgerLog...), nil
 	if l.baseFix != "" {

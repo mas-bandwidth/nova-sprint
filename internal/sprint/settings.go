@@ -394,8 +394,8 @@ type SetReq struct {
 	// UnservedTierFallsTo is the tier an unserved card falls to (PropUnservedTierFallsTo):
 	// heavy, pro, flash, off, or default (off).
 	UnservedTierFallsTo string `json:",omitempty"`
-	// Base, with Streams, re-points the stream's cards that are not yet dealt and
-	// those queued to merge to another base branch (stream set --base).
+	// Base, with Streams, re-points every card of the stream not yet landed to
+	// another base branch (stream set --base, streamSetBaseCards).
 	Base string `json:",omitempty"`
 	// BaseChecked is the cards Base re-points, as the verb read and checked them
 	// at the base (StreamSetBaseChecks): Set re-points exactly these and refuses
@@ -615,7 +615,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 	// stream set --base holds each rewritten brief to the check add runs at the
 	// new base before its step (cmd/nova-sprint's holdBriefBase), and the step
 	// plans over a snapshot of its own: bind the write to the candidates the check
-	// read. A card added to the stream, dealt, or revised between the check and
+	// read. A card added to the stream, landed, or revised between the check and
 	// the step is refused whole, nothing written, never rewritten with its PATHS
 	// unchecked (docs/SPEC-SPRINT.md section 11, stream set --base).
 	if r.Base != "" && len(r.Streams) > 0 {
@@ -688,18 +688,13 @@ func Set(s *Snapshot, r SetReq) Plan {
 				}
 			}
 			// stream set --base rewrites the BASE line of every card of the stream not
-			// yet dealt and of every card queued to merge, each a change of the work
-			// table the store writes, with the brief revision the replacement is
-			// (brief_attempt, as brief records one); a card dealt and working keeps
-			// its base and is listed (docs/SPEC-SPRINT.md section 11, stream set
-			// --base).
+			// yet landed, whatever its column (streamSetBaseCards), each a change of
+			// the work table the store writes, with the brief revision the replacement
+			// is (brief_attempt, as brief records one); a landed card keeps its base
+			// (docs/SPEC-SPRINT.md section 11, stream set --base).
 			if r.Base != "" {
-				repoint, keep := streamSetBaseCards(s, st)
 				moved = append(moved, "base "+r.Base)
-				for _, c := range keep {
-					moved = append(moved, fmt.Sprintf("%s keeps its base %s (%s)", c.ID, orDash(baseOfBrief(c.F("brief"))), c.Col))
-				}
-				for _, c := range repoint {
+				for _, c := range streamSetBaseCards(s, st) {
 					next := briefOnBase(c.F("brief"), r.Base)
 					p.Units = append(p.Units, Unit{Key: c.ID, Stream: st,
 						Changes: []Change{change(Work, setEntry(c, map[string]string{"brief": next, FieldBriefAttempt: c.F("attempt")}))},
