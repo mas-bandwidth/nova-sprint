@@ -57,7 +57,11 @@ own mirror refresh serves it.
 
 The functional tier (`go test -tags functional -count=1 ./...`, `make functional`) runs for every pull request and push to main on a GitHub-hosted
 ubuntu-latest runner — `make functional-gate` is the CI form, with `NOVA_CI=1`,
-redis-server installed, and each package bounded at two minutes (`-timeout 120s`); over the bound is the test's defect.
+redis-server installed, and each package bounded at two minutes (`-timeout 120s`); over the bound is the test's defect. The job runs the tier as a
+matrix: a rest leg (`functional-gate-rest`, every package but `./cmd/nova-sprint`) and three shard legs (`functional-gate-shard SHARD=k SHARDS=3`).
+`./cmd/nova-sprint`'s functional package is CPU-bound at a runner's four cores (alone ~62s at default parallelism, 1275 top-level tests, and stretched
+past the two-minute bound beside the tier on CI's slower runner), so sharded across three legs each leg finishes well inside the bound and every
+top-level test runs exactly once.
 
 ### First run
 
