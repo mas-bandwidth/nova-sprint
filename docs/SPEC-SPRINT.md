@@ -5848,7 +5848,7 @@ happen again"). Two rules make it so, the tool and not the seat's discipline:
 - **The fleet's failure is judged at once.** When `RuleSameFailureCards` or more cards have
   recorded the same failure within `RuleFleetWindow` (an hour of running time), in any column
   but landed, each card counted only while its last finish is that failure, in one tick or one a
-  tick and with the rules on or off, the tick part `fleet failure` raises one
+  tick and with the rules on or off, the deadlines part of every tick raises one
   sprint-level judgment, `the same
   failure on many cards: the fleet's, not the card's`, naming the failure and the cards, at
   their first failure, never per card; it takes no wait, is acked once its cause is mended, and
