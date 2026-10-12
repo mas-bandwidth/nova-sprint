@@ -1002,14 +1002,15 @@ assertion a loaded bench turns red by starving its `git` call of a process.
 
 `TestAFriendWhoStopsBeatingIsDownAndHerCardsComeBack`
 (`internal/sprint/friend_stops_beating_test.go`) starts a friend with a work
-card working and a frontier read working on her fleet row, then stops her beat
-past the beat bound (`sprint.FriendBeatBound`). It pins the presence rule: with
-her session's pong fresh, `sprint.FriendEvidence` still says down, "down since
-<t>", because a friend is up only while her daemon beats within the beat bound;
-a session pong alone never makes her up. It pins that the coordinator's `return`
-(`read --as <friend> --return`) works on her read. And it pins the tick's
-reconcile (`sprint.LiveReturns`, `LiveReturns.friendStoppedReturn`) hands both
-back to the deal: her work card is retired off her row by `sprint.FriendReturn`
-and its primary is ready again with its carry head kept, and her read returns to
-the read deal (`readLostUnit`). A stopped beat, not just a stopped session,
-means her cards come back.
+card working and two frontier reads working on her fleet row, then stops her
+beat past the beat bound (`sprint.FriendBeatBound`). It pins the presence rule:
+with her session's pong fresh, `sprint.FriendEvidence` still says down, "down
+since <t>", because a friend is up only while her daemon beats within the beat
+bound; a session pong alone never makes her up. It pins that the coordinator's
+`return` (`sprint.Return`) works on her read, retiring it off her row. And it
+pins the tick's reconcile (`sprint.LiveReturns`,
+`LiveReturns.friendStoppedReturn`) hands both back to the deal: her work card
+is retired off her row by `sprint.FriendReturn` and its primary is ready again
+with its carry head kept, and her second read returns to the read deal
+(`readLostUnit`). A stopped beat, not just a stopped session, means her cards
+come back.

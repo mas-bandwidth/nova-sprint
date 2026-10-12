@@ -158,7 +158,8 @@ her, comes back to the deal with its carry head kept
 (`sprint.LiveReturns`, `sprint.FriendReturn`). A session pong from a daemon
 that has stopped beating does not keep her cards: the tick hands them back,
 the same plan the run loop's `friend reconcile` applies, and the coordinator's
-`return` (read --as <friend> --return) works on her read.
+`return` works on her read (`sprint.Return`, `returnReadUnit`), handing it back
+to the read deal as the reader's own `read --as <friend> --return` does.
 
 ## Where a job's work lives
 
