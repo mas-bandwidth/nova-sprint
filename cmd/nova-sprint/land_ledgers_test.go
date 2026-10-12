@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -166,8 +167,24 @@ func TestLandRefusesAMalformedEvidenceLedger(t *testing.T) {
 	assert.Equal(t, 1, code, out+errs)
 	assert.Contains(t, errs, "ids=s1-2 fact=conflict reason=the head "+heads["s1-2"]+" of s1-2 does not merge")
 	assert.Contains(t, errs, "docs/roadmap-evidence/fixed-x.sexp conflicts")
+	// the judgment carries both conflicting entries, the tip's then the card's: the malformed
+	// card's entry is named as it stands, so a mind sees both sides without a reread
+	assert.Contains(t, errs, `the tip's entry (fixed "a" :release "v1.2.14" :title "one" :origin "o")`)
+	assert.Contains(t, errs, `the card's entry (fixed "a" :release "v1.2.14" :title "two" :origin #.(x))`)
 	assert.Contains(t, errs, "the stream is stopped")
 	assert.Equal(t, map[string]string{"s1-1": "landed/merged", "s1-2": "merging/stuck"}, r.places("s1-1", "s1-2"))
+	// the judgment inbox prints is the one that carries them (the note's own text)
+	st, err := r.a.store(common{redis: "mem:0", actor: "tester"})
+	require.NoError(t, err)
+	in, err := st.Inbox(context.Background(), 0, 0, 100)
+	require.NoError(t, err)
+	var said []string
+	for _, o := range in.Open {
+		said = append(said, o.Note.What)
+	}
+	joined := strings.Join(said, "\n")
+	assert.Contains(t, joined, `the tip's entry (fixed "a" :release "v1.2.14" :title "one" :origin "o")`)
+	assert.Contains(t, joined, `the card's entry (fixed "a" :release "v1.2.14" :title "two" :origin #.(x))`)
 	r.clean()
 }
 

@@ -300,7 +300,93 @@ func evidenceAddMerged(file string, ours, theirs, merged []byte) error {
 	return nil
 }
 
-// roadmapLimits is the reader's bounds for an evidence ledger, as the roadmap's.
+// conflictEntriesSaid is both sides' conflicting entries of an evidence ledger the lander
+// could not resolve, as the judgment's tail (docs/SPEC-LANDING.md, the merge rule: a ledger
+// conflict the lander cannot resolve stops the stream with the path and both entries in the
+// judgment): the tip's (ours) entries the card lacks, then the card's (theirs) the tip
+// lacks, each raw as it stands, so a malformed entry the strict reader refuses is named
+// too. "" when the two sides hold the same entries.
+func conflictEntriesSaid(ours, theirs []byte) string {
+	o, t := evidenceSideEntries(ours), evidenceSideEntries(theirs)
+	in := func(xs []string, e string) bool { return slices.Contains(xs, e) }
+	var parts []string
+	for _, e := range o {
+		if !in(t, e) {
+			parts = append(parts, "the tip's entry "+e)
+		}
+	}
+	for _, e := range t {
+		if !in(o, e) {
+			parts = append(parts, "the card's entry "+e)
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "; " + strings.Join(parts, " and ")
+}
+
+// evidenceSideEntries is an evidence ledger's entry forms as raw text, one per :items
+// member, read leniently: a dispatch macro or another byte the strict reader refuses still
+// yields the entry it stands in, so a side the merge cannot decode still names what it
+// holds (conflictEntriesSaid). Nil when the data names no :items list.
+func evidenceSideEntries(data []byte) []string {
+	s := string(data)
+	i := strings.Index(s, ":items")
+	if i < 0 {
+		return nil
+	}
+	j := i + len(":items")
+	for j < len(s) && (s[j] == ' ' || s[j] == '\t' || s[j] == '\n' || s[j] == '\r') {
+		j++
+	}
+	if j >= len(s) || s[j] != '(' {
+		return nil
+	}
+	return memberForms(s, j)
+}
+
+// memberForms is each direct (...) member of the list whose open parenthesis is at start,
+// raw from its own open parenthesis to its own close, comments and strings honored.
+func memberForms(s string, start int) []string {
+	var out []string
+	depth, formStart := 0, -1
+	inStr, inComment := false, false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case inComment:
+			if c == '\n' {
+				inComment = false
+			}
+		case inStr:
+			if c == '\\' {
+				i++
+			} else if c == '"' {
+				inStr = false
+			}
+		case c == ';':
+			inComment = true
+		case c == '"':
+			inStr = true
+		case c == '(':
+			if depth == 1 && formStart < 0 {
+				formStart = i
+			}
+			depth++
+		case c == ')':
+			depth--
+			if depth == 1 && formStart >= 0 {
+				out = append(out, s[formStart:i+1])
+				formStart = -1
+			}
+			if depth == 0 {
+				return out
+			}
+		}
+	}
+	return out
+}
 
 // stageEvidenceUnion resolves the evidence ledgers among a merge's unmerged paths: each
 // one's merged text written and staged. rest is the paths without them, data the ones
@@ -346,7 +432,10 @@ func (l *lander) stageEvidenceUnion(ctx context.Context, dir string, paths []str
 			}
 			byForm, ferr := mergeByForm(p, base, sides[1], sides[2])
 			if ferr != nil {
-				return nil, nil, p + " conflicts and " + err.Error() + "; by form, " + ferr.Error(), ""
+				// the lander's own failure: stopped with the conflict-kind ledger, never a
+				// rework, and the judgment carries both conflicting entries (docs/SPEC-LANDING.md,
+				// the merge rule) so a mind sees what neither side could merge
+				return nil, nil, p + " conflicts and " + err.Error() + "; by form, " + ferr.Error() + conflictEntriesSaid(sides[1], sides[2]), ""
 			}
 			merged = byForm
 		}
