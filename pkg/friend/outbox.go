@@ -54,10 +54,11 @@ type outboxState struct {
 	said     map[string]bool
 }
 
-// reportVerdict is a report's verdict (the first word of its first Verdict: line, upper
+// ReportVerdict is a report's verdict (the first word of its first Verdict: line, upper
 // case, with markdown and punctuation trimmed; "" for none) and its head (the first word
-// of its first Head: line, lower case), read as friend sync reads them.
-func reportVerdict(report string) (verdict, head string) {
+// of its first Head: line, lower case), read as friend sync reads them, and as the
+// coordinator's collect does (sprint calls it).
+func ReportVerdict(report string) (verdict, head string) {
 	var vok, hok bool
 	for _, l := range strings.Split(report, "\n") {
 		key, val := reportKey(l)
@@ -249,7 +250,7 @@ func (l *loop) outboxStep(now time.Time) {
 			note(job, "card "+id+" is a read, finished by its verdict, not by a report")
 			continue
 		}
-		verdict, head := reportVerdict(report)
+		verdict, head := ReportVerdict(report)
 		if verdict == "" {
 			note(job, "it has no Verdict line")
 			continue
