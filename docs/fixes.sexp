@@ -1604,6 +1604,23 @@
     instead), and internal/sprint/store/rate.go's BudgetTake comment names the slot first, as the code
     does. Models only; no product change."
    :origin "card tla-ratebudget-renewal-is-best-effort, 2026-10-11: v1.2.12 inventory item T36; drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-dirtytick-deals-to-twice-the-width" :release "v1.2.12" :status "planned"
+    :title "DirtyTick deals ahead to twice a member's width"
+    :text "tla/DirtyTick.tla capped a machine at its width (Room = Width - |mc| - |mr| - pending), where the
+     code deals ahead (internal/sprint/width.go DealAhead = 2, room = DealAhead times the width) and a read
+     card costs half a slot rounded up (internal/sprint/read_cards.go halfLoad). The model adds the
+     constants DealAhead and ReadCost (ReadCost in {\"apart\", \"half\"}: apart is the readers table every
+     existing cfg keeps, half is read cards); Room follows the code for each. WidthRespected becomes
+     HoldRespected (|mc| + ((|mr| + 1) \\div 2) <= DealAhead * Width under half, and the apart form under
+     apart), and a new LanesRespected holds that the cards taken at a machine are at most its width, with
+     the guard on Take. Two reversed witnesses: floorreads rounds the reads down and fails HoldRespected
+     with one card and three reads; nolanes drops Take's lane guard and fails LanesRespected. MCDirtyTickWidth.cfg
+     (ScnWidth takes a third card to contend), MCDirtyTickG2.cfg and MCDirtyTickW15.cfg (nowidth, three cards on
+     one machine) are retuned for the wider room; the six Go comments that stated the width-w rule now say
+     twice the width and cite HoldRespected. The wider room let a read taken back (a reader away, or a read
+     returned) be asked again before its readoff applied, so the readers update now takes a read off the
+     machine at once (ApplyR's raway and handback), keeping NothingLost. Models only; no product change."
+    :origin "this card, tla-dirtytick-deals-to-twice-the-width-2.w13, 2026-10-11: v1.2.12 inventory item T6; drift read at nova-sprint main 00c54ba2e")
   (fix "tla-land-gate-ring" :release "v1.2.12" :status "planned"
    :title "The gate bench's hash ring modelled in tla/GateRing.tla"
    :text "tla/GateRing.tla models the land stage's gate-slot ring: two up benches, the start slot the

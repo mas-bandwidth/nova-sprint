@@ -994,9 +994,9 @@ type DealReq struct {
 // Deal moves ready -> working: for each primary, in work order, its work
 // card is dealt to the next member round the fleet (round.go): the first from
 // the rolling index, wrapping, that is up and holds fewer work cards, ready
-// and working, than its width (width.go; tla/DirtyTick.tla, Room and
-// WidthRespected); a card no up member has room for is refused, never dealt
-// past a width; the index (the fleet table's deal_index, a counter) moves
+// and working, than twice its width (width.go, DealAhead; tla/DirtyTick.tla, Room and
+// HoldRespected); a card no up member has room for is refused, never dealt
+// past twice a width; the index (the fleet table's deal_index, a counter) moves
 // past the member dealt to, written with the deal.
 // Every card of the selection is dealt in the one plan, one card at a time
 // round the fleet. A card withdrawn because no member was up is the
