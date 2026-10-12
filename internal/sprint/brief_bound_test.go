@@ -202,3 +202,29 @@ func TestTwoCappedCardsDoNotExceedAFriendsWidth(t *testing.T) {
 	assert.NotEmpty(t, waiting, "the other stays ready")
 	assert.Empty(t, Check(w.s, nil), "what is always true holds with one card left ready")
 }
+
+// The attempt cap's default answer leaves a card at the environment-exit cap alone (Stella on
+// #129): with the attempt cap reached and its withdrawn work card at EnvExitCardCap 134/137
+// exits, a frontier friend newly up with room deals it no attempt 5 and retires nothing; the
+// tick's bound judgment for the environment exits holds it, once, and no machine is dealt it.
+// Before the fix AttemptCapDeal checked only AtBriefBound and dealt attempt 5 to the friend.
+func TestTheAttemptCapDealLeavesACardAtTheEnvironmentExitCap(t *testing.T) {
+	t.Parallel()
+	w := capWorld(t)
+	wc := w.s.Fleet.Card("s1-1.w4")
+	wc.Fields[FieldEnvExitHistory] = "m1=134,m2=137,m1=134"
+	wc.Rev++
+	w.s.Fleet.Put(wc)
+	capDeal(w, FriendSeat{Name: "gus", Width: 8, Status: Up, Class: cardhdr.RouteFrontier})
+	assert.Equal(t, Ready, w.s.StateOf("s1-1"), "not dealt a next attempt")
+	assert.Nil(t, w.s.Fleet.Card("s1-1.w5"), "no attempt 5")
+	assert.NotNil(t, w.s.Fleet.Placed("s1-1.w4"), "the withdrawn history is not retired")
+	assert.Empty(t, w.s.Primary("s1-1").F(FieldWho), "its brief gains no WHO line")
+	open := boundJudgments(w.s, "s1-1")
+	require.Len(t, open, 1, "one bound judgment")
+	assert.Contains(t, open[0].Note.What, "s1-1.w4: attempt 4's child ended on the member's environment 3 times (the cap is 3) and is not dealt again: members m1, m2; exits 134, 137, 134")
+	assert.Zero(t, w.s.Fleet.Count("m1", Ready)+w.s.Fleet.Count("m2", Ready), "no machine was dealt it")
+	capDeal(w, FriendSeat{Name: "gus", Width: 8, Status: Up, Class: cardhdr.RouteFrontier})
+	assert.Len(t, boundJudgments(w.s, "s1-1"), 1, "raised once")
+	assert.Nil(t, w.s.Fleet.Card("s1-1.w5"), "still no attempt 5")
+}

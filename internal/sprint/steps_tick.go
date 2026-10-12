@@ -843,6 +843,9 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		if b := Bench(c); len(b) > 0 {
 			continue
 		}
+		if AtEnvExitBound(s, c) != nil {
+			continue // at the environment-exit cap: offered to no friend until the seat acts
+		}
 		offer = append(offer, c)
 	}
 	// the ladder (priority.go, reads_priority.go): the cards above reader, then the friends'
@@ -884,6 +887,13 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 				cd.what += "; a second bound on tier " + cardTierOf(c) + ": not reworked on it again; " + held
 			}
 			conds = append(conds, cd)
+			continue
+		}
+		if wc := AtEnvExitBound(s, c); wc != nil {
+			// its children died on the environment EnvExitCardCap times at this attempt: the
+			// bound's judgment, once while it holds (a kind wait refuses), never dealt again
+			// until the seat reworks or drops it (docs/SPEC-SPRINT.md, "An environment exit")
+			conds = append(conds, cond{typ: NBound, stream: c.Row, card: wc.ID, primaries: []string{c.ID}, what: envExitBoundWhat(wc, c.ID)})
 			continue
 		}
 		if wc, takes := AtStagingBound(s, c, up); wc != nil {
