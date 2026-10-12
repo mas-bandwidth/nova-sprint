@@ -738,8 +738,13 @@ func NamedWaits(s *Snapshot, c *Card, landing map[string]bool) []string {
 	var out []string
 	waived := Split(c.F("waived"))
 	for _, n := range Split(c.F("needs")) {
-		if s.StateOf(n) != Landed && !landing[n] && !contains(waived, n) {
-			out = append(out, n)
+		// a dropped card's successor is the need (need_alias.go): the stored name is
+		// resolved through the alias map before it is judged landed or waived.
+		t := AliasOf(s, n)
+		if s.StateOf(t) != Landed && !landing[t] && !contains(waived, n) && !contains(waived, t) {
+			if !contains(out, t) {
+				out = append(out, t)
+			}
 		}
 	}
 	return out
@@ -817,13 +822,16 @@ func NeedsOf(s *Snapshot, id string) (needs []NeedState, neededBy []string) {
 		}
 	}
 	for _, n := range named {
+		// a need on a dropped id is shown as its successor (need_alias.go): the alias
+		// is the new id, not the old one that can never come back.
+		t := AliasOf(s, n)
 		st := "not on the table"
-		if nc := s.Work.Card(n); nc.Placed() {
+		if nc := s.Work.Card(t); nc.Placed() {
 			st = nc.Col
 		} else if nc != nil {
 			st = "off the table (" + orDash(nc.F("outcome")) + ")"
 		}
-		ns := NeedState{ID: n, Column: NeedWord(st), State: st, Waived: contains(Split(c.F("waived")), n)}
+		ns := NeedState{ID: t, Column: NeedWord(st), State: st, Waived: contains(Split(c.F("waived")), n) || contains(Split(c.F("waived")), t)}
 		if ns.Waived {
 			ns.WaivedBy, ns.WaivedAt = c.F("waived_by"), c.F("waived_at")
 		}
@@ -848,8 +856,9 @@ func NeedsOf(s *Snapshot, id string) (needs []NeedState, neededBy []string) {
 func droppedNeeds(s *Snapshot, needs []string) []string {
 	var out []string
 	for _, n := range needs {
-		if c := s.Work.Card(n); c != nil && !c.Placed() && c.F("outcome") == "dropped" {
-			out = append(out, n)
+		t := AliasOf(s, n)
+		if c := s.Work.Card(t); c != nil && !c.Placed() && c.F("outcome") == "dropped" {
+			out = append(out, t)
 		}
 	}
 	return out
@@ -860,8 +869,9 @@ func droppedNeeds(s *Snapshot, needs []string) []string {
 func missingNeeds(s *Snapshot, needs []string) []string {
 	var out []string
 	for _, n := range needs {
-		if s.Work.Card(n) == nil {
-			out = append(out, n)
+		t := AliasOf(s, n)
+		if s.Work.Card(t) == nil {
+			out = append(out, t)
 		}
 	}
 	return out
