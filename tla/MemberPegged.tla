@@ -24,7 +24,10 @@
 \* the last wait ran out), ever (a judgment was ever written for it, for the "once"
 \* witness), badWrite (a judgment was written short of the bound or for a member
 \* not up), falseClose (the tick closed a judgment of a member still pegged), and
-\* ticked (the last step was the tick).
+\* latched (the episode has had a judgment, open, acked, waited or run out: it stands for
+\* the rest of the episode, so a wait run out re-arms at once whatever the bound says now;
+\* pegged.go peggedJudged reads the expiring acked note before notify), and ticked
+\* (the last step was the tick).
 \*
 \* The design, Broken = {}:
 \*   Beat       the member beats a load, low or high.
@@ -55,8 +58,8 @@ EXTENDS Naturals
 
 CONSTANTS Members, Broken
 
-VARIABLES status, load, working, since, open, waiting, raised, ever, badWrite, falseClose, changes, ticked
-vars == <<status, load, working, since, open, waiting, raised, ever, badWrite, falseClose, changes, ticked>>
+VARIABLES status, load, working, since, open, waiting, raised, ever, badWrite, falseClose, changes, latched, ticked
+vars == <<status, load, working, since, open, waiting, raised, ever, badWrite, falseClose, changes, latched, ticked>>
 
 \* the coordinator changes the bound finitely often: a bound changed for ever could keep
 \* a stamp under it for ever, and nothing could be owed then
@@ -74,6 +77,7 @@ TypeOK ==
     /\ badWrite \in [Members -> BOOLEAN]
     /\ falseClose \in [Members -> BOOLEAN]
     /\ changes \in 0..MaxBoundChanges
+    /\ latched \in [Members -> BOOLEAN]
     /\ ticked \in BOOLEAN
 
 Init ==
@@ -88,6 +92,7 @@ Init ==
     /\ badWrite = [m \in Members |-> FALSE]
     /\ falseClose = [m \in Members |-> FALSE]
     /\ changes = 0
+    /\ latched = [m \in Members |-> FALSE]
     /\ ticked = FALSE
 
 \* pegged.go PeggedNow: up, its load at HeavyLoadPercent or more, no card working
@@ -100,7 +105,7 @@ Env(m, s, l, w) ==
     /\ load' = [load EXCEPT ![m] = l]
     /\ working' = [working EXCEPT ![m] = w]
     /\ ticked' = FALSE
-    /\ UNCHANGED <<since, open, waiting, raised, ever, badWrite, falseClose, changes>>
+    /\ UNCHANGED <<since, open, waiting, raised, ever, badWrite, falseClose, changes, latched>>
 
 Beat(m, l) == status[m] # "down" /\ load[m] # l /\ Env(m, status[m], l, working[m])
 Start(m) == status[m] = "up" /\ ~working[m] /\ Env(m, status[m], load[m], TRUE)
@@ -114,7 +119,7 @@ Elapse(m) ==
     /\ since[m] = "fresh"
     /\ since' = [since EXCEPT ![m] = "bound"]
     /\ ticked' = FALSE
-    /\ UNCHANGED <<status, load, working, open, waiting, raised, ever, badWrite, falseClose, changes>>
+    /\ UNCHANGED <<status, load, working, open, waiting, raised, ever, badWrite, falseClose, changes, latched>>
 
 \* set --pegged-bound: a raised bound puts a stamp past the old bound under the new
 \* one, a lowered bound puts a stamp under the old bound past the new one
@@ -124,13 +129,13 @@ BoundChange(m) ==
     /\ changes' = changes + 1
     /\ since' = [since EXCEPT ![m] = IF since[m] = "fresh" THEN "bound" ELSE "fresh"]
     /\ ticked' = FALSE
-    /\ UNCHANGED <<status, load, working, open, waiting, raised, ever, badWrite, falseClose>>
+    /\ UNCHANGED <<status, load, working, open, waiting, raised, ever, badWrite, falseClose, latched>>
 
 Wait(m) ==
     /\ open[m] /\ ~waiting[m]
     /\ waiting' = [waiting EXCEPT ![m] = TRUE]
     /\ ticked' = FALSE
-    /\ UNCHANGED <<status, load, working, since, open, raised, ever, badWrite, falseClose, changes>>
+    /\ UNCHANGED <<status, load, working, since, open, raised, ever, badWrite, falseClose, changes, latched>>
 
 \* notify: a wait run out closes its judgment; the condition, when it stands, is
 \* raised again (the coordinator's re-arm: the count starts over)
@@ -140,17 +145,17 @@ WaitOut(m) ==
     /\ open' = [open EXCEPT ![m] = FALSE]
     /\ raised' = [raised EXCEPT ![m] = 0]
     /\ ticked' = FALSE
-    /\ UNCHANGED <<status, load, working, since, ever, badWrite, falseClose, changes>>
+    /\ UNCHANGED <<status, load, working, since, ever, badWrite, falseClose, changes, latched>>
 
 \* the condition notify is given (tickPegged): pegged, and either its stamp the bound
-\* old or its judgment open already (an episode's judgment stands until a real end,
-\* whatever the bound says now). The "nobound" witness also raises on a fresh stamp;
+\* old, or its judgment open already, or the episode latched (an episode's judgment stands until a real end,
+\* and a wait run out re-arms it at once even below a raised bound, whatever the bound says now). The "nobound" witness also raises on a fresh stamp;
 \* the "rebound" witness (e6c993f8) gives it only past the current bound.
 Stands(m) ==
     /\ Pegged(m)
     /\ \/ since[m] = "bound"
        \/ ("nobound" \in Broken /\ since[m] = "fresh")
-       \/ ("rebound" \notin Broken /\ open[m])
+       \/ ("rebound" \notin Broken /\ (open[m] \/ latched[m]))
 
 \* notify writes a judgment for a condition with none open ("every": whatever is
 \* open; "once": only if none was ever written for the member)
@@ -182,7 +187,8 @@ Tick ==
                     ELSE IF Writes(m) THEN raised[m] + 1
                     ELSE raised[m]]
     /\ ever' = [m \in Members |-> ever[m] \/ Writes(m)]
-    /\ badWrite' = [m \in Members |-> badWrite[m] \/ (Writes(m) /\ (since[m] # "bound" \/ status[m] # "up"))]
+    /\ badWrite' = [m \in Members |-> badWrite[m] \/ (Writes(m) /\ (status[m] # "up" \/ (since[m] # "bound" /\ ~latched[m])))]
+    /\ latched' = [m \in Members |-> IF ~Pegged(m) THEN FALSE ELSE latched[m] \/ Writes(m)]
     /\ falseClose' = [m \in Members |-> falseClose[m] \/ (Closes(m) /\ Pegged(m))]
     /\ ticked' = TRUE
     /\ UNCHANGED <<status, load, working, changes>>
@@ -206,7 +212,9 @@ Bounded == \A m \in Members : raised[m] <= 2
 OneJudgmentPerPeggedEpisode == \A m \in Members : raised[m] <= 1
 
 \* a judgment is written only for a member up whose stamp is the bound old: never
-\* on the stamp alone, never for a held or down member
+\* on the stamp alone, never for a held or down member; the one exception is the
+\* explicit re-arm of an episode already judged (latched), when a wait runs out under
+\* a bound raised meanwhile
 RaisedOnlyPastBound == \A m \in Members : ~badWrite[m]
 
 \* after the tick, a member no longer pegged has no judgment open
