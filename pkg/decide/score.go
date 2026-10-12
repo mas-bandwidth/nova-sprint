@@ -3,8 +3,6 @@ package decide
 import (
 	"context"
 	"maps"
-	"slices"
-	"strings"
 	"time"
 )
 
@@ -108,12 +106,6 @@ func Top(d Decision) (string, float64) {
 // ScoreOp is a landed diff's id in the record: the card at the head that landed.
 func ScoreOp(card, head string) string { return card + "@landed@" + head[:min(12, len(head))] }
 
-// CardOf is the card a score's id names: the part before @landed@, else the whole id.
-func CardOf(id string) string {
-	card, _, _ := strings.Cut(id, "@landed@")
-	return card
-}
-
 // Score asks the score decision over a landed card and its diff and records it under id
 // (Make: an id already recorded over the same card and diff is answered from the record).
 func Score(ctx context.Context, b Backend, card, diff, record, id string, at time.Time) (Decision, error) {
@@ -128,53 +120,4 @@ type Cluster struct {
 	Class string   `json:"class"`
 	Count int      `json:"count"`
 	Cards []string `json:"cards"`
-}
-
-// FindingsSkipped clusters the score decisions made at or after since by every class each
-// gives a p at or above bar, plus Unnamed for p(defect) at or above bar with no class there;
-// most cards first, then class order; scored is the decisions in the window. It also
-// returns the ids, in record order, of the score decisions it left out because their at
-// is not RFC 3339: such a decision cannot be placed in the window, and
-// the caller says so rather than count it as nothing (security#79 finding 3). A decision of
-// another kind is not a score and is never named.
-func FindingsSkipped(ds []Decision, since time.Time, bar float64) (clusters []Cluster, scored int, skipped []string) {
-	cards := map[string][]string{}
-	for _, d := range ds {
-		if d.Decision != ScoreName {
-			continue
-		}
-		at, err := time.Parse(time.RFC3339, d.At)
-		if err != nil {
-			skipped = append(skipped, d.ID)
-			continue
-		}
-		if at.Before(since) {
-			continue
-		}
-		scored++
-		named := false
-		for class, p := range ClassP(d) {
-			if p >= bar {
-				cards[class], named = append(cards[class], CardOf(d.ID)), true
-			}
-		}
-		if !named && PDefect(d) >= bar {
-			cards[Unnamed] = append(cards[Unnamed], CardOf(d.ID))
-		}
-	}
-	order := map[string]int{Unnamed: len(Classes())}
-	for i, c := range Classes() {
-		order[c.Name] = i
-	}
-	for class, cs := range cards {
-		slices.Sort(cs)
-		clusters = append(clusters, Cluster{Class: class, Count: len(cs), Cards: cs})
-	}
-	slices.SortFunc(clusters, func(a, b Cluster) int {
-		if a.Count != b.Count {
-			return b.Count - a.Count
-		}
-		return order[a.Class] - order[b.Class]
-	})
-	return clusters, scored, skipped
 }

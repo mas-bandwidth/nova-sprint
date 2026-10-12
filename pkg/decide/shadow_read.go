@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -82,59 +81,4 @@ type ReadScore struct {
 	TP, FP, FN, TN int
 	Precision      int
 	Recall         int
-}
-
-// heavyCard is the card a heavy-read verdict import names (the second word of its first line)
-// and whether the verdict calls the work broken: any label but ACCEPT.
-func heavyCard(d Decision) (card string, broken, ok bool) {
-	if d.Decision != "import-"+ImportVerdict || d.Outcome == nil {
-		return "", false, false
-	}
-	f := strings.Fields(firstLine(d.State))
-	if len(f) < 2 {
-		return "", false, false
-	}
-	return f[1], d.Outcome.Label != "ACCEPT", true
-}
-
-// ShadowReadScores scores the shadow reads against the heavy verdicts (joined by card, a
-// card's first verdict) and against the readers' outcome (the label on the shadow read itself),
-// heavy first. A shadow read with no gold yet, or whose card was dropped, is not counted.
-func ShadowReadScores(shadows, heavy []Decision) []ReadScore {
-	gold := map[string]bool{}
-	for _, h := range heavy {
-		if card, broken, ok := heavyCard(h); ok {
-			if _, seen := gold[card]; !seen {
-				gold[card] = broken
-			}
-		}
-	}
-	scores := []ReadScore{{Against: ScoreHeavy}, {Against: ScoreReaders}}
-	tally := func(s *ReadScore, said, broken bool) {
-		s.Count++
-		switch {
-		case said && broken:
-			s.TP++
-		case said:
-			s.FP++
-		case broken:
-			s.FN++
-		default:
-			s.TN++
-		}
-	}
-	for _, d := range shadows {
-		said := d.Answers["verdict"].Value == Bounce
-		if broken, ok := gold[d.Inputs["card"]]; ok {
-			tally(&scores[0], said, broken)
-		}
-		if d.Outcome != nil && (d.Outcome.Label == Bounce || d.Outcome.Label == Land) {
-			tally(&scores[1], said, d.Outcome.Label == Bounce)
-		}
-	}
-	for i := range scores {
-		s := &scores[i]
-		s.Precision, s.Recall = percent(s.TP, s.TP+s.FP), percent(s.TP, s.TP+s.FN)
-	}
-	return scores
 }

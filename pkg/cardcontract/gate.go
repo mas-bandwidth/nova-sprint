@@ -10,9 +10,11 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-
-	"github.com/mas-bandwidth/nova-sprint/pkg/pkgselect"
 )
+
+// gateRuns are the class-test packages a read only runs some tests of: CI runs them whole on
+// every change.
+var gateRuns = []string{"./internal/ci", "./internal/docs"}
 
 // THE READ'S GATE (docs/SPEC-CARD-CONTRACT.md, JOB.md). A read judges a diff, and the tests
 // it runs are the diff's: the packages it touches, and the packages whose tests read a doc it
@@ -20,7 +22,7 @@ import (
 // 2026-10-02, sixteen reads each ran `go test ./internal/ci/`, whose tests fork thousands of
 // processes and build every command, and the machine spent 85% of its CPU in the kernel. The
 // work's own gate ran those tests, and the pull request's CI runs the class-test packages
-// (pkgselect.EveryRun) on every change, so a read runs of them only the tests its diff
+// (gateRuns) on every change, so a read runs of them only the tests its diff
 // reaches: those in a test file it changes, and those in a test file that reads a doc it
 // changes.
 
@@ -55,7 +57,7 @@ func ReadGate(repo string, changed []string) (*Gate, error) {
 		return nil, nil
 	}
 	everyRun := map[string]bool{}
-	for _, p := range pkgselect.EveryRun {
+	for _, p := range gateRuns {
 		everyRun[strings.TrimPrefix(p, "./")] = true
 	}
 	g := &Gate{}
@@ -193,7 +195,7 @@ func writeReadGate(b *strings.Builder, s Staged) {
 		lines = append(lines, "nice -n 19 go build ./...")
 	}
 	b.WriteString("This is the read's gate, in place of the card's and of any rule that asks for more: the packages the change touches and the tests that read a doc it changes. Never run ./... or a package whole that is not on it: the work's own gate ran those, and the pull request's CI runs " +
-		strings.Join(pkgselect.EveryRun, " and ") + " on every change.")
+		strings.Join(gateRuns, " and ") + " on every change.")
 	if len(lines) == 0 {
 		b.WriteString(" This change touches nothing a read tests, so the read runs no go command: judge the diff.\n\n")
 		return

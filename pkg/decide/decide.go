@@ -81,22 +81,6 @@ type Backend interface {
 	Ask(ctx context.Context, s Schema, state string) (map[string]Answer, Usage, error)
 }
 
-// ParseSchema reads a schema and names every problem in it at once: a schema
-// with no name or no questions, a question of an unknown type, a choice with
-// fewer than two options, a noul carrying options, an empty statement.
-func ParseSchema(raw []byte) (Schema, error) {
-	var s Schema
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&s); err != nil {
-		return Schema{}, fmt.Errorf("the schema is not JSON of the shape {name, questions: {<name>: {type, instructions, criteria}}}: %w", err)
-	}
-	if problems := s.Problems(); len(problems) > 0 {
-		return Schema{}, fmt.Errorf("the schema %q: %s", s.Name, strings.Join(problems, "; "))
-	}
-	return s, nil
-}
-
 // Problems is every reason the schema cannot be asked.
 func (s Schema) Problems() []string {
 	var p []string

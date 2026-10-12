@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -58,17 +56,6 @@ func ParseBars(bounce, review string) (Bars, error) {
 		return Bars{}, errors.New(strings.Join(p, "; "))
 	}
 	return b, nil
-}
-
-// Route is where a read with this p(defect) goes.
-func (b Bars) Route(pDefect float64) string {
-	switch {
-	case pDefect >= b.Bounce:
-		return RouteBounce
-	case pDefect < b.Review:
-		return RouteLand
-	}
-	return RouteStrings
 }
 
 // BackendError is a backend that gave no answer within the schema: nothing was recorded.
@@ -124,59 +111,4 @@ func replays(have Decision, decision, schema, state string) error {
 		return &ConflictError{fmt.Sprintf("the op id %s is recorded for another decision, schema or state; an op id names one operation, so choose another", have.ID)}
 	}
 	return nil
-}
-
-// FirstRead is the read decision over a card and its diff, recorded under id (the read
-// card's id), and the route its p(defect) takes at the bars.
-func FirstRead(ctx context.Context, b Backend, bars Bars, card, diff, record, id string, at time.Time) (Decision, string, error) {
-	inputs := map[string]string{"card_sha256": Sum([]byte(card)), "diff_sha256": Sum([]byte(diff))}
-	d, _, err := Make(ctx, b, ReadSchema(), ReadState(card, diff, ""), record, id, inputs, at)
-	if err != nil {
-		return Decision{}, "", err
-	}
-	return d, bars.Route(PDefect(d)), nil
-}
-
-// PDefect is the read's p(defect).
-func PDefect(d Decision) float64 { return d.Answers["defect"].Prob("yes") }
-
-// Finding is a first read's report: p(defect) and the bar it met, the files the diff
-// changes, and the five answers. It names a file, so a bounce is a broken read with a
-// finding (docs/SPEC-CARD-CONTRACT.md section 3).
-func Finding(d Decision, bars Bars, files []string) string {
-	var b strings.Builder
-	p := PDefect(d)
-	fmt.Fprintf(&b, "decide: p(defect)=%.2f", p)
-	switch bars.Route(p) {
-	case RouteBounce:
-		fmt.Fprintf(&b, " at or above the bounce bar %.2f", bars.Bounce)
-	case RouteLand:
-		fmt.Fprintf(&b, " below the review bar %.2f", bars.Review)
-	default:
-		fmt.Fprintf(&b, " between the bars %.2f and %.2f", bars.Review, bars.Bounce)
-	}
-	if len(files) > 0 {
-		fmt.Fprintf(&b, " over %s", strings.Join(files, ", "))
-	}
-	b.WriteString("; answers:")
-	for _, name := range slices.Sorted(maps.Keys(d.Answers)) {
-		if a := d.Answers[name]; a.Type == Noul {
-			fmt.Fprintf(&b, " %s=%.2f", name, a.Prob("yes"))
-		} else {
-			fmt.Fprintf(&b, " %s=%s(%.2f)", name, a.Value, a.Prob(a.Value))
-		}
-	}
-	b.WriteString(" (the decide read, docs/SPEC-SPRINT.md section 6)")
-	return b.String()
-}
-
-// Settle attaches a strings read's verdict to the first read it followed: ok is LAND,
-// broken is BOUNCE. Any other verdict is no outcome and attaches nothing.
-func Settle(record, id, verdict, note string, at time.Time) error {
-	label := map[string]string{"ok": Land, "broken": Bounce}[verdict]
-	if label == "" {
-		return nil
-	}
-	_, _, err := Attach(record, Outcome{ID: id, Label: label, Note: note, At: at.UTC().Format(time.RFC3339)})
-	return err
 }

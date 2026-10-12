@@ -2,7 +2,6 @@ package decide
 
 import (
 	"context"
-	"slices"
 	"time"
 )
 
@@ -20,9 +19,6 @@ const (
 	// HighP is the probability at and above which agreement is also counted.
 	HighP = 0.95
 )
-
-// ShadowKey joins a shadow record to the real answer: the judgment's note and its card.
-func ShadowKey(d Decision) string { return d.Inputs["note"] + "|" + d.Inputs["card"] }
 
 // ShadowAsk asks the judgment decision over in through b and appends the answer, marked
 // shadow, to record under an id per note, card and state. A judgment already shadowed is
@@ -66,78 +62,4 @@ type KindAgreement struct {
 	HighCount int
 	HighAgree int
 	HighPct   int
-}
-
-// ShadowAgreement joins each shadow record to the real judgment-answer record of the same
-// note and card and scores the pairs per judgment kind, kinds in name order. A real answer is
-// the first for its note and card; verbs are compared as recorded.
-func ShadowAgreement(shadows, real []Decision) []KindAgreement {
-	answered := map[string]string{}
-	for _, r := range real {
-		if k := ShadowKey(r); answered[k] == "" {
-			answered[k] = r.Answers["verb"].Value
-		}
-	}
-	byKind := map[string]*KindAgreement{}
-	for _, s := range shadows {
-		verb, ok := answered[ShadowKey(s)]
-		if !ok {
-			continue
-		}
-		k := s.Inputs["kind"]
-		a := byKind[k]
-		if a == nil {
-			a = &KindAgreement{Kind: k}
-			byKind[k] = a
-		}
-		v := s.Answers["verb"]
-		agree := v.Value == verb
-		a.Count++
-		if agree {
-			a.Agree++
-		}
-		if v.Prob(v.Value) >= HighP {
-			a.HighCount++
-			if agree {
-				a.HighAgree++
-			}
-		}
-	}
-	out := make([]KindAgreement, 0, len(byKind))
-	for _, a := range byKind {
-		a.Pct, a.HighPct = percent(a.Agree, a.Count), percent(a.HighAgree, a.HighCount)
-		out = append(out, *a)
-	}
-	slices.SortFunc(out, func(x, y KindAgreement) int {
-		switch {
-		case x.Kind < y.Kind:
-			return -1
-		case x.Kind > y.Kind:
-			return 1
-		}
-		return 0
-	})
-	return out
-}
-
-func percent(n, of int) int {
-	if of == 0 {
-		return 0
-	}
-	return (100*n + of/2) / of
-}
-
-// ShadowPending is how many shadow records have no real answer yet.
-func ShadowPending(shadows, real []Decision) int {
-	answered := map[string]bool{}
-	for _, r := range real {
-		answered[ShadowKey(r)] = true
-	}
-	n := 0
-	for _, s := range shadows {
-		if !answered[ShadowKey(s)] {
-			n++
-		}
-	}
-	return n
 }

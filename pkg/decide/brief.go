@@ -199,35 +199,6 @@ func CardFilePaths(dir string) ([]string, error) {
 	return out, nil
 }
 
-// CardFiles is the cards a path names, id -> brief: a file is one card, a
-// directory its CardFilePaths (add --brief-dir's cards); a card's id is its file's
-// name without .md, and its brief the file's text with one trailing newline cut,
-// as nova-sprint add stores it.
-func CardFiles(path string) (map[string]string, error) {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	files := []string{path}
-	if fi.IsDir() {
-		if files, err = CardFilePaths(path); err != nil {
-			return nil, err
-		}
-	}
-	cards := map[string]string{}
-	for _, f := range files {
-		raw, err := os.ReadFile(f)
-		if err != nil {
-			return nil, err
-		}
-		cards[strings.TrimSuffix(filepath.Base(f), ".md")] = strings.TrimSuffix(string(raw), "\n")
-	}
-	if len(cards) == 0 {
-		return nil, fmt.Errorf("%s holds no *.md card file (a directory's cards are its *.md entries, none below it)", path)
-	}
-	return cards, nil
-}
-
 // LandLabel is the outcome a card's landing attaches to its brief: landed at
 // attempt 1, reworked at a later one, with the attempt in the note.
 func LandLabel(attempt string) (label, note string) {
