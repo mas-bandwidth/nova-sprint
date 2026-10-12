@@ -51,6 +51,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -235,7 +236,7 @@ type landJob struct {
 func (l *lander) fork(stream string) *lander {
 	f := *l
 	f.out, f.toScore, f.toCost = nil, nil, nil
-	f.ledgerLog, f.recLog, f.recNote, f.baseFix = nil, nil, "", ""
+	f.ledgerLog, f.recLog, f.recNote, f.baseFix, f.followed = nil, nil, "", "", ""
 	f.conflictKind, f.conflictPaths, f.cardTips = "", nil, nil
 	f.baseStop, f.baseCount, f.baseWhy = false, false, ""
 	f.gateHost, f.gateWall = "", 0
@@ -278,6 +279,10 @@ func (l *lander) openStream(s *sprint.Snapshot, stream string) ([]landCard, bool
 		l.prose = map[string][]string{}
 	}
 	l.prose[stream] = sprint.StreamProse(s, stream)
+	if l.trunks == nil {
+		l.trunks = map[string]string{}
+	}
+	l.trunks[stream] = sprint.Trunk(s, stream)
 	queue := landQueue(s, stream)
 	if len(queue) == 0 {
 		return refused("nothing queued to merge in stream " + stream + "; run: nova-sprint queue --stream " + stream)
@@ -332,6 +337,39 @@ func (l *lander) openStream(s *sprint.Snapshot, stream string) ([]landCard, bool
 		cards = append(cards, lc)
 	}
 	return cards, true
+}
+
+// cardBaseNow is the base a primary's brief names now (its BASE: line, as openStream reads
+// it), "" when the brief names none: what headWhy holds a pinned card's base to.
+func cardBaseNow(pr *sprint.Card) string {
+	if pr == nil {
+		return ""
+	}
+	return swarm.ReadCardBase([]byte(pr.F("brief"))).Ref
+}
+
+// basePinnedWhy is why the batch is not pushed, read immediately before the push: a pinned
+// card whose BASE: is no longer the base the batch was built onto; "" when every pin holds.
+// After the landing mark, sprint.Set refuses stream set --base whole while any card of the
+// stream is landing, so this read is a diagnostic of that fence: a refusal here names the
+// card and says the fence failed. Nothing is pushed; the card keeps its mark and the next
+// pass lands it on the base it names then.
+func (l *lander) basePinnedWhy(ctx context.Context, pins []landCard) string {
+	if l.dry || l.st == nil || len(pins) == 0 {
+		return ""
+	}
+	l.a.serial.Lock()
+	s, err := l.st.Load(ctx, []string{sprint.Work}, nil)
+	l.a.serial.Unlock()
+	if err != nil {
+		return "the cards' bases could not be read again before the push: " + oneline.Err(err) + "; nothing pushed"
+	}
+	for _, c := range pins {
+		if now := cardBaseNow(s.Work.Placed(c.id)); c.base != "" && now != "" && now != c.base {
+			return fmt.Sprintf("%s was re-pointed to BASE %s after its landing was marked, not %s as it was built: the stream set --base fence did not hold; nothing pushed, and the next pass lands it on its new base", c.id, now, c.base)
+		}
+	}
+	return ""
 }
 
 // landBatchMax is the most cards one batch merges. v1-4's batch of 99 cards spent 708 s
@@ -637,8 +675,17 @@ func (l *lander) ensureStreamBranch(ctx context.Context, s *sprint.Snapshot, clo
 	if base != sprint.StreamBranch(s, stream) {
 		return "" // the card names no stream branch: nothing to make
 	}
-	if out, err := l.git(ctx, clone, "rev-parse", "--verify", "refs/remotes/origin/"+base+"^{commit}"); err == nil && strings.TrimSpace(out) != "" {
+	// origin is asked, not the clone: the kept clone is --single-branch, so a stream branch
+	// origin holds has no remote-tracking ref here until something fetches it, and reading
+	// the ref alone took every existing stream branch for absent on the first land after a
+	// fresh clone: the trunk's tip was pushed over it (a silent fast-forward when the branch
+	// was behind, a rejected push and a held stream when it had commits of its own). One
+	// fetch of the branch by name answers both: it exists (and is now fetched), or origin
+	// says it does not (notOnOrigin) and it is made below.
+	if _, err := l.fetched(ctx, clone, "fetch", "--no-tags", "origin", "+refs/heads/"+base+":refs/remotes/origin/"+base); err == nil {
 		return "" // origin holds it already
+	} else if !containsAny(err.Error(), notOnOrigin) {
+		return "the stream branch " + base + " could not be fetched to see whether origin holds it: " + firstLine("", err)
 	}
 	trunk := sprint.Trunk(s, stream)
 	if _, err := l.fetched(ctx, clone, "fetch", "--no-tags", "origin", "+refs/heads/"+trunk+":refs/remotes/origin/"+trunk); err != nil {
@@ -673,7 +720,8 @@ func (l *lander) prepareCut(ctx context.Context, j *landJob) {
 }
 
 // buildNotes moves a build's notes onto the batch: the ledgers it resolved, the base fix it
-// landed first, and the cards' order after a cure.
+// landed first, and the cards' order after a cure. The stream branch's follow of its trunk
+// (followTrunk) rides on whatever line the batch ends with, kept or refused (keep).
 func (l *lander) buildNotes(j *landJob) {
 	j.b.Also, l.ledgerLog = append(j.b.Also, l.ledgerLog...), nil
 	if l.baseFix != "" {
@@ -1209,6 +1257,14 @@ func (l *lander) land(ctx context.Context, j *landJob, pushed []*landJob) {
 		}
 		if l.a.beforePush != nil {
 			l.a.beforePush(attempt)
+		}
+		// the last read before the push: every pinned card's BASE: is still the base the
+		// batch was built onto. The fence is sprint.Set, which refuses stream set --base
+		// whole while a card's landing is marked; a refusal here is that fence failing,
+		// said as such, and nothing is pushed (basePinnedWhy)
+		if why := f.basePinnedWhy(ctx, j.cards[:len(j.merged)]); why != "" {
+			j.refuse(why)
+			return
 		}
 		f.stage("push", "git push")
 		start = time.Now()

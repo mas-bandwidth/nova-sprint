@@ -397,41 +397,35 @@ type StreamSetBaseCheck struct {
 }
 
 // streamSetBaseCards is the cards of stream st that stream set --base re-points,
-// in work order: every primary not yet dealt (its attempt is 0) and every primary
-// whose merge card is queued to merge. A sentinel, a landed card and a dealt card
-// that is not queued keep their base; the second return is those kept cards, in
-// work order, for the verb's listing. A dealt and working card keeps its base
-// because its head is already cut on it (docs/SPEC-SPRINT.md section 11, stream
-// set --base).
-func streamSetBaseCards(s *Snapshot, st string) (repoint, keep []*Card) {
+// in work order: every primary of the stream not yet landed, whatever its column
+// (waiting, ready, dealt, working, review or merging). A stream's branch is the
+// one landing target of every card in it: the lander merges a card onto the
+// card's own BASE:, so a card left on the old base in review or merging landed
+// there (2026-10-12: two cards of a stream re-pointed to sprint/v1214b kept
+// BASE: main and landed on main). A sentinel and a landed card keep their base.
+// A working card takes the new base for its next attempt; its current attempt's
+// head, cut on the old base, is kept as it is: briefOnBase rewrites the BASE line
+// alone, so a CARRY: line in the brief (the pushed head the next attempt starts
+// from) is untouched, and the lander re-checks a review or merging card's head
+// against the new base at its land (docs/SPEC-SPRINT.md section 11, stream set
+// --base).
+func streamSetBaseCards(s *Snapshot, st string) (repoint []*Card) {
 	for _, c := range s.Work.Cards() {
 		if !c.Placed() || c.Row != st || IsSentinel(c) || c.Col == Landed {
 			continue
 		}
-		queued := false
-		if s.Merge != nil {
-			if m := s.Merge.Placed(c.ID); m != nil && m.Col == Queued {
-				queued = true
-			}
-		}
-		if c.Int("attempt") == 0 || queued {
-			repoint = append(repoint, c)
-			continue
-		}
-		keep = append(keep, c)
+		repoint = append(repoint, c)
 	}
-	return repoint, keep
+	return repoint
 }
 
 // StreamSetBaseChecks is the brief each card stream set --base re-points would
-// carry (streamSetBaseCards), in work order, for the check add runs: the cards not
-// yet dealt and those queued to merge. A dealt and working card is not in it: its
-// base is kept.
+// carry (streamSetBaseCards), in work order, for the check add runs: every card
+// of the stream not yet landed.
 func StreamSetBaseChecks(s *Snapshot, streams []string, base string) []StreamSetBaseCheck {
 	var out []StreamSetBaseCheck
 	for _, st := range streams {
-		repoint, _ := streamSetBaseCards(s, st)
-		for _, c := range repoint {
+		for _, c := range streamSetBaseCards(s, st) {
 			was := c.F("brief")
 			out = append(out, StreamSetBaseCheck{Stream: st, ID: c.ID, Was: was, Brief: briefOnBase(was, base)})
 		}
