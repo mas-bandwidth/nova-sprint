@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -94,17 +93,6 @@ func StopReturnArgv(row, card string, gen int, epoch string) []string {
 		return nil
 	}
 	return []string{"stop-return", "--as", row, card + "@" + strconv.Itoa(gen), "--epoch", epoch, "--reason", StopReturnReason}
-}
-
-// ParseMachine reads the machine's word off a beat's answer (`machine=RUNNING` or
-// `machine=STOPPED`); ok false when the answer carries none (a server before the word).
-func ParseMachine(answer string) (state string, ok bool) {
-	for _, w := range strings.Fields(answer) {
-		if v, found := strings.CutPrefix(w, "machine="); found {
-			return v, true
-		}
-	}
-	return "", false
 }
 
 // machineStopped says the machine's word, as the owner last read it, is STOPPED.

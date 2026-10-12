@@ -56,20 +56,31 @@ var fixStatuses = map[string]bool{"shipped": true, "in-progress": true, "planned
 // DecodeFixes reads one fixes file and returns it, or every shape problem of the
 // file together in one error.
 func DecodeFixes(file string, data []byte) (*Fixes, error) {
-	top, err := worklang.Read(file, data, Limits)
+	top, d, err := readTop(file, data, "fixes", "the fixes file is data")
 	if err != nil {
-		var r *worklang.Refusal
-		if errors.As(err, &r) {
-			return nil, fmt.Errorf("fixes: file=%s: %s", file, strings.ReplaceAll(r.Reason, "a plan is data", "the fixes file is data"))
-		}
 		return nil, err
 	}
-	d := &decoder{file: file}
 	fx := d.fixes(top)
 	if len(d.probs) > 0 {
 		return nil, errors.Join(d.probs...)
 	}
 	return fx, nil
+}
+
+// readTop reads one sexp file and returns its top form and a decoder ready to
+// fill it; it is the shared door of Decode and DecodeFixes, which use the same
+// limits, refusal rewording and problem collection, differing only in the kind
+// they name and the word for what the file is.
+func readTop(file string, data []byte, kind, substitute string) (worklang.Form, *decoder, error) {
+	top, err := worklang.Read(file, data, Limits)
+	if err != nil {
+		var r *worklang.Refusal
+		if errors.As(err, &r) {
+			return worklang.Form{}, nil, fmt.Errorf("%s: file=%s: %s", kind, file, strings.ReplaceAll(r.Reason, "a plan is data", substitute))
+		}
+		return worklang.Form{}, nil, err
+	}
+	return top, &decoder{file: file}, nil
 }
 
 func (d *decoder) status(at string, vals map[string]worklang.Form) string {

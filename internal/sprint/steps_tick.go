@@ -131,8 +131,8 @@ const ReworkOnAHigherTier = "rework with a fix on a higher tier"
 // TickDecisions are the decisions open to the tick's judgments.
 var TickDecisions = map[string][]string{
 	NFriendSyncFailing: {"ack", "wait"},
-	NBound:             {"rework with a fix", "drop"},    // never wait: it holds its card (wait_refused.go)
-	NCannotAsk:         {"reader add", "rework", "drop"}, // never wait: it holds its card (wait_refused.go)
+	NBound:             {"rework with a fix", "drop"}, // never wait: it holds its card (wait_refused.go)
+	NCannotAsk:         {"reader add", "wait"},        // a card no reader can be asked holds nothing: it waits for a reader (wait_refused.go)
 	NFewReaders:        {"reader up", "reader add", "wait"},
 	NNoMember:          {"fleet beat", "fleet up", "wait"},
 	NAdoptFailed:       {"fleet up <m>", "wait"},                     // named per member (fleet_back.go)
@@ -554,8 +554,14 @@ func acceptedNotice(p Plan, ids []string, now time.Time, who, to string) (Note, 
 	if len(streams) == 1 {
 		stream = streams[0]
 	}
-	n := happened(NReadyToMerge, stream, now, accepted...)
+	// The notice names only the cards newly queued (the group's count) and
+	// never accumulates the primaries of every accept the group has seen, which
+	// re-listed every card ever accepted in a ready to merge group
+	// (docs/SPEC-SPRINT.md, the ready to merge notice). The names are in the
+	// note's What; the group's count is the cards accepted.
+	n := happened(NReadyToMerge, stream, now)
 	n.Who, n.To = who, to
+	n.Count = len(accepted)
 	// the thing to run is land (git merges and pushes, then the merge step); merge alone
 	// records a landing without touching git; nova-sprint run --land lands by itself
 	lands := make([]string, len(streams))
@@ -837,6 +843,9 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		if b := Bench(c); len(b) > 0 {
 			continue
 		}
+		if AtEnvExitBound(s, c) != nil {
+			continue // at the environment-exit cap: offered to no friend until the seat acts
+		}
 		offer = append(offer, c)
 	}
 	// the ladder (priority.go, reads_priority.go): the cards above reader, then the friends'
@@ -878,6 +887,13 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 				cd.what += "; a second bound on tier " + cardTierOf(c) + ": not reworked on it again; " + held
 			}
 			conds = append(conds, cd)
+			continue
+		}
+		if wc := AtEnvExitBound(s, c); wc != nil {
+			// its children died on the environment EnvExitCardCap times at this attempt: the
+			// bound's judgment, once while it holds (a kind wait refuses), never dealt again
+			// until the seat reworks or drops it (docs/SPEC-SPRINT.md, "An environment exit")
+			conds = append(conds, cond{typ: NBound, stream: c.Row, card: wc.ID, primaries: []string{c.ID}, what: envExitBoundWhat(wc, c.ID)})
 			continue
 		}
 		if wc, takes := AtStagingBound(s, c, up); wc != nil {

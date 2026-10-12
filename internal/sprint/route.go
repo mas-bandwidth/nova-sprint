@@ -223,6 +223,10 @@ const (
 	// the tier its brief's line 1 names is its ceiling. Add writes pro on a card whose
 	// gate's measured wall is over the flash bound (gate_wall.go).
 	FieldTierNow = "tier_now"
+	// FieldReadFallbackNote is the note a read card carries when its read is drawn one
+	// tier down: the card's tier no reader serves, so the read falls to the strongest
+	// tier at or below it a reader up serves ("read at heavy: no frontier reader").
+	FieldReadFallbackNote = "read_fallback_note"
 )
 
 // modelRead is the memo of one brief's model lines (cardhdr.ReadModel): the model
@@ -909,6 +913,45 @@ func (s *Snapshot) readTierOf(pr *Card) string {
 	return t
 }
 
+// readTierDrawn is the tier a machine read of the primary is drawn on: readTierOf's
+// collapse, and when no reader up serves that tier, the strongest tier at or below the
+// card's own that a reader up serves — a card at a tier no reader serves is read one tier
+// down (docs/SPEC-SPRINT.md section 6, who reads), so a frontier card is read at heavy
+// while a heavy reader is up and no frontier reader is. Friends read at friendReadTier,
+// never here, so the friend path is untouched. With no readers table (a core snapshot
+// holds every reader up) it is readTierOf's own return.
+func (s *Snapshot) readTierDrawn(pr *Card) string {
+	t := s.readTierOf(pr)
+	if s.anyReaderUpServes(t) {
+		return t
+	}
+	own := friendReadTier(s, pr)
+	if i := slices.Index(capLadder, own); i >= 0 {
+		for j := i; j >= 0; j-- {
+			if cand := capLadder[j]; s.anyReaderUpServes(cand) {
+				return cand
+			}
+		}
+	}
+	return t
+}
+
+// anyReaderUpServes says a reader up serves tier: a fleet reader with its row's tiers,
+// a friend's reader with its own model, exactly as readerServesTier decides for one
+// reader. With no readers table (a core snapshot holds every reader up) it is always
+// served, so the fallback above never fires there.
+func (s *Snapshot) anyReaderUpServes(tier string) bool {
+	if s.Readers == nil {
+		return true
+	}
+	for _, r := range s.UpReaders() {
+		if s.readerServesTier(r, tier) {
+			return true
+		}
+	}
+	return false
+}
+
 // readRouteOf is the route fields of one read card the ask creates for the
 // primary pr: the read is drawn as a work card is, from the array of pr's read tier
 // (readTierOf, written on the read card as FieldTier) at that tier's rolling index, the index moved past the entry
@@ -924,9 +967,15 @@ func (s *Snapshot) readTierOf(pr *Card) string {
 // no route or none serves the tier: the read carries no route and its reader runs its
 // own --model.
 func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[string]string {
-	tier, key := s.readTierOf(pr), pr.ID
+	tier, key := s.readTierDrawn(pr), pr.ID
+	base := map[string]string{FieldTier: tier}
+	if s.readTierOf(pr) != tier {
+		if own := friendReadTier(s, pr); own != "" {
+			base[FieldReadFallbackNote] = "read at " + tier + ": no " + own + " reader"
+		}
+	}
 	if len(s.Routes) == 0 || ri[tier] == nil {
-		return map[string]string{FieldTier: tier}
+		return base
 	}
 	served := make([]Route, 0, len(s.Routes))
 	for _, r := range s.Routes {
@@ -952,13 +1001,16 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 	at := ri[tier].r.count
 	r, steps, ok := preferFirst(arr, func(name string) (Route, bool) { return routeByName(served, name) }, skip, other, at)
 	if !ok {
-		return map[string]string{FieldTier: tier}
+		return base
 	}
 	ri[tier].r.count += steps
 	was, _ := strconv.ParseUint(ri[tier].moves[key], 10, 64)
 	ri[tier].moves[key] = strconv.FormatUint(was+steps, 10)
 	out := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness,
 		FieldDeadline: strconv.Itoa(r.Deadline), FieldTier: tier}
+	if note := base[FieldReadFallbackNote]; note != "" {
+		out[FieldReadFallbackNote] = note
+	}
 	// a read on a limited route carries its limits too: its reader's requests take the
 	// same budget (rate_budget.go), and its take is held by the provider's concurrency
 	maps.Copy(out, rateFields(s, r))

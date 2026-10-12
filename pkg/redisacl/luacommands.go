@@ -51,12 +51,6 @@ func wordSet(words string) map[string]bool {
 	return out
 }
 
-// reLuaComment strips a comment to the end of its line, as directCalls
-// (luacommands_test.go) reads a file's direct calls with it; a "--" inside a
-// quoted value is a comment to that reading, so it only ever misses calls.
-// commandsOf reads a file as Lua's own lexer does and does not use it.
-var reLuaComment = regexp.MustCompile(`(?m)--.*$`)
-
 var (
 	reLuaCommandWord = regexp.MustCompile(`^[A-Z][A-Z_]*$`)
 	reLuaSubcommand  = regexp.MustCompile(`^[A-Za-z-]+$`)

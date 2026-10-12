@@ -86,17 +86,28 @@ func formString(f worklang.Form) string {
 // side removed is gone, one a side added is there as added (both adding one id differently
 // is a conflict), and nothing else is there.
 func evidenceMerged(file string, base, ours, theirs, merged []byte) error {
-	var e [3]map[string]string
+	return entriesMerged(evidenceEntries, unionKeys[string], file, base, ours, theirs, merged)
+}
+
+// entriesMerged holds the merged data to what the two sides did, entry by entry: an entry
+// all three share is the side's that changed it (both changing it differently is a
+// conflict), one a side removed is gone, one a side added is there as added (both adding
+// one id differently is a conflict), and nothing else is there. It is the three-way merge
+// frame the evidence and roadmap ledgers share: parse reads one side into records keyed by
+// id, unionKeys their sorted keys. evidenceMerged (this file) and sexpEntriesMerged
+// (landsexp.go) each call it with their own entry parse and key union.
+func entriesMerged[V comparable](parse func(file string, data []byte) (map[string]V, error), unionKeys func(...map[string]V) []string, file string, base, ours, theirs, merged []byte) error {
+	var e [3]map[string]V
 	for i, side := range [][]byte{base, ours, theirs} {
-		m, err := evidenceEntries(file, side)
+		m, err := parse(file, side)
 		if err != nil {
 			return fmt.Errorf("a side does not decode: %s", oneLineErr(err))
 		}
 		e[i] = m
 	}
 	b, o, t := e[0], e[1], e[2]
-	want := map[string]string{}
-	for _, k := range unionKeysString(b, o, t) {
+	want := map[string]V{}
+	for _, k := range unionKeys(b, o, t) {
 		bv, inB := b[k]
 		ov, inO := o[k]
 		tv, inT := t[k]
@@ -122,11 +133,11 @@ func evidenceMerged(file string, base, ours, theirs, merged []byte) error {
 			want[k] = tv
 		}
 	}
-	got, err := evidenceEntries(file, merged)
+	got, err := parse(file, merged)
 	if err != nil {
 		return fmt.Errorf("the merged data does not decode: %s", oneLineErr(err))
 	}
-	for _, k := range unionKeysString(want, got) {
+	for _, k := range unionKeys(want, got) {
 		wv, inW := want[k]
 		gv, inG := got[k]
 		switch {
@@ -141,8 +152,8 @@ func evidenceMerged(file string, base, ours, theirs, merged []byte) error {
 	return nil
 }
 
-// unionKeysString is the keys of the maps, sorted, each once.
-func unionKeysString(ms ...map[string]string) []string {
+// unionKeys is the keys of the maps, sorted, each once.
+func unionKeys[V any](ms ...map[string]V) []string {
 	var out []string
 	for _, m := range ms {
 		for k := range m {

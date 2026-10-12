@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/stretchr/testify/assert"
-	"strings"
 	"testing"
 )
 
@@ -20,19 +19,13 @@ func TestLandReviewRefusesWrongEpochBeforePush(t *testing.T) {
 func TestLandReviewGitIdentityFailureDoesNotBlameCard(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
+	r.m.SetGitIdentity("")
 	r.ok("add --stream s1 --count 1 --one")
 	r.queued(map[string]string{"s1-1": r.head("s1-1", "main", "a.txt", "a\n")}, "s1-1")
 	before := r.streamState("s1")
-	env := []string{}
-	for _, e := range r.env {
-		if !strings.HasPrefix(e, "GIT_AUTHOR_NAME=") && !strings.HasPrefix(e, "GIT_COMMITTER_NAME=") {
-			env = append(env, e)
-		}
-	}
-	r.a.gitEnv = append(env, "GIT_AUTHOR_NAME=", "GIT_COMMITTER_NAME=")
 	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
 	assert.NotEqual(t, 0, code, out+errs)
-	assert.Equal(t, before, r.streamState("s1"), "environment failure must leave queue unchanged: %s", out+errs)
+	assert.Equal(t, before, r.streamState("s1"), "no identity must leave queue unchanged: %s", out+errs)
 	assert.Equal(t, map[string]string{"s1-1": "merging/queued"}, r.places("s1-1"))
 }
 

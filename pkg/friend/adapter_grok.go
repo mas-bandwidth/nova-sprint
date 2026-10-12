@@ -249,16 +249,6 @@ func GrokMonitorLine(wake string) string {
 	return "monitor `tail -n 0 -F " + wake + "`"
 }
 
-// GrokInstallLine is the NOTE install prints for harness grok. Every other
-// harness gets none. session is --session, the wake file, empty when the
-// session chooses the path.
-func GrokInstallLine(harness, session string) string {
-	if harness != "grok" {
-		return ""
-	}
-	return GrokMonitorLine(session)
-}
-
 // Route is what status says. push: a tail of an absolute .wake file runs
 // under the open window's pid, so a delivery now is a turn in that window.
 // defer: no such tail; line is the monitor line the session runs. A listing

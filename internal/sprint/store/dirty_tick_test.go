@@ -572,8 +572,8 @@ func TestAnAcceptHeldBackByTheQueueEmitsNoPhantomReadyToMergeNote(t *testing.T) 
 		require.Equal(t, sprint.StreamMerging, h.table().StreamCtl("s1").F("state"), "the stream follows the card accepted")
 		require.Equal(t, 1, h.written(sprint.NStartedMerging))
 		rtm := h.readyToMerge()
-		require.Equal(t, []string{"s1-2"}, rtm.Primaries)
 		require.Equal(t, 1, rtm.Count)
+		require.Contains(t, rtm.What, "s1-2")
 		require.NotContains(t, rtm.What, "s1-1")
 
 		// the next tick accepts the held card

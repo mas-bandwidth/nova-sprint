@@ -364,8 +364,23 @@ func scriptVerified(s *Snapshot, pr *Card) bool {
 // goes back to work with the finding. A read pinned to an older head is about
 // work the card moved past and stands for nothing (readHeadMatches).
 func hasBrokenAtHead(s *Snapshot, pr *Card) bool {
+	if coordinatorBrokenAtHead(pr) {
+		return true
+	}
 	_, broken := standingReads(s, pr, pr.Int("attempt"))
 	return len(broken) > 0
+}
+
+// coordinatorBrokenAtHead says the primary carries the coordinator's own broken
+// read at its current attempt and head (read --as <coordinator> --broken): it
+// stands as a reader's broken read does, so accept refuses the head until the
+// card is reworked or the finding answered.
+func coordinatorBrokenAtHead(c *Card) bool {
+	if c == nil {
+		return false
+	}
+	return c.F(FieldHeavyReader) != "" && c.F(FieldHeavyVerdict) == "broken" &&
+		c.F(FieldHeavyAttempt) == c.F("attempt") && c.F(FieldHeavyHead) == c.F("head")
 }
 
 // acceptable says the primary has ok reads from ReadsNeededIn different readers
@@ -518,7 +533,7 @@ func ReadCardForAsk(s *Snapshot, primary string, attempt int, reader string) (id
 //
 // tla/ReaderTiers.tla Eligible
 func (s *Snapshot) freeReaders(pr *Card, attempt int) []string {
-	tier := s.readTierOf(pr)
+	tier := s.readTierDrawn(pr)
 	var out []string
 	for _, rd := range s.Readers.Rows() {
 		if s.ReaderIsUp(rd) && s.readerServesTier(rd, tier) {
@@ -1025,6 +1040,7 @@ const (
 	FieldHeavyReader    = "heavy_reader"
 	FieldHeavyKind      = "heavy_kind"
 	FieldHeavyVerdict   = "heavy_verdict"
+	FieldHeavyFinding   = "heavy_finding"
 	FieldHeavyEvidence  = "heavy_evidence"
 	FieldHeavySHA       = "heavy_evidence_sha256"
 	FieldHeavyReason    = "heavy_reason"

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -222,9 +223,20 @@ func (a *app) cmdPromote(args []string, stdout, stderr io.Writer) int {
 	if a.now != nil {
 		now = a.now()
 	}
+	// the machine's commit identity, read before any git: a promotion whose sprint row names
+	// none refuses to cut, naming the setting (docs/SPEC-SPRINT.md, the machine's commit
+	// identity). The cut's commit-tree and the gate and gh the promotion runs all take it.
+	identity, why := a.promoteIdentity(context.Background(), *c)
+	if why != "" {
+		return refuse(stderr, "promote", why)
+	}
+	env := a.gitEnv
+	if env == nil {
+		env = os.Environ()
+	}
 	p := &promoter{
 		dir: *repo, live: *branch, base: *base, check: *check,
-		now: now, dry: *dry, env: a.gitEnv,
+		now: now, dry: *dry, env: withMachineGitIdentity(env, identity),
 		every: *every, landings: *landings, started: now,
 	}
 	if f, ok := promoteForges.Load(*repo); ok {
@@ -297,6 +309,18 @@ func (a *app) cmdPromote(args []string, stdout, stderr io.Writer) int {
 			}
 		}
 	}
+}
+
+// promoteIdentity reads the sprint row's git_identity for a promotion: the author and
+// committer environment the cut and the gate carry, and a refusal when none is configured
+// (docs/SPEC-SPRINT.md, the machine's commit identity). The promotion's cut commit
+// (mergeTarget) is the machine's own commit and must never carry the owner's.
+func (a *app) promoteIdentity(ctx context.Context, c common) ([]string, string) {
+	st, err := a.store(c)
+	if err != nil {
+		return nil, "the git identity could not be read: " + oneline.Err(err)
+	}
+	return readMachineIdentity(ctx, st, "promotion")
 }
 
 // step is one promote pass: fetch, cut from origin's sprint tip, merge the

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 )
 
 // The doctor's checks (doctor.go), one test per check, each on a twin of the sprint (the world:
@@ -24,6 +25,7 @@ func doctorWorld(t *testing.T) *world {
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 4}))
 	w.s.Routes = []Route{{Name: "flash-oc", Tier: cardhdr.RouteFlash, Provider: "p", Model: "a", Enabled: true, Deadline: 600}}
 	w.s.ReaderStates = map[string]string{"reader-m1": ReaderUp}
+	w.s.GitIdentity = config.DefaultGitIdentity
 	return w
 }
 

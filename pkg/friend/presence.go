@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -171,17 +170,6 @@ type PresenceStatus struct {
 	Checks    int       `json:"checks"`
 	Answers   int       `json:"answers"`
 	Answered  string    `json:"answered,omitempty"` // the nonce the session last answered
-}
-
-func presencePath(stateDir string) string { return filepath.Join(stateDir, PresenceFile) }
-
-// WritePresence writes the presence file, whole.
-func WritePresence(stateDir string, s PresenceStatus) error { return write(presencePath(stateDir), s) }
-
-// ReadPresence is the presence file; found is false when no daemon wrote one.
-func ReadPresence(stateDir string) (s PresenceStatus, found bool, err error) {
-	found, err = read(presencePath(stateDir), &s)
-	return s, found, err
 }
 
 // SessionCheck is the daemon's side of presence: it reads the bus log for the

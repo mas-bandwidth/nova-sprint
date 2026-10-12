@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
 	"github.com/mas-bandwidth/nova-sprint/pkg/member"
 )
@@ -461,12 +462,10 @@ func answeredByNew(e string, news []string) bool {
 	})
 }
 
-// covers says one entry of scope names the file p: the file, a directory above it, or a glob.
+// covers says one entry of scope names the file p: the file, a directory above it, or a
+// glob (diffcheck.Covers, the one reading of a PATHS entry the lander's E12 check shares).
 func covers(scope []string, p string) bool {
-	return slices.ContainsFunc(scope, func(e string) bool {
-		e = cleanEntry(e)
-		return e == p || strings.HasPrefix(p, e+"/") || hygiene.MatchGlob(e, p)
-	})
+	return slices.ContainsFunc(scope, func(e string) bool { return diffcheck.Covers(e, p) })
 }
 
 // coversDir says scope reaches into the directory dir: it names dir, a directory above it, or

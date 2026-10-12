@@ -151,6 +151,14 @@ func AcceptStep(r sprint.AcceptReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Accept(s, r) }}
 }
 
+// CoordinatorReadStep is the coordinator's own read through the read verb
+// (read --as <coordinator> --ok|--broken <card> --finding <text>): it records the
+// read on the primary, counted as one of the reads the card needs.
+func CoordinatorReadStep(r sprint.CoordinatorReadReq) Step {
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet), Mirrors: true, ReportsWork: r.Verdict != "ok",
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.CoordinatorRead(s, r) }}
+}
+
 // ReworkStep is the coordinator sending work back with a fix.
 func ReworkStep(r sprint.ReworkReq) Step {
 	return Step{Answers: r.Answers, Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "rework", Load: tables(sprint.Work, sprint.Readers, sprint.Fleet, sprint.Merge), Mirrors: true, Routes: true, Friends: true,

@@ -48,30 +48,6 @@ func LaneCap(tier string, caps map[string]time.Duration) time.Duration {
 	return DefaultLaneCaps["frontier"]
 }
 
-// ParseLaneCaps reads the row's lane caps off her beat's answer
-// (row_lane_caps=flash:15m,pro:45m,heavy:1h30m,frontier:2h30m, beside row_mode and
-// row_width); ok is false when the answer carries none, or one with a pair that is no
-// tier:duration above zero.
-func ParseLaneCaps(answer string) (caps map[string]time.Duration, ok bool) {
-	for _, w := range strings.Fields(answer) {
-		v, found := strings.CutPrefix(w, "row_lane_caps=")
-		if !found {
-			continue
-		}
-		caps = map[string]time.Duration{}
-		for _, pair := range strings.Split(v, ",") {
-			tier, dur, cut := strings.Cut(pair, ":")
-			d, err := time.ParseDuration(dur)
-			if !cut || tier == "" || err != nil || d <= 0 {
-				return nil, false
-			}
-			caps[tier] = d
-		}
-		return caps, true
-	}
-	return nil, false
-}
-
 // CappedWords is how a capped card's end names the cap, the words the sprint reads off its
 // failed finish (internal/sprint ParseLaneCap): `capped at <cap> (tier <tier>, overrun <d>)`,
 // overrun the card's wall past the cap when the lane ended it.
