@@ -333,6 +333,9 @@ type SetReq struct {
 	// Prose is the streams' prose globs (FieldProse): comma separated, default or none
 	// takes them off.
 	Prose string `json:",omitempty"`
+	// DefaultTier is the streams' default tier (FieldDefaultTier): the tier add stores a card
+	// with when its brief's line 1 names none; default or none takes it off.
+	DefaultTier string `json:",omitempty"`
 	// The backlog alarms' thresholds (alarms.go): a count, a percent, on, or off.
 	AlarmReview  string `json:",omitempty"`
 	AlarmMerging string `json:",omitempty"`
@@ -405,6 +408,14 @@ func Set(s *Snapshot, r SetReq) Plan {
 				why = append(why, "--prose wants path globs (security/**, ratings/**), comma separated, or "+ReadTierDefault+" to take them off; found "+r.Prose)
 				break
 			}
+		}
+	}
+	if r.DefaultTier != "" {
+		if len(r.Streams) == 0 {
+			why = append(why, "--default-tier is a stream's, not the sprint's: nova-sprint stream set <stream> --default-tier "+r.DefaultTier)
+		}
+		if r.DefaultTier != ReadTierDefault && r.DefaultTier != "none" && !slices.Contains(tierLadder, r.DefaultTier) {
+			why = append(why, "--default-tier wants flash, pro or heavy, or "+ReadTierDefault+" to take it off; found "+r.DefaultTier)
 		}
 	}
 	if r.GoLanes != "" && r.GoLanes != ReadTierDefault {
@@ -509,7 +520,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
 	}
-	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
+	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
 		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --friend-stall-after, --friend-stall-step, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
 	}
 	if len(r.Streams) > 0 && r.GoLanes != "" {
@@ -600,6 +611,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 				{FieldRelease, r.Release, "release", "none"},
 				{FieldDisplay, r.Display, "display", "none"},
 				{FieldProse, r.Prose, "prose", "none"},
+				{FieldDefaultTier, r.DefaultTier, "default-tier", "none"},
 			} {
 				switch f.v {
 				case "":
