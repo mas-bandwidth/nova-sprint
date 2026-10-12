@@ -378,7 +378,8 @@ func TickEndWith(rules, idle bool) []TickPartDef {
 			out = append(out, p)
 		}
 	}
-	out = append(out, TickEnd[2])
+	// the fleet's failure is a judgment, not a rule answer: raised with the rules off too
+	out = append(out, TickPartDef{PartFleetFailure, TickFleetFailure}, TickEnd[2])
 	if idle {
 		out = append(out, TickPartDef{PartIdle, TickIdle})
 	}

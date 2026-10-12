@@ -5847,11 +5847,13 @@ happen again"). Two rules make it so, the tool and not the seat's discipline:
   `TestWaitByAliasIsRefusedOnFailedWork`, `TestWaitStillWorksOnAnAlarm`).
 - **The fleet's failure is judged at once.** When `RuleSameFailureCards` or more cards have
   recorded the same failure within `RuleFleetWindow` (an hour of running time), in any column
-  but landed and in one tick or one a tick, the tick part `rule fleet failure` raises one
+  but landed, each card counted only while its last finish is that failure, in one tick or one a
+  tick and with the rules on or off, the tick part `fleet failure` raises one
   sprint-level judgment, `the same
   failure on many cards: the fleet's, not the card's`, naming the failure and the cards, at
   their first failure, never per card; it takes no wait, is acked once its cause is mended, and
-  is not raised again for that failure while it is open (`TestASharedFailureIsOneFleetJudgmentAtOnce`).
+  is not raised again for that failure while it is open, nor after its ack until a new failure
+  of it finishes (`TestASharedFailureIsOneFleetJudgmentAtOnce`).
   A brief that pins its model or the frontier tier is reworked on its tier the same way
   (`TestAPinnedModelFailureReworksOnItsTier`, `TestAFrontierTierFailureReworksOnItsTier`).
 

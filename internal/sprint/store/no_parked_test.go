@@ -279,3 +279,44 @@ func TestAnAckedFleetFailureHoldsUntilANewFailure(t *testing.T) {
 	h.machine()
 	assert.Len(t, h.judgmentsOf(sprint.NFleetFailure), 1, "a new failure of the class after the ack raises it again")
 }
+
+// A card whose failure was repaired by a successful finish no longer counts, so an acked alarm
+// is not reopened by it; and the fleet's failure is raised with the rules off too.
+func TestARepairedFailureDoesNotReopenAnAckedFleetFailure(t *testing.T) {
+	t.Parallel()
+	h := ruled(t)
+	n := sprint.RuleSameFailureCards
+	h.addReady("s1", n, briefOf("flash", ""))
+	h.startMachine()
+	h.machine()
+	report := "step 2 broken: post: exit0 go vet ./...: exit status 126; exec: go: Permission denied"
+	for i := 1; i <= n; i++ {
+		h.failTake(fmt.Sprintf("s1-%d.w1", i), report)
+	}
+	h.machine()
+	open := h.judgmentsOf(sprint.NFleetFailure)
+	require.Len(t, open, 1)
+	h.tick(time.Minute)
+	h.finishAttempt("s1-1", false, "0123456789abcdef0123456789abcdef01234567") // repaired: a successful finish
+	h.must(AckStep(sprint.AckReq{Notes: []string{open[0].Note.ID}, Reason: "mended", Who: h.st.Actor}))
+	for range 2 {
+		h.tick(time.Minute)
+		h.machine()
+		require.Empty(t, h.judgmentsOf(sprint.NFleetFailure), "a repaired card is no new failure; a repeated tick raises nothing")
+	}
+}
+
+func TestTheFleetFailureIsRaisedWithTheRulesOff(t *testing.T) {
+	t.Parallel()
+	h := ruled(t)
+	h.st.AnswerRules = false
+	n := sprint.RuleSameFailureCards
+	h.addReady("s1", n, briefOf("flash", ""))
+	h.startMachine()
+	h.machine()
+	for i := 1; i <= n; i++ {
+		h.failTake(fmt.Sprintf("s1-%d.w1", i), "step 2 broken: exec: go: Permission denied")
+	}
+	h.machine()
+	assert.Len(t, h.judgmentsOf(sprint.NFleetFailure), 1, "the alarm does not depend on the rules")
+}
