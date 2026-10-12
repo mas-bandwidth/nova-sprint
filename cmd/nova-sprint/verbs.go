@@ -2882,7 +2882,7 @@ func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 	return a.setVerb("drop", args, stdout, stderr, true, func(fs flagSet) {
 		reason = fs.String("reason", "", "why it leaves the table; kept with its record")
 		ans = fs.String("answers", "", answersWords)
-		cascade = fs.Bool("cascade", false, "drop too every waiting primary that needs a card named, and their dependants, with the same reason; without it a card another waiting primary still needs is refused, naming the dependants")
+		cascade = fs.Bool("cascade", false, "drop too every waiting primary that needs a card named, and their dependants, with the same reason; without it a card another open primary still needs is refused, naming the dependants")
 		replacedBy = fs.String("replaced-by", "", "the successor the dropped card becomes an alias of, recorded as relink records it: a need on the dropped id resolves to it and is not refused")
 	}, func(ids []string, s *sel) string {
 		if *reason == "" || len(ids) == 0 && s.stream == "" && s.col == "" {

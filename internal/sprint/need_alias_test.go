@@ -56,7 +56,7 @@ func TestRelinkRewritesANeedInAnyColumn(t *testing.T) {
 	require.Equal(t, Working, w.state("s1-1"))
 	require.Equal(t, Ready, w.state("s1-2"))
 
-	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-2"}}, Reason: "recut", Who: "coordinator"}))
+	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-2"}}, Reason: "recut", ReplacedBy: "twin", Who: "coordinator"}))
 	w.must(Relink(w.s, RelinkReq{Old: []string{"s1-2"}, New: "twin", Who: "coordinator"}))
 
 	require.Equal(t, "twin", w.s.Work.Card("s1-1").F("needs"), "the working card's need is re-pointed")
@@ -64,8 +64,9 @@ func TestRelinkRewritesANeedInAnyColumn(t *testing.T) {
 }
 
 // relink old -> new records the alias on the old card's kept record, so it
-// outlives the drop (item 1): after the drop of s1-2 (a working card still
-// needs it) relink s1-2 -> twin leaves the alias behind on s1-2's record.
+// outlives the drop (item 1): after the drop of s1-2 (--cascade, a working
+// card still needs it) relink s1-2 -> twin leaves the alias behind on s1-2's
+// record, which the cascade drop did not record.
 func TestRelinkRecordsAnAliasOnTheDroppedCard(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 2) // s1-1, s1-2 ready
@@ -74,7 +75,7 @@ func TestRelinkRecordsAnAliasOnTheDroppedCard(t *testing.T) {
 	w.must(NeedsSet(w.s, NeedsSetReq{ID: "s1-1", Needs: []string{"s1-2"}, Who: "coordinator"}))
 	require.Equal(t, Working, w.state("s1-1"))
 
-	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-2"}}, Reason: "recut", Who: "coordinator"}))
+	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-2"}}, Reason: "recut", Cascade: true, Who: "coordinator"}))
 	w.must(Relink(w.s, RelinkReq{Old: []string{"s1-2"}, New: "twin", Who: "coordinator"}))
 
 	require.Equal(t, "twin", AliasOf(w.s, "s1-2"), "relink records the alias on the dropped card")
@@ -125,6 +126,22 @@ func TestRuleElevenResolvesANeedThroughTheAlias(t *testing.T) {
 	for _, v := range Check(w.s, nil) {
 		require.NotEqual(t, 11, v.Rule, "rule 11 holds b, but the alias target landed: %v", v)
 	}
+}
+
+// drop of a card with no successor refuses while ANY card names it as a need,
+// whatever its column (item 4): a working card that names the dropped id is
+// refused too, not only a waiting primary (steps_review.go, openNeeding).
+func TestDropRefusesWhileAnyColumnNamesIt(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 2) // s1-1, s1-2 ready
+	w.must(Deal(w.s, DealReq{Sel: Sel{Only: []string{"s1-1"}}}))
+	w.must(NeedsSet(w.s, NeedsSetReq{ID: "s1-1", Needs: []string{"s1-2"}, Who: "coordinator"}))
+	require.Equal(t, Working, w.state("s1-1"))
+
+	p := Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-2"}}, Reason: "recut", Who: "coordinator"})
+	require.Len(t, p.Refused, 1, "a working card naming the dropped id is refused: %+v", p)
+	require.Equal(t, "s1-2", p.Refused[0].Key)
+	require.Contains(t, p.Refused[0].Why, "s1-1", "the refusal names the working dependant: %+v", p)
 }
 
 func joined(ss []string) string {

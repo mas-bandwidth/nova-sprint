@@ -2062,17 +2062,21 @@ func orEmpty(c *Card, id string) *Card {
 	return c
 }
 
-// waitingNeeding is the waiting primaries that name id and are not dropping:
-// the dependants a drop without cascade refuses, read from every waiting
-// card's needs field (docs/SPEC-SPRINT.md section 11).
-func waitingNeeding(s *Snapshot, id string, dropping map[string]bool) []string {
+// openNeeding is the open primaries that name id and are not dropping: the
+// dependants a drop without cascade refuses, read from every open column's
+// needs field, not only waiting (docs/SPEC-SPRINT.md section 11; a ready,
+// working, review or merging card that names the dropped id is refused too,
+// so a no-successor drop can never leave a need on a dropped id to block it).
+func openNeeding(s *Snapshot, id string, dropping map[string]bool) []string {
 	var out []string
-	for _, w := range s.Work.Column(Waiting) {
-		if dropping[w.ID] {
-			continue
-		}
-		if contains(Split(w.F("needs")), id) {
-			out = append(out, w.ID)
+	for _, col := range []State{Waiting, Ready, Working, Review, Merging} {
+		for _, w := range s.Work.Column(col) {
+			if dropping[w.ID] {
+				continue
+			}
+			if contains(Split(w.F("needs")), id) {
+				out = append(out, w.ID)
+			}
 		}
 	}
 	return out
@@ -2085,7 +2089,7 @@ type DropReq struct {
 	Answers []string
 	// Cascade drops, with the cards the selection names, every waiting
 	// primary that needs one of them, and their dependants too. Without it a
-	// card a waiting primary still needs is refused, naming the dependants
+	// card any open primary still needs is refused, naming the dependants
 	// (docs/SPEC-SPRINT.md section 11).
 	Cascade bool
 	// ReplacedBy is the successor a dropped card becomes an alias of: the drop
@@ -2097,7 +2101,7 @@ type DropReq struct {
 
 // Drop takes open primaries off the table with the reason: their record,
 // outcome and reason are kept; their live work card, unread read cards and
-// merge place go with them. A waiting primary that needs one is a dependant:
+// merge place go with them. An open primary that needs one is a dependant:
 // without Cascade the drop is refused for that card, naming the dependants;
 // with it the dependants and their dependants go too (docs/SPEC-SPRINT.md
 // section 11).
@@ -2148,7 +2152,7 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		var kept []*Card
 		for _, c := range chosen {
 			if r.ReplacedBy == "" {
-				if deps := waitingNeeding(s, c.ID, dropping); len(deps) > 0 {
+				if deps := openNeeding(s, c.ID, dropping); len(deps) > 0 {
 					p.refuse(c.ID, fmt.Sprintf("%s is needed by %s; drop them too with --cascade", c.ID, strings.Join(deps, ", ")))
 					dropping[c.ID] = false
 					continue
