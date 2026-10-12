@@ -42,7 +42,7 @@ State: none; the directory, its manifest.tsv and the one CARDS OK line are the w
 
 the flow, three lines:
   nova-card generate --from ledger --ledger serial-tests --repo-dir ./repo --out ./cards
-  nova-sprint add --stream debt --brief-dir ./cards --allow-shared-paths
+  nova-sprint add --stream debt --brief-dir ./cards
   nova-sprint where
 
 usage:
@@ -66,8 +66,7 @@ nova-sprint add tiers it, and --tier flash or pro on such a card is a red line
 (check=model-tier). The TLC run records tla/RUNS.tsv and tla/CASES.tsv alone are no model.
 A ledger plan is one wave with no dependency chain: the lander resolves a ledger conflict as
 the union of removals, so adjacent deletions of one file no longer conflict at land
-(docs/SPEC-SPRINT.md section 7). Every card is wave 1 and shares the ledger's path with no
-need between them, so the add wants --allow-shared-paths; the CARDS line says so.
+(docs/SPEC-SPRINT.md section 7). Every card is wave 1 and shares the ledger's path; the
 lint holds a brief to the lint nova-sprint add runs (the model lines, the child rules under the
 default rule set, a tree card's steps), and past the add to the typed header and the template's
 unfilled <...> lines, which the add does not read, one LINT DRIFT line each; and to the card
@@ -387,9 +386,6 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "CARDS NOTE skipped %s\n", oneline.Escape(n))
 	}
 	line := cardgen.OKLine(*out, plan) + frontierWord(frontier)
-	if plan.Shared {
-		line += " shared-paths=yes (add with --allow-shared-paths)"
-	}
 	fmt.Fprintln(stdout, line)
 	return 0
 }

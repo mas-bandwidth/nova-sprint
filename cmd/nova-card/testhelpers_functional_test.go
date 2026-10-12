@@ -4,35 +4,64 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/goenv"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
 )
 
-// builtSprint is how this package's functional test runs nova-sprint verbs when
-// it needs the real binary: it builds it once and runs every verb through a
-// scrubbed environment with --redis <the test's own store>, so a verb can never
-// reach a live sprint server however the machine is set up (forward.go). It is
-// the counterpart of cmd/nova-sprint's in-process helper for a test that lives
-// outside that package.
-type builtSprint struct {
-	t   *testing.T
-	bin string
-	env []string
+// syncedBuf is a bytes.Buffer safe for the server and hook children, which write
+// from several goroutines at once.
+type syncedBuf struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
 }
 
-// newBuiltSprint builds the real nova-sprint binary and makes the helper: an
-// environment with no NOVA_* variable from the machine, and a home and config
-// directory of the test's own, so the seat record is the test's and there is no
-// named server.
+func (s *syncedBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *syncedBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
+}
+
+// builtSprint is how this package's functional test runs nova-sprint verbs when
+// it needs the real binary: it builds it once, starts the test's own Redis, and
+// runs every verb, the server and the hook through a scrubbed environment with
+// --redis <the test's own store>, so a verb can never reach a live sprint server
+// however the machine is set up (forward.go). It is the counterpart of
+// cmd/nova-sprint's in-process helper for a test that lives outside that package.
+type builtSprint struct {
+	t     *testing.T
+	bin   string
+	env   []string
+	store string
+}
+
+// newBuiltSprint builds the real nova-sprint binary, starts the test's own Redis
+// (with the function library loaded), and makes the helper: an environment with
+// no NOVA_* variable from the machine, a home and config directory of the test's
+// own, and a short cache directory, so the seat record is the test's, the hook's
+// unix socket fits the platform's path limit (hookSocket puts it under the cache
+// dir), and there is no named server. One store serves the whole test.
 func newBuiltSprint(t *testing.T) *builtSprint {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "nova-sprint")
@@ -43,23 +72,33 @@ func newBuiltSprint(t *testing.T) *builtSprint {
 	build.Env = goenv.Clean(os.Environ())
 	out, err := build.CombinedOutput()
 	require.NoError(t, err, "building nova-sprint: %s", out)
+	// the store is the test's own redis: the built binary arms the hook gate for
+	// every name (hook.go), and proving the seat needs the sprint's server, which
+	// run --listen refuses on a twin.
+	store := testutil.Start(t)
+	rc := redis.NewClient(&redis.Options{Addr: store})
+	t.Cleanup(func() { _ = rc.Close() })
+	require.NoError(t, fn.Load(context.Background(), rc))
 	home := t.TempDir()
+	cache, err := os.MkdirTemp("", "nsc")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(cache) })
 	env := append(withoutNOVA(goenv.Clean(os.Environ())),
-		"NOVA_SPRINT_REDIS=mem:"+filepath.Join(t.TempDir(), "twin"),
+		"NOVA_SPRINT_REDIS="+store,
 		"NOVA_SPRINT_ACTOR=coordinator",
 		"HOME="+home,
 		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
+		"XDG_CACHE_HOME="+cache,
 	)
-	return &builtSprint{t: t, bin: bin, env: env}
+	return &builtSprint{t: t, bin: bin, env: env, store: store}
 }
 
-// run runs a verb on the built binary through the helper: --redis <the test's
-// own store> is always passed, so the verb runs on the test's store and never
+// run runs a verb on the built binary through the helper: the verb first, then
+// --redis <the test's own store>, so the verb runs on the test's store and never
 // forwards, and it returns the verb's exit code and combined output.
 func (s *builtSprint) run(args ...string) (int, string) {
 	s.t.Helper()
-	store := "mem:" + filepath.Join(s.t.TempDir(), "twin")
-	argv := append([]string{"--redis", store}, args...)
+	argv := append(args, "--redis", s.store)
 	cmd := exec.Command(s.bin, argv...)
 	cmd.Env = s.env
 	var b bytes.Buffer
@@ -71,6 +110,40 @@ func (s *builtSprint) run(args ...string) (int, string) {
 	}
 	require.NoError(s.t, err, "nova-sprint %s", strings.Join(args, " "))
 	return 0, b.String()
+}
+
+// serve starts the sprint's server on a loopback port and waits until it is
+// listening, so the hook and the seat's proof have a server to reach; it returns
+// the server's address. The server stays live for the rest of the test.
+func (s *builtSprint) serve() string {
+	s.t.Helper()
+	addr := net.JoinHostPort("127.0.0.1", testutil.FreePort(s.t))
+	serverEnv := append(s.env, "NOVA_SPRINT_SERVER="+addr)
+	server := exec.Command(s.bin, "run", "--listen", addr, "--redis", s.store)
+	server.Env = serverEnv
+	buf := &syncedBuf{}
+	server.Stdout, server.Stderr = buf, buf
+	require.NoError(s.t, server.Start())
+	s.t.Cleanup(func() { _ = server.Process.Kill(); _ = server.Wait() })
+	require.Eventually(s.t, func() bool {
+		return strings.Contains(buf.String(), "SERVER listening")
+	}, 30*time.Second, 50*time.Millisecond, "the server did not listen")
+	return addr
+}
+
+// hook starts the seat's hook against the server at addr and returns its buffer,
+// which the caller reads after its wait for the challenge. The hook holds the
+// seat's subscription for the rest of the test.
+func (s *builtSprint) hook(addr string) *syncedBuf {
+	s.t.Helper()
+	hookEnv := append(s.env, "NOVA_SPRINT_SERVER="+addr)
+	hook := exec.Command(s.bin, "hook", "--redis", s.store)
+	hook.Env = hookEnv
+	buf := &syncedBuf{}
+	hook.Stdout, hook.Stderr = buf, buf
+	require.NoError(s.t, hook.Start())
+	s.t.Cleanup(func() { _ = hook.Process.Kill(); _ = hook.Wait() })
+	return buf
 }
 
 // withoutNOVA is the environment minus every NOVA_* variable: no variable from

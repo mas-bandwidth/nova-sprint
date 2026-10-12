@@ -2830,6 +2830,13 @@
     tla/RUNS.tsv record (go run ./tools/tlacheck groups --root . --stale prints []), and the
     frienddealtreturn group re-ran to its five declared PASS results under the pinned tla2tools.jar."
    :origin "this card, tla-pass-nova-sprint-coverage-rows-1-to-26.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")
+  (fix "chain-ledger-cards-that-share-files" :release "v1.2.14" :status "planned"
+   :title "Cards that share PATHS files are chained with DEPENDS-ON"
+   :text "Cards generated from a ledger that share files (like internal/ci/*.go) now chain with DEPENDS-ON
+    so no two independent cards share a file. The add no longer wants --allow-shared-paths; each card
+    carries its dependency on the one before it in ledger order. nova-card's output no longer mentions
+    --allow-shared-paths."
+   :origin "this card, generated-ledger-cards-chain-and-the-generate-test-runs-the-hook.w1")
   (fix "a-paths-proposed-line-reaches-the-seat-whole" :release "v1.2.15" :status "planned"
    :title "A PATHS-PROPOSED line reaches the seat whole"
    :text "A report cut to a cap could cut its PATHS-PROPOSED line mid-word, so `brief --widen`
