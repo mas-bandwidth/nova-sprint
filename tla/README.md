@@ -32,6 +32,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `Timer`, `LoadCache`, `StatsReset` | Timers, the load cache, and a stats reset. |
 | `AttemptsEpochs` | The epoch a clear advances and a card's attempt, generation and redeals: the restore marker, the per-epoch tables, a late writer refused, a second concurrent clear, the deal and redeal, the stale-generation guard, and the branch per launch. |
 | `StopReturn` | STOP's captured owner leases, the owner's stop-return, its settle off the debt, START, and clear's STOP followed by its live work/read-lease check. `MCStopReturnClear` checks clear reachability and safety; `BrokenClearBlocked` drops the live-lease guard. |
+| [DownRecovery](README-DownRecovery.md) | Proposed fenced down-friend recovery, durable head debt, fresh-proof races and reader retirement; bounded protocol checks, integration still owed. |
 | `FriendReadyTake`, `FriendRedealLate` | Historical friend ready-take and redeal clocks, moved from nova-tools dev `2314d437f`; current start receipts and deadline routing are outside these preserved models (partial coverage). |
 | `StopFence` | The distinct nova-tools STOP/START fence model, renamed on arrival: RunSeq, stale tick stop/part, launch/report and row-delete fences. Newer debt settlement and held-report exemptions are outside it. |
 | `WorkImport` | Issue import and the specified work-tree modes. |
