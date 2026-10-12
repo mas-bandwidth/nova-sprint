@@ -1,0 +1,33 @@
+# SPEC-CARD-CONTRACT
+
+This spec is the contract between a card's brief and the machinery that stages, runs
+and lands it: what a brief must carry to be admitted, and what staging does with it.
+
+## The shared-path rule
+
+Two cards that name the same file in their `PATHS:` lines are refused at admission
+unless one of two forms admits them. The lander merges a ledger entry by entry, so two
+cards writing the same ledger do not collide; and a card that needs another lands after
+it, staged at its tip, so two cards chained by a needs edge edit the file in turn. A path
+two cards share that neither form covers — no lander-owned ledger, no needs edge — is
+refused at admission with the overlap named: both card ids and the path. There is no flag
+that admits it.
+
+- **A ledger the lander merges** admits the shared path. The lander's ledgers are the files
+  `cardgen.LedgerInPaths` covers — `docs/fixes.sexp`, `FIXES.md`, `docs/roadmap.sexp`,
+  `ROADMAP.md`, `tla/CASES.tsv`, `tla/RUNS.tsv`, `tla/COVERAGE.tsv` and the
+  `docs/roadmap-evidence/*.sexp` evidence ledgers — so two cards that name one of them in
+  `PATHS:` are admitted.
+- **A needs edge** admits the shared path: one card names the other in its `Needs:` (or
+  `DEPENDS-ON:`) header, so the later card lands after the earlier and is staged at its tip.
+
+A `SHARED:` header line does not admit a path the lander does not merge: the line declares
+a file two cards know they both touch, but the lander merges only ledgers, so two cards
+that both name the same non-ledger file still collide and are refused the same way.
+
+The refusal and the plan review are the lint's: `nova-sprint add` of several cards lints
+the set as a plan before any card is written — it prints the overlap table (path, the cards
+that name it, ledger or not, the needs edge if any) and refuses the whole set on the first
+non-ledger overlap without an edge, writing nothing. `nova-sprint add --plan <dir>` prints
+the table and exits 0 without admitting, for a seat that wants to read the overlaps first
+(see [SPRINT-COORDINATOR.md](SPRINT-COORDINATOR.md), the plan review).

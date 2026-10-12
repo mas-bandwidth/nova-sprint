@@ -24,6 +24,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
@@ -50,7 +51,7 @@ var verbs []verb
 func init() {
 	verbs = []verb{
 		{"init", "[--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--owner <name>] [--rules <file>]", "init --readers reader-a,reader-b,reader-c --members m1:64,m2:64", (*app).cmdInit},
-		{"add", "--stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> [--brief-file <f2>...]: a card per file, its id the file's name without .md) [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--held] [--allow-shared-paths] [--one: a single card is meant] [--replaces <old-id>[,<old-id>]: the one card is their twin] [--allow-personal-base] [--land-protected <owner/name,...|any>]", "add --stream s1 --count 100", (*app).cmdAdd},
+		{"add", "--stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> [--brief-file <f2>...]: a card per file, its id the file's name without .md) [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--held] [--one: a single card is meant] [--replaces <old-id>[,<old-id>]: the one card is their twin] [--allow-personal-base] [--land-protected <owner/name,...|any>] [--plan <dir>: print the plan review's overlap table and exit 0 without admitting]", "add --stream s1 --count 100", (*app).cmdAdd},
 		{"quack", "--streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]", "quack --streams a,b --count 2 --repo https://example.com/quack.git", (*app).cmdQuack},
 		{"preflight", "--brief-dir <dir> [--repo-dir <dir>]", "preflight --brief-dir .", (*app).cmdPreflight},
 		{"release check", "[--json] [--streams <glob>] [--window <duration>] [--merge-p90 <duration>] [--check <name>]...", "release check", (*app).cmdReleaseCheck},
@@ -1241,11 +1242,16 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	after := fs.String("after", "", "place the cards in line after this primary of the stream")
 	every := fs.Int("sentinel-every", 0, "with --count: a sentinel <stream>-gate-<n> after every k cards (a stop by its place in line)")
 	last := fs.Bool("sentinel-last", false, "with --sentinel-every: a sentinel after the last card too")
-	allowShared := fs.Bool("allow-shared-paths", false, "with a card per brief file (--brief-dir, or --brief-file with no ids): admit cards that name one file in their PATHS: lines though neither needs the other and neither brief declares it on a SHARED: line (by default refused, naming the file and the cards)")
+	// --allow-shared-paths is gone: two cards sharing a path no lander-owned
+	// ledger covers are refused at admission, always, naming the path and the
+	// cards (docs/SPEC-CARD-CONTRACT.md, the shared-path rule). Only a ledger the
+	// lander merges, or a needs edge between the cards, admits them.
+	allowShared := false
 	one := fs.Bool("one", false, "admit a single card (one positional id, --count 1 on one stream, or one --brief-file alone): refused without it, since cards are admitted in waves (--brief-dir, --count 2 or more, several --brief-file)")
 	replaces := fs.String("replaces", "", "the card this add admits is the twin of these `ids`, comma separated: it takes over every edge where a waiting card needs one of them (that card needs the twin instead, in the same place), each still on the table is dropped with the reason \"replaced by <the new id>\", and no blocked judgment is raised for it, in one step; a card dropped before is replaced too, and its blocked judgments are answered; one card only (it means --one), never a sentinel")
 	allowPersonal := fs.Bool("allow-personal-base", false, "admit cards whose brief's BASE: is a personal branch (<name>/* for the sprint's coordinator, its owner or a friends table row), by default refused naming the base and this flag: no sprint watches a personal branch's gate (docs/SPEC-SPRINT.md section 11, bases-view-r.w2)")
 	partial := fs.Bool("partial", false, "with --brief-dir or a repeated --brief-file: hold back every brief the checks find a fault in, and every card that needs a held card, and admit the rest in one store write; one HELD line per held card, then the add's closing line; exit 0 when every card was admitted, 1 when some were held and the rest written, 2 when none could be admitted; refused with ids, --count, --sentinel or --land-protected (a marked first add is one step)")
+	plan := fs.String("plan", "", "print the overlap table of the cards' brief files in this directory (a plan review: path, cards, ledger or not, edge if any) and exit 0 without admitting, for a seat that wants to read the overlaps first (docs/SPRINT-COORDINATOR.md; docs/SPEC-CARD-CONTRACT.md, the shared-path rule)")
 	landProtected := fs.String("land-protected", "", "mark a new stream for protected branches while admitting its first card: repositories (owner/name, comma separated) or any")
 	held := fs.Bool("held", false, "admit the cards held: waiting, a sentinel never reached and no card dealt, nothing raised, until nova-sprint release <id> --reason <text>; a wave loads behind a held sentinel with nothing before it")
 	decideRecord := fs.String("decide-record", "", "the record `file` of the cards' brief decisions under JEV_API_KEY (default ~/nova-sprint/decide/brief.jsonl, the coordinator's root); each card stores it and its op, and land and drop attach the card's end there")
@@ -1266,6 +1272,25 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	}
 	if why := reservedCardID(append(ids, *sentinel)...); why != "" {
 		return refuse(stderr, "add", why)
+	}
+	if *plan != "" {
+		// --plan is the plan review before any card is written: print the overlap
+		// table and exit 0, admitting nothing (docs/SPRINT-COORDINATOR.md, the
+		// plan review; docs/SPEC-CARD-CONTRACT.md, the shared-path rule).
+		if *briefDir != "" || len(briefFiles) > 0 || *brief != "" {
+			return refuse(stderr, "add", "--plan names its cards by its directory alone; give no --brief, --brief-file or --brief-dir")
+		}
+		files, code := a.briefFiles(*plan, nil, stderr)
+		if code != 0 {
+			return code
+		}
+		plans, err := planCards(files)
+		if err != nil {
+			return refuse(stderr, "add", "--plan: "+err.Error())
+		}
+		table, _ := cardgen.Review(plans)
+		fmt.Fprint(stdout, table)
+		return 0
 	}
 	if *count < 0 {
 		// a negative count admitted no card and opened the stream with an OK
@@ -1314,7 +1339,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 		if *every != 0 || *last {
 			return refuse(stderr, "add", "--sentinel-every goes with --count, not a card per brief file")
 		}
-		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, *allowShared, *allowPersonal, *landProtected, *decideRecord, *partial, briefOps, sprint.Split(*replaces), c, stdout, stderr)
+		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, allowShared, *allowPersonal, *landProtected, *decideRecord, *partial, briefOps, sprint.Split(*replaces), c, stdout, stderr)
 	}
 	if len(briefFiles) == 1 {
 		if *brief != "" {
@@ -1535,6 +1560,10 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	}
 	if !allowShared {
 		if why := sharedPaths(cards); why != "" {
+			// the plan review: print the overlap table, then refuse the whole set
+			// (docs/SPRINT-COORDINATOR.md, the plan review; docs/SPEC-CARD-CONTRACT.md,
+			// the shared-path rule)
+			fmt.Fprint(stdout, planTable(cards))
 			return refuse(stderr, "add", why)
 		}
 	}
@@ -1667,64 +1696,45 @@ func briefNeeds(brief string) []string {
 	return out
 }
 
+// planCards reads the brief files of a plan review into card plans, each card's
+// id its file's name without .md, so a seat reads the overlap table before any
+// card is written (docs/SPRINT-COORDINATOR.md, the plan review).
+func planCards(files []string) ([]cardgen.CardPlan, error) {
+	plans := make([]cardgen.CardPlan, 0, len(files))
+	for _, path := range files {
+		text, err := readTextFile(path, briefReadCap)
+		if err != nil {
+			return nil, err
+		}
+		plans = append(plans, cardgen.CardPlan{ID: strings.TrimSuffix(filepath.Base(path), ".md"), Brief: strings.TrimSuffix(text, "\n")})
+	}
+	return plans, nil
+}
+
+// planRows is the overlap rows of a many-brief add's cards (cardgen.SharedPathRows),
+// for the plan review before any card is written (docs/SPRINT-COORDINATOR.md;
+// docs/SPEC-CARD-CONTRACT.md, the shared-path rule).
+func planRows(cards []sprint.CardAdd) []cardgen.SharedPathRow {
+	plans := make([]cardgen.CardPlan, 0, len(cards))
+	for _, c := range cards {
+		plans = append(plans, cardgen.CardPlan{ID: c.ID, Brief: c.Brief})
+	}
+	return cardgen.SharedPathRows(plans)
+}
+
+// planTable is the overlap table of a many-brief add's cards (cardgen.Table).
+func planTable(cards []sprint.CardAdd) string {
+	return cardgen.Table(planRows(cards))
+}
+
 // sharedPaths is the refusal of a many-brief add whose cards name one file in
-// their PATHS: header lines (swarm.CardHeaderValue; commas or blanks between them)
-// when neither needs the other through the needs of the add: they would edit
-// it at once (nova-tools#5096 item 17). "" when none does.
+// their PATHS: header lines when no lander-owned ledger covers it (cardgen
+// AlwaysInPaths) and neither needs the other through the needs of the add: they
+// would edit it at once. A ledger the lander merges, or a needs edge, admits the
+// pair; a SHARED: line does not (docs/SPEC-CARD-CONTRACT.md, the shared-path
+// rule). "" when none does.
 func sharedPaths(cards []sprint.CardAdd) string {
-	needs := map[string][]string{}
-	for _, c := range cards {
-		needs[c.ID] = c.Needs
-	}
-	// reaches says a needs b, through the needs of the add's cards
-	var reaches func(a, b string, seen map[string]bool) bool
-	reaches = func(a, b string, seen map[string]bool) bool {
-		if seen[a] {
-			return false
-		}
-		seen[a] = true
-		for _, n := range needs[a] {
-			if n == b || reaches(n, b, seen) {
-				return true
-			}
-		}
-		return false
-	}
-	byPath := map[string][]string{}
-	var order []string
-	// shared is each card's SHARED: header line: the files it declares it edits
-	// beside other cards of the add (a ledger every card touches)
-	shared := map[string]map[string]bool{}
-	for _, c := range cards {
-		shared[c.ID] = map[string]bool{}
-		for _, p := range headerPaths(c.Brief, "SHARED") {
-			shared[c.ID][p] = true
-		}
-		for _, p := range headerPaths(c.Brief, "PATHS") {
-			if slices.Contains(byPath[p], c.ID) {
-				continue
-			}
-			if len(byPath[p]) == 0 {
-				order = append(order, p)
-			}
-			byPath[p] = append(byPath[p], c.ID)
-		}
-	}
-	var clash []string
-	for _, p := range order {
-		ids := byPath[p]
-		for i := range ids {
-			for _, b := range ids[i+1:] {
-				if a := ids[i]; !reaches(a, b, map[string]bool{}) && !reaches(b, a, map[string]bool{}) && (!shared[a][p] || !shared[b][p]) {
-					clash = append(clash, fmt.Sprintf("%s is named in PATHS by %s and %s, and neither needs the other", p, a, b))
-				}
-			}
-		}
-	}
-	if len(clash) == 0 {
-		return ""
-	}
-	return strings.Join(clash, "; ") + "; two cards that edit one file at once conflict at the merge: chain them (DEPENDS-ON: or Needs: in the later brief), declare the file on a SHARED: line of both briefs, or give --allow-shared-paths"
+	return cardgen.RefuseOverlaps(planRows(cards))
 }
 
 // headerPaths is the files a brief's typed header line names (PATHS:, SHARED:),

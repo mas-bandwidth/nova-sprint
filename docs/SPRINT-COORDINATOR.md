@@ -186,6 +186,14 @@ applies nothing twice; one ask that takes past `--timeout` (60s) is that card's 
   nova-sprint add --stream <s> --brief-dir <dir> --rules fleet/child-rules.txt
   ```
 
+- The plan review is the step before admitting a stream of several cards:
+  `nova-sprint add --plan <dir>` prints the overlap table — one line per path two or more of the cards name
+  in `PATHS:`, with the cards, ledger or not, and the needs edge if any — and exits 0 without admitting, so
+  the seat reads the overlaps first and adds the `--needs` edge (or splits the path) before the cards collide
+  at the lander ([SPEC-CARD-CONTRACT.md](SPEC-CARD-CONTRACT.md), the shared-path rule). `add` of several cards
+  at once runs the same lint before any card is written: it prints the table and refuses the whole set on the
+  first non-ledger overlap without an edge, writing nothing.
+
   `add` holds each brief to the card lint and refuses, writing nothing, one that fails.
   `nova-swarm template --name card` prints a card that passes once its `<...>` lines are filled;
   `nova-swarm lint --card <file> --child-rules` checks a file first; `nova-sprint init --rules <file>` records
