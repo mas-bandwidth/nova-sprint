@@ -201,10 +201,17 @@ func unmet(u Unit, pre *Snapshot, landing map[string]bool) string {
 		}
 		var open []string
 		for _, n := range needs {
-			if contains(waived, n) || landing[n] || pre != nil && pre.StateOf(n) == Landed {
+			// a dropped card's successor is the need (need_alias.go): the stored name is
+			// resolved through the alias map before it is judged landed or waived, so a
+			// need whose alias target has landed is met (rule 11; the land check).
+			t := n
+			if pre != nil {
+				t = AliasOf(pre, n)
+			}
+			if contains(waived, n) || contains(waived, t) || landing[t] || pre != nil && pre.StateOf(t) == Landed {
 				continue
 			}
-			open = append(open, n)
+			open = append(open, t)
 		}
 		if len(open) > 0 {
 			return e.ID + " needs " + strings.Join(open, ",") + ", not landed: it waits"
