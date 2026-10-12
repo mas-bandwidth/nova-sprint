@@ -817,7 +817,12 @@
     over an empty plan, so on a real store a sprint that had not yet landed never began its
     episode (found by the functional test); that unit is keyed by the property, as the status
     record's is, the reference model carries the landing-stall properties (refmodel.CarriedProps),
-    and the differential test names the stall judgment the engine's until the model card lands. The
+    and the differential test names the stall judgment the engine's until the model card lands. A
+    batch push shares the bound among its ledger texts so every landed card keeps its line (a cut
+    of the joined note dropped the lines past 64 KiB), and the landing and episode stamps are
+    nanosecond RFC3339 compared as times, so a sub-second bound never takes the last landing for a
+    new one. The functional test names its private store with --redis on every verb and fails on
+    any forward to a sprint server. The
     model card tla-sprintrules-landing-stall-liveness is its own card. Unit tests in
     internal/sprint/landing_stall_test.go, internal/sprint/store/landing_stall_reads_test.go and
     cmd/nova-sprint/land_test.go; the functional test
