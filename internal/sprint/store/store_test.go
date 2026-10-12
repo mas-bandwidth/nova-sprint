@@ -118,7 +118,10 @@ func (h *harness) table() *sprint.Snapshot {
 func (h *harness) state(id string) string { return h.snap().StateOf(id) }
 
 // setup: two members up, n primaries in s1.
-func (h *harness) setup(n int) {
+func (h *harness) setup(n int) { h.setupBrief(n, proBrief) }
+
+// setupBrief is setup with the given brief for the n primaries.
+func (h *harness) setupBrief(n int, brief string) {
 	h.t.Helper()
 	// a clear leaves the new epoch blank, so its readers are added fresh here
 	// (a no-op while they already exist): the blank-slate clear carries no
@@ -140,7 +143,7 @@ func (h *harness) setup(n int) {
 		}
 		h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: m, Width: w}))
 	}
-	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: n}))
+	h.must(AddStep(sprint.AddReq{Brief: brief, Stream: "s1", Count: n}))
 	h.clean("setup")
 }
 

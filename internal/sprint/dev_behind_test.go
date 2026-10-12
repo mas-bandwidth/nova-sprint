@@ -1,7 +1,7 @@
 package sprint_test
 
 import (
-	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -10,308 +10,159 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
-// TestLandedSinceProtectedBranches tests that LandedSince filters out cards
-// landed on protected branches (dev, main).
-func TestLandedSinceProtectedBranches(t *testing.T) {
-	t.Parallel()
+// The dev is behind rule (docs/SPEC-SPRINT.md section 7): a landed card counts toward
+// the judgment only when the base it actually landed on is known and is a sprint branch
+// promoted to a dev branch that exists for its repository. The base is read from the
+// card's own base field, else its brief's BASE: line (the same source the bases verb
+// reads); a card landed straight onto dev or main, a card whose base is absent, or a
+// card on a branch whose repository has no dev branch, never counts. The judgment names
+// each counted card by its id when its primary is empty, never a blank.
 
-	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
-
+// devBehindSnap builds a snapshot holding the given landed cards and a promotion
+// recorded at promotionTime; the cards' landing stamps must be after it for them to
+// count. Extra cards (the dev-branch evidence) are placed landed too.
+func devBehindSnap(promotionTime time.Time, cards ...*sprint.Card) *sprint.Snapshot {
 	work := sprint.NewTable(sprint.Work)
 	work.SetRows([]string{"s1"})
-
-	// Card on main (protected) - should NOT be counted
-	mainCard := &sprint.Card{
-		ID:    "main-card",
-		Row:   "s1",
-		Col:   sprint.Landed,
-		Score: 0,
-		Fields: map[string]string{
-			"primary": "main-card",
-			"landed":  promotionTime.Add(10 * time.Minute).Format(time.RFC3339),
-			"base":    "main",
-		},
-	}
-	work.Put(mainCard)
-
-	// Card on dev (protected) - should NOT be counted
-	devCard := &sprint.Card{
-		ID:    "dev-card",
-		Row:   "s1",
-		Col:   sprint.Landed,
-		Score: 0,
-		Fields: map[string]string{
-			"primary": "dev-card",
-			"landed":  promotionTime.Add(20 * time.Minute).Format(time.RFC3339),
-			"base":    "dev",
-		},
-	}
-	work.Put(devCard)
-
-	// Card on sprint branch - SHOULD be counted
-	sprintCard := &sprint.Card{
-		ID:    "sprint-card",
-		Row:   "s1",
-		Col:   sprint.Landed,
-		Score: 0,
-		Fields: map[string]string{
-			"primary": "sprint-card",
-			"landed":  promotionTime.Add(30 * time.Minute).Format(time.RFC3339),
-			"base":    "sprint/test",
-		},
-	}
-	work.Put(sprintCard)
-
-	s := &sprint.Snapshot{
-		Now:  promotionTime.Add(60 * time.Minute),
-		Work: work,
-	}
-	s.Work.SetProp("promoted_at", promotionTime.Format(time.RFC3339))
-
-	cards, _ := sprint.LandedSince(s)
-	assert.Equal(t, 1, len(cards), "Should only count cards on non-protected branches")
-	assert.Equal(t, "sprint-card", cards[0].ID)
-}
-
-// TestDevBehindProtectedBranches tests that DevBehind ignores cards on protected branches.
-func TestDevBehindProtectedBranches(t *testing.T) {
-	t.Parallel()
-
-	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
-
-	work := sprint.NewTable(sprint.Work)
-	work.SetRows([]string{"s1"})
-
-	// Add cards on protected branches only
-	for i := 0; i < 30; i++ {
-		id := "card-" + fmt.Sprint(i)
-		c := &sprint.Card{
-			ID:    id,
-			Row:   "s1",
-			Col:   sprint.Landed,
-			Score: 0,
-			Fields: map[string]string{
-				"primary": id,
-				"landed":  promotionTime.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
-				"base":    "main",
-			},
-		}
+	for _, c := range cards {
 		work.Put(c)
 	}
+	s := &sprint.Snapshot{Now: promotionTime.Add(60 * time.Minute), Work: work}
+	s.Work.SetProp(sprint.PropPromotedAt, promotionTime.Format(time.RFC3339))
+	return s
+}
 
-	s := &sprint.Snapshot{
-		Now:  promotionTime.Add(60 * time.Minute),
-		Work: work,
+// landed is a landed card with the given brief (its REPO: and BASE: lines are the source
+// of its repository and base) and an empty primary, landed at promotionTime+minutes.
+func landed(id, brief string, promotionTime time.Time, minutes int) *sprint.Card {
+	fields := map[string]string{
+		"landed": promotionTime.Add(time.Duration(minutes) * time.Minute).Format(time.RFC3339),
 	}
-	s.Work.SetProp("promoted_at", promotionTime.Format(time.RFC3339))
+	if brief != "" {
+		fields["brief"] = brief
+	}
+	return &sprint.Card{ID: id, Row: "s1", Col: sprint.Landed, Fields: fields}
+}
+
+// sprintBaseBrief is a brief cut on a base branch of a repository.
+func sprintBaseBrief(repo, base string) string { return "REPO: " + repo + "\nBASE: " + base + "\n" }
+
+// TestDevBehindACardWithNoBaseDoesNotCount: an absent base never counts, whatever its
+// repository.
+func TestDevBehindACardWithNoBaseDoesNotCount(t *testing.T) {
+	t.Parallel()
+	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
+
+	// A card with no base field and no BASE: line, on a repository with no dev branch.
+	c := landed("no-base", "REPO: mas-bandwidth/widgets\n", promotionTime, 40)
+	s := devBehindSnap(promotionTime, c)
 
 	lag, ok := sprint.DevBehind(s)
-	assert.False(t, ok, "Should not raise judgment when all cards are on protected branches")
+	assert.False(t, ok, "a card with no base never counts")
 	assert.Equal(t, 0, lag.Count)
 }
 
-// TestDevBehindSprintBranch tests that DevBehind raises judgment for cards on sprint branches.
-func TestDevBehindSprintBranch(t *testing.T) {
+// TestDevBehindACardOnDevDoesNotCount: a card landed straight onto dev never counts.
+func TestDevBehindACardOnDevDoesNotCount(t *testing.T) {
 	t.Parallel()
-
 	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
 
-	work := sprint.NewTable(sprint.Work)
-	work.SetRows([]string{"s1"})
-
-	// Add cards on sprint branch
-	for i := 1; i <= 30; i++ {
-		id := "card-" + fmt.Sprint(i)
-		c := &sprint.Card{
-			ID:    id,
-			Row:   "s1",
-			Col:   sprint.Landed,
-			Score: 0,
-			Fields: map[string]string{
-				"primary": id,
-				"landed":  promotionTime.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
-				"base":    "sprint/x",
-			},
-		}
-		work.Put(c)
-	}
-
-	s := &sprint.Snapshot{
-		Now:  promotionTime.Add(60 * time.Minute),
-		Work: work,
-	}
-	s.Work.SetProp("promoted_at", promotionTime.Format(time.RFC3339))
+	c := landed("on-dev", sprintBaseBrief("mas-bandwidth/nova-tools", "dev"), promotionTime, 40)
+	s := devBehindSnap(promotionTime, c)
 
 	lag, ok := sprint.DevBehind(s)
-	assert.True(t, ok, "Should raise judgment when cards on sprint branch exceed threshold")
-	assert.Equal(t, 30, lag.Count)
+	assert.False(t, ok, "a card landed on dev never counts")
+	assert.Equal(t, 0, lag.Count)
 }
 
-// TestDevBehindMixedBranches tests that DevBehind only counts non-protected branches.
-func TestDevBehindMixedBranches(t *testing.T) {
+// TestDevBehindACardOnMainDoesNotCount: a card landed onto main never counts.
+func TestDevBehindACardOnMainDoesNotCount(t *testing.T) {
 	t.Parallel()
-
 	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
 
-	work := sprint.NewTable(sprint.Work)
-	work.SetRows([]string{"s1"})
-
-	// Add 20 cards on protected branches
-	for i := 0; i < 20; i++ {
-		id := "protected-" + fmt.Sprint(i)
-		c := &sprint.Card{
-			ID:    id,
-			Row:   "s1",
-			Col:   sprint.Landed,
-			Score: 0,
-			Fields: map[string]string{
-				"primary": id,
-				"landed":  promotionTime.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
-				"base":    "main",
-			},
-		}
-		work.Put(c)
-	}
-
-	// Add 1 card on sprint branch (oldest, but after promotion)
-	c := &sprint.Card{
-		ID:    "sprint-card",
-		Row:   "s1",
-		Col:   sprint.Landed,
-		Score: 0,
-		Fields: map[string]string{
-			"primary": "sprint-card",
-			"landed":  promotionTime.Add(5 * time.Minute).Format(time.RFC3339),
-			"base":    "sprint/x",
-		},
-	}
-	work.Put(c)
-
-	s := &sprint.Snapshot{
-		Now:  promotionTime.Add(60 * time.Minute),
-		Work: work,
-	}
-	s.Work.SetProp("promoted_at", promotionTime.Format(time.RFC3339))
+	c := landed("on-main", sprintBaseBrief("mas-bandwidth/nova-sprint", "main"), promotionTime, 40)
+	s := devBehindSnap(promotionTime, c)
 
 	lag, ok := sprint.DevBehind(s)
-	assert.True(t, ok, "Should raise judgment when oldest non-protected card exceeds PromoteAge")
+	assert.False(t, ok, "a card landed on main never counts")
+	assert.Equal(t, 0, lag.Count)
+}
+
+// TestDevBehindASprintBranchWithoutADevBranchDoesNotCount: a sprint branch whose
+// repository has no dev branch never counts (rule (c)'s schema case).
+func TestDevBehindASprintBranchWithoutADevBranchDoesNotCount(t *testing.T) {
+	t.Parallel()
+	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
+
+	c := landed("schema-1", sprintBaseBrief("mas-bandwidth/schema", "sprint/schema-finish"), promotionTime, 40)
+	s := devBehindSnap(promotionTime, c)
+
+	lag, ok := sprint.DevBehind(s)
+	assert.False(t, ok, "a sprint branch in a repository with no dev branch never counts")
+	assert.Equal(t, 0, lag.Count)
+}
+
+// TestDevBehindASprintBranchWithADevBranchCountsNamedByID: a sprint branch whose
+// repository has a dev branch counts, and the judgment names the card by its id when its
+// primary is empty.
+func TestDevBehindASprintBranchWithADevBranchCountsNamedByID(t *testing.T) {
+	t.Parallel()
+	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
+
+	repo := "mas-bandwidth/nova-tools"
+	// The repository has a dev branch: a card landed on dev there.
+	devEvidence := landed("dev-evidence", sprintBaseBrief(repo, "dev"), promotionTime, 5)
+	// The sprint card landed 50 minutes before the snapshot's now, past PromoteAge.
+	sprintCard := landed("sprint-card", sprintBaseBrief(repo, "sprint/base"), promotionTime, 10)
+	s := devBehindSnap(promotionTime, devEvidence, sprintCard)
+
+	lag, ok := sprint.DevBehind(s)
+	assert.True(t, ok, "a sprint branch whose repository has a dev branch counts")
 	assert.Equal(t, 1, lag.Count)
+	assert.Equal(t, []string{"sprint-card"}, lag.Cards, "named by its id when primary is empty")
+	assert.Contains(t, lag.What(), "sprint-card")
 }
 
-// TestDevBehindWhatListsCards tests that DevLag.What lists cards by name.
-func TestDevBehindWhatListsCards(t *testing.T) {
+// TestDevBehindTheJudgmentNeverCarriesAnEmptyName: the judgment text never contains an
+// empty name, so a blank primary becomes the card's id.
+func TestDevBehindTheJudgmentNeverCarriesAnEmptyName(t *testing.T) {
 	t.Parallel()
-
 	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
 
-	work := sprint.NewTable(sprint.Work)
-	work.SetRows([]string{"s1"})
-
-	// Add 5 cards on sprint branch
-	for i := 0; i < 5; i++ {
-		id := "card-" + fmt.Sprint(i)
-		c := &sprint.Card{
-			ID:    id,
-			Row:   "s1",
-			Col:   sprint.Landed,
-			Score: 0,
-			Fields: map[string]string{
-				"primary": id,
-				"landed":  promotionTime.Add(time.Duration(i+10) * time.Minute).Format(time.RFC3339),
-				"base":    "sprint/x",
-			},
-		}
-		work.Put(c)
+	repo := "mas-bandwidth/nova-tools"
+	devEvidence := landed("dev-evidence", sprintBaseBrief(repo, "dev"), promotionTime, 5)
+	var cards []*sprint.Card
+	for i := 1; i <= 30; i++ {
+		cards = append(cards, landed("card-"+strconv.Itoa(i), sprintBaseBrief(repo, "sprint/base"), promotionTime, i))
 	}
-
-	s := &sprint.Snapshot{
-		Now:  promotionTime.Add(60 * time.Minute),
-		Work: work,
-	}
-	s.Work.SetProp("promoted_at", promotionTime.Format(time.RFC3339))
-	s.Work.SetProp("promoted_sha", "1234567890abcdef")
+	s := devBehindSnap(promotionTime, append([]*sprint.Card{devEvidence}, cards...)...)
 
 	lag, ok := sprint.DevBehind(s)
 	assert.True(t, ok)
-	assert.Equal(t, 5, lag.Count)
-
+	assert.Equal(t, 30, lag.Count)
 	what := lag.What()
-	assert.Contains(t, what, "card-0")
-	assert.Contains(t, what, "card-4")
+	assert.NotContains(t, what, ", , ", "no blank names")
+	assert.NotContains(t, what, ": ,", "no leading blank name")
+	assert.Contains(t, what, "card-1", "the first counted card is named")
+	for _, name := range lag.Cards {
+		assert.NotEqual(t, "", name, "every counted card is named")
+	}
 }
 
-// TestDevBehindWhatWithManyCards tests that DevLag.What truncates after 10 cards.
-func TestDevBehindWhatWithManyCards(t *testing.T) {
+// TestDevBehindNoRepositoryHasSprintAndDevNeverRaises: when no repository has both a
+// sprint branch and a dev branch, the judgment is never raised, even past the count.
+func TestDevBehindNoRepositoryHasSprintAndDevNeverRaises(t *testing.T) {
 	t.Parallel()
-
 	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
 
-	work := sprint.NewTable(sprint.Work)
-	work.SetRows([]string{"s1"})
-
-	// Add 15 cards on sprint branch
-	for i := 0; i < 15; i++ {
-		id := "card-" + fmt.Sprint(i)
-		c := &sprint.Card{
-			ID:    id,
-			Row:   "s1",
-			Col:   sprint.Landed,
-			Score: 0,
-			Fields: map[string]string{
-				"primary": id,
-				"landed":  promotionTime.Add(time.Duration(i+10) * time.Minute).Format(time.RFC3339),
-				"base":    "sprint/x",
-			},
-		}
-		work.Put(c)
+	// Many cards on sprint branches, but none of their repositories has a dev branch.
+	var cards []*sprint.Card
+	for i := 1; i <= 30; i++ {
+		cards = append(cards, landed("s-"+strconv.Itoa(i), sprintBaseBrief("mas-bandwidth/schema", "sprint/schema-finish"), promotionTime, i))
 	}
-
-	s := &sprint.Snapshot{
-		Now:  promotionTime.Add(60 * time.Minute),
-		Work: work,
-	}
-	s.Work.SetProp("promoted_at", promotionTime.Format(time.RFC3339))
-	s.Work.SetProp("promoted_sha", "1234567890abcdef")
+	s := devBehindSnap(promotionTime, cards...)
 
 	lag, ok := sprint.DevBehind(s)
-	assert.True(t, ok)
-	assert.Equal(t, 15, lag.Count)
-
-	what := lag.What()
-	assert.Contains(t, what, "and 5 more")
-}
-
-// TestDevBehindZeroCardsOnProtectedBranches tests that no judgment is raised when
-// only protected branch cards exist.
-func TestDevBehindZeroCardsOnProtectedBranches(t *testing.T) {
-	t.Parallel()
-
-	promotionTime := time.Date(2030, 1, 2, 3, 4, 0, 0, time.UTC)
-
-	work := sprint.NewTable(sprint.Work)
-	work.SetRows([]string{"s1"})
-
-	// Add a single card on main 40 minutes ago
-	c := &sprint.Card{
-		ID:    "main-card",
-		Row:   "s1",
-		Col:   sprint.Landed,
-		Score: 0,
-		Fields: map[string]string{
-			"primary": "main-card",
-			"landed":  promotionTime.Add(-40 * time.Minute).Format(time.RFC3339),
-			"base":    "main",
-		},
-	}
-	work.Put(c)
-
-	s := &sprint.Snapshot{
-		Now:  promotionTime.Add(60 * time.Minute),
-		Work: work,
-	}
-	s.Work.SetProp("promoted_at", promotionTime.Format(time.RFC3339))
-
-	lag, ok := sprint.DevBehind(s)
-	assert.False(t, ok, "Should not raise judgment for cards on protected branches")
+	assert.False(t, ok, "no repository has both a sprint and a dev branch: never raised")
 	assert.Equal(t, 0, lag.Count)
 }

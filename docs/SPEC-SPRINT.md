@@ -4403,11 +4403,19 @@ merges to dev are dirty, and should be done"; "We must merge into dev continuall
 in bursts"). The tick counts the primaries landed (sentinels aside, by their `landed` stamp)
 since the last promotion the store records (`promoted_at`, `promoted_sha`, the work table's
 properties, written by `nova-sprint promoted --sha <merge sha>` (with `--returned <ids>`, the landed cards dev or an audit returned, each marked for the read tier's escalation, section 6), the coordinator's; none
-recorded counts every landing). Cards whose base is a protected branch (`dev` or `main`,
-docs/SPEC-SPRINT.md section 7, `sprint.ProtectedBranches`) are excluded since they landed
-directly onto the line and are held by their base. The tick raises the judgment "dev is
-behind" when the count reaches 25 (`sprint.PromoteCards`) or the oldest of them landed 30
-minutes ago (`sprint.PromoteAge`), whichever comes first (`sprint.DevBehind`,
+recorded counts every landing). A landed card counts toward the count only when the base it
+actually landed on is known and is a sprint branch promoted to a dev branch that exists for
+its repository. The base is read from the card's own base field, else from its brief's
+`BASE:` line together with its `REPO:` line (the same source the bases verb reads,
+`swarm.ReadCardBase`); an absent base never counts. A card landed straight onto a protected
+branch (`dev` or `main`, docs/SPEC-SPRINT.md section 7, `sprint.ProtectedBranches`), or onto
+a branch whose repository has no dev branch (a repository has one when the store holds a
+placed card that landed on, or is cut on, `dev` in it; a card naming no `REPO:` is the
+sprint's own card, whose repository is promoted to dev), never counts; if no repository has
+both a sprint branch and a dev branch, the judgment is never raised. The judgment names each
+counted card by its id when its primary is empty, never a blank. The tick raises the judgment
+"dev is behind" when the count reaches 25 (`sprint.PromoteCards`) or the oldest of them
+landed 30 minutes ago (`sprint.PromoteAge`), whichever comes first (`sprint.DevBehind`,
 internal/sprint/promotion.go, one pure decision): `dev is behind: <n> cards landed on <branch> since <the last promotion at <time> (<sha>) or no promotion recorded>: <card names up to ten, then "and <n> more">; promote: merge origin/dev into the sprint branch, open the PR to dev, run the functional tier, queue it; then: nova-sprint promoted --sha <merge sha>`
 (the branch is the base the most of them name), decisions promoted and wait 30m, updated in
 place while it holds and closed when `promoted` is recorded; `promoted --answers <note>` is

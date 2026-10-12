@@ -2845,4 +2845,25 @@
      moves' files (friend_level.go, friend_start.go, friend_deal.go, coordinator_pass.go) are outside
      PATHS so they stay uncited, named as a gap. The bench TLC check is green: go run ./tools/tlacheck
      groups --root . --stale prints [] and the ci gate TestEveryStateMachineHasACurrentModel passes."
-    :origin "this card, tla-pass-nova-sprint-coverage-rows-27-to-52.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")))
+    :origin "this card, tla-pass-nova-sprint-coverage-rows-27-to-52.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")
+   (fix "dev-is-behind-counts-only-cards-landed-on-a-sprint-branch" :release "v1.2.14" :status "planned"
+    :title "dev is behind counts only cards landed on a sprint branch, named by id when primary is empty"
+    :text "The dev is behind judgment counted every landed card whose base field was empty, and named
+     them by a primary field that was also empty, so a false judgment with blank names nearly sent a
+     child to invent a merge (the coordinator, 2026-10-12 ~04:30Z: 53 cards landed on the sprint branch,
+     actually on dev, main, or sprint/schema-finish of repositories without a dev branch). LandedSince
+     now reads a card's base from its own base field, else its brief's BASE: and REPO: lines (the same
+     source the bases verb reads, swarm.ReadCardBase), and counts a landed card only when that base is
+     known and is a sprint branch promoted to a dev branch that exists for its repository: a card landed
+     on dev or main, one with no base anywhere, one on a non-sprint branch, or one whose repository has
+     no dev branch (a repository has one when the store holds a placed card on dev in it; a card naming
+     no REPO: is the sprint's own card, whose repository is promoted to dev), never counts, and if no
+     repository has both a sprint branch and a dev branch the judgment is never raised. DevBehind names
+     each counted card by its id when its primary is empty, never a blank. docs/SPEC-SPRINT.md section 7
+     states the rule. Tests: TestDevBehindACardWithNoBaseDoesNotCount, TestDevBehindACardOnDevDoesNotCount,
+     TestDevBehindACardOnMainDoesNotCount, TestDevBehindASprintBranchWithoutADevBranchDoesNotCount,
+     TestDevBehindASprintBranchWithADevBranchCountsNamedByID,
+     TestDevBehindTheJudgmentNeverCarriesAnEmptyName,
+     TestDevBehindNoRepositoryHasSprintAndDevNeverRaises, and the functional
+     TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches."
+    :origin "this card, dev-is-behind-counts-only-cards-landed-on-a-sprint-branch.w3; the coordinator, 2026-10-12 ~04:30Z (a false dev is behind judgment for cards on dev/main and on sprint branches of repositories without a dev branch); checked against nova-sprint main")))
