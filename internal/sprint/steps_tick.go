@@ -184,6 +184,9 @@ var TickDecisions = map[string][]string{
 	// a repository lacks a bench mirror on some members (mirror_need.go): the
 	// fleet's mirror refresh serves it
 	NMirrorNeed: {"fleet up <m>", "wait"},
+	// a member up and pegged with no card working (pegged.go): named per member, held,
+	// seen for the episode, or quiet a while
+	NMemberPegged: {"fleet down <m>", "ack", "wait 15m"},
 }
 
 // TickReq is what a tick is given beside the snapshot.
@@ -1968,7 +1971,7 @@ func condKey(typ, subject, card, what string) string {
 		NBaseCIRed,
 		NStopMemberDown, NStopPinWaits, NFriendStalled,
 		NNoFrontierRoom,
-		NMirrorNeed:
+		NMirrorNeed, NMemberPegged:
 		what = ""
 	case NReadyOver:
 		// one judgment per (reason, tier): the reason is the stable cause, so

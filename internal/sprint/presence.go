@@ -433,7 +433,9 @@ func LoadText(b Beat, now time.Time) string {
 // fleet that loses several machines at once redeals all their cards in that
 // tick. The binding gives it the beats; with none given it does nothing. Each
 // status that changed, a member's or a friend's, raises its one judgment in the
-// same plan (StatusTransitions, judgments_status.go).
+// same plan (StatusTransitions, judgments_status.go). A member up and pegged with no
+// card working for the pegged bound raises its one judgment of the episode here too
+// (tickPegged, pegged.go).
 func TickPresence(s *Snapshot, r TickReq) (Plan, int) {
 	p, due := presence(s, r) // the rest are due: the next ticks apply them
 	t := StatusTransitions(s, r)
@@ -442,7 +444,13 @@ func TickPresence(s *Snapshot, r TickReq) (Plan, int) {
 	p.Closes = append(p.Closes, t.Closes...)
 	p.Updates = append(p.Updates, t.Updates...)
 	p.Props = append(p.Props, t.Props...)
-	return p, due
+	g, gdue := tickPegged(s, r)
+	p.Units = append(p.Units, g.Units...)
+	p.Notes = append(p.Notes, g.Notes...)
+	p.Closes = append(p.Closes, g.Closes...)
+	p.Updates = append(p.Updates, g.Updates...)
+	p.Props = append(p.Props, g.Props...)
+	return p, due + gdue
 }
 
 func presence(s *Snapshot, r TickReq) (Plan, int) {

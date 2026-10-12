@@ -3409,6 +3409,25 @@ order the cards were dealt in, so a card brought to the front of its stream by
   `unhold <member>` or `fleet up <member>` releases the hold; `fleet up` counts as a
   beat of a member that has beaten, adds a member the sprint does not know,
   and brings it up at once when it is alive.
+- A member pegged with no card working is a pushed judgment (2026-10-12: a member
+  beat at 100% for 13 hours with no card working, busy loops a finished card left
+  behind, and the table showed it up at 100.0% with nothing told to the seat). The
+  presence part of the fleet's update (internal/sprint/pegged.go, tickPegged) stamps
+  a member up, with no work card working on its row, whose beat says
+  `HeavyLoadPercent` (90%, the load at which a last beat enters its loaded interval)
+  or more, the first tick it sees it so (the fleet property `pegged_since.<member>`),
+  and removes the stamp the first tick it does not. Once the stamp is the pegged
+  bound old (`nova-sprint set --pegged-bound <d>`, the work table's `pegged_bound`,
+  default 10m) the tick raises one judgment of type `member-pegged` on the member,
+  through the notify every kept condition of the tick takes to the coordinator's
+  hook stream: "member <m> at <load>% for <d> with no card working: a leftover
+  process or outside load; read it on the machine (ps) and kill by PID or hold the
+  member; pegged since <stamp>", its decisions `fleet down <m>`, `ack` and `wait
+  15m`. It is written once an episode and closed with one cleared note, naming the
+  measured end, only when the load falls under 90%, a card starts working there, or
+  the member is held or down; a change of the bound mid-episode neither closes it
+  nor raises it again; a second episode raises again. The fleet table shows nothing new
+  (tla/MemberPegged.tla, OneJudgmentPerPeggedEpisode).
 - The fleet comes from the inventory. `nova-sprint fleet sync` makes the fleet
   table match nova-config's machine rows, in one step, and types no machine name
   and no width. The inventory is read through the config package by the config

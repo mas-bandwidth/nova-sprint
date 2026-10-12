@@ -52,7 +52,12 @@ holders, read at most once every `+hostload.HoldersEvery.String()+`; over --fd-a
 NOVA_FD_ALARM, else `+fmt.Sprint(hostload.FilesAlarmDefault)+`) it says alarm, and the tick writes
 one judgment of the member ("`+sprint.NFilesAlarm+`") naming the count, the top
 holders and its cards that ended on a timeout, closed with one cleared note when
-the count falls under the alarm.
+the count falls under the alarm. A member up with no card working whose beats say
+`+fmt.Sprint(sprint.HeavyLoadPercent)+`% or more for the pegged bound (set --pegged-bound, default
+`+sprint.PeggedBoundDefault.String()+`) gets one judgment ("`+sprint.NMemberPegged+`") naming its load, how long and
+since when, once an episode: a leftover process or outside load, read on the machine
+(ps) and killed by PID, or the member held; it closes with one cleared note when the
+load falls under that, a card starts working there, or the member is not up.
 
 fleet sync makes the fleet match nova-config's machine rows in one step (--pg,
 else NOVA_PG_DSN, as nova-config takes it): a member the table lacks is added
