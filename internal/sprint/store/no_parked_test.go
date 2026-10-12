@@ -253,3 +253,29 @@ func TestAFailurePerTickRaisesOneFleetJudgmentAtTheThird(t *testing.T) {
 	h.machine()
 	assert.Len(t, h.judgmentsOf(sprint.NFleetFailure), 1, "never raised again while it is open")
 }
+
+// An acked fleet failure holds its class: the next tick does not raise it again, and a new
+// failure of the class finishing after the ack raises it again.
+func TestAnAckedFleetFailureHoldsUntilANewFailure(t *testing.T) {
+	t.Parallel()
+	h := ruled(t)
+	n := sprint.RuleSameFailureCards
+	h.addReady("s1", n, briefOf("flash", ""))
+	h.startMachine()
+	h.machine()
+	report := "step 2 broken: post: exit0 go vet ./...: exit status 126; exec: go: Permission denied"
+	for i := 1; i <= n; i++ {
+		h.failTake(fmt.Sprintf("s1-%d.w1", i), report)
+	}
+	h.machine()
+	open := h.judgmentsOf(sprint.NFleetFailure)
+	require.Len(t, open, 1)
+	h.must(AckStep(sprint.AckReq{Notes: []string{open[0].Note.ID}, Reason: "the toolchain is mended", Who: h.st.Actor}))
+	h.tick(time.Minute)
+	h.machine()
+	require.Empty(t, h.judgmentsOf(sprint.NFleetFailure), "ack then tick: not raised again")
+	h.tick(time.Minute)
+	h.failTake("s1-1.w2", report)
+	h.machine()
+	assert.Len(t, h.judgmentsOf(sprint.NFleetFailure), 1, "a new failure of the class after the ack raises it again")
+}

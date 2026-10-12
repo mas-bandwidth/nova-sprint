@@ -62,8 +62,9 @@ func Ack(s *Snapshot, r AckReq) Plan {
 		closing[id] = true
 		u := Unit{Key: id, Stream: n.Stream, Closes: entries, Moved: fmt.Sprintf("%s (%s) acknowledged: %s", id, n.Type, r.Reason)}
 		u.Notes = append(u.Notes, decided(entries[0], "ack: "+r.Reason, r.Who, s.Now))
-		if TickKept(n.Type) {
-			// The tick's condition may still hold: the acknowledgement is
+		if TickKept(n.Type) || n.Type == NFleetFailure {
+			// The tick's condition may still hold (the fleet's failure: held until a new failure
+			// of its class finishes after the ack, rules.go TickFleetFailure): the acknowledgement is
 			// kept on it, so the tick does not write it again until it has
 			// cleared and come back.
 			u.Notes = append(u.Notes, acknowledged(n, entries, r.Who, s.Now))
@@ -357,7 +358,7 @@ func Wait(s *Snapshot, r WaitReq) Plan {
 		return p
 	}
 	n := entries[0].Note
-	if why := WaitRefusal(n); why != "" {
+	if why := WaitRefusalIn(s, n); why != "" {
 		p.refuse(r.Note, why) // a wait never parks a card (wait_refused.go)
 		return p
 	}

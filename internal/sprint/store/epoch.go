@@ -177,13 +177,20 @@ func (st *Store) Wait(ctx context.Context, noteID string, at time.Time) (res Res
 	if err != nil {
 		return res, false, err
 	}
+	var snap *sprint.Snapshot
 	for _, o := range open {
 		if o.Note.ID != noteID {
 			continue
 		}
+		if snap == nil {
+			if snap, err = st.shadowRead(ctx); err != nil {
+				return res, false, err
+			}
+		}
 		// a judgment that holds a card from progressing takes no wait, neither a hold nor a
-		// review time: a wait would park the card (sprint.WaitRefused, wait_refused.go)
-		if why := sprint.WaitRefusal(o.Note); why != "" {
+		// review time: a wait would park the card (sprint.WaitRefusalIn: the table, and any
+		// judgment naming a work-table card, wait_refused.go)
+		if why := sprint.WaitRefusalIn(snap, o.Note); why != "" {
 			coordinator, err := st.B.Coordinator(ctx)
 			if err != nil {
 				return res, false, err

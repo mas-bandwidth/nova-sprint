@@ -73,6 +73,9 @@ var WaitAllowedOnACard = map[string]string{
 	NReadLate: "the read is still with its reader: the read-late rule asks another; a wait quiets the lateness alarm, not the card",
 	// the held wave's sentinel, never a card: a stop the coordinator placed
 	NStarving: "names the first held wave's sentinel, a stop the coordinator placed, never a single card",
+	// a friend's session: the judgment names a friend, not a card
+	NFriendIdle:    "names a friend whose session holds working cards and finishes none, not a card: the cards stay hers and keep their deadlines",
+	NFriendStalled: "names a friend, not a card: her cards keep their deadlines and the stall ladder wakes her",
 	// a deliberate stop: "do more before going on" is the sentinel's own decision
 	NSentinelReached: "a sentinel is a stop the coordinator placed: doing more before going on is its own decision, and its release is a gated cut",
 }
@@ -105,6 +108,25 @@ func WaitRefusal(n Note) string {
 		return ""
 	}
 	return fmt.Sprintf("%s (%s) holds its card from progressing, and a wait would park it: %s; run: nova-sprint inbox --open %s", n.ID, n.Type, instead, n.ID)
+}
+
+// WaitRefusalIn is WaitRefusal read against the sprint: besides the kinds of the table, any
+// judgment whose subject or primaries are cards on the work table refuses wait, whatever its
+// kind (a kind added later included, a stop that names a card), unless its kind is one of
+// WaitAllowedOnACard. A judgment naming a friend, a timer, a tier or a stream holds no card.
+func WaitRefusalIn(s *Snapshot, n Note) string {
+	if why := WaitRefusal(n); why != "" {
+		return why
+	}
+	if _, ok := WaitAllowedOnACard[n.Type]; ok || n.Kind != Judgment || s == nil || s.Work == nil || n.StreamLevel || n.SprintLevel {
+		return ""
+	}
+	for _, sub := range n.Primaries {
+		if s.Work.Placed(sub) != nil {
+			return fmt.Sprintf("%s (%s) names %s, a card it holds from progressing, and a wait would park it: answer it by its decisions; run: nova-sprint inbox --open %s", n.ID, n.Type, sub, n.ID)
+		}
+	}
+	return ""
 }
 
 // OffersRefusedVerb is the decisions of the kind that name a verb the kind refuses: "wait"

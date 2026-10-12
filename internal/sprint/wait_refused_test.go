@@ -3,6 +3,7 @@ package sprint
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -60,7 +61,7 @@ func TestEveryKindThatHoldsACardRefusesWait(t *testing.T) {
 		assert.NotEmpty(t, refusal, "%s holds a card and must refuse wait", k)
 		assert.Contains(t, refusal, "holds its card", k)
 	}
-	assert.LessOrEqual(t, len(WaitAllowedOnACard), 5, "the exceptions stay few: a new one is a decision")
+	assert.LessOrEqual(t, len(WaitAllowedOnACard), 7, "the exceptions stay few: a new one is a decision")
 }
 
 // The inbox never offers a verb the kind refuses: no kind of WaitRefused lists wait among its
@@ -115,4 +116,23 @@ func TestAPartlyAnsweredJudgmentCountsOnlyTheCardsStillHeld(t *testing.T) {
 	// s1-1's entry was answered and closed; s1-2's entry stays open, its note naming both
 	w.s.Open = append(w.s.Open, Open{Key: OpenKey(shared.ID, "s1-2"), Note: shared})
 	assert.Zero(t, CardsHeldByJudgments(w.s), "s1-1 was answered: the open entry holds s1-2 alone, which is not on the work table here")
+}
+
+// The run-time rule: a judgment that names a work-table card refuses wait whatever its kind, a
+// stop naming a card (NStopPinWaits) and a kind added later alike; one that names no card does
+// not.
+func TestAJudgmentNamingACardRefusesWaitWhateverItsKind(t *testing.T) {
+	t.Parallel()
+	w, _ := friendInReview(t, false, "friend amy LAND: done")
+	for _, k := range []string{NStopPinWaits, "a kind added next year"} {
+		n := Note{ID: "j1", Kind: Judgment, Type: k, Primaries: []string{"s1-1"}}
+		assert.NotEmpty(t, WaitRefusalIn(w.s, n), "%s names a card: refused", k)
+		w.s.Open = []Open{{Key: OpenKey("j1", "s1-1"), Note: n}}
+		p := Wait(w.s, WaitReq{Note: "j1", Until: w.s.Now.Add(time.Hour), Who: w.s.Coordinator})
+		require.Len(t, p.Refused, 1, "%s: the wait step refuses", k)
+	}
+	friend := Note{ID: "j2", Kind: Judgment, Type: NFriendIdle, Primaries: []string{"friend.amy"}}
+	assert.Empty(t, WaitRefusalIn(w.s, friend), "a friend is not a card")
+	unknown := Note{ID: "j3", Kind: Judgment, Type: "a kind added next year", Primaries: []string{"timer:x"}}
+	assert.Empty(t, WaitRefusalIn(w.s, unknown), "a judgment naming no card takes a wait")
 }
