@@ -459,6 +459,18 @@ func landingStallWhat(s *Snapshot, r TickReq, d time.Duration) string {
 //
 // tla/SprintRules.tla LsTick
 func TickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
+	p, n := tickLandingStall(s, r)
+	// an acknowledged rate or health judgment whose numbers have crossed a new
+	// threshold or whose quiet period has passed is raised again, saying why
+	// (reads_window.go): this deadlines part, run every tick, is its release
+	rel := releaseAckedHealth(s, r)
+	p.Closes = append(p.Closes, rel.Closes...)
+	p.Notes = append(p.Notes, rel.Notes...)
+	return p, n
+}
+
+// tickLandingStall is the landing-stall alarm alone (TickLandingStall).
+func tickLandingStall(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	if s.Work == nil {
 		return p, 0

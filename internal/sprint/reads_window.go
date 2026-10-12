@@ -42,6 +42,13 @@ const (
 	ReaderOtherBar      = 0.5
 	ReaderOtherMin      = 5
 	FindingClassLen     = 60
+	// BrokenShareStep is how much the broken share of the window must rise for
+	// an acknowledged "broken reads outrun" judgment to be raised again as a new
+	// episode before its quiet period has passed (docs/SPEC-SPRINT.md section 8).
+	BrokenShareStep = 0.1
+	// HealthQuietPeriod is how long an acknowledged rate or health judgment stays
+	// quiet while its condition still holds before the tick raises it again.
+	HealthQuietPeriod = 30 * time.Minute
 )
 
 // The tick's two judgments.
@@ -277,6 +284,140 @@ func BrokenReadsOutrun(s *Snapshot, stopped func(from, to time.Time) time.Durati
 		all.broken, all.ok, ReadsWindowSpan, strings.Join(parts, "; "), strings.Join(topFindings(in, 3), "; ")), true
 }
 
+// healthAckBase is the marker an acknowledged rate or health judgment carries in
+// its text (Ack, steps_ack.go) with the numbers it had at ack time as
+// "<ok>/<broken>", so the tick can tell when they have crossed a new threshold
+// (readsCrossedStep). An acknowledgement shows in no inbox and is rewritten by no
+// tick, so the marker is never read by a person.
+const healthAckBase = "\x00ack="
+
+// readsAckBase is the numbers of a reads-window judgment at ack time, as
+// "<ok>/<broken>", so the tick can tell whether its numbers have crossed a new
+// threshold since the acknowledgment. For a judgment with no countable window
+// it is "" (never a threshold crossed).
+func readsAckBase(s *Snapshot, n Note) string {
+	if n.Type == NBrokenReadsOutrun {
+		w := ReadsWindowOf(s, nil)
+		return fmt.Sprintf("%d/%d", w.OK, w.Broken)
+	}
+	return ""
+}
+
+// ackBaseOf is the ack-time numbers an acknowledgement carries in its text, or ""
+// when it carries none.
+func ackBaseOf(n Note) string {
+	i := strings.Index(n.What, healthAckBase)
+	if i < 0 {
+		return ""
+	}
+	return n.What[i+len(healthAckBase):]
+}
+
+// withAckBase is n.What with the ack-time numbers appended (healthAckBase), so a
+// later tick can tell whether they have crossed a new threshold.
+func withAckBase(what, base string) string {
+	if base == "" {
+		return what
+	}
+	return what + healthAckBase + base
+}
+
+// parseReadsBase reads a readsAckBase string "<ok>/<broken>"; nothing parses to
+// zero counts.
+func parseReadsBase(base string) (ok, broken int) {
+	fmt.Sscanf(base, "%d/%d", &ok, &broken)
+	return ok, broken
+}
+
+// readsCrossedStep says the window's numbers have crossed a new threshold since
+// the acknowledgment: the broken share is up by BrokenShareStep or more.
+func readsCrossedStep(base, now string) bool {
+	if base == "" || now == "" {
+		return false
+	}
+	okB, brB := parseReadsBase(base)
+	okN, brN := parseReadsBase(now)
+	var shareB, shareN float64
+	if okB+brB > 0 {
+		shareB = float64(brB) / float64(okB+brB)
+	}
+	if okN+brN > 0 {
+		shareN = float64(brN) / float64(okN+brN)
+	}
+	return shareN >= shareB+BrokenShareStep
+}
+
+// readsReleaseReason is why an acknowledged rate or health judgment is raised
+// again before its condition clears (readsWindowConds, releaseAckedHealth): its
+// stated quiet period has passed, or its numbers have crossed a new threshold
+// since the ack. "" keeps it quiet.
+func readsReleaseReason(s *Snapshot, r TickReq, typ, subject string) string {
+	for _, o := range s.Acked {
+		if o.Note.Type != typ || o.Subject() != subject {
+			continue
+		}
+		if !o.Note.At.IsZero() && DueNow(s.Now, o.Note.At.Add(HealthQuietPeriod), o.Note.At, r.Stopped) {
+			return "its " + HealthQuietPeriod.String() + " quiet period has passed"
+		}
+		if typ == NBrokenReadsOutrun && readsCrossedStep(ackBaseOf(o.Note), readsAckBase(s, o.Note)) {
+			return "the broken share has risen past a new threshold since you acknowledged it"
+		}
+	}
+	return ""
+}
+
+// releaseAckedHealth is the tick's release of acknowledged rate or health
+// judgments: one whose stated quiet period has passed or whose numbers have
+// crossed a new threshold since the ack (readsReleaseReason) is closed and
+// raised again, its text saying why it is back, while its condition still holds
+// (docs/SPEC-SPRINT.md section 8; reads_window.go). A condition that has cleared
+// is left to the tick's own close, and nothing is done when no such
+// acknowledgement is held. It runs from the deadlines part (TickLandingStall,
+// judgments.go), the part in this file's gift that runs every tick.
+func releaseAckedHealth(s *Snapshot, r TickReq) Plan {
+	var p Plan
+	for _, o := range s.Acked {
+		if o.Note.Type != NBrokenReadsOutrun && o.Note.Type != NReaderBreaks {
+			continue
+		}
+		why := readsReleaseReason(s, r, o.Note.Type, o.Subject())
+		if why == "" {
+			continue
+		}
+		what, ok := healthCondition(s, r, o.Note.Type, o.Subject())
+		if !ok {
+			continue // the condition cleared: the tick closes the acknowledgement
+		}
+		p.Closes = append(p.Closes, o)
+		n := Note{Kind: Judgment, Type: o.Note.Type, Stream: o.Note.Stream, StreamLevel: true,
+			What: what + "; " + why, Who: r.who(), At: s.Now, Marked: true}
+		if o.Note.Type == NBrokenReadsOutrun {
+			n.Decisions = append([]string(nil), BrokenReadsDecisions...)
+		} else {
+			n.Decisions = append([]string(nil), ReaderBreaksDecisions...)
+		}
+		p.Notes = append(p.Notes, n)
+	}
+	return p
+}
+
+// healthCondition is the current line of the condition an acknowledgement holds:
+// the broken-reads-outrun judgment, or the named reader's breaks, and whether it
+// still holds.
+func healthCondition(s *Snapshot, r TickReq, typ, subject string) (string, bool) {
+	switch typ {
+	case NBrokenReadsOutrun:
+		return BrokenReadsOutrun(s, r.Stopped)
+	case NReaderBreaks:
+		for _, b := range ReadersBreaking(s) {
+			if StreamSubject(ReaderSubject(b.Reader)) == subject {
+				return b.What(), true
+			}
+		}
+	}
+	return "", false
+}
+
 // ReaderBreaking is a reader that breaks nearly everything: its last ReaderWindowLen
 // verdicts, and the reader it is set beside, by that reader's own last ReaderWindowLen.
 type ReaderBreaking struct {
@@ -337,9 +478,12 @@ func ReadersBreaking(s *Snapshot) []ReaderBreaking {
 func ReaderSubject(reader string) string { return "reader:" + reader }
 
 // BrokenReadsDecisions and ReaderBreaksDecisions are the two judgments' decisions.
+// Both are ackable: an acknowledgment (Ack) quiets them while their condition
+// holds, until the numbers cross a new threshold or the quiet period passes
+// (docs/SPEC-SPRINT.md section 8).
 var (
-	BrokenReadsDecisions  = []string{"look at the readers", "raise the read tier", "act"}
-	ReaderBreaksDecisions = []string{"look at the reader", "act"}
+	BrokenReadsDecisions  = []string{"look at the readers", "raise the read tier", "ack", "act"}
+	ReaderBreaksDecisions = []string{"look at the reader", "ack", "act"}
 )
 
 // readsWindowConds is the tick's conditions of the verdicts' ledger (NBrokenReadsOutrun, and
@@ -347,6 +491,9 @@ var (
 func readsWindowConds(s *Snapshot, r TickReq) []cond {
 	var out []cond
 	if what, ok := BrokenReadsOutrun(s, r.Stopped); ok {
+		if why := readsReleaseReason(s, r, NBrokenReadsOutrun, StreamSubject("")); why != "" {
+			what += "; " + why // why an acknowledged rate judgment is back
+		}
 		out = append(out, cond{typ: NBrokenReadsOutrun, streamLevel: true, what: what, decisions: BrokenReadsDecisions})
 	}
 	for _, b := range ReadersBreaking(s) {
@@ -354,7 +501,11 @@ func readsWindowConds(s *Snapshot, r TickReq) []cond {
 		for _, h := range b.Holds {
 			decisions = append(decisions, "hold "+h)
 		}
-		out = append(out, cond{typ: NReaderBreaks, stream: ReaderSubject(b.Reader), streamLevel: true, what: b.What(),
+		what := b.What()
+		if why := readsReleaseReason(s, r, NReaderBreaks, StreamSubject(ReaderSubject(b.Reader))); why != "" {
+			what += "; " + why
+		}
+		out = append(out, cond{typ: NReaderBreaks, stream: ReaderSubject(b.Reader), streamLevel: true, what: what,
 			decisions: append(decisions, ReaderBreaksDecisions...)})
 	}
 	return out
