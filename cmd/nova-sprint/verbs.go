@@ -3961,8 +3961,8 @@ func (a *app) cmdFunded(args []string, stdout, stderr io.Writer) int {
 // cmdStreamSet writes the read tier or release of the streams named (sprint.Set), over the
 // sprint's, their protected-branch mark: the repositories whose protected branches the
 // lander lands their cards on, their prose globs: the files the lander does not read
-// for a code span (docs/SPEC-SPRINT.md section 7 and section 11), and the base their
-// cards not yet dealt and queued to merge are re-pointed to (stream set --base,
+// for a code span (docs/SPEC-SPRINT.md section 7 and section 11), and the base every
+// card of theirs not yet landed is re-pointed to (stream set --base,
 // docs/SPEC-SPRINT.md section 11).
 func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("stream set")
@@ -3974,7 +3974,7 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 	seatAccept := fs.String("seat-accept", "", "on: the seat accepts the stream's cards by hand (a ready to accept judgment) instead of the tick accepting a card whose reads have all passed; off takes it off (the default: the tick accepts)")
 	defaultTier := fs.String("default-tier", "", "the tier (flash, pro or heavy) add stores a card of the stream with when its brief's line 1 names none; default takes it off, and the card checks then refuse a card brief with none (tier-line)")
 	attempts := fs.String("attempts", "", fmt.Sprintf("the stream's attempt cap, over the sprint's: how many attempts one brief may run before the card is the coordinator's as a brief defect; 1 to %d, or default (the sprint's)", sprint.AttemptsMax))
-	base := fs.String("base", "", "the base branch to re-point the stream's cards to: every card not yet dealt and every card queued to merge has its BASE line rewritten; refused when origin holds no such branch or a card's PATHS are absent at its tip; dealt and working cards keep their base")
+	base := fs.String("base", "", "the base branch to re-point the stream's cards to: every card not yet landed (waiting, ready, dealt, working, review or merging) has its BASE line rewritten, a working card taking it for its next attempt and a card in review or merging keeping its head, re-checked against the new base when it lands; refused when origin holds no such branch or a card's PATHS are absent at its tip; landed cards keep their base")
 	reason := fs.String("reason", "", "why the read tier is set, recorded on the stream row (the judgment 'raise the read tier of the stream?' names it)")
 	ans := fs.String("answers", "", "the judgment notifications this answers, comma separated")
 	promotion := fs.Bool("promotion", false, "mark the streams the promotion stream: they alone take cards cut on dev or main, and land them there (--land-protected any); --promotion=false takes the mark off (--land-protected default)")

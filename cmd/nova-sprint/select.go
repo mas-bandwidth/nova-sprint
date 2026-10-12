@@ -284,7 +284,13 @@ func (a *app) cmdBriefSel(args []string, stdout, stderr io.Writer) int {
 		}
 	}, func(q sprint.Selector, c *common, _ *store.Store) (store.Step, string) {
 		r := sprint.BriefSelReq{Sel: q, Tier: *tier, Edit: edit, Who: c.actor}
-		return store.Step{Named: true, Args: store.ArgsOf(r), Verb: "brief", Load: []string{sprint.Work},
+		// brief by selector loads what brief <id> loads (store.BriefStep): a card an
+		// attempt was dealt for (working, in review) is edited in place, and that plan
+		// reads its attempt's work card (the fleet table), its reads (the readers table)
+		// and its merge card (the merge table). With the work table alone loaded those
+		// were nil and the plan panicked in Table.index on the first review card
+		// (2026-10-12, brief --ids-file --set-base over five cards in review).
+		return store.Step{Named: true, Args: store.ArgsOf(r), Verb: "brief", Load: store.All, Mirrors: true,
 			Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.BriefSel(s, r) }}, ""
 	})
 }

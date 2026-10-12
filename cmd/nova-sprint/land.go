@@ -354,6 +354,12 @@ type lander struct {
 	// baseFix is the land log's line for the last build's base fix, reported with the batch
 	// (NOTE) and then cleared
 	baseFix string
+	// followed is the last cut's note that the stream branch was fast-forwarded to its
+	// trunk before the cut (followTrunk), reported with the batch (NOTE) and then cleared
+	followed string
+	// trunks is each stream's trunk as its control card records it (sprint.Trunk), read in
+	// openStream: the branch a stream branch with no commits of its own follows (followTrunk)
+	trunks map[string]string
 	// baseCount says the last build ran the base's gate under the rule and it was red, baseWhy
 	// its finding: the refusal is counted in the store (baseRefused), never only in this
 	// process, which a hand land starts empty every run and the server every start
@@ -388,13 +394,19 @@ type lander struct {
 	shared   *landShared
 }
 
-// keep appends a batch, carrying the tree gate's bench and wall when one ran.
+// keep appends a batch, carrying the tree gate's bench and wall when one ran, and the
+// note that the stream branch followed its trunk before the cut (followTrunk): the
+// follow happened whether the batch then landed or was refused, so its NOTE rides on
+// whichever line the batch ends with, once.
 func (l *lander) keep(b landBatch) {
 	if b.Bench == "" && l.gateHost != "" {
 		b.Bench, b.Wall = l.gateHost, l.gateWall.Seconds()
 		b.Ring, b.Slot = l.gateRing, l.gateSlot
 	}
 	l.gateHost, l.gateWall, l.gateRing, l.gateSlot = "", 0, 0, 0
+	if l.followed != "" {
+		b.Also, l.followed = append(b.Also, l.followed), ""
+	}
 	l.out = append(l.out, b)
 }
 
@@ -1371,7 +1383,8 @@ func (l *lander) markLanding(stream string, pins []landCard) string {
 	}
 	marked := make([]sprint.PushedPin, len(pins))
 	for i, c := range pins {
-		marked[i] = sprint.PushedPin{ID: c.id, Head: c.head, Attempt: c.attempt}
+		// the base pinned too: a card re-pointed while the batch built is refused the push
+		marked[i] = sprint.PushedPin{ID: c.id, Head: c.head, Attempt: c.attempt, Base: c.base}
 	}
 	epoch := l.epoch
 	step := store.Step{
@@ -1541,6 +1554,9 @@ func (l *lander) queueHead(ctx context.Context, stream string, pins []landCard) 
 	if why := headWhy(s, stream, pins); why != "" {
 		return why
 	}
+	if why := baseWhy(s, pins); why != "" {
+		return why
+	}
 	return l.pause(ctx, s, pins[0].repo, pins[0].base)
 }
 
@@ -1569,6 +1585,23 @@ func headWhy(s *sprint.Snapshot, stream string, pins []landCard) string {
 		pr := s.Work.Placed(c.id)
 		if pr == nil || pr.F("head") != c.head || pr.F("attempt") != c.attempt {
 			return fmt.Sprintf("%s is at attempt %s head %s now, not attempt %s head %s as it was read and built (reworked since); run land again", c.id, dashed(pr.F("attempt")), dashed(pr.F("head")), dashed(c.attempt), dashed(c.head))
+		}
+	}
+	// no base check here: headWhy also guards the report step after the push (stepWith) and
+	// the return of a refused head, where a push is a fact to be reported whatever the brief
+	// names now; the base is held before the push, in queueHead and sprint.MarkLanding
+	return ""
+}
+
+// baseWhy is why the batch is not pushed: a pinned card whose BASE: is no longer the base
+// the batch was built onto (stream set --base reaches a merging card); "" when every pin
+// holds. Run before the push only (queueHead); the landing mark holds the same inside its
+// step (sprint.MarkLanding), and sprint.Set refuses the re-point itself once the mark is
+// made. The card is left queued and the next pass lands it on its new base.
+func baseWhy(s *sprint.Snapshot, pins []landCard) string {
+	for _, c := range pins {
+		if now := cardBaseNow(s.Work.Placed(c.id)); c.base != "" && now != "" && now != c.base {
+			return fmt.Sprintf("%s was re-pointed to BASE %s during the gate, not %s as it was read and built: it lands on the next pass on its new base; nothing pushed", c.id, now, c.base)
 		}
 	}
 	return ""
@@ -1638,6 +1671,11 @@ func (l *lander) cut(ctx context.Context, dir, stream string, cards []landCard, 
 		l.baseAbsent = containsAny(err.Error(), notOnOrigin)
 		return landCut{}, "the fetch of origin in " + dir + " failed: " + firstLine("", err)
 	}
+	// a stream branch with no commits of its own follows its trunk before the first
+	// batch is cut from it (followTrunk); its fetches and push count as fetch time
+	start = time.Now()
+	l.followed = l.followTrunk(ctx, dir, stream, base)
+	since(&t.Fetch, start)
 	l.stage("merge", "git merge")
 	start = time.Now()
 	defer since(&t.Merge, start)
@@ -1671,6 +1709,64 @@ func (l *lander) cutBranch(ctx context.Context, dir, stream, base string) (strin
 		return "", "the branch " + stream + " could not be reset to the base " + base + " in " + dir + ": " + firstLine("", err)
 	}
 	return sha, ""
+}
+
+// followTrunk brings a stream branch with no commits of its own up to its trunk before
+// the batch is cut from it: the lander's note for the batch, "" when nothing moved. A
+// stream branch is cut from its trunk and falls behind as the trunk moves; a card staged
+// on the newer trunk then carries the trunk's commits relative to the branch, and the
+// scope check counted their files as the card's (E12: changes files outside its PATHS),
+// refusing correct heads (2026-10-12: the seat fast-forwarded five stream branches by hand
+// in one night). The rule: a stream branch with no commits of its own IS its trunk. The
+// trunk is the one the stream's control card records (sprint.Trunk, written by the first
+// add from its cards' bases: main when one names main, else dev; read in openStream), never
+// a guess among the protected branches: a branch level with main is not moved to a dev
+// that is main and more. The branch's fetched tip (origin/<base>) is measured against the
+// trunk's: equal, the branch is level with its trunk and is never moved; a strict ancestor,
+// the branch has nothing the trunk lacks, and it is pushed to the trunk's tip with a plain
+// push, which git accepts only as a fast-forward (never --force), so a branch that moved
+// under the lander is left as it is and the batch cuts from the tip the fetch found. A
+// branch with a commit of its own, a trunk itself, or a trunk origin does not hold: never
+// moved. A stream branch origin lacks is made from the trunk before this (ensureStreamBranch).
+func (l *lander) followTrunk(ctx context.Context, dir, stream, base string) string {
+	if slices.Contains(sprint.ProtectedBranches, base) {
+		return ""
+	}
+	trunk := l.trunks[stream]
+	if trunk == "" || trunk == base {
+		return ""
+	}
+	tip, err := l.git(ctx, dir, "rev-parse", "--verify", "refs/remotes/origin/"+base+"^{commit}")
+	if err != nil {
+		return ""
+	}
+	if _, err := l.fetched(ctx, dir, "fetch", "--no-tags", "origin", "+refs/heads/"+trunk+":refs/remotes/origin/"+trunk); err != nil {
+		return "" // origin holds no such trunk
+	}
+	trunkSha, err := l.git(ctx, dir, "rev-parse", "--verify", "refs/remotes/origin/"+trunk+"^{commit}")
+	if err != nil || trunkSha == tip {
+		return "" // level with its trunk: never moved
+	}
+	if _, err := l.git(ctx, dir, "merge-base", "--is-ancestor", tip, trunkSha); err != nil {
+		return "" // the branch has commits of its own (exit 1), or is no relation
+	}
+	out, err := l.git(ctx, dir, "rev-list", "--count", tip+".."+trunkSha)
+	if err != nil {
+		return ""
+	}
+	behindBy, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return ""
+	}
+	if _, err := l.fetched(ctx, dir, "push", "--porcelain", "origin", trunkSha+":refs/heads/"+base); err != nil {
+		// the branch moved under the lander (the push is a fast-forward or nothing):
+		// the batch cuts from the tip the fetch found, as before
+		return ""
+	}
+	// the pushed tip is the base's tip for this cut: a push updates the remote-tracking
+	// ref as a side effect of the clone's refspecs, and this makes it so whatever they say
+	_, _ = l.fetched(ctx, dir, "update-ref", "refs/remotes/origin/"+base, trunkSha)
+	return fmt.Sprintf("the stream branch %s had no commits of its own and was fast-forwarded to %s (%s, %d commit(s) behind) before the batch was cut", base, trunk, trunkSha[:12], behindBy)
 }
 
 // mergeCards merges the cards' heads onto the batch branch cut (cut), from the first after
