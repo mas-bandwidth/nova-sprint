@@ -407,6 +407,53 @@ func Add(s *Snapshot, r AddReq) Plan {
 			}
 		}
 	}
+	// A stream's branch and trunk (docs/SPEC-SPRINT.md section 7, the sprint branch): a
+	// card cut on a protected branch (dev or main) is re-cut on the stream's branch, and the
+	// first add writes both fields on the stream's control card in the same step as its first
+	// card. The trunk is the protected branch a card names (dev when none does, main when one
+	// names main), and a card naming a non-protected branch keeps that branch as the stream's.
+	// The promotion stream is the exception: its cards land on the protected branch the mark
+	// names, so they are not re-cut.
+	if len(in) > 0 && !IsPromotionStream(s, r.Stream) {
+		var bases []string
+		for i := range in {
+			bases = append(bases, in[i].base)
+		}
+		branch, trunk := branchAndTrunk(ctl, r.Stream, bases)
+		rewrote := false
+		for i := range in {
+			if !slices.Contains(ProtectedBranches, in[i].base) {
+				continue
+			}
+			in[i].brief = briefOnBase(in[i].brief, branch)
+			in[i].base = branch
+			rewrote = true
+		}
+		if rewrote {
+			p.Said = append(p.Said, "stream "+r.Stream+" lands on "+branch+", trunk "+trunk+": "+LandingFlow)
+		}
+		if ctl == nil || ctl.F(FieldStreamBranch) == "" || ctl.F(FieldTrunk) == "" {
+			set := map[string]string{FieldStreamBranch: branch, FieldTrunk: trunk}
+			merged := false
+			for i := range head {
+				if head[i].Entry.ID == CtlID(r.Stream) {
+					if head[i].Entry.Set == nil {
+						head[i].Entry.Set = map[string]string{}
+					}
+					maps.Copy(head[i].Entry.Set, set)
+					merged = true
+					break
+				}
+			}
+			if !merged {
+				if ctl != nil {
+					head = append(head, change(Merge, setEntry(ctl, set)))
+				} else {
+					head = append(head, change(Merge, createEntry(CtlID(r.Stream), r.Stream, Ctl, 0, set)))
+				}
+			}
+		}
+	}
 	// What the admitted change in the cards already in line.
 	mods := map[string]*mod{}
 	var past, pulled []string
