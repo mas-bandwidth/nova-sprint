@@ -142,6 +142,7 @@ func stitchLaneTake(s *Snapshot, one Plan, as string, lane int) Plan {
 // which); else a working card on its row that no lane holds becomes the lane's; else the
 // next ready card is taken to the lane, as a take by count of one (takeOne: the row's
 // width, its seat, its turns). A take naming cards, several members or no lane is refused.
+// A member runs at most its width, one card a lane (tla/DirtyTick.tla, Take; LanesRespected).
 func LaneTake(s *Snapshot, r TakeReq) Plan {
 	var p Plan
 	switch {

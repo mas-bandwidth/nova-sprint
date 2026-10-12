@@ -799,8 +799,8 @@ func TickResume(s *Snapshot, r TickReq) (Plan, int) {
 // index past the stream of the last card dealt), each
 // to the next up
 // member round the fleet with room (Deal: the rolling index of round.go),
-// every member filled up to its width, its ready and
-// working cards together (width.go): every ready card
+// every member filled up to twice its width, its ready and
+// working cards together (width.go, DealAhead): every ready card
 // the fleet has room for goes in the one plan, one step, up to TickMaxDeal;
 // a withdrawn card is dealt again at a new generation. With no member up and primaries waiting to be dealt, the
 // coordinator is told once (N3), and the judgment closes when a member is up.
