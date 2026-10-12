@@ -45,9 +45,10 @@
 \*   started, finishes the attempt. Every rework is one attempt more and starts from the
 \*   head the attempt before pushed (a head here is its attempt's number).
 \*
-\* Part "episodes": a hard pin released past its bound, the cannot-ask judgment once a
-\*   wait, and a rule's answer consumed by the attempt it started (its own comment and
-\*   reversed witnesses below, with the part).
+\* Part "episodes": a hard pin released past its bound on a running clock that stops
+\*   while the machine is STOPPED (PinReleased reads the NPinReleased record the tick
+\*   writes), the cannot-ask judgment once a wait, and a rule's answer consumed by the
+\*   attempt it started (its own comment and reversed witnesses below, with the part).
 \*
 \* Part "judgments": the three rules that answer the judgments the tick raises
 \*   (judgment_rules.go ruleFriendTake, ruleReadLate, ruleHoldNeed): a friend's card she
@@ -68,6 +69,22 @@
 \*   the redo reworks it on the current tip, one attempt more; the same way twice is a brief
 \*   defect, marked and held for a mind. A refusal the rule cannot place (a generated
 \*   ledger, a head origin does not hold) is a mind's, not modelled.
+\*
+\* Part "noroute": one card whose tier no route serves (internal/sprint seat_answers.go
+\*   TickRuleNoRoute, RuleNoRoute). The card sits on a tier of the ladder (1 flash, 2 pro,
+\*   3 heavy, 4 frontier or a friend's card); Served is the tiers a route or a friend up
+\*   serves. An overdue no-route judgment (njudged, an outside event: the deal raised it
+\*   when no route serves the tier) is what the rule answers: each ready primary it holds
+\*   is raised to the nearest served tier above, pinned there (npinned) and the seat told
+\*   in a note naming both tiers. Never down, so a heavy card never goes to flash; a
+\*   pinned card (pinnedTier), a friend's card, a brief defect, a card not ready, or one
+\*   with no served tier above stays held.
+\*
+\* Part "alert": the owner alert's send-once (cmd/nova-sprint seat_silent.go tellSeatSilent,
+\*   seatSilentToken). A raise of the seat-not-answering judgment is sent to the owner on
+\*   the bus and marked told only once its send succeeds; a failed send is retried at the
+\*   next look under the same token, so a send whose response was lost, or a server
+\*   restarted between a send and its mark, never puts a second message on the bus.
 \*
 \* Part "late" also has a reachability witness, MCSprintRulesLateReachReturn: the design
 \* still returns a card (gen > 0), so NeverReturned fails there.
@@ -126,6 +143,14 @@
 \*   "groupredeal" the harness rule redeals a card the fleet's grouped harness-fault judgment
 \*                holds (the same harness-fault class on RuleSameFailureCards cards):
 \*                HarnessFleetHeld
+\*   "lowers"     the no-route rule moves a card to a weaker tier: NoRouteNeverLowers
+\*   "pinnedraise" the no-route rule raises a card whose tier is pinned:
+\*                NoRouteRaisesOnlyUnpinnedReady
+\*   "stoppedcounts" the pin's running clock advances while the machine is STOPPED:
+\*                PinClockSkipsStopped
+\*   "toldbeforesend" the alert marks a raise told before its send succeeds:
+\*                ToldOnlyAfterSend
+\*   "newtoken"   the alert sends a fresh bus token each retry: NoSecondMessage
 
 EXTENDS Integers, FiniteSets
 
@@ -155,10 +180,12 @@ VARIABLES col, need, blocked, twin,               \* twins
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
           anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, \* answers
-          pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
+          pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
           jf, jfstarted, jr, jrasked, jh, jhlanded, \* judgments
           lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged, \* stall
-          ctier, cst, crefused, cway, catt           \* conflict
+          ctier, cst, crefused, cway, catt,         \* conflict
+          ntier, nready, npinned, nfriend, nbrief, njudged, \* noroute
+          alopen, almsg, altold                       \* alert
 
 twinVars == <<col, need, blocked, twin>>
 ruleVars == <<tier, fails, st, attempts, envFails, fclass, same, bbound>>
@@ -167,11 +194,13 @@ rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed>>
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
 anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt>>
-epVars == <<pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+epVars == <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
 judgVars == <<jf, jfstarted, jr, jrasked, jh, jhlanded>>
 stallVars == <<lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
 conflictVars == <<ctier, cst, crefused, cway, catt>>
-vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>
+norouteVars == <<ntier, nready, npinned, nfriend, nbrief, njudged>>
+alertVars == <<alopen, almsg, altold>>
+vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
 
 \* -- answers: a reader's findings ("empty" is a broken verdict that carries none), and the
 \* ways an attempt fails
@@ -231,7 +260,8 @@ TypeOK ==
   /\ anhold \in BOOLEAN /\ anfixed \subseteq AnFindings /\ anharness \in Nat
   /\ anfleet \in 0..2 /\ anredealt \in BOOLEAN
   /\ pup \in BOOLEAN /\ pcol \in {"ready", "mine", "away"} /\ pwait \in (0..MaxClock) \cup {-1}
-  /\ pign \in BOOLEAN /\ pdw \in (0..MaxClock) \cup {-1} /\ eclk \in 0..MaxClock
+  /\ pign \in BOOLEAN /\ pdw \in (0..MaxClock) \cup {-1} /\ prec \in BOOLEAN /\ pstopped \in BOOLEAN
+  /\ eclk \in 0..MaxClock
   /\ ast \in {"waits", "asked", "gone"} /\ aatt \in 1..Cap /\ areason \in {"noreader", "room"}
   /\ aopen \in BOOLEAN /\ aseen \in BOOLEAN /\ anotes \in 0..MaxClock
   /\ rcol \in {"review", "ready", "working"} /\ rans \in BOOLEAN /\ ratt \in 1..Cap
@@ -248,6 +278,9 @@ TypeOK ==
   /\ ctier \in 1..3 /\ cst \in {"working", "refused", "returned", "brief", "done"}
   /\ crefused \in ConflictWays \cup {None} /\ cway \in ConflictWays \cup {None}
   /\ catt \in 1..Cap
+  /\ ntier \in 1..4 /\ nready \in BOOLEAN /\ npinned \in BOOLEAN /\ nfriend \in BOOLEAN
+  /\ nbrief \in BOOLEAN /\ njudged \in BOOLEAN
+  /\ alopen \in BOOLEAN /\ almsg \in 0..2 /\ altold \in BOOLEAN
 
 Init ==
   /\ col = [x \in TwinIds |-> CASE x = "o" -> "open" [] x = "t" -> "absent" [] OTHER -> "waiting"]
@@ -266,7 +299,8 @@ Init ==
   /\ anfind = None /\ anfail = None /\ anlast = None
   /\ anland = FALSE /\ anlost = FALSE /\ anfixless = FALSE
   /\ anhold = FALSE /\ anfixed = {} /\ anharness = 0 /\ anfleet = 0 /\ anredealt = FALSE
-  /\ pup = FALSE /\ pcol = "ready" /\ pwait = -1 /\ pign = FALSE /\ pdw = -1 /\ eclk = 0
+  /\ pup = FALSE /\ pcol = "ready" /\ pwait = -1 /\ pign = FALSE /\ pdw = -1 /\ prec = FALSE /\ pstopped = FALSE
+  /\ eclk = 0
   /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
   /\ rcol = "review" /\ rans = FALSE /\ ratt = 1
   /\ jf = "open" /\ jfstarted = FALSE
@@ -275,6 +309,8 @@ Init ==
   /\ lsclk = 0 /\ lsstopped = FALSE /\ lswait = 1
   /\ lslast = -1 /\ lssince = -1 /\ lssaid = -1 /\ lsjudged = FALSE
   /\ ctier = 1 /\ cst = "working" /\ crefused = None /\ cway = None /\ catt = 1
+  /\ ntier \in 1..3 /\ nready = TRUE /\ npinned = FALSE /\ nfriend = FALSE /\ nbrief = FALSE /\ njudged = FALSE
+  /\ alopen = FALSE /\ almsg = 0 /\ altold = FALSE
 
 -----------------------------------------------------------------------------
 \* Part "twins".
@@ -876,19 +912,26 @@ ReachMindJudges == anst # "judged"
 \* (items 12, 22, 23), each a small machine; the tick (EpTick) is one step for all three, the
 \* outside moves between ticks. eclk is running time, one step a tick.
 \*
-\* The hard pin (stops.go PinReleased, pinStops; friend_deal.go friendDealPass; steps_tick.go
-\* TickDeal; coordinator_pass.go pinConds): a card pinned to one friend alone, ready.
+\* The hard pin (stops.go PinReleased, pinStops; seat_answers.go releasePins; friend_deal.go
+\* friendDealPass; steps_tick.go TickDeal; coordinator_pass.go pinConds): a card pinned to one
+\* friend alone, ready.
 \*   pup    she is up (an outside event: held, down, back).
 \*   pcol   the card: ready, dealt to her ("mine"), or dealt to another worker ("away").
 \*   pwait  the running clock its pin-waits stop (NStopPinWaits) was raised at; -1 none.
 \*   pign   the pin-ignored judgment (NPinIgnored) is open.
 \*   pdw    how long the stop had stood when the card was dealt away; -1 never.
+\*   prec   the NPinReleased record: the tick records the release once the stop note has
+\*          stood PinBound of running time; PinReleased reads it.
+\*   pstopped the machine is STOPPED (an outside event): the running clock does not advance.
 \* The tick deals it to her while she is up; while she is not, the pass keeps the stop, and
-\* once the stop has stood PinBound (Window here; the code's PinReleaseBound, one hour) the
-\* deal offers it on, and the pass keeps the pin-ignored judgment while it is away. Not
-\* modelled: the coordinator's answer to the stop. An ack or a wait writes a new stop note at
-\* its own time, and the code's clock (PinReleased) is that note's At, so each answer starts the
-\* hour again; the release comes PinReleaseBound after the last answer. Here pwait is set once.
+\* once the stop has stood PinBound (Window here; the code's PinReleaseBound, one hour) of
+\* running time the tick records the release (prec) and the deal offers it on, and the pass
+\* keeps the pin-ignored judgment while it is away. STOPPED time does not count: while the
+\* machine is stopped the running clock stands still, so the tick writes no record and a
+\* machine stopped past the bound releases nothing on resume. Not modelled: the
+\* coordinator's answer to the stop. An ack or a wait writes a new stop note at its own time,
+\* and the code's clock (PinReleased) is that note's At, so each answer starts the hour again;
+\* the release comes PinReleaseBound after the last answer. Here pwait is set once.
 \*
 \* Cannot ask (read_cards.go readCardsAskPart, steps_tick.go cannotAskCond and notify): a
 \* primary in review that wants a read.
@@ -914,6 +957,7 @@ ReachMindJudges == anst # "judged"
 \*   "pinforever"  a hard pin is never released (the code before): PinWaitBounded
 \*   "pinsilent"   released without the pin-ignored judgment: AwayIsJudged
 \*   "pinearly"    released at once, the bound not waited: PinHonouredWithinBound
+\*   "stoppedcounts" the running clock advances while STOPPED: PinClockSkipsStopped
 \*   "askflap"     the judgment's condition is the reason, not the wait (the code before):
 \*                 closed when the reason turns to room and raised again: OneCannotAskAnEpisode
 \*   "asknoclose"  the judgment stays open after the card is asked: CannotAskClosedWhenAsked
@@ -922,47 +966,62 @@ ReachMindJudges == anst # "judged"
 
 PinBound == Window
 
-\* the hard pin is a preference now: she is not up, and its stop has stood PinBound
+\* the tick records the release once the stop note has stood PinBound of running time
+\* (the pinearly defect at once; pinforever never). The running clock stands still while
+\* the machine is STOPPED, so a machine stopped short of the bound writes no record.
+PinRecordDue ==
+  IF Broken = "pinearly" THEN TRUE
+  ELSE IF Broken = "pinforever" THEN FALSE
+  ELSE eclk - pwait >= PinBound
+
+\* the hard pin is a preference now: she is not up, and its stop's NPinReleased record is
+\* there (written by the tick this step or an earlier one)
 PinReleased ==
   /\ ~pup /\ pwait # -1
-  /\ IF Broken = "pinforever" THEN FALSE
-     ELSE IF Broken = "pinearly" THEN TRUE
-     ELSE eclk - pwait >= PinBound
+  /\ prec \/ PinRecordDue
 
 \* the outside: she is held or down, or back up
 PinFlip ==
   /\ pup' = ~pup
-  /\ UNCHANGED <<pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+
+\* the outside: the machine is STOPPED or starts again (stopped time does not count)
+PinStop ==
+  /\ ~pstopped /\ pstopped' = TRUE
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+PinStart ==
+  /\ pstopped /\ pstopped' = FALSE
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* the outside: the card's attempt ends wherever it ran; its next attempt is pinned to her
 \* again (ReworkPinned), ready, a new episode
 PinNextAttempt ==
   /\ pcol \in {"mine", "away"}
-  /\ pcol' = "ready" /\ pdw' = -1
-  /\ UNCHANGED <<pup, pwait, pign, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ pcol' = "ready" /\ pdw' = -1 /\ prec' = FALSE
+  /\ UNCHANGED <<pup, pwait, pign, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* the outside: the reason the card waits changes while it waits
 AskReason ==
   /\ ast = "waits"
   /\ areason' = IF areason = "noreader" THEN "room" ELSE "noreader"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, eclk, ast, aatt, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* the outside: a read is dealt it; the read comes back with no verdict and it waits again
 \* (a new episode: a read was dealt); its attempt is answered and the next one waits; it
 \* leaves review
 AskDealt ==
   /\ ast = "waits" /\ ast' = "asked"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, eclk, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
 AskBack ==
   /\ ast = "asked" /\ ast' = "waits"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, eclk, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
 AskNextAttempt ==
   /\ ast # "gone" /\ aatt < Cap
   /\ aatt' = aatt + 1 /\ ast' = "waits"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, eclk, areason, aseen, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, areason, aseen, rcol, rans, ratt>>
 AskGone ==
   /\ ast # "gone" /\ ast' = "gone"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, eclk, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* a rule answers the card in review: its next attempt, ready, and the answer, in one step
 RuleAnswers ==
@@ -970,17 +1029,17 @@ RuleAnswers ==
   /\ rans' = TRUE
   /\ IF Broken = "answernomove" THEN UNCHANGED <<rcol, ratt>>
      ELSE rcol' = "ready" /\ ratt' = ratt + 1
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes>>
 
 \* the outside: the attempt is dealt and taken; it finishes, back in review, the answer
 \* consumed
 RDealt ==
   /\ rcol = "ready" /\ rcol' = "working"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rans, ratt>>
 RFinish ==
   /\ rcol = "working" /\ rcol' = "review"
   /\ rans' = (Broken = "keepanswer" /\ rans)
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, eclk, ast, aatt, areason, aopen, aseen, anotes, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, ratt>>
 
 \* the cannot-ask condition the tick reads, and whether it raises one
 AskHolds == IF Broken = "askflap" THEN ast = "waits" /\ areason = "noreader" ELSE ast = "waits"
@@ -989,15 +1048,19 @@ AskRaise == ast = "waits" /\ areason = "noreader"
 \* one tick: the deal and the pass for the pin, the ask's judgment, nothing for the answer
 EpTick ==
   /\ eclk < MaxClock
-  /\ eclk' = eclk + 1
-  \* the pin: dealt to her while she is up; released past its bound; the stop kept while it
-  \* waits ready on her not up; the pin-ignored judgment kept while it is away
-  /\ pcol' = IF pcol = "ready" /\ pup THEN "mine"
-             ELSE IF pcol = "ready" /\ PinReleased THEN "away"
-             ELSE pcol
-  /\ pdw' = IF pcol = "ready" /\ ~pup /\ PinReleased THEN eclk - pwait ELSE pdw
-  /\ pwait' = IF pcol' = "ready" /\ ~pup THEN (IF pwait = -1 THEN eclk + 1 ELSE pwait) ELSE -1
-  /\ pign' = (pcol' = "away" /\ Broken # "pinsilent")
+  /\ LET now == IF pstopped /\ Broken # "stoppedcounts" THEN eclk ELSE eclk + 1
+     IN /\ eclk' = now
+        \* the tick records the release once the stop note has stood the bound of running
+        \* time (a stopped machine's clock is frozen, so it records nothing)
+        /\ prec' = (~pup /\ pwait # -1 /\ PinRecordDue)
+        \* the pin: dealt to her while she is up; released past its bound; the stop kept
+        \* while it waits ready on her not up; the pin-ignored judgment kept while it is away
+        /\ pcol' = IF pcol = "ready" /\ pup THEN "mine"
+                   ELSE IF pcol = "ready" /\ PinReleased THEN "away"
+                   ELSE pcol
+        /\ pdw' = IF pcol = "ready" /\ ~pup /\ PinReleased THEN eclk - pwait ELSE pdw
+        /\ pwait' = IF pcol' = "ready" /\ ~pup THEN (IF pwait = -1 THEN now ELSE pwait) ELSE -1
+        /\ pign' = (pcol' = "away" /\ Broken # "pinsilent")
   \* cannot ask: raised once an episode, held while it holds, closed when it clears
   /\ aseen' = (ast = "waits")
   /\ IF AskHolds
@@ -1008,13 +1071,13 @@ EpTick ==
             ELSE /\ aopen' = FALSE
                  \* the episode ends when the card no longer waits (a flap keeps counting)
                  /\ anotes' = IF ast = "waits" THEN anotes ELSE 0
-  /\ UNCHANGED <<pup, ast, aatt, areason, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pstopped, ast, aatt, areason, rcol, rans, ratt>>
 
 \* the attempt the card waits at changes: a new episode (the pass ends the judgment of the
 \* attempt before on the next tick, cannotAskEpisodes; modelled by ending the episode on the
 \* attempt step)
 EpNext ==
-  \/ PinFlip \/ PinNextAttempt
+  \/ PinFlip \/ PinStop \/ PinStart \/ PinNextAttempt
   \/ AskReason \/ AskDealt \/ AskBack \/ AskGone
   \/ AskNextAttempt /\ aopen' = FALSE /\ anotes' = 0
   \/ RuleAnswers \/ RDealt \/ RFinish
@@ -1029,6 +1092,11 @@ AwayIsJudged == pcol = "away" => pign
 
 \* A hard pin is honoured for its bound: dealt away only after its stop stood PinBound.
 PinHonouredWithinBound == pdw # -1 => pdw >= PinBound
+
+\* STOPPED time does not count toward the pin's deadline: while the machine is STOPPED
+\* the running clock stands still, so a machine stopped short of the bound releases
+\* nothing on resume.
+PinClockSkipsStopped == [][pstopped => eclk' = eclk]_epVars
 
 \* One cannot-ask judgment an episode: a card that still waits is never judged twice.
 OneCannotAskAnEpisode == anotes <= 1
@@ -1275,30 +1343,159 @@ ConflictResetsToFlash == cst = "returned" => ctier = 1
 OnlyConflictLowers == [][ctier' < ctier => cst = "refused" /\ cst' = "returned"]_conflictVars
 
 -----------------------------------------------------------------------------
+\* Part "noroute": one card whose tier no route serves (internal/sprint
+\* seat_answers.go TickRuleNoRoute, RuleNoRoute). The card sits on a tier of the
+\* ladder (1 flash, 2 pro, 3 heavy, 4 frontier or a friend's card); Served is the
+\* tiers a route or a friend up serves. An overdue no-route judgment (njudged, an
+\* outside event: the deal raised it when no route serves the tier) is what the rule
+\* answers: each ready primary it holds is raised to the nearest served tier above,
+\* pinned there (npinned) and the seat told in a note naming both tiers. Never down,
+\* so a heavy card never goes to flash; a pinned card (pinnedTier: FieldTier, a pinned
+\* model, or frontier), a friend's card, a brief defect, a card not ready, or one with
+\* no served tier above stays held.
+
+\* a served tier stands above t
+ServedAbove(t) == \E s \in Served : s > t
+
+\* the nearest served tier above t, or t when none does (frontier and heavy have no
+\* served tier above, so the rule leaves them)
+NearestServed(t) ==
+  IF ServedAbove(t)
+  THEN CHOOSE s \in Served : s > t /\ \A u \in Served : u > t => u >= s
+  ELSE t
+
+\* the outside: the card's status changes, and the overdue judgment appears
+NoRouteReady ==
+  /\ nready' = ~nready
+  /\ UNCHANGED <<ntier, npinned, nfriend, nbrief, njudged>>
+NoRoutePin ==
+  /\ npinned' = ~npinned
+  /\ UNCHANGED <<ntier, nready, nfriend, nbrief, njudged>>
+NoRouteFriend ==
+  /\ nfriend' = ~nfriend
+  /\ UNCHANGED <<ntier, nready, npinned, nbrief, njudged>>
+NoRouteBrief ==
+  /\ nbrief' = ~nbrief
+  /\ UNCHANGED <<ntier, nready, npinned, nfriend, njudged>>
+NoRouteJudge ==
+  /\ ~njudged
+  /\ njudged' = TRUE
+  /\ UNCHANGED <<ntier, nready, npinned, nfriend, nbrief>>
+
+\* the tier the rule raises the card to: the nearest served tier above, or a weaker
+\* tier for the lowers defect (the guard keeps it above the ladder's floor)
+NoRouteTarget ==
+  IF Broken = "lowers" THEN ntier - 1 ELSE NearestServed(ntier)
+
+\* the rule: an overdue judgment holds a ready, unpinned card that is not a friend's
+\* and not a brief defect, and a served tier stands above it; the card is raised and
+\* pinned there, and the seat told. The pinnedraise defect raises a pinned card too.
+NoRouteRaise ==
+  /\ njudged
+  /\ nready /\ ~nfriend /\ ~nbrief
+  /\ IF Broken = "pinnedraise" THEN TRUE ELSE ~npinned
+  /\ IF Broken = "lowers" THEN ntier > 1 ELSE ServedAbove(ntier)
+  /\ ntier' = NoRouteTarget
+  /\ npinned' = TRUE
+  /\ njudged' = FALSE
+  /\ UNCHANGED <<nready, nfriend, nbrief>>
+
+NoRouteNext == NoRouteReady \/ NoRoutePin \/ NoRouteFriend \/ NoRouteBrief \/ NoRouteJudge \/ NoRouteRaise
+
+\* The rule never lowers a tier: a card no route serves is raised to a stronger tier,
+\* never a weaker one (a heavy card never goes to flash).
+NoRouteNeverLowers == [][ntier' >= ntier]_norouteVars
+
+\* The rule raises only a card that is ready and whose tier is not pinned: a pinned
+\* tier is the coordinator's word, and the rule never overrides it.
+NoRouteRaisesOnlyUnpinnedReady == [][ntier' = ntier \/ (~npinned /\ nready)]_norouteVars
+
+\* The rule raises to the nearest served tier above the card's own, and nowhere else.
+NoRouteRaisesToNearestServed == [][ntier' = ntier \/ ntier' = NearestServed(ntier)]_norouteVars
+
+-----------------------------------------------------------------------------
+\* Part "alert": the owner alert's send-once (cmd/nova-sprint seat_silent.go
+\* tellSeatSilent, seatSilentToken). A raise of the seat-not-answering judgment is
+\* sent to the owner on the bus and marked told only once its send succeeds; a failed
+\* send is retried at the next look under the same token (seatSilentToken: the sprint's
+\* key prefix, its epoch, the judgment's id and the raise), so a send whose response was
+\* lost, or a server restarted between a send and its mark, never puts a second message
+\* on the bus (the bus answers a token it has seen with the message it sent). A raise no
+\* longer open is forgotten at each look (not modelled: the one raise stays open).
+
+\* the message the bus records: one for a token (a retry is answered with the message
+\* already sent), a fresh one each look for a fresh token (newtoken)
+PutMsg == IF Broken = "newtoken" THEN almsg + 1 ELSE 1
+
+\* the outside: the raise appears (the judgment opens)
+RaiseAppears ==
+  /\ ~alopen
+  /\ alopen' = TRUE
+  /\ UNCHANGED <<almsg, altold>>
+
+\* the look sends the raise; it succeeds and is marked told, or the toldbeforesend
+\* defect marks it told before its send succeeded
+SendOK ==
+  /\ alopen /\ ~altold
+  /\ IF Broken = "newtoken" THEN almsg < 2 ELSE TRUE
+  /\ IF Broken = "toldbeforesend"
+       THEN /\ altold' = TRUE /\ almsg' = almsg
+       ELSE /\ almsg' = PutMsg /\ altold' = TRUE
+  /\ UNCHANGED alopen
+
+\* the look's send fails: no mark, retried at the next look under the same token
+SendFail ==
+  /\ alopen /\ ~altold
+  /\ IF Broken = "newtoken" THEN almsg < 2 ELSE TRUE
+  /\ almsg' = PutMsg
+  /\ UNCHANGED <<altold, alopen>>
+
+\* the server restarts: the told map (in memory) is lost, the bus keeps its message
+Restart ==
+  /\ altold' = FALSE
+  /\ UNCHANGED <<alopen, almsg>>
+
+AlertNext == RaiseAppears \/ SendOK \/ SendFail \/ Restart
+
+\* A raise is marked told only after its send succeeded (a message is on the bus).
+ToldOnlyAfterSend == altold => almsg >= 1
+
+\* A raise puts at most one message on the bus: a retry under one token, or a restart
+\* between a send and its mark, never sends twice.
+NoSecondMessage == almsg <= 1
+
+\* Every raise is told, under fairness of the retry (the send eventually succeeds).
+EveryRaiseTold == alopen ~> altold
+
+-----------------------------------------------------------------------------
 
 Next ==
-  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>
-  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>
-  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>
-  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>
-  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>
-  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars, stallVars, conflictVars>>
-  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars>>
-  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars, stallVars, conflictVars>>
-  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars>>
-  \/ Part = "stall" /\ LsNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars>>
-  \/ Part = "conflict" /\ ConflictNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars>>
+  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
+  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
+  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
+  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
+  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
+  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
+  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
+  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
+  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars>>
+  \/ Part = "stall" /\ LsNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars>>
+  \/ Part = "conflict" /\ ConflictNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, norouteVars, alertVars>>
+  \/ Part = "noroute" /\ NoRouteNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, alertVars>>
+  \/ Part = "alert" /\ AlertNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars>>
 
 \* The rules and a mind act when they may; the outside is unfair. The stall's running tick
 \* and the machine's start are fair (a stopped machine adds no running time, so a stall can
-\* only be owed once the machine has run the bound).
+\* only be owed once the machine has run the bound); the alert's send is fair so a raise is
+\* eventually told.
 Fairness ==
-  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>)
-  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars>>)
-  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars>>)
-  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars>>)
-  /\ SF_vars(Part = "stall" /\ LsTick /\ ~lsstopped /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars>>)
-  /\ WF_vars(Part = "stall" /\ LsStart /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars>>)
+  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>)
+  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>)
+  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>)
+  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars>>)
+  /\ SF_vars(Part = "stall" /\ LsTick /\ ~lsstopped /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars>>)
+  /\ WF_vars(Part = "stall" /\ LsStart /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars>>)
+  /\ SF_vars(Part = "alert" /\ SendOK /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars>>)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 

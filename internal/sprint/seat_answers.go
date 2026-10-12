@@ -207,6 +207,7 @@ const PartRuleNoRoute = "rule no-route"
 // brief --tier, tier --set or rework --tier, its brief pins a model, or it is frontier)
 // stay held, and the alarm names them: a pin is the coordinator's word, and the rule never
 // overrides it.
+// tla/SprintRules.tla NoRouteRaise
 func TickRuleNoRoute(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	if !r.AnswerRules || s.Work == nil {
@@ -296,6 +297,7 @@ func seatAcceptNotes(s *Snapshot, r TickReq) []Note {
 // acknowledged, PinReleaseBound or longer of running time (r.running: the STOPPED spans do
 // not count), once per stop note (NPinReleased); PinReleased reads the record. A record whose
 // stop note is gone (the friend came up, the card moved on) is closed.
+// tla/SprintRules.tla PinReleased
 func releasePins(s *Snapshot, r TickReq) Plan {
 	var p Plan
 	records := map[string][]Open{}
