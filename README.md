@@ -5,8 +5,7 @@
 
 ## What is it?
 
-**nova-sprint** puts a fleet of AI workers to work across different models and machines, 
-with a system that automatically advances cards from **ready to landed** - through implementation, review, and merging.
+**nova-sprint** puts a fleet of AI workers to work across a fleet of machines linked by [tailscale](https://tailscale.com).
 
 ## More lanes. Finish faster.
 
