@@ -7,7 +7,7 @@
 models, many machines, and a system that moves cards from **ready to landed**
 automatically - through implementation, review, checks, and merging.
 
-[Get started](docs/GETTING-STARTED.md) · [See the live dashboard](http://69.67.149.151/)
+[Get started](docs/GETTING-STARTED.md)
 
 ## More lanes. More work moving.
 
@@ -36,6 +36,8 @@ go back for rework. Gates and decisions that need attention remain visible.
 
 The dashboard shows work streams, fleet capacity, progress, costs, and
 estimated finish time.
+
+[See the live dashboard](http://69.67.149.151/)
 
 ## Start with one lane. Then go wider.
 
