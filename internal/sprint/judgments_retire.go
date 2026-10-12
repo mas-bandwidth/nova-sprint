@@ -69,7 +69,8 @@ func offTable(s *Snapshot, id string) string {
 // movedOn is the event a judgment's card moved past it by: "<id> moved to attempt
 // <m> (was <n>)", or "<id> was re-briefed" for a judgment about the brief itself;
 // "" while the card is still the one the judgment was raised for, the judgment
-// names no attempt, or the work table never had it. A judgment records the
+// names no attempt, or the work table never had it (docs/SPEC-SPRINT.md section 8,
+// "A judgment retires with its card"). A judgment records the
 // attempt it was raised at (its Attempt), and the card's current attempt past it
 // is the card moved on. A brief-defect judgment is outlived once the card no
 // longer carries the defect (FieldBriefDefect, unset by the re-brief: briefInPlace),
@@ -98,9 +99,10 @@ func movedOn(s *Snapshot, n Note, id string) string {
 }
 
 // outlived is the card's-move event when every subject of a judgment has left the
-// table or moved past the state it was raised for: the judgment holds no card
-// that still needs a decision, so the coordinator may ack it (Ack, steps_ack.go),
-// and the tick retires it (RetireJudgments).
+// table or moved past the state it was raised for (docs/SPEC-SPRINT.md section 8,
+// "A judgment retires with its card"): the judgment holds no card that still
+// needs a decision, so the coordinator may ack it (Ack, steps_ack.go), and the
+// tick retires it (RetireJudgments).
 func outlived(s *Snapshot, n Note, entries []Open) (string, bool) {
 	if len(entries) == 0 {
 		return "", false
@@ -121,8 +123,9 @@ func outlived(s *Snapshot, n Note, entries []Open) (string, bool) {
 
 // RetireJudgments is the closes and the machine's answers of every open judgment
 // whose cards have all left the table or moved past the state the judgment was
-// raised for, skipping those the plan closes already: one decided note a judgment,
-// naming every card's event.
+// raised for (docs/SPEC-SPRINT.md section 8, "A judgment retires with its card"),
+// skipping those the plan closes already: one decided note a judgment, naming
+// every card's event.
 func RetireJudgments(s *Snapshot, p *Plan, who string) {
 	if s.Work == nil {
 		return
