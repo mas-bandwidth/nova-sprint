@@ -689,3 +689,65 @@ docs/fixes.sexp, a-judgment-outlived-by-its-card-closes-itself).
   stay open. `TestAMovedOnJudgmentCanBeAcked`: the re-briefed card's judgment acked with a
   reason before the tick is closed, recorded as the card's move.
 
+## Tests that fail under load are made deterministic
+
+The owner's standing rule: tests are bounded and never flaky; a test that fails
+under load is the test's defect. These tests failed on a shared bench (hetzner2,
+load average 30-36) and are now deterministic, each by its exact name:
+
+- `TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued`
+  (`cmd/nova-sprint/landpass_test.go`): the caller's cancel is delivered at a
+  synchronization point the test controls — the combined gate suspends in its
+  `gateRan` seam until the test has canceled — so the cancel always arrives
+  inside the gate and never races wall time, however loaded the bench.
+- `TestTickDrainAndDealUnderTheGateAtLoad`
+  (`internal/sprint/deal_load_bench_test.go`): the deal's sub-second gate is
+  held on the CI path by counts (the deal parses each ready brief exactly once;
+  the drain's moves are bounded by the deal's queued output), never by a
+  wall-clock bound on a shared bench. The wall itself is measured only by
+  `BenchmarkTickDealAtLoad` and `BenchmarkTickDrainAtLoad`, outside the gate.
+- `TestTheIdleAlarmNamesTheRootsOnceAnEpisode`
+  (`internal/sprint/store/idle_test.go`): it was seen red on a hetzner2 base
+  run; its dependency was the stale end-note rule it pinned (every end of an
+  idle episode was a working-again note), already fixed by b70990f6 (`idleEnd`:
+  only the fleet working at half its width again clears; otherwise the
+  episode-ended note). No production change was owed; the inert sort tie-break
+  added for it was dropped, and the test passes 50/50 under load.
+- `TestCRTwoRunLoopsAtOnce`
+  (`internal/sprint/store/machine_twoloops_test.go`): it failed 2 of 8 on clean
+  main with "the sprint is busy: other operations kept the fence moving". The
+  real cause was the outside store's no-op `Sleep`: it made the store's
+  documented fence backoff (the wait between its `FenceTries`) never yield, so
+  an outside verb's fenced read spent all its tries inside one tick loop's fence
+  hold and gave up. The test now keeps the store's real `Sleep`, so the designed
+  backoff spaces the tries as a run loop's verb has in production. The test's
+  outer retry of `FenceBusyError` (`busyTries`) is the last-resort bound the
+  test exists to assert; it is correct because, with the real backoff, a verb
+  reaches it only if a fence stayed busy past the store's own documented
+  `RetryBudget` — the starvation the test pins — and its failure names the
+  losing verb and the store's own read count.
+- The shared helper `setPrimary` (`internal/sprint/store/flash_first_test.go`)
+  read `h.snap()`, whose `WithQueue` overlay reads the work table a revision
+  ahead while the queue holds a change, so a write guarded on it was refused
+  ("mem: table revision mismatch"); it now guards on the unoverlaid table
+  (`setPrimaryOnTable`, `internal/sprint/store/no_parked_test.go`), so a test
+  may set a primary after a finish and a tick.
+
+The card's owed step — "run the package 10x under load and name the
+`cmd/nova-sprint` test that failed once in #110's gate" — was run as
+`go test -count=10 ./cmd/nova-sprint` under load. The tests that failed are the
+ones that shell out to `git`: `TestTheLanderLandsTheBaseFixFirst`,
+`TestLandMergesSameReleaseBlockEntries`,
+`TestLandReviewReusedOperationCannotClaimAnotherBatchLanded`,
+`TestServerReviewLandingAllowsATickAndCoordinatorWriteBeforePush` and
+`TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`. Their failures
+are the bench's process table, not the tests' logic: every one is
+`fork/exec .../shim/git: resource temporarily unavailable` / `Cannot fork` from
+a `git` call, except `TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`,
+which fails its own assertion — `LAND REFUSED ... git ls-tree: fork/exec ...: resource temporarily unavailable` — because the same exhaustion hit its
+`git ls-tree`. `TestTheTwinSocketFitsAUnixSocketPath` also failed, and it is
+environmental: this sandbox's `TMPDIR` exceeds the 100-byte Unix-socket limit
+and its `/tmp` fallback is denied. The test named for #110's gate is therefore
+`TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`, the one whose own
+assertion a loaded bench turns red by starving its `git` call of a process.
+
