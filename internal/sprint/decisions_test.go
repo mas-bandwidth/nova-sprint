@@ -477,7 +477,7 @@ func TestRule7IsJudgedAgainstAPendingRank(t *testing.T) {
 }
 
 // G1: dropping a primary takes its withdrawn card too; a withdrawn card whose
-// primary is not ready breaks rule 2.
+// primary is in review still breaks rule 2.
 func TestG1WithdrawnCardsAreDroppedAndChecked(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 2)
@@ -496,6 +496,65 @@ func TestG1WithdrawnCardsAreDroppedAndChecked(t *testing.T) {
 		found = found || v.Rule == 2 && strings.Contains(v.Detail, "withdrawn")
 	}
 	require.True(t, found, "a withdrawn card of a primary in review: %v", Check(w.s, nil))
+}
+
+// A withdrawn work attempt is history while its primary waits on a newly
+// named unlanded need. Waiting without that cause still breaks rule 2.
+func TestWithdrawnPrimaryWaitsOnlyOnAnUnlandedNeed(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		state    string
+		needs    string
+		waived   string
+		landNeed bool
+		broken   bool
+	}{
+		{name: "ready", state: Ready},
+		{name: "waiting on unlanded need", state: Waiting, needs: "s1-2"},
+		{name: "waiting without needs", state: Waiting, broken: true},
+		{name: "waiting on landed need", state: Waiting, needs: "s1-2", landNeed: true, broken: true},
+		{name: "waiting on waived need", state: Waiting, needs: "s1-2", waived: "s1-2", broken: true},
+		{name: "working", state: Working, needs: "s1-2", broken: true},
+		{name: "review", state: Review, needs: "s1-2", broken: true},
+		{name: "missing primary", broken: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := setup(t, 2)
+			w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+			w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m1"}))
+			w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m2"}))
+			require.Equal(t, Withdrawn, w.s.Fleet.Placed("s1-1.w1").Col)
+			require.Equal(t, Ready, w.s.Work.Placed("s1-1").Col)
+
+			// A real needs edit moves the withdrawn attempt's ready primary to
+			// waiting on an actual card, not an invented waiting-state fixture.
+			w.must(NeedsSet(w.s, NeedsSetReq{ID: "s1-1", Needs: []string{"s1-2"}, Who: "coordinator"}))
+			require.Equal(t, Waiting, w.s.Work.Placed("s1-1").Col)
+			require.Equal(t, Withdrawn, w.s.Fleet.Placed("s1-1.w1").Col, "the needs edit keeps the withdrawn attempt")
+			require.Equal(t, Ready, w.s.Work.Placed("s1-2").Col, "the named need has not landed")
+
+			pr := w.s.Work.Card("s1-1")
+			pr.Fields["needs"], pr.Fields["waived"] = tc.needs, tc.waived
+			w.place(w.s.Work, pr.ID, pr.Row, tc.state)
+			if tc.landNeed {
+				w.place(w.s.Work, "s1-2", "s1", Landed)
+			}
+			var withdrawn []Violation
+			for _, v := range Check(w.s, nil) {
+				if v.Rule == 2 && strings.Contains(v.Detail, "withdrawn") {
+					withdrawn = append(withdrawn, v)
+				}
+			}
+			if tc.broken {
+				require.Len(t, withdrawn, 1, "unsupported primary: %v", Check(w.s, nil))
+			} else {
+				require.Empty(t, withdrawn, "a withdrawn attempt is compatible with this primary")
+				w.clean(tc.name)
+			}
+		})
+	}
 }
 
 // A reader counts once, and a read card counts for the row it occupies only
