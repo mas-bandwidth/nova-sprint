@@ -186,12 +186,6 @@ type Step struct {
 	// Acquire; through RouteCache when one is given (a tick's, read once).
 	Routes     bool
 	RouteCache *RouteCache
-	// RouteShares is the per-route share of new takes, computed once on the tick's
-	// first read and shared by every part (sprint.RouteShareMap); nil: none set, and
-	// the snapshot computes its own when a direct caller asks (the deal, the
-	// rebalance). It is set on a tick part's step so its fresh read carries the one
-	// map the tick's other parts drew by.
-	RouteShares map[string]float64
 	// Answers is the judgment ids the step answers (--answers): who answered each
 	// that is answered already is read before the step's first read of the
 	// tables (Backend.Answered) and handed to the plan (sprint.Snapshot.Answered).
@@ -659,9 +653,6 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 		}
 		if step.Routes {
 			routes.into(snap)
-		}
-		if step.RouteShares != nil {
-			snap.RouteShares = step.RouteShares
 		}
 		if step.Prices {
 			snap.Routes = priced

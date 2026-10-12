@@ -2685,9 +2685,11 @@ order the cards were dealt in, so a card brought to the front of its stream by
   work takes (the COST records' charged figure, `CardCostOf(c).Total.Charged`)
   divided by its DoneOK landings (a route with no landings holds the floor),
   `floor` is 0.1 and `scale` is 10 (route_pick.go, `routeShare`). The shares are
-  computed once for the tick's snapshot (`buildRouteShares`) and read by every
-  draw, so all callers — the friends' ladder, the machines' deal, rebalance, redo,
-  review and held — see the same shares, never a stale one; the draw walks the
+  computed once for the tick's snapshot (`SetRouteShares`, on the tick's first
+  read, carried on the shared route records) and read by every draw, so all
+  callers — the friends' ladder, the machines' deal, rebalance, redo, review and
+  held — see the same shares, never a stale one; a snapshot handed straight to a
+  caller computes them on its first draw (`ensureRouteShares`). The draw walks the
   tier's array in place, still drawing `first` routes first and moving the index
   past every entry taken or skipped (the model: tla/RouteIndex.tla, Share, and the
   FloorKeepsEveryRouteSampled and ShareFallsWithCost invariants). A

@@ -129,28 +129,45 @@ func RouteShareMap(routes []Route, fleet *Table) map[string]float64 {
 	return shares
 }
 
-// buildRouteShares computes this snapshot's route shares once (RouteShareMap),
-// the one source every draw reads.
-func (s *Snapshot) buildRouteShares() {
-	if s.RouteShares != nil {
+// SetRouteShares computes each route's share of new takes from the routes and the
+// fleet's ended work cards, once, and writes it onto each route record in place
+// (Route.Share). The store computes it on the tick's first read (store/tick.go), so
+// the shared route slice carries the one share the deal, the rebalance, the redo,
+// the review and the held draws all read; a snapshot handed straight to a caller
+// computes it on the first draw (ensureRouteShares), never per draw.
+func SetRouteShares(routes []Route, fleet *Table) {
+	m := RouteShareMap(routes, fleet)
+	for i := range routes {
+		routes[i].Share = m[routes[i].Name]
+	}
+}
+
+// ensureRouteShares computes this snapshot's route shares once (SetRouteShares), the
+// one source every draw reads, when they are not already set: the store sets them on
+// the shared route slice at the tick's first read, and a snapshot handed straight to a
+// caller (the in-memory store's tests) has them unset, so the first draw computes them.
+// A computed share is never zero — the floor is 0.1 — so a zero Share marks the routes
+// uncomputed and makes the check allocation-free for the steady tick's every card.
+func (s *Snapshot) ensureRouteShares() {
+	if len(s.Routes) == 0 || s.Routes[0].Share != 0 {
 		return
 	}
-	s.RouteShares = RouteShareMap(s.Routes, s.Fleet)
+	SetRouteShares(s.Routes, s.Fleet)
 }
 
 // preferFirstWeighted is preferFirst (route.go) with a weighted draw: it walks
 // the tier's array in place — no map or slice of served routes — counting
-// positions for the index, and draws by the precomputed shares. First routes
-// are still drawn first, and a card that already drew one takes the next; the
-// index advances past every entry taken or skipped. The draw uses math/rand
-// through the package's seedable source (routeRand), so a caller can seed it.
-// shares is the snapshot's precomputed route share,
-// the same for every caller; when every candidate shares equally (no data, or
-// equal outcome) the walk is deterministic, as preferFirst's, and takes the
-// first valid entry in array order, so the deal keeps its other rules even when
-// the weights do not decide. The deal's rule is docs/SPEC-SPRINT.md, the deal,
-// "route share"; the model is tla/RouteIndex.tla.
-func preferFirstWeighted(arr []string, served func(string) (Route, bool), skip []string, hold bool, at uint64, shares map[string]float64) (r Route, steps uint64, ok bool) {
+// positions for the index, and draws by the precomputed shares (Route.Share,
+// SetRouteShares). First routes are still drawn first, and a card that already
+// drew one takes the next; the index advances past every entry taken or skipped.
+// The draw uses math/rand through the package's seedable source (routeRand), so a
+// caller can seed it. The share is the route's own record's, the same for every
+// caller; when every candidate shares equally (no data, or equal outcome) the walk
+// is deterministic, as preferFirst's, and takes the first valid entry in array
+// order, so the deal keeps its other rules even when the weights do not decide.
+// The deal's rule is docs/SPEC-SPRINT.md, the deal, "route share"; the model is
+// tla/RouteIndex.tla.
+func preferFirstWeighted(arr []string, served func(string) (Route, bool), skip []string, hold bool, at uint64) (r Route, steps uint64, ok bool) {
 	n := uint64(len(arr))
 	take := func(wantFirst bool) (Route, uint64, bool) {
 		// one pass gathers the first valid entry, its share, the total share and
@@ -168,7 +185,7 @@ func preferFirstWeighted(arr []string, served func(string) (Route, bool), skip [
 			if cur.First != wantFirst {
 				continue
 			}
-			sh := shares[cur.Name]
+			sh := cur.Share
 			if !have {
 				have, firstIdx, firstShare = true, i, sh
 			} else if sh != firstShare {
@@ -196,7 +213,7 @@ func preferFirstWeighted(arr []string, served func(string) (Route, bool), skip [
 				continue
 			}
 			last, lastIdx = cur, i
-			cum += shares[cur.Name]
+			cum += cur.Share
 			if cum > x {
 				return cur, i + 1, true
 			}
