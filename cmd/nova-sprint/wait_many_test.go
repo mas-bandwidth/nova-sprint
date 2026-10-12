@@ -23,16 +23,16 @@ func TestWaitTakesSeveralNotes(t *testing.T) {
 	ta.deal(3)
 	ta.timerOnce("look-1")
 	first := ta.group(sprint.NTimer, "")
-	require.Equal(t, 1, first.Size, "one failure is a group of one: %+v", first)
-	require.Len(t, first.Notes, 1, "one failure is one note: %+v", first)
+	require.Equal(t, 1, first.Size, "one timer is a group of one: %+v", first)
+	require.Len(t, first.Notes, 1, "one timer is one note: %+v", first)
 	ta.timerOnce("look-2")
 	grown := ta.group(sprint.NTimer, "")
 	require.Equal(t, first.ID, grown.ID, "the group grew under another id: %+v", grown)
 	require.Equal(t, 2, grown.Size, "the group grew under another size: %+v", grown)
-	require.Len(t, grown.Notes, 2, "two failures are two notes: %+v", grown)
+	require.Len(t, grown.Notes, 2, "two timers are two notes: %+v", grown)
 	require.False(t, grown.Quiet, "nothing has been waited: %+v", grown)
 
-	// --group with the size from before the second failure: refused, nothing changes.
+	// --group with the size from before the second timer: refused, nothing changes.
 	code, out, errs := ta.do("wait --group " + grown.ID + " --expect 1 --for 3h")
 	require.Equal(t, 1, code, "a grown group: %d\n%s%s", code, out, errs)
 	require.Contains(t, errs, "REFUSED group "+grown.ID+": it has 2 now, not 1 as printed; nothing changed", "a grown group: %d\n%s%s", code, out, errs)
@@ -68,12 +68,12 @@ func TestWaitTakesSeveralNotes(t *testing.T) {
 	require.True(t, quiet.Quiet, "both notes set, the group is quiet: %+v", quiet)
 	require.Contains(t, ta.ok("inbox"), "quiet until=", "the inbox shows the review")
 
-	// the third failure changes the size; --expect of the old size changes nothing.
+	// the third timer changes the size; --expect of the old size changes nothing.
 	ta.timerOnce("look-3")
 	three := ta.group(sprint.NTimer, "")
-	require.Equal(t, grown.ID, three.ID, "the third failure opened another group: %+v", three)
-	require.Equal(t, 3, three.Size, "the third failure: %+v", three)
-	require.Len(t, three.Notes, 3, "the third failure: %+v", three)
+	require.Equal(t, grown.ID, three.ID, "the third timer opened another group: %+v", three)
+	require.Equal(t, 3, three.Size, "the third timer: %+v", three)
+	require.Len(t, three.Notes, 3, "the third timer: %+v", three)
 	require.False(t, three.Quiet, "the new note is not waited: %+v", three)
 	code, out, errs = ta.do("wait --group " + three.ID + " --expect 2 --for 3h")
 	require.Equal(t, 1, code, "a group of another size: %d\n%s%s", code, out, errs)
