@@ -121,3 +121,112 @@ func assertNoBriefDefect(t *testing.T, ta *testApp, card string) {
 		}
 	}
 }
+
+// TestACoordinationEndLeavesOkPctAloneAndAWorkerEndMovesIt is the ok% half of the rule: a
+// coordination end never hits the worker's ok% (the card is withdrawn, never failed work),
+// while a worker's own end moves it (its failed work is read broken and lowers the row's
+// ok%). On the started machine, where the readers' verdicts run.
+func TestACoordinationEndLeavesOkPctAloneAndAWorkerEndMovesIt(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	ta.m.SetRoutes(costRoutes())
+	ta.readersReadPro()
+	ta.ok("add --stream s1 --count 4")
+	ta.ok("start")
+	ta.ok("tick")
+	ta.ok("take --as m1 --limit 4")
+
+	// two cards end WORKER-ok and are read ok: 100.0%
+	ta.ok("finish --as m1 s1-1.w1@1 s1-2.w1@1")
+	ta.ok("ask")
+	ta.ok("read --as reader-a --ok --limit 10 --usage '" + usageReadA + "'")
+	ta.ok("tick")
+	assertRowOkPct(t, ta, "m1", "100.0%")
+
+	// a coordination end on a third card leaves the ok% alone
+	ta.ok("finish --as m1 s1-3.w1@1 --failed --report 'the lane failed: no rustc on PATH' --usage '" + providerUsage + "'")
+	assertRowOkPct(t, ta, "m1", "100.0%")
+
+	// a worker's own end moves the ok%: its ok work read broken lowers the row's ok%
+	ta.ok("finish --as m1 s1-4.w1@1")
+	ta.ok("ask")
+	ta.ok("read --as reader-a --broken s1-4.r1.reader-a --finding 'internal/x.go:1: off by one' --usage '" + usageReadA + "'")
+	ta.ok("tick")
+	assertRowOkPct(t, ta, "m1", "66.7%")
+}
+
+// TestAFriendLanesCoordinationEndIsClassedCoordinationAndPushedToTheHook is the friend's
+// half of the rule: a friend lane's coordination end is classed coordination (withdrawn as
+// a coordination failure, never failed work, her ok% untouched) and pushed to the
+// coordinator's hook.
+func TestAFriendLanesCoordinationEndIsClassedCoordinationAndPushedToTheHook(t *testing.T) {
+	t.Parallel()
+	ta, _ := friendCardApp(t, "friend amy", "amy")
+	ta.ok("tick")
+	ta.startFriend("amy", 1)
+
+	ta.ok("finish --as friend.amy s1-1.w1@1 --failed --report 'the lane failed: no rustc on PATH' --usage '" + providerUsage + "'")
+
+	// classed coordination: withdrawn, never failed work, the friend's ok% untouched
+	var c cardView
+	ta.json("card s1-1", &c)
+	require.Equal(t, sprint.Withdrawn, c.Work[0].Col, "a friend lane's coordination end is withdrawn, never failed")
+	assertFriendsOkPct(t, ta, "amy", "0.0%")
+	// pushed to the hook: the coordinator is told, naming the friend and the cause
+	out := ta.ok("inbox")
+	assert.Contains(t, out, "a coordination failure", "the coordination push reached the coordinator")
+	assert.Contains(t, out, "for=coordinator", "the push is addressed to the coordinator")
+	assert.Contains(t, out, "missing bench tool or jar", "the push names the cause")
+}
+
+// TestACoordinationEndDoesNotCountTowardTheAttemptBound is the bound's half of the rule: a
+// card whose ends are coordination is never judged a brief defect for them. Four
+// coordination ends in a row leave the card dealt, never "the brief is wrong, not the
+// worker" and never "the lane is broken, not the brief".
+func TestACoordinationEndDoesNotCountTowardTheAttemptBound(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	ta.m.SetRoutes(costRoutes())
+	ta.readersReadPro()
+	ta.ok("add --stream s1 --count 1 --one")
+	ta.deal(1)
+	ta.ok("take --as m1 --limit 1")
+
+	for n := 0; n < sprint.LaneBrokenBound; n++ {
+		gen := "1"
+		if n > 0 {
+			gen = ta.workGen("m1", "s1-1.w1")
+			ta.ok("take --as m1 s1-1.w1@" + gen)
+		}
+		ta.ok("finish --as m1 s1-1.w1@" + gen + " --failed --report '" + coordinationEnds[n].report + "' --usage '" + providerUsage + "'")
+		if n < sprint.LaneBrokenBound-1 {
+			ta.deal(1)
+		}
+	}
+
+	// no brief-defect, brief-wrong or lane-broken judgment was raised: the card is still
+	// dealt, not blamed on the worker or the brief
+	assertNoBriefDefect(t, ta, "s1-1")
+	var c cardView
+	ta.json("card s1-1", &c)
+	require.Equal(t, sprint.Ready, c.Primary.Col, "the card is still dealt after %d coordination ends", sprint.LaneBrokenBound)
+}
+
+// assertRowOkPct is a fleet row's ok% cell, the table's formula over the ok and failed
+// cells (docs/SPEC-SPRINT.md, done and ok%).
+func assertRowOkPct(t *testing.T, ta *testApp, row, want string) {
+	t.Helper()
+	var w whereView
+	ta.json("where", &w)
+	require.Equal(t, want, w.Tables[sprint.Fleet][row]["okpct"], "fleet %s ok%%", row)
+}
+
+// assertFriendsOkPct is a friend's ok% cell.
+func assertFriendsOkPct(t *testing.T, ta *testApp, friend, want string) {
+	t.Helper()
+	var w whereView
+	ta.json("where", &w)
+	require.Equal(t, want, w.Tables[sprint.Friends][friend]["okpct"], "friend %s ok%%", friend)
+}
