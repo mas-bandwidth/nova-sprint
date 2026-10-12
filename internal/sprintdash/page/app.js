@@ -234,7 +234,17 @@ function frac(a, b, digits, bDigits) {
 function digitsOf(n) { return String(Math.max(0, n)).length; }
 function makePill() { var p = el("span", "pill neutral"); p.appendChild(el("span", "dot")); p._t = quiet(el("span")); p.appendChild(p._t); return p; }
 function setPill(p, text, tone, title) { setText(p._t, text); setClass(p, "pill " + tone); setTitle(p, title || text); }
-function setOk(o, p, done) { setText(o, p === null ? "-" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); }
+function setOk(o, p, done, title) { setText(o, p === null ? "-" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); if (title) setTitle(o, title); }
+// the ok% cell's tooltip: ok% counts only the work the machine did (ok over ok + failed +
+// no result), and the named columns beside it are the ends it did not cause (SPEC-SPRINT,
+// "ok% and the end classes").
+function okTitle(m) {
+  var cols = ["ok", "failed", "no_result", "provider", "coordination", "environment", "harness"];
+  var names = { ok: "ok", failed: "failed", no_result: "no result", provider: "provider", coordination: "coordination", environment: "environment", harness: "harness" };
+  var parts = [];
+  for (var i = 0; i < cols.length; i++) parts.push(names[cols[i]] + " " + int(m[cols[i]]));
+  return "ok% counts only the work the machine did: " + parts.join(", ");
+}
 // One vocabulary across the tables (SPEC.md, the owner 8:04 AM: "change 'asleep' to 'down' so we have
 // consistency across all tables"): a store that still says "asleep" is shown as "down", in red.
 var STATUS_TONE = { up: "good", held: "warning", down: "critical" };
@@ -466,7 +476,7 @@ function fleetLike(box, table, nameLabel, scale, clamp) {
     t.fix += int(m.fix_working != null ? m.fix_working : m.fix);
     setHTML(r.wf, frac(working, width, digits) + (m.window ? "<span class=\"win\"> · " + escHTML(m.window) + "</span>" : "")); // no reads count beside the fraction: the orange cells say it, and the label widened the column and broke the alignment (the owner 2026-10-06 9:08 PM)
     setNum(r.ready, int(m.ready)); setNum(r.done, done);
-    setOk(r.ok, pct(okv), done);
+    setOk(r.ok, pct(okv), done, clamp ? null : okTitle(m));
     if (r.load) { var lp = pct(m.load); setText(r.load, lp === null ? "-" : lp.toFixed(1) + "%"); setClass(r.load, "num" + (lp === null ? " zero" : "")); }
   }, box._total);
   var c = box._total._c;
@@ -923,7 +933,7 @@ function escHTML(s) { return String(s).replace(/[&<>"']/g, function (c) { return
 function digitsOf(n) { return String(Math.max(0, n)).length; }
 function makePill() { var p = el("span", "pill neutral"); p.appendChild(el("span", "dot")); p._t = quiet(el("span")); p.appendChild(p._t); return p; }
 function setPill(p, text, tone, title) { setText(p._t, text); setClass(p, "pill " + tone); setTitle(p, title || text); }
-function setOk(o, p, done) { setText(o, p === null ? "-" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); }
+function setOk(o, p, done, title) { setText(o, p === null ? "-" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); if (title) setTitle(o, title); }
 var STATUS_TONE = { up: "good", held: "warning", down: "critical" };
 
 // ---------- sections ----------

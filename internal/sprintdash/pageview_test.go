@@ -24,10 +24,11 @@ import (
 // ask of 2026-10-11; the pulse now animates opacity on the compositor and the per-poll layout
 // fit runs from a data-derived key, the owner's ask of 2026-10-11: "There's also a weird
 // slowness/juddering when I hold page down/up on the sprint dashboard. ... Please fix
-// critical."): the page is that page, byte for byte (pageview.go).
+// critical."; the fleet ok% cell's tooltip names the end classes, the owner's ask of
+// 2026-10-12: "I want to see accurate ok%"): the page is that page, byte for byte (pageview.go).
 const (
 	liveIndexSHA256 = "4aee69bbf53c916ea43fce57de132cfb5b4f9679d8a4546988cf0778860fa140"
-	liveAppSHA256   = "f7723ec15c5f72dd01bc29825fd7bddcbd056c84fd249ead613adbe1c9e4d912"
+	liveAppSHA256   = "b6e5da766e6f3b26a7177582e2dea2ef13cfae1701a6e12e2c9a02354a27d877"
 	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )

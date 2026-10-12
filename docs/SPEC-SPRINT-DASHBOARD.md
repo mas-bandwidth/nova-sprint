@@ -83,6 +83,7 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-11 the owner: "agree that the name becomes the key, and you add a small display name. good tidy feature. pls add."
 - 2026-10-11 the owner: "Please add sounds to the sprint dashboard. Whenever a card lands in the tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle."
 - 2026-10-11 the owner, of the sprint dashboard: "There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical."
+- 2026-10-12 the owner: "I want to see accurate ok%"
 
 **The coin** (a note on the page, not a part of it: it has no panel of its own and adds none).
 The owner, 2026-10-11: "Whenever a card lands in the tick (1 or more), play a single gentle
@@ -258,6 +259,9 @@ from the owner edits one line here and nothing else moves.
 - OK% and Load: plain numbers, right-aligned, no bars, no dots. Total row: Ready and Done and OK% numbers, no cells.
 - Done and OK% (and the Friends table's) count from the last `nova-sprint stats tidy --fleet` (`--friends`): the tidy takes
   the history off the done cells the page's counts are read from. Not yet: "since <time>" beside OK%, as for Cost.
+- The OK% cell's tooltip names the end classes (docs/SPEC-SPRINT.md, "ok% and the end classes"): `ok`, `failed`, `no
+  result` (the work ends the ok% counts), then `provider`, `coordination`, `environment` and `harness`, the ends a machine
+  did not cause and that never count in its ok%. The Friends table's ok% has no such tooltip.
 
 ## Friends (title "Friends"): same eight-column shape as the live Fleet table, including load (friend, status, ready, working track and fraction, done, ok%, load; headers lowercase); honest empty
   state until the JSON carries tables.friends.

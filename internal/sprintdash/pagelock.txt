@@ -9,3 +9,4 @@
 2026-10-11 27346b048976877e930ce4b9cfd4549cfdd41de9115397ce6e00ef1b1beaef73 "agree that the name becomes the key, and you add a small display name. good tidy feature. pls add."
 2026-10-11 98a3bc8ca906481969097a8c14be74088abe2d7f93ba0dff7bc05d438a09bcb1 "Please add sounds to the sprint dashboard. Whenever a card lands in the tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle."
 2026-10-11 87816aaba173f883f63fbcc238aff941c1fc39080b5cc438e36f7a420768e347 "There's also a weird slowness/juddering when I hold page down/up on the sprint dashboard. This is new. It feels like it is getting stuck repeatedly and not smooth scrolling. Please fix critical."
+2026-10-12 4de004f1df854e0d2366bf99731ca3ec604f22d7a70bdf38bdba3fa993063eb7 "I want to see accurate ok%"
