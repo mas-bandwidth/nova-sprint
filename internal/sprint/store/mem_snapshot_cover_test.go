@@ -41,6 +41,17 @@ func stubTable() *memTable {
 	}
 }
 
+// emptyTable returns a memTable with no data, the snapshot edge case.
+func emptyTable() *memTable {
+	return &memTable{
+		def:     ntable.Table{Name: "t-empty", EpochKey: "e"},
+		epochs:  map[uint64]*memEpoch{},
+		wrote:   map[uint64]bool{},
+		members: map[string]*memMember{},
+		ops:     map[string]memOp{},
+	}
+}
+
 // stubLog returns a memLog with data in every field.
 func stubLog() *memLog {
 	return &memLog{
@@ -69,13 +80,7 @@ func TestMemSnapshotCoverSnapTable(t *testing.T) {
 		in   *memTable
 	}{
 		{"full", stubTable()},
-		{"empty", &memTable{
-			def:     ntable.Table{Name: "t-empty", EpochKey: "e"},
-			epochs:  map[uint64]*memEpoch{},
-			wrote:   map[uint64]bool{},
-			members: map[string]*memMember{},
-			ops:     map[string]memOp{},
-		}},
+		{"empty", emptyTable()},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -132,26 +137,8 @@ func TestMemSnapshotCoverTable(t *testing.T) {
 		name string
 		in   *tableSnapshot
 	}{
-		{"full", &tableSnapshot{
-			Def: ntable.Table{Name: "t-test", EpochKey: "e", Columns: []ntable.Column{{Name: "state", Projection: ntable.Count}}},
-			Epochs: map[uint64]*epochSnapshot{
-				0: {Rows: []string{"r1", "r2"}, Hidden: map[string]bool{"r2": true},
-					Texts: map[string]map[string]string{"r1": {"state": "active"}},
-					Props: map[string]string{"stream": "s1"}},
-			},
-			Wrote:   map[uint64]bool{0: true},
-			Rev:     2,
-			Members: map[string]*memberSnapshot{"s1-1": {Epoch: 0, Placed: true, Row: "r1", Col: "state", Score: 0.5, Rev: 1, Fields: map[string]string{"brief": "t"}}},
-			Ops:     map[string]opSnapshot{"0:op1": {Body: "{}", Receipt: ntable.Receipt{ID: "1-0", Outcome: "changed"}}},
-			Changes: []changeSnapshot{{Epoch: 0, Before: 1, After: 2, Verb: "apply", IDs: []string{"s1-1"}}},
-		}},
-		{"empty", &tableSnapshot{
-			Def:     ntable.Table{Name: "t-empty", EpochKey: "e"},
-			Epochs:  map[uint64]*epochSnapshot{},
-			Wrote:   map[uint64]bool{},
-			Members: map[string]*memberSnapshot{},
-			Ops:     map[string]opSnapshot{},
-		}},
+		{"full", snapTable(stubTable())},
+		{"empty", snapTable(emptyTable())},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

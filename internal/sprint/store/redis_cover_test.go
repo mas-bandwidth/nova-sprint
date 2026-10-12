@@ -1083,6 +1083,9 @@ func TestRedisCoverSettleEpoch(t *testing.T) {
 		t.Parallel()
 		r, ctx := coverRedis(t, 0)
 		require.NoError(t, r.SettleEpoch(ctx, 0))
+		got, err := r.Epoch(ctx)
+		require.NoError(t, err)
+		assert.Zero(t, got.N)
 	})
 }
 
@@ -1201,44 +1204,36 @@ func TestRedisCoverDoneBefore(t *testing.T) {
 
 // TestRedisCoverCursorRoundTrip pins Cursor and SetCursor: the coordinator's
 // last read stream id, empty when none was set.
-func TestRedisCoverCursorRoundTrip(t *testing.T) {
+// TestRedisCoverRoundTrips pins the store's one-value round trips: each of
+// cursor and coordinator reads empty when unset and reads back what was set.
+func TestRedisCoverRoundTrips(t *testing.T) {
 	t.Parallel()
-	t.Run("unset is empty", func(t *testing.T) {
-		t.Parallel()
-		r, ctx := coverRedis(t, 0)
-		got, err := r.Cursor(ctx)
-		require.NoError(t, err)
-		assert.Empty(t, got)
-	})
-	t.Run("a set cursor reads back", func(t *testing.T) {
-		t.Parallel()
-		r, ctx := coverRedis(t, 0)
-		require.NoError(t, r.SetCursor(ctx, "12-0"))
-		got, err := r.Cursor(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, "12-0", got)
-	})
-}
-
-// TestRedisCoverCoordinatorRoundTrip pins Coordinator and SetCoordinator: the
-// sprint's coordinator, empty when none was set.
-func TestRedisCoverCoordinatorRoundTrip(t *testing.T) {
-	t.Parallel()
-	t.Run("unset is empty", func(t *testing.T) {
-		t.Parallel()
-		r, ctx := coverRedis(t, 0)
-		got, err := r.Coordinator(ctx)
-		require.NoError(t, err)
-		assert.Empty(t, got)
-	})
-	t.Run("a set coordinator reads back", func(t *testing.T) {
-		t.Parallel()
-		r, ctx := coverRedis(t, 0)
-		require.NoError(t, r.SetCoordinator(ctx, "m1"))
-		got, err := r.Coordinator(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, "m1", got)
-	})
+	for _, rt := range []struct {
+		name  string
+		set   func(*Redis, context.Context, string) error
+		get   func(*Redis, context.Context) (string, error)
+		value string
+	}{
+		{"cursor", (*Redis).SetCursor, (*Redis).Cursor, "12-0"},
+		{"coordinator", (*Redis).SetCoordinator, (*Redis).Coordinator, "m1"},
+	} {
+		rt := rt
+		t.Run(rt.name+"/unset is empty", func(t *testing.T) {
+			t.Parallel()
+			r, ctx := coverRedis(t, 0)
+			got, err := rt.get(r, ctx)
+			require.NoError(t, err)
+			assert.Empty(t, got)
+		})
+		t.Run(rt.name+"/a set "+rt.name+" reads back", func(t *testing.T) {
+			t.Parallel()
+			r, ctx := coverRedis(t, 0)
+			require.NoError(t, rt.set(r, ctx, rt.value))
+			got, err := rt.get(r, ctx)
+			require.NoError(t, err)
+			assert.Equal(t, rt.value, got)
+		})
+	}
 }
 
 // TestRedisCoverProgress pins Progress: each stream's last progress, with a
@@ -1602,6 +1597,9 @@ func TestRedisCoverRelease(t *testing.T) {
 		t.Parallel()
 		r, ctx := coverRedis(t, 0)
 		require.NoError(t, r.Release(ctx, OpRecord{ID: "op1", Verb: "tick"}, false))
+		held, err := r.heldOp(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, held)
 	})
 	t.Run("another operation's fence is left alone", func(t *testing.T) {
 		t.Parallel()
