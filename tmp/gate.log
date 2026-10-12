@@ -1,0 +1,853 @@
+ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint	29.827s
+ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint/driver	0.287s
+--- FAIL: TestEveryPartOfTheTickIsADutyAndEveryDutyIsNamedInOrder (0.01s)
+    decide_test.go:608: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel/decide_test.go:608
+        	Error:      	Should be true
+        	Test:       	TestEveryPartOfTheTickIsADutyAndEveryDutyIsNamedInOrder
+        	Messages:   	the tick's part unserved fallback is no duty: Decide would leave it out
+    decide_test.go:628: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel/decide_test.go:628
+        	Error:      	Not equal: 
+        	            	expected: []string{"live", "level", "level reads", "resolve", "cap deal", "deal", "rebalance", "accept", "ask", "resume", "presence", "friend-stall", "verdicts", "friend-redeal", "check", "deadlines", "overdue", "done"}
+        	            	actual  : []string{"live", "level", "level reads", "resolve", "cap deal", "unserved fallback", "deal", "rebalance", "accept", "ask", "resume", "presence", "friend-stall", "verdicts", "friend-redeal", "check", "deadlines", "overdue", "done"}
+        	            	
+        	            	Diff:
+        	            	--- Expected
+        	            	+++ Actual
+        	            	@@ -1,2 +1,2 @@
+        	            	-([]string) (len=18) {
+        	            	+([]string) (len=19) {
+        	            	  (string) (len=4) "live",
+        	            	@@ -6,2 +6,3 @@
+        	            	  (string) (len=8) "cap deal",
+        	            	+ (string) (len=17) "unserved fallback",
+        	            	  (string) (len=4) "deal",
+        	Test:       	TestEveryPartOfTheTickIsADutyAndEveryDutyIsNamedInOrder
+        	Messages:   	the tick's parts run [live level level reads resolve cap deal unserved fallback deal rebalance accept ask resume presence friend-stall verdicts friend-redeal check deadlines overdue done]; the duties have them as [live level level reads resolve cap deal deal rebalance accept ask resume presence friend-stall verdicts friend-redeal check deadlines overdue done]
+--- FAIL: TestAskAsksTheReadersOfAPrimaryInReview (0.02s)
+    decide_test.go:329: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel/decide_test.go:52
+        	            				github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel/decide_test.go:329
+        	Error:      	assertion failed
+        	Test:       	TestAskAsksTheReadersOfAPrimaryInReview
+        	Messages:   	moves:
+        	            	 got ["set work s1-1 asked=reader-a,reader-b,consumer:0:s1-1.r1.reader-a#r1={\"key\":\"s1-1.r1.reader-a#r1\",\"epoch\":0,\"kind\":\"read\",\"who\":\"reader-a\",\"taken\":\"2030-01-02T03:04:05Z\"},consumer:0:s1-1.r1.reader-b#r1={\"key\":\"s1-1.r1.reader-b#r1\",\"epoch\":0,\"kind\":\"read\",\"who\":\"reader-b\",\"taken\":\"2030-01-02T03:04:05Z\"}" "prop readers ask_index=2" "create readers s1-1.r1.reader-a >reader-a:asked" "create readers s1-1.r1.reader-b >reader-b:asked" "prop readers stream_index_ask=1"]
+        	            	want ["set work s1-1 asked=reader-a,reader-b" "prop readers ask_index=2" "create readers s1-1.r1.reader-a >reader-a:asked" "create readers s1-1.r1.reader-b >reader-b:asked" "prop readers stream_index_ask=1"]
+        	            	full:
+        	            	  ask set table="work" card="s1-1" from="s1:review" set=["asked=reader-a,reader-b" "consumer:0:s1-1.r1.reader-a#r1={\"key\":\"s1-1.r1.reader-a#r1\",\"epoch\":0,\"kind\":\"read\",\"who\":\"reader-a\",\"taken\":\"2030-01-02T03:04:05Z\"}" "consumer:0:s1-1.r1.reader-b#r1={\"key\":\"s1-1.r1.reader-b#r1\",\"epoch\":0,\"kind\":\"read\",\"who\":\"reader-b\",\"taken\":\"2030-01-02T03:04:05Z\"}"]
+        	            	  ask prop table="readers" card="ask_index" set=["ask_index=2"]
+        	            	  ask create table="readers" card="s1-1.r1.reader-a" to="reader-a:asked" score="1" set=["asked=2030-01-02T03:04:05Z" "attempt=1" "gen=1" "head=h-s1-1" "kind=read" "primary=s1-1" "reader=reader-a" "stream=s1" "tier=pro"] words="s1-1 asked of reader-a, reader-b"
+        	            	  ask create table="readers" card="s1-1.r1.reader-b" to="reader-b:asked" score="1" set=["asked=2030-01-02T03:04:05Z" "attempt=1" "gen=1" "head=h-s1-1" "kind=read" "primary=s1-1" "reader=reader-b" "stream=s1" "tier=pro"]
+        	            	  ask prop table="readers" card="stream_index_ask" set=["stream_index_ask=1"]
+--- FAIL: TestAskClosesTheJudgmentForTooFewReadersWhenAReaderIsAdded (0.01s)
+    closes_test.go:91: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel/decide_test.go:52
+        	            				github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel/closes_test.go:91
+        	Error:      	assertion failed
+        	Test:       	TestAskClosesTheJudgmentForTooFewReadersWhenAReaderIsAdded
+        	Messages:   	moves:
+        	            	 got ["set work s1-1 asked=reader-a,reader-b,consumer:0:s1-1.r1.reader-a#r1={\"key\":\"s1-1.r1.reader-a#r1\",\"epoch\":0,\"kind\":\"read\",\"who\":\"reader-a\",\"taken\":\"2030-01-02T03:04:05Z\"},consumer:0:s1-1.r1.reader-b#r1={\"key\":\"s1-1.r1.reader-b#r1\",\"epoch\":0,\"kind\":\"read\",\"who\":\"reader-b\",\"taken\":\"2030-01-02T03:04:05Z\"}" "prop readers ask_index=2" "create readers s1-1.r1.reader-a >reader-a:asked" "create readers s1-1.r1.reader-b >reader-b:asked" "prop readers stream_index_ask=1" "close cannot ask [s1-1]"]
+        	            	want ["set work s1-1 asked=reader-a,reader-b" "prop readers ask_index=2" "create readers s1-1.r1.reader-a >reader-a:asked" "create readers s1-1.r1.reader-b >reader-b:asked" "prop readers stream_index_ask=1" "close cannot ask [s1-1]"]
+        	            	full:
+        	            	  ask set table="work" card="s1-1" from="s1:review" set=["asked=reader-a,reader-b" "consumer:0:s1-1.r1.reader-a#r1={\"key\":\"s1-1.r1.reader-a#r1\",\"epoch\":0,\"kind\":\"read\",\"who\":\"reader-a\",\"taken\":\"2030-01-02T03:04:05Z\"}" "consumer:0:s1-1.r1.reader-b#r1={\"key\":\"s1-1.r1.reader-b#r1\",\"epoch\":0,\"kind\":\"read\",\"who\":\"reader-b\",\"taken\":\"2030-01-02T03:04:05Z\"}"]
+        	            	  ask prop table="readers" card="ask_index" set=["ask_index=2"]
+        	            	  ask create table="readers" card="s1-1.r1.reader-a" to="reader-a:asked" score="1" set=["asked=2030-01-02T03:04:05Z" "attempt=1" "gen=1" "head=h-s1-1" "kind=read" "primary=s1-1" "reader=reader-a" "stream=s1" "tier=pro"] words="s1-1 asked of reader-a, reader-b"
+        	            	  ask create table="readers" card="s1-1.r1.reader-b" to="reader-b:asked" score="1" set=["asked=2030-01-02T03:04:05Z" "attempt=1" "gen=1" "head=h-s1-1" "kind=read" "primary=s1-1" "reader=reader-b" "stream=s1" "tier=pro"]
+        	            	  ask prop table="readers" card="stream_index_ask" set=["stream_index_ask=1"]
+        	            	  ask close card="n3" type="cannot ask" stream="s1" subjects=["s1-1"]
+--- FAIL: TestPresenceTakesAMemberDownAndDealsItsCards (0.01s)
+    decide_test.go:83: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel/decide_test.go:52
+        	            				github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel/decide_test.go:83
+        	Error:      	assertion failed
+        	Test:       	TestPresenceTakesAMemberDownAndDealsItsCards
+        	Messages:   	moves:
+        	            	 got ["set work s1-1 consumer:0:s1-1.w1#g2={\"key\":\"s1-1.w1#g2\",\"epoch\":0,\"kind\":\"work\",\"who\":\"m1\",\"taken\":\"2030-01-02T03:04:05Z\",\"ended\":\"2030-01-02T03:04:05Z\",\"outcome\":\"ready\"}" "set fleet ctl-m1 fault_since=2030-01-02T03:04:05Z,held_by=fault,since=2030-01-02T03:04:05Z,status=down" "prop fleet deal_index=4" "move fleet s1-1.w1 m1:working>m2:ready" "move fleet s1-3.w1 m1:ready>m2:ready" "prop fleet status_seen=m1=down,0,-,-,0,- m2=up,0,-,-,0,-" "notice fleet member down []"]
+        	            	want ["set fleet ctl-m1 fault_since=2030-01-02T03:04:05Z,held_by=fault,since=2030-01-02T03:04:05Z,status=down" "prop fleet deal_index=4" "move fleet s1-1.w1 m1:working>m2:ready" "move fleet s1-3.w1 m1:ready>m2:ready" "prop fleet status_seen=m1=down,0,-,-,0,- m2=up,0,-,-,0,-" "notice fleet member down []"]
+        	            	full:
+        	            	  presence set table="work" card="s1-1" from="s1:working" set=["consumer:0:s1-1.w1#g2={\"key\":\"s1-1.w1#g2\",\"epoch\":0,\"kind\":\"work\",\"who\":\"m1\",\"taken\":\"2030-01-02T03:04:05Z\",\"ended\":\"2030-01-02T03:04:05Z\",\"outcome\":\"ready\"}"]
+        	            	  presence set table="fleet" card="ctl-m1" from="m1:ctl" set=["fault_since=2030-01-02T03:04:05Z" "held_by=fault" "since=2030-01-02T03:04:05Z" "status=down"] words="s1-1.w1 m1:working -> m2:ready gen=2; m1 down; m1 down; moved=2 to m2(2); stayed=0"
+        	            	  presence prop table="fleet" card="deal_index" set=["deal_index=4"]
+        	            	  presence move table="fleet" card="s1-1.w1" from="m1:working" to="m2:ready" set=["dealt=2030-01-02T03:04:05Z" "gen=2" "member=m2" "redeals=1" "untaken_since=2030-01-02T03:04:05Z"] unset=["taken"]
+        	            	  presence move table="fleet" card="s1-3.w1" from="m1:ready" to="m2:ready" set=["dealt=2030-01-02T03:04:05Z" "gen=2" "member=m2"] words="s1-3.w1 m1:ready -> m2:ready gen=2; m1 down"
+        	            	  presence prop table="fleet" card="status_seen" set=["status_seen=m1=down,0,-,-,0,- m2=up,0,-,-,0,-"] words="status seen: m1 down, m2 up"
+        	            	  presence notice type="fleet member down" attrs=["who=machine"] words="m1 down: no beat for 45s"
+--- FAIL: TestTheStoreWritesWhatTheReferenceDecides (8.89s)
+    binding_test.go:233: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel/binding_test.go:233
+        	Error:      	"0" is not greater than or equal to "10"
+        	Test:       	TestTheStoreWritesWhatTheReferenceDecides
+        	Messages:   	the part unserved fallback had moves on 0 samples, fewer than 10: the store was not compared on it
+    binding_test.go:237: 318 samples compared; parts with moves, by part: map[accept:32 ask:46 cap deal:16 check:40 deadlines:40 deal:56 done:40 friend-redeal:16 friend-stall:46 level reads:17 live:14 overdue:40 presence:69 rebalance:16 resolve:24 resume:19 verdicts:40]; parts the store's filter changed: 99
+FAIL
+FAIL	github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel	8.943s
+ok  	github.com/mas-bandwidth/nova-sprint/internal/sprint/store	11.153s
+?   	github.com/mas-bandwidth/nova-sprint/internal/sprint/store/storetest	[no test files]
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: will change to "main" in Git 3.0. To configure the initial branch name
+hint: to use in all of your new repositories, which will suppress this warning,
+hint: call:
+hint:
+hint: 	git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint: 	git branch -m <name>
+hint:
+hint: Disable this message with "git config set advice.defaultBranchName false"
+Initialized empty Git repository in /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/land-clash-test-3499257866/.git/
+[master (root-commit) 9c00d83] base
+ 5 files changed, 15 insertions(+)
+ create mode 100644 cmd/nova-sprint/main.go
+ create mode 100644 go.mod
+ create mode 100644 internal/sprint/a.go
+ create mode 100644 internal/sprint/b.go
+ create mode 100644 internal/sprint/store_test.go
+Cloning into '.'...
+done.
+Switched to a new branch 'x'
+[x 584dccf] head x
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Cloning into '.'...
+done.
+Switched to a new branch 'y'
+HEAD is now at 9c00d83 base
+[y c88f326] head y
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+From /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/land-clash-test-3499257866/x
+ * [new branch]      x          -> x
+Merge made by the 'ort' strategy.
+ internal/sprint/a.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+From /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/land-clash-test-3499257866/y
+ * [new branch]      y          -> y
+Merge made by the 'ort' strategy.
+ internal/sprint/b.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+--- FAIL: TestTheServersLandLoopLandsWhileTheSeatIsUnhooked (0.48s)
+    landloop_unhooked_test.go:77: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landloop_unhooked_test.go:77
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestTheServersLandLoopLandsWhileTheSeatIsUnhooked
+        	Messages:   	03:04:05 LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	03:04:05 NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	03:04:05 LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+    landloop_unhooked_test.go:78: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landloop_unhooked_test.go:78
+        	Error:      	"03:04:05 LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\n03:04:05 NOTE nothing was pushed or reported for stream s1; its cards stay queued\n03:04:05 LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "LAND OK stream=s1 cards=2"
+        	Test:       	TestTheServersLandLoopLandsWhileTheSeatIsUnhooked
+    landloop_unhooked_test.go:80: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landloop_unhooked_test.go:80
+        	Error:      	Not equal: 
+        	            	expected: map[string]string{"s1-1":"landed/merged", "s1-2":"landed/merged"}
+        	            	actual  : map[string]string{"s1-1":"merging/queued", "s1-2":"merging/queued"}
+        	            	
+        	            	Diff:
+        	            	--- Expected
+        	            	+++ Actual
+        	            	@@ -1,4 +1,4 @@
+        	            	 (map[string]string) (len=2) {
+        	            	- (string) (len=4) "s1-1": (string) (len=13) "landed/merged",
+        	            	- (string) (len=4) "s1-2": (string) (len=13) "landed/merged"
+        	            	+ (string) (len=4) "s1-1": (string) (len=14) "merging/queued",
+        	            	+ (string) (len=4) "s1-2": (string) (len=14) "merging/queued"
+        	            	 }
+        	Test:       	TestTheServersLandLoopLandsWhileTheSeatIsUnhooked
+        	Messages:   	the cards landed with no hook
+--- FAIL: TestAHandLandIsStillRefusedUntilHooked (0.49s)
+    landloop_unhooked_test.go:108: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landloop_unhooked_test.go:108
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestAHandLandIsStillRefusedUntilHooked
+        	Messages:   	LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+    landloop_unhooked_test.go:109: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landloop_unhooked_test.go:109
+        	Error:      	"LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "LAND OK stream=s1 cards=2"
+        	Test:       	TestAHandLandIsStillRefusedUntilHooked
+    landloop_unhooked_test.go:111: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landloop_unhooked_test.go:111
+        	Error:      	Not equal: 
+        	            	expected: map[string]string{"s1-1":"landed/merged", "s1-2":"landed/merged"}
+        	            	actual  : map[string]string{"s1-1":"merging/queued", "s1-2":"merging/queued"}
+        	            	
+        	            	Diff:
+        	            	--- Expected
+        	            	+++ Actual
+        	            	@@ -1,4 +1,4 @@
+        	            	 (map[string]string) (len=2) {
+        	            	- (string) (len=4) "s1-1": (string) (len=13) "landed/merged",
+        	            	- (string) (len=4) "s1-2": (string) (len=13) "landed/merged"
+        	            	+ (string) (len=4) "s1-1": (string) (len=14) "merging/queued",
+        	            	+ (string) (len=4) "s1-2": (string) (len=14) "merging/queued"
+        	            	 }
+        	Test:       	TestAHandLandIsStillRefusedUntilHooked
+        	Messages:   	the cards landed once the seat hooked in
+--- FAIL: TestQuackCutsStampedCardsThatAlternateTiersAndPassTheLint (0.29s)
+    quack_test.go:78: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/quack_test.go:25
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/quack_test.go:78
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestQuackCutsStampedCardsThatAlternateTiersAndPassTheLint
+        	Messages:   	quack --streams a --count 2 --tiers pro --base main --repo https://example.com/quack.git: exit 1
+        	            	STOPPED  0/7 0.0%
+        	            	REFUSED quack-32bfa78f55f1-a-001: card quack-32bfa78f55f1-a-001 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set a --base sprint/a
+        	            	REFUSED quack-32bfa78f55f1-a-002: card quack-32bfa78f55f1-a-002 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set a --base sprint/a
+        	            	QUACK FAILED moved=0 refused=2 notes=0
+--- FAIL: TestMergeWindowOpenPausesLandingForItsDurationWithTheReason (1.05s)
+    mergewindow_test.go:93: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/mergewindow_test.go:93
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestMergeWindowOpenPausesLandingForItsDurationWithTheReason
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestMergeWindowOpenPausesLandingForItsDurationWithTheReason293493860/001/clone --base main --dry-run: exit 1
+        	            	LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 dry_run=yes reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	LAND DONE batches=0 cards=0 refused=1 dry_run=yes; run: nova-sprint where
+--- FAIL: TestLandPausesWhileTheBasesMergeQueueHoldsAGroup (1.12s)
+    mergewindow_test.go:51: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/mergewindow_test.go:51
+        	Error:      	"LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "paused: the merge queue of main holds a group; the cards stay queued"
+        	Test:       	TestLandPausesWhileTheBasesMergeQueueHoldsAGroup
+    mergewindow_test.go:64: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/mergewindow_test.go:64
+        	Error:      	"LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "paused: the merge queue of main holds a group"
+        	Test:       	TestLandPausesWhileTheBasesMergeQueueHoldsAGroup
+    mergewindow_test.go:65: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/mergewindow_test.go:65
+        	Error:      	"LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "push="
+        	Test:       	TestLandPausesWhileTheBasesMergeQueueHoldsAGroup
+        	Messages:   	the batch was built and checked before the pause
+    mergewindow_test.go:71: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/mergewindow_test.go:71
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestLandPausesWhileTheBasesMergeQueueHoldsAGroup
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandPausesWhileTheBasesMergeQueueHoldsAGroup3411608908/001/clone --base main: exit 1
+        	            	LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLanderAcceptsNewFileUnderDirectoryPaths (1.48s)
+    pathcover_test.go:30: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/pathcover_test.go:30
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestLanderAcceptsNewFileUnderDirectoryPaths
+        	Messages:   	LAND REFUSED stream=s1 cards=1 base=main tip=- ids=a reason=card a lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+    pathcover_test.go:32: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/pathcover_test.go:32
+        	Error:      	Not equal: 
+        	            	expected: map[string]string{"a":"landed/merged"}
+        	            	actual  : map[string]string{"a":"merging/queued"}
+        	            	
+        	            	Diff:
+        	            	--- Expected
+        	            	+++ Actual
+        	            	@@ -1,3 +1,3 @@
+        	            	 (map[string]string) (len=1) {
+        	            	- (string) (len=1) "a": (string) (len=13) "landed/merged"
+        	            	+ (string) (len=1) "a": (string) (len=14) "merging/queued"
+        	            	 }
+        	Test:       	TestLanderAcceptsNewFileUnderDirectoryPaths
+    pathcover_test.go:33: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:89
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/pathcover_test.go:33
+        	Error:      	Received unexpected error:
+        	            	exit status 128
+        	Test:       	TestLanderAcceptsNewFileUnderDirectoryPaths
+        	Messages:   	git [show main:pkg/thing/new.go]: fatal: path 'pkg/thing/new.go' does not exist in 'main'
+--- FAIL: TestTheLandLoopDeletesBranchesLazilyBetweenRounds (1.00s)
+    land_prune_test.go:111: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_prune_test.go:111
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestTheLandLoopDeletesBranchesLazilyBetweenRounds
+        	Messages:   	03:04:05 LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	03:04:05 NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	03:04:05 LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestReleaseAcceptAClearedSprintLandsWithNoSeatAction (2.02s)
+    release_accept_progress_test.go:78: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/release_accept_progress_test.go:78
+        	Error:      	Should be true
+        	Test:       	TestReleaseAcceptAClearedSprintLandsWithNoSeatAction
+        	Messages:   	every card landed with no seat action within 12 rounds: map[s1-1:merging s1-2:merging]
+--- FAIL: TestTheLastCardLandsAfterReplacingItsReaskedReader (1.02s)
+    last_card_replacement_review_test.go:56: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/last_card_replacement_review_test.go:56
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestTheLastCardLandsAfterReplacingItsReaskedReader
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestTheLastCardLandsAfterReplacingItsReaskedReader2963220677/001/clone --base main --check 'test -f last.txt': exit 1
+        	            	LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestVerifyLandedListsALandedRecordMissingFromTheBase (1.12s)
+    landverify_test.go:22: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landverify_test.go:22
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestVerifyLandedListsALandedRecordMissingFromTheBase
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestVerifyLandedListsALandedRecordMissingFromTheBase1993022428/001/clone --base main: exit 1
+        	            	LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-2 reason=card s1-2 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLandCancelledGateWaitLeavesThePass (1.05s)
+    landpass_unblocked_test.go:193: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_unblocked_test.go:193
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_unblocked_test.go:267
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandCancelledGateWaitLeavesThePass
+        	Messages:   	add --stream s1 --one --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandCancelledGateWaitLeavesThePass1324565648/002/s1-1.md: exit 2
+        	            	nova-sprint add REFUSED: card s1-1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestLandDisjointPushIsNotCachedAndTheNextPassGatesTheBase (1.13s)
+    landpass_test.go:493: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:153
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:493
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandDisjointPushIsNotCachedAndTheNextPassGatesTheBase
+        	Messages:   	add --stream s1 --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandDisjointPushIsNotCachedAndTheNextPassGatesTheBase2463332393/002/a1.md --one: exit 2
+        	            	nova-sprint add REFUSED: card a1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestLandBlamesATestThatPrintsADiskFullLine (1.20s)
+    landpass_unblocked_test.go:367: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:153
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_unblocked_test.go:367
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandBlamesATestThatPrintsADiskFullLine
+        	Messages:   	add --stream s1 --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandBlamesATestThatPrintsADiskFullLine1914376184/002/a1.md --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandBlamesATestThatPrintsADiskFullLine1914376184/002/a2.md: exit 2
+        	            	nova-sprint add REFUSED: card a1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1; card a2 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain (0.83s)
+    landloop_hookgate_test.go:187: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landloop_hookgate_test.go:187
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain
+        	Messages:   	the land after the seat hooked in: 21:02:00 LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	21:02:00 NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	21:02:00 LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+    landloop_hookgate_test.go:188: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landloop_hookgate_test.go:188
+        	Error:      	"21:02:00 LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\n21:02:00 NOTE nothing was pushed or reported for stream s1; its cards stay queued\n21:02:00 LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "LAND OK stream=s1 cards=1 base=main"
+        	Test:       	TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain
+        	Messages:   	21:02:00 LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	21:02:00 NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	21:02:00 LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+    landloop_hookgate_test.go:194: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landloop_hookgate_test.go:194
+        	Error:      	Not equal: 
+        	            	expected: map[string]string{"s1-1":"landed/merged"}
+        	            	actual  : map[string]string{"s1-1":"merging/queued"}
+        	            	
+        	            	Diff:
+        	            	--- Expected
+        	            	+++ Actual
+        	            	@@ -1,3 +1,3 @@
+        	            	 (map[string]string) (len=1) {
+        	            	- (string) (len=4) "s1-1": (string) (len=13) "landed/merged"
+        	            	+ (string) (len=4) "s1-1": (string) (len=14) "merging/queued"
+        	            	 }
+        	Test:       	TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain
+        	Messages:   	the card queued before the switch landed
+--- FAIL: TestLandRebuildOfTheSameBranchResetsItsTree (1.15s)
+    landpass_test.go:386: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:153
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:386
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandRebuildOfTheSameBranchResetsItsTree
+        	Messages:   	add --stream s1 --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandRebuildOfTheSameBranchResetsItsTree428913331/002/a1.md --one: exit 2
+        	            	nova-sprint add REFUSED: card a1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued (1.06s)
+    landpass_test.go:251: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:153
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:251
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued
+        	Messages:   	add --stream s1 --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued1244778351/002/a1.md --one: exit 2
+        	            	nova-sprint add REFUSED: card a1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestARefusedBatchOnOneBaseDoesNotStopAnotherBasesLane (1.04s)
+    landpass_lanes_test.go:311: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_lanes_test.go:311
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestARefusedBatchOnOneBaseDoesNotStopAnotherBasesLane
+        	Messages:   	add --stream s1 --one --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestARefusedBatchOnOneBaseDoesNotStopAnotherBasesLane2631142152/002/a.md: exit 2
+        	            	nova-sprint add REFUSED: card a is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestLandScoresEveryLandedHeadAndJudgesTheBatchOnce (1.35s)
+    landscore_test.go:60: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landscore_test.go:60
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestLandScoresEveryLandedHeadAndJudgesTheBatchOnce
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandScoresEveryLandedHeadAndJudgesTheBatchOnce409239078/001/clone --base main: exit 1
+        	            	LAND REFUSED stream=s1 cards=3 base=main tip=- ids=s1-1..s1-3 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLandGatesTheCombinedTreeOnceWhenFilesCollide (1.09s)
+    landpass_test.go:233: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:153
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:233
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandGatesTheCombinedTreeOnceWhenFilesCollide
+        	Messages:   	add --stream s1 --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandGatesTheCombinedTreeOnceWhenFilesCollide3740847335/002/a1.md --one: exit 2
+        	            	nova-sprint add REFUSED: card a1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestLandFallbackGateDeadlineDoesNotBlameCard (1.30s)
+    landpass_unblocked_test.go:115: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_unblocked_test.go:115
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandFallbackGateDeadlineDoesNotBlameCard
+        	Messages:   	add --stream s1 --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandFallbackGateDeadlineDoesNotBlameCard2302649835/002/s1-1.md --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandFallbackGateDeadlineDoesNotBlameCard2302649835/003/s1-2.md: exit 2
+        	            	nova-sprint add REFUSED: card s1-1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1; card s1-2 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestLandAnotherBaseProgressesWhileFirstBaseGateWaits (1.32s)
+    landpass_unblocked_test.go:39: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_unblocked_test.go:39
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandAnotherBaseProgressesWhileFirstBaseGateWaits
+        	Messages:   	add --stream s1 --one --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandAnotherBaseProgressesWhileFirstBaseGateWaits737436520/002/s1-1.md: exit 2
+        	            	nova-sprint add REFUSED: card s1-1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestLandRefusesARedCombinedTreeForThePassAndStopsNoStream (1.17s)
+    landpass_test.go:312: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:153
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:312
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandRefusesARedCombinedTreeForThePassAndStopsNoStream
+        	Messages:   	add --stream s1 --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandRefusesARedCombinedTreeForThePassAndStopsNoStream1015836261/002/a1.md --one: exit 2
+        	            	nova-sprint add REFUSED: card a1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestLandReviewClonesOfTwoRepositoriesNeverShareADirectory (0.64s)
+    land_test.go:557: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:557
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandReviewClonesOfTwoRepositoriesNeverShareADirectory
+        	Messages:   	add --stream s1 a --one --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandReviewClonesOfTwoRepositoriesNeverShareADirectory4168841121/002/a.md: exit 2
+        	            	nova-sprint add REFUSED: card a is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestAHeldFirstSlotLaneSendsTheGateToTheNextBench (1.45s)
+    landring_test.go:167: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landring_test.go:167
+        	Error:      	Should NOT be empty, but was []
+        	Test:       	TestAHeldFirstSlotLaneSendsTheGateToTheNextBench
+        	Messages:   	the gate went to a bench:
+        	            	LANDING every 2s: land runs here for every stream with cards queued to merge, one landing at a time
+        	            	03:04:05 LAND IDLE queued=1 step=land since=0s
+        	            	03:04:05 LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	03:04:05 NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	03:04:05 LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLandLaneOnOneBaseKeepsPriorityOrder (1.06s)
+    landpass_lanes_test.go:61: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:153
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_lanes_test.go:61
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandLaneOnOneBaseKeepsPriorityOrder
+        	Messages:   	add --stream s1 --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandLaneOnOneBaseKeepsPriorityOrder4202379654/002/a1.md --one: exit 2
+        	            	nova-sprint add REFUSED: card a1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestLandTwoStreamsAsTheirOwnBatches (0.54s)
+    land_test.go:477: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:477
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandTwoStreamsAsTheirOwnBatches
+        	Messages:   	add --stream s1 --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandTwoStreamsAsTheirOwnBatches3759644823/002/a.md --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandTwoStreamsAsTheirOwnBatches3759644823/002/b.md: exit 2
+        	            	nova-sprint add REFUSED: card a is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1; card b is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestLandCancelledSlotWaitLeavesThePass (1.43s)
+    landpass_unblocked_test.go:193: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_unblocked_test.go:193
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_unblocked_test.go:260
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandCancelledSlotWaitLeavesThePass
+        	Messages:   	add --stream s1 --one --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandCancelledSlotWaitLeavesThePass17803792/002/s1-1.md: exit 2
+        	            	nova-sprint add REFUSED: card s1-1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestTheServerLandsWhatIsQueued (1.15s)
+    landloop_test.go:52: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landloop_test.go:52
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestTheServerLandsWhatIsQueued
+        	Messages:   	03:04:05 LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	03:04:05 NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	03:04:05 LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLandMergesStreamsInParallelAndLandsThemOneAtATime (1.26s)
+    landpass_test.go:195: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:153
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:195
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandMergesStreamsInParallelAndLandsThemOneAtATime
+        	Messages:   	add --stream s1 --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandMergesStreamsInParallelAndLandsThemOneAtATime983359020/002/a1.md --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandMergesStreamsInParallelAndLandsThemOneAtATime983359020/002/a2.md: exit 2
+        	            	nova-sprint add REFUSED: card a1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1; card a2 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestLandAReusedOpLandsTheNewBatchForReal (0.86s)
+    land_test.go:674: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:674
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestLandAReusedOpLandsTheNewBatchForReal
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandAReusedOpLandsTheNewBatchForReal3825708433/001/clone --base main --op repeated-land: exit 1
+        	            	LAND REFUSED stream=s1 cards=1 base=main tip=- ids=first reason=card first lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLandSaysHowLongEachStepOfALandedBatchTook (1.13s)
+    land_times_test.go:55: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_times_test.go:55
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestLandSaysHowLongEachStepOfALandedBatchTook
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandSaysHowLongEachStepOfALandedBatchTook2004289789/001/clone --base main --check true: exit 1
+        	            	LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLandRefusesAProtectedBaseUntilTheStreamIsMarked (1.04s)
+    land_test.go:832: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:832
+        	Error:      	"LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 dry_run=yes reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nLAND DONE batches=0 cards=0 refused=1 dry_run=yes; run: nova-sprint where\n" does not contain "reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line), and stream s1 is not marked to land on it"
+        	Test:       	TestLandRefusesAProtectedBaseUntilTheStreamIsMarked
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandRefusesAProtectedBaseUntilTheStreamIsMarked3854075547/001/clone --base main --dry-run
+    land_test.go:833: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:833
+        	Error:      	"LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 dry_run=yes reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nLAND DONE batches=0 cards=0 refused=1 dry_run=yes; run: nova-sprint where\n" does not contain "; run: nova-sprint stream set s1 --land-protected any; or mark it the promotion stream, for every repository: nova-sprint stream set s1 --promotion\n"
+        	Test:       	TestLandRefusesAProtectedBaseUntilTheStreamIsMarked
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandRefusesAProtectedBaseUntilTheStreamIsMarked3854075547/001/clone --base main --dry-run
+    land_test.go:832: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:832
+        	Error:      	"LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line), and stream s1 is not marked to land on it"
+        	Test:       	TestLandRefusesAProtectedBaseUntilTheStreamIsMarked
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandRefusesAProtectedBaseUntilTheStreamIsMarked3854075547/001/clone --base main
+    land_test.go:833: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:833
+        	Error:      	"LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "; run: nova-sprint stream set s1 --land-protected any; or mark it the promotion stream, for every repository: nova-sprint stream set s1 --promotion\n"
+        	Test:       	TestLandRefusesAProtectedBaseUntilTheStreamIsMarked
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandRefusesAProtectedBaseUntilTheStreamIsMarked3854075547/001/clone --base main
+    land_test.go:838: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:838
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandRefusesAProtectedBaseUntilTheStreamIsMarked
+        	Messages:   	stream set s1 --land-protected any: exit 2
+        	            	nova-sprint stream set REFUSED: stream s1 may not be marked to land on a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestLandFetchIsTheBaseAndTheHeadsByIDInOneCommand (1.13s)
+    land_times_test.go:36: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_times_test.go:36
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestLandFetchIsTheBaseAndTheHeadsByIDInOneCommand
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandFetchIsTheBaseAndTheHeadsByIDInOneCommand3445654062/001/clone --base main: exit 1
+        	            	LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestARefusedStageStepsTheGateToTheNextSlot (1.78s)
+    landstage_test.go:98: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landstage_test.go:98
+        	Error:      	Should not be zero, but was 0
+        	Test:       	TestARefusedStageStepsTheGateToTheNextSlot
+        	Messages:   	the stream's slot is asked first: []
+        	            	LANDING every 2s: land runs here for every stream with cards queued to merge, one landing at a time
+        	            	03:04:05 LAND IDLE queued=3 step=land since=0s
+        	            	03:04:05 LAND REFUSED stream=s1 cards=3 base=main tip=- ids=s1-1..s1-3 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	03:04:05 NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	03:04:05 LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLandRefusesAReworkedHeadAndLandsItOnTheNextRun (1.03s)
+    land_test.go:644: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:644
+        	Error:      	Not equal: 
+        	            	expected: 2
+        	            	actual  : 1
+        	Test:       	TestLandRefusesAReworkedHeadAndLandsItOnTheNextRun
+    land_test.go:645: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:645
+        	Error:      	"LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "LAND FAILED stream=s1 cards=1"
+        	Test:       	TestLandRefusesAReworkedHeadAndLandsItOnTheNextRun
+    land_test.go:646: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:646
+        	Error:      	"LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "s1-1 is at attempt 2 head  now, not attempt 1 head f2af6beff5d4fa26667487cf571f736cbe280529"
+        	Test:       	TestLandRefusesAReworkedHeadAndLandsItOnTheNextRun
+    land_test.go:649: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:649
+        	Error:      	"LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "a card reworked since is merged at its new head, or meets a real conflict): nova-sprint land --stream s1"
+        	Test:       	TestLandRefusesAReworkedHeadAndLandsItOnTheNextRun
+    land_test.go:651: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:89
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:651
+        	Error:      	Received unexpected error:
+        	            	exit status 128
+        	Test:       	TestLandRefusesAReworkedHeadAndLandsItOnTheNextRun
+        	Messages:   	git [show main:a.txt]: fatal: path 'a.txt' does not exist in 'main'
+--- FAIL: TestALaneLandsWhileAnotherLanesCombinedGateBlocks (1.46s)
+    landpass_lanes_test.go:93: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_lanes_test.go:93
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestALaneLandsWhileAnotherLanesCombinedGateBlocks
+        	Messages:   	add --stream s0 --one --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestALaneLandsWhileAnotherLanesCombinedGateBlocks1620209396/002/a0.md: exit 2
+        	            	nova-sprint add REFUSED: card a0 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s0 --base sprint/s0
+--- FAIL: TestLandReviewAGitEnvironmentFailureBlamesNoCard (1.28s)
+    land_test.go:600: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:600
+        	Error:      	"LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "the merge of s1-1 failed in git, not on its changes"
+        	Test:       	TestLandReviewAGitEnvironmentFailureBlamesNoCard
+    land_test.go:601: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:601
+        	Error:      	"LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "the merge is refused by the test"
+        	Test:       	TestLandReviewAGitEnvironmentFailureBlamesNoCard
+    land_test.go:602: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:602
+        	Error:      	"LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "no card is blamed and nothing was pushed or reported"
+        	Test:       	TestLandReviewAGitEnvironmentFailureBlamesNoCard
+--- FAIL: TestLandDryRunChangesNothing (1.16s)
+    land_test.go:441: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:441
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestLandDryRunChangesNothing
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandDryRunChangesNothing1464711254/001/clone --base main --dry-run: exit 1
+        	            	LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 dry_run=yes reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	LAND DONE batches=0 cards=0 refused=1 dry_run=yes; run: nova-sprint where
+--- FAIL: TestLandACheckThatFailsPushesNothing (1.18s)
+    land_test.go:426: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:426
+        	Error:      	"LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "fact=red reason=the check echo the tests are red; exit 3 failed: exit status 3: the tests are red"
+        	Test:       	TestLandACheckThatFailsPushesNothing
+    land_test.go:428: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:428
+        	Error:      	Not equal: 
+        	            	expected: "stopped red"
+        	            	actual  : "merging"
+        	            	
+        	            	Diff:
+        	            	--- Expected
+        	            	+++ Actual
+        	            	@@ -1 +1 @@
+        	            	-stopped red
+        	            	+merging
+        	Test:       	TestLandACheckThatFailsPushesNothing
+--- FAIL: TestATickUnderThePushLeavesAMarkedLanding (0.92s)
+    land_reads_test.go:64: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_reads_test.go:64
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestATickUnderThePushLeavesAMarkedLanding
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestATickUnderThePushLeavesAMarkedLanding2751469802/001/clone --base main: exit 1
+        	            	LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLandReviewReusedOperationCannotClaimAnotherBatchLanded (1.06s)
+    land_review_test.go:67: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_review_test.go:67
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestLandReviewReusedOperationCannotClaimAnotherBatchLanded
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandReviewReusedOperationCannotClaimAnotherBatchLanded1344422359/001/clone --base main --op repeated-land: exit 1
+        	            	LAND REFUSED stream=s1 cards=1 base=main tip=- ids=first reason=card first lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLandSaysLoudlyWhenAPushedBatchIsNotReported (1.28s)
+    land_test.go:397: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:397
+        	Error:      	Not equal: 
+        	            	expected: 2
+        	            	actual  : 1
+        	Test:       	TestLandSaysLoudlyWhenAPushedBatchIsNotReported
+    land_test.go:399: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:399
+        	Error:      	"LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "LAND FAILED stream=s1 cards=2 base=main tip=94f941c51bc950170dda8e4ae590db6812e6531a ids=s1-1..s1-2"
+        	Test:       	TestLandSaysLoudlyWhenAPushedBatchIsNotReported
+    land_test.go:400: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:400
+        	Error:      	"LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "and NOT reported: s1: the merge queue of s1 no longer holds s1-1 (landed, stuck or returned since it was read)"
+        	Test:       	TestLandSaysLoudlyWhenAPushedBatchIsNotReported
+    land_test.go:401: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:401
+        	Error:      	"LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain "run land again, which rereads the queue and lets its checks decide"
+        	Test:       	TestLandSaysLoudlyWhenAPushedBatchIsNotReported
+    land_test.go:402: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:402
+        	Error:      	"LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1\nNOTE nothing was pushed or reported for stream s1; its cards stay queued\nLAND DONE batches=0 cards=0 refused=1; run: nova-sprint where\n" does not contain ": nova-sprint land --stream s1\n"
+        	Test:       	TestLandSaysLoudlyWhenAPushedBatchIsNotReported
+    land_test.go:404: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:404
+        	Error:      	Not equal: 
+        	            	expected: []string{"land s1-2 (sprint stream s1)", "land s1-1 (sprint stream s1)", "base"}
+        	            	actual  : []string{"base"}
+        	            	
+        	            	Diff:
+        	            	--- Expected
+        	            	+++ Actual
+        	            	@@ -1,4 +1,2 @@
+        	            	-([]string) (len=3) {
+        	            	- (string) (len=28) "land s1-2 (sprint stream s1)",
+        	            	- (string) (len=28) "land s1-1 (sprint stream s1)",
+        	            	+([]string) (len=1) {
+        	            	  (string) (len=4) "base"
+        	Test:       	TestLandSaysLoudlyWhenAPushedBatchIsNotReported
+    land_test.go:406: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:406
+        	Error:      	Not equal: 
+        	            	expected: map[string]string{"s1-1":"review/returned", "s1-2":"merging/queued"}
+        	            	actual  : map[string]string{"s1-1":"merging/queued", "s1-2":"merging/queued"}
+        	            	
+        	            	Diff:
+        	            	--- Expected
+        	            	+++ Actual
+        	            	@@ -1,3 +1,3 @@
+        	            	 (map[string]string) (len=2) {
+        	            	- (string) (len=4) "s1-1": (string) (len=15) "review/returned",
+        	            	+ (string) (len=4) "s1-1": (string) (len=14) "merging/queued",
+        	            	  (string) (len=4) "s1-2": (string) (len=14) "merging/queued"
+        	Test:       	TestLandSaysLoudlyWhenAPushedBatchIsNotReported
+    land_test.go:409: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:409
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestLandSaysLoudlyWhenAPushedBatchIsNotReported
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandSaysLoudlyWhenAPushedBatchIsNotReported3886813744/001/clone --base main: exit 1
+        	            	LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLandBisectsARedBatchToTheBreakingHead (2.25s)
+    landpass_unblocked_test.go:282: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_test.go:153
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/landpass_unblocked_test.go:282
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 2
+        	Test:       	TestLandBisectsARedBatchToTheBreakingHead
+        	Messages:   	add --stream s1 --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandBisectsARedBatchToTheBreakingHead3577896476/002/a1.md --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandBisectsARedBatchToTheBreakingHead3577896476/002/a2.md --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandBisectsARedBatchToTheBreakingHead3577896476/002/a3.md --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandBisectsARedBatchToTheBreakingHead3577896476/002/a4.md --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandBisectsARedBatchToTheBreakingHead3577896476/002/a5.md --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandBisectsARedBatchToTheBreakingHead3577896476/002/a6.md --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandBisectsARedBatchToTheBreakingHead3577896476/002/a7.md --brief-file /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandBisectsARedBatchToTheBreakingHead3577896476/002/a8.md: exit 2
+        	            	nova-sprint add REFUSED: card a1 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1; card a2 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1; card a3 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1; card a4 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1; card a5 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1; card a6 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1; card a7 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1; card a8 is cut on main, a protected branch: The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+--- FAIL: TestATickLeavesAMergingCardWithItsReadsAndLandLandsIt (1.06s)
+    land_reads_test.go:40: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_reads_test.go:40
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestATickLeavesAMergingCardWithItsReadsAndLandLandsIt
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestATickLeavesAMergingCardWithItsReadsAndLandLandsIt3015556046/001/clone --base main: exit 1
+        	            	LAND REFUSED stream=s1 cards=1 base=main tip=- ids=s1-1 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLandMergesAStreamInQueueOrderAsOneBatch (1.28s)
+    land_test.go:210: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/main_test.go:157
+        	            				github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:210
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestLandMergesAStreamInQueueOrderAsOneBatch
+        	Messages:   	land --repo-dir /home/glenn/rowan-working/tmp/slots/no-stream-lands-a-card-on-a-protected-branch.w6.g2.e19/tmp/no-stream-lands-a-card-on-a-protected-branch.w6/TestLandMergesAStreamInQueueOrderAsOneBatch2825693186/001/clone --base main --check 'test -f s1-1.txt && test -f s1-3.txt': exit 1
+        	            	LAND REFUSED stream=s1 cards=3 base=main tip=- ids=s1-1..s1-3 reason=card s1-1 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+--- FAIL: TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush (1.33s)
+    land_test.go:378: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:378
+        	Error:      	Not equal: 
+        	            	expected: 0
+        	            	actual  : 1
+        	Test:       	TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush
+        	Messages:   	LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-2..s1-3 reason=card s1-2 lands on main, a protected branch of its repository (it names no REPO: line): The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main.; run: nova-sprint stream set s1 --base sprint/s1
+        	            	NOTE nothing was pushed or reported for stream s1; its cards stay queued
+        	            	LAND DONE batches=0 cards=0 refused=1; run: nova-sprint where
+    land_test.go:379: 
+        	Error Trace:	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:379
+        	Error:      	"" does not contain "LAND OK stream=s1 cards=2"
+        	Test:       	TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x20 pc=0x144a21c]
+
+goroutine 842 [running]:
+testing.tRunner.func1.2({0x179dfe0, 0x2877a50})
+	testing/testing.go:1974 +0x232
+testing.tRunner.func1()
+	testing/testing.go:1977 +0x349
+panic({0x179dfe0?, 0x2877a50?})
+	runtime/panic.go:860 +0x13a
+github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint.(*landRig).places(0x179118522000, {0x1791197edf18, 0x3, 0x4?})
+	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:170 +0x11c
+github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint.TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush(0x17911533ab48)
+	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint/land_test.go:380 +0x7b6
+testing.tRunner(0x17911533ab48, 0x1b75448)
+	testing/testing.go:2036 +0xea
+created by testing.(*T).Run in goroutine 1
+	testing/testing.go:2101 +0x4c5
+FAIL	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint	7.137s
+FAIL

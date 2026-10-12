@@ -1,0 +1,29 @@
+c407d24c57168c23f6760ddf3442e521c97d76f0
+100644 94fcdc1e7dc35d4daddcd6608c54ba70cd78e1b0 1	cmd/nova-sprint/promotion_mark_add_test.go
+100644 22ea710c12c613fd91b0d28efa6d9010f5a0cf43 2	cmd/nova-sprint/promotion_mark_add_test.go
+100644 9c111215747ab64209590bc0a945212eb534688e 3	cmd/nova-sprint/promotion_mark_add_test.go
+100644 c021812f0e3de8169c9f843c8a521451be0ba0d0 1	docs/SPEC-SPRINT.md
+100644 3ba6a2012d7c899c8199f0a9de1ee2a8c9015773 2	docs/SPEC-SPRINT.md
+100644 5602fc47bd962bad184d8775825427fc4db7867b 3	docs/SPEC-SPRINT.md
+100644 e6f7105fe6a4ed595d002f29aefe316da881e1db 1	internal/sprint/sprintbranch.go
+100644 e1527349823ce9aec8fcc30cdadd45a76d99f67b 2	internal/sprint/sprintbranch.go
+100644 e579884a0d99b89ec18c35577425c847b7cf76c8 3	internal/sprint/sprintbranch.go
+100644 e6dee53924d52d946658fe6753c20ac7733e3bbd 1	internal/sprint/sprintbranch_test.go
+100644 a704ffb0775d8d9f4e0744e0dd420bd45745316d 2	internal/sprint/sprintbranch_test.go
+100644 fff21db439e4b9f81f1880f7df42406c19709648 3	internal/sprint/sprintbranch_test.go
+
+Auto-merging FIXES.md
+Auto-merging cmd/nova-sprint/landpass.go
+Auto-merging cmd/nova-sprint/promotion_mark_add_test.go
+CONFLICT (content): Merge conflict in cmd/nova-sprint/promotion_mark_add_test.go
+Auto-merging cmd/nova-sprint/verbs.go
+Auto-merging docs/CLI.md
+Auto-merging docs/SPEC-SPRINT.md
+CONFLICT (content): Merge conflict in docs/SPEC-SPRINT.md
+Auto-merging docs/TESTS.md
+Auto-merging docs/fixes.sexp
+Auto-merging internal/sprint/settings.go
+Auto-merging internal/sprint/sprintbranch.go
+CONFLICT (content): Merge conflict in internal/sprint/sprintbranch.go
+Auto-merging internal/sprint/sprintbranch_test.go
+CONFLICT (content): Merge conflict in internal/sprint/sprintbranch_test.go
