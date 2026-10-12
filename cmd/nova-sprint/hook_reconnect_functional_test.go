@@ -87,6 +87,17 @@ func (c *reconnectHTTPHook) next(t *testing.T, typ string) hookMsg {
 	}
 }
 
+// tell writes one line that wants no answer (the hook client's keepalive).
+func (c *reconnectHTTPHook) tell(t *testing.T, m hookMsg) {
+	t.Helper()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	b, err := json.Marshal(m)
+	require.NoError(t, err)
+	_, err = c.conn.Write(append(b, '\n'))
+	require.NoError(t, err)
+}
+
 func (c *reconnectHTTPHook) send(t *testing.T, m hookMsg) hookMsg {
 	t.Helper()
 	c.mu.Lock()
@@ -288,13 +299,21 @@ func TestAReconnectReplaysOnlyUnheldUnackedPushes(t *testing.T) {
 	// becomes eligible even though the earlier sibling in the same group was
 	// ACKed before the reconnect.
 	advance(future.Add(time.Second))
+	// the hook client's keepalive arrives at the advanced clock, as it does every
+	// minute: the transport is alive, so the jump is no lapse (#124), and no challenge
+	// is asked again on a connection that stays up
+	second.tell(t, hookMsg{T: "alive"})
 	h := app2.hookHub()
 	h.mu.Lock()
 	s := h.cur
 	h.mu.Unlock()
 	require.NotNil(t, s)
+	require.Eventually(t, func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return !s.acted.Before(future)
+	}, 3*time.Second, 10*time.Millisecond, "the keepalive is taken")
 	s.look(ctx)
-	second.next(t, "challenge")
 	// Advancing the fake running clock also makes the deliberately heartbeat-free
 	// machine's silence judgment due; account for that independent computed push.
 	silent := second.next(t, "push")

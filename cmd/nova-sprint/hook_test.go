@@ -307,9 +307,9 @@ func TestEveryCoordinatorCommandFailsUntilHookedIn(t *testing.T) {
 // over the subscription (SeatHook.tla, Prove; ProofMeansRead): a wrong answer is
 // refused; the right one lets every command run. Each judgment is pushed with its id;
 // one left unacknowledged past its bound refuses every command naming it, until it is
-// acknowledged (AckedOrBlocking). The server challenges again every HookEvery; an
-// answered seat keeps its hook (HookStays), and a challenge unanswered past its bound
-// unhooks: recorded gone, and the owner told (Miss).
+// acknowledged (AckedOrBlocking). No challenge is asked again on a connected hook; a
+// hook with acts stays (HookStays), and one with no act past its bound lapses: recorded
+// gone, and the owner told.
 func TestAProvenHookRunsAndAPushBlocksUntilAcknowledged(t *testing.T) {
 	t.Parallel()
 	const name = "hook-b"
@@ -330,7 +330,7 @@ func TestAProvenHookRunsAndAPushBlocksUntilAcknowledged(t *testing.T) {
 	ta.refusedFirst("add --stream s1 --count 2", sprint.HookFirst)
 	r = c.say(hookMsg{T: "prove", Challenge: chal})
 	require.Equal(t, "ok", r.T, r.Why)
-	assert.Equal(t, ta.a.now().Add(sprint.HookEvery+sprint.HookAnswerBound).UTC(), r.Live.UTC())
+	assert.Equal(t, ta.a.now().Add(sprint.HookSilentBound).UTC(), r.Live.UTC())
 	r = c.say(hookMsg{T: "prove", Challenge: chal})
 	assert.Equal(t, "refused", r.T, "a challenge counts once")
 	ta.lined(func() { ta.ok("add --stream s1 --count 2") })
@@ -352,42 +352,37 @@ func TestAProvenHookRunsAndAPushBlocksUntilAcknowledged(t *testing.T) {
 	s.look(context.Background()) // nothing new: nothing pushed twice
 	ta.lined(func() { ta.ok("where") })
 
-	// past its bound unacknowledged, every command is refused naming it; the cadence
-	// challenges again meanwhile
+	// past its bound unacknowledged, every command is refused naming it; no challenge is
+	// asked again on a connection that stays up
 	ta.step(sprint.HookAckBound + time.Second)
 	ta.refusedFirst("add --stream s2 --count 1 --one", sprint.HookUnacked(*rec.Oldest, 1))
 	s.look(context.Background())
-	again := c.next("challenge").Challenge
-	assert.NotEqual(t, chal, again)
 	r = c.say(hookMsg{T: "ack", ID: 9})
 	assert.Equal(t, "refused", r.T, "no push 9 was delivered")
 	r = c.say(hookMsg{T: "ack", ID: 1})
 	require.Equal(t, "ok", r.T, r.Why)
 	assert.Equal(t, 0, r.Unacked)
 	ta.lined(func() { ta.ok("add --stream s2 --count 1 --one") })
-	r = c.say(hookMsg{T: "prove", Challenge: again})
-	require.Equal(t, "ok", r.T, r.Why)
 
-	// answered, it stays; unanswered past its bound, it is gone and the owner told
-	ta.step(sprint.HookEvery)
+	// The due set grew from two to three when s2 was added, which starts a new computed
+	// machine:stopped episode and therefore a distinct push, not the earlier acknowledged
+	// group; it stays unacknowledged.
+	ta.step(time.Minute)
 	s.look(context.Background())
-	c.next("challenge")
-	// The due set grew from two to three when s2 was added, which starts a new
-	// computed machine:stopped episode and therefore a distinct push. It is
-	// intentionally not the earlier acknowledged group. The challenge cadence
-	// look delivered it before the answer deadline, and it remains unacknowledged.
 	computed := c.next("push")
 	assert.Equal(t, "machine:stopped", computed.What)
 	assert.Greater(t, computed.ID, p.ID)
 	rec, haveRecord := ta.hookRecord()
 	require.True(t, haveRecord)
 	assert.Equal(t, 1, rec.Unacked, "the later computed push remains independently unacknowledged")
-	ta.step(sprint.HookAnswerBound + time.Second)
+
+	// no act past its bound, it lapses: gone, and the owner told
+	ta.step(sprint.HookSilentBound + time.Second)
 	s.look(context.Background())
 	bye := c.next("bye")
-	assert.Contains(t, bye.Why, "not answered in time")
+	assert.Contains(t, bye.Why, "no act past")
 	rec = ta.waitHook(sprint.HookGone)
-	assert.Contains(t, rec.Why, "was not answered within 5m0s")
+	assert.Contains(t, rec.Why, "no act past 15m0s")
 	ta.refusedFirst("add --stream s3 --count 1 --one", sprint.HookFirst)
 	ta.mu.Lock()
 	sent := append([]string(nil), subjects(ta)...)
@@ -553,57 +548,156 @@ func TestTheHookFromTheCommandLine(t *testing.T) {
 	assert.Equal(t, sprint.HookFirst+"\n", errs)
 }
 
-// The record's Live is the outstanding challenge's bound, not the proof's: a
-// re-challenge sent late (a slow look) keeps the seat live until the challenge's own
-// bound, so a command between the proof's Live and that bound runs. The model refuses
-// only once the outstanding challenge is late (SeatHook.tla, Rechallenge and Gate:
-// ~lateC); before this the record held the proof's bound and refused HookFirst.
-func TestARechallengeKeepsTheHookLiveUntilItsOwnBound(t *testing.T) {
-	t.Parallel()
-	const name = "hook-e"
-	ta, _ := hookSprint(t, name)
+// tell sends one of the session's lines that wants no answer (the keepalive).
+func (c *hookClient) tell(m hookMsg) {
+	c.t.Helper()
+	b, _ := json.Marshal(m)
+	_, err := c.conn.Write(append(b, '\n'))
+	require.NoError(c.t, err)
+}
 
+// drained is every line the hook's stream carries within a moment, none waited for.
+func (c *hookClient) drained() []hookMsg {
+	var out []hookMsg
+	for {
+		select {
+		case m, ok := <-c.lines:
+			if !ok {
+				return out
+			}
+			out = append(out, m)
+		case <-time.After(50 * time.Millisecond):
+			return out
+		}
+	}
+}
+
+// The seat, 2026-10-11/12: the hook dropped about 15 minutes after each proof though the
+// seat's stream stayed connected and the seat kept acting; every lapse refused every
+// coordinator verb and replayed ~100 pushes. A hooked seat that acts once a minute (a verb,
+// an acknowledgement, the client's keepalive) for 40 minutes of sprint clock never lapses:
+// no challenge after the first, no bye, every verb runs, the record live past each act.
+func TestAConnectedSeatThatActsNeverLapses(t *testing.T) {
+	t.Parallel()
+	const name = "hook-live-a"
+	ta, _ := hookSprint(t, name)
 	c := ta.hookOn(name)
 	c.next("hello")
-	provedAt := ta.a.now()
 	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
-	rec, _ := ta.hookRecord()
-	require.Equal(t, provedAt.Add(sprint.HookEvery+sprint.HookAnswerBound).UTC(), rec.Live.UTC())
-
-	// the look that sends the re-challenge runs late: the challenge goes out 30s after
-	// HookEvery, and its own bound is later than the proof's
-	ta.step(sprint.HookEvery + 30*time.Second)
 	s := ta.hookSession()
 	require.NotNil(t, s)
-	s.look(context.Background())
-	challengeAt := ta.a.now()
-	require.Len(t, c.next("challenge").Challenge, 32)
+	ta.lined(func() { ta.ok("add --stream s1 --count 1 --one") })
+	for minute := 1; minute <= 40; minute++ {
+		ta.step(time.Minute)
+		s.look(context.Background())
+		for _, m := range c.drained() {
+			require.NotEqual(t, "challenge", m.T, "minute %d: a challenge asked again on a connected hook", minute)
+			require.NotEqual(t, "bye", m.T, "minute %d: the hook lapsed: %s", minute, m.Why)
+			if m.T == "push" {
+				require.Equal(t, "ok", c.say(hookMsg{T: "ack", ID: m.ID, Session: m.Session}).T, "minute %d: the seat answers its push", minute)
+			}
+		}
+		if minute%2 == 0 {
+			ta.lined(func() { ta.ok("where") }) // a verb of the seat's
+		} else {
+			c.tell(hookMsg{T: "alive"}) // the client's keepalive: the transport is alive, no answer
+		}
+		rec, _ := ta.hookRecord()
+		require.Equal(t, sprint.HookHooked, rec.State, "minute %d", minute)
+		require.True(t, sprint.HookLive(rec, true, name, ta.a.now()), "minute %d: live until %s", minute, rec.Live)
+	}
+	rec, _ := ta.hookRecord()
+	assert.True(t, rec.Live.After(ta.a.now().Add(sprint.HookSilentBound-2*time.Minute)), "live a bound past the last act: %s", rec.Live)
+}
 
-	// past the proof's Live, inside the challenge's own bound: a command runs
-	ta.step(sprint.HookAnswerBound - 15*time.Second)
-	require.True(t, ta.a.now().After(provedAt.Add(sprint.HookEvery+sprint.HookAnswerBound)),
-		"the proof's bound has passed")
-	ta.lined(func() { ta.ok("where") })
-	rec, _ = ta.hookRecord()
-	require.Equal(t, challengeAt.Add(sprint.HookAnswerBound).UTC(), rec.Live.UTC(),
-		"the record is live until the re-challenge's own bound")
+// lapsesOf is the open lapse judgments of the store, by the seat each names (Who).
+func lapsesOf(ta *testApp) map[string]int {
+	out := map[string]int{}
+	ta.lined(func() {
+		st, err := ta.a.store(common{redis: "mem:0"})
+		require.NoError(ta.t, err)
+		open, err := st.B.OpenNotes(context.Background())
+		require.NoError(ta.t, err)
+		for _, o := range open {
+			if o.Note.Type == sprint.NHookLapsed {
+				out[o.Note.Who]++
+			}
+		}
+	})
+	return out
+}
 
-	// unanswered past the challenge's own bound, the look unhooks it (Miss)
-	ta.step(30 * time.Second)
+// A connected hook with no act past the bound (no verb, no answer, not even the client's
+// keepalive) lapses once: one bye, the record gone, one judgment of the lapse naming the
+// seat, the owner told once; a later look writes nothing more; the same seat's next proof
+// closes its judgment.
+func TestASilentSeatLapsesOnceAndSaysSo(t *testing.T) {
+	t.Parallel()
+	const name = "hook-live-b"
+	ta, _ := hookSprint(t, name)
+	c := ta.hookOn(name)
+	c.next("hello")
+	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	ta.step(sprint.HookAckBound) // within the bound: still live
 	s.look(context.Background())
-	bye := c.next("bye")
-	assert.Contains(t, bye.Why, "not answered in time")
+	rec, _ := ta.hookRecord()
+	require.Equal(t, sprint.HookHooked, rec.State)
+
+	ta.step(sprint.HookSilentBound - sprint.HookAckBound + time.Second)
+	s.look(context.Background())
+	var byes int
+	for _, m := range c.drained() {
+		if m.T == "bye" {
+			byes++
+			assert.Contains(t, m.Why, "no act past")
+		}
+	}
+	assert.Equal(t, 1, byes, "one bye")
 	rec = ta.waitHook(sprint.HookGone)
-	assert.Contains(t, rec.Why, "was not answered within 5m0s")
-	ta.refusedFirst("where", sprint.HookFirst)
+	assert.Contains(t, rec.Why, "no act past")
+	s.look(context.Background())
+	assert.Equal(t, map[string]int{name: 1}, lapsesOf(ta), "one judgment of the lapse, naming the seat")
+	ta.mu.Lock()
+	told := 0
+	for _, x := range subjects(ta) {
+		if x == "seat "+name+" is gone -> glenn" {
+			told++
+		}
+	}
+	ta.mu.Unlock()
+	assert.Equal(t, 1, told, "the owner told once")
 
-	// a fresh proof is live until its next challenge's bound (HookProven, unchanged)
 	d := ta.hookOn(name)
 	d.next("hello")
-	provedAt = ta.a.now()
 	require.Equal(t, "ok", d.say(hookMsg{T: "prove", Challenge: d.next("challenge").Challenge}).T)
-	rec, _ = ta.hookRecord()
-	assert.Equal(t, provedAt.Add(sprint.HookEvery+sprint.HookAnswerBound).UTC(), rec.Live.UTC())
+	assert.Empty(t, lapsesOf(ta), "the seat's next proof answers its lapse")
+}
+
+// A seat proving in answers its own lapse, never another seat's (Stella's read of #124):
+// the earlier holder's lapse judgment stays open when a new holder proves a hook. Before,
+// closeLapsed acknowledged every open lapse, whoever it named.
+func TestAnotherSeatsProofLeavesALapseOpen(t *testing.T) {
+	t.Parallel()
+	const first, second = "hook-lapse-a", "hook-lapse-b"
+	ta, _ := hookSprint(t, first)
+	c := ta.hookOn(first)
+	c.next("hello")
+	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+	s := ta.hookSession()
+	require.NotNil(t, s)
+	ta.step(sprint.HookSilentBound + time.Second)
+	s.look(context.Background())
+	ta.waitHook(sprint.HookGone)
+	require.Equal(t, map[string]int{first: 1}, lapsesOf(ta), "the first seat's lapse")
+
+	// the seat moves to another holder, who hooks in and proves
+	ta.lined(func() { require.NoError(t, ta.m.SetCoordinator(context.Background(), second)) })
+	d := ta.hookOn(second)
+	d.next("hello")
+	require.Equal(t, "ok", d.say(hookMsg{T: "prove", Challenge: d.next("challenge").Challenge}).T)
+	assert.Equal(t, map[string]int{first: 1}, lapsesOf(ta), "another seat's proof leaves the first seat's lapse open")
 }
 
 // step moves the test's clock.
