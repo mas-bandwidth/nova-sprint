@@ -3,7 +3,6 @@ package sprint
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
 	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
 )
 
@@ -86,7 +85,7 @@ func Collect(cards []CollectCard, trees []CollectTree, deadLanes bool) []Collect
 		if found || !deadLanes || own == nil {
 			continue
 		}
-		if end, dead := friend.RunnerEnded(own.Runner, c.Job); dead {
+		if end, dead := RunnerEnded(own.Runner, c.Job); dead {
 			out = append(out, Collected{CollectCard: c, Failed: true, Dead: true,
 				Report: "friend " + c.Friend + " lane ended with no report: " + collectChars(end, CollectReportChars)})
 		}
@@ -99,7 +98,7 @@ func Collect(cards []CollectCard, trees []CollectTree, deadLanes bool) []Collect
 // verdict failed, a HOLD's or FAIL's full sha Head kept, with the report's first
 // CollectReportChars characters; no Verdict line leaves the card, for she may be writing it.
 func collectReport(c CollectCard, from, report string) Collected {
-	verdict, head := friend.ReportVerdict(report)
+	verdict, head := CollectVerdict(report)
 	r := Collected{CollectCard: c, From: from, Verdict: verdict}
 	full := typedrec.IsFullSha(head)
 	switch {
@@ -116,6 +115,29 @@ func collectReport(c CollectCard, from, report string) Collected {
 		}
 	}
 	return r
+}
+
+// CollectVerdict is a report's verdict (the first word of its first Verdict: line, upper
+// case, markdown and punctuation trimmed; "" for none) and its head (the first word of its
+// first Head: line, lower case), as the daemon's outbox pass reads them: pkg/friend's
+// outbox calls this one copy.
+func CollectVerdict(report string) (verdict, head string) {
+	var vok, hok bool
+	for _, l := range strings.Split(report, "\n") {
+		key, val := collectKey(l)
+		word, _, _ := strings.Cut(strings.TrimSpace(strings.TrimLeft(val, "*_ \t")), " ")
+		switch key {
+		case "verdict":
+			if !vok {
+				verdict, vok = strings.ToUpper(strings.Trim(word, "*_.,;:!()")), true
+			}
+		case "head":
+			if !hok {
+				head, hok = strings.ToLower(strings.Trim(word, "*_`.,;:")), true
+			}
+		}
+	}
+	return verdict, head
 }
 
 func collectKey(line string) (key, val string) {
@@ -146,8 +168,31 @@ func collectChars(s string, n int) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// RunnerEnded reads a runner's log for the job, as friend.RunnerEnded does; the coordinator's
-// collect calls the friend's one copy (nova-sprint collect and the daemon keep the same rule).
+// RunnerEnded reads a runner's log (one line per event: `<time> START|LIMIT|END <job> ...`,
+// as a bud's runner writes it) for the job: dead is true when the job's last event is an END
+// whose last word is report=no and no LIMIT came after the START before it (a run stopped
+// at a usage limit is run again, never dead); end is that END line. pkg/friend's outbox
+// calls this one copy for its dead lanes.
 func RunnerEnded(log, job string) (end string, dead bool) {
-	return friend.RunnerEnded(log, job)
+	limited := false
+	for _, line := range strings.Split(log, "\n") {
+		f := strings.Fields(line)
+		for i := 0; i+1 < len(f); i++ {
+			if f[i+1] != job {
+				continue
+			}
+			switch f[i] {
+			case "START", "RESUME":
+				end, dead, limited = "", false, false
+			case "LIMIT":
+				end, dead, limited = "", false, true
+			case "END":
+				end, dead = strings.TrimSpace(line), !limited && f[len(f)-1] == "report=no"
+			default:
+				continue
+			}
+			break
+		}
+	}
+	return end, dead
 }

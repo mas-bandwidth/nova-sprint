@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
-	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
 	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
 )
@@ -138,7 +137,7 @@ func isNumber(s string) bool {
 // isHold says a work card's report is a HOLD: its Verdict line, or a HOLD word as the collect
 // carries a friend's report on one line ("friend <name> HOLD: ...").
 func isHold(report string) bool {
-	if v, _ := friend.ReportVerdict(report); v == "HOLD" {
+	if v, _ := CollectVerdict(report); v == "HOLD" {
 		return true
 	}
 	return slices.ContainsFunc(strings.Fields(report), func(w string) bool { return strings.Trim(w, "*_:.,;") == "HOLD" })

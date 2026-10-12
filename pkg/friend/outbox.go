@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
 )
 
@@ -52,29 +53,6 @@ type outboxState struct {
 	finished map[string]bool
 	tried    map[string]time.Time
 	said     map[string]bool
-}
-
-// ReportVerdict is a report's verdict (the first word of its first Verdict: line, upper
-// case, with markdown and punctuation trimmed; "" for none) and its head (the first word
-// of its first Head: line, lower case), read as friend sync reads them, and as the
-// coordinator's collect does (sprint calls it).
-func ReportVerdict(report string) (verdict, head string) {
-	var vok, hok bool
-	for _, l := range strings.Split(report, "\n") {
-		key, val := reportKey(l)
-		word, _, _ := strings.Cut(strings.TrimSpace(strings.TrimLeft(val, "*_ \t")), " ")
-		switch key {
-		case "verdict":
-			if !vok {
-				verdict, vok = strings.ToUpper(strings.Trim(word, "*_.,;:!()")), true
-			}
-		case "head":
-			if !hok {
-				head, hok = strings.ToLower(strings.Trim(word, "*_`.,;:")), true
-			}
-		}
-	}
-	return verdict, head
 }
 
 // reportKey is a report line's key, lower case, with its markdown trimmed ("" for a line
@@ -250,7 +228,7 @@ func (l *loop) outboxStep(now time.Time) {
 			note(job, "card "+id+" is a read, finished by its verdict, not by a report")
 			continue
 		}
-		verdict, head := ReportVerdict(report)
+		verdict, head := sprint.CollectVerdict(report)
 		if verdict == "" {
 			note(job, "it has no Verdict line")
 			continue
@@ -366,33 +344,6 @@ func RunnerLog(dir string) string {
 	return ""
 }
 
-// RunnerEnded reads a runner's log for the job: dead is true when the job's last event is an
-// END whose last word is report=no and no LIMIT came after the START before it; end is that
-// END line.
-func RunnerEnded(log, job string) (end string, dead bool) {
-	limited := false
-	for _, line := range strings.Split(log, "\n") {
-		f := strings.Fields(line)
-		for i := 0; i+1 < len(f); i++ {
-			if f[i+1] != job {
-				continue
-			}
-			switch f[i] {
-			case "START", "RESUME":
-				end, dead, limited = "", false, false
-			case "LIMIT":
-				end, dead, limited = "", false, true
-			case "END":
-				end, dead = strings.TrimSpace(line), !limited && f[len(f)-1] == "report=no"
-			default:
-				continue
-			}
-			break
-		}
-	}
-	return end, dead
-}
-
 // DeadLaneReport is the REPORT.md the daemon writes for a dead lane: Verdict FAIL, and the
 // runner's END line.
 func DeadLaneReport(friend, job, end string) string {
@@ -419,7 +370,7 @@ func (l *loop) deadLanes(outbox string, running map[string]bool, at string) bool
 		if !read {
 			log, read = RunnerLog(d.Dir), true
 		}
-		end, dead := RunnerEnded(log, job)
+		end, dead := sprint.RunnerEnded(log, job)
 		if !dead {
 			continue
 		}
