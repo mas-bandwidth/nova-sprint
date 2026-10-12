@@ -818,17 +818,124 @@ Step == sub' = Min(sub + 1, MaxSub + 1)
 
 -----------------------------------------------------------------------------
 \* THE TICK.
+LiveOn == "liverun" \in DOMAIN Scn /\ Scn.liverun
+
+\* THE TICK'S START (internal/sprint/steps_tick.go TickStart, run once a tick at
+\* store/tick.go after RetireAbsent and before any table's update): the live
+\* reconcile (PartLive), the fleet's level (PartLevel) and the readers' level
+\* (PartLevelReads), each once, in that order, then the pump. Each is a plan
+\* committed whole, as the parts are; none is a Step of the settle count.
+\*
+\* StartLive is LiveRuns' reconcile (tla/LiveRuns.tla Tick, WorkingIsLive),
+\* composed here, not modelled again: a taken card that no live set names may
+\* return, as a lapse returns it (its "returned" entry to the work queue, the
+\* pump applies it). Which card is unnamed is LiveRuns' to say; here it is an
+\* outside event, on only where the scenario turns it on (Scn.liverun), and
+\* counted against MaxActs.
+\*
+\* StartLevel is the fleet's level under the free rule (tla/Level.tla Rule
+\* "free", ChoiceFree; the code card the-start-level-never-moves-a-card-off-a-free-lane
+\* brings steps_work.go level and round.go levelTo to it): a card dealt to an up
+\* member and not taken (no take of it applied or queued) moves off the member
+\* most over its width that has such a card, onto an up member holding fewer
+\* held slots than its width, counting reads with their rounded load,
+\* within that member's separate DealAhead room. No mean and no gap of two.
+\* Level.tla holds the loop and its order; here it is one move a tick, chosen
+\* once (CHOOSE).
+LevelUp(S) == {m \in Machines : S.stat[m] = "up" /\ ~Off(S, m)}
+Over(S, m) == HoldLoad(Cardinality(S.mc[m]), Cardinality(S.mr[m])) - Width[m]
+\* Reversed target-only witness: two half reads fill a lane even with no work.
+TargetOver(S, m) == IF Broken = "levelontoreads"
+                    THEN Cardinality(S.mc[m]) - Width[m] ELSE Over(S, m)
+LevelMovable(S, m) == {c \in S.mc[m] : ~S.tk[c] /\ Count(S.q["fleet"], LAMBDA e : e.c = c /\ e.k \in {"take", "fin"}) = 0}
+LevelTargets(S, m) == {m2 \in LevelUp(S) : m2 # m /\ TargetOver(S, m2) < 0 /\ Room(S, m2) > 0}
+LevelSources(S) == {m \in LevelUp(S) : Over(S, m) > 0 /\ LevelMovable(S, m) # {} /\ LevelTargets(S, m) # {}}
+LevelMoves(S) ==
+  {x \in Machines \X Machines \X Cards :
+     LET m == x[1]  m2 == x[2]  c == x[3] IN
+     /\ m \in LevelSources(S) /\ \A o \in LevelSources(S) : Over(S, o) <= Over(S, m)
+     /\ c \in LevelMovable(S, m) /\ m2 \in LevelTargets(S, m)}
+Lvl(S) ==
+  IF LevelMoves(S) = {} THEN S
+  ELSE LET x == CHOOSE y \in LevelMoves(S) : TRUE
+       IN [S EXCEPT !.mc[x[1]] = @ \ {x[3]}, !.mc[x[2]] = @ \cup {x[3]}]
+
+\* StartLevelReads is the readers' level (readers.go TickLevelReads, levelReads),
+\* modelled here (Level.tla leaves it out): with two readers or more up (on a
+\* machine up, neither held nor draining), a read asked and not begun (its
+\* readon applied, no report, return or refusal of it on the way) moves from a
+\* reader whose load is at least two above another's to that reader, within
+\* its machine's room, never to a reader that returned it (seen); one move a
+\* tick, chosen once (CHOOSE).
+LvlReaders(S) == {r \in Readers : S.stat[Host[r]] = "up" /\ ~Off(S, Host[r]) /\
+                                  ("readerup" \in Fixes => S.stat[r] = "up")}
+RLoad(S, r) == Cardinality({c \in Cards : S.rd[c] = r})
+LevelReadMoves(S) ==
+  {x \in Cards \X Readers :
+     LET c == x[1]  r2 == x[2]  r == S.rd[c] IN
+     /\ r # NoR /\ r \in LvlReaders(S) /\ r2 \in LvlReaders(S) /\ r2 # r
+     /\ r2 \notin S.seen[c]
+     /\ c \in S.mr[Host[r]]
+     /\ Count(S.q["readers"], LAMBDA e : e.c = c /\ e.k \in {"rep", "handback", "refused"}) = 0
+     /\ RLoad(S, r) - RLoad(S, r2) >= 2
+     /\ (Host[r2] = Host[r] \/ Room(S, Host[r2]) > 0)}
+LvlReads(S) ==
+  IF Cardinality(LvlReaders(S)) < 2 \/ LevelReadMoves(S) = {} THEN S
+  ELSE LET x == CHOOSE y \in LevelReadMoves(S) : TRUE
+           c == x[1]  r == S.rd[x[1]]  r2 == x[2]
+       IN [S EXCEPT !.rd[c] = r2,
+                    !.mr = [m \in Machines |-> (S.mr[m] \ (IF m = Host[r] THEN {c} ELSE {}))
+                                               \cup (IF m = Host[r2] THEN {c} ELSE {})]]
+
+\* A part with nothing to do is passed over: its plan would write nothing, so
+\* the tick goes on to the next part (the live reconcile is on only where the
+\* scenario turns it on; a level with no move, as in every scenario but
+\* ScnStart's, adds no state). This keeps the state space of the earlier
+\* configurations close to what it was.
+AfterLevel(S) == IF Cardinality(LvlReaders(S)) >= 2 /\ LevelReadMoves(S) # {} THEN "levelreads" ELSE "work"
+AfterLive(S) == IF LevelMoves(S) # {} THEN "level" ELSE AfterLevel(S)
+
 TickStart ==
   /\ run = "running" \/ Broken = "stoppedpump"
   /\ phase = "idle"
   /\ \E t \in Tables : Q[t] # <<>>
   /\ Broken = "outsideonly" => ext
-  /\ phase' = "work" /\ pumps' = 0 /\ sub' = 0 /\ addr' = 0 /\ notes' = 0
+  /\ phase' = (IF LiveOn THEN "live" ELSE AfterLive(Cur))
+  /\ pumps' = 0 /\ sub' = 0 /\ addr' = 0 /\ notes' = 0
   /\ ext' = FALSE /\ act' = "TickStart" /\ plc' = <<>>
   /\ IF Broken = "reset" THEN mctr' = 0 /\ rctr' = 0 /\ sctr' = 0
      ELSE UNCHANGED <<mctr, rctr, sctr>>
   /\ UNCHANGED <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
                  live, miss, acts, wake, brk, dealt, always, drain, run, CardVars>>
+
+StartLive ==
+  /\ phase = "live"
+  /\ \/ /\ Commit(Cur) /\ phase' = AfterLive(Cur) /\ UNCHANGED acts
+     \/ /\ LiveOn /\ acts < MaxActs
+        /\ \E m \in Machines, c \in Cards :
+             /\ c \in mc[m] /\ tk[c] /\ Pend("fleet", "fin", c) = 0
+             /\ LET X == ReturnAll([Cur EXCEPT !.mc[m] = @ \ {c}], {c})
+                IN Commit(X) /\ phase' = AfterLive(X)
+        /\ acts' = acts + 1
+  /\ act' = "StartLive"
+  /\ UNCHANGED <<live, miss, ext, pumps, sub, wake, always, run>>
+
+\* StartLevel: the fleet's level (above).
+StartLevel ==
+  /\ phase = "level"
+  /\ LET X == Lvl(Cur) IN Commit(X) /\ phase' = AfterLevel(X)
+  /\ act' = "StartLevel"
+  /\ UNCHANGED <<live, miss, acts, ext, pumps, sub, wake, always, run>>
+
+\* StartLevelReads: the readers' level (above).
+StartLevelReads ==
+  /\ phase = "levelreads"
+  /\ Commit(LvlReads(Cur))
+  /\ phase' = "work" /\ act' = "StartLevelReads"
+  /\ UNCHANGED <<live, miss, acts, ext, pumps, sub, wake, always, run>>
+
+\* The start phase, cited from steps_tick.go TickStart.
+StartPhase == StartLive \/ StartLevel \/ StartLevelReads
 
 \* The first pass's first update: the one pump of the tick.
 PumpWork ==
@@ -849,11 +956,12 @@ Pass(t) ==
   /\ UNCHANGED <<live, miss, acts, ext, pumps, wake, always, run>>
 
 \* A queue not empty is acted on at once, at any point after the pump.
+\* The witness "levelagain" runs the fleet's level again inside a drain.
 Drain(t) ==
   /\ phase \in Three \cup {"drain"}
   /\ Q[t] # <<>>
-  /\ Commit(Update(t))
-  /\ act' = "Drain" /\ Step
+  /\ IF Broken = "levelagain" THEN Commit(Lvl(Update(t))) ELSE Commit(Update(t))
+  /\ act' = (IF Broken = "levelagain" THEN "StartLevel" ELSE "Drain") /\ Step
   /\ UNCHANGED <<live, miss, acts, ext, phase, pumps, wake, always, run>>
 
 \* The witness "twopumps": the work queue drained again inside the tick.
@@ -1091,7 +1199,7 @@ Init ==
   /\ back = [t \in Tiers |-> FALSE] /\ fbk = [c \in Cards |-> {}]
   /\ rwk = [c \in Cards |-> 0] /\ rb = [c \in Cards |-> 0]
 
-TickNext == TickStart \/ PumpWork \/ DrainWork \/ StoppedTick \/ TickEnd \/ SettleBound \/
+TickNext == TickStart \/ StartPhase \/ PumpWork \/ DrainWork \/ StoppedTick \/ TickEnd \/ SettleBound \/
             \E t \in Three : Pass(t) \/ Drain(t)
 OutsideNext ==
   \/ \E c \in Cards : Add(c) \/ Merge(c) \/ \E v \in {"ok", "broken"} : Report(c, v)
@@ -1114,7 +1222,7 @@ TypeOK ==
   /\ stat \in [Machines \cup Readers -> {"up", "down", "held"}] /\ mc \in [Machines -> SUBSET Cards]
   /\ mr \in [Machines -> SUBSET Cards] /\ noUp \in BOOLEAN
   /\ drain \in [Machines -> BOOLEAN] /\ run \in {"running", "stopped"}
-  /\ phase \in {"idle", "work", "drain"} \cup Three
+  /\ phase \in {"idle", "live", "level", "levelreads", "work", "drain"} \cup Three
   /\ pumps \in 0..2 /\ sub \in 0..(MaxSub + 1) /\ addr \in 0..3 /\ notes \in 0..2
   /\ okd \in [Cards -> BOOLEAN] /\ ci \in [Cards -> {"none", "red"}] /\ ret \in [Cards -> BOOLEAN]
   /\ tk \in [Cards -> BOOLEAN] /\ rdl \in [Cards -> 0..(MaxRedeals + 1)]
@@ -1133,6 +1241,23 @@ WorkAdvancesOnlyInThePump ==
   [][act' # "PumpWork" =>
        \A c \in Cards : /\ col[c] \in {"waiting", "ready"} => col'[c] = col[c]
                         /\ col'[c] = "working" => col[c] = "working"]_vars
+\* THE START ONCE A TICK: the live reconcile, the fleet's level and the readers'
+\* level each run once a tick, in that order, before the pump's deal; a table
+\* written again later in the tick is updated by its update, never levelled
+\* again (steps_tick.go TickStart). The witness "levelagain" runs the level in a
+\* drain.
+StartOncePerTick ==
+  [][/\ act' = "StartLive" => phase = "live" /\ phase' \in {"level", "levelreads", "work"}
+     /\ act' = "StartLevel" => phase = "level" /\ phase' \in {"levelreads", "work"}
+     /\ act' = "StartLevelReads" => phase = "levelreads" /\ phase' = "work"
+     /\ act' = "PumpWork" => phase = "work"]_vars
+\* Independent pre-state destination occupancy: do not reuse Over or
+\* LevelTargets, so a work-only target rule cannot validate itself.
+StartLevelOntoFree ==
+  [][act' = "StartLevel" =>
+       \A m \in Machines : mc'[m] \ mc[m] # {} =>
+         Cardinality(mc[m]) + (IF ReadCost = "half"
+           THEN (Cardinality(mr[m]) + 1) \div 2 ELSE Cardinality(mr[m])) < Width[m]]_vars
 \* One pump a tick, and every tick has it.
 WorkPumpedOnce == pumps <= 1
 WorkPumpedEveryTick == [][act' = "TickEnd" => pumps = 1]_vars

@@ -1,5 +1,5 @@
 -------------------------- MODULE WhoPreference --------------------------
-EXTENDS Naturals, FiniteSets, TLC
+EXTENDS Naturals, FiniteSets, Sequences, TLC
 \* docs/SPEC-SPRINT.md section 1, a friend's card and the rebalance
 \* (internal/sprint/friend_deal.go, friend_take.go, rebalance.go, stops.go):
 \* one ready card of each kind, two subscription friends, one fleet worker, one
@@ -27,7 +27,8 @@ EXTENDS Naturals, FiniteSets, TLC
 \* deal's tier gate (DealtAdmitted breaks); BadBack "dealback" redeals a
 \* taken-back card to the same friend (NeverBackToTheSameFriend breaks); "none"
 \* is the code's rule.
-CONSTANT BadOnly, BadRebalance, BadTier, BadBack
+CONSTANT BadOnly, BadRebalance, BadTier, BadBack,
+         LCards, LMaxActs, LBadRebalance, LBadReads, LBadDeal, LBadHold
 Cards == {"plain", "preferred", "only"}
 Friends == {"a", "b"}
 Workers == Friends \cup {"fleet"}
@@ -36,7 +37,75 @@ CardTier == [c \in Cards |-> IF c = "preferred" THEN "pro" ELSE "flash"]
 FriendTiers == [f \in Friends |-> IF f = "a" THEN {"flash", "pro"} ELSE {"pro"}]
 VARIABLES owner, pin, up, started, fleetTiers, left, takenBack, rebalanced, released
 vars == <<owner, pin, up, started, fleetTiers, left, takenBack, rebalanced, released>>
-Init == /\ owner = [c \in Cards |-> "none"]
+
+\* the lanes part's variables; the friend-deal part keeps them fixed (LInit,
+\* UNCHANGED lvars)
+VARIABLES at, stage, idx, lleft, lup, held, acts, ticked, baddeal
+lvars == <<at, stage, idx, lleft, lup, held, acts, ticked, baddeal>>
+
+-----------------------------------------------------------------------------
+\* THE LANES PART: the deal and the rebalance as the code runs them each tick
+\* (internal/sprint/steps_work.go deal, round.go nextFree; rebalance.go
+\* Rebalance, rebalanceReads; read_cards.go; hold.go), with lanes. Its own
+\* instance: members of LLanes lanes and one friend, cards of three kinds (work,
+\* fix: a rework carrying the fix, a work card; read: a read of a primary whose
+\* attempt a member did, its writer, never placed on it), each holding one lane
+\* (the code counts a read at half a slot, halfLoad: a refinement it keeps and
+\* the model does not). A card is ready (undealt), dealt to w (ready on w's
+\* row), taken by w (working) or done. Free(w) is w's lanes less every card
+\* dealt to or taken by it; Excess(w) the cards dealt to w beyond its lanes
+\* less the cards it has taken. Tick is one atomic step: the deal of every
+\* ready card (each to the first capable worker round the rolling index idx
+\* with a free lane, and only when none has one to the first below twice its
+\* lanes; idx moves past it, (index++) % n), then the rebalance until no excess
+\* card has a capable target with a free lane, every card at once. Take, Finish,
+\* a member's hold (dealt cards leave, taken cards stay) and its unhold, and a
+\* member going down (its cards return: taken ones are dead runs) and up, are
+\* the outside, at most LMaxActs holds and downs.
+\*
+\* Two invariants come from tla-whopreference-reads-are-rebalanced: the reads
+\* join the rebalance under the work cards' exclusions (never to the writer,
+\* never to a worker whose tiers do not serve the read's tier, never back to a
+\* row it was rebalanced off), and NoMovableCardQueuedOnAFullUnitWhileAnIdle-
+\* EligibleLaneExists holds after every tick; with every unit's excess moved
+\* (the-rebalance-moves-the-excess-of-every-unit) it is the weaker case of
+\* NoQueuedCardWhileACapableLaneIsFree (tla-whopreference-free-lanes-first-
+\* and-taken-stays): a unit whose lanes all work has its every dealt card in
+\* its excess.
+\*
+\* Reversed witnesses: LBadRebalance "fullonly" moves only off a worker whose
+\* every lane is taken (rebalance.go before the-rebalance-moves-the-excess-of-
+\* every-unit) and breaks NoQueuedCardWhileACapableLaneIsFree; LBadReads "stay"
+\* (the rebalance skips reads) breaks it too; LBadDeal "room" deals below twice
+\* the lanes before a free lane (round.go before nextFree's first scan) and
+\* breaks DealFreeLanesFirst; LBadHold "taken" (a hold returns taken cards too)
+\* breaks NoTakenCardReturned.
+LMembers == {"m1", "m2", "m3"}
+LFriends == {"f"}
+LWorkers == LMembers \cup LFriends
+LOrder == <<"f", "m1", "m2", "m3">>   \* the deal's rolling order (friends by name, members by row)
+LLanes == [w \in LWorkers |-> IF w = "m3" \/ w = "f" THEN 1 ELSE 2]
+LWTiers == [w \in LWorkers |-> CASE w = "m2" -> {"flash"} [] w = "f" -> {"pro"} [] OTHER -> {"flash", "pro"}]
+\* the instance's cards (LCards overridable: the MC module names a smaller set)
+LAllCards == {"w1", "w2", "x1", "r1", "r2", "r3"}
+LKind == [c \in LAllCards |-> CASE c \in {"r1", "r2", "r3"} -> "read" [] c = "x1" -> "fix" [] OTHER -> "work"]
+LTier == [c \in LAllCards |-> IF c \in {"w2", "r2"} THEN "pro" ELSE "flash"]
+LWriter == [c \in LAllCards |-> CASE c = "r1" -> "m1" [] c = "r2" -> "m1" [] c = "r3" -> "m3" [] OTHER -> "none"]
+LCardOrder == <<"w1", "w2", "x1", "r1", "r2", "r3">>
+LN == Len(LOrder)
+LPos(w) == CHOOSE i \in 1..LN : LOrder[i] = w
+LInit ==
+  /\ at = [c \in LCards |-> "none"]
+  /\ stage = [c \in LCards |-> "ready"]
+  /\ idx = 0
+  /\ lleft = [c \in LCards |-> {}]
+  /\ lup = LWorkers
+  /\ held = {}
+  /\ acts = 0
+  /\ ticked = FALSE
+  /\ baddeal = FALSE
+Init == /\ LInit
+        /\ owner = [c \in Cards |-> "none"]
         /\ pin = [c \in Cards |-> IF c = "plain" THEN "none" ELSE c]
         /\ up \in SUBSET Workers
         /\ started = {}
@@ -121,8 +190,9 @@ Rebalance(c, w) ==
   /\ rebalanced' = rebalanced \cup {c}
   /\ UNCHANGED <<pin, up, started, fleetTiers, takenBack, released>>
 Presence == /\ up' \in SUBSET Workers /\ UNCHANGED <<owner,pin,started,fleetTiers,left,takenBack,rebalanced,released>>
-Next == (\E c \in Cards, w \in Workers : Deal(c,w) \/ Rebalance(c,w))
-        \/ (\E c \in Cards : Start(c) \/ TakeBack(c) \/ Unpin(c) \/ Release(c)) \/ Presence
+Next == /\ \/ (\E c \in Cards, w \in Workers : Deal(c,w) \/ Rebalance(c,w))
+           \/ (\E c \in Cards : Start(c) \/ TakeBack(c) \/ Unpin(c) \/ Release(c)) \/ Presence
+        /\ UNCHANGED lvars
 Spec == Init /\ [][Next]_vars
 OnlyToItsFriend == \A c \in Cards : pin[c] = "only" /\ c \notin released => owner[c] \in {"none","a"}
 \* every card the deal placed sits on a worker whose tier set admits its tier
@@ -136,6 +206,159 @@ LanesRespected == \A w \in Workers : Cardinality({c \in started : owner[c] = w})
 RebalancedAdmitted == \A c \in rebalanced : owner[c] \in Workers => Admits(owner[c], CardTier[c])
 \* no started card moves, by any action
 NoStartedCardMoves == [][\A c \in started : owner'[c] = owner[c]]_vars
+-----------------------------------------------------------------------------
+\* THE LANES PART's actions. A plan works on a record S of at, stage, idx and
+\* lleft and commits it whole (Tick).
+LUpW(S, w) == w \in lup /\ w \notin held
+Count(S, w) == Cardinality({c \in LCards : S.at[c] = w /\ S.stage[c] \in {"dealt", "taken"}})
+Taken(S, w) == Cardinality({c \in LCards : S.at[c] = w /\ S.stage[c] = "taken"})
+DealtAt(S, w) == {c \in LCards : S.at[c] = w /\ S.stage[c] = "dealt"}
+Free(S, w) == LLanes[w] - Count(S, w)
+Excess(S, w) == IF Cardinality(DealtAt(S, w)) > LLanes[w] - Taken(S, w)
+                THEN Cardinality(DealtAt(S, w)) - (LLanes[w] - Taken(S, w)) ELSE 0
+\* a worker that may take c: up and not held, its tiers serve c's tier, never a
+\* read's writer, never a row c was rebalanced off
+Capable(S, c, w) == /\ LUpW(S, w)
+                    /\ LTier[c] \in LWTiers[w]
+                    /\ (LKind[c] = "read" => w # LWriter[c])
+                    /\ w \notin S.lleft[c]
+\* the first worker round the order from ii that satisfies P, or "none"
+LAt(ii, k) == LOrder[((ii + k) % LN) + 1]
+LScan(ii, P(_)) == IF \E k \in 0..LN - 1 : P(LAt(ii, k))
+                   THEN LAt(ii, CHOOSE k \in 0..LN - 1 : P(LAt(ii, k)) /\ \A j \in 0..k - 1 : ~P(LAt(ii, j)))
+                   ELSE "none"
+\* the deal of c (round.go nextFree): a capable worker with a free lane first,
+\* and only when none has one, a capable worker below twice its lanes; the
+\* witness "room" takes the room scan alone
+DealTo(S, c) ==
+  LET lane == LScan(S.idx, LAMBDA w : Capable(S, c, w) /\ Free(S, w) > 0)
+      room == LScan(S.idx, LAMBDA w : Capable(S, c, w) /\ Count(S, w) < 2 * LLanes[w])
+  IN IF LBadDeal = "room" THEN room ELSE IF lane # "none" THEN lane ELSE room
+DealOne(S, c) ==
+  LET w == DealTo(S, c)
+      freeWas == \E x \in LWorkers : Capable(S, c, x) /\ Free(S, x) > 0
+  IN IF w = "none" THEN S
+     ELSE [S EXCEPT !.at[c] = w, !.stage[c] = "dealt", !.idx = LPos(w) % LN,
+                    !.bad = @ \/ (Free(S, w) <= 0 /\ freeWas)]
+RECURSIVE DealAll(_, _)
+DealAll(S, i) == IF i > Len(LCardOrder) THEN S
+                 ELSE LET c == LCardOrder[i]
+                      IN DealAll(IF c \in LCards /\ S.stage[c] = "ready" THEN DealOne(S, c) ELSE S, i + 1)
+\* the rebalance's next move: an excess card of a source (every worker with
+\* excess; the witness "fullonly" only one whose lanes are all taken) that is
+\* movable (work or fix; a read too, unless the witness "stay") and has a
+\* capable target with a free lane, the newest such card of the first source
+\* by order, to the first such target round the index
+Movable(c) == LKind[c] \in {"work", "fix"} \/ (LKind[c] = "read" /\ LBadReads # "stay")
+Source(S, g) == Excess(S, g) > 0 /\ (LBadRebalance = "fullonly" => Taken(S, g) >= LLanes[g])
+Target(S, c, g) == LScan(S.idx, LAMBDA w : w # g /\ Capable(S, c, w) /\ Free(S, w) > 0)
+Moves(S) == {x \in LWorkers \X LCards :
+               /\ Source(S, x[1]) /\ x[2] \in DealtAt(S, x[1]) /\ Movable(x[2])
+               /\ Target(S, x[2], x[1]) # "none"}
+RECURSIVE Rebal(_, _)
+Rebal(S, n) ==
+  IF n = 0 \/ Moves(S) = {} THEN S
+  ELSE LET x == CHOOSE y \in Moves(S) : TRUE
+           g == x[1]  c == x[2]  t == Target(S, c, g)
+       IN Rebal([S EXCEPT !.at[c] = t, !.lleft[c] = @ \cup {g}, !.idx = LPos(t) % LN], n - 1)
+LCur == [at |-> at, stage |-> stage, idx |-> idx, lleft |-> lleft, bad |-> baddeal]
+\* one tick: the deal of every ready card, then the rebalance until no move is
+\* left (each move adds a worker to a card's lleft, so at most |LCards| * |LWorkers|)
+Tick ==
+  LET S == Rebal(DealAll(LCur, 1), Cardinality(LCards) * Cardinality(LWorkers)) IN
+  /\ at' = S.at /\ stage' = S.stage /\ idx' = S.idx /\ lleft' = S.lleft /\ baddeal' = S.bad
+  /\ ticked' = TRUE
+  /\ UNCHANGED <<lup, held, acts>>
+\* a worker with a free lane takes a card dealt to it
+Take(w) == /\ LUpW(LCur, w) /\ Taken(LCur, w) < LLanes[w]
+           /\ \E c \in DealtAt(LCur, w) : stage' = [stage EXCEPT ![c] = "taken"]
+           /\ ticked' = FALSE
+           /\ UNCHANGED <<at, idx, lleft, lup, held, acts, baddeal>>
+Finish(c) == /\ stage[c] = "taken"
+             /\ stage' = [stage EXCEPT ![c] = "done"] /\ at' = [at EXCEPT ![c] = "none"]
+             /\ ticked' = FALSE
+             /\ UNCHANGED <<idx, lleft, lup, held, acts, baddeal>>
+\* hold --return of a member up (hold.go): its dealt cards go back to ready, its
+\* taken cards stay with their worker (the witness "taken" returns them too)
+Back(cs) == /\ at' = [c \in LCards |-> IF c \in cs THEN "none" ELSE at[c]]
+            /\ stage' = [c \in LCards |-> IF c \in cs THEN "ready" ELSE stage[c]]
+HoldReturn(w) ==
+  /\ w \in LMembers /\ w \in lup /\ w \notin held /\ acts < LMaxActs
+  /\ held' = held \cup {w} /\ acts' = acts + 1
+  /\ Back(IF LBadHold = "taken" THEN DealtAt(LCur, w) \cup {c \in LCards : at[c] = w /\ stage[c] = "taken"}
+          ELSE DealtAt(LCur, w))
+  /\ ticked' = FALSE
+  /\ UNCHANGED <<idx, lleft, lup, baddeal>>
+Unhold(w) == /\ w \in held /\ held' = held \ {w} /\ ticked' = FALSE
+             /\ UNCHANGED <<at, stage, idx, lleft, lup, acts, baddeal>>
+\* presence: a member goes down (its cards return; its taken cards are dead
+\* runs), or comes back up
+Down(w) == /\ w \in LMembers /\ w \in lup /\ acts < LMaxActs
+           /\ lup' = lup \ {w} /\ acts' = acts + 1
+           /\ Back({c \in LCards : at[c] = w /\ stage[c] \in {"dealt", "taken"}})
+           /\ ticked' = FALSE
+           /\ UNCHANGED <<idx, lleft, held, baddeal>>
+UpAgain(w) == /\ w \in LMembers /\ w \notin lup /\ lup' = lup \cup {w} /\ ticked' = FALSE
+              /\ UNCHANGED <<at, stage, idx, lleft, held, acts, baddeal>>
+LNext == /\ \/ Tick
+            \/ \E w \in LWorkers : Take(w) \/ HoldReturn(w) \/ Unhold(w) \/ Down(w) \/ UpAgain(w)
+            \/ \E c \in LCards : Finish(c)
+         /\ UNCHANGED vars
+\* the friend-deal part's variables fixed: one state of it
+FixedInit == /\ owner = [c \in Cards |-> "none"] /\ pin = [c \in Cards |-> "none"] /\ up = {}
+             /\ started = {} /\ fleetTiers = {} /\ left = [c \in Cards |-> {}]
+             /\ takenBack = [c \in Cards |-> {}] /\ rebalanced = {} /\ released = {}
+allvars == <<vars, lvars>>
+LSpec == FixedInit /\ LInit /\ [][LNext]_allvars
+\* one weak fairness over the machine's progress (a tick, a take, a finish):
+\* a conjunct per worker and card would multiply TLC's liveness tableau
+LFair == WF_allvars((Tick \/ \E w \in LWorkers : Take(w) \/ \E c \in LCards : Finish(c)) /\ UNCHANGED vars)
+LLiveSpec == LSpec /\ LFair
+
+\* THE LANES PART's rules.
+LTypeOK == /\ at \in [LCards -> LWorkers \cup {"none"}]
+           /\ stage \in [LCards -> {"ready", "dealt", "taken", "done"}]
+           /\ \A c \in LCards : (stage[c] \in {"dealt", "taken"}) <=> at[c] # "none"
+           /\ idx \in 0..LN - 1 /\ lleft \in [LCards -> SUBSET LWorkers]
+           /\ lup \subseteq LWorkers /\ held \subseteq LMembers /\ acts \in 0..LMaxActs
+\* after every tick: no worker holds an excess card that another capable
+\* worker has a free lane for (rebalance.go Rebalance)
+NoQueuedCardWhileACapableLaneIsFree ==
+  ticked => ~\E g, t \in LWorkers, c \in LCards :
+               /\ g # t /\ Excess(LCur, g) > 0 /\ c \in DealtAt(LCur, g)
+               /\ (LKind[c] \in {"work", "fix", "read"})
+               /\ Capable(LCur, c, t) /\ Free(LCur, t) > 0
+\* the weaker case (tla-whopreference-reads-are-rebalanced): after every tick,
+\* no movable card is queued on a unit whose lanes all work while an idle
+\* eligible lane exists
+NoMovableCardQueuedOnAFullUnitWhileAnIdleEligibleLaneExists ==
+  ticked => ~\E g, t \in LWorkers, c \in LCards :
+               /\ g # t /\ Taken(LCur, g) >= LLanes[g] /\ c \in DealtAt(LCur, g)
+               /\ Capable(LCur, c, t) /\ Free(LCur, t) > 0
+\* a read is never placed on its writer
+ReadNeverToItsWriter == \A c \in LCards : LKind[c] = "read" => at[c] # LWriter[c]
+\* a deal onto a worker with no free lane only when no capable worker had one
+\* (the deal's spread rule; the ghost baddeal records a deal that broke it)
+DealFreeLanesFirst == ~baddeal
+\* a taken card leaves its worker only by Finish, or when its member goes down
+NoTakenCardReturned ==
+  [][\A c \in LCards :
+       stage[c] = "taken" =>
+         \/ stage'[c] = "taken" /\ at'[c] = at[c]
+         \/ stage'[c] = "done"
+         \/ at[c] \in lup /\ at[c] \notin lup']_allvars
+\* a member holds at most twice its lanes
+LWidthRespected == \A w \in LWorkers : Count(LCur, w) <= 2 * LLanes[w]
+\* a ready card whose capable workers have a free lane is taken: within two
+\* ticks while nothing else changes (the first tick deals it to a free lane,
+\* the worker takes it; a worker that took another card first leaves it excess,
+\* and the next tick moves it to a free lane if one is capable), stated as
+\* leads-to under weak fairness of the progress steps (Tick, Take, Finish)
+ReadyTakenWhenCapacity ==
+  \A c \in LCards :
+    (stage[c] = "ready" /\ \E w \in LWorkers : Capable(LCur, c, w) /\ Free(LCur, w) > 0)
+      ~> (stage[c] \in {"taken", "done"} \/ ~\E w \in LWorkers : Capable(LCur, c, w))
+
 TypeOK == /\ owner \in [Cards -> Workers \cup {"none"}]
           /\ pin \in [Cards -> {"none","preferred","only"}]
           /\ up \subseteq Workers /\ started \subseteq Cards
