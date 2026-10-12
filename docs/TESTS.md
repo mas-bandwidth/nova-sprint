@@ -269,14 +269,18 @@ brief verb and the bound).
   with `--reason` accepted; reason visible on the card).
 
 
-### The hook flushes every line
+### Every streaming verb flushes every line
 
-The seat's monitor sees the hook's lines the moment they are written: `hook`
-writes each line as one `write(2)` to stdout (there is no user-space buffer to
-flush), so the HOOK CHALLENGE line is readable on a real OS pipe within one
-second while the hook still runs. A regression that buffered stdout without
-flushing it would hide the challenge until the hook exited and fail the guard
-(docs/SPEC-SPRINT.md, "The hook").
+A seat's monitor sees a streaming verb's lines the moment they are written:
+every streaming verb writes each line to stdout as one `write(2)` (there is no
+user-space buffer to flush), so the line is readable on a real OS pipe within
+one second while the verb still runs. A regression that buffered stdout without
+flushing it would hide the line until the verb exited and fail the guard
+(docs/SPEC-SPRINT.md, "The hook"). The streaming verbs are `hook` (streams
+HOOK CHALLENGE and its messages until `unhook`), `where --watch` (a frame every
+`--every` until interrupted) and `watch --wake` (blocks, then prints its one
+WAKE line). `log` has no follow mode and prints every line it has and exits, so
+there is no `log -f` stream to guard.
 
 - Unit, `cmd/nova-sprint/hook_test.go`:
   `TestHookFlushesAfterChallenge` runs `hook` against a private server with its
@@ -286,6 +290,12 @@ flushing it would hide the challenge until the hook exited and fail the guard
   `TestHookFlushesAfterChallengeOnTheStore` does the same on a private
   redis-server, the store named explicitly with `--redis` on every verb, in a
   scrubbed environment.
+- Unit, `cmd/nova-sprint/flush_stream_test.go`:
+  `TestWhereWatchFlushesEveryFrame` runs `where --watch --every 20ms` against the
+  test store with its stdout a real OS pipe and asserts a frame is readable
+  within 1s while the watch still runs; then interrupts it and waits for it to
+  end; `TestWatchWakeFlushesTheWake` runs `watch --wake` with its stdout a real
+  OS pipe and asserts its WAKE line is readable within 1s.
 
 ### The landing stall (v1.2.14)
 
