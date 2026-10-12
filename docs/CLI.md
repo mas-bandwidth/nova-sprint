@@ -214,6 +214,15 @@ reader (a member's reader row, or a friend), its state (`asked`, `reading`, `ret
 and no open judgment is flagged `NO-READ-OUT`. It ends `READS OK review=<n> no-read-out=<n>`;
 `--json` is one object a line, `--stream` narrows it.
 
+**`ask` under read cards** (while `set --read-cards on`): the tick's deal deals the reads
+the primaries in review want, and the ask verb is the coordinator's own, through the one
+read predicate (`ReadsOut`). `ask <primary>` deals the reads it still wants;
+`ask <primary> --another` cuts one more fleet read card for a primary already asked, dealt
+to another unit through the read-card deal in the same step; and
+`ask <primary> --instead <member | reader-<member> | friend>` takes back that unit's live
+fleet read card (retired_by coordinator, spending no one) and deals it to another unit in
+the same step. Every refusal names the reads that stand and who holds each.
+
 **The tier on line 1** (one rule, read or refused): a card brief names its tier on line 1, in
 either form, `<title> tier: <t>` or the RESULT line `RESULT: <id> sha=<sha12> tier: <t>`, and
 that is the tier the card is stored with and dealt on: a `tier: heavy` card's first deal draws

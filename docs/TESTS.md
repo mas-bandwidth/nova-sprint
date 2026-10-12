@@ -880,6 +880,8 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestASecondGhostAtOneAttemptPushesAJudgment` (`internal/sprint/ghost_read_test.go`): the second ghost at one primary's attempt pushes one judgment naming each card, row and reason.
 - `TestAReviewCardWithNoReadAndNoJudgmentIsImpossible` (`internal/sprint/ghost_read_test.go`): a live fleet read card holds its primary (the one predicate sees it), a review primary with no read and no judgment is a breach, and a broken read with an empty finding is returned, not a verdict.
 - `TestTheConsumersOutCheckIsNotVacuous` (`internal/sprint/ghost_read_test.go`): a working primary with no work card is a breach while another card works elsewhere, so the check keys on the primary's own work card, never any fleet card working.
+- `TestAskInsteadTakesBackAFleetReadCard` (`internal/sprint/ghost_read_test.go`): `ask --instead <unit>` takes back that unit's live fleet read card (retired_by coordinator, spending no one) and deals it to another unit in the same step; `ask --another` cuts one more fleet read card through the read-card deal.
+- `TestAReadDealtToAMemberThatNeverTakesItIsReDealtWithinTheBound` (functional, `cmd/nova-sprint/ghost_read_functional_test.go`): a real server and store; a read card dealt to member A, whose process takes it and never reports (its beat names it held), is returned within HeldGrace plus one tick and re-dealt to member B (or a judgment pushed); `ask` and `ask --another` agree throughout, doctor FAILs naming it before the return, and once B reads ok the primary reaches merging.
 
 ## A finish-PR card starts from the PR's own head
 
