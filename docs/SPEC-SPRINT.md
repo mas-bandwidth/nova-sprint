@@ -7874,7 +7874,15 @@ tick: the one writer of the sprint, beside the store. A worker started with `nov
 own machine. A request is a batch: the worker's verbs, each the argument list it would give
 `nova-sprint`, in the order to run them. The server runs each through the verb's own code, in
 its own process, and answers with each verb's exit code and what it printed, one answer a verb,
-in order. A write runs on the server's one line of control: one batch's writes, and one tick, at
+in order. Each answer also carries the verb's outcome where it is known: `outcome` is `accepted`
+when the verb ran and its work is in the table, `refused` when it was refused (usage, or before
+any write), and `unknown` when it is not known whether it happened (a step cut at a table, a
+store that did not confirm, or a clear that closed the step as it finished); `changed` is `yes`,
+`no` or `unknown` for whether it wrote. The exit codes are unchanged; the outcome is set where
+the verb knows it (refuse and every pre-write refusal give `refused`; a `CutError`, `ErrUnknown`,
+or a `ClearedError` with `Finished` gives `unknown`; a store error that answered nothing gives
+`unknown` too; success gives `accepted`), and the member
+reads the field instead of the printed words, which a rewording does not break. A write runs on the server's one line of control: one batch's writes, and one tick, at
 a time, neither during the other, each waiting its turn in the order it came. A friend's beat and
 a read do not take the line (the owner, 2026-10-04: "a verb is answered within 1 s whatever the
 tick or the lander is doing"; "a beat is a small write"). A friend's beat (`friend beat <friend>` and its report)

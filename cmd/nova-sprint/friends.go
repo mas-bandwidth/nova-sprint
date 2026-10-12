@@ -467,6 +467,14 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 	}
 	b, proof, err := st.FriendBeatLive(ctx, friend, rep, given, words, liveSet)
 	if err != nil {
+		// a friend the roster lacks is a definite pre-write refusal: the store
+		// answered and nothing was written, so it is refused/no; any other error
+		// is a store that did not confirm the beat, so it is unknown
+		if store.IsNoFriend(err) {
+			a.outcome, a.changed = "refused", "no"
+		} else {
+			a.outcome, a.changed = "unknown", "unknown"
+		}
 		fmt.Fprintf(stderr, "%s %s: %s\n", prog, name, oneline.Escape(err.Error()))
 		return 1
 	}
@@ -554,6 +562,10 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 		line += " machine=" + word
 		facts["machine"] = word
 	}
+	// the beat ran and wrote: it is accepted, and it changed the tables (her row
+	// and the beat's evidence), so the worker reads the field, not the words
+	a.outcome, a.changed = "accepted", "yes"
+	facts["outcome"], facts["changed"] = a.outcome, a.changed
 	sayOK(stdout, c.json, name, line, facts)
 	return 0
 }

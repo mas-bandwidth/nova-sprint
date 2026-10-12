@@ -146,6 +146,11 @@ type beatReport struct {
 	Live []string `json:"live,omitempty"`
 	// DrainingSince is when the member's drain began (--draining), absent while it does not drain.
 	DrainingSince time.Time `json:"draining_since,omitzero"`
+	// Outcome and Changed are the verb's answer where it is known, as every
+	// worker verb's --json output carries them (accepted | refused | unknown;
+	// yes | no | unknown).
+	Outcome string `json:"outcome,omitempty"`
+	Changed string `json:"changed,omitempty"`
 }
 
 // fdBound is one of fleet beat's open-files bounds: the flag's count when given, else the
@@ -248,16 +253,18 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 	}
 	b, err := st.BeatDraining(context.Background(), pos[0], nil, src, owing, oneline.Field(*noRoom), liveSet, *draining)
 	if err != nil {
+		a.outcome, a.changed = "unknown", "unknown"
 		fmt.Fprintf(stderr, "%s fleet beat: %s\n", prog, oneline.Escape(err.Error()))
 		return 1
 	}
+	a.outcome, a.changed = "accepted", "yes"
 	last := 0.0
 	if n := len(b.Samples); n > 0 {
 		last = b.Samples[n-1].Pct
 	}
 	files := b.Meter.Files
 	if c.json {
-		out, _ := json.Marshal(beatReport{Member: pos[0], At: b.At, Load: b.Load, Last: last, How: b.How, Cores: b.Cores, Files: files, StopReturns: b.StopReturns, NoRoom: b.NoRoom, Live: b.Live, DrainingSince: b.DrainingSince})
+		out, _ := json.Marshal(beatReport{Member: pos[0], At: b.At, Load: b.Load, Last: last, How: b.How, Cores: b.Cores, Files: files, StopReturns: b.StopReturns, NoRoom: b.NoRoom, Live: b.Live, DrainingSince: b.DrainingSince, Outcome: a.outcome, Changed: a.changed})
 		fmt.Fprintln(stdout, string(out))
 		return 0
 	}

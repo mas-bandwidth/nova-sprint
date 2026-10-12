@@ -319,7 +319,7 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx := context.Background()
 	if st, err = st.Pinned(ctx); err != nil {
-		return a.readFailed("queue", err, stderr)
+		return a.queueReadFailed("queue", err, stderr)
 	}
 	epoch := st.PinnedEpoch()
 	isReader := false
@@ -328,7 +328,7 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 		// a name that is no reader's row writes none, and the answer says so
 		// (reader), for the reader loop to say whose verb makes the row
 		if isReader, err = st.ReaderBeatDraining(ctx, *as, oneline.Field(*noRoom), *draining); err != nil {
-			return a.readFailed("queue", err, stderr)
+			return a.queueReadFailed("queue", err, stderr)
 		}
 	}
 	var cards []queueCard
@@ -345,7 +345,7 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 			return map[string][]string{sprint.Work: sprint.ResolveExtras(s)}
 		})
 		if err != nil {
-			return a.readFailed("queue", err, stderr)
+			return a.queueReadFailed("queue", err, stderr)
 		}
 		cs := s.Work.Cell(*stream, sprint.Waiting)
 		add(sprint.Work, cs)
@@ -355,13 +355,13 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 	} else if *stream != "" {
 		cs, err := st.ReadCells(ctx, sprint.Merge, *stream, sprint.Queued, sprint.Stuck)
 		if err != nil {
-			return a.readFailed("queue", err, stderr)
+			return a.queueReadFailed("queue", err, stderr)
 		}
 		add(sprint.Merge, cs)
 		// a merge card carries no head: it is the primary's, read here with the queue
 		mg, err := st.ReadCells(ctx, sprint.Work, *stream, sprint.Merging)
 		if err != nil {
-			return a.readFailed("queue", err, stderr)
+			return a.queueReadFailed("queue", err, stderr)
 		}
 		for _, m := range mg {
 			for i := range cards {
@@ -380,7 +380,7 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 			}
 			cs, err := st.ReadCells(ctx, t.table, *as, cols...)
 			if err != nil {
-				return a.readFailed("queue", err, stderr)
+				return a.queueReadFailed("queue", err, stderr)
 			}
 			var own []*sprint.Card
 			for _, x := range cs {
@@ -398,7 +398,7 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 		if m, ok := sprint.ReaderMachine(*as); isReader && ok {
 			ctl, err := st.ReadCells(ctx, sprint.Fleet, m, sprint.Ctl)
 			if err != nil {
-				return a.readFailed("queue", err, stderr)
+				return a.queueReadFailed("queue", err, stderr)
 			}
 			if len(ctl) > 0 {
 				width = sprint.MemberWidth(ctl[0])
@@ -411,17 +411,26 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 		}
 		ps, err := st.Packets(ctx, need)
 		if err != nil {
-			return a.readFailed("queue", err, stderr)
+			return a.queueReadFailed("queue", err, stderr)
 		}
 		for k, i := range at {
 			cards[i].Packet = &ps[k]
 		}
 	}
+	// the queue is the worker's answer: it ran and its answer is the table's, so
+	// its outcome is accepted. It changed the tables only when it wrote the
+	// reader's own beat (queue --as <reader>): a fleet member's queue, and a
+	// stream's queue, write nothing.
+	a.outcome = "accepted"
+	a.changed = "no"
+	if *as != "" && isReader {
+		a.changed = "yes"
+	}
 	if c.json {
 		if cards == nil {
 			cards = []queueCard{}
 		}
-		out := map[string]any{"as": *as, "stream": *stream, "epoch": epoch, "cards": cards}
+		out := map[string]any{"as": *as, "stream": *stream, "epoch": epoch, "cards": cards, "outcome": a.outcome, "changed": a.changed}
 		if width >= 0 {
 			out["width"] = width // the worker runs this many: the fleet row is the truth
 		}
@@ -562,9 +571,19 @@ func (a *app) readFailed(verbName string, err error, stderr io.Writer) int {
 	err = noSprintYet(err)
 	fmt.Fprintf(stderr, "%s %s: %s\n", prog, verbName, oneline.WithRemedy(err.Error(), prog+" "+verbName+" -h"))
 	if ntable.IsRefusal(err) {
+		a.outcome, a.changed = "refused", "no"
 		return 1
 	}
+	a.outcome, a.changed = "unknown", "unknown"
 	return 2
+}
+
+// queueReadFailed is the queue's answer when its store did not answer: the read
+// failed, so the outcome is unknown, never a refusal, and nothing is known of
+// whether anything changed (the server carries it on the result).
+func (a *app) queueReadFailed(verbName string, err error, stderr io.Writer) int {
+	a.outcome, a.changed = "unknown", "unknown"
+	return a.readFailed(verbName, err, stderr)
 }
 
 // noSprintYet is err as a store with no sprint in it says it: a table the sprint reads is

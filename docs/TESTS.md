@@ -22,6 +22,27 @@ a twin file in a temporary directory. The twin counts its operation ids
 tests beside it (`cmd/nova-sprint/*_functional_test.go`) run against a real
 store.
 
+The worker's verb answers carry a typed outcome (`outcome: accepted|refused|unknown` and
+`changed: yes|no|unknown`) on the server's results and each verb's `--json` output, so a worker
+tells a definite refusal from an unknown outcome without reading the printed words. The table
+`TestResultOutcomeTable`, `TestWorkerVerbOutcomeServed`, `TestWorkerVerbOutcomeFriendBeatJSON` and
+`TestResultOutcomeRefusedPaths`
+(`cmd/nova-sprint/worker_verb_outcome_test.go`) cover every path #5625 classifies from text
+(refuse, the step's `CutError`, `ErrUnknown`, a `ClearedError` with `Finished`, a store error that
+answered nothing), check the field each sets over the server's own step, and run the server's
+refusal paths (a verb it does not run, a report naming no epoch, a usage refusal) and the three
+budget verbs the server runs, whose success is `accepted`/`yes`; `TestWorkerVerbOutcomeFriendBeatJSON`
+pins the read's finding that a worker verb answering without the report path (friend beat) carries
+the field on its own `--json` output; the functional
+`TestWorkerVerbOutcomeOverRealServer`
+(`cmd/nova-sprint/worker_verb_outcome_functional_test.go`) checks the outcome over a real server
+and a private store, with an explicit `--redis` on every verb and a scrubbed environment. The
+store's `unknown` outcome is the store's word that a write was not confirmed or was cut, which a
+healthy private store does not give; the functional test checks `accepted` and `refused` over the
+real server and the server's own `unknown` (a caller gone before its verb ran, the goneResult
+path) over the real store and the server's entry point, and the store's typed `unknown` paths are
+covered by the table test over the typed paths.
+
 ### First run
 
 ```text

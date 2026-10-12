@@ -34,6 +34,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-sprint/pkg/harness"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
@@ -883,6 +884,12 @@ type output struct {
 	Error   string `json:"error,omitempty"`
 	Unknown bool   `json:"unknown,omitempty"`
 	Sprint  string `json:"sprint,omitempty"`
+	// Outcome and Changed are the step's answer where it is known: Outcome is
+	// accepted | refused | unknown, Changed yes | no | unknown (resultOutcome,
+	// resultChanged) — what the server's result carries, so a program reads them
+	// the same way.
+	Outcome string `json:"outcome,omitempty"`
+	Changed string `json:"changed,omitempty"`
 	// Group, with --group: the group's id, how many it acted on, and the
 	// size --expect said it had when printed.
 	Group    string `json:"group,omitempty"`
@@ -938,13 +945,90 @@ func stepExit(res store.Result, err error) int {
 	return code
 }
 
+// resultOutcome is the step's outcome, where it is known: a refusal (refuse,
+// or a refusal before any write) is "refused"; a CutError, ErrUnknown, or a
+// ClearedError with Finished (its moves stand, at the epoch the clear closed)
+// is "unknown"; a store error that is none of these is "unknown" too (the store
+// did not answer, so whether it happened is not known); success is "accepted".
+// The server carries it on its result so a worker tells a definite refusal from
+// an unknown outcome without reading the printed words (docs/SPEC-SPRINT.md,
+// the server; #5625).
+func resultOutcome(res store.Result, err error) string {
+	var cut *store.CutError
+	var cleared *store.ClearedError
+	var synced *store.SyncError
+	var pending *store.PendingError
+	if err == nil {
+		if len(res.Refused) > 0 {
+			return "refused"
+		}
+		return "accepted"
+	}
+	switch {
+	case errors.As(err, &synced):
+		// the write committed: its cards are in the table
+		return "accepted"
+	case errors.Is(err, store.ErrUnknown):
+		return "unknown"
+	case errors.As(err, &cleared) && cleared.Finished:
+		return "unknown"
+	case errors.As(err, &cut):
+		return "unknown"
+	case errors.As(err, &pending), errors.As(err, &cleared):
+		// a step that could not begin (pending), or a clear that did not close the
+		// step: a definite refusal, nothing was written
+		return "refused"
+	case ntable.IsRefusal(err):
+		// a table layer refusal (NOTABLE: no sprint here yet; a bad manifest) is a
+		// definite refusal
+		return "refused"
+	default:
+		// the store did not answer: whether it happened is not known
+		return "unknown"
+	}
+}
+
+// resultChanged is whether the step changed the tables: "yes" when it wrote,
+// "no" when nothing changed, "unknown" when it is not known (a store that did
+// not confirm, a cut, or a store error that answered nothing). The server
+// carries it on its result, as resultOutcome.
+func resultChanged(res store.Result, err error) string {
+	var cut *store.CutError
+	var cleared *store.ClearedError
+	var synced *store.SyncError
+	var pending *store.PendingError
+	if err == nil {
+		if len(res.Moved) > 0 {
+			return "yes"
+		}
+		return "no"
+	}
+	switch {
+	case errors.As(err, &synced):
+		return "yes"
+	case errors.Is(err, store.ErrUnknown):
+		return "unknown"
+	case errors.As(err, &cleared) && cleared.Finished:
+		return "yes"
+	case errors.As(err, &cut):
+		return "unknown"
+	case errors.As(err, &pending), errors.As(err, &cleared):
+		return "no"
+	case ntable.IsRefusal(err):
+		return "no"
+	default:
+		return "unknown"
+	}
+}
+
 func (a *app) report(ctx context.Context, verbName string, c common, st *store.Store, res store.Result, err error, stdout, stderr io.Writer) int {
 	err = noSprintYet(err)
 	code := stepExit(res, err)
+	a.outcome, a.changed = resultOutcome(res, err), resultChanged(res, err)
 	var synced *store.SyncError
 	line := sprintLine(ctx, st)
 	if c.json {
-		o := output{Result: res, Sprint: line, Unknown: errors.Is(err, store.ErrUnknown), Group: c.group.ID, ActedOn: c.group.ActedOn, Expected: c.group.Expected, Packets: c.handed, Says: c.says, Brief: c.brief}
+		o := output{Result: res, Sprint: line, Unknown: errors.Is(err, store.ErrUnknown), Outcome: a.outcome, Changed: a.changed, Group: c.group.ID, ActedOn: c.group.ActedOn, Expected: c.group.Expected, Packets: c.handed, Says: c.says, Brief: c.brief}
 		if o.Moved == nil {
 			o.Moved = []string{}
 		}

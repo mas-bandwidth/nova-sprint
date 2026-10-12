@@ -324,7 +324,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			if len(argv) > 0 {
 				verb = argv[0]
 			}
-			out.Results[i] = sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s: %s; nothing was changed\n", prog, oneline.Escape(verb), oneline.Escape(why))}
+			out.Results[i] = sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s: %s; nothing was changed\n", prog, oneline.Escape(verb), oneline.Escape(why)), Outcome: "refused", Changed: "no"}
 			a.logRefused(argv, refusedWorker("", argv), 2, out.Results[i].Stderr)
 			continue
 		}
@@ -332,7 +332,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			// the doctor's member-env probe: the form is read and a beat of it is planned, and
 			// nothing is written, so an installed build whose form the server would refuse
 			// answers here (docs/SPEC-SPRINT.md, "The doctor's refused-verb and beat-form checks").
-			out.Results[i] = sprintwire.Result{Code: 0, Stdout: fmt.Sprintf("FLEET-BEAT WOULD %s dry-run: nothing written\n", as)}
+			out.Results[i] = sprintwire.Result{Code: 0, Stdout: fmt.Sprintf("FLEET-BEAT WOULD %s dry-run: nothing written\n", as), Outcome: "accepted", Changed: "no"}
 			continue
 		}
 		switch lane {
@@ -366,7 +366,7 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		a.serving = serving
 		var stdout, stderr bytes.Buffer
 		code := a.run(args, &stdout, &stderr)
-		out.Results[i] = sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String()}
+		out.Results[i] = sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: a.outcome, Changed: a.changed}
 		a.logRefused(argv, as, code, stderr.String())
 		if code == 0 && len(argv) > 0 && argv[0] == "queue" && as != "" {
 			if st, err := a.store(common{redis: a.serveAddr, actor: as}); err == nil && st != nil {

@@ -191,6 +191,13 @@ type app struct {
 	// cleared under serial): its step names the epoch its worker holds, or is
 	// refused (runStep).
 	serving bool
+	// outcome and changed are the last verb this app ran's answer (report and
+	// refuse; run resets them to a refusal before every verb): the server reads
+	// them after it runs a worker's verb and carries them on its result
+	// (sprintwire.Result), so a worker tells a definite refusal from an unknown
+	// outcome without reading the printed words (serve.go).
+	outcome string
+	changed string
 	// lanes is the server's lanes beside the line (servelanes.go), made at the first
 	// batch under lanesMu; served is what its batches cost since its last SERVE line, said
 	// on serveLog (run's stdout once it listens; nil, a test's, says nothing).
@@ -749,6 +756,10 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 // run is the one entry point: the command line, and the driver, which runs
 // every verb it plays through it with an argument list.
 func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
+	// every verb's answer is a refusal unless its report (report) says otherwise:
+	// refuse() and every pre-write refusal are the default, and the report sets
+	// the outcome where it is known (serve.go reads it after the run).
+	a.outcome, a.changed = "refused", "no"
 	defer recoverHelp(stdout, &code)
 	defer func() {
 		// a twin is saved after every verb (twin.go); a verb that could not

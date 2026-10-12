@@ -136,7 +136,7 @@ func (l *serveLanes) friendBeat(ctx context.Context, a *app, argv, args []string
 	}
 	var stdout, stderr bytes.Buffer
 	code := a.friendBeat(ctx, args, open, &stdout, &stderr)
-	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String()}
+	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: a.outcome, Changed: a.changed}
 }
 
 // isBudget says the worker's verb is a budget take, renew or release (workerVerb has held it to
@@ -159,7 +159,7 @@ func (l *serveLanes) budget(ctx context.Context, argv, args []string) sprintwire
 	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	var stdout, stderr bytes.Buffer
 	code := r.run(args, &stdout, &stderr)
-	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String()}
+	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: r.outcome, Changed: r.changed}
 }
 
 // readVerbRun is a read on the read lane: it waits for the reads ahead of it alone, and
@@ -171,7 +171,7 @@ func (l *serveLanes) readVerbRun(ctx context.Context, args []string) sprintwire.
 	defer l.line.Unlock()
 	var stdout, stderr bytes.Buffer
 	code := l.read.run(args, &stdout, &stderr)
-	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String()}
+	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: l.read.outcome, Changed: l.read.changed}
 }
 
 // goneResult is the answer of a verb not run because its caller went away while it
@@ -181,7 +181,7 @@ func goneResult(argv []string) sprintwire.Result {
 	if len(argv) > 0 {
 		verb = argv[0]
 	}
-	return sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s: not run: its caller went away while it waited; nothing was changed\n", prog, oneline.Escape(verb))}
+	return sprintwire.Result{Code: 2, Stderr: fmt.Sprintf("%s server: %s: not run: its caller went away while it waited; nothing was changed\n", prog, oneline.Escape(verb)), Outcome: "unknown", Changed: "no"}
 }
 
 // ServeSayEvery is how often the server says what its batches cost (a SERVE line), when
