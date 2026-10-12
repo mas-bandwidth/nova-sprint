@@ -1,0 +1,37 @@
+# gate, tlc-records-jar-outcome-and-tlacheck-verbs-are-tested.w4 (attempt 4)
+# head 994f5c8e23f5a475311e26aa522cb130de69b47f
+
+# read gate (ran here; this sandbox gives a long TMPDIR and denies /tmp):
+export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1
+go test -count=1 -timeout 600s -cover ./pkg/tlc/ ./tools/tlacheck/ ./internal/sprint/
+ok   github.com/mas-bandwidth/nova-sprint/pkg/tlc           0.741s  coverage: 80.4% of statements
+ok   github.com/mas-bandwidth/nova-sprint/tools/tlacheck    0.044s  coverage: 75.3% of statements
+ok   github.com/mas-bandwidth/nova-sprint/internal/sprint  23.962s  coverage: 86.5% of statements
+
+go vet ./pkg/tlc ./tools/tlacheck        # exit 0, no findings
+gofmt -l pkg/tlc/fingerprint_test.go pkg/tlc/jar_test.go pkg/tlc/outcome_test.go \
+        pkg/tlc/records_test.go pkg/tlc/run_test.go tools/tlacheck/main_test.go
+                                        # prints nothing
+
+# make test (vet ./...; go test -p 4 -skip tick ./...; tick gate):
+# every package ok except one unrelated, environmental test:
+FAIL	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint	63.504s
+    --- FAIL: TestTheTwinSocketFitsAUnixSocketPath (cmd/nova-sprint/backup_out_test.go:225)
+        the throwaway redis-server's socket
+        /home/.../tmp/tlc-records-jar-outcome-and-tlacheck-verbs-are-tested.w4/TestTheTwinSocket.../001/.../twin.sock
+        is 341 bytes and a Unix socket path holds at most 100, and no shorter private directory
+        could be made (mkdir /tmp/nsb...: permission denied); set TMPDIR to a shorter directory
+make: *** [Makefile:41: test] Error 1
+# internal/ci is ok, so TestEveryStateMachineHasACurrentModel passes and no tla/RUNS.tsv record is stale.
+
+# TestTheTwinSocketFitsAUnixSocketPath is RED AT BASE too. A clean worktree at e7fadb79
+# (this change absent) fails the same single test the same way; it is the sandbox's long
+# TMPDIR plus the /tmp denial, not this work. It cannot pass here at all.
+
+# coverage before (the seat's survey of main): pkg/tlc 43.9% of 797 stmts, tools/tlacheck 58.8% of 170
+# coverage after:                              pkg/tlc 80.4%,                 tools/tlacheck 75.3%
+
+# flake fix: run_test.go's Execute tests write an executable `java` script and exec it. A fork
+# in a sibling test inherited the parent's open write descriptor, so the exec failed ETXTBSY
+# ("text file busy") under concurrent load. A package-level mutex now spans the script write and
+# its exec. go test -count=100 ./pkg/tlc/ is ok (71s); before the fix -count=50 was red.
