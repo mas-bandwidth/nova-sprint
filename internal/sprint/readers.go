@@ -481,6 +481,33 @@ func liveReadsAt(s *Snapshot, pr *Card, attempt int) []*Card {
 	return out
 }
 
+// askedAtAttempt says the primary has been asked a read at its current attempt,
+// on either table: a read card of the attempt exists anywhere (placed, retired
+// with a verdict, returned, withdrawn or taken back). A read that ended with no
+// verdict, or was withdrawn by a hold or a return, was still asked: it is asked
+// again, but the primary is not "not asked yet". The ask verb's --another refusal
+// (steps_review.go) and the no-stall rule's decisions (held.go) decide by this one
+// function, so the two never contradict each other (docs/SPEC-SPRINT.md section 6,
+// the reads; the owner, 2026-10-12: a card in review always has a read the ask can
+// reach).
+func askedAtAttempt(s *Snapshot, pr *Card) bool {
+	if s == nil || pr == nil {
+		return false
+	}
+	prefix := pr.ID + ".r" + itoa(max(pr.Int("attempt"), 1)) + "."
+	if s.Readers != nil && s.Readers.AnyWithPrefix(prefix) {
+		return true
+	}
+	if s.Fleet != nil {
+		for _, c := range s.Fleet.WithPrefix(prefix) {
+			if isRead(c) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // returnedReadsAt is the primary's read cards at an attempt handed back with
 // no verdict by readers up (returnedRead): the ask places each again, on a
 // free reader with room, or in place on its own reader, whose room already

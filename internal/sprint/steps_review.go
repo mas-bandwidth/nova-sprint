@@ -148,8 +148,8 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		if r.Instead != "" {
 			return insteadHeld(s, c, r.Instead)
 		}
-		asked := len(ReadsOut(s, c))
-		if another && asked == 0 {
+		asked := askedAtAttempt(s, c)
+		if another && !asked {
 			return "not asked yet at attempt " + itoa(c.Int("attempt")) + ": the machine's tick asks it, or run: nova-sprint ask " + c.ID + "; --another adds a reader to one already asked"
 		}
 		if !another && ReadsWanted(s, c) == 0 {
@@ -391,8 +391,8 @@ func askReadCards(s *Snapshot, r AskReq) Plan {
 		if r.Instead != "" {
 			return insteadHeld(s, c, r.Instead)
 		}
-		asked := len(ReadsOut(s, c))
-		if another && asked == 0 {
+		asked := askedAtAttempt(s, c)
+		if another && !asked {
 			return "not asked yet at attempt " + itoa(c.Int("attempt")) + ": the machine's tick asks it, or run: nova-sprint ask " + c.ID + "; --another adds a reader to one already asked"
 		}
 		if !another && readCardsWanted(s, c, nil) == 0 {

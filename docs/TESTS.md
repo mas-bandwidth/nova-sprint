@@ -266,6 +266,28 @@ the functional ones are release acceptance (`make release-accept`).
   `pkg/member` members in the test process over the command's verbs, on the
   sprint's clock; neither starts an OS process.
 
+### A card in review always has a read the ask can reach (v1.2.14)
+
+A read that ends without a verdict, or is withdrawn by a hold or a return, is
+re-asked of another reader at the next tick for the card's current attempt. The
+ask verb and the tick share one definition of "asked at this attempt"
+(`askedAtAttempt`, `internal/sprint/readers.go`), so the ask verb's two refusals
+and the no-stall rule's decisions never contradict each other; a card in review
+with no read out and no open judgment is a ConsumersOut violation at `TickCheck`.
+
+- Unit, `internal/sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_test.go`:
+  `TestACardInReviewAlwaysHasAReadTheAskCanReach`.
+- Functional (`-tags functional`), on a private store (explicit `--redis`, a
+  scrubbed env whose HOME and XDG_CONFIG_HOME are the test's own, no `NOVA_*`
+  variable from the machine),
+  `cmd/nova-sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_functional_test.go`:
+  `TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore`. It runs the verbs to
+  put the card in review at attempt 2, withdraws the attempt-1 read by a hold
+  and ends the attempt-2 read with no verdict, and asserts `ask` and
+  `ask --another` agree (neither refusal is given) and the next tick's ask
+  re-asks the attempt of another reader. The consumers-out gap it leaves is the
+  tick's postcondition the unit test asserts directly (ConsumersOut).
+
 ### A brief edit keeps the needs, tier and bound (v1.2.14)
 
 A `brief` edit replaces the card's whole text, but what a verb set stays the

@@ -1613,10 +1613,12 @@ func TickCheck(s *Snapshot, r TickReq) (Plan, int) {
 		}
 		conds = append(conds, c)
 	}
+	stalled := map[string]bool{}
 	for _, f := range Unheld(HeldState{Snap: s, Running: true, Stopped: r.Stopped}, s.Now) {
 		if f.Root != "" {
 			continue
 		}
+		stalled[f.Subject] = true
 		c := cond{typ: NStalled, stream: f.Stream, what: f.What + ": " + f.Why, decisions: f.Decisions}
 		if strings.HasPrefix(f.Subject, "stream:") {
 			c.streamLevel = true
@@ -1625,9 +1627,41 @@ func TickCheck(s *Snapshot, r TickReq) (Plan, int) {
 		}
 		conds = append(conds, c)
 	}
+	// ConsumersOut (docs/SPEC-SPRINT.md, the tick postconditions): every producer
+	// card has its consumer out, and a card in review's consumer is a read. A card
+	// in review with no read out and no open judgment breaks it, even when the
+	// no-stall rule passes it over (it counts a read the machine will not re-ask).
+	// One judgment per card, closed when a read is asked or a judgment opens on it.
+	for _, c := range s.Work.Column(Review) {
+		if IsSentinel(c) || stalled[c.ID] || acceptable(s, c) || c.F("result") == "failed" || readBranchMissingOpen(s, c) {
+			continue
+		}
+		if ReadsWanted(s, c) > 0 {
+			continue // the tick's ask still owes it a read: not the sitting case
+		}
+		placed, _, _ := friendReadLive(s, c)
+		if len(liveReadsAt(s, c, readAttempt(c))) > 0 || len(placed) > 0 || openJudgmentOn(s, c.ID) {
+			continue
+		}
+		conds = append(conds, cond{typ: NInvariant, stream: c.Row, primaries: []string{c.ID},
+			what:      "rule 12: " + c.ID + " is in review with no read out and no open judgment",
+			decisions: []string{"ask " + c.ID, "rework " + c.ID, "drop " + c.ID}})
+	}
 	due := notify(&p, s, conds, []string{NInvariant, NStalled}, r)
 	RetireJudgments(s, &p, r.who())
 	return p, due
+}
+
+// openJudgmentOn says a judgment notification is open on the subject (a card
+// or a stream) in the snapshot: the no-stall rule and the ConsumersOut rule
+// both read it.
+func openJudgmentOn(s *Snapshot, subject string) bool {
+	for _, o := range s.Open {
+		if o.Subject() == subject && o.Note.Kind == Judgment {
+			return true
+		}
+	}
+	return false
 }
 
 // TickDeadlines writes one judgment for each card or stream past its
