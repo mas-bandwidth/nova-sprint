@@ -297,6 +297,23 @@ there is no `log -f` stream to guard.
   end; `TestWatchWakeFlushesTheWake` runs `watch --wake` with its stdout a real
   OS pipe and asserts its WAKE line is readable within 1s.
 
+### The ready to merge notice and its hook push
+
+The "ready to merge" notice names only the cards newly accepted and the group's
+count, one line; it never accumulates the primaries of every accept the group has
+seen, and an informational HAPPENED push is not re-pushed on reconnect once
+acknowledged. `hook --quiet-happened` makes the seat receive judgments and
+challenges only, not the informational HAPPENED pushes.
+
+- Unit, `cmd/nova-sprint/ready_merge_push_test.go`:
+  `TestReadyToMergePushNamesOnlyTheNewCard` writes two "ready to merge" happened
+  notes on one stream, proves a hook, and asserts the push names the newly
+  queued card and the group's count only -- never the earlier accepted card --
+  and that after acknowledging it, a reconnect re-pushes no "ready to merge"
+  group. `TestHookQuietHappenedOmitsInformationalPushes` sets the hook's
+  quiet-happened mode and asserts the informational happened push is not
+  delivered.
+
 ### The landing stall (v1.2.14)
 
 Cards that wait in review or merging with no landing for the bound (one
