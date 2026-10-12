@@ -3220,4 +3220,8 @@
      internal/sprint/a_card_in_review_always_has_a_read_the_ask_can_reach_test.go,
      TestACardInReviewAlwaysHasAReadTheAskCanReach (red first)."
     :origin "this card, a-card-in-review-always-has-a-read-the-ask-can-reach.w1@5, 2026-10-12 ~03:38Z,
-     epoch 19, v1.2.13")))
+      epoch 19, v1.2.13")
+    (fix "the-functional-hook-rigs-name-a-bus-store" :release "v1.2.14" :status "planned"
+     :title "The functional hook and generate rigs name a bus store"
+     :text "The two nova-sprint hook functional tests and the nova-card generate functional test named no bus store, so since b82faec7 the hook refused before printing a challenge and they timed out; each in-process rig now names one (busRedisEnv in its environment and a bustest fake behind the app's busOpen, as hookSprint does), the nova-card rig's built binary gets NOVA_BUS_REDIS set to the test's own Redis, and the live rig captures the hook's stderr and names it in its challenge-wait failure."
+     :origin "the coordinator, 2026-10-12")))
