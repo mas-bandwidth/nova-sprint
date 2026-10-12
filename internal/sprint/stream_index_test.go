@@ -65,8 +65,8 @@ func TestStreamTurnsStartPastTheIndexAndSkipAStreamWithNone(t *testing.T) {
 func TestTheDealAlternatesTheStreamsWithCardsAndAnEmptyOneJoinsAtItsTurn(t *testing.T) {
 	t.Parallel()
 	w := fleetWorld(t, 5, 64, "m1", "m2")
-	w.must(Add(w.s, AddReq{Stream: "s2", Count: 3, Needs: []string{"s1-5"}}))
-	w.must(Add(w.s, AddReq{Stream: "s3", Count: 5}))
+	w.admit(AddReq{Stream: "s2", Count: 3, Needs: []string{"s1-5"}})
+	w.admit(AddReq{Stream: "s3", Count: 5})
 	var got []string
 	for i := 0; i < 4; i++ {
 		st, idx := dealOne(t, w)
@@ -98,8 +98,8 @@ func TestTheAskTakesTheStreamsInTurnFromItsOwnIndex(t *testing.T) {
 	t.Parallel()
 	w := fleetWorld(t, 4, 64, "m1")
 	w.s.Readers.SetRows(append(w.s.Readers.Rows(), "reader-b"))
-	w.must(Add(w.s, AddReq{Stream: "s2", Count: 4}))
-	w.must(Add(w.s, AddReq{Stream: "s3", Count: 4}))
+	w.admit(AddReq{Stream: "s2", Count: 4})
+	w.admit(AddReq{Stream: "s3", Count: 4})
 	first, _ := dealOne(t, w)
 	require.Equal(t, "s1", first, "the first deal takes s1, took %s", first)
 	for _, st := range []string{"s1", "s2", "s3"} {

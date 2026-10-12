@@ -387,7 +387,7 @@ func TestAFriendWhoStopsTakingIsMarkedAgain(t *testing.T) {
 	// she finishes it and never takes again: a fresh card dealt to her, untaken past the
 	// bound, is returned and she is marked again
 	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: FriendRow("amy"), Gens: gensOf(w.s, "s1-1.w1"), Head: "abc"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-2", Brief: fleetBrief("flash")}}}))
+	w.admit(AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-2", Brief: fleetBrief("flash")}}})
 	dealWith(w, friendSeat())
 	require.NotNil(t, w.s.Fleet.Card("s1-2.w1"), "s1-2 is dealt to amy")
 	w.tick(2 * time.Minute)

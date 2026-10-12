@@ -116,7 +116,7 @@ func markWorld(t *testing.T) *world {
 	w := newWorld(t)
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 4}))
+	w.admit(AddReq{Stream: "s1", Count: 4})
 	w.preparePlanned()
 	return w
 }

@@ -22,8 +22,8 @@ func streamsOf30(t *testing.T) *world {
 	t.Helper()
 	members := []string{"m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"}
 	w := fleetWorld(t, 30, 2, members...) // at width 2 the room is streamsRoom, 32
-	w.must(Add(w.s, AddReq{Stream: "s2", Count: 30}))
-	w.must(Add(w.s, AddReq{Stream: "s3", Count: 30}))
+	w.admit(AddReq{Stream: "s2", Count: 30})
+	w.admit(AddReq{Stream: "s3", Count: 30})
 	w.preparePlanned()
 	return w
 }
@@ -101,7 +101,7 @@ func TestTickDealWorksEveryStreamInParallel(t *testing.T) {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: fmt.Sprintf("m%d", i), Width: 2}))
 	}
 	for _, st := range []string{"s1", "s2", "s3"} {
-		w.must(Add(w.s, AddReq{Stream: st, Count: 30}))
+		w.admit(AddReq{Stream: st, Count: 30})
 	}
 	w.preparePlanned()
 	p, _ := TickDeal(w.s, TickReq{})
@@ -147,7 +147,7 @@ func TestHeldNeedsPreview(t *testing.T) {
 	for i := range needs {
 		needs[i] = fmt.Sprintf("s1-%d", i+1)
 	}
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"big"}, Needs: needs}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"big"}, Needs: needs})
 	w.preparePlanned()
 	hd := mustHold(t, running(w), "big", HeldByWaiting)
 	require.Less(t, len(hd.Why), 300, "%d bytes: %s", len(hd.Why), hd.Why)

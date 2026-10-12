@@ -199,7 +199,7 @@ func TestNotHeldWhenTheJudgmentIsGone(t *testing.T) {
 func TestHeldByWhatItWaitsOn(t *testing.T) {
 	t.Parallel()
 	w := dealt(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"late"}, Needs: []string{"s1-1"}}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"late"}, Needs: []string{"s1-1"}})
 	hd := mustHold(t, running(w), "late", HeldByWaiting)
 	require.Contains(t, hd.Why, "needs s1-1 (a)", "the chain: %s", hd)
 	// Behind a reached sentinel whose judgment is open.
@@ -214,8 +214,8 @@ func TestHeldByWhatItWaitsOn(t *testing.T) {
 func TestNotHeldWhenTheChainEndsInAStall(t *testing.T) {
 	t.Parallel()
 	w := inReviewFailed(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"late"}, Needs: []string{"s1-1"}}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"later"}, Needs: []string{"late"}}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"late"}, Needs: []string{"s1-1"}})
+	w.admit(AddReq{Stream: "s1", IDs: []string{"later"}, Needs: []string{"late"}})
 	w.s.Open = nil
 	f := mustStall(t, running(w), "later", "waits on late, which is stalled")
 	require.Equal(t, "s1-1", f.Root, "the root of the chain is s1-1, not %q", f.Root)
@@ -235,8 +235,8 @@ func TestNotHeldWhenTheChainEndsInAStall(t *testing.T) {
 func TestNotHeldInACycle(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 0)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"y0"}}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"x"}, Needs: []string{"y0"}}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"y0"}})
+	w.admit(AddReq{Stream: "s1", IDs: []string{"x"}, Needs: []string{"y0"}})
 	// add refuses a cycle; one made by a writer outside the sprint holds
 	// nothing.
 	y0 := w.s.Work.Card("y0")
@@ -268,7 +268,7 @@ func TestTheOtherStalls(t *testing.T) {
 	t.Parallel()
 	// A reached sentinel with no open judgment.
 	w := setup(t, 0)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true})
 	w.s.Open = nil
 	f := mustStall(t, running(w), "stop", "reached, and no judgment is open on it")
 	require.Contains(t, f.Decisions, "release", "a reached sentinel's decisions: %v", f.Decisions)

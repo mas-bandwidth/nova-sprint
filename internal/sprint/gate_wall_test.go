@@ -36,12 +36,12 @@ func TestTierFollowsTheGatesMeasuredWall(t *testing.T) {
 	// (a failed take of 3h is no measure), cards on ./internal/fast 4m, cards on
 	// ./internal/edge exactly the bound
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "past", Cards: []CardAdd{
+	w.admit(AddReq{Stream: "past", Cards: []CardAdd{
 		{ID: "past-1", Brief: gateBrief("pro", "./internal/slow")},
 		{ID: "past-2", Brief: gateBrief("pro", "./internal/slow")},
 		{ID: "past-3", Brief: gateBrief("pro", "./internal/fast")},
 		{ID: "past-4", Brief: gateBrief("pro", "./internal/edge")},
-	}}))
+	}})
 	measured(w.s.Primary("past-1"), "ok", "1200s")
 	measured(w.s.Primary("past-1"), "failed", "", "10800s")
 	measured(w.s.Primary("past-2"), "ok", "1500s")

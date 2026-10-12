@@ -42,7 +42,7 @@ func waitCard(id, need string) *Card {
 func TestTheIdleTraceCountsCardsBehindADroppedNeed(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}})
 	w.seedDroppedNeed("s1-1")
 	// no judgment open on b yet: the group is named without an oldest
 	got := TraceIdle(w.s, TickReq{})

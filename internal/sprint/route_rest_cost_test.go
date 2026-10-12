@@ -17,7 +17,7 @@ func restWorld(t testing.TB) *Snapshot {
 		w.s.Routes = append(w.s.Routes, Route{Name: name, Tier: "flash", Provider: "p", Model: name, Enabled: true})
 	}
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 8}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1000, Brief: "c: the work tier: flash\nThe task.\n"}))
+	w.admit(AddReq{Stream: "s1", Count: 1000, Brief: "c: the work tier: flash\nThe task.\n"})
 	p, _ := TickDeal(w.s, TickReq{})
 	w.do(p)
 	for i := range 3000 {

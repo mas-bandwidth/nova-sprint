@@ -13,7 +13,7 @@ import (
 func TestLawfulRefusedLandingSatisfiesNoNeed(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}})
 	s11, b := w.s.Work.Card("s1-1"), w.s.Work.Card("b") // s1-1 is ready
 	p := Plan{Units: []Unit{
 		{Key: "s1-1", Changes: []Change{change(Work, moveEntry(s11, s11.Row, Landed, nil))}},
@@ -44,7 +44,7 @@ func TestLawfulReadyToWaitingNeedsANeedNotLanded(t *testing.T) {
 	require.Empty(t, p.Units, "a need landed moved a ready card back: %+v", p)
 	require.Len(t, p.Refused, 1)
 	require.Contains(t, p.Refused[0].Why, "ready -> waiting only")
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"n"}}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"n"}})
 	p = back("s1-2,n")
 	require.Len(t, p.Units, 1, "a need not landed moves it back: %+v", p)
 	require.Empty(t, p.Refused)
@@ -58,7 +58,7 @@ func TestLawfulReadyToWaitingNeedsANeedNotLanded(t *testing.T) {
 func TestLawfulWorkingToWaitingNeedsTheCardsOwnNeedNotLanded(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 2)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"n"}})) // n is not landed
+	w.admit(AddReq{Stream: "s2", IDs: []string{"n"}}) // n is not landed
 	w.place(w.s.Work, "s1-2", "s1", Landed)
 	w.place(w.s.Work, "s1-1", "s1", Working)
 	s11 := w.s.Work.Card("s1-1")
@@ -83,7 +83,7 @@ func TestLawfulWorkingToWaitingNeedsTheCardsOwnNeedNotLanded(t *testing.T) {
 func TestLawfulMoveWithoutPlace(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}})
 	bare := func(id, row, col string) Unit {
 		return Unit{Key: id, Changes: []Change{change(Work, ntable.BatchMemberEntry{ID: id,
 			Expect: &ntable.MemberExpect{Revision: "1"}, Move: &ntable.MemberMoveOp{Row: row, Col: col}})}}

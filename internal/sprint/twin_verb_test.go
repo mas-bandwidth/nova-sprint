@@ -18,9 +18,9 @@ const twinTestBrief = "REPO: example/tools\nPATHS: internal/a/a.go\nTEST: ./inte
 func twinWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"first", "cards3"}, Brief: twinTestBrief, Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"dep1"}, Needs: []string{"cards3"}, Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"dep2"}, Needs: []string{"first", "cards3"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"first", "cards3"}, Brief: twinTestBrief, Who: "coordinator"})
+	w.admit(AddReq{Stream: "s2", IDs: []string{"dep1"}, Needs: []string{"cards3"}, Who: "coordinator"})
+	w.admit(AddReq{Stream: "s2", IDs: []string{"dep2"}, Needs: []string{"first", "cards3"}, Who: "coordinator"})
 	w.note(judgment(NBriefWrong, "s1", w.s.Now, 0, "cards3"))
 	w.clean("twin world")
 	return w
@@ -75,7 +75,7 @@ func TestTwinReplacesACardAndItsDependentsFollow(t *testing.T) {
 func TestTwinOfAMergingCardIsReturnedFirst(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"dep"}, Needs: []string{"s1-1"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"dep"}, Needs: []string{"s1-1"}, Who: "coordinator"})
 	accepted(w, "s1-1")
 	require.Equal(t, Merging, w.state("s1-1"))
 	p := w.must(Twin(w.s, TwinReq{ID: "s1-1", Who: "coordinator"}))
@@ -94,8 +94,8 @@ func TestTwinOfAMergingCardIsReturnedFirst(t *testing.T) {
 func TestTwinIsRefusedWholeWhenItCannotHold(t *testing.T) {
 	t.Parallel()
 	w := twinWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true, Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s3", IDs: []string{"done", "gone"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true, Who: "coordinator"})
+	w.admit(AddReq{Stream: "s3", IDs: []string{"done", "gone"}, Who: "coordinator"})
 	w.place(w.s.Work, "done", "s3", Landed)
 	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"gone"}}, Reason: "r", Who: "coordinator"}))
 	for _, tc := range []struct {

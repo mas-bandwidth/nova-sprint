@@ -17,7 +17,7 @@ func streamsWorld(t *testing.T, streams ...string) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a", "reader-b")
 	for _, st := range streams {
-		w.must(Add(w.s, AddReq{Stream: st, Who: "coordinator"}))
+		w.admit(AddReq{Stream: st, Who: "coordinator"})
 		require.True(t, w.s.Work.HasRow(st) && w.s.Merge.HasRow(st), "add opens %s", st)
 		require.NotNil(t, w.s.StreamCtl(st), "add gives %s its control card", st)
 	}
@@ -69,7 +69,7 @@ func TestStreamRemoveIsRefusedForAStreamHoldingAPrimary(t *testing.T) {
 	t.Parallel()
 	for _, col := range []string{Waiting, Ready, Working, Review, Merging, Landed} {
 		w := streamsWorld(t, "a")
-		w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Who: "coordinator"}))
+		w.admit(AddReq{Stream: "a", IDs: []string{"a-1"}, Who: "coordinator"})
 		w.place(w.s.Work, "a-1", "a", col)
 		got := StreamRemove(w.s, false, []string{"a"})
 		require.Len(t, got, 1, col)
@@ -91,7 +91,7 @@ func TestStreamRemoveIsRefusedForAStreamHoldingAMergeCard(t *testing.T) {
 func TestStreamRemoveIsRefusedForAStreamHoldingASentinel(t *testing.T) {
 	t.Parallel()
 	w := streamsWorld(t, "a")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-stop"}, Sentinel: true, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-stop"}, Sentinel: true, Who: "coordinator"})
 	got := StreamRemove(w.s, false, []string{"a"})
 	require.Len(t, got, 1)
 	assert.Contains(t, got[0].Why, "stream a holds 1 sentinel;")
@@ -100,7 +100,7 @@ func TestStreamRemoveIsRefusedForAStreamHoldingASentinel(t *testing.T) {
 func TestStreamRemoveIsAllOrNone(t *testing.T) {
 	t.Parallel()
 	w := streamsWorld(t, "a", "b")
-	w.must(Add(w.s, AddReq{Stream: "b", Count: 2, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "b", Count: 2, Who: "coordinator"})
 	got := StreamRemove(w.s, false, []string{"a", "b"})
 	require.Len(t, got, 2)
 	why := map[string]string{}
@@ -128,7 +128,7 @@ func TestStreamRemoveRefusesAnUnknownStreamByName(t *testing.T) {
 func TestStreamRemoveExistingKeepsTheStreamsThatAreThere(t *testing.T) {
 	t.Parallel()
 	w := streamsWorld(t, "a", "b", "c")
-	w.must(Add(w.s, AddReq{Stream: "c", Count: 1, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "c", Count: 1, Who: "coordinator"})
 	remove, refused := StreamRemoveExisting(w.s, false, []string{"a", "c", "zz", "a"})
 	assert.Equal(t, []string{"a"}, remove)
 	require.Len(t, refused, 2)
@@ -166,7 +166,7 @@ func TestARemovedStreamComesBackWhenACardIsAdded(t *testing.T) {
 	assert.False(t, RemovedStream(w.s, "b"))
 	rev := w.s.Merge.Card(CtlID("a")).Rev
 
-	p := w.must(Add(w.s, AddReq{Stream: "a", Count: 1, Who: "coordinator"}))
+	p := w.admit(AddReq{Stream: "a", Count: 1, Who: "coordinator"})
 	require.Len(t, p.Places, 1)
 	assert.Equal(t, PlaceAgain{Table: Merge, Row: "a", Col: Ctl, ID: CtlID("a"), Said: "stream a was removed in this epoch and comes back: its control card is placed again"}, p.Places[0])
 	assert.True(t, w.s.Work.HasRow("a"), "the work row is back")
@@ -181,7 +181,7 @@ func TestARemovedStreamComesBackWhenACardIsAdded(t *testing.T) {
 	w.clean("a stream back")
 
 	// once back, the stream is as any other: a second add places nothing again
-	p = w.must(Add(w.s, AddReq{Stream: "a", Count: 1, Who: "coordinator"}))
+	p = w.admit(AddReq{Stream: "a", Count: 1, Who: "coordinator"})
 	assert.Empty(t, p.Places)
 	assert.Equal(t, Ready, w.state("a-2"))
 }
@@ -193,7 +193,7 @@ func TestARemovedLandedStreamComesBackWaiting(t *testing.T) {
 	ctl := w.s.Merge.Card(CtlID("a"))
 	ctl.Fields["state"] = StreamLanded
 	removeStream(w, "a")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-1"}, Who: "coordinator"})
 	require.NotNil(t, w.s.StreamCtl("a"))
 	assert.Equal(t, StreamWaiting, w.s.StreamCtl("a").F("state"))
 	assert.Equal(t, Ready, w.state("a-1"))

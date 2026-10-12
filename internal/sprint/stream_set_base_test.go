@@ -29,10 +29,10 @@ func briefBase(brief string) string {
 func TestStreamSetBaseRepointsQueuedCards(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-ready"}, Brief: baseBrief("old/branch"), Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-waiting"}, Brief: baseBrief("old/branch"), Needs: []string{"s1-ready"}, Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-dealt"}, Brief: baseBrief("old/branch"), Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-merging"}, Brief: baseBrief("old/branch"), Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-ready"}, Brief: baseBrief("old/branch"), Who: "coordinator"})
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-waiting"}, Brief: baseBrief("old/branch"), Needs: []string{"s1-ready"}, Who: "coordinator"})
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-dealt"}, Brief: baseBrief("old/branch"), Who: "coordinator"})
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-merging"}, Brief: baseBrief("old/branch"), Who: "coordinator"})
 
 	require.Equal(t, Ready, w.s.Work.Placed("s1-ready").Col, "s1-ready is ready")
 	require.Equal(t, Waiting, w.s.Work.Placed("s1-waiting").Col, "s1-waiting is waiting")
@@ -104,8 +104,8 @@ func TestStreamSetBaseRepointsQueuedCards(t *testing.T) {
 func TestStreamSetBaseChecksTheRewrittenBriefs(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: baseBrief("old/branch"), Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-2"}, Brief: baseBrief("old/branch"), Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: baseBrief("old/branch"), Who: "coordinator"})
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-2"}, Brief: baseBrief("old/branch"), Who: "coordinator"})
 	w.s.Work.Placed("s1-2").Fields["attempt"] = "1"
 	w.s.Work.Placed("s1-2").Col = Working
 
@@ -134,9 +134,9 @@ func TestStreamSetBaseRefusesWhenTheCheckedCardsMoved(t *testing.T) {
 	t.Run("a card added", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a")
-		w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: baseBrief("old/branch"), Who: "coordinator"}))
+		w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: baseBrief("old/branch"), Who: "coordinator"})
 		checked := StreamSetBaseChecks(w.s, []string{"s1"}, base)
-		w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-2"}, Brief: baseBrief("old/branch"), Who: "coordinator"}))
+		w.admit(AddReq{Stream: "s1", IDs: []string{"s1-2"}, Brief: baseBrief("old/branch"), Who: "coordinator"})
 		p := Set(w.s, req(checked))
 		require.Len(t, p.Refused, 1)
 		assert.Contains(t, p.Refused[0].Why, "the stream moved while its briefs were held")
@@ -147,7 +147,7 @@ func TestStreamSetBaseRefusesWhenTheCheckedCardsMoved(t *testing.T) {
 	t.Run("a brief revised", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a")
-		w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: baseBrief("old/branch"), Who: "coordinator"}))
+		w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: baseBrief("old/branch"), Who: "coordinator"})
 		checked := StreamSetBaseChecks(w.s, []string{"s1"}, base)
 		c := w.s.Work.Placed("s1-1")
 		c.Fields["brief"] = strings.Replace(c.F("brief"), "PATHS: cmd/test.go", "PATHS: cmd/other.go", 1)
@@ -161,7 +161,7 @@ func TestStreamSetBaseRefusesWhenTheCheckedCardsMoved(t *testing.T) {
 	t.Run("a card dealt", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a")
-		w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: baseBrief("old/branch"), Who: "coordinator"}))
+		w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: baseBrief("old/branch"), Who: "coordinator"})
 		checked := StreamSetBaseChecks(w.s, []string{"s1"}, base)
 		c := w.s.Work.Placed("s1-1")
 		c.Fields["attempt"] = "1"

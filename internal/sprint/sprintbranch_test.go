@@ -129,7 +129,7 @@ func TestBriefHoldsANewBaseToTheSprintBase(t *testing.T) {
 	t.Parallel()
 	w := streamsWorld(t, "s1")
 	w.must(WithSprintBase(Set(w.s, SetReq{Who: "coordinator"}), w.s, "sprint/one"))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"x1", "x2"}, Base: "sprint/one", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"x1", "x2"}, Base: "sprint/one", Who: "coordinator"})
 	baseOf := map[string]string{"old": "sprint/one", "side": "rowan/friend-health", "kept": "sprint/one"}
 	req := BriefReq{Cards: []BriefCard{{ID: "x1", Brief: "side"}, {ID: "x2", Brief: "kept"}}, Who: "coordinator"}
 	p := WithBriefBases(Brief(w.s, req), w.s, req, func(b string) string { return baseOf[b] })

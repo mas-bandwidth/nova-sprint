@@ -175,7 +175,7 @@ func TestAChainOfSentinelsIsReleasedOneAtATime(t *testing.T) {
 func TestADroppedNeedOfASentinel(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 2)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"x"}}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"x"}})
 	w.must(Lawful(Add(w.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true, Needs: []string{"x"}})))
 	accepted(w, "s1-1")
 	mergeOne(w, "s1")
@@ -211,7 +211,7 @@ func TestADroppedNeedOfASentinel(t *testing.T) {
 func TestASentinelWithNeedsInTwoStreams(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
-	w.must(Add(w.s, AddReq{Stream: "s2", Count: 1}))
+	w.admit(AddReq{Stream: "s2", Count: 1})
 	w.must(Lawful(Add(w.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true, Needs: []string{"s2-1"}})))
 	got, waits := w.s.Work.Card("stop").F("needs"), strings.Join(WaitsFor(w.s, w.s.Work.Card("stop"), nil), ",")
 	require.Equal(t, "s2-1", got, "needs named %q, waits %q", got, waits)
@@ -229,7 +229,7 @@ func TestASentinelWithNeedsInTwoStreams(t *testing.T) {
 func TestASentinelStopsTheStreamByPosition(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 0)
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a1", "a2"}}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a1", "a2"}})
 	w.must(Lawful(Add(w.s, AddReq{Stream: "a", IDs: []string{"A"}, Sentinel: true})))
 	p := w.must(Lawful(Add(w.s, AddReq{Stream: "a", IDs: []string{"b1"}})))
 	b1 := w.s.Work.Card("b1")

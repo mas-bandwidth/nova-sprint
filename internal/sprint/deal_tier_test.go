@@ -19,11 +19,11 @@ import (
 func TestAFriendRowHoldsItsTiersUnlessTheCardIsPinnedToHer(t *testing.T) {
 	t.Parallel()
 	w := capWorld(t) // s1-1: a machine's card, no tier (flash), past the attempt cap
-	w.must(Add(w.s, AddReq{Stream: "s2", Cards: []CardAdd{
+	w.admit(AddReq{Stream: "s2", Cards: []CardAdd{
 		{ID: "s2-1", Brief: friendBrief("friend")}, // flash, any friend
 		{ID: "s2-2", Brief: "c: a friend's card tier: frontier\nREPO: mas-bandwidth/nova-tools\nWHO: friend\n\nThe task."}, // frontier, any friend
 		{ID: "s2-3", Brief: "c: a friend's card tier: pro\nREPO: mas-bandwidth/nova-tools\nWHO: friend fay\n\nThe task."},  // pro, named fay (flash)
-	}}))
+	}})
 	w.preparePlanned()
 	seats := []FriendSeat{
 		{Name: "fay", Width: 4, Status: Up, Class: cardhdr.RouteFlash},

@@ -121,7 +121,7 @@ func TestTickDealMeasuresEachDoneOKCellOnce(t *testing.T) {
 				Fields: map[string]string{"kind": "work", "primary": fmt.Sprintf("%s-p%d", m, i), "attempt": "1", "ok": "yes", "finished": fmt.Sprintf("2030-01-01T00:%02d:00Z", i), FieldUsage: "wall=100s"}})
 		}
 	}
-	w.must(Add(w.s, AddReq{Stream: "s-deal-once", Count: 4}))
+	w.admit(AddReq{Stream: "s-deal-once", Count: 4})
 
 	before := map[string]int{}
 	cell0 := map[string]**Card{}

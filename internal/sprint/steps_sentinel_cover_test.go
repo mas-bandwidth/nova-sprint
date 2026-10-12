@@ -31,7 +31,7 @@ func TestStepsSentinelCoverHeldBack(t *testing.T) {
 			name: "a waiting sentinel is held back",
 			build: func(t *testing.T) *world {
 				w := newWorld(t)
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
+				w.admit(AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true})
 				return w
 			},
 			want: 1,
@@ -40,7 +40,7 @@ func TestStepsSentinelCoverHeldBack(t *testing.T) {
 			name: "a primary admitted held is held back",
 			build: func(t *testing.T) *world {
 				w := newWorld(t)
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"h"}, Held: true}))
+				w.admit(AddReq{Stream: "s1", IDs: []string{"h"}, Held: true})
 				return w
 			},
 			want: 1,
@@ -49,8 +49,8 @@ func TestStepsSentinelCoverHeldBack(t *testing.T) {
 			name: "a card behind a held card is held back with it",
 			build: func(t *testing.T) *world {
 				w := newWorld(t)
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"h"}, Held: true}))
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"m"}, Needs: []string{"h"}}))
+				w.admit(AddReq{Stream: "s1", IDs: []string{"h"}, Held: true})
+				w.admit(AddReq{Stream: "s1", IDs: []string{"m"}, Needs: []string{"h"}})
 				require.Equal(t, Waiting, w.state("m"))
 				return w
 			},
@@ -60,8 +60,8 @@ func TestStepsSentinelCoverHeldBack(t *testing.T) {
 			name: "a card waiting behind a sentinel is held back with it",
 			build: func(t *testing.T) *world {
 				w := newWorld(t)
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true}))
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"after"}}))
+				w.admit(AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true})
+				w.admit(AddReq{Stream: "s1", IDs: []string{"after"}})
 				require.Equal(t, Waiting, w.state("after"))
 				require.Equal(t, []string{"stop"}, WaitsFor(w.s, w.s.Work.Card("after"), nil))
 				return w
@@ -72,9 +72,9 @@ func TestStepsSentinelCoverHeldBack(t *testing.T) {
 			name: "the whole chain behind a held card is held back",
 			build: func(t *testing.T) *world {
 				w := newWorld(t)
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"h"}, Held: true}))
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"m"}, Needs: []string{"h"}}))
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"z"}, Needs: []string{"m"}}))
+				w.admit(AddReq{Stream: "s1", IDs: []string{"h"}, Held: true})
+				w.admit(AddReq{Stream: "s1", IDs: []string{"m"}, Needs: []string{"h"}})
+				w.admit(AddReq{Stream: "s1", IDs: []string{"z"}, Needs: []string{"m"}})
 				return w
 			},
 			want: 3,
@@ -83,8 +83,8 @@ func TestStepsSentinelCoverHeldBack(t *testing.T) {
 			name: "a card whose unmet need is ready is not held back",
 			build: func(t *testing.T) *world {
 				w := newWorld(t)
-				w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"n"}}))
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"waiting"}, Needs: []string{"n"}}))
+				w.admit(AddReq{Stream: "s2", IDs: []string{"n"}})
+				w.admit(AddReq{Stream: "s1", IDs: []string{"waiting"}, Needs: []string{"n"}})
 				require.Equal(t, Waiting, w.state("waiting"))
 				require.Equal(t, Ready, w.state("n"))
 				return w
@@ -95,8 +95,8 @@ func TestStepsSentinelCoverHeldBack(t *testing.T) {
 			name: "a cycle of needs holds nothing back",
 			build: func(t *testing.T) *world {
 				w := newWorld(t)
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"y0"}}))
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"x"}, Needs: []string{"y0"}}))
+				w.admit(AddReq{Stream: "s1", IDs: []string{"y0"}})
+				w.admit(AddReq{Stream: "s1", IDs: []string{"x"}, Needs: []string{"y0"}})
 				y0 := w.s.Work.Card("y0")
 				y0.Col, y0.Fields["needs"] = Waiting, "x"
 				w.s.Work.Put(y0)
@@ -127,7 +127,7 @@ func TestStepsSentinelCoverReleaseHeld(t *testing.T) {
 			name: "a held primary that waits for nothing moves to ready",
 			build: func(t *testing.T) *world {
 				w := newWorld(t)
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"h"}, Held: true}))
+				w.admit(AddReq{Stream: "s1", IDs: []string{"h"}, Held: true})
 				require.Equal(t, Waiting, w.state("h"))
 				return w
 			},
@@ -147,8 +147,8 @@ func TestStepsSentinelCoverReleaseHeld(t *testing.T) {
 			name: "a held primary that still waits has its hold cleared and stays waiting",
 			build: func(t *testing.T) *world {
 				w := newWorld(t)
-				w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"n"}}))
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"h"}, Held: true, Needs: []string{"n"}}))
+				w.admit(AddReq{Stream: "s2", IDs: []string{"n"}})
+				w.admit(AddReq{Stream: "s1", IDs: []string{"h"}, Held: true, Needs: []string{"n"}})
 				require.Equal(t, Waiting, w.state("h"))
 				require.Equal(t, []string{"n"}, WaitsFor(w.s, w.s.Work.Card("h"), nil))
 				return w
@@ -168,7 +168,7 @@ func TestStepsSentinelCoverReleaseHeld(t *testing.T) {
 			name: "a primary that is neither a sentinel nor held is refused",
 			build: func(t *testing.T) *world {
 				w := newWorld(t)
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"p"}}))
+				w.admit(AddReq{Stream: "s1", IDs: []string{"p"}})
 				require.Equal(t, Ready, w.state("p"))
 				return w
 			},
@@ -184,7 +184,7 @@ func TestStepsSentinelCoverReleaseHeld(t *testing.T) {
 			name: "a release by any other actor is refused",
 			build: func(t *testing.T) *world {
 				w := newWorld(t)
-				w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"h"}, Held: true}))
+				w.admit(AddReq{Stream: "s1", IDs: []string{"h"}, Held: true})
 				return w
 			},
 			req: ReleaseReq{IDs: []string{"h"}, Reason: "the wave clears", Coordinator: "coordinator", Who: "someone"},

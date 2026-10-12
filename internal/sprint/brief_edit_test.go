@@ -19,9 +19,9 @@ import (
 func relinkWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "old one", Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Brief: "old two", Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"b"}, Needs: []string{"a-1"}, Brief: "tier: flash\nDEPENDS-ON: a-1\n\nthe task", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "old one", Who: "coordinator"})
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-2"}, Brief: "old two", Who: "coordinator"})
+	w.admit(AddReq{Stream: "a", IDs: []string{"b"}, Needs: []string{"a-1"}, Brief: "tier: flash\nDEPENDS-ON: a-1\n\nthe task", Who: "coordinator"})
 	w.must(Relink(w.s, RelinkReq{Old: []string{"a-1"}, New: "a-2", Who: "coordinator"}))
 	require.Equal(t, "a-2", w.s.Work.Placed("b").F("needs"))
 	require.NotEmpty(t, w.s.Work.Placed("b").F(FieldRelinked))
@@ -47,7 +47,7 @@ func TestBriefKeepsANeedRelinkedToItsTwin(t *testing.T) {
 func TestBriefAddsANewNeedAndKeepsADroppedOne(t *testing.T) {
 	t.Parallel()
 	w := relinkWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"c"}, Brief: "old c", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"c"}, Brief: "old c", Who: "coordinator"})
 	// the text names a new dependency c and still names the stale a-1
 	p := Brief(w.s, briefOf("b", "tier: flash\nDEPENDS-ON: a-1,c\n\nthe task, reworded", "a-1,c"))
 	require.Empty(t, p.Refused)
@@ -59,9 +59,9 @@ func TestABriefDroppingANeedKeepsItUnlessNeedsFromBrief(t *testing.T) {
 	t.Parallel()
 	// a text that drops a need keeps it by default
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "one", Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Brief: "two", Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"b"}, Needs: []string{"a-1", "a-2"}, Brief: "b needs both", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "one", Who: "coordinator"})
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-2"}, Brief: "two", Who: "coordinator"})
+	w.admit(AddReq{Stream: "a", IDs: []string{"b"}, Needs: []string{"a-1", "a-2"}, Brief: "b needs both", Who: "coordinator"})
 	kept := w.must(Brief(w.s, briefOf("b", "b reworded\nDEPENDS-ON: a-1", "a-1")))
 	assert.Equal(t, "a-1,a-2", w.s.Work.Placed("b").F("needs"), "a text that drops a need keeps it")
 	assert.Contains(t, strings.Join(kept.Said, "\n"), "needs kept: a-2 (the text's DEPENDS-ON drops it", "the NOTE names every property kept against the text")
@@ -77,7 +77,7 @@ func TestABriefDroppingANeedKeepsItUnlessNeedsFromBrief(t *testing.T) {
 func TestABriefChangingOnlyDependsKeepsARelinkedNeed(t *testing.T) {
 	t.Parallel()
 	w := relinkWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"c"}, Brief: "old c", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"c"}, Brief: "old c", Who: "coordinator"})
 	// the brief differs from the card's only in its DEPENDS-ON: line (the body is
 	// the same), so Brief takes the depends-only path; the relink record must still
 	// win over the text's stale DEPENDS-ON, as it does on the ordinary path.
@@ -95,9 +95,9 @@ func TestABriefChangingOnlyDependsKeepsARelinkedNeed(t *testing.T) {
 func dependsOnlyBoundWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"x"}, Brief: "x", Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"y"}, Brief: "y", Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Needs: []string{"x"}, Brief: "tier: pro\nDEPENDS-ON: x\n\nthe task", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"x"}, Brief: "x", Who: "coordinator"})
+	w.admit(AddReq{Stream: "a", IDs: []string{"y"}, Brief: "y", Who: "coordinator"})
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-1"}, Needs: []string{"x"}, Brief: "tier: pro\nDEPENDS-ON: x\n\nthe task", Who: "coordinator"})
 	w.place(w.s.Work, "a-1", "a", Working)
 	w.s.Work.Placed("a-1").Fields["attempt"] = "2"
 	w.s.Work.Placed("a-1").Fields[FieldBriefAttempt] = "1"
@@ -135,7 +135,7 @@ func TestADependsOnlyBriefTierFlagOverridesTheText(t *testing.T) {
 func TestBriefKeepsARecordedTierAgainstTheText(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "tier: pro\n\nthe task", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "tier: pro\n\nthe task", Who: "coordinator"})
 	// the coordinator pinned the tier with rework --tier or an earlier brief
 	w.s.Work.Placed("a-1").Fields[FieldTier] = "frontier"
 	p := Brief(w.s, briefOf("a-1", "tier: heavy\n\nthe task, reworded", ""))
@@ -148,7 +148,7 @@ func TestBriefKeepsARecordedTierAgainstTheText(t *testing.T) {
 func TestBriefTierFlagOverridesTheText(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "tier: pro\n\nthe task", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "tier: pro\n\nthe task", Who: "coordinator"})
 	w.s.Work.Placed("a-1").Fields[FieldTier] = "frontier"
 	p := Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "a-1", Brief: "tier: heavy\n\nthe task", Needs: nil}}, Tier: "heavy", Who: "coordinator"})
 	require.Empty(t, p.Refused)
@@ -160,7 +160,7 @@ func TestBriefTierFlagOverridesTheText(t *testing.T) {
 func boundWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "tier: pro\nPATHS: internal/x.go\n\nthe task", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "tier: pro\nPATHS: internal/x.go\n\nthe task", Who: "coordinator"})
 	w.place(w.s.Work, "a-1", "a", Review)
 	w.s.Work.Placed("a-1").Fields["attempt"] = "2"
 	w.s.Work.Placed("a-1").Fields[FieldBriefAttempt] = "1"
@@ -184,7 +184,7 @@ func TestBriefTierRefusesATLAPathBelowFrontier(t *testing.T) {
 	// to a tier below frontier is refused, as the lint's tla-is-frontier rule
 	// refuses it at add (nova-sprint tier <card> --set <t> --reason).
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "a TLA model tier: frontier\nPATHS: tla/Foo.tla\n\nthe model", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "a TLA model tier: frontier\nPATHS: tla/Foo.tla\n\nthe model", Who: "coordinator"})
 	p := Brief(w.s, BriefReq{ID: "a-1", Tier: "heavy", Who: "coordinator"})
 	require.Len(t, p.Refused, 1)
 	assert.Empty(t, p.Units)
@@ -236,9 +236,9 @@ func TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
 	for _, id := range []string{"a-1", "a-2", "x-1", "x-2"} {
-		w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{id}, Brief: "card " + id, Who: "coordinator"}))
+		w.admit(AddReq{Stream: "a", IDs: []string{id}, Brief: "card " + id, Who: "coordinator"})
 	}
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"b"}, Needs: []string{"a-1", "x-1"}, Brief: "tier: flash\nDEPENDS-ON: a-1,x-1\n\nthe task", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"b"}, Needs: []string{"a-1", "x-1"}, Brief: "tier: flash\nDEPENDS-ON: a-1,x-1\n\nthe task", Who: "coordinator"})
 	w.must(Relink(w.s, RelinkReq{Old: []string{"a-1"}, New: "a-2", Who: "coordinator"}))
 	w.must(Relink(w.s, RelinkReq{Old: []string{"x-1"}, New: "x-2", Who: "coordinator"}))
 	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"a-1", "x-1"}}, Reason: "replaced", Who: "coordinator"}))
@@ -259,9 +259,9 @@ func TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced(t *testing.T) {
 func TestABriefTierFlagRefusesATLAPathBelowFrontier(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"x"}, Brief: "x", Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"y"}, Brief: "y", Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"m"}, Needs: []string{"x"}, Brief: "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x\n\nthe model", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"x"}, Brief: "x", Who: "coordinator"})
+	w.admit(AddReq{Stream: "a", IDs: []string{"y"}, Brief: "y", Who: "coordinator"})
+	w.admit(AddReq{Stream: "a", IDs: []string{"m"}, Needs: []string{"x"}, Brief: "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x\n\nthe model", Who: "coordinator"})
 	for _, c := range []struct{ name, text, needs string }{
 		{"ordinary", "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x\n\nthe model, reworded", "x"},
 		{"depends-only", "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x,y\n\nthe model", "x,y"},

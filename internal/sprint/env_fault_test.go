@@ -45,7 +45,7 @@ func envFaultWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t)
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m1", Probe: EnvProbePassed}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	w.admit(AddReq{Stream: "s1", Count: 2})
 	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 2}}))
 	return w
 }

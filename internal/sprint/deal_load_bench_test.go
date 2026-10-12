@@ -42,7 +42,7 @@ func loadedStore(t testing.TB, ready, done, friends int) *Snapshot {
 	for i := range cards {
 		cards[i] = CardAdd{ID: fmt.Sprintf("c%06d", i), Brief: fmt.Sprintf("c: the work tier: flash\nThe task of card %d.\n", i)}
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: cards}))
+	w.admit(AddReq{Stream: "s1", Cards: cards})
 	w.preparePlanned()
 	for i := 0; i < done; i++ {
 		w.s.Fleet.Put(&Card{ID: fmt.Sprintf("old-%d.w1", i), Row: "m1", Col: DoneOK, Fields: map[string]string{

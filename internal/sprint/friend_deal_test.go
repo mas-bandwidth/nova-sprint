@@ -30,7 +30,7 @@ func friendWorld(t *testing.T, briefs ...string) *world {
 	for i, b := range briefs {
 		cards = append(cards, CardAdd{ID: "s1-" + itoa(i+1), Brief: b})
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: cards}))
+	w.admit(AddReq{Stream: "s1", Cards: cards})
 	w.preparePlanned()
 	return w
 }
@@ -357,11 +357,11 @@ func TestDealerNeverDealsAFriendOutsideHerStreams(t *testing.T) {
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 	brief := "c: in-scope friend work\nREPO: mas-bandwidth/nova-tools\nWHO: friend\nKIND: fix\n\nThe task."
-	w.must(Add(w.s, AddReq{Stream: "security-a", Cards: []CardAdd{
+	w.admit(AddReq{Stream: "security-a", Cards: []CardAdd{
 		{ID: "security-a-1", Brief: brief},
 		{ID: "security-a-2", Brief: strings.Replace(brief, "KIND: fix", "KIND: test", 1)},
-	}}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: brief}}}))
+	}})
+	w.admit(AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: brief}}})
 	dealWith(w,
 		FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro", Streams: []string{"security*"}, Kinds: []string{"fix"}},
 		FriendSeat{Name: "bob", Width: 2, Status: Up, Class: "flash,pro"},

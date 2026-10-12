@@ -171,7 +171,7 @@ func TestAGroupRefreshesAsCardsJoin(t *testing.T) {
 	w.do(p)
 	require.Len(t, w.notesOf(NReadyOver), 1)
 	// two more cards of the same cause join ready and pass the bound
-	w.must(Add(w.s, AddReq{Brief: proBrief, Stream: "s1", Count: 2}))
+	w.admit(AddReq{Brief: proBrief, Stream: "s1", Count: 2})
 	w.tick(61 * time.Second)
 	p2, _ := TickReadyOver(w.s, TickReq{})
 	require.Empty(t, p2.Notes, "the cause is already judged: no new note")
@@ -315,7 +315,7 @@ func TestAReadyCardBlockedOnlyOnRoomRaisesFleetUp(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 1}))
-	w.must(Add(w.s, AddReq{Brief: proBrief, Stream: "s1", Count: 3}))
+	w.admit(AddReq{Brief: proBrief, Stream: "s1", Count: 3})
 	w.s.Routes = []Route{{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "m", Enabled: true}}
 	// fill m1's room (DealAhead times width 1 = 2): one working, one ready behind it
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))

@@ -200,7 +200,7 @@ func TestStartBoundLevellingSkipsARestrictedRecipient(t *testing.T) {
 			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
 			id := tc.stream + "-1"
 			brief := "c: a restricted level\nREPO: mas-bandwidth/nova-tools\nWHO: friend\nKIND: " + tc.kind + "\n\nThe task."
-			w.must(Add(w.s, AddReq{Stream: tc.stream, Cards: []CardAdd{{ID: id, Brief: brief}}}))
+			w.admit(AddReq{Stream: tc.stream, Cards: []CardAdd{{ID: id, Brief: brief}}})
 			seats := func() []FriendSeat {
 				return []FriendSeat{
 					{Name: "amy", Width: 1, Status: Up, Class: "flash,pro"},

@@ -18,8 +18,8 @@ import (
 func editWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "old one", Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-1"}, Brief: "old two", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "old one", Who: "coordinator"})
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-1"}, Brief: "old two", Who: "coordinator"})
 	require.Equal(t, Ready, w.s.Work.Placed("a-1").Col)
 	require.Equal(t, Waiting, w.s.Work.Placed("a-2").Col)
 	return w
@@ -192,7 +192,7 @@ func TestABriefRefusedForAMergingOrLandedCard(t *testing.T) {
 func TestBriefIsRefusedForASentinelAndAnUnknownCard(t *testing.T) {
 	t.Parallel()
 	w := editWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-stop"}, Sentinel: true, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-stop"}, Sentinel: true, Who: "coordinator"})
 	p := Brief(w.s, briefOne("a-stop", "new"))
 	require.Len(t, p.Refused, 1)
 	assert.Contains(t, p.Refused[0].Why, "a-stop is a sentinel, not a primary")
@@ -206,8 +206,8 @@ func TestBriefIsRefusedForASentinelAndAnUnknownCard(t *testing.T) {
 func moveWorld(t *testing.T) *world {
 	t.Helper()
 	w := editWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "b", IDs: []string{"b-1"}, Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "b", IDs: []string{"b-2"}, Needs: []string{"a-1"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "b", IDs: []string{"b-1"}, Who: "coordinator"})
+	w.admit(AddReq{Stream: "b", IDs: []string{"b-2"}, Needs: []string{"a-1"}, Who: "coordinator"})
 	return w
 }
 
@@ -293,7 +293,7 @@ func TestMoveIsRefusedForAStartedCard(t *testing.T) {
 func TestMoveIsRefusedIntoItsOwnStreamAndForASentinel(t *testing.T) {
 	t.Parallel()
 	w := moveWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-stop"}, Sentinel: true, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-stop"}, Sentinel: true, Who: "coordinator"})
 	p := MoveCards(w.s, MoveReq{IDs: []string{"a-1", "a-stop"}, Stream: "a", Who: "coordinator"})
 	require.Len(t, p.Refused, 2)
 	assert.Contains(t, p.Refused[0].Why, "a-1 is in stream a already")
@@ -305,8 +305,8 @@ func TestMoveIsRefusedIntoItsOwnStreamAndForASentinel(t *testing.T) {
 func TestMoveBehindASentinelOfAReadyCardIsRefusedByTheLifecycle(t *testing.T) {
 	t.Parallel()
 	w := moveWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "c", IDs: []string{"c-1"}, Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "c", IDs: []string{"c-stop"}, Sentinel: true, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "c", IDs: []string{"c-1"}, Who: "coordinator"})
+	w.admit(AddReq{Stream: "c", IDs: []string{"c-stop"}, Sentinel: true, Who: "coordinator"})
 	p := Lawful(MoveCards(w.s, MoveReq{IDs: []string{"a-1"}, Stream: "c", Who: "coordinator"}))
 	require.Len(t, p.Refused, 1)
 	assert.Contains(t, p.Refused[0].Why, "ready -> waiting only as the effect of inserting a sentinel")
@@ -322,7 +322,7 @@ func TestMoveBehindASentinelOfAReadyCardIsRefusedByTheLifecycle(t *testing.T) {
 func TestMoveThatClosesACycleIsRefused(t *testing.T) {
 	t.Parallel()
 	w := moveWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "b", IDs: []string{"b-stop"}, Sentinel: true, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "b", IDs: []string{"b-stop"}, Sentinel: true, Who: "coordinator"})
 	p := Lawful(MoveCards(w.s, MoveReq{IDs: []string{"a-1"}, Stream: "b", Who: "coordinator"}))
 	require.Len(t, p.Refused, 1)
 	assert.Empty(t, p.Units)
@@ -364,7 +364,7 @@ func TestBriefTierRetiersACardInAnyState(t *testing.T) {
 		{"unknown", "zz-9", "heavy", Ready, "no primary zz-9"},
 	} {
 		w := editWorld(t)
-		w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-sentinel"}, Sentinel: true, Who: "coordinator"}))
+		w.admit(AddReq{Stream: "a", IDs: []string{"a-sentinel"}, Sentinel: true, Who: "coordinator"})
 		w.place(w.s.Work, "a-1", "a", tc.col)
 		p := Brief(w.s, BriefReq{ID: tc.id, Tier: tc.tier, Who: "coordinator"})
 		require.Len(t, p.Refused, 1, tc.name)

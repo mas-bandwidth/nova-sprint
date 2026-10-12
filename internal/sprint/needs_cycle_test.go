@@ -80,7 +80,7 @@ func TestABriefBatchCannotCloseACycleBetweenItsCards(t *testing.T) {
 func TestSentinelSetSeesAWorkingCardsNeeds(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1) // s1-1 ready
-	w.must(Add(w.s, AddReq{Stream: "g", IDs: []string{"S"}, Sentinel: true}))
+	w.admit(AddReq{Stream: "g", IDs: []string{"S"}, Sentinel: true})
 	w.must(Deal(w.s, DealReq{Sel: Sel{Only: []string{"s1-1"}}}))
 	require.Equal(t, Working, w.state("s1-1"))
 	w.must(NeedsSet(w.s, NeedsSetReq{ID: "s1-1", Needs: []string{"S"}, Who: "coordinator"}))

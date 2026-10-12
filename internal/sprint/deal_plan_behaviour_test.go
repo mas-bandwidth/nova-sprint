@@ -159,7 +159,7 @@ func TestAWithdrawnCardAtItsRedealBoundEscalatesBelowItsCeiling(t *testing.T) {
 		{Name: "next", Tier: cardhdr.RoutePro, Provider: "p", Model: "next", Enabled: true},
 		{Name: "big", Tier: cardhdr.RouteHeavy, Provider: "p", Model: "big", Enabled: true},
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: "c: the work (s1) tier: heavy\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: "c: the work (s1) tier: heavy\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"})
 	// a card dealt on flash below its ceiling before line 1 became the tier it is dealt on:
 	// the escalation ladder still carries it
 	w.s.Work.Card("s1-1").Fields[FieldTierNow] = "flash"
@@ -195,7 +195,7 @@ func TestAWithdrawnCardAtItsRedealBoundAtItsCeilingIsRefused(t *testing.T) {
 		{Name: "small", Tier: cardhdr.RouteFlash, Provider: "p", Model: "small", Enabled: true},
 		{Name: "next", Tier: cardhdr.RoutePro, Provider: "p", Model: "next", Enabled: true},
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: "c: the work (s1) tier: pro\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Brief: "c: the work (s1) tier: pro\nREPO: mas-bandwidth/nova-tools\n\nThe task.\n"})
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 	require.Equal(t, "pro", w.s.Work.Card("s1-1").F(FieldTierNow), "a pro card's first deal is on pro")
 	wc := w.s.Fleet.Card("s1-1.w1")

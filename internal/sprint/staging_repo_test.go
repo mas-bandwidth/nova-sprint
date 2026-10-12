@@ -57,8 +57,8 @@ func TestAMemberThatRefusedARepoAtStagingIsNotDealtIt(t *testing.T) {
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "studio", Width: 4}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "b1", Width: 4}))
 	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "m", Enabled: true, Deadline: 600}}
-	w.must(Add(w.s, AddReq{Stream: "ns", Count: 4, Repo: "https://github.com/mas-bandwidth/nova-sprint", Brief: "tier: flash\n"}))
-	w.must(Add(w.s, AddReq{Stream: "nt", Count: 2, Repo: "https://github.com/mas-bandwidth/nova-tools", Brief: "tier: flash\n"}))
+	w.admit(AddReq{Stream: "ns", Count: 4, Repo: "https://github.com/mas-bandwidth/nova-sprint", Brief: "tier: flash\n"})
+	w.admit(AddReq{Stream: "nt", Count: 2, Repo: "https://github.com/mas-bandwidth/nova-tools", Brief: "tier: flash\n"})
 	// a withdrawn nova-sprint work card studio refused at staging for want of a bench
 	// mirror; its repository is remembered on the card (FieldRepo).
 	w.s.Fleet.Put(&Card{ID: "ns-0.w1", Row: "b1", Col: Withdrawn, Fields: map[string]string{
@@ -117,7 +117,7 @@ func TestANoLauncherJudgmentNamesTheMirrorRefusal(t *testing.T) {
 	w := newWorld(t)
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "studio", Width: 4}))
 	w.s.Routes = []Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "m", Enabled: true, Deadline: 600}}
-	w.must(Add(w.s, AddReq{Stream: "ns", Count: 1, Repo: "https://github.com/mas-bandwidth/nova-sprint", Brief: "tier: flash\n"}))
+	w.admit(AddReq{Stream: "ns", Count: 1, Repo: "https://github.com/mas-bandwidth/nova-sprint", Brief: "tier: flash\n"})
 	w.s.Fleet.Put(&Card{ID: "ns-0.w1", Row: "studio", Col: Withdrawn, Fields: map[string]string{
 		"gen":                  "1",
 		FieldRepo:              "https://github.com/mas-bandwidth/nova-sprint",

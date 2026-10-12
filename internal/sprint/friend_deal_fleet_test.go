@@ -55,7 +55,7 @@ func aheadWorld(t *testing.T, streams map[string][]string) *world {
 	for i := range 2 * DealAhead * 2 {
 		ahead = append(ahead, CardAdd{ID: "ahead-" + itoa(i+1), Brief: fleetBrief("flash")})
 	}
-	w.must(Add(w.s, AddReq{Stream: "ahead", Cards: ahead}))
+	w.admit(AddReq{Stream: "ahead", Cards: ahead})
 	dealWith(w)
 	for _, m := range []string{"m1", "m2"} {
 		require.Equal(t, DealAhead*2, w.s.Fleet.Count(m, Ready), "%s is dealt ahead its room, untaken", m)
@@ -66,7 +66,7 @@ func aheadWorld(t *testing.T, streams map[string][]string) *world {
 			cards = append(cards, CardAdd{ID: st + "-" + itoa(i+1), Brief: b})
 		}
 		if len(cards) > 0 {
-			w.must(Add(w.s, AddReq{Stream: st, Cards: cards}))
+			w.admit(AddReq{Stream: st, Cards: cards})
 		}
 	}
 	return w
@@ -241,7 +241,7 @@ func TestTheReclaimIsBoundedAndAnUnstartedReclaimGoesBackToTheMachines(t *testin
 	for i := range 16 {
 		ahead = append(ahead, CardAdd{ID: "ahead-" + itoa(i+1), Brief: fleetBrief("flash")})
 	}
-	w.must(Add(w.s, AddReq{Stream: "ahead", Cards: ahead}))
+	w.admit(AddReq{Stream: "ahead", Cards: ahead})
 	dealWith(w)
 	require.Equal(t, 8, w.s.Fleet.Count("m1", Ready))
 	require.Equal(t, 8, w.s.Fleet.Count("m2", Ready))

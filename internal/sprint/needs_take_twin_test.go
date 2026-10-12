@@ -27,11 +27,11 @@ func TestTheFriendsDealNeverDealsACardWithUnlandedNeeds(t *testing.T) {
 	w := newWorld(t, "reader-a", "reader-b")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{
+	w.admit(AddReq{Stream: "s1", Cards: []CardAdd{
 		{ID: "s1-1", Brief: fleetBrief("flash")},
 		{ID: "n1", Brief: fleetBrief("flash")},
 		{ID: "n2", Brief: fleetBrief("flash")},
-	}}))
+	}})
 	// the two needs are in review (not landed)
 	for _, n := range []string{"n1", "n2"} {
 		w.s.Work.Card(n).Col = Review

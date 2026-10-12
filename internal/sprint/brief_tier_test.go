@@ -19,7 +19,7 @@ func TestAHeavyBriefIsPinnedHeavyAndNeverDealtToFlashOrPro(t *testing.T) {
 		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
 		{Name: "heavy-a", Tier: cardhdr.RouteHeavy, Provider: "p", Model: "h", Enabled: true, Deadline: 600},
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "RESULT: s1-1 sha=000000000000 tier: heavy\n\nThe task."}}}))
+	w.admit(AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "RESULT: s1-1 sha=000000000000 tier: heavy\n\nThe task."}}})
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 	wc := w.s.Fleet.Card(WorkCardID("s1-1", 1))
 	require.NotNil(t, wc)
@@ -36,7 +36,7 @@ func TestAProBriefIsNeverDealtToFlash(t *testing.T) {
 		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
 		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "RESULT: s1-1 sha=000000000000 tier: pro\n\nThe task."}}}))
+	w.admit(AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "RESULT: s1-1 sha=000000000000 tier: pro\n\nThe task."}}})
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 	wc := w.s.Fleet.Card(WorkCardID("s1-1", 1))
 	require.NotNil(t, wc)
@@ -77,7 +77,7 @@ func TestABriefEditThatChangesTierChangesThePin(t *testing.T) {
 		{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
 	}
 	// Start with flash
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "c: the work (s1) tier: flash\n\nThe task."}}}))
+	w.admit(AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "c: the work (s1) tier: flash\n\nThe task."}}})
 	pr := w.s.Primary("s1-1")
 	assert.Equal(t, cardhdr.RouteFlash, w.s.DealTier(pr), "initial tier is flash")
 	// Simulate being dealt on flash

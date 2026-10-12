@@ -232,7 +232,7 @@ func ptr(f float64) *float64 { return &f }
 func TestD6StuckCardsAndResume(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 3)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"b1"}}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"b1"}})
 	accepted(w, "s1-1", "s1-2", "s1-3")
 	score := w.s.Merge.Card("s1-2").Score
 	w.must(MergeStep(w.s, MergeReq{Stream: "s1", Cross: "s1-2=b1"}))

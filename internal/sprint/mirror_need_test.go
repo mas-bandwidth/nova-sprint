@@ -74,7 +74,7 @@ func TestAddAndTheTickKeepABenchMirrorForEveryNamedRepo(t *testing.T) {
 	// add a card for a repository no member carries: add prints the MIRROR line, and the
 	// repository is recorded on the stream's control card.
 	repo := "https://github.com/mas-bandwidth/nova-tools"
-	w.must(Add(w.s, AddReq{Stream: "ns", Count: 1, Repo: repo, Brief: "tier: flash\n"}))
+	w.admit(AddReq{Stream: "ns", Count: 1, Repo: repo, Brief: "tier: flash\n"})
 	require.Contains(t, w.s.StreamCtl("ns").F(FieldRepo), "mas-bandwidth/nova-tools",
 		"add records the repository on the stream's control card")
 	lines := MirrorNotice(w.s, []string{repo})

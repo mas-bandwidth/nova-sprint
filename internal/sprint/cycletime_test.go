@@ -65,11 +65,11 @@ func TestStageTimesGiveMedianAndP90PerStage(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b", "reader-c")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{
+	w.admit(AddReq{Stream: "s1", Cards: []CardAdd{
 		{ID: "s1-1", Brief: proBrief},
 		{ID: "s1-2", Brief: proBrief, Needs: []string{"s1-1"}},
 		{ID: "s1-3", Brief: proBrief, Needs: []string{"s1-2"}},
-	}}))
+	}})
 
 	flowOf(w, "s1-1", stageFlow{deal: 10, take: 1, work: 100, readWait: 5, r1: 20, r2: 30, accept: 2, merge: 7})
 	flowOf(w, "s1-2", stageFlow{deal: 20, take: 2, work: 200, readWait: 6, r1: 21, r2: 31, accept: 3, merge: 8})

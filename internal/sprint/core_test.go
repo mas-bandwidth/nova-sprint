@@ -53,7 +53,7 @@ func setup(t *testing.T, n int) *world {
 	w := newWorld(t, "reader-a", "reader-b", "reader-c")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
-	w.must(Add(w.s, AddReq{Brief: proBrief, Stream: "s1", Count: n}))
+	w.admit(AddReq{Brief: proBrief, Stream: "s1", Count: n})
 	w.preparePlanned()
 	w.clean("setup")
 	return w
@@ -188,7 +188,7 @@ func TestLevelMovesTheNewestCards(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 3}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 6}))
+	w.admit(AddReq{Stream: "s1", Count: 6})
 	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 6}})) // six on m1, over its width of 3
 	p := w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 3}))
 	require.Equal(t, 3, w.s.Fleet.Count("m1", Ready), "m1 holds its width: %d %d", w.s.Fleet.Count("m1", Ready), w.s.Fleet.Count("m2", Ready))
@@ -283,7 +283,7 @@ func TestReturnThenAcceptAgainMovesTheMergePlace(t *testing.T) {
 func TestDropTakesItsCardsAndBlocksWhatNeedsIt(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 2)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"later"}, Needs: []string{"s1-1"}}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"later"}, Needs: []string{"s1-1"}})
 	require.Equal(t, Waiting, w.state("later"), "a primary with needs is %s", w.state("later"))
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 	p := Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-1"}}, Reason: "obsolete"})
@@ -307,7 +307,7 @@ func TestDropTakesItsCardsAndBlocksWhatNeedsIt(t *testing.T) {
 func TestResolveMovesWhenNeedsLand(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}})
 	p := w.must(Resolve(w.s, ResolveReq{}))
 	require.Empty(t, p.Units, "resolved before the need landed")
 	accepted(w, "s1-1")
@@ -452,4 +452,14 @@ func (w *world) preparePlanned() {
 	w.must(p)
 	w.must(PromotePlan(w.s, TriageReq{}))
 	w.must(Resolve(w.s, ResolveReq{}))
+}
+
+// admit adds cards and advances them through the coordinator's plan -> check ->
+// waiting -> ready lifecycle (docs/SPEC-SPRINT.md, plan and check columns), so a
+// test that drives the deal or resolve starts where add used to leave a card.
+func (w *world) admit(r AddReq) Plan {
+	w.t.Helper()
+	p := w.must(Add(w.s, r))
+	w.preparePlanned()
+	return p
 }

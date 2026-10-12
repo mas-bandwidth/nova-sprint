@@ -10,9 +10,9 @@ func TestHoldSentinelAndWaveAreOneWait(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 2)
 	w.must(Lawful(Add(w.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true})))
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"h"}, Held: true}))
-	w.must(Add(w.s, AddReq{Stream: "s3", IDs: []string{"gate"}, Sentinel: true, Held: true}))
-	w.must(Add(w.s, AddReq{Stream: "s3", IDs: []string{"m1", "m2"}}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"h"}, Held: true})
+	w.admit(AddReq{Stream: "s3", IDs: []string{"gate"}, Sentinel: true, Held: true})
+	w.admit(AddReq{Stream: "s3", IDs: []string{"m1", "m2"}})
 
 	held := WaitOf(w.s, w.s.Work.Card("h"))
 	stop := WaitOf(w.s, w.s.Work.Card("stop"))

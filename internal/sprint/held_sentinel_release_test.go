@@ -11,8 +11,8 @@ import (
 func TestHeldSentinelWaveReleases(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"gate"}, Sentinel: true, Held: true}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"m1", "m2"}}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"gate"}, Sentinel: true, Held: true})
+	w.admit(AddReq{Stream: "s1", IDs: []string{"m1", "m2"}})
 	require.Equal(t, Waiting, w.state("m1"))
 	require.Equal(t, Waiting, w.state("m2"))
 
@@ -29,8 +29,8 @@ func TestHeldSentinelWaveReleases(t *testing.T) {
 func TestHeldCardFollowsItsChain(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"n"}}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"h"}, Needs: []string{"n"}, Held: true}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"n"}})
+	w.admit(AddReq{Stream: "s1", IDs: []string{"h"}, Needs: []string{"n"}, Held: true})
 	require.Equal(t, Waiting, w.state("h"))
 
 	h := w.s.Work.Card("h")
@@ -48,12 +48,12 @@ func TestHeldCardFollowsItsChain(t *testing.T) {
 func TestHeldWaveSkipsASentinelWithALine(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"a"}}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"gate"}, Sentinel: true, Held: true}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"a"}})
+	w.admit(AddReq{Stream: "s1", IDs: []string{"gate"}, Sentinel: true, Held: true})
 	require.Equal(t, []string{"a"}, WaitsFor(w.s, w.s.Work.Card("gate"), nil))
 	require.Nil(t, heldWave(w.s), "a held sentinel with a line before it is not offered")
 
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"free"}, Sentinel: true, Held: true}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"free"}, Sentinel: true, Held: true})
 	got := heldWave(w.s)
 	require.NotNil(t, got)
 	require.Equal(t, "free", got.ID)

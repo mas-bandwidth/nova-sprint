@@ -48,8 +48,8 @@ func sumTotals(t *testing.T, tcs map[string]TierCosts) string {
 func costWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a")
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"a", "b", "c"}, Brief: proBrief, Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"d"}, Brief: proBrief, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"a", "b", "c"}, Brief: proBrief, Who: "coordinator"})
+	w.admit(AddReq{Stream: "s2", IDs: []string{"d"}, Brief: proBrief, Who: "coordinator"})
 	w.place(w.s.Work, "a", "s1", Landed)
 	w.place(w.s.Work, "b", "s1", Review)
 	w.place(w.s.Work, "d", "s2", Working)
@@ -236,7 +236,7 @@ func TestDecideCallsAreRecordedOnTheCardsTheyDecided(t *testing.T) {
 
 	add := AddReq{Stream: "s1", IDs: []string{"e"}, Brief: proBrief, Who: "coordinator", BriefOps: map[string]string{"e": "e@brief-1"},
 		BriefRecord: "brief.jsonl", BriefUsage: map[string]string{"e": DecideUsage(2000000, 0, "")}}
-	w.must(Add(w.s, add))
+	w.admit(add)
 	e := CardCostOf(w.s.Work.Card("e"))
 	require.Len(t, e.Consumers, 1, "the card is born with its brief decision's cost")
 	assert.Equal(t, ConsumerDecide, e.Consumers[0].Kind)

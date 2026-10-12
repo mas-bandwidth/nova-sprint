@@ -32,7 +32,7 @@ func gateStreams(t *testing.T, n int) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a", "reader-b")
 	for _, s := range []string{"a", "b", "c"} {
-		w.must(Add(w.s, AddReq{Stream: s, Count: n, Every: 10}))
+		w.admit(AddReq{Stream: s, Count: n, Every: 10})
 	}
 	return w
 }

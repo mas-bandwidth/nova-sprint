@@ -61,7 +61,7 @@ func TestAMergeFactNamesACardOfTheBatch(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 3)
 	accepted(w, "s1-1", "s1-2", "s1-3")
-	w.must(Add(w.s, AddReq{Stream: "s2", Count: 1}))
+	w.admit(AddReq{Stream: "s2", Count: 1})
 	for _, r := range []MergeReq{
 		{Stream: "s1", Batch: 1, Conflict: "s1-2"},
 		{Stream: "s1", Batch: 1, Cross: "s1-2=s2-1"},
@@ -115,7 +115,7 @@ func TestTheSprintIsDoneOnce(t *testing.T) {
 	w := setup(t, 2)
 	started := w.s.Now
 	req := TickReq{Started: started}
-	w.must(Add(w.s, AddReq{Stream: "s2", Count: 1}))
+	w.admit(AddReq{Stream: "s2", Count: 1})
 	accepted(w, "s1-1", "s1-2")
 	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s2-1"}}, Reason: "obsolete"}))
 	p, _ := TickDone(w.s, req)
@@ -147,7 +147,7 @@ func TestTheSprintIsDoneOnce(t *testing.T) {
 	p, _ = TickDone(w.s, TickReq{})
 	require.Len(t, p.Notes, 1, "with no first start: %+v", p.Notes)
 	require.Equal(t, "2 landed, 1 dropped", p.Notes[0].What, "with no first start: %+v", p.Notes)
-	w.must(Add(w.s, AddReq{Stream: "s3", Count: 1}))
+	w.admit(AddReq{Stream: "s3", Count: 1})
 	p, _ = TickDone(w.s, req)
 	require.True(t, p.Empty(), "more work, and still done: %+v", p)
 	w.clean("more work")
@@ -170,8 +170,8 @@ func TestTheSprintIsDoneOnce(t *testing.T) {
 func TestLandingResolvesWhatWaitsOnIt(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 2)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}}))
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"c"}, Needs: []string{"s1-1", "s1-2"}}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}})
+	w.admit(AddReq{Stream: "s2", IDs: []string{"c"}, Needs: []string{"s1-1", "s1-2"}})
 	accepted(w, "s1-1", "s1-2")
 	p := w.must(MergeStep(w.s, MergeReq{Stream: "s1", Batch: 1}))
 	require.Equal(t, Ready, w.state("b"), "after s1-1 landed: b %s, c %s (%+v)", w.state("b"), w.state("c"), p.Units)

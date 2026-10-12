@@ -31,7 +31,7 @@ func fullWorld(t *testing.T, who, line1 string, n int) *world {
 		cards = append(cards, CardAdd{ID: "s2-" + itoa(i+1), Brief: strings.Replace(friendBrief("friend"), "c: a friend's card", line1, 1)})
 	}
 	if n > 0 {
-		w.must(Add(w.s, AddReq{Stream: "s2", Cards: cards}))
+		w.admit(AddReq{Stream: "s2", Cards: cards})
 	}
 	return w
 }
@@ -70,14 +70,14 @@ func TestAFriendWithAnIdleLaneIsDealtAndLevelledBeforeAFullOne(t *testing.T) {
 		for i := range 11 {
 			hers = append(hers, CardAdd{ID: "s3-" + itoa(i+1), Brief: friendBrief("only friend mas")})
 		}
-		w.must(Add(w.s, AddReq{Stream: "s3", Cards: hers}))
+		w.admit(AddReq{Stream: "s3", Cards: hers})
 		dealStarted(w, full, mas)
 		require.Equal(t, 8, w.s.Fleet.Count(FriendRow("mas"), Working))
 		require.Equal(t, 3, w.s.Fleet.Count(FriendRow("mas"), Ready))
-		w.must(Add(w.s, AddReq{Stream: "s2", Cards: []CardAdd{
+		w.admit(AddReq{Stream: "s2", Cards: []CardAdd{
 			{ID: "s2-1", Brief: friendBrief("friend")},
 			{ID: "s2-2", Brief: strings.Replace(friendBrief("friend"), "c: a friend's card", "c: a friend's card tier: pro", 1)},
-		}}))
+		}})
 		dealStarted(w, full, mas, stella)
 		assert.Equal(t, FriendRow("stella"), w.s.Fleet.Card("s2-1.w1").Row, "an idle lane first, though mas has more room")
 		assert.Equal(t, FriendRow("mas"), w.s.Fleet.Card("s2-2.w1").Row, "a pro card goes to a friend whose tiers hold pro")

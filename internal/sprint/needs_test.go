@@ -23,7 +23,7 @@ func land(w *world, ids ...string) {
 func TestNoPlanMovesAPrimaryPastItsNeeds(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}})
 	b := w.s.Work.Card("b")
 	move := Unit{Key: "b", Stream: "s2", Changes: []Change{change(Work, moveEntry(b, "s2", Ready, nil))}}
 	p := Lawful(Plan{Units: []Unit{move}})
@@ -57,9 +57,9 @@ func TestNoPlanMovesAPrimaryPastItsNeeds(t *testing.T) {
 func TestAChainAndADiamondResolveInOrder(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 0)
-	w.must(Add(w.s, AddReq{Stream: "c", IDs: []string{"c1"}}))
+	w.admit(AddReq{Stream: "c", IDs: []string{"c1"}})
 	for i := 2; i <= 5; i++ {
-		w.must(Add(w.s, AddReq{Stream: "c", IDs: []string{"c" + itoa(i)}, Needs: []string{"c" + itoa(i-1)}}))
+		w.admit(AddReq{Stream: "c", IDs: []string{"c" + itoa(i)}, Needs: []string{"c" + itoa(i-1)}})
 	}
 	for i := 1; i <= 5; i++ {
 		for j := i + 1; j <= 5; j++ {
@@ -67,9 +67,9 @@ func TestAChainAndADiamondResolveInOrder(t *testing.T) {
 		}
 		land(w, "c"+itoa(i))
 	}
-	w.must(Add(w.s, AddReq{Stream: "d", IDs: []string{"a"}}))
-	w.must(Add(w.s, AddReq{Stream: "d", IDs: []string{"b", "c"}, Needs: []string{"a"}}))
-	w.must(Add(w.s, AddReq{Stream: "d", IDs: []string{"d"}, Needs: []string{"b", "c"}}))
+	w.admit(AddReq{Stream: "d", IDs: []string{"a"}})
+	w.admit(AddReq{Stream: "d", IDs: []string{"b", "c"}, Needs: []string{"a"}})
+	w.admit(AddReq{Stream: "d", IDs: []string{"d"}, Needs: []string{"b", "c"}})
 	land(w, "a")
 	require.Equal(t, Ready, w.state("b"), "after a: b %s c %s d %s", w.state("b"), w.state("c"), w.state("d"))
 	require.Equal(t, Ready, w.state("c"), "after a: b %s c %s d %s", w.state("b"), w.state("c"), w.state("d"))
@@ -103,7 +103,7 @@ func TestAddRefusesACycle(t *testing.T) {
 func TestAWaivedNeedIsSatisfied(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 1)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}})
 	w.seedDroppedNeed("s1-1")
 	w.must(Resolve(w.s, ResolveReq{}))
 	blocked := w.openOn("b")

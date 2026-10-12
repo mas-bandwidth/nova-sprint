@@ -19,13 +19,13 @@ func landCol(w *world, table *Table, id, col string) {
 func TestAddAfterALandedStopReopensTheStream(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-stop-1"}, Sentinel: true, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"})
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-stop-1"}, Sentinel: true, Who: "coordinator"})
 	landCol(w, w.s.Work, "s1-1", Landed)
 	landCol(w, w.s.Work, "s1-stop-1", Landed)
 	w.s.StreamCtl("s1").Fields["state"] = StreamLanded
 
-	p := w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-2"}, Who: "coordinator"}))
+	p := w.admit(AddReq{Stream: "s1", IDs: []string{"s1-2"}, Who: "coordinator"})
 	assert.Contains(t, p.Said, ReopenLine("s1", "s1-stop-2"))
 	assert.Equal(t, StreamWorking, w.s.StreamCtl("s1").F("state"))
 	stop := w.s.Work.Placed("s1-stop-2")
@@ -43,7 +43,7 @@ func TestAddAfterALandedStopReopensTheStream(t *testing.T) {
 	assert.True(t, said, "the timeline notes the reopen")
 
 	// a later card, while this stop has not landed, does not open a second one
-	p2 := w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-3"}, Who: "coordinator"}))
+	p2 := w.admit(AddReq{Stream: "s1", IDs: []string{"s1-3"}, Who: "coordinator"})
 	for _, line := range p2.Said {
 		assert.NotContains(t, line, "STREAM REOPENED")
 	}
@@ -54,10 +54,10 @@ func TestAddAfterALandedStopReopensTheStream(t *testing.T) {
 func TestAddToALandedStreamWithoutAStopStaysWaiting(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"})
 	landCol(w, w.s.Work, "s1-1", Landed)
 	w.s.StreamCtl("s1").Fields["state"] = StreamLanded
-	p := w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-2"}, Who: "coordinator"}))
+	p := w.admit(AddReq{Stream: "s1", IDs: []string{"s1-2"}, Who: "coordinator"})
 	assert.Equal(t, StreamWaiting, w.s.StreamCtl("s1").F("state"))
 	for _, line := range p.Said {
 		assert.NotContains(t, line, "STREAM REOPENED")
@@ -68,12 +68,12 @@ func TestAddToALandedStreamWithoutAStopStaysWaiting(t *testing.T) {
 func TestAddOfASentinelReopensWithThatStop(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-stop-1"}, Sentinel: true, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"})
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-stop-1"}, Sentinel: true, Who: "coordinator"})
 	landCol(w, w.s.Work, "s1-1", Landed)
 	landCol(w, w.s.Work, "s1-stop-1", Landed)
 	w.s.StreamCtl("s1").Fields["state"] = StreamLanded
-	p := w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-stop-2"}, Sentinel: true, Who: "coordinator"}))
+	p := w.admit(AddReq{Stream: "s1", IDs: []string{"s1-stop-2"}, Sentinel: true, Who: "coordinator"})
 	assert.Contains(t, p.Said, ReopenLine("s1", "s1-stop-2"))
 	assert.Equal(t, StreamWorking, w.s.StreamCtl("s1").F("state"))
 	assert.Nil(t, w.s.Work.Card("s1-stop-3"), "the named sentinel is the stop")
@@ -93,7 +93,7 @@ func TestNextStopID(t *testing.T) {
 func TestMergeRecordsALandingTheStreamDealt(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1", "s1-2"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1", "s1-2"}, Who: "coordinator"})
 	pr := w.s.Work.Placed("s1-1")
 	pr.Col = Merging
 	pr.Fields["head"] = "abc1234"
@@ -127,7 +127,7 @@ func TestMergeRecordsALandingTheStreamDealt(t *testing.T) {
 func TestMergeStillRefusesALandedStreamThatOwesNothing(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"})
 	w.s.StreamCtl("s1").Fields["state"] = StreamLanded
 	require.False(t, StreamOwesLanding(w.s, "s1"))
 	p := MergeStep(w.s, MergeReq{Stream: "s1", Who: "coordinator"})
@@ -139,7 +139,7 @@ func TestMergeStillRefusesALandedStreamThatOwesNothing(t *testing.T) {
 func TestPushedUnreportedMarkAndReportReason(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"})
 	pr := w.s.Work.Placed("s1-1")
 	pr.Col = Merging
 	pr.Fields["head"] = "head-a"
@@ -166,7 +166,7 @@ func TestPushedUnreportedMarkAndReportReason(t *testing.T) {
 func TestPushedReceiptCannotFollowAReworkedCard(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"})
 	pr := w.s.Work.Placed("s1-1")
 	pr.Col = Merging
 	pr.Fields["head"], pr.Fields["attempt"] = "head-a", "1"
@@ -194,7 +194,7 @@ func TestShownStreamStateIsClosedWhileACardIsOpen(t *testing.T) {
 	assert.Equal(t, "", ShownStreamState(nil, 1))
 
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}, Who: "coordinator"})
 	w.s.StreamCtl("s1").Fields["state"] = StreamLanded
 	v := StreamsOf(w.s, StreamsReq{})
 	require.Len(t, v.Streams, 1)

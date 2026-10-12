@@ -34,20 +34,20 @@ func TestTheTierOnLineOneIsReadInBothForms(t *testing.T) {
 func TestAddStoresTheTierLineOneNamesOrItsStreamsDefault(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	p := w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "RESULT: s1-1 sha=000000000000 tier: heavy\n\nThe task."}}}))
+	p := w.admit(AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "RESULT: s1-1 sha=000000000000 tier: heavy\n\nThe task."}}})
 	assert.Equal(t, cardhdr.RouteHeavy, w.s.DealTier(w.s.Work.Card("s1-1")), "stored with the tier line 1 names: its deal draws it")
 	require.NotEmpty(t, p.Units)
 	assert.Contains(t, p.Units[0].Moved, "tier=heavy", "add says the tier it stored")
 	_, ceiling := CardTiers(w.s.Work.Card("s1-1"))
 	assert.Equal(t, cardhdr.RouteHeavy, ceiling)
 
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-2", Brief: "RESULT: s1-2 sha=000000000000\n\nThe task."}}}))
+	w.admit(AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-2", Brief: "RESULT: s1-2 sha=000000000000\n\nThe task."}}})
 	assert.Equal(t, cardhdr.RouteFlash, w.s.DealTier(w.s.Work.Card("s1-2")), "no tier and no default: flash, the start")
 
 	ctl := w.s.Merge.Card(CtlID("s1"))
 	require.NotNil(t, ctl)
 	ctl.Fields[FieldDefaultTier] = cardhdr.RoutePro
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-3", Brief: "RESULT: s1-3 sha=000000000000\n\nThe task."}}}))
+	w.admit(AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-3", Brief: "RESULT: s1-3 sha=000000000000\n\nThe task."}}})
 	assert.Equal(t, cardhdr.RoutePro, w.s.DealTier(w.s.Work.Card("s1-3")), "the stream's default tier")
 }
 
@@ -61,7 +61,7 @@ func TestAHeavyCardsFirstDealDrawsAHeavyRoute(t *testing.T) {
 		{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true, Deadline: 600},
 		{Name: "heavy-a", Tier: cardhdr.RouteHeavy, Provider: "p", Model: "h", Enabled: true, Deadline: 600},
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "RESULT: s1-1 sha=000000000000 tier: heavy\n\nThe task."}}}))
+	w.admit(AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "RESULT: s1-1 sha=000000000000 tier: heavy\n\nThe task."}}})
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 	wc := w.s.Fleet.Card(WorkCardID("s1-1", 1))
 	require.NotNil(t, wc)
@@ -74,7 +74,7 @@ func TestAHeavyCardsFirstDealDrawsAHeavyRoute(t *testing.T) {
 func TestABriefWhoseLineOneNamesAStrongerTierRaisesItsTierNow(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "c: the work (s1) tier: flash\n\nThe task."}}}))
+	w.admit(AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: "c: the work (s1) tier: flash\n\nThe task."}}})
 	w.s.Work.Card("s1-1").Fields[FieldTierNow] = cardhdr.RouteFlash // dealt on flash before
 
 	p := w.must(Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "s1-1", Brief: "c: the work (s1) tier: heavy\n\nThe task."}}, Who: "coordinator"}))

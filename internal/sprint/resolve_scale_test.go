@@ -13,10 +13,10 @@ import (
 func resolveWorld(t testing.TB, n, open int) *Snapshot {
 	w := newWorld(t, "reader-a", "reader-b")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: n}))
+	w.admit(AddReq{Stream: "s1", Count: n})
 	last := fmt.Sprintf("s1-%d", n)
-	w.must(Add(w.s, AddReq{Stream: "s2", Count: n, Needs: []string{last}}))
-	w.must(Add(w.s, AddReq{Stream: "s3", Count: n, Needs: []string{last}}))
+	w.admit(AddReq{Stream: "s2", Count: n, Needs: []string{last}})
+	w.admit(AddReq{Stream: "s3", Count: n, Needs: []string{last}})
 	for i := 0; i < open; i++ {
 		id := fmt.Sprintf("s1-%d", i%n+1)
 		o := judgment(NBlocked, "s1", t0, 0, id)

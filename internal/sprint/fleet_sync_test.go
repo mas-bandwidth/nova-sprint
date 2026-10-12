@@ -69,7 +69,7 @@ func TestASyncAddedMemberComesUpOnlyAfterItsProbe(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	w.admit(AddReq{Stream: "s1", Count: 2})
 	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
 		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", DefaultWidth}},
 		Machines: []string{"m1", "m9"}}))
@@ -90,7 +90,7 @@ func TestFleetUpASyncAddedMemberNeedsItsProbe(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	w.admit(AddReq{Stream: "s1", Count: 2})
 	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
 		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", 3}},
 		Machines: []string{"m1", "m9"}}))
@@ -232,7 +232,7 @@ func TestALiveFinishedCardKeepsAMemberWithNoMachineRow(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
+	w.admit(AddReq{Stream: "s1", Count: 1})
 	w.must(Deal(w.s, DealReq{}))
 	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1")}))
 	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: "tests red"}))

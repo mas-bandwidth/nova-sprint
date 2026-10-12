@@ -18,9 +18,9 @@ import (
 func recutWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"old", "other"}, Brief: proBrief, Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"dep1"}, Needs: []string{"old"}, Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"dep2"}, Needs: []string{"old", "other"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"old", "other"}, Brief: proBrief, Who: "coordinator"})
+	w.admit(AddReq{Stream: "s2", IDs: []string{"dep1"}, Needs: []string{"old"}, Who: "coordinator"})
+	w.admit(AddReq{Stream: "s2", IDs: []string{"dep2"}, Needs: []string{"old", "other"}, Who: "coordinator"})
 	w.clean("recut world")
 	return w
 }
@@ -71,8 +71,8 @@ func TestRecutIsRefusedWholeWhenItChangesNothingOrCannotHold(t *testing.T) {
 	t.Parallel()
 	w := recutWorld(t)
 	w.must(Recut(w.s, RecutReq{ID: "other", Tier: "pro", Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true, Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "s3", IDs: []string{"done"}, Who: "coordinator"}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"stop"}, Sentinel: true, Who: "coordinator"})
+	w.admit(AddReq{Stream: "s3", IDs: []string{"done"}, Who: "coordinator"})
 	w.place(w.s.Work, "done", "s3", Landed)
 	for _, tc := range []struct {
 		name string

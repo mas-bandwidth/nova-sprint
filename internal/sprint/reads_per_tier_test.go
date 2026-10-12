@@ -46,8 +46,8 @@ func tierWorld(t *testing.T) *world {
 		w.s.Routes = append(w.s.Routes, rt)
 	}
 	readersReadEveryTier(w) // a fleet row reads flash unless it says more (fleetReadsFlashOnly)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}}))
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-2"}, Brief: proBrief}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}})
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-2"}, Brief: proBrief})
 	// on pro, as the machine's escalation leaves it: every card's first deal is on flash
 	// (flash first, route.go tierLadder)
 	w.s.Work.Card("s1-2").Fields[FieldTierNow] = "pro"

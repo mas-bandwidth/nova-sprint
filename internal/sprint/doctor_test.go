@@ -80,7 +80,7 @@ func lines(cs []DoctorCheck) string {
 func TestDoctorHealthyTwinIsAllOK(t *testing.T) {
 	t.Parallel()
 	w := doctorWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	w.admit(AddReq{Stream: "s1", Count: 2})
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1", "s1-2"}}}))
 	w.tick(5 * time.Minute)
 	in := healthyInput(w)
@@ -105,7 +105,7 @@ func TestDoctorReadyNotDealtNamesTheDealsReason(t *testing.T) {
 	t.Parallel()
 	w := doctorWorld(t)
 	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: 600}}
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 3}))
+	w.admit(AddReq{Stream: "s1", Count: 3})
 	w.tick(2 * time.Minute)
 	cs := DoctorReadyNotDealt(healthyInput(w))
 	fails := failsOn(cs, CheckReadyNotDealt)
@@ -129,7 +129,7 @@ func TestDoctorRoutesPerTierFailsATierNoMemberCanDraw(t *testing.T) {
 	t.Parallel()
 	w := doctorWorld(t)
 	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: 600}}
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	w.admit(AddReq{Stream: "s1", Count: 2})
 	cs := DoctorRoutesPerTier(healthyInput(w))
 	fails := failsOn(cs, CheckRoutesPerTier)
 	require.Len(t, fails, 1, lines(cs))
@@ -233,7 +233,7 @@ func TestDoctorMemberEnvFailsAMissingToolAndNoPushCredential(t *testing.T) {
 func TestDoctorLanderLoopFailsARefusedHeadAcceptedAgain(t *testing.T) {
 	t.Parallel()
 	w := doctorWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
+	w.admit(AddReq{Stream: "s1", Count: 1})
 	head := strings.Repeat("a1", 20)
 	c := w.s.Work.Card("s1-1")
 	require.NotNil(t, c)

@@ -36,7 +36,7 @@ func TestAZeroLandingRouteGetsAFloorShareOfTheDeal(t *testing.T) {
 	for i := range cards {
 		cards[i] = CardAdd{ID: fmt.Sprintf("c%03d", i), Brief: fmt.Sprintf("c: the work tier: flash\nThe task of card %d.\n", i)}
 	}
-	w.must(Add(s, AddReq{Stream: "s1", Cards: cards}))
+	w.admit(AddReq{Stream: "s1", Cards: cards})
 	require.Equal(t, 100, len(s.Work.Column(Ready)), "100 ready flash primaries")
 
 	plan, _ := TickDeal(s, TickReq{})

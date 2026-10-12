@@ -15,8 +15,8 @@ var widthMembers = []string{"m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"}
 func widthFleet(t *testing.T, width int) *world {
 	t.Helper()
 	w := fleetWorld(t, 50, width, widthMembers...)
-	w.must(Add(w.s, AddReq{Stream: "s2", Count: 50}))
-	w.must(Add(w.s, AddReq{Stream: "s3", Count: 50}))
+	w.admit(AddReq{Stream: "s2", Count: 50})
+	w.admit(AddReq{Stream: "s3", Count: 50})
 	w.preparePlanned()
 	return w
 }
@@ -91,7 +91,7 @@ func TestTickDealFillsTheFleetToDealAheadTimesWidth(t *testing.T) {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 64}))
 	}
 	for _, st := range []string{"s1", "s2", "s3"} {
-		w.must(Add(w.s, AddReq{Stream: st, Count: 400}))
+		w.admit(AddReq{Stream: st, Count: 400})
 	}
 	w.preparePlanned()
 	p, due := TickDeal(w.s, TickReq{})

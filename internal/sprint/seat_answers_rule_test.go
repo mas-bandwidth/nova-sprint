@@ -17,7 +17,7 @@ func noRouteWorld(t *testing.T, tier string, routes []Route, fields map[string]s
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2}))
 	w.s.Routes = routes
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
+	w.admit(AddReq{Stream: "s1", Count: 1})
 	for k, v := range fields {
 		w.s.Work.Card("s1-1").Fields[k] = v
 	}

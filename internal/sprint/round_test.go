@@ -24,7 +24,7 @@ func fleetWorld(t *testing.T, primaries, width int, members ...string) *world {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: width}))
 	}
 	if primaries > 0 {
-		w.must(Add(w.s, AddReq{Stream: "s1", Count: primaries}))
+		w.admit(AddReq{Stream: "s1", Count: primaries})
 		w.preparePlanned()
 	}
 	return w
@@ -90,7 +90,7 @@ func eightIdle(t *testing.T, readers ...string) *world {
 	for i := 1; i <= 8; i++ {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: fmt.Sprintf("m%d", i)}))
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 30}))
+	w.admit(AddReq{Stream: "s1", Count: 30})
 	return w
 }
 
@@ -161,7 +161,7 @@ func TestTheTickDealGoesRoundTheFleet(t *testing.T) {
 	members := w.s.Fleet.Rows()
 	dealt := map[string]int{}
 	for i := 1; i <= 24; i++ {
-		w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
+		w.admit(AddReq{Stream: "s1", Count: 1})
 		w.preparePlanned()
 		w.part(TickDeal, TickReq{})
 		cs := w.s.Fleet.Column(Ready)
@@ -186,7 +186,7 @@ func TestTheDealSkipsAFullMemberAndTheQueueDoesNotChoose(t *testing.T) {
 	for i, m := range []string{"m1", "m2", "m3"} {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: []int{1, 1, 2}[i]}))
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 8}))
+	w.admit(AddReq{Stream: "s1", Count: 8})
 	w.preparePlanned()
 	deal := func(id string) string {
 		t.Helper()
@@ -226,7 +226,7 @@ func TestTheDealSkipsADownMemberEvenly(t *testing.T) {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
 	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m2"}))
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 9}))
+	w.admit(AddReq{Stream: "s1", Count: 9})
 	var got []string
 	for i := 1; i <= 9; i++ {
 		id := fmt.Sprintf("s1-%d", i)
@@ -301,7 +301,7 @@ func TestTheDealGoesRoundTheFleetAcrossStreams(t *testing.T) {
 	}
 	streams := []string{"s1", "s2", "s3"}
 	for _, st := range streams {
-		w.must(Add(w.s, AddReq{Stream: st, Count: 8}))
+		w.admit(AddReq{Stream: st, Count: 8})
 	}
 	members := w.s.Fleet.Rows()
 	dealt := map[string]int{}
@@ -323,7 +323,7 @@ func TestTheTickDealGoesRoundTheFleetOverTenStreams(t *testing.T) {
 	t.Parallel()
 	w := fleetWorld(t, 0, 0, "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8")
 	for i := 1; i <= 10; i++ {
-		w.must(Add(w.s, AddReq{Stream: fmt.Sprintf("s%02d", i), Count: 3}))
+		w.admit(AddReq{Stream: fmt.Sprintf("s%02d", i), Count: 3})
 	}
 	members := w.s.Fleet.Rows()
 	dealt := map[string]int{}
@@ -361,7 +361,7 @@ func TestTheAskGoesRoundTheReadersAcrossStreams(t *testing.T) {
 		ids = append(ids, fmt.Sprintf("%s-%d", streams[i%3], i/3+1))
 	}
 	for _, st := range streams {
-		w.must(Add(w.s, AddReq{Brief: proBrief, Stream: st, Count: 6}))
+		w.admit(AddReq{Brief: proBrief, Stream: st, Count: 6})
 	}
 	for _, id := range ids {
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{id}}}))

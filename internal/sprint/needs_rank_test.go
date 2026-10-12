@@ -12,11 +12,11 @@ import (
 // own that need it (transitively: each needs the one before it, the first the root).
 func blockedBy(w *world, root string, n int) {
 	w.t.Helper()
-	w.must(Add(w.s, AddReq{Stream: "roots", IDs: []string{root}}))
+	w.admit(AddReq{Stream: "roots", IDs: []string{root}})
 	prev := root
 	for i := 1; i <= n; i++ {
 		id := root + "-b" + itoa(i)
-		w.must(Add(w.s, AddReq{Stream: "behind-" + root, IDs: []string{id}, Needs: []string{prev}}))
+		w.admit(AddReq{Stream: "behind-" + root, IDs: []string{id}, Needs: []string{prev}})
 		prev = id
 	}
 }
@@ -64,13 +64,13 @@ func TestNeedsRanksDecisionsByCardsBlockedBehindThem(t *testing.T) {
 	t.Run("held sentinels, stopped streams and held cards count through needs and stream order", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t)
-		w.must(Add(w.s, AddReq{Stream: "c", IDs: []string{"gate"}, Sentinel: true, Held: true}))
-		w.must(Add(w.s, AddReq{Stream: "c", IDs: []string{"c1", "c2", "c3"}}))
-		w.must(Add(w.s, AddReq{Stream: "d", IDs: []string{"d1"}, Needs: []string{"c1"}}))
-		w.must(Add(w.s, AddReq{Stream: "e", IDs: []string{"e1", "e2"}}))
-		w.must(Add(w.s, AddReq{Stream: "f", IDs: []string{"f1"}, Needs: []string{"e1"}}))
-		w.must(Add(w.s, AddReq{Stream: "g", IDs: []string{"h1"}, Held: true}))
-		w.must(Add(w.s, AddReq{Stream: "g2", IDs: []string{"h2", "h3"}, Needs: []string{"h1"}}))
+		w.admit(AddReq{Stream: "c", IDs: []string{"gate"}, Sentinel: true, Held: true})
+		w.admit(AddReq{Stream: "c", IDs: []string{"c1", "c2", "c3"}})
+		w.admit(AddReq{Stream: "d", IDs: []string{"d1"}, Needs: []string{"c1"}})
+		w.admit(AddReq{Stream: "e", IDs: []string{"e1", "e2"}})
+		w.admit(AddReq{Stream: "f", IDs: []string{"f1"}, Needs: []string{"e1"}})
+		w.admit(AddReq{Stream: "g", IDs: []string{"h1"}, Held: true})
+		w.admit(AddReq{Stream: "g2", IDs: []string{"h2", "h3"}, Needs: []string{"h1"}})
 		ctl := w.s.StreamCtl("e")
 		ctl.Fields["state"], ctl.Fields["cause"], ctl.Fields["since"] = StreamStopped, "conflict", stamp(t0.Add(-time.Hour))
 		got := NeedsRank(w.s)

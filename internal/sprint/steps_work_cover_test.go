@@ -48,7 +48,7 @@ func TestStepsWorkCoverAddEach(t *testing.T) {
 func TestStepsWorkCoverMissingNeeds(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}})
 	w.s.Work.Put(&Card{ID: "old-1", Fields: map[string]string{"outcome": "dropped"}})
 	for _, tc := range []struct {
 		name  string
@@ -73,7 +73,7 @@ func TestStepsWorkCoverMissingNeeds(t *testing.T) {
 func TestStepsWorkCoverResolveExtras(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}}))
+	w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}})
 	w.s.Work.Put(&Card{ID: "old-1", Fields: map[string]string{"outcome": "dropped"}})
 	w.s.Work.Put(&Card{ID: "p1", Row: "s1", Col: Waiting, Fields: map[string]string{"kind": "primary", "needs": "s1-1,old-1,ghost"}})
 	w.s.Work.Put(&Card{ID: "p2", Row: "s1", Col: Waiting, Fields: map[string]string{"kind": "primary", "needs": "ghost,old-1"}})
@@ -96,7 +96,7 @@ func TestStepsWorkCoverEscalate(t *testing.T) {
 		t.Helper()
 		w := newWorld(t)
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-		w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"s1-1"}}))
+		w.admit(AddReq{Stream: "s1", IDs: []string{"s1-1"}})
 		c := w.s.Work.Card("s1-1")
 		c.Fields["attempt"] = "3"
 		prev := &Card{ID: "s1-1.w3", Row: "m1", Col: Withdrawn, Fields: map[string]string{

@@ -111,7 +111,7 @@ func TestTheReworkAvoidsTheMemberThatFailedItWhileAnotherHasRoom(t *testing.T) {
 		for _, m := range []string{"m1", "m2"} { // each at width 1: a room of DealAhead times it, 2 (width.go)
 			w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 1}))
 		}
-		w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
+		w.admit(AddReq{Stream: "s1", Count: 1})
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})) // m1
 		w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1")}))
 		w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: "red"}))
@@ -137,7 +137,7 @@ func TestTheDealSkipsAFreeLaneStagingRefuser(t *testing.T) {
 	for _, m := range []string{"m1", "m2"} { // each at width 1: a room of DealAhead times it, 2
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 1}))
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
+	w.admit(AddReq{Stream: "s1", Count: 1})
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})) // m1
 	wc := w.s.Fleet.Card("s1-1.w1")
 	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{wc.ID}}, Gens: gensOf(w.s, wc.ID)}))
@@ -179,7 +179,7 @@ func TestADownMembersCardsGoRoundTheFleet(t *testing.T) {
 	for _, m := range members {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 6}))
+	w.admit(AddReq{Stream: "s1", Count: 6})
 	for i := 1; i <= 6; i++ {
 		id := fmt.Sprintf("s1-%d", i)
 		w.s.Fleet.SetProps(map[string]string{PropDealIndex: "m8"})
@@ -247,7 +247,7 @@ func TestTheLevelGoesRoundTheFleet(t *testing.T) {
 	for _, m := range members[1:] {
 		w.must(FleetStep(w.s, FleetReq{Op: "down", Member: m}))
 	}
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 12}))
+	w.admit(AddReq{Stream: "s1", Count: 12})
 	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 12}})) // m1 alone: every card goes to it (12 is within its width)
 	upAll(w.s)
 	w.must(FleetStep(w.s, FleetReq{Op: "level"}))

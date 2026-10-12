@@ -57,7 +57,7 @@ func priorityWorld(t *testing.T, working, flashReads, frontierReads, ready int) 
 		cards = append(cards, CardAdd{ID: "s2-" + itoa(i+1), Brief: friendBrief("only friend amy")})
 	}
 	if ready > 0 {
-		w.must(Add(w.s, AddReq{Stream: "s2", Cards: cards}))
+		w.admit(AddReq{Stream: "s2", Cards: cards})
 		w.preparePlanned()
 	}
 	return w, amy
@@ -207,8 +207,8 @@ func TestLowFillsOnlyAnIdleLane(t *testing.T) {
 		t.Parallel()
 		w, amy := priorityWorld(t, 5, 1, 0, 0)
 		// the low cards are admitted first, so work order alone would deal them first
-		w.must(Add(w.s, AddReq{Stream: "s2", Cards: []CardAdd{low("s2-1"), low("s2-2")}}))
-		w.must(Add(w.s, AddReq{Stream: "s2", Cards: []CardAdd{{ID: "s2-3", Brief: friendBrief("only friend amy")}}}))
+		w.admit(AddReq{Stream: "s2", Cards: []CardAdd{low("s2-1"), low("s2-2")}})
+		w.admit(AddReq{Stream: "s2", Cards: []CardAdd{{ID: "s2-3", Brief: friendBrief("only friend amy")}}})
 		require.Equal(t, PriorityLow, w.s.Work.Card("s2-1").F(FieldPriority), "the brief's PRIORITY line seeds it")
 		tickDealAndAsk(t, w, amy)
 		assert.Equal(t, []string{"s1-1"}, friendReads(w, "amy"), "the read first")
@@ -226,11 +226,11 @@ func TestLowFillsOnlyAnIdleLane(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a")
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 1}))
-		w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{
+		w.admit(AddReq{Stream: "s1", Cards: []CardAdd{
 			{ID: "s1-1", Brief: "c: a low card\nPRIORITY: low\n\nThe task."},
 			{ID: "s1-2", Brief: "c: a normal card\n\nThe task."},
 			{ID: "s1-3", Brief: "c: a normal card\n\nThe task."},
-		}}))
+		}})
 		w.part(TickDeal, TickReq{})
 		// width 1 holds DealAhead (2) cards: both normal cards, the low card left ready
 		assert.Equal(t, Working, w.s.StateOf("s1-2"))

@@ -78,7 +78,7 @@ func TestTheDealSendsAClaudeCardToAMemberWithClaude(t *testing.T) {
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2, Harnesses: "claude"}))
 	assert.Equal(t, "claude", w.s.MemberCtl("m2").F(FieldHarnesses), "fleet up --harnesses names it on the control card")
 	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: int(10 * time.Minute / time.Second)}}
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 3}))
+	w.admit(AddReq{Stream: "s1", Count: 3})
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1", "s1-2", "s1-3"}}}))
 	for _, id := range []string{"s1-1", "s1-2", "s1-3"} {
 		wc := w.s.Fleet.Card(WorkCardID(id, 1))
@@ -98,7 +98,7 @@ func TestADownedMembersClaudeCardsGoOnlyToMembersWithClaude(t *testing.T) {
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 4, Harnesses: "claude"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m3", Width: 4, Harnesses: "claude"}))
 	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: int(10 * time.Minute / time.Second)}}
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 4}))
+	w.admit(AddReq{Stream: "s1", Count: 4})
 	ids := []string{"s1-1", "s1-2", "s1-3", "s1-4"}
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: ids}}))
 	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m2"}))
@@ -120,7 +120,7 @@ func TestATierNoMemberUpCanLaunchIsJudged(t *testing.T) {
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2}))
 	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: int(10 * time.Minute / time.Second)}}
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	w.admit(AddReq{Stream: "s1", Count: 2})
 	p, _ := TickDeal(w.s, TickReq{})
 	w.must(p)
 	assert.Nil(t, w.s.Fleet.Card(WorkCardID("s1-1", 1)), "no member up can launch it: dealt nowhere")
@@ -199,7 +199,7 @@ func TestACardItsLaunchersRefusedAtStagingIsJudged(t *testing.T) {
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2, Harnesses: "claude"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 2}))
 	w.s.Routes = []Route{{Name: "flash-claude", Tier: cardhdr.RouteFlash, Provider: "subscription-claude", Model: "opus", Harness: "claude", Enabled: true, Deadline: int(10 * time.Minute / time.Second)}}
-	w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
+	w.admit(AddReq{Stream: "s1", Count: 1})
 	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
 	require.Equal(t, "m1", w.s.Fleet.Card("s1-1.w1").Row)
 	takeCard(w, "s1-1.w1")

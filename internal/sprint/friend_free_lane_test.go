@@ -28,7 +28,7 @@ func TestFriendWithNoFreeLaneIsNotDealt(t *testing.T) {
 	// a machine up that draws flash: m1 and m2 are up at friendWorld, and a flash route
 	// is enabled, so a machine can start the card at once
 	w.s.Routes = []Route{{Name: "small", Tier: cardhdr.RouteFlash, Provider: "p", Model: "small", Enabled: true}}
-	w.must(Add(w.s, AddReq{Stream: "s2", Cards: []CardAdd{{ID: "s2-1", Brief: friendBrief("friend")}}}))
+	w.admit(AddReq{Stream: "s2", Cards: []CardAdd{{ID: "s2-1", Brief: friendBrief("friend")}}})
 
 	dealWith(w, amy)
 	wc := w.s.Fleet.Card(WorkCardID("s2-1", 1))

@@ -17,7 +17,7 @@ import (
 func needsWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, "reader-a")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "one", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "one", Who: "coordinator"})
 	return w
 }
 
@@ -27,7 +27,7 @@ func needsWorld(t *testing.T) *world {
 func TestABriefEditRecordsANeedNotLandedAndReadyWaits(t *testing.T) {
 	t.Parallel()
 	w := needsWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Brief: "two", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-2"}, Brief: "two", Who: "coordinator"})
 	require.Equal(t, Ready, w.s.Work.Placed("a-2").Col, "a-2 starts ready")
 
 	w.must(Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "a-2", Brief: "two, reworded\nDEPENDS-ON: a-1", Needs: []string{"a-1"}}}, Who: "coordinator"}))
@@ -44,8 +44,8 @@ func TestABriefEditNamingLandedNeedsLeavesTheCardReady(t *testing.T) {
 	t.Parallel()
 	w := needsWorld(t)
 	w.place(w.s.Work, "a-1", "a", Landed)
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-3"}, Brief: "three", Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-3"}, Brief: "two", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-3"}, Brief: "three", Who: "coordinator"})
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-3"}, Brief: "two", Who: "coordinator"})
 	require.Equal(t, Waiting, w.s.Work.Placed("a-2").Col, "a-2 starts waiting on a-3")
 
 	// the edit re-points a-2 at a-1, which has landed: --needs-from-brief takes the
@@ -57,7 +57,7 @@ func TestABriefEditNamingLandedNeedsLeavesTheCardReady(t *testing.T) {
 	assert.Equal(t, "a-1", c.F("needs"))
 
 	// a ready card whose edit names a landed need stays ready
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-4"}, Brief: "four", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-4"}, Brief: "four", Who: "coordinator"})
 	require.Equal(t, Ready, w.s.Work.Placed("a-4").Col)
 	w.must(Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "a-4", Brief: "four\nDEPENDS-ON: a-1", Needs: []string{"a-1"}}}, Who: "coordinator"}))
 	c = w.s.Work.Placed("a-4")
@@ -72,7 +72,7 @@ func TestAReadyCardWithAnUnlandedNeedIsNeverDealt(t *testing.T) {
 	t.Parallel()
 	w := needsWorld(t)
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 4}))
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-1"}, Brief: "two", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-1"}, Brief: "two", Who: "coordinator"})
 	// the corrupt row: ready with a recorded need that has not landed
 	w.place(w.s.Work, "a-2", "a", Ready)
 	require.Equal(t, Ready, w.s.Work.Placed("a-2").Col)
@@ -99,7 +99,7 @@ func TestAReadyCardWithAnUnlandedNeedIsNeverDealt(t *testing.T) {
 func TestABriefEditDroppingANeedClearsIt(t *testing.T) {
 	t.Parallel()
 	w := needsWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-1"}, Brief: "two", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-1"}, Brief: "two", Who: "coordinator"})
 	require.Equal(t, Waiting, w.s.Work.Placed("a-2").Col, "a-2 starts waiting on a-1")
 	require.Equal(t, "a-1", w.s.Work.Placed("a-2").F("needs"))
 
@@ -117,7 +117,7 @@ func TestABriefEditDroppingANeedClearsIt(t *testing.T) {
 func TestABriefEditWithoutANeedsChangeLeavesThem(t *testing.T) {
 	t.Parallel()
 	w := needsWorld(t)
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-1"}, Brief: "two", Who: "coordinator"}))
+	w.admit(AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-1"}, Brief: "two", Who: "coordinator"})
 	w.must(Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "a-2", Brief: "two, reworded\nDEPENDS-ON: a-1", Needs: []string{"a-1"}}}, Who: "coordinator"}))
 	c := w.s.Work.Placed("a-2")
 	assert.Equal(t, "a-1", c.F("needs"), "the needs did not change")

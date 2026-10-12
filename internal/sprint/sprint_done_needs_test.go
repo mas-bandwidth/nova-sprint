@@ -16,7 +16,7 @@ func TestSprintDoneOutlastsAnAddOfNoCardAndIsNeverOverdue(t *testing.T) {
 	w := setup(t, 1)
 	accepted(w, "s1-1")
 	w.must(MergeStep(w.s, MergeReq{Stream: "s1"}))
-	w.must(Add(w.s, AddReq{Stream: "s2"}))
+	w.admit(AddReq{Stream: "s2"})
 	p, _ := TickDone(w.s, TickReq{})
 	require.NotNil(t, w.s.StreamCtl("s2"), "an add that only opens a stream: s2 %v, done %+v", w.s.StreamCtl("s2") != nil, p)
 	require.Len(t, p.Notes, 1, "an add that only opens a stream: s2 %v, done %+v", w.s.StreamCtl("s2") != nil, p)
@@ -31,7 +31,7 @@ func TestSprintDoneOutlastsAnAddOfNoCardAndIsNeverOverdue(t *testing.T) {
 		}
 	}
 	require.Empty(t, w.s.Open, "the sprint done opened a judgment: %+v", w.s.Open)
-	w.must(Add(w.s, AddReq{Stream: "s2", Count: 1}))
+	w.admit(AddReq{Stream: "s2", Count: 1})
 	p, _ = TickDone(w.s, TickReq{})
 	require.True(t, p.Empty(), "an add of a card left the sprint done")
 }
@@ -61,7 +61,7 @@ func TestAnEmptySprintIsNotDone(t *testing.T) {
 func TestAckWaivesOnlyTheNeedsItsJudgmentNames(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 2)
-	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1", "s1-2"}}))
+	w.admit(AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1", "s1-2"}})
 	w.seedDroppedNeed("s1-1")
 	w.must(Resolve(w.s, ResolveReq{}))
 	w.seedDroppedNeed("s1-2")
