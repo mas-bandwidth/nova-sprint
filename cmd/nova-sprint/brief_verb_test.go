@@ -162,29 +162,42 @@ func TestBriefOnAWorkingCardIsAccepted(t *testing.T) {
 	assert.Contains(t, ta.primary("a-1").F("why"), "brief edited in place")
 }
 
-// brief <id> --tier <t> without a brief edit requires a non-blank --reason (docs/SPEC-SPRINT.md
-// section 11, the tier verb): a pin with no why cannot be judged later, so none, empty or blanks
-// only is refused (a usage refusal, exit 2) and writes nothing; with a reason the card is pinned
-// and the record names the reason. A brief edit that does not change the tier needs no reason.
-func TestBriefTierRequiresAReasonWithoutABriefEdit(t *testing.T) {
+// The tier verb (docs/SPEC-SPRINT.md section 11) requires a non-blank --reason when a
+// re-tier carries no brief edit, whatever spelling sets the pin (brief <id> --tier <t> or
+// tier <id> --set <t>): a pin with no why cannot be judged later, so none, empty or blanks
+// only is refused (a usage refusal, exit 2) and writes nothing; with a reason the card is
+// pinned and the record names the reason. A brief edit that does not change the tier needs
+// no reason (TestBriefTierWithBriefFileRequiresAReason).
+func TestTheTierVerbRequiresAReasonWithoutABriefEdit(t *testing.T) {
 	t.Parallel()
-	ta := newTestApp(t)
-	ta.ok("init --readers reader-a,reader-b --members m1")
-	ta.ok("add --one --stream a a-1 --brief-file " + writeHeaderBrief(t, t.TempDir(), "a-1", "-", "internal/a1.go"))
-	for _, line := range []string{
-		"brief a-1 --tier heavy",
-		"brief a-1 --tier heavy --reason ''",
-		"brief a-1 --tier heavy --reason '   '",
+	for _, verb := range []struct {
+		name string
+		set  string // the verb and its pin, e.g. "brief a-1 --tier heavy"
+	}{
+		{"TestBriefTierRequiresAReasonWithoutABriefEdit", "brief a-1 --tier heavy"},
+		{"TestTierRefusesAReTierWithoutAReason", "tier a-1 --set heavy"},
 	} {
-		code, _, errs := ta.do(line)
-		assert.Equal(t, 2, code, line)
-		assert.Contains(t, errs, "--reason", line)
-	}
-	assert.Equal(t, "", ta.primary("a-1").F(sprint.FieldTier), "a refused re-tier writes nothing")
+		t.Run(verb.name, func(t *testing.T) {
+			t.Parallel()
+			ta := newTestApp(t)
+			ta.ok("init --readers reader-a,reader-b --members m1")
+			ta.ok("add --one --stream a a-1 --brief-file " + writeHeaderBrief(t, t.TempDir(), "a-1", "-", "internal/a1.go"))
+			for _, line := range []string{
+				verb.set,
+				verb.set + " --reason ''",
+				verb.set + " --reason '   '",
+			} {
+				code, _, errs := ta.do(line)
+				assert.Equal(t, 2, code, line)
+				assert.Contains(t, errs, "--reason", line)
+			}
+			assert.Equal(t, "", ta.primary("a-1").F(sprint.FieldTier), "a refused re-tier writes nothing")
 
-	out := ta.ok("brief a-1 --tier heavy --reason 'a heavy card'")
-	assert.Contains(t, out, "reason: a heavy card")
-	assert.Equal(t, "heavy", ta.primary("a-1").F(sprint.FieldTier))
+			out := ta.ok(verb.set + " --reason 'a heavy card'")
+			assert.Contains(t, out, "reason: a heavy card")
+			assert.Equal(t, "heavy", ta.primary("a-1").F(sprint.FieldTier))
+		})
+	}
 }
 
 // brief <id> --tier <t> --brief-file <path> requires a non-blank --reason (the same rule

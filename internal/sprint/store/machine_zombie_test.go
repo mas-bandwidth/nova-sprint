@@ -14,14 +14,28 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
-type logMem struct {
-	*Mem
+// logShared is the log state the zombie test's stores share: every apply in
+// the trial lands in one log, kept ordered by the mutex.
+type logShared struct {
 	mu  sync.Mutex
 	log []string
-	who string
 }
 
-func (l *logMem) add(s string) { l.mu.Lock(); l.log = append(l.log, s); l.mu.Unlock() }
+// logMem wraps a Mem so the test can see what the machine did. The varying
+// step is a field: who names the store, rev chooses the "rev" apply label over
+// "exp" (the two labels nova-sprint logs for the same field).
+type logMem struct {
+	*Mem
+	*logShared
+	who string
+	rev bool
+}
+
+func (l *logMem) add(s string) {
+	l.mu.Lock()
+	l.logShared.log = append(l.logShared.log, s)
+	l.mu.Unlock()
+}
 
 func (l *logMem) Apply(ctx context.Context, m ntable.BatchManifest) (ntable.Receipt, error) {
 	r, err := l.Mem.Apply(ctx, m)
@@ -31,7 +45,11 @@ func (l *logMem) Apply(ctx context.Context, m ntable.BatchManifest) (ntable.Rece
 			ids = append(ids, e.ID)
 		}
 	}
-	l.add(fmt.Sprintf("%s apply %s %s rev %s -> %v err=%v replay=%v [%s]", l.who, m.Table, m.OperationID, m.ExpectedTableRevision, r.After, err, r.Replay, strings.Join(ids, " ")))
+	kind := "rev"
+	if !l.rev {
+		kind = "exp"
+	}
+	l.add(fmt.Sprintf("%s apply %s %s %s %s -> %v err=%v replay=%v [%s]", l.who, m.Table, m.OperationID, kind, m.ExpectedTableRevision, r.After, err, r.Replay, strings.Join(ids, " ")))
 	return r, err
 }
 func (l *logMem) Acquire(ctx context.Context, gen uint64, op OpRecord) (bool, error) {
@@ -50,50 +68,18 @@ func (l *logMem) Release(ctx context.Context, op OpRecord, commit bool) error {
 	return err
 }
 
-type tagMem struct {
-	*logMem
-	who string
-}
-
-func (t *tagMem) Apply(ctx context.Context, m ntable.BatchManifest) (ntable.Receipt, error) {
-	r, err := t.Mem.Apply(ctx, m)
-	var ids []string
-	for _, e := range m.Members {
-		if hasChanges(e) {
-			ids = append(ids, e.ID)
-		}
-	}
-	t.add(fmt.Sprintf("%s apply %s %s exp %s -> %v err=%v replay=%v [%s]", t.who, m.Table, m.OperationID, m.ExpectedTableRevision, r.After, err, r.Replay, strings.Join(ids, " ")))
-	return r, err
-}
-func (t *tagMem) Acquire(ctx context.Context, gen uint64, op OpRecord) (bool, error) {
-	ok, err := t.Mem.Acquire(ctx, gen, op)
-	t.add(fmt.Sprintf("%s acquire %s gen %d ok=%v", t.who, op.ID, gen, ok))
-	return ok, err
-}
-func (t *tagMem) Release(ctx context.Context, op OpRecord, commit bool) error {
-	had := t.Pending()
-	err := t.Mem.Release(ctx, op, commit)
-	hid := ""
-	if had != nil {
-		hid = had.ID
-	}
-	t.add(fmt.Sprintf("%s release %s commit=%v (fence held %s)", t.who, op.ID, commit, hid))
-	return err
-}
-
 func TestCRZombieWriter(t *testing.T) {
 	t.Parallel()
 	for trial := 0; trial < crScale.ZombieTrials; trial++ {
 		w := crSprint(t, uint64(trial+1))
 		h := w.h
 		h.startMachine()
-		lm := &logMem{Mem: h.m}
+		lm := &logShared{}
 		mk := func(who string) *Store {
-			return &Store{B: &tagMem{logMem: lm, who: who}, Names: h.st.Names, Actor: "machine", Now: h.st.Now, NewID: h.st.NewID, Sleep: func(time.Duration) {}}
+			return &Store{B: &logMem{Mem: h.m, logShared: lm, who: who}, Names: h.st.Names, Actor: "machine", Now: h.st.Now, NewID: h.st.NewID, Sleep: func(time.Duration) {}}
 		}
 		a, b := mk("A"), mk("B")
-		h.st.B = &tagMem{logMem: lm, who: "W"}
+		h.st.B = &logMem{Mem: h.m, logShared: lm, who: "W"}
 		var wg sync.WaitGroup
 		stop := make(chan struct{})
 		loop := func(st *Store) {

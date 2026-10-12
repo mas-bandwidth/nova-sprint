@@ -93,14 +93,7 @@ func TestEveryStreamLandsOnTheSprintBranchAndOnlyPromotionReachesDev(t *testing.
 
 	t.Run("the lander", func(t *testing.T) {
 		t.Parallel()
-		r := newLandRig(t)
-		for _, b := range []string{"dev", "sprint/s1"} {
-			r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/"+b)
-		}
-		r.git(r.worker, "fetch", "-q", "origin") // r.head starts the card from refs/remotes/origin/sprint/s1
-		r.ok("add --stream s1 --count 1 --one")
-		r.queued(map[string]string{"s1-1": r.head("s1-1", "sprint/s1", "a.txt", "a\n")}, "s1-1")
-		r.ok("stream set s1 --land-protected default") // queued marks every stream; s1 is an ordinary stream again
+		r := plainStreamRig(t)
 		dev := r.git(r.remote, "rev-parse", "dev")
 		for _, land := range []string{"land --repo-dir " + r.clone + " --base dev --dry-run", "land --repo-dir " + r.clone + " --base dev"} {
 			code, out, errs := r.do(land)

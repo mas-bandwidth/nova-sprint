@@ -28,7 +28,9 @@ type ClearResult struct {
 // STOPPED, then refuses only live work/read leases (SPEC-SPRINT section 14).
 // It finishes or abandons the old epoch's pending operation, then advances
 // the epoch once. All sprint state is keyed by epoch, so the new epoch starts
-// empty without restoring any of the old shape (the blank-slate clear design).
+// with none of the old work; its configuration, the fleet's members and the
+// readers, is restored from the old shape (restoreMembers), like the fleet's
+// members always were (the tabula-rasa-for-work clear design).
 // Nothing is deleted; the old epoch stays readable (At), and its writers are
 // refused as stale. The new epoch gets only its own STOPPED announcement
 // (tla/AttemptsEpochs.tla Clear).
@@ -116,10 +118,10 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 	if err := next.root.SettleEpoch(ctx, next.epoch); err != nil {
 		return res, err
 	}
-	// The fleet's members are not sprint state: their rows, widths and status
-	// survive a clear (the machines are still there); their holds, leases,
-	// stop records, alarms, streams and cards are the old epoch's and are left
-	// behind.
+	// The fleet's members and the readers are not sprint work: their rows,
+	// widths and status survive a clear (the machines and the readers are still
+	// there); their holds, leases, stop records, alarms, streams, cards and
+	// read cards are the old epoch's and are left behind.
 	if err := next.restoreMembers(ctx, old); err != nil {
 		return res, err
 	}
@@ -148,17 +150,35 @@ func placed(t *sprint.Table, except string) int {
 	return n
 }
 
-// restoreMembers carries the fleet's members across a clear: their rows,
-// widths, status and holds survive (the machines are still there, and a hold
-// is part of a member's state — the sync's mark on its own hold crosses a
-// clear). The members' work cards, and the old epoch's streams, readers,
-// reads, merges and open judgments, are left behind. It reads the members
-// from old, the old epoch frozen since the advance, and writes them at the
-// new one.
+// restoreMembers carries the sprint's configuration across a clear: the
+// readers' rows and the fleet's members with their rows, widths, status and
+// holds (the machines are still there, and a hold is part of a member's state
+// — the sync's mark on its own hold crosses a clear; a reader row is the
+// sprint's setting, not its work). The members' and readers' cards, and the
+// old epoch's streams, reads, merges and open judgments, are left behind. It
+// reads the shape from old, the old epoch frozen since the advance, and writes
+// it at the new one.
 func (st *Store) restoreMembers(ctx context.Context, old *sprint.Snapshot) error {
 	sh := sprint.ShapeOf(old)
 	sh.Streams = nil
-	sh.Readers = nil
+	if len(sh.Readers) > 0 {
+		table := st.Names.Table(sprint.Readers)
+		if err := st.B.RowsAdd(ctx, table, sh.Readers); err != nil {
+			return fmt.Errorf("the rows of the readers: %w", err)
+		}
+		if len(sh.ReaderTiers) > 0 {
+			if err := st.EnsureReaderTiers(ctx); err != nil {
+				return fmt.Errorf("the readers' tiers column: %w", err)
+			}
+			for rd, tiers := range sh.ReaderTiers {
+				if spot := strings.TrimSpace(tiers); spot != "" {
+					if err := st.B.RowSet(ctx, table, rd, map[string]string{sprint.ReaderTiers: spot}); err != nil {
+						return fmt.Errorf("the tiers of reader %s: %w", rd, err)
+					}
+				}
+			}
+		}
+	}
 	if len(sh.Members) > 0 {
 		if err := st.B.RowsAdd(ctx, st.Names.Table(sprint.Fleet), sh.Members); err != nil {
 			return fmt.Errorf("the rows of the fleet: %w", err)
@@ -190,12 +210,25 @@ func (st *Store) restore(ctx context.Context, from uint64) (*sprint.Snapshot, er
 		return nil, fmt.Errorf("reading epoch %d to restore its shape: %w", from, err)
 	}
 	sh := sprint.ShapeOf(snap)
+	readersTable := st.Names.Table(sprint.Readers)
 	for t, rows := range map[string][]string{sprint.Work: sh.Streams, sprint.Merge: sh.Streams, sprint.Readers: sh.Readers, sprint.Fleet: sh.Members} {
 		if len(rows) == 0 {
 			continue
 		}
 		if err := st.B.RowsAdd(ctx, st.Names.Table(t), rows); err != nil {
 			return nil, fmt.Errorf("the rows of %s: %w", st.Names.Table(t), err)
+		}
+	}
+	if len(sh.ReaderTiers) > 0 {
+		if err := st.EnsureReaderTiers(ctx); err != nil {
+			return nil, fmt.Errorf("the readers' tiers column: %w", err)
+		}
+		for rd, tiers := range sh.ReaderTiers {
+			if spot := strings.TrimSpace(tiers); spot != "" {
+				if err := st.B.RowSet(ctx, readersTable, rd, map[string]string{sprint.ReaderTiers: spot}); err != nil {
+					return nil, fmt.Errorf("the tiers of reader %s: %w", rd, err)
+				}
+			}
 		}
 	}
 	// an archived stream stays archived: its rows are hidden at the new epoch

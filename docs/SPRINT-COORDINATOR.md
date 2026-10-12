@@ -47,9 +47,9 @@ line the inbox prints for it, filled in; `nova-sprint inbox --open <id>` shows t
 
   1. Run as a Monitor (with `NOVA_SPRINT_SERVER` set): `nova-sprint hook --actor $NOVA_SPRINT_ACTOR`. Each line it
      prints is one event: `HOOK CHALLENGE <c>`, `PUSH <id> <judgment> session=<token>` with its text and session-bound acknowledgement command, `HOOK BYE`, `HOOK DROPPED`.
-  2. Answer each `HOOK CHALLENGE <c>` at once: `nova-sprint hook --prove <c> --actor $NOVA_SPRINT_ACTOR`. The server
-     challenges again every 10 minutes; an answer later than 5 minutes unhooks the seat (recorded gone, the owner
-     told).
+  2. Answer each `HOOK CHALLENGE <c>` at once: `nova-sprint hook --prove <c> --actor $NOVA_SPRINT_ACTOR`. The
+     challenge is asked once a connection, never again while it stays up; a hook lapses only when its stream ends,
+     or when no act at all, keepalive included, reaches the server for 15 minutes (recorded gone, the owner told).
   3. Read each `PUSH <id> <judgment> session=<token>` and run the acknowledgement command shown there, for example
      `nova-sprint hook --ack <id> --session <token> --actor $NOVA_SPRINT_ACTOR` (every id up to it). The token is
      specific to that live hook session. If the hook reconnects, read the replayed push line and use its current

@@ -38,7 +38,7 @@ func TestTheHookGateRefusesEverythingButALiveProvenHook(t *testing.T) {
 	// live and proven: it runs, up to the last instant of its bound
 	assert.Empty(t, HookGate(proven, true, "rowan", now))
 	assert.Empty(t, HookGate(proven, true, "rowan", proven.Live))
-	assert.Equal(t, now.Add(-time.Minute).Add(HookEvery+HookAnswerBound), proven.Live)
+	assert.Equal(t, now.Add(-time.Minute).Add(HookSilentBound), proven.Live)
 
 	// a push delivered and not acknowledged blocks once past its bound, naming it
 	// (AckedOrBlocking)

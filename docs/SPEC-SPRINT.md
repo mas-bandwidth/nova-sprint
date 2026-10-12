@@ -2241,7 +2241,11 @@ that ends it, whatever the end (done, failed, no result, the provider's failure,
 at staging, a read of any verdict or none): the consumer record carries its route, model,
 tier, card, kind (work or read) and end, and its charged figure is the harness's own cost
 where it reported one, else its tokens at the route's prices (`costRecord`); a run that
-reported no token is counted unpriced, never as a zero. A launch's child appends one row
+reported no token is counted unpriced, never as a zero. A run whose route has no price sheet
+and whose harness actual is exactly zero is unpriced the same way, `unpriced=no-price-sheet`:
+the zero is no cost, so its tokens and its route are kept with no figure at all and the stream
+counts it among its unpriced runs (`unpriced_runs`), never as $0; a priced route, and a
+non-zero harness actual, are unchanged (`cardcost.Usage.Priced`). A launch's child appends one row
 per attempt to its job's `usage.tsv` before the summary line that carries the launch's
 spend; a launch stopped between the two still reports what the rows say
 (`member.ReceiptUsage`): every attempt's tokens summed, the model, and the harness's cost
@@ -3671,8 +3675,12 @@ rule is `internal/sprint/fleet_quiet.go`; the twin test is
   cards wait): the tick raises one judgment, `fewer than two readers up:
   <readers and their states>`, for the sprint (not one for each primary),
   closed when enough are up or no such primary waits; `reader up` and
-  `reader add` answer it.
-  The system's tick asks for every such primary; `ask` is the coordinator's
+  `reader add` answer it. With no reader row at all there is no one to ask:
+  the tick raises one judgment, `review has no reader for <ids>: the readers table is empty`, for the sprint, naming the primaries in review that want a
+  read, closed when a reader row exists (a clear keeps the readers, section
+  13). A primary in review is never a silent idle for want of a reader;
+  `reader add` answers it.
+  The machine's tick asks for every such primary; `ask` is the coordinator's
   own. Each read card the ask creates carries a route as a work card does
   (`route`, `model`, `tokens`, `usd`, `deadline`), and `tier`, the tier it is drawn
   from: the tier of the card it reads, the tier the deal draws that card's
@@ -6925,8 +6933,8 @@ read of the store and a write of the state file, never run by the sprint's serve
 
 - **The subscription is the server's.** The seat's session runs `nova-sprint hook --actor <seat>` under a Monitor, with `NOVA_SPRINT_SERVER` set. It opens one connection to the server's loopback listener (`GET /api/hook?as=<seat>`, upgraded to `nova-sprint-hook`; the fleet's listener refuses it) and holds it. Only the seat's holder hooks in; a second hook replaces the first, whose connection is closed with `HOOK BYE ... replaced`. The server writes its word in the store key `seat-hook` (`sprint.HookRecord`: name, subscription id, state `hooked`, `away` or `gone`, since, the last proof, the time it is live until, why it ended, and the pushes not acknowledged with the oldest), and only the server writes it.
 - **The stream.** The hook prints one event per line: `HOOK CONNECTED name=<seat> session=<id>`, `HOOK CHALLENGE <c>: answer now, before anything else: nova-sprint hook --prove <c> --actor <seat>`, and for each open judgment or note, `PUSH <id> <judgment> session=<token>: read it, then acknowledge: nova-sprint hook --ack <id> --session <token> --actor <seat>`, with the text indented under it. Push IDs come from a persistent monotone sequence, preserved across server restart, reconnect and epoch reset. A pre-upgrade record may have no saved sequence; session-token validation also protects that migration from old ACKs. On reconnect, the hook replays each durable unacknowledged judgment with a fresh, higher ID and the new connection's session token; acknowledge only from the command printed on the current connection. The server looks every 2 seconds. `nova-sprint hook --quiet-happened` delivers judgments and challenges only, not the informational HAPPENED pushes (`TestHookQuietHappenedOmitsInformationalPushes`).
-- **Proof.** The hook counts only once the session answers the challenge it read off the stream: `nova-sprint hook --prove <c>` hands the answer to the running hook through a socket of the machine (`<user cache>/nova-sprint/hook-<seat>.sock`), which writes it on the same connection. The server takes the challenge outstanding and nothing else, once; the record is then proven and live for 15 minutes. The challenge is in the stream alone: never in a file, the record, a status line or an error. A hand pong, a file, or an answer with no live subscription proves nothing (`ProofMeansRead`, `ProvenIsSubscribed`).
-- **Cadence.** Every 10 minutes after a proof the server sends a new challenge; the hook stays proven while it is answered within 5 minutes. The record's `Live`, which the gate reads, is the outstanding challenge's bound: the proof's plus `HookEvery` + `HookAnswerBound` (15 minutes), moved to a re-challenge's own bound (the time it was sent plus 5 minutes) when one is sent, so a seat answering in time stays live while its challenge is within bound even when a slow look sends the challenge late. A challenge unanswered past 5 minutes unhooks: the record says `gone` with the reason, the connection is closed, and the owner is told (`HookStays`, `CommandSafe`).
+- **Proof.** The hook counts only once the session answers the challenge it read off the stream: `nova-sprint hook --prove <c>` hands the answer to the running hook through a socket of the machine (`<user cache>/nova-sprint/hook-<seat>.sock`), which writes it on the same connection. The server takes the challenge outstanding and nothing else, once; the record is then proven and live for 15 minutes past the last act. The challenge is in the stream alone: never in a file, the record, a status line or an error. A hand pong, a file, or an answer with no live subscription proves nothing (`ProofMeansRead`, `ProvenIsSubscribed`).
+- **Cadence.** A challenge is asked once a connection, at its start, and answered within `HookAnswerBound` (5 minutes) or the hook is gone; it is never asked again while the connection stays up (the seat, 2026-10-11/12: the hook dropped about 15 minutes after each proof though the stream stayed connected and the seat kept acting; every lapse refused every coordinator verb and replayed ~100 pushes; the owner: "This must never happen again"). Proven, the hook stays live while acts reach the server. An act is any coordinator, seat or read verb the seat's holder runs that the gate lets through, any acknowledgement or answer over the hook, and the keepalive (`{"t":"alive"}`) `nova-sprint hook` sends on its own every `HookKeepalive` (1 minute). The keepalive proves only that the transport is alive (the hook's process holds the stream), never that the seat or a person is attending; an inattentive seat is found by its pushes (a push unacknowledged for 10 minutes blocks every coordinator command, below) and by the judgments' own deadlines, not by the hook's liveness. The record's `Live`, which the gate reads, is the last act plus `HookSilentBound` (15 minutes), written by the server's look when an act moves it on by 30 seconds or more (`sprint.HookActed`): the recorded `Live` therefore trails the last act's by at most 30 seconds and one look (2 seconds), a bound, never a lapse. The hook lapses only when its stream ends (gone at once), or when no act at all, keepalive included, reaches the server for `HookSilentBound`: then once, with one judgment (`sprint.NHookLapsed`, "the seat's hook lapsed", naming the seat in its `Who`), and only once that judgment is written, a `HOOK BYE`, the record `gone` with the reason, and the owner told; a judgment write that fails leaves the hook as it is and the next look tries again. The same seat's next proof acknowledges its own lapse judgment; another seat's proof leaves it open. Replay and the durable acknowledgement are the stream's and the acknowledgement's, above and below (`HookStays`, `SingleLapse`, `CommandSafe`; tla/SeatHook.tla, Part "cadence").
 - **Acknowledgement.** `nova-sprint hook --ack <id> --session <token>` acknowledges every push up to that ID, over the same connection and only for the session token printed on its `PUSH` line. Missing `--session` is refused locally with `hook --ack requires --session <token> from the PUSH line; nothing was changed`; a stale or foreign token is refused by the server with `this acknowledgement belongs to another hook session; copy the session token from the PUSH line`. Both refusals leave the durable acknowledgement state unchanged. Numeric-only ACKs from pre-upgrade clients are refused, so an old client cannot acknowledge new work by guessing an ID. After reconnect, read the replayed `PUSH` line and copy its current token. A push delivered and unacknowledged for 10 minutes blocks every coordinator command, naming it (`AckedOrBlocking`): `You must acknowledge push <id> first (<judgment>, delivered <time>, unacknowledged past 10m0s; <n> unacknowledged): read it in the hook's stream, then run the session-bound command shown there.`
 - **The gate.** Every command run as the coordinator fails with exactly `You must hook in first: run nova-sprint hook` (exit 1, nothing else printed, nothing written) unless the record holds a live, proven hook for the seat's holder: every coordinator verb, and every read and seat verb the holder runs (`view`, `card`, `where`, `inbox`, `seat check`, `seat push`, `coordinator <name>`, ...). There is no override flag. The workers' verbs (`take`, `finish`, `progress`, `read`, the beats, `lane take`, `remind`), the reports, the system's verbs, `hook` and `unhook`, anyone else's reads, and the first `init` on a store with no holder are never refused. The gate runs before the verb (`hookFirst` in cmd/nova-sprint/main.go's run), on the server for a verb sent there, and again where the verb opens the store (`coordinatorOnly`).
 - **The end.** `nova-sprint unhook` ends the hook over its connection: the record says `away`, the owner is told, and the hook exits 0 (`HOOK ENDED`). A seat that drops without unhook (the hook process ends, the connection breaks, an interrupt) is recorded `gone` at once and the owner told; the hook exits 1 (`HOOK DROPPED`). A server that starts finds a record an earlier server left `hooked`, records it `gone` (the subscription went with that server) and tells the owner. The owner is told by one bus message (`seat <name> is away|gone`) and the server's `SEAT HOOK` line.
@@ -7427,11 +7435,13 @@ Fleet Working or Readers Reading after STOP; it lists each `card@gen` and its
 owner row. A stop-returned lease, or a captured lease whose card is no longer
 working, does not block. Otherwise clear finishes a pending operation, or
 abandons it at the epoch it started at, then advances the epoch once. It does
-not restore or delete the old shape. Every table and sprint record is keyed by
-epoch, so the new epoch starts with no stream, reader, work, merge,
-lease, stop receipt, alarm, inbox or session state by construction; the
-fleet's members carry over (their rows, widths, status and holds), but their
-work cards do not. The
+not restore the old work or delete anything. Every table and sprint record is
+keyed by epoch, so the new epoch starts with no stream, work, merge, read
+card, lease, stop receipt, alarm, inbox or session state by construction. A
+clear is tabula rasa for the sprint's work, never for its configuration: the
+fleet's members (their rows, widths, status and holds) and the readers (their
+reader rows and the tiers they read, `reader add` and `reader set --tiers`
+wrote) carry over, but their work cards and read cards do not. The
 old epoch stays where it is and readable (`where`, `card` and `inbox --at-epoch <n>`), and every writer still holding it is refused as stale: nothing of that
 epoch lands in the new one. Operation ids and notification ids carry their epoch (`~<n>` after
 the first): a caller's operation id recorded at an earlier epoch is refused,
@@ -7451,13 +7461,18 @@ epoch, where the system is STOPPED until `start`. Clear prints the epoch
 before and after, what the epoch before the advance held as counts, the
 system's state before, and the sprint line.
 
-Clear does not carry stream rows or their archived/hidden status,
-reader rows, goals, leases, stop debt, alarms or notification cursors
-into the next epoch; the fleet's members carry over with their rows, widths,
-status and holds, but without their work cards. Adding a stream after clear creates it fresh, whether its
-name was previously active, removed or archived. This blank-slate rule
-supersedes earlier table-entry descriptions that said a clear kept streams or
-kept an archived stream archived.
+Clear does not carry stream rows or their archived/hidden status, goals,
+leases, stop debt, alarms or notification cursors into the next epoch. The
+sprint's configuration carries over: the fleet's members with their rows,
+widths, status and holds, and the readers with their rows and the tiers they
+read (restoreMembers, internal/sprint/store/clear.go), but neither carries its
+work cards or read cards. Adding a stream after clear creates it fresh, whether its
+name was previously active, removed or archived. This blank-slate-for-work
+rule supersedes earlier table-entry descriptions that said a clear kept
+streams or kept an archived stream archived; the readers are not a stream and
+are kept. A primary left in review with no read out and no reader row raises
+the tick's "review has no reader" judgment (NReviewNoReader, section 8), so a
+sprint with its readers gone still tells the coordinator rather than idling.
 
 <a id="14-the-machine"></a>
 
@@ -7859,7 +7874,15 @@ tick: the one writer of the sprint, beside the store. A worker started with `nov
 own machine. A request is a batch: the worker's verbs, each the argument list it would give
 `nova-sprint`, in the order to run them. The server runs each through the verb's own code, in
 its own process, and answers with each verb's exit code and what it printed, one answer a verb,
-in order. A write runs on the server's one line of control: one batch's writes, and one tick, at
+in order. Each answer also carries the verb's outcome where it is known: `outcome` is `accepted`
+when the verb ran and its work is in the table, `refused` when it was refused (usage, or before
+any write), and `unknown` when it is not known whether it happened (a step cut at a table, a
+store that did not confirm, or a clear that closed the step as it finished); `changed` is `yes`,
+`no` or `unknown` for whether it wrote. The exit codes are unchanged; the outcome is set where
+the verb knows it (refuse and every pre-write refusal give `refused`; a `CutError`, `ErrUnknown`,
+or a `ClearedError` with `Finished` gives `unknown`; a store error that answered nothing gives
+`unknown` too; success gives `accepted`), and the member
+reads the field instead of the printed words, which a rewording does not break. A write runs on the server's one line of control: one batch's writes, and one tick, at
 a time, neither during the other, each waiting its turn in the order it came. A friend's beat and
 a read do not take the line (the owner, 2026-10-04: "a verb is answered within 1 s whatever the
 tick or the lander is doing"; "a beat is a small write"). A friend's beat (`friend beat <friend>` and its report)

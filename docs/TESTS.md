@@ -22,6 +22,27 @@ a twin file in a temporary directory. The twin counts its operation ids
 tests beside it (`cmd/nova-sprint/*_functional_test.go`) run against a real
 store.
 
+The worker's verb answers carry a typed outcome (`outcome: accepted|refused|unknown` and
+`changed: yes|no|unknown`) on the server's results and each verb's `--json` output, so a worker
+tells a definite refusal from an unknown outcome without reading the printed words. The table
+`TestResultOutcomeTable`, `TestWorkerVerbOutcomeServed`, `TestWorkerVerbOutcomeFriendBeatJSON` and
+`TestResultOutcomeRefusedPaths`
+(`cmd/nova-sprint/worker_verb_outcome_test.go`) cover every path #5625 classifies from text
+(refuse, the step's `CutError`, `ErrUnknown`, a `ClearedError` with `Finished`, a store error that
+answered nothing), check the field each sets over the server's own step, and run the server's
+refusal paths (a verb it does not run, a report naming no epoch, a usage refusal) and the three
+budget verbs the server runs, whose success is `accepted`/`yes`; `TestWorkerVerbOutcomeFriendBeatJSON`
+pins the read's finding that a worker verb answering without the report path (friend beat) carries
+the field on its own `--json` output; the functional
+`TestWorkerVerbOutcomeOverRealServer`
+(`cmd/nova-sprint/worker_verb_outcome_functional_test.go`) checks the outcome over a real server
+and a private store, with an explicit `--redis` on every verb and a scrubbed environment. The
+store's `unknown` outcome is the store's word that a write was not confirmed or was cut, which a
+healthy private store does not give; the functional test checks `accepted` and `refused` over the
+real server and the server's own `unknown` (a caller gone before its verb ran, the goneResult
+path) over the real store and the server's entry point, and the store's typed `unknown` paths are
+covered by the table test over the typed paths.
+
 ### First run
 
 ```text
@@ -407,6 +428,26 @@ card dealt to it.
   next tick moves the card onto the free lane. Every verb names the private
   store with `--redis`; HOME and XDG_CONFIG_HOME are the test's own and its
   forward fails the test, so no verb can reach a live sprint server.
+
+### A friend with no free lane is not dealt work (v1.2.14)
+
+The friends' deal hands a work card to a friend whose lanes are all held only
+when no machine that serves the card's tier has a free lane: a friend with no
+idle lane gives way to a machine that starts the card at once, rather than
+queueing it behind her working lanes, where it sits dealt and untaken until the
+dealt bound returns it (docs/SPEC-SPRINT.md section 1,
+friend-deal-idle-lanes-first.w1; the owner, 2026-10-12). A friend whose tiers
+alone serve the tier, or whose card is a hard pin (`WHO: only friend`), still
+takes it ahead of her lanes. On 2026-10-12 five heavy cards were dealt to a
+friend with no free lane and sat 6-9 minutes while the fleet ran at 15 of 140
+slots; the tick's level and the dealt bound's return leave the machines the
+rest.
+
+- Unit, `internal/sprint/friend_free_lane_test.go`:
+  `TestFriendWithNoFreeLaneIsNotDealt`: a friend at width 2 with both lanes
+  working and a machine up that draws flash with free lanes; a new flash card
+  is dealt to the machine, never queued on her row.
+
 ### An environment exit
 
 A child that ends 134 or 137, or leaves no result at any exit, is the member's
@@ -652,6 +693,41 @@ older than the TTL, so a stale version is never shown.
   `NOVA_*`): after ticks, `where --json` states the server's own version, and one heartbeat
   write is one SET.
 
+### The audit names every blocked, stuck or looped card
+
+`nova-sprint audit` is the one answer to "is anything blocked, stuck or looped":
+one read of the work, fleet and readers tables, one line per unlanded primary
+with its id, stream, state, tier and attempt, its holder (the member or friend
+whose working card holds it, the lane and since when) or `-`, the age in its
+current state and attempt, the ends of its last four attempts and the needs not
+yet landed with their states, and its flags: `NO-HOLDER` (ready past the dealt
+bound, or working with no holder), `ATT>=4`, `FAILS=<n>` (six or more failed,
+idle-reaped, bound or brief-defect ends), `STUCK` (unchanged past `--stuck`,
+default 10m) and `NEEDS-GONE`. It ends `AUDIT OK cards=<n> flagged=<n>`;
+`--json` is one object a line and `--stream` narrows it.
+
+- Unit, `cmd/nova-sprint/audit_test.go`:
+  `TestAuditNamesEveryBlockedStuckOrLoopedCard`, on a private in-memory store
+  with the app's own clock: one card of each trouble (a ready card past the dealt
+  bound, an attempt-4 card, a card with six failed ends, a card unchanged past
+  `--stuck 1m`, a card needing a card that is no card) and one healthy card; each
+  flag appears on its line and none on the healthy one, and the same in `--json`.
+
+## An acknowledged rate or health judgment stays quiet (v1.2.14)
+
+A rate or health judgment the seat has acked is not raised again while its numbers are the
+same episode: it stays quiet until its numbers cross a new threshold or its stated quiet
+period passes, and the push says why it is back.
+
+- `TestAckedHealthJudgmentStaysQuiet` (`internal/sprint/reads_window_twin_test.go`): the
+  broken-reads-outrun judgment is raised; the seat acks it (the ack is accepted); more broken
+  reads in the same episode stay quiet (one notice, never re-raised with the same numbers);
+  after thirty minutes of running time still broken, the quiet period has passed and it is
+  raised again.
+- `TestAnAckedHealthJudgmentIsRaisedAgainSayingWhy` (`internal/sprint/reads_window_test.go`):
+  when an acknowledged broken-reads-outrun judgment's quiet period has passed and its condition
+  still holds, the next push says why it is back ("quiet period has passed").
+
 ## Release acceptance
 
 The release-acceptance list (PR #110) takes these tests so this way of failing cannot come back unseen:
@@ -667,6 +743,9 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken`, `TestARestartedServerTellsTheOwnerOfARaiseOnce`, `TestASeatSilentRaiseNoLongerOpenIsForgotten` (`cmd/nova-sprint/seat_silent_test.go`): the owner's bus message is marked told only once sent, retried under one token, sent once across a restart, and the marks pruned to the open raises.
 - `TestAHeavyCardIsDealtOnAHeavyRouteOnAStore` (functional, `cmd/nova-sprint/tier_line_functional_test.go`): a real store with a flash and a heavy route; a card whose RESULT line says tier: heavy is admitted saying tier=heavy and its first deal draws the heavy route.
 - `TestTheTierLineIsReadOrRefusedByOneRuleInBothForms` (`internal/card/tier_line_test.go`), `TestTheTierOnLineOneIsReadInBothForms`, `TestAddStoresTheTierLineOneNamesOrItsStreamsDefault`, `TestAHeavyCardsFirstDealDrawsAHeavyRoute`, `TestABriefWhoseLineOneNamesAStrongerTierRaisesItsTierNow` (`internal/sprint/tier_line_test.go`) and `TestAddPrintsTheTierEachCardIsStoredWith`, `TestBriefPrintsTheTierTheCardIsDealtOn` (`cmd/nova-sprint/tier_line_test.go`): the tier line, read or refused by one rule in both forms, a stream's default, printed by add and brief, a stronger re-brief raising tier_now, dealt on.
+- `TestFriendWithNoFreeLaneIsNotDealt` (`internal/sprint/friend_free_lane_test.go`): a friend with no free lane is not dealt work while a machine that serves the card's tier has one, so the card is started at once instead of queueing behind her lanes.
+- `TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs` (functional, `cmd/nova-sprint/hook_live_functional_test.go`): a real server and store, the hook held by `nova-sprint hook` over the server's listener, the server's clock stepped past three 15-minute bounds while the seat acknowledges its pushes: no lapse, one challenge, and an unhook and hook again replays only the push not acknowledged.
+- `TestAConnectedSeatThatActsNeverLapses`, `TestASilentSeatLapsesOnceAndSaysSo`, `TestAnotherSeatsProofLeavesALapseOpen` (`cmd/nova-sprint/hook_test.go`): a seat acting once a minute for 40 minutes never lapses; one with no act lapses once, with one judgment naming the seat, the owner told once; another seat's proof leaves that lapse open.
 - `TestConsumersOutWorkingCardWithNoAttempt`, `TestConsumersOutReviewCardWhoseReadsAreAllForOtherCards`, `TestConsumersOutReviewCardWithNoReadAndNoJudgment` (`internal/sprint/consumers_out_test.go`) and `TestEveryProducerCard` (functional, `cmd/nova-sprint/consumers_functional_test.go`): the consumers-out postcondition — a working card with no live attempt, a review card whose reads are all for other cards, and a review card with no read and no open judgment each raise one judgment naming the card, and a real store whose readers table is emptied raises it within one tick.
 
 ## A finish-PR card starts from the PR's own head
@@ -708,4 +787,66 @@ docs/fixes.sexp, a-judgment-outlived-by-its-card-closes-itself).
   a judgment naming no attempt, and one whose card is still at the attempt it was raised for,
   stay open. `TestAMovedOnJudgmentCanBeAcked`: the re-briefed card's judgment acked with a
   reason before the tick is closed, recorded as the card's move.
+
+## Tests that fail under load are made deterministic
+
+The owner's standing rule: tests are bounded and never flaky; a test that fails
+under load is the test's defect. These tests failed on a shared bench (hetzner2,
+load average 30-36) and are now deterministic, each by its exact name:
+
+- `TestLandCallerCancelDuringCombinedGateLeavesSecondBatchQueued`
+  (`cmd/nova-sprint/landpass_test.go`): the caller's cancel is delivered at a
+  synchronization point the test controls — the combined gate suspends in its
+  `gateRan` seam until the test has canceled — so the cancel always arrives
+  inside the gate and never races wall time, however loaded the bench.
+- `TestTickDrainAndDealUnderTheGateAtLoad`
+  (`internal/sprint/deal_load_bench_test.go`): the deal's sub-second gate is
+  held on the CI path by counts (the deal parses each ready brief exactly once;
+  the drain's moves are bounded by the deal's queued output), never by a
+  wall-clock bound on a shared bench. The wall itself is measured only by
+  `BenchmarkTickDealAtLoad` and `BenchmarkTickDrainAtLoad`, outside the gate.
+- `TestTheIdleAlarmNamesTheRootsOnceAnEpisode`
+  (`internal/sprint/store/idle_test.go`): it was seen red on a hetzner2 base
+  run; its dependency was the stale end-note rule it pinned (every end of an
+  idle episode was a working-again note), already fixed by b70990f6 (`idleEnd`:
+  only the fleet working at half its width again clears; otherwise the
+  episode-ended note). No production change was owed; the inert sort tie-break
+  added for it was dropped, and the test passes 50/50 under load.
+- `TestCRTwoRunLoopsAtOnce`
+  (`internal/sprint/store/machine_twoloops_test.go`): it failed 2 of 8 on clean
+  main with "the sprint is busy: other operations kept the fence moving". The
+  real cause was the outside store's no-op `Sleep`: it made the store's
+  documented fence backoff (the wait between its `FenceTries`) never yield, so
+  an outside verb's fenced read spent all its tries inside one tick loop's fence
+  hold and gave up. The test now keeps the store's real `Sleep`, so the designed
+  backoff spaces the tries as a run loop's verb has in production. The test's
+  outer retry of `FenceBusyError` (`busyTries`) is the last-resort bound the
+  test exists to assert; it is correct because, with the real backoff, a verb
+  reaches it only if a fence stayed busy past the store's own documented
+  `RetryBudget` — the starvation the test pins — and its failure names the
+  losing verb and the store's own read count.
+- The shared helper `setPrimary` (`internal/sprint/store/flash_first_test.go`)
+  read `h.snap()`, whose `WithQueue` overlay reads the work table a revision
+  ahead while the queue holds a change, so a write guarded on it was refused
+  ("mem: table revision mismatch"); it now guards on the unoverlaid table
+  (`setPrimaryOnTable`, `internal/sprint/store/no_parked_test.go`), so a test
+  may set a primary after a finish and a tick.
+
+The card's owed step — "run the package 10x under load and name the
+`cmd/nova-sprint` test that failed once in #110's gate" — was run as
+`go test -count=10 ./cmd/nova-sprint` under load. The tests that failed are the
+ones that shell out to `git`: `TestTheLanderLandsTheBaseFixFirst`,
+`TestLandMergesSameReleaseBlockEntries`,
+`TestLandReviewReusedOperationCannotClaimAnotherBatchLanded`,
+`TestServerReviewLandingAllowsATickAndCoordinatorWriteBeforePush` and
+`TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`. Their failures
+are the bench's process table, not the tests' logic: every one is
+`fork/exec .../shim/git: resource temporarily unavailable` / `Cannot fork` from
+a `git` call, except `TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`,
+which fails its own assertion — `LAND REFUSED ... git ls-tree: fork/exec ...: resource temporarily unavailable` — because the same exhaustion hit its
+`git ls-tree`. `TestTheTwinSocketFitsAUnixSocketPath` also failed, and it is
+environmental: this sandbox's `TMPDIR` exceeds the 100-byte Unix-socket limit
+and its `/tmp` fallback is denied. The test named for #110's gate is therefore
+`TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush`, the one whose own
+assertion a loaded bench turns red by starving its `git` call of a process.
 

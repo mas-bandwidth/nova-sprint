@@ -214,13 +214,31 @@ func putRoster(ctx context.Context, kv KV, r map[string]friendEntry) error {
 	return kv.SetKey(ctx, keyFriends, string(b))
 }
 
-// noFriend is the refusal of a name the roster lacks.
-func noFriend(r map[string]friendEntry, friend string) error {
-	names := slices.Sorted(maps.Keys(r))
+// NoFriendError is the refusal of a name the roster lacks: a definite
+// pre-write refusal, so the verb that meets it reports refused/no, never
+// unknown (every-worker-verb-answers-with-a-typed-outcome finding 1).
+type NoFriendError struct {
+	Friend string
+	Names  []string
+}
+
+func (e *NoFriendError) Error() string {
+	names := e.Names
 	if len(names) == 0 {
 		names = []string{"none"}
 	}
-	return fmt.Errorf("no friend %s on the friends table (friends: %s): its row is nova-config's friend row; run: nova-sprint friend sync", friend, strings.Join(names, ","))
+	return fmt.Sprintf("no friend %s on the friends table (friends: %s): its row is nova-config's friend row; run: nova-sprint friend sync", e.Friend, strings.Join(names, ","))
+}
+
+// IsNoFriend says err is, or wraps, a NoFriendError.
+func IsNoFriend(err error) bool {
+	var n *NoFriendError
+	return errors.As(err, &n)
+}
+
+// noFriend is the refusal of a name the roster lacks.
+func noFriend(r map[string]friendEntry, friend string) error {
+	return &NoFriendError{Friend: friend, Names: slices.Sorted(maps.Keys(r))}
 }
 
 // SyncFriends makes the roster the friends given (nova-config's friend rows,

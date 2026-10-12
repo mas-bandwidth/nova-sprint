@@ -30,6 +30,11 @@ type remindView struct {
 	Set  time.Time `json:"set,omitempty"`
 	// DryRun says the verb printed what it would write and wrote nothing.
 	DryRun bool `json:"dry_run,omitempty"`
+	// Outcome and Changed are the verb's answer where it is known, as every
+	// worker verb's --json output carries them (accepted | refused | unknown;
+	// yes | no | unknown).
+	Outcome string `json:"outcome,omitempty"`
+	Changed string `json:"changed,omitempty"`
 }
 
 func timerView(t sprint.Timer) remindView {
@@ -196,11 +201,14 @@ func (a *app) remindList(name string, c common, st *store.Store, stdout, stderr 
 	for _, x := range t.Open {
 		views = append(views, timerView(x))
 	}
+	a.outcome, a.changed = "accepted", "no"
 	if c.json {
 		b, _ := json.Marshal(struct {
-			Items []remindView `json:"items"`
-			More  *moreView    `json:"more,omitempty"`
-		}{cut(views, c.max), moreOf(len(views), c.max)})
+			Items   []remindView `json:"items"`
+			More    *moreView    `json:"more,omitempty"`
+			Outcome string       `json:"outcome,omitempty"`
+			Changed string       `json:"changed,omitempty"`
+		}{cut(views, c.max), moreOf(len(views), c.max), a.outcome, a.changed})
 		fmt.Fprintln(stdout, string(b))
 		return 0
 	}
@@ -218,6 +226,13 @@ func (a *app) remindList(name string, c common, st *store.Store, stdout, stderr 
 
 // remindPrint is the one value on one line, or as JSON.
 func (a *app) remindPrint(name string, c common, stdout io.Writer, v remindView, next string) int {
+	a.outcome = "accepted"
+	if v.DryRun {
+		a.changed = "no"
+	} else {
+		a.changed = "yes"
+	}
+	v.Outcome, v.Changed = a.outcome, a.changed
 	if c.json {
 		b, _ := json.Marshal(v)
 		fmt.Fprintln(stdout, string(b))

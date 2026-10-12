@@ -178,11 +178,21 @@ nova-sprint funded <provider> --reason <text>
 nova-sprint cost reconcile [--dry-run] [--json]
 nova-sprint cost reprice [--route <r>]... [--since <RFC3339>] [--dry-run] [--json]
 nova-sprint stats [--routes [--since <10m|RFC3339>]] [--children]
+nova-sprint audit [--stream <s>] [--stuck <10m>] [--json]
 nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
+
+**`audit`** is the one answer to "is anything blocked, stuck or looped": one
+read of the work, fleet and readers tables prints one line per unlanded primary
+with its id, stream, state, tier, attempt, holder (the member or friend whose
+working card holds it, the lane and since when) or `-`, the age in its current
+state and attempt, the ends of its last four attempts and the needs not yet
+landed with their states, and its flags: `NO-HOLDER`, `ATT>=4`, `FAILS=<n>`
+(six or more failed, idle-reaped, bound or brief-defect ends), `STUCK` (unchanged
+past `--stuck`, default 10m) and `NEEDS-GONE`. It ends `AUDIT OK cards=<n> flagged=<n>`; `--json` is one object a line, `--stream` narrows it.
 
 **The tier on line 1** (one rule, read or refused): a card brief names its tier on line 1, in
 either form, `<title> tier: <t>` or the RESULT line `RESULT: <id> sha=<sha12> tier: <t>`, and
@@ -295,7 +305,7 @@ state (`backup: reads (review ... > working ...)`) while there is one
 
 `nova-sprint seat login --store <secrets dir> --as <seat> --key <keyfile> --secret <NAME> --user <redis user> --redis <addr>` records the store login in `~/.config/nova-sprint/login.json` (or under `$XDG_CONFIG_HOME`), mode 0600: the address, the user and where the password is in nova-secrets, never the password, and only once the secret resolves. After it, `nova-sprint <verb>` typed bare reaches that store as that user, the password read in the verb's own process through nova-secrets' checks, with no `nova-secrets exec` wrapper; `--redis`, `NOVA_SPRINT_REDIS`/`NOVA_REDIS_ADDR` and `NOVA_SPRINT_REDIS_USER` still win. `seat login --check` prints `SEAT LOGIN file=… redis=… user=… … resolves=yes|no` (exit 1 on no), the password never shown; `seat logout` removes the record. A recorded secret that does not resolve is refused naming the file and the remedy, never dialed without a password. `nova-sprint run --keys <NAME,...>` records the decision key and each provider key in `keys.json` beside that login (names only, never a value) and the run process reads each one from the seat; a name that cannot be read refuses at start, naming the name. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-seats-store-login) and [SPEC-SECRETS.md](SPEC-SECRETS.md) ("A tool's store login").
 
-The coordinator hooks in ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-hook)). Every command run as the coordinator fails with exactly `You must hook in first: run nova-sprint hook` until the seat holds a live, proven hook. Run `nova-sprint hook --actor <seat>` under a Monitor, with `NOVA_SPRINT_SERVER` set: it holds one subscription on the server and prints one event a line. Answer its `HOOK CHALLENGE <c>` with `nova-sprint hook --prove <c>`; the server challenges again every 10 minutes, and an answer later than 5 minutes unhooks. Each `PUSH <id> <judgment> session=<token>` includes the acknowledgement command for that connection; acknowledge it with `nova-sprint hook --ack <id> --session <token> --actor <seat>`. The token is bound to the live hook session, so an omitted or stale token refuses without changing acknowledgements. Numeric-only acknowledgements from older clients are refused; reconnect and read the replayed `PUSH` line for its current token before acknowledging. A push unacknowledged for 10 minutes refuses every coordinator command, naming it. `nova-sprint hook --quiet-happened` makes the seat receive judgments and challenges only, not the informational HAPPENED pushes. `nova-sprint unhook` ends it (recorded away, the owner told); a hook that drops is recorded gone at once and the owner told. There is no override.
+The coordinator hooks in ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-hook)). Every command run as the coordinator fails with exactly `You must hook in first: run nova-sprint hook` until the seat holds a live, proven hook. Run `nova-sprint hook --actor <seat>` under a Monitor, with `NOVA_SPRINT_SERVER` set: it holds one subscription on the server and prints one event a line. Answer its `HOOK CHALLENGE <c>` with `nova-sprint hook --prove <c>` within 5 minutes; the challenge is asked once a connection, never again while it stays up. The hook then stays live while acts reach the server: every coordinator verb the seat runs, every `--ack` or answer, and the keepalive `nova-sprint hook` sends on its own every minute each move its live-until 15 minutes on. The keepalive proves only that the transport is alive (the hook's process holds the stream), not that the seat or a person is attending: the pushes, and the 10-minute acknowledgement bound below, are how an inattentive seat is found. A hook lapses only when its stream ends, or when no act at all, keepalive included, reaches the server for 15 minutes: then once, with one judgment ("the seat's hook lapsed", naming the seat), recorded gone and the owner told; the same seat's next proof answers that judgment. Each `PUSH <id> <judgment> session=<token>` includes the acknowledgement command for that connection; acknowledge it with `nova-sprint hook --ack <id> --session <token> --actor <seat>`. The token is bound to the live hook session, so an omitted or stale token refuses without changing acknowledgements. Numeric-only acknowledgements from older clients are refused; reconnect and read the replayed `PUSH` line for its current token before acknowledging. A push unacknowledged for 10 minutes refuses every coordinator command, naming it. `nova-sprint hook --quiet-happened` makes the seat receive judgments and challenges only, not the informational HAPPENED pushes. `nova-sprint unhook` ends it (recorded away, the owner told); a hook that drops is recorded gone at once and the owner told. There is no override.
 
 `nova-sprint seat install --server <host:port> --config-seat <name> --config-dsn <dsn> --config-password-env <NAME>` (beside the push loop's unit) records the sprint's server in `seat.json` beside that login and writes the nova-config seat profile, the row `<name>\t<dsn>\t<NAME>` of `~/.config/nova-config/seats.tsv`. After it, `nova-sprint seat check` measures the recorded server when `NOVA_SPRINT_SERVER` is not set and prints `MACHINERY config OK seat=<name> …` (or DOWN with the remedy), and `nova-config <verb> --seat <name>` (or `NOVA_SEAT`) reaches the config store with no `nova-secrets exec`: the password is read in process from the store login's nova-secrets seat under `<NAME>` when that variable is not set and `NOVA_PG_PASSWORD_ENV` is not given (`NOVA_PG_PASSWORD_ENV` given still wins). The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#handing-over-the-seat) and [SPEC-CONFIG.md](SPEC-CONFIG.md#connecting).
 
@@ -596,6 +606,20 @@ command again finishes it), or when `--source` holds no
 | 1 | failed or incomplete (including refused; `start` while every provider is out of credit) |
 | 2 | usage, or a store that did not answer (`fleet sync --check`: there is drift) |
 | 3 | unreadable config (`fleet sync`, `friend sync`, `friend clean`), missing friend rows (`friend sync`, `friend clean`), or a replaced binary (`run`, `dashboard`) |
+
+The exit codes do not separate a definite refusal from an unknown outcome: exit
+2 is both `refuse()` (usage, `card@gen`, epoch, a server refusal) and
+`changed=unknown` or no answer, and exit 1 is both a refused card and a
+`CutError` that repair can still complete. The server's answer to a worker's
+verb therefore also carries the typed `outcome` (`accepted | refused | unknown`)
+and `changed` (`yes | no | unknown`) fields, set where the verb knows them
+(`refuse()` and every pre-write refusal give `refused`; a `CutError`,
+`ErrUnknown`, or a `ClearedError` with `Finished` gives `unknown`; a store error
+that answered nothing gives `unknown` too; success gives `accepted`), and each
+verb's `--json` output carries them too. A worker reads
+these fields, not the printed words. The contract is
+[SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md)
+section 14, "The server".
 
 ### What it does not prove
 

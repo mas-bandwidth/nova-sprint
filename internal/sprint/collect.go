@@ -119,7 +119,8 @@ func collectReport(c CollectCard, from, report string) Collected {
 
 // CollectVerdict is a report's verdict (the first word of its first Verdict: line, upper
 // case, markdown and punctuation trimmed; "" for none) and its head (the first word of its
-// first Head: line, lower case), as the daemon's outbox pass reads them.
+// first Head: line, lower case), as the daemon's outbox pass reads them: pkg/friend's
+// outbox calls this one copy.
 func CollectVerdict(report string) (verdict, head string) {
 	var vok, hok bool
 	for _, l := range strings.Split(report, "\n") {
@@ -170,7 +171,8 @@ func collectChars(s string, n int) string {
 // RunnerEnded reads a runner's log (one line per event: `<time> START|LIMIT|END <job> ...`,
 // as a bud's runner writes it) for the job: dead is true when the job's last event is an END
 // whose last word is report=no and no LIMIT came after the START before it (a run stopped
-// at a usage limit is run again, never dead); end is that END line.
+// at a usage limit is run again, never dead); end is that END line. pkg/friend's outbox
+// calls this one copy for its dead lanes.
 func RunnerEnded(log, job string) (end string, dead bool) {
 	limited := false
 	for _, line := range strings.Split(log, "\n") {

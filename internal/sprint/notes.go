@@ -145,6 +145,7 @@ var Decisions = map[string][]string{
 	NCIRed:             {"rework with a fix", "return", "drop", "look", "ack"},
 	NReadsExhausted:    {"ask another reader", "rework", "drop"},
 	NStranded:          {"ask", "rework", "drop"},
+	NReviewNoReader:    {"reader add", "wait"},
 	NRepairSkipped:     {"look at the card", "return", "drop", "rework", "ack"},
 	NOpStuck:           {"check", "ack"},
 	NOverdue:           {"act"},
