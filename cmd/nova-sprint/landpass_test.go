@@ -431,6 +431,30 @@ func TestCutBranchClearsStagedDeletionOnTheSameBranch(t *testing.T) {
 	r.clean()
 }
 
+// buildBothBeforeAnyPush pins the interleaving a two-stream land test means to test: both
+// batches are cut from the old base before the first batch is pushed. The lander does not
+// promise it: the streams merge beside each other, the first lands when its own merge is
+// done, and a second stream that is slow to reach its cut (a clone lock, a worktree, a
+// loaded machine) is cut from the tip the first already moved, so its batch is built on the
+// new base and never "merged again" (found 2026-10-12: 13 of 320 runs of the prefix test
+// under load gated the second batch once, not twice). The first push waits here until the
+// second stream's batch has run its own phase-1 gate, which comes after its cut and merge.
+// Call it after gateCount, which it wraps.
+func buildBothBeforeAnyPush(r *landRig) {
+	built := make(chan struct{})
+	var once sync.Once
+	prev := r.a.gateRan
+	r.a.gateRan = func(dir string, tests bool) {
+		if prev != nil {
+			prev(dir, tests)
+		}
+		if strings.HasSuffix(dir, "@s2") {
+			once.Do(func() { close(built) })
+		}
+	}
+	r.a.beforePush = func(int) { <-built }
+}
+
 // A batch merged again onto the moved base may merge fewer heads than it did alone: a head
 // that conflicts with what landed ends the batch before it, as the build does. The heads
 // before it are gated once more (fewer heads: the tree is not the one gated) and pushed, and
@@ -451,6 +475,7 @@ func TestLandReMergeOntoTheMovedBaseThatMergesFewerHeads(t *testing.T) {
 			map[string]map[string]string{"a1": edit("a1")},
 			map[string]map[string]string{"b1": {"b1.go": "package main\n\nfunc b1() {}\n"}, "b2": edit("b2")})
 		gates := gateCount(r)
+		buildBothBeforeAnyPush(r)
 		code, out, errs := r.do("land --land-parallel 2")
 		assert.Equal(t, 1, code, out+errs)
 		assert.Contains(t, out, "LAND OK stream=s1 cards=1 base=main")
@@ -469,6 +494,7 @@ func TestLandReMergeOntoTheMovedBaseThatMergesFewerHeads(t *testing.T) {
 		twoStreams(t, r,
 			map[string]map[string]string{"a1": edit("a1")},
 			map[string]map[string]string{"b1": edit("b1")})
+		buildBothBeforeAnyPush(r)
 		code, out, errs := r.do("land --land-parallel 2")
 		assert.Equal(t, 1, code, out+errs)
 		assert.Contains(t, out, "LAND OK stream=s1 cards=1 base=main")
