@@ -868,6 +868,12 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 	// briefDepends, which refuses a ready card a need not landed.
 	if c.Col == Working || c.Col == Review {
 		q := briefDepends(s, p, c, brief, wants, "", nil)
+		if c.Col == Review && ReturnedAtAttempt(c) && len(q.Refused) == 0 {
+			// returned to review to have its needs set: that was the return's one cause, and
+			// the tick takes it back to merging on the reads that stand (FieldReturnedFor;
+			// seat_answers.go, rule (a)), never a "returned to review" left to the seat
+			markReturnedFor(&q, c, ReturnedForNeeds)
+		}
 		answered(&q, s, r.Answers, r.Who)
 		return Lawful(q)
 	}
@@ -970,4 +976,23 @@ func needsCycleWith(s *Snapshot, id string, proposed map[string][]string) string
 		return "the needs would make a cycle: " + g.tellLoop(cycle) + "; nothing was changed"
 	}
 	return ""
+}
+
+// markReturnedFor writes the mechanical cause of a return (FieldReturnedFor) on the
+// primary id's work-table change in the plan, adding one when the plan changes it nowhere.
+func markReturnedFor(p *Plan, pr *Card, cause string) {
+	for i := range p.Units {
+		for j := range p.Units[i].Changes {
+			c := &p.Units[i].Changes[j]
+			if c.Table == Work && c.Entry.ID == pr.ID {
+				if c.Entry.Set == nil {
+					c.Entry.Set = map[string]string{}
+				}
+				c.Entry.Set[FieldReturnedFor] = cause
+				return
+			}
+		}
+	}
+	p.Units = append(p.Units, Unit{Key: pr.ID, Stream: pr.Row, Changes: []Change{change(Work, setEntry(pr, map[string]string{FieldReturnedFor: cause}))},
+		Moved: pr.ID + " returned for its needs: the tick accepts it on the reads that stand"})
 }

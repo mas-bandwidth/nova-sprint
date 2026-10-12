@@ -199,7 +199,9 @@ func TestTheMachineRemindsTheCoordinatorOfADeafOrIdleFriendEveryTenMinutes(t *te
 	fresh()
 	r.tick(4*time.Minute + 59*time.Second)
 	assert.Equal(t, 1, r.count(sprint.Judgment, sprint.NFriendDeaf, "friend amy"), "one judgment an episode")
-	assert.Equal(t, 0, r.count(sprint.Happened, sprint.NRaisedAgain, ""), "not again within 10 minutes")
+	// (the failed work, a judgment that holds its card, is raised again at its second
+	// deadline, 20 minutes on: seat_answers.go; the deaf judgment is the pass's own)
+	assert.Equal(t, 0, r.count(sprint.Happened, sprint.NRaisedAgain, sprint.NFriendDeaf), "not again within 10 minutes")
 
 	assert.Nil(t, r.open(sprint.NCoordinatorBehind, behind), "the late judgment's overdue line is under 10 minutes old")
 

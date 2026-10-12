@@ -635,6 +635,7 @@ var TickRules = []TickPartDef{
 	{PartRuleAsk, TickRuleAsk},
 	{PartRuleNeed, TickRuleNeed},
 	{PartRuleBrief, TickRuleBrief},
+	{PartRuleNoRoute, TickRuleNoRoute},
 }
 
 // ruleAnswerConsumed is the fields a finish clears on the primary pr: the rule's answer
@@ -777,7 +778,6 @@ func strconvQuote(s string) string { return fmt.Sprintf("%q", s) }
 // RuleFleetWindow is how far back, in running time, the fleet's failure counts a card's
 // recorded failure (its last finish failed that way).
 const RuleFleetWindow = time.Hour
-
 
 // TickFleetFailure raises NFleetFailure for each failure class that RuleSameFailureCards or more
 // cards recorded within RuleFleetWindow of running time, in any column but landed (each card's

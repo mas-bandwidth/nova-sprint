@@ -22,11 +22,14 @@ import (
 // never make anything of is a duty the test never compared.
 const minSamplesWithMoves = 10
 
-// noFloor is the steps of the old read path held to no floor of samples with
-// moves: since read cards, the readers table's level reads rarely moves
-// anything in the walks (7 of 1000), and the whole old read path is being
-// excised. Each step is still compared on every sample it is run on.
-var noFloor = map[string]bool{refmodel.DutyLevelReads: true}
+// noFloor is the steps held to no floor of samples with moves: the readers
+// table's level reads rarely moves anything in the walks (7 of 1000), and the
+// whole old read path is being excised; the level now moves a card only off a
+// member holding more cards than its width (64), which the walks never reach
+// (a card moves only onto a free lane; tla/Level.tla NeverOffAFreeLane (lands with #127)), so
+// it moves nothing on the walks. Each step is still compared on every sample
+// it is run on.
+var noFloor = map[string]bool{refmodel.DutyLevelReads: true, refmodel.DutyLevel: true}
 
 // floorOf is the fewest samples with moves the step must have.
 func floorOf(step string) int {

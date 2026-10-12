@@ -281,52 +281,53 @@ func (r *round) nextFree(up []string, q, lanes, room map[string]int, avoid strin
 	for _, x := range up {
 		isUp[x] = true
 	}
-	lane := func(x string) bool { return isUp[x] && q[x] < lanes[x] }
 	open := func(x string) bool { return isUp[x] && q[x] < room[x] }
-	m := r.scan(func(x string) bool { return x != avoid && lane(x) })
+	av := []string{}
+	if avoid != "" {
+		av = append(av, avoid)
+	}
+	m := r.nextLane(up, q, lanes, av)
 	if m == "" {
 		m = r.scan(func(x string) bool { return x != avoid && open(x) })
 	}
-	if m == "" && avoid != "" && (lane(avoid) || open(avoid)) {
+	if m == "" && avoid != "" && (q[avoid] < lanes[avoid] || open(avoid)) {
 		m = avoid
 	}
 	return m
 }
 
-// levelTo is where the level moves the newest card of the longest queue, and
-// moves the index past it: the next member round the
-// fleet from the index that is below its room (held, the work cards it
-// holds, under widths: DealAhead times its width, width.go) and whose backlog
-// (n, which may be below zero: level) is below the up members' mean rounded
-// down, or, when none such is below it, at it. A member that receives is
-// at least two below the source's backlog. Each move therefore strictly
-// decreases the sum of squared backlogs, even when staging refusals prevent
-// reaching the shortest queue (tla/Level.tla, PotentialFalls). A member of
-// avoid (the card's StagingRefusers) is never the target. "" when none, and the
-// index does not move.
-func (r *round) levelTo(up []string, n, held, widths map[string]int, from string, avoid []string) string {
-	if len(up) == 0 {
-		return ""
-	}
-	total := 0
-	for _, m := range up {
-		total += n[m]
-	}
-	mean := total / len(up)
-	if total < 0 && total%len(up) != 0 {
-		mean-- // rounded down, below zero too
-	}
+// nextLane is nextFree's first scan: the first member from the index, wrapping,
+// that is up, holds fewer cards (q, memberLoads) than a lane (lanes, its width)
+// so it takes the card at once and starts it, and is not one of avoid (the
+// refusers, benches and launch exclusions of the card). It neither moves the
+// index nor counts the card. "" when none: the caller that takes the card moves
+// the index past the member (moved) and counts it (q). The level uses this same
+// scan for its target: a card moves only onto a member with a free lane
+// (tla/Level.tla NeverOffAFreeLane (lands with #127)).
+func (r *round) nextLane(up []string, q, lanes map[string]int, avoid []string) string {
 	isUp := make(map[string]bool, len(up))
 	for _, x := range up {
 		isUp[x] = true
 	}
-	open := func(x string) bool {
-		return isUp[x] && held[x] < widths[x] && n[from]-n[x] > 1 && !contains(avoid, x)
-	}
-	to := r.scan(func(x string) bool { return open(x) && n[x] < mean })
-	if to == "" {
-		to = r.scan(func(x string) bool { return open(x) && n[x] <= mean })
-	}
+	return r.scan(func(x string) bool {
+		return isUp[x] && q[x] < lanes[x] && !contains(avoid, x)
+	})
+}
+
+// levelTo is where the level moves a card off a member over its width, and
+// moves the index past it: the next member from the index, wrapping, with a free
+// lane (held, its work cards plus its reads at half a slot, rounded up, as
+// memberLoads counts them, below its width: lanes) that is not one
+// of avoid (the card's refusers, bench and launch exclusions). It is nextFree's
+// first scan (nextLane), so the level only ever moves a card onto a member that
+// can start it at once (tla/Level.tla NeverOffAFreeLane (lands with #127);
+// the owner, 2026-10-11 ~19:05-19:20Z:
+// "cards only may accrue per-fleet or friend, if there are not other
+// machines/friends ready to do that work right now!"). It never targets a
+// member at or above its width, so the mean rule and the gap of two are gone.
+// "" when none, and the index does not move: the caller keeps the card.
+func (r *round) levelTo(up []string, n, held, widths map[string]int, from string, avoid []string) string {
+	to := r.nextLane(up, held, widths, avoid)
 	if to != "" {
 		r.moved(to)
 	}

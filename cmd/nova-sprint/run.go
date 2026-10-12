@@ -787,6 +787,11 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			a.reconcileFriendsTick(ctx, st, friends, stdout)
 		}
 		a.serial.Unlock()
+		if err == nil {
+			// the seat not answering goes to the owner on the bus, as well as to the seat's
+			// hook, at its raise and at each raise again (seat_silent.go)
+			a.tellSeatSilent(ctx, st)
+		}
 		if n != 0 && i == n-1 {
 			return false
 		}

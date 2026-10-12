@@ -210,23 +210,25 @@ func TestADownMembersCardsGoRoundTheFleet(t *testing.T) {
 	check(t, w.s, "presence")
 }
 
-// The level goes round the fleet: twelve cards on m1 and seven members idle,
-// the index past m5; each card of the longest queue goes to the next member
-// below the mean (1), then to the next at it: m6 m7 m8 m2 m3 m4 m5, then m6 m7
-// m8, and every queue ends within one of the others.
+// The level moves a card only off a member over its width, and only onto a
+// member with a free lane: twelve cards on m1 with seven members idle and no
+// member over its width (64) is no move at all, whatever the queues' imbalance
+// (round.levelTo, nextLane; tla/Level.tla NeverOffAFreeLane (lands with #127)). The index stays
+// where it was.
 func TestTheLevelGoesRoundTheFleet(t *testing.T) {
 	t.Parallel()
 	members := []string{"m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"}
-	want := map[string]int{"m1": 2, "m2": 1, "m3": 1, "m4": 1, "m5": 1, "m6": 2, "m7": 2, "m8": 2}
 	check := func(t *testing.T, s *Snapshot, what string) {
 		t.Helper()
-		got := map[string]int{}
 		for _, m := range members {
-			got[m] = s.Fleet.Count(m, Ready)
+			want := 0
+			if m == "m1" {
+				want = 12
+			}
+			require.Equal(t, want, s.Fleet.Count(m, Ready), "%s: %s holds %d ready, want %d (no member is over its width)", what, m, s.Fleet.Count(m, Ready), want)
 		}
-		require.Equal(t, want, got, "%s: the queues are %v, want %v: round the fleet from past m5", what, got, want)
 		last, _ := s.Fleet.Prop(PropDealIndex)
-		require.Equal(t, "m8", indexPast(s.Fleet.Rows(), last), "%s: the index is past %q, want m8", what, last)
+		require.Equal(t, "m5", last, "%s: the index is %q, want m5 (unchanged: no move)", what, last)
 	}
 	upAll := func(s *Snapshot) {
 		for _, m := range members[1:] {

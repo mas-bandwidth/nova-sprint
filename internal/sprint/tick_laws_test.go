@@ -163,8 +163,9 @@ func TestTheTickRetiresACardOnlyWhenATakeEndsAtItsBound(t *testing.T) {
 func TestTheTickLevelKeepsRedealsAndTheUntakenClock(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 3)
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 2}))
 	w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m2"}))
-	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 3}}))
+	w.must(Deal(w.s, DealReq{Sel: Sel{Limit: 3}})) // three on m1, over its width of 2
 	require.Equal(t, 3, w.s.Fleet.Count("m1", Ready), "m1 holds every ready card")
 	for _, id := range []string{"s1-1.w1", "s1-2.w1", "s1-3.w1"} {
 		w.s.Fleet.Card(id).Fields["redeals"] = "2"
