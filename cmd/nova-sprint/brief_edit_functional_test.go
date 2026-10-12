@@ -71,12 +71,15 @@ func TestABriefEditKeepsARelinkedNeedOnTheStore(t *testing.T) {
 
 	// brief --tier --brief-file requires --reason; refuses without it, writes nothing
 	run("add", "--one", "--stream", "a", "e", "--brief-file", writeHeaderBrief(t, dir, "e", "-", "internal/e.go"))
+	run("tick") // the machine is running: the pump places the card admitted after the start
 	var out2, errb2 bytes.Buffer
 	code := runOnStore(a, addr, append([]string{"brief", "e", "--tier", "heavy", "--brief-file", writeBrief(t, "the brief")}, "--redis", addr), &out2, &errb2)
 	assert.Equal(t, 2, code, "brief --tier --brief-file without --reason")
 	assert.Contains(t, errb2.String(), "--reason")
 	tierField := run("card", "e", "--fields")
-	assert.NotContains(t, tierField, "tier:", "a refused re-tier with --brief-file writes nothing")
+	// the card's brief line 1 carries "tier: flash", so the check names the tier the
+	// refused re-tier would have written (its field), not the brief's own text
+	assert.NotContains(t, tierField, "tier=heavy", "a refused re-tier with --brief-file writes nothing")
 
 	// brief --tier --brief-file with --reason works; reason visible on the card
 	out2.Reset()
