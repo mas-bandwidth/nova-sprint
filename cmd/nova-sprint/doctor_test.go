@@ -484,65 +484,133 @@ func TestFleetBeatDryRunWritesNothing(t *testing.T) {
 	}
 }
 
+// envExitFleet is a sprint whose member m1 holds ten taken work cards of stream s1: it
+// finishes all but the last n of them ok, then each of the last n as a failed finish at
+// exits[i] with reports[i] and harness[i], a minute apart and each drained by its own tick,
+// so the last is the latest. It returns the cards' primaries in finish order of the
+// environment exits.
+func envExitFleet(ta *testApp, exits []int, reports, harness []string) []string {
+	ta.t.Helper()
+	ta.ok("init --readers reader-a --members m1")
+	ta.ok("add --stream s1 --count 10")
+	ta.ok("start")
+	ta.ok("tick")
+	var q struct{ Cards []queueCard }
+	ta.json("queue --as m1", &q)
+	require.Len(ta.t, q.Cards, 10, "m1's queue: %+v", q.Cards)
+	ta.ok("take --as m1 --limit 100")
+	n := len(exits)
+	var ok []string
+	for _, c := range q.Cards[:10-n] {
+		ok = append(ok, c.ID+"@"+strconv.Itoa(c.Gen))
+	}
+	if len(ok) > 0 {
+		ta.ok("finish --as m1 " + strings.Join(ok, " "))
+		ta.ok("tick") // a finish is queued until the next tick drains it
+	}
+	var prs []string
+	for i, c := range q.Cards[10-n:] {
+		ta.later(time.Minute)
+		ta.ok("finish --as m1 " + c.ID + "@" + strconv.Itoa(c.Gen) + " --failed --exit " + strconv.Itoa(exits[i]) +
+			" --report '" + reports[i] + "' --harness '" + harness[i] + "'")
+		ta.ok("tick")
+		prs = append(prs, c.Primary)
+	}
+	ta.a.outside = doctorOutside(ta, []string{"m1"}, nil)
+	return prs
+}
+
 // A member whose children ended on its environment over the rate is named under member-env
 // (docs/SPEC-SPRINT.md, "An environment exit"): the counts come from the attempt records on
-// the work cards, keyed by epoch. A finish whose child exit is 134/137 records
-// `ended=environment exit=<n>` and the harness tail, and the doctor names the member, the
-// rate, the first line of the last tail and the card to read.
+// the epoch's cards. A finish whose child exit is 134, or whose report is a no-result at any
+// exit (here 0, the attempt-3 reader's case), records `ended=environment exit=<n>` and the
+// harness tail, and the doctor names the member, the rate, the first line of the latest
+// tail and the card to read. Before this card the doctor had no member-env line at all.
 func TestDoctorNamesTheMemberEnvExitRate(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-a --members m1")
-	ta.ok("add --stream s1 --count 10")
-	ta.ok("start")
-	ta.ok("tick")
-	var q struct{ Cards []queueCard }
-	ta.json("queue --as m1", &q)
-	require.Len(t, q.Cards, 10, "m1's queue: %+v", q.Cards)
-	var ok, env []string
-	for _, c := range q.Cards {
-		if len(env) < 2 {
-			env = append(env, c.ID+"@"+strconv.Itoa(c.Gen))
-			continue
-		}
-		ok = append(ok, c.ID+"@"+strconv.Itoa(c.Gen))
-	}
-	ta.ok("take --as m1 --limit 100")
-	ta.ok("finish --as m1 " + strings.Join(ok, " "))
-	ta.ok("finish --as m1 " + strings.Join(env, " ") + " --failed --exit 134 --report 'no result: Error: Unknown: ChildProcess.spawn (opencode)' --harness 'Error: Unknown: ChildProcess.spawn (opencode)\nmore lines'")
-	ta.a.outside = doctorOutside(ta, []string{"m1"}, nil)
+	prs := envExitFleet(ta, []int{134, 0},
+		[]string{"no result: Error: Unknown: ChildProcess.spawn (opencode)", "no result: no RESULT.md shape"},
+		[]string{"an older tail", "Error: Unknown: ChildProcess.spawn (opencode)\nmore lines"})
 
 	code, out, errs := ta.do("doctor --area fleet")
 	require.Equal(t, 1, code, "a member over the rate is RED\n%s%s", out, errs)
-	assert.Contains(t, out, "DOCTOR FAIL member-env m1 child exits: 2 of 10 children in the last hour ended 134/137 with no result (20%), last: Error: Unknown: ChildProcess.spawn (opencode) remedy=nova-sprint card s1-1", out)
+	assert.Contains(t, out, "DOCTOR FAIL member-env m1 child exits: 2 of 10 children in the last hour ended 134/137 with no result (20%), last: Error: Unknown: ChildProcess.spawn (opencode) remedy=nova-sprint card "+prs[1]+"\n", out)
 }
 
-// A member whose environment exits are between 3% and 10% is a WARN; below is OK and no line
-// at all.
+// A member whose environment exits are from 3% to 10% is a WARN, not RED; below is an OK
+// line naming no card (docs/SPEC-SPRINT.md, "An environment exit").
 func TestDoctorNamesTheMemberEnvExitWarn(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
-	ta.ok("init --readers reader-a --members m1")
-	ta.ok("add --stream s1 --count 10")
-	ta.ok("start")
-	ta.ok("tick")
-	var q struct{ Cards []queueCard }
-	ta.json("queue --as m1", &q)
-	require.Len(t, q.Cards, 10)
-	var ok, env []string
-	for _, c := range q.Cards {
-		if len(env) < 1 {
-			env = append(env, c.ID+"@"+strconv.Itoa(c.Gen))
-			continue
-		}
-		ok = append(ok, c.ID+"@"+strconv.Itoa(c.Gen))
-	}
-	ta.ok("take --as m1 --limit 100")
-	ta.ok("finish --as m1 " + strings.Join(ok, " "))
-	ta.ok("finish --as m1 " + strings.Join(env, " ") + " --failed --exit 137 --report 'no result: killed' --harness 'killed'")
-	ta.a.outside = doctorOutside(ta, []string{"m1"}, nil)
+	prs := envExitFleet(ta, []int{137}, []string{"no result: killed"}, []string{"killed"})
 
 	code, out, errs := ta.do("doctor --area fleet")
 	require.Equal(t, 0, code, "a warn band is not RED\n%s%s", out, errs)
-	assert.Contains(t, out, "DOCTOR WARN member-env m1 child exits: 1 of 10 children in the last hour ended 134/137 with no result (10%), last: killed remedy=nova-sprint card s1-1", out)
+	assert.Contains(t, out, "DOCTOR WARN member-env m1 child exits: 1 of 10 children in the last hour ended 134/137 with no result (10%), last: killed remedy=nova-sprint card "+prs[0]+"\n", out)
+
+	ok := newTestApp(t)
+	envExitFleet(ok, nil, nil, nil)
+	code, out, errs = ok.do("doctor --area fleet")
+	require.Equal(t, 0, code, "%s%s", out, errs)
+	assert.Contains(t, out, "DOCTOR OK member-env m1 child exits: 0 of 10 children in the last hour ended 134/137 with no result (0%), last: - remedy=-\n", out)
+}
+
+// An environment exit goes back to ready at the SAME attempt, spending nothing
+// (docs/SPEC-SPRINT.md, "An environment exit"): the tick that drains the finish withdraws
+// the work card with `ended=environment exit=<n>` and the harness tail and no take_ended,
+// puts the primary back in ready at attempt 1 with the tail and the take's record on it,
+// does not hold the member, and deals the same work card (s1-1.w1, attempt 1) again, to the
+// same member, with no redeal counted. Before this card a no-result finish was a take that
+// ended (a redeal spent) and a 134 at another report was failed work.
+func TestAnEnvironmentExitGoesBackToReadyAtTheSameAttempt(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1")
+	ta.ok("add --stream s1 --count 1 --one")
+	ta.ok("start")
+	ta.ok("tick")
+	ta.ok("take --as m1 s1-1.w1@1")
+	ta.ok("finish --as m1 s1-1.w1@1 --failed --exit 134 --report 'no result: aborted' --harness 'Error: Unknown: ChildProcess.spawn (opencode)\nAborted'")
+	out := ta.ok("tick")
+	assert.Contains(t, out, "s1-1.w1 working -> withdrawn gen=2, environment exit=134 ended on m1's environment (no attempt spent); s1-1 working -> ready", out)
+
+	pr := ta.primary("s1-1")
+	assert.Equal(t, "1", pr.F("attempt"), "the same attempt")
+	assert.Empty(t, pr.F("failed"), "never failed work")
+	assert.Equal(t, "Error: Unknown: ChildProcess.spawn (opencode)\nAborted", pr.F(sprint.FieldHarnessTail))
+	assert.Contains(t, pr.F(sprint.FieldCostRecord+"s1-1.w1#g1"), "end=environment-exit=134", "the take's attempt record")
+	wc := ta.fleetCard("s1-1.w1")
+	require.NotNil(t, wc)
+	assert.Equal(t, "environment exit=134", wc.F(sprint.FieldEnvExit))
+	assert.Empty(t, wc.F(sprint.FieldTakeEnded), "no redeal spent")
+	assert.Empty(t, wc.F("redeals"), "the redeal count is unspent")
+	assert.Equal(t, "m1", wc.Row, "the member is not held: dealt to it again")
+
+	var q struct{ Cards []queueCard }
+	ta.json("queue --as m1", &q)
+	require.Len(t, q.Cards, 1, "dealt again: %+v", q.Cards)
+	assert.Equal(t, "s1-1.w1", q.Cards[0].ID, "the same work card")
+	assert.Equal(t, 1, q.Cards[0].Attempt, "the same attempt number")
+	assert.Equal(t, 3, q.Cards[0].Gen, "gen 2 withdrawn by the exit, gen 3 dealt again")
+}
+
+// stats --children prints the per-member histogram of child exit codes for the last hour
+// from the same attempt records (docs/SPEC-SPRINT.md, "An environment exit"), so the seat
+// reads the rate without ssh. Before this card stats had no --children.
+func TestStatsChildrenPrintsThePerMemberExitHistogram(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	envExitFleet(ta, []int{134, 137, 0},
+		[]string{"no result: a", "no result: b", "no result: c"},
+		[]string{"first", "second", "Error: Unknown: ChildProcess.spawn (opencode)\nmore"})
+	code, out, errs := ta.do("stats --children")
+	require.Equal(t, 0, code, "%s%s", out, errs)
+	assert.Equal(t, "CHILD m1 children=10 env=3 rate=30% exit_0=1 exit_134=1 exit_137=1 other=7 status=FAIL last: Error: Unknown: ChildProcess.spawn (opencode)\n", out)
+
+	none := newTestApp(t)
+	none.ok("init --readers reader-a --members m1")
+	code, out, errs = none.do("stats --children")
+	require.Equal(t, 0, code, "%s%s", out, errs)
+	assert.Equal(t, "CHILDREN none in the last hour\n", out)
 }

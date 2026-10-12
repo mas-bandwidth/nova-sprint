@@ -7046,32 +7046,76 @@ epoch's.
 
 ### An environment exit
 
-A child that ends 134 or 137, or that leaves no result at all (`why=no-result`, whatever its
-line), did not judge the card: it is an environment event of the member. The opencode harness
-aborts under the landlock sandbox with `Error: Unknown: ChildProcess.spawn (...)` and exit
-134/137, and the card comes back `no verdict` or `not-done`; the finish records it on the
-attempt as `ended=environment exit=<n>` (never failed, never broken), leaves the card in ready
-at the same attempt number, and spends none of its reader slots: the member may read the card
-again. The finish keeps the last `HarnessTailLines` (40) of the harness output on the card, so
-the cause is on the card a reader reads (`sprint.EnvExit`, `sprint.EnvironmentExit`,
-`sprint.HarnessTail`, internal/sprint/attempts.go). The doctor reads the attempt records keyed
-by the epoch and names, under `member-env`, each member whose environment exits are over the
-rate over the last hour's children: over `EnvExitFailPct` (10%) with at least `EnvExitMinN`
-(10) children is a FAIL, from `EnvExitWarnPct` (3%) to 10% a WARN, below an OK, with no line
-under the floor (`sprint.EnvExitStatus`, `sprint.EnvExitCheck`). The finish carries the child's
-exit (`--exit`, `FinishReq.Exit`) and its harness output (`--harness`, `FinishReq.Harness`), and
-`envExited` (steps_work.go) withdraws the work card WITHOUT `FieldTakeEnded` (no redeal, no
-attempt spent) with `ended=environment exit=<n>` (`FieldEnvExit`) and the tail (`FieldHarnessTail`)
-on it, and the member is not held. The doctor reads the attempt records on the work cards, keyed
-by epoch, with `sprint.EnvExitChildren`, and names each member over the rate. `nova-sprint stats
---children` prints the same counts as a per-member histogram of child exit codes for the window.
-Tests:
-`TestEnvExitClassifiesTheMemberEnvironmentExit`, `TestEnvironmentExitNamesTheCode`,
-`TestHarnessTailKeepsTheLastFortyLines`, `TestEnvExitRateThresholds`,
+A child that ends 134 or 137, or that leaves no result at all (`why=no-result`: a report that
+begins `no result:`) at ANY exit, 0 included, did not judge the card: it is an environment
+event of the member (on 2026-10-11 the opencode harness aborted under the landlock sandbox with
+`Error: Unknown: ChildProcess.spawn (...)` and exit 134 or 137 on one child in four to fourteen,
+and every card it touched came back `no verdict` or `not-done`). The member passes the child's
+exit and its harness output on the finish (`finish --failed --exit <n> --harness <text>`,
+`FinishReq.Exit`, `FinishReq.Harness`) and on a read's return (`read --return <card> --reason
+<text> --exit <n> --harness <text>`, `ReadReq.Exit`, `ReadReq.Harness`); `sprint.EnvExit`
+(internal/sprint/attempts.go) is the one classifier.
+
+- A work card's environment exit at 134 or 137 (`HardEnvExit`: the harness died; `envExited`,
+  steps_work.go) is recorded on the attempt as `ended=environment exit=<n>` (`FieldEnvExit`),
+  never failed and never broken, and spends nothing: the work card is withdrawn WITHOUT
+  `take_ended`, so the next deal deals the same work card again (redeal) at the SAME attempt
+  number and spends none of the redeal bound; the primary goes back to ready with its attempt,
+  failed count and result untouched; the member is not held. The take's consumer record on the
+  primary (cost.go) ends `environment exit=<n>`.
+- A no-result child at another exit (0 included: a model that wrote nothing exits 0 too) is an
+  environment exit as well, recorded and counted as one, but its take is still the ended take
+  the owner's rules for a take that left no result make it (`takeEnded`: back to ready at the
+  same attempt, never failed work, redealt counting the take, 2026-10-01; rule 2, the second
+  identical end is the bound, 2026-10-02; flash first escalates, 2026-10-03). It carries
+  `ended=environment exit=<n>` and the tail, and its consumer record ends `no result
+  environment exit=<n>`. A decided no-result (nova-decide's class, not the report's words) is
+  no environment exit.
+- A read's environment exit at 134 or 137 is no verdict and spends no reader: on a member's row
+  the read card is retired by `environment` (`RetiredByEnvironment`, not in `spentBy`), so the
+  member may be dealt the read again at a fresh generation; on the readers table the read goes
+  back to asked without counting a re-ask. The run's consumer record ends `environment
+  exit=<n>`. A read returned at another exit spends its reader as before.
+- Either keeps the last `HarnessTailLines` (40) lines of the harness output, at most
+  `HarnessTailBytes` (16 KiB, its end kept), on the run's card and on its primary
+  (`FieldHarnessTail`, `harness_tail`), so the cause is on the card a reader reads
+  (`sprint.EnvironmentExitRecord`, `sprint.HarnessTail`). A friend's row is no member's
+  environment: her finishes and returns are judged as before.
+
+The doctor counts each member's children over the last hour from the attempt records keyed by
+the epoch: every take's and read run's consumer record on the epoch's primaries, by who ran
+it, how it ended and when (`sprint.EnvExitChildren`; a launch refused at staging ran no child
+and is not counted). For a member with at least `EnvExitMinN` (10) children it prints one
+`member-env` line (`sprint.EnvExitStatus`, `sprint.EnvExitCheck`):
+
+    DOCTOR FAIL member-env <m> child exits: <k> of <n> children in the last hour ended 134/137 with no result (<rate>%), last: <first line of the harness tail> remedy=nova-sprint card <id>
+
+FAIL when the rate is over `EnvExitFailPct` (10%), WARN from `EnvExitWarnPct` (3%) to 10%, OK
+below (an OK names no card); a member under the floor gets no line. `<id>` is the primary of
+the member's latest environment exit and `last:` the first line of its tail. `nova-sprint
+stats --children` prints the same counts as a per-member histogram of child exit codes for the
+window, read from the store, with no ssh:
+
+    CHILD <m> children=<n> env=<k> rate=<pct>% exit_<code>=<count>... other=<n-k> status=<FAIL|WARN|OK> last: <line>
+
+(`CHILDREN none in the last hour` when no child ended). A 134 or 137 spends nothing, so a
+card whose every child dies that way is dealt again without a bound: the doctor's FAIL is what
+names it. Not in this rule: the cause of the spawn failure under the
+wall (a-harness-spawn-failure-under-the-wall-is-diagnosed), and the member passing `--exit`
+and `--harness` from its child (until it does, a member's no-result finish is recorded at
+exit 0 with no tail, an ended take as before), and the TLA+ models (tla/DirtyTick.tla
+`BoundClasses`, tla/AttemptsEpochs.tla `TakeEnds`) gaining the 134/137 exit that spends
+nothing: owed. Tests: `TestEnvExitClassifiesTheMemberEnvironmentExit`,
+`TestEnvironmentExitNamesTheCode`, `TestHarnessTailKeepsTheLastFortyLines`,
+`TestEnvironmentExitRecordCarriesTheEndedWordAndTail`, `TestEnvExitRateThresholds`,
 `TestEnvExitCheckNamesTheRateAndTheCard`, `TestFinishRecordsAnEnvironmentExitOnTheAttempt`,
 `TestFinishWithACleanEndOrAVerdictIsNeverAnEnvironmentExit`,
-`TestEnvExitChildrenCountsTheMemberEnvironmentExits`,
-`TestDoctorNamesTheMemberEnvExitRate`, `TestDoctorNamesTheMemberEnvExitWarn`.
+`TestANoResultTakeIsAnEnvironmentExitAndStillAnEndedTake`,
+`TestAReadsEnvironmentExitSpendsNoReader`, `TestEnvExitChildrenCountsTheMemberEnvironmentExits`
+(internal/sprint/attempts_test.go); `TestDoctorNamesTheMemberEnvExitRate`,
+`TestDoctorNamesTheMemberEnvExitWarn`, `TestAnEnvironmentExitGoesBackToReadyAtTheSameAttempt`,
+`TestStatsChildrenPrintsThePerMemberExitHistogram` (cmd/nova-sprint/doctor_test.go); functional
+`TestAnEnvironmentExitOnARealStore` (cmd/nova-sprint/envexit_functional_test.go).
 
 ### release-check-frame
 

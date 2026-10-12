@@ -26,7 +26,7 @@ import (
 func (a *app) cmdStats(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("stats")
 	routes := fs.Bool("routes", false, "the route table from the log over --since, instead of the live tables")
-	children := fs.Bool("children", false, "the per-member histogram of child exit codes for the last hour, from the attempt records on the work cards (a member's environment exits, ended=environment exit=<n>), so the seat reads them without ssh")
+	children := fs.Bool("children", false, "the per-member histogram of child exit codes for the last hour, from the attempt records on the epoch's cards (each take and read run's record; a member's environment exits, ended=environment exit=<n>, by code), so the seat reads them without ssh")
 	since := fs.String("since", "", "with --routes, the window start: a duration back from now (10m) or an RFC 3339 time; the last stats tidy of the routes when not given")
 	if pos, err := parse(fs, args); err != nil || len(pos) > 0 {
 		return refuse(stderr, "stats", argErr("takes no words ", err, pos...))
@@ -93,26 +93,34 @@ func (a *app) cmdStats(args []string, stdout, stderr io.Writer) int {
 }
 
 // cmdStatsChildren prints the per-member histogram of child exit codes for the last hour,
-// from the attempt records on the work cards (docs/SPEC-SPRINT.md, "An environment exit"): a
-// member's children that ended on its environment (ended=environment exit=<n>, each exit code
-// its own bucket) out of all its children that ended in the window, so the seat reads the
-// fleet's environment-exit rate without ssh.
+// from the attempt records on the epoch's cards (docs/SPEC-SPRINT.md, "An environment
+// exit"; sprint.EnvExitChildren), so the seat reads the fleet's environment-exit rate
+// without ssh: one line per member with a child that ended in the window, `CHILD <member>
+// children=<n> env=<k> rate=<pct>% exit_<code>=<count>... other=<n-k> status=<doctor's>
+// last: <first line of the last harness tail>`, where each exit_<code> is the environment
+// exits at that code and other is the children that ended with a verdict or another end of
+// the card's own.
 func (a *app) cmdStatsChildren(st *store.Store, stdout, stderr io.Writer) int {
 	read, err := st.DoctorRead(context.Background())
 	if err != nil {
 		return a.readFailed("stats", err, stderr)
 	}
-	counts := sprint.EnvExitChildren(read.Snap, read.Snap.Now, time.Hour)
+	counts := sprint.EnvExitChildren(read.Snap, a.now(), time.Hour)
 	if len(counts) == 0 {
 		fmt.Fprintln(stdout, "CHILDREN none in the last hour")
 		return 0
 	}
 	for _, c := range counts {
-		var buckets []string
+		words := []string{"children=" + strconv.Itoa(c.N), "env=" + strconv.Itoa(c.Env), "rate=" + strconv.Itoa(c.Env*100/c.N) + "%"}
 		for _, code := range slices.Sorted(maps.Keys(c.Exits)) {
-			buckets = append(buckets, "exit_"+code+"="+strconv.Itoa(c.Exits[code]))
+			words = append(words, "exit_"+code+"="+strconv.Itoa(c.Exits[code]))
 		}
-		fmt.Fprintf(stdout, "CHILD %s children=%d env=%d %s last: %s\n", c.Member, c.N, c.Env, strings.Join(buckets, " "), oneline.Escape(c.Last))
+		words = append(words, "other="+strconv.Itoa(c.N-c.Env), "status="+sprint.EnvExitStatus(c.Env, c.N))
+		last := c.Last
+		if last == "" {
+			last = "-"
+		}
+		fmt.Fprintf(stdout, "CHILD %s %s last: %s\n", c.Member, strings.Join(words, " "), oneline.Escape(last))
 	}
 	return 0
 }

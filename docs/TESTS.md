@@ -303,6 +303,37 @@ coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
   `NOVA_SPRINT_SERVER`), and its forward fails the test, so no verb can reach
   a live sprint server.
 
+### An environment exit
+
+A child that ends 134 or 137, or leaves no result at any exit, is the member's
+environment, never the card's (docs/SPEC-SPRINT.md, "An environment exit";
+a-doctor-reports-the-child-exit-code-rate-per-member). These tests lock it in:
+
+- Unit, `internal/sprint/attempts_test.go`:
+  `TestEnvExitClassifiesTheMemberEnvironmentExit`, `TestEnvironmentExitNamesTheCode`,
+  `TestHarnessTailKeepsTheLastFortyLines`,
+  `TestEnvironmentExitRecordCarriesTheEndedWordAndTail`, `TestEnvExitRateThresholds`,
+  `TestEnvExitCheckNamesTheRateAndTheCard`, `TestFinishRecordsAnEnvironmentExitOnTheAttempt`,
+  `TestANoResultTakeIsAnEnvironmentExitAndStillAnEndedTake`,
+  `TestFinishWithACleanEndOrAVerdictIsNeverAnEnvironmentExit`,
+  `TestAReadsEnvironmentExitSpendsNoReader`,
+  `TestEnvExitChildrenCountsTheMemberEnvironmentExits`.
+- Unit, `cmd/nova-sprint/doctor_test.go`: `TestDoctorNamesTheMemberEnvExitRate`,
+  `TestDoctorNamesTheMemberEnvExitWarn`,
+  `TestAnEnvironmentExitGoesBackToReadyAtTheSameAttempt`,
+  `TestStatsChildrenPrintsThePerMemberExitHistogram`.
+- Functional (`-tags functional`), `cmd/nova-sprint/envexit_functional_test.go`:
+  `TestAnEnvironmentExitOnARealStore`, on a private redis-server with a
+  nova-sprint binary it builds: ten cards finish on m1, two of them as
+  environment exits (134, and a no-result at exit 0); each goes back to ready
+  at the same attempt with its ended word and harness tail (the 134 spending
+  no redeal, the no-result an ended take as the owner's rules say),
+  the doctor prints the `member-env` FAIL line and `stats --children` the
+  histogram, and the next tick deals the same work cards again. Every
+  invocation passes `--redis` and `--actor`, with HOME and XDG_CONFIG_HOME
+  its own, no `NOVA_*` variable and PATH the binary's directory and the
+  system's, so no verb can reach a seat config or a live sprint server.
+
 ## nova-card
 
 Fixture: `cmd/nova-card/testdata/findings.tsv`, a reader's findings on two

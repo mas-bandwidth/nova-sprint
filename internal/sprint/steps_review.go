@@ -411,6 +411,12 @@ type ReadReq struct {
 	// finding against the work, not a read; the tick asks it again.
 	Return bool   `json:",omitempty"`
 	Reason string `json:",omitempty"`
+	// Exit and Harness are, with Return, the reader's child's exit code (0: a clean end or
+	// unknown) and its harness output: a return whose child ended 134 or 137 is an
+	// environment exit (EnvExit, HardEnvExit), which spends no reader and keeps the harness
+	// tail on the card (docs/SPEC-SPRINT.md, "An environment exit").
+	Exit    int    `json:",omitempty"`
+	Harness string `json:",omitempty"`
 	// Usage is what the read spent, as the reader read it from its child
 	// (cardcost.Usage): kept on the read card, timed and priced (cost.go).
 	Usage string `json:",omitempty"`
@@ -592,6 +598,22 @@ func Read(s *Snapshot, r ReadReq) Plan {
 			returns := c.Int(FieldReasked) + 1
 			run := nextTake(c, FieldReadTake)
 			rec := readCostRecord(s, c, r.Usage, c.F("asked"), cmp.Or(c.F("begun"), stamp(s.Now)))
+			if ended, env := EnvExit(r.Reason, r.Exit); env && HardEnvExit(r.Exit) {
+				// an environment exit is no read and no return of the reader's own: back in
+				// asked, stamped returned, its re-asks NOT counted, the ended word and the
+				// harness tail on the card and the run's record on the primary with that end
+				// (docs/SPEC-SPRINT.md, "An environment exit")
+				er := EnvironmentExitRecord(r.Exit, r.Harness)
+				fields, unset := er.envExitFields()
+				set := map[string]string{FieldReadTake + itoa(run): rec, FieldReturned: stamp(s.Now)}
+				maps.Copy(set, fields)
+				record(pr, readConsumer(s, c, run, ended, rec))
+				n.What += "; " + ended + ": the child ended on the reader's environment, not counted toward its re-asks"
+				p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"),
+					Changes: []Change{change(Readers, moveEntry(c, c.Row, Asked, set, append([]string{"begun"}, unset...)...))},
+					Moved:   c.ID + " " + c.Col + " -> asked (returned: " + ended + ")", Notes: []Note{n}})
+				continue
+			}
 			if RefusedReturn(r.Reason) {
 				// a read refused is not a read (RetiredByRefused): it never ran, so it counts
 				// toward no bound and marks nothing against its reader; it is retired off the
