@@ -24,7 +24,7 @@ More lanes help when the work is independent. Dependencies have to land first.
 
 Cards move through the system automatically:
 
-**Waiting → Ready → Working → Review → Merging → Landed**
+<img width="1214" height="188" alt="image" src="https://github.com/user-attachments/assets/e89adb04-fdcb-4e46-9b67-35acb4d4c68a" />
 
 A card waits for its prerequisites, takes an available lane, and goes
 through implementation, independent review, checks, and landing. Findings
