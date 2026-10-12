@@ -114,6 +114,35 @@ func statsPrimaries(s *Snapshot) []*Card {
 	return out
 }
 
+// CoordinationOf is the epoch's coordination-failure counter from the producers' cost
+// records: the provider and no-result ends, a staging refusal and a stop on unlanded needs
+// are coordination by construction (CoordinationCauseOfEnd), each added by cause and by the
+// member or friend who suffered it (end_class.go). The other causes (a harness crash before
+// the first turn, a content-filter or key refusal, an idle-reap, a missing tool or jar, the
+// tick or a hold taking a card back, a hook-gate refusal, a store fault, a landing conflict)
+// arrive as reports at the finish and are classed and recorded there (ClassEnd); the counter
+// here holds every cause the cost records name, which is the epoch's coordination ends the
+// where record and stats show.
+func CoordinationOf(s *Snapshot) *CoordinationCounter {
+	coord := NewCoordinationCounter(s.Epoch)
+	for _, p := range statsPrimaries(s) {
+		for _, c := range CardCostOf(p).Consumers {
+			own := s.Fleet.Card(c.Card)
+			if c.Kind == "read" {
+				own = s.Readers.Card(c.Card)
+			}
+			if cause := CoordinationCauseOfEnd(c.End); cause != "" {
+				who := "-"
+				if own != nil {
+					who = cmp.Or(own.F("member"), own.Row, "-")
+				}
+				coord.Add(cause, who)
+			}
+		}
+	}
+	return coord
+}
+
 // StatsSince is Stats from since on (the last stats tidy; zero is the whole epoch): a
 // stage counts when it ended at or after since, a work card when its last stamp
 // (finished, else taken, else dealt) is, a read card likewise (read, begun, asked), a

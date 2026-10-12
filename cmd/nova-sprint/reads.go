@@ -643,6 +643,11 @@ type whereView struct {
 	// (sprint.ReadSpendLine), from the tick's where record; absent when no read ended today.
 	ReadSpend string               `json:"read_spend,omitempty"`
 	Streams   []sprint.StreamClock `json:"streams"`
+	// Coordination is the epoch's coordination-failure counter (sprint.CoordinationOf), total
+	// and by cause and by the member or friend who suffered it, from the tick's where record;
+	// shown in where --all and as one line under the fleet and friends tables
+	// (docs/SPEC-SPRINT.md, coordination failures). Nil without the record.
+	Coordination *sprint.CoordinationCounter `json:"coordination,omitempty"`
 	// StageTimes is where a card's wall time goes: the median and p90 in seconds of each
 	// stage (needs, deal, take, work, rework, read_wait, read, accept, merge) over the
 	// cards landed in the last 24 h, overall and per stream, from the tick's where record
@@ -1358,6 +1363,11 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	// the day's read spend per route, from the same record (cost_view.go)
 	if v.ReadSpend = sprint.ReadSpendLine(facts.Streams); v.ReadSpend != "" {
 		b.WriteString(v.ReadSpend + "\n")
+	}
+	// the epoch's coordination failures, one line under the summary: everything the machine,
+	// bench, harness, provider or seat caused, never the worker's (end_class.go)
+	if v.Coordination = facts.Coordination; v.Coordination != nil && v.Coordination.Total > 0 {
+		b.WriteString(v.Coordination.Line() + "\n")
 	}
 	// the work table's cost column closed to the tile: the spend no card carries, the total,
 	// and the check that the streams' sums are every card's (sprint.CostCheck)
