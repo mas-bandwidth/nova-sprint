@@ -444,6 +444,25 @@ Failed work and broken reads rework themselves, and no wait parks a card
 - `TestWaitByGroupIsRefusedOnFailedWork` (cmd/nova-sprint/no_parked_test.go)
 - `TestWaitByAliasIsRefusedOnFailedWork` (cmd/nova-sprint/no_parked_test.go)
 
+### An overdue judgment never offers a refused wait (v1.2.16)
+
+The inbox adds an `act` line for overdue groups. Past a card-holding judgment's deadline that
+line must name the action `sprint.WaitRefused` gives for the kind, never the wait the store
+would refuse. One fix, in the shared command rendering (`sprint.commands`), covers the three
+places it is shown: the inbox group's commands, the hook's push and the act line (all render
+from it; `cmd/nova-sprint/reads.go groupText`).
+
+- Unit, `internal/sprint/wait_refused_test.go`:
+  `TestOverdueCardHoldingJudgmentOffersNoWait`: a table over every kind of `WaitRefused`
+  (and a stall that names a card) renders the group's commands with an overdue `act`, and
+  asserts no `wait` decision or `nova-sprint wait` line appears anywhere and the act line
+  names the action `WaitRefused` lists.
+- Functional (`-tags functional`), `cmd/nova-sprint/overdue_no_wait_functional_test.go`:
+  `TestAnOverdueCardHoldingJudgmentOffersNoWaitOnTheStore`, on a private redis-server with
+  explicit `--redis` and a scrubbed environment: a failed work judgment holds its card; read
+  with a tiny `--deadline`, the inbox (and the hook's rendering of the same group) offers no
+  wait and names the action.
+
 ## Release acceptance
 
 The release-acceptance list (PR #110) takes these tests so this way of failing cannot come back unseen:

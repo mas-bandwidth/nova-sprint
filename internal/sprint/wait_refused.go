@@ -138,6 +138,22 @@ func WaitRefusalOn(n Note, onWork func(id string) bool) string {
 	return ""
 }
 
+// WaitRefusedAction is the action WaitRefused names in place of a wait on the judgment n: the
+// one table's text for the kind, or "" when the kind takes a wait. A kind of
+// WaitRefusedWhenItNamesACard names it only when the judgment names a card.
+func WaitRefusedAction(n Note) string {
+	if n.Kind != Judgment {
+		return ""
+	}
+	if instead, ok := WaitRefused[n.Type]; ok {
+		return instead
+	}
+	if c, cardOnly := WaitRefusedWhenItNamesACard[n.Type]; cardOnly && !n.StreamLevel && !n.SprintLevel && len(n.Primaries) > 0 {
+		return c
+	}
+	return ""
+}
+
 // OffersRefusedVerb is the decisions of the kind that name a verb the kind refuses: "wait"
 // on a kind of WaitRefused. The inbox never offers one (notes.go Decisions, steps_tick.go
 // TickDecisions).

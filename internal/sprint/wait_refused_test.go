@@ -106,6 +106,40 @@ func TestAStallRefusesWaitOnlyWhenItNamesACard(t *testing.T) {
 	}
 }
 
+// An overdue judgment that holds a card offers no wait anywhere the rendering shows it: the
+// inbox group's commands, the hook's push and the act line all render from commands() (cmd/
+// nova-sprint/reads.go groupText), so one fix covers all three. The act line names the action
+// WaitRefused gives for the kind; a wait stays the act of an alarm (not covered here: a kind
+// that takes a wait still prints it, TestEveryDecisionPrintsItsCommands).
+func TestOverdueCardHoldingJudgmentOffersNoWait(t *testing.T) {
+	t.Parallel()
+	kinds := append(WaitRefusedKinds(), NStalled)
+	for _, k := range kinds {
+		ds := append(append([]string{}, Decisions[k]...), TickDecisions[k]...)
+		if len(ds) == 0 {
+			ds = []string{"act"}
+		}
+		n := Note{ID: "j1", Kind: Judgment, Type: k, Stream: "s1", Primaries: []string{"s1-1"}, Decisions: ds}
+		g := Group{ID: "j1", Kind: Judgment, Type: k, Stream: "s1", Size: 1, Notes: []string{"j1"}, Members: []string{"s1-1"}, Decisions: append(append([]string{}, ds...), "act")}
+		onWork := func(id string) bool { return id == "s1-1" }
+		require.NotEmpty(t, WaitRefusalOn(n, onWork), "%s must refuse wait", k)
+		want := WaitRefusedAction(n)
+		var actLines []string
+		for _, c := range commands(g, n, "", onWork) {
+			assert.False(t, c.Decision == "wait" || strings.HasPrefix(c.Decision, "wait "), "%s offers a refused decision %q", k, c.Decision)
+			for _, l := range c.Lines {
+				assert.NotContains(t, l, "nova-sprint wait", "%s offers a refused line %q", k, l)
+			}
+			if c.Decision == "act" {
+				actLines = append(actLines, c.Lines...)
+			}
+		}
+		assert.NotEmpty(t, actLines, "%s: an overdue card-holding judgment renders an act line", k)
+		require.NotEmpty(t, want, "%s: WaitRefused names an action", k)
+		assert.Contains(t, strings.Join(actLines, "\n"), want, "%s: the act line names the action WaitRefused gives", k)
+	}
+}
+
 // A judgment shared by two cards, one of them answered, holds only the other: the count reads
 // each open entry's own subject, never the note's whole list (Stella's read of 2026-10-11).
 func TestAPartlyAnsweredJudgmentCountsOnlyTheCardsStillHeld(t *testing.T) {
