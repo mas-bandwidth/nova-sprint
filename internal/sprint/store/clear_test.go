@@ -99,6 +99,25 @@ func TestClearStartsAnEmptyEpochAfterAStopReturn(t *testing.T) {
 	require.Equal(t, []string{"reader-a", "reader-b", "reader-c"}, after.Readers.Rows(), "the readers carry over a clear")
 }
 
+// A clear is tabula rasa for the sprint's work, never for its configuration:
+// a reader's recorded tiers cell is a setting and survives the clear, as the
+// reader row does (SPEC-SPRINT section 13, the configuration rule).
+func TestAClearKeepsTheReadersTiers(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.setup(2)
+	require.NoError(t, h.m.RowSet(h.ctx, "t-readers", "reader-b", map[string]string{sprint.ReaderTiers: "pro"}))
+	require.Equal(t, "pro", sprint.ReaderTiersStored(h.snap().Readers, "reader-b"), "the tiers were not set on the row")
+
+	_, err := h.st.Clear(h.ctx)
+	require.NoError(t, err)
+	after := h.snap()
+	require.Equal(t, []string{"reader-a", "reader-b", "reader-c"}, after.Readers.Rows(), "the readers carry over a clear")
+	require.Equal(t, "pro", sprint.ReaderTiersStored(after.Readers, "reader-b"), "a reader's tiers are its configuration and survive a clear")
+	require.Equal(t, "", sprint.ReaderTiersStored(after.Readers, "reader-a"), "a reader that named no tiers keeps the default cell")
+	h.clean("cleared")
+}
+
 func TestClearRefusesWithEveryLiveLeaseAndOwner(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

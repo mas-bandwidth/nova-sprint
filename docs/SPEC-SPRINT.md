@@ -7133,8 +7133,8 @@ keyed by epoch, so the new epoch starts with no stream, work, merge, read
 card, lease, stop receipt, alarm, inbox or session state by construction. A
 clear is tabula rasa for the sprint's work, never for its configuration: the
 fleet's members (their rows, widths, status and holds) and the readers (their
-reader rows, the reader add and init wrote) carry over, but their work cards
-and read cards do not. The
+reader rows and their recorded tiers, the reader add, reader tiers and init
+wrote) carry over, but their work cards and read cards do not. The
 old epoch stays where it is and readable (`where`, `card` and `inbox --at-epoch <n>`), and every writer still holding it is refused as stale: nothing of that
 epoch lands in the new one. Operation ids and notification ids carry their epoch (`~<n>` after
 the first): a caller's operation id recorded at an earlier epoch is refused,
@@ -7157,9 +7157,12 @@ machine's state before, and the sprint line.
 Clear does not carry stream rows or their archived/hidden status, goals,
 leases, stop debt, alarms or notification cursors into the next epoch. The
 sprint's configuration carries over: the fleet's members with their rows,
-widths, status and holds, and the readers with their rows (restoreMembers,
-internal/sprint/store/clear.go), but neither carries its work cards or read
-cards. Adding a stream after clear creates it fresh, whether its
+widths, status and holds, and the readers with their rows and their recorded
+tiers (restoreMembers, internal/sprint/store/clear.go), but neither carries its
+work cards or read cards. A reader's tiers are its configuration, so a reader
+declared `--tiers flash` or `--tiers pro` comes back with that cell after a
+clear, never reset to the default; `start` restores nothing, because the clear
+kept it. Adding a stream after clear creates it fresh, whether its
 name was previously active, removed or archived. This blank-slate-for-work
 rule supersedes earlier table-entry descriptions that said a clear kept
 streams or kept an archived stream archived; the readers are not a stream and

@@ -140,6 +140,25 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 	return res, nil
 }
 
+// restoreReaderTiers carries each reader's recorded configuration across a
+// clear: a reader's row is the sprint's setting, and its tiers text cell is
+// part of it (the configuration rule, SPEC-SPRINT section 13). RowsAdd brings
+// the rows but copies no text cells (text cells are per-epoch), so the tiers
+// are written back from the old epoch beside the rows. A reader that named no
+// tiers keeps the empty cell, the default.
+func (st *Store) restoreReaderTiers(ctx context.Context, from *sprint.Table, readers []string) error {
+	for _, rd := range readers {
+		tiers := sprint.ReaderTiersStored(from, rd)
+		if tiers == "" {
+			continue
+		}
+		if err := st.B.RowSet(ctx, st.Names.Table(sprint.Readers), rd, map[string]string{sprint.ReaderTiers: tiers}); err != nil {
+			return fmt.Errorf("the tiers of reader %s: %w", rd, err)
+		}
+	}
+	return nil
+}
+
 func placed(t *sprint.Table, except string) int {
 	n := 0
 	for _, c := range t.Cards() {
@@ -151,19 +170,22 @@ func placed(t *sprint.Table, except string) int {
 }
 
 // restoreMembers carries the sprint's configuration across a clear: the
-// readers' rows and the fleet's members with their rows, widths, status and
-// holds (the machines are still there, and a hold is part of a member's state
-// — the sync's mark on its own hold crosses a clear; a reader row is the
-// sprint's setting, not its work). The members' and readers' cards, and the
-// old epoch's streams, reads, merges and open judgments, are left behind. It
-// reads the shape from old, the old epoch frozen since the advance, and writes
-// it at the new one.
+// readers' rows with their tiers and the fleet's members with their rows,
+// widths, status and holds (the machines are still there, and a hold is part
+// of a member's state — the sync's mark on its own hold crosses a clear; a
+// reader row and its tiers cell are the sprint's setting, not its work). The
+// members' and readers' cards, and the old epoch's streams, reads, merges and
+// open judgments, are left behind. It reads the shape from old, the old epoch
+// frozen since the advance, and writes it at the new one.
 func (st *Store) restoreMembers(ctx context.Context, old *sprint.Snapshot) error {
 	sh := sprint.ShapeOf(old)
 	sh.Streams = nil
 	if len(sh.Readers) > 0 {
 		if err := st.B.RowsAdd(ctx, st.Names.Table(sprint.Readers), sh.Readers); err != nil {
 			return fmt.Errorf("the rows of the readers: %w", err)
+		}
+		if err := st.restoreReaderTiers(ctx, old.Readers, sh.Readers); err != nil {
+			return err
 		}
 	}
 	if len(sh.Members) > 0 {
@@ -204,6 +226,9 @@ func (st *Store) restore(ctx context.Context, from uint64) (*sprint.Snapshot, er
 		if err := st.B.RowsAdd(ctx, st.Names.Table(t), rows); err != nil {
 			return nil, fmt.Errorf("the rows of %s: %w", st.Names.Table(t), err)
 		}
+	}
+	if err := st.restoreReaderTiers(ctx, snap.Readers, sh.Readers); err != nil {
+		return nil, err
 	}
 	// an archived stream stays archived: its rows are hidden at the new epoch
 	if err := st.hideStreams(ctx, sprint.ArchivedStreams(snap), true); err != nil {
