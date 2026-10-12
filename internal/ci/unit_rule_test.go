@@ -593,6 +593,8 @@ func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
 			[]string{"2 socket shortSock"}},
 		"a !functional file is the unit tier": {"//go:build !functional\n\npackage p\nimport \"time\"\nfunc TestX() { time.Sleep(1) }\n",
 			[]string{"5 time time.Sleep"}},
+		"a linux branch of a functional-or-linux file is still unit-tier": {"//go:build functional || linux\n\npackage p\nimport \"time\"\nfunc TestX() { time.Sleep(1) }\n",
+			[]string{"5 time time.Sleep"}},
 		"a slow file is the unit tier": {"//go:build slow\n\npackage p\nimport \"time\"\nfunc TestX() { time.Sleep(1) }\n",
 			[]string{"5 time time.Sleep"}},
 		"a perf file is the unit tier": {"//go:build perf\n\npackage p\nimport \"time\"\nfunc TestX() { _ = time.Since(t0) }\n",
