@@ -2,7 +2,7 @@ package friend
 
 import (
 	"context"
-	"encoding/json"
+
 	"errors"
 	"fmt"
 	"math/big"
@@ -38,53 +38,6 @@ type LaneRules struct {
 
 // DefaultLoadWidth is how many lanes run while the load is above the row's bound.
 const DefaultLoadWidth = 3
-
-// LaneRulesOf reads the lane rules off the friend's beat answer; a word it does not
-// know is ignored and a value that does not parse leaves the field unset.
-func LaneRulesOf(answer string) LaneRules {
-	var r LaneRules
-	for _, w := range strings.Fields(answer) {
-		k, v, ok := strings.Cut(w, "=")
-		if !ok || !strings.HasPrefix(k, "row_") {
-			continue
-		}
-		switch strings.TrimPrefix(k, "row_") {
-		case "tiers":
-			r.Tiers = splitList(v)
-		case "streams":
-			r.Streams = splitList(v)
-		case "token_cap":
-			if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-				r.TokenCap = n
-			}
-		case "load_max":
-			if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
-				r.LoadMax = f
-			}
-		case "load_width":
-			if n, err := strconv.Atoi(v); err == nil && n > 0 {
-				r.LoadWidth = n
-			}
-		case "pause_on":
-			if v == "funds" || v == "any" {
-				r.PauseOn = v
-			}
-		case "refuse_go":
-			r.RefuseGo = v == "1" || v == "true"
-		}
-	}
-	return r
-}
-
-func splitList(v string) []string {
-	var out []string
-	for _, s := range strings.Split(v, ",") {
-		if s = strings.TrimSpace(s); s != "" && s != "-" {
-			out = append(out, s)
-		}
-	}
-	return out
-}
 
 // LaneVerdict is what the rules say of a dealt card.
 type LaneVerdict int
@@ -195,54 +148,6 @@ func (r LaneRules) ProviderStop(err error) (message string, stop bool) {
 // daemon, and nothing resumes until a person removes it (nova-friend resume).
 const PauseFile = "PAUSED"
 
-// WritePause records the exact provider message that held the friend down.
-func WritePause(stateDir, message string, at time.Time) error {
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
-		return err
-	}
-	return atomicfile.WriteFile(filepath.Join(stateDir, PauseFile), []byte(at.UTC().Format(time.RFC3339)+" "+oneLine(message, 400)+"\n"), 0o644)
-}
-
-// ReadPause is the pause marker's line; "" when the lanes are not paused.
-func ReadPause(stateDir string) string {
-	raw, err := os.ReadFile(filepath.Join(stateDir, PauseFile))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(raw))
-}
-
-// ClearPause is a person bringing the lanes up: the marker removed; whether one was there.
-func ClearPause(stateDir string) (bool, error) {
-	err := os.Remove(filepath.Join(stateDir, PauseFile))
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	return err == nil, err
-}
-
-// PauseBeatAhead is how far ahead the friend's down beat sets its --until while the pause
-// marker stands. Every beat sends it again, so it never lapses while she is paused; once a
-// person clears the marker the next beat goes without --until and withdraws it.
-const PauseBeatAhead = time.Hour
-
-// PauseBeat is the friend's beat while the pause marker (its line, ReadPause) stands: down
-// until PauseBeatAhead from now, with the provider's exact message as the reason. `friend beat
-// <friend> --until <t> --reason <r>` is a worker's verb the sprint server serves; while her
-// last beat says so she is down and the dealer deals her nothing (docs/SPEC-SPRINT.md).
-func PauseBeat(marker, model string, now time.Time) (until time.Time, reason string) {
-	msg := marker
-	if at, rest, ok := strings.Cut(marker, " "); ok {
-		if _, err := time.Parse(time.RFC3339, at); err == nil {
-			msg = rest
-		}
-	}
-	if model == "" {
-		model = "-"
-	}
-	return now.Add(PauseBeatAhead).UTC().Truncate(time.Second), oneLine("provider failure ("+model+"): "+msg, 300)
-}
-
 // LaneTokens is what a session and its children spent, as opencode's own database says it,
 // and what opencode itself priced it at.
 type LaneTokens struct {
@@ -269,57 +174,6 @@ func (t LaneTokens) Sub(base LaneTokens) LaneTokens {
 		}
 	}
 	return out
-}
-
-var sessionID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
-
-// TokensSQL is the query for the tokens of a session and its children from opencode's database.
-func TokensSQL(session string) (string, error) {
-	if !sessionID.MatchString(session) {
-		return "", fmt.Errorf("session %q is no opencode session id", session)
-	}
-	return "select coalesce(sum(tokens_input),0), coalesce(sum(tokens_cache_read),0), coalesce(sum(tokens_cache_write),0), coalesce(sum(tokens_output),0), coalesce(sum(tokens_reasoning),0), coalesce(sum(cost),0), count(*) from session where id='" + session + "' or parent_id='" + session + "';", nil
-}
-
-// TokensOf reads the one row TokensSQL prints (sqlite3's default, | between columns).
-func TokensOf(out string) (LaneTokens, error) {
-	f := strings.Split(strings.TrimSpace(out), "|")
-	if len(f) != 7 {
-		return LaneTokens{}, fmt.Errorf("opencode's database answered %d columns for the tokens, want 7: %q", len(f), oneLine(out, 100))
-	}
-	var n [7]int64
-	for i := range n {
-		if i == 5 {
-			continue
-		}
-		v, err := strconv.ParseInt(f[i], 10, 64)
-		if err != nil {
-			return LaneTokens{}, fmt.Errorf("opencode's database: column %d of the tokens is no count: %q", i+1, f[i])
-		}
-		n[i] = v
-	}
-	usd := f[5]
-	if _, err := cardcost.Decimal(usd); err != nil {
-		usd = ""
-	}
-	return LaneTokens{Tokens: cardcost.Tokens{Input: n[0], CacheRead: n[1], CacheWrite: n[2], Output: n[3], Reasoning: n[4], Requests: cardcost.Unreported, MaxPrompt: cardcost.Unreported}, USD: usd, Sessions: int(n[6])}, nil
-}
-
-// TokensFromOpenCode reads a session's tokens (and its children's) from opencode's own database
-// through the sqlite3 CLI, read only (the tree has no sqlite driver).
-func TokensFromOpenCode(ctx context.Context, run Exec, db, session string) (LaneTokens, error) {
-	sql, err := TokensSQL(session)
-	if err != nil {
-		return LaneTokens{}, err
-	}
-	out, exit, err := run(ctx, filepath.Dir(db), "sqlite3", []string{"-readonly", db, sql}, "")
-	if err != nil {
-		return LaneTokens{}, fmt.Errorf("sqlite3 %s: %w", db, err)
-	}
-	if exit != 0 {
-		return LaneTokens{}, fmt.Errorf("sqlite3 %s exited %d", db, exit)
-	}
-	return TokensOf(out)
 }
 
 // RoutePrice is the store's route row for the friend's exact provider/model: its name and
@@ -424,71 +278,12 @@ const (
 	ShimDirName = "shims"
 )
 
-// GoShimNames are the commands the shims stand in for.
-var GoShimNames = []string{"go", "gofmt"}
-
-// GoShimName says whether argv0 names a shim (this binary run as go or gofmt, by symlink).
-func GoShimName(argv0 string) (string, bool) {
-	name := filepath.Base(argv0)
-	return name, contains(GoShimNames, name)
-}
-
-// GoRefusal is what a shim prints, and exits 2 with.
-func GoRefusal(name string) string {
-	return name + " is refused: no go command runs on this machine, it is not a build machine; run: rsync the job's clone to a bench, then ssh <bench> 'cd <clone> && " + name + " ...'"
-}
-
-// GoShims makes dir hold a go and a gofmt that are this binary (self) by symlink, so that
-// run by those names it refuses (GoShimName, GoRefusal): no script, nothing to drift. Links
-// already right are kept.
-func GoShims(dir, self string) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	for _, name := range GoShimNames {
-		link := filepath.Join(dir, name)
-		if cur, err := os.Readlink(link); err == nil && cur == self {
-			continue
-		}
-		_ = os.Remove(link) // ignored: absent is the usual case; a link that stays fails the Symlink below
-		if err := os.Symlink(self, link); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// ShimExec is run with the shim directory first on the PATH of every lane child and GOROOT
-// pointing nowhere: a command whose context is a lane's runs as `env PATH=<shims>:<path>
-// GOROOT=<nowhere> <name> <args>`; any other runs as it was. Put it outside Wall.Exec so the
-// env runs inside the wall.
-func ShimExec(run Exec, shimDir, pathEnv string) Exec {
-	return func(ctx context.Context, dir, name string, args []string, stdin string) (string, int, error) {
-		if !InLane(ctx) || shimDir == "" {
-			return run(ctx, dir, name, args, stdin)
-		}
-		pre := []string{"PATH=" + shimDir + string(os.PathListSeparator) + pathEnv, "GOROOT=" + NoGoRoot, name}
-		return run(ctx, dir, "env", append(pre, args...), stdin)
-	}
-}
-
 // count is a token count as a line shows it; a class the harness did not report is "unreported".
 func count(n int64) string {
 	if n < 0 {
 		return "unreported"
 	}
 	return strconv.FormatInt(n, 10)
-}
-
-// Load1Of reads the one-minute load off `sysctl -n vm.loadavg` ("{ 1.23 1.50 1.60 }") or
-// /proc/loadavg ("1.23 1.50 1.60 1/300 12345").
-func Load1Of(out string) (float64, bool) {
-	f := strings.Fields(strings.NewReplacer("{", " ", "}", " ").Replace(out))
-	if len(f) == 0 {
-		return 0, false
-	}
-	v, err := strconv.ParseFloat(f[0], 64)
-	return v, err == nil && v >= 0
 }
 
 // Over is r with every field row sets in place of its own: the flags give the defaults and
@@ -514,50 +309,6 @@ func (r LaneRules) Over(row LaneRules) LaneRules {
 	}
 	r.RefuseGo = r.RefuseGo || row.RefuseGo
 	return r
-}
-
-// RoutePriceOf finds the route row for provider/model in the sprint's `routes --json`
-// answer: the first object anywhere in it that has a prices object and this provider and
-// model. A route that does not say reasoning_as_output bills reasoning as output.
-func RoutePriceOf(routesJSON, provider, model string) RoutePrice {
-	var doc any
-	if err := json.Unmarshal([]byte(routesJSON), &doc); err != nil {
-		return RoutePrice{}
-	}
-	var found *RoutePrice
-	var walk func(v any)
-	walk = func(v any) {
-		if found != nil {
-			return
-		}
-		switch x := v.(type) {
-		case map[string]any:
-			if pr, ok := x["prices"].(map[string]any); ok && x["provider"] == provider && x["model"] == model {
-				if _, said := pr["reasoning_as_output"]; !said {
-					pr["reasoning_as_output"] = true
-				}
-				raw, _ := json.Marshal(pr)
-				var p cardcost.Prices
-				if json.Unmarshal(raw, &p) == nil {
-					name, _ := x["name"].(string)
-					found = &RoutePrice{Name: name, Prices: p, Found: true}
-					return
-				}
-			}
-			for _, c := range x {
-				walk(c)
-			}
-		case []any:
-			for _, c := range x {
-				walk(c)
-			}
-		}
-	}
-	walk(doc)
-	if found == nil {
-		return RoutePrice{}
-	}
-	return *found
 }
 
 // The lane hands the brief by absolute path (the-lane-hands-the-brief-by-absolute-path-bb; on

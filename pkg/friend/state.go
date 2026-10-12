@@ -22,9 +22,6 @@ import (
 // (SPEC-FRIEND.md, the files).
 const (
 	StatusFile = "status.json"
-	PongFile   = "pong.json"
-	LogFile    = "deliver.log"
-	WatchFile  = "watch.json"
 	QueueFile  = "inbox/QUEUE.json"
 )
 
@@ -32,7 +29,6 @@ const (
 // as up: it rewrites the file at least every StatusEvery.
 const (
 	StatusEvery = 5 * time.Second
-	DaemonStale = 30 * time.Second
 )
 
 // Status is what the daemon knows, as status reads it: one file, rewritten
@@ -168,46 +164,7 @@ func (q Queue) Counts() (queue, working int) {
 // (DaemonStateDir).
 func DefaultStateDir(home, friend string) string { return filepath.Join(home, ".nova-friend", friend) }
 
-// StateDirIn is the daemon's state directory under the friend's working
-// directory, <dir>/.nova-friend: inside the directory her session may write,
-// so a sandboxed session's pong lands where the daemon reads it (the finding
-// of 2026-10-05).
-func StateDirIn(dir string) string { return filepath.Join(dir, ".nova-friend") }
-
-// DaemonStateDir is where a daemon run with no --state-dir keeps its files:
-// StateDirIn(dir), made by mkdir; when that is refused (a background process
-// on macOS may not touch a removable volume without the person's permission),
-// DefaultStateDir, and why names the refusal for the record.
-func DaemonStateDir(home, dir, friend string, mkdir func(string) error) (state, why string) {
-	if dir == "" {
-		return DefaultStateDir(home, friend), "no --dir"
-	}
-	in := StateDirIn(dir)
-	if err := mkdir(in); err != nil {
-		return DefaultStateDir(home, friend), err.Error()
-	}
-	return in, ""
-}
-
-// FindStateDir is where a reader looks for friend's state when no
-// --state-dir names it: StateDirIn(dir) when a daemon has written its status
-// there, else the home directory's (a daemon from before the move, or one
-// whose directory refused it).
-func FindStateDir(home, dir, friend string) string {
-	if dir != "" {
-		if _, err := os.Stat(statusPath(StateDirIn(dir))); err == nil {
-			return StateDirIn(dir)
-		}
-	}
-	return DefaultStateDir(home, friend)
-}
-
 func statusPath(stateDir string) string { return filepath.Join(stateDir, StatusFile) }
-func pongPath(stateDir string) string   { return filepath.Join(stateDir, PongFile) }
-
-// LogPath is the daemon's own log in the state directory: one line per
-// delivery (launchd's own log is elsewhere: Plist).
-func LogPath(stateDir string) string { return filepath.Join(stateDir, LogFile) }
 
 // write writes v as JSON to path atomically, making the directory.
 func write(path string, v any) error {
@@ -236,22 +193,10 @@ func read(path string, v any) (found bool, err error) {
 	return true, nil
 }
 
-// WriteStatus is the daemon's write of its state.
-func WriteStatus(stateDir string, s Status) error { return write(statusPath(stateDir), s) }
-
 // ReadStatus is what the daemon last wrote; found is false when it never has.
 func ReadStatus(stateDir string) (s Status, found bool, err error) {
 	found, err = read(statusPath(stateDir), &s)
 	return s, found, err
-}
-
-// WritePong is the pong verb's record of the answer it sent.
-func WritePong(stateDir string, p Pong) error { return write(pongPath(stateDir), p) }
-
-// ReadPong is the session's last recorded answer.
-func ReadPong(stateDir string) (p Pong, found bool, err error) {
-	found, err = read(pongPath(stateDir), &p)
-	return p, found, err
 }
 
 // Watch is the cursor of the coordinator's watch (docs/SPEC-FRIEND.md, Watch):
@@ -260,50 +205,4 @@ func ReadPong(stateDir string) (p Pong, found bool, err error) {
 type Watch struct {
 	After      string `json:"after"`
 	WakeOffset int64  `json:"wake_offset"`
-}
-
-// WatchPath is the cursor file in the state directory.
-func WatchPath(stateDir string) string { return filepath.Join(stateDir, WatchFile) }
-
-// WriteWatch saves the cursor atomically (write a temporary file, rename it
-// over the old), so a run killed in the middle leaves the old cursor whole.
-func WriteWatch(stateDir string, w Watch) error { return write(WatchPath(stateDir), w) }
-
-// ReadWatch is the cursor the last run saved; found is false when none ever
-// has.
-func ReadWatch(stateDir string) (w Watch, found bool, err error) {
-	found, err = read(WatchPath(stateDir), &w)
-	return w, found, err
-}
-
-// ReadQueue is the queue file's counts; a file that is not there counts
-// zero, and a file that is no queue is an error the caller shows.
-func ReadQueue(dir string) (queue, working int, err error) {
-	var q Queue
-	path := filepath.Join(dir, filepath.FromSlash(QueueFile))
-	if _, err := read(path, &q); err != nil {
-		// the file may be a bare list of tasks
-		if _, err2 := read(path, &q.Tasks); err2 != nil {
-			return 0, 0, err
-		}
-	}
-	queue, working = q.Counts()
-	return queue, working, nil
-}
-
-// Record appends one line to the daemon's log; a log that cannot be
-// written is not a reason to stop delivering, so the error is answered
-// for the status file and nothing else.
-func Record(stateDir, line string) error {
-	path := LogPath(stateDir)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close() // ignored: a read-only file, nothing was written through it
-	_, err = f.WriteString(line + "\n")
-	return err
 }

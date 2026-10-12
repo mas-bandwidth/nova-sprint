@@ -263,10 +263,6 @@ func under(d Deliverer, f func(Deliverer) bool) bool {
 			d = g.Deliverer
 		case turnGatedLanes:
 			d = g.Deliverer
-		case *gated:
-			d = g.d
-		case *gatedLanes:
-			d = g.d
 		default:
 			return false
 		}
