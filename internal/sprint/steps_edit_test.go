@@ -20,6 +20,7 @@ func editWorld(t *testing.T) *world {
 	w := newWorld(t, "reader-a", "reader-b")
 	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "old one", Who: "coordinator"}))
 	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Needs: []string{"a-1"}, Brief: "old two", Who: "coordinator"}))
+	w.preparePlanned()
 	require.Equal(t, Ready, w.s.Work.Placed("a-1").Col)
 	require.Equal(t, Waiting, w.s.Work.Placed("a-2").Col)
 	return w
