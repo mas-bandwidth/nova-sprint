@@ -614,3 +614,58 @@ func TestStatsChildrenPrintsThePerMemberExitHistogram(t *testing.T) {
 	require.Equal(t, 0, code, "%s%s", out, errs)
 	assert.Equal(t, "CHILDREN none in the last hour\n", out)
 }
+
+// An environment exit that spends nothing is bounded per card per attempt (docs/SPEC-SPRINT.md,
+// "An environment exit"; the coordinator, 2026-10-12): the work card records each 134/137 by
+// member and code (env_exit_history), and at sprint.EnvExitCardCap (3) the tick raises one
+// bound judgment, a kind wait refuses (wait_refused.go), naming the card, the members and the
+// exit codes, and deals the card no more until the seat reworks or drops it; a later tick
+// raises it no second time (the deal step's own refusal: TestTheDealRefusesACardAtTheEnvironmentExitCap). Before this, a card whose every
+// child died 134 was dealt again without a bound.
+func TestThreeEnvironmentExitsRaiseTheBoundOnceAndStopTheRedeal(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a --members m1,m2")
+	ta.ok("add --stream s1 --count 1 --one")
+	ta.ok("start")
+	ta.ok("tick")
+	var takers []string
+	for i, exit := range []int{134, 137, 134} {
+		wc := ta.fleetCard("s1-1.w1")
+		require.NotNil(t, wc)
+		require.Equal(t, sprint.Ready, wc.Col, "exit %d: dealt again before the cap", i+1)
+		at := "s1-1.w1@" + wc.F("gen")
+		ta.ok("take --as " + wc.Row + " " + at)
+		ta.ok("finish --as " + wc.Row + " " + at + " --failed --exit " + strconv.Itoa(exit) + " --report 'no result: aborted' --harness 'Error: Unknown: ChildProcess.spawn (opencode)'")
+		ta.ok("tick")
+		if !slices.Contains(takers, wc.Row) {
+			takers = append(takers, wc.Row)
+		}
+	}
+	bounds := func() []sprint.Note {
+		t.Helper()
+		st, err := ta.a.store(common{redis: "mem:0", actor: "tester"})
+		require.NoError(t, err)
+		notes, _, err := st.B.NotesSince(context.Background(), "", 10000)
+		require.NoError(t, err)
+		var out []sprint.Note
+		for _, n := range notes {
+			if n.Kind == sprint.Judgment && n.Type == sprint.NBound && slices.Contains(n.Primaries, "s1-1") {
+				out = append(out, n)
+			}
+		}
+		return out
+	}
+	wc := ta.fleetCard("s1-1.w1")
+	require.NotNil(t, wc)
+	assert.Equal(t, sprint.Withdrawn, wc.Col, "not dealt a fourth time")
+	assert.Equal(t, "1", wc.F("attempt"), "the same attempt throughout")
+	got := bounds()
+	require.Len(t, got, 1, "one bound judgment: %+v", got)
+	assert.Contains(t, got[0].What, "s1-1.w1: attempt 1's child ended on the member's environment 3 times (the cap is 3) and is not dealt again: members "+strings.Join(takers, ", ")+"; exits 134, 137, 134; last: Error: Unknown: ChildProcess.spawn (opencode)")
+	assert.NotEmpty(t, sprint.WaitRefusal(got[0]), "a judgment that holds its card: wait is refused")
+
+	ta.ok("tick")
+	assert.Equal(t, sprint.Withdrawn, ta.fleetCard("s1-1.w1").Col, "still not dealt")
+	assert.Len(t, bounds(), 1, "raised once")
+}

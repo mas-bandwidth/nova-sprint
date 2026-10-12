@@ -1104,6 +1104,13 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			return rr.nextFree(ms, q, lanes, widths, ""), roomWhy
 		}
 		if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil && wc.Col == Withdrawn {
+			if AtEnvExitBound(s, c) != nil {
+				// its children died on the environment EnvExitCardCap times at this attempt: not
+				// dealt again until the seat reworks or drops it (docs/SPEC-SPRINT.md, "An
+				// environment exit")
+				p.refuse(c.ID, envExitBoundWhat(wc, c.ID))
+				continue
+			}
 			if redealBound(wc) {
 				tier := s.NextTier(c)
 				if _, atCap := AtBriefBound(c, "", s.AttemptsCap(c.Row)); atCap {
@@ -2531,6 +2538,9 @@ func envExited(s *Snapshot, c, pr *Card, r FinishReq, ended, who string) Unit {
 	set["withdrawn"] = stamp(s.Now)
 	fields, unset := rec.envExitFields()
 	maps.Copy(set, fields)
+	// the attempt's count of such exits, by member and code: at EnvExitCardCap the card is
+	// dealt no more and the tick holds it with the bound judgment (AtEnvExitBound)
+	set[FieldEnvExitHistory] = strings.Join(append(envExitHistory(c), c.Row+"="+itoa(r.Exit)), ",")
 	// what the take cost, timed and priced (cost.go): it still cost tokens and time
 	dealt, taken := takeStamps(c)
 	cost := costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)

@@ -313,3 +313,51 @@ func readEnvExitUnit(s *Snapshot, c, pr *Card, r ReadReq, ended, name string) Un
 	return Unit{Key: pr.ID, Stream: pr.Row, Changes: changes, Notes: []Note{n},
 		Moved: c.ID + " " + c.Col + " -> " + RetiredByEnvironment + " (retired: " + ended + ", no verdict, its reader not spent)"}
 }
+
+// EnvExitCardCap bounds the environment exits that spend nothing (HardEnvExit) on one card at
+// one attempt: a card whose children die 134 or 137 this many times is dealt no more, and the
+// tick raises one bound judgment (NBound, a kind wait refuses: wait_refused.go) naming the
+// card, the members and the exit codes, until the seat reworks or drops it
+// (docs/SPEC-SPRINT.md, "An environment exit"; the coordinator, 2026-10-12: the 134/137 loop
+// had no bound).
+const EnvExitCardCap = 3
+
+// FieldEnvExitHistory is the work card's record of its spending-nothing environment exits at
+// its attempt, one `<member>=<exit>` per exit, comma separated, oldest first (envExited): the
+// work card is the attempt's own, so a rework's new attempt starts with none.
+const FieldEnvExitHistory = "env_exit_history"
+
+// envExitHistory is the work card's environment exits at its attempt (FieldEnvExitHistory).
+func envExitHistory(wc *Card) []string { return Split(wc.F(FieldEnvExitHistory)) }
+
+// AtEnvExitBound is the primary c's work card at its attempt when it is withdrawn with
+// EnvExitCardCap or more environment exits on it (FieldEnvExitHistory): the deal deals it to
+// no machine and offers it to no friend, and the tick holds it with the bound judgment
+// (envExitBoundWhat); nil otherwise.
+func AtEnvExitBound(s *Snapshot, c *Card) *Card {
+	if s == nil || s.Fleet == nil || c == nil {
+		return nil
+	}
+	wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt")))
+	if wc == nil || wc.Col != Withdrawn || len(envExitHistory(wc)) < EnvExitCardCap {
+		return nil
+	}
+	return wc
+}
+
+// envExitBoundWhat is the bound judgment's text for a work card at the environment-exit cap:
+// the card, how many times, the members, the exit codes, the first line of the last tail,
+// and what answers it.
+func envExitBoundWhat(wc *Card, primary string) string {
+	h := envExitHistory(wc)
+	var members, codes []string
+	for _, e := range h {
+		m, code, _ := strings.Cut(e, "=")
+		if !slices.Contains(members, m) {
+			members = append(members, m)
+		}
+		codes = append(codes, code)
+	}
+	return fmt.Sprintf("%s: attempt %s's child ended on the member's environment %d times (the cap is %d) and is not dealt again: members %s; exits %s; last: %s; rework it with a fix or drop it; its history: nova-sprint card %s",
+		wc.ID, orDash(wc.F("attempt")), len(h), EnvExitCardCap, strings.Join(members, ", "), strings.Join(codes, ", "), orDash(tailFirstLine(wc.F(FieldHarnessTail))), primary)
+}

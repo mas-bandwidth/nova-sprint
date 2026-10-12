@@ -396,3 +396,33 @@ func TestEnvExitChildrenCountsTheMemberEnvironmentExits(t *testing.T) {
 		t.Fatalf("m1 last = %q card %q; want the latest exit's (p3)", c.Last, c.Card)
 	}
 }
+
+// The deal step refuses a card at EnvExitCardCap environment exits at its attempt, naming the
+// card, the members and the codes (docs/SPEC-SPRINT.md, "An environment exit"): below the cap
+// each 134 is dealt again at the same attempt, at the cap it is not.
+func TestTheDealRefusesACardAtTheEnvironmentExitCap(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+	wc := w.s.Work.Card("s1-1").F("work")
+	for i := 1; i <= EnvExitCardCap; i++ {
+		member := w.s.Fleet.Card(wc).Row
+		w.must(Take(w.s, TakeReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc)}))
+		w.must(Finish(w.s, FinishReq{As: member, Sel: Sel{IDs: []string{wc}}, Gens: w.gens(wc), Failed: true, Exit: 134,
+			Report: "no result: aborted", Harness: "Error: Unknown: ChildProcess.spawn (opencode)\n"}))
+		if i < EnvExitCardCap {
+			w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}}))
+		}
+	}
+	if got := len(envExitHistory(w.s.Fleet.Card(wc))); got != EnvExitCardCap {
+		t.Fatalf("the attempt's history holds %d exits; want %d", got, EnvExitCardCap)
+	}
+	p := Deal(w.s, DealReq{Sel: Sel{IDs: []string{"s1-1"}}})
+	if len(p.Units) != 0 || len(p.Refused) != 1 || !strings.Contains(p.Refused[0].Why, "ended on the member's environment 3 times (the cap is 3) and is not dealt again") ||
+		!strings.Contains(p.Refused[0].Why, "exits 134, 134, 134") {
+		t.Fatalf("the deal refuses it at the cap: %+v", p)
+	}
+	if w.s.Work.Card("s1-1").F("attempt") != "1" {
+		t.Fatalf("the same attempt: %s", w.s.Work.Card("s1-1").F("attempt"))
+	}
+}

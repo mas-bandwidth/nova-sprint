@@ -7158,23 +7158,35 @@ window, read from the store, with no ssh:
 
     CHILD <m> children=<n> env=<k> rate=<pct>% exit_<code>=<count>... other=<n-k> status=<FAIL|WARN|OK> last: <line>
 
-(`CHILDREN none in the last hour` when no child ended). A 134 or 137 spends nothing, so a
-card whose every child dies that way is dealt again without a bound: the doctor's FAIL is what
-names it. Not in this rule: the cause of the spawn failure under the
+(`CHILDREN none in the last hour` when no child ended).
+
+A 134 or 137 spends nothing, so it is bounded on its own: the work card records each one by
+member and code (`env_exit_history`, `FieldEnvExitHistory`, `<member>=<exit>,...`), and the
+work card is the attempt's, so the count is per card per attempt. At `EnvExitCardCap` (3) the
+card is dealt no more, to no machine and offered to no friend (`AtEnvExitBound`), the deal
+verb refuses it, and the tick holds it with one bound judgment (`a card reached its bound`, a
+kind wait refuses: wait_refused.go), raised once while it holds:
+
+    <card>.w<n>: attempt <n>'s child ended on the member's environment 3 times (the cap is 3) and is not dealt again: members <m>, ...; exits <code>, ...; last: <first tail line>; rework it with a fix or drop it; its history: nova-sprint card <id>
+
+A rework's new attempt starts with none. The doctor's member-env FAIL stays the fleet-wide
+view. Not in this rule: the cause of the spawn failure under the
 wall (a-harness-spawn-failure-under-the-wall-is-diagnosed), and the member passing `--exit`
 and `--harness` from its child (until it does, a member's no-result finish is recorded at
 exit 0 with no tail, an ended take as before), and the TLA+ models (tla/DirtyTick.tla
-`BoundClasses`, tla/AttemptsEpochs.tla `TakeEnds`) gaining the 134/137 exit that spends
-nothing: owed. Tests: `TestEnvExitClassifiesTheMemberEnvironmentExit`,
+`BoundClasses`, tla/AttemptsEpochs.tla `TakeEnds`) gaining the 134/137 exit and its cap: owed
+(v1.2.16). Tests: `TestEnvExitClassifiesTheMemberEnvironmentExit`,
 `TestEnvironmentExitNamesTheCode`, `TestHarnessTailKeepsTheLastFortyLines`,
 `TestEnvironmentExitRecordCarriesTheEndedWordAndTail`, `TestEnvExitRateThresholds`,
 `TestEnvExitCheckNamesTheRateAndTheCard`, `TestFinishRecordsAnEnvironmentExitOnTheAttempt`,
 `TestFinishWithACleanEndOrAVerdictIsNeverAnEnvironmentExit`,
 `TestANoResultTakeIsAnEnvironmentExitAndStillAnEndedTake`,
-`TestAReadsEnvironmentExitSpendsNoReader`, `TestEnvExitChildrenCountsTheMemberEnvironmentExits`
+`TestAReadsEnvironmentExitSpendsNoReader`, `TestEnvExitChildrenCountsTheMemberEnvironmentExits`,
+`TestTheDealRefusesACardAtTheEnvironmentExitCap`
 (internal/sprint/attempts_test.go); `TestDoctorNamesTheMemberEnvExitRate`,
 `TestDoctorNamesTheMemberEnvExitWarn`, `TestAnEnvironmentExitGoesBackToReadyAtTheSameAttempt`,
-`TestStatsChildrenPrintsThePerMemberExitHistogram` (cmd/nova-sprint/doctor_test.go); functional
+`TestStatsChildrenPrintsThePerMemberExitHistogram`,
+`TestThreeEnvironmentExitsRaiseTheBoundOnceAndStopTheRedeal` (cmd/nova-sprint/doctor_test.go); functional
 `TestAnEnvironmentExitOnARealStore` (cmd/nova-sprint/envexit_functional_test.go).
 
 ### release-check-frame

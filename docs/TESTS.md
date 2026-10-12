@@ -317,11 +317,15 @@ a-doctor-reports-the-child-exit-code-rate-per-member). These tests lock it in:
   `TestANoResultTakeIsAnEnvironmentExitAndStillAnEndedTake`,
   `TestFinishWithACleanEndOrAVerdictIsNeverAnEnvironmentExit`,
   `TestAReadsEnvironmentExitSpendsNoReader`,
-  `TestEnvExitChildrenCountsTheMemberEnvironmentExits`.
+  `TestEnvExitChildrenCountsTheMemberEnvironmentExits`,
+  `TestTheDealRefusesACardAtTheEnvironmentExitCap`.
 - Unit, `cmd/nova-sprint/doctor_test.go`: `TestDoctorNamesTheMemberEnvExitRate`,
   `TestDoctorNamesTheMemberEnvExitWarn`,
   `TestAnEnvironmentExitGoesBackToReadyAtTheSameAttempt`,
-  `TestStatsChildrenPrintsThePerMemberExitHistogram`.
+  `TestStatsChildrenPrintsThePerMemberExitHistogram`,
+  `TestThreeEnvironmentExitsRaiseTheBoundOnceAndStopTheRedeal` (three 134/137
+  exits on one card at one attempt raise one bound judgment naming the card,
+  the members and the codes, and the card is dealt no more).
 - Functional (`-tags functional`), `cmd/nova-sprint/envexit_functional_test.go`:
   `TestAnEnvironmentExitOnARealStore`, on a private redis-server with a
   nova-sprint binary it builds: ten cards finish on m1, two of them as
