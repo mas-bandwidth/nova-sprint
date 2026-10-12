@@ -2703,7 +2703,23 @@ order the cards were dealt in, so a card brought to the front of its stream by
   the first served entry whose `first` is set, and an entry without it only
   when none such remains drawable, the index still moved by every entry walked
   to reach the one taken (internal/sprint/route.go, preferFirst). RouteFair is
-  the walk when no route of the tier has `first` set. A
+  the walk when no route of the tier has `first` set. **Route share.** A route's
+  share of new takes is weighted by its measured outcome: the share falls as its
+  cost per landed card rises or its ok rate falls, with a floor so the route is
+  still sampled (route-share-falls-with-cost-per-landed). Each route's share is
+  `floor + (1 - floor) * okRate / (1 + costPerLanded / scale)`, where `okRate` is
+  its OK over attempts (RouteStats), `costPerLanded` is its total charged spend on
+  work takes (the COST records' charged figure, `CardCostOf(c).Total.Charged`)
+  divided by its DoneOK landings (a route with no landings holds the floor),
+  `floor` is 0.1 and `scale` is 10 (route_pick.go, `routeShare`). The shares are
+  computed once for the tick's snapshot (`SetRouteShares`, on the tick's first
+  read, carried on the shared route records) and read by every draw, so all
+  callers — the friends' ladder, the machines' deal, rebalance, redo, review and
+  held — see the same shares, never a stale one; a snapshot handed straight to a
+  caller computes them on its first draw (`ensureRouteShares`). The draw walks the
+  tier's array in place, still drawing `first` routes first and moving the index
+  past every entry taken or skipped (the model: tla/RouteIndex.tla, Share, and the
+  FloorKeepsEveryRouteSampled and ShareFallsWithCost invariants). A
   redeal or a later attempt takes the next entry whose route was not taken for
   the card while another remains, the index moved past the entries it skipped
   (ExcludedNeverDrawn), and an entry that names no enabled route of the tier is
