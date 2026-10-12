@@ -316,7 +316,8 @@ func (r *round) nextLane(up []string, q, lanes map[string]int, avoid []string) s
 
 // levelTo is where the level moves a card off a member over its width, and
 // moves the index past it: the next member from the index, wrapping, with a free
-// lane (held, the work cards it holds, below its width: lanes) that is not one
+// lane (held, its work cards plus its reads at half a slot, rounded up, as
+// memberLoads counts them, below its width: lanes) that is not one
 // of avoid (the card's refusers, bench and launch exclusions). It is nextFree's
 // first scan (nextLane), so the level only ever moves a card onto a member that
 // can start it at once (tla/Level.tla NeverOffAFreeLane (lands with #127);
