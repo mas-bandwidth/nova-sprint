@@ -35,6 +35,7 @@ func (a *app) cmdStatsTidy(args []string, stdout, stderr io.Writer) int {
 	all := fs.Bool("all", false, "all four: --friends --fleet --routes --streams")
 	reason := fs.String("reason", "", "why, kept in the archive and the stats record (required)")
 	dry := fs.Bool("dry-run", false, "print what would move; write nothing")
+	recompute := fs.Bool("recompute", false, "recompute the end-class counters from the stored take ends (ok, failed work, no result, provider, coordination, environment, harness)")
 	if pos, err := parse(fs, args); err != nil || len(pos) > 0 {
 		return refuse(stderr, verb, argErr("takes no words ", err, pos...))
 	}
@@ -44,15 +45,21 @@ func (a *app) cmdStatsTidy(args []string, stdout, stderr io.Writer) int {
 			kinds = append(kinds, sprint.TidyKinds[i])
 		}
 	}
-	if len(kinds) == 0 {
+	if len(kinds) == 0 && !*recompute {
 		return refuse(stderr, verb, "names nothing to tidy: give --friends, --fleet, --routes, --streams or --all")
 	}
-	if strings.TrimSpace(*reason) == "" {
+	if strings.TrimSpace(*reason) == "" && !*recompute {
 		return refuse(stderr, verb, "wants --reason <text>: the archive keeps why")
 	}
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, verb, err.Error())
+	}
+	if *recompute {
+		if err := st.RecomputeStats(context.Background(), c.json, *dry, stdout, stderr); err != nil {
+			return a.readFailed(verb, err, stderr)
+		}
+		return 0
 	}
 	res, err := st.TidyStats(context.Background(), store.TidyReq{Kinds: kinds, Reason: *reason, DryRun: *dry})
 	if err != nil {

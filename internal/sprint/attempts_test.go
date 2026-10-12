@@ -175,7 +175,7 @@ func TestFinishRecordsAnEnvironmentExitOnTheAttempt(t *testing.T) {
 			}
 			u := p.Units[0]
 			wc := envExitEntryOf(u, "c1")
-			if wc.Move == nil || wc.Move.Col != Withdrawn {
+			if wc.Move == nil || wc.Move.Col != Environment {
 				t.Fatalf("the work card withdraws, not %+v", wc.Move)
 			}
 			ended := "environment exit=" + itoa(tc.exit)

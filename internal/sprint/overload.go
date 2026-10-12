@@ -76,7 +76,7 @@ func MemberTimeouts(s *Snapshot, member string) []Timeout {
 		return t, err == nil && !t.Before(since) && !t.After(s.Now)
 	}
 	var out []Timeout
-	for _, c := range s.Fleet.Column(Ready, Working, Withdrawn, DoneFailed, Finished) {
+	for _, c := range s.Fleet.Column(Ready, Working, Withdrawn, DoneFailed, Finished, ProviderFailures, Coordination, Environment, Harness, NoResult) {
 		if takes, _ := StagingTakes(c); len(takes) > 0 {
 			for _, t := range takes {
 				if t.Member == member && TimeoutKind(t.Error) == TimeoutStaging {

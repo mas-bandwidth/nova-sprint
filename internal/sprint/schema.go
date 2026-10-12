@@ -124,6 +124,17 @@ const (
 	Tokens     = "tokens" // friends.tokens: her cards' usage summed, compact or in dollars
 	Load       = "load"
 	Withdrawn  = "withdrawn"
+	// NoResult (hidden) holds a member's work cards whose child ran to its own end and
+	// wrote no result (cardhdr.EndNoResult): a work end, counted in the ok% denominator
+	// but never as ok. ProviderFailures, Coordination, Environment and Harness (hidden)
+	// hold the member's work cards whose take ended not-its-fault (provider failure,
+	// a move/drop/re-tier/clear, a 134/137 environment death, a harness fault): counted
+	// in their own named column beside ok%, never in ok%.
+	NoResult         = "no_result"
+	ProviderFailures = "provider"
+	Coordination     = "coordination"
+	Environment      = "environment"
+	Harness          = "harness"
 )
 
 // Stream states (the merge table's state column).
@@ -264,8 +275,8 @@ func (n Names) Definitions() []ntable.Table {
 		mk(Work, "waiting,ready,working,review,merging,landed,cost:text:sum"),
 		mk(Readers, "asked,reading,ok,broken,tiers:text"),
 		mk(Merge, "queued,merged,stuck,ci:text,state:text,since:text,returned,ctl:first:none", Since, Returned, Ctl),
-		mk(Fleet, "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,redealt,status:text,load:text,withdrawn,finished,ok,failed,defect,ctl:first:none",
-			Withdrawn, Finished, DoneOK, DoneFailed, DoneDefect, Ctl),
+		mk(Fleet, "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed+no_result):pooled:ok%,provider,coordination,environment,harness,no_result,redealt,status:text,load:text,withdrawn,finished,ok,failed,defect,ctl:first:none",
+			Withdrawn, Finished, DoneOK, DoneFailed, DoneDefect, ProviderFailures, Coordination, Environment, Harness, NoResult, Ctl),
 	}
 }
 

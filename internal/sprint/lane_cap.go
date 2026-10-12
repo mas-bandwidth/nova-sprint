@@ -118,9 +118,9 @@ func capRedeal(s *Snapshot, c, pr *Card, r FinishReq, lc LaneCap, next string, p
 	cons.Cap, cons.Overrun = lc.Cap.String(), lc.Overrun.String()
 	addConsumer(pr, set, cons)
 	u := Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
-		change(Fleet, moveEntry(c, c.Row, DoneFailed, cardSet)),
+		change(Fleet, moveEntry(c, c.Row, Coordination, cardSet)),
 		change(Work, moveEntry(pr, pr.Row, Ready, set)),
-	}, Moved: fmt.Sprintf("%s working -> done failed; %s working -> ready (%s)", c.ID, pr.ID, why)}
+	}, Moved: fmt.Sprintf("%s working -> done coordination; %s working -> ready (%s)", c.ID, pr.ID, why)}
 	friendNext(s, c, &u, prior)
 	return u
 }

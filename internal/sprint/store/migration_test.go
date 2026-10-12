@@ -15,7 +15,7 @@ import (
 )
 
 // fleetBeforeVerdicts is the fleet table's columns and hidden list before the
-// readers' verdicts counted (git show a2aff60e9:internal/sprint/schema.go): the shape
+// end-class migration runs (git show a2aff60e9:internal/sprint/schema.go): the shape
 // a live store's fleet table has until the migration runs, the defect column included
 // (its own 2026-10-05 migration already taken).
 const fleetBeforeVerdicts = "ready,working,width:text:sum,done:sum(ok+failed),okpct:pct(ok/ok+failed):pooled:ok%,status:text,load:text,withdrawn,ok,failed,defect,ctl:first:none"
@@ -45,11 +45,16 @@ func TestTheMigrationGivesTheFleetTableItsLockedShape(t *testing.T) {
 		switch {
 		case len(f) == 7 && f[1] == "col" && f[2] == "add" && f[5] == "--after":
 			require.Equal(t, live, f[3], "%q: the live store's fleet table", line)
-			add, err := ntable.ParseColumns(f[4])
+			add, err := ntable.ParseColumn(f[4])
 			require.NoError(t, err, line)
 			at := slices.IndexFunc(cols, func(c ntable.Column) bool { return c.Name == f[6] })
 			require.GreaterOrEqual(t, at, 0, "%q: no column %s to add after", line, f[6])
-			cols = slices.Insert(cols, at+1, add...)
+			cols = slices.Insert(cols, at+1, add)
+		case len(f) == 5 && f[1] == "col" && f[2] == "del":
+			require.Equal(t, live, f[3], "%q: the live store's fleet table", line)
+			at := slices.IndexFunc(cols, func(c ntable.Column) bool { return c.Name == f[4] })
+			require.GreaterOrEqual(t, at, 0, "%q: no column %s to drop", line, f[4])
+			cols = slices.Delete(cols, at, at+1)
 		case len(f) == 5 && f[1] == "set" && f[3] == "--hide":
 			require.Equal(t, live, f[2], "%q: the live store's fleet table", line)
 			hidden = append(hidden, f[4])
@@ -57,7 +62,7 @@ func TestTheMigrationGivesTheFleetTableItsLockedShape(t *testing.T) {
 			t.Fatalf("%q: a migration line of a form this test does not apply", line)
 		}
 	}
-	require.Equal(t, 3, ran, "the migration's three writes")
+	require.Equal(t, 15, ran, "the migration's eight column adds, one drop and six hides")
 	var want ntable.Table
 	for _, def := range (sprint.Names{}).Definitions() {
 		if def.Name == live {

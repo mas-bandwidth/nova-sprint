@@ -126,7 +126,7 @@ func TestEveryMemberUpRefusingAtStagingIsOneJudgment(t *testing.T) {
 	}
 	h.machine()
 	w := h.snap().Fleet.Card("s1-1.w1")
-	assert.Equal(t, sprint.Withdrawn, w.Col, "not dealt again")
+	assert.Equal(t, sprint.Coordination, w.Col, "not dealt again")
 	assert.Equal(t, 0, w.Int("redeals"))
 	open := h.openOf(sprint.NBound)
 	require.Len(t, open, 1, "one judgment")

@@ -218,7 +218,12 @@ fleet.ready count sum shown
 fleet.working count sum shown
 fleet.width text sum shown
 fleet.done sum(ok+failed) sum shown
-fleet.okpct pct(ok/ok+failed) pooled shown label=ok%
+fleet.okpct pct(ok/ok+failed+no_result) pooled shown label=ok%
+fleet.provider count sum hidden
+fleet.coordination count sum hidden
+fleet.environment count sum hidden
+fleet.harness count sum hidden
+fleet.no_result count sum hidden
 fleet.redealt count sum shown
 fleet.status text none shown
 fleet.load text none shown

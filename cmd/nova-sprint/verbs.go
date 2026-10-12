@@ -193,7 +193,7 @@ func init() {
 		{"budget renew", "<provider/model> --as <worker> --holder <id>", "budget renew deepseek/deepseek-chat --as hetzner --holder c1.g2.r7", (*app).cmdBudgetRenew},
 		{"budget release", "<provider/model> --as <worker> --holder <id>", "budget release deepseek/deepseek-chat --as hetzner --holder c1.g2.r7", (*app).cmdBudgetRelease},
 		{"rules", "", "rules", (*app).cmdRules},
-		{"stats tidy", "(--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]", "stats tidy --all --reason 'a fresh start' --dry-run", (*app).cmdStatsTidy},
+		{"stats tidy", "(--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run] [--recompute]", "stats tidy --all --reason 'a fresh start' --dry-run", (*app).cmdStatsTidy},
 		{"stats reset", "--reason <text> [--dry-run] | --show", "stats reset --reason 'count from now' --dry-run", (*app).cmdStatsReset},
 		{"stats", "[--routes [--since <10m|RFC3339>]]", "stats", (*app).cmdStats},
 		{"audit", "[--stream <s>] [--stuck <10m>] [--json]", "audit --stuck 10m", (*app).cmdAudit},
