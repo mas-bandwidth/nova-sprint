@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -14,9 +15,21 @@ import (
 // every card it names has left, and the tick raises it again on the cards still
 // waiting. A stream's own judgment (a stop, a red base) is its stream's, never a
 // card's, and stays.
+//
+// A judgment is also outlived by its card's move (the 2026-10-12 j127: a brief
+// defect still open after its card was re-briefed and dealt on to attempt 5):
+// one raised at an attempt the card has since left, or on a brief the card has
+// since replaced, closes the same way, answered by the card's move. The card's
+// state, not the tick alone, is what closes it: one still at the attempt and
+// brief it was raised for stays.
 
 // RetiredPrefix opens the decided note of a judgment retired with its card.
 const RetiredPrefix = "retired with its card: "
+
+// MovedOnPrefix opens the decided note of a judgment its card has moved past:
+// the card reached another attempt, or its brief was replaced, since the
+// judgment was raised.
+const MovedOnPrefix = "answered by the card's move: "
 
 // retiresWithCards are the stream-level judgments the tick keeps on the cards
 // they name: each retires once every card it names has left the table.
@@ -53,9 +66,63 @@ func offTable(s *Snapshot, id string) string {
 	return id + " off the table (" + orDash(c.F("outcome")) + ")"
 }
 
+// movedOn is the event a judgment's card moved past it by: "<id> moved to attempt
+// <m> (was <n>)", or "<id> was re-briefed" for a judgment about the brief itself;
+// "" while the card is still the one the judgment was raised for, the judgment
+// names no attempt, or the work table never had it. A judgment records the
+// attempt it was raised at (its Attempt), and the card's current attempt past it
+// is the card moved on. A brief-defect judgment is outlived once the card no
+// longer carries the defect (FieldBriefDefect, unset by the re-brief: briefInPlace),
+// and a brief-bound judgment once the card's brief was replaced at or after the
+// attempt it was raised at (FieldBriefAttempt). A reader's finding on a brief
+// edited before it is not outlived by the edit (the same attempt's new work).
+func movedOn(s *Snapshot, n Note, id string) string {
+	c := s.Work.Placed(id)
+	if c == nil || n.Attempt <= 0 {
+		return ""
+	}
+	if now := c.Int("attempt"); now > n.Attempt {
+		return fmt.Sprintf("%s moved to attempt %d (was %d)", id, now, n.Attempt)
+	}
+	switch n.Type {
+	case NBriefDefect:
+		if c.F(FieldBriefDefect) == "" {
+			return id + " was re-briefed"
+		}
+	case NBriefWrong:
+		if at := c.Int(FieldBriefAttempt); at > 0 && at >= n.Attempt {
+			return fmt.Sprintf("%s was re-briefed at attempt %d", id, at)
+		}
+	}
+	return ""
+}
+
+// outlived is the card's-move event when every subject of a judgment has left the
+// table or moved past the state it was raised for: the judgment holds no card
+// that still needs a decision, so the coordinator may ack it (Ack, steps_ack.go),
+// and the tick retires it (RetireJudgments).
+func outlived(s *Snapshot, n Note, entries []Open) (string, bool) {
+	if len(entries) == 0 {
+		return "", false
+	}
+	var events []string
+	for _, o := range entries {
+		e := offTable(s, o.Subject())
+		if e == "" {
+			e = movedOn(s, n, o.Subject())
+		}
+		if e == "" {
+			return "", false
+		}
+		events = append(events, e)
+	}
+	return strings.Join(events, "; "), true
+}
+
 // RetireJudgments is the closes and the machine's answers of every open judgment
-// whose cards have all left the table, skipping those the plan closes already: one
-// decided note a judgment, naming every card's event.
+// whose cards have all left the table or moved past the state the judgment was
+// raised for, skipping those the plan closes already: one decided note a judgment,
+// naming every card's event.
 func RetireJudgments(s *Snapshot, p *Plan, who string) {
 	if s.Work == nil {
 		return
@@ -65,7 +132,10 @@ func RetireJudgments(s *Snapshot, p *Plan, who string) {
 		closing[o.Key] = true
 	}
 	var order []string
-	retired := map[string]*Note{}
+	events := map[string][]string{}
+	moved := map[string]bool{}
+	prims := map[string][]string{}
+	subject := map[string]Open{}
 	for _, o := range s.Open {
 		n := o.Note
 		if n.Kind != Judgment || closing[o.Key] || n.SprintLevel || contains(aboutTheLanding, n.Type) {
@@ -78,36 +148,44 @@ func RetireJudgments(s *Snapshot, p *Plan, who string) {
 			}
 			cards = n.Primaries
 		}
-		var events []string
+		var es []string
+		didMove := false
 		for _, id := range cards {
 			e := offTable(s, id)
 			if e == "" {
-				events = nil
-				break
+				if e = movedOn(s, n, id); e == "" {
+					es = nil
+					break
+				}
+				didMove = true
 			}
-			events = append(events, e)
+			es = append(es, e)
 		}
-		if len(events) == 0 {
+		if len(es) == 0 {
 			continue
 		}
 		closing[o.Key] = true
 		p.Closes = append(p.Closes, o)
-		d := retired[n.ID]
-		if d == nil {
-			nd := decided(o, RetiredPrefix, who, s.Now)
-			d = &nd
-			retired[n.ID] = d
+		if _, seen := events[n.ID]; !seen {
 			order = append(order, n.ID)
-		} else {
-			d.What += "; "
+			subject[n.ID] = o
 		}
-		d.What += strings.Join(events, "; ")
+		events[n.ID] = append(events[n.ID], es...)
+		if didMove {
+			moved[n.ID] = true
+		}
 		if !n.StreamLevel {
-			d.Primaries = append(d.Primaries, o.Subject())
-			d.Count = len(d.Primaries)
+			prims[n.ID] = append(prims[n.ID], o.Subject())
 		}
 	}
 	for _, id := range order {
-		p.Notes = append(p.Notes, *retired[id])
+		o := subject[id]
+		prefix := RetiredPrefix
+		if moved[id] {
+			prefix = MovedOnPrefix
+		}
+		d := decided(o, prefix, who, s.Now, prims[id]...)
+		d.What = prefix + strings.Join(events[id], "; ")
+		p.Notes = append(p.Notes, d)
 	}
 }

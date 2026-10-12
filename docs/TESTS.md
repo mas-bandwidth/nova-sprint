@@ -529,3 +529,21 @@ The base is still merged in by the worker, never replaced.
   `CARRY: head=<pr head> branch=<pr branch>` is admitted and dealt, the packet names the PR
   head as the base the slot stages from, and a commit built on that staged head has the PR
   head as an ancestor.
+
+## A judgment its card has moved past closes itself (v1.2.14)
+
+A judgment that outlives the state it was raised for closes itself at the next tick,
+answered by the card's move, and can be acked with a reason because it holds no card that
+still needs its decision (docs/SPEC-SPRINT.md section 8, "A judgment retires with its card";
+docs/fixes.sexp, a-judgment-outlived-by-its-card-closes-itself).
+
+- Unit, `internal/sprint/judgment_moves_on_test.go`:
+  `TestJudgmentClosesWhenItsCardMovesOn`: a card ends attempt 1 on a brief defect (the
+  judgment carries `Attempt: 1`), ack is refused while the card is still that card, the
+  coordinator re-briefs it in place, and the next `TickCheck` closes the judgment with one
+  decided note, `answered by the card's move: s1-2 was re-briefed`, written by the machine
+  and gone from the inbox; a second tick finds nothing more. `TestAJudgmentStaysWhenItsCardHasNotMovedOn`:
+  a judgment naming no attempt, and one whose card is still at the attempt it was raised for,
+  stay open. `TestAMovedOnJudgmentCanBeAcked`: the re-briefed card's judgment acked with a
+  reason before the tick is closed, recorded as the card's move.
+

@@ -2537,4 +2537,28 @@
     internal/sprint/brief_edit_test.go (red first) and the functional
     TestABriefEditKeepsARelinkedNeedOnTheStore (relink, then brief --brief-file with the stale
     DEPENDS-ON, on a real store)."
-   :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")))
+   :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")
+  (fix "a-judgment-outlived-by-its-card-closes-itself" :release "v1.2.14" :status "planned"
+   :title "A judgment its card has moved past closes itself"
+   :text "A judgment whose card moved past the state it was raised for stayed open forever:
+    the 2026-10-12 j127, a brief defect still in the inbox after its card was re-briefed and
+    dealt on to attempt 5 in review. ack was refused (its decisions are the re-cut, never ack),
+    brief --answers was refused (this step resolves no obligation of it), and only wait quieted
+    it. A judgment records the attempt it was raised at (Note.Attempt), and the tick now closes
+    one whose card left that state, answered by the card's move: the card reached another
+    attempt, or (for a brief-defect or brief-bound judgment) its brief was replaced since
+    (movedOn, judgments_retire.go, run from RetireJudgments at the tick's check). A
+    brief-defect judgment is outlived once the card no longer carries the defect
+    (FieldBriefDefect, unset by the re-brief) and a brief-bound one once the brief was replaced
+    at or after its attempt (FieldBriefAttempt); a reader's finding on a brief edited before it
+    is not outlived by the edit. The close is one decided note, `answered by the card's move:
+    <id> ...`, written by the machine, so the inbox never shows a judgment about a state the
+    card has left. An outlived judgment holds no card that still needs its decision, so ack now
+    answers it with a reason (Ack, steps_ack.go: the ack is refused only while the card still
+    needs the decision, and the refusal names the verbs that answer it). Tests:
+    internal/sprint/judgment_moves_on_test.go, TestJudgmentClosesWhenItsCardMovesOn and
+    TestAJudgmentStaysWhenItsCardHasNotMovedOn (red first), and TestAMovedOnJudgmentCanBeAcked."
+   :origin "this card, a-judgment-outlived-by-its-card-closes-itself.w1~19, 2026-10-12; the seat:
+    j127 (a brief defect on a-cut-ignores-the-previous-tags-cancelled-release-run) stayed open
+    after its card was re-briefed and moved on to attempt 5 in review, ack and brief --answers
+    both refused, only wait quieting it")))
