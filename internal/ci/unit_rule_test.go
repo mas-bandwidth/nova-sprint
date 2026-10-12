@@ -423,8 +423,8 @@ func scanUnitRulePackage(fset *token.FileSet, files []unitRuleFile) []unitRuleFi
 	return out
 }
 
-// moduleTestFiles is every _test.go under root (tmp and testdata trees skipped),
-// keyed by its slash path from root.
+// moduleTestFiles is every visible _test.go under root (hidden, tmp and testdata
+// trees skipped), keyed by its slash path from root.
 func moduleTestFiles(t *testing.T, root string) map[string][]byte {
 	t.Helper()
 	files := map[string][]byte{}
@@ -433,6 +433,9 @@ func moduleTestFiles(t *testing.T, root string) map[string][]byte {
 			return err
 		}
 		if d.IsDir() {
+			if filepath.Clean(path) != filepath.Clean(root) && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
 			switch d.Name() {
 			case ".git", "tmp", "testdata", "vendor":
 				return filepath.SkipDir
@@ -455,6 +458,33 @@ func moduleTestFiles(t *testing.T, root string) map[string][]byte {
 	})
 	require.NoError(t, err)
 	return files
+}
+
+func TestModuleTestFilesSkipsHiddenDirectoriesButScansRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".hk-root")
+	require.NoError(t, os.Mkdir(root, 0700))
+	write := func(path, body string) {
+		t.Helper()
+		full := filepath.Join(root, filepath.FromSlash(path))
+		require.NoError(t, os.MkdirAll(filepath.Dir(full), 0700))
+		require.NoError(t, os.WriteFile(full, []byte(body), 0600))
+	}
+	forbidden := "package p\nimport \"time\"\nfunc TestBad() { time.Sleep(1) }\n"
+	write("root_test.go", forbidden)
+	write("pkg/visible_test.go", forbidden)
+	write(".hk-transient/hidden_test.go", forbidden)
+
+	files := moduleTestFiles(t, root)
+	assert.NotContains(t, files, ".hk-transient/hidden_test.go")
+	assert.Contains(t, files, "root_test.go")
+	assert.Contains(t, files, "pkg/visible_test.go")
+	findings, err := scanUnitRule(files)
+	require.NoError(t, err)
+	got := map[string]bool{}
+	for _, finding := range findings {
+		got[finding.File] = true
+	}
+	assert.Equal(t, map[string]bool{"root_test.go": true, "pkg/visible_test.go": true}, got)
 }
 
 // TestUnitTestsUseNoRealTimeSocketsOrServices is the rule's lock: every unit-tier
