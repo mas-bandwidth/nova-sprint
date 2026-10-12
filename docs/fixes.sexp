@@ -3061,4 +3061,19 @@
      coordinator, 2026-10-12 epoch 19: after staging refused cards with no bench mirror for <url>,
      the seat ran monitorsync.sh by hand to clone each missing repository as a bare mirror and push it
      to every fleet member; this card makes nova-sprint ask for it at the two moments it knows a repo
-     is needed")))
+     is needed")
+   (fix "stall-and-stuck-classes-of-2026-10-11-clipped-in" :release "v1.2.15" :status "planned"
+    :title "Every stall and stuck class of 2026-10-11 is held by a unit test and a functional test in release-accept"
+    :text "Tests only, no product change. Each fix of 2026-10-11 for a stall, a card stuck or the machine not
+     working is held by its unit tests and by a functional test on a real store, with the binary under
+     acceptance running the workers', the readers' and the machine's verbs, and every one is named in
+     tools/release-accept.sh. Ten new functional tests, each red against the parent of its fix: the switched
+     server's run --land never rolls back on the hook gate (#99); a need cycle through a working card is
+     refused and nothing waits on a loop (#103); a ledger-only conflict lands on the store (#100); done counts
+     a member's work and its fleet reads (#94); the idle alarm fires once an episode when the lanes hold only
+     reads (#106); an over-bound merge note and an over-bound brief are refused at the verb and the drain
+     goes on (#91, brief-file-over-the-bound-is-refused); the binary's shadow tick and run refuse a store
+     missing its locked columns; and queued reads move to a member that comes up idle (the rebalance levels
+     reads). docs/TESTS.md, Stall and stuck coverage, holds the table and a GAP line for each class whose fix
+     is not on main, naming the card or pull request that owes its tests."
+    :origin "hand-landed by a child of the seat, 2026-10-11, for the owner: every big fix of the day involving stalls, getting stuck or the sprint machine not working gets unit and functional tests, listed in make release-accept")))
