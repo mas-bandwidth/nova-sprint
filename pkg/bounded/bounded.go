@@ -31,10 +31,6 @@ Two rules the caps do not cover, and the callers keep:
 	MAX 0 MEANS ALL. A cap a caller cannot turn off is a tool deciding what its user may
 	see. Every --*-max flag here takes 0, and 0 prints everything.
 
-Grouped is the same shape per kind, for a verb that runs several checks into one stream:
-20 findings of one kind must not bury the single finding of another, which is what a
-flat cap over a concatenated list does.
-
 Nothing here is a substitute for the escape. Every item line is rendered through
 oneline.Escape on its way out -- which is a no-op over text the caller already escaped,
 because Escape does not escape a backslash -- so a listing cannot break its own line
