@@ -9,7 +9,8 @@ import (
 
 // tier <card> --set <t> --reason <why> (docs/SPEC-SPRINT.md section 11, the tier
 // verb): the reason is required, recorded with the pin. A re-tier with no
-// --reason, an empty one or one of blanks only is refused, exit 1, and writes
+// --reason, an empty one or one of blanks only is refused (a usage refusal, exit
+// 2) and writes
 // nothing; with a reason the card is pinned and the record names the reason.
 func TestTierRefusesAReTierWithoutAReason(t *testing.T) {
 	t.Parallel()
@@ -22,7 +23,7 @@ func TestTierRefusesAReTierWithoutAReason(t *testing.T) {
 		"tier a-1 --set heavy --reason '   '",
 	} {
 		code, _, errs := ta.do(line)
-		assert.Equal(t, 1, code, line)
+		assert.Equal(t, 2, code, line)
 		assert.Contains(t, errs, "--reason", line)
 	}
 	assert.Equal(t, "", ta.primary("a-1").F(sprint.FieldTier), "a refused re-tier writes nothing")
