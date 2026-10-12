@@ -28,7 +28,6 @@ package swarm
 // card MOVED PAST is not what killed it, whatever order the lines are in.
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,85 +37,12 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 )
 
-// PermissionDeniedMark is the kernel's refusal on linux. landlock denies a write outside the
-// write set with EACCES, and the C library spells that `Permission denied` -- so the marks
-// this package had (`SANDBOX REFUSED`, `Operation not permitted`) named NO linux refusal at
-// all. Measured inside the swarm's own wall on linux: `sh: 1: cannot create
-// /tmp/nova-wall-probe-swarm: Permission denied`. Like OperationNotPermittedMark it counts
-// only ON A PATH: `Permission denied` with no path in the line is some other permission, and
-// a card's own test output is full of sentences.
-const PermissionDeniedMark = "Permission denied"
-
-// wallToolMarks are the harness's own marks for a tool call, measured in the logs of the
-// four cards above: `$ <command>` for a shell call, `→ <Tool> ...` for a read and
-// `← <Tool> ...` for a write, plus the card's own `STEP <n>`. A line carrying one of these
-// AFTER a refusal is the card making another tool call, which is a card that moved past it.
-var wallToolMarks = []string{"$ ", "→ ", "← ", WallStepMark}
-
-// WallStopped is the refusal that STOPPED a card, which is not the same question WallRefused
-// answers. WallRefused reports the FIRST refusal in a log whether or not the card survived
-// it; this reports one only when the card made no further tool call after it.
-//
-// The difference is a whole card. `js-under-20-bytes` took a refusal in the harness's
-// startup banner, ran sixteen more model steps, and died in a provider stall twenty minutes
-// later; WallRefused named the banner and the shift went looking at the wall.
-func WallStopped(log []byte) (WallRefusal, bool) {
-	w, ok := WallRefused(log)
-	if !ok {
-		return WallRefusal{}, false
-	}
-	if wallMovedOn(log, w.Path) {
-		return WallRefusal{}, false
-	}
-	return w, true
-}
-
 // wallMovedOn reports whether the card made another tool call after the line that named
 // path. A path it cannot find again is treated as not moved on: the caller already has a
 // refusal, and inventing a recovery it did not see would throw the classification away.
-func wallMovedOn(log []byte, path string) bool {
-	lines := strings.Split(string(log), "\n")
-	at := -1
-	for i, raw := range lines {
-		line := strings.TrimSpace(stripPaint(raw))
-		if line == "" {
-			continue
-		}
-		if wallRefusalLine(line) && (path == "" || strings.Contains(line, path)) {
-			at = i
-			break
-		}
-	}
-	if at < 0 {
-		return false
-	}
-	for _, raw := range lines[at+1:] {
-		line := strings.TrimSpace(stripPaint(raw))
-		if line == "" {
-			continue
-		}
-		for _, mark := range wallToolMarks {
-			if strings.HasPrefix(line, mark) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // wallRefusalLine reports whether one already-trimmed, already-stripped line is a refusal in
 // the three grammars this package knows: the sandbox's own word, and the kernel's two, each
 // of the last on a path.
-func wallRefusalLine(line string) bool {
-	switch {
-	case strings.Contains(line, SandboxRefusedMark):
-		return true
-	case strings.Contains(line, OperationNotPermittedMark), strings.Contains(line, PermissionDeniedMark):
-		return wallPathToken(line) != ""
-	}
-	return false
-}
-
 // WallKind is the ONE WORD a refusal is reported by -- the `<what>` of the typed line -- and
 // it is read out of the refusal's own sentence rather than guessed: `home` for the wall's
 // own home_outside refusal, `write` and `read` for a path the kernel refused in one
@@ -182,59 +108,6 @@ func NewWallReader(task string, announce func(string)) *WallReader {
 
 // Write consumes the child's output and never fails: a reader that could fail a write would
 // break the MultiWriter it sits in and take the card's own log down with it.
-func (r *WallReader) Write(p []byte) (int, error) {
-	if r == nil {
-		return len(p), nil
-	}
-	r.mu.Lock()
-	r.buf = append(r.buf, p...)
-	var say string
-	for {
-		raw, rest, found := bytes.Cut(r.buf, []byte{'\n'})
-		if !found {
-			break
-		}
-		line := strings.TrimSpace(stripPaint(string(raw)))
-		r.buf = rest
-		if line == "" {
-			continue
-		}
-		if rest, ok := strings.CutPrefix(line, WallStepMark); ok {
-			fields := strings.Fields(rest)
-			if len(fields) > 0 {
-				if n := strings.TrimRight(fields[0], ".:)("); isAllDigits(n) {
-					r.step = n
-				}
-			}
-		}
-		if r.refused {
-			for _, mark := range wallToolMarks {
-				if strings.HasPrefix(line, mark) {
-					r.movedOn = true
-					break
-				}
-			}
-			continue
-		}
-		if p, ok := FenceRejection([]byte(line)); ok {
-			r.refused, r.refusal, r.kind = true, WallRefusal{Path: p, Step: r.step}, "fence"
-		} else if wallRefusalLine(line) {
-			r.refused, r.refusal, r.kind = true, WallRefusal{Path: wallPathToken(line), Step: r.step}, WallKind(line)
-		}
-		if r.refused && say == "" {
-			say = WallRefusedLine(r.task, r.kind, r.refusal.Path, r.step)
-		}
-	}
-	announce := r.announce
-	r.mu.Unlock()
-	// OUTSIDE THE LOCK. announce is the caller's writer, and a writer that blocked while
-	// this lock was held would stop the child's own output with it.
-	if say != "" && announce != nil {
-		announce(say)
-	}
-	return len(p), nil
-}
-
 // Stopped is the refusal that stopped this card -- a refusal with no tool call after it --
 // and false when there was no refusal or the card moved past the one there was.
 func (r *WallReader) Stopped() (WallRefusal, string, bool) {
