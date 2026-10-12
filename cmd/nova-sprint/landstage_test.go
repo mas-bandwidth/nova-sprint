@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
 )
 
@@ -34,24 +33,7 @@ func TestARefusedStageStepsTheGateToTheNextSlot(t *testing.T) {
 		heads[id] = r.card(id, map[string]string{fmt.Sprintf("ok%d.go", i): fmt.Sprintf("package main\n\nfunc ok%d() {}\n", i)})
 	}
 	r.queued(heads, "s1-1", "s1-2", "s1-3")
-	for _, m := range []string{"vision", "space"} {
-		r.ok("fleet beat " + m + " --load 1 --cores 8")
-		r.ok("fleet up " + m + " --probe passed")
-	}
-	var w whereView
-	r.json("where", &w)
-	for name, row := range w.Tables["fleet"] {
-		if name != "vision" && name != "space" && row["status"] == sprint.Up {
-			r.ok("fleet down " + name)
-		}
-	}
-	st, err := r.a.store(common{redis: "mem:0", actor: "tester"})
-	require.NoError(t, err)
-	s, err := st.Load(context.Background(), []string{sprint.Fleet}, nil)
-	require.NoError(t, err)
-	hosts := s.UpMembers()
-	require.ElementsMatch(t, []string{"vision", "space"}, hosts)
-	ring := benchRing("s1", hosts)
+	_, ring := r.twoBenchesRing()
 	bad, good := ring[0], ring[1]
 
 	var asked sync.Mutex
