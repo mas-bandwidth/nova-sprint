@@ -5108,6 +5108,15 @@ deadline does. A judgment whose review time has not come is quiet: not overdue, 
 listed after every judgment that is not quiet, marked `quiet until=<time>`, for the
 whole period, so it does not sit at the top of every inbox read.
 
+The review time and running-time origin are persisted with the judgment. A
+server process restart or hook reconnect does not reset either one: time while
+the sprint machine is RUNNING counts, including time the server process was
+down, and spans while the machine is STOPPED do not. The hook delivers only
+eligible judgments. Its transport acknowledgement is durable across sessions
+and process restarts; when a wait expires, that judgment is a fresh delivery
+obligation, while an acknowledged sibling in the same inbox group stays
+acknowledged.
+
 The machine's tick writes its own judgments (section 14): cannot ask, fewer than two readers up, no fleet
 member is up, a work card or a read card past its deadline, a stream with no
 merge step past its deadline, an invariant is broken, a stall (one

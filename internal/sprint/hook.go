@@ -47,6 +47,7 @@ type HookItem struct {
 	ID   uint64    `json:"id"`
 	What string    `json:"what"`
 	At   time.Time `json:"at"`
+	Keys []string  `json:"keys,omitempty"`
 }
 
 // HookRecord is the server's word on the seat's hook, the one the gate reads: who
@@ -56,6 +57,7 @@ type HookItem struct {
 // the oldest of them. Only the server writes it (cmd/nova-sprint/hook.go).
 type HookRecord struct {
 	Name    string    `json:"name"`
+	Epoch   uint64    `json:"epoch,omitempty"`
 	Session string    `json:"session,omitempty"`
 	State   string    `json:"state"`
 	Since   time.Time `json:"since,omitzero"`
@@ -64,6 +66,7 @@ type HookRecord struct {
 	Why     string    `json:"why,omitempty"`
 	Unacked int       `json:"unacked,omitempty"`
 	Oldest  *HookItem `json:"oldest,omitempty"`
+	Acked   []string  `json:"acked,omitempty"`
 }
 
 // HookLive says the record holds a live, proven hook for name at now: hooked, proven

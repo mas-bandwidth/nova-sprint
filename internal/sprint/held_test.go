@@ -431,3 +431,15 @@ func TestMovesDueCountsAsks(t *testing.T) {
 	n = MovesDue(w.s)
 	require.Equal(t, 0, n, "asked: %d moves due", n)
 }
+
+func TestMovesDueKeysPreserveReviewExclusions(t *testing.T) {
+	t.Parallel()
+	w := dealt(t)
+	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1")}))
+	readers := w.s.Readers
+	w.s.Readers = nil
+	require.Empty(t, MoveDueKeys(w.s), "a review card with no readers is excluded from the stopped-machine due count")
+	w.s.Readers = readers
+	w.s.Work.Card("s1-1").Fields["result"] = "failed"
+	require.Empty(t, MoveDueKeys(w.s), "a failed review card is excluded from the stopped-machine due count")
+}

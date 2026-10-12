@@ -143,6 +143,9 @@ type Group struct {
 	// name, in the order the notes name them, unbounded: what What
 	// previews, listed whole by inbox --open.
 	Needs []string `json:"-"`
+	// HookKey is a stable identity for computed judgments without an open note.
+	// The hook uses it to distinguish a later episode that reuses the group's ID.
+	HookKey string `json:"-"`
 	// To is who the group's notes are addressed to (Note.To): its happened
 	// notes, and a timer's judgment, which the tick raises addressed to the
 	// actor it wakes (docs/SPEC-SPRINT.md, "Timers"); Hint is what to do
@@ -295,7 +298,8 @@ func Inbox(r InboxReq) []Group {
 		}
 		g := Group{ID: StaleGroupID(st.Stream, r.Epoch), Kind: Judgment, Type: NStreamStale, Stream: st.Stream, Count: 1, Marked: true, Overdue: true,
 			Oldest: st.Progress, Due: st.Progress.Add(r.Stale + r.Now.Sub(st.Progress) - r.running(st.Progress)), Waited: r.running(st.Progress), Decisions: Decisions[NStreamStale],
-			What: "state " + st.State + " since " + st.Since.UTC().Format(time.RFC3339)}
+			What:    "state " + st.State + " since " + st.Since.UTC().Format(time.RFC3339),
+			HookKey: fmt.Sprintf("%s\x00progress=%s\x00state=%s\x00since=%s\x00quiet=%s", StaleGroupID(st.Stream, r.Epoch), st.Progress.UTC().Format(time.RFC3339Nano), st.State, st.Since.UTC().Format(time.RFC3339Nano), st.Quiet.UTC().Format(time.RFC3339Nano))}
 		g.Commands = commands(g, Note{}, r.Prefix)
 		out = append(out, g)
 	}

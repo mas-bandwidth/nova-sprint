@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -124,6 +125,26 @@ func writeHook(ctx context.Context, st *store.Store, rec sprint.HookRecord) erro
 	}
 	return kv.SetKey(ctx, store.KeySeatHook, string(b))
 }
+
+func keySet(keys []string) map[string]bool {
+	out := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		out[key] = true
+	}
+	return out
+}
+
+func keyList(keys map[string]bool) []string {
+	active := make(map[string]struct{}, len(keys))
+	for key, yes := range keys {
+		if yes {
+			active[key] = struct{}{}
+		}
+	}
+	return slices.Sorted(maps.Keys(active))
+}
+
+func cloneKeys(keys map[string]bool) map[string]bool { return maps.Clone(keys) }
 
 // hookedIn is why the command may not run for want of the seat's hook, "" when it may
 // (SeatHook.tla, Gate; sprint.HookGate): every coordinator verb, and every other verb
@@ -241,6 +262,8 @@ type hookSession struct {
 	seq     uint64
 	open    []sprint.HookItem // delivered, not acknowledged, oldest first
 	sent    map[string]bool
+	acked   map[string]bool // durably acknowledged note keys in the current sprint epoch
+	epoch   uint64
 	ended   bool
 	done    chan struct{}
 	endOnce sync.Once
@@ -347,9 +370,16 @@ func (d *deadlineConn) Write(p []byte) (int, error) {
 // look, and the session's lines read until the connection ends. An end that is not
 // unhook is a drop, recorded gone and told (Drop).
 func (a *app) hookRun(ctx context.Context, name string, conn io.ReadWriteCloser, look time.Duration) {
-	s := &hookSession{a: a, id: hookNonce(), name: name, conn: conn, sent: map[string]bool{}, done: make(chan struct{})}
+	s := &hookSession{a: a, id: hookNonce(), name: name, conn: conn, sent: map[string]bool{}, acked: map[string]bool{}, done: make(chan struct{})}
 	if err := s.start(ctx); err != nil {
-		s.end(ctx, sprint.HookGone, "the hook could not begin: "+err.Error())
+		// start may fail before publication, or after the new session and its
+		// HookHooked record have been published (for example, if hello cannot
+		// be written). end is conditional on owning the hub, so it cleans up
+		// the latter without disturbing an older session in the former case.
+		s.end(ctx, sprint.HookGone, err.Error())
+		// end returns without closing when this session was never published.
+		_ = s.conn.Close()
+		s.a.serveSay("SEAT HOOK name=%s: the hook could not begin: %s", s.name, oneline.Escape(err.Error()))
 		return
 	}
 	if look > 0 {
@@ -376,17 +406,33 @@ func (a *app) hookRun(ctx context.Context, name string, conn io.ReadWriteCloser,
 func (s *hookSession) start(ctx context.Context) error {
 	h := s.a.hookHub()
 	h.mu.Lock()
+	now := s.a.now()
+	if err := s.a.onLine(ctx, func(st *store.Store) error {
+		old, ok, err := readHook(ctx, st)
+		if err != nil {
+			return err
+		}
+		epoch, err := st.EpochNow(ctx)
+		if err != nil {
+			return err
+		}
+		if !ok || old.Name != s.name || old.Epoch != epoch.N {
+			old.Acked = nil
+		}
+		s.epoch = epoch.N
+		s.acked = keySet(old.Acked)
+		old.Name, old.Epoch, old.Session, old.State, old.Since = s.name, epoch.N, s.id, sprint.HookHooked, now
+		old.Proven, old.Live, old.Why, old.Unacked, old.Oldest = time.Time{}, time.Time{}, "", 0, nil
+		return writeHook(ctx, st, old)
+	}); err != nil {
+		h.mu.Unlock()
+		return err
+	}
 	old := h.cur
 	h.cur = s
 	h.mu.Unlock()
 	if old != nil {
 		old.replaced()
-	}
-	now := s.a.now()
-	if err := s.a.onLine(ctx, func(st *store.Store) error {
-		return writeHook(ctx, st, sprint.HookRecord{Name: s.name, Session: s.id, State: sprint.HookHooked, Since: now})
-	}); err != nil {
-		return err
 	}
 	s.a.serveSay("SEAT HOOK name=%s session=%s: hooked, unproven until the challenge is answered", s.name, s.id[:8])
 	if err := s.send(hookMsg{T: "hello", Name: s.name, Session: s.id}); err != nil {
@@ -528,44 +574,94 @@ func (s *hookSession) prove(ctx context.Context, c string) hookMsg {
 // ack takes the session's acknowledgement of every push delivered up to id (SeatHook.tla,
 // Ack); the record then names the oldest still open.
 func (s *hookSession) ack(ctx context.Context, id uint64) hookMsg {
-	s.mu.Lock()
-	if id == 0 || id > s.seq {
-		seq := s.seq
-		s.mu.Unlock()
-		return hookMsg{T: "refused", Why: fmt.Sprintf("no push %d was delivered on this hook (the last is %d)", id, seq)}
+	var rec sprint.HookRecord
+	var why string
+	err := s.a.onLine(ctx, func(st *store.Store) error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if id == 0 || id > s.seq {
+			why = fmt.Sprintf("no push %d was delivered on this hook (the last is %d)", id, s.seq)
+			return nil
+		}
+		openBefore, ackedBefore := append([]sprint.HookItem(nil), s.open...), cloneKeys(s.acked)
+		kept := s.open[:0]
+		for _, item := range s.open {
+			if item.ID <= id {
+				for _, key := range item.Keys {
+					s.acked[key] = true
+				}
+				continue
+			}
+			kept = append(kept, item)
+		}
+		s.open = kept
+		var err error
+		rec, err = s.recordLocked(ctx, st)
+		if err != nil {
+			s.open, s.acked = openBefore, ackedBefore
+		}
+		return err
+	})
+	if why != "" {
+		return hookMsg{T: "refused", Why: why}
 	}
-	s.open = slices.DeleteFunc(s.open, func(it sprint.HookItem) bool { return it.ID <= id })
-	s.mu.Unlock()
-	rec, err := s.record(ctx)
 	if err != nil {
 		return hookMsg{T: "refused", Why: "the acknowledgement could not be recorded: " + err.Error()}
 	}
 	return hookMsg{T: "ok", ID: id, Unacked: rec.Unacked, Live: rec.Live}
 }
 
-// record writes the pushes still open into the record (the gate's AckedOrBlocking), and
-// returns it.
-func (s *hookSession) record(ctx context.Context) (sprint.HookRecord, error) {
-	var rec sprint.HookRecord
-	err := s.a.onLine(ctx, func(st *store.Store) error {
-		r, _, err := readHook(ctx, st)
-		if err != nil {
-			return err
+// recordLocked writes the session's transport state into the hook record. The caller
+// holds s.mu and the store's onLine serialization, so pending delivery and its durable
+// note keys are one recorded step.
+func (s *hookSession) recordLocked(ctx context.Context, st *store.Store) (sprint.HookRecord, error) {
+	r, _, err := readHook(ctx, st)
+	if err != nil {
+		return sprint.HookRecord{}, err
+	}
+	if r.Session != s.id {
+		return sprint.HookRecord{}, errors.New("the record is another hook's")
+	}
+	r.Epoch = s.epoch
+	r.Unacked, r.Oldest = len(s.open), nil
+	if len(s.open) > 0 {
+		o := s.open[0]
+		r.Oldest = &o
+	}
+	r.Acked = keyList(s.acked)
+	if err := writeHook(ctx, st, r); err != nil {
+		return sprint.HookRecord{}, err
+	}
+	return r, nil
+}
+
+// deliveryKeys identifies each open note separately, including its explicit wait
+// deadline. A changed Review/ReviewSet is a new delivery generation, so an ACK made
+// before a wait cannot suppress that judgment's later due wake.
+func deliveryKeys(g sprint.Group, open []sprint.Open, now time.Time, stopped func(time.Time, time.Time) time.Duration) (active, eligible []string) {
+	keys := noteKeys(g)
+	if g.HookKey != "" {
+		keys = []string{g.HookKey}
+	}
+	if g.Kind != sprint.Judgment {
+		return keys, keys
+	}
+	notes := make(map[string]sprint.Note, len(open))
+	for _, o := range open {
+		notes[noteKey(o.Note.ID)] = o.Note
+	}
+	for _, key := range keys {
+		n, ok := notes[key]
+		if ok && !n.Review.IsZero() {
+			key += "\x00review=" + n.Review.UTC().Format(time.RFC3339Nano) + "\x00set=" + n.ReviewSet.UTC().Format(time.RFC3339Nano)
 		}
-		if r.Session != s.id {
-			return errors.New("the record is another hook's")
+		active = append(active, key)
+		if ok && !n.Review.IsZero() && !sprint.DueNow(now, n.Review, n.ReviewSet, stopped) {
+			continue
 		}
-		s.mu.Lock()
-		r.Unacked, r.Oldest = len(s.open), nil
-		if len(s.open) > 0 {
-			o := s.open[0]
-			r.Oldest = &o
-		}
-		s.mu.Unlock()
-		rec = r
-		return writeHook(ctx, st, r)
-	})
-	return rec, err
+		eligible = append(eligible, key)
+	}
+	return active, eligible
 }
 
 // look is the server's turn at the subscription every hookLook: a challenge unanswered
@@ -596,32 +692,62 @@ func (s *hookSession) look(ctx context.Context) {
 		s.challengeLive(ctx, now)
 	}
 	var pushes []hookMsg
-	// what this look adds, to undo when the record write fails: the sent keys it set,
-	// and the sequence and open pushes before it ran. A push is delivered only once the
-	// record names it, so a look whose record write failed delivers none of its pushes
-	// and offers them again next time (SeatHook.tla, Deliver: the record and the push
-	// are one step; AckedOrBlocking).
-	var addedSent []string
+	// The inbox snapshot, durable ACK state, and pending pushes move together. A
+	// frame is sent only after the record contains each push; a failed write rolls the
+	// whole look back so the next one offers the same work again.
+	var sentBefore, ackedBefore map[string]bool
+	var openBefore []sprint.HookItem
 	var seqBefore uint64
-	var openBefore int
+	var epochBefore uint64
 	err := s.a.onLine(ctx, func(st *store.Store) error {
 		v, err := st.Inbox(ctx, defaultDeadline, defaultStale, 10000)
 		if err != nil {
 			return err
 		}
+		epoch, err := st.EpochNow(ctx)
+		if err != nil {
+			return err
+		}
+		var stopped func(time.Time, time.Time) time.Duration
+		for _, o := range v.Open {
+			if !o.Note.Review.IsZero() {
+				machine, _, err := st.Machine(ctx)
+				if err != nil {
+					return err
+				}
+				stopped = machine.StoppedBetween
+				break
+			}
+		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		seqBefore, openBefore = s.seq, len(s.open)
+		seqBefore = s.seq
+		epochBefore = s.epoch
+		openBefore = append([]sprint.HookItem(nil), s.open...)
+		sentBefore, ackedBefore = cloneKeys(s.sent), cloneKeys(s.acked)
+		if s.epoch != epoch.N {
+			s.epoch, s.acked, s.sent = epoch.N, map[string]bool{}, map[string]bool{}
+			s.open = nil
+		}
+		active := map[string]bool{}
 		for _, g := range v.Groups {
 			if !forCoordinator(g) {
 				continue
 			}
-			keys := noteKeys(g)
+			allKeys, keys := deliveryKeys(g, v.Open, now, stopped)
+			for _, k := range allKeys {
+				active[k] = true
+			}
+			if len(keys) == 0 {
+				continue
+			}
 			fresh := false
 			for _, k := range keys {
+				if s.acked[k] {
+					continue
+				}
 				if !s.sent[k] {
 					fresh = true
-					addedSent = append(addedSent, k)
 				}
 				s.sent[k] = true
 			}
@@ -629,8 +755,26 @@ func (s *hookSession) look(ctx context.Context) {
 				continue
 			}
 			s.seq++
-			s.open = append(s.open, sprint.HookItem{ID: s.seq, What: g.ID, At: now})
+			s.open = append(s.open, sprint.HookItem{ID: s.seq, What: g.ID, At: now, Keys: append([]string(nil), keys...)})
 			pushes = append(pushes, hookMsg{T: "push", ID: s.seq, What: g.ID, Text: groupText(g, now, false)})
+		}
+		for k := range s.acked {
+			if !active[k] {
+				delete(s.acked, k)
+			}
+		}
+		for k := range s.sent {
+			if !active[k] {
+				delete(s.sent, k)
+			}
+		}
+		if len(pushes) == 0 && epochBefore == s.epoch && maps.Equal(ackedBefore, s.acked) {
+			return nil
+		}
+		if _, err := s.recordLocked(ctx, st); err != nil {
+			s.seq, s.open, s.sent, s.acked, s.epoch = seqBefore, openBefore, sentBefore, ackedBefore, epochBefore
+			pushes = nil
+			return err
 		}
 		return nil
 	})
@@ -639,21 +783,6 @@ func (s *hookSession) look(ctx context.Context) {
 		return
 	}
 	if len(pushes) == 0 {
-		return
-	}
-	if _, err := s.record(ctx); err != nil {
-		// the record was not written: deliver none of this look's pushes, and undo what
-		// it added so the next look offers them again
-		s.mu.Lock()
-		for _, k := range addedSent {
-			delete(s.sent, k)
-		}
-		if len(s.open) > openBefore {
-			s.open = s.open[:openBefore]
-		}
-		s.seq = seqBefore
-		s.mu.Unlock()
-		s.a.serveSay("SEAT HOOK name=%s: the pushes could not be recorded: %s", s.name, oneline.Escape(err.Error()))
 		return
 	}
 	for _, m := range pushes {
@@ -706,10 +835,21 @@ func (s *hookSession) end(ctx context.Context, state, why string) {
 		now := s.a.now()
 		var owner string
 		err := s.a.onLine(ctx, func(st *store.Store) error {
-			if err := writeHook(ctx, st, sprint.HookRecord{Name: s.name, Session: s.id, State: state, Since: now, Why: why}); err != nil {
+			rec, _, err := readHook(ctx, st)
+			if err != nil {
 				return err
 			}
-			var err error
+			if rec.Session != s.id {
+				return errors.New("the record is another hook's")
+			}
+			s.mu.Lock()
+			rec.Name, rec.Epoch, rec.Session, rec.State, rec.Since, rec.Why = s.name, s.epoch, s.id, state, now, why
+			rec.Proven, rec.Live, rec.Unacked, rec.Oldest = time.Time{}, time.Time{}, 0, nil
+			rec.Acked = keyList(s.acked)
+			s.mu.Unlock()
+			if err := writeHook(ctx, st, rec); err != nil {
+				return err
+			}
 			owner, err = s.a.owner(ctx, st)
 			return err
 		})
