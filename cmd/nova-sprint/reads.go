@@ -2464,7 +2464,7 @@ type cardView struct {
 	// Column is the live table placement, as linePlace reads it, never the
 	// legacy place:work field (docs/SPEC-SPRINT.md section 11).
 	Column  string `json:"column"`
-	Tier    string `json:"tier"`            // the tier it is on (sprint.CardTiers)
+	Tier    string `json:"tier"`            // the tier it is on, "(falls to <t>)" on a fallback (sprint.CardTierShown)
 	Ceiling string `json:"ceiling"`         // the highest the machine escalates it to
 	Grade   string `json:"grade,omitempty"` // nova-decide's grade, as the card holds it (sprint.FieldGrade)
 	// Who is the worker its brief's WHO line names (sprint.FieldWho): friend for any
@@ -2485,6 +2485,9 @@ type cardView struct {
 	// What it cost: each consumer (a work card's take, a read) with its record, and
 	// the totals, computed from the consumers' records (sprint.CardCost).
 	Cost sprint.CardCostView `json:"cost"`
+	// The consumer history: every consumer the machine launched (attempts, reads,
+	// landings), in order, with the counts (SPEC-SPRINT, "the consumer record").
+	Consumers sprint.ConsumersView `json:"consumers"`
 	// The story: its timeline from the log, and the words given (reports,
 	// findings, fixes, reasons) whole.
 	Timeline []storyLine `json:"timeline"`
@@ -2612,10 +2615,11 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 		if texts == nil {
 			texts = []storyText{}
 		}
-		tier, ceiling := sprint.CardTiers(v.Primary)
+		_, ceiling := sprint.CardTiers(v.Primary)
+		shown := sprint.CardTierShown(v.Primary)
 		level, source := sprint.CardPriority(v.Primary)
-		b, _ := json.Marshal(cardView{Primary: v.Primary, Column: v.Primary.Col, Tier: tier, Ceiling: ceiling, Grade: v.Primary.F(sprint.FieldGrade), Who: v.Primary.F(sprint.FieldWho), Priority: level, PrioritySource: source, Work: v.Work, Reads: v.Reads, Merge: v.Merge, Open: v.Open, Needs: v.Needs, NeededBy: v.NeededBy, Held: held,
-			Cost: sprint.CardCostOf(v.Primary), Timeline: events, Texts: texts})
+		b, _ := json.Marshal(cardView{Primary: v.Primary, Column: v.Primary.Col, Tier: shown, Ceiling: ceiling, Grade: v.Primary.F(sprint.FieldGrade), Who: v.Primary.F(sprint.FieldWho), Priority: level, PrioritySource: source, Work: v.Work, Reads: v.Reads, Merge: v.Merge, Open: v.Open, Needs: v.Needs, NeededBy: v.NeededBy, Held: held,
+			Cost: sprint.CardCostOf(v.Primary), Consumers: sprint.ConsumersOf(v.Primary), Timeline: events, Texts: texts})
 		fmt.Fprintln(stdout, string(b))
 		return 0
 	}
@@ -2637,18 +2641,24 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 		for _, line := range sprint.CardCostOf(v.Primary).CostLines() {
 			fmt.Fprintln(stdout, oneline.Escape(line))
 		}
+		// the consumer history: the counts, then one line per consumer, newest last
+		for _, line := range sprint.ConsumersOf(v.Primary).ConsumerLines() {
+			fmt.Fprintln(stdout, oneline.Escape(line))
+		}
 		epoch := uint64(0)
 		if pinned, err := st.Pinned(ctx); err == nil {
 			epoch = pinned.PinnedEpoch()
 		}
-		// the tier it is on and its ceiling: flash first, pro on escalation
-		tier, ceiling := sprint.CardTiers(v.Primary)
+		// the tier it is on and its ceiling: flash first, pro on escalation; a card with a
+		// fallback tier shows its own brief tier and where it falls (unserved_tier.go)
+		_, ceiling := sprint.CardTiers(v.Primary)
+		shown := sprint.CardTierShown(v.Primary)
 		// and its grade, nova-decide's convergence grade before its first deal (decide.go)
 		grade := ""
 		if g, ok := decide.ParseDecided(v.Primary.F(sprint.FieldGrade)); ok {
 			grade = " grade=" + g.Value + ":" + strconv.FormatFloat(g.P, 'f', 2, 64)
 		}
-		fmt.Fprintf(stdout, "CARD OK id=%s epoch=%d work_cards=%d read_cards=%d open=%d%s tier=%s ceiling=%s%s%s\n", oneline.Escape(id), epoch, len(v.Work), len(v.Reads), len(v.Open), priorityWord(v.Primary), tier, ceiling, grade, whoWord(v.Primary))
+		fmt.Fprintf(stdout, "CARD OK id=%s epoch=%d work_cards=%d read_cards=%d open=%d%s tier=%s ceiling=%s%s%s\n", oneline.Escape(id), epoch, len(v.Work), len(v.Reads), len(v.Open), priorityWord(v.Primary), shown, ceiling, grade, whoWord(v.Primary))
 		return 0
 	}
 	printCard(stdout, "PRIMARY", v.Primary)
@@ -2951,6 +2961,9 @@ type primaryRow struct {
 	State  string            `json:"state"`
 	Score  float64           `json:"score"`
 	Fields map[string]string `json:"fields"`
+	// TierShown is the tier the card shows: its own brief tier with "(falls to <t>)" when
+	// the sprint gave it a fallback tier, else the tier it is on (unserved_tier.go).
+	TierShown string `json:"tier_shown,omitempty"`
 }
 
 // rowsView is every placed primary of the work table, in work order (stream, then
@@ -2969,7 +2982,7 @@ func rowsView(s *sprint.Snapshot, gone *archivedView) []primaryRow {
 				fields[k] = v
 			}
 		}
-		rows = append(rows, primaryRow{ID: c.ID, Stream: c.Row, Column: c.Col, State: c.Col, Score: c.Score, Fields: fields})
+		rows = append(rows, primaryRow{ID: c.ID, Stream: c.Row, Column: c.Col, State: c.Col, Score: c.Score, Fields: fields, TierShown: sprint.CardTierShown(c)})
 	}
 	slices.SortStableFunc(rows, func(a, b primaryRow) int {
 		return cmp.Or(cmp.Compare(a.Stream, b.Stream), cmp.Compare(a.Score, b.Score), cmp.Compare(a.ID, b.ID))
