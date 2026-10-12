@@ -1,12 +1,16 @@
-# Dashboard badge candidate
+# Nova Tools dashboard menu badge
 
-![Nova Sprint square badge](nova-sprint-square.png)
+![Nova Tools square badge](nova-tools-square.png)
 
-Generated October 11, 2026 with the built-in OpenAI image tool, referencing
-`brand/wordmark.png`. Original lossless PNG with transparent outer corners.
-Nova is stacked above Sprint on a dark charcoal rounded square. The letters
-and gold rays slightly overlap the tile boundary. Nova uses white for contrast
-on the dashboard; Sprint retains the family blue and the star retains gold.
+The Nova Tools badge represents the menu for switching among Nova tools.
+The separate nova-sprint title identifies the current tool.
 
-This is a replacement icon asset for the dashboard's top-left brand image.
-It has not been installed in the running dashboard.
+Generated October 11, 2026 with the built-in OpenAI image tool, adapting the
+original Nova Sprint badge and correcting spacing between the two o letters
+in Tools. Original lossless PNG with transparent outer corners. White Nova,
+blue Tools, gold star and rays, dark charcoal rounded square; lettering and
+rays slightly overlap its boundary.
+
+The earlier `nova-sprint-square.png` remains as a design variant. The new
+badge is an asset ready for integration; the live dashboard and menu behavior
+have not been changed.
