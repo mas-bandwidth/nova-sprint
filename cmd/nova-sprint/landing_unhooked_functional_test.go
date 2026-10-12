@@ -51,7 +51,7 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	dir := t.TempDir()
 	remote, worker, clone := filepath.Join(dir, "remote.git"), filepath.Join(dir, "worker"), filepath.Join(dir, "clone")
 	g := func(wd string, args ...string) string {
-		res, err := gitrun.Run(context.Background(), gitrun.Options{C: wd, Env: []string{"GIT_AUTHOR_NAME=nova-sprint", "GIT_AUTHOR_EMAIL=nova-sprint@mas-bandwidth.com", "GIT_COMMITTER_NAME=nova-sprint", "GIT_COMMITTER_EMAIL=nova-sprint@mas-bandwidth.com"}, OwnRepo: wd != ""}, args...)
+		res, err := gitrun.Run(context.Background(), gitrun.Options{C: wd, Env: []string{"GIT_AUTHOR_NAME=nova-sprint", "GIT_AUTHOR_EMAIL=nova-sprint@example.invalid", "GIT_COMMITTER_NAME=nova-sprint", "GIT_COMMITTER_EMAIL=nova-sprint@example.invalid"}, OwnRepo: wd != ""}, args...)
 		require.NoError(t, err, "git %v: %s", args, res.Stderr)
 		return strings.TrimSpace(string(res.Stdout))
 	}

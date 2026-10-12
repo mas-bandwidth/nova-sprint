@@ -489,12 +489,12 @@ Xoff, and nova-config's sprint row turns single ones off: `nova-config sprint se
 Every commit the sprint machine makes (land, merge, rework-at-tip, the promotion's cut,
 ledger and roadmap writes) carries an explicit author and committer, the sprint row's
 `git_identity`: `nova-config sprint set --git_identity 'Name <email>'` (default
-`nova-sprint <nova-sprint@mas-bandwidth.com>`), then `nova-config apply`. The landing and
+`nova-sprint <nova-sprint@example.invalid>`), then `nova-config apply`. The landing and
 the promotion refuse to commit, naming the setting, when none is configured; `nova-sprint doctor` reports the identity in use and fails when its email equals the host's global
 `user.email`. A worker's clone gets the identity in its local git config at clone time
 (`pkg/swarm`, `StageJob`/`StageCloneIdentity` and their `As` variants): the live staging
 entry points carry the machine's identity (the sprint row's `git_identity`, default
-`nova-sprint <nova-sprint@mas-bandwidth.com>`), never the pool's owner, so a rework-at-tip
+`nova-sprint <nova-sprint@example.invalid>`), never the pool's owner, so a rework-at-tip
 commit in the clone carries it too. The contract is [SPEC-SPRINT.md section 7](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#7-merging).
 
 ### Promoting the sprint branch into dev
