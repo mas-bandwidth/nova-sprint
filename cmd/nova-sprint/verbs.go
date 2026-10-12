@@ -1316,8 +1316,8 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// cmdAdd admits cards and can mark a new stream on its first add (docs/SPEC-SPRINT.md
-// section 7, protected-bases-pb-b.w2).
+// cmdAdd admits cards and refuses --land-protected, the old mark, before any read
+// (docs/SPEC-SPRINT.md section 7, the protected branches).
 func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("add")
 	stream := fs.String("stream", "", "the stream the primaries belong to, for life; with --count, several streams comma separated, one step")
@@ -1606,8 +1606,8 @@ func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) s
 // the order the files were named. Every brief is read and linted first (one
 // failing brief refuses the whole call, exit 2, nothing written), and one
 // store write adds every card.
-// cmdAddMany admits per-file cards and supports the same atomic first-stream mark as add
-// (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2).
+// cmdAddMany admits per-file cards and refuses --land-protected, as cmdAdd does
+// (docs/SPEC-SPRINT.md section 7, the protected branches).
 func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, allowShared, allowPersonal bool, landProtected, decideRecord string, partial bool, briefOps, replaces []string, c *common, stdout, stderr io.Writer) int {
 	if stream == "" {
 		return refuse(stderr, "add", "wants --stream and --brief-dir <dir> or --brief-file <file>...")
@@ -3260,10 +3260,9 @@ func joinWhy(refused []sprint.Refusal) string {
 }
 
 // holdSprintBase refuses, exit 2, nothing written, an add of a card cut on a branch that
-// is not the sprint's base, outside the promotion stream (sprint.SprintBranchWhy;
-// docs/SPEC-SPRINT.md section 7, the sprint branch), every such card named; the add step
-// holds the same rule against a write that races this read. A store that cannot be read
-// is left to the step to report.
+// is not the sprint's base (sprint.SprintBranchWhy; docs/SPEC-SPRINT.md section 7, the
+// sprint branch), every such card named; the add step holds the same rule against a write
+// that races this read. A store that cannot be read is left to the step to report.
 func (a *app) holdSprintBase(verbName string, st *store.Store, stderr io.Writer, rs ...sprint.AddReq) int {
 	s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil)
 	if err != nil {
@@ -3876,7 +3875,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	fleetTiers := fs.String("fleet-tiers", "", "the tiers the fleet may take: flash, pro, heavy, frontier, comma separated, or all (the default); the deal hands a machine only a work card, and a member's reader only a read card, whose tier is one of them, on top of each row's own tiers")
 	friendsTiers := fs.String("friends-tiers", "", "the tiers the friends may take, as --fleet-tiers says the fleet's: a friend is dealt a work or read card only of one of them, on top of her row's own tiers")
 	finish := fs.String("friend-finish", "", fmt.Sprintf("how long a friend holding working cards may finish none (working to done) before the coordinator's pass judges her idle: a duration, or default (%s)", sprint.FriendFinishDefault))
-	base := fs.String("base", "", "the sprint's base, the branch every stream lands on (sprint/<name>; never dev or main, which promotion alone reaches): add and brief then refuse a card whose BASE: is any other branch outside the promotion stream (docs/SPEC-SPRINT.md section 7, the sprint branch); default takes it off, and add holds dev alone")
+	base := fs.String("base", "", "the sprint's base, the branch every stream lands on (sprint/<name>; never dev or main, which promotion alone reaches): add and brief then refuse a card whose BASE: is any other branch (docs/SPEC-SPRINT.md section 7, the sprint branch); default takes it off, and add then refuses only dev and main")
 	readCards := fs.String("read-cards", "", "on: the tick asks every read a card in review needs at once, as read cards on the fleet table dealt to friends and to members with a reader row, half a slot each; off or default: the readers table asks, one read at a time")
 	reworkPriority := fs.String("rework-priority", "", "the priority a normal or low card gets when its next attempt opens: fix (the default), high, or keep to retain its level")
 	reads := fs.String("reads", "", "the ok reads at its head every card in review needs, whatever its tier: 0 (no read: a primary whose work finished LAND is accepted on it), 1 or 2; default: one for a flash card, two above")
