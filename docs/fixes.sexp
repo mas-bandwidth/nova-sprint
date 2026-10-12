@@ -2601,4 +2601,21 @@
    :origin "this card, a-judgment-outlived-by-its-card-closes-itself.w1~19, 2026-10-12; the seat:
     j127 (a brief defect on a-cut-ignores-the-previous-tags-cancelled-release-run) stayed open
     after its card was re-briefed and moved on to attempt 5 in review, ack and brief --answers
-    both refused, only wait quieting it")))
+    both refused, only wait quieting it")
+   (fix "a-coordination-failure-is-never-the-workers" :release "v1.2.12" :status "planned"
+    :title "Every attempt end is classed worker or coordination; coordination ends never count against a worker, never spend an attempt, and accumulate on a coordination-failure counter by cause"
+    :text "Every attempt end is classed as the worker's own work or as coordination, everything the
+     machine, bench, harness, provider or seat caused. The class is one pure function
+     (sprint.ClassEnd, internal/sprint/end_class.go): the harness exiting within seconds with no
+     RESULT before the first turn, a provider or account limit, a provider content-filter or key
+     refusal, an idle-reap with no run (ran=false, idle=0s), a missing bench tool or jar (TLC owed
+     with no jar, no rustc on PATH), staging refused for want of a bench mirror, the tick or a hold
+     taking a card back, a card dealt with unlanded needs, a hook-gate refusal, a server or store
+     fault, and a landing refused on a conflict with another card's landing are each coordination; a
+     not-done verdict with a pushed head, a gate refusal on the worker's own diff, and a broken read
+     verdict on its head are the worker's; unknown is coordination until classed, never blame by
+     default. Coordination ends never count against a worker, never consume an attempt toward the
+     bound, and accumulate on a coordination-failure counter per epoch, total and by cause, and per
+     member and friend who suffered it, shown in where --all and stats and as one line on the
+     dashboard under the fleet and friends tables, each new one pushed to the coordinator's hook."
+    :origin "this card, a-coordination-failure-is-never-the-workers.w1, from the owner, 2026-10-11 ~20:30Z: \"Remember that failures not attributable to the model, are supposed to accumulate to a counter for coordination failures.\" \"Add a card for this, critical. I'm sick of seeing friends and fleet machines get blamed for coordinator fuckups.\"")))

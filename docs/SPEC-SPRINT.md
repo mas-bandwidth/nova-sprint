@@ -1029,6 +1029,27 @@ primary, naming the drop and then the add, and a rework closes no `a brief defec
 judgment. A stalled one is offered `re-cut the brief` and `drop`, never `rework`, and when
 nothing is open on it the judgment raised again is `a brief defect`, never `stranded in review`. A route's stats do not count it.
 
+**Coordination failures** (the owner, 2026-10-11: "Remember that failures not attributable
+to the model, are supposed to accumulate to a counter for coordination failures."; "I'm sick
+of seeing friends and fleet machines get blamed for coordinator fuckups."). Every attempt
+end is classed as the worker's own work or as coordination: everything the machine, the
+bench, the harness, the provider or the seat caused (`sprint.ClassEnd`). The worker's own
+ends are a not-done verdict over a pushed head, a gate refusal on the worker's own diff, and
+a broken read verdict on its head; every other end is coordination, and an end nothing names
+is coordination until classed, never the worker by default. The coordination causes are: a
+harness crash before the first turn; a provider or account limit; a provider content-filter
+or key refusal; an idle-reap with no run; a missing bench tool or jar; a staging refusal;
+the tick or a hold taking a card back; a card dealt with unlanded needs; a hook-gate
+refusal; a server or store fault; and a landing refused for a conflict with another card's
+landing. A coordination end is the seat's to fix, never the worker's: the finish routing
+already returns the card to `ready` or `withdrawn` with no fail mark, no `ok%` hit and no
+redeal spent for a provider failure, a no-result end, a staging refusal, an idle-reap, a
+rate limit and a stop on unlanded needs (above), and the attempt bound is never reached on
+them; the fleet's and friends' `done` and `ok%` count worker-ended attempts alone. They
+accumulate on the epoch's coordination-failure counter, the total and each cause and the
+member or friend who suffered it, `sprint.CoordinationCounter`, shown under the fleet and
+friends tables, and each new end is pushed to the coordinator's hook so the seat sees it.
+
 The frame of `where` and `where --watch` shows work, friends, fleet in that order: the
 readers and merge tables are hidden from it (the owner, 2026-10-02: "I feel like
 reading and merging is something you can handle now. it seems to work, so please

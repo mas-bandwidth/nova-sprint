@@ -106,6 +106,39 @@ func TestStatsArePassNumbersFromTheCards(t *testing.T) {
 	}, ps.Routes)
 }
 
+// A pass's coordination ends accumulate on the counter by cause and by the member who
+// suffered them, read from the producers' records (the provider and no-result ends, the
+// staging refusal), never from a plain failed take, which is the worker's (the owner,
+// 2026-10-11: coordination failures accumulate on a counter, never against a worker).
+func TestStatsCountCoordinationFailuresByCauseAndMember(t *testing.T) {
+	t.Parallel()
+	ps := Stats(statsSnapshot())
+	require.NotNil(t, ps.Coordination, "a pass always carries the counter")
+	assert.Equal(t, 3, ps.Coordination.Total, "the provider, no-result and staging ends")
+	assert.Equal(t, 1, ps.Coordination.CauseTotal(CauseProviderLimit), "the provider end")
+	assert.Equal(t, 1, ps.Coordination.CauseTotal(CauseHarnessCrash), "the no-result end")
+	assert.Equal(t, 1, ps.Coordination.CauseTotal(CauseStagingRefused), "the staging refusal")
+	assert.Equal(t, 0, ps.Coordination.CauseTotal(CauseUnknown), "a plain failed take is the worker's, not unknown")
+	assert.Equal(t, 2, ps.Coordination.WhoTotal("m1"), "m1 suffered the provider and staging ends")
+	assert.Equal(t, 1, ps.Coordination.WhoTotal("m2"), "m2 suffered the no-result end")
+}
+
+// CoordinationOf is the whole-epoch counter the where record carries, the same ends the
+// pass counts (TestStatsCountCoordinationFailuresByCauseAndMember), so where --all and stats
+// agree on the epoch's coordination failures.
+func TestCoordinationOfCountsTheEpochsCoordinationEnds(t *testing.T) {
+	t.Parallel()
+	coord := CoordinationOf(statsSnapshot())
+	require.NotNil(t, coord, "the counter is never nil")
+	assert.Equal(t, uint64(7), coord.Epoch)
+	assert.Equal(t, 3, coord.Total)
+	assert.Equal(t, 1, coord.CauseTotal(CauseProviderLimit))
+	assert.Equal(t, 1, coord.CauseTotal(CauseHarnessCrash))
+	assert.Equal(t, 1, coord.CauseTotal(CauseStagingRefused))
+	assert.Equal(t, 2, coord.WhoTotal("m1"))
+	assert.Equal(t, 1, coord.WhoTotal("m2"))
+}
+
 func TestStatsOfNothingAreEmptyNeverNil(t *testing.T) {
 	t.Parallel()
 	s := &Snapshot{Work: NewTable(Work), Fleet: NewTable(Fleet), Readers: NewTable(Readers)}

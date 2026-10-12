@@ -1796,6 +1796,18 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			p.Units = append(p.Units, capRedeal(s, c, pr, r, lc, next, p.Units))
 			continue
 		}
+		// a failed finish whose report names a coordination cause (ClassEnd, end_class.go) is
+		// the seat's, never the worker's: the take ends with no work to judge, so no failed
+		// work is recorded, no attempt is spent toward the bound and the row's ok% is
+		// untouched; the cause accumulates on the epoch's coordination-failure counter. This
+		// runs before the prefix kinds, so a content-filter or key refusal reported as a
+		// provider failure classes as its own cause, never as a provider limit.
+		if r.Failed {
+			if cause, ok := reportCause(r.Report); ok {
+				p.Units = append(p.Units, coordinationEnded(s, c, pr, r, cause))
+				continue
+			}
+		}
 		switch kind {
 		case cardhdr.EndProvider:
 			if IsRateLimited(r.Report) {

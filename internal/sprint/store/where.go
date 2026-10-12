@@ -63,6 +63,10 @@ type WhereRecord struct {
 	ReadsWaiting     int                 `json:"reads_waiting,omitempty"`
 	Priorities       map[string][]string `json:"priorities,omitempty"`
 	StreamPriorities map[string]string   `json:"stream_priorities,omitempty"`
+	// Coordination is the epoch's coordination-failure counter, total and by cause and by
+	// member or friend who suffered it (sprint.CoordinationOf), counted with the record so
+	// where --all shows it from no per-card read (docs/SPEC-SPRINT.md, coordination failures).
+	Coordination *sprint.CoordinationCounter `json:"coordination,omitempty"`
 	// ReadsWindow is the ok and broken verdicts over the last 30 minutes of running time
 	// (sprint.ReadsWindowOf), as of the count.
 	ReadsWindow sprint.ReadsWindowView `json:"reads_window,omitzero"`
@@ -138,7 +142,7 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 	r := WhereRecord{Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), Sentinels: sentinelCounts(s), Critical: sprint.Critical(s, 5),
 		Tiers: sprint.TierCounts(s), Streams: sprint.StreamTierCosts(s), StageTimes: sprint.CycleTimes(s, now), DealtFleet: sprint.FriendsDealtFleet(s),
 		ReadsWaiting: sprint.ReadsWaiting(s), Priorities: sprint.PriorityCounts(s), StreamPriorities: sprint.StreamPriorities(s),
-		ReadsWindow: sprint.ReadsWindowOf(s, m.StoppedBetween)}
+		ReadsWindow: sprint.ReadsWindowOf(s, m.StoppedBetween), Coordination: sprint.CoordinationOf(s)}
 	if s.Fleet != nil {
 		r.FleetRev = s.Fleet.Revision
 	}
@@ -430,6 +434,9 @@ type WhereFacts struct {
 	ReadsWaiting     int
 	Priorities       map[string][]string
 	StreamPriorities map[string]string
+	// Coordination is the record's coordination-failure counter (WhereRecord.Coordination);
+	// nil without the record.
+	Coordination *sprint.CoordinationCounter
 	// ReadsWindow is the record's verdicts window (sprint.ReadsWindowOf); zero without it.
 	ReadsWindow sprint.ReadsWindowView
 	// Reset is the stats reset's mark in the pinned epoch (stats_reset.go); nil with none.
@@ -519,6 +526,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			f.Sentinels = r.Sentinels
 			f.CostCheck = r.CostCheck
 			f.ReadsWaiting, f.Priorities, f.StreamPriorities = r.ReadsWaiting, r.Priorities, r.StreamPriorities
+		f.Coordination = r.Coordination
 			f.ReadsWindow = r.ReadsWindow
 			f.RowCards, f.ReadCards = r.RowCards, r.ReadCards
 			f.FixStates = r.FixStates
