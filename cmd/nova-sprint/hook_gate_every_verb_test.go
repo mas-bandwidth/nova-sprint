@@ -112,7 +112,7 @@ func (ta *testApp) hookCLI(env map[string]string) *hookCLI {
 
 func (h *hookCLI) run(argv ...string) (int, string, string) {
 	var out, errb bytes.Buffer
-	code := h.client.run(argv, &out, &errb)
+	code := runInto(h.client, argv, &out, &errb)
 	return code, out.String(), errb.String()
 }
 
@@ -129,7 +129,7 @@ func (h *hookCLI) hold(argv []string) *heldHook {
 	hh := &heldHook{t: h.t, lines: make(chan string, 1024), done: make(chan int, 1)}
 	go func() {
 		var errb bytes.Buffer
-		code := h.client.run(argv, pw, &errb)
+		code := runInto(h.client, argv, pw, &errb)
 		_ = pw.CloseWithError(io.EOF)
 		hh.done <- code
 	}()
@@ -359,7 +359,7 @@ func TestTheGateFailsClosed(t *testing.T) {
 	fresh := newApp(ta.a.getenv)
 	fresh.backend, fresh.now, fresh.busOpen = ta.a.backend, ta.a.now, ta.a.busOpen
 	var out, errb bytes.Buffer
-	code := fresh.run([]string{"where", "--redis", "mem:0"}, &out, &errb)
+	code := runInto(fresh, []string{"where", "--redis", "mem:0"}, &out, &errb)
 	assert.Equal(t, 1, code, out.String()+errb.String())
 	assert.True(t, strings.HasPrefix(errb.String(), sprint.HookFirst), errb.String())
 	assert.Contains(t, errb.String(), busRedisEnv+" is not set")
@@ -368,7 +368,7 @@ func TestTheGateFailsClosed(t *testing.T) {
 	env["NOVA_SPRINT_SERVER"] = "127.0.0.1:1"
 	out.Reset()
 	errb.Reset()
-	code = fresh.run([]string{"hook", "--actor", name}, &out, &errb)
+	code = runInto(fresh, []string{"hook", "--actor", name}, &out, &errb)
 	assert.Equal(t, 2, code, out.String()+errb.String())
 	assert.Contains(t, errb.String(), "the bus push cannot be armed")
 	assert.Contains(t, errb.String(), "nothing was armed")
@@ -383,7 +383,7 @@ func TestTheGateFailsClosed(t *testing.T) {
 	}
 	out.Reset()
 	errb.Reset()
-	code = broken.run([]string{"where", "--redis", "mem:0"}, &out, &errb)
+	code = runInto(broken, []string{"where", "--redis", "mem:0"}, &out, &errb)
 	assert.Equal(t, 1, code, out.String()+errb.String())
 	assert.True(t, strings.HasPrefix(errb.String(), sprint.HookFirst), errb.String())
 	assert.Contains(t, errb.String(), "did not open, so the hook cannot be checked")
