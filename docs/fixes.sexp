@@ -2154,7 +2154,7 @@
     on, it plays the coin once, as the test. One paragraph in docs/SPEC-SPRINT-DASHBOARD.md, \"The coin\",
     and the lock's ask line with pagelock.txt's digest. Tests sound_test.go (the coin's rules against
     the shipped app.js) and page_test.go (the glyph and the inline synthesis)."
-   :origin "this card, the-dashboard-plays-a-coin-when-a-tick-lands.w1, 2026-10-11: the owner,
+    :origin "this card, the-dashboard-plays-a-coin-when-a-tick-lands.w2, 2026-10-11: the owner,
     2026-10-11 ~12:50 PM ET: \"Please add sounds to the sprint dashboard. Whenever a card lands in the
     tick (1 or more), play a single gentle 'ca-ching' sound, like a coin dropping. Keep it subtle.\"")
 
