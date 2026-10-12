@@ -15,26 +15,16 @@ import (
 )
 
 const (
-	FnClear          = "ns_table_clear"
 	FnCreate         = "ns_table_create"
 	FnSet            = "ns_table_set"
 	FnRowSet         = "ns_table_row_set"
 	FnRowsAdd        = "ns_table_rows_add"
 	FnRowsHide       = "ns_table_rows_hide"
-	FnDrop           = "ns_table_drop"
 	FnDropDefinition = "ns_table_drop_definition"
-	FnMemberCreate   = "ns_table_member_create"
-	FnMemberFind     = "ns_table_member_find"
-	FnRowAdd         = "ns_table_row_add"
 	FnRowDel         = "ns_table_row_del"
 	FnCellAdd        = "ns_table_cell_add"
-	FnCellRemove     = "ns_table_cell_remove"
-	FnCellMove       = "ns_table_cell_move"
-	FnBind           = "ns_table_bind"
 	FnRead           = "ns_table_read"
 	FnCheck          = "ns_table_check"
-	FnList           = "ns_table_list"
-	FnMembers        = "ns_table_members"
 	FnApply          = "ns_table_apply"
 	FnReadSet        = "ns_table_read_set"
 )
@@ -1039,17 +1029,6 @@ func isRedisReply(err error) bool {
 	return errors.As(err, &re)
 }
 
-// Drop removes the active epoch and its owned cells. The template and older
-// epochs survive; a later epoch starts with the same definition and no rows.
-func Drop(ctx context.Context, c redis.Cmdable, name string, opts ...WriteOptions) (int, error) {
-	reply, err := (operation{table: name}).write(ctx, c, FnDrop, opts)
-	if err != nil {
-		return 0, err
-	}
-	n, err := replyCount(reply)
-	return int(n), err
-}
-
 // DropDefinition also removes the stable template. Materialised epoch
 // snapshots and immutable member identities remain available for inspection.
 func DropDefinition(ctx context.Context, c redis.Cmdable, name string, opts ...WriteOptions) (int, error) {
@@ -1061,64 +1040,11 @@ func DropDefinition(ctx context.Context, c redis.Cmdable, name string, opts ...W
 	return int(n), err
 }
 
-// MemberCreate allocates an unplaced identity in the table's record namespace.
-// Existing IDs, including removed members and older epochs, are refused.
-func MemberCreate(ctx context.Context, c redis.Cmdable, name, id string, opts ...WriteOptions) error {
-	// The batch's member-id bound holds the single verb too, refused before
-	// anything is sent (docs/SPEC-NOVA-TABLE.md, Manifest, identity and
-	// bounds).
-	if err := over(limitNameMemberID, LimitMemberIDBytes, len(id), ""); err != nil {
-		return (operation{table: name}).beforeSending(err)
-	}
-	_, err := (operation{table: name, member: id}).write(ctx, c, FnMemberCreate, opts, id)
-	return err
-}
-
 type RowSpec struct {
 	Label   string            `json:"label"`
 	Exclude string            `json:"exclude"`
 	Owner   string            `json:"owner"`
 	Binds   map[string]string `json:"binds,omitempty"`
-}
-
-func RowAdd(ctx context.Context, c redis.Cmdable, name, key string, spec RowSpec, opts ...WriteOptions) (Row, error) {
-	o := operation{table: name, row: key}
-	if !ValidRowKey(key) {
-		return Row{}, fmt.Errorf("%s: row wants a non-empty UTF-8 key with no ASCII control characters; run: nova-table row help", o.location())
-	}
-	// The batch's field-value bound holds the single verb too, refused before
-	// the payload is built (docs/SPEC-NOVA-TABLE.md, Manifest, identity and
-	// bounds).
-	// The refusal names the row as its member, as the server's does.
-	for _, text := range []string{spec.Label, spec.Exclude, spec.Owner} {
-		if err := over(limitNameFieldValue, LimitFieldValueBytes, len(text), key); err != nil {
-			return Row{}, o.beforeSending(err)
-		}
-	}
-	body, err := payload(spec)
-	if err != nil {
-		return Row{}, err
-	}
-	reply, err := o.write(ctx, c, FnRowAdd, opts, key, body)
-	if err != nil {
-		return Row{}, err
-	}
-	if len(reply) != 3 {
-		return Row{}, fmt.Errorf("%s: malformed row reply", o.location())
-	}
-	h, err := flatHash(reply[1])
-	if err != nil {
-		return Row{}, err
-	}
-	t, _, err := decodeDefinition(name, h)
-	if err != nil {
-		return Row{}, err
-	}
-	h, err = flatHash(reply[2])
-	if err != nil {
-		return Row{}, err
-	}
-	return decodeRow(t, key, h), nil
 }
 
 // Validate identity before encoding/json can replace invalid bytes with U+FFFD.
@@ -1186,68 +1112,9 @@ func RowDel(ctx context.Context, c redis.Cmdable, name, key string, opts ...Writ
 	return n != 0, err
 }
 
-// Bind replaces the caller-owned table shape in one atomic call. Existing
-// owned cells of retained rows survive; removed rows leave bound sets alone.
-// Omitting a row holding owned members or nonempty text is refused until the
-// caller explicitly clears that content (or deletes the row).
-func Bind(ctx context.Context, c redis.Cmdable, t Table, now time.Time, opts ...WriteOptions) error {
-	fields, err := definitionPayload(t, now)
-	if err != nil {
-		return err
-	}
-	// a bind leaves the table with exactly these rows, so the bound is on their number
-	if err := over(limitNameRows, LimitRows, len(t.Rows), ""); err != nil {
-		return fmt.Errorf("table %q: %w; %s; changed=no; run: %s", t.Name, err, err.(*LimitError).Advice(), (operation{table: t.Name}).remedy())
-	}
-	type boundRow struct {
-		Key string `json:"key"`
-		RowSpec
-	}
-	rows := make([]boundRow, 0, len(t.Rows))
-	seen := map[string]bool{}
-	for _, r := range t.Rows {
-		if !ValidRowKey(r.Key) || seen[r.Key] {
-			return fmt.Errorf("table %q row %q: invalid or repeated row key; run: nova-table show %s", t.Name, r.Key, shellWord(t.Name))
-		}
-		seen[r.Key] = true
-		if len(r.Cells) != len(t.Columns) {
-			return fmt.Errorf("table %q row %q: %d cells for %d columns", t.Name, r.Key, len(r.Cells), len(t.Columns))
-		}
-		spec := RowSpec{Label: r.Label, Exclude: r.Exclude, Owner: r.Owner, Binds: map[string]string{}}
-		for i, cell := range r.Cells {
-			if cell.Bound {
-				spec.Binds[t.Columns[i].Name] = cell.Key
-			}
-		}
-		rows = append(rows, boundRow{r.Key, spec})
-	}
-	body, err := payload(struct {
-		Fields map[string]string `json:"fields"`
-		Rows   []boundRow        `json:"rows"`
-	}{fields, rows})
-	if err != nil {
-		return err
-	}
-	_, err = (operation{table: t.Name}).write(ctx, c, FnBind, opts, body)
-	return err
-}
-func Clear(ctx context.Context, c redis.Cmdable, name string, opts ...WriteOptions) (int64, error) {
-	reply, err := (operation{table: name}).write(ctx, c, FnClear, opts)
-	if err != nil {
-		return 0, err
-	}
-	return replyCount(reply)
-}
-
 // Single-member helpers use the same list operation and wire protocol.
 func CellAdd(ctx context.Context, c redis.Cmdable, name, row, col, member string, score float64, opts ...WriteOptions) (int64, error) {
 	return CellsAdd(ctx, c, name, row, col, score, []string{member}, opts...)
-}
-func CellRemove(ctx context.Context, c redis.Cmdable, name, row, col, member string, opts ...WriteOptions) (int64, error) {
-	return CellsRemove(ctx, c, name, row, col, []string{member}, opts...)
-}
-func CellMove(ctx context.Context, c redis.Cmdable, name, row, from, to, member string, opts ...WriteOptions) (int64, error) {
-	return CellsMove(ctx, c, name, row, from, to, []string{member}, opts...)
 }
 
 // CellsAdd atomically adds every member at one score and returns the cell count.
@@ -1255,15 +1122,6 @@ func CellsAdd(ctx context.Context, c redis.Cmdable, name, row, col string, score
 	return writeMembers(ctx, c, operation{table: name, row: row, col: col}, FnCellAdd, opts, []any{row, col, strconv.FormatFloat(score, 'g', -1, 64)}, members)
 }
 
-// CellsRemove removes a list; absent members are accepted no-ops.
-func CellsRemove(ctx context.Context, c redis.Cmdable, name, row, col string, members []string, opts ...WriteOptions) (int64, error) {
-	return writeMembers(ctx, c, operation{table: name, row: row, col: col}, FnCellRemove, opts, []any{row, col}, members)
-}
-
-// CellsMove keeps scores and refuses the complete list if any member is absent or inconsistent.
-func CellsMove(ctx context.Context, c redis.Cmdable, name, row, from, to string, members []string, opts ...WriteOptions) (int64, error) {
-	return writeMembers(ctx, c, operation{table: name, row: row, col: from}, FnCellMove, opts, []any{row, from, to}, members)
-}
 func writeMembers(ctx context.Context, c redis.Cmdable, o operation, fn string, opts []WriteOptions, args []any, members []string) (int64, error) {
 	if len(members) == 0 {
 		return 0, fmt.Errorf("%s: wants at least one member", o.location())
@@ -1285,17 +1143,6 @@ func writeMembers(ctx context.Context, c redis.Cmdable, o operation, fn string, 
 		return 0, err
 	}
 	return replyCount(reply)
-}
-
-func CellMembers(ctx context.Context, c redis.Cmdable, name, row, col string) ([]Member, error) {
-	reply, err := (operation{table: name, row: row, col: col}).call(ctx, c, FnMembers, true, row, col)
-	if err != nil {
-		return nil, err
-	}
-	if len(reply) != 2 {
-		return nil, fmt.Errorf("table %q row %q column %q: malformed members reply", name, row, col)
-	}
-	return flatMembers(reply[1])
 }
 
 // A view: a named list of tables with a title, read by watch every frame.
@@ -1394,30 +1241,6 @@ func ViewGet(ctx context.Context, c redis.Cmdable, name string) (View, error) {
 		v.Tables = strings.Split(t, ",")
 	}
 	return v, nil
-}
-
-// ViewList returns stored view names in lexical order, in one exchange.
-func ViewList(ctx context.Context, c redis.Cmdable) ([]string, error) {
-	reply, err := (operation{view: true}).call(ctx, c, "ns_view_list", true)
-	if err != nil {
-		return nil, err
-	}
-	if len(reply) != 2 {
-		return nil, fmt.Errorf("views: malformed list reply")
-	}
-	raw, ok := reply[1].([]any)
-	if !ok {
-		return nil, fmt.Errorf("views: malformed names")
-	}
-	names := make([]string, len(raw))
-	for i, v := range raw {
-		name, ok := v.(string)
-		if !ok || !ValidName(name) {
-			return nil, fmt.Errorf("views: malformed name")
-		}
-		names[i] = name
-	}
-	return names, nil
 }
 
 // ViewDelete removes only presentation configuration; tables are untouched.

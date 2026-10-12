@@ -96,7 +96,6 @@ import (
 	"io/fs"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -165,36 +164,6 @@ type Library struct {
 	Bound time.Duration
 }
 
-// Origin is where one line of a library's source came from.
-type Origin struct {
-	// File is the file the line belongs to, as the glob matched it. It is
-	// empty for the library's first line and for the lines of the prelude.
-	File string
-
-	// Line is the line's number in File, or in the prelude, from 1. It is 0
-	// for a line the loader wrote: the library's first line, and the header,
-	// the do and the end around File.
-	Line int
-
-	// Prelude is true for the lines of the prelude.
-	Prelude bool
-}
-
-// String is the origin as a person reads it, on one line whatever the file
-// is called: "lua/a.lua:12" for line 12 of a file and "prelude:3" for line 3
-// of the prelude.
-func (o Origin) String() string {
-	switch {
-	case o.Prelude:
-		return "prelude:" + strconv.Itoa(o.Line)
-	case o.File == "":
-		return "the library's first line"
-	case o.Line == 0:
-		return "the loader's lines around " + oneline.Escape(o.File)
-	}
-	return oneline.Escape(o.File) + ":" + strconv.Itoa(o.Line)
-}
-
 // DigestOf is the digest of a library's source: the first DigestLength hex
 // digits of its SHA-256. Two sources have one digest only when they are the
 // same bytes, as far as 64 bits of SHA-256 can say. It is the digest Check
@@ -202,17 +171,6 @@ func (o Origin) String() string {
 func DigestOf(source string) string {
 	sum := sha256.Sum256([]byte(source))
 	return hex.EncodeToString(sum[:])[:DigestLength]
-}
-
-// Digest returns the digest of the library's source: the identity of the library this binary
-// was built with, which changes when any byte of the source changes. Its error is
-// the build's refusal.
-func (l Library) Digest() (string, error) {
-	b, err := l.build()
-	if err != nil {
-		return "", err
-	}
-	return b.digest, nil
 }
 
 // Function is one function the library registers, as Registered reads it.
@@ -404,47 +362,4 @@ func ended(text string) string {
 	return text + "\n"
 }
 
-func (b *built) locate(line int) (Origin, bool) {
-	switch {
-	case line < 1 || line > b.lines:
-		return Origin{}, false
-	case line == 1:
-		return Origin{}, true
-	case line < 2+b.prelude:
-		return Origin{Line: line - 1, Prelude: true}, true
-	}
-	// The file whose block, from the empty line before its header, is the
-	// last one to start at or before the line.
-	at := sort.Search(len(b.files), func(i int) bool { return b.files[i].head-1 > line }) - 1
-	f := b.files[at]
-	if in := line - (f.head + 2) + 1; in >= 1 && in <= f.lines {
-		return Origin{File: f.file, Line: in}, true
-	}
-	return Origin{File: f.file}, true
-}
 
-var lineNamed = regexp.MustCompile(`user_function:([0-9]+)`)
-
-// explain is the note a failed call writes after an error's text, or ""
-// when the text names no line.
-func (b *built) explain(text string) string {
-	var notes []string
-	seen := map[string]bool{}
-	for _, m := range lineNamed.FindAllStringSubmatch(text, -1) {
-		if seen[m[1]] {
-			continue
-		}
-		seen[m[1]] = true
-		where := fmt.Sprintf("no line of this library, which has %d", b.lines)
-		if n, err := strconv.Atoi(m[1]); err == nil {
-			if o, ok := b.locate(n); ok {
-				where = o.String()
-			}
-		}
-		notes = append(notes, m[0]+" = "+where)
-	}
-	if len(notes) == 0 {
-		return ""
-	}
-	return "[" + strings.Join(notes, "; ") + "]"
-}

@@ -338,15 +338,7 @@ func CellKeyAt(table, row, col string, epoch uint64) string {
 	return EpochPrefix(table, epoch) + ":cell:" + row + ":" + col
 }
 
-// The original key helpers name epoch zero for existing callers.
-func RowsKey(table string) string           { return RowsKeyAt(table, 0) }
-func RowKey(table, row string) string       { return RowKeyAt(table, row, 0) }
-func CellKey(table, row, col string) string { return CellKeyAt(table, row, col, 0) }
-
-// MemberKey is reserved metadata, outside every valid table-name prefix.
-func MemberKey(id string) string      { return "table::member:" + id }
-func ChangesKey(table string) string  { return DefKey(table) + ":changes" }
-func RevisionKey(table string) string { return DefKey(table) + ":revision" }
+func ChangesKey(table string) string { return DefKey(table) + ":changes" }
 
 // IdentityKey is the table's identity hash: its epoch_key, epoch_field and
 // member_prefix, written with the table and removed by drop --definition.
@@ -522,24 +514,6 @@ func ParseColumns(specs string) ([]Column, error) {
 	return cols, nil
 }
 
-// ParseWidths reads col=n,col=n.
-func ParseWidths(spec string) (map[string]int, error) {
-	out := map[string]int{}
-	for _, part := range strings.Split(spec, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		name, v, ok := strings.Cut(part, "=")
-		n, err := strconv.Atoi(v)
-		if !ok || err != nil || n < 0 || !ValidName(name) {
-			return nil, fmt.Errorf("width %q wants col=n with n 0 or more", part)
-		}
-		out[name] = n
-	}
-	return out, nil
-}
-
 // encodeColumn is the definition hash's col:<name> value.
 func encodeColumn(c Column) string {
 	return c.Projection + ":" + c.Fold + ":" + strconv.Itoa(c.Width) + ":" + c.Label
@@ -656,27 +630,6 @@ func SameDefinition(a, b Table) bool {
 	return true
 }
 
-// rowFields is one row's hash: its label, exclude and owner when set, and
-// key:<col> for every bound cell.
-func rowFields(t Table, r Row) map[string]string {
-	m := map[string]string{}
-	if r.Label != "" {
-		m["label"] = r.Label
-	}
-	if r.Exclude != "" {
-		m["exclude"] = r.Exclude
-	}
-	if r.Owner != "" {
-		m["owner"] = r.Owner
-	}
-	for i, c := range t.Columns {
-		if i < len(r.Cells) && r.Cells[i].Bound && r.Cells[i].Key != "" {
-			m["key:"+c.Name] = r.Cells[i].Key
-		}
-	}
-	return m
-}
-
 // decodeRow builds a row of t from its key and hash: every cell keyed, bound
 // where the hash names a key, owned (CellKey) otherwise, none for a text
 // column.
@@ -709,23 +662,3 @@ func NewRow(t Table, key string) Row {
 	return decodeRow(t, key, nil)
 }
 
-// SameShape says two tables have the same definition and the same rows with
-// the same bindings, labels, excludes and owners (the cells' values aside):
-// what a writer compares before binding again.
-func SameShape(a, b Table) bool {
-	if !SameDefinition(a, b) || len(a.Rows) != len(b.Rows) {
-		return false
-	}
-	for i := range a.Rows {
-		ra, rb := a.Rows[i], b.Rows[i]
-		if ra.Key != rb.Key || ra.Label != rb.Label || ra.Exclude != rb.Exclude || ra.Owner != rb.Owner || len(ra.Cells) != len(rb.Cells) {
-			return false
-		}
-		for j := range ra.Cells {
-			if ra.Cells[j].Key != rb.Cells[j].Key || ra.Cells[j].Bound != rb.Cells[j].Bound {
-				return false
-			}
-		}
-	}
-	return true
-}
