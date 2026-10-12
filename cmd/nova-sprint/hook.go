@@ -220,6 +220,10 @@ func (a *app) hookFirst(args []string, stderr io.Writer) (int, bool) {
 type hookHub struct {
 	mu  sync.Mutex
 	cur *hookSession
+	// acked is every push this server delivered on any subscription and the seat
+	// acknowledged, by its note keys: a new subscription never sends them again, so a
+	// reconnect replays only the pushes not acknowledged.
+	acked map[string]bool
 }
 
 // hookSession is one subscription on the server: its id, the seat it is for, its
@@ -241,6 +245,9 @@ type hookSession struct {
 	seq     uint64
 	open    []sprint.HookItem // delivered, not acknowledged, oldest first
 	sent    map[string]bool
+	keys    map[uint64][]string // each push's note keys, by its id
+	acted   time.Time           // the seat's last act over this subscription (its proof, an ack, a verb, a keepalive)
+	liveAt  time.Time           // the Live the record was last written with
 	ended   bool
 	done    chan struct{}
 	endOnce sync.Once
@@ -347,7 +354,7 @@ func (d *deadlineConn) Write(p []byte) (int, error) {
 // look, and the session's lines read until the connection ends. An end that is not
 // unhook is a drop, recorded gone and told (Drop).
 func (a *app) hookRun(ctx context.Context, name string, conn io.ReadWriteCloser, look time.Duration) {
-	s := &hookSession{a: a, id: hookNonce(), name: name, conn: conn, sent: map[string]bool{}, done: make(chan struct{})}
+	s := &hookSession{a: a, id: hookNonce(), name: name, conn: conn, sent: map[string]bool{}, keys: map[uint64][]string{}, done: make(chan struct{})}
 	if err := s.start(ctx); err != nil {
 		s.end(ctx, sprint.HookGone, "the hook could not begin: "+err.Error())
 		return
@@ -378,6 +385,11 @@ func (s *hookSession) start(ctx context.Context) error {
 	h.mu.Lock()
 	old := h.cur
 	h.cur = s
+	// a push the seat acknowledged on an earlier subscription is not sent again: a
+	// reconnect replays only the pushes not acknowledged
+	for k := range h.acked {
+		s.sent[k] = true
+	}
 	h.mu.Unlock()
 	if old != nil {
 		old.replaced()
@@ -403,33 +415,6 @@ func (s *hookSession) challenge(now time.Time) error {
 	s.chal, s.chalAt = c, now
 	s.mu.Unlock()
 	return s.send(hookMsg{T: "challenge", Challenge: c})
-}
-
-// challengeLive moves the record's Live to a re-challenge's own bound: the challenge
-// sent at now may be answered until now + HookAnswerBound, and the record is live until
-// then (SeatHook.tla, Rechallenge; docs/SPEC-SPRINT.md, "The hook": Live is the
-// outstanding challenge's bound). It goes through readHook and writeHook under onLine,
-// the record's one writer (as record does), and keeps the later of the two bounds. A
-// write that fails leaves the record as it was (the earlier bound: the safe side), says
-// so on the server's SEAT HOOK line, and does not end the subscription.
-func (s *hookSession) challengeLive(ctx context.Context, now time.Time) {
-	err := s.a.onLine(ctx, func(st *store.Store) error {
-		r, _, err := readHook(ctx, st)
-		if err != nil {
-			return err
-		}
-		if r.Session != s.id {
-			return errors.New("the record is another hook's")
-		}
-		if live := now.Add(sprint.HookAnswerBound); live.After(r.Live) {
-			r.Live = live
-			return writeHook(ctx, st, r)
-		}
-		return nil
-	})
-	if err != nil {
-		s.a.serveSay("SEAT HOOK name=%s: the challenge's bound could not be recorded: %s", s.name, oneline.Escape(err.Error()))
-	}
 }
 
 // send writes one line to the session; a write that fails ends the subscription.
@@ -467,6 +452,10 @@ func (s *hookSession) read(ctx context.Context) string {
 			s.answer(m, s.prove(ctx, m.Challenge))
 		case "ack":
 			s.answer(m, s.ack(ctx, m.ID))
+		case "alive":
+			// the hook client's own keepalive, every sprint.HookKeepalive while it runs: an
+			// act of the seat, answered by nothing
+			s.touch(s.a.now())
 		case "unhook":
 			s.end(ctx, sprint.HookAway, "nova-sprint unhook")
 			_ = s.send(hookMsg{T: "ok", Of: "unhook", Req: m.Req, Name: s.name}) // ignored: the end is recorded
@@ -519,8 +508,9 @@ func (s *hookSession) prove(ctx context.Context, c string) hookMsg {
 		return hookMsg{T: "refused", Why: "the proof could not be recorded: " + err.Error()}
 	}
 	s.mu.Lock()
-	s.chal, s.proven = "", now
+	s.chal, s.proven, s.acted, s.liveAt = "", now, now, rec.Live
 	s.mu.Unlock()
+	s.closeLapsed(ctx)
 	s.a.serveSay("SEAT HOOK name=%s session=%s: proven until %s", s.name, s.id[:8], rec.Live.UTC().Format(time.RFC3339))
 	return hookMsg{T: "ok", Name: s.name, Live: rec.Live, Unacked: rec.Unacked}
 }
@@ -534,8 +524,28 @@ func (s *hookSession) ack(ctx context.Context, id uint64) hookMsg {
 		s.mu.Unlock()
 		return hookMsg{T: "refused", Why: fmt.Sprintf("no push %d was delivered on this hook (the last is %d)", id, seq)}
 	}
-	s.open = slices.DeleteFunc(s.open, func(it sprint.HookItem) bool { return it.ID <= id })
+	var acked []string
+	s.open = slices.DeleteFunc(s.open, func(it sprint.HookItem) bool {
+		if it.ID <= id {
+			acked = append(acked, s.keys[it.ID]...)
+			delete(s.keys, it.ID)
+			return true
+		}
+		return false
+	})
+	if now := s.a.now(); now.After(s.acted) {
+		s.acted = now // an acknowledgement is an act of the seat
+	}
 	s.mu.Unlock()
+	h := s.a.hookHub()
+	h.mu.Lock()
+	if h.acked == nil {
+		h.acked = map[string]bool{}
+	}
+	for _, k := range acked {
+		h.acked[k] = true
+	}
+	h.mu.Unlock()
 	rec, err := s.record(ctx)
 	if err != nil {
 		return hookMsg{T: "refused", Why: "the acknowledgement could not be recorded: " + err.Error()}
@@ -568,33 +578,33 @@ func (s *hookSession) record(ctx context.Context) (sprint.HookRecord, error) {
 	return rec, err
 }
 
-// look is the server's turn at the subscription every hookLook: a challenge unanswered
-// past its bound unhooks (SeatHook.tla, Miss); a proven hook HookEvery old is challenged
-// again (Rechallenge); and every judgment and note to the coordinator not yet sent on
-// this subscription is delivered, each with its id (Deliver). Deliver writes the record
-// that names the pushes in the same step (docs/SPEC-SPRINT.md, "The hook";
-// SeatHook.tla, AckedOrBlocking), so a look whose record write fails delivers nothing
-// and undoes what it added, and the next look offers the pushes again.
+// look is the server's turn at the subscription every hookLook: the first challenge
+// unanswered past its bound unhooks (SeatHook.tla, Miss); a proven hook whose seat has been
+// silent past sprint.HookSilentBound lapses, once, with one judgment (lapse); a seat that
+// acted has its record's Live moved on (renewLive); and every judgment and note to the
+// coordinator not yet sent on this subscription is delivered, each with its id (Deliver).
+// No challenge is asked again on a connection that stays up. Deliver writes the record
+// that names the pushes in the same step (docs/SPEC-SPRINT.md, "The hook"; SeatHook.tla,
+// AckedOrBlocking), so a look whose record write fails delivers nothing and undoes what it
+// added, and the next look offers the pushes again.
 func (s *hookSession) look(ctx context.Context) {
 	if s.isEnded() || !s.current() {
 		return
 	}
 	now := s.a.now()
 	s.mu.Lock()
-	chal, chalAt, proven := s.chal, s.chalAt, s.proven
+	chal, chalAt, proven, acted := s.chal, s.chalAt, s.proven, s.acted
 	s.mu.Unlock()
 	switch {
 	case chal != "" && now.Sub(chalAt) > sprint.HookAnswerBound:
 		_ = s.send(hookMsg{T: "bye", Why: "the challenge was not answered in time: the seat is recorded gone; run nova-sprint hook again"}) // ignored: it is ended either way
 		s.end(ctx, sprint.HookGone, fmt.Sprintf("the challenge sent at %s was not answered within %s", chalAt.UTC().Format(time.RFC3339), sprint.HookAnswerBound))
 		return
-	case chal == "" && !proven.IsZero() && now.Sub(proven) >= sprint.HookEvery:
-		if err := s.challenge(now); err != nil {
-			s.end(ctx, sprint.HookGone, "the challenge could not be sent: "+err.Error())
-			return
-		}
-		s.challengeLive(ctx, now)
+	case !proven.IsZero() && now.Sub(acted) > sprint.HookSilentBound:
+		s.lapse(ctx, acted)
+		return
 	}
+	s.renewLive(ctx)
 	var pushes []hookMsg
 	// what this look adds, to undo when the record write fails: the sent keys it set,
 	// and the sequence and open pushes before it ran. A push is delivered only once the
@@ -630,6 +640,7 @@ func (s *hookSession) look(ctx context.Context) {
 			}
 			s.seq++
 			s.open = append(s.open, sprint.HookItem{ID: s.seq, What: g.ID, At: now})
+			s.keys[s.seq] = keys
 			pushes = append(pushes, hookMsg{T: "push", ID: s.seq, What: g.ID, Text: groupText(g, now, false)})
 		}
 		return nil
@@ -662,6 +673,109 @@ func (s *hookSession) look(ctx context.Context) {
 			_ = s.conn.Close()
 			return
 		}
+	}
+}
+
+// touch records an act of the seat at now: an acknowledgement, an answer, a keepalive, a
+// coordinator verb. The next look moves the record's Live on from it.
+func (s *hookSession) touch(now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if now.After(s.acted) {
+		s.acted = now
+	}
+}
+
+// hookRenewStep is how far the seat's acts must move Live on before a look writes it: a
+// write a step, never one a look.
+const hookRenewStep = 30 * time.Second
+
+// renewLive writes the record's Live as sprint.HookActed says it from the seat's last act,
+// when that moves it on by hookRenewStep or more. A write that fails leaves the record as it
+// was and is tried again at the next look.
+func (s *hookSession) renewLive(ctx context.Context) {
+	s.mu.Lock()
+	acted, liveAt, proven := s.acted, s.liveAt, s.proven
+	s.mu.Unlock()
+	if proven.IsZero() || acted.Add(sprint.HookSilentBound).Sub(liveAt) < hookRenewStep {
+		return
+	}
+	var live time.Time
+	err := s.a.onLine(ctx, func(st *store.Store) error {
+		r, _, err := readHook(ctx, st)
+		if err != nil {
+			return err
+		}
+		if r.Session != s.id {
+			return errors.New("the record is another hook's")
+		}
+		r = sprint.HookActed(r, acted)
+		live = r.Live
+		return writeHook(ctx, st, r)
+	})
+	if err != nil {
+		s.a.serveSay("SEAT HOOK name=%s: the seat's act could not be recorded: %s", s.name, oneline.Escape(err.Error()))
+		return
+	}
+	s.mu.Lock()
+	s.liveAt = live
+	s.mu.Unlock()
+}
+
+// lapse ends a connected, proven hook whose seat was silent past sprint.HookSilentBound:
+// one judgment (sprint.NHookLapsed) for the seat, its bye, and the end, gone, the owner told.
+func (s *hookSession) lapse(ctx context.Context, acted time.Time) {
+	why := fmt.Sprintf("the seat was silent past %s: its last act at %s (no verb, no answer, no keepalive)", sprint.HookSilentBound, acted.UTC().Format(time.RFC3339))
+	err := s.a.onLine(ctx, func(st *store.Store) error {
+		n := sprint.Note{Kind: sprint.Judgment, Type: sprint.NHookLapsed, StreamLevel: true, Who: s.name, What: why + "; run: nova-sprint hook",
+			Decisions: []string{"nova-sprint hook", "ack"}}
+		_, err := st.Run(ctx, store.NoteStep("hook", n))
+		return err
+	})
+	if err != nil {
+		s.a.serveSay("SEAT HOOK name=%s: the lapse's judgment could not be written: %s", s.name, oneline.Escape(err.Error()))
+	}
+	_ = s.send(hookMsg{T: "bye", Why: why + ": the seat is recorded gone; run nova-sprint hook again"}) // ignored: it is ended either way
+	s.end(ctx, sprint.HookGone, why)
+}
+
+// closeLapsed acknowledges every open NHookLapsed judgment once the seat proves a new hook:
+// the lapse is answered by the hook itself.
+func (s *hookSession) closeLapsed(ctx context.Context) {
+	err := s.a.onLine(ctx, func(st *store.Store) error {
+		open, err := st.B.OpenNotes(ctx)
+		if err != nil {
+			return err
+		}
+		var ids []string
+		for _, o := range open {
+			if o.Note.Type == sprint.NHookLapsed && !slices.Contains(ids, o.Note.ID) {
+				ids = append(ids, o.Note.ID)
+			}
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		_, err = st.Run(ctx, store.AckStep(sprint.AckReq{Notes: ids, Reason: "hooked in again", Who: s.name}))
+		return err
+	})
+	if err != nil {
+		s.a.serveSay("SEAT HOOK name=%s: the lapse could not be closed: %s", s.name, oneline.Escape(err.Error()))
+	}
+}
+
+// seatActs is an act of the seat's holder: a verb it ran that the gate let through. The
+// subscription open for it, if any, is touched, so its hook stays live while it acts.
+func (a *app) seatActs(actor string) {
+	if actor == "" {
+		return
+	}
+	h := a.hookHub()
+	h.mu.Lock()
+	cur := h.cur
+	h.mu.Unlock()
+	if cur != nil && cur.name == actor {
+		cur.touch(a.now())
 	}
 }
 
@@ -933,6 +1047,15 @@ func (r *hookRelay) ask(m hookMsg) (hookMsg, error) {
 	}
 }
 
+// say writes one line on the connection that wants no answer (the keepalive).
+func (r *hookRelay) say(m hookMsg) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	b, _ := json.Marshal(m) // ignored: a message of strings and numbers always encodes
+	_, err := r.w.Write(append(b, '\n'))
+	return err
+}
+
 func (r *hookRelay) answered(m hookMsg) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -986,6 +1109,22 @@ func (a *app) hookHold(ctx context.Context, addr, from, name string, stdout, std
 		return 1
 	}
 	relay := &hookRelay{w: conn, pending: map[string]chan hookMsg{}}
+	// the keepalive: an act of the seat on its own, every sprint.HookKeepalive while this
+	// process holds the stream, so a connected seat never lapses for being quiet
+	go func() {
+		t := time.NewTicker(sprint.HookKeepalive)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if relay.say(hookMsg{T: "alive"}) != nil {
+					return
+				}
+			}
+		}
+	}()
 	go func() {
 		for {
 			c, err := ln.Accept()

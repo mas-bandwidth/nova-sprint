@@ -736,6 +736,12 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 		}
 		return nil, err
 	}
+	switch verbClasses[c.verb] {
+	case classCoordinator, classSeat, classRead:
+		// a verb of the seat's the gate let through is an act of the seat: its hook stays
+		// live while it acts (hook.go, seatActs)
+		a.seatActs(c.actor)
+	}
 	return st, nil
 }
 

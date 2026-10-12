@@ -377,4 +377,5 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestAMovedCardsOldRunIsStoppedAtTheNextBeat`: a card moved from m1 g1 to m2 g2; m1's next beat names g1; the answer stops it; m1 ends that child alone.
 - `TestOldAttemptIsStopped`: an old attempt (.w9 when the card is at .w10) is stopped the same way.
 - `TestRunNeverStopsValidRun`: a run the store holds at that member and generation is never stopped.
-
+- `TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs` (functional, `cmd/nova-sprint/hook_live_functional_test.go`): a real server and store, the hook held by `nova-sprint hook` over the server's listener, the server's clock stepped past three 15-minute bounds while the seat acknowledges its pushes: no lapse, one challenge, and an unhook and hook again replays only the push not acknowledged.
+- `TestAConnectedSeatThatActsNeverLapses`, `TestASilentSeatLapsesOnceAndSaysSo` (`cmd/nova-sprint/hook_test.go`): a seat acting once a minute for 40 minutes never lapses; a silent one lapses once, with one judgment, the owner told once.
