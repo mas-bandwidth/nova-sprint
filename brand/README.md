@@ -1,13 +1,4 @@
-# Nova Sprint artwork
-
-The current approved artwork is in [fleet/](fleet/README.md): day and night
-README banners and the square Nova Sprint badge. See the
-[brand guide](../docs/BRAND.md) for current language and usage.
-
-The material below documents the earlier artwork. It is retained for reuse
-and historical context; it does not describe the current README.
-
-# Earlier artwork layers
+# Nova Sprint artwork layers
 
 Fresh individual renders, generated with OpenAI image generation on 2026-10-05
 at Glenn's request. Every image here is a **lossless PNG**. The character and
