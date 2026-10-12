@@ -568,7 +568,9 @@ func otherEpochAnswer(s *Snapshot, id string, e uint64) string {
 // Applied is what the store applies of a step's plan: the plan held to the
 // lifecycle (Lawful) and to one judgment per cause (OnePerCause), on the
 // state the step read.
-func Applied(s *Snapshot, p Plan) Plan { return OnePerCause(s, Lawful(p)) }
+func Applied(s *Snapshot, p Plan) Plan {
+	return OnePerCause(s, recordConsumerTransitions(s, Lawful(p)))
+}
 
 // OnePerCause keeps a judgment open once per card and cause: a note of a
 // plan that would open a judgment of a type already open on a subject (and

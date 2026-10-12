@@ -2922,6 +2922,22 @@
     :origin "this card, two-tests-that-fail-under-load-are-made-deterministic.w4, attempt 5; the #111
      author's gate on hetzner2, 2026-10-11 ~23:48Z at load 30-36; #122's description for the idle red;
       #111's author for the two-run-loops red and the setPrimary overlay")
+   (fix "a-card-carries-its-consumer-history" :release "v1.2.15" :status "planned"
+    :title "A producer card carries its consumers' history and the check that names the stall"
+    :text "The owner, 2026-10-11: \"We need a history and count of consumer cards launched,
+     per-producer card, included in the producer card.\" Each consumer the machine launches for a
+     producer card — an attempt (wN: the member or friend, its route and model, taken at, ended at,
+     outcome and its report's first line), a read (rN: the reader, asked at, ended at, its verdict and
+     its finding's first line), a landing (at, outcome) — is recorded on the primary as it happens, in
+     order, keyed by epoch (consumer:<epoch>:<key>, sprint.ConsumerRec, internal/sprint/consumers.go).
+     nova-sprint card <id> prints a consumers block (the counts attempts, reads, landings, cost, then
+     one line per consumer, newest last) and --json carries the list; view cards --json carries the
+     counts per card (sprint.ConsumersOf, sprint.CardRow). The producer/consumer check
+     (every-producer-card-has-its-consumer-out-after-the-tick) reads the same record: a card in
+     working, review or fix whose newest consumer has ended and no newer one is out is the stall it
+     names (sprint.CheckConsumers). A clear drops the history with the epoch. The log's timeline prints
+     a consumer record as one short line, the record whole behind log --card and --json."
+      :origin "this card, a-card-carries-its-consumer-history.w14, attempt 14; w11 recorded attempts and reads but never the landing, so the landings count was always 0; w12 recorded the landing (kind land, its taken and outcome) on the primary as it moves to Landed; w13 carried w12's work onto the tip of main; w14 carried attempt 13's work onto the base tip 460f878d, resolving the cmd/nova-sprint/reads.go conflict (kept main's shown tier with the card's consumers field)")
    (fix "tla-pass-nova-sprint-coverage-rows-27-to-52" :release "v1.2.16" :status "planned"
     :title "Every TLA+ model checked against the code: COVERAGE.tsv rows 27 to 52"
     :text "The v1.2.16 pass over tla/COVERAGE.tsv rows 27 to 52 (friend-empty-run to stop-fence).

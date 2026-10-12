@@ -297,6 +297,33 @@ func SplitCost(l Line) (Line, []string) {
 	return out, words
 }
 
+// SplitConsumers takes a change line's consumer records out (FieldConsumerPrefix):
+// the line without them, and one short line for each, which the log's timeline
+// prints in their place; `log --card <id>` and `log --json` keep them whole
+// (docs/SPEC-SPRINT.md, "the consumer record"). A line with none is returned as it is.
+func SplitConsumers(l Line) (Line, []string) {
+	if l.Note != nil || len(l.Set) == 0 {
+		return l, nil
+	}
+	var words []string
+	rest := map[string]string{}
+	for k, v := range l.Set {
+		if _, ok := strings.CutPrefix(k, FieldConsumerPrefix); ok {
+			r := parseConsumerRec(v)
+			words = append(words, fmt.Sprintf("%s consumer: %s %s by %s, %s", l.Card, r.Kind, orDash(r.Key), orDash(r.Who), orDash(r.Outcome)))
+		} else {
+			rest[k] = v
+		}
+	}
+	if len(words) == 0 {
+		return l, nil
+	}
+	sort.Strings(words)
+	out := l
+	out.Set = rest
+	return out, words
+}
+
 // setWords is the fields a change set, as name=value, sorted, stamps aside.
 func setWords(set map[string]string) string {
 	var out []string

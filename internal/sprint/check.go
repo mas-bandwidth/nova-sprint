@@ -11,7 +11,7 @@ import (
 // Violation is one broken rule of docs/SPEC-SPRINT.md section 9, or a step
 // cut short (section 10).
 type Violation struct {
-	Rule   int    `json:"rule"` // 1..9, 11 and 12 (a stall), or 10 for a cut step
+	Rule   int    `json:"rule"` // 1..9, 11, 12 and 13 (a stall), or 10 for a cut step
 	Detail string `json:"detail"`
 }
 
@@ -256,6 +256,52 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 
 func sortedCards(t *Table) []*Card {
 	return t.Cards()
+}
+
+// CheckConsumers is the producer/consumer check (SPEC-SPRINT, "the consumer
+// record"): every producer card in working, review or fix has a consumer out
+// after the tick, so a card whose newest consumer has ended and no newer one is
+// out is the stall it names. It reads the card's own consumer record, and is
+// run by Check (the tick's TickCheck and the store's check), so the stall is
+// named by the machine, never only by a test.
+//
+// A record whose newest consumer ended is not yet a stall while a newer
+// consumer is out by the same read the tick's own postcondition uses
+// (ConsumersOut): a working card that was redealt has its next attempt Ready
+// before it is taken and recorded, and a review card with a read out (or parked
+// by a judgment) has its consumer out. Only when that read also says the
+// consumer is missing is the ended record the stall.
+func CheckConsumers(s *Snapshot) []Violation {
+	var out []Violation
+	if s == nil || s.Work == nil {
+		return out
+	}
+	for _, c := range s.Work.Column(Working, Review) {
+		if IsSentinel(c) {
+			continue
+		}
+		v := ConsumersOf(c)
+		if !v.Stalled() {
+			continue
+		}
+		var missing bool
+		switch c.Col {
+		case Working:
+			if s.Fleet == nil {
+				missing = true
+			} else {
+				_, missing = workingConsumerOut(s, c)
+			}
+		case Review:
+			_, missing = reviewConsumerOut(s, c)
+		}
+		if !missing {
+			continue
+		}
+		newest := v.Consumers[len(v.Consumers)-1]
+		out = append(out, Violation{13, fmt.Sprintf("%s is %s and its newest consumer has ended (%s) and none is out", c.ID, c.Col, orDash(newest.Key))})
+	}
+	return out
 }
 
 // readsFieldCut is when the accept began to record FieldReadsNeeded (f8731a2db,

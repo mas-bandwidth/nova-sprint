@@ -1,5 +1,7 @@
 package sprint
 
+import "strings"
+
 // ConsumersOut is the tick's postcondition (docs/SPEC-SPRINT.md, "The tick
 // postconditions"): after every tick, every producer card (working, review)
 // has its consumer out. A missing consumer is a stall, and it raises one
@@ -10,26 +12,49 @@ package sprint
 //     open judgment that names it and is refused wait (a parked card is already
 //     the coordinator's).
 //
+// The check reads the card's own consumer record too (CheckConsumers,
+// SPEC-SPRINT "the consumer record"): a card whose newest consumer has ended
+// and no newer one is out is named with its record, so the stall says who ran
+// what, when and how it ended, not only that the table is missing a card.
+//
 // It returns one LaneQuiet per card whose consumer is missing. The tick pushes
 // each once into its result's quiet judgments.
 func ConsumersOut(s *Snapshot) []LaneQuiet {
 	if s == nil || s.Work == nil {
 		return nil
 	}
+	// The record the producer/consumer check reads, by card: a card whose
+	// newest consumer has ended and no newer one is out.
+	fromRecord := map[string]string{}
+	for _, v := range CheckConsumers(s) {
+		if f := strings.Fields(v.Detail); len(f) > 0 {
+			fromRecord[f[0]] = v.Detail
+		}
+	}
 	var out []LaneQuiet
 	for _, c := range s.Work.Cards() {
 		switch c.Col {
 		case Working:
 			if q, missing := workingConsumerOut(s, c); missing {
-				out = append(out, q)
+				out = append(out, withRecordWhy(c, q, fromRecord))
 			}
 		case Review:
 			if q, missing := reviewConsumerOut(s, c); missing {
-				out = append(out, q)
+				out = append(out, withRecordWhy(c, q, fromRecord))
 			}
 		}
 	}
 	return out
+}
+
+// withRecordWhy names the card's consumer record when the record shows the
+// newest consumer ended (CheckConsumers): the push carries the history, not
+// only the missing table's line.
+func withRecordWhy(c *Card, q LaneQuiet, fromRecord map[string]string) LaneQuiet {
+	if why, ok := fromRecord[c.ID]; ok {
+		q.Why = why
+	}
+	return q
 }
 
 // workingConsumerOut is the one quiet of a working primary whose attempt is

@@ -2279,6 +2279,24 @@ section 5), end, the tokens, wait, run, predicted, actual and
 card retired and no consumer record cleaned up can lose cost: the record is
 already in the card. A figure not known prints `-`, never 0.
 
+**The consumer record** (the owner, 2026-10-11: "We need a history and count of consumer cards
+launched, per-producer card, included in the producer card"). The producer card carries, beside what
+each consumer cost, the launch history: every consumer the machine launched for it, recorded as it
+happens, in order, keyed by epoch (`consumer:<epoch>:<key>`, `sprint.ConsumerRec`,
+internal/sprint/consumers.go). An attempt (kind `work`, key `<work card>#g<gen>`) is the member or
+friend (`who`), its route and model, `taken` (when it was taken), `ended`, `outcome` and the first
+line of its report; a read (kind `read`, key `<read card>#r<run>`) is the reader, `taken` (when it was
+asked), `ended`, its verdict and the first line of its finding; a landing (kind `land`) is its `taken`
+and `outcome`. A consumer still out has `ended`, `outcome` and `first_line` empty. `card <id>` prints a
+consumers block — the counts (`CONSUMERS attempts=N reads=M landings=K cost=...`), then one line per
+consumer, newest last — and `--json` carries the list under `consumers`; `view cards --json` carries the
+counts per card (`attempts`, `reads`, `landings` on each card row). The producer/consumer check
+(`every-producer-card-has-its-consumer-out-after-the-tick`, `sprint.CheckConsumers`) reads the same
+record: a card in working, review or fix whose newest consumer has ended and no newer one is out is the
+stall it names, and the tick's postcondition (`sprint.ConsumersOut`) runs it each tick so the push
+carries the record. A clear drops the history with the epoch (every key carries it), and the log's timeline
+prints a consumer record as one short line, the record whole behind `log --card <id>` and `log --json`.
+
 **Every run's cost, whatever its end.** A take or a read records its cost in the step
 that ends it, whatever the end (done, failed, no result, the provider's failure, a refusal
 at staging, a read of any verdict or none): the consumer record carries its route, model,
