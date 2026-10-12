@@ -65,9 +65,10 @@
    (release "v1.2.14" :status "planned" :date "2026-10-11"
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator.")
-   (release "v1.2.15" :status "planned"
-    :text "The next small product fixes, one concern each."))
-  :items
+    (release "v1.2.15" :status "planned"
+     :text "The next small product fixes, one concern each.")
+    (release "v1.3.0" :status "planned" :text "The next small product fixes, one concern each."))
+   :items
    ((fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
      :title "A member fleet sync adds is held until its own probe passes"
      :text "A member the inventory names and the fleet lacks was added down until it beats, so
@@ -2598,7 +2599,19 @@
     needs the decision, and the refusal names the verbs that answer it). Tests:
     internal/sprint/judgment_moves_on_test.go, TestJudgmentClosesWhenItsCardMovesOn and
     TestAJudgmentStaysWhenItsCardHasNotMovedOn (red first), and TestAMovedOnJudgmentCanBeAcked."
-   :origin "this card, a-judgment-outlived-by-its-card-closes-itself.w1~19, 2026-10-12; the seat:
-    j127 (a brief defect on a-cut-ignores-the-previous-tags-cancelled-release-run) stayed open
-    after its card was re-briefed and moved on to attempt 5 in review, ack and brief --answers
-    both refused, only wait quieting it")))
+    :origin "this card, a-judgment-outlived-by-its-card-closes-itself.w1~19, 2026-10-12; the seat:
+     j127 (a brief defect on a-cut-ignores-the-previous-tags-cancelled-release-run) stayed open
+     after its card was re-briefed and moved on to attempt 5 in review, ack and brief --answers
+     both refused, only wait quieting it")
+    (fix "a-producer-card-is-planned-and-checked-before-it-waits" :release "v1.3.0" :status "planned"
+     :title "Producer cards are planned and checked before they wait"
+     :text "Producer cards are admitted into a new first column, plan, never waiting. A set-wide
+      triage (nova-sprint check <ids|--stream|--all-plan>) reviews shared paths, dependency order,
+      bench headers, tier, brief size and duplicates of landed work, printing one table and moving
+      each card to check only when every row passes; nova-sprint promote <ids|--stream> moves check
+      to waiting, refusing a card still in plan; the tick raises one NPlanLate judgment for cards
+      left in plan or check past plan-max (default 30m); clear drops both columns with the epoch;
+      view cards, the coordinator and the dashboard counts carry the two columns. The TLA+
+      CardMachine model checks the plan/check/promote/clear transitions and PlanningNotDealt with
+      a reversed witness."
+     :origin "this card, a-producer-card-is-planned-and-checked-before-it-waits.w6, 2026-10-12")))

@@ -276,6 +276,10 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 				Moved: moved})
 			continue
 		}
+		if c.Col == Checked {
+			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Planned, set, append(unset, "checked")...))}, Moved: c.ID + " brief replaced; check -> plan"})
+			continue
+		}
 		moved := fmt.Sprintf("%s brief replaced (%d bytes) stream=%s %s", c.ID, len(b.Brief), c.Row, c.Col)
 		if r.Reason != "" {
 			moved += "; reason: " + r.Reason

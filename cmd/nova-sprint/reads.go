@@ -2119,6 +2119,7 @@ func (a *app) cmdInbox(args []string, stdout, stderr io.Writer) int {
 	wait := fs.Bool("wait", false, "block until a judgment, or a note to the coordinator, that was not in the inbox when the wait began (a held judgment never wakes it), or the machine stops; then show the inbox, saying what is new")
 	timeout := fs.Duration("timeout", 5*time.Minute, "with --wait, the longest wait; the inbox is shown when it passes (with --push, how often the loop looks at the machine)")
 	push := fs.String("push", "", "with --wait, keep running (until interrupted): each new judgment and note to the coordinator is written once as <dir>/<note id>.md, the group as inbox --open prints it and the clock; the files there are the cursor, so a restart pushes nothing twice; a local write; seat is the holder's inbox, ~/<holder>-working/inbox/sprint-judgments, followed through a seat change (a directory named seat is ./seat)")
+	triage := fs.Bool("triage", false, "show the current plan/check set triage table")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, "inbox", argErr("takes no words ", err, pos...))
@@ -2141,6 +2142,16 @@ func (a *app) cmdInbox(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "inbox", err.Error())
 	}
 	ctx := context.Background()
+	if *triage {
+		snap, err := st.Load(ctx, store.All, nil)
+		if err != nil {
+			return a.readFailed("inbox", err, stderr)
+		}
+		rows := sprint.TriageSet(snap, sprint.TriageIDs(snap, sprint.TriageReq{}))
+		b, _ := json.Marshal(rows)
+		fmt.Fprintln(stdout, string(b))
+		return 0
+	}
 	if sprint.IsAlias(*open) {
 		full, err := unalias(ctx, st, []string{*open})
 		if err != nil {
@@ -2701,7 +2712,12 @@ func printCard(w io.Writer, kind string, c *sprint.Card) {
 
 func (a *app) cmdCheck(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("check")
+	stream := fs.String("stream", "", "review the planned cards in this stream")
+	allPlan := fs.Bool("all-plan", false, "review every card in plan")
 	pos, err := parse(fs, args)
+	if err == nil && (len(pos) > 0 || *stream != "" || *allPlan) {
+		return a.cmdPlanReview("check", *c, sprint.TriageReq{IDs: pos, Stream: *stream, AllPlan: *allPlan, Who: c.actor}, stdout, stderr)
+	}
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, "check", argErr("takes no words ", err, pos...))
 	}

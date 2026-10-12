@@ -123,6 +123,8 @@ func twoLanes() []string {
 	return []string{
 		"nova-sprint init --readers reader-a,reader-b --members m1:2",
 		"nova-sprint add --stream s1 --count 6",
+		"nova-sprint check --all-plan",
+		"nova-sprint promote --stream s1",
 		"nova-sprint start",
 		"nova-sprint tick",
 		"nova-sprint tick",

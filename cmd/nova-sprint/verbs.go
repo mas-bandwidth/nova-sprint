@@ -3758,6 +3758,7 @@ card's own tier, and default takes the stream's off.`) + "\n"
 // the backlog alarms' thresholds (sprint.TickAlarms).
 func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("set")
+	planMax := fs.String("plan-max", "", "how long a producer may remain in plan/check before one coordinator judgment (default 30m)")
 	tier := fs.String("read-tier", "", "the tier every card's reads draw their route from when it is stronger than the card's own (flash, pro or heavy; default takes it off: each card's own tier)")
 	dealt := fs.String("dealt-max", "", fmt.Sprintf("how long a work card may wait dealt and never taken (in its member's ready queue, or withdrawn) before it is a judgment: a duration, or default (%s, 3 times the take deadline); a taken card's own deadline starts at its take", sprint.DealtMaxDefault))
 	lanes := fs.String("go-lanes", "", fmt.Sprintf("the Go lanes of every machine, the Go build and test runs one machine grants at once (nova-sprint lane take go): a whole number from 1, or default (%d, one test stream per machine)", sprint.LaneWidthDefault))
@@ -3788,7 +3789,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "set", err.Error())
 	}
-	step := store.SetStep(sprint.SetReq{ReadTier: *tier, DealtMax: *dealt, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle, LandingStallBound: *landingStallBound,
+	step := store.SetStep(sprint.SetReq{PlanMax: *planMax, ReadTier: *tier, DealtMax: *dealt, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle, LandingStallBound: *landingStallBound,
 		AlarmReview: *review, AlarmMerging: *merging, AlarmFleet: *fleet, AlarmReady: *readyAlarm,
 		Fleet: *fleetWork, Friends: *friendsWork, FleetTiers: *fleetTiers, FriendsTiers: *friendsTiers, ReadCards: *readCards, Reads: *reads, ReworkPriority: *reworkPriority, Who: c.actor})
 	if *finish != "" {

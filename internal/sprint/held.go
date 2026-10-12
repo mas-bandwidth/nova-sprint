@@ -373,6 +373,13 @@ func (c *held) judge(id string) Hold {
 func (c *held) actor(pr *Card) string {
 	s := c.s
 	switch pr.Col {
+	case Planned, Checked:
+		// a planned or checked card is held by the coordinator, who checks and
+		// promotes it, before the plan-max bound; past it the tick's NPlanLate
+		// judgment names it (docs/SPEC-SPRINT.md, plan and check columns).
+		if d, ok := c.running(pr.F("admitted")); ok && d <= s.PlanMax() {
+			return fmt.Sprintf("the coordinator holds %s in %s, %s of %s to check and promote it", pr.ID, pr.Col, d.Round(time.Second), s.PlanMax())
+		}
 	case Working:
 		wc := s.Fleet.Placed(pr.F("work"))
 		// a friend holds her card whatever her status (no take-back), and a member held to
