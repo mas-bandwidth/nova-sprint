@@ -63,9 +63,9 @@
 \* coordinator verb runs; a verb run on the store directly (--redis) reads the
 \* record between two such steps, and a server that died leaves its record
 \* hooked until the next server's start rewrites it gone (ServerStart) or its
-\* Live bound lapses (HookLive). A hook while one is open replaces it, which is
-\* an end and a hook; the model hooks only when none is open. The ack is
-\* cumulative in the code (every id up to the one named); one id at a time here.
+\* Live bound lapses (HookLive). The challenge specification hooks only when none is open and
+\* acknowledges one item at a time. DurableSpec below separately models
+\* replacement, cumulative ACK, write failure, reconnect and durable identity.
 \*
 \* Reversed witnesses (Broken):
 \*   "nostream"      the challenge reaches the session off the stream (the PROOF
@@ -92,7 +92,7 @@ EXTENDS Naturals, FiniteSets
 
 CONSTANTS Items, MaxChallenges, MaxTime, HookEvery, HookAnswerBound, Broken, Outside
 
-VARIABLES sub, proven, chal, chalAt, issued, answered, seen, reading, now, live,
+VARIABLES d, sub, proven, chal, chalAt, issued, answered, seen, reading, now, live,
           delivered, acked, overdue, rec, ends, told, cmdBad
 
 vars == <<sub, proven, chal, chalAt, issued, answered, seen, reading, now, live,
@@ -120,7 +120,7 @@ TypeOK ==
     /\ told \in Nat
     /\ cmdBad \in BOOLEAN
 
-Init ==
+LegacyInit ==
     /\ sub = "none"
     /\ proven = FALSE
     /\ chal = 0
@@ -384,13 +384,181 @@ Tick ==
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading, live,
                    delivered, acked, overdue, rec, ends, told, cmdBad>>
 
-Next ==
+LegacyNext ==
     \/ Hook \/ Read \/ \E v \in Challenges : Prove(v) \/ HandPong
     \/ Rechallenge \/ ChallengeLive \/ Miss
     \/ \E i \in Items : Deliver(i) \/ Ack(i) \/ Overdue(i)
     \/ Cmd \/ StopReading \/ Drop \/ Unhook \/ ServerStart \/ Tick
 
-Spec == Init /\ [][Next]_vars
+
+\* Durable delivery (PR115). An independent specification below holds the
+\* challenge variables fixed; their safety/fairness remains checked by Spec.
+\* Items are NOTE-GENERATION keys, not UI group IDs: two keys can be siblings
+\* of one group or successive review/computed episodes. A push here carries
+\* one key; coalescing several keys into one frame and clock arithmetic are
+\* abstracted out. Eligibility is snapshotted at record time, as in look().
+\* ACKs persist by key within the current seat/epoch scope. ScopeChange models
+\* either an epoch advance or a different holder; sequence IDs never reset.
+\* The pending list is session-local, reconstructed from the current inbox on
+\* reconnect; no durable outbox is invented. Durable ACK and seq are the record.
+\* Three delivery phases (initial plus two outside events), two scopes, at most
+\* Cardinality(Items) deliveries per phase. A key closes or becomes due at most
+\* once per scope. Outside events are bounded, hence eventually stop; WF of
+\* connect, successful record, successful send and Due is an EXPLICIT recovery
+\* assumption, not a promise during endless churn/store failure/held time.
+DLimit == 3 * Cardinality(Items)
+DZero == [i \in Items |-> 0]
+DurableInit ==
+    d = [connected |-> FALSE, session |-> 0, scope |-> 1, outside |-> 0,
+         relevant |-> Items, held |-> Items, acked |-> {}, committed |-> {},
+         seq |-> 0, maxSeq |-> 0, oldMax |-> 1, pending |-> DZero, sent |-> {},
+         queued |-> {}, seen |-> DZero,
+         badHeld |-> FALSE, badReplay |-> FALSE, badStale |-> FALSE]
+DTypeOK ==
+    /\ d.connected \in BOOLEAN
+    /\ d.session \in 0..3
+    /\ d.scope \in 1..2
+    /\ d.outside \in 0..2
+    /\ d.relevant \subseteq Items
+    /\ d.held \subseteq d.relevant
+    /\ d.acked \subseteq Items
+    /\ d.committed \subseteq Items
+    /\ d.seq \in 0..DLimit
+    /\ d.maxSeq \in 0..DLimit
+    /\ d.oldMax \in 0..DLimit
+    /\ d.pending \in [Items -> 0..DLimit]
+    /\ d.sent \subseteq Items
+    /\ d.queued \subseteq Items
+    /\ d.seen \in [Items -> 0..3]
+    /\ \A b \in {d.badHeld, d.badReplay, d.badStale} : b \in BOOLEAN
+DEligible == d.relevant \ d.held
+DConnect ==
+    /\ ~d.connected
+    /\ d.session < 3
+    /\ d' = [d EXCEPT !.connected = TRUE, !.session = @ + 1,
+              !.oldMax = IF d.seq > d.oldMax THEN d.seq ELSE d.oldMax,
+              !.seq = IF "resetseq" \in Broken THEN 0 ELSE @,
+              !.pending = DZero, !.queued = {},
+              !.sent = IF "noreplay" \in Broken THEN @ ELSE {},
+              !.acked = IF "loseacks" \in Broken THEN {} ELSE @]
+\* Drop includes server restart and failed frame write. These preserve durable
+\* ACK keys and high-water, but discard session bookkeeping, just as start does.
+DDrop ==
+    /\ d.connected /\ d.outside < 2
+    /\ d' = [d EXCEPT !.connected = FALSE, !.outside = @ + 1,
+              !.queued = {}, !.pending = DZero]
+\* Successful replacement persists the new record before retiring old stream.
+DReplace ==
+    /\ d.connected /\ d.outside < 2 /\ d.session < 3
+    /\ d' = [d EXCEPT !.session = @ + 1, !.outside = @ + 1,
+              !.oldMax = IF d.seq > d.oldMax THEN d.seq ELSE d.oldMax,
+              !.seq = IF "resetseq" \in Broken THEN 0 ELSE @,
+              !.pending = DZero, !.queued = {},
+              !.sent = IF "noreplay" \in Broken THEN @ ELSE {},
+              !.acked = IF "loseacks" \in Broken THEN {} ELSE @]
+DReplaceFails ==
+    /\ d.connected
+    /\ d' = IF "retirefirst" \in Broken
+            THEN [d EXCEPT !.connected = FALSE]
+            ELSE d
+DScopeChange ==
+    /\ d.scope = 1 /\ d.outside < 2
+    /\ d' = [d EXCEPT !.scope = 2, !.outside = @ + 1,
+              !.relevant = Items, !.held = Items,
+              !.acked = IF "keepepochacks" \in Broken THEN @ ELSE {},
+              !.committed = {}, !.sent = {}, !.queued = {}, !.seen = DZero,
+              !.pending = IF "keepepochpending" \in Broken THEN @ ELSE DZero]
+DDue(i) ==
+    /\ i \in d.held
+    /\ d' = [d EXCEPT !.held = @ \ {i}]
+DClose(i) ==
+    /\ i \in d.relevant
+    /\ d' = [d EXCEPT !.relevant = @ \ {i}, !.held = @ \ {i}]
+DCanRecord(i) ==
+    /\ d.connected /\ i \in d.relevant
+    /\ (i \notin d.held \/ "sendheld" \in Broken)
+    /\ (i \notin d.acked \/ "replayacked" \in Broken)
+    /\ i \notin d.sent /\ d.seq < DLimit
+DRecord(i) ==
+    /\ DCanRecord(i)
+    /\ d' = [d EXCEPT !.seq = @ + 1, !.maxSeq = @ + 1, !.pending[i] = d.seq + 1,
+              !.sent = @ \cup {i}, !.queued = @ \cup {i},
+              !.badHeld = @ \/ i \in d.held,
+              !.badReplay = @ \/ i \in d.committed]
+\* A refused look must restore seq/open/sent/acked/epoch and emit no frame.
+DRecordFails(i) ==
+    /\ DCanRecord(i)
+    /\ d' = IF "sendunrecorded" \in Broken
+            THEN [d EXCEPT !.seen[i] = d.session]
+            ELSE IF "norollback" \in Broken
+                 THEN [d EXCEPT !.sent = @ \cup {i}]
+                 ELSE d
+\* Successful transport write, not proof that the client consumed the frame.
+DSend(i) ==
+    /\ d.connected /\ i \in d.queued
+    /\ d' = [d EXCEPT !.queued = @ \ {i}, !.seen[i] = d.session]
+DAckKeys(n) == {i \in Items : d.pending[i] # 0 /\ d.pending[i] <= n}
+\* Token 0 is missing/legacy; oldMax starts at 1 while durable seq starts at
+\* 0, representing a pre-upgrade record with an unknown old wire-ID high-water.
+\* Thus monotone new IDs alone cannot reject all pre-upgrade stale numeric ACKs.
+\* Session token must match before cumulative numeric ACK is considered.
+DAck(t, n) ==
+    /\ d.connected /\ n \in 1..DLimit /\ t \in 0..d.session
+    /\ t = d.session \/ n <= d.oldMax
+    /\ d' = IF n > d.seq \/ (t # d.session /\ "nosession" \notin Broken) THEN d ELSE
+        [d EXCEPT !.acked = @ \cup DAckKeys(n),
+           !.committed = @ \cup DAckKeys(n),
+           !.pending = [i \in Items |-> IF i \in DAckKeys(n) THEN 0 ELSE d.pending[i]],
+           !.badStale = @ \/ (t # d.session /\ DAckKeys(n) # {})]
+DAckFails(t, n) ==
+    /\ t = d.session
+    /\ d.connected /\ n \in 1..d.seq /\ DAckKeys(n) # {}
+    /\ d' = IF "acknorollback" \in Broken
+            THEN [d EXCEPT !.pending = DZero]
+            ELSE d
+DNext ==
+    /\ \/ DConnect \/ DDrop \/ DReplace \/ DReplaceFails \/ DScopeChange
+       \/ \E i \in Items : DDue(i) \/ DClose(i) \/ DRecord(i) \/ DRecordFails(i) \/ DSend(i)
+       \/ \E t \in 0..d.session, n \in 1..DLimit : DAck(t, n) \/ DAckFails(t, n)
+    /\ UNCHANGED vars
+DurableSpec ==
+    /\ LegacyInit /\ DurableInit
+    /\ [][DNext]_<<vars, d>>
+    /\ WF_d(DConnect)
+    /\ \A i \in Items : WF_d(DRecord(i)) /\ WF_d(DSend(i))
+                         /\ WF_d(DDue(i))
+DurableAckHistory == d.acked = d.committed
+PersistBeforeSend ==
+    \A i \in Items : (d.connected /\ d.seen[i] = d.session) => i \in d.sent
+HeldExcluded == ~d.badHeld
+NoAckedReplay == ~d.badReplay
+StaleAckSafe == ~d.badStale
+SequenceHighWater == d.seq = d.maxSeq
+\* Inspect actual before/after state, independently of each failure action's
+\* implementation. No mutant-controlled verdict flag participates in these
+\* action properties: even an unflagged mutation must violate equality.
+WriteFailureRollback ==
+    [][((\E i \in Items : DRecordFails(i))
+        \/ (\E t \in 0..d.session, n \in 1..DLimit : DAckFails(t, n)))
+       => UNCHANGED d]_d
+ReplacementFailureKeepsOld ==
+    [][DReplaceFails => UNCHANGED d]_d
+EpochClearsPending == (d.scope = 2 /\ d.sent = {}) => d.pending = DZero
+\* Each obligation either becomes irrelevant (closed/scope replaced), commits
+\* an ACK, or is sent on the CURRENT session. Re-evaluated after reconnect,
+\* so a frame sent only on a prior session cannot discharge the new obligation.
+EligibleUnackedDelivered ==
+    \A e \in 1..2, i \in Items :
+      (d.scope = e /\ i \in DEligible \ d.acked)
+      ~> (d.scope # e \/ i \notin d.relevant \/ i \in d.acked
+          \/ (d.connected /\ d.seen[i] = d.session))
+HeldEventuallyDue ==
+    \A e \in 1..2, i \in Items :
+      (d.scope = e /\ i \in d.held)
+      ~> (d.scope # e \/ i \notin d.relevant \/ i \notin d.held)
+EventuallyConnected == <>[]d.connected
+
+Spec == LegacyInit /\ DurableInit /\ [][LegacyNext /\ UNCHANGED d]_<<vars, d>>
         /\ WF_vars(Read) /\ WF_vars(\E v \in Challenges : Prove(v))
         /\ WF_vars(Rechallenge) /\ WF_vars(Miss) /\ WF_vars(Hook)
 

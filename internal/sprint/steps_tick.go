@@ -2047,29 +2047,46 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 // with the ok reads they need that nothing holds (the pump accepts them,
 // TickAccept): a STOPPED machine with any of these says so to the seat.
 func MovesDue(s *Snapshot) int {
-	n := len(s.Fleet.Column(Withdrawn))
+	return len(MoveDueKeys(s))
+}
+
+// MoveDueKeys is the stable identity of every move counted by MovesDue. The
+// stopped-machine judgment uses these keys so a later due set with the same
+// count is still a new notification episode.
+func MoveDueKeys(s *Snapshot) []string {
+	var keys []string
+	key := func(c *Card) string {
+		// Work primaries can return to the same column with gen still zero;
+		// attempt and column distinguish that later due work from its earlier
+		// episode without adding notification state to the sprint schema.
+		return fmt.Sprintf("%s@%s@%d@%d", c.ID, c.Col, c.Int("gen"), c.Int("attempt"))
+	}
+	for _, c := range s.Fleet.Column(Withdrawn) {
+		keys = append(keys, key(c))
+	}
 	for _, c := range s.Work.Column(Review) {
 		switch {
 		case s.Readers == nil || c.F("result") == "failed":
 		case acceptable(s, c):
 			if AcceptHeld(c) == "" {
-				n++
+				keys = append(keys, key(c))
 			}
 		case ReadsWanted(s, c) > 0 && enoughReadersUp(s, c):
-			n++
+			keys = append(keys, key(c))
 		}
 	}
 	for _, c := range s.Work.Column(Ready) {
 		if !IsSentinel(c) && AtRedealBound(s, c) == nil {
-			n++
+			keys = append(keys, key(c))
 		}
 	}
 	for _, c := range s.Work.Column(Waiting) {
 		if !IsSentinel(c) && !IsHeld(c) && len(WaitsFor(s, c, nil)) == 0 {
-			n++
+			keys = append(keys, key(c))
 		}
 	}
-	return n
+	slices.Sort(keys)
+	return keys
 }
 
 // WorkDeadline is the deadline a work card is held to, by its state: a card

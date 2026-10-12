@@ -455,21 +455,28 @@ func (st *Store) machineGroups(ctx context.Context, m Machine, hb Heartbeat) ([]
 		case st.ByHand:
 			// a twin ticks only by hand: not ticking is its normal state, and the
 			// remedy is the tick, never run, which a twin refuses
-			out = append(out, group("machine:silent", sprint.NMachineSilent,
+			g := group("machine:silent", sprint.NMachineSilent,
 				fmt.Sprintf("the machine is RUNNING and nothing has ticked for %ds: a twin ticks only by hand", int(gap/time.Second)),
 				sprint.Command{Decision: "tick by hand", Lines: []string{"nova-sprint tick"}},
-				sprint.Command{Decision: "stop the machine", Lines: []string{"nova-sprint stop --reason 'the machine is not ticking' --until 1h"}}))
+				sprint.Command{Decision: "stop the machine", Lines: []string{"nova-sprint stop --reason 'the machine is not ticking' --until 1h"}})
+			g.HookKey = fmt.Sprintf("%s\x00run=%d\x00last=%s\x00by-hand=true", g.ID, m.RunSeq, last.UTC().Format(time.RFC3339Nano))
+			out = append(out, g)
 		default:
-			out = append(out, group("machine:silent", sprint.NMachineSilent,
+			g := group("machine:silent", sprint.NMachineSilent,
 				fmt.Sprintf("the machine is RUNNING and nothing has ticked for %ds: its run loop is not running", int(gap/time.Second)),
 				sprint.Command{Decision: "run the loop", Lines: []string{"nova-sprint run"}},
-				sprint.Command{Decision: "stop the machine", Lines: []string{"nova-sprint stop --reason 'the machine is not ticking' --until 1h"}}))
+				sprint.Command{Decision: "stop the machine", Lines: []string{"nova-sprint stop --reason 'the machine is not ticking' --until 1h"}})
+			g.HookKey = fmt.Sprintf("%s\x00run=%d\x00last=%s\x00by-hand=false", g.ID, m.RunSeq, last.UTC().Format(time.RFC3339Nano))
+			out = append(out, g)
 		}
 		if hb.Failures >= 3 && hb.Error != "" {
-			out = append(out, group("machine:failing", sprint.NTickFailing,
+			g := group("machine:failing", sprint.NTickFailing,
 				fmt.Sprintf("%d ticks in a row failed; the last: %s", hb.Failures, hb.Error),
 				sprint.Command{Decision: "look", Lines: []string{"nova-sprint tick", "nova-sprint check"}},
-				sprint.Command{Decision: "repair", Lines: []string{"nova-sprint repair"}}))
+				sprint.Command{Decision: "repair", Lines: []string{"nova-sprint repair"}})
+			first := hb.Ticks - int64(hb.Failures) + 1
+			g.HookKey = fmt.Sprintf("%s\x00first-tick=%d\x00error=%s", g.ID, first, hb.Error)
+			out = append(out, g)
 		}
 		return out, nil
 	}
@@ -480,10 +487,12 @@ func (st *Store) machineGroups(ctx context.Context, m Machine, hb Heartbeat) ([]
 	if err := st.readerStatesInto(ctx, s); err != nil {
 		return out, err
 	}
-	if n := sprint.MovesDue(s); n > 0 {
-		out = append(out, group("machine:stopped", sprint.NStoppedWithDue,
-			fmt.Sprintf("the machine is STOPPED and %d moves are due", n),
-			sprint.Command{Decision: "start", Lines: []string{"nova-sprint start"}}))
+	if keys := sprint.MoveDueKeys(s); len(keys) > 0 {
+		g := group("machine:stopped", sprint.NStoppedWithDue,
+			fmt.Sprintf("the machine is STOPPED and %d moves are due", len(keys)),
+			sprint.Command{Decision: "start", Lines: []string{"nova-sprint start"}})
+		g.HookKey = fmt.Sprintf("%s\x00since=%s\x00run=%d\x00due=%s", g.ID, m.Since.UTC().Format(time.RFC3339Nano), m.RunSeq, strings.Join(keys, "\x00"))
+		out = append(out, g)
 	}
 	return out, nil
 }
