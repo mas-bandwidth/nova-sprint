@@ -3306,12 +3306,18 @@
      base by add's PATHS check) covers the same cards, and the binding of the write to the checked
      candidates (baseChecksHeld) is unchanged: a card added, landed or revised between the check and the
      step still refuses the step whole. One NOTE line per card moved, naming both bases and the card's
-     column. docs/SPEC-SPRINT.md section 11 (stream set --base) and the verb's help say so. Tests:
+     column. Since a merging card can now be re-pointed while the lander gates the batch it cut onto the
+     old base, the landing pins the base with the head and attempt (sprint.PushedPin gains Base; headWhy
+     before the push and sprint.MarkLanding inside the step hold the card's BASE: to it): a card re-pointed
+     during the gate is refused the push, nothing pushed, left queued, and the next pass lands it on its
+     new base; before this the pass pushed the old target and reported LAND OK (a cold reader's probe).
+     docs/SPEC-SPRINT.md section 11 (stream set --base) and the verb's help say so. Tests:
      TestStreamSetBaseRepointsEveryUnlandedCard (one card in each of the six states; the landed one is
      kept, the working one's CARRY: line is kept), TestStreamSetBaseChecksTheRewrittenBriefs and
      TestStreamSetBaseRefusesWhenTheCheckedCardsMoved (a card dealt after the check is still re-pointed; a
-     card landed after it refuses the step) in internal/sprint/stream_set_base_test.go, red before and green
-     after."
+     card landed after it refuses the step) in internal/sprint/stream_set_base_test.go, and
+     TestACardRepointedDuringTheGateIsNotPushedOntoTheOldBase (cmd/nova-sprint/land_repoint_during_gate_test.go,
+     the real stream set --base run from the gate seam), each red before and green after."
     :origin "hand-landed by a child of the seat, 2026-10-12, for the owner's ask that v1.2.15 be done directly; from the coordinator, 2026-10-12, epoch 19, server v1.2.13: stream set v1214b --base sprint/v1214b rewrote the waiting cards only, and two cards in review and merging landed on nova-sprint main; the owner: lock in fixes with tests so this does not happen again, fewer scripts, more Go")
    (fix "an-empty-stream-branch-follows-its-trunk" :release "v1.2.15" :status "planned"
     :title "A stream branch with no commits of its own follows its trunk before the batch is cut"
@@ -3321,18 +3327,24 @@
      correct heads; the seat fast-forwarded five stream branches by hand in one night. The rule: a stream
      branch with no commits of its own is its trunk. Before the batch is cut (cmd/nova-sprint/land.go, cut,
      followTrunk), the lander measures the fetched tip of the base against each trunk origin holds
-     (sprint.ProtectedBranches, each fetched on its own; a trunk origin lacks is skipped): when the tip is a
-     strict ancestor of a trunk, the branch has nothing the trunk lacks, and it is pushed to that trunk's tip
-     with a plain push, which git takes only as a fast-forward (never --force), so a branch that moved under
-     the lander is left as it is and the batch cuts from the tip the fetch found. Of two trunks the branch
-     is behind, the nearer (fewer commits ahead) is its trunk: a branch cut from main follows main, not a
-     dev that is main and more. A branch with a commit of its own, a trunk itself, or one level with its
-     trunk is never moved; a dry run never reaches the cut. The follow is said on one NOTE line under the
-     batch's LAND line, naming the branch, the trunk, its tip and how far behind the branch was, and its
-     time counts as fetch time. Tests (cmd/nova-sprint/stream_branch_follow_test.go, on a real git remote):
+     (sprint.ProtectedBranches, all fetched first; a trunk origin lacks is skipped). A tip that EQUALS any
+     trunk's tip is level with that trunk and is never moved, whatever another trunk holds beyond it: a
+     branch level with main is not fast-forwarded to a dev that is main and more, which would import dev
+     into a stream cut on main (a cold reader's fixture against the first cut of this fix, which skipped
+     only the equal trunk and went on to dev). Otherwise, when the tip is a strict ancestor of a trunk, the
+     branch has nothing that trunk lacks, and it is pushed to the trunk's tip with a plain push, which git
+     takes only as a fast-forward (never --force), so a branch that moved under the lander is left as it is
+     and the batch cuts from the tip the fetch found. When it is a strict ancestor of more than one trunk,
+     the trunk the sprint's base names (set --base, sprint.SprintBase, read once a pass) is its trunk; with
+     none named, the nearer (fewer commits ahead): a branch cut from main follows main, not a dev that is
+     main and more. A branch with a commit of its own or a trunk itself is never moved; a dry run never
+     reaches the cut. The follow is said on one NOTE line under the batch's line, landed or refused, naming
+     the branch, the trunk, its tip and how far behind the branch was, and its time counts as fetch time.
+     Tests (cmd/nova-sprint/stream_branch_follow_test.go, on a real git remote):
      TestAnEmptyStreamBranchFollowsItsTrunkBeforeTheFirstLand (the stream branch cut from main, main
      moved three commits, a card staged on the new main touching only its PATHS lands on the followed
      branch with no E12 and one NOTE; a card touching a file outside its PATHS is still refused, naming
-     that file and none of the trunk's) and TestAStreamBranchWithItsOwnCommitsIsNotMovedToItsTrunk, red
-     before and green after."
+     that file and none of the trunk's), TestAStreamBranchLevelWithATrunkIsNeverMovedToAnother (level with
+     main while dev is ahead, and the mirror: nothing moves, no NOTE, no trunk commit reaches the branch)
+     and TestAStreamBranchWithItsOwnCommitsIsNotMovedToItsTrunk, each red before and green after."
     :origin "hand-landed by a child of the seat, 2026-10-12, for the owner's ask that v1.2.15 be done directly; from the coordinator, 2026-10-12, epoch 19: the lander refused correct heads with E12 after their stream branches fell behind main (pkg-subproc-is-its-own-module, the TLC wall card's attempt 5), and the seat fast-forwarded nova-tools sprint/comfort, sprint/cleanup, sprint/v1214-blocker and nova-sprint sprint/v1214b by hand with gh api -X PATCH .../git/refs five times in one night")))

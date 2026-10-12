@@ -334,6 +334,15 @@ func (l *lander) openStream(s *sprint.Snapshot, stream string) ([]landCard, bool
 	return cards, true
 }
 
+// cardBaseNow is the base a primary's brief names now (its BASE: line, as openStream reads
+// it), "" when the brief names none: what headWhy holds a pinned card's base to.
+func cardBaseNow(pr *sprint.Card) string {
+	if pr == nil {
+		return ""
+	}
+	return swarm.ReadCardBase([]byte(pr.F("brief"))).Ref
+}
+
 // landBatchMax is the most cards one batch merges. v1-4's batch of 99 cards spent 708 s
 // merging and gating (2026-10-10), past LandDeadline: abandoned, then cut again the same way
 // the next pass, the stream in merging for hours. A stream's next batch starts as soon as
@@ -398,6 +407,9 @@ type laneEvent struct {
 // each one atomic step on one base; BaseAdvancesGated, NoHeadOfLine). failed says a push
 // landed and its report did not.
 func (l *lander) pass(ctx context.Context, s *sprint.Snapshot, order []string) (failed bool) {
+	// the sprint's base, read once for the pass: the trunk a stream branch behind two
+	// trunks follows (followTrunk); the forks copy it
+	l.sprintBase = sprint.SprintBase(s)
 	queues := map[string][]landCard{}
 	var streams []string
 	for _, name := range order {

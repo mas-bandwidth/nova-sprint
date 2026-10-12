@@ -41,6 +41,12 @@ func MarkLanding(s *Snapshot, stream string, pins []PushedPin) Plan {
 		case pin.Head == "" || pr.F("head") != pin.Head:
 			p.refuse(pin.ID, "at head "+orDash(pr.F("head"))+" now, not "+orDash(pin.Head)+" as it was built; nothing pushed")
 			return p
+		case pin.Base != "" && baseOfBrief(pr.F("brief")) != "" && baseOfBrief(pr.F("brief")) != pin.Base:
+			// re-pointed while the batch built (stream set --base reaches a merging card): the
+			// batch was cut onto the old base, so it is not pushed; the next pass lands the
+			// card on its new base
+			p.refuse(pin.ID, "re-pointed to BASE "+baseOfBrief(pr.F("brief"))+" during the gate, not "+pin.Base+" as it was built: it lands on the next pass; nothing pushed")
+			return p
 		case m.F(FieldLandingHead) == pin.Head:
 			continue // committed to already: its reads were judged at that mark
 		}
