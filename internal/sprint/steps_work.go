@@ -3133,26 +3133,26 @@ func sweep(s *Snapshot, p *Plan, r FleetReq, up []string, rr *round, moves round
 	}
 }
 
-// level evens the up members' backlogs, once at the start of every tick.
-// A member's backlog is the work cards it holds,
-// ready and working, less its width: below zero it has free lanes its ready
-// cards do not fill, above zero it holds ready cards it cannot start. While the
-// largest backlog of a member with a ready card and the smallest of the members
-// below DealAhead times their width differ by more than one, the newest ready
-// card (the last in work order) of the largest that has a target moves to the
-// next member round the fleet below DealAhead times its width, at least two
-// below, at or below the mean backlog and no refuser of the card
-// (round.levelTo, errata 3 amendment 5: the levelling moves the deal's index
-// too). So no up member has free lanes and an empty ready column while another
-// holds ready cards it cannot start, a member that comes up takes its share at
-// once, and none is levelled past DealAhead times its width (width.go).
+// level moves a card off a member that cannot start it, once at the start of
+// every tick. A member's load is the work cards it holds, ready and working (a
+// read at half a slot). While a member over its width (its held more than its
+// width) has a ready card, its newest ready card (the last in work order) moves
+// to the next member round the fleet past the deal's index with a free lane
+// (held below its width) and no refuser, bench or launch exclusion of the card
+// (round.levelTo, nextLane). So a card moves only when its member cannot start
+// it, and only to a member that can (tla/Level.tla NeverOffAFreeLane (lands with #127); the
+// owner, 2026-10-11 ~19:05-19:20Z: "cards only may accrue per-fleet or friend,
+// if there are not other machines/friends ready to do that work right now!").
+// A member at or below its width keeps every card dealt to it: it will take
+// them at its next pass.
 //
-// The call ends, by two guards, each enough alone (tla/Level.tla; the wedge of
-// 2026-10-02, nova-tools#5122, was a call that did not): every move lowers the
-// sum of squared backlogs by at least two (levelTo's gap), and a card it moved
-// is never one it moves again, so it makes at most as many moves as the fleet
-// had ready cards. A newest card whose only target is refused or one below
-// does not stop an older card that has one.
+// The call ends, by two guards, each enough alone (the wedge of 2026-10-02,
+// nova-tools#5122, was a call that did not): each move takes a member above
+// its width to one below it, so the sum of squared backlogs falls, and a card
+// it moved is never one it moves again (tla/Level.tla, MovesBounded), so it makes
+// at most as many moves as the fleet had ready cards. A source none of whose
+// cards has a target is passed over and never chosen again in the call, so the
+// passes that move nothing are at most the up members.
 func level(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, held map[string]int) {
 	levelWith(s, p, up, rr, moves, held, (*round).levelTo)
 }
@@ -3171,40 +3171,53 @@ func levelWith(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, h
 	if held == nil {
 		held = memberLoads(s, up)
 	}
-	widths := memberWidths(s, up)
+	lanes := memberLanes(s, up)
 	for _, m := range up {
 		// a read card is its reader's: the level moves work cards alone (read_cards.go)
 		queues[m] = slices.DeleteFunc(append([]*Card{}, s.Fleet.Cell(m, Ready)...), isRead)
 	}
+	// stuck is the sources none of whose ready cards has a target: every card
+	// refused, benched or unlaunchable on every member with a free lane. Lanes
+	// only fill as the call moves cards, so a source stuck once stays stuck,
+	// and the call tries the next most-over source rather than ending
+	// (tla/Level.tla ChoiceFree, NoExcessWhileALaneIsFree and SelectionComplete,
+	// which land with #127).
+	stuck := map[string]bool{}
 	for {
-		long, short := "", ""
-		n := map[string]int{}
+		// the source is the most-over member whose cards held (ready and
+		// working, a read at half a slot) exceed its lanes, so it holds a card it
+		// cannot start, and that has a ready card to give and is not stuck; it
+		// gives at most its excess (once its held reaches its lanes it is no
+		// source again), its newest ready cards first. A member at or below its
+		// lanes keeps every card dealt to it: it will take them at its next pass.
+		long, n := "", map[string]int{}
 		for _, m := range up {
-			n[m] = held[m] - s.Width(m)
+			n[m] = held[m] - lanes[m]
 		}
 		for _, m := range up {
-			if len(queues[m]) > 0 && (long == "" || n[m] > n[long]) {
+			if !stuck[m] && len(queues[m]) > 0 && held[m] > lanes[m] && (long == "" || n[m] > n[long]) {
 				long = m
 			}
-			if held[m] < widths[m] && (short == "" || n[m] < n[short]) {
-				short = m
-			}
 		}
-		if long == "" || short == "" || n[long]-n[short] <= 1 {
+		if long == "" {
 			return
 		}
-		// the newest card of the longest queue that has a target, never a member that
-		// refused it at staging (StagingRefusers; tla/CardContract.tla, Level)
+		// the newest card of the over-full member that has a target, never a
+		// member that refused it at staging (StagingRefusers; tla/CardContract.tla,
+		// Level)
 		q := queues[long]
 		i, to := len(q)-1, ""
 		for ; i >= 0 && to == ""; i-- {
 			// a bench card is never moved off its bench: the members its BENCH line does not
 			// name are avoided as a member that refused it at staging is (bench_deal.go)
 			// nor a member that cannot launch its route (notLaunching: fault 10)
-			to = target(rr, up, n, held, widths, long, append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...))
+			to = target(rr, up, n, held, lanes, long, append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...))
 		}
 		if to == "" {
-			return
+			// no card of this source has a target: a less-over source may still
+			// have one, so the call goes on without this one
+			stuck[long] = true
+			continue
 		}
 		i++
 		held[long]--

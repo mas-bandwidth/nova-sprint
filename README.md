@@ -3,13 +3,11 @@
   <img alt="Nova Sprint. Finish faster. Multiple models. Many machines. A white-and-blue robot in orange shoes sprints along a blue track." src="brand/fleet/banner-day.png">
 </picture>
 
-**nova-sprint** puts a fleet of AI workers to work on your backlog. Different
-models, many machines, and a system that moves cards from **ready to landed**
-automatically—through implementation, review, checks, and merging.
+## What is it?
 
-[Get started](docs/GETTING-STARTED.md) · [See the live dashboard](http://69.67.149.151/)
+**nova-sprint** puts a fleet of AI models to work across a fleet of machines linked by [tailscale](https://tailscale.com).
 
-## More lanes. More work moving.
+## More lanes. Finish faster.
 
 Speed comes from **width**: independent work running at the same time.
 One worker can implement an API while another updates the client and a
@@ -18,42 +16,36 @@ across the same fleet, each taking a bounded assignment.
 
 The **fleet** is the set of machines providing capacity. **Workers** carry
 out the assignments. A machine's **width** sets how many work assignments
-it can run at once. Think of those slots as lanes: when one opens, the
-machine can send the next ready card down it.
+it can run at once. Think of those slots as lanes: when one opens up,
+the system runs the next card on it.
 
-More lanes help when the work is independent. Dependencies still have to
-land first. Even excellent shoes cannot outrun a missing API.
+More lanes help when the work is independent. Dependencies have to land first.
 
 ## Follow a card all the way home
 
-Ordinary task cards move through the dashboard automatically:
+Cards move through the system automatically:
 
 **Waiting → Ready → Working → Review → Merging → Landed**
 
 A card waits for its prerequisites, takes an available lane, and goes
 through implementation, independent review, checks, and landing. Findings
-go back for rework. Gates and decisions that need attention remain visible.
-“Landed” means the change reached the integration branch—not just that a
-worker finished typing.
+go back for rework. Gates and decisions remain yours.
 
 The dashboard shows work streams, fleet capacity, progress, costs, and
-estimated finish time. Follow a card or watch the whole fleet make laps.
+estimated finish time. [See live demo](http://69.67.149.151/)
 
 ## Start with one lane. Then go wider.
 
 Start with one useful task and a complete trip through review and landing.
 Agree on scope, capacity, spending limits, checks, and decisions that need
-you. Then give the fleet the next batch. Keep working alongside it, or
-leave it with a plan to continue while you are away.
+you. Then give the fleet the next batch. Keep working alongside it, or... 
+just come back in the morning.
 
-Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
-
-**Free and open source.** Your chosen model providers and machines have
-their own costs.
+Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools). _Free and open source forever._
 
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
-[Cards and machine rules](docs/SPEC-SPRINT.md) · [Roadmap](ROADMAP.md) · [All docs](docs/README.md)
+[Cards and system rules](docs/SPEC-SPRINT.md) · [Roadmap](ROADMAP.md) · [All docs](docs/README.md)
 
 If you like this, [please support our work](https://www.patreon.com/MasBandwidth/membership).
 

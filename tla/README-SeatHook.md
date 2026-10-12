@@ -3,13 +3,34 @@
 `SeatHook.tla` checks two specifications independently. `Spec` retains the
 challenge, proof, cadence, live-window and command-gate cases. `DurableSpec`
 holds those variables fixed and explores the transport protocol in PR115.
-`Spec`'s Part "cadence" (PR124) asks no challenge after the first on a connection
-(`NoRechallenge`), renews Live by acts (a verb, an acknowledgement, and the hook
-client's keepalive, which proves the transport alive and nothing more), and lapses a
-hook with no act past `HookSilentBound` once, with one judgment (`SingleLapse`); a
-keepalive every `KeepaliveEvery` keeps a connected hook (`HookStays`). Its reversed
-witnesses are `strictcadence` (the bound from the proof), `rechallenge` and
-`lapsetwice`; `nomiss` now also drops the lapse.
+`Spec`'s cadence asks one challenge per connection (`NoRechallenge`). `Act`
+records transport activity separately from `Renew`, which persists a new lease
+only after `RenewStep` units of improvement. Successful ACKs and admitted commands
+also record activity. Keepalive neither proves nor acknowledges anything, including
+an unproven connection. `KeepaliveCannotProveOrAck` compares the actual action's
+before/after proof and ACK state. `RenewFailurePreserves` and
+`LapseFailurePreserves` similarly check real state equality on failed writes.
+`NoEarlyLapse` checks the last act's silence bound; `SingleLapse` bounds judgments
+per session. Successful note, end-record and owner-notice writes are treated as
+one step: partial end writes, failed bus delivery and ambiguous store commits are
+not verified by this cadence model.
+
+The active control proves at time zero, then advances through eight clock units, past multiple initial
+three-unit lease bounds (`ClockReachesBound`), with keepalives at most one unit
+apart and a successful due renewal before the next clock step. Those are explicit
+bounded scheduling/storage assumptions; weak fairness alone cannot preserve a
+finite lease. `ActiveLeaseLive` checks the stored gate deadline as well as
+`HookStays` checking the connection. The general control permits arbitrary gaps
+and failed renewals; it promises no uninterrupted gate availability. The separate
+`SilentSpec` proves a single initially answering session, then allows no acts and
+checks eventual lapse with progressing time and fair successful lapse handling.
+The model's two-unit renewal threshold illustrates batching, not a literal
+conversion of all production times (30 seconds / 15 minutes / 1-minute keepalive).
+Go regression tests pin those exact durations and the early gate-expiry example.
+
+Reversed witnesses cover the old proof-based deadline, rechallenge, repeated
+lapse, omitted renewal, keepalive proving or waiving ACKs, a failed renewal mutating the stored lease, and a failed lapse-note write
+ending the stream. Each is required to violate its named property.
 This avoids a product of unrelated timing and delivery states; it is not a
 composed proof of the complete hook implementation.
 
@@ -67,7 +88,7 @@ from before this upgrade have no persisted high-water. This makes session
 binding necessary even though all new sequence IDs persist monotonically.
 Clients must copy the session token from PUSH and supply `--session` with
 `hook --ack`; legacy numeric-only ACK commands safely refuse. The
-`seathook` group has ten witnesses.
+`seathook` group has fifteen witnesses and three passing controls.
 
 Remaining abstraction boundaries include grouped frames, garbage collection of
 inactive key history, storage corruption, mutex scheduling, full end-write

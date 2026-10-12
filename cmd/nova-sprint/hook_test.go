@@ -1233,3 +1233,116 @@ func TestAPushIsSentOnlyOnceRecorded(t *testing.T) {
 	require.Equal(t, "ok", r.T, r.Why)
 	ta.lined(func() { ta.ok("add --stream s2 --count 1 --one") })
 }
+
+// A sub-batch act extends the silence deadline but not the persisted gate lease.
+// SPEC-SPRINT.md, The hook: batching may refuse commands before a silent lapse.
+func TestHookRenewBatchAndFailedWritePreserveTheLease(t *testing.T) {
+	t.Parallel()
+	const name = "hook-renew-boundary"
+	ta, _ := hookSprint(t, name)
+	c := ta.hookOn(name)
+	c.next("hello")
+	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+	s := ta.hookSession()
+	before, _ := ta.hookRecord()
+	ta.step(20 * time.Second)
+	s.touch(ta.a.now())
+	s.renewLive(context.Background())
+	after, _ := ta.hookRecord()
+	require.Equal(t, before, after, "less than one batch leaves the stored lease unchanged")
+	ta.step(sprint.HookSilentBound - 10*time.Second)
+	require.False(t, sprint.HookLive(after, true, name, ta.a.now()), "gate expires ten seconds before the last act's silence bound")
+	s.look(context.Background())
+	require.False(t, s.isEnded(), "gate expiry is not a silent lapse")
+	s.touch(ta.a.now())
+	ta.failHookWrite(1)
+	s.renewLive(context.Background())
+	after, _ = ta.hookRecord()
+	require.Equal(t, before, after, "failed renewal preserves durable state")
+	require.Equal(t, before.Live, s.liveAt, "failed renewal must remain retryable")
+	s.renewLive(context.Background())
+	after, _ = ta.hookRecord()
+	require.Equal(t, ta.a.now().Add(sprint.HookSilentBound), after.Live)
+}
+
+type failLapseAcquire struct {
+	*store.Mem
+	left int
+}
+
+func (f *failLapseAcquire) AtEpoch(epoch uint64, old bool) store.Backend { return f }
+func (f *failLapseAcquire) Acquire(ctx context.Context, gen uint64, op store.OpRecord) (bool, error) {
+	if f.left > 0 {
+		f.left--
+		return false, errors.New("lapse note acquire refused")
+	}
+	return f.Mem.Acquire(ctx, gen, op)
+}
+
+func TestHookLapseFailedNoteRetriesBeforeEnding(t *testing.T) {
+	t.Parallel()
+	const name = "hook-lapse-retry"
+	ta, _ := hookSprint(t, name)
+	c := ta.hookOn(name)
+	c.next("hello")
+	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: c.next("challenge").Challenge}).T)
+	s := ta.hookSession()
+	before, _ := ta.hookRecord()
+	kv := &failLapseAcquire{Mem: ta.m, left: 1}
+	ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return kv, nil }
+	ta.step(sprint.HookSilentBound + time.Second)
+	s.look(context.Background())
+	require.Zero(t, kv.left, "the NoteStep attempted its write")
+	require.False(t, s.isEnded(), "failed note must not end the stream")
+	after, _ := ta.hookRecord()
+	require.Equal(t, before, after)
+	require.Empty(t, lapsesOf(ta))
+	for _, m := range c.drained() {
+		require.NotEqual(t, "bye", m.T)
+	}
+	s.look(context.Background())
+	ta.waitHook(sprint.HookGone)
+	s.look(context.Background())
+	require.Equal(t, map[string]int{name: 1}, lapsesOf(ta))
+	ta.mu.Lock()
+	defer ta.mu.Unlock()
+	told := 0
+	for _, x := range subjects(ta) {
+		if x == "seat "+name+" is gone -> glenn" {
+			told++
+		}
+	}
+	require.Equal(t, 1, told)
+}
+
+func TestHookKeepaliveCannotProveOrAcknowledge(t *testing.T) {
+	t.Parallel()
+	const name = "hook-transport-only"
+	ta, _ := hookSprint(t, name)
+	c := ta.hookOn(name)
+	c.next("hello")
+	challenge := c.next("challenge").Challenge
+	c.tell(hookMsg{T: "alive"})
+	// A refused answer orders this assertion after the preceding keepalive.
+	require.Equal(t, "refused", c.say(hookMsg{T: "prove", Challenge: "not-the-challenge"}).T)
+	before, _ := ta.hookRecord()
+	require.True(t, before.Proven.IsZero())
+	require.True(t, before.Live.IsZero())
+	require.Equal(t, "ok", c.say(hookMsg{T: "prove", Challenge: challenge}).T)
+	s := ta.hookSession()
+	ta.lined(func() { ta.ok("add --stream s1 --count 1 --one") })
+	s.look(context.Background())
+	before, _ = ta.hookRecord()
+	require.NotZero(t, before.Unacked)
+	ta.step(sprint.HookAckBound + time.Second)
+	c.tell(hookMsg{T: "alive"})
+	// A refused answer orders this assertion after the preceding keepalive.
+	require.Equal(t, "refused", c.say(hookMsg{T: "prove", Challenge: "not-the-challenge"}).T)
+	s.renewLive(context.Background())
+	after, _ := ta.hookRecord()
+	require.True(t, after.Live.After(before.Live), "the transport act actually renewed the lease")
+	require.Equal(t, before.Oldest, after.Oldest)
+	require.Equal(t, before.Unacked, after.Unacked)
+	require.Equal(t, before.Acked, after.Acked)
+	require.Contains(t, sprint.HookGate(after, true, name, ta.a.now()), "You must acknowledge push")
+}

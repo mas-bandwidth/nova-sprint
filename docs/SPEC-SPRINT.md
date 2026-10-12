@@ -412,8 +412,10 @@ preference and the deals offer it on as a named pin is offered while she is not 
 friend up or a machine, with the pin-ignored judgment (`sprint.PinReleased`; the fault
 inventory of 2026-10-10: 21 cards pinned to held friends waited 9 h and more;
 `TestAHardPinToAFriendNotUpPastItsBoundIsOfferedOn`; tla/SprintRules.tla, Part "episodes").
-The hour runs from the stop's latest note: the coordinator's `ack` or `wait` on it writes a
-new one, so each answer starts the hour again (`TestACoordinatorAnswerRestartsThePinHour`). `add` and
+The bound runs, in running time, from the stop's latest note: the coordinator's `ack` writes
+a new one and starts it again; a `wait` on it is refused, since the stop names a card on the
+work table (a wait never parks a card), so it extends nothing and the pin is released at the
+bound (`TestAWaitOnThePinStopIsRefusedAndExtendsNothing`). `add` and
 `brief` refuse any other WHO value, a name that is no row of the friends table, and
 `WHO: friend` while the table has no row (exit 2, nothing written). A named friend's
 configured work restriction is held too: a card whose stream matches none of her
@@ -3167,10 +3169,20 @@ order the cards were dealt in, so a card brought to the front of its stream by
 - The rebalance, once at the start of every tick, before any table's update
   (the owner, 2026-10-01: "both for readers and fleet, there needs to be a
   rebalance step done at the start of each tick. it's simple. just once before
-  tick, rebalance each table."): the fleet's level moves ready cards (dealt,
-  not taken) from a member holding cards it cannot start to one with free
-  lanes, evening the members' backlogs (held less width) to within one, never
-  past DealAhead times a width; a working card on an up member stays. It is a
+  tick, rebalance each table."): the fleet's level moves a ready card (dealt,
+  not taken) only when its member cannot start it — the member holds more work
+  cards, ready and working, than its width — and only to a member that can: the
+  next member round the fleet past the deal's index with a free lane (held
+  below its width, so it takes the card at its next pass and starts it at
+  once), no refuser, bench or launch exclusion of the card; the source gives at
+  most its excess, its newest ready cards first; a source none of whose cards
+  has a target is passed over for the next most-over source, and the level
+  ends only when no source has a card some member can take; and a member at or below its
+  width keeps every card dealt to it. The mean rule and the gap of two are gone
+  (round.levelTo, nextLane; tla/Level.tla NeverOffAFreeLane (lands with #127); the owner,
+  2026-10-11 ~19:05-19:20Z: "cards only may accrue per-fleet or friend, if
+  there are not other machines/friends ready to do that work right now!"). A
+  working card on an up member stays. It is a
   safety too ("and it's a safety, if ever there are cards on a held or down
   machine, rebalance moves them away."): no card stays on a held or down
   member; its cards, ready or working, are dealt to the members up as a member
@@ -5820,6 +5832,53 @@ leaves the table or is bounced again (its next read broken, its next finish fail
 that cannot be written is a NOTE under the verb's summary line, never its failure
 (docs/SPEC-NOVA-DECIDE.md section 13, the coordinator's own answers).
 
+### A judgment that holds a card
+
+The owner, 2026-10-12 ~00:08Z: "This must never happen again. Fix it." At 00:06Z eleven
+judgments had held their cards 5 to 169 minutes while the seat was busy elsewhere and its
+hook kept lapsing: ready to accept on cards whose two reads had passed, returned to review,
+work came back failed, a card reached its bound, no route serves the tier, a card pinned
+to one friend waits while she is not up. A judgment that holds a card (a kind of sprint.WaitRefused,
+internal/sprint/wait_refused.go: the one table of the judgments a card waits on the seat
+for, the same table `wait` refuses by) is never left unanswered. Two rules.
+
+(a) What has a safe default the machine answers itself, with no seat verb:
+
+- **Reads passed: accepted.** A card in review whose required reads have all passed at its
+  head is accepted by the tick, never a "ready to accept" judgment, also after a return
+  whose one cause is mechanical (the card's `returned_for`): `repair`'s rule-6 return for a
+  missing read (`reads`), and a return answered by `needs set` while the card is back in
+  review (`needs`). A return a person makes for any other reason, and a red CI at its head,
+  still hold it for the seat. A stream set to seat-accept (`stream set <s> --seat-accept
+  on`) keeps the hand step: its cards are "ready to accept" until the seat accepts them.
+- **Pinned to a friend not up: released at the deadline.** A card hard-pinned to a friend
+  who is held or down is offered on, to a friend up or the fleet, once its pin-waits stop
+  has stood DeadlineJudgment of running time (PinReleaseBound; it was an hour). The tick
+  judges the deadline, since it alone holds the STOPPED spans, and records the release
+  (`a hard pin was released at its deadline`, an acknowledged note naming the stop's note);
+  the deals read the record, so a machine stopped past the deadline releases nothing when
+  it resumes.
+- **No route serves its tier: raised.** Once "no route serves the tier" is past its
+  deadline, each ready card it holds is raised to the nearest tier above its own that a
+  route or a friend up serves, pinned there as `rework --tier` pins it, and the seat is
+  told the change in a note naming the card and both tiers (the rule `no-route`). Never
+  down: a heavy card is never re-tiered to flash; a card with no served tier above it, a
+  friend's card, and a card whose tier is pinned (the coordinator's `brief --tier`, `tier
+  --set` or `rework --tier`, a brief that pins its model, a frontier card) stay held: a pin
+  is the coordinator's word, and the rule never overrides it.
+
+(b) Everything else that holds a card escalates. Past its deadline each such judgment is
+raised again at every DeadlineJudgment of running time it stays unanswered (a push to the
+seat naming it and the cards it holds), and one sprint-level judgment, "the seat is not
+answering", names every card held and for how long. It is raised again every PassEvery
+while it holds; the server sends it, and each raise again, to the sprint's owner on the bus
+(to the owner's name) as well as on the seat's hook; it cannot be waited or acknowledged
+(both refuse it by name); and it closes when the last judgment it names is answered. A
+raise is marked told only once its send succeeded: a failed send is tried again at the
+server's next look under the same bus token (the sprint, its epoch, the judgment and the
+raise), so a lost response or a restarted server never sends the owner a second message;
+the server forgets the raises no longer open.
+
 ### Answered by rule
 
 The machine answers the mechanical judgments itself, by rule, without the coordinator (the
@@ -6824,7 +6883,7 @@ read of the store and a write of the state file, never run by the sprint's serve
 - **The subscription is the server's.** The seat's session runs `nova-sprint hook --actor <seat>` under a Monitor, with `NOVA_SPRINT_SERVER` set. It opens one connection to the server's loopback listener (`GET /api/hook?as=<seat>`, upgraded to `nova-sprint-hook`; the fleet's listener refuses it) and holds it. Only the seat's holder hooks in; a second hook replaces the first, whose connection is closed with `HOOK BYE ... replaced`. The server writes its word in the store key `seat-hook` (`sprint.HookRecord`: name, subscription id, state `hooked`, `away` or `gone`, since, the last proof, the time it is live until, why it ended, and the pushes not acknowledged with the oldest), and only the server writes it.
 - **The stream.** The hook prints one event per line: `HOOK CONNECTED name=<seat> session=<id>`, `HOOK CHALLENGE <c>: answer now, before anything else: nova-sprint hook --prove <c> --actor <seat>`, and for each open judgment or note, `PUSH <id> <judgment> session=<token>: read it, then acknowledge: nova-sprint hook --ack <id> --session <token> --actor <seat>`, with the text indented under it. Push IDs come from a persistent monotone sequence, preserved across server restart, reconnect and epoch reset. A pre-upgrade record may have no saved sequence; session-token validation also protects that migration from old ACKs. On reconnect, the hook replays each durable unacknowledged judgment with a fresh, higher ID and the new connection's session token; acknowledge only from the command printed on the current connection. The server looks every 2 seconds.
 - **Proof.** The hook counts only once the session answers the challenge it read off the stream: `nova-sprint hook --prove <c>` hands the answer to the running hook through a socket of the machine (`<user cache>/nova-sprint/hook-<seat>.sock`), which writes it on the same connection. The server takes the challenge outstanding and nothing else, once; the record is then proven and live for 15 minutes past the last act. The challenge is in the stream alone: never in a file, the record, a status line or an error. A hand pong, a file, or an answer with no live subscription proves nothing (`ProofMeansRead`, `ProvenIsSubscribed`).
-- **Cadence.** A challenge is asked once a connection, at its start, and answered within `HookAnswerBound` (5 minutes) or the hook is gone; it is never asked again while the connection stays up (the seat, 2026-10-11/12: the hook dropped about 15 minutes after each proof though the stream stayed connected and the seat kept acting; every lapse refused every coordinator verb and replayed ~100 pushes; the owner: "This must never happen again"). Proven, the hook stays live while acts reach the server. An act is any coordinator, seat or read verb the seat's holder runs that the gate lets through, any acknowledgement or answer over the hook, and the keepalive (`{"t":"alive"}`) `nova-sprint hook` sends on its own every `HookKeepalive` (1 minute). The keepalive proves only that the transport is alive (the hook's process holds the stream), never that the seat or a person is attending; an inattentive seat is found by its pushes (a push unacknowledged for 10 minutes blocks every coordinator command, below) and by the judgments' own deadlines, not by the hook's liveness. The record's `Live`, which the gate reads, is the last act plus `HookSilentBound` (15 minutes), written by the server's look when an act moves it on by 30 seconds or more (`sprint.HookActed`): the recorded `Live` therefore trails the last act's by at most 30 seconds and one look (2 seconds), a bound, never a lapse. The hook lapses only when its stream ends (gone at once), or when no act at all, keepalive included, reaches the server for `HookSilentBound`: then once, with one judgment (`sprint.NHookLapsed`, "the seat's hook lapsed", naming the seat in its `Who`), and only once that judgment is written, a `HOOK BYE`, the record `gone` with the reason, and the owner told; a judgment write that fails leaves the hook as it is and the next look tries again. The same seat's next proof acknowledges its own lapse judgment; another seat's proof leaves it open. Replay and the durable acknowledgement are the stream's and the acknowledgement's, above and below (`HookStays`, `SingleLapse`, `CommandSafe`; tla/SeatHook.tla, Part "cadence").
+- **Cadence.** A challenge is asked once a connection, at its start, and answered within `HookAnswerBound` (5 minutes) or the hook is gone; it is never asked again while the connection stays up (the seat, 2026-10-11/12: the hook dropped about 15 minutes after each proof though the stream stayed connected and the seat kept acting; every lapse refused every coordinator verb and replayed ~100 pushes; the owner: "This must never happen again"). Proven, the hook stays live while acts reach the server. An act is any coordinator, seat or read verb the seat's holder runs that the gate lets through, any acknowledgement or answer over the hook, and the keepalive (`{"t":"alive"}`) `nova-sprint hook` sends on its own every `HookKeepalive` (1 minute). The keepalive proves only that the transport is alive (the hook's process holds the stream), never that the seat or a person is attending; an inattentive seat is found by its pushes (a push unacknowledged for 10 minutes blocks every coordinator command, below) and by the judgments' own deadlines, not by the hook's liveness. The record's `Live`, which the gate reads, is the last act plus `HookSilentBound` (15 minutes), written by the server's look when an act moves it on by 30 seconds or more (`sprint.HookActed`): after a timely successful look the recorded `Live` trails the last act's by less than 30 seconds. The nominal look interval is 2 seconds, but delayed scheduling or failed writes can extend the lag without bound. Commands can therefore be refused before the silence deadline: proof at t=0 and an act at t=20s leave `Live` at t=15m, so a command at t=15m10s refuses while the hook has not yet lapsed. A later successful renewal can reopen the gate; batching never changes the lapse deadline. The hook lapses only when its stream ends (gone at once), or when no act at all, keepalive included, reaches the server for `HookSilentBound`: then once, with one judgment (`sprint.NHookLapsed`, "the seat's hook lapsed", naming the seat in its `Who`), and only once that judgment is written, a `HOOK BYE`, the record `gone` with the reason, and the owner told; a judgment write that fails leaves the hook as it is and the next look tries again. The same seat's next proof acknowledges its own lapse judgment; another seat's proof leaves it open. Replay and the durable acknowledgement are the stream's and the acknowledgement's, above and below (`HookStays`, `SingleLapse`, `CommandSafe`; tla/SeatHook.tla, Part "cadence").
 - **Acknowledgement.** `nova-sprint hook --ack <id> --session <token>` acknowledges every push up to that ID, over the same connection and only for the session token printed on its `PUSH` line. Missing `--session` is refused locally with `hook --ack requires --session <token> from the PUSH line; nothing was changed`; a stale or foreign token is refused by the server with `this acknowledgement belongs to another hook session; copy the session token from the PUSH line`. Both refusals leave the durable acknowledgement state unchanged. Numeric-only ACKs from pre-upgrade clients are refused, so an old client cannot acknowledge new work by guessing an ID. After reconnect, read the replayed `PUSH` line and copy its current token. A push delivered and unacknowledged for 10 minutes blocks every coordinator command, naming it (`AckedOrBlocking`): `You must acknowledge push <id> first (<judgment>, delivered <time>, unacknowledged past 10m0s; <n> unacknowledged): read it in the hook's stream, then run the session-bound command shown there.`
 - **The gate.** Every command run as the coordinator fails with exactly `You must hook in first: run nova-sprint hook` (exit 1, nothing else printed, nothing written) unless the record holds a live, proven hook for the seat's holder: every coordinator verb, and every read and seat verb the holder runs (`view`, `card`, `where`, `inbox`, `seat check`, `seat push`, `coordinator <name>`, ...). There is no override flag. The workers' verbs (`take`, `finish`, `progress`, `read`, the beats, `lane take`, `remind`), the reports, the machine's verbs, `hook` and `unhook`, anyone else's reads, and the first `init` on a store with no holder are never refused. The gate runs before the verb (`hookFirst` in cmd/nova-sprint/main.go's run), on the server for a verb sent there, and again where the verb opens the store (`coordinatorOnly`).
 - **The end.** `nova-sprint unhook` ends the hook over its connection: the record says `away`, the owner is told, and the hook exits 0 (`HOOK ENDED`). A seat that drops without unhook (the hook process ends, the connection breaks, an interrupt) is recorded `gone` at once and the owner told; the hook exits 1 (`HOOK DROPPED`). A server that starts finds a record an earlier server left `hooked`, records it `gone` (the subscription went with that server) and tells the owner. The owner is told by one bus message (`seat <name> is away|gone`) and the server's `SEAT HOOK` line.

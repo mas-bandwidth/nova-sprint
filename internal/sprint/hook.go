@@ -71,8 +71,7 @@ type HookItem struct {
 
 // HookRecord is the server's word on the seat's hook, the one the gate reads: who
 // hooked, the subscription's id, its state and since when, the last challenge answered
-// over it (Proven) and the time the hook counts until (Live: the outstanding
-// challenge's bound), why it ended, and the pushes delivered and not acknowledged, with
+// over it (Proven) and the persisted activity lease deadline (Live), why it ended, and the pushes delivered and not acknowledged, with
 // the oldest of them. Only the server writes it (cmd/nova-sprint/hook.go).
 type HookRecord struct {
 	Name    string    `json:"name"`
@@ -90,9 +89,9 @@ type HookRecord struct {
 }
 
 // HookLive says the record holds a live, proven hook for name at now: hooked, proven
-// over its subscription, and within the outstanding challenge's bound (SeatHook.tla,
-// Gate: rec.state = "hooked", rec.proven, ~lateC). Live is the seat's last act plus
-// HookSilentBound (HookProven, HookActed). A server that died leaves its record hooked, and
+// over its subscription, and within the persisted activity lease (SeatHook.tla,
+// Gate). Live is the last persisted act plus HookSilentBound (HookProven, HookActed);
+// batching and failed renewals can leave it behind newer acts. A dead server leaves it hooked, and
 // the bound lapses it.
 func HookLive(rec HookRecord, ok bool, name string, now time.Time) bool {
 	return ok && name != "" && rec.Name == name && rec.State == HookHooked && rec.Session != "" &&

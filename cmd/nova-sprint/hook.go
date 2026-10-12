@@ -529,7 +529,7 @@ func (s *hookSession) answer(m hookMsg, reply hookMsg) {
 
 // prove takes the session's answer to the outstanding challenge (SeatHook.tla, Prove):
 // only that challenge, only over this subscription, while it is the open one; the
-// record is then proven and live until the next challenge's bound.
+// record is then proven and live until the initial activity lease expires.
 func (s *hookSession) prove(ctx context.Context, c string) hookMsg {
 	s.mu.Lock()
 	ok := c != "" && s.chal != "" && c == s.chal && !s.ended
@@ -807,9 +807,9 @@ func (s *hookSession) touch(now time.Time) {
 
 // hookRenewStep is how far the acts must move Live on before a look writes it: one record
 // write a step, never one a look. The bound it leaves (Stella's read of #124): the recorded
-// Live is never earlier than the last act + sprint.HookSilentBound - hookRenewStep -
-// hookLook, so a gate reading the record sees a live hook for at least HookSilentBound
-// less 32 s after the last act, and the lapse itself is judged on the act, not the record.
+// Live can trail the last act by less than a batch after a successful look. The
+// nominal extra delay is hookLook, but scheduling or storage failure can extend it
+// without bound. A gate can expire before silence lapses; lapse reads acted itself.
 const hookRenewStep = 30 * time.Second
 
 // renewLive writes the record's Live as sprint.HookActed says it from the last act, when

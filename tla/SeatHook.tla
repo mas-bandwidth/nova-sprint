@@ -54,14 +54,13 @@
 \* no challenge after the first on a connection (NoRechallenge); every act (a
 \* coordinator verb, an acknowledgement or answer, and the hook client's keepalive,
 \* which proves only that the transport is alive, never that the seat attends)
-\* moves Live to the act plus HookSilentBound (Act); a proven hook with no act past
-\* HookSilentBound lapses, once, with one judgment, gone and the owner told (Lapse;
-\* SingleLapse); and a seat whose keepalive arrives every KeepaliveEvery (less than
-\* HookSilentBound) never lapses (HookStays, Outside = FALSE). Two code bounds are
-\* abstracted: the server writes Live only when an act moves it on by 30 s or more
-\* (renewLive), so the recorded Live trails the last act's by at most 30 s and one
-\* look; and a lapse whose judgment write fails ends nothing and is tried again at
-\* the next look (lapse), so the judgment is always written before the end. Replay
+\* advances acted; Renew separately persists Live after RenewStep units of activity.
+\* Failed renewal preserves the record and remains retryable. The always-active
+\* control bounds keepalive gaps and requires a successful due renewal before the
+\* next clock step. Weak fairness alone cannot promise renewal before a deadline.
+\* Lapse requires silence past HookSilentBound; a failed note write preserves the
+\* stream and is retried. Successful end/store/notice handling is abstracted atomic.
+\* Replay
 \* and the durable acknowledgement are DurableSpec's, unchanged.
 \*
 \* What it leaves out: the record is written by the same server step that
@@ -100,7 +99,7 @@
 \*                   rewrite and the owner not told (RecordTrue)
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Items, MaxChallenges, MaxTime, HookSilentBound, KeepaliveEvery, HookAnswerBound, Broken, Outside
+CONSTANTS Items, MaxChallenges, MaxTime, HookSilentBound, KeepaliveEvery, HookAnswerBound, RenewStep, Broken, Outside
 
 VARIABLES d, sub, proven, chal, chalAt, issued, answered, seen, reading, now, live,
           delivered, acked, overdue, rec, ends, told, cmdBad, cad
@@ -129,7 +128,7 @@ TypeOK ==
     /\ ends \in Nat
     /\ told \in Nat
     /\ cmdBad \in BOOLEAN
-    /\ cad \in [acted : 0..MaxTime, provedAt : 0..MaxTime, lapses : 0..2]
+    /\ cad \in [acted : 0..MaxTime, provedAt : 0..MaxTime, renewed : 0..MaxTime, lapses : 0..2]
 
 LegacyInit ==
     /\ sub = "none"
@@ -149,7 +148,7 @@ LegacyInit ==
     /\ ends = 0
     /\ told = 0
     /\ cmdBad = FALSE
-    /\ cad = [acted |-> 0, provedAt |-> 0, lapses |-> 0]
+    /\ cad = [acted |-> 0, provedAt |-> 0, renewed |-> 0, lapses |-> 0]
 
 \* The pushes delivered and neither acknowledged nor within their bound.
 Blocking == overdue \ acked
@@ -205,7 +204,7 @@ Hook ==
     /\ acked' = {}
     /\ overdue' = {}
     /\ rec' = [state |-> "hooked", proven |-> FALSE]
-    /\ cad' = [acted |-> now, provedAt |-> now, lapses |-> 0]
+    /\ cad' = [acted |-> now, provedAt |-> now, renewed |-> now, lapses |-> 0]
     /\ UNCHANGED <<now, seen, ends, told, cmdBad>>
 
 \* The session reads the challenge off its stream (the Monitor's event).
@@ -265,18 +264,38 @@ Rechallenge ==
     /\ UNCHANGED <<sub, proven, answered, seen, reading, now, live, delivered,
                    acked, overdue, rec, ends, told, cmdBad, cad>>
 
-\* An act reaches the server over a proven, open hook: a coordinator verb, an
-\* acknowledgement or answer, or the hook client's keepalive (the transport alive,
-\* no more). Live moves to the act plus HookSilentBound (renewLive, HookActed; the
-\* code writes it once the act moves it 30 s or more, a bound abstracted here).
+\* Transport activity is independent of reading and does not prove or ACK.
+\* Gate-admitted commands and successful ACKs also advance acted below.
 Act ==
     /\ sub = "open"
-    /\ proven
     /\ cad.acted < now
     /\ cad' = [cad EXCEPT !.acted = now]
-    /\ live' = now + HookSilentBound
+    /\ proven' = IF "aliveprove" \in Broken THEN TRUE ELSE proven
+    /\ acked' = IF "aliveack" \in Broken THEN delivered ELSE acked
+    /\ UNCHANGED <<sub, chal, chalAt, issued, answered, seen, reading, now, live,
+                   delivered, overdue, rec, ends, told, cmdBad>>
+
+RenewDue == sub = "open" /\ proven /\ cad.acted + HookSilentBound - live >= RenewStep
+Renew ==
+    /\ RenewDue
+    /\ cad' = [cad EXCEPT !.renewed = now]
+    /\ live' = IF "norenew" \in Broken THEN live ELSE cad.acted + HookSilentBound
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading, now,
                    delivered, acked, overdue, rec, ends, told, cmdBad>>
+
+RenewFails ==
+    /\ RenewDue
+    /\ live' = IF "renewrollback" \in Broken THEN cad.acted + HookSilentBound ELSE live
+    /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading, now,
+                   delivered, acked, overdue, rec, ends, told, cmdBad, cad>>
+
+LapseFails ==
+    /\ sub = "open" /\ proven
+    /\ now > cad.acted + HookSilentBound
+    /\ sub' = IF "lapseonfailure" \in Broken THEN "none" ELSE sub
+    /\ proven' = IF "lapseonfailure" \in Broken THEN FALSE ELSE proven
+    /\ UNCHANGED <<chal, chalAt, issued, answered, seen, reading, now, live,
+                   delivered, acked, overdue, rec, ends, told, cmdBad, cad>>
 
 \* No act past HookSilentBound: the hook lapses, once, with one judgment (written
 \* first), gone, the owner told ("lapsetwice": the subscription stays, so the look
@@ -332,8 +351,9 @@ Ack(i) ==
     /\ reading
     /\ i \in delivered \ acked
     /\ acked' = acked \cup {i}
+    /\ cad' = [cad EXCEPT !.acted = now]
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
-                   now, live, delivered, overdue, rec, ends, told, cmdBad, cad>>
+                   now, live, delivered, overdue, rec, ends, told, cmdBad>>
 
 \* A delivered push passes its ack bound.
 Overdue(i) ==
@@ -346,9 +366,10 @@ Overdue(i) ==
 \* against the rule.
 Cmd ==
     /\ Gate
+    /\ cad' = [cad EXCEPT !.acted = now]
     /\ cmdBad' = (cmdBad \/ ~Rule)
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading,
-                   now, live, delivered, acked, overdue, rec, ends, told, cad>>
+                   now, live, delivered, acked, overdue, rec, ends, told>>
 
 \* The outside: the session stops reading (its Monitor died, or it does not
 \* read its events) while the hook process stays connected.
@@ -413,16 +434,19 @@ ServerStart ==
 \* re-challenge goes and how late a look has run.
 Tick ==
     /\ now < MaxTime
+    \* Active control starts its clock only after initial proof at time zero.
+    /\ (Outside \/ (sub = "open" /\ proven))
     \* Outside = FALSE: the hook client's keepalive reaches the server at least every
     \* KeepaliveEvery while the hook is open and proven (Act takes it)
     /\ (Outside \/ sub # "open" \/ ~proven \/ now + 1 - cad.acted <= KeepaliveEvery)
+    /\ (Outside \/ ~RenewDue \/ cad.renewed = now)
     /\ now' = now + 1
     /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading, live,
                    delivered, acked, overdue, rec, ends, told, cmdBad, cad>>
 
 LegacyNext ==
     \/ Hook \/ Read \/ \E v \in Challenges : Prove(v) \/ HandPong
-    \/ Rechallenge \/ Act \/ Lapse \/ Miss
+    \/ Rechallenge \/ Act \/ Renew \/ RenewFails \/ Lapse \/ LapseFails \/ Miss
     \/ \E i \in Items : Deliver(i) \/ Ack(i) \/ Overdue(i)
     \/ Cmd \/ StopReading \/ Drop \/ Unhook \/ ServerStart \/ Tick
 
@@ -596,7 +620,22 @@ EventuallyConnected == <>[]d.connected
 
 Spec == LegacyInit /\ DurableInit /\ [][LegacyNext /\ UNCHANGED d]_<<vars, d>>
         /\ WF_vars(Read) /\ WF_vars(\E v \in Challenges : Prove(v))
-        /\ WF_vars(Act) /\ WF_vars(Lapse) /\ WF_vars(Miss) /\ WF_vars(Hook)
+        /\ WF_vars(Act) /\ WF_vars(Renew) /\ WF_vars(Tick) /\ WF_vars(Lapse) /\ WF_vars(Miss) /\ WF_vars(Hook)
+
+\* A separate quiet control starts one answering session, then no acts arrive.
+\* Time cannot advance before its first proof; it reaches silence and lapses.
+SilentTick ==
+    /\ proven /\ now < MaxTime
+    /\ now' = now + 1
+    /\ UNCHANGED <<sub, proven, chal, chalAt, issued, answered, seen, reading, live,
+                   delivered, acked, overdue, rec, ends, told, cmdBad, cad>>
+SilentNext == (Hook /\ issued = 0) \/ Read \/ (\E v \in Challenges : Prove(v))
+              \/ SilentTick \/ Lapse \/ LapseFails
+SilentSpec == LegacyInit /\ DurableInit /\ [][SilentNext /\ UNCHANGED d]_<<vars,d>>
+              /\ WF_vars(Hook /\ issued = 0) /\ WF_vars(Read)
+              /\ WF_vars(\E v \in Challenges : Prove(v))
+              /\ WF_vars(SilentTick) /\ WF_vars(Lapse)
+SilenceLapses == <>(cad.lapses = 1 /\ sub = "none")
 
 \* No coordinator command succeeds without a live, proven hook and every
 \* delivered push past its bound acknowledged.
@@ -629,4 +668,11 @@ NoRechallenge == proven => chal = 0
 
 \* Part "cadence": a subscription lapses at most once, with one judgment.
 SingleLapse == cad.lapses <= 1
+\* These compare actual action state, never a mutant-controlled verdict flag.
+KeepaliveCannotProveOrAck == [][Act => UNCHANGED <<proven, acked>>]_vars
+RenewFailurePreserves == [][RenewFails => UNCHANGED vars]_vars
+LapseFailurePreserves == [][LapseFails => UNCHANGED vars]_vars
+NoEarlyLapse == [][Lapse => now > cad.acted + HookSilentBound]_vars
+ActiveLeaseLive == (sub = "open" /\ proven) => now <= live
+ClockReachesBound == <>(now = MaxTime)
 =============================================================================

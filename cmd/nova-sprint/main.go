@@ -201,8 +201,11 @@ type app struct {
 	// lines, in place of the user's cache directory.
 	hooks    *hookHub
 	hookSock func(name string) (string, error)
-	served   serveTally
-	serveLog io.Writer
+	// seatSilent is what the run loop has told the owner of the seat not answering
+	// (seat_silent.go): each raise of the judgment once.
+	seatSilent seatSilentTold
+	served     serveTally
+	serveLog   io.Writer
 	// forward sends verbs to the sprint's server named by NOVA_SPRINT_SERVER (the
 	// coordinator's verbs, forward.go): nil is sprintwire.Client's Do, a test gives the
 	// server's own step.

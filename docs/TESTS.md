@@ -303,6 +303,40 @@ coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
   `NOVA_SPRINT_SERVER`), and its forward fails the test, so no verb can reach
   a live sprint server.
 
+### The start level never moves a card off a free lane (v1.2.14)
+
+The level at the start of every tick moves a ready card only off a member
+holding more work cards than its width, and only onto the next member from the
+deal's index with a free lane (docs/SPEC-SPRINT.md, the rebalance;
+tla/Level.tla NeverOffAFreeLane (lands with #127)). A member at or below its width keeps every
+card dealt to it.
+
+- Unit, `internal/sprint/level_free_lanes_test.go`:
+  `TestTheLevelLeavesADealtCardOnAnIdleMember`,
+  `TestTheLevelMovesTheExcessOntoFreeLanesOnly`,
+  `TestTheLevelTargetsRollTheIndex`,
+  `TestTheLevelSkipsASourceWithNoMovableCard` (the most-over source's cards
+  are all refused, a less-over source's card moves onto the free lane).
+- Unit, re-pinned from the mean rule: `internal/sprint/level_progress_test.go`
+  `TestLevelTargetPicksAFreeLane`, `TestLevelStopsWhenNoFreeLaneRemains`;
+  `internal/sprint/level_terminates_test.go`
+  `TestLevelLeavesTheWedgeWhenNoLaneIsFree`,
+  `TestLevelEndsWithNoFreeLaneWithinTheReadyCount`, `TestLevelMovesNoCardTwice`;
+  `internal/sprint/refmodel/level_refuser_test.go`
+  `TestLevelRefuserTheEngineAndTheModelAgree`,
+  `TestLevelSkipsASourceWithNoMovableCardTheEngineAndTheModelAgree` (the
+  engine's moves on that shape, at the model's width, are the model's own);
+  `internal/sprint/refmodel/fleet_down_level_test.go`
+  `TestFleetDownAndLevelGoRoundTheFleet`.
+- Functional (`-tags functional`), `cmd/nova-sprint/start_level_functional_test.go`:
+  `TestTheStartLevelLeavesADealtCardOnAMemberThatCanStartItOnTheStore`, on a
+  private redis-server: a member of width 4 holding one ready card and a
+  member of width 16 with free lanes; the ticks leave the card where it was
+  dealt, and once the first member's width falls below what it holds, the
+  next tick moves the card onto the free lane. Every verb names the private
+  store with `--redis`; HOME and XDG_CONFIG_HOME are the test's own and its
+  forward fails the test, so no verb can reach a live sprint server.
+
 ## nova-card
 
 Fixture: `cmd/nova-card/testdata/findings.tsv`, a reader's findings on two
@@ -408,3 +442,13 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestRunNeverStopsValidRun`: a run the store holds at that member and generation is never stopped.
 - `TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs` (functional, `cmd/nova-sprint/hook_live_functional_test.go`): a real server and store, the hook held by `nova-sprint hook` over the server's listener, the server's clock stepped past three 15-minute bounds while the seat acknowledges its pushes: no lapse, one challenge, and an unhook and hook again replays only the push not acknowledged.
 - `TestAConnectedSeatThatActsNeverLapses`, `TestASilentSeatLapsesOnceAndSaysSo`, `TestAnotherSeatsProofLeavesALapseOpen` (`cmd/nova-sprint/hook_test.go`): a seat acting once a minute for 40 minutes never lapses; one with no act lapses once, with one judgment naming the seat, the owner told once; another seat's proof leaves that lapse open.
+- `TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore` (functional, `cmd/nova-sprint/unanswered_judgment_functional_test.go`): a real server and store, the seat hooked in and silent, one card of each kind that held a card on 2026-10-12; within one deadline the cards with a safe default have moved with no seat verb, and "the seat is not answering" names the card still held on the hook's stream and on the owner's bus.
+- `TestATwoReadsPassedCardIsMergingAfterOneTickWithNoSeatVerb`, `TestACardReturnedForItsNeedsIsMergingAfterOneTick`, `TestASeatAcceptStreamKeepsItsCardForTheSeat`, `TestACardReturnedByTheSeatStaysForTheSeat` (`cmd/nova-sprint/seat_answers_test.go`): the accept defaults of a card-holding judgment.
+- `TestAHardPinToAHeldFriendIsReleasedAtItsDeadline`, `TestAPinIsNotReleasedByTheTimeTheMachineWasStopped` (`internal/sprint/seat_answers_test.go`): the pin's default, at its deadline in running time; a stop and resume releases nothing at once.
+- `TestABoundJudgmentUnansweredRaisesTheSeatNotAnsweringOnce` (`internal/sprint/store/seat_silent_bound_test.go`): a card at its bound (a mind's judgment) unanswered past its deadline raises the alarm once, never waited or acknowledged, raised again with the bound at the next deadline, cleared by the answer.
+- `TestATierNoRouteServesIsRaisedToTheNearestServedTierAtItsDeadline`, `TestAHeavyCardNoRouteServesIsNeverReTieredToFlash`, `TestAPinnedCardNoRouteServesStaysOnItsPinnedTier` (`internal/sprint/seat_answers_rule_test.go`): the no-route default, never down a tier, never over a pin.
+- `TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken`, `TestARestartedServerTellsTheOwnerOfARaiseOnce`, `TestASeatSilentRaiseNoLongerOpenIsForgotten` (`cmd/nova-sprint/seat_silent_test.go`): the owner's bus message is marked told only once sent, retried under one token, sent once across a restart, and the marks pruned to the open raises.
+
+- `TestHookRenewBatchAndFailedWritePreserveTheLease`: a 20-second act leaves the lease unchanged, the gate refuses before silence lapses, and a failed renewal preserves the record and retries.
+- `TestHookLapseFailedNoteRetriesBeforeEnding`: a refused NoteStep acquisition writes no judgment and ends nothing; retry writes one lapse and tells the owner once.
+- `TestHookKeepaliveCannotProveOrAcknowledge`: transport activity neither proves a new session nor changes pending ACK state or its blocking age.
