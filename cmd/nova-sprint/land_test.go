@@ -183,6 +183,33 @@ func TestLandMergesAStreamInQueueOrderAsOneBatch(t *testing.T) {
 	r.clean()
 }
 
+func TestLandUsesConfiguredIdentityForAuthorAndCommitter(t *testing.T) {
+	t.Parallel()
+	r := newLandRig(t)
+	r.stubGreenGate()
+	r.ok("add --stream s1 --count 1")
+	head := r.head("s1-1", "main", "s1-1.txt", "work\n")
+	r.queued(map[string]string{"s1-1": head}, "s1-1")
+	global := filepath.Join(r.dir, "host.gitconfig")
+	require.NoError(t, os.WriteFile(global, []byte("[user]\n\temail = glenn@networknext.com\n\tname = Fiedler\n"), 0o600))
+	r.a.getenv = func(k string) string {
+		switch k {
+		case "NOVA_SPRINT_GIT_NAME":
+			return "Stella Machine"
+		case "NOVA_SPRINT_GIT_EMAIL":
+			return "stella-machine@example.invalid"
+		default:
+			return ""
+		}
+	}
+	r.a.gitEnv = append(slices.Clone(r.env), "GIT_CONFIG_GLOBAL="+global,
+		"GIT_AUTHOR_NAME=host-author", "GIT_AUTHOR_EMAIL=glenn@networknext.com",
+		"GIT_COMMITTER_NAME=host-committer", "GIT_COMMITTER_EMAIL=glenn@networknext.com")
+	r.ok("land --repo-dir " + r.clone + " --base main")
+	got := r.git(r.remote, "log", "-1", "--format=%an <%ae>|%cn <%ce>", "main")
+	assert.Equal(t, "Stella Machine <stella-machine@example.invalid>|Stella Machine <stella-machine@example.invalid>", got)
+}
+
 // The landing fetches the base and the batch's heads, and no other branch of origin: a
 // repository a thousand cards have worked in holds thousands of card branches, and a fetch
 // of them all, once a stream a round, was 15 s a fetch (the fleet pass of 2026-10-01
@@ -550,20 +577,22 @@ func TestLandReviewAWrongEpochPushesNothing(t *testing.T) {
 // A git that fails for a reason that is not the card's (here an empty
 // identity) blames no card: nothing is reported, the card stays queued, the
 // stream keeps merging, and land exits non-zero with git's reason.
-func TestLandReviewAGitEnvironmentFailureBlamesNoCard(t *testing.T) {
+func TestLandRefusesPartiallyConfiguredIdentityWithoutBlamingCard(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
 	r.ok("add --stream s1 --count 2")
 	r.queued(map[string]string{"s1-1": r.head("s1-1", "main", "a.txt", "a\n"), "s1-2": r.head("s1-2", "main", "b.txt", "b\n")}, "s1-1", "s1-2")
-	r.a.gitEnv = append(append([]string(nil), r.env...), "GIT_AUTHOR_NAME=", "GIT_COMMITTER_NAME=")
+	r.a.getenv = func(k string) string {
+		if k == "NOVA_SPRINT_GIT_EMAIL" {
+			return "only half"
+		}
+		return ""
+	}
 	before := r.git(r.remote, "rev-parse", "main")
 	code, _, errs := r.do("land --repo-dir " + r.clone + " --base main")
 	assert.Equal(t, 1, code)
-	assert.Contains(t, errs, "LAND REFUSED stream=s1 cards=2 base=main tip=- ids=s1-1..s1-2")
-	assert.Contains(t, errs, "the merge of s1-1 failed in git, not on its changes")
-	assert.Contains(t, errs, "empty ident name")
-	assert.Contains(t, errs, "no card is blamed and nothing was pushed or reported")
-	assert.NotContains(t, errs, "fact=")
+	assert.Contains(t, errs, "NOVA_SPRINT_GIT_NAME")
+	assert.Contains(t, errs, "nothing was changed")
 	assert.Equal(t, before, r.git(r.remote, "rev-parse", "main"))
 	assert.Equal(t, map[string]string{"s1-1": "merging/queued", "s1-2": "merging/queued"}, r.places("s1-1", "s1-2"))
 	assert.Equal(t, "merging", r.streamState("s1"))

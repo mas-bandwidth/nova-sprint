@@ -37,6 +37,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
 	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitidentity"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
@@ -146,9 +147,13 @@ type app struct {
 	// scoreBackend, when set (a test), is the backend land scores landed diffs through
 	// (landscore.go); nil is Jev with the key JEV_API_KEY holds.
 	scoreBackend decide.Backend
-	// gitEnv is the environment land's git and check run in: nil is the
-	// caller's, untouched (a test gives git an identity and no global config).
+	// gitEnv is the environment land's git and check run in. Machine commits
+	// replace author and committer variables with machineGitIdentity; other
+	// Git commands keep the caller's environment.
 	gitEnv []string
+	// machineGitIdentity is the server-configured identity used for every
+	// machine-made commit; nil resolves the environment and documented default.
+	machineGitIdentity *gitidentity.Identity
 	// beforePush, when set (a test), runs before each push land makes, with
 	// the attempt (1, then 2 after the base moved).
 	beforePush func(attempt int)

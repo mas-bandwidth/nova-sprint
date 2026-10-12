@@ -218,13 +218,21 @@ func (a *app) cmdPromote(args []string, stdout, stderr io.Writer) int {
 	if *landings < 0 {
 		return refuse(stderr, "promote", "--landings must be zero or more; run: nova-sprint promote --landings 1 --dry-run")
 	}
+	gitEnv := a.gitEnv
+	if !*dry {
+		var err error
+		gitEnv, err = a.machineCommitEnv([]string{"commit-tree"}, gitEnv)
+		if err != nil {
+			return refuse(stderr, "promote", err.Error())
+		}
+	}
 	now := time.Now()
 	if a.now != nil {
 		now = a.now()
 	}
 	p := &promoter{
 		dir: *repo, live: *branch, base: *base, check: *check,
-		now: now, dry: *dry, env: a.gitEnv,
+		now: now, dry: *dry, env: gitEnv,
 		every: *every, landings: *landings, started: now,
 	}
 	if f, ok := promoteForges.Load(*repo); ok {

@@ -128,6 +128,9 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint where\n", prog, name, oneline.Escape(noSprintYet(err).Error()))
 		return 2
 	}
+	if *area == "" || *area == sprint.AreaSprint {
+		checks = append(checks, a.doctorMachineGitIdentity(ctx))
+	}
 	sprintArea := *area == "" || *area == sprint.AreaSprint
 	if !sprintArea {
 		faults, refused = nil, nil

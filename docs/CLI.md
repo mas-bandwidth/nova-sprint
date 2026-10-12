@@ -48,6 +48,16 @@ refusals with reasons (`REFUSED`, on stderr), and the sprint's summary
 [TESTS.md](TESTS.md#nova-sprint) carries the exact transcript through `merge`;
 `cmd/nova-sprint/firstrun_test.go` runs it line by line.
 
+Machine-made Git commits use `NOVA_SPRINT_GIT_NAME` and
+`NOVA_SPRINT_GIT_EMAIL` for both author and committer. If both are unset or
+empty, the configured default is `nova-sprint <nova-sprint@mas-bandwidth.com>`;
+set both to configure another machine
+identity. A partial pair is refused, never completed from the host's Git
+config. `land` and `promote` force these
+values into the commit environment, and staged worker clones write the same
+identity into their local Git config. `doctor` prints the identity and fails
+when its email equals the host's global `user.email`.
+
 ### Landed series
 
 `where --json` carries `landedSeries`: cards landed per 10 minutes over the last 24 hours, 144 buckets, split `friends` and `fleet`. A landing is a work-table move to `<stream>:landed` from any state but waiting. A sentinel's release is not work. Each card counts once, the first landing. The worker is the last `<who>:ok` of the card's work attempt (`<card>.wN`): `friend.<name>` is a friend and anything else is a fleet machine. The lander is not the worker. `where -h` states it. The text frame does not carry the series. `dashboard` reads one `where --json` and the series is on that object, so the page does not loop the log. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), the `where` frame.

@@ -305,6 +305,23 @@ coordinator as "landed <card>" (docs/SPEC-SPRINT.md, the landing stall).
   `TestLandingPushCountsActiveFriendReadsWithReadCardsOff`.
 - Unit, `cmd/nova-sprint/land_test.go`:
   `TestLandingPushReadsTheCardLedgerEntryAtTheLandedHead`.
+- Unit, `cmd/nova-sprint/land_test.go`:
+  `TestLandUsesConfiguredIdentityForAuthorAndCommitter`, which lands a real
+  local Git merge with a planted hostile global config and conflicting author
+  and committer environment values, then checks both identities.
+- Unit, `cmd/nova-sprint/doctor_identity_test.go`:
+  `TestDoctorFailsWhenMachineEmailMatchesHostGlobal`.
+- Unit, `pkg/gitidentity/identity_test.go` and
+  `pkg/swarm/stage_identity_test.go`: absent settings resolve only to the
+  documented default, partial settings are refused, conflicting identity
+  variables are replaced, and a staged clone receives the configured local
+  identity.
+- Functional (`-tags functional`),
+  `cmd/nova-sprint/land_identity_functional_test.go`:
+  `TestMachineLandingIdentitySurvivesHostGitConfig`, a real landing on a
+  private Redis store with every verb naming `--redis`, a scrubbed process
+  environment, temporary HOME/XDG configuration containing an owner identity,
+  and a `git log --format='%an <%ae>|%cn <%ce>'` assertion.
 - Functional (`-tags functional`), `cmd/nova-sprint/landing_stall_functional_test.go`:
   `TestALandingStallIsJudgedAndClearedByALandingOnTheStore`, on a private
   redis-server with the machine's own clock and a one-second bound: the stall

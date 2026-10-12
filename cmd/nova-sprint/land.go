@@ -92,7 +92,9 @@ Landing, the coordinator's: an external delivery (git pushes the base) and a sto
     the same pass; a card at its brief's bound goes back to review instead. A
     ledger the lander could not resolve, or a head origin does not hold, stops
     the stream, and after resume land merges the head again. The clone is --repo-dir,
-    else the dir= each line names; git uses the caller's environment. A kept
+    else the dir= each line names; machine commits use the configured NOVA_SPRINT_GIT_NAME
+    and NOVA_SPRINT_GIT_EMAIL (default nova-sprint <nova-sprint@mas-bandwidth.com>), never
+    the host's global git identity. A kept
     clone a pass cut short left not clean is restored to the fetched base before
     the batch (LAND CLEANED names the files); a --repo-dir one is refused. After
     the whole pass each landed merge diff is scored (nova-decide's score
@@ -455,6 +457,11 @@ func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError
 	}
 	if len(bad) > 0 {
 		return refuse(stderr, "land", strings.Join(bad, "; "))
+	}
+	if !*dry {
+		if _, err := a.configuredMachineIdentity(); err != nil {
+			return refuse(stderr, "land", err.Error())
+		}
 	}
 	// land's reads and its report are steps of the sprint: each takes the server's one
 	// line of control (a.serial) when this process is the server (run --land), so none
@@ -2482,11 +2489,16 @@ func rejected(err error) bool {
 }
 
 // git runs one git in dir (none: the current directory, for a clone into a
-// path it names), in the caller's environment, and returns its trimmed stdout,
+// path it names), in the caller's environment; a machine commit overrides the
+// author and committer with its configured identity. It returns trimmed stdout,
 // except -z output whose status columns and paths are byte-exact; an error
 // carries git's own words.
 func (l *lander) git(ctx context.Context, dir string, args ...string) (string, error) {
-	res, err := gitrun.Run(ctx, gitrun.Options{C: dir, Env: l.a.gitEnv, OwnRepo: dir != ""}, args...)
+	env, err := l.a.machineCommitEnv(args, l.a.gitEnv)
+	if err != nil {
+		return "", err
+	}
+	res, err := gitrun.Run(ctx, gitrun.Options{C: dir, Env: env, OwnRepo: dir != ""}, args...)
 	if err != nil {
 		words := strings.TrimSpace(string(res.Stderr) + "\n" + string(res.Stdout))
 		return "", fmt.Errorf("git %s: %w: %s", args[0], err, words)

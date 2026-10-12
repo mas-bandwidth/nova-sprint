@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/stretchr/testify/assert"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLandReviewRefusesWrongEpochBeforePush(t *testing.T) {
@@ -17,21 +17,21 @@ func TestLandReviewRefusesWrongEpochBeforePush(t *testing.T) {
 	assert.Equal(t, before, r.git(r.remote, "rev-parse", "main"), "an already-invalid epoch must refuse before external delivery: %s", out+errs)
 }
 
-func TestLandReviewGitIdentityFailureDoesNotBlameCard(t *testing.T) {
+func TestLandReviewPartialGitIdentitySettingRefusesBeforeChanges(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
 	r.ok("add --stream s1 --count 1 --one")
 	r.queued(map[string]string{"s1-1": r.head("s1-1", "main", "a.txt", "a\n")}, "s1-1")
 	before := r.streamState("s1")
-	env := []string{}
-	for _, e := range r.env {
-		if !strings.HasPrefix(e, "GIT_AUTHOR_NAME=") && !strings.HasPrefix(e, "GIT_COMMITTER_NAME=") {
-			env = append(env, e)
+	r.a.getenv = func(k string) string {
+		if k == "NOVA_SPRINT_GIT_NAME" {
+			return "only half"
 		}
+		return ""
 	}
-	r.a.gitEnv = append(env, "GIT_AUTHOR_NAME=", "GIT_COMMITTER_NAME=")
 	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
 	assert.NotEqual(t, 0, code, out+errs)
+	assert.Contains(t, errs, "NOVA_SPRINT_GIT_EMAIL")
 	assert.Equal(t, before, r.streamState("s1"), "environment failure must leave queue unchanged: %s", out+errs)
 	assert.Equal(t, map[string]string{"s1-1": "merging/queued"}, r.places("s1-1"))
 }

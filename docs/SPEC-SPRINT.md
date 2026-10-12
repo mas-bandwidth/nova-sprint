@@ -4324,6 +4324,18 @@ dead base): one judgment per merging card, `a merging card names a base not on o
 naming every unlanded card on that base and the rebase line, one decision for every
 card on the branch. Land does not ask it: a base not on origin is the dead-base fact.
 
+**The machine's commit identity.** Every Git commit made by the machine is
+given explicit author and committer environment values, so Git's host-global
+configuration cannot name the owner. `NOVA_SPRINT_GIT_NAME` and
+`NOVA_SPRINT_GIT_EMAIL` configure the pair. With both unset or empty the
+configured default is `nova-sprint <nova-sprint@mas-bandwidth.com>`; a partial
+pair is refused and names the missing setting rather than borrowing the host's
+identity. `land` applies the pair to merge commits, rework-at-tip commits and
+generated ledger or roadmap commits; `promote` applies it to its `commit-tree`
+cut. Worker clones write this pair to their local Git config immediately after
+clone. `doctor` reports the identity in use and fails if its email equals the
+host's global `user.email`.
+
 **The protected branches.** The lander never lands on a protected branch of a
 repository, dev or main, unless the card's stream is marked for that repository: a
 stream lands on its sprint branch, and promotion to dev is the marked stream's work

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/cardcontract"
+	"github.com/mas-bandwidth/nova-sprint/pkg/gitidentity"
 )
 
 // DefaultStageTimeout is the hard timeout for card staging (120 s).
@@ -459,6 +460,16 @@ func StageCard(opts StageOptions) (StageResult, error) {
 		}
 		return StageResult{BaseRepo: baseRepo, BaseSha: baseSha, Mirror: mirror, Wall: time.Since(start)}, fmt.Errorf("git clone failed: %s (%w)", strings.TrimSpace(string(out)), err)
 	}
+	identity, err := gitidentity.Resolve(os.Getenv)
+	if err != nil {
+		return StageResult{BaseRepo: baseRepo, BaseSha: baseSha, Mirror: mirror, Wall: time.Since(start)}, fmt.Errorf("staging refused: %w", err)
+	}
+	for _, kv := range [][2]string{{"user.name", identity.Name}, {"user.email", identity.Email}} {
+		if out, err := stageCmd(ctx, "-C", opts.TargetDir, "config", "--local", "--", kv[0], kv[1]).CombinedOutput(); err != nil {
+			return StageResult{BaseRepo: baseRepo, BaseSha: baseSha, Mirror: mirror, Wall: time.Since(start)},
+				fmt.Errorf("git config --local %s failed in %s: %s (%w)", kv[0], opts.TargetDir, strings.TrimSpace(string(out)), err)
+		}
+	}
 
 	// Update remote origin to baseRepo if cloned from mirror
 	if cloneSource != baseRepo {
@@ -548,15 +559,6 @@ func StageCard(opts StageOptions) (StageResult, error) {
 		return fail("rev-parse", headOut, herr)
 	}
 	head := strings.TrimSpace(string(headOut))
-
-	// A checkout whose identity could not be set would take the model's commits under no
-	// name, found only when it commits: the stage fails here instead, saying which.
-	if out, err := stageCmd(ctx, "-C", opts.TargetDir, "config", "user.name", "worker").CombinedOutput(); err != nil {
-		return fail("config user.name", out, err)
-	}
-	if out, err := stageCmd(ctx, "-C", opts.TargetDir, "config", "user.email", "worker@example.com").CombinedOutput(); err != nil {
-		return fail("config user.email", out, err)
-	}
 
 	var carry *cardcontract.Carry
 	if opts.Rework != nil {
