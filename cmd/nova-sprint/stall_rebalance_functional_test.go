@@ -21,7 +21,7 @@ func TestStallQueuedReadsMoveToAMemberThatComesUpOnTheStore(t *testing.T) {
 	t.Parallel()
 	r := newStallRig(t)
 	r.do("init", "--readers", "reader-m1,reader-m2,reader-m3", "--members", "m1:1,m2:1,m3:1")
-	r.do("set", "--read-cards", "on", "--reads", "1")
+	r.do("set", "--reads", "1") // keep read_cards absent: native reads exercise the actual default
 	r.do("reader", "set", "reader-m1", "reader-m2", "reader-m3", "--tiers", "all")
 	r.do("add", "--stream", "s1", "--count", "4")
 	r.beat("m1", "m2") // m3 is down: it never beat

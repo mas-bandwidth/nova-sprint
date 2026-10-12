@@ -70,6 +70,7 @@ func TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore(t *testing.T) {
 	}
 
 	run("init", "--readers", "reader-a,reader-b,reader-c", "--members", "m1:8")
+	run("set", "--read-cards", "off") // this regression returns and reasks legacy Readers records
 	dir := t.TempDir()
 	brief := filepath.Join(dir, "brief.md")
 	require.NoError(t, os.WriteFile(brief, []byte(passingBrief("s1-1: a flash card (s1) tier: flash\nTHE TASK.\nwork\n")), 0o600))

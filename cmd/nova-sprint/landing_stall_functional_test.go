@@ -86,7 +86,8 @@ func TestALandingStallIsJudgedAndClearedByALandingOnTheStore(t *testing.T) {
 		return false
 	}
 
-	for _, l := range []string{"init --readers reader-a,reader-b --members m1", "add --stream s1 --count 2", "fleet beat m1", "start",
+	for _, l := range []string{"init --readers reader-a,reader-b --members m1", "set --read-cards off", // this script consumes standalone legacy readers
+		"add --stream s1 --count 2", "fleet beat m1", "start",
 		"set --landing-stall-bound 1s",
 		"tick", "tick", // the fleet update brings m1 up; the next pump deals
 		"take --as m1 --limit 5 --epoch 0", "finish --as m1 s1-1.w1@1 s1-2.w1@1 --epoch 0",
