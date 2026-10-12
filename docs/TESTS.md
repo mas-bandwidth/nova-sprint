@@ -842,6 +842,17 @@ period passes, and the push says why it is back.
   when an acknowledged broken-reads-outrun judgment's quiet period has passed and its condition
   still holds, the next push says why it is back ("quiet period has passed").
 
+## End classification
+
+Classify every end by cause at the moment it is recorded: work (the child ran to its own end: ok, failed work, no result) vs not-its-fault (coordination, provider, environment, harness, clear). Ok% per machine and per route counts only work ends: ok over (ok + failed work + no result). Every other end is counted in its own named column, never in ok%.
+
+- `TestEndClassify` (`internal/sprint/end_classify_test.go`): a table test covering each end class — the work ends (ok, failed work, no result, nothing to do, no commit) and the not-its-fault ends (provider failure, rate limited, out of credit, staging refused, launch refused, pre-existing, the capped re-tier, needs not landed, a 134/137 environment exit, a harness fault, a clear). An unrecognised end counts as failed work.
+- `TestEndClassColumn` (`internal/sprint/end_classify_test.go`): each not-its-fault class maps to its own named fleet column; the work ends map to none.
+- `TestOkPercentCountsOnlyWorkEnds` (`internal/sprint/end_classify_test.go`): over a set of ends of every class, ok% counts ok over (ok + failed work + no result) alone, the not-its-fault ends outside the denominator.
+- `TestACappedLaneIsReDealtOnceAtTheNextTierUp`, `TestACappedFriendLaneIsReDealtOnceAtTheNextTierUp` (`internal/sprint/lane_cap_test.go`, `lane_cap_friend_test.go`): the coordinator's lane-cap re-tier files the card in the coordination column, never the failed cell.
+- `TestARecomputeCountsTheStoredEndsByCauseAndWritesTheRecord`, `TestARecomputeJSONCarriesTheCounters` (`internal/sprint/store/stats_recompute_test.go`): `stats tidy --recompute` classifies the stored take ends by cause, prints the per-member and per-route counters with the recomputed ok% (ok over ok + failed work + no result), writes nothing on `--dry-run`, and writes the record to `stats:recompute` — read back by `RecomputeStatsRecord`, which the dashboard's stats page reads to show the figures at once.
+- `TestOkPercentCountsOnlyTheWorkAMachineDid` (functional, `cmd/nova-sprint/ok_percent_work_functional_test.go`): on a private redis-server with explicit `--redis` and a scrubbed environment, six cards are dealt to m1; one is dropped mid-run, one the coordinator's staging refused (a coordination end: the `move` verb refuses a RUNNING machine and a working card, so a move mid-run records no end and reaches no column), one the provider refused, one died a 134 environment death, one failed the work for real (a broken read) and one landed ok. The machine's `okpct` field counts the two work ends alone — ok over (ok + failed work + no result) — so it is exactly one failure over the work: the drop, the staging refusal, the refusal and the death file in their own named columns, never the failed cell.
+
 ## Release acceptance
 
 The release-acceptance list (PR #110) takes these tests so this way of failing cannot come back unseen:

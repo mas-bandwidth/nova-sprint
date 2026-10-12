@@ -73,8 +73,10 @@ func TestShadowTickRefusesAStoreMissingTheLockedFleetColumns(t *testing.T) {
 	assert.Contains(t, out.String(), "SHADOW TICK FAILED")
 	assert.Contains(t, out.String(), "wrote=nothing")
 	for _, cmd := range []string{
+		"nova-table col add fleet provider --after okpct",
+		"nova-table col add fleet redealt --after no_result",
 		"nova-table col add fleet finished --after withdrawn",
-		"nova-table col add fleet redealt --after okpct",
+		"nova-table set fleet --hide provider",
 		"nova-table set fleet --hide finished",
 	} {
 		assert.Contains(t, errb.String(), cmd)
@@ -85,8 +87,10 @@ func TestShadowTickRefusesAStoreMissingTheLockedFleetColumns(t *testing.T) {
 	code = runInto(ta.a, []string{"tick", "--shadow", "--json"}, &out, &errb)
 	require.Equal(t, 2, code)
 	for _, cmd := range []string{
+		"nova-table col add fleet provider --after okpct",
+		"nova-table col add fleet redealt --after no_result",
 		"nova-table col add fleet finished --after withdrawn",
-		"nova-table col add fleet redealt --after okpct",
+		"nova-table set fleet --hide provider",
 		"nova-table set fleet --hide finished",
 	} {
 		assert.Contains(t, out.String(), cmd)

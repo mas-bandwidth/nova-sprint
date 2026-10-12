@@ -122,7 +122,7 @@ func TestSchemaCoverDefinitions(t *testing.T) {
 		{"pre-work", "pre-sprint:w:", nil},
 		{"pre-readers", "pre-sprint:r:", nil},
 		{"pre-merge", "pre-sprint:m:", []string{Since, Returned, Ctl}},
-		{"pre-fleet", "pre-sprint:f:", []string{Withdrawn, Finished, DoneOK, DoneFailed, DoneDefect, Ctl}},
+		{"pre-fleet", "pre-sprint:f:", []string{Withdrawn, Finished, DoneOK, DoneFailed, DoneDefect, ProviderFailures, Coordination, Environment, Harness, NoResult, Ctl}},
 	}
 	for i, w := range want {
 		t.Run(w.name, func(t *testing.T) {

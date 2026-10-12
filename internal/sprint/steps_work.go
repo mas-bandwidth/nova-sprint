@@ -1135,7 +1135,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			}
 			return rr.nextFree(ms, q, lanes, widths, ""), roomWhy
 		}
-		if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil && wc.Col == Withdrawn {
+		if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil && Redealable(wc) {
 			if AtEnvExitBound(s, c) != nil {
 				// its children died on the environment EnvExitCardCap times at this attempt: not
 				// dealt again until the seat reworks or drops it (docs/SPEC-SPRINT.md, "An
@@ -2301,10 +2301,18 @@ func takeEnded(s *Snapshot, c, pr *Card, r FinishReq, kind string, decided bool)
 	prSet := envSet
 	addConsumer(pr, prSet, workConsumer(s, c, take, end, rec))
 	decidedSets(r, decided, pr, set, prSet)
+	// the end files in its own named column: a provider failure in provider, a take with no
+	// result in no_result (the work end, counted in the ok% denominator, never as ok). The
+	// card is still dealt again (the deal redeals a card in one of these as it redeals a
+	// withdrawn card), so the take is counted beside ok%, never in the failed cell.
+	col := NoResult
+	if kind == cardhdr.EndProvider {
+		col = ProviderFailures
+	}
 	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
-		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, append([]string{"taken", "dealt"}, envUnset...)...)),
+		change(Fleet, moveEntry(c, c.Row, col, set, append([]string{"taken", "dealt"}, envUnset...)...)),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
-	}, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s; %s working -> ready", c.ID, c.Int("gen")+1, why, pr.ID)}
+	}, Moved: fmt.Sprintf("%s working -> %s gen=%d, %s; %s working -> ready", c.ID, col, c.Int("gen")+1, why, pr.ID)}
 }
 
 // IsStagingRefusal says a failed finish's report names its member's staging as the cause:
@@ -2341,9 +2349,9 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 		addConsumer(pr, prSet, workConsumer(s, c, 0, "staging refused", costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)))
 	}
 	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
-		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
+		change(Fleet, moveEntry(c, c.Row, Coordination, set, "taken", "dealt")),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
-	}, Notes: notes, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s refused it at staging; %s working -> ready", c.ID, c.Int("gen")+1, c.Row, pr.ID)}
+	}, Notes: notes, Moved: fmt.Sprintf("%s working -> coordination gen=%d, %s refused it at staging; %s working -> ready", c.ID, c.Int("gen")+1, c.Row, pr.ID)}
 }
 
 // rateLimitedReturned is the no-spend path of a take the provider rate limited
@@ -2400,7 +2408,7 @@ func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved str
 		addConsumer(pr, prSet, workConsumer(s, c, 0, label, rec))
 	}
 	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
-		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
+		change(Fleet, moveEntry(c, c.Row, ProviderFailures, set, "taken", "dealt")),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
 	}, Moved: moved}
 }
@@ -2612,9 +2620,9 @@ func envExited(s *Snapshot, c, pr *Card, r FinishReq, ended, who string) Unit {
 	n := happened(NMemberEnvExit, pr.Row, s.Now, pr.ID)
 	n.Who, n.What = who, what
 	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
-		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, append([]string{"taken", "dealt"}, unset...)...)),
+		change(Fleet, moveEntry(c, c.Row, Environment, set, append([]string{"taken", "dealt"}, unset...)...)),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
-	}, Notes: []Note{n}, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s ended on %s's environment (no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, ended, c.Row, pr.ID)}
+	}, Notes: []Note{n}, Moved: fmt.Sprintf("%s working -> environment gen=%d, %s ended on %s's environment (no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, ended, c.Row, pr.ID)}
 }
 
 // envFaultNote is the judgment an environment fault raises for the member: its first cause
@@ -3913,7 +3921,7 @@ func AtEnvExitBound(s *Snapshot, c *Card) *Card {
 		return nil
 	}
 	wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt")))
-	if wc == nil || wc.Col != Withdrawn || len(envExitHistory(wc)) < EnvExitCardCap {
+	if wc == nil || !Redealable(wc) || len(envExitHistory(wc)) < EnvExitCardCap {
 		return nil
 	}
 	return wc

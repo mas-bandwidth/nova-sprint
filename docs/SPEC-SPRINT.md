@@ -179,7 +179,7 @@ Start at 8 for each?"), which friend sync writes to her row each pass (a row
 whose width is below 1 is refused, exit 1, nothing written), summed in the
 footer; `ok` and `failed` count her work cards the readers' verdicts moved
 there; `done` is every card she completed, of every kind (done and ok%, below),
-and `ok%` is `pct(ok/ok+failed)`, pooled over the friends in the footer, the
+and `ok%` is `pct(ok/ok+failed+no_result)`, pooled over the friends in the footer, the
 fleet table's own formula: her work's measure, which her reads never move.
 
 Done and ok% (the owner, 2026-10-11: "Done is every card completed."; "The
@@ -1316,9 +1316,16 @@ column where a work card withdrawn because no member was up is kept (the table
 layer never places a removed member again), and hidden `ok` and `failed`
 columns that hold a member's finished work cards, finished ok and finished
 failed, and a hidden `defect` column that holds those that ended on a brief
-defect (section 1, a brief defect), counted in neither. `ok%` is the table's
-own formula over the `ok` and `failed` cells, computed at render and never
-written: `okpct:pct(ok/ok+failed):pooled:ok%` (the column `okpct`, labelled
+defect (section 1, a brief defect), counted in neither. Every take's end is
+classed at the moment it is recorded, by its cause, and filed in its own column:
+the work ends count toward ok% — `ok`, `failed` (failed work) and the hidden
+`no_result` cell (a child that ran to its own end and wrote no result) — and the
+not-its-fault ends never do: the hidden `provider` cell (a provider refusal or a
+missing key), `coordination` (a move, drop, re-brief, re-tier or clear),
+`environment` (a 134/137 environment death) and `harness` (a harness fault)
+cells, each counted beside ok%, never in it. `ok%` is the table's
+own formula over the work-end cells, computed at render and never
+written: `okpct:pct(ok/ok+failed+no_result):pooled:ok%` (the column `okpct`, labelled
 `ok%`). `done` is every card the member completed, of every kind (section 1,
 done and ok%): the stored table's formula `done:sum(ok+failed)` is the shape's,
 and `where` draws the column from the done record in its place. A member with

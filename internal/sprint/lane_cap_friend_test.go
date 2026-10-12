@@ -33,7 +33,7 @@ func TestACappedFriendLaneIsReDealtOnceAtTheNextTierUp(t *testing.T) {
 	require.Len(t, p.Units, 1)
 	wc, pr := capEntryOf(p.Units[0], "c1"), capEntryOf(p.Units[0], "p1")
 	require.NotNil(t, wc.Move)
-	assert.Equal(t, sprint.DoneFailed, wc.Move.Col)
+	assert.Equal(t, sprint.Coordination, wc.Move.Col)
 	assert.Equal(t, "2m0s", wc.Set[sprint.FieldLaneCap])
 	require.NotNil(t, pr.Move)
 	assert.Equal(t, sprint.Ready, pr.Move.Col, "re-dealt: the primary goes back to ready for the next deal")

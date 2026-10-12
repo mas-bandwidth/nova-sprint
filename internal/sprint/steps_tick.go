@@ -1309,7 +1309,7 @@ func AtRedealBound(s *Snapshot, pr *Card) *Card {
 		return nil
 	}
 	wc := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt")))
-	if wc == nil || wc.Col != Withdrawn || !redealBound(wc) {
+	if wc == nil || !Redealable(wc) || !redealBound(wc) {
 		return nil
 	}
 	if _, atCap := AtBriefBound(pr, "", s.AttemptsCap(pr.Row)); s.NextTier(pr) == "" || atCap {
@@ -1351,7 +1351,7 @@ func AtStagingBound(s *Snapshot, pr *Card, up []string) (*Card, []ProviderTake) 
 		return nil, nil
 	}
 	wc := s.Fleet.Placed(WorkCardID(pr.ID, pr.Int("attempt")))
-	if wc == nil || wc.Col != Withdrawn || len(without(up, StagingRefusers(wc))) > 0 {
+	if wc == nil || !Redealable(wc) || len(without(up, StagingRefusers(wc))) > 0 {
 		return nil, nil
 	}
 	takes, _ := StagingTakes(wc)
@@ -1374,7 +1374,7 @@ func providerWhy(wc *Card) string {
 // below its ceiling, on the tier it escalates to (NextTier, escalate); else c.
 func escalating(s *Snapshot, c *Card) *Card {
 	wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt")))
-	if wc == nil || wc.Col != Withdrawn || !redealBound(wc) {
+	if wc == nil || !Redealable(wc) || !redealBound(wc) {
 		return c
 	}
 	if t := s.NextTier(c); t != "" {
