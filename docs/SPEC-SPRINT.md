@@ -5850,16 +5850,15 @@ happen again"). Two rules make it so, the tool and not the seat's discipline:
 - **The fleet's failure is judged at once.** When `RuleSameFailureCards` or more cards have
   recorded the same failure within `RuleFleetWindow` (an hour of running time), in any column
   but landed, each card counted only while its last finish is that failure (`last_finish`,
-  `<attempt>:<failed|ok|capped>`, written by every finish; never its column).
+  `<attempt>:<failed|ok|capped>`, written by every finish; never its column), in one tick or
+  one a tick and with the rules on or off, the deadlines part of every tick raises one
+  sprint-level judgment, `the same failure on many cards: the fleet's, not the card's`, naming
+  the failure and the cards, at their first failure, never per card; it takes no wait, is acked
+  once its cause is mended, and is not raised again for that failure while it is open, nor after
+  its ack until a new failure of it finishes (`TestASharedFailureIsOneFleetJudgmentAtOnce`).
   Rollout: the alarm counts finishes recorded after the upgrade that writes `last_finish`; a card
-  persisted before it is not counted until its next finish writes the field, and every card
-  finishes again within its attempt bound, so the gap closes by itself, in one tick or one a
-  tick and with the rules on or off, the deadlines part of every tick raises one
-  sprint-level judgment, `the same
-  failure on many cards: the fleet's, not the card's`, naming the failure and the cards, at
-  their first failure, never per card; it takes no wait, is acked once its cause is mended, and
-  is not raised again for that failure while it is open, nor after its ack until a new failure
-  of it finishes (`TestASharedFailureIsOneFleetJudgmentAtOnce`).
+  persisted before it is not counted until its next finish, if any, writes the field
+  (`TestAFailureRecordedBeforeTheUpgradeIsNotCountedUntilItsNextFinish`).
   A brief that pins its model or the frontier tier is reworked on its tier the same way
   (`TestAPinnedModelFailureReworksOnItsTier`, `TestAFrontierTierFailureReworksOnItsTier`).
 
