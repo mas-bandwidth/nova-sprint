@@ -2150,9 +2150,10 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 	// verb the tool registers at the head (E6, docs/SPEC-SPRINT.md section 7): a missing
 	// verb refuses the head naming the file, the line and the tool's known verbs. The line
 	// is one that runs the tool — after indentation, a play's dash, a prompt, `run:`, `env`
-	// and `VAR=` — so prose that merely names a tool is not read (calledVerbs, toolCallRE).
-	// registeredVerbs holds nova-sprint to its own table and nova-friend, nova-swarm and
-	// nova-config to the runbook's list; a shell built-in is not checked.
+	// and `VAR=` — and, in a Markdown file, only inside a fenced code block, so prose that
+	// merely names a tool is not read (calledVerbs, toolCallRE, fenceLine). registeredVerbs
+	// holds nova-sprint to its own table and nova-friend, nova-swarm and nova-config to the
+	// runbook's list; a shell built-in is not checked.
 	for _, f := range calledVerbs(diff, registeredVerbs) {
 		why = append(why, f.String()+" (E6)")
 	}

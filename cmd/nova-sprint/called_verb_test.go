@@ -85,6 +85,43 @@ func TestCalledVerbsIgnoresAProseLineThatNamesATool(t *testing.T) {
 	}
 }
 
+// TestCalledVerbsIgnoresAProseLineThatBeginsWithATool pins the gate's context: a
+// Markdown prose line whose first token is a tool name (nova-sprint is free and open
+// source) does not run the tool, so the word after the name is not read as a verb. The
+// table here refuses anything but "where", so the test fails if the prose line is read.
+func TestCalledVerbsIgnoresAProseLineThatBeginsWithATool(t *testing.T) {
+	diff := "diff --git a/docs/GETTING-STARTED.md b/docs/GETTING-STARTED.md\n" +
+		"--- a/docs/GETTING-STARTED.md\n" +
+		"+++ b/docs/GETTING-STARTED.md\n" +
+		"@@ -1,2 +1,3 @@\n" +
+		"+nova-sprint is free and open source; it runs a card's checks.\n"
+	only := func(tool string) []string { return []string{"where"} }
+	if got := calledVerbs(diff, only); len(got) != 0 {
+		t.Fatalf("calledVerbs = %+v, want none (the prose line names a tool, it does not run it)", got)
+	}
+}
+
+// TestCalledVerbsReadsADocCommandBlock pins the gate's positive side: a Markdown fenced
+// code block is a doc command block, so a line inside it that runs a tool with a verb is
+// checked against the tool's table.
+func TestCalledVerbsReadsADocCommandBlock(t *testing.T) {
+	diff := "diff --git a/docs/CLI.md b/docs/CLI.md\n" +
+		"--- a/docs/CLI.md\n" +
+		"+++ b/docs/CLI.md\n" +
+		"@@ -1,2 +1,4 @@\n" +
+		"+```sh\n" +
+		"+nova-sprint table\n" +
+		"+```\n"
+	only := func(tool string) []string { return []string{"where"} }
+	got := calledVerbs(diff, only)
+	if len(got) != 1 {
+		t.Fatalf("calledVerbs = %+v, want one finding (the fenced block runs nova-sprint table)", got)
+	}
+	if got[0].File != "docs/CLI.md" || got[0].Line != 2 {
+		t.Fatalf("finding = %s:%d, want docs/CLI.md:2", got[0].File, got[0].Line)
+	}
+}
+
 // TestCalledVerbsRefusesTheMotivatingFriendCall exercises the lander's own table
 // (registeredVerbs, what land.go wires in): nova-friend registers no acceptance at the
 // recorded head, so the motivating line is refused through the real wiring, not a

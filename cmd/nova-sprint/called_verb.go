@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -27,15 +28,28 @@ var toolCallRE = regexp.MustCompile(`^[ \t]*(?:-[ \t]+|[$>][ \t]+|run:[ \t]+)?(?
 // tool and its known verbs. A tool with no table (a shell built-in, a tool the repository
 // does not hold) is not checked. verbs names the registered verbs of the tool; nil or
 // empty means the tool is not one the repository checks.
+//
+// The line is read only where it runs the tool: a play, a workflow, a script or a doc
+// command block (docs/SPEC-SPRINT.md section 7, the lander's checks). A Markdown file's
+// prose is not a command block, so a line of it is read only inside a fenced code block
+// (fenceLine); a prose paragraph whose first token is a tool name is not a call. A
+// non-Markdown file (a play, a workflow, a script) is read by toolCallRE's command shapes
+// alone.
 func calledVerbs(diff string, verbs func(tool string) []string) []diffcheck.Finding {
 	var out []diffcheck.Finding
 	known := map[string][]string{}
 	for _, f := range diffcheck.Parse(diff) {
+		md := path.Ext(f.New) == ".md"
+		inFence := false
 		for _, h := range f.Hunks {
 			line := h.NewStart
 			for _, l := range h.Lines {
-				if l[0] == '+' {
-					if m := toolCallRE.FindStringSubmatch(l[1:]); m != nil {
+				body := l[1:]
+				if md && fenceLine(body) {
+					inFence = !inFence
+				}
+				if l[0] == '+' && (!md || inFence) {
+					if m := toolCallRE.FindStringSubmatch(body); m != nil {
 						tool, verb := m[1], m[2]
 						table, ok := known[tool]
 						if !ok {
@@ -58,6 +72,13 @@ func calledVerbs(diff string, verbs func(tool string) []string) []diffcheck.Find
 		}
 	}
 	return out
+}
+
+// fenceLine says a Markdown line opens or closes a fenced code block: it begins with
+// three or more backticks (a tilde fence is not read, matching prose's fence in
+// pkg/diffcheck).
+func fenceLine(l string) bool {
+	return strings.HasPrefix(strings.TrimSpace(l), "```")
 }
 
 // registeredVerbs is the verb table a repository tool carries at the head, what the
