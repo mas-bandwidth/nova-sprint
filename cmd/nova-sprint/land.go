@@ -483,10 +483,11 @@ func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError
 		// The server's own land loop lands accepted cards as machine work, not a
 		// coordinator command: the hook gate does not apply to it, so a server
 		// restart, a dropped stream or a seat away never stalls the fleet's landings
-		// (docs/SPEC-SPRINT.md section 14). The coordinator gate above already ran and
-		// passed; only the hook gate's refusal is exempt, by the loop's own identity
-		// (landLazy, which only the loop sets), never an --as or a flag a caller can
-		// pass. Reopen as the machine: the hook gate is not asked of machine work.
+		// (docs/SPEC-SPRINT.md section 14; tla/ServerSwitch.tla AutoLand). The
+		// coordinator gate above already ran and passed; only the hook gate's refusal
+		// is exempt, by the loop's own identity (landLazy, which only the loop sets),
+		// never an --as or a flag a caller can pass. Reopen as the machine: the hook
+		// gate is not asked of machine work.
 		var hook *hookGateError
 		if errors.As(err, &hook) {
 			oc := *c

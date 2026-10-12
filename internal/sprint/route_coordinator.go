@@ -64,6 +64,8 @@ func routeTarget(s *Snapshot, target string) (provider string, routes []string, 
 // RestRoutes is routes rest: the provider's routes or the one route rest from s.Now, cause
 // RestCoordinator, until r.Until (zero: until woken), refused with no reason, a target that
 // names no route or provider, or a time not after now.
+//
+// tla/RouteRest.tla RestProvider RestProviderOpen RestRoute RestRouteOpen
 func RestRoutes(s *Snapshot, r RouteRestReq) Plan {
 	var p Plan
 	if strings.TrimSpace(r.Reason) == "" {
@@ -121,6 +123,8 @@ func RestRoutes(s *Snapshot, r RouteRestReq) Plan {
 // and its routes' own rests, or the one route's own rest, ends at s.Now with the reason on
 // its words; refused with no reason, a target that names no route or provider, nothing
 // resting, or a route whose provider's rest holds it (wake the provider).
+//
+// tla/RouteRest.tla WakeProvider WakeRoute
 func WakeRoutes(s *Snapshot, r RouteWakeReq) Plan {
 	var p Plan
 	if strings.TrimSpace(r.Reason) == "" {

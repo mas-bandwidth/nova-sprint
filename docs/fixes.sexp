@@ -74,6 +74,70 @@
      :title "Read cards are on by default"
      :origin "The owner, 2026-10-12, surgical sieve item 1: default to the working sprint machine."
      :text "A missing read_cards work-table property kept fresh, existing and cleared sprints on the legacy readers-table producer. Only an explicit off now disables read cards; absent, default and on use the card producer. The CLI help and reset result say the same default. Real command regressions cover fresh and existing propertyless stores, repeated init preserving explicit on and off, set default and clear restoring on, and the explicit-off legacy producer. Generic test harnesses stay propertyless; fixtures and diagnostic walks intentionally using the legacy readers table opt off, and the reference model carries that setting. The exact first-run transcript and real walkthrough exercise native member read cards on the default, and cleared-sprint release acceptance lands through those reads without seat actions. No new property, config field, migration, alarm, warning or model.")
+    (fix "tla-landing-progresses-with-the-seat-unhooked" :release "v1.2.16" :status "planned"
+   :title "ServerSwitch models the automatic land pass running whatever the hook, with the liveness LandingNeverWaitsOnTheHook and the old gate as a reversed witness"
+   :text "Models only, no product change. tla/ServerSwitch.tla splits the machine's landing and the coordinator's by identity, as land.go and landloop.go now do: the server's own automatic pass (the loop's) is machine work and enabled whatever the hook (land.go reopens the store as run when the gate refuses), so an accepted card with the seat unhooked and the server running is landed or refused for a reason other than the hook; only a coordinator's hand land still passes the gate. LandHookRefused is now the hand land's gate alone (a wait, never a fault, so it never rolls the switch back: NoRollbackOnAHookRefusal keeps its meaning), and the ghost landTried records that the automatic pass ran. The liveness LandingNeverWaitsOnTheHook (under weak fairness of the pass, FairSpec) is checked by MCServerSwitchLive, and the reversed witness MCServerSwitchBrokenHookGate (Broken hookgate) restores the old gate and fails it. The citation in cmd/nova-sprint/landloop.go names LandOk as the action that now holds, and land.go's landLazy block cites tla/ServerSwitch.tla AutoLand; no other Go file changes. The serverswitch TLC group is re-run on this bench."
+   :origin "this card, tla-landing-progresses-with-the-seat-unhooked.w2, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: \"Are all the TLA models up to date and checked? If not, we do this pass in v1.2.16\")")
+    (fix "tla-loadcache-trips-and-epoch-keys" :release "v1.2.16" :status "planned"
+    :title "LoadCache splits the not-held take into its trips and keys entries by epoch"
+    :text "Models only, no product change. tla/LoadCache.tla splits the not-held Take into its trips (mark,
+     ids, records, keep), each its own step outside the lock, with the keep's revision guard; the catch-up
+     stays atomic under the lock, and the entries are keyed by <<table, epoch>> with an outside Clear that
+     advances the epoch. LoadIsSnapshot holds with the records read as one trip, and the new
+     LoadIsOfItsEpoch holds that a load takes the records of the epoch it read. The reversed witnesses
+     catchup, ahead and nomark keep their meanings (each fails LoadIsSnapshot), and noepochkey keys entries
+     by table alone so a load of the old epoch is served after a clear (LoadIsOfItsEpoch). The card also
+     names a norevguard witness (the keep's revision guard dropped) as a LoadIsSnapshot failure, but that is
+     unsatisfiable: the guard only keeps the newest read, pruning work (an efficiency), while the serve-time
+     mark check (which nomark drops, loadcache.go:154) is the correctness guard, so a cache that regresses
+     still serves the right records; dropping the guard explores the same 923,562 distinct states and
+     violates nothing, so no such witness is added and the module says so at the Keep action. The records
+     read is one trip, not the code's 1024-record chunks, named as a v1.2.17 candidate."
+    :origin "this card, tla-loadcache-trips-and-epoch-keys.w5, replacing the dropped card
+     tla-loadcache-separate-trips-and-epoch-keys; the v1.2.16 pass (the owner, 2026-10-11 ~23:55Z: are all
+     the TLA models up to date and checked, or this pass runs in v1.2.16)")
+    (fix "tla-no-route-raise-pin-clock-and-owner-alert" :release "v1.2.16" :status "planned"
+   :title "SprintRules models the no-route rule, the pin release on a running clock, and the owner alert's send-once"
+   :text "Models only, no product change. tla/SprintRules.tla gains three parts. Part noroute
+    (internal/sprint seat_answers.go TickRuleNoRoute): a ready card whose tier no route serves, raised
+    past its judgment's deadline to the nearest served tier above and pinned there, never down
+    (NoRouteNeverLowers), only unpinned and ready (NoRouteRaisesOnlyUnpinnedReady) and to the nearest
+    served (NoRouteRaisesToNearestServed), with the reversed witnesses MCSprintRulesNoRouteBrokenLowers
+    and MCSprintRulesNoRouteBrokenPinnedRaise and the control MCSprintRulesNoRoute. Part episodes' pin
+    release now runs on a clock that stops while the machine is STOPPED and reads the NPinReleased record
+    the tick writes (stops.go PinReleased, seat_answers.go releasePins; PinClockSkipsStopped, with the
+    reversed witness MCSprintRulesEpisodesBrokenStoppedCounts). Part alert (cmd/nova-sprint
+    seat_silent.go tellSeatSilent, seatSilentToken): a raise marked told only after its send succeeds
+    (ToldOnlyAfterSend), at most one message a raise across retries and restarts (NoSecondMessage), and
+    every raise told under fairness of the retry (EveryRaiseTold), with the reversed witnesses
+    MCSprintRulesAlertBrokenToldBeforeSend and MCSprintRulesAlertBrokenNewToken and the control
+    MCSprintRulesAlert. The sprintrules TLC group is re-run and its records merged. TickRuleNoRoute,
+    releasePins, PinReleased and tellSeatSilent/seatSilentToken each cite the module; no other Go file
+    changes."
+   :origin "this card, tla-no-route-raise-pin-clock-and-owner-alert, from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: \"Are all the TLA models up to date and checked? If not, we do this pass in v1.2.16\")")
+    (fix "tla-routerest-open-coordinator-rest-ends-only-woken" :release "v1.2.16" :status "planned"
+    :title "RouteRest models the coordinator's open rest, a take in flight, and the window reset on a provider rest"
+    :text "tla/RouteRest.tla now matches internal/sprint/route_rest.go, route_coordinator.go and
+     provider_funds.go: the coordinator's rest is split into a timed rest (coord) and an open one (coordopen,
+     routes rest with no --until) that ends only by wake, the property CoordOpenEndsOnlyWoken with its
+     reversed witness MCRouteRestBrokenCoordClock (ExpireProvider ends an open coordinator rest); a take in
+     flight across a rest ends refused and is ignored when it was launched before the rest's mark (Launch,
+     Refuse, providerRestsDue e.taken.After(last.Mark())); and the window resets on a provider's rest as
+     well as a route's own. The take in flight is the window's flight field, beside its ends, so ProviderFunds
+     (which instantiates RouteRest) needs no change and its cases stay green. The TLC pass is green: the
+     routerest and providerfunds groups run on this bench, every case reaches its declared result, and
+     go run ./tools/tlacheck groups --root . --stale prints []."
+    :origin "this card, tla-routerest-open-coordinator-rest-ends-only-woken.w7, attempt 7, split at admission
+     from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA
+     models up to date and checked, or this pass runs in v1.2.16)")
+    (fix "shared-production-changes-test-dependent-packages" :release "v1.2.16" :status "in-progress"
+ :title "Shared production changes gate dependent unit packages"
+ :text "A buildable change in pkg or internal could break an importing package's tests while the land gate tested only the changed directory. Non-Go shared inputs, including edited or deleted hygiene embed assets, selected no unit run. UnitPackages now selects the whole module for shared production inputs using changed paths alone; test files, testdata and Markdown or docs directories retain their existing scoped behavior, as do other module identifiers. The gate translates the whole-tree selection into one ./... argument and preserves its existing stages, flags, timeout and load-test skip. TestUnitPackages covers shared source, all three deleted hygiene assets, another shared asset, both mixed-change orders, and test-only/documentation/other-module controls. TestChangedPackagesGateWords checks actual selector output through the command builder with class tests both enabled and disabled. The existing two-green-heads/red-merge test keeps its real merge assertions and updates only its selector expectation. Focused regressions fail on unchanged production before the repair and pass after."
+ :origin "https://github.com/mas-bandwidth/nova-sprint/pull/171")
+    (fix "paths-read-markers-are-refused-with-a-start-remedy" :release "v1.2.16" :status "in-progress"
+ :title "Refuse read-only PATHS metadata with a START remedy"
+ :origin "https://github.com/mas-bandwidth/nova-sprint/pull/172"
+ :text "Add and card lint refuse a PATHS entry carrying (read), name the entry, and say to move the read-only file to START with (read). The marker is not removed from write-scope extraction: overlap and TLA records checks still see the filename. Direct lint/admission and a real no-write add regression cover mixed and standalone markers, while START read entries stay valid.")
     (fix "hook-refusal-counts-only-its-own-writes" :release "v1.2.16" :status "planned"
      :title "The hook refusal fixture counts only its own writes"
      :text "Tests only. refusedFirst read Mem.Calls outside the server's control line while hookServerStart's background Coordinator read incremented the same map. It now holds the existing line across both apply-count reads and the refused command, keeping the exit, output, hook breadcrumb and no-write assertions. TestHookRefusalCountsOnlyItsOwnWrites queues the refusal behind the line, commits a real in-memory AddStep, then releases it: the old helper attributes that preceding write to the refused command, while the fixed helper counts only its own turn. No production store API or hook behavior changes."
