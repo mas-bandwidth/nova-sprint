@@ -26,6 +26,9 @@ func TestADroppedCardWithASuccessorIsAnAliasOnTheStore(t *testing.T) {
 	defer c.Close()
 	require.NoError(t, fn.Load(context.Background(), c))
 	ta := newFunctionalTestApp(t, addr)
+	// the merge step the landing records (recordMerge) reaches a.store directly, once
+	// the verb has named the store: name it for the app too, or the step has no store
+	ta.Env["NOVA_SPRINT_REDIS"] = addr
 	run := func(args ...string) string {
 		t.Helper()
 		return ta.runVerb(args...)
