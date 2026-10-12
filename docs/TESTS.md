@@ -735,6 +735,8 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestFriendWithNoFreeLaneIsNotDealt` (`internal/sprint/friend_free_lane_test.go`): a friend with no free lane is not dealt work while a machine that serves the card's tier has one, so the card is started at once instead of queueing behind her lanes.
 - `TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs` (functional, `cmd/nova-sprint/hook_live_functional_test.go`): a real server and store, the hook held by `nova-sprint hook` over the server's listener, the server's clock stepped past three 15-minute bounds while the seat acknowledges its pushes: no lapse, one challenge, and an unhook and hook again replays only the push not acknowledged.
 - `TestAConnectedSeatThatActsNeverLapses`, `TestASilentSeatLapsesOnceAndSaysSo`, `TestAnotherSeatsProofLeavesALapseOpen` (`cmd/nova-sprint/hook_test.go`): a seat acting once a minute for 40 minutes never lapses; one with no act lapses once, with one judgment naming the seat, the owner told once; another seat's proof leaves that lapse open.
+- `TestAskAndAskAnotherAgreeOnAsked` (`internal/sprint/ghost_read_test.go`): over one table of a primary's reads (none, readers-table read, fleet read ready, fleet read working, ghost, friend read, closed ok), exactly one of `ask` and `ask --another` is refused, never both, so a fleet read card is reached by the one predicate (ReadsOut).
+- `TestDoctorCountsFleetReadCards` (`internal/sprint/ghost_read_test.go`): a read card working on a row whose fresh beat has not named it for LiveGrace is a ghost, and the doctor's readers check FAILs naming the card.
 
 ## A finish-PR card starts from the PR's own head
 

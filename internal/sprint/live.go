@@ -26,6 +26,11 @@ const (
 	// machine returns it: four beat windows of a member's beat (BeatDeadline), sixty of a
 	// friend's, and longer than a take's first beat takes to name it.
 	LiveGrace = 60 * time.Second
+	// HeldGrace is how long a working read card may be named held by its row's fresh beat
+	// before the machine returns it to the read deal: the member's child ended and its
+	// report was not taken, so no one reads it. At most twice LiveGrace (docs/SPEC-SPRINT.md
+	// section 6, the reads).
+	HeldGrace = 2 * LiveGrace
 	// LiveHeld marks a live-set entry whose child finished and whose report is held.
 	LiveHeld = "held"
 	// LiveNone is the live set with nothing in it, as a beat's --live says it.
@@ -364,4 +369,63 @@ func readLostUnit(s *Snapshot, c *Card, gen int, why string, stopped bool) Unit 
 	return Unit{Key: c.ID, Stream: c.F("stream"),
 		Changes: []Change{change(Fleet, removeEntry(c, set))},
 		Moved:   fmt.Sprintf("%s working -> the read deal off %s (%s)", c.ID, c.Row, why)}
+}
+
+// readCardGhost says a read card working on a fleet row is a ghost (no child of its row runs
+// it) and why, reading the row's own beat (s.Beats, the tick's; docs/SPEC-SPRINT.md section 6,
+// the reads; tla-readcards-review-has-a-live-read-or-a-judgment models the bound). A ghost is:
+// the row's fresh beat names it held for more than HeldGrace (its child ended and its report
+// was not taken), or has not named it for LiveGrace (as LiveReturns returns it), or the row is
+// down, stale or held (its beat carries no fresh live set). A row whose beat is unknown names
+// nothing: the read is not a ghost on that evidence alone.
+func readCardGhost(s *Snapshot, c *Card) (bool, string) {
+	if s == nil || c == nil || c.Row == "" {
+		return false, ""
+	}
+	b, ok := s.Beats[c.Row]
+	if !ok {
+		return false, ""
+	}
+	live := liveOf(b, s.Now)
+	gen := max(c.Int("gen"), 1)
+	if !live.known || !b.Fresh(s.Now) {
+		// a stale beat, or one that carries no live set, names nothing live: the row is
+		// down, stale or held (docs/SPEC-SPRINT.md section 6, the reads)
+		return true, fmt.Sprintf("%s's beat names nothing live (stale, down or held)", c.Row)
+	}
+	if e, named := live.names(c); named {
+		_ = e
+		return false, "" // named running or held: the read is alive (its report waits)
+	}
+	// not named at all: within LiveGrace the read may still be running; past it, a ghost
+	since := b.LiveSince
+	for _, t := range []time.Time{stampAt(c, "taken"), stampAt(c, "dealt"), b.LiveSeen[LiveKey(c.ID, gen)]} {
+		if t.After(since) {
+			since = t
+		}
+	}
+	if since.IsZero() || s.Now.Sub(since) <= LiveGrace {
+		return false, ""
+	}
+	return true, fmt.Sprintf("%s's beats have not named %s for %s", c.Row, LiveKey(c.ID, gen), s.Now.Sub(since).Truncate(time.Second))
+}
+
+// hasOpenJudgmentOn says a primary has an open judgment or an acknowledged
+// condition on it: the doctor's readers check holds a primary open on
+// something rather than silent (docs/SPEC-SPRINT.md section 6, the reads).
+func hasOpenJudgmentOn(s *Snapshot, id string) bool {
+	if s == nil {
+		return false
+	}
+	for _, o := range s.Open {
+		if o.Subject() == id {
+			return true
+		}
+	}
+	for _, o := range s.Acked {
+		if o.Subject() == id {
+			return true
+		}
+	}
+	return false
 }

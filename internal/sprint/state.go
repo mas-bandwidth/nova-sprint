@@ -557,6 +557,11 @@ type Snapshot struct {
 	// pump accepts a primary with the ok reads it needs, so no step opens a "ready to
 	// accept" judgment for it ("accept is mechanical").
 	Running bool
+	// Beats is each row's beat as the tick read them (TickReq.Beats), kept on
+	// the snapshot so the one read predicate (ReadsOut) and the read-card deal
+	// can mark a read card working on a row a ghost from the row's own beat
+	// (docs/SPEC-SPRINT.md section 6, the reads). nil when a step read none.
+	Beats map[string]Beat
 	// rests is the routes resting at Now, settled once by a step that deals
 	// (withRests, route_rest.go); nil is not yet settled.
 	rests map[string]RouteRest
