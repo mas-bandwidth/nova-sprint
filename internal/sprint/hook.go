@@ -15,8 +15,9 @@ import (
 // The sprint's server owns the hook: the seat's session runs `nova-sprint hook` under
 // a Monitor, one connection to the server, which streams every judgment and push over
 // it, each with an id, and a challenge. The hook counts once the session answers the
-// challenge it read off that stream, over the same connection; the server challenges
-// again every HookEvery, and a challenge unanswered for HookAnswerBound unhooks. The
+// challenge it read off that stream, over the same connection, once a connection; it
+// stays live while the seat acts over it (HookActed), and a challenge unanswered for
+// HookAnswerBound, or a seat silent past HookSilentBound, unhooks. The
 // server keeps its word in the store (HookRecord, the key seat-hook) and every
 // coordinator command reads it (HookGate).
 
@@ -27,15 +28,33 @@ const (
 	HookGone   = "gone"   // the subscription ended without unhook: a drop, a missed challenge, a server restart
 )
 
-// HookEvery is how often the server challenges a proven hook again; HookAnswerBound is
-// how long a challenge waits for its answer before the server unhooks; HookAckBound is
-// how long a delivered push may go unacknowledged before every coordinator command is
-// refused naming it.
+// The hook stays live while its seat acts (the seat, 2026-10-11/12: the hook dropped about 15
+// minutes after each proof though the seat's stream stayed connected and the seat kept acting,
+// every lapse refused every coordinator verb, ended the stream and replayed ~100 pushes; the
+// owner: "This must never happen again"). A challenge is asked only on a new connection, and
+// answered within HookAnswerBound or the hook is gone. Once proven, every act of the seat over
+// a connected stream (any coordinator verb it runs, any acknowledgement or answer, and the
+// keepalive the hook client sends on its own every HookKeepalive) renews the record's Live to
+// HookSilentBound after it. The keepalive proves only that the transport is alive (the hook
+// client's process holds the stream), never that the seat or a person attends: an
+// inattentive seat is found by its unacknowledged pushes (HookAckBound) and the judgments'
+// deadlines. The hook lapses only when the stream ends, or when no act at all, keepalive
+// included, reaches the server past HookSilentBound (once, with one judgment, NHookLapsed,
+// naming the seat in its Who). HookAckBound is how
+// long a delivered push may go unacknowledged before every coordinator command is refused
+// naming it.
 const (
-	HookEvery       = 10 * time.Minute
+	HookSilentBound = 15 * time.Minute
+	HookKeepalive   = time.Minute
 	HookAnswerBound = 5 * time.Minute
 	HookAckBound    = 10 * time.Minute
 )
+
+// NHookLapsed is the one judgment of a hook that lapsed while its stream was connected: no
+// act (no verb, no answer, and no keepalive, so the transport went quiet too) reached the
+// server past HookSilentBound. Its Who is the seat; it is closed when that seat proves a new
+// hook, never by another seat's proof.
+const NHookLapsed = "the seat's hook lapsed: no act reached the server past its bound"
 
 // HookFirst is the one line every coordinator command fails with while the seat has no
 // live, proven hook (the owner's words, exactly).
@@ -72,9 +91,9 @@ type HookRecord struct {
 
 // HookLive says the record holds a live, proven hook for name at now: hooked, proven
 // over its subscription, and within the outstanding challenge's bound (SeatHook.tla,
-// Gate: rec.state = "hooked", rec.proven, ~lateC). Live is that bound: the proof's plus
-// HookEvery + HookAnswerBound, moved to a re-challenge's own bound when one is sent. A
-// server that died leaves its record hooked, and the bound lapses it.
+// Gate: rec.state = "hooked", rec.proven, ~lateC). Live is the seat's last act plus
+// HookSilentBound (HookProven, HookActed). A server that died leaves its record hooked, and
+// the bound lapses it.
 func HookLive(rec HookRecord, ok bool, name string, now time.Time) bool {
 	return ok && name != "" && rec.Name == name && rec.State == HookHooked && rec.Session != "" &&
 		!rec.Proven.IsZero() && !rec.Live.IsZero() && !now.After(rec.Live)
@@ -102,12 +121,23 @@ func HookUnacked(o HookItem, unacked int) string {
 }
 
 // HookProven is the record after the session answered the outstanding challenge at
-// now: proven, and live until the outstanding challenge's bound (SeatHook.tla, Prove):
-// the proof's plus HookEvery + HookAnswerBound, moved to a re-challenge's own bound
-// when one is sent.
+// now: proven, and live until HookSilentBound after it (SeatHook.tla, Prove).
 func HookProven(rec HookRecord, now time.Time) HookRecord {
 	rec.Proven = now
-	rec.Live = now.Add(HookEvery + HookAnswerBound)
+	rec.Live = now.Add(HookSilentBound)
+	return rec
+}
+
+// HookActed is the record after its seat acted at now over its connected, proven hook: live
+// until HookSilentBound after the act, never earlier than it was. A record that is not a
+// proven, hooked one is returned as it is.
+func HookActed(rec HookRecord, now time.Time) HookRecord {
+	if rec.State != HookHooked || rec.Proven.IsZero() {
+		return rec
+	}
+	if live := now.Add(HookSilentBound); live.After(rec.Live) {
+		rec.Live = live
+	}
 	return rec
 }
 
