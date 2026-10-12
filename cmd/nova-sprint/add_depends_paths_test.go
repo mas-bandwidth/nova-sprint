@@ -33,8 +33,8 @@ func TestAddReadsDependsOnFromTheBrief(t *testing.T) {
 	dir := t.TempDir()
 	c0 := writeHeaderBrief(t, dir, "c0", "mas-bandwidth/nova-tools#5096", "internal/c0.go")
 	c1 := writeHeaderBrief(t, dir, "c1", "c0", "internal/c1.go")
-	assert.Contains(t, ta.ok("add --stream s c0 --one --brief-file "+c0), "MOVED c0 -> ready")
-	assert.Contains(t, ta.ok("add --stream s c1 --one --brief-file "+c1), "MOVED c1 -> waiting")
+	assert.Contains(t, ta.ok("add --stream s c0 --one --brief-file "+c0), "MOVED c0 -> plan")
+	assert.Contains(t, ta.ok("add --stream s c1 --one --brief-file "+c1), "MOVED c1 -> plan")
 	assert.Equal(t, "c0", ta.primary("c1").F("needs"), "DEPENDS-ON: c0 is c1's need")
 	ta.ok("add --stream s c2 --one --brief-file " + c1 + " --needs c1")
 	assert.Equal(t, "c1", ta.primary("c2").F("needs"), "--needs given wins over the brief's line")
@@ -43,7 +43,7 @@ func TestAddReadsDependsOnFromTheBrief(t *testing.T) {
 	writeHeaderBrief(t, many, "p2", "p1", "internal/p2.go")
 	ta.ok("add --stream t --brief-dir " + many)
 	assert.Equal(t, "p1", ta.primary("p2").F("needs"), "the many-brief form reads DEPENDS-ON: per card")
-	assert.Equal(t, string(sprint.Ready), ta.primary("p1").Col)
+	assert.Equal(t, string(sprint.Planned), ta.primary("p1").Col)
 }
 
 // Two cards of one add that name the same file in PATHS and neither of which needs the

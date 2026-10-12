@@ -35,7 +35,7 @@ func TestAddAndBriefRefuseADashboardCardWithoutTheOwnersAsk(t *testing.T) {
 	assert.False(t, ta.placed("unasked"), "nothing written")
 
 	out = ta.ok("add --stream s1 --one --actor lead --brief-file " + write("asked", asked))
-	assert.Contains(t, out, "MOVED asked -> ready")
+	assert.Contains(t, out, "MOVED asked -> plan")
 
 	// brief: the admitted card's new brief without the ask is refused, and its brief stands
 	code, out, stderr = ta.do("brief asked --actor lead --brief-file " + write("asked", unasked))

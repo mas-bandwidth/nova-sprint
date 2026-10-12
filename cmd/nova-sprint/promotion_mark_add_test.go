@@ -22,13 +22,13 @@ func TestAddMarksNewStreamForProtectedBaseWithFirstCard(t *testing.T) {
 	}
 
 	// a card cut on main founds the stream and is admitted by the mark it carries
-	assert.Contains(t, ta.ok("add --stream on-main p1 --one --brief '"+brief("p1", "main", mark)+"' --land-protected "+mark), "MOVED p1 -> ready")
+	assert.Contains(t, ta.ok("add --stream on-main p1 --one --brief '"+brief("p1", "main", mark)+"' --land-protected "+mark), "MOVED p1 -> plan")
 	assert.Contains(t, ta.ok("where --json"), `"Promotion":"`+mark+`"`, "the first card and stream mark are admitted together")
 	assert.Contains(t, ta.ok("where"), "promotion: on-main (owner/repo)", "where shows the marked stream")
 
 	// a card cut on dev founds a second stream the same way: the mark is what admits
 	// it, so no sentinel and no follow-up stream set are needed
-	assert.Contains(t, ta.ok("add --stream on-dev d1 --one --brief '"+brief("d1", "dev", mark)+"' --land-protected "+mark), "MOVED d1 -> ready")
+	assert.Contains(t, ta.ok("add --stream on-dev d1 --one --brief '"+brief("d1", "dev", mark)+"' --land-protected "+mark), "MOVED d1 -> plan")
 	assert.Contains(t, ta.ok("where --json"), `"Promotion":"`+mark+`"`, "the dev stream is marked too")
 
 	// a mark that names another repository does not admit the card: nothing written

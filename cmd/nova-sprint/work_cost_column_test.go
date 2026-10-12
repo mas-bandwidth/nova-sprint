@@ -25,6 +25,7 @@ import (
 // (each with its usage), accepted, merged and drained by the tick.
 func (ta *testApp) landStream(stream string, work []string, readA, readB []string, mergeOp ...string) {
 	ta.t.Helper()
+	ta.preparePlanned(stream)
 	ta.ok("tick")
 	for i := range work {
 		id := stream + "-" + strconv.Itoa(i+1)

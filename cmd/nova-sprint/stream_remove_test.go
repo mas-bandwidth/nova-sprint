@@ -89,7 +89,7 @@ func TestStreamRemoveTakesStreamsOffAStoppedSprint(t *testing.T) {
 
 	ta.ok("clear --confirm sprint")
 	assert.Equal(t, map[string][]string{sprint.Work: {}, sprint.Merge: {}}, ta.streamRows(), "a clear drops every stream")
-	assert.Contains(t, ta.ok("add --stream a --count 1 --one"), "MOVED a-1 -> ready stream=a")
+	assert.Contains(t, ta.ok("add --stream a --count 1 --one"), "MOVED a-1 -> plan stream=a")
 	assert.Equal(t, map[string][]string{sprint.Work: {"a"}, sprint.Merge: {"a"}}, ta.streamRows())
 	ta.clean()
 }
@@ -175,14 +175,14 @@ func TestARemovedStreamComesBackWhenACardIsAddedInItsEpoch(t *testing.T) {
 
 	out := ta.ok("add --stream a --count 1 --one")
 	assert.Contains(t, out, "NOTE stream a was removed in this epoch and comes back: its control card is placed again")
-	assert.Contains(t, out, "MOVED a-2 -> ready stream=a")
+	assert.Contains(t, out, "MOVED a-2 -> plan stream=a")
 	assert.Equal(t, map[string][]string{sprint.Work: {"a", "b"}, sprint.Merge: {"a", "b"}}, ta.streamRows())
 	ta.clean()
 
 	// back, it is a stream as any other: the next add says nothing of it
 	out = ta.ok("add --stream a --count 1 --one")
 	assert.NotContains(t, out, "comes back")
-	assert.Contains(t, out, "MOVED a-3 -> ready stream=a")
+	assert.Contains(t, out, "MOVED a-3 -> plan stream=a")
 	ta.clean()
 }
 

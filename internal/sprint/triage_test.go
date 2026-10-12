@@ -159,3 +159,22 @@ func TestSetTriagePrecedentIncludesFinishedFailureAndKeptFindings(t *testing.T) 
 	require.Contains(t, got, "current parser failure")
 	require.NotContains(t, got, "not the first line")
 }
+
+
+func TestSetTriageUsesHistoricalCatalogAndTaskClass(t *testing.T) {
+ w:=newWorld(t)
+ triageCard(w,"next",Planned,"RESULT: next tier: heavy\nREPO: r\n\nTHE TASK. CLASS: parser repair\n\nDone is: the parser handles escapes\n")
+ w.s.PlanHistory=[]PlanningRecord{{Epoch:2,ID:"old",Repo:"r",Brief:"RESULT: old tier: heavy\nREPO: r\n\nTHE TASK. CLASS: parser repair\n\nDone is: the parser handles escapes\n",Landed:true,Failures:[]string{"first attempt failed"}}}
+ row:=TriageSet(w.s,[]string{"next"})[0]
+ require.Contains(t,triageReasons(row),"landed")
+ require.Contains(t,strings.Join(row.Precedents,"\n"),"first attempt failed")
+}
+
+func TestSetTriageModelClassNeedsCapableTierAndOrderedPathsPass(t *testing.T) {
+ w:=newWorld(t)
+ triageCard(w,"a",Planned,"RESULT: a tier: flash\nCLASS: model\n")
+ require.Contains(t,triageReasons(TriageSet(w.s,[]string{"a"})[0]),"tier")
+ triageCard(w,"a",Planned,"RESULT: a tier: heavy\nCLASS: model\nREPO: r\nPATHS: a.txt\n")
+ triageCard(w,"b",Planned,"RESULT: b tier: heavy\nREPO: r\nPATHS: a.txt\nDEPENDS-ON: a\n")
+ for _,row:=range TriageSet(w.s,[]string{"a","b"}) { require.True(t,row.Passed,"%+v",row) }
+}

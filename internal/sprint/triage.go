@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // TriageCheck is one named row of the plan review (docs/SPEC-SPRINT.md,
@@ -61,7 +62,7 @@ func TriageSet(s *Snapshot, ids []string) []TriageRow {
 		add("shared-paths", triageShared(s, c))
 		add("dependencies", triageDependencies(s, c))
 		add("bench", triageBench(brief))
-		_, _, tierWhy := ModelTier(brief)
+		tierWhy := triageTier(brief)
 		add("tier", tierWhy)
 		sizeWhy := ""
 		if row.Bytes > 16*1024 {
@@ -77,11 +78,17 @@ func TriageSet(s *Snapshot, ids []string) []TriageRow {
 				}
 			}
 		}
-		add("landed", duplicate)
-		class := triageHeader(brief, "CLASS")
+		for _,old:=range s.PlanHistory {
+            if old.Epoch==s.Epoch && s.Work.Card(old.ID)!=nil { continue }
+            if old.Landed && old.Repo==triageRepo(c) && triageDone(brief)!="" && triageDone(old.Brief)==triageDone(brief) {
+                duplicate=fmt.Sprintf("Done is matches landed card %s at epoch %d",old.ID,old.Epoch); break
+            }
+        }
+        add("landed", duplicate)
+		class := triageClass(brief)
 		if class != "" {
 			for _, prior := range sortedCards(s.Work) {
-				if triageHeader(prior.F("brief"), "CLASS") == class {
+				if triageClass(prior.F("brief")) == class {
 					for _, line := range strings.Split(prior.F(FieldFindings), "\n") {
 						if line = strings.TrimSpace(line); line != "" {
 							row.Precedents = append(row.Precedents, prior.ID+": "+line)
@@ -91,7 +98,7 @@ func TriageSet(s *Snapshot, ids []string) []TriageRow {
 			}
 			for _, old := range sortedCards(s.Fleet) {
 				pr := s.Work.Card(old.F("primary"))
-				if pr == nil || triageHeader(pr.F("brief"), "CLASS") != class || (old.Col != "failed" && old.Col != "fail" && old.F("outcome") != "failed" && old.F("outcome") != "fail" && old.F("ok") != "no") {
+				if pr == nil || triageClass(pr.F("brief")) != class || (old.Col != "failed" && old.Col != "fail" && old.F("outcome") != "failed" && old.F("outcome") != "fail" && old.F("ok") != "no") {
 					continue
 				}
 				report := strings.TrimSpace(old.F("report"))
@@ -104,7 +111,10 @@ func TriageSet(s *Snapshot, ids []string) []TriageRow {
 				}
 			}
 		}
-		add("precedent", "")
+		for _,old:=range s.PlanHistory {
+            if old.Epoch==s.Epoch && s.Work.Card(old.ID)!=nil { continue }; if class!="" && triageClass(old.Brief)==class { for _,line:=range old.Failures { row.Precedents=append(row.Precedents,fmt.Sprintf("%s (epoch %d): %s",old.ID,old.Epoch,line)) } } }
+        row.Precedents=slices.Compact(row.Precedents)
+        add("precedent", "")
 		out = append(out, row)
 	}
 	return out
@@ -135,7 +145,7 @@ func triageShared(s *Snapshot, c *Card) string {
 		return strings.Join(bad, "; ")
 	}
 	for _, other := range sortedCards(s.Work) {
-		if other.ID == c.ID || !other.Placed() || other.Col == Landed || IsSentinel(other) || triageRepo(other) != triageRepo(c) {
+		if other.ID == c.ID || triageReaches(s,c.ID,other.ID,map[string]bool{}) || triageReaches(s,other.ID,c.ID,map[string]bool{}) || !other.Placed() || other.Col == Landed || IsSentinel(other) || triageRepo(other) != triageRepo(c) {
 			continue
 		}
 		theirs := append(headerGlobs(other.F("brief"), "PATHS"), headerGlobs(other.F("brief"), "NEW")...)
@@ -194,7 +204,7 @@ func triageDependencies(s *Snapshot, c *Card) string {
 	if visit(c.ID) {
 		bad = append(bad, "dependency cycle reachable from "+c.ID)
 	}
-	if strings.Contains(strings.ToLower(triageHeader(c.F("brief"), "CLASS")), "conformance") {
+	if strings.Contains(triageClass(c.F("brief")), "conformance") {
 		emitter := triageHeader(c.F("brief"), "EMITTER")
 		if emitter == "" || !slices.Contains(triageNeeds(c), emitter) {
 			bad = append(bad, "conformance names EMITTER and depends on it")
@@ -208,7 +218,7 @@ func triageDependencies(s *Snapshot, c *Card) string {
 func triageBench(brief string) string {
 	var bad []string
 	text := strings.ToLower(brief)
-	paths := headerGlobs(brief, "PATHS")
+	paths := append(headerGlobs(brief, "PATHS"),headerGlobs(brief,"NEW")...)
 	model := len(ModelPaths(paths)) > 0
 	goWork := slices.ContainsFunc(paths, func(p string) bool { return strings.HasSuffix(p, ".go") })
 	if (model || goWork || strings.Contains(text, "go test") || strings.Contains(text, "cargo test") || strings.Contains(text, "cmake")) && triageHeader(brief, "TOOLCHAINS") == "" {
@@ -320,4 +330,43 @@ func PromotePlan(s *Snapshot, r TriageReq) Plan {
 		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, moveEntry(c, c.Row, Waiting, map[string]string{"promoted": stamp(s.Now)}))}, Moved: c.ID + " -> waiting"})
 	}
 	return p
+}
+
+// PlanningRecord is a catalog view of a retained producer in a frozen epoch
+// (docs/SPEC-SPRINT.md, plan and check columns), not a second stored record.
+type PlanningRecord struct {
+ Epoch uint64
+ ID, Brief, Repo string
+ Landed bool
+ Failures []string
+}
+
+// triageClass reads the declared task class, including the established prose
+// heading, or infers model/conformance from task paths (plan and check columns).
+func triageClass(brief string) string {
+ if c:=triageHeader(brief,"CLASS"); c!="" { return strings.ToLower(strings.TrimSpace(c)) }
+ for _,line:=range strings.Split(brief,"\n") { if c,ok:=strings.CutPrefix(strings.TrimSpace(line),"THE TASK. CLASS:"); ok { return strings.ToLower(strings.TrimSpace(c)) } }
+ if len(ModelPaths(append(headerGlobs(brief,"PATHS"),headerGlobs(brief,"NEW")...)))>0 { return "tla-model" }
+ for _,p:=range headerGlobs(brief,"PATHS") { if strings.Contains(strings.ToLower(p),"conformance") { return "conformance" } }
+ return ""
+}
+
+// triageTier composes model-path policy with declared model task classes;
+// default execution-by-model is not itself TLA modelling (plan/check columns).
+func triageTier(brief string) string {
+ _,_,why:=ModelTier(brief); if why!="" { return why }
+ class:=triageClass(brief)
+ if !strings.Contains(class,"model") { return "" }
+ m,bad:=cardhdr.ReadModel(brief); if bad!="" { return bad }
+ if m.Tier!="heavy" && m.Tier!="frontier" { return "model class requires tier heavy or frontier" }
+ return ""
+}
+
+// triageReaches allows sequential ownership of overlapping paths; parallel
+// ownership remains refused (docs/SPEC-SPRINT.md, plan and check columns).
+func triageReaches(s *Snapshot,a,b string,seen map[string]bool) bool {
+ if seen[a] { return false }; seen[a]=true
+ c:=s.Work.Placed(a); if c==nil { return false }
+ for _,n:=range triageNeeds(c) { if n==b || triageReaches(s,n,b,seen) { return true } }
+ return false
 }

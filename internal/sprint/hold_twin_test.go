@@ -60,6 +60,7 @@ func newHoldRig(t *testing.T, s1, f1 int) *holdRig {
 		cards = append(cards, sprint.CardAdd{ID: fmt.Sprintf("f1-%d", i+1), Brief: friendsBrief("friend")})
 	}
 	r.must(store.AddStep(sprint.AddReq{Stream: "f1", Cards: cards}))
+	r.preparePlanned()
 	_, _, _, err = r.st.SetMachine(r.ctx, true)
 	require.NoError(t, err)
 	return r
@@ -100,6 +101,20 @@ func (r *holdRig) must(step store.Step) store.Result {
 	require.NoError(r.t, err, step.Verb)
 	require.Empty(r.t, res.Refused, "%s refused", step.Verb)
 	return res
+}
+
+// preparePlanned applies the coordinator's production check, promote and
+// resolve steps to the twin store (docs/SPEC-SPRINT.md, plan and check columns).
+func (r *holdRig) preparePlanned() {
+	r.t.Helper()
+	r.must(store.Step{Verb: "check", Load: store.All, Actor: "coordinator", Plan: func(s *sprint.Snapshot) sprint.Plan {
+		p, _ := sprint.ReviewPlan(s, sprint.TriageReq{AllPlan: true})
+		return p
+	}})
+	r.must(store.Step{Verb: "promote", Load: store.All, Actor: "coordinator", Plan: func(s *sprint.Snapshot) sprint.Plan {
+		return sprint.PromotePlan(s, sprint.TriageReq{})
+	}})
+	r.must(store.ResolveStep(sprint.ResolveReq{}))
 }
 
 // hold is the coordinator's hold (or unhold) of names; it must apply.

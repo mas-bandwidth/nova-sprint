@@ -26,10 +26,10 @@ func TestWhereRowsCarriesEveryPrimary(t *testing.T) {
 		ids = append(ids, r.ID)
 	}
 	assert.Equal(t, []string{"a-1", "a-2", "a-3", "b-1"}, ids, "work order: stream, then score")
-	assert.Equal(t, "waiting", v.Rows[2].State)
+	assert.Equal(t, "plan", v.Rows[2].State)
 	assert.Equal(t, "a-1", v.Rows[2].Fields["needs"])
 	assert.Equal(t, "a", v.Rows[2].Stream)
-	assert.Equal(t, "ready", v.Rows[3].State)
+	assert.Equal(t, "plan", v.Rows[3].State)
 	assert.NotContains(t, v.Rows[3].Fields, "brief", "the brief is card --brief's")
 	assert.Equal(t, "primary", v.Rows[3].Fields["kind"])
 

@@ -98,6 +98,7 @@ func newDeadlineLoop(t *testing.T) *deadlineLoop {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --stream s1 --count 3")
+	ta.preparePlanned("s1")
 	ta.ok("start")
 	st, _, code := ta.a.machineVerb("run", nil, &bytes.Buffer{})
 	require.NotNil(t, st, "run: %d", code)

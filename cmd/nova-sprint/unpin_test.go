@@ -44,6 +44,7 @@ func TestUnpinKeepsTheInputBriefBytes(t *testing.T) {
 	before := []byte(passingBrief("job: work\nWHO: only friend amy"))
 	require.NoError(t, os.WriteFile(path, before, 0o600))
 	ta.ok("add --stream s1 --brief-dir " + dir)
+	ta.preparePlanned("s1")
 	ta.ok("start")
 	var preview map[string]any
 	ta.json("unpin job --reason shared --dry-run", &preview)

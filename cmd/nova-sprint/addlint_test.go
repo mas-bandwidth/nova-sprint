@@ -100,5 +100,5 @@ func TestAddRunsTheBriefChecksAtTheBase(t *testing.T) {
 
 	// the corrected line applied, the card is admitted
 	write(many, "m2", brief("sprint/s1", "internal/x/*.go,internal/x/testdata/**", "TestNew"))
-	assert.Contains(t, ta.ok("add --stream s2 --allow-shared-paths --brief-dir "+many), "MOVED m2 -> ready")
+	assert.Contains(t, ta.ok("add --stream s2 --allow-shared-paths --brief-dir "+many), "MOVED m2 -> plan")
 }

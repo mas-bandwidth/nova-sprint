@@ -35,6 +35,7 @@ func addBenched(t *testing.T, w *world, stream string, briefs map[string]string)
 		cards = append(cards, c)
 	}
 	w.must(Add(w.s, AddReq{Stream: stream, Cards: cards}))
+	w.preparePlanned()
 }
 
 // benchTick is one tick's deal and its level: the level is the part that would even the

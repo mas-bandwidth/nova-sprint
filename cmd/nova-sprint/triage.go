@@ -34,8 +34,11 @@ func (a *app) cmdPlanReview(verb string, c common, r sprint.TriageReq, stdout, s
 	} else if why != "" {
 		return refuse(stderr, verb, why)
 	}
-	var rows []sprint.TriageRow
+	st,err=st.Pinned(context.Background()); if err!=nil { return a.readFailed(verb,err,stderr) }
+    history,err:=st.PlanningHistory(context.Background()); if err!=nil { return a.readFailed(verb,err,stderr) }
+    var rows []sprint.TriageRow
 	step := store.Step{Verb: verb, Args: store.ArgsOf(r), Load: store.All, Mirrors: true, Plan: func(s *sprint.Snapshot) sprint.Plan {
+		s.PlanHistory=history
 		var p sprint.Plan
 		if verb == "check" {
 			p, rows = sprint.ReviewPlan(s, r)

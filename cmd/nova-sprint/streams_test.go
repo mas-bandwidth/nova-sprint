@@ -41,9 +41,9 @@ func TestStreamsListsEveryStreamByRepoInOneCall(t *testing.T) {
 	// the mixed stream is the finding
 	assert.Contains(t, out, "NOTE stream s3 names more than one repository (acme/gears, acme/widgets)")
 	// every card, with its state, tier, title and needs
-	assert.Contains(t, out, "CARD s1-1 stream=s1 state=ready tier=- title=Fix the widget parser needs=-")
-	assert.Contains(t, out, "CARD s1-2 stream=s1 state=waiting tier=- title=Fix the widget parser needs=s1-1")
-	assert.Contains(t, out, "CARD s3-2 stream=s3 state=ready tier=- title=Fix the gear cutter needs=-")
+	assert.Contains(t, out, "CARD s1-1 stream=s1 state=plan tier=- title=Fix the widget parser needs=-")
+	assert.Contains(t, out, "CARD s1-2 stream=s1 state=plan tier=- title=Fix the widget parser needs=s1-1")
+	assert.Contains(t, out, "CARD s3-2 stream=s3 state=plan tier=- title=Fix the gear cutter needs=-")
 	// one call: the whole listing is this one command's output
 	assert.Equal(t, 3, strings.Count(out, "\nSTREAM "))
 

@@ -83,8 +83,8 @@ func TestEveryStreamLandsOnTheSprintBranchAndOnlyPromotionReachesDev(t *testing.
 	assert.Contains(t, out+errs, "card m2 is cut on dev, and stream s2 is not the promotion stream")
 	assert.False(t, ta.placed("m1") || ta.placed("m2"), "nothing written, all or none")
 
-	assert.Contains(t, ta.ok("add --stream s1 k1 --one --brief-file "+onSprint), "MOVED k1 -> ready", "a card cut on the sprint branch is admitted")
-	assert.Contains(t, ta.ok("add --stream s1 n1 --one --brief-file "+noBase), "MOVED n1 -> ready", "a card naming no BASE lands on the lander's --base")
+	assert.Contains(t, ta.ok("add --stream s1 k1 --one --brief-file "+onSprint), "MOVED k1 -> plan", "a card cut on the sprint branch is admitted")
+	assert.Contains(t, ta.ok("add --stream s1 n1 --one --brief-file "+noBase), "MOVED n1 -> plan", "a card naming no BASE lands on the lander's --base")
 
 	code, out, errs = ta.do("quack --streams q --count 1 --repo https://example.com/quack.git --base dev")
 	assert.NotEqual(t, 0, code, "quack on dev: %s%s", out, errs)
@@ -165,13 +165,13 @@ func TestAddRefusesACardCutOnAnyBranchButTheSprintBase(t *testing.T) {
 	assert.Contains(t, out+errs, "card m2 is cut on sprint/mechanical-2026-10-02, not the sprint's base sprint/one, and stream s2 is not the promotion stream")
 	assert.False(t, ta.placed("m1") || ta.placed("m2"), "nothing written, all or none")
 
-	assert.Contains(t, ta.ok("add --stream s1 k1 --one --brief-file "+onBase), "MOVED k1 -> ready", "a card cut on the sprint's base is admitted")
-	assert.Contains(t, ta.ok("add --stream s1 k2 --one --brief-file "+pinned), "MOVED k2 -> ready", "a pinned sprint base is the sprint's base")
+	assert.Contains(t, ta.ok("add --stream s1 k1 --one --brief-file "+onBase), "MOVED k1 -> plan", "a card cut on the sprint's base is admitted")
+	assert.Contains(t, ta.ok("add --stream s1 k2 --one --brief-file "+pinned), "MOVED k2 -> plan", "a pinned sprint base is the sprint's base")
 
 	// the promotion stream: marked by the coordinator, it admits a card cut on dev
 	ta.ok("add --stream p --count 2")
 	ta.ok("stream set p --land-protected any")
-	assert.Contains(t, ta.ok("add --stream p p1 --one --brief-file "+onDev), "MOVED p1 -> ready", "the promotion stream keeps its mark")
+	assert.Contains(t, ta.ok("add --stream p p1 --one --brief-file "+onDev), "MOVED p1 -> plan", "the promotion stream keeps its mark")
 
 	// brief: a new BASE off the sprint's base is refused, the brief kept; one on it is taken
 	before = ta.applies()

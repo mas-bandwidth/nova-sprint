@@ -41,7 +41,7 @@ func TestAddHoldsABriefToTheCardChecks(t *testing.T) {
 		assert.False(t, ta.placed(tc.name), "%s: nothing written", tc.name)
 	}
 	out := ta.ok("add --stream s1 --one --actor lead --brief-file " + write("clean", header+"\nTHE TASK. The owner said \"ada wants x fixed\"; fix x."))
-	assert.Contains(t, out, "MOVED clean -> ready")
+	assert.Contains(t, out, "MOVED clean -> plan")
 	out = ta.ok("add --stream s1 --one --actor lead --brief-file " + write("path-exempt", header+"\nTHE TASK. See /home/ada/projects/.\n"))
-	assert.Contains(t, out, "MOVED path-exempt -> ready")
+	assert.Contains(t, out, "MOVED path-exempt -> plan")
 }

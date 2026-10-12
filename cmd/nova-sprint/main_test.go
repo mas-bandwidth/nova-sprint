@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -158,6 +159,38 @@ func (ta *testApp) ok(line string) string {
 	return out
 }
 
+// preparePlanned explicitly carries cards in a fixture through the producer's
+// planning columns before tests exercise ready/waiting work. Add remains an
+// admission-only operation in tests that do not call this helper.
+func (ta *testApp) preparePlanned(stream string) {
+	ta.t.Helper()
+	ta.ok("check --stream " + stream)
+	ta.ok("promote --stream " + stream)
+	ta.ok("resolve --stream " + stream)
+}
+
+// preparePlannedForDeal is the ready-work fixture boundary: a test that asks
+// the deal helper to distribute work explicitly uses the producer's CLI
+// transitions first. Tests of add admission do not call this helper.
+func (ta *testApp) preparePlannedForDeal() {
+	ta.t.Helper()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now}
+	s, err := st.Load(context.Background(), []string{sprint.Work}, nil)
+	require.NoError(ta.t, err)
+	streams := map[string]bool{}
+	for _, c := range s.Work.Column(sprint.Planned) {
+		streams[c.Row] = true
+	}
+	ordered := make([]string, 0, len(streams))
+	for stream := range streams {
+		ordered = append(ordered, stream)
+	}
+	sort.Strings(ordered)
+	for _, stream := range ordered {
+		ta.preparePlanned(stream)
+	}
+}
+
 // clearWithReturns exercises Clear's STOP fence before clearing an epoch with
 // active owner work. The fixture observes each child exit before returning it.
 func (ta *testApp) clearWithReturns(epoch uint64, row string, cards ...string) string {
@@ -208,6 +241,7 @@ func (ta *testApp) json(line string, v any) {
 // the rest of the tick: a test that needs exact queues deals by hand.
 func (ta *testApp) deal(n int) {
 	ta.t.Helper()
+	ta.preparePlannedForDeal()
 	st, err := ta.a.store(common{redis: "mem:0", actor: "tester"})
 	require.NoError(ta.t, err)
 	res, err := st.Run(context.Background(), dealStep(sprint.DealReq{Sel: sprint.Sel{Limit: n}}))
@@ -230,6 +264,7 @@ func TestTheCommandDrivesAStreamToLanded(t *testing.T) {
 	require.Contains(t, out, "ADD OK stream=s1 cards=4 before=- moved=4", "add")
 	require.Contains(t, out, "\nSTOPPED  0/4 0.0%", "add")
 	require.NotContains(t, out, "-> ETA", "add")
+	ta.preparePlanned("s1")
 	ta.clean()
 	ta.ok("start")
 	ta.ok("tick")
@@ -285,6 +320,7 @@ func TestJudgmentsReachTheInboxAndTheCoordinatorAnswers(t *testing.T) {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --stream s1 --count 3 --brief-file " + proBriefFile(t))
+	ta.preparePlanned("s1")
 	ta.ok("start")
 	ta.ok("tick")
 	ta.ok("take --as m1 --limit 3")
@@ -320,6 +356,7 @@ func TestAStoppedStreamWaitsForResume(t *testing.T) {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	ta.ok("add --stream s1 --count 2")
+	ta.preparePlanned("s1")
 	ta.ok("start")
 	ta.ok("tick")
 	ta.ok("take --as m1 --limit 2")

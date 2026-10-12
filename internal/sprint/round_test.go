@@ -25,6 +25,7 @@ func fleetWorld(t *testing.T, primaries, width int, members ...string) *world {
 	}
 	if primaries > 0 {
 		w.must(Add(w.s, AddReq{Stream: "s1", Count: primaries}))
+		w.preparePlanned()
 	}
 	return w
 }
@@ -161,6 +162,7 @@ func TestTheTickDealGoesRoundTheFleet(t *testing.T) {
 	dealt := map[string]int{}
 	for i := 1; i <= 24; i++ {
 		w.must(Add(w.s, AddReq{Stream: "s1", Count: 1}))
+		w.preparePlanned()
 		w.part(TickDeal, TickReq{})
 		cs := w.s.Fleet.Column(Ready)
 		require.Len(t, cs, 1, "deal %d: nothing dealt", i)
@@ -185,6 +187,7 @@ func TestTheDealSkipsAFullMemberAndTheQueueDoesNotChoose(t *testing.T) {
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: []int{1, 1, 2}[i]}))
 	}
 	w.must(Add(w.s, AddReq{Stream: "s1", Count: 8}))
+	w.preparePlanned()
 	deal := func(id string) string {
 		t.Helper()
 		w.must(Deal(w.s, DealReq{Sel: Sel{IDs: []string{id}}}))

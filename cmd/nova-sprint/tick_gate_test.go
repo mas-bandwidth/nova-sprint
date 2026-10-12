@@ -60,6 +60,7 @@ func TestTheTickGateHoldsUnderLoad(t *testing.T) {
 	ta.live = members
 	ta.ok("init --readers reader-a,reader-b,reader-c --members " + strings.Join(spec, ","))
 	ta.ok("add --stream a,b,c --count " + strconv.Itoa(gatePerStream))
+	ta.preparePlannedForDeal()
 	ta.ok("start")
 	st, err := ta.a.store(common{redis: "mem:0", actor: "tester"})
 	require.NoError(t, err)

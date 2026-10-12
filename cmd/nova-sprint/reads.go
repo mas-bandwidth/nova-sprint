@@ -2119,6 +2119,7 @@ func (a *app) cmdInbox(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return a.readFailed("inbox", err, stderr)
 		}
+		snap.PlanHistory,err=st.At(snap.Epoch).PlanningHistory(ctx); if err!=nil { return a.readFailed("inbox",err,stderr) }
 		rows := sprint.TriageSet(snap, sprint.TriageIDs(snap, sprint.TriageReq{}))
 		b, _ := json.Marshal(rows)
 		fmt.Fprintln(stdout, string(b))

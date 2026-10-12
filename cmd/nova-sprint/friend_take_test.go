@@ -33,6 +33,7 @@ func takeApp(t *testing.T, n int, pushed map[string]string, friends ...string) (
 		require.NoError(t, os.WriteFile(brief, []byte(passingBrief(id+": a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: friend")), 0o644))
 		ta.ok("add --stream s1 --brief-dir " + filepath.Dir(brief))
 	}
+	ta.preparePlanned("s1")
 	return ta, root
 }
 

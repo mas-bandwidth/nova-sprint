@@ -57,12 +57,12 @@ func TestAddAndLandRefuseDevAndMainOutsideAPromotionStream(t *testing.T) {
 
 	// the promotion stream takes main and dev; the mark is kept on the stream, which is a
 	// stream once it holds a card (stream set refuses a name that is none)
-	assert.Contains(t, ta.ok("add --stream s1 n1 --one --brief-file "+writeBaseBrief(t, dir, repo, "n1", "")), "MOVED n1 -> ready")
+	assert.Contains(t, ta.ok("add --stream s1 n1 --one --brief-file "+writeBaseBrief(t, dir, repo, "n1", "")), "MOVED n1 -> plan")
 	assert.Contains(t, ta.ok("stream set s1 --promotion"), "land-protected any")
 	assert.Contains(t, ta.ok("where"), "\npromotion: s1\n", "where shows the mark, from the stream clocks")
 	assert.Contains(t, ta.ok("where --json"), `"Promotion":"any"`, "and where --json carries it on the stream")
-	assert.Contains(t, ta.ok("add --stream s1 p1 --one --brief-file "+onMain), "MOVED p1 -> ready", "the promotion stream takes a card cut on main")
-	assert.Contains(t, ta.ok("add --stream s1 d1 --one --brief-file "+onDev), "MOVED d1 -> ready", "and one cut on dev")
+	assert.Contains(t, ta.ok("add --stream s1 p1 --one --brief-file "+onMain), "MOVED p1 -> plan", "the promotion stream takes a card cut on main")
+	assert.Contains(t, ta.ok("add --stream s1 d1 --one --brief-file "+onDev), "MOVED d1 -> plan", "and one cut on dev")
 
 	code, out, errs = ta.do("stream set s1 --promotion --land-protected any")
 	assert.NotEqual(t, 0, code, "one mark at a time: %s%s", out, errs)

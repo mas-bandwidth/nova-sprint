@@ -54,6 +54,7 @@ func friendCardApp(t *testing.T, who string, friends ...string) (*testApp, strin
 	brief := filepath.Join(t.TempDir(), "s1-1.md")
 	require.NoError(t, os.WriteFile(brief, []byte(passingBrief("s1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: "+who)), 0o644))
 	ta.ok("add --stream s1 --brief-dir " + filepath.Dir(brief))
+	ta.preparePlanned("s1")
 	ta.ok("start")
 	return ta, root
 }
