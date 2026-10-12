@@ -4,6 +4,7 @@ package atomicfile
 
 import (
 	"io/fs"
+	"os"
 	"syscall"
 )
 
@@ -18,6 +19,14 @@ const (
 func canWrite(dir string) error {
 	if err := syscall.Access(dir, accessW|accessX); err != nil {
 		return &fs.PathError{Op: "access", Path: dir, Err: err}
+	}
+	return nil
+}
+
+// canWriteFile reports whether this process can open path for writing.
+func canWriteFile(path string, _ os.FileInfo) error {
+	if err := syscall.Access(path, accessW); err != nil {
+		return &fs.PathError{Op: "access", Path: path, Err: err}
 	}
 	return nil
 }
