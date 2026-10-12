@@ -181,12 +181,15 @@ card is the admission-time one: three rules keep what a verb set, and a `brief`
 NOTE names every property it kept against the text. **Needs**: the edit's needs
 are the card's, not the text's — it starts from the card's needs, maps a name its
 relink record re-pointed to its twin (`needs kept: <twin> (relinked from <old>
-<time>)`), and adds only names the text holds that the card does not; a need the
-text drops stays, unless `--needs-from-brief` takes the text whole. **The tier**:
+<time>)`), and adds only names the text holds that the card does not, never a
+dropped card the card's needs no longer name (`needs kept: <id> not added`); a
+need the text drops stays (`needs kept: <id> (the text's DEPENDS-ON drops it)`),
+unless `--needs-from-brief` takes the text whole. **The tier**:
 the tier is a card field, so a text whose line 1 names another tier than the
 card's recorded one keeps the recorded one (`tier kept: <recorded> (the brief's
 line 1 says <t>)`), unless `--tier <t>` names one; `tier <card> --set <t>
---reason <why>` sets it without a text edit. **The bound**: the bound hashes the
+--reason <why>` sets it without a text edit. Both refuse a tier below frontier
+for a card whose `PATHS:` covers `tla/` (the lint's tla-is-frontier rule). **The bound**: the bound hashes the
 task (the body and `PATHS:`, `NEW:`, `SHARED:`, `TEST:`, `DONE-WHEN:`), so an
 edit that changes only `DEPENDS-ON:`, `ORDER:`, `TLC-HOSTS:`, `MERGE:`,
 `TOOLCHAIN-HOSTS:` or the tier keeps the count (`bound: same task (<n> attempts

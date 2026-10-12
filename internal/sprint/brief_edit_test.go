@@ -62,8 +62,9 @@ func TestABriefDroppingANeedKeepsItUnlessNeedsFromBrief(t *testing.T) {
 	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "one", Who: "coordinator"}))
 	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-2"}, Brief: "two", Who: "coordinator"}))
 	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"b"}, Needs: []string{"a-1", "a-2"}, Brief: "b needs both", Who: "coordinator"}))
-	w.must(Brief(w.s, briefOf("b", "b reworded\nDEPENDS-ON: a-1", "a-1")))
+	kept := w.must(Brief(w.s, briefOf("b", "b reworded\nDEPENDS-ON: a-1", "a-1")))
 	assert.Equal(t, "a-1,a-2", w.s.Work.Placed("b").F("needs"), "a text that drops a need keeps it")
+	assert.Contains(t, strings.Join(kept.Said, "\n"), "needs kept: a-2 (the text's DEPENDS-ON drops it", "the NOTE names every property kept against the text")
 
 	// --needs-from-brief takes the text whole, the old behaviour
 	w = relinkWorld(t)
@@ -205,4 +206,69 @@ func TestANewTaskBriefResetsTheBoundCount(t *testing.T) {
 	c := w.s.Work.Placed("a-1")
 	assert.Equal(t, "2", c.F(FieldBriefAttempt), "a new task resets the count")
 	assert.Contains(t, strings.Join(p.Said, "\n"), "bound: new task (count reset)")
+}
+
+// The needs a batch of edits writes are the ones held to the cycle check, never
+// the texts' lists: b's text still names a-1 (stale), which the relink record
+// keeps as a-2, and a second edit in the same batch makes a-2 need b. The text's
+// list (b -> a-1) closes no cycle; the needs the edit writes (b -> a-2) do, so
+// the batch is refused (docs/SPEC-SPRINT.md, the needs; needsCycleWith).
+func TestABriefBatchHoldsTheKeptNeedsToTheCycleCheck(t *testing.T) {
+	t.Parallel()
+	w := relinkWorld(t)
+	p := Brief(w.s, BriefReq{Cards: []BriefCard{
+		{ID: "b", Brief: "tier: flash\nDEPENDS-ON: a-1\n\nthe task, reworded", Needs: []string{"a-1"}},
+		{ID: "a-2", Brief: "old two, reworded\nDEPENDS-ON: b", Needs: []string{"b"}},
+	}, Who: "coordinator"})
+	require.NotEmpty(t, p.Refused, "b -> a-2 -> b is a cycle: the kept twin is held to the check")
+	var whys []string
+	for _, r := range p.Refused {
+		whys = append(whys, r.Why)
+	}
+	assert.Contains(t, strings.Join(whys, "\n"), "cycle")
+}
+
+// The relink record keeps only the last relink, so a card relinked twice has
+// lost the record of the first: a text still naming that first old id, a card
+// since dropped, must not add it back (it would block the card on something
+// dropped, the incident of 2026-10-11), and the brief says it left it out.
+func TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a", "reader-b")
+	for _, id := range []string{"a-1", "a-2", "x-1", "x-2"} {
+		w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{id}, Brief: "card " + id, Who: "coordinator"}))
+	}
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"b"}, Needs: []string{"a-1", "x-1"}, Brief: "tier: flash\nDEPENDS-ON: a-1,x-1\n\nthe task", Who: "coordinator"}))
+	w.must(Relink(w.s, RelinkReq{Old: []string{"a-1"}, New: "a-2", Who: "coordinator"}))
+	w.must(Relink(w.s, RelinkReq{Old: []string{"x-1"}, New: "x-2", Who: "coordinator"}))
+	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"a-1", "x-1"}}, Reason: "replaced", Who: "coordinator"}))
+	require.Equal(t, "a-2,x-2", w.s.Work.Placed("b").F("needs"))
+
+	p := Brief(w.s, briefOf("b", "tier: flash\nDEPENDS-ON: a-1,x-1\n\nthe task, reworded", "a-1,x-1"))
+	require.Empty(t, p.Refused)
+	w.must(p)
+	assert.Equal(t, "a-2,x-2", w.s.Work.Placed("b").F("needs"), "the dropped a-1 an earlier relink replaced is not added back")
+	says := strings.Join(p.Said, "\n")
+	assert.Contains(t, says, "needs kept: x-2 (relinked from x-1 ")
+	assert.Contains(t, says, "needs kept: a-1 not added (kept, ")
+}
+
+// --tier with a brief is held to the lint's tla-is-frontier rule as tier --set
+// is: a brief whose PATHS covers tla/ is refused a tier below frontier, on the
+// ordinary path and on the DEPENDS-ON-only path alike.
+func TestABriefTierFlagRefusesATLAPathBelowFrontier(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a", "reader-b")
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"x"}, Brief: "x", Who: "coordinator"}))
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"y"}, Brief: "y", Who: "coordinator"}))
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"m"}, Needs: []string{"x"}, Brief: "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x\n\nthe model", Who: "coordinator"}))
+	for _, c := range []struct{ name, text, needs string }{
+		{"ordinary", "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x\n\nthe model, reworded", "x"},
+		{"depends-only", "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x,y\n\nthe model", "x,y"},
+	} {
+		p := Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "m", Brief: c.text, Needs: Split(c.needs)}}, Tier: "heavy", Who: "coordinator"})
+		require.Len(t, p.Refused, 1, c.name)
+		assert.Contains(t, p.Refused[0].Why, "below frontier", c.name)
+		assert.Empty(t, p.Units, c.name)
+	}
 }

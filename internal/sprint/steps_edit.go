@@ -94,13 +94,28 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		cards = []BriefCard{{ID: r.ID, Brief: r.Brief, Rules: r.Rules, Needs: r.Needs}}
 	}
 	seen, orphans := map[string]bool{}, map[string]bool{}
+	// the needs each edit writes: the card's, not the text's (docs/SPEC-SPRINT.md, the
+	// needs): the text's DEPENDS-ON is the admission-time list, so a need a relink
+	// re-pointed stays its twin and a need the text drops stays, unless
+	// --needs-from-brief takes the text whole (briefNeedsKept)
+	kept, keptSaid := map[string][]string{}, map[string][]string{}
 	// every needs rewrite of the batch, judged together against the state with the
 	// whole batch applied (needsCycleWith): two edits that each pass alone may close
-	// a cycle between them
+	// a cycle between them. It is the needs the edits write, never the text's list,
+	// so a twin the rule keeps is held to the cycle check too.
 	proposed := map[string][]string{}
 	for _, b := range cards {
-		if c := s.Work.Placed(b.ID); c != nil && !IsSentinel(c) && !sameNeeds(Split(c.F("needs")), b.Needs) {
-			proposed[b.ID] = b.Needs
+		c := s.Work.Placed(b.ID)
+		if _, twice := kept[b.ID]; twice || c == nil || IsSentinel(c) {
+			continue // a card named twice is refused below; its first edit is the one judged
+		}
+		want := b.Needs
+		if !r.NeedsFromBrief {
+			want, keptSaid[b.ID] = briefNeedsKept(s, Split(c.F("needs")), b.Needs, c.F(FieldRelinked))
+		}
+		kept[b.ID] = want
+		if !sameNeeds(Split(c.F("needs")), want) {
+			proposed[b.ID] = want
 		}
 	}
 	for _, b := range cards {
@@ -115,12 +130,13 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			// the needs rule holds on this path too (docs/SPEC-SPRINT.md, the needs):
 			// the text's DEPENDS-ON is the admission-time list, so a need the relink
 			// record re-pointed stays its twin and a need the text drops stays, unless
-			// --needs-from-brief takes the text whole.
-			needs, notes := b.Needs, []string(nil)
-			if !r.NeedsFromBrief {
-				needs, notes = briefNeedsKept(Split(c.F("needs")), b.Needs, c.F(FieldRelinked))
-				p.Said = append(p.Said, notes...)
+			// --needs-from-brief takes the text whole (kept, above).
+			if why := tierBelowFrontierForTLA(c.ID, r.Tier, b.Brief); why != "" {
+				p.refuse(c.ID, why)
+				continue
 			}
+			needs := kept[b.ID]
+			p.Said = append(p.Said, keptSaid[b.ID]...)
 			// the bound and the tier behave as on the ordinary path: a DEPENDS-ON-only
 			// edit never changes the task, so the bound count stands, and the tier is a
 			// card field kept against the text's line 1 unless --tier names one, each
@@ -198,6 +214,10 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// than the card's recorded one keeps the recorded one, NOTEd, unless --tier <t>
 		// names one (docs/SPEC-SPRINT.md, the tier).
 		textTier, _ := cardhdr.ReadModel(b.Brief)
+		if why := tierBelowFrontierForTLA(c.ID, r.Tier, b.Brief); why != "" {
+			p.refuse(c.ID, why)
+			continue
+		}
 		if r.Tier != "" {
 			set[FieldTier] = r.Tier
 		} else if recorded := c.F(FieldTier); recorded != "" && textTier.Tier != recorded {
@@ -206,14 +226,11 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// the brief's needs are the card's, not the text's (docs/SPEC-SPRINT.md, the needs):
 		// the text's DEPENDS-ON is the admission-time list, so a need a relink re-pointed
 		// stays its twin and a need the text drops stays, unless --needs-from-brief takes
-		// the text whole. A text that names a need the card does not have adds it.
+		// the text whole. A text that names a need the card does not have adds it (kept,
+		// above, by briefNeedsKept).
 		cur := Split(c.F("needs"))
-		want := b.Needs
-		if !r.NeedsFromBrief {
-			var notes []string
-			want, notes = briefNeedsKept(cur, want, c.F(FieldRelinked))
-			p.Said = append(p.Said, notes...)
-		}
+		want := kept[b.ID]
+		p.Said = append(p.Said, keptSaid[b.ID]...)
 		toWaiting := false
 		if !sameNeeds(cur, want) {
 			if why := needsCycleWith(s, c.ID, proposed); why != "" {
@@ -426,25 +443,57 @@ func relinkMap(relinked string) (olds []string, nw, stamp string) {
 // briefNeedsKept is a brief edit's needs, the card's and not the text's
 // (docs/SPEC-SPRINT.md, the needs): it starts from the card's current needs, maps
 // a name the relink re-pointed to its twin, and adds only names the text holds
-// that the card does not; a need the text drops stays. notes is the NOTE line per
-// kept twin the text still names, the relink record winning over the text.
-func briefNeedsKept(cur, want []string, relinked string) (needs, notes []string) {
+// that the card does not; a need the text drops stays. A name the text holds that
+// the card no longer needs and that is off the table (a card kept, not placed: a
+// dropped one) is not added back: the relink record keeps only the last relink,
+// so an earlier one's old name is told by this, and a dropped need would only
+// block the card. notes is the NOTE line per property kept against the text: a
+// twin the relink record put in place of a name the text still holds, a stale
+// name left out, and a need the text drops.
+func briefNeedsKept(s *Snapshot, cur, want []string, relinked string) (needs, notes []string) {
 	olds, nw, stamp := relinkMap(relinked)
 	needs = append([]string(nil), cur...)
+	named := map[string]bool{} // the card's needs the text accounts for
 	for _, n := range want {
 		switch {
-		case contains(olds, n):
+		case nw != "" && contains(olds, n):
+			named[nw] = true
 			if !contains(needs, nw) {
 				needs = append(needs, nw)
 			}
-			if stamp != "" {
-				notes = append(notes, fmt.Sprintf("needs kept: %s (relinked from %s %s)", nw, n, stamp))
-			}
-		case !contains(needs, n):
+			notes = append(notes, fmt.Sprintf("needs kept: %s (relinked from %s %s)", nw, n, orDash(stamp)))
+		case contains(needs, n):
+			named[n] = true
+		case keptOffTable(s, n):
+			notes = append(notes, fmt.Sprintf("needs kept: %s not added (%s, and the card's needs no longer name it)", n, placeWord(s.Work.Card(n))))
+		default:
+			named[n] = true
 			needs = append(needs, n)
 		}
 	}
+	for _, n := range cur {
+		if !named[n] {
+			notes = append(notes, fmt.Sprintf("needs kept: %s (the text's DEPENDS-ON drops it; --needs-from-brief takes the text whole)", n))
+		}
+	}
 	return needs, notes
+}
+
+// keptOffTable says the id is a card the work table keeps but has not placed (a card
+// dropped, off the table): never a need a brief edit adds back.
+func keptOffTable(s *Snapshot, id string) bool {
+	c := s.Work.Card(id)
+	return c != nil && !c.Placed()
+}
+
+// tierBelowFrontierForTLA is why a brief edit's --tier is refused: a tier below
+// frontier for a brief whose PATHS or NEW covers tla/ (the lint's tla-is-frontier
+// rule, as briefTier refuses it for tier --set); "" when tier is unset or allowed.
+func tierBelowFrontierForTLA(id, tier, brief string) string {
+	if tier == "" || tier == cardhdr.RouteFrontier || !briefCoversTLA(brief) {
+		return ""
+	}
+	return id + "'s PATHS covers tla/, a TLA+ model, and a model is the frontier tier's work: --tier " + tier + " is below frontier and refused (the lint's tla-is-frontier rule); nothing was changed"
 }
 
 // sameNeeds says two need lists are the same, in order: the ordinary brief path
@@ -749,9 +798,10 @@ type NeedsSetReq struct {
 
 // NeedsSet sets a primary's needs directly, in place of dropping the card and
 // adding it again (the owner, 2026-10-11: "I hate twins." / "Fix your tools.").
-// A card's needs are otherwise read once at add, and a brief edit beyond its
-// DEPENDS-ON: line drops them, so a card admitted with the wrong needs could be
-// corrected only by a twin. NeedsSet writes the same fields the brief edit does
+// A card's needs are otherwise read once at add, and a brief edit keeps them
+// (it only adds a name its text holds, briefNeedsKept, unless --needs-from-brief),
+// so a card admitted with the wrong needs could be corrected only by a twin or a
+// whole-text re-derive. NeedsSet writes the same fields the brief edit does
 // (steps_edit.go, Brief and briefDepends): it rewrites the brief's needs line so
 // card <id> shows the truth, and moves the card by the lifecycle: a ready card
 // that gains a need not landed moves ready -> waiting, a waiting card whose new

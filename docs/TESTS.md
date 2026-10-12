@@ -223,6 +223,34 @@ release acceptance (`make release-accept`).
   `pkg/member` members in the test process over the command's verbs, on the
   sprint's clock; neither starts an OS process.
 
+### A brief edit keeps the needs, tier and bound (v1.2.14)
+
+A `brief` edit replaces the card's whole text, but what a verb set stays the
+card's: the needs a relink re-pointed, the tier a re-tier pinned, and the bound
+count a routing-only edit must not reset (docs/SPEC-SPRINT.md, the needs, the
+brief verb and the bound).
+
+- Unit, `internal/sprint/brief_edit_test.go`:
+  `TestBriefKeepsANeedRelinkedToItsTwin`,
+  `TestBriefAddsANewNeedAndKeepsADroppedOne`,
+  `TestABriefDroppingANeedKeepsItUnlessNeedsFromBrief`,
+  `TestABriefChangingOnlyDependsKeepsARelinkedNeed`,
+  `TestADependsOnlyBriefReportsTheBoundAndKeepsTheTier`,
+  `TestADependsOnlyBriefTierFlagOverridesTheText`,
+  `TestBriefKeepsARecordedTierAgainstTheText`,
+  `TestBriefTierFlagOverridesTheText`,
+  `TestAMetadataOnlyBriefKeepsTheBoundCount`,
+  `TestBriefTierRefusesATLAPathBelowFrontier`,
+  `TestANewTaskBriefResetsTheBoundCount`,
+  `TestABriefBatchHoldsTheKeptNeedsToTheCycleCheck`,
+  `TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced`,
+  `TestABriefTierFlagRefusesATLAPathBelowFrontier`.
+- Functional (`-tags functional`), `cmd/nova-sprint/brief_edit_functional_test.go`:
+  `TestABriefEditKeepsARelinkedNeedOnTheStore` (a relink, then `brief
+  --brief-file` with the stale DEPENDS-ON on the test's own redis: the need kept
+  and its NOTE, a new need added beside it, and `bound: same task` on a card
+  dealt).
+
 
 ## nova-card
 
