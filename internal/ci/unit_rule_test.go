@@ -46,8 +46,9 @@ import (
 // httptest server and is not seen; an import name shadowed by a local identifier (a
 // parameter named `time`, a variable named `synctest`) is read as the package, so a
 // fake clock could be refused or a false bubble excused. A dot-import of a forbidden
-// package (`import . "time"`, then a bare Sleep) is seen; a local function of the same
-// bare name in such a file would be refused with it.
+// package (`import . "time"`, then a bare Sleep) is seen; a dot-import of a
+// package-wide ban is refused at its import. A local function of the same bare name
+// in such a file would be refused with it.
 
 // unitRuleAllowedFile names the files still allowed to break the rule, one slash
 // path from the module root a line, '#' lines comments (unit_rule_allowed.txt).
@@ -279,6 +280,12 @@ func scanUnitRulePackage(fset *token.FileSet, files []unitRuleFile) []unitRuleFi
 	for _, uf := range files {
 		imports := map[string]string{}
 		var dotImports []string // packages dot-imported: their names are bare identifiers
+		type forbiddenDotImport struct {
+			spec *ast.ImportSpec
+			path string
+			kind string
+		}
+		var forbiddenDotImports []forbiddenDotImport
 		for _, is := range uf.f.Imports {
 			p, _ := strconv.Unquote(is.Path.Value)
 			name := filepath.Base(p)
@@ -290,12 +297,20 @@ func scanUnitRulePackage(fset *token.FileSet, files []unitRuleFile) []unitRuleFi
 			}
 			if name == "." {
 				dotImports = append(dotImports, p)
+				if kind, forbidden := unitRuleImports[p]; forbidden {
+					forbiddenDotImports = append(forbiddenDotImports, forbiddenDotImport{is, p, kind})
+				}
 				continue
 			}
 			imports[name] = p
 		}
 		find := func(n ast.Node, kind, what string) unitRuleFinding {
 			return unitRuleFinding{File: uf.rel, Line: fset.Position(n.Pos()).Line, Kind: kind, What: what}
+		}
+		// A whole-package ban cannot resolve a dot-import's bare names syntactically;
+		// refuse that import itself rather than miss its exported socket entry points.
+		for _, dot := range forbiddenDotImports {
+			uses = append(uses, unitRuleUse{finding: find(dot.spec, dot.kind, dot.path+" (dot import)")})
 		}
 		var walk func(n ast.Node, bubbled bool, decl string)
 		walk = func(n ast.Node, bubbled bool, decl string) {
@@ -594,6 +609,8 @@ func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
 			[]string{"6 time time.Now"}},
 		"a dot-imported sleep": {"package p\nimport . \"time\"\nfunc TestX() { Sleep(1) }\n",
 			[]string{"3 time time.Sleep"}},
+		"a delayproxy Serve under a dot import": {"package p\nimport . \"github.com/mas-bandwidth/nova-sprint/pkg/delayproxy\"\nfunc TestX() { Serve(nil, \"127.0.0.1:0\", 0, Options{}) }\n",
+			[]string{"2 socket github.com/mas-bandwidth/nova-sprint/pkg/delayproxy (dot import)"}},
 	}
 	for name, c := range yes {
 		t.Run("yes/"+name, func(t *testing.T) {
