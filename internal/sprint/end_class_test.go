@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Every attempt end is classed as the worker's own work (EndWorker) or as coordination
@@ -117,6 +118,25 @@ func TestCoordinationCounterOnlyRecordsCoordination(t *testing.T) {
 	assert.Equal(t, CauseHarnessCrash, cause)
 	assert.Equal(t, 1, c.Total)
 	assert.Equal(t, 1, c.CauseTotal(CauseHarnessCrash))
+}
+
+// CoordinationOf is the whole-epoch counter the where record carries (store/where.go),
+// counted from the producers' cost records: the provider and no-result ends, a staging
+// refusal and a stop on unlanded needs are coordination by construction, each added by cause
+// and by the member or friend who suffered it, never from a plain failed take, which is the
+// worker's (the owner, 2026-10-11: coordination failures accumulate on a counter, never
+// against a worker).
+func TestCoordinationOfCountsTheEpochsCoordinationEnds(t *testing.T) {
+	t.Parallel()
+	coord := CoordinationOf(statsSnapshot())
+	require.NotNil(t, coord, "the counter is never nil")
+	assert.Equal(t, uint64(7), coord.Epoch)
+	assert.Equal(t, 3, coord.Total)
+	assert.Equal(t, 1, coord.CauseTotal(CauseProviderLimit))
+	assert.Equal(t, 1, coord.CauseTotal(CauseHarnessCrash))
+	assert.Equal(t, 1, coord.CauseTotal(CauseStagingRefused))
+	assert.Equal(t, 2, coord.WhoTotal("m1"))
+	assert.Equal(t, 1, coord.WhoTotal("m2"))
 }
 
 // A counter is per epoch: records of another epoch never leak into this one (a fresh

@@ -55,12 +55,6 @@ const (
 	// card is withdrawn untouched and the primary waits for its needs (needsStopReturned,
 	// steps_work.go; docs/SPEC-SPRINT.md, needs and the deal). Nothing to answer.
 	NNeedsUnlanded = "a card returned: dealt before its needs landed"
-	// A failed finish whose report names a coordination cause (ClassEnd, end_class.go): the
-	// machine, bench, harness, provider or seat caused the end, never the worker, so the card
-	// is withdrawn with no fail mark and the cause accumulates on the coordination-failure
-	// counter. Addressed to the coordinator, so the seat sees each one (a coordinator fault is
-	// the seat's to fix). Nothing to answer.
-	NCoordinationFailure = "a coordination failure"
 	// The landing refused a card's head (it does not merge on the base's tip, or fails the tree
 	// gate the base passes): the card was reworked at the tip and its stream landed on
 	// (landRefused, redo.go). Addressed to the coordinator; nothing to answer.

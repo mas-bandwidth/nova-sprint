@@ -73,18 +73,15 @@ type RouteTakes struct {
 }
 
 // PassStats is the epoch's numbers, members, readers and routes in name order. Since,
-// when set, is the last stats tidy (StatsSince): every sample ended at or after it. The
-// Coordination counter is the pass's coordination-failure ends, by cause and by member or
-// friend (end_class.go).
+// when set, is the last stats tidy (StatsSince): every sample ended at or after it.
 type PassStats struct {
-	Epoch        uint64               `json:"epoch"`
-	Since        time.Time            `json:"since,omitzero"`
-	Primaries    int                  `json:"primaries"`
-	Stages       Stages               `json:"stages"`
-	Work         []MemberStat         `json:"work"`
-	Reads        []ReaderStat         `json:"reads"`
-	Routes       []RouteTakes         `json:"routes"`
-	Coordination *CoordinationCounter `json:"coordination,omitempty"`
+	Epoch     uint64       `json:"epoch"`
+	Since     time.Time    `json:"since,omitzero"`
+	Primaries int          `json:"primaries"`
+	Stages    Stages       `json:"stages"`
+	Work      []MemberStat `json:"work"`
+	Reads     []ReaderStat `json:"reads"`
+	Routes    []RouteTakes `json:"routes"`
 }
 
 // StatsRecords is the Load extras Stats wants: every work card and read card of
@@ -114,35 +111,6 @@ func statsPrimaries(s *Snapshot) []*Card {
 	return out
 }
 
-// CoordinationOf is the epoch's coordination-failure counter from the producers' cost
-// records: the provider and no-result ends, a staging refusal and a stop on unlanded needs
-// are coordination by construction (CoordinationCauseOfEnd), each added by cause and by the
-// member or friend who suffered it (end_class.go). The other causes (a harness crash before
-// the first turn, a content-filter or key refusal, an idle-reap, a missing tool or jar, the
-// tick or a hold taking a card back, a hook-gate refusal, a store fault, a landing conflict)
-// arrive as reports at the finish and are classed and recorded there (ClassEnd); the counter
-// here holds every cause the cost records name, which is the epoch's coordination ends the
-// where record and stats show.
-func CoordinationOf(s *Snapshot) *CoordinationCounter {
-	coord := NewCoordinationCounter(s.Epoch)
-	for _, p := range statsPrimaries(s) {
-		for _, c := range CardCostOf(p).Consumers {
-			own := s.Fleet.Card(c.Card)
-			if c.Kind == "read" {
-				own = s.Readers.Card(c.Card)
-			}
-			if cause := CoordinationCauseOfEnd(c.End); cause != "" {
-				who := "-"
-				if own != nil {
-					who = cmp.Or(own.F("member"), own.Row, "-")
-				}
-				coord.Add(cause, who)
-			}
-		}
-	}
-	return coord
-}
-
 // StatsSince is Stats from since on (the last stats tidy; zero is the whole epoch): a
 // stage counts when it ended at or after since, a work card when its last stamp
 // (finished, else taken, else dealt) is, a read card likewise (read, begun, asked), a
@@ -151,7 +119,6 @@ func StatsSince(s *Snapshot, since time.Time) PassStats {
 	var deal, toReads, toLand, total []float64
 	work, reads, routes := map[string]*samples{}, map[string]*samples{}, map[string]*samples{}
 	ps := PassStats{Epoch: s.Epoch, Since: since}
-	coord := NewCoordinationCounter(s.Epoch)
 	// span is appendSpan of a stage that ended at or after since
 	span := func(xs []float64, a, b time.Time) []float64 {
 		if !since.IsZero() && b.Before(since) {
@@ -192,23 +159,17 @@ func StatsSince(s *Snapshot, since time.Time) PassStats {
 		toLand = span(toLand, accepted, landed)
 		total = span(total, admitted, landed)
 		for _, c := range CardCostOf(p).Consumers {
+			if c.Kind == "work" && strings.HasPrefix(c.End, cardhdr.EndStaging) {
+				continue // refused before any child ran: no take of the route
+			}
+			if at, err := time.Parse(time.RFC3339, c.At); !since.IsZero() && err == nil && at.Before(since) {
+				continue // a take that ended before the tidy
+			}
 			// a read's record names the route that priced it, and a read returned
 			// unpriced names none: then the route its card was dealt on
 			own := s.Fleet.Card(c.Card)
 			if c.Kind == "read" {
 				own = s.Readers.Card(c.Card)
-			}
-			if at, err := time.Parse(time.RFC3339, c.At); !since.IsZero() && err == nil && at.Before(since) {
-				continue // a take that ended before the tidy
-			}
-			// a coordination end accumulates on the counter by cause and by the member
-			// or friend who suffered it (end_class.go), the staging refusal included,
-			// which is no take of the route below
-			if cause := CoordinationCauseOfEnd(c.End); cause != "" {
-				coord.Add(cause, cmp.Or(own.F("member"), own.Row, "-"))
-			}
-			if c.Kind == "work" && strings.HasPrefix(c.End, cardhdr.EndStaging) {
-				continue // refused before any child ran: no take of the route
 			}
 			name := cmp.Or(c.Route, c.Usage.Route, own.F(FieldRoute), "-")
 			if name == RoutePin {
@@ -245,7 +206,6 @@ func StatsSince(s *Snapshot, since time.Time) PassStats {
 		z := routes[name]
 		ps.Routes = append(ps.Routes, RouteTakes{Route: name, Takes: z.n, OK: z.ok, Failed: z.failed, Provider: z.provider, RunWall: measure(z.wall)})
 	}
-	ps.Coordination = coord
 	return ps
 }
 
