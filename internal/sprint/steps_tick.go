@@ -380,12 +380,13 @@ var TickEnd = []TickPartDef{
 // runs before the rule rework, which reworks nothing the widen rule leaves to a mind.
 func TickEndWith(rules, idle bool) []TickPartDef {
 	out := append([]TickPartDef(nil), TickEnd[:2]...)
-	// the fleet's failure and the needs check are judgments, not rule answers:
-	// raised in the deadlines part, with the rules on or off, and in no step of
-	// their own (rules.go TickFleetFailure; TickNeeds). Folding them in keeps the
-	// end at its four operations, so a tick with nothing for them consumes no
-	// operation id (the twin's ids are deterministic and the transcripts pin them).
-	out[1].Fn = tickDeadlinesFleetFailureAndNeeds
+	// the fleet's failure, the harness-fleet check and the needs check are
+	// judgments, not rule answers: raised in the deadlines part, with the rules on
+	// or off, and in no step of their own (rules.go TickFleetFailure and
+	// TickHarnessFleet; TickNeeds). Folding them in keeps the end at its four
+	// operations, so a tick with nothing for them consumes no operation id (the
+	// twin's ids are deterministic and the transcripts pin them).
+	out[1].Fn = tickDeadlinesAndFleetFailure
 	if rules {
 		for _, p := range TickRules {
 			if p.Name == PartRuleRework {
@@ -402,12 +403,12 @@ func TickEndWith(rules, idle bool) []TickPartDef {
 	return append(out, TickEnd[3:]...)
 }
 
-// tickDeadlinesFleetFailureAndNeeds is the deadlines part with the fleet's
-// failure, the harness-fleet check and the run loop's needs check judged in it:
-// four plans folded into the deadlines part, so the needs check runs every tick
+// tickDeadlinesAndFleetFailure is the deadlines part with the fleet's failure,
+// the harness-fleet check and the run loop's needs check judged in it: four
+// plans folded into the deadlines part, so the needs check runs every tick
 // without an operation of its own (rule (b),
 // every-need-names-a-live-card-checked-every-second).
-func tickDeadlinesFleetFailureAndNeeds(s *Snapshot, r TickReq) (Plan, int) {
+func tickDeadlinesAndFleetFailure(s *Snapshot, r TickReq) (Plan, int) {
 	p, n := TickDeadlines(s, r)
 	q, _ := TickFleetFailure(s, r)
 	p.Notes = append(p.Notes, q.Notes...)
