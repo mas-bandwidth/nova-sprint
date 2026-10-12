@@ -272,8 +272,11 @@ func pinStops(s *Snapshot, r TickReq) []Stop {
 }
 
 // PinReleaseBound is how long a hard pin waits on a friend who is not up before the pin
-// becomes a preference (PinReleased).
-const PinReleaseBound = time.Hour
+// becomes a preference (PinReleased): the judgment's own deadline, DeadlineJudgment. A card
+// pinned to a friend held or down has a safe default, the fleet, and the machine takes it
+// at the deadline rather than leaving the card to the seat (seat_answers.go, rule (a); the
+// owner, 2026-10-12: a pin-waits judgment held its card 31 minutes unanswered).
+const PinReleaseBound = DeadlineJudgment
 
 // PinReleased says the hard pin c (OnlyFriend) is a preference now: its friend is not up in
 // seats, and its pin-waits stop (NStopPinWaits, pinStops) has stood, open or acknowledged,

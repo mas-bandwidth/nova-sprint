@@ -64,7 +64,7 @@ const (
 // PassTypes are the pass's judgment types: its own and the automatic stops it keeps
 // (StopTypes, stops.go). NFriendRowEmpty is the empty-row clock, not a judgment, and stays
 // off this list.
-var PassTypes = append([]string{NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored}, StopTypes...)
+var PassTypes = append([]string{NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored, NSeatSilent}, StopTypes...)
 
 // The two judgments list ack and wait on TickDecisions, same as deaf and idle, so an
 // acknowledgement is kept on the condition (steps_ack.go) and the next pass does not
@@ -161,6 +161,9 @@ func TickCoordinatorPass(s *Snapshot, r TickReq) (Plan, int) {
 	conds := append(append(deafConds(s, r), idleConds(s, r)...), behindConds(s, r)...)
 	conds = append(conds, emptyConds(&p, s, r)...)
 	conds = append(conds, pinConds(s, r)...)
+	// the judgments that hold a card, past their deadline: the seat is not answering
+	// (seat_answers.go)
+	conds = append(conds, seatSilentConds(s, r)...)
 	// every automatic stop the machine made, while it holds (stops.go)
 	conds = append(conds, stopConds(s, r)...)
 	due := notify(&p, s, conds, PassTypes, r)

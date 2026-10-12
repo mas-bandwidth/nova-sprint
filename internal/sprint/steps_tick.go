@@ -436,6 +436,9 @@ func TickAccept(s *Snapshot, r TickReq) (Plan, int) {
 		if why := AcceptHeld(c); why != "" {
 			return why
 		}
+		if SeatAccepts(s, c) {
+			return "its stream " + c.Row + " is set to seat-accept"
+		}
 		if s.Held[c.ID] {
 			return "a change is queued for it"
 		}
@@ -451,10 +454,15 @@ func TickAccept(s *Snapshot, r TickReq) (Plan, int) {
 	for _, c := range eligibleTurns(s.Work.Column(Review), eligible, streamRound(s, PropAcceptStreamIndex)) {
 		ids = append(ids, c.ID)
 	}
+	// a card of a seat-accept stream that the pump would take otherwise is the seat's: it
+	// is told so once, "ready to accept", whenever nothing open on it says so already
+	// (seat_answers.go, rule (a))
+	held := seatAcceptNotes(s, r)
 	if len(ids) == 0 {
-		return Plan{}, 0
+		return Plan{Notes: held}, 0
 	}
 	p := Accept(s, AcceptReq{Sel: Sel{Only: ids}, Who: r.who()})
+	p.Notes = append(p.Notes, held...)
 	if n, ok := acceptedNotice(p, ids, s.Now, r.who(), s.Coordinator); ok {
 		p.Notes = append(p.Notes, n)
 	}
@@ -565,8 +573,35 @@ func AcceptHeld(c *Card) string {
 	switch {
 	case CIRedAtHead(c):
 		return "its CI is red at its head " + orDash(c.F("head"))
-	case ReturnedAtAttempt(c):
+	case ReturnedAtAttempt(c) && ReturnedFor(c) == "":
 		return "it was returned to review at attempt " + c.F("attempt")
+	}
+	return ""
+}
+
+// FieldReturnedFor is the mechanical cause a primary was returned to review for at its
+// returned attempt (FieldReturnedAttempt): ReturnedForReads (repair's rule 6: a read was
+// missing) or ReturnedForNeeds (its needs were set while it was back in review). Either has
+// a safe default: once the ok reads it needs stand at its head, the tick accepts it again,
+// with no "ready to accept" judgment (seat_answers.go, rule (a)). A return with no cause
+// (a person's, or a rule's that reworks it) holds it for the seat.
+const FieldReturnedFor = "returned_for"
+
+// The mechanical causes of a return (FieldReturnedFor).
+const (
+	ReturnedForReads = "reads"
+	ReturnedForNeeds = "needs"
+)
+
+// ReturnedFor is the mechanical cause the primary was returned for at its current attempt,
+// "" when it was not returned at it or its return was a mind's.
+func ReturnedFor(c *Card) string {
+	if !ReturnedAtAttempt(c) {
+		return ""
+	}
+	switch f := c.F(FieldReturnedFor); f {
+	case ReturnedForReads, ReturnedForNeeds:
+		return f
 	}
 	return ""
 }
@@ -1653,6 +1688,10 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 func TickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 	p, due := tickOverdue(s, r)
 	pass, passDue := TickCoordinatorPass(s, r)
+	// every judgment that holds a card is raised again at each deadline it passes
+	// unanswered (seat_answers.go)
+	held := reraiseHeld(s, r)
+	p.Notes, p.Closes = append(p.Notes, held.Notes...), append(p.Closes, held.Closes...)
 	// a judgment the pass closes takes its overdue hold with it, in the same plan, so the
 	// next tick has nothing left to close (a level the pass escalates closes the one before)
 	closing := map[string]bool{}
@@ -1791,6 +1830,10 @@ func condKey(typ, subject, card, what string) string {
 		// distinct causes of one tier are distinct judgments, never merged
 		// (readyOverWhy; tla/ReadyOver.tla, OnePerCause)
 		what = readyOverWhy(what)
+	case NSeatSilent:
+		// one condition while any card-holding judgment is past its deadline: its cards
+		// and their ages change, and it stays one judgment (seat_answers.go)
+		what = ""
 	case NCoordinatorBehind:
 		// one condition a level (stops.go, BehindLevel): its count and its ages change
 		// within a level, and a new level is a new judgment
@@ -2040,7 +2083,7 @@ func MovesDue(s *Snapshot) int {
 		switch {
 		case s.Readers == nil || c.F("result") == "failed":
 		case acceptable(s, c):
-			if AcceptHeld(c) == "" {
+			if AcceptHeld(c) == "" && !SeatAccepts(s, c) {
 				n++
 			}
 		case ReadsWanted(s, c) > 0 && enoughReadersUp(s, c):

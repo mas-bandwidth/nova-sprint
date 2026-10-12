@@ -609,6 +609,7 @@ var TickRules = []TickPartDef{
 	{PartRuleAsk, TickRuleAsk},
 	{PartRuleNeed, TickRuleNeed},
 	{PartRuleBrief, TickRuleBrief},
+	{PartRuleNoRoute, TickRuleNoRoute},
 }
 
 // ruleAnswerConsumed is the fields a finish clears on the primary pr: the rule's answer

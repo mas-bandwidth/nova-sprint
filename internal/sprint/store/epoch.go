@@ -177,6 +177,13 @@ func (st *Store) Wait(ctx context.Context, noteID string, at time.Time) (res Res
 		return res, false, err
 	}
 	for _, o := range open {
+		if o.Note.ID == noteID {
+			// the seat is not answering is quieted only by the answers it names: no review
+			// time is set on it either way (sprint.NSeatSilent)
+			if why := sprint.SeatSilentRefusal(o.Note.Type, "waited"); why != "" {
+				return res, false, errors.New(why)
+			}
+		}
 		if o.Note.ID == noteID && o.Note.Kind == sprint.Judgment && sprint.TickKept(o.Note.Type) {
 			res, err = st.Run(ctx, WaitStep(sprint.WaitReq{Note: noteID, Until: at, Who: st.Actor}))
 			return res, true, err

@@ -3795,6 +3795,7 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 	release := fs.String("release", "", "the release this stream belongs to (default or none clears it)")
 	display := fs.String("display", "", "the stream's display name, the label the dashboard's Work table shows in place of the key: one line of printable text, at most 60 bytes; default or none clears it (the stream's key is unchanged)")
 	prose := fs.String("prose", "", "the globs (PATHS globs, comma separated: security/**,ratings/**) of the files whose backquotes are their own, which the lander does not read for a code span; default takes them off")
+	seatAccept := fs.String("seat-accept", "", "on: the seat accepts the stream's cards by hand (a ready to accept judgment) instead of the tick accepting a card whose reads have all passed; off takes it off (the default: the tick accepts)")
 	attempts := fs.String("attempts", "", fmt.Sprintf("the stream's attempt cap, over the sprint's: how many attempts one brief may run before the card is the coordinator's as a brief defect; 1 to %d, or default (the sprint's)", sprint.AttemptsMax))
 	base := fs.String("base", "", "the base branch to re-point the stream's cards to: every card not yet dealt and every card queued to merge has its BASE line rewritten; refused when origin holds no such branch or a card's PATHS are absent at its tip; dealt and working cards keep their base")
 	reason := fs.String("reason", "", "why the read tier is set, recorded on the stream row (the judgment 'raise the read tier of the stream?' names it)")
@@ -3814,8 +3815,8 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 		}
 		*mark = map[bool]string{true: sprint.LandProtectedAny, false: sprint.ReadTierDefault}[*promotion]
 	}
-	if len(names) == 0 || (*tier == "" && *mark == "" && *release == "" && *display == "" && *prose == "" && *attempts == "" && *base == "") {
-		return refuse(stderr, "stream set", "wants at least one stream and --read-tier <flash|pro|heavy|default>, --land-protected <owner/name,...|any|default>, --promotion[=false], --release <name>, --display <name>, --prose <glob,...|default>, --attempts <n|default> or --base <branch>")
+	if len(names) == 0 || (*tier == "" && *mark == "" && *release == "" && *display == "" && *prose == "" && *seatAccept == "" && *attempts == "" && *base == "") {
+		return refuse(stderr, "stream set", "wants at least one stream and --read-tier <flash|pro|heavy|default>, --land-protected <owner/name,...|any|default>, --promotion[=false], --release <name>, --display <name>, --prose <glob,...|default>, --seat-accept <on|off>, --attempts <n|default> or --base <branch>")
 	}
 	st, err := a.store(*c)
 	if err != nil {
@@ -3846,7 +3847,7 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 			return code
 		}
 	}
-	return a.runStep("stream set", *c, st, store.SetStep(sprint.SetReq{Streams: names, ReadTier: *tier, LandProtected: *mark, Release: *release, Display: *display, Prose: *prose, Attempts: *attempts, Base: *base, BaseChecked: baseChecked, Reason: *reason, Answers: answers(*ans), Who: c.actor}), stdout, stderr)
+	return a.runStep("stream set", *c, st, store.SetStep(sprint.SetReq{Streams: names, ReadTier: *tier, LandProtected: *mark, Release: *release, Display: *display, Prose: *prose, SeatAccept: *seatAccept, Attempts: *attempts, Base: *base, BaseChecked: baseChecked, Reason: *reason, Answers: answers(*ans), Who: c.actor}), stdout, stderr)
 }
 
 // cmdStreamRemove takes the named streams off the work and merge tables:

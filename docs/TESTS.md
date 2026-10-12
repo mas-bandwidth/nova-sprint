@@ -298,4 +298,7 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestAMovedCardsOldRunIsStoppedAtTheNextBeat`: a card moved from m1 g1 to m2 g2; m1's next beat names g1; the answer stops it; m1 ends that child alone.
 - `TestOldAttemptIsStopped`: an old attempt (.w9 when the card is at .w10) is stopped the same way.
 - `TestRunNeverStopsValidRun`: a run the store holds at that member and generation is never stopped.
-
+- `TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore` (functional, `cmd/nova-sprint/unanswered_judgment_functional_test.go`): a real server and store, the seat hooked in and silent, one card of each kind that held a card on 2026-10-12; within one deadline the cards with a safe default have moved with no seat verb, and "the seat is not answering" names the card still held on the hook's stream and on the owner's bus.
+- `TestATwoReadsPassedCardIsMergingAfterOneTickWithNoSeatVerb`, `TestACardReturnedForItsNeedsIsMergingAfterOneTick`, `TestASeatAcceptStreamKeepsItsCardForTheSeat`, `TestACardReturnedByTheSeatStaysForTheSeat` (`cmd/nova-sprint/seat_answers_test.go`): the accept defaults of a card-holding judgment.
+- `TestAHardPinToAHeldFriendIsReleasedAtItsDeadline`, `TestAFailedWorkJudgmentUnansweredRaisesTheSeatNotAnsweringOnce` (`internal/sprint/seat_answers_test.go`): the pin's default, and the alarm raised once, never waited or acknowledged, cleared by the answer.
+- `TestATierNoRouteServesIsRaisedToTheNearestServedTierAtItsDeadline`, `TestAHeavyCardNoRouteServesIsNeverReTieredToFlash` (`internal/sprint/seat_answers_rule_test.go`): the no-route default, never down a tier.

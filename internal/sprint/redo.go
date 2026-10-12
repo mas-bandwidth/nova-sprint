@@ -86,8 +86,12 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 	u.Notes = notes
 	u.Changes = append(u.Changes, change(Merge, moveEntry(m, r.Stream, Returned, nil, "need_card", "need_stream")))
 	set := map[string]string{"returns": itoa(pr.Int("returns") + 1), "return_reason": "conflict", FieldReturnedAttempt: attempt}
+	var unsetFor []string
+	if pr.F(FieldReturnedFor) != "" {
+		unsetFor = append(unsetFor, FieldReturnedFor) // a refusal holds it, whatever returned it before
+	}
 	review := func(j Note) Unit {
-		u.Changes = append(u.Changes, change(Work, moveEntry(pr, r.Stream, Review, set)))
+		u.Changes = append(u.Changes, change(Work, moveEntry(pr, r.Stream, Review, set, unsetFor...)))
 		u.Notes = append(u.Notes, j)
 		u.Closes = closesFor(s.Open, ReturnResolves, id)
 		if ra, ok := reviewJudgment(s, inReview(pr, set), reviewStep{closing: noteIDs(u.Closes), writes: u.Notes, who: r.Who}); ok {

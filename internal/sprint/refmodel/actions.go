@@ -842,7 +842,7 @@ func Return(s State, p string) (State, error) {
 	x.State = n.streamAfter(st, x.State, nil, nil)
 	n.Streams[st] = x
 	n.closeOn(p)
-	n.setPrimary(p, func(x *Primary) { x.State, x.ReturnedAt = Review, x.Attempt })
+	n.setPrimary(p, func(x *Primary) { x.State, x.ReturnedAt, x.ReturnedFor = Review, x.Attempt, "" })
 	n.open(JReturned, p)
 	return n, nil
 }
@@ -979,7 +979,7 @@ func MergeRefused(s State, stream string, batch int, p, way string) (State, erro
 	n.Streams[stream] = x
 	n.closeOn(p)
 	pr := n.Primaries[p]
-	pr.ReturnedAt = pr.Attempt
+	pr.ReturnedAt, pr.ReturnedFor = pr.Attempt, ""
 	switch {
 	case way == RefusedPaths:
 		pr.State = Review

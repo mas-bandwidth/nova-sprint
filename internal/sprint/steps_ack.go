@@ -51,6 +51,10 @@ func Ack(s *Snapshot, r AckReq) Plan {
 			continue
 		}
 		n := entries[0].Note
+		if why := seatSilentRefusal(n.Type, "acknowledged"); why != "" {
+			p.refuse(id, why)
+			continue
+		}
 		if !contains(n.Decisions, "ack") && !contains(n.Decisions, "keep") { // keep (readtier.go) is an ack by another name
 			p.refuse(id, notAckable(n, entries))
 			continue
@@ -357,6 +361,10 @@ func Wait(s *Snapshot, r WaitReq) Plan {
 		return p
 	}
 	n := entries[0].Note
+	if why := seatSilentRefusal(n.Type, "waited"); why != "" {
+		p.refuse(r.Note, why)
+		return p
+	}
 	if !TickKept(n.Type) {
 		p.refuse(r.Note, n.Type+" is not a condition the tick keeps: its review time is set instead")
 		return p
