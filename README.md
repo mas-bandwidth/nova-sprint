@@ -37,15 +37,15 @@ estimated finish time. [See live demo](http://69.67.149.151/)
 
 Start with one useful task and a complete trip through review and landing.
 Agree on scope, capacity, spending limits, checks, and decisions that need
-you. Then give the fleet the next batch. Keep working alongside it, or... 
-just come back in the morning.
-
-Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools). _Free and open source forever._
+you. Then give the fleet the next batch. Keep working alongside it... 
+or just come back in the morning.
 
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
 [Cards and system rules](docs/SPEC-SPRINT.md) · [Roadmap](ROADMAP.md) · [All docs](docs/README.md)
 
 If you like this, [please support our work](https://www.patreon.com/MasBandwidth/membership).
+
+Built on [Nova Tools](https://github.com/mas-bandwidth/nova-tools). Free and open source forever.
 
 [Contributing](CONTRIBUTING.md) · [MIT license](LICENSE) · [Asset credits](docs/ASSET-PROVENANCE.md)
