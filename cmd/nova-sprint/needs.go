@@ -435,5 +435,5 @@ func needsSetStep(r sprint.NeedsSetReq) store.Step {
 		Extras: func(*sprint.Snapshot) map[string][]string {
 			return map[string][]string{sprint.Work: append([]string{r.ID}, r.Needs...)}
 		},
-		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.NeedsSet(s, r) }}
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.NeedsSetLive(s, r) }}
 }
