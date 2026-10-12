@@ -365,8 +365,8 @@ const MaxAttemptsCeiling = 100
 const FieldGitIdentity = "git_identity"
 
 // DefaultGitIdentity is the identity the sprint machine commits as when the sprint row
-// names none: nova-sprint <nova-sprint@mas-bandwidth.com>.
-const DefaultGitIdentity = "nova-sprint <nova-sprint@mas-bandwidth.com>"
+// names none: nova-sprint <nova-sprint@example.invalid>.
+const DefaultGitIdentity = "nova-sprint <nova-sprint@example.invalid>"
 
 // GitIdentity is one parsed identity: the name and email of "Name <email>".
 type GitIdentity struct {

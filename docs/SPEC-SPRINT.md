@@ -4385,14 +4385,14 @@ cards had none outstanding.
 
 **The machine's commit identity.** Every commit the sprint machine makes (land,
 merge, rework-at-tip, the promotion's cut, ledger and roadmap writes) carries an
-explicit author and committer, the sprint row's `git_identity` (`nova-config sprint set --git_identity 'Name <email>'`, default `nova-sprint <nova-sprint@mas-bandwidth.com>`), never the host's global git config. The landing
+explicit author and committer, the sprint row's `git_identity` (`nova-config sprint set --git_identity 'Name <email>'`, default `nova-sprint <nova-sprint@example.invalid>`), never the host's global git config. The landing
 and the promotion (`mergeTarget`'s `git commit-tree`) refuse to commit, naming the
 setting, when none is configured; `doctor` reports the identity in use and fails
 when its email equals the host's global `user.email`. Workers' clones get the
 identity in their local config at clone time (`pkg/swarm`, `StageJob`/
 `StageCloneIdentity` and their `As` variants): the live staging entry points
 carry the machine's identity (the sprint row's `git_identity`, default
-`nova-sprint <nova-sprint@mas-bandwidth.com>`), never the pool's owner, and
+`nova-sprint <nova-sprint@example.invalid>`), never the pool's owner, and
 the rework-at-tip commit (`restageAtTip`) runs its commit with it explicitly,
 so a machine commit in a clone carries the configured identity too.
 
