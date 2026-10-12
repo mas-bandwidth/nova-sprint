@@ -125,7 +125,7 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 	do := func(a *app, args ...string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(args, &out, &errb)
+		code := runOnStore(a, addr, args, &out, &errb)
 		require.Zero(t, code, "%v: %d %s", args, code, errb.String())
 		return out.String()
 	}
@@ -172,7 +172,7 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 				continue
 			}
 			var o, e bytes.Buffer
-			code := coord.run(words[1:], &o, &e)
+			code := runOnStore(coord, addr, words[1:], &o, &e)
 			return code, strings.TrimSpace(e.String()), true
 		}
 		return 0, "", false
@@ -191,7 +191,7 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 				}
 			}
 			var out, errb bytes.Buffer
-			if code := coord.run([]string{"inbox", "--read", "--json"}, &out, &errb); code != 0 {
+			if code := runOnStore(coord, addr, []string{"inbox", "--read", "--json"}, &out, &errb); code != 0 {
 				mu.Lock()
 				judgments = append(judgments, fmt.Sprintf("inbox: %d %s", code, errb.String()))
 				mu.Unlock()
@@ -345,7 +345,7 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 			case <-poll.C:
 			}
 			for _, m := range members {
-				machines.run([]string{"fleet", "beat", m}, &bytes.Buffer{}, &bytes.Buffer{})
+				runOnStore(machines, addr, []string{"fleet", "beat", m}, &bytes.Buffer{}, &bytes.Buffer{})
 			}
 		}
 	}()
@@ -383,7 +383,7 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 				mu.Unlock()
 				for _, args := range [][]string{{"where"}, {"check"}} {
 					var out, errb bytes.Buffer
-					code := coord.run(args, &out, &errb)
+					code := runOnStore(coord, addr, args, &out, &errb)
 					fmt.Fprintf(&b, "%v: %d\n%s%s\n", args, code, tail(out.String(), 60), errb.String())
 				}
 				stalled <- fmt.Sprintf("%d of %d landed and nothing moved for a minute:\n%s", n, total, b.String())

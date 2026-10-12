@@ -23,7 +23,7 @@ func twinProcess(t *testing.T, file, line string) (int, string, string) {
 	a := newApp(func(k string) string { return env[k] })
 	defer a.close()
 	var out, errb bytes.Buffer
-	code := a.run(split(strings.TrimPrefix(line, prog+" ")), &out, &errb)
+	code := runInto(a, split(strings.TrimPrefix(line, prog+" ")), &out, &errb)
 	return code, out.String(), errb.String()
 }
 
@@ -57,7 +57,7 @@ func TestTheTwinRefusesWhatIsNotATwinFile(t *testing.T) {
 		env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "boss"}
 		a := newApp(func(k string) string { return env[k] })
 		var out, errb bytes.Buffer
-		code := a.run([]string{"where"}, &out, &errb)
+		code := runInto(a, []string{"where"}, &out, &errb)
 		assert.Equal(t, 2, code, "--redis %s: exit %d, stderr %q; want a refusal that names mem:<file>", addr, code, errb.String())
 		assert.Contains(t, errb.String(), "--redis mem:<file>", "--redis %s: exit %d, stderr %q; want a refusal that names mem:<file>", addr, code, errb.String())
 	}
@@ -140,7 +140,7 @@ func TestEveryVerbHelpShowsAnExampleItsFlagsTake(t *testing.T) {
 		}
 		var out, errb bytes.Buffer
 		a := newApp(func(string) string { return "" })
-		code := a.run(append(strings.Fields(v.name), "-h"), &out, &errb)
+		code := runInto(a, append(strings.Fields(v.name), "-h"), &out, &errb)
 		assert.Equal(t, 0, code, "%s -h: exit %d, stderr %q", v.name, code, errb.String())
 		assert.Contains(t, out.String(), "example:\n  "+prog+" "+v.example+"\n", "%s -h lacks its example %q", v.name, v.example)
 		assert.LessOrEqual(t, strings.Index(out.String(), "example:"), strings.Index(out.String(), "flags:"), "%s -h shows the example after the flags", v.name)

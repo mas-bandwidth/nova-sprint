@@ -63,7 +63,7 @@ func (r *serverRig) boss(line string) string {
 	r.a.serial.Lock()
 	defer r.a.serial.Unlock()
 	var out, errb bytes.Buffer
-	code := r.a.run(split(strings.TrimPrefix(line, prog+" ")), &out, &errb)
+	code := runInto(r.a, split(strings.TrimPrefix(line, prog+" ")), &out, &errb)
 	require.Equal(r.t, 0, code, "%s\n%s%s", line, out.String(), errb.String())
 	return out.String()
 }

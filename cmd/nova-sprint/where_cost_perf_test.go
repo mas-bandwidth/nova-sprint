@@ -27,7 +27,7 @@ func (ta *testApp) timedWhere() time.Duration {
 	ta.beat()
 	var out, errb bytes.Buffer
 	began := time.Now()
-	code := ta.a.run([]string{"where", "--json"}, &out, &errb)
+	code := runInto(ta.a, []string{"where", "--json"}, &out, &errb)
 	took := time.Since(began)
 	require.Zero(ta.t, code, "where --json: %s", errb.String())
 	return took

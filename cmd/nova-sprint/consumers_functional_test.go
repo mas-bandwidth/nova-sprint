@@ -47,7 +47,7 @@ func newConsumersOutApp(t *testing.T) *consumersOutApp {
 	do := func(args ...string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(args, &out, &errb)
+		code := runOnStore(a, addr, args, &out, &errb)
 		require.Zero(t, code, "%v: exit %d\n%s%s", args, code, out.String(), errb.String())
 		return out.String()
 	}

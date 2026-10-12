@@ -74,7 +74,7 @@ func TestWorkerQueueReadCostAtOneHundredMilliseconds(t *testing.T) {
 	do := func(args ...string) {
 		t.Helper()
 		var out, errb bytes.Buffer
-		require.Equal(t, 0, coord.run(args, &out, &errb), "%v: %s %s", args, out.String(), errb.String())
+		require.Equal(t, 0, runOnStore(coord, addr, args, &out, &errb), "%v: %s %s", args, out.String(), errb.String())
 	}
 	do("init", "--members", "m1:4", "--readers", "reader-a,reader-b,reader-c")
 	do("add", "--stream", "s1", "--count", "4", "--brief", passingBrief("read-probe-brief"))
@@ -109,7 +109,7 @@ func TestWorkerQueueReadCostAtOneHundredMilliseconds(t *testing.T) {
 			before := link.Writes()
 			began := time.Now()
 			var out, errb bytes.Buffer
-			require.Equal(t, 0, a.run([]string{"queue", "--as", who, "--json"}, &out, &errb), "%s", errb.String())
+			require.Equal(t, 0, runOnStore(a, link.Addr(), []string{"queue", "--as", who, "--json"}, &out, &errb), "%s", errb.String())
 			var q struct {
 				Epoch uint64      `json:"epoch"`
 				Cards []queueCard `json:"cards"`

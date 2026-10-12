@@ -71,7 +71,7 @@ func runTestCLI(args []string, getenv func(string) string) int {
 		return open(ctx, addr, names)
 	}
 	defer a.close()
-	return a.run(args, os.Stdout, os.Stderr)
+	return runInto(a, args, os.Stdout, os.Stderr)
 }
 
 // testCLIGetenv hides every NOVA_ variable from a test binary's CLI: no store

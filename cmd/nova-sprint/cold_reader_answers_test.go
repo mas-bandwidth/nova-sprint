@@ -99,7 +99,7 @@ func TestTheStoreRefusalNamesTheTwin(t *testing.T) {
 	t.Parallel()
 	a := newApp(func(string) string { return "" })
 	var out, errb strings.Builder
-	code := a.run([]string{"where"}, &out, &errb)
+	code := runInto(a, []string{"where"}, &out, &errb)
 	assert.Equal(t, 2, code)
 	assert.Contains(t, errb.String(), "nova-sprint where REFUSED: --redis <addr> is required")
 	assert.Contains(t, errb.String(), "--redis mem:<file>")

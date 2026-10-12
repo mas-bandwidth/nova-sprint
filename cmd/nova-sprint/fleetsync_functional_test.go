@@ -65,7 +65,7 @@ func TestFleetSyncFollowsTheInventoryOnTheStore(t *testing.T) {
 	run := func(want int, args ...string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := world.run(args, &out, &errb)
+		code := runOnStore(world, addr, args, &out, &errb)
 		require.Equal(t, want, code, "%v: exit %d, want %d\n%s%s", args, code, want, out.String(), errb.String())
 		return out.String()
 	}

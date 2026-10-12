@@ -54,7 +54,7 @@ func TestWorkerVerbOutcomeOverRealServer(t *testing.T) {
 		t.Helper()
 		args = append(append([]string{}, args...), "--redis", addr)
 		var out, errb bytes.Buffer
-		require.Equal(t, 0, a.run(args, &out, &errb), "%v: %s %s", args, out.String(), errb.String())
+		require.Equal(t, 0, runOnStore(a, addr, args, &out, &errb), "%v: %s %s", args, out.String(), errb.String())
 	}
 	do("init", "--members", "m1:2,m2:2", "--readers", "reader-a,reader-b")
 	do("add", "--stream", "s1", "--count", "4")

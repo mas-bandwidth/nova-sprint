@@ -28,7 +28,7 @@ type appSprint struct{ ta *testApp }
 
 func (s appSprint) Run(args ...string) (int, []byte) {
 	var out, errb bytes.Buffer
-	code := s.ta.a.run(args, &out, &errb)
+	code := runInto(s.ta.a, args, &out, &errb)
 	if code != 0 {
 		out.Write(errb.Bytes())
 	}

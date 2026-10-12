@@ -39,7 +39,7 @@ func clientOf(t *testing.T, r *serverRig, actor string, sent *[][]string) (*app,
 	}
 	return c, func(args ...string) (int, string, string) {
 		var out, errb bytes.Buffer
-		code := c.run(args, &out, &errb)
+		code := runInto(c, args, &out, &errb)
 		return code, out.String(), errb.String()
 	}
 }
@@ -115,7 +115,7 @@ func TestAReadThroughTheServerIsTheReadItself(t *testing.T) {
 		r.a.serial.Lock()
 		defer r.a.serial.Unlock()
 		var out, errb bytes.Buffer
-		code := r.a.run(args, &out, &errb)
+		code := runInto(r.a, args, &out, &errb)
 		return code, out.String(), errb.String()
 	}
 	reads := [][]string{
@@ -260,7 +260,7 @@ func TestACoordinatorsVerbTheServerDidNotAnswer(t *testing.T) {
 		return nil, errors.New("the sprint server at 127.0.0.1:6390 did not answer: connection refused")
 	}
 	var out, errb bytes.Buffer
-	code := c.run([]string{"start"}, &out, &errb)
+	code := runInto(c, []string{"start"}, &out, &errb)
 	assert.Equal(t, 2, code)
 	assert.Contains(t, errb.String(), "did not answer")
 	assert.Contains(t, errb.String(), "nothing is known of what ran")
@@ -268,7 +268,7 @@ func TestACoordinatorsVerbTheServerDidNotAnswer(t *testing.T) {
 	assert.Empty(t, out.String())
 	out.Reset()
 	errb.Reset()
-	assert.Equal(t, 2, c.run([]string{"where"}, &out, &errb), "a read is not run on a store here either")
+	assert.Equal(t, 2, runInto(c, []string{"where"}, &out, &errb), "a read is not run on a store here either")
 	assert.Equal(t, 1, strings.Count(errb.String(), "\n"), "one line: %s", errb.String())
 	assert.Contains(t, errb.String(), "did not answer")
 }

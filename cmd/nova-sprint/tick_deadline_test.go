@@ -544,7 +544,7 @@ func runOnce(t *testing.T, ta *testApp, args ...string) (int, string, string) {
 		require.NoError(t, os.WriteFile(exe, []byte("a build installed under the loop, longer"), 0o755))
 	}
 	var out, errb bytes.Buffer
-	code := ta.a.run(ta.withEpoch(append([]string{"run"}, args...)), &out, &errb)
+	code := runInto(ta.a, ta.withEpoch(append([]string{"run"}, args...)), &out, &errb)
 	return code, out.String(), errb.String()
 }
 

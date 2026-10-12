@@ -44,7 +44,7 @@ func TestSeatInstallVerbWritesLoadsAndRemovesTheUnit(t *testing.T) {
 		if len(args) > 1 && args[1] == "install" {
 			args = append(args, push...)
 		}
-		code := a.run(args, &out, &errb)
+		code := runInto(a, args, &out, &errb)
 		return code, out.String(), errb.String()
 	}
 	unit := filepath.Join(home, "Library", "LaunchAgents", sprint.SeatLabel+".plist")

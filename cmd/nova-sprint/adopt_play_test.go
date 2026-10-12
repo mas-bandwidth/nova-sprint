@@ -64,7 +64,7 @@ func TestAdoptRunsThePlayAndRefusesAHalfMove(t *testing.T) {
 		adoptPlayOf.Store(a, play)
 		defer adoptPlayOf.Delete(a)
 		var out, errs bytes.Buffer
-		code := a.run(append([]string{"adopt"}, args...), &out, &errs)
+		code := runInto(a, append([]string{"adopt"}, args...), &out, &errs)
 		return code, out.String(), errs.String()
 	}
 	rel := filepath.Join(t.TempDir(), "nova-sprint-v1.2.3")

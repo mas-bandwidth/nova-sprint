@@ -49,7 +49,7 @@ func releaseStore(t *testing.T, actor string) (string, *app, func(args ...string
 	t.Cleanup(a.close)
 	run := func(args ...string) (int, string, string) {
 		var out, errb bytes.Buffer
-		code := a.run(args, &out, &errb)
+		code := runOnStore(a, addr, args, &out, &errb)
 		return code, out.String(), errb.String()
 	}
 	do := func(args ...string) string {

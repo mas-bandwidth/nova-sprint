@@ -163,7 +163,7 @@ func TestServerSwitchReadsTheCommitARealBinaryNames(t *testing.T) {
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin, "version").Output()
+	out, err := runBuiltSprint(t, bin, "version")
 	require.NoError(t, err)
 	line, _, _ := strings.Cut(string(out), "\n")
 	line = strings.TrimSpace(line)

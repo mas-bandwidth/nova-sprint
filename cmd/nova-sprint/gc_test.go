@@ -45,7 +45,7 @@ func gcFile(t *testing.T, path string, now time.Time, age time.Duration) {
 
 func gcRun(a *app, args ...string) (int, string, string) {
 	var out, errs bytes.Buffer
-	code := a.run(append([]string{"gc"}, args...), &out, &errs)
+	code := runInto(a, append([]string{"gc"}, args...), &out, &errs)
 	return code, out.String(), errs.String()
 }
 

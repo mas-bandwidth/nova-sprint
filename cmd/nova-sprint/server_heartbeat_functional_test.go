@@ -43,7 +43,7 @@ func TestServerHeartbeatOnAStoreWhereJSONReads(t *testing.T) {
 	do := func(args ...string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(append(args, "--redis", addr), &out, &errb)
+		code := runOnStore(a, addr, append(args, "--redis", addr), &out, &errb)
 		require.Equal(t, 0, code, "%v: %s%s", args, out.String(), errb.String())
 		return out.String()
 	}

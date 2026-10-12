@@ -61,7 +61,7 @@ func TestHookFlushesAfterChallengeOnTheStore(t *testing.T) {
 		return nil, errors.New("forwarding is refused in this test")
 	}
 	var out, errs strings.Builder
-	require.Equal(t, 0, a.run([]string{"init", "--members", "m1", "--readers", "reader-a", "--owner", name, "--redis", addr}, &out, &errs), "%s%s", out.String(), errs.String())
+	require.Equal(t, 0, runInto(a, []string{"init", "--members", "m1", "--readers", "reader-a", "--owner", name, "--redis", addr}, &out, &errs), "%s%s", out.String(), errs.String())
 	a.serveAddr = addr
 	srv := httptest.NewServer(localHandler{a})
 	t.Cleanup(srv.Close)
@@ -76,7 +76,7 @@ func TestHookFlushesAfterChallengeOnTheStore(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		var errb bytes.Buffer
-		code := client.run([]string{"hook"}, pw, &errb)
+		code := runInto(client, []string{"hook"}, pw, &errb)
 		_ = pw.Close()
 		done <- code
 	}()
@@ -106,7 +106,7 @@ func TestHookFlushesAfterChallengeOnTheStore(t *testing.T) {
 	}
 
 	var uout, uerrs bytes.Buffer
-	ucode := client.run(strings.Fields("unhook"), &uout, &uerrs)
+	ucode := runInto(client, strings.Fields("unhook"), &uout, &uerrs)
 	require.Equal(t, 0, ucode, uout.String()+uerrs.String())
 	select {
 	case code := <-done:

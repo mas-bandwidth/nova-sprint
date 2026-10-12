@@ -209,7 +209,7 @@ func TestAnOldWorkersFinishIsRefusedAfterAClear(t *testing.T) {
 	ta.deal(1)
 	raw := func(line string) (int, string) {
 		var out, errb bytes.Buffer
-		code := ta.a.run(split(line), &out, &errb)
+		code := runInto(ta.a, split(line), &out, &errb)
 		return code, out.String() + errb.String()
 	}
 	code, out := raw("finish --as m1 p1.w1@1")

@@ -62,7 +62,7 @@ func TestServerGateAtOneHundredMillisecondsWithMixedWorkers(t *testing.T) {
 	do := func(args ...string) {
 		t.Helper()
 		var out, errb bytes.Buffer
-		require.Equal(t, 0, a.run(args, &out, &errb), "%v: %s %s", args, out.String(), errb.String())
+		require.Equal(t, 0, runOnStore(a, addr, args, &out, &errb), "%v: %s %s", args, out.String(), errb.String())
 	}
 	do("init", "--members", "m1:2,m2:2,m3:2,m4:2,m5:2,m6:2", "--readers", "reader-a,reader-b")
 	do("add", "--stream", "s1", "--count", "48")
@@ -109,7 +109,7 @@ func TestServerGateAtOneHundredMillisecondsWithMixedWorkers(t *testing.T) {
 					return near.Run(args...)
 				}
 				var out, errb bytes.Buffer
-				code := local.run(args, &out, &errb)
+				code := runOnStore(local, addr, args, &out, &errb)
 				if code != 0 {
 					return code, append(out.Bytes(), errb.Bytes()...)
 				}

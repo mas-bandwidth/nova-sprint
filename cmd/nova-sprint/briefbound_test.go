@@ -166,7 +166,7 @@ func TestAFileOverTheReadCapIsRefusedWithItsTrueSize(t *testing.T) {
 // store the beat would meet.
 func (ta *testApp) bare(line string) (int, string, string) {
 	var out, errb bytes.Buffer
-	code := ta.a.run(ta.withEpoch(split(line)), &out, &errb)
+	code := runInto(ta.a, ta.withEpoch(split(line)), &out, &errb)
 	return code, out.String(), errb.String()
 }
 

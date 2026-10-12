@@ -57,7 +57,7 @@ func TestAHeavyCardIsDealtOnAHeavyRouteOnAStore(t *testing.T) {
 	do := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(append(split(line), "--redis", addr), &out, &errb)
+		code := runOnStore(a, addr, append(split(line), "--redis", addr), &out, &errb)
 		require.Equal(t, 0, code, "%s: %s%s", line, out.String(), errb.String())
 		return out.String()
 	}

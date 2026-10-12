@@ -41,7 +41,7 @@ func TestABriefEditKeepsARelinkedNeedOnTheStore(t *testing.T) {
 	run := func(args ...string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(append(args, "--redis", addr), &out, &errb)
+		code := runOnStore(a, addr, append(args, "--redis", addr), &out, &errb)
 		require.Equal(t, 0, code, "%v: %d %s%s", args, code, out.String(), errb.String())
 		return out.String()
 	}
@@ -72,7 +72,7 @@ func TestABriefEditKeepsARelinkedNeedOnTheStore(t *testing.T) {
 	// brief --tier --brief-file requires --reason; refuses without it, writes nothing
 	run("add", "--one", "--stream", "a", "e", "--brief-file", writeHeaderBrief(t, dir, "e", "-", "internal/e.go"))
 	var out2, errb2 bytes.Buffer
-	code := a.run(append([]string{"brief", "e", "--tier", "heavy", "--brief-file", writeBrief(t, "the brief")}, "--redis", addr), &out2, &errb2)
+	code := runOnStore(a, addr, append([]string{"brief", "e", "--tier", "heavy", "--brief-file", writeBrief(t, "the brief")}, "--redis", addr), &out2, &errb2)
 	assert.Equal(t, 2, code, "brief --tier --brief-file without --reason")
 	assert.Contains(t, errb2.String(), "--reason")
 	tierField := run("card", "e", "--fields")
@@ -81,7 +81,7 @@ func TestABriefEditKeepsARelinkedNeedOnTheStore(t *testing.T) {
 	// brief --tier --brief-file with --reason works; reason visible on the card
 	out2.Reset()
 	errb2.Reset()
-	code = a.run(append([]string{"brief", "e", "--tier", "heavy", "--brief-file", writeBrief(t, "the brief"), "--reason", "a heavy card"}, "--redis", addr), &out2, &errb2)
+	code = runOnStore(a, addr, append([]string{"brief", "e", "--tier", "heavy", "--brief-file", writeBrief(t, "the brief"), "--reason", "a heavy card"}, "--redis", addr), &out2, &errb2)
 	assert.Equal(t, 0, code, "brief --tier --brief-file with --reason")
 	assert.Contains(t, out2.String(), "reason: a heavy card")
 	run("card", "e", "--fields")

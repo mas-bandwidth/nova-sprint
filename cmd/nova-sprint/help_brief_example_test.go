@@ -71,7 +71,7 @@ func TestEveryBriefExampleInTheHelpPassesTheCardLint(t *testing.T) {
 	helpOf := func(args ...string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(args, &out, &errb)
+		code := runInto(a, args, &out, &errb)
 		require.Equal(t, 0, code, "%v: %s", args, errb.String())
 		return out.String()
 	}

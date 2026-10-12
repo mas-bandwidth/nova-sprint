@@ -126,7 +126,7 @@ func TestFriendSyncRunsAsAnInstalledLoopWithNoShell(t *testing.T) {
 		return fired
 	}
 	var out, errs bytes.Buffer
-	code := ta.a.run(words, &out, &errs)
+	code := runInto(ta.a, words, &out, &errs)
 	assert.Equal(t, 0, code, "an interrupt ends the loop: %s", errs.String())
 	assert.Equal(t, []time.Duration{period, period, period, period, period}, waits, "it waits --every between passes")
 
@@ -195,7 +195,7 @@ func TestFriendSyncFailingPastAMinuteIsOneJudgmentThatClosesWhenAPassIsOK(t *tes
 		return fired
 	}
 	var out, errs bytes.Buffer
-	code := ta.a.run([]string{"friend", "sync", "--every", "15s"}, &out, &errs)
+	code := runInto(ta.a, []string{"friend", "sync", "--every", "15s"}, &out, &errs)
 	require.Equal(t, 0, code, errs.String())
 	assert.Equal(t, 1, strings.Count(out.String(), "FRIEND-SYNC JUDGMENT recorded"), "recorded once, not every pass: %s", out.String())
 	assert.Equal(t, 1, strings.Count(errs.String(), "FRIEND-SYNC FAILING"), errs.String())
@@ -229,7 +229,7 @@ func TestFriendSyncFailingPastAMinuteIsOneJudgmentThatClosesWhenAPassIsOK(t *tes
 	}
 	out.Reset()
 	errs.Reset()
-	code = ta.a.run([]string{"friend", "sync", "--every", "15s"}, &out, &errs)
+	code = runInto(ta.a, []string{"friend", "sync", "--every", "15s"}, &out, &errs)
 	require.Equal(t, 0, code, errs.String())
 	ta.ok("tick")
 	for _, g := range ta.inboxGroups() {

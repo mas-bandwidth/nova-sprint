@@ -275,7 +275,7 @@ func TestDashboardWithNoStoreRefusesOnStderr(t *testing.T) {
 	a := newApp(func(string) string { return "" })
 	a.loginFile = nil
 	var out, errb strings.Builder
-	code := a.run([]string{"dashboard", "--listen", "127.0.0.1:0", "--pull", "none"}, &out, &errb)
+	code := runInto(a, []string{"dashboard", "--listen", "127.0.0.1:0", "--pull", "none"}, &out, &errb)
 	assert.Equal(t, 2, code, "stderr: %s", errb.String())
 	assert.Empty(t, out.String(), "a refusal writes nothing to stdout")
 	assert.Equal(t, "nova-sprint dashboard REFUSED: "+dashboardNoStore+"; run: nova-sprint dashboard -h\n", errb.String())

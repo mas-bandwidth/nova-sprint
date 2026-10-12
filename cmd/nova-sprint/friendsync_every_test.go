@@ -76,7 +76,7 @@ func TestFriendSyncEveryFollowsTheSeatAndSaysEachChangeOnce(t *testing.T) {
 		return fired
 	}
 	var out, errs bytes.Buffer
-	code := ta.a.run([]string{"friend", "sync", "--every", "15s", "--root", t.TempDir()}, &out, &errs)
+	code := runInto(ta.a, []string{"friend", "sync", "--every", "15s", "--root", t.TempDir()}, &out, &errs)
 	require.Equal(t, 0, code, "an interrupt ends the loop: %s", errs.String())
 	assert.Equal(t, []time.Duration{15 * time.Second, 15 * time.Second, 15 * time.Second, 15 * time.Second, 15 * time.Second, 15 * time.Second}, waits, "it waits --every between passes, on the injected clock")
 	assert.Equal(t, []string{"coordinator", "rowan", "stella", "stella"}, seats, "each pass that read its config acted as the seat then")
@@ -110,7 +110,7 @@ func TestFriendSyncEveryFollowsTheSeatAndSaysEachChangeOnce(t *testing.T) {
 	}
 	out.Reset()
 	errs.Reset()
-	code = ta.a.run([]string{"friend", "sync", "--every", "15s", "--actor", "coordinator", "--root", t.TempDir()}, &out, &errs)
+	code = runInto(ta.a, []string{"friend", "sync", "--every", "15s", "--actor", "coordinator", "--root", t.TempDir()}, &out, &errs)
 	require.Equal(t, 0, code, errs.String())
 	assert.Contains(t, errs.String(), "FRIEND-SYNC FAILING")
 	assert.Contains(t, errs.String(), "the coordinator's alone: rowan, not coordinator")

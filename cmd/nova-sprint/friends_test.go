@@ -443,7 +443,7 @@ func TestTheFriendVerbsRefuse(t *testing.T) {
 func TestFriendHelpMatchesWhatFriendSyncDoes(t *testing.T) {
 	t.Parallel()
 	var out, errb bytes.Buffer
-	code := newApp(func(string) string { return "" }).run([]string{"help", "friend"}, &out, &errb)
+	code := runInto(newApp(func(string) string { return "" }), []string{"help", "friend"}, &out, &errb)
 	require.Equal(t, 0, code, errb.String())
 	help := strings.Join(strings.Fields(out.String()), " ")
 	for _, want := range []string{

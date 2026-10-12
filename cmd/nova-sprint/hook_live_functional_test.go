@@ -93,7 +93,7 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	direct := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := srvApp.run(append(split(line), "--redis", addr), &out, &errb)
+		code := runOnStore(srvApp, addr, split(line), &out, &errb)
 		require.Equal(t, 0, code, "%s: %s%s", line, out.String(), errb.String())
 		return out.String()
 	}
@@ -109,7 +109,7 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	client.hookSock = srvApp.hookSock
 	seat := func(line string) (int, string) {
 		var out, errb bytes.Buffer
-		code := client.run(split(line), &out, &errb)
+		code := runInto(client, split(line), &out, &errb)
 		return code, out.String() + errb.String()
 	}
 	hookIn := func() (*hlLines, chan int) {
@@ -118,7 +118,7 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 		pr, pw := io.Pipe()
 		done := make(chan int, 1)
 		go func() {
-			code := client.run([]string{"hook"}, pw, io.Discard)
+			code := runInto(client, []string{"hook"}, pw, io.Discard)
 			_ = pw.CloseWithError(io.EOF)
 			done <- code
 		}()

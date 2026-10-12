@@ -85,7 +85,7 @@ func afternoonLoad(t *testing.T, lanes bool, span time.Duration) map[string]late
 	do := func(args ...string) {
 		t.Helper()
 		var out, errb bytes.Buffer
-		require.Equal(t, 0, a.run(args, &out, &errb), "%v: %s %s", args, out.String(), errb.String())
+		require.Equal(t, 0, runOnStore(a, addr, args, &out, &errb), "%v: %s %s", args, out.String(), errb.String())
 	}
 	do("init", "--members", "m1:4,m2:4,m3:4,m4:4", "--readers", "reader-a,reader-b")
 	do("friend", "sync", "--root", t.TempDir())
@@ -123,7 +123,7 @@ func afternoonLoad(t *testing.T, lanes bool, span time.Duration) map[string]late
 			a.serial.Lock()
 			began := time.Now()
 			for range 10 {
-				a.run(heavy, io.Discard, io.Discard)
+				runOnStore(a, addr, heavy, io.Discard, io.Discard)
 			}
 			mu.Lock()
 			l := got["slow-step"]

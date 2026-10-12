@@ -42,7 +42,7 @@ func TestDevIsBehindCountsOnlyCardsLandedOnSprintBranches(t *testing.T) {
 	run := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(strings.Fields(line), &out, &errb)
+		code := runOnStore(a, addr, strings.Fields(line), &out, &errb)
 		require.Zero(t, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
 		return out.String()
 	}

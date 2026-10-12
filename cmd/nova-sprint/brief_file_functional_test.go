@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -25,15 +24,10 @@ func TestAddBriefFileOnTheStore(t *testing.T) {
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	defer c.Close()
 	require.NoError(t, fn.Load(context.Background(), c))
-	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator"}
-	a := newApp(func(k string) string { return env[k] })
-	defer a.close()
+	ta := newFunctionalTestApp(t, addr)
 	run := func(args ...string) string {
 		t.Helper()
-		var out, errb bytes.Buffer
-		code := a.run(args, &out, &errb)
-		require.Equal(t, 0, code, "%v: %d %s%s", args, code, out.String(), errb.String())
-		return out.String()
+		return ta.runVerb(args...)
 	}
 	// the card lint's passing brief, then the paragraphs under test
 	brief := passingBrief("Fix the empty case.") + "\nThen:\n\t- keep the tab\n  - keep the indent, \"quotes\", 'ticks', ünï\n"
@@ -43,11 +37,10 @@ func TestAddBriefFileOnTheStore(t *testing.T) {
 	// a brief that fails the card lint is refused on the store, exit 2, and writes nothing
 	bare := filepath.Join(t.TempDir(), "bare.md")
 	require.NoError(t, os.WriteFile(bare, []byte("Fix the empty case.\n"), 0o600))
-	var out, errb bytes.Buffer
-	code := a.run([]string{"add", "--stream", "s0", "--count", "1", "--one", "--brief-file", bare}, &out, &errb)
-	require.Equal(t, 2, code, "a brief without the child rules: exit %d, out %q, err %q; want exit 2 with the lint's lines", code, out.String(), errb.String())
-	require.Contains(t, errb.String(), "LINT DRIFT brief rule-worktree", "a brief without the child rules: exit %d, out %q, err %q; want exit 2 with the lint's lines", code, out.String(), errb.String())
-	require.Zero(t, out.Len(), "a brief without the child rules: exit %d, out %q, err %q; want exit 2 with the lint's lines", code, out.String(), errb.String())
+	out, code, errb := ta.runVerbOut("add", "--stream", "s0", "--count", "1", "--one", "--brief-file", bare)
+	require.Equal(t, 2, code, "a brief without the child rules: exit %d, out %q, err %q; want exit 2 with the lint's lines", code, out, errb)
+	require.Contains(t, errb, "LINT DRIFT brief rule-worktree", "a brief without the child rules: exit %d, out %q, err %q; want exit 2 with the lint's lines", code, out, errb)
+	require.Empty(t, out, "a brief without the child rules: exit %d, out %q, err %q; want exit 2 with the lint's lines", code, out, errb)
 	run("add", "--stream", "s1", "--count", "1", "--one", "--brief-file", path)
 	run("fleet", "beat", "m1")
 	run("start")

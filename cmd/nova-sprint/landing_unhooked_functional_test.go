@@ -67,7 +67,7 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 	run := func(line string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(append(strings.Fields(line), "--redis", addr), &out, &errb)
+		code := runInto(a, append(strings.Fields(line), "--redis", addr), &out, &errb)
 		require.Zero(t, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
 		return out.String()
 	}
@@ -99,7 +99,7 @@ func TestLandingUnhookedLandsOnARealServer(t *testing.T) {
 
 	// a hand land by the coordinator is refused while the seat is unhooked
 	var out, errb bytes.Buffer
-	code := a.run([]string{"land", "--repo-dir", clone, "--base", "main", "--redis", addr}, &out, &errb)
+	code := runInto(a, []string{"land", "--repo-dir", clone, "--base", "main", "--redis", addr}, &out, &errb)
 	require.NotZero(t, code, "a hand land must be refused while the seat is unhooked")
 	require.Contains(t, out.String()+errb.String(), "hook")
 

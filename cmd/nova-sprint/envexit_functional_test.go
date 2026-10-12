@@ -56,7 +56,7 @@ func TestAnEnvironmentExitOnARealStore(t *testing.T) {
 	run := func(args ...string) (int, string, string) {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(append(args, "--redis", addr), &out, &errb)
+		code := runOnStore(a, addr, append(args, "--redis", addr), &out, &errb)
 		return code, out.String(), errb.String()
 	}
 	ok := func(args ...string) string {

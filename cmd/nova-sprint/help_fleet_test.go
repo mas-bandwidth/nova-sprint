@@ -28,7 +28,7 @@ func TestTheHelpSaysHowAFleetConnectsToTheServer(t *testing.T) {
 		assert.Contains(t, help, want, "nova-sprint help names %q", want)
 	}
 	var out, errb bytes.Buffer
-	code := newApp(func(string) string { return "" }).run([]string{"run", "-h"}, &out, &errb)
+	code := runInto(newApp(func(string) string { return "" }), []string{"run", "-h"}, &out, &errb)
 	require.Equal(t, 0, code, errb.String())
 	assert.Contains(t, out.String(), "nova-sprint run --listen <address>:<port> --land", "run -h quotes the server's line")
 	assert.Contains(t, out.String(), ServerEnv+"=127.0.0.1:<port>", "run -h's --listen names where the coordinator's verbs go")
@@ -45,7 +45,7 @@ func TestVerbHelpNamesItsUsageAndTheColdWords(t *testing.T) {
 	for _, v := range verbs {
 		var out, errb bytes.Buffer
 		args := append(strings.Fields(v.name), "-h")
-		code := a.run(args, &out, &errb)
+		code := runInto(a, args, &out, &errb)
 		require.Equal(t, 0, code, "%s -h: %s", v.name, errb.String())
 		help := out.String()
 		first, _, _ := strings.Cut(help, "\n")
@@ -59,7 +59,7 @@ func TestVerbHelpNamesItsUsageAndTheColdWords(t *testing.T) {
 	helpOf := func(args ...string) string {
 		t.Helper()
 		var out, errb bytes.Buffer
-		code := a.run(args, &out, &errb)
+		code := runInto(a, args, &out, &errb)
 		require.Equal(t, 0, code, "%v: %s", args, errb.String())
 		return out.String()
 	}

@@ -86,7 +86,7 @@ func newUJRig(t *testing.T) *ujRig {
 func (r *ujRig) do(line string) string {
 	r.t.Helper()
 	var out, errb bytes.Buffer
-	code := r.a.run(append(split(line), "--redis", r.addr), &out, &errb)
+	code := runOnStore(r.a, r.addr, append(split(line), "--redis", r.addr), &out, &errb)
 	require.Equal(r.t, 0, code, "%s: exit %d\n%s%s", line, code, out.String(), errb.String())
 	return out.String()
 }

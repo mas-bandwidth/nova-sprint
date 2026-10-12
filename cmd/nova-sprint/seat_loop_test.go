@@ -108,7 +108,7 @@ func TestTheSeatPushRunsAsAnInstalledLoop(t *testing.T) {
 	})
 
 	var out, errs bytes.Buffer
-	code := ta.a.run(words, &out, &errs)
+	code := runInto(ta.a, words, &out, &errs)
 	assert.Equal(t, 0, code, "an interrupt ends the push loop: %s", errs.String())
 
 	old := filepath.Join(home, "coordinator-working", "inbox", "sprint-judgments")

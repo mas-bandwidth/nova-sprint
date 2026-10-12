@@ -88,7 +88,7 @@ func TestAddBriefFileRefusals(t *testing.T) {
 func (ta *testApp) raw(line string) (int, string, string) {
 	var out, errb bytes.Buffer
 	ta.beat()
-	code := ta.a.run(split(line), &out, &errb)
+	code := runInto(ta.a, split(line), &out, &errb)
 	return code, out.String(), errb.String()
 }
 

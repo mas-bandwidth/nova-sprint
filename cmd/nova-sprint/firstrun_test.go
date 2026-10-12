@@ -46,7 +46,7 @@ func TestTheFirstRunTranscriptRunsOverATwin(t *testing.T) {
 	for _, s := range steps {
 		a := newApp(func(k string) string { return env[k] })
 		var out, errb bytes.Buffer
-		code := a.run(s.Args, &out, &errb)
+		code := runInto(a, s.Args, &out, &errb)
 		a.close()
 		got = append(got, onboarding.Result{Code: code, Stdout: out.String(), Stderr: errb.String()})
 	}

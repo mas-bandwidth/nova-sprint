@@ -41,7 +41,7 @@ func TestSeatInstallWritesTheConfigSeatProfile(t *testing.T) {
 	}
 	do := func(args ...string) (int, string, string) {
 		var out, errb bytes.Buffer
-		code := a.run(args, &out, &errb)
+		code := runInto(a, args, &out, &errb)
 		return code, out.String(), errb.String()
 	}
 	units := filepath.Join(dir, "units")
