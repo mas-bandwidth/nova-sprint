@@ -268,6 +268,23 @@ brief verb and the bound).
   `brief --tier --brief-file` without `--reason` refused with nothing written,
   with `--reason` accepted; reason visible on the card).
 
+### A need added to a working card is not a broken invariant (v1.2.13)
+
+A card that gains a need while dealt or working is a legal state until that
+attempt ends: the card was dealt before the need was recorded, so rule 11 holds
+only for a card dealt after the need was recorded. The `brief` verb and rule 11
+agree, the state is named on the card (`working, waits for <need> after this
+attempt`), and the finish moves the card `working -> waiting` when its attempt
+ends (docs/SPEC-SPRINT.md section 9, rule 11).
+
+- Functional (`-tags functional`),
+  `cmd/nova-sprint/need_on_a_working_card_functional_test.go`:
+  `TestANeedAddedToAWorkingCardIsNotABrokenInvariant` (a card dealt to `m1`,
+  then `brief --brief-file` adds `DEPENDS-ON: dep` to the working card, on the
+  test's own redis with `--redis` on every verb, HOME and XDG_CONFIG_HOME the
+  test's own: `check` raises no rule-11 violation, the card names the state,
+  the finish moves it to waiting for `dep`, and `check` stays OK).
+
 
 ### One definition of what a PATHS entry covers (v1.2.13)
 

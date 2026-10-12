@@ -39,6 +39,15 @@ func unstarted(s *Snapshot, id, keeps string) string {
 	return ""
 }
 
+// FieldWaitsAfter names the needs a card gained while it was dealt or working:
+// they apply from its next deal, so its current attempt is legal until it ends
+// (docs/SPEC-SPRINT.md section 9, rule 11). The needs are on the card too
+// (Field "needs"); this names which were recorded after the attempt was dealt,
+// what check.go's rule 11 leaves out for a working card and what the card's
+// state line calls "working, waits for <need> after this attempt". The finish
+// moves the card working -> waiting for them (steps_work.go finishPlan).
+const FieldWaitsAfter = "waits_after"
+
 // BriefCard is one primary's new brief (brief <id>, or one file of brief --dir).
 type BriefCard struct {
 	ID, Brief string
@@ -258,6 +267,22 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 					}
 				}
 			}
+			// a card dealt or working that gains a need not landed is legal until
+			// this attempt ends: the need applies from its next deal, and the finish
+			// moves the card to waiting when this attempt ends (docs/SPEC-SPRINT.md
+			// section 9, rule 11; steps_work.go finishPlan). The card names the
+			// state it is in, so brief and rule 11 agree (FieldWaitsAfter).
+			if c.Col == Working {
+				var after []string
+				for _, n := range want {
+					if !contains(cur, n) && s.StateOf(n) != Landed {
+						after = append(after, n)
+					}
+				}
+				if len(after) > 0 {
+					set[FieldWaitsAfter] = strings.Join(after, ",")
+				}
+			}
 		}
 		if c.Int("attempt") > 0 {
 			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who, toWaiting, r.Reason)
@@ -322,6 +347,11 @@ func briefInPlace(s *Snapshot, c *Card, brief string, set map[string]string, uns
 	}
 	n := c.Int("attempt")
 	said := fmt.Sprintf("brief edited in place by %s at attempt %d: %s", orDash(who), n, briefChange(c.F("brief"), brief))
+	if after := set[FieldWaitsAfter]; after != "" {
+		// the card is working and legal: it waits for the need after this attempt
+		// (docs/SPEC-SPRINT.md section 9, rule 11), and says so on the card
+		said += "; working, waits for " + after + " after this attempt"
+	}
 	set["why"] = cutText(said, MaxCardTextBytes)
 	unset = append(unset, "fix", "finding", FieldFindingAttempt)
 	var changes []Change
@@ -800,7 +830,28 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, ti
 	} else {
 		unset = append(unset, "needs")
 	}
+	// a working card that gains a need not landed is legal until its attempt ends:
+	// the need applies from its next deal, and the finish moves it to waiting
+	// (docs/SPEC-SPRINT.md section 9, rule 11; steps_work.go finishPlan). The card
+	// names the state it is in (FieldWaitsAfter), so brief and rule 11 agree.
+	after := ""
+	if c.Col == string(Working) {
+		var waited []string
+		cur := Split(c.F("needs"))
+		for _, n := range needs {
+			if !contains(cur, n) && s.StateOf(n) != Landed {
+				waited = append(waited, n)
+			}
+		}
+		if len(waited) > 0 {
+			after = strings.Join(waited, ",")
+			set[FieldWaitsAfter] = after
+		}
+	}
 	moved := fmt.Sprintf("%s DEPENDS-ON replaced: needs %s (%d bytes) stream=%s %s", c.ID, orDash(set["needs"]), len(brief), c.Row, c.Col)
+	if after != "" {
+		moved += "; working, waits for " + after + " after this attempt"
+	}
 	if tier != "" && reason != "" {
 		moved += "; reason: " + reason
 	}

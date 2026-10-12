@@ -2512,7 +2512,7 @@ in the same change. Lawful says whether the store's check (`Lawful`,
 | ready -> waiting | a sentinel inserted in front | `steps_sentinel.go` mod.change (add) | AddMove | yes, inserting |
 | ready -> waiting | a brief edit or `needs set` names a need not landed | `steps_edit.go` Brief, briefInPlace, NeedsSet | NeedsSet | yes, a need open |
 | ready -> waiting | the tick's needs pass, its work card dealt nowhere | `steps_tick.go` needsWaits | NeedsWait | yes, a need open |
-| working -> waiting | a dealt card whose needs have not landed goes back to the pool; a worker stopped on needs not landed | `steps_tick.go` needsWithdrawals; `needs_stop.go` needsStopReturned | NeedsWithdraw | yes, only when the card's own named needs in the pre-state have not landed (never by the needs the entry writes) |
+| working -> waiting | a dealt card whose needs have not landed goes back to the pool; a worker stopped on needs not landed | `steps_tick.go` needsWithdrawals; `needs_stop.go` needsStopReturned; `steps_work.go` finishPlan (the attempt ended and the card waits for a need it gained while working) | NeedsWithdraw | yes, only when the card's own named needs in the pre-state have not landed (never by the needs the entry writes) |
 | landed -> review | the short-reads pass on a landed card | `steps_tick.go` ShortReadsBack (before v1.2.13) | none (witness "unland") | no: landed is final; the pass now offers merging cards only |
 | open -> off | drop, defer | `steps_review.go` Drop; `defer.go` Defer | Drop | yes, never a needed card |
 | landed -> off | remove | a removing plan | Drop | yes, removing |
@@ -2520,11 +2520,14 @@ in the same change. Lawful says whether the store's check (`Lawful`,
 | same state, another stream | stream move | `steps_edit.go` MoveCards | none (streams are not modelled) | judged as any move |
 
 A card's needs never hold one not landed past working (section 9, rule 11): a
-ready card that gains one moves to waiting; a dealt card that gains one goes
-working -> waiting at the tick (needsWithdrawals); a card in review is refused
-one, since nothing moves it back. A needs rewrite that would close a cycle is
-refused, as add's is. Open: a taken card given a need not landed can finish ok
-before the tick withdraws it, and reach review with it.
+ready card that gains one moves to waiting; a working card that gains one is
+legal until its current attempt ends, since it was dealt before the need was
+recorded: the need applies from its next deal, the card names the state on it
+("working, waits for <need> after this attempt"), rule 11 leaves the needs
+it gained while working out of its count, and the finish moves it
+working -> waiting when the attempt ends (`briefDepends`, `briefInPlace`,
+`finishPlan`); a card in review is refused one, since nothing moves it back. A
+needs rewrite that would close a cycle is refused, as add's is.
 
 The store holds every step's plan to this table before it applies it, whatever
 step built it: a primary is admitted waiting or ready, moves only by a row of
