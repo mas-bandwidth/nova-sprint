@@ -3228,4 +3228,8 @@
     (fix "the-functional-hook-rigs-name-a-bus-store" :release "v1.2.14" :status "planned"
      :title "The functional hook and generate rigs name a bus store"
      :text "The two nova-sprint hook functional tests and the nova-card generate functional test named no bus store, so since b82faec7 the hook refused before printing a challenge and they timed out; each in-process rig now names one (busRedisEnv in its environment and a bustest fake behind the app's busOpen, as hookSprint does), the nova-card rig's built binary gets NOVA_BUS_REDIS set to the test's own Redis, and the live rig captures the hook's stderr and names it in its challenge-wait failure."
-     :origin "the coordinator, 2026-10-12")))
+     :origin "the coordinator, 2026-10-12")
+   (fix "the-card-in-review-store-test-beats-its-member-before-the-deal" :release "v1.2.14" :status "planned"
+    :title "The store test for a review card beats its member before the deal"
+    :text "TestACardInReviewAlwaysHasAReadTheAskCanReachOnAStore ran start, tick, tick, take, finish without ever beating m1, so m1 never came up, nothing was dealt, and finish refused s1-1.w1 as not on the table; it now beats m1 before start, queues its readers up so the tick asks the read, and asserts the card is working before the take."
+    :origin "the coordinator, 2026-10-12")))
