@@ -523,16 +523,7 @@ func (t *Tool) Banner() string {
 	if t.UsageNote != "" {
 		b.WriteString(t.UsageNote + "\n\n")
 	}
-	var own []string
-	for _, v := range t.shown() {
-		if v.flags().prints {
-			own = append(own, v.Name)
-		}
-	}
 	json := "Every verb takes --json"
-	if len(own) > 0 {
-		json = "Every verb but " + strings.Join(own, ", ") + " takes --json"
-	}
 	why := "the same result as one JSON object on stdout"
 	if t.NoJSON != "" {
 		why = t.NoJSON
@@ -566,10 +557,10 @@ func (t *Tool) call(ctx context.Context, v Verb, args []string, stdin io.Reader,
 	if err := verbflag.Parse(f.FlagSet, args); err != nil {
 		o := Refuse(flagProblems(&v, f, args, err)...)
 		o.Remedy = t.Name + " " + v.Name + " -h"
-		return t.emit(&v, o, !f.prints && verbflag.BoolGiven(f.FlagSet, args, "json"), stdout, stderr)
+		return t.emit(&v, o, verbflag.BoolGiven(f.FlagSet, args, "json"), stdout, stderr)
 	}
 	f.Visit(func(fl *flag.Flag) { c.given[fl.Name] = true })
-	asJSON := !f.prints && c.Bool("json")
+	asJSON := c.Bool("json")
 	c.asJSON = asJSON
 	// One pass over every rule the verb declared, so one run names every
 	// problem: the required flags, the verb's own checks, --max, arguments.
@@ -691,9 +682,7 @@ func (v Verb) flags() *Flags {
 	if v.DryRun {
 		f.Bool("dry-run", false, "print what the verb would write and write nothing")
 	}
-	if !f.prints {
-		f.Bool("json", false, "print the result as one JSON object instead of lines")
-	}
+	f.Bool("json", false, "print the result as one JSON object instead of lines")
 	return f
 }
 
@@ -714,9 +703,6 @@ func (t *Tool) emit(v *Verb, o *Out, asJSON bool, stdout, stderr io.Writer) int 
 	}
 	if o.Status == Refused && o.Remedy == "" {
 		o.Remedy = t.Name + " help"
-	}
-	if o.printed {
-		return o.Exit
 	}
 	w := stdout
 	if !asJSON && o.Status != OK && (o.Status == Refused || len(o.findings) == 0) {
@@ -740,9 +726,9 @@ func (t *Tool) emit(v *Verb, o *Out, asJSON bool, stdout, stderr io.Writer) int 
 // closed (verbflag.New), and the standard flags a verb opts into.
 type Flags struct {
 	*flag.FlagSet
-	max, prints bool
-	required    [][2]string
-	checks      []func(c *Call)
+	max      bool
+	required [][2]string
+	checks   []func(c *Call)
 }
 
 // Required declares a string flag the verb cannot run without: empty, it is a
@@ -762,11 +748,6 @@ func (f *Flags) Max() {
 	f.Int("max", bounded.Default, "items listed before one MORE line stands for the rest; 0 lists all")
 }
 
-// Prints marks a verb that writes its own output (a payload a program reads,
-// a child's stream, or a body shared with a tool not yet on this package): it
-// gets no --json, and returns Exit(code) after writing to c.Stdout and c.Stderr.
-func (f *Flags) Prints() { f.prints = true }
-
 // Call is one invocation of a verb: its streams, its context and its parsed flags.
 type Call struct {
 	// Ctx is the run's context, cancelled when that context ends and on
@@ -774,11 +755,11 @@ type Call struct {
 	// on it; a context that has ended is the closing line, not the verb's Out.
 	Ctx            context.Context
 	Stdin          io.Reader
-	Stdout, Stderr io.Writer // written by a verb that Prints
+	Stdout, Stderr io.Writer // the verb's output streams
 	flags          *Flags
 	given          map[string]bool
 	problems       []string
-	reasons        []string // parallel to problems; "" when Problem, a code when ProblemAs
+	reasons        []string // parallel to problems; "" when Problem
 	dryRead        bool
 	token          string
 	asJSON         bool
@@ -820,15 +801,6 @@ func (c *Call) Want(name, wants string) string {
 func (c *Call) Problem(what string) {
 	c.problems = append(c.problems, what)
 	c.reasons = append(c.reasons, "")
-}
-
-// ProblemAs records one reason with a stable code (skeleton contract 2.10,
-// STANDARD §2). The refusal line carries reason=<code> before the colon, and
-// the JSON result adds "reasons" beside "why": a program reads the code, a
-// person reads the sentence.
-func (c *Call) ProblemAs(reason, what string) {
-	c.problems = append(c.problems, what)
-	c.reasons = append(c.reasons, reason)
 }
 
 // Refused is the refusal naming every problem recorded, or nil when there is none.

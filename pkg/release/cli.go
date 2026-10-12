@@ -201,15 +201,6 @@ func progress(w io.Writer, format string, a ...any) {
 	fmt.Fprintf(w, "release: "+format+"\n", a...)
 }
 
-// Main is the production entry: the verb with every seam at its default, and
-// the one thing a seam cannot default to -- what THIS binary is stamped with,
-// which lives in main and is handed down. `adopt` is the reader: a coordinator
-// older than the release it is fanning out cannot run that release's install,
-// and a coordinator far enough behind cannot adopt at all.
-func Main(name string, args []string, stamp string, out, errs io.Writer) int {
-	return Run(name, args, out, errs, Deps{Self: func() string { return stamp }})
-}
-
 // Run is `nova-update release <verb>`. The verb is dispatched here and each of
 // the four validates its own flags, so a missing flag is named by the verb that
 // wanted it rather than by a shared check that knows about all of them.
