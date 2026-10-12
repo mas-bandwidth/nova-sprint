@@ -11,6 +11,11 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
+// sprintBaseBrief names the sprint branch of the sprint's own repository (no REPO: line), so
+// the cards these tests land count toward "dev is behind": their base is known, it is a
+// sprint branch, and the sprint's own repository is promoted to dev.
+const sprintBaseBrief = "tier: pro\nBASE: sprint/base\n"
+
 // Dev is behind (promotion.go): landings on the sprint branch since the last promotion
 // reach 25, or the oldest waits 30 minutes, whichever first; the judgment names the count,
 // the branch and the last promotion, and closes when promoted records a merge sha. Injected
@@ -27,7 +32,7 @@ func TestTheTickRaisesDevBehindAtTwentyFiveLandingsOrThirtyMinutes(t *testing.T)
 	t.Run("thirty minutes", func(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
-		h.setup(2)
+		h.setupBrief(2, sprintBaseBrief)
 		h.startMachine()
 		h.landThrough("s1", "s1-1")
 		h.machine()
@@ -36,7 +41,7 @@ func TestTheTickRaisesDevBehindAtTwentyFiveLandingsOrThirtyMinutes(t *testing.T)
 		h.machine()
 		open := h.openOf(sprint.NDevBehind)
 		require.Len(t, open, 1)
-		assert.Equal(t, "dev is behind: 1 cards landed on the sprint branch since no promotion recorded; promote: merge origin/dev into the sprint branch, open the PR to dev, run the functional tier, queue it; then: nova-sprint promoted --sha <merge sha>", open[0].Note.What)
+		assert.Equal(t, "dev is behind: 1 cards landed on sprint/base since no promotion recorded: s1-1; promote: merge origin/dev into the sprint branch, open the PR to dev, run the functional tier, queue it; then: nova-sprint promoted --sha <merge sha>", open[0].Note.What)
 		assert.Equal(t, []string{"promoted", "wait 30m"}, open[0].Note.Decisions)
 		cmds := h.commandsOf(sprint.NDevBehind)
 		require.Len(t, cmds, 2)
@@ -54,7 +59,7 @@ func TestTheTickRaisesDevBehindAtTwentyFiveLandingsOrThirtyMinutes(t *testing.T)
 		_, _, ok := sprint.Promotion(h.snap())
 		assert.False(t, ok, "no promotion recorded")
 		res := h.must(PromotedStep(sprint.PromotedReq{Sha: "0123ABCDEF", Answers: []string{open[0].Note.ID}, Who: "tester"}))
-		assert.Contains(t, res.Moved[0], "promoted the sprint branch into dev at ")
+		assert.Contains(t, res.Moved[0], "promoted sprint/base into dev at ")
 		assert.Contains(t, res.Moved[0], "(0123abcdef): 1 cards landed since the last promotion")
 		assert.Empty(t, h.openOf(sprint.NDevBehind), "the promotion closes it")
 		h.machine()
@@ -68,7 +73,7 @@ func TestTheTickRaisesDevBehindAtTwentyFiveLandingsOrThirtyMinutes(t *testing.T)
 	t.Run("twenty-five landings", func(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
-		h.setup(sprint.PromoteCards)
+		h.setupBrief(sprint.PromoteCards, sprintBaseBrief)
 		h.landThrough("s1", ids(1, sprint.PromoteCards-1)...)
 		_, behind := sprint.DevBehind(h.snap())
 		assert.False(t, behind, "under the count")
@@ -78,7 +83,7 @@ func TestTheTickRaisesDevBehindAtTwentyFiveLandingsOrThirtyMinutes(t *testing.T)
 		h.machine()
 		open := h.openOf(sprint.NDevBehind)
 		require.Len(t, open, 1, "at the count")
-		assert.Contains(t, open[0].Note.What, "dev is behind: 25 cards landed on the sprint branch since no promotion recorded")
+		assert.Contains(t, open[0].Note.What, "dev is behind: 25 cards landed on sprint/base since no promotion recorded")
 		h.machine()
 		assert.Equal(t, 1, h.written(sprint.NDevBehind), "once while it holds")
 	})
@@ -121,7 +126,7 @@ func (h *harness) promoteBeforeTheDeal(answers string) {
 func TestAPromotionQueuedAfterTheDrainRaisesNoSecondDevBehind(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.setup(2)
+	h.setupBrief(2, sprintBaseBrief)
 	h.startMachine()
 	h.landThrough("s1", "s1-1")
 	h.machine()
@@ -149,7 +154,7 @@ func TestAPromotionQueuedAfterTheDrainRaisesNoSecondDevBehind(t *testing.T) {
 func TestADrainBeforeAStepReadsThroughTheTwinTheStepHolds(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	h.setup(2)
+	h.setupBrief(2, sprintBaseBrief)
 	h.startMachine()
 	h.landThrough("s1", "s1-1")
 	h.machine()

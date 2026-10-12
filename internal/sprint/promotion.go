@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // Promotion into dev (docs/SPEC-SPRINT.md section 7, "dev is behind"; the owner, 2026-10-04:
@@ -59,10 +61,50 @@ func Promotion(s *Snapshot) (at time.Time, sha string, ok bool) {
 	return t, sha, true
 }
 
+// cardLandedBase is the branch a landed card actually landed on, and its repository: the
+// card's own base field, else its brief's BASE: and REPO: lines, the same source the bases
+// verb reads (swarm.ReadCardBase, docs/SPEC-SPRINT.md section 11). The base is "" when the
+// card records none anywhere.
+func cardLandedBase(c *Card) (base, repo string) {
+	base = c.F("base")
+	cb := swarm.ReadCardBase([]byte(c.F("brief")))
+	if base == "" {
+		base = cb.Ref
+	}
+	return base, cb.Repo
+}
+
+// isSprintBranch says base is a sprint branch, the branch every stream lands on and
+// promotion alone takes to dev: sprint/<name>, or the sprint's recorded base.
+func isSprintBranch(s *Snapshot, base string) bool {
+	return strings.HasPrefix(base, "sprint/") || SprintBase(s) != "" && base == SprintBase(s)
+}
+
+// repoHasDevBranch says a repository has a dev branch to promote a sprint branch into: the
+// sprint's own repository (a card naming no REPO: line) is promoted to dev, and a named
+// repository has one when the store holds a placed card that landed on, or is cut on, dev in
+// it (the same evidence the bases verb counts ahead and behind against).
+func repoHasDevBranch(s *Snapshot, repo string) bool {
+	if repo == "" {
+		return true
+	}
+	for _, c := range s.Work.Cards() {
+		if !c.Placed() {
+			continue
+		}
+		if cb := swarm.ReadCardBase([]byte(c.F("brief"))); cb.Repo == repo && cb.Ref == DevBranch {
+			return true
+		}
+	}
+	return false
+}
+
 // LandedSince is the primaries (sentinels aside) landed after the last promotion, oldest
-// first by their landing stamp, and the branch the most of them name as their base.
-// Cards whose base is a protected branch (dev, main) are excluded since they landed
-// directly onto the line and are held by their base (docs/SPEC-SPRINT.md section 7).
+// first by their landing stamp, and the branch the most of them name as their base. A card
+// counts only when the base it actually landed on is known and is a sprint branch promoted
+// to a dev branch that exists for its repository (docs/SPEC-SPRINT.md section 7): a card
+// landed straight onto dev or main, one whose base is unknown, or one whose repository has
+// no dev branch, never counts.
 func LandedSince(s *Snapshot) (cards []*Card, branch string) {
 	if s.Work == nil {
 		return nil, ""
@@ -78,14 +120,21 @@ func LandedSince(s *Snapshot) (cards []*Card, branch string) {
 		if err != nil || !t.After(at) {
 			continue
 		}
-		b := c.F("base")
-		if slices.Contains(ProtectedBranches, b) {
+		base, repo := cardLandedBase(c)
+		if base == "" {
+			continue
+		}
+		if slices.Contains(ProtectedBranches, base) {
+			continue
+		}
+		if !isSprintBranch(s, base) {
+			continue
+		}
+		if !repoHasDevBranch(s, repo) {
 			continue
 		}
 		cards = append(cards, c)
-		if b != "" {
-			bases[b]++
-		}
+		bases[base]++
 		if oldest.IsZero() || t.Before(oldest) {
 			oldest = t
 		}
@@ -110,7 +159,11 @@ func DevBehind(s *Snapshot) (DevLag, bool) {
 	oldest := s.Now
 	var cardIDs []string
 	for _, c := range cards {
-		cardIDs = append(cardIDs, c.F("primary"))
+		primary := c.F("primary")
+		if primary == "" {
+			primary = c.ID
+		}
+		cardIDs = append(cardIDs, primary)
 		if t, err := time.Parse(time.RFC3339, c.F("landed")); err == nil && t.Before(oldest) {
 			oldest = t
 		}
