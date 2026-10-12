@@ -37,7 +37,7 @@ func TestLandReturnsAnEmptyCommitLandingToReview(t *testing.T) {
 	r.ok("accept --read-ok")
 	// main is protected. Mark the stream so the refusal is the empty commit, not the
 	// protected-base rule (docs/SPEC-SPRINT.md section 7).
-	r.markProtected()
+	r.streamBranches()
 
 	before := r.git(r.remote, "rev-parse", "main")
 	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")

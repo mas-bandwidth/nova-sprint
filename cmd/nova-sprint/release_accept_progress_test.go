@@ -30,7 +30,7 @@ func TestReleaseAcceptAClearedSprintLandsWithNoSeatAction(t *testing.T) {
 		"s1-2": r.head("s1-2", "main", "b.txt", "b\n"),
 	}
 	r.git(r.worker, "push", "-q", "origin", "refs/heads/sprint/*:refs/heads/sprint/*")
-	r.markProtected() // the rig's origin has one branch, main: the stream lands there
+	r.streamBranches() // the rig's origin has one branch, main: its sprint branches are cut from it
 	r.ok("start")
 
 	// from here: the machine (tick, land), the members (take, finish) and the readers (read)

@@ -135,19 +135,29 @@ func (r *landRig) queued(heads map[string]string, order ...string) {
 	r.ok("read --as reader-a --ok --limit 100")
 	r.ok("read --as reader-b --ok --limit 100")
 	r.ok("accept --read-ok")
-	r.markProtected()
+	r.streamBranches()
 }
 
-// markProtected marks every stream on the table to land on the protected branches of
-// every repository (docs/SPEC-SPRINT.md section 7), as a promotion stream is: the rig's
-// origin has one branch, main, and its cards land there.
-func (ta *testApp) markProtected() {
-	ta.t.Helper()
-	st, err := ta.a.store(common{redis: "mem:0", actor: "tester"})
-	require.NoError(ta.t, err)
+// streamBranches creates each stream's sprint branch on origin, cut from the trunk's tip
+// (main, the rig's only trunk), as the landing flow does (docs/SPEC-SPRINT.md section 7,
+// the sprint branch): cards land on their stream's branch sprint/<stream>, never dev or
+// main, so the branch must exist before the lander fetches it.
+func (r *landRig) streamBranches() {
+	r.t.Helper()
+	st, err := r.a.store(common{redis: "mem:0", actor: "tester"})
+	require.NoError(r.t, err)
 	s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil)
-	require.NoError(ta.t, err)
-	ta.ok("stream set " + strings.Join(s.Streams(), " ") + " --land-protected " + sprint.LandProtectedAny)
+	require.NoError(r.t, err)
+	for _, stream := range s.Streams() {
+		branch := "sprint/" + stream
+		res, err := gitrun.Run(context.Background(), gitrun.Options{C: r.remote, Env: r.env, OwnRepo: true},
+			"rev-parse", "--verify", "refs/heads/"+branch+"^{commit}")
+		if err == nil && strings.TrimSpace(string(res.Stdout)) != "" {
+			continue
+		}
+		r.git(r.worker, "push", "-q", "origin", "refs/remotes/origin/main:refs/heads/"+branch)
+	}
+	r.git(r.worker, "fetch", "-q", "origin")
 }
 
 // places is each card's place in the work table and the merge table.
@@ -165,6 +175,13 @@ func (r *landRig) places(ids ...string) map[string]string {
 // mainLog is the first-parent subjects of origin's main, newest first.
 func (r *landRig) mainLog() []string {
 	return strings.Split(r.git(r.remote, "log", "--first-parent", "--format=%s", "main"), "\n")
+}
+
+// sprintLog is the first-parent subjects of a stream's sprint branch on origin, newest
+// first: the branch each stream's cards land on (docs/SPEC-SPRINT.md section 7, the sprint
+// branch), cut from main's tip, so its log reads the landed cards then "base".
+func (r *landRig) sprintLog(stream string) []string {
+	return strings.Split(r.git(r.remote, "log", "--first-parent", "--format=%s", "sprint/"+stream), "\n")
 }
 
 // streamState is a stream's state and cause in the merge table.
@@ -349,7 +366,7 @@ func TestLandReportsItsCardsWhenAnotherIsQueuedAheadUnderThePush(t *testing.T) {
 		r.ok("accept --read-ok")
 	}
 	accept("s1-2", "s1-3")
-	r.markProtected()
+	r.streamBranches()
 	once := false
 	r.a.beforePush = func(int) {
 		if !once {

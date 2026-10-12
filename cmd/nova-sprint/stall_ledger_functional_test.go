@@ -98,7 +98,7 @@ func TestStallALedgerOnlyConflictLandsOnTheStore(t *testing.T) {
 	r.ok("read --as reader-a --ok --max 100 --epoch 0 --usage 'input=1 cache_read=0 cache_write=0 output=1 model=p/m'")
 	r.ok("read --as reader-b --ok --max 100 --epoch 0 --usage 'input=1 cache_read=0 cache_write=0 output=1 model=p/m'")
 	r.ok("accept --read-ok")
-	r.markProtected()
+	r.streamBranches()
 	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
 	require.Equal(t, 0, code, out+errs)
 	require.Contains(t, out, "LAND OK stream=s1 cards=2 base=main", out+errs)
