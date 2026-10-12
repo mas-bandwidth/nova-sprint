@@ -21,6 +21,10 @@ const answersWords = "the judgment notifications this answers, comma separated, 
 // unalias is ids with each alias read back to the judgment id it names; an
 // alias naming no judgment of the epoch is an error naming it.
 func unalias(ctx context.Context, st *store.Store, ids []string) ([]string, error) {
+	st, err := st.Pinned(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var byAlias map[string]string
 	out := append([]string(nil), ids...)
 	for i, id := range ids {
