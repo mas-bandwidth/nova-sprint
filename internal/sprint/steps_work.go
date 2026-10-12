@@ -1106,6 +1106,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 	var p Plan
 	p.on(s)
 	moves := roundMoves{}
+	capOf := s.AttemptsCapOf()
 	ready := func(c *Card) string {
 		// tla/DirtyTick.tla Dealable (HeldStreams, HeldStreamNotDealt): a held stream's cards are dealt nowhere
 		if StreamHeld(s, c.Row) {
@@ -1122,6 +1123,12 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		// (a brief edit records them) waits here, and the tick's invariant names it.
 		if w := WaitsFor(s, c, nil); len(w) > 0 {
 			return c.ID + " is ready and needs " + strings.Join(w, ",") + ", not landed: it is not dealt until its needs land"
+		}
+		// a card at its attempt cap is dealt to no machine until the coordinator decides
+		// (brief_bound.go, AtAttemptCap; the owner, 2026-10-12: "max attempts before you do
+		// judgement and decide what to do"); the tick's deal raises its judgment
+		if bb, ok := AtAttemptCap(c, capOf(c.Row)); ok {
+			return bb.Why()
 		}
 		return ""
 	}

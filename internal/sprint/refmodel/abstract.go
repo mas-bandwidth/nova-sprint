@@ -47,8 +47,10 @@ func Abstract(o Observed) State {
 	a.StreamLast, _ = s.Work.Prop(sprint.PropStreamIndex)
 	a.AskStreamLast, _ = s.Readers.Prop(sprint.PropAskStreamIndex)
 	a.AcceptStreamLast, _ = s.Work.Prop(sprint.PropAcceptStreamIndex)
-	if v, ok := s.Work.Prop(sprint.PropAttempts); ok {
-		a.Cap, _ = sprint.ParseAttempts(v)
+	// the sprint's cap is nova-config's max_attempts as the routes read applied it (the work
+	// table's attempts property is read no more, sprint.AttemptsCap)
+	if n, err := sprint.ParseAttempts(s.MaxAttempts); err == nil {
+		a.Cap = n
 	}
 	for _, st := range s.Work.Rows() {
 		x := Stream{State: SWaiting}
@@ -82,6 +84,7 @@ func Abstract(o Observed) State {
 		}
 		p.Finder, p.FindingAttempt = c.F(sprint.FieldFindingReader), c.Int(sprint.FieldFindingAttempt)
 		p.BriefAt = c.Int(sprint.FieldBriefAttempt)
+		p.DecidedAt = c.Int(sprint.FieldDecidedAttempt)
 		p.RefusedHead = headAttempt(c.F(sprint.FieldLandRefusedHead))
 		if f := c.F("finding"); strings.HasPrefix(f, sprint.LandRefusedFinding) {
 			p.Refused = strings.TrimPrefix(f, sprint.LandRefusedFinding)

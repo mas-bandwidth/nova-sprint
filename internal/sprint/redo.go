@@ -118,8 +118,12 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 			set[FieldLandRefusedHead] = h
 		}
 	}
+	// A conflict only in the shared ledgers seeds no same-refusal bound (it says nothing about
+	// the brief), but the attempt it ends counts toward the attempt cap as every attempt does
+	// (brief_bound.go; the owner, 2026-10-12: every attempt kind counts): bb.Finding is "" for
+	// the cap's bound and names the repeated refusal for the same-refusal one.
 	bound := ""
-	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok && !ledger {
+	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok && (!ledger || bb.Finding == "") {
 		bound = bb.Why()
 	} else if spent := WidensSpent(pr); way == RefusedPaths && spent != "" {
 		bound = spent

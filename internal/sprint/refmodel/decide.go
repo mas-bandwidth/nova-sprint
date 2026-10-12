@@ -9,7 +9,7 @@ import (
 
 // The duties of today's tick, by name, in the order the machine runs them: the
 // parts of sprint.TickParts in their order (the start's level and level reads,
-// then the four tables' updates: the work pump's resolve, cap deal, unserved fallback, deal, rebalance and accept, the
+// then the four tables' updates: the work pump's resolve, unserved fallback, deal, rebalance and accept, the
 // readers' ask, the merge's resume, the fleet's presence and friend stall; then the end), the unknown machines it tells of
 // (with the fleet's update), and the reminders. The machine's repair of an operation the fence holds is not one:
 // it decides nothing from the tables (Decide's doc says what is left out).
@@ -22,7 +22,6 @@ const (
 	DutyFriendRedeal     = "friend-redeal"     // a friend's card past its deadline unfinished is redealt
 	DutyResolve          = "resolve"           // waiting primaries whose needs landed go ready; sentinels are reached
 	DutyResume           = "resume"            // a stream stopped on another's card goes on when it landed
-	DutyCapDeal          = "cap deal"          // a ready card past its attempt cap is dealt to a frontier or heavy friend with room
 	DutyUnservedFallback = "unserved fallback" // a ready primary whose tier nothing serves falls to the strongest served tier at or below the setting
 	DutyDeal             = "deal"              // ready primaries are dealt to the members up
 	DutyRebalance        = "rebalance"         // a card queued behind lanes that all work goes to an idle lane of either side
@@ -39,7 +38,7 @@ const (
 
 // dutyNames is the duties' names in the tick's order, which the canonical order
 // of moves follows. Duties lists the same names, and a test holds them equal.
-var dutyNames = []string{DutyLive, DutyLevel, DutyLevelReads, DutyResolve, DutyCapDeal, DutyUnservedFallback, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
+var dutyNames = []string{DutyLive, DutyLevel, DutyLevelReads, DutyResolve, DutyUnservedFallback, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyFriendStall, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
 
 // Duty is one duty of the tick: its name and the function that decides it.
 type Duty struct {
@@ -56,7 +55,6 @@ var Duties = []Duty{
 	{DutyLevel, LevelMoves},
 	{DutyLevelReads, LevelReadsMoves},
 	{DutyResolve, ResolveMoves},
-	{DutyCapDeal, CapDealMoves},
 	{DutyUnservedFallback, UnservedFallbackMoves},
 	{DutyDeal, DealMoves},
 	{DutyRebalance, RebalanceMoves},
@@ -137,11 +135,10 @@ func DealMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyDe
 // idle lane whose tiers and side's set admit it, the cheapest first (sprint.Rebalance).
 func RebalanceMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyRebalance) }
 
-// CapDealMoves is the attempt cap's default answer: each machine's primary ready and
-// past its stream's attempt cap dealt as a friend's card to the frontier or heavy friend
-// up with the most room (Snapshot.Friends), her row's work card created in working and
-// the brief gaining her WHO line; a card no such friend has room for is the deal's.
-func CapDealMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyCapDeal) }
+// The attempt cap's default answer of 2026-10-04 (the cap deal duty: a card past its cap
+// dealt to a frontier or heavy friend) is retired with its tick part (the owner, 2026-10-12):
+// a card at its cap is the coordinator's and is dealt to no one (sprint.AtAttemptCap, the
+// deal's refusal and the tick's judgment).
 
 // UnservedFallbackMoves is the fallback the setting calls for: a ready primary whose
 // brief tier no route and no up friend serves is given the strongest served tier at or
@@ -231,7 +228,6 @@ func decisions() []dutyOn {
 		{DutyLevel, partOn(DutyLevel)},
 		{DutyLevelReads, partOn(DutyLevelReads)},
 		{DutyResolve, partOn(DutyResolve)},
-		{DutyCapDeal, partOn(DutyCapDeal)},
 		{DutyUnservedFallback, partOn(DutyUnservedFallback)},
 		{DutyDeal, partOn(DutyDeal)},
 		{DutyRebalance, partOn(DutyRebalance)},

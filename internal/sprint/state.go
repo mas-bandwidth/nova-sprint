@@ -542,6 +542,11 @@ type Snapshot struct {
 	// machine makes (nova-config's sprint row, git_identity), read with the routes; "" is
 	// none configured, which the landing refuses.
 	GitIdentity string
+	// MaxAttempts is the sprint row's attempt bound as nova-config applied it
+	// (sprint:max_attempts), read with the routes: the attempts one card runs between two
+	// coordinator decisions before it is the coordinator's as one judgment (AttemptsCap,
+	// brief_bound.go; docs/SPEC-SPRINT.md, the bounds); "" or unparseable is AttemptsDefault.
+	MaxAttempts string
 	// ReaderStates is each reader's state as the store derives it (ReaderState:
 	// up, away or down), read by a step that asks (docs/SPEC-SPRINT.md section
 	// 6); nil is none read, and every reader is held up.

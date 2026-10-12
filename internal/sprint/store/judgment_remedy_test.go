@@ -17,7 +17,7 @@ func TestTheBoundJudgmentNamesItsRemedy(t *testing.T) {
 	t.Parallel()
 	h := flashAndPro(t)
 	h.addReady("s1", 1, briefOf("flash", ""))
-	h.must(SetStep(sprint.SetReq{Attempts: "8", Who: h.st.Actor}))
+	h.m.SetMaxAttempts("8")
 	h.startMachine()
 	h.machine()
 	h.boundBy("s1-1", noResultLine)

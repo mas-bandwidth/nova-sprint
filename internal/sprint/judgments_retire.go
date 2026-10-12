@@ -94,6 +94,11 @@ func movedOn(s *Snapshot, n Note, id string) string {
 		if at := c.Int(FieldBriefAttempt); at > 0 && at >= n.Attempt {
 			return fmt.Sprintf("%s was re-briefed at attempt %d", id, at)
 		}
+		// the attempt cap's judgment is outlived by the coordinator's decision on the card
+		// (brief_bound.go, FieldDecidedAttempt: a rework, a re-tier, a continue)
+		if at := c.Int(FieldDecidedAttempt); at > 0 && at >= n.Attempt {
+			return fmt.Sprintf("%s was decided on at attempt %d", id, at)
+		}
 	}
 	return ""
 }

@@ -317,19 +317,16 @@ const PartDrain = "drain"
 // none is ("the tick doesn't end until all dirty bits are cleared"). The
 // model is tla/DirtyTick.tla.
 var TickTables = []TableUpdate{
-	{Work, []TickPartDef{{PartDrain, nil}, {"resolve", TickResolve}, {PartCapDeal, TickCapDeal}, {PartUnservedFallback, TickUnservedFallback}, {"deal", TickDeal}, {PartRebalance, TickRebalance}, {"accept", TickAccept}}},
+	{Work, []TickPartDef{{PartDrain, nil}, {"resolve", TickResolve}, {PartUnservedFallback, TickUnservedFallback}, {"deal", TickDeal}, {PartRebalance, TickRebalance}, {"accept", TickAccept}}},
 	{Readers, []TickPartDef{{"ask", TickAsk}}},
 	{Merge, []TickPartDef{{"resume", TickResume}}},
 	{Fleet, []TickPartDef{{"presence", TickPresence}, {PartFriendStall, TickFriendStall}, {"verdicts", TickVerdicts}, {PartFriendRedeal, TickFriendRedeal}}},
 }
 
-// PartCapDeal is the attempt cap's default answer, the pump's part before the deal
-// (TickCapDeal, brief_bound.go): a card past its cap goes to a frontier or heavy friend
-// with room before the deal could give it to a machine.
-const PartCapDeal = "cap deal"
-
-// TickCapDeal is the attempt cap's default answer as a part of the tick (AttemptCapDeal).
-func TickCapDeal(s *Snapshot, r TickReq) (Plan, int) { return AttemptCapDeal(s, r), 0 }
+// The attempt cap's default answer of 2026-10-04 (PartCapDeal, "cap deal": a card past its
+// cap dealt to a frontier or heavy friend before the deal) is retired (the owner,
+// 2026-10-12): a card at its cap is the coordinator's as one judgment and is dealt to no
+// one until a decision (brief_bound.go; the deal, steps_work.go).
 
 // PartFriendStall is the friend stall ladder part (friend_stall.go).
 const PartFriendStall = "friend-stall"
@@ -850,6 +847,8 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	due := 0
 	var ready []*Card
 	var conds []cond
+	var capNotes []Note // the attempt cap's judgments this deal raises (brief_bound.go)
+	capOf := s.AttemptsCapOf()
 	unserved, whyOf := map[string][]string{}, map[string]string{}
 	up := s.UpMembers()
 	// Friends first: every ready card a friend may take, except a held stream
@@ -872,6 +871,9 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		if AtEnvExitBound(s, c) != nil {
 			continue // at the environment-exit cap: offered to no friend until the seat acts
 		}
+		if _, ok := AtAttemptCap(c, capOf(c.Row)); ok {
+			continue // at its attempt cap: offered to no friend until the coordinator decides (brief_bound.go)
+		}
 		offer = append(offer, c)
 	}
 	// the ladder (priority.go, reads_priority.go): the cards above reader, then the friends'
@@ -889,6 +891,21 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		// (docs/SPEC-SPRINT.md, needs and the deal; WaitsFor): the dealt card, if any,
 		// is withdrawn in this tick (needsWithdrawals)
 		if len(WaitsFor(s, c, nil)) > 0 {
+			continue
+		}
+		if bb, ok := AtAttemptCap(c, capOf(c.Row)); ok {
+			// its cap's attempts ran since the coordinator last decided on it: the one
+			// judgment, raised once while it holds (never again while one is open on the
+			// card; the finish, the read and the landing raise the same one at the attempt's
+			// end), and the card dealt to no one until a decision (brief_bound.go;
+			// docs/SPEC-SPRINT.md, the bounds). Judged before the friend skip below: a card
+			// hard-pinned to a friend (OnlyFriend) at its cap is offered to no friend (the
+			// offer above filters it), so the skip would leave it silent forever.
+			if !capJudged(s, c.ID) {
+				n := judgment(NBriefWrong, c.Row, s.Now, 0, c.ID)
+				n.Who, n.Attempt, n.What, n.Marked = r.who(), c.Int("attempt"), bb.Why(), true
+				capNotes = append(capNotes, n)
+			}
 			continue
 		}
 		if friendPlaced[c.ID] || OnlyFriend(c) && !PinReleased(s, c, r.Friends) {
@@ -1138,6 +1155,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	// takes it, and the note names the needs
 	p.Units = append(p.Units, needsWithdrawals(s, r.who())...)
 	restWrites(&p, s, rests, r.who())
+	p.Notes = append(p.Notes, capNotes...)
 	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed}, r)
 	// a fault hold the machine placed clears itself here, beside the deal that
 	// gives the healthy member its (probe) card (faultClear): a person's hold
@@ -1658,6 +1676,17 @@ func TickCheck(s *Snapshot, r TickReq) (Plan, int) {
 // openJudgmentOn says a judgment notification is open on the subject (a card
 // or a stream) in the snapshot: the no-stall rule and the ConsumersOut rule
 // both read it.
+// capJudged says an attempt-cap judgment (NBriefWrong) is open on the primary already: the
+// deal raises none beside it (brief_bound.go; raised once while it holds).
+func capJudged(s *Snapshot, id string) bool {
+	for _, o := range s.Open {
+		if o.Note.Kind == Judgment && o.Note.Type == NBriefWrong && o.Subject() == id {
+			return true
+		}
+	}
+	return false
+}
+
 func openJudgmentOn(s *Snapshot, subject string) bool {
 	for _, o := range s.Open {
 		if o.Subject() == subject && o.Note.Kind == Judgment {

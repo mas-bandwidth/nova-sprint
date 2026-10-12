@@ -677,6 +677,10 @@ func Rework(s State, p, m string) (State, error) {
 	if len(broken) > 0 {
 		pr.Refused = "" // its broken reads' finding replaces the landing's (sprint.Rework)
 	}
+	// the coordinator's rework is a decision on the card: the attempt cap counts again
+	// from this attempt (sprint.Rework writes FieldDecidedAttempt for a rework with no
+	// rule; a rule's rework is the machine's, and no rule reaches this action)
+	pr.DecidedAt = pr.Attempt
 	pr.Attempt++
 	if len(up) > 0 {
 		if m != choice {

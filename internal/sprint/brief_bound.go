@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // The brief's bound (docs/SPEC-SPRINT.md, "The brief is wrong, not the worker"; the owner,
@@ -18,15 +16,26 @@ import (
 // brief (Brief, FieldBriefAttempt) resets it.
 //
 // The attempt cap (the owner, 2026-10-04, after a night in which only a repeated finding
-// bounded a card and one that failed differently each time ran for ever): after the cap's
-// attempts on one brief (AttemptsCap: the stream's setting, else the sprint's, else
-// AttemptsDefault) the card is not dealt to a machine again. Its default answer is a friend
-// card (AttemptCapDeal, the tick's part before the deal; the tier ladder settled 2026-10-04:
-// escalation is by attempt cap): a ready primary past the cap is dealt to a frontier or
-// heavy-class friend up with room, the plan counting her free width as it deals, one width
-// one such card, and a card that no longer fits stays ready. With no such friend up with
-// room it goes to the coordinator as one judgment, "brief defect after N attempts, $X
-// spent", with the findings of every attempt listed, and the decisions brief and drop.
+// bounded a card and one that failed differently each time ran for ever; and 2026-10-12,
+// after epoch 16 ran one card to attempt 11 and another to 22: "11/22 attempts is tooooo
+// many. max attempts should be configurable in nova-config, and default to 4"; "The max
+// attempts 4 = max attempts before you do judgement and decide what to do"): a card runs at
+// most AttemptsCap attempts between two coordinator decisions on it. The number is the
+// stream's own `stream set --attempts`, else nova-config's sprint row max_attempts
+// (Snapshot.MaxAttempts, read with the routes), else AttemptsDefault. Every attempt counts,
+// whatever ended it (a failed finish, a reader's finding inside or outside PATHS, a
+// deadline or harness fault, a push or lane refused, a landing refused, in the shared
+// ledgers too): the count is the card's attempt less FieldDecidedAttempt, the attempt at the
+// coordinator's last decision. Only a coordinator decision resets it (brief, brief --tier,
+// rework by the seat, continue; a drop ends it): a rule's widen or rework, a stream's set
+// --base and the machine's tier escalation never do. At the bound the card is the
+// coordinator's as exactly one NBriefWrong judgment, "brief defect after N attempts, $X
+// spent", with the findings of every attempt listed, and the decisions carry, brief, rework
+// --tier (re-tier) and drop; it is dealt to no machine and no friend until a decision. The
+// attempt cap's default answer of 2026-10-04 (a friend's card past the cap, AttemptCapDeal)
+// is retired: a friend tier is reached by the coordinator's re-tier. tla/SprintRules.tla
+// Part "reads" and "answers", NoAttemptPastCapWithoutDecision; tla/FriendEmptyRun.tla
+// CapDeal; docs/SPEC-SPRINT.md, the bounds.
 
 // FieldFindingAttempt is the attempt whose broken reads' finding the primary's `finding`
 // carries (Rework writes both: the attempt it sends back and what its readers found). A
@@ -35,8 +44,18 @@ import (
 const FieldFindingAttempt = "finding_attempt"
 
 // FieldBriefAttempt is the primary's attempt when its brief was last replaced (Brief); absent,
-// the brief is the one add gave it, at attempt 0.
+// the brief is the one add gave it, at attempt 0. The same-finding-twice bound counts from it;
+// the attempt cap no longer does (FieldDecidedAttempt), since a rule's widen, the cap's old
+// friend deal and stream set --base all replace the brief without a mind deciding anything.
 const FieldBriefAttempt = "brief_attempt"
+
+// FieldDecidedAttempt is the primary's attempt at the coordinator's last decision on it: a
+// brief or brief --tier run by a person or the seat, a rework the seat answers (--tier and
+// --carry included), a continue. Absent, no decision was made: 0. The attempt cap counts
+// every attempt after it (AtBriefBound: attempt - decided), so a card never runs attempt
+// cap+1 without a decision in between. A rule's act never writes it (the actor is told apart
+// by ReworkCard.Rule and BriefReq.ByRule).
+const FieldDecidedAttempt = "decided_attempt"
 
 // FieldFindings is the primary's list of what each attempt sent back found, one line an
 // attempt ("attempt <n>: <the finding's first sentence>"), appended by Rework and cut to
@@ -44,10 +63,12 @@ const FieldBriefAttempt = "brief_attempt"
 // kept by the card the cap's default answer deals to a friend.
 const FieldFindings = "findings"
 
-// PropAttempts is the work table's property holding the sprint's attempt cap (set
-// --attempts, init --attempts), FieldAttempts a stream's control card field holding the
-// stream's (stream set --attempts), over the sprint's; AttemptsDefault is the cap when
-// neither is set, and AttemptsMax the most a cap may be.
+// PropAttempts is the work table's property that held the sprint's attempt cap until
+// 2026-10-12 (set --attempts, init --attempts): retired, the number is nova-config's sprint
+// row max_attempts (the owner: one source, no twin), and a value left in a store is ignored
+// (AttemptsCap). FieldAttempts is a stream's control card field holding the stream's own cap
+// (stream set --attempts), over the sprint's; AttemptsDefault is the cap when neither is set
+// (config.DefaultMaxAttempts), and AttemptsMax the most a cap may be.
 const (
 	PropAttempts        = "attempts"
 	FieldAttempts       = "attempts"
@@ -57,22 +78,71 @@ const (
 	ReviewBreakerRounds = 6
 )
 
-// AttemptsCap is how many attempts one brief may run in the stream: the stream's
-// setting, else the sprint's, else AttemptsDefault.
+// MaxAttemptsSetting is the nova-config verb that sets the sprint's attempt cap, as the
+// refusals of set --attempts and init --attempts name it.
+const MaxAttemptsSetting = "nova-config sprint set --max_attempts <n>"
+
+// AttemptsCap is how many attempts one card may run in the stream between two coordinator
+// decisions: the stream's setting (FieldAttempts), else nova-config's sprint row max_attempts
+// as the routes read applied it (Snapshot.MaxAttempts), else AttemptsDefault. An absent,
+// empty or unparseable max_attempts is the default, so the sprint works with a nova-tools not
+// yet adopted. The work table's PropAttempts is read no more.
 func (s *Snapshot) AttemptsCap(stream string) int {
 	if s.Merge != nil {
 		if n := s.StreamCtl(stream).Int(FieldAttempts); n > 0 {
 			return n
 		}
 	}
-	if s.Work != nil {
-		if v, ok := s.Work.Prop(PropAttempts); ok {
-			if n, err := ParseAttempts(v); err == nil && n > 0 {
-				return n
-			}
+	return s.SprintAttemptsCap()
+}
+
+// AttemptsCapOf is AttemptsCap memoized by stream, for a loop over many cards (the deal and
+// the tick's friend offer): the stream's control card is looked up once a stream, so the
+// deal at scale allocates nothing a card (TestTickDealAllocatesNoPerCardRouteMapAtScale).
+func (s *Snapshot) AttemptsCapOf() func(stream string) int {
+	caps := map[string]int{}
+	return func(stream string) int {
+		if n, ok := caps[stream]; ok {
+			return n
 		}
+		n := s.AttemptsCap(stream)
+		caps[stream] = n
+		return n
+	}
+}
+
+// SprintAttemptsCap is the sprint-wide attempt cap, nova-config's max_attempts, else
+// AttemptsDefault: what every stream without its own setting runs under. It is asked once a
+// card by the deal, so it allocates nothing: an absent value is the default without a parse.
+func (s *Snapshot) SprintAttemptsCap() int {
+	if n, ok := maxAttemptsOf(s.MaxAttempts); ok {
+		return n
 	}
 	return AttemptsDefault
+}
+
+// maxAttemptsOf is the applied max_attempts as a cap: the whole number from 1 to AttemptsMax
+// it holds, and false for "", a value that is no such number, or one above AttemptsMax
+// (the default then).
+func maxAttemptsOf(v string) (int, bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 || n > AttemptsMax || strconv.Itoa(n) != v {
+		return 0, false
+	}
+	return n, true
+}
+
+// AttemptsCapSource says where the sprint-wide cap comes from, for the settings line:
+// "nova-config sprint:max_attempts" when a parseable value is applied, else the default.
+func (s *Snapshot) AttemptsCapSource() string {
+	if n, ok := maxAttemptsOf(s.MaxAttempts); ok {
+		return fmt.Sprintf("max-attempts %d (nova-config sprint:max_attempts)", n)
+	}
+	return fmt.Sprintf("max-attempts %d (the default; nova-config sprint:max_attempts %s)", AttemptsDefault, orDash(strings.TrimSpace(s.MaxAttempts)))
 }
 
 // ParseAttempts is an attempt cap as the verbs take it: a whole number from 1 to
@@ -89,15 +159,16 @@ func ParseAttempts(text string) (int, error) {
 }
 
 // BriefBound is why a primary's brief is wrong: two attempts since the brief last changed
-// whose readers found the same thing (Attempts and Finding), or the cap's attempts since it
-// changed (Since and Cap, with Finding ""): then Spent is what the card has cost (MoneyText,
-// "" when nothing of it was priced) and Findings what each attempt found, in order.
+// whose readers found the same thing (Attempts and Finding), or the cap's attempts since the
+// coordinator last decided on the card (Since and Cap, with Finding ""): then Spent is what
+// the card has cost (MoneyText, "" when nothing of it was priced) and Findings what each
+// attempt found, in order.
 type BriefBound struct {
 	ID       string
 	Attempts [2]int // the two attempts that failed the same way, in order
 	Finding  string // the finding's first sentence, as the first of the two said it
-	Since    int    // the attempts since the brief last changed, when that is the bound
-	Cap      int    // the cap those attempts reached
+	Since    int    // the attempts since the coordinator last decided, when that is the bound
+	Cap      int    // the cap those attempts reached (max_attempts)
 	Spent    string
 	Findings []string
 }
@@ -113,18 +184,23 @@ func (b BriefBound) String() string {
 	if b.Spent != "" {
 		spent = b.Spent + " spent"
 	}
-	line := fmt.Sprintf("%s: brief defect after %d attempts, %s; the brief is wrong, not the worker", b.ID, b.Since, spent)
+	line := fmt.Sprintf("%s: brief defect after %d attempts (max_attempts %d) without a coordinator decision, %s; the brief is wrong, not the worker", b.ID, b.Since, b.Cap, spent)
 	if len(b.Findings) > 0 {
 		line += "; findings: " + strings.Join(b.Findings, "; ")
 	}
 	return line
 }
 
-// Remedy is what changes the brief: corrected in place, the card's next attempt staged from
-// its last pushed head, or the card dropped. A rework's --fix changes the brief not at all, so
-// it is never offered.
+// Remedy is what the coordinator decides at the bound, each a decision that opens a fresh
+// window of attempts: the brief corrected in place, the card's next attempt staged from its
+// last pushed head; reworked on another tier (re-tier); carried on from its last head; or
+// dropped. The same-finding-twice bound offers no rework: a rework's --fix changes the brief
+// not at all.
 func (b BriefBound) Remedy() string {
-	return "run: nova-sprint brief " + b.ID + " --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop " + b.ID + " --reason '<why>'"
+	if b.Finding != "" {
+		return "run: nova-sprint brief " + b.ID + " --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop " + b.ID + " --reason '<why>'"
+	}
+	return "run: nova-sprint brief " + b.ID + " --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), nova-sprint rework " + b.ID + " --fix <text> --tier <a higher tier> (re-tier), nova-sprint rework " + b.ID + " --carry --fix <text>, or nova-sprint drop " + b.ID + " --reason '<why>'"
 }
 
 // Why is the rework's refusal of a card at the bound: the line, and the remedy.
@@ -185,10 +261,13 @@ func findingsLine(findings []string) string {
 // AtBriefBound is whether the primary c is at its brief's bound, and why. finding is what
 // its readers found at its current attempt, or the report of its failed work: the broken
 // reads' findings the store holds (brokenFindings), or the one a read step is about to
-// write; "" when none is known. cap is the attempts one brief may run (AttemptsCap). The
-// finding before is the primary's own (`finding`, at FieldFindingAttempt), counted only
-// when that attempt ran on the current brief. The count is the attempts since the brief
-// last changed; a card never dealt is at no bound.
+// write; "" when none is known. cap is the attempts one card may run between two coordinator
+// decisions (AttemptsCap). The finding before is the primary's own (`finding`, at
+// FieldFindingAttempt), counted only when that attempt ran on the current brief. The cap's
+// count is every attempt since the coordinator last decided on the card (AttemptsSince):
+// an attempt that ended without a worker report counts as any other, since the owner's
+// bound is on the machine's retries, not on what the attempts said about the brief (the
+// owner, 2026-10-12). A card never dealt is at no bound.
 func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 	attempt := c.Int("attempt")
 	briefAt := c.Int(FieldBriefAttempt)
@@ -205,10 +284,7 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 	if cap <= 0 {
 		cap = AttemptsDefault
 	}
-	// The count is the attempts since the brief last changed whose worker ran and
-	// reported (ranSince): an attempt that ended without a worker report says nothing
-	// about the brief and does not count toward the cap (docs/SPEC-SPRINT.md, the bounds).
-	if since := ranSince(c, briefAt); since >= cap {
+	if since := AttemptsSince(c); since >= cap {
 		spent := MoneyText(CardCostOf(c).Total.Charged)
 		if spent == "-" {
 			spent = ""
@@ -218,99 +294,38 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 	return BriefBound{}, false
 }
 
-// AttemptCapDeal is the attempt cap's default answer, the tick's part before the deal
-// (TickCapDeal; the tier ladder settled 2026-10-04: escalation is by attempt cap): every machine's
-// primary ready and past its stream's cap on the brief it carries (AtBriefBound with no
-// finding, asked with AttemptsCap), in a stream not held, is dealt as a friend card
-// (friend_deal.go) to the frontier or heavy-class friend up with room. Room is her free
-// width, width less the cards she already holds, counted across this plan the way
-// friendDealPass counts free: each deal decrements it and the next card is picked again, the
-// most free first and the first by name among equals, so two capped cards cannot both
-// land on one friend whose width is 1. The card keeps its work and findings; its brief
-// gains the WHO line of the friend chosen by the fields the brief edit writes (FieldWho
-// from WhoOfBrief, the brief's text, and FieldBriefAttempt at the attempt it is dealt, so
-// the cap count resets as a replaced brief does); and its next attempt's work card is
-// created on her row in working, closing a brief-defect judgment open on it. A card it
-// does not deal (no such
-// friend up with room) is the deal's as before: at its redeal bound the tick raises the
-// cap's judgment, the findings of every attempt and the spend, decisions brief and drop.
-// tla/FriendEmptyRun.tla CapDeal.
-func AttemptCapDeal(s *Snapshot, r TickReq) Plan {
-	var p Plan
-	p.on(s)
-	declared := map[string]bool{}
-	classes := []string{cardhdr.RouteFrontier, cardhdr.RouteHeavy}
-	free := map[string]int{}
-	for _, f := range r.Friends {
-		if friendDealable(s, f) {
-			free[f.Name] = f.Width - friendLoad(s, f.Name)
-		}
-	}
-	for _, c := range s.Work.Column(Ready) {
-		if _, friend := FriendCard(c); friend || IsSentinel(c) || StreamHeld(s, c.Row) {
-			continue // a friend's card is friendDealPass's, a sentinel never moves, a held stream is dealt nothing
-		}
-		if _, ok := AtBriefBound(c, "", s.AttemptsCap(c.Row)); !ok {
-			continue
-		}
-		if AtEnvExitBound(s, c) != nil {
-			// its children died on the environment EnvExitCardCap times at this attempt: held
-			// by the bound's judgment until the seat acts, never dealt a next attempt here
-			// (docs/SPEC-SPRINT.md, "An environment exit")
-			continue
-		}
-		name := friendWithFree(r.Friends, free, c, classes...)
-		if name == "" {
-			continue // no frontier or heavy friend up with room: the deal's, and its judgment
-		}
-		card := WorkCardID(c.ID, c.Int("attempt")+1)
-		if s.Fleet.Card(card) != nil {
-			p.refuse(c.ID, "work card "+card+" exists already")
-			continue
-		}
-		free[name]--
-		row := FriendRow(name)
-		if !s.Fleet.HasRow(row) && !declared[row] {
-			p.Rows = append(p.Rows, RowAdd{Fleet, row})
-			declared[row] = true
-		}
-		u := friendDealUnit(s, c, card, row, Working, map[string]string{
-			FieldWho:          row,
-			"brief":           briefGainsWho(c.F("brief"), name),
-			FieldBriefAttempt: c.F("attempt"),
-		})
-		if prev := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); prev != nil && prev.Col == Withdrawn {
-			// the capped attempt's withdrawn work card is retired, its record kept, as
-			// a rework retires the bound's (steps_review.go): a withdrawn card's
-			// primary is ready, and this one is working now
-			u.Changes = append([]Change{change(Fleet, removeEntry(prev, map[string]string{"retired": stamp(s.Now), "retired_by": "friend"}))}, u.Changes...)
-		}
-		u.Closes = capJudgments(s, c.ID)
-		u.Moved = fmt.Sprintf("%s work %s -> working card=%s member=%s (the attempt cap's default answer: a friend's card, its brief gained WHO: friend %s and its count reset as a replaced brief)", c.ID, c.Col, card, row, name)
-		p.Units = append(p.Units, u)
-	}
-	return Lawful(p)
+// AttemptsSince is the attempts the primary has run since the coordinator last decided on
+// it: its attempt less FieldDecidedAttempt (0 when no decision was made). Every attempt
+// counts, whatever ended it; a redeal of one attempt (a new generation of the same work
+// card, bounded by MaxRedeals on its own) is that one attempt. tla/SprintRules.tla
+// NoAttemptPastCapWithoutDecision.
+func AttemptsSince(c *Card) int {
+	return max(0, c.Int("attempt")-c.Int(FieldDecidedAttempt))
 }
 
-// capJudgments is the brief-defect judgments open on the primary (NBriefWrong):
-// closed by the attempt cap's default answer, which changes the brief.
-func capJudgments(s *Snapshot, id string) []Open {
-	var out []Open
-	for _, o := range s.Open {
-		if o.Note.Type == NBriefWrong && o.Subject() == id {
-			out = append(out, o)
-		}
+// AtAttemptCap is whether the primary has run its cap's attempts since the coordinator last
+// decided on it, by the count alone (never the same-finding bound), and why: what every
+// deal of a ready card asks before it cuts the next attempt (steps_work.go, deal; the
+// tick's friend offer), so a card at the cap is dealt to no machine and no friend until a
+// decision. It is asked once a ready card by the deal, so under the cap it allocates
+// nothing (TestTickDealAllocatesNoPerCardRouteMapAtScale).
+func AtAttemptCap(c *Card, cap int) (BriefBound, bool) {
+	attempt := c.Int("attempt")
+	if attempt == 0 {
+		return BriefBound{}, false
 	}
-	return out
-}
-
-// briefGainsWho is the brief with the WHO line of the friend named gained by
-// its header: the first line kept, the line first under it, the rest as it
-// was, where cardhdr reads it (ReadWho) and the brief edit's field is written
-// from it (FieldWho, WhoOfBrief).
-func briefGainsWho(brief, name string) string {
-	line, rest, _ := strings.Cut(brief, "\n")
-	return cutText(line+"\nWHO: friend "+name+"\n"+rest, MaxCardTextBytes)
+	if cap <= 0 {
+		cap = AttemptsDefault
+	}
+	since := AttemptsSince(c)
+	if since < cap {
+		return BriefBound{}, false
+	}
+	spent := MoneyText(CardCostOf(c).Total.Charged)
+	if spent == "-" {
+		spent = ""
+	}
+	return BriefBound{ID: c.ID, Since: since, Cap: cap, Spent: spent, Findings: findingsOf(c, attempt, "")}, true
 }
 
 // ReviewBreaker checks if the review circuit breaker should trip based on the

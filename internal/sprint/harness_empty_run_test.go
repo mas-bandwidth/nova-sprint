@@ -150,26 +150,10 @@ func TestAMachinesAttemptNeverGoesBackToTheFriendItLeft(t *testing.T) {
 	})
 }
 
-// The attempt cap's default answer deals a card at its brief's bound to a frontier or heavy
-// friend (AttemptCapDeal, friendWithFree): never one the card has left for good, or its
-// brief gains WHO: friend <her> and every later rework is pinned to the lane that ran it
-// empty (the cold read of nova-sprint #45 at f41a84d).
-func TestTheAttemptCapsFriendIsNeverOneTheCardLeft(t *testing.T) {
-	t.Parallel()
-	seats := []FriendSeat{
-		{Name: "amy", Width: 3, Status: Up, Class: cardhdr.RouteFrontier},
-		{Name: "bob", Width: 1, Status: Up, Class: cardhdr.RouteHeavy},
-	}
-	free := map[string]int{"amy": 3, "bob": 1}
-	classes := []string{cardhdr.RouteFrontier, cardhdr.RouteHeavy}
-	c := &Card{ID: "s1-1", Row: "s1", Col: Ready, Fields: map[string]string{"kind": "primary", FieldFriendsLeft: "amy"}}
-	assert.Equal(t, "bob", friendWithFree(seats, free, c, classes...), "amy has the most room, but the card left her")
-	c.Fields[FieldFriendsLeft] = "amy,bob"
-	assert.Empty(t, friendWithFree(seats, free, c, classes...), "every friend left: none, the deal's judgment")
-	// reversed: a card that left no one goes to the friend with the most room
-	delete(c.Fields, FieldFriendsLeft)
-	assert.Equal(t, "amy", friendWithFree(seats, free, c, classes...))
-}
+// The attempt cap's default answer of 2026-10-04 (AttemptCapDeal, friendWithFree: a card at its
+// brief's bound dealt to a frontier or heavy friend) is retired (the owner, 2026-10-12): a card
+// at the cap is dealt to no one until the coordinator decides, so no cap deal can pin a card to
+// the friend whose lane ran it empty (brief_bound_test.go pins the no-deal).
 
 // The failed finish records the friend an empty run leaves, so an answer that never reworks
 // (the brief's bound left to a mind, then the attempt cap's deal) still keeps the card off
@@ -192,22 +176,32 @@ func TestTheFailedFinishRecordsTheFriendAnEmptyRunLeaves(t *testing.T) {
 
 // The failed rule carries the friend an empty run leaves on its answer even when it returns
 // early (the brief's bound, or a brief defect: a left answer reworks nothing), so the record
-// is the rule's and the attempt cap's deal is answered that she may never take it. The failed
+// is the rule's and every later deal is answered that she may never take it. The failed
 // finish writes the field itself (emptyRunFriend); this pins the rule's own answer.
 func TestTheFailedRuleCarriesTheEmptyRunFriendOnItsEarlyReturns(t *testing.T) {
 	t.Parallel()
 	w, _, _ := emptyRunOnAmy(t, "friend", emptyRunReport("amy"))
-	w.s.Work.SetProp(PropAttempts, "1") // the cap is one attempt
+	w.s.MaxAttempts = "1" // the cap is one attempt
 	pr := w.s.Work.Card("s1-1")
 	require.Equal(t, "1", pr.F("attempt"), "one attempt run, the cap reached")
 
-	// an empty run never counts toward the brief's bound (docs/SPEC-SPRINT.md, the bounds):
-	// reworked, not left to a mind, and the friend still on the answer
+	// an empty run counts toward the attempt cap as every attempt does (brief_bound.go; the
+	// owner, 2026-10-12): at the cap the card is left to a mind, never reworked by rule, and
+	// the friend is still on the answer (the early return's write)
 	a := RuleAnswer{}
 	require.True(t, ruleHarness(w.s, &a, pr), "the failed rule answers the harness fault")
-	require.Equal(t, ActRework, a.Act, "an empty run does not reach the brief's bound: it is reworked")
+	require.Equal(t, ActLeft, a.Act, "at the attempt cap the card is the coordinator's, not reworked")
+	assert.Contains(t, a.Why, "max_attempts 1")
+	assert.Equal(t, "amy", a.set[FieldFriendsLeft], "the early return carries the friend the empty run left")
+
+	// below the cap the empty run is reworked, never onto her
+	w.s.MaxAttempts = "2"
+	a = RuleAnswer{}
+	require.True(t, ruleHarness(w.s, &a, pr), "the failed rule answers the harness fault")
+	require.Equal(t, ActRework, a.Act, "below the cap an empty run is reworked")
 	assert.Equal(t, "amy", a.set[FieldFriendsLeft], "the rework carries the friend the empty run left")
 	assert.Contains(t, a.Why, "never again on friend amy")
+	w.s.MaxAttempts = "1"
 
 	// a brief defect: the other early return, the same write
 	marked := withField(pr, FieldBriefDefect, BriefDefectBase)

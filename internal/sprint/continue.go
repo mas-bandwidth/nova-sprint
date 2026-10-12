@@ -82,7 +82,9 @@ func Continue(s *Snapshot, r ContinueReq) Plan {
 		note := "CONTINUE " + stamp(s.Now) + " " + cutText(text, MaxCardTextBytes-64)
 		brief = strings.TrimRight(brief, "\n") + "\n\n" + note
 	}
-	set := map[string]string{"brief": brief, FieldBriefAttempt: c.F("attempt")}
+	// a continue is a coordinator decision on the card: the same-finding bound and the attempt
+	// cap's count both start again from this attempt (brief_bound.go, FieldDecidedAttempt)
+	set := map[string]string{"brief": brief, FieldBriefAttempt: c.F("attempt"), FieldDecidedAttempt: c.F("attempt")}
 	if r.Tier != "" {
 		set[FieldTier] = r.Tier
 	}
