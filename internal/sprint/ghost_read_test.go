@@ -208,6 +208,46 @@ func TestAReviewCardWithNoReadAndNoJudgmentIsImpossible(t *testing.T) {
 	})
 }
 
+// TestAskInsteadTakesBackAFleetReadCard pins (b) under read cards: ask --instead <unit>
+// takes back that unit's live fleet read card (retired_by coordinator, spending no one) and
+// deals it to another unit in the same step; ask --another cuts one more fleet read card
+// through the read-card deal (docs/SPEC-SPRINT.md section 6, the reads).
+func TestAskInsteadTakesBackAFleetReadCard(t *testing.T) {
+	t.Parallel()
+	t.Run("instead takes back a fleet read card", func(t *testing.T) {
+		t.Parallel()
+		w := readCardsWorld(t, 4, "m1", "m2", "m3")
+		putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "m1", 1)
+		dealReads(t, w, nil)
+		reads := readCardsOf(w, "s1-1")
+		require.Len(t, reads, 1)
+		rc := reads[0]
+		first := rc.Row
+		p := Ask(w.s, AskReq{Sel: Sel{IDs: []string{"s1-1"}}, Instead: first})
+		require.Empty(t, p.Refused, "instead takes back the live fleet read: %v", p.Refused)
+		w.must(p)
+		old := w.s.Fleet.Card(rc.ID)
+		require.NotNil(t, old)
+		require.False(t, old.Placed(), "the taken-back read is off its row")
+		require.Equal(t, RetiredByCoordinator, old.F("retired_by"), "retired_by coordinator, spending no one")
+		again := readCardsOf(w, "s1-1")
+		require.Len(t, again, 1, "dealt again in the same step")
+		require.NotEqual(t, rc.ID, again[0].ID, "a fresh card of the attempt")
+		require.NotEqual(t, first, again[0].Row, "dealt to another unit")
+	})
+	t.Run("another cuts one more fleet read card", func(t *testing.T) {
+		t.Parallel()
+		w := readCardsWorld(t, 4, "m1", "m2", "m3")
+		putReviewBy(w, "s1-1", "s1-1: work (s1)\n", "m1", 1)
+		dealReads(t, w, nil)
+		require.Len(t, readCardsOf(w, "s1-1"), 1, "a flash card's one read is cut")
+		p := Ask(w.s, AskReq{Sel: Sel{IDs: []string{"s1-1"}}, Another: true})
+		require.Empty(t, p.Refused, "another cuts one more read: %v", p.Refused)
+		w.must(p)
+		require.Len(t, readCardsOf(w, "s1-1"), 2, "one more read card is cut")
+	})
+}
+
 // TestDoctorCountsFleetReadCards pins the doctor's readers check counting the fleet read
 // cards the readers-table check cannot see (docs/SPEC-SPRINT.md section 6, the reads): a
 // read card working on a row whose fresh beat has not named it for LiveGrace is a ghost,

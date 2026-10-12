@@ -125,6 +125,9 @@ func readsAt(s *Snapshot, pr *Card, attempt int) []*Card {
 // one more reader, the next round the readers.
 func Ask(s *Snapshot, r AskReq) Plan {
 	var p Plan
+	if s.ReadCardsOn() {
+		return askReadCards(s, r)
+	}
 	// in stream turns from the ask's stream index on the work table
 	// (streamTurns), so a limit asks of every stream alike, and the index moves
 	// past the stream of the last primary asked
@@ -362,10 +365,234 @@ func Ask(s *Snapshot, r AskReq) Plan {
 	return p
 }
 
+// askReadCards is the ask verb while read cards are on (s.ReadCardsOn): the tick's deal
+// deals the reads the primaries in review want, and this is the coordinator's own verb.
+// ask <primary> deals the reads it still wants; ask --another cuts one more fleet read card
+// for a primary already asked, through the read-card deal in the same step; ask --instead
+// <member, reader-<member> or friend> takes back that unit's live fleet read card
+// (retired_by coordinator, spending no one) and deals it to another unit in the same step.
+// Every refusal names the reads that stand and who holds each (docs/SPEC-SPRINT.md section 6,
+// the reads; tla-readcards-review-has-a-live-read-or-a-judgment).
+func askReadCards(s *Snapshot, r AskReq) Plan {
+	var p Plan
+	srr := askStreamRound(s)
+	if r.Instead != "" && (r.Another || len(r.IDs) != 1 || r.Only != nil || r.Stream != "" || r.Limit != 0) {
+		p.refuse("ask", "--instead takes back one read of one primary and asks one other reader: ask <primary> --instead <reader>, with no --another, --group, --stream or --limit")
+		return p
+	}
+	another := r.Another || r.Instead != ""
+	eligible := func(c *Card) string {
+		if why := inState(c, Review); why != "" {
+			return why
+		}
+		if c.F("result") == "failed" {
+			return "its work came back failed: rework or drop it"
+		}
+		if r.Instead != "" {
+			return insteadHeld(s, c, r.Instead)
+		}
+		asked := len(ReadsOut(s, c))
+		if another && asked == 0 {
+			return "not asked yet at attempt " + itoa(c.Int("attempt")) + ": the machine's tick asks it, or run: nova-sprint ask " + c.ID + "; --another adds a reader to one already asked"
+		}
+		if !another && readCardsWanted(s, c, nil) == 0 {
+			return "asked already: its reads are out, or one found it broken" + readsStandingWhy(s, c)
+		}
+		return ""
+	}
+	chosen := pick(&p, r.Sel, eligibleTurns(s.Work.Column(Review), eligible, srr), rowOf, eligible, s.primaryCard)
+
+	seats := withoutDirs(s.Friends)
+	var ri routeIndexes
+	if s.Fleet != nil && len(s.Routes) > 0 {
+		ri = routeIndexesOf(s)
+	}
+	view, _ := s.withRests()
+	units := readUnitsOf(view, seats)
+	idx := fleetReadIndex(view)
+	unitByName := map[string]int{}
+	for i, u := range units {
+		unitByName[u.name] = i
+	}
+	insteadUnit := readCardUnitName(r.Instead)
+	readRounds := map[string]*round{}
+	for _, c := range chosen {
+		attempt := readAttempt(c)
+		worker := attemptUnit(view, c.ID, attempt)
+		cards := idx[c.ID]
+		u := Unit{Key: c.ID, Stream: c.Row}
+		var taken []string
+		if r.Instead != "" {
+			for _, ro := range ReadsOut(view, c) {
+				if ro.Table == Fleet && ro.State == ReadLive && readCardUnitName(ro.Reader) == insteadUnit {
+					u.Changes = append(u.Changes, change(Fleet, removeEntry(ro.Card, map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByCoordinator})))
+					taken = append(taken, ro.Reader)
+				}
+			}
+			if len(taken) == 0 {
+				p.refuse(c.ID, insteadHeld(s, c, r.Instead))
+				continue
+			}
+		}
+		want := 1
+		if !another {
+			want = readCardsWanted(view, c, idx)
+		}
+		var may []int
+		for i, un := range units {
+			if readCardUnitName(un.name) == insteadUnit {
+				continue
+			}
+			if mayReadCard(view, un, c, attempt, worker, cards) {
+				may = append(may, i)
+			}
+		}
+		tier := friendReadTier(view, c)
+		cursor, ok := readRounds[tier]
+		if !ok {
+			cursor = readDealRound(view, tier, units)
+			readRounds[tier] = cursor
+		}
+		var picked []int
+		chosenSet := map[int]bool{}
+		for len(picked) < want {
+			hasIdle := false
+			for _, i := range may {
+				if !chosenSet[i] && units[i].half > 0 && units[i].idle > 0 {
+					hasIdle = true
+					break
+				}
+			}
+			bestDistance := 2*len(capLadder) + 1
+			for _, i := range may {
+				if !chosenSet[i] && units[i].half > 0 && (!hasIdle || units[i].idle > 0) {
+					bestDistance = min(bestDistance, readTierDistance(view, units[i], c))
+				}
+			}
+			eligibleUnit := func(name string) bool {
+				i, exists := unitByName[name]
+				return exists && !chosenSet[i] && units[i].half > 0 && (!hasIdle || units[i].idle > 0) && readCardUnitName(name) != insteadUnit && mayReadCard(view, units[i], c, attempt, worker, cards) && readTierDistance(view, units[i], c) == bestDistance
+			}
+			name := cursor.scan(eligibleUnit)
+			if name == "" {
+				break
+			}
+			i := unitByName[name]
+			picked = append(picked, i)
+			chosenSet[i] = true
+			cursor.moved(name)
+		}
+		if len(picked) < want {
+			if len(may) == 0 {
+				p.refuse(c.ID, NoReaderMayRead+": no friend whose tiers reach its read tier, and no member whose reader row serves its tier, besides its own worker"+readsStandingWhy(s, c))
+			} else {
+				p.refuse(c.ID, cannotAskWhy(s, c, attempt, want, len(picked), 0))
+			}
+			continue
+		}
+		standing, _ := readCardsStanding(view, c, idx)
+		branch, start, head := attemptEnds(view, c.ID, attempt)
+		head = cmp.Or(head, c.F("head"))
+		var names []string
+		for k, i := range picked {
+			un := &units[i]
+			un.half--
+			un.idle--
+			id := readCardIDFor(cards, c.ID, attempt, un.name)
+			fields := map[string]string{
+				"kind": "read", "primary": c.ID, "stream": c.Row, "reader": un.name,
+				"attempt": itoa(attempt), "head": head, "asked": stamp(s.Now), "gen": "1",
+				FieldReadCard: "1",
+			}
+			if branch != "" {
+				fields["branch"] = branch
+			}
+			if start != "" {
+				fields["start"] = start
+			}
+			priorityOnRead(fields, c)
+			col := Ready
+			if un.friend {
+				fields[FieldTier] = friendReadTier(view, c)
+				if un.idle >= 0 {
+					col = Working
+				}
+			} else {
+				if ri != nil {
+					maps.Copy(fields, view.readRouteOf(ri, c, nil))
+				} else {
+					fields[FieldTier] = view.readTierDrawn(c)
+				}
+				maps.Copy(fields, view.decideFields(c, standing == 0 && k == 0))
+			}
+			u.Changes = append(u.Changes, change(Fleet, createEntry(id, un.row, col, c.Score, fields)))
+			names = append(names, un.name)
+		}
+		switch {
+		case len(taken) > 0:
+			u.Moved = c.ID + " asked of " + strings.Join(names, ", ") + " (read cards); its read taken back from " + strings.Join(taken, ", ") + " (instead)"
+		case another:
+			u.Moved = c.ID + " asked of " + strings.Join(names, ", ") + " (read cards; one more reader)"
+		default:
+			u.Moved = c.ID + " asked of " + strings.Join(names, ", ") + " (read cards)"
+		}
+		u.Closes = closesFor(s.Open, []string{NStranded, NStalled}, c.ID)
+		p.Units = append(p.Units, u)
+	}
+	for _, tier := range slices.Sorted(maps.Keys(readRounds)) {
+		rr := readRounds[tier]
+		if rr.value() == rr.read {
+			continue
+		}
+		p.Props = append(p.Props, PropWrite{Table: rr.table, Name: rr.name, Value: rr.value(), Was: rr.read, WasAbsent: !rr.had})
+	}
+	if !another {
+		streamIndexWrite(&p, srr, s.Work.Placed)
+	}
+	answered(&p, s, r.Answers, r.Who)
+	return p
+}
+
+// readCardUnitName is the unit a --instead target names: a member, a reader-<member> row,
+// or a friend; the reader row maps to its member, the others are the unit's own name.
+func readCardUnitName(name string) string {
+	if m, ok := ReaderMachine(name); ok {
+		return m
+	}
+	return name
+}
+
+// readsStandingWhy names the reads that stand at the primary's attempt and who holds each
+// (docs/SPEC-SPRINT.md section 6, the reads): a refusal's account of what is out.
+func readsStandingWhy(s *Snapshot, pr *Card) string {
+	out := ReadsOut(s, pr)
+	var parts []string
+	for _, ro := range out {
+		if ro.State == ReadGhost {
+			continue
+		}
+		parts = append(parts, ro.Reader+" ("+ro.Card.ID+", "+ro.State+")")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "; reads that stand: " + strings.Join(parts, ", ")
+}
+
 // insteadHeld says why the reader's read of the primary at its attempt cannot be
 // taken back by ask --instead ("" when it is live: asked or reading).
 func insteadHeld(s *Snapshot, pr *Card, rd string) string {
 	attempt := pr.Int("attempt")
+	// a live fleet read card the unit holds (read cards on) is taken back by --instead:
+	// the one predicate (ReadsOut) sees it, whatever table it is on (docs/SPEC-SPRINT.md
+	// section 6, the reads).
+	if s.ReadCardsOn() {
+		for _, ro := range ReadsOut(s, pr) {
+			if ro.Table == Fleet && ro.State == ReadLive && readCardUnitName(ro.Reader) == readCardUnitName(rd) {
+				return ""
+			}
+		}
+	}
 	ids := ReadCardIDs(pr.ID, attempt, rd)
 	for _, id := range ids {
 		if rc := s.Readers.Card(id); rc != nil && rc.Placed() && (rc.Col == Asked || rc.Col == Reading) {
@@ -382,7 +609,7 @@ func insteadHeld(s *Snapshot, pr *Card, rd string) string {
 	at := " of " + pr.ID + " at attempt " + itoa(attempt)
 	switch {
 	case lastCard == nil:
-		return rd + " holds no read" + at + "; run: nova-sprint card " + pr.ID + " for its readers, or nova-sprint ask " + pr.ID + " --another to add one"
+		return rd + " holds no read" + at + readsStandingWhy(s, pr) + "; run: nova-sprint card " + pr.ID + " for its readers, or nova-sprint ask " + pr.ID + " --another to add one"
 	case !lastCard.Placed():
 		return rd + "'s read" + at + " was retired at " + lastCard.F("retired") + " by " + orDash(lastCard.F("retired_by")) + ": nothing to take back; run: nova-sprint ask " + pr.ID + " --another to add a reader"
 	case lastCard.Col != Asked && lastCard.Col != Reading:
