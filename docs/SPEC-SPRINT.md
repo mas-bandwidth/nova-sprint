@@ -4377,23 +4377,34 @@ carry the machine's identity (the sprint row's `git_identity`, default
 the rework-at-tip commit (`restageAtTip`) runs its commit with it explicitly,
 so a machine commit in a clone carries the configured identity too.
 
-**The sprint branch.** Every stream lands on the sprint branch, and promotion
-alone reaches dev: a card cut on dev is merged by the lander straight onto it and
-ejects the merge queue's promotion run (found 2026-10-04, when cards cut with
-`BASE: dev` restarted that run at every landing). So `add` refuses, per card and
-all or none, nothing written, a card whose brief names `BASE: dev` (a pinned
-`dev@<sha>` too, as the lander reads the line) in a stream that is not the
-promotion stream, its remedy the sprint branch: re-cut the card with `BASE:` the
-branch its stream lands on; `quack` is held to the same rule, its default base
-the test repository's sprint branch, `sprint/quack`. The promotion stream is the
+**The sprint branch.** Every stream lands on its own branch, `sprint/<stream>`,
+and a card cut on dev or main is re-cut onto it at add, never landed straight on
+dev or main (found 2026-10-04, when cards cut with `BASE: dev` restarted the
+promotion run at every landing). The landing flow is one sentence,
+`sprint.LandingFlow`: "The landing flow: card heads land in a batch on their
+stream's branch sprint/<stream>, oldest first, one writer per stream; stream
+branches merge one at a time into dev (main where a repository has no dev); a card
+never lands on dev or main." A stream's branch and trunk are fields of its control
+card (`stream_branch`, `trunk`, `sprint.FieldStreamBranch` and `FieldTrunk`): the
+first add of a stream writes both in the same step as its first card, the branch
+`sprint/<stream>` and the trunk the protected branch the card's `BASE:` names (dev,
+or main; dev when it names none); a card naming a non-protected branch keeps that
+branch as the stream's. `add` re-cuts a card cut on dev or main onto the stream's
+branch (the rewrite `stream set --base` does, `briefOnBase`), saying so on one NOTE
+line per add naming the branch, the trunk and quoting `sprint.LandingFlow`. The
+lander creates an absent stream branch on origin at the trunk's tip in its kept
+clone before it lands any card of the stream, one NOTE line `LAND BRANCH stream=<s> repo=<r> branch=sprint/<s> at=<sha>`; a card of a stream whose branch origin lacks is
+held, never landed on the trunk. No setting turns this on or off: a cleared sprint
+(an epoch bump) builds the same on its first add. The promotion stream is the
 stream whose control card carries the mark `land_protected`, written only by the
 coordinator's `nova-sprint stream set <s> --land-protected <owner/name,...|any>`
-and taken off by `--land-protected default` (`sprint.IsPromotionStream`). A card
-naming no `BASE:` lands on the lander's `--base` (`sprint.SprintBranchWhy`). The
-lander holds the same line from the other side: it refuses, in `placeWhy`, before
-any git, a batch whose effective base (the card's `BASE:`, else `--base`) is dev
-in a stream that is not the promotion stream, naming the sprint branch and the
-mark (the protected branches, below).
+and taken off by `--land-protected default` (`sprint.IsPromotionStream`): it is the
+exception whose cards land on the protected branch the mark names. A card naming no
+`BASE:` lands on the stream's branch (`sprint.SprintBranchWhy`). The lander holds
+the same line from the other side: it refuses, in `placeWhy`, before any git, a
+batch whose effective base (the card's `BASE:`, else `--base`) is dev or main in a
+stream that is not the promotion stream, naming the sprint branch and the mark (the
+protected branches, below).
 
 accept places the primary in merge `queued` with its score, and retires, in
 the same step, every read card of the primary still asked or reading (marked

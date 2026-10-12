@@ -2587,6 +2587,31 @@
     no longer says a balance at or under zero counts as out (Retired excludes such a rest). Exact balance and
     spend arithmetic, the judgments' words and the STOP debt (StopReturn) stay outside the module."
    :origin "card tla-provider-funds, hand-landed 2026-10-11 outside the sprint by a child of the seat from its attempt 6 head af86f02b (attempt 5, 2d4160c2, carried); v1.2.12 inventory item T31 and section 5")
+   (fix "a-new-stream-lands-on-its-own-stream-branch-by-default" :release "v1.2.14" :status "planned"
+    :title "A new stream lands on its own branch sprint/<stream>, never straight on dev or main"
+    :text "Blocker. Nothing in the tool made a stream branch: a new stream landed wherever its cards'
+     BASE: line pointed, so 20 of 31 streams were created with cards on dev or main and carried the mark
+     land_protected, the lander merged every card head straight onto dev or main, each landing cancelled
+     dev's certification run (13 of 15 cancelled) and the v1.2.14 cut was blocked. Now every stream lands on
+     its own branch sprint/<stream>. The landing flow is one sentence, sprint.LandingFlow: \"The landing
+     flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per
+     stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never
+     lands on dev or main.\" A stream's branch and trunk are fields of its control card (FieldStreamBranch,
+     FieldTrunk): the first add writes both in the same step as its first card, the branch sprint/<stream>
+     and the trunk the protected branch the card's BASE: names (dev, or main; dev when it names none), and a
+     card naming a non-protected branch keeps that branch as the stream's. add re-cuts a card cut on dev or
+     main onto the stream's branch (briefOnBase), saying so on one NOTE line per add naming the branch, the
+     trunk and quoting sprint.LandingFlow; the card is staged from and lands on the stream branch. The land
+     pass creates an absent stream branch on origin at origin/<trunk>'s tip in the lander's kept clone before
+     it lands any card of the stream, one NOTE line LAND BRANCH stream=<s> repo=<r> branch=sprint/<s> at=<sha>; a
+     card of a stream whose branch origin lacks is held, never landed on the trunk. No setting turns this on
+     or off: a cleared sprint builds the same on its first add. docs/SPEC-SPRINT.md section 7 and docs/CLI.md
+     say it. Tests: TestFirstAddWritesTheStreamBranchAndTrunk, TestAddRewritesADevBaseToTheStreamBranch,
+     TestAMainOnlyRepositoryTakesMainAsTrunk, TestAClearedSprintMakesTheSameStreamBranch,
+     TestLandingFlowIsOneSentence (internal/sprint/stream_branch_test.go) and the functional
+     TestANewStreamLandsOnItsOwnBranchWithNoSetting (cmd/nova-sprint/stream_branch_functional_test.go), named
+     in docs/TESTS.md under Release acceptance."
+    :origin "the owner, 2026-10-12 ~05:15Z: \"My dude, land in a batch, to a branch that corresponds to the work stream, then serially merge those branches into dev.\" / \"this is the 15th time\" / \"We have designed this together multiple times. Lock it in bro!\"; evidence, epoch 19, server v1.2.13: 20 of 31 streams were created with cards on dev or main and carried the stream mark land_protected")
    (fix "a-shared-non-ledger-path-is-refused-at-admission" :release "v1.2.15" :status "planned"
     :title "Two cards sharing a path no lander-owned ledger covers are refused at admission"
      :text "Card lint refused two admitted cards sharing a path without a needs edge, and offered
