@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -107,9 +108,16 @@ func TestAMergeBeforeThePumpOnTheStore(t *testing.T) {
 	out = run("where")
 	require.Contains(t, out, "DONE", "after the pump:\n%s", out)
 	// the stream stays on the work table with its landed cards (archiving is manual, so
-	// the headline no longer folds it into an archived line)
-	require.Contains(t, out, "s1", "after the pump:\n%s", out)
-	require.Contains(t, out, "landed", "after the pump:\n%s", out)
+	// the headline no longer folds it into an archived line): s1's row is landed = 2 and
+	// 0 in every other state column
+	var v whereView
+	require.NoError(t, json.Unmarshal([]byte(run("where --json")), &v), "where --json after the pump")
+	row := v.Tables[sprint.Work]["s1"]
+	require.NotNil(t, row, "s1's work row after the pump:\n%s", out)
+	for _, col := range []string{"waiting", "ready", "working", "review", "merging"} {
+		require.Equal(t, "0", row[col], "s1 %s after the pump:\n%s", col, out)
+	}
+	require.Equal(t, "2", row["landed"], "s1 landed after the pump:\n%s", out)
 	out = run("check")
 	require.Contains(t, out, "CHECK OK violations=0", "check after the pump:\n%s", out)
 }
