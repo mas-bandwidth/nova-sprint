@@ -28,6 +28,7 @@ type keyShape struct {
 	re   *regexp.Regexp
 }
 
+//go:embed kinds.txt
 var kindData string
 
 // kindRow is one row of the one kinds list. The instruction kind is a column of
