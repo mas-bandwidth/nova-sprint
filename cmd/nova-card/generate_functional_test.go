@@ -91,15 +91,20 @@ func TestAGeneratedDirectoryIsAdmittedWholeAndItsWavesHold(t *testing.T) {
 	srvAddr := sprint.serve()
 	hookBuf := sprint.hook(srvAddr)
 	var chal string
-	require.Eventually(t, func() bool {
+	// the hook streams its challenge; on a failed wait the buffer is read after the
+	// wait and named in the failure, so the socket bind error is not hidden
+	for start := time.Now(); time.Since(start) < 30*time.Second; {
 		for _, l := range strings.Split(hookBuf.String(), "\n") {
 			if strings.HasPrefix(l, "HOOK CHALLENGE ") {
 				chal = strings.TrimSuffix(strings.Fields(l)[2], ":")
-				return true
+				break
 			}
 		}
-		return false
-	}, 30*time.Second, 50*time.Millisecond, "the hook did not challenge")
+		if chal != "" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 	require.NotEmpty(t, chal, "the hook did not challenge: %s", hookBuf.String())
 	code, text = sprint.run("hook", "--prove", chal)
 	require.Equal(t, 0, code, text)
@@ -118,4 +123,17 @@ func TestAGeneratedDirectoryIsAdmittedWholeAndItsWavesHold(t *testing.T) {
 	code, text = sprint.run("add", "--stream", "s", "--brief-dir", admit)
 	require.Equal(t, 0, code, text)
 	assert.Contains(t, text, "ADD OK stream=s cards=3 before=- moved=3 refused=0")
+
+	// the admitted cards hold the chain in the store, not only in manifest.tsv: b
+	// needs a and c needs b, so no two independent cards share the ledger's path
+	code, text = sprint.run("card", "serial-tests-cmd-b-b")
+	require.Equal(t, 0, code, text)
+	assert.Contains(t, text, "ready")
+	assert.Contains(t, text, "needs serial-tests-cmd-a-a")
+	code, text = sprint.run("card", "serial-tests-cmd-a-a")
+	require.Equal(t, 0, code, text)
+	assert.Contains(t, text, "ready")
+	code, text = sprint.run("card", "serial-tests-internal-c-c")
+	require.Equal(t, 0, code, text)
+	assert.Contains(t, text, "needs serial-tests-cmd-b-b")
 }
