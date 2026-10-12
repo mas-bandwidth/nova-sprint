@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,14 +48,13 @@ func newStallRig(t *testing.T) *stallRig {
 	return &stallRig{t: t, addr: addr, a: a, do: do, run: run, bin: releaseBinary(t), home: t.TempDir()}
 }
 
-// cli runs the binary as actor: its exit code, stdout and stderr. The environment is the
-// store's and the actor's alone: no NOVA_SPRINT_SERVER, so nothing is forwarded anywhere.
+// cli runs the binary as actor on this rig's store: its exit code, stdout and stderr.
 func (r *stallRig) cli(actor string, args ...string) (int, string, string) {
 	r.t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, r.bin, args...)
-	cmd.Env = r.env(actor)
+	cmd := exec.CommandContext(ctx, r.bin, releaseArgs(args, r.addr, actor)...)
+	cmd.Env = r.env()
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	err := cmd.Run()
@@ -67,9 +67,8 @@ func (r *stallRig) cli(actor string, args ...string) (int, string, string) {
 	return code, out.String(), errb.String()
 }
 
-func (r *stallRig) env(actor string) []string {
-	return []string{"PATH=" + os.Getenv("PATH"), "HOME=" + r.home, "TMPDIR=" + os.TempDir(),
-		"NOVA_SPRINT_REDIS=" + r.addr, "NOVA_SPRINT_ACTOR=" + actor,
+func (r *stallRig) env() []string {
+	return []string{"PATH=" + os.Getenv("PATH"), "HOME=" + r.home, "XDG_CONFIG_HOME=" + filepath.Join(r.home, ".config"), "TMPDIR=" + os.TempDir(),
 		"GIT_CONFIG_PARAMETERS='maintenance.auto'='false'"}
 }
 
@@ -207,8 +206,8 @@ func (s *server) Write(p []byte) (int, error) {
 func (r *stallRig) startServer(path, actor string, args ...string) *server {
 	r.t.Helper()
 	s := &server{done: make(chan error, 1)}
-	s.cmd = exec.Command(path, args...)
-	s.cmd.Env = r.env(actor)
+	s.cmd = exec.Command(path, releaseArgs(args, r.addr, actor)...)
+	s.cmd.Env = r.env()
 	s.cmd.Dir = r.home
 	s.cmd.Stdout, s.cmd.Stderr = s, s
 	require.NoError(r.t, s.cmd.Start())

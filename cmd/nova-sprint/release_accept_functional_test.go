@@ -44,12 +44,14 @@ func releaseStore(t *testing.T, actor string) (string, *app, func(args ...string
 	c := redis.NewClient(&redis.Options{Addr: addr})
 	t.Cleanup(func() { _ = c.Close() })
 	require.NoError(t, fn.Load(context.Background(), c))
-	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": actor}
+	home := t.TempDir()
+	env := map[string]string{"HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config")}
 	a := newApp(func(k string) string { return env[k] })
+	a.home = func() (string, error) { return home, nil }
 	t.Cleanup(a.close)
 	run := func(args ...string) (int, string, string) {
 		var out, errb bytes.Buffer
-		code := a.run(args, &out, &errb)
+		code := a.run(releaseArgs(args, addr, actor), &out, &errb)
 		return code, out.String(), errb.String()
 	}
 	do := func(args ...string) string {
@@ -59,6 +61,12 @@ func releaseStore(t *testing.T, actor string) (string, *app, func(args ...string
 		return out
 	}
 	return addr, a, do, run
+}
+
+// releaseArgs gives every in-process test verb the same explicit store and actor as the binary.
+func releaseArgs(args []string, store, actor string) []string {
+	words := readVerb(args).words
+	return append(append(append([]string(nil), args[:words]...), "--redis", store, "--actor", actor), args[words:]...)
 }
 
 // releaseCard is a card's view on the store.
@@ -192,8 +200,8 @@ func newReleaseBin(t *testing.T, bin, store string, base []string) *releaseBin {
 }
 
 // env is base with every NOVA_ variable, HOME and XDG_CONFIG_HOME removed, then the run's
-// own HOME and XDG_CONFIG_HOME and the actor.
-func (b *releaseBin) env(actor string) []string {
+// own HOME and XDG_CONFIG_HOME.
+func (b *releaseBin) env() []string {
 	var env []string
 	for _, kv := range b.base {
 		k, _, _ := strings.Cut(kv, "=")
@@ -202,7 +210,7 @@ func (b *releaseBin) env(actor string) []string {
 		}
 		env = append(env, kv)
 	}
-	return append(env, "HOME="+b.home, "XDG_CONFIG_HOME="+filepath.Join(b.home, ".config"), "NOVA_SPRINT_ACTOR="+actor)
+	return append(env, "HOME="+b.home, "XDG_CONFIG_HOME="+filepath.Join(b.home, ".config"))
 }
 
 // run runs the binary's verb (its words) as actor on the test's store, with the rest of the
@@ -211,9 +219,9 @@ func (b *releaseBin) run(actor string, verb []string, rest ...string) (int, stri
 	b.t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	args := append(append(append([]string(nil), verb...), "--redis", b.store), rest...)
+	args := append(append(append([]string(nil), verb...), "--redis", b.store, "--actor", actor), rest...)
 	cmd := exec.CommandContext(ctx, b.bin, args...)
-	cmd.Env = b.env(actor)
+	cmd.Env = b.env()
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	code := 0

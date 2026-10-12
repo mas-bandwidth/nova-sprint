@@ -140,3 +140,31 @@ func TestARealLandFailureInTheWindowStillRollsBack(t *testing.T) {
 	_, err := os.Stat(r.target + ".switch.json")
 	assert.True(t, errors.Is(err, os.ErrNotExist), "the rollback consumed the window")
 }
+
+// TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain pins the release gate's
+// recovery check (docs/TESTS.md, "Release acceptance"): a hook-gate wait leaves the
+// switch and queued card intact, so the next pass can land after the seat hooks in.
+func TestASwitchedServerKeepsLandingOnceTheSeatHooksInAgain(t *testing.T) {
+	r := newSwitchedRig(t)
+	more := []string{"--repo-dir", r.clone, "--base", "main"}
+	for pass := range 2 {
+		*r.now = r.t0.Add(time.Second + time.Duration(pass)*LandEvery)
+		var out bytes.Buffer
+		code, _ := r.a.landOnce(context.Background(), "mem:0", more, &out)
+		assert.NotEqual(t, 0, code, "pass %d: nothing was landed while the hook is gone", pass)
+		assert.NotContains(t, out.String(), "SERVER ROLLBACK", "pass %d: %s", pass, out.String())
+		assert.Equal(t, "binary-v2", r.binary(t), "pass %d: the switch stands", pass)
+	}
+	r.hookLive(t)
+	*r.now = r.t0.Add(2 * time.Minute)
+	var out bytes.Buffer
+	code, _ := r.a.landOnce(context.Background(), "mem:0", more, &out)
+	assert.Equal(t, 0, code, "the land after the seat hooked in: %s", out.String())
+	assert.Contains(t, out.String(), "LAND OK stream=s1 cards=1 base=main", out.String())
+	assert.NotContains(t, out.String(), "SERVER ROLLBACK", out.String())
+	assert.Equal(t, "binary-v2", r.binary(t), "a landing on the switched build keeps it")
+	_, err := os.Stat(r.target + ".switch.json")
+	assert.NoError(t, err, "the window is still open after a good landing")
+	r.gate(t, false)
+	assert.Equal(t, map[string]string{"s1-1": "landed/merged"}, r.places("s1-1"), "the card queued before the switch landed")
+}
