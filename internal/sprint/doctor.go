@@ -1173,16 +1173,17 @@ func DoctorSeat(in DoctorInput) (out []DoctorCheck) {
 
 // envClasses are the finish failures that are the member's environment, never the card's: a
 // tool missing from its PATH, no push credential, native refused because its usage source does
-// not answer, and a take that left no result (the night's b1-b3, whose sqlite3 was missing). A
-// native refusal for anything else is the card's: "a denial the card's shell reported went
-// unread" (pkg/swarm ShellDenialReason) is the card's own shell, never the member (the cold read
-// of #79: one such line named healthy hetzner1, hetzner2 and space for a down).
-var envClasses = []string{"missing tool", "no credential", "native refused", "no result"}
+// not answer, a take that left no result, and a child exit code failure (the night's b1-b3,
+// whose sqlite3 was missing). A native refusal for anything else is the card's: "a denial the
+// card's shell reported went unread" (pkg/swarm ShellDenialReason) is the card's own shell,
+// never the member (the cold read of #79: one such line named healthy hetzner1, hetzner2 and
+// space for a down).
+var envClasses = []string{"missing tool", "no credential", "native refused", "no result", "child exit code"}
 
 // strongEnv are the environment classes that name the member alone: a take that left no result
 // counts as the environment's only on a member that has one of these too (otherwise it is the
 // route's or the card's, as on every member of the fleet at once).
-var strongEnv = []string{"missing tool", "no credential", "native refused"}
+var strongEnv = []string{"missing tool", "no credential", "native refused", "child exit code"}
 
 // FinishClass is the class of one ended take's line: an environment class (envClasses), the
 // provider's, or the harness fault or failure class the rules read it by.
@@ -1197,6 +1198,8 @@ func FinishClass(line string) string {
 		return "wall denial" // the card's shell met the wall: the card's (pkg/swarm ShellDenialReason)
 	case strings.Contains(l, "usage source"):
 		return "native refused"
+	case strings.Contains(l, "child exited"):
+		return "child exit code"
 	case strings.Contains(l, "native refused"):
 		return "card refused" // native refused the card for its own reason, not its member's
 	case strings.Contains(l, "push refused") || strings.Contains(l, "push was refused"):
