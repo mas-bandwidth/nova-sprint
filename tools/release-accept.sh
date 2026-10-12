@@ -82,16 +82,34 @@ deadline=$((began + BOUND))
 exec 3>&1 # the watchdog's line goes to the gate's own output, never the command's
 timed_out=0
 bounded() {
-	if command -v setsid >/dev/null 2>&1; then
+	# RELEASE_ACCEPT_NO_SETSID=1 takes the job-control path even where setsid exists, to
+	# prove the refusal below on a known case
+	if command -v setsid >/dev/null 2>&1 && [ -z "${RELEASE_ACCEPT_NO_SETSID:-}" ]; then
 		setsid "$@" &
 		pid=$!
 	else
-		set -m
+		set -m 2>/dev/null || true
 		"$@" &
 		pid=$!
-		set +m
+		set +m 2>/dev/null || true
 	fi
-	pgid=$pid # setsid and job control both make the started command its group's leader
+	pgid=$pid
+	# the kill is only sound when the command leads a group of its own: wait for setsid to
+	# take effect, then refuse loudly when it never does (dash with no tty turns job
+	# control off, and then the command stays in this gate's group)
+	own=""
+	for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+		own=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
+		[ "$own" = "$pid" ] && break
+		[ -z "$own" ] && break # already exited
+		sleep 0.1
+	done
+	if [ -n "$own" ] && [ "$own" != "$pid" ]; then
+		kill -TERM "$pid" 2>/dev/null
+		wait "$pid" 2>/dev/null || true
+		echo "RELEASE ACCEPT FAILED the command could not be put in a process group of its own (pid=$pid pgid=$own): no setsid, and job control is off; the ${BOUND}s bound could not kill what it starts" >&3
+		exit 1
+	fi
 	(
 		while kill -0 "$pid" 2>/dev/null; do
 			if [ "$(date +%s)" -ge "$deadline" ]; then
@@ -114,6 +132,17 @@ bounded() {
 	wait "$watchdog" 2>/dev/null || true
 	if [ "$(date +%s)" -ge "$deadline" ]; then
 		timed_out=1
+	fi
+	# a normal exit leaves nothing behind: whatever is still in the group is killed, named,
+	# and fails the gate
+	left=$(pgrep -a -g "$pgid" 2>/dev/null || true)
+	if [ -n "$left" ]; then
+		kill -TERM "-$pgid" 2>/dev/null
+		sleep 2
+		kill -KILL "-$pgid" 2>/dev/null
+		echo "RELEASE ACCEPT FAILED processes were left in the run's group $pgid after it ended, killed:" >&3
+		printf '%s\n' "$left" >&3
+		exit 1
 	fi
 	return "$rc"
 }
