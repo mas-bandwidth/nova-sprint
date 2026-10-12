@@ -322,6 +322,19 @@
      are left with the crash-and-repair card, and F4 and D6 (a cross-stream merge need and a stop on it) stay outside
      the module."
     :origin "card tla-sprint-tables-merge-and-return.w7, 2026-10-11: v1.2.12 inventory item T4, the fourth of five cards; drift read at nova-sprint main 00c54ba2e")
+   (fix "tla-sprint-tables-crash-and-repair" :release "v1.2.12" :status "planned"
+    :title "tla/SprintTables.tla adds the outside events and the repair: CiRed, CiGreen, Ack, Crash and Repair"
+    :text "Models only, no product change. tla/SprintTables.tla gains the outside events and the repair from
+     internal/sprint/refmodel/actions.go: a red CI observation on a placed primary opens the ci judgment
+     (CiRed), a green observation or an ack closes it (CiGreen, Ack), and a crash cuts a step over more than
+     one table before its last write, the work table, leaving the operation pending (the D1 fence, which only
+     repair releases) with the deferred work-table write held for repair. The crash's writes are all or
+     nothing, so NoCardLostOrTwice and every earlier invariant hold across a crash at any step. One new
+     reversed witness: MCSprintTablesBrokenHalfstep (Broken \"halfstep\" drops the fence, so a crash leaves
+     half a step's writes and a repair applies the stale deferred write, failing NoCardLostOrTwice). G3
+     (ExhaustNote), F3 (a stopped stream's judgment and a skipped repair) and F4/D6 (a cross-stream merge need
+     and a stop on it) stay outside the module."
+    :origin "this card, tla-sprint-tables-crash-and-repair.w8, 2026-10-11: v1.2.12 inventory item T4, the last of five cards; drift read at nova-sprint main 00c54ba2e")
    (fix "tla-noroom-admission-by-probe" :release "v1.2.12" :status "planned"
     :title "NoRoom models the probe gate and the read return's taker"
     :text "Models only, no product change. tla/NoRoom.tla gains the probe gate: a member is known (accepted into the fleet) only on a passed probe (Accept, the caller's own word, trusted as the code does), and both the deal (Dealable) and the reader's ask (Off) read it, so no deal goes to a member the sprint does not know (NeverDealtUnknown) and a reader whose machine is not a fleet member belongs to no machine and is asked like any reader (steps_work.go fleetStepPlan, drain.go ReaderOwner). ReadReturn is guarded on a taker: a read asked of a held or draining machine's reader is taken back only when another reader can take it (readers.go sweepReads), so it stays otherwise, and ReadsReturn is restated under that guard with NeverReturnedWithoutATaker (a read is never taken back while no other reader can take it). Two reversed witnesses: Broken = \"probeblind\" deals to an unknown member (NeverDealtUnknown) and Broken = \"notaker\" takes a read back with no other reader (NeverReturnedWithoutATaker); the eight existing witnesses keep their results, and the noroom TLC records are refreshed."
