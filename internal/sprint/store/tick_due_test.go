@@ -243,6 +243,8 @@ func TestFewReadersIsWrittenOncePerSprint(t *testing.T) {
 	h.st.B = h.m
 	require.NoError(t, h.st.Init(h.ctx))
 	h.beat()
+	// one reader up: a pro card needs two, so fewer than two are up
+	require.NoError(t, h.m.RowsAdd(h.ctx, "t-readers", []string{"reader-a"}))
 	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
 	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 2}))
 	h.startMachine()
@@ -304,4 +306,55 @@ func TestAWaitedTickJudgmentComesBackAfterItsTime(t *testing.T) {
 	n = h.written(sprint.NNoMember)
 	require.Equal(t, 2, n, "written %d times after the wait ran out, want 2", n)
 	h.clean("waited")
+}
+
+// A sprint with a card in review and an empty readers table raises the "review
+// has no reader" judgment within one tick: there is no one to ask, and the card
+// is never a silent idle.
+func TestAReviewCardWithNoReaderRaisesTheJudgmentInOneTick(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.beat()
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 1}))
+	h.startMachine()
+	h.machine()
+	h.work("m1")
+	// empty the readers table: the card in review has no one to read it
+	require.NoError(t, h.m.RowsDel(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
+	h.tick(time.Second)
+	h.machine()
+	o := h.openOf(sprint.NReviewNoReader)
+	require.Len(t, o, 1, "review has no reader: open %d, want 1", len(o))
+	require.Contains(t, o[0].Note.What, "review has no reader for", o[0].Note.What)
+	require.Contains(t, o[0].Note.What, "the readers table is empty", o[0].Note.What)
+}
+
+// The review-has-no-reader judgment is rewritten in place as primaries join
+// review: a card that enters review while the readers table is still empty is
+// named by the open judgment, not frozen at the tick that first raised it.
+func TestAReviewCardAddedAfterTheJudgmentIsNamedByIt(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.beat()
+	h.must(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1"}))
+	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 1}))
+	h.startMachine()
+	h.machine()
+	h.work("m1")
+	require.NoError(t, h.m.RowsDel(h.ctx, "t-readers", []string{"reader-a", "reader-b", "reader-c"}))
+	h.tick(time.Second)
+	h.machine()
+	o := h.openOf(sprint.NReviewNoReader)
+	require.Len(t, o, 1)
+	require.Contains(t, o[0].Note.What, "s1-1", o[0].Note.What)
+	h.must(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 1}))
+	h.machine()
+	h.work("m1")
+	h.tick(time.Second)
+	h.machine()
+	o = h.openOf(sprint.NReviewNoReader)
+	require.Len(t, o, 1, "one open judgment, rewritten in place: open %d", len(o))
+	require.Contains(t, o[0].Note.What, "s1-1", o[0].Note.What)
+	require.Contains(t, o[0].Note.What, "s1-2", o[0].Note.What)
 }

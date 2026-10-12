@@ -3662,8 +3662,13 @@ rule is `internal/sprint/fleet_quiet.go`; the twin test is
   cards wait): the tick raises one judgment, `fewer than two readers up:
   <readers and their states>`, for the sprint (not one for each primary),
   closed when enough are up or no such primary waits; `reader up` and
-  `reader add` answer it.
-  The system's tick asks for every such primary; `ask` is the coordinator's
+  `reader add` answer it. With no reader row at all there is no one to ask:
+  the tick raises one judgment, `review has no reader for <ids>: the readers
+  table is empty`, for the sprint, naming the primaries in review that want a
+  read, closed when a reader row exists (a clear keeps the readers, section
+  13). A primary in review is never a silent idle for want of a reader;
+  `reader add` answers it.
+  The machine's tick asks for every such primary; `ask` is the coordinator's
   own. Each read card the ask creates carries a route as a work card does
   (`route`, `model`, `tokens`, `usd`, `deadline`), and `tier`, the tier it is drawn
   from: the tier of the card it reads, the tier the deal draws that card's
@@ -7320,11 +7325,13 @@ Fleet Working or Readers Reading after STOP; it lists each `card@gen` and its
 owner row. A stop-returned lease, or a captured lease whose card is no longer
 working, does not block. Otherwise clear finishes a pending operation, or
 abandons it at the epoch it started at, then advances the epoch once. It does
-not restore or delete the old shape. Every table and sprint record is keyed by
-epoch, so the new epoch starts with no stream, reader, work, merge,
-lease, stop receipt, alarm, inbox or session state by construction; the
-fleet's members carry over (their rows, widths, status and holds), but their
-work cards do not. The
+not restore the old work or delete anything. Every table and sprint record is
+keyed by epoch, so the new epoch starts with no stream, work, merge, read
+card, lease, stop receipt, alarm, inbox or session state by construction. A
+clear is tabula rasa for the sprint's work, never for its configuration: the
+fleet's members (their rows, widths, status and holds) and the readers (their
+reader rows and the tiers they read, `reader add` and `reader set --tiers`
+wrote) carry over, but their work cards and read cards do not. The
 old epoch stays where it is and readable (`where`, `card` and `inbox --at-epoch <n>`), and every writer still holding it is refused as stale: nothing of that
 epoch lands in the new one. Operation ids and notification ids carry their epoch (`~<n>` after
 the first): a caller's operation id recorded at an earlier epoch is refused,
@@ -7344,13 +7351,18 @@ epoch, where the system is STOPPED until `start`. Clear prints the epoch
 before and after, what the epoch before the advance held as counts, the
 system's state before, and the sprint line.
 
-Clear does not carry stream rows or their archived/hidden status,
-reader rows, goals, leases, stop debt, alarms or notification cursors
-into the next epoch; the fleet's members carry over with their rows, widths,
-status and holds, but without their work cards. Adding a stream after clear creates it fresh, whether its
-name was previously active, removed or archived. This blank-slate rule
-supersedes earlier table-entry descriptions that said a clear kept streams or
-kept an archived stream archived.
+Clear does not carry stream rows or their archived/hidden status, goals,
+leases, stop debt, alarms or notification cursors into the next epoch. The
+sprint's configuration carries over: the fleet's members with their rows,
+widths, status and holds, and the readers with their rows and the tiers they
+read (restoreMembers, internal/sprint/store/clear.go), but neither carries its
+work cards or read cards. Adding a stream after clear creates it fresh, whether its
+name was previously active, removed or archived. This blank-slate-for-work
+rule supersedes earlier table-entry descriptions that said a clear kept
+streams or kept an archived stream archived; the readers are not a stream and
+are kept. A primary left in review with no read out and no reader row raises
+the tick's "review has no reader" judgment (NReviewNoReader, section 8), so a
+sprint with its readers gone still tells the coordinator rather than idling.
 
 <a id="14-the-machine"></a>
 

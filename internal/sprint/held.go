@@ -197,6 +197,7 @@ type held struct {
 	tickStream map[string]string
 	noMember   bool
 	fewReaders bool // the tick writes that fewer readers are up than a primary needs
+	noReader   bool // the tick writes that a reader is wanted and the readers table is empty
 	marks      map[string]bool
 	due        int
 	// judged is the judgments open on a subject, and the tick's conditions
@@ -289,6 +290,8 @@ func (c *held) notes(ns []Note) {
 			c.noMember = true
 		case n.Type == NFewReaders:
 			c.fewReaders = true
+		case n.Type == NReviewNoReader:
+			c.noReader = true
 		case n.Type == NNoRoute:
 			for _, p := range n.Primaries {
 				c.tick[p] = "writes " + n.Type
@@ -463,6 +466,9 @@ func (c *held) tickOn(pr *Card) string {
 	if c.fewReaders && c.waitsToBeAsked(pr) && !enoughReadersUp(c.s, pr) {
 		return "writes " + NFewReaders
 	}
+	if c.noReader && c.waitsToBeAsked(pr) && len(c.s.Readers.Rows()) == 0 {
+		return "writes " + NReviewNoReader
+	}
 	if c.due > 0 && pr.Col != Merging {
 		return fmt.Sprintf("%d moves and judgments are due past its bounds", c.due)
 	}
@@ -521,6 +527,13 @@ func (c *held) judgment(pr *Card) string {
 		for _, j := range c.judged[StreamSubject("")] {
 			if strings.HasPrefix(j, NFewReaders) {
 				return "fewer than two readers are up; open: " + j
+			}
+		}
+	}
+	if c.waitsToBeAsked(pr) && len(c.s.Readers.Rows()) == 0 {
+		for _, j := range c.judged[StreamSubject("")] {
+			if strings.HasPrefix(j, NReviewNoReader) {
+				return "review has no reader; open: " + j
 			}
 		}
 	}
