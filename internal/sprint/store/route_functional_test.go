@@ -62,6 +62,25 @@ func TestRedisTheDealReadsTheRoutesApplyWrites(t *testing.T) {
 	assert.Equal(t, "1800", wc.F(sprint.FieldDeadline))
 }
 
+// A store with no routes still reads the sprint row's nova-decide bars and
+// git_identity on a real Redis, in one round trip, exactly as the twin's Routes
+// returns them: a store with no routes does not lose the landing's git identity.
+func TestRedisRoutesReadsTheSprintSettingsWithNoRoutes(t *testing.T) {
+	t.Parallel()
+	st, c := liveStore(t)
+	ctx := context.Background()
+	for f, v := range map[string]string{config.FieldGitIdentity: "nova-sprint <nova-sprint@mas-bandwidth.com>",
+		config.FieldDecideBounce: "0.5", config.FieldDecideReview: "0.3", config.FieldAnswerRulesOff: "rule-a"} {
+		require.NoError(t, c.Set(ctx, config.SprintKey(f), v, 0).Err())
+	}
+	set, trips, err := st.B.(RouteReader).Routes(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), trips, "the set and the bars ride the one pipeline with no routes")
+	assert.Empty(t, set.Routes)
+	assert.Empty(t, set.Tiers)
+	assert.Equal(t, Bars{Bounce: "0.5", Review: "0.3", RulesOff: "rule-a", GitIdentity: "nova-sprint <nova-sprint@mas-bandwidth.com>"}, set.Bars)
+}
+
 // The owner's store, 2026-10-01, by the current code: five routes applied as
 // nova-config writes them (three flash, two pro), the machine running, then a fresh
 // card whose line 1 names flash added and dealt by the tick (not by the deal verb,

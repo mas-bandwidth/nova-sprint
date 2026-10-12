@@ -190,30 +190,41 @@ func (st *Store) cached(ctx context.Context, c *RouteCache) (RouteSet, error) {
 	return c.set, nil
 }
 
-// Routes reads the set, then every route's hash, each tier's array and the
-// sprint row's nova-decide bars (Bars) in one pipeline: two round trips, the second only when
-// the set names a route (the arrays and the bars ride in it, so the tick's trips
-// do not rise; with no route a read card has none to draw, and no decide read).
+// Routes reads the set and the sprint row's nova-decide bars (Bars) in one
+// pipeline: one round trip when the set names no route, so a read card with no
+// route still draws its bars and git_identity, as the twin's Routes returns
+// them. With a route, every route's hash and each tier's array ride in a second
+// pipeline: two round trips (the arrays and the hashes are read only when a
+// route exists).
 func (r *Redis) Routes(ctx context.Context) (RouteSet, int64, error) {
-	names, err := r.C.SMembers(ctx, config.RoutesKey).Result()
-	if err != nil || len(names) == 0 {
-		return RouteSet{}, 1, err
-	}
-	pipe := r.C.Pipeline()
-	hs := make(map[string]interface{ Val() map[string]string }, len(names))
-	for _, n := range names {
-		hs[n] = pipe.HGetAll(ctx, config.RouteKey(n))
-	}
-	arrays := make(map[string]interface{ Val() string }, len(config.RouteTiers))
-	for _, t := range config.RouteTiers {
-		arrays[t] = pipe.HGet(ctx, config.TierKey(t), "routes")
-	}
 	var set RouteSet
-	bars := map[string]interface{ Val() string }{}
-	for f := range set.Bars.fields() {
+	fields := set.Bars.fields()
+	pipe := r.C.Pipeline()
+	namesCmd := pipe.SMembers(ctx, config.RoutesKey)
+	bars := make(map[string]interface{ Val() string }, len(fields))
+	for f := range fields {
 		bars[f] = pipe.Get(ctx, config.SprintKey(f))
 	}
 	if err := redisconn.Exec(ctx, pipe); err != nil {
+		return RouteSet{}, 1, err
+	}
+	for f, v := range fields {
+		*v = bars[f].Val()
+	}
+	names := namesCmd.Val()
+	if len(names) == 0 {
+		return RouteSet{Routes: []sprint.Route{}, Bars: set.Bars}, 1, nil
+	}
+	pipe2 := r.C.Pipeline()
+	hs := make(map[string]interface{ Val() map[string]string }, len(names))
+	for _, n := range names {
+		hs[n] = pipe2.HGetAll(ctx, config.RouteKey(n))
+	}
+	arrays := make(map[string]interface{ Val() string }, len(config.RouteTiers))
+	for _, t := range config.RouteTiers {
+		arrays[t] = pipe2.HGet(ctx, config.TierKey(t), "routes")
+	}
+	if err := redisconn.Exec(ctx, pipe2); err != nil {
 		return RouteSet{}, 2, err
 	}
 	out := make([]sprint.Route, 0, len(names))
@@ -225,9 +236,6 @@ func (r *Redis) Routes(ctx context.Context) (RouteSet, int64, error) {
 		if a := sprint.Split(arrays[t].Val()); len(a) > 0 {
 			tiers[t] = a
 		}
-	}
-	for f, v := range set.Bars.fields() {
-		*v = bars[f].Val()
 	}
 	set.Routes, set.Tiers = out, tiers
 	return set, 2, nil
