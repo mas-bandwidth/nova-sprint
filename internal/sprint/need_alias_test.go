@@ -63,6 +63,39 @@ func TestRelinkRewritesANeedInAnyColumn(t *testing.T) {
 	require.Equal(t, Working, w.state("s1-1"), "the working card keeps its column")
 }
 
+// relink old -> new records the alias on the old card's kept record, so it
+// outlives the drop (item 1): after the drop of s1-2 (a working card still
+// needs it) relink s1-2 -> twin leaves the alias behind on s1-2's record.
+func TestRelinkRecordsAnAliasOnTheDroppedCard(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 2) // s1-1, s1-2 ready
+	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"twin"}}))
+	w.must(Deal(w.s, DealReq{Sel: Sel{Only: []string{"s1-1"}}}))
+	w.must(NeedsSet(w.s, NeedsSetReq{ID: "s1-1", Needs: []string{"s1-2"}, Who: "coordinator"}))
+	require.Equal(t, Working, w.state("s1-1"))
+
+	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-2"}}, Reason: "recut", Who: "coordinator"}))
+	w.must(Relink(w.s, RelinkReq{Old: []string{"s1-2"}, New: "twin", Who: "coordinator"}))
+
+	require.Equal(t, "twin", AliasOf(w.s, "s1-2"), "relink records the alias on the dropped card")
+}
+
+// an add whose text names an old id stores the successor and NOTEs it (item 1):
+// the DEPENDS-ON list is resolved through the alias, never refused for the
+// dropped id.
+func TestAnAddNamingAnAliasStoresTheSuccessor(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1) // s1-1 ready
+	w.must(Add(w.s, AddReq{Stream: "s2", IDs: []string{"twin"}}))
+	w.must(Drop(w.s, DropReq{Sel: Sel{IDs: []string{"s1-1"}}, Reason: "recut", ReplacedBy: "twin", Who: "coordinator"}))
+
+	p := Add(w.s, AddReq{Stream: "s2", IDs: []string{"b"}, Needs: []string{"s1-1"}, Who: "coordinator"})
+	require.Empty(t, p.Refused, "an add naming the alias is not refused: %v", p.Refused)
+	require.Contains(t, joined(p.Said), "need s1-1 is now twin", "the add NOTEs the successor: %v", p.Said)
+	w.must(p)
+	require.Equal(t, "twin", w.s.Work.Card("b").F("needs"), "the stored need is the successor, never the old id")
+}
+
 func joined(ss []string) string {
 	out := ""
 	for _, s := range ss {

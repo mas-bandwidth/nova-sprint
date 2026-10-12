@@ -3,6 +3,8 @@ package sprint
 import (
 	"fmt"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
 // A dropped card that has a successor is a permanent alias (docs/SPEC-SPRINT.md
@@ -97,7 +99,11 @@ func aliasUnits(s *Snapshot, olds []string, nw, who string) []Unit {
 			continue
 		}
 		set := map[string]string{FieldReplacedBy: fmt.Sprintf("%s %s by %s", nw, stamp(s.Now), orDash(who))}
-		out = append(out, Unit{Key: old, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set))},
+		// a dropped card is kept off the table, on no cell: the entry guards its
+		// revision alone, no place (ntable's PLACEGUARD refuses a place expectation
+		// on a record that is not placed).
+		e := ntable.BatchMemberEntry{ID: c.ID, Expect: &ntable.MemberExpect{Revision: u64(c.Rev)}, Set: set}
+		out = append(out, Unit{Key: old, Stream: c.Row, Changes: []Change{change(Work, e)},
 			Moved: old + " -> replaces by " + nw})
 	}
 	return out

@@ -3137,6 +3137,15 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 		req.Cards = append(req.Cards, sprint.BriefCard{ID: cd.ID, Brief: cd.Brief, Rules: cardRules(cd.Brief, rs).held, Needs: uniquify(briefNeeds(cd.Brief))})
 		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
 	}
+	// a brief edit is held to the same dropped-card lint add holds a brief to
+	// (one lint for both, holdCardChecks): a brief that names a card dropped off
+	// the table is refused, exit 2, nothing written.
+	for i := range checks {
+		checks[i].stream = streams[i]
+	}
+	if code := a.holdCardChecks("brief", st, stderr, checks...); code != 0 {
+		return code
+	}
 	if code := a.holdWho("brief", st, stderr, streams, texts...); code != 0 {
 		return code
 	}

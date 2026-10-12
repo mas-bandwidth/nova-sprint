@@ -112,14 +112,21 @@
         internal/sprint/need_alias.go: a dropped card's successor is recorded as FieldReplacedBy on
         its kept record (drop --replaced-by records it as relink does), and every reader of needs
         (NamedWaits, droppedNeeds, missingNeeds, NeedsOf, a brief edit) resolves the stored name
-        through the alias, so the old id can never come back as a live need. relink rewrites the
-        need on every open card that names old, whatever its column, not only waiting. Land 2 adds
-        the functional twin-server test (cmd/nova-sprint/need_alias_functional_test.go: add A, B
-        needing A; drop A --replaced-by A2; brief-edit B with the text still naming A; B's need is
-        A2). The remaining work (the alias recorded by relink and replace themselves, docs/SPEC-
-        SPRINT.md and docs/CLI.md, rule 11's needs resolution, and the TLA+ note) is owed: this
-        entry is partial."
-      :origin "this card, a-replaced-card-is-an-alias-every-need-follows.w3, from the owner, 2026-10-11 ~20:05Z: \"fix it so this class of problems becomes impossible\"; the nova-tools TLA coverage card replaced at dev 0f628af77; the w2 head carried on as one commit on this card's branch; the w3 attempt keeps the twin-server functional test and the readers resolving needs through the alias; the alias recorded under relink's own write, docs/SPEC-SPRINT.md and docs/CLI.md, and the TLA+ note are still owed")
+        through the alias, so the old id can never come back as a live need. relink (and add
+        --replaces) records the alias old => new on the old card's kept record, and rewrites the
+        need on every open card that names old, whatever its column, not only waiting, a merging or
+        review card keeping its column and attempt; an add or a brief edit whose text still names
+        old stores the successor and NOTEs it (need old is now new). Rule 11 and every needs check
+        (deal, take, land) resolve needs through the alias map, so a need whose alias target has
+        landed is met. drop of a card with no successor refuses while any card names it as a need,
+        unless --cascade or --replaced-by, and the brief verb runs the same dropped-card lint as add
+        (one lint for both). Tests: internal/sprint/need_alias_test.go (the twin store: the alias
+        outlives the drop, a brief edit and an add store the successor, relink re-points any column
+        and records the alias) and cmd/nova-sprint/need_alias_functional_test.go (a twin server: add
+        A, B needing A; drop A --replaced-by A2; land A2; brief-edit B with the text still naming A;
+        B's need is A2, B is dealt, no judgment raised). The model is tla/SprintRules.tla,
+        NoLiveNeedNamesADroppedId."
+      :origin "this card, a-replaced-card-is-an-alias-every-need-follows.w5, from the owner, 2026-10-11 ~20:05Z: \"fix it so this class of problems becomes impossible\"; the nova-tools TLA coverage card replaced at dev 0f628af77; the w2/w3 heads carried on as one commit on this card's branch; the w5 attempt finishes the alias recorded under relink and replace, the add and brief storing the successor, the brief dropped-card lint, docs/SPEC-SPRINT.md and docs/CLI.md, and the TLA+ invariant and broken witness")
      (fix "the-read-deal-counts-the-queue-and-fills-free-lanes-first" :release "v1.2.12" :status "planned"
      :title "The read deal counts the queue and fills free lanes first"
      :text "The read deal measured the wrong thing. readUnitsOf counted a unit's idle lanes from its

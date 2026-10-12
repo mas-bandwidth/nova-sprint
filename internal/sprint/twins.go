@@ -234,6 +234,10 @@ func Relink(s *Snapshot, r RelinkReq) Plan {
 	if cyc != "" {
 		return refuseAll(cyc)
 	}
+	// the old ids become aliases of the twin (need_alias.go): the alias outlives
+	// the drop, so a later brief edit that names an old id stores the twin and no
+	// need on the old id can come back.
+	units = append(units, aliasUnits(s, r.Old, r.New, r.Who)...)
 	weights, _ := twinWeights(s, deps, r.Old, r.New, nil, nil)
 	units, bad := mergeCardChanges(append(units, weights...))
 	if bad != "" {
@@ -327,7 +331,7 @@ func Replace(s *Snapshot, r AddReq) Plan {
 		for _, d := range deps {
 			after.Work.Put(withField(d, "needs", strings.Join(relinkedNeeds(Split(d.F("needs")), dependentOlds(d, r.Replaces), nw), ",")))
 		}
-		dp = Drop(&after, DropReq{Sel: Sel{Only: open}, Reason: "replaced by " + nw, Who: r.Who})
+		dp = Drop(&after, DropReq{Sel: Sel{Only: open}, Reason: "replaced by " + nw, ReplacedBy: nw, Who: r.Who})
 		if len(dp.Refused) > 0 {
 			return Plan{Refused: dp.Refused}
 		}

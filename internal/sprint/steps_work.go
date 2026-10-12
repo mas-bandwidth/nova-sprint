@@ -268,6 +268,10 @@ func Add(s *Snapshot, r AddReq) Plan {
 	seen := map[string]bool{}
 	for i, id := range ids {
 		needs := append([]string(nil), needsOf(i)...)
+		// A need naming a dropped card's successor is stored as the successor
+		// (need_alias.go): the alias outlives the drop, so the old id never comes
+		// back and the NOTE names it.
+		needs, aliasNotes := ResolveNeedAliases(s, needsOf(i))
 		// A need names a primary that can still land: one on the table
 		// (waiting, ready, working, review, merging or landed), a sentinel, or
 		// one of this add. missing is the needs that name no record at all;
@@ -336,6 +340,7 @@ func Add(s *Snapshot, r AddReq) Plan {
 		}
 		seen[id] = true
 		a := admit{id: id, score: scores[i], needs: needs, brief: brief, model: modelSaid, rules: rulesOf(i), bench: strings.Join(bench, ","), repo: repoOf(i), base: baseOf(i), gate: r.IsGate(id), sent: isSent(i)}
+		p.Said = append(p.Said, aliasNotes...)
 		if st := sentinelBefore(s, r.Stream, a.score); st != nil && !a.sent {
 			a.behind = st.ID // it waits behind the stop by its place; nothing is written of it
 		}

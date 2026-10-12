@@ -2049,6 +2049,22 @@ A twin made by `add --replaces`, `recut` or `twin` records the ids it replaced (
 other end of the old card's reason `replaced by <new>`: the card's lineage, which `card
 <id> --fields` shows.
 
+**A dropped card that has a successor is a permanent alias** (the owner, 2026-10-11: "fix it so this
+class of problems becomes impossible"; internal/sprint/need_alias.go): a card dropped and replaced by its
+successor -- `relink old new`, `add --replaces`, `drop --replaced-by new` -- records the alias on the old
+card's kept record (`replaced_by`: `<new> <time> by <who>`), keyed by epoch. Every reader of needs (a brief
+edit, an add, a twin, `NamedWaits`, `NeedsOf`, `droppedNeeds`, `missingNeeds`) resolves a stored name through
+the alias map to its successor, so no path can bring the old id back as a live need and a need on the old id
+never blocks a card once the successor lands. A brief edit, an add, or a twin whose text still names
+`DEPENDS-ON: old` stores the need as the successor and prints `NOTE need <old> is now <new> (relinked <time>
+by <actor>)`. `relink old new` re-points the need on every open card that names old -- waiting, ready,
+working, review or merging, not only waiting -- and a merging or review card keeps its column and attempt.
+Rule 11 (and every needs check: deal, take, land) resolves needs through the alias map, so a need whose
+alias target has landed is met. `drop` of a card with no successor refuses while any card names it as a
+need, unless `--cascade` or `--replaced-by <id>`; the brief verb runs the same dropped-card lint as add, so
+a brief that names a dropped card is refused (`check=dropped-card`). The model is tla/SprintRules.tla,
+`NoLiveNeedNamesADroppedId`.
+
 A blocked judgment that names a need not replaced stays open, and its ack waives what it
 names, as before.
 
