@@ -30,13 +30,10 @@ Cards move through the system automatically:
 
 A card waits for its prerequisites, takes an available lane, and goes
 through implementation, independent review, checks, and landing. Findings
-go back for rework. Gates and decisions that need attention remain visible.
-“Landed” means the change reached the integration branch.
+go back for rework. Gates and decisions remain yours.
 
 The dashboard shows work streams, fleet capacity, progress, costs, and
-estimated finish time.
-
-[See the live dashboard](http://69.67.149.151/)
+estimated finish time. [See live demo](http://69.67.149.151/)
 
 ## Start with one lane. Then go wider.
 
