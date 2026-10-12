@@ -66,7 +66,9 @@
     :text "The next small fixes, one concern each, including the defects v1.2.12's tests find, a circuit
      breaker on the review loop, and a red base pushed to the coordinator.")
    (release "v1.2.15" :status "planned"
-    :text "The next small product fixes, one concern each."))
+    :text "The next small product fixes, one concern each.")
+   (release "v1.2.16" :status "planned"
+    :text "Every TLA+ model checked against the code."))
   :items
    ((fix "a-sync-added-member-waits-for-its-probe" :release "v1.2.14" :status "planned"
      :title "A member fleet sync adds is held until its own probe passes"
@@ -2561,6 +2563,17 @@
     TestABriefEditKeepsARelinkedNeedOnTheStore (relink, then brief --brief-file with the stale
     DEPENDS-ON, on a real store)."
    :origin "this card, a-brief-edit-keeps-the-cards-needs-tier-and-bound.w11, finished by hand by a child of the seat after attempt 14, 2026-10-11: the card record (stream schema-cards) is the real fix; this card is the interim rule")
+  (fix "tla-pass-nova-sprint-coverage-rows-1-to-26" :release "v1.2.16" :status "planned"
+   :title "Every TLA+ model checked against the code: COVERAGE.tsv rows 1 to 26"
+   :text "The v1.2.16 pass over tla/COVERAGE.tsv rows 1 to 26 (card-lifecycle to fault-hold-clear).
+    Each module's actions and properties are checked against the code its row cites at file:line on
+    main; every CASES.tsv config of those modules runs under TLC to its declared result and every
+    reversed witness still fails its named property; and each 2026-10-11 fix to these machines carries
+    its property and a reversed witness or the row's note names it a gap. Rows owed to cards already on
+    the table stay theirs (named, not redone); a missing rule is a gap for a new card, not a rewrite.
+    The bench TLC records (tla/RUNS.tsv) are owed for this card: TLC runs only on a Linux bench with
+    the pinned tla2tools.jar, not on the macOS working machine that staged it."
+   :origin "this card, tla-pass-nova-sprint-coverage-rows-1-to-26.w1, split at admission from the-tla-pass-every-model-checked-against-the-code (the owner, 2026-10-11 ~23:55Z: are all the TLA models up to date and checked, or this pass runs in v1.2.16)")
   (fix "card-lint-a-called-verb-exists" :release "v1.2.6" :status "planned"
    :title "The lander refuses a changed line that runs a repository tool with a verb the tool does not register"
    :text "A card whose change adds or edits a line that runs one of the repository's own tools with a
