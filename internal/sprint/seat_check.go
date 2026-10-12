@@ -483,7 +483,7 @@ func JudgeSeatCheck(m SeatCheckMeasures, now time.Time) SeatCheckReport {
 			add(SeatCheckLine{Thing: SeatCheckDashboard, Facts: []string{"addr=" + d.Addr, "status=" + fmt.Sprint(d.Status)}, Remedy: remedy})
 		case d.Build == "":
 			add(SeatCheckLine{Thing: SeatCheckDashboard, Facts: []string{"addr=" + d.Addr, "status=200", "why=" + quoteSeatCheck("/api/sprint carries no build id")}, Remedy: remedy})
-		case !d.At.IsZero() && now.Sub(d.At) >= time.Second:
+		case !d.At.IsZero() && now.Sub(d.At) > time.Second:
 			add(SeatCheckLine{Thing: SeatCheckDashboard, Facts: []string{"addr=" + d.Addr, "status=200", "age=" + formatAge(now.Sub(d.At)), "why=" + quoteSeatCheck("the dashboard serves data "+formatAge(now.Sub(d.At))+" old")}, Remedy: remedy})
 		default:
 			facts := []string{"addr=" + d.Addr, "status=200", "build=" + d.Build}
