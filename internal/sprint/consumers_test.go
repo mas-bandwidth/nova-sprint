@@ -100,3 +100,20 @@ func TestProducerConsumerCheckNamesTheStall(t *testing.T) {
 	require.Contains(t, got[0].Detail, "p1")
 	require.Contains(t, got[0].Detail, "newest consumer has ended")
 }
+
+func TestConsumersBlockPrintsCountsThenNewestLast(t *testing.T) {
+	pr := &Card{ID: "c1", Fields: map[string]string{}}
+	set := map[string]string{}
+	AddConsumer(pr, set, ConsumerRec{Key: "w1", Epoch: 7, Kind: "work", Who: "m1", Route: "r1", Model: "mdl", Taken: "t1"})
+	AddConsumer(pr, set, ConsumerRec{Key: "r1", Epoch: 8, Kind: "read", Who: "reader-a", Taken: "t2"})
+	for k, val := range set {
+		pr.Fields[k] = val
+	}
+	lines := ConsumersOf(pr).ConsumerLines()
+	require.Len(t, lines, 3)
+	require.Contains(t, lines[0], "CONSUMERS attempts=1 reads=1 landings=0")
+	require.Contains(t, lines[1], "epoch=7")
+	require.Contains(t, lines[1], "kind=work")
+	require.Contains(t, lines[2], "epoch=8")
+	require.Contains(t, lines[2], "kind=read")
+}
