@@ -149,6 +149,7 @@ func TestStampsOnEveryPath(t *testing.T) {
 	// level: more cards on m1, m2 comes up, the newest moves with dealt new
 	h.nDo(AddStep(sprint.AddReq{Brief: proBrief, Stream: "s1", Count: 3}))
 	h.nDo(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"s1-2", "s1-3", "s1-4"}}}))
+	h.nDo(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m1", Width: 1})) // m1 over its width: it cannot start them all
 	before := h.snap()
 	h.nDo(FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m2"}))
 	after := h.snap()

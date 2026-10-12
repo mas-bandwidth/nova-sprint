@@ -1139,10 +1139,12 @@ func FleetUp(s State, m string, moves map[string]string) (State, error) {
 	return n.level(moves)
 }
 
-// Level is the fleet verb level and the tick's T4 (spec section 14): the
-// up members' ready queues are evened when two differ by more than one, the
-// newest cards going round the fleet (levelRound). From the spec, not yet in
-// the model (whose FleetUp moves half of the longest queue).
+// Level is the fleet verb level and the tick's T4 (spec section 14): a card
+// moves only off a member holding more work cards than its width (cards it
+// cannot start), and only onto a member with a free lane (held below its
+// width, so it starts the card at once), the newest cards first (levelRound;
+// tla/Level.tla NeverOffAFreeLane (lands with #127)). From the spec, not yet in the model
+// (whose FleetUp moves half of the longest queue).
 func Level(s State, moves map[string]string) (State, error) {
 	if err := free(s); err != nil {
 		return s, err
@@ -1150,8 +1152,8 @@ func Level(s State, moves map[string]string) (State, error) {
 	return s.level(moves)
 }
 
-// level levels the backlogs by levelRound; moves, when given, is the engine's
-// choice, card to the member it ended on, and must be the round's.
+// level levels by levelRound; moves, when given, is the engine's choice, card
+// to the member it ended on, and must be the round's.
 func (s State) level(moves map[string]string) (State, error) {
 	n := s.Clone()
 	got := n.levelRound()
@@ -1184,19 +1186,17 @@ func floorDiv(a, b int) int {
 }
 
 // levelRound levels, once at the start of every tick (the owner, 2026-10-01:
-// "just once before tick, rebalance each table"; spec section 14, T4, with
-// errata 3 amendment 5: the levelling goes round the fleet and moves the
-// index): while the largest backlog of an up member with a ready card the
-// level has not moved and the smallest of the up members below their Room
-// differ by more than one, the newest such card of the largest that has a
-// target goes to it, at a new generation, and DealLast moves past it. A card's
-// target is the next member round the fleet past DealLast below its Room, no
-// refuser of the card (Refusers), at least two below the largest, whose
-// backlog is below the up members' mean rounded down, or, when none such is
-// below, at it (sprint's level and round.levelTo; tla/Level.tla). A card moved
-// is not moved again, so the level ends within the ready cards, and each move
-// lowers the sum of squared backlogs by at least two. It returns the member
-// each card it moved ended on.
+// "just once before tick, rebalance each table"; spec section 14, T4): a card
+// moves only when its member cannot start it (it holds more work cards, ready
+// and working, than its Width) and only onto a member that can (a free lane:
+// held below its Width), its newest ready cards first, round the fleet past
+// DealLast, no refuser of the card (Refusers), at a new generation, and
+// DealLast moves past each target. A member at or below its width keeps every
+// card dealt to it (tla/Level.tla NeverOffAFreeLane (lands with #127); the owner, 2026-10-11
+// ~19:05-19:20Z: "cards only may accrue per-fleet or friend, if there are not
+// other machines/friends ready to do that work right now!"). A card moved is
+// not moved again, so the level ends within the ready cards. It returns the
+// member each card it moved ended on.
 func (n *State) levelRound() map[string]string {
 	out := map[string]string{}
 	for {
@@ -1232,42 +1232,37 @@ func (n State) levelMove(moved map[string]string) (string, string) {
 		})
 		return ids
 	}
-	lo, hi, total := "", "", 0
-	for _, x := range up {
-		total += n.Backlog(x)
-		if n.Held(x) < Room && (lo == "" || n.Backlog(x) < n.Backlog(lo)) {
-			lo = x
-		}
-		if len(queue(x)) > 0 && (hi == "" || n.Backlog(x) > n.Backlog(hi)) {
-			hi = x
-		}
-	}
-	if lo == "" || hi == "" || n.Backlog(hi)-n.Backlog(lo) <= 1 {
-		return "", ""
-	}
-	mean := floorDiv(total, len(up))
-	for _, id := range queue(hi) {
-		var below, at []string
+	// the source is a member over its width (it holds a ready card it cannot
+	// start) with a ready card to give; the most over first. A source none of
+	// whose cards has a target is passed over for the next most over, and the
+	// level is done only when no source has a card some member can take
+	// (tla/Level.tla ChoiceFree, which lands with #127).
+	stuck := map[string]bool{}
+	for {
+		hi := ""
 		for _, x := range up {
-			if n.Held(x) >= Room || slices.Contains(n.Work[id].Refusers, x) || n.Backlog(hi)-n.Backlog(x) < 2 {
-				continue
-			}
-			if n.Backlog(x) < mean {
-				below = append(below, x)
-			}
-			if n.Backlog(x) <= mean {
-				at = append(at, x)
+			if !stuck[x] && len(queue(x)) > 0 && n.Held(x) > Width && (hi == "" || n.Backlog(x) > n.Backlog(hi)) {
+				hi = x
 			}
 		}
-		to := n.NextMember(below)
-		if to == "" {
-			to = n.NextMember(at)
+		if hi == "" {
+			return "", ""
 		}
-		if to != "" {
-			return id, to
+		for _, id := range queue(hi) {
+			// the target is the next member round the fleet past DealLast with a
+			// free lane (held below its Width), no refuser of the card.
+			var free []string
+			for _, x := range up {
+				if n.Held(x) < Width && !slices.Contains(n.Work[id].Refusers, x) {
+					free = append(free, x)
+				}
+			}
+			if to := n.NextMember(free); to != "" {
+				return id, to
+			}
 		}
+		stuck[hi] = true
 	}
-	return "", ""
 }
 
 // ReaderLoad is a reader's reads asked and reading.

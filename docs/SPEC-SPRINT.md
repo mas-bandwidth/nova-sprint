@@ -3169,10 +3169,20 @@ order the cards were dealt in, so a card brought to the front of its stream by
 - The rebalance, once at the start of every tick, before any table's update
   (the owner, 2026-10-01: "both for readers and fleet, there needs to be a
   rebalance step done at the start of each tick. it's simple. just once before
-  tick, rebalance each table."): the fleet's level moves ready cards (dealt,
-  not taken) from a member holding cards it cannot start to one with free
-  lanes, evening the members' backlogs (held less width) to within one, never
-  past DealAhead times a width; a working card on an up member stays. It is a
+  tick, rebalance each table."): the fleet's level moves a ready card (dealt,
+  not taken) only when its member cannot start it — the member holds more work
+  cards, ready and working, than its width — and only to a member that can: the
+  next member round the fleet past the deal's index with a free lane (held
+  below its width, so it takes the card at its next pass and starts it at
+  once), no refuser, bench or launch exclusion of the card; the source gives at
+  most its excess, its newest ready cards first; a source none of whose cards
+  has a target is passed over for the next most-over source, and the level
+  ends only when no source has a card some member can take; and a member at or below its
+  width keeps every card dealt to it. The mean rule and the gap of two are gone
+  (round.levelTo, nextLane; tla/Level.tla NeverOffAFreeLane (lands with #127); the owner,
+  2026-10-11 ~19:05-19:20Z: "cards only may accrue per-fleet or friend, if
+  there are not other machines/friends ready to do that work right now!"). A
+  working card on an up member stays. It is a
   safety too ("and it's a safety, if ever there are cards on a held or down
   machine, rebalance moves them away."): no card stays on a held or down
   member; its cards, ready or working, are dealt to the members up as a member
