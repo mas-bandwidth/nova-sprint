@@ -79,7 +79,7 @@ func TestAHeldFriendKeepsNoReadyCards(t *testing.T) {
 	// The log note records that all cards were withdrawn.
 	lines := r.holdLines()
 	require.NotEmpty(t, lines)
-	assert.Contains(t, lines[len(lines)-1], "friend amy held: away for the night; every card she holds, begun or not, is handed back now")
+	assert.Contains(t, lines[len(lines)-1], "friend amy held: away for the night; every held card, begun or not, is handed back now")
 	assert.Contains(t, lines[len(lines)-1], "withdrew 3")
 
 	// On the next tick, the cards ready for the deal are dealt to bob.

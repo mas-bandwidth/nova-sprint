@@ -77,7 +77,7 @@ func TestFriendReconcileCollectsOrReturnsEachCard(t *testing.T) {
 	require.Len(t, notes, 2)
 	assert.Equal(t, "coordinator", notes[0].Who)
 	assert.Contains(t, notes[0].What, "QUEUE.json says done")
-	assert.Contains(t, notes[1].What, "written at 2030-01-02T04:04:05Z after it was dealt to her at 2030-01-02T03:04:05Z, does not hold it")
+	assert.Contains(t, notes[1].What, "written at 2030-01-02T04:04:05Z after the card was dealt at 2030-01-02T03:04:05Z, does not hold it")
 
 	// kept: the card she still works is left as it was
 	assert.Equal(t, Working, w.s.Fleet.Card("s1-2.w1").Col)

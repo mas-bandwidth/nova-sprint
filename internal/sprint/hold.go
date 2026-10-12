@@ -305,7 +305,7 @@ func holdNote(s *Snapshot, t HoldTarget, r HoldReq, line string) Note {
 		case r.Return:
 			n.What += "; --return: its work begun is handed back now"
 		case t.Kind == HoldFriend:
-			n.What += "; every card she holds, begun or not, is handed back now"
+			n.What += "; every held card, begun or not, is handed back now"
 		default:
 			n.What += "; its work begun finishes"
 		}

@@ -128,7 +128,7 @@ func TestAFriendTakesAndFinishesItsOwnReadyCard(t *testing.T) {
 	assert.Contains(t, out, "dealt to friend.amy, not friend.bob")
 	code, out = ta.served("finish", "--as", "friend.amy", "s1-3.w1@1", "--head", landHead, "--report", "done", "--epoch", "0")
 	require.Equal(t, 0, code, out)
-	assert.Contains(t, out, "s1-4.w1 ready -> working (her next, taken now)", "her finish takes her next, as before")
+	assert.Contains(t, out, "s1-4.w1 ready -> working (their next, taken now)", "her finish takes her next, as before")
 	c = freshCard(ta, "s1-3")
 	assert.Equal(t, sprint.Finished, c.Work[0].Col)
 	code, out = ta.served("take", "--as", "friend.amy", "--epoch", "0")

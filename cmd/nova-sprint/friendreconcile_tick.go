@@ -58,7 +58,7 @@ const FriendReadDeadline = 2 * time.Second
 
 // errFriendDirStalled is a read of a friend's directory that did not answer within
 // FriendReadDeadline.
-var errFriendDirStalled = errors.New("her directory did not answer within " + FriendReadDeadline.String())
+var errFriendDirStalled = errors.New("the friend's directory did not answer within " + FriendReadDeadline.String())
 
 // friendRead runs read, a read of a friend's directory, and waits for what it read at
 // most FriendReadDeadline by the app's clock (a.after): past it, errFriendDirStalled, and
@@ -90,7 +90,7 @@ func friendRead[T any](a *app, dir string, read func() T) (T, error) {
 // to the coordinator an episode (sprint.NFriendDirStalled), which ends at her next pass
 // that gets through.
 func (a *app) friendStalled(ctx context.Context, st *store.Store, ft *friendTick, friend, dir, what string, stdout io.Writer) {
-	why := dir + " did not answer " + what + " within " + FriendReadDeadline.String() + ": she is passed over this tick"
+	why := dir + " did not answer " + what + " within " + FriendReadDeadline.String() + ": the friend is passed over this tick"
 	ft.skip(friend, why, stdout)
 	if ft.stalled[friend] {
 		return
@@ -101,7 +101,7 @@ func (a *app) friendStalled(ctx context.Context, st *store.Store, ft *friendTick
 			What: "friend " + friend + ": " + why, Hint: "look at the mount of " + dir + " on the server; nova-sprint friend reconcile " + friend + " --dry-run"}}}
 	}})
 	if err != nil {
-		fmt.Fprintf(stdout, "FRIEND-RECONCILE FAILED friend=%s: the note of her stalled directory was not written: %s\n", friend, oneline.Escape(err.Error()))
+		fmt.Fprintf(stdout, "FRIEND-RECONCILE FAILED friend=%s: the note of the friend's stalled directory was not written: %s\n", friend, oneline.Escape(err.Error()))
 	}
 }
 
@@ -129,11 +129,11 @@ func (a *app) reconcileFriendsTick(ctx context.Context, st *store.Store, ft *fri
 	root := a.getenv("HOME")
 	for _, friend := range names {
 		if root == "" {
-			ft.skip(friend, "HOME is not set on the server, so her working directory is not known", stdout)
+			ft.skip(friend, "HOME is not set on the server, so the friend's working directory is not known", stdout)
 			continue
 		}
 		if err := a.reconcileFriendTick(ctx, st, ft, friend, filepath.Join(root, friend+"-working"), stdout); err != nil {
-			fmt.Fprintf(stdout, "FRIEND-RECONCILE FAILED friend=%s: %s; the next tick reads her again; run: nova-sprint friend reconcile %s --dry-run\n", friend, oneline.Escape(err.Error()), friend)
+			fmt.Fprintf(stdout, "FRIEND-RECONCILE FAILED friend=%s: %s; the next tick reads the friend again; run: nova-sprint friend reconcile %s --dry-run\n", friend, oneline.Escape(err.Error()), friend)
 		}
 	}
 }
@@ -158,7 +158,7 @@ func (a *app) reconcileFriendTick(ctx context.Context, st *store.Store, ft *frie
 		return d
 	})
 	if stalled != nil {
-		a.friendStalled(ctx, st, ft, friend, dir, "its stat or her inbox/QUEUE.json read", stdout)
+		a.friendStalled(ctx, st, ft, friend, dir, "its stat or the friend's inbox/QUEUE.json read", stdout)
 		return nil
 	}
 	switch {
@@ -174,7 +174,7 @@ func (a *app) reconcileFriendTick(ctx context.Context, st *store.Store, ft *frie
 		err = fmt.Errorf("%s", why)
 	}
 	if err != nil {
-		ft.skip(friend, "her account cannot be read: "+err.Error(), stdout)
+		ft.skip(friend, "the friend's account cannot be read: "+err.Error(), stdout)
 		return nil
 	}
 	// each card's report, read within FriendReadDeadline too

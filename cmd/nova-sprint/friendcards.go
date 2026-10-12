@@ -631,7 +631,7 @@ func (a *app) enrollBus(ctx context.Context, name string, say func(string)) {
 		}
 	}
 	if err != nil {
-		say(fmt.Sprintf("FRIEND-CARD NOTE friend=%s: her name could not be put on the bus store's roster (%s)", name, oneline.Escape(err.Error())))
+		say(fmt.Sprintf("FRIEND-CARD NOTE friend=%s: the friend's name could not be put on the bus store's roster (%s)", name, oneline.Escape(err.Error())))
 	}
 }
 
@@ -655,10 +655,11 @@ func (a *app) wakeFriend(ctx context.Context, st *store.Store, name string, p sp
 	if err == nil {
 		return nil
 	}
+	sayf := friendSays(ctx, st, name)
 	why := oneline.Escape(err.Error())
-	say(fmt.Sprintf("FRIEND-CARD NOTE friend=%s card=%s: the bus message to her was not sent (%s); the inbox file stands, tell her by hand", name, p.Card, why))
+	say(sayf("FRIEND-CARD NOTE friend=%s card=%s: the bus message to {them} was not sent (%s); the inbox file stands, tell {them} by hand", name, p.Card, why))
 	n := sprint.Note{Kind: sprint.Happened, Type: sprint.NFriendNotWoken, Stream: p.Stream, Primaries: []string{p.Primary}, Who: st.Actor, Attempt: p.Attempt,
-		What: fmt.Sprintf("%s was dealt %s into %s, and the bus message to her failed: %s; tell her by hand: nova-bus send --as %s --to %s --subject 'card %s dealt' --body '%s'", name, p.Card, brief, why, st.Actor, name, p.Card, brief)}
+		What: sayf("%s was dealt %s into %s, and the bus message to {them} failed: %s; tell {them} by hand: nova-bus send --as %s --to %s --subject 'card %s dealt' --body '%s'", name, p.Card, brief, why, st.Actor, name, p.Card, brief)}
 	res, err := st.Run(ctx, store.NoteStep("friend sync", n))
 	if err == nil && len(res.Refused) > 0 {
 		err = errors.New(res.Refused[0].Why)
@@ -683,10 +684,11 @@ func (a *app) wakeFriendPass(ctx context.Context, st *store.Store, name, inbox s
 	m := bus.Message{From: st.Actor, To: []string{name}, Kind: bus.KindStatus, Subject: subject,
 		Body: "Your sprint cards are in your inbox: " + inbox + "\n" + start}
 	if err := a.bus(ctx, m, say); err != nil {
+		sayf := friendSays(ctx, st, name)
 		why := oneline.Escape(err.Error())
-		say(fmt.Sprintf("FRIEND-CARD NOTE friend=%s pass=%s: the bus message to her was not sent (%s); the inbox files stand, tell her by hand", name, oneline.Field(subject), why))
+		say(sayf("FRIEND-CARD NOTE friend=%s pass=%s: the bus message to {them} was not sent (%s); the inbox files stand, tell {them} by hand", name, oneline.Field(subject), why))
 		n := sprint.Note{Kind: sprint.Happened, Type: sprint.NFriendNotWoken, Count: len(dealt), Who: st.Actor,
-			What: fmt.Sprintf("friend sync pass for %s delivered %s into %s, and its bus message failed: %s; tell her by hand: nova-bus send --as %s --to %s --subject '%s' --body '%s'", name, subject, inbox, why, st.Actor, name, subject, inbox)}
+			What: sayf("friend sync pass for %s delivered %s into %s, and its bus message failed: %s; tell {them} by hand: nova-bus send --as %s --to %s --subject '%s' --body '%s'", name, subject, inbox, why, st.Actor, name, subject, inbox)}
 		res, err := st.Run(ctx, store.NoteStep("friend sync", n))
 		if err == nil && len(res.Refused) > 0 {
 			err = errors.New(res.Refused[0].Why)
@@ -718,9 +720,10 @@ func (a *app) wakeFriendStall(ctx context.Context, st *store.Store, name string,
 	if err == nil {
 		return nil
 	}
+	sayf := friendSays(ctx, st, name)
 	why := oneline.Escape(err.Error())
 	if say != nil {
-		say(fmt.Sprintf("FRIEND-STALL NOTE friend=%s rung=%d: the bus message to her was not sent (%s); tell her by hand", name, rung, why))
+		say(sayf("FRIEND-STALL NOTE friend=%s rung=%d: the bus message to {them} was not sent (%s); tell {them} by hand", name, rung, why))
 	}
 	return err
 }
@@ -961,7 +964,7 @@ func (a *app) friendCollect(ctx context.Context, st *store.Store, name string, p
 	// on it for sprint.FriendFinishWindow (docs/SPEC-FRIEND.md, "Presence is her session's
 	// evidence"); a record not written costs her that, never the finish
 	if err := st.FriendFinished(ctx, name, a.now()); err != nil {
-		say(fmt.Sprintf("FRIEND-CARD NOTE friend=%s card=%s: the finish is not recorded as her evidence: %s", name, p.Card, oneline.Escape(err.Error())))
+		say(friendSays(ctx, st, name)("FRIEND-CARD NOTE friend=%s card=%s: the finish is not recorded as {their} evidence: %s", name, p.Card, oneline.Escape(err.Error())))
 	}
 	result := "ok"
 	if r.Failed {

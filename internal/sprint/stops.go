@@ -258,7 +258,7 @@ func pinStops(s *Snapshot, r TickReq) []Stop {
 		if known {
 			status = orDash(seat.Status)
 		}
-		what := fmt.Sprintf("%s is pinned to friend %s alone and waits: she is %s", pr.ID, name, status)
+		what := fmt.Sprintf("%s is pinned to friend %s alone and waits: friend status is %s", pr.ID, name, status)
 		behind := needing(s, pr.ID)
 		effect := "1 card waits"
 		if len(behind) > 0 {
@@ -266,7 +266,7 @@ func pinStops(s *Snapshot, r TickReq) []Stop {
 		}
 		out = append(out, Stop{Kind: StopKindPinWaits, Subject: pr.ID, Since: stampAt(pr, "since"),
 			What: what, Effect: effect,
-			Undo:   "nova-sprint unpin " + pr.ID + " --reason '<why>', or bring her up",
+			Undo:   snapshotFriendPronouns(s, name).Sprintf("nova-sprint unpin %s --reason '<why>', or bring {them} up", pr.ID),
 			Signal: NStopPinWaits, typ: NStopPinWaits, stream: pr.Row, primaries: []string{pr.ID},
 			// no wait: it names a card on the work table, so a wait is refused and never
 			// extends the pin (PinReleased; wait_refused.go, WaitRefusalIn)
@@ -349,8 +349,8 @@ func friendStallStops(s *Snapshot) []Stop {
 			at, _ := time.Parse(time.RFC3339, v) // ignored: an unreadable stamp lists the down with no age
 			out = append(out, Stop{Kind: StopKindFriendDown, Subject: f, Since: at,
 				What:   fmt.Sprintf("friend %s was marked down by the stall ladder (reason stalled) at %s", f, v),
-				Effect: "no card is dealt to her until her activity releases her",
-				Undo:   "nova-friend ping --as <coordinator> --to " + f + " --wake; her activity releases her", Signal: NFriendStall})
+				Effect: "no card is dealt to the friend until activity releases the stall",
+				Undo:   "nova-friend ping --as <coordinator> --to " + f + " --wake; activity releases the stall", Signal: NFriendStall})
 		}
 		v, _ := s.Fleet.Prop(PropFriendStallRung(f))
 		rung, _ := strconv.Atoi(v) // ignored: no rung, or one that does not read, is rung 0
@@ -361,13 +361,13 @@ func friendStallStops(s *Snapshot) []Stop {
 		did := "two wakes unanswered"
 		switch {
 		case rung >= 5:
-			did += ", her unstarted cards taken back and she was marked down"
+			did += ", the friend's unstarted cards taken back and the friend was marked down"
 		case rung == 4:
-			did += ", her unstarted cards taken back"
+			did += ", the friend's unstarted cards taken back"
 		}
 		out = append(out, Stop{Kind: StopKindFriendStalled, Subject: f,
 			What:   fmt.Sprintf("friend %s stalled: the stall ladder stands at rung %d of 5 (%s)", f, rung, did),
-			Effect: fmt.Sprintf("%d cards on her row wait", cards),
+			Effect: fmt.Sprintf("%d cards on the friend's row wait", cards),
 			Undo:   "nova-friend ping --as <coordinator> --to " + f + " --wake, or nova-sprint friend take " + f + " --all-unstarted",
 			Signal: NFriendStalled, typ: NFriendStalled, primaries: []string{f},
 			decisions: []string{"nova-friend ping --as <coordinator> --to " + f + " --wake", "friend take " + f + " --all-unstarted", "friend down " + f + " --reason 'stalled'", "ack", "wait"}})

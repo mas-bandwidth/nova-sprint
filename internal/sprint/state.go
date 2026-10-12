@@ -558,6 +558,9 @@ type Snapshot struct {
 	// Friends is each friend the deal may give a friend's card to, or whose delivery
 	// mode is consulted by friendNext (FriendSeat); nil is none.
 	Friends []FriendSeat
+	// FriendTextPronouns is metadata for manual verb output only. It does not
+	// populate behavioral seats or change admission, routing or lane decisions.
+	FriendTextPronouns map[string]string `json:"-"`
 	// Running says the machine was RUNNING as the step read the sprint: its
 	// pump accepts a primary with the ok reads it needs, so no step opens a "ready to
 	// accept" judgment for it ("accept is mechanical").

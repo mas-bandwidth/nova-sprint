@@ -76,10 +76,10 @@ func TestFriendReconcileSettlesEachCardOnTheTwin(t *testing.T) {
 
 	out := ta.ok("friend reconcile amy --root " + root)
 	assert.Contains(t, out, "FRIEND-CARD FINISHED friend=amy card=s1-1.w1 result=ok head="+landHead)
-	assert.Contains(t, out, "FRIEND-RECONCILE KEPT friend=amy card=s1-2.w1 job=s1-2.w1: her QUEUE.json says working")
-	assert.Contains(t, out, "FRIEND-RECONCILE RETURNED friend=amy card=s1-3.w1: her QUEUE.json says done and outbox/s1-3.w1/REPORT.md is absent")
-	assert.Contains(t, out, "FRIEND-RECONCILE RETURNED friend=amy card=s1-4.w1: her QUEUE.json, written at 2030-01-02T03:05:05Z after it was dealt to her at 2030-01-02T03:04:05Z, does not hold it, and outbox/s1-4.w1/REPORT.md is absent")
-	assert.Contains(t, out, "NOTE friend=amy: her QUEUE.json says working for zz-9.w1, which is no card working on her row; nothing was done")
+	assert.Contains(t, out, "FRIEND-RECONCILE KEPT friend=amy card=s1-2.w1 job=s1-2.w1: the friend's QUEUE.json says working")
+	assert.Contains(t, out, "FRIEND-RECONCILE RETURNED friend=amy card=s1-3.w1: the friend's QUEUE.json says done and outbox/s1-3.w1/REPORT.md is absent")
+	assert.Contains(t, out, "FRIEND-RECONCILE RETURNED friend=amy card=s1-4.w1: the friend's QUEUE.json, written at 2030-01-02T03:05:05Z after the card was dealt at 2030-01-02T03:04:05Z, does not hold it, and outbox/s1-4.w1/REPORT.md is absent")
+	assert.Contains(t, out, "NOTE friend=amy: the friend's QUEUE.json says working for zz-9.w1, which is no card working on the friend's row; nothing was done")
 	assert.Contains(t, out, "FRIEND-RECONCILE OK friend=amy collected=1 kept=1 returned=2 refused=0 strays=1")
 
 	// one history line each: the log of each returned card holds its return once
@@ -107,7 +107,7 @@ func TestFriendReconcileSettlesEachCardOnTheTwin(t *testing.T) {
 	// the cards dealt again, s1-3.w2 and s1-4.w2, were dealt after her account was written:
 	// she has not had the chance to account for them, so they are kept, never returned
 	again := ta.ok("friend reconcile amy --root " + root + " --dry-run")
-	assert.Contains(t, again, "FRIEND-RECONCILE KEPT friend=amy card=s1-3.w2 job=s1-3.w2: her QUEUE.json does not hold it, and was last written at")
+	assert.Contains(t, again, "FRIEND-RECONCILE KEPT friend=amy card=s1-3.w2 job=s1-3.w2: the friend's QUEUE.json does not hold it, and was last written at")
 	assert.Contains(t, again, "collected=0 kept=3 returned=0 refused=0 strays=3")
 }
 

@@ -90,7 +90,7 @@ func TestFriendSyncCollectsAReportOnACardStillReady(t *testing.T) {
 	ta.ok("friend sync --root " + root)
 	outboxReport(t, root, "amy", "s1-1.w1", "Verdict: LAND\nHead: "+landHead+"\n\nDone.\n")
 	out := ta.ok("friend sync --root " + root)
-	assert.Contains(t, out, "FRIEND-CARD STARTED friend=amy card=s1-1.w1 job=s1-1.w1: her report is in outbox/s1-1.w1")
+	assert.Contains(t, out, "FRIEND-CARD STARTED friend=amy card=s1-1.w1 job=s1-1.w1: the friend's report is in outbox/s1-1.w1")
 	assert.Contains(t, out, "FRIEND-CARD FINISHED friend=amy card=s1-1.w1 result=ok")
 	ta.clean()
 }

@@ -91,7 +91,7 @@ func FriendReconcileOf(wc *Card, job string, reported bool, a FriendAccount) (ac
 		state, ok = a.Tasks[job]
 	}
 	if wc.Col != Working {
-		return ReconcileKeep, "not working (it is " + placeWord(wc) + "): reconcile settles a card working on her row"
+		return ReconcileKeep, "not working (it is " + placeWord(wc) + "): reconcile settles cards on a friend's row only while working"
 	}
 	// since when she has held it: the stamp of her own deal, the one deadline's (WorkDeadline;
 	// a friend's card is dealt and taken at once, and a working card's deadline reads no
@@ -101,15 +101,15 @@ func FriendReconcileOf(wc *Card, job string, reported bool, a FriendAccount) (ac
 	written := a.Written.UTC().Truncate(time.Second)
 	switch {
 	case !ok && (err != nil || !held.Before(written)):
-		return ReconcileKeep, "her QUEUE.json does not hold it, and was last written at " + stamp(written) + ", not after it was dealt to her at " + orDash(wc.F(own)) + ": she has not accounted for it yet"
+		return ReconcileKeep, "the friend's QUEUE.json does not hold it, and was last written at " + stamp(written) + ", not after the card was dealt at " + orDash(wc.F(own)) + ": the friend has not accounted for it yet"
 	case !ok:
-		return ReconcileReturn, "her QUEUE.json, written at " + stamp(written) + " after it was dealt to her at " + wc.F(own) + ", does not hold it, and outbox/" + job + "/REPORT.md is absent"
+		return ReconcileReturn, "the friend's QUEUE.json, written at " + stamp(written) + " after the card was dealt at " + wc.F(own) + ", does not hold it, and outbox/" + job + "/REPORT.md is absent"
 	case state == FriendTaskDone:
-		return ReconcileReturn, "her QUEUE.json says done and outbox/" + job + "/REPORT.md is absent"
+		return ReconcileReturn, "the friend's QUEUE.json says done and outbox/" + job + "/REPORT.md is absent"
 	case state == FriendTaskQueued || state == FriendTaskWorking:
-		return ReconcileKeep, "her QUEUE.json says " + state
+		return ReconcileKeep, "the friend's QUEUE.json says " + state
 	}
-	return ReconcileKeep, fmt.Sprintf("her QUEUE.json says %q, which is not queued, working or done: left working", state)
+	return ReconcileKeep, fmt.Sprintf("the friend's QUEUE.json says %q, which is not queued, working or done: left working", state)
 }
 
 // FriendQueueStrays is every id of her queue that names none of held (the ids and jobs of

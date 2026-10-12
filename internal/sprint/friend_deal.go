@@ -134,12 +134,13 @@ const friendCardWhy = "a friend's card (its brief says WHO: only friend, or a WH
 // running (FriendReport.Running: work card ids, job names or primaries), which the tick's
 // level never moves (friendStarted).
 type FriendSeat struct {
-	Name   string
-	Width  int
-	Status string
-	Class  string
-	Mode   string
-	Tiers  []string
+	Pronouns string // Explicit configured choice; unstated is they/them.
+	Name     string
+	Width    int
+	Status   string
+	Class    string
+	Mode     string
+	Tiers    []string
 	// Roles is her nova-config row's roles: a read card is dealt only to a friend whose
 	// roles name reader (RoleReader, read_cards.go).
 	Roles []string
@@ -968,8 +969,9 @@ func reclaimUnit(s *Snapshot, wc *Card, up []string, seat map[string]FriendSeat,
 	if t := tierNowSet(pr, tier); t != nil {
 		changes = append(changes, change(Work, setEntry(pr, t)))
 	}
+	pro := parseFriendPronouns(seat[name].Pronouns)
 	return Unit{Key: pr.ID, Stream: pr.Row, Changes: changes,
-		Moved: fmt.Sprintf("%s %s:ready -> %s:%s gen=%d (reclaimed: dealt ahead to %s and untaken; her idle lane takes it, friend sync delivers it to her inbox)", wc.ID, wc.Row, row, Ready, wc.Int("gen")+1, wc.Row)}, true
+		Moved: pro.Sprintf("%s %s:ready -> %s:%s gen=%d (reclaimed: dealt ahead to %s and untaken; {their} idle lane takes it, friend sync delivers it to {their} inbox)", wc.ID, wc.Row, row, Ready, wc.Int("gen")+1, wc.Row)}, true
 }
 
 // friendEscalateUnit is a withdrawn attempt at its redeal bound below its ceiling dealt to
@@ -1013,10 +1015,12 @@ func friendDealUnit(s *Snapshot, c *Card, card, row, _ string, set map[string]st
 	for k, v := range set {
 		prim[k] = v
 	}
+	friend, _ := FriendOfRow(row)
+	p := snapshotFriendPronouns(s, friend)
 	return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{
 		change(Fleet, createEntry(card, row, Ready, c.Score, fields)),
 		change(Work, moveEntry(c, c.Row, Working, prim, "result")),
-	}, Moved: fmt.Sprintf("%s work %s -> working card=%s member=%s %s (a friend's card: friend sync delivers it to her inbox)", c.ID, c.Col, card, row, Ready)}
+	}, Moved: p.Sprintf("%s work %s -> working card=%s member=%s %s (a friend's card: friend sync delivers it to {their} inbox)", c.ID, c.Col, card, row, Ready)}
 }
 
 // friendRedealUnit is a friend's card taken back (FriendTake) placed again: the same work
@@ -1042,10 +1046,12 @@ func friendRedealUnit(s *Snapshot, c, wc *Card, row string, set map[string]strin
 		unset = append(unset, FieldTakeEnded, FieldProviderError, FieldDecided, FieldDecidedUsed)
 	}
 	unset = append(unset, FieldFriendDeadline) // set when she starts it
+	friend, _ := FriendOfRow(row)
+	p := snapshotFriendPronouns(s, friend)
 	return Unit{Key: c.ID, Stream: c.Row, Changes: []Change{
 		change(Fleet, moveEntry(wc, row, Ready, set, unset...)),
 		change(Work, moveEntry(c, c.Row, Working, prim, "result")),
-	}, Moved: fmt.Sprintf("%s work %s -> working card=%s member=%s gen=%d %s (taken back, dealt again: friend sync delivers it to her inbox)", c.ID, c.Col, wc.ID, row, wc.Int("gen")+1, Ready)}
+	}, Moved: p.Sprintf("%s work %s -> working card=%s member=%s gen=%d %s (taken back, dealt again: friend sync delivers it to {their} inbox)", c.ID, c.Col, wc.ID, row, wc.Int("gen")+1, Ready)}
 }
 
 // FriendRestrictionWhy applies one friend's configured stream globs and KIND values to a

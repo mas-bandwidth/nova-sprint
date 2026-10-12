@@ -122,9 +122,10 @@ func (s FriendSpec) RestrictionWhy(stream, kind string) string {
 // her sprint cards (filled by where from her fleet row), her width and her
 // status (filled by FriendRows from the roster and her beat).
 type FriendRow struct {
-	Name    string `json:"name"`
-	Ready   int    `json:"ready"`
-	Working int    `json:"working"`
+	Pronouns string `json:"-"` // Text rendering uses the synced choice without changing the view API.
+	Name     string `json:"name"`
+	Ready    int    `json:"ready"`
+	Working  int    `json:"working"`
 	// Held and Stale are her row's working cards her live set names finished, the report
 	// waiting, and those it names neither way (sprint.LiveCountKeys; v1.2.6): Working is
 	// then her live runs alone.
@@ -521,7 +522,7 @@ func (st *Store) friendRows(ctx context.Context, now time.Time) ([]FriendRow, ma
 		}
 		presence := sprint.FriendPresence{Held: r[n].Held, Beat: b, Health: h, Generation: generation, Finished: fin}
 		word, evidence := sprint.FriendEvidence(presence, now)
-		row := FriendRow{Name: n, Width: r[n].Width, Status: word, Evidence: evidence, Finished: fin, Class: r[n].Class, Mode: r[n].Mode, Roles: r[n].Roles, Billing: r[n].Billing, Streams: r[n].Streams, Kinds: r[n].Kinds, Load: b.Load, Report: b.Friend, Beat: b.At, Proof: b.Proof}
+		row := FriendRow{Name: n, Pronouns: r[n].Pronouns, Width: r[n].Width, Status: word, Evidence: evidence, Finished: fin, Class: r[n].Class, Mode: r[n].Mode, Roles: r[n].Roles, Billing: r[n].Billing, Streams: r[n].Streams, Kinds: r[n].Kinds, Load: b.Load, Report: b.Friend, Beat: b.At, Proof: b.Proof}
 		if why := sprint.FriendDownWhy(presence, now); why != "" {
 			whys[n] = why
 		}
@@ -569,7 +570,7 @@ func (st *Store) FriendSeats(ctx context.Context, now time.Time) ([]sprint.Frien
 	}
 	seats := make([]sprint.FriendSeat, len(rows))
 	for i, r := range rows {
-		seats[i] = sprint.FriendSeat{Name: r.Name, Width: r.Width, Status: r.Status, Class: r.Class, Mode: r.Mode, Roles: sprint.Split(r.Roles), Streams: sprint.Split(r.Streams), Kinds: sprint.Split(r.Kinds), Why: whys[r.Name], Proof: r.Proof, Finished: r.Finished}
+		seats[i] = sprint.FriendSeat{Name: r.Name, Pronouns: r.Pronouns, Width: r.Width, Status: r.Status, Class: r.Class, Mode: r.Mode, Roles: sprint.Split(r.Roles), Streams: sprint.Split(r.Streams), Kinds: sprint.Split(r.Kinds), Why: whys[r.Name], Proof: r.Proof, Finished: r.Finished}
 		if r.Reason != "" && seats[i].Why != "" {
 			seats[i].Why += ": " + r.Reason
 		}
