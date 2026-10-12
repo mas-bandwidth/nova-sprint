@@ -834,6 +834,36 @@ func (f LintFinding) String() string {
 
 var placeholderRE = regexp.MustCompile(`<[a-z][a-z0-9 -]*>`)
 
+// siblingPathRE matches a reference to a sibling repository's path (../<name>, a
+// sibling repository by name) in a brief's text (docs/SPEC-STAGING.md, the
+// siblings): the harness is pointed at the sibling by the staged JOB.md, so a brief
+// that reaches outside its tree names the repository it reads.
+var siblingPathRE = regexp.MustCompile(`\.\./([A-Za-z0-9_.-]+)`)
+
+// siblingsListed returns the sibling repository names a SIBLINGS header names: each
+// comma-separated entry is owner/name@ref, and the matching name is the repository's
+// own name (docs/SPEC-CARD-CONTRACT.md, the SIBLINGS header).
+func siblingsListed(brief string) map[string]bool {
+	names := map[string]bool{}
+	for _, line := range strings.Split(brief, "\n") {
+		if key, val, ok := cardhdr.KeyValue(line); ok && key == "SIBLINGS" {
+			for _, entry := range strings.Split(val, ",") {
+				e := strings.TrimSpace(entry)
+				if i := strings.LastIndex(e, "/"); i >= 0 {
+					e = e[i+1:]
+				}
+				if i := strings.IndexByte(e, '@'); i >= 0 {
+					e = e[:i]
+				}
+				if e != "" {
+					names[e] = true
+				}
+			}
+		}
+	}
+	return names
+}
+
 // Lint holds one rendered brief to what nova-sprint add holds it to (cmd/nova-sprint
 // verbs.go lintBriefReads): the model lines of line 1, the child rules, the typed
 // header and a tree card's steps; and to the template's own placeholders, which the
@@ -860,7 +890,29 @@ func Lint(id, brief string) []LintFinding {
 			add("placeholder", i+1, m)
 		}
 	}
+	return append(out, LintSiblingPath(id, brief)...)
+}
+
+// LintSiblingPath returns the sibling-path findings of a brief: a text reference to a
+// sibling repository (../<name>, a sibling repository by name) the SIBLINGS header does
+// not cover (docs/SPEC-CARD-CONTRACT.md, the SIBLINGS header; docs/SPEC-STAGING.md,
+// the siblings): the harness is pointed at the sibling by the staged JOB.md, so a brief
+// that reaches outside its tree must say where the sibling comes from.
+func LintSiblingPath(id, brief string) []LintFinding {
+	var out []LintFinding
+	listed := siblingsListed(brief)
+	for _, m := range siblingPathRE.FindAllStringSubmatchIndex(brief, -1) {
+		name := brief[m[2]:m[3]]
+		if !listed[name] {
+			out = append(out, LintFinding{ID: id, Check: "sibling-path", Line: lineOf(brief, m[0]), Excerpt: "../" + name})
+		}
+	}
 	return out
+}
+
+// lineOf is the 1-based line the byte offset falls on.
+func lineOf(brief string, off int) int {
+	return strings.Count(brief[:off], "\n") + 1
 }
 
 // Manifest is the manifest.tsv of a directory: id, file, test, wave, deps, one card
