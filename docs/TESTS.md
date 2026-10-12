@@ -407,6 +407,26 @@ card dealt to it.
   next tick moves the card onto the free lane. Every verb names the private
   store with `--redis`; HOME and XDG_CONFIG_HOME are the test's own and its
   forward fails the test, so no verb can reach a live sprint server.
+
+### A friend with no free lane is not dealt work (v1.2.14)
+
+The friends' deal hands a work card to a friend whose lanes are all held only
+when no machine that serves the card's tier has a free lane: a friend with no
+idle lane gives way to a machine that starts the card at once, rather than
+queueing it behind her working lanes, where it sits dealt and untaken until the
+dealt bound returns it (docs/SPEC-SPRINT.md section 1,
+friend-deal-idle-lanes-first.w1; the owner, 2026-10-12). A friend whose tiers
+alone serve the tier, or whose card is a hard pin (`WHO: only friend`), still
+takes it ahead of her lanes. On 2026-10-12 five heavy cards were dealt to a
+friend with no free lane and sat 6-9 minutes while the fleet ran at 15 of 140
+slots; the tick's level and the dealt bound's return leave the machines the
+rest.
+
+- Unit, `internal/sprint/friend_free_lane_test.go`:
+  `TestFriendWithNoFreeLaneIsNotDealt`: a friend at width 2 with both lanes
+  working and a machine up that draws flash with free lanes; a new flash card
+  is dealt to the machine, never queued on her row.
+
 ### An environment exit
 
 A child that ends 134 or 137, or leaves no result at any exit, is the member's
@@ -668,6 +688,7 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken`, `TestARestartedServerTellsTheOwnerOfARaiseOnce`, `TestASeatSilentRaiseNoLongerOpenIsForgotten` (`cmd/nova-sprint/seat_silent_test.go`): the owner's bus message is marked told only once sent, retried under one token, sent once across a restart, and the marks pruned to the open raises.
 - `TestAHeavyCardIsDealtOnAHeavyRouteOnAStore` (functional, `cmd/nova-sprint/tier_line_functional_test.go`): a real store with a flash and a heavy route; a card whose RESULT line says tier: heavy is admitted saying tier=heavy and its first deal draws the heavy route.
 - `TestTheTierLineIsReadOrRefusedByOneRuleInBothForms` (`internal/card/tier_line_test.go`), `TestTheTierOnLineOneIsReadInBothForms`, `TestAddStoresTheTierLineOneNamesOrItsStreamsDefault`, `TestAHeavyCardsFirstDealDrawsAHeavyRoute`, `TestABriefWhoseLineOneNamesAStrongerTierRaisesItsTierNow` (`internal/sprint/tier_line_test.go`) and `TestAddPrintsTheTierEachCardIsStoredWith`, `TestBriefPrintsTheTierTheCardIsDealtOn` (`cmd/nova-sprint/tier_line_test.go`): the tier line, read or refused by one rule in both forms, a stream's default, printed by add and brief, a stronger re-brief raising tier_now, dealt on.
+- `TestFriendWithNoFreeLaneIsNotDealt` (`internal/sprint/friend_free_lane_test.go`): a friend with no free lane is not dealt work while a machine that serves the card's tier has one, so the card is started at once instead of queueing behind her lanes.
 
 ## A finish-PR card starts from the PR's own head
 
