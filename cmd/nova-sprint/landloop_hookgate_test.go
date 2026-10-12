@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -90,34 +89,30 @@ func (r *switchedRig) binary(t *testing.T) string {
 	return string(b)
 }
 
-// The seat's hook is gone after the restart: the land is refused by the hook gate before
-// it acts on anything, every pass inside the window, and none of those passes rolls the
-// switch back. Each pass says once that it waits for the seat's hook, and the window and
-// the card queued to merge are left as they were.
+// A hand land by the coordinator is still a coordinator command: while the seat is
+// unhooked, the hook gate refuses it before it acts on anything, and the refusal is a wait,
+// never a rollback fault — the window and the card are left as they were. The server's own
+// land loop lands while the seat is unhooked (TestTheServersLandLoopLandsWhileTheSeatIsUnhooked);
+// a land that is not refused by the gate and then fails still rolls back.
 func TestAHookGateRefusalInTheWindowIsNotARollback(t *testing.T) {
 	r := newSwitchedRig(t)
-	more := []string{"--repo-dir", r.clone, "--base", "main"}
-	for pass := range 3 {
-		*r.now = r.t0.Add(1500*time.Millisecond + time.Duration(pass)*LandEvery)
-		var out bytes.Buffer
-		code, _ := r.a.landOnce(context.Background(), "mem:0", more, &out)
-		assert.NotEqual(t, 0, code, "pass %d: nothing was landed", pass)
-		assert.NotContains(t, out.String(), "SERVER ROLLBACK", "pass %d: %s", pass, out.String())
-		assert.Equal(t, 1, strings.Count(out.String(), "LAND WAITS for the seat's hook"), "pass %d says once that it waits: %s", pass, out.String())
-		assert.Equal(t, "binary-v2", r.binary(t), "pass %d: the switch stands", pass)
-		_, err := os.Stat(r.target + ".switch.json")
-		assert.NoError(t, err, "pass %d: the rollback window is still open", pass)
-	}
+	var out bytes.Buffer
+	code := r.a.cmdLand([]string{"--repo-dir", r.clone, "--base", "main"}, &out, &out)
+	assert.NotEqual(t, 0, code, "a hand land is refused while the seat is unhooked")
+	assert.NotContains(t, out.String(), "SERVER ROLLBACK", "a hook-gate refusal is no rollback fault: %s", out.String())
+	assert.Equal(t, "binary-v2", r.binary(t), "the switch stands")
+	_, err := os.Stat(r.target + ".switch.json")
+	assert.NoError(t, err, "the rollback window is still open")
 	r.gate(t, false)
 	assert.Equal(t, map[string]string{"s1-1": "merging/queued"}, r.places("s1-1"), "the card is still queued to merge")
-	r.gate(t, true)
 
-	// the seat hooks in again: the same window, a land that is not refused by the gate and
-	// then fails still rolls back (TestARealLandFailureInTheWindowStillRollsBack)
+	// the seat hooks in again: a land that is not refused by the gate and then fails still
+	// rolls back (TestARealLandFailureInTheWindowStillRollsBack)
+	r.gate(t, true)
 	r.hookLive(t)
 	*r.now = r.t0.Add(time.Minute)
-	var out bytes.Buffer
-	code, _ := r.a.landOnce(context.Background(), "mem:0", []string{"--repo-dir", filepath.Join(r.dir, "missing"), "--base", "main"}, &out)
+	out.Reset()
+	code, _ = r.a.landOnce(context.Background(), "mem:0", []string{"--repo-dir", filepath.Join(r.dir, "missing"), "--base", "main"}, &out)
 	assert.NotEqual(t, 0, code)
 	assert.Contains(t, out.String(), "SERVER ROLLBACK land failed within switch window")
 	assert.Equal(t, "binary-v1", r.binary(t))

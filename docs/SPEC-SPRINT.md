@@ -8112,16 +8112,25 @@ the previous binary.
 
 Only a landing that acted and failed counts toward the rollback. A landing the seat's hook
 gate refuses before it acts on anything is not a land fault (tla/ServerSwitch.tla,
-`LandHookRefused`, `NoRollbackOnAHookRefusal`): a restart ends the seat's hook (the record says
-`state=gone`), so the new server's first landing pass, run as the coordinator, can come before
-the seat hooks in again, and the gate refuses it (`You must hook in first: run nova-sprint
-hook`). The refusal reaches the loop as the typed `hookGateError` the store's open returns,
-found with `errors.As` and never by its words; the loop does not ask the rollback check, leaves
-the window, the binary and the switch state as they were, and tries again on its next pass, the
-interval it already keeps (`LandEvery`, two seconds, so it neither spins nor sleeps longer).
-Each such pass prints one line, `LAND WAITS for the seat's hook: <the gate's sentence>; nothing
-was landed, and the next pass tries again`, and nothing else. Once the seat has hooked in, a
-landing that is let through and fails (exit 2) in the window rolls back as before.
+`LandHookRefused`, `NoRollbackOnAHookRefusal`).
+
+The machine's landing and the coordinator's are split by identity. The server's own automatic
+landing of accepted cards (`run --land`) is machine work, not a coordinator command: it runs
+whether or not the seat is hooked, so a server restart, a dropped stream or a seat away never
+stalls the fleet's landings. The loop's landing is exempt from the hook gate by its own
+identity (the app's internal `landLazy` mark, which only the loop sets; never by an `--as` or
+a flag a caller can pass). The hook gate is kept for the coordinator commands a person or seat
+runs: `land` by hand, `accept`, `rework` and the rest are still refused until the seat hooks
+in. A hand land the gate refuses before it acts on anything is a wait, not a land fault
+(`hookGateError` from the store's open, found with `errors.As`, never by its words): the loop
+does not ask the rollback check, leaves the window, the binary and the switch state as they
+were, and tries again on its next pass, the interval it already keeps (`LandEvery`, two
+seconds, so it neither spins nor sleeps longer). Each such pass prints one line, `LAND WAITS
+for the seat's hook: <the gate's sentence>; nothing was landed, and the next pass tries
+again`, and nothing else. Once the seat has hooked in, a landing that is let through and fails
+(exit 2) in the window rolls back as before. Should a land step ever require the seat, the
+loop raises one judgment after its bound (`LandDeadline`, ten minutes) rather than waiting
+silently, naming the stage and the process it waits on.
 
 `nova-sprint selftest land` lands a canned card on a scratch clone with this binary, run by
 any install before switching: green on a good binary and red on a broken lander (item 14).
