@@ -127,12 +127,20 @@ func AdoptingHeld(ctl *Card) bool {
 
 // FleetRowStatus is a member's status cell in the fleet table at now:
 // adopting while the tick holds it to adopt, its own status beside up, held
-// and down, and never up whatever it beats; else MemberStatus.
+// and down, and never up whatever it beats; else MemberStatus, with the
+// member's no-room word beside it while its beat is fresh (NoRoomWord): a
+// draining member reads `up (draining since <stamp>)`, a member at its disk
+// floor `up (<why>)`, so where's fleet frame shows the word that before sat
+// hidden without a card read (the coordinator, 2026-10-11).
 func FleetRowStatus(ctl *Card, b Beat, now time.Time) string {
 	if AdoptingHeld(ctl) {
 		return Adopting
 	}
-	return MemberStatus(ctl, b, now)
+	status := MemberStatus(ctl, b, now)
+	if w := NoRoomWord(b, now); w != "" {
+		return status + " (" + w + ")"
+	}
+	return status
 }
 
 // holdAdopting is a member back from down held adopting target: its episode

@@ -1418,6 +1418,18 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 			if logical == sprint.Fleet {
 				rowCardFields(cells, facts.RowCards[r.Key])
 				liveCells(cells, facts.RowWorking, beats, r.Key, now)
+				// the status cell the tick's fleet mirror wrote carries the member's no-room
+				// word beside its status while its beat is fresh (sprint.MemberStatus): the
+				// text frame shows it; --json keeps status as the page knows it and carries
+				// the word and a drain's stamp as their own fields (the page reads neither)
+				status, _ := cells[sprint.Status].(string)
+				if word := noRoomIn(status); word != "" {
+					cells[sprint.Status] = bareStatus(status)
+					cells["no_room"] = word
+					if since, ok := drainSince(status); ok {
+						cells["draining_since"] = since
+					}
+				}
 			}
 			rows[r.Key] = cells
 		}
@@ -1985,6 +1997,34 @@ func allOf(t ntable.Table, texts map[string]string) ntable.Table {
 	}
 	t.Columns, t.Rows = cols, []ntable.Row{all}
 	return t
+}
+
+// noRoomIn is the no-room word a fleet status cell carries beside its status (a member's
+// beat says it drains, or its disk is under its floor: sprint.MemberStatus,
+// sprint.NoRoomWord), "" when the cell is the bare status.
+func noRoomIn(status string) string {
+	i := strings.Index(status, " (")
+	if i < 0 || !strings.HasSuffix(status, ")") {
+		return ""
+	}
+	return status[i+2 : len(status)-1]
+}
+
+// bareStatus is a fleet status cell's status word, the no-room word beside it dropped
+// (noRoomIn): what the page reads in status.
+func bareStatus(status string) string {
+	if i := strings.Index(status, " ("); i >= 0 {
+		return status[:i]
+	}
+	return status
+}
+
+// drainSince is a fleet status cell's drain stamp when its no-room word is a drain's
+// ("draining since <stamp>"): the RFC 3339 stamp, and whether the word is one.
+func drainSince(status string) (string, bool) {
+	word := noRoomIn(status)
+	since, ok := strings.CutPrefix(word, sprint.DrainingPrefix)
+	return strings.TrimSpace(since), ok
 }
 
 // fleetText is the fleet table as the view's text draws it (the owner,

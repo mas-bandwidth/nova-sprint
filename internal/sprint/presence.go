@@ -158,6 +158,25 @@ func NoRoomNow(b Beat, now time.Time) string {
 	return b.NoRoom
 }
 
+// NoRoomWord is the no-room word a where frame shows for a member or reader whose beat b is
+// fresh at now: "draining since <stamp>" while it drains, else the member's own word (its
+// disk under its floor); "" while it starts cards. The deal, the level and the ask read the
+// full word (NoRoomNow); a frame shows the drain's head alone, the stamp beside the status.
+// (docs/SPEC-SPRINT.md section 5; tla/NoRoom.tla, NeverDealtToDraining)
+func NoRoomWord(b Beat, now time.Time) string {
+	if !b.Fresh(now) {
+		return ""
+	}
+	if b.Draining {
+		since := b.DrainingSince
+		if since.IsZero() {
+			since = b.At
+		}
+		return DrainingPrefix + stamp(since)
+	}
+	return b.NoRoom
+}
+
 // DrainingFrom is the drain stamp of a beat written now with draining said or not, from the
 // beat before it (prev): its first drain beat stamps now, a later one keeps the stamp, and a
 // beat that does not say it clears it.
