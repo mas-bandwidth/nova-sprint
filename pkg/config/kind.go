@@ -837,15 +837,6 @@ func Lookup(name string) (*Kind, bool) {
 	return nil, false
 }
 
-// KindNames lists the kinds in apply order.
-func KindNames() []string {
-	out := make([]string, 0, len(Kinds))
-	for _, k := range Kinds {
-		out = append(out, k.Name)
-	}
-	return out
-}
-
 // Field finds a field by name.
 func (k *Kind) Field(name string) (Field, bool) {
 	for _, f := range k.Fields {
@@ -1140,52 +1131,4 @@ func (f Field) zero() string {
 		return "false"
 	}
 	return ""
-}
-
-// Changes validates the named fields of a set and returns their canonical
-// values. Every problem is reported at once.
-func (k *Kind) Changes(raw map[string]string) (map[string]string, error) {
-	var problems []string
-	out := map[string]string{}
-	for name, v := range raw {
-		f, ok := k.Field(name)
-		if !ok {
-			problems = append(problems, fmt.Sprintf("--%s is not a %s field; the fields are %s", name, k.Name, strings.Join(k.FieldNames(), ", ")))
-			continue
-		}
-		c, err := f.Canonical(v)
-		if err != nil {
-			problems = append(problems, err.Error())
-			continue
-		}
-		out[name] = c
-	}
-	if len(out) == 0 && len(problems) == 0 {
-		problems = append(problems, "set names no field; the fields are "+strings.Join(k.FieldNames(), ", "))
-	}
-	if len(problems) == 0 && k.CheckChanges != nil {
-		if err := k.CheckChanges(out); err != nil {
-			problems = append(problems, err.Error())
-		}
-	}
-	if len(problems) > 0 {
-		sort.Strings(problems)
-		return nil, fmt.Errorf("%s", strings.Join(problems, "; "))
-	}
-	return out, nil
-}
-
-// Sorted returns the rows in apply order: Kind.ApplyOrder first, then name.
-func (k *Kind) Sorted(rows []Row) []Row {
-	out := append([]Row(nil), rows...)
-	sort.SliceStable(out, func(i, j int) bool {
-		if k.ApplyOrder != nil {
-			a, b := k.ApplyOrder(out[i]), k.ApplyOrder(out[j])
-			if a != b {
-				return a < b
-			}
-		}
-		return out[i].Name < out[j].Name
-	})
-	return out
 }
