@@ -890,20 +890,22 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		if len(WaitsFor(s, c, nil)) > 0 {
 			continue
 		}
-		if friendPlaced[c.ID] || OnlyFriend(c) && !PinReleased(s, c, r.Friends) {
-			continue
-		}
 		if bb, ok := AtAttemptCap(c, capOf(c.Row)); ok {
 			// its cap's attempts ran since the coordinator last decided on it: the one
 			// judgment, raised once while it holds (never again while one is open on the
 			// card; the finish, the read and the landing raise the same one at the attempt's
 			// end), and the card dealt to no one until a decision (brief_bound.go;
-			// docs/SPEC-SPRINT.md, the bounds)
+			// docs/SPEC-SPRINT.md, the bounds). Judged before the friend skip below: a card
+			// hard-pinned to a friend (OnlyFriend) at its cap is offered to no friend (the
+			// offer above filters it), so the skip would leave it silent forever.
 			if !capJudged(s, c.ID) {
 				n := judgment(NBriefWrong, c.Row, s.Now, 0, c.ID)
 				n.Who, n.Attempt, n.What, n.Marked = r.who(), c.Int("attempt"), bb.Why(), true
 				capNotes = append(capNotes, n)
 			}
+			continue
+		}
+		if friendPlaced[c.ID] || OnlyFriend(c) && !PinReleased(s, c, r.Friends) {
 			continue
 		}
 		if wc := AtRedealBound(s, c); wc != nil {
