@@ -1,3 +1,11 @@
+//go:build !functional
+
+// The tick's wall-clock gate is not a functional-tier test: it measures the deal
+// beside the rest of the suite, and a machine loaded by sibling packages cannot
+// tell the deal from the load (the gate measured 1.41 s beside three sibling
+// packages, 0.67 s alone). make test and CI run it alone, after the rest
+// (Makefile, the unit job); the functional tier, which runs every package in
+// parallel, leaves it out.
 package sprint
 
 import (

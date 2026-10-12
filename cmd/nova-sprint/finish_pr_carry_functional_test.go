@@ -97,7 +97,7 @@ func TestAFinishPRCardStagesFromThePRHeadOnAStore(t *testing.T) {
 		"PR: finish-nova-sprint-pr-1\n" +
 		"CARRY: head=" + prHead + " branch=pr-1\n" +
 		"\nTHE TASK. Start from the PR's branch pr-1 at " + prHead + " and finish it, merging the base in.\n"
-	require.NoError(t, os.WriteFile(brief, []byte(body), 0o600))
+	require.NoError(t, os.WriteFile(brief, []byte(passingBrief(body)), 0o600))
 
 	do("init --readers reader-a --members m1")
 	do("fleet beat m1 --load 0")
@@ -110,7 +110,7 @@ func TestAFinishPRCardStagesFromThePRHeadOnAStore(t *testing.T) {
 	var take struct {
 		Packets []member.Packet `json:"packets"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(do("take --as m1 pr-1.w1@1 --json")), &take))
+	require.NoError(t, json.Unmarshal([]byte(do("take --as m1 pr-1.w1@1 --epoch 0 --json")), &take))
 	require.Len(t, take.Packets, 1)
 	p := member.Carried(take.Packets[0])
 	assert.Equal(t, prHead, p.BaseHead, "the slot is staged from the PR head, not the base")

@@ -79,6 +79,11 @@ func TestFleetSyncFollowsTheInventoryOnTheStore(t *testing.T) {
 	run(0, "init", "--readers", "reader-a,reader-b")
 	out := run(0, "fleet", "sync")
 	require.Contains(t, out, "FLEET-SYNC OK moved=3", "the first sync")
+	// a member the sync adds is held until its own probe passes; bring each up so
+	// the width changes below are the sync's to make (fleet_sync.go, HeldByProbe)
+	for _, m := range []string{"m1", "m2", "m3"} {
+		run(0, "fleet", "up", m, "--probe", "passed")
+	}
 	// each at the width its row carries
 	got := rows()
 	require.Equal(t, "5", got["m1"]["width"], "widths after the sync: m1=%s m2=%s m3=%s", got["m1"]["width"], got["m2"]["width"], got["m3"]["width"])
