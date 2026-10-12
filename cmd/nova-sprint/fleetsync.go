@@ -282,6 +282,14 @@ func (a *app) cmdFleetSync(args []string, stdout, stderr io.Writer) int {
 		for _, m := range held {
 			fmt.Fprintf(stdout, "NOTE %s is held by the coordinator and stays held; run: nova-sprint fleet up %s\n", oneline.Escape(m), oneline.Escape(m))
 		}
+		for _, d := range drift {
+			if d.Kind == sprint.DriftAdd {
+				// a member new to the sprint waits for its own probe: the report
+				// names the line to run (fleet_sync.go, the add; docs/SPEC-SPRINT.md
+				// section 5, the fleet)
+				fmt.Fprintf(stdout, "NOTE %s is held until its own probe passes; run: %s\n", oneline.Escape(d.Member), sprint.EnvProbeLine(d.Member))
+			}
+		}
 		for _, l := range holding {
 			fmt.Fprintf(stdout, "NOTE %s\n", oneline.Escape(l))
 		}

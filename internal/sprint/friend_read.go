@@ -561,7 +561,7 @@ func FriendReadCloseChecked(s *Snapshot, name, primary, card, report string, mis
 // named (card, one of her identities, ReadCardGenIDs), or with none named the placed one of
 // them; nil when none is placed on her row.
 func friendReadCardOf(s *Snapshot, name, primary string, attempt int, card string) *Card {
-	ids := ReadCardGenIDs(primary, attempt, name)
+	ids := ReadCardGenIDs(primary, attempt, name, readNextGen(s.Fleet.Cards(), primary, attempt, name))
 	if card != "" {
 		if !slices.Contains(ids, card) {
 			return nil
@@ -582,7 +582,8 @@ func friendReadCardOf(s *Snapshot, name, primary string, attempt int, card strin
 // judgment, and the primary's review judgment after it. usage is what the read spent, as
 // the read verb's --usage carried it ("" from her outbox report): kept on the card, timed
 // and priced as a reader's read is (readCostRecord), and recorded on the primary in the
-// same unit (the owner's rule: the complete cost is tracked).
+// same unit (the complete cost is tracked). A verdict also persists its
+// reader/attempt/head history for the landing push (docs/SPEC-SPRINT.md, judgments).
 func friendReadCloseUnit(s *Snapshot, name string, pr, rc *Card, verdict, finding, usage string) Unit {
 	attempt := rc.Int("attempt")
 	if attempt == 0 {
@@ -605,15 +606,15 @@ func friendReadCloseUnit(s *Snapshot, name string, pr, rc *Card, verdict, findin
 		notes = append(notes, j)
 	}
 	changes := []Change{change(Fleet, removeEntry(rc, set))}
-	if strings.TrimSpace(usage) != "" {
-		rec := readCostRecord(s, rc, usage, rc.F("asked"), cmp.Or(rc.F("begun"), stamp(s.Now)))
-		set[FieldUsage] = rec
-		maps.Copy(set, readUsageFields(rc, usage))
-		if pr.Placed() {
-			costs := map[string]string{}
+	if pr.Placed() {
+		costs := map[string]string{FieldLandingReadHistory: landingReadHistory(pr, rc, verdict)}
+		if strings.TrimSpace(usage) != "" {
+			rec := readCostRecord(s, rc, usage, rc.F("asked"), cmp.Or(rc.F("begun"), stamp(s.Now)))
+			set[FieldUsage] = rec
+			maps.Copy(set, readUsageFields(rc, usage))
 			addConsumer(pr, costs, readConsumer(s, rc, 0, verdict, rec))
-			changes = append(changes, change(Work, setEntry(pr, costs)))
 		}
+		changes = append(changes, change(Work, setEntry(pr, costs)))
 	}
 	return Unit{Key: pr.ID, Stream: pr.Row, Changes: changes, Moved: rc.ID + " retired " + verdict, Notes: notes}
 }

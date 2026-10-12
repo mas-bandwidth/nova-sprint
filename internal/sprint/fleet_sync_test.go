@@ -60,6 +60,116 @@ func syncHeld(t *testing.T) *world {
 	return w
 }
 
+// TestASyncAddedMemberComesUpOnlyAfterItsProbe: a member the sync adds to the
+// fleet is held until its own probe passes, so presence's beat alone never
+// brings it up and it is dealt no card (internal/sprint/fleet_sync.go's
+// DriftAdd branch; docs/SPEC-SPRINT.md section 5, the fleet; tla/ProviderBudget.tla,
+// NewMemberProbed).
+func TestASyncAddedMemberComesUpOnlyAfterItsProbe(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a")
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
+		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", DefaultWidth}},
+		Machines: []string{"m1", "m9"}}))
+	require.NotNil(t, w.s.MemberCtl("m9"), "the sync adds m9")
+	presenceWith(w, "m1", "m9")
+	w.must(Deal(w.s, DealReq{}))
+	assert.NotContains(t, w.s.UpMembers(), "m9", "a sync-added member is not up before its probe passes")
+	total := w.s.Fleet.Count("m9", Ready) + w.s.Fleet.Count("m9", Working)
+	assert.Zero(t, total, "a member not up is dealt no card")
+}
+
+// TestFleetUpASyncAddedMemberNeedsItsProbe: fleet up of a member the sync added
+// is refused in the new-member words until its own probe passes; with the probe
+// passed the member comes up at the sync's width, its hold lifted, and is dealt
+// to (fleetStepPlan, steps_work.go; docs/SPEC-SPRINT.md section 5, the fleet;
+// tla/ProviderBudget.tla, NewMemberProbed).
+func TestFleetUpASyncAddedMemberNeedsItsProbe(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a")
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.must(Add(w.s, AddReq{Stream: "s1", Count: 2}))
+	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
+		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", 3}},
+		Machines: []string{"m1", "m9"}}))
+
+	p := FleetStep(w.s, FleetReq{Op: "up", Member: "m9"})
+	require.Len(t, p.Refused, 1, "fleet up with no probe is refused: %+v", p)
+	assert.Contains(t, p.Refused[0].Why, "its own probe has not passed")
+
+	p = FleetStep(w.s, FleetReq{Op: "up", Member: "m9", Probe: EnvProbePassed})
+	require.Empty(t, p.Refused, "%+v", p)
+	w.must(p)
+	require.Contains(t, w.s.UpMembers(), "m9", "the passed probe brings it up")
+	ctl := w.s.MemberCtl("m9")
+	assert.Equal(t, "3", ctl.F(FieldWidth), "at the sync's width")
+	assert.Empty(t, ctl.F("held"), "the probe hold is lifted")
+	assert.Empty(t, ctl.F(FieldHeldBy), "the mark is cleared")
+	assert.Empty(t, ctl.F(FieldHeldReason), "the reason is cleared")
+	w.must(Deal(w.s, DealReq{}))
+	assert.NotZero(t, w.s.Fleet.Count("m9", Ready)+w.s.Fleet.Count("m9", Working), "an up member is dealt to")
+}
+
+// TestACoordinatorsHoldOnAProbeHeldMemberKeepsTheMark: fleet down (the
+// coordinator's hold) of a member the sync added held by the probe leaves the
+// probe's mark in place, so a following fleet up with no probe is still refused
+// and the member is not up (downPlan, steps_work.go; docs/SPEC-SPRINT.md section
+// 5, the fleet; tla/ProviderBudget.tla, NewMemberProbed).
+func TestACoordinatorsHoldOnAProbeHeldMemberKeepsTheMark(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a")
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
+		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", DefaultWidth}},
+		Machines: []string{"m1", "m9"}}))
+	require.Equal(t, HeldByProbe, w.s.MemberCtl("m9").F(FieldHeldBy), "the sync adds m9 held by the probe")
+
+	w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m9", Who: "coordinator"}))
+	ctl := w.s.MemberCtl("m9")
+	require.NotEmpty(t, ctl.F("held"), "m9 after the coordinator's hold: %v", ctl.Fields)
+	assert.Equal(t, HeldByProbe, ctl.F(FieldHeldBy), "the probe's mark stays: %v", ctl.Fields)
+
+	p := FleetStep(w.s, FleetReq{Op: "up", Member: "m9"})
+	require.Len(t, p.Refused, 1, "fleet up with no probe is refused: %+v", p)
+	assert.Contains(t, p.Refused[0].Why, "its own probe has not passed")
+	assert.NotContains(t, w.s.UpMembers(), "m9", "a probe-held member is not up")
+}
+
+// TestASecondSyncAfterAProbeAddWritesNothing: the add held by the probe leaves
+// no drift behind, so a sync after it writes nothing (FleetDrift, fleet_sync.go).
+func TestASecondSyncAfterAProbeAddWritesNothing(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a")
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
+	sync := FleetReq{Op: "sync", Who: "sync",
+		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", DefaultWidth}},
+		Machines: []string{"m1", "m9"}}
+	w.must(FleetStep(w.s, sync))
+	require.NotNil(t, w.s.MemberCtl("m9"), "the sync adds m9")
+	assert.Empty(t, FleetDrift(w.s, sync.Sync, sync.Machines), "the add leaves no drift")
+	p := FleetStep(w.s, sync)
+	assert.Empty(t, p.Units, "a second sync writes nothing: %+v", p)
+}
+
+// TestAMemberTheSyncHeldAndReleasedIsUnchanged: a member the sync held (and
+// whose probe passed before it was up) is released by the sync, its width kept,
+// no probe hold written (FleetDrift DriftRelease, fleet_sync.go).
+func TestAMemberTheSyncHeldAndReleasedIsUnchanged(t *testing.T) {
+	t.Parallel()
+	w := syncHeld(t)
+	before := w.s.MemberCtl("m2").F(FieldWidth)
+	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync",
+		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m2", DefaultWidth}},
+		Machines: []string{"m1", "m2"}}))
+	ctl := w.s.MemberCtl("m2")
+	assert.Empty(t, ctl.F("held"), "released")
+	assert.Empty(t, ctl.F(FieldHeldBy), "no mark")
+	assert.NotEqual(t, HeldByProbe, ctl.F(FieldHeldBy), "never a probe hold")
+	assert.Equal(t, before, ctl.F(FieldWidth), "its width is unchanged")
+}
+
 // TestACoordinatorsHoldOnAMemberTheSyncHoldsClearsTheMark: fleet down on a
 // member the sync already holds makes the hold the coordinator's, so the sync
 // never releases it (fleetStep, downPlan).

@@ -245,6 +245,7 @@ func left(a *RuleAnswer, why string) { a.Act, a.Why = ActLeft, why }
 
 // escalation is the tier a primary goes up to by rule: the first tier of the ladder above
 // the one it is on that a deal draws and a route serves; past heavy, a friend's card.
+// tla/SprintRules.tla, Part "rules": NextTier
 func escalation(s *Snapshot, pr *Card) (tier string, friend bool) {
 	for _, t := range dealtAbove(cardTierOf(pr)) {
 		if _, why := s.noRoute(withField(withField(pr, FieldTier, t), FieldTierNow, t)); why == "" {
@@ -255,6 +256,7 @@ func escalation(s *Snapshot, pr *Card) (tier string, friend bool) {
 }
 
 // up is the answer that raises the primary a tier, or makes it a friend's card.
+// tla/SprintRules.tla, Part "rules": NextTier
 func up(s *Snapshot, a *RuleAnswer, pr *Card, why string) {
 	tier, friend := escalation(s, pr)
 	a.set = map[string]string{FieldRuleTier: tier, FieldRuleFails: "0"}
@@ -288,6 +290,7 @@ func mindCard(pr *Card) string {
 // heavy, a friend's card. A failure the fleet shares (sameFailure) or a brief with no ladder
 // (a pinned model, the frontier tier) is reworked on its tier with its report, never left to
 // the seat below the brief's bound (wait_refused.go).
+// tla/SprintRules.tla, Part "rules": RuleFailed
 func ruleFailed(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleFailed
 	pr := s.Work.Placed(a.Subject)
@@ -358,6 +361,7 @@ func ruleFailed(s *Snapshot, a *RuleAnswer) {
 // ruleBound: a card reached its bound (its redeal bound at its ceiling, or the second
 // identical failure): a new attempt a tier up; past heavy, a friend's card. A card every
 // member refused at staging, or whose brief is wrong, needs a mind.
+// tla/SprintRules.tla, Part "rules": RuleBound
 func ruleBound(s *Snapshot, a *RuleAnswer) {
 	a.Rule = RuleBound
 	pr := s.Work.Placed(a.Subject)

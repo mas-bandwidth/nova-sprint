@@ -1638,7 +1638,15 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	// the base's CI after a landing, on a plan of its own the same way (base_ci.go)
 	b, baseCIDue := TickBaseCI(s, r)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, b.Notes...), append(p.Closes, b.Closes...), append(p.Updates, b.Updates...)
-	return p, due + readyDue + alarmsDue + driftDue + baseCIDue
+	// the landing-stall alarm (judgments.go), on a plan of its own the same way:
+	// raised once at the tick end while cards wait in review or merging and no
+	// card has landed for the bound, re-raised each bound, and cleared on the
+	// next landing. It runs here, in the deadlines part, so it is watched
+	// whether or not the idle alarm is on.
+	ls, stallDue := TickLandingStall(s, r)
+	p.Notes, p.Closes, p.Updates, p.Props = append(p.Notes, ls.Notes...), append(p.Closes, ls.Closes...), append(p.Updates, ls.Updates...), append(p.Props, ls.Props...)
+	p.Units = append(p.Units, ls.Units...)
+	return p, due + readyDue + alarmsDue + driftDue + baseCIDue + stallDue
 }
 
 // TickOverdue marks each open judgment overdue once, when it passes its due
