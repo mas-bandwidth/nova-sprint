@@ -19,6 +19,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
 	"github.com/mas-bandwidth/nova-sprint/pkg/goenv"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
@@ -79,10 +80,17 @@ func newBuiltSprint(t *testing.T) *builtSprint {
 	rc := redis.NewClient(&redis.Options{Addr: store})
 	t.Cleanup(func() { _ = rc.Close() })
 	require.NoError(t, fn.Load(context.Background(), rc))
+	// the seat's bus store is the test's own Redis (NOVA_BUS_REDIS below), and the
+	// hook reads its own bus stream to answer the bus half of the challenge. Seed
+	// that stream so the hook arms at its tail: an absent stream answers Tail with
+	// no id, which Redis then refuses as a cursor.
+	_, err = rc.XAdd(context.Background(), &redis.XAddArgs{Stream: bus.StreamOf("coordinator"), Values: map[string]any{"seed": "1"}}).Result()
+	require.NoError(t, err)
 	home := t.TempDir()
 	cache := shortCache(t)
 	env := append(withoutNOVA(goenv.Clean(os.Environ())),
 		"NOVA_SPRINT_REDIS="+store,
+		"NOVA_BUS_REDIS="+store,
 		"NOVA_SPRINT_ACTOR=coordinator",
 		"HOME="+home,
 		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),

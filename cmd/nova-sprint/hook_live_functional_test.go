@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
+	"github.com/mas-bandwidth/nova-sprint/pkg/bus/bustest"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
 	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/testutil"
 )
@@ -67,15 +68,25 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	t.Cleanup(func() { _ = admin.Close() })
 	require.NoError(t, fn.Load(ctx, admin))
 	home := t.TempDir()
-	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": name, "HOME": home, "XDG_CONFIG_HOME": home}
+	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": name, "HOME": home, "XDG_CONFIG_HOME": home, busRedisEnv: addr}
 	var envMu sync.Mutex
 	getenv := func(k string) string { envMu.Lock(); defer envMu.Unlock(); return env[k] }
 	hookTests.Store(name, true)
 	t.Cleanup(func() { hookTests.Delete(name) })
 
+	// the bus store the hook's shared record and bus push live on, the way
+	// hookSprint gives its in-process rig one: an in-memory bustest fake behind
+	// the app's dial, never a socket, shared by the server and the seat's hook.
+	fake := bustest.NewFake(t0, name, "glenn")
+	fake.Sleep = func(time.Duration) { time.Sleep(5 * time.Millisecond) }
+	busOpen := func(context.Context, string, string) (*bus.Bus, func(), error) {
+		return &bus.Bus{Store: fake}, func() {}, nil
+	}
+
 	// the server, on a clock the test steps
 	srvApp := newApp(getenv)
 	t.Cleanup(srvApp.close)
+	srvApp.busOpen = busOpen
 	var clockMu sync.Mutex
 	now := time.Now().UTC().Truncate(time.Second)
 	srvApp.now = func() time.Time { clockMu.Lock(); defer clockMu.Unlock(); return now }
@@ -103,10 +114,11 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	// the seat's side holds no store: every coordinator verb goes to the server
-	clientEnv := map[string]string{"NOVA_SPRINT_SERVER": srv.Listener.Addr().String(), "NOVA_SPRINT_ACTOR": name, "HOME": home, "XDG_CONFIG_HOME": home}
+	clientEnv := map[string]string{"NOVA_SPRINT_SERVER": srv.Listener.Addr().String(), "NOVA_SPRINT_ACTOR": name, "HOME": home, "XDG_CONFIG_HOME": home, busRedisEnv: addr}
 	client := newApp(func(k string) string { return clientEnv[k] })
 	t.Cleanup(client.close)
 	client.hookSock = srvApp.hookSock
+	client.busOpen = busOpen
 	seat := func(line string) (int, string) {
 		var out, errb bytes.Buffer
 		code := runInto(client, split(line), &out, &errb)
@@ -115,10 +127,11 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	hookIn := func() (*hlLines, chan int) {
 		t.Helper()
 		lines := &hlLines{}
+		errs := &lockedBuffer{}
 		pr, pw := io.Pipe()
 		done := make(chan int, 1)
 		go func() {
-			code := runInto(client, []string{"hook"}, pw, io.Discard)
+			code := runInto(client, []string{"hook"}, pw, errs)
 			_ = pw.CloseWithError(io.EOF)
 			done <- code
 		}()
@@ -137,16 +150,21 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 				}
 			}
 			return false
-		}, 10*time.Second, 20*time.Millisecond, "the challenge")
+		}, 10*time.Second, 20*time.Millisecond, "the challenge: %s", errs)
 		code, out := seat("hook --prove " + chal)
 		require.Equal(t, 0, code, out)
 		return lines, done
 	}
-	// pushIDs is the push ids the stream showed, in order.
+	// pushIDs is the push ids the stream showed, in order. The repeating
+	// waiting-judgment warning is not one of them: it carries no session token and
+	// is not a replay, so it is skipped.
 	pushIDs := func(lines *hlLines) []uint64 {
 		var out []uint64
 		for _, l := range lines.all() {
 			if f := strings.Fields(l); len(f) > 1 && f[0] == "PUSH" {
+				if len(f) > 2 && strings.TrimSuffix(f[2], ":") == hookWarnWhat {
+					continue
+				}
 				id, _ := strconv.ParseUint(f[1], 10, 64)
 				out = append(out, id)
 			}
@@ -223,7 +241,8 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	again, _ := hookIn()
 	time.Sleep(hookLook + 500*time.Millisecond)
 	// replay is #115's durable acknowledgement: a reconnect replays only the pushes not
-	// acknowledged
-	assert.Zero(t, again.count("PUSH "), "a reconnect replays only the pushes not acknowledged:\n%s", strings.Join(again.all(), "\n"))
+	// acknowledged. The count is of open pushes: a repeating warning carries no session
+	// token and is not a replay, so it is not counted.
+	assert.Zero(t, len(pushIDs(again)), "a reconnect replays only the pushes not acknowledged:\n%s", strings.Join(again.all(), "\n"))
 	assert.Less(t, time.Since(began), 30*time.Second, "under 30 s")
 }
