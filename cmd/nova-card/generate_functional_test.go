@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,12 +17,13 @@ import (
 )
 
 // A directory generated from a ledger in a fixture checkout is admitted whole by
-// `nova-sprint add --brief-dir` into a twin store, and the one-wave plan holds
-// there: every card is ready and none needs another, while two cards that share
-// the ledger's path still make the add want --allow-shared-paths. A build is the
-// functional tier's (nova-tools#4328). The checkout is on the sprint branch its
-// stream lands on, since add refuses a card cut on dev outside the promotion
-// stream (docs/SPEC-SPRINT.md section 7, the sprint branch).
+// `nova-sprint add --brief-dir` into a real store, and the one-wave plan holds
+// there: every card is wave 1, and the cards that share the ledger's path are
+// chained with DEPENDS-ON (each on the one before it, in ledger order), so the
+// add admits them with no --allow-shared-paths. A build is the functional tier's
+// (nova-tools#4328). The checkout is on the sprint branch its stream lands on,
+// since add refuses a card cut on dev outside the promotion stream
+// (docs/SPEC-SPRINT.md section 7, the sprint branch).
 func TestAGeneratedDirectoryIsAdmittedWholeAndItsWavesHold(t *testing.T) {
 	t.Parallel()
 	repo := t.TempDir()
@@ -58,50 +60,80 @@ func TestAGeneratedDirectoryIsAdmittedWholeAndItsWavesHold(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "cards")
 	exit, stdout, stderr := runCard("generate", "--from", "ledger", "--ledger", "serial-tests", "--repo-dir", repo, "--out", out)
 	require.Equal(t, 0, exit, "stdout: %s\nstderr: %s", stdout, stderr)
-	assert.Contains(t, stdout, "CARDS OK dir="+out+" cards=3 waves=1 tier=flash shared-paths=yes")
+	assert.Contains(t, stdout, "CARDS OK dir="+out+" cards=3 waves=1 tier=flash")
 	manifest, err := os.ReadFile(filepath.Join(out, "manifest.tsv"))
 	require.NoError(t, err)
-	assert.Contains(t, string(manifest), "serial-tests-cmd-b-b\tcmd/b/b_test.go\tinternal/ci TestEveryTestOpensWithTParallel\t1\t-\n")
+	assert.Contains(t, string(manifest), "serial-tests-cmd-a-a\tcmd/a/a_test.go\tinternal/ci TestEveryTestOpensWithTParallel\t1\t-\n")
+	assert.Contains(t, string(manifest), "serial-tests-cmd-b-b\tcmd/b/b_test.go\tinternal/ci TestEveryTestOpensWithTParallel\t1\tserial-tests-cmd-a-a\n")
+	assert.Contains(t, string(manifest), "serial-tests-internal-c-c\tinternal/c/c_test.go\tinternal/ci TestEveryTestOpensWithTParallel\t1\tserial-tests-cmd-b-b\n")
 	brief, err := os.ReadFile(filepath.Join(out, "serial-tests-cmd-a-a.md"))
 	require.NoError(t, err)
 	assert.Contains(t, string(brief), "REPO: example/repo\nBASE: sprint/s\nKIND: ledger\n")
 	assert.Contains(t, string(brief), "\nSTOP: the ledger row for cmd/a/a_test.go in internal/ci/testdata/serial-tests_allowlist.txt shrinks from 1 to 0 and the class test TestEveryTestOpensWithTParallel stays green, and the STEP 4 gate passes\n")
 
-	// the cards the twin store admits are the same cut with REPO: naming the twin, so
+	// the cards the sprint admits are the same cut with REPO: naming the twin, so
 	// the lander clones it rather than example/repo over the network
 	admit := filepath.Join(t.TempDir(), "cards")
 	exit, stdout, stderr = runCard("generate", "--from", "ledger", "--ledger", "serial-tests", "--repo-dir", repo, "--repo", origin, "--out", admit)
 	require.Equal(t, 0, exit, "stdout: %s\nstderr: %s", stdout, stderr)
-	assert.Contains(t, stdout, "CARDS OK dir="+admit+" cards=3 waves=1 tier=flash shared-paths=yes")
+	assert.Contains(t, stdout, "CARDS OK dir="+admit+" cards=3 waves=1 tier=flash")
 
+	// the sprint, through the helper: init, prove the seat over the server and the
+	// hook, then add the generated directory and read the push back
 	sprint := newBuiltSprint(t)
 	code, text := sprint.run("init", "--members", "m1", "--readers", "r1")
 	require.Equal(t, 0, code, text)
 	// the seat is proven before any coordinator verb runs, as the built binary
-	// wants of every name (docs/SPEC-SPRINT.md, "The push proof"): a folder push
-	// target recorded, a check reported delivered, and the session's pong
-	const nonce = "0123456789abcdef"
-	for _, step := range [][]string{
-		{"seat", "push", "--harness", "claude", "--target", t.TempDir()},
-		{"seat", "push", "--sent", nonce},
-	} {
-		code, text = sprint.run(step...)
-		require.Contains(t, []int{0, 1}, code, "nova-sprint %s: %s", strings.Join(step, " "), text) // 1 is PUSH DOWN, not proven yet
+	// wants of every name (docs/SPEC-SPRINT.md, "The push proof"): the server is
+	// started on loopback, the seat hooks in over it, and the challenge the hook
+	// streams is answered (hook --prove). The server and the hook stay live for
+	// the rest of the test; the coordinator verbs run straight at the store.
+	srvAddr := sprint.serve()
+	hookBuf := sprint.hook(srvAddr)
+	var chal string
+	// the hook streams its challenge; on a failed wait the buffer is read after the
+	// wait and named in the failure, so the socket bind error is not hidden
+	for start := time.Now(); time.Since(start) < 30*time.Second; {
+		for _, l := range strings.Split(hookBuf.String(), "\n") {
+			if strings.HasPrefix(l, "HOOK CHALLENGE ") {
+				chal = strings.TrimSuffix(strings.Fields(l)[2], ":")
+				break
+			}
+		}
+		if chal != "" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	code, text = sprint.run("seat", "pong", nonce)
+	require.NotEmpty(t, chal, "the hook did not challenge: %s", hookBuf.String())
+	code, text = sprint.run("hook", "--prove", chal)
+	require.Equal(t, 0, code, text)
+
+	// the push reached the coordinator: the seat's push target is recorded and read
+	// back (seat push --harness --target, then seat push prints the record). The
+	// hook proof above is what lets the coordinator's verbs run at all.
+	code, text = sprint.run("seat", "push", "--harness", "claude", "--target", t.TempDir())
 	require.Equal(t, 0, code, text)
 	code, text = sprint.run("seat", "push")
 	require.Equal(t, 0, code, text)
-	require.Contains(t, text, "PUSH OK name=coordinator")
+	require.Contains(t, text, "PUSH RECORD name=coordinator")
+
+	// the generated directory is admitted whole with no --allow-shared-paths: the
+	// cards are chained, so no two independent cards share the ledger's path
 	code, text = sprint.run("add", "--stream", "s", "--brief-dir", admit)
-	assert.Equal(t, 2, code, "without --allow-shared-paths the cards' shared ledger is refused: %s", text)
-	code, text = sprint.run("add", "--stream", "s", "--brief-dir", admit, "--allow-shared-paths")
 	require.Equal(t, 0, code, text)
 	assert.Contains(t, text, "ADD OK stream=s cards=3 before=- moved=3 refused=0")
-	_, text = sprint.run("card", "serial-tests-cmd-b-b")
+
+	// the admitted cards hold the chain in the store, not only in manifest.tsv: b
+	// needs a and c needs b, so no two independent cards share the ledger's path
+	code, text = sprint.run("card", "serial-tests-cmd-b-b")
+	require.Equal(t, 0, code, text)
 	assert.Contains(t, text, "ready")
-	assert.NotContains(t, text, "  needs serial")
-	_, text = sprint.run("card", "serial-tests-cmd-a-a")
+	assert.Contains(t, text, "needs serial-tests-cmd-a-a")
+	code, text = sprint.run("card", "serial-tests-cmd-a-a")
+	require.Equal(t, 0, code, text)
 	assert.Contains(t, text, "ready")
-	assert.NotContains(t, text, "  needs serial")
+	code, text = sprint.run("card", "serial-tests-internal-c-c")
+	require.Equal(t, 0, code, text)
+	assert.Contains(t, text, "needs serial-tests-cmd-b-b")
 }

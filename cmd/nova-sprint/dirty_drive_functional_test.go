@@ -138,12 +138,18 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 	perStream := drivePerStream
 	total := driveStreams * perStream
 	do(world, "init", "--readers", "reader-a,reader-b,reader-c", "--members", strings.Join(spec, ","))
-	do(world, "add", "--stream", strings.Join(streams, ","), "--count", strconv.Itoa(perStream))
+	// Each stream's cards are cut on its sprint branch, as the coordinator cuts them,
+	// and the drive's landing pushes them there (THE LANDING FLOW): the dev-is-behind
+	// rule counts only cards landed on a sprint branch.
+	for _, s := range streams {
+		do(world, "add", "--stream", s, "--count", strconv.Itoa(perStream),
+			"--brief", passingBrief("tier: flash\nBASE: sprint/"+s))
+	}
 	for _, m := range members {
 		do(world, "fleet", "beat", m)
 	}
 	do(world, "start")
-	landings := newDriveLandings(t, world.run, []string{"--redis", addr, "--actor", "coordinator"})
+	landings := newDriveLandings(t, world.run, []string{"--redis", addr, "--actor", "coordinator"}, streams)
 
 	st, _, code := loop.machineVerb("run", nil, &bytes.Buffer{})
 	require.NotNil(t, st, "run: %d", code)
@@ -701,9 +707,10 @@ func tail(s string, n int) string {
 }
 
 // driveLandings gives the simulated world one real commit to finish against:
-// it pushes that head to a temporary bare origin's main, then records each
-// stream's queued cards through merge --landed. The real CLI checks every
-// card's head against the fetched base before the store records the landing.
+// it pushes that head to a temporary bare origin's sprint/<stream> branch for
+// every stream, then records each stream's queued cards through merge --landed
+// on that branch (THE LANDING FLOW). The real CLI checks every card's head
+// against the fetched base before the store records the landing.
 type driveLandings struct {
 	invoke    func([]string, io.Writer, io.Writer) int
 	base      []string
@@ -715,7 +722,7 @@ type driveLandings struct {
 	wrapErr   string
 }
 
-func newDriveLandings(t *testing.T, run func([]string, io.Writer, io.Writer) int, base []string) *driveLandings {
+func newDriveLandings(t *testing.T, run func([]string, io.Writer, io.Writer) int, base []string, streams []string) *driveLandings {
 	t.Helper()
 	dir := t.TempDir()
 	bare := filepath.Join(dir, "origin.git")
@@ -741,11 +748,12 @@ func newDriveLandings(t *testing.T, run func([]string, io.Writer, io.Writer) int
 	git("-C", repo, "add", "landing.txt")
 	git("-C", repo, "commit", "-m", "pushed landing head")
 	head := git("-C", repo, "rev-parse", "HEAD")
-	git("-C", repo, "push", "origin", "HEAD:refs/heads/drive/landing")
-	git("-C", repo, "push", "origin", head+":refs/heads/main")
-	git("-C", repo, "fetch", "origin", "main")
-	remote := git("-C", repo, "ls-remote", "origin", "refs/heads/main")
-	require.Contains(t, remote, head+"\trefs/heads/main", "the fixture head must actually be pushed to the base")
+	for _, s := range streams {
+		git("-C", repo, "push", "origin", head+":refs/heads/sprint/"+s)
+		git("-C", repo, "fetch", "origin", "sprint/"+s)
+	}
+	remote := git("-C", repo, "ls-remote", "origin", "refs/heads/sprint/"+streams[0])
+	require.Contains(t, remote, head+"\trefs/heads/sprint/"+streams[0], "the fixture head must actually be pushed to the base")
 	return &driveLandings{invoke: run, base: append([]string(nil), base...), repo: repo, head: head}
 }
 
@@ -817,7 +825,7 @@ func (l *driveLandings) run(args []string, stdout, stderr io.Writer) int {
 		for _, card := range named {
 			land = append(land, "--landed", card)
 		}
-		land = append(land, "--repo", l.repo, "--base-ref", "origin/main")
+		land = append(land, "--repo", l.repo, "--base-ref", "origin/sprint/"+stream)
 		code := l.invoke(land, stdout, stderr)
 		if code != 0 {
 			l.wrapErr = fmt.Sprintf("named landing for stream %s returned %d", stream, code)

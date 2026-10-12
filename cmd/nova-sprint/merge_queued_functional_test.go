@@ -34,6 +34,21 @@ func recordMerge(t *testing.T, a *app, stream string, batch int, epoch string) s
 	return out.String()
 }
 
+// recordMergeOn is recordMerge on the store named by address, for an app whose
+// environment carries no Redis (a functionalTestApp's verbs add --redis).
+func recordMergeOn(t *testing.T, a *app, addr, stream string, batch int, epoch string) string {
+	t.Helper()
+	fs, c := a.verbSetup("merge")
+	_, err := parse(fs, []string{"--epoch", epoch, "--redis", addr})
+	require.NoError(t, err)
+	st, err := a.store(*c)
+	require.NoError(t, err)
+	var out, errb bytes.Buffer
+	code := a.runStep("merge", *c, st, store.MergeStep(sprint.MergeReq{Stream: stream, Batch: batch, Who: c.actor}), &out, &errb)
+	require.Zero(t, code, "the merge step: exit %d\n%s%s", code, out.String(), errb.String())
+	return out.String()
+}
+
 // On a real store, with the machine running: the coordinator's accept queues
 // the work table's review -> merging for the next pump and writes the merge
 // card at once; a merge in the same tick, before the pump, judges the work
@@ -80,26 +95,29 @@ func TestAMergeBeforeThePumpOnTheStore(t *testing.T) {
 	require.Contains(t, bareErr.String(), "a bare merge records the queue's head as landed with no push, and a real store refuses it; nothing was changed")
 	out = run("check")
 	require.Contains(t, out, "CHECK OK violations=0", "check after the refused bare merge:\n%s", out)
-	out = recordMerge(t, a, "s1", 10, "0")
-	require.Contains(t, out, "MERGE OK", "merge before the pump:\n%s", out)
-	require.NotContains(t, out, "REFUSED", "merge before the pump:\n%s", out)
+	mergeOut := recordMerge(t, a, "s1", 10, "0")
+	require.Contains(t, mergeOut, "MERGE OK", "merge before the pump:\n%s", mergeOut)
+	require.NotContains(t, mergeOut, "REFUSED", "merge before the pump:\n%s", mergeOut)
+	// the merge prints what it landed on the stream (archiving is manual now, so the
+	// tick never shows an archived line): each card of the stream is named as it lands
+	require.Contains(t, mergeOut, "MOVED s1-1 merging -> landed", "merge before the pump:\n%s", mergeOut)
+	require.Contains(t, mergeOut, "MOVED s1-2 merging -> landed", "merge before the pump:\n%s", mergeOut)
 	out = run("check")
 	require.Contains(t, out, "CHECK OK violations=0", "check after the merge, before the pump:\n%s", out)
 	run("tick")
 	out = run("where")
 	require.Contains(t, out, "DONE", "after the pump:\n%s", out)
-	// the sprint is done and the two cards are landed on the table (the tick does not
-	// archive: streams are archived only by stream archive), carried by the JSON view
-	var done struct {
-		Landed int64 `json:"landed"`
-		All    int64 `json:"all"`
-		Done   bool  `json:"done"`
+	// the stream stays on the work table with its landed cards (archiving is manual, so
+	// the headline no longer folds it into an archived line): s1's row is landed = 2 and
+	// 0 in every other state column
+	var v whereView
+	require.NoError(t, json.Unmarshal([]byte(run("where --json")), &v), "where --json after the pump")
+	row := v.Tables[sprint.Work]["s1"]
+	require.NotNil(t, row, "s1's work row after the pump:\n%s", out)
+	for _, col := range []string{"waiting", "ready", "working", "review", "merging"} {
+		require.Equal(t, "0", row[col], "s1 %s after the pump:\n%s", col, out)
 	}
-	j := run("where --json")
-	require.NoError(t, json.Unmarshal([]byte(j), &done), "after the pump:\n%s", j)
-	require.True(t, done.Done, "after the pump:\n%s", j)
-	require.Equal(t, int64(2), done.Landed, "after the pump:\n%s", j)
-	require.Equal(t, int64(2), done.All, "after the pump:\n%s", j)
+	require.Equal(t, "2", row["landed"], "s1 landed after the pump:\n%s", out)
 	out = run("check")
 	require.Contains(t, out, "CHECK OK violations=0", "check after the pump:\n%s", out)
 }

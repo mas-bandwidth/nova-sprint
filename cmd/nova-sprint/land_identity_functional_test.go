@@ -37,7 +37,7 @@ func TestLandCommitIdentityOnARealStore(t *testing.T) {
 	// config naming a different identity, and no NOVA_* variable of the machine's.
 	home := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[user]\n\tname = Owner\n\temail = owner@example.com\n"), 0o600))
-	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "coordinator",
+	env := map[string]string{"NOVA_SPRINT_REDIS": addr, "NOVA_SPRINT_ACTOR": "land-identity",
 		"HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config")}
 	a := newApp(func(k string) string { return env[k] })
 	defer a.close()
@@ -86,13 +86,14 @@ func TestLandCommitIdentityOnARealStore(t *testing.T) {
 	run("tick")
 	run("take --as m1 --limit 5 --epoch 0")
 	run("finish --as m1 s1-1.w1@1 --head " + head + " --epoch 0")
-	run("queue --as reader-a") // a reader asks for its queue: it is up
+	run("queue --as reader-a")
 	run("queue --as reader-b")
 	run("ask")
 	run("read --as reader-a --ok --limit 10 --epoch 0")
 	run("read --as reader-b --ok --limit 10 --epoch 0")
 	run("accept --read-ok")
 	run("stream set s1 --land-protected any")
+	run("tick")
 	run("land --repo-dir " + clone + " --base main")
 
 	// The landing commit's author and committer are the configured identity, not the planted
