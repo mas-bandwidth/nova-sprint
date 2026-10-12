@@ -378,12 +378,14 @@ LoadCount(w, r) ==
 \* (read_cards.go halfLoad), whatever Broken says; HoldRespected checks it.
 HoldLoad(w, r) ==
   IF ReadCost = "half" THEN w + ((r + 1) \div 2) ELSE w + r
+\* The queued placements are counted in one range: past f0 (this plan's), or
+\* from the first entry with "pendingroom" (those queued before it too).
 Room(S, m) ==
-  LET wd == Cardinality(S.mc[m]) + PendDealt(S.q["fleet"], S.f0 + 1, Len(S.q["fleet"]), m)
-      wr == Cardinality(S.mr[m]) + PendReads(S.q["fleet"], S.f0 + 1, Len(S.q["fleet"]), m)
-      wd0 == IF "pendingroom" \in Fixes THEN PendDealt(S.q["fleet"], 1, S.f0, m) ELSE 0
-      wr0 == IF "pendingroom" \in Fixes THEN PendReads(S.q["fleet"], 1, S.f0, m) ELSE 0
-  IN DealAhead * Width[m] - LoadCount(wd + wd0, wr + wr0)
+  LET lo == IF "pendingroom" \in Fixes THEN 1 ELSE S.f0 + 1
+      hi == Len(S.q["fleet"])
+  IN DealAhead * Width[m]
+     - LoadCount(Cardinality(S.mc[m]) + PendDealt(S.q["fleet"], lo, hi, m),
+                 Cardinality(S.mr[m]) + PendReads(S.q["fleet"], lo, hi, m))
 
 \* A coordinator-addressed event: counted; the witness "percard" writes a
 \* note for each at once instead of one at the tick's end.
