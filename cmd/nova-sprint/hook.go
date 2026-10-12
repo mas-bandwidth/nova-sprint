@@ -1544,10 +1544,13 @@ func (a *app) hookHold(ctx context.Context, addr, from, name string, quiet, comp
 		return refuse(stderr, verb, "the bus push cannot be armed: "+oneline.Escape(err.Error())+"; nothing was armed")
 	}
 	stream := bus.StreamOf(name)
-	cursor, _, err := w.Tail(ctx, stream)
+	cursor, exists, err := w.Tail(ctx, stream)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %s FAILED: the bus subscription could not start: %s; nothing was armed\n", prog, verb, oneline.Escape(err.Error()))
 		return 1
+	}
+	if !exists || cursor == "" {
+		cursor = "0-0"
 	}
 	sock, err := a.hookSocket(name)
 	if err != nil {
@@ -1751,6 +1754,7 @@ func (a *app) hookHold(ctx context.Context, addr, from, name string, quiet, comp
 	}
 	stopSub()
 	if unhooked {
+		hs.unhookWg.Wait()
 		out.printf("HOOK ENDED name=%s: unhooked; both pushes are closed and recorded unhooked\n", oneline.Field(name))
 		return 0
 	}
@@ -1761,10 +1765,11 @@ func (a *app) hookHold(ctx context.Context, addr, from, name string, quiet, comp
 // hookHoldState is the hook process's challenge: the server's half outstanding, the
 // bus half sent, and whether the bus half came back off the subscription.
 type hookHoldState struct {
-	mu      sync.Mutex
-	sprintC string
-	busC    string
-	busSeen bool
+	mu       sync.Mutex
+	sprintC  string
+	busC     string
+	busSeen  bool
+	unhookWg sync.WaitGroup
 }
 
 func (h *hookHoldState) challenge(sprintC, busC string) {
@@ -1830,13 +1835,17 @@ func (a *app) hookRelayed(ctx context.Context, hk sprint.Hooker, hs *hookHoldSta
 		hs.used(bc)
 		return r, nil
 	case "unhook":
+		hs.unhookWg.Add(1)
 		r, err := relay.ask(hookMsg{T: "unhook"})
 		if err != nil || r.T != "ok" {
+			hs.unhookWg.Done()
 			return r, err
 		}
 		if err := hk.Unhook(ctx, name, a.now()); err != nil {
+			hs.unhookWg.Done()
 			return hookMsg{T: "refused", Why: "the server recorded the unhook, and the shared record " + sprint.HookSharedKey(name) + " could not be: " + err.Error()}, nil
 		}
+		hs.unhookWg.Done()
 		return r, nil
 	}
 	return relay.ask(hookMsg{T: m.T, Challenge: m.Challenge, ID: m.ID, Session: m.Session})

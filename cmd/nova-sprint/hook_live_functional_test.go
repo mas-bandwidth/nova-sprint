@@ -223,7 +223,7 @@ func TestAHookStaysLiveAcrossThreeBoundsWhileItsSeatActs(t *testing.T) {
 	again, _ := hookIn()
 	time.Sleep(hookLook + 500*time.Millisecond)
 	// replay is #115's durable acknowledgement: a reconnect replays only the pushes not
-	// acknowledged
+	// acknowledged (a repeating warning has no session token and is not a replay)
 	assert.Zero(t, again.count("PUSH "), "a reconnect replays only the pushes not acknowledged:\n%s", strings.Join(again.all(), "\n"))
 	assert.Less(t, time.Since(began), 30*time.Second, "under 30 s")
 }

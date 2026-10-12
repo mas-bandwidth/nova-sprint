@@ -36,6 +36,8 @@ func TestStallASwitchedServerNeverRollsBackOnTheHookGate(t *testing.T) {
 	r.tick() // the deal
 	require.Equal(t, []string{"s1-1"}, r.work("m1"))
 	r.toMerging([]string{"reader-a", "reader-b"}, "s1-1")
+	// seed a route and the sprint git_identity, as nova-config apply writes on every live store
+	r.do("apply", "--redis", r.addr, "--routes", "flash-a", "--git-identity", "nova-sprint <nova-sprint@mas-bandwidth.com>")
 
 	// the switch: target is the server's binary, its previous build marked so a rollback shows
 	bin, err := os.ReadFile(r.bin)
