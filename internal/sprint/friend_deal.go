@@ -355,7 +355,7 @@ func (s *Snapshot) friendsFor(c *Card, tier string) []FriendSeat {
 // (FieldTakenFrom), never the friends the level moved it off.
 func withdrawnFrom(wc *Card) []string {
 	var out []string
-	if f, ok := FriendOfRow(wc.Row); ok {
+	if f, ok := FriendOfRow(wc.Row); ok && !recoveredLease(wc) {
 		out = append(out, f)
 	}
 	if f, ok := FriendOfRow(wc.F(FieldTakenFrom)); ok && !slices.Contains(out, f) {
@@ -399,6 +399,9 @@ func laneRunsIt(s *Snapshot, seats []FriendSeat, c, wc *Card) string {
 		names = append(names, wc.ID, job)
 	}
 	for _, f := range seats {
+		if recoveredLease(wc) && f.Name == strings.TrimPrefix(wc.F(FieldRecoveredFrom), friendRowPrefix) {
+			continue
+		}
 		for _, r := range f.Running {
 			if r != "" && slices.Contains(names, r) {
 				return f.Name
@@ -647,7 +650,7 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 	members := s.UpMembers()
 	declared := map[string]bool{}
 	for _, c := range cards {
-		if c.Col != Ready || IsSentinel(c) {
+		if c.Col != Ready || IsSentinel(c) || recoveryDebt(s, c) != "" {
 			continue
 		}
 		// a primary whose named needs have not landed is dealt to no friend

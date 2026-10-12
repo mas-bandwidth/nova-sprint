@@ -492,6 +492,9 @@ func (r *Redis) Acquire(ctx context.Context, gen uint64, op OpRecord) (bool, err
 		if vals[0] != nil || g != gen {
 			return errFenceMoved
 		}
+		if err := r.checkKeyGuards(ctx, tx, op.KeyGuards); err != nil {
+			return err
+		}
 		e, err := tx.HGet(ctx, epochKey, "n").Result()
 		if err != nil && !errors.Is(err, redis.Nil) {
 			return err
@@ -505,7 +508,7 @@ func (r *Redis) Acquire(ctx context.Context, gen uint64, op OpRecord) (bool, err
 			return nil
 		})
 		return err
-	}, fence, genKey, epochKey)
+	}, r.guardedKeys([]string{fence, genKey, epochKey}, op.KeyGuards)...)
 	if errors.Is(err, errFenceMoved) || errors.Is(err, redis.TxFailedErr) {
 		return false, nil
 	}

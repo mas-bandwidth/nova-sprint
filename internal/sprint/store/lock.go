@@ -65,12 +65,15 @@ func (r *Redis) Relock(ctx context.Context, held string, op OpRecord) (bool, err
 		if cur != prefix {
 			return errFenceMoved
 		}
+		if err := r.checkKeyGuards(ctx, tx, op.KeyGuards); err != nil {
+			return err
+		}
 		_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
 			p.Set(ctx, fence, body, 0)
 			return nil
 		})
 		return err
-	}, fence)
+	}, r.guardedKeys([]string{fence}, op.KeyGuards)...)
 	if errors.Is(err, errFenceMoved) || errors.Is(err, redis.TxFailedErr) {
 		return false, nil
 	}
@@ -83,7 +86,7 @@ func (m *Mem) Relock(_ context.Context, held string, op OpRecord) (bool, error) 
 	defer m.mu.Unlock()
 	m.count("relock")
 	l := m.log()
-	if l.fence == nil || l.fence.ID != held {
+	if l.fence == nil || l.fence.ID != held || !m.keyGuardsMatch(op.KeyGuards) {
 		return false, nil
 	}
 	cp := op

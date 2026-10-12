@@ -557,7 +557,8 @@ type Snapshot struct {
 	NoRoom map[string]string
 	// Friends is each friend the deal may give a friend's card to, or whose delivery
 	// mode is consulted by friendNext (FriendSeat); nil is none.
-	Friends []FriendSeat
+	Friends       []FriendSeat
+	RecoveryHeads []RecoveryHead
 	// FriendTextPronouns is metadata for manual verb output only. It does not
 	// populate behavioral seats or change admission, routing or lane decisions.
 	FriendTextPronouns map[string]string `json:"-"`

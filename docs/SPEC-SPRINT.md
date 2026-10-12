@@ -283,8 +283,9 @@ measured utilization on the beat (`friend beat` takes no usage flags), and a
 Claude Code friend's `rate_limit_event` (the claude harness has no deliver
 command, so no run's output passes through the daemon). A
 friend `down` shows `working` 0 in the table, its footer and `where --json`:
-her cards stay on her row and count again when she beats, and `ready` and
-`done` are as they were (the owner, 2026-10-02 9:48 PM ET: "[a friend] being down,
+the next running tick revokes her Ready/Working leases, leaves withdrawn history on her
+row, and returns their primaries to ready; done cards are unchanged. This supersedes
+the earlier retain-on-down behavior (the owner, 2026-10-02 9:48 PM ET: "[a friend] being down,
 she automatically is 0/8 working OK?"). The
 owner, 2026-10-02 9:44 PM ET, on a friend shown up while she was gone: "two
 minutes is too long. 1m", "maybe even 30 secs."; and at 9:46 PM ET: "heartbeat
@@ -293,9 +294,8 @@ after 15 sec. asleep. better."; the word was `asleep` until the owner,
 2026-10-03 8:04 AM ET, looking at the friends table: "Please change 'asleep' to
 'down' so we have consistency across all tables". The fleet's rule (`MissedBeatsDown` windows of
 `BeatDeadline`, down past 45 s, section 5) is separate and stays longer: a
-machine down has its cards taken back; a friend holds the cards dealt to
-her row (a friend's card, below) and keeps them when she goes down, the
-deadline judging them. The
+machine down has its cards taken back; a friend down has the automatic recovery
+protocol below applied by the next running tick. The
 rows are in the fleet table's order (`FleetOrder`): up, then held, then down,
 each by name. The table is drawn by `where` from those records when it draws
 the frame, never stored as a table: no tick, step, epoch or clear touches it,
@@ -304,6 +304,39 @@ the stored view `sprint` has the four tables only. Its footer is the table
 layer's: the sums of `ready`, `working`, `width` and `done`, the pooled `ok%`,
 and a blank status cell, as the fleet table's; an empty friends table is its
 header, its one rule and that footer at zero, as every empty table is.
+
+
+**Automatic Down recovery** (owner-approved repair, 2026-10-12;
+`tla/DownRecovery.tla`). Before live reconciliation or deal, the running tick
+reserves withdrawal of every ready or begun work lease of a derived Down friend,
+including cards named running and hard pins. It guards the exact roster, seat
+generation, beat, health and finish bytes at Acquire or pre-planning Relock,
+and the card's exact revision/place in its durable manifests. A newer Up proof
+before reservation invalidates the plan; a proof after reservation cannot cancel
+the pending operation or revive the old generation. Subsequent mutators settle
+that operation before planning. Revocation spends no attempt or redeal bound.
+Readers-table Asked/Reading leases and fleet read cards are returned even without
+a replacement reader, at a new generation and without spending the reader;
+the primary's review remains owed. Old-generation finish or verdict is refused.
+
+Withdrawal records the exact source repository, generation and branch as durable
+head debt. Every automatic or manual admission remains blocked until a bounded
+remote read of that exact debt succeeds. Failed, missing, malformed or mismatched
+evidence remains visible and retriable; only successful absence proves no push.
+A nonempty full SHA becomes the immutable carry snapshot; successful empty
+reads preserve an earlier accepted baseline. The next packet hands that SHA
+to the worker and uses a distinct generation branch (concrete old1, withdrawn2,
+launch3; the bounded model abstracts lease ordinals). Original branches are
+retained/discoverable, never deleted or reused by recovery. Later unauthorized
+old-branch pushes may remain there but cannot mutate the accepted snapshot or
+finish the new lease; no claim is made that Redis freezes Git writes.
+
+The dealer preserves existing pin eligibility and pin-release rules. No eligible
+receiver leaves an unowned primary/read obligation pending; it is not reported
+as redealt. A recovered Up friend may receive eligible work again: recovery
+does not set a persistent hold or permanent former-owner exclusion. Repeated
+ticks do not revoke the same lease again. Head reads rotate batches of at most
+64 cards, one query per repository, under one absolute budget across retries.
 
 **Last session activity** (the finding of 2026-10-04: the table said up with 8
 working for a friend whose session sat idle from 2:40 to 4:34 PM, and another read
@@ -756,11 +789,9 @@ carry", and the hold's own line says "carried the pushed head of <n>: <ids>"
 `TestAHeldFriendKeepsNoReadyCards`,
 `TestTheHoldOfAFriendWithdrawsEveryCardStartedOrNot`). A friend at a usage
 limit is held this way when the seat runs the `friend down` line her daemon
-sends. Not yet: a work card's packet and a friend's brief read the carry
-(`PacketOf` stages a later generation from its own base, `friendStart` names
-only an earlier attempt's head), and a friend down by her beat alone (`friend
-beat --until`, or no beat) keeps her cards on her row until the stall ladder
-takes the unstarted ones.
+sends. The work packet and friend brief carry the accepted immutable head to the next
+generation. A friend down by her beat or missing session evidence is recovered
+by the running tick under the automatic Down recovery protocol above.
 
 **Friend level** (the owner, 2026-10-04: "What else is like this? Missing
 verbs we need for friends, that machines already have"; `sprint.FriendLevel`).

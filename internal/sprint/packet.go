@@ -236,6 +236,12 @@ func PacketOf(prefix string, epoch uint64, c, primary *Card, earlier []*Card, wo
 		}
 		b := BaseOf(earlier)
 		p.BaseHead, p.BaseAttempt = b.Head, b.Attempt
+		// A recovered generation starts from the immutable snapshot accepted
+		// before its redeal, including a baseline retained after an empty push.
+		if head := c.F(FieldCarryHead); typedrec.IsFullSha(head) && c.Int(FieldCarryGen) > 0 {
+			p.BaseHead, p.BaseAttempt = head, c.Int("attempt")
+			p.Base = BranchOf(prefix, epoch, c.ID, c.Int(FieldCarryGen))
+		}
 		// A card that finishes an open PR carries its head in the brief's CARRY: line, which
 		// `brief --widen` already writes: with no pushed head of this card's own (BaseOf
 		// found none), the slot stages from that head, never from the base alone. The base

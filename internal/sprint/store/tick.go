@@ -612,7 +612,7 @@ func TickPartStep(name string, fn sprint.TickPartFn, r sprint.TickReq, epoch *ui
 
 // mirrors says the part's step brings the display cells up to date after it.
 func mirrors(name string) bool {
-	return name == "presence" || name == "deal" || name == "level" || name == "resume" || name == sprint.PartFriendStall
+	return name == "presence" || name == "deal" || name == "level" || name == "resume" || name == sprint.PartFriendStall || name == sprint.PartFriendRecover
 }
 
 // unchangedNotWritten is the plan of a part with the writes that change no
@@ -1433,6 +1433,10 @@ func (t *tickRun) parts(table string, parts []sprint.TickPartDef) tickOutcome {
 			return p, d
 		}
 		step := TickPartStep(part.Name, fn, t.req, &t.at, nil, &due)
+		step.RecoveryFriends = part.Name == sprint.PartFriendRecover
+		if part.Name == sprint.PartRecoveryHeads {
+			step.RecoveryReadUntil = time.Now().Add(10 * time.Second)
+		}
 		// the part records the run sequence it began under (tla/DirtyTickRead.tla Begin)
 		step.TickRunSeq = &t.runSeq
 		step.Pump, step.Drain, step.Twin = table == sprint.Work, drain, t.twin

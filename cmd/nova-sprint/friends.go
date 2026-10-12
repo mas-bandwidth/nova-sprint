@@ -72,8 +72,11 @@ named on the friend's row, and held while friend hold <friend> --reason <text> (
 unhold <friend> (unhold; friend up) releases the hold and is no evidence: a
 friend released with none
 in its window is down until the friend's session gives some. A friend down shows
-working 0: the friend's cards stay on the friend's row and count again when the friend is up; ready
-and done are as they were. where draws the
+working 0. The next running tick revokes ready and working leases and returns their primaries
+to ready; reader work is returned without spending its reader. Before redeal, the tick
+reads the exact old generation branch and carries a pushed commit. An unavailable or
+ambiguous read leaves visible recovery debt and permits no new take. Withdrawn cards
+stay as history; done cards are unchanged. where draws the
 friends between work and fleet in its default frame, which draws no merge
 table; the friends table is drawn after merge only under where --all, up
 first, then held, then down, each by name, with no load column.
@@ -87,7 +90,8 @@ works at width and queues the rest, and a lane freed by a finish takes the next 
 at once. nova-sprint unpin <id>... --reason <text> removes an
 unstarted card's stored WHO choice without editing its brief; --stream <s>
 selects a stream, and --dry-run only previews it. Work assigned to a friend
-uses the friend's fleet row friend.<name>; presence never takes it back. friend take
+uses the friend's fleet row friend.<name>; a derived down friend's leases are revoked
+by the running tick. friend take
 takes back and marks what the friend has not started, and friend down takes back every card.
 The seat hands a named ready card to a friend with friend give; the deal fills the rest.
 friend sync writes it as <friend>-working/inbox/<job>/BRIEF.md, the job
