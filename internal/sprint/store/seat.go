@@ -207,32 +207,45 @@ func (st *Store) SeatRepairStep(ctx context.Context, r sprint.SeatRepairReq) (St
 }
 
 // keyServer is the server's record: the actor the run loop runs as, when it
-// last said so, its landing mode and its process (ServerRecord). The run loop
-// writes it at its start and every ServerEvery, for
+// last said so, the version it runs (its line's second field), its source
+// commit, when it started, its landing mode and its process (ServerRecord).
+// The run loop writes it at its start and every ServerEvery, for
 // ServerTTL on a store that expires keys, so a torn-down sprint keeps none past
-// it; it is read as the server's while it is no older than ServerTTL.
+// it; it is read as the server's while it is no older than ServerTTL. The
+// record is the server's heartbeat: the deployment's one key (keyServer's name
+// has no epoch part), not the sprint's, so a clear leaves it to its TTL and the
+// server writes it again within ServerEvery either way, and a stopped server's
+// version is stale within ServerTTL and so is neither read nor shown.
 const keyServer = "server"
 
 // ServerEvery is how often the run loop writes its record; ServerTTL is how
-// long a record stands for a server.
+// long a record stands for a server. The record is the server's heartbeat: one
+// SET with an expiry a second (ServerEvery), and the version where --json
+// shows is absent once that record is older than ServerTTL.
 const (
-	ServerEvery = 30 * time.Second
-	ServerTTL   = 2 * time.Minute
+	ServerEvery = time.Second
+	ServerTTL   = 3 * time.Second
 )
 
 // ServerRecord is the server's record as keyServer holds it: the actor the run
-// loop runs as, when it last said so, whether it lands (run --land), and the
-// process that wrote it, its pid on its host, so a land by hand can tell the
-// server from itself (docs/fixes.sexp, land-fenced-while-server-lands: the
-// server-record fence, the clone lock's other half of one land at a time; the
-// fence's reader is cmd/nova-sprint's serverLanding). A record written before
-// the server said its landing mode reads as not landing.
+// loop runs as, when it last said so, the version it runs and its source commit
+// (the same string nova-sprint version prints and the vcs commit it was built
+// from, so the dashboard states the server's own version), when the server
+// started, whether it lands (run --land), and the process that wrote it, its
+// pid on its host, so a land by hand can tell the server from itself
+// (docs/fixes.sexp, land-fenced-while-server-lands: the server-record fence,
+// the clone lock's other half of one land at a time; the fence's reader is
+// cmd/nova-sprint's serverLanding). A record written before the server said its
+// landing mode reads as not landing, and its version and start are absent.
 type ServerRecord struct {
-	Actor string    `json:"actor"`
-	At    time.Time `json:"at"`
-	Land  bool      `json:"land,omitempty"`
-	PID   int       `json:"pid,omitempty"`
-	Host  string    `json:"host,omitempty"`
+	Actor   string    `json:"actor"`
+	At      time.Time `json:"at"`
+	Version string    `json:"version,omitempty"`
+	Commit  string    `json:"commit,omitempty"`
+	Started time.Time `json:"started,omitempty"`
+	Land    bool      `json:"land,omitempty"`
+	PID     int       `json:"pid,omitempty"`
+	Host    string    `json:"host,omitempty"`
 }
 
 // expiringKV is a backend whose keys can expire (Redis): the server's record is
@@ -286,6 +299,39 @@ func (st *Store) Server(ctx context.Context) (ServerRecord, bool, error) {
 		return ServerRecord{}, false, nil
 	}
 	return r, true, nil
+}
+
+// SeatAndServer reads the seat's record and the server's heartbeat in one
+// exchange where the store reads many keys in one (getKeys): where --json
+// carries both under a fixed round-trip budget, so the server's record must not
+// cost a trip of its own. Its answers are exactly Seat's (the seat moved) and
+// Server's (the server is fresh, no older than ServerTTL).
+func (st *Store) SeatAndServer(ctx context.Context) (sprint.SeatChange, bool, ServerRecord, bool, error) {
+	var s sprint.SeatChange
+	var r ServerRecord
+	kv, ok := st.B.(KV)
+	if !ok {
+		return s, false, r, false, nil // a backend that keeps no keys has neither
+	}
+	vals, oks, err := getKeys(ctx, kv, []string{keySeat, keyServer})
+	if err != nil {
+		return s, false, r, false, err
+	}
+	if oks[0] {
+		if err := json.Unmarshal([]byte(vals[0]), &s); err != nil {
+			return s, false, r, false, err
+		}
+	}
+	fresh := false
+	if oks[1] {
+		if err := json.Unmarshal([]byte(vals[1]), &r); err != nil {
+			return s, false, r, false, err
+		}
+		if fresh = st.now().Sub(r.At) <= ServerTTL; !fresh {
+			r = ServerRecord{}
+		}
+	}
+	return s, s.Holder != "", r, fresh, nil
 }
 
 // ServerActor is the actor the server runs as, by its record: "" with no

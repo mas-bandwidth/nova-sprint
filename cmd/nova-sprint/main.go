@@ -226,6 +226,10 @@ type app struct {
 	// before any clone is touched (landfence.go, serverLanding;
 	// docs/fixes.sexp, land-fenced-while-server-lands).
 	serverLands bool
+	// serverStarted is when this process began to be the server: the
+	// heartbeat's started (store.ServerRecord.Started, serverRecord), set at
+	// the first tick of run so every later heartbeat names the same start.
+	serverStarted time.Time
 	// landCtx is the land loop's context while it runs a land (landOnce): the landed
 	// diffs' scoring runs under it, so the loop's shutdown ends the pass; nil is none.
 	landCtx context.Context

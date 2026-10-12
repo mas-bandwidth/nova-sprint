@@ -690,6 +690,9 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 	failures := 0
 	was := ""
 	began0 := a.binaryStamp()
+	if a.serverStarted.IsZero() {
+		a.serverStarted = a.now()
+	}
 	// every line before the loop is seen: the first tick reads the state whole
 	cursor, _ := st.LogTail(ctx)
 	why := tickStart

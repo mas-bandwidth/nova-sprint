@@ -656,6 +656,15 @@ type whereView struct {
 	Epoch       uint64                `json:"epoch"`
 	Cleared     time.Time             `json:"cleared,omitempty"` // when the epoch began
 	Machine     string                `json:"machine,omitempty"`
+	// ServerVersion is the running server's own version (the string
+	// `nova-sprint version` prints), and Server its heartbeat: the version it
+	// runs, its source commit, when it started and when it last wrote
+	// (store.ServerRecord). Both are absent when no server runs or its last
+	// heartbeat is older than the heartbeat's TTL (3 s), so the dashboard hides
+	// its version cell rather than show a stale one (docs/SPEC-SPRINT.md
+	// section 14, server_version-heartbeat-w1).
+	ServerVersion string          `json:"server_version,omitempty"`
+	Server        *serverBeatView `json:"server,omitempty"`
 	// FleetWork and FriendsWork are the work switches (nova-sprint set --fleet, --friends;
 	// sprint.PropFleet, sprint.PropFriends): on or off, always carried, so the dashboard greys
 	// a side that is off. Off, the deal hands that side no work card; reads flow.
@@ -765,6 +774,17 @@ type whereView struct {
 	// (store.WhereFacts.Series); absent when no record of the epoch counted them, and then
 	// where --json's writer reads the log for it (where_landed_series.go).
 	LandedSeries *sprint.LandedSeries `json:"landedSeries,omitempty"`
+}
+
+// serverBeatView is the server's own statement of itself, where --json's
+// `server`: the version it runs, its source commit, when it started and when it
+// last wrote its heartbeat (store.ServerRecord). It is carried only while that
+// record is fresh (no older than the heartbeat's TTL, 3 s).
+type serverBeatView struct {
+	Version string    `json:"version"`
+	Commit  string    `json:"commit,omitempty"`
+	Started time.Time `json:"started,omitempty"`
+	At      time.Time `json:"at"`
 }
 
 // archivedView is where --json's archived streams (stream archive).
@@ -1245,12 +1265,20 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if err != nil {
 		return whereView{}, "", err
 	}
-	seat, moved, err := st.Seat(ctx)
+	// the seat's record and the server's heartbeat, read in one exchange so the
+	// server's own version does not cost where --json a round trip of its own:
+	// the version and commit it runs, when it started and when it last wrote,
+	// fresh (no older than its TTL) or absent (store.SeatAndServer, ServerRecord)
+	seat, moved, serverRec, serverOK, err := st.SeatAndServer(ctx)
 	if err != nil {
 		return whereView{}, "", err
 	}
 	now := a.now()
 	v := whereView{At: now, Tables: map[string]map[string]map[string]any{}, Streams: clocks, Epoch: st.PinnedEpoch(), Coordinator: coordinator}
+	if serverOK {
+		v.ServerVersion = serverRec.Version
+		v.Server = &serverBeatView{Version: serverRec.Version, Commit: serverRec.Commit, Started: serverRec.Started, At: serverRec.At}
+	}
 	if moved {
 		v.Seat = &seat
 	}
