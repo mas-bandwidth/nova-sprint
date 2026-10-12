@@ -6,14 +6,14 @@ import (
 )
 
 // Every stream lands on the sprint branch, and promotion alone reaches dev
-// (docs/SPEC-SPRINT.md section 7, the sprint branch): a card cut on dev is merged by
-// the lander straight onto it and ejects the merge queue's promotion run, so add admits
-// a card based on dev only into the promotion stream, and the lander refuses a landing
-// on dev outside it (ProtectedLandWhy, the same mark). Once the coordinator records the
-// sprint's base (set --base, PropSprintBase), add and brief hold every card to it: a
-// card cut on any other branch, a temporary or a personal one, is admitted only into the
-// promotion stream (found 2026-10-04, when cards cut on such branches landed there and
-// were folded back onto the base by hand through 17 conflicts).
+// (docs/SPEC-SPRINT.md section 7, the sprint branch): a card cut on dev or main is merged
+// by the lander straight onto it and ejects the merge queue's promotion run, so add
+// refuses a card based on either, in every stream, marked or not (ProtectedLandingWhy; the
+// mark is no landing permission). Once the coordinator records the sprint's base (set
+// --base, PropSprintBase), add and brief hold every card to it: a card cut on any other
+// branch, a temporary or a personal one, is refused naming the sprint's base (found
+// 2026-10-04, when cards cut on such branches landed there and were folded back onto the
+// base by hand through 17 conflicts).
 
 // DevBranch is the development branch, which promotion alone reaches.
 const DevBranch = "dev"
@@ -32,31 +32,30 @@ func SprintBase(s *Snapshot) string {
 	return ""
 }
 
-// IsPromotionStream says the stream is the promotion stream: its control card carries
-// the mark FieldLandProtected, which only the coordinator's `nova-sprint stream set <s>
-// --land-protected <owner/name,...|any>` writes (Set) and `--land-protected default`
-// takes off (docs/SPEC-SPRINT.md section 7, the sprint branch).
+// IsPromotionStream says the stream's control card carries the old mark FieldLandProtected,
+// written by `nova-sprint stream set <s> --land-protected <owner/name,...|any>` before
+// 2026-10-12 (docs/SPEC-SPRINT.md section 7, the sprint branch). The mark is no landing
+// permission; it is read only where an old store still carries one.
 func IsPromotionStream(s *Snapshot, stream string) bool {
 	return s.StreamCtl(stream).F(FieldLandProtected) != ""
 }
 
-// SprintBranchWhy is why add or brief refuses card into stream, "" when it may: the
-// stream is not the promotion stream, and its BASE is not the sprint's base when one is
-// recorded, or is dev when none is (docs/SPEC-SPRINT.md section 7, the sprint branch). A
-// card naming no BASE lands on the lander's --base and is admitted. The remedy re-cuts
-// the card on the sprint's base, or marks the stream.
+// SprintBranchWhy is why add or brief refuses card into stream, "" when it may: its BASE
+// is a protected branch, dev or main, refused for every stream (ProtectedLandingWhy), or it
+// is not the sprint's base when one is recorded (docs/SPEC-SPRINT.md section 7, the sprint
+// branch). A card naming no BASE lands on the lander's --base and is admitted. The remedy
+// re-points the stream's base to its sprint branch, or re-cuts the card on the sprint's base.
 func SprintBranchWhy(s *Snapshot, stream, base, card string) string {
+	if ProtectedLandingWhy(s, stream, "", base) != "" {
+		return "card " + card + " is cut on " + base + ", a protected branch: " + LandingFlow +
+			"; run: nova-sprint stream set " + stream + " --base sprint/" + stream
+	}
 	sprintBase := SprintBase(s)
-	if base == "" || base == sprintBase || sprintBase == "" && base != DevBranch || IsPromotionStream(s, stream) {
+	if base == "" || base == sprintBase || sprintBase == "" {
 		return ""
 	}
-	mark := ", or, for the promotion stream, run: nova-sprint stream set " + stream + " --land-protected <owner/name,...|any>"
-	if sprintBase == "" {
-		return "card " + card + " is cut on " + DevBranch + ", and stream " + stream + " is not the promotion stream: every stream lands on the sprint branch, and promotion alone reaches " + DevBranch +
-			"; nothing was written; re-cut the card with BASE: <the sprint branch> (sprint/<name>, the branch its stream lands on)" + mark
-	}
-	return "card " + card + " is cut on " + base + ", not the sprint's base " + sprintBase + ", and stream " + stream + " is not the promotion stream: every stream lands on the sprint's base, and promotion alone reaches " + DevBranch +
-		"; nothing was written; re-cut the card with BASE: " + sprintBase + mark
+	return "card " + card + " is cut on " + base + ", not the sprint's base " + sprintBase +
+		"; nothing was written; re-cut the card with BASE: " + sprintBase
 }
 
 // WithSprintBase is the set step's plan with the sprint's base written too: a branch

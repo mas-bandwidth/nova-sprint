@@ -2,75 +2,68 @@ package sprint
 
 import (
 	"slices"
-	"strings"
 )
 
 // The protected branches (docs/SPEC-SPRINT.md section 7): the lander never lands on a
-// protected branch of a repository unless the card's stream is marked for that
-// repository: a card cut on dev lands straight onto it and ejects the merge queue's
-// promotion run, so a stream lands on its sprint branch and promotion is the marked stream.
+// protected branch of a repository. dev and main are protected: every stream lands on its
+// own sprint branch (sprint/<stream>), stream branches merge one at a time into dev (main
+// where a repository has no dev), and a card never lands on dev or main. The mark
+// land_protected, once a landing permission for these branches, is none now: a stream
+// carrying one from an old store is held to the same rule, and `--land-protected default`
+// (or `--promotion=false`) is the only accepted write of it, which takes the mark off.
 const (
 	// FieldLandProtected is a stream's control card's field: the repositories, comma
-	// separated, whose protected branches the stream is marked to land on, or
-	// LandProtectedAny for every repository; written by `stream set --land-protected`.
+	// separated, whose protected branches the stream was once marked to land on, or
+	// LandProtectedAny for every repository; written by `stream set --land-protected` before
+	// 2026-10-12 and taken off by `--land-protected default`. It is no landing permission.
 	FieldLandProtected = "land_protected"
-	// LandProtectedAny marks a stream for the protected branches of every repository,
-	// a card naming no repository among them.
+	// LandProtectedAny is the old mark's word for every repository, a card naming no
+	// repository among them.
 	LandProtectedAny = "any"
 )
 
-// ProtectedBranches is the branches of a repository the lander never lands on in an
-// unmarked stream: dev, which promotion alone reaches, and main, the release branch
-// (docs/SPEC-SPRINT.md section 7).
+// ProtectedBranches is the branches of a repository the lander never lands on: dev, which
+// promotion alone reaches, and main, the release branch (docs/SPEC-SPRINT.md section 7).
 var ProtectedBranches = []string{"dev", "main"}
 
-// repoKey is a repository as a mark compares it: owner/name in lower case, whatever
-// the spelling (a URL, scp-like or bare, with or without .git).
-func repoKey(repo string) string {
-	r := strings.TrimSuffix(strings.TrimSuffix(strings.ToLower(strings.TrimSpace(repo)), "/"), ".git")
-	r = strings.ReplaceAll(r, ":", "/")
-	parts := strings.Split(r, "/")
-	if len(parts) > 2 {
-		parts = parts[len(parts)-2:]
-	}
-	return strings.Join(parts, "/")
-}
+// LandingFlow is the landing flow, one sentence (docs/SPEC-SPRINT.md section 7, the sprint
+// branch): a card head lands in a batch on its stream's branch, and only the serial merge of
+// stream branches reaches dev or main; a card never lands on dev or main itself.
+const LandingFlow = "The landing flow: card heads land in a batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream branches merge one at a time into dev (main where a repository has no dev); a card never lands on dev or main."
 
-// ProtectedLandWhy is why the lander refuses to land card on base, the card's stream
-// and repository given, "" when it may (docs/SPEC-SPRINT.md section 7, the protected
-// branches): base is a protected branch and the stream's mark names neither the
-// repository nor LandProtectedAny. The remedy marks the stream; a card meant for the
-// sprint branch is re-cut on it instead.
-func ProtectedLandWhy(s *Snapshot, stream, repo, base, card string) string {
+// ProtectedLandingWhy is why a landing whose target is a protected branch (dev or main) is
+// refused, "" when base is none of them: it is refused for every stream, whatever the
+// stream's mark, since land_protected is no landing permission (docs/SPEC-SPRINT.md section 7,
+// the protected branches). The one command that fixes a card meant for such a branch
+// re-points the stream's base to its sprint branch.
+func ProtectedLandingWhy(s *Snapshot, stream, repo, base string) string {
 	if !slices.Contains(ProtectedBranches, base) {
 		return ""
 	}
-	for _, m := range strings.Split(s.StreamCtl(stream).F(FieldLandProtected), ",") {
-		if m == LandProtectedAny || repo != "" && repoKey(m) == repoKey(repo) {
-			return ""
-		}
-	}
-	of, mark := "of "+repo, repo
-	if repo == "" {
-		of, mark = "of its repository (it names no REPO: line)", LandProtectedAny
-	}
-	return "card " + card + " lands on " + base + ", a protected branch " + of + ", and stream " + stream +
-		" is not marked to land on it: every stream lands on the sprint branch, and promotion alone reaches dev; re-cut the card with BASE: <the sprint branch> (sprint/<name>, the branch its stream lands on), or land with --base <the sprint branch> a card that names no BASE: line; or, for the promotion stream, mark it" +
-		"; run: nova-sprint stream set " + stream + " --land-protected " + mark
+	return "stream " + stream + " may not land on " + base + ", a protected branch: " + LandingFlow +
+		"; run: nova-sprint stream set " + stream + " --base sprint/" + stream
 }
 
-// landProtectedWhy is why a --land-protected value is refused, "" when it holds:
-// repositories (owner/name or a clone URL), comma separated, LandProtectedAny, or
-// ReadTierDefault to take the mark off.
-func landProtectedWhy(v string) string {
-	if v == ReadTierDefault {
+// ProtectedLandWhy is why the lander refuses to land card on base, the card's stream and
+// repository given, "" when it may (docs/SPEC-SPRINT.md section 7, the protected branches):
+// base is a protected branch, refused for every stream, marked or not (ProtectedLandingWhy).
+func ProtectedLandWhy(s *Snapshot, stream, repo, base, card string) string {
+	if ProtectedLandingWhy(s, stream, repo, base) == "" {
 		return ""
 	}
-	for _, m := range strings.Split(v, ",") {
-		if m == "" || strings.HasPrefix(m, "-") || strings.ContainsAny(m, " \t") || m != LandProtectedAny && !strings.Contains(m, "/") {
-			return "--land-protected wants repositories (owner/name, comma separated), " + LandProtectedAny + " for every repository, or " +
-				ReadTierDefault + " to take the mark off; found " + v
-		}
+	of := "of " + repo
+	if repo == "" {
+		of = "of its repository (it names no REPO: line)"
 	}
-	return ""
+	return "card " + card + " lands on " + base + ", a protected branch " + of + ": " + LandingFlow +
+		"; run: nova-sprint stream set " + stream + " --base sprint/" + stream
+}
+
+// landProtectedWhy is why a stream may not be marked to land on a protected branch (stream
+// set --land-protected <anything>, --promotion, add --land-protected), since the mark is no
+// landing permission (docs/SPEC-SPRINT.md section 7, the protected branches). Only default,
+// which takes an old mark off, is accepted.
+func landProtectedWhy(stream string) string {
+	return "stream " + stream + " may not be marked to land on a protected branch: " + LandingFlow +
+		"; run: nova-sprint stream set " + stream + " --base sprint/" + stream
 }

@@ -1344,7 +1344,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	allowPersonal := fs.Bool("allow-personal-base", false, "admit cards whose brief's BASE: is a personal branch (<name>/* for the sprint's coordinator, its owner or a friends table row), by default refused naming the base and this flag: no sprint watches a personal branch's gate (docs/SPEC-SPRINT.md section 11, bases-view-r.w2)")
 	partial := fs.Bool("partial", false, "with --brief-dir or a repeated --brief-file: hold back every brief the checks find a fault in, and every card that needs a held card, and admit the rest in one store write; one HELD line per held card, then the add's closing line; exit 0 when every card was admitted, 1 when some were held and the rest written, 2 when none could be admitted; refused with ids, --count, --sentinel or --land-protected (a marked first add is one step)")
 	plan := fs.String("plan", "", "print the overlap table of the cards' brief files in this directory (a plan review: path, cards, ledger or not, edge if any) and exit 0 without admitting, for a seat that wants to read the overlaps first (docs/SPRINT-COORDINATOR.md; docs/SPEC-CARD-CONTRACT.md, the shared-path rule)")
-	landProtected := fs.String("land-protected", "", "mark a new stream for protected branches while admitting its first card: repositories (owner/name, comma separated) or any")
+	landProtected := fs.String("land-protected", "", "refused: the mark is no landing permission, and a stream is never marked to land on a protected branch")
 	held := fs.Bool("held", false, "admit the cards held: waiting, a sentinel never reached and no card dealt, nothing raised, until nova-sprint release <id> --reason <text>; a wave loads behind a held sentinel with nothing before it")
 	decideRecord := fs.String("decide-record", "", "the record `file` of the cards' brief decisions under JEV_API_KEY (default ~/nova-sprint/decide/brief.jsonl, the coordinator's root); each card stores it and its op, and land and drop attach the card's end there")
 	var briefOps stringList
@@ -1354,6 +1354,11 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	ids, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "add", err.Error())
+	}
+	if *landProtected != "" {
+		// the mark is no landing permission: a stream is never marked for a protected branch
+		// (docs/SPEC-SPRINT.md section 7, the protected branches)
+		return refuse(stderr, "add", "stream "+*stream+" may not be marked to land on a protected branch: "+sprint.LandingFlow+"; run: nova-sprint stream set "+*stream+" --base sprint/"+*stream)
 	}
 	if (len(briefOps) > 0 || len(briefUsages) > 0) && a.serveAddr == "" {
 		return refuse(stderr, "add", briefOpWord)
@@ -1528,10 +1533,10 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	if code := a.holdBase("add", st, *allowPersonal, stderr, *brief); code != 0 {
 		return code
 	}
-	// add --land-protected founds the stream and writes its mark in the same step, so
-	// this read, before the mark exists, lets the step's own mark-and-admit rule judge
-	// the card (promotionGuard, sprint.AddMarked; docs/SPEC-SPRINT.md section 7, the
-	// sprint branch)
+	// add --land-protected is refused before any read (above); a plain add holds the
+	// sprint's base here, and the step's own rule judges a card that races the read
+	// (promotionGuard, sprint.PromotionRefusals; docs/SPEC-SPRINT.md section 7, the
+	// protected branches)
 	if *landProtected == "" {
 		if code := a.holdSprintBase("add", st, stderr, rs...); code != 0 {
 			return code
@@ -1575,9 +1580,9 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 }
 
 // promotionGuard is the add step refused whole, nothing written, when any card it admits
-// is cut on a protected branch, dev or main, without a matching stream mark
-// (sprint.PromotionRefusals; docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2). A
-// first-add mark is written onto the new control card in the same step as its first card.
+// is cut on a protected branch, dev or main (sprint.PromotionRefusals;
+// docs/SPEC-SPRINT.md section 7, the protected branches), or when the add asks to mark a
+// new stream (--land-protected), since the mark is no landing permission.
 func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) store.Step {
 	plan := step.Plan
 	step.Plan = func(s *sprint.Snapshot) sprint.Plan {
@@ -1586,10 +1591,7 @@ func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) s
 			if len(rs) > 0 {
 				stream = rs[0].Stream
 			}
-			if len(rs) != 1 || s.StreamCtl(stream) != nil {
-				return sprint.Plan{Refused: []sprint.Refusal{{Key: stream, Why: "--land-protected marks a new stream only"}}}
-			}
-			return sprint.AddMarked(s, rs[0], landProtected)
+			return sprint.Plan{Refused: []sprint.Refusal{{Key: stream, Why: "stream " + stream + " may not be marked to land on a protected branch: " + sprint.LandingFlow + "; run: nova-sprint stream set " + stream + " --base sprint/" + stream}}}
 		}
 		if refused := sprint.PromotionRefusals(s, rs); len(refused) > 0 {
 			return sprint.Plan{Refused: refused}
@@ -1726,8 +1728,9 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 		return code
 	}
 	r := sprint.AddReq{Stream: stream, Cards: cards, Who: c.actor, Before: before, After: after, Held: held, Score: at, BriefOps: asked.ops, BriefRecord: asked.record, BriefUsage: asked.usage, Replaces: replaces}
-	// a marked first add is judged by the step that writes the mark (promotionGuard,
-	// sprint.AddMarked), as cmdAdd holds it (docs/SPEC-SPRINT.md section 7)
+	// a marked first add is refused before any read (cmdAdd); a plain add holds the
+	// sprint's base here, and the step's own rule judges a card that races the read
+	// (promotionGuard, sprint.PromotionRefusals; docs/SPEC-SPRINT.md section 7)
 	if landProtected == "" {
 		if code := a.holdSprintBase("add", st, stderr, r); code != 0 {
 			return code
@@ -3960,7 +3963,7 @@ func (a *app) cmdFunded(args []string, stdout, stderr io.Writer) int {
 func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("stream set")
 	tier := fs.String("read-tier", "", "the tier the stream's reads draw their route from when it is stronger than the card's own (flash, pro or heavy; default takes it off: the sprint's)")
-	mark := fs.String("land-protected", "", "the repositories (owner/name, comma separated; any for every one) on whose protected branches, dev and main, the lander lands the stream's cards; default takes the mark off, and a card based on a protected branch is then refused at land")
+	mark := fs.String("land-protected", "", "refused unless default: the mark is no landing permission, so a stream is never marked to land on dev or main; default takes an old mark off")
 	release := fs.String("release", "", "the release this stream belongs to (default or none clears it)")
 	display := fs.String("display", "", "the stream's display name, the label the dashboard's Work table shows in place of the key: one line of printable text, at most 60 bytes; default or none clears it (the stream's key is unchanged)")
 	prose := fs.String("prose", "", "the globs (PATHS globs, comma separated: security/**,ratings/**) of the files whose backquotes are their own, which the lander does not read for a code span; default takes them off")
@@ -3970,7 +3973,7 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 	base := fs.String("base", "", "the base branch to re-point the stream's cards to: every card not yet dealt and every card queued to merge has its BASE line rewritten; refused when origin holds no such branch or a card's PATHS are absent at its tip; dealt and working cards keep their base")
 	reason := fs.String("reason", "", "why the read tier is set, recorded on the stream row (the judgment 'raise the read tier of the stream?' names it)")
 	ans := fs.String("answers", "", "the judgment notifications this answers, comma separated")
-	promotion := fs.Bool("promotion", false, "mark the streams the promotion stream: they alone take cards cut on dev or main, and land them there (--land-protected any); --promotion=false takes the mark off (--land-protected default)")
+	promotion := fs.Bool("promotion", false, "refused: the promotion mark is no landing permission, so no stream is marked for dev or main; --promotion=false takes an old mark off (as --land-protected default)")
 	names, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "stream set", err.Error())
@@ -3978,8 +3981,9 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 	var promotionGiven bool
 	fs.Visit(func(f *flag.Flag) { promotionGiven = promotionGiven || f.Name == "promotion" })
 	if promotionGiven {
-		// the promotion mark is the protected-branch mark for every repository
-		// (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2)
+		// the promotion mark is the old protected-branch mark for every repository; the
+		// stream is refused for it (sprint.Set), and false takes it off (docs/SPEC-SPRINT.md
+		// section 7, the protected branches)
 		if *mark != "" {
 			return refuse(stderr, "stream set", "--promotion and --land-protected both set the stream's mark: give one")
 		}
@@ -3988,11 +3992,26 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 	if len(names) == 0 || (*tier == "" && *mark == "" && *release == "" && *display == "" && *prose == "" && *seatAccept == "" && *defaultTier == "" && *attempts == "" && *base == "") {
 		return refuse(stderr, "stream set", "wants at least one stream and --read-tier <flash|pro|heavy|default>, --land-protected <owner/name,...|any|default>, --promotion[=false], --release <name>, --display <name>, --prose <glob,...|default>, --seat-accept <on|off>, --default-tier <flash|pro|heavy|default>, --attempts <n|default> or --base <branch>")
 	}
+	if *mark != "" && *mark != sprint.ReadTierDefault {
+		// the mark is no landing permission: only default (--promotion=false or
+		// --land-protected default, which take an old mark off) is accepted
+		// (docs/SPEC-SPRINT.md section 7, the protected branches)
+		for _, st := range names {
+			return refuse(stderr, "stream set", "stream "+st+" may not be marked to land on a protected branch: "+sprint.LandingFlow+"; run: nova-sprint stream set "+st+" --base sprint/"+st)
+		}
+	}
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, "stream set", err.Error())
 	}
 	var baseChecked []sprint.StreamSetBaseCheck
+	if *base != "" && slices.Contains(sprint.ProtectedBranches, *base) {
+		// a stream is never re-pointed onto a protected branch, dev or main, refused
+		// before any brief check (docs/SPEC-SPRINT.md section 7, the protected branches)
+		for _, st := range names {
+			return refuse(stderr, "stream set", sprint.ProtectedLandingWhy(nil, st, "", *base))
+		}
+	}
 	if *base != "" {
 		// The check add runs, over each brief the base rewrite would carry: the new
 		// branch is admitted as a base (pointing the stream at it is the verb's

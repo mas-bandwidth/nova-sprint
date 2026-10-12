@@ -461,23 +461,19 @@ func baseChecksHeld(s *Snapshot, streams []string, base string, checked []Stream
 }
 
 // PromotionBaseWhy is why add refuses card into stream, "" when it may: its BASE is a
-// protected branch (ProtectedBranches, dev and main) and the stream is not the promotion
-// stream (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2). A card cut on dev is
-// refused as SprintBranchWhy says; one cut on main the same way, naming main. The remedy
-// re-cuts the card on the sprint branch, or marks the stream: stream set <s> --promotion.
+// protected branch (ProtectedBranches, dev and main), refused for every stream whatever its
+// mark (docs/SPEC-SPRINT.md section 7, the protected branches; ProtectedLandingWhy). The one
+// command re-points the stream's base to its sprint branch.
 func PromotionBaseWhy(s *Snapshot, stream, base, card string) string {
-	if !slices.Contains(ProtectedBranches, base) || IsPromotionStream(s, stream) {
+	if ProtectedLandingWhy(s, stream, "", base) == "" {
 		return ""
 	}
-	if base == DevBranch {
-		return SprintBranchWhy(s, stream, base, card)
-	}
-	return "card " + card + " is cut on " + base + ", a protected branch, and stream " + stream + " is not the promotion stream: every stream lands on the sprint branch, and only the promotion stream lands on dev or main" +
-		"; nothing was written; re-cut the card with BASE: <the sprint branch> (sprint/<name>, the branch its stream lands on), or, for the promotion stream, run: nova-sprint stream set " + stream + " --promotion"
+	return "card " + card + " is cut on " + base + ", a protected branch: " + LandingFlow +
+		"; run: nova-sprint stream set " + stream + " --base sprint/" + stream
 }
 
-// PromotionRefusals is every card of the adds whose BASE is a protected branch outside
-// the promotion stream (PromotionBaseWhy), none when each may be admitted: the add
+// PromotionRefusals is every card of the adds whose BASE is a protected branch (dev or main),
+// refused for every stream (PromotionBaseWhy), none when each may be admitted: the add
 // refuses whole, writing nothing, when any is.
 func PromotionRefusals(s *Snapshot, rs []AddReq) []Refusal {
 	var out []Refusal

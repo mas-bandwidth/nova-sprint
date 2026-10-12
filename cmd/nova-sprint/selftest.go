@@ -166,6 +166,9 @@ func (a *app) selftestFlow(d string, env []string) (land time.Duration, landed i
 		{"-C", "work", "add", "--", "go.mod", "main.go"},
 		{"-C", "work", "commit", "-q", "-m", "base"},
 		{"-C", "work", "push", "-q", "origin", "HEAD:main"},
+		// the stream branch the card lands on (docs/SPEC-SPRINT.md section 7, the sprint
+		// branch): sprint/<stream>, never main
+		{"-C", "work", "push", "-q", "origin", "HEAD:sprint/s1"},
 	} {
 		if _, err := git(args...); err != nil {
 			step, why = "base", err.Error()
@@ -197,9 +200,6 @@ func (a *app) selftestFlow(d string, env []string) (land time.Duration, landed i
 	}{
 		{"init", []string{"init", "--readers", "reader-a,reader-b", "--members", "m1"}},
 		{"add", []string{"add", "--stream", "s1", "--count", "1", "--one"}}, // one card on purpose: add refuses a single card without --one
-		// the throwaway origin stands for the promotion stream: its main is the protected
-		// branch the flow lands on (docs/SPEC-SPRINT.md section 7, the protected branches)
-		{"mark", []string{"stream", "set", "s1", "--land-protected", "any"}},
 		{"start", []string{"start"}},
 		{"tick", []string{"tick"}},
 		{"tick", []string{"tick"}},
@@ -239,9 +239,9 @@ func (a *app) selftestFlow(d string, env []string) (land time.Duration, landed i
 			return
 		}
 	}
-	// the landing, timed: the tree gate runs here, on the base the flow built
+	// the landing, timed: the tree gate runs here, on the stream branch the flow built
 	began := time.Now()
-	code, out, errs := verb("land", "--repo-dir", work, "--base", "main")
+	code, out, errs := verb("land", "--repo-dir", work, "--base", "sprint/s1")
 	land = time.Since(began)
 	if code != 0 {
 		step, why = "land", selftestLandWhy(out, errs)
@@ -251,14 +251,14 @@ func (a *app) selftestFlow(d string, env []string) (land time.Duration, landed i
 	if step, why = stepVerb("tick", "tick"); step != "" {
 		return
 	}
-	// the landing is on origin's main: the card, landed for real
-	subjects, err := git("-C", "origin.git", "log", "--format=%s", "main")
+	// the landing is on origin's sprint/s1, the card's stream branch, never main
+	subjects, err := git("-C", "origin.git", "log", "--format=%s", "sprint/s1")
 	if err != nil {
 		step, why = "check", err.Error()
 		return
 	}
 	if !strings.Contains(subjects, "land s1-1 (sprint stream s1)") {
-		step, why = "check", "origin's main holds no landing of the card, whose subjects are "+firstLine(subjects, nil)
+		step, why = "check", "origin's sprint/s1 holds no landing of the card, whose subjects are "+firstLine(subjects, nil)
 		return
 	}
 	return

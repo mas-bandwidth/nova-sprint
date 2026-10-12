@@ -404,6 +404,22 @@ kept, the log gains one line, `<id> BASE <old> -> <new>`, and the next land pass
 card once. `ack` of the judgment has the next pass try the card once on its old base. The
 contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 7, a dead base.
 
+### No stream lands on a protected branch
+
+The landing flow, one sentence (`sprint.LandingFlow`): "The landing flow: card heads land in a
+batch on their stream's branch sprint/<stream>, oldest first, one writer per stream; stream
+branches merge one at a time into dev (main where a repository has no dev); a card never lands
+on dev or main." So the mark `land_protected` is no landing permission: `stream set
+<s>... --promotion` and `stream set <s> --land-protected <anything but default>` are each
+refused, exit 2, nothing written, naming the stream and the flow, the one command
+`nova-sprint stream set <s> --base sprint/<s>` (`--promotion=false` and `--land-protected
+default` take an old mark off); `stream set <s> --base dev|main` is refused the same way;
+`add --land-protected` is refused; and `card base <id> dev|main` is refused. A land pass whose
+base is dev or main is refused before any git, its cards left queued. There is no override
+flag, environment variable or setting that admits a card onto a protected branch. The contract
+is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md)
+section 7, the protected branches.
+
 ### Role views: what a model reads instead of the dashboard
 
 The owner, 2026-10-04: "i'd rather you hit this vs. hitting my dashboard which is for human

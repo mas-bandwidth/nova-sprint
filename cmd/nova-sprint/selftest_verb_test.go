@@ -53,7 +53,7 @@ func TestSelftestLandRunsAndFailsOnNoopBinary(t *testing.T) {
 	code, _, errs := ta.do("selftest land --binary " + noopBin)
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "selftest land FAILED")
-	assert.Contains(t, errs, "landing commit not found in origin main")
+	assert.Contains(t, errs, "landing commit not found in origin sprint/selftest")
 }
 
 func TestSelftestLandRunsAndSucceedsOnGoodBinary(t *testing.T) {
@@ -64,8 +64,9 @@ func TestSelftestLandRunsAndSucceedsOnGoodBinary(t *testing.T) {
 	goodBin := filepath.Join(dir, "good-lander.sh")
 	script := `#!/bin/sh
 if [ "$1" = "land" ]; then
+	git switch -q -c sprint/selftest origin/sprint/selftest
 	git merge -q --no-ff sprint/selftest-canned-1 -m "land selftest-1"
-	git push -q origin main
+	git push -q origin sprint/selftest
 fi
 exit 0
 `

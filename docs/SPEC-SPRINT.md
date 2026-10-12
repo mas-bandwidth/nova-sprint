@@ -4341,19 +4341,19 @@ so a machine commit in a clone carries the configured identity too.
 alone reaches dev: a card cut on dev is merged by the lander straight onto it and
 ejects the merge queue's promotion run (found 2026-10-04, when cards cut with
 `BASE: dev` restarted that run at every landing). So `add` refuses, per card and
-all or none, nothing written, a card whose brief names `BASE: dev` (a pinned
-`dev@<sha>` too, as the lander reads the line) in a stream that is not the
-promotion stream, its remedy the sprint branch: re-cut the card with `BASE:` the
-branch its stream lands on; `quack` is held to the same rule, its default base
-the test repository's sprint branch, `sprint/quack`. The promotion stream is the
-stream whose control card carries the mark `land_protected`, written only by the
-coordinator's `nova-sprint stream set <s> --land-protected <owner/name,...|any>`
-and taken off by `--land-protected default` (`sprint.IsPromotionStream`). A card
-naming no `BASE:` lands on the lander's `--base` (`sprint.SprintBranchWhy`). The
-lander holds the same line from the other side: it refuses, in `placeWhy`, before
-any git, a batch whose effective base (the card's `BASE:`, else `--base`) is dev
-in a stream that is not the promotion stream, naming the sprint branch and the
-mark (the protected branches, below).
+all or none, nothing written, a card whose brief names `BASE: dev` or `BASE:
+main` (a pinned `dev@<sha>` too, as the lander reads the line), in every stream
+alike, its remedy the sprint branch. `quack` is held to the same rule, its
+default base the test repository's sprint branch, `sprint/quack`. The landing
+flow, one sentence: `sprint.LandingFlow` — "The landing flow: card heads land in
+a batch on their stream's branch sprint/<stream>, oldest first, one writer per
+stream; stream branches merge one at a time into dev (main where a repository
+has no dev); a card never lands on dev or main." A card naming no `BASE:` lands
+on the lander's `--base` (`sprint.SprintBranchWhy`). The mark `land_protected`,
+which `stream set --land-protected` once wrote, is no landing permission: a
+stream carrying it from an old store is held to the same rule, and the one
+command that fixes a card meant for such a branch re-points the stream's base,
+`nova-sprint stream set <s> --base sprint/<s>` (the protected branches, below).
 
 accept places the primary in merge `queued` with its score, and retires, in
 the same step, every read card of the primary still asked or reading (marked
@@ -4500,19 +4500,18 @@ card on the branch. Land does not ask it: a base not on origin is the dead-base 
 **The continue verb.** `nova-sprint continue <card> [--note <text>] [--tier <flash|pro|heavy|frontier>] [--carry <branch|sha>] [--answers <judgment>] [--dry-run]` continues a primary from the carried head (internal/sprint/continue.go, `sprint.Continue`): a card whose attempts pushed partial work and reached its brief's bound is not judged wrong and is not started over. Its admitted brief is read from the store, never a local file, and edited in place: any `CARRY:` line dropped, a `CARRY: <card> attempt <n> head=<sha>` line written in its header (the line `widen` writes) at the newest full head an attempt pushed, or the `--carry` branch resolved to its head through the lander's clone of the card's repository (a branch the repository cannot resolve is refused), or the `--carry` sha, a 40-hex commit, taken as given; and the continue note (`--note`) appended with the UTC time. The card's attempt bound is reset as a brief edit resets it, every open bound and brief-defect judgment on the card is answered (or the one `--answers` names), and with `--tier` its tier is re-pinned in the same step; a card in review goes back to ready, its open reads retired, its next attempt staged from the carried head. It refuses, exit 1, nothing written, when the card is landed, when no attempt pushed a head and no `--carry` is given, and when `--carry` names a branch the card's repository cannot resolve. `--dry-run` prints the new brief's header and the judgments it would answer.
 
 **The protected branches.** The lander never lands on a protected branch of a
-repository, dev or main, unless the card's stream is marked for that repository: a
-stream lands on its sprint branch, and promotion to dev is the marked stream's work
-(a card cut on dev lands straight onto it and ejects the merge queue's promotion
-run). The mark is the stream's control card's `land_protected`,
-the repositories (owner/name, any spelling of its clone URL, comma separated) or `any`
-for every repository, a card naming no `REPO:` line among them, written by the
-coordinator's `stream set <s> --land-protected <owner/name,...|any|default>` (`default`
-takes it off). A batch whose base is a protected branch in a stream not marked for its
-repository is refused before any git, `land` and its dry run alike, nothing pushed or
-recorded and the cards left queued, its remedy the sprint branch (every stream lands
-on it, and promotion alone reaches dev: a card is re-cut with that `BASE:` line, or
-landed with `--base` on it when it names none) or, for the promotion stream, the mark
-(`sprint.ProtectedLandWhy`).
+repository, dev or main, and the mark no longer opens one: a stream lands on its
+sprint branch, and promotion to dev is the system's work, never a card's landing
+(`sprint.ProtectedLandingWhy`, refused for every stream, marked or not). The mark
+is the stream's control card's `land_protected`, the repositories or `any`, a
+card naming no `REPO:` line among them; it was written by the coordinator's
+`stream set <s> --land-protected` and is now read only where an old store still
+carries one, and `--land-protected default` (or `--promotion=false`) takes it
+off. A batch whose base is a protected branch is refused before any git, `land`
+and its dry run alike, nothing pushed or recorded and the cards left queued, its
+remedy the sprint branch: the one command is `nova-sprint stream set <s> --base
+sprint/<s>`, and there is no override flag, environment variable or setting that
+admits a card onto a protected branch (`sprint.ProtectedLandWhy`).
 
 **Weight** (the owner, 2026-10-04: "these critical blockers should have some elevated
 priority ... they should be at front of queue"; one night the root of about 140 schema
@@ -5180,26 +5179,24 @@ cmd/nova-sprint/land_dead_base_test.go).
 
 #### protected-bases-pb-b.w2
 
-Only the promotion stream takes or lands a card on a protected branch, dev or main
-(`sprint.ProtectedBranches`). `add` refuses a card whose `BASE:` is main (a pinned
-`main@<sha>` too) in a stream that is not the promotion stream, as it refuses one cut on
-dev (the sprint branch, above): the one-brief, `--count` and many-brief forms alike, the
-whole add, nothing written, naming the card, the stream and the mark,
-`run: nova-sprint stream set <s> --promotion` (`sprint.PromotionBaseWhy`,
+No stream lands a card on a protected branch, dev or main (`sprint.ProtectedBranches`),
+and the mark is no landing permission. `add` refuses a card whose `BASE:` is main (a
+pinned `main@<sha>` too) or dev in every stream, the one-brief, `--count` and many-brief
+forms alike, the whole add, nothing written, naming the card, the stream, the flow and
+`nova-sprint stream set <s> --base sprint/<s>` (`sprint.PromotionBaseWhy`,
 `sprint.PromotionRefusals`; the add step plans the refusal on its own snapshot,
-`promotionGuard` in cmd/nova-sprint/verbs.go). `stream set <s>... --promotion` marks the
-streams the promotion stream; it is the protected-branch mark for every repository
-(`--land-protected any`), kept on the stream's control card (`land_protected`), and
-`--promotion=false` takes it off (`--land-protected default`); both flags together are
-refused. `where` shows the marked streams on one line, `promotion: s1` (a stream marked
-for some repositories only with them, `s2 (owner/name)`), and `where --json` carries each
-stream's mark as its clock's `Promotion`, read from the control cards' one readset
-(`store.StreamClocks`), no card read. A stream is a stream once it holds a card, so a promotion stream is marked after
-its first card cut on the sprint branch (or naming no `BASE:`). The lander refuses, before
-any git, land and its dry run alike, a batch whose base is dev or main in a stream not so
-marked, naming the stream, the mark and the flag, `nova-sprint stream set <s> --promotion`
-(the protected branches, above). `TestAddAndLandRefuseDevAndMainOutsideAPromotionStream`
-covers add, the mark and land.
+`promotionGuard` in cmd/nova-sprint/verbs.go). `stream set <s>... --promotion`,
+`stream set <s> --land-protected <anything but default>`, `stream set <s> --base dev|main`
+and `add --land-protected` are each refused, exit 2, nothing written; `--promotion=false`
+and `--land-protected default` take an old mark off. `card base <id> dev|main` is refused.
+The lander refuses, before any git, land and its dry run alike, a batch whose base is dev
+or main, marked or not, naming the stream, the flow and the command (the protected
+branches, above). `TestAddAndLandRefuseDevAndMainInEveryStream`, `TestAddRefusesLandProtected`,
+`TestLanderNeverLandsOnAProtectedBranch`, `TestAddRefusesADevOrMainCardInEveryStream`,
+`TestStreamSetPromotionIsRefusedNamingTheFlow`, `TestStreamSetBaseDevOrMainIsRefused`,
+`TestALandProtectedMarkNoLongerAdmitsALandingOnDev`, `TestCardBaseOntoMainIsRefused`,
+`TestTakingTheOldMarkOffIsAccepted`, `TestNoRefusalNamesTheMarkAsARemedy` and the functional
+`TestNoVerbPutsACardOnDevOrMain` cover the verbs and the lander.
 
 #### land-verify-landed-ancestry-rb-b.w1
 

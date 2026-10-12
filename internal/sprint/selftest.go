@@ -118,6 +118,11 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 	if out, err := gitRun(workDir, "push", "-q", "origin", "HEAD:main"); err != nil {
 		return fmt.Errorf("selftest land: git push main failed: %s: %w", out, err)
 	}
+	// the stream branch the canned card lands on (docs/SPEC-SPRINT.md section 7, the
+	// sprint branch): sprint/<stream>, never main
+	if out, err := gitRun(workDir, "push", "-q", "origin", "HEAD:sprint/selftest"); err != nil {
+		return fmt.Errorf("selftest land: git push the stream branch failed: %s: %w", out, err)
+	}
 
 	// 4. Create canned card branch and commit
 	cardBranch := "sprint/selftest-canned-1"
@@ -198,7 +203,7 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 			{"read", "--as", "reader-a", "--ok", "--epoch", "0", "--redis", redisAddr, "--actor", "reader-a"},
 			{"tick", "--redis", redisAddr, "--actor", "boss"},
 			{"accept", "--read-ok", "--redis", redisAddr, "--actor", "boss"},
-			{"land", "--stream", "selftest", "--repo-dir", workDir, "--base", "main", "--redis", redisAddr, "--actor", "boss", "--check", "true"},
+			{"land", "--stream", "selftest", "--repo-dir", workDir, "--base", "sprint/selftest", "--redis", redisAddr, "--actor", "boss", "--check", "true"},
 		}
 
 		for _, argv := range commands {
@@ -209,13 +214,13 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 		}
 	}
 
-	// Verify that the landing commit is on main in origin
-	logOut, err := gitRun(originDir, "log", "--format=%s", "main")
+	// Verify that the landing commit is on the stream branch in origin, never main
+	logOut, err := gitRun(originDir, "log", "--format=%s", "sprint/selftest")
 	if err != nil {
-		return fmt.Errorf("selftest land: git log origin main failed: %s: %w", logOut, err)
+		return fmt.Errorf("selftest land: git log origin sprint/selftest failed: %s: %w", logOut, err)
 	}
 	if cfg.lander == nil && !strings.Contains(logOut, "land selftest-1") {
-		return fmt.Errorf("selftest land: landing commit not found in origin main: %s", logOut)
+		return fmt.Errorf("selftest land: landing commit not found in origin sprint/selftest: %s", logOut)
 	}
 
 	return nil

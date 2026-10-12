@@ -307,6 +307,10 @@ func CardBase(s *Snapshot, r CardBaseReq) Plan {
 	switch {
 	case !ok:
 		why = r.ID + "'s brief names no BASE: line; land gives it one (--base)"
+	case ProtectedLandingWhy(s, c.Row, "", r.Base) != "":
+		// a card is never re-pointed onto a protected branch, dev or main
+		// (docs/SPEC-SPRINT.md section 7, the protected branches)
+		why = ProtectedLandingWhy(s, c.Row, "", r.Base)
 	case old == r.Base:
 		why = r.ID + " names BASE " + r.Base + " already"
 	}

@@ -421,12 +421,15 @@ func Set(s *Snapshot, r SetReq) Plan {
 			why = append(why, "--dealt-max wants a duration above zero (6h, 90m), or "+ReadTierDefault+" for 3 times the take deadline; found "+r.DealtMax)
 		}
 	}
-	if r.LandProtected != "" {
-		if w := landProtectedWhy(r.LandProtected); w != "" {
-			why = append(why, w)
+	if r.LandProtected != "" && r.LandProtected != ReadTierDefault {
+		// the mark is no landing permission: only default (which takes an old mark off) is
+		// accepted, and anything else is refused naming the stream and the sprint branch
+		// (docs/SPEC-SPRINT.md section 7, the protected branches)
+		for _, st := range r.Streams {
+			why = append(why, landProtectedWhy(st))
 		}
 		if len(r.Streams) == 0 {
-			why = append(why, "--land-protected is a stream's, not the sprint's: nova-sprint stream set <stream> --land-protected "+r.LandProtected)
+			why = append(why, "--land-protected is a stream's, not the sprint's: nova-sprint stream set <stream> --base sprint/<stream>")
 		}
 	}
 	if r.Prose != "" {
@@ -565,6 +568,13 @@ func Set(s *Snapshot, r SetReq) Plan {
 	}
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
+	}
+	if r.Base != "" && len(r.Streams) > 0 && slices.Contains(ProtectedBranches, r.Base) {
+		// stream set --base dev|main re-points the stream's cards onto a protected branch,
+		// refused for every stream (docs/SPEC-SPRINT.md section 7, the protected branches)
+		for _, st := range r.Streams {
+			why = append(why, ProtectedLandingWhy(s, st, "", r.Base))
+		}
 	}
 	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.FriendStallAfter == "" && r.FriendStallStep == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.UnservedTierFallsTo == "" && r.ReworkPriority == "" {
 		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --unserved-tier-falls-to, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --friend-stall-after, --friend-stall-step, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")

@@ -1,20 +1,24 @@
 package main
 
 import (
+	"context"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
 )
 
-// Only the promotion stream takes a card cut on a protected branch, dev or main
-// (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2). Found 2026-10-04: cards with BASE
-// dev were landed straight onto dev and ejected the promotion cut three times; the same
-// hole was open for main. add refuses a card cut on main in a plain stream, the one-brief
-// and the many-brief form alike, nothing written, naming the stream and --promotion;
-// stream set <s> --promotion marks the stream, which then takes it and where shows it,
-// and --promotion=false takes the mark off again. The lander refuses a batch whose base is dev
-// or main on a plain stream before any git, naming the stream and the mark's flag.
-func TestAddAndLandRefuseDevAndMainOutsideAPromotionStream(t *testing.T) {
+// No stream lands a card on a protected branch, dev or main (docs/SPEC-SPRINT.md section 7,
+// the protected branches): add refuses a card cut on either, stream set --promotion is
+// refused, and the lander refuses a batch whose base is dev or main before any git, naming
+// the stream, the flow and the one command `nova-sprint stream set <s> --base sprint/<s>`.
+// --promotion=false and --land-protected default take an old mark off.
+func TestAddAndLandRefuseDevAndMainInEveryStream(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
@@ -31,16 +35,18 @@ func TestAddAndLandRefuseDevAndMainOutsideAPromotionStream(t *testing.T) {
 	onDev := writeBaseBrief(t, dir, repo, "d1", "dev")
 
 	for _, c := range []struct{ name, line, card string }{
-		{"one brief", "add --stream s1 p1 --one --brief-file " + onMain, "p1"},
+		{"one brief on main", "add --stream s1 p1 --one --brief-file " + onMain, "p1"},
 		{"a pinned main base", "add --stream s1 p2 --one --brief-file " + onMain2, "p2"},
-		{"a count of cards", "add --stream s1 --count 2 --brief-file " + onMain, "s1-1"},
+		{"a count of cards on main", "add --stream s1 --count 2 --brief-file " + onMain, "s1-1"},
+		{"one brief on dev", "add --stream s1 d1 --one --brief-file " + onDev, "d1"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			before := ta.applies()
 			code, out, errs := ta.do(c.line)
 			assert.NotEqual(t, 0, code, "%s: %s%s", c.line, out, errs)
-			assert.Contains(t, out+errs, "card "+c.card+" is cut on main, a protected branch, and stream s1 is not the promotion stream")
-			assert.Contains(t, out+errs, "run: nova-sprint stream set s1 --promotion")
+			assert.Contains(t, out+errs, "card "+c.card+" is cut on ", c.line)
+			assert.Contains(t, out+errs, "a protected branch: "+sprint.LandingFlow, c.line)
+			assert.Contains(t, out+errs, "nova-sprint stream set s1 --base sprint/s1", c.line)
 			assert.NotContains(t, out, "MOVED", "nothing written")
 			assert.False(t, ta.placed(c.card), "nothing written")
 			assert.Equal(t, before, ta.applies(), "no store write")
@@ -52,27 +58,17 @@ func TestAddAndLandRefuseDevAndMainOutsideAPromotionStream(t *testing.T) {
 	writeBaseBrief(t, many, repo, "m2", "main")
 	code, out, errs := ta.do("add --stream s2 --brief-dir " + many)
 	assert.NotEqual(t, 0, code, "many-brief add with a main card: %s%s", out, errs)
-	assert.Contains(t, out+errs, "card m2 is cut on main, a protected branch, and stream s2 is not the promotion stream")
+	assert.Contains(t, out+errs, "card m2 is cut on main, a protected branch")
 	assert.False(t, ta.placed("m1") || ta.placed("m2"), "nothing written, all or none")
 
-	// the promotion stream takes main and dev; the mark is kept on the stream, which is a
-	// stream once it holds a card (stream set refuses a name that is none)
+	// a card naming no BASE is admitted (the lander's --base lands it)
 	assert.Contains(t, ta.ok("add --stream s1 n1 --one --brief-file "+writeBaseBrief(t, dir, repo, "n1", "")), "MOVED n1 -> ready")
-	assert.Contains(t, ta.ok("stream set s1 --promotion"), "land-protected any")
-	assert.Contains(t, ta.ok("where"), "\npromotion: s1\n", "where shows the mark, from the stream clocks")
-	assert.Contains(t, ta.ok("where --json"), `"Promotion":"any"`, "and where --json carries it on the stream")
-	assert.Contains(t, ta.ok("add --stream s1 p1 --one --brief-file "+onMain), "MOVED p1 -> ready", "the promotion stream takes a card cut on main")
-	assert.Contains(t, ta.ok("add --stream s1 d1 --one --brief-file "+onDev), "MOVED d1 -> ready", "and one cut on dev")
 
-	code, out, errs = ta.do("stream set s1 --promotion --land-protected any")
-	assert.NotEqual(t, 0, code, "one mark at a time: %s%s", out, errs)
-
-	// --promotion=false takes the mark off: the stream is plain again
+	// stream set --promotion is refused; --promotion=false takes an old mark off
+	code, out, errs = ta.do("stream set s1 --promotion")
+	assert.Equal(t, 2, code, "%s%s", out, errs)
+	assert.Contains(t, out+errs, sprint.LandingFlow)
 	assert.Contains(t, ta.ok("stream set s1 --promotion=false"), "land-protected none")
-	assert.NotContains(t, ta.ok("where"), "promotion:", "and where shows no promotion stream")
-	code, out, errs = ta.do("add --stream s1 p2 --one --brief-file " + onMain2)
-	assert.NotEqual(t, 0, code, "unmarked again: %s%s", out, errs)
-	assert.Contains(t, out+errs, "card p2 is cut on main, a protected branch, and stream s1 is not the promotion stream")
 
 	t.Run("the lander", func(t *testing.T) {
 		t.Parallel()
@@ -86,22 +82,20 @@ func TestAddAndLandRefuseDevAndMainOutsideAPromotionStream(t *testing.T) {
 					assert.Equal(t, 1, code, land)
 					assert.Contains(t, out+errs, "LAND REFUSED stream=s1 cards=1 base="+base+" tip=- ids=s1-1 ", land)
 					assert.Contains(t, out+errs, "card s1-1 lands on "+base+", a protected branch", land)
-					assert.Contains(t, out+errs, "stream s1 is not marked to land on it", land)
-					assert.Contains(t, out+errs, "; run: nova-sprint stream set s1 --land-protected any; or mark it the promotion stream, for every repository: nova-sprint stream set s1 --promotion\n", land)
+					assert.Contains(t, out+errs, sprint.LandingFlow, land)
+					assert.Contains(t, out+errs, "nova-sprint stream set s1 --base sprint/s1\n", land)
 				}
 				assert.Equal(t, tip, r.git(r.remote, "rev-parse", base), "nothing was pushed to "+base)
 				assert.Equal(t, map[string]string{"s1-1": "merging/queued"}, r.places("s1-1"), "nothing was recorded")
-
-				r.ok("stream set s1 --promotion")
-				assert.Contains(t, r.ok("land --repo-dir "+r.clone+" --base "+base), "LAND OK stream=s1 cards=1 base="+base, "the promotion stream lands on "+base)
 			})
 		}
 	})
 }
 
 // plainStreamRig is a land rig with origin's dev and sprint/s1 pushed, one queued card
-// (s1-1) cut on sprint/s1, and s1 back to a plain stream: queued marks every stream
-// land-protected any, and the protected-base lander tests start from a stream that is not.
+// (s1-1) cut on sprint/s1, and s1 a plain stream: queued marks every stream land-protected
+// any, and the protected-base lander tests start from a stream that is not, so it queues the
+// card itself without the mark.
 func plainStreamRig(t *testing.T) *landRig {
 	t.Helper()
 	r := newLandRig(t)
@@ -110,18 +104,49 @@ func plainStreamRig(t *testing.T) *landRig {
 	}
 	r.git(r.worker, "fetch", "-q", "origin")
 	r.ok("add --stream s1 --count 1 --one")
-	r.queued(map[string]string{"s1-1": r.head("s1-1", "sprint/s1", "a.txt", "a\n")}, "s1-1")
-	r.ok("stream set s1 --land-protected default") // s1 is a plain stream again
+	plainQueued(r, map[string]string{"s1-1": r.head("s1-1", "sprint/s1", "a.txt", "a\n")}, "s1-1")
 	return r
 }
 
-// promotionStream makes stream the promotion stream before a card cut on dev or main is
-// added to it (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2): a stream is a stream
-// once it holds a card, so a card naming no BASE: founds it, the mark goes on, and the
-// founding card is dropped, the stream and its mark kept.
+// plainQueued pushes the cards' heads and takes them through the sprint to the merge queue,
+// each finished at its head, without marking the stream (queued marks every stream).
+func plainQueued(r *landRig, heads map[string]string, order ...string) {
+	r.t.Helper()
+	r.git(r.worker, "push", "-q", "origin", "refs/heads/sprint/*:refs/heads/sprint/*")
+	r.deal(len(order))
+	r.ok("take --as m1 --limit 100")
+	for _, id := range order {
+		r.ok("finish --as m1 " + id + ".w1@1 --head " + heads[id])
+	}
+	r.ok("ask")
+	r.ok("read --as reader-a --ok --limit 100")
+	r.ok("read --as reader-b --ok --limit 100")
+	r.ok("accept --read-ok")
+}
+
+// promotionStream marks stream for a protected branch before a card cut on dev or main is
+// added to it (docs/SPEC-SPRINT.md section 7, the protected branches): the verb that wrote
+// the mark (`stream set --promotion`) is refused now, so the mark is written on the store
+// directly, as an old store carries it, and the founding card is dropped.
 func (ta *testApp) promotionStream(stream string) {
 	ta.t.Helper()
 	ta.ok("add --stream " + stream + " " + stream + "-founder --one")
-	ta.ok("stream set " + stream + " --promotion")
+	st, err := ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(ta.t, err)
+	step := store.Step{
+		Verb: "raw mark",
+		Load: []string{sprint.Merge},
+		Plan: func(s *sprint.Snapshot) sprint.Plan {
+			ctl := s.StreamCtl(stream)
+			return sprint.Plan{Units: []sprint.Unit{{Key: ctl.ID, Stream: stream,
+				Changes: []sprint.Change{{Table: sprint.Merge, Entry: ntable.BatchMemberEntry{
+					ID:     ctl.ID,
+					Expect: &ntable.MemberExpect{Revision: strconv.FormatUint(ctl.Rev, 10), Place: &ntable.PlaceExpect{Row: ctl.Row, Col: ctl.Col}},
+					Set:    map[string]string{sprint.FieldLandProtected: sprint.LandProtectedAny},
+				}}}}}}
+		},
+	}
+	_, err = st.Run(context.Background(), step)
+	require.NoError(ta.t, err)
 	ta.ok("drop " + stream + "-founder --reason 'it founded the promotion stream'")
 }

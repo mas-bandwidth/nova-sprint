@@ -878,11 +878,35 @@
     so the tick's shape is the model's."
    :origin "the owner, 2026-10-10: what else is manual that should be automatic from the machine")
 
-  (fix "promotion-mark-at-add" :release "v1.2.14" :status "planned"
-   :title "add can mark a new stream for protected branches"
-   :text "add --land-protected marks a new stream atomically with its first card, so a point-release
-    stream can admit a card based on main or dev without a sentinel card or a follow-up stream set."
-   :origin "the seat ledger bug 14")
+   (fix "promotion-mark-at-add" :release "v1.2.14" :status "planned"
+    :title "add can mark a new stream for protected branches"
+    :text "add --land-protected marks a new stream atomically with its first card, so a point-release
+     stream can admit a card based on main or dev without a sentinel card or a follow-up stream set."
+    :origin "the seat ledger bug 14")
+
+   (fix "no-stream-lands-a-card-on-a-protected-branch" :release "v1.2.15" :status "planned"
+    :title "No stream lands a card on a protected branch, dev or main; the mark is no landing permission"
+    :text "Blocker. On 2026-10-12 twenty of thirty-one streams carried the mark land_protected and
+     landed every card head straight onto dev or main, thirteen of fifteen dev certification runs were
+     cancelled by those landings, and the v1.2.14 cut was blocked. One predicate, sprint.ProtectedLandingWhy,
+     refuses a card landing target in the protected branches (dev, main) for every stream, marked or not:
+     sprint.ProtectedLandWhy, sprint.PromotionBaseWhy and sprint.SprintBranchWhy call it, and land_protected
+     stops being a landing permission. stream set --promotion, stream set --land-protected <anything but
+     default>, stream set --base dev|main, add --land-protected, card base <id> dev|main, and a land pass
+     whose base is dev or main are each refused, exit 2, nothing written, naming the stream, quoting
+     sprint.LandingFlow and the one command that fixes it, nova-sprint stream set <s> --base sprint/<s>;
+     --promotion=false and --land-protected default take an old mark off, and there is no override flag,
+     environment variable or setting that admits a card onto a protected branch. The self test lands its
+     canned card on a stream branch, never main. docs/SPEC-SPRINT.md section 7, docs/CLI.md (stream set,
+     add, card base) and docs/TESTS.md say it. Tests: TestStreamSetPromotionIsRefusedNamingTheFlow,
+     TestStreamSetBaseDevOrMainIsRefused, TestALandProtectedMarkNoLongerAdmitsALandingOnDev,
+     TestCardBaseOntoMainIsRefused, TestTakingTheOldMarkOffIsAccepted, TestNoRefusalNamesTheMarkAsARemedy
+     (internal/sprint/no_protected_landing_test.go) and the functional TestNoVerbPutsACardOnDevOrMain
+     (cmd/nova-sprint/no_protected_landing_functional_test.go)."
+    :origin "this card; the owner, 2026-10-12 ~05:15Z: \"My dude, land in a batch, to a branch that
+     corresponds to the work stream, then serially merge those branches into dev.\" / \"this is the 15th
+     time\" / \"We have designed this together multiple times. Lock it in bro!\" / \"OK i need you to add
+     multiple things to stop this happening again.\"")
 
    (fix "idle-cleared-says-working-only-when-it-works" :release "v1.2.14" :status "planned"
     :title "An idle episode that ends with no width or no work says why, never working again"

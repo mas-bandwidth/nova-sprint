@@ -80,7 +80,7 @@ func TestSelftestLandLandsACannedCardAndSwitchRollsBack(t *testing.T) {
 			WithSelftestBinary(noopBin),
 		)
 		require.Error(t, err, "selftest land must be red when binary exits 0 without landing canned card")
-		assert.Contains(t, err.Error(), "landing commit not found in origin main")
+		assert.Contains(t, err.Error(), "landing commit not found in origin sprint/selftest")
 	})
 
 	t.Run("selftest land green on real path good binary", func(t *testing.T) {
@@ -89,8 +89,9 @@ func TestSelftestLandLandsACannedCardAndSwitchRollsBack(t *testing.T) {
 		goodBin := filepath.Join(dir, "good-lander.sh")
 		script := `#!/bin/sh
 if [ "$1" = "land" ]; then
+	git switch -q -c sprint/selftest origin/sprint/selftest
 	git merge -q --no-ff sprint/selftest-canned-1 -m "land selftest-1"
-	git push -q origin main
+	git push -q origin sprint/selftest
 fi
 exit 0
 `
@@ -109,8 +110,9 @@ exit 0
 		goodBin := filepath.Join(dir, "good-lander.sh")
 		script := `#!/bin/sh
 if [ "$1" = "land" ]; then
+	git switch -q -c sprint/selftest origin/sprint/selftest
 	git merge -q --no-ff sprint/selftest-canned-1 -m "land selftest-1"
-	git push -q origin main
+	git push -q origin sprint/selftest
 fi
 exit 0
 `

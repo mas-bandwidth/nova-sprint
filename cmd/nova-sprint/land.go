@@ -287,8 +287,8 @@ type landCard struct {
 	// generated ledgers regenerated, landledger.go): set by each build, reported with the
 	// batch
 	resolved string
-	// protected is why the lander may not land the card on its base, a protected branch in
-	// a stream not marked for its repository (sprint.ProtectedLandWhy), "" when it may
+	// protected is why the lander may not land the card on its base, a protected branch
+	// (dev or main) refused for every stream (sprint.ProtectedLandWhy), "" when it may
 	protected string
 	// start is the attempt's start commit when an earlier attempt pushed a head
 	// (sprint.BaseOf). Empty on a first attempt: checkCard then uses the merge-base
@@ -754,8 +754,8 @@ func (l *lander) placeWhy(stream string, cards []landCard) (string, []string) {
 		flags = append(flags, "--repo-dir <clone>")
 	}
 	if len(why) == 0 {
-		// a protected base in an unmarked stream (docs/SPEC-SPRINT.md section 7), refused
-		// before any git with the mark as its one next command
+		// a protected base, dev or main, refused for every stream (docs/SPEC-SPRINT.md
+		// section 7), before any git with the stream's sprint branch as its one next command
 		return cards[0].protected, nil
 	}
 	var also []string
