@@ -942,6 +942,7 @@ The release-acceptance list (PR #110) takes these tests so this way of failing c
 - `TestNeedsSetOnAMergingCardWithAGoneNeed` (functional, `cmd/nova-sprint/missing_need_functional_test.go`): rule (b)'s second part, needs set on a merging card whose need is gone succeeds in place.
 - `TestAcceptRefusesACardWhoseNeedHasNotLanded` (`internal/sprint/missing_need_test.go`): rule (c), accept refuses a card whose need has not landed.
 - `make release-accept` runs all of the above and fails if any one is renamed, moved or red.
+- `TestFirstAddWritesTheStreamBranchAndTrunk`, `TestAddRewritesADevBaseToTheStreamBranch`, `TestAMainOnlyRepositoryTakesMainAsTrunk`, `TestAClearedSprintMakesTheSameStreamBranch`, `TestLandingFlowIsOneSentence` (`internal/sprint/stream_branch_test.go`) and `TestANewStreamLandsOnItsOwnBranchWithNoSetting` (functional, `cmd/nova-sprint/stream_branch_functional_test.go`): a new stream writes its branch `sprint/<stream>` and trunk on its first add, a card cut on dev or main is re-cut onto the branch with one NOTE quoting the landing flow, a cleared sprint builds the same with no setting, and a real landing with defaults only puts both heads on origin's `sprint/s` while dev is unchanged.
 
 ## A finish-PR card starts from the PR's own head
 
