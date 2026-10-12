@@ -1,5 +1,7 @@
 ![Nova Sprint: a happy white-and-blue friend jogging and waving.](brand/jogging/banner-cute-wave-left.png)
 
+_Note: the `nova-card` command was folded into nova-sprint: `nova-card generate` became `nova-sprint generate` and the binary is gone._
+
 ## The Problem
 
 While building [Nova Tools](https://github.com/mas-bandwidth/nova-tools), we learned that capable AIs across different

@@ -723,30 +723,29 @@ n=0. The contract is [SPEC-RELEASE.md](SPEC-RELEASE.md) section 16, subsection
 release-check-merge-queue-p90-b.w7.
 
 
-## nova-card
+## nova-sprint generate
 
-nova-card is pre-alpha: not ready for production use.
+`nova-card generate` became `nova-sprint generate` and the nova-card binary is gone (its
+`lint` verb folded in as `nova-sprint lint`; `template` and `version` are nova-swarm's and
+nova-sprint's own).
 
 ```
-nova-card generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run]
-nova-card generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
-nova-card generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
-nova-card lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...]
-nova-card template
-nova-card version
-nova-card help [<verb>]
+nova-sprint generate --from ledger --ledger <name> --repo-dir <dir> --out <dir> [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--base <branch>] [--repo <owner/name>] [--name <n>...] [--dropped <id>...] [--dry-run]
+nova-sprint generate --from findings --file <tsv> --out <dir> (--repo-dir <dir> | --repo <owner/name> --base <branch> --sha <40hex>) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
+nova-sprint generate --from help --tool <name> [--tool <name>...] --out <dir> [--bin-dir <dir>] (--repo-dir <dir> | --repo --base --sha) [--tier flash|pro] [--prefix <p>] [--minutes <n>] [--max <n>] [--name <n>...] [--dropped <id>...] [--dry-run]
+nova-sprint lint --card <file> [--card <file>...] [--name <n>...] [--dropped <id>...]
 ```
 
 A card a model writes by hand takes it half an hour and comes back with guessed
-PATHS; one wrong PATHS line was rejected 262 times in one night. nova-card
-writes the cards from the source the work comes from, with the PATHS computed,
-the lint already green, and the waves already laid out, so the one thing left
-to do is `nova-sprint add --stream <s> --brief-dir <dir>`.
+PATHS; one wrong PATHS line was rejected 262 times in one night. `nova-sprint
+generate` writes the cards from the source the work comes from, with the PATHS
+computed, the lint already green, and the waves already laid out, so the one
+thing left to do is `nova-sprint add --stream <s> --brief-dir <dir>`.
 
 The flow is three lines:
 
 ```sh
-nova-card generate --from ledger --ledger serial-tests --repo-dir ./repo --out ./cards
+nova-sprint generate --from ledger --ledger serial-tests --repo-dir ./repo --out ./cards
 nova-sprint add --stream debt --brief-dir ./cards
 nova-sprint where
 ```
@@ -759,14 +758,14 @@ checkout is needed when `--repo`, `--base` and `--sha` are given; with
 checked to exist in it:
 
 ```sh
-nova-card generate --from findings --file ./cmd/nova-card/testdata/findings.tsv --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567 --out ./cards
-nova-card lint --card ./cards/finding-internal-bus-send.md
-nova-card lint --card ./cards/finding-cmd-nova-bus-main.md
+nova-sprint generate --from findings --file ./cmd/nova-sprint/testdata/findings.tsv --repo example/repo --base dev --sha 0123456789abcdef0123456789abcdef01234567 --out ./cards
+nova-sprint lint --card ./cards/finding-internal-bus-send.md
+nova-sprint lint --card ./cards/finding-cmd-nova-bus-main.md
 ```
 
 `./cards` then holds one `.md` per card, its name the card's id, and a
-`manifest.tsv` (id, file, test, wave, deps). [TESTS.md](TESTS.md#nova-card)
-carries the transcript; `cmd/nova-card/firstrun_test.go` runs it.
+`manifest.tsv` (id, file, test, wave, deps). [TESTS.md](TESTS.md#nova-sprint-generate)
+carries the transcript; `cmd/nova-sprint/generate_test.go` runs it.
 
 ### Sources
 
