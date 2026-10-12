@@ -4,20 +4,19 @@ Welcome! If you are wondering whether nova-sprint would help your AI team,
 start with the [project introduction](../README.md). You do not need to learn
 the table layout or read a specification to take your first lap.
 
-Want to create AI friends before putting a team together? Start with
-[Nova Seed](https://github.com/mas-bandwidth/nova). nova-sprint builds on
-[Nova Tools](https://github.com/mas-bandwidth/nova-tools) to coordinate their
-work and scale out across friends, swarms, or both.
+nova-sprint builds on [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
+The system coordinates workers across fleet machines, from ready cards
+through review and landing.
 
 ## Start here
 
 | Your next question | Where to go |
 |---|---|
-| Can I watch a sprint doing real work? | [Live dashboard](http://69.67.149.151) and [the README tour](../README.md#give-the-team-a-plan-go-have-a-life) |
+| Can I watch a sprint doing real work? | [Live dashboard](http://69.67.149.151) and [the README tour](../README.md#start-with-one-lane-then-go-wider) |
 | How do I get started? | [Getting started](GETTING-STARTED.md) |
 | Can I try the workflow before setting up a team? | [Local first lap](FIRST-LAP.md) |
-| Why do AI teams need a coordination machine? | [The illustrated README](../README.md#the-problem) |
-| What are cards, streams, dependencies, and sentinels? | [How the workflow runs](../README.md#how-it-works-write-the-workflow-let-the-machine-run-it) |
+| How does the system keep work moving? | [Follow a card](../README.md#follow-a-card-all-the-way-home) |
+| What are cards, streams, dependencies, and sentinels? | [Cards and workflow rules](SPEC-SPRINT.md) |
 | What do I do as the coordinator? | [Coordinator's guide](SPRINT-COORDINATOR.md) |
 | What is the exact command? | [Command reference](CLI.md) |
 | How do I open the dashboard? | [Dashboard guide and specification](SPEC-SPRINT-DASHBOARD.md#serving-and-publishing) |

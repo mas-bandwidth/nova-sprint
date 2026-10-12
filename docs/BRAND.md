@@ -1,11 +1,11 @@
 # Nova Sprint: finish faster
 
 nova-sprint is the running track in the Nova Tools family: a cute, capable
-runner and a practical machine for moving work from ready to landed.
+runner and a practical system for moving work from ready to landed.
 
 The product promise is **multiple models, many machines**. Workers run bounded
 assignments across a fleet. Width lets independent work happen at the same
-time; the machine carries cards through implementation, review, checks,
+time; the system carries cards through implementation, review, checks,
 merging, and landing within the configured rules.
 
 nova-sprint supplements existing ways of working with AIs. Keep the familiar
@@ -13,6 +13,11 @@ workflow for conversation, exploration, and direction. Use the fleet when
 there is a batch of work to hand off.
 
 ## Name and language
+
+Call nova-sprint the **system**. Reserve **machine** and **machines** for
+fleet computers. The system coordinates; machines supply capacity. Preserve
+literal command syntax, output, and historical quotations. The technical
+term **state machine** still describes a formal model.
 
 Write **nova-sprint** in prose and command names. The artwork uses **Nova Sprint**.
 Link to [Nova Tools](https://github.com/mas-bandwidth/nova-tools) when explaining
@@ -49,7 +54,7 @@ Record new assets in [Asset provenance](ASSET-PROVENANCE.md).
 
 ## Show the product working
 
-Explain the batch of work, how width helps, and how the machine keeps cards
+Explain the batch of work, how width helps, and how the system keeps cards
 moving. Reuse clear explanations of cards, streams, dependencies, gates,
 review, and landing. Gates that need a decision remain gates; speed does
 not mean skipping checks.

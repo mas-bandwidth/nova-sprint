@@ -1,13 +1,14 @@
-# Meet the friends and the machine
+# Work across a fleet
 
-The illustrated guide now lives in the **[main README](../README.md)**:
-why LLM-only coordination kept tripping over itself, and how nova-sprint's
-machine drives work across friends, models, harnesses, and fleet swarms.
+The **[main README](../README.md)** introduces nova-sprint: a system that
+coordinates workers across multiple models and many machines, moving cards
+from ready through implementation, review, checks, merging, and landing.
 
-- [Why we built the machine](../README.md#the-problem)
-- [Cards, streams, dependencies, and sentinel gates](../README.md#how-it-works-write-the-workflow-let-the-machine-run-it)
-- [Friends, swarms, and the fleet](../README.md#different-friends-one-team-as-many-bees-as-useful)
-- [Watch the live sprint](../README.md#give-the-team-a-plan-go-have-a-life)
+- [Workers, lanes, width, and fleet](../README.md#more-lanes-more-work-moving)
+- [Follow a card all the way home](../README.md#follow-a-card-all-the-way-home)
+- [Cards, streams, dependencies, and sentinel gates](SPEC-SPRINT.md)
+- [Start with one lane](../README.md#start-with-one-lane-then-go-wider)
+- [Watch the live sprint](http://69.67.149.151/)
 
 Ready to try it? [Get started](GETTING-STARTED.md), or open the
 [coordinator's guide](SPRINT-COORDINATOR.md) for the operating details.
