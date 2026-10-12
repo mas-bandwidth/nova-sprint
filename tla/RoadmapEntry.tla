@@ -1,5 +1,5 @@
 ---------------------------- MODULE RoadmapEntry -----------------------------
-\* nova-work roadmap (cmd/nova-work/roadmap.go, internal/roadmap): the life of
+\* nova-sprint issues roadmap (internal/issues/issues_roadmap.go, internal/roadmap): the life of
 \* one entry of a repository's own work record, docs/roadmap.sexp (ROADMAP.md)
 \* and docs/fixes.sexp (FIXES.md). An entry is a roadmap item under a group
 \* (todo), a fix in a point release (open: planned or in-progress), a scheduled

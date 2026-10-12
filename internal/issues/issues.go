@@ -12,6 +12,7 @@ package issues
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/workgh"
 	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
+	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/tool"
 )
@@ -35,6 +37,29 @@ func New() *tool.Tool { return workTool(realGitHub()) }
 // argument list (once the group's verb already consumed) and its streams.
 func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return New().Run(args, stdin, stdout, stderr)
+}
+
+// FlagSet is the flag set of the verb named, named for the app's help (the
+// group's word and the verb), so the app renders the group's -h through its
+// own help with the concrete synopsis from its verb table and the verb's
+// flags, and no [flags] placeholder prints. It is the tool's own flag set
+// (tool.Verb.flags) under the app's name.
+func FlagSet(name string) *flag.FlagSet {
+	for _, v := range New().Verbs {
+		if v.Name != name {
+			continue
+		}
+		f := &tool.Flags{FlagSet: verbflag.New("issues " + name)}
+		if v.Flags != nil {
+			v.Flags(f)
+		}
+		if v.DryRun {
+			f.Bool("dry-run", false, "print what the verb would write and write nothing")
+		}
+		f.Bool("json", false, "print the result as one JSON object instead of lines")
+		return f.FlagSet
+	}
+	return nil
 }
 
 // github is how the verbs reach GitHub and the clock: where gh is found, the

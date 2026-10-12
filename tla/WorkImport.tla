@@ -1,5 +1,5 @@
 ---------------------------- MODULE WorkImport ----------------------------
-\* nova-work v1: the states of an issue under import and of a repository's
+\* nova-sprint issues v1: the states of an issue under import and of a repository's
 \* sync, from docs/SPEC-WORK-V1.md section 1 (the tree, layer 1) and
 \* section 1.7 (the modes above it, specified here and not built: the
 \* destructive close after import, the export that re-opens, and the receipt
@@ -9,14 +9,14 @@
 \* An issue's contents are abstracted to a version number: GitHub's copy
 \* moves on every outside edit (ExternalEdit), the tree holds the version it
 \* fetched. Equal versions stand for SPEC-WORK-V1's field-for-field equality
-\* (cmd/nova-work verify, internal/workfile.Diff); the model does not look
+\* (nova-sprint issues verify, internal/workfile.Diff); the model does not look
 \* inside an issue.
 \*
 \* An issue's import states (phase):
 \*   absent            not read yet
 \*   fetched           read from GitHub (workgh.Fetcher.Issues), not in the tree
-\*   intree            in the tree file (import wrote it; nova-work import)
-\*   mirrored          a verify found it equal to GitHub (nova-work verify)
+\*   intree            in the tree file (import wrote it; nova-sprint issues import)
+\*   mirrored          a verify found it equal to GitHub (nova-sprint issues verify)
 \*   closed            closed on GitHub by a destructive import (not built)
 \*   reopened          re-opened on GitHub by export (not built)
 \* A repository's sync states (sync):
@@ -26,9 +26,9 @@
 \* Import and Verify each take a scope, a subset of the repositories. The
 \* import writes only its scope's issues and the tree records the scope it was
 \* imported with (treeScope, the tree's :scope; a whole-organization import
-\* records the whole organization: internal/workfile/tree.go, cmd/nova-work/
-\* import.go). The verify reads the tree's scope by default and refuses a
-\* --repo outside it before any GitHub call (cmd/nova-work/verify.go), so a
+\* records the whole organization: internal/workfile/tree.go, internal/issues/
+\* issues_import.go). The verify reads the tree's scope by default and refuses a
+\* --repo outside it before any GitHub call (internal/issues/issues_verify.go), so a
 \* verify's scope is always the tree's scope or a narrowing of it, and a verify
 \* never reports done outside the import's scope. That refusal is the one
 \* guard of the property, so VerifyNeverPassesOutsideItsScope has one reversed
@@ -110,7 +110,7 @@ ExternalEdit(i) ==
   /\ ghVer' = [ghVer EXCEPT ![i] = @ + 1]
   /\ UNCHANGED <<ghOpen, fetched, treeVer, treeOpen, treeScope, receipt, closedByImport, closedVer, closedWithReceipt, phase, sync>>
 
-\* nova-work import begins a pass over its scope (non-destructive); the
+\* nova-sprint issues import begins a pass over its scope (non-destructive); the
 \* issues outside the scope are left as they are.
 StartImport ==
   /\ sync \in {"idle", "imported"}
@@ -129,9 +129,9 @@ Fetch(i) ==
   /\ phase' = [phase EXCEPT ![i] = "fetched"]
   /\ UNCHANGED <<ghVer, ghOpen, treeVer, treeOpen, treeScope, receipt, closedByImport, closedVer, closedWithReceipt, sync>>
 
-\* nova-work import writes the tree once every issue of its scope is fetched
+\* nova-sprint issues import writes the tree once every issue of its scope is fetched
 \* and the encoded tree read back equals what was fetched
-\* (cmd/nova-work/import.go). The tree records the scope it was imported with
+\* (internal/issues/issues_import.go). The tree records the scope it was imported with
 \* (:scope), and a scoped import that lost its :scope would verify against the
 \* whole organization, so import checks it survives the file (import.go).
 WriteTree ==
@@ -146,7 +146,7 @@ WriteTree ==
   /\ UNCHANGED <<ghVer, ghOpen, fetched, receipt, closedByImport, closedVer, closedWithReceipt>>
 
 \* The scope a verify reads: the --repo scope named, or, with none, the tree's
-\* own recorded scope (cmd/nova-work/verify.go reads exactly tree.Scope or the
+\* own recorded scope (internal/issues/issues_verify.go reads exactly tree.Scope or the
 \* narrowing --repo). A verify is refused a --repo outside the tree's scope
 \* before any GitHub call, so VerifyReads is always the tree's scope or a
 \* narrowing of it; the refusal is the guard Verify removes below.
@@ -160,7 +160,7 @@ VerifyReads == IF VerifyScope # {} THEN VerifyScope ELSE treeScope
 VerifyCompared(i) ==
   repo[i] \in VerifyReads /\ treeVer[i] # None
 
-\* nova-work verify: a fresh read of its scope, compared field for field. The
+\* nova-sprint issues verify: a fresh read of its scope, compared field for field. The
 \* scope defaults to the tree's own, and a --repo outside the tree's scope is
 \* refused before any GitHub call (the guard Broken "scoped" removes), so a
 \* verify's scope is the tree's scope or a narrowing of it and a wider verify

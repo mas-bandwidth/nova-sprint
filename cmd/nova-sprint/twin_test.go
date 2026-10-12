@@ -136,9 +136,10 @@ func TestEveryVerbHelpShowsAnExampleItsFlagsTake(t *testing.T) {
 	t.Parallel()
 	for _, v := range verbs {
 		if strings.HasPrefix(v.name, "issues ") {
-			// The issues group is the folded-in work tool (internal/issues):
-			// its -h is that tool's own, whose per-verb help is not the app's
-			// example-block shape. Its own tests hold it.
+			// The issues group's -h is the app's own help, but issues roadmap
+			// is a group (its verbs are the roadmap sub-verbs), so its -h has
+			// no flags: block for the example-before-flags check below. Its
+			// own tests hold the group's help.
 			continue
 		}
 		if !assert.NotEmpty(t, v.example, "verb %q has no example", v.name) {

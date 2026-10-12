@@ -31,7 +31,7 @@ module	github.com/mas-bandwidth/nova-tools	github.com/mas-bandwidth/nova-sprint
 # until layer L4 imports it from nova-tools.
 move	cmd/nova-sprint
 move	cmd/nova-card
-move	cmd/nova-work
+move	internal/issues
 move	internal/sprint
 move	internal/sprintdash
 move	internal/card
@@ -54,8 +54,8 @@ literal-file	internal/sprint/secrets_in_errors_test.go	const sprintSecretLeakAll
 doc	docs/SPEC-ISA.md
 doc	docs/PROCESSOR.md
 doc	docs/COORDINATOR-TOOLS.md
-section	docs/CLI.md	nova-sprint	nova-card	nova-work
-section	docs/TESTS.md	nova-sprint	nova-card	nova-work
+section	docs/CLI.md	nova-sprint	nova-card	nova-sprint issues
+section	docs/TESTS.md	nova-sprint	nova-card	nova-sprint issues
 # The sprint and work ratings, the sprint docs and every TLA+ model here are nova-sprint's own from
 # v1.2.3 (split layer L5): nova-tools no longer has them, so they are kept, not taken.
 keep	docs/SPEC-SPRINT-DASHBOARD.md
